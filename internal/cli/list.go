@@ -144,6 +144,7 @@ type jsonRow struct {
 	WorktreePath string   `json:"worktree_path,omitempty"`
 	Checkout     string   `json:"checkout,omitempty"`
 	State        string   `json:"state"`
+	Mode         string   `json:"mode"`
 	Owner        string   `json:"owner,omitempty"`
 	Next         string   `json:"next,omitempty"`
 	Note         string   `json:"note,omitempty"`
@@ -151,6 +152,15 @@ type jsonRow struct {
 
 	CheckoutExists bool   `json:"checkout_exists"`
 	Dirty          bool   `json:"dirty"`
+	Changed        int    `json:"changed"`
+	Staged         int    `json:"staged"`
+	Unstaged       int    `json:"unstaged"`
+	Untracked      int    `json:"untracked"`
+	Conflicted     int    `json:"conflicted"`
+	Added          int    `json:"added"`
+	Modified       int    `json:"modified"`
+	Deleted        int    `json:"deleted"`
+	Renamed        int    `json:"renamed"`
 	Ahead          int    `json:"ahead"`
 	Behind         int    `json:"behind"`
 	Upstream       string `json:"upstream,omitempty"`
@@ -180,12 +190,22 @@ func emitJSON(app *App, rows []inventory.Row) error {
 			WorktreePath:   config.Contract(r.Task.WorktreePath),
 			Checkout:       config.Contract(r.Checkout),
 			State:          string(r.Task.State),
+			Mode:           string(r.Task.EffectiveMode()),
 			Owner:          r.Task.Owner,
 			Next:           r.Task.Next,
 			Note:           r.Task.Note,
 			Tags:           r.Task.Tags,
 			CheckoutExists: r.CheckoutExists,
 			Dirty:          r.Status.Dirty(),
+			Changed:        r.Status.Changed,
+			Staged:         r.Status.Staged,
+			Unstaged:       r.Status.Unstaged,
+			Untracked:      r.Status.Untracked,
+			Conflicted:     r.Status.Conflicted,
+			Added:          r.Status.Added,
+			Modified:       r.Status.Modified,
+			Deleted:        r.Status.Deleted,
+			Renamed:        r.Status.Renamed,
 			Ahead:          r.Status.Ahead,
 			Behind:         r.Status.Behind,
 			Upstream:       r.Status.Upstream,

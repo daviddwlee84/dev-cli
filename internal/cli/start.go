@@ -20,29 +20,40 @@ func newStartCmd(app *App) *cobra.Command {
 		name        string
 		branch      string
 		base        string
-		noWorktree  bool
+		direct      bool
+		branchOnly  bool
+		noWorktree  bool // deprecated spelling of branch-only
 		noProvision bool
 		focus       bool
 		next        string
 	)
 	cmd := &cobra.Command{
 		Use:   "start [repo]",
-		Short: "Begin a change stream: branch, worktree, runtime session and task entry",
-		Long: `Start a new change stream.
+		Short: "Track work directly, on a canonical branch, or in an isolated worktree",
+		Long: `Start a tracked change stream in one of three explicit modes:
 
-One command does the four things that otherwise drift apart: it creates the
-branch, creates a worktree for it at the configured path, opens a runtime
-session on that checkout, and records the task so the work survives closing
-the session.
+  default        create a branch + linked worktree, provision it, open a
+                 runtime session, and record the task. Safest for work that
+                 may be interrupted or run in parallel.
+  --branch-only  create/switch a branch in the canonical checkout, with no
+                 worktree. Lighter, but that checkout cannot host another
+                 branch concurrently.
+  --direct       track the branch already checked out in the canonical repo —
+                 usually main — without creating either a branch or worktree.
+                 Best for one-session ad-hoc changes.
+
+For untracked ad-hoc navigation, use "dev repo open" or press Enter in the
+TUI's REPOS view; that opens the project without creating any task at all.
 
 With no repo argument, the repository containing the current directory is used.
-
-Always pass --base for anything an agent runs unattended. Without it a new
-branch starts from the current HEAD, so starting a task while standing on
-feature/A silently builds on feature/A rather than on main.`,
+Always pass --base for an unattended branch/worktree task.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
+			if direct && (branchOnly || noWorktree) {
+				return errors.New("--direct and --branch-only are different modes; pick one")
+			}
+			branchOnly = branchOnly || noWorktree
 
 			// Resolve the repository: an explicit argument, else the cwd.
 			var repoPath, repoName, category string
@@ -64,64 +75,93 @@ feature/A silently builds on feature/A rather than on main.`,
 				repoPath, repoName = g.MainRoot, g.Name
 			}
 
-			// Derive whichever of task-name and branch was not given.
-			if name == "" && branch == "" {
-				return errors.New("give the work a name: dev start <repo> --task <name>")
-			}
-			if branch == "" {
-				branch = "feat/" + config.Slug(name)
-			}
 			if name == "" {
-				name = branch
+				if branch != "" && !direct {
+					name = branch
+				} else {
+					return errors.New("give the work a name: dev start <repo> --task <name>")
+				}
 			}
-			if base == "" {
-				base = gitx.DefaultBranch(ctx, repoPath)
+
+			mode := task.ModeWorktree
+			switch {
+			case direct:
+				mode = task.ModeDirect
+				st, err := gitx.StatusOf(ctx, repoPath)
+				if err != nil {
+					return err
+				}
+				if st.Detached || st.Branch == "" {
+					return errors.New("--direct needs a named branch; this checkout has detached HEAD")
+				}
+				if branch != "" && branch != st.Branch {
+					return fmt.Errorf("--direct tracks the branch already checked out (%s), not --branch %s; "+
+						"omit --branch or use --branch-only", st.Branch, branch)
+				}
+				branch, base = st.Branch, st.Branch
+
+			case branchOnly:
+				mode = task.ModeBranch
+				if branch == "" {
+					branch = "feat/" + config.Slug(name)
+				}
+				if base == "" {
+					base = gitx.DefaultBranch(ctx, repoPath)
+				}
+
+			default:
+				if branch == "" {
+					branch = "feat/" + config.Slug(name)
+				}
+				if base == "" {
+					base = gitx.DefaultBranch(ctx, repoPath)
+				}
 			}
 
 			id := task.MakeID(repoName, branch)
-			if existing, err := app.Tasks.Get(id); err == nil {
+			if existing, err := app.Tasks.Get(id); err == nil && existing.State != task.Done {
 				return fmt.Errorf("task %s already exists (state %s) — use `dev resume %s`",
 					existing.ID, existing.State, existing.ID)
 			}
 
 			t := &task.Task{
-				Name:     name,
-				Repo:     repoName,
-				RepoPath: repoPath,
-				Branch:   branch,
-				Base:     base,
-				State:    task.Hot,
-				Owner:    config.Hostname(),
-				Next:     next,
+				Name: name, Repo: repoName, RepoPath: repoPath,
+				Branch: branch, Base: base, Mode: mode,
+				State: task.Hot, Owner: config.Hostname(), Next: next,
 			}
-
 			rt := app.Runtime()
-			if noWorktree {
-				// Working directly in the main checkout: create the branch
-				// there and open a session on it.
-				if !gitx.BranchExists(ctx, repoPath, branch) {
-					if _, err := gitx.Run(ctx, repoPath, "branch", branch, base); err != nil {
-						return err
+
+			switch mode {
+			case task.ModeDirect:
+				handle, err := rt.Open(ctx, repoPath, repoName+"/"+name)
+				if err != nil {
+					app.warnf("could not open a runtime session: %v", err)
+				} else if rt.Name() != "none" {
+					t.RuntimeHandle = handle
+				}
+
+			case task.ModeBranch:
+				if gitx.BranchExists(ctx, repoPath, branch) {
+					if _, err := gitx.Run(ctx, repoPath, "switch", branch); err != nil {
+						return fmt.Errorf("switch to %s: %w", branch, err)
+					}
+				} else {
+					if _, err := gitx.Run(ctx, repoPath, "switch", "-c", branch, base); err != nil {
+						return fmt.Errorf("create and switch to %s from %s: %w", branch, base, err)
 					}
 				}
 				handle, err := rt.Open(ctx, repoPath, repoName+"/"+branch)
 				if err != nil {
 					app.warnf("could not open a runtime session: %v", err)
-				}
-				if rt.Name() != "none" {
+				} else if rt.Name() != "none" {
 					t.RuntimeHandle = handle
 				}
-			} else {
+
+			case task.ModeWorktree:
 				m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
 				res, err := m.Create(ctx, wt.CreateRequest{
-					RepoPath:    repoPath,
-					RepoName:    repoName,
-					Branch:      branch,
-					Base:        base,
-					Category:    category,
-					Label:       name,
-					NoProvision: noProvision,
-					Focus:       focus,
+					RepoPath: repoPath, RepoName: repoName, Branch: branch, Base: base,
+					Category: category, Label: name, NoProvision: noProvision, Focus: focus,
 				})
 				if err != nil {
 					var exists *wt.ErrExists
@@ -130,8 +170,7 @@ feature/A silently builds on feature/A rather than on main.`,
 					}
 					return err
 				}
-				t.WorktreePath = res.Path
-				t.RuntimeHandle = res.RuntimeHandle
+				t.WorktreePath, t.RuntimeHandle = res.Path, res.RuntimeHandle
 				reportProvision(app, res)
 			}
 
@@ -140,11 +179,12 @@ feature/A silently builds on feature/A rather than on main.`,
 			}
 			annotate(app, rt, t)
 
-			fmt.Fprintf(app.Out, "%s %s  %s on %s\n", task.Hot.Icon(), t.Name, t.Repo, t.Branch)
+			fmt.Fprintf(app.Out, "%s %s  %s on %s (%s)\n",
+				task.Hot.Icon(), t.Name, t.Repo, t.Branch, t.Mode)
 			if t.WorktreePath != "" {
 				fmt.Fprintf(app.Out, "   worktree  %s\n", config.Contract(t.WorktreePath))
 			}
-			if t.RuntimeHandle != "" && rt.Name() != "none" {
+			if t.RuntimeHandle != "" {
 				fmt.Fprintf(app.Out, "   session   %s %s\n", rt.Name(), t.RuntimeHandle)
 			}
 			if rt.Name() == "none" {
@@ -156,10 +196,13 @@ feature/A silently builds on feature/A rather than on main.`,
 	f := cmd.Flags()
 	f.StringVarP(&name, "task", "t", "", "human name for this change stream")
 	f.StringVarP(&branch, "branch", "b", "", "branch name (default: feat/<task-slug>)")
-	f.StringVar(&base, "base", "", "ref the branch starts from (default: the repo's default branch)")
+	f.StringVar(&base, "base", "", "ref a new branch starts from (default: repo default branch)")
 	f.StringVar(&next, "next", "", "the first next action to record")
-	f.BoolVar(&noWorktree, "no-worktree", false, "work in the main checkout instead of a worktree")
-	f.BoolVar(&noProvision, "no-provision", false, "skip dependency install and gitignored-file copying")
+	f.BoolVar(&direct, "direct", false, "track work on the currently checked-out branch; create no branch/worktree")
+	f.BoolVar(&branchOnly, "branch-only", false, "create/switch a branch in the canonical checkout; no worktree")
+	f.BoolVar(&noWorktree, "no-worktree", false, "deprecated alias for --branch-only")
+	_ = f.MarkDeprecated("no-worktree", "use --branch-only (or --direct to stay on main)")
+	f.BoolVar(&noProvision, "no-provision", false, "skip dependency install and ignored-file copying")
 	f.BoolVar(&focus, "focus", false, "focus the new runtime session")
 	return cmd
 }

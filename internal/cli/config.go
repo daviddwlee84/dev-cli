@@ -248,7 +248,7 @@ relative_links = false
 # a configured list replaces these entirely. See "dev tui tools".
 #
 # Keys are case-sensitive, and cannot take one the dashboard already uses
-# (j k g G h l tab / enter o p c s a r q 0 1 2 3 ?); dev reports a clash on load.
+# (j k g G h l tab / enter o p c s d a r q e H 0 1 2 3 ?); dev reports a clash on load.
 
 [[tui.tools]]
 key  = "L"

@@ -28,6 +28,9 @@ func (m Model) View() string {
 	if m.quitting {
 		return ""
 	}
+	if m.mode == modeStats {
+		return m.renderStats()
+	}
 	var b strings.Builder
 	b.WriteString(m.renderHeader())
 	b.WriteString("\n")
@@ -46,6 +49,38 @@ func (m Model) View() string {
 	b.WriteString("\n")
 	b.WriteString(m.renderFooter())
 	return b.String()
+}
+
+func (m Model) renderStats() string {
+	var b strings.Builder
+	title := "repo activity"
+	if m.stats != nil && m.stats.Repo != "" {
+		title = m.stats.Repo + " activity"
+	}
+	b.WriteString(styleTitle.Render("dev  HEATMAP  "+title) + "\n\n")
+	if m.err != nil {
+		b.WriteString("  " + styleErr.Render("✗ "+m.err.Error()) + "\n")
+	} else if m.stats == nil {
+		b.WriteString("  " + styleDim.Render("Loading activity…") + "\n")
+	} else if m.stats.Seconds == 0 {
+		b.WriteString("  " + styleDim.Render("No activity recorded for this repository.\n"))
+		b.WriteString("  " + styleDim.Render("Seed history with: dev stats backfill\n"))
+	} else {
+		b.WriteString(m.stats.Heatmap)
+		fmt.Fprintf(&b, "\n  %s   %d active days   %s → %s\n",
+			styleOK.Render(humanSeconds(m.stats.Seconds)), m.stats.ActiveDays,
+			m.stats.Since.Format("2006-01-02"), m.stats.Until.Format("2006-01-02"))
+	}
+	b.WriteString("\n  " + styleHelp.Render("H / esc back · r refresh · q quit"))
+	return b.String()
+}
+
+func humanSeconds(seconds int) string {
+	d := time.Duration(seconds) * time.Second
+	if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	}
+	return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
 }
 
 // renderHeader shows the tab strip, so which list is showing — and that there
@@ -93,17 +128,17 @@ func (m Model) renderTasks() string {
 	nameW, branchW, nextW := m.columnWidths()
 
 	var b strings.Builder
-	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-*s  %-6s  %-*s  %-8s  %-5s  %s",
+	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-*s  %-6s  %-*s  %-16s  %-5s  %s",
 		nameW, "TASK", "STATE", branchW, "BRANCH", "GIT", "AGE", "NEXT")) + "\n")
 
 	from, to := m.window(len(rows))
 	for i := from; i < to; i++ {
 		r := rows[i]
-		line := fmt.Sprintf("%-*s  %-6s  %-*s  %-8s  %-5s  %s",
+		line := fmt.Sprintf("%-*s  %-6s  %-*s  %-16s  %-5s  %s",
 			nameW, pad(r.Task.Title(), nameW),
 			r.Task.State.Label(),
 			branchW, pad(r.Task.Branch, branchW),
-			pad(gitColumn(r), 8),
+			pad(gitColumn(r), 16),
 			pad(shortAge(r), 5),
 			pad(nextColumn(r), nextW),
 		)
@@ -123,8 +158,8 @@ func (m Model) renderRepos() string {
 	branchW := clamp(m.width*22/100, 12, 28)
 
 	var b strings.Builder
-	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-*s  %-*s  %-8s  %-4s  %s",
-		nameW, "REPO", branchW, "BRANCH", "GIT", "WT", "TASKS")) + "\n")
+	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-*s  %-*s  %-16s  %-15s  %-4s  %s",
+		nameW, "REPO", branchW, "BRANCH", "GIT", "LIVE", "WT", "TASKS")) + "\n")
 
 	from, to := m.window(len(repos))
 	for i := from; i < to; i++ {
@@ -137,13 +172,18 @@ func (m Model) renderRepos() string {
 		if tasks == "" {
 			tasks = styleDim.Render("—")
 		}
+		live := "—"
 		if r.Live {
-			tasks = styleLive.Render("●") + " " + tasks
+			live = r.Runtime
+			if r.RuntimeStatus != "" {
+				live += ":" + r.RuntimeStatus
+			}
 		}
-		line := fmt.Sprintf("%-*s  %-*s  %-8s  %-4s  %s",
+		line := fmt.Sprintf("%-*s  %-*s  %-16s  %-15s  %-4s  %s",
 			nameW, pad(r.Repo.Display(), nameW),
 			branchW, pad(r.Status.Branch, branchW),
-			pad(r.Status.Summary(), 8),
+			pad(r.Status.Summary(), 16),
+			pad(live, 15),
 			pad(wt, 4),
 			tasks,
 		)
@@ -250,7 +290,7 @@ func (m Model) emptyTasks() string {
 }
 
 func (m Model) columnWidths() (name, branch, next int) {
-	const fixed = 2 + 6 + 8 + 5 + 10
+	const fixed = 2 + 6 + 16 + 5 + 10
 	avail := m.width - fixed
 	if avail < 40 {
 		avail = 40
@@ -284,6 +324,11 @@ func (m Model) renderDetail() string {
 		return "  " + styleTitle.Render("start work in "+r.Repo.Name) +
 			"\n  name: " + m.input.View() +
 			"\n  " + styleHelp.Render("enter to create the branch, worktree and session · esc to cancel")
+	case modeStartDirect:
+		r, _ := m.currentRepo()
+		return "  " + styleTitle.Render("track direct work in "+r.Repo.Name) +
+			"\n  name: " + m.input.View() +
+			"\n  " + styleHelp.Render("enter to track the current branch; no branch/worktree is created · esc to cancel")
 	case modeConfirmClone:
 		r, _ := m.currentRemote()
 		return "  " + styleTitle.Render("clone "+r.Repo.FullName) +
@@ -312,8 +357,21 @@ func (m Model) renderDetail() string {
 		lines := []string{
 			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(r.Repo.Path)),
 		}
+		if r.Status.Dirty() {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("git  "), r.Status.Breakdown()))
+			if types := r.Status.TypeBreakdown(); types != "" {
+				lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("types"), types))
+			}
+		}
 		if r.Repo.Category != "" {
 			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("group"), r.Repo.Category))
+		}
+		if r.Live {
+			live := r.Runtime + " " + r.RuntimeHandle
+			if r.RuntimeStatus != "" {
+				live += " · " + r.RuntimeStatus
+			}
+			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("live"), styleLive.Render(live)))
 		}
 		if len(r.Tasks) > 0 {
 			var names []string
@@ -336,6 +394,13 @@ func (m Model) renderDetail() string {
 	lines := []string{
 		fmt.Sprintf("  %s  %s", styleDim.Render("repo"), t.Repo),
 		fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(row.Checkout)),
+		fmt.Sprintf("  %s  %s", styleDim.Render("mode"), t.EffectiveMode()),
+	}
+	if row.Status.Dirty() {
+		lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("git  "), row.Status.Breakdown()))
+		if types := row.Status.TypeBreakdown(); types != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("types"), types))
+		}
 	}
 	if t.Owner != "" {
 		lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("owner"), t.Owner))
@@ -369,7 +434,7 @@ func (m Model) renderFooter() string {
 	var bindings []string
 	switch m.view {
 	case ViewRepos:
-		bindings = append(bindings, "enter open", "s start task")
+		bindings = append(bindings, "enter ad hoc", "s worktree task", "d direct task")
 	case ViewRemote:
 		if r, ok := m.currentRemote(); ok && r.Cloned() {
 			bindings = append(bindings, "enter open local")
@@ -379,11 +444,11 @@ func (m Model) renderFooter() string {
 	default:
 		bindings = append(bindings, "enter open", "p park", "c next")
 	}
-	bindings = append(bindings, "tab view", "/ filter")
+	bindings = append(bindings, "tab view", "/ filter", "H stats", "e config")
 	for _, t := range m.Tools() {
 		bindings = append(bindings, t.Key+" "+t.Name)
 	}
-	bindings = append(bindings, "1/2/3 state", "0 clear", "r refresh", "q quit")
+	bindings = append(bindings, "1/2/3 state", "0 clear", "r reload", "q quit")
 
 	var b strings.Builder
 	if status != "" {

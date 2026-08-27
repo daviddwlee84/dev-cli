@@ -56,9 +56,13 @@ a          include DONE
 REPOS:
 
 ```
-enter / o  open the repository
-s          start a task: branch + worktree + provisioning + runtime + entry
+enter / o  ad-hoc open: no task, branch or worktree
+d          track direct work on the current branch (usually main)
+s          isolated task: branch + worktree + provisioning + runtime + entry
 ```
+
+The LIVE column makes runtime state explicit (`herdr:working`, `herdr:idle`);
+the detail pane includes the workspace handle.
 
 REMOTE:
 
@@ -67,6 +71,22 @@ enter / o  open an existing local clone
 c          confirm and clone an absent repo into project_root
 r          refresh gh + glab, replacing the cache
 ```
+
+## Heatmap and live config
+
+```
+H   open the selected repository's one-year activity heatmap
+    H / esc returns; r refreshes the stats database
+
+e   edit the effective config in VISUAL/EDITOR
+r   reparse config and reload local/remote data and tool bindings
+```
+
+Returning from `e` live-reloads the config. Changes to scan roots, worktree
+policy, forge cache settings and `[[tui.tools]]` take effect immediately. A
+runtime backend change needs a restart because existing callbacks and sessions
+belong to the backend the TUI opened with; the status line says so rather than
+pretending to switch underneath a live workspace.
 
 ## External tools are explicit configuration
 

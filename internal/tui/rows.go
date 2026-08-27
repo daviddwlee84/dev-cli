@@ -3,6 +3,7 @@ package tui
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
@@ -26,7 +27,10 @@ type RepoRow struct {
 	// Tasks are the recorded tasks belonging to this repository.
 	Tasks []*task.Task
 	// Live reports a runtime session sitting in this repository.
-	Live bool
+	Live          bool
+	Runtime       string
+	RuntimeHandle string
+	RuntimeStatus string
 	// RemoteForge / RemoteName identify origin for matching the REMOTE view to
 	// this local checkout without rescanning every repo when a cache opens.
 	RemoteForge forge.Kind
@@ -124,4 +128,14 @@ func (r RemoteRow) searchText() string {
 		string(r.Repo.Forge), r.Repo.Name, r.Repo.FullName, r.Repo.Description,
 		r.Repo.Visibility, r.Repo.DefaultBranch, r.LocalName,
 	}, " "))
+}
+
+// StatsPanel is the repo activity overlay opened by H.
+type StatsPanel struct {
+	Repo       string
+	Heatmap    string
+	Seconds    int
+	ActiveDays int
+	Since      time.Time
+	Until      time.Time
 }

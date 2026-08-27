@@ -40,6 +40,7 @@ func TestSaveGetRoundTrip(t *testing.T) {
 	in.Next = "finish refresh regression test"
 	in.Tags = []string{"work", "urgent"}
 	in.AgentSession = "claude:2136a917"
+	in.Mode = task.ModeDirect
 
 	if err := s.Save(in); err != nil {
 		t.Fatalf("Save: %v", err)
@@ -60,6 +61,9 @@ func TestSaveGetRoundTrip(t *testing.T) {
 	}
 	if len(out.Tags) != 2 || out.AgentSession != "claude:2136a917" {
 		t.Errorf("tags/session lost: %+v", out)
+	}
+	if out.Mode != task.ModeDirect {
+		t.Errorf("mode lost: saved %q, loaded %q", in.Mode, out.Mode)
 	}
 }
 
@@ -256,5 +260,25 @@ func TestParseState(t *testing.T) {
 	}
 	if _, err := task.ParseState("lukewarm"); err == nil {
 		t.Error("unknown state should error")
+	}
+}
+
+func TestEffectiveModeInfersLegacyTasksConservatively(t *testing.T) {
+	if got := (task.Task{WorktreePath: "/wt/x"}).EffectiveMode(); got != task.ModeWorktree {
+		t.Errorf("legacy worktree mode = %q", got)
+	}
+	if got := (task.Task{}).EffectiveMode(); got != task.ModeBranch {
+		t.Errorf("legacy no-path task should infer branch, never direct: %q", got)
+	}
+	if got := (task.Task{Mode: task.ModeDirect, WorktreePath: "/ignored"}).EffectiveMode(); got != task.ModeDirect {
+		t.Errorf("explicit mode should win: %q", got)
+	}
+}
+
+func TestValidateRejectsUnknownMode(t *testing.T) {
+	tk := newTask("repo", "main", task.Hot)
+	tk.Mode = "magic"
+	if err := tk.Validate(); err == nil || !strings.Contains(err.Error(), "unknown mode") {
+		t.Errorf("unknown mode should fail, got %v", err)
 	}
 }

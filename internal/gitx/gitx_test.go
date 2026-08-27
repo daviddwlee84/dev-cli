@@ -2,6 +2,7 @@ package gitx_test
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -188,8 +189,11 @@ func TestStatus(t *testing.T) {
 	r.Write("staged.txt", "y\n")
 	r.Git("add", "staged.txt")
 	st, _ = gitx.StatusOf(ctx, r.Root)
-	if st.Untracked != 1 || st.Staged != 1 {
-		t.Errorf("want 1 untracked + 1 staged, got %+v", st)
+	if st.Untracked != 1 || st.Staged != 1 || st.Changed != 2 {
+		t.Errorf("want 2 unique paths: 1 untracked + 1 staged, got %+v", st)
+	}
+	if st.Summary() != "+1 ?1" {
+		t.Errorf("rich Summary = %q", st.Summary())
 	}
 	if !st.Dirty() {
 		t.Error("should be dirty")
@@ -212,8 +216,8 @@ func TestStatusAheadBehind(t *testing.T) {
 	if st.Ahead != 2 || st.Behind != 0 {
 		t.Errorf("want ahead=2, got %+v", st)
 	}
-	if st.Summary() != "↑2" {
-		t.Errorf("Summary = %q, want ↑2", st.Summary())
+	if st.Summary() != "⇡2" {
+		t.Errorf("Summary = %q, want ⇡2", st.Summary())
 	}
 }
 
@@ -266,5 +270,69 @@ func TestBranchAndRefExists(t *testing.T) {
 	}
 	if gitx.RefExists(ctx, r.Root, "refs/heads/absent") {
 		t.Error("absent ref should not resolve")
+	}
+}
+
+func TestStatusRichChangeCounts(t *testing.T) {
+	r := gittest.New(t)
+	ctx := gittest.Ctx()
+	r.Commit("modify.txt", "old\n", "chore: add modified fixture")
+	r.Commit("delete.txt", "gone soon\n", "chore: add delete fixture")
+	r.Commit("rename.txt", "move me\n", "chore: add rename fixture")
+
+	r.Write("modify.txt", "new\n")
+	if err := os.Remove(filepath.Join(r.Root, "delete.txt")); err != nil {
+		t.Fatal(err)
+	}
+	r.Git("mv", "rename.txt", "renamed.txt")
+	r.Write("untracked.txt", "new\n")
+
+	st, err := gitx.StatusOf(ctx, r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Changed != 4 {
+		t.Errorf("Changed = %d, want 4 unique paths: %+v", st.Changed, st)
+	}
+	if st.Staged != 1 || st.Unstaged != 2 || st.Untracked != 1 {
+		t.Errorf("stage categories wrong: %+v", st)
+	}
+	if st.Modified != 1 || st.Deleted != 1 || st.Renamed != 1 {
+		t.Errorf("change types wrong: %+v", st)
+	}
+	if got := st.Summary(); got != "+1 !2 ?1" {
+		t.Errorf("Summary = %q", got)
+	}
+	if got := st.Breakdown(); got != "4 changed paths (+1 staged, !2 unstaged, ?1 untracked)" {
+		t.Errorf("Breakdown = %q", got)
+	}
+}
+
+func TestStatusDoesNotDoubleCountPathStagedAndUnstaged(t *testing.T) {
+	r := gittest.New(t)
+	r.Commit("both.txt", "base\n", "chore: add fixture")
+	r.Write("both.txt", "staged\n")
+	r.Git("add", "both.txt")
+	r.Write("both.txt", "changed again\n")
+
+	st, err := gitx.StatusOf(gittest.Ctx(), r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Changed != 1 || st.Staged != 1 || st.Unstaged != 1 {
+		t.Errorf("one path with two states should be unique once: %+v", st)
+	}
+	if st.Summary() != "+1 !1" {
+		t.Errorf("Summary = %q", st.Summary())
+	}
+}
+
+func TestStatusSummaryDivergenceAndConflicts(t *testing.T) {
+	st := gitx.Status{Ahead: 3, Behind: 2, Changed: 2, Conflicted: 1, Untracked: 1}
+	if got := st.Summary(); got != "⇕⇡3⇣2 =1 ?1" {
+		t.Errorf("Summary = %q", got)
+	}
+	if got := (gitx.Status{}).Breakdown(); got != "0 changed paths" {
+		t.Errorf("clean Breakdown = %q", got)
 	}
 }

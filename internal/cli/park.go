@@ -46,6 +46,11 @@ machine, which is exactly what parking needs to support.`,
 				return err
 			}
 
+			mode := t.EffectiveMode()
+			if cold && mode == task.ModeDirect {
+				return fmt.Errorf("direct task %s uses the canonical checkout on %s, so it cannot go cold; "+
+					"park it warm or finish it", t.Title(), t.Branch)
+			}
 			target := task.Warm
 			if cold {
 				target = task.Cold
@@ -127,6 +132,21 @@ machine, which is exactly what parking needs to support.`,
 				// The path is cleared, but the branch stays: that is what makes
 				// the task reconstructible rather than lost.
 				t.WorktreePath = ""
+			}
+			if cold && mode == task.ModeBranch {
+				// Free the canonical checkout for other work. The branch remains
+				// local + remote and resume switches back to it.
+				base := t.Base
+				if base == "" {
+					base = gitx.DefaultBranch(ctx, t.RepoPath)
+				}
+				if base == "" {
+					return fmt.Errorf("task is pushed, but its base branch is unknown")
+				}
+				if _, err := gitx.Run(ctx, t.RepoPath, "switch", base); err != nil {
+					return fmt.Errorf("task is pushed, but could not switch canonical checkout back to %s: %w",
+						base, err)
+				}
 			}
 
 			t.State = target

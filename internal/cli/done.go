@@ -56,9 +56,36 @@ branch that still has unpushed commits is never deleted.`,
 				return err
 			}
 			if st.Dirty() {
-				return fmt.Errorf("%s has uncommitted changes (%s).\n"+
+				return fmt.Errorf("%s has uncommitted changes: %s.\n"+
 					"Commit them, or park the task with --wip, before finishing it",
-					config.Contract(checkout), st.Summary())
+					config.Contract(checkout), st.Breakdown())
+			}
+
+			mode := t.EffectiveMode()
+			if mode == task.ModeDirect {
+				if ff || pr || deleteBranch || keepWorktree {
+					return fmt.Errorf("direct task %s is already on %s; it has no branch/worktree to integrate. "+
+						"Run `dev done` without --ff/--pr/--delete-branch/--keep-worktree", t.Title(), t.Branch)
+				}
+				if push {
+					if err := pushBranch(ctx, app, checkout, t.Branch); err != nil {
+						return err
+					}
+				}
+				rt := app.Runtime()
+				if t.RuntimeHandle != "" {
+					if err := rt.Close(ctx, t.RuntimeHandle); err != nil {
+						app.warnf("could not close the runtime session: %v", err)
+					}
+					t.RuntimeHandle = ""
+				}
+				t.State = task.Done
+				if err := app.Tasks.Save(t); err != nil {
+					return err
+				}
+				fmt.Fprintf(app.Out, "%s %s completed directly on %s\n", task.Done.Icon(), t.Title(), t.Branch)
+				fmt.Fprintln(app.Out, "   no branch or worktree was created or removed")
+				return nil
 			}
 
 			base := t.Base
@@ -134,12 +161,19 @@ branch that still has unpushed commits is never deleted.`,
 	f.BoolVar(&ff, "ff", false, "rebase onto the base and fast-forward it")
 	f.BoolVar(&pr, "pr", false, "push and open a pull/merge request instead of merging locally")
 	f.BoolVar(&keepWorktree, "keep-worktree", false, "keep the worktree checkout")
-	f.BoolVar(&push, "push", false, "push the base branch after a fast-forward")
+	f.BoolVar(&push, "push", false, "push the resulting branch (direct mode pushes its current branch)")
 	// Off by default: a branch is cheap to keep and expensive to recreate, and
 	// "merged" is not always "finished" — work often continues on a branch
 	// after its first integration.
 	f.BoolVar(&deleteBranch, "delete-branch", false, "delete the branch once its commits are in the base")
 	return cmd
+}
+
+func directPushHint(push bool) string {
+	if push {
+		return " --push"
+	}
+	return ""
 }
 
 // fastForward rebases the task branch onto its base and then moves the base

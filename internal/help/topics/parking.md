@@ -11,6 +11,22 @@ sidebar grows until it is no longer scannable, which defeats its purpose.
 `dev` gives that record a home outside the runtime. Then closing a session is
 just closing a session.
 
+## Pick a checkout mode first
+
+A task is intent, not necessarily a worktree:
+
+```bash
+dev repo open api                         # ad hoc; no task at all
+dev start api --task "typo" --direct      # current branch, usually main
+dev start api --task "small" --branch-only --base main
+dev start api --task "parallel" --base main  # default worktree
+```
+
+Direct tasks can go HOT ↔ WARM and finish directly; they cannot go COLD because
+the canonical checkout cannot be removed. A branch-only task can go cold by
+pushing and switching the canonical checkout back to its base. A worktree task
+uses the full lifecycle below.
+
 ## The states
 
 | State | Git | Runtime | Meaning |

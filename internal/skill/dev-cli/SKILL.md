@@ -71,7 +71,10 @@ Full detail: `references/worktree-ownership.md`.
 | ✅ `done` | merged | nothing | entry survives until swept |
 
 ```bash
-dev start api --task "token refresh" --base main   # → hot
+dev repo open api                                  # ad hoc; no task/worktree
+dev start api --task "typo" --direct                # track current/main directly
+dev start api --task "small" --branch-only --base main
+dev start api --task "token refresh" --base main   # isolated worktree → hot
 dev park --next "add the regression test" --wip    # → warm, session closed
 dev park --cold --push                             # → cold, worktree removed
 dev resume "token refresh"                         # → hot, rebuilt if needed
@@ -83,6 +86,22 @@ safe to close a session, and the `--next` text is what makes resuming cheap.
 Always suggest a `--next` when parking.
 
 Full detail: `references/task-lifecycle.md`.
+
+## Pick the task's checkout mode
+
+A task does not imply a worktree. Use the lightest explicit boundary:
+
+- `dev repo open <repo>` / REPOS Enter — ad-hoc open, no task at all.
+- `dev start … --direct` / REPOS `d` — track current branch (usually main),
+  create no branch/worktree. HOT ↔ WARM only; `dev done` needs no merge mode.
+- `dev start … --branch-only` — create and switch a branch in the canonical
+  checkout. No concurrent branch there.
+- `dev start …` / REPOS `s` — default isolated branch + worktree. Use once work
+  may be interrupted, experimental, or parallel.
+
+Do not create isolation before it has a job, but do not carry dirty main changes
+into a parallel task implicitly either: a worktree starts from committed HEAD.
+Checkpoint first when the new task depends on that work.
 
 ## Everyday commands
 
@@ -145,6 +164,11 @@ cache, and `/` filters provider, owner/name and description. Enter opens a local
 clone; `c` confirms before cloning an absent remote. Use `dev repo remote
 [query] --json` for the non-interactive form; `--cached` avoids a network query.
 
+REPOS has an explicit LIVE column and detail shows the Herdr/tmux handle and
+agent status. `H` opens the selected repo's heatmap. `e` edits config and
+returning live-reloads data/tool bindings; `r` reloads explicitly. Runtime
+backend changes require restarting the TUI.
+
 External tools are explicit `[[tui.tools]]` config. Run `dev tui tools` before
 recommending a binding; it shows the exact command and whether it is available.
 Commands run through `$SHELL` in the selected checkout. For an alias/function
@@ -160,28 +184,32 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 
 ## Rules for agents
 
-1. **Always pass `--base`.** Without it a new branch starts from the current
+1. **Do not equate task with worktree.** Ad-hoc opening needs no task; `--direct`
+   tracks current/main; `--branch-only` is lightweight isolation; default
+   worktree is for interruption/experimentation/parallelism.
+
+2. **Always pass `--base` for branch/worktree tasks.** Without it a new branch starts from the current
    HEAD, so starting a task while standing on `feature/A` silently builds on
    `feature/A`. This is the single most common way to produce a confusing
    history unattended.
 
-2. **Never `--force` a worktree removal on your own.** `dev wt rm` refuses a
+3. **Never `--force` a worktree removal on your own.** `dev wt rm` refuses a
    checkout with uncommitted changes; that refusal is the feature. Ask the
    user before overriding it.
 
-3. **Report drift, do not fix it silently.** `dev sweep` without `--apply`
+4. **Report drift, do not fix it silently.** `dev sweep` without `--apply`
    changes nothing. Show the user its output rather than running `--apply --yes`
    for them.
 
-4. **Prefer a checkpoint commit over `git stash`.** A stash is invisible in the
+5. **Prefer a checkpoint commit over `git stash`.** A stash is invisible in the
    log, easy to forget, and cannot be pushed — so it can never reach another
    machine. `dev park --wip` makes a `wip:` commit instead.
 
-5. **One writer per branch at a time.** `dev resume` refuses a task owned by
+6. **One writer per branch at a time.** `dev resume` refuses a task owned by
    another host without `--force`. Before overriding, confirm that machine has
    pushed.
 
-6. **Check `dev wt plan` before blaming a worktree.** A worktree that comes up
+7. **Check `dev wt plan` before blaming a worktree.** A worktree that comes up
    broken is nearly always a provisioning gap, not a git problem. The plan
    shows the detected project types, which tools are missing, and exactly what
    would be copied or run. Dependencies arrive by a per-ecosystem strategy —
@@ -189,20 +217,24 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    one rather than producing a broken checkout: a virtualenv cannot be copied,
    because it bakes its own absolute path into `pyvenv.cfg`.
 
-7. **Do not create a worktree per agent.** Worktrees isolate *change streams*;
+8. **Do not create a worktree per agent.** Worktrees isolate *change streams*;
    panes isolate *agents*. Several agents working on disjoint files of one
    feature belong in one checkout.
 
-8. **Prefer `dev bootstrap --index` over `--move`.** If the problem is
+9. **Prefer `dev bootstrap --index` over `--move`.** If the problem is
    navigation, a symlink catalog solves it without changing the authoritative
    paths. For a physical move, never add `--apply --yes` on the user's behalf;
    blocked rows are preconditions to resolve, not checks to bypass.
 
-9. **`dev adopt` without `--apply` changes nothing.** Show the user its report
+10. **`dev adopt` without `--apply` changes nothing.** Show the user its report
    rather than applying it for them — which branches count as work in flight is
    their judgement, not yours.
 
-10. **Commit messages stay English** and follow Conventional Commits, even when
+11. **Read Git state as counts, not a dirty boolean.** `⇡`/`⇣` are upstream
+   divergence; `=` conflicts, `+` staged, `!` unstaged, `?` untracked. Use
+   `dev status` or JSON for the unique-path and type breakdown before cleanup.
+
+12. **Commit messages stay English** and follow Conventional Commits, even when
    the conversation is in another language — see the companion `git-workflow`
    skill, which owns commit conventions, SemVer and branch naming. This skill
    does not duplicate them.

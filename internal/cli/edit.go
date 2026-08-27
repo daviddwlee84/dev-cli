@@ -37,21 +37,17 @@ An editor value may contain arguments (for example "code --wait"); it is
 executed through the user's shell with the config path safely quoted.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			path := app.configPath
-			if path == "" {
-				path = config.ConfigFile()
-			}
-			path = config.Expand(path)
-			if err := ensureConfigForEdit(app, path); err != nil {
-				return err
-			}
-
-			chosen, err := resolveEditor(editor)
+			proc, chosen, created, err := configEditorProcess(app, editor)
 			if err != nil {
 				return err
 			}
-			command := chosen + " " + shellQuote(path)
-			proc := exec.Command(shellPath(), "-c", command)
+			if created {
+				path := app.configPath
+				if path == "" {
+					path = config.ConfigFile()
+				}
+				fmt.Fprintf(app.Err, "created %s from the detected machine layout\n", config.Contract(config.Expand(path)))
+			}
 			proc.Stdin, proc.Stdout, proc.Stderr = os.Stdin, os.Stdout, os.Stderr
 			if err := proc.Run(); err != nil {
 				return fmt.Errorf("editor %q: %w", chosen, err)
@@ -63,27 +59,47 @@ executed through the user's shell with the config path safely quoted.`,
 	return cmd
 }
 
+// configEditorProcess resolves the effective config and editor without running
+// it. The CLI runs the process directly; the TUI passes it to tea.ExecProcess,
+// which suspends the alternate screen and redraws after the editor exits.
+func configEditorProcess(app *App, editor string) (*exec.Cmd, string, bool, error) {
+	path := app.configPath
+	if path == "" {
+		path = config.ConfigFile()
+	}
+	path = config.Expand(path)
+	created, err := ensureConfigForEdit(path)
+	if err != nil {
+		return nil, "", false, err
+	}
+	chosen, err := resolveEditor(editor)
+	if err != nil {
+		return nil, "", false, err
+	}
+	command := chosen + " " + shellQuote(path)
+	return exec.Command(shellPath(), "-c", command), chosen, created, nil
+}
+
 // ensureConfigForEdit generates a usable config before opening an absent path.
 // Editing an empty file would hide every default the user is trying to change.
-func ensureConfigForEdit(app *App, path string) error {
+func ensureConfigForEdit(path string) (bool, error) {
 	info, err := os.Stat(path)
 	switch {
 	case err == nil && info.IsDir():
-		return fmt.Errorf("%s is a directory, not a config file", config.Contract(path))
+		return false, fmt.Errorf("%s is a directory, not a config file", config.Contract(path))
 	case err == nil:
-		return nil
+		return false, nil
 	case !os.IsNotExist(err):
-		return err
+		return false, err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
+		return false, err
 	}
 	body := renderStarterConfig(config.DetectLayout().Fallbacks())
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-		return err
+		return false, err
 	}
-	fmt.Fprintf(app.Err, "created %s from the detected machine layout\n", config.Contract(path))
-	return nil
+	return true, nil
 }
 
 func resolveEditor(override string) (string, error) {

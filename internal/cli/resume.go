@@ -52,44 +52,67 @@ a conflict, so dev asks before doing it.`,
 			}
 
 			rt := app.Runtime()
+			mode := t.EffectiveMode()
 			checkout := checkoutOf(t)
-			_, statErr := os.Stat(checkout)
 
-			// Rebuild the worktree when it is gone — the cold-to-hot path.
-			if t.WorktreePath == "" || statErr != nil {
-				base := t.Base
-				// Prefer the published branch: a cold task's work lives on the
-				// remote, and branching from a stale local ref would silently
-				// drop it.
-				if remote := "origin/" + t.Branch; gitx.RefExists(ctx, t.RepoPath, remote) {
-					base = remote
-				}
-				m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
-				res, err := m.Create(ctx, wt.CreateRequest{
-					RepoPath:    t.RepoPath,
-					RepoName:    t.Repo,
-					Branch:      t.Branch,
-					Base:        base,
-					Label:       t.Title(),
-					NoProvision: noProvision,
-				})
-				if err != nil {
-					var exists *wt.ErrExists
-					if asError(err, &exists) {
-						// The checkout was there all along; adopt it.
-						t.WorktreePath = exists.Path
+			switch mode {
+			case task.ModeWorktree:
+				_, statErr := os.Stat(checkout)
+				// Rebuild the worktree when it is gone — the cold-to-hot path.
+				if t.WorktreePath == "" || statErr != nil {
+					base := t.Base
+					// Prefer the published branch: a cold task's work lives on
+					// the remote, and a stale local ref could drop it.
+					if remote := "origin/" + t.Branch; gitx.RefExists(ctx, t.RepoPath, remote) {
+						base = remote
+					}
+					m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
+					res, err := m.Create(ctx, wt.CreateRequest{
+						RepoPath: t.RepoPath, RepoName: t.Repo, Branch: t.Branch,
+						Base: base, Label: t.Title(), NoProvision: noProvision,
+					})
+					if err != nil {
+						var exists *wt.ErrExists
+						if asError(err, &exists) {
+							t.WorktreePath = exists.Path
+						} else {
+							return err
+						}
 					} else {
+						t.WorktreePath, t.RuntimeHandle = res.Path, res.RuntimeHandle
+						reportProvision(app, res)
+						fmt.Fprintf(app.Out, "   rebuilt    %s\n", config.Contract(res.Path))
+					}
+					checkout = t.WorktreePath
+				}
+
+			case task.ModeBranch:
+				checkout = t.RepoPath
+				st, err := gitx.StatusOf(ctx, checkout)
+				if err != nil {
+					return err
+				}
+				if st.Branch != t.Branch {
+					if st.Dirty() {
+						return fmt.Errorf("cannot switch the canonical checkout from %s to %s: %s",
+							st.Branch, t.Branch, st.Breakdown())
+					}
+					if _, err := gitx.Run(ctx, checkout, "switch", t.Branch); err != nil {
 						return err
 					}
-				} else {
-					t.WorktreePath = res.Path
-					t.RuntimeHandle = res.RuntimeHandle
-					reportProvision(app, res)
-					fmt.Fprintf(app.Out, "   rebuilt    %s\n", config.Contract(res.Path))
 				}
-				checkout = t.WorktreePath
-			}
 
+			case task.ModeDirect:
+				checkout = t.RepoPath
+				st, err := gitx.StatusOf(ctx, checkout)
+				if err != nil {
+					return err
+				}
+				if st.Branch != t.Branch {
+					return fmt.Errorf("direct task %s tracks %s, but the canonical checkout is on %s; "+
+						"switch back explicitly or start a worktree task", t.Title(), t.Branch, st.Branch)
+				}
+			}
 			if t.RuntimeHandle == "" {
 				handle, err := openCheckout(ctx, rt, checkout, t.Title())
 				if err != nil {
@@ -107,7 +130,8 @@ a conflict, so dev asks before doing it.`,
 			}
 			annotate(app, rt, t)
 
-			fmt.Fprintf(app.Out, "%s %s  %s on %s\n", task.Hot.Icon(), t.Title(), t.Repo, t.Branch)
+			fmt.Fprintf(app.Out, "%s %s  %s on %s (%s)\n",
+				task.Hot.Icon(), t.Title(), t.Repo, t.Branch, mode)
 			if t.Next != "" {
 				fmt.Fprintf(app.Out, "   next      %s\n", t.Next)
 			}

@@ -126,6 +126,20 @@ step "sweep offers to reap the finished task"
 dev sweep | grep -q reap || fail "sweep did not offer to reap the done task"
 ok "sweep reports"
 
+step "direct task on main"
+dev start demo --task "quick main fix" --direct | grep -q '(direct)' \
+  || fail "direct mode was not reported"
+[[ "$(git -C "$REPO" branch --show-current)" == "main" ]] \
+  || fail "direct mode changed branch"
+[[ "$(git -C "$REPO" worktree list --porcelain | grep -c '^worktree ')" == "1" ]] \
+  || fail "direct mode created a worktree"
+printf 'quick\n' > "$REPO/quick.txt"
+git -C "$REPO" add quick.txt
+git -C "$REPO" commit --quiet -m "fix: quick main change"
+dev done "quick main fix" | grep -q 'completed directly on main' \
+  || fail "direct task required fake integration"
+ok "direct task stayed on main and finished without a worktree"
+
 step "try and graduate"
 dev try redis-streams >/dev/null
 TRY="$(find "$HOME/tries" -maxdepth 1 -mindepth 1 -type d | head -1)"

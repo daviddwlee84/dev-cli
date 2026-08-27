@@ -18,6 +18,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/stats"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	"github.com/daviddwlee84/dev-cli/internal/tui"
 	"github.com/daviddwlee84/dev-cli/internal/wt"
@@ -52,7 +53,9 @@ Actions depend on the list:
   s          start a task in the selected repository
   c          clone the selected remote repository (after confirmation)
   1 2 3      hot / warm / cold    0    clear filters    a  include done
-  r          refresh              q    quit
+  H          selected repo heatmap
+  e          edit config, then live-reload data/tools
+  r          reload config + data  q    quit
 
 External tools are configured, not fixed — see [[tui.tools]] in the config,
 and "dev tui tools" for what is bound here. They run in the selected row's checkout;
@@ -296,7 +299,7 @@ func runTUI(app *App) error {
 			}
 			t := &task.Task{
 				Name: name, Repo: r.Repo.Name, RepoPath: r.Repo.Path,
-				Branch: branch, Base: base, WorktreePath: res.Path,
+				Branch: branch, Base: base, WorktreePath: res.Path, Mode: task.ModeWorktree,
 				State: task.Hot, Owner: config.Hostname(), RuntimeHandle: res.RuntimeHandle,
 			}
 			if err := app.Tasks.Save(t); err != nil {
@@ -304,6 +307,84 @@ func runTUI(app *App) error {
 			}
 			annotate(app, rt, t)
 			return fmt.Sprintf("started %s on %s", name, branch), nil
+		},
+
+		StartDirect: func(ctx context.Context, r tui.RepoRow, name string) (string, error) {
+			st, err := gitx.StatusOf(ctx, r.Repo.Path)
+			if err != nil {
+				return "", err
+			}
+			if st.Detached || st.Branch == "" {
+				return "", fmt.Errorf("direct task needs a named branch; this repo has detached HEAD")
+			}
+			id := task.MakeID(r.Repo.Name, st.Branch)
+			if existing, err := app.Tasks.Get(id); err == nil && existing.State != task.Done {
+				return "", fmt.Errorf("task %s already exists (state %s)", existing.ID, existing.State)
+			}
+			handle, err := rt.Open(ctx, r.Repo.Path, r.Repo.Name+"/"+name)
+			if err != nil {
+				return "", err
+			}
+			t := &task.Task{
+				Name: name, Repo: r.Repo.Name, RepoPath: r.Repo.Path,
+				Branch: st.Branch, Base: st.Branch, Mode: task.ModeDirect,
+				State: task.Hot, Owner: config.Hostname(),
+			}
+			if rt.Name() != "none" {
+				t.RuntimeHandle = handle
+			}
+			if err := app.Tasks.Save(t); err != nil {
+				return "", err
+			}
+			annotate(app, rt, t)
+			return fmt.Sprintf("tracking %s directly on %s; no branch/worktree created", name, st.Branch), nil
+		},
+
+		LoadStats: func(ctx context.Context, repoName string) (tui.StatsPanel, error) {
+			store, err := stats.Open(stats.Path(app.Cfg.StateDir()))
+			if err != nil {
+				return tui.StatsPanel{}, err
+			}
+			defer store.Close()
+			until := time.Now()
+			since := until.AddDate(-1, 0, 0)
+			totals, err := store.DayTotals(stats.Query{
+				Since: since, Until: until, Repo: repoName,
+			})
+			if err != nil {
+				return tui.StatsPanel{}, err
+			}
+			seconds, days := 0, 0
+			for _, value := range totals {
+				seconds += value
+				if value > 0 {
+					days++
+				}
+			}
+			return tui.StatsPanel{
+				Repo: repoName, Seconds: seconds, ActiveDays: days,
+				Since: since, Until: until,
+				Heatmap: stats.Heatmap(totals, stats.HeatmapOptions{
+					Since: since, Until: until, Legend: true, WeekdayLabels: true,
+				}),
+			}, nil
+		},
+
+		EditConfig: func() (*exec.Cmd, error) {
+			proc, _, _, err := configEditorProcess(app, "")
+			return proc, err
+		},
+
+		ReloadConfig: func(ctx context.Context) ([]tui.Tool, string, error) {
+			oldRuntime := rt.Name()
+			if err := app.Load(); err != nil {
+				return nil, "", err
+			}
+			status := "config + data reloaded"
+			if nextRuntime := app.Runtime().Name(); nextRuntime != oldRuntime {
+				status += fmt.Sprintf("; restart TUI to switch runtime %s → %s", oldRuntime, nextRuntime)
+			}
+			return externalTools(app), status, nil
 		},
 	}
 
@@ -355,8 +436,9 @@ func collectRepos(ctx context.Context, app *App, rt runtime.Runtime) ([]tui.Repo
 			row.RemoteForge, row.RemoteName = forge.IdentityFromURL(gitx.Remote(ctx, r.Path, "origin"))
 		}
 		for _, s := range sessions {
-			if s.Covers(r.Path) {
+			if s.Covers(r.Path) || (r.RealPath != "" && s.Covers(r.RealPath)) {
 				row.Live = true
+				row.Runtime, row.RuntimeHandle, row.RuntimeStatus = rt.Name(), s.Handle, s.AgentStatus
 				break
 			}
 		}

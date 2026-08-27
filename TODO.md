@@ -75,5 +75,10 @@ only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 - `dev bootstrap`, recursively classifying existing repos/worktrees/bare hubs,
   building a non-destructive symlink index, or planning guarded atomic moves.
 - Symlink catalogs as first-class scan roots, deduplicated with physical paths.
-- `dev config init`, generating a config from the machine's detected layout.
+- `dev config init` / `dev edit`, generating and opening config from the
+  machine's detected layout; TUI edit + live config/data/tool reload.
+- Explicit direct / branch-only / worktree task modes, including direct-main
+  lifecycle and ad-hoc repo open with no task.
+- Rich starship-like Git status counts plus unique-path/type breakdown.
+- Explicit Herdr/tmux LIVE repo status and selected-repo heatmap overlay in TUI.
 - Bundled agent skill with a generated, drift-checked command reference.

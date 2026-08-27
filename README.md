@@ -80,6 +80,33 @@ dev done --ff                                      # → done, integrated
 dev sweep                                          # what has gone stale
 ```
 
+### A task does not have to mean a worktree
+
+Choose the lightest mode that preserves the boundary you need:
+
+```bash
+# No task, no branch, no worktree: just open the canonical repo for ad-hoc work.
+dev repo open api
+
+# Track a quick change directly on the branch already checked out (usually main).
+dev start api --task "fix typo" --direct
+
+# Use a short-lived branch in the canonical checkout, but no linked worktree.
+dev start api --task "small feature" --branch-only --base main
+
+# Default: independent branch + worktree, provisioned and runtime-opened.
+dev start api --task "token refresh" --base main
+```
+
+Direct work can be parked WARM and resumed, but cannot go COLD because the
+canonical checkout cannot be removed. `dev done` on a clean direct task needs
+no `--ff` or `--pr`: the work is already on its destination branch.
+
+Start direct for one change stream, then create a normal worktree task later
+when real parallelism appears. A new worktree starts from committed HEAD; dirty
+main changes are deliberately not smuggled into it, so checkpoint first when
+the parallel task depends on them.
+
 ### The dashboard
 
 Bare `dev` (or `dev tui`) opens three lists, switched with `tab`:
@@ -104,9 +131,10 @@ g G        top / bottom         h l / tab       previous / next view
 ```
 
 `enter` opens the selected row in the runtime. In TASKS, `p` parks and prompts
-for the next action and `c` edits it; in REPOS, `s` starts a task right there —
-branch, worktree, session and entry — which is the bridge from "what do I have"
-to "what am I working on" without leaving the dashboard.
+for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
+`s` starts an isolated worktree task, and `d` starts a tracked direct task on
+the current branch. That makes the branch/worktree cost an explicit choice,
+not something every task silently pays.
 
 **External tools are configured, not fixed.** They run through your shell in
 the selected row's checkout; the dashboard suspends and redraws when they exit:
@@ -146,12 +174,37 @@ REMOTE loads lazily, so dashboard startup never waits on the network. A private
 and `c` confirms before cloning an absent repo into `project_root`. The same
 inventory is available without the full-screen UI via `dev repo remote [query]`;
 `--cached` is its instant/offline form.
+REPOS has an explicit LIVE column (`herdr:working`, `herdr:idle`, …); its
+detail pane includes the workspace handle. `H` opens the selected repo's
+one-year activity heatmap and `e` edits config. Returning from the editor, or
+pressing `r`, reparses config and reloads data/tool bindings without restarting
+the TUI; a runtime-backend change is reported as requiring restart.
+
 See `dev help tui` for the full key map.
 
 Going cold is safe because **the branch is the identity and the directory is a
 cache**. `dev park --cold` refuses unless the branch is pushed, and `dev resume`
 rebuilds the checkout from `origin/<branch>`. Once that holds, the local
 filesystem stops being a graveyard of half-finished worktrees.
+
+## Rich Git state
+
+Every inventory surface uses the same compact, starship-like status:
+
+```text
+⇕⇡3⇣2 =1 +4 !2 ?3
+```
+
+- `⇡` / `⇣` / `⇕` — ahead, behind, diverged
+- `=` — conflicted paths
+- `+` — staged paths
+- `!` — unstaged paths
+- `?` — untracked paths
+
+`dev status` and the TUI detail pane also show the unique changed-path total
+and type breakdown (added / modified / deleted / renamed). A path staged and
+then modified again is one changed path, while correctly appearing in both the
+staged and unstaged categories. JSON output exposes all counts separately.
 
 ## Worktree ownership
 

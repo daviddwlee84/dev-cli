@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -65,8 +66,18 @@ type Actions struct {
 	Park func(ctx context.Context, t *task.Task, next string) (string, error)
 	// SetNext records a task's next action.
 	SetNext func(ctx context.Context, t *task.Task, next string) error
-	// Start creates a task in a repository.
+	// Start creates an isolated worktree task in a repository.
 	Start func(ctx context.Context, r RepoRow, name string) (string, error)
+	// StartDirect tracks the repository's currently checked-out branch without
+	// creating a branch or worktree.
+	StartDirect func(ctx context.Context, r RepoRow, name string) (string, error)
+	// LoadStats builds the selected repository's activity heatmap.
+	LoadStats func(ctx context.Context, repo string) (StatsPanel, error)
+	// EditConfig returns the editor process; tea suspends around it.
+	EditConfig func() (*exec.Cmd, error)
+	// ReloadConfig reparses config and returns the new tool bindings. Runtime
+	// backend changes need a TUI restart, which status explains.
+	ReloadConfig func(ctx context.Context) ([]Tool, string, error)
 	// Runtime names the active backend.
 	Runtime runtime.Runtime
 	// Tools are external programs the dashboard hands the terminal to.
@@ -98,7 +109,9 @@ const (
 	modeConfirmPark
 	modeFilter
 	modeStartTask
+	modeStartDirect
 	modeConfirmClone
+	modeStats
 )
 
 // Model is the dashboard state.
@@ -130,6 +143,7 @@ type Model struct {
 
 	mode  mode
 	input textinput.Model
+	stats *StatsPanel
 
 	status string
 	err    error
@@ -172,14 +186,30 @@ func (m Model) CurrentView() View { return m.view }
 func (m Model) Init() tea.Cmd { return textinput.Blink }
 
 type reloadMsg struct {
-	rows  []inventory.Row
-	repos []RepoRow
-	err   error
+	rows      []inventory.Row
+	repos     []RepoRow
+	remotes   []RemoteRow
+	remoteSet bool
+	err       error
 }
 
 type remoteMsg struct {
 	rows []RemoteRow
 	err  error
+}
+
+type statsMsg struct {
+	panel StatsPanel
+	err   error
+}
+
+type configEditedMsg struct{ err error }
+
+type configMsg struct {
+	tools         []Tool
+	status        string
+	refreshRemote bool
+	err           error
 }
 
 type actionMsg struct {
@@ -216,6 +246,42 @@ func (m Model) reloadRemote() tea.Cmd {
 		}
 		rows, err := m.actions.ReloadRemote(context.Background())
 		return remoteMsg{rows: rows, err: err}
+	}
+}
+
+func (m Model) reloadConfig(refreshRemote bool) tea.Cmd {
+	return func() tea.Msg {
+		if m.actions.ReloadConfig == nil {
+			return configMsg{refreshRemote: refreshRemote}
+		}
+		tools, status, err := m.actions.ReloadConfig(context.Background())
+		return configMsg{tools: tools, status: status, refreshRemote: refreshRemote, err: err}
+	}
+}
+
+func (m Model) reloadAfterConfig(refreshRemote bool) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		out := reloadMsg{}
+		if m.actions.Reload != nil {
+			out.rows, out.err = m.actions.Reload(ctx)
+		}
+		if m.actions.ReloadRepos != nil {
+			var err error
+			out.repos, err = m.actions.ReloadRepos(ctx)
+			if out.err == nil {
+				out.err = err
+			}
+		}
+		if refreshRemote && m.actions.ReloadRemote != nil {
+			var err error
+			out.remotes, err = m.actions.ReloadRemote(ctx)
+			out.remoteSet = true
+			if out.err == nil {
+				out.err = err
+			}
+		}
+		return out
 	}
 }
 
@@ -416,6 +482,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.repos != nil {
 			m.repos = msg.repos
 		}
+		if msg.remoteSet {
+			m.remotes, m.remotesLoaded, m.remotesLoading = msg.remotes, true, false
+		}
 		m.setAt(m.at())
 		return m, nil
 
@@ -424,6 +493,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		m.status = ""
 		m.setAt(m.at())
+		return m, nil
+
+	case configEditedMsg:
+		if msg.err != nil {
+			m.err, m.status = msg.err, ""
+			return m, nil
+		}
+		m.status = "reloading config…"
+		return m, m.reloadConfig(m.view == ViewRemote)
+
+	case configMsg:
+		if msg.err != nil {
+			m.err, m.status = msg.err, ""
+			return m, nil
+		}
+		m.actions.Tools = msg.tools
+		m.err, m.status = nil, msg.status
+		return m, m.reloadAfterConfig(msg.refreshRemote)
+
+	case statsMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.stats = nil
+		} else {
+			m.err = nil
+			m.stats = &msg.panel
+		}
+		m.status = ""
 		return m, nil
 
 	case actionMsg:
@@ -456,10 +553,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.reload()
 
 	case tea.KeyMsg:
+		if m.mode == modeStats {
+			return m.updateStats(msg)
+		}
 		switch m.mode {
 		case modeFilter:
 			return m.updateFilter(msg)
-		case modeEditNext, modeConfirmPark, modeStartTask, modeConfirmClone:
+		case modeEditNext, modeConfirmPark, modeStartTask, modeStartDirect, modeConfirmClone:
 			return m.updatePrompt(msg)
 		}
 		return m.updateList(msg)
@@ -521,12 +621,11 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, textinput.Blink
 
 	case "r":
-		m.status = "refreshing…"
+		m.status = "reloading config + data…"
 		if m.view == ViewRemote {
 			m.remotesLoading = true
-			return m, m.reloadRemote()
 		}
-		return m, m.reload()
+		return m, m.reloadConfig(m.view == ViewRemote)
 
 	case "1":
 		m.states, m.showDone = []task.State{task.Hot}, false
@@ -570,7 +669,35 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if _, ok := m.currentRepo(); !ok {
 			return m, nil
 		}
-		return m.prompt(modeStartTask, "", "name for the new task")
+		return m.prompt(modeStartTask, "", "name for the new worktree task")
+
+	case "d":
+		if _, ok := m.currentRepo(); !ok {
+			return m, nil
+		}
+		return m.prompt(modeStartDirect, "", "name for direct work on current branch")
+
+	case "e":
+		if m.actions.EditConfig == nil {
+			return m, nil
+		}
+		proc, err := m.actions.EditConfig()
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		m.status = "editing config…"
+		return m, tea.ExecProcess(proc, func(err error) tea.Msg {
+			return configEditedMsg{err: err}
+		})
+
+	case "H":
+		repo := m.selectedRepoName()
+		if repo == "" || m.actions.LoadStats == nil {
+			return m, nil
+		}
+		m.mode, m.stats, m.status = modeStats, nil, "loading activity…"
+		return m, m.loadStats(repo)
 
 	default:
 		if cmd := m.launchTool(msg.String()); cmd != nil {
@@ -578,6 +705,51 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.setAt(m.at())
+	return m, nil
+}
+
+func (m Model) selectedRepoName() string {
+	if r, ok := m.currentTask(); ok {
+		return r.Task.Repo
+	}
+	if r, ok := m.currentRepo(); ok {
+		return r.Repo.Name
+	}
+	if r, ok := m.currentRemote(); ok && r.Cloned() {
+		if r.LocalName != "" {
+			return filepath.Base(r.LocalName)
+		}
+		return r.Repo.Name
+	}
+	return ""
+}
+
+func (m Model) loadStats(repo string) tea.Cmd {
+	return func() tea.Msg {
+		panel, err := m.actions.LoadStats(context.Background(), repo)
+		return statsMsg{panel: panel, err: err}
+	}
+}
+
+func (m Model) updateStats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "q", "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "esc", "H":
+		m.mode, m.stats, m.err, m.status = modeList, nil, nil, ""
+		return m, nil
+	case "r":
+		repo := ""
+		if m.stats != nil {
+			repo = m.stats.Repo
+		}
+		if repo == "" {
+			repo = m.selectedRepoName()
+		}
+		m.stats, m.status = nil, "loading activity…"
+		return m, m.loadStats(repo)
+	}
 	return m, nil
 }
 
@@ -678,6 +850,19 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 		}
 		return func() tea.Msg {
 			status, err := m.actions.Start(context.Background(), r, value)
+			return actionMsg{status: status, err: err}
+		}
+
+	case modeStartDirect:
+		r, ok := m.currentRepo()
+		if !ok {
+			return nil
+		}
+		if value == "" {
+			return func() tea.Msg { return actionMsg{err: fmt.Errorf("a task needs a name")} }
+		}
+		return func() tea.Msg {
+			status, err := m.actions.StartDirect(context.Background(), r, value)
 			return actionMsg{status: status, err: err}
 		}
 

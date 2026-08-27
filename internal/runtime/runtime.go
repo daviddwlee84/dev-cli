@@ -35,7 +35,10 @@ type Session struct {
 // Covers reports whether the session has a pane rooted at or under dir.
 func (s Session) Covers(dir string) bool {
 	for _, d := range s.Dirs {
-		if d == dir || strings.HasPrefix(d, dir+"/") || strings.HasPrefix(dir, d+"/") {
+		// A pane inside the repository makes it live. The inverse is not
+		// true: a generic pane at $HOME does not make every repository below
+		// $HOME active.
+		if d == dir || strings.HasPrefix(d, dir+"/") {
 			return true
 		}
 	}

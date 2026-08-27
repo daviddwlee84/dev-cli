@@ -61,9 +61,10 @@ func TestSessionCovers(t *testing.T) {
 		want bool
 	}{
 		{"/wt/demo/feat-auth", true},
-		{"/wt/demo/feat-auth/src", true}, // a pane deeper in the checkout
-		{"/wt/demo", true},               // the repo containing the checkout
+		{"/wt/demo/feat-auth/src", false}, // target is below the pane, not vice versa
+		{"/wt/demo", true},                // the pane is inside this repo
 		{"/wt/demo/feat-auth-other", false},
+		{"/Users/david/Documents/repo", false}, // a broad cwd does not cover descendants
 		{"/elsewhere", false},
 	} {
 		if got := s.Covers(tc.dir); got != tc.want {

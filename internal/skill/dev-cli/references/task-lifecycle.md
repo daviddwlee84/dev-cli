@@ -13,6 +13,26 @@ being scannable, which defeats its purpose.
 The fix is not discipline. It is giving "what am I working on" a home that is
 not the runtime.
 
+## Pick a checkout mode before a lifecycle
+
+A task records human intent; it does not imply a worktree:
+
+| Command | Checkout boundary | Use when |
+|---|---|---|
+| `dev repo open api` | none; no task | browsing or truly ad-hoc work |
+| `dev start api -t typo --direct` | current branch, usually main | one short tracked change |
+| `dev start api -t small --branch-only` | branch in canonical checkout | lightweight isolation, no concurrency |
+| `dev start api -t auth --base main` | branch + linked worktree | interruption, experiment, parallel writer |
+
+Direct tasks go HOT ↔ WARM and finish with plain `dev done`; they cannot go
+COLD because the canonical checkout cannot be removed. Branch-only tasks can go
+cold after push by switching the canonical checkout back to base. The full
+state machine below describes the default worktree mode.
+
+Do not create isolation before it has a job. Equally, a new parallel worktree
+starts from committed HEAD — it does not carry dirty main changes — so
+checkpoint first when the new task depends on them.
+
 ## The four states
 
 | State | Git | Runtime | Meaning |
@@ -49,8 +69,9 @@ dev park --next "reproduce the token refresh race, then add a regression test"
 ```
 
 This is the move the whole design exists to make safe. It records what to do
-next, closes the runtime session, and leaves the branch and worktree exactly
-where they are.
+next, closes the runtime session, and leaves the checkout boundary exactly
+where it is. In direct mode that is the current branch; in worktree mode it is
+the branch and linked checkout.
 
 `--next` is the important part. Without it, resuming means re-deriving where
 you were from a diff, which is most of the cost of a context switch. Always

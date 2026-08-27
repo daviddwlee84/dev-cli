@@ -48,6 +48,12 @@ belongs to, and whether a runtime session is hosting it.`,
 					branch = "(detached HEAD)"
 				}
 				fmt.Fprintf(app.Out, "branch     %s  %s\n", branch, st.Summary())
+				if st.Dirty() {
+					fmt.Fprintf(app.Out, "changes    %s\n", st.Breakdown())
+					if types := st.TypeBreakdown(); types != "" {
+						fmt.Fprintf(app.Out, "types      %s\n", types)
+					}
+				}
 				if st.Upstream != "" {
 					fmt.Fprintf(app.Out, "upstream   %s\n", st.Upstream)
 				} else {

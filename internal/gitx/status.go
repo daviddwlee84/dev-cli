@@ -16,19 +16,26 @@ type Status struct {
 	Upstream string `json:"upstream,omitempty"`
 	Ahead    int    `json:"ahead"`
 	Behind   int    `json:"behind"`
-	// Staged, Unstaged and Untracked count changed paths.
+	// Changed counts unique changed paths. Staged and Unstaged are index /
+	// working-tree views and can overlap when one path has both kinds of
+	// changes; Changed does not double-count it.
+	Changed   int `json:"changed"`
 	Staged    int `json:"staged"`
 	Unstaged  int `json:"unstaged"`
 	Untracked int `json:"untracked"`
+	// Added, Modified, Deleted and Renamed classify status letters. One path
+	// can contribute to two when its staged and unstaged states differ.
+	Added    int `json:"added"`
+	Modified int `json:"modified"`
+	Deleted  int `json:"deleted"`
+	Renamed  int `json:"renamed"`
 	// Conflicted counts unmerged paths; a non-zero value means the checkout is
 	// mid-merge or mid-rebase and must not be touched automatically.
 	Conflicted int `json:"conflicted"`
 }
 
 // Dirty reports uncommitted work of any kind.
-func (s Status) Dirty() bool {
-	return s.Staged+s.Unstaged+s.Untracked+s.Conflicted > 0
-}
+func (s Status) Dirty() bool { return s.Changed > 0 }
 
 // Published reports whether the branch has an upstream at all.
 func (s Status) Published() bool { return s.Upstream != "" }
@@ -36,21 +43,33 @@ func (s Status) Published() bool { return s.Upstream != "" }
 // Synced reports a branch that is published and exactly level with upstream.
 func (s Status) Synced() bool { return s.Published() && s.Ahead == 0 && s.Behind == 0 }
 
-// Summary renders the compact column used by `dev ls`: "clean", "↑2 ↓1 ●",
-// "local", "!conflict".
+// Summary renders the compact, starship-like column used throughout dev:
+//
+//	⇕⇡2⇣1 =1 +3 !2 ?4
+//
+// Divergence, conflicts, staged, unstaged and untracked paths remain separate
+// so "dirty" says how and by how much, rather than collapsing to one ●.
 func (s Status) Summary() string {
 	var parts []string
+	switch {
+	case s.Ahead > 0 && s.Behind > 0:
+		parts = append(parts, "⇕⇡"+strconv.Itoa(s.Ahead)+"⇣"+strconv.Itoa(s.Behind))
+	case s.Ahead > 0:
+		parts = append(parts, "⇡"+strconv.Itoa(s.Ahead))
+	case s.Behind > 0:
+		parts = append(parts, "⇣"+strconv.Itoa(s.Behind))
+	}
 	if s.Conflicted > 0 {
-		parts = append(parts, "!conflict")
+		parts = append(parts, "="+strconv.Itoa(s.Conflicted))
 	}
-	if s.Ahead > 0 {
-		parts = append(parts, "↑"+strconv.Itoa(s.Ahead))
+	if s.Staged > 0 {
+		parts = append(parts, "+"+strconv.Itoa(s.Staged))
 	}
-	if s.Behind > 0 {
-		parts = append(parts, "↓"+strconv.Itoa(s.Behind))
+	if s.Unstaged > 0 {
+		parts = append(parts, "!"+strconv.Itoa(s.Unstaged))
 	}
-	if s.Dirty() {
-		parts = append(parts, "●")
+	if s.Untracked > 0 {
+		parts = append(parts, "?"+strconv.Itoa(s.Untracked))
 	}
 	if len(parts) == 0 {
 		if !s.Published() {
@@ -59,6 +78,46 @@ func (s Status) Summary() string {
 		return "clean"
 	}
 	return strings.Join(parts, " ")
+}
+
+// Breakdown renders the detailed change count shown by `dev status` and the
+// TUI detail pane. Changed is the unique-path total; staged and unstaged may
+// overlap, which is stated by presenting them as categories rather than a sum.
+func (s Status) Breakdown() string {
+	if s.Changed == 0 {
+		return "0 changed paths"
+	}
+	var parts []string
+	if s.Staged > 0 {
+		parts = append(parts, "+"+strconv.Itoa(s.Staged)+" staged")
+	}
+	if s.Unstaged > 0 {
+		parts = append(parts, "!"+strconv.Itoa(s.Unstaged)+" unstaged")
+	}
+	if s.Untracked > 0 {
+		parts = append(parts, "?"+strconv.Itoa(s.Untracked)+" untracked")
+	}
+	if s.Conflicted > 0 {
+		parts = append(parts, "="+strconv.Itoa(s.Conflicted)+" conflicted")
+	}
+	return strconv.Itoa(s.Changed) + " changed paths (" + strings.Join(parts, ", ") + ")"
+}
+
+// TypeBreakdown classifies the status letters when that detail is available.
+func (s Status) TypeBreakdown() string {
+	var parts []string
+	for _, item := range []struct {
+		n    int
+		name string
+	}{
+		{s.Added, "added"}, {s.Modified, "modified"}, {s.Deleted, "deleted"},
+		{s.Renamed, "renamed/copied"},
+	} {
+		if item.n > 0 {
+			parts = append(parts, strconv.Itoa(item.n)+" "+item.name)
+		}
+	}
+	return strings.Join(parts, ", ")
 }
 
 // StatusOf reads the porcelain v2 status of the checkout at dir. Porcelain v2
@@ -79,25 +138,45 @@ func StatusOf(ctx context.Context, dir string) (Status, error) {
 		case '#':
 			parseBranchHeader(rec, &s)
 		case '1', '2':
-			// "1 XY ..." ordinary change, "2 XY ..." rename/copy. Fields 2 is
-			// the XY state pair: X staged, Y unstaged.
+			// "1 XY ..." ordinary change, "2 XY ..." rename/copy. X is
+			// staged, Y unstaged. This record is one unique changed path even
+			// when both sides are non-dot.
 			f := strings.Fields(rec)
 			if len(f) < 2 || len(f[1]) < 2 {
 				continue
 			}
-			if f[1][0] != '.' {
+			s.Changed++
+			x, y := f[1][0], f[1][1]
+			if x != '.' {
 				s.Staged++
 			}
-			if f[1][1] != '.' {
+			if y != '.' {
 				s.Unstaged++
 			}
+			classifyChange(x, &s)
+			classifyChange(y, &s)
 		case 'u':
+			s.Changed++
 			s.Conflicted++
 		case '?':
+			s.Changed++
 			s.Untracked++
 		}
 	}
 	return s, nil
+}
+
+func classifyChange(code byte, s *Status) {
+	switch code {
+	case 'A':
+		s.Added++
+	case 'M', 'T':
+		s.Modified++
+	case 'D':
+		s.Deleted++
+	case 'R', 'C':
+		s.Renamed++
+	}
 }
 
 func parseBranchHeader(rec string, s *Status) {

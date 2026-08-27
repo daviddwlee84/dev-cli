@@ -3,6 +3,7 @@ package tui_test
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -57,8 +58,12 @@ func newActions(r *recorder, rows []inventory.Row) tui.Actions {
 			return "cloned", "/src/" + rr.Repo.Name, nil
 		},
 		Start: func(_ context.Context, rr tui.RepoRow, name string) (string, error) {
-			r.started = append(r.started, rr.Repo.Name+"/"+name)
+			r.started = append(r.started, "worktree:"+rr.Repo.Name+"/"+name)
 			return "started", nil
+		},
+		StartDirect: func(_ context.Context, rr tui.RepoRow, name string) (string, error) {
+			r.started = append(r.started, "direct:"+rr.Repo.Name+"/"+name)
+			return "started direct", nil
 		},
 		Open: func(_ context.Context, t *task.Task) (string, error) {
 			r.opened = append(r.opened, t.ID)
@@ -442,8 +447,8 @@ func TestStartTaskFromRepoView(t *testing.T) {
 	}
 	send(m, key("enter"))
 
-	if len(rec.started) != 1 || rec.started[0] != "api/token refresh" {
-		t.Errorf("s should start a task in the selected repo, got %v", rec.started)
+	if len(rec.started) != 1 || rec.started[0] != "worktree:api/token refresh" {
+		t.Errorf("s should start a worktree task in the selected repo, got %v", rec.started)
 	}
 }
 
@@ -633,5 +638,106 @@ func TestFreshRemoteCacheAvoidsNetworkOnFirstSwitch(t *testing.T) {
 	m = send(m, key("r"))
 	if loads != 1 {
 		t.Errorf("r should refresh explicitly, network loads=%d", loads)
+	}
+}
+
+func TestRepoViewShowsLiveRuntimeExplicitly(t *testing.T) {
+	r := repoRow("api")
+	r.Live = true
+	r.Runtime, r.RuntimeHandle, r.RuntimeStatus = "herdr", "w7", "working"
+	m := tui.New(newActions(&recorder{}, nil), nil, []tui.RepoRow{r})
+	m = send(m, key("tab"))
+
+	out := m.View()
+	if !strings.Contains(out, "LIVE") || !strings.Contains(out, "herdr:working") {
+		t.Errorf("repo row should make active workspace status explicit:\n%s", out)
+	}
+	if !strings.Contains(out, "herdr w7 · working") {
+		t.Errorf("detail should show the workspace handle:\n%s", out)
+	}
+}
+
+func TestHeatmapShortcutAndRefresh(t *testing.T) {
+	rows := []inventory.Row{row("a", "token refresh", task.Hot, "")}
+	loads := 0
+	actions := newActions(&recorder{}, rows)
+	actions.LoadStats = func(context.Context, string) (tui.StatsPanel, error) {
+		loads++
+		return tui.StatsPanel{
+			Repo: "demo", Heatmap: "HEATMAP-GRID\n", Seconds: 5400,
+			ActiveDays: 3, Since: time.Now().AddDate(-1, 0, 0), Until: time.Now(),
+		}, nil
+	}
+	m := tui.New(actions, rows, nil)
+	if !strings.Contains(m.View(), "H stats") {
+		t.Errorf("footer should expose the shortcut:\n%s", m.View())
+	}
+	m = send(m, key("H"))
+	out := m.View()
+	if !strings.Contains(out, "HEATMAP") || !strings.Contains(out, "HEATMAP-GRID") ||
+		!strings.Contains(out, "1h 30m") {
+		t.Errorf("stats overlay not rendered:\n%s", out)
+	}
+	m = send(m, key("r"))
+	if loads != 2 {
+		t.Errorf("H load + r refresh = 2, got %d", loads)
+	}
+	m = send(m, key("esc"))
+	if strings.Contains(m.View(), "HEATMAP-GRID") {
+		t.Error("esc should return to the list")
+	}
+}
+
+func TestConfigEditReturnsSuspendingProcess(t *testing.T) {
+	rows := []inventory.Row{row("a", "one", task.Hot, "")}
+	edits := 0
+	actions := newActions(&recorder{}, rows)
+	actions.EditConfig = func() (*exec.Cmd, error) {
+		edits++
+		return exec.Command("true"), nil
+	}
+	m := tui.New(actions, rows, nil)
+	_, cmd := m.Update(key("e"))
+	if edits != 1 || cmd == nil {
+		t.Errorf("e should resolve one editor process for tea.ExecProcess: edits=%d cmd=%v", edits, cmd)
+	}
+	// tea.ExecProcess invokes its callback through Program's exec machinery,
+	// not by returning a normal message from cmd(), so r covers the reload
+	// path independently below.
+}
+
+func TestRReloadsConfigAsWellAsData(t *testing.T) {
+	rows := []inventory.Row{row("a", "one", task.Hot, "")}
+	configReloads, dataReloads := 0, 0
+	actions := newActions(&recorder{}, rows)
+	actions.ReloadConfig = func(context.Context) ([]tui.Tool, string, error) {
+		configReloads++
+		return nil, "reloaded", nil
+	}
+	actions.Reload = func(context.Context) ([]inventory.Row, error) {
+		dataReloads++
+		return rows, nil
+	}
+	m := tui.New(actions, rows, nil)
+	send(m, key("r"))
+	if configReloads != 1 || dataReloads != 1 {
+		t.Errorf("r should reload both: config=%d data=%d", configReloads, dataReloads)
+	}
+}
+
+func TestStartDirectTaskFromRepoView(t *testing.T) {
+	repos := []tui.RepoRow{repoRow("api")}
+	rec := &recorder{}
+	m := tui.New(newActions(rec, nil), nil, repos)
+	m = send(m, key("tab"), key("d"))
+	if !strings.Contains(m.View(), "track direct work in api") {
+		t.Fatalf("d should open the direct-task prompt:\n%s", m.View())
+	}
+	for _, k := range typeText("quick fix") {
+		m = send(m, k)
+	}
+	send(m, key("enter"))
+	if len(rec.started) != 1 || rec.started[0] != "direct:api/quick fix" {
+		t.Errorf("d should start direct work, got %v", rec.started)
 	}
 }

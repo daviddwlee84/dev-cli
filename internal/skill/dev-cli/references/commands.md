@@ -109,7 +109,7 @@ dev done [task] [flags]
 - `--ff` — rebase onto the base and fast-forward it
 - `--keep-worktree` — keep the worktree checkout
 - `--pr` — push and open a pull/merge request instead of merging locally
-- `--push` — push the base branch after a fast-forward
+- `--push` — push the resulting branch (direct mode pushes its current branch)
 
 ### `dev edit`
 
@@ -325,18 +325,19 @@ dev skill sync [flags]
 
 ### `dev start`
 
-Begin a change stream: branch, worktree, runtime session and task entry
+Track work directly, on a canonical branch, or in an isolated worktree
 
 ```
 dev start [repo] [flags]
 ```
 
-- `--base` — ref the branch starts from (default: the repo's default branch)
+- `--base` — ref a new branch starts from (default: repo default branch)
 - `-b, --branch` — branch name (default: feat/<task-slug>)
+- `--branch-only` — create/switch a branch in the canonical checkout; no worktree
+- `--direct` — track work on the currently checked-out branch; create no branch/worktree
 - `--focus` — focus the new runtime session
 - `--next` — the first next action to record
-- `--no-provision` — skip dependency install and gitignored-file copying
-- `--no-worktree` — work in the main checkout instead of a worktree
+- `--no-provision` — skip dependency install and ignored-file copying
 - `-t, --task` — human name for this change stream
 
 ### `dev stats`

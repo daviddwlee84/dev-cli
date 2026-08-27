@@ -763,3 +763,117 @@ func TestEditEditorFlagOverridesEnvironment(t *testing.T) {
 		t.Errorf("--editor should win, got %q", got)
 	}
 }
+
+func TestStartDirectTracksCurrentBranchWithoutCreatingAnything(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("start", "demo", "--task", "quick fix", "--direct")
+	if !strings.Contains(out, "main (direct)") {
+		t.Errorf("start output should make the mode explicit: %q", out)
+	}
+	if branches := h.repo.Git("branch", "--format=%(refname:short)"); branches != "main" {
+		t.Errorf("direct mode should create no branch, got %q", branches)
+	}
+	if worktrees := h.repo.Git("worktree", "list", "--porcelain"); strings.Count(worktrees, "worktree ") != 1 {
+		t.Errorf("direct mode should create no worktree:\n%s", worktrees)
+	}
+	ls := h.mustRun("ls", "--json")
+	if !strings.Contains(ls, `"mode": "direct"`) || !strings.Contains(ls, `"branch": "main"`) {
+		t.Errorf("task should explicitly record direct/main:\n%s", ls)
+	}
+}
+
+func TestDirectTaskWarmResumeAndDone(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "quick fix", "--direct")
+	os.WriteFile(filepath.Join(h.repo.Root, "quick.txt"), []byte("done\n"), 0o644)
+	h.repo.Git("add", "quick.txt")
+	h.repo.Git("commit", "-m", "fix: quick change")
+
+	h.mustRun("park", "quick fix", "--next", "check the result")
+	out := h.mustRun("resume", "quick fix")
+	if !strings.Contains(out, "(direct)") {
+		t.Errorf("resume should preserve direct mode: %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(h.wtRoot, "demo")); !os.IsNotExist(err) {
+		t.Error("resuming a direct task must not invent a worktree")
+	}
+
+	out = h.mustRun("done", "quick fix")
+	if !strings.Contains(out, "completed directly on main") {
+		t.Errorf("direct done should need no integration mode: %q", out)
+	}
+	// A done direct task used repo__main as its identity. The next quick task
+	// on main must be able to replace it without a manual sweep first.
+	out = h.mustRun("start", "demo", "--task", "another quick fix", "--direct")
+	if !strings.Contains(out, "another quick fix") {
+		t.Errorf("done direct task should not block reuse of main: %q", out)
+	}
+}
+
+func TestDirectTaskCannotGoCold(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "quick fix", "--direct")
+	_, _, err := h.run("park", "quick fix", "--cold")
+	if err == nil || !strings.Contains(err.Error(), "cannot go cold") {
+		t.Errorf("direct task cannot remove the canonical checkout, got %v", err)
+	}
+}
+
+func TestStartBranchOnlyActuallySwitchesBranch(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("start", "demo", "--task", "local feature",
+		"--branch", "feat/local", "--base", "main", "--branch-only")
+	if !strings.Contains(out, "(branch)") {
+		t.Errorf("mode should be explicit: %q", out)
+	}
+	if branch := h.repo.Git("branch", "--show-current"); branch != "feat/local" {
+		t.Errorf("branch-only must switch the canonical checkout, got %q", branch)
+	}
+	if worktrees := h.repo.Git("worktree", "list", "--porcelain"); strings.Count(worktrees, "worktree ") != 1 {
+		t.Errorf("branch-only should create no linked worktree:\n%s", worktrees)
+	}
+	if ls := h.mustRun("ls", "--json"); !strings.Contains(ls, `"mode": "branch"`) {
+		t.Errorf("task mode not recorded:\n%s", ls)
+	}
+}
+
+func TestDirectRejectsDifferentBranchFlag(t *testing.T) {
+	h := newHarness(t)
+	_, _, err := h.run("start", "demo", "--task", "bad", "--direct", "--branch", "feat/not-main")
+	if err == nil || !strings.Contains(err.Error(), "already checked out") {
+		t.Errorf("direct must not claim a branch it is not on, got %v", err)
+	}
+}
+
+func TestStatusAndJSONExposeRichChangeCounts(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "inspect changes", "--direct")
+	// One path staged and then modified again, plus one untracked path: two
+	// unique paths, but staged=1, unstaged=1, untracked=1.
+	h.repo.Write("both.txt", "staged\n")
+	h.repo.Git("add", "both.txt")
+	h.repo.Write("both.txt", "modified after stage\n")
+	h.repo.Write("untracked.txt", "new\n")
+
+	cwd, _ := os.Getwd()
+	os.Chdir(h.repo.Root)
+	defer os.Chdir(cwd)
+	out := h.mustRun("status")
+	if !strings.Contains(out, "branch     main  +1 !1 ?1") ||
+		!strings.Contains(out, "2 changed paths (+1 staged, !1 unstaged, ?1 untracked)") {
+		t.Errorf("status should show rich counts:\n%s", out)
+	}
+
+	out = h.mustRun("ls", "--json")
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(out), &rows); err != nil || len(rows) != 1 {
+		t.Fatalf("json: %v %s", err, out)
+	}
+	for key, want := range map[string]float64{
+		"changed": 2, "staged": 1, "unstaged": 1, "untracked": 1,
+	} {
+		if got := rows[0][key]; got != want {
+			t.Errorf("%s = %v, want %v", key, got, want)
+		}
+	}
+}

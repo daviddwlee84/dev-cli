@@ -65,6 +65,19 @@ func (s State) Icon() string {
 // Label is the uppercase column form.
 func (s State) Label() string { return strings.ToUpper(string(s)) }
 
+// CheckoutMode is how a task occupies the repository filesystem.
+type CheckoutMode string
+
+const (
+	// ModeWorktree owns a linked worktree and branch.
+	ModeWorktree CheckoutMode = "worktree"
+	// ModeBranch uses a short-lived branch in the canonical checkout.
+	ModeBranch CheckoutMode = "branch"
+	// ModeDirect tracks ad-hoc work on the branch already checked out in the
+	// canonical repo — usually main — without creating a branch or worktree.
+	ModeDirect CheckoutMode = "direct"
+)
+
 // Task is one change stream. Field names are the TOML keys.
 type Task struct {
 	// ID is derived from repo and branch; it is the filename stem and is not
@@ -86,6 +99,9 @@ type Task struct {
 	// WorktreePath is the linked checkout, empty when the task works directly
 	// in the main checkout or has gone cold.
 	WorktreePath string `toml:"worktree_path"`
+	// Mode says whether this task uses a worktree, a branch in the canonical
+	// checkout, or the current branch directly. Older entries infer it.
+	Mode CheckoutMode `toml:"mode"`
 
 	State State `toml:"state"`
 	// Owner is the hostname that last held this task hot. One writer per
@@ -107,6 +123,20 @@ type Task struct {
 
 	Created time.Time `toml:"created"`
 	Updated time.Time `toml:"updated"`
+}
+
+// EffectiveMode returns the explicit mode, or infers a legacy task. Before
+// modes were recorded, a path meant worktree and no path meant a canonical
+// branch task; direct mode is never guessed because it changes integration
+// semantics and must be explicit.
+func (t Task) EffectiveMode() CheckoutMode {
+	if t.Mode != "" {
+		return t.Mode
+	}
+	if t.WorktreePath != "" {
+		return ModeWorktree
+	}
+	return ModeBranch
 }
 
 // Title is the display name, falling back to the branch when unnamed.
@@ -133,6 +163,11 @@ func (t Task) Validate() error {
 	}
 	if _, err := ParseState(string(t.State)); err != nil {
 		return fmt.Errorf("task %s: %w", t.ID, err)
+	}
+	switch t.Mode {
+	case "", ModeWorktree, ModeBranch, ModeDirect:
+	default:
+		return fmt.Errorf("task %s: unknown mode %q", t.ID, t.Mode)
 	}
 	return nil
 }

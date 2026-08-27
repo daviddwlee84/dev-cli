@@ -138,9 +138,9 @@ var reservedKeys = map[string]string{
 	"q": "quit", "j": "down", "k": "up", "g": "top", "G": "bottom",
 	"h": "previous view", "l": "next view", "tab": "next view",
 	"/": "filter", "r": "refresh", "o": "open", "p": "park",
-	"c": "edit next action", "s": "start a task", "a": "include done",
+	"c": "edit next action", "s": "start a worktree task", "d": "start a direct task", "a": "include done",
 	"0": "clear filters", "1": "hot", "2": "warm", "3": "cold",
-	"?": "help",
+	"?": "help", "H": "repo activity heatmap", "e": "edit config",
 }
 
 // ReservedKey reports the dashboard binding a key would collide with.
