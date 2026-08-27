@@ -11,5 +11,5 @@
 .DS_Store
 
 # Agent session artifacts (SpecStory transcripts, plan files)
-.specstory/history/
-.claude/plans/
+# .specstory/history/
+# .claude/plans/
