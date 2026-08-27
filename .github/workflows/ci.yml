@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+
+      # gitx and wt shell out to git, and the test repos need an identity.
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@example.test"
+          git config --global user.name "ci"
+          git config --global init.defaultBranch main
+
+      - run: gofmt -l . | tee /dev/stderr | (! read)
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go build ./cmd/dev
+
+      # The skill documents the CLI; drift between them is a bug.
+      - run: go run ./cmd/dev skill sync --check
+
+      - run: ./scripts/e2e.sh

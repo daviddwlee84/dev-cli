@@ -1,0 +1,15 @@
+# Build output
+/dev
+/dist/
+*.test
+
+# Worktrees created by agent harnesses. Keep this: without it, a worktree's
+# contents show as untracked files in the main checkout.
+.claude/worktrees/
+
+# Local machine state
+.DS_Store
+
+# Agent session artifacts (SpecStory transcripts, plan files)
+.specstory/history/
+.claude/plans/
