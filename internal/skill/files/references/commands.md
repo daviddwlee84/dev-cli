@@ -333,6 +333,14 @@ dev try [name] [flags]
 - `-l, --list` — list existing tries
 - `--no-git` — do not git init the new directory
 
+### `dev tui`
+
+Interactive dashboard over the inventory
+
+```
+dev tui
+```
+
 ### `dev wt`
 
 Create, list, open and remove worktrees

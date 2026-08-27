@@ -25,6 +25,10 @@ defeats the point of having one.
 The fix is not discipline. It is giving "what am I working on" a home outside
 the runtime, so closing a session is just closing a session.
 
+Bare `dev` opens an interactive dashboard when it has a terminal, and prints
+the plain listing when piped — so `dev | grep` and `dev > file` behave as
+expected.
+
 ```
 $ dev ls
    TASK                   STATE  REPO       BRANCH                    GIT   AGE  SESSION       NEXT
@@ -74,6 +78,11 @@ dev resume "token refresh"                         # → hot, rebuilt if needed
 dev done --ff                                      # → done, integrated
 dev sweep                                          # what has gone stale
 ```
+
+The dashboard (`dev`, or `dev tui`) shows the same inventory from the same code
+path, and lets you act on the selected task without retyping its name:
+`enter` opens it, `p` parks it and prompts for the next action, `n` edits that
+action, `1`/`2`/`3` filter by state.
 
 Going cold is safe because **the branch is the identity and the directory is a
 cache**. `dev park --cold` refuses unless the branch is pushed, and `dev resume`

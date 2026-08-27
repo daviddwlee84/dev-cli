@@ -56,6 +56,11 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 				fmt.Fprint(app.Out, out)
 				return nil
 			}
+			// A terminal gets the dashboard; a pipe gets the listing, so
+			// `dev | grep` and `dev > file` behave as expected.
+			if interactive() {
+				return runTUI(app)
+			}
 			return runList(app, listOptions{})
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -74,6 +79,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 
 	root.AddCommand(
 		newListCmd(app),
+		newTUICmd(app),
 		newStatusCmd(app),
 		newStartCmd(app),
 		newParkCmd(app),

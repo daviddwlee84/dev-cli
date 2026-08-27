@@ -87,6 +87,7 @@ Full detail: `references/task-lifecycle.md`.
 ## Everyday commands
 
 ```bash
+dev                        # interactive dashboard (plain listing when piped)
 dev ls                     # what am I working on, everywhere
 dev ls --json              # stable machine-readable form (also over ssh)
 dev status                 # what is this directory: repo, branch, task, session
