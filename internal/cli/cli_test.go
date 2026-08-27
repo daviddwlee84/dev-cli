@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/cli"
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -16,6 +17,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
 	"github.com/daviddwlee84/dev-cli/internal/skill"
+	"github.com/daviddwlee84/dev-cli/internal/stats"
 )
 
 // harness runs dev commands against an isolated HOME, config and scan root.
@@ -875,5 +877,87 @@ func TestStatusAndJSONExposeRichChangeCounts(t *testing.T) {
 		if got := rows[0][key]; got != want {
 			t.Errorf("%s = %v, want %v", key, got, want)
 		}
+	}
+}
+
+func TestCacheListAndClearLeavesStatsDataAlone(t *testing.T) {
+	h := newHarness(t)
+	remote := filepath.Join(config.CacheHome(), "dev", "remotes.json")
+	gitignore := filepath.Join(config.CacheHome(), "dev", "gitignore", "Go.gitignore")
+	os.MkdirAll(filepath.Dir(remote), 0o755)
+	os.MkdirAll(filepath.Dir(gitignore), 0o755)
+	os.WriteFile(remote, []byte("remote cache"), 0o600)
+	os.WriteFile(gitignore, []byte("*.test\n"), 0o644)
+
+	// Stats live under XDG data, not cache.
+	statsPath := filepath.Join(h.home, "state", "stats.db")
+	os.MkdirAll(filepath.Dir(statsPath), 0o755)
+	os.WriteFile(statsPath, []byte("durable"), 0o600)
+
+	out := h.mustRun("cache", "list")
+	if !strings.Contains(out, "remote") || !strings.Contains(out, "gitignore") ||
+		!strings.Contains(out, "not cache") {
+		t.Errorf("cache list:\n%s", out)
+	}
+	h.mustRun("cache", "clear", "all")
+	if _, err := os.Stat(remote); !os.IsNotExist(err) {
+		t.Error("remote cache should be gone")
+	}
+	if _, err := os.Stat(gitignore); !os.IsNotExist(err) {
+		t.Error("gitignore cache should be gone")
+	}
+	if _, err := os.Stat(statsPath); err != nil {
+		t.Error("cache clear must never touch stats data")
+	}
+}
+
+func TestStatsClearRequiresScopeAndDeletesSelectedRows(t *testing.T) {
+	h := newHarness(t)
+	store, err := stats.Open(stats.Path(filepath.Join(h.home, "state")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	day := time.Now()
+	store.Add(
+		stats.Entry{Day: day, Repo: "api", Source: stats.SourceGit, Seconds: 100},
+		stats.Entry{Day: day, Repo: "web", Source: stats.SourceGit, Seconds: 100},
+	)
+	store.Close()
+
+	if _, _, err := h.run("stats", "clear", "--yes"); err == nil || !strings.Contains(err.Error(), "choose --repo") {
+		t.Errorf("unscoped clear must be refused, got %v", err)
+	}
+	out := h.mustRun("stats", "clear", "--repo", "api", "--yes")
+	if !strings.Contains(out, "deleted 1 activity row") {
+		t.Errorf("clear output: %q", out)
+	}
+	store, _ = stats.Open(stats.Path(filepath.Join(h.home, "state")))
+	defer store.Close()
+	rows, _ := store.RepoTotals(stats.Query{Since: day.Add(-time.Hour), Until: day.Add(time.Hour)})
+	if len(rows) != 1 || rows[0].Repo != "web" {
+		t.Errorf("only web should remain: %+v", rows)
+	}
+}
+
+func TestStatsBackfillSingleRepo(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("stats", "backfill", "--repo", "demo", "--since", "1y")
+	if !strings.Contains(out, "scanning 1 repositories") {
+		t.Errorf("single repo backfill: %q", out)
+	}
+	out = h.mustRun("stats", "--repo", "demo", "--since", "1y", "--by-repo")
+	if !strings.Contains(out, "demo") {
+		t.Errorf("backfilled repo missing from stats:\n%s", out)
+	}
+}
+
+func TestRepoListShowsLatestDirtyEdit(t *testing.T) {
+	h := newHarness(t)
+	// gittest pins commit dates, while this file has a current mtime. The LATEST
+	// column should therefore reflect the edit, not only the old commit.
+	h.repo.Write("dirty-now.txt", "wip\n")
+	out := h.mustRun("repo", "list")
+	if !strings.Contains(out, "LATEST") || !strings.Contains(out, "0m") {
+		t.Errorf("repo list should show latest dirty edit:\n%s", out)
 	}
 }

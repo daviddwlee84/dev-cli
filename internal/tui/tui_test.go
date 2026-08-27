@@ -710,18 +710,22 @@ func TestRReloadsConfigAsWellAsData(t *testing.T) {
 	rows := []inventory.Row{row("a", "one", task.Hot, "")}
 	configReloads, dataReloads := 0, 0
 	actions := newActions(&recorder{}, rows)
-	actions.ReloadConfig = func(context.Context) ([]tui.Tool, string, error) {
+	actions.ReloadConfig = func(context.Context) (tui.ConfigUpdate, string, error) {
 		configReloads++
-		return nil, "reloaded", nil
+		return tui.ConfigUpdate{RepoColumns: []string{"repo", "latest"}, RepoSort: "latest"}, "reloaded", nil
 	}
 	actions.Reload = func(context.Context) ([]inventory.Row, error) {
 		dataReloads++
 		return rows, nil
 	}
-	m := tui.New(actions, rows, nil)
-	send(m, key("r"))
+	m := tui.New(actions, rows, []tui.RepoRow{repoRow("api")})
+	m = send(m, key("r"))
 	if configReloads != 1 || dataReloads != 1 {
 		t.Errorf("r should reload both: config=%d data=%d", configReloads, dataReloads)
+	}
+	m = send(m, key("tab"))
+	if !strings.Contains(m.View(), "LATEST") || strings.Contains(m.View(), "BRANCH") {
+		t.Errorf("live-reloaded columns should apply immediately:\n%s", m.View())
 	}
 }
 
@@ -739,5 +743,100 @@ func TestStartDirectTaskFromRepoView(t *testing.T) {
 	send(m, key("enter"))
 	if len(rec.started) != 1 || rec.started[0] != "direct:api/quick fix" {
 		t.Errorf("d should start direct work, got %v", rec.started)
+	}
+}
+
+func TestRepoColumnsAreConfigurable(t *testing.T) {
+	r := repoRow("api")
+	r.LastActivity = time.Now().Add(-2 * time.Hour)
+	actions := newActions(&recorder{}, nil)
+	actions.RepoColumns = []string{"repo", "latest"}
+	m := tui.New(actions, nil, []tui.RepoRow{r})
+	m = send(m, key("tab"))
+	out := m.View()
+	if !strings.Contains(out, "REPO") || !strings.Contains(out, "LATEST") || !strings.Contains(out, "2h") {
+		t.Errorf("configured columns missing:\n%s", out)
+	}
+	if strings.Contains(out, "BRANCH") || strings.Contains(out, "GIT") {
+		t.Errorf("omitted columns should not render:\n%s", out)
+	}
+}
+
+func TestRepoLatestSortAndReverse(t *testing.T) {
+	old := repoRow("aaa-old")
+	old.LastActivity = time.Now().Add(-7 * 24 * time.Hour)
+	newest := repoRow("zzz-new")
+	newest.LastActivity = time.Now().Add(-time.Hour)
+	actions := newActions(&recorder{}, nil)
+	actions.RepoSort = "latest"
+	m := tui.New(actions, nil, []tui.RepoRow{old, newest})
+	m = send(m, key("tab"))
+
+	out := m.View()
+	if strings.Index(out, "zzz-new") > strings.Index(out, "aaa-old") {
+		t.Errorf("latest sort should put newest first:\n%s", out)
+	}
+	m = send(m, key("R"))
+	out = m.View()
+	if strings.Index(out, "aaa-old") > strings.Index(out, "zzz-new") {
+		t.Errorf("reverse should invert the order:\n%s", out)
+	}
+}
+
+func TestOCyclesRepoSort(t *testing.T) {
+	actions := newActions(&recorder{}, nil)
+	actions.RepoSort = "activity"
+	m := tui.New(actions, nil, []tui.RepoRow{repoRow("api")})
+	m = send(m, key("tab"), key("O"))
+	if !strings.Contains(m.View(), "O sort:latest") {
+		t.Errorf("O should cycle activity → latest:\n%s", m.View())
+	}
+}
+
+func TestEmptyHeatmapCanBackfillSelectedRepo(t *testing.T) {
+	rows := []inventory.Row{row("a", "token refresh", task.Hot, "")}
+	backfilled, loads := false, 0
+	actions := newActions(&recorder{}, rows)
+	actions.LoadStats = func(context.Context, string) (tui.StatsPanel, error) {
+		loads++
+		panel := tui.StatsPanel{Repo: "demo", Since: time.Now().AddDate(-1, 0, 0), Until: time.Now()}
+		if backfilled {
+			panel.Seconds, panel.ActiveDays, panel.Heatmap = 3600, 2, "BACKFILLED-GRID\n"
+		}
+		return panel, nil
+	}
+	actions.BackfillStats = func(_ context.Context, repo string) error {
+		if repo != "demo" {
+			t.Errorf("backfilled repo = %q", repo)
+		}
+		backfilled = true
+		return nil
+	}
+	m := tui.New(actions, rows, nil)
+	m = send(m, key("H"))
+	if !strings.Contains(m.View(), "Press b to backfill only this repo") {
+		t.Fatalf("empty panel should expose the action:\n%s", m.View())
+	}
+	m = send(m, key("b"))
+	if !backfilled || loads != 2 {
+		t.Errorf("backfilled=%v loads=%d, want true/2", backfilled, loads)
+	}
+	if !strings.Contains(m.View(), "BACKFILLED-GRID") {
+		t.Errorf("panel should refresh after backfill:\n%s", m.View())
+	}
+}
+
+func TestBeginLoadingShowsBeforeInventoryFinishes(t *testing.T) {
+	actions := newActions(&recorder{}, nil)
+	m := tui.New(actions, nil, nil).BeginLoading()
+	if !strings.Contains(m.View(), "Loading tasks and local repositories") {
+		t.Errorf("startup should render a loading screen immediately:\n%s", m.View())
+	}
+	cmd := m.Init()
+	if cmd == nil {
+		t.Fatal("BeginLoading Init should schedule the inventory load")
+	}
+	if _, ok := cmd().(tea.BatchMsg); !ok {
+		t.Error("initial command should batch cursor blink + background inventory")
 	}
 }

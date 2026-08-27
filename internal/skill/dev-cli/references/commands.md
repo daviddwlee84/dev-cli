@@ -44,6 +44,38 @@ dev bootstrap [path...] [flags]
 - `--worktrees` — include linked worktrees in the report
 - `--yes` — with --move --apply, do not confirm each repository
 
+### `dev cache`
+
+Inspect and clear regenerable dev caches
+
+```
+dev cache
+```
+
+### `dev cache clear`
+
+Remove a regenerable cache
+
+```
+dev cache clear <remote|gitignore|all>
+```
+
+### `dev cache list`
+
+List cache paths, sizes, and ages
+
+```
+dev cache list
+```
+
+### `dev cache path`
+
+Print dev's XDG cache directory
+
+```
+dev cache path
+```
+
 ### `dev config`
 
 Show, edit, initialise and locate dev's configuration
@@ -364,7 +396,21 @@ dev stats backfill [flags]
 ```
 
 - `--author` — only commits from this author email
+- `-r, --repo` — backfill only this repository
 - `--since` — how far back to scan
+
+### `dev stats clear`
+
+Delete selected activity data (this is durable data, not cache)
+
+```
+dev stats clear [flags]
+```
+
+- `--all` — delete all activity and collector checkpoints
+- `-r, --repo` — delete this exact repository name
+- `--source` — delete these sources: session, git, wakatime
+- `-y, --yes` — do not prompt
 
 ### `dev stats import-wakatime`
 
@@ -375,6 +421,14 @@ dev stats import-wakatime [flags]
 ```
 
 - `--since` — how far back to import
+
+### `dev stats path`
+
+Print the durable activity database path
+
+```
+dev stats path
+```
 
 ### `dev stats sample`
 

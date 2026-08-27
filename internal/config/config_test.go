@@ -209,3 +209,28 @@ func TestDependencyStrategyConfigValidation(t *testing.T) {
 		t.Errorf("invalid ecosystem strategy should fail, got %v", err)
 	}
 }
+
+func TestRepoTableConfigValidation(t *testing.T) {
+	c := Default()
+	if got := c.EffectiveRepoColumns(); len(got) == 0 || got[0] != "repo" {
+		t.Errorf("default columns = %v", got)
+	}
+	if c.EffectiveRepoSort() != "activity" {
+		t.Errorf("default sort = %q", c.EffectiveRepoSort())
+	}
+
+	c.TUI.Repos.Columns = []string{"repo", "latest", "git"}
+	c.TUI.Repos.Sort = "latest"
+	if err := c.Validate(); err != nil {
+		t.Errorf("valid repo table config: %v", err)
+	}
+	c.TUI.Repos.Columns = []string{"repo", "mystery"}
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "unknown column") {
+		t.Errorf("unknown column should fail, got %v", err)
+	}
+	c = Default()
+	c.TUI.Repos.Sort = "random"
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "tui.repos.sort") {
+		t.Errorf("unknown sort should fail, got %v", err)
+	}
+}

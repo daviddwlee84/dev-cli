@@ -2,6 +2,7 @@ package gitx
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -111,4 +112,42 @@ func Remote(ctx context.Context, dir, name string) string {
 		return ""
 	}
 	return out
+}
+
+// RemoteFromConfig reads one remote URL directly from a Git common directory.
+// It is the zero-process path used by whole-machine inventory, where spawning
+// `git remote get-url` once per repo dominated startup. Includes and URL
+// rewriting are deliberately not evaluated; callers that need Git's complete
+// semantics should use Remote instead.
+func RemoteFromConfig(commonDir, name string) string {
+	if commonDir == "" {
+		return ""
+	}
+	if name == "" {
+		name = "origin"
+	}
+	b, err := os.ReadFile(filepath.Join(commonDir, "config"))
+	if err != nil {
+		return ""
+	}
+	want := `remote "` + name + `"`
+	section := ""
+	for _, raw := range strings.Split(string(b), "\n") {
+		line := strings.TrimSpace(raw)
+		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
+			continue
+		}
+		if strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]") {
+			section = strings.TrimSpace(line[1 : len(line)-1])
+			continue
+		}
+		if section != want {
+			continue
+		}
+		key, value, ok := strings.Cut(line, "=")
+		if ok && strings.TrimSpace(key) == "url" {
+			return strings.Trim(strings.TrimSpace(value), `"`)
+		}
+	}
+	return ""
 }

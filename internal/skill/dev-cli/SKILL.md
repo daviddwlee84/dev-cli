@@ -133,6 +133,9 @@ dev try redis-streams      # dated scratch directory for an experiment
 dev graduate redis-streams --category Infra   # promote it into a real project
 
 dev stats --heatmap        # where the time actually went
+dev stats backfill --repo api  # seed one repo; TUI H then b does this in place
+dev stats path             # durable XDG data, not cache
+dev cache list             # regenerable forge/gitignore caches
 dev help worktrees         # quick-reference pages
 ```
 
@@ -164,9 +167,19 @@ cache, and `/` filters provider, owner/name and description. Enter opens a local
 clone; `c` confirms before cloning an absent remote. Use `dev repo remote
 [query] --json` for the non-interactive form; `--cached` avoids a network query.
 
-REPOS has an explicit LIVE column and detail shows the Herdr/tmux handle and
-agent status. `H` opens the selected repo's heatmap. `e` edits config and
-returning live-reloads data/tool bindings; `r` reloads explicitly. Runtime
+REPOS has explicit LIVE and LATEST columns: latest is the newest dirty-file
+mtime, commit, or task update. Detail shows the Herdr/tmux handle and agent
+status. `[tui.repos]` chooses columns and default sort; `O` cycles sort and `R`
+reverses it.
+
+`H` opens the selected repo's heatmap. On an empty panel, `b` backfills only
+that repo and redraws; `r` rereads existing stats. Stats live in
+`$XDG_DATA_HOME/dev/stats.db` and are durable observations, not cache — use
+`dev stats clear` with an explicit scope. `dev cache clear` only removes
+regenerable forge/gitignore data under `$XDG_CACHE_HOME/dev`.
+
+`e` edits config and returning live-reloads data/tool bindings; `r` reloads
+explicitly. Runtime
 backend changes require restarting the TUI.
 
 External tools are explicit `[[tui.tools]]` config. Run `dev tui tools` before
@@ -230,11 +243,15 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    rather than applying it for them — which branches count as work in flight is
    their judgement, not yours.
 
-11. **Read Git state as counts, not a dirty boolean.** `⇡`/`⇣` are upstream
+11. **Do not call stats.db a cache.** Session/WakaTime observations may not be
+   reconstructible. Use `dev stats clear --repo/--source/--all`; use
+   `dev cache clear` only for remote/gitignore caches.
+
+12. **Read Git state as counts, not a dirty boolean.** `⇡`/`⇣` are upstream
    divergence; `=` conflicts, `+` staged, `!` unstaged, `?` untracked. Use
    `dev status` or JSON for the unique-path and type breakdown before cleanup.
 
-12. **Commit messages stay English** and follow Conventional Commits, even when
+13. **Commit messages stay English** and follow Conventional Commits, even when
    the conversation is in another language — see the companion `git-workflow`
    skill, which owns commit conventions, SemVer and branch naming. This skill
    does not duplicate them.

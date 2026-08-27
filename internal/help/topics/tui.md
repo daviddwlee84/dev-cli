@@ -62,7 +62,11 @@ s          isolated task: branch + worktree + provisioning + runtime + entry
 ```
 
 The LIVE column makes runtime state explicit (`herdr:working`, `herdr:idle`);
-the detail pane includes the workspace handle.
+the detail pane includes the workspace handle. LATEST is the newest dirty-file
+mtime, commit time, or task update.
+
+Columns and ordering are configured under `[tui.repos]`. In the view, `O`
+cycles activity/latest/name/git/tasks and `R` reverses the current sort.
 
 REMOTE:
 
@@ -76,11 +80,15 @@ r          refresh gh + glab, replacing the cache
 
 ```
 H   open the selected repository's one-year activity heatmap
-    H / esc returns; r refreshes the stats database
+    b backfills only that repo; r rereads stats; H / esc returns
 
 e   edit the effective config in VISUAL/EDITOR
 r   reparse config and reload local/remote data and tool bindings
 ```
+
+An empty heatmap is actionable: press `b` to derive only the selected repo's
+history into stats.db and automatically redraw. `r` does not manufacture data;
+it rereads what collectors/backfill have stored.
 
 Returning from `e` live-reloads the config. Changes to scan roots, worktree
 policy, forge cache settings and `[[tui.tools]]` take effect immediately. A

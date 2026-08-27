@@ -180,6 +180,21 @@ one-year activity heatmap and `e` edits config. Returning from the editor, or
 pressing `r`, reparses config and reloads data/tool bindings without restarting
 the TUI; a runtime-backend change is reported as requiring restart.
 
+REPOS includes `LATEST`, defined as the newest dirty-file mtime, commit time, or
+task update. Columns and default ordering are config:
+
+```toml
+[tui.repos]
+columns = ["repo", "branch", "git", "live", "latest", "worktrees", "tasks"]
+sort = "activity"       # activity | latest | name | git | tasks
+reverse = false
+```
+
+In REPOS, `O` cycles sort and `R` reverses it. The configured order returns on
+reload. Local repo probes run with bounded parallelism, and the alternate screen
+appears before they finish; the measured serial 56-repo path was ~4.2s, while
+startup now immediately shows loading and fills rows in the background.
+
 See `dev help tui` for the full key map.
 
 Going cold is safe because **the branch is the identity and the directory is a
@@ -299,10 +314,32 @@ debugging), and git history (which backfills the past and survives losing the
 database). WakaTime can be imported alongside for editor time.
 
 ```bash
-dev stats backfill                          # seed from git history, once
+dev stats backfill                          # seed all repos from git history
+dev stats backfill --repo api               # seed only one repo
 dev stats sample --interval 5m              # from cron, every five minutes
 dev stats import-wakatime                   # optional
+dev stats path                              # durable SQLite location
+dev stats clear --repo api                  # guarded selective deletion
 ```
+
+In the TUI, select a repo and press `H`. If it has no data, `b` backfills only
+that repo and refreshes the panel; `r` merely rereads existing stats data.
+
+Stats are **data**, not cache: session samples and WakaTime imports may not be
+reconstructible. They live at `$XDG_DATA_HOME/dev/stats.db` and clearing them
+requires a scope plus confirmation (`--repo`, `--source`, or `--all`).
+Regenerable data lives separately:
+
+```bash
+dev cache list
+dev cache path
+dev cache clear remote
+dev cache clear gitignore
+dev cache clear all
+```
+
+Those remove only `$XDG_CACHE_HOME/dev/{remotes.json,gitignore/}` and never touch
+`stats.db`.
 
 ## Bootstrapping an existing machine
 

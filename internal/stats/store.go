@@ -154,6 +154,9 @@ type Query struct {
 	Since time.Time
 	Until time.Time
 	Repo  string
+	// ExactRepo uses equality rather than the report-friendly substring match.
+	// Per-repo TUI panels set it so "api" does not include "my-api".
+	ExactRepo bool
 	// Sources limits which collectors count. Empty means all of them.
 	Sources []Source
 }
@@ -162,8 +165,13 @@ func (q Query) where() (string, []any) {
 	clause := "WHERE day >= ? AND day <= ?"
 	args := []any{q.Since.Format(dayFormat), q.Until.Format(dayFormat)}
 	if q.Repo != "" {
-		clause += " AND repo LIKE ?"
-		args = append(args, "%"+q.Repo+"%")
+		if q.ExactRepo {
+			clause += " AND repo = ?"
+			args = append(args, q.Repo)
+		} else {
+			clause += " AND repo LIKE ?"
+			args = append(args, "%"+q.Repo+"%")
+		}
 	}
 	if len(q.Sources) > 0 {
 		clause += " AND source IN (" + placeholders(len(q.Sources)) + ")"
@@ -277,3 +285,42 @@ func (s *Store) Empty() bool {
 
 // Path is where the database lives inside a state directory.
 func Path(stateDir string) string { return filepath.Join(stateDir, "stats.db") }
+
+// ClearQuery selects durable activity rows to delete. Repo is an exact name —
+// deletion must not use the fuzzy LIKE semantics a report does.
+type ClearQuery struct {
+	Repo    string
+	Sources []Source
+}
+
+// Clear deletes matching activity and returns the number of rows removed.
+// With an empty query it clears all activity and collector checkpoints.
+func (s *Store) Clear(q ClearQuery) (int64, error) {
+	clause := ""
+	var args []any
+	if q.Repo != "" {
+		clause = " WHERE repo = ?"
+		args = append(args, q.Repo)
+	}
+	if len(q.Sources) > 0 {
+		if clause == "" {
+			clause = " WHERE "
+		} else {
+			clause += " AND "
+		}
+		clause += "source IN (" + placeholders(len(q.Sources)) + ")"
+		for _, source := range q.Sources {
+			args = append(args, string(source))
+		}
+	}
+	result, err := s.db.Exec("DELETE FROM activity"+clause, args...)
+	if err != nil {
+		return 0, err
+	}
+	if q.Repo == "" && len(q.Sources) == 0 {
+		if _, err := s.db.Exec("DELETE FROM collector"); err != nil {
+			return 0, err
+		}
+	}
+	return result.RowsAffected()
+}

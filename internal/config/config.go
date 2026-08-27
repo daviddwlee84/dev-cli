@@ -107,6 +107,8 @@ type Bootstrap struct {
 
 // TUI configures the interactive dashboard.
 type TUI struct {
+	// Repos configures the local repository table.
+	Repos RepoTable `toml:"repos"`
 	// Tools are the external programs the dashboard can hand the terminal to,
 	// each on its own key. When empty, DefaultTools applies.
 	//
@@ -114,6 +116,39 @@ type TUI struct {
 	// personal — nvim or helix, lazygit or gitui, and whatever aliases and
 	// scripts you have built up around your own workflow.
 	Tools []Tool `toml:"tools"`
+}
+
+// RepoTable configures columns and ordering in the TUI REPOS view.
+type RepoTable struct {
+	// Columns may contain repo, branch, git, live, latest, worktrees, tasks,
+	// category, or path, in the exact display order wanted.
+	Columns []string `toml:"columns"`
+	// Sort is activity, latest, name, git, or tasks.
+	Sort string `toml:"sort"`
+	// Reverse flips the selected order.
+	Reverse bool `toml:"reverse"`
+}
+
+// DefaultRepoColumns is the useful full local inventory without paths (detail
+// shows the selected path).
+func DefaultRepoColumns() []string {
+	return []string{"repo", "branch", "git", "live", "latest", "worktrees", "tasks"}
+}
+
+// EffectiveRepoColumns returns configured columns or the defaults.
+func (c Config) EffectiveRepoColumns() []string {
+	if len(c.TUI.Repos.Columns) == 0 {
+		return DefaultRepoColumns()
+	}
+	return c.TUI.Repos.Columns
+}
+
+// EffectiveRepoSort returns the configured ordering or activity-first.
+func (c Config) EffectiveRepoSort() string {
+	if c.TUI.Repos.Sort == "" {
+		return "activity"
+	}
+	return c.TUI.Repos.Sort
 }
 
 // Tool is one external program bound to a key in the dashboard.
@@ -141,6 +176,7 @@ var reservedKeys = map[string]string{
 	"c": "edit next action", "s": "start a worktree task", "d": "start a direct task", "a": "include done",
 	"0": "clear filters", "1": "hot", "2": "warm", "3": "cold",
 	"?": "help", "H": "repo activity heatmap", "e": "edit config",
+	"O": "cycle repo sort", "R": "reverse repo sort",
 }
 
 // ReservedKey reports the dashboard binding a key would collide with.
@@ -281,6 +317,21 @@ func (c Config) Validate() error {
 			return fmt.Errorf("worktree.strategies.%s %q: want reinstall, copy, link or skip",
 				ecosystem, strategy)
 		}
+	}
+	validColumns := map[string]bool{
+		"repo": true, "branch": true, "git": true, "live": true,
+		"latest": true, "worktrees": true, "tasks": true,
+		"category": true, "path": true,
+	}
+	for i, column := range c.TUI.Repos.Columns {
+		if !validColumns[column] {
+			return fmt.Errorf("tui.repos.columns[%d] %q: unknown column", i, column)
+		}
+	}
+	switch c.EffectiveRepoSort() {
+	case "activity", "latest", "name", "git", "tasks":
+	default:
+		return fmt.Errorf("tui.repos.sort %q: want activity, latest, name, git or tasks", c.TUI.Repos.Sort)
 	}
 	seen := map[string]string{}
 	for i, t := range c.TUI.Tools {

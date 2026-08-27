@@ -99,6 +99,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		newDoctorCmd(app),
 		newShellInitCmd(app),
 		newConfigCmd(app),
+		newCacheCmd(app),
 		newEditCmd(app),
 	)
 	root.SetHelpCommand(&cobra.Command{Hidden: true, Use: "no-help"})

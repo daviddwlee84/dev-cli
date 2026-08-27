@@ -37,3 +37,16 @@ dev ls --json | jq '.[] | {
   added, modified, deleted, renamed, ahead, behind
 }'
 ```
+
+
+## Latest repository activity
+
+The REPOS `LATEST` column is the maximum of:
+
+1. newest mtime among dirty tracked/untracked files that still exist;
+2. latest commit time;
+3. latest update to a task in that repo.
+
+This prevents a long uncommitted debugging session from looking like a repo
+that has not been touched in weeks. Deleted-file mtimes no longer exist, so
+those fall back to commit/task time.

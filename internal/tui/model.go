@@ -73,15 +73,30 @@ type Actions struct {
 	StartDirect func(ctx context.Context, r RepoRow, name string) (string, error)
 	// LoadStats builds the selected repository's activity heatmap.
 	LoadStats func(ctx context.Context, repo string) (StatsPanel, error)
+	// BackfillStats derives this repository's history into the activity store.
+	BackfillStats func(ctx context.Context, repo string) error
 	// EditConfig returns the editor process; tea suspends around it.
 	EditConfig func() (*exec.Cmd, error)
-	// ReloadConfig reparses config and returns the new tool bindings. Runtime
-	// backend changes need a TUI restart, which status explains.
-	ReloadConfig func(ctx context.Context) ([]Tool, string, error)
+	// ReloadConfig reparses config and returns live-updatable preferences.
+	// Runtime backend changes need a TUI restart, which status explains.
+	ReloadConfig func(ctx context.Context) (ConfigUpdate, string, error)
+	// RepoColumns and sorting are live-updatable display policy.
+	RepoColumns []string
+	RepoSort    string
+	RepoReverse bool
 	// Runtime names the active backend.
 	Runtime runtime.Runtime
 	// Tools are external programs the dashboard hands the terminal to.
 	Tools []Tool
+}
+
+// ConfigUpdate is the subset of config a running TUI can safely apply without
+// rebuilding its runtime backend.
+type ConfigUpdate struct {
+	Tools       []Tool
+	RepoColumns []string
+	RepoSort    string
+	RepoReverse bool
 }
 
 // Tool is an external program launched in the selected row's directory.
@@ -126,6 +141,8 @@ type Model struct {
 	// network. The first switch to REMOTE triggers it.
 	remotesLoaded  bool
 	remotesLoading bool
+	initialLoad    bool
+	loadingLocal   bool
 
 	// Cursors are plain fields, one per view, rather than a map: bubbletea
 	// passes the model by value and expects each returned copy to be
@@ -175,6 +192,14 @@ func (m Model) WithRemotes(rows []RemoteRow) Model {
 	return m
 }
 
+// BeginLoading makes Init load task and repo data asynchronously. This lets
+// the alternate screen appear immediately instead of blocking on dozens of Git
+// probes before Bubble Tea starts.
+func (m Model) BeginLoading() Model {
+	m.initialLoad, m.loadingLocal = true, true
+	return m
+}
+
 // Chosen reports a directory the caller should cd into after the program
 // exits, or "" when there is none.
 func (m Model) Chosen() string { return m.chosen }
@@ -183,7 +208,12 @@ func (m Model) Chosen() string { return m.chosen }
 func (m Model) CurrentView() View { return m.view }
 
 // Init implements tea.Model.
-func (m Model) Init() tea.Cmd { return textinput.Blink }
+func (m Model) Init() tea.Cmd {
+	if m.initialLoad {
+		return tea.Batch(textinput.Blink, m.reload())
+	}
+	return textinput.Blink
+}
 
 type reloadMsg struct {
 	rows      []inventory.Row
@@ -203,10 +233,15 @@ type statsMsg struct {
 	err   error
 }
 
+type statsBackfilledMsg struct {
+	repo string
+	err  error
+}
+
 type configEditedMsg struct{ err error }
 
 type configMsg struct {
-	tools         []Tool
+	update        ConfigUpdate
 	status        string
 	refreshRemote bool
 	err           error
@@ -254,8 +289,8 @@ func (m Model) reloadConfig(refreshRemote bool) tea.Cmd {
 		if m.actions.ReloadConfig == nil {
 			return configMsg{refreshRemote: refreshRemote}
 		}
-		tools, status, err := m.actions.ReloadConfig(context.Background())
-		return configMsg{tools: tools, status: status, refreshRemote: refreshRemote, err: err}
+		update, status, err := m.actions.ReloadConfig(context.Background())
+		return configMsg{update: update, status: status, refreshRemote: refreshRemote, err: err}
 	}
 }
 
@@ -315,21 +350,16 @@ func (m Model) visibleRepos() []RepoRow {
 		}
 		out = append(out, r)
 	}
+	sortBy := m.actions.RepoSort
+	if sortBy == "" {
+		sortBy = "activity"
+	}
 	sort.SliceStable(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		if a.HotTasks() != b.HotTasks() {
-			return a.HotTasks() > b.HotTasks()
+		cmp := compareRepos(out[i], out[j], sortBy)
+		if m.actions.RepoReverse {
+			return cmp > 0
 		}
-		if a.Live != b.Live {
-			return a.Live
-		}
-		if len(a.Tasks) != len(b.Tasks) {
-			return len(a.Tasks) > len(b.Tasks)
-		}
-		if a.Status.Dirty() != b.Status.Dirty() {
-			return a.Status.Dirty()
-		}
-		return strings.ToLower(a.Repo.Display()) < strings.ToLower(b.Repo.Display())
+		return cmp < 0
 	})
 	return out
 }
@@ -353,6 +383,79 @@ func (m Model) visibleRemotes() []RemoteRow {
 		return out[i].Repo.Label() < out[j].Repo.Label()
 	})
 	return out
+}
+
+// compareRepos returns negative when a belongs before b.
+func compareRepos(a, b RepoRow, sortBy string) int {
+	nameCmp := strings.Compare(strings.ToLower(a.Repo.Display()), strings.ToLower(b.Repo.Display()))
+	descInt := func(x, y int) int {
+		switch {
+		case x > y:
+			return -1
+		case x < y:
+			return 1
+		default:
+			return 0
+		}
+	}
+	descBool := func(x, y bool) int {
+		if x == y {
+			return 0
+		}
+		if x {
+			return -1
+		}
+		return 1
+	}
+	latest := func() int {
+		if a.LastActivity.Equal(b.LastActivity) {
+			return 0
+		}
+		if a.LastActivity.After(b.LastActivity) {
+			return -1
+		}
+		return 1
+	}
+
+	switch sortBy {
+	case "name":
+		return nameCmp
+	case "latest":
+		if c := latest(); c != 0 {
+			return c
+		}
+	case "git":
+		if c := descBool(a.Status.Dirty(), b.Status.Dirty()); c != 0 {
+			return c
+		}
+		if c := descInt(a.Status.Changed, b.Status.Changed); c != 0 {
+			return c
+		}
+	case "tasks":
+		if c := descInt(a.HotTasks(), b.HotTasks()); c != 0 {
+			return c
+		}
+		if c := descInt(len(a.Tasks), len(b.Tasks)); c != 0 {
+			return c
+		}
+	default: // activity
+		if c := descInt(a.HotTasks(), b.HotTasks()); c != 0 {
+			return c
+		}
+		if c := descBool(a.Live, b.Live); c != 0 {
+			return c
+		}
+		if c := descBool(a.Status.Dirty(), b.Status.Dirty()); c != 0 {
+			return c
+		}
+		if c := descInt(len(a.Tasks), len(b.Tasks)); c != 0 {
+			return c
+		}
+		if c := latest(); c != 0 {
+			return c
+		}
+	}
+	return nameCmp
 }
 
 func containsState(list []task.State, s task.State) bool {
@@ -445,6 +548,26 @@ func (m Model) currentRemote() (RemoteRow, bool) {
 	return rows[m.at()], true
 }
 
+// matchRemoteLocals fills cached remote rows from the freshly loaded local
+// inventory without another scan.
+func (m *Model) matchRemoteLocals() {
+	byRemote := map[string]RepoRow{}
+	for _, r := range m.repos {
+		if r.RemoteName != "" {
+			byRemote[string(r.RemoteForge)+"/"+strings.ToLower(r.RemoteName)] = r
+		}
+	}
+	for i := range m.remotes {
+		key := string(m.remotes[i].Repo.Forge) + "/" + strings.ToLower(m.remotes[i].Repo.FullName)
+		if local, ok := byRemote[key]; ok {
+			m.remotes[i].LocalPath = local.Repo.Path
+			m.remotes[i].LocalName = local.Repo.Display()
+		} else {
+			m.remotes[i].LocalPath, m.remotes[i].LocalName = "", ""
+		}
+	}
+}
+
 // currentDir is the checkout the selected row points at, for the external
 // tools and for the cd directive.
 func (m Model) currentDir() string {
@@ -471,6 +594,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case reloadMsg:
+		m.loadingLocal = false
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
@@ -481,6 +605,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.repos != nil {
 			m.repos = msg.repos
+			m.matchRemoteLocals()
 		}
 		if msg.remoteSet {
 			m.remotes, m.remotesLoaded, m.remotesLoading = msg.remotes, true, false
@@ -495,6 +620,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setAt(m.at())
 		return m, nil
 
+	case statsBackfilledMsg:
+		if msg.err != nil {
+			m.err, m.status = msg.err, ""
+			return m, nil
+		}
+		m.status = "backfill complete; loading heatmap…"
+		return m, m.loadStats(msg.repo)
+
 	case configEditedMsg:
 		if msg.err != nil {
 			m.err, m.status = msg.err, ""
@@ -508,7 +641,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err, m.status = msg.err, ""
 			return m, nil
 		}
-		m.actions.Tools = msg.tools
+		m.actions.Tools = msg.update.Tools
+		m.actions.RepoColumns = msg.update.RepoColumns
+		m.actions.RepoSort = msg.update.RepoSort
+		m.actions.RepoReverse = msg.update.RepoReverse
 		m.err, m.status = nil, msg.status
 		return m, m.reloadAfterConfig(msg.refreshRemote)
 
@@ -691,6 +827,32 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return configEditedMsg{err: err}
 		})
 
+	case "O":
+		if m.view != ViewRepos {
+			return m, nil
+		}
+		orders := []string{"activity", "latest", "name", "git", "tasks"}
+		current := 0
+		for i, order := range orders {
+			if order == m.actions.RepoSort {
+				current = i
+				break
+			}
+		}
+		m.actions.RepoSort = orders[(current+1)%len(orders)]
+		m.status = "repo sort: " + m.actions.RepoSort
+		m.setAt(0)
+		return m, nil
+
+	case "R":
+		if m.view != ViewRepos {
+			return m, nil
+		}
+		m.actions.RepoReverse = !m.actions.RepoReverse
+		m.status = fmt.Sprintf("repo sort reversed: %v", m.actions.RepoReverse)
+		m.setAt(0)
+		return m, nil
+
 	case "H":
 		repo := m.selectedRepoName()
 		if repo == "" || m.actions.LoadStats == nil {
@@ -749,6 +911,22 @@ func (m Model) updateStats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.stats, m.status = nil, "loading activity…"
 		return m, m.loadStats(repo)
+	case "b":
+		repo := ""
+		if m.stats != nil {
+			repo = m.stats.Repo
+		}
+		if repo == "" {
+			repo = m.selectedRepoName()
+		}
+		if repo == "" || m.actions.BackfillStats == nil {
+			return m, nil
+		}
+		m.status = "backfilling this repository from Git history…"
+		return m, func() tea.Msg {
+			err := m.actions.BackfillStats(context.Background(), repo)
+			return statsBackfilledMsg{repo: repo, err: err}
+		}
 	}
 	return m, nil
 }

@@ -64,14 +64,14 @@ func (m Model) renderStats() string {
 		b.WriteString("  " + styleDim.Render("Loading activity…") + "\n")
 	} else if m.stats.Seconds == 0 {
 		b.WriteString("  " + styleDim.Render("No activity recorded for this repository.\n"))
-		b.WriteString("  " + styleDim.Render("Seed history with: dev stats backfill\n"))
+		b.WriteString("  " + styleDim.Render("Press b to backfill only this repo from Git history.\n"))
 	} else {
 		b.WriteString(m.stats.Heatmap)
 		fmt.Fprintf(&b, "\n  %s   %d active days   %s → %s\n",
 			styleOK.Render(humanSeconds(m.stats.Seconds)), m.stats.ActiveDays,
 			m.stats.Since.Format("2006-01-02"), m.stats.Until.Format("2006-01-02"))
 	}
-	b.WriteString("\n  " + styleHelp.Render("H / esc back · r refresh · q quit"))
+	b.WriteString("\n  " + styleHelp.Render("b backfill this repo · r reread stats · H / esc back · q quit"))
 	return b.String()
 }
 
@@ -151,52 +151,164 @@ func (m Model) renderTasks() string {
 func (m Model) renderRepos() string {
 	repos := m.visibleRepos()
 	if len(repos) == 0 {
+		if m.loadingLocal {
+			return "  " + styleDim.Render("Loading local repositories…") + "\n"
+		}
 		return "  " + styleDim.Render("No repositories found. Check paths.scan_roots in your config,"+
 			" or run `dev config init`.\n")
 	}
-	nameW := clamp(m.width*30/100, 16, 34)
-	branchW := clamp(m.width*22/100, 12, 28)
+	columns := m.repoColumns()
 
 	var b strings.Builder
-	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-*s  %-*s  %-16s  %-15s  %-4s  %s",
-		nameW, "REPO", branchW, "BRANCH", "GIT", "LIVE", "WT", "TASKS")) + "\n")
+	var headers []string
+	for _, c := range columns {
+		headers = append(headers, fitCell(c.header, c.width))
+	}
+	b.WriteString(styleHeader.Render("  "+strings.Join(headers, "  ")) + "\n")
 
 	from, to := m.window(len(repos))
 	for i := from; i < to; i++ {
 		r := repos[i]
-		wt := "—"
-		if r.Worktrees > 0 {
-			wt = fmt.Sprintf("%d", r.Worktrees)
+		cells := make([]string, 0, len(columns))
+		for _, c := range columns {
+			cells = append(cells, fitCell(repoColumnValue(r, c.name), c.width))
 		}
-		tasks := r.StateSummary()
-		if tasks == "" {
-			tasks = styleDim.Render("—")
-		}
-		live := "—"
-		if r.Live {
-			live = r.Runtime
-			if r.RuntimeStatus != "" {
-				live += ":" + r.RuntimeStatus
-			}
-		}
-		line := fmt.Sprintf("%-*s  %-*s  %-16s  %-15s  %-4s  %s",
-			nameW, pad(r.Repo.Display(), nameW),
-			branchW, pad(r.Status.Branch, branchW),
-			pad(r.Status.Summary(), 16),
-			pad(live, 15),
-			pad(wt, 4),
-			tasks,
-		)
-		plain := line
+		line := strings.Join(cells, "  ")
+		styled := line
 		if r.Status.Dirty() {
-			plain = styleDirty.Render(line)
-		} else if len(r.Tasks) == 0 {
-			plain = styleClean.Render(line)
+			styled = styleDirty.Render(line)
+		} else if len(r.Tasks) == 0 && !r.Live {
+			styled = styleClean.Render(line)
 		}
-		b.WriteString(m.renderLine(i, line, plain))
+		b.WriteString(m.renderLine(i, line, styled))
 	}
 	b.WriteString(m.scrollNote(len(repos), from, to))
 	return b.String()
+}
+
+type repoColumnSpec struct {
+	name, header string
+	width, min   int
+}
+
+func (m Model) repoColumns() []repoColumnSpec {
+	names := m.actions.RepoColumns
+	if len(names) == 0 {
+		names = []string{"repo", "branch", "git", "live", "latest", "worktrees", "tasks"}
+	}
+	defaults := map[string]repoColumnSpec{
+		"repo":      {"repo", "REPO", 28, 12},
+		"branch":    {"branch", "BRANCH", 22, 10},
+		"git":       {"git", "GIT", 16, 8},
+		"live":      {"live", "LIVE", 15, 7},
+		"latest":    {"latest", "LATEST", 8, 6},
+		"worktrees": {"worktrees", "WT", 3, 2},
+		"tasks":     {"tasks", "TASKS", 18, 8},
+		"category":  {"category", "CATEGORY", 14, 8},
+		"path":      {"path", "PATH", 30, 12},
+	}
+	columns := make([]repoColumnSpec, 0, len(names))
+	for _, name := range names {
+		if c, ok := defaults[name]; ok {
+			columns = append(columns, c)
+		}
+	}
+	// Shrink flexible columns to fit. Configuration controls what exists and in
+	// what order; width adapts to the current pane.
+	total := 2 + 2*(len(columns)-1)
+	for _, c := range columns {
+		total += c.width
+	}
+	for _, preferred := range []string{"path", "tasks", "repo", "branch", "live", "git"} {
+		for i := range columns {
+			if columns[i].name != preferred {
+				continue
+			}
+			// Exhaust the least-important flexible column before touching
+			// the next. Round-robin shrinking made LIVE unreadable while REPO
+			// and TASKS still had plenty of space.
+			for total > m.width && columns[i].width > columns[i].min {
+				columns[i].width--
+				total--
+			}
+		}
+		if total <= m.width {
+			break
+		}
+	}
+	return columns
+}
+
+func repoColumnValue(r RepoRow, name string) string {
+	switch name {
+	case "repo":
+		return r.Repo.Display()
+	case "branch":
+		if r.Repo.Bare {
+			return "(bare)"
+		}
+		return r.Status.Branch
+	case "git":
+		if r.Repo.Bare {
+			return "—"
+		}
+		return r.Status.Summary()
+	case "live":
+		if !r.Live {
+			return "—"
+		}
+		if r.RuntimeStatus != "" {
+			return r.Runtime + ":" + r.RuntimeStatus
+		}
+		return r.Runtime
+	case "latest":
+		return latestAge(r.LastActivity)
+	case "worktrees":
+		if r.Worktrees > 0 {
+			return fmt.Sprintf("%d", r.Worktrees)
+		}
+		return "—"
+	case "tasks":
+		if tasks := r.StateSummary(); tasks != "" {
+			return tasks
+		}
+		return "—"
+	case "category":
+		if r.Repo.Category != "" {
+			return r.Repo.Category
+		}
+		return "—"
+	case "path":
+		return contract(r.Repo.Path)
+	}
+	return ""
+}
+
+func latestAge(at time.Time) string {
+	if at.IsZero() {
+		return "—"
+	}
+	d := time.Since(at)
+	switch {
+	case d < time.Hour:
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	case d < 14*24*time.Hour:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	case d < 60*24*time.Hour:
+		return fmt.Sprintf("%dw", int(d.Hours()/24/7))
+	default:
+		return fmt.Sprintf("%dmo", int(d.Hours()/24/30))
+	}
+}
+
+func fitCell(s string, width int) string {
+	s = pad(s, width)
+	if n := lipgloss.Width(s); n < width {
+		s += strings.Repeat(" ", width-n)
+	}
+	return s
 }
 
 func (m Model) renderRemotes() string {
@@ -281,6 +393,9 @@ func (m Model) scrollNote(total, from, to int) string {
 }
 
 func (m Model) emptyTasks() string {
+	if m.loadingLocal {
+		return "  " + styleDim.Render("Loading tasks and local repositories…") + "\n"
+	}
 	if len(m.rows) == 0 {
 		return "  " + styleDim.Render("No tasks recorded yet.\n") +
 			"  " + styleDim.Render("Press tab for the repository list, then s to start work on one.\n") +
@@ -434,7 +549,15 @@ func (m Model) renderFooter() string {
 	var bindings []string
 	switch m.view {
 	case ViewRepos:
-		bindings = append(bindings, "enter ad hoc", "s worktree task", "d direct task")
+		sortBy := m.actions.RepoSort
+		if sortBy == "" {
+			sortBy = "activity"
+		}
+		if m.actions.RepoReverse {
+			sortBy += "↑"
+		}
+		bindings = append(bindings, "enter ad hoc", "s worktree task", "d direct task",
+			"O sort:"+sortBy, "R reverse")
 	case ViewRemote:
 		if r, ok := m.currentRemote(); ok && r.Cloned() {
 			bindings = append(bindings, "enter open local")

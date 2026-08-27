@@ -34,6 +34,10 @@ type Repo struct {
 	// human organisation metadata, preserved for `dev graduate` to place new
 	// projects consistently.
 	Category string
+	// CommonDir is Git's shared administrative directory. Its worktrees/
+	// children let inventory count linked checkouts without another git
+	// process per repository.
+	CommonDir string
 	// Bare reports a bare repository (a worktree hub).
 	Bare bool
 	// HasGit distinguishes a real repo from a plain directory that was found
@@ -131,7 +135,7 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 					real = path
 				}
 				bare := isBareDir(path)
-				identity := real
+				identity, commonDir := real, real
 				if !bare {
 					if g, err := gitx.Discover(ctx, path); err == nil {
 						// A linked worktree is execution state, not another
@@ -139,21 +143,22 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 						if g.IsLinkedWorktree {
 							return filepath.SkipDir
 						}
-						identity = g.GitCommonDir
+						identity, commonDir = g.GitCommonDir, g.GitCommonDir
 						real = g.MainRoot
 					}
 				}
 				if !seen[path] && !identities[identity] {
 					seen[path], identities[identity] = true, true
 					out = append(out, Repo{
-						Name:     name,
-						Path:     path,
-						RealPath: real,
-						Symlink:  isLink,
-						Root:     rootClean,
-						Category: filepath.ToSlash(filepath.Dir(rel)),
-						Bare:     bare,
-						HasGit:   true,
+						Name:      name,
+						Path:      path,
+						RealPath:  real,
+						Symlink:   isLink,
+						Root:      rootClean,
+						Category:  filepath.ToSlash(filepath.Dir(rel)),
+						CommonDir: commonDir,
+						Bare:      bare,
+						HasGit:    true,
 					})
 				}
 				// Never descend into a repo: its subdirectories are source
@@ -231,7 +236,7 @@ func Resolve(ctx context.Context, roots []string, ref string) (Repo, []Repo, err
 			// defeat a bootstrap symlink catalog.
 			return Repo{
 				Name: filepath.Base(abs), Path: abs, RealPath: real,
-				Symlink: real != abs, HasGit: true, Bare: g.Bare,
+				Symlink: real != abs, CommonDir: g.GitCommonDir, HasGit: true, Bare: g.Bare,
 			}, nil, nil
 		}
 	}

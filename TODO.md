@@ -4,6 +4,13 @@ Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
 
 ## Active
 
+### P2 · M — Incremental local repo snapshot
+The TUI now renders immediately and probes repositories in the background with
+bounded concurrency, reducing perceived startup latency. A 56-repo refresh
+still takes roughly three seconds because status + latest commit remain live Git
+queries. If inventories grow into the hundreds, persist a short-lived snapshot
+and stream changed rows into the model; keep `r` as the explicit live refresh.
+
 ### P2 · M — Multi-host aggregation
 `dev ls --all` fanning out over ssh to the machines in a configured host list,
 merging their `dev ls --json`. The JSON contract is already stable and the
@@ -80,5 +87,12 @@ only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 - Explicit direct / branch-only / worktree task modes, including direct-main
   lifecycle and ad-hoc repo open with no task.
 - Rich starship-like Git status counts plus unique-path/type breakdown.
-- Explicit Herdr/tmux LIVE repo status and selected-repo heatmap overlay in TUI.
+- Latest repo activity from dirty-file mtime, commit, or task update; configurable
+  REPOS columns and activity/latest/name/git/tasks sorting.
+- Immediate TUI render with bounded-parallel repo probes (serial path measured
+  4.2s); background rows replace the initial loading state.
+- Explicit Herdr/tmux LIVE repo status and selected-repo heatmap overlay in TUI,
+  including `b` single-repo backfill.
+- XDG `stats path/clear` and regenerable `cache list/path/clear` with stats data
+  deliberately kept out of cache semantics.
 - Bundled agent skill with a generated, drift-checked command reference.

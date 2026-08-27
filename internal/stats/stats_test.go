@@ -300,3 +300,48 @@ func TestCollectorMarks(t *testing.T) {
 		t.Errorf("LastCollected = %v, want %v", got, now)
 	}
 }
+
+func TestClearIsSelectiveAndAllResetsCollectors(t *testing.T) {
+	s := open(t)
+	d := day("2026-08-01")
+	s.Add(
+		stats.Entry{Day: d, Repo: "api", Source: stats.SourceGit, Seconds: 100},
+		stats.Entry{Day: d, Repo: "api", Source: stats.SourceSession, Seconds: 200},
+		stats.Entry{Day: d, Repo: "web", Source: stats.SourceGit, Seconds: 300},
+	)
+	s.MarkCollected("git", time.Now())
+
+	n, err := s.Clear(stats.ClearQuery{Repo: "api", Sources: []stats.Source{stats.SourceGit}})
+	if err != nil || n != 1 {
+		t.Fatalf("selective Clear = %d, %v", n, err)
+	}
+	got, _ := s.RepoTotals(stats.Query{Since: day("2026-01-01"), Until: day("2026-12-31")})
+	if len(got) != 2 || got[0].Repo != "web" || got[1].Seconds != 200 {
+		t.Errorf("wrong rows remained: %+v", got)
+	}
+	if s.LastCollected("git").IsZero() {
+		t.Error("selective clear should keep collector checkpoint")
+	}
+
+	n, err = s.Clear(stats.ClearQuery{})
+	if err != nil || n != 2 || !s.Empty() {
+		t.Fatalf("clear all = %d, %v, empty=%v", n, err, s.Empty())
+	}
+	if !s.LastCollected("git").IsZero() {
+		t.Error("clear all should reset collector checkpoints")
+	}
+}
+
+func TestExactRepoQueryDoesNotAggregateSimilarNames(t *testing.T) {
+	s := open(t)
+	d := day("2026-08-01")
+	s.Add(
+		stats.Entry{Day: d, Repo: "api", Source: stats.SourceGit, Seconds: 100},
+		stats.Entry{Day: d, Repo: "my-api", Source: stats.SourceGit, Seconds: 200},
+	)
+	q := stats.Query{Since: day("2026-01-01"), Until: day("2026-12-31"), Repo: "api", ExactRepo: true}
+	got, _ := s.DayTotals(q)
+	if got["2026-08-01"] != 100 {
+		t.Errorf("exact api should not include my-api, got %d", got["2026-08-01"])
+	}
+}

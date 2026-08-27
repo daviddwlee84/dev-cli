@@ -48,14 +48,15 @@ Navigation is vim-style, with arrows alongside:
 
 Actions depend on the list:
 
-  enter      open in the runtime
-  p          park a task          c    edit its next action
-  s          start a task in the selected repository
-  c          clone the selected remote repository (after confirmation)
-  1 2 3      hot / warm / cold    0    clear filters    a  include done
-  H          selected repo heatmap
-  e          edit config, then live-reload data/tools
-  r          reload config + data  q    quit
+  TASKS   enter open · p park · c edit next
+  REPOS   enter ad hoc · s worktree task · d direct/current-branch task
+  REMOTE  enter open local · c clone after confirmation
+
+  H       selected repo heatmap; b backfills it when empty
+  e       edit config; returning live-reloads data, columns, sort and tools
+  O / R   cycle / reverse REPOS sort
+  r       reload config + data     1 / 2 / 3  hot / warm / cold
+  0       clear filters            a include done    q quit
 
 External tools are configured, not fixed — see [[tui.tools]] in the config,
 and "dev tui tools" for what is bound here. They run in the selected row's checkout;
@@ -144,7 +145,6 @@ func interactive() bool {
 }
 
 func runTUI(app *App) error {
-	ctx := ctxOf()
 	rt := app.Runtime()
 
 	reload := func(ctx context.Context) ([]inventory.Row, error) {
@@ -161,21 +161,15 @@ func runTUI(app *App) error {
 		return collectRemotes(ctx, app, 200)
 	}
 
-	rows, err := reload(ctx)
-	if err != nil {
-		return err
-	}
-	repos, err := reloadRepos(ctx)
-	if err != nil {
-		app.warnf("could not list repositories: %v", err)
-	}
-
 	actions := tui.Actions{
 		Reload:       reload,
 		ReloadRepos:  reloadRepos,
 		ReloadRemote: reloadRemote,
 		Runtime:      rt,
 		Tools:        externalTools(app),
+		RepoColumns:  app.Cfg.EffectiveRepoColumns(),
+		RepoSort:     app.Cfg.EffectiveRepoSort(),
+		RepoReverse:  app.Cfg.TUI.Repos.Reverse,
 
 		// Open reuses the same paths the commands take, so a cold task
 		// selected here is rebuilt rather than reported broken.
@@ -349,7 +343,7 @@ func runTUI(app *App) error {
 			until := time.Now()
 			since := until.AddDate(-1, 0, 0)
 			totals, err := store.DayTotals(stats.Query{
-				Since: since, Until: until, Repo: repoName,
+				Since: since, Until: until, Repo: repoName, ExactRepo: true,
 			})
 			if err != nil {
 				return tui.StatsPanel{}, err
@@ -370,26 +364,48 @@ func runTUI(app *App) error {
 			}, nil
 		},
 
+		BackfillStats: func(ctx context.Context, repoName string) error {
+			r, _, err := repo.Resolve(ctx, app.Cfg.ScanRoots(), repoName)
+			if err != nil {
+				return err
+			}
+			store, err := stats.Open(stats.Path(app.Cfg.StateDir()))
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			_, err = stats.BackfillGit(ctx, store, []repo.Repo{r}, time.Now().AddDate(-1, 0, 0), "")
+			return err
+		},
+
 		EditConfig: func() (*exec.Cmd, error) {
 			proc, _, _, err := configEditorProcess(app, "")
 			return proc, err
 		},
 
-		ReloadConfig: func(ctx context.Context) ([]tui.Tool, string, error) {
+		ReloadConfig: func(ctx context.Context) (tui.ConfigUpdate, string, error) {
 			oldRuntime := rt.Name()
 			if err := app.Load(); err != nil {
-				return nil, "", err
+				return tui.ConfigUpdate{}, "", err
 			}
 			status := "config + data reloaded"
 			if nextRuntime := app.Runtime().Name(); nextRuntime != oldRuntime {
 				status += fmt.Sprintf("; restart TUI to switch runtime %s → %s", oldRuntime, nextRuntime)
 			}
-			return externalTools(app), status, nil
+			return tui.ConfigUpdate{
+				Tools:       externalTools(app),
+				RepoColumns: app.Cfg.EffectiveRepoColumns(),
+				RepoSort:    app.Cfg.EffectiveRepoSort(),
+				RepoReverse: app.Cfg.TUI.Repos.Reverse,
+			}, status, nil
 		},
 	}
 
-	model := tui.New(actions, rows, repos)
-	if cached, ok := cachedRemotesForRepoRows(app, repos); ok {
+	// Enter the alternate screen immediately. Local inventory is loaded by
+	// Init in the background rather than making the terminal appear frozen
+	// while dozens of repos are probed.
+	model := tui.New(actions, nil, nil).BeginLoading()
+	if cached, ok := cachedRemoteRows(app); ok {
 		model = model.WithRemotes(cached)
 	}
 	final, err := tea.NewProgram(model, tea.WithAltScreen()).Run()
@@ -423,28 +439,65 @@ func collectRepos(ctx context.Context, app *App, rt runtime.Runtime) ([]tui.Repo
 	}
 	sessions, _ := rt.List(ctx)
 
-	out := make([]tui.RepoRow, 0, len(repos))
-	for _, r := range repos {
-		row := tui.RepoRow{Repo: r, Tasks: byRepo[r.Path]}
-		if !r.Bare {
-			if st, err := gitx.StatusOf(ctx, r.Path); err == nil {
-				row.Status = st
+	out := make([]tui.RepoRow, len(repos))
+	// Each repo needs status, worktree and remote subprocesses. Serialising
+	// ~3*56 git processes was the measured 4.2s startup bottleneck; eight
+	// workers brings that down without forking hundreds at once.
+	sem := make(chan struct{}, 8)
+	var wg sync.WaitGroup
+	for i, r := range repos {
+		wg.Add(1)
+		go func(i int, r repo.Repo) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			row := tui.RepoRow{Repo: r}
+			row.Tasks = append(row.Tasks, byRepo[r.Path]...)
+			if r.RealPath != "" && r.RealPath != r.Path {
+				row.Tasks = append(row.Tasks, byRepo[r.RealPath]...)
 			}
-			if list, err := gitx.Worktrees(ctx, r.Path); err == nil && len(list) > 0 {
-				row.Worktrees = len(list) - 1
+			if !r.Bare {
+				row.Status, _ = gitx.StatusOf(ctx, r.Path)
+				if row.Status.LatestChange.After(row.LastActivity) {
+					row.LastActivity = row.Status.LatestChange
+				}
+				// A normal clone stores one administrative directory per
+				// linked worktree. Reading it avoids spawning another git
+				// process for almost every repo in the main inventory.
+				if entries, err := os.ReadDir(filepath.Join(r.CommonDir, "worktrees")); err == nil {
+					for _, entry := range entries {
+						if entry.IsDir() {
+							row.Worktrees++
+						}
+					}
+				}
+				row.RemoteForge, row.RemoteName = forge.IdentityFromURL(gitx.RemoteFromConfig(r.CommonDir, "origin"))
+				if unix, _, err := gitx.LastCommit(ctx, r.Path); err == nil && unix > 0 {
+					commitTime := time.Unix(unix, 0)
+					if commitTime.After(row.LastActivity) {
+						row.LastActivity = commitTime
+					}
+				}
 			}
-			row.RemoteForge, row.RemoteName = forge.IdentityFromURL(gitx.Remote(ctx, r.Path, "origin"))
-		}
-		for _, s := range sessions {
-			if s.Covers(r.Path) || (r.RealPath != "" && s.Covers(r.RealPath)) {
-				row.Live = true
-				row.Runtime, row.RuntimeHandle, row.RuntimeStatus = rt.Name(), s.Handle, s.AgentStatus
-				break
+			for _, tracked := range row.Tasks {
+				if tracked.Updated.After(row.LastActivity) {
+					row.LastActivity = tracked.Updated
+				}
 			}
-		}
-		out = append(out, row)
+			for _, session := range sessions {
+				if session.Covers(r.Path) || (r.RealPath != "" && session.Covers(r.RealPath)) {
+					row.Live = true
+					row.Runtime, row.RuntimeHandle, row.RuntimeStatus =
+						rt.Name(), session.Handle, session.AgentStatus
+					break
+				}
+			}
+			out[i] = row
+		}(i, r)
 	}
-	return out, nil
+	wg.Wait()
+	return out, ctx.Err()
 }
 
 // externalTools resolves the configured tool bindings.
@@ -540,6 +593,21 @@ func remoteCachePath() string {
 	return filepath.Join(config.CacheHome(), "dev", "remotes.json")
 }
 
+// cachedRemoteRows reads only the private JSON cache — no repository scan or
+// subprocess — so it is safe on the startup path. Local clone markers are
+// filled when the background local inventory arrives.
+func cachedRemoteRows(app *App) ([]tui.RemoteRow, bool) {
+	cache, ok := forge.LoadCache(remoteCachePath(), app.Cfg.Forge.CacheTTL.Duration)
+	if !ok {
+		return nil, false
+	}
+	out := make([]tui.RemoteRow, 0, len(cache.Repos))
+	for _, rr := range cache.Repos {
+		out = append(out, tui.RemoteRow{Repo: rr})
+	}
+	return out, true
+}
+
 // cachedRemotesForRepoRows uses the local repo data the dashboard already
 // collected, avoiding another process-spawning scan on startup.
 func cachedRemotesForRepoRows(app *App, locals []tui.RepoRow) ([]tui.RemoteRow, bool) {
@@ -633,7 +701,7 @@ func matchRemoteLocals(ctx context.Context, app *App, remoteRepos []forge.Remote
 		if r.Bare {
 			continue
 		}
-		kind, name := forge.IdentityFromURL(gitx.Remote(ctx, r.Path, "origin"))
+		kind, name := forge.IdentityFromURL(gitx.RemoteFromConfig(r.CommonDir, "origin"))
 		if kind != forge.Unknown && name != "" {
 			localByRemote[string(kind)+"/"+strings.ToLower(name)] = r
 		}

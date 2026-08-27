@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"bufio"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -108,7 +110,10 @@ The sampler needs to be run periodically — see "dev stats sample --help".`,
 	f.BoolVar(&byRepo, "by-repo", false, "show only the per-repo breakdown")
 	f.IntVar(&limit, "limit", 20, "maximum repositories in the breakdown (0 for all)")
 
-	cmd.AddCommand(newStatsSampleCmd(app), newStatsBackfillCmd(app), newStatsImportCmd(app))
+	cmd.AddCommand(
+		newStatsSampleCmd(app), newStatsBackfillCmd(app), newStatsImportCmd(app),
+		newStatsPathCmd(app), newStatsClearCmd(app),
+	)
 	return cmd
 }
 
@@ -162,8 +167,9 @@ not three weeks of work, and counting it that way makes the chart meaningless.`,
 
 func newStatsBackfillCmd(app *App) *cobra.Command {
 	var (
-		since  string
-		author string
+		since   string
+		author  string
+		repoRef string
 	)
 	cmd := &cobra.Command{
 		Use:   "backfill",
@@ -189,12 +195,21 @@ them, so this is safe to repeat.`,
 			if err != nil {
 				return err
 			}
-			repos, err := repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
-			if err != nil {
-				return err
+			var reposToScan []repo.Repo
+			if repoRef != "" {
+				r, _, err := repo.Resolve(ctx, app.Cfg.ScanRoots(), repoRef)
+				if err != nil {
+					return err
+				}
+				reposToScan = []repo.Repo{r}
+			} else {
+				reposToScan, err = repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
+				if err != nil {
+					return err
+				}
 			}
-			fmt.Fprintf(app.Out, "scanning %d repositories since %s…\n", len(repos), start.Format("2006-01-02"))
-			n, err := stats.BackfillGit(ctx, store, repos, start, author)
+			fmt.Fprintf(app.Out, "scanning %d repositories since %s…\n", len(reposToScan), start.Format("2006-01-02"))
+			n, err := stats.BackfillGit(ctx, store, reposToScan, start, author)
 			if err != nil {
 				return err
 			}
@@ -205,6 +220,7 @@ them, so this is safe to repeat.`,
 	f := cmd.Flags()
 	f.StringVar(&since, "since", "12mo", "how far back to scan")
 	f.StringVar(&author, "author", "", "only commits from this author email")
+	f.StringVarP(&repoRef, "repo", "r", "", "backfill only this repository")
 	return cmd
 }
 
@@ -276,4 +292,101 @@ func parseSince(s string, now time.Time) (time.Time, error) {
 		return now.AddDate(-n, 0, 0), nil
 	}
 	return time.Time{}, fmt.Errorf("unknown unit %q in --since: want d, w, mo or y", unit)
+}
+
+func newStatsPathCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "path",
+		Short: "Print the durable activity database path",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Fprintln(app.Out, stats.Path(app.Cfg.StateDir()))
+			return nil
+		},
+	}
+}
+
+func newStatsClearCmd(app *App) *cobra.Command {
+	var (
+		all     bool
+		repo    string
+		sources []string
+		yes     bool
+	)
+	cmd := &cobra.Command{
+		Use:   "clear",
+		Short: "Delete selected activity data (this is durable data, not cache)",
+		Long: `Delete activity rows from $XDG_DATA_HOME/dev/stats.db.
+
+Stats are durable observations, not disposable cache: they include session
+samples and WakaTime imports that cannot necessarily be reconstructed from Git.
+Therefore a scope is required and the operation confirms unless --yes is
+explicit.
+
+    dev stats clear --repo api
+    dev stats clear --source git
+    dev stats clear --repo api --source git
+    dev stats clear --all
+
+Use "dev cache clear" for regenerable forge/gitignore caches instead.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if all && (repo != "" || len(sources) > 0) {
+				return fmt.Errorf("--all cannot be combined with --repo or --source")
+			}
+			if !all && repo == "" && len(sources) == 0 {
+				return fmt.Errorf("choose --repo, --source, or --all; stats data is not treated as disposable cache")
+			}
+			var parsed []stats.Source
+			for _, source := range sources {
+				s := stats.Source(strings.ToLower(source))
+				switch s {
+				case stats.SourceSession, stats.SourceGit, stats.SourceWakaTime:
+					parsed = append(parsed, s)
+				default:
+					return fmt.Errorf("unknown source %q: want session, git or wakatime", source)
+				}
+			}
+			description := "all activity data"
+			if !all {
+				var parts []string
+				if repo != "" {
+					parts = append(parts, "repo="+repo)
+				}
+				if len(parsed) > 0 {
+					parts = append(parts, "source="+strings.Join(sources, ","))
+				}
+				description = strings.Join(parts, " ")
+			}
+			if !yes {
+				in := bufio.NewReader(os.Stdin)
+				if !confirm(app, in, "delete "+description+" from stats.db") {
+					fmt.Fprintln(app.Out, "not changed")
+					return nil
+				}
+			}
+			store, err := stats.Open(stats.Path(app.Cfg.StateDir()))
+			if err != nil {
+				return err
+			}
+			defer store.Close()
+			q := stats.ClearQuery{}
+			if !all {
+				q.Repo, q.Sources = repo, parsed
+			}
+			n, err := store.Clear(q)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(app.Out, "deleted %d activity row(s) from %s\n", n,
+				config.Contract(stats.Path(app.Cfg.StateDir())))
+			return nil
+		},
+	}
+	f := cmd.Flags()
+	f.BoolVar(&all, "all", false, "delete all activity and collector checkpoints")
+	f.StringVarP(&repo, "repo", "r", "", "delete this exact repository name")
+	f.StringSliceVar(&sources, "source", nil, "delete these sources: session, git, wakatime")
+	f.BoolVarP(&yes, "yes", "y", false, "do not prompt")
+	return cmd
 }

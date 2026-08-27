@@ -2,8 +2,11 @@ package gitx
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Status is the live git state of one checkout — everything dev's inventory
@@ -29,6 +32,10 @@ type Status struct {
 	Modified int `json:"modified"`
 	Deleted  int `json:"deleted"`
 	Renamed  int `json:"renamed"`
+	// LatestChange is the newest mtime among changed files that still exist.
+	// Deleted paths fall back to the checkout's last commit time at the repo
+	// aggregation layer.
+	LatestChange time.Time `json:"latest_change,omitempty"`
 	// Conflicted counts unmerged paths; a non-zero value means the checkout is
 	// mid-merge or mid-rebase and must not be touched automatically.
 	Conflicted int `json:"conflicted"`
@@ -155,15 +162,53 @@ func StatusOf(ctx context.Context, dir string) (Status, error) {
 			}
 			classifyChange(x, &s)
 			classifyChange(y, &s)
+			updateLatestChange(dir, statusPath(rec), &s)
 		case 'u':
 			s.Changed++
 			s.Conflicted++
+			updateLatestChange(dir, statusPath(rec), &s)
 		case '?':
 			s.Changed++
 			s.Untracked++
+			updateLatestChange(dir, strings.TrimPrefix(rec, "? "), &s)
 		}
 	}
 	return s, nil
+}
+
+// statusPath extracts the final pathname from a porcelain-v2 record while
+// preserving spaces in it. Rename records have one extra score field; their
+// old path arrives as the next NUL record and is intentionally ignored.
+func statusPath(rec string) string {
+	if rec == "" {
+		return ""
+	}
+	var fields int
+	switch rec[0] {
+	case '1':
+		fields = 9
+	case '2':
+		fields = 10
+	case 'u':
+		fields = 11
+	default:
+		return ""
+	}
+	parts := strings.SplitN(rec, " ", fields)
+	if len(parts) != fields {
+		return ""
+	}
+	return parts[fields-1]
+}
+
+func updateLatestChange(dir, path string, s *Status) {
+	if path == "" {
+		return
+	}
+	info, err := os.Stat(filepath.Join(dir, filepath.FromSlash(path)))
+	if err == nil && info.ModTime().After(s.LatestChange) {
+		s.LatestChange = info.ModTime()
+	}
 }
 
 func classifyChange(code byte, s *Status) {

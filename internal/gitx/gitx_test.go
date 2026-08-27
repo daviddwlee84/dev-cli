@@ -306,6 +306,9 @@ func TestStatusRichChangeCounts(t *testing.T) {
 	if got := st.Breakdown(); got != "4 changed paths (+1 staged, !2 unstaged, ?1 untracked)" {
 		t.Errorf("Breakdown = %q", got)
 	}
+	if st.LatestChange.IsZero() {
+		t.Error("dirty files should contribute their latest edit time")
+	}
 }
 
 func TestStatusDoesNotDoubleCountPathStagedAndUnstaged(t *testing.T) {
@@ -334,5 +337,35 @@ func TestStatusSummaryDivergenceAndConflicts(t *testing.T) {
 	}
 	if got := (gitx.Status{}).Breakdown(); got != "0 changed paths" {
 		t.Errorf("clean Breakdown = %q", got)
+	}
+}
+
+func TestStatusLatestChangeHandlesSpacesInPath(t *testing.T) {
+	r := gittest.New(t)
+	r.Commit("file with spaces.txt", "old\n", "chore: spaced fixture")
+	r.Write("file with spaces.txt", "new\n")
+	r.Write("another new file.txt", "new\n")
+
+	st, err := gitx.StatusOf(gittest.Ctx(), r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Changed != 2 || st.LatestChange.IsZero() {
+		t.Errorf("space-containing paths should be parsed intact: %+v", st)
+	}
+}
+
+func TestRemoteFromConfig(t *testing.T) {
+	r := gittest.New(t)
+	r.Git("remote", "add", "origin", "git@github.com:owner/repo.git")
+	repo, err := gitx.Discover(gittest.Ctx(), r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := gitx.RemoteFromConfig(repo.GitCommonDir, "origin"); got != "git@github.com:owner/repo.git" {
+		t.Errorf("RemoteFromConfig = %q", got)
+	}
+	if got := gitx.RemoteFromConfig(repo.GitCommonDir, "missing"); got != "" {
+		t.Errorf("missing remote = %q", got)
 	}
 }

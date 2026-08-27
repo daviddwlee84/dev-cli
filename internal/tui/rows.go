@@ -22,6 +22,9 @@ import (
 type RepoRow struct {
 	Repo   repo.Repo
 	Status gitx.Status
+	// LastActivity is the newest commit time in this checkout. It is a durable,
+	// cheap approximation of "when was this repo last touched" and is sortable.
+	LastActivity time.Time
 	// Worktrees is the number of linked worktrees, excluding the main checkout.
 	Worktrees int
 	// Tasks are the recorded tasks belonging to this repository.
