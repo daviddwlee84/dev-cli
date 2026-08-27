@@ -1,0 +1,19 @@
+      # System libs for the mkdocs `social` plugin (OG/Twitter cards): cairo +
+      # pango render the card layout. Without them the build aborts on a
+      # libcairo load error.
+      - name: Install Cairo/Pango for social cards
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcairo2-dev libpango1.0-dev libfreetype6-dev \
+            libffi-dev libjpeg-dev libpng-dev
+      # Cache rendered cards + the downloaded card font so only changed pages
+      # re-render (cold build renders one card per page; warm is seconds).
+      - name: Cache social cards
+        uses: actions/cache@v4
+        with:
+          path: .cache/plugin/social
+          key: social-${{ hashFiles('mkdocs.yml') }}-${{ hashFiles('docs/**/*.md') }}
+          restore-keys: |
+            social-${{ hashFiles('mkdocs.yml') }}-
+            social-

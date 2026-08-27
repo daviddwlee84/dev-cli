@@ -1,0 +1,87 @@
+# <Title describing the SYMPTOM, not the root cause>
+
+<!-- Examples of good titles:
+     - "tmux2k bandwidth segment shows huge bogus number (uint64 underflow)"
+     - "ssh agent socket lost after switching tmux clients"
+     - "chezmoi modify_ file silently overwritten by chezmoi add"
+     Bad titles (root-cause-first, harder to grep):
+     - "tmux2k script underflow bug"
+     - "tmux update-environment doesn't preserve SSH_AUTH_SOCK"
+     - "chezmoi add doesn't respect modify_ prefix" -->
+
+**Symptoms** (grep this section): <verbatim error messages, observable
+behaviour, distinctive numbers/strings the user/agent will type when
+searching>
+**First seen**: YYYY-MM
+**Affects**: <tool name and version range, OS, architecture if relevant>
+**Status**: workaround documented / fixed upstream in vX.Y / WONTFIX / graduated to AGENTS.md invariant
+
+## Symptom
+
+Full error messages **verbatim** — copy-paste from the actual terminal, do
+NOT paraphrase. Paraphrasing throws away the searchable bits.
+
+```
+$ command-that-failed
+Exact error message including
+multi-line stack traces, error codes,
+and any distinctive identifiers
+```
+
+Reproduction steps if applicable:
+
+1. …
+2. …
+3. Observe: <symptom>
+
+If non-deterministic, note triggering conditions (long-running, after sleep/wake,
+after specific other operation, etc.).
+
+## Root cause
+
+Why this happens. Reference upstream source, docs, or issue tracker. Be
+specific about the *mechanism*, not just the *category*.
+
+> Bad: "It's a buffer overflow somewhere in the plugin."
+> Good: "The bandwidth segment script subtracts the previous byte counter
+> from the current one as `uint64`; when the previous snapshot is larger
+> (interface reset, counter wrap), the underflow yields `2^64 - 1`."
+
+## Workaround
+
+Copy-pasteable commands or config diff. Should be self-contained — assume
+future-you doesn't remember the surrounding context.
+
+```diff
+- old line
++ new line
+```
+
+```sh
+# commands to apply
+```
+
+If there are multiple workarounds with trade-offs, list them with verdicts
+(see options table in backlog template).
+
+## Prevention
+
+How to avoid stepping on this again. Possible forms:
+
+- Linked from `AGENTS.md` Hard invariant: <link>
+- Documented inline in <config file> as a NOTE comment
+- Convention: "always do X before Y"
+- N/A — accept and watch for the symptom
+
+If the trap is severe enough (silent corruption, cross-machine recurrence,
+non-obvious workaround), consider whether to graduate it to an `AGENTS.md`
+Hard invariant.
+
+## Related
+
+- Backlog research that surfaced or queued the real fix:
+  `backlog/<slug>.md`
+- TODO entry tracking the real fix: `TODO.md` <P-tag> "<entry>"
+- Sibling pitfalls: `pitfalls/<related-slug>.md`
+- Upstream issue/PR: <link>
+- Source code reference: <link to specific file/line>

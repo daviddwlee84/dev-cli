@@ -1,0 +1,18 @@
+# Agent artifact directories tracked by agent-history-hygiene.
+#
+# One path per line, relative to the repo root. Used by:
+#   - scripts/stage-agent-artifacts.sh (git-add targets)
+#   - scripts/bootstrap-project.sh     (rendering `files:` regex in
+#                                       .pre-commit-config.yaml)
+#   - assets/redact_secrets.py         (DEFAULT_PATHS)
+#
+# Blank lines and `#` comments are ignored. Keep trailing slashes on
+# directory entries so regex joining (alternation) stays unambiguous.
+
+.specstory/history
+.claude/plans
+.cursor/plans
+.cursor/rules
+.opencode/plans
+.specify
+.codex

@@ -1,0 +1,9 @@
+  # Social cards: per-page OG/Twitter preview image + og:*/twitter: meta so
+  # shared links unfurl as rich cards (Discord/Slack/X). Needs the [imaging]
+  # extra (cairosvg/pillow) + system cairo/pango — see pyproject.toml and the
+  # docs.yml CI "social cards" step. For CJK sites the default Latin font
+  # renders titles as tofu boxes; add-language.sh sets a CJK font_family when
+  # you add zh-TW/zh-CN/ja/ko.
+  - social:
+      cards_layout_options:
+        background_color: "#3f51b5" # Material indigo 500, matches theme.palette

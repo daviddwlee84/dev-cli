@@ -1,0 +1,61 @@
+---
+name: SKILL_NAME_PLACEHOLDER
+description: SKILL_DESCRIPTION_PLACEHOLDER (replace this — include "Use when..." with at least 3 concrete trigger contexts; target 120-500 chars and never exceed 1024.)
+---
+
+# SKILL_TITLE_PLACEHOLDER
+
+One-paragraph overview of what this skill does and why it exists.
+
+## When to use
+
+- (replace) Concrete trigger phrase 1 — e.g., "user asks to set up X"
+- Concrete trigger phrase 2
+- Concrete trigger phrase 3
+
+## When NOT to use
+
+- (replace) Adjacent-but-different task that should go to a different skill
+- Single-step tasks the agent handles fine without a skill
+
+## Workflow
+
+### 1. (replace) First step
+
+Imperative description. Explain *why* if it matters.
+
+```bash
+# Concrete command if applicable
+```
+
+### 2. Next step
+
+…
+
+## Available scripts
+
+(Delete this section if the skill has no `scripts/`.)
+
+- **`scripts/example.sh`** — One-line description.
+  - Flags: `--help`, `--dry-run`, `--example FLAG`
+
+## Bundled assets
+
+(Delete this section if no `assets/`.)
+
+- `assets/example.template` — One-line description of when it's used.
+
+## Reference files
+
+(Delete this section if no `references/`.)
+
+- `references/example.md` — Read this **when** [load condition].
+
+## Gotchas
+
+(Don't delete this section. Empty `## Gotchas` is a yellow flag — it means
+either you haven't iterated on the skill yet, or the domain is genuinely
+gotcha-free. Be honest about which.)
+
+- (replace) Specific environment-quirk the agent will get wrong by default
+- Another concrete trap with the workaround

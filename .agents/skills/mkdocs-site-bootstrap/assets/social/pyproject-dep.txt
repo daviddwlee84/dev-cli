@@ -1,0 +1,4 @@
+    # [imaging] pulls cairosvg + pillow for the `social` plugin (OG/Twitter
+    # cards). Also needs system cairo/pango/libffi — installed via apt in the
+    # docs.yml "social cards" step (and brew/apt locally).
+    "mkdocs-material[imaging]>=9.5,<10",

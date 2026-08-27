@@ -1,0 +1,69 @@
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#   # Add deps here, e.g.:
+#   # "httpx>=0.27,<1",
+# ]
+# ///
+"""SCRIPT_NAME — one-line description.
+
+Self-contained via PEP 723 inline metadata. Run with `uv run`:
+
+    uv run SCRIPT_NAME [OPTIONS] ARGS
+
+Exit codes:
+  0  success
+  1  invalid arguments
+  2  required input missing
+  3  external system failure
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+
+
+def make_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(
+        prog="SCRIPT_NAME",
+        description="One-paragraph description of what this script does.",
+        epilog=(
+            "Examples:\n"
+            "  uv run SCRIPT_NAME foo\n"
+            "  uv run SCRIPT_NAME --dry-run foo\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p.add_argument("target", help="The thing to process.")
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show what would happen without doing it.",
+    )
+    return p
+
+
+def log(msg: str) -> None:
+    """Diagnostics → stderr."""
+    print(msg, file=sys.stderr)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = make_parser().parse_args(argv)
+
+    log(f"Processing: {args.target}")
+
+    if args.dry_run:
+        log(f"[dry-run] Would do work on: {args.target}")
+        return 0
+
+    # Real work goes here. Emit structured data on stdout.
+    json.dump({"target": args.target, "status": "ok"}, sys.stdout)
+    sys.stdout.write("\n")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

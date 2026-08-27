@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "skills": {
+    "agent-history-hygiene": {
+      "source": "daviddwlee84/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/local/agent-history-hygiene/SKILL.md",
+      "computedHash": "dff79bfa640a7b5791975cdd8893e25230334bc3b21067fa06bfca3ff9acf9e4"
+    },
+    "mkdocs-site-bootstrap": {
+      "source": "daviddwlee84/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/local/mkdocs-site-bootstrap/SKILL.md",
+      "computedHash": "976267291b56eb84d845733f3eb0e4b2427157e42449c2d75c5c4102ff712eae"
+    },
+    "project-knowledge-harness": {
+      "source": "daviddwlee84/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/local/project-knowledge-harness/SKILL.md",
+      "computedHash": "0a8d0b4888de715160f947499408251de0530ccb5f7e8bb65c9c994b685e5d5a"
+    },
+    "skill-author": {
+      "source": "daviddwlee84/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/local/skill-author/SKILL.md",
+      "computedHash": "6d873127fb75940634d2b568c7a680056b81fd9671ff3d9717ad654fc53cfeb9"
+    },
+    "skill-creator": {
+      "source": "daviddwlee84/agent-skills",
+      "sourceType": "github",
+      "skillPath": "skills/vendor/skill-creator/SKILL.md",
+      "computedHash": "5ea13a6d9f0d4bb694405d79acd00cadec0d21bb138c4dd10fcf3c500cb835c2"
+    }
+  }
+}

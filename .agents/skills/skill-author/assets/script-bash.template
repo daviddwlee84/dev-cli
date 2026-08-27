@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# SCRIPT_NAME — one-line description.
+#
+# Bash 3.2 compatible (works on stock macOS).
+
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage: SCRIPT_NAME [OPTIONS] ARGS
+
+One-paragraph description of what this script does.
+
+Options:
+  --dry-run          Show what would happen without doing it.
+  --help, -h         Show this help and exit.
+
+Examples:
+  SCRIPT_NAME foo
+  SCRIPT_NAME --dry-run foo
+
+Exit codes:
+  0  success
+  1  invalid arguments
+  2  required input missing
+EOF
+}
+
+# Logging: data → stdout, diagnostics → stderr.
+log()  { printf '%s\n' "$*" >&2; }
+warn() { printf 'warn: %s\n' "$*" >&2; }
+die()  { printf 'error: %s\n' "$*" >&2; exit "${2:-1}"; }
+
+DRY_RUN=0
+ARGS=()
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dry-run) DRY_RUN=1; shift ;;
+    --help|-h) usage; exit 0 ;;
+    --) shift; while [ $# -gt 0 ]; do ARGS+=("$1"); shift; done ;;
+    -*) die "unknown flag: $1 (try --help)" 1 ;;
+    *)  ARGS+=("$1"); shift ;;
+  esac
+done
+
+if [ "${#ARGS[@]}" -eq 0 ]; then
+  die "missing required argument (try --help)" 1
+fi
+
+main() {
+  local target="${ARGS[0]}"
+  log "Processing: $target"
+
+  if [ "$DRY_RUN" = "1" ]; then
+    log "[dry-run] Would do work on: $target"
+    return 0
+  fi
+
+  # Real work goes here. Emit structured data on stdout.
+  printf '{"target":"%s","status":"ok"}\n' "$target"
+}
+
+main

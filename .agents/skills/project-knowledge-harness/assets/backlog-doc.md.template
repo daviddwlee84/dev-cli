@@ -1,0 +1,47 @@
+# <Topic title>
+
+**Status**: P? / P1 / P2 / P3 / blocked / deferred / superseded / shipped
+**Effort**: S / M / L / XL
+**Related**: `TODO.md` · code paths · related docs
+
+## Context
+
+Why this surfaced. Trigger (conversation, bug, new tool, recurring annoyance).
+Date helps — "2026-04, came up while reviewing X".
+
+## Investigation
+
+What's already been tried / read / measured. **This is the section that saves
+future-you time.** Be specific:
+
+- Commands run + relevant output
+- Docs/issue/SO links read
+- Benchmark numbers
+- Error messages copy-pasted in full (not paraphrased)
+
+## Options considered
+
+| Option | Pros | Cons |
+|---|---|---|
+| A. … | … | … |
+| B. … | … | … |
+
+## Current blocker / open questions
+
+Why this is still on the backlog. One of:
+
+- Waiting on upstream X (link)
+- Need host/data Y to verify
+- Trade-offs unclear, need user preference
+- Effort estimate exceeds current budget
+
+## Decision (if any)
+
+`2026-04 deferred — waiting for X release` or
+`2026-04 chose option B because …`
+
+Dates matter. A 6-month-old "decided to use mise" needs re-validation.
+
+## References
+
+Issues, PRs, SO links, related discussions.
