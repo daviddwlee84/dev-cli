@@ -373,6 +373,14 @@ Interactive dashboard over the inventory
 dev tui
 ```
 
+### `dev tui tools`
+
+List the external tool bindings and whether each one works here
+
+```
+dev tui tools
+```
+
 ### `dev wt`
 
 Create, list, open and remove worktrees
@@ -416,13 +424,26 @@ dev wt open <branch> [flags]
 
 - `-r, --repo` — repository (default: the current one)
 
+### `dev wt plan`
+
+Show what a new worktree of this repo would be provisioned with
+
+```
+dev wt plan [flags]
+```
+
+- `-r, --repo` — repository (default: the current one)
+- `--write` — seed a .dev.toml in the repository from what was detected
+
 ### `dev wt provision`
 
 Re-run provisioning for an existing worktree
 
 ```
-dev wt provision [path]
+dev wt provision [path] [flags]
 ```
+
+- `--dry-run` — show the plan instead of applying it
 
 ### `dev wt rm`
 

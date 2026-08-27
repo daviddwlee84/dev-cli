@@ -291,26 +291,82 @@ func TestRepoOverrideWins(t *testing.T) {
 	}
 }
 
-func TestDetect(t *testing.T) {
+func TestDetectEcosystems(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module x\n"), 0o644)
-	got := wt.Detect(dir)
-	if len(got) != 1 || got[0] != "go mod download" {
-		t.Errorf("Detect = %v, want [go mod download]", got)
+	got := wt.DetectEcosystems(dir)
+	if len(got) != 1 || got[0].Name != "go" || got[0].Install != "go mod download" {
+		t.Fatalf("DetectEcosystems = %+v", got)
+	}
+	// Go keeps everything in a global cache, so there is nothing to copy and
+	// the copy/link question does not arise.
+	if len(got[0].DepDirs) != 0 {
+		t.Errorf("go should declare no dependency directories, got %v", got[0].DepDirs)
 	}
 
-	// Two JS lockfiles: only one package manager should be chosen.
+	// Two JS lockfiles: only one manager, chosen by priority.
 	js := t.TempDir()
 	os.WriteFile(filepath.Join(js, "pnpm-lock.yaml"), []byte(""), 0o644)
 	os.WriteFile(filepath.Join(js, "package-lock.json"), []byte("{}"), 0o644)
-	got = wt.Detect(js)
-	if len(got) > 1 {
-		t.Errorf("only one JS package manager should run, got %v", got)
+	got = wt.DetectEcosystems(js)
+	if len(got) != 1 {
+		t.Fatalf("only one JS manager should be chosen, got %+v", got)
+	}
+	if got[0].Manager != "pnpm" {
+		t.Errorf("pnpm should win over npm, got %q", got[0].Manager)
 	}
 
-	if got := wt.Detect(t.TempDir()); len(got) != 0 {
-		t.Errorf("an empty directory needs no provisioning, got %v", got)
+	// Several languages coexist.
+	multi := t.TempDir()
+	os.WriteFile(filepath.Join(multi, "uv.lock"), []byte(""), 0o644)
+	os.WriteFile(filepath.Join(multi, "package-lock.json"), []byte("{}"), 0o644)
+	if got := wt.DetectEcosystems(multi); len(got) != 2 {
+		t.Errorf("want python and node, got %+v", got)
 	}
+
+	if got := wt.DetectEcosystems(t.TempDir()); len(got) != 0 {
+		t.Errorf("an empty directory has no ecosystem, got %+v", got)
+	}
+}
+
+func TestStrategySafety(t *testing.T) {
+	python := wt.DetectEcosystems(withFiles(t, "uv.lock"))[0]
+	node := wt.DetectEcosystems(withFiles(t, "package-lock.json"))[0]
+
+	// A virtualenv cannot survive being copied or shared; node_modules can be
+	// copied but should not be shared.
+	if ok, why := python.SupportsStrategy(wt.Copy); ok {
+		t.Error("copying a virtualenv must not be allowed")
+	} else if why == "" {
+		t.Error("a refusal must explain itself")
+	}
+	if ok, _ := python.SupportsStrategy(wt.Link); ok {
+		t.Error("sharing a virtualenv must not be allowed")
+	}
+	if ok, _ := node.SupportsStrategy(wt.Copy); !ok {
+		t.Error("node_modules copies soundly")
+	}
+	if ok, _ := node.SupportsStrategy(wt.Link); ok {
+		t.Error("sharing one node_modules between checkouts should not be a default-allowed strategy")
+	}
+	for _, e := range []wt.Ecosystem{python, node} {
+		for _, s := range []wt.Strategy{wt.Reinstall, wt.Skip} {
+			if ok, _ := e.SupportsStrategy(s); !ok {
+				t.Errorf("%s should always support %s", e.Name, s)
+			}
+		}
+	}
+}
+
+func withFiles(t *testing.T, names ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, n := range names {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(""), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
 }
 
 // asErr is errors.As without importing errors into every call site.

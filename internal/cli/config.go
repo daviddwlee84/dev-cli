@@ -200,8 +200,67 @@ link = []
 #   post_create = ["uv sync", "pre-commit install"]
 post_create = "auto"
 
+# How a new worktree gets its installed dependencies:
+#   reinstall  run the install command (always correct, can be slow)
+#   copy       duplicate the directory from the source checkout (fast)
+#   link       share one directory between checkouts (fastest, and risky)
+#   skip       leave the worktree without dependencies
+#
+# dev narrows an unsound choice back to reinstall and says why — copying a
+# virtualenv cannot work, because it bakes its own absolute path into
+# pyvenv.cfg and bin/activate.
+strategy = "reinstall"
+
+# Per project type. See what applies to a given repo with "dev wt plan".
+# [worktree.strategies]
+# node = "copy"       # node_modules copies soundly and reinstalling is slow
+
 # Cap on a single post-create command.
 provision_timeout = "10m"
+
+[tui]
+# External programs the dashboard hands the terminal to, each on its own key.
+# They run through your shell in the selected row's checkout, so arguments,
+# environment variables and your own scripts all behave as typed.
+#
+# Listed in full rather than left implicit: what is bound should be something
+# you can read, not something you discover by pressing keys. Replace freely —
+# a configured list replaces these entirely. See "dev tui tools".
+#
+# Keys are case-sensitive, and cannot take one the dashboard already uses
+# (j k g G h l tab / enter o p c s a r q 0 1 2 3 ?); dev reports a clash on load.
+
+[[tui.tools]]
+key  = "L"
+name = "lazygit"
+run  = "lazygit"
+
+[[tui.tools]]
+key  = "Y"
+name = "yazi"
+run  = "yazi"
+
+[[tui.tools]]
+key  = "E"
+name = "editor"
+run  = "$EDITOR ."
+
+[[tui.tools]]
+key  = "S"
+name = "shell"
+run  = "$SHELL"
+
+# Add your own — an editor, a script, an alias you already reach for:
+#
+# [[tui.tools]]
+# key  = "V"
+# name = "nvim"
+# run  = "nvim ."
+#
+# [[tui.tools]]
+# key  = "B"
+# name = "vibe"
+# run  = "vibe"
 
 [stats]
 # Record activity locally for "dev stats --heatmap".

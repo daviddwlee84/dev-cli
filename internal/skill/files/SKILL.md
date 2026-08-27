@@ -96,6 +96,8 @@ dev sweep --apply          # act on it, confirming each change
 
 dev wt create feat/auth --base main    # worktree at the configured path
 dev wt list                            # every worktree of this repo
+dev wt plan                            # what a new worktree would be set up with
+dev wt plan --write                    # seed a committed .dev.toml from it
 dev wt rm feat/auth                    # remove the checkout; the branch stays
 
 dev repo list              # every repo under the scan roots
@@ -150,15 +152,23 @@ or `dev repo list` to see what this machine is actually configured for.
    another host without `--force`. Before overriding, confirm that machine has
    pushed.
 
-6. **Do not create a worktree per agent.** Worktrees isolate *change streams*;
+6. **Check `dev wt plan` before blaming a worktree.** A worktree that comes up
+   broken is nearly always a provisioning gap, not a git problem. The plan
+   shows the detected project types, which tools are missing, and exactly what
+   would be copied or run. Dependencies arrive by a per-ecosystem strategy —
+   `reinstall` (default), `copy`, `link` or `skip` — and dev refuses an unsound
+   one rather than producing a broken checkout: a virtualenv cannot be copied,
+   because it bakes its own absolute path into `pyvenv.cfg`.
+
+7. **Do not create a worktree per agent.** Worktrees isolate *change streams*;
    panes isolate *agents*. Several agents working on disjoint files of one
    feature belong in one checkout.
 
-7. **`dev adopt` without `--apply` changes nothing.** Show the user its report
+8. **`dev adopt` without `--apply` changes nothing.** Show the user its report
    rather than applying it for them — which branches count as work in flight is
    their judgement, not yours.
 
-8. **Commit messages stay English** and follow Conventional Commits, even when
+9. **Commit messages stay English** and follow Conventional Commits, even when
    the conversation is in another language — see the companion `git-workflow`
    skill, which owns commit conventions, SemVer and branch naming. This skill
    does not duplicate them.

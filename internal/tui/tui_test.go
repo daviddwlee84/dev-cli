@@ -2,11 +2,14 @@ package tui_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
+	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	"github.com/daviddwlee84/dev-cli/internal/tui"
@@ -24,9 +27,10 @@ func row(id, name string, st task.State, next string) inventory.Row {
 
 // recorder captures which actions the dashboard triggered.
 type recorder struct {
-	opened []string
-	parked []string
-	nexts  map[string]string
+	opened  []string
+	parked  []string
+	started []string
+	nexts   map[string]string
 }
 
 func newActions(r *recorder, rows []inventory.Row) tui.Actions {
@@ -35,6 +39,15 @@ func newActions(r *recorder, rows []inventory.Row) tui.Actions {
 		Runtime: runtime.None{},
 		Reload: func(context.Context) ([]inventory.Row, error) {
 			return rows, nil
+		},
+		ReloadRepos: func(context.Context) ([]tui.RepoRow, error) { return nil, nil },
+		OpenRepo: func(_ context.Context, rr tui.RepoRow) (string, error) {
+			r.opened = append(r.opened, "repo:"+rr.Repo.Name)
+			return "opened", nil
+		},
+		Start: func(_ context.Context, rr tui.RepoRow, name string) (string, error) {
+			r.started = append(r.started, rr.Repo.Name+"/"+name)
+			return "started", nil
 		},
 		Open: func(_ context.Context, t *task.Task) (string, error) {
 			r.opened = append(r.opened, t.ID)
@@ -61,10 +74,12 @@ func send(m tui.Model, msgs ...tea.Msg) tui.Model {
 		var cmd tea.Cmd
 		cur, cmd = cur.Update(msg)
 		// Follow the command chain, so an action's resulting message (and the
-		// reload it triggers) is applied too.
+		// reload it triggers) is applied too. Commands that do not return
+		// promptly are the cursor's blink timers; running those would make the
+		// suite sleep for half a second per keystroke.
 		for i := 0; cmd != nil && i < 8; i++ {
-			out := cmd()
-			if out == nil {
+			out, ok := runQuickly(cmd)
+			if !ok || out == nil {
 				break
 			}
 			if _, isBatch := out.(tea.BatchMsg); isBatch {
@@ -74,6 +89,19 @@ func send(m tui.Model, msgs ...tea.Msg) tui.Model {
 		}
 	}
 	return cur.(tui.Model)
+}
+
+// runQuickly executes a command, giving up on anything that blocks — which in
+// practice means the cursor blink timers.
+func runQuickly(cmd tea.Cmd) (tea.Msg, bool) {
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	select {
+	case msg := <-done:
+		return msg, true
+	case <-time.After(100 * time.Millisecond):
+		return nil, false
+	}
 }
 
 func key(s string) tea.KeyMsg {
@@ -103,7 +131,7 @@ func TestViewRendersTasksAndHelp(t *testing.T) {
 		row("a", "token refresh", task.Hot, "add the regression test"),
 		row("b", "orderbook", task.Warm, ""),
 	}
-	m := tui.New(newActions(&recorder{}, rows), rows)
+	m := tui.New(newActions(&recorder{}, rows), rows, nil)
 	m = send(m, tea.WindowSizeMsg{Width: 120, Height: 30})
 
 	out := m.View()
@@ -115,6 +143,9 @@ func TestViewRendersTasksAndHelp(t *testing.T) {
 	if !strings.Contains(out, "q quit") {
 		t.Error("the footer should show the key bindings")
 	}
+	if !strings.Contains(out, "TASKS") || !strings.Contains(out, "REPOS") {
+		t.Errorf("both views should be visible in the tab strip:\n%s", out)
+	}
 }
 
 func TestFilterByState(t *testing.T) {
@@ -123,7 +154,7 @@ func TestFilterByState(t *testing.T) {
 		row("b", "warm task", task.Warm, ""),
 		row("c", "done task", task.Done, ""),
 	}
-	m := tui.New(newActions(&recorder{}, rows), rows)
+	m := tui.New(newActions(&recorder{}, rows), rows, nil)
 
 	// Done tasks are hidden by default — a finished task is not work in progress.
 	if strings.Contains(m.View(), "done task") {
@@ -146,7 +177,7 @@ func TestFilterByState(t *testing.T) {
 
 func TestCursorStaysInBounds(t *testing.T) {
 	rows := []inventory.Row{row("a", "one", task.Hot, ""), row("b", "two", task.Hot, "")}
-	m := tui.New(newActions(&recorder{}, rows), rows)
+	m := tui.New(newActions(&recorder{}, rows), rows, nil)
 
 	// Past the end and past the start; neither should panic or select nothing.
 	m = send(m, key("down"), key("down"), key("down"), key("down"))
@@ -162,7 +193,7 @@ func TestCursorStaysInBounds(t *testing.T) {
 func TestEnterOpensSelectedTask(t *testing.T) {
 	rows := []inventory.Row{row("a", "first", task.Hot, ""), row("b", "second", task.Warm, "")}
 	rec := &recorder{}
-	m := tui.New(newActions(rec, rows), rows)
+	m := tui.New(newActions(rec, rows), rows, nil)
 
 	send(m, key("down"), key("enter"))
 	if len(rec.opened) != 1 || rec.opened[0] != "b" {
@@ -173,7 +204,7 @@ func TestEnterOpensSelectedTask(t *testing.T) {
 func TestParkPromptsForNextAction(t *testing.T) {
 	rows := []inventory.Row{row("a", "first", task.Hot, "")}
 	rec := &recorder{}
-	m := tui.New(newActions(rec, rows), rows)
+	m := tui.New(newActions(rec, rows), rows, nil)
 
 	m = send(m, key("p"))
 	if !strings.Contains(m.View(), "park first") {
@@ -195,7 +226,7 @@ func TestParkPromptsForNextAction(t *testing.T) {
 func TestEscCancelsPrompt(t *testing.T) {
 	rows := []inventory.Row{row("a", "first", task.Hot, "")}
 	rec := &recorder{}
-	m := tui.New(newActions(rec, rows), rows)
+	m := tui.New(newActions(rec, rows), rows, nil)
 
 	m = send(m, key("p"))
 	m = send(m, key("esc"))
@@ -210,9 +241,9 @@ func TestEscCancelsPrompt(t *testing.T) {
 func TestEditNextSeedsCurrentValue(t *testing.T) {
 	rows := []inventory.Row{row("a", "first", task.Hot, "existing note")}
 	rec := &recorder{}
-	m := tui.New(newActions(rec, rows), rows)
+	m := tui.New(newActions(rec, rows), rows, nil)
 
-	m = send(m, key("n"))
+	m = send(m, key("c"))
 	if !strings.Contains(m.View(), "existing note") {
 		t.Errorf("editing should start from the current value:\n%s", m.View())
 	}
@@ -223,18 +254,21 @@ func TestEditNextSeedsCurrentValue(t *testing.T) {
 }
 
 func TestEmptyInventoryExplainsItself(t *testing.T) {
-	m := tui.New(newActions(&recorder{}, nil), nil)
+	m := tui.New(newActions(&recorder{}, nil), nil, nil)
 	out := m.View()
-	if !strings.Contains(out, "Nothing to show") {
+	if !strings.Contains(out, "No tasks recorded yet") {
 		t.Errorf("an empty dashboard should say what to do:\n%s", out)
 	}
+	if !strings.Contains(out, "dev adopt") {
+		t.Errorf("it should point at the way to import existing work:\n%s", out)
+	}
 	// Acting on nothing must not panic.
-	send(m, key("enter"), key("p"), key("n"))
+	send(m, key("enter"), key("p"), key("c"))
 }
 
 func TestQuitStopsRendering(t *testing.T) {
 	rows := []inventory.Row{row("a", "first", task.Hot, "")}
-	m := tui.New(newActions(&recorder{}, rows), rows)
+	m := tui.New(newActions(&recorder{}, rows), rows, nil)
 	updated, cmd := m.Update(key("q"))
 	if cmd == nil {
 		t.Fatal("q should return a quit command")
@@ -250,11 +284,196 @@ func TestSummaryCountsStates(t *testing.T) {
 		row("b", "two", task.Hot, ""),
 		row("c", "three", task.Warm, ""),
 	}
-	got := tui.New(newActions(&recorder{}, rows), rows).Summary()
+	got := tui.New(newActions(&recorder{}, rows), rows, nil).Summary()
 	if !strings.Contains(got, "2 hot") || !strings.Contains(got, "1 warm") {
 		t.Errorf("Summary = %q", got)
 	}
-	if got := tui.New(newActions(&recorder{}, nil), nil).Summary(); got != "no tasks" {
+	if got := tui.New(newActions(&recorder{}, nil), nil, nil).Summary(); got != "no tasks" {
 		t.Errorf("empty Summary = %q", got)
+	}
+}
+
+func repoRow(name string, tasks ...*task.Task) tui.RepoRow {
+	return tui.RepoRow{
+		Repo:  repo.Repo{Name: name, Path: "/src/" + name, HasGit: true},
+		Tasks: tasks,
+	}
+}
+
+func TestTabSwitchesViews(t *testing.T) {
+	rows := []inventory.Row{row("a", "token refresh", task.Hot, "")}
+	repos := []tui.RepoRow{repoRow("api"), repoRow("web")}
+	m := tui.New(newActions(&recorder{}, rows), rows, repos)
+
+	if m.CurrentView() != tui.ViewTasks {
+		t.Fatal("the dashboard should open on the task list")
+	}
+	m = send(m, key("tab"))
+	if m.CurrentView() != tui.ViewRepos {
+		t.Fatal("tab should switch to the repository list")
+	}
+	out := m.View()
+	if !strings.Contains(out, "api") || !strings.Contains(out, "web") {
+		t.Errorf("the repo view should list repositories:\n%s", out)
+	}
+	// l and h double as right/left, since a list has no horizontal axis.
+	if send(m, key("h")).CurrentView() != tui.ViewTasks {
+		t.Error("h should move to the previous view")
+	}
+	if send(m, key("tab")).CurrentView() != tui.ViewTasks {
+		t.Error("tab should cycle back round")
+	}
+}
+
+// The commonest first run is a machine full of repositories and no tasks yet.
+// An empty dashboard would be the wrong answer to "what do I have here?"
+func TestReposViewWorksWithNoTasks(t *testing.T) {
+	repos := []tui.RepoRow{repoRow("api"), repoRow("web")}
+	m := tui.New(newActions(&recorder{}, nil), nil, repos)
+
+	out := m.View()
+	if !strings.Contains(out, "tab for the repository list") {
+		t.Errorf("the empty task list should point at the repo list:\n%s", out)
+	}
+	m = send(m, key("tab"))
+	if !strings.Contains(m.View(), "api") {
+		t.Errorf("repos should still be browsable:\n%s", m.View())
+	}
+}
+
+func TestVimNavigation(t *testing.T) {
+	var rows []inventory.Row
+	for i := 0; i < 20; i++ {
+		rows = append(rows, row(fmt.Sprintf("t%02d", i), fmt.Sprintf("task %02d", i), task.Hot, ""))
+	}
+	m := tui.New(newActions(&recorder{}, rows), rows, nil)
+	m = send(m, tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m = send(m, key("G"))
+	if !strings.Contains(m.View(), "▸") {
+		t.Fatal("G should leave the cursor somewhere visible")
+	}
+	m = send(m, key("g"))
+	// After g the first row must be selected, so it carries the marker.
+	lines := strings.Split(m.View(), "\n")
+	var markerLine string
+	for _, l := range lines {
+		if strings.Contains(l, "▸") {
+			markerLine = l
+			break
+		}
+	}
+	if !strings.Contains(markerLine, "task 00") {
+		t.Errorf("g should jump to the top, cursor is on %q", markerLine)
+	}
+
+	// ctrl+d moves further than a single j.
+	oneDown := send(m, key("j"))
+	halfPage := send(m, tea.KeyMsg{Type: tea.KeyCtrlD})
+	if oneDown.View() == halfPage.View() {
+		t.Error("ctrl+d should move further than j")
+	}
+}
+
+func TestFilterNarrowsAsYouType(t *testing.T) {
+	rows := []inventory.Row{
+		row("a", "token refresh", task.Hot, ""),
+		row("b", "orderbook rewrite", task.Hot, ""),
+	}
+	m := tui.New(newActions(&recorder{}, rows), rows, nil)
+
+	m = send(m, key("/"))
+	for _, k := range typeText("token") {
+		m = send(m, k)
+	}
+	out := m.View()
+	if !strings.Contains(out, "token refresh") || strings.Contains(out, "orderbook") {
+		t.Errorf("the filter should narrow live:\n%s", out)
+	}
+
+	// esc clears the filter rather than quitting.
+	m = send(m, key("esc"))
+	if !strings.Contains(m.View(), "orderbook") {
+		t.Errorf("esc should clear the filter:\n%s", m.View())
+	}
+}
+
+// Terms are matched independently, because the order words come to mind in is
+// rarely the order they appear in.
+func TestFilterMatchesTermsOutOfOrder(t *testing.T) {
+	rows := []inventory.Row{row("a", "api token auth", task.Hot, "")}
+	m := tui.New(newActions(&recorder{}, rows), rows, nil)
+
+	m = send(m, key("/"))
+	for _, k := range typeText("auth api") {
+		m = send(m, k)
+	}
+	if !strings.Contains(m.View(), "api token auth") {
+		t.Errorf("out-of-order terms should still match:\n%s", m.View())
+	}
+}
+
+func TestStartTaskFromRepoView(t *testing.T) {
+	repos := []tui.RepoRow{repoRow("api")}
+	rec := &recorder{}
+	m := tui.New(newActions(rec, nil), nil, repos)
+
+	m = send(m, key("tab"), key("s"))
+	if !strings.Contains(m.View(), "start work in api") {
+		t.Fatalf("s should open the start prompt:\n%s", m.View())
+	}
+	for _, k := range typeText("token refresh") {
+		m = send(m, k)
+	}
+	send(m, key("enter"))
+
+	if len(rec.started) != 1 || rec.started[0] != "api/token refresh" {
+		t.Errorf("s should start a task in the selected repo, got %v", rec.started)
+	}
+}
+
+func TestEnterOpensRepoInRepoView(t *testing.T) {
+	repos := []tui.RepoRow{repoRow("api")}
+	rec := &recorder{}
+	m := tui.New(newActions(rec, nil), nil, repos)
+
+	send(m, key("tab"), key("enter"))
+	if len(rec.opened) != 1 || rec.opened[0] != "repo:api" {
+		t.Errorf("enter in the repo view should open the repo, got %v", rec.opened)
+	}
+}
+
+// Repositories with work in flight belong at the top: that is what someone
+// opening the dashboard is looking for, not alphabetical order.
+func TestReposSortWorkInFlightFirst(t *testing.T) {
+	hot := repoRow("zzz-busy", &task.Task{ID: "x", Repo: "zzz-busy", Branch: "feat/x", State: task.Hot})
+	idle := repoRow("aaa-idle")
+	m := tui.New(newActions(&recorder{}, nil), nil, []tui.RepoRow{idle, hot})
+	m = send(m, key("tab"), tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	out := m.View()
+	if strings.Index(out, "zzz-busy") > strings.Index(out, "aaa-idle") {
+		t.Errorf("the repo with a hot task should sort first:\n%s", out)
+	}
+}
+
+func TestToolsOnlyListedWhenAvailable(t *testing.T) {
+	rows := []inventory.Row{row("a", "one", task.Hot, "")}
+	actions := newActions(&recorder{}, rows)
+	actions.Tools = []tui.Tool{
+		{Key: "L", Name: "lazygit", Command: []string{"lazygit"}, Available: func() bool { return true }},
+		{Key: "Z", Name: "absent", Command: []string{"absent"}, Available: func() bool { return false }},
+	}
+	m := tui.New(actions, rows, nil)
+
+	out := m.View()
+	if !strings.Contains(out, "L lazygit") {
+		t.Errorf("an available tool should be advertised:\n%s", out)
+	}
+	if strings.Contains(out, "Z absent") {
+		t.Error("a tool that is not installed should not be offered")
+	}
+	if len(m.Tools()) != 1 {
+		t.Errorf("Tools() should filter by availability, got %d", len(m.Tools()))
 	}
 }

@@ -17,13 +17,17 @@ import (
 //	# .dev.toml
 //	[worktree]
 //	include     = [".env", "config/local.json"]
-//	link        = ["node_modules"]
 //	post_create = ["make bootstrap"]
+//
+//	[worktree.strategies]
+//	node = "copy"     # node_modules copies soundly; reinstalling is slow here
 type RepoOverride struct {
 	Worktree struct {
 		Include    []string           `toml:"include"`
 		Link       []string           `toml:"link"`
 		PostCreate *config.PostCreate `toml:"post_create"`
+		Strategy   string             `toml:"strategy"`
+		Strategies map[string]string  `toml:"strategies"`
 	} `toml:"worktree"`
 }
 
@@ -47,15 +51,3 @@ func LoadRepoOverride(repoPath string) (RepoOverride, bool) {
 
 // applyOverride replaces only the fields the repo actually set, so a repo that
 // pins post_create still inherits the user's global include list.
-// ApplyOverride is the exported form used by `dev wt provision`.
-func (p *Provisioner) ApplyOverride(o RepoOverride) {
-	if len(o.Worktree.Include) > 0 {
-		p.Include = o.Worktree.Include
-	}
-	if len(o.Worktree.Link) > 0 {
-		p.Link = o.Worktree.Link
-	}
-	if o.Worktree.PostCreate != nil {
-		p.Cmds = *o.Worktree.PostCreate
-	}
-}

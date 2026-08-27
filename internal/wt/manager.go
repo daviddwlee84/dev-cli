@@ -134,16 +134,12 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (*CreateResult,
 	res := &CreateResult{Path: path, Branch: req.Branch, BranchCreated: !branchExisted}
 
 	if !req.NoProvision {
+		// SettingsFor folds in the repo's own .dev.toml, so a project can pin
+		// its setup where a teammate on another machine picks it up too.
 		p := &Provisioner{
-			Include: m.Cfg.Worktree.Include,
-			Link:    m.Cfg.Worktree.Link,
-			Cmds:    m.Cfg.Worktree.PostCreate,
-			Timeout: m.Cfg.Worktree.ProvisionTimeout.Duration,
-			Log:     m.Log,
-		}
-		// Load a per-repo override, so a project can pin its own setup.
-		if override, ok := LoadRepoOverride(repoPath); ok {
-			p.ApplyOverride(override)
+			Settings: SettingsFor(m.Cfg, repoPath),
+			Timeout:  m.Cfg.Worktree.ProvisionTimeout.Duration,
+			Log:      m.Log,
 		}
 		pr, err := p.Provision(ctx, repoPath, path)
 		if err != nil {

@@ -7,10 +7,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN="${BIN:-$ROOT/dev}"
 
-if [[ ! -x "$BIN" ]]; then
-  echo "building $BIN"
-  (cd "$ROOT" && go build -o "$BIN" ./cmd/dev)
-fi
+# Always rebuild. The Go build cache makes this nearly free, and testing a
+# stale binary against fresh assertions is worse than not testing at all.
+echo "building $BIN"
+(cd "$ROOT" && go build -o "$BIN" ./cmd/dev)
 
 SANDBOX="$(mktemp -d)"
 trap 'rm -rf "$SANDBOX"' EXIT

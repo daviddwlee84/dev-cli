@@ -80,15 +80,56 @@ dev done --ff                                      # → done, integrated
 dev sweep                                          # what has gone stale
 ```
 
-The dashboard (`dev`, or `dev tui`) shows the same inventory from the same code
-path, and lets you act on the selected task without retyping its name: `enter`
-opens it, `p` parks it and prompts for the next action, `n` edits that action,
-`1`/`2`/`3` filter by state.
+### The dashboard
 
-It also hands the terminal to the tools you already reach for, running them in
-the selected task's checkout and redrawing when they exit — `l` for lazygit,
-`y` for yazi, `e` for `$EDITOR`, `s` for a shell. Bindings for tools that are
-not installed are not offered.
+Bare `dev` (or `dev tui`) opens two lists, switched with `tab`:
+
+- **TASKS** — the change streams dev is tracking. What am I working on.
+- **REPOS** — every repository under the scan roots, with its branch, dirty
+  state, worktree count and per-state task tally, sorted so anything in flight
+  is at the top. What do I have here.
+
+Both come from the same code paths as `dev ls` and `dev repo list`, so they
+cannot disagree. The repo list matters on day one: with forty repositories and
+no tasks recorded yet, a task-only dashboard would just be empty.
+
+Navigation is vim-style, arrows alongside:
+
+```
+j k        move                 ctrl+d ctrl+u   half a page
+g G        top / bottom         h l / tab       previous / next view
+/          filter as you type   esc             clear, then quit
+```
+
+`enter` opens the selected row in the runtime. In TASKS, `p` parks and prompts
+for the next action and `c` edits it; in REPOS, `s` starts a task right there —
+branch, worktree, session and entry — which is the bridge from "what do I have"
+to "what am I working on" without leaving the dashboard.
+
+**External tools are configured, not fixed.** They run through your shell in
+the selected row's checkout; the dashboard suspends and redraws when they exit:
+
+```toml
+[[tui.tools]]
+key  = "L"
+name = "lazygit"
+run  = "lazygit"
+
+[[tui.tools]]
+key  = "V"
+name = "nvim"
+run  = "nvim ."
+
+[[tui.tools]]
+key  = "B"
+name = "vibe"          # your own scripts and aliases work the same way
+run  = "vibe"
+```
+
+`dev config init` writes the defaults out in full rather than leaving them
+implicit, and `dev tui tools` shows what is bound here and whether each one is
+actually installed — bindings for missing programs are not offered. A tool
+cannot take a key the dashboard already uses; dev reports the clash on load.
 
 Going cold is safe because **the branch is the identity and the directory is a
 cache**. `dev park --cold` refuses unless the branch is pushed, and `dev resume`
@@ -132,8 +173,38 @@ link        = []                       # opt-in; sharing node_modules is risky
 post_create = "auto"                   # uv.lock → uv sync, package-lock.json → npm ci, …
 ```
 
-Per-repo overrides live in a committed `<repo>/.dev.toml`, so they reach every
-machine.
+**Copy or reinstall?** Reinstalling is always correct but can take minutes;
+copying is fast but only sound for dependency trees carrying no absolute paths.
+That is a per-ecosystem fact, not a preference, so dev knows it:
+
+```toml
+[worktree]
+strategy = "reinstall"      # reinstall | copy | link | skip
+
+[worktree.strategies]
+node = "copy"               # node_modules copies soundly
+```
+
+Asking to copy a virtualenv is refused with the reason — it bakes its own
+absolute path into `pyvenv.cfg` and `bin/activate` — and narrowed back to
+reinstalling rather than silently producing a broken checkout.
+
+`dev wt plan` shows exactly what a new worktree of a repository would get:
+which project types were detected, which tools are missing, and every file and
+command involved. `dev wt plan --write` seeds a `<repo>/.dev.toml` from it, so
+a project can commit its own setup and every machine provisions the same way.
+
+```
+$ dev wt plan
+PROJECT  MANAGER  FROM               DEPENDENCIES  TOOL
+node     npm      package-lock.json  node_modules  installed
+python   uv       uv.lock            .venv         installed
+
+   ACTION    WHAT          WHY
+✓  copy      .env          gitignored, so the checkout would not have it
+✓  copy-dir  node_modules  npm dependencies, copied instead of reinstalling
+✓  run       uv sync       uv.lock detected
+```
 
 ## Other things it does
 

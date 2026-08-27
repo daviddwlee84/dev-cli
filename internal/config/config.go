@@ -19,6 +19,7 @@ type Config struct {
 	Runtime  Runtime  `toml:"runtime"`
 	Worktree Worktree `toml:"worktree"`
 	Stats    Stats    `toml:"stats"`
+	TUI      TUI      `toml:"tui"`
 
 	// Source records where the config was loaded from; "" means defaults only.
 	Source string `toml:"-"`
@@ -60,8 +61,78 @@ type Worktree struct {
 	// PostCreate is either the string "auto" (detect from lockfiles) or an
 	// explicit list of shell commands run in the new worktree.
 	PostCreate PostCreate `toml:"post_create"`
+	// Strategy is how a new worktree gets its installed dependencies:
+	// "reinstall" (correct, the default), "copy", "link" or "skip". dev
+	// narrows an unsound choice back to reinstall and says why — copying a
+	// virtualenv, for instance, cannot work, because it bakes its own
+	// absolute path into pyvenv.cfg.
+	Strategy string `toml:"strategy"`
+	// Strategies overrides Strategy per ecosystem ("python", "node", "go",
+	// "rust", "ruby", "elixir").
+	Strategies map[string]string `toml:"strategies"`
 	// ProvisionTimeout caps a single post-create command.
 	ProvisionTimeout Duration `toml:"provision_timeout"`
+}
+
+// TUI configures the interactive dashboard.
+type TUI struct {
+	// Tools are the external programs the dashboard can hand the terminal to,
+	// each on its own key. When empty, DefaultTools applies.
+	//
+	// Configurable rather than fixed because which program you reach for is
+	// personal — nvim or helix, lazygit or gitui, and whatever aliases and
+	// scripts you have built up around your own workflow.
+	Tools []Tool `toml:"tools"`
+}
+
+// Tool is one external program bound to a key in the dashboard.
+type Tool struct {
+	// Key launches it. A single character, and not one of the dashboard's own
+	// bindings — dev reports a clash rather than silently shadowing.
+	Key string `toml:"key"`
+	// Name is shown in the footer.
+	Name string `toml:"name"`
+	// Run is a shell command, executed in the selected row's checkout.
+	Run string `toml:"run"`
+}
+
+// reservedKeys are the dashboard's own bindings. A tool cannot take one,
+// because losing the ability to quit or move is not a trade anyone wants.
+var reservedKeys = map[string]string{
+	"q": "quit", "j": "down", "k": "up", "g": "top", "G": "bottom",
+	"h": "previous view", "l": "next view", "tab": "next view",
+	"/": "filter", "r": "refresh", "o": "open", "p": "park",
+	"c": "edit next action", "s": "start a task", "a": "include done",
+	"0": "clear filters", "1": "hot", "2": "warm", "3": "cold",
+	"?": "help",
+}
+
+// ReservedKey reports the dashboard binding a key would collide with.
+func ReservedKey(key string) (string, bool) {
+	name, ok := reservedKeys[key]
+	return name, ok
+}
+
+// DefaultTools are the programs bound when nothing is configured. They are
+// written out in full by `dev config init` rather than left implicit, so what
+// is bound is visible rather than something to discover by pressing keys.
+func DefaultTools() []Tool {
+	return []Tool{
+		{Key: "L", Name: "lazygit", Run: "lazygit"},
+		{Key: "Y", Name: "yazi", Run: "yazi"},
+		{Key: "E", Name: "editor", Run: "$EDITOR ."},
+		{Key: "S", Name: "shell", Run: "$SHELL"},
+	}
+}
+
+// EffectiveTools returns the configured tools, or the defaults when none are
+// configured. A configured list replaces the defaults entirely — a partial
+// merge would make it unclear which bindings are in effect.
+func (c Config) EffectiveTools() []Tool {
+	if len(c.TUI.Tools) == 0 {
+		return DefaultTools()
+	}
+	return c.TUI.Tools
 }
 
 // Stats configures activity collection for the heatmap.
@@ -94,6 +165,7 @@ func Default() Config {
 			Include:          []string{".env", ".env.local"},
 			Link:             nil,
 			PostCreate:       PostCreate{Auto: true},
+			Strategy:         "reinstall",
 			ProvisionTimeout: Duration{10 * time.Minute},
 		},
 		Stats: Stats{
@@ -141,6 +213,23 @@ func (c Config) Validate() error {
 	}
 	if _, err := Render(c.Paths.WorktreePath, c.probeVars()); err != nil {
 		return fmt.Errorf("paths.worktree_path: %w", err)
+	}
+	seen := map[string]string{}
+	for i, t := range c.TUI.Tools {
+		switch {
+		case t.Key == "":
+			return fmt.Errorf("tui.tools[%d]: key is required", i)
+		case t.Run == "":
+			return fmt.Errorf("tui.tools[%d] (%s): run is required", i, t.Key)
+		}
+		if binding, ok := ReservedKey(t.Key); ok {
+			return fmt.Errorf("tui.tools[%d]: key %q is the dashboard's %q binding; pick another",
+				i, t.Key, binding)
+		}
+		if prev, ok := seen[t.Key]; ok {
+			return fmt.Errorf("tui.tools[%d]: key %q is already bound to %q", i, t.Key, prev)
+		}
+		seen[t.Key] = t.Name
 	}
 	return nil
 }

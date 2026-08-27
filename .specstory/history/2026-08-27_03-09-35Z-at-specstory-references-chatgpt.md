@@ -22057,4 +22057,5156 @@ open(p,'w').write(s)
 PY
 git rm --cached -q -r .claude/plans && cat .gitignore && git add -A && git status --short | grep -v '^A  internal' | head
 ```
+
+```text
+# Build output
+/dev
+/dist/
+*.test
+
+# Worktrees created by agent harnesses. Keep this: without it, a worktree's
+# contents show as untracked files in the main checkout.
+.claude/worktrees/
+
+# Local machine state
+.DS_Store
+
+# Plan files written by the agent harness for this session, not project docs.
+.claude/plans/
+
+D  .claude/plans/composed-chasing-raccoon.md
+M  .gitignore
+M  .specstory/history/2026-08-27_03-09-35Z-at-specstory-references-chatgpt.md
+M  .specstory/statistics.json
+M  README.md
+A  TODO.md
+M  internal/cli/cli_test.go
+M  internal/cli/config.go
+M  internal/cli/root.go
+M  internal/cli/tui.go
+```
 </details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:26:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit the follow-up work
+
+```bash
+git -c commit.gpgsign=false commit --quiet -F - <<'EOF'
+feat: gitignore helper, adopt, layout detection, TUI tool hand-off
+
+Renames the bundled skill to dev-cli: a skill is selected by its name and
+description, and "dev" describes nothing. The binary stays dev — it is typed
+dozens of times a day, and the two do not have to match.
+
+dev config init now generates its config from the machine's detected layout
+instead of a fixed set of paths. It probes the conventional roots
+(~/Documents/Program, ~/src, ~/code, GHQ_ROOT, TRY_PATH, …), counts the
+repositories in each to the same depth the discovery walk uses, drops roots
+already covered by an ancestor, and writes only what exists. A generated
+config pointing at absent directories is worse than none: dev would discover
+nothing and give no clue why.
+
+dev adopt imports work already in flight — linked worktrees from any tool,
+live runtime sessions, and local branches ahead of the base. It skips merged
+branches and the turn-scoped worktrees a harness cleans up itself, reports by
+default, and never moves or deletes anything on disk. There is nothing else to
+migrate: repositories are found wherever scan_roots point.
+
+dev gitignore composes a .gitignore from GitHub's templates plus the sections
+no language template carries: the host platform's junk files, editor state,
+local env files, and the harness worktree directories that otherwise make
+every git status in the main checkout unreadable. Templates are fetched once
+and cached, with six bundled for offline use, and everything written lives
+inside a delimited block so re-running never loses hand-written rules.
+
+The dashboard hands the terminal to lazygit, yazi, $EDITOR or a shell in the
+selected task's checkout, suspending and redrawing around them — the point
+being not to have to quit, find the path and cd there first. Bindings for
+tools that are not installed are not offered.
+
+TODO.md records what is deferred and, as importantly, what is deliberately not
+being built: dev does not install dependencies. doctor names the missing
+binary and stops there, because the right install command depends on a package
+manager the user already has opinions about.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfgWSELDAofucwXjMMxBao
+EOF
+git log --oneline -3 && echo "---" && go test ./... 2>&1 | grep -c "^ok" && grep -rh "^func Test" --include='*_test.go' . | wc -l
+```
+
+```text
+b15118d feat: gitignore helper, adopt, layout detection, TUI tool hand-off
+bf4f035 Backup chat history
+448b0f1 feat(tui): interactive dashboard behind a bare `dev`
+---
+14
+     137
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:26:59Z)**_
+
+All done — 14 packages green, 137 tests, e2e passing.
+
+## Answers to your questions
+
+**Skill name** — now `dev-cli`, installed to `~/.agents/skills/dev-cli/`. Binary stays `dev`. A skill is matched on name + description, so it should say what it covers; a binary is typed dozens of times a day, so it should be short. They don't need to match.
+
+**Config template** — `dev config init` already existed, but it hardcoded *your* layout, which was the real problem. It now **detects the machine**: probes `~/Documents/Program`, `~/src`, `~/code`, `$GHQ_ROOT`, `$TRY_PATH` etc., counts repos in each at the discovery walk's depth, drops roots covered by an ancestor, and writes only what exists. On your machine:
+
+```
+~/Documents/Program  40  scan root, new projects land here
+~/src                16  scan root
+```
+
+`--stdout` previews, `--force` overwrites. Every value stays an editable default.
+
+## The four follow-ups
+
+**Dependency install → deliberately not doing.** Recorded in `TODO.md` under a "Deliberately not doing" section with the reasoning: `doctor` names the missing binary and stops. The right install command depends on brew/apt/mise/nix/chezmoi — a tool that guesses is worse than one that reports. This is exactly where being glue matters.
+
+**`dev gitignore`** — fetches from GitHub's template API (no auth needed), caches under `$XDG_CACHE_HOME`, six templates bundled for offline. On top it adds what no language template has: `.DS_Store` per-platform, editor state, `.env`, and the harness section — `.claude/worktrees/`, `.specstory/history/`, `.aider*`. Everything goes in a `# >>> dev gitignore >>>` block so re-running never loses hand-written rules (tested). With no argument it detects from `go.mod`/`package.json`/`pyproject.toml`/etc.
+
+**lazygit in the TUI** — `l` lazygit, `y` yazi, `e` `$EDITOR`, `s` shell. Runs in the selected task's checkout via `tea.ExecProcess`: dashboard suspends, tool takes the terminal, quitting returns you to the dashboard and reloads (since lazygit likely changed the git state on screen). Bindings for uninstalled tools aren't shown — you have both.
+
+**Migration** — there's nothing to migrate; that's the answer. `dev` never moves or renames anything, and finds repos wherever `scan_roots` points. No symlinks needed. What *is* worth importing is work in flight, so `dev adopt` finds linked worktrees (from any tool), live sessions, and branches ahead of base. On your machine it found **39 candidates** — including real ones like `feat/combo-ctl-dag-engine`, `feat/tts-pronunciation`, `feat/custom-summarizers` — and correctly skipped the `.claude/worktrees/` ephemerals in `windows-dotfiles`. Reports by default; `--apply` confirms each. Also `dev help adopting`.
+
+## One thing to decide
+
+`.specstory/history/` and the plan file got committed in the first commit — a `.gitignore` line I wrote came out commented and inert. I've fixed the file and untracked `.claude/plans/`, but left `.specstory/` tracked as-is, since whether transcripts belong in history is your repo's convention, not mine. Say the word and I'll untrack it.
+
+---
+
+_**User (2026-08-27 04:27:36Z)**_
+
+是說我們也有worktree helper嗎？ (探測專案類型 init worktree template？ 特別是一些worktree space的初始化？ 但可能env可能分爲重新install / 或 copy)
+
+---
+
+_**Agent (claude-opus-5 2026-08-27 04:28:06Z)**_
+
+Yes — that already exists, but it's not *inspectable* and the copy-vs-reinstall choice isn't expressible. Let me look at what's there before extending it:
+
+_**Agent (claude-opus-5 2026-08-27 04:28:07Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Review current provisioning code
+
+`sed -n '1,60p' internal/wt/provision.go; echo "..."; grep -n "func " internal/wt/provision.go`
+
+```text
+// Package wt creates, provisions and removes the linked worktrees dev owns.
+//
+// Ownership, stated once so agents and humans stop improvising: dev owns every
+// worktree a person might come back to tomorrow — features, fixes, experiments,
+// cross-machine handoffs — and places them at the configured path template.
+// Claude Code's `.claude/worktrees/` stays for turn-scoped subagent isolation
+// that dies with the turn. dev never calls `herdr worktree create`, because
+// the path policy has to hold on machines without herdr; it creates the
+// worktree with git and asks herdr only to *open* it.
+package wt
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
+)
+
+// Provisioner brings a fresh checkout up to a working state. A worktree is a
+// clean checkout: it has no node_modules, no .venv and none of the gitignored
+// env files the project needs, so without this step every new worktree starts
+// broken.
+type Provisioner struct {
+	Include []string
+	Link    []string
+	Cmds    config.PostCreate
+	Timeout time.Duration
+	// Log receives progress lines; nil discards them.
+	Log io.Writer
+}
+
+// Result records what provisioning did, so callers can report it honestly.
+type Result struct {
+	Copied  []string
+	Linked  []string
+	Ran     []string
+	Skipped []string
+	// Failures are non-fatal: a failed `npm ci` leaves a usable checkout the
+	// user can fix by hand, so it is reported rather than rolled back.
+	Failures []error
+}
+
+func (p *Provisioner) logf(format string, args ...any) {
+	if p.Log != nil {
+		fmt.Fprintf(p.Log, format+"\n", args...)
+	}
+}
+
+// Provision copies gitignored files, creates opt-in symlinks and runs the
+// post-create commands in dst.
+func (p *Provisioner) Provision(ctx context.Context, src, dst string) (Result, error) {
+	var res Result
+...
+51:func (p *Provisioner) logf(format string, args ...any) {
+59:func (p *Provisioner) Provision(ctx context.Context, src, dst string) (Result, error) {
+104:func (p *Provisioner) commands(dir string) []string {
+139:func Detect(dir string) []string {
+161:func (p *Provisioner) runShell(ctx context.Context, dir, command string) error {
+192:func (p *Provisioner) copyIgnored(ctx context.Context, src, dst string) ([]string, error) {
+228:func (p *Provisioner) ignoredMatching(ctx context.Context, src string) ([]string, error) {
+244:func copyFile(from, to string, mode os.FileMode) error {
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:28:22Z)**_
+
+Let me build a proper ecosystem model so the copy-vs-reinstall decision is explicit and inspectable:
+
+_**Agent (claude-opus-5 2026-08-27 04:28:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Write ecosystem model with copy/link safety
+
+```bash
+cat > internal/wt/ecosystem.go <<'EOF'
+package wt
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+)
+
+// Strategy is how a worktree gets its installed dependencies.
+//
+// The choice is a real trade-off, not a preference: reinstalling is always
+// correct but can take minutes; copying is fast but only sound for dependency
+// trees that carry no absolute paths; sharing via a symlink is fastest but
+// makes two checkouts write to one directory, which is how a build in one
+// worktree breaks the other.
+type Strategy string
+
+const (
+	// Reinstall runs the ecosystem's install command. Correct, and the default.
+	Reinstall Strategy = "reinstall"
+	// Copy duplicates the dependency directory from the source checkout.
+	Copy Strategy = "copy"
+	// Link symlinks it, so both checkouts share one tree.
+	Link Strategy = "link"
+	// Skip leaves the worktree without dependencies.
+	Skip Strategy = "skip"
+)
+
+// Strategies lists the valid values, for validation and help text.
+var Strategies = []Strategy{Reinstall, Copy, Link, Skip}
+
+// ParseStrategy validates a configured strategy name.
+func ParseStrategy(s string) (Strategy, bool) {
+	for _, v := range Strategies {
+		if Strategy(s) == v {
+			return v, true
+		}
+	}
+	return "", false
+}
+
+// Ecosystem describes one language and package manager pairing, and what is
+// safe to do with the directory it installs into.
+type Ecosystem struct {
+	// Name groups mutually exclusive managers: only one "python" ecosystem
+	// runs even if a project carries several markers.
+	Name string
+	// Manager is the tool that owns the install.
+	Manager string
+	// Marker is the file whose presence identifies this ecosystem.
+	Marker string
+	// Install reproduces the environment from the lockfile.
+	Install string
+	// Tool is the binary Install needs.
+	Tool string
+	// DepDirs are the directories holding installed dependencies. Empty when
+	// the manager keeps everything in a global cache, which makes the whole
+	// strategy question moot — reinstalling is already nearly free.
+	DepDirs []string
+	// CopySafe reports whether DepDirs survive being copied to another path.
+	CopySafe bool
+	// LinkSafe reports whether two checkouts can share one DepDirs tree.
+	LinkSafe bool
+	// Hazard explains why copying or linking is unsafe, so a refusal can say
+	// something more useful than "not allowed".
+	Hazard string
+}
+
+// SupportsStrategy reports whether s is sound for this ecosystem, and why not
+// when it is not.
+func (e Ecosystem) SupportsStrategy(s Strategy) (bool, string) {
+	switch s {
+	case Reinstall, Skip:
+		return true, ""
+	case Copy:
+		if e.CopySafe {
+			return true, ""
+		}
+		return false, e.Hazard
+	case Link:
+		if e.LinkSafe {
+			return true, ""
+		}
+		return false, e.Hazard
+	}
+	return false, "unknown strategy"
+}
+
+// ecosystems is the detection table, in priority order within each Name.
+//
+// Order matters: a project with both a uv.lock and a requirements.txt is a uv
+// project, and running pip afterwards would fight it.
+var ecosystems = []Ecosystem{
+	{
+		Name: "python", Manager: "uv", Marker: "uv.lock", Install: "uv sync", Tool: "uv",
+		DepDirs: []string{".venv"},
+		Hazard: "a virtualenv bakes its own absolute path into pyvenv.cfg and bin/activate, " +
+			"so it does not work from a second location; uv reinstalls from a shared cache in seconds",
+	},
+	{
+		Name: "python", Manager: "poetry", Marker: "poetry.lock", Install: "poetry install", Tool: "poetry",
+		DepDirs: []string{".venv"},
+		Hazard:  "a virtualenv bakes its own absolute path into pyvenv.cfg and bin/activate",
+	},
+	{
+		Name: "python", Manager: "pipenv", Marker: "Pipfile.lock", Install: "pipenv install --dev", Tool: "pipenv",
+		DepDirs: []string{".venv"},
+		Hazard:  "a virtualenv bakes its own absolute path into pyvenv.cfg and bin/activate",
+	},
+	{
+		Name: "node", Manager: "pnpm", Marker: "pnpm-lock.yaml",
+		Install: "pnpm install --frozen-lockfile", Tool: "pnpm",
+		DepDirs: []string{"node_modules"}, CopySafe: true,
+		Hazard: "sharing one node_modules means an install in either worktree silently changes the other",
+	},
+	{
+		Name: "node", Manager: "bun", Marker: "bun.lockb", Install: "bun install", Tool: "bun",
+		DepDirs: []string{"node_modules"}, CopySafe: true,
+		Hazard: "sharing one node_modules means an install in either worktree silently changes the other",
+	},
+	{
+		Name: "node", Manager: "yarn", Marker: "yarn.lock", Install: "yarn install --immutable", Tool: "yarn",
+		DepDirs: []string{"node_modules"}, CopySafe: true,
+		Hazard: "sharing one node_modules means an install in either worktree silently changes the other",
+	},
+	{
+		Name: "node", Manager: "npm", Marker: "package-lock.json", Install: "npm ci", Tool: "npm",
+		DepDirs: []string{"node_modules"}, CopySafe: true,
+		Hazard: "sharing one node_modules means an install in either worktree silently changes the other",
+	},
+	{
+		// The module cache is global and content-addressed, so a worktree
+		// needs nothing copied and the download is usually a no-op.
+		Name: "go", Manager: "go", Marker: "go.mod", Install: "go mod download", Tool: "go",
+	},
+	{
+		Name: "rust", Manager: "cargo", Marker: "Cargo.toml", Install: "cargo fetch", Tool: "cargo",
+		DepDirs: []string{"target"}, CopySafe: true,
+		Hazard: "two cargo builds writing one target directory corrupt each other's lock; " +
+			"and target/ is usually large enough that copying costs more than rebuilding",
+	},
+	{
+		Name: "ruby", Manager: "bundler", Marker: "Gemfile.lock", Install: "bundle install", Tool: "bundle",
+		DepDirs: []string{"vendor/bundle"}, CopySafe: true,
+		Hazard: "sharing vendored gems across checkouts makes a bundle update in one affect the other",
+	},
+	{
+		Name: "elixir", Manager: "mix", Marker: "mix.lock", Install: "mix deps.get", Tool: "mix",
+		DepDirs: []string{"deps", "_build"}, CopySafe: true,
+		Hazard: "_build holds compiled artifacts keyed to a path",
+	},
+}
+
+// DetectEcosystems reports the ecosystems a checkout uses, one per Name.
+//
+// A detected ecosystem whose tool is missing is still reported — knowing the
+// project needs uv is useful even on a machine without it, and silently
+// dropping it would make `dev wt plan` lie about what the project is.
+func DetectEcosystems(dir string) []Ecosystem {
+	var out []Ecosystem
+	claimed := map[string]bool{}
+	for _, e := range ecosystems {
+		if claimed[e.Name] {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(dir, e.Marker)); err != nil {
+			continue
+		}
+		claimed[e.Name] = true
+		out = append(out, e)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
+// ToolInstalled reports whether the ecosystem's install command can run here.
+func (e Ecosystem) ToolInstalled() bool {
+	if e.Tool == "" {
+		return true
+	}
+	_, err := exec.LookPath(e.Tool)
+	return err == nil
+}
+
+// Detect infers the provisioning commands for a checkout from its lockfiles.
+//
+// Kept as the simple form for callers that only want the commands. A detected
+// command whose tool is not installed is skipped rather than run and failed:
+// the user may simply not have that toolchain on this machine, and a missing
+// pnpm should not make every worktree creation report an error.
+func Detect(dir string) []string {
+	var out []string
+	for _, e := range DetectEcosystems(dir) {
+		if e.Install == "" || !e.ToolInstalled() {
+			continue
+		}
+		out = append(out, e.Install)
+	}
+	return out
+}
+EOF
+python3 - <<'PY'
+# remove the old detector table and Detect from provision.go
+p='internal/wt/provision.go'
+s=open(p).read()
+start=s.index('// detector maps a marker file')
+end=s.index('func (p *Provisioner) runShell')
+s = s[:start] + s[end:]
+open(p,'w').write(s)
+PY
+gofmt -w internal/wt/ && go build ./internal/wt/ 2>&1 | head
+```
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:28:57Z)**_
+
+Now the plan — provisioning as inspectable data before it executes:
+
+_**Agent (claude-opus-5 2026-08-27 04:29:33Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Write the provisioning plan
+
+```bash
+cat > internal/wt/plan.go <<'EOF'
+package wt
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
+)
+
+// StepKind is what a provisioning step does.
+type StepKind string
+
+const (
+	// StepCopyFile copies one gitignored file into the new checkout.
+	StepCopyFile StepKind = "copy"
+	// StepCopyDir duplicates a dependency directory.
+	StepCopyDir StepKind = "copy-dir"
+	// StepLinkDir symlinks a directory so both checkouts share it.
+	StepLinkDir StepKind = "link"
+	// StepRun executes a shell command in the new checkout.
+	StepRun StepKind = "run"
+)
+
+// Step is one action in a provisioning plan.
+type Step struct {
+	Kind StepKind
+	// What is the path or command the step acts on.
+	What string
+	// Why explains the step in one line, for `dev wt plan`.
+	Why string
+	// Ecosystem names the language this step belongs to, empty for the
+	// file-copying steps that belong to no ecosystem.
+	Ecosystem string
+	// Skipped marks a step that will not run, with Why holding the reason.
+	Skipped bool
+}
+
+// Plan is everything provisioning would do to a new worktree of a repository,
+// computed without touching anything.
+//
+// Making this inspectable matters more than it looks: a worktree that comes up
+// broken is the single most common reason people stop using worktrees at all,
+// and "what will this actually do" is not answerable from the config alone —
+// it depends on which lockfiles exist, which tools are installed, and which
+// files are genuinely gitignored.
+type Plan struct {
+	RepoPath   string
+	Ecosystems []Ecosystem
+	Steps      []Step
+	// Warnings are problems that will not stop provisioning but will surprise
+	// someone: an unsound strategy that was downgraded, a missing tool.
+	Warnings []string
+}
+
+// Runnable returns the steps that will actually execute.
+func (p Plan) Runnable() []Step {
+	var out []Step
+	for _, s := range p.Steps {
+		if !s.Skipped {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// Empty reports a plan that would do nothing at all.
+func (p Plan) Empty() bool { return len(p.Runnable()) == 0 }
+
+// Settings are the provisioning inputs, resolved from global config and any
+// per-repo .dev.toml.
+type Settings struct {
+	Include    []string
+	Link       []string
+	Cmds       config.PostCreate
+	Strategy   Strategy
+	Strategies map[string]string
+}
+
+// SettingsFor resolves the effective provisioning settings for a repository.
+func SettingsFor(cfg config.Config, repoPath string) Settings {
+	s := Settings{
+		Include:    cfg.Worktree.Include,
+		Link:       cfg.Worktree.Link,
+		Cmds:       cfg.Worktree.PostCreate,
+		Strategy:   Reinstall,
+		Strategies: map[string]string{},
+	}
+	if v, ok := ParseStrategy(cfg.Worktree.Strategy); ok {
+		s.Strategy = v
+	}
+	for k, v := range cfg.Worktree.Strategies {
+		s.Strategies[k] = v
+	}
+	if o, ok := LoadRepoOverride(repoPath); ok {
+		if len(o.Worktree.Include) > 0 {
+			s.Include = o.Worktree.Include
+		}
+		if len(o.Worktree.Link) > 0 {
+			s.Link = o.Worktree.Link
+		}
+		if o.Worktree.PostCreate != nil {
+			s.Cmds = *o.Worktree.PostCreate
+		}
+		if o.Worktree.Strategy != "" {
+			if v, ok := ParseStrategy(o.Worktree.Strategy); ok {
+				s.Strategy = v
+			}
+		}
+		for k, v := range o.Worktree.Strategies {
+			s.Strategies[k] = v
+		}
+	}
+	return s
+}
+
+// strategyFor resolves the strategy for one ecosystem, narrowing to something
+// sound and recording why when it has to.
+func (s Settings) strategyFor(e Ecosystem) (Strategy, string) {
+	want := s.Strategy
+	if v, ok := s.Strategies[e.Name]; ok {
+		if parsed, ok := ParseStrategy(v); ok {
+			want = parsed
+		} else {
+			return Reinstall, fmt.Sprintf("%s: %q is not a strategy (want %s), using reinstall",
+				e.Name, v, joinStrategies())
+		}
+	}
+	// An ecosystem with no dependency directory has nothing to copy or share,
+	// so those strategies collapse to reinstalling — which for a global cache
+	// is nearly free anyway.
+	if len(e.DepDirs) == 0 && (want == Copy || want == Link) {
+		return Reinstall, ""
+	}
+	if ok, hazard := e.SupportsStrategy(want); !ok {
+		return Reinstall, fmt.Sprintf("%s: %s is unsound here — %s; using reinstall instead",
+			e.Name, want, hazard)
+	}
+	return want, ""
+}
+
+func joinStrategies() string {
+	parts := make([]string, len(Strategies))
+	for i, s := range Strategies {
+		parts[i] = string(s)
+	}
+	return strings.Join(parts, ", ")
+}
+
+// BuildPlan computes what provisioning a new worktree of repoPath would do.
+// It reads the filesystem and asks git which files are ignored, but changes
+// nothing.
+func BuildPlan(ctx context.Context, set Settings, repoPath string) Plan {
+	p := Plan{RepoPath: repoPath, Ecosystems: DetectEcosystems(repoPath)}
+
+	// Gitignored files to carry over.
+	if files, err := ignoredMatching(ctx, repoPath, set.Include); err != nil {
+		p.Warnings = append(p.Warnings, "could not list ignored files: "+err.Error())
+	} else {
+		for _, rel := range files {
+			info, err := os.Lstat(filepath.Join(repoPath, rel))
+			if err != nil {
+				continue
+			}
+			if info.IsDir() {
+				continue // directories belong to `link`, not `include`
+			}
+			p.Steps = append(p.Steps, Step{
+				Kind: StepCopyFile, What: rel,
+				Why: "gitignored, so the checkout would not have it",
+			})
+		}
+	}
+
+	// Explicit symlinks, which are always the user's own decision.
+	for _, rel := range set.Link {
+		step := Step{Kind: StepLinkDir, What: rel, Why: "configured in worktree.link"}
+		if _, err := os.Stat(filepath.Join(repoPath, rel)); err != nil {
+			step.Skipped, step.Why = true, "not present in the source checkout"
+		}
+		p.Steps = append(p.Steps, step)
+	}
+
+	// Dependencies, per ecosystem.
+	explicit := !set.Cmds.Auto
+	for _, e := range p.Ecosystems {
+		strategy, warn := set.strategyFor(e)
+		if warn != "" {
+			p.Warnings = append(p.Warnings, warn)
+		}
+		if explicit {
+			// An explicit post_create list replaces detection entirely; the
+			// user has said what this project needs.
+			continue
+		}
+
+		switch strategy {
+		case Skip:
+			p.Steps = append(p.Steps, Step{
+				Kind: StepRun, What: e.Install, Ecosystem: e.Name,
+				Why: "strategy is skip", Skipped: true,
+			})
+		case Copy, Link:
+			kind, verb := StepCopyDir, "copied"
+			if strategy == Link {
+				kind, verb = StepLinkDir, "shared"
+			}
+			for _, dir := range e.DepDirs {
+				step := Step{
+					Kind: kind, What: dir, Ecosystem: e.Name,
+					Why: fmt.Sprintf("%s dependencies, %s instead of reinstalling", e.Manager, verb),
+				}
+				if _, err := os.Stat(filepath.Join(repoPath, dir)); err != nil {
+					step.Skipped = true
+					step.Why = "not present in the source checkout — nothing to " + string(strategy)
+				}
+				p.Steps = append(p.Steps, step)
+			}
+		default:
+			step := Step{
+				Kind: StepRun, What: e.Install, Ecosystem: e.Name,
+				Why: e.Marker + " detected",
+			}
+			if !e.ToolInstalled() {
+				step.Skipped = true
+				step.Why = e.Tool + " is not installed on this machine"
+				p.Warnings = append(p.Warnings,
+					fmt.Sprintf("%s needs %s, which is not installed — worktrees will come up without its dependencies",
+						e.Name, e.Tool))
+			}
+			p.Steps = append(p.Steps, step)
+		}
+	}
+
+	// An explicit command list, when configured.
+	if explicit {
+		for _, c := range set.Cmds.Commands {
+			p.Steps = append(p.Steps, Step{Kind: StepRun, What: c, Why: "configured in worktree.post_create"})
+		}
+	}
+	return p
+}
+
+// ignoredMatching asks git which of the patterns name real, ignored files.
+//
+// Using git rather than matching by hand means .gitignore semantics —
+// negations, directory rules, nested ignore files — are exactly right, and
+// that a *tracked* file matching a pattern is never returned. A tracked file
+// is already in the new checkout on the correct branch; copying the source
+// branch's version over it would be wrong.
+func ignoredMatching(ctx context.Context, src string, patterns []string) ([]string, error) {
+	if len(patterns) == 0 {
+		return nil, nil
+	}
+	args := []string{"ls-files", "--others", "--ignored", "--exclude-standard", "-z", "--"}
+	args = append(args, patterns...)
+	out, err := gitx.Run(ctx, src, args...)
+	if err != nil {
+		return nil, err
+	}
+	var rels []string
+	for _, f := range strings.Split(strings.TrimRight(out, "\x00"), "\x00") {
+		if f != "" {
+			rels = append(rels, f)
+		}
+	}
+	return rels, nil
+}
+EOF
+gofmt -w internal/wt/ && go build ./internal/wt/ 2>&1 | head
+```
+
+```text
+# github.com/daviddwlee84/dev-cli/internal/wt
+internal/wt/plan.go:92:41: cfg.Worktree.Strategy undefined (type config.Worktree has no field or method Strategy)
+internal/wt/plan.go:95:33: cfg.Worktree.Strategies undefined (type config.Worktree has no field or method Strategies)
+internal/wt/plan.go:108:17: o.Worktree.Strategy undefined (type struct{Include []string "toml:\"include\""; Link []string "toml:\"link\""; PostCreate *config.PostCreate "toml:\"post_create\""} has no field or method Strategy)
+internal/wt/plan.go:109:41: o.Worktree.Strategy undefined (type struct{Include []string "toml:\"include\""; Link []string "toml:\"link\""; PostCreate *config.PostCreate "toml:\"post_create\""} has no field or method Strategy)
+internal/wt/plan.go:113:32: o.Worktree.Strategies undefined (type struct{Include []string "toml:\"include\""; Link []string "toml:\"link\""; PostCreate *config.PostCreate "toml:\"post_create\""} has no field or method Strategies)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:29:46Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Add strategy config fields
+
+```bash
+python3 - <<'PY'
+p='internal/config/config.go'
+s=open(p).read()
+s=s.replace('''	// PostCreate is either the string "auto" (detect from lockfiles) or an
+	// explicit list of shell commands run in the new worktree.
+	PostCreate PostCreate `toml:"post_create"`''','''	// PostCreate is either the string "auto" (detect from lockfiles) or an
+	// explicit list of shell commands run in the new worktree.
+	PostCreate PostCreate `toml:"post_create"`
+	// Strategy is how a new worktree gets its installed dependencies:
+	// "reinstall" (correct, the default), "copy", "link" or "skip". dev
+	// narrows an unsound choice back to reinstall and says why — copying a
+	// virtualenv, for instance, cannot work, because it bakes its own
+	// absolute path into pyvenv.cfg.
+	Strategy string `toml:"strategy"`
+	// Strategies overrides Strategy per ecosystem ("python", "node", "go",
+	// "rust", "ruby", "elixir").
+	Strategies map[string]string `toml:"strategies"`''')
+s=s.replace('''		Worktree: Worktree{
+			Include:          []string{".env", ".env.local"},
+			Link:             nil,
+			PostCreate:       PostCreate{Auto: true},
+			ProvisionTimeout: Duration{10 * time.Minute},
+		},''','''		Worktree: Worktree{
+			Include:          []string{".env", ".env.local"},
+			Link:             nil,
+			PostCreate:       PostCreate{Auto: true},
+			Strategy:         "reinstall",
+			ProvisionTimeout: Duration{10 * time.Minute},
+		},''')
+open(p,'w').write(s)
+
+p='internal/wt/override.go'
+s=open(p).read()
+s=s.replace('''type RepoOverride struct {
+	Worktree struct {
+		Include    []string           `toml:"include"`
+		Link       []string           `toml:"link"`
+		PostCreate *config.PostCreate `toml:"post_create"`
+	} `toml:"worktree"`
+}''','''type RepoOverride struct {
+	Worktree struct {
+		Include    []string           `toml:"include"`
+		Link       []string           `toml:"link"`
+		PostCreate *config.PostCreate `toml:"post_create"`
+		Strategy   string             `toml:"strategy"`
+		Strategies map[string]string  `toml:"strategies"`
+	} `toml:"worktree"`
+}''')
+s=s.replace('''//	# .dev.toml
+//	[worktree]
+//	include     = [".env", "config/local.json"]
+//	link        = ["node_modules"]
+//	post_create = ["make bootstrap"]''','''//	# .dev.toml
+//	[worktree]
+//	include     = [".env", "config/local.json"]
+//	post_create = ["make bootstrap"]
+//
+//	[worktree.strategies]
+//	node = "copy"     # node_modules copies soundly; reinstalling is slow here''')
+open(p,'w').write(s)
+PY
+gofmt -w internal/config/ internal/wt/ && go build ./internal/... 2>&1 | head
+```
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:29:49Z)**_
+
+Now make the Provisioner execute a Plan rather than re-deriving everything:
+
+_**Agent (claude-opus-5 2026-08-27 04:30:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Rewrite provisioner to execute plans
+
+```bash
+cat > internal/wt/provision.go <<'EOF'
+// Package wt creates, provisions and removes the linked worktrees dev owns.
+//
+// Ownership, stated once so agents and humans stop improvising: dev owns every
+// worktree a person might come back to tomorrow — features, fixes, experiments,
+// cross-machine handoffs — and places them at the configured path template.
+// Claude Code's `.claude/worktrees/` stays for turn-scoped subagent isolation
+// that dies with the turn. dev never calls `herdr worktree create`, because
+// the path policy has to hold on machines without herdr; it creates the
+// worktree with git and asks herdr only to *open* it.
+package wt
+
+import (
+	"bufio"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"time"
+)
+
+// Provisioner brings a fresh checkout up to a working state.
+//
+// A worktree is a clean checkout: no node_modules, no .venv, and none of the
+// gitignored env files the project needs. Without this step every new worktree
+// starts broken, which is the commonest reason people give up on worktrees.
+type Provisioner struct {
+	Settings Settings
+	Timeout  time.Duration
+	// Log receives progress lines; nil discards them.
+	Log io.Writer
+}
+
+// Result records what provisioning did, so callers can report it honestly.
+type Result struct {
+	Copied  []string
+	Linked  []string
+	Ran     []string
+	Skipped []string
+	// Failures are non-fatal: a failed `npm ci` leaves a usable checkout the
+	// user can fix by hand, so it is reported rather than rolled back.
+	Failures []error
+}
+
+func (p *Provisioner) logf(format string, args ...any) {
+	if p.Log != nil {
+		fmt.Fprintf(p.Log, format+"\n", args...)
+	}
+}
+
+// Provision brings dst up to a working state, using src as the source of
+// gitignored files and any copied dependency trees.
+func (p *Provisioner) Provision(ctx context.Context, src, dst string) (Result, error) {
+	plan := BuildPlan(ctx, p.Settings, src)
+	return p.Apply(ctx, plan, src, dst)
+}
+
+// Apply executes a plan. Splitting this from BuildPlan is what lets
+// `dev wt plan` show exactly what would happen without doing any of it.
+func (p *Provisioner) Apply(ctx context.Context, plan Plan, src, dst string) (Result, error) {
+	var res Result
+	for _, w := range plan.Warnings {
+		p.logf("warning: %s", w)
+	}
+
+	for _, step := range plan.Steps {
+		if step.Skipped {
+			res.Skipped = append(res.Skipped, step.What+" ("+step.Why+")")
+			continue
+		}
+		switch step.Kind {
+		case StepCopyFile:
+			if err := p.copyFileStep(src, dst, step.What); err != nil {
+				res.Failures = append(res.Failures, err)
+				continue
+			}
+			res.Copied = append(res.Copied, step.What)
+			p.logf("copied %s", step.What)
+
+		case StepCopyDir:
+			from, to := filepath.Join(src, step.What), filepath.Join(dst, step.What)
+			if _, err := os.Lstat(to); err == nil {
+				res.Skipped = append(res.Skipped, step.What+" (already present)")
+				continue
+			}
+			p.logf("copying %s …", step.What)
+			if err := copyTree(from, to); err != nil {
+				res.Failures = append(res.Failures, fmt.Errorf("copy %s: %w", step.What, err))
+				continue
+			}
+			res.Copied = append(res.Copied, step.What+"/")
+			p.logf("copied %s", step.What)
+
+		case StepLinkDir:
+			if err := p.linkStep(src, dst, step.What); err != nil {
+				if errors.Is(err, errAlreadyPresent) {
+					res.Skipped = append(res.Skipped, step.What+" (already present)")
+					continue
+				}
+				res.Failures = append(res.Failures, err)
+				continue
+			}
+			res.Linked = append(res.Linked, step.What)
+			p.logf("linked %s", step.What)
+
+		case StepRun:
+			p.logf("running: %s", step.What)
+			if err := p.runShell(ctx, dst, step.What); err != nil {
+				res.Failures = append(res.Failures, err)
+				continue
+			}
+			res.Ran = append(res.Ran, step.What)
+		}
+	}
+	return res, nil
+}
+
+var errAlreadyPresent = errors.New("already present")
+
+func (p *Provisioner) copyFileStep(src, dst, rel string) error {
+	from, to := filepath.Join(src, rel), filepath.Join(dst, rel)
+	info, err := os.Lstat(from)
+	if err != nil {
+		return nil // vanished between planning and applying; nothing to do
+	}
+	if _, err := os.Stat(to); err == nil {
+		return nil // never clobber what the checkout already has
+	}
+	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
+		return err
+	}
+	if err := copyFile(from, to, info.Mode()); err != nil {
+		return fmt.Errorf("copy %s: %w", rel, err)
+	}
+	return nil
+}
+
+func (p *Provisioner) linkStep(src, dst, rel string) error {
+	target, link := filepath.Join(src, rel), filepath.Join(dst, rel)
+	if _, err := os.Stat(target); err != nil {
+		return fmt.Errorf("link %s: not present in the source checkout", rel)
+	}
+	if _, err := os.Lstat(link); err == nil {
+		return errAlreadyPresent
+	}
+	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+		return err
+	}
+	if err := os.Symlink(target, link); err != nil {
+		return fmt.Errorf("link %s: %w", rel, err)
+	}
+	return nil
+}
+
+func (p *Provisioner) runShell(ctx context.Context, dir, command string) error {
+	timeout := p.Timeout
+	if timeout <= 0 {
+		timeout = 10 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+	cmd := exec.CommandContext(ctx, shell, "-c", command)
+	cmd.Dir = dir
+	cmd.Stdout, cmd.Stderr = p.Log, p.Log
+	if err := cmd.Run(); err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("post_create %q timed out after %s", command, timeout)
+		}
+		return fmt.Errorf("post_create %q: %w", command, err)
+	}
+	return nil
+}
+
+func copyFile(from, to string, mode os.FileMode) error {
+	in, err := os.Open(from)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode.Perm())
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	w := bufio.NewWriter(out)
+	if _, err := io.Copy(w, in); err != nil {
+		return err
+	}
+	return w.Flush()
+}
+
+// copyTree duplicates a directory.
+//
+// Symlinks are recreated rather than followed: a pnpm node_modules is a farm
+// of links into a global store, and dereferencing them would turn a 200MB
+// copy into several gigabytes of duplicated packages.
+func copyTree(from, to string) error {
+	return filepath.Walk(from, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(from, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(to, rel)
+
+		switch {
+		case info.IsDir():
+			return os.MkdirAll(target, info.Mode().Perm())
+		case info.Mode()&os.ModeSymlink != 0:
+			dest, err := os.Readlink(path)
+			if err != nil {
+				return err
+			}
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			os.Remove(target)
+			return os.Symlink(dest, target)
+		case info.Mode().IsRegular():
+			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+				return err
+			}
+			return copyFile(path, target, info.Mode())
+		}
+		return nil // sockets, devices and the like have no place in a checkout
+	})
+}
+EOF
+gofmt -w internal/wt/ && go build ./internal/wt/ 2>&1 | head
+```
+
+```text
+# github.com/daviddwlee84/dev-cli/internal/wt
+internal/wt/manager.go:138:4: unknown field Include in struct literal of type Provisioner
+internal/wt/manager.go:139:4: unknown field Link in struct literal of type Provisioner
+internal/wt/manager.go:140:4: unknown field Cmds in struct literal of type Provisioner
+internal/wt/override.go:57:5: p.Include undefined (type *Provisioner has no field or method Include)
+internal/wt/override.go:60:5: p.Link undefined (type *Provisioner has no field or method Link)
+internal/wt/override.go:63:5: p.Cmds undefined (type *Provisioner has no field or method Cmds)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:30:26Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Update manager to use Settings
+
+```bash
+python3 - <<'PY'
+p='internal/wt/manager.go'
+s=open(p).read()
+s=s.replace('''	if !req.NoProvision {
+		p := &Provisioner{
+			Include: m.Cfg.Worktree.Include,
+			Link:    m.Cfg.Worktree.Link,
+			Cmds:    m.Cfg.Worktree.PostCreate,
+			Timeout: m.Cfg.Worktree.ProvisionTimeout.Duration,
+			Log:     m.Log,
+		}
+		// Load a per-repo override, so a project can pin its own setup.
+		if override, ok := LoadRepoOverride(repoPath); ok {
+			p.ApplyOverride(override)
+		}
+		pr, err := p.Provision(ctx, repoPath, path)
+		if err != nil {
+			// The checkout exists and is usable; provisioning is best-effort.
+			m.logf("warning: provisioning: %v", err)
+		}
+		res.Provision = pr
+	}''','''	if !req.NoProvision {
+		// SettingsFor folds in the repo's own .dev.toml, so a project can pin
+		// its setup where a teammate on another machine picks it up too.
+		p := &Provisioner{
+			Settings: SettingsFor(m.Cfg, repoPath),
+			Timeout:  m.Cfg.Worktree.ProvisionTimeout.Duration,
+			Log:      m.Log,
+		}
+		pr, err := p.Provision(ctx, repoPath, path)
+		if err != nil {
+			// The checkout exists and is usable; provisioning is best-effort.
+			m.logf("warning: provisioning: %v", err)
+		}
+		res.Provision = pr
+	}''')
+open(p,'w').write(s)
+
+# ApplyOverride is now subsumed by SettingsFor
+p='internal/wt/override.go'
+s=open(p).read()
+start=s.index('// ApplyOverride is the exported form')
+s = s[:start].rstrip() + '\n'
+open(p,'w').write(s)
+PY
+gofmt -w internal/wt/ && go build ./internal/wt/ 2>&1 | head
+```
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:30:28Z)**_
+
+Now the `dev wt plan` command that makes it inspectable:
+
+_**Agent (claude-opus-5 2026-08-27 04:31:06Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Add wt plan command
+
+```bash
+python3 - <<'PY'
+p='internal/cli/worktree.go'
+s=open(p).read()
+
+# swap the provision command implementation and add `plan`
+start=s.index('func newWtProvisionCmd(app *App) *cobra.Command {')
+new = '''func newWtProvisionCmd(app *App) *cobra.Command {
+	var dryRun bool
+	cmd := &cobra.Command{
+		Use:   "provision [path]",
+		Short: "Re-run provisioning for an existing worktree",
+		Long: `Bring an existing checkout up to a working state again.
+
+Copies the gitignored files, applies the dependency strategy and runs the
+post-create commands — useful after adding a new .env, or when a worktree was
+created with --no-provision.
+
+Use "dev wt plan" to see what it would do first.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := ctxOf()
+			target, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			if len(args) == 1 {
+				target = config.Expand(args[0])
+			}
+			g, err := gitx.Discover(ctx, target)
+			if err != nil {
+				return err
+			}
+
+			set := wt.SettingsFor(app.Cfg, g.MainRoot)
+			plan := wt.BuildPlan(ctx, set, g.MainRoot)
+			if dryRun {
+				renderPlan(app, plan, g.MainRoot)
+				return nil
+			}
+
+			p := &wt.Provisioner{
+				Settings: set,
+				Timeout:  app.Cfg.Worktree.ProvisionTimeout.Duration,
+				Log:      app.Err,
+			}
+			res, err := p.Apply(ctx, plan, g.MainRoot, g.Root)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(app.Out, "provisioned %s\\n", config.Contract(g.Root))
+			if len(res.Copied) > 0 {
+				fmt.Fprintf(app.Out, "  copied   %s\\n", strings.Join(res.Copied, ", "))
+			}
+			if len(res.Linked) > 0 {
+				fmt.Fprintf(app.Out, "  linked   %s\\n", strings.Join(res.Linked, ", "))
+			}
+			if len(res.Ran) > 0 {
+				fmt.Fprintf(app.Out, "  ran      %s\\n", strings.Join(res.Ran, ", "))
+			}
+			for _, s := range res.Skipped {
+				fmt.Fprintf(app.Err, "  skipped  %s\\n", s)
+			}
+			for _, e := range res.Failures {
+				app.warnf("%v", e)
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show the plan instead of applying it")
+	return cmd
+}
+
+func newWtPlanCmd(app *App) *cobra.Command {
+	var (
+		repoRef string
+		write   bool
+	)
+	cmd := &cobra.Command{
+		Use:   "plan",
+		Short: "Show what a new worktree of this repo would be provisioned with",
+		Long: `Report the project types detected in this repository and exactly what
+provisioning a new worktree would do — which gitignored files get copied,
+which dependency directories are copied or shared, and which install commands
+run.
+
+A worktree that comes up broken is the commonest reason people abandon
+worktrees, and the config alone cannot answer "what will this actually do":
+that depends on which lockfiles exist, which tools are installed here, and
+which files are genuinely gitignored. This computes all of it and changes
+nothing.
+
+With --write, seed a .dev.toml from what was detected, so the repository can
+commit its own setup and every machine gets the same one.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := ctxOf()
+			repoPath, _, err := repoContext(app, repoRef)
+			if err != nil {
+				return err
+			}
+			set := wt.SettingsFor(app.Cfg, repoPath)
+			plan := wt.BuildPlan(ctx, set, repoPath)
+
+			if write {
+				return writeRepoTemplate(app, repoPath, plan, set)
+			}
+			renderPlan(app, plan, repoPath)
+			return nil
+		},
+	}
+	f := cmd.Flags()
+	f.StringVarP(&repoRef, "repo", "r", "", "repository (default: the current one)")
+	f.BoolVar(&write, "write", false, "seed a .dev.toml in the repository from what was detected")
+	return cmd
+}
+
+// renderPlan prints a provisioning plan as a table plus its warnings.
+func renderPlan(app *App, plan wt.Plan, repoPath string) {
+	fmt.Fprintf(app.Out, "%s\\n\\n", config.Contract(repoPath))
+
+	if len(plan.Ecosystems) == 0 {
+		fmt.Fprintln(app.Out, "No project type detected — only gitignored files will be carried over.")
+	} else {
+		t := NewTable("PROJECT", "MANAGER", "FROM", "DEPENDENCIES", "TOOL")
+		for _, e := range plan.Ecosystems {
+			deps := "—"
+			if len(e.DepDirs) > 0 {
+				deps = strings.Join(e.DepDirs, ", ")
+			} else {
+				deps = "global cache"
+			}
+			tool := "installed"
+			if !e.ToolInstalled() {
+				tool = "MISSING: " + e.Tool
+			}
+			t.Add(e.Name, e.Manager, e.Marker, deps, tool)
+		}
+		t.Render(app.Out)
+	}
+
+	fmt.Fprintln(app.Out)
+	if len(plan.Steps) == 0 {
+		fmt.Fprintln(app.Out, "Nothing to provision.")
+	} else {
+		st := NewTable("", "ACTION", "WHAT", "WHY")
+		for _, s := range plan.Steps {
+			mark := "✓"
+			if s.Skipped {
+				mark = "·"
+			}
+			st.Add(mark, string(s.Kind), truncate(s.What, 34), s.Why)
+		}
+		st.Render(app.Out)
+	}
+
+	for _, w := range plan.Warnings {
+		fmt.Fprintf(app.Err, "\\nwarning: %s\\n", w)
+	}
+	if plan.Empty() {
+		fmt.Fprintln(app.Err, "\\nNothing would run. If a new worktree comes up broken, add what it needs to "+
+			"worktree.post_create, or commit a .dev.toml with `dev wt plan --write`.")
+	}
+}
+
+// writeRepoTemplate seeds a .dev.toml from the detected plan.
+//
+// Committing it is what makes a project's worktree setup reproducible: the
+// next machine, and the next person, get the same one without having to
+// rediscover it.
+func writeRepoTemplate(app *App, repoPath string, plan wt.Plan, set wt.Settings) error {
+	path := filepath.Join(repoPath, wt.OverrideFilename)
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("%s already exists — edit it directly", config.Contract(path))
+	}
+
+	var b strings.Builder
+	b.WriteString("# dev worktree setup for this repository.\\n")
+	b.WriteString("#\\n")
+	b.WriteString("# Committed on purpose: a worktree is a clean checkout, so without this a\\n")
+	b.WriteString("# new one comes up with no dependencies and none of the gitignored files the\\n")
+	b.WriteString("# project needs. Seeded by `dev wt plan --write`; edit freely.\\n\\n")
+	b.WriteString("[worktree]\\n")
+
+	b.WriteString("# Gitignored files to carry into a new worktree. Only files that are BOTH\\n")
+	b.WriteString("# listed here AND gitignored are copied — a tracked file is already in the\\n")
+	b.WriteString("# checkout on the correct branch.\\n")
+	b.WriteString("include = [")
+	for i, inc := range set.Include {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		fmt.Fprintf(&b, "%q", inc)
+	}
+	b.WriteString("]\\n\\n")
+
+	if len(plan.Ecosystems) > 0 {
+		b.WriteString("# Detected in this repository:\\n")
+		for _, e := range plan.Ecosystems {
+			fmt.Fprintf(&b, "#   %-8s %-8s (%s) → %s\\n", e.Name, e.Manager, e.Marker, e.Install)
+		}
+		b.WriteString("#\\n")
+		b.WriteString("# \\"auto\\" runs those install commands. Replace with an explicit list if this\\n")
+		b.WriteString("# project needs something else:  post_create = [\\"make bootstrap\\"]\\n")
+		b.WriteString("post_create = \\"auto\\"\\n\\n")
+
+		b.WriteString("# How each project type gets its dependencies:\\n")
+		b.WriteString("#   reinstall  run the install command (correct, the default)\\n")
+		b.WriteString("#   copy       duplicate the directory from the source checkout (fast)\\n")
+		b.WriteString("#   link       share one directory between checkouts (fastest, risky)\\n")
+		b.WriteString("#   skip       leave the worktree without dependencies\\n")
+		b.WriteString("[worktree.strategies]\\n")
+		for _, e := range plan.Ecosystems {
+			switch {
+			case len(e.DepDirs) == 0:
+				fmt.Fprintf(&b, "# %-8s = \\"reinstall\\"  # %s uses a global cache; nothing to copy\\n",
+					e.Name, e.Manager)
+			case e.CopySafe:
+				fmt.Fprintf(&b, "%-10s = \\"reinstall\\"  # \\"copy\\" is sound here and much faster\\n", e.Name)
+			default:
+				fmt.Fprintf(&b, "%-10s = \\"reinstall\\"  # copy/link unsupported: %s\\n", e.Name, e.Hazard)
+			}
+		}
+	} else {
+		b.WriteString("# No project type detected. Add the commands a fresh checkout needs:\\n")
+		b.WriteString("# post_create = [\\"make bootstrap\\"]\\n")
+		b.WriteString("post_create = \\"auto\\"\\n")
+	}
+
+	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
+		return err
+	}
+	fmt.Fprintf(app.Out, "wrote %s\\n", config.Contract(path))
+	fmt.Fprintln(app.Out, "Commit it so every machine provisions worktrees the same way.")
+	return nil
+}
+'''
+s = s[:start] + new
+s = s.replace('\t\tnewWtProvisionCmd(app),','\t\tnewWtPlanCmd(app),\n\t\tnewWtProvisionCmd(app),')
+open(p,'w').write(s)
+PY
+gofmt -w internal/cli/ && go build -o dev ./cmd/dev 2>&1 | head
+```
+
+```text
+# github.com/daviddwlee84/dev-cli/internal/cli
+internal/cli/worktree.go:478:10: undefined: filepath
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:31:15Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Build and run wt plan on this repo
+
+```bash
+python3 - <<'PY'
+p='internal/cli/worktree.go'
+s=open(p).read()
+s=s.replace('import (\n\t"fmt"\n\t"os"\n\t"strings"','import (\n\t"fmt"\n\t"os"\n\t"path/filepath"\n\t"strings"')
+open(p,'w').write(s)
+PY
+gofmt -w internal/cli/ && go build -o dev ./cmd/dev && go vet ./... && echo BUILD_OK && ./dev wt plan 2>&1
+```
+
+```text
+BUILD_OK
+~/Documents/Program/dev-cli
+
+PROJECT  MANAGER  FROM    DEPENDENCIES  TOOL
+go       go       go.mod  global cache  installed
+
+   ACTION  WHAT             WHY
+✓  run     go mod download  go.mod detected
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:31:24Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Demo the plan with copy strategies
+
+```bash
+SCRATCH=/tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad
+DEMO=$SCRATCH/plan-demo && rm -rf $DEMO && mkdir -p $DEMO && cd $DEMO
+git init -q -b main . && git config user.email d@e.test && git config user.name t
+printf '.env\n.venv/\nnode_modules/\n' > .gitignore
+printf 'TOKEN=x\n' > .env
+printf '[project]\nname="demo"\n' > pyproject.toml && touch uv.lock
+printf '{"name":"demo"}\n' > package.json && printf '{}\n' > package-lock.json
+mkdir -p node_modules/pkg .venv/bin && printf 'home = /somewhere\n' > .venv/pyvenv.cfg
+git add -A && git commit -qm "chore: init"
+cat > /dev/null <<'X'
+X
+cd /Users/david/Documents/Program/dev-cli
+echo "=== default (reinstall) ==="; ./dev wt plan --repo $DEMO 2>&1
+echo; echo "=== with node=copy, python=copy ==="
+cat > $DEMO/.dev.toml <<'EOF'
+[worktree]
+include = [".env"]
+
+[worktree.strategies]
+node   = "copy"
+python = "copy"
+EOF
+./dev wt plan --repo $DEMO 2>&1
+```
+
+```text
+=== default (reinstall) ===
+/private/tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad/plan-demo
+
+PROJECT  MANAGER  FROM               DEPENDENCIES  TOOL
+node     npm      package-lock.json  node_modules  installed
+python   uv       uv.lock            .venv         installed
+
+   ACTION  WHAT     WHY
+✓  copy    .env     gitignored, so the checkout would not have it
+✓  run     npm ci   package-lock.json detected
+✓  run     uv sync  uv.lock detected
+
+=== with node=copy, python=copy ===
+/private/tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad/plan-demo
+
+PROJECT  MANAGER  FROM               DEPENDENCIES  TOOL
+node     npm      package-lock.json  node_modules  installed
+python   uv       uv.lock            .venv         installed
+
+   ACTION    WHAT          WHY
+✓  copy      .env          gitignored, so the checkout would not have it
+✓  copy-dir  node_modules  npm dependencies, copied instead of reinstalling
+✓  run       uv sync       uv.lock detected
+
+warning: python: copy is unsound here — a virtualenv bakes its own absolute path into pyvenv.cfg and bin/activate, so it does not work from a second location; uv reinstalls from a shared cache in seconds; using reinstall instead
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:31:28Z)**_
+
+Exactly right — `node = "copy"` is honored, `python = "copy"` is refused with the reason and downgraded. Let me check `--write` and verify a copy actually works:
+
+_**Agent (claude-opus-5 2026-08-27 04:31:30Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Test the .dev.toml template generator
+
+```bash
+SCRATCH=/tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad
+DEMO=$SCRATCH/plan-demo
+rm -f $DEMO/.dev.toml
+./dev wt plan --repo $DEMO --write 2>&1 && echo "--- generated .dev.toml ---" && cat $DEMO/.dev.toml
+```
+
+```text
+wrote /private/tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad/plan-demo/.dev.toml
+Commit it so every machine provisions worktrees the same way.
+--- generated .dev.toml ---
+# dev worktree setup for this repository.
+#
+# Committed on purpose: a worktree is a clean checkout, so without this a
+# new one comes up with no dependencies and none of the gitignored files the
+# project needs. Seeded by `dev wt plan --write`; edit freely.
+
+[worktree]
+# Gitignored files to carry into a new worktree. Only files that are BOTH
+# listed here AND gitignored are copied — a tracked file is already in the
+# checkout on the correct branch.
+include = [".env", ".env.local"]
+
+# Detected in this repository:
+#   node     npm      (package-lock.json) → npm ci
+#   python   uv       (uv.lock) → uv sync
+#
+# "auto" runs those install commands. Replace with an explicit list if this
+# project needs something else:  post_create = ["make bootstrap"]
+post_create = "auto"
+
+# How each project type gets its dependencies:
+#   reinstall  run the install command (correct, the default)
+#   copy       duplicate the directory from the source checkout (fast)
+#   link       share one directory between checkouts (fastest, risky)
+#   skip       leave the worktree without dependencies
+[worktree.strategies]
+node       = "reinstall"  # "copy" is sound here and much faster
+python     = "reinstall"  # copy/link unsupported: a virtualenv bakes its own absolute path into pyvenv.cfg and bin/activate, so it does not work from a second location; uv reinstalls from a shared cache in seconds
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:31:37Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify copy strategy actually copies node_modules
+
+```bash
+SCRATCH=/tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad
+DEMO=$SCRATCH/plan-demo
+cat > $DEMO/.dev.toml <<'EOF'
+[worktree]
+include = [".env"]
+post_create = []
+[worktree.strategies]
+node = "copy"
+EOF
+cd $DEMO && git add -A && git commit -qm "chore: dev config" && cd /Users/david/Documents/Program/dev-cli
+cat > $SCRATCH/wtcfg.toml <<EOF
+[paths]
+scan_roots = ["$SCRATCH"]
+worktree_root = "$SCRATCH/wt"
+state_dir = "$SCRATCH/wtstate"
+[runtime]
+backend = "none"
+EOF
+./dev --config $SCRATCH/wtcfg.toml wt create feat/copy --repo plan-demo --base main --no-session 2>&1
+echo "--- result ---"
+ls -la $SCRATCH/wt/plan-demo/feat-copy/ 2>&1 | head -12
+```
+
+```text
+worktree feat/copy -> /tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad/wt/plan-demo/feat-copy
+copied .env
+feat/copy  /tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad/wt/plan-demo/feat-copy
+   copied    1 gitignored file(s): .env
+note: `dev start` also records a task, which is what makes the work survive closing the session
+cd /tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad/wt/plan-demo/feat-copy
+--- result ---
+.rw-r--r--@  83 david 27 Aug 12:31 .dev.toml
+.rw-r--r--@   8 david 27 Aug 12:31 .env
+.rw-r--r--@ 154 david 27 Aug 12:31 .git
+.rw-r--r--@  26 david 27 Aug 12:31 .gitignore
+.rw-r--r--@   3 david 27 Aug 12:31 package-lock.json
+.rw-r--r--@  16 david 27 Aug 12:31 package.json
+.rw-r--r--@  22 david 27 Aug 12:31 pyproject.toml
+.rw-r--r--@   0 david 27 Aug 12:31 uv.lock
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:31:47Z)**_
+
+Bug: an explicit `post_create` list also disabled the copy strategies, but those are separate axes — *how deps arrive* vs *what commands run*. Fixing:
+
+_**Agent (claude-opus-5 2026-08-27 04:31:57Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Separate strategy from post_create
+
+```bash
+python3 - <<'PY'
+p='internal/wt/plan.go'
+s=open(p).read()
+old_start = s.index('\t// Dependencies, per ecosystem.')
+old_end = s.index('\t// An explicit command list, when configured.')
+new = '''	// Dependencies, per ecosystem.
+	//
+	// The strategy and post_create are separate axes. A strategy says how a
+	// dependency directory arrives; post_create says what commands run. So an
+	// explicit command list replaces the *derived install commands* but still
+	// leaves copy and link in effect — a project that bootstraps with `make
+	// setup` may still want its node_modules copied rather than rebuilt.
+	explicit := !set.Cmds.Auto
+	for _, e := range p.Ecosystems {
+		strategy, warn := set.strategyFor(e)
+		if warn != "" {
+			p.Warnings = append(p.Warnings, warn)
+		}
+
+		switch strategy {
+		case Copy, Link:
+			kind, verb := StepCopyDir, "copied"
+			if strategy == Link {
+				kind, verb = StepLinkDir, "shared"
+			}
+			for _, dir := range e.DepDirs {
+				step := Step{
+					Kind: kind, What: dir, Ecosystem: e.Name,
+					Why: fmt.Sprintf("%s dependencies, %s instead of reinstalling", e.Manager, verb),
+				}
+				if _, err := os.Stat(filepath.Join(repoPath, dir)); err != nil {
+					step.Skipped = true
+					step.Why = "not present in the source checkout — nothing to " + string(strategy)
+				}
+				p.Steps = append(p.Steps, step)
+			}
+
+		case Skip:
+			if explicit {
+				continue
+			}
+			p.Steps = append(p.Steps, Step{
+				Kind: StepRun, What: e.Install, Ecosystem: e.Name,
+				Why: "strategy is skip", Skipped: true,
+			})
+
+		default: // Reinstall
+			if explicit {
+				continue // the configured command list replaces this
+			}
+			step := Step{
+				Kind: StepRun, What: e.Install, Ecosystem: e.Name,
+				Why: e.Marker + " detected",
+			}
+			if !e.ToolInstalled() {
+				step.Skipped = true
+				step.Why = e.Tool + " is not installed on this machine"
+				p.Warnings = append(p.Warnings,
+					fmt.Sprintf("%s needs %s, which is not installed — worktrees will come up without its dependencies",
+						e.Name, e.Tool))
+			}
+			p.Steps = append(p.Steps, step)
+		}
+	}
+
+'''
+s = s[:old_start] + new + s[old_end:]
+# remove the now-duplicated earlier `explicit` declaration
+s = s.replace('''	// Dependencies, per ecosystem.
+	//
+	// The strategy and post_create are separate axes.''', '''	// Dependencies, per ecosystem.
+	//
+	// The strategy and post_create are separate axes.''')
+open(p,'w').write(s)
+PY
+grep -n "explicit :=" internal/wt/plan.go
+```
+
+```text
+194:	explicit := !set.Cmds.Auto
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:32:07Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Re-verify copy strategy end to end
+
+```bash
+gofmt -w internal/wt/ && go build -o dev ./cmd/dev && SCRATCH=/tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad
+rm -rf $SCRATCH/wt $SCRATCH/wtstate
+cd $SCRATCH/plan-demo && git worktree prune && git branch -D feat/copy 2>/dev/null; cd /Users/david/Documents/Program/dev-cli
+echo "=== plan ==="; ./dev --config $SCRATCH/wtcfg.toml wt plan --repo plan-demo 2>&1 | tail -8
+echo; echo "=== create ==="; ./dev --config $SCRATCH/wtcfg.toml wt create feat/copy --repo plan-demo --base main --no-session 2>&1 | tail -4
+echo; echo "=== node_modules present? ==="; ls $SCRATCH/wt/plan-demo/feat-copy/node_modules 2>&1
+```
+
+```text
+Deleted branch feat/copy (was 1c9fbc0).
+=== plan ===
+
+PROJECT  MANAGER  FROM               DEPENDENCIES  TOOL
+node     npm      package-lock.json  node_modules  installed
+python   uv       uv.lock            .venv         installed
+
+   ACTION    WHAT          WHY
+✓  copy      .env          gitignored, so the checkout would not have it
+✓  copy-dir  node_modules  npm dependencies, copied instead of reinstalling
+
+=== create ===
+feat/copy  /tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad/wt/plan-demo/feat-copy
+   copied    2 gitignored file(s): .env, node_modules/
+note: `dev start` also records a task, which is what makes the work survive closing the session
+cd /tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad/wt/plan-demo/feat-copy
+
+=== node_modules present? ===
+pkg
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:32:09Z)**_
+
+`node_modules` now copies. Let me update the existing tests and add coverage for the new behavior:
+
+_**Agent (claude-opus-5 2026-08-27 04:32:32Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Update worktree tests for the ecosystem model
+
+```bash
+python3 - <<'PY'
+p='internal/wt/wt_test.go'
+s=open(p).read()
+# Provisioner construction changed; the manager tests use config so most are fine.
+# Only the Detect test and any direct Provisioner use need updating.
+s=s.replace('''func TestDetect(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module x\\n"), 0o644)
+	got := wt.Detect(dir)
+	if len(got) != 1 || got[0] != "go mod download" {
+		t.Errorf("Detect = %v, want [go mod download]", got)
+	}
+
+	// Two JS lockfiles: only one package manager should be chosen.
+	js := t.TempDir()
+	os.WriteFile(filepath.Join(js, "pnpm-lock.yaml"), []byte(""), 0o644)
+	os.WriteFile(filepath.Join(js, "package-lock.json"), []byte("{}"), 0o644)
+	got = wt.Detect(js)
+	if len(got) > 1 {
+		t.Errorf("only one JS package manager should run, got %v", got)
+	}
+
+	if got := wt.Detect(t.TempDir()); len(got) != 0 {
+		t.Errorf("an empty directory needs no provisioning, got %v", got)
+	}
+}''','''func TestDetectEcosystems(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module x\\n"), 0o644)
+	got := wt.DetectEcosystems(dir)
+	if len(got) != 1 || got[0].Name != "go" || got[0].Install != "go mod download" {
+		t.Fatalf("DetectEcosystems = %+v", got)
+	}
+	// Go keeps everything in a global cache, so there is nothing to copy and
+	// the copy/link question does not arise.
+	if len(got[0].DepDirs) != 0 {
+		t.Errorf("go should declare no dependency directories, got %v", got[0].DepDirs)
+	}
+
+	// Two JS lockfiles: only one manager, chosen by priority.
+	js := t.TempDir()
+	os.WriteFile(filepath.Join(js, "pnpm-lock.yaml"), []byte(""), 0o644)
+	os.WriteFile(filepath.Join(js, "package-lock.json"), []byte("{}"), 0o644)
+	got = wt.DetectEcosystems(js)
+	if len(got) != 1 {
+		t.Fatalf("only one JS manager should be chosen, got %+v", got)
+	}
+	if got[0].Manager != "pnpm" {
+		t.Errorf("pnpm should win over npm, got %q", got[0].Manager)
+	}
+
+	// Several languages coexist.
+	multi := t.TempDir()
+	os.WriteFile(filepath.Join(multi, "uv.lock"), []byte(""), 0o644)
+	os.WriteFile(filepath.Join(multi, "package-lock.json"), []byte("{}"), 0o644)
+	if got := wt.DetectEcosystems(multi); len(got) != 2 {
+		t.Errorf("want python and node, got %+v", got)
+	}
+
+	if got := wt.DetectEcosystems(t.TempDir()); len(got) != 0 {
+		t.Errorf("an empty directory has no ecosystem, got %+v", got)
+	}
+}
+
+func TestStrategySafety(t *testing.T) {
+	python := wt.DetectEcosystems(withFiles(t, "uv.lock"))[0]
+	node := wt.DetectEcosystems(withFiles(t, "package-lock.json"))[0]
+
+	// A virtualenv cannot survive being copied or shared; node_modules can be
+	// copied but should not be shared.
+	if ok, why := python.SupportsStrategy(wt.Copy); ok {
+		t.Error("copying a virtualenv must not be allowed")
+	} else if why == "" {
+		t.Error("a refusal must explain itself")
+	}
+	if ok, _ := python.SupportsStrategy(wt.Link); ok {
+		t.Error("sharing a virtualenv must not be allowed")
+	}
+	if ok, _ := node.SupportsStrategy(wt.Copy); !ok {
+		t.Error("node_modules copies soundly")
+	}
+	if ok, _ := node.SupportsStrategy(wt.Link); ok {
+		t.Error("sharing one node_modules between checkouts should not be a default-allowed strategy")
+	}
+	for _, e := range []wt.Ecosystem{python, node} {
+		for _, s := range []wt.Strategy{wt.Reinstall, wt.Skip} {
+			if ok, _ := e.SupportsStrategy(s); !ok {
+				t.Errorf("%s should always support %s", e.Name, s)
+			}
+		}
+	}
+}
+
+func withFiles(t *testing.T, names ...string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, n := range names {
+		if err := os.WriteFile(filepath.Join(dir, n), []byte(""), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}''')
+open(p,'w').write(s)
+PY
+gofmt -w internal/wt/ && go test ./internal/wt/ 2>&1 | tail -10
+```
+
+```text
+ok  	github.com/daviddwlee84/dev-cli/internal/wt	5.541s
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:33:23Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Write plan tests
+
+```bash
+cat > internal/wt/plan_test.go <<'EOF'
+package wt_test
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/wt"
+)
+
+// projectRepo builds a repo with the given marker files, a .gitignore and the
+// dependency directories those markers imply.
+func projectRepo(t *testing.T, markers ...string) *gittest.Repo {
+	t.Helper()
+	r := gittest.New(t)
+	r.Commit(".gitignore", ".env\n.venv/\nnode_modules/\n", "chore: ignore local state")
+	for _, m := range markers {
+		r.Commit(m, "", "chore: add "+m)
+	}
+	r.Write(".env", "TOKEN=x\n")
+	os.MkdirAll(filepath.Join(r.Root, "node_modules", "pkg"), 0o755)
+	os.MkdirAll(filepath.Join(r.Root, ".venv", "bin"), 0o755)
+	return r
+}
+
+func settings(t *testing.T, repoPath string, mutate func(*config.Config)) wt.Settings {
+	t.Helper()
+	c := config.Default()
+	c.Worktree.Include = []string{".env"}
+	if mutate != nil {
+		mutate(&c)
+	}
+	return wt.SettingsFor(c, repoPath)
+}
+
+func stepFor(p wt.Plan, kind wt.StepKind, what string) (wt.Step, bool) {
+	for _, s := range p.Steps {
+		if s.Kind == kind && s.What == what {
+			return s, true
+		}
+	}
+	return wt.Step{}, false
+}
+
+func TestPlanDefaultsToReinstall(t *testing.T) {
+	r := projectRepo(t, "package-lock.json")
+	plan := wt.BuildPlan(context.Background(), settings(t, r.Root, nil), r.Root)
+
+	if _, ok := stepFor(plan, wt.StepCopyFile, ".env"); !ok {
+		t.Errorf("the gitignored .env should be copied: %+v", plan.Steps)
+	}
+	if _, ok := stepFor(plan, wt.StepRun, "npm ci"); !ok {
+		t.Errorf("npm ci should be the default: %+v", plan.Steps)
+	}
+	if _, ok := stepFor(plan, wt.StepCopyDir, "node_modules"); ok {
+		t.Error("nothing should be copied without an explicit strategy")
+	}
+}
+
+func TestPlanCopyStrategy(t *testing.T) {
+	r := projectRepo(t, "package-lock.json")
+	set := settings(t, r.Root, func(c *config.Config) {
+		c.Worktree.Strategies = map[string]string{"node": "copy"}
+	})
+	plan := wt.BuildPlan(context.Background(), set, r.Root)
+
+	if _, ok := stepFor(plan, wt.StepCopyDir, "node_modules"); !ok {
+		t.Errorf("node_modules should be copied: %+v", plan.Steps)
+	}
+	// Copying replaces the install; running both would be wasted work.
+	if _, ok := stepFor(plan, wt.StepRun, "npm ci"); ok {
+		t.Error("the install command should not also run when copying")
+	}
+	if len(plan.Warnings) != 0 {
+		t.Errorf("copying node_modules is sound and should warn about nothing: %v", plan.Warnings)
+	}
+}
+
+// Copying a virtualenv cannot work, so an unsound choice is narrowed back to
+// reinstall with an explanation rather than silently producing a broken tree.
+func TestPlanRefusesUnsoundStrategy(t *testing.T) {
+	r := projectRepo(t, "uv.lock")
+	set := settings(t, r.Root, func(c *config.Config) {
+		c.Worktree.Strategies = map[string]string{"python": "copy"}
+	})
+	plan := wt.BuildPlan(context.Background(), set, r.Root)
+
+	if _, ok := stepFor(plan, wt.StepCopyDir, ".venv"); ok {
+		t.Error("a virtualenv must never be copied")
+	}
+	if _, ok := stepFor(plan, wt.StepRun, "uv sync"); !ok {
+		t.Errorf("it should fall back to reinstalling: %+v", plan.Steps)
+	}
+	if len(plan.Warnings) == 0 {
+		t.Fatal("the downgrade must be explained")
+	}
+	if !strings.Contains(plan.Warnings[0], "pyvenv.cfg") {
+		t.Errorf("the warning should say why, got %q", plan.Warnings[0])
+	}
+}
+
+func TestPlanSkipStrategy(t *testing.T) {
+	r := projectRepo(t, "package-lock.json")
+	set := settings(t, r.Root, func(c *config.Config) {
+		c.Worktree.Strategy = "skip"
+	})
+	plan := wt.BuildPlan(context.Background(), set, r.Root)
+
+	step, ok := stepFor(plan, wt.StepRun, "npm ci")
+	if !ok || !step.Skipped {
+		t.Errorf("the install should be listed but skipped: %+v", plan.Steps)
+	}
+	if len(plan.Runnable()) != 1 {
+		t.Errorf("only the .env copy should run, got %+v", plan.Runnable())
+	}
+}
+
+// A global-cache ecosystem has nothing to copy, so copy collapses to
+// reinstall — which for it is nearly free anyway.
+func TestPlanCopyIsMootWithoutDepDirs(t *testing.T) {
+	r := projectRepo(t, "go.mod")
+	set := settings(t, r.Root, func(c *config.Config) {
+		c.Worktree.Strategies = map[string]string{"go": "copy"}
+	})
+	plan := wt.BuildPlan(context.Background(), set, r.Root)
+
+	if _, ok := stepFor(plan, wt.StepRun, "go mod download"); !ok {
+		t.Errorf("should fall back to the install command: %+v", plan.Steps)
+	}
+	if len(plan.Warnings) != 0 {
+		t.Errorf("this is not worth warning about: %v", plan.Warnings)
+	}
+}
+
+// Strategy and post_create are separate axes: an explicit command list
+// replaces the derived install commands but leaves copy in effect.
+func TestPlanExplicitCommandsKeepCopyStrategy(t *testing.T) {
+	r := projectRepo(t, "package-lock.json")
+	set := settings(t, r.Root, func(c *config.Config) {
+		c.Worktree.PostCreate = config.PostCreate{Commands: []string{"make bootstrap"}}
+		c.Worktree.Strategies = map[string]string{"node": "copy"}
+	})
+	plan := wt.BuildPlan(context.Background(), set, r.Root)
+
+	if _, ok := stepFor(plan, wt.StepCopyDir, "node_modules"); !ok {
+		t.Errorf("copy should still apply: %+v", plan.Steps)
+	}
+	if _, ok := stepFor(plan, wt.StepRun, "make bootstrap"); !ok {
+		t.Errorf("the configured command should run: %+v", plan.Steps)
+	}
+	if _, ok := stepFor(plan, wt.StepRun, "npm ci"); ok {
+		t.Error("the derived install should be replaced by the configured list")
+	}
+}
+
+func TestPlanSkipsAbsentDependencyDirectory(t *testing.T) {
+	r := gittest.New(t)
+	r.Commit("package-lock.json", "{}", "chore: add lockfile")
+	// No node_modules in the source checkout at all.
+	set := settings(t, r.Root, func(c *config.Config) {
+		c.Worktree.Strategies = map[string]string{"node": "copy"}
+	})
+	plan := wt.BuildPlan(context.Background(), set, r.Root)
+
+	step, ok := stepFor(plan, wt.StepCopyDir, "node_modules")
+	if !ok || !step.Skipped {
+		t.Errorf("nothing to copy should be listed as skipped: %+v", plan.Steps)
+	}
+	if !strings.Contains(step.Why, "not present") {
+		t.Errorf("the reason should say so, got %q", step.Why)
+	}
+}
+
+func TestPlanRepoOverrideWins(t *testing.T) {
+	r := projectRepo(t, "package-lock.json")
+	r.Commit(".dev.toml", "[worktree]\n[worktree.strategies]\nnode = \"copy\"\n", "chore: pin worktree setup")
+
+	c := config.Default()
+	c.Worktree.Include = []string{".env"}
+	c.Worktree.Strategy = "reinstall"
+	plan := wt.BuildPlan(context.Background(), wt.SettingsFor(c, r.Root), r.Root)
+
+	if _, ok := stepFor(plan, wt.StepCopyDir, "node_modules"); !ok {
+		t.Errorf("the repo's .dev.toml should win over global config: %+v", plan.Steps)
+	}
+}
+
+func TestPlanRejectsUnknownStrategyName(t *testing.T) {
+	r := projectRepo(t, "package-lock.json")
+	set := settings(t, r.Root, func(c *config.Config) {
+		c.Worktree.Strategies = map[string]string{"node": "teleport"}
+	})
+	plan := wt.BuildPlan(context.Background(), set, r.Root)
+
+	if len(plan.Warnings) == 0 || !strings.Contains(plan.Warnings[0], "not a strategy") {
+		t.Errorf("a typo should be reported, got %v", plan.Warnings)
+	}
+	if _, ok := stepFor(plan, wt.StepRun, "npm ci"); !ok {
+		t.Error("it should fall back to reinstalling")
+	}
+}
+
+// Copying must recreate symlinks rather than follow them: a pnpm node_modules
+// is a farm of links into a global store, and dereferencing would turn a small
+// copy into gigabytes.
+func TestApplyCopyPreservesSymlinks(t *testing.T) {
+	r := projectRepo(t, "package-lock.json")
+	os.Symlink(filepath.Join(r.Root, "package.json"), filepath.Join(r.Root, "node_modules", "linked"))
+
+	dst := filepath.Join(t.TempDir(), "checkout")
+	os.MkdirAll(dst, 0o755)
+
+	set := settings(t, r.Root, func(c *config.Config) {
+		c.Worktree.Strategies = map[string]string{"node": "copy"}
+	})
+	p := &wt.Provisioner{Settings: set}
+	plan := wt.BuildPlan(context.Background(), set, r.Root)
+	res, err := p.Apply(context.Background(), plan, r.Root, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Failures) != 0 {
+		t.Fatalf("failures: %v", res.Failures)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "node_modules", "pkg")); err != nil {
+		t.Errorf("the directory should have been copied: %v", err)
+	}
+	info, err := os.Lstat(filepath.Join(dst, "node_modules", "linked"))
+	if err != nil {
+		t.Fatalf("the symlink should exist: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error("a symlink must be recreated, not dereferenced")
+	}
+}
+
+func TestPlanWarnsAboutMissingTool(t *testing.T) {
+	r := projectRepo(t, "mix.lock") // elixir's mix is very unlikely to be installed in CI
+	plan := wt.BuildPlan(context.Background(), settings(t, r.Root, nil), r.Root)
+
+	step, ok := stepFor(plan, wt.StepRun, "mix deps.get")
+	if !ok {
+		t.Fatalf("the install step should be listed even without the tool: %+v", plan.Steps)
+	}
+	if !step.Skipped {
+		return // mix really is installed here; nothing to assert
+	}
+	if len(plan.Warnings) == 0 {
+		t.Error("a missing tool should warn, since worktrees will come up incomplete")
+	}
+}
+EOF
+gofmt -w internal/wt/ && go test ./internal/wt/ 2>&1 | tail -12
+```
+
+```text
+ok  	github.com/daviddwlee84/dev-cli/internal/wt	9.202s
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:33:26Z)**_
+
+All green. Let me wire the new settings into the generated config and docs:
+
+_**Agent (claude-opus-5 2026-08-27 04:33:37Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Document strategy in config and skill
+
+```bash
+python3 - <<'PY'
+p='internal/cli/config.go'
+s=open(p).read()
+s=s.replace('''# "auto" detects from lockfiles (uv.lock -> uv sync, package-lock.json ->
+# npm ci, go.mod -> go mod download, ...). Or give an explicit list:
+#   post_create = ["uv sync", "pre-commit install"]
+post_create = "auto"''','''# "auto" detects from lockfiles (uv.lock -> uv sync, package-lock.json ->
+# npm ci, go.mod -> go mod download, ...). Or give an explicit list:
+#   post_create = ["uv sync", "pre-commit install"]
+post_create = "auto"
+
+# How a new worktree gets its installed dependencies:
+#   reinstall  run the install command (always correct, can be slow)
+#   copy       duplicate the directory from the source checkout (fast)
+#   link       share one directory between checkouts (fastest, and risky)
+#   skip       leave the worktree without dependencies
+#
+# dev narrows an unsound choice back to reinstall and says why — copying a
+# virtualenv cannot work, because it bakes its own absolute path into
+# pyvenv.cfg and bin/activate.
+strategy = "reinstall"
+
+# Per project type. See what applies to a given repo with `dev wt plan`.
+# [worktree.strategies]
+# node = "copy"       # node_modules copies soundly and reinstalling is slow''')
+open(p,'w').write(s)
+
+p='internal/skill/files/SKILL.md'
+s=open(p).read()
+s=s.replace('''dev wt create feat/auth --base main    # worktree at the configured path
+dev wt list                            # every worktree of this repo
+dev wt rm feat/auth                    # remove the checkout; the branch stays
+''','''dev wt create feat/auth --base main    # worktree at the configured path
+dev wt list                            # every worktree of this repo
+dev wt plan                            # what a new worktree would be set up with
+dev wt rm feat/auth                    # remove the checkout; the branch stays
+''')
+s=s.replace('''6. **Do not create a worktree per agent.**''','''6. **Check `dev wt plan` before blaming a worktree.** A worktree that comes up
+   broken is nearly always a provisioning gap, not a git problem. The plan
+   shows the detected project types, which tools are missing, and exactly what
+   would be copied or run.
+
+7. **Do not create a worktree per agent.**''')
+s=s.replace('''7. **`dev adopt` without `--apply` changes nothing.**''','''8. **`dev adopt` without `--apply` changes nothing.**''')
+s=s.replace('''8. **Commit messages stay English**''','''9. **Commit messages stay English**''')
+open(p,'w').write(s)
+PY
+gofmt -l . ; ./dev skill sync >/dev/null && go build -o dev ./cmd/dev && ./dev config init --stdout | sed -n '/post_create/,/^$/p' | head -25
+```
+
+```text
+Exit code 1
+internal/cli/config.go:214:60: expected ';', found dev
+# github.com/daviddwlee84/dev-cli/internal/cli
+internal/cli/config.go:214:60: syntax error: unexpected name dev after top level declaration
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:34:10Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Fix raw-string backtick again
+
+```bash
+python3 - <<'PY'
+p='internal/cli/config.go'
+s=open(p).read()
+s=s.replace('# Per project type. See what applies to a given repo with `dev wt plan`.',
+            '# Per project type. See what applies to a given repo with "dev wt plan".')
+open(p,'w').write(s)
+PY
+gofmt -w internal/cli/ && go build -o dev ./cmd/dev && echo BUILD_OK
+```
+
+```text
+BUILD_OK
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:34:20Z)**_
+
+Now let me address your TUI question — you're right, there's a real gap. Let me restructure it:
+
+_**Agent (claude-opus-5 2026-08-27 04:34:34Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Add repo row model and fuzzy matching
+
+```bash
+cat > internal/tui/rows.go <<'EOF'
+package tui
+
+import (
+	"strings"
+
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/inventory"
+	"github.com/daviddwlee84/dev-cli/internal/repo"
+	"github.com/daviddwlee84/dev-cli/internal/task"
+)
+
+// RepoRow is one repository as the dashboard shows it: what it is, plus how
+// much of it is currently in flight.
+//
+// The repository view exists because the task list alone answers only half the
+// question. On a machine with forty repositories and no tasks recorded yet,
+// a task-only dashboard is empty — and the honest answer to "what do I have
+// here?" has to come before "what am I working on?"
+type RepoRow struct {
+	Repo   repo.Repo
+	Status gitx.Status
+	// Worktrees is the number of linked worktrees, excluding the main checkout.
+	Worktrees int
+	// Tasks are the recorded tasks belonging to this repository.
+	Tasks []*task.Task
+	// Live reports a runtime session sitting in this repository.
+	Live bool
+}
+
+// HotTasks counts the repository's tasks that are currently hot.
+func (r RepoRow) HotTasks() int {
+	n := 0
+	for _, t := range r.Tasks {
+		if t.State == task.Hot {
+			n++
+		}
+	}
+	return n
+}
+
+// StateSummary renders the repository's tasks as a compact per-state tally,
+// which is what makes the list scannable at forty repositories.
+func (r RepoRow) StateSummary() string {
+	if len(r.Tasks) == 0 {
+		return ""
+	}
+	counts := map[task.State]int{}
+	for _, t := range r.Tasks {
+		counts[t.State]++
+	}
+	var parts []string
+	for _, s := range task.States {
+		if counts[s] > 0 {
+			parts = append(parts, s.Icon()+strconv.Itoa(counts[s]))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// searchText is what a filter query matches against.
+func (r RepoRow) searchText() string {
+	var b strings.Builder
+	b.WriteString(r.Repo.Display())
+	b.WriteString(" ")
+	b.WriteString(r.Status.Branch)
+	for _, t := range r.Tasks {
+		b.WriteString(" ")
+		b.WriteString(t.Title())
+		b.WriteString(" ")
+		b.WriteString(t.Branch)
+	}
+	return strings.ToLower(b.String())
+}
+
+// taskSearchText is what a filter query matches a task row against.
+func taskSearchText(r inventory.Row) string {
+	t := r.Task
+	return strings.ToLower(strings.Join([]string{
+		t.Title(), t.Repo, t.Branch, t.Next, t.Note, string(t.State),
+	}, " "))
+}
+
+// matches reports whether every whitespace-separated term of the query appears
+// in the haystack.
+//
+// Term-wise rather than substring so "auth api" finds a task named "api token
+// auth" — the order words come to mind in is rarely the order they appear in.
+func matches(haystack, query string) bool {
+	query = strings.ToLower(strings.TrimSpace(query))
+	if query == "" {
+		return true
+	}
+	for _, term := range strings.Fields(query) {
+		if !strings.Contains(haystack, term) {
+			return false
+		}
+	}
+	return true
+}
+EOF
+sed -i '' 's|^import (|import (\n\t"strconv"|' internal/tui/rows.go
+gofmt -w internal/tui/ && go build ./internal/tui/ 2>&1 | head -3
+```
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:35:36Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Rewrite TUI model with views and vim navigation
+
+```bash
+cat > internal/tui/model.go <<'EOF'
+package tui
+
+import (
+	"context"
+	"fmt"
+	"os/exec"
+	"sort"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/inventory"
+	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/task"
+)
+
+// View is which list the dashboard is showing.
+type View int
+
+const (
+	// ViewTasks lists recorded change streams — what am I working on.
+	ViewTasks View = iota
+	// ViewRepos lists every repository under the scan roots — what do I have.
+	ViewRepos
+)
+
+// Views is the cycle order.
+var Views = []View{ViewTasks, ViewRepos}
+
+func (v View) String() string {
+	if v == ViewRepos {
+		return "repos"
+	}
+	return "tasks"
+}
+
+// Actions is everything the dashboard can do. The TUI owns no domain logic:
+// it calls back into the same code paths the non-interactive commands use, so
+// behaviour cannot diverge between them.
+type Actions struct {
+	// Reload re-reads the task inventory.
+	Reload func(ctx context.Context) ([]inventory.Row, error)
+	// ReloadRepos re-reads the repository list.
+	ReloadRepos func(ctx context.Context) ([]RepoRow, error)
+	// Open makes a task live.
+	Open func(ctx context.Context, t *task.Task) (string, error)
+	// OpenRepo makes a repository live.
+	OpenRepo func(ctx context.Context, r RepoRow) (string, error)
+	// Park closes a task's session and records its next action.
+	Park func(ctx context.Context, t *task.Task, next string) (string, error)
+	// SetNext records a task's next action.
+	SetNext func(ctx context.Context, t *task.Task, next string) error
+	// Start creates a task in a repository.
+	Start func(ctx context.Context, r RepoRow, name string) (string, error)
+	// Runtime names the active backend.
+	Runtime runtime.Runtime
+	// Tools are external programs the dashboard hands the terminal to.
+	Tools []Tool
+}
+
+// Tool is an external program launched in the selected row's directory.
+//
+// The dashboard suspends while one runs and redraws afterwards, so lazygit or
+// a file manager feels like part of it rather than something you have to quit
+// the dashboard to reach.
+type Tool struct {
+	Key  string
+	Name string
+	// Command is the argv to run; the first element is looked up on PATH.
+	Command []string
+	// Available reports whether the program is installed. A tool that is not
+	// installed is left out of the footer rather than offered and then failing.
+	Available func() bool
+	// NeedsRepo restricts the tool to rows that have a checkout on disk.
+	NeedsRepo bool
+}
+
+type mode int
+
+const (
+	modeList mode = iota
+	modeEditNext
+	modeConfirmPark
+	modeFilter
+	modeStartTask
+)
+
+// Model is the dashboard state.
+type Model struct {
+	actions Actions
+
+	view  View
+	rows  []inventory.Row
+	repos []RepoRow
+
+	cursor map[View]int
+	// filter is the live text query; states narrows the task view.
+	filter string
+	states []task.State
+	// showDone includes finished tasks, which are hidden by default because a
+	// finished task is not work in progress.
+	showDone bool
+
+	mode  mode
+	input textinput.Model
+
+	status string
+	err    error
+
+	width, height int
+	quitting      bool
+	chosen        string
+}
+
+// New builds the dashboard.
+func New(actions Actions, rows []inventory.Row, repos []RepoRow) Model {
+	in := textinput.New()
+	in.CharLimit = 200
+
+	return Model{
+		actions: actions,
+		rows:    rows,
+		repos:   repos,
+		cursor:  map[View]int{},
+		width:   100,
+		height:  30,
+	}
+}
+
+// Chosen reports a directory the caller should cd into after the program
+// exits, or "" when there is none.
+func (m Model) Chosen() string { return m.chosen }
+
+// CurrentView reports which list is showing.
+func (m Model) CurrentView() View { return m.view }
+
+// Init implements tea.Model.
+func (m Model) Init() tea.Cmd { return textinput.Blink }
+
+type reloadMsg struct {
+	rows  []inventory.Row
+	repos []RepoRow
+	err   error
+}
+
+type actionMsg struct {
+	status string
+	cd     string
+	err    error
+}
+
+func (m Model) reload() tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		out := reloadMsg{}
+		if m.actions.Reload != nil {
+			rows, err := m.actions.Reload(ctx)
+			out.rows, out.err = rows, err
+		}
+		if m.actions.ReloadRepos != nil {
+			repos, err := m.actions.ReloadRepos(ctx)
+			out.repos = repos
+			if out.err == nil {
+				out.err = err
+			}
+		}
+		return out
+	}
+}
+
+// visibleTasks applies the state filter and the text query.
+func (m Model) visibleTasks() []inventory.Row {
+	var out []inventory.Row
+	for _, r := range m.rows {
+		if len(m.states) > 0 {
+			if !containsState(m.states, r.Task.State) {
+				continue
+			}
+		} else if r.Task.State == task.Done && !m.showDone {
+			continue
+		}
+		if !matches(taskSearchText(r), m.filter) {
+			continue
+		}
+		out = append(out, r)
+	}
+	return out
+}
+
+// visibleRepos applies the text query, and sorts repositories with work in
+// flight to the top — that is what someone opening the dashboard is looking
+// for, not alphabetical order.
+func (m Model) visibleRepos() []RepoRow {
+	var out []RepoRow
+	for _, r := range m.repos {
+		if !matches(r.searchText(), m.filter) {
+			continue
+		}
+		out = append(out, r)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.HotTasks() != b.HotTasks() {
+			return a.HotTasks() > b.HotTasks()
+		}
+		if a.Live != b.Live {
+			return a.Live
+		}
+		if len(a.Tasks) != len(b.Tasks) {
+			return len(a.Tasks) > len(b.Tasks)
+		}
+		if a.Status.Dirty() != b.Status.Dirty() {
+			return a.Status.Dirty()
+		}
+		return strings.ToLower(a.Repo.Display()) < strings.ToLower(b.Repo.Display())
+	})
+	return out
+}
+
+func containsState(list []task.State, s task.State) bool {
+	for _, v := range list {
+		if v == s {
+			return true
+		}
+	}
+	return false
+}
+
+// count is how many rows the current view has.
+func (m Model) count() int {
+	if m.view == ViewRepos {
+		return len(m.visibleRepos())
+	}
+	return len(m.visibleTasks())
+}
+
+func (m Model) at() int { return m.cursor[m.view] }
+
+func (m *Model) setAt(i int) {
+	n := m.count()
+	switch {
+	case n == 0:
+		i = 0
+	case i >= n:
+		i = n - 1
+	case i < 0:
+		i = 0
+	}
+	m.cursor[m.view] = i
+}
+
+// currentTask returns the selected task, if the task view is showing one.
+func (m Model) currentTask() (inventory.Row, bool) {
+	if m.view != ViewTasks {
+		return inventory.Row{}, false
+	}
+	rows := m.visibleTasks()
+	if m.at() >= len(rows) {
+		return inventory.Row{}, false
+	}
+	return rows[m.at()], true
+}
+
+// currentRepo returns the selected repository, if the repo view is showing one.
+func (m Model) currentRepo() (RepoRow, bool) {
+	if m.view != ViewRepos {
+		return RepoRow{}, false
+	}
+	repos := m.visibleRepos()
+	if m.at() >= len(repos) {
+		return RepoRow{}, false
+	}
+	return repos[m.at()], true
+}
+
+// currentDir is the checkout the selected row points at, for the external
+// tools and for the cd directive.
+func (m Model) currentDir() string {
+	if r, ok := m.currentTask(); ok {
+		if r.CheckoutExists {
+			return r.Checkout
+		}
+		return ""
+	}
+	if r, ok := m.currentRepo(); ok {
+		return r.Repo.Path
+	}
+	return ""
+}
+
+// Update implements tea.Model.
+func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width, m.height = msg.Width, msg.Height
+		return m, nil
+
+	case reloadMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.err = nil
+		if msg.rows != nil {
+			m.rows = msg.rows
+		}
+		if msg.repos != nil {
+			m.repos = msg.repos
+		}
+		m.setAt(m.at())
+		return m, nil
+
+	case actionMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.err, m.status = nil, msg.status
+		if msg.cd != "" {
+			// Under a runtime with no sessions the only useful outcome is
+			// putting the user in the directory, which needs the alternate
+			// screen torn down first.
+			m.chosen, m.quitting = msg.cd, true
+			return m, tea.Quit
+		}
+		return m, m.reload()
+
+	case tea.KeyMsg:
+		switch m.mode {
+		case modeFilter:
+			return m.updateFilter(msg)
+		case modeEditNext, modeConfirmPark, modeStartTask:
+			return m.updatePrompt(msg)
+		}
+		return m.updateList(msg)
+	}
+	return m, nil
+}
+
+func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	n := m.count()
+	page := m.listHeight() / 2
+	if page < 1 {
+		page = 1
+	}
+
+	switch msg.String() {
+	case "q", "ctrl+c":
+		m.quitting = true
+		return m, tea.Quit
+	case "esc":
+		// One escape clears whatever narrowing is in effect before quitting
+		// becomes the meaning of the key.
+		if m.filter != "" || len(m.states) > 0 {
+			m.filter, m.states = "", nil
+			m.setAt(0)
+			return m, nil
+		}
+		m.quitting = true
+		return m, tea.Quit
+
+	// Vim-style movement, with the arrow equivalents alongside.
+	case "j", "down", "ctrl+n":
+		m.setAt(m.at() + 1)
+	case "k", "up", "ctrl+p":
+		m.setAt(m.at() - 1)
+	case "ctrl+d", "pgdown":
+		m.setAt(m.at() + page)
+	case "ctrl+u", "pgup":
+		m.setAt(m.at() - page)
+	case "g", "home":
+		m.setAt(0)
+	case "G", "end":
+		m.setAt(n - 1)
+
+	// View switching. h/l double as left/right between views, since a list has
+	// no horizontal axis of its own.
+	case "tab", "l", "right":
+		m.view = Views[(int(m.view)+1)%len(Views)]
+	case "shift+tab", "h", "left":
+		m.view = Views[(int(m.view)+len(Views)-1)%len(Views)]
+
+	case "/":
+		m.mode = modeFilter
+		m.input.SetValue(m.filter)
+		m.input.Placeholder = "filter"
+		m.input.CursorEnd()
+		m.input.Focus()
+		return m, textinput.Blink
+
+	case "r":
+		m.status = "refreshing…"
+		return m, m.reload()
+
+	case "1":
+		m.states, m.showDone = []task.State{task.Hot}, false
+		m.view = ViewTasks
+		m.setAt(0)
+	case "2":
+		m.states, m.showDone = []task.State{task.Warm}, false
+		m.view = ViewTasks
+		m.setAt(0)
+	case "3":
+		m.states, m.showDone = []task.State{task.Cold}, false
+		m.view = ViewTasks
+		m.setAt(0)
+	case "0":
+		m.states, m.filter = nil, ""
+		m.setAt(0)
+	case "a":
+		m.showDone, m.states = !m.showDone, nil
+		m.setAt(0)
+
+	case "enter", "o":
+		return m, m.openSelected()
+
+	case "p":
+		if _, ok := m.currentTask(); !ok {
+			return m, nil
+		}
+		return m.prompt(modeConfirmPark, "", "what to do when you come back")
+
+	case "c":
+		row, ok := m.currentTask()
+		if !ok {
+			return m, nil
+		}
+		return m.prompt(modeEditNext, row.Task.Next, "next action")
+
+	case "s":
+		if _, ok := m.currentRepo(); !ok {
+			return m, nil
+		}
+		return m.prompt(modeStartTask, "", "name for the new task")
+
+	default:
+		if cmd := m.launchTool(msg.String()); cmd != nil {
+			return m, cmd
+		}
+	}
+	m.setAt(m.at())
+	return m, nil
+}
+
+func (m Model) prompt(md mode, value, placeholder string) (tea.Model, tea.Cmd) {
+	m.mode = md
+	m.input.SetValue(value)
+	m.input.Placeholder = placeholder
+	m.input.CursorEnd()
+	m.input.Focus()
+	return m, textinput.Blink
+}
+
+func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.mode = modeList
+		m.input.Blur()
+		m.filter = ""
+		m.setAt(0)
+		return m, nil
+	case "enter":
+		m.mode = modeList
+		m.input.Blur()
+		return m, nil
+	}
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	// Filtering live is the point: seeing the list narrow as you type is what
+	// makes it faster than remembering an exact name.
+	m.filter = m.input.Value()
+	m.setAt(0)
+	return m, cmd
+}
+
+func (m Model) updatePrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.mode = modeList
+		m.input.Blur()
+		return m, nil
+	case "enter":
+		md := m.mode
+		value := strings.TrimSpace(m.input.Value())
+		m.mode = modeList
+		m.input.Blur()
+		return m, m.submit(md, value)
+	}
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	return m, cmd
+}
+
+func (m Model) submit(md mode, value string) tea.Cmd {
+	switch md {
+	case modeEditNext:
+		row, ok := m.currentTask()
+		if !ok {
+			return nil
+		}
+		t := row.Task
+		return func() tea.Msg {
+			if err := m.actions.SetNext(context.Background(), t, value); err != nil {
+				return actionMsg{err: err}
+			}
+			return actionMsg{status: "next action recorded for " + t.Title()}
+		}
+
+	case modeConfirmPark:
+		row, ok := m.currentTask()
+		if !ok {
+			return nil
+		}
+		t := row.Task
+		return func() tea.Msg {
+			status, err := m.actions.Park(context.Background(), t, value)
+			return actionMsg{status: status, err: err}
+		}
+
+	case modeStartTask:
+		r, ok := m.currentRepo()
+		if !ok {
+			return nil
+		}
+		if value == "" {
+			return func() tea.Msg { return actionMsg{err: fmt.Errorf("a task needs a name")} }
+		}
+		return func() tea.Msg {
+			status, err := m.actions.Start(context.Background(), r, value)
+			return actionMsg{status: status, err: err}
+		}
+	}
+	return nil
+}
+
+func (m Model) openSelected() tea.Cmd {
+	cdWanted := m.actions.Runtime != nil && m.actions.Runtime.Name() == "none"
+
+	if row, ok := m.currentTask(); ok {
+		t := row.Task
+		dir := row.Checkout
+		return func() tea.Msg {
+			status, err := m.actions.Open(context.Background(), t)
+			cd := ""
+			if err == nil && cdWanted {
+				cd = dir
+			}
+			return actionMsg{status: status, cd: cd, err: err}
+		}
+	}
+	if r, ok := m.currentRepo(); ok {
+		dir := r.Repo.Path
+		return func() tea.Msg {
+			status, err := m.actions.OpenRepo(context.Background(), r)
+			cd := ""
+			if err == nil && cdWanted {
+				cd = dir
+			}
+			return actionMsg{status: status, cd: cd, err: err}
+		}
+	}
+	return nil
+}
+
+// launchTool hands the terminal to an external program running in the selected
+// row's checkout, then reloads — the tool may well have changed the git state
+// the dashboard is displaying.
+func (m Model) launchTool(key string) tea.Cmd {
+	for _, t := range m.actions.Tools {
+		if t.Key != key {
+			continue
+		}
+		if t.Available != nil && !t.Available() {
+			return func() tea.Msg {
+				return actionMsg{err: fmt.Errorf("%s is not installed", t.Command[0])}
+			}
+		}
+		dir := m.currentDir()
+		if dir == "" {
+			return func() tea.Msg {
+				return actionMsg{err: fmt.Errorf("nothing selected with a checkout on disk")}
+			}
+		}
+		c := exec.Command(t.Command[0], t.Command[1:]...)
+		c.Dir = dir
+		return tea.ExecProcess(c, func(err error) tea.Msg {
+			if err != nil {
+				return actionMsg{err: fmt.Errorf("%s: %w", t.Name, err)}
+			}
+			return actionMsg{status: "back from " + t.Name}
+		})
+	}
+	return nil
+}
+
+// Tools lists the external programs available on this machine, so the footer
+// only advertises bindings that will actually work.
+func (m Model) Tools() []Tool {
+	var out []Tool
+	for _, t := range m.actions.Tools {
+		if t.Available == nil || t.Available() {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// Summary counts the task states, for the header line.
+func (m Model) Summary() string {
+	counts := map[task.State]int{}
+	for _, r := range m.rows {
+		counts[r.Task.State]++
+	}
+	var parts []string
+	for _, s := range task.States {
+		if counts[s] > 0 {
+			parts = append(parts, fmt.Sprintf("%s %d %s", s.Icon(), counts[s], s))
+		}
+	}
+	if len(m.repos) > 0 {
+		parts = append(parts, fmt.Sprintf("%d repos", len(m.repos)))
+	}
+	if len(parts) == 0 {
+		return "no tasks"
+	}
+	return strings.Join(parts, "   ")
+}
+
+func contract(p string) string { return config.Contract(p) }
+EOF
+gofmt -w internal/tui/ && go build ./internal/tui/ 2>&1 | head -5
+```
+
+```text
+# github.com/daviddwlee84/dev-cli/internal/tui
+internal/tui/model.go:343:12: m.listHeight undefined (type Model has no field or method listHeight)
+internal/tui/view.go:21:12: m.visible undefined (type Model has no field or method visible)
+internal/tui/view.go:46:11: invalid operation: i == m.cursor (mismatched types int and map[View]int)
+internal/tui/view.go:57:11: invalid operation: i == m.cursor (mismatched types int and map[View]int)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:35:49Z)**_
+
+Good point — hard-coded is wrong. Let me finish the view rewrite, then make tools config-driven:
+
+_**Agent (claude-opus-5 2026-08-27 04:36:34Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Rewrite TUI view with tabs, repos and scrolling
+
+```bash
+cat > internal/tui/view.go <<'EOF'
+package tui
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/daviddwlee84/dev-cli/internal/inventory"
+	"github.com/daviddwlee84/dev-cli/internal/task"
+)
+
+// chrome is the number of lines the header, detail pane and footer take, so
+// the list knows how much room it has left.
+const chrome = 12
+
+func (m Model) listHeight() int {
+	h := m.height - chrome
+	if h < 3 {
+		return 3
+	}
+	return h
+}
+
+// View implements tea.Model.
+func (m Model) View() string {
+	if m.quitting {
+		return ""
+	}
+	var b strings.Builder
+	b.WriteString(m.renderHeader())
+	b.WriteString("\n")
+
+	if m.view == ViewRepos {
+		b.WriteString(m.renderRepos())
+	} else {
+		b.WriteString(m.renderTasks())
+	}
+
+	b.WriteString("\n")
+	b.WriteString(m.renderDetail())
+	b.WriteString("\n")
+	b.WriteString(m.renderFooter())
+	return b.String()
+}
+
+// renderHeader shows the tab strip, so which list is showing — and that there
+// is another one — is never in doubt.
+func (m Model) renderHeader() string {
+	var tabs []string
+	for _, v := range Views {
+		label := " " + strings.ToUpper(v.String()) + " "
+		if v == m.view {
+			tabs = append(tabs, styleSelected.Render(label))
+		} else {
+			tabs = append(tabs, styleDim.Render(label))
+		}
+	}
+	line := styleTitle.Render("dev") + "  " + strings.Join(tabs, styleDim.Render("│")) +
+		"   " + styleDim.Render(m.Summary())
+	if m.filter != "" {
+		line += "   " + styleWarm.Render("/"+m.filter)
+	}
+	return line + "\n"
+}
+
+// window returns the slice of a list visible around the cursor, and the offset
+// it starts at, so a long inventory scrolls instead of overflowing.
+func (m Model) window(n int) (from, to int) {
+	h := m.listHeight()
+	if n <= h {
+		return 0, n
+	}
+	from = m.at() - h/2
+	if from < 0 {
+		from = 0
+	}
+	if from+h > n {
+		from = n - h
+	}
+	return from, from + h
+}
+
+func (m Model) renderTasks() string {
+	rows := m.visibleTasks()
+	if len(rows) == 0 {
+		return m.emptyTasks()
+	}
+	nameW, branchW, nextW := m.columnWidths()
+
+	var b strings.Builder
+	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-*s  %-6s  %-*s  %-8s  %-5s  %s",
+		nameW, "TASK", "STATE", branchW, "BRANCH", "GIT", "AGE", "NEXT")) + "\n")
+
+	from, to := m.window(len(rows))
+	for i := from; i < to; i++ {
+		r := rows[i]
+		line := fmt.Sprintf("%-*s  %-6s  %-*s  %-8s  %-5s  %s",
+			nameW, pad(r.Task.Title(), nameW),
+			r.Task.State.Label(),
+			branchW, pad(r.Task.Branch, branchW),
+			pad(gitColumn(r), 8),
+			pad(shortAge(r), 5),
+			pad(nextColumn(r), nextW),
+		)
+		b.WriteString(m.renderLine(i, line, colourState(r.Task.State, line)))
+	}
+	b.WriteString(m.scrollNote(len(rows), from, to))
+	return b.String()
+}
+
+func (m Model) renderRepos() string {
+	repos := m.visibleRepos()
+	if len(repos) == 0 {
+		return "  " + styleDim.Render("No repositories found. Check paths.scan_roots in your config,"+
+			" or run `dev config init`.\n")
+	}
+	nameW := clamp(m.width*30/100, 16, 34)
+	branchW := clamp(m.width*22/100, 12, 28)
+
+	var b strings.Builder
+	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-*s  %-*s  %-8s  %-4s  %s",
+		nameW, "REPO", branchW, "BRANCH", "GIT", "WT", "TASKS")) + "\n")
+
+	from, to := m.window(len(repos))
+	for i := from; i < to; i++ {
+		r := repos[i]
+		wt := "—"
+		if r.Worktrees > 0 {
+			wt = fmt.Sprintf("%d", r.Worktrees)
+		}
+		tasks := r.StateSummary()
+		if tasks == "" {
+			tasks = styleDim.Render("—")
+		}
+		if r.Live {
+			tasks = styleLive.Render("●") + " " + tasks
+		}
+		line := fmt.Sprintf("%-*s  %-*s  %-8s  %-4s  %s",
+			nameW, pad(r.Repo.Display(), nameW),
+			branchW, pad(r.Status.Branch, branchW),
+			pad(r.Status.Summary(), 8),
+			pad(wt, 4),
+			tasks,
+		)
+		plain := line
+		if r.Status.Dirty() {
+			plain = styleDirty.Render(line)
+		} else if len(r.Tasks) == 0 {
+			plain = styleClean.Render(line)
+		}
+		b.WriteString(m.renderLine(i, line, plain))
+	}
+	b.WriteString(m.scrollNote(len(repos), from, to))
+	return b.String()
+}
+
+// renderLine applies the cursor marker and styling to one row.
+func (m Model) renderLine(i int, plain, styled string) string {
+	if i == m.at() {
+		return styleSelected.Render("▸ ") + styleSelected.Render(plain) + "\n"
+	}
+	return "  " + styled + "\n"
+}
+
+func (m Model) scrollNote(total, from, to int) string {
+	if total <= to-from {
+		return ""
+	}
+	return "  " + styleDim.Render(fmt.Sprintf("… %d–%d of %d", from+1, to, total)) + "\n"
+}
+
+func (m Model) emptyTasks() string {
+	if len(m.rows) == 0 {
+		return "  " + styleDim.Render("No tasks recorded yet.\n") +
+			"  " + styleDim.Render("Press tab for the repository list, then s to start work on one.\n") +
+			"  " + styleDim.Render("Or run `dev adopt` to import worktrees and branches already in flight.\n")
+	}
+	return "  " + styleDim.Render("Nothing matches. Press 0 to clear the filter, or a to include done tasks.\n")
+}
+
+func (m Model) columnWidths() (name, branch, next int) {
+	const fixed = 2 + 6 + 8 + 5 + 10
+	avail := m.width - fixed
+	if avail < 40 {
+		avail = 40
+	}
+	name = clamp(avail*30/100, 12, 30)
+	branch = clamp(avail*30/100, 12, 30)
+	next = avail - name - branch
+	if next < 10 {
+		next = 10
+	}
+	return name, branch, next
+}
+
+// renderDetail shows what does not fit in the table — the reason to have a
+// dashboard rather than a listing.
+func (m Model) renderDetail() string {
+	switch m.mode {
+	case modeFilter:
+		return "  " + styleTitle.Render("filter ") + m.input.View() +
+			"\n  " + styleHelp.Render("enter to keep it · esc to clear")
+	case modeEditNext:
+		return "  " + styleTitle.Render("next action ") + m.input.View() +
+			"\n  " + styleHelp.Render("enter to save · esc to cancel")
+	case modeConfirmPark:
+		row, _ := m.currentTask()
+		return "  " + styleTitle.Render("park "+row.Task.Title()) +
+			"\n  next: " + m.input.View() +
+			"\n  " + styleHelp.Render("enter to park (session closes, worktree stays) · esc to cancel")
+	case modeStartTask:
+		r, _ := m.currentRepo()
+		return "  " + styleTitle.Render("start work in "+r.Repo.Name) +
+			"\n  name: " + m.input.View() +
+			"\n  " + styleHelp.Render("enter to create the branch, worktree and session · esc to cancel")
+	}
+
+	if r, ok := m.currentRepo(); ok {
+		lines := []string{
+			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(r.Repo.Path)),
+		}
+		if r.Repo.Category != "" {
+			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("group"), r.Repo.Category))
+		}
+		if len(r.Tasks) > 0 {
+			var names []string
+			for _, t := range r.Tasks {
+				names = append(names, t.State.Icon()+" "+t.Title())
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("tasks"), strings.Join(names, "  ")))
+		} else {
+			lines = append(lines, "  "+styleDim.Render("tasks")+" "+
+				styleDim.Render("none — press s to start one here"))
+		}
+		return strings.Join(lines, "\n") + "\n"
+	}
+
+	row, ok := m.currentTask()
+	if !ok {
+		return ""
+	}
+	t := row.Task
+	lines := []string{
+		fmt.Sprintf("  %s  %s", styleDim.Render("repo"), t.Repo),
+		fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(row.Checkout)),
+	}
+	if t.Owner != "" {
+		lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("owner"), t.Owner))
+	}
+	if row.Session != nil {
+		s := row.Session.Handle
+		if row.Session.AgentStatus != "" {
+			s += " · " + row.Session.AgentStatus
+		}
+		lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("live"), styleLive.Render(s)))
+	}
+	if drift := row.StateDrift(); drift != "" {
+		lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("drift"), styleDrift.Render(drift)))
+	}
+	if !row.CheckoutExists {
+		lines = append(lines, "  "+styleDim.Render("note ")+
+			styleDrift.Render("no checkout on disk — enter rebuilds it from the branch"))
+	}
+	return strings.Join(lines, "\n") + "\n"
+}
+
+func (m Model) renderFooter() string {
+	var status string
+	switch {
+	case m.err != nil:
+		status = styleErr.Render("✗ " + m.err.Error())
+	case m.status != "":
+		status = styleOK.Render("✓ " + m.status)
+	}
+
+	var bindings []string
+	if m.view == ViewRepos {
+		bindings = append(bindings, "enter open", "s start task")
+	} else {
+		bindings = append(bindings, "enter open", "p park", "c next")
+	}
+	bindings = append(bindings, "tab view", "/ filter")
+	for _, t := range m.Tools() {
+		bindings = append(bindings, t.Key+" "+t.Name)
+	}
+	bindings = append(bindings, "1/2/3 state", "0 clear", "r refresh", "q quit")
+
+	var b strings.Builder
+	if status != "" {
+		b.WriteString("  " + status + "\n")
+	}
+	b.WriteString("  " + styleHelp.Render(wrapBindings(bindings, m.width-4)))
+	return b.String()
+}
+
+// wrapBindings lays the key hints out over as many lines as the width needs,
+// rather than truncating them — a hint you cannot read is not a hint.
+func wrapBindings(items []string, width int) string {
+	if width < 20 {
+		width = 20
+	}
+	var lines []string
+	cur := ""
+	for _, it := range items {
+		candidate := it
+		if cur != "" {
+			candidate = cur + " · " + it
+		}
+		if lipgloss.Width(candidate) > width && cur != "" {
+			lines = append(lines, cur)
+			cur = it
+			continue
+		}
+		cur = candidate
+	}
+	if cur != "" {
+		lines = append(lines, cur)
+	}
+	return strings.Join(lines, "\n  ")
+}
+
+func gitColumn(r inventory.Row) string {
+	switch {
+	case r.StatusErr != nil:
+		return "?"
+	case !r.CheckoutExists:
+		return "no dir"
+	}
+	return r.Status.Summary()
+}
+
+func nextColumn(r inventory.Row) string {
+	if r.Task.Next == "" {
+		return styleDim.Render("—")
+	}
+	return r.Task.Next
+}
+
+func shortAge(r inventory.Row) string {
+	d := r.Age()
+	switch {
+	case d <= 0:
+		return "—"
+	case d.Hours() < 24:
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	case d.Hours() < 24*14:
+		return fmt.Sprintf("%dd", int(d.Hours()/24))
+	case d.Hours() < 24*60:
+		return fmt.Sprintf("%dw", int(d.Hours()/24/7))
+	default:
+		return fmt.Sprintf("%dmo", int(d.Hours()/24/30))
+	}
+}
+
+func colourState(s task.State, line string) string {
+	switch s {
+	case task.Hot:
+		return styleHot.Render(line)
+	case task.Warm:
+		return styleWarm.Render(line)
+	case task.Cold:
+		return styleCold.Render(line)
+	case task.Done:
+		return styleDone.Render(line)
+	}
+	return line
+}
+
+// pad truncates to n display columns, measuring the way lipgloss renders so
+// CJK repo and task names do not shift the table.
+func pad(s string, n int) string {
+	if lipgloss.Width(s) <= n {
+		return s
+	}
+	var b strings.Builder
+	used := 0
+	for _, r := range s {
+		w := lipgloss.Width(string(r))
+		if used+w > n-1 {
+			break
+		}
+		b.WriteRune(r)
+		used += w
+	}
+	return b.String() + "…"
+}
+
+func clamp(v, lo, hi int) int {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+EOF
+gofmt -w internal/tui/ && go build ./internal/tui/ 2>&1 | head -5
+```
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:36:37Z)**_
+
+Now making the tools config-driven and explicit, as you asked:
+
+_**Agent (claude-opus-5 2026-08-27 04:36:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Add configurable TUI tools with key-clash validation
+
+```bash
+python3 - <<'PY'
+p='internal/config/config.go'
+s=open(p).read()
+s=s.replace('''type Config struct {
+	Paths    Paths    `toml:"paths"`
+	Runtime  Runtime  `toml:"runtime"`
+	Worktree Worktree `toml:"worktree"`
+	Stats    Stats    `toml:"stats"`''','''type Config struct {
+	Paths    Paths    `toml:"paths"`
+	Runtime  Runtime  `toml:"runtime"`
+	Worktree Worktree `toml:"worktree"`
+	Stats    Stats    `toml:"stats"`
+	TUI      TUI      `toml:"tui"`''')
+s=s.replace('''// Stats configures activity collection for the heatmap.''','''// TUI configures the interactive dashboard.
+type TUI struct {
+	// Tools are the external programs the dashboard can hand the terminal to,
+	// each on its own key. When empty, DefaultTools applies.
+	//
+	// Configurable rather than fixed because which program you reach for is
+	// personal — nvim or helix, lazygit or gitui, and whatever aliases and
+	// scripts you have built up around your own workflow.
+	Tools []Tool `toml:"tools"`
+}
+
+// Tool is one external program bound to a key in the dashboard.
+type Tool struct {
+	// Key launches it. A single character, and not one of the dashboard's own
+	// bindings — dev reports a clash rather than silently shadowing.
+	Key string `toml:"key"`
+	// Name is shown in the footer.
+	Name string `toml:"name"`
+	// Run is a shell command, executed in the selected row's checkout.
+	Run string `toml:"run"`
+}
+
+// reservedKeys are the dashboard's own bindings. A tool cannot take one,
+// because losing the ability to quit or move is not a trade anyone wants.
+var reservedKeys = map[string]string{
+	"q": "quit", "j": "down", "k": "up", "g": "top", "G": "bottom",
+	"h": "previous view", "l": "next view", "tab": "next view",
+	"/": "filter", "r": "refresh", "o": "open", "p": "park",
+	"c": "edit next action", "s": "start a task", "a": "include done",
+	"0": "clear filters", "1": "hot", "2": "warm", "3": "cold",
+	"?": "help",
+}
+
+// ReservedKey reports the dashboard binding a key would collide with.
+func ReservedKey(key string) (string, bool) {
+	name, ok := reservedKeys[key]
+	return name, ok
+}
+
+// DefaultTools are the programs bound when nothing is configured. They are
+// written out in full by `dev config init` rather than left implicit, so what
+// is bound is visible rather than something to discover by pressing keys.
+func DefaultTools() []Tool {
+	return []Tool{
+		{Key: "L", Name: "lazygit", Run: "lazygit"},
+		{Key: "Y", Name: "yazi", Run: "yazi"},
+		{Key: "E", Name: "editor", Run: "$EDITOR ."},
+		{Key: "S", Name: "shell", Run: "$SHELL"},
+	}
+}
+
+// EffectiveTools returns the configured tools, or the defaults when none are
+// configured. A configured list replaces the defaults entirely — a partial
+// merge would make it unclear which bindings are in effect.
+func (c Config) EffectiveTools() []Tool {
+	if len(c.TUI.Tools) == 0 {
+		return DefaultTools()
+	}
+	return c.TUI.Tools
+}
+
+// Stats configures activity collection for the heatmap.''')
+# validate tool keys
+s=s.replace('''	if _, err := Render(c.Paths.WorktreePath, c.probeVars()); err != nil {
+		return fmt.Errorf("paths.worktree_path: %w", err)
+	}
+	return nil
+}''','''	if _, err := Render(c.Paths.WorktreePath, c.probeVars()); err != nil {
+		return fmt.Errorf("paths.worktree_path: %w", err)
+	}
+	seen := map[string]string{}
+	for i, t := range c.TUI.Tools {
+		switch {
+		case t.Key == "":
+			return fmt.Errorf("tui.tools[%d]: key is required", i)
+		case t.Run == "":
+			return fmt.Errorf("tui.tools[%d] (%s): run is required", i, t.Key)
+		}
+		if binding, ok := ReservedKey(t.Key); ok {
+			return fmt.Errorf("tui.tools[%d]: key %q is the dashboard's %q binding; pick another",
+				i, t.Key, binding)
+		}
+		if prev, ok := seen[t.Key]; ok {
+			return fmt.Errorf("tui.tools[%d]: key %q is already bound to %q", i, t.Key, prev)
+		}
+		seen[t.Key] = t.Name
+	}
+	return nil
+}''')
+open(p,'w').write(s)
+PY
+gofmt -w internal/config/ && go build ./internal/config/ && echo BUILD_OK
+```
+
+```text
+BUILD_OK
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:37:36Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Wire two views and configurable tools
+
+```bash
+python3 - <<'PY'
+p='internal/cli/tui.go'
+s=open(p).read()
+
+# Rewrite runTUI wiring for the two views + configurable tools
+start = s.index('func runTUI(app *App) error {')
+new = '''func runTUI(app *App) error {
+	ctx := ctxOf()
+	rt := app.Runtime()
+
+	reload := func(ctx context.Context) ([]inventory.Row, error) {
+		tasks, err := app.Tasks.List()
+		if err != nil {
+			return nil, err
+		}
+		return inventory.Collect(ctx, tasks, rt, inventory.Options{}), nil
+	}
+	reloadRepos := func(ctx context.Context) ([]tui.RepoRow, error) {
+		return collectRepos(ctx, app, rt)
+	}
+
+	rows, err := reload(ctx)
+	if err != nil {
+		return err
+	}
+	repos, err := reloadRepos(ctx)
+	if err != nil {
+		app.warnf("could not list repositories: %v", err)
+	}
+
+	actions := tui.Actions{
+		Reload:      reload,
+		ReloadRepos: reloadRepos,
+		Runtime:     rt,
+		Tools:       externalTools(app),
+
+		// Open reuses the same paths the commands take, so a cold task
+		// selected here is rebuilt rather than reported broken.
+		Open: func(ctx context.Context, t *task.Task) (string, error) {
+			checkout := checkoutOf(t)
+			if _, err := os.Stat(checkout); err != nil {
+				return "", fmt.Errorf("%s has no checkout — run `dev resume %s`", t.Title(), t.ID)
+			}
+			handle, err := openCheckout(ctx, rt, checkout, t.Title())
+			if err != nil {
+				return "", err
+			}
+			t.State, t.RuntimeHandle, t.Owner = task.Hot, handle, config.Hostname()
+			if err := app.Tasks.Save(t); err != nil {
+				return "", err
+			}
+			annotate(app, rt, t)
+			if rt.Name() == "none" {
+				return "", nil
+			}
+			return fmt.Sprintf("%s open in %s (%s)", t.Title(), rt.Name(), handle), nil
+		},
+
+		OpenRepo: func(ctx context.Context, r tui.RepoRow) (string, error) {
+			handle, err := openCheckout(ctx, rt, r.Repo.Path, r.Repo.Name)
+			if err != nil {
+				return "", err
+			}
+			if rt.Name() == "none" {
+				return "", nil
+			}
+			return fmt.Sprintf("%s open in %s (%s)", r.Repo.Name, rt.Name(), handle), nil
+		},
+
+		Park: func(ctx context.Context, t *task.Task, next string) (string, error) {
+			if next != "" {
+				t.Next = next
+			}
+			if t.RuntimeHandle != "" {
+				if err := rt.Close(ctx, t.RuntimeHandle); err != nil {
+					return "", err
+				}
+				t.RuntimeHandle = ""
+			}
+			// The dashboard only parks warm: going cold removes a checkout,
+			// which is too consequential for a single keystroke.
+			t.State, t.Owner = task.Warm, config.Hostname()
+			if err := app.Tasks.Save(t); err != nil {
+				return "", err
+			}
+			return t.Title() + " parked warm — worktree and branch kept", nil
+		},
+
+		SetNext: func(ctx context.Context, t *task.Task, next string) error {
+			t.Next = next
+			if err := app.Tasks.Save(t); err != nil {
+				return err
+			}
+			annotate(app, rt, t)
+			return nil
+		},
+
+		// Start is the bridge from "here are my repositories" to "here is what
+		// I am working on" — the step that otherwise means dropping out of the
+		// dashboard to type a command.
+		Start: func(ctx context.Context, r tui.RepoRow, name string) (string, error) {
+			branch := "feat/" + config.Slug(name)
+			base := gitx.DefaultBranch(ctx, r.Repo.Path)
+			id := task.MakeID(r.Repo.Name, branch)
+			if _, err := app.Tasks.Get(id); err == nil {
+				return "", fmt.Errorf("%s already exists", id)
+			}
+
+			m := &wt.Manager{Cfg: app.Cfg, Runtime: rt}
+			res, err := m.Create(ctx, wt.CreateRequest{
+				RepoPath: r.Repo.Path, RepoName: r.Repo.Name, Branch: branch,
+				Base: base, Category: r.Repo.Category, Label: name,
+			})
+			if err != nil {
+				return "", err
+			}
+			t := &task.Task{
+				Name: name, Repo: r.Repo.Name, RepoPath: r.Repo.Path,
+				Branch: branch, Base: base, WorktreePath: res.Path,
+				State: task.Hot, Owner: config.Hostname(), RuntimeHandle: res.RuntimeHandle,
+			}
+			if err := app.Tasks.Save(t); err != nil {
+				return "", err
+			}
+			annotate(app, rt, t)
+			return fmt.Sprintf("started %s on %s", name, branch), nil
+		},
+	}
+
+	model := tui.New(actions, rows, repos)
+	final, err := tea.NewProgram(model, tea.WithAltScreen()).Run()
+	if err != nil {
+		return err
+	}
+	// A directory choice can only be honoured once the alternate screen is
+	// torn down, and only by the shell wrapper.
+	if m, ok := final.(tui.Model); ok {
+		if dir := m.Chosen(); dir != "" {
+			app.cdDirective(dir)
+		}
+	}
+	return nil
+}
+
+// collectRepos builds the repository view: what exists, plus how much of it is
+// in flight.
+func collectRepos(ctx context.Context, app *App, rt runtime.Runtime) ([]tui.RepoRow, error) {
+	repos, err := repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
+	if err != nil {
+		return nil, err
+	}
+	tasks, err := app.Tasks.List()
+	if err != nil {
+		return nil, err
+	}
+	byRepo := map[string][]*task.Task{}
+	for _, t := range tasks {
+		byRepo[t.RepoPath] = append(byRepo[t.RepoPath], t)
+	}
+	sessions, _ := rt.List(ctx)
+
+	out := make([]tui.RepoRow, 0, len(repos))
+	for _, r := range repos {
+		row := tui.RepoRow{Repo: r, Tasks: byRepo[r.Path]}
+		if !r.Bare {
+			if st, err := gitx.StatusOf(ctx, r.Path); err == nil {
+				row.Status = st
+			}
+			if list, err := gitx.Worktrees(ctx, r.Path); err == nil && len(list) > 0 {
+				row.Worktrees = len(list) - 1
+			}
+		}
+		for _, s := range sessions {
+			if s.Covers(r.Path) {
+				row.Live = true
+				break
+			}
+		}
+		out = append(out, row)
+	}
+	return out, nil
+}
+
+// externalTools resolves the configured tool bindings.
+//
+// Configurable rather than fixed because which program you reach for is
+// personal, and because the useful ones are often your own scripts and
+// aliases, not just the well-known tools.
+func externalTools(app *App) []tui.Tool {
+	var out []tui.Tool
+	for _, t := range app.Cfg.EffectiveTools() {
+		run := t.Run
+		name := t.Name
+		if name == "" {
+			name = firstWord(run)
+		}
+		out = append(out, tui.Tool{
+			Key:  t.Key,
+			Name: name,
+			// Run through a shell so aliases-as-scripts, arguments and
+			// environment variables in the command all behave as typed.
+			Command:   []string{shellPath(), "-c", run},
+			Available: commandRunnable(run),
+		})
+	}
+	return out
+}
+
+// commandRunnable resolves the command's first word on PATH, expanding a
+// leading environment variable so "$EDITOR ." checks the editor itself.
+func commandRunnable(run string) func() bool {
+	return func() bool {
+		word := firstWord(run)
+		if strings.HasPrefix(word, "$") {
+			word = os.Getenv(strings.TrimPrefix(word, "$"))
+			if word == "" {
+				return false
+			}
+			word = firstWord(word)
+		}
+		if word == "" {
+			return false
+		}
+		if filepath.IsAbs(word) {
+			_, err := os.Stat(word)
+			return err == nil
+		}
+		_, err := exec.LookPath(word)
+		return err == nil
+	}
+}
+
+func firstWord(s string) string {
+	f := strings.Fields(s)
+	if len(f) == 0 {
+		return ""
+	}
+	return f[0]
+}
+
+func shellPath() string {
+	if s := os.Getenv("SHELL"); s != "" {
+		return s
+	}
+	return "/bin/sh"
+}
+'''
+s = s[:start] + new
+s = s.replace('''  ↑↓ / jk   move            enter / o   open in the runtime
+  p         park            n           edit the next action
+  l         lazygit         y           yazi
+  e         $EDITOR         s           a shell
+  1 2 3     hot/warm/cold   0           clear the filter
+  a         include done    r           refresh        q  quit
+
+The external tools run in the selected task's checkout; the dashboard suspends
+while they do and redraws afterwards. Bindings for tools that are not
+installed are not offered.`,''','''Two lists, switched with tab:
+
+  TASKS   change streams dev is tracking — what am I working on
+  REPOS   every repository under the scan roots — what do I have here
+
+Navigation is vim-style, with arrows alongside:
+
+  j k        move                 ctrl+d ctrl+u   half a page
+  g G        top / bottom         h l / tab       previous / next view
+  /          filter as you type   esc             clear, then quit
+
+Actions depend on the list:
+
+  enter      open in the runtime
+  p          park a task          c    edit its next action
+  s          start a task in the selected repository
+  1 2 3      hot / warm / cold    0    clear filters    a  include done
+  r          refresh              q    quit
+
+External tools are configured, not fixed — see [[tui.tools]] in the config, and
+`dev tui tools` for what is bound here. They run in the selected row's checkout;
+the dashboard suspends while they do and redraws afterwards, and bindings for
+programs that are not installed are not offered.`,''')
+open(p,'w').write(s)
+PY
+python3 - <<'PY'
+p='internal/cli/tui.go'
+s=open(p).read()
+s=s.replace('import (\n\t"context"\n\t"fmt"\n\t"os"\n\t"os/exec"',
+ 'import (\n\t"context"\n\t"fmt"\n\t"os"\n\t"os/exec"\n\t"path/filepath"\n\t"strings"')
+s=s.replace('"github.com/daviddwlee84/dev-cli/internal/inventory"',
+ '"github.com/daviddwlee84/dev-cli/internal/gitx"\n\t"github.com/daviddwlee84/dev-cli/internal/inventory"\n\t"github.com/daviddwlee84/dev-cli/internal/repo"\n\t"github.com/daviddwlee84/dev-cli/internal/runtime"')
+s=s.replace('"github.com/daviddwlee84/dev-cli/internal/tui"','"github.com/daviddwlee84/dev-cli/internal/tui"\n\t"github.com/daviddwlee84/dev-cli/internal/wt"')
+open(p,'w').write(s)
+PY
+gofmt -w internal/cli/ && go build -o dev ./cmd/dev 2>&1 | head -5
+```
+
+```text
+Exit code 2
+internal/cli/tui.go:52:2: missing ',' in composite literal
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:37:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect the broken literal
+
+`sed -n '30,60p' internal/cli/tui.go`
+
+```text
+to open, park and annotate a task without retyping its name.
+
+Two lists, switched with tab:
+
+  TASKS   change streams dev is tracking — what am I working on
+  REPOS   every repository under the scan roots — what do I have here
+
+Navigation is vim-style, with arrows alongside:
+
+  j k        move                 ctrl+d ctrl+u   half a page
+  g G        top / bottom         h l / tab       previous / next view
+  /          filter as you type   esc             clear, then quit
+
+Actions depend on the list:
+
+  enter      open in the runtime
+  p          park a task          c    edit its next action
+  s          start a task in the selected repository
+  1 2 3      hot / warm / cold    0    clear filters    a  include done
+  r          refresh              q    quit
+
+External tools are configured, not fixed — see [[tui.tools]] in the config, and
+`dev tui tools` for what is bound here. They run in the selected row's checkout;
+the dashboard suspends while they do and redraws afterwards, and bindings for
+programs that are not installed are not offered.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTUI(app)
+		},
+	}
+}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:37:43Z)**_
+
+Third time on backticks inside raw strings — let me fix it and check for any others:
+
+_**Agent (claude-opus-5 2026-08-27 04:37:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Fix backtick and scan for others
+
+```bash
+python3 - <<'PY'
+p='internal/cli/tui.go'
+s=open(p).read()
+s=s.replace("External tools are configured, not fixed — see [[tui.tools]] in the config, and\n`dev tui tools` for what is bound here.",
+            "External tools are configured, not fixed — see [[tui.tools]] in the config,\nand \"dev tui tools\" for what is bound here.")
+open(p,'w').write(s)
+PY
+# find any other backtick inside a Go raw-string literal
+python3 - <<'PY'
+import re, pathlib
+bad = []
+for f in pathlib.Path('.').rglob('*.go'):
+    src = f.read_text()
+    # crude but effective: raw strings are delimited by backticks, so an odd
+    # count on a Long: block is the tell
+    for m in re.finditer(r'Long:\s*`', src):
+        start = m.end()
+        end = src.find('`', start)
+        body = src[start:end]
+        if '\\`' in body:
+            bad.append((f, 'escaped backtick'))
+    if src.count('`') % 2 != 0:
+        bad.append((f, 'odd backtick count'))
+for f, why in bad:
+    print(f, why)
+print("checked")
+PY
+gofmt -w internal/cli/ && go build -o dev ./cmd/dev 2>&1 | head -5
+```
+
+```text
+internal/cli/markdown.go odd backtick count
+checked
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:37:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check markdown.go backticks and build
+
+`grep -n '`' internal/cli/markdown.go; echo "--- build ---"; go build -o dev ./cmd/dev 2>&1 | head -5 && go vet ./... 2>&1 | head -5`
+
+```text
+8:// ANSI codes, applied only when stdout is a terminal. Piping `dev help` into a
+30:		case strings.HasPrefix(trimmed, "```"):
+--- build ---
+# github.com/daviddwlee84/dev-cli/internal/tui_test
+# [github.com/daviddwlee84/dev-cli/internal/tui_test]
+vet: internal/tui/tui_test.go:106:50: not enough arguments in call to tui.New
+	have (tui.Actions, []inventory.Row)
+	want (tui.Actions, []inventory.Row, []tui.RepoRow)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:38:11Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Add dev tui tools listing
+
+```bash
+python3 - <<'PY'
+p='internal/cli/tui.go'
+s=open(p).read()
+s=s.replace('''		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTUI(app)
+		},
+	}
+}''','''		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runTUI(app)
+		},
+	}
+	cmd.AddCommand(newTUIToolsCmd(app))
+	return cmd
+}
+
+func newTUIToolsCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "tools",
+		Short: "List the external tool bindings and whether each one works here",
+		Long: `Show which programs the dashboard will hand the terminal to.
+
+Bindings come from [[tui.tools]] in the config; with none configured, the
+built-in set applies. A configured list replaces the defaults entirely, so
+what is bound is always exactly what is written down.
+
+Add your own — an editor, a script, anything you already reach for:
+
+    [[tui.tools]]
+    key  = "V"
+    name = "nvim"
+    run  = "nvim ."
+
+    [[tui.tools]]
+    key  = "B"
+    name = "vibe"
+    run  = "vibe"
+
+The command runs through your shell in the selected row's checkout, so
+arguments, environment variables and your own scripts all behave as typed.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configured := len(app.Cfg.TUI.Tools) > 0
+			source := "built-in defaults"
+			if configured {
+				source = config.Contract(app.Cfg.Source)
+			}
+			fmt.Fprintf(app.Out, "tool bindings from %s\\n\\n", source)
+
+			t := NewTable("KEY", "NAME", "RUNS", "AVAILABLE")
+			for _, tool := range externalTools(app) {
+				status := "yes"
+				if tool.Available != nil && !tool.Available() {
+					status = "no — not on PATH"
+				}
+				// Command is [shell, -c, run]; show the run string itself.
+				run := tool.Command[len(tool.Command)-1]
+				t.Add(tool.Key, tool.Name, run, status)
+			}
+			t.Render(app.Out)
+
+			if !configured {
+				fmt.Fprintln(app.Out, "\\nOverride them with [[tui.tools]] in your config; see `dev tui tools --help`.")
+			}
+			fmt.Fprintln(app.Err, "\\nA tool cannot take a key the dashboard already uses; dev reports the clash on load.")
+			return nil
+		},
+	}
+}''')
+open(p,'w').write(s)
+PY
+python3 - <<'PY'
+p='internal/cli/tui.go'
+s=open(p).read()
+s=s.replace("see `dev tui tools --help`.", 'see \\"dev tui tools --help\\".')
+open(p,'w').write(s)
+PY
+gofmt -w internal/cli/ && go build -o dev ./cmd/dev && ./dev tui tools 2>&1
+```
+
+```text
+Exit code 1
+# github.com/daviddwlee84/dev-cli/internal/cli
+internal/cli/tui.go:60:2: undefined: cmd
+internal/cli/tui.go:61:9: undefined: cmd
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:38:18Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Fix command construction and list tools
+
+```bash
+python3 - <<'PY'
+p='internal/cli/tui.go'
+s=open(p).read()
+s=s.replace('func newTUICmd(app *App) *cobra.Command {\n\treturn &cobra.Command{',
+            'func newTUICmd(app *App) *cobra.Command {\n\tcmd := &cobra.Command{')
+open(p,'w').write(s)
+PY
+gofmt -w internal/cli/ && go build -o dev ./cmd/dev && ./dev tui tools 2>&1
+```
+
+```text
+tool bindings from built-in defaults
+
+KEY  NAME     RUNS       AVAILABLE
+L    lazygit  lazygit    yes
+Y    yazi     yazi       yes
+E    editor   $EDITOR .  yes
+S    shell    $SHELL     yes
+
+Override them with [[tui.tools]] in your config; see "dev tui tools --help".
+
+A tool cannot take a key the dashboard already uses; dev reports the clash on load.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:38:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Test custom tools and key-clash detection
+
+```bash
+SCRATCH=/tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad
+cat > $SCRATCH/tools.toml <<'EOF'
+[[tui.tools]]
+key  = "V"
+name = "nvim"
+run  = "nvim ."
+
+[[tui.tools]]
+key  = "B"
+name = "vibe"
+run  = "vibe"
+
+[[tui.tools]]
+key  = "P"
+name = "plans"
+run  = "claude-plans-here"
+EOF
+echo "=== custom tools ==="; ./dev --config $SCRATCH/tools.toml tui tools 2>&1
+echo; echo "=== key clash rejected ==="
+cat > $SCRATCH/clash.toml <<'EOF'
+[[tui.tools]]
+key = "q"
+run = "lazygit"
+EOF
+./dev --config $SCRATCH/clash.toml tui tools 2>&1 | tail -2
+```
+
+```text
+=== custom tools ===
+tool bindings from /tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad/tools.toml
+
+KEY  NAME   RUNS               AVAILABLE
+V    nvim   nvim .             yes
+B    vibe   vibe               no — not on PATH
+P    plans  claude-plans-here  no — not on PATH
+
+A tool cannot take a key the dashboard already uses; dev reports the clash on load.
+
+=== key clash rejected ===
+dev: tui.tools[0]: key "q" is the dashboard's "quit" binding; pick another
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:38:28Z)**_
+
+Now let me fix and extend the TUI tests:
+
+_**Agent (claude-opus-5 2026-08-27 04:39:09Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Update and extend TUI tests
+
+```bash
+python3 - <<'PY'
+p='internal/tui/tui_test.go'
+s=open(p).read()
+s=s.replace('''func newActions(r *recorder, rows []inventory.Row) tui.Actions {
+	r.nexts = map[string]string{}
+	return tui.Actions{
+		Runtime: runtime.None{},
+		Reload: func(context.Context) ([]inventory.Row, error) {
+			return rows, nil
+		},''','''func newActions(r *recorder, rows []inventory.Row) tui.Actions {
+	r.nexts = map[string]string{}
+	return tui.Actions{
+		Runtime: runtime.None{},
+		Reload: func(context.Context) ([]inventory.Row, error) {
+			return rows, nil
+		},
+		ReloadRepos: func(context.Context) ([]tui.RepoRow, error) { return nil, nil },
+		OpenRepo: func(_ context.Context, rr tui.RepoRow) (string, error) {
+			r.opened = append(r.opened, "repo:"+rr.Repo.Name)
+			return "opened", nil
+		},
+		Start: func(_ context.Context, rr tui.RepoRow, name string) (string, error) {
+			r.started = append(r.started, rr.Repo.Name+"/"+name)
+			return "started", nil
+		},''')
+s=s.replace('''type recorder struct {
+	opened []string
+	parked []string
+	nexts  map[string]string
+}''','''type recorder struct {
+	opened  []string
+	parked  []string
+	started []string
+	nexts   map[string]string
+}''')
+s=s.replace('m := tui.New(newActions(&recorder{}, rows), rows)','m := tui.New(newActions(&recorder{}, rows), rows, nil)')
+s=s.replace('m := tui.New(newActions(rec, rows), rows)','m := tui.New(newActions(rec, rows), rows, nil)')
+s=s.replace('m := tui.New(newActions(&recorder{}, nil), nil)','m := tui.New(newActions(&recorder{}, nil), nil, nil)')
+s=s.replace('tui.New(newActions(&recorder{}, rows), rows).Summary()','tui.New(newActions(&recorder{}, rows), rows, nil).Summary()')
+s=s.replace('tui.New(newActions(&recorder{}, nil), nil).Summary()','tui.New(newActions(&recorder{}, nil), nil, nil).Summary()')
+# `n` became `c` for editing the next action
+s=s.replace('m = send(m, key("n"))','m = send(m, key("c"))')
+s=s.replace('send(m, key("enter"), key("p"), key("n"))','send(m, key("enter"), key("p"), key("c"))')
+s=s.replace('''	if !strings.Contains(out, "q quit") {
+		t.Error("the footer should show the key bindings")
+	}''','''	if !strings.Contains(out, "q quit") {
+		t.Error("the footer should show the key bindings")
+	}
+	if !strings.Contains(out, "TASKS") || !strings.Contains(out, "REPOS") {
+		t.Errorf("both views should be visible in the tab strip:\\n%s", out)
+	}''')
+open(p,'w').write(s)
+PY
+cat >> internal/tui/tui_test.go <<'EOF'
+
+func repoRow(name string, tasks ...*task.Task) tui.RepoRow {
+	return tui.RepoRow{
+		Repo:  repo.Repo{Name: name, Path: "/src/" + name, HasGit: true},
+		Tasks: tasks,
+	}
+}
+
+func TestTabSwitchesViews(t *testing.T) {
+	rows := []inventory.Row{row("a", "token refresh", task.Hot, "")}
+	repos := []tui.RepoRow{repoRow("api"), repoRow("web")}
+	m := tui.New(newActions(&recorder{}, rows), rows, repos)
+
+	if m.CurrentView() != tui.ViewTasks {
+		t.Fatal("the dashboard should open on the task list")
+	}
+	m = send(m, key("tab"))
+	if m.CurrentView() != tui.ViewRepos {
+		t.Fatal("tab should switch to the repository list")
+	}
+	out := m.View()
+	if !strings.Contains(out, "api") || !strings.Contains(out, "web") {
+		t.Errorf("the repo view should list repositories:\n%s", out)
+	}
+	// l and h double as right/left, since a list has no horizontal axis.
+	if send(m, key("h")).CurrentView() != tui.ViewTasks {
+		t.Error("h should move to the previous view")
+	}
+	if send(m, key("tab")).CurrentView() != tui.ViewTasks {
+		t.Error("tab should cycle back round")
+	}
+}
+
+// The commonest first run is a machine full of repositories and no tasks yet.
+// An empty dashboard would be the wrong answer to "what do I have here?"
+func TestReposViewWorksWithNoTasks(t *testing.T) {
+	repos := []tui.RepoRow{repoRow("api"), repoRow("web")}
+	m := tui.New(newActions(&recorder{}, nil), nil, repos)
+
+	out := m.View()
+	if !strings.Contains(out, "tab for the repository list") {
+		t.Errorf("the empty task list should point at the repo list:\n%s", out)
+	}
+	m = send(m, key("tab"))
+	if !strings.Contains(m.View(), "api") {
+		t.Errorf("repos should still be browsable:\n%s", m.View())
+	}
+}
+
+func TestVimNavigation(t *testing.T) {
+	var rows []inventory.Row
+	for i := 0; i < 20; i++ {
+		rows = append(rows, row(fmt.Sprintf("t%02d", i), fmt.Sprintf("task %02d", i), task.Hot, ""))
+	}
+	m := tui.New(newActions(&recorder{}, rows), rows, nil)
+	m = send(m, tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	m = send(m, key("G"))
+	if !strings.Contains(m.View(), "▸") {
+		t.Fatal("G should leave the cursor somewhere visible")
+	}
+	m = send(m, key("g"))
+	// After g the first row must be selected, so it carries the marker.
+	lines := strings.Split(m.View(), "\n")
+	var markerLine string
+	for _, l := range lines {
+		if strings.Contains(l, "▸") {
+			markerLine = l
+			break
+		}
+	}
+	if !strings.Contains(markerLine, "task 00") {
+		t.Errorf("g should jump to the top, cursor is on %q", markerLine)
+	}
+
+	// ctrl+d moves further than a single j.
+	oneDown := send(m, key("j"))
+	halfPage := send(m, tea.KeyMsg{Type: tea.KeyCtrlD})
+	if oneDown.View() == halfPage.View() {
+		t.Error("ctrl+d should move further than j")
+	}
+}
+
+func TestFilterNarrowsAsYouType(t *testing.T) {
+	rows := []inventory.Row{
+		row("a", "token refresh", task.Hot, ""),
+		row("b", "orderbook rewrite", task.Hot, ""),
+	}
+	m := tui.New(newActions(&recorder{}, rows), rows, nil)
+
+	m = send(m, key("/"))
+	for _, k := range typeText("token") {
+		m = send(m, k)
+	}
+	out := m.View()
+	if !strings.Contains(out, "token refresh") || strings.Contains(out, "orderbook") {
+		t.Errorf("the filter should narrow live:\n%s", out)
+	}
+
+	// esc clears the filter rather than quitting.
+	m = send(m, key("esc"))
+	if !strings.Contains(m.View(), "orderbook") {
+		t.Errorf("esc should clear the filter:\n%s", m.View())
+	}
+}
+
+// Terms are matched independently, because the order words come to mind in is
+// rarely the order they appear in.
+func TestFilterMatchesTermsOutOfOrder(t *testing.T) {
+	rows := []inventory.Row{row("a", "api token auth", task.Hot, "")}
+	m := tui.New(newActions(&recorder{}, rows), rows, nil)
+
+	m = send(m, key("/"))
+	for _, k := range typeText("auth api") {
+		m = send(m, k)
+	}
+	if !strings.Contains(m.View(), "api token auth") {
+		t.Errorf("out-of-order terms should still match:\n%s", m.View())
+	}
+}
+
+func TestStartTaskFromRepoView(t *testing.T) {
+	repos := []tui.RepoRow{repoRow("api")}
+	rec := &recorder{}
+	m := tui.New(newActions(rec, nil), nil, repos)
+
+	m = send(m, key("tab"), key("s"))
+	if !strings.Contains(m.View(), "start work in api") {
+		t.Fatalf("s should open the start prompt:\n%s", m.View())
+	}
+	for _, k := range typeText("token refresh") {
+		m = send(m, k)
+	}
+	send(m, key("enter"))
+
+	if len(rec.started) != 1 || rec.started[0] != "api/token refresh" {
+		t.Errorf("s should start a task in the selected repo, got %v", rec.started)
+	}
+}
+
+func TestEnterOpensRepoInRepoView(t *testing.T) {
+	repos := []tui.RepoRow{repoRow("api")}
+	rec := &recorder{}
+	m := tui.New(newActions(rec, nil), nil, repos)
+
+	send(m, key("tab"), key("enter"))
+	if len(rec.opened) != 1 || rec.opened[0] != "repo:api" {
+		t.Errorf("enter in the repo view should open the repo, got %v", rec.opened)
+	}
+}
+
+// Repositories with work in flight belong at the top: that is what someone
+// opening the dashboard is looking for, not alphabetical order.
+func TestReposSortWorkInFlightFirst(t *testing.T) {
+	hot := repoRow("zzz-busy", &task.Task{ID: "x", Repo: "zzz-busy", Branch: "feat/x", State: task.Hot})
+	idle := repoRow("aaa-idle")
+	m := tui.New(newActions(&recorder{}, nil), nil, []tui.RepoRow{idle, hot})
+	m = send(m, key("tab"), tea.WindowSizeMsg{Width: 120, Height: 40})
+
+	out := m.View()
+	if strings.Index(out, "zzz-busy") > strings.Index(out, "aaa-idle") {
+		t.Errorf("the repo with a hot task should sort first:\n%s", out)
+	}
+}
+
+func TestToolsOnlyListedWhenAvailable(t *testing.T) {
+	rows := []inventory.Row{row("a", "one", task.Hot, "")}
+	actions := newActions(&recorder{}, rows)
+	actions.Tools = []tui.Tool{
+		{Key: "L", Name: "lazygit", Command: []string{"lazygit"}, Available: func() bool { return true }},
+		{Key: "Z", Name: "absent", Command: []string{"absent"}, Available: func() bool { return false }},
+	}
+	m := tui.New(actions, rows, nil)
+
+	out := m.View()
+	if !strings.Contains(out, "L lazygit") {
+		t.Errorf("an available tool should be advertised:\n%s", out)
+	}
+	if strings.Contains(out, "Z absent") {
+		t.Error("a tool that is not installed should not be offered")
+	}
+	if len(m.Tools()) != 1 {
+		t.Errorf("Tools() should filter by availability, got %d", len(m.Tools()))
+	}
+}
+EOF
+python3 - <<'PY'
+p='internal/tui/tui_test.go'
+s=open(p).read()
+s=s.replace('import (\n\t"context"','import (\n\t"context"\n\t"fmt"')
+s=s.replace('"github.com/daviddwlee84/dev-cli/internal/inventory"','"github.com/daviddwlee84/dev-cli/internal/inventory"\n\t"github.com/daviddwlee84/dev-cli/internal/repo"')
+s=s.replace('func send(m tui.Model, msgs ...tea.Msg) tui.Model {','func send(m tui.Model, msgs ...tea.Msg) tui.Model {')
+open(p,'w').write(s)
+PY
+gofmt -w internal/tui/ && go test ./internal/tui/ 2>&1 | tail -15
+```
+
+```text
+	/Users/david/Documents/Program/dev-cli/internal/tui/model.go:451 +0x8b
+github.com/daviddwlee84/dev-cli/internal/tui.Model.updateList({{0x266e9155cb60, 0x218e770, 0x266e916ceb00, 0x266e916ceae0, 0x266e916ceb10, 0x266e916ceb20, 0x266e916ceaf0, {0x2191ed0, 0x22139a0}, {0x0, ...}}, ...}, ...)
+	/Users/david/Documents/Program/dev-cli/internal/tui/model.go:422 +0x759
+github.com/daviddwlee84/dev-cli/internal/tui.Model.Update({{0x266e9155cb60, 0x218e770, 0x266e916ceb00, 0x266e916ceae0, 0x266e916ceb10, 0x266e916ceb20, 0x266e916ceaf0, {0x2191ed0, 0x22139a0}, {0x0, ...}}, ...}, ...)
+	/Users/david/Documents/Program/dev-cli/internal/tui/model.go:336 +0x535
+github.com/daviddwlee84/dev-cli/internal/tui_test.send({{0x266e9155cb60, 0x218e770, 0x266e916ceb00, 0x266e916ceae0, 0x266e916ceb10, 0x266e916ceb20, 0x266e916ceaf0, {0x2191ed0, 0x22139a0}, {0x0, ...}}, ...}, ...)
+	/Users/david/Documents/Program/dev-cli/internal/tui/tui_test.go:74 +0xb3
+github.com/daviddwlee84/dev-cli/internal/tui_test.TestParkPromptsForNextAction(0x266e91662d88)
+	/Users/david/Documents/Program/dev-cli/internal/tui/tui_test.go:193 +0x3b6
+testing.tRunner(0x266e91662d88, 0x218e670)
+	/Users/david/.local/share/mise/installs/go/1.26.4/src/testing/testing.go:2036 +0xea
+created by testing.(*T).Run in goroutine 1
+	/Users/david/.local/share/mise/installs/go/1.26.4/src/testing/testing.go:2101 +0x4c5
+FAIL	github.com/daviddwlee84/dev-cli/internal/tui	0.746s
+FAIL
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:39:12Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find the panic source
+
+`go test ./internal/tui/ 2>&1 | grep -A3 "panic:" | head -8; sed -n '445,455p' internal/tui/model.go`
+
+```text
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+[signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0x10260eb6]
+
+goroutine 12 [running]:
+
+func (m Model) prompt(md mode, value, placeholder string) (tea.Model, tea.Cmd) {
+	m.mode = md
+	m.input.SetValue(value)
+	m.input.Placeholder = placeholder
+	m.input.CursorEnd()
+	m.input.Focus()
+	return m, textinput.Blink
+}
+
+func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:39:22Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate exact panic line
+
+`go test ./internal/tui/ -run TestParkPromptsForNextAction 2>&1 | grep -E "^github.com/daviddwlee84|\.go:[0-9]+" | head -8; echo "---"; awk 'NR>=440 && NR<=455 {print NR": "$0}' internal/tui/model.go`
+
+```text
+	/Users/david/.local/share/mise/installs/go/1.26.4/src/testing/testing.go:1974 +0x232
+	/Users/david/.local/share/mise/installs/go/1.26.4/src/testing/testing.go:1977 +0x349
+	/Users/david/.local/share/mise/installs/go/1.26.4/src/runtime/panic.go:860 +0x13a
+	/Users/david/.local/share/go/pkg/mod/github.com/charmbracelet/bubbles@v1.0.0/cursor/cursor.go:171 +0x56
+	/Users/david/.local/share/go/pkg/mod/github.com/charmbracelet/bubbles@v1.0.0/cursor/cursor.go:199 +0x33
+	/Users/david/.local/share/go/pkg/mod/github.com/charmbracelet/bubbles@v1.0.0/textinput/textinput.go:245
+github.com/daviddwlee84/dev-cli/internal/tui.Model.prompt({{0x3ea8e8ed46e0, 0xd01e770, 0x3ea8e8e8c470, 0x3ea8e8e8c450, 0x3ea8e8e8c480, 0x3ea8e8e8c490, 0x3ea8e8e8c460, {0xd021ed0, 0xd0a39a0}, {0x0, ...}}, ...}, ...)
+	/Users/david/Documents/Program/dev-cli/internal/tui/model.go:451 +0x8b
+---
+440: 		}
+441: 	}
+442: 	m.setAt(m.at())
+443: 	return m, nil
+444: }
+445: 
+446: func (m Model) prompt(md mode, value, placeholder string) (tea.Model, tea.Cmd) {
+447: 	m.mode = md
+448: 	m.input.SetValue(value)
+449: 	m.input.Placeholder = placeholder
+450: 	m.input.CursorEnd()
+451: 	m.input.Focus()
+452: 	return m, textinput.Blink
+453: }
+454: 
+455: func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:39:37Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Identify failing tests and inspect bubbles cursor
+
+`go test ./internal/tui/ 2>&1 | grep -E "^(---|ok|FAIL|panic)" | head; echo "=== cursor.go:165-175 ==="; sed -n '160,175p' ~/.local/share/go/pkg/mod/github.com/charmbracelet/bubbles@v1.0.0/cursor/cursor.go`
+
+```text
+--- FAIL: TestParkPromptsForNextAction (0.00s)
+panic: runtime error: invalid memory address or nil pointer dereference [recovered, repanicked]
+panic({0x3cbf760?, 0x3d4ece0?})
+FAIL	github.com/daviddwlee84/dev-cli/internal/tui	0.437s
+FAIL
+=== cursor.go:165-175 ===
+
+// BlinkCmd is a command used to manage cursor blinking.
+func (m *Model) BlinkCmd() tea.Cmd {
+	if m.mode != CursorBlink {
+		return nil
+	}
+
+	if m.blinkCtx != nil && m.blinkCtx.cancel != nil {
+		m.blinkCtx.cancel()
+	}
+
+	ctx, cancel := context.WithTimeout(m.blinkCtx.ctx, m.BlinkSpeed)
+	m.blinkCtx.cancel = cancel
+
+	m.blinkTag++
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:39:57Z)**_
+
+Found it — I dropped `input: in` from the constructor during the rewrite:
+
+_**Agent (claude-opus-5 2026-08-27 04:40:22Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Restore textinput in constructor
+
+```bash
+python3 - <<'PY'
+p='internal/tui/model.go'
+s=open(p).read()
+s=s.replace('''	return Model{
+		actions: actions,
+		rows:    rows,
+		repos:   repos,
+		cursor:  map[View]int{},
+		width:   100,
+		height:  30,
+	}''','''	return Model{
+		actions: actions,
+		rows:    rows,
+		repos:   repos,
+		cursor:  map[View]int{},
+		input:   in,
+		width:   100,
+		height:  30,
+	}''')
+open(p,'w').write(s)
+PY
+gofmt -w internal/tui/ && go test ./internal/tui/ 2>&1 | tail -12
+```
+
+```text
+          No tasks recorded yet.
+                                Press tab for the repository list, then s to start work on one.
+                                                                         Or run `dev adopt` to import worktrees and branches already in flight.
+                                                                              
+        
+          enter open · p park · c next · tab view · / filter · 1/2/3 state · 0 clear · r refresh · q quit
+--- FAIL: TestVimNavigation (0.00s)
+    tui_test.go:355: ctrl+d should move further than j
+FAIL
+FAIL	github.com/daviddwlee84/dev-cli/internal/tui	22.205s
+FAIL
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:40:37Z)**_
+
+Real bug, not a test artifact: `cursor` is a map, so every `Model` copy shares it — that breaks bubbletea's value semantics. Replacing with plain fields:
+
+_**Agent (claude-opus-5 2026-08-27 04:41:06Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Replace shared cursor map with per-view fields
+
+```bash
+python3 - <<'PY'
+p='internal/tui/model.go'
+s=open(p).read()
+s=s.replace('''	cursor map[View]int
+	// filter is the live text query; states narrows the task view.''','''	// Cursors are plain fields, one per view, rather than a map: bubbletea
+	// passes the model by value and expects each returned copy to be
+	// independent. A map would be shared between every copy, so a keypress
+	// that produced two candidate models would have them silently agree.
+	taskCursor int
+	repoCursor int
+	// filter is the live text query; states narrows the task view.''')
+s=s.replace('''		actions: actions,
+		rows:    rows,
+		repos:   repos,
+		cursor:  map[View]int{},
+		input:   in,
+		width:   100,
+		height:  30,''','''		actions: actions,
+		rows:    rows,
+		repos:   repos,
+		input:   in,
+		width:   100,
+		height:  30,''')
+s=s.replace('''func (m Model) at() int { return m.cursor[m.view] }
+
+func (m *Model) setAt(i int) {
+	n := m.count()
+	switch {
+	case n == 0:
+		i = 0
+	case i >= n:
+		i = n - 1
+	case i < 0:
+		i = 0
+	}
+	m.cursor[m.view] = i
+}''','''// at is the cursor position in the current view.
+func (m Model) at() int {
+	if m.view == ViewRepos {
+		return m.repoCursor
+	}
+	return m.taskCursor
+}
+
+// setAt moves the cursor, clamped to the current view's length.
+func (m *Model) setAt(i int) {
+	n := m.count()
+	switch {
+	case n == 0:
+		i = 0
+	case i >= n:
+		i = n - 1
+	case i < 0:
+		i = 0
+	}
+	if m.view == ViewRepos {
+		m.repoCursor = i
+		return
+	}
+	m.taskCursor = i
+}''')
+open(p,'w').write(s)
+PY
+gofmt -w internal/tui/ && go test ./internal/tui/ 2>&1 | tail -6
+```
+
+```text
+          enter open · p park · c next · tab view · / filter · 1/2/3 state · 0 clear · r refresh · q quit
+FAIL
+FAIL	github.com/daviddwlee84/dev-cli/internal/tui	22.052s
+FAIL
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:41:32Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+List remaining TUI failures
+
+`go test ./internal/tui/ 2>&1 | grep -E "^\s+---|--- FAIL|tui_test.go:[0-9]+:" | head -10`
+
+```text
+--- FAIL: TestEmptyInventoryExplainsItself (0.00s)
+    tui_test.go:244: an empty dashboard should say what to do:
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:41:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Fix empty-state assertion and stop blocking on blink timers
+
+```bash
+python3 - <<'PY'
+p='internal/tui/tui_test.go'
+s=open(p).read()
+s=s.replace('''	out := m.View()
+	if !strings.Contains(out, "Nothing to show") {
+		t.Errorf("an empty dashboard should say what to do:\\n%s", out)
+	}''','''	out := m.View()
+	if !strings.Contains(out, "No tasks recorded yet") {
+		t.Errorf("an empty dashboard should say what to do:\\n%s", out)
+	}
+	if !strings.Contains(out, "dev adopt") {
+		t.Errorf("it should point at the way to import existing work:\\n%s", out)
+	}''')
+s=s.replace('''		// Follow the command chain, so an action's resulting message (and the
+		// reload it triggers) is applied too.
+		for i := 0; cmd != nil && i < 8; i++ {
+			out := cmd()
+			if out == nil {
+				break
+			}
+			if _, isBatch := out.(tea.BatchMsg); isBatch {
+				break
+			}
+			cur, cmd = cur.Update(out)
+		}''','''		// Follow the command chain, so an action's resulting message (and the
+		// reload it triggers) is applied too. Commands that do not return
+		// promptly are the cursor's blink timers; running those would make the
+		// suite sleep for half a second per keystroke.
+		for i := 0; cmd != nil && i < 8; i++ {
+			out, ok := runQuickly(cmd)
+			if !ok || out == nil {
+				break
+			}
+			if _, isBatch := out.(tea.BatchMsg); isBatch {
+				break
+			}
+			cur, cmd = cur.Update(out)
+		}''')
+s=s.replace('''func key(s string) tea.KeyMsg {''','''// runQuickly executes a command, giving up on anything that blocks — which in
+// practice means the cursor blink timers.
+func runQuickly(cmd tea.Cmd) (tea.Msg, bool) {
+	done := make(chan tea.Msg, 1)
+	go func() { done <- cmd() }()
+	select {
+	case msg := <-done:
+		return msg, true
+	case <-time.After(100 * time.Millisecond):
+		return nil, false
+	}
+}
+
+func key(s string) tea.KeyMsg {''')
+s=s.replace('import (\n\t"context"\n\t"fmt"','import (\n\t"context"\n\t"fmt"\n\t"time"')
+open(p,'w').write(s)
+PY
+gofmt -w internal/tui/ && go test ./internal/tui/ 2>&1 | tail -6
+```
+
+```text
+ok  	github.com/daviddwlee84/dev-cli/internal/tui	4.757s
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:42:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Add tui tools to config template and verify
+
+```bash
+python3 - <<'PY'
+p='internal/cli/config.go'
+s=open(p).read()
+s=s.replace('''[stats]
+# Record activity locally for "dev stats --heatmap".''','''[tui]
+# External programs the dashboard hands the terminal to, each on its own key.
+# They run through your shell in the selected row's checkout, so arguments,
+# environment variables and your own scripts all behave as typed.
+#
+# Listed in full rather than left implicit: what is bound should be something
+# you can read, not something you discover by pressing keys. Replace freely —
+# a configured list replaces these entirely. See "dev tui tools".
+#
+# Keys are case-sensitive, and cannot take one the dashboard already uses
+# (j k g G h l tab / enter o p c s a r q 0 1 2 3 ?); dev reports a clash on load.
+
+[[tui.tools]]
+key  = "L"
+name = "lazygit"
+run  = "lazygit"
+
+[[tui.tools]]
+key  = "Y"
+name = "yazi"
+run  = "yazi"
+
+[[tui.tools]]
+key  = "E"
+name = "editor"
+run  = "$EDITOR ."
+
+[[tui.tools]]
+key  = "S"
+name = "shell"
+run  = "$SHELL"
+
+# Add your own — an editor, a script, an alias you already reach for:
+#
+# [[tui.tools]]
+# key  = "V"
+# name = "nvim"
+# run  = "nvim ."
+#
+# [[tui.tools]]
+# key  = "B"
+# name = "vibe"
+# run  = "vibe"
+
+[stats]
+# Record activity locally for "dev stats --heatmap".''')
+open(p,'w').write(s)
+PY
+gofmt -w internal/cli/ && go build -o dev ./cmd/dev && go vet ./... && gofmt -l . && ./dev skill sync >/dev/null && go build -o dev ./cmd/dev && go test ./... 2>&1 | grep -v "no test files" | grep -v "^ok"; echo "ALL_TESTS_PASS"
+```
+
+```text
+ALL_TESTS_PASS
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:42:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Run e2e and show the TUI help
+
+`./scripts/e2e.sh 2>&1 | tail -4; echo "=== dev tui --help ==="; ./dev tui --help 2>&1 | head -32`
+
+```text
+  ✓ gitignore composed, and re-run preserved hand-written rules
+
+**▸ adopt
+✗ adopt did not find the unmerged branch
+=== dev tui --help ===
+Browse and act on your work in progress.
+
+Shows exactly what "dev ls" shows, from the same code path, plus the ability
+to open, park and annotate a task without retyping its name.
+
+Two lists, switched with tab:
+
+  TASKS   change streams dev is tracking — what am I working on
+  REPOS   every repository under the scan roots — what do I have here
+
+Navigation is vim-style, with arrows alongside:
+
+  j k        move                 ctrl+d ctrl+u   half a page
+  g G        top / bottom         h l / tab       previous / next view
+  /          filter as you type   esc             clear, then quit
+
+Actions depend on the list:
+
+  enter      open in the runtime
+  p          park a task          c    edit its next action
+  s          start a task in the selected repository
+  1 2 3      hot / warm / cold    0    clear filters    a  include done
+  r          refresh              q    quit
+
+External tools are configured, not fixed — see [[tui.tools]] in the config,
+and "dev tui tools" for what is bound here. They run in the selected row's checkout;
+the dashboard suspends while they do and redraws afterwards, and bindings for
+programs that are not installed are not offered.
+
+Usage:
+  dev tui [flags]
+  dev tui [command]
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:42:39Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Reproduce the adopt e2e failure in isolation
+
+```bash
+SB=$(mktemp -d); export HOME=$SB/home XDG_DATA_HOME=$SB/home/.local/share XDG_CONFIG_HOME=$SB/home/.config
+mkdir -p $HOME/Program; R=$HOME/Program/demo
+git init -q -b main $R && git -C $R config user.email d@e.test && git -C $R config user.name t
+echo x > $R/README.md && git -C $R add -A && git -C $R commit -qm init
+cat > $SB/c.toml <<EOF
+[paths]
+scan_roots = ["$HOME/Program"]
+state_dir = "$HOME/state"
+worktree_root = "$HOME/wt"
+[runtime]
+backend = "none"
+EOF
+git -C $R switch -q -c adopt-me && echo wip > $R/wip.txt && git -C $R add -A && git -C $R commit -qm "feat: wip" && git -C $R switch -q main
+/Users/david/Documents/Program/dev-cli/dev --config $SB/c.toml adopt 2>&1 | head -12
+rm -rf $SB
+```
+
+```text
+1 candidate(s):
+
+REPO  BRANCH    STATE  WHY                       CHECKOUT
+demo  adopt-me  WARM   branch ahead of the base  ~/Program/demo
+
+Re-run with --apply to record these as tasks.
+Nothing on disk is moved or renamed either way.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:42:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Dump adopt output from the e2e run
+
+```bash
+python3 - <<'PY'
+p='scripts/e2e.sh'
+s=open(p).read()
+s=s.replace('dev adopt | grep -q adopt-me || fail "adopt did not find the unmerged branch"',
+            'dev adopt | tee "$SANDBOX/adopt.out" | grep -q adopt-me || { cat "$SANDBOX/adopt.out"; fail "adopt did not find the unmerged branch"; }')
+open(p,'w').write(s)
+PY
+./scripts/e2e.sh 2>&1 | tail -14
+```
+
+```text
+**▸ skill install
+  ✓ skill installed
+
+**▸ gitignore
+  ✓ gitignore composed, and re-run preserved hand-written rules
+
+**▸ adopt
+  ✓ adopt reported, applied once, and stayed idempotent
+
+**▸ config init detects the sandbox layout
+  ✓ config generated
+
+ all end-to-end checks passed
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:42:57Z)**_
+
+Passes — the earlier failure was a stale binary. That's a flaw in the script itself; let me make it always rebuild:
+
+_**Agent (claude-opus-5 2026-08-27 04:43:07Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Make e2e always rebuild and re-verify everything
+
+```bash
+python3 - <<'PY'
+p='scripts/e2e.sh'
+s=open(p).read()
+s=s.replace('dev adopt | tee "$SANDBOX/adopt.out" | grep -q adopt-me || { cat "$SANDBOX/adopt.out"; fail "adopt did not find the unmerged branch"; }',
+            'dev adopt | grep -q adopt-me || fail "adopt did not find the unmerged branch"')
+s=s.replace('''if [[ ! -x "$BIN" ]]; then
+  echo "building $BIN"
+  (cd "$ROOT" && go build -o "$BIN" ./cmd/dev)
+fi''','''# Always rebuild. The Go build cache makes this nearly free, and testing a
+# stale binary against fresh assertions is worse than not testing at all.
+echo "building $BIN"
+(cd "$ROOT" && go build -o "$BIN" ./cmd/dev)''')
+open(p,'w').write(s)
+PY
+./scripts/e2e.sh 2>&1 | tail -3 && go test ./... 2>&1 | grep -v "no test files" | grep -v "^ok"; ./dev skill sync --check && gofmt -l . && go vet ./... && echo VERIFIED
+```
+
+```text
+  ✓ config generated
+
+ all end-to-end checks passed
+command reference is current (internal/skill/files/references/commands.md)
+VERIFIED
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:43:10Z)**_
+
+Now let me update the docs for both changes and commit:
+
+_**Agent (claude-opus-5 2026-08-27 04:43:35Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Update README and skill for both features
+
+````bash
+python3 - <<'PY'
+p='README.md'
+s=open(p).read()
+s=s.replace('''The dashboard (`dev`, or `dev tui`) shows the same inventory from the same code
+path, and lets you act on the selected task without retyping its name: `enter`
+opens it, `p` parks it and prompts for the next action, `n` edits that action,
+`1`/`2`/`3` filter by state.
+
+It also hands the terminal to the tools you already reach for, running them in
+the selected task's checkout and redrawing when they exit — `l` for lazygit,
+`y` for yazi, `e` for `$EDITOR`, `s` for a shell. Bindings for tools that are
+not installed are not offered.''','''### The dashboard
+
+Bare `dev` (or `dev tui`) opens two lists, switched with `tab`:
+
+- **TASKS** — the change streams dev is tracking. What am I working on.
+- **REPOS** — every repository under the scan roots, with its branch, dirty
+  state, worktree count and per-state task tally, sorted so anything in flight
+  is at the top. What do I have here.
+
+Both come from the same code paths as `dev ls` and `dev repo list`, so they
+cannot disagree. The repo list matters on day one: with forty repositories and
+no tasks recorded yet, a task-only dashboard would just be empty.
+
+Navigation is vim-style, arrows alongside:
+
+```
+j k        move                 ctrl+d ctrl+u   half a page
+g G        top / bottom         h l / tab       previous / next view
+/          filter as you type   esc             clear, then quit
+```
+
+`enter` opens the selected row in the runtime. In TASKS, `p` parks and prompts
+for the next action and `c` edits it; in REPOS, `s` starts a task right there —
+branch, worktree, session and entry — which is the bridge from "what do I have"
+to "what am I working on" without leaving the dashboard.
+
+**External tools are configured, not fixed.** They run through your shell in
+the selected row's checkout; the dashboard suspends and redraws when they exit:
+
+```toml
+[[tui.tools]]
+key  = "L"
+name = "lazygit"
+run  = "lazygit"
+
+[[tui.tools]]
+key  = "V"
+name = "nvim"
+run  = "nvim ."
+
+[[tui.tools]]
+key  = "B"
+name = "vibe"          # your own scripts and aliases work the same way
+run  = "vibe"
+```
+
+`dev config init` writes the defaults out in full rather than leaving them
+implicit, and `dev tui tools` shows what is bound here and whether each one is
+actually installed — bindings for missing programs are not offered. A tool
+cannot take a key the dashboard already uses; dev reports the clash on load.''')
+s=s.replace('''Per-repo overrides live in a committed `<repo>/.dev.toml`, so they reach every
+machine.''','''**Copy or reinstall?** Reinstalling is always correct but can take minutes;
+copying is fast but only sound for dependency trees carrying no absolute paths.
+That is a per-ecosystem fact, not a preference, so dev knows it:
+
+```toml
+[worktree]
+strategy = "reinstall"      # reinstall | copy | link | skip
+
+[worktree.strategies]
+node = "copy"               # node_modules copies soundly
+```
+
+Asking to copy a virtualenv is refused with the reason — it bakes its own
+absolute path into `pyvenv.cfg` and `bin/activate` — and narrowed back to
+reinstalling rather than silently producing a broken checkout.
+
+`dev wt plan` shows exactly what a new worktree of a repository would get:
+which project types were detected, which tools are missing, and every file and
+command involved. `dev wt plan --write` seeds a `<repo>/.dev.toml` from it, so
+a project can commit its own setup and every machine provisions the same way.
+
+```
+$ dev wt plan
+PROJECT  MANAGER  FROM               DEPENDENCIES  TOOL
+node     npm      package-lock.json  node_modules  installed
+python   uv       uv.lock            .venv         installed
+
+   ACTION    WHAT          WHY
+✓  copy      .env          gitignored, so the checkout would not have it
+✓  copy-dir  node_modules  npm dependencies, copied instead of reinstalling
+✓  run       uv sync       uv.lock detected
+```''')
+open(p,'w').write(s)
+
+p='internal/skill/files/SKILL.md'
+s=open(p).read()
+s=s.replace('''dev wt plan                            # what a new worktree would be set up with''','''dev wt plan                            # what a new worktree would be set up with
+dev wt plan --write                    # seed a committed .dev.toml from it''')
+s=s.replace('''6. **Check `dev wt plan` before blaming a worktree.** A worktree that comes up
+   broken is nearly always a provisioning gap, not a git problem. The plan
+   shows the detected project types, which tools are missing, and exactly what
+   would be copied or run.''','''6. **Check `dev wt plan` before blaming a worktree.** A worktree that comes up
+   broken is nearly always a provisioning gap, not a git problem. The plan
+   shows the detected project types, which tools are missing, and exactly what
+   would be copied or run. Dependencies arrive by a per-ecosystem strategy —
+   `reinstall` (default), `copy`, `link` or `skip` — and dev refuses an unsound
+   one rather than producing a broken checkout: a virtualenv cannot be copied,
+   because it bakes its own absolute path into `pyvenv.cfg`.''')
+open(p,'w').write(s)
+PY
+gofmt -l . ; ./dev skill sync >/dev/null && go build -o dev ./cmd/dev && ./dev skill sync --check && git add -A && git status --short | head -20
+````
+
+```text
+command reference is current (internal/skill/files/references/commands.md)
+M  .specstory/history/2026-08-27_03-09-35Z-at-specstory-references-chatgpt.md
+M  .specstory/statistics.json
+M  README.md
+M  internal/cli/config.go
+M  internal/cli/tui.go
+M  internal/cli/worktree.go
+M  internal/config/config.go
+M  internal/skill/files/SKILL.md
+M  internal/skill/files/references/commands.md
+M  internal/tui/model.go
+A  internal/tui/rows.go
+M  internal/tui/tui_test.go
+M  internal/tui/view.go
+A  internal/wt/ecosystem.go
+M  internal/wt/manager.go
+M  internal/wt/override.go
+A  internal/wt/plan.go
+A  internal/wt/plan_test.go
+M  internal/wt/provision.go
+M  internal/wt/wt_test.go
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:43:58Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit the TUI and provisioning work
+
+```bash
+git -c commit.gpgsign=false commit --quiet -F - <<'EOF'
+feat: worktree provisioning plans, repo view, configurable TUI tools
+
+Provisioning becomes inspectable data before it executes. `dev wt plan` shows
+the project types detected in a repository and every file and command a new
+worktree would get; `--write` seeds a committed .dev.toml from it, so a project
+carries its own setup to every machine.
+
+Adds an explicit strategy for how dependencies arrive: reinstall (correct, the
+default), copy, link or skip, globally or per ecosystem. This is a real
+trade-off, not a preference, and dev knows the per-ecosystem facts: node_modules
+copies soundly, a virtualenv cannot — it bakes its own absolute path into
+pyvenv.cfg and bin/activate — and two cargo builds sharing one target/ corrupt
+each other. An unsound choice is narrowed back to reinstall with the reason,
+rather than producing a checkout that fails in a confusing way later.
+
+Strategy and post_create are separate axes: an explicit command list replaces
+the derived install commands but leaves copy in effect, so a project that
+bootstraps with `make setup` can still have node_modules copied.
+
+The dashboard gains a second list. TASKS answered only half the question — on
+a machine with forty repositories and nothing recorded yet it was simply empty,
+which is the wrong answer to "what do I have here?" REPOS shows every
+repository with its branch, dirty state, worktree count and task tally, sorted
+so work in flight is at the top, and `s` starts a task right there: the bridge
+from what exists to what is being worked on, without leaving the dashboard.
+
+Navigation is now vim-style throughout — j/k, g/G, ctrl+d/ctrl+u, h/l and tab
+between views, / to filter as you type with terms matched independently, esc to
+clear before it means quit.
+
+External tools become configuration rather than hard-coded, because which
+program you reach for is personal and the useful ones are often your own
+scripts. [[tui.tools]] binds a key to a shell command run in the selected row's
+checkout. `dev config init` writes the defaults out in full instead of leaving
+them implicit, `dev tui tools` reports what is bound and whether each is
+installed, and a tool cannot take a key the dashboard already uses.
+
+Fixes two real bugs found while testing: the cursor was a map shared between
+every Model copy, which broke bubbletea's value semantics; and the e2e script
+reused a stale binary instead of rebuilding.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01KfgWSELDAofucwXjMMxBao
+EOF
+git log --oneline -1 && go test ./... 2>&1 | grep -c "^ok" && grep -rh "^func Test" --include='*_test.go' . | wc -l
+```
+
+```text
+c163ca2 feat: worktree provisioning plans, repo view, configurable TUI tools
+14
+     158
+```
+</details></tool-use>
+
+_**Agent (<synthetic> 2026-08-27 04:43:59Z)**_
+
+You've hit your session limit · resets 3:30pm (Asia/Shanghai)
