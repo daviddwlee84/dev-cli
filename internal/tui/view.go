@@ -11,16 +11,31 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
-// chrome is the number of lines the header, detail pane and footer take, so
-// the list knows how much room it has left.
-const chrome = 12
-
+// listHeight budgets rows from what the current detail and footer actually
+// render. REPOS has more detail and more key hints than TASKS; the old fixed
+// chrome allowance let the complete view exceed terminal height, so Bubble
+// Tea scrolled the first lines and the top tab bar appeared to disappear.
 func (m Model) listHeight() int {
-	h := m.height - chrome
+	// Header + its blank line, table header, blank before detail, blank before
+	// footer. Detail and footer can each wrap/change by view and terminal width.
+	fixed := 2 + 1 + 1 + lineCount(m.renderDetail()) + 1 + lineCount(m.renderFooter())
+	h := m.height - fixed
 	if h < 3 {
 		return 3
 	}
+	// A long list adds the "… x–y of n" scroll note.
+	if m.count() > h && h > 3 {
+		h--
+	}
 	return h
+}
+
+func lineCount(s string) int {
+	s = strings.TrimRight(s, "\n")
+	if s == "" {
+		return 0
+	}
+	return strings.Count(s, "\n") + 1
 }
 
 // View implements tea.Model.

@@ -11,6 +11,27 @@ still takes roughly three seconds because status + latest commit remain live Git
 queries. If inventories grow into the hundreds, persist a short-lived snapshot
 and stream changed rows into the model; keep `r` as the explicit live refresh.
 
+### P2 · M — Repo quick thoughts with a sidecar source + SQLite FTS index
+Add `dev note add/list/edit/search` and a TUI note action. Keep durable notes as
+one Markdown/JSONL file per repo under `$XDG_DATA_HOME/dev/notes/<repo-key>/`
+so they are readable, exportable and git-syncable without SQLite binary merge
+conflicts. Use SQLite FTS as a rebuildable search index, not as the sole source
+of human intent. Repo identity should prefer forge owner/name, falling back to
+Git common-dir fingerprint for local-only repos.
+
+### P3 · M — Optional repo-local task backend adapters (td / beads)
+Research and detect repo-local task stores without making either a core
+dependency:
+
+- td: <https://sidecar.haplab.com/docs/td>
+- beads: <https://github.com/gastownhall/beads>
+
+Both may create dot-folders inside a repo. An adapter should report which
+backend is present, delegate through its CLI, and avoid copying its task data
+into dev's own notes/tasks. Decide only after comparing lifecycle, multi-agent
+locking, git noise, cross-machine sync, archival and uninstall behavior. Until
+then, record the integration point rather than prematurely selecting a tool.
+
 ### P2 · M — Multi-host aggregation
 `dev ls --all` fanning out over ssh to the machines in a configured host list,
 merging their `dev ls --json`. The JSON contract is already stable and the

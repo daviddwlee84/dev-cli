@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
@@ -838,5 +839,38 @@ func TestBeginLoadingShowsBeforeInventoryFinishes(t *testing.T) {
 	}
 	if _, ok := cmd().(tea.BatchMsg); !ok {
 		t.Error("initial command should batch cursor blink + background inventory")
+	}
+}
+
+func TestRepoViewNeverScrollsTopBarOffTerminal(t *testing.T) {
+	var repos []tui.RepoRow
+	for i := 0; i < 30; i++ {
+		r := repoRow(fmt.Sprintf("repo-%02d", i), &task.Task{
+			ID: fmt.Sprintf("t-%02d", i), Repo: fmt.Sprintf("repo-%02d", i),
+			Branch: "main", State: task.Hot,
+		})
+		r.Live = i == 0
+		r.Runtime, r.RuntimeHandle, r.RuntimeStatus = "herdr", "w7", "working"
+		r.Status = gitx.Status{Changed: 3, Staged: 1, Unstaged: 1, Untracked: 1}
+		repos = append(repos, r)
+	}
+	actions := newActions(&recorder{}, nil)
+	// Enough tools to force the footer to wrap, reproducing the original
+	// REPOS-only overflow.
+	for i := 0; i < 5; i++ {
+		actions.Tools = append(actions.Tools, tui.Tool{
+			Key: fmt.Sprintf("X%d", i), Name: "long-tool-name",
+			Available: func() bool { return true },
+		})
+	}
+	m := tui.New(actions, nil, repos)
+	m = send(m, tea.WindowSizeMsg{Width: 86, Height: 24}, key("tab"))
+	out := m.View()
+	if !strings.HasPrefix(out, "dev") {
+		t.Errorf("top bar must remain the first line:\n%s", out)
+	}
+	lines := strings.Count(strings.TrimRight(out, "\n"), "\n") + 1
+	if lines > 24 {
+		t.Errorf("view has %d lines in a 24-line terminal; top bar will scroll off:\n%s", lines, out)
 	}
 }
