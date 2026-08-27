@@ -19,8 +19,14 @@ import (
 type Repo struct {
 	// Name is the directory basename, which is how users refer to it.
 	Name string
-	// Path is the absolute working-tree root.
+	// Path is the absolute path reached through the scan root. It may be a
+	// symlink from a bootstrap index; commands intentionally keep that human
+	// navigation path rather than replacing it with the physical one.
 	Path string
+	// RealPath is the physical checkout path.
+	RealPath string
+	// Symlink reports that Path is an alias to RealPath.
+	Symlink bool
 	// Root is the scan root it was found under.
 	Root string
 	// Category is the path between the scan root and the repo ("Quant",
@@ -74,6 +80,11 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 		opts.MaxDepth = DefaultOptions().MaxDepth
 	}
 	seen := map[string]bool{}
+	// clone identities stop a physical path and a symlink index from showing
+	// the same repository twice. The first scan root wins, which lets users
+	// choose whether the curated index or the physical hierarchy is their UI
+	// simply by ordering scan_roots.
+	identities := map[string]bool{}
 	var out []Repo
 
 	for _, root := range roots {
@@ -90,10 +101,23 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if !d.IsDir() || path == rootClean {
+			if path == rootClean {
 				return nil
 			}
 			name := d.Name()
+			isLink := d.Type()&os.ModeSymlink != 0
+			isDir := d.IsDir()
+			if isLink {
+				// WalkDir does not follow symlinks. Inspect a direct symlink to
+				// a repository, but do not recurse through arbitrary symlinked
+				// containers — bootstrap does that with cycle detection.
+				if info, err := os.Stat(path); err == nil {
+					isDir = info.IsDir()
+				}
+			}
+			if !isDir {
+				return nil
+			}
 			if skipDirs[name] || (strings.HasPrefix(name, ".") && name != ".bare") {
 				return filepath.SkipDir
 			}
@@ -102,14 +126,33 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 			depth := len(strings.Split(rel, string(filepath.Separator)))
 
 			if isRepoDir(path) {
-				if !seen[path] {
-					seen[path] = true
+				real, _ := filepath.EvalSymlinks(path)
+				if real == "" {
+					real = path
+				}
+				bare := isBareDir(path)
+				identity := real
+				if !bare {
+					if g, err := gitx.Discover(ctx, path); err == nil {
+						// A linked worktree is execution state, not another
+						// project in the repo inventory.
+						if g.IsLinkedWorktree {
+							return filepath.SkipDir
+						}
+						identity = g.GitCommonDir
+						real = g.MainRoot
+					}
+				}
+				if !seen[path] && !identities[identity] {
+					seen[path], identities[identity] = true, true
 					out = append(out, Repo{
 						Name:     name,
 						Path:     path,
+						RealPath: real,
+						Symlink:  isLink,
 						Root:     rootClean,
 						Category: filepath.ToSlash(filepath.Dir(rel)),
-						Bare:     isBareDir(path),
+						Bare:     bare,
 						HasGit:   true,
 					})
 				}
@@ -178,8 +221,18 @@ func Resolve(ctx context.Context, roots []string, ref string) (Repo, []Repo, err
 		return Repo{}, nil, err
 	}
 	if abs, err := filepath.Abs(ref); err == nil {
-		if r, err := gitx.Discover(ctx, abs); err == nil {
-			return Repo{Name: r.Name, Path: r.MainRoot, HasGit: true, Bare: r.Bare}, nil, nil
+		if g, err := gitx.Discover(ctx, abs); err == nil {
+			real, _ := filepath.EvalSymlinks(abs)
+			if real == "" {
+				real = g.MainRoot
+			}
+			// Preserve an explicit navigation alias. The caller named this
+			// path on purpose; resolving it to the physical checkout would
+			// defeat a bootstrap symlink catalog.
+			return Repo{
+				Name: filepath.Base(abs), Path: abs, RealPath: real,
+				Symlink: real != abs, HasGit: true, Bare: g.Bare,
+			}, nil, nil
 		}
 	}
 	for _, r := range all {

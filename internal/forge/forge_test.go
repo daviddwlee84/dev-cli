@@ -75,3 +75,22 @@ func TestMissingCLIErrorsClearly(t *testing.T) {
 		}
 	}
 }
+
+func TestIdentityFromURL(t *testing.T) {
+	for _, tc := range []struct {
+		url  string
+		kind forge.Kind
+		name string
+	}{
+		{"https://github.com/owner/repo.git", forge.GitHub, "owner/repo"},
+		{"git@github.com:owner/repo.git", forge.GitHub, "owner/repo"},
+		{"ssh://git@gitlab.com/group/sub/repo.git", forge.GitLab, "group/sub/repo"},
+		{"https://gitlab.example.com/group/repo", forge.GitLab, "group/repo"},
+		{"", forge.Unknown, ""},
+	} {
+		kind, name := forge.IdentityFromURL(tc.url)
+		if kind != tc.kind || name != tc.name {
+			t.Errorf("IdentityFromURL(%q) = %q, %q; want %q, %q", tc.url, kind, name, tc.kind, tc.name)
+		}
+	}
+}

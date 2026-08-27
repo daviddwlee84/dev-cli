@@ -2,14 +2,18 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
@@ -29,10 +33,11 @@ func newTUICmd(app *App) *cobra.Command {
 Shows exactly what "dev ls" shows, from the same code path, plus the ability
 to open, park and annotate a task without retyping its name.
 
-Two lists, switched with tab:
+Three lists, switched with tab:
 
   TASKS   change streams dev is tracking — what am I working on
   REPOS   every repository under the scan roots — what do I have here
+  REMOTE  repositories visible through gh and glab — what can I clone/open
 
 Navigation is vim-style, with arrows alongside:
 
@@ -45,6 +50,7 @@ Actions depend on the list:
   enter      open in the runtime
   p          park a task          c    edit its next action
   s          start a task in the selected repository
+  c          clone the selected remote repository (after confirmation)
   1 2 3      hot / warm / cold    0    clear filters    a  include done
   r          refresh              q    quit
 
@@ -84,7 +90,9 @@ Add your own — an editor, a script, anything you already reach for:
     run  = "vibe"
 
 The command runs through your shell in the selected row's checkout, so
-arguments, environment variables and your own scripts all behave as typed.`,
+arguments, environment variables and your own scripts all behave as typed.
+Set interactive = true only for aliases/functions from your shell rc; that
+binding runs through $SHELL -lic and the mode is shown in this listing.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configured := len(app.Cfg.TUI.Tools) > 0
@@ -94,15 +102,20 @@ arguments, environment variables and your own scripts all behave as typed.`,
 			}
 			fmt.Fprintf(app.Out, "tool bindings from %s\n\n", source)
 
-			t := NewTable("KEY", "NAME", "RUNS", "AVAILABLE")
-			for _, tool := range externalTools(app) {
+			t := NewTable("KEY", "NAME", "MODE", "RUNS", "AVAILABLE")
+			configuredTools := app.Cfg.EffectiveTools()
+			for i, tool := range externalTools(app) {
 				status := "yes"
 				if tool.Available != nil && !tool.Available() {
 					status = "no — not on PATH"
 				}
-				// Command is [shell, -c, run]; show the run string itself.
+				// Command is [shell, -c/-lic, run]; show the run itself.
 				run := tool.Command[len(tool.Command)-1]
-				t.Add(tool.Key, tool.Name, run, status)
+				mode := "shell"
+				if i < len(configuredTools) && configuredTools[i].Interactive {
+					mode = "interactive"
+				}
+				t.Add(tool.Key, tool.Name, mode, run, status)
 			}
 			t.Render(app.Out)
 
@@ -141,6 +154,9 @@ func runTUI(app *App) error {
 	reloadRepos := func(ctx context.Context) ([]tui.RepoRow, error) {
 		return collectRepos(ctx, app, rt)
 	}
+	reloadRemote := func(ctx context.Context) ([]tui.RemoteRow, error) {
+		return collectRemotes(ctx, app, 200)
+	}
 
 	rows, err := reload(ctx)
 	if err != nil {
@@ -152,10 +168,11 @@ func runTUI(app *App) error {
 	}
 
 	actions := tui.Actions{
-		Reload:      reload,
-		ReloadRepos: reloadRepos,
-		Runtime:     rt,
-		Tools:       externalTools(app),
+		Reload:       reload,
+		ReloadRepos:  reloadRepos,
+		ReloadRemote: reloadRemote,
+		Runtime:      rt,
+		Tools:        externalTools(app),
 
 		// Open reuses the same paths the commands take, so a cold task
 		// selected here is rebuilt rather than reported broken.
@@ -168,7 +185,10 @@ func runTUI(app *App) error {
 			if err != nil {
 				return "", err
 			}
-			t.State, t.RuntimeHandle, t.Owner = task.Hot, handle, config.Hostname()
+			t.State, t.Owner = task.Hot, config.Hostname()
+			if rt.Name() != "none" {
+				t.RuntimeHandle = handle
+			}
 			if err := app.Tasks.Save(t); err != nil {
 				return "", err
 			}
@@ -188,6 +208,43 @@ func runTUI(app *App) error {
 				return "", nil
 			}
 			return fmt.Sprintf("%s open in %s (%s)", r.Repo.Name, rt.Name(), handle), nil
+		},
+
+		OpenRemote: func(ctx context.Context, r tui.RemoteRow) (string, error) {
+			if r.LocalPath == "" {
+				return "", fmt.Errorf("%s has no local checkout; press c to clone it", r.Repo.FullName)
+			}
+			handle, err := openCheckout(ctx, rt, r.LocalPath, r.Repo.Name)
+			if err != nil {
+				return "", err
+			}
+			if rt.Name() == "none" {
+				return "", nil
+			}
+			return fmt.Sprintf("%s open in %s (%s)", r.Repo.FullName, rt.Name(), handle), nil
+		},
+
+		CloneRemote: func(ctx context.Context, r tui.RemoteRow) (string, string, error) {
+			dest := filepath.Join(config.Expand(app.Cfg.Paths.ProjectRoot), r.Repo.Name)
+			if _, err := os.Stat(dest); err == nil {
+				return "", "", fmt.Errorf("%s already exists; add it to scan_roots or clone somewhere explicit",
+					config.Contract(dest))
+			}
+			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+				return "", "", err
+			}
+			if _, err := gitx.Run(ctx, filepath.Dir(dest), "clone", r.Repo.CloneURL, dest); err != nil {
+				return "", "", err
+			}
+			handle, err := openCheckout(ctx, rt, dest, r.Repo.Name)
+			if err != nil {
+				return "", "", fmt.Errorf("cloned to %s, but could not open it: %w", config.Contract(dest), err)
+			}
+			if rt.Name() == "none" {
+				return "cloned " + r.Repo.FullName + " to " + config.Contract(dest), dest, nil
+			}
+			return fmt.Sprintf("cloned %s to %s; open in %s (%s)",
+				r.Repo.FullName, config.Contract(dest), rt.Name(), handle), dest, nil
 		},
 
 		Park: func(ctx context.Context, t *task.Task, next string) (string, error) {
@@ -251,6 +308,9 @@ func runTUI(app *App) error {
 	}
 
 	model := tui.New(actions, rows, repos)
+	if cached, ok := cachedRemotesForRepoRows(app, repos); ok {
+		model = model.WithRemotes(cached)
+	}
 	final, err := tea.NewProgram(model, tea.WithAltScreen()).Run()
 	if err != nil {
 		return err
@@ -292,6 +352,7 @@ func collectRepos(ctx context.Context, app *App, rt runtime.Runtime) ([]tui.Repo
 			if list, err := gitx.Worktrees(ctx, r.Path); err == nil && len(list) > 0 {
 				row.Worktrees = len(list) - 1
 			}
+			row.RemoteForge, row.RemoteName = forge.IdentityFromURL(gitx.Remote(ctx, r.Path, "origin"))
 		}
 		for _, s := range sessions {
 			if s.Covers(r.Path) {
@@ -317,13 +378,17 @@ func externalTools(app *App) []tui.Tool {
 		if name == "" {
 			name = firstWord(run)
 		}
+		command := []string{shellPath(), "-c", run}
+		if t.Interactive {
+			// The command string passed to shell -lic is parsed before some
+			// shells finish loading aliases. Parse only eval "$1" up front,
+			// then evaluate the configured command after rc loading, so both
+			// aliases (vibe) and functions (claude-plans-here) work.
+			command = []string{shellPath(), "-lic", `eval "$1"`, "dev-tui-tool", run}
+		}
 		out = append(out, tui.Tool{
-			Key:  t.Key,
-			Name: name,
-			// Run through a shell so aliases-as-scripts, arguments and
-			// environment variables in the command all behave as typed.
-			Command:   []string{shellPath(), "-c", run},
-			Available: commandRunnable(run),
+			Key: t.Key, Name: name, Command: command,
+			Available: commandRunnable(run, t.Interactive),
 		})
 	}
 	return out
@@ -331,26 +396,45 @@ func externalTools(app *App) []tui.Tool {
 
 // commandRunnable resolves the command's first word on PATH, expanding a
 // leading environment variable so "$EDITOR ." checks the editor itself.
-func commandRunnable(run string) func() bool {
+func commandRunnable(run string, interactive bool) func() bool {
+	// Availability is stable for the lifetime of one dashboard. In particular,
+	// probing an interactive alias starts a login shell; doing that on every
+	// render would turn a 60fps UI into a shell-launch benchmark.
+	var once sync.Once
+	available := false
 	return func() bool {
-		word := firstWord(run)
-		if strings.HasPrefix(word, "$") {
-			word = os.Getenv(strings.TrimPrefix(word, "$"))
-			if word == "" {
-				return false
-			}
-			word = firstWord(word)
-		}
+		once.Do(func() { available = checkCommandRunnable(run, interactive) })
+		return available
+	}
+}
+
+func checkCommandRunnable(run string, interactive bool) bool {
+	word := firstWord(run)
+	if strings.HasPrefix(word, "$") {
+		word = os.Getenv(strings.TrimPrefix(word, "$"))
 		if word == "" {
 			return false
 		}
-		if filepath.IsAbs(word) {
-			_, err := os.Stat(word)
-			return err == nil
-		}
-		_, err := exec.LookPath(word)
+		word = firstWord(word)
+	}
+	if word == "" {
+		return false
+	}
+	if interactive {
+		// Ask the configured shell after it loads its rc files; LookPath
+		// cannot see aliases or functions.
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		probe := exec.CommandContext(ctx, shellPath(), "-lic",
+			`command -v "$1" >/dev/null 2>&1`, "dev-tool-probe", word)
+		return probe.Run() == nil
+	}
+	if filepath.IsAbs(word) {
+		_, err := os.Stat(word)
 		return err == nil
 	}
+	_, err := exec.LookPath(word)
+	return err == nil
 }
 
 func firstWord(s string) string {
@@ -366,4 +450,119 @@ func shellPath() string {
 		return s
 	}
 	return "/bin/sh"
+}
+
+// remoteCachePath is private because the inventory can contain names and URLs
+// of private repositories.
+func remoteCachePath() string {
+	return filepath.Join(config.CacheHome(), "dev", "remotes.json")
+}
+
+// cachedRemotesForRepoRows uses the local repo data the dashboard already
+// collected, avoiding another process-spawning scan on startup.
+func cachedRemotesForRepoRows(app *App, locals []tui.RepoRow) ([]tui.RemoteRow, bool) {
+	cache, ok := forge.LoadCache(remoteCachePath(), app.Cfg.Forge.CacheTTL.Duration)
+	if !ok {
+		return nil, false
+	}
+	byRemote := map[string]tui.RepoRow{}
+	for _, r := range locals {
+		if r.RemoteForge != forge.Unknown && r.RemoteName != "" {
+			byRemote[string(r.RemoteForge)+"/"+strings.ToLower(r.RemoteName)] = r
+		}
+	}
+	out := make([]tui.RemoteRow, 0, len(cache.Repos))
+	for _, rr := range cache.Repos {
+		row := tui.RemoteRow{Repo: rr}
+		if local, ok := byRemote[string(rr.Forge)+"/"+strings.ToLower(rr.FullName)]; ok {
+			row.LocalPath, row.LocalName = local.Repo.Path, local.Repo.Display()
+		}
+		out = append(out, row)
+	}
+	return out, true
+}
+
+// cachedRemotes returns a fresh, already-local-matched cache for instant TUI
+// navigation. Local paths are recomputed rather than cached because clones can
+// move independently of the forge inventory.
+func cachedRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, bool) {
+	cache, ok := forge.LoadCache(remoteCachePath(), app.Cfg.Forge.CacheTTL.Duration)
+	if !ok {
+		return nil, false
+	}
+	return matchRemoteLocals(ctx, app, cache.Repos), true
+}
+
+// collectRemotes aggregates gh and glab, caches the normalised response, then
+// marks remotes that already have a checkout under the configured scan roots.
+// Calls run concurrently so one slow forge does not serialise the other.
+func collectRemotes(ctx context.Context, app *App, limit int) ([]tui.RemoteRow, error) {
+	if limit <= 0 {
+		limit = app.Cfg.Forge.RemoteLimit
+	}
+	type result struct {
+		repos []forge.RemoteRepo
+		err   error
+	}
+	ch := make(chan result, len(forge.All()))
+	var wg sync.WaitGroup
+	available := 0
+	for _, f := range forge.All() {
+		if !f.Available() {
+			continue
+		}
+		available++
+		wg.Add(1)
+		go func(f forge.Forge) {
+			defer wg.Done()
+			r, err := f.ListRepos(ctx, limit)
+			ch <- result{repos: r, err: err}
+		}(f)
+	}
+	wg.Wait()
+	close(ch)
+	if available == 0 {
+		return nil, fmt.Errorf("neither gh nor glab is installed")
+	}
+
+	var (
+		remoteRepos []forge.RemoteRepo
+		errs        []error
+	)
+	for res := range ch {
+		if res.err != nil {
+			errs = append(errs, res.err)
+		}
+		remoteRepos = append(remoteRepos, res.repos...)
+	}
+	// Cache partial results too. They are exactly what was observed, and a
+	// partial list is more useful on the next switch than another six-second
+	// wait merely to rediscover the same provider failure.
+	if len(remoteRepos) > 0 && limit >= app.Cfg.Forge.RemoteLimit {
+		_ = forge.SaveCache(remoteCachePath(), remoteRepos)
+	}
+	return matchRemoteLocals(ctx, app, remoteRepos), errors.Join(errs...)
+}
+
+func matchRemoteLocals(ctx context.Context, app *App, remoteRepos []forge.RemoteRepo) []tui.RemoteRow {
+	locals, _ := repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
+	localByRemote := map[string]repo.Repo{}
+	for _, r := range locals {
+		if r.Bare {
+			continue
+		}
+		kind, name := forge.IdentityFromURL(gitx.Remote(ctx, r.Path, "origin"))
+		if kind != forge.Unknown && name != "" {
+			localByRemote[string(kind)+"/"+strings.ToLower(name)] = r
+		}
+	}
+	out := make([]tui.RemoteRow, 0, len(remoteRepos))
+	for _, rr := range remoteRepos {
+		row := tui.RemoteRow{Repo: rr}
+		if local, ok := localByRemote[string(rr.Forge)+"/"+strings.ToLower(rr.FullName)]; ok {
+			row.LocalPath, row.LocalName = local.Path, local.Display()
+		}
+		out = append(out, row)
+	}
+	return out
 }

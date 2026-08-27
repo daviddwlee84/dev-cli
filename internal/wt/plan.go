@@ -106,9 +106,9 @@ func SettingsFor(cfg config.Config, repoPath string) Settings {
 			s.Cmds = *o.Worktree.PostCreate
 		}
 		if o.Worktree.Strategy != "" {
-			if v, ok := ParseStrategy(o.Worktree.Strategy); ok {
-				s.Strategy = v
-			}
+			// Keep an invalid value so strategyFor can report it in the plan
+			// instead of silently turning a repo-local typo into reinstall.
+			s.Strategy = Strategy(o.Worktree.Strategy)
 		}
 		for k, v := range o.Worktree.Strategies {
 			s.Strategies[k] = v
@@ -121,6 +121,10 @@ func SettingsFor(cfg config.Config, repoPath string) Settings {
 // sound and recording why when it has to.
 func (s Settings) strategyFor(e Ecosystem) (Strategy, string) {
 	want := s.Strategy
+	if _, ok := ParseStrategy(string(want)); !ok {
+		return Reinstall, fmt.Sprintf("%s: %q is not a strategy (want %s), using reinstall",
+			e.Name, want, joinStrategies())
+	}
 	if v, ok := s.Strategies[e.Name]; ok {
 		if parsed, ok := ParseStrategy(v); ok {
 			want = parsed

@@ -15,11 +15,13 @@ import (
 // directly — Default() supplies the baseline and Load() overlays the user's
 // config.toml on top of it.
 type Config struct {
-	Paths    Paths    `toml:"paths"`
-	Runtime  Runtime  `toml:"runtime"`
-	Worktree Worktree `toml:"worktree"`
-	Stats    Stats    `toml:"stats"`
-	TUI      TUI      `toml:"tui"`
+	Paths     Paths     `toml:"paths"`
+	Runtime   Runtime   `toml:"runtime"`
+	Worktree  Worktree  `toml:"worktree"`
+	Stats     Stats     `toml:"stats"`
+	TUI       TUI       `toml:"tui"`
+	Bootstrap Bootstrap `toml:"bootstrap"`
+	Forge     Forge     `toml:"forge"`
 
 	// Source records where the config was loaded from; "" means defaults only.
 	Source string `toml:"-"`
@@ -74,6 +76,35 @@ type Worktree struct {
 	ProvisionTimeout Duration `toml:"provision_timeout"`
 }
 
+// Forge configures the combined GitHub/GitLab remote inventory.
+type Forge struct {
+	// RemoteLimit is requested from each provider. GitHub caps it at 100.
+	RemoteLimit int `toml:"remote_limit"`
+	// CacheTTL makes the REMOTE TUI view instant after its first load; r always
+	// refreshes explicitly.
+	CacheTTL Duration `toml:"cache_ttl"`
+}
+
+// Bootstrap configures recursive discovery and the optional symlink index.
+type Bootstrap struct {
+	// MaxDepth bounds recursive scans. Zero means unlimited. The default of 8
+	// reaches ghq's host/owner/repo and deeply categorised layouts without
+	// wandering through a mounted filesystem forever.
+	MaxDepth int `toml:"max_depth"`
+	// FollowSymlinks follows symlinked container directories with realpath
+	// cycle detection. Direct symlinks to repositories are always identified.
+	FollowSymlinks bool `toml:"follow_symlinks"`
+	// IndexRoot is the optional, non-destructive symlink catalog. Empty means
+	// no catalog until --index is passed.
+	IndexRoot string `toml:"index_root"`
+	// Layout is "flat" (<index>/<repo>) or "preserve" (mirror the path under
+	// its scan root).
+	Layout string `toml:"layout"`
+	// RelativeLinks makes an index portable when it and the repositories move
+	// together; absolute links are less surprising across mount points.
+	RelativeLinks bool `toml:"relative_links"`
+}
+
 // TUI configures the interactive dashboard.
 type TUI struct {
 	// Tools are the external programs the dashboard can hand the terminal to,
@@ -94,6 +125,11 @@ type Tool struct {
 	Name string `toml:"name"`
 	// Run is a shell command, executed in the selected row's checkout.
 	Run string `toml:"run"`
+	// Interactive runs through $SHELL -lic, loading the user's rc file so a
+	// shell alias or function can be used. Off by default: startup files can
+	// print output and alter environment in ways an ordinary command should
+	// not inherit accidentally.
+	Interactive bool `toml:"interactive"`
 }
 
 // reservedKeys are the dashboard's own bindings. A tool cannot take one,
@@ -168,6 +204,11 @@ func Default() Config {
 			Strategy:         "reinstall",
 			ProvisionTimeout: Duration{10 * time.Minute},
 		},
+		Bootstrap: Bootstrap{
+			MaxDepth:       8,
+			FollowSymlinks: true,
+			Layout:         "flat",
+		},
 		Stats: Stats{
 			Sampler:        true,
 			WakaTime:       false,
@@ -213,6 +254,33 @@ func (c Config) Validate() error {
 	}
 	if _, err := Render(c.Paths.WorktreePath, c.probeVars()); err != nil {
 		return fmt.Errorf("paths.worktree_path: %w", err)
+	}
+	switch c.Bootstrap.Layout {
+	case "", "flat", "preserve":
+	default:
+		return fmt.Errorf("bootstrap.layout %q: want flat or preserve", c.Bootstrap.Layout)
+	}
+	if c.Bootstrap.MaxDepth < 0 {
+		return fmt.Errorf("bootstrap.max_depth must be zero (unlimited) or positive")
+	}
+	if c.Forge.RemoteLimit < 0 {
+		return fmt.Errorf("forge.remote_limit must be zero (use default) or positive")
+	}
+	validStrategy := func(v string) bool {
+		switch v {
+		case "", "reinstall", "copy", "link", "skip":
+			return true
+		}
+		return false
+	}
+	if !validStrategy(c.Worktree.Strategy) {
+		return fmt.Errorf("worktree.strategy %q: want reinstall, copy, link or skip", c.Worktree.Strategy)
+	}
+	for ecosystem, strategy := range c.Worktree.Strategies {
+		if !validStrategy(strategy) {
+			return fmt.Errorf("worktree.strategies.%s %q: want reinstall, copy, link or skip",
+				ecosystem, strategy)
+		}
 	}
 	seen := map[string]string{}
 	for i, t := range c.TUI.Tools {

@@ -145,3 +145,67 @@ func TestValidateRejectsBadBackendAndTemplate(t *testing.T) {
 		t.Error("typo'd template variable should fail validation")
 	}
 }
+
+func TestBootstrapPolicyValidation(t *testing.T) {
+	c := Default()
+	if c.Bootstrap.MaxDepth != 8 || c.Bootstrap.Layout != "flat" || !c.Bootstrap.FollowSymlinks {
+		t.Errorf("unexpected bootstrap defaults: %+v", c.Bootstrap)
+	}
+
+	c.Bootstrap.Layout = "magic"
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "flat or preserve") {
+		t.Errorf("bad layout should fail clearly, got %v", err)
+	}
+	c = Default()
+	c.Bootstrap.MaxDepth = -1
+	if err := c.Validate(); err == nil {
+		t.Error("negative max_depth should fail validation")
+	}
+}
+
+func TestTUIToolConfigAndReservedKeys(t *testing.T) {
+	c := Default()
+	tools := c.EffectiveTools()
+	if len(tools) == 0 {
+		t.Fatal("the dashboard should have explicit defaults")
+	}
+	if tools[0].Key == "" || tools[0].Run == "" {
+		t.Errorf("invalid default: %+v", tools[0])
+	}
+
+	c.TUI.Tools = []Tool{{Key: "V", Name: "nvim", Run: "nvim ."}}
+	if err := c.Validate(); err != nil {
+		t.Errorf("custom tool should validate: %v", err)
+	}
+	if got := c.EffectiveTools(); len(got) != 1 || got[0].Name != "nvim" {
+		t.Errorf("configured list should replace defaults: %+v", got)
+	}
+
+	c.TUI.Tools = []Tool{{Key: "q", Name: "bad", Run: "echo nope"}}
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "quit") {
+		t.Errorf("reserved q must fail with its meaning, got %v", err)
+	}
+	c.TUI.Tools = []Tool{{Key: "V", Name: "one", Run: "one"}, {Key: "V", Name: "two", Run: "two"}}
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "already bound") {
+		t.Errorf("duplicate key should fail, got %v", err)
+	}
+}
+
+func TestDependencyStrategyConfigValidation(t *testing.T) {
+	c := Default()
+	for _, strategy := range []string{"reinstall", "copy", "link", "skip"} {
+		c.Worktree.Strategy = strategy
+		if err := c.Validate(); err != nil {
+			t.Errorf("%s should validate: %v", strategy, err)
+		}
+	}
+	c.Worktree.Strategy = "teleport"
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "worktree.strategy") {
+		t.Errorf("invalid default strategy should fail, got %v", err)
+	}
+	c = Default()
+	c.Worktree.Strategies = map[string]string{"node": "teleport"}
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "worktree.strategies.node") {
+		t.Errorf("invalid ecosystem strategy should fail, got %v", err)
+	}
+}

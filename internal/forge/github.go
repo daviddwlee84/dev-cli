@@ -2,7 +2,11 @@ package forge
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // gh drives the GitHub CLI.
@@ -84,4 +88,61 @@ func lastURL(out string) string {
 		return strings.TrimSpace(out)
 	}
 	return found
+}
+
+// ListRepos lists GitHub repositories visible to the authenticated user —
+// owned, collaborated on, and organisation membership — most recently pushed
+// first. gh api is intentionally used instead of a custom HTTP client:
+// authentication and token refresh stay owned by the forge CLI.
+func (g *gh) ListRepos(ctx context.Context, limit int) ([]RemoteRepo, error) {
+	if !g.Available() {
+		return nil, &ErrNoCLI{Kind: GitHub, Bin: "gh"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if limit <= 0 {
+		limit = 100
+	}
+	// GitHub caps per_page at 100. The remote view is a navigator, not a
+	// complete backup inventory; / filters this recent working set.
+	if limit > 100 {
+		limit = 100
+	}
+	out, err := run(ctx, "gh", "", "api", "user/repos", "--method", "GET",
+		"-f", "per_page="+strconv.Itoa(limit), "-f", "sort=pushed", "-f", "direction=desc")
+	if err != nil {
+		return nil, err
+	}
+	return parseGitHubRepos(out)
+}
+
+func parseGitHubRepos(out string) ([]RemoteRepo, error) {
+	var raw []struct {
+		Name          string `json:"name"`
+		FullName      string `json:"full_name"`
+		Description   string `json:"description"`
+		URL           string `json:"html_url"`
+		CloneURL      string `json:"clone_url"`
+		SSHURL        string `json:"ssh_url"`
+		Visibility    string `json:"visibility"`
+		Fork          bool   `json:"fork"`
+		Archived      bool   `json:"archived"`
+		PushedAt      string `json:"pushed_at"`
+		DefaultBranch string `json:"default_branch"`
+	}
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		return nil, fmt.Errorf("decode gh api user/repos: %w", err)
+	}
+	result := make([]RemoteRepo, 0, len(raw))
+	for _, r := range raw {
+		updated, _ := time.Parse(time.RFC3339, r.PushedAt)
+		result = append(result, RemoteRepo{
+			Forge: GitHub, Name: r.Name, FullName: r.FullName,
+			Description: r.Description, URL: r.URL,
+			CloneURL: r.CloneURL, SSHURL: r.SSHURL,
+			Visibility: r.Visibility, DefaultBranch: r.DefaultBranch,
+			Archived: r.Archived, Fork: r.Fork, UpdatedAt: updated,
+		})
+	}
+	return result, nil
 }

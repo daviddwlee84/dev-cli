@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
@@ -26,6 +27,10 @@ type RepoRow struct {
 	Tasks []*task.Task
 	// Live reports a runtime session sitting in this repository.
 	Live bool
+	// RemoteForge / RemoteName identify origin for matching the REMOTE view to
+	// this local checkout without rescanning every repo when a cache opens.
+	RemoteForge forge.Kind
+	RemoteName  string
 }
 
 // HotTasks counts the repository's tasks that are currently hot.
@@ -97,4 +102,26 @@ func matches(haystack, query string) bool {
 		}
 	}
 	return true
+}
+
+// RemoteRow is one repository known to GitHub or GitLab, optionally matched to
+// a local checkout. The REMOTE view is the bridge between "what exists on the
+// forge" and "what is already on this machine".
+type RemoteRow struct {
+	Repo forge.RemoteRepo `json:"repo"`
+	// LocalPath is the checkout under the configured scan roots, empty when the
+	// remote has not been cloned here.
+	LocalPath string `json:"local_path,omitempty"`
+	// LocalName is the discovered repo's display name.
+	LocalName string `json:"local_name,omitempty"`
+}
+
+// Cloned reports whether this remote already has a local checkout.
+func (r RemoteRow) Cloned() bool { return r.LocalPath != "" }
+
+func (r RemoteRow) searchText() string {
+	return strings.ToLower(strings.Join([]string{
+		string(r.Repo.Forge), r.Repo.Name, r.Repo.FullName, r.Repo.Description,
+		r.Repo.Visibility, r.Repo.DefaultBranch, r.LocalName,
+	}, " "))
 }

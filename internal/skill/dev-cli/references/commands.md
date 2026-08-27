@@ -23,13 +23,44 @@ dev adopt [flags]
 - `--state` — state to record adopted tasks in (hot, warm, cold, done)
 - `--yes` — with --apply, do not confirm each one
 
+### `dev bootstrap`
+
+Discover and optionally organise an existing machine without breaking its layout
+
+```
+dev bootstrap [path...] [flags]
+```
+
+- `--apply` — apply the ready index or move actions
+- `--config-out` — write a new config.toml for the resulting roots
+- `--follow-symlinks` — follow symlinked container directories with cycle detection
+- `--force-config` — overwrite config-out if it exists
+- `--index` — plan a non-destructive symlink catalog at this path
+- `--json` — emit the scan as JSON
+- `--layout` — target layout: flat or preserve
+- `--max-depth` — recursive depth; 0 means unlimited
+- `--move` — plan physical repository moves into this path
+- `--relative-links` — use relative symlink payloads in an index
+- `--worktrees` — include linked worktrees in the report
+- `--yes` — with --move --apply, do not confirm each repository
+
 ### `dev config`
 
-Show, initialise and locate dev's configuration
+Show, edit, initialise and locate dev's configuration
 
 ```
 dev config
 ```
+
+### `dev config edit`
+
+Open this config in $VISUAL or $EDITOR
+
+```
+dev config edit [flags]
+```
+
+- `--editor` — editor command, overriding $VISUAL and $EDITOR
 
 ### `dev config init`
 
@@ -79,6 +110,16 @@ dev done [task] [flags]
 - `--keep-worktree` — keep the worktree checkout
 - `--pr` — push and open a pull/merge request instead of merging locally
 - `--push` — push the base branch after a fast-forward
+
+### `dev edit`
+
+Open dev's config in $VISUAL or $EDITOR
+
+```
+dev edit [flags]
+```
+
+- `--editor` — editor command, overriding $VISUAL and $EDITOR
 
 ### `dev gitignore`
 
@@ -202,6 +243,18 @@ Open a repository in the runtime
 dev repo open <repo>
 ```
 
+### `dev repo remote`
+
+List and search repositories visible through gh and glab
+
+```
+dev repo remote [query] [flags]
+```
+
+- `--cached` — use the fresh XDG cache without querying either forge
+- `--json` — emit JSON
+- `--limit` — maximum repositories requested from each forge (default: config forge.remote_limit)
+
 ### `dev repo sync`
 
 Fetch and prune, reporting what moved
@@ -248,7 +301,7 @@ Install the skill into the agent skills directory
 dev skill install [flags]
 ```
 
-- `--dir` — install directory (default: ~/.agents/skills/dev)
+- `--dir` — install directory (default: ~/.agents/skills/dev-cli)
 - `--no-link` — do not symlink into per-tool skill directories
 
 ### `dev skill print`

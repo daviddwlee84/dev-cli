@@ -187,4 +187,20 @@ step "config init detects the sandbox layout"
 dev config init --stdout | grep -q '\[paths\]' || fail "generated config looks wrong"
 ok "config generated"
 
+step "bootstrap a non-destructive repo index"
+INDEX="$HOME/repo-index"
+INDEX_CONFIG="$HOME/indexed.toml"
+dev bootstrap "$HOME/Program" --index "$INDEX" --apply \
+  --config-out "$INDEX_CONFIG" >/dev/null
+[[ -L "$INDEX/demo" ]] || fail "bootstrap did not create the repo symlink"
+[[ -d "$REPO" ]]       || fail "bootstrap index moved the physical repo"
+# The generated config puts the index first but keeps new repos on the
+# physical project root.
+grep -q "repo-index" "$INDEX_CONFIG" || fail "generated config does not scan the index"
+grep -q 'project_root = "~/Program"' "$INDEX_CONFIG" \
+  || fail "generated config would create physical repos inside the index"
+"$BIN" --config "$INDEX_CONFIG" repo list --long | grep -q '~/repo-index/demo' \
+  || fail "normal repo discovery does not use the symlink index"
+ok "recursive scan + symlink index, physical layout untouched"
+
 printf '\n\033[32m all end-to-end checks passed\033[0m\n'

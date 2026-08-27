@@ -18,7 +18,7 @@ const (
 // commandReferencePath is the file `dev skill sync` maintains, relative to the
 // repository root. Sync only makes sense when run from a checkout of dev
 // itself — the installed binary's copy is embedded and immutable.
-const commandReferencePath = "internal/skill/files/references/commands.md"
+const commandReferencePath = "internal/skill/dev-cli/references/commands.md"
 
 // syncCommandReference writes the generated block into the skill source, or
 // reports drift when check is set.

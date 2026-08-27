@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
+	"github.com/daviddwlee84/dev-cli/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -29,6 +31,7 @@ This is the "what projects do I have?" half of dev, kept separate from the
 		newRepoOpenCmd(app),
 		newRepoNewCmd(app),
 		newRepoSyncCmd(app),
+		newRepoRemoteCmd(app),
 	)
 	return cmd
 }
@@ -338,4 +341,103 @@ func contractAll(paths []string) []string {
 		out[i] = config.Contract(p)
 	}
 	return out
+}
+
+func newRepoRemoteCmd(app *App) *cobra.Command {
+	var (
+		jsonOut    bool
+		cachedOnly bool
+		limit      int
+	)
+	cmd := &cobra.Command{
+		Use:     "remote [query]",
+		Aliases: []string{"search"},
+		Short:   "List and search repositories visible through gh and glab",
+		Long: `Combine the repositories visible to the authenticated gh and glab CLIs, and
+mark those already cloned under paths.scan_roots.
+
+The TUI exposes the same data in its REMOTE tab and filters it live with /.
+This command is the non-interactive form for scripts, pipes and terminals where
+a full-screen UI is not wanted. Use --cached for an instant, offline result;
+the cache is private and expires according to forge.cache_ttl.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var (
+				rows []tui.RemoteRow
+				err  error
+			)
+			if cachedOnly {
+				var ok bool
+				rows, ok = cachedRemotes(ctxOf(), app)
+				if !ok {
+					return fmt.Errorf("no fresh remote cache; run `dev repo remote` once online")
+				}
+			} else {
+				rows, err = collectRemotes(ctxOf(), app, limit)
+			}
+			// Partial results are useful when one forge is authenticated and
+			// the other is not. Render them, then report the partial failure.
+			if len(rows) == 0 && err != nil {
+				return err
+			}
+			query := ""
+			if len(args) == 1 {
+				query = strings.ToLower(args[0])
+			}
+			var filtered []tui.RemoteRow
+			for _, r := range rows {
+				hay := strings.ToLower(strings.Join([]string{
+					string(r.Repo.Forge), r.Repo.FullName, r.Repo.Description,
+					r.Repo.Visibility, r.LocalName,
+				}, " "))
+				matched := true
+				for _, term := range strings.Fields(query) {
+					if !strings.Contains(hay, term) {
+						matched = false
+						break
+					}
+				}
+				if matched {
+					filtered = append(filtered, r)
+				}
+			}
+
+			if jsonOut {
+				enc := json.NewEncoder(app.Out)
+				enc.SetIndent("", "  ")
+				if encodeErr := enc.Encode(filtered); encodeErr != nil {
+					return encodeErr
+				}
+			} else {
+				t := NewTable("FORGE", "REPOSITORY", "VIS", "LOCAL", "UPDATED", "DESCRIPTION")
+				for _, r := range filtered {
+					local := "—"
+					if r.LocalPath != "" {
+						local = config.Contract(r.LocalPath)
+					}
+					updated := "—"
+					if !r.Repo.UpdatedAt.IsZero() {
+						updated = r.Repo.UpdatedAt.Format("2006-01-02")
+					}
+					t.Add(string(r.Repo.Forge), truncate(r.Repo.FullName, 36),
+						strings.ToLower(r.Repo.Visibility), truncate(local, 30), updated,
+						truncate(r.Repo.Description, 50))
+				}
+				if t.Len() == 0 {
+					fmt.Fprintln(app.Out, "No remote repositories match that query.")
+				} else {
+					t.Render(app.Out)
+				}
+			}
+			if err != nil {
+				app.warnf("partial remote results: %v", err)
+			}
+			return nil
+		},
+	}
+	f := cmd.Flags()
+	f.BoolVar(&jsonOut, "json", false, "emit JSON")
+	f.BoolVar(&cachedOnly, "cached", false, "use the fresh XDG cache without querying either forge")
+	f.IntVar(&limit, "limit", 0, "maximum repositories requested from each forge (default: config forge.remote_limit)")
+	return cmd
 }

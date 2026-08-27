@@ -97,8 +97,16 @@ A worktree is a **clean checkout**. It has no `node_modules`, no `.venv`, and
 none of the gitignored files the project needs to run. Without provisioning,
 every new worktree starts broken.
 
-`dev wt create` (and `dev start`) does three things, configured under
-`[worktree]` globally or in a repo's own `.dev.toml`:
+`dev wt create` (and `dev start`) builds an inspectable provisioning plan,
+then applies it. See the plan before creating anything:
+
+```bash
+dev wt plan                 # detect project types and show every action
+dev wt plan --write         # seed a committed .dev.toml from the result
+dev wt provision --dry-run  # plan for an existing checkout
+```
+
+The settings live under `[worktree]` globally or in the repo's own `.dev.toml`:
 
 ```toml
 [worktree]
@@ -112,6 +120,12 @@ link = []
 
 # "auto" detects from lockfiles, or give an explicit list.
 post_create = "auto"
+
+# How installed dependencies arrive. The safe default is reinstall.
+strategy = "reinstall"      # reinstall | copy | link | skip
+
+[worktree.strategies]
+node = "copy"               # override one ecosystem
 ```
 
 **Only files that are both listed *and* gitignored are copied.** A tracked file
@@ -136,6 +150,39 @@ A detected command whose tool is not installed is skipped, not failed. A failed
 command is reported but leaves the checkout in place — it is usable, and
 throwing it away would cost the branch for nothing.
 
+
+## Copy, reinstall, link, or skip?
+
+This is a per-ecosystem correctness decision, not merely a speed preference:
+
+| Strategy | Effect | Default use |
+|---|---|---|
+| `reinstall` | Run the lockfile-derived install command | Always sound; default |
+| `copy` | Duplicate the dependency directory from the source checkout | Faster where path-independent |
+| `link` | Share one directory between checkouts | Fastest; usually unsafe |
+| `skip` | Leave dependencies absent | Container/CI-driven projects |
+
+`dev` encodes the non-obvious facts:
+
+- Python `.venv` **cannot be copied or linked**: `pyvenv.cfg`, activation
+  scripts and entry points bake in the old absolute path. `uv sync` uses a
+  shared cache and is normally cheap anyway.
+- Node `node_modules` can be copied, including pnpm's symlinks (links are
+  recreated, not dereferenced). Sharing one tree is refused because an install
+  in either checkout silently changes the other.
+- Go modules are already in a global content-addressed cache; there is no local
+  directory worth copying.
+- Cargo `target/` can be copied, but is often larger than rebuilding. Sharing
+  it is refused because concurrent builds write the same lock/artifacts.
+
+An unsound configured strategy is not obeyed blindly: `dev wt plan` says why
+and narrows it back to `reinstall`. A typo likewise becomes a warning rather
+than silently skipping dependencies.
+
+`post_create` and strategy are separate axes. An explicit command list replaces
+the *derived install commands* but does not disable a `copy` strategy. A project
+can copy `node_modules` and then run `make bootstrap`.
+
 Per-repo override, committed next to the code so it reaches every machine:
 
 ```toml
@@ -143,6 +190,9 @@ Per-repo override, committed next to the code so it reaches every machine:
 [worktree]
 include     = [".env", "config/local.json"]
 post_create = ["make bootstrap"]
+
+[worktree.strategies]
+node = "copy"
 ```
 
 Re-run provisioning on an existing checkout with `dev wt provision`.

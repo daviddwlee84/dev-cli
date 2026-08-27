@@ -95,7 +95,9 @@ a conflict, so dev asks before doing it.`,
 				if err != nil {
 					app.warnf("could not open a runtime session: %v", err)
 				}
-				t.RuntimeHandle = handle
+				if rt.Name() != "none" {
+					t.RuntimeHandle = handle
+				}
 			}
 
 			t.State = task.Hot

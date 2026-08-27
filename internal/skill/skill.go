@@ -15,7 +15,7 @@ import (
 	"strings"
 )
 
-//go:embed all:files
+//go:embed all:dev-cli
 var files embed.FS
 
 // Name is the skill's directory and frontmatter name.
@@ -28,7 +28,7 @@ const Name = "dev-cli"
 
 // Render returns the SKILL.md body.
 func Render() (string, error) {
-	b, err := files.ReadFile("files/SKILL.md")
+	b, err := files.ReadFile("dev-cli/SKILL.md")
 	if err != nil {
 		return "", fmt.Errorf("bundled skill is missing: %w", err)
 	}
@@ -38,7 +38,7 @@ func Render() (string, error) {
 // Files walks the embedded skill tree, yielding relative paths and contents.
 func Files() (map[string][]byte, error) {
 	out := map[string][]byte{}
-	err := fs.WalkDir(files, "files", func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(files, "dev-cli", func(p string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -46,7 +46,7 @@ func Files() (map[string][]byte, error) {
 		if err != nil {
 			return err
 		}
-		out[strings.TrimPrefix(p, "files/")] = b
+		out[strings.TrimPrefix(p, "dev-cli/")] = b
 		return nil
 	})
 	return out, err

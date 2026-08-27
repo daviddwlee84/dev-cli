@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
@@ -30,6 +31,7 @@ type recorder struct {
 	opened  []string
 	parked  []string
 	started []string
+	cloned  []string
 	nexts   map[string]string
 }
 
@@ -40,10 +42,19 @@ func newActions(r *recorder, rows []inventory.Row) tui.Actions {
 		Reload: func(context.Context) ([]inventory.Row, error) {
 			return rows, nil
 		},
-		ReloadRepos: func(context.Context) ([]tui.RepoRow, error) { return nil, nil },
+		ReloadRepos:  func(context.Context) ([]tui.RepoRow, error) { return nil, nil },
+		ReloadRemote: func(context.Context) ([]tui.RemoteRow, error) { return nil, nil },
 		OpenRepo: func(_ context.Context, rr tui.RepoRow) (string, error) {
 			r.opened = append(r.opened, "repo:"+rr.Repo.Name)
 			return "opened", nil
+		},
+		OpenRemote: func(_ context.Context, rr tui.RemoteRow) (string, error) {
+			r.opened = append(r.opened, "remote:"+rr.Repo.FullName)
+			return "opened", nil
+		},
+		CloneRemote: func(_ context.Context, rr tui.RemoteRow) (string, string, error) {
+			r.cloned = append(r.cloned, rr.Repo.FullName)
+			return "cloned", "/src/" + rr.Repo.Name, nil
 		},
 		Start: func(_ context.Context, rr tui.RepoRow, name string) (string, error) {
 			r.started = append(r.started, rr.Repo.Name+"/"+name)
@@ -320,8 +331,12 @@ func TestTabSwitchesViews(t *testing.T) {
 	if send(m, key("h")).CurrentView() != tui.ViewTasks {
 		t.Error("h should move to the previous view")
 	}
+	m = send(m, key("tab"))
+	if m.CurrentView() != tui.ViewRemote {
+		t.Error("the third view should be remote")
+	}
 	if send(m, key("tab")).CurrentView() != tui.ViewTasks {
-		t.Error("tab should cycle back round")
+		t.Error("a third tab should cycle back round")
 	}
 }
 
@@ -475,5 +490,148 @@ func TestToolsOnlyListedWhenAvailable(t *testing.T) {
 	}
 	if len(m.Tools()) != 1 {
 		t.Errorf("Tools() should filter by availability, got %d", len(m.Tools()))
+	}
+}
+
+func remoteRow(provider forge.Kind, fullName, local string) tui.RemoteRow {
+	name := fullName
+	if i := strings.LastIndexByte(name, '/'); i >= 0 {
+		name = name[i+1:]
+	}
+	return tui.RemoteRow{
+		Repo: forge.RemoteRepo{
+			Forge: provider, Name: name, FullName: fullName,
+			Description:   "description for " + name,
+			URL:           "https://example.com/" + fullName,
+			CloneURL:      "https://example.com/" + fullName + ".git",
+			DefaultBranch: "main", Visibility: "private",
+			UpdatedAt: time.Now().Add(-24 * time.Hour),
+		},
+		LocalPath: local,
+	}
+}
+
+func TestRemoteViewLoadsLazily(t *testing.T) {
+	rows := []tui.RemoteRow{
+		remoteRow(forge.GitHub, "owner/api", "/src/api"),
+		remoteRow(forge.GitLab, "group/web", ""),
+	}
+	loads := 0
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) {
+		loads++
+		return rows, nil
+	}
+	m := tui.New(actions, nil, nil)
+
+	if loads != 0 {
+		t.Fatal("constructing the dashboard must not touch the network")
+	}
+	m = send(m, key("tab")) // repos
+	if loads != 0 {
+		t.Fatal("the local repo view must not touch the forge")
+	}
+	m = send(m, key("tab")) // remote
+	if loads != 1 {
+		t.Fatalf("first remote visit should load once, got %d", loads)
+	}
+	out := m.View()
+	if !strings.Contains(out, "owner/api") || !strings.Contains(out, "group/web") {
+		t.Errorf("remote rows missing:\n%s", out)
+	}
+	if !strings.Contains(out, "github") || !strings.Contains(out, "gitlab") {
+		t.Errorf("providers should be visible:\n%s", out)
+	}
+}
+
+func TestRemoteFilterUsesNameDescriptionAndProvider(t *testing.T) {
+	rows := []tui.RemoteRow{
+		remoteRow(forge.GitHub, "owner/api", ""),
+		remoteRow(forge.GitLab, "group/web", ""),
+	}
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"), key("/"))
+	for _, k := range typeText("gitlab web") {
+		m = send(m, k)
+	}
+	out := m.View()
+	if !strings.Contains(out, "group/web") || strings.Contains(out, "owner/api") {
+		t.Errorf("remote search should match provider + name terms:\n%s", out)
+	}
+}
+
+func TestRemoteCloneRequiresConfirmation(t *testing.T) {
+	rows := []tui.RemoteRow{remoteRow(forge.GitHub, "owner/api", "")}
+	rec := &recorder{}
+	actions := newActions(rec, nil)
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"))
+
+	// Enter on an uncloned remote does nothing; c is the explicit action.
+	m = send(m, key("enter"))
+	if len(rec.cloned) != 0 {
+		t.Error("enter must not clone without a confirmation")
+	}
+	m = send(m, key("c"))
+	if !strings.Contains(m.View(), "clone owner/api") {
+		t.Fatalf("c should open the confirmation:\n%s", m.View())
+	}
+	send(m, key("enter"))
+	if len(rec.cloned) != 1 || rec.cloned[0] != "owner/api" {
+		t.Errorf("confirmed clone not triggered: %v", rec.cloned)
+	}
+}
+
+func TestRemoteLocalCloneOpensWithEnter(t *testing.T) {
+	rows := []tui.RemoteRow{remoteRow(forge.GitHub, "owner/api", "/src/api")}
+	rec := &recorder{}
+	actions := newActions(rec, nil)
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"), key("enter"))
+
+	if len(rec.opened) != 1 || rec.opened[0] != "remote:owner/api" {
+		t.Errorf("enter should open the existing local clone, got %v", rec.opened)
+	}
+}
+
+func TestRemoteRefreshQueriesAgain(t *testing.T) {
+	loads := 0
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) {
+		loads++
+		return nil, nil
+	}
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"))
+	m = send(m, key("r"))
+	if loads != 2 {
+		t.Errorf("initial visit + refresh should load twice, got %d", loads)
+	}
+}
+
+func TestFreshRemoteCacheAvoidsNetworkOnFirstSwitch(t *testing.T) {
+	loads := 0
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) {
+		loads++
+		return nil, nil
+	}
+	cached := []tui.RemoteRow{remoteRow(forge.GitHub, "owner/cached", "")}
+	m := tui.New(actions, nil, nil).WithRemotes(cached)
+	m = send(m, key("tab"), key("tab"))
+
+	if loads != 0 {
+		t.Errorf("fresh cache should make the first switch instant, network loads=%d", loads)
+	}
+	if !strings.Contains(m.View(), "owner/cached") {
+		t.Errorf("cached remote missing:\n%s", m.View())
+	}
+	m = send(m, key("r"))
+	if loads != 1 {
+		t.Errorf("r should refresh explicitly, network loads=%d", loads)
 	}
 }

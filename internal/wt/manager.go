@@ -157,7 +157,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (*CreateResult,
 		handle, err := m.surface(ctx, path, label)
 		if err != nil {
 			m.logf("warning: could not open a runtime session: %v", err)
-		} else {
+		} else if m.Runtime.Name() != "none" {
 			res.RuntimeHandle, res.RuntimeName = handle, m.Runtime.Name()
 		}
 	}

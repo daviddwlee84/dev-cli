@@ -9,20 +9,20 @@ import (
 // Status is the live git state of one checkout — everything dev's inventory
 // shows about a task without persisting any of it.
 type Status struct {
-	Branch   string
-	Detached bool
+	Branch   string `json:"branch,omitempty"`
+	Detached bool   `json:"detached"`
 	// Upstream is the tracking ref (e.g. "origin/feat/auth"), empty when the
 	// branch has never been published.
-	Upstream string
-	Ahead    int
-	Behind   int
+	Upstream string `json:"upstream,omitempty"`
+	Ahead    int    `json:"ahead"`
+	Behind   int    `json:"behind"`
 	// Staged, Unstaged and Untracked count changed paths.
-	Staged    int
-	Unstaged  int
-	Untracked int
+	Staged    int `json:"staged"`
+	Unstaged  int `json:"unstaged"`
+	Untracked int `json:"untracked"`
 	// Conflicted counts unmerged paths; a non-zero value means the checkout is
 	// mid-merge or mid-rebase and must not be touched automatically.
-	Conflicted int
+	Conflicted int `json:"conflicted"`
 }
 
 // Dirty reports uncommitted work of any kind.

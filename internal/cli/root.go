@@ -87,6 +87,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		newDoneCmd(app),
 		newSweepCmd(app),
 		newAdoptCmd(app),
+		newBootstrapCmd(app),
 		newWorktreeCmd(app),
 		newRepoCmd(app),
 		newGitignoreCmd(app),
@@ -98,6 +99,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		newDoctorCmd(app),
 		newShellInitCmd(app),
 		newConfigCmd(app),
+		newEditCmd(app),
 	)
 	root.SetHelpCommand(&cobra.Command{Hidden: true, Use: "no-help"})
 	root.SetOut(out)

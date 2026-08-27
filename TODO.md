@@ -19,12 +19,6 @@ A `tv` channel over `dev ls --json` for fuzzy-picking a task, and an `fzf`
 fallback. Navigation by metadata rather than by remembering a path is the point
 of the tool; the TUI covers it, but a picker composes better with other tools.
 
-### P3 · M — Adopt from other tools' worktree roots
-`dev adopt` finds worktrees git knows about. It does not look in
-`~/.herdr/worktrees` or a Worktrunk root for checkouts registered against a
-repository dev has not discovered. Low value while scan roots cover the repos,
-but worth it for someone migrating off another worktree manager.
-
 ### P3 · S — `dev stats` per-repo heatmap
 `--repo X` currently filters the totals and the combined grid. A dedicated
 per-repo grid, several stacked, would answer "which project did I move to in
@@ -62,7 +56,7 @@ harder problem than the one this tool has.
 ### Owning the worktree path on machines with herdr
 `herdr worktree create` would be less code, but the path policy has to hold
 where herdr is not installed. dev creates the checkout with git and asks herdr
-only to open it. See `internal/skill/files/references/worktree-ownership.md`.
+only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 
 ## Done
 
@@ -72,8 +66,14 @@ only to open it. See `internal/skill/files/references/worktree-ownership.md`.
 - Repo discovery and gh/glab-backed clone, create, sync.
 - `try` and `graduate`.
 - Activity stats: sampler, git backfill, WakaTime import, heatmap.
-- Interactive dashboard, with lazygit / yazi / editor / shell hand-off.
+- Interactive TASKS / REPOS / REMOTE dashboard with vim navigation, lazy
+  gh/glab inventory, private XDG cache, local-clone matching and confirmed clone.
+- Explicit configurable TUI tools, including interactive shell aliases/functions,
+  with lazygit / yazi / editor / shell defaults.
 - `dev gitignore`, from GitHub's templates plus the sections no template has.
 - `dev adopt`, to import existing worktrees, sessions and unmerged branches.
+- `dev bootstrap`, recursively classifying existing repos/worktrees/bare hubs,
+  building a non-destructive symlink index, or planning guarded atomic moves.
+- Symlink catalogs as first-class scan roots, deduplicated with physical paths.
 - `dev config init`, generating a config from the machine's detected layout.
 - Bundled agent skill with a generated, drift-checked command reference.

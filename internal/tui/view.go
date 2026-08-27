@@ -2,7 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
@@ -30,9 +32,12 @@ func (m Model) View() string {
 	b.WriteString(m.renderHeader())
 	b.WriteString("\n")
 
-	if m.view == ViewRepos {
+	switch m.view {
+	case ViewRepos:
 		b.WriteString(m.renderRepos())
-	} else {
+	case ViewRemote:
+		b.WriteString(m.renderRemotes())
+	default:
 		b.WriteString(m.renderTasks())
 	}
 
@@ -154,6 +159,72 @@ func (m Model) renderRepos() string {
 	return b.String()
 }
 
+func (m Model) renderRemotes() string {
+	if m.remotesLoading {
+		return "  " + styleDim.Render("Loading repositories from gh and glab…") + "\n"
+	}
+	rows := m.visibleRemotes()
+	if len(rows) == 0 {
+		if !m.remotesLoaded {
+			return "  " + styleDim.Render("Remote repositories load when this view is opened.") + "\n"
+		}
+		if m.filter != "" {
+			return "  " + styleDim.Render("No remote repository matches /"+m.filter) + "\n"
+		}
+		return "  " + styleDim.Render("No remote repositories returned. Check `gh auth status` and `glab auth status`.") + "\n"
+	}
+	nameW := clamp(m.width*30/100, 18, 38)
+	descW := m.width - nameW - 38
+	if descW < 12 {
+		descW = 12
+	}
+
+	var b strings.Builder
+	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-7s  %-*s  %-9s  %-12s  %-7s  %s",
+		"FORGE", nameW, "REPOSITORY", "VIS", "UPDATED", "LOCAL", "DESCRIPTION")) + "\n")
+	from, to := m.window(len(rows))
+	for i := from; i < to; i++ {
+		r := rows[i]
+		local := "—"
+		if r.Cloned() {
+			local = "yes"
+		}
+		vis := strings.ToLower(r.Repo.Visibility)
+		if vis == "" {
+			vis = "—"
+		}
+		line := fmt.Sprintf("%-7s  %-*s  %-9s  %-12s  %-7s  %s",
+			r.Repo.Forge, nameW, pad(r.Repo.FullName, nameW),
+			pad(vis, 9), pad(remoteAge(r), 12), pad(local, 7), pad(r.Repo.Description, descW))
+		styled := line
+		if r.Cloned() {
+			styled = styleLive.Render(line)
+		} else if r.Repo.Archived {
+			styled = styleDim.Render(line)
+		}
+		b.WriteString(m.renderLine(i, line, styled))
+	}
+	b.WriteString(m.scrollNote(len(rows), from, to))
+	return b.String()
+}
+
+func remoteAge(r RemoteRow) string {
+	if r.Repo.UpdatedAt.IsZero() {
+		return "—"
+	}
+	d := time.Since(r.Repo.UpdatedAt)
+	switch {
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 14*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	case d < 60*24*time.Hour:
+		return fmt.Sprintf("%dw ago", int(d.Hours()/24/7))
+	default:
+		return fmt.Sprintf("%dmo ago", int(d.Hours()/24/30))
+	}
+}
+
 // renderLine applies the cursor marker and styling to one row.
 func (m Model) renderLine(i int, plain, styled string) string {
 	if i == m.at() {
@@ -213,6 +284,28 @@ func (m Model) renderDetail() string {
 		return "  " + styleTitle.Render("start work in "+r.Repo.Name) +
 			"\n  name: " + m.input.View() +
 			"\n  " + styleHelp.Render("enter to create the branch, worktree and session · esc to cancel")
+	case modeConfirmClone:
+		r, _ := m.currentRemote()
+		return "  " + styleTitle.Render("clone "+r.Repo.FullName) +
+			"\n  to: " + contract(filepath.Join("<project_root>", r.Repo.Name)) +
+			"\n  " + styleHelp.Render("enter to clone into project_root · esc to cancel")
+	}
+
+	if r, ok := m.currentRemote(); ok {
+		lines := []string{
+			fmt.Sprintf("  %s %s", styleDim.Render("url  "), r.Repo.URL),
+			fmt.Sprintf("  %s %s", styleDim.Render("branch"), r.Repo.DefaultBranch),
+		}
+		if r.Cloned() {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("local "), contract(r.LocalPath)))
+		} else {
+			lines = append(lines, "  "+styleDim.Render("local ")+" "+
+				styleDim.Render("not cloned — press c"))
+		}
+		if r.Repo.Fork {
+			lines = append(lines, "  "+styleDim.Render("kind  ")+" fork")
+		}
+		return strings.Join(lines, "\n") + "\n"
 	}
 
 	if r, ok := m.currentRepo(); ok {
@@ -274,9 +367,16 @@ func (m Model) renderFooter() string {
 	}
 
 	var bindings []string
-	if m.view == ViewRepos {
+	switch m.view {
+	case ViewRepos:
 		bindings = append(bindings, "enter open", "s start task")
-	} else {
+	case ViewRemote:
+		if r, ok := m.currentRemote(); ok && r.Cloned() {
+			bindings = append(bindings, "enter open local")
+		} else {
+			bindings = append(bindings, "c clone")
+		}
+	default:
 		bindings = append(bindings, "enter open", "p park", "c next")
 	}
 	bindings = append(bindings, "tab view", "/ filter")

@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: Manage work-in-progress across repos with the `dev` CLI — worktree ownership (dev vs Claude Code vs herdr), the HOT/WARM/COLD task lifecycle, parking and resuming work without losing the thread, repo/forge management via gh and glab, dated experiments and graduating them, and per-repo activity stats. Use when starting/parking/resuming a change stream, creating or cleaning up worktrees, deciding where a worktree belongs, listing what is in progress, or when a user's terminal workspaces have piled up.
+description: 'Manage repositories and work-in-progress with the dev CLI: bootstrap existing machines, organise repos without destructive moves, own worktree lifecycle and provisioning, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/herdr/tmux. Use when starting, parking or resuming work; scanning or organising repos; choosing a worktree mechanism; fixing worktree setup; or cleaning stale branches, checkouts and sessions.'
 ---
 
 # dev-cli
@@ -88,6 +88,7 @@ Full detail: `references/task-lifecycle.md`.
 
 ```bash
 dev                        # interactive dashboard (plain listing when piped)
+dev edit                   # open the effective config; generate it first if absent
 dev ls                     # what am I working on, everywhere
 dev ls --json              # stable machine-readable form (also over ssh)
 dev status                 # what is this directory: repo, branch, task, session
@@ -103,6 +104,9 @@ dev wt rm feat/auth                    # remove the checkout; the branch stays
 dev repo list              # every repo under the scan roots
 dev repo clone owner/name  # clone into the right place, via gh or glab
 dev repo sync --all        # fetch + prune, and report what moved
+dev repo remote [query]     # search authenticated gh + glab repositories
+dev bootstrap ~/code       # recursively inventory an existing machine
+dev bootstrap ~/code --index ~/Projects   # plan a non-destructive symlink catalog
 dev gitignore              # .gitignore from GitHub templates + the common bits
 dev adopt                  # import existing worktrees/sessions/branches as tasks
 
@@ -115,9 +119,13 @@ dev help worktrees         # quick-reference pages
 
 Complete generated reference: `references/commands.md`.
 
-## Adopting an existing machine
+## Bootstrapping and adopting an existing machine
 
-There is nothing to migrate. `dev` discovers repositories through
+Read `references/bootstrap.md` before recursively scanning paths, creating a
+symlink index, moving physical repositories, or generating layout config. Move
+is destructive and must follow its report → review → apply procedure.
+
+There is nothing to migrate for ordinary use. `dev` discovers repositories through
 `paths.scan_roots` and never moves, renames or deletes anything.
 
 ```bash
@@ -128,6 +136,27 @@ dev adopt --apply   # record them as tasks (nothing on disk changes)
 
 Do not assume the user's layout is `~/Documents/Program`. Run `dev config show`
 or `dev repo list` to see what this machine is actually configured for.
+
+## Dashboard and forge inventory
+
+The TUI has TASKS, REPOS and REMOTE views, switched with tab or vim-style h/l.
+REMOTE queries authenticated `gh` and `glab` lazily, uses a short-lived private
+cache, and `/` filters provider, owner/name and description. Enter opens a local
+clone; `c` confirms before cloning an absent remote. Use `dev repo remote
+[query] --json` for the non-interactive form; `--cached` avoids a network query.
+
+External tools are explicit `[[tui.tools]]` config. Run `dev tui tools` before
+recommending a binding; it shows the exact command and whether it is available.
+Commands run through `$SHELL` in the selected checkout. For an alias/function
+that exists only in shell rc, set `interactive = true`; dev uses `$SHELL -lic`
+and evaluates the command after rc loading. Prefer an executable on PATH when
+the binding should be portable across machines.
+
+## Editing configuration
+
+Use `dev edit` (or `dev config edit`) rather than guessing the XDG path. It
+opens the file selected by `--config`, generating the machine-detected starter
+when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi.
 
 ## Rules for agents
 
@@ -164,11 +193,16 @@ or `dev repo list` to see what this machine is actually configured for.
    panes isolate *agents*. Several agents working on disjoint files of one
    feature belong in one checkout.
 
-8. **`dev adopt` without `--apply` changes nothing.** Show the user its report
+8. **Prefer `dev bootstrap --index` over `--move`.** If the problem is
+   navigation, a symlink catalog solves it without changing the authoritative
+   paths. For a physical move, never add `--apply --yes` on the user's behalf;
+   blocked rows are preconditions to resolve, not checks to bypass.
+
+9. **`dev adopt` without `--apply` changes nothing.** Show the user its report
    rather than applying it for them — which branches count as work in flight is
    their judgement, not yours.
 
-9. **Commit messages stay English** and follow Conventional Commits, even when
+10. **Commit messages stay English** and follow Conventional Commits, even when
    the conversation is in another language — see the companion `git-workflow`
    skill, which owns commit conventions, SemVer and branch naming. This skill
    does not duplicate them.
@@ -185,6 +219,8 @@ or `dev repo list` to see what this machine is actually configured for.
 - "Which repo do I spend my time in?"
 - Setting up a `.gitignore`, or a harness worktree showing as untracked.
 - Adopting a machine that already has repos, worktrees and sessions.
+- Recursively scanning, indexing, or physically reorganising existing repos.
+- Configuring a flat repo/worktree layout or generating config for one.
 
 ## When NOT to use it
 
@@ -195,6 +231,8 @@ or `dev repo list` to see what this machine is actually configured for.
 
 ## Reference files
 
+- `references/bootstrap.md` — read before scanning or organising an existing
+  machine; includes the non-destructive index default and move safety gates.
 - `references/worktree-ownership.md` — who owns which worktree, and how a
   worktree gets a working environment. Read before creating one.
 - `references/task-lifecycle.md` — HOT/WARM/COLD/DONE, when to park, and how

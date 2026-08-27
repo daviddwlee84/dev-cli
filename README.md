@@ -82,15 +82,17 @@ dev sweep                                          # what has gone stale
 
 ### The dashboard
 
-Bare `dev` (or `dev tui`) opens two lists, switched with `tab`:
+Bare `dev` (or `dev tui`) opens three lists, switched with `tab`:
 
 - **TASKS** — the change streams dev is tracking. What am I working on.
 - **REPOS** — every repository under the scan roots, with its branch, dirty
   state, worktree count and per-state task tally, sorted so anything in flight
   is at the top. What do I have here.
+- **REMOTE** — repositories visible through the authenticated `gh` and `glab`
+  CLIs, marked when a local clone exists. What can I open or clone.
 
-Both come from the same code paths as `dev ls` and `dev repo list`, so they
-cannot disagree. The repo list matters on day one: with forty repositories and
+TASKS and REPOS come from the same code paths as `dev ls` and `dev repo list`,
+so they cannot disagree. The repo list matters on day one: with forty repositories and
 no tasks recorded yet, a task-only dashboard would just be empty.
 
 Navigation is vim-style, arrows alongside:
@@ -122,14 +124,29 @@ run  = "nvim ."
 
 [[tui.tools]]
 key  = "B"
-name = "vibe"          # your own scripts and aliases work the same way
+name = "vibe"
 run  = "vibe"
+interactive = true     # load + evaluate aliases/functions after shell rc
+
+[[tui.tools]]
+key  = "P"
+name = "plans here"
+run  = "claude-plans-here"
+interactive = true
 ```
 
 `dev config init` writes the defaults out in full rather than leaving them
 implicit, and `dev tui tools` shows what is bound here and whether each one is
 actually installed — bindings for missing programs are not offered. A tool
 cannot take a key the dashboard already uses; dev reports the clash on load.
+
+REMOTE loads lazily, so dashboard startup never waits on the network. A private
+15-minute XDG cache makes later switches instant; `r` refreshes both forges.
+`/` searches provider, owner/name and description; enter opens a local clone,
+and `c` confirms before cloning an absent repo into `project_root`. The same
+inventory is available without the full-screen UI via `dev repo remote [query]`;
+`--cached` is its instant/offline form.
+See `dev help tui` for the full key map.
 
 Going cold is safe because **the branch is the identity and the directory is a
 cache**. `dev park --cold` refuses unless the branch is pushed, and `dev resume`
@@ -234,7 +251,38 @@ dev stats sample --interval 5m              # from cron, every five minutes
 dev stats import-wakatime                   # optional
 ```
 
-## Adopting an existing machine
+## Bootstrapping an existing machine
+
+There is nothing to migrate for ordinary use: `dev` discovers repositories
+wherever `scan_roots` point and never requires a particular physical layout.
+When you want a recursive audit or a curated navigation layer, bootstrap is the
+explicit path:
+
+```bash
+dev bootstrap ~/code /mnt/work                    # recursive report, no changes
+dev bootstrap ~/code --json                       # machine-readable inventory
+dev bootstrap ~/code --index ~/Projects           # plan a flat symlink catalog
+dev bootstrap ~/code --index ~/Projects --apply   # create only the ready links
+dev bootstrap ~/old --move ~/Projects             # plan physical moves
+```
+
+The scanner classifies canonical checkouts, linked worktrees, bare repositories
+and symlink aliases, deduplicating by Git common-directory identity rather than
+path.
+
+**A symlink index is the default recommendation.** It gives a flat,
+metadata-aware navigation root while every physical repository stays exactly
+where it was. Put the index first in `scan_roots` and that alias becomes the UI;
+normal discovery follows direct repo symlinks and deduplicates index + physical
+paths.
+
+Physical move exists, but refuses dirty repos, linked worktrees anywhere in the
+clone, live sessions, a current shell inside, aliases that would break,
+occupied destinations and cross-filesystem renames. A plan with any blocked row
+moves nothing. `--config-out` writes a fresh config for the resulting root
+without silently rewriting the user's current one. See `dev help bootstrap`.
+
+## Adopting work in flight
 
 There is nothing to migrate. `dev` discovers repositories wherever your scan
 roots point and **never moves, renames or deletes anything** you already have.
@@ -287,7 +335,18 @@ block and leaves rules you added by hand alone.
 ## Configuration
 
 `$XDG_CONFIG_HOME/dev/config.toml`. Write a commented starter with
-`dev config init`; see the effective settings with `dev config show`.
+`dev config init`; see the effective settings with `dev config show`; open the
+actual file in `$VISUAL` / `$EDITOR` with either form:
+
+```bash
+dev edit
+dev config edit
+DEV_EDITOR=unused dev edit --editor "code --wait"   # explicit override
+```
+
+If the file does not exist, `edit` generates the machine-detected starter first
+rather than opening an empty file. Resolution is `--editor` → `$VISUAL` →
+`$EDITOR` → `nvim` → `vim` → `vi`.
 
 Every path is configurable, because the right answer depends on the machine —
 a faster volume, a different naming convention:
@@ -304,6 +363,20 @@ Template variables: `worktree_root`, `repo`, `repo_path`, `branch`, `category`,
 `host`, `date`. Filters: `|slug` (`feat/auth/x` → `feat-auth-x`), `|lower`,
 `|base`. A typo in a variable name fails at load, not as a directory literally
 named `{{rep}}`.
+
+A flat project layout is already first-class — it needs no migration and no
+special mode:
+
+```toml
+[paths]
+scan_roots   = ["~/code"]
+project_root = "~/code"       # repo new/clone/graduate land at ~/code/<repo>
+worktree_root = "/mnt/fast/wt"
+worktree_path = "{{worktree_root}}/{{repo|lower}}--{{branch|slug}}"
+```
+
+Omit `--category` and canonical repos stay flat. Categories are metadata the
+user may choose, never a directory structure dev imposes.
 
 ## Multiple machines
 
@@ -333,7 +406,7 @@ tool it describes, and an agent reading a stale command list is worse than one
 reading none.
 
 ```bash
-dev skill install    # → ~/.agents/skills/dev, symlinked into ~/.claude/skills
+dev skill install    # → ~/.agents/skills/dev-cli, symlinked into ~/.claude/skills
 dev --skill          # print it, for a dotfiles installer to sync
 dev skill sync       # regenerate the command reference from the command tree
 dev skill sync --check   # fail if it has drifted — wire into CI

@@ -108,7 +108,9 @@ feature/A silently builds on feature/A rather than on main.`,
 				if err != nil {
 					app.warnf("could not open a runtime session: %v", err)
 				}
-				t.RuntimeHandle = handle
+				if rt.Name() != "none" {
+					t.RuntimeHandle = handle
+				}
 			} else {
 				m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
 				res, err := m.Create(ctx, wt.CreateRequest{

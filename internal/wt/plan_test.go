@@ -253,3 +253,15 @@ func TestPlanWarnsAboutMissingTool(t *testing.T) {
 		t.Error("a missing tool should warn, since worktrees will come up incomplete")
 	}
 }
+
+func TestPlanWarnsAboutInvalidRepoDefaultStrategy(t *testing.T) {
+	r := projectRepo(t, "package-lock.json")
+	r.Commit(".dev.toml", "[worktree]\nstrategy = \"teleport\"\n", "chore: invalid setup")
+	plan := wt.BuildPlan(context.Background(), wt.SettingsFor(config.Default(), r.Root), r.Root)
+	if len(plan.Warnings) == 0 || !strings.Contains(plan.Warnings[0], "not a strategy") {
+		t.Errorf("repo-local typo should be visible in the plan: %v", plan.Warnings)
+	}
+	if _, ok := stepFor(plan, wt.StepRun, "npm ci"); !ok {
+		t.Error("invalid value should fall back to reinstall")
+	}
+}

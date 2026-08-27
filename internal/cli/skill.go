@@ -49,7 +49,7 @@ func newSkillInstallCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Install the skill into the agent skills directory",
-		Long: `Write the bundled skill to ~/.agents/skills/dev and symlink it into the
+		Long: `Write the bundled skill to ~/.agents/skills/dev-cli and symlink it into the
 per-tool skill directories that exist on this machine (~/.claude/skills).
 
 Re-running is a no-op when nothing changed, so this is safe to call from a
@@ -80,7 +80,7 @@ dotfiles bootstrap on every apply.`,
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&dir, "dir", "", "install directory (default: ~/.agents/skills/dev)")
+	f.StringVar(&dir, "dir", "", "install directory (default: ~/.agents/skills/dev-cli)")
 	f.BoolVar(&noLink, "no-link", false, "do not symlink into per-tool skill directories")
 	return cmd
 }

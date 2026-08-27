@@ -15,7 +15,7 @@ import (
 func newConfigCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "config",
-		Short: "Show, initialise and locate dev's configuration",
+		Short: "Show, edit, initialise and locate dev's configuration",
 	}
 	cmd.AddCommand(
 		&cobra.Command{
@@ -42,6 +42,7 @@ func newConfigCmd(app *App) *cobra.Command {
 			},
 		},
 		newConfigInitCmd(app),
+		newConfigEditCmd(app),
 	)
 	return cmd
 }
@@ -218,6 +219,25 @@ strategy = "reinstall"
 # Cap on a single post-create command.
 provision_timeout = "10m"
 
+[forge]
+# The REMOTE dashboard tab queries both gh and glab lazily. A short-lived cache
+# makes later switches instant; press r in that tab to refresh explicitly.
+remote_limit = 100
+cache_ttl = "15m"
+
+[bootstrap]
+# Recursive scan policy. Zero max_depth means unlimited; the default reaches
+# flat, Category/Repo and ghq host/owner/Repo layouts.
+max_depth = 8
+follow_symlinks = true
+
+# Optional non-destructive symlink catalog. Leave empty until wanted; once set,
+# a plain "dev bootstrap" includes its plan and "dev bootstrap --apply" syncs it.
+# Put this path first in paths.scan_roots if the catalog should be the UI.
+index_root = ""
+layout = "flat"              # flat | preserve
+relative_links = false
+
 [tui]
 # External programs the dashboard hands the terminal to, each on its own key.
 # They run through your shell in the selected row's checkout, so arguments,
@@ -261,6 +281,13 @@ run  = "$SHELL"
 # key  = "B"
 # name = "vibe"
 # run  = "vibe"
+# interactive = true   # load + evaluate aliases/functions after the rc file
+#
+# [[tui.tools]]
+# key  = "P"
+# name = "plans here"
+# run  = "claude-plans-here"
+# interactive = true
 
 [stats]
 # Record activity locally for "dev stats --heatmap".

@@ -23,16 +23,22 @@ const (
 	ViewTasks View = iota
 	// ViewRepos lists every repository under the scan roots — what do I have.
 	ViewRepos
+	// ViewRemote lists repositories visible through gh and glab.
+	ViewRemote
 )
 
 // Views is the cycle order.
-var Views = []View{ViewTasks, ViewRepos}
+var Views = []View{ViewTasks, ViewRepos, ViewRemote}
 
 func (v View) String() string {
-	if v == ViewRepos {
+	switch v {
+	case ViewRepos:
 		return "repos"
+	case ViewRemote:
+		return "remote"
+	default:
+		return "tasks"
 	}
-	return "tasks"
 }
 
 // Actions is everything the dashboard can do. The TUI owns no domain logic:
@@ -43,10 +49,18 @@ type Actions struct {
 	Reload func(ctx context.Context) ([]inventory.Row, error)
 	// ReloadRepos re-reads the repository list.
 	ReloadRepos func(ctx context.Context) ([]RepoRow, error)
+	// ReloadRemote queries gh and glab. It is lazy: the network is untouched
+	// until the REMOTE view is opened.
+	ReloadRemote func(ctx context.Context) ([]RemoteRow, error)
 	// Open makes a task live.
 	Open func(ctx context.Context, t *task.Task) (string, error)
 	// OpenRepo makes a repository live.
 	OpenRepo func(ctx context.Context, r RepoRow) (string, error)
+	// OpenRemote opens a remote's existing local checkout.
+	OpenRemote func(ctx context.Context, r RemoteRow) (string, error)
+	// CloneRemote clones a remote that has no local checkout and returns the
+	// new path, so the row can be updated without querying the network again.
+	CloneRemote func(ctx context.Context, r RemoteRow) (status, localPath string, err error)
 	// Park closes a task's session and records its next action.
 	Park func(ctx context.Context, t *task.Task, next string) (string, error)
 	// SetNext records a task's next action.
@@ -84,22 +98,29 @@ const (
 	modeConfirmPark
 	modeFilter
 	modeStartTask
+	modeConfirmClone
 )
 
 // Model is the dashboard state.
 type Model struct {
 	actions Actions
 
-	view  View
-	rows  []inventory.Row
-	repos []RepoRow
+	view    View
+	rows    []inventory.Row
+	repos   []RepoRow
+	remotes []RemoteRow
+	// Remote loading is lazy so opening the dashboard never waits on the
+	// network. The first switch to REMOTE triggers it.
+	remotesLoaded  bool
+	remotesLoading bool
 
 	// Cursors are plain fields, one per view, rather than a map: bubbletea
 	// passes the model by value and expects each returned copy to be
 	// independent. A map would be shared between every copy, so a keypress
 	// that produced two candidate models would have them silently agree.
-	taskCursor int
-	repoCursor int
+	taskCursor   int
+	repoCursor   int
+	remoteCursor int
 	// filter is the live text query; states narrows the task view.
 	filter string
 	states []task.State
@@ -133,6 +154,13 @@ func New(actions Actions, rows []inventory.Row, repos []RepoRow) Model {
 	}
 }
 
+// WithRemotes seeds the lazy forge view from a fresh on-disk cache. The first
+// switch is then instant; r still refreshes explicitly.
+func (m Model) WithRemotes(rows []RemoteRow) Model {
+	m.remotes, m.remotesLoaded = rows, true
+	return m
+}
+
 // Chosen reports a directory the caller should cd into after the program
 // exits, or "" when there is none.
 func (m Model) Chosen() string { return m.chosen }
@@ -149,10 +177,17 @@ type reloadMsg struct {
 	err   error
 }
 
+type remoteMsg struct {
+	rows []RemoteRow
+	err  error
+}
+
 type actionMsg struct {
-	status string
-	cd     string
-	err    error
+	status     string
+	cd         string
+	remoteName string
+	localPath  string
+	err        error
 }
 
 func (m Model) reload() tea.Cmd {
@@ -171,6 +206,16 @@ func (m Model) reload() tea.Cmd {
 			}
 		}
 		return out
+	}
+}
+
+func (m Model) reloadRemote() tea.Cmd {
+	return func() tea.Msg {
+		if m.actions.ReloadRemote == nil {
+			return remoteMsg{}
+		}
+		rows, err := m.actions.ReloadRemote(context.Background())
+		return remoteMsg{rows: rows, err: err}
 	}
 }
 
@@ -223,6 +268,27 @@ func (m Model) visibleRepos() []RepoRow {
 	return out
 }
 
+// visibleRemotes filters the combined gh/glab inventory. Local clones sort
+// first, then recently updated repositories.
+func (m Model) visibleRemotes() []RemoteRow {
+	var out []RemoteRow
+	for _, r := range m.remotes {
+		if matches(r.searchText(), m.filter) {
+			out = append(out, r)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Cloned() != out[j].Cloned() {
+			return out[i].Cloned()
+		}
+		if !out[i].Repo.UpdatedAt.Equal(out[j].Repo.UpdatedAt) {
+			return out[i].Repo.UpdatedAt.After(out[j].Repo.UpdatedAt)
+		}
+		return out[i].Repo.Label() < out[j].Repo.Label()
+	})
+	return out
+}
+
 func containsState(list []task.State, s task.State) bool {
 	for _, v := range list {
 		if v == s {
@@ -234,18 +300,26 @@ func containsState(list []task.State, s task.State) bool {
 
 // count is how many rows the current view has.
 func (m Model) count() int {
-	if m.view == ViewRepos {
+	switch m.view {
+	case ViewRepos:
 		return len(m.visibleRepos())
+	case ViewRemote:
+		return len(m.visibleRemotes())
+	default:
+		return len(m.visibleTasks())
 	}
-	return len(m.visibleTasks())
 }
 
 // at is the cursor position in the current view.
 func (m Model) at() int {
-	if m.view == ViewRepos {
+	switch m.view {
+	case ViewRepos:
 		return m.repoCursor
+	case ViewRemote:
+		return m.remoteCursor
+	default:
+		return m.taskCursor
 	}
-	return m.taskCursor
 }
 
 // setAt moves the cursor, clamped to the current view's length.
@@ -259,11 +333,14 @@ func (m *Model) setAt(i int) {
 	case i < 0:
 		i = 0
 	}
-	if m.view == ViewRepos {
+	switch m.view {
+	case ViewRepos:
 		m.repoCursor = i
-		return
+	case ViewRemote:
+		m.remoteCursor = i
+	default:
+		m.taskCursor = i
 	}
-	m.taskCursor = i
 }
 
 // currentTask returns the selected task, if the task view is showing one.
@@ -290,6 +367,18 @@ func (m Model) currentRepo() (RepoRow, bool) {
 	return repos[m.at()], true
 }
 
+// currentRemote returns the selected forge repository.
+func (m Model) currentRemote() (RemoteRow, bool) {
+	if m.view != ViewRemote {
+		return RemoteRow{}, false
+	}
+	rows := m.visibleRemotes()
+	if m.at() >= len(rows) {
+		return RemoteRow{}, false
+	}
+	return rows[m.at()], true
+}
+
 // currentDir is the checkout the selected row points at, for the external
 // tools and for the cd directive.
 func (m Model) currentDir() string {
@@ -301,6 +390,9 @@ func (m Model) currentDir() string {
 	}
 	if r, ok := m.currentRepo(); ok {
 		return r.Repo.Path
+	}
+	if r, ok := m.currentRemote(); ok {
+		return r.LocalPath
 	}
 	return ""
 }
@@ -327,12 +419,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setAt(m.at())
 		return m, nil
 
+	case remoteMsg:
+		m.remotes, m.remotesLoaded, m.remotesLoading = msg.rows, true, false
+		m.err = msg.err
+		m.status = ""
+		m.setAt(m.at())
+		return m, nil
+
 	case actionMsg:
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
 		}
 		m.err, m.status = nil, msg.status
+		if msg.remoteName != "" && msg.localPath != "" {
+			for i := range m.remotes {
+				if m.remotes[i].Repo.FullName == msg.remoteName {
+					m.remotes[i].LocalPath = msg.localPath
+					break
+				}
+			}
+		}
 		if msg.cd != "" {
 			// Under a runtime with no sessions the only useful outcome is
 			// putting the user in the directory, which needs the alternate
@@ -340,13 +447,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.chosen, m.quitting = msg.cd, true
 			return m, tea.Quit
 		}
+		if m.view == ViewRemote {
+			// Clone already updated the selected row; only local repo/task
+			// state needs a refresh. A network round-trip here would make a
+			// successful clone feel hung for several seconds.
+			return m, m.reload()
+		}
 		return m, m.reload()
 
 	case tea.KeyMsg:
 		switch m.mode {
 		case modeFilter:
 			return m.updateFilter(msg)
-		case modeEditNext, modeConfirmPark, modeStartTask:
+		case modeEditNext, modeConfirmPark, modeStartTask, modeConfirmClone:
 			return m.updatePrompt(msg)
 		}
 		return m.updateList(msg)
@@ -394,8 +507,10 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// no horizontal axis of its own.
 	case "tab", "l", "right":
 		m.view = Views[(int(m.view)+1)%len(Views)]
+		return m.afterViewSwitch()
 	case "shift+tab", "h", "left":
 		m.view = Views[(int(m.view)+len(Views)-1)%len(Views)]
+		return m.afterViewSwitch()
 
 	case "/":
 		m.mode = modeFilter
@@ -407,6 +522,10 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "r":
 		m.status = "refreshing…"
+		if m.view == ViewRemote {
+			m.remotesLoading = true
+			return m, m.reloadRemote()
+		}
 		return m, m.reload()
 
 	case "1":
@@ -438,11 +557,14 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.prompt(modeConfirmPark, "", "what to do when you come back")
 
 	case "c":
-		row, ok := m.currentTask()
-		if !ok {
-			return m, nil
+		if row, ok := m.currentTask(); ok {
+			return m.prompt(modeEditNext, row.Task.Next, "next action")
 		}
-		return m.prompt(modeEditNext, row.Task.Next, "next action")
+		if row, ok := m.currentRemote(); ok && !row.Cloned() {
+			return m.prompt(modeConfirmClone, row.Repo.FullName,
+				"enter to clone; esc to cancel")
+		}
+		return m, nil
 
 	case "s":
 		if _, ok := m.currentRepo(); !ok {
@@ -456,6 +578,18 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.setAt(m.at())
+	return m, nil
+}
+
+// afterViewSwitch lazily loads forge data only when REMOTE is first opened,
+// so starting the dashboard never waits on a network request.
+func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
+	m.setAt(m.at())
+	if m.view == ViewRemote && !m.remotesLoaded && !m.remotesLoading {
+		m.remotesLoading = true
+		m.status = "loading GitHub and GitLab repositories…"
+		return m, m.reloadRemote()
+	}
 	return m, nil
 }
 
@@ -546,6 +680,18 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 			status, err := m.actions.Start(context.Background(), r, value)
 			return actionMsg{status: status, err: err}
 		}
+
+	case modeConfirmClone:
+		r, ok := m.currentRemote()
+		if !ok {
+			return nil
+		}
+		return func() tea.Msg {
+			status, path, err := m.actions.CloneRemote(context.Background(), r)
+			return actionMsg{
+				status: status, remoteName: r.Repo.FullName, localPath: path, err: err,
+			}
+		}
 	}
 	return nil
 }
@@ -569,6 +715,20 @@ func (m Model) openSelected() tea.Cmd {
 		dir := r.Repo.Path
 		return func() tea.Msg {
 			status, err := m.actions.OpenRepo(context.Background(), r)
+			cd := ""
+			if err == nil && cdWanted {
+				cd = dir
+			}
+			return actionMsg{status: status, cd: cd, err: err}
+		}
+	}
+	if r, ok := m.currentRemote(); ok {
+		if !r.Cloned() {
+			return nil // c is the explicit clone action
+		}
+		dir := r.LocalPath
+		return func() tea.Msg {
+			status, err := m.actions.OpenRemote(context.Background(), r)
 			cd := ""
 			if err == nil && cdWanted {
 				cd = dir
@@ -636,6 +796,9 @@ func (m Model) Summary() string {
 	}
 	if len(m.repos) > 0 {
 		parts = append(parts, fmt.Sprintf("%d repos", len(m.repos)))
+	}
+	if m.remotesLoaded {
+		parts = append(parts, fmt.Sprintf("%d remote", len(m.remotes)))
 	}
 	if len(parts) == 0 {
 		return "no tasks"

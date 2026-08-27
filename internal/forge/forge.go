@@ -9,9 +9,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 )
@@ -50,7 +52,31 @@ type Forge interface {
 	CreateRepo(ctx context.Context, dir string, req RepoRequest) (string, error)
 	// CloneURL renders the clone target for an owner/name reference.
 	CloneURL(ref string) string
+	// ListRepos lists repositories visible to the authenticated user.
+	ListRepos(ctx context.Context, limit int) ([]RemoteRepo, error)
 }
+
+// RemoteRepo is one repository visible through a forge CLI.
+type RemoteRepo struct {
+	Forge         Kind      `json:"forge"`
+	Name          string    `json:"name"`
+	FullName      string    `json:"full_name"`
+	Description   string    `json:"description,omitempty"`
+	URL           string    `json:"url"`
+	CloneURL      string    `json:"clone_url"`
+	SSHURL        string    `json:"ssh_url,omitempty"`
+	Visibility    string    `json:"visibility,omitempty"`
+	DefaultBranch string    `json:"default_branch,omitempty"`
+	Archived      bool      `json:"archived"`
+	Fork          bool      `json:"fork"`
+	UpdatedAt     time.Time `json:"updated_at,omitempty"`
+}
+
+// Label is the provider-qualified identity shown in a combined list.
+func (r RemoteRepo) Label() string { return string(r.Forge) + ":" + r.FullName }
+
+// All returns both forge adapters, for an aggregate remote inventory.
+func All() []Forge { return []Forge{&gh{}, &glab{}} }
 
 // PRRequest describes a pull/merge request to open.
 type PRRequest struct {
@@ -124,11 +150,16 @@ func Preferred() (Forge, error) {
 func run(ctx context.Context, bin, dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
-	var stdout bytes.Buffer
+	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = &stderr
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
+		detail := strings.TrimSpace(stderr.String())
+		if detail != "" {
+			return strings.TrimSpace(stdout.String()), fmt.Errorf("%s %s: %s: %w",
+				bin, strings.Join(args, " "), detail, err)
+		}
 		return strings.TrimSpace(stdout.String()), fmt.Errorf("%s %s: %w", bin, strings.Join(args, " "), err)
 	}
 	return strings.TrimSpace(stdout.String()), nil
@@ -137,4 +168,28 @@ func run(ctx context.Context, bin, dir string, args ...string) (string, error) {
 func have(bin string) bool {
 	_, err := exec.LookPath(bin)
 	return err == nil
+}
+
+// IdentityFromURL returns a forge and owner/name identity for an HTTPS or SSH
+// Git remote. It is used to match remote inventories to local clones without
+// assuming the checkout directory has the same name.
+func IdentityFromURL(raw string) (Kind, string) {
+	kind := FromURL(raw)
+	if kind == Unknown {
+		return Unknown, ""
+	}
+	s := strings.TrimSpace(raw)
+	if strings.Contains(s, "://") {
+		if parsed, err := url.Parse(s); err == nil {
+			s = strings.TrimPrefix(parsed.Path, "/")
+		}
+	} else if at := strings.IndexByte(s, '@'); at >= 0 {
+		// SCP-style SSH: git@github.com:owner/repo.git
+		s = s[at+1:]
+		if colon := strings.IndexByte(s, ':'); colon >= 0 {
+			s = s[colon+1:]
+		}
+	}
+	s = strings.Trim(strings.TrimSuffix(s, ".git"), "/")
+	return kind, s
 }
