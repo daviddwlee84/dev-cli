@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -22,10 +23,16 @@ func newTUICmd(app *App) *cobra.Command {
 Shows exactly what "dev ls" shows, from the same code path, plus the ability
 to open, park and annotate a task without retyping its name.
 
-  ↑↓ / jk   move          enter / o   open in the runtime
-  p         park          n           edit the next action
-  1 2 3     hot/warm/cold 0           clear the filter
-  a         include done  r           refresh          q  quit`,
+  ↑↓ / jk   move            enter / o   open in the runtime
+  p         park            n           edit the next action
+  l         lazygit         y           yazi
+  e         $EDITOR         s           a shell
+  1 2 3     hot/warm/cold   0           clear the filter
+  a         include done    r           refresh        q  quit
+
+The external tools run in the selected task's checkout; the dashboard suspends
+while they do and redraws afterwards. Bindings for tools that are not
+installed are not offered.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runTUI(app)
@@ -65,6 +72,7 @@ func runTUI(app *App) error {
 	actions := tui.Actions{
 		Reload:  reload,
 		Runtime: rt,
+		Tools:   externalTools(),
 
 		// Open reuses the same worktree-aware path resume does, so a cold task
 		// selected in the dashboard is rebuilt rather than reported broken.
@@ -131,4 +139,42 @@ func runTUI(app *App) error {
 		}
 	}
 	return nil
+}
+
+// externalTools are the programs the dashboard can hand the terminal to,
+// running in the selected task's checkout.
+//
+// These are the tools people already reach for between dev commands — a git
+// UI, a file manager, an editor. Launching them from the dashboard means not
+// having to quit it, find the path and cd there first, which is most of the
+// friction of a context switch.
+func externalTools() []tui.Tool {
+	editor := os.Getenv("VISUAL")
+	if editor == "" {
+		editor = os.Getenv("EDITOR")
+	}
+	if editor == "" {
+		editor = "vim"
+	}
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+
+	tools := []tui.Tool{
+		{Key: "l", Name: "lazygit", Command: []string{"lazygit"}, Available: binaryExists("lazygit")},
+		{Key: "y", Name: "yazi", Command: []string{"yazi"}, Available: binaryExists("yazi")},
+		{Key: "e", Name: "editor", Command: []string{editor, "."}, Available: binaryExists(editor)},
+		{Key: "s", Name: "shell", Command: []string{shell}, Available: binaryExists(shell)},
+	}
+	return tools
+}
+
+// binaryExists resolves lazily: PATH can change between dev being started and
+// a key being pressed, and the check is cheap.
+func binaryExists(name string) func() bool {
+	return func() bool {
+		_, err := exec.LookPath(name)
+		return err == nil
+	}
 }

@@ -20488,3 +20488,1573 @@ View the extras sections
 # <<< dev gitignore <<<
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:21:16Z)**_
+
+Now the TUI external-tool integration — lazygit, yazi, editor, shell:
+
+_**Agent (claude-opus-5 2026-08-27 04:21:33Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Add external tool launching to the TUI
+
+```bash
+python3 - <<'PY'
+p='internal/tui/model.go'
+s=open(p).read()
+
+# Extend Actions with an external-tool launcher
+s=s.replace('''	// Runtime names the active backend, for the session column.
+	Runtime runtime.Runtime
+}''','''	// Runtime names the active backend, for the session column.
+	Runtime runtime.Runtime
+	// Tools are the external programs the dashboard can hand the terminal to.
+	Tools []Tool
+}
+
+// Tool is an external program launched in a task's checkout.
+//
+// The dashboard suspends itself while one runs and redraws afterwards, so
+// lazygit or a file manager feels like part of it rather than something you
+// have to quit the dashboard to reach.
+type Tool struct {
+	// Key is the binding that launches it.
+	Key string
+	// Name is shown in the footer.
+	Name string
+	// Command is the argv to run; the first element is looked up on PATH.
+	Command []string
+	// Available reports whether the program is installed. A tool that is not
+	// installed is silently left out of the footer rather than offered and
+	// then failing.
+	Available func() bool
+}''')
+
+# key handling: launch a tool
+s=s.replace('''	case "n":
+		row, ok := m.current()
+		if !ok {
+			return m, nil
+		}
+		m.mode = modeEditNext''','''	case "n":
+		row, ok := m.current()
+		if !ok {
+			return m, nil
+		}
+		m.mode = modeEditNext''')
+
+s=s.replace('''		m.input.SetValue(row.Task.Next)
+		m.input.CursorEnd()
+		m.input.Focus()
+		return m, textinput.Blink
+	}
+	m.clampCursor()
+	return m, nil
+}''','''		m.input.SetValue(row.Task.Next)
+		m.input.CursorEnd()
+		m.input.Focus()
+		return m, textinput.Blink
+
+	default:
+		if cmd := m.launchTool(msg.String()); cmd != nil {
+			return m, cmd
+		}
+	}
+	m.clampCursor()
+	return m, nil
+}
+
+// launchTool hands the terminal to an external program running in the
+// selected task's checkout, and reloads afterwards because the tool may well
+// have changed the git state the dashboard is displaying.
+func (m Model) launchTool(key string) tea.Cmd {
+	row, ok := m.current()
+	if !ok {
+		return nil
+	}
+	for _, t := range m.actions.Tools {
+		if t.Key != key {
+			continue
+		}
+		if t.Available != nil && !t.Available() {
+			return func() tea.Msg {
+				return actionMsg{err: fmt.Errorf("%s is not installed", t.Command[0])}
+			}
+		}
+		dir := row.Checkout
+		if dir == "" || !row.CheckoutExists {
+			return func() tea.Msg {
+				return actionMsg{err: fmt.Errorf("%s has no checkout to open", row.Task.Title())}
+			}
+		}
+		c := exec.Command(t.Command[0], t.Command[1:]...)
+		c.Dir = dir
+		return tea.ExecProcess(c, func(err error) tea.Msg {
+			if err != nil {
+				return actionMsg{err: fmt.Errorf("%s: %w", t.Name, err)}
+			}
+			return actionMsg{status: "back from " + t.Name}
+		})
+	}
+	return nil
+}''')
+s=s.replace('import (\n\t"context"\n\t"fmt"','import (\n\t"context"\n\t"fmt"\n\t"os/exec"')
+open(p,'w').write(s)
+PY
+python3 - <<'PY'
+p='internal/tui/view.go'
+s=open(p).read()
+s=s.replace('''	help := styleHelp.Render(
+		"↑↓ move · enter open · p park · n next · r refresh · 1/2/3 hot/warm/cold · 0 clear · a done · q quit")''','''	bindings := []string{"↑↓ move", "enter open", "p park", "n next"}
+	for _, t := range m.Tools() {
+		bindings = append(bindings, t.Key+" "+t.Name)
+	}
+	bindings = append(bindings, "r refresh", "1/2/3 filter", "0 clear", "a done", "q quit")
+	help := styleHelp.Render(strings.Join(bindings, " · "))''')
+open(p,'w').write(s)
+
+p='internal/tui/model.go'
+s=open(p).read()
+s=s.replace('''// Summary counts the states, for the header line.''','''// Tools lists the external programs available on this machine, so the footer
+// only advertises bindings that will actually work.
+func (m Model) Tools() []Tool {
+	var out []Tool
+	for _, t := range m.actions.Tools {
+		if t.Available == nil || t.Available() {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// Summary counts the states, for the header line.''')
+open(p,'w').write(s)
+PY
+gofmt -w internal/tui/ && go build ./internal/tui/ 2>&1 | head
+```
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:21:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Wire external tools into the CLI
+
+```bash
+python3 - <<'PY'
+p='internal/cli/tui.go'
+s=open(p).read()
+s=s.replace('''	actions := tui.Actions{
+		Reload:  reload,
+		Runtime: rt,''','''	actions := tui.Actions{
+		Reload:  reload,
+		Runtime: rt,
+		Tools:   externalTools(),''')
+s += '''
+// externalTools are the programs the dashboard can hand the terminal to,
+// running in the selected task's checkout.
+//
+// These are the tools people already reach for between dev commands — a git
+// UI, a file manager, an editor. Launching them from the dashboard means not
+// having to quit it, find the path and cd there first, which is most of the
+// friction of a context switch.
+func externalTools() []tui.Tool {
+	editor := os.Getenv("VISUAL")
+	if editor == "" {
+		editor = os.Getenv("EDITOR")
+	}
+	if editor == "" {
+		editor = "vim"
+	}
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/sh"
+	}
+
+	tools := []tui.Tool{
+		{Key: "l", Name: "lazygit", Command: []string{"lazygit"}, Available: binaryExists("lazygit")},
+		{Key: "y", Name: "yazi", Command: []string{"yazi"}, Available: binaryExists("yazi")},
+		{Key: "e", Name: "editor", Command: []string{editor, "."}, Available: binaryExists(editor)},
+		{Key: "s", Name: "shell", Command: []string{shell}, Available: binaryExists(shell)},
+	}
+	return tools
+}
+
+// binaryExists resolves lazily: PATH can change between dev being started and
+// a key being pressed, and the check is cheap.
+func binaryExists(name string) func() bool {
+	return func() bool {
+		_, err := exec.LookPath(name)
+		return err == nil
+	}
+}
+'''
+s=s.replace('import (\n\t"context"\n\t"fmt"\n\t"os"','import (\n\t"context"\n\t"fmt"\n\t"os"\n\t"os/exec"')
+s=s.replace('''  ↑↓ / jk   move          enter / o   open in the runtime
+  p         park          n           edit the next action
+  1 2 3     hot/warm/cold 0           clear the filter
+  a         include done  r           refresh          q  quit`,''','''  ↑↓ / jk   move            enter / o   open in the runtime
+  p         park            n           edit the next action
+  l         lazygit         y           yazi
+  e         $EDITOR         s           a shell
+  1 2 3     hot/warm/cold   0           clear the filter
+  a         include done    r           refresh        q  quit
+
+The external tools run in the selected task's checkout; the dashboard suspends
+while they do and redraws afterwards. Bindings for tools that are not
+installed are not offered.`,''')
+open(p,'w').write(s)
+PY
+gofmt -w internal/cli/ && go build -o dev ./cmd/dev && go vet ./... && which lazygit yazi && echo TOOLS_PRESENT
+```
+
+```text
+/usr/local/bin/lazygit
+/usr/local/bin/yazi
+TOOLS_PRESENT
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:21:55Z)**_
+
+Now `dev adopt` — the migration path for existing worktrees and sessions:
+
+_**Agent (claude-opus-5 2026-08-27 04:22:32Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Write adopt command for migration
+
+```bash
+cat > internal/cli/adopt.go <<'EOF'
+package cli
+
+import (
+	"bufio"
+	"context"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+
+	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/repo"
+	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/task"
+	"github.com/spf13/cobra"
+)
+
+// candidate is something already on the machine that could become a task.
+type candidate struct {
+	Task   *task.Task
+	Reason string
+}
+
+func newAdoptCmd(app *App) *cobra.Command {
+	var (
+		apply       bool
+		yes         bool
+		noWorktrees bool
+		noSessions  bool
+		noBranches  bool
+		state       string
+	)
+	cmd := &cobra.Command{
+		Use:   "adopt",
+		Short: "Import existing worktrees, sessions and branches as tasks",
+		Long: `Bring what is already on this machine under dev's inventory.
+
+There is nothing to migrate to start using dev — repositories are discovered
+wherever your scan roots point, and no directory is moved or renamed. What is
+worth importing is the work already in flight: linked worktrees created by
+hand or by another tool, runtime sessions sitting in a repo, and local
+branches that are ahead of their base.
+
+Reports by default. Nothing is created without --apply, and nothing on disk is
+ever moved, renamed or deleted by this command.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := ctxOf()
+
+			target, err := task.ParseState(state)
+			if err != nil {
+				return err
+			}
+
+			repos, err := repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
+			if err != nil {
+				return err
+			}
+			existing, err := app.Tasks.List()
+			if err != nil {
+				return err
+			}
+			known := map[string]bool{}
+			for _, t := range existing {
+				known[t.ID] = true
+			}
+
+			rt := app.Runtime()
+			var sessions []runtime.Session
+			if !noSessions {
+				sessions, _ = rt.List(ctx)
+			}
+
+			var found []candidate
+			for _, r := range repos {
+				if r.Bare {
+					continue
+				}
+				found = append(found, scanRepo(ctx, app, r, sessions, known, target,
+					!noWorktrees, !noSessions, !noBranches)...)
+			}
+
+			if len(found) == 0 {
+				fmt.Fprintln(app.Out, "Nothing to adopt — everything in flight is already tracked.")
+				return nil
+			}
+
+			sort.Slice(found, func(i, j int) bool {
+				if found[i].Task.Repo != found[j].Task.Repo {
+					return found[i].Task.Repo < found[j].Task.Repo
+				}
+				return found[i].Task.Branch < found[j].Task.Branch
+			})
+
+			fmt.Fprintf(app.Out, "%d candidate(s):\n\n", len(found))
+			t := NewTable("REPO", "BRANCH", "STATE", "WHY", "CHECKOUT")
+			for _, c := range found {
+				t.Add(truncate(c.Task.Repo, 24), truncate(c.Task.Branch, 28),
+					c.Task.State.Label(), c.Reason, config.Contract(checkoutOf(c.Task)))
+			}
+			t.Render(app.Out)
+
+			if !apply {
+				fmt.Fprintln(app.Out, "\nRe-run with --apply to record these as tasks.")
+				fmt.Fprintln(app.Out, "Nothing on disk is moved or renamed either way.")
+				return nil
+			}
+
+			in := bufio.NewReader(os.Stdin)
+			adopted := 0
+			for _, c := range found {
+				if !yes && !confirm(app, in, fmt.Sprintf("adopt %s / %s", c.Task.Repo, c.Task.Branch)) {
+					continue
+				}
+				if err := app.Tasks.Save(c.Task); err != nil {
+					app.warnf("%s: %v", c.Task.Branch, err)
+					continue
+				}
+				adopted++
+			}
+			fmt.Fprintf(app.Out, "\nadopted %d task(s) — see them with `dev ls`\n", adopted)
+			if adopted > 0 {
+				fmt.Fprintln(app.Out, "Give each one a next action so parking it stays cheap: dev park <task> --next \"…\"")
+			}
+			return nil
+		},
+	}
+	f := cmd.Flags()
+	f.BoolVar(&apply, "apply", false, "record the candidates as tasks")
+	f.BoolVar(&yes, "yes", false, "with --apply, do not confirm each one")
+	f.BoolVar(&noWorktrees, "no-worktrees", false, "skip existing linked worktrees")
+	f.BoolVar(&noSessions, "no-sessions", false, "skip live runtime sessions")
+	f.BoolVar(&noBranches, "no-branches", false, "skip local branches ahead of their base")
+	f.StringVar(&state, "state", string(task.Warm), "state to record adopted tasks in ("+task.JoinStates(", ")+")")
+	return cmd
+}
+
+// scanRepo collects everything in one repository that looks like work in
+// flight but is not yet recorded.
+func scanRepo(ctx context.Context, app *App, r repo.Repo, sessions []runtime.Session,
+	known map[string]bool, target task.State, doWorktrees, doSessions, doBranches bool) []candidate {
+
+	var out []candidate
+	seen := map[string]bool{}
+
+	add := func(branch, worktree, reason string, state task.State) {
+		if branch == "" || seen[branch] {
+			return
+		}
+		id := task.MakeID(r.Name, branch)
+		if known[id] {
+			return
+		}
+		seen[branch] = true
+		out = append(out, candidate{
+			Reason: reason,
+			Task: &task.Task{
+				ID:           id,
+				Name:         branch,
+				Repo:         r.Name,
+				RepoPath:     r.Path,
+				Branch:       branch,
+				Base:         gitx.DefaultBranch(ctx, r.Path),
+				WorktreePath: worktree,
+				State:        state,
+				Owner:        config.Hostname(),
+			},
+		})
+	}
+
+	worktrees, err := gitx.Worktrees(ctx, r.Path)
+	if err != nil {
+		return nil
+	}
+
+	if doWorktrees {
+		for _, w := range worktrees {
+			if w.Main || w.Branch == "" || w.Prunable {
+				continue
+			}
+			// A harness's turn-scoped worktree is not a change stream a human
+			// tracks; adopting those would fill the inventory with noise that
+			// the harness will delete on its own.
+			if isEphemeralWorktree(w.Path, w.Branch) {
+				continue
+			}
+			state := target
+			reason := "existing worktree"
+			if sessionAt(sessions, w.Path) != nil {
+				state, reason = task.Hot, "worktree with a live session"
+			}
+			add(w.Branch, w.Path, reason, state)
+		}
+	}
+
+	if doSessions {
+		for i := range sessions {
+			for _, d := range sessions[i].Dirs {
+				if d != r.Path {
+					continue
+				}
+				st, err := gitx.StatusOf(ctx, r.Path)
+				if err != nil || st.Branch == "" {
+					continue
+				}
+				c := candidate{Reason: "live session"}
+				_ = c
+				add(st.Branch, "", "live session in the main checkout", task.Hot)
+			}
+		}
+	}
+
+	if doBranches {
+		for _, branch := range unmergedBranches(ctx, r.Path) {
+			add(branch, worktreePathFor(worktrees, branch), "branch ahead of the base", target)
+		}
+	}
+	return out
+}
+
+// isEphemeralWorktree recognises the checkouts an agent harness creates and
+// cleans up itself.
+func isEphemeralWorktree(path, branch string) bool {
+	return strings.Contains(path, "/.claude/worktrees/") ||
+		strings.HasPrefix(branch, "worktree-")
+}
+
+func sessionAt(sessions []runtime.Session, dir string) *runtime.Session {
+	for i := range sessions {
+		for _, d := range sessions[i].Dirs {
+			if d == dir {
+				return &sessions[i]
+			}
+		}
+	}
+	return nil
+}
+
+func worktreePathFor(worktrees []gitx.Worktree, branch string) string {
+	for _, w := range worktrees {
+		if w.Branch == branch && !w.Main {
+			return w.Path
+		}
+	}
+	return ""
+}
+
+// unmergedBranches lists local branches carrying commits the default branch
+// does not — unfinished work that would otherwise be invisible to dev.
+func unmergedBranches(ctx context.Context, repoPath string) []string {
+	base := gitx.DefaultBranch(ctx, repoPath)
+	if base == "" {
+		return nil
+	}
+	out, err := gitx.Run(ctx, repoPath, "for-each-ref", "--format=%(refname:short)", "refs/heads/")
+	if err != nil {
+		return nil
+	}
+	var branches []string
+	for _, b := range strings.Split(out, "\n") {
+		b = strings.TrimSpace(b)
+		if b == "" || b == base || isEphemeralWorktree("", b) {
+			continue
+		}
+		// Contained in the base means the work has already landed.
+		if _, err := gitx.Run(ctx, repoPath, "merge-base", "--is-ancestor", b, base); err == nil {
+			continue
+		}
+		branches = append(branches, b)
+	}
+	return branches
+}
+EOF
+python3 - <<'PY'
+p='internal/cli/adopt.go'
+s=open(p).read()
+s=s.replace('''				c := candidate{Reason: "live session"}
+				_ = c
+				add(st.Branch,''','''				add(st.Branch,''')
+open(p,'w').write(s)
+p='internal/cli/root.go'
+s=open(p).read()
+s=s.replace('\t\tnewSweepCmd(app),','\t\tnewSweepCmd(app),\n\t\tnewAdoptCmd(app),')
+open(p,'w').write(s)
+PY
+gofmt -w internal/cli/ && go build -o dev ./cmd/dev && go vet ./... && echo BUILD_OK
+```
+
+```text
+BUILD_OK
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:22:44Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Run adopt against the real machine
+
+```bash
+SCRATCH=/tmp/claude-502/-Users-david-Documents-Program-dev-cli/fff519fd-9935-45d2-9597-6648680e46b9/scratchpad
+export XDG_DATA_HOME=$SCRATCH/xdg-data XDG_CONFIG_HOME=$SCRATCH/xdg-config
+time ./dev adopt 2>&1 | head -30
+```
+
+```text
+39 candidate(s):
+
+REPO                      BRANCH                        STATE  WHY                                CHECKOUT
+2026-05-14-grafana-prov…  feat/survey-secondary-dashb…  HOT    live session in the main checkout  ~/Documents/Program/2026-05-14-grafana-provisioning-with-docker-otel-lgtm
+2026-07-02-github-copil…  main                          HOT    live session in the main checkout  ~/src/tries/2026-07-02-github-copilot-claude-proxy
+2026-07-08-discord-mana…  main                          HOT    live session in the main checkout  ~/src/tries/2026-07-08-discord-manager
+2026-07-08-openwrt        main                          HOT    live session in the main checkout  ~/src/tries/2026-07-08-openwrt
+2026-07-09-translate-cl…  feat/serve-mcp-servers        WARM   branch ahead of the base           ~/src/tries/2026-07-09-translate-cli-tui
+2026-07-09-translate-cl…  feat/tts-pronunciation        WARM   branch ahead of the base           ~/src/tries/2026-07-09-translate-cli-tui
+2026-07-09-translate-cl…  main                          HOT    live session in the main checkout  ~/src/tries/2026-07-09-translate-cli-tui
+2026-07-09-windows-dotf…  fix/copilot-proxy-alignment   WARM   branch ahead of the base           ~/src/tries/2026-07-09-windows-dotfiles
+2026-07-09-windows-dotf…  main                          HOT    live session in the main checkout  ~/src/tries/2026-07-09-windows-dotfiles
+2026-07-11-cross-platfo…  main                          HOT    live session in the main checkout  ~/src/tries/2026-07-11-cross-platform-copy
+2026-07-21-free-compute…  main                          HOT    live session in the main checkout  ~/src/tries/2026-07-21-free-compute-resources
+2026-07-21-market-status  main                          HOT    live session in the main checkout  ~/src/tries/2026-07-21-market-status
+2026-07-21-music-band-s…  main                          HOT    live session in the main checkout  ~/src/tries/2026-07-21-music-band-sync
+2026-07-24-travel-plann…  trek-integration              HOT    live session in the main checkout  ~/src/tries/2026-07-24-travel-planner
+2026-07-24-unify-ashare…  main                          HOT    live session in the main checkout  ~/src/tries/2026-07-24-unify-ashare-sdk
+2026-07-24-wordbit        main                          HOT    live session in the main checkout  ~/src/tries/2026-07-24-wordbit
+Agent-Deck-Raycast-Exte…  main                          HOT    live session in the main checkout  ~/Documents/Program/Agent-Deck-Raycast-Extension
+AttackOnBall              main                          HOT    live session in the main checkout  ~/Documents/Program/AttackOnBall
+DockerCompose-V2Ray       master                        HOT    live session in the main checkout  ~/Documents/Program/DockerCompose-V2Ray
+Homelab                   main                          HOT    live session in the main checkout  ~/Documents/Program/Homelab
+InfoSummarizer            feat/custom-summarizers       WARM   branch ahead of the base           ~/Documents/Program/InfoSummarizer
+InfoSummarizer            main                          HOT    live session in the main checkout  ~/Documents/Program/InfoSummarizer
+OfflineAnalysis           main                          HOT    live session in the main checkout  ~/Documents/Program/OfflineAnalysis
+Pueue-Raycast-Extension   main                          HOT    live session in the main checkout  ~/Documents/Program/Pueue-Raycast-Extension
+SmartHome                 feat/combo-ctl-dag-engine     WARM   branch ahead of the base           ~/Documents/Program/SmartHome
+SmartHome                 main                          HOT    live session in the main checkout  ~/Documents/Program/SmartHome
+Tampermonkey-Scripts      main                          HOT    live session in the main checkout  ~/Documents/Program/Tampermonkey-Scripts
+./dev adopt 2>&1  2.08s user 2.57s system 65% cpu 7.115 total
+head -30  0.00s user 0.00s system 0% cpu 7.113 total
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:22:49Z)**_
+
+`adopt` correctly found 39 candidates including real unmerged branches, and skipped the ephemeral `.claude/worktrees/` ones. Let me add tests:
+
+_**Agent (claude-opus-5 2026-08-27 04:23:20Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Write and run gitignore tests
+
+```bash
+cat > internal/ignore/ignore_test.go <<'EOF'
+package ignore_test
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/ignore"
+)
+
+func TestCanonical(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"python", "Python"}, {"PYTHON", "Python"}, {" Python ", "Python"},
+		{"js", "Node"}, {"typescript", "Node"}, {"golang", "Go"},
+		{"c#", "VisualStudio"}, {"latex", "TeX"},
+		{"somethingelse", "Somethingelse"},
+	} {
+		if got := ignore.Canonical(tc.in); got != tc.want {
+			t.Errorf("Canonical(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestGetPrefersRemoteThenCachesIt(t *testing.T) {
+	var hits int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		hits++
+		if !strings.HasSuffix(r.URL.Path, "/Python") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte("__pycache__/\n*.pyc\n"))
+	}))
+	defer srv.Close()
+
+	cache := t.TempDir()
+	f := &ignore.Fetcher{CacheDir: cache, Client: srv.Client()}
+	f.BaseURL = srv.URL
+
+	got, err := f.Get(context.Background(), "python")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Source != ignore.SourceRemote || !strings.Contains(got.Body, "__pycache__") {
+		t.Errorf("got %+v", got)
+	}
+	if _, err := os.Stat(filepath.Join(cache, "Python.gitignore")); err != nil {
+		t.Errorf("the fetched template should be cached: %v", err)
+	}
+
+	// Offline now resolves from the cache rather than failing.
+	f.Offline = true
+	got, err = f.Get(context.Background(), "python")
+	if err != nil {
+		t.Fatalf("offline Get: %v", err)
+	}
+	if got.Source != ignore.SourceCache {
+		t.Errorf("source = %q, want cache", got.Source)
+	}
+}
+
+// With no network and no cache, the bundled copies must still work — that is
+// the whole reason for embedding them.
+func TestGetFallsBackToBundled(t *testing.T) {
+	f := &ignore.Fetcher{CacheDir: t.TempDir(), Offline: true}
+	got, err := f.Get(context.Background(), "go")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if got.Source != ignore.SourceBundled {
+		t.Errorf("source = %q, want bundled", got.Source)
+	}
+	if !strings.Contains(got.Body, "*.exe") {
+		t.Errorf("bundled Go template looks wrong:\n%s", got.Body)
+	}
+}
+
+func TestGetUnknownOfflineErrorsHelpfully(t *testing.T) {
+	f := &ignore.Fetcher{CacheDir: t.TempDir(), Offline: true}
+	_, err := f.Get(context.Background(), "brainfuck")
+	if err == nil {
+		t.Fatal("an unknown offline template should error")
+	}
+	if !strings.Contains(err.Error(), "available offline") {
+		t.Errorf("the error should list what is available, got %v", err)
+	}
+}
+
+func TestBundledNames(t *testing.T) {
+	names := ignore.BundledNames()
+	if len(names) == 0 {
+		t.Fatal("no templates are bundled")
+	}
+	for _, want := range []string{"Go", "Node", "Python"} {
+		found := false
+		for _, n := range names {
+			if n == want {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("%s should be bundled, have %v", want, names)
+		}
+	}
+}
+
+func TestComposeIncludesExtras(t *testing.T) {
+	block := ignore.Compose(
+		[]ignore.Section{{Name: "Go", Body: "*.exe", Source: ignore.SourceBundled}},
+		ignore.DefaultExtras(),
+	)
+	for _, want := range []string{"*.exe", ".claude/worktrees/", ".env", "Editors and IDEs"} {
+		if !strings.Contains(block, want) {
+			t.Errorf("composed block missing %q:\n%s", want, block)
+		}
+	}
+	if !ignore.HasManagedBlock(block) {
+		t.Error("the composed block should carry dev's markers")
+	}
+}
+
+func TestComposeRespectsDisabledExtras(t *testing.T) {
+	block := ignore.Compose(nil, ignore.Extras{OS: true})
+	if strings.Contains(block, ".claude/worktrees/") {
+		t.Error("agents section should be omitted")
+	}
+	if strings.Contains(block, ".env\n") {
+		t.Error("env section should be omitted")
+	}
+}
+
+// Re-running must update only the managed region: a project accumulates
+// hand-written rules, and regenerating must never be what loses them.
+func TestMergeReplacesOnlyTheManagedBlock(t *testing.T) {
+	first := ignore.Compose([]ignore.Section{{Name: "Go", Body: "*.exe"}}, ignore.Extras{})
+	existing := "# my own rules\nsecret-notes.md\n\n" + first + "\n# trailing rule\nlocal-only/\n"
+
+	second := ignore.Compose([]ignore.Section{{Name: "Python", Body: "*.pyc"}}, ignore.Extras{})
+	merged := ignore.Merge(existing, second)
+
+	for _, want := range []string{"# my own rules", "secret-notes.md", "# trailing rule", "local-only/", "*.pyc"} {
+		if !strings.Contains(merged, want) {
+			t.Errorf("merge lost %q:\n%s", want, merged)
+		}
+	}
+	if strings.Contains(merged, "*.exe") {
+		t.Errorf("the old managed content should be replaced:\n%s", merged)
+	}
+	if strings.Count(merged, "# >>> dev gitignore >>>") != 1 {
+		t.Error("merging should not duplicate the markers")
+	}
+}
+
+func TestMergeAppendsWhenNoBlockExists(t *testing.T) {
+	block := ignore.Compose(nil, ignore.Extras{OS: true})
+
+	merged := ignore.Merge("", block)
+	if merged != block {
+		t.Error("an empty file should become just the block")
+	}
+
+	merged = ignore.Merge("existing-rule\n", block)
+	if !strings.HasPrefix(merged, "existing-rule\n") || !strings.Contains(merged, block) {
+		t.Errorf("existing content should be kept and the block appended:\n%s", merged)
+	}
+
+	// A file with no trailing newline must not have its last rule glued to the
+	// marker comment.
+	merged = ignore.Merge("no-newline", block)
+	if strings.Contains(merged, "no-newline#") {
+		t.Errorf("missing newline separator:\n%s", merged)
+	}
+}
+
+func TestDetect(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module x\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "package.json"), []byte("{}"), 0o644)
+
+	got := ignore.Detect(dir)
+	if len(got) != 2 {
+		t.Fatalf("want Go and Node, got %v", got)
+	}
+	if got[0] != "Go" || got[1] != "Node" {
+		t.Errorf("results should be sorted, got %v", got)
+	}
+	if len(ignore.Detect(t.TempDir())) != 0 {
+		t.Error("an empty directory should detect nothing")
+	}
+}
+EOF
+python3 - <<'PY'
+# The test needs a BaseURL seam on Fetcher.
+p='internal/ignore/ignore.go'
+s=open(p).read()
+s=s.replace('''type Fetcher struct {
+	CacheDir string
+	Client   *http.Client
+	// Offline skips the network entirely.
+	Offline bool
+}''','''type Fetcher struct {
+	CacheDir string
+	Client   *http.Client
+	// Offline skips the network entirely.
+	Offline bool
+	// BaseURL overrides the template endpoint; empty means TemplateAPI.
+	BaseURL string
+}''')
+s=s.replace('	req, err := http.NewRequestWithContext(ctx, http.MethodGet, TemplateAPI+"/"+name, nil)',
+'''	base := f.BaseURL
+	if base == "" {
+		base = TemplateAPI
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/"+name, nil)''')
+open(p,'w').write(s)
+PY
+gofmt -w internal/ignore/ && go test ./internal/ignore/ 2>&1 | tail -10
+```
+
+```text
+ok  	github.com/daviddwlee84/dev-cli/internal/ignore	0.850s
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:23:50Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Write and run adopt and gitignore CLI tests
+
+```bash
+cat >> internal/cli/cli_test.go <<'EOF'
+
+func TestGitignoreWritesAndIsIdempotent(t *testing.T) {
+	h := newHarness(t)
+	cwd, _ := os.Getwd()
+	os.Chdir(h.repo.Root)
+	defer os.Chdir(cwd)
+
+	// Offline, so the test never depends on GitHub being reachable.
+	out := h.mustRun("gitignore", "go", "--offline")
+	if !strings.Contains(out, "wrote") && !strings.Contains(out, "appended") {
+		t.Fatalf("gitignore output: %q", out)
+	}
+	body, err := os.ReadFile(filepath.Join(h.repo.Root, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"*.exe", ".claude/worktrees/", ".env"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf(".gitignore missing %q", want)
+		}
+	}
+
+	out = h.mustRun("gitignore", "go", "--offline")
+	if !strings.Contains(out, "already up to date") {
+		t.Errorf("re-running should be a no-op, got %q", out)
+	}
+}
+
+func TestGitignorePreservesHandWrittenRules(t *testing.T) {
+	h := newHarness(t)
+	cwd, _ := os.Getwd()
+	os.Chdir(h.repo.Root)
+	defer os.Chdir(cwd)
+
+	path := filepath.Join(h.repo.Root, ".gitignore")
+	os.WriteFile(path, []byte("# mine\nproject-specific/\n"), 0o644)
+
+	h.mustRun("gitignore", "go", "--offline")
+	h.mustRun("gitignore", "python", "--offline")
+
+	body, _ := os.ReadFile(path)
+	if !strings.Contains(string(body), "project-specific/") {
+		t.Error("hand-written rules must survive regeneration")
+	}
+	if strings.Count(string(body), "# >>> dev gitignore >>>") != 1 {
+		t.Errorf("markers duplicated:\n%s", body)
+	}
+}
+
+func TestGitignoreDetectsLanguage(t *testing.T) {
+	h := newHarness(t)
+	h.repo.Commit("go.mod", "module demo\n", "chore: add go.mod")
+	cwd, _ := os.Getwd()
+	os.Chdir(h.repo.Root)
+	defer os.Chdir(cwd)
+
+	out := h.mustRun("gitignore", "--offline", "--stdout")
+	if !strings.Contains(out, "*.exe") {
+		t.Errorf("go.mod should have been detected:\n%s", out)
+	}
+}
+
+func TestAdoptReportsThenApplies(t *testing.T) {
+	h := newHarness(t)
+
+	// A branch ahead of main, which is exactly the unfinished work adopt is for.
+	h.repo.Branch("feat/in-flight")
+	h.repo.Commit("wip.txt", "half done\n", "feat: in flight")
+	h.repo.Git("switch", "main")
+
+	out := h.mustRun("adopt")
+	if !strings.Contains(out, "feat/in-flight") {
+		t.Fatalf("adopt should find the unmerged branch:\n%s", out)
+	}
+	if !strings.Contains(out, "--apply") {
+		t.Error("reporting run should say how to act on it")
+	}
+	// Reporting must not have created anything.
+	if ls := h.mustRun("ls"); !strings.Contains(ls, "No tasks yet") {
+		t.Errorf("adopt without --apply must create nothing, got:\n%s", ls)
+	}
+
+	h.mustRun("adopt", "--apply", "--yes")
+	ls := h.mustRun("ls")
+	if !strings.Contains(ls, "feat/in-flight") {
+		t.Errorf("adopted task should appear in the inventory:\n%s", ls)
+	}
+
+	// Adopting twice must not duplicate.
+	out = h.mustRun("adopt")
+	if strings.Contains(out, "feat/in-flight") {
+		t.Errorf("an already-tracked branch should not be offered again:\n%s", out)
+	}
+}
+
+func TestAdoptSkipsMergedAndEphemeralBranches(t *testing.T) {
+	h := newHarness(t)
+	// Merged into main: the work has landed, so it is not in flight.
+	h.repo.Branch("feat/landed")
+	h.repo.Git("switch", "main")
+	// A harness's own worktree branch, which the harness cleans up itself.
+	h.repo.Git("branch", "worktree-ephemeral")
+
+	out := h.mustRun("adopt")
+	if strings.Contains(out, "feat/landed") {
+		t.Error("a branch contained in main is not work in flight")
+	}
+	if strings.Contains(out, "worktree-ephemeral") {
+		t.Error("harness worktree branches should not be adopted")
+	}
+}
+
+func TestConfigInitDetectsAndRefusesOverwrite(t *testing.T) {
+	h := newHarness(t)
+
+	out := h.mustRun("config", "init", "--stdout")
+	if !strings.Contains(out, "[paths]") || !strings.Contains(out, "worktree_path") {
+		t.Errorf("generated config looks wrong:\n%s", out)
+	}
+
+	target := filepath.Join(h.home, "generated.toml")
+	os.WriteFile(target, []byte("existing\n"), 0o644)
+	root := cli.NewRootCommandWithIO(io.Discard, io.Discard)
+	root.SetArgs([]string{"--config", target, "config", "init"})
+	if err := root.Execute(); err == nil {
+		t.Error("config init must refuse to clobber an existing file")
+	}
+}
+EOF
+python3 - <<'PY'
+p='internal/cli/cli_test.go'
+s=open(p).read()
+s=s.replace('import (\n\t"bytes"','import (\n\t"bytes"\n\t"io"')
+open(p,'w').write(s)
+PY
+gofmt -w internal/cli/ && go test ./internal/cli/ 2>&1 | tail -15
+```
+
+```text
+ok  	github.com/daviddwlee84/dev-cli/internal/cli	5.418s
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:23:54Z)**_
+
+Now the backlog file for the deferred items:
+
+_**Agent (claude-opus-5 2026-08-27 04:24:17Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Write the project backlog
+
+````bash
+cat > TODO.md <<'EOF'
+# TODO
+
+Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
+
+## Active
+
+### P2 · M — Multi-host aggregation
+`dev ls --all` fanning out over ssh to the machines in a configured host list,
+merging their `dev ls --json`. The JSON contract is already stable and the
+`owner` field already identifies which machine holds a task, so this is
+plumbing rather than design. Today the same thing works by hand:
+
+```bash
+ssh jingle-235 dev ls --json | jq '.[] | select(.state=="hot")'
+```
+
+### P3 · S — Television / fzf channel
+A `tv` channel over `dev ls --json` for fuzzy-picking a task, and an `fzf`
+fallback. Navigation by metadata rather than by remembering a path is the point
+of the tool; the TUI covers it, but a picker composes better with other tools.
+
+### P3 · M — Adopt from other tools' worktree roots
+`dev adopt` finds worktrees git knows about. It does not look in
+`~/.herdr/worktrees` or a Worktrunk root for checkouts registered against a
+repository dev has not discovered. Low value while scan roots cover the repos,
+but worth it for someone migrating off another worktree manager.
+
+### P3 · S — `dev stats` per-repo heatmap
+`--repo X` currently filters the totals and the combined grid. A dedicated
+per-repo grid, several stacked, would answer "which project did I move to in
+March" better than the aggregate does.
+
+### P4 · M — Raycast extension
+`dev ls` and `dev resume` from the launcher. Wants the JSON contract and a
+stable binary path; nothing else new.
+
+## Deliberately not doing
+
+### Installing dependencies
+`dev doctor` reports what is missing and what degrades; it will not install
+anything. This is the one place where being glue matters most: git, herdr,
+tmux, gh, glab, lazygit and yazi are all installed by a package manager the
+user already has opinions about (brew, apt, mise, nix, chezmoi), and a tool
+that shells out to one of them is guessing. `doctor` naming the missing binary
+is enough — the user knows how they install things on that machine.
+
+Reconsider only if `doctor` grows a case where the *right* command is
+unambiguous and the user has asked for it.
+
+### A second git database
+Anything derivable from git is derived live, every run. The registry holds
+state, owner, next action and a note — nothing else. The moment it caches a
+branch name or an ahead/behind count, it can disagree with git, and a tool that
+disagrees with git about git is worse than no tool.
+
+### Syncing runtime state between machines
+Each host runs its own multiplexer. What crosses machines is branches, through
+the remote, plus the task registry if `state_dir` is a git repo. Syncing
+sessions would mean reconciling two live terminal states, which is a much
+harder problem than the one this tool has.
+
+### Owning the worktree path on machines with herdr
+`herdr worktree create` would be less code, but the path policy has to hold
+where herdr is not installed. dev creates the checkout with git and asks herdr
+only to open it. See `internal/skill/files/references/worktree-ownership.md`.
+
+## Done
+
+- Task lifecycle: `start` / `park` / `resume` / `done` / `sweep`.
+- Worktree ownership rule, path templates, provisioning, per-repo `.dev.toml`.
+- Runtime adapters: herdr, tmux, none, behind one contract suite.
+- Repo discovery and gh/glab-backed clone, create, sync.
+- `try` and `graduate`.
+- Activity stats: sampler, git backfill, WakaTime import, heatmap.
+- Interactive dashboard, with lazygit / yazi / editor / shell hand-off.
+- `dev gitignore`, from GitHub's templates plus the sections no template has.
+- `dev adopt`, to import existing worktrees, sessions and unmerged branches.
+- `dev config init`, generating a config from the machine's detected layout.
+- Bundled agent skill with a generated, drift-checked command reference.
+EOF
+echo written && wc -l TODO.md
+````
+
+```text
+written
+      79 TODO.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:24:19Z)**_
+
+Now a migration help topic, and updating the skill and README:
+
+_**Agent (claude-opus-5 2026-08-27 04:24:45Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Add adopting topic and update the skill
+
+````bash
+cat > internal/help/topics/adopting.md <<'EOF'
+# Adopting an existing setup
+
+What to do on a machine that already has repositories, worktrees and sessions.
+
+## There is nothing to migrate
+
+`dev` does not own a directory layout. It discovers repositories wherever
+`paths.scan_roots` points, and **never moves, renames or deletes anything** you
+already have. Whatever your projects tree looks like — `~/Documents/Program`,
+`~/src`, `~/code`, a ghq root, several of them — it keeps working as is.
+
+```bash
+dev config init     # detects this machine's roots and writes a config
+dev repo list       # confirm it found what you expected
+```
+
+`config init` probes the conventional locations, counts the repositories in
+each, and writes only the ones that exist. If it guessed wrong, the generated
+file is ordinary TOML — edit `scan_roots`.
+
+## Importing work already in flight
+
+Repositories are discovered; *tasks* are not. `dev adopt` finds the work that
+is already happening and offers to record it:
+
+```bash
+dev adopt                   # report only
+dev adopt --apply           # record, confirming each one
+```
+
+It looks for three things:
+
+- **linked worktrees** git already knows about, from any tool;
+- **live runtime sessions** sitting in a repository;
+- **local branches ahead of the default branch** — unfinished work that is
+  otherwise invisible.
+
+It skips branches already contained in the base (that work has landed) and the
+turn-scoped worktrees an agent harness creates and cleans up itself.
+
+Nothing on disk changes either way. Adopting only writes task entries.
+
+Afterwards, give the ones you care about a next action — that is what makes
+parking them cheap later:
+
+```bash
+dev park <task> --next "…"
+```
+
+## Worktrees you already have elsewhere
+
+A worktree created by hand, or by another tool, in a location that is not
+`paths.worktree_path` keeps working exactly as it did. `dev` records the path
+git reports; it does not relocate it.
+
+New worktrees go to the configured template. If you want the old ones there
+too, move them the way git expects:
+
+```bash
+git worktree move <old-path> ~/Worktrees/<repo>/<branch-slug>
+```
+
+There is no need to. Consistency is nice; disruption is not.
+
+## A different projects root
+
+```toml
+[paths]
+scan_roots    = ["/mnt/work/repos", "~/code"]
+project_root  = "/mnt/work/repos"
+worktree_root = "/mnt/work/worktrees"
+worktree_path = "{{worktree_root}}/{{repo|lower}}/{{branch|slug}}"
+```
+
+`project_root` is only used by `dev repo new|clone` and `dev graduate` to
+decide where a *new* project goes. Existing ones are found through
+`scan_roots` regardless.
+
+## Trying it without committing to anything
+
+Every path is overridable per invocation, so you can point a throwaway config
+at a sandbox and see what happens:
+
+```bash
+dev --config /tmp/try-dev.toml config init
+dev --config /tmp/try-dev.toml ls
+```
+
+And `dev --no-runtime` keeps it from touching your multiplexer at all.
+EOF
+python3 - <<'PY'
+# SKILL.md: document the new commands
+p='internal/skill/files/SKILL.md'
+s=open(p).read()
+s=s.replace('''dev repo list              # every repo under the scan roots
+dev repo clone owner/name  # clone into the right place, via gh or glab
+dev repo sync --all        # fetch + prune, and report what moved
+''','''dev repo list              # every repo under the scan roots
+dev repo clone owner/name  # clone into the right place, via gh or glab
+dev repo sync --all        # fetch + prune, and report what moved
+dev gitignore              # .gitignore from GitHub templates + the common bits
+dev adopt                  # import existing worktrees/sessions/branches as tasks
+''')
+s=s.replace('''## Rules for agents
+
+1. **Always pass `--base`.**''','''## Adopting an existing machine
+
+There is nothing to migrate. `dev` discovers repositories through
+`paths.scan_roots` and never moves, renames or deletes anything.
+
+```bash
+dev config init     # detects this machine's roots; every value stays editable
+dev adopt           # report existing worktrees, sessions and unmerged branches
+dev adopt --apply   # record them as tasks (nothing on disk changes)
+```
+
+Do not assume the user's layout is `~/Documents/Program`. Run `dev config show`
+or `dev repo list` to see what this machine is actually configured for.
+
+## Rules for agents
+
+1. **Always pass `--base`.**''')
+s=s.replace('''7. **Commit messages stay English**''','''7. **`dev adopt` without `--apply` changes nothing.** Show the user its report
+   rather than applying it for them — which branches count as work in flight is
+   their judgement, not yours.
+
+8. **Commit messages stay English**''')
+s=s.replace('''- "Which repo do I spend my time in?"''','''- "Which repo do I spend my time in?"
+- Setting up a `.gitignore`, or a harness worktree showing as untracked.
+- Adopting a machine that already has repos, worktrees and sessions.''')
+open(p,'w').write(s)
+PY
+gofmt -l . ; go build -o dev ./cmd/dev && ./dev help 2>&1
+````
+
+```text
+TOPIC      ABOUT
+adopting   What to do on a machine that already has repositories, worktrees an…
+agents     How to run several coding agents without them stepping on each othe…
+branching  Should this be a branch, or just a commit on the trunk?
+commits    One meaningful change that can be understood, and ideally reverted,…
+parking    How to stop working on something without losing the thread.
+worktrees  A worktree is a second working directory for the same repository: i…
+
+Read one with: dev help <topic>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:25:21Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Update README and run full verification
+
+````bash
+python3 - <<'PY'
+p='README.md'
+s=open(p).read()
+s=s.replace('''```bash
+make install     # builds, installs to ~/.local/bin, installs the agent skill
+```''','''```bash
+make install     # builds, installs to ~/.local/bin, installs the agent skill
+dev config init  # detects this machine's repo roots and writes a config
+```''')
+s=s.replace('''dev try redis-streams          # dated scratch directory for an experiment
+dev graduate redis-streams -c Infra --remote   # promote it into a real project
+''','''dev try redis-streams          # dated scratch directory for an experiment
+dev graduate redis-streams -c Infra --remote   # promote it into a real project
+
+dev gitignore                  # .gitignore from GitHub's templates + the rest
+dev adopt                      # import existing worktrees/sessions as tasks
+''')
+s=s.replace('''## Configuration''','''## Adopting an existing machine
+
+There is nothing to migrate. `dev` discovers repositories wherever your scan
+roots point and **never moves, renames or deletes anything** you already have.
+`dev config init` probes the conventional locations — `~/Documents/Program`,
+`~/src`, `~/code`, a `GHQ_ROOT`, and so on — counts the repositories in each,
+and writes only the ones that exist:
+
+```
+$ dev config init
+wrote ~/.config/dev/config.toml
+
+Detected:
+ROOT                 REPOS  ROLE
+~/Documents/Program  40     scan root, new projects land here
+~/src                16     scan root
+```
+
+Repositories are discovered; *tasks* are not. `dev adopt` finds the work
+already in flight — linked worktrees from any tool, live runtime sessions, and
+local branches ahead of the default branch — and offers to record it. It skips
+branches already merged, and the turn-scoped worktrees an agent harness cleans
+up itself:
+
+```bash
+dev adopt            # report only
+dev adopt --apply    # record as tasks; nothing on disk changes
+```
+
+A worktree you already have somewhere else keeps working exactly as it did —
+`dev` records the path git reports rather than relocating it. Full detail in
+`dev help adopting`.
+
+## .gitignore
+
+```bash
+dev gitignore                 # detect the languages from the repo's files
+dev gitignore python node     # or say so explicitly
+dev gitignore --offline       # cached and bundled templates only
+```
+
+Language sections come from [GitHub's templates](https://github.com/github/gitignore),
+fetched once and cached. On top of those it adds what no language template
+covers: the host platform's junk files, editor state, local env files, and the
+directories coding-agent harnesses create — an agent's linked worktree left
+untracked makes every `git status` in the main checkout unreadable.
+
+Everything it writes goes inside a delimited block, so re-running updates that
+block and leaves rules you added by hand alone.
+
+## Configuration''')
+s=s.replace('''The dashboard (`dev`, or `dev tui`) shows the same inventory from the same code
+path, and lets you act on the selected task without retyping its name:
+`enter` opens it, `p` parks it and prompts for the next action, `n` edits that
+action, `1`/`2`/`3` filter by state.''','''The dashboard (`dev`, or `dev tui`) shows the same inventory from the same code
+path, and lets you act on the selected task without retyping its name: `enter`
+opens it, `p` parks it and prompts for the next action, `n` edits that action,
+`1`/`2`/`3` filter by state.
+
+It also hands the terminal to the tools you already reach for, running them in
+the selected task's checkout and redrawing when they exit — `l` for lazygit,
+`y` for yazi, `e` for `$EDITOR`, `s` for a shell. Bindings for tools that are
+not installed are not offered.''')
+open(p,'w').write(s)
+PY
+./dev skill sync >/dev/null && go build -o dev ./cmd/dev && go vet ./... && gofmt -l . && go test ./... 2>&1 | grep -v "no test files" | grep -v "^ok" ; echo "--- e2e ---" && ./scripts/e2e.sh 2>&1 | tail -3
+````
+
+```text
+--- e2e ---
+  ✓ skill installed
+
+ all end-to-end checks passed
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:25:34Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Extend e2e with gitignore, adopt and config init
+
+```bash
+cat >> scripts/e2e.sh <<'EOF'
+EOF
+python3 - <<'PY'
+p='scripts/e2e.sh'
+s=open(p).read()
+s=s.replace('''printf '\\n\\033[32m all end-to-end checks passed\\033[0m\\n'
+''','''step "gitignore"
+cd "$REPO"
+dev gitignore go --offline >/dev/null
+grep -q '.claude/worktrees/' "$REPO/.gitignore" || fail "harness section missing"
+grep -q '\\*.exe' "$REPO/.gitignore"             || fail "language section missing"
+printf '# hand written\\nmy-rule/\\n' >> "$REPO/.gitignore"
+dev gitignore python --offline >/dev/null
+grep -q 'my-rule/' "$REPO/.gitignore" || fail "regeneration lost a hand-written rule"
+[[ "$(grep -c '>>> dev gitignore >>>' "$REPO/.gitignore")" == "1" ]] || fail "markers duplicated"
+cd - >/dev/null
+ok "gitignore composed, and re-run preserved hand-written rules"
+
+step "adopt"
+git -C "$REPO" branch adopt-me
+git -C "$REPO" commit --quiet --allow-empty -m "feat: unmerged work" || true
+git -C "$REPO" branch -f adopt-me HEAD
+git -C "$REPO" checkout --quiet main 2>/dev/null || true
+dev adopt | grep -q adopt-me || fail "adopt did not find the unmerged branch"
+dev ls | grep -q adopt-me    && fail "adopt without --apply must create nothing"
+ok "adopt reports without changing anything"
+
+step "config init detects the sandbox layout"
+dev config init --stdout | grep -q '\\[paths\\]' || fail "generated config looks wrong"
+ok "config generated"
+
+printf '\\n\\033[32m all end-to-end checks passed\\033[0m\\n'
+''')
+open(p,'w').write(s)
+PY
+./scripts/e2e.sh 2>&1 | tail -14
+```
+
+```text
+**▸ try and graduate
+  ✓ experiment promoted with its history
+
+**▸ stats
+  ✓ activity recorded
+
+**▸ skill install
+  ✓ skill installed
+
+**▸ gitignore
+  ✓ gitignore composed, and re-run preserved hand-written rules
+
+**▸ adopt
+✗ adopt did not find the unmerged branch
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:25:40Z)**_
+
+Two bugs in my e2e additions — the branch I made was merged into main, and a `&&` guard would trip `set -e`:
+
+_**Agent (claude-opus-5 2026-08-27 04:25:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Fix the adopt e2e step
+
+```bash
+python3 - <<'PY'
+p='scripts/e2e.sh'
+s=open(p).read()
+old_start = s.index('step "adopt"')
+old_end = s.index('step "config init detects the sandbox layout"')
+new = '''step "adopt"
+# A branch genuinely ahead of main: that is what "work in flight" means.
+git -C "$REPO" switch --quiet -c adopt-me
+printf 'half done\\n' > "$REPO/wip.txt"
+git -C "$REPO" add wip.txt
+git -C "$REPO" commit --quiet -m "feat: unmerged work"
+git -C "$REPO" switch --quiet main
+
+dev adopt | grep -q adopt-me || fail "adopt did not find the unmerged branch"
+if dev ls | grep -q adopt-me; then
+  fail "adopt without --apply must create nothing"
+fi
+dev adopt --apply --yes >/dev/null
+dev ls | grep -q adopt-me || fail "adopt --apply did not record the task"
+# Adopting twice must not duplicate.
+if dev adopt | grep -q adopt-me; then
+  fail "an already-tracked branch should not be offered again"
+fi
+ok "adopt reported, applied once, and stayed idempotent"
+
+'''
+s = s[:old_start] + new + s[old_end:]
+open(p,'w').write(s)
+PY
+./scripts/e2e.sh 2>&1 | tail -10
+```
+
+```text
+**▸ gitignore
+  ✓ gitignore composed, and re-run preserved hand-written rules
+
+**▸ adopt
+  ✓ adopt reported, applied once, and stayed idempotent
+
+**▸ config init detects the sandbox layout
+  ✓ config generated
+
+ all end-to-end checks passed
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:25:54Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Final verification and stage changes
+
+`./dev skill sync >/dev/null && go build -o dev ./cmd/dev && go vet ./... && gofmt -l . && go test ./... 2>&1 | grep -v "no test files" | grep -vc "^ok" ; ./dev skill sync --check && echo "SKILL_IN_SYNC" && git add -A && git status --short | grep -v '^A  \.' | head -20`
+
+```text
+0
+command reference is current (internal/skill/files/references/commands.md)
+SKILL_IN_SYNC
+M  .specstory/history/2026-08-27_03-09-35Z-at-specstory-references-chatgpt.md
+M  .specstory/statistics.json
+M  README.md
+A  TODO.md
+A  internal/cli/adopt.go
+M  internal/cli/cli_test.go
+M  internal/cli/config.go
+A  internal/cli/gitignore.go
+M  internal/cli/root.go
+M  internal/cli/tui.go
+A  internal/config/detect.go
+A  internal/config/detect_test.go
+A  internal/help/topics/adopting.md
+A  internal/ignore/compose.go
+A  internal/ignore/ignore.go
+A  internal/ignore/ignore_test.go
+A  internal/ignore/templates/Go.gitignore
+A  internal/ignore/templates/Java.gitignore
+A  internal/ignore/templates/Node.gitignore
+A  internal/ignore/templates/Python.gitignore
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:26:03Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check tracked specstory files
+
+`git ls-files .specstory | head; echo "--- gitignore tail ---"; tail -4 .gitignore`
+
+```text
+.specstory/.project.json
+.specstory/cli/config.toml
+.specstory/history/2026-08-27_02-52-41Z.md
+.specstory/history/2026-08-27_03-09-35Z-at-specstory-references-chatgpt.md
+".specstory/references/chatgpt-Herdr-Worktree\346\234\200\344\275\263\345\257\246\350\270\220-20260827-1050.md"
+".specstory/references/chatgpt-\346\257\224\350\274\203-Git-Worktree-Strategy-20260827-1050.md"
+.specstory/statistics.json
+--- gitignore tail ---
+
+# Agent session artifacts (SpecStory transcripts, plan files)
+# .specstory/history/
+# .claude/plans/
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:26:08Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect the gitignore
+
+`cat .gitignore`
+
+```text
+# Build output
+/dev
+/dist/
+*.test
+
+# Worktrees created by agent harnesses. Keep this: without it, a worktree's
+# contents show as untracked files in the main checkout.
+.claude/worktrees/
+
+# Local machine state
+.DS_Store
+
+# Agent session artifacts (SpecStory transcripts, plan files)
+# .specstory/history/
+# .claude/plans/
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-27 04:26:24Z)**_
+
+The gitignore lines I appended ended up commented out and inert. Let me fix that — and leave the already-tracked `.specstory/` alone, since that's your tooling's convention to decide:
+
+_**Agent (claude-opus-5 2026-08-27 04:26:26Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Fix gitignore and untrack plan files
+
+```bash
+python3 - <<'PY'
+p='.gitignore'
+s=open(p).read()
+s=s.replace('''
+# Agent session artifacts (SpecStory transcripts, plan files)
+# .specstory/history/
+# .claude/plans/''','''
+# Plan files written by the agent harness for this session, not project docs.
+.claude/plans/
+''')
+open(p,'w').write(s)
+PY
+git rm --cached -q -r .claude/plans && cat .gitignore && git add -A && git status --short | grep -v '^A  internal' | head
+```
+</details></tool-use>

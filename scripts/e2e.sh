@@ -146,9 +146,45 @@ ok "activity recorded"
 
 step "skill install"
 dev skill install --no-link >/dev/null
-[[ -f "$HOME/.agents/skills/dev/SKILL.md" ]] || fail "skill not installed"
-[[ -f "$HOME/.agents/skills/dev/references/worktree-ownership.md" ]] \
+[[ -f "$HOME/.agents/skills/dev-cli/SKILL.md" ]] || fail "skill not installed"
+[[ -f "$HOME/.agents/skills/dev-cli/references/worktree-ownership.md" ]] \
   || fail "skill references not installed"
 ok "skill installed"
+
+step "gitignore"
+cd "$REPO"
+dev gitignore go --offline >/dev/null
+grep -q '.claude/worktrees/' "$REPO/.gitignore" || fail "harness section missing"
+grep -q '\*.exe' "$REPO/.gitignore"             || fail "language section missing"
+printf '# hand written\nmy-rule/\n' >> "$REPO/.gitignore"
+dev gitignore python --offline >/dev/null
+grep -q 'my-rule/' "$REPO/.gitignore" || fail "regeneration lost a hand-written rule"
+[[ "$(grep -c '>>> dev gitignore >>>' "$REPO/.gitignore")" == "1" ]] || fail "markers duplicated"
+cd - >/dev/null
+ok "gitignore composed, and re-run preserved hand-written rules"
+
+step "adopt"
+# A branch genuinely ahead of main: that is what "work in flight" means.
+git -C "$REPO" switch --quiet -c adopt-me
+printf 'half done\n' > "$REPO/wip.txt"
+git -C "$REPO" add wip.txt
+git -C "$REPO" commit --quiet -m "feat: unmerged work"
+git -C "$REPO" switch --quiet main
+
+dev adopt | grep -q adopt-me || fail "adopt did not find the unmerged branch"
+if dev ls | grep -q adopt-me; then
+  fail "adopt without --apply must create nothing"
+fi
+dev adopt --apply --yes >/dev/null
+dev ls | grep -q adopt-me || fail "adopt --apply did not record the task"
+# Adopting twice must not duplicate.
+if dev adopt | grep -q adopt-me; then
+  fail "an already-tracked branch should not be offered again"
+fi
+ok "adopt reported, applied once, and stayed idempotent"
+
+step "config init detects the sandbox layout"
+dev config init --stdout | grep -q '\[paths\]' || fail "generated config looks wrong"
+ok "config generated"
 
 printf '\n\033[32m all end-to-end checks passed\033[0m\n'

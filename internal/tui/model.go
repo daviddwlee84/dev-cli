@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"sort"
 	"strings"
 
@@ -28,6 +29,26 @@ type Actions struct {
 	SetNext func(ctx context.Context, t *task.Task, next string) error
 	// Runtime names the active backend, for the session column.
 	Runtime runtime.Runtime
+	// Tools are the external programs the dashboard can hand the terminal to.
+	Tools []Tool
+}
+
+// Tool is an external program launched in a task's checkout.
+//
+// The dashboard suspends itself while one runs and redraws afterwards, so
+// lazygit or a file manager feels like part of it rather than something you
+// have to quit the dashboard to reach.
+type Tool struct {
+	// Key is the binding that launches it.
+	Key string
+	// Name is shown in the footer.
+	Name string
+	// Command is the argv to run; the first element is looked up on PATH.
+	Command []string
+	// Available reports whether the program is installed. A tool that is not
+	// installed is silently left out of the footer rather than offered and
+	// then failing.
+	Available func() bool
 }
 
 type mode int
@@ -247,9 +268,49 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.input.CursorEnd()
 		m.input.Focus()
 		return m, textinput.Blink
+
+	default:
+		if cmd := m.launchTool(msg.String()); cmd != nil {
+			return m, cmd
+		}
 	}
 	m.clampCursor()
 	return m, nil
+}
+
+// launchTool hands the terminal to an external program running in the
+// selected task's checkout, and reloads afterwards because the tool may well
+// have changed the git state the dashboard is displaying.
+func (m Model) launchTool(key string) tea.Cmd {
+	row, ok := m.current()
+	if !ok {
+		return nil
+	}
+	for _, t := range m.actions.Tools {
+		if t.Key != key {
+			continue
+		}
+		if t.Available != nil && !t.Available() {
+			return func() tea.Msg {
+				return actionMsg{err: fmt.Errorf("%s is not installed", t.Command[0])}
+			}
+		}
+		dir := row.Checkout
+		if dir == "" || !row.CheckoutExists {
+			return func() tea.Msg {
+				return actionMsg{err: fmt.Errorf("%s has no checkout to open", row.Task.Title())}
+			}
+		}
+		c := exec.Command(t.Command[0], t.Command[1:]...)
+		c.Dir = dir
+		return tea.ExecProcess(c, func(err error) tea.Msg {
+			if err != nil {
+				return actionMsg{err: fmt.Errorf("%s: %w", t.Name, err)}
+			}
+			return actionMsg{status: "back from " + t.Name}
+		})
+	}
+	return nil
 }
 
 func (m Model) updateEditNext(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -321,6 +382,18 @@ func checkoutOf(t *task.Task) string {
 		return t.WorktreePath
 	}
 	return t.RepoPath
+}
+
+// Tools lists the external programs available on this machine, so the footer
+// only advertises bindings that will actually work.
+func (m Model) Tools() []Tool {
+	var out []Tool
+	for _, t := range m.actions.Tools {
+		if t.Available == nil || t.Available() {
+			out = append(out, t)
+		}
+	}
+	return out
 }
 
 // Summary counts the states, for the header line.

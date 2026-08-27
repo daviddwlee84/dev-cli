@@ -138,8 +138,12 @@ func (m Model) renderFooter() string {
 		filter = "all incl. done"
 	}
 
-	help := styleHelp.Render(
-		"↑↓ move · enter open · p park · n next · r refresh · 1/2/3 hot/warm/cold · 0 clear · a done · q quit")
+	bindings := []string{"↑↓ move", "enter open", "p park", "n next"}
+	for _, t := range m.Tools() {
+		bindings = append(bindings, t.Key+" "+t.Name)
+	}
+	bindings = append(bindings, "r refresh", "1/2/3 filter", "0 clear", "a done", "q quit")
+	help := styleHelp.Render(strings.Join(bindings, " · "))
 
 	var b strings.Builder
 	if status != "" {

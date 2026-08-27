@@ -19,7 +19,12 @@ import (
 var files embed.FS
 
 // Name is the skill's directory and frontmatter name.
-const Name = "dev"
+//
+// Deliberately not "dev", matching the binary: a skill is selected by its name
+// and description, and "dev" describes nothing. The binary is typed dozens of
+// times a day and should stay short; the skill is read by an agent deciding
+// whether it is relevant, and should say what it covers.
+const Name = "dev-cli"
 
 // Render returns the SKILL.md body.
 func Render() (string, error) {

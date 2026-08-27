@@ -1,12 +1,12 @@
 ---
-name: dev
+name: dev-cli
 description: Manage work-in-progress across repos with the `dev` CLI — worktree ownership (dev vs Claude Code vs herdr), the HOT/WARM/COLD task lifecycle, parking and resuming work without losing the thread, repo/forge management via gh and glab, dated experiments and graduating them, and per-repo activity stats. Use when starting/parking/resuming a change stream, creating or cleaning up worktrees, deciding where a worktree belongs, listing what is in progress, or when a user's terminal workspaces have piled up.
 ---
 
-# dev
+# dev-cli
 
-`dev` is a thin glue layer over git, worktrees, forges and agent runtimes. It
-exists to stop four different things collapsing into one:
+The `dev` command is a thin glue layer over git, worktrees, forges and agent
+runtimes. It exists to stop four different things collapsing into one:
 
 ```
 git remote      durable code state, the source of truth
@@ -101,6 +101,8 @@ dev wt rm feat/auth                    # remove the checkout; the branch stays
 dev repo list              # every repo under the scan roots
 dev repo clone owner/name  # clone into the right place, via gh or glab
 dev repo sync --all        # fetch + prune, and report what moved
+dev gitignore              # .gitignore from GitHub templates + the common bits
+dev adopt                  # import existing worktrees/sessions/branches as tasks
 
 dev try redis-streams      # dated scratch directory for an experiment
 dev graduate redis-streams --category Infra   # promote it into a real project
@@ -110,6 +112,20 @@ dev help worktrees         # quick-reference pages
 ```
 
 Complete generated reference: `references/commands.md`.
+
+## Adopting an existing machine
+
+There is nothing to migrate. `dev` discovers repositories through
+`paths.scan_roots` and never moves, renames or deletes anything.
+
+```bash
+dev config init     # detects this machine's roots; every value stays editable
+dev adopt           # report existing worktrees, sessions and unmerged branches
+dev adopt --apply   # record them as tasks (nothing on disk changes)
+```
+
+Do not assume the user's layout is `~/Documents/Program`. Run `dev config show`
+or `dev repo list` to see what this machine is actually configured for.
 
 ## Rules for agents
 
@@ -138,7 +154,11 @@ Complete generated reference: `references/commands.md`.
    panes isolate *agents*. Several agents working on disjoint files of one
    feature belong in one checkout.
 
-7. **Commit messages stay English** and follow Conventional Commits, even when
+7. **`dev adopt` without `--apply` changes nothing.** Show the user its report
+   rather than applying it for them — which branches count as work in flight is
+   their judgement, not yours.
+
+8. **Commit messages stay English** and follow Conventional Commits, even when
    the conversation is in another language — see the companion `git-workflow`
    skill, which owns commit conventions, SemVer and branch naming. This skill
    does not duplicate them.
@@ -153,6 +173,8 @@ Complete generated reference: `references/commands.md`.
 - Cloning, creating or auditing repositories across a machine.
 - Promoting an experiment into a real project.
 - "Which repo do I spend my time in?"
+- Setting up a `.gitignore`, or a harness worktree showing as untracked.
+- Adopting a machine that already has repos, worktrees and sessions.
 
 ## When NOT to use it
 

@@ -41,6 +41,7 @@ $ dev ls
 
 ```bash
 make install     # builds, installs to ~/.local/bin, installs the agent skill
+dev config init  # detects this machine's repo roots and writes a config
 ```
 
 Then add the shell wrapper to your rc file:
@@ -80,9 +81,14 @@ dev sweep                                          # what has gone stale
 ```
 
 The dashboard (`dev`, or `dev tui`) shows the same inventory from the same code
-path, and lets you act on the selected task without retyping its name:
-`enter` opens it, `p` parks it and prompts for the next action, `n` edits that
-action, `1`/`2`/`3` filter by state.
+path, and lets you act on the selected task without retyping its name: `enter`
+opens it, `p` parks it and prompts for the next action, `n` edits that action,
+`1`/`2`/`3` filter by state.
+
+It also hands the terminal to the tools you already reach for, running them in
+the selected task's checkout and redrawing when they exit — `l` for lazygit,
+`y` for yazi, `e` for `$EDITOR`, `s` for a shell. Bindings for tools that are
+not installed are not offered.
 
 Going cold is safe because **the branch is the identity and the directory is a
 cache**. `dev park --cold` refuses unless the branch is pushed, and `dev resume`
@@ -139,6 +145,9 @@ dev repo sync --all            # fetch + prune, and report what moved
 dev try redis-streams          # dated scratch directory for an experiment
 dev graduate redis-streams -c Infra --remote   # promote it into a real project
 
+dev gitignore                  # .gitignore from GitHub's templates + the rest
+dev adopt                      # import existing worktrees/sessions as tasks
+
 dev stats --heatmap            # where the time actually went
 dev help worktrees             # quick-reference pages for the workflow
 ```
@@ -153,6 +162,56 @@ dev stats backfill                          # seed from git history, once
 dev stats sample --interval 5m              # from cron, every five minutes
 dev stats import-wakatime                   # optional
 ```
+
+## Adopting an existing machine
+
+There is nothing to migrate. `dev` discovers repositories wherever your scan
+roots point and **never moves, renames or deletes anything** you already have.
+`dev config init` probes the conventional locations — `~/Documents/Program`,
+`~/src`, `~/code`, a `GHQ_ROOT`, and so on — counts the repositories in each,
+and writes only the ones that exist:
+
+```
+$ dev config init
+wrote ~/.config/dev/config.toml
+
+Detected:
+ROOT                 REPOS  ROLE
+~/Documents/Program  40     scan root, new projects land here
+~/src                16     scan root
+```
+
+Repositories are discovered; *tasks* are not. `dev adopt` finds the work
+already in flight — linked worktrees from any tool, live runtime sessions, and
+local branches ahead of the default branch — and offers to record it. It skips
+branches already merged, and the turn-scoped worktrees an agent harness cleans
+up itself:
+
+```bash
+dev adopt            # report only
+dev adopt --apply    # record as tasks; nothing on disk changes
+```
+
+A worktree you already have somewhere else keeps working exactly as it did —
+`dev` records the path git reports rather than relocating it. Full detail in
+`dev help adopting`.
+
+## .gitignore
+
+```bash
+dev gitignore                 # detect the languages from the repo's files
+dev gitignore python node     # or say so explicitly
+dev gitignore --offline       # cached and bundled templates only
+```
+
+Language sections come from [GitHub's templates](https://github.com/github/gitignore),
+fetched once and cached. On top of those it adds what no language template
+covers: the host platform's junk files, editor state, local env files, and the
+directories coding-agent harnesses create — an agent's linked worktree left
+untracked makes every `git status` in the main checkout unreadable.
+
+Everything it writes goes inside a delimited block, so re-running updates that
+block and leaves rules you added by hand alone.
 
 ## Configuration
 

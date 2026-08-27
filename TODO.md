@@ -1,0 +1,79 @@
+# TODO
+
+Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
+
+## Active
+
+### P2 · M — Multi-host aggregation
+`dev ls --all` fanning out over ssh to the machines in a configured host list,
+merging their `dev ls --json`. The JSON contract is already stable and the
+`owner` field already identifies which machine holds a task, so this is
+plumbing rather than design. Today the same thing works by hand:
+
+```bash
+ssh jingle-235 dev ls --json | jq '.[] | select(.state=="hot")'
+```
+
+### P3 · S — Television / fzf channel
+A `tv` channel over `dev ls --json` for fuzzy-picking a task, and an `fzf`
+fallback. Navigation by metadata rather than by remembering a path is the point
+of the tool; the TUI covers it, but a picker composes better with other tools.
+
+### P3 · M — Adopt from other tools' worktree roots
+`dev adopt` finds worktrees git knows about. It does not look in
+`~/.herdr/worktrees` or a Worktrunk root for checkouts registered against a
+repository dev has not discovered. Low value while scan roots cover the repos,
+but worth it for someone migrating off another worktree manager.
+
+### P3 · S — `dev stats` per-repo heatmap
+`--repo X` currently filters the totals and the combined grid. A dedicated
+per-repo grid, several stacked, would answer "which project did I move to in
+March" better than the aggregate does.
+
+### P4 · M — Raycast extension
+`dev ls` and `dev resume` from the launcher. Wants the JSON contract and a
+stable binary path; nothing else new.
+
+## Deliberately not doing
+
+### Installing dependencies
+`dev doctor` reports what is missing and what degrades; it will not install
+anything. This is the one place where being glue matters most: git, herdr,
+tmux, gh, glab, lazygit and yazi are all installed by a package manager the
+user already has opinions about (brew, apt, mise, nix, chezmoi), and a tool
+that shells out to one of them is guessing. `doctor` naming the missing binary
+is enough — the user knows how they install things on that machine.
+
+Reconsider only if `doctor` grows a case where the *right* command is
+unambiguous and the user has asked for it.
+
+### A second git database
+Anything derivable from git is derived live, every run. The registry holds
+state, owner, next action and a note — nothing else. The moment it caches a
+branch name or an ahead/behind count, it can disagree with git, and a tool that
+disagrees with git about git is worse than no tool.
+
+### Syncing runtime state between machines
+Each host runs its own multiplexer. What crosses machines is branches, through
+the remote, plus the task registry if `state_dir` is a git repo. Syncing
+sessions would mean reconciling two live terminal states, which is a much
+harder problem than the one this tool has.
+
+### Owning the worktree path on machines with herdr
+`herdr worktree create` would be less code, but the path policy has to hold
+where herdr is not installed. dev creates the checkout with git and asks herdr
+only to open it. See `internal/skill/files/references/worktree-ownership.md`.
+
+## Done
+
+- Task lifecycle: `start` / `park` / `resume` / `done` / `sweep`.
+- Worktree ownership rule, path templates, provisioning, per-repo `.dev.toml`.
+- Runtime adapters: herdr, tmux, none, behind one contract suite.
+- Repo discovery and gh/glab-backed clone, create, sync.
+- `try` and `graduate`.
+- Activity stats: sampler, git backfill, WakaTime import, heatmap.
+- Interactive dashboard, with lazygit / yazi / editor / shell hand-off.
+- `dev gitignore`, from GitHub's templates plus the sections no template has.
+- `dev adopt`, to import existing worktrees, sessions and unmerged branches.
+- `dev config init`, generating a config from the machine's detected layout.
+- Bundled agent skill with a generated, drift-checked command reference.

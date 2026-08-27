@@ -121,12 +121,12 @@ func TestInstallLinksIntoToolDirs(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	dir := filepath.Join(home, ".agents", "skills", "dev")
+	dir := filepath.Join(home, ".agents", "skills", skill.Name)
 	res, err := skill.Install(dir, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	link := filepath.Join(claudeSkills, "dev")
+	link := filepath.Join(claudeSkills, skill.Name)
 	target, err := os.Readlink(link)
 	if err != nil {
 		t.Fatalf("expected a symlink at %s: %v (links: %v)", link, err, res.Links)
@@ -147,12 +147,12 @@ func TestInstallDoesNotClobberRealDirectory(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	claudeSkills := filepath.Join(home, ".claude", "skills")
-	existing := filepath.Join(claudeSkills, "dev")
+	existing := filepath.Join(claudeSkills, skill.Name)
 	os.MkdirAll(existing, 0o755)
 	marker := filepath.Join(existing, "hand-written.md")
 	os.WriteFile(marker, []byte("mine\n"), 0o644)
 
-	if _, err := skill.Install(filepath.Join(home, ".agents", "skills", "dev"), true); err != nil {
+	if _, err := skill.Install(filepath.Join(home, ".agents", "skills", skill.Name), true); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(marker); err != nil {

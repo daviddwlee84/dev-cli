@@ -3,6 +3,7 @@ package cli_test
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/cli"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/skill"
 )
 
 // harness runs dev commands against an isolated HOME, config and scan root.
@@ -298,7 +300,7 @@ func TestStatusOutsideRepo(t *testing.T) {
 func TestSkillPrintsAndSyncChecks(t *testing.T) {
 	h := newHarness(t)
 	out := h.mustRun("skill", "print")
-	if !strings.HasPrefix(out, "---\nname: dev\n") {
+	if !strings.HasPrefix(out, "---\nname: "+skill.Name+"\n") {
 		t.Errorf("the skill must start with valid frontmatter naming it: %q", out[:min(80, len(out))])
 	}
 	if !strings.Contains(out, "worktree-ownership.md") {
@@ -324,4 +326,132 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func TestGitignoreWritesAndIsIdempotent(t *testing.T) {
+	h := newHarness(t)
+	cwd, _ := os.Getwd()
+	os.Chdir(h.repo.Root)
+	defer os.Chdir(cwd)
+
+	// Offline, so the test never depends on GitHub being reachable.
+	out := h.mustRun("gitignore", "go", "--offline")
+	if !strings.Contains(out, "wrote") && !strings.Contains(out, "appended") {
+		t.Fatalf("gitignore output: %q", out)
+	}
+	body, err := os.ReadFile(filepath.Join(h.repo.Root, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"*.exe", ".claude/worktrees/", ".env"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf(".gitignore missing %q", want)
+		}
+	}
+
+	out = h.mustRun("gitignore", "go", "--offline")
+	if !strings.Contains(out, "already up to date") {
+		t.Errorf("re-running should be a no-op, got %q", out)
+	}
+}
+
+func TestGitignorePreservesHandWrittenRules(t *testing.T) {
+	h := newHarness(t)
+	cwd, _ := os.Getwd()
+	os.Chdir(h.repo.Root)
+	defer os.Chdir(cwd)
+
+	path := filepath.Join(h.repo.Root, ".gitignore")
+	os.WriteFile(path, []byte("# mine\nproject-specific/\n"), 0o644)
+
+	h.mustRun("gitignore", "go", "--offline")
+	h.mustRun("gitignore", "python", "--offline")
+
+	body, _ := os.ReadFile(path)
+	if !strings.Contains(string(body), "project-specific/") {
+		t.Error("hand-written rules must survive regeneration")
+	}
+	if strings.Count(string(body), "# >>> dev gitignore >>>") != 1 {
+		t.Errorf("markers duplicated:\n%s", body)
+	}
+}
+
+func TestGitignoreDetectsLanguage(t *testing.T) {
+	h := newHarness(t)
+	h.repo.Commit("go.mod", "module demo\n", "chore: add go.mod")
+	cwd, _ := os.Getwd()
+	os.Chdir(h.repo.Root)
+	defer os.Chdir(cwd)
+
+	out := h.mustRun("gitignore", "--offline", "--stdout")
+	if !strings.Contains(out, "*.exe") {
+		t.Errorf("go.mod should have been detected:\n%s", out)
+	}
+}
+
+func TestAdoptReportsThenApplies(t *testing.T) {
+	h := newHarness(t)
+
+	// A branch ahead of main, which is exactly the unfinished work adopt is for.
+	h.repo.Branch("feat/in-flight")
+	h.repo.Commit("wip.txt", "half done\n", "feat: in flight")
+	h.repo.Git("switch", "main")
+
+	out := h.mustRun("adopt")
+	if !strings.Contains(out, "feat/in-flight") {
+		t.Fatalf("adopt should find the unmerged branch:\n%s", out)
+	}
+	if !strings.Contains(out, "--apply") {
+		t.Error("reporting run should say how to act on it")
+	}
+	// Reporting must not have created anything.
+	if ls := h.mustRun("ls"); !strings.Contains(ls, "No tasks yet") {
+		t.Errorf("adopt without --apply must create nothing, got:\n%s", ls)
+	}
+
+	h.mustRun("adopt", "--apply", "--yes")
+	ls := h.mustRun("ls")
+	if !strings.Contains(ls, "feat/in-flight") {
+		t.Errorf("adopted task should appear in the inventory:\n%s", ls)
+	}
+
+	// Adopting twice must not duplicate.
+	out = h.mustRun("adopt")
+	if strings.Contains(out, "feat/in-flight") {
+		t.Errorf("an already-tracked branch should not be offered again:\n%s", out)
+	}
+}
+
+func TestAdoptSkipsMergedAndEphemeralBranches(t *testing.T) {
+	h := newHarness(t)
+	// Merged into main: the work has landed, so it is not in flight.
+	h.repo.Branch("feat/landed")
+	h.repo.Git("switch", "main")
+	// A harness's own worktree branch, which the harness cleans up itself.
+	h.repo.Git("branch", "worktree-ephemeral")
+
+	out := h.mustRun("adopt")
+	if strings.Contains(out, "feat/landed") {
+		t.Error("a branch contained in main is not work in flight")
+	}
+	if strings.Contains(out, "worktree-ephemeral") {
+		t.Error("harness worktree branches should not be adopted")
+	}
+}
+
+func TestConfigInitDetectsAndRefusesOverwrite(t *testing.T) {
+	h := newHarness(t)
+
+	out := h.mustRun("config", "init", "--stdout")
+	if !strings.Contains(out, "[paths]") || !strings.Contains(out, "worktree_path") {
+		t.Errorf("generated config looks wrong:\n%s", out)
+	}
+
+	target := filepath.Join(h.home, "generated.toml")
+	os.WriteFile(target, []byte("existing\n"), 0o644)
+	root := cli.NewRootCommandWithIO(io.Discard, io.Discard)
+	root.SetArgs([]string{"--config", target, "config", "init"})
+	if err := root.Execute(); err == nil {
+		t.Error("config init must refuse to clobber an existing file")
+	}
 }
