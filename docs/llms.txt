@@ -18,6 +18,7 @@
 - [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/): Run a dev-cli change stream through start, park, resume, review or integration, and conservative cleanup.
 - [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/): Choose the owner and location of each worktree, then provision ignored files and dependencies safely.
 - [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/): Coordinate several coding agents around change-stream ownership, explicit mutation boundaries, and replaceable runtimes.
+- [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/): Inventory repositories, tasks, and live runtime activity across SSH-reachable machines with dev fleet, and safely fast-forward a branch between them.
 - [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/): Navigate tasks, repositories, experiments, and remotes in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 ### Git and GitHub
 
@@ -58,6 +59,7 @@
 - [變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/): 使用 dev-cli 讓變更流依序經過 start、park、resume、review/integration 與保守 cleanup。
 - [Worktree 與環境佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/): 選擇每個 worktree 的 owner 與位置，再安全佈建 ignored files 與 dependencies。
 - [平行 Agent 與 Runtime](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/): 以變更流 ownership、明確 mutation boundary 與可替換 runtime 協調多個 coding agents。
+- [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/): 透過 dev fleet 在 SSH 可連線的多台機器間盤點 repository、task 與 live runtime activity，並安全地在機器間 fast-forward 一個 branch。
 - [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/): 在 TUI 瀏覽 tasks、repositories、experiments 與 remotes、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
 ### Git 與 GitHub
 

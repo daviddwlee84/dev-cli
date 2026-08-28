@@ -14,6 +14,7 @@ in CI to catch drift.
 - `--color` — colorize human output: auto, always or never
 - `--config` — path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)
 - `--no-runtime` — do not touch any terminal multiplexer
+- `--remotes` — path to remotes.toml (default: $XDG_CONFIG_HOME/dev/remotes.toml)
 - `--runtime` — override runtime backend: herdr, tmux, zellij or none
 
 ### `dev adopt`
@@ -65,7 +66,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|notes|size|gitignore|all>
+dev cache clear <remote|notes|fleet|size|gitignore|all>
 ```
 
 ### `dev cache list`
@@ -211,6 +212,105 @@ dev edit [flags]
 ```
 
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
+
+### `dev fleet`
+
+Inspect and safely synchronize dev repositories across machines
+
+```
+dev fleet
+```
+
+### `dev fleet config`
+
+Show, edit, initialise and locate remotes.toml
+
+```
+dev fleet config
+```
+
+### `dev fleet config edit`
+
+Open remotes.toml in $VISUAL or $EDITOR
+
+```
+dev fleet config edit [flags]
+```
+
+- `--editor` — editor command override
+
+### `dev fleet config init`
+
+Write a starter remotes.toml
+
+```
+dev fleet config init [flags]
+```
+
+- `-f, --force` — overwrite an existing file
+- `--stdout` — print without writing
+
+### `dev fleet config path`
+
+Print the remotes config path
+
+```
+dev fleet config path
+```
+
+### `dev fleet config show`
+
+Print the effective remotes configuration
+
+```
+dev fleet config show
+```
+
+### `dev fleet list`
+
+List repositories and activity across this machine and configured hosts
+
+```
+dev fleet list [flags]
+```
+
+- `--cached` — do not contact remote hosts
+- `--host` — only these configured host names
+- `--json` — emit versioned JSON
+- `--repo` — filter repository name, identity, branch or path
+- `--strict` — fail when a host is unreachable or incompatible
+
+### `dev fleet open`
+
+Open a remote repository through Herdr or an SSH login shell
+
+```
+dev fleet open <host> <repo>
+```
+
+### `dev fleet status`
+
+Probe configured hosts and report snapshot health
+
+```
+dev fleet status [flags]
+```
+
+- `--json` — emit JSON
+- `--strict` — fail when a host is unreachable or incompatible
+
+### `dev fleet sync`
+
+Push optionally, then safely fast-forward clean matching checkouts
+
+```
+dev fleet sync <repo> [flags]
+```
+
+- `--host` — only these configured host names
+- `--json` — emit JSON results
+- `--push` — push the source branch before fan-out
+- `--remote` — Git remote to publish/check (default: upstream, then origin)
 
 ### `dev gitignore`
 

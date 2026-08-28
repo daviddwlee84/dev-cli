@@ -1583,7 +1583,7 @@ func TestUnclonedRemoteHasNoNoteTarget(t *testing.T) {
 	actions := newActions(&recorder{}, nil)
 	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return []tui.RemoteRow{remote}, nil }
 	m := tui.New(actions, nil, nil)
-	m = send(m, key("tab"), key("tab"), key("tab"), key("n"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("n"))
 	if strings.Contains(m.View(), "quick thought") {
 		t.Error("uncloned remote must not accept a local sidecar note")
 	}
@@ -1605,7 +1605,7 @@ func TestRepoNotesColumnAndDetailPreview(t *testing.T) {
 
 func TestTryNStillCreatesTryRatherThanNote(t *testing.T) {
 	m := tui.New(newActions(&recorder{}, nil), nil, nil).WithTries(nil)
-	m = send(m, key("tab"), key("tab"), key("n"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("n"))
 	if !strings.Contains(m.View(), "NEW TRY") {
 		t.Errorf("n in TRY view must retain its lifecycle meaning:\n%s", m.View())
 	}

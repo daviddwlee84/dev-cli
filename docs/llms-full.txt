@@ -840,6 +840,120 @@ For Claude-specific primitive selection, continue with the [parallel work decisi
 
 ---
 
+### Remote repository fleet
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/
+
+> Inventory repositories, tasks, and live runtime activity across SSH-reachable machines with dev fleet, and safely fast-forward a branch between them.
+
+`dev fleet` fans out over SSH to other machines running their own `dev`, so you can see and open their repositories and safely propagate a branch, without merging their independent configuration into this machine's view.
+
+## What a fleet is
+
+A remote fleet is a list of other hosts, each running its own `dev` binary against its own `$XDG_CONFIG_HOME`, its own scan roots, its own task registry, and its own runtime. `dev fleet` never centralizes or takes ownership of that state — it only asks each host's `dev` for a read-only snapshot over SSH and reports what comes back. A host with no `dev` installed, or an unreachable host, degrades that one row; it never blocks the rest of the fleet.
+
+This is a different concept from the REMOTE TUI view and `dev repo new`/PR flows, which talk to a forge CLI (`gh`, `glab`, or the Azure CLI) about repositories hosted on GitHub, GitLab, or Azure DevOps Services. Fleet talks to *your own machines* about *your own local checkouts* on those machines.
+
+## Configure hosts
+
+```bash
+dev fleet config init
+dev fleet config edit
+dev fleet config show
+dev fleet config path
+```
+
+Hosts live in `$XDG_CONFIG_HOME/dev/remotes.toml` (override the path with the global `--remotes <path>` flag). `config init` writes a starter file (`--force` to overwrite, `--stdout` to print without writing); `config edit` opens it in `$VISUAL`/`$EDITOR` (`--editor` overrides); `config show` prints the effective configuration with any plaintext password redacted; `config path` prints the resolved path.
+
+```toml
+schema_version = 1
+
+[defaults]
+connect_timeout = "15s"
+command_timeout = "5m"
+cache_ttl = "15m"
+max_parallel = 4
+dev_path = "auto"
+
+[[hosts]]
+name = "lab"
+ssh_alias = "lab"
+
+[[hosts]]
+name = "vps"
+hostname = "203.0.113.10"
+user = "dev"
+port = 22
+identity_file = "~/.ssh/id_ed25519"
+ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
+```
+
+`schema_version = 1` is required. `[defaults]` supplies `connect_timeout`, `command_timeout`, `cache_ttl`, `max_parallel` (fan-out concurrency), and `dev_path` (`"auto"` searches `PATH`); each `[[hosts]]` entry inherits any of these it does not set explicitly. A host needs `name` plus either `ssh_alias` (preferred — it reuses `~/.ssh/config`'s `ProxyJump`, `IdentityAgent`, and host-key policy exactly like a plain `ssh` invocation) or `hostname` (optionally with `user`, `port`, `identity_file`). `ssh_login_password_source.type` is one of `none` (default), `prompt`, `plain` (inline `value`), or `bitwarden` (`item` looked up with the `bw` CLI). A config file with a `plain` password must be mode `0600`, or `dev fleet` refuses to load it.
+
+## `dev fleet` commands
+
+| Command | Flags | Purpose |
+|---|---|---|
+| `dev fleet list` | `--host <name>` (repeatable), `--repo <query>`, `--json`, `--cached`, `--strict` | List repositories and activity across this machine and configured hosts |
+| `dev fleet status` | `--json`, `--strict` | Probe configured hosts and report snapshot health |
+| `dev fleet sync <repo>` | `--push`, `--remote <name>`, `--host <name>` (repeatable), `--json` | Push optionally, then safely fast-forward clean matching checkouts |
+| `dev fleet open <host> <repo>` | — | Open a remote repository through Herdr or an SSH login shell |
+| `dev fleet config init` | `-f`/`--force`, `--stdout` | Write a starter `remotes.toml` |
+| `dev fleet config edit` | `--editor <cmd>` | Open `remotes.toml` in `$VISUAL`/`$EDITOR` |
+| `dev fleet config show` | — | Print the effective configuration (passwords redacted) |
+| `dev fleet config path` | — | Print the resolved `remotes.toml` path |
+
+`--repo` on `list` filters by name, remote identity, branch, or path; `--cached` answers entirely from the last saved snapshot with no network activity; `--strict` turns an unreachable/timeout/incompatible/invalid host into a non-zero exit for both `list` and `status`. `sync <repo>` resolves `<repo>` locally like any other repository reference; without `--push` its `HEAD` must already equal the fetched upstream, and `--remote` picks which Git remote identifies the repository across hosts (default: the branch's upstream remote, then `origin`).
+
+`dev fleet` also registers four hidden commands (`_snapshot`, `_sync`, `_open-herdr`, `_shell`) that exist only to be invoked by `dev fleet` itself on the far end of an SSH connection — they are the wire protocol, not a user-facing surface.
+
+## Transport and authentication
+
+Every fleet command reaches a host by shelling out to the system `ssh` binary with `ConnectTimeout`, `ServerAliveInterval=15`, and `ServerAliveCountMax=2`, and first attempts `BatchMode=yes` — key or agent authentication only, exactly like a script-friendly `ssh` call. `dev fleet open` additionally allocates a PTY (`-t`) for its interactive login shell.
+
+If that attempt is rejected with "permission denied" and the host defines a `ssh_login_password_source`, `dev` retries once with password authentication. The password itself never touches argv or the environment: `dev` re-executes itself as a one-shot `SSH_ASKPASS` helper, and the secret is handed to that helper over an inherited file descriptor. `prompt` reads a hidden password from `/dev/tty` at run time; `plain` and `bitwarden` resolve it from the config file or from `bw get password <item>` respectively.
+
+On the remote side, `dev_path = "auto"` (the default) searches common install locations (`~/.local/bin`, `~/go/bin`, mise shims, Homebrew/Linuxbrew, `/usr/local/bin`, `/snap/bin`) and then `PATH`, exiting `127` if no `dev` is found; an explicit absolute `dev_path` skips that search and execs it directly.
+
+## What's cached vs. durable
+
+`$XDG_CONFIG_HOME/dev/remotes.toml` is durable, user-authored configuration, on the same footing as `config.toml` — `dev fleet config init`/`edit` manage it, and nothing regenerates it automatically.
+
+Each successful probe writes a per-host JSON snapshot under `$XDG_CACHE_HOME/dev/fleet/v1/<host-name-slug>.json`. That cache is a disposable accelerator, not durable data: it is fingerprinted with an "endpoint ID" derived from the host's connection fields and timeouts, so editing a host's `ssh_alias`, `hostname`, `user`, `identity_file`, `dev_path`, or timeouts automatically invalidates its old cache the next time `dev` reads it. `dev cache list` shows its path, size, and age; `dev cache clear fleet` (or `dev cache clear all`) removes it outright. There is nothing to "rebuild" explicitly — the next `dev fleet list`, `dev fleet status`, or TUI FLEET reload regenerates it from a fresh probe.
+
+The cache exists so an unreachable, timed-out, incompatible, or invalid-response host can still report its last known state (marked `stale`, with `FromCache` set) instead of vanishing from the listing; `--cached` uses only this cache and never touches the network. Each remote host's own `config.toml`, task registry, and repository paths remain authoritative on that host — the cache only ever holds a read-only snapshot of them.
+
+## Fleet in the TUI
+
+FLEET is one of the TUI's five views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, switched with `tab`/`h`/`l`). Like REMOTE, it loads lazily — nothing is fetched until the view is first opened — but it seeds itself from any cached snapshots that are still within `defaults.cache_ttl` so the first render is not empty. `r` forces a live reload of every configured host.
+
+Its table shows `HOST`, `STATE`, `REPO`, `BRANCH`, `GIT`, `LIVE`, `TASKS`, and `PATH`. `enter` opens the selected repository: for a local host row this is an ordinary local open; for a remote row `dev` prefers native Herdr remoting when that host's snapshot reports the `herdr` runtime and the host connects through `ssh_alias` with no password step, and otherwise falls back to an interactive SSH login shell in the repository's directory. Git changes are read-only in this view — FLEET is for inspecting and opening work, not editing it in place.
+
+## Degrading gracefully
+
+Every host is probed independently, so one bad host never fails the fleet as a whole. Per-host states are `ok`, `stale` (cache reused, optionally with an error explaining why), `no-dev` (the remote has no `dev` on its `PATH` — reported, not an error), `unreachable` (SSH itself failed), `timeout`, `incompatible` (an old or unrecognized remote `dev`), and `invalid-response` (malformed snapshot JSON). `ok` and a clean `no-dev` never fail `--strict`; every other state does, including a `stale` result that carries an error.
+
+Separately, the forge integration behind the REMOTE view and `dev repo new`/PR flows (`gh` for GitHub, `glab` for GitLab, and `az` for Azure DevOps Services) is independently optional. `dev doctor` reports each as a warning, not a failure, when it is missing from `PATH`, and every entry point that would use one degrades to plain Git behavior instead — no forge-backed repository listing, and no CLI-assisted pull/merge request creation — so no forge CLI being installed is ever required for `dev` to work. Azure DevOps inventory is additionally opt-in: it stays disabled until `forge.azure_devops` targets are configured.
+
+## Sources
+
+- [`internal/cli/fleet.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet.go)
+- [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
+- [`internal/fleet/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/types.go)
+- [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
+- [`internal/fleet/sync.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/sync.go)
+- [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
+- [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)
+- [`internal/cli/tui.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/tui.go)
+- [`internal/tui/model.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/model.go)
+- [`internal/tui/view.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/view.go)
+- [`internal/tui/rows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/rows.go)
+- [`internal/cli/doctor.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/doctor.go)
+- [`internal/cli/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/cache.go)
+- [`internal/forge/forge.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/forge.go)
+
+---
+
 ### TUI, repositories, quick notes, and bootstrap
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/
@@ -2023,6 +2137,7 @@ The following content is included from `internal/skill/dev-cli/references/comman
 - `--color` — colorize human output: auto, always or never
 - `--config` — path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)
 - `--no-runtime` — do not touch any terminal multiplexer
+- `--remotes` — path to remotes.toml (default: $XDG_CONFIG_HOME/dev/remotes.toml)
 - `--runtime` — override runtime backend: herdr, tmux, zellij or none
 
 ### `dev adopt`
@@ -2074,7 +2189,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|notes|size|gitignore|all>
+dev cache clear <remote|notes|fleet|size|gitignore|all>
 ```
 
 ### `dev cache list`
@@ -2220,6 +2335,105 @@ dev edit [flags]
 ```
 
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
+
+### `dev fleet`
+
+Inspect and safely synchronize dev repositories across machines
+
+```
+dev fleet
+```
+
+### `dev fleet config`
+
+Show, edit, initialise and locate remotes.toml
+
+```
+dev fleet config
+```
+
+### `dev fleet config edit`
+
+Open remotes.toml in $VISUAL or $EDITOR
+
+```
+dev fleet config edit [flags]
+```
+
+- `--editor` — editor command override
+
+### `dev fleet config init`
+
+Write a starter remotes.toml
+
+```
+dev fleet config init [flags]
+```
+
+- `-f, --force` — overwrite an existing file
+- `--stdout` — print without writing
+
+### `dev fleet config path`
+
+Print the remotes config path
+
+```
+dev fleet config path
+```
+
+### `dev fleet config show`
+
+Print the effective remotes configuration
+
+```
+dev fleet config show
+```
+
+### `dev fleet list`
+
+List repositories and activity across this machine and configured hosts
+
+```
+dev fleet list [flags]
+```
+
+- `--cached` — do not contact remote hosts
+- `--host` — only these configured host names
+- `--json` — emit versioned JSON
+- `--repo` — filter repository name, identity, branch or path
+- `--strict` — fail when a host is unreachable or incompatible
+
+### `dev fleet open`
+
+Open a remote repository through Herdr or an SSH login shell
+
+```
+dev fleet open <host> <repo>
+```
+
+### `dev fleet status`
+
+Probe configured hosts and report snapshot health
+
+```
+dev fleet status [flags]
+```
+
+- `--json` — emit JSON
+- `--strict` — fail when a host is unreachable or incompatible
+
+### `dev fleet sync`
+
+Push optionally, then safely fast-forward clean matching checkouts
+
+```
+dev fleet sync <repo> [flags]
+```
+
+- `--host` — only these configured host names
+- `--json` — emit JSON results
+- `--push` — push the source branch before fan-out
+- `--remote` — Git remote to publish/check (default: upstream, then origin)
 
 ### `dev gitignore`
 
@@ -3036,6 +3250,7 @@ tested_with: optional
 | `done --pr` leaves task active | [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
+| SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
 | quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
 | current GitHub Flow has six branch/PR steps and no deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official, checked 2026-08-28 |
 | linked worktrees share repository data but own files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official, checked 2026-08-28 |
@@ -4122,6 +4337,123 @@ Claude-specific primitive 的選擇請接著看[平行工作決策指南](https:
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/runtime/herdr.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/herdr.go)
 - [Claude Code：平行執行 agents](https://code.claude.com/docs/en/agents)
+
+---
+
+### Remote repository fleet
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/
+
+> 透過 dev fleet 在 SSH 可連線的多台機器間盤點 repository、task 與 live runtime activity，並安全地在機器間 fast-forward 一個 branch。
+
+!!! note "術語規則"
+    有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
+
+`dev fleet` 透過 SSH 連到其他執行自己 `dev` 的機器，讓你能查看並開啟它們的 repository、安全地傳播 branch，而不會把它們各自獨立的設定合併進這台機器的視角。
+
+## Fleet 是什麼
+
+Remote fleet 是一份其他 host 的清單，每個 host 都執行自己的 `dev` binary，使用自己的 `$XDG_CONFIG_HOME`、自己的 scan roots、自己的 task registry 與自己的 runtime。`dev fleet` 從不集中管理或取得那份 state 的 ownership，它只會透過 SSH 向每個 host 的 `dev` 要一份 read-only snapshot，並回報收到的結果。沒有安裝 `dev` 的 host，或無法連線的 host，只會讓那一列 degrade；不會擋住 fleet 其餘部分。
+
+這與 REMOTE TUI view 及 `dev repo new`/PR flow 是不同概念——後者是與 forge CLI（`gh`、`glab` 或 Azure CLI）溝通、處理 hosted 在 GitHub、GitLab 或 Azure DevOps Services 上的 repository。Fleet 溝通的對象是*你自己的機器*上*你自己的 local checkout*。
+
+## 設定 hosts
+
+```bash
+dev fleet config init
+dev fleet config edit
+dev fleet config show
+dev fleet config path
+```
+
+Host 設定放在 `$XDG_CONFIG_HOME/dev/remotes.toml`（可用全域 `--remotes <path>` flag 覆寫路徑）。`config init` 會寫入一份 starter file（`--force` 覆寫既有檔案、`--stdout` 只印出不寫入）；`config edit` 會用 `$VISUAL`/`$EDITOR` 開啟它（`--editor` 可覆寫）；`config show` 印出目前生效的設定，明文密碼會被遮蔽；`config path` 印出解析後的路徑。
+
+```toml
+schema_version = 1
+
+[defaults]
+connect_timeout = "15s"
+command_timeout = "5m"
+cache_ttl = "15m"
+max_parallel = 4
+dev_path = "auto"
+
+[[hosts]]
+name = "lab"
+ssh_alias = "lab"
+
+[[hosts]]
+name = "vps"
+hostname = "203.0.113.10"
+user = "dev"
+port = 22
+identity_file = "~/.ssh/id_ed25519"
+ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
+```
+
+`schema_version = 1` 為必填。`[defaults]` 提供 `connect_timeout`、`command_timeout`、`cache_ttl`、`max_parallel`（fan-out 並行度）與 `dev_path`（`"auto"` 會搜尋 `PATH`）；每個 `[[hosts]]` 項目未明確設定的欄位都會沿用這些預設值。一個 host 需要 `name`，並搭配 `ssh_alias`（優先——它會沿用 `~/.ssh/config` 的 `ProxyJump`、`IdentityAgent` 與 host-key policy，行為與單純的 `ssh` 呼叫完全一致）或 `hostname`（可搭配 `user`、`port`、`identity_file`）其中之一。`ssh_login_password_source.type` 可為 `none`（預設）、`prompt`、`plain`（內嵌 `value`）或 `bitwarden`（用 `item` 透過 `bw` CLI 查詢）。設定檔若含 `plain` 密碼，檔案權限必須是 `0600`，否則 `dev fleet` 會拒絕載入。
+
+## `dev fleet` 指令
+
+| Command | Flags | Purpose |
+|---|---|---|
+| `dev fleet list` | `--host <name>`（可重複）、`--repo <query>`、`--json`、`--cached`、`--strict` | List repositories and activity across this machine and configured hosts |
+| `dev fleet status` | `--json`、`--strict` | Probe configured hosts and report snapshot health |
+| `dev fleet sync <repo>` | `--push`、`--remote <name>`、`--host <name>`（可重複）、`--json` | Push optionally, then safely fast-forward clean matching checkouts |
+| `dev fleet open <host> <repo>` | — | Open a remote repository through Herdr or an SSH login shell |
+| `dev fleet config init` | `-f`/`--force`、`--stdout` | Write a starter `remotes.toml` |
+| `dev fleet config edit` | `--editor <cmd>` | Open `remotes.toml` in `$VISUAL`/`$EDITOR` |
+| `dev fleet config show` | — | Print the effective configuration (passwords redacted) |
+| `dev fleet config path` | — | Print the resolved `remotes.toml` path |
+
+`list` 的 `--repo` 會依 name、remote identity、branch 或 path 過濾；`--cached` 完全依最後一次儲存的 snapshot 回答，不會有任何 network activity；`--strict` 會讓 `list` 與 `status` 在 host 為 unreachable/timeout/incompatible/invalid 時回傳非零結果。`sync <repo>` 對 `<repo>` 的解析方式與其他 repository reference 相同；沒有 `--push` 時，其 `HEAD` 必須已等於 fetch 後的 upstream；`--remote` 決定用哪個 Git remote 在各 host 間識別這個 repository（預設：branch 的 upstream remote，其次是 `origin`）。
+
+`dev fleet` 還註冊了四個 hidden command（`_snapshot`、`_sync`、`_open-herdr`、`_shell`），它們的存在只是為了讓 `dev fleet` 在 SSH 連線的另一端自行呼叫——這是 wire protocol，不是給使用者直接使用的介面。
+
+## Transport 與認證
+
+每個 fleet command 都透過呼叫系統的 `ssh` binary 連到 host，帶上 `ConnectTimeout`、`ServerAliveInterval=15`、`ServerAliveCountMax=2`，並且第一次嘗試一律用 `BatchMode=yes`——只用 key 或 agent authentication，行為就像一次適合腳本化的 `ssh` 呼叫。`dev fleet open` 另外會為它的 interactive login shell 配置 PTY（`-t`）。
+
+若該次嘗試因 "permission denied" 被拒絕，且該 host 設定了 `ssh_login_password_source`，`dev` 會再重試一次、改用密碼驗證。密碼本身不會出現在 argv 或環境變數中：`dev` 會把自己重新以一次性的 `SSH_ASKPASS` helper 執行，密碼透過一個繼承的 file descriptor 交給那個 helper。`prompt` 會在執行當下從 `/dev/tty` 讀取隱藏輸入；`plain` 與 `bitwarden` 則分別從設定檔或 `bw get password <item>` 取得。
+
+在遠端那一側，預設的 `dev_path = "auto"` 會搜尋常見安裝位置（`~/.local/bin`、`~/go/bin`、mise shims、Homebrew/Linuxbrew、`/usr/local/bin`、`/snap/bin`）再查 `PATH`，找不到 `dev` 就以 `127` 結束；明確指定絕對路徑的 `dev_path` 則會跳過搜尋，直接 exec 該路徑。
+
+## 哪些是 cache、哪些是 durable
+
+`$XDG_CONFIG_HOME/dev/remotes.toml` 是 durable、由使用者撰寫的設定，與 `config.toml` 地位相同——由 `dev fleet config init`/`edit` 管理，不會被自動重新產生。
+
+每次成功探測都會在 `$XDG_CACHE_HOME/dev/fleet/v1/<host-name-slug>.json` 寫入該 host 的 JSON snapshot。這份 cache 是可拋棄的加速機制，不是 durable data：它會依 host 的連線欄位與 timeout 產生一個「endpoint ID」指紋，因此修改 host 的 `ssh_alias`、`hostname`、`user`、`identity_file`、`dev_path` 或 timeout，下次 `dev` 讀取時會自動讓舊 cache 失效。`dev cache list` 會顯示它的路徑、大小與存在時間；`dev cache clear fleet`（或 `dev cache clear all`）可直接移除它。沒有需要手動「重建」的步驟——下一次 `dev fleet list`、`dev fleet status` 或 TUI 的 FLEET reload 就會用一次新的探測重新產生它。
+
+這份 cache 存在的目的，是讓 unreachable、timeout、incompatible 或 invalid-response 的 host 仍能回報上一次已知的狀態（標記為 `stale`，並設定 `FromCache`），而不是直接從清單消失；`--cached` 只會使用這份 cache，完全不連網路。每個 remote host 自己的 `config.toml`、task registry 與 repository path，在該 host 上仍是唯一權威來源——cache 只保存它們的 read-only snapshot。
+
+## TUI 中的 FLEET
+
+FLEET 是 TUI 五個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會抓取任何資料——但它會先用仍在 `defaults.cache_ttl` 期限內的 cached snapshot 填入畫面，讓初次顯示不是空的。`r` 會強制對所有已設定的 host 做一次 live reload。
+
+它的表格欄位是 `HOST`、`STATE`、`REPO`、`BRANCH`、`GIT`、`LIVE`、`TASKS`、`PATH`。`enter` 會開啟選取的 repository：local host 的列是一般的 local open；remote 的列則是，當該 host 的 snapshot 回報 `herdr` runtime，且該 host 透過 `ssh_alias` 連線、不需要密碼步驟時，優先使用原生 Herdr remoting，否則退回在該 repository 目錄下開啟 interactive SSH login shell。這個 view 中 Git 的變更是唯讀的——FLEET 是用來檢視與開啟工作，不是在原地編輯它。
+
+## 優雅降級
+
+每個 host 都是獨立探測的，所以一個壞掉的 host 不會讓整個 fleet 失敗。每個 host 的狀態有 `ok`、`stale`（重用 cache，可能附帶說明原因的 error）、`no-dev`（remote 的 `PATH` 上沒有 `dev`——僅回報，不視為 error）、`unreachable`（SSH 本身失敗）、`timeout`、`incompatible`（remote 的 `dev` 版本過舊或無法辨識）與 `invalid-response`（snapshot JSON 格式不正確）。`ok` 與乾淨的 `no-dev` 不會讓 `--strict` 失敗；其餘狀態都會，包括帶有 error 的 `stale` 結果。
+
+另一方面，REMOTE view 與 `dev repo new`/PR flow 背後的 forge 整合（GitHub 用 `gh`、GitLab 用 `glab`、Azure DevOps Services 用 `az`）是各自獨立的選用功能。這些 CLI 缺少時，`dev doctor` 只會回報 warning，不是 failure；每個原本會用到它們的進入點都會退回 plain Git 行為——沒有 forge 提供的 repository 清單，也沒有 CLI 輔助的 pull/merge request 建立——因此這些 CLI 是否安裝，從來不是 `dev` 能否運作的必要條件。Azure DevOps inventory 還額外是 opt-in：未設定 `forge.azure_devops` targets 前一律停用。
+
+## 來源
+
+- [`internal/cli/fleet.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet.go)
+- [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
+- [`internal/fleet/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/types.go)
+- [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
+- [`internal/fleet/sync.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/sync.go)
+- [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
+- [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)
+- [`internal/cli/tui.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/tui.go)
+- [`internal/tui/model.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/model.go)
+- [`internal/tui/view.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/view.go)
+- [`internal/tui/rows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/rows.go)
+- [`internal/cli/doctor.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/doctor.go)
+- [`internal/cli/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/cache.go)
+- [`internal/forge/forge.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/forge.go)
 
 ---
 
@@ -5341,6 +5673,7 @@ Child process 不能改變 parent working directory，因此受信任的 `shell-
 - `--color` — colorize human output: auto, always or never
 - `--config` — path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)
 - `--no-runtime` — do not touch any terminal multiplexer
+- `--remotes` — path to remotes.toml (default: $XDG_CONFIG_HOME/dev/remotes.toml)
 - `--runtime` — override runtime backend: herdr, tmux, zellij or none
 
 ### `dev adopt`
@@ -5392,7 +5725,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|notes|size|gitignore|all>
+dev cache clear <remote|notes|fleet|size|gitignore|all>
 ```
 
 ### `dev cache list`
@@ -5538,6 +5871,105 @@ dev edit [flags]
 ```
 
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
+
+### `dev fleet`
+
+Inspect and safely synchronize dev repositories across machines
+
+```
+dev fleet
+```
+
+### `dev fleet config`
+
+Show, edit, initialise and locate remotes.toml
+
+```
+dev fleet config
+```
+
+### `dev fleet config edit`
+
+Open remotes.toml in $VISUAL or $EDITOR
+
+```
+dev fleet config edit [flags]
+```
+
+- `--editor` — editor command override
+
+### `dev fleet config init`
+
+Write a starter remotes.toml
+
+```
+dev fleet config init [flags]
+```
+
+- `-f, --force` — overwrite an existing file
+- `--stdout` — print without writing
+
+### `dev fleet config path`
+
+Print the remotes config path
+
+```
+dev fleet config path
+```
+
+### `dev fleet config show`
+
+Print the effective remotes configuration
+
+```
+dev fleet config show
+```
+
+### `dev fleet list`
+
+List repositories and activity across this machine and configured hosts
+
+```
+dev fleet list [flags]
+```
+
+- `--cached` — do not contact remote hosts
+- `--host` — only these configured host names
+- `--json` — emit versioned JSON
+- `--repo` — filter repository name, identity, branch or path
+- `--strict` — fail when a host is unreachable or incompatible
+
+### `dev fleet open`
+
+Open a remote repository through Herdr or an SSH login shell
+
+```
+dev fleet open <host> <repo>
+```
+
+### `dev fleet status`
+
+Probe configured hosts and report snapshot health
+
+```
+dev fleet status [flags]
+```
+
+- `--json` — emit JSON
+- `--strict` — fail when a host is unreachable or incompatible
+
+### `dev fleet sync`
+
+Push optionally, then safely fast-forward clean matching checkouts
+
+```
+dev fleet sync <repo> [flags]
+```
+
+- `--host` — only these configured host names
+- `--json` — emit JSON results
+- `--push` — push the source branch before fan-out
+- `--remote` — Git remote to publish/check (default: upstream, then origin)
 
 ### `dev gitignore`
 
@@ -6360,6 +6792,7 @@ tested_with: optional
 | `done --pr` 保持 task active | [變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktree 與 provisioning](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
+| SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
 | quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
 | 現行 GitHub Flow 有六個 branch/PR steps 且沒有 deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official，2026-08-28 查核 |
 | linked worktree 共享 repository data，但有自己的 files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/zh-TW/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official，2026-08-28 查核 |

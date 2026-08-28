@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- A remote repository fleet: `dev fleet list/status/sync/open` and `dev fleet config` inventory
+  repositories, tasks, and live runtime state across SSH-reachable machines running their own `dev`,
+  with a FLEET dashboard view, per-host degradation states, and a regenerable `fleet` cache.
 - An interactive `dev done` finish wizard that analyzes a dirty checkout against the base and offers
   commit, discard, or cancel, plus a `--dirty auto|fail|commit|discard` policy with `-m/--message`
   and `-y/--yes` for non-interactive callers.

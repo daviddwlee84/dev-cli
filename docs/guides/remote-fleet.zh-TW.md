@@ -1,0 +1,118 @@
+---
+description: 透過 dev fleet 在 SSH 可連線的多台機器間盤點 repository、task 與 live runtime activity，並安全地在機器間 fast-forward 一個 branch。
+authority: project
+status: stable
+verified_on: 2026-08-28
+lang: zh-TW
+---
+
+# Remote repository fleet
+
+!!! note "術語規則"
+    有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
+
+`dev fleet` 透過 SSH 連到其他執行自己 `dev` 的機器，讓你能查看並開啟它們的 repository、安全地傳播 branch，而不會把它們各自獨立的設定合併進這台機器的視角。
+
+## Fleet 是什麼
+
+Remote fleet 是一份其他 host 的清單，每個 host 都執行自己的 `dev` binary，使用自己的 `$XDG_CONFIG_HOME`、自己的 scan roots、自己的 task registry 與自己的 runtime。`dev fleet` 從不集中管理或取得那份 state 的 ownership，它只會透過 SSH 向每個 host 的 `dev` 要一份 read-only snapshot，並回報收到的結果。沒有安裝 `dev` 的 host，或無法連線的 host，只會讓那一列 degrade；不會擋住 fleet 其餘部分。
+
+這與 REMOTE TUI view 及 `dev repo new`/PR flow 是不同概念——後者是與 forge CLI（`gh`、`glab` 或 Azure CLI）溝通、處理 hosted 在 GitHub、GitLab 或 Azure DevOps Services 上的 repository。Fleet 溝通的對象是*你自己的機器*上*你自己的 local checkout*。
+
+## 設定 hosts
+
+```bash
+dev fleet config init
+dev fleet config edit
+dev fleet config show
+dev fleet config path
+```
+
+Host 設定放在 `$XDG_CONFIG_HOME/dev/remotes.toml`（可用全域 `--remotes <path>` flag 覆寫路徑）。`config init` 會寫入一份 starter file（`--force` 覆寫既有檔案、`--stdout` 只印出不寫入）；`config edit` 會用 `$VISUAL`/`$EDITOR` 開啟它（`--editor` 可覆寫）；`config show` 印出目前生效的設定，明文密碼會被遮蔽；`config path` 印出解析後的路徑。
+
+```toml
+schema_version = 1
+
+[defaults]
+connect_timeout = "15s"
+command_timeout = "5m"
+cache_ttl = "15m"
+max_parallel = 4
+dev_path = "auto"
+
+[[hosts]]
+name = "lab"
+ssh_alias = "lab"
+
+[[hosts]]
+name = "vps"
+hostname = "203.0.113.10"
+user = "dev"
+port = 22
+identity_file = "~/.ssh/id_ed25519"
+ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
+```
+
+`schema_version = 1` 為必填。`[defaults]` 提供 `connect_timeout`、`command_timeout`、`cache_ttl`、`max_parallel`（fan-out 並行度）與 `dev_path`（`"auto"` 會搜尋 `PATH`）；每個 `[[hosts]]` 項目未明確設定的欄位都會沿用這些預設值。一個 host 需要 `name`，並搭配 `ssh_alias`（優先——它會沿用 `~/.ssh/config` 的 `ProxyJump`、`IdentityAgent` 與 host-key policy，行為與單純的 `ssh` 呼叫完全一致）或 `hostname`（可搭配 `user`、`port`、`identity_file`）其中之一。`ssh_login_password_source.type` 可為 `none`（預設）、`prompt`、`plain`（內嵌 `value`）或 `bitwarden`（用 `item` 透過 `bw` CLI 查詢）。設定檔若含 `plain` 密碼，檔案權限必須是 `0600`，否則 `dev fleet` 會拒絕載入。
+
+## `dev fleet` 指令
+
+| Command | Flags | Purpose |
+|---|---|---|
+| `dev fleet list` | `--host <name>`（可重複）、`--repo <query>`、`--json`、`--cached`、`--strict` | List repositories and activity across this machine and configured hosts |
+| `dev fleet status` | `--json`、`--strict` | Probe configured hosts and report snapshot health |
+| `dev fleet sync <repo>` | `--push`、`--remote <name>`、`--host <name>`（可重複）、`--json` | Push optionally, then safely fast-forward clean matching checkouts |
+| `dev fleet open <host> <repo>` | — | Open a remote repository through Herdr or an SSH login shell |
+| `dev fleet config init` | `-f`/`--force`、`--stdout` | Write a starter `remotes.toml` |
+| `dev fleet config edit` | `--editor <cmd>` | Open `remotes.toml` in `$VISUAL`/`$EDITOR` |
+| `dev fleet config show` | — | Print the effective configuration (passwords redacted) |
+| `dev fleet config path` | — | Print the resolved `remotes.toml` path |
+
+`list` 的 `--repo` 會依 name、remote identity、branch 或 path 過濾；`--cached` 完全依最後一次儲存的 snapshot 回答，不會有任何 network activity；`--strict` 會讓 `list` 與 `status` 在 host 為 unreachable/timeout/incompatible/invalid 時回傳非零結果。`sync <repo>` 對 `<repo>` 的解析方式與其他 repository reference 相同；沒有 `--push` 時，其 `HEAD` 必須已等於 fetch 後的 upstream；`--remote` 決定用哪個 Git remote 在各 host 間識別這個 repository（預設：branch 的 upstream remote，其次是 `origin`）。
+
+`dev fleet` 還註冊了四個 hidden command（`_snapshot`、`_sync`、`_open-herdr`、`_shell`），它們的存在只是為了讓 `dev fleet` 在 SSH 連線的另一端自行呼叫——這是 wire protocol，不是給使用者直接使用的介面。
+
+## Transport 與認證
+
+每個 fleet command 都透過呼叫系統的 `ssh` binary 連到 host，帶上 `ConnectTimeout`、`ServerAliveInterval=15`、`ServerAliveCountMax=2`，並且第一次嘗試一律用 `BatchMode=yes`——只用 key 或 agent authentication，行為就像一次適合腳本化的 `ssh` 呼叫。`dev fleet open` 另外會為它的 interactive login shell 配置 PTY（`-t`）。
+
+若該次嘗試因 "permission denied" 被拒絕，且該 host 設定了 `ssh_login_password_source`，`dev` 會再重試一次、改用密碼驗證。密碼本身不會出現在 argv 或環境變數中：`dev` 會把自己重新以一次性的 `SSH_ASKPASS` helper 執行，密碼透過一個繼承的 file descriptor 交給那個 helper。`prompt` 會在執行當下從 `/dev/tty` 讀取隱藏輸入；`plain` 與 `bitwarden` 則分別從設定檔或 `bw get password <item>` 取得。
+
+在遠端那一側，預設的 `dev_path = "auto"` 會搜尋常見安裝位置（`~/.local/bin`、`~/go/bin`、mise shims、Homebrew/Linuxbrew、`/usr/local/bin`、`/snap/bin`）再查 `PATH`，找不到 `dev` 就以 `127` 結束；明確指定絕對路徑的 `dev_path` 則會跳過搜尋，直接 exec 該路徑。
+
+## 哪些是 cache、哪些是 durable
+
+`$XDG_CONFIG_HOME/dev/remotes.toml` 是 durable、由使用者撰寫的設定，與 `config.toml` 地位相同——由 `dev fleet config init`/`edit` 管理，不會被自動重新產生。
+
+每次成功探測都會在 `$XDG_CACHE_HOME/dev/fleet/v1/<host-name-slug>.json` 寫入該 host 的 JSON snapshot。這份 cache 是可拋棄的加速機制，不是 durable data：它會依 host 的連線欄位與 timeout 產生一個「endpoint ID」指紋，因此修改 host 的 `ssh_alias`、`hostname`、`user`、`identity_file`、`dev_path` 或 timeout，下次 `dev` 讀取時會自動讓舊 cache 失效。`dev cache list` 會顯示它的路徑、大小與存在時間；`dev cache clear fleet`（或 `dev cache clear all`）可直接移除它。沒有需要手動「重建」的步驟——下一次 `dev fleet list`、`dev fleet status` 或 TUI 的 FLEET reload 就會用一次新的探測重新產生它。
+
+這份 cache 存在的目的，是讓 unreachable、timeout、incompatible 或 invalid-response 的 host 仍能回報上一次已知的狀態（標記為 `stale`，並設定 `FromCache`），而不是直接從清單消失；`--cached` 只會使用這份 cache，完全不連網路。每個 remote host 自己的 `config.toml`、task registry 與 repository path，在該 host 上仍是唯一權威來源——cache 只保存它們的 read-only snapshot。
+
+## TUI 中的 FLEET
+
+FLEET 是 TUI 五個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會抓取任何資料——但它會先用仍在 `defaults.cache_ttl` 期限內的 cached snapshot 填入畫面，讓初次顯示不是空的。`r` 會強制對所有已設定的 host 做一次 live reload。
+
+它的表格欄位是 `HOST`、`STATE`、`REPO`、`BRANCH`、`GIT`、`LIVE`、`TASKS`、`PATH`。`enter` 會開啟選取的 repository：local host 的列是一般的 local open；remote 的列則是，當該 host 的 snapshot 回報 `herdr` runtime，且該 host 透過 `ssh_alias` 連線、不需要密碼步驟時，優先使用原生 Herdr remoting，否則退回在該 repository 目錄下開啟 interactive SSH login shell。這個 view 中 Git 的變更是唯讀的——FLEET 是用來檢視與開啟工作，不是在原地編輯它。
+
+## 優雅降級
+
+每個 host 都是獨立探測的，所以一個壞掉的 host 不會讓整個 fleet 失敗。每個 host 的狀態有 `ok`、`stale`（重用 cache，可能附帶說明原因的 error）、`no-dev`（remote 的 `PATH` 上沒有 `dev`——僅回報，不視為 error）、`unreachable`（SSH 本身失敗）、`timeout`、`incompatible`（remote 的 `dev` 版本過舊或無法辨識）與 `invalid-response`（snapshot JSON 格式不正確）。`ok` 與乾淨的 `no-dev` 不會讓 `--strict` 失敗；其餘狀態都會，包括帶有 error 的 `stale` 結果。
+
+另一方面，REMOTE view 與 `dev repo new`/PR flow 背後的 forge 整合（GitHub 用 `gh`、GitLab 用 `glab`、Azure DevOps Services 用 `az`）是各自獨立的選用功能。這些 CLI 缺少時，`dev doctor` 只會回報 warning，不是 failure；每個原本會用到它們的進入點都會退回 plain Git 行為——沒有 forge 提供的 repository 清單，也沒有 CLI 輔助的 pull/merge request 建立——因此這些 CLI 是否安裝，從來不是 `dev` 能否運作的必要條件。Azure DevOps inventory 還額外是 opt-in：未設定 `forge.azure_devops` targets 前一律停用。
+
+## 來源
+
+- [`internal/cli/fleet.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet.go)
+- [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
+- [`internal/fleet/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/types.go)
+- [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
+- [`internal/fleet/sync.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/sync.go)
+- [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
+- [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)
+- [`internal/cli/tui.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/tui.go)
+- [`internal/tui/model.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/model.go)
+- [`internal/tui/view.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/view.go)
+- [`internal/tui/rows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/rows.go)
+- [`internal/cli/doctor.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/doctor.go)
+- [`internal/cli/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/cache.go)
+- [`internal/forge/forge.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/forge.go)
