@@ -142,6 +142,13 @@ provision_timeout = "90s"
 }
 
 func TestValidateRejectsBadBackendAndTemplate(t *testing.T) {
+	for _, backend := range []string{"auto", "herdr", "tmux", "zellij", "none"} {
+		c := Default()
+		c.Runtime.Backend = backend
+		if err := c.Validate(); err != nil {
+			t.Errorf("backend %q should validate: %v", backend, err)
+		}
+	}
 	c := Default()
 	c.Runtime.Backend = "screen"
 	if err := c.Validate(); err == nil {

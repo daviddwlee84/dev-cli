@@ -248,12 +248,13 @@ type TryRequest struct {
 	To       string
 }
 
-// TryActionResult tells the model what local snapshots need refreshing. CD is
-// honored after Bubble Tea leaves the alternate screen.
+// TryActionResult tells the model what local snapshots need refreshing. CD and
+// RuntimeHandle are honored only after Bubble Tea leaves the alternate screen.
 type TryActionResult struct {
-	Status       string
-	CD           string
-	RefreshRepos bool
+	Status        string
+	CD            string
+	RuntimeHandle string
+	RefreshRepos  bool
 }
 
 // TryActions groups Try-specific callbacks instead of continuously widening the

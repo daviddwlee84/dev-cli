@@ -107,7 +107,7 @@ only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 
 - Task lifecycle: `start` / `park` / `resume` / `done` / `sweep`.
 - Worktree ownership rule, path templates, provisioning, per-repo `.dev.toml`.
-- Runtime adapters: herdr, tmux, none, behind one contract suite.
+- Runtime adapters: herdr, tmux, zellij, none, behind one contract suite.
 - Repo discovery and gh/glab-backed clone, create, sync.
 - Durable Try catalog and lifecycle: create/clone/open, tags/notes, explicit
   deprecate/reactivate, reversible archive/restore, and identity-preserving

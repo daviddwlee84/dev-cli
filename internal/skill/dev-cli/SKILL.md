@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: 'Manage repositories and work-in-progress with the dev CLI: bootstrap existing machines, organise repos without destructive moves, own worktree lifecycle and provisioning, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/herdr/tmux. Use when starting, parking or resuming work; scanning or organising repos; choosing a worktree mechanism; fixing worktree setup; or cleaning stale branches, checkouts and sessions.'
+description: 'Manage repositories and work-in-progress with the dev CLI: bootstrap existing machines, organise repos without destructive moves, own worktree lifecycle and provisioning, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/herdr/tmux/zellij. Use when starting, parking or resuming work; scanning or organising repos; choosing a worktree mechanism; fixing worktree setup; or cleaning stale branches, checkouts and sessions.'
 ---
 
 # dev-cli
@@ -11,7 +11,8 @@ runtimes. It exists to stop four different things collapsing into one:
 ```
 git remote      durable code state, the source of truth
 git worktree    a disposable local checkout
-herdr / tmux    a per-host live runtime
+herdr / tmux / zellij
+                a per-host live runtime
 dev             human intent: what am I working on, and what is next
 ```
 
@@ -34,7 +35,7 @@ command -v dev || echo "not installed"
 dev doctor          # what works on this machine, and what degrades
 ```
 
-Only **git** is required. `herdr`, `tmux`, `gh` and `glab` each enable more and
+Only **git** is required. `herdr`, `tmux`, `zellij`, `gh` and `glab` each enable more and
 degrade cleanly when absent — never make a step hard-depend on one.
 
 ## Worktree ownership — read this before creating any worktree

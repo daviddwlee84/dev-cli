@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -73,8 +74,8 @@ func TestResumeReopensStaleHandleAndPersistsBackend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rt.openCalls != 1 || got.RuntimeHandle != "w8" || got.RuntimeName != "herdr" {
-		t.Fatalf("stale handle was not reopened with provenance: calls=%d task=%+v", rt.openCalls, got)
+	if rt.openCalls != 1 || got.RuntimeHandle != "w8" || got.RuntimeName != "herdr" || !reflect.DeepEqual(rt.activateCalls, []string{"w8"}) {
+		t.Fatalf("stale handle was not reopened, persisted, and activated: calls=%d activate=%v task=%+v", rt.openCalls, rt.activateCalls, got)
 	}
 }
 
@@ -100,6 +101,9 @@ func TestResumeKeepsValidatedLiveHandle(t *testing.T) {
 	}
 	if rt.openCalls != 0 {
 		t.Fatalf("validated handle should not reopen, calls=%d", rt.openCalls)
+	}
+	if !reflect.DeepEqual(rt.activateCalls, []string{"w7"}) {
+		t.Fatalf("validated handle activation = %v", rt.activateCalls)
 	}
 }
 

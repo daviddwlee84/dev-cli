@@ -51,21 +51,21 @@ func newActions(r *recorder, rows []inventory.Row) tui.Actions {
 		},
 		ReloadRepos:  func(context.Context) ([]tui.RepoRow, error) { return nil, nil },
 		ReloadRemote: func(context.Context) ([]tui.RemoteRow, error) { return nil, nil },
-		OpenRepo: func(_ context.Context, rr tui.RepoRow) (string, error) {
+		OpenRepo: func(_ context.Context, rr tui.RepoRow) (tui.OpenResult, error) {
 			r.opened = append(r.opened, "repo:"+rr.Repo.Name)
-			return "opened", nil
+			return tui.OpenResult{Status: "opened"}, nil
 		},
-		OpenCheckout: func(_ context.Context, rr tui.RepoRow, checkout inventory.RepoCheckout) (string, error) {
+		OpenCheckout: func(_ context.Context, rr tui.RepoRow, checkout inventory.RepoCheckout) (tui.OpenResult, error) {
 			r.opened = append(r.opened, "worktree:"+checkout.Branch())
-			return "opened", nil
+			return tui.OpenResult{Status: "opened"}, nil
 		},
-		OpenRemote: func(_ context.Context, rr tui.RemoteRow) (string, error) {
+		OpenRemote: func(_ context.Context, rr tui.RemoteRow) (tui.OpenResult, error) {
 			r.opened = append(r.opened, "remote:"+rr.Repo.FullName)
-			return "opened", nil
+			return tui.OpenResult{Status: "opened"}, nil
 		},
-		CloneRemote: func(_ context.Context, rr tui.RemoteRow) (string, string, error) {
+		CloneRemote: func(_ context.Context, rr tui.RemoteRow) (tui.OpenResult, string, error) {
 			r.cloned = append(r.cloned, rr.Repo.FullName)
-			return "cloned", "/src/" + rr.Repo.Name, nil
+			return tui.OpenResult{Status: "cloned"}, "/src/" + rr.Repo.Name, nil
 		},
 		Start: func(_ context.Context, rr tui.RepoRow, name string) (string, error) {
 			r.started = append(r.started, "worktree:"+rr.Repo.Name+"/"+name)
@@ -75,9 +75,9 @@ func newActions(r *recorder, rows []inventory.Row) tui.Actions {
 			r.started = append(r.started, "direct:"+rr.Repo.Name+"/"+name)
 			return "started direct", nil
 		},
-		Open: func(_ context.Context, t *task.Task) (string, error) {
+		Open: func(_ context.Context, t *task.Task) (tui.OpenResult, error) {
 			r.opened = append(r.opened, t.ID)
-			return "opened " + t.ID, nil
+			return tui.OpenResult{Status: "opened " + t.ID}, nil
 		},
 		Park: func(_ context.Context, t *task.Task, next string) (string, error) {
 			r.parked = append(r.parked, t.ID)
@@ -228,6 +228,22 @@ func TestEnterOpensSelectedTask(t *testing.T) {
 	send(m, key("down"), key("enter"))
 	if len(rec.opened) != 1 || rec.opened[0] != "b" {
 		t.Errorf("enter should open the selected task, opened %v", rec.opened)
+	}
+}
+
+func TestEnterDefersRuntimeActivationUntilAfterTUIExit(t *testing.T) {
+	rows := []inventory.Row{row("a", "first", task.Hot, "")}
+	actions := newActions(&recorder{}, rows)
+	actions.Runtime = runtime.NewTmux()
+	actions.Open = func(context.Context, *task.Task) (tui.OpenResult, error) {
+		return tui.OpenResult{Status: "opened", RuntimeHandle: "task-a"}, nil
+	}
+	m := send(tui.New(actions, rows, nil), key("enter"))
+	if got := m.Activation(); got != "task-a" {
+		t.Fatalf("Activation = %q, want task-a", got)
+	}
+	if got := m.Chosen(); got != "" {
+		t.Fatalf("runtime activation must not become a cd directive: %q", got)
 	}
 }
 

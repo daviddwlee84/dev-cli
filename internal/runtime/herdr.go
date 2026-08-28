@@ -232,8 +232,8 @@ func (h *Herdr) AgentActivities(ctx context.Context) ([]AgentActivity, error) {
 	return out, nil
 }
 
-// Open implements Runtime. An already-open directory is focused rather than
-// opened twice.
+// Open implements Runtime. An already-open directory is reused rather than
+// opened twice. It remains detached; explicit navigation calls Activate.
 func (h *Herdr) Open(ctx context.Context, dir, label string) (OpenResult, error) {
 	existing, err := h.List(ctx)
 	if err != nil {
@@ -241,9 +241,6 @@ func (h *Herdr) Open(ctx context.Context, dir, label string) (OpenResult, error)
 	}
 	for _, s := range existing {
 		if s.Covers(dir) {
-			if err := h.call(ctx, nil, "workspace", "focus", s.Handle); err != nil {
-				return OpenResult{}, err
-			}
 			return OpenResult{Handle: s.Handle, Surface: "workspace", Opened: true}, nil
 		}
 	}
@@ -269,6 +266,22 @@ func (h *Herdr) Open(ctx context.Context, dir, label string) (OpenResult, error)
 		Handle: res.Workspace.WorkspaceID, Surface: "workspace", Opened: true,
 		Created: true, RootPaneID: res.RootPane.PaneID,
 	}, nil
+}
+
+// Activate focuses a workspace and then mirrors hhere's client behavior:
+// inside Herdr the existing client switches immediately; outside Herdr a new
+// client attaches after the caller has left any alternate-screen UI.
+func (h *Herdr) Activate(ctx context.Context, handle string) error {
+	if handle == "" {
+		return nil
+	}
+	if err := h.call(ctx, nil, "workspace", "focus", handle); err != nil {
+		return err
+	}
+	if os.Getenv("HERDR_ENV") != "" {
+		return nil
+	}
+	return runInteractive(ctx, h.bin)
 }
 
 // OpenWorktree implements WorktreeOpener: it registers an already-created git

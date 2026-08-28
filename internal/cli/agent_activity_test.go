@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -28,6 +29,8 @@ type activityRuntime struct {
 	listErr           error
 	closeErr          error
 	closeCalls        []string
+	activateErr       error
+	activateCalls     []string
 	annotationHandles []string
 	annotations       []map[string]string
 }
@@ -52,6 +55,10 @@ func (r *activityRuntime) OpenWorktree(_ context.Context, _, label string) (runt
 func (r *activityRuntime) Close(_ context.Context, handle string) error {
 	r.closeCalls = append(r.closeCalls, handle)
 	return r.closeErr
+}
+func (r *activityRuntime) Activate(_ context.Context, handle string) error {
+	r.activateCalls = append(r.activateCalls, handle)
+	return r.activateErr
 }
 func (r *activityRuntime) List(context.Context) ([]runtime.Session, error) {
 	return r.sessions, r.listErr
@@ -217,8 +224,8 @@ func TestOccupiedRepoOpenNavigatesWithoutWriterGuard(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatalf("occupied repo open should navigate to the owner: %v", err)
 	}
-	if rt.activityCalls != 0 || rt.openCalls != 1 {
-		t.Fatalf("repo open should bypass writer guard and open once: activity=%d open=%d", rt.activityCalls, rt.openCalls)
+	if rt.activityCalls != 0 || rt.openCalls != 1 || !reflect.DeepEqual(rt.activateCalls, []string{"w1"}) {
+		t.Fatalf("repo open should bypass writer guard, open, and activate: activity=%d open=%d activate=%v", rt.activityCalls, rt.openCalls, rt.activateCalls)
 	}
 	if !strings.Contains(out.String(), "herdr w1") {
 		t.Fatalf("repo open did not report reused workspace: %q", out.String())

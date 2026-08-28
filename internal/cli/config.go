@@ -178,7 +178,7 @@ worktree_path = "{{worktree_root}}/{{repo}}/{{branch|slug}}"
 # state_dir = "~/.local/share/dev"
 
 [runtime]
-# auto prefers herdr, then tmux, then none. "none" makes dev print a cd
+# auto prefers herdr, then tmux, then zellij, then none. "none" makes dev print a cd
 # directive for the shell wrapper instead of opening a session.
 backend = "auto"
 

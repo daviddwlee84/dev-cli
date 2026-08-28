@@ -31,7 +31,8 @@ It exists to keep three things separate that otherwise collapse into one:
 
   git remote      durable code state, the source of truth
   git worktree    a disposable local checkout
-  herdr / tmux    a per-host live runtime
+  herdr / tmux / zellij
+                  a per-host live runtime
   dev             human intent: what am I working on, and what is next
 
 Everything derivable from git or the runtime is derived live. dev persists only
@@ -86,7 +87,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 
 	pf := root.PersistentFlags()
 	pf.StringVar(&app.configPath, "config", "", "path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)")
-	pf.StringVar(&app.runtimeOverride, "runtime", "", "override runtime backend: herdr, tmux or none")
+	pf.StringVar(&app.runtimeOverride, "runtime", "", "override runtime backend: herdr, tmux, zellij or none")
 	pf.BoolVar(&app.noRuntime, "no-runtime", false, "do not touch any terminal multiplexer")
 	pf.BoolVar(&app.allowSharedCheckout, "allow-shared-checkout", false,
 		"allow a writer claim in a checkout occupied by another live agent")

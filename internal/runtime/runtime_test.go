@@ -12,6 +12,7 @@ func TestSelect(t *testing.T) {
 		{"none", "none"},
 		{"tmux", "tmux"},
 		{"herdr", "herdr"},
+		{"zellij", "zellij"},
 		{"nonsense", "none"}, // validated earlier; never panic here
 	} {
 		if got := runtime.Select(tc.in).Name(); got != tc.want {

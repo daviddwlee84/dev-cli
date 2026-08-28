@@ -17,6 +17,20 @@ func openCheckout(ctx context.Context, rt runtime.Runtime, dir, label string) (r
 	return rt.Open(ctx, dir, label)
 }
 
+// activateRuntime performs the interactive half of navigation. Runtime Open
+// calls are detached by design; explicit open/resume actions opt into either
+// switching the current multiplexer client or attaching from a plain shell.
+func activateRuntime(ctx context.Context, rt runtime.Runtime, handle string) error {
+	if rt == nil || rt.Name() == "none" || handle == "" {
+		return nil
+	}
+	activator, ok := rt.(runtime.Activator)
+	if !ok {
+		return errors.New("runtime " + rt.Name() + " cannot activate sessions")
+	}
+	return activator.Activate(ctx, handle)
+}
+
 func persistedRuntimeHandle(rt runtime.Runtime, opened runtime.OpenResult) string {
 	if rt == nil || rt.Name() == "none" {
 		return ""

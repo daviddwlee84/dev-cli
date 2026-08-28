@@ -10,6 +10,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -82,6 +83,15 @@ type CurrentPaneResolver interface {
 	CurrentPaneID(ctx context.Context) (string, error)
 }
 
+// Activator is the optional interactive half of opening a runtime surface.
+// Open deliberately remains detached so creation commands can run in the
+// background. Navigation commands call Activate after their own terminal UI
+// has been torn down: inside a multiplexer this switches the current client;
+// outside it attaches a new client and blocks until the user detaches.
+type Activator interface {
+	Activate(ctx context.Context, handle string) error
+}
+
 // Runtime is the contract every backend satisfies. Adapters must degrade
 // gracefully: an unavailable backend returns errors rather than panicking, and
 // List on an idle backend returns an empty slice, not an error.
@@ -121,15 +131,18 @@ func (e *ErrUnavailable) Error() string {
 // Select resolves a configured backend name to a Runtime.
 //
 // "auto" prefers the richest backend that is actually available: herdr (which
-// models workspaces, worktrees and agent sessions), then tmux, then None.
+// models workspaces, worktrees and agent sessions), then tmux, then zellij,
+// then None.
 // None is always available so dev never hard-fails for lack of a multiplexer.
 func Select(backend string) Runtime {
-	herdr, tmux, none := NewHerdr(), NewTmux(), None{}
+	herdr, tmux, zellij, none := NewHerdr(), NewTmux(), NewZellij(), None{}
 	switch backend {
 	case "herdr":
 		return herdr
 	case "tmux":
 		return tmux
+	case "zellij":
+		return zellij
 	case "none":
 		return none
 	case "", "auto":
@@ -139,16 +152,31 @@ func Select(backend string) Runtime {
 		if tmux.Available() {
 			return tmux
 		}
+		if zellij.Available() {
+			return zellij
+		}
 		return none
 	}
 	return none
 }
 
 // All returns every backend, for `dev doctor` to report on.
-func All() []Runtime { return []Runtime{NewHerdr(), NewTmux(), None{}} }
+func All() []Runtime { return []Runtime{NewHerdr(), NewTmux(), NewZellij(), None{}} }
 
 // haveBinary reports whether name is on PATH.
 func haveBinary(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
+}
+
+// runInteractive connects a multiplexer client directly to dev's terminal.
+// Runtime protocol calls use captured stdout/stderr; attach clients must not,
+// because they own the terminal until the user detaches.
+func runInteractive(ctx context.Context, bin string, args ...string) error {
+	cmd := exec.CommandContext(ctx, bin, args...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s %s: %w", bin, strings.Join(args, " "), err)
+	}
+	return nil
 }

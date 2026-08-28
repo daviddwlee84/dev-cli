@@ -173,7 +173,7 @@ a conflict, so dev asks before doing it.`,
 			if rt.Name() == "none" {
 				return app.cdDirective(checkout)
 			}
-			return nil
+			return activateRuntime(ctx, rt, t.RuntimeHandle)
 		},
 	}
 	f := cmd.Flags()

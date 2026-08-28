@@ -229,35 +229,35 @@ func runTUI(app *App) error {
 
 		// Open reuses the same paths the commands take, so a cold task
 		// selected here is rebuilt rather than reported broken.
-		Open: func(ctx context.Context, t *task.Task) (string, error) {
+		Open: func(ctx context.Context, t *task.Task) (tui.OpenResult, error) {
 			checkout := checkoutOf(t)
 			if _, err := os.Stat(checkout); err != nil {
-				return "", fmt.Errorf("%s has no checkout — run `dev resume %s`", t.Title(), t.ID)
+				return tui.OpenResult{}, fmt.Errorf("%s has no checkout — run `dev resume %s`", t.Title(), t.ID)
 			}
 			handle, err := openCheckout(ctx, rt, checkout, t.Title())
 			if err != nil {
-				return "", err
+				return tui.OpenResult{}, err
 			}
 			// Enter is navigation only. Claiming a writer is an explicit
 			// `dev resume`/start action with collision checks.
 			if rt.Name() == "none" {
-				return "", nil
+				return tui.OpenResult{}, nil
 			}
-			return fmt.Sprintf("%s open in %s (%s)", t.Title(), rt.Name(), handle.Handle), nil
+			return tui.OpenResult{Status: fmt.Sprintf("%s open in %s (%s)", t.Title(), rt.Name(), handle.Handle), RuntimeHandle: handle.Handle}, nil
 		},
 
-		OpenRepo: func(ctx context.Context, r tui.RepoRow) (string, error) {
+		OpenRepo: func(ctx context.Context, r tui.RepoRow) (tui.OpenResult, error) {
 			handle, err := openCheckout(ctx, rt, r.Repo.Path, r.Repo.Name)
 			if err != nil {
-				return "", err
+				return tui.OpenResult{}, err
 			}
 			if rt.Name() == "none" {
-				return "", nil
+				return tui.OpenResult{}, nil
 			}
-			return fmt.Sprintf("%s open in %s (%s)", r.Repo.Name, rt.Name(), handle.Handle), nil
+			return tui.OpenResult{Status: fmt.Sprintf("%s open in %s (%s)", r.Repo.Name, rt.Name(), handle.Handle), RuntimeHandle: handle.Handle}, nil
 		},
 
-		OpenCheckout: func(ctx context.Context, r tui.RepoRow, checkout inventory.RepoCheckout) (string, error) {
+		OpenCheckout: func(ctx context.Context, r tui.RepoRow, checkout inventory.RepoCheckout) (tui.OpenResult, error) {
 			branch := checkout.Branch()
 			if branch == "" {
 				branch = filepath.Base(checkout.Worktree.Path)
@@ -265,49 +265,51 @@ func runTUI(app *App) error {
 			label := r.Repo.Name + "/" + branch
 			handle, err := openCheckout(ctx, rt, checkout.Worktree.Path, label)
 			if err != nil {
-				return "", err
+				return tui.OpenResult{}, err
 			}
 			if rt.Name() == "none" {
-				return "", nil
+				return tui.OpenResult{}, nil
 			}
-			return fmt.Sprintf("%s open in %s (%s)", label, rt.Name(), handle.Handle), nil
+			return tui.OpenResult{Status: fmt.Sprintf("%s open in %s (%s)", label, rt.Name(), handle.Handle), RuntimeHandle: handle.Handle}, nil
 		},
 
-		OpenRemote: func(ctx context.Context, r tui.RemoteRow) (string, error) {
+		OpenRemote: func(ctx context.Context, r tui.RemoteRow) (tui.OpenResult, error) {
 			if r.LocalPath == "" {
-				return "", fmt.Errorf("%s has no local checkout; press c to clone it", r.Repo.FullName)
+				return tui.OpenResult{}, fmt.Errorf("%s has no local checkout; press c to clone it", r.Repo.FullName)
 			}
 			handle, err := openCheckout(ctx, rt, r.LocalPath, r.Repo.Name)
 			if err != nil {
-				return "", err
+				return tui.OpenResult{}, err
 			}
 			if rt.Name() == "none" {
-				return "", nil
+				return tui.OpenResult{}, nil
 			}
-			return fmt.Sprintf("%s open in %s (%s)", r.Repo.FullName, rt.Name(), handle.Handle), nil
+			return tui.OpenResult{Status: fmt.Sprintf("%s open in %s (%s)", r.Repo.FullName, rt.Name(), handle.Handle), RuntimeHandle: handle.Handle}, nil
 		},
 
-		CloneRemote: func(ctx context.Context, r tui.RemoteRow) (string, string, error) {
+		CloneRemote: func(ctx context.Context, r tui.RemoteRow) (tui.OpenResult, string, error) {
 			dest := filepath.Join(config.Expand(app.Cfg.Paths.ProjectRoot), r.Repo.Name)
 			if _, err := os.Stat(dest); err == nil {
-				return "", "", fmt.Errorf("%s already exists; add it to scan_roots or clone somewhere explicit",
+				return tui.OpenResult{}, "", fmt.Errorf("%s already exists; add it to scan_roots or clone somewhere explicit",
 					config.Contract(dest))
 			}
 			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-				return "", "", err
+				return tui.OpenResult{}, "", err
 			}
 			if _, err := gitx.Run(ctx, filepath.Dir(dest), "clone", r.Repo.CloneURL, dest); err != nil {
-				return "", "", err
+				return tui.OpenResult{}, "", err
 			}
 			handle, err := openCheckout(ctx, rt, dest, r.Repo.Name)
 			if err != nil {
-				return "", "", fmt.Errorf("cloned to %s, but could not open it: %w", config.Contract(dest), err)
+				return tui.OpenResult{}, "", fmt.Errorf("cloned to %s, but could not open it: %w", config.Contract(dest), err)
 			}
 			if rt.Name() == "none" {
-				return "cloned " + r.Repo.FullName + " to " + config.Contract(dest), dest, nil
+				return tui.OpenResult{Status: "cloned " + r.Repo.FullName + " to " + config.Contract(dest)}, dest, nil
 			}
-			return fmt.Sprintf("cloned %s to %s; open in %s (%s)",
-				r.Repo.FullName, config.Contract(dest), rt.Name(), handle.Handle), dest, nil
+			return tui.OpenResult{
+				Status:        fmt.Sprintf("cloned %s to %s; open in %s (%s)", r.Repo.FullName, config.Contract(dest), rt.Name(), handle.Handle),
+				RuntimeHandle: handle.Handle,
+			}, dest, nil
 		},
 
 		Park: func(ctx context.Context, t *task.Task, next string) (string, error) {
@@ -471,6 +473,9 @@ func runTUI(app *App) error {
 		if dir := m.Chosen(); dir != "" {
 			return app.cdDirective(dir)
 		}
+		if handle := m.Activation(); handle != "" {
+			return activateRuntime(ctxOf(), rt, handle)
+		}
 	}
 	return nil
 }
@@ -551,6 +556,7 @@ func applyTryAction(ctx context.Context, app *App, rt runtime.Runtime, request t
 			result.CD = item.Live.CurrentPath
 		} else {
 			result.Status += fmt.Sprintf(" in %s (%s)", rt.Name(), handle.Handle)
+			result.RuntimeHandle = handle.Handle
 		}
 		if _, touchErr := service.Touch(ctx, item.ID); touchErr != nil {
 			return result, fmt.Errorf("%s, but could not record activity: %w", status, touchErr)

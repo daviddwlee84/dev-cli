@@ -43,7 +43,8 @@ type Paths struct {
 
 // Runtime selects the terminal-multiplexer backend used to open a checkout.
 type Runtime struct {
-	// Backend is "auto" (herdr, then tmux, then none), or one of those names.
+	// Backend is "auto" (herdr, then tmux, then zellij, then none), or one of
+	// those names.
 	Backend string `toml:"backend"`
 	// MetadataSource is the --source id used for herdr workspace metadata.
 	MetadataSource string `toml:"metadata_source"`
@@ -283,9 +284,9 @@ func Load(path string) (Config, error) {
 // worktree create, when a directory has already been made.
 func (c Config) Validate() error {
 	switch c.Runtime.Backend {
-	case "", "auto", "herdr", "tmux", "none":
+	case "", "auto", "herdr", "tmux", "zellij", "none":
 	default:
-		return fmt.Errorf("runtime.backend %q: want auto, herdr, tmux or none", c.Runtime.Backend)
+		return fmt.Errorf("runtime.backend %q: want auto, herdr, tmux, zellij or none", c.Runtime.Backend)
 	}
 	if c.Paths.WorktreePath == "" {
 		return errors.New("paths.worktree_path must not be empty")

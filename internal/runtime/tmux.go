@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
@@ -15,6 +16,20 @@ import (
 type Tmux struct {
 	bin        string
 	runCommand func(context.Context, ...string) (string, error)
+}
+
+// Activate follows sesh's attach-or-switch contract. A client already inside
+// tmux switches in place; an ordinary shell attaches and owns the terminal
+// until the user detaches.
+func (t *Tmux) Activate(ctx context.Context, handle string) error {
+	if handle == "" {
+		return nil
+	}
+	if os.Getenv("TMUX") != "" {
+		_, err := t.run(ctx, "switch-client", "-t", "="+handle)
+		return err
+	}
+	return runInteractive(ctx, t.bin, "attach-session", "-t", "="+handle)
 }
 
 // NewTmux returns the tmux adapter.

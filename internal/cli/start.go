@@ -135,6 +135,9 @@ use repo/branch so Herdr can show native nested repository provenance.`,
 			if result.Runtime.Name() == "none" {
 				return app.cdDirective(checkoutOf(result.Task))
 			}
+			if focus && !jsonOut {
+				return activateRuntime(ctx, rt, t.RuntimeHandle)
+			}
 			return nil
 		},
 	}

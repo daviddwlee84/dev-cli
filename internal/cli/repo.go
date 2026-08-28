@@ -475,12 +475,15 @@ Uses gh or glab when the host matches one, and plain git otherwise.`,
 			}
 			if open {
 				rt := app.Runtime()
-				if _, err := openCheckout(ctx, rt, dest, name); err != nil {
+				opened, err := openCheckout(ctx, rt, dest, name)
+				if err != nil {
 					app.warnf("could not open a session: %v", err)
+					return nil
 				}
 				if rt.Name() == "none" {
 					return app.cdDirective(dest)
 				}
+				return activateRuntime(ctx, rt, opened.Handle)
 			}
 			return nil
 		},
@@ -515,7 +518,7 @@ func newRepoOpenCmd(app *App) *cobra.Command {
 			if rt.Name() == "none" {
 				return app.cdDirective(r.Path)
 			}
-			return nil
+			return activateRuntime(ctx, rt, opened.Handle)
 		},
 	}
 	cmd.ValidArgsFunction = completeRepos(app)

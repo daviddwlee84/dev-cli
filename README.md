@@ -7,7 +7,8 @@ It exists to stop four things collapsing into one:
 ```
 git remote      durable code state, the source of truth
 git worktree    a disposable local checkout
-herdr / tmux    a per-host live runtime
+herdr / tmux / zellij
+                a per-host live runtime
 dev             human intent: what am I working on, and what is next
 ```
 
@@ -92,7 +93,7 @@ dev skill install
 dev doctor       # what works on this machine, and what degrades
 ```
 
-Only **git** is required at runtime. `herdr`, `tmux`, `gh` and `glab` each
+Only **git** is required at runtime. `herdr`, `tmux`, `zellij`, `gh` and `glab` each
 enable more and degrade cleanly when absent.
 
 ## The lifecycle
@@ -188,7 +189,9 @@ g G        top / bottom         h l / tab       previous / next view
 /          filter as you type   esc             clear, then quit
 ```
 
-`enter` opens the selected row in the runtime. In TASKS, `p` parks and prompts
+`enter` opens the selected row in the runtime. Inside Herdr/tmux/Zellij it
+switches the current client; outside it exits the dashboard and attaches to
+the target session. In TASKS, `p` parks and prompts
 for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
 `space` expands linked worktrees inline, `m` edits repository tags/notes, `s`
 starts an isolated worktree task, and `d` starts a tracked direct task.

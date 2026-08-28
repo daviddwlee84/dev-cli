@@ -26,6 +26,7 @@ used only after exact current-backend validation. Root-pane data stays transient
 | list pane-level agent activity | `agent list` |
 | open a checkout | `workspace create --cwd <dir> --no-focus --label <name>` |
 | open a worktree | `worktree open --cwd <parent-root> --path <path> --no-focus --label <repo/branch>` |
+| activate an opened checkout | `workspace focus <id>`; outside Herdr, attach the default client |
 | close a session | `workspace close <id>` |
 | show task state | `workspace report-metadata <id> --source dev --token …` |
 
@@ -54,8 +55,10 @@ root before writer-claiming direct/branch starts and resume. It resolves
 `idle`, `done`, and `unknown`—is occupied; malformed/missing activity data fails
 closed.
 
-Pure repo/worktree open and TUI Enter/focus reuse the live owner's workspace and
-do not claim a second writer. The root `--allow-shared-checkout` escape hatch is
+Pure repo/worktree open and TUI Enter reuse the live owner's workspace and do
+not claim a second writer. Inside Herdr they focus it in the current client;
+outside Herdr the TUI first restores the terminal and then attaches, matching
+`hhere`. The root `--allow-shared-checkout` escape hatch is
 only for coordinated writer ownership. A default worktree start remains
 separate and needs no override.
 
@@ -101,6 +104,10 @@ agent-session handoff remains an explicit launcher operation.
 
 ## Without Herdr
 
-Runtime selection is Herdr → Tmux → none unless pinned. Tmux can report session
-creation/reuse but no pane. `none` emits a shell `cd` directive in human mode;
+Runtime selection is Herdr → Tmux → Zellij → none unless pinned. Tmux follows
+sesh semantics: switch the current client inside tmux, attach outside. Zellij
+attaches outside and uses `action switch-session` inside on Zellij 0.44+;
+older releases report the missing switch capability instead of nesting a
+second client. Tmux and Zellij can report session creation/reuse but no pane.
+`none` emits a shell `cd` directive in human mode;
 `dev start --json` suppresses that directive and stays pure JSON.

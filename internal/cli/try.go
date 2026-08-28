@@ -130,8 +130,9 @@ func openOrCD(app *App, ctx context.Context, dir, label string) error {
 	if runtime.Name() == "none" {
 		return app.cdDirective(dir)
 	}
-	if _, err := openCheckout(ctx, runtime, dir, label); err != nil {
+	opened, err := openCheckout(ctx, runtime, dir, label)
+	if err != nil {
 		return fmt.Errorf("open runtime session: %w", err)
 	}
-	return nil
+	return activateRuntime(ctx, runtime, opened.Handle)
 }

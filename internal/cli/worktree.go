@@ -234,7 +234,7 @@ func newWtOpenCmd(app *App) *cobra.Command {
 			if rt.Name() == "none" {
 				return app.cdDirective(w.Path)
 			}
-			return nil
+			return activateRuntime(ctx, rt, opened.Handle)
 		},
 	}
 	cmd.Flags().StringVarP(&repoRef, "repo", "r", "", "repository (default: the current one)")

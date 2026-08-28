@@ -64,16 +64,16 @@ type Actions struct {
 	Tries TryActions
 	Sizes SizeActions
 	// Open makes a task live.
-	Open func(ctx context.Context, t *task.Task) (string, error)
+	Open func(ctx context.Context, t *task.Task) (OpenResult, error)
 	// OpenRepo makes a repository live.
-	OpenRepo func(ctx context.Context, r RepoRow) (string, error)
+	OpenRepo func(ctx context.Context, r RepoRow) (OpenResult, error)
 	// OpenCheckout makes one linked worktree live.
-	OpenCheckout func(ctx context.Context, r RepoRow, checkout inventory.RepoCheckout) (string, error)
+	OpenCheckout func(ctx context.Context, r RepoRow, checkout inventory.RepoCheckout) (OpenResult, error)
 	// OpenRemote opens a remote's existing local checkout.
-	OpenRemote func(ctx context.Context, r RemoteRow) (string, error)
+	OpenRemote func(ctx context.Context, r RemoteRow) (OpenResult, error)
 	// CloneRemote clones a remote that has no local checkout and returns the
 	// new path, so the row can be updated without querying the network again.
-	CloneRemote func(ctx context.Context, r RemoteRow) (status, localPath string, err error)
+	CloneRemote func(ctx context.Context, r RemoteRow) (OpenResult, string, error)
 	// Park closes a task's session and records its next action.
 	Park func(ctx context.Context, t *task.Task, next string) (string, error)
 	// SetNext records a task's next action.
@@ -102,6 +102,14 @@ type Actions struct {
 	Runtime runtime.Runtime
 	// Tools are external programs the dashboard hands the terminal to.
 	Tools []Tool
+}
+
+// OpenResult separates the status text rendered by the dashboard from the
+// opaque runtime handle activated only after Bubble Tea leaves its alternate
+// screen.
+type OpenResult struct {
+	Status        string
+	RuntimeHandle string
 }
 
 // ConfigUpdate is the subset of config a running TUI can safely apply without
@@ -195,6 +203,7 @@ type Model struct {
 	width, height int
 	quitting      bool
 	chosen        string
+	activate      string
 }
 
 // New builds the dashboard.
@@ -237,6 +246,10 @@ func (m Model) BeginLoading() Model {
 // Chosen reports a directory the caller should cd into after the program
 // exits, or "" when there is none.
 func (m Model) Chosen() string { return m.chosen }
+
+// Activation reports the runtime handle to switch/attach after the dashboard
+// has restored the terminal, or "" when the user quit normally.
+func (m Model) Activation() string { return m.activate }
 
 // CurrentView reports which list is showing.
 func (m Model) CurrentView() View { return m.view }
@@ -289,6 +302,7 @@ type configMsg struct {
 type actionMsg struct {
 	status     string
 	cd         string
+	activate   string
 	remoteName string
 	localPath  string
 	forceSizes bool
@@ -953,6 +967,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.chosen, m.quitting = msg.result.CD, true
 			return m, tea.Quit
 		}
+		if msg.result.RuntimeHandle != "" {
+			m.activate, m.quitting = msg.result.RuntimeHandle, true
+			return m, tea.Quit
+		}
 		return m, m.reloadTries(msg.result.RefreshRepos)
 
 	case actionMsg:
@@ -975,6 +993,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// putting the user in the directory, which needs the alternate
 			// screen torn down first.
 			m.chosen, m.quitting = msg.cd, true
+			return m, tea.Quit
+		}
+		if msg.activate != "" {
+			m.activate, m.quitting = msg.activate, true
 			return m, tea.Quit
 		}
 		if m.view == ViewRemote {
@@ -1500,9 +1522,10 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 			return nil
 		}
 		return func() tea.Msg {
-			status, path, err := m.actions.CloneRemote(context.Background(), r)
+			opened, path, err := m.actions.CloneRemote(context.Background(), r)
 			return actionMsg{
-				status: status, remoteName: r.Repo.FullName, localPath: path, err: err,
+				status: opened.Status, activate: opened.RuntimeHandle,
+				remoteName: r.Repo.FullName, localPath: path, err: err,
 			}
 		}
 	}
@@ -1516,23 +1539,23 @@ func (m Model) openSelected() tea.Cmd {
 		t := row.Task
 		dir := row.Checkout
 		return func() tea.Msg {
-			status, err := m.actions.Open(context.Background(), t)
+			opened, err := m.actions.Open(context.Background(), t)
 			cd := ""
 			if err == nil && cdWanted {
 				cd = dir
 			}
-			return actionMsg{status: status, cd: cd, err: err}
+			return actionMsg{status: opened.Status, cd: cd, activate: opened.RuntimeHandle, err: err}
 		}
 	}
 	if r, ok := m.currentRepo(); ok {
 		dir := r.Repo.Path
 		return func() tea.Msg {
-			status, err := m.actions.OpenRepo(context.Background(), r)
+			opened, err := m.actions.OpenRepo(context.Background(), r)
 			cd := ""
 			if err == nil && cdWanted {
 				cd = dir
 			}
-			return actionMsg{status: status, cd: cd, err: err}
+			return actionMsg{status: opened.Status, cd: cd, activate: opened.RuntimeHandle, err: err}
 		}
 	}
 	if item, ok := m.currentRepoItem(); ok && item.child() {
@@ -1545,12 +1568,12 @@ func (m Model) openSelected() tea.Cmd {
 			if m.actions.OpenCheckout == nil {
 				return actionMsg{err: fmt.Errorf("opening linked worktrees is unavailable")}
 			}
-			status, err := m.actions.OpenCheckout(context.Background(), item.Repo, checkout)
+			opened, err := m.actions.OpenCheckout(context.Background(), item.Repo, checkout)
 			cd := ""
 			if err == nil && cdWanted {
 				cd = dir
 			}
-			return actionMsg{status: status, cd: cd, err: err}
+			return actionMsg{status: opened.Status, cd: cd, activate: opened.RuntimeHandle, err: err}
 		}
 	}
 	if r, ok := m.currentTry(); ok {
@@ -1567,12 +1590,12 @@ func (m Model) openSelected() tea.Cmd {
 		}
 		dir := r.LocalPath
 		return func() tea.Msg {
-			status, err := m.actions.OpenRemote(context.Background(), r)
+			opened, err := m.actions.OpenRemote(context.Background(), r)
 			cd := ""
 			if err == nil && cdWanted {
 				cd = dir
 			}
-			return actionMsg{status: status, cd: cd, err: err}
+			return actionMsg{status: opened.Status, cd: cd, activate: opened.RuntimeHandle, err: err}
 		}
 	}
 	return nil

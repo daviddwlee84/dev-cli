@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -58,11 +59,10 @@ func TestHerdrOpenReturnsExactCreatedRootPane(t *testing.T) {
 	}
 }
 
-func TestHerdrOpenReuseHasNoLaunchablePane(t *testing.T) {
+func TestHerdrOpenReuseStaysDetachedAndHasNoLaunchablePane(t *testing.T) {
 	h := scriptedHerdr(t,
 		herdrCall{args: []string{"workspace", "list"}, out: `{"id":"1","result":{"workspaces":[{"workspace_id":"w4"}]}}`},
 		herdrCall{args: []string{"pane", "list"}, out: `{"id":"2","result":{"panes":[{"pane_id":"w4:p9","workspace_id":"w4","cwd":"/repo"}]}}`},
-		herdrCall{args: []string{"workspace", "focus", "w4"}, out: `{"id":"3","result":{}}`},
 	)
 
 	got, err := h.Open(context.Background(), "/repo", "ignored")
@@ -74,33 +74,54 @@ func TestHerdrOpenReuseHasNoLaunchablePane(t *testing.T) {
 	}
 }
 
-func TestHerdrOpenUsesSubdirectoryPaneAndPropagatesFocusFailure(t *testing.T) {
-	for _, tc := range []struct {
-		name     string
-		focusOut string
-		focusErr error
-		wantErr  bool
-	}{
-		{name: "subdirectory reuse", focusOut: `{"id":"3","result":{}}`},
-		{name: "focus failure", focusErr: errors.New("focus denied"), wantErr: true},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			h := scriptedHerdr(t,
-				herdrCall{args: []string{"workspace", "list"}, out: `{"id":"1","result":{"workspaces":[{"workspace_id":"w4"}]}}`},
-				herdrCall{args: []string{"pane", "list"}, out: `{"id":"2","result":{"panes":[{"pane_id":"w4:p9","workspace_id":"w4","cwd":"/repo/subdir"}]}}`},
-				herdrCall{args: []string{"workspace", "focus", "w4"}, out: tc.focusOut, err: tc.focusErr},
-			)
-			got, err := h.Open(context.Background(), "/repo", "ignored")
-			if tc.wantErr {
-				if err == nil || !strings.Contains(err.Error(), "focus denied") || got != (OpenResult{}) {
-					t.Fatalf("focus failure = %+v, %v", got, err)
-				}
-				return
-			}
-			if err != nil || got.Handle != "w4" || got.Created {
-				t.Fatalf("subdirectory reuse = %+v, %v", got, err)
-			}
-		})
+func TestHerdrOpenUsesSubdirectoryPane(t *testing.T) {
+	h := scriptedHerdr(t,
+		herdrCall{args: []string{"workspace", "list"}, out: `{"id":"1","result":{"workspaces":[{"workspace_id":"w4"}]}}`},
+		herdrCall{args: []string{"pane", "list"}, out: `{"id":"2","result":{"panes":[{"pane_id":"w4:p9","workspace_id":"w4","cwd":"/repo/subdir"}]}}`},
+	)
+	got, err := h.Open(context.Background(), "/repo", "ignored")
+	if err != nil || got.Handle != "w4" || got.Created {
+		t.Fatalf("subdirectory reuse = %+v, %v", got, err)
+	}
+}
+
+func TestHerdrActivateInsideFocusesWithoutAttachingAnotherClient(t *testing.T) {
+	t.Setenv("HERDR_ENV", "1")
+	h := scriptedHerdr(t, herdrCall{
+		args: []string{"workspace", "focus", "w4"}, out: `{"id":"1","result":{}}`,
+	})
+	if err := h.Activate(context.Background(), "w4"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestHerdrActivatePropagatesFocusFailure(t *testing.T) {
+	t.Setenv("HERDR_ENV", "1")
+	h := scriptedHerdr(t, herdrCall{
+		args: []string{"workspace", "focus", "w4"}, err: errors.New("focus denied"),
+	})
+	if err := h.Activate(context.Background(), "w4"); err == nil || !strings.Contains(err.Error(), "focus denied") {
+		t.Fatalf("Activate error = %v", err)
+	}
+}
+
+func TestHerdrActivateOutsideFocusesThenAttaches(t *testing.T) {
+	t.Setenv("HERDR_ENV", "")
+	record := filepath.Join(t.TempDir(), "record")
+	script := filepath.Join(t.TempDir(), "herdr")
+	body := "#!/bin/sh\nif [ \"$1\" = workspace ]; then printf '{\"result\":{}}'; else printf attach > \"$DEV_TEST_RECORD\"; fi\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DEV_TEST_RECORD", record)
+	h := NewHerdr()
+	h.bin = script
+	if err := h.Activate(context.Background(), "w4"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(record)
+	if err != nil || string(got) != "attach" {
+		t.Fatalf("outside attach record = %q, %v", got, err)
 	}
 }
 

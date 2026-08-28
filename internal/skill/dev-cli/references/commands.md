@@ -13,7 +13,7 @@ in CI to catch drift.
 - `--allow-shared-checkout` — allow a writer claim in a checkout occupied by another live agent
 - `--config` — path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)
 - `--no-runtime` — do not touch any terminal multiplexer
-- `--runtime` — override runtime backend: herdr, tmux or none
+- `--runtime` — override runtime backend: herdr, tmux, zellij or none
 
 ### `dev adopt`
 
