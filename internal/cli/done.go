@@ -30,7 +30,7 @@ Two integration modes, matching the two shapes a branch's history takes:
 
   --ff    rebase onto the base and fast-forward it. Use when the branch's
           commits are worth keeping in the base's history.
-  --pr    push and open a pull/merge request with gh or glab, leaving the
+  --pr    push and open a pull/merge request with the detected forge CLI, leaving the
           merge to review and CI. Use when someone (or something) should look
           at it first.
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 )
 
@@ -520,6 +521,9 @@ func NormalizeRemoteIdentity(identity string) string {
 	if identity == "" {
 		return ""
 	}
+	if azure := normalizeAzureDevOpsRemoteIdentity(identity); azure != "" {
+		return azure
+	}
 	if parsed, err := url.Parse(identity); err == nil && parsed.Scheme != "" {
 		if strings.EqualFold(parsed.Scheme, "file") {
 			return ""
@@ -547,6 +551,52 @@ func NormalizeRemoteIdentity(identity string) string {
 	identity = strings.Trim(identity, "/")
 	if host, remotePath, ok := strings.Cut(identity, "/"); ok {
 		return remoteIdentityKey(host, remotePath)
+	}
+	return ""
+}
+
+func normalizeAzureDevOpsRemoteIdentity(identity string) string {
+	if kind, name := forge.IdentityFromURL(identity); kind == forge.AzureDevOps && name != "" {
+		return string(forge.AzureDevOps) + "/" + name
+	}
+
+	// Records written before Azure support already contain the generic
+	// host/path form. Recognize it so existing catalog entries migrate on read.
+	trimmed := strings.Trim(strings.TrimSuffix(strings.TrimSpace(identity), ".git"), "/")
+	parts := strings.Split(trimmed, "/")
+	decode := func(values []string) ([]string, bool) {
+		out := make([]string, len(values))
+		for i, value := range values {
+			decoded, err := url.PathUnescape(value)
+			if err != nil || decoded == "" || strings.Contains(decoded, "/") {
+				return nil, false
+			}
+			out[i] = decoded
+		}
+		return out, true
+	}
+	if len(parts) == 5 && strings.EqualFold(parts[0], "dev.azure.com") && strings.EqualFold(parts[3], "_git") {
+		if decoded, ok := decode([]string{parts[1], parts[2], parts[4]}); ok {
+			return string(forge.AzureDevOps) + "/" + strings.Join(decoded, "/")
+		}
+	}
+	if len(parts) == 5 && strings.EqualFold(parts[0], "ssh.dev.azure.com") && strings.EqualFold(parts[1], "v3") {
+		if decoded, ok := decode(parts[2:]); ok {
+			return string(forge.AzureDevOps) + "/" + strings.Join(decoded, "/")
+		}
+	}
+	if len(parts) >= 4 && strings.HasSuffix(strings.ToLower(parts[0]), ".visualstudio.com") &&
+		!strings.EqualFold(parts[0], "vs-ssh.visualstudio.com") && strings.EqualFold(parts[len(parts)-2], "_git") {
+		organization := strings.TrimSuffix(strings.ToLower(parts[0]), ".visualstudio.com")
+		if decoded, ok := decode([]string{organization, parts[len(parts)-3], parts[len(parts)-1]}); ok {
+			return string(forge.AzureDevOps) + "/" + strings.Join(decoded, "/")
+		}
+	}
+	if len(parts) == 5 && strings.EqualFold(parts[0], "vs-ssh.visualstudio.com") &&
+		strings.HasPrefix(parts[1], "~") && strings.EqualFold(parts[3], "_ssh") {
+		if decoded, ok := decode([]string{strings.TrimPrefix(parts[1], "~"), parts[2], parts[4]}); ok {
+			return string(forge.AzureDevOps) + "/" + strings.Join(decoded, "/")
+		}
 	}
 	return ""
 }

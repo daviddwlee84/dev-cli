@@ -93,8 +93,8 @@ dev skill install
 dev doctor       # what works on this machine, and what degrades
 ```
 
-Only **git** is required at runtime. `herdr`, `tmux`, `zellij`, `gh` and `glab` each
-enable more and degrade cleanly when absent.
+Only **git** is required at runtime. `herdr`, `tmux`, `zellij`, `gh`, `glab` and
+Azure CLI each enable more and degrade cleanly when absent.
 
 ## The lifecycle
 
@@ -172,8 +172,9 @@ Bare `dev` (or `dev tui`) opens four lists, switched with `tab`:
   state, owned size, runtime, worktrees and task tally. What do I have here.
 - **TRY** — dated scratch experiments, including non-Git folders, with durable
   tags/notes and explicit active/deprecated/archived/graduated state.
-- **REMOTE** — repositories visible through the authenticated `gh` and `glab`
-  CLIs, marked when a local repo or Try exists. What can I open or clone.
+- **REMOTE** — repositories visible through authenticated forge CLIs, including
+  configured Azure DevOps projects, marked when a local repo or Try exists.
+  What can I open or clone.
 
 TASKS, REPOS and TRY use the same services as their non-interactive commands.
 Git-backed Tries appear in TRY rather than being duplicated in REPOS; REMOTE
@@ -246,11 +247,25 @@ actually installed — bindings for missing programs are not offered. A tool
 cannot take a key the dashboard already uses; dev reports the clash on load.
 
 REMOTE loads lazily, so dashboard startup never waits on the network. A private
-15-minute XDG cache makes later switches instant; `r` refreshes both forges.
+15-minute XDG cache makes later switches instant; `r` refreshes all configured
+forge providers.
 `/` searches provider, owner/name and description; enter opens a local clone,
 and `c` confirms before cloning an absent repo into `project_root`. The same
 inventory is available without the full-screen UI via `dev repo remote [query]`;
 `--cached` is its instant/offline form.
+
+Azure DevOps Services inventory is opt-in because `az repos list` requires an
+organization and team project. Repeat the target for every project wanted:
+
+```toml
+[[forge.azure_devops]]
+organization = "https://dev.azure.com/acme"
+project = "Platform"
+```
+
+Install Azure CLI's `azure-devops` extension and authenticate with Azure CLI.
+`dev` does not install extensions, change Azure defaults or store credentials.
+Azure DevOps Server/on-premises is not supported by the official extension.
 REPOS has an explicit LIVE column (`herdr:working`, `herdr:idle`, …). Multiple
 repo sessions collapse to `herdr:N live`; expanding the repo reveals each
 checkout and whether its session is live or closed. External and turn-scoped
@@ -437,6 +452,7 @@ dev repo list --sizes          # repos, remote topology and owned logical size
 dev repo list --no-remote      # find local Git with no configured backup remote
 dev repo context api           # agent-ready paths, Git, WT, runtime and tasks
 dev repo clone owner/name -c Web   # clone into the right place, via gh or glab
+dev repo clone https://dev.azure.com/acme/Platform/_git/api -c Work
 dev repo sync --all            # fetch + prune, and report what moved
 
 dev try redis-streams          # dated scratch directory for an experiment

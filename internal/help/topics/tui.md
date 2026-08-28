@@ -13,7 +13,7 @@ Switch with `tab`, `l`/`h`, or right/left:
 | TASKS | What am I working on? | task registry + live Git/runtime state |
 | REPOS | What durable repositories exist here? | configured scan roots + asset catalog |
 | TRY | Which experiments can I resume, archive or graduate? | experiment catalog + live Git/runtime state |
-| REMOTE | What can I open or clone? | authenticated `gh` + `glab` inventories |
+| REMOTE | What can I open or clone? | authenticated forge CLI inventories |
 
 REPOS shows branch, dirty state, owned logical size, linked-worktree count and
 HOT/WARM/COLD task tallies. Press `space` to expand a repo into its linked
@@ -27,6 +27,20 @@ REMOTE loads lazily, so dashboard startup never waits on the network. A
 private XDG cache makes later switches instant; `r` refreshes explicitly. It
 marks remotes already cloned under `scan_roots`. Enter opens a local clone; `c`
 asks before cloning an absent repo into `project_root`.
+
+GitHub and GitLab are discovered from authenticated `gh` and `glab` CLIs.
+Azure DevOps Services inventory is opt-in because each query needs an explicit
+organization and team project:
+
+```toml
+[[forge.azure_devops]]
+organization = "https://dev.azure.com/acme"
+project = "Platform"
+```
+
+Repeat the table for additional projects. Azure CLI and its `azure-devops`
+extension must already be installed and authenticated; dev does not install the
+extension, change Azure defaults, or store credentials.
 
 ## Vim-style movement
 
@@ -116,7 +130,7 @@ REMOTE:
 ```
 enter / o  open an existing local clone
 c          confirm and clone an absent repo into project_root
-r          refresh gh + glab, replacing the cache
+r          refresh configured forge CLIs, replacing the cache
 ```
 
 ## Heatmap and live config

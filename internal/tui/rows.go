@@ -206,7 +206,7 @@ func matches(haystack, query string) bool {
 	return true
 }
 
-// RemoteRow is one repository known to GitHub or GitLab, optionally matched to
+// RemoteRow is one repository known to a configured forge, optionally matched to
 // a local checkout. The REMOTE view is the bridge between "what exists on the
 // forge" and "what is already on this machine".
 type RemoteRow struct {

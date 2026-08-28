@@ -141,6 +141,50 @@ provision_timeout = "90s"
 	}
 }
 
+func TestAzureDevOpsTargetsLoadAndValidate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.toml")
+	os.WriteFile(path, []byte(`
+[[forge.azure_devops]]
+organization = "https://dev.azure.com/acme"
+project = "Platform"
+
+[[forge.azure_devops]]
+organization = "https://legacy.visualstudio.com/"
+project = "Tools"
+`), 0o644)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Forge.AzureDevOps) != 2 || cfg.Forge.AzureDevOps[0].Project != "Platform" {
+		t.Fatalf("Azure DevOps targets = %+v", cfg.Forge.AzureDevOps)
+	}
+}
+
+func TestAzureDevOpsTargetsRejectInvalidAndDuplicateValues(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		targets []AzureDevOpsTarget
+		want    string
+	}{
+		{"on premises", []AzureDevOpsTarget{{Organization: "https://ado.example.com/acme", Project: "P"}}, "Azure DevOps Services URL"},
+		{"missing project", []AzureDevOpsTarget{{Organization: "https://dev.azure.com/acme"}}, "project must not be empty"},
+		{"duplicate", []AzureDevOpsTarget{
+			{Organization: "https://dev.azure.com/acme/", Project: "Platform"},
+			{Organization: "https://dev.azure.com/ACME", Project: "platform"},
+		}, "duplicates"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := Default()
+			cfg.Forge.AzureDevOps = tc.targets
+			if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Validate() = %v, want %q", err, tc.want)
+			}
+		})
+	}
+}
+
 func TestValidateRejectsBadBackendAndTemplate(t *testing.T) {
 	for _, backend := range []string{"auto", "herdr", "tmux", "zellij", "none"} {
 		c := Default()

@@ -544,3 +544,17 @@ func TestRemoteIdentityPreservesCaseSensitivePath(t *testing.T) {
 		t.Fatal("host-local remote paths were used as cross-host identity")
 	}
 }
+
+func TestRemoteIdentityCanonicalizesAzureHTTPSAndSSH(t *testing.T) {
+	want := "azure-devops/acme/Platform Tools/api"
+	for _, remote := range []string{
+		"https://acme@dev.azure.com/acme/Platform%20Tools/_git/api.git",
+		"git@ssh.dev.azure.com:v3/acme/Platform%20Tools/api.git",
+		"dev.azure.com/acme/Platform%20Tools/_git/api",
+		"ssh.dev.azure.com/v3/acme/Platform%20Tools/api",
+	} {
+		if got := catalog.NormalizeRemoteIdentity(remote); got != want {
+			t.Errorf("NormalizeRemoteIdentity(%q) = %q, want %q", remote, got, want)
+		}
+	}
+}

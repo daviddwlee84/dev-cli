@@ -360,13 +360,13 @@ dev repo open <repo>
 
 ### `dev repo remote`
 
-List and search repositories visible through gh and glab
+List and search repositories visible through configured forge CLIs
 
 ```
 dev repo remote [query] [flags]
 ```
 
-- `--cached` — use the fresh XDG cache without querying either forge
+- `--cached` — use the fresh XDG cache without querying forge providers
 - `--json` — emit JSON
 - `--limit` — maximum repositories requested from each forge (default: config forge.remote_limit)
 

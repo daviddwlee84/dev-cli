@@ -4,8 +4,10 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -77,13 +79,23 @@ type Worktree struct {
 	ProvisionTimeout Duration `toml:"provision_timeout"`
 }
 
-// Forge configures the combined GitHub/GitLab remote inventory.
+// Forge configures the combined remote inventory.
 type Forge struct {
 	// RemoteLimit is requested from each provider. GitHub caps it at 100.
 	RemoteLimit int `toml:"remote_limit"`
 	// CacheTTL makes the REMOTE TUI view instant after its first load; r always
 	// refreshes explicitly.
 	CacheTTL Duration `toml:"cache_ttl"`
+	// AzureDevOps is opt-in because Azure Repos inventory is scoped to an
+	// explicit organization and team project.
+	AzureDevOps []AzureDevOpsTarget `toml:"azure_devops"`
+}
+
+// AzureDevOpsTarget identifies one Azure DevOps Services team project whose
+// repositories should appear in the combined remote inventory.
+type AzureDevOpsTarget struct {
+	Organization string `toml:"organization"`
+	Project      string `toml:"project"`
 }
 
 // Bootstrap configures recursive discovery and the optional symlink index.
@@ -305,6 +317,22 @@ func (c Config) Validate() error {
 	if c.Forge.RemoteLimit < 0 {
 		return fmt.Errorf("forge.remote_limit must be zero (use default) or positive")
 	}
+	seenAzureTargets := map[string]bool{}
+	for i, target := range c.Forge.AzureDevOps {
+		organization := strings.TrimSpace(target.Organization)
+		project := strings.TrimSpace(target.Project)
+		if !validAzureDevOpsOrganization(organization) {
+			return fmt.Errorf("forge.azure_devops[%d].organization %q: want an Azure DevOps Services URL like https://dev.azure.com/acme", i, target.Organization)
+		}
+		if project == "" {
+			return fmt.Errorf("forge.azure_devops[%d].project must not be empty", i)
+		}
+		key := strings.ToLower(strings.TrimRight(organization, "/") + "/" + project)
+		if seenAzureTargets[key] {
+			return fmt.Errorf("forge.azure_devops[%d] duplicates organization/project %s / %s", i, organization, project)
+		}
+		seenAzureTargets[key] = true
+	}
 	validStrategy := func(v string) bool {
 		switch v {
 		case "", "reinstall", "copy", "link", "skip":
@@ -354,6 +382,25 @@ func (c Config) Validate() error {
 		seen[t.Key] = t.Name
 	}
 	return nil
+}
+
+func validAzureDevOpsOrganization(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil || !strings.EqualFold(u.Scheme, "https") || u.User != nil ||
+		u.RawQuery != "" || u.Fragment != "" || u.Port() != "" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	segments := strings.FieldsFunc(u.Path, func(r rune) bool { return r == '/' })
+	switch {
+	case host == "dev.azure.com":
+		return len(segments) == 1
+	case strings.HasSuffix(host, ".visualstudio.com"):
+		organization := strings.TrimSuffix(host, ".visualstudio.com")
+		return organization != "" && organization != "vs-ssh" && len(segments) == 0
+	default:
+		return false
+	}
 }
 
 // probeVars is a dummy environment used to validate a template without having

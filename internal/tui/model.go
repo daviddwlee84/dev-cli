@@ -28,7 +28,7 @@ const (
 	ViewRepos
 	// ViewTries lists durable scratch experiments and retained lifecycle history.
 	ViewTries
-	// ViewRemote lists repositories visible through gh and glab.
+	// ViewRemote lists repositories visible through configured forge CLIs.
 	ViewRemote
 )
 
@@ -56,7 +56,7 @@ type Actions struct {
 	Reload func(ctx context.Context) ([]inventory.Row, error)
 	// ReloadRepos re-reads the repository list.
 	ReloadRepos func(ctx context.Context) ([]RepoRow, error)
-	// ReloadRemote queries gh and glab. It is lazy: the network is untouched
+	// ReloadRemote queries configured forge CLIs. It is lazy: the network is untouched
 	// until the REMOTE view is opened.
 	ReloadRemote func(ctx context.Context) ([]RemoteRow, error)
 	// Repos and Tries group asset-specific metadata and lifecycle actions.
@@ -570,7 +570,7 @@ func (m *Model) toggleRepo(r RepoRow) {
 	m.expandedRepos = append(append([]string(nil), m.expandedRepos...), key)
 }
 
-// visibleRemotes filters the combined gh/glab inventory. Local clones sort
+// visibleRemotes filters the combined forge inventory. Local clones sort
 // first, then recently updated repositories.
 func (m Model) visibleRemotes() []RemoteRow {
 	var out []RemoteRow
@@ -1409,7 +1409,7 @@ func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 	m.setAt(m.at())
 	if m.view == ViewRemote && !m.remotesLoaded && !m.remotesLoading {
 		m.remotesLoading = true
-		m.status = "loading GitHub and GitLab repositories…"
+		m.status = "loading remote repositories…"
 		return m, m.reloadRemote()
 	}
 	return m, nil

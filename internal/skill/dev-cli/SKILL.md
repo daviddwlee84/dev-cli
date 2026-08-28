@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: 'Manage repositories and work-in-progress with the dev CLI: bootstrap existing machines, organise repos without destructive moves, own worktree lifecycle and provisioning, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/herdr/tmux/zellij. Use when starting, parking or resuming work; scanning or organising repos; choosing a worktree mechanism; fixing worktree setup; or cleaning stale branches, checkouts and sessions.'
+description: 'Manage repositories and work-in-progress with the dev CLI: bootstrap existing machines, organise repos without destructive moves, own worktree lifecycle and provisioning, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when starting, parking or resuming work; scanning or organising repos; choosing a worktree mechanism; fixing worktree setup; or cleaning stale branches, checkouts and sessions.'
 ---
 
 # dev-cli
@@ -35,8 +35,9 @@ command -v dev || echo "not installed"
 dev doctor          # what works on this machine, and what degrades
 ```
 
-Only **git** is required. `herdr`, `tmux`, `zellij`, `gh` and `glab` each enable more and
-degrade cleanly when absent — never make a step hard-depend on one.
+Only **git** is required. `herdr`, `tmux`, `zellij`, `gh`, `glab` and Azure CLI
+each enable more and degrade cleanly when absent — never make a step
+hard-depend on one.
 
 ## Worktree ownership — read this before creating any worktree
 
@@ -151,8 +152,9 @@ dev repo list --no-remote  # local Git with no configured remote
 dev repo list --local-only # branches lacking a remote-backed upstream
 dev repo context [repo]    # agent-ready checkouts, Git, runtime and task state
 dev repo clone owner/name  # clone into the right place, via gh or glab
+dev repo clone https://dev.azure.com/acme/Platform/_git/api
 dev repo sync --all        # fetch + prune, and report what moved
-dev repo remote [query]     # search authenticated gh + glab repositories
+dev repo remote [query]     # search configured forge inventories
 dev bootstrap ~/code       # recursively inventory an existing machine
 dev bootstrap ~/code --index ~/Projects   # plan a non-destructive symlink catalog
 dev gitignore              # .gitignore from GitHub templates + the common bits
@@ -197,10 +199,22 @@ h/l. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions;
 `a` includes retained history. Archive is a reversible same-filesystem move,
 not deletion or disk reclamation. `?` opens the full key map.
 
-REMOTE queries authenticated `gh` and `glab` lazily, uses a short-lived private
-cache, and `/` filters provider, owner/name and description. Enter opens a local
-clone; `c` confirms before cloning an absent remote. Use `dev repo remote
-[query] --json` for the non-interactive form; `--cached` avoids a network query.
+REMOTE queries authenticated `gh` and `glab` plus configured Azure DevOps
+organization/project targets lazily, uses a short-lived private cache, and `/`
+filters provider, owner/name and description. Enter opens a local clone; `c`
+confirms before cloning an absent remote. Use `dev repo remote [query] --json`
+for the non-interactive form; `--cached` avoids a network query.
+
+Azure DevOps inventory is opt-in and cloud-only:
+
+```toml
+[[forge.azure_devops]]
+organization = "https://dev.azure.com/acme"
+project = "Platform"
+```
+
+Install Azure CLI's `azure-devops` extension separately. `dev` never installs
+the extension, logs in, changes Azure defaults, or stores a PAT.
 
 REPOS has LIVE, LATEST and asynchronous SIZE. SIZE is logical
 checkout+private-Git bytes; shared Git is separate and marked `+S`. Detail also

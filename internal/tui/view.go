@@ -458,7 +458,7 @@ func fitCell(s string, width int) string {
 
 func (m Model) renderRemotes() string {
 	if m.remotesLoading {
-		return "  " + styleDim.Render("Loading repositories from gh and glab…") + "\n"
+		return "  " + styleDim.Render("Loading repositories from forge CLIs…") + "\n"
 	}
 	rows := m.visibleRemotes()
 	if len(rows) == 0 {
@@ -468,7 +468,7 @@ func (m Model) renderRemotes() string {
 		if m.filter != "" {
 			return "  " + styleDim.Render("No remote repository matches /"+m.filter) + "\n"
 		}
-		return "  " + styleDim.Render("No remote repositories returned. Check `gh auth status` and `glab auth status`.") + "\n"
+		return "  " + styleDim.Render("No remote repositories returned. Check forge authentication and `dev doctor`.") + "\n"
 	}
 	nameW := clamp(m.width*30/100, 18, 38)
 	descW := m.width - nameW - 38

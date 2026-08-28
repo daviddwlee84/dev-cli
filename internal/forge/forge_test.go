@@ -15,6 +15,10 @@ func TestFromURL(t *testing.T) {
 		{"git@github.com:owner/repo.git", forge.GitHub},
 		{"https://gitlab.com/group/repo.git", forge.GitLab},
 		{"git@gitlab.example.com:group/repo.git", forge.GitLab},
+		{"https://dev.azure.com/acme/Platform/_git/api", forge.AzureDevOps},
+		{"git@ssh.dev.azure.com:v3/acme/Platform/api", forge.AzureDevOps},
+		{"https://acme.visualstudio.com/DefaultCollection/Platform/_git/api", forge.AzureDevOps},
+		{"git@evildev.azure.com:v3/acme/Platform/api", forge.Unknown},
 		{"https://git.sr.ht/~user/repo", forge.Unknown},
 		{"", forge.Unknown},
 	} {
@@ -32,6 +36,10 @@ func TestForReturnsAdapters(t *testing.T) {
 	gl, err := forge.For(forge.GitLab)
 	if err != nil || gl.Bin() != "glab" {
 		t.Errorf("GitLab adapter: %v %v", gl, err)
+	}
+	az, err := forge.For(forge.AzureDevOps)
+	if err != nil || az.Bin() != "az" {
+		t.Errorf("Azure DevOps adapter: %v %v", az, err)
 	}
 	if _, err := forge.For(forge.Unknown); err == nil {
 		t.Error("an unknown host has no adapter, and callers must fall back to plain git")
@@ -86,6 +94,11 @@ func TestIdentityFromURL(t *testing.T) {
 		{"git@github.com:owner/repo.git", forge.GitHub, "owner/repo"},
 		{"ssh://git@gitlab.com/group/sub/repo.git", forge.GitLab, "group/sub/repo"},
 		{"https://gitlab.example.com/group/repo", forge.GitLab, "group/repo"},
+		{"https://acme@dev.azure.com/acme/Platform%20Tools/_git/api.git", forge.AzureDevOps, "acme/Platform Tools/api"},
+		{"git@ssh.dev.azure.com:v3/acme/Platform/api", forge.AzureDevOps, "acme/Platform/api"},
+		{"ssh://git@ssh.dev.azure.com/v3/acme/Platform/api", forge.AzureDevOps, "acme/Platform/api"},
+		{"https://acme.visualstudio.com/DefaultCollection/Platform/_git/api", forge.AzureDevOps, "acme/Platform/api"},
+		{"acme@vs-ssh.visualstudio.com:Platform/_ssh/api", forge.AzureDevOps, "acme/Platform/api"},
 		{"", forge.Unknown, ""},
 	} {
 		kind, name := forge.IdentityFromURL(tc.url)

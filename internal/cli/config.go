@@ -220,10 +220,16 @@ strategy = "reinstall"
 provision_timeout = "10m"
 
 [forge]
-# The REMOTE dashboard tab queries both gh and glab lazily. A short-lived cache
-# makes later switches instant; press r in that tab to refresh explicitly.
+# The REMOTE dashboard tab queries configured forge CLIs lazily. A short-lived
+# cache makes later switches instant; press r in that tab to refresh explicitly.
 remote_limit = 100
 cache_ttl = "15m"
+
+# Azure DevOps inventory is opt-in because az repos list requires both an
+# organization and a team project. Repeat this table for every project wanted.
+# [[forge.azure_devops]]
+# organization = "https://dev.azure.com/acme"
+# project = "Platform"
 
 [bootstrap]
 # Recursive scan policy. Zero max_depth means unlimited; the default reaches

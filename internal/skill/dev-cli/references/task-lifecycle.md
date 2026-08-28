@@ -187,7 +187,7 @@ requiring confirmation, is that guarantee.
 
 ```bash
 dev done --ff     # rebase onto the base, then fast-forward it
-dev done --pr     # push and open a pull/merge request via gh or glab
+dev done --pr     # push and open a pull/merge request via the detected forge CLI
 ```
 
 Which one depends on a single question: **are this branch's commits worth

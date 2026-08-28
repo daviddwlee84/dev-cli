@@ -8,7 +8,7 @@ cache so cleanup cannot erase the wrong thing.
 | `$XDG_CONFIG_HOME/dev/config.toml` | user policy | no |
 | `$XDG_DATA_HOME/dev/tasks/*.toml` | state/owner/next for tasks | partially |
 | `$XDG_DATA_HOME/dev/stats.db` | Git backfill, session samples, WakaTime imports | not always |
-| `$XDG_CACHE_HOME/dev/remotes.json` | short-lived gh/glab inventory | yes |
+| `$XDG_CACHE_HOME/dev/remotes.json` | short-lived forge inventory | yes |
 | `$XDG_CACHE_HOME/dev/gitignore/` | fetched GitHub templates | yes |
 
 Inspect paths:

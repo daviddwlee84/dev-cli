@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/spf13/cobra"
 )
@@ -94,6 +95,24 @@ func runDoctor(app *App) error {
 		} else {
 			checks = append(checks, check{f.bin, checkWarn, "not found — " + f.purpose + " unavailable"})
 		}
+	}
+	azureTargets := len(app.Cfg.Forge.AzureDevOps)
+	if path, err := exec.LookPath("az"); err != nil {
+		detail := "not found — Azure DevOps PRs unavailable"
+		if azureTargets > 0 {
+			detail += fmt.Sprintf("; %d configured inventory target(s) skipped", azureTargets)
+		}
+		checks = append(checks, check{"az", checkWarn, detail})
+	} else if err := forge.CheckAzureDevOps(ctx); err != nil {
+		checks = append(checks, check{"az", checkWarn, path + " — " + err.Error()})
+	} else {
+		detail := path + " — Azure DevOps: PRs"
+		if azureTargets == 0 {
+			detail += "; inventory disabled (no forge.azure_devops targets)"
+		} else {
+			detail += fmt.Sprintf("; %d inventory target(s)", azureTargets)
+		}
+		checks = append(checks, check{"az", checkOK, detail})
 	}
 
 	// Shell integration: without the wrapper, `dev resume` prints a path

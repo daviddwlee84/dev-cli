@@ -108,13 +108,13 @@ only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 - Task lifecycle: `start` / `park` / `resume` / `done` / `sweep`.
 - Worktree ownership rule, path templates, provisioning, per-repo `.dev.toml`.
 - Runtime adapters: herdr, tmux, zellij, none, behind one contract suite.
-- Repo discovery and gh/glab-backed clone, create, sync.
+- Repo discovery and forge-backed clone, create, sync.
 - Durable Try catalog and lifecycle: create/clone/open, tags/notes, explicit
   deprecate/reactivate, reversible archive/restore, and identity-preserving
   graduate; no permanent local eviction in Phase 1.
 - Activity stats: sampler, git backfill, WakaTime import, heatmap.
 - Interactive TASKS / REPOS / TRY / REMOTE dashboard with vim navigation,
-  full-screen help/forms, lifecycle actions, lazy gh/glab inventory, private XDG
+  full-screen help/forms, lifecycle actions, lazy forge inventory, private XDG
   caches, local-kind matching and confirmed clone.
 - Explicit configurable TUI tools, including interactive shell aliases/functions,
   with lazygit / yazi / editor / shell defaults.

@@ -43,7 +43,7 @@ Four lists, switched with tab:
   TASKS   change streams dev is tracking — what am I working on
   REPOS   durable repositories under the scan roots — what do I have here
   TRY     scratch experiments and retained lifecycle history
-  REMOTE  repositories visible through gh and glab — what can I clone/open
+  REMOTE  repositories visible through configured forge CLIs — what can I clone/open
 
 Navigation is vim-style, with arrows alongside:
 
@@ -898,7 +898,7 @@ func cachedRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, bool) {
 	return matchRemoteLocals(ctx, app, cache.Repos), true
 }
 
-// collectRemotes aggregates gh and glab, caches the normalised response, then
+// collectRemotes aggregates configured forge CLIs, caches the normalised response, then
 // marks remotes that already have a checkout under the configured scan roots.
 // Calls run concurrently so one slow forge does not serialise the other.
 func collectRemotes(ctx context.Context, app *App, limit int) ([]tui.RemoteRow, error) {
@@ -909,11 +909,18 @@ func collectRemotes(ctx context.Context, app *App, limit int) ([]tui.RemoteRow, 
 		repos []forge.RemoteRepo
 		err   error
 	}
-	ch := make(chan result, len(forge.All()))
+	providers := configuredForges(app)
+	ch := make(chan result, len(providers))
 	var wg sync.WaitGroup
 	available := 0
-	for _, f := range forge.All() {
+	var unavailable []error
+	for _, f := range providers {
 		if !f.Available() {
+			// GitHub and GitLab remain opportunistic, but an explicit Azure
+			// target should report why it did not contribute any repositories.
+			if f.Kind() == forge.AzureDevOps {
+				unavailable = append(unavailable, &forge.ErrNoCLI{Kind: forge.AzureDevOps, Bin: "az"})
+			}
 			continue
 		}
 		available++
@@ -927,12 +934,15 @@ func collectRemotes(ctx context.Context, app *App, limit int) ([]tui.RemoteRow, 
 	wg.Wait()
 	close(ch)
 	if available == 0 {
-		return nil, fmt.Errorf("neither gh nor glab is installed")
+		if len(unavailable) > 0 {
+			return nil, errors.Join(unavailable...)
+		}
+		return nil, fmt.Errorf("no supported forge CLI is installed")
 	}
 
 	var (
 		remoteRepos []forge.RemoteRepo
-		errs        []error
+		errs        = append([]error(nil), unavailable...)
 	)
 	for res := range ch {
 		if res.err != nil {
@@ -947,6 +957,21 @@ func collectRemotes(ctx context.Context, app *App, limit int) ([]tui.RemoteRow, 
 		_ = forge.SaveCache(remoteCachePath(), remoteRepos)
 	}
 	return matchRemoteLocals(ctx, app, remoteRepos), errors.Join(errs...)
+}
+
+func configuredForges(app *App) []forge.Forge {
+	providers := forge.All()
+	if app == nil || len(app.Cfg.Forge.AzureDevOps) == 0 {
+		return providers
+	}
+	targets := make([]forge.AzureDevOpsTarget, 0, len(app.Cfg.Forge.AzureDevOps))
+	for _, target := range app.Cfg.Forge.AzureDevOps {
+		targets = append(targets, forge.AzureDevOpsTarget{
+			Organization: target.Organization,
+			Project:      target.Project,
+		})
+	}
+	return forge.All(forge.NewAzureDevOps(targets))
 }
 
 func matchRemoteLocals(ctx context.Context, app *App, remoteRepos []forge.RemoteRepo) []tui.RemoteRow {

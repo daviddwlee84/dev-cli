@@ -260,6 +260,45 @@ func TestDonePRLeavesTaskAndWorktreeForReview(t *testing.T) {
 	}
 }
 
+func TestDonePROpensAzureDevOpsPullRequestOffline(t *testing.T) {
+	h := newHarness(t)
+	pushRemote := h.repo.WithRemote()
+	h.repo.Git("remote", "set-url", "origin", "https://dev.azure.com/acme/Platform/_git/demo")
+	h.repo.Git("remote", "set-url", "--push", "origin", pushRemote)
+	h.mustRun("start", "demo", "--task", "azure-review", "--branch", "feat/azure", "--base", "main")
+	wtPath := filepath.Join(h.wtRoot, "demo", "feat-azure")
+	h.repo.GitIn(wtPath, "config", "user.email", "dev@example.test")
+	h.repo.GitIn(wtPath, "config", "user.name", "dev test")
+	if err := os.WriteFile(filepath.Join(wtPath, "azure.txt"), []byte("ready\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.repo.GitIn(wtPath, "add", "azure.txt")
+	h.repo.GitIn(wtPath, "commit", "-m", "feat: Azure review")
+
+	binDir := t.TempDir()
+	script := `#!/bin/sh
+set -eu
+if [ "$1" = "extension" ]; then
+  printf 'azure-devops\n'
+  exit 0
+fi
+if [ "$1" = "repos" ] && [ "$2" = "pr" ] && [ "$3" = "create" ]; then
+  printf '%s\n' '{"pullRequestId":73,"remoteUrl":"https://dev.azure.com/acme/Platform/_git/demo"}'
+  exit 0
+fi
+exit 2
+`
+	if err := os.WriteFile(filepath.Join(binDir, "az"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	out := h.mustRun("done", "azure-review", "--pr")
+	if !strings.Contains(out, "https://dev.azure.com/acme/Platform/_git/demo/pullrequest/73") {
+		t.Fatalf("Azure PR output: %q", out)
+	}
+}
+
 func TestDoneWithoutModeOnlyReports(t *testing.T) {
 	h := newHarness(t)
 	h.mustRun("start", "demo", "--task", "report", "--branch", "feat/report", "--base", "main")

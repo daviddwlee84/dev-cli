@@ -27,8 +27,8 @@ func newRepoCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "repo",
 		Short: "List, clone, create and sync repositories",
-		Long: `Manage the repositories under your scan roots, with gh or glab as the backend
-for anything remote.
+		Long: `Manage the repositories under your scan roots, using forge CLIs for remote
+inventory, cloning and review operations.
 
 This is the "what projects do I have?" half of dev, kept separate from the
 "what am I working on?" half that ls and the task commands answer.`,
@@ -440,7 +440,7 @@ func newRepoCloneCmd(app *App) *cobra.Command {
 		Long: `Clone into <project_root>/<category>/<name>, so a new repo lands where the
 rest of them live instead of wherever the shell happened to be.
 
-Uses gh or glab when the host matches one, and plain git otherwise.`,
+Uses gh, glab or Azure CLI when the host matches one, and plain git otherwise.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
@@ -683,9 +683,10 @@ func newRepoRemoteCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "remote [query]",
 		Aliases: []string{"search"},
-		Short:   "List and search repositories visible through gh and glab",
-		Long: `Combine the repositories visible to the authenticated gh and glab CLIs, and
-mark those already cloned under paths.scan_roots.
+		Short:   "List and search repositories visible through configured forge CLIs",
+		Long: `Combine repositories visible to authenticated gh and glab CLIs with any
+configured Azure DevOps organization/project targets, and mark those already cloned
+under paths.scan_roots.
 
 The TUI exposes the same data in its REMOTE tab and filters it live with /.
 This command is the non-interactive form for scripts, pipes and terminals where
@@ -768,7 +769,7 @@ the cache is private and expires according to forge.cache_ttl.`,
 	}
 	f := cmd.Flags()
 	f.BoolVar(&jsonOut, "json", false, "emit JSON")
-	f.BoolVar(&cachedOnly, "cached", false, "use the fresh XDG cache without querying either forge")
+	f.BoolVar(&cachedOnly, "cached", false, "use the fresh XDG cache without querying forge providers")
 	f.IntVar(&limit, "limit", 0, "maximum repositories requested from each forge (default: config forge.remote_limit)")
 	return cmd
 }

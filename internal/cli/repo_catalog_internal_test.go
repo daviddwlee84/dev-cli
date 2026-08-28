@@ -18,6 +18,34 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
+func TestConfiguredForgesIncludesAzureDevOpsTargets(t *testing.T) {
+	app := &App{Cfg: config.Default()}
+	if got := configuredForges(app); len(got) != 2 {
+		t.Fatalf("default providers = %d, want 2", len(got))
+	}
+	app.Cfg.Forge.AzureDevOps = []config.AzureDevOpsTarget{{
+		Organization: "https://dev.azure.com/acme", Project: "Platform",
+	}}
+	got := configuredForges(app)
+	if len(got) != 3 || got[2].Kind() != forge.AzureDevOps {
+		t.Fatalf("configured providers = %+v", got)
+	}
+}
+
+func TestAzureDevOpsRemoteMatchingTreatsHTTPSAndSSHAsSameRepo(t *testing.T) {
+	repository := gittest.New(t)
+	repository.Git("remote", "add", "origin", "git@ssh.dev.azure.com:v3/acme/Platform/api")
+	app := &App{Cfg: config.Default()}
+	app.Cfg.Paths.ScanRoots = []string{filepath.Dir(repository.Root)}
+	rows := matchRemoteLocals(t.Context(), app, []forge.RemoteRepo{{
+		Forge: forge.AzureDevOps, Name: "api", FullName: "acme/Platform/api",
+		CloneURL: "https://dev.azure.com/acme/Platform/_git/api",
+	}})
+	if len(rows) != 1 || rows[0].LocalPath != repository.Root {
+		t.Fatalf("Azure remote match = %+v", rows)
+	}
+}
+
 func newRepoCatalogCollectorFixture(t *testing.T) (*App, *catalog.Entry, string) {
 	t.Helper()
 	physicalRoot := t.TempDir()

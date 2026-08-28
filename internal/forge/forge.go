@@ -1,4 +1,4 @@
-// Package forge wraps the GitHub and GitLab CLIs. Both are optional: every
+// Package forge wraps the GitHub, GitLab and Azure DevOps CLIs. All are optional: every
 // entry point degrades to plain git, because a workflow that hard-depends on a
 // forge CLI being installed and authenticated stops working on exactly the
 // machines where you most need it.
@@ -26,6 +26,8 @@ const (
 	GitHub Kind = "github"
 	// GitLab is served by the glab CLI.
 	GitLab Kind = "gitlab"
+	// AzureDevOps is served by Azure CLI's azure-devops extension.
+	AzureDevOps Kind = "azure-devops"
 	// Unknown is any other host, or none.
 	Unknown Kind = "unknown"
 )
@@ -75,8 +77,12 @@ type RemoteRepo struct {
 // Label is the provider-qualified identity shown in a combined list.
 func (r RemoteRepo) Label() string { return string(r.Forge) + ":" + r.FullName }
 
-// All returns both forge adapters, for an aggregate remote inventory.
-func All() []Forge { return []Forge{&gh{}, &glab{}} }
+// All returns the default forge adapters plus any explicitly configured ones.
+// Azure DevOps is not included by default because its inventory requires an
+// organization/project target.
+func All(configured ...Forge) []Forge {
+	return append([]Forge{&gh{}, &glab{}}, configured...)
+}
 
 // PRRequest describes a pull/merge request to open.
 type PRRequest struct {
@@ -111,6 +117,9 @@ func Detect(ctx context.Context, dir string) Kind {
 
 // FromURL classifies a remote URL.
 func FromURL(url string) Kind {
+	if _, _, ok := parseAzureDevOpsRemote(url); ok {
+		return AzureDevOps
+	}
 	u := strings.ToLower(url)
 	switch {
 	case u == "":
@@ -130,6 +139,8 @@ func For(k Kind) (Forge, error) {
 		return &gh{}, nil
 	case GitLab:
 		return &glab{}, nil
+	case AzureDevOps:
+		return NewAzureDevOps(nil), nil
 	}
 	return nil, errors.New("no forge CLI for this remote; falling back to plain git")
 }
@@ -177,6 +188,13 @@ func IdentityFromURL(raw string) (Kind, string) {
 	kind := FromURL(raw)
 	if kind == Unknown {
 		return Unknown, ""
+	}
+	if kind == AzureDevOps {
+		identity, _, ok := parseAzureDevOpsRemote(raw)
+		if !ok {
+			return Unknown, ""
+		}
+		return kind, identity
 	}
 	s := strings.TrimSpace(raw)
 	if strings.Contains(s, "://") {

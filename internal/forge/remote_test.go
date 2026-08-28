@@ -75,12 +75,43 @@ func TestParseGitLabRepos(t *testing.T) {
 	}
 }
 
+func TestParseAzureDevOpsRepos(t *testing.T) {
+	fixture := `[{
+		"name":"api",
+		"defaultBranch":"refs/heads/main",
+		"isFork":true,
+		"remoteUrl":"https://acme@dev.azure.com/acme/Platform%20Tools/_git/api",
+		"sshUrl":"git@ssh.dev.azure.com:v3/acme/Platform Tools/api",
+		"project":{"name":"Platform Tools","visibility":"private"}
+	}]`
+	got, err := parseAzureDevOpsRepos(fixture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %+v", got)
+	}
+	r := got[0]
+	if r.Forge != AzureDevOps || r.FullName != "acme/Platform Tools/api" || r.Name != "api" {
+		t.Errorf("identity: %+v", r)
+	}
+	if r.URL != "https://dev.azure.com/acme/Platform%20Tools/_git/api" || r.CloneURL != r.URL || r.SSHURL == "" {
+		t.Errorf("URLs: %+v", r)
+	}
+	if r.DefaultBranch != "main" || r.Visibility != "private" || !r.Fork {
+		t.Errorf("metadata: %+v", r)
+	}
+}
+
 func TestRemoteParsersRejectInvalidJSON(t *testing.T) {
 	if _, err := parseGitHubRepos("not json"); err == nil || !strings.Contains(err.Error(), "gh api user/repos") {
 		t.Errorf("github error = %v", err)
 	}
 	if _, err := parseGitLabRepos("not json"); err == nil || !strings.Contains(err.Error(), "glab repo list") {
 		t.Errorf("gitlab error = %v", err)
+	}
+	if _, err := parseAzureDevOpsRepos("not json"); err == nil || !strings.Contains(err.Error(), "az repos list") {
+		t.Errorf("Azure DevOps error = %v", err)
 	}
 }
 
