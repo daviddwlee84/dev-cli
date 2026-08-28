@@ -175,7 +175,10 @@ dev sweep --merged-worktrees  # from main, include untracked contained worktrees
 `sweep` reports two kinds of problem:
 
 - **Drift** — a task marked hot with no live session, a warm task with one, a
-  recorded worktree git no longer knows about.
+  recorded worktree git no longer knows about, or a branch-backed task whose
+  branch git no longer has. That last one is dead rather than drifted: `done`,
+  `resume` and `retire` all resolve the branch first, so the record is offered
+  for reaping instead of repair.
 - **Staleness** — a warm task nobody has touched in two weeks, clean and
   pushed, that could go cold.
 

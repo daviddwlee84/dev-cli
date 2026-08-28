@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `dev sweep` detects a branch-backed task whose branch Git no longer has — unfinishable by `done`,
+  `resume`, or `retire` — and offers to reap the record.
 - `dev artifact discard <intent> --yes` records that an armed handoff can never be finalized, so an
   intent whose transcript was never written, or whose HEAD is gone after a rebase, stops blocking
   integration and retirement. It refuses an intent that is still armed.

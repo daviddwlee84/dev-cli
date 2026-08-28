@@ -69,6 +69,7 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - Human-readable output 現在具備 semantic color（`--color auto|always|never`），在 `NO_COLOR` 已設定、`TERM=dumb`，或 stdout/stderr 不是 terminal 時會自動停用。
 - `dev done` 只記錄 MERGED：它不會關閉呼叫端 runtime、移除 worktree 或刪除 branch。Cleanup 已移交 `dev retire`，後者必須從目標 workspace 之外執行，會拒絕 active agent 與 mixed-purpose workspace，並在每次關閉 runtime 之後重新驗證 Git state。`dev done --delete-branch` 現在會直接報錯並指向 `dev retire --delete-branch`，`--keep-worktree` 則以 no-op 警告。
 - `dev sweep --merged-worktrees` 直接從 Git 列舉 linked worktrees，而非從 task registry，因此 branch 已被 base 包含的 unmanaged worktree 也能被 retire。Containment 本身絕不等於許可；dirty state、未 finalize 的 artifact、進行中的 Git operation 與 runtime 拒絕條件都仍會阻擋，且未加 `--delete-branches` 時 branch 一律保留。
+- `dev sweep` 會把 branch 已不存在於 Git 的 branch-backed task 視為 dead，並提供 reap 該 record 的建議。這種 task 無法 finish、resume 或 retire，因為這些路徑都必須先解析 branch；在 `--apply` 之前該建議仍只是報告。
 
 ## Claude Code status matrix
 

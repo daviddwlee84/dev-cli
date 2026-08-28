@@ -227,6 +227,22 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 		})
 	}
 
+	// A branch-backed task whose branch git no longer has is dead: the branch
+	// was deleted after integration, so the record holds intent for work that
+	// no longer exists anywhere. It cannot be finished, resumed, or retired,
+	// because every one of those paths resolves the branch first.
+	noCheckout := t.WorktreePath == "" || r.WorktreeMissing
+	if noCheckout && t.Branch != "" && t.RepoPath != "" &&
+		t.EffectiveMode() != task.ModeDirect && !gitx.BranchExists(ctx, t.RepoPath, t.Branch) {
+		out = append(out, suggestion{
+			row:    r,
+			reason: fmt.Sprintf("branch %s no longer exists", t.Branch),
+			action: fmt.Sprintf("reap the task entry %s", t.ID),
+			apply:  func() error { return app.Tasks.Delete(t.ID) },
+		})
+		return out
+	}
+
 	// Drift that is independent of the lifecycle stage.
 	if r.WorktreeMissing && t.WorktreePath != "" {
 		wtPath := t.WorktreePath

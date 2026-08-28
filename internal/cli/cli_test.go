@@ -1679,3 +1679,32 @@ func TestArtifactDiscardRefusesAnArmedIntent(t *testing.T) {
 		t.Fatalf("discarding an armed intent = %v", err)
 	}
 }
+
+// A branch-backed task whose branch was deleted after integration can be
+// finished by no path at all: done, resume and retire all resolve the branch
+// first. Sweep must offer to reap the record instead of leaving it forever.
+func TestSweepReapsATaskWhoseBranchIsGone(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "landed", "--branch", "feat/landed", "--base", "main")
+	wtPath := filepath.Join(h.wtRoot, "demo", "feat-landed")
+	h.mustRun("wt", "rm", "feat/landed", "--repo", "demo")
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Fatalf("worktree still present: %v", err)
+	}
+	h.repo.Git("branch", "-D", "feat/landed")
+
+	report := h.mustRun("sweep")
+	if !strings.Contains(report, "branch feat/landed no longer exists") ||
+		!strings.Contains(report, "reap the task entry") {
+		t.Fatalf("sweep did not report the dead branch:\n%s", report)
+	}
+	// Report-only until --apply, like every other suggestion.
+	if listed := h.mustRun("ls", "--json"); !strings.Contains(listed, "landed") {
+		t.Fatalf("report-only sweep removed the task:\n%s", listed)
+	}
+
+	h.mustRun("sweep", "--apply", "--yes")
+	if listed := h.mustRun("ls", "--json"); strings.Contains(listed, "feat/landed") {
+		t.Fatalf("task was not reaped:\n%s", listed)
+	}
+}
