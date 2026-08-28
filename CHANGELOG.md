@@ -44,6 +44,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Development builds derive `--version` only from `vMAJOR.MINOR.PATCH` tags, so an unrelated tag in
+  the repository can no longer be reported as the CLI version.
 - `dev done` no longer closes the runtime, removes the worktree, or deletes the branch; it records
   MERGED and hands cleanup to `dev retire`, so a process can never delete the worktree it is running in.
 - Activity sampling now attributes sessions running in linked worktrees outside
