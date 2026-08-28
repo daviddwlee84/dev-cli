@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -195,6 +196,30 @@ func TestStartHumanOutputAndDefaultLabelRemainCompatible(t *testing.T) {
 	out := f.stdout.String()
 	if !strings.Contains(out, "quick fix  repo on main (direct)") || !strings.Contains(out, "\ncd ") {
 		t.Fatalf("human output changed unexpectedly: %q", out)
+	}
+}
+
+func TestStartFocusActivatesHumanRuntimeButNotJSON(t *testing.T) {
+	rt := &activityRuntime{openResult: runtime.OpenResult{
+		Handle: "w7", Surface: "workspace", Opened: true, Created: true,
+	}}
+	f := newStartFixture(t, rt)
+	if err := f.run("--task", "focused", "--direct", "--focus"); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(rt.activateCalls, []string{"w7"}) {
+		t.Fatalf("human focus activation = %v", rt.activateCalls)
+	}
+
+	rtJSON := &activityRuntime{openResult: runtime.OpenResult{
+		Handle: "w8", Surface: "workspace", Opened: true, Created: true,
+	}}
+	fJSON := newStartFixture(t, rtJSON)
+	if err := fJSON.run("--task", "focused json", "--direct", "--focus", "--json"); err != nil {
+		t.Fatal(err)
+	}
+	if len(rtJSON.activateCalls) != 0 {
+		t.Fatalf("JSON start must not attach interactively: %v", rtJSON.activateCalls)
 	}
 }
 
