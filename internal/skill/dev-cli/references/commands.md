@@ -600,10 +600,18 @@ dev shell-init <bash|zsh|fish>
 
 ### `dev skill`
 
-Print or install dev's agent skill
+Inspect agent skills and manage dev's bundled skill
 
 ```
 dev skill [flags]
+```
+
+### `dev skill add`
+
+Open the interactive skills installer
+
+```
+dev skill add [package]
 ```
 
 ### `dev skill install`
@@ -616,6 +624,19 @@ dev skill install [flags]
 
 - `--dir` — install directory (default: ~/.agents/skills/dev-cli)
 - `--no-link` — do not symlink into per-tool skill directories
+
+### `dev skill list`
+
+List project and global agent skills
+
+```
+dev skill list [flags]
+```
+
+- `--check` — contact Git sources and check for updates without installing them
+- `-g, --global` — list global skills
+- `--json` — emit a stable machine-readable JSON array
+- `-p, --project` — list project skills
 
 ### `dev skill print`
 
@@ -635,6 +656,18 @@ dev skill sync [flags]
 
 - `--check` — report drift and exit non-zero instead of writing
 - `-h, --help` — help for sync
+
+### `dev skill update`
+
+Update one skill in one explicit scope
+
+```
+dev skill update <skill> [flags]
+```
+
+- `-g, --global` — update the global skill
+- `-p, --project` — update the project-scoped skill
+- `-y, --yes` — skip dev's confirmation
 
 ### `dev start`
 

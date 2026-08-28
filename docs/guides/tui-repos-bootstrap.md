@@ -1,5 +1,5 @@
 ---
-description: Navigate tasks, repositories, experiments, and remotes in the TUI; capture repository quick notes; inventory or adopt existing work safely.
+description: Navigate tasks, repositories, experiments, remotes, and agent skills in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
 verified_on: 2026-08-28
@@ -9,7 +9,7 @@ verified_on: 2026-08-28
 
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
 
-## Four views
+## Five views
 
 | View | Question | Source |
 |---|---|---|
@@ -17,6 +17,7 @@ Bare `dev` opens an interactive dashboard when standard input/output are termina
 | REPOS | What durable repositories exist here? | configured scan roots and local catalog |
 | TRY | Which experiments can I resume, archive, or graduate? | experiment catalog plus live facts |
 | REMOTE | What can I open or clone? | authenticated `gh`/`glab` inventories and cache |
+| SKILLS | Which agent skills are installed locally and globally? | upstream `skills` JSON plus project/global locks |
 
 Switch with `tab`, `h`/`l`, or arrows. Use `j`/`k`, `g`/`G`, `ctrl+d`/`ctrl+u`, `/` to filter, `?` for help, and `esc`/`q` to leave the current mode.
 
@@ -89,6 +90,14 @@ dev note reindex
 A note ID prefix must be unique and at least eight characters.
 
 Markdown under configured `paths.state_dir/notes` is durable; `$XDG_CACHE_HOME/dev/notes.db` is only a rebuildable search index. See the [complete generated command reference](../reference/commands-config.md#complete-generated-command-reference) for exact flags.
+
+SKILLS also loads lazily, so dashboard startup does not invoke Node. It keeps
+same-named project and global skills as separate rows and shows their target
+agents, source, path, manager, and update state. `r` reloads only local state;
+`c` explicitly performs a read-only source check; `a` opens the upstream
+interactive installer with `daviddwlee84/agent-skills/skills` as its default
+source; `u` confirms before updating only the selected lock-managed skill.
+Structured filters include `scope:`, `agent:`, and `update:`.
 
 ## External tools
 

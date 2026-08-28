@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
@@ -34,10 +35,12 @@ const (
 	ViewTries
 	// ViewRemote lists repositories visible through configured forge CLIs.
 	ViewRemote
+	// ViewSkills lists project and global agent skills.
+	ViewSkills
 )
 
 // Views is the cycle order.
-var Views = []View{ViewTasks, ViewRepos, ViewFleet, ViewTries, ViewRemote}
+var Views = []View{ViewTasks, ViewRepos, ViewFleet, ViewTries, ViewRemote, ViewSkills}
 
 func (v View) String() string {
 	switch v {
@@ -49,6 +52,8 @@ func (v View) String() string {
 		return "try"
 	case ViewRemote:
 		return "remote"
+	case ViewSkills:
+		return "skills"
 	default:
 		return "tasks"
 	}
@@ -67,6 +72,13 @@ type Actions struct {
 	// ReloadRemote queries configured forge CLIs. It is lazy: the network is untouched
 	// until the REMOTE view is opened.
 	ReloadRemote func(ctx context.Context) ([]RemoteRow, error)
+	// ReloadSkills reads local project/global skill state without contacting sources.
+	ReloadSkills func(ctx context.Context) ([]agentskill.Skill, error)
+	// CheckSkills performs the explicitly requested read-only network comparison.
+	CheckSkills func(ctx context.Context, rows []agentskill.Skill) []agentskill.Skill
+	// AddSkill and UpdateSkill return interactive processes for tea to suspend around.
+	AddSkill    func() (*exec.Cmd, error)
+	UpdateSkill func(row agentskill.Skill) (*exec.Cmd, error)
 	// Repos and Tries group asset-specific metadata and lifecycle actions.
 	Repos RepoActions
 	Tries TryActions
@@ -159,6 +171,7 @@ const (
 	modeStartTask
 	modeStartDirect
 	modeConfirmClone
+	modeConfirmSkillUpdate
 	modeStats
 	modeCopy
 	modeNoteBrowse
@@ -177,12 +190,16 @@ type Model struct {
 	tries   []TryRow
 	remotes []RemoteRow
 	fleet   []FleetRow
+	skills  []agentskill.Skill
 	// Remote loading is lazy so opening the dashboard never waits on the
 	// network. The first switch to REMOTE triggers it.
 	remotesLoaded   bool
 	remotesLoading  bool
 	fleetLoaded     bool
 	fleetLoading    bool
+	skillsLoaded    bool
+	skillsLoading   bool
+	skillsChecking  bool
 	initialLoad     bool
 	loadingLocal    bool
 	sizeLoad        diskusage.Load
@@ -197,6 +214,7 @@ type Model struct {
 	tryCursor    int
 	remoteCursor int
 	fleetCursor  int
+	skillCursor  int
 	// expandedRepos is a slice rather than a map because Bubble Tea copies the
 	// model by value; a map would make candidate models share mutation.
 	expandedRepos []string
@@ -317,6 +335,20 @@ type remoteMsg struct {
 type fleetMsg struct {
 	rows []FleetRow
 	err  error
+}
+type skillsMsg struct {
+	rows    []agentskill.Skill
+	loaded  bool
+	checked bool
+	status  string
+	err     error
+}
+
+type skillProcessMsg struct {
+	action string
+	name   string
+	scope  agentskill.Scope
+	err    error
 }
 
 type statsMsg struct {
@@ -463,6 +495,50 @@ func (m Model) reloadFleet() tea.Cmd {
 		}
 		rows, err := m.actions.ReloadFleet(context.Background())
 		return fleetMsg{rows: rows, err: err}
+	}
+}
+func (m Model) reloadSkills() tea.Cmd {
+	return func() tea.Msg {
+		if m.actions.ReloadSkills == nil {
+			return skillsMsg{loaded: true}
+		}
+		rows, err := m.actions.ReloadSkills(context.Background())
+		return skillsMsg{rows: rows, loaded: true, err: err}
+	}
+}
+
+func (m Model) checkSkills(rows []agentskill.Skill) tea.Cmd {
+	return func() tea.Msg {
+		if m.actions.CheckSkills == nil {
+			return skillsMsg{rows: rows, loaded: true, checked: true}
+		}
+		return skillsMsg{
+			rows: m.actions.CheckSkills(context.Background(), rows), loaded: true, checked: true,
+		}
+	}
+}
+
+func (m Model) reloadUpdatedSkill(name string, scope agentskill.Scope) tea.Cmd {
+	return func() tea.Msg {
+		if m.actions.ReloadSkills == nil {
+			return skillsMsg{loaded: true, status: "updated " + name}
+		}
+		rows, err := m.actions.ReloadSkills(context.Background())
+		if err != nil {
+			return skillsMsg{loaded: true, err: err}
+		}
+		if m.actions.CheckSkills != nil {
+			for i := range rows {
+				if rows[i].Name == name && rows[i].Scope == scope {
+					checked := m.actions.CheckSkills(context.Background(), []agentskill.Skill{rows[i]})
+					if len(checked) == 1 {
+						rows[i] = checked[0]
+					}
+					break
+				}
+			}
+		}
+		return skillsMsg{rows: rows, loaded: true, checked: true, status: "updated " + name}
 	}
 }
 
@@ -677,6 +753,50 @@ func (m Model) visibleFleet() []FleetRow {
 	return out
 }
 
+func (m Model) visibleSkills() []agentskill.Skill {
+	var out []agentskill.Skill
+	for _, row := range m.skills {
+		if skillMatches(row, m.filter) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func skillMatches(row agentskill.Skill, query string) bool {
+	query = strings.ToLower(strings.TrimSpace(query))
+	for _, term := range strings.Fields(query) {
+		key, value, structured := strings.Cut(term, ":")
+		if structured {
+			switch key {
+			case "scope":
+				if !strings.Contains(strings.ToLower(string(row.Scope)), value) {
+					return false
+				}
+				continue
+			case "agent":
+				if !strings.Contains(strings.ToLower(strings.Join(row.Agents, " ")), value) {
+					return false
+				}
+				continue
+			case "update":
+				if !strings.Contains(strings.ToLower(string(row.UpdateStatus)), value) {
+					return false
+				}
+				continue
+			}
+		}
+		search := strings.ToLower(strings.Join([]string{
+			row.Name, string(row.Scope), row.Source, row.SourceURL,
+			string(row.ManagedBy), string(row.UpdateStatus), strings.Join(row.Agents, " "),
+		}, " "))
+		if !strings.Contains(search, term) {
+			return false
+		}
+	}
+	return true
+}
+
 // compareRepos returns negative when a belongs before b.
 func compareRepos(a, b RepoRow, sortBy string) int {
 	nameCmp := strings.Compare(strings.ToLower(a.Repo.Display()), strings.ToLower(b.Repo.Display()))
@@ -781,6 +901,8 @@ func (m Model) count() int {
 		return len(m.visibleTries())
 	case ViewRemote:
 		return len(m.visibleRemotes())
+	case ViewSkills:
+		return len(m.visibleSkills())
 	default:
 		return len(m.visibleTasks())
 	}
@@ -797,6 +919,8 @@ func (m Model) at() int {
 		return m.tryCursor
 	case ViewRemote:
 		return m.remoteCursor
+	case ViewSkills:
+		return m.skillCursor
 	default:
 		return m.taskCursor
 	}
@@ -822,6 +946,8 @@ func (m *Model) setAt(i int) {
 		m.tryCursor = i
 	case ViewRemote:
 		m.remoteCursor = i
+	case ViewSkills:
+		m.skillCursor = i
 	default:
 		m.taskCursor = i
 	}
@@ -893,6 +1019,16 @@ func (m Model) currentFleet() (FleetRow, bool) {
 	rows := m.visibleFleet()
 	if m.at() >= len(rows) {
 		return FleetRow{}, false
+	}
+	return rows[m.at()], true
+}
+func (m Model) currentSkill() (agentskill.Skill, bool) {
+	if m.view != ViewSkills {
+		return agentskill.Skill{}, false
+	}
+	rows := m.visibleSkills()
+	if m.at() >= len(rows) {
+		return agentskill.Skill{}, false
 	}
 	return rows[m.at()], true
 }
@@ -1010,6 +1146,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		m.setAt(m.at())
 		return m, nil
+
+	case skillsMsg:
+		m.skillsLoading, m.skillsChecking = false, false
+		if msg.loaded {
+			m.skillsLoaded = true
+		}
+		if msg.rows != nil {
+			m.skills = msg.rows
+		}
+		m.err = msg.err
+		switch {
+		case msg.err != nil:
+			m.status = ""
+		case msg.status != "":
+			m.status = msg.status
+		case msg.checked:
+			m.status = "skill update check complete"
+		default:
+			m.status = ""
+		}
+		m.setAt(m.at())
+		return m, nil
+
+	case skillProcessMsg:
+		if msg.err != nil {
+			m.err, m.status = msg.err, ""
+			return m, nil
+		}
+		m.err, m.skillsLoading = nil, true
+		if msg.action == "update" {
+			m.status = "reloading and verifying " + msg.name + "…"
+			return m, m.reloadUpdatedSkill(msg.name, msg.scope)
+		}
+		m.status = "reloading agent skills…"
+		return m, m.reloadSkills()
 
 	case statsBackfilledMsg:
 		if msg.err != nil {
@@ -1172,7 +1343,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.mode {
 		case modeFilter:
 			return m.updateFilter(msg)
-		case modeEditNext, modeConfirmPark, modeStartTask, modeStartDirect, modeConfirmClone:
+		case modeEditNext, modeConfirmPark, modeStartTask, modeStartDirect, modeConfirmClone, modeConfirmSkillUpdate:
 			return m.updatePrompt(msg)
 		}
 		return m.updateList(msg)
@@ -1257,6 +1428,11 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.status = "refreshing fleet…"
 			return m, m.reloadFleet()
 		}
+		if m.view == ViewSkills {
+			m.status, m.err = "reloading local agent skills…", nil
+			m.skillsLoading = true
+			return m, m.reloadSkills()
+		}
 		m.status = "reloading config + data…"
 		m.forceSizeReload = true
 		if m.view == ViewRemote {
@@ -1280,6 +1456,20 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.states, m.filter = nil, ""
 		m.setAt(0)
 	case "a":
+		if m.view == ViewSkills {
+			if m.actions.AddSkill == nil {
+				return m, nil
+			}
+			proc, err := m.actions.AddSkill()
+			if err != nil {
+				m.err = err
+				return m, nil
+			}
+			m.status = "opening interactive skill installer…"
+			return m, tea.ExecProcess(proc, func(err error) tea.Msg {
+				return skillProcessMsg{action: "add", err: err}
+			})
+		}
 		if m.view == ViewTries {
 			m.showAllTries = !m.showAllTries
 			m.status = fmt.Sprintf("Try history visible: %v", m.showAllTries)
@@ -1339,6 +1529,11 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.prompt(modeConfirmPark, "", "what to do when you come back")
 
 	case "c":
+		if m.view == ViewSkills {
+			m.status, m.err = "checking skill sources…", nil
+			m.skillsChecking = true
+			return m, m.checkSkills(append([]agentskill.Skill(nil), m.skills...))
+		}
 		if row, ok := m.currentTask(); ok {
 			return m.prompt(modeEditNext, row.Task.Next, "next action")
 		}
@@ -1359,6 +1554,18 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m.prompt(modeStartDirect, "", "name for direct work on current branch")
+
+	case "u":
+		row, ok := m.currentSkill()
+		if !ok {
+			return m, nil
+		}
+		if row.ManagedBy != agentskill.ManagedBySkills {
+			m.err = fmt.Errorf("%s is not managed by the skills CLI", row.Name)
+			return m, nil
+		}
+		m.mode = modeConfirmSkillUpdate
+		return m, nil
 
 	case "e":
 		if m.actions.EditConfig == nil {
@@ -1766,7 +1973,9 @@ func (m Model) updateStats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// afterViewSwitch lazily loads network-backed views.
+// afterViewSwitch lazily loads optional inventories only when their view is
+// first opened, so starting the dashboard never waits on the network, a forge
+// CLI, or Node tooling.
 func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 	m.setAt(m.at())
 	if m.view == ViewFleet && !m.fleetLoaded && !m.fleetLoading {
@@ -1778,6 +1987,11 @@ func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 		m.remotesLoading = true
 		m.status = "loading remote repositories…"
 		return m, m.reloadRemote()
+	}
+	if m.view == ViewSkills && !m.skillsLoaded && !m.skillsLoading {
+		m.skillsLoading = true
+		m.status = "loading local agent skills…"
+		return m, m.reloadSkills()
 	}
 	return m, nil
 }
@@ -1895,6 +2109,19 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 				remoteName: r.Repo.FullName, localPath: path, err: err,
 			}
 		}
+
+	case modeConfirmSkillUpdate:
+		row, ok := m.currentSkill()
+		if !ok || m.actions.UpdateSkill == nil {
+			return nil
+		}
+		proc, err := m.actions.UpdateSkill(row)
+		if err != nil {
+			return func() tea.Msg { return skillProcessMsg{action: "update", err: err} }
+		}
+		return tea.ExecProcess(proc, func(err error) tea.Msg {
+			return skillProcessMsg{action: "update", name: row.Name, scope: row.Scope, err: err}
+		})
 	}
 	return nil
 }
@@ -2052,6 +2279,17 @@ func (m Model) Summary() string {
 	}
 	if len(m.fleet) > 0 {
 		parts = append(parts, fmt.Sprintf("%d fleet", len(m.fleet)))
+	}
+	if m.skillsLoaded {
+		project, global := 0, 0
+		for _, row := range m.skills {
+			if row.Scope == agentskill.ScopeProject {
+				project++
+			} else if row.Scope == agentskill.ScopeGlobal {
+				global++
+			}
+		}
+		parts = append(parts, fmt.Sprintf("%dP/%dG skills", project, global))
 	}
 	if len(parts) == 0 {
 		return "no tasks"

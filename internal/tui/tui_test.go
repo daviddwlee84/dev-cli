@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/experiment"
@@ -221,6 +222,102 @@ func TestViewRendersTasksAndHelp(t *testing.T) {
 	}
 	if !strings.Contains(out, "TASKS") || !strings.Contains(out, "REPOS") {
 		t.Errorf("both views should be visible in the tab strip:\n%s", out)
+	}
+}
+
+func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
+	rows := []agentskill.Skill{
+		{
+			Name: "project-skill", Scope: agentskill.ScopeProject, ScopeRoot: "/src/demo",
+			Path: "/src/demo/.agents/skills/project-skill", Agents: []string{"Claude Code", "Codex"},
+			Source: "owner/repo", ManagedBy: agentskill.ManagedBySkills,
+			UpdateStatus: agentskill.UpdateUnchecked,
+		},
+		{
+			Name: "global-skill", Scope: agentskill.ScopeGlobal, ScopeRoot: "/home/test",
+			Path: "/home/test/.agents/skills/global-skill", Agents: []string{"Cursor"},
+			ManagedBy: agentskill.ManagedByExternal, UpdateStatus: agentskill.UpdateUnknown,
+		},
+	}
+	loaded, checked, added, updated := 0, 0, 0, 0
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadSkills = func(context.Context) ([]agentskill.Skill, error) {
+		loaded++
+		return append([]agentskill.Skill(nil), rows...), nil
+	}
+	actions.CheckSkills = func(_ context.Context, got []agentskill.Skill) []agentskill.Skill {
+		checked++
+		out := append([]agentskill.Skill(nil), got...)
+		for i := range out {
+			if out[i].ManagedBy == agentskill.ManagedBySkills {
+				out[i].UpdateStatus = agentskill.UpdateCurrent
+			}
+		}
+		return out
+	}
+	actions.AddSkill = func() (*exec.Cmd, error) {
+		added++
+		return exec.Command("true"), nil
+	}
+	actions.UpdateSkill = func(row agentskill.Skill) (*exec.Cmd, error) {
+		updated++
+		if row.Name != "project-skill" || row.Scope != agentskill.ScopeProject {
+			t.Fatalf("updated wrong row: %+v", row)
+		}
+		return exec.Command("true"), nil
+	}
+
+	m := tui.New(actions, nil, nil)
+	if loaded != 0 {
+		t.Fatal("skills must not load during dashboard construction")
+	}
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
+	if loaded != 1 || m.CurrentView() != tui.ViewSkills {
+		t.Fatalf("skills load/view = %d/%s", loaded, m.CurrentView())
+	}
+	view := m.View()
+	for _, want := range []string{"SKILLS", "project-skill", "global-skill", "project", "global", "a add", "c check", "u update selected"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("skills view missing %q:\n%s", want, view)
+		}
+	}
+	m = send(m, tea.WindowSizeMsg{Width: 60, Height: 24})
+	for _, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(line, "SCOPE") && lipgloss.Width(line) > 60 {
+			t.Fatalf("narrow skills header is %d cells:\n%s", lipgloss.Width(line), line)
+		}
+	}
+
+	m = send(m, key("c"))
+	if checked != 1 || !strings.Contains(m.View(), "current") {
+		t.Fatalf("check action = %d\n%s", checked, m.View())
+	}
+	m = send(m, key("a"))
+	if added != 1 {
+		t.Fatalf("add action = %d", added)
+	}
+
+	// Reload after the suspended add process is driven by Bubble Tea itself in
+	// production; seed the view again here, then verify the guarded update path.
+	m = tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("u"))
+	if !strings.Contains(m.View(), "update project skill project-skill") {
+		t.Fatalf("update confirmation missing:\n%s", m.View())
+	}
+	m = send(m, key("enter"))
+	if updated != 1 {
+		t.Fatalf("update action = %d", updated)
+	}
+
+	m = tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("/"))
+	for _, msg := range typeText("scope:global") {
+		m = send(m, msg)
+	}
+	m = send(m, key("enter"))
+	filtered := m.View()
+	if strings.Contains(filtered, "project-skill") || !strings.Contains(filtered, "global-skill") {
+		t.Fatalf("scope filter failed:\n%s", filtered)
 	}
 }
 
@@ -526,6 +623,10 @@ func TestTabSwitchesViews(t *testing.T) {
 	if m.CurrentView() != tui.ViewRemote {
 		t.Error("the fifth view should be remote")
 	}
+	m = send(m, key("tab"))
+	if m.CurrentView() != tui.ViewSkills {
+		t.Error("the fifth view should be skills")
+	}
 	if send(m, key("tab")).CurrentView() != tui.ViewTasks {
 		t.Error("a fifth tab should cycle back round")
 	}
@@ -737,8 +838,8 @@ func TestTryArchiveActionRequiresExactYES(t *testing.T) {
 func TestHelpOverlayIsDiscoverableAndClosesWithoutQuitting(t *testing.T) {
 	m := tui.New(newActions(&recorder{}, nil), nil, nil)
 	m = send(m, key("?"))
-	if out := m.View(); !strings.Contains(out, "KEYBOARD HELP") || !strings.Contains(out, "TRY") {
-		t.Fatalf("help overlay missing Try bindings:\n%s", out)
+	if out := m.View(); !strings.Contains(out, "KEYBOARD HELP") || !strings.Contains(out, "TRY") || !strings.Contains(out, "SKILLS") {
+		t.Fatalf("help overlay missing view bindings:\n%s", out)
 	}
 	m = send(m, key("q"))
 	if out := m.View(); out == "" || strings.Contains(out, "KEYBOARD HELP") {

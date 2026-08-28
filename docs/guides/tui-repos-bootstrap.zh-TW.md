@@ -1,5 +1,5 @@
 ---
-description: 在 TUI 瀏覽 tasks、repositories、experiments 與 remotes、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
+description: 在 TUI 瀏覽 tasks、repositories、experiments、remotes 與 agent skills、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
 authority: project
 status: evolving
 verified_on: 2026-08-28
@@ -13,7 +13,7 @@ lang: zh-TW
 
 Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interactive dashboard；透過 pipe 執行時會輸出 plain task listing，讓 shell composition 保持可預期。
 
-## 四個 view
+## 五個 view
 
 | View | 回答問題 | 來源 |
 |---|---|---|
@@ -21,6 +21,7 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 | REPOS | 本機有哪些持久 repositories？ | 設定的 scan roots 與 local catalog |
 | TRY | 哪些 experiments 能 resume、archive 或 graduate？ | experiment catalog 加 live facts |
 | REMOTE | 有哪些 repository 能 open 或 clone？ | authenticated `gh`/`glab` inventories 與 cache |
+| SKILLS | Project 與 global scope 安裝了哪些 agent skills？ | upstream `skills` JSON 加 project/global locks |
 
 用 `tab`、`h`/`l` 或左右鍵切換；`j`/`k`、`g`/`G`、`ctrl+d`/`ctrl+u` 移動；`/` filter；`?` 開 help；`esc`/`q` 離開目前 mode。
 
@@ -93,6 +94,13 @@ dev note reindex
 Note ID prefix 必須唯一，且至少八個字元。
 
 Configured `paths.state_dir/notes` 下的 Markdown 是 durable data；`$XDG_CACHE_HOME/dev/notes.db` 只是可重建的 search index。精確 flags 請見[命令與設定 reference](../reference/commands-config.md)中的完整 generated command reference。
+
+SKILLS 同樣延遲載入，因此 dashboard startup 不會啟動 Node。同名 skill
+在 project 與 global scope 會保留為不同列，並顯示 target agents、source、
+path、manager 與 update state。`r` 只重讀 local state；`c` 明確執行唯讀
+source check；`a` 以 `daviddwlee84/agent-skills/skills` 為預設 source 開啟
+upstream interactive installer；`u` 先確認，再只更新選取且受 lock 管理的
+skill。Structured filters 包含 `scope:`、`agent:` 與 `update:`。
 
 ## External tools
 

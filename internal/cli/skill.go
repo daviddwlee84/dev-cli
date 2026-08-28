@@ -1,9 +1,14 @@
 package cli
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
+	"os"
+	"sort"
 	"strings"
 
+	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/skill"
 	"github.com/spf13/cobra"
@@ -13,7 +18,7 @@ import (
 func newSkillCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "skill",
-		Short: "Print or install dev's agent skill",
+		Short: "Inspect agent skills and manage dev's bundled skill",
 		Long: `dev ships the agent skill that documents it.
 
 Keeping the skill inside the binary is what stops the two drifting: an agent
@@ -21,7 +26,209 @@ reading a stale command list is worse than one reading none. The same content
 is available as "dev --skill", so a dotfiles installer can sync it without
 vendoring a copy.`,
 	}
-	cmd.AddCommand(newSkillPrintCmd(app), newSkillInstallCmd(app), newSkillSyncCmd(app))
+	cmd.AddCommand(
+		newSkillListCmd(app),
+		newSkillAddCmd(app),
+		newSkillUpdateCmd(app),
+		newSkillPrintCmd(app),
+		newSkillInstallCmd(app),
+		newSkillSyncCmd(app),
+	)
+	return cmd
+}
+
+func newSkillListCmd(app *App) *cobra.Command {
+	var projectOnly, globalOnly, check, jsonOut bool
+	cmd := &cobra.Command{
+		Use:     "list",
+		Aliases: []string{"ls", "status"},
+		Short:   "List project and global agent skills",
+		Long: `List installed agent skills through the upstream skills CLI's JSON output.
+
+With no scope flags, project and global skills are merged while remaining
+separate rows. Project scope is rooted at the current Git checkout, even when
+dev is run from a subdirectory. Listing never downloads the provider.
+
+--check is the only form that contacts skill sources. It compares lock-recorded
+content without writing installed skills or either lock file.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			rows, err := agentskill.List(cmd.Context(), cwd, agentskill.ListOptions{
+				Project: projectOnly, Global: globalOnly, Check: check,
+			})
+			if err != nil {
+				return err
+			}
+			if jsonOut {
+				return renderSkillJSON(app, rows)
+			}
+			return renderSkillTable(app, rows, agentskill.ProjectRoot(cmd.Context(), cwd), projectOnly, globalOnly)
+		},
+	}
+	f := cmd.Flags()
+	f.BoolVarP(&projectOnly, "project", "p", false, "list project skills")
+	f.BoolVarP(&globalOnly, "global", "g", false, "list global skills")
+	f.BoolVar(&check, "check", false, "contact Git sources and check for updates without installing them")
+	f.BoolVar(&jsonOut, "json", false, "emit a stable machine-readable JSON array")
+	return cmd
+}
+
+type skillJSON struct {
+	Name         string   `json:"name"`
+	Scope        string   `json:"scope"`
+	ScopeRoot    string   `json:"scope_root"`
+	Path         string   `json:"path"`
+	Agents       []string `json:"agents"`
+	Source       string   `json:"source,omitempty"`
+	SourceURL    string   `json:"source_url,omitempty"`
+	SourceType   string   `json:"source_type,omitempty"`
+	ManagedBy    string   `json:"managed_by"`
+	UpdateStatus string   `json:"update_status"`
+	UpdateDetail string   `json:"update_detail,omitempty"`
+}
+
+func renderSkillJSON(app *App, rows []agentskill.Skill) error {
+	out := make([]skillJSON, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, skillJSON{
+			Name: row.Name, Scope: string(row.Scope), ScopeRoot: row.ScopeRoot,
+			Path: row.Path, Agents: row.Agents, Source: row.Source,
+			SourceURL: row.SourceURL, SourceType: row.SourceType,
+			ManagedBy: string(row.ManagedBy), UpdateStatus: string(row.UpdateStatus),
+			UpdateDetail: row.UpdateDetail,
+		})
+	}
+	enc := json.NewEncoder(app.Out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
+}
+
+func renderSkillTable(app *App, rows []agentskill.Skill, projectRoot string, project, global bool) error {
+	if !project && !global {
+		project = true
+	}
+	if project {
+		fmt.Fprintf(app.Out, "project root  %s\n\n", config.Contract(projectRoot))
+	}
+	if len(rows) == 0 {
+		fmt.Fprintln(app.Out, "No agent skills found.")
+		return nil
+	}
+	t := NewTable("SCOPE", "SKILL", "UPDATE", "AGENTS", "SOURCE", "PATH")
+	for _, row := range rows {
+		t.Add(string(row.Scope), row.Name, shortUpdate(row.UpdateStatus), compactAgents(row.Agents),
+			dash(row.Source), config.Contract(row.Path))
+	}
+	t.Render(app.Out)
+	return nil
+}
+
+func compactAgents(agents []string) string {
+	if len(agents) == 0 {
+		return "—"
+	}
+	names := append([]string(nil), agents...)
+	sort.Strings(names)
+	if len(names) <= 3 {
+		return strings.Join(names, ", ")
+	}
+	return strings.Join(names[:3], ", ") + fmt.Sprintf(" +%d", len(names)-3)
+}
+
+func shortUpdate(status agentskill.UpdateStatus) string {
+	switch status {
+	case agentskill.UpdateAvailable:
+		return "update"
+	case agentskill.UpdateMissing:
+		return "missing"
+	case agentskill.UpdateUnknown:
+		return "unknown"
+	case agentskill.UpdateFailed:
+		return "failed"
+	default:
+		return string(status)
+	}
+}
+
+func newSkillAddCmd(app *App) *cobra.Command {
+	return &cobra.Command{
+		Use:   "add [package]",
+		Short: "Open the interactive skills installer",
+		Long: `Start the upstream skills interactive wizard at the current Git checkout root.
+
+With no package, use ` + agentskill.DefaultSource + `. dev does not select all
+skills, agents, or a scope: those decisions remain in the upstream wizard.`,
+		Args: cobra.MaximumNArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			source := agentskill.DefaultSource
+			if len(args) == 1 {
+				source = args[0]
+			}
+			proc, err := agentskill.AddCommand(cmd.Context(), agentskill.ProjectRoot(cmd.Context(), cwd), source)
+			if err != nil {
+				return err
+			}
+			proc.Stdin, proc.Stdout, proc.Stderr = app.In, app.Out, app.Err
+			return proc.Run()
+		},
+	}
+}
+
+func newSkillUpdateCmd(app *App) *cobra.Command {
+	var project, global, yes bool
+	cmd := &cobra.Command{
+		Use:   "update <skill>",
+		Short: "Update one skill in one explicit scope",
+		Long: `Update exactly one lock-managed skill through the upstream skills CLI.
+
+Project or global scope is required. The command confirms in a terminal unless
+--yes is supplied; a non-interactive invocation must always pass --yes.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if project == global {
+				return fmt.Errorf("choose exactly one of --project or --global")
+			}
+			scope := agentskill.ScopeProject
+			if global {
+				scope = agentskill.ScopeGlobal
+			}
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			projectRoot := agentskill.ProjectRoot(cmd.Context(), cwd)
+			if !agentskill.Managed(cmd.Context(), projectRoot, args[0], scope) {
+				return fmt.Errorf("%s skill %s is not managed by the skills CLI", scope, args[0])
+			}
+			if !yes {
+				if !app.interactive() {
+					return fmt.Errorf("non-interactive skill update requires --yes")
+				}
+				if !confirm(app, bufio.NewReader(app.In), fmt.Sprintf("update %s skill %s", scope, args[0])) {
+					fmt.Fprintln(app.Out, "not changed")
+					return nil
+				}
+			}
+			proc, err := agentskill.UpdateCommand(cmd.Context(), projectRoot, args[0], scope)
+			if err != nil {
+				return err
+			}
+			proc.Stdin, proc.Stdout, proc.Stderr = app.In, app.Out, app.Err
+			return proc.Run()
+		},
+	}
+	f := cmd.Flags()
+	f.BoolVarP(&project, "project", "p", false, "update the project-scoped skill")
+	f.BoolVarP(&global, "global", "g", false, "update the global skill")
+	f.BoolVarP(&yes, "yes", "y", false, "skip dev's confirmation")
 	return cmd
 }
 

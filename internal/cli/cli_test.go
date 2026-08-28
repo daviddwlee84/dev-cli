@@ -587,6 +587,115 @@ func TestSkillPrintsAndSyncChecks(t *testing.T) {
 	}
 }
 
+func TestSkillInventoryAddAndUpdate(t *testing.T) {
+	h := newHarness(t)
+	projectRoot, _ := filepath.EvalSymlinks(h.repo.Root)
+	projectSkills := filepath.Join(h.repo.Root, ".agents", "skills", "shared")
+	globalSkills := filepath.Join(h.home, ".agents", "skills", "shared")
+	for _, dir := range []string{projectSkills, globalSkills} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: shared\n---\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(h.repo.Root, "skills-lock.json"), []byte(`{
+  "version": 1,
+  "skills": {
+    "shared": {
+      "source": "owner/repo",
+      "sourceType": "github",
+      "skillPath": "skills/shared/SKILL.md",
+      "computedHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    }
+  }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(h.home, ".agents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(h.home, ".agents", ".skill-lock.json"), []byte(`{
+  "version": 3,
+  "skills": {
+    "shared": {
+      "source": "owner/repo/skills",
+      "sourceType": "github",
+      "sourceUrl": "https://github.com/owner/repo.git",
+      "skillPath": "skills/shared/SKILL.md",
+      "skillFolderHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    }
+  }
+}
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	bin := t.TempDir()
+	script := `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  echo 1.5.23
+  exit 0
+fi
+if [ "$1" = "list" ]; then
+  scope=project
+  path="$PWD/.agents/skills/shared"
+  for arg in "$@"; do
+    if [ "$arg" = "--global" ]; then
+      scope=global
+      path="$HOME/.agents/skills/shared"
+    fi
+  done
+  printf '[{"name":"shared","path":"%s","scope":"%s","agents":["Claude Code","Codex"],"source":"owner/repo","sourceUrl":null,"sourceType":"github"}]\n' "$path" "$scope"
+  exit 0
+fi
+printf '%s|%s\n' "$PWD" "$*"
+`
+	if err := os.WriteFile(filepath.Join(bin, "skills"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	nested := filepath.Join(h.repo.Root, "nested", "deeper")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(nested); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chdir(cwd)
+
+	var rows []map[string]any
+	if err := json.Unmarshal([]byte(h.mustRun("skill", "list", "--json")), &rows); err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 2 || rows[0]["scope"] != "project" || rows[1]["scope"] != "global" {
+		t.Fatalf("skill rows = %+v", rows)
+	}
+	if rows[0]["scope_root"] != projectRoot || rows[0]["managed_by"] != "skills" {
+		t.Errorf("project row = %+v", rows[0])
+	}
+	table := h.mustRun("skill", "list", "--project")
+	if !strings.Contains(table, "project root") || !strings.Contains(table, "shared") || strings.Contains(table, "global") {
+		t.Errorf("project table = %q", table)
+	}
+
+	add := h.mustRun("skill", "add")
+	if !strings.Contains(add, projectRoot+"|add daviddwlee84/agent-skills/skills") {
+		t.Errorf("add shortcut = %q", add)
+	}
+	if _, _, err := h.run("skill", "update", "shared", "--yes"); err == nil || !strings.Contains(err.Error(), "choose exactly one") {
+		t.Fatalf("unscoped update err = %v", err)
+	}
+	update := h.mustRun("skill", "update", "shared", "--global", "--yes")
+	if !strings.Contains(update, "update shared --yes --global") {
+		t.Errorf("update = %q", update)
+	}
+}
+
 func TestShellInit(t *testing.T) {
 	h := newHarness(t)
 	for _, shell := range []string{"bash", "zsh", "fish"} {

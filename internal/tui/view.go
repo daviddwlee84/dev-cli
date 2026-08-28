@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
@@ -65,6 +66,8 @@ func (m Model) View() string {
 		b.WriteString(m.renderTries())
 	case ViewRemote:
 		b.WriteString(m.renderRemotes())
+	case ViewSkills:
+		b.WriteString(m.renderSkills())
 	default:
 		b.WriteString(m.renderTasks())
 	}
@@ -579,6 +582,62 @@ func (m Model) renderFleet() string {
 	b.WriteString(m.scrollNote(len(rows), from, to))
 	return b.String()
 }
+func (m Model) renderSkills() string {
+	if m.skillsLoading {
+		return "  " + styleDim.Render("Loading local agent skills…") + "\n"
+	}
+	if m.skillsChecking {
+		return "  " + styleDim.Render("Checking skill sources…") + "\n"
+	}
+	rows := m.visibleSkills()
+	if len(rows) == 0 {
+		if !m.skillsLoaded {
+			return "  " + styleDim.Render("Agent skills load when this view is opened.") + "\n"
+		}
+		if m.filter != "" {
+			return "  " + styleDim.Render("No agent skill matches /"+m.filter) + "\n"
+		}
+		return "  " + styleDim.Render("No agent skills found. Press a to open the installer.") + "\n"
+	}
+	skillW := clamp(m.width*24/100, 14, 30)
+	agentW := clamp(m.width*25/100, 16, 34)
+	showSource := m.width >= 76
+	sourceW := m.width - skillW - agentW - 35
+	if sourceW < 12 {
+		sourceW = 12
+	}
+
+	var b strings.Builder
+	if showSource {
+		b.WriteString(styleHeader.Render(fmt.Sprintf("  %-7s  %-*s  %-10s  %-*s  %s",
+			"SCOPE", skillW, "SKILL", "UPDATE", agentW, "AGENTS", "SOURCE")) + "\n")
+	} else {
+		b.WriteString(styleHeader.Render(fmt.Sprintf("  %-7s  %-*s  %-10s  %s",
+			"SCOPE", skillW, "SKILL", "UPDATE", "AGENTS")) + "\n")
+	}
+	from, to := m.window(len(rows))
+	for i := from; i < to; i++ {
+		row := rows[i]
+		line := fmt.Sprintf("%-7s  %-*s  %-10s  %s",
+			row.Scope, skillW, pad(row.Name, skillW), skillUpdateLabel(row.UpdateStatus),
+			pad(skillAgentSummary(row.Agents), agentW))
+		if showSource {
+			line += "  " + pad(skillSource(row), sourceW)
+		}
+		styled := line
+		switch row.UpdateStatus {
+		case agentskill.UpdateAvailable, agentskill.UpdateMissing, agentskill.UpdateFailed:
+			styled = styleDrift.Render(line)
+		case agentskill.UpdateCurrent:
+			styled = styleLive.Render(line)
+		case agentskill.UpdateUnknown:
+			styled = styleDim.Render(line)
+		}
+		b.WriteString(m.renderLine(i, line, styled))
+	}
+	b.WriteString(m.scrollNote(len(rows), from, to))
+	return b.String()
+}
 
 func fleetTasks(hot, warm, cold, done int) string {
 	var parts []string
@@ -594,6 +653,38 @@ func fleetTasks(hot, warm, cold, done int) string {
 		return "—"
 	}
 	return strings.Join(parts, " ")
+}
+
+func skillUpdateLabel(status agentskill.UpdateStatus) string {
+	switch status {
+	case agentskill.UpdateAvailable:
+		return "update"
+	case agentskill.UpdateMissing:
+		return "missing"
+	case agentskill.UpdateUnknown:
+		return "unknown"
+	case agentskill.UpdateFailed:
+		return "failed"
+	default:
+		return string(status)
+	}
+}
+
+func skillAgentSummary(agents []string) string {
+	if len(agents) == 0 {
+		return "—"
+	}
+	if len(agents) <= 3 {
+		return strings.Join(agents, ", ")
+	}
+	return strings.Join(agents[:3], ", ") + fmt.Sprintf(" +%d", len(agents)-3)
+}
+
+func skillSource(row agentskill.Skill) string {
+	if row.Source != "" {
+		return row.Source
+	}
+	return string(row.ManagedBy)
 }
 
 func remoteAge(r RemoteRow) string {
@@ -685,6 +776,10 @@ func (m Model) renderDetail() string {
 		return "  " + styleTitle.Render("clone "+r.Repo.FullName) +
 			"\n  to: " + contract(filepath.Join("<project_root>", r.Repo.Name)) +
 			"\n  " + styleHelp.Render("enter to clone into project_root · esc to cancel")
+	case modeConfirmSkillUpdate:
+		row, _ := m.currentSkill()
+		return "  " + styleTitle.Render("update "+string(row.Scope)+" skill "+row.Name) +
+			"\n  " + styleHelp.Render("enter to update this skill · esc to cancel")
 	case modeCopy:
 		return "  " + styleTitle.Render("copy ") +
 			"y context · p path · b branch · s sessions · w worktree paths" +
@@ -715,6 +810,26 @@ func (m Model) renderDetail() string {
 		}
 		if row.Error != "" {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("note "), styleDrift.Render(row.Error)))
+		}
+		return strings.Join(lines, "\n") + "\n"
+	}
+	if row, ok := m.currentSkill(); ok {
+		lines := []string{
+			fmt.Sprintf("  %s %s", styleDim.Render("scope  "), row.Scope),
+			fmt.Sprintf("  %s %s", styleDim.Render("root   "), contract(row.ScopeRoot)),
+			fmt.Sprintf("  %s %s", styleDim.Render("path   "), contract(row.Path)),
+			fmt.Sprintf("  %s %s", styleDim.Render("managed"), row.ManagedBy),
+			fmt.Sprintf("  %s %s", styleDim.Render("agents "), strings.Join(row.Agents, ", ")),
+			fmt.Sprintf("  %s %s", styleDim.Render("update "), row.UpdateStatus),
+		}
+		if row.Source != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("source "), row.Source))
+		}
+		if row.SourceURL != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("url    "), row.SourceURL))
+		}
+		if row.UpdateDetail != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("detail "), row.UpdateDetail))
 		}
 		return strings.Join(lines, "\n") + "\n"
 	}
@@ -993,17 +1108,28 @@ func (m Model) renderFooter() string {
 		} else {
 			bindings = append(bindings, "c clone")
 		}
+	case ViewSkills:
+		bindings = append(bindings, "a add", "c check", "u update selected")
 	default:
 		bindings = append(bindings, "enter open", "n add note", "N notes", "p park", "c next")
 	}
 	if m.view == ViewRepos {
 		bindings = append(bindings, "y copy")
 	}
-	bindings = append(bindings, "tab view", "/ filter", "? help", "H stats", "e config")
-	for _, t := range m.Tools() {
-		bindings = append(bindings, t.Key+" "+t.Name)
+	bindings = append(bindings, "tab view", "/ filter", "? help")
+	if m.view != ViewSkills {
+		bindings = append(bindings, "H stats")
 	}
-	bindings = append(bindings, "1/2/3 state", "0 clear", "r reload", "q quit")
+	bindings = append(bindings, "e config")
+	if m.view != ViewSkills {
+		for _, t := range m.Tools() {
+			bindings = append(bindings, t.Key+" "+t.Name)
+		}
+	}
+	if m.view != ViewSkills {
+		bindings = append(bindings, "1/2/3 state")
+	}
+	bindings = append(bindings, "0 clear", "r reload", "q quit")
 
 	var b strings.Builder
 	if status != "" {

@@ -14,6 +14,7 @@ import (
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
@@ -40,13 +41,14 @@ func newTUICmd(app *App) *cobra.Command {
 Shows exactly what "dev ls" shows, from the same code path, plus the ability
 to open, park and annotate a task without retyping its name.
 
-	Five lists, switched with tab:
+Six lists, switched with tab:
 
   TASKS   change streams dev is tracking — what am I working on
   REPOS   durable repositories under the scan roots — what do I have here
   FLEET   repositories and active work across configured SSH machines
   TRY     scratch experiments and retained lifecycle history
   REMOTE  repositories visible through configured forge CLIs — what can I clone/open
+  SKILLS  project/global agent skills, agents, sources and update state
 
 Navigation is vim-style, with arrows alongside:
 
@@ -61,6 +63,7 @@ Actions depend on the list:
 	  FLEET   enter Herdr/SSH open · Git changes are read-only here
 	  TRY     enter open · n create · space lifecycle/metadata actions
   REMOTE  enter open local · c clone after confirmation
+  SKILLS  a interactive add · c check updates · u update selected after confirmation
 
   y       copy menu: yy context · yp path · yb branch · ys sessions · yw WT paths
   H       selected repo heatmap; b backfills it when empty
@@ -178,6 +181,11 @@ func tuiStartedTask(r tui.RepoRow, name, branch, base string, res *wt.CreateResu
 
 func runTUI(app *App) error {
 	rt := app.Runtime()
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	projectRoot := agentskill.ProjectRoot(ctxOf(), cwd)
 
 	reload := func(ctx context.Context) ([]inventory.Row, error) {
 		tasks, err := app.Tasks.List()
@@ -198,6 +206,9 @@ func runTUI(app *App) error {
 		results, _, err := collectFleet(ctx, app, fleetCollectOptions{})
 		return fleetRows(results), err
 	}
+	reloadSkills := func(ctx context.Context) ([]agentskill.Skill, error) {
+		return agentskill.List(ctx, projectRoot, agentskill.ListOptions{})
+	}
 	reloadTries := func(ctx context.Context, includeAll bool) ([]tui.TryRow, error) {
 		return collectTries(ctx, app, rt, includeAll)
 	}
@@ -207,6 +218,16 @@ func runTUI(app *App) error {
 		ReloadRepos:  reloadRepos,
 		ReloadRemote: reloadRemote,
 		ReloadFleet:  reloadFleet,
+		ReloadSkills: reloadSkills,
+		CheckSkills: func(ctx context.Context, rows []agentskill.Skill) []agentskill.Skill {
+			return agentskill.CheckUpdates(ctx, rows)
+		},
+		AddSkill: func() (*exec.Cmd, error) {
+			return agentskill.AddCommand(context.Background(), projectRoot, agentskill.DefaultSource)
+		},
+		UpdateSkill: func(row agentskill.Skill) (*exec.Cmd, error) {
+			return agentskill.UpdateCommand(context.Background(), projectRoot, row.Name, row.Scope)
+		},
 		Repos: tui.RepoActions{
 			Patch: func(ctx context.Context, row tui.RepoRow, tags []string, note string) (string, error) {
 				remove := []string(nil)

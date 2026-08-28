@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
@@ -94,6 +95,14 @@ func runDoctor(app *App) error {
 			checks = append(checks, check{f.bin, checkOK, path + " — " + f.purpose})
 		} else {
 			checks = append(checks, check{f.bin, checkWarn, "not found — " + f.purpose + " unavailable"})
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil {
+		if version, err := agentskill.ProviderVersion(ctx, cwd); err == nil {
+			checks = append(checks, check{"agent skills", checkOK, version})
+		} else {
+			checks = append(checks, check{"agent skills", checkWarn,
+				"provider unavailable without downloading — `dev skill add` bootstraps it explicitly"})
 		}
 	}
 	azureTargets := len(app.Cfg.Forge.AzureDevOps)

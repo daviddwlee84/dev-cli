@@ -15,6 +15,7 @@ Switch with `tab`, `l`/`h`, or right/left:
 | FLEET | What exists and is active on my other machines? | remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive or graduate? | experiment catalog + live Git/runtime state |
 | REMOTE | What can I open or clone? | authenticated forge CLI inventories |
+| SKILLS | Which agent skills are active here and globally? | upstream `skills list --json` + lock metadata |
 
 REPOS shows branch, dirty state, owned logical size, linked-worktree count and
 HOT/WARM/COLD task tallies. Press `space` to expand a repo into its linked
@@ -28,6 +29,11 @@ REMOTE loads lazily, so dashboard startup never waits on the network. A
 private XDG cache makes later switches instant; `r` refreshes explicitly. It
 marks remotes already cloned under `scan_roots`. Enter opens a local clone; `c`
 asks before cloning an absent repo into `project_root`.
+
+SKILLS also loads lazily, but local listing never contacts the network or
+downloads the provider. It keeps project/global copies of the same skill as
+separate rows. Press `c` for the explicit read-only source check; `r` only
+reloads local state.
 
 GitHub and GitLab are discovered from authenticated `gh` and `glab` CLIs.
 Azure DevOps Services inventory is opt-in because each query needs an explicit
@@ -146,6 +152,19 @@ enter / o  open an existing local clone
 c          confirm and clone an absent repo into project_root
 r          refresh configured forge CLIs, replacing the cache
 ```
+
+SKILLS:
+
+```
+a          open the interactive installer (default personal skill catalog)
+c          check lock-managed Git sources without installing updates
+u          confirm and update only the selected lock-managed skill
+r          reload local project/global state without network access
+```
+
+The detail pane shows the scope root, installed path, complete agent list,
+source URL, manager and update reason. Filters include `scope:global`,
+`agent:Codex` and `update:update_available`.
 
 ## Heatmap and live config
 

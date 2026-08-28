@@ -91,6 +91,7 @@ The agent skill is an explicit, optional post-install step:
 
 ```bash
 dev skill install
+dev skill list    # project + global skills, agents and sources
 dev doctor       # what works on this machine, and what degrades
 ```
 
@@ -184,6 +185,8 @@ Bare `dev` (or `dev tui`) opens five lists, switched with `tab`:
 - **REMOTE** — repositories visible through authenticated forge CLIs, including
   configured Azure DevOps projects, marked when a local repo or Try exists.
   What can I open or clone.
+- **SKILLS** — project and global agent skills, their target agents, source and
+  explicitly checked update state.
 
 TASKS, REPOS and TRY use the same services as their non-interactive commands.
 Git-backed Tries appear in TRY rather than being duplicated in REPOS; REMOTE
@@ -209,7 +212,10 @@ On TASKS and REPOS, `n` quick-adds a repository thought and `N` opens its notes
 overlay. Expanded children carry their own Git/session/task state and can be
 opened directly. In TRY, `n` creates or clones an experiment;
 `space` opens mark/deprecate/archive/restore/graduate actions; `a` includes
-retained history. `?` opens the complete context-sensitive key map. That makes
+retained history. In SKILLS, `a` opens the upstream interactive installer, `c`
+performs the opt-in read-only network check, and `u` confirms before updating
+only the selected lock-managed skill. `r` reloads local state without checking
+the network. `?` opens the complete context-sensitive key map. That makes
 the branch/worktree and lifecycle costs explicit rather than silently applying
 them to every directory.
 
@@ -263,6 +269,10 @@ forge providers.
 and `c` confirms before cloning an absent repo into `project_root`. The same
 inventory is available without the full-screen UI via `dev repo remote [query]`;
 `--cached` is its instant/offline form.
+
+SKILLS also loads lazily, so opening the dashboard does not start Node. Its
+plain and JSON forms are available through `dev skill list`; run with `--check`
+only when a remote freshness check is wanted.
 
 Azure DevOps Services inventory is opt-in because `az repos list` requires an
 organization and team project. Repeat the target for every project wanted:
@@ -743,11 +753,22 @@ tool it describes, and an agent reading a stale command list is worse than one
 reading none.
 
 ```bash
+dev skill list       # merged project + global inventory
+dev skill list --check --json
+dev skill add        # interactive wizard for daviddwlee84/agent-skills/skills
+dev skill update project-knowledge-harness --global --yes
 dev skill install    # → ~/.agents/skills/dev-cli, symlinked into ~/.claude/skills
 dev --skill          # print it, for a dotfiles installer to sync
 dev skill sync       # regenerate the command reference from the command tree
 dev skill sync --check   # fail if it has drifted — wire into CI
 ```
+
+`dev skill add [package]` is only a shortcut into the upstream interactive
+wizard. It never selects all skills or agents. Listing uses an already
+available/cached `skills` CLI and never downloads it; add/update are explicit
+actions and may access the network. Project scope resolves to the current Git
+checkout root, so invoking the command from a nested directory gives the same
+inventory.
 
 The skill defers to the companion `git-workflow` skill for commit conventions,
 SemVer and branch naming rather than restating them. It owns what is new: the
