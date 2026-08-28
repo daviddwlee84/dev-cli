@@ -45,20 +45,20 @@ func TestDoneInteractiveDiscardUniqueAlreadyMergedCheckout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := runDoneForTest(f, "d\nDROP\n", true, "discard-finish", "--delete-branch"); err != nil {
+	if err := runDoneForTest(f, "d\nDROP\n", true, "discard-finish"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
-		t.Fatalf("worktree was not removed: %v", err)
+	if _, err := os.Stat(worktree); err != nil {
+		t.Fatalf("done must keep the worktree for dev retire: %v", err)
 	}
-	if gitx.BranchExists(ctxOf(), f.repo.Root, "feat/discard-finish") {
-		t.Fatal("merged branch was not deleted")
+	if !gitx.BranchExists(ctxOf(), f.repo.Root, "feat/discard-finish") {
+		t.Fatal("done must keep the branch for dev retire")
 	}
 	stored, err := f.app.Tasks.Get(task.MakeID("repo", "feat/discard-finish"))
 	if err != nil || stored.State != task.Done {
 		t.Fatalf("task = %+v, %v", stored, err)
 	}
-	for _, want := range []string{"already equal to main", "1 unique", "Type DROP", "cleanup only"} {
+	for _, want := range []string{"already equal to main", "1 unique", "Type DROP", "cleanup only", "cleanup pending"} {
 		if !strings.Contains(f.stdout.String(), want) {
 			t.Errorf("output missing %q:\n%s", want, f.stdout.String())
 		}
@@ -80,8 +80,8 @@ func TestDoneInteractiveCommitThenFastForwardsNewCommit(t *testing.T) {
 	if subject := f.repo.Git("log", "-1", "--format=%s", "main"); subject != "chore: finalize commit-finish" {
 		t.Fatalf("final commit subject = %q", subject)
 	}
-	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
-		t.Fatalf("worktree was not removed: %v", err)
+	if _, err := os.Stat(worktree); err != nil {
+		t.Fatalf("done must keep the worktree for dev retire: %v", err)
 	}
 }
 
@@ -114,7 +114,7 @@ func TestDoneInteractiveEquivalentDirtyNeedsOnlyNormalConfirmation(t *testing.T)
 		t.Fatal(err)
 	}
 
-	if err := runDoneForTest(f, "d\ny\n", true, "equivalent", "--delete-branch"); err != nil {
+	if err := runDoneForTest(f, "d\ny\n", true, "equivalent"); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(f.stdout.String(), "Type DROP") {
@@ -170,8 +170,8 @@ func TestDoneNonInteractiveDiscardYesDropsAllDirtyLayers(t *testing.T) {
 	if got := f.repo.Git("show", "main:feature.txt"); got != "done" {
 		t.Fatalf("discard changed integrated content: %q", got)
 	}
-	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
-		t.Fatalf("worktree was not removed: %v", err)
+	if _, err := os.Stat(worktree); err != nil {
+		t.Fatalf("done must keep the worktree for dev retire: %v", err)
 	}
 }
 

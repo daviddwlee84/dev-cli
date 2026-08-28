@@ -13,7 +13,9 @@ Use the authored map for intent and the embedded generated reference for exact f
 
 | Goal | Commands |
 |---|---|
-| task lifecycle | `start`, `park`, `resume`, `done`, `sweep`, `ls`, `status` |
+| task lifecycle | `start`, `park`, `resume`, `done`, `retire`, `sweep`, `ls`, `status` |
+| agent artifacts | `prepare`, `artifact finalize`, `artifact list` |
+| guarded Git transactions | `git uncommit`, `git recommit`, `git pull-rebase`, `git amend-all`, `git setup` |
 | linked worktrees | `wt list`, `wt create`, `wt open`, `wt rm`, `wt plan`, `wt provision` |
 | repositories/remotes | `repo list`, `repo context`, `repo clone`, `repo open`, `repo new`, `repo sync`, `repo remote`, `repo mark` |
 | repository quick notes | `note add`, `note list`, `note show`, `note search`, `note edit`, `note delete`, `note path`, `note reindex` |

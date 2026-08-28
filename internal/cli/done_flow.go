@@ -169,7 +169,8 @@ func runDone(ctx context.Context, app *App, args []string, opts doneOptions) err
 		if err := openPR(ctx, app, t, checkout, base); err != nil {
 			return err
 		}
-		fmt.Fprintln(app.Out, "\nThe branch is under review — run `dev done --ff` or `dev sweep` after it merges.")
+		fmt.Fprintln(app.Out, "\nREADY FOR REVIEW · runtime and worktree kept")
+		fmt.Fprintln(app.Out, "After merge: dev done --merged --base-ref origin/"+base)
 		return nil
 	}
 	if plan.Integration == doneIntegrationMerged {

@@ -56,6 +56,7 @@ plugins:
             Worktrees and Provisioning: Worktree 與環境佈建
             Parallel Agents and Runtimes: 平行 Agent 與 Runtime
             Remote Repository Fleet: 遠端 Repository Fleet
+            Agent-Safe Retirement: Agent 安全退場
             TUI, Repositories, Quick Notes, and Bootstrap: TUI、Repository、Quick Notes 與 Bootstrap
             Git and GitHub: Git 與 GitHub
             GitHub Flow: GitHub Flow
@@ -122,6 +123,7 @@ nav:
       - Worktrees and Provisioning: guides/worktrees-provisioning.md
       - Parallel Agents and Runtimes: guides/parallel-agents-runtimes.md
       - Remote Repository Fleet: guides/remote-fleet.md
+      - Agent-Safe Retirement: guides/agent-safe-retirement.md
       - TUI, Repositories, Quick Notes, and Bootstrap: guides/tui-repos-bootstrap.md
   - Git and GitHub:
       - GitHub Flow: git/github-flow.md

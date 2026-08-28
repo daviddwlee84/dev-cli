@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Agent-safe retirement: `dev retire` closes covering runtime sessions and removes a linked worktree
+  only from outside it, refusing active agents, mixed-purpose workspaces, dirty state, and in-progress
+  Git operations; `dev sweep --merged-worktrees` reports and retires task-tracked and unmanaged
+  worktrees whose branches are contained in the base.
+- `dev prepare` and `dev artifact` arm and finalize exact agent transcripts after their writer exits,
+  and `dev git uncommit/recommit/pull-rebase/amend-all/setup` add guarded Git transactions.
+- `dev done --merged --base-ref <ref>` verifies a branch merged outside dev, with `--confirm-squash`
+  as the explicit operator attestation for squash merges.
 - An agent skill manager: `dev skill list/add/update` inventories project and global agent skills
   with their agents, sources, and update state, backed by a SKILLS dashboard view and a `dev doctor`
   check for the skill provider.
@@ -30,6 +38,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- `dev done` no longer closes the runtime, removes the worktree, or deletes the branch; it records
+  MERGED and hands cleanup to `dev retire`, so a process can never delete the worktree it is running in.
 - Focused starts now activate their runtime session after the interactive wizard completes.
 - Corrected command/config documentation to remove the unsupported `dev wt plan --json` example, include Azure forge configuration, and describe shell navigation without implying ordinary command output is evaluated.
 - Corrected bundled skill reference coverage and agent-rule numbering.

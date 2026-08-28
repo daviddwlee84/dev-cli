@@ -32,6 +32,36 @@ dev adopt [flags]
 - `--state` — state to record adopted tasks in (hot, warm, cold, done)
 - `--yes` — with --apply, do not confirm each one
 
+### `dev artifact`
+
+Inspect and finalize armed agent artifacts
+
+```
+dev artifact
+```
+
+### `dev artifact finalize`
+
+Commit one exact stable transcript after its writer exits
+
+```
+dev artifact finalize [flags]
+```
+
+- `--if-pending` — silently succeed when no armed intent matches the run id
+- `--intent` — artifact intent id
+- `--run-id` — outer wrapper run id
+- `--settle` — required transcript stability interval
+- `--writer-stopped` — confirm the outer agent wrapper has returned before finalization
+
+### `dev artifact list`
+
+List pending and finalized artifact intents
+
+```
+dev artifact list
+```
+
 ### `dev bootstrap`
 
 Discover and optionally organise an existing machine without breaking its layout
@@ -188,19 +218,22 @@ dev doctor
 
 ### `dev done`
 
-Integrate a finished change stream and clean up
+Integrate a finished change stream without destroying its workspace
 
 ```
 dev done [task] [flags]
 ```
 
-- `--delete-branch` — delete the branch once its commits are in the base
+- `--base-ref` — base ref used to verify --merged (default: recorded base)
+- `--confirm-squash` — attest that this contained commit represents a squash merge
+- `--delete-branch` — deprecated here: use dev retire --delete-branch
 - `--dirty` — dirty checkout policy: auto, fail, commit or discard
 - `--ff` — rebase onto the base and fast-forward it
-- `--keep-worktree` — keep the worktree checkout
+- `--keep-worktree` — deprecated: worktrees are always kept until dev retire
+- `--merged` — verify an externally merged branch and mark the task done
 - `-m, --message` — commit message for --dirty=commit
 - `--pr` — push and open a pull/merge request instead of merging locally
-- `--push` — push the resulting branch (direct mode pushes its current branch)
+- `--push` — push the resulting base (direct mode pushes its current branch)
 - `-y, --yes` — confirm the selected finish plan (required for non-interactive discard)
 
 ### `dev edit`
@@ -311,6 +344,62 @@ dev fleet sync <repo> [flags]
 - `--json` — emit JSON results
 - `--push` — push the source branch before fan-out
 - `--remote` — Git remote to publish/check (default: upstream, then origin)
+
+### `dev git`
+
+Guarded Git transactions that need receipts or recovery
+
+```
+dev git
+```
+
+### `dev git amend-all`
+
+Stage every change and amend HEAD without editing its message
+
+```
+dev git amend-all [flags]
+```
+
+- `--allow-unscanned-artifacts` — include agent artifacts without a detected project scanner
+- `--exclude-agent-artifacts` — leave recognized agent artifacts unstaged
+- `--rewrite-published` — acknowledge rewriting a commit already contained in the upstream
+
+### `dev git pull-rebase`
+
+Pull with rebase while restoring one exact local-work stash
+
+```
+dev git pull-rebase
+```
+
+### `dev git recommit`
+
+Commit staged changes with the saved uncommit message
+
+```
+dev git recommit
+```
+
+### `dev git setup`
+
+Print optional aliases for transactional dev git commands
+
+```
+dev git setup [flags]
+```
+
+- `--print` — print reviewed setup commands without applying them
+
+### `dev git uncommit`
+
+Soft-reset one commit and save a message receipt
+
+```
+dev git uncommit [flags]
+```
+
+- `--rewrite-published` — acknowledge rewriting a commit already contained in the upstream
 
 ### `dev gitignore`
 
@@ -469,12 +558,28 @@ Stop working on a task without losing the thread
 dev park [task] [flags]
 ```
 
+- `--assume-no-runtime` — continue when runtime enumeration fails
+- `--close-unknown` — allow external closure of unknown runtime status
 - `--cold` — go cold: remove the worktree after confirming everything is pushed
 - `--keep-session` — leave the runtime session open
 - `-n, --next` — what to do when you come back
 - `--note` — free-form note
 - `--push` — push the branch so another machine can pick it up
+- `--timeout` — maximum time to wait for runtime closure
 - `--wip` — checkpoint uncommitted work as a wip: commit
+
+### `dev prepare`
+
+Arm post-writer artifact finalization without closing this agent
+
+```
+dev prepare [task-or-worktree] [flags]
+```
+
+- `--allow-large` — acknowledge adding a new untracked transcript over 2 MiB
+- `--plan` — exact .claude/plans path to include (repeatable)
+- `--run-id` — outer wrapper run id (default: DEV_AGENT_RUN_ID or generated)
+- `--session` — exact agent session provider:uuid (inferred from task/runtime when unique)
 
 ### `dev repo`
 
@@ -589,6 +694,19 @@ dev resume <task> [flags]
 - `--fetch` — fetch from origin first
 - `--force` — take ownership of a task owned by another machine
 - `--no-provision` — skip dependency install when rebuilding a worktree
+
+### `dev retire`
+
+Close runtime state and safely remove an integrated worktree
+
+```
+dev retire [task-or-worktree] [flags]
+```
+
+- `--assume-no-runtime` — continue when runtime enumeration fails (external callers only)
+- `--close-unknown` — allow an external caller to close unknown/empty runtime status
+- `--delete-branch` — delete the contained local branch after worktree removal
+- `--timeout` — maximum time to wait for runtime sessions to close
 
 ### `dev shell-init`
 
@@ -987,7 +1105,10 @@ Remove a worktree checkout (never the branch)
 dev wt rm <branch> [flags]
 ```
 
-- `-f, --force` — remove even with uncommitted changes
+- `--assume-no-runtime` — continue when runtime enumeration fails
+- `--close-unknown` — allow external closure of unknown runtime status
+- `-f, --force` — remove even with uncommitted changes (never bypasses caller/runtime safety)
 - `-r, --repo` — repository (default: the current one)
+- `--timeout` — maximum time to wait for runtime closure
 
 <!-- END GENERATED COMMANDS -->
