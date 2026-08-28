@@ -166,6 +166,7 @@ branch that still has unpushed commits is never deleted.`,
 	// "merged" is not always "finished" — work often continues on a branch
 	// after its first integration.
 	f.BoolVar(&deleteBranch, "delete-branch", false, "delete the branch once its commits are in the base")
+	cmd.ValidArgsFunction = completeTasks(app, task.Hot, task.Warm)
 	return cmd
 }
 

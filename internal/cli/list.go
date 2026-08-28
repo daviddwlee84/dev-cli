@@ -48,6 +48,8 @@ By default finished tasks are hidden; pass --all to include them.`,
 	f.BoolVar(&o.dirty, "dirty", false, "only tasks with uncommitted changes")
 	f.BoolVarP(&o.showAll, "all", "a", false, "include done tasks")
 	f.BoolVar(&o.noRuntime, "no-session", false, "skip the runtime query (faster)")
+	registerFlagCompletion(cmd, "state", taskStateSliceCompletions())
+	registerFlagCompletion(cmd, "repo", completeTaskRepoNameFlag(app))
 	return cmd
 }
 

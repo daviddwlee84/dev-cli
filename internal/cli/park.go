@@ -169,6 +169,7 @@ machine, which is exactly what parking needs to support.`,
 	f.BoolVar(&push, "push", false, "push the branch so another machine can pick it up")
 	f.BoolVar(&cold, "cold", false, "go cold: remove the worktree after confirming everything is pushed")
 	f.BoolVar(&keepRT, "keep-session", false, "leave the runtime session open")
+	cmd.ValidArgsFunction = completeTasks(app, task.Hot, task.Warm)
 	return cmd
 }
 

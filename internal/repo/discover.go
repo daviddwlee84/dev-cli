@@ -63,10 +63,17 @@ type Options struct {
 	MaxDepth int
 	// IncludeNonRepos reports plain directories alongside repositories.
 	IncludeNonRepos bool
+	// Fast avoids per-repository git subprocesses. It is intended for shell
+	// completion: direct .git-file checkouts are skipped as linked worktrees and
+	// symlink aliases are deduplicated by their physical path.
+	Fast bool
 }
 
 // DefaultOptions is the discovery configuration used by dev's commands.
 func DefaultOptions() Options { return Options{MaxDepth: 3} }
+
+// CompletionOptions trades full Git metadata for interactive latency.
+func CompletionOptions() Options { return Options{MaxDepth: 3, Fast: true} }
 
 // skipDirs are never descended into. These are large, never contain a project
 // the user organises by hand, and walking them dominates scan time.
@@ -137,7 +144,13 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 				}
 				bare := isBareDir(path)
 				identity, gitDir, commonDir, mainRoot := real, real, real, real
-				if !bare {
+				if !bare && opts.Fast && gitEntryIsFile(path) {
+					// A direct .git file at a discovered root is a linked
+					// worktree. Submodules are already hidden below their parent
+					// repository because discovery never descends into one.
+					return filepath.SkipDir
+				}
+				if !bare && !opts.Fast {
 					if g, err := gitx.Discover(ctx, path); err == nil {
 						// A linked worktree is execution state, not another
 						// project in the repo inventory.
@@ -208,6 +221,11 @@ func isRepoDir(path string) bool {
 	return isBareDir(path)
 }
 
+func gitEntryIsFile(path string) bool {
+	info, err := os.Lstat(filepath.Join(path, ".git"))
+	return err == nil && info.Mode().IsRegular()
+}
+
 // isBareDir recognises a bare repository by its skeleton, without shelling out.
 func isBareDir(path string) bool {
 	for _, marker := range []string{"HEAD", "objects", "refs"} {
@@ -224,7 +242,17 @@ func isBareDir(path string) bool {
 // only then does a substring search run — so a repo literally named "web"
 // is never shadowed by "web-frontend".
 func Resolve(ctx context.Context, roots []string, ref string) (Repo, []Repo, error) {
-	all, err := Discover(ctx, roots, DefaultOptions())
+	return resolve(ctx, roots, ref, DefaultOptions())
+}
+
+// ResolveCompletion resolves the same references without launching one Git
+// process per repository in the scan roots.
+func ResolveCompletion(ctx context.Context, roots []string, ref string) (Repo, []Repo, error) {
+	return resolve(ctx, roots, ref, CompletionOptions())
+}
+
+func resolve(ctx context.Context, roots []string, ref string, opts Options) (Repo, []Repo, error) {
+	all, err := Discover(ctx, roots, opts)
 	if err != nil {
 		return Repo{}, nil, err
 	}

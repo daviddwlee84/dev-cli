@@ -189,6 +189,7 @@ worktree_path remain freely configurable for any structure.`,
 	f.BoolVar(&yes, "yes", false, "with --move --apply, do not confirm each repository")
 	f.StringVar(&configOut, "config-out", "", "write a new config.toml for the resulting roots")
 	f.BoolVar(&forceConfig, "force-config", false, "overwrite config-out if it exists")
+	registerFlagCompletion(cmd, "layout", fixedCompletions(string(bootstrap.Flat), string(bootstrap.Preserve)))
 	return cmd
 }
 

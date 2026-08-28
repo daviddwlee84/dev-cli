@@ -8,7 +8,7 @@ import (
 )
 
 func newHelpTopicCmd(app *App) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "help [topic]",
 		Short: "Quick-reference pages for the git workflow dev assumes",
 		Long: `Short answers to the questions this workflow keeps raising: when to branch,
@@ -39,4 +39,6 @@ Run without an argument to see the index.`,
 			return nil
 		},
 	}
+	cmd.ValidArgsFunction = completeHelpTopics
+	return cmd
 }

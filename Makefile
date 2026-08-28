@@ -1,6 +1,6 @@
 BINARY  := dev
 PREFIX  ?= $(HOME)/.local
-VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/daviddwlee84/dev-cli/internal/cli.Version=$(VERSION)
 
 .PHONY: build install test lint fmt vet skill-sync skill-check e2e clean all

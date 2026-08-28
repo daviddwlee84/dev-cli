@@ -58,8 +58,8 @@ A try is date-prefixed, disposable by default, and promotable with
 
 			target := result.OpenTarget()
 			fmt.Fprintf(app.Out, "%s\n", config.Contract(target.Path))
-			if !openOrCD(app, ctx, target.Path, target.Label) {
-				return nil
+			if err := openOrCD(app, ctx, target.Path, target.Label); err != nil {
+				return err
 			}
 			_, err = service.Touch(ctx, target.CatalogID)
 			return err
@@ -125,15 +125,13 @@ func warnExperimentDiagnostics(app *App, diagnostics []experiment.Diagnostic) {
 	}
 }
 
-func openOrCD(app *App, ctx context.Context, dir, label string) bool {
+func openOrCD(app *App, ctx context.Context, dir, label string) error {
 	runtime := app.Runtime()
 	if runtime.Name() == "none" {
-		app.cdDirective(dir)
-		return true
+		return app.cdDirective(dir)
 	}
 	if _, err := openCheckout(ctx, runtime, dir, label); err != nil {
-		app.warnf("could not open a session: %v", err)
-		return false
+		return fmt.Errorf("open runtime session: %w", err)
 	}
-	return true
+	return nil
 }

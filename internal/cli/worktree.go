@@ -124,6 +124,7 @@ func newWtListCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&repoRef, "repo", "r", "", "repository (default: the current one)")
+	registerFlagCompletion(cmd, "repo", completeRepoFlag(app))
 	return cmd
 }
 
@@ -182,7 +183,7 @@ builds on feature/A.`,
 				fmt.Fprintln(app.Err, "note: `dev start` also records a task, which is what makes the work survive closing the session")
 			}
 			if rt.Name() == "none" {
-				app.cdDirective(res.Path)
+				return app.cdDirective(res.Path)
 			}
 			return nil
 		},
@@ -196,6 +197,7 @@ builds on feature/A.`,
 	f.BoolVar(&noRuntime, "no-session", false, "do not open a runtime session")
 	f.BoolVar(&track, "track", true, "hint about recording a task")
 	_ = f.MarkHidden("track")
+	registerFlagCompletion(cmd, "repo", completeRepoFlag(app))
 	return cmd
 }
 
@@ -229,12 +231,14 @@ func newWtOpenCmd(app *App) *cobra.Command {
 			}
 			fmt.Fprintln(app.Out)
 			if rt.Name() == "none" {
-				app.cdDirective(w.Path)
+				return app.cdDirective(w.Path)
 			}
 			return nil
 		},
 	}
 	cmd.Flags().StringVarP(&repoRef, "repo", "r", "", "repository (default: the current one)")
+	registerFlagCompletion(cmd, "repo", completeRepoFlag(app))
+	cmd.ValidArgsFunction = completeWorktrees(app, true)
 	return cmd
 }
 
@@ -309,6 +313,8 @@ A checkout with uncommitted changes needs an explicit --force.`,
 	f := cmd.Flags()
 	f.StringVarP(&repoRef, "repo", "r", "", "repository (default: the current one)")
 	f.BoolVarP(&force, "force", "f", false, "remove even with uncommitted changes")
+	registerFlagCompletion(cmd, "repo", completeRepoFlag(app))
+	cmd.ValidArgsFunction = completeWorktrees(app, false)
 	return cmd
 }
 
@@ -419,6 +425,7 @@ commit its own setup and every machine gets the same one.`,
 	f := cmd.Flags()
 	f.StringVarP(&repoRef, "repo", "r", "", "repository (default: the current one)")
 	f.BoolVar(&write, "write", false, "seed a .dev.toml in the repository from what was detected")
+	registerFlagCompletion(cmd, "repo", completeRepoFlag(app))
 	return cmd
 }
 

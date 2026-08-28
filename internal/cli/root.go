@@ -4,14 +4,26 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/skill"
 	"github.com/spf13/cobra"
 )
 
-// Version is set at build time via -ldflags.
+// Version is set at build time via -ldflags. VersionFromBuild also recovers a
+// module version for `go install ...@version` builds.
 var Version = "dev"
+
+func versionFromBuild() string {
+	if Version != "dev" {
+		return Version
+	}
+	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+	return Version
+}
 
 const rootLong = `dev is a thin glue layer over git, worktrees, forges and agent runtimes.
 
@@ -43,7 +55,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		Use:           "dev",
 		Short:         "Manage repos, worktrees and work-in-progress across agent runtimes",
 		Long:          rootLong,
-		Version:       Version,
+		Version:       versionFromBuild(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		// Bare `dev` shows the inventory, which is the question the tool
@@ -65,6 +77,9 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 			return runList(app, listOptions{})
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if completionInvocation(cmd) {
+				return nil
+			}
 			return app.Load()
 		},
 	}
@@ -73,6 +88,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 	pf.StringVar(&app.configPath, "config", "", "path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)")
 	pf.StringVar(&app.runtimeOverride, "runtime", "", "override runtime backend: herdr, tmux or none")
 	pf.BoolVar(&app.noRuntime, "no-runtime", false, "do not touch any terminal multiplexer")
+	registerFlagCompletion(root, "runtime", runtimeCompletions())
 
 	// Mirrors `herdr --skill`: the binary is the authority for its own agent
 	// skill, so a dotfiles installer can sync it without vendoring a copy.

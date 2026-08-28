@@ -149,8 +149,8 @@ func newTriesOpenCmd(app *App) *cobra.Command {
 			}
 			target := item.OpenTarget()
 			fmt.Fprintln(app.Out, config.Contract(target.Path))
-			if !openOrCD(app, ctx, target.Path, target.Label) {
-				return nil
+			if err := openOrCD(app, ctx, target.Path, target.Label); err != nil {
+				return err
 			}
 			_, err = service.Touch(ctx, target.CatalogID)
 			return err

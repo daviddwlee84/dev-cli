@@ -76,6 +76,54 @@ Print dev's XDG cache directory
 dev cache path
 ```
 
+### `dev completion`
+
+Generate the autocompletion script for the specified shell
+
+```
+dev completion
+```
+
+### `dev completion bash`
+
+Generate the autocompletion script for bash
+
+```
+dev completion bash
+```
+
+- `--no-descriptions` — disable completion descriptions
+
+### `dev completion fish`
+
+Generate the autocompletion script for fish
+
+```
+dev completion fish [flags]
+```
+
+- `--no-descriptions` — disable completion descriptions
+
+### `dev completion powershell`
+
+Generate the autocompletion script for powershell
+
+```
+dev completion powershell [flags]
+```
+
+- `--no-descriptions` — disable completion descriptions
+
+### `dev completion zsh`
+
+Generate the autocompletion script for zsh
+
+```
+dev completion zsh [flags]
+```
+
+- `--no-descriptions` — disable completion descriptions
+
 ### `dev config`
 
 Show, edit, initialise and locate dev's configuration

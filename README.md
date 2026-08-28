@@ -40,28 +40,60 @@ $ dev ls
 
 ## Install
 
+### Homebrew (macOS)
+
 ```bash
-make install     # builds, installs to ~/.local/bin, installs the agent skill
+brew install daviddwlee84/tap/dev-cli
 dev config init  # detects this machine's repo roots and writes a config
 ```
 
-Then add the shell wrapper to your rc file:
+The formula installs the `dev` binary plus bash, zsh and fish completions. It
+does not write into your home directory or install the bundled agent skill.
+
+### Go or source
 
 ```bash
-eval "$(dev shell-init zsh)"      # bash and zsh
+go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
+# Pin @v0.1.0 instead when you need a reproducible install.
+# Or from a checkout: make install  # also installs the bundled agent skill
+```
+
+For a non-Homebrew install, generate completion files wherever your shell loads
+them:
+
+```bash
+mkdir -p ~/.zfunc ~/.local/share/bash-completion/completions ~/.config/fish/completions
+dev completion zsh  > ~/.zfunc/_dev
+dev completion bash > ~/.local/share/bash-completion/completions/dev
+dev completion fish > ~/.config/fish/completions/dev.fish
+```
+
+Tab completion includes commands and flags plus local tasks, repositories,
+worktrees, help topics and bundled gitignore templates. Completion never queries
+a forge or the network.
+
+Add the directory-changing wrapper to your shell rc file:
+
+```bash
+eval "$(dev shell-init zsh)"      # zsh
+eval "$(dev shell-init bash)"     # bash
 dev shell-init fish | source      # fish
 ```
 
-The wrapper is needed because a child process cannot change its parent's
-working directory. Commands that move you into a checkout print a `cd`
-directive; the wrapper evaluates it.
+A child process cannot change its parent's working directory, so the wrapper
+passes directory changes back through a private, child-only file descriptor
+while leaving normal stdout/stderr connected to the terminal. That preserves
+the interactive TUI and normal pipe behavior.
+
+The agent skill is an explicit, optional post-install step:
 
 ```bash
+dev skill install
 dev doctor       # what works on this machine, and what degrades
 ```
 
-Only **git** is required. `herdr`, `tmux`, `gh` and `glab` each enable more and
-degrade cleanly when absent.
+Only **git** is required at runtime. `herdr`, `tmux`, `gh` and `glab` each
+enable more and degrade cleanly when absent.
 
 ## The lifecycle
 

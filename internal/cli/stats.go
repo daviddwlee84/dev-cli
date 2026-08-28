@@ -109,6 +109,8 @@ The sampler needs to be run periodically — see "dev stats sample --help".`,
 	f.StringSliceVar(&sources, "source", nil, "limit to these sources (session, git, wakatime)")
 	f.BoolVar(&byRepo, "by-repo", false, "show only the per-repo breakdown")
 	f.IntVar(&limit, "limit", 20, "maximum repositories in the breakdown (0 for all)")
+	registerFlagCompletion(cmd, "repo", completeRepoNameFlag(app))
+	registerFlagCompletion(cmd, "source", statsSourceCompletions())
 
 	cmd.AddCommand(
 		newStatsSampleCmd(app), newStatsBackfillCmd(app), newStatsImportCmd(app),
@@ -221,6 +223,7 @@ them, so this is safe to repeat.`,
 	f.StringVar(&since, "since", "12mo", "how far back to scan")
 	f.StringVar(&author, "author", "", "only commits from this author email")
 	f.StringVarP(&repoRef, "repo", "r", "", "backfill only this repository")
+	registerFlagCompletion(cmd, "repo", completeRepoFlag(app))
 	return cmd
 }
 
@@ -388,5 +391,7 @@ Use "dev cache clear" for regenerable forge/gitignore caches instead.`,
 	f.StringVarP(&repo, "repo", "r", "", "delete this exact repository name")
 	f.StringSliceVar(&sources, "source", nil, "delete these sources: session, git, wakatime")
 	f.BoolVarP(&yes, "yes", "y", false, "do not prompt")
+	registerFlagCompletion(cmd, "repo", completeRepoNameFlag(app))
+	registerFlagCompletion(cmd, "source", statsSourceCompletions())
 	return cmd
 }

@@ -133,6 +133,7 @@ ever moved, renamed or deleted by this command.`,
 	f.BoolVar(&noSessions, "no-sessions", false, "skip live runtime sessions")
 	f.BoolVar(&noBranches, "no-branches", false, "skip local branches ahead of their base")
 	f.StringVar(&state, "state", string(task.Warm), "state to record adopted tasks in ("+task.JoinStates(", ")+")")
+	registerFlagCompletion(cmd, "state", taskStateCompletions())
 	return cmd
 }
 

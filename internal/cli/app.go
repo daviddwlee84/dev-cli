@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
@@ -90,12 +91,32 @@ func (a *App) warnf(format string, args ...any) {
 	fmt.Fprintf(a.Err, "dev: "+format+"\n", args...)
 }
 
-// cdDirective emits the marker the shell wrapper installed by
-// `dev shell-init` looks for. A child process cannot change its parent's
-// working directory, so the only way `dev resume` can leave the user *in* the
-// checkout is to ask the shell to do it.
-func (a *App) cdDirective(dir string) {
-	fmt.Fprintf(a.Out, "cd %s\n", shellQuote(dir))
+// cdDirective asks the shell wrapper to move its parent process. The wrapper
+// gives dev a child-only file descriptor so normal output stays connected to
+// the terminal and an inherited environment variable can never name a file to
+// overwrite. NUL terminates the path because filesystem paths may contain
+// newlines. Without the wrapper, retain the printable directive used by older
+// integrations.
+func (a *App) cdDirective(dir string) error {
+	if rawFD := os.Getenv("DEV_SHELL_CD_FD"); rawFD != "" {
+		fd, err := strconv.Atoi(rawFD)
+		if err != nil || fd < 3 {
+			return fmt.Errorf("invalid DEV_SHELL_CD_FD %q", rawFD)
+		}
+		file := os.NewFile(uintptr(fd), "dev-shell-cd")
+		if file == nil {
+			return fmt.Errorf("invalid shell directory descriptor %d", fd)
+		}
+		if _, err := file.Write(append([]byte(dir), 0)); err != nil {
+			return fmt.Errorf("write shell directory directive: %w", err)
+		}
+		if err := file.Close(); err != nil {
+			return fmt.Errorf("close shell directory directive: %w", err)
+		}
+		return nil
+	}
+	_, err := fmt.Fprintf(a.Out, "cd %s\n", shellQuote(dir))
+	return err
 }
 
 // ctx is the cancellable context commands run under.

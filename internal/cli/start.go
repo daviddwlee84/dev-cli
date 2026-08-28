@@ -188,7 +188,7 @@ Always pass --base for an unattended branch/worktree task.`,
 				fmt.Fprintf(app.Out, "   session   %s %s\n", rt.Name(), t.RuntimeHandle)
 			}
 			if rt.Name() == "none" {
-				app.cdDirective(checkoutOf(t))
+				return app.cdDirective(checkoutOf(t))
 			}
 			return nil
 		},
@@ -204,6 +204,7 @@ Always pass --base for an unattended branch/worktree task.`,
 	_ = f.MarkDeprecated("no-worktree", "use --branch-only (or --direct to stay on main)")
 	f.BoolVar(&noProvision, "no-provision", false, "skip dependency install and ignored-file copying")
 	f.BoolVar(&focus, "focus", false, "focus the new runtime session")
+	cmd.ValidArgsFunction = completeRepos(app)
 	return cmd
 }
 

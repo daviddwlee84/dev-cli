@@ -451,7 +451,7 @@ func runTUI(app *App) error {
 	// torn down, and only by the shell wrapper.
 	if m, ok := final.(tui.Model); ok {
 		if dir := m.Chosen(); dir != "" {
-			app.cdDirective(dir)
+			return app.cdDirective(dir)
 		}
 	}
 	return nil

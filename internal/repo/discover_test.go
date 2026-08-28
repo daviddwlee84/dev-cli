@@ -216,6 +216,14 @@ func TestDiscoverDeduplicatesIndexAndPhysicalRoot(t *testing.T) {
 	if got[0].Path != filepath.Join(index, "demo") {
 		t.Errorf("first scan root should win, got %q", got[0].Path)
 	}
+
+	fast, err := repo.Discover(context.Background(), []string{index, physical}, repo.CompletionOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fast) != 1 || fast[0].Path != filepath.Join(index, "demo") {
+		t.Errorf("fast discovery should preserve alias deduplication: %+v", fast)
+	}
 }
 
 func TestDiscoverSkipsLinkedWorktreeAsProject(t *testing.T) {
@@ -245,6 +253,14 @@ func TestDiscoverSkipsLinkedWorktreeAsProject(t *testing.T) {
 	}
 	if len(got) != 1 || got[0].Path != real {
 		t.Errorf("linked worktree is execution state, not another project: %+v", got)
+	}
+
+	fast, err := repo.Discover(context.Background(), []string{realRoot}, repo.CompletionOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fast) != 1 || fast[0].Path != real {
+		t.Errorf("fast discovery should skip linked worktrees: %+v", fast)
 	}
 }
 

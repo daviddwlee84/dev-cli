@@ -140,5 +140,6 @@ block and leaves rules you added by hand alone.
 	f.BoolVar(&noEditors, "no-editors", false, "omit editor and IDE state")
 	f.BoolVar(&noAgents, "no-agents", false, "omit coding-agent harness directories")
 	f.BoolVar(&noEnv, "no-env", false, "omit local env and secret files")
+	cmd.ValidArgsFunction = completeGitignoreNames
 	return cmd
 }

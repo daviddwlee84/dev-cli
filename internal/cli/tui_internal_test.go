@@ -3,10 +3,8 @@ package cli
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -56,41 +54,13 @@ func TestAppLoadInitializesCatalog(t *testing.T) {
 	}
 }
 
-func TestPosixShellWrapperEvaluatesTrailingCDDirective(t *testing.T) {
-	bash, err := exec.LookPath("bash")
-	if err != nil {
-		t.Skipf("bash unavailable: %v", err)
-	}
-	target := t.TempDir()
-	fake := filepath.Join(t.TempDir(), "fake-dev")
-	directive := "cd " + shellQuote(target)
-	body := "#!/bin/sh\nprintf '%s\\n' first second third " + shellQuote(directive) + "\n"
-	if err := os.WriteFile(fake, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	wrapper := fmt.Sprintf(posixInit, shellQuote(fake), "bash")
-	script := wrapper + "\ncd /\ndev try\nprintf 'PWD=%s\\n' \"$PWD\"\n"
-	command := exec.Command(bash, "-c", script)
-	output, err := command.CombinedOutput()
-	if err != nil {
-		t.Fatalf("run generated shell wrapper: %v\n%s", err, output)
-	}
-	want := "first\nsecond\nthird\nPWD=" + target + "\n"
-	if string(output) != want {
-		t.Errorf("wrapper output = %q, want %q", output, want)
-	}
-}
-
 func TestOpenOrCDReportsFailedRuntimeHandoff(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	var diagnostics bytes.Buffer
-	app := &App{Cfg: config.Default(), Out: io.Discard, Err: &diagnostics}
+	app := &App{Cfg: config.Default(), Out: io.Discard, Err: io.Discard}
 	app.Cfg.Runtime.Backend = "tmux"
-	if openOrCD(app, context.Background(), t.TempDir(), "try") {
-		t.Fatal("failed runtime open was reported as a successful handoff")
-	}
-	if !strings.Contains(diagnostics.String(), "could not open a session") {
-		t.Errorf("runtime failure diagnostic = %q", diagnostics.String())
+	err := openOrCD(app, context.Background(), t.TempDir(), "try")
+	if err == nil || !strings.Contains(err.Error(), "open runtime session") {
+		t.Fatalf("failed runtime open should return its error, got %v", err)
 	}
 }
 

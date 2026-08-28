@@ -116,7 +116,7 @@ func generateCommandReference(root *cobra.Command) string {
 }
 
 func writeCommand(b *strings.Builder, c *cobra.Command, depth int) {
-	if c.Hidden || c.Name() == "no-help" || c.Name() == "completion" {
+	if c.Hidden || c.Name() == "no-help" {
 		return
 	}
 	if depth > 0 {

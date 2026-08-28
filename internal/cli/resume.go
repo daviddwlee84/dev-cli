@@ -145,7 +145,7 @@ a conflict, so dev asks before doing it.`,
 				}
 			}
 			if rt.Name() == "none" {
-				app.cdDirective(checkout)
+				return app.cdDirective(checkout)
 			}
 			return nil
 		},
@@ -154,5 +154,6 @@ a conflict, so dev asks before doing it.`,
 	f.BoolVar(&noProvision, "no-provision", false, "skip dependency install when rebuilding a worktree")
 	f.BoolVar(&fetch, "fetch", true, "fetch from origin first")
 	f.BoolVar(&force, "force", false, "take ownership of a task owned by another machine")
+	cmd.ValidArgsFunction = completeTasks(app, task.Warm, task.Cold)
 	return cmd
 }

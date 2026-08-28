@@ -102,8 +102,8 @@ With no argument, the try containing the current directory is used.`,
 			fmt.Fprintf(app.Out, "\n%s is now a project. Start work on it with:\n  dev start %s --task <name>\n",
 				result.Plan.Name, result.Plan.Name)
 			target := result.Item.OpenTarget()
-			if !openOrCD(app, ctx, target.Path, result.Plan.Name) {
-				return nil
+			if err := openOrCD(app, ctx, target.Path, result.Plan.Name); err != nil {
+				return err
 			}
 			_, err = service.Touch(ctx, result.Item.ID)
 			return err

@@ -413,7 +413,7 @@ Uses gh or glab when the host matches one, and plain git otherwise.`,
 					app.warnf("could not open a session: %v", err)
 				}
 				if rt.Name() == "none" {
-					app.cdDirective(dest)
+					return app.cdDirective(dest)
 				}
 			}
 			return nil
@@ -426,7 +426,7 @@ Uses gh or glab when the host matches one, and plain git otherwise.`,
 }
 
 func newRepoOpenCmd(app *App) *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "open <repo>",
 		Short: "Open a repository in the runtime",
 		Args:  cobra.ExactArgs(1),
@@ -447,11 +447,13 @@ func newRepoOpenCmd(app *App) *cobra.Command {
 			}
 			fmt.Fprintln(app.Out)
 			if rt.Name() == "none" {
-				app.cdDirective(r.Path)
+				return app.cdDirective(r.Path)
 			}
 			return nil
 		},
 	}
+	cmd.ValidArgsFunction = completeRepos(app)
+	return cmd
 }
 
 func newRepoNewCmd(app *App) *cobra.Command {
@@ -582,6 +584,7 @@ history gets a shape nobody intended.`,
 		},
 	}
 	cmd.Flags().BoolVarP(&all, "all", "a", false, "every repository under the scan roots")
+	cmd.ValidArgsFunction = completeRepos(app)
 	return cmd
 }
 
