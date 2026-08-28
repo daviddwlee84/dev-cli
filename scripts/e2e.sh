@@ -264,6 +264,33 @@ if dev_has '"name": "auth"' ls --all --json; then
 fi
 ok "external retirement removed worktree and task"
 
+step "sweep discovers unmanaged worktrees already merged into main"
+MERGED_WT="$HOME/Worktrees/demo/merged-untracked"
+git -C "$REPO" worktree add --quiet -b feat/merged-untracked "$MERGED_WT" main
+printf 'merged and untracked\n' > "$MERGED_WT/merged.txt"
+git -C "$MERGED_WT" add merged.txt
+git -C "$MERGED_WT" commit --quiet -m "feat: merged unmanaged worktree"
+git -C "$REPO" merge --quiet --ff-only feat/merged-untracked
+if (cd "$MERGED_WT" && dev sweep --merged-worktrees) >/dev/null 2>&1; then
+  fail "merged-worktree sweep ran from inside a linked worktree"
+fi
+MERGED_SWEEP="$(cd "$REPO" && dev sweep --merged-worktrees)"
+grep -q 'feat/merged-untracked' <<<"$MERGED_SWEEP" \
+  || fail "sweep did not discover the unmanaged merged worktree"
+grep -q 'Re-run with --apply' <<<"$MERGED_SWEEP" \
+  || fail "merged-worktree sweep did not remain report-only by default"
+printf 'y\n' | (cd "$REPO" && dev sweep --merged-worktrees --apply) >/dev/null
+[[ ! -d "$MERGED_WT" ]] || fail "confirmed sweep did not retire the merged worktree"
+git -C "$REPO" show-ref --verify --quiet refs/heads/feat/merged-untracked \
+  || fail "merged-worktree sweep deleted the branch without --delete-branches"
+git -C "$REPO" worktree add --quiet "$MERGED_WT" feat/merged-untracked
+(cd "$REPO" && dev sweep --merged-worktrees --apply --yes --delete-branches) >/dev/null
+[[ ! -d "$MERGED_WT" ]] || fail "branch-deleting sweep left the worktree"
+if git -C "$REPO" show-ref --verify --quiet refs/heads/feat/merged-untracked; then
+  fail "--delete-branches did not delete the contained branch"
+fi
+ok "reported first, confirmed once, and kept/deleted branches only as requested"
+
 step "direct task on main"
 dev_has '(direct)' start demo --task "quick main fix" --direct \
   || fail "direct mode was not reported"

@@ -11,6 +11,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	retirement "github.com/daviddwlee84/dev-cli/internal/retire"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	"github.com/spf13/cobra"
@@ -25,11 +26,22 @@ type suggestion struct {
 	apply func() error
 }
 
+type sweepRetireOptions struct {
+	closeUnknown    bool
+	assumeNoRuntime bool
+	deleteBranches  bool
+}
+
 func newSweepCmd(app *App) *cobra.Command {
 	var (
-		apply     bool
-		staleDays int
-		yes       bool
+		apply           bool
+		staleDays       int
+		yes             bool
+		mergedWorktrees bool
+		baseRef         string
+		closeUnknown    bool
+		assumeNoRuntime bool
+		deleteBranches  bool
 	)
 	cmd := &cobra.Command{
 		Use:   "sweep",
@@ -50,29 +62,42 @@ Nothing here ever deletes uncommitted work.`,
 			rt := app.Runtime()
 			rows := inventory.Collect(ctx, tasks, rt, inventory.Options{})
 			stale := time.Duration(staleDays) * 24 * time.Hour
+			retireOptions := sweepRetireOptions{
+				closeUnknown: closeUnknown, assumeNoRuntime: assumeNoRuntime, deleteBranches: deleteBranches,
+			}
 
 			var sugg []suggestion
-			for _, r := range rows {
-				sugg = append(sugg, suggestFor(app, ctx, r, stale)...)
+			if mergedWorktrees {
+				merged, err := suggestMergedWorktrees(app, ctx, rows, baseRef, retireOptions)
+				if err != nil {
+					return err
+				}
+				sugg = append(sugg, merged...)
+			} else {
+				for _, r := range rows {
+					sugg = append(sugg, suggestFor(app, ctx, r, stale, retireOptions)...)
+				}
 			}
 
 			// Live sessions no task claims: the other half of a crowded sidebar.
-			if sessions, err := rt.List(ctx); err == nil {
-				if orphans := inventory.Orphans(sessions, rows); len(orphans) > 0 {
-					fmt.Fprintf(app.Out, "\n%d live session(s) with no task recorded:\n", len(orphans))
-					for _, s := range orphans {
-						dir := "—"
-						if len(s.Dirs) > 0 {
-							dir = config.Contract(s.Dirs[0])
+			if !mergedWorktrees {
+				if sessions, err := rt.List(ctx); err == nil {
+					if orphans := inventory.Orphans(sessions, rows); len(orphans) > 0 {
+						fmt.Fprintf(app.Out, "\n%d live session(s) with no task recorded:\n", len(orphans))
+						for _, s := range orphans {
+							dir := "—"
+							if len(s.Dirs) > 0 {
+								dir = config.Contract(s.Dirs[0])
+							}
+							fmt.Fprintf(app.Out, "  %-24s %s\n", truncate(s.Label, 24), dir)
 						}
-						fmt.Fprintf(app.Out, "  %-24s %s\n", truncate(s.Label, 24), dir)
+						fmt.Fprintln(app.Out, "  → `dev start` in one of those directories to track it, or just close it.")
 					}
-					fmt.Fprintln(app.Out, "  → `dev start` in one of those directories to track it, or just close it.")
 				}
 			}
 
 			if len(sugg) == 0 {
-				fmt.Fprintln(app.Out, "\nNothing to sweep — every task matches its recorded state.")
+				fmt.Fprintln(app.Out, "\nNothing to sweep — no task drift or eligible merged worktree was found.")
 				return nil
 			}
 
@@ -109,10 +134,15 @@ Nothing here ever deletes uncommitted work.`,
 	f.BoolVar(&apply, "apply", false, "act on the suggestions instead of only reporting")
 	f.IntVar(&staleDays, "stale-days", 14, "days without a commit before a task counts as stale")
 	f.BoolVar(&yes, "yes", false, "with --apply, do not confirm each change")
+	f.BoolVar(&mergedWorktrees, "merged-worktrees", false, "focus on linked worktrees whose branches are contained in the main branch")
+	f.StringVar(&baseRef, "base", "", "containment base for --merged-worktrees (default: the repository default branch)")
+	f.BoolVar(&closeUnknown, "close-unknown", false, "allow external closure of unknown runtime status during retirement")
+	f.BoolVar(&assumeNoRuntime, "assume-no-runtime", false, "continue when runtime enumeration fails during retirement")
+	f.BoolVar(&deleteBranches, "delete-branches", false, "also delete contained local branches after worktree retirement")
 	return cmd
 }
 
-func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Duration) []suggestion {
+func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Duration, retireOptions sweepRetireOptions) []suggestion {
 	t := r.Task
 	var out []suggestion
 
@@ -168,10 +198,14 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 	// DONE means integrated; runtime/worktree cleanup is a separate,
 	// externally coordinated retirement step.
 	case t.State == task.Done:
+		action := fmt.Sprintf("retire runtime/worktree for %s", t.ID)
+		if retireOptions.deleteBranches && t.Branch != "" && t.Branch != t.Base {
+			action += fmt.Sprintf(" and delete %s", t.Branch)
+		}
 		out = append(out, suggestion{
 			row:    r,
 			reason: "merged, cleanup pending",
-			action: fmt.Sprintf("retire runtime/worktree for %s", t.ID),
+			action: action,
 			apply: func() error {
 				if err := ensureArtifactsFinalized(app, checkoutOf(t)); err != nil {
 					return err
@@ -181,7 +215,13 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 					return err
 				}
 				service := &retirement.Service{Runtime: rt, Tasks: app.Tasks}
-				_, err = service.Retire(ctx, retirement.Request{Target: target})
+				_, err = service.Retire(ctx, retirement.Request{
+					Target: target,
+					Safety: retirement.Options{
+						CloseUnknown: retireOptions.closeUnknown, AssumeNoRuntime: retireOptions.assumeNoRuntime,
+					},
+					DeleteBranch: retireOptions.deleteBranches,
+				})
 				return err
 			},
 		})
@@ -207,6 +247,156 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 		})
 	}
 	return out
+}
+
+func suggestMergedWorktrees(app *App, ctx context.Context, rows []inventory.Row, requestedBase string, options sweepRetireOptions) ([]suggestion, error) {
+	repository, err := gitx.Discover(ctx, mustGetwd())
+	if err != nil {
+		return nil, fmt.Errorf("--merged-worktrees requires a Git repository: %w", err)
+	}
+	if repository.IsLinkedWorktree {
+		return nil, fmt.Errorf("--merged-worktrees must run from the canonical checkout, not linked worktree %s", config.Contract(repository.Root))
+	}
+	status, err := gitx.StatusOf(ctx, repository.Root)
+	if err != nil {
+		return nil, err
+	}
+	base := requestedBase
+	if base == "" {
+		base = gitx.DefaultBranch(ctx, repository.Root)
+		if status.Branch != base {
+			return nil, fmt.Errorf("--merged-worktrees defaults to %s; switch the canonical checkout to it or pass --base explicitly", base)
+		}
+	}
+	if !gitx.RefExists(ctx, repository.Root, base) {
+		return nil, fmt.Errorf("merged-worktree base %s does not resolve to a commit", base)
+	}
+
+	claimed := make(map[string]inventory.Row)
+	for _, row := range rows {
+		if row.Task == nil || row.Checkout == "" {
+			continue
+		}
+		canonical, canonicalErr := pathx.Canonical(row.Checkout)
+		if canonicalErr == nil {
+			claimed[canonical] = row
+		}
+	}
+	worktrees, err := gitx.Worktrees(ctx, repository.Root)
+	if err != nil {
+		return nil, err
+	}
+	var suggestions []suggestion
+	for _, worktree := range worktrees {
+		if worktree.Main || worktree.Bare || worktree.Detached || worktree.Branch == "" || worktree.Branch == base {
+			continue
+		}
+		if _, err := gitx.Run(ctx, repository.Root, "merge-base", "--is-ancestor", worktree.Branch, base); err != nil {
+			continue
+		}
+		canonical, err := pathx.Canonical(worktree.Path)
+		if err != nil {
+			continue
+		}
+		if row, ok := claimed[canonical]; ok {
+			if row.Task.State == task.Done {
+				suggestions = append(suggestions, suggestFor(app, ctx, row, 0, options)...)
+				continue
+			}
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base,
+				fmt.Sprintf("task is %s; verify integration with `dev done --merged` first", row.Task.State)))
+			continue
+		}
+
+		synthetic := &task.Task{
+			ID: task.MakeID(repository.Name, worktree.Branch), Name: worktree.Branch,
+			Repo: repository.Name, RepoPath: repository.MainRoot, Branch: worktree.Branch,
+			Base: base, WorktreePath: canonical, Mode: task.ModeWorktree, State: task.Done,
+		}
+		row := inventory.Row{Task: synthetic, Checkout: canonical, CheckoutExists: true}
+		if worktree.Locked {
+			reason := "worktree is locked"
+			if worktree.LockedReason != "" {
+				reason += ": " + worktree.LockedReason
+			}
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, reason))
+			continue
+		}
+		if worktree.Prunable {
+			reason := "worktree registration is prunable"
+			if worktree.PrunableReason != "" {
+				reason += ": " + worktree.PrunableReason
+			}
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, reason))
+			continue
+		}
+		worktreeStatus, statusErr := gitx.StatusOf(ctx, canonical)
+		if statusErr != nil {
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, statusErr.Error()))
+			continue
+		}
+		row.Status = worktreeStatus
+		if worktreeStatus.Dirty() {
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base,
+				fmt.Sprintf("worktree is dirty (%s)", worktreeStatus.Breakdown())))
+			continue
+		}
+		if operation, active, operationErr := gitx.InProgress(canonical); operationErr != nil {
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, operationErr.Error()))
+			continue
+		} else if active {
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base,
+				fmt.Sprintf("Git operation %s is in progress", operation)))
+			continue
+		}
+		if artifactErr := ensureArtifactsFinalized(app, canonical); artifactErr != nil {
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, artifactErr.Error()))
+			continue
+		}
+		inspection, inspectErr := retirement.Inspect(ctx, app.Runtime(), canonical, retirement.Options{
+			CloseUnknown: options.closeUnknown, AssumeNoRuntime: options.assumeNoRuntime,
+		})
+		if inspectErr != nil {
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, inspectErr.Error()))
+			continue
+		}
+		if !inspection.Ready() {
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, strings.Join(inspection.Blockers, "; ")))
+			continue
+		}
+
+		branch := worktree.Branch
+		checkout := canonical
+		action := fmt.Sprintf("retire merged worktree %s", config.Contract(checkout))
+		if options.deleteBranches {
+			action += fmt.Sprintf(" and delete %s", branch)
+		}
+		suggestions = append(suggestions, suggestion{
+			row: row, reason: fmt.Sprintf("untracked worktree branch is contained in %s", base), action: action,
+			apply: func() error {
+				service := &retirement.Service{Runtime: app.Runtime()}
+				_, err := service.Retire(ctx, retirement.Request{
+					Target: retirement.Target{
+						RepoPath: repository.MainRoot, CheckoutPath: checkout,
+						Branch: branch, Base: base, LinkedWorktree: true,
+					},
+					Safety: retirement.Options{
+						CloseUnknown: options.closeUnknown, AssumeNoRuntime: options.assumeNoRuntime,
+					},
+					DeleteBranch: options.deleteBranches,
+				})
+				return err
+			},
+		})
+	}
+	return suggestions, nil
+}
+
+func mergedWorktreeBlocker(row inventory.Row, base, blocker string) suggestion {
+	return suggestion{
+		row: row, reason: fmt.Sprintf("branch is contained in %s, but retirement is blocked", base),
+		action: blocker + " — not changed automatically",
+	}
 }
 
 func confirm(app *App, in *bufio.Reader, action string) bool {

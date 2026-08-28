@@ -126,6 +126,8 @@ dev retire "token refresh" --delete-branch           # external close/wait/remov
 dev done --pr                                        # open review; keep task/worktree
 dev done --merged --base-ref origin/main             # verify commit-preserving merge
 dev sweep                                            # report drift and cleanup-pending work
+dev sweep --merged-worktrees                         # from main: audit contained linked worktrees
+dev sweep --merged-worktrees --apply                 # confirm each safe retirement
 ```
 
 On a TTY, bare `dev done` reports branch ahead/behind and classifies every

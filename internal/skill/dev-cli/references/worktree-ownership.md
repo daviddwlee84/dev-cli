@@ -121,6 +121,10 @@ reports missing tools or failed setup without deleting the usable checkout.
 - `dev done --pr` leaves everything active for review.
 - `dev retire` is the only complete close/wait/remove/reap path.
 - `dev sweep` reports first; `--apply` routes cleanup through retire.
+- From canonical main, `dev sweep --merged-worktrees` also audits unmanaged
+  linked worktrees whose branches are contained in main. Agents must present
+  that report for user confirmation before applying; branches are retained
+  unless `--delete-branches` was separately approved.
 
 Bare `dev done` on a TTY classifies dirty content against the base before
 offering commit-all or discard-all; unique discard requires `DROP`. Dirty

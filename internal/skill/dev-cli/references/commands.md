@@ -773,6 +773,11 @@ dev sweep [flags]
 ```
 
 - `--apply` — act on the suggestions instead of only reporting
+- `--assume-no-runtime` — continue when runtime enumeration fails during retirement
+- `--base` — containment base for --merged-worktrees (default: the repository default branch)
+- `--close-unknown` — allow external closure of unknown runtime status during retirement
+- `--delete-branches` — also delete contained local branches after worktree retirement
+- `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
 - `--stale-days` — days without a commit before a task counts as stale
 - `--yes` — with --apply, do not confirm each change
 

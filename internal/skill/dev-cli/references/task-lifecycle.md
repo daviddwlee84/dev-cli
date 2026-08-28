@@ -169,6 +169,7 @@ across machines. Point `paths.state_dir` at one if you want a shared view.
 ```bash
 dev sweep            # report only
 dev sweep --apply    # act, confirming each change
+dev sweep --merged-worktrees  # from main, include untracked contained worktrees
 ```
 
 `sweep` reports two kinds of problem:
@@ -180,6 +181,19 @@ dev sweep --apply    # act, confirming each change
 
 It also lists **live sessions no task claims** — the other half of a crowded
 sidebar, and usually the larger half.
+
+From the canonical default-branch checkout, `--merged-worktrees` switches to a
+focused audit of tracked and unmanaged linked worktrees whose named branches are
+already contained in main. It suppresses unrelated stale-task/session noise so
+the result can be presented directly for cleanup approval. Dirty trees, active
+Git operations, pending artifact
+intents, active/mixed runtimes, detached heads and unmerged branches are
+reported as blockers. Safe candidates still require `--apply` and individual
+confirmation; `--delete-branches` is a separate opt-in.
+
+Agent workflow: show the report to the user as a concrete QA prompt, naming the
+exact candidate paths and whether branches would be retained. Only after the
+user approves that set may the agent add `--apply --yes`.
 
 `sweep` never deletes uncommitted work, and never acts without `--apply`. DONE
 tasks with runtime/worktree resources are reported as cleanup pending and routed

@@ -29,3 +29,9 @@ the target is mixed-purpose and must be reorganized or closed manually.
 
 Raw `git worktree remove --force` bypasses these protections. Do not use it on
 an agent-owned checkout.
+
+From the canonical main checkout, `dev sweep --merged-worktrees` reports both
+tracked and unmanaged linked worktrees whose named branches are contained in
+main. Review the exact candidates and blockers first; apply only after user
+confirmation. Worktree retirement keeps branches unless `--delete-branches`
+was separately requested.

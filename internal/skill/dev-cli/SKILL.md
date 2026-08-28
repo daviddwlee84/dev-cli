@@ -143,6 +143,7 @@ dev ls --json              # stable machine-readable form (also over ssh)
 dev status                 # what is this directory: repo, branch, task, session
 dev sweep                  # what has gone stale or drifted, and what to do
 dev sweep --apply          # act on it, confirming each change
+dev sweep --merged-worktrees  # from main, audit contained tracked/untracked worktrees
 dev prepare --session claude:<uuid>  # arm exact post-writer artifact commit
 dev artifact list          # finalization handoffs and receipts
 dev done --ff              # integrate only; runtime/worktree stay alive
@@ -305,7 +306,10 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 
 4. **Report drift, do not fix it silently.** `dev sweep` without `--apply`
    changes nothing. Show the user its output rather than running `--apply --yes`
-   for them.
+   for them. For merged worktree cleanup, run `dev sweep --merged-worktrees`
+   from the canonical main checkout, present every candidate and blocker as a
+   QA question, and use `--apply --yes` only after the user explicitly approves
+   that exact set. Branch deletion remains a separate `--delete-branches` opt-in.
 
 5. **Prefer a checkpoint commit over `git stash`.** A stash is invisible in the
    log, easy to forget, and cannot be pushed — so it can never reach another

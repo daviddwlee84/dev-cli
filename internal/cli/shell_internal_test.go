@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/unix"
 )
 
 func TestCDDirectiveUsesPrivateDescriptor(t *testing.T) {
@@ -17,7 +19,15 @@ func TestCDDirectiveUsesPrivateDescriptor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("DEV_SHELL_CD_FD", strconv.Itoa(int(file.Fd())))
+	defer file.Close()
+	// cdDirective owns and closes the inherited descriptor. Give it a duplicate
+	// so the original os.File retains independent ownership and its finalizer
+	// can never close an unrelated descriptor that the OS reused.
+	ownedFD, err := unix.Dup(int(file.Fd()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DEV_SHELL_CD_FD", strconv.Itoa(ownedFD))
 
 	var out, errOut bytes.Buffer
 	app := &App{Out: &out, Err: &errOut}

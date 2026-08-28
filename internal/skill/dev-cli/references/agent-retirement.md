@@ -41,6 +41,19 @@ dev retire <task> --delete-branch
 pane, closes eligible sessions, waits for them to disappear, revalidates Git,
 and removes the worktree without force.
 
+For periodic cleanup from the canonical main checkout:
+
+```bash
+dev sweep --merged-worktrees
+# Present the exact candidates/blockers to the user and ask for approval.
+dev sweep --merged-worktrees --apply --yes
+```
+
+This includes unmanaged linked worktrees whose named branches are already
+contained in main. It never treats containment alone as permission: dirty Git,
+pending artifacts and runtime blockers still stop cleanup. Branches remain by
+default; add `--delete-branches` only when the user approved that separately.
+
 ## Pull-request flow
 
 ```bash
