@@ -342,24 +342,17 @@ func runTUI(app *App) error {
 		// I am working on" — the step that otherwise means dropping out of the
 		// dashboard to type a command.
 		Start: func(ctx context.Context, r tui.RepoRow, name string) (string, error) {
-			branch := "feat/" + config.Slug(name)
-			base := gitx.DefaultBranch(ctx, r.Repo.Path)
-			id := task.MakeID(r.Repo.Name, branch)
-			if _, err := app.Tasks.Get(id); err == nil {
-				return "", fmt.Errorf("%s already exists", id)
-			}
-
-			m := &wt.Manager{Cfg: app.Cfg, Runtime: rt}
-			res, err := m.Create(ctx, tuiStartRequest(r, branch, base))
+			spec, err := buildStartSpecForRepository(ctx, app, r.Repo, startRequest{
+				Name: name, Mode: task.ModeWorktree,
+			})
 			if err != nil {
 				return "", err
 			}
-			t := tuiStartedTask(r, name, branch, base, res, rt)
-			if err := app.Tasks.Save(t); err != nil {
+			started, err := executeStartSpec(ctx, app, spec, nil)
+			if err != nil {
 				return "", err
 			}
-			annotate(app, rt, t)
-			return fmt.Sprintf("started %s on %s", name, branch), nil
+			return fmt.Sprintf("started %s on %s", name, started.Task.Branch), nil
 		},
 
 		StartDirect: func(ctx context.Context, r tui.RepoRow, name string) (string, error) {

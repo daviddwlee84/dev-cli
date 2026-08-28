@@ -105,7 +105,8 @@ enable more and degrade cleanly when absent.
 | ✅ `done` | merged | nothing | entry survives until swept |
 
 ```bash
-dev start api --task "token refresh" --base main   # → hot
+dev start                                           # interactive managed-task wizard
+dev start api --task "token refresh" --base main   # non-interactive fast path → hot
 dev park --next "add the regression test" --wip    # → warm, session closed
 dev park --cold --push                             # → cold, worktree removed
 dev resume "token refresh"                         # → hot, rebuilt if needed

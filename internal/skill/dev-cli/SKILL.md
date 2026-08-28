@@ -136,6 +136,9 @@ dev status                 # what is this directory: repo, branch, task, session
 dev sweep                  # what has gone stale or drifted, and what to do
 dev sweep --apply          # act on it, confirming each change
 
+dev start                  # context-aware wizard; confirms before creating
+dev start -t "token refresh" --base main  # fast managed worktree task
+
 dev wt create feat/auth --base main    # worktree at the configured path
 dev wt list                            # every worktree of this repo
 dev wt plan                            # what a new worktree would be set up with

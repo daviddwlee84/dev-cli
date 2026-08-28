@@ -28,6 +28,7 @@ type App struct {
 	Registry *catalog.Registry
 	Sizes    *diskusage.Manager
 
+	In  io.Reader
 	Out io.Writer
 	Err io.Writer
 
@@ -40,6 +41,9 @@ type App struct {
 	// allowSharedCheckout is an explicit escape hatch for coordinated agents
 	// whose file ownership is known to be disjoint.
 	allowSharedCheckout bool
+	// interactiveCheck is a test seam for commands that prompt only when a real
+	// terminal is attached. Production falls back to interactive().
+	interactiveCheck func() bool
 	// runtimeInstance and runtimesByName are injection seams used by focused
 	// command tests.
 	runtimeInstance runtime.Runtime
@@ -53,6 +57,9 @@ func (a *App) Load() error {
 		return err
 	}
 	a.Cfg = cfg
+	if a.In == nil {
+		a.In = os.Stdin
+	}
 	if a.Out == nil {
 		a.Out = os.Stdout
 	}
@@ -69,6 +76,13 @@ func (a *App) Load() error {
 		a.Sizes = diskusage.NewManager(cache, 2)
 	}
 	return nil
+}
+
+func (a *App) interactive() bool {
+	if a.interactiveCheck != nil {
+		return a.interactiveCheck()
+	}
+	return interactive()
 }
 
 // Runtime resolves the multiplexer backend for this invocation, honouring

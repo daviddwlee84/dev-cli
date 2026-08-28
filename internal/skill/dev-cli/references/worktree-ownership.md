@@ -32,6 +32,14 @@ target.
 Never nest a durable worktree inside another checkout. Every watcher, language
 server, backup tool and search then sees a second copy of the repository.
 
+Herdr's native **New worktree** action is still valid for an external,
+unmanaged checkout. When the canonical repository is under a configured scan
+root, Git registration lets dev discover the checkout without scanning
+`~/.herdr/worktrees`; dev does not auto-adopt, relocate, or provision it. Run
+`dev wt provision <path>` if it needs the project environment and `dev adopt`
+followed by `dev adopt --apply` only when it should enter the durable task
+lifecycle.
+
 ## Paths
 
 Default:

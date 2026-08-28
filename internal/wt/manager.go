@@ -108,7 +108,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (*CreateResult,
 	} else {
 		path = config.Expand(path)
 	}
-	if err := m.checkTarget(path, repoPath); err != nil {
+	if err := ValidateTarget(path, repoPath); err != nil {
 		return nil, err
 	}
 
@@ -176,8 +176,10 @@ func (m *Manager) surface(ctx context.Context, path, label string) (runtime.Open
 	return m.Runtime.Open(ctx, path, label)
 }
 
-// checkTarget refuses locations that would cause trouble later.
-func (m *Manager) checkTarget(path, repoPath string) error {
+// ValidateTarget refuses locations that would cause trouble later. It performs
+// no writes, so callers can show a confirmed creation preview before invoking
+// Manager.Create; Create repeats the check to remain race-safe.
+func ValidateTarget(path, repoPath string) error {
 	if info, err := os.Stat(path); err == nil {
 		if !info.IsDir() {
 			return fmt.Errorf("%s exists and is not a directory", path)

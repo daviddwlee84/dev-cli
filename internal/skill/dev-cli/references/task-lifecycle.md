@@ -24,6 +24,12 @@ A task records human intent; it does not imply a worktree:
 | `dev start api -t small --branch-only` | branch in canonical checkout | lightweight isolation, no concurrency |
 | `dev start api -t auth --base main` | branch + linked worktree | interruption, experiment, parallel writer |
 
+In an interactive terminal, bare `dev start` opens the same managed flow as a
+context-aware wizard. It prompts for repo, task, mode, branch, base and next,
+then shows the computed checkout/runtime summary before creating anything.
+`dev start -t <name>` remains the fast path; `--json` and non-TTY use never
+prompt.
+
 Direct tasks go HOT ↔ WARM and finish with plain `dev done`; they cannot go
 COLD because the canonical checkout cannot be removed. Branch-only tasks can go
 cold after push by switching the canonical checkout back to base. The full

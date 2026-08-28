@@ -145,9 +145,9 @@ func newWtCreateCmd(app *App) *cobra.Command {
 		Long: `Create a linked worktree for a branch.
 
 If the branch exists it is checked out; otherwise it is created from --base.
-Always pass --base for unattended use: without it a new branch starts from the
-current HEAD, so creating a worktree while standing on feature/A silently
-builds on feature/A.`,
+Without --base, dev uses the repository's default branch. Pass it explicitly
+for unattended use so the intended committed starting point is visible in the
+command.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()

@@ -49,7 +49,7 @@ func NewRootCommand() *cobra.Command {
 // tests use to capture output without redirecting the process's file
 // descriptors.
 func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
-	app := &App{Out: out, Err: errOut}
+	app := &App{In: os.Stdin, Out: out, Err: errOut}
 
 	root := &cobra.Command{
 		Use:           "dev",

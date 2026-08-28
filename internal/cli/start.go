@@ -4,13 +4,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
-	"github.com/daviddwlee84/dev-cli/internal/gitx"
-	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	"github.com/daviddwlee84/dev-cli/internal/wt"
@@ -48,6 +45,11 @@ func newStartCmd(app *App) *cobra.Command {
 For untracked ad-hoc navigation, use "dev repo open" or press Enter in the
 TUI's REPOS view; that opens the project without creating any task at all.
 
+In an interactive terminal, omitting the task name opens a context-aware
+wizard for repo, task, mode, branch, base and next action. Defaults are shown
+inline, and the final summary must be confirmed before anything is created.
+Pipes and --json never prompt: pass --task for unattended use.
+
 With no repo argument, the repository containing the current directory is used.
 Always pass --base for an unattended branch/worktree task.
 
@@ -63,155 +65,75 @@ use repo/branch so Herdr can show native nested repository provenance.`,
 				return errors.New("--direct and --branch-only are different modes; pick one")
 			}
 			branchOnly = branchOnly || noWorktree
-
-			// Resolve the repository: an explicit argument, else the cwd.
-			var repoPath, repoName, category string
-			if len(args) == 1 {
-				r, _, err := repo.Resolve(ctx, app.Cfg.ScanRoots(), args[0])
-				if err != nil {
-					return err
-				}
-				repoPath, repoName, category = r.Path, r.Name, r.Category
-			} else {
-				cwd, err := os.Getwd()
-				if err != nil {
-					return err
-				}
-				g, err := gitx.Discover(ctx, cwd)
-				if err != nil {
-					return fmt.Errorf("no repo argument and %s is not a git repository", config.Contract(cwd))
-				}
-				repoPath, repoName = g.MainRoot, g.Name
-			}
-
-			if name == "" {
-				if branch != "" && !direct {
-					name = branch
-				} else {
-					return errors.New("give the work a name: dev start <repo> --task <name>")
-				}
-			}
-
 			mode := task.ModeWorktree
 			switch {
 			case direct:
 				mode = task.ModeDirect
-				st, err := gitx.StatusOf(ctx, repoPath)
-				if err != nil {
-					return err
-				}
-				if st.Detached || st.Branch == "" {
-					return errors.New("--direct needs a named branch; this checkout has detached HEAD")
-				}
-				if branch != "" && branch != st.Branch {
-					return fmt.Errorf("--direct tracks the branch already checked out (%s), not --branch %s; "+
-						"omit --branch or use --branch-only", st.Branch, branch)
-				}
-				branch, base = st.Branch, st.Branch
-
 			case branchOnly:
 				mode = task.ModeBranch
-				if branch == "" {
-					branch = "feat/" + config.Slug(name)
-				}
-				if base == "" {
-					base = gitx.DefaultBranch(ctx, repoPath)
-				}
-
-			default:
-				if branch == "" {
-					branch = "feat/" + config.Slug(name)
-				}
-				if base == "" {
-					base = gitx.DefaultBranch(ctx, repoPath)
-				}
+			}
+			req := startRequest{
+				Name: name, Branch: branch, Base: base, Next: next, Mode: mode,
+				ModeExplicit:   direct || branchOnly,
+				BranchExplicit: cmd.Flags().Changed("branch"),
+				BaseExplicit:   cmd.Flags().Changed("base"),
+				NextExplicit:   cmd.Flags().Changed("next"),
+				NoProvision:    noProvision, Focus: focus,
+			}
+			if len(args) == 1 {
+				req.RepoRef, req.RepoExplicit = args[0], true
+			}
+			if req.Name == "" && req.Branch != "" && req.Mode != task.ModeDirect {
+				req.Name = req.Branch
 			}
 
-			id := task.MakeID(repoName, branch)
-			if existing, err := app.Tasks.Get(id); err == nil && existing.State != task.Done {
-				return fmt.Errorf("task %s already exists (state %s) — use `dev resume %s`",
-					existing.ID, existing.State, existing.ID)
-			}
-
-			t := &task.Task{
-				Name: name, Repo: repoName, RepoPath: repoPath,
-				Branch: branch, Base: base, Mode: mode,
-				State: task.Hot, Owner: config.Hostname(), Next: next,
-			}
-			rt := app.Runtime()
-			label := worktreeRuntimeLabel(repoName, branch)
-			if mode == task.ModeDirect {
-				label = repoName + "/" + name
-			}
-			var opened runtime.OpenResult
+			var spec *startSpec
 			var err error
-
-			switch mode {
-			case task.ModeDirect:
-				if err := guardSharedCheckout(ctx, app, rt, repoPath); err != nil {
+			if req.Name == "" {
+				if jsonOut || !app.interactive() {
+					return errors.New("give the work a name: dev start <repo> --task <name>")
+				}
+				var confirmed bool
+				spec, confirmed, err = runStartWizard(ctx, app, req)
+				if errors.Is(err, errStartCanceled) {
+					fmt.Fprintln(app.Out, "Canceled; nothing was created.")
+					return nil
+				}
+				if err != nil {
 					return err
 				}
-				opened, err = rt.Open(ctx, repoPath, label)
+				if !confirmed {
+					fmt.Fprintln(app.Out, "Canceled; nothing was created.")
+					return nil
+				}
+			} else {
+				spec, err = buildStartSpec(ctx, app, req)
 				if err != nil {
-					app.warnf("could not open a runtime session: %v", err)
-					opened = runtime.OpenResult{}
+					return decorateStartError(err)
 				}
-
-			case task.ModeBranch:
-				if err := guardSharedCheckout(ctx, app, rt, repoPath); err != nil {
-					return err
-				}
-				if gitx.BranchExists(ctx, repoPath, branch) {
-					if _, err := gitx.Run(ctx, repoPath, "switch", branch); err != nil {
-						return fmt.Errorf("switch to %s: %w", branch, err)
-					}
-				} else {
-					if _, err := gitx.Run(ctx, repoPath, "switch", "-c", branch, base); err != nil {
-						return fmt.Errorf("create and switch to %s from %s: %w", branch, base, err)
-					}
-				}
-				opened, err = rt.Open(ctx, repoPath, label)
-				if err != nil {
-					app.warnf("could not open a runtime session: %v", err)
-					opened = runtime.OpenResult{}
-				}
-
-			case task.ModeWorktree:
-				m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
-				res, err := m.Create(ctx, wt.CreateRequest{
-					RepoPath: repoPath, RepoName: repoName, Branch: branch, Base: base,
-					Category: category, Label: label, NoProvision: noProvision, Focus: focus,
-				})
-				if err != nil {
-					var exists *wt.ErrExists
-					if errors.As(err, &exists) {
-						return fmt.Errorf("%w\nreuse it with: dev resume %s", err, id)
-					}
-					return err
-				}
-				t.WorktreePath, opened = res.Path, res.Runtime
-				reportProvision(app, res)
 			}
-			setTaskRuntime(t, rt, opened)
 
-			if err := app.Tasks.Save(t); err != nil {
-				return err
+			result, err := executeStartSpec(ctx, app, spec, app.Err)
+			if err != nil {
+				return decorateStartError(err)
 			}
-			annotate(app, rt, t)
+			if result.Worktree != nil {
+				reportProvision(app, result.Worktree)
+			}
 
 			if jsonOut {
-				return emitStartJSON(app, t, rt.Name(), opened)
+				return emitStartJSON(app, result.Task, result.Runtime.Name(), result.Opened)
 			}
 			fmt.Fprintf(app.Out, "%s %s  %s on %s (%s)\n",
-				task.Hot.Icon(), t.Name, t.Repo, t.Branch, t.Mode)
-			if t.WorktreePath != "" {
-				fmt.Fprintf(app.Out, "   worktree  %s\n", config.Contract(t.WorktreePath))
+				task.Hot.Icon(), result.Task.Name, result.Task.Repo, result.Task.Branch, result.Task.Mode)
+			if result.Task.WorktreePath != "" {
+				fmt.Fprintf(app.Out, "   worktree  %s\n", config.Contract(result.Task.WorktreePath))
 			}
-			if t.RuntimeHandle != "" {
-				fmt.Fprintf(app.Out, "   session   %s %s\n", rt.Name(), t.RuntimeHandle)
+			if result.Task.RuntimeHandle != "" {
+				fmt.Fprintf(app.Out, "   session   %s %s\n", result.Runtime.Name(), result.Task.RuntimeHandle)
 			}
-			if rt.Name() == "none" {
-				return app.cdDirective(checkoutOf(t))
+			if result.Runtime.Name() == "none" {
+				return app.cdDirective(checkoutOf(result.Task))
 			}
 			return nil
 		},
@@ -230,6 +152,14 @@ use repo/branch so Herdr can show native nested repository provenance.`,
 	f.BoolVar(&jsonOut, "json", false, "emit one machine-readable creation result")
 	cmd.ValidArgsFunction = completeRepos(app)
 	return cmd
+}
+
+func decorateStartError(err error) error {
+	var worktreeExists *wt.ErrExists
+	if errors.As(err, &worktreeExists) {
+		return fmt.Errorf("%w\nopen it with: dev wt open %s", err, worktreeExists.Branch)
+	}
+	return err
 }
 
 type startRuntimeJSON struct {

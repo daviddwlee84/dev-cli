@@ -47,10 +47,29 @@ dev wt provision                      # re-run setup on an existing checkout
 dev wt create fix/orderbook --base main
 ```
 
-Without `--base`, a new branch starts from the **current HEAD**. Create a
-worktree while standing on `feature/A` and `fix/orderbook` quietly inherits
-`feature/A`'s commits. This is the single most common way to end up with a
-history nobody intended.
+Without `--base`, dev uses the repository's default branch. Passing it
+explicitly is still preferred for scripts and agent-driven creation because
+the intended committed starting point stays reviewable in the command.
+
+## Worktrees created directly in Herdr
+
+Herdr's **New worktree** action is allowed. Git registers that checkout with
+the canonical repository, so dev can display it as an external worktree as
+long as the canonical repo is discoverable through `paths.scan_roots`—even
+when the checkout lives under `~/.herdr/worktrees` and that directory is not a
+scan root.
+
+It remains deliberately unmanaged: dev does not silently create a task, move
+the checkout, or run provisioning. If the work becomes durable, opt in:
+
+```bash
+dev wt provision /path/to/worktree  # optional: env files + dependencies
+dev adopt                           # report candidates; changes nothing
+dev adopt --apply                   # record the selected candidates as tasks
+```
+
+Until adoption, `dev park`, `dev resume`, and `dev done` have no task lifecycle
+to operate on. Use `dev start` when that lifecycle is wanted from the outset.
 
 ## A worktree starts empty of everything untracked
 
