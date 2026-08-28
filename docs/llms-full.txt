@@ -635,6 +635,115 @@ It never deletes uncommitted work. Reporting first is part of the safety model.
 
 ---
 
+### Machine summary
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/machine-summary/
+
+> Generate a current machine-wide snapshot of repositories, Tries, tasks, worktrees, runtimes, and recovery risks.
+
+`dev summary` answers “what is on this machine right now?” It emits Markdown by
+default, does not invoke an AI agent, and does not persist a second copy of Git
+or runtime state.
+
+```bash
+dev summary
+dev summary --attention
+dev summary --detail compact --no-runtime
+dev summary --recent-commits 3 --sizes
+dev summary --json
+```
+
+The default `auto` detail expands projects with dirty/conflicted checkouts,
+live sessions, or HOT/WARM tasks. Quiet repositories and Tries remain in a
+compact index with branch, Git status, recent activity, recovery risk, and the
+latest commit subject.
+
+`--attention` selects active work plus topology errors, missing/prunable
+checkouts, repositories without remotes, and repositories with local-only
+branches. Auto detail expands every selected project. `--detail full` expands
+all projects; explicit `--detail compact` keeps all projects to one line.
+
+Present active/deprecated Tries are included alongside durable repositories,
+including non-Git experiments with the smaller set of facts they support.
+`--include-history` adds archived, evicted, and graduated records. Remote-only
+repositories that have not been cloned are deliberately outside this local
+machine snapshot.
+
+## Structured output and performance
+
+`--json` always emits the complete selected snapshot regardless of Markdown
+detail. Schema version 1 includes collection capabilities, aggregate counts,
+project identity, current Git/recovery facts, checkouts, tasks, sessions,
+recent commits, optional size, attention reasons, and warnings.
+
+Runtime sessions are queried once and shared by repository and Try collection.
+`--no-runtime` avoids that query and marks `runtime_collected` false, so an
+empty session list is not mistaken for a completed observation. Size scanning
+is opt-in and uses the existing disk-usage cache.
+
+Use the three context surfaces according to the question:
+
+```text
+dev summary       current machine-wide snapshot
+dev journal       activity within a calendar-day range
+dev repo context  full context for one repository
+```
+
+---
+
+### Development journal
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/dev-journal/
+
+> Generate daily, weekly, or long-range development journals for people, scripts, and AI agents.
+
+`dev journal` derives a report from repositories already visible under the
+configured scan roots. It writes Markdown by default, makes no AI request, and
+does not persist the generated report.
+
+```bash
+dev journal                         # today, current Git identity
+dev journal --since 7d --metrics
+dev journal --since 3mo --granularity branch
+dev journal --author teammate@example.com --since 30d
+dev journal --since 7d --json
+```
+
+The default `auto` granularity shows commit details when the report is small.
+After 100 commits it retains complete repository and branch totals, shows the
+newest 100 details, and reports how many were omitted. Use
+`--max-commits 0` or explicit `--granularity commit` for an unlimited report.
+
+## Evidence and attribution
+
+Git author timestamps and emails are the historical authority. Current-user
+reports may supplement them with source-separated session/WakaTime totals,
+task title/state/next action, and dirty linked worktrees whose latest existing
+changed-file mtime falls inside the selected calendar-day range. These current
+snapshots are labelled as heuristics and are not added to committed metrics.
+
+Branch names are reconstructed from current refs, preferring an existing dev
+task's explicit base/branch relationship. Git cannot recover the original name
+of every deleted branch without a separate event log, so surviving-ref and
+unattributed results are marked as best effort.
+
+`--metrics` reports file touches, additions, deletions, and churn from commit
+numstats. Binary changes count as files but do not invent line counts.
+
+## Agent and script composition
+
+Markdown is suitable as direct context:
+
+```bash
+dev journal --since 7d | opencode run "summarize this as a weekly report"
+```
+
+`--json` emits schema version 1 with the window, authors, full aggregate totals,
+shown/omitted commit counts, repository and branch records, optional metrics,
+current context, activity evidence, and collection warnings.
+
+---
+
 ### Worktrees and provisioning
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/
@@ -1143,7 +1252,13 @@ Expanded rows explain every linked worktree, including harness-owned `(ephemeral
 
 TRY handles low-cost experiments, reversible archive/restore, marking, and graduation. Archive is organization, not deletion or disk reclamation.
 
-REMOTE loads lazily so startup does not wait for the network. Enter opens a local clone; `c` confirms before cloning an absent repository; `r` refreshes forge inventories and their private XDG cache. Notes are enabled only after a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a new Try rather than a repository note.
+REMOTE loads lazily so startup does not wait for the network. Its private XDG
+cache holds the complete paginated inventory. Fresh rows require no network;
+stale rows stay searchable while background refresh runs. Enter opens a local
+clone; `c` confirms before cloning an absent repository; `r` forces a refresh.
+Use `/vis:private` for an exact visibility filter. Notes are enabled only after
+a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a
+new Try rather than a repository note.
 
 ## Repository quick notes
 
@@ -2193,7 +2308,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | remote fleet | `fleet list`, `fleet status`, `fleet sync`, `fleet open`, `fleet config …` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
-| activity/data | `stats …`, `cache …` |
+| activity/data | `summary`, `journal`, `stats …`, `cache …` |
 | help | `help [topic]` |
 
 Run `dev <command> --help` for the installed binary; this site describes the repository version identified in its freshness metadata.
@@ -2247,7 +2362,7 @@ Key sections:
 | `[paths]` | scan roots, project/tries/worktree roots, worktree template, state path |
 | `[runtime]` | `auto`, Herdr, tmux, Zellij, or none plus metadata settings |
 | `[worktree]` | ignored includes, linked dirs, setup commands, strategies, timeout |
-| `[forge]` / `[[forge.azure_devops]]` | remote result limit, cache TTL, and opt-in Azure organization/project targets |
+| `[forge]` / `[[forge.azure_devops]]` | complete remote inventory cache TTL and opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
 | `[stats]` | sampler and optional WakaTime import |
@@ -2710,6 +2825,25 @@ Quick-reference pages for the git workflow dev assumes
 dev help [topic]
 ```
 
+### `dev journal`
+
+Generate a development journal from Git and current context
+
+```
+dev journal [flags]
+```
+
+- `--all-authors` — include commits by every author
+- `--author` — exact author email (repeatable; default: effective Git user)
+- `--granularity` — detail level: auto, repo, branch or commit
+- `--include-merges` — include merge commits
+- `--json` — emit stable JSON
+- `--max-commits` — maximum commit details in auto/commit output (0 for all)
+- `--metrics` — include files, additions, deletions and churn
+- `-r, --repo` — limit to this repository (repeatable)
+- `--since` — start: today, yesterday, 7d, 4w, 3mo, 1y or YYYY-MM-DD
+- `--until` — inclusive end: today, yesterday or YYYY-MM-DD
+
 ### `dev ls`
 
 List work in progress across every repo
@@ -2939,9 +3073,11 @@ List and search repositories visible through configured forge CLIs
 dev repo remote [query] [flags]
 ```
 
-- `--cached` — use the fresh XDG cache without querying forge providers
+- `--cached` — use the XDG cache without querying forge providers
 - `--json` — emit JSON
-- `--limit` — maximum repositories requested from each forge (default: config forge.remote_limit)
+- `--limit` — maximum matching repositories to render (0 for all)
+- `--refresh` — force a complete forge inventory refresh
+- `--visibility` — filter visibility: public, private or internal
 
 ### `dev repo sync`
 
@@ -3151,6 +3287,21 @@ Show the full context of the current directory
 ```
 dev status
 ```
+
+### `dev summary`
+
+Generate an agent-ready snapshot of this machine's projects
+
+```
+dev summary [query] [flags]
+```
+
+- `--attention` — only projects with active work or recovery risk
+- `--detail` — Markdown detail: auto, compact or full
+- `--include-history` — include archived, evicted and graduated Try history
+- `--json` — emit the complete stable JSON snapshot
+- `--recent-commits` — recent commits per Git project (0 to omit)
+- `--sizes` — include cached or measured logical disk usage
 
 ### `dev sweep`
 
@@ -3441,6 +3592,12 @@ The task schema has an `AgentSession` field and Herdr inventory can expose live 
 
 `dev config init` writes `forge.cache_ttl = "15m"`. With no config file, the current built-in `Forge.CacheTTL` zero value means an existing valid cache is not rejected by age; explicit `r` refresh still replaces it. Run `config init` or set the TTL when freshness matters.
 
+Older generated configs may contain `forge.remote_limit = 100`. The field is
+still accepted, but complete forge inventories are now paginated and it no
+longer caps synchronization. `dev config init` no longer writes it. The
+`--limit` flag on `dev repo remote` limits rendered matches after the complete
+inventory has been searched.
+
 ### Direct mode has a smaller lifecycle
 
 A direct task uses the canonical checkout and cannot go COLD, because cold cleanup would remove a directory the repository needs. Use branch-only or worktree mode for cross-machine reconstruction.
@@ -3560,6 +3717,7 @@ tested_with: optional
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
 | SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
 | READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
+| `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](https://daviddwlee84.github.io/dev-cli/guides/machine-summary/), [Development journal](https://daviddwlee84.github.io/dev-cli/guides/dev-journal/) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
 | agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |
 | quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
 | current GitHub Flow has six branch/PR steps and no deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official, checked 2026-08-28 |
@@ -4439,6 +4597,113 @@ Sweep 可建議：
 
 ---
 
+### Machine summary
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/machine-summary/
+
+> 產生目前機器上 repositories、Tries、tasks、worktrees、runtimes 與 recovery risks 的完整 snapshot。
+
+!!! note "術語規則"
+    CLI flag、Git、JSON、runtime、snapshot 與 AI agent 保留英文，避免自行創造不穩定譯名。
+
+`dev summary` 回答「這台機器目前有什麼？」預設輸出 Markdown，不會呼叫 AI
+agent，也不會持久保存另一份 Git 或 runtime state。
+
+```bash
+dev summary
+dev summary --attention
+dev summary --detail compact --no-runtime
+dev summary --recent-commits 3 --sizes
+dev summary --json
+```
+
+預設 `auto` detail 會展開含 dirty/conflicted checkout、live session 或 HOT/WARM
+task 的 projects。其他 repositories 與 Tries 保留在 compact index，顯示 branch、
+Git status、recent activity、recovery risk 與 latest commit subject。
+
+`--attention` 選出 active work，以及 topology error、missing/prunable checkout、
+沒有 remote、含 local-only branch 的 repositories。Auto detail 會展開所有匹配
+項目；`--detail full` 展開全部，明確指定
+`--detail compact` 時則全部維持單行。
+
+預設同時包含 durable repositories 與本機 present 的 active/deprecated Tries，
+non-Git experiment 只呈現其可支援的較小 facts 集合。`--include-history` 會加入
+archived、evicted 與 graduated records。尚未 clone 的 remote-only repositories
+不屬於這個 local machine snapshot。
+
+## Structured output 與 performance
+
+`--json` 不受 Markdown detail 影響，固定輸出完整 selected snapshot。Schema
+version 1 包含 collection capabilities、aggregate counts、project identity、current
+Git/recovery facts、checkouts、tasks、sessions、recent commits、optional size、
+attention reasons 與 warnings。
+
+Runtime sessions 只查詢一次，再提供 repository 與 Try collection 共用。
+`--no-runtime` 會跳過查詢並將 `runtime_collected` 標為 false，避免把未查詢誤認為
+沒有 session。Size scanning 必須明確使用 `--sizes`，並沿用既有 disk-usage cache。
+
+依問題選擇三種 context surface：
+
+```text
+dev summary       目前 machine-wide snapshot
+dev journal       calendar-day range 內的 activity
+dev repo context  單一 repository 的完整 context
+```
+
+---
+
+### Development journal
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dev-journal/
+
+> 產生日、週或長時間範圍的 development journal，供人、script 與 AI agent 使用。
+
+!!! note "術語規則"
+    CLI flag、Git、JSON、AI agent 與產品名稱保留英文，避免自行創造不穩定譯名。
+
+`dev journal` 從 configured scan roots 下已可見的 repositories 推導報告。預設輸出
+Markdown，不會呼叫 AI，也不會持久保存生成後的報告。
+
+```bash
+dev journal                         # 今天、目前 Git identity
+dev journal --since 7d --metrics
+dev journal --since 3mo --granularity branch
+dev journal --author teammate@example.com --since 30d
+dev journal --since 7d --json
+```
+
+預設 `auto` granularity 會在報告較小時展開 commit details。超過 100 commits
+時，仍以完整資料計算 repository 與 branch totals，只顯示最新 100 筆並標明省略
+數量。使用 `--max-commits 0` 或明確的 `--granularity commit` 可輸出全部。
+
+## Evidence 與 attribution
+
+Git author timestamp 與 email 是歷史資料 authority。目前使用者的報告可額外包含
+分開呈現的 session/WakaTime totals、task title/state/next action，以及最新 changed
+file mtime 落在 calendar-day range 內的 dirty linked worktrees。這些 current
+snapshots 會標成 heuristic，不會併入 committed metrics。
+
+Branch name 由 current refs 重建，並優先使用既有 dev task 的 explicit
+base/branch 關係。沒有獨立 event log 時，Git 無法復原所有已刪除 branch 的原始
+名稱，因此 surviving-ref 與 unattributed 結果會標為 best effort。
+
+`--metrics` 從 commit numstats 報告 file touches、additions、deletions 與 churn。
+Binary change 會計入 files，但不會虛構 line count。
+
+## 組合 AI agent 與 scripts
+
+Markdown 可直接作為 context：
+
+```bash
+dev journal --since 7d | opencode run "summarize this as a weekly report"
+```
+
+`--json` 輸出 schema version 1，包含 window、authors、完整 aggregate totals、
+shown/omitted commit counts、repository/branch records、optional metrics、current
+context、activity evidence 與 collection warnings。
+
+---
+
 ### Worktree 與環境佈建
 
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/
@@ -4961,7 +5226,12 @@ y         開啟 copy/context actions
 
 TRY 管理低成本 experiment、可逆 archive/restore、mark 與 graduation。Archive 是整理，不是 deletion 或 disk reclamation。
 
-REMOTE 延遲載入，因此 startup 不等待 network。Enter 開啟 local clone；`c` 在 clone 缺少的 repository 前確認；`r` 更新 forge inventories 與 private XDG cache。只有 REMOTE row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，不會改成 repository note。
+REMOTE 延遲載入，因此 startup 不等待 network。Private XDG cache 保存完整的
+paginated inventory；fresh rows 不需要 network，stale rows 仍可搜尋並在背景
+refresh。Enter 開啟 local clone；`c` 在 clone 缺少的 repository 前確認；`r`
+強制更新 forge inventories。使用 `/vis:private` 可精確過濾 visibility。只有 REMOTE
+row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，
+不會改成 repository note。
 
 ## Repository quick notes
 
@@ -6040,7 +6310,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/
 | remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
-| activity/data | `stats …`、`cache …` |
+| activity/data | `summary`、`journal`、`stats …`、`cache …` |
 | help | `help [topic]` |
 
 已安裝 binary 的精確資訊請執行 `dev <command> --help`；本站描述的是 freshness metadata 指定的 repository version。
@@ -6094,7 +6364,7 @@ dev config path
 | `[paths]` | scan roots、project/tries/worktree roots、worktree template、state path |
 | `[runtime]` | `auto`、Herdr、tmux、Zellij 或 none，以及 metadata settings |
 | `[worktree]` | ignored includes、linked dirs、setup commands、strategies、timeout |
-| `[forge]` / `[[forge.azure_devops]]` | remote result limit、cache TTL，以及 opt-in Azure organization/project targets |
+| `[forge]` / `[[forge.azure_devops]]` | 完整 remote inventory 的 cache TTL，以及 opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
 | `[stats]` | sampler 與 optional WakaTime import |
@@ -6557,6 +6827,25 @@ Quick-reference pages for the git workflow dev assumes
 dev help [topic]
 ```
 
+### `dev journal`
+
+Generate a development journal from Git and current context
+
+```
+dev journal [flags]
+```
+
+- `--all-authors` — include commits by every author
+- `--author` — exact author email (repeatable; default: effective Git user)
+- `--granularity` — detail level: auto, repo, branch or commit
+- `--include-merges` — include merge commits
+- `--json` — emit stable JSON
+- `--max-commits` — maximum commit details in auto/commit output (0 for all)
+- `--metrics` — include files, additions, deletions and churn
+- `-r, --repo` — limit to this repository (repeatable)
+- `--since` — start: today, yesterday, 7d, 4w, 3mo, 1y or YYYY-MM-DD
+- `--until` — inclusive end: today, yesterday or YYYY-MM-DD
+
 ### `dev ls`
 
 List work in progress across every repo
@@ -6786,9 +7075,11 @@ List and search repositories visible through configured forge CLIs
 dev repo remote [query] [flags]
 ```
 
-- `--cached` — use the fresh XDG cache without querying forge providers
+- `--cached` — use the XDG cache without querying forge providers
 - `--json` — emit JSON
-- `--limit` — maximum repositories requested from each forge (default: config forge.remote_limit)
+- `--limit` — maximum matching repositories to render (0 for all)
+- `--refresh` — force a complete forge inventory refresh
+- `--visibility` — filter visibility: public, private or internal
 
 ### `dev repo sync`
 
@@ -6998,6 +7289,21 @@ Show the full context of the current directory
 ```
 dev status
 ```
+
+### `dev summary`
+
+Generate an agent-ready snapshot of this machine's projects
+
+```
+dev summary [query] [flags]
+```
+
+- `--attention` — only projects with active work or recovery risk
+- `--detail` — Markdown detail: auto, compact or full
+- `--include-history` — include archived, evicted and graduated Try history
+- `--json` — emit the complete stable JSON snapshot
+- `--recent-commits` — recent commits per Git project (0 to omit)
+- `--sizes` — include cached or measured logical disk usage
 
 ### `dev sweep`
 
@@ -7291,6 +7597,11 @@ Task schema 有 `AgentSession`，Herdr inventory 也能顯示 live agent session
 
 `dev config init` 會寫 `forge.cache_ttl = "15m"`。沒有 config file 時，目前 built-in `Forge.CacheTTL` 的 zero value 代表既有 valid cache 不會因 age 被拒絕；explicit `r` 仍會 refresh。Freshness 重要時請執行 `config init` 或設定 TTL。
 
+較舊的 generated config 可能包含 `forge.remote_limit = 100`。此欄位仍可解析，
+但 forge inventory 現在會完整 pagination，因此不再限制 synchronization。
+`dev config init` 不再寫入它；`dev repo remote --limit` 只在完整 inventory 搜尋
+完成後限制 rendered matches。
+
 ### Direct mode 的 lifecycle 較小
 
 Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 會移除 repository 必需的 directory。需要跨機器 reconstruction 時使用 branch-only 或 worktree mode。
@@ -7413,6 +7724,7 @@ tested_with: optional
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
 | SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
 | READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |
+| `dev summary` 機器整體 snapshot 與 `dev journal` 日曆日期區間報告 | [機器整體摘要](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/machine-summary/)、[開發日誌](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dev-journal/) | `internal/summary`、`internal/journal`、focused summary/journal tests | implemented |
 | agent skill inventory、scopes 與明確的 update 動作 | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/agentskill`、`internal/cli/skill.go`、focused TUI tests | implemented |
 | quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
 | 現行 GitHub Flow 有六個 branch/PR steps 且沒有 deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official，2026-08-28 查核 |
