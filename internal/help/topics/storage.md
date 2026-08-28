@@ -7,12 +7,14 @@ cache so cleanup cannot erase the wrong thing. `paths.state_dir` defaults to
 | Path | Contains | Reconstructible? |
 |---|---|---|
 | `$XDG_CONFIG_HOME/dev/config.toml` | user policy | no |
+| `$XDG_CONFIG_HOME/dev/remotes.toml` | SSH fleet inventory/auth sources | no |
 | `<state_dir>/tasks/*.toml` | state/owner/next/task note | partially |
 | `<state_dir>/assets/*.toml` | catalog identity, metadata summary, experiment lifecycle | partially |
 | `<state_dir>/stats.db` | Git backfill, session samples, WakaTime imports | not always |
 | `<state_dir>/notes/<repo-id>/*.md` | multiple timestamped repository thoughts | no |
 | `$XDG_CACHE_HOME/dev/notes.db` | note full-text search index | yes |
 | `$XDG_CACHE_HOME/dev/remotes.json` | short-lived forge inventory | yes |
+| `$XDG_CACHE_HOME/dev/fleet/v1/` | last successful per-host dev snapshots | yes |
 | `$XDG_CACHE_HOME/dev/gitignore/` | fetched GitHub templates | yes |
 
 These note-like fields have different scopes:
@@ -37,6 +39,7 @@ Clear only regenerable cache:
 ```bash
 dev cache clear remote
 dev cache clear notes
+dev cache clear fleet
 dev cache clear gitignore
 dev cache clear all
 ```

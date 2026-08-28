@@ -59,6 +59,8 @@ func (m Model) View() string {
 	switch m.view {
 	case ViewRepos:
 		b.WriteString(m.renderRepos())
+	case ViewFleet:
+		b.WriteString(m.renderFleet())
 	case ViewTries:
 		b.WriteString(m.renderTries())
 	case ViewRemote:
@@ -525,6 +527,75 @@ func (m Model) renderRemotes() string {
 	return b.String()
 }
 
+func (m Model) renderFleet() string {
+	rows := m.visibleFleet()
+	if len(rows) == 0 {
+		if m.fleetLoading {
+			return "  " + styleDim.Render("Loading configured dev hosts…") + "\n"
+		}
+		if !m.fleetLoaded {
+			return "  " + styleDim.Render("Fleet repositories load when this view is opened.") + "\n"
+		}
+		return "  " + styleDim.Render("No fleet row matches the current filter.") + "\n"
+	}
+	hostW := clamp(m.width*14/100, 10, 22)
+	repoW := clamp(m.width*24/100, 16, 34)
+	pathW := m.width - hostW - repoW - 58
+	if pathW < 12 {
+		pathW = 12
+	}
+	var b strings.Builder
+	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-*s  %-8s  %-*s  %-18s  %-14s  %-10s  %-8s  %s",
+		hostW, "HOST", "STATE", repoW, "REPO", "BRANCH", "GIT", "LIVE", "TASKS", "PATH")) + "\n")
+	from, to := m.window(len(rows))
+	for i := from; i < to; i++ {
+		row := rows[i]
+		repoName, branch, git, live, tasks, path := "—", "—", "—", "—", "—", row.Error
+		if row.Repository != nil {
+			repoName, branch, git, path = row.Repository.Display, row.Repository.Branch, row.Repository.Status.Summary(), contract(row.Repository.Path)
+			if row.Repository.Live {
+				live = row.Repository.Runtime
+				if row.Repository.AgentStatus != "" {
+					live += ":" + row.Repository.AgentStatus
+				}
+			}
+			tasks = fleetTasks(row.Repository.Tasks.Hot, row.Repository.Tasks.Warm, row.Repository.Tasks.Cold, row.Repository.Tasks.Done)
+		}
+		state := string(row.State)
+		if row.FromCache {
+			state = "stale"
+		}
+		line := fmt.Sprintf("%-*s  %-8s  %-*s  %-18s  %-14s  %-10s  %-8s  %s",
+			hostW, pad(row.Host, hostW), pad(state, 8), repoW, pad(repoName, repoW), pad(branch, 18),
+			pad(git, 14), pad(live, 10), pad(tasks, 8), pad(path, pathW))
+		styled := line
+		if row.Repository != nil && row.Repository.Live {
+			styled = styleLive.Render(line)
+		} else if row.State != "ok" {
+			styled = styleDrift.Render(line)
+		}
+		b.WriteString(m.renderLine(i, line, styled))
+	}
+	b.WriteString(m.scrollNote(len(rows), from, to))
+	return b.String()
+}
+
+func fleetTasks(hot, warm, cold, done int) string {
+	var parts []string
+	for _, item := range []struct {
+		label string
+		n     int
+	}{{"H", hot}, {"W", warm}, {"C", cold}, {"D", done}} {
+		if item.n > 0 {
+			parts = append(parts, fmt.Sprintf("%s%d", item.label, item.n))
+		}
+	}
+	if len(parts) == 0 {
+		return "—"
+	}
+	return strings.Join(parts, " ")
+}
+
 func remoteAge(r RemoteRow) string {
 	if r.Repo.UpdatedAt.IsZero() {
 		return "—"
@@ -618,6 +689,34 @@ func (m Model) renderDetail() string {
 		return "  " + styleTitle.Render("copy ") +
 			"y context · p path · b branch · s sessions · w worktree paths" +
 			"\n  " + styleHelp.Render("press a second key · esc to cancel")
+	}
+
+	if row, ok := m.currentFleet(); ok {
+		lines := []string{
+			fmt.Sprintf("  %s  %s", styleDim.Render("host"), row.Host),
+			fmt.Sprintf("  %s %s", styleDim.Render("state"), row.State),
+		}
+		if row.Repository != nil {
+			lines = append(lines,
+				fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(row.Repository.Path)),
+				fmt.Sprintf("  %s %s", styleDim.Render("branch"), row.Repository.Branch),
+				fmt.Sprintf("  %s %s", styleDim.Render("git  "), row.Repository.Status.Breakdown()),
+			)
+			if len(row.Repository.RemoteIdentities) > 0 {
+				lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("remote"), strings.Join(row.Repository.RemoteIdentities, ", ")))
+			}
+			if row.Repository.Live {
+				live := strings.TrimSpace(row.Repository.Runtime + " " + row.Repository.RuntimeHandle)
+				if row.Repository.AgentStatus != "" {
+					live += " · " + row.Repository.AgentStatus
+				}
+				lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("live"), styleLive.Render(live)))
+			}
+		}
+		if row.Error != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("note "), styleDrift.Render(row.Error)))
+		}
+		return strings.Join(lines, "\n") + "\n"
 	}
 
 	if r, ok := m.currentTry(); ok {
@@ -874,6 +973,10 @@ func (m Model) renderFooter() string {
 			bindings = append(bindings, "enter ad hoc", "space worktrees", "m metadata", "n add note", "N notes", "s worktree task", "d direct task")
 		}
 		bindings = append(bindings, "O sort:"+sortBy, "R reverse")
+	case ViewFleet:
+		if row, ok := m.currentFleet(); ok && row.Repository != nil {
+			bindings = append(bindings, "enter remote open")
+		}
 	case ViewTries:
 		sortBy := m.trySort
 		if sortBy == "" {

@@ -36,6 +36,8 @@ type App struct {
 
 	// configPath is the --config override; empty means the XDG default.
 	configPath string
+	// remotesPath is the --remotes override; empty means dev/remotes.toml.
+	remotesPath string
 	// runtimeOverride is the --runtime flag; empty means use the config.
 	runtimeOverride string
 	// noRuntime disables all multiplexer interaction for one invocation.

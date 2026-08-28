@@ -172,11 +172,13 @@ checkout that may still host the runtime.
 
 ### The dashboard
 
-Bare `dev` (or `dev tui`) opens four lists, switched with `tab`:
+Bare `dev` (or `dev tui`) opens five lists, switched with `tab`:
 
 - **TASKS** — the change streams dev is tracking. What am I working on.
 - **REPOS** — durable repositories under the scan roots, with branch, dirty
   state, owned size, runtime, worktrees and task tally. What do I have here.
+- **FLEET** — the same repository and activity facts from configured machines.
+  Enter opens the remote checkout through Herdr when possible, then SSH.
 - **TRY** — dated scratch experiments, including non-Git folders, with durable
   tags/notes and explicit active/deprecated/archived/graduated state.
 - **REMOTE** — repositories visible through authenticated forge CLIs, including
@@ -462,6 +464,8 @@ dev repo context api           # agent-ready paths, Git, WT, runtime and tasks
 dev repo clone owner/name -c Web   # clone into the right place, via gh or glab
 dev repo clone https://dev.azure.com/acme/Platform/_git/api -c Work
 dev repo sync --all            # fetch + prune, and report what moved
+dev fleet list                 # Git/task/runtime state from every configured machine
+dev fleet sync api --push      # push, then safely fast-forward clean remote checkouts
 
 dev try redis-streams          # dated scratch directory for an experiment
 dev tries archive redis-streams    # reversible local archive; does not delete
@@ -541,6 +545,7 @@ dev cache list
 dev cache path
 dev cache clear remote
 dev cache clear notes          # FTS only; Markdown remains
+dev cache clear fleet
 dev cache clear size
 dev cache clear gitignore
 dev cache clear all
@@ -553,7 +558,7 @@ inventory, note FTS, size measurements and gitignore templates) and never touch
 ## Bootstrapping an existing machine
 
 There is nothing to migrate for ordinary use: `dev` discovers repositories
-wherever `scan_roots` point and never requires a particular physical layout.
+below `scan_roots` and at exact `repo_paths`, and never requires a particular physical layout.
 When you want a recursive audit or a curated navigation layer, bootstrap is the
 explicit path:
 
@@ -654,6 +659,7 @@ a faster volume, a different naming convention:
 ```toml
 [paths]
 scan_roots    = ["~/Documents/Program", "~/src/tries"]
+repo_paths    = ["~/.local/share/chezmoi"] # exact repos outside useful roots
 worktree_root = "/mnt/fast/worktrees"
 worktree_path = "{{worktree_root}}/{{repo|lower}}/{{branch|slug}}"
 state_dir     = "~/.local/share/dev"        # point at a git repo to sync it
@@ -699,11 +705,35 @@ dev resume <task> --fetch   # on the machine picking it up
 without `--force`. Two machines committing to one branch is the reliable way
 to produce a conflict here; the ownership check prevents it.
 
-For a cross-machine view, `dev ls --json` is a stable contract:
+Configure SSH machines separately from host-local paths:
 
-```bash
-ssh jingle-235 dev ls --json | jq '.[] | select(.state=="hot")'
+```toml
+# $XDG_CONFIG_HOME/dev/remotes.toml
+schema_version = 1
+
+[defaults]
+connect_timeout = "15s"
+command_timeout = "5m"
+cache_ttl = "15m"
+max_parallel = 4
+dev_path = "auto"
+
+[[hosts]]
+name = "jingle"
+ssh_alias = "jingle-235"
 ```
+
+`dev fleet list` runs each machine's own `dev`, so its XDG config and paths stay
+host-local. Missing `dev` installations are reported as `no-dev`; unreachable
+hosts can fall back to the last private XDG snapshot. The FLEET TUI view exposes
+the same inventory and Enter opens a selected path through remote Herdr when its
+server is active, otherwise through `ssh -t` and a login shell.
+
+`dev fleet sync <repo> --push` publishes the clean source branch, then fetches
+matching clones by normalized Git remote identity. Only a clean checkout of the
+same branch that is strictly behind is fast-forwarded. Dirty, ahead, divergent,
+ambiguous and unreachable targets remain untouched and make the command fail;
+hosts without `dev` or without that repository are explicitly ignored.
 
 ## The agent skill
 

@@ -149,7 +149,7 @@ not three weeks of work, and counting it that way makes the chart meaningless.`,
 			}
 			defer store.Close()
 
-			repos, err := repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
+			repos, err := repo.Discover(ctx, app.Cfg.DiscoveryRoots(), repo.DefaultOptions())
 			if err != nil {
 				return err
 			}
@@ -199,13 +199,13 @@ them, so this is safe to repeat.`,
 			}
 			var reposToScan []repo.Repo
 			if repoRef != "" {
-				r, _, err := repo.Resolve(ctx, app.Cfg.ScanRoots(), repoRef)
+				r, _, err := repo.Resolve(ctx, app.Cfg.DiscoveryRoots(), repoRef)
 				if err != nil {
 					return err
 				}
 				reposToScan = []repo.Repo{r}
 			} else {
-				reposToScan, err = repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
+				reposToScan, err = repo.Discover(ctx, app.Cfg.DiscoveryRoots(), repo.DefaultOptions())
 				if err != nil {
 					return err
 				}

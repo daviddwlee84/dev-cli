@@ -101,7 +101,7 @@ func promptStartRepository(ctx context.Context, app *App, p *prompter, req start
 		current = r
 	}
 	if current.Path == "" {
-		all, err := repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
+		all, err := repo.Discover(ctx, app.Cfg.DiscoveryRoots(), repo.DefaultOptions())
 		if err != nil {
 			return repo.Repo{}, err
 		}
@@ -136,7 +136,7 @@ func promptStartRepository(ctx context.Context, app *App, p *prompter, req start
 			if _, err := fmt.Sscanf(value, "%d", &index); err == nil && index > 0 && index <= len(all) {
 				return all[index-1], nil
 			}
-			r, _, err := repo.Resolve(ctx, app.Cfg.ScanRoots(), value)
+			r, _, err := repo.Resolve(ctx, app.Cfg.DiscoveryRoots(), value)
 			if err == nil {
 				return r, nil
 			}
@@ -152,7 +152,7 @@ func promptStartRepository(ctx context.Context, app *App, p *prompter, req start
 		if value == current.Display() || value == current.Name || value == current.Path {
 			return current, nil
 		}
-		r, _, err := repo.Resolve(ctx, app.Cfg.ScanRoots(), value)
+		r, _, err := repo.Resolve(ctx, app.Cfg.DiscoveryRoots(), value)
 		if err == nil {
 			return r, nil
 		}

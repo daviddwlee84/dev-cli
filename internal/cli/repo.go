@@ -111,7 +111,7 @@ func sameCleanPath(a, b string) bool {
 
 // resolveRepoRef looks a repo up and renders ambiguity as a helpful error.
 func resolveRepoRef(app *App, ref string) (repo.Repo, []repo.Repo, error) {
-	return repo.Resolve(ctxOf(), app.Cfg.ScanRoots(), ref)
+	return repo.Resolve(ctxOf(), app.Cfg.DiscoveryRoots(), ref)
 }
 
 func newRepoListCmd(app *App) *cobra.Command {
@@ -180,7 +180,7 @@ func newRepoListCmd(app *App) *cobra.Command {
 			if len(filtered) == 0 {
 				if len(rows) == 0 {
 					fmt.Fprintf(app.Out, "No repositories under %s\n",
-						strings.Join(contractAll(app.Cfg.ScanRoots()), ", "))
+						strings.Join(contractAll(app.Cfg.DiscoveryRoots()), ", "))
 				} else {
 					fmt.Fprintln(app.Out, "No repositories match that filter.")
 				}
@@ -618,7 +618,7 @@ history gets a shape nobody intended.`,
 			switch {
 			case all:
 				var err error
-				targets, err = repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
+				targets, err = repo.Discover(ctx, app.Cfg.DiscoveryRoots(), repo.DefaultOptions())
 				if err != nil {
 					return err
 				}

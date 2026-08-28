@@ -13,8 +13,11 @@ func fakeHome(t *testing.T, repos ...string) string {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
 	t.Setenv("GHQ_ROOT", "")
 	t.Setenv("TRY_PATH", "")
+	t.Setenv("PATH", "")
 	for _, rel := range repos {
 		dir := filepath.Join(home, rel)
 		if err := os.MkdirAll(filepath.Join(dir, ".git"), 0o755); err != nil {
@@ -22,6 +25,19 @@ func fakeHome(t *testing.T, repos ...string) string {
 		}
 	}
 	return home
+}
+
+func TestDetectAddsChezmoiSourceAsExactRepository(t *testing.T) {
+	home := fakeHome(t, "code/one")
+	source := filepath.Join(home, ".local", "share", "chezmoi")
+	if err := os.MkdirAll(filepath.Join(source, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	layout := config.DetectLayout()
+	if len(layout.RepoPaths) != 1 || config.Expand(layout.RepoPaths[0]) != source {
+		t.Fatalf("RepoPaths = %v, want %s", layout.RepoPaths, source)
+	}
 }
 
 func TestDetectRanksByRepoCount(t *testing.T) {

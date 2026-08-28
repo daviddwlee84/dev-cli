@@ -33,7 +33,11 @@ type Config struct {
 // is a template-or-path expanded through Expand, so "~", "$VAR" and absolute
 // paths on another volume (e.g. /mnt/fast/worktrees) all work.
 type Paths struct {
-	ScanRoots    []string `toml:"scan_roots"`
+	ScanRoots []string `toml:"scan_roots"`
+	// RepoPaths names repositories which do not live below a useful scan root,
+	// such as chezmoi's XDG data checkout. Exact repositories are considered
+	// before recursive roots, so an intentional navigation alias wins deduplication.
+	RepoPaths    []string `toml:"repo_paths"`
 	TriesRoot    string   `toml:"tries_root"`
 	WorktreeRoot string   `toml:"worktree_root"`
 	WorktreePath string   `toml:"worktree_path"`
@@ -438,6 +442,35 @@ func (c Config) ScanRoots() []string {
 	for _, r := range c.Paths.ScanRoots {
 		if e := Expand(r); e != "" {
 			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// RepoPaths returns expanded exact repository paths.
+func (c Config) RepoPaths() []string {
+	out := make([]string, 0, len(c.Paths.RepoPaths))
+	for _, path := range c.Paths.RepoPaths {
+		if expanded := Expand(path); expanded != "" {
+			out = append(out, expanded)
+		}
+	}
+	return out
+}
+
+// DiscoveryRoots returns exact repositories first, followed by recursive scan
+// roots. repo.Discover recognises when a supplied root is itself a repository.
+func (c Config) DiscoveryRoots() []string {
+	seen := map[string]bool{}
+	out := make([]string, 0, len(c.Paths.RepoPaths)+len(c.Paths.ScanRoots))
+	for _, roots := range [][]string{c.RepoPaths(), c.ScanRoots()} {
+		for _, root := range roots {
+			clean := filepath.Clean(root)
+			if clean == "" || seen[clean] {
+				continue
+			}
+			seen[clean] = true
+			out = append(out, clean)
 		}
 	}
 	return out

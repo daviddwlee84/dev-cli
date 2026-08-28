@@ -58,7 +58,7 @@ type startResult struct {
 
 func resolveStartRepository(ctx context.Context, app *App, ref string) (repo.Repo, error) {
 	if ref != "" {
-		r, _, err := repo.Resolve(ctx, app.Cfg.ScanRoots(), ref)
+		r, _, err := repo.Resolve(ctx, app.Cfg.DiscoveryRoots(), ref)
 		return r, err
 	}
 	cwd, err := os.Getwd()

@@ -4,7 +4,7 @@ Bare `dev` opens the dashboard when stdin/stdout are terminals; `dev tui`
 opens it explicitly. When piped, bare `dev` prints `dev ls` instead, so shell
 composition stays predictable.
 
-## Four views
+## Five views
 
 Switch with `tab`, `l`/`h`, or right/left:
 
@@ -12,6 +12,7 @@ Switch with `tab`, `l`/`h`, or right/left:
 |---|---|---|
 | TASKS | What am I working on? | task registry + live Git/runtime state |
 | REPOS | What durable repositories exist here? | configured scan roots + asset catalog |
+| FLEET | What exists and is active on my other machines? | remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive or graduate? | experiment catalog + live Git/runtime state |
 | REMOTE | What can I open or clone? | authenticated forge CLI inventories |
 
@@ -41,6 +42,12 @@ project = "Platform"
 Repeat the table for additional projects. Azure CLI and its `azure-devops`
 extension must already be installed and authenticated; dev does not install the
 extension, change Azure defaults, or store credentials.
+
+FLEET is also lazy. It shows cached rows immediately when fresh, then queries
+the machines in `$XDG_CONFIG_HOME/dev/remotes.toml`. Enter opens a local row in
+the normal runtime; a remote row prefers native `herdr --remote` after focusing
+the checkout's workspace and falls back to `ssh -t` at that repository. Git
+synchronization is deliberately CLI-only through `dev fleet sync`.
 
 ## Vim-style movement
 

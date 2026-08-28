@@ -141,6 +141,14 @@ func runDoctor(app *App) error {
 		}
 		checks = append(checks, check{"scan root", st, config.Contract(root) + " — " + detail})
 	}
+	for _, path := range app.Cfg.RepoPaths() {
+		st, detail := pathCheck(path)
+		if st != checkOK {
+			detail = "missing — this exact repository will be skipped"
+			st = checkWarn
+		}
+		checks = append(checks, check{"repo path", st, config.Contract(path) + " — " + detail})
+	}
 
 	wtRoot := config.Expand(app.Cfg.Paths.WorktreeRoot)
 	sample, err := app.Cfg.WorktreePathFor("example", "/repo/example", "feat/demo", "")

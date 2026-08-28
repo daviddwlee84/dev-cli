@@ -9,6 +9,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
+	"github.com/daviddwlee84/dev-cli/internal/fleet"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
@@ -224,6 +225,26 @@ type RemoteRow struct {
 	LocalName string `json:"local_name,omitempty"`
 	// LocalKind distinguishes a cataloged Try from an ordinary repository.
 	LocalKind catalog.Kind `json:"local_kind,omitempty"`
+}
+
+// FleetRow is one host/repository observation. Repository is nil for a host
+// health row such as unreachable or no-dev.
+type FleetRow struct {
+	Host       string
+	Local      bool
+	State      fleet.HostState
+	Repository *fleet.RepoSnapshot
+	Error      string
+	FromCache  bool
+}
+
+func (r FleetRow) searchText() string {
+	parts := []string{r.Host, string(r.State), r.Error}
+	if r.Repository != nil {
+		parts = append(parts, r.Repository.Name, r.Repository.Display, r.Repository.Path,
+			r.Repository.Branch, r.Repository.Status.Summary(), strings.Join(r.Repository.RemoteIdentities, " "))
+	}
+	return strings.ToLower(strings.Join(parts, " "))
 }
 
 // Cloned reports whether this remote already has a local checkout.

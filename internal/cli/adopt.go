@@ -54,7 +54,7 @@ ever moved, renamed or deleted by this command.`,
 				return err
 			}
 
-			repos, err := repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
+			repos, err := repo.Discover(ctx, app.Cfg.DiscoveryRoots(), repo.DefaultOptions())
 			if err != nil {
 				return err
 			}

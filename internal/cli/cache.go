@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/fleet"
 	"github.com/spf13/cobra"
 )
 
@@ -17,7 +18,8 @@ func newCacheCmd(app *App) *cobra.Command {
 		Short: "Inspect and clear regenerable dev caches",
 		Long: `Manage files under $XDG_CACHE_HOME/dev.
 
-These are disposable accelerators: the remote forge inventory, note FTS index,
+These are disposable accelerators: the remote forge inventory, fleet host
+snapshots, note FTS index,
 logical disk-size measurements and fetched GitHub gitignore templates. Activity statistics are deliberately not here —
 $XDG_DATA_HOME/dev/stats.db contains observations that may not be
 reconstructible; use "dev stats path/clear" for it.`,
@@ -70,6 +72,7 @@ func cacheItems() []cacheItem {
 	return []cacheItem{
 		{"remote", filepath.Join(cacheRoot(), "remotes.json")},
 		{"notes", filepath.Join(cacheRoot(), "notes.db")},
+		{"fleet", fleet.CacheRoot()},
 		{"size", filepath.Join(cacheRoot(), "sizes-v1.json")},
 		{"gitignore", filepath.Join(cacheRoot(), "gitignore")},
 	}
@@ -77,10 +80,10 @@ func cacheItems() []cacheItem {
 
 func newCacheClearCmd(app *App) *cobra.Command {
 	return &cobra.Command{
-		Use:       "clear <remote|notes|size|gitignore|all>",
+		Use:       "clear <remote|notes|fleet|size|gitignore|all>",
 		Short:     "Remove a regenerable cache",
 		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"remote", "notes", "size", "gitignore", "all"},
+		ValidArgs: []string{"remote", "notes", "fleet", "size", "gitignore", "all"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if name == "remotes" {
@@ -96,7 +99,7 @@ func newCacheClearCmd(app *App) *cobra.Command {
 				}
 			}
 			if len(targets) == 0 {
-				return fmt.Errorf("unknown cache %q: want remote, notes, size, gitignore or all", args[0])
+				return fmt.Errorf("unknown cache %q: want remote, notes, fleet, size, gitignore or all", args[0])
 			}
 			removed := 0
 			for _, item := range targets {

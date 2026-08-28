@@ -109,6 +109,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 
 	pf := root.PersistentFlags()
 	pf.StringVar(&app.configPath, "config", "", "path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)")
+	pf.StringVar(&app.remotesPath, "remotes", "", "path to remotes.toml (default: $XDG_CONFIG_HOME/dev/remotes.toml)")
 	pf.StringVar(&app.runtimeOverride, "runtime", "", "override runtime backend: herdr, tmux, zellij or none")
 	pf.BoolVar(&app.noRuntime, "no-runtime", false, "do not touch any terminal multiplexer")
 	pf.BoolVar(&app.allowSharedCheckout, "allow-shared-checkout", false,
@@ -134,6 +135,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		newBootstrapCmd(app),
 		newWorktreeCmd(app),
 		newRepoCmd(app),
+		newFleetCmd(app),
 		newGitignoreCmd(app),
 		newTryCmd(app),
 		newTriesCmd(app),

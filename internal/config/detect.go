@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/BurntSushi/toml"
 )
 
 // Layout is what `dev config init` discovered about a machine, so a generated
@@ -12,6 +14,8 @@ import (
 type Layout struct {
 	// ScanRoots are directories that already hold repositories.
 	ScanRoots []string
+	// RepoPaths are exact repositories outside the recursive roots.
+	RepoPaths []string
 	// ProjectRoot is the best candidate for new and graduated projects: the
 	// scan root with the most repositories in it.
 	ProjectRoot string
@@ -114,7 +118,37 @@ func DetectLayout() Layout {
 	l.ScanRoots = dropNested(l.ScanRoots)
 
 	l.WorktreeRoot = "~/Worktrees"
+	if source := detectChezmoiSource(); source != "" && !coveredByRoots(source, l.ScanRoots) {
+		l.RepoPaths = append(l.RepoPaths, Contract(source))
+	}
 	return l
+}
+
+func detectChezmoiSource() string {
+	var saved struct {
+		SourceDir string `toml:"sourceDir"`
+	}
+	configPath := filepath.Join(ConfigHome(), "chezmoi", "chezmoi.toml")
+	_, _ = toml.DecodeFile(configPath, &saved)
+	candidates := []string{saved.SourceDir, filepath.Join(DataHome(), "chezmoi")}
+	for _, candidate := range candidates {
+		path := Expand(strings.TrimSpace(candidate))
+		if path != "" && isRepo(path) {
+			return path
+		}
+	}
+	return ""
+}
+
+func coveredByRoots(path string, roots []string) bool {
+	path = filepath.Clean(Expand(path))
+	for _, root := range roots {
+		root = filepath.Clean(Expand(root))
+		if path == root || strings.HasPrefix(path, root+string(filepath.Separator)) {
+			return true
+		}
+	}
+	return false
 }
 
 // Fallbacks fills in the built-in defaults for anything detection missed, so

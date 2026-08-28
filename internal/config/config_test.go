@@ -98,6 +98,22 @@ func TestAssetsDirUsesStateDirectory(t *testing.T) {
 	}
 }
 
+func TestDiscoveryRootsPreferExactRepositories(t *testing.T) {
+	cfg := Default()
+	cfg.Paths.RepoPaths = []string{"~/special", "~/code"}
+	cfg.Paths.ScanRoots = []string{"~/code", "~/src"}
+	got := cfg.DiscoveryRoots()
+	want := []string{Expand("~/special"), Expand("~/code"), Expand("~/src")}
+	if len(got) != len(want) {
+		t.Fatalf("DiscoveryRoots = %v", got)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("DiscoveryRoots[%d] = %q, want %q", index, got[index], want[index])
+		}
+	}
+}
+
 func TestLoadOverlay(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")

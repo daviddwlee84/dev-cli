@@ -40,10 +40,11 @@ func newTUICmd(app *App) *cobra.Command {
 Shows exactly what "dev ls" shows, from the same code path, plus the ability
 to open, park and annotate a task without retyping its name.
 
-Four lists, switched with tab:
+	Five lists, switched with tab:
 
   TASKS   change streams dev is tracking — what am I working on
   REPOS   durable repositories under the scan roots — what do I have here
+  FLEET   repositories and active work across configured SSH machines
   TRY     scratch experiments and retained lifecycle history
   REMOTE  repositories visible through configured forge CLIs — what can I clone/open
 
@@ -56,8 +57,9 @@ Navigation is vim-style, with arrows alongside:
 Actions depend on the list:
 
   TASKS   enter open · p park · c edit next
-  REPOS   enter ad hoc · space worktrees · m metadata · s worktree task · d direct task
-  TRY     enter open · n create · space lifecycle/metadata actions
+	  REPOS   enter ad hoc · space worktrees · m metadata · s worktree task · d direct task
+	  FLEET   enter Herdr/SSH open · Git changes are read-only here
+	  TRY     enter open · n create · space lifecycle/metadata actions
   REMOTE  enter open local · c clone after confirmation
 
   y       copy menu: yy context · yp path · yb branch · ys sessions · yw WT paths
@@ -192,6 +194,10 @@ func runTUI(app *App) error {
 	reloadRemote := func(ctx context.Context) ([]tui.RemoteRow, error) {
 		return collectRemotes(ctx, app, 200)
 	}
+	reloadFleet := func(ctx context.Context) ([]tui.FleetRow, error) {
+		results, _, err := collectFleet(ctx, app, fleetCollectOptions{})
+		return fleetRows(results), err
+	}
 	reloadTries := func(ctx context.Context, includeAll bool) ([]tui.TryRow, error) {
 		return collectTries(ctx, app, rt, includeAll)
 	}
@@ -200,6 +206,7 @@ func runTUI(app *App) error {
 		Reload:       reload,
 		ReloadRepos:  reloadRepos,
 		ReloadRemote: reloadRemote,
+		ReloadFleet:  reloadFleet,
 		Repos: tui.RepoActions{
 			Patch: func(ctx context.Context, row tui.RepoRow, tags []string, note string) (string, error) {
 				remove := []string(nil)
@@ -326,6 +333,29 @@ func runTUI(app *App) error {
 				return tui.OpenResult{}, nil
 			}
 			return tui.OpenResult{Status: fmt.Sprintf("%s open in %s (%s)", r.Repo.FullName, rt.Name(), handle.Handle), RuntimeHandle: handle.Handle}, nil
+		},
+
+		OpenFleet: func(ctx context.Context, row tui.FleetRow) (*exec.Cmd, error) {
+			if row.Repository == nil {
+				return nil, fmt.Errorf("host %s has no repository selected", row.Host)
+			}
+			executable, err := os.Executable()
+			if err != nil {
+				return nil, err
+			}
+			args := []string{}
+			if app.configPath != "" {
+				args = append(args, "--config", app.configPath)
+			}
+			if app.remotesPath != "" {
+				args = append(args, "--remotes", app.remotesPath)
+			}
+			if row.Local {
+				args = append(args, "repo", "open", row.Repository.Path)
+			} else {
+				args = append(args, "fleet", "open", row.Host, row.Repository.Path)
+			}
+			return exec.CommandContext(ctx, executable, args...), nil
 		},
 
 		CloneRemote: func(ctx context.Context, r tui.RemoteRow) (tui.OpenResult, string, error) {
@@ -461,7 +491,7 @@ func runTUI(app *App) error {
 		},
 
 		BackfillStats: func(ctx context.Context, repoName string) error {
-			r, _, err := repo.Resolve(ctx, app.Cfg.ScanRoots(), repoName)
+			r, _, err := repo.Resolve(ctx, app.Cfg.DiscoveryRoots(), repoName)
 			if err != nil {
 				return err
 			}
@@ -503,6 +533,9 @@ func runTUI(app *App) error {
 	model := tui.New(actions, nil, nil).BeginLoading()
 	if cached, ok := cachedRemoteRows(app); ok {
 		model = model.WithRemotes(cached)
+	}
+	if cached := cachedFleetRows(app); len(cached) > 0 {
+		model = model.WithFleet(cached)
 	}
 	final, err := tea.NewProgram(model, tea.WithAltScreen()).Run()
 	if err != nil {
@@ -700,7 +733,7 @@ func collectRepos(ctx context.Context, app *App, rt runtime.Runtime) ([]tui.Repo
 }
 
 func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, options repoCollectOptions) ([]tui.RepoRow, error) {
-	repos, err := repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
+	repos, err := repo.Discover(ctx, app.Cfg.DiscoveryRoots(), repo.DefaultOptions())
 	if err != nil {
 		return nil, err
 	}
@@ -1033,7 +1066,7 @@ func configuredForges(app *App) []forge.Forge {
 }
 
 func matchRemoteLocals(ctx context.Context, app *App, remoteRepos []forge.RemoteRepo) []tui.RemoteRow {
-	locals, _ := repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
+	locals, _ := repo.Discover(ctx, app.Cfg.DiscoveryRoots(), repo.DefaultOptions())
 	assets, _, assetErr := joinRepoAssets(app, locals)
 	if assetErr != nil {
 		app.warnf("could not join catalog metadata to remote locals: %v", assetErr)

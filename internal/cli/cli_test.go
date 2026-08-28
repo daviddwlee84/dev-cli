@@ -191,6 +191,39 @@ func TestLifecycleEndToEnd(t *testing.T) {
 	}
 }
 
+func TestFleetListIncludesLocalRepositoryWithoutRemoteConfig(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("fleet", "list", "--json")
+	var results []struct {
+		State    string `json:"state"`
+		Snapshot *struct {
+			Repositories []struct {
+				Name string `json:"name"`
+			} `json:"repositories"`
+		} `json:"snapshot"`
+	}
+	if err := json.Unmarshal([]byte(out), &results); err != nil {
+		t.Fatalf("fleet JSON: %v\n%s", err, out)
+	}
+	if len(results) != 1 || results[0].State != "ok" || results[0].Snapshot == nil ||
+		len(results[0].Snapshot.Repositories) != 1 || results[0].Snapshot.Repositories[0].Name != "demo" {
+		t.Fatalf("fleet results = %+v", results)
+	}
+}
+
+func TestFleetConfigInitUsesPrivateMode(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("fleet", "config", "init")
+	path := filepath.Join(h.home, ".config", "dev", "remotes.toml")
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("remotes mode = %o", info.Mode().Perm())
+	}
+}
+
 func TestStartRefusesDuplicate(t *testing.T) {
 	h := newHarness(t)
 	h.mustRun("start", "demo", "--task", "dup", "--branch", "feat/dup", "--base", "main")

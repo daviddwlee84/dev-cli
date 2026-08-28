@@ -55,7 +55,8 @@ the intended committed starting point stays reviewable in the command.
 
 Herdr's **New worktree** action is allowed. Git registers that checkout with
 the canonical repository, so dev can display it as an external worktree as
-long as the canonical repo is discoverable through `paths.scan_roots`—even
+long as the canonical repo is discoverable through `paths.scan_roots` or
+`paths.repo_paths`—even
 when the checkout lives under `~/.herdr/worktrees` and that directory is not a
 scan root.
 

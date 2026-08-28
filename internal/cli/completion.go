@@ -157,7 +157,7 @@ func repositoryCompletions(app *App, toComplete string, namesOnly bool) ([]strin
 	if !app.loadCompletion() {
 		return nil, noFileCompletion
 	}
-	repos, err := repo.Discover(ctxOf(), app.Cfg.ScanRoots(), repo.CompletionOptions())
+	repos, err := repo.Discover(ctxOf(), app.Cfg.DiscoveryRoots(), repo.CompletionOptions())
 	if err != nil {
 		return nil, noFileCompletion
 	}
@@ -201,7 +201,7 @@ func completeWorktrees(app *App, includeMain bool) cobra.CompletionFunc {
 				return nil, noFileCompletion
 			}
 		} else {
-			r, _, err := repo.ResolveCompletion(ctxOf(), app.Cfg.ScanRoots(), repoRef)
+			r, _, err := repo.ResolveCompletion(ctxOf(), app.Cfg.DiscoveryRoots(), repoRef)
 			if err != nil {
 				return nil, noFileCompletion
 			}

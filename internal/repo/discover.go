@@ -113,9 +113,7 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			if path == rootClean {
-				return nil
-			}
+			isRoot := path == rootClean
 			name := d.Name()
 			isLink := d.Type()&os.ModeSymlink != 0
 			isDir := d.IsDir()
@@ -130,12 +128,16 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 			if !isDir {
 				return nil
 			}
-			if skipDirs[name] || (strings.HasPrefix(name, ".") && name != ".bare") {
+			if !isRoot && (skipDirs[name] || (strings.HasPrefix(name, ".") && name != ".bare")) {
 				return filepath.SkipDir
 			}
 
-			rel, _ := filepath.Rel(rootClean, path)
-			depth := len(strings.Split(rel, string(filepath.Separator)))
+			rel := "."
+			depth := 0
+			if !isRoot {
+				rel, _ = filepath.Rel(rootClean, path)
+				depth = len(strings.Split(rel, string(filepath.Separator)))
+			}
 
 			if isRepoDir(path) {
 				real, _ := filepath.EvalSymlinks(path)

@@ -39,16 +39,6 @@ into dev's own notes/tasks. Decide only after comparing lifecycle, multi-agent
 locking, git noise, cross-machine sync, archival and uninstall behavior. Until
 then, record the integration point rather than prematurely selecting a tool.
 
-### P2 · M — Multi-host aggregation
-`dev ls --all` fanning out over ssh to the machines in a configured host list,
-merging their `dev ls --json`. The JSON contract is already stable and the
-`owner` field already identifies which machine holds a task, so this is
-plumbing rather than design. Today the same thing works by hand:
-
-```bash
-ssh jingle-235 dev ls --json | jq '.[] | select(.state=="hot")'
-```
-
 ### P3 · S — Television / fzf channel
 A `tv` channel over `dev ls --json` for fuzzy-picking a task, and an `fzf`
 fallback. Navigation by metadata rather than by remembering a path is the point
@@ -133,6 +123,8 @@ only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
   4.2s); background rows replace the initial loading state.
 - Explicit Herdr/tmux LIVE repo status and selected-repo heatmap overlay in TUI,
   including `b` single-repo backfill.
+- XDG-configured multi-host fleet snapshots over SSH, stale-cache fallback,
+  Herdr/SSH remote navigation and strict clean fast-forward synchronization.
 - XDG `stats path/clear` and regenerable `cache list/path/clear` with stats data
   deliberately kept out of cache semantics.
 - Bundled agent skill with a generated, drift-checked command reference.

@@ -4,8 +4,8 @@ What to do on a machine that already has repositories, worktrees and sessions.
 
 ## There is nothing to migrate
 
-`dev` does not own a directory layout. It discovers repositories wherever
-`paths.scan_roots` points, and **never moves, renames or deletes anything** you
+`dev` does not own a directory layout. It discovers repositories below
+`paths.scan_roots` and at exact `paths.repo_paths`, and **never moves, renames or deletes anything** you
 already have. Whatever your projects tree looks like — `~/Documents/Program`,
 `~/src`, `~/code`, a ghq root, several of them — it keeps working as is.
 
@@ -16,7 +16,8 @@ dev repo list       # confirm it found what you expected
 
 `config init` probes the conventional locations, counts the repositories in
 each, and writes only the ones that exist. If it guessed wrong, the generated
-file is ordinary TOML — edit `scan_roots`.
+file is ordinary TOML — edit `scan_roots`, or add an exact checkout such as
+`~/.local/share/chezmoi` to `repo_paths`.
 
 ## Importing work already in flight
 

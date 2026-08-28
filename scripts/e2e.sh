@@ -113,6 +113,12 @@ dev note delete "$NOTE_ID" --yes >/dev/null
 dev_has 'No notes' note list demo || fail "deleted note remains"
 ok "Markdown notes survived index deletion, search rebuild, edit and delete"
 
+step "fleet local snapshot and remote config template"
+dev_has '"state": "ok"' fleet list --json || fail "fleet list did not include the local host"
+dev_has '"name": "demo"' fleet list --json || fail "fleet snapshot did not include demo"
+dev_has 'schema_version = 1' fleet config init --stdout || fail "fleet config template looks wrong"
+ok "fleet snapshot and remotes.toml template"
+
 step "start a task"
 dev start demo --task auth --branch feat/auth --base main
 WT="$HOME/Worktrees/demo/feat-auth"

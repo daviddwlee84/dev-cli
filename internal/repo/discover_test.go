@@ -70,6 +70,20 @@ func TestDiscoverFindsCategorisedAndFlatRepos(t *testing.T) {
 	}
 }
 
+func TestDiscoverAcceptsRepositoryAsRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), ".local", "share", "chezmoi")
+	if err := os.MkdirAll(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.Discover(context.Background(), []string{root}, repo.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0].Path != root || got[0].Category != "" {
+		t.Fatalf("Discover exact root = %+v", got)
+	}
+}
+
 func TestDiscoverDoesNotDescendIntoRepos(t *testing.T) {
 	// A repo containing a nested checkout (a submodule, or a worktree parked
 	// inside the repo) must be reported once, not twice.

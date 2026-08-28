@@ -275,13 +275,22 @@ func (h *Herdr) Activate(ctx context.Context, handle string) error {
 	if handle == "" {
 		return nil
 	}
-	if err := h.call(ctx, nil, "workspace", "focus", handle); err != nil {
+	if err := h.Focus(ctx, handle); err != nil {
 		return err
 	}
 	if os.Getenv("HERDR_ENV") != "" {
 		return nil
 	}
 	return runInteractive(ctx, h.bin)
+}
+
+// Focus selects a workspace without attaching a client. Remote fleet
+// navigation uses it before launching a local `herdr --remote` thin client.
+func (h *Herdr) Focus(ctx context.Context, handle string) error {
+	if handle == "" {
+		return nil
+	}
+	return h.call(ctx, nil, "workspace", "focus", handle)
 }
 
 // OpenWorktree implements WorktreeOpener: it registers an already-created git

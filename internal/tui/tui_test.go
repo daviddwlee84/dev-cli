@@ -13,6 +13,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/experiment"
+	"github.com/daviddwlee84/dev-cli/internal/fleet"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
@@ -514,15 +515,50 @@ func TestTabSwitchesViews(t *testing.T) {
 		t.Error("h should move to the previous view")
 	}
 	m = send(m, key("tab"))
+	if m.CurrentView() != tui.ViewFleet {
+		t.Error("the third view should be Fleet")
+	}
+	m = send(m, key("tab"))
 	if m.CurrentView() != tui.ViewTries {
-		t.Error("the third view should be Try")
+		t.Error("the fourth view should be Try")
 	}
 	m = send(m, key("tab"))
 	if m.CurrentView() != tui.ViewRemote {
-		t.Error("the fourth view should be remote")
+		t.Error("the fifth view should be remote")
 	}
 	if send(m, key("tab")).CurrentView() != tui.ViewTasks {
-		t.Error("a fourth tab should cycle back round")
+		t.Error("a fifth tab should cycle back round")
+	}
+}
+
+func TestFleetViewLoadsLazilyAndRendersRepositoryState(t *testing.T) {
+	actions := newActions(&recorder{}, nil)
+	opened := false
+	actions.ReloadFleet = func(context.Context) ([]tui.FleetRow, error) {
+		return []tui.FleetRow{{
+			Host: "lab", State: fleet.HostOK,
+			Repository: &fleet.RepoSnapshot{
+				Name: "api", Display: "api", Path: "/srv/api", Branch: "main",
+				Status: gitx.Status{Upstream: "origin/main", Behind: 2},
+				Tasks:  fleet.TaskCounts{Hot: 1}, Live: true, Runtime: "herdr", AgentStatus: "working",
+			},
+		}}, nil
+	}
+	actions.OpenFleet = func(context.Context, tui.FleetRow) (*exec.Cmd, error) {
+		opened = true
+		return exec.Command("true"), nil
+	}
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"))
+	out := m.View()
+	for _, want := range []string{"FLEET", "lab", "api", "herdr · working", "H1"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("fleet view missing %q:\n%s", want, out)
+		}
+	}
+	_ = send(m, key("enter"))
+	if !opened {
+		t.Fatal("enter did not route through the fleet open action")
 	}
 }
 
@@ -541,7 +577,7 @@ func TestTryViewRendersFiltersAndOpensThroughActions(t *testing.T) {
 		},
 	}
 	m := tui.New(actions, nil, nil).WithTries(rows)
-	m = send(m, key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"))
 	out := m.View()
 	for _, want := range []string{"redis-streams", "queue-bench", "PHASE", "WHERE", "important", "compare consumer groups"} {
 		if !strings.Contains(out, want) {
@@ -577,7 +613,7 @@ func TestTryHistoryToggleReloadsOnlyTryInventory(t *testing.T) {
 		return []tui.TryRow{active}, nil
 	}
 	m := tui.New(actions, nil, nil).WithTries([]tui.TryRow{active})
-	m = send(m, key("tab"), key("tab"), key("a"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("a"))
 	if loads != 1 || !requestedAll || !strings.Contains(m.View(), "archived") {
 		t.Fatalf("history toggle loads=%d all=%v:\n%s", loads, requestedAll, m.View())
 	}
@@ -594,7 +630,7 @@ func TestTryCreateFormSubmitsNormalizedRequest(t *testing.T) {
 		},
 	}
 	m := tui.New(actions, nil, nil).WithTries(nil)
-	m = send(m, key("tab"), key("tab"), key("n"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("n"))
 	if !strings.Contains(m.View(), "NEW TRY") {
 		t.Fatalf("n did not open the create form:\n%s", m.View())
 	}
@@ -659,7 +695,7 @@ func TestTryMutationErrorCanRefreshWithoutHidingTheFailure(t *testing.T) {
 		},
 	}
 	m := tui.New(actions, nil, nil).WithTries([]tui.TryRow{row})
-	m = send(m, key("tab"), key("tab"), key("enter"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("enter"))
 	if loads != 1 || !strings.Contains(m.View(), "created but runtime failed") {
 		t.Fatalf("partial mutation refresh loads=%d:\n%s", loads, m.View())
 	}
@@ -677,7 +713,7 @@ func TestTryArchiveActionRequiresExactYES(t *testing.T) {
 		},
 	}
 	m := tui.New(actions, nil, nil).WithTries([]tui.TryRow{row})
-	m = send(m, key("tab"), key("tab"), key(" "), key("down"), key("down"), key("enter"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key(" "), key("down"), key("down"), key("enter"))
 	if !strings.Contains(m.View(), "CONFIRM ARCHIVE") || !strings.Contains(m.View(), row.Item.Live.CurrentPath) {
 		t.Fatalf("archive review did not show its target:\n%s", m.View())
 	}
@@ -716,7 +752,7 @@ func TestTrySortCyclesIndependently(t *testing.T) {
 	newest := tryRow("new", "zzz-new", catalog.PhaseActive, catalog.LocationPresent)
 	newest.Item.LastOpened = time.Now()
 	m := tui.New(newActions(&recorder{}, nil), nil, nil).WithTries([]tui.TryRow{old, newest})
-	m = send(m, key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"))
 	if out := m.View(); strings.Index(out, "zzz-new") > strings.Index(out, "aaa-old") {
 		t.Fatalf("activity sort did not put newest first:\n%s", out)
 	}
@@ -762,7 +798,7 @@ func TestSizeStreamUpdatesRepoAndTryRowsWithoutBlockingInitialRender(t *testing.
 	if starts != 1 || !forceSeen || !strings.Contains(m.View(), "KiB") {
 		t.Fatalf("size stream starts=%d force=%v:\n%s", starts, forceSeen, m.View())
 	}
-	m = send(m, key("tab"))
+	m = send(m, key("tab"), key("tab"))
 	if out := m.View(); !strings.Contains(out, "KiB") || !strings.Contains(out, "SIZE") {
 		t.Fatalf("Try size result missing:\n%s", out)
 	}
@@ -783,7 +819,7 @@ func TestTrySizeFilterSortAndSharedDetail(t *testing.T) {
 	large.Usage.TotalBytes = nil
 	large.Usage.SharedGitBytes = &shared
 	m := tui.New(newActions(&recorder{}, nil), nil, nil).WithTries([]tui.TryRow{small, large})
-	m = send(m, key("tab"), key("tab"), key("/"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("/"))
 	for _, typed := range typeText("size:>1KiB") {
 		m = send(m, typed)
 	}
@@ -808,7 +844,7 @@ func TestTryTableAdaptsWithoutScrollingTabsOffNarrowTerminals(t *testing.T) {
 	}
 	for _, width := range []int{60, 80, 120} {
 		m := tui.New(newActions(&recorder{}, nil), nil, nil).WithTries(rows)
-		m = send(m, tea.WindowSizeMsg{Width: width, Height: 24}, key("tab"), key("tab"))
+		m = send(m, tea.WindowSizeMsg{Width: width, Height: 24}, key("tab"), key("tab"), key("tab"))
 		output := m.View()
 		lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
 		if len(lines) > 24 || !strings.Contains(lines[0], "TASKS") || !strings.Contains(lines[0], "TRY") {
@@ -862,7 +898,7 @@ func TestRepoViewHidesTriesButRemoteMatchingUsesAndClearsThem(t *testing.T) {
 		t.Errorf("summary counted hidden Try: %q", summary)
 	}
 
-	m = send(m, key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"))
 	if out := m.View(); !strings.Contains(out, "try") {
 		t.Fatalf("REMOTE should retain the Try local kind:\n%s", out)
 	}
@@ -870,7 +906,7 @@ func TestRepoViewHidesTriesButRemoteMatchingUsesAndClearsThem(t *testing.T) {
 	// Once the Try disappears from the fresh local snapshot, an ordinary local
 	// reload must clear the cached marker rather than preserving stale state.
 	repos = []tui.RepoRow{ordinary}
-	m = send(m, key("tab"), key("tab"), key("r"), key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("r"), key("tab"), key("tab"), key("tab"))
 	if out := m.View(); !strings.Contains(out, "not cloned") {
 		t.Fatalf("stale remote Try marker survived local reload:\n%s", out)
 	}
@@ -886,7 +922,7 @@ func TestRemoteMatchingDoesNotChooseBetweenDuplicateLocalClones(t *testing.T) {
 	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) { return repos, nil }
 	remote := remoteRow(forge.GitHub, "owner/shared", "")
 	m := tui.New(actions, nil, repos).WithRemotes([]tui.RemoteRow{remote})
-	m = send(m, key("r"), key("tab"), key("tab"), key("tab"))
+	m = send(m, key("r"), key("tab"), key("tab"), key("tab"), key("tab"))
 	if out := m.View(); !strings.Contains(out, "not cloned") {
 		t.Fatalf("ambiguous local clones produced an arbitrary remote path:\n%s", out)
 	}
@@ -1067,6 +1103,10 @@ func TestRemoteViewLoadsLazily(t *testing.T) {
 	if loads != 0 {
 		t.Fatal("the local repo view must not touch the forge")
 	}
+	m = send(m, key("tab")) // Fleet
+	if loads != 0 {
+		t.Fatal("the Fleet view must not touch the forge")
+	}
 	m = send(m, key("tab")) // Try
 	if loads != 0 {
 		t.Fatal("the Try view must not touch the forge")
@@ -1092,7 +1132,7 @@ func TestRemoteFilterUsesNameDescriptionAndProvider(t *testing.T) {
 	actions := newActions(&recorder{}, nil)
 	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
 	m := tui.New(actions, nil, nil)
-	m = send(m, key("tab"), key("tab"), key("tab"), key("/"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("/"))
 	for _, k := range typeText("gitlab web") {
 		m = send(m, k)
 	}
@@ -1108,7 +1148,7 @@ func TestRemoteCloneRequiresConfirmation(t *testing.T) {
 	actions := newActions(rec, nil)
 	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
 	m := tui.New(actions, nil, nil)
-	m = send(m, key("tab"), key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
 
 	// Enter on an uncloned remote does nothing; c is the explicit action.
 	m = send(m, key("enter"))
@@ -1131,7 +1171,7 @@ func TestRemoteLocalCloneOpensWithEnter(t *testing.T) {
 	actions := newActions(rec, nil)
 	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
 	m := tui.New(actions, nil, nil)
-	m = send(m, key("tab"), key("tab"), key("tab"), key("enter"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("enter"))
 
 	if len(rec.opened) != 1 || rec.opened[0] != "remote:owner/api" {
 		t.Errorf("enter should open the existing local clone, got %v", rec.opened)
@@ -1142,7 +1182,7 @@ func TestRemoteViewLabelsLocalTryKind(t *testing.T) {
 	row := remoteRow(forge.GitHub, "owner/experiment", "/src/tries/experiment")
 	row.LocalKind = catalog.KindTry
 	m := tui.New(newActions(&recorder{}, nil), nil, nil).WithRemotes([]tui.RemoteRow{row})
-	m = send(m, key("tab"), key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
 	out := m.View()
 	if !strings.Contains(out, "try") || !strings.Contains(out, "asset") {
 		t.Errorf("REMOTE view did not identify the local Try:\n%s", out)
@@ -1157,7 +1197,7 @@ func TestRemoteRefreshQueriesAgain(t *testing.T) {
 		return nil, nil
 	}
 	m := tui.New(actions, nil, nil)
-	m = send(m, key("tab"), key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
 	m = send(m, key("r"))
 	if loads != 2 {
 		t.Errorf("initial visit + refresh should load twice, got %d", loads)
@@ -1173,7 +1213,7 @@ func TestFreshRemoteCacheAvoidsNetworkOnFirstSwitch(t *testing.T) {
 	}
 	cached := []tui.RemoteRow{remoteRow(forge.GitHub, "owner/cached", "")}
 	m := tui.New(actions, nil, nil).WithRemotes(cached)
-	m = send(m, key("tab"), key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
 
 	if loads != 0 {
 		t.Errorf("fresh cache should make the first switch instant, network loads=%d", loads)
@@ -1223,7 +1263,7 @@ func TestRepoAndTryDetailsExposeRecoveryTopology(t *testing.T) {
 	try.Item.Live.Repo = &gitx.Repo{Name: "try-local", Root: try.Item.Live.CurrentPath}
 	try.Topology = topology
 	m = tui.New(newActions(&recorder{}, nil), nil, nil).WithTries([]tui.TryRow{try})
-	m = send(m, key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"))
 	if out := m.View(); !strings.Contains(out, "local Git has no remote backup") || !strings.Contains(out, "main") {
 		t.Fatalf("TRY topology detail missing:\n%s", out)
 	}

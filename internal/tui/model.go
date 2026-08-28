@@ -28,6 +28,8 @@ const (
 	ViewTasks View = iota
 	// ViewRepos lists every repository under the scan roots — what do I have.
 	ViewRepos
+	// ViewFleet lists repository observations across configured machines.
+	ViewFleet
 	// ViewTries lists durable scratch experiments and retained lifecycle history.
 	ViewTries
 	// ViewRemote lists repositories visible through configured forge CLIs.
@@ -35,12 +37,14 @@ const (
 )
 
 // Views is the cycle order.
-var Views = []View{ViewTasks, ViewRepos, ViewTries, ViewRemote}
+var Views = []View{ViewTasks, ViewRepos, ViewFleet, ViewTries, ViewRemote}
 
 func (v View) String() string {
 	switch v {
 	case ViewRepos:
 		return "repos"
+	case ViewFleet:
+		return "fleet"
 	case ViewTries:
 		return "try"
 	case ViewRemote:
@@ -58,6 +62,8 @@ type Actions struct {
 	Reload func(ctx context.Context) ([]inventory.Row, error)
 	// ReloadRepos re-reads the repository list.
 	ReloadRepos func(ctx context.Context) ([]RepoRow, error)
+	// ReloadFleet fans out to configured dev hosts. It is lazy like REMOTE.
+	ReloadFleet func(ctx context.Context) ([]FleetRow, error)
 	// ReloadRemote queries configured forge CLIs. It is lazy: the network is untouched
 	// until the REMOTE view is opened.
 	ReloadRemote func(ctx context.Context) ([]RemoteRow, error)
@@ -74,6 +80,8 @@ type Actions struct {
 	OpenCheckout func(ctx context.Context, r RepoRow, checkout inventory.RepoCheckout) (OpenResult, error)
 	// OpenRemote opens a remote's existing local checkout.
 	OpenRemote func(ctx context.Context, r RemoteRow) (OpenResult, error)
+	// OpenFleet returns an interactive process for a local or remote fleet row.
+	OpenFleet func(ctx context.Context, r FleetRow) (*exec.Cmd, error)
 	// CloneRemote clones a remote that has no local checkout and returns the
 	// new path, so the row can be updated without querying the network again.
 	CloneRemote func(ctx context.Context, r RemoteRow) (OpenResult, string, error)
@@ -168,10 +176,13 @@ type Model struct {
 	repos   []RepoRow
 	tries   []TryRow
 	remotes []RemoteRow
+	fleet   []FleetRow
 	// Remote loading is lazy so opening the dashboard never waits on the
 	// network. The first switch to REMOTE triggers it.
 	remotesLoaded   bool
 	remotesLoading  bool
+	fleetLoaded     bool
+	fleetLoading    bool
 	initialLoad     bool
 	loadingLocal    bool
 	sizeLoad        diskusage.Load
@@ -185,6 +196,7 @@ type Model struct {
 	repoCursor   int
 	tryCursor    int
 	remoteCursor int
+	fleetCursor  int
 	// expandedRepos is a slice rather than a map because Bubble Tea copies the
 	// model by value; a map would make candidate models share mutation.
 	expandedRepos []string
@@ -244,6 +256,12 @@ func (m Model) WithRemotes(rows []RemoteRow) Model {
 	return m
 }
 
+// WithFleet seeds cached fleet rows while the first live refresh remains lazy.
+func (m Model) WithFleet(rows []FleetRow) Model {
+	m.fleet = rows
+	return m
+}
+
 // WithTries seeds the Try view, primarily for tests and embedded callers. The
 // production dashboard loads it with the other local inventories in Init.
 func (m Model) WithTries(rows []TryRow) Model {
@@ -293,6 +311,11 @@ type reloadMsg struct {
 
 type remoteMsg struct {
 	rows []RemoteRow
+	err  error
+}
+
+type fleetMsg struct {
+	rows []FleetRow
 	err  error
 }
 
@@ -430,6 +453,16 @@ func (m Model) reloadRemote() tea.Cmd {
 		}
 		rows, err := m.actions.ReloadRemote(context.Background())
 		return remoteMsg{rows: rows, err: err}
+	}
+}
+
+func (m Model) reloadFleet() tea.Cmd {
+	return func() tea.Msg {
+		if m.actions.ReloadFleet == nil {
+			return fleetMsg{}
+		}
+		rows, err := m.actions.ReloadFleet(context.Background())
+		return fleetMsg{rows: rows, err: err}
 	}
 }
 
@@ -621,6 +654,29 @@ func (m Model) visibleRemotes() []RemoteRow {
 	return out
 }
 
+func (m Model) visibleFleet() []FleetRow {
+	var out []FleetRow
+	for _, row := range m.fleet {
+		if matches(row.searchText(), m.filter) {
+			out = append(out, row)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		leftName, rightName := "", ""
+		if out[i].Repository != nil {
+			leftName = strings.ToLower(out[i].Repository.Display)
+		}
+		if out[j].Repository != nil {
+			rightName = strings.ToLower(out[j].Repository.Display)
+		}
+		if leftName != rightName {
+			return leftName < rightName
+		}
+		return out[i].Host < out[j].Host
+	})
+	return out
+}
+
 // compareRepos returns negative when a belongs before b.
 func compareRepos(a, b RepoRow, sortBy string) int {
 	nameCmp := strings.Compare(strings.ToLower(a.Repo.Display()), strings.ToLower(b.Repo.Display()))
@@ -719,6 +775,8 @@ func (m Model) count() int {
 	switch m.view {
 	case ViewRepos:
 		return len(m.visibleRepoItems())
+	case ViewFleet:
+		return len(m.visibleFleet())
 	case ViewTries:
 		return len(m.visibleTries())
 	case ViewRemote:
@@ -733,6 +791,8 @@ func (m Model) at() int {
 	switch m.view {
 	case ViewRepos:
 		return m.repoCursor
+	case ViewFleet:
+		return m.fleetCursor
 	case ViewTries:
 		return m.tryCursor
 	case ViewRemote:
@@ -756,6 +816,8 @@ func (m *Model) setAt(i int) {
 	switch m.view {
 	case ViewRepos:
 		m.repoCursor = i
+	case ViewFleet:
+		m.fleetCursor = i
 	case ViewTries:
 		m.tryCursor = i
 	case ViewRemote:
@@ -820,6 +882,17 @@ func (m Model) currentRemote() (RemoteRow, bool) {
 	rows := m.visibleRemotes()
 	if m.at() >= len(rows) {
 		return RemoteRow{}, false
+	}
+	return rows[m.at()], true
+}
+
+func (m Model) currentFleet() (FleetRow, bool) {
+	if m.view != ViewFleet {
+		return FleetRow{}, false
+	}
+	rows := m.visibleFleet()
+	if m.at() >= len(rows) {
+		return FleetRow{}, false
 	}
 	return rows[m.at()], true
 }
@@ -926,6 +999,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case remoteMsg:
 		m.remotes, m.remotesLoaded, m.remotesLoading = msg.rows, true, false
+		m.err = msg.err
+		m.status = ""
+		m.setAt(m.at())
+		return m, nil
+
+	case fleetMsg:
+		m.fleet, m.fleetLoaded, m.fleetLoading = msg.rows, true, false
 		m.err = msg.err
 		m.status = ""
 		m.setAt(m.at())
@@ -1172,6 +1252,11 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "r":
+		if m.view == ViewFleet {
+			m.fleetLoading = true
+			m.status = "refreshing fleet…"
+			return m, m.reloadFleet()
+		}
 		m.status = "reloading config + data…"
 		m.forceSizeReload = true
 		if m.view == ViewRemote {
@@ -1681,10 +1766,14 @@ func (m Model) updateStats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// afterViewSwitch lazily loads forge data only when REMOTE is first opened,
-// so starting the dashboard never waits on a network request.
+// afterViewSwitch lazily loads network-backed views.
 func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 	m.setAt(m.at())
+	if m.view == ViewFleet && !m.fleetLoaded && !m.fleetLoading {
+		m.fleetLoading = true
+		m.status = "loading configured dev hosts…"
+		return m, m.reloadFleet()
+	}
 	if m.view == ViewRemote && !m.remotesLoaded && !m.remotesLoading {
 		m.remotesLoading = true
 		m.status = "loading remote repositories…"
@@ -1876,6 +1965,18 @@ func (m Model) openSelected() tea.Cmd {
 			return actionMsg{status: opened.Status, cd: cd, activate: opened.RuntimeHandle, err: err}
 		}
 	}
+	if row, ok := m.currentFleet(); ok && row.Repository != nil && m.actions.OpenFleet != nil {
+		process, err := m.actions.OpenFleet(context.Background(), row)
+		if err != nil {
+			return func() tea.Msg { return actionMsg{err: err} }
+		}
+		return tea.ExecProcess(process, func(err error) tea.Msg {
+			if err != nil {
+				return actionMsg{err: fmt.Errorf("fleet open: %w", err)}
+			}
+			return actionMsg{status: "returned from " + row.Host}
+		})
+	}
 	return nil
 }
 
@@ -1948,6 +2049,9 @@ func (m Model) Summary() string {
 	}
 	if m.remotesLoaded {
 		parts = append(parts, fmt.Sprintf("%d remote", len(m.remotes)))
+	}
+	if len(m.fleet) > 0 {
+		parts = append(parts, fmt.Sprintf("%d fleet", len(m.fleet)))
 	}
 	if len(parts) == 0 {
 		return "no tasks"

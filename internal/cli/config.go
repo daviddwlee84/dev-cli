@@ -123,6 +123,12 @@ func reportDetection(app *App, l config.Layout) {
 		t.Add(r, fmt.Sprintf("%d", l.Found[r]), role)
 	}
 	t.Render(app.Out)
+	if len(l.RepoPaths) > 0 {
+		fmt.Fprintln(app.Out, "\nExact repositories:")
+		for _, path := range l.RepoPaths {
+			fmt.Fprintf(app.Out, "  %s\n", path)
+		}
+	}
 	fmt.Fprintf(app.Out, "\nWorktrees will go to %s — change paths.worktree_root if that volume is wrong.\n",
 		l.WorktreeRoot)
 }
@@ -135,11 +141,20 @@ func renderStarterConfig(l config.Layout) string {
 	}
 	r := strings.NewReplacer(
 		"@@SCAN_ROOTS@@", strings.Join(roots, ", "),
+		"@@REPO_PATHS@@", quotedStrings(l.RepoPaths),
 		"@@TRIES_ROOT@@", l.TriesRoot,
 		"@@PROJECT_ROOT@@", l.ProjectRoot,
 		"@@WORKTREE_ROOT@@", l.WorktreeRoot,
 	)
 	return r.Replace(starterConfig)
+}
+
+func quotedStrings(values []string) string {
+	quoted := make([]string, len(values))
+	for index, value := range values {
+		quoted[index] = strconv.Quote(value)
+	}
+	return strings.Join(quoted, ", ")
 }
 
 const starterConfig = `# dev configuration.
@@ -151,6 +166,10 @@ const starterConfig = `# dev configuration.
 # Where dev looks for repositories. Each root is scanned to a depth of 3, so
 # both <root>/<Repo> and <root>/<Category>/<Repo> are found.
 scan_roots = [@@SCAN_ROOTS@@]
+
+# Exact repositories which do not sit below a useful scan root. Exact paths
+# are considered first and may point through a symlink navigation alias.
+repo_paths = [@@REPO_PATHS@@]
 
 # Where "dev try" creates dated experiment directories.
 tries_root = "@@TRIES_ROOT@@"

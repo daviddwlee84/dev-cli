@@ -157,6 +157,8 @@ dev repo context [repo]    # agent-ready checkouts, Git, runtime and task state
 dev repo clone owner/name  # clone into the right place, via gh or glab
 dev repo clone https://dev.azure.com/acme/Platform/_git/api
 dev repo sync --all        # fetch + prune, and report what moved
+dev fleet list              # aggregate repo/task/runtime state over SSH
+dev fleet sync api --push   # publish, then fast-forward safe matching checkouts
 dev repo remote [query]     # search configured forge inventories
 dev bootstrap ~/code       # recursively inventory an existing machine
 dev bootstrap ~/code --index ~/Projects   # plan a non-destructive symlink catalog
@@ -171,7 +173,7 @@ dev graduate redis-streams --category Infra   # promote it into a real project
 dev stats --heatmap        # where the time actually went
 dev stats backfill --repo api  # seed one repo; TUI H then b does this in place
 dev stats path             # durable XDG data, not cache
-dev cache list             # regenerable forge/size/gitignore/note-index caches
+dev cache list             # regenerable forge/fleet/size/gitignore/note-index caches
 dev help worktrees         # quick-reference pages
 ```
 
@@ -184,7 +186,7 @@ symlink index, moving physical repositories, or generating layout config. Move
 is destructive and must follow its report → review → apply procedure.
 
 There is nothing to migrate for ordinary use. `dev` discovers repositories through
-`paths.scan_roots` and never moves, renames or deletes anything.
+`paths.scan_roots` plus exact `paths.repo_paths` and never moves, renames or deletes anything.
 
 ```bash
 dev config init     # detects this machine's roots; every value stays editable
@@ -197,7 +199,7 @@ or `dev repo list` to see what this machine is actually configured for.
 
 ## Dashboard and forge inventory
 
-The TUI has TASKS, REPOS, TRY and REMOTE views, switched with tab or vim-style
+The TUI has TASKS, REPOS, FLEET, TRY and REMOTE views, switched with tab or vim-style
 h/l. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions;
 `a` includes retained history. Archive is a reversible same-filesystem move,
 not deletion or disk reclamation. `?` opens the full key map.
@@ -218,6 +220,11 @@ project = "Platform"
 
 Install Azure CLI's `azure-devops` extension separately. `dev` never installs
 the extension, logs in, changes Azure defaults, or stores a PAT.
+
+FLEET calls each configured host's own `dev` over SSH, preserving its XDG paths.
+Enter prefers Herdr remote navigation and falls back to an SSH login shell.
+`dev fleet sync` is explicit and strict: it only fast-forwards a clean checkout
+of the same behind-only branch; dirty/ahead/diverged clones are never rewritten.
 
 REPOS has LIVE, LATEST and asynchronous SIZE. SIZE is logical
 checkout+private-Git bytes; shared Git is separate and marked `+S`. Detail also
