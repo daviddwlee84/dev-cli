@@ -19,6 +19,9 @@ export HOME="$SANDBOX/home"
 export XDG_DATA_HOME="$HOME/.local/share"
 export XDG_CONFIG_HOME="$HOME/.config"
 mkdir -p "$HOME/Program"
+git config --global user.email dev@example.test
+git config --global user.name "dev e2e"
+git config --global init.defaultBranch main
 
 # A local "remote" so the push and cold-park paths are exercised for real.
 git init --bare --quiet --initial-branch=main "$SANDBOX/origin.git"
