@@ -7,7 +7,7 @@ mkdocs_site_bootstrap:
   decided_at: "2026-08-28"
   stack: mkdocs-material
   auto_deploy: true
-  pages_deployed: false
+  pages_deployed: true
   existing_docs_decision: none
   repo_slug: daviddwlee84/dev-cli
   site_url: https://daviddwlee84.github.io/dev-cli/
@@ -16,3 +16,4 @@ mkdocs_site_bootstrap:
     - zh-TW
   keep_english_terms: true
   i18n_structure: suffix
+  pages_enabled_at: "2026-08-28"
