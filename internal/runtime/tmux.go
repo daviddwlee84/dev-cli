@@ -73,9 +73,11 @@ func SessionName(label string) string {
 	return s
 }
 
-// List implements Runtime. An absent server means "no sessions", not an error.
+// List implements Runtime. Pane cwd values, rather than the session's original
+// start path, are the live filesystem ownership signal retirement needs.
 func (t *Tmux) List(ctx context.Context) ([]Session, error) {
-	out, err := t.run(ctx, "list-sessions", "-F", "#{session_name}\t#{session_path}\t#{?session_attached,1,0}")
+	out, err := t.run(ctx, "list-panes", "-a", "-F",
+		"#{session_name}\t#{pane_id}\t#{pane_current_path}\t#{?pane_active,1,0}\t#{?session_attached,1,0}")
 	if err != nil {
 		// "no server running on ..." is the normal idle case.
 		if strings.Contains(err.Error(), "no server running") || strings.Contains(err.Error(), "error connecting") {
@@ -83,20 +85,37 @@ func (t *Tmux) List(ctx context.Context) ([]Session, error) {
 		}
 		return nil, err
 	}
-	var sessions []Session
+	var order []string
+	byName := make(map[string]*Session)
+	dirs := make(map[string]map[string]bool)
 	for _, line := range strings.Split(out, "\n") {
 		if line == "" {
 			continue
 		}
 		f := strings.Split(line, "\t")
-		if len(f) < 2 {
+		if len(f) < 3 || f[0] == "" || f[1] == "" {
 			continue
 		}
-		s := Session{Handle: f[0], Label: f[0], Dirs: []string{f[1]}}
-		if len(f) > 2 {
-			s.Focused = f[2] == "1"
+		s := byName[f[0]]
+		if s == nil {
+			s = &Session{Handle: f[0], Label: f[0]}
+			byName[f[0]] = s
+			order = append(order, f[0])
+			dirs[f[0]] = make(map[string]bool)
 		}
-		sessions = append(sessions, s)
+		if f[2] != "" {
+			dirs[f[0]][f[2]] = true
+		}
+		s.Panes = append(s.Panes, Pane{ID: f[1], CWD: f[2], ShellCWD: f[2]})
+		if len(f) > 4 && f[3] == "1" && f[4] == "1" {
+			s.Focused = true
+		}
+	}
+	sessions := make([]Session, 0, len(order))
+	for _, name := range order {
+		s := byName[name]
+		s.Dirs = keys(dirs[name])
+		sessions = append(sessions, *s)
 	}
 	return sessions, nil
 }

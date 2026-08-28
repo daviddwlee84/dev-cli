@@ -9,6 +9,31 @@ import (
 	"testing"
 )
 
+func TestTmuxListAggregatesPaneCWDs(t *testing.T) {
+	tm := NewTmux()
+	var gotArgs []string
+	tm.runCommand = func(_ context.Context, args ...string) (string, error) {
+		gotArgs = append([]string(nil), args...)
+		return "dev\t%1\t/repo\t1\t1\ndev\t%2\t/repo/sub\t0\t1\nother\t%3\t/tmp\t1\t0", nil
+	}
+	sessions, err := tm.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotArgs) == 0 || gotArgs[0] != "list-panes" {
+		t.Fatalf("List args = %v", gotArgs)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("sessions = %+v", sessions)
+	}
+	if sessions[0].Handle != "dev" || len(sessions[0].Panes) != 2 || len(sessions[0].Dirs) != 2 || !sessions[0].Focused {
+		t.Errorf("aggregated dev session = %+v", sessions[0])
+	}
+	if sessions[0].Panes[1].ID != "%2" || sessions[0].Panes[1].CWD != "/repo/sub" {
+		t.Errorf("second pane = %+v", sessions[0].Panes[1])
+	}
+}
+
 func TestTmuxOpenReportsCreationAndReuseWithoutPane(t *testing.T) {
 	for _, tc := range []struct {
 		name       string

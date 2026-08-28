@@ -10,6 +10,10 @@
 # Local machine state
 .DS_Store
 
+# SpecStory's aggregate is regenerated on every render. Session transcripts are
+# durable review history; this derived counter file is not.
+.specstory/statistics.json
+
 # Plan files written by the agent harness for this session, not project docs.
 # .claude/plans/
 

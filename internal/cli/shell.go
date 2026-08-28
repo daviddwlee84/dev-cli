@@ -18,7 +18,7 @@ dev() {
   # Commands outside the navigation surface need no side channel. Besides
   # avoiding two subprocesses, this keeps them working when TMPDIR is stale.
   case "${1:-}" in
-    __complete|__completeNoDesc|--help|-h|--version|--skill|completion|config|doctor|done|edit|gitignore|ignore|help|list|ls|park|skill|shell-init|cache|stats|status|sweep|adopt|bootstrap)
+    __complete|__completeNoDesc|--help|-h|--version|--skill|completion|config|doctor|done|retire|prepare|artifact|git|edit|gitignore|ignore|help|list|ls|park|skill|shell-init|cache|stats|status|sweep|adopt|bootstrap)
       command %[1]s "$@" || return $?
       return 0
       ;;
@@ -56,7 +56,7 @@ function dev
     if test (count $argv) -gt 0
         set __dev_command $argv[1]
     end
-    if contains -- "$__dev_command" __complete __completeNoDesc --help -h --version --skill completion config doctor done edit gitignore ignore help list ls park skill stats status sweep adopt bootstrap
+    if contains -- "$__dev_command" __complete __completeNoDesc --help -h --version --skill completion config doctor done retire prepare artifact git edit gitignore ignore help list ls park skill shell-init cache stats status sweep adopt bootstrap
         command %[1]s $argv
         return $status
     end

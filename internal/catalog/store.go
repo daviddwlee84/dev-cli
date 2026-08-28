@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/daviddwlee84/dev-cli/internal/lockx"
 	"github.com/google/uuid"
 )
 
@@ -103,40 +104,15 @@ func NewStore(dir string, options ...StoreOption) *Store {
 // lock. It is intended for short read-match-write transactions; expensive
 // discovery belongs before the lock. The operating system releases the lock if
 // the process exits unexpectedly.
-func (s *Store) WithLock(ctx context.Context, operation func() error) (err error) {
+func (s *Store) WithLock(ctx context.Context, operation func() error) error {
 	if s == nil {
 		return errors.New("lock nil catalog store")
 	}
 	if operation == nil {
 		return errors.New("catalog lock requires an operation")
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	if err := os.MkdirAll(s.Dir, 0o755); err != nil {
-		return fmt.Errorf("create catalog directory for lock: %w", err)
-	}
-	absoluteDir, err := filepath.Abs(s.Dir)
-	if err != nil {
-		return fmt.Errorf("make catalog directory absolute for lock: %w", err)
-	}
-	canonicalDir, err := filepath.EvalSymlinks(absoluteDir)
-	if err != nil {
-		return fmt.Errorf("canonicalize catalog directory for lock: %w", err)
-	}
-	lockPath := filepath.Join(filepath.Dir(canonicalDir), "."+filepath.Base(canonicalDir)+".lock")
-	lock, err := acquireCatalogFileLock(ctx, lockPath)
-	if err != nil {
-		return fmt.Errorf("acquire catalog lock: %w", err)
-	}
-	defer func() {
-		if releaseErr := lock.Close(); releaseErr != nil {
-			err = errors.Join(err, fmt.Errorf("release catalog lock: %w", releaseErr))
-		}
-	}()
-	return operation()
+	return lockx.WithDir(ctx, s.Dir, "catalog", operation)
 }
-
 func (s *Store) path(id string) string { return filepath.Join(s.Dir, id+".toml") }
 
 // Create assigns a random stable ID and atomically persists entry. The caller's

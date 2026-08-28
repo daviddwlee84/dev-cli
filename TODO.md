@@ -19,6 +19,20 @@ remote/shared-Git restore. Non-Git experiments need a real archive/export
 format before they can be called recoverable. Do not infer safety merely from
 "origin exists" or the current branch being synced.
 
+### P2 · L — Versioned orthogonal task integration phases
+The backward-compatible retirement MVP derives READY/MERGED/RETIRED while
+persisting the existing hot/warm/cold/done state. A future task schema should
+separate execution disposition from integration phase, adopt strict versioned
+decoding plus cross-process update locks, and explicitly migrate ambiguous
+legacy done records. Old binaries currently ignore and later erase unknown TOML
+fields, so this requires a deliberate minimum-version/downgrade policy.
+
+### P3 · M — Query forge merge status and squash identity
+Persist PR/MR identity and extend forge adapters to report open/draft/merged
+state, merge commit and method. Until then `done --merged` proves ordinary
+ancestry and squash completion requires explicit operator attestation; never
+infer a squash solely because the source branch disappeared.
+
 ### P2 · M — Incremental local repo snapshot
 The TUI now renders immediately and probes repositories in the background with
 bounded concurrency, reducing perceived startup latency. A 56-repo refresh

@@ -32,6 +32,28 @@ func TestCanonicalChildAcceptsChildAndRejectsRoot(t *testing.T) {
 	}
 }
 
+func TestContainsAcceptsRootAndDescendant(t *testing.T) {
+	root := t.TempDir()
+	child := filepath.Join(root, "child")
+	if err := os.Mkdir(child, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, candidate := range []string{root, child} {
+		inside, err := pathx.Contains(root, candidate)
+		if err != nil || !inside {
+			t.Errorf("Contains(%q, %q) = %v, %v", root, candidate, inside, err)
+		}
+	}
+	sibling := filepath.Join(filepath.Dir(root), filepath.Base(root)+"-sibling")
+	if err := os.Mkdir(sibling, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	inside, err := pathx.Contains(root, sibling)
+	if err != nil || inside {
+		t.Errorf("sibling should be outside: %v, %v", inside, err)
+	}
+}
+
 func TestCanonicalChildRejectsSiblingPrefixAndTraversal(t *testing.T) {
 	parent := t.TempDir()
 	root := filepath.Join(parent, "repo")

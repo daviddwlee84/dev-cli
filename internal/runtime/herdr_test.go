@@ -42,6 +42,30 @@ func scriptedHerdr(t *testing.T, calls ...herdrCall) *Herdr {
 	return h
 }
 
+func TestHerdrListRetainsPaneIdentityAndForegroundCWD(t *testing.T) {
+	h := scriptedHerdr(t,
+		herdrCall{args: []string{"workspace", "list"}, out: `{"id":"1","result":{"workspaces":[{"workspace_id":"w1","label":"dev","agent_status":"idle"}]}}`},
+		herdrCall{args: []string{"pane", "list"}, out: `{"id":"2","result":{"panes":[` +
+			`{"pane_id":"w1:p1","workspace_id":"w1","cwd":"/old","foreground_cwd":"/repo","agent":"claude","agent_status":"idle","agent_session":{"agent":"claude","value":"abc"}},` +
+			`{"pane_id":"w1:p2","workspace_id":"w1","cwd":"/repo/sub"}` +
+			`]}}`},
+	)
+	sessions, err := h.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 1 || len(sessions[0].Panes) != 2 {
+		t.Fatalf("sessions = %+v", sessions)
+	}
+	pane := sessions[0].Panes[0]
+	if pane.ID != "w1:p1" || pane.CWD != "/repo" || pane.ShellCWD != "/old" || pane.AgentStatus != "idle" || pane.AgentSession != "claude:abc" {
+		t.Errorf("pane = %+v", pane)
+	}
+	if !sessions[0].Covers("/repo") {
+		t.Errorf("foreground and nested cwd should cover repo: %+v", sessions[0])
+	}
+}
+
 func TestHerdrOpenReturnsExactCreatedRootPane(t *testing.T) {
 	h := scriptedHerdr(t,
 		herdrCall{args: []string{"workspace", "list"}, out: `{"id":"1","result":{"workspaces":[]}}`},

@@ -77,7 +77,7 @@ func runList(app *App, o listOptions) error {
 	rows = filter.Apply(rows)
 
 	if o.jsonOut {
-		return emitJSON(app, rows)
+		return emitJSON(app, rows, rt.Name())
 	}
 
 	if len(rows) == 0 {
@@ -107,10 +107,14 @@ func runList(app *App, o listOptions) error {
 		case !r.CheckoutExists:
 			gitCol = "no checkout"
 		}
+		stateLabel := r.Task.State.Label()
+		if r.Task.State == task.Done {
+			stateLabel = "MERGED*"
+		}
 		t.Add(
 			s.taskStateFor(r.Task.State.Label(), r.Task.State.Icon()),
 			truncate(r.Task.Title(), 28),
-			s.taskState(r.Task.State.Label()),
+			s.taskState(stateLabel),
 			truncate(r.Task.Repo, 20),
 			truncate(r.Task.Branch, 28),
 			s.git(gitCol),
@@ -139,20 +143,24 @@ func runList(app *App, o listOptions) error {
 // tools (and for the multi-host aggregation `ssh host dev ls --json` enables),
 // so fields are added but never renamed.
 type jsonRow struct {
-	ID           string   `json:"id"`
-	Name         string   `json:"name"`
-	Repo         string   `json:"repo"`
-	RepoPath     string   `json:"repo_path"`
-	Branch       string   `json:"branch"`
-	Base         string   `json:"base,omitempty"`
-	WorktreePath string   `json:"worktree_path,omitempty"`
-	Checkout     string   `json:"checkout,omitempty"`
-	State        string   `json:"state"`
-	Mode         string   `json:"mode"`
-	Owner        string   `json:"owner,omitempty"`
-	Next         string   `json:"next,omitempty"`
-	Note         string   `json:"note,omitempty"`
-	Tags         []string `json:"tags,omitempty"`
+	ID             string   `json:"id"`
+	Name           string   `json:"name"`
+	Repo           string   `json:"repo"`
+	RepoPath       string   `json:"repo_path"`
+	Branch         string   `json:"branch"`
+	Base           string   `json:"base,omitempty"`
+	WorktreePath   string   `json:"worktree_path,omitempty"`
+	Checkout       string   `json:"checkout,omitempty"`
+	State          string   `json:"state"`
+	Milestone      string   `json:"milestone"`
+	CleanupPending bool     `json:"cleanup_pending"`
+	ArtifactStatus string   `json:"artifact_status,omitempty"`
+	RetireBlockers []string `json:"retirement_blockers,omitempty"`
+	Mode           string   `json:"mode"`
+	Owner          string   `json:"owner,omitempty"`
+	Next           string   `json:"next,omitempty"`
+	Note           string   `json:"note,omitempty"`
+	Tags           []string `json:"tags,omitempty"`
 
 	CheckoutExists bool   `json:"checkout_exists"`
 	Dirty          bool   `json:"dirty"`
@@ -181,7 +189,39 @@ type jsonRow struct {
 	Updated    string `json:"updated,omitempty"`
 }
 
-func emitJSON(app *App, rows []inventory.Row) error {
+func taskMilestone(r inventory.Row) string {
+	if r.Task.State == task.Done {
+		return "merged"
+	}
+	return "working"
+}
+
+func retirementBlockers(r inventory.Row) []string {
+	if r.Task.State != task.Done {
+		return nil
+	}
+	var blockers []string
+	if r.Live() {
+		blockers = append(blockers, "runtime-live")
+	}
+	if r.Task.WorktreePath != "" {
+		if r.WorktreeMissing {
+			blockers = append(blockers, "worktree-registration-missing")
+		} else {
+			blockers = append(blockers, "worktree-present")
+		}
+	}
+	if r.Status.Dirty() {
+		blockers = append(blockers, "checkout-dirty")
+	}
+	return blockers
+}
+
+func emitJSON(app *App, rows []inventory.Row, runtimeName string) error {
+	artifactByWorktree, err := artifactStatuses(app)
+	if err != nil {
+		return err
+	}
 	out := make([]jsonRow, 0, len(rows))
 	for _, r := range rows {
 		j := jsonRow{
@@ -194,6 +234,9 @@ func emitJSON(app *App, rows []inventory.Row) error {
 			WorktreePath:   config.Contract(r.Task.WorktreePath),
 			Checkout:       config.Contract(r.Checkout),
 			State:          string(r.Task.State),
+			Milestone:      taskMilestone(r),
+			CleanupPending: r.Task.State == task.Done,
+			RetireBlockers: retirementBlockers(r),
 			Mode:           string(r.Task.EffectiveMode()),
 			Owner:          r.Task.Owner,
 			Next:           r.Task.Next,
@@ -218,10 +261,15 @@ func emitJSON(app *App, rows []inventory.Row) error {
 			Drift:          r.StateDrift(),
 			AgeSeconds:     int64(r.Age().Seconds()),
 		}
+		j.ArtifactStatus = artifactStatusForPath(artifactByWorktree, r.Checkout)
+		if j.ArtifactStatus != "" && j.ArtifactStatus != "finalized" {
+			j.RetireBlockers = append(j.RetireBlockers, "artifact-"+j.ArtifactStatus)
+		}
 		if !r.Task.Updated.IsZero() {
 			j.Updated = r.Task.Updated.Format("2006-01-02T15:04:05Z")
 		}
 		if r.Session != nil {
+			j.Runtime = runtimeName
 			j.RuntimeHandle = r.Session.Handle
 			j.AgentStatus = r.Session.AgentStatus
 			j.AgentSessions = r.Session.AgentSessions

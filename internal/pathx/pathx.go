@@ -129,6 +129,22 @@ func IsChild(root, candidate string) (bool, error) {
 	return false, err
 }
 
+// Contains reports whether candidate is root itself or resolves below it.
+func Contains(root, candidate string) (bool, error) {
+	canonicalRoot, err := Canonical(root)
+	if err != nil {
+		return false, err
+	}
+	canonicalCandidate, err := Canonical(candidate)
+	if err != nil {
+		return false, err
+	}
+	if canonicalRoot == canonicalCandidate {
+		return true, nil
+	}
+	return IsChild(canonicalRoot, canonicalCandidate)
+}
+
 // ValidateComponent requires a non-empty relative value containing exactly one
 // path component. Both slash styles are rejected so state synced between Unix
 // and Windows cannot acquire a different meaning on another host.

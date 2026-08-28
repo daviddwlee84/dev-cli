@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: 'Manage repositories and work-in-progress with the dev CLI: bootstrap and organise repos safely, own worktree lifecycle, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when starting, parking or resuming work; scanning repos; capturing/searching repo thoughts; choosing worktree isolation; or cleaning stale branches, checkouts and sessions.'
+description: 'Manage repositories and work-in-progress with the dev CLI: bootstrap and organise repos safely, own worktree/task lifecycle, safely prepare/finalize/retire agent sessions, run guarded Git transactions, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when starting, parking, resuming or retiring work; preserving agent transcripts; scanning or organising repos; capturing/searching repo thoughts; choosing worktree isolation; or cleaning stale branches, checkouts and sessions.'
 ---
 
 # dev-cli
@@ -70,9 +70,9 @@ Full detail: `references/worktree-ownership.md`.
 | State | Git | Runtime | Meaning |
 |---|---|---|---|
 | 🔥 `hot` | worktree + branch | session open | working on it now |
-| 🌤 `warm` | worktree + branch kept | session **closed** | back within days |
+| 🌤 `warm` | worktree + branch kept | normally closed | back within days |
 | ❄️ `cold` | committed and pushed; worktree removed | nothing | paused, reconstructible anywhere |
-| ✅ `done` | merged | nothing | entry survives until swept |
+| ✅ `done` | merged | may remain open | MERGED; external retirement pending |
 
 ```bash
 dev repo open api                                  # ad hoc; no task/worktree
@@ -82,15 +82,18 @@ dev start api --task "token refresh" --base main   # isolated worktree → hot
 dev park --next "add the regression test" --wip    # → warm, session closed
 dev park --cold --push                             # → cold, worktree removed
 dev resume "token refresh"                         # → hot, rebuilt if needed
-dev done                                           # TTY wizard: inspect dirty state, then FF/PR/cleanup
-dev done --ff                                      # explicit → done, integrated
+dev prepare --session claude:<uuid>                # arm final transcript handoff
+dev done                                           # TTY wizard: inspect dirty state, then FF/PR/merged
+dev done --ff                                      # → done/MERGED; resources kept
+dev retire "token refresh"                         # external-only cleanup → RETIRED
 ```
 
 **Parking is the move that matters.** `dev park --next "…"` is what makes it
 safe to close a session, and the `--next` text is what makes resuming cheap.
 Always suggest a `--next` when parking.
 
-Full detail: `references/task-lifecycle.md`.
+Full detail: `references/task-lifecycle.md`. Before integrating or deleting an
+agent-owned checkout, read `references/agent-retirement.md`.
 
 ## Pick the task's checkout mode
 
@@ -140,6 +143,15 @@ dev ls --json              # stable machine-readable form (also over ssh)
 dev status                 # what is this directory: repo, branch, task, session
 dev sweep                  # what has gone stale or drifted, and what to do
 dev sweep --apply          # act on it, confirming each change
+dev prepare --session claude:<uuid>  # arm exact post-writer artifact commit
+dev artifact list          # finalization handoffs and receipts
+dev done --ff              # integrate only; runtime/worktree stay alive
+dev retire <task>          # external-only close/wait/remove/reap
+
+dev git uncommit           # soft reset with a per-worktree message receipt
+dev git recommit           # reuse that exact message with normal hooks
+dev git pull-rebase        # exact stash OID + index-preserving restore
+dev git amend-all          # add -A + no-edit amend; hooks remain enabled
 
 dev start                  # context-aware wizard; confirms before creating
 dev start -t "token refresh" --base main  # fast managed worktree task
@@ -327,9 +339,10 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
     provider permissions, which may be dangerous. Never append a conflicting
     safer mode to an elevated command. Read `parallel-agents.md`.
 
-11. **Cleanup is explicit, never agent-state-driven.** Herdr `done` means a turn
-    settled. Sync/stage exact artifacts first; use park/done/sweep semantics,
-    and never auto-close from `done`.
+11. **Cleanup is external, never self-triggered by agent state.** Herdr `done`
+    means a turn settled. Arm and finalize exact artifacts first; `dev done`
+    integrates only, and `dev retire` must run outside the target workspace.
+    Never run raw `git worktree remove --force` against the caller's checkout.
 
 12. **Prefer `dev bootstrap --index` over `--move`.** If the problem is
    navigation, a symlink catalog solves it without changing the authoritative
@@ -397,6 +410,8 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   worktree gets a working environment. Read before creating one.
 - `references/task-lifecycle.md` — HOT/WARM/COLD/DONE, when to park, and how
   work moves between machines.
+- `references/agent-retirement.md` — prepare/finalize/integrate/retire, caller
+  safety, exact transcript handling and orphaned-runtime recovery.
 - `references/runtime-herdr.md` — how `dev` and herdr divide responsibility,
   including native worktree grouping, collisions and cleanup semantics.
 - `references/parallel-agents.md` — read before launching parallel background

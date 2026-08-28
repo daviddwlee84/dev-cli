@@ -157,19 +157,36 @@ func (h *Herdr) List(ctx context.Context) ([]Session, error) {
 
 	dirs := map[string]map[string]bool{}
 	agents := map[string]map[string]bool{}
+	panes := map[string][]Pane{}
 	for _, p := range ps.Panes {
-		if p.CWD != "" {
-			if dirs[p.WorkspaceID] == nil {
-				dirs[p.WorkspaceID] = map[string]bool{}
-			}
-			dirs[p.WorkspaceID][p.CWD] = true
+		cwd := p.ForegroundCWD
+		if cwd == "" {
+			cwd = p.CWD
 		}
+		if dirs[p.WorkspaceID] == nil {
+			dirs[p.WorkspaceID] = map[string]bool{}
+		}
+		for _, dir := range []string{p.CWD, cwd} {
+			if dir != "" {
+				dirs[p.WorkspaceID][dir] = true
+			}
+		}
+		agentSession := ""
 		if p.AgentSession != nil && p.AgentSession.Value != "" {
+			agent := p.AgentSession.Agent
+			if agent == "" {
+				agent = p.Agent
+			}
+			agentSession = agent + ":" + p.AgentSession.Value
 			if agents[p.WorkspaceID] == nil {
 				agents[p.WorkspaceID] = map[string]bool{}
 			}
-			agents[p.WorkspaceID][p.AgentSession.Agent+":"+p.AgentSession.Value] = true
+			agents[p.WorkspaceID][agentSession] = true
 		}
+		panes[p.WorkspaceID] = append(panes[p.WorkspaceID], Pane{
+			ID: p.PaneID, CWD: cwd, ShellCWD: p.CWD, Agent: p.Agent,
+			AgentStatus: p.AgentStatus, AgentSession: agentSession,
+		})
 	}
 
 	out := make([]Session, 0, len(ws.Workspaces))
@@ -180,6 +197,7 @@ func (h *Herdr) List(ctx context.Context) ([]Session, error) {
 			Dirs:          keys(dirs[w.WorkspaceID]),
 			AgentSessions: keys(agents[w.WorkspaceID]),
 			AgentStatus:   w.AgentStatus,
+			Panes:         panes[w.WorkspaceID],
 			Focused:       w.Focused,
 		})
 	}

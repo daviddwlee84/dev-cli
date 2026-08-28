@@ -13,7 +13,19 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 )
+
+// Pane is one terminal surface inside a runtime session.
+type Pane struct {
+	ID           string
+	CWD          string
+	ShellCWD     string
+	Agent        string
+	AgentStatus  string
+	AgentSession string
+}
 
 // Session is one live workspace/session of a runtime backend.
 type Session struct {
@@ -30,7 +42,10 @@ type Session struct {
 	AgentStatus string
 	// AgentSessions lists resumable agent context ids, e.g. "claude:<uuid>".
 	AgentSessions []string
-	Focused       bool
+	// Panes retain the exact runtime IDs and cwd values used for caller and
+	// mixed-workspace retirement checks.
+	Panes   []Pane
+	Focused bool
 }
 
 // Covers reports whether the session has a pane rooted at or under dir.
@@ -39,7 +54,7 @@ func (s Session) Covers(dir string) bool {
 		// A pane inside the repository makes it live. The inverse is not
 		// true: a generic pane at $HOME does not make every repository below
 		// $HOME active.
-		if d == dir || strings.HasPrefix(d, dir+"/") {
+		if inside, err := pathx.Contains(dir, d); err == nil && inside {
 			return true
 		}
 	}

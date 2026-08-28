@@ -163,13 +163,13 @@ func TestLifecycleEndToEnd(t *testing.T) {
 	h.repo.GitIn(wtPath, "add", "auth.go")
 	h.repo.GitIn(wtPath, "commit", "-m", "feat: add auth")
 
-	// done --ff: rebase and fast-forward, then clean up.
+	// done --ff integrates but leaves physical cleanup to an external retire.
 	out = h.mustRun("done", "auth", "--ff")
-	if !strings.Contains(out, "merged into main") {
+	if !strings.Contains(out, "merged into main") || !strings.Contains(out, "cleanup pending") {
 		t.Fatalf("done output: %q", out)
 	}
-	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
-		t.Error("done should remove the worktree")
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Fatalf("done should keep the worktree: %v", err)
 	}
 	// The commit is on main, and the history stayed linear.
 	if _, err := gitx.Run(gittest.Ctx(), h.repo.Root, "cat-file", "-e", "main:auth.go"); err != nil {
@@ -184,10 +184,20 @@ func TestLifecycleEndToEnd(t *testing.T) {
 		t.Error("the branch should survive without --delete-branch")
 	}
 
-	// sweep reaps the done entry.
+	// Sweep reports cleanup pending; retire performs it from outside the target.
 	out = h.mustRun("sweep")
-	if !strings.Contains(out, "reap") {
-		t.Errorf("sweep should offer to reap a done task: %q", out)
+	if !strings.Contains(out, "retire runtime/worktree") {
+		t.Errorf("sweep should offer to retire a done task: %q", out)
+	}
+	out = h.mustRun("retire", "auth")
+	if !strings.Contains(out, "RETIRED") {
+		t.Fatalf("retire output: %q", out)
+	}
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Error("retire should remove the worktree")
+	}
+	if inventory := h.mustRun("ls", "--json"); strings.Contains(inventory, `"name": "auth"`) {
+		t.Fatalf("retired task remained in inventory: %s", inventory)
 	}
 }
 
@@ -282,7 +292,7 @@ func TestDonePRLeavesTaskAndWorktreeForReview(t *testing.T) {
 	h.repo.GitIn(wtPath, "commit", "-m", "feat: review")
 
 	out := h.mustRun("done", "review", "--pr")
-	if !strings.Contains(out, "under review") {
+	if !strings.Contains(out, "READY FOR REVIEW") {
 		t.Fatalf("PR path should report review state: %q", out)
 	}
 	if _, err := os.Stat(wtPath); err != nil {

@@ -64,7 +64,25 @@ makes `wip: checkpoint — reproduce the token refresh race`.
 Preferred over `git stash` because a stash is invisible in the log, easy to
 forget, and cannot be pushed — so it can never reach another machine. A
 checkpoint commit is searchable, diffable, pushable, and can be squashed away
-later.
+later. Agent transcripts/plans are excluded from an in-process WIP checkpoint;
+`dev prepare` and the post-writer finalizer own their exact final bytes.
+
+## Guarded multi-step Git operations
+
+```bash
+dev git uncommit       # soft reset + per-worktree old-OID receipt
+dev git recommit       # reuse the receipt's complete commit message
+dev git pull-rebase    # exact stash OID, pull --rebase, apply --index
+dev git amend-all      # real add -A + amend --no-edit; hooks stay enabled
+```
+
+`pull-rebase` uses stash only as a short transactional buffer. It never selects
+`stash@{0}` after another worktree may have changed the shared stash stack, and
+it retains the exact stash on any pull/restore failure. This is different from
+using stash as durable task storage.
+
+`amend-all` includes agent artifacts by default when the project has a scanner;
+`--exclude-agent-artifacts` leaves them for the post-writer finalizer.
 
 ## Squash or preserve?
 

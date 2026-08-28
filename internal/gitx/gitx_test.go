@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
@@ -183,6 +184,23 @@ func TestRemoveWorktree(t *testing.T) {
 	}
 }
 
+func TestRemoveWorktreeRefusesCallerInsideTarget(t *testing.T) {
+	r := gittest.New(t)
+	ctx := gittest.Ctx()
+	wtPath := filepath.Join(t.TempDir(), "self")
+	if err := gitx.AddWorktree(ctx, r.Root, wtPath, "self/branch", "main"); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(wtPath)
+	if err := gitx.RemoveWorktree(ctx, r.Root, wtPath, true); err == nil {
+		t.Fatal("force must not remove the caller's current worktree")
+	}
+	t.Chdir(r.Root)
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Fatalf("refused worktree should remain: %v", err)
+	}
+}
+
 func TestRemoveDirtyWorktreeNeedsForce(t *testing.T) {
 	r := gittest.New(t)
 	ctx := gittest.Ctx()
@@ -254,6 +272,8 @@ func TestStatusAheadBehind(t *testing.T) {
 }
 
 func TestWipCommit(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	r := gittest.New(t)
 	ctx := gittest.Ctx()
 
@@ -264,13 +284,17 @@ func TestWipCommit(t *testing.T) {
 	}
 
 	r.Write("draft.txt", "half done\n")
+	r.Write(".specstory/history/live.md", "moving transcript\n")
 	made, err = gitx.WipCommit(ctx, r.Root, "wip: checkpoint token refresh")
 	if err != nil || !made {
 		t.Fatalf("dirty tree: made=%v err=%v", made, err)
 	}
 	st, _ := gitx.StatusOf(ctx, r.Root)
-	if st.Dirty() {
-		t.Error("tree should be clean after a wip commit, including untracked files")
+	if !st.Dirty() || st.Untracked != 1 {
+		t.Errorf("only the live artifact should remain dirty: %+v", st)
+	}
+	if changed := r.Git("show", "--pretty=", "--name-only", "HEAD"); !strings.Contains(changed, "draft.txt") || strings.Contains(changed, ".specstory") {
+		t.Fatalf("checkpoint paths:\n%s", changed)
 	}
 	_, subject, _ := gitx.LastCommit(ctx, r.Root)
 	if subject != "wip: checkpoint token refresh" {

@@ -39,7 +39,7 @@ func TestParkColdCloseFailureKeepsCheckoutAndTaskRuntime(t *testing.T) {
 	r.GitIn(res.Path, "push", "-u", "origin", "feat/close-failure")
 
 	rt := &activityRuntime{
-		sessions: []runtime.Session{{Handle: "w7", Dirs: []string{res.Path}}},
+		sessions: []runtime.Session{{Handle: "w7", Dirs: []string{res.Path}, AgentStatus: "idle"}},
 		closeErr: errors.New("close failed"),
 	}
 	store := task.NewStore(t.TempDir())
@@ -57,7 +57,7 @@ func TestParkColdCloseFailureKeepsCheckoutAndTaskRuntime(t *testing.T) {
 	cmd.SilenceErrors, cmd.SilenceUsage = true, true
 	cmd.SetArgs([]string{tk.ID, "--cold"})
 	err = cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "refusing cold cleanup") {
+	if err == nil || !strings.Contains(err.Error(), "close failed") {
 		t.Fatalf("cold close failure = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(res.Path, "README.md")); err != nil {
@@ -72,7 +72,7 @@ func TestParkColdCloseFailureKeepsCheckoutAndTaskRuntime(t *testing.T) {
 	}
 }
 
-func TestDoneCloseFailureKeepsIntegratedWorktreeAndRuntime(t *testing.T) {
+func TestDoneIntegratesWithoutClosingRuntimeOrWorktree(t *testing.T) {
 	r := gittest.New(t)
 	cfg := lifecycleConfig(t)
 	res, err := (&wt.Manager{Cfg: cfg}).Create(context.Background(), wt.CreateRequest{
@@ -88,7 +88,7 @@ func TestDoneCloseFailureKeepsIntegratedWorktreeAndRuntime(t *testing.T) {
 	r.GitIn(res.Path, "commit", "-m", "feat: done")
 
 	rt := &activityRuntime{
-		sessions: []runtime.Session{{Handle: "w7", Dirs: []string{res.Path}}},
+		sessions: []runtime.Session{{Handle: "w7", Dirs: []string{res.Path}, AgentStatus: "idle"}},
 		closeErr: errors.New("close failed"),
 	}
 	store := task.NewStore(t.TempDir())
@@ -106,8 +106,11 @@ func TestDoneCloseFailureKeepsIntegratedWorktreeAndRuntime(t *testing.T) {
 	cmd.SilenceErrors, cmd.SilenceUsage = true, true
 	cmd.SetArgs([]string{tk.ID, "--ff"})
 	err = cmd.Execute()
-	if err == nil || !strings.Contains(err.Error(), "worktree kept") {
-		t.Fatalf("done close failure = %v", err)
+	if err != nil {
+		t.Fatalf("done integration = %v", err)
+	}
+	if len(rt.closeCalls) != 0 {
+		t.Fatalf("done must not close runtime, got %v", rt.closeCalls)
 	}
 	if _, err := os.Stat(filepath.Join(res.Path, "feature.txt")); err != nil {
 		t.Fatalf("done removed worktree after close failure: %v", err)
@@ -119,7 +122,7 @@ func TestDoneCloseFailureKeepsIntegratedWorktreeAndRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.State != task.Hot || got.RuntimeHandle != "w7" || got.RuntimeName != "herdr" {
-		t.Fatalf("task should remain reconcilable after close failure: %+v", got)
+	if got.State != task.Done || got.RuntimeHandle != "w7" || got.RuntimeName != "herdr" || got.WorktreePath != res.Path {
+		t.Fatalf("merged task should retain retirement resources: %+v", got)
 	}
 }

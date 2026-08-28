@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
@@ -249,8 +250,11 @@ func newWtOpenCmd(app *App) *cobra.Command {
 
 func newWtRemoveCmd(app *App) *cobra.Command {
 	var (
-		repoRef string
-		force   bool
+		repoRef         string
+		force           bool
+		closeUnknown    bool
+		assumeNoRuntime bool
+		timeout         time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:     "rm <branch>",
@@ -284,23 +288,11 @@ A checkout with uncommitted changes needs an explicit --force.`,
 					config.Contract(w.Path), st.Summary())
 			}
 
-			// Close a runtime session pointing at the checkout first, so the
-			// multiplexer is not left on a deleted directory.
-			rt := app.Runtime()
-			var handle string
-			if sessions, err := rt.List(ctx); err == nil {
-				for _, s := range sessions {
-					for _, d := range s.Dirs {
-						if d == w.Path {
-							handle = s.Handle
-						}
-					}
-				}
+			if err := ensureArtifactsFinalized(app, w.Path); err != nil {
+				return err
 			}
-			m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
-			if err := m.Remove(ctx, wt.RemoveRequest{
-				RepoPath: repoPath, Path: w.Path, Force: force, RuntimeHandle: handle,
-			}); err != nil {
+			if err := safeRemoveWorktree(ctx, app.Runtime(), repoPath, w.Path, force,
+				closeUnknown, assumeNoRuntime, timeout); err != nil {
 				return err
 			}
 			fmt.Fprintf(app.Out, "removed %s (branch %s kept)\n", config.Contract(w.Path), w.Branch)
@@ -318,7 +310,10 @@ A checkout with uncommitted changes needs an explicit --force.`,
 	}
 	f := cmd.Flags()
 	f.StringVarP(&repoRef, "repo", "r", "", "repository (default: the current one)")
-	f.BoolVarP(&force, "force", "f", false, "remove even with uncommitted changes")
+	f.BoolVarP(&force, "force", "f", false, "remove even with uncommitted changes (never bypasses caller/runtime safety)")
+	f.BoolVar(&closeUnknown, "close-unknown", false, "allow external closure of unknown runtime status")
+	f.BoolVar(&assumeNoRuntime, "assume-no-runtime", false, "continue when runtime enumeration fails")
+	f.DurationVar(&timeout, "timeout", 5*time.Second, "maximum time to wait for runtime closure")
 	registerFlagCompletion(cmd, "repo", completeRepoFlag(app))
 	cmd.ValidArgsFunction = completeWorktrees(app, false)
 	return cmd

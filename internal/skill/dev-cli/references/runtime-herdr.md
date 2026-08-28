@@ -84,23 +84,26 @@ Herdr agent `done` means the latest turn settled. It does not establish that
 history is synced, review is complete, code is committed, or cleanup is safe.
 Never auto-close based on agent state.
 
-- `dev park` closes the workspace and keeps the worktree.
-- `dev park --cold --push` closes and removes a reconstructible checkout.
-- `dev done --ff` integrates and cleans up.
+- `dev park` records WARM; inside its own workspace it leaves runtime alive for normal agent exit.
+- `dev park --cold --push` closes/removes only from an external safe caller.
+- `dev done --ff` integrates but keeps runtime/worktree/branch.
 - `dev done --pr` leaves task/runtime/worktree for review.
-- `dev sweep` reports first.
+- `dev retire` externally closes, waits, revalidates and removes.
+- `dev sweep` reports first and routes DONE cleanup through retire.
 
-`workspace close` itself touches no branch or checkout. A verified close failure
-stops cold park, done worktree cleanup, sweep cleanup, and `wt rm` before the
-checkout is removed. `--cold --keep-session` is rejected so a session cannot
-remain pointed at a removed directory.
+`workspace close` itself touches no branch or checkout, but it can kill the
+caller before later cleanup runs. Retirement therefore refuses caller
+workspace/pane containment, mixed workspaces, and working/blocked/waiting
+agents. Unknown status needs external `--close-unknown`; close failure or timeout
+stops worktree removal. `--cold --keep-session` remains rejected.
 
-## Agent sessions are not yet attached by dev
+## Agent-session handoff
 
 Herdr exposes live agent session IDs and `Task.AgentSession` exists in the task
-schema, but production `start`, `park`, and `resume` do not currently capture or
-attach an agent conversation. Resume reopens/rebuilds the checkout and runtime;
-agent-session handoff remains an explicit launcher operation.
+schema. `dev prepare` captures one exact `provider:uuid` from its flag, the task,
+or a unique covering runtime session and persists it for artifact finalization.
+Resume still reopens/rebuilds checkout and runtime only; launching/resuming an
+agent conversation remains an explicit wrapper operation.
 
 ## Without Herdr
 

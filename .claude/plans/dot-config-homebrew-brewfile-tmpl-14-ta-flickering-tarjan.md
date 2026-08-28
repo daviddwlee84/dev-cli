@@ -1,68 +1,127 @@
 # Context
 
-`dev-cli` 目前只能從 source 以 `make install` 安裝；沒有公開 GitHub repo/tag、Homebrew formula、release 流程或已部署的 completion。CLI 實際是 Go/Cobra（不是 Tyro），而 Cobra 已自動提供 `dev completion <shell>`，但專案又另有未文件化的 `dev shell-init completion ...`，且兩者都沒有被 package manager 安裝或測試。現有 shell wrapper 以 command substitution 捕捉整段 stdout，會讓裸跑 `dev` 看不到 stdout TTY、從 TUI 退化成 plain list。
+目前 `dev done --ff` 把 integration、runtime close、worktree removal 與 task persistence 綁在同一個 invocation；若 agent 正站在目標 worktree/runtime 內，關閉 workspace 會先殺掉 caller，而從其他 checkout 執行 `git worktree remove --force` 又確實能刪除 active process 的 cwd。這次已觀察到 Codex 在 `dev-cli/feat/copy-metadata-and-nested-wt` 自刪：Git worktree registration 與 branch 消失，但 Herdr `w2D/p1` 仍顯示 idle agent；SpecStory 隨後把原 path 重建成只含 `.specstory/` 的非 Git 空殼，畫面仍能動，卻已出現 `failed to reload config: No such file or directory`。這是 degraded orphan/zombie runtime，不是成功 cleanup。
 
-目標是把 `dev-cli` 以 public MIT 專案從 `v0.1.0` 開始發布；macOS 可用 `brew install daviddwlee84/tap/dev-cli` 安裝 executable `dev` 並立即取得 bash/zsh/fish completion，Linux 則沿用 dotfiles 的版本鎖定 `go_tools`。同時把 `dev` 納入 dotfiles 的預設開發工具、completion cache、shell directory-change integration 與工具文件，而且不讓 Formula 在安裝期寫入使用者的 agent skill 目錄。
+同時，active SpecStory transcript 會在 agent 每一輪後繼續寫入；agent 無法在自己仍運行時 commit「最後版本」，也不能安全 commit後刪除自己的 cwd。正確模型必須拆成：
+
+1. active agent **prepare/arm**，不 stage moving transcript、不關自己；
+2. `specstory run` 返回後的外部 supervisor **finalize** exact UUID transcript並建立最後 artifact commit；
+3. 外部 coordinator **integrate**，再 **retire** runtime/worktree/branch。
+
+本次採 backward-compatible MVP：保留 task 的 `hot/warm/cold/done`，把 `done` 解釋為 MERGED（cleanup可能仍 pending），RETIRED則以 live reality推導並在完成後刪除 task。完整 orthogonal task phase/schema與 PR API query延後，避免 v0.1 舊 binary permissive decode後 silent抹掉新 task欄位。
+
+另外新增 `dev git` transaction helpers，但不複製 oh-my-zsh 的純縮寫 alias：只封裝需要 preflight、receipt、exact stash OID與hook-aware recovery的複合操作。
 
 # Implementation plan
 
-## 1. 先在 `dev-cli` 收斂 shell integration 與 completion
+## 1. 建立共用 retirement safety/service
 
-- 在 `internal/cli/shell.go` 與 `internal/cli/app.go` 改寫 bash/zsh/fish wrapper：
-  - 每次呼叫建立權限受限的暫存檔，透過 `DEV_SHELL_CD_FILE` 傳給真正的 `dev` process；binary 的 stdout/stderr 直接連到原 terminal，不再包在 `$()` 內。
-  - `App.cdDirective` 在該環境變數存在時只把「原始目錄路徑」寫入檔案；wrapper 成功執行後讀取路徑並以 `cd -- "$path"` 切換，不 `eval` 檔案內容；未載入 wrapper 時保留目前輸出 shell-quoted `cd ...` 的行為。
-  - 保留 `DEV_SHELL_INIT=1`、child exit status、即時 stdout/stderr、pipe 行為與可靠 cleanup；確認裸 `dev`/`dev tui` 仍看到真實 TTY。
-- 移除 `newShellInitCmd` 下重複且未文件化的 `shell-init completion` 子命令；唯一公開介面採 Cobra 慣例：`dev completion bash|zsh|fish`（Cobra 現有 PowerShell 可保留，但本次安裝範圍為三種 shell）。
-- 新增 `internal/cli/completion.go`，以可重用的 `ValidArgsFunction` / `RegisterFlagCompletionFunc` 接到既有 command constructors：
-  - task：`park`、`resume`、`done`，重用 `internal/task.Store.List`，以穩定 task ID 為值並提供 title/state/repo/branch 描述；
-  - repo：`start`、`repo open/sync` 與適用的 `--repo`，重用 `internal/repo.Discover`、`Repo.Display`、`resolveRepoRef`；
-  - worktree：`wt open/rm`，重用 `repoContext`、`internal/gitx.Worktrees`，排除 detached，且 `rm` 排除 main checkout；
-  - embedded/enum：`help` 重用 `internal/help.List`、`gitignore` 重用 `internal/ignore.BundledNames`，以及 `--runtime`、stats `--source` 等有限值；domain 值回傳 `ShellCompDirectiveNoFileComp`，真正的 path arguments 維持 filesystem completion。
-  - completion 只讀本機 config/task/repo/worktree/embedded data；不在每次 Tab 查 forge/network、collect runtime/status 或寫入 cache。
-- 修正 `internal/cli/root.go` 的 completion 載入時機：hidden `cobra.ShellCompRequestCmd` 進入 root `PersistentPreRunE` 時，目標 command 的 persistent flags（尤其 `--config`）尚未由 `getCompletions` parse，因此先略過一般 `App.Load`，由 dynamic callback 在 flags parse 後 lazy-load。載入/探索失敗時靜默回傳無 dynamic candidates，仍保留 Cobra 的 command/flag 靜態 completion；執行 `dev completion <shell>` 產生腳本時也不依賴使用者 config。
-- 在 `internal/cli/cli_test.go`（必要時拆出 focused test file）使用既有 `NewRootCommandWithIO` harness 測試：三種 script generation、移除 duplicate path、直接呼叫 `__complete` 的 task/repo/worktree/help/gitignore/enum candidates、`--config` 生效、壞 config 仍能補 command/flag、NoFileComp directive；另以 subprocess shell tests 驗證 wrapper 的 stdout/stderr、exit status、directory change、cleanup 與 TTY-preserving 行為。
-- 跑 `make skill-sync` 更新 `internal/skill/dev-cli/references/commands.md`，再以 `make skill-check` 防止 command tree drift。
+- 新增 `internal/retire/`，提供可注入、可重試的 `ResolveTarget`、`Preflight`、`CloseAndWait`、`Retire` service；target可由 task ID或 explicit/current worktree path解析，讓未被 `dev start`追蹤的 worktree也能安全 retire。
+- 重用：
+  - Git identity/registration：`internal/gitx.Discover`、`Worktrees`、`WorktreeFor`、`StatusOf`、`RemoveWorktree`、`PruneWorktrees`；
+  - 路徑 canonical/containment：`internal/pathx`與 `filepath.Rel`，不再用 raw string prefix；
+  - worktree dirty/removal policy：`internal/wt.DirtyCheck`與 `Manager.Remove`；
+  - transaction pattern：`internal/catalog.Store.WithLock`、atomic rename，以及 `internal/experiment` 的 intent→revalidate→apply→finalize/reconcile模式。
+- Runtime observation改成 pane-aware snapshot：
+  - `internal/runtime.Session`（或新 `WorkspaceSnapshot`）加入 pane ID、pane cwd、per-pane agent/session metadata；
+  - Herdr沿用 `workspace list` + `pane list`並保留 `working/idle/done/blocked/waiting/unknown`；
+  - tmux改用 `list-panes -a`聚合 `TMUX_PANE`、session與 `pane_current_path`，不能只看 `session_path`；
+  - 讀取 `HERDR_WORKSPACE_ID`/`HERDR_PANE_ID`與 `TMUX_PANE`判斷 caller context；persisted `RuntimeHandle`只當 hint，每次重新依 canonical target path解析所有 covering sessions。
+- 所有 dev-mediated destruction共用不可 bypass的 safety gate：
+  - caller cwd在 target內、caller workspace/pane覆蓋 target、runtime含 target外其他 panes、或 path/branch registration不吻合時拒絕；
+  - `working`、`blocked`、`waiting`永遠拒絕，沒有 `--force`；
+  - `unknown`/空 status預設 fail closed，只有 **target外部** caller可加 `--close-unknown`；runtime list失敗只有外部 `--assume-no-runtime`可明確承擔；
+  - close所有 eligible sessions後poll fresh runtime list直到 handle/path消失；timeout/close error時不移除 worktree；
+  - close成功後再次檢查 caller、live panes、dirty state、Git operation、worktree→branch identity與merge ancestry，再以非 force remove；already-absent registration可prune後idempotently繼續。
+- 在 `internal/gitx.RemoveWorktree`再加最底層 cwd containment guard；`park --cold`、`wt rm`、`sweep`、TUI actions與 `wt.Manager.Remove`全部路由同一 service，防止任何 `dev` command重現截圖中的 self-delete。Raw `git worktree remove --force`仍可繞過，bundled skill必須明確禁止。
 
-## 2. 準備 public `v0.1.0` source release
+## 2. 拆分 `done`（integration）與 `retire`（cleanup）
 
-- 新增專案層 MIT `LICENSE`。
-- 更新 `README.md`：Homebrew 與版本化 `go install` 安裝、`dev completion bash|zsh|fish` 手動產生方式、shell-init、以及明確 opt-in 的 `dev skill install`；說明 Formula 不會修改 `~/.agents/skills`。
-- 將 `Makefile` 的 `VERSION` 改為可由 `VERSION=v0.1.0 make build` 覆寫，並測試 injected `internal/cli.Version` 會由 `dev --version` 顯示；Homebrew source archive 沒有 `.git`，不能依賴 `git describe`。
-- 新增最小 `.github/workflows/release.yml`：只在 `v*` tag 觸發，執行 format/vet/test/skill-check/E2E、以 tag 注入版本並 assert `dev --version`，成功後用 GitHub CLI 建立 generated-notes Release；不加入 GoReleaser、binary matrix 或跨 repo PAT automation，Formula 仍沿用 `translate` 的 source-build 慣例。
-- 本地全部驗證通過後，另行確認再建立 public `github.com/daviddwlee84/dev-cli`、設定 `origin`、推 branch/PR。合併後再次確認，才在 exact merged commit 建立並 push immutable `v0.1.0` tag；若有錯誤發布新版本，不移動既有 tag。下載公開 archive 並計算 SHA-256，供 formula 使用。
+- 重構 `internal/cli/done.go`：
+  - `dev done [task] --ff [--push]`只做 branch/worktree revalidation、必要 rebase、canonical base checkout的 `merge --ff-only`、可選push，然後先persist `Task.State=done`；不關runtime、不移除worktree、不刪branch；已被base包含時idempotently修復為done。
+  - direct task的 `dev done`只標記done；cleanup同樣交給retire。
+  - `--keep-worktree`保留為deprecated no-op warning（新語意永遠keep）；`--delete-branch`拒絕並指向 `dev retire`，不再把 integration與destruction混用。
+  - `--pr`維持push/create PR並顯示 READY FOR REVIEW，不新增forge query；外部merge後用 `dev done --merged --base-ref <ref>`驗證 ancestry再標done。Squash merge只接受明確 `--confirm-squash <commit>` operator attestation，驗證該commit確實在base內並清楚標示非內容證明。
+- 新增 `internal/cli/retire.go`：
+  - `dev retire [task-or-path] [--close-unknown] [--assume-no-runtime] [--delete-branch]`只接受done task或已證明contained的explicit worktree；從target外執行；
+  - preflight artifact intents→resolve all runtime sessions→self/mixed/agent-state guard→close→wait absent→revalidate→non-force worktree remove/prune→普通 `git branch -d`（optional；remote branch deletion不在MVP）→刪 task→輸出 RETIRED；
+  - 每一步從 live state推導，partial crash可由重跑reconcile，不因stored handle錯誤刪到其他session。
+- 修改 `internal/cli/sweep.go`：done且仍有 runtime/worktree/branch時不再直接reap task，而是報 `cleanup pending: dev retire …`；`sweep --apply`呼叫同一 retirement service。只有已真正retired的stale task record才可reap。
+- `dev ls --json`僅 additive新增derived `milestone`、`cleanup_pending`、`artifact_status`、`retirement_blockers`；不改既有 `state`欄位/值。Text/TUI顯示 MERGED · CLEANUP PENDING，而不是把done誤說成已清空。
 
-## 3. 在既有 `daviddwlee84/homebrew-tap` 加 Formula
+## 3. Versioned artifact intent與 post-writer finalizer
 
-- 先在 `/usr/local/Homebrew/Library/Taps/daviddwlee84/homebrew-tap` 建 feature branch，再新增 `Formula/dev-cli.rb`，沿用 `Formula/translate.rb`：
-  - class `DevCli`、public homepage/tag archive URL、實測 SHA-256、MIT、`head` main、`depends_on "go" => :build`；
-  - 直接 `go build` `./cmd/dev` 到 `bin/"dev"`，以 `-X github.com/daviddwlee84/dev-cli/internal/cli.Version=v#{version}` 注入版本；絕不呼叫會執行 `dev skill install` 的 `make install`；
-  - 使用 Homebrew 官方 Cobra 形式 `generate_completions_from_executable(bin/"dev", shell_parameter_format: :cobra)`，自動安裝 bash/zsh/fish completion；
-  - test block 驗證 `--version`、`--help` 與 completion script 可生成。
-- 更新 tap `README.md` 的安裝與人工升版順序（publish immutable tag → checksum → bump URL/SHA → lint/install/test → publish tap），保持與 `translate` 一樣不需要 cross-repo secret。
-- formula 本地 build-from-source、audit、test 與 completion keg 檢查通過後，另行確認才 push/merge tap；再從 published tap 做 fresh install 驗證。
+- 新增 `internal/artifact/`（Intent、strict versioned Store、Service、scanner/committer hooks），runtime資料放 `<state_dir>/artifact-intents/v1/`，舊 dev不會讀寫；使用cross-process lock、atomic temp+rename、sanitized failure code與commit receipt。
+- 新增 commands：
+  - `dev prepare [task-or-path] --session <provider:uuid> [--plan <exact-path>] [--allow-large]`：要求產品code已commit、index空、無rebase/merge conflict；canonicalize worktree/common-dir/branch/base/HEAD；記錄exact session UUID、可選plan、run ID、expected HEAD/index與runtime context；只arm intent，不stage transcript、不關session、不integrate/remove。
+  - `dev artifact observe-session-end`：供Claude SessionEnd hook使用，只用hook的 `session_id/cwd/transcript_path/reason`更新已存在intent；沒有matching armed intent即no-op，不能finalize。
+  - `dev artifact finalize --intent <id>`：只能在post-writer/external context執行；lock/revalidate後解析 `.specstory/history/*.md` **固定preamble**的完整UUID，不依filename/mtime，也不接受正文中引用的UUID；限制為expected repo下regular file。
+- Finalizer quiescence/security：
+  - wrapper已返回是主要證明；direct/IDE fallback需JSONL與Markdown size/mtime/hash在bounded settle interval穩定；active mutation就blocked/retry；
+  - exact transcript與explicit plan以外一律不stage，其他Codex/Claude sessions保持原狀；
+  - 掃描/修復不印secret bytes；呼叫repo/installed `agent-history-hygiene` exact-path redactor與staged scan，scanner缺失或失敗時fail closed、只unstage自身paths、保留intent與working bytes；
+  - scan後再次確認staged blob hash等於stable final hash，再自動 commit同一feature branch，加入 `Agent-Artifact-Session:`與 `Dev-Artifact-Intent:` trailers；commit成功但intent更新crash時以trailers reconcile，避免重複commit；
+  - artifact commit要求同一 branch/change series，不承諾同一 product commit，也絕不自動amend已push/shared commit。
+- Large-file policy：tracked的大型 transcript可在scan後finalize；新untracked transcript >2MiB需prepare時 `--allow-large`，只warning/require acknowledgement，不截斷、不靜默拆分。
+- `.specstory/statistics.json`視為derived noise：從dev-cli index移除並ignore；finalizer永不把它當code/artifact，writer結束後restore/remove其dirty變化。修正hygiene scripts：UUID-exact選取、自動模式exact-path staging、statistics不算code、scanner預設不輸出match內容；mtime newest只保留為明確標示的interactive heuristic。
 
-## 4. Formula 公開可用後再接入 chezmoi dotfiles
+## 4. Dotfiles post-SpecStory boundary
 
-- `dot_config/homebrew/Brewfile.tmpl`：保留既有單一 `tap "daviddwlee84/tap"`，在 `translate` 旁新增 Darwin 的 `brew "daviddwlee84/tap/dev-cli"`；沿用現有 `trust_bundle_taps`，不新增 trust task，也不改 brew-bundle 的 profile/global skip semantics。
-- `dot_ansible/roles/go_tools/defaults/main.yml`：新增 `github.com/daviddwlee84/dev-cli@v0.1.0` / binary `dev`，讓既有 role 在 Linux 安裝到 `~/.local/bin`、macOS 避免 shadow Homebrew；同步修正只提 `translate` 的註解/升級說明，不另改 playbook wiring。
-- `scripts/generate_completions.sh`：新增 `regen dev "completion zsh" "completion bash"`。Homebrew completion 讓一般 brew 使用者安裝後立即可用；chezmoi cache 同時涵蓋 Linux 並統一兩平台。同步更新 `.chezmoiscripts/global/run_after_50_generate_completions.sh.tmpl` 與 completion 文件的既有 drift：加入目前漏列的 `translate` 與新 `dev`，總數 16、兩 shell stat checks 32。
-- 新增 `dot_config/shell/39_dev.sh`，沿用 `dot_config/shell/37_worktrunk.sh`：`dev` 不存在即靜默 return，依 `$ZSH_VERSION` / `$BASH_VERSION` 執行 `command dev shell-init <shell>`，不依 `$SHELL`、不加 primary-shell gate；只有第 1 步的 TTY-safe wrapper 完成後才啟用。Fish 由 Homebrew 自動 completion 與手動 shell-init command 支援，不塞進目前只共享 bash/zsh 的 layer。
-- 更新 dotfiles 工具 SSOT 與必要文件：
-  - `dot_config/docs/tools/cli-tools.md` 加 `dev`（既有 zsh/Television picker 自動讀取，無需改 picker）；
-  - `README.md`、`docs/this_repo/tool-managers.md`、`docs/this_repo/upgrades.md` 說明 macOS Homebrew / Linux go install 的 ownership 與升級路徑；
-  - `docs/zsh/zsh-completions.md`、`docs/shells/aliases.md` 說明 generated completion 與 directory-changing function；
-  - `dot_agents/skills/chezmoi-dotfiles/SKILL.md.tmpl` 把 `dev` 列為 managed personal CLI，但不誤列成 `~/.dotfiles/bin` script。
-- dotfiles diff/check/docs build 都通過、tap 已公開後，再另行確認 `chezmoi apply` 與 dotfiles push；不在這次需求內更改 lean profile 原本會略過整個 Brew bundle 的政策。
+- 修改 `/Users/david/.local/share/chezmoi/dot_config/shell/22_sesh.sh`：wrapper-managed `specstory run <provider>`啟動時產生/傳入 `DEV_AGENT_RUN_ID`；inner process返回後、在shell/kill/restart處理之前呼叫 `dev artifact finalize --run-id … --writer-stopped`並保留原agent exit status。
+- Restart mode只有finalize成功/無pending intent才啟動下一個writer；blocked intent停止auto-restart並留下shell，避免新session覆蓋舊index/branch。
+- rollout capability check：舊dev沒有artifact command時保持現在plain SpecStory行為，不阻止agent啟動。
+- 在managed Claude `SessionEnd` hook加入快速observer（只mark intent，不做Git/scan/wait）；direct/IDE/中斷wrapper則由外部 `dev artifact finalize`或 `dev sweep --apply`reconcile。
+- 更新dotfiles的 agent-history-hygiene source/tests與相關SpecStory/agent overlay文件；不把finalizer硬綁到所有無SpecStory的agent launch。
 
-## 5. 變更隔離與發布確認
+## 5. 只封裝複合 transaction的 `dev git`
 
-- 三個 repo 各自使用 feature branch並只 stage 本次檔案；任何 push、PR、GitHub repo 建立、tag/Release、tap publish、dotfiles publish 與本機 `chezmoi apply` 都在執行當下再次確認。
-- 目前 `dev-cli` 的 `.specstory`/plan 是 agent artifacts，不加入 ignore、也不一概丟棄。commit 前依 `agent-history-hygiene` 找出本 session 的 transcript 與最新 plan，與 feature diff 一起 stage、掃描 secrets；其他 session artifacts 保持不動。
+- 新增 `internal/cli/git.go` namespace與 `internal/gitx`高階operations；不重做 `gaa`/`gpr`等純縮寫。`dev git setup --print`只輸出可選git/shell alias片段供review，不修改 `~/.gitconfig`或rc。
+- `dev git uncommit`：
+  - preflight Git repo、single-parent HEAD、non-detached、非in-progress operation、預設index無既有staged混合；published HEAD需 `--rewrite-published`明確承擔後續force-with-lease；
+  - atomic保存old commit OID於 checkout-specific `GitDir` receipt，再 `reset --soft HEAD^`；失敗不可被後續cleanup掩蓋。
+- `dev git recommit`：讀per-worktree receipt，以 `git commit -C <old-oid>`完整重用multiline message並正常跑hooks；成功後才刪receipt；HEAD/index drift、object消失或hook failure保留receipt與index供retry。
+- `dev git pull-rebase`：
+  - preflight branch/upstream/unborn/detached/bare與任何merge/rebase/sequencer state；
+  - 有local tracked+untracked變更時建立唯一tagged stash、立刻capture **OID**與原index；以 `-c rebase.autoStash=false pull --rebase`避免雙重autostash；成功後 `stash apply --index <oid>`；只在restore完整成功且重新找到同OID reflog entry時drop，否則保留exact stash並回報，不使用裸 `pop`/`stash@{0}`；
+  - no-change時絕不碰既有stash；active artifact writer造成restore collision時fail並保留stash。
+- `dev git amend-all`：
+  - preflight HEAD、non-detached、conflict/in-progress operation與published rewrite acknowledgement；預設執行真正 `git add -A`後 `git commit --amend --no-edit`，**不使用 `--no-verify`**；
+  - 若將包含agent artifacts但repo沒有可偵測scanner stack，需 `--allow-unscanned-artifacts`；hooks修改/失敗時不自動retry，保留index並列出狀態；
+  - `--exclude-agent-artifacts`可選，以explicit pathspec排除 `.specstory/history`、statistics、`.claude/plans`等並列出排除檔；預設仍依使用者決策包含並交給pre-commit/redactor。
+- completion/docs包含上述commands/flags；dotfiles不新增純縮寫，只可在 `setup --print`示例現有 `gundo`等如何改指向安全command。
 
-# Verification
+## 6. 截圖 regression與測試
 
-1. **Product tests**：`gofmt -l .`、`go vet ./...`、`go test -race ./...`、`make skill-sync && make skill-check`、`./scripts/e2e.sh`；`VERSION=v0.1.0 make build` 後 assert `./dev --version`。
-2. **Completion**：生成 bash/zsh/fish scripts；用 `dev __complete ...` 驗證 command/flags、task/repo/worktree/help/gitignore/enums、描述與 directives；壞 config/空 state 不應噴候選錯誤或觸網。新 bash/zsh session 實際按 Tab，Homebrew fish completion 檔亦存在。
-3. **Shell wrapper**：在 bash/zsh（fish 可用時一併）source 產生內容，驗證普通輸出與 stderr 即時傳遞、non-zero status、runtime `none` 可改 parent `$PWD`、pipe 維持 plain output；以真 PTY 裸跑 `dev` 能進 dashboard 並正常退出。
-4. **Homebrew**：`ruby -c`、`brew style`、`brew audit --strict --online`、`brew install --build-from-source`、`brew test`；確認 `dev --version == v0.1.0`、keg/link 含 zsh `_dev`、bash `dev`、fish `dev.fish`，且 `~/.agents/skills` 未被建立/修改。tap publish 後再做 fresh `brew update && brew install daviddwlee84/tap/dev-cli`。
-5. **Dotfiles**：`shellcheck`、`bash -n`、`zsh -n`、`chezmoi cat ~/.config/homebrew/Brewfile`、`chezmoi diff`、`just check`、`uv run mkdocs build --strict`；核准 apply 後驗證 macOS `command dev` 來自 Homebrew、Linux pin 可安裝、zsh/bash completion cache 存在、`type dev` 為 function、TUI 與 parent-directory change 都正常，最後 `chezmoi status/diff` 只含預期差異。
+- Safety zombie regression：helper process `chdir`進temp linked worktree；從另一checkout嘗試dev remove/retire（含force-like input），assert refusal、Runtime.Close/RemoveWorktree未被呼叫，helper仍能 `getcwd`、讀config/skill、spawn child；raw Git bypass只在文件說明，不由test真的銷毀caller。
+- Runtime/retire matrix：cwd與caller workspace/pane containment、canonical/symlink、Herdr/tmux caller IDs、stale handle、多sessions、mixed workspace、working/blocked/waiting、unknown flag、list error、delayed close、timeout、already-missing/prunable、partial retry、ordinary branch delete。
+- Artifact matrix：exact preamble UUID勝過mtime/正文引用、foreign Codex不stage、statistics不算code、writer mutation、large tracked/untracked policy、scanner missing/failure無secret輸出、trailers/reconcile、SessionEnd只observe、wrapper child exit後才finalize且保留status。
+- Git helpers：root/merge/detached/published/index-mixed；multiline message receipt/recommit；shared-worktree concurrent stash與existing stash；pull/restore conflicts與untracked collision；amend hooks success/fix/failure、artifact include/exclude與no-HEAD preflight。
+- 更新現有 `scripts/e2e.sh`：`done --ff`驗證worktree仍在，外部 `retire`才remove；另加artifact fake-writer/finalizer流程。全套 `gofmt`、vet、race tests、skill-sync/check、Linux/macOS CI與真Herdr read-only smoke。
+
+## 7. 文件與deferred roadmap
+
+- 更新 `README.md`、help topics、bundled `dev-cli` skill與 `references/task-lifecycle.md`/`runtime-herdr.md`/`worktree-ownership.md`；新增 agent retirement runbook，明確說明 branch可在任意worktree操作，但 physical cleanup必須由target外coordinator執行。
+- 把截圖症狀原文（`failed to reload config: No such file or directory`）與「SpecStory重建只有 `.specstory` 的非Git空殼」寫入 regression/runbook；不聲稱dev能阻止 raw Git故意繞過。
+- 在既有 `TODO.md`新增 deferred items：full orthogonal task schema/migration、forge PR merge-status/squash proof；不為active sprint另建平行roadmap。
+- `make skill-sync`更新 generated command reference並由CI檢查。
+
+# Current-worktree dogfood / safe close procedure
+
+這個目前running session是在舊wrapper啟動後才規劃新功能，因此即使本次更新dotfiles，也不能retrofit它的outer command；第一次示範採 **manual external finalize**，下一個agent session才測全自動wrapper。
+
+1. 在目前 worktree從最新 `main`建立本功能branch；code/tests/docs分開commit，active Claude transcript、statistics與其他Codex transcripts全部保持unstaged。
+2. 完成實作後執行 `dev prepare --session claude:72b5c55e-d964-45cd-b040-cb29d0d7af05 --plan <this-plan> --allow-large`，記下intent ID；不要關 `w10`、不要remove worktree。
+3. 目前Claude正常exit，讓SpecStory完成final render。
+4. target外的main/integration session手動執行 `dev artifact finalize --intent <id> --writer-stopped`；驗證trailers與final transcript commit存在於本功能branch。
+5. 對 current untracked Codex transcript `01a0438b-…`另行確認owner/停止writer並建立獨立intent；絕不與Claude一起 `git add --all`。
+6. 對已self-delete的Codex `w2D/p1`（session `codex:01a043c1-5e2a-74c1-b6e8-10640eda926f`）：先要求agent正常exit；外部finalizer從orphan path按UUID保存final transcript到正確change series/main receipt。Git branch/registration已不存在，不能假裝普通worktree；只有receipt hash覆蓋全部recognized artifacts且目錄無其他內容後，才可關 `w2D`並逐項刪除residual `.specstory` shell，否則保留現場。
+7. 外部coordinator重新抓取當下topology（目前 `main=086dbcd`、比 `origin/main` ahead 2；completion branch落後main 2），將finalized feature branch rebase/FF進最新main並push；不能沿用舊snapshot假設。
+8. 從target外執行 `dev retire <path/task>`；確認runtime已absent、worktree clean/contained、final artifact commit已在main後，以non-force remove及普通 `branch -d`完成。任何check失敗即停止，不進下一個destructive step。
+
+# Verification acceptance
+
+- 所有dev-mediated self-close/self-remove在caller/live agent下fail closed；截圖中的Git-absent/Herdr-alive/artifact-shell狀態能被report/reconcile，不被誤判RETIRED。
+- Active writer期間沒有final transcript commit；writer exit後exact UUID transcript只commit一次，foreign transcripts與statistics不被誤stage，scanner failure零destruction。
+- Local FF與PR流程都能到MERGED而保留runtime/worktree；只有外部retire能完成RETIRED。
+- `dev git` failure paths不掩蓋status、不套錯共享stash、不跳hooks；receipt與stash在任何partial failure下可retry。
+- Current manual dogfood完成後，main/remote包含final artifact receipt，Herdr workspace已外部關閉，worktree/branch以non-force安全移除；下一個SpecStory session驗證automatic post-writer finalization。

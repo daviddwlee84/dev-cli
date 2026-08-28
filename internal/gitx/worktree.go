@@ -2,7 +2,11 @@ package gitx
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strings"
+
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 )
 
 // Worktree is one entry of `git worktree list --porcelain`.
@@ -128,12 +132,23 @@ func MoveWorktree(ctx context.Context, dir, source, destination string) error {
 // RemoveWorktree removes a linked worktree checkout. It never deletes the
 // branch — that is a separate, explicit decision.
 func RemoveWorktree(ctx context.Context, dir, path string, force bool) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("resolve current directory before removing worktree: %w", err)
+	}
+	inside, err := pathx.Contains(path, cwd)
+	if err != nil {
+		return fmt.Errorf("compare current directory with worktree %s: %w", path, err)
+	}
+	if inside {
+		return fmt.Errorf("refusing to remove worktree %s while the caller is inside it", path)
+	}
 	args := []string{"worktree", "remove"}
 	if force {
 		args = append(args, "--force")
 	}
 	args = append(args, path)
-	_, err := run(ctx, dir, args...)
+	_, err = run(ctx, dir, args...)
 	return err
 }
 

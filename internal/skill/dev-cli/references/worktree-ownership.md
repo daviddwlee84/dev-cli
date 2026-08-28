@@ -7,7 +7,7 @@ a new checkout lacks dependencies, env files, or launcher backend state.
 
 | Change boundary | Owner | Where | Lifetime |
 |---|---|---|---|
-| Durable feature/fix/experiment/handoff | **`dev`** | `paths.worktree_path` | until explicit park/done/sweep cleanup |
+| Durable feature/fix/experiment/handoff | **`dev`** | `paths.worktree_path` | until external `dev retire` |
 | Harness-owned turn-scoped isolation | Claude Code | `.claude/worktrees/` | managed by that harness; do not assume artifact relocation |
 | Runtime workspace/panes | Herdr | per-host runtime | until explicitly closed |
 | Rendered agent history | SpecStory | process launch checkout | until committed/removed with that checkout |
@@ -114,14 +114,16 @@ reports missing tools or failed setup without deleting the usable checkout.
 
 ## Cleanup
 
-- `dev wt rm <branch>` removes only the checkout; branch survives.
-- `dev park` closes runtime, keeps worktree/branch.
-- `dev park --cold --push` closes runtime and removes the pushed worktree.
-- `dev done --ff` integrates and cleans runtime/worktree.
+- `dev wt rm <branch>` removes only the checkout after external runtime safety checks; branch survives.
+- `dev park` records WARM; when called from its own runtime it leaves that runtime alive for normal exit.
+- `dev park --cold --push` closes eligible runtime state and removes the pushed worktree only from outside.
+- `dev done --ff` integrates and records MERGED; runtime/worktree/branch survive.
 - `dev done --pr` leaves everything active for review.
-- `dev sweep` reports first; `--apply` is separate.
+- `dev retire` is the only complete close/wait/remove/reap path.
+- `dev sweep` reports first; `--apply` routes cleanup through retire.
 
 Bare `dev done` on a TTY classifies dirty content against the base before
-offering commit-all or discard-all; unique discard requires `DROP`. Direct
-`dev wt rm` still requires explicit force for a dirty checkout. Herdr `done` is
-not a cleanup signal, and `--cold --keep-session` is rejected.
+offering commit-all or discard-all; unique discard requires `DROP`. Dirty
+checkout removal may require explicit force, but caller/runtime safety is never
+bypassable. Herdr `done` is not a cleanup signal, and `--cold --keep-session` is
+rejected. Never raw-force-remove an agent's cwd.

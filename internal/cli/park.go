@@ -4,22 +4,26 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	retirement "github.com/daviddwlee84/dev-cli/internal/retire"
 	"github.com/daviddwlee84/dev-cli/internal/task"
-	"github.com/daviddwlee84/dev-cli/internal/wt"
 	"github.com/spf13/cobra"
 )
 
 func newParkCmd(app *App) *cobra.Command {
 	var (
-		next   string
-		note   string
-		wip    bool
-		push   bool
-		cold   bool
-		keepRT bool
+		next            string
+		note            string
+		wip             bool
+		push            bool
+		cold            bool
+		keepRT          bool
+		closeUnknown    bool
+		assumeNoRuntime bool
+		timeout         time.Duration
 	)
 	cmd := &cobra.Command{
 		Use:   "park [task]",
@@ -119,30 +123,37 @@ machine, which is exactly what parking needs to support.`,
 			}
 
 			rt := runtimeForTask(app, t)
-			if !keepRT && t.RuntimeHandle != "" {
-				handle := t.RuntimeHandle
-				resolved, closed, closeErr := closeTaskRuntime(ctx, app, t, checkout)
-				rt = resolved
-				if closeErr != nil {
-					if cold {
-						return fmt.Errorf("could not close %s session %s; refusing cold cleanup: %w", rt.Name(), handle, closeErr)
-					}
-					app.warnf("could not close the runtime session: %v", closeErr)
-				} else if closed {
-					fmt.Fprintf(app.Out, "   closed     %s session %s\n", rt.Name(), handle)
-				}
-			}
-
 			if cold && t.WorktreePath != "" {
-				m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
-				if err := m.Remove(ctx, wt.RemoveRequest{
-					RepoPath: t.RepoPath, Path: t.WorktreePath,
-				}); err != nil {
+				if err := ensureArtifactsFinalized(app, t.WorktreePath); err != nil {
+					return err
+				}
+				if err := safeRemoveWorktree(ctx, rt, t.RepoPath, t.WorktreePath, false,
+					closeUnknown, assumeNoRuntime, timeout); err != nil {
 					return err
 				}
 				// The path is cleared, but the branch stays: that is what makes
 				// the task reconstructible rather than lost.
 				t.WorktreePath = ""
+				clearTaskRuntime(t)
+			} else if !keepRT && t.RuntimeHandle != "" {
+				inspection, inspectErr := retirement.Inspect(ctx, rt, checkout, retirement.Options{})
+				if inspectErr != nil {
+					return inspectErr
+				}
+				if inspection.CallerContained {
+					app.warnf("runtime left active because the caller is inside it; exit normally, then let sweep reconcile")
+				} else {
+					closed, closeErr := retirement.CloseAndWait(ctx, rt, checkout, retirement.Options{
+						CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, Timeout: timeout,
+					})
+					if closeErr != nil {
+						return closeErr
+					}
+					if closed.ClosedSessions > 0 {
+						fmt.Fprintf(app.Out, "   closed     %d %s session(s)\n", closed.ClosedSessions, rt.Name())
+					}
+					clearTaskRuntime(t)
+				}
 			}
 			if cold && mode == task.ModeBranch {
 				// Free the canonical checkout for other work. The branch remains
@@ -180,6 +191,9 @@ machine, which is exactly what parking needs to support.`,
 	f.BoolVar(&push, "push", false, "push the branch so another machine can pick it up")
 	f.BoolVar(&cold, "cold", false, "go cold: remove the worktree after confirming everything is pushed")
 	f.BoolVar(&keepRT, "keep-session", false, "leave the runtime session open")
+	f.BoolVar(&closeUnknown, "close-unknown", false, "allow external closure of unknown runtime status")
+	f.BoolVar(&assumeNoRuntime, "assume-no-runtime", false, "continue when runtime enumeration fails")
+	f.DurationVar(&timeout, "timeout", 5*time.Second, "maximum time to wait for runtime closure")
 	cmd.ValidArgsFunction = completeTasks(app, task.Hot, task.Warm)
 	return cmd
 }

@@ -264,11 +264,9 @@ func LastCommit(ctx context.Context, dir string) (unix int64, subject string, er
 	return unix, subj, nil
 }
 
-// WipCommit stages everything and records a checkpoint commit.
-//
-// A checkpoint commit is deliberately preferred over `git stash`: a stash is
-// invisible in the log, easy to forget, and cannot be pushed — so it can never
-// travel to another machine, which is exactly what parking a task needs.
+// WipCommit stages non-agent product work and records a checkpoint commit.
+// Moving transcripts/plans are deliberately excluded: their exact final bytes
+// belong to the post-writer artifact finalizer, never an in-process checkpoint.
 func WipCommit(ctx context.Context, dir, message string) (bool, error) {
 	st, err := StatusOf(ctx, dir)
 	if err != nil {
@@ -281,13 +279,31 @@ func WipCommit(ctx context.Context, dir, message string) (bool, error) {
 		return false, &Error{Args: []string{"commit"}, Dir: dir,
 			Stderr: "checkout has unmerged paths; resolve the conflict before parking"}
 	}
-	if _, err := run(ctx, dir, "add", "--all"); err != nil {
+	paths, err := ChangedPaths(ctx, dir)
+	if err != nil {
+		return false, err
+	}
+	hasProductWork := false
+	for _, path := range paths {
+		if !IsAgentArtifact(path) {
+			hasProductWork = true
+			break
+		}
+	}
+	if !hasProductWork {
+		return false, nil
+	}
+	args := []string{"add", "-A", "--", "."}
+	for _, pattern := range AgentArtifactPathspecs() {
+		args = append(args, ":(exclude)"+pattern)
+	}
+	if _, err := run(ctx, dir, args...); err != nil {
 		return false, err
 	}
 	if message == "" {
 		message = "wip: checkpoint"
 	}
-	if _, err := run(ctx, dir, "commit", "--no-verify", "-m", message); err != nil {
+	if _, err := run(ctx, dir, "commit", "-m", message); err != nil {
 		return false, err
 	}
 	return true, nil

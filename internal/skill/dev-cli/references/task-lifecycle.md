@@ -44,9 +44,9 @@ checkpoint first when the new task depends on them.
 | State | Git | Runtime | Meaning |
 |---|---|---|---|
 | 🔥 `hot` | worktree + branch | session open | working on it now |
-| 🌤 `warm` | worktree + branch kept | session **closed** | back within days |
+| 🌤 `warm` | worktree + branch kept | normally closed | back within days |
 | ❄️ `cold` | committed and pushed; worktree removed | nothing | paused, reconstructible anywhere |
-| ✅ `done` | merged | nothing | entry survives until swept |
+| ✅ `done` | merged | may still be open | MERGED; external retirement pending |
 
 Only the transitions between them cost anything:
 
@@ -54,15 +54,15 @@ Only the transitions between them cost anything:
         dev start
             │
             ▼
-         🔥 hot ──── dev done ────► ✅ done
-          │  ▲
-   dev park│  │dev resume
-          ▼  │
-        🌤 warm
-          │  ▲
-dev park  │  │dev resume
-  --cold  ▼  │  (rebuilds the worktree)
-        ❄️ cold
+         🔥 hot ── prepare/exit/finalize ──► READY
+          │  ▲                                  │
+   dev park│  │dev resume                       │ dev done
+          ▼  │                                  ▼
+        🌤 warm                             ✅ done / MERGED
+          │  ▲                                  │
+dev park  │  │dev resume                        │ external dev retire
+  --cold  ▼  │  (rebuilds the worktree)          ▼
+        ❄️ cold                              RETIRED (entry removed)
 ```
 
 **A machine should hold roughly three to seven hot tasks.** That is a
@@ -75,17 +75,20 @@ dev park --next "reproduce the token refresh race, then add a regression test"
 ```
 
 This is the move the whole design exists to make safe. It records what to do
-next, closes the runtime session, and leaves the checkout boundary exactly
-where it is. In direct mode that is the current branch; in worktree mode it is
-the branch and linked checkout.
+next and leaves the checkout boundary exactly where it is. An external caller
+may close an eligible runtime; when park is invoked from inside its own runtime,
+it records WARM but deliberately leaves that runtime alive so the agent can exit
+normally. In direct mode the boundary is the current branch; in worktree mode it
+is the branch and linked checkout.
 
 `--next` is the important part. Without it, resuming means re-deriving where
 you were from a diff, which is most of the cost of a context switch. Always
 supply one.
 
-Before parking agent work, sync the exact SpecStory session and stage the exact
-transcript/plan paths. A settled Herdr `done` state is not evidence that history,
-review or commits are complete.
+Before finishing agent work, run `dev prepare` with the exact session UUID and
+exit normally. The post-writer finalizer—not the still-running agent—stages and
+commits the exact transcript/plan. A settled Herdr `done` state is not evidence
+that history, review or commits are complete.
 
 Useful variations:
 
@@ -178,10 +181,10 @@ dev sweep --apply    # act, confirming each change
 It also lists **live sessions no task claims** — the other half of a crowded
 sidebar, and usually the larger half.
 
-`sweep` never deletes uncommitted work, and never acts without `--apply`. The
-reason cleanup usually does not happen is not unwillingness; it is the absence
-of a trustworthy guarantee that the work is recoverable. Reporting first, and
-requiring confirmation, is that guarantee.
+`sweep` never deletes uncommitted work, and never acts without `--apply`. DONE
+tasks with runtime/worktree resources are reported as cleanup pending and routed
+through the same external-only retirement safety service; their records are not
+reaped first.
 
 ## Integration
 
@@ -205,15 +208,22 @@ discard all changes, or cancel before choosing FF/PR. Unique content requires
 typing `DROP`; scripts use `--dirty=commit --message ...` or the deliberately
 destructive `--dirty=discard --yes`. Ignored files are never discarded. If an
 active writer changes the checkout during confirmation or immediately after a
-commit, cleanup stops and the command must be rerun after that writer exits.
+commit, integration stops and the command must be rerun after that writer exits.
 
-For branch/worktree tasks, non-interactive `dev done` without `--ff`/`--pr`
-remains report-only. Direct tasks still finish without an integration mode.
-Conflicted checkouts always require manual resolution. `--delete-branch` only
-removes a branch git agrees is fully contained in the base. `dev done --ff` integrates, closes
-the runtime and removes the worktree unless `--keep-worktree` is explicit.
-`dev done --pr` only publishes/opens review: task, runtime and worktree remain
-active. "Merged" is not always "finished", so branches survive by default.
+For branch/worktree tasks, non-interactive `dev done` without an integration
+mode remains report-only. Direct tasks still finish without one. Conflicted
+checkouts always require manual resolution.
 
-Cleanup is never automatic from agent lifecycle state. `dev sweep` remains
-report-first and changes nothing without `--apply`.
+`--ff` integrates and records DONE/MERGED but always leaves runtime, worktree
+and branch intact — cleanup belongs to `dev retire`. `--pr` only publishes and
+opens review; after a commit-preserving external merge use
+`dev done --merged --base-ref <ref>`. Squash requires explicit
+`--confirm-squash <commit>` attestation. `--delete-branch` and `--keep-worktree`
+are deprecated on `done`: the branch is deleted only by
+`dev retire --delete-branch`, and only when git agrees it is fully contained in
+the base. "Merged" is not always "finished", so branches survive by default.
+
+Cleanup is never automatic from agent lifecycle state. Run `dev retire` from a
+different checkout/runtime; it closes eligible sessions, waits for release,
+revalidates Git, then removes without force. Read `agent-retirement.md` before
+retiring an agent-owned checkout.

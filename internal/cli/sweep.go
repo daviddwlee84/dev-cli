@@ -11,8 +11,8 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
+	retirement "github.com/daviddwlee84/dev-cli/internal/retire"
 	"github.com/daviddwlee84/dev-cli/internal/task"
-	"github.com/daviddwlee84/dev-cli/internal/wt"
 	"github.com/spf13/cobra"
 )
 
@@ -149,17 +149,12 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 			reason: reason + ", clean and pushed",
 			action: fmt.Sprintf("go cold: remove %s (branch and remote keep the work)", config.Contract(r.Checkout)),
 			apply: func() error {
-				taskRT := runtimeForTask(app, t)
 				if t.WorktreePath != "" {
-					resolved, _, err := closeTaskRuntime(ctx, app, t, t.WorktreePath)
-					if err != nil {
-						return fmt.Errorf("close runtime before cold cleanup: %w", err)
+					if err := ensureArtifactsFinalized(app, t.WorktreePath); err != nil {
+						return err
 					}
-					taskRT = resolved
-					m := &wt.Manager{Cfg: app.Cfg, Runtime: taskRT, Log: app.Err}
-					if err := m.Remove(ctx, wt.RemoveRequest{
-						RepoPath: t.RepoPath, Path: t.WorktreePath,
-					}); err != nil {
+					if err := safeRemoveWorktree(ctx, runtimeForTask(app, t), t.RepoPath, t.WorktreePath,
+						false, false, false, 5*time.Second); err != nil {
 						return err
 					}
 					t.WorktreePath = ""
@@ -170,13 +165,25 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 			},
 		})
 
-	// A done task's entry has served its purpose once the branch is gone.
+	// DONE means integrated; runtime/worktree cleanup is a separate,
+	// externally coordinated retirement step.
 	case t.State == task.Done:
 		out = append(out, suggestion{
 			row:    r,
-			reason: "merged",
-			action: fmt.Sprintf("reap the task entry %s", t.ID),
-			apply:  func() error { return app.Tasks.Delete(t.ID) },
+			reason: "merged, cleanup pending",
+			action: fmt.Sprintf("retire runtime/worktree for %s", t.ID),
+			apply: func() error {
+				if err := ensureArtifactsFinalized(app, checkoutOf(t)); err != nil {
+					return err
+				}
+				target, rt, err := retirementTargetForTask(ctx, app, t)
+				if err != nil {
+					return err
+				}
+				service := &retirement.Service{Runtime: rt, Tasks: app.Tasks}
+				_, err = service.Retire(ctx, retirement.Request{Target: target})
+				return err
+			},
 		})
 	}
 

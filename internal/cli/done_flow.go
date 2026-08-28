@@ -10,7 +10,6 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/task"
-	"github.com/daviddwlee84/dev-cli/internal/wt"
 )
 
 type doneIntegration string
@@ -19,6 +18,7 @@ const (
 	doneIntegrationNone    doneIntegration = ""
 	doneIntegrationFF      doneIntegration = "ff"
 	doneIntegrationPR      doneIntegration = "pr"
+	doneIntegrationMerged  doneIntegration = "merged"
 	doneIntegrationCleanup doneIntegration = "cleanup"
 )
 
@@ -32,13 +32,13 @@ const (
 )
 
 type doneOptions struct {
-	Integration  doneIntegration
-	DirtyPolicy  doneDirtyPolicy
-	Message      string
-	Yes          bool
-	DeleteBranch bool
-	KeepWorktree bool
-	Push         bool
+	Integration   doneIntegration
+	DirtyPolicy   doneDirtyPolicy
+	Message       string
+	Yes           bool
+	Push          bool
+	BaseRef       string
+	ConfirmSquash string
 }
 
 type donePlan struct {
@@ -70,10 +70,13 @@ func runDone(ctx context.Context, app *App, args []string, opts doneOptions) err
 	if _, err := os.Stat(checkout); err != nil {
 		return fmt.Errorf("%s no longer exists — resume the task first", config.Contract(checkout))
 	}
+	if err := ensureArtifactsFinalized(app, checkout); err != nil {
+		return err
+	}
 	mode := t.EffectiveMode()
-	if mode == task.ModeDirect && (opts.Integration != doneIntegrationNone || opts.DeleteBranch || opts.KeepWorktree) {
+	if mode == task.ModeDirect && opts.Integration != doneIntegrationNone {
 		return fmt.Errorf("direct task %s is already on %s; it has no branch/worktree to integrate. "+
-			"Run `dev done` without --ff/--pr/--delete-branch/--keep-worktree", t.Title(), t.Branch)
+			"Run `dev done` without --ff/--pr/--merged", t.Title(), t.Branch)
 	}
 	base := t.Branch
 	if mode != task.ModeDirect {
@@ -105,8 +108,9 @@ func runDone(ctx context.Context, app *App, args []string, opts doneOptions) err
 	if mode != task.ModeDirect && opts.Integration == doneIntegrationNone && !interactive {
 		renderDonePreflight(app, t, base, analysis)
 		fmt.Fprintln(app.Out, "Nothing done. Choose an integration mode:")
-		fmt.Fprintln(app.Out, "  dev done --ff    rebase when needed, then fast-forward "+base)
-		fmt.Fprintln(app.Out, "  dev done --pr    push and open a pull request")
+		fmt.Fprintln(app.Out, "  dev done --ff      rebase when needed, then fast-forward "+base)
+		fmt.Fprintln(app.Out, "  dev done --pr      push and open a pull request")
+		fmt.Fprintln(app.Out, "  dev done --merged  verify a branch that was merged outside dev")
 		return nil
 	}
 
@@ -168,6 +172,28 @@ func runDone(ctx context.Context, app *App, args []string, opts doneOptions) err
 		fmt.Fprintln(app.Out, "\nThe branch is under review — run `dev done --ff` or `dev sweep` after it merges.")
 		return nil
 	}
+	if plan.Integration == doneIntegrationMerged {
+		verifyBase := opts.BaseRef
+		if verifyBase == "" {
+			verifyBase = base
+		}
+		proof := t.Branch
+		if opts.ConfirmSquash != "" {
+			proof = opts.ConfirmSquash
+			app.warnf("accepting operator attestation that squash commit %s represents branch %s", opts.ConfirmSquash, t.Branch)
+		}
+		if _, err := gitx.Run(ctx, t.RepoPath, "merge-base", "--is-ancestor", proof, verifyBase); err != nil {
+			return fmt.Errorf("cannot verify %s is contained in %s", proof, verifyBase)
+		}
+		return finishIntegratedTask(ctx, app, t, checkout, verifyBase, opts)
+	}
+	if plan.Integration == doneIntegrationFF {
+		// Idempotent: a branch already in the base needs no rebase, only the record.
+		if _, err := gitx.Run(ctx, t.RepoPath, "merge-base", "--is-ancestor", t.Branch, base); err == nil {
+			fmt.Fprintf(app.Out, "   already merged  %s is contained in %s\n", t.Branch, base)
+			return finishIntegratedTask(ctx, app, t, checkout, base, opts)
+		}
+	}
 	if err := fastForward(ctx, app, t, checkout, base); err != nil {
 		return err
 	}
@@ -225,6 +251,9 @@ func buildDonePlan(p *prompter, t *task.Task, base string, analysis gitx.FinishA
 		plan.Integration = doneIntegrationCleanup
 		return plan, nil
 	}
+	if plan.Integration == doneIntegrationMerged {
+		return plan, nil
+	}
 	if plan.Integration == doneIntegrationPR && analysis.Relation.Contained() && plan.DirtyAction != doneDirtyCommit {
 		return plan, fmt.Errorf("%s is already contained in %s; use --ff to finalize cleanup instead of opening a PR", t.Branch, base)
 	}
@@ -234,7 +263,7 @@ func buildDonePlan(p *prompter, t *task.Task, base string, analysis gitx.FinishA
 			return plan, nil
 		}
 		if !interactive {
-			return plan, errors.New("choose --ff or --pr")
+			return plan, errors.New("choose --ff, --pr or --merged")
 		}
 		choice, err := p.choice("Integration (f=fast-forward, p=PR, q=cancel)", "ff",
 			"fast-forward (f), pull request (p), cancel (q)", map[string]string{
@@ -329,18 +358,13 @@ func finishDirectTask(ctx context.Context, app *App, t *task.Task, checkout stri
 			return err
 		}
 	}
-	runtimeForTask(app, t)
-	if t.RuntimeHandle != "" {
-		if _, _, err := closeTaskRuntime(ctx, app, t, checkout); err != nil {
-			app.warnf("could not close the runtime session: %v", err)
-		}
-	}
 	t.State = task.Done
 	if err := app.Tasks.Save(t); err != nil {
 		return err
 	}
 	fmt.Fprintf(app.Out, "%s %s completed directly on %s\n", task.Done.Icon(), t.Title(), t.Branch)
 	fmt.Fprintln(app.Out, "   no branch or worktree was created or removed")
+	fmt.Fprintln(app.Out, "   MERGED · cleanup pending: run dev retire from outside this runtime")
 	return nil
 }
 
@@ -352,36 +376,12 @@ func finishIntegratedTask(ctx context.Context, app *App, t *task.Task, checkout,
 			fmt.Fprintf(app.Out, "   pushed     origin/%s\n", base)
 		}
 	}
-	rt := runtimeForTask(app, t)
-	if t.RuntimeHandle != "" {
-		handle := t.RuntimeHandle
-		resolved, _, closeErr := closeTaskRuntime(ctx, app, t, checkout)
-		rt = resolved
-		if closeErr != nil {
-			if t.WorktreePath != "" && !opts.KeepWorktree {
-				return fmt.Errorf("merged, but could not close %s session %s; worktree kept: %w", rt.Name(), handle, closeErr)
-			}
-			app.warnf("could not close the runtime session: %v", closeErr)
-		}
-	}
-	if t.WorktreePath != "" && !opts.KeepWorktree {
-		m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
-		if err := m.Remove(ctx, wt.RemoveRequest{RepoPath: t.RepoPath, Path: t.WorktreePath}); err != nil {
-			app.warnf("could not remove the worktree: %v", err)
-		} else {
-			t.WorktreePath = ""
-		}
-	}
-	if opts.DeleteBranch {
-		if err := deleteMergedBranch(ctx, app, t.RepoPath, t.Branch, base); err != nil {
-			app.warnf("%v", err)
-		}
-	}
 	t.State = task.Done
 	if err := app.Tasks.Save(t); err != nil {
 		return err
 	}
 	fmt.Fprintf(app.Out, "%s %s merged into %s\n", task.Done.Icon(), t.Title(), base)
-	fmt.Fprintln(app.Out, "   the task entry stays until `dev sweep --apply` reaps it")
+	fmt.Fprintln(app.Out, "   MERGED · runtime and worktree kept")
+	fmt.Fprintf(app.Out, "   cleanup pending · run `dev retire %s` from outside its workspace\n", t.ID)
 	return nil
 }

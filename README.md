@@ -103,20 +103,29 @@ Azure CLI each enable more and degrade cleanly when absent.
 | State | Git | Runtime | Meaning |
 |---|---|---|---|
 | 🔥 `hot` | worktree + branch | session open | working on it now |
-| 🌤 `warm` | worktree + branch kept | session **closed** | back within days |
+| 🌤 `warm` | worktree + branch kept | session normally closed | back within days |
 | ❄️ `cold` | committed and pushed; worktree removed | nothing | paused, reconstructible anywhere |
-| ✅ `done` | merged | nothing | entry survives until swept |
+| ✅ `done` | merged | may still be open | **MERGED**, waiting for external retirement |
+
+READY/MERGED/RETIRED are derived milestones, not new persisted task states.
+An agent prepares and exits; an external coordinator integrates and retires it.
 
 ```bash
-dev start                                           # interactive managed-task wizard
-dev start api --task "token refresh" --base main   # non-interactive fast path → hot
-dev park --next "add the regression test" --wip    # → warm, session closed
-dev park --cold --push                             # → cold, worktree removed
-dev resume "token refresh"                         # → hot, rebuilt if needed
-dev done                                           # TTY finish wizard
-dev done --ff                                      # → done, integrated + cleaned
-dev done --pr                                      # open review; keep task/worktree
-dev sweep                                          # report what has gone stale
+dev start                                            # interactive managed-task wizard
+dev start api --task "token refresh" --base main     # non-interactive fast path → hot
+dev park --next "add the regression test" --wip      # → warm; self-runtime stays alive until exit
+dev park --cold --push                               # → cold, only from outside the target runtime
+dev resume "token refresh"                           # → hot, rebuilt if needed
+
+dev prepare --session claude:<uuid> --plan .claude/plans/task.md
+dev artifact finalize --intent <id> --writer-stopped # manual post-wrapper proof
+dev done                                             # TTY finish wizard
+dev done --ff                                        # → done/MERGED; runtime + worktree kept
+dev retire "token refresh" --delete-branch           # external close/wait/remove → RETIRED
+
+dev done --pr                                        # open review; keep task/worktree
+dev done --merged --base-ref origin/main             # verify commit-preserving merge
+dev sweep                                            # report drift and cleanup-pending work
 ```
 
 On a TTY, bare `dev done` reports branch ahead/behind and classifies every
@@ -151,6 +160,24 @@ when real parallelism appears. A new worktree starts from committed HEAD; dirty
 main changes are deliberately not smuggled into it, so checkpoint first when
 the parallel task depends on them.
 
+### Guarded Git transactions
+
+`dev git` wraps only operations that need durable receipts or failure recovery;
+it does not replace ordinary Git aliases:
+
+```bash
+dev git uncommit              # soft reset; save old OID/message receipt
+dev git recommit              # commit -C the receipt, then clear it
+dev git pull-rebase           # exact stash OID + --index restore; never stash@{0}
+dev git amend-all             # add -A + amend --no-edit, with normal hooks
+dev git amend-all --exclude-agent-artifacts
+dev git setup --print         # print optional aliases; never edit config
+```
+
+Published commit rewrites require `--rewrite-published`. `amend-all` includes
+agent artifacts by default only when a project scanner is present (or the user
+explicitly accepts `--allow-unscanned-artifacts`).
+
 For automation, `dev start … --json` emits one pure creation object with absolute
 paths and transient runtime facts. Only a newly created first-class Herdr
 worktree with a non-empty exact `root_pane_id` is a launch target; reuse,
@@ -167,9 +194,10 @@ claiming another writer. `--allow-shared-checkout` is only for explicitly
 coordinated disjoint ownership; normal new-worktree creation remains allowed.
 
 Task runtime handles carry their backend name and are validated against live
-checkout coverage before reuse or close. Stale handles reopen on resume; a
-verified close failure stops cold/done/worktree removal before deleting a
-checkout that may still host the runtime.
+checkout coverage before reuse or close. Destructive cleanup additionally
+resolves every covering pane. A caller inside the target, a mixed workspace, or
+a working/blocked/waiting agent always stops retirement; unknown status needs an
+external `--close-unknown`. `dev done` never closes or removes anything.
 
 ### The dashboard
 
@@ -392,7 +420,7 @@ to improvise:
 
 | Kind | Owner | Where | Lifetime |
 |---|---|---|---|
-| Feature, fix, experiment, cross-machine handoff | **`dev`** | `~/Worktrees/<repo>/<slug>` | until `dev done` / `dev sweep` |
+| Feature, fix, experiment, cross-machine handoff | **`dev`** | `~/Worktrees/<repo>/<slug>` | until external `dev retire` |
 | Harness-owned turn-scoped subagent isolation | **Claude Code** | `.claude/worktrees/` (gitignored) | owned by that harness; no history-relocation guarantee |
 | `herdr worktree create` | **not used** — `dev` runs `git worktree add`, then `herdr worktree open --path …` | — | — |
 
@@ -678,8 +706,10 @@ state_dir     = "~/.local/share/dev"        # point at a git repo to sync it
 `state_dir/tasks/*.toml` stores task intent; `state_dir/assets/*.toml` stores
 stable repository/Try identity, tags, one metadata summary, experiment
 lifecycle and per-host locations; `state_dir/notes/<catalog-id>/*.md` stores
-multiple repository quick notes. Git status and byte counts are not copied
-there. The latter lives in `$XDG_CACHE_HOME/dev/sizes-v1.json` and is safe to
+multiple repository quick notes; `state_dir/artifact-intents/v1/*.json` stores
+versioned post-writer handoffs and commit receipts. Git status, logical byte
+counts and `.specstory/statistics.json` are derived rather than durable review
+history. Size cache lives in `$XDG_CACHE_HOME/dev/sizes-v1.json` and is safe to
 delete.
 
 Template variables: `worktree_root`, `repo`, `repo_path`, `branch`, `category`,
