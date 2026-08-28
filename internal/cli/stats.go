@@ -90,7 +90,7 @@ The sampler needs to be run periodically — see "dev stats sample --help".`,
 			}
 			max := repoTotals[0].Seconds
 			fmt.Fprintln(app.Out)
-			t := NewTable("REPO", "TIME", "DAYS", "LAST", "")
+			t := app.newTable("REPO", "TIME", "DAYS", "LAST", "")
 			for i, r := range repoTotals {
 				if limit > 0 && i >= limit {
 					break

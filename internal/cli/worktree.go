@@ -90,7 +90,8 @@ func newWtListCmd(app *App) *cobra.Command {
 			rt := app.Runtime()
 			sessions, _ := rt.List(ctx)
 
-			t := NewTable("", "BRANCH", "PATH", "GIT", "SESSION")
+			t := app.newTable("", "BRANCH", "PATH", "GIT", "SESSION")
+			style := app.outStyle()
 			for _, w := range list {
 				marker := "  "
 				if w.Main {
@@ -118,7 +119,10 @@ func newWtListCmd(app *App) *cobra.Command {
 						}
 					}
 				}
-				t.Add(marker, branch, config.Contract(w.Path), gitCol, session)
+				if session != "—" {
+					session = style.success(session)
+				}
+				t.Add(marker, branch, config.Contract(w.Path), style.git(gitCol), session)
 			}
 			t.Render(app.Out)
 			return nil
@@ -438,7 +442,8 @@ func renderPlan(app *App, plan wt.Plan, repoPath string) {
 	if len(plan.Ecosystems) == 0 {
 		fmt.Fprintln(app.Out, "No project type detected — only gitignored files will be carried over.")
 	} else {
-		t := NewTable("PROJECT", "MANAGER", "FROM", "DEPENDENCIES", "TOOL")
+		t := app.newTable("PROJECT", "MANAGER", "FROM", "DEPENDENCIES", "TOOL")
+		style := app.outStyle()
 		for _, e := range plan.Ecosystems {
 			deps := "—"
 			if len(e.DepDirs) > 0 {
@@ -448,7 +453,9 @@ func renderPlan(app *App, plan wt.Plan, repoPath string) {
 			}
 			tool := "installed"
 			if !e.ToolInstalled() {
-				tool = "MISSING: " + e.Tool
+				tool = style.danger("MISSING: " + e.Tool)
+			} else {
+				tool = style.success(tool)
 			}
 			t.Add(e.Name, e.Manager, e.Marker, deps, tool)
 		}
@@ -459,11 +466,14 @@ func renderPlan(app *App, plan wt.Plan, repoPath string) {
 	if len(plan.Steps) == 0 {
 		fmt.Fprintln(app.Out, "Nothing to provision.")
 	} else {
-		st := NewTable("", "ACTION", "WHAT", "WHY")
+		st := app.newTable("", "ACTION", "WHAT", "WHY")
+		style := app.outStyle()
 		for _, s := range plan.Steps {
 			mark := "✓"
 			if s.Skipped {
-				mark = "·"
+				mark = style.dim("·")
+			} else {
+				mark = style.success(mark)
 			}
 			st.Add(mark, string(s.Kind), truncate(s.What, 34), s.Why)
 		}
@@ -471,7 +481,7 @@ func renderPlan(app *App, plan wt.Plan, repoPath string) {
 	}
 
 	for _, w := range plan.Warnings {
-		fmt.Fprintf(app.Err, "\nwarning: %s\n", w)
+		fmt.Fprintf(app.Err, "\n%s %s\n", app.errStyle().warning("warning:"), w)
 	}
 	if plan.Empty() {
 		fmt.Fprintln(app.Err, "\nNothing would run. If a new worktree comes up broken, add what it needs to "+

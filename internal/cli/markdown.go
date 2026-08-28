@@ -1,25 +1,15 @@
 package cli
 
 import (
-	"os"
 	"strings"
-)
-
-// ANSI codes, applied only when stdout is a terminal. Piping `dev help` into a
-// file or a pager should yield plain markdown.
-const (
-	ansiReset = "\x1b[0m"
-	ansiBold  = "\x1b[1m"
-	ansiDim   = "\x1b[2m"
-	ansiCyan  = "\x1b[36m"
 )
 
 // renderMarkdown applies light terminal styling to a help page. This is
 // deliberately not a full markdown renderer: the pages are written to read
 // well as plain text, and a heavyweight renderer would reflow the command
 // examples that need to stay copy-pasteable.
-func renderMarkdown(body string) string {
-	if !colorEnabled() {
+func renderMarkdown(body string, style cliStyle) string {
+	if !style.enabled {
 		return body
 	}
 	var b strings.Builder
@@ -40,19 +30,4 @@ func renderMarkdown(body string) string {
 		b.WriteByte('\n')
 	}
 	return b.String()
-}
-
-// colorEnabled honours the NO_COLOR convention and only styles a real tty.
-func colorEnabled() bool {
-	if os.Getenv("NO_COLOR") != "" {
-		return false
-	}
-	if os.Getenv("TERM") == "dumb" {
-		return false
-	}
-	info, err := os.Stdout.Stat()
-	if err != nil {
-		return false
-	}
-	return info.Mode()&os.ModeCharDevice != 0
 }

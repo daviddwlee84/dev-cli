@@ -262,55 +262,59 @@ func dirtyFinishError(t *task.Task, base string, analysis gitx.FinishAnalysis) e
 }
 
 func renderDonePreflight(app *App, t *task.Task, base string, analysis gitx.FinishAnalysis) {
-	fmt.Fprintf(app.Out, "Finish %s\n", t.Title())
-	fmt.Fprintf(app.Out, "  branch      %s\n", t.Branch)
-	fmt.Fprintf(app.Out, "  base        %s\n", base)
+	s := app.outStyle()
+	fmt.Fprintf(app.Out, "%s %s\n", s.title("Finish"), t.Title())
+	fmt.Fprintf(app.Out, "  %s      %s\n", s.label("branch"), t.Branch)
+	fmt.Fprintf(app.Out, "  %s        %s\n", s.label("base"), base)
 	switch {
 	case analysis.Relation.BaseOnly == 0 && analysis.Relation.BranchOnly == 0:
-		fmt.Fprintf(app.Out, "  commits     already equal to %s (behind 0, ahead 0)\n", base)
+		fmt.Fprintf(app.Out, "  %s     %s\n", s.label("commits"), s.success(fmt.Sprintf("already equal to %s (behind 0, ahead 0)", base)))
 	case analysis.Relation.Contained():
-		fmt.Fprintf(app.Out, "  commits     already contained in %s (behind %d, ahead 0)\n", base, analysis.Relation.BaseOnly)
+		fmt.Fprintf(app.Out, "  %s     %s\n", s.label("commits"), s.success(fmt.Sprintf("already contained in %s (behind %d, ahead 0)", base, analysis.Relation.BaseOnly)))
 	default:
-		fmt.Fprintf(app.Out, "  commits     behind %d, ahead %d relative to %s\n",
-			analysis.Relation.BaseOnly, analysis.Relation.BranchOnly, base)
+		fmt.Fprintf(app.Out, "  %s     %s\n", s.label("commits"), s.warning(fmt.Sprintf("behind %d, ahead %d relative to %s",
+			analysis.Relation.BaseOnly, analysis.Relation.BranchOnly, base)))
 	}
 	if !analysis.Status.Dirty() {
-		fmt.Fprintln(app.Out, "  checkout    clean")
+		fmt.Fprintf(app.Out, "  %s    %s\n", s.label("checkout"), s.success("clean"))
 		return
 	}
-	fmt.Fprintf(app.Out, "  checkout    %s\n", analysis.Status.Breakdown())
-	fmt.Fprintf(app.Out, "  contents    %d match %s, %d unique\n",
-		analysis.EquivalentDirty(), base, analysis.UniqueDirty())
+	fmt.Fprintf(app.Out, "  %s    %s\n", s.label("checkout"), s.warning(analysis.Status.Breakdown()))
+	fmt.Fprintf(app.Out, "  %s    %s, %s\n", s.label("contents"),
+		s.success(fmt.Sprintf("%d match %s", analysis.EquivalentDirty(), base)),
+		s.warning(fmt.Sprintf("%d unique", analysis.UniqueDirty())))
 	for _, change := range analysis.Changes {
-		marker := "unique"
+		marker := s.warning("unique")
 		if change.BaseEquivalent {
-			marker = "matches " + base
+			marker = s.success("matches " + base)
 		}
-		fmt.Fprintf(app.Out, "    %-12s %s\n", marker, change.DisplayPath())
+		fmt.Fprintf(app.Out, "    %s%s %s\n", marker,
+			strings.Repeat(" ", max(0, 12-width(marker))), change.DisplayPath())
 	}
 }
 
 func confirmDonePlan(app *App, p *prompter, t *task.Task, base string, plan donePlan) (bool, error) {
-	fmt.Fprintln(app.Out, "\nSummary")
-	fmt.Fprintf(app.Out, "  task        %s\n", t.Title())
+	s := app.outStyle()
+	fmt.Fprintln(app.Out, "\n"+s.title("Summary"))
+	fmt.Fprintf(app.Out, "  %s        %s\n", s.label("task"), t.Title())
 	switch plan.DirtyAction {
 	case doneDirtyCommit:
-		fmt.Fprintf(app.Out, "  dirty       commit all as %q\n", plan.Message)
+		fmt.Fprintf(app.Out, "  %s       %s\n", s.label("dirty"), s.warning(fmt.Sprintf("commit all as %q", plan.Message)))
 	case doneDirtyDiscard:
-		fmt.Fprintf(app.Out, "  dirty       discard all staged, unstaged and untracked changes\n")
+		fmt.Fprintf(app.Out, "  %s       %s\n", s.label("dirty"), s.danger("discard all staged, unstaged and untracked changes"))
 	default:
-		fmt.Fprintln(app.Out, "  dirty       none")
+		fmt.Fprintf(app.Out, "  %s       %s\n", s.label("dirty"), s.success("none"))
 	}
 	switch plan.Integration {
 	case doneIntegrationPR:
-		fmt.Fprintf(app.Out, "  integrate   open a PR into %s\n", base)
+		fmt.Fprintf(app.Out, "  %s   %s\n", s.label("integrate"), s.review("open a PR into "+base))
 	case doneIntegrationCleanup:
-		fmt.Fprintf(app.Out, "  integrate   already contained in %s; cleanup only\n", base)
+		fmt.Fprintf(app.Out, "  %s   %s\n", s.label("integrate"), s.success("already contained in "+base+"; cleanup only"))
 	default:
-		fmt.Fprintf(app.Out, "  integrate   fast-forward into %s\n", base)
+		fmt.Fprintf(app.Out, "  %s   %s\n", s.label("integrate"), s.success("fast-forward into "+base))
 	}
 	if plan.DirtyAction == doneDirtyDiscard && plan.Analysis.UniqueDirty() > 0 {
-		value, err := p.line(fmt.Sprintf("Type DROP to discard %d unique path(s)", plan.Analysis.UniqueDirty()), "")
+		value, err := p.dangerLine(fmt.Sprintf("Type DROP to discard %d unique path(s)", plan.Analysis.UniqueDirty()))
 		if err != nil {
 			return false, err
 		}

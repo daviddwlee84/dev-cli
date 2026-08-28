@@ -203,7 +203,14 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 }
 
 func confirm(app *App, in *bufio.Reader, action string) bool {
-	fmt.Fprintf(app.Out, "  %s? [y/N] ", action)
+	s := app.outStyle()
+	prompt := s.prompt(action + "?")
+	lower := strings.ToLower(action)
+	if strings.Contains(lower, "delete") || strings.Contains(lower, "remove") ||
+		strings.Contains(lower, "discard") || strings.Contains(lower, "drop") {
+		prompt = s.danger(action + "?")
+	}
+	fmt.Fprintf(app.Out, "  %s %s ", prompt, s.dim("[y/N]"))
 	line, err := in.ReadString('\n')
 	if err != nil {
 		return false

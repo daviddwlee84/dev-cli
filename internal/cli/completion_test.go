@@ -163,6 +163,7 @@ func TestEmbeddedAndFixedCompletions(t *testing.T) {
 		{[]string{"__complete", "--runtime", "a"}, "auto"},
 		{[]string{"__complete", "--runtime", "t"}, "tmux"},
 		{[]string{"__complete", "--runtime", "z"}, "zellij"},
+		{[]string{"__complete", "--color", "a"}, "always"},
 		{[]string{"__complete", "done", "--dirty", "c"}, "commit"},
 		{[]string{"__complete", "stats", "--source", "w"}, "wakatime"},
 		{[]string{"__complete", "stats", "--source", "git,w"}, "git,wakatime"},

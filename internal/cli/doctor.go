@@ -153,11 +153,22 @@ func runDoctor(app *App) error {
 
 	// Render.
 	failures := 0
+	style := app.outStyle()
 	for _, c := range checks {
 		if c.status == checkFail {
 			failures++
 		}
-		fmt.Fprintf(app.Out, "%s %-16s %s\n", c.status.icon(), c.name, c.detail)
+		icon := c.status.icon()
+		detail := c.detail
+		switch c.status {
+		case checkOK:
+			icon = style.success(icon)
+		case checkWarn:
+			icon, detail = style.warning(icon), style.warning(detail)
+		case checkFail:
+			icon, detail = style.danger(icon), style.danger(detail)
+		}
+		fmt.Fprintf(app.Out, "%s %s %s\n", icon, style.label(fmt.Sprintf("%-16s", c.name)), detail)
 	}
 	if failures > 0 {
 		return fmt.Errorf("%d required check(s) failed", failures)

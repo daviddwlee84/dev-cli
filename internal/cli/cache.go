@@ -46,11 +46,12 @@ func newCacheListCmd(app *App) *cobra.Command {
 		Short: "List cache paths, sizes, and ages",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			t := NewTable("CACHE", "SIZE", "AGE", "PATH")
+			t := app.newTable("CACHE", "SIZE", "AGE", "PATH")
+			style := app.outStyle()
 			for _, item := range cacheItems() {
 				size, modified, exists := cacheInfo(item.path)
 				if !exists {
-					t.Add(item.name, "—", "—", config.Contract(item.path)+" (absent)")
+					t.Add(item.name, "—", "—", style.dim(config.Contract(item.path)+" (absent)"))
 					continue
 				}
 				t.Add(item.name, humanBytes(size), humanAge(time.Since(modified)), config.Contract(item.path))

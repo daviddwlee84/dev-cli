@@ -95,10 +95,11 @@ ever moved, renamed or deleted by this command.`,
 			})
 
 			fmt.Fprintf(app.Out, "%d candidate(s):\n\n", len(found))
-			t := NewTable("REPO", "BRANCH", "STATE", "WHY", "CHECKOUT")
+			t := app.newTable("REPO", "BRANCH", "STATE", "WHY", "CHECKOUT")
+			style := app.outStyle()
 			for _, c := range found {
 				t.Add(truncate(c.Task.Repo, 24), truncate(c.Task.Branch, 28),
-					c.Task.State.Label(), c.Reason, config.Contract(checkoutOf(c.Task)))
+					style.taskState(c.Task.State.Label()), c.Reason, config.Contract(checkoutOf(c.Task)))
 			}
 			t.Render(app.Out)
 

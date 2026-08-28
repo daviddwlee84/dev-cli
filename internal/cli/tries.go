@@ -83,7 +83,8 @@ func newTriesListCmd(app *App) *cobra.Command {
 				headings = append(headings, "SIZE")
 			}
 			headings = append(headings, "TAGS")
-			table := NewTable(headings...)
+			table := app.newTable(headings...)
+			style := app.outStyle()
 			for _, item := range items {
 				state := "unknown"
 				if item.Entry != nil {
@@ -106,7 +107,7 @@ func newTriesListCmd(app *App) *cobra.Command {
 				if activity := item.Activity(); !activity.IsZero() {
 					age = humanAge(time.Since(activity))
 				}
-				values := []string{truncate(item.DisplayName(), 40), string(item.Phase), state, age, gitColumn}
+				values := []string{truncate(item.DisplayName(), 40), string(item.Phase), style.taskState(state), age, style.git(gitColumn)}
 				if sizes || refreshSizes {
 					measurement := measurements[item.ID]
 					values = append(values, sizeColumn(measurement.Usage, measurement.Err))

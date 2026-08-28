@@ -111,7 +111,7 @@ func reportDetection(app *App, l config.Layout) {
 		return
 	}
 	fmt.Fprintln(app.Out, "Detected:")
-	t := NewTable("ROOT", "REPOS", "ROLE")
+	t := app.newTable("ROOT", "REPOS", "ROLE")
 	for _, r := range l.ScanRoots {
 		role := "scan root"
 		switch r {

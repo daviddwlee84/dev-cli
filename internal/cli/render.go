@@ -11,8 +11,9 @@ import (
 // Table renders aligned columns. It measures width in runes rather than bytes
 // so the CJK repo and branch names in a real inventory line up.
 type Table struct {
-	head []string
-	rows [][]string
+	head  []string
+	rows  [][]string
+	style cliStyle
 }
 
 // NewTable starts a table with the given header.
@@ -45,7 +46,11 @@ func (t *Table) Render(w io.Writer) {
 			}
 		}
 	}
-	writeRow(w, t.head, widths)
+	head := make([]string, len(t.head))
+	for i, cell := range t.head {
+		head[i] = t.style.header(cell)
+	}
+	writeRow(w, head, widths)
 	for _, r := range t.rows {
 		writeRow(w, r, widths)
 	}
@@ -67,14 +72,46 @@ func writeRow(w io.Writer, cells []string, widths []int) {
 // width counts display columns, treating wide CJK runes as two.
 func width(s string) int {
 	n := 0
-	for _, r := range s {
+	for i := 0; i < len(s); {
+		if end := ansiEnd(s, i); end > i {
+			i = end
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
 		if isWide(r) {
 			n += 2
 		} else {
 			n++
 		}
+		i += size
 	}
 	return n
+}
+
+func ansiEnd(s string, start int) int {
+	if start+2 > len(s) || s[start] != '\x1b' || s[start+1] != '[' {
+		return start
+	}
+	for i := start + 2; i < len(s); i++ {
+		if s[i] >= 0x40 && s[i] <= 0x7e {
+			return i + 1
+		}
+	}
+	return start
+}
+
+func stripANSI(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if end := ansiEnd(s, i); end > i {
+			i = end
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
+		b.WriteRune(r)
+		i += size
+	}
+	return b.String()
 }
 
 func isWide(r rune) bool {
@@ -99,7 +136,15 @@ func truncate(s string, n int) string {
 	}
 	var b strings.Builder
 	used := 0
-	for _, r := range s {
+	hasANSI := false
+	for i := 0; i < len(s); {
+		if end := ansiEnd(s, i); end > i {
+			hasANSI = true
+			b.WriteString(s[i:end])
+			i = end
+			continue
+		}
+		r, size := utf8.DecodeRuneInString(s[i:])
 		rw := 1
 		if isWide(r) {
 			rw = 2
@@ -109,8 +154,13 @@ func truncate(s string, n int) string {
 		}
 		b.WriteRune(r)
 		used += rw
+		i += size
 	}
-	return b.String() + "…"
+	b.WriteString("…")
+	if hasANSI {
+		b.WriteString(ansiReset)
+	}
+	return b.String()
 }
 
 // dash renders an empty value as a visible placeholder, so a blank column is

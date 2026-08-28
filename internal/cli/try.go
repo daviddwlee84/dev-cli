@@ -94,7 +94,8 @@ func listTries(app *App, ctx context.Context, service *experiment.Service, root 
 		return nil
 	}
 
-	table := NewTable("TRY", "AGE", "GIT")
+	table := app.newTable("TRY", "AGE", "GIT")
+	style := app.outStyle()
 	for _, item := range items {
 		gitColumn := "—"
 		switch {
@@ -111,7 +112,7 @@ func listTries(app *App, ctx context.Context, service *experiment.Service, root 
 		if activity := item.Activity(); !activity.IsZero() {
 			age = humanAge(time.Since(activity))
 		}
-		table.Add(truncate(item.DisplayName(), 44), age, gitColumn)
+		table.Add(truncate(item.DisplayName(), 44), age, style.git(gitColumn))
 	}
 	table.Render(app.Out)
 	fmt.Fprintf(app.Err, "\n%d tries under %s — promote one with `dev graduate <try>`\n",

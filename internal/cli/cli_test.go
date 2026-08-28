@@ -567,6 +567,24 @@ func TestShellInit(t *testing.T) {
 	}
 }
 
+func TestRawOutputsNeverContainColor(t *testing.T) {
+	h := newHarness(t)
+	for _, args := range [][]string{
+		{"--color=always", "ls", "--json"},
+		{"--color=always", "shell-init", "zsh"},
+		{"--color=always", "skill", "print"},
+		{"--color=always", "completion", "zsh"},
+	} {
+		out, errOut, err := h.run(args...)
+		if err != nil {
+			t.Fatalf("dev %s: %v\nstderr: %s", strings.Join(args, " "), err, errOut)
+		}
+		if strings.Contains(out, "\x1b[") {
+			t.Errorf("dev %s emitted ANSI in raw output", strings.Join(args, " "))
+		}
+	}
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a

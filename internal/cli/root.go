@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"os"
@@ -96,6 +97,9 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 			return runList(app, listOptions{})
 		},
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if err := validateColorMode(app.colorMode); err != nil {
+				return err
+			}
 			if completionInvocation(cmd) {
 				return nil
 			}
@@ -109,7 +113,9 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 	pf.BoolVar(&app.noRuntime, "no-runtime", false, "do not touch any terminal multiplexer")
 	pf.BoolVar(&app.allowSharedCheckout, "allow-shared-checkout", false,
 		"allow a writer claim in a checkout occupied by another live agent")
+	pf.StringVar(&app.colorMode, "color", colorAuto, "colorize human output: auto, always or never")
 	registerFlagCompletion(root, "runtime", runtimeCompletions())
+	registerFlagCompletion(root, "color", fixedCompletions(colorAuto, colorAlways, colorNever))
 
 	// Mirrors `herdr --skill`: the binary is the authority for its own agent
 	// skill, so a dotfiles installer can sync it without vendoring a copy.
@@ -145,6 +151,15 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 	root.SetHelpCommand(&cobra.Command{Hidden: true, Use: "no-help"})
 	root.SetOut(out)
 	root.SetErr(errOut)
+	defaultHelp := root.HelpFunc()
+	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
+		var buf bytes.Buffer
+		previous := cmd.OutOrStdout()
+		cmd.SetOut(&buf)
+		defaultHelp(cmd, args)
+		cmd.SetOut(previous)
+		fmt.Fprint(previous, renderCobraHelp(buf.String(), app.outStyle()))
+	})
 	return root
 }
 
@@ -155,7 +170,8 @@ func Execute() int {
 		msg := err.Error()
 		// cobra already printed usage errors in a readable form.
 		if !strings.HasPrefix(msg, "unknown command") {
-			fmt.Fprintln(os.Stderr, "dev: "+msg)
+			style := styleForWriter(os.Stderr, colorModeFromArgs(os.Args[1:]))
+			fmt.Fprintln(os.Stderr, style.danger("dev:")+" "+msg)
 		}
 		return 1
 	}

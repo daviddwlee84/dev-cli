@@ -43,6 +43,8 @@ type App struct {
 	// allowSharedCheckout is an explicit escape hatch for coordinated agents
 	// whose file ownership is known to be disjoint.
 	allowSharedCheckout bool
+	// colorMode controls styling of human-readable output.
+	colorMode string
 	// interactiveCheck is a test seam for commands that prompt only when a real
 	// terminal is attached. Production falls back to interactive().
 	interactiveCheck func() bool
@@ -70,7 +72,7 @@ func (a *App) Load() error {
 	}
 	a.Tasks = task.NewStore(cfg.TasksDir())
 	a.Catalog = catalog.NewStore(cfg.AssetsDir(), catalog.WithDiagnosticSink(func(diagnostic catalog.Diagnostic) {
-		fmt.Fprintf(a.Err, "dev: warning: %s\n", diagnostic.Error())
+		fmt.Fprintf(a.Err, "%s %s\n", a.errStyle().warning("dev: warning:"), diagnostic.Error())
 	}))
 	a.Registry = catalog.NewRegistry(a.Catalog)
 	noteStore := note.NewStore(cfg.NotesDir(), note.WithDiagnosticSink(func(path string, err error) {
@@ -134,7 +136,8 @@ func (a *App) printf(format string, args ...any) {
 
 // warnf writes a non-fatal notice to stderr, so it never pollutes piped output.
 func (a *App) warnf(format string, args ...any) {
-	fmt.Fprintf(a.Err, "dev: "+format+"\n", args...)
+	message := fmt.Sprintf(format, args...)
+	fmt.Fprintf(a.Err, "%s %s\n", a.errStyle().warning("dev:"), message)
 }
 
 // cdDirective asks the shell wrapper to move its parent process. The wrapper

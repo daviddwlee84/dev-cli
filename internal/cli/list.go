@@ -89,7 +89,8 @@ func runList(app *App, o listOptions) error {
 		return nil
 	}
 
-	t := NewTable("", "TASK", "STATE", "REPO", "BRANCH", "GIT", "AGE", "SESSION", "NEXT")
+	t := app.newTable("", "TASK", "STATE", "REPO", "BRANCH", "GIT", "AGE", "SESSION", "NEXT")
+	s := app.outStyle()
 	for _, r := range rows {
 		session := "—"
 		if r.Live() {
@@ -97,6 +98,7 @@ func runList(app *App, o listOptions) error {
 			if r.Session.AgentStatus != "" {
 				session += ":" + r.Session.AgentStatus
 			}
+			session = s.success(session)
 		}
 		gitCol := r.Status.Summary()
 		switch {
@@ -106,12 +108,12 @@ func runList(app *App, o listOptions) error {
 			gitCol = "no checkout"
 		}
 		t.Add(
-			r.Task.State.Icon(),
+			s.taskStateFor(r.Task.State.Label(), r.Task.State.Icon()),
 			truncate(r.Task.Title(), 28),
-			r.Task.State.Label(),
+			s.taskState(r.Task.State.Label()),
 			truncate(r.Task.Repo, 20),
 			truncate(r.Task.Branch, 28),
-			gitCol,
+			s.git(gitCol),
 			humanAge(r.Age()),
 			session,
 			truncate(dash(r.Task.Next), 40),
@@ -128,7 +130,7 @@ func runList(app *App, o listOptions) error {
 		}
 	}
 	if drifted > 0 {
-		fmt.Fprintf(app.Err, "\n%d task(s) drifted from their recorded state — run `dev sweep` to review.\n", drifted)
+		fmt.Fprintf(app.Err, "\n%s\n", app.errStyle().warning(fmt.Sprintf("%d task(s) drifted from their recorded state — run `dev sweep` to review.", drifted)))
 	}
 	return nil
 }

@@ -196,7 +196,8 @@ func newRepoListCmd(app *App) *cobra.Command {
 				headings = append(headings, "SIZE")
 			}
 			headings = append(headings, "LATEST", "WT", "PATH")
-			t := NewTable(headings...)
+			t := app.newTable(headings...)
+			style := app.outStyle()
 			for _, row := range filtered {
 				r := row.Repo
 				branch, gitCol := row.Status.Branch, row.Status.Summary()
@@ -227,7 +228,7 @@ func newRepoListCmd(app *App) *cobra.Command {
 					}
 					values = append(values, string(kind))
 				}
-				values = append(values, dash(r.Category), truncate(branch, 24), gitCol, truncate(remoteColumn, 28))
+				values = append(values, dash(r.Category), truncate(branch, 24), style.git(gitCol), style.git(truncate(remoteColumn, 28)))
 				if sizes || refreshSizes {
 					values = append(values, sizeColumn(row.Usage, row.SizeError))
 				}
@@ -635,7 +636,8 @@ history gets a shape nobody intended.`,
 				targets = []repo.Repo{{Name: name, Path: path}}
 			}
 
-			t := NewTable("REPO", "BRANCH", "GIT", "NOTE")
+			t := app.newTable("REPO", "BRANCH", "GIT", "NOTE")
+			style := app.outStyle()
 			for _, r := range targets {
 				if r.Bare {
 					continue
@@ -660,7 +662,11 @@ history gets a shape nobody intended.`,
 						note = "unpushed commits"
 					}
 				}
-				t.Add(truncate(r.Name, 28), truncate(st.Branch, 24), st.Summary(), note)
+				noteCell := note
+				if note != "" {
+					noteCell = style.warning(note)
+				}
+				t.Add(truncate(r.Name, 28), truncate(st.Branch, 24), style.git(st.Summary()), noteCell)
 			}
 			t.Render(app.Out)
 			return nil
@@ -755,11 +761,12 @@ the cache is private and expires according to forge.cache_ttl.`,
 					return encodeErr
 				}
 			} else {
-				t := NewTable("FORGE", "REPOSITORY", "VIS", "LOCAL", "UPDATED", "DESCRIPTION")
+				t := app.newTable("FORGE", "REPOSITORY", "VIS", "LOCAL", "UPDATED", "DESCRIPTION")
+				style := app.outStyle()
 				for _, r := range filtered {
 					local := "—"
 					if r.LocalPath != "" {
-						local = config.Contract(r.LocalPath)
+						local = style.success(config.Contract(r.LocalPath))
 					}
 					updated := "—"
 					if !r.Repo.UpdatedAt.IsZero() {

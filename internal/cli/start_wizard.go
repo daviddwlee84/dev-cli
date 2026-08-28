@@ -17,19 +17,20 @@ import (
 var errPromptCanceled = errors.New("prompt canceled")
 
 type prompter struct {
-	in  *bufio.Reader
-	out io.Writer
+	in    *bufio.Reader
+	out   io.Writer
+	style cliStyle
 }
 
 func newPrompter(app *App) *prompter {
-	return &prompter{in: bufio.NewReader(app.In), out: app.Out}
+	return &prompter{in: bufio.NewReader(app.In), out: app.Out, style: app.outStyle()}
 }
 
 func (p *prompter) line(label, fallback string) (string, error) {
 	if fallback == "" {
-		fmt.Fprintf(p.out, "? %s: ", label)
+		fmt.Fprintf(p.out, "%s %s: ", p.style.prompt("?"), p.style.prompt(label))
 	} else {
-		fmt.Fprintf(p.out, "? %s [%s]: ", label, fallback)
+		fmt.Fprintf(p.out, "%s %s %s: ", p.style.prompt("?"), p.style.prompt(label), p.style.dim("["+fallback+"]"))
 	}
 	line, err := p.in.ReadString('\n')
 	if err != nil {
@@ -42,6 +43,15 @@ func (p *prompter) line(label, fallback string) (string, error) {
 	return value, nil
 }
 
+func (p *prompter) dangerLine(label string) (string, error) {
+	fmt.Fprintf(p.out, "%s %s: ", p.style.danger("?"), p.style.danger(label))
+	line, err := p.in.ReadString('\n')
+	if err != nil {
+		return "", errPromptCanceled
+	}
+	return strings.TrimSpace(line), nil
+}
+
 func (p *prompter) choice(label, fallback, hint string, choices map[string]string) (string, error) {
 	for {
 		value, err := p.line(label, fallback)
@@ -52,7 +62,7 @@ func (p *prompter) choice(label, fallback, hint string, choices map[string]strin
 		if resolved, ok := choices[value]; ok {
 			return resolved, nil
 		}
-		fmt.Fprintf(p.out, "  enter one of: %s\n", hint)
+		fmt.Fprintf(p.out, "  %s\n", p.style.warning("enter one of: "+hint))
 	}
 }
 
@@ -62,7 +72,7 @@ func (p *prompter) confirm(label string, defaultYes bool) (bool, error) {
 		fallback = "Y/n"
 	}
 	for {
-		fmt.Fprintf(p.out, "? %s [%s]: ", label, fallback)
+		fmt.Fprintf(p.out, "%s %s %s: ", p.style.prompt("?"), p.style.prompt(label), p.style.dim("["+fallback+"]"))
 		line, err := p.in.ReadString('\n')
 		if err != nil {
 			return false, errPromptCanceled
@@ -76,7 +86,7 @@ func (p *prompter) confirm(label string, defaultYes bool) (bool, error) {
 		case "":
 			return defaultYes, nil
 		default:
-			fmt.Fprintln(p.out, "  enter y or n")
+			fmt.Fprintln(p.out, "  "+p.style.warning("enter y or n"))
 		}
 	}
 }
@@ -105,7 +115,7 @@ func promptStartRepository(ctx context.Context, app *App, p *prompter, req start
 		if len(all) == 0 {
 			return repo.Repo{}, errors.New("no non-bare repositories found under paths.scan_roots")
 		}
-		fmt.Fprintln(p.out, "Repositories:")
+		fmt.Fprintln(p.out, p.style.title("Repositories:"))
 		for i, r := range all {
 			fmt.Fprintf(p.out, "  %d) %-24s %s\n", i+1, r.Display(), config.Contract(r.Path))
 		}
@@ -119,7 +129,7 @@ func promptStartRepository(ctx context.Context, app *App, p *prompter, req start
 				return repo.Repo{}, err
 			}
 			if value == "" {
-				fmt.Fprintln(p.out, "  repository is required")
+				fmt.Fprintln(p.out, "  "+p.style.warning("repository is required"))
 				continue
 			}
 			var index int
@@ -130,7 +140,7 @@ func promptStartRepository(ctx context.Context, app *App, p *prompter, req start
 			if err == nil {
 				return r, nil
 			}
-			fmt.Fprintf(p.out, "  %v\n", err)
+			fmt.Fprintf(p.out, "  %s\n", p.style.warning(err.Error()))
 		}
 	}
 
@@ -146,13 +156,13 @@ func promptStartRepository(ctx context.Context, app *App, p *prompter, req start
 		if err == nil {
 			return r, nil
 		}
-		fmt.Fprintf(p.out, "  %v\n", err)
+		fmt.Fprintf(p.out, "  %s\n", p.style.warning(err.Error()))
 	}
 }
 
 func runStartWizard(ctx context.Context, app *App, req startRequest) (*startSpec, bool, error) {
 	p := newPrompter(app)
-	fmt.Fprintln(p.out, "Start a tracked change stream")
+	fmt.Fprintln(p.out, p.style.title("Start a tracked change stream"))
 
 	r, err := promptStartRepository(ctx, app, p, req)
 	if err != nil {
@@ -169,7 +179,7 @@ func runStartWizard(ctx context.Context, app *App, req startRequest) (*startSpec
 			return nil, false, err
 		}
 		if strings.TrimSpace(req.Name) == "" {
-			fmt.Fprintln(p.out, "  task name is required")
+			fmt.Fprintln(p.out, "  "+p.style.warning("task name is required"))
 		}
 	}
 
@@ -238,7 +248,7 @@ func runStartWizard(ctx context.Context, app *App, req startRequest) (*startSpec
 
 		spec, buildErr := buildStartSpec(ctx, app, req)
 		if buildErr != nil {
-			fmt.Fprintf(p.out, "  %v\n", buildErr)
+			fmt.Fprintf(p.out, "  %s\n", p.style.warning(buildErr.Error()))
 			if req.BranchExplicit || req.BaseExplicit || req.ModeExplicit {
 				return nil, false, buildErr
 			}
@@ -251,18 +261,18 @@ func runStartWizard(ctx context.Context, app *App, req startRequest) (*startSpec
 		if spec.WorktreePath != "" {
 			checkout = spec.WorktreePath
 		}
-		fmt.Fprintln(p.out, "\nSummary")
-		fmt.Fprintf(p.out, "  repository  %s (%s)\n", spec.RepoName, config.Contract(spec.RepoPath))
-		fmt.Fprintf(p.out, "  task        %s\n", spec.Name)
-		fmt.Fprintf(p.out, "  mode        %s\n", spec.Mode)
-		fmt.Fprintf(p.out, "  branch      %s\n", spec.Branch)
-		fmt.Fprintf(p.out, "  base        %s\n", spec.Base)
-		fmt.Fprintf(p.out, "  checkout    %s\n", config.Contract(checkout))
-		fmt.Fprintf(p.out, "  provision   %t\n", !spec.NoProvision)
-		fmt.Fprintf(p.out, "  runtime     %s\n", rt.Name())
-		fmt.Fprintf(p.out, "  focus       %t\n", spec.Focus)
+		fmt.Fprintln(p.out, "\n"+p.style.title("Summary"))
+		fmt.Fprintf(p.out, "  %s  %s (%s)\n", p.style.label("repository"), spec.RepoName, config.Contract(spec.RepoPath))
+		fmt.Fprintf(p.out, "  %s        %s\n", p.style.label("task"), spec.Name)
+		fmt.Fprintf(p.out, "  %s        %s\n", p.style.label("mode"), spec.Mode)
+		fmt.Fprintf(p.out, "  %s      %s\n", p.style.label("branch"), spec.Branch)
+		fmt.Fprintf(p.out, "  %s        %s\n", p.style.label("base"), spec.Base)
+		fmt.Fprintf(p.out, "  %s    %s\n", p.style.label("checkout"), config.Contract(checkout))
+		fmt.Fprintf(p.out, "  %s   %s\n", p.style.label("provision"), p.style.success(fmt.Sprint(!spec.NoProvision)))
+		fmt.Fprintf(p.out, "  %s     %s\n", p.style.label("runtime"), p.style.success(rt.Name()))
+		fmt.Fprintf(p.out, "  %s       %s\n", p.style.label("focus"), fmt.Sprint(spec.Focus))
 		if spec.Next != "" {
-			fmt.Fprintf(p.out, "  next        %s\n", spec.Next)
+			fmt.Fprintf(p.out, "  %s        %s\n", p.style.label("next"), spec.Next)
 		}
 
 		confirmed, err := p.confirm("Create this task?", true)

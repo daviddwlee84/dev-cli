@@ -115,12 +115,15 @@ binding runs through $SHELL -lic and the mode is shown in this listing.`,
 			}
 			fmt.Fprintf(app.Out, "tool bindings from %s\n\n", source)
 
-			t := NewTable("KEY", "NAME", "MODE", "RUNS", "AVAILABLE")
+			t := app.newTable("KEY", "NAME", "MODE", "RUNS", "AVAILABLE")
+			style := app.outStyle()
 			configuredTools := app.Cfg.EffectiveTools()
 			for i, tool := range externalTools(app) {
 				status := "yes"
 				if tool.Available != nil && !tool.Available() {
-					status = "no — not on PATH"
+					status = style.warning("no — not on PATH")
+				} else {
+					status = style.success(status)
 				}
 				// Command is [shell, -c/-lic, run]; show the run itself.
 				run := tool.Command[len(tool.Command)-1]

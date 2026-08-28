@@ -25,7 +25,7 @@ Run without an argument to see the index.`,
 				if err != nil {
 					return err
 				}
-				t := NewTable("TOPIC", "ABOUT")
+				t := app.newTable("TOPIC", "ABOUT")
 				for _, topic := range all {
 					t.Add(topic.Name, truncate(topic.Summary, 68))
 				}
@@ -37,7 +37,7 @@ Run without an argument to see the index.`,
 			if err != nil {
 				return err
 			}
-			fmt.Fprint(app.Out, renderMarkdown(topic.Body))
+			fmt.Fprint(app.Out, renderMarkdown(topic.Body, app.outStyle()))
 			return nil
 		},
 	}

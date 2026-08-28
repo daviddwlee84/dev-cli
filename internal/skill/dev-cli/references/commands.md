@@ -11,6 +11,7 @@ in CI to catch drift.
 ### Global options
 
 - `--allow-shared-checkout` — allow a writer claim in a checkout occupied by another live agent
+- `--color` — colorize human output: auto, always or never
 - `--config` — path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)
 - `--no-runtime` — do not touch any terminal multiplexer
 - `--runtime` — override runtime backend: herdr, tmux, zellij or none

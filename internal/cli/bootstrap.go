@@ -219,7 +219,8 @@ func renderBootstrapScan(app *App, roots []string, repos []bootstrap.Repository,
 	if len(repos) == 0 {
 		fmt.Fprintln(app.Out, "No repositories found.")
 	} else {
-		t := NewTable("KIND", "REPO", "BRANCH", "GIT", "ALIASES", "PATH")
+		t := app.newTable("KIND", "REPO", "BRANCH", "GIT", "ALIASES", "PATH")
+		style := app.outStyle()
 		for _, r := range repos {
 			git := "—"
 			if r.Kind != bootstrap.Bare {
@@ -233,7 +234,7 @@ func renderBootstrapScan(app *App, roots []string, repos []bootstrap.Repository,
 			if r.Symlink {
 				path += " → " + config.Contract(r.RealPath)
 			}
-			t.Add(string(r.Kind), r.Name, dash(r.Branch), git, aliases, path)
+			t.Add(string(r.Kind), r.Name, dash(r.Branch), style.git(git), aliases, path)
 		}
 		t.Render(app.Out)
 	}
@@ -260,13 +261,21 @@ func renderOrganizePlan(app *App, p bootstrap.OrganizePlan) {
 		fmt.Fprintln(app.Out, "No canonical repositories to organise.")
 		return
 	}
-	t := NewTable("STATE", "REPO", "SOURCE", "TARGET / REASON")
+	t := app.newTable("STATE", "REPO", "SOURCE", "TARGET / REASON")
+	style := app.outStyle()
 	for _, a := range p.Actions {
 		last := config.Contract(a.Target)
 		if a.Reason != "" {
 			last += " — " + a.Reason
 		}
-		t.Add(string(a.State), a.Repo.Name, config.Contract(a.Source), last)
+		state := string(a.State)
+		switch a.State {
+		case bootstrap.Ready, bootstrap.Current:
+			state = style.success(state)
+		case bootstrap.Blocked:
+			state = style.danger(state)
+		}
+		t.Add(state, a.Repo.Name, config.Contract(a.Source), last)
 	}
 	t.Render(app.Out)
 	fmt.Fprintf(app.Out, "\n%d ready, %d blocked, %d already current\n",

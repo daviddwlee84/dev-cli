@@ -22,6 +22,10 @@ agents occupy this canonical Git worktree.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
+			style := app.outStyle()
+			field := func(label, value string) {
+				fmt.Fprintf(app.Out, "%s%s\n", style.label(fmt.Sprintf("%-11s", label)), value)
+			}
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
@@ -29,8 +33,8 @@ agents occupy this canonical Git worktree.`,
 
 			g, err := gitx.Discover(ctx, cwd)
 			if err != nil {
-				fmt.Fprintf(app.Out, "directory  %s\n", config.Contract(cwd))
-				fmt.Fprintln(app.Out, "repo       — not a git repository")
+				field("directory", config.Contract(cwd))
+				field("repo", style.warning("— not a git repository"))
 				return nil
 			}
 
@@ -38,10 +42,10 @@ agents occupy this canonical Git worktree.`,
 			if g.IsLinkedWorktree {
 				kind = "linked worktree"
 			}
-			fmt.Fprintf(app.Out, "repo       %s (%s)\n", g.Name, kind)
-			fmt.Fprintf(app.Out, "checkout   %s\n", config.Contract(g.Root))
+			field("repo", fmt.Sprintf("%s (%s)", g.Name, kind))
+			field("checkout", config.Contract(g.Root))
 			if g.IsLinkedWorktree {
-				fmt.Fprintf(app.Out, "main       %s\n", config.Contract(g.MainRoot))
+				field("main", config.Contract(g.MainRoot))
 			}
 
 			if st, err := gitx.StatusOf(ctx, g.Root); err == nil {
@@ -49,31 +53,31 @@ agents occupy this canonical Git worktree.`,
 				if st.Detached {
 					branch = "(detached HEAD)"
 				}
-				fmt.Fprintf(app.Out, "branch     %s  %s\n", branch, st.Summary())
+				field("branch", fmt.Sprintf("%s  %s", branch, style.git(st.Summary())))
 				if st.Dirty() {
-					fmt.Fprintf(app.Out, "changes    %s\n", st.Breakdown())
+					field("changes", style.warning(st.Breakdown()))
 					if types := st.TypeBreakdown(); types != "" {
-						fmt.Fprintf(app.Out, "types      %s\n", types)
+						field("types", style.warning(types))
 					}
 				}
 				if st.Upstream != "" {
-					fmt.Fprintf(app.Out, "upstream   %s\n", st.Upstream)
+					field("upstream", st.Upstream)
 				} else {
-					fmt.Fprintf(app.Out, "upstream   — not published\n")
+					field("upstream", style.warning("— not published"))
 				}
 				if st.Conflicted > 0 {
-					fmt.Fprintf(app.Out, "conflicts  %d unmerged path(s) — resolve before anything else\n", st.Conflicted)
+					field("conflicts", style.danger(fmt.Sprintf("%d unmerged path(s) — resolve before anything else", st.Conflicted)))
 				}
 			}
 			if base := gitx.DefaultBranch(ctx, g.MainRoot); base != "" {
-				fmt.Fprintf(app.Out, "default    %s\n", base)
+				field("default", base)
 			}
 			if k := forge.Detect(ctx, g.MainRoot); k != forge.Unknown {
-				fmt.Fprintf(app.Out, "forge      %s\n", k)
+				field("forge", fmt.Sprint(k))
 			}
 
 			if list, err := gitx.Worktrees(ctx, g.MainRoot); err == nil && len(list) > 1 {
-				fmt.Fprintf(app.Out, "worktrees  %d\n", len(list))
+				field("worktrees", fmt.Sprint(len(list)))
 				for _, w := range list {
 					marker := "  "
 					if w.Path == g.Root {
@@ -93,32 +97,32 @@ agents occupy this canonical Git worktree.`,
 				if err != nil {
 					app.warnf("could not inspect live agent activity: %v", err)
 				} else if len(activities) == 0 {
-					fmt.Fprintln(app.Out, "activities — none")
+					field("activities", style.dim("— none"))
 				} else {
 					for _, activity := range activities {
 						name := activity.Name
 						if name == "" {
 							name = activity.Agent
 						}
-						fmt.Fprintf(app.Out, "activity   %s:%s %s (%s)\n",
-							name, activity.Status, activity.PaneID, activity.WorkspaceID)
+						field("activity", style.success(fmt.Sprintf("%s:%s %s (%s)",
+							name, activity.Status, activity.PaneID, activity.WorkspaceID)))
 					}
 				}
 			}
 
 			t, err := app.Tasks.FindByWorktree(g.Root)
 			if err != nil {
-				fmt.Fprintln(app.Out, "task       — not tracked; `dev start` to record it")
+				field("task", style.warning("— not tracked; `dev start` to record it"))
 				return nil
 			}
-			fmt.Fprintf(app.Out, "task       %s %s (%s)\n", t.State.Icon(), t.Title(), t.ID)
-			fmt.Fprintf(app.Out, "owner      %s\n", dash(t.Owner))
-			fmt.Fprintf(app.Out, "next       %s\n", dash(t.Next))
+			field("task", fmt.Sprintf("%s %s (%s)", style.taskStateFor(t.State.Label(), t.State.Icon()), t.Title(), t.ID))
+			field("owner", dash(t.Owner))
+			field("next", dash(t.Next))
 			if t.Note != "" {
-				fmt.Fprintf(app.Out, "note       %s\n", t.Note)
+				field("note", t.Note)
 			}
 			if t.AgentSession != "" {
-				fmt.Fprintf(app.Out, "agent      %s\n", t.AgentSession)
+				field("agent", style.success(t.AgentSession))
 			}
 			if host := config.Hostname(); !t.OwnedBy(host) {
 				app.warnf("this task is owned by %s — pushing from here can diverge the branch", t.Owner)
