@@ -25,9 +25,25 @@ func versionFromBuild() string {
 	return Version
 }
 
+const workflowTLDR = `TL;DR: default managed-task loop
+
+  dev start --> HOT: work / commit / test
+                  ^               |
+                  |  dev resume   |  dev park --next "..."
+                  +------ WARM <--+
+                  |
+                  +-- direct:          dev done      --> DONE
+                  +-- branch/worktree: dev done --ff --> DONE
+                  +-- branch/worktree: dev done --pr --> push / review handoff
+                                                        |
+                          feedback --> resume if parked --> work
+
+  DONE --> dev sweep (report) --> dev sweep --apply (reap) --> next task
+  Remote merge detection and cleanup are not automatic; verify integration first.`
+
 const rootLong = `dev is a thin glue layer over git, worktrees, forges and agent runtimes.
 
-It exists to keep three things separate that otherwise collapse into one:
+It exists to keep four things separate that otherwise collapse into one:
 
   git remote      durable code state, the source of truth
   git worktree    a disposable local checkout
@@ -38,7 +54,9 @@ It exists to keep three things separate that otherwise collapse into one:
 Everything derivable from git or the runtime is derived live. dev persists only
 human intent Git cannot answer — task state/owner/next action and asset identity,
 tags, notes and experiment lifecycle — so closing a runtime session or moving a
-Try never means losing the thread. Transient pane data is not persisted.`
+Try never means losing the thread. Transient pane data is not persisted.
+
+` + workflowTLDR
 
 // NewRootCommand builds the whole command tree writing to the process streams.
 func NewRootCommand() *cobra.Command {

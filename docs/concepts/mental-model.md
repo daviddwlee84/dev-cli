@@ -32,22 +32,32 @@ The registry stores facts needed to act later: repository and branch identity, b
 | ❄️ `cold` | committed and pushed branch; worktree absent | none | paused and reconstructible elsewhere |
 | ✅ `done` | integrated | none | retained until cleanup reaps the entry |
 
-```text
-              dev start
-                  │
-                  ▼
-               HOT ───── dev done --ff ─────► DONE
-                │ ▲
-       dev park │ │ dev resume
-                ▼ │
-               WARM
-                │ ▲
- --cold --push  │ │ dev resume --fetch
-                ▼ │
-               COLD
+```mermaid
+flowchart TD
+    accTitle: dev-cli lifecycle states
+    accDescr: Tasks move between HOT, WARM, and eligible COLD states; direct or locally integrated work reaches DONE; review leaves the current state unchanged; and sweep reaps only an already completed entry.
+
+    Start["dev start"] --> Hot["HOT"]
+    Hot -->|dev park --next| Warm["WARM"]
+    Warm -->|dev resume| Hot
+    Hot -->|branch/worktree: dev park --cold --push| Cold["COLD"]
+    Warm -->|branch/worktree: dev park --cold --push| Cold
+    Cold -->|dev resume --fetch| Hot
+
+    Hot -->|direct: dev done| Done["DONE"]
+    Warm -->|direct: dev done| Done
+    Hot -->|branch/worktree: dev done --ff| Done
+    Warm -->|branch/worktree: dev done --ff| Done
+
+    Hot -.->|branch/worktree: dev done --pr; state unchanged| Review["push / review handoff"]
+    Warm -.->|branch/worktree: dev done --pr; state unchanged| Review
+    Review -.->|feedback: dev resume if WARM| Hot
+
+    Done -->|dev sweep: report| Report["cleanup candidate"]
+    Report -->|dev sweep --apply| Reaped["entry reaped"]
 ```
 
-`dev done --pr` is intentionally not the HOT → DONE transition. It publishes the branch for review and leaves state and cleanup unchanged until integration is known.
+For branch/worktree tasks, `dev done --pr` is intentionally not a HOT/WARM → DONE transition. It hands off a pushed branch (opening review when supported) and leaves state and cleanup unchanged; remote merge reconciliation remains manual.
 
 ## Checkout modes
 

@@ -282,22 +282,32 @@ The registry stores facts needed to act later: repository and branch identity, b
 | ❄️ `cold` | committed and pushed branch; worktree absent | none | paused and reconstructible elsewhere |
 | ✅ `done` | integrated | none | retained until cleanup reaps the entry |
 
-```text
-              dev start
-                  │
-                  ▼
-               HOT ───── dev done --ff ─────► DONE
-                │ ▲
-       dev park │ │ dev resume
-                ▼ │
-               WARM
-                │ ▲
- --cold --push  │ │ dev resume --fetch
-                ▼ │
-               COLD
+```mermaid
+flowchart TD
+    accTitle: dev-cli lifecycle states
+    accDescr: Tasks move between HOT, WARM, and eligible COLD states; direct or locally integrated work reaches DONE; review leaves the current state unchanged; and sweep reaps only an already completed entry.
+
+    Start["dev start"] --> Hot["HOT"]
+    Hot -->|dev park --next| Warm["WARM"]
+    Warm -->|dev resume| Hot
+    Hot -->|branch/worktree: dev park --cold --push| Cold["COLD"]
+    Warm -->|branch/worktree: dev park --cold --push| Cold
+    Cold -->|dev resume --fetch| Hot
+
+    Hot -->|direct: dev done| Done["DONE"]
+    Warm -->|direct: dev done| Done
+    Hot -->|branch/worktree: dev done --ff| Done
+    Warm -->|branch/worktree: dev done --ff| Done
+
+    Hot -.->|branch/worktree: dev done --pr; state unchanged| Review["push / review handoff"]
+    Warm -.->|branch/worktree: dev done --pr; state unchanged| Review
+    Review -.->|feedback: dev resume if WARM| Hot
+
+    Done -->|dev sweep: report| Report["cleanup candidate"]
+    Report -->|dev sweep --apply| Reaped["entry reaped"]
 ```
 
-`dev done --pr` is intentionally not the HOT → DONE transition. It publishes the branch for review and leaves state and cleanup unchanged until integration is known.
+For branch/worktree tasks, `dev done --pr` is intentionally not a HOT/WARM → DONE transition. It hands off a pushed branch (opening review when supported) and leaves state and cleanup unchanged; remote merge reconciliation remains manual.
 
 ## Checkout modes
 
@@ -439,6 +449,43 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/
 > Run a dev-cli change stream through start, park, resume, review or integration, and conservative cleanup.
 
 A `dev` task is a durable record of one line of work. Select the checkout mode, make the branch recoverable, and treat runtime sessions as disposable.
+
+## Lifecycle at a glance
+
+```mermaid
+flowchart TD
+    accTitle: dev-cli change-stream workflow
+    accDescr: A change stream starts in direct, branch-only, or worktree mode and cycles through active, parked, and resumed work. Direct completion or local fast-forward reaches DONE and cleanup, while review hands off a pushed branch and remains active pending manual reconciliation.
+
+    Start["dev start"] --> Mode{"checkout mode"}
+    Mode -->|direct| Direct["HOT: direct work / commit / test"]
+    Mode -->|branch-only or worktree| Managed["HOT: managed work / commit / test"]
+
+    Direct -->|dev park --next| WarmDirect["WARM: checkout kept"]
+    WarmDirect -->|dev resume| Direct
+    Managed -->|dev park --next| WarmManaged["WARM: checkout kept"]
+    WarmManaged -->|dev resume| Managed
+    Managed -->|dev park --cold --push| Cold["COLD: pushed and reconstructible"]
+    WarmManaged -->|dev park --cold --push| Cold
+    Cold -->|dev resume --fetch| Managed
+
+    Direct -->|dev done| Done["DONE: integration confirmed"]
+    WarmDirect -->|dev done| Done
+    Managed -->|dev done --ff| Done
+    WarmManaged -->|dev done --ff| Done
+
+    Managed -->|dev done --pr| Review["push / review handoff: task stays active"]
+    WarmManaged -->|dev done --pr| Review
+    Review -->|feedback: dev resume if WARM| Managed
+    Review -->|merged externally| Reconcile["verify integration; local close-out is manual today"]
+
+    Done -->|dev sweep| Report["report cleanup candidates"]
+    Report -->|dev sweep --apply| Reaped["reap the DONE entry"]
+    Reaped --> Next["next change stream"]
+    Next --> Start
+```
+
+The handoff path deliberately stops at manual reconciliation: `dev done --pr` leaves the task active and may only push when no supported forge CLI is available. `dev` does not currently detect a remote merge or provide a reconciliation-only command that safely marks the task DONE.
 
 ## 1. Select the checkout mode
 
@@ -3291,22 +3338,32 @@ Registry 保存未來要能採取行動的資訊：repository 與 branch identit
 | ❄️ `cold` | branch 已 commit、push；worktree 不存在 | 無 | 已暫停，可在別處重建 |
 | ✅ `done` | 已整合 | 無 | 等待 cleanup 回收 entry |
 
-```text
-              dev start
-                  │
-                  ▼
-               HOT ───── dev done --ff ─────► DONE
-                │ ▲
-       dev park │ │ dev resume
-                ▼ │
-               WARM
-                │ ▲
- --cold --push  │ │ dev resume --fetch
-                ▼ │
-               COLD
+```mermaid
+flowchart TD
+    accTitle: dev-cli lifecycle states
+    accDescr: Task 會在 HOT、WARM 與符合條件的 COLD state 之間移動；direct 或本機整合完成的工作會進入 DONE；review 不改變目前 state；sweep 只回收已完成的 entry。
+
+    Start["dev start"] --> Hot["HOT"]
+    Hot -->|dev park --next| Warm["WARM"]
+    Warm -->|dev resume| Hot
+    Hot -->|branch/worktree: dev park --cold --push| Cold["COLD"]
+    Warm -->|branch/worktree: dev park --cold --push| Cold
+    Cold -->|dev resume --fetch| Hot
+
+    Hot -->|direct: dev done| Done["DONE"]
+    Warm -->|direct: dev done| Done
+    Hot -->|branch/worktree: dev done --ff| Done
+    Warm -->|branch/worktree: dev done --ff| Done
+
+    Hot -.->|branch/worktree: dev done --pr；state 不變| Review["push / review handoff"]
+    Warm -.->|branch/worktree: dev done --pr；state 不變| Review
+    Review -.->|feedback：若為 WARM 先 dev resume| Hot
+
+    Done -->|dev sweep：只回報| Report["cleanup candidate"]
+    Report -->|dev sweep --apply| Reaped["已回收 entry"]
 ```
 
-`dev done --pr` 刻意不是 HOT → DONE transition。它只會發布 branch 供 review，並在尚未確認整合前保留原 state 與 cleanup 狀態。
+對 branch/worktree task 而言，`dev done --pr` 刻意不是 HOT/WARM → DONE transition。它會 handoff 已 push 的 branch（支援時建立 review），並保留原 state 與 cleanup 狀態；remote merge reconciliation 目前仍需手動處理。
 
 ## Checkout mode
 
@@ -3454,6 +3511,43 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workfl
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
 `dev` task 是一條工作線的持久紀錄。先選 checkout mode、讓 branch 可復原，再把 runtime session 當成可丟棄資源。
+
+## Lifecycle 閉環總覽
+
+```mermaid
+flowchart TD
+    accTitle: dev-cli 變更流工作流程
+    accDescr: 變更流以 direct、branch-only 或 worktree mode 開始，並在 active work、park 與 resume 之間循環。Direct completion 或 local fast-forward 會進入 DONE 與 cleanup；review 則 handoff 已 push 的 branch，並保持 active 直到 manual reconciliation。
+
+    Start["dev start"] --> Mode{"checkout mode"}
+    Mode -->|direct| Direct["HOT: direct work / commit / test"]
+    Mode -->|branch-only 或 worktree| Managed["HOT: managed work / commit / test"]
+
+    Direct -->|dev park --next| WarmDirect["WARM: 保留 checkout"]
+    WarmDirect -->|dev resume| Direct
+    Managed -->|dev park --next| WarmManaged["WARM: 保留 checkout"]
+    WarmManaged -->|dev resume| Managed
+    Managed -->|dev park --cold --push| Cold["COLD: 已 push 且可重建"]
+    WarmManaged -->|dev park --cold --push| Cold
+    Cold -->|dev resume --fetch| Managed
+
+    Direct -->|dev done| Done["DONE: 已確認整合"]
+    WarmDirect -->|dev done| Done
+    Managed -->|dev done --ff| Done
+    WarmManaged -->|dev done --ff| Done
+
+    Managed -->|dev done --pr| Review["push / review handoff: task 保持 active"]
+    WarmManaged -->|dev done --pr| Review
+    Review -->|feedback：若為 WARM 先 dev resume| Managed
+    Review -->|已在 remote merge| Reconcile["確認整合；目前需手動結束本機 lifecycle"]
+
+    Done -->|dev sweep| Report["回報 cleanup candidates"]
+    Report -->|dev sweep --apply| Reaped["回收 DONE entry"]
+    Reaped --> Next["下一條 change stream"]
+    Next --> Start
+```
+
+Handoff path 刻意停在 manual reconciliation：`dev done --pr` 會讓 task 保持 active；沒有支援的 forge CLI 時也可能只 push。`dev` 目前不會偵測 remote merge，也沒有能安全把 task 標成 DONE 的 reconciliation-only command。
 
 ## 1. 選擇 checkout mode
 

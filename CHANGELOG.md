@@ -14,6 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Exact-pane, fail-closed safeguards for launching parallel agents in newly created Herdr worktrees.
 - Agent-ready repository context output, TUI copy actions, and an expanded worktree tree with per-checkout state.
 - A bilingual English/Traditional Chinese MkDocs knowledge site with strict source/site checks and GitHub Pages deployment.
+- Shared ASCII workflow orientation in `dev --help` and `dev help`, plus bilingual Mermaid diagrams for the full change-stream loop and lifecycle states.
 
 ### Fixed
 

@@ -36,22 +36,32 @@ Registry 保存未來要能採取行動的資訊：repository 與 branch identit
 | ❄️ `cold` | branch 已 commit、push；worktree 不存在 | 無 | 已暫停，可在別處重建 |
 | ✅ `done` | 已整合 | 無 | 等待 cleanup 回收 entry |
 
-```text
-              dev start
-                  │
-                  ▼
-               HOT ───── dev done --ff ─────► DONE
-                │ ▲
-       dev park │ │ dev resume
-                ▼ │
-               WARM
-                │ ▲
- --cold --push  │ │ dev resume --fetch
-                ▼ │
-               COLD
+```mermaid
+flowchart TD
+    accTitle: dev-cli lifecycle states
+    accDescr: Task 會在 HOT、WARM 與符合條件的 COLD state 之間移動；direct 或本機整合完成的工作會進入 DONE；review 不改變目前 state；sweep 只回收已完成的 entry。
+
+    Start["dev start"] --> Hot["HOT"]
+    Hot -->|dev park --next| Warm["WARM"]
+    Warm -->|dev resume| Hot
+    Hot -->|branch/worktree: dev park --cold --push| Cold["COLD"]
+    Warm -->|branch/worktree: dev park --cold --push| Cold
+    Cold -->|dev resume --fetch| Hot
+
+    Hot -->|direct: dev done| Done["DONE"]
+    Warm -->|direct: dev done| Done
+    Hot -->|branch/worktree: dev done --ff| Done
+    Warm -->|branch/worktree: dev done --ff| Done
+
+    Hot -.->|branch/worktree: dev done --pr；state 不變| Review["push / review handoff"]
+    Warm -.->|branch/worktree: dev done --pr；state 不變| Review
+    Review -.->|feedback：若為 WARM 先 dev resume| Hot
+
+    Done -->|dev sweep：只回報| Report["cleanup candidate"]
+    Report -->|dev sweep --apply| Reaped["已回收 entry"]
 ```
 
-`dev done --pr` 刻意不是 HOT → DONE transition。它只會發布 branch 供 review，並在尚未確認整合前保留原 state 與 cleanup 狀態。
+對 branch/worktree task 而言，`dev done --pr` 刻意不是 HOT/WARM → DONE transition。它會 handoff 已 push 的 branch（支援時建立 review），並保留原 state 與 cleanup 狀態；remote merge reconciliation 目前仍需手動處理。
 
 ## Checkout mode
 

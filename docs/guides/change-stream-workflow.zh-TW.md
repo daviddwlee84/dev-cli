@@ -13,6 +13,43 @@ lang: zh-TW
 
 `dev` task 是一條工作線的持久紀錄。先選 checkout mode、讓 branch 可復原，再把 runtime session 當成可丟棄資源。
 
+## Lifecycle 閉環總覽
+
+```mermaid
+flowchart TD
+    accTitle: dev-cli 變更流工作流程
+    accDescr: 變更流以 direct、branch-only 或 worktree mode 開始，並在 active work、park 與 resume 之間循環。Direct completion 或 local fast-forward 會進入 DONE 與 cleanup；review 則 handoff 已 push 的 branch，並保持 active 直到 manual reconciliation。
+
+    Start["dev start"] --> Mode{"checkout mode"}
+    Mode -->|direct| Direct["HOT: direct work / commit / test"]
+    Mode -->|branch-only 或 worktree| Managed["HOT: managed work / commit / test"]
+
+    Direct -->|dev park --next| WarmDirect["WARM: 保留 checkout"]
+    WarmDirect -->|dev resume| Direct
+    Managed -->|dev park --next| WarmManaged["WARM: 保留 checkout"]
+    WarmManaged -->|dev resume| Managed
+    Managed -->|dev park --cold --push| Cold["COLD: 已 push 且可重建"]
+    WarmManaged -->|dev park --cold --push| Cold
+    Cold -->|dev resume --fetch| Managed
+
+    Direct -->|dev done| Done["DONE: 已確認整合"]
+    WarmDirect -->|dev done| Done
+    Managed -->|dev done --ff| Done
+    WarmManaged -->|dev done --ff| Done
+
+    Managed -->|dev done --pr| Review["push / review handoff: task 保持 active"]
+    WarmManaged -->|dev done --pr| Review
+    Review -->|feedback：若為 WARM 先 dev resume| Managed
+    Review -->|已在 remote merge| Reconcile["確認整合；目前需手動結束本機 lifecycle"]
+
+    Done -->|dev sweep| Report["回報 cleanup candidates"]
+    Report -->|dev sweep --apply| Reaped["回收 DONE entry"]
+    Reaped --> Next["下一條 change stream"]
+    Next --> Start
+```
+
+Handoff path 刻意停在 manual reconciliation：`dev done --pr` 會讓 task 保持 active；沒有支援的 forge CLI 時也可能只 push。`dev` 目前不會偵測 remote merge，也沒有能安全把 task 標成 DONE 的 reconciliation-only command。
+
 ## 1. 選擇 checkout mode
 
 | Mode | 命令 | 適用情境 |

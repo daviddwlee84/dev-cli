@@ -19,6 +19,8 @@ Run without an argument to see the index.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
+				fmt.Fprintln(app.Out, workflowTLDR)
+				fmt.Fprintln(app.Out)
 				all, err := help.List()
 				if err != nil {
 					return err

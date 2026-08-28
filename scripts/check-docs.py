@@ -42,6 +42,7 @@ STATUSES = {
 }
 SNIPPET_RE = re.compile(r'^\s*--8<--\s+"([^"]+)"\s*$', re.MULTILINE)
 MARKDOWN_LINK_RE = re.compile(r'(?<!!)\[([^]\n]+)\]\(([^)\n]+)\)')
+MERMAID_FENCE_RE = re.compile(r"^[ \t]*(?:`{3,}|~{3,})mermaid(?:[ \t]+.*)?[ \t]*$", re.MULTILINE)
 PRIVATE_PATH_RE = re.compile(r"(?:/Users/[^/\s]+|/home/[^/\s]+|[A-Za-z]:\\Users\\[^\\\s]+)")
 
 
@@ -68,6 +69,7 @@ class LinkParser(html.parser.HTMLParser):
         self.scripts: list[str] = []
         self.stylesheets: list[str] = []
         self.anchors: set[str] = set()
+        self.mermaid_blocks = 0
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
@@ -77,6 +79,8 @@ class LinkParser(html.parser.HTMLParser):
             self.scripts.append(values["src"] or "")
         if tag == "link" and values.get("href") and values.get("rel") == "stylesheet":
             self.stylesheets.append(values["href"] or "")
+        if tag == "pre" and "mermaid" in (values.get("class") or "").split():
+            self.mermaid_blocks += 1
         if values.get("id"):
             self.anchors.add(values["id"] or "")
         if tag == "a" and values.get("name"):
@@ -631,6 +635,7 @@ def check_site(site: Path) -> list[str]:
         return [f"site directory does not exist: {site}"]
 
     generated_markdown: list[Path] = []
+    expected_mermaid: dict[Path, int] = {}
     for page in pages:
         for language in ("en", LANG):
             target = output_path(site, page.path, language)
@@ -639,9 +644,9 @@ def check_site(site: Path) -> list[str]:
             markdown_target = target.with_suffix(".md")
             generated_markdown.append(markdown_target)
             try:
-                expected_markdown = rewrite_document_links(
-                    document_for(page, language), site_url, page_paths
-                ).rstrip() + "\n"
+                document = document_for(page, language)
+                expected_mermaid[target] = len(MERMAID_FENCE_RE.findall(expand_snippets(document.body)))
+                expected_markdown = rewrite_document_links(document, site_url, page_paths).rstrip() + "\n"
             except (OSError, ValueError) as exc:
                 fail(errors, f"cannot validate {markdown_target.relative_to(ROOT)}: {exc}")
             else:
@@ -690,6 +695,17 @@ def check_site(site: Path) -> list[str]:
                 target_parser = parsed_cache.setdefault(target, parse_html(target))
                 if fragment not in target_parser.anchors:
                     fail(errors, f"{source.relative_to(site)}: missing anchor {href!r}")
+
+    for target, expected_count in expected_mermaid.items():
+        rendered = parsed_cache.get(target)
+        if rendered is None:
+            continue
+        if rendered.mermaid_blocks != expected_count:
+            fail(
+                errors,
+                f"{target.relative_to(site)}: expected {expected_count} Mermaid source container(s), "
+                f"found {rendered.mermaid_blocks}",
+            )
 
     return errors
 

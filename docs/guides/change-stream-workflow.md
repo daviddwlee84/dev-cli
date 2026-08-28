@@ -9,6 +9,43 @@ verified_on: 2026-08-28
 
 A `dev` task is a durable record of one line of work. Select the checkout mode, make the branch recoverable, and treat runtime sessions as disposable.
 
+## Lifecycle at a glance
+
+```mermaid
+flowchart TD
+    accTitle: dev-cli change-stream workflow
+    accDescr: A change stream starts in direct, branch-only, or worktree mode and cycles through active, parked, and resumed work. Direct completion or local fast-forward reaches DONE and cleanup, while review hands off a pushed branch and remains active pending manual reconciliation.
+
+    Start["dev start"] --> Mode{"checkout mode"}
+    Mode -->|direct| Direct["HOT: direct work / commit / test"]
+    Mode -->|branch-only or worktree| Managed["HOT: managed work / commit / test"]
+
+    Direct -->|dev park --next| WarmDirect["WARM: checkout kept"]
+    WarmDirect -->|dev resume| Direct
+    Managed -->|dev park --next| WarmManaged["WARM: checkout kept"]
+    WarmManaged -->|dev resume| Managed
+    Managed -->|dev park --cold --push| Cold["COLD: pushed and reconstructible"]
+    WarmManaged -->|dev park --cold --push| Cold
+    Cold -->|dev resume --fetch| Managed
+
+    Direct -->|dev done| Done["DONE: integration confirmed"]
+    WarmDirect -->|dev done| Done
+    Managed -->|dev done --ff| Done
+    WarmManaged -->|dev done --ff| Done
+
+    Managed -->|dev done --pr| Review["push / review handoff: task stays active"]
+    WarmManaged -->|dev done --pr| Review
+    Review -->|feedback: dev resume if WARM| Managed
+    Review -->|merged externally| Reconcile["verify integration; local close-out is manual today"]
+
+    Done -->|dev sweep| Report["report cleanup candidates"]
+    Report -->|dev sweep --apply| Reaped["reap the DONE entry"]
+    Reaped --> Next["next change stream"]
+    Next --> Start
+```
+
+The handoff path deliberately stops at manual reconciliation: `dev done --pr` leaves the task active and may only push when no supported forge CLI is available. `dev` does not currently detect a remote merge or provide a reconciliation-only command that safely marks the task DONE.
+
 ## 1. Select the checkout mode
 
 | Mode | Command | Use when |
