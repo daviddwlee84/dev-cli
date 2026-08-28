@@ -271,7 +271,7 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 	if loaded != 0 {
 		t.Fatal("skills must not load during dashboard construction")
 	}
-	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
 	if loaded != 1 || m.CurrentView() != tui.ViewSkills {
 		t.Fatalf("skills load/view = %d/%s", loaded, m.CurrentView())
 	}
@@ -300,7 +300,7 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 	// Reload after the suspended add process is driven by Bubble Tea itself in
 	// production; seed the view again here, then verify the guarded update path.
 	m = tui.New(actions, nil, nil)
-	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("u"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"), key("u"))
 	if !strings.Contains(m.View(), "update project skill project-skill") {
 		t.Fatalf("update confirmation missing:\n%s", m.View())
 	}
@@ -310,7 +310,7 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 	}
 
 	m = tui.New(actions, nil, nil)
-	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("/"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"), key("/"))
 	for _, msg := range typeText("scope:global") {
 		m = send(m, msg)
 	}
@@ -1007,7 +1007,7 @@ func TestRepoViewHidesTriesButRemoteMatchingUsesAndClearsThem(t *testing.T) {
 	// Once the Try disappears from the fresh local snapshot, an ordinary local
 	// reload must clear the cached marker rather than preserving stale state.
 	repos = []tui.RepoRow{ordinary}
-	m = send(m, key("tab"), key("tab"), key("r"), key("tab"), key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("r"), key("tab"), key("tab"), key("tab"))
 	if out := m.View(); !strings.Contains(out, "not cloned") {
 		t.Fatalf("stale remote Try marker survived local reload:\n%s", out)
 	}

@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- An agent skill manager: `dev skill list/add/update` inventories project and global agent skills
+  with their agents, sources, and update state, backed by a SKILLS dashboard view and a `dev doctor`
+  check for the skill provider.
 - A remote repository fleet: `dev fleet list/status/sync/open` and `dev fleet config` inventory
   repositories, tasks, and live runtime state across SSH-reachable machines running their own `dev`,
   with a FLEET dashboard view, per-host degradation states, and a regenerable `fleet` cache.

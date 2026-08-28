@@ -62,6 +62,7 @@ tested_with: optional
 | worktree provisioning safety | [Worktrees and provisioning](../guides/worktrees-provisioning.md) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents and runtimes](../guides/parallel-agents-runtimes.md) | `internal/runtime/runtime.go` | implemented |
 | SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](../guides/remote-fleet.md) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
+| agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |
 | quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
 | current GitHub Flow has six branch/PR steps and no deployment step | [GitHub Flow](../git/github-flow.md) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official, checked 2026-08-28 |
 | linked worktrees share repository data but own files/index/HEAD | [Worktree semantics](../git/worktree-semantics-recovery.md) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official, checked 2026-08-28 |

@@ -21,6 +21,8 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools` |
 | configuration/shell | `config init/show/path`, `shell-init`, completion |
+| remote fleet | `fleet list`, `fleet status`, `fleet sync`, `fleet open`, `fleet config …` |
+| agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
 | activity/data | `stats …`, `cache …` |
 | help | `help [topic]` |
