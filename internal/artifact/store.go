@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/daviddwlee84/dev-cli/internal/catalog"
+	"github.com/daviddwlee84/dev-cli/internal/lockx"
 )
 
 var ErrIntentNotFound = errors.New("artifact intent not found")
@@ -37,7 +37,7 @@ func (s *Store) Create(ctx context.Context, intent *Intent) error {
 	if intent == nil {
 		return fmt.Errorf("create nil artifact intent")
 	}
-	return catalog.NewStore(s.Dir).WithLock(ctx, func() error {
+	return lockx.WithDir(ctx, s.Dir, "artifact intent", func() error {
 		candidate := *intent
 		if candidate.ID == "" {
 			candidate.ID = s.newID()
@@ -132,7 +132,7 @@ func (s *Store) Update(ctx context.Context, id string, mutate func(*Intent) erro
 	if mutate == nil {
 		return fmt.Errorf("artifact update needs a mutation")
 	}
-	return catalog.NewStore(s.Dir).WithLock(ctx, func() error {
+	return lockx.WithDir(ctx, s.Dir, "artifact intent", func() error {
 		intent, err := s.Get(id)
 		if err != nil {
 			return err

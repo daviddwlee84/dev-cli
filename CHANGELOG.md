@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `dev artifact discard <intent> --yes` records that an armed handoff can never be finalized, so an
+  intent whose transcript was never written, or whose HEAD is gone after a rebase, stops blocking
+  integration and retirement. It refuses an intent that is still armed.
 - `dev summary` machine-wide Markdown/JSON snapshots with adaptive detail,
   attention filtering, recent commits, runtime controls and optional sizes.
 - Agent-safe retirement: `dev retire` closes covering runtime sessions and removes a linked worktree

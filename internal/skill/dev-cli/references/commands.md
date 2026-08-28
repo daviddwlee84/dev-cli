@@ -40,6 +40,16 @@ Inspect and finalize armed agent artifacts
 dev artifact
 ```
 
+### `dev artifact discard`
+
+Abandon an intent that can never be finalized
+
+```
+dev artifact discard <intent> [flags]
+```
+
+- `-y, --yes` — confirm discarding the intent without prompting
+
 ### `dev artifact finalize`
 
 Commit one exact stable transcript after its writer exits

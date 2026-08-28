@@ -17,6 +17,11 @@ const (
 	Finalizing Status = "finalizing"
 	Finalized  Status = "finalized"
 	Failed     Status = "failed"
+	// Discarded records an operator's explicit decision that an intent can
+	// never be finalized — its transcript is gone, or its HEAD no longer
+	// exists. It is deliberately distinct from Finalized: nothing was
+	// committed, and the record survives to say so.
+	Discarded Status = "discarded"
 )
 
 // Intent is a durable handoff from an active agent to an external finalizer.
@@ -70,7 +75,7 @@ func (i Intent) Validate() error {
 		return fmt.Errorf("invalid agent session %q", i.Provider+":"+i.SessionID)
 	}
 	switch i.Status {
-	case Armed, Finalizing, Finalized, Failed:
+	case Armed, Finalizing, Finalized, Failed, Discarded:
 		return nil
 	default:
 		return fmt.Errorf("invalid artifact intent status %q", i.Status)

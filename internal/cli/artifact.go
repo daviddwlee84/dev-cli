@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -99,7 +100,7 @@ or another workspace.`,
 
 func newArtifactCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{Use: "artifact", Short: "Inspect and finalize armed agent artifacts"}
-	cmd.AddCommand(newArtifactFinalizeCmd(app), newArtifactListCmd(app), newArtifactObserveCmd(app))
+	cmd.AddCommand(newArtifactFinalizeCmd(app), newArtifactListCmd(app), newArtifactDiscardCmd(app), newArtifactObserveCmd(app))
 	return cmd
 }
 
@@ -144,6 +145,71 @@ func newArtifactFinalizeCmd(app *App) *cobra.Command {
 	f.DurationVar(&settle, "settle", 500*time.Millisecond, "required transcript stability interval")
 	f.BoolVar(&ifPending, "if-pending", false, "silently succeed when no armed intent matches the run id")
 	f.BoolVar(&writerStopped, "writer-stopped", false, "confirm the outer agent wrapper has returned before finalization")
+	return cmd
+}
+
+func newArtifactDiscardCmd(app *App) *cobra.Command {
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "discard <intent>",
+		Short: "Abandon an intent that can never be finalized",
+		Long: `Record that an armed handoff will never produce a commit.
+
+An intent whose transcript was never written, or whose HEAD no longer exists
+after a rebase, can never be finalized, and until now it blocked integration and
+retirement forever with no way out except editing dev state by hand.
+
+Discarding commits nothing and recovers nothing. It states, durably, that the
+operator inspected the intent and accepted the loss, which is why it refuses an
+intent that is still armed: arm-to-finalize is the path that preserves a
+transcript, and only a finalization that already failed is a dead end.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store := artifactStore(app)
+			intent, err := store.Get(args[0])
+			if err != nil {
+				return err
+			}
+			switch intent.Status {
+			case artifact.Discarded:
+				fmt.Fprintf(app.Out, "%s is already discarded\n", intent.ID)
+				return nil
+			case artifact.Finalized:
+				return fmt.Errorf("%s is finalized; there is nothing to discard", intent.ID)
+			case artifact.Armed, artifact.Finalizing:
+				return fmt.Errorf("%s is %s; run `dev artifact finalize --intent %s` first, and discard only if that fails",
+					intent.ID, intent.Status, intent.ID)
+			}
+			s := app.outStyle()
+			fmt.Fprintf(app.Out, "%s\n", s.warning("DISCARDING "+intent.ID))
+			fmt.Fprintf(app.Out, "   session    %s:%s\n", intent.Provider, intent.SessionID)
+			fmt.Fprintf(app.Out, "   branch     %s\n", intent.Branch)
+			fmt.Fprintf(app.Out, "   worktree   %s\n", config.Contract(intent.WorktreePath))
+			fmt.Fprintf(app.Out, "   head       %s\n", shortOID(intent.Head))
+			for _, plan := range intent.PlanPaths {
+				fmt.Fprintf(app.Out, "   plan       %s\n", config.Contract(plan))
+			}
+			fmt.Fprintln(app.Out, "   No transcript will be committed. This cannot be undone.")
+			if !yes {
+				if !app.interactive() {
+					return fmt.Errorf("discarding %s destroys a transcript handoff; pass --yes to confirm", intent.ID)
+				}
+				if !confirm(app, bufio.NewReader(app.In), "discard artifact intent "+intent.ID) {
+					fmt.Fprintln(app.Out, "Canceled; nothing was changed.")
+					return nil
+				}
+			}
+			if err := store.Update(ctxOf(), intent.ID, func(current *artifact.Intent) error {
+				current.Status = artifact.Discarded
+				return nil
+			}); err != nil {
+				return err
+			}
+			fmt.Fprintf(app.Out, "DISCARDED %s\n", intent.ID)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "confirm discarding the intent without prompting")
 	return cmd
 }
 
@@ -317,8 +383,12 @@ func ensureArtifactsFinalized(app *App, worktree string) error {
 		if canonicalErr != nil || intentPath != canonical {
 			continue
 		}
+		if intent.Status == artifact.Discarded {
+			continue
+		}
 		if intent.Status != artifact.Finalized {
-			return fmt.Errorf("artifact intent for %s is %s; finalize it before integration or retirement", config.Contract(worktree), intent.Status)
+			return fmt.Errorf("artifact intent for %s is %s; finalize it, or discard it with `dev artifact discard %s`, before integration or retirement",
+				config.Contract(worktree), intent.Status, intent.ID)
 		}
 		reconciled, reconcileErr := (&artifact.Service{Store: store}).Finalize(context.Background(), artifact.FinalizeRequest{IntentID: intent.ID})
 		if reconcileErr != nil {
@@ -359,7 +429,7 @@ func artifactStatuses(app *App) (map[string]string, error) {
 		return nil, err
 	}
 	statuses := make(map[string]string)
-	priority := map[artifact.Status]int{artifact.Finalized: 1, artifact.Armed: 2, artifact.Finalizing: 3, artifact.Failed: 4}
+	priority := map[artifact.Status]int{artifact.Discarded: 1, artifact.Finalized: 1, artifact.Armed: 2, artifact.Finalizing: 3, artifact.Failed: 4}
 	for _, intent := range intents {
 		path, err := pathx.Canonical(intent.WorktreePath)
 		if err != nil {

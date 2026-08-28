@@ -18,7 +18,7 @@ lang: zh-TW
 | 目標 | Commands |
 |---|---|
 | task lifecycle | `start`、`park`、`resume`、`done`、`retire`、`sweep`、`ls`、`status` |
-| agent artifacts | `prepare`、`artifact finalize`、`artifact list` |
+| agent artifacts | `prepare`、`artifact finalize`、`artifact list`、`artifact discard` |
 | guarded Git transactions | `git uncommit`、`git recommit`、`git pull-rebase`、`git amend-all`、`git setup` |
 | linked worktrees | `wt list`、`wt create`、`wt open`、`wt rm`、`wt plan`、`wt provision` |
 | repositories/remotes | `repo list`、`repo context`、`repo clone`、`repo open`、`repo new`、`repo sync`、`repo remote`、`repo mark` |

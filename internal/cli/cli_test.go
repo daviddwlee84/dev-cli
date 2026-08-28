@@ -1617,3 +1617,65 @@ func TestNoteResolutionRejectsEmptyAndTooShortPrefixes(t *testing.T) {
 		t.Error("invalid prefix deleted the note")
 	}
 }
+
+// An intent whose transcript was never written, or whose HEAD is gone after a
+// rebase, can never be finalized. Before `dev artifact discard` existed it
+// blocked integration and retirement forever with no tool-mediated way out.
+func TestArtifactDiscardUnblocksAnIntentThatCanNeverFinalize(t *testing.T) {
+	h := newHarness(t)
+	intentDir := filepath.Join(h.home, "state", "artifact-intents", "v1")
+	if err := os.MkdirAll(intentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	record := `{"schema_version":1,"id":"intent-deadbeef","run_id":"codex-run","provider":"codex",` +
+		`"session_id":"11111111-2222-3333-4444-555555555555","repo_path":"` + h.repo.Root + `",` +
+		`"git_common_dir":"` + filepath.Join(h.repo.Root, ".git") + `","worktree_path":"` + h.repo.Root + `",` +
+		`"branch":"feat/gone","head":"0000000000000000000000000000000000000000","status":"failed"}`
+	if err := os.WriteFile(filepath.Join(intentDir, "intent-deadbeef.json"), []byte(record), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Without --yes and without a TTY the loss must not happen silently.
+	if _, _, err := h.run("artifact", "discard", "intent-deadbeef"); err == nil ||
+		!strings.Contains(err.Error(), "pass --yes") {
+		t.Fatalf("unconfirmed discard = %v", err)
+	}
+	if out := h.mustRun("artifact", "list"); !strings.Contains(out, "failed") {
+		t.Fatalf("refused discard changed the intent:\n%s", out)
+	}
+
+	out := h.mustRun("artifact", "discard", "intent-deadbeef", "--yes")
+	for _, want := range []string{"DISCARDING", "codex:", "feat/gone", "cannot be undone", "DISCARDED"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("discard output missing %q:\n%s", want, out)
+		}
+	}
+	if listed := h.mustRun("artifact", "list"); !strings.Contains(listed, "discarded") {
+		t.Fatalf("intent was not recorded as discarded:\n%s", listed)
+	}
+	// Re-running is a no-op rather than an error, so cleanup scripts are safe.
+	if again := h.mustRun("artifact", "discard", "intent-deadbeef", "--yes"); !strings.Contains(again, "already discarded") {
+		t.Fatalf("second discard = %q", again)
+	}
+}
+
+// An armed intent still has a live path to preserving its transcript, so
+// discarding it must be refused rather than offered as a shortcut.
+func TestArtifactDiscardRefusesAnArmedIntent(t *testing.T) {
+	h := newHarness(t)
+	intentDir := filepath.Join(h.home, "state", "artifact-intents", "v1")
+	if err := os.MkdirAll(intentDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	record := `{"schema_version":1,"id":"intent-armed01","run_id":"codex-run","provider":"codex",` +
+		`"session_id":"11111111-2222-3333-4444-555555555555","repo_path":"` + h.repo.Root + `",` +
+		`"git_common_dir":"` + filepath.Join(h.repo.Root, ".git") + `","worktree_path":"` + h.repo.Root + `",` +
+		`"branch":"feat/live","head":"0000000000000000000000000000000000000000","status":"armed"}`
+	if err := os.WriteFile(filepath.Join(intentDir, "intent-armed01.json"), []byte(record), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, _, err := h.run("artifact", "discard", "intent-armed01", "--yes")
+	if err == nil || !strings.Contains(err.Error(), "finalize") {
+		t.Fatalf("discarding an armed intent = %v", err)
+	}
+}
