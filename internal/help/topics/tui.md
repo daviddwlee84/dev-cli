@@ -4,20 +4,22 @@ Bare `dev` opens the dashboard when stdin/stdout are terminals; `dev tui`
 opens it explicitly. When piped, bare `dev` prints `dev ls` instead, so shell
 composition stays predictable.
 
-## Three views
+## Four views
 
 Switch with `tab`, `l`/`h`, or right/left:
 
 | View | Answers | Data source |
 |---|---|---|
 | TASKS | What am I working on? | task registry + live Git/runtime state |
-| REPOS | What repositories exist here? | recursive configured scan roots |
+| REPOS | What durable repositories exist here? | configured scan roots + asset catalog |
+| TRY | Which experiments can I resume, archive or graduate? | experiment catalog + live Git/runtime state |
 | REMOTE | What can I open or clone? | authenticated `gh` + `glab` inventories |
 
-REPOS shows branch, dirty state, linked-worktree count and HOT/WARM/COLD task
-tallies. Repos with active work sort first; untracked clean repos remain
-visible below them. On a first run with no tasks, switch to REPOS and press `s`
-to start one, or run `dev adopt` to import work already in flight.
+REPOS shows branch, dirty state, owned logical size, linked-worktree count and
+HOT/WARM/COLD task tallies. Git-backed Tries are shown in TRY rather than
+appearing twice; REMOTE still labels their local checkout as `try`. Repos with
+active work sort first. On a first run with no tasks, switch to REPOS and press
+`s`, or use TRY `n` for a low-cost experiment.
 
 REMOTE loads lazily, so dashboard startup never waits on the network. A
 private XDG cache makes later switches instant; `r` refreshes explicitly. It
@@ -32,13 +34,16 @@ ctrl+d / ctrl+u      half page down / up
 g / G                top / bottom
 h / l, shift-tab/tab previous / next view
 /                    filter as you type
-esc                  clear prompt/filter; when clear, quit
-q                    quit
+?                    full keyboard help overlay
+esc                  close prompt/filter/overlay; when clear, quit
+q                    quit (or close help/action menu)
 ```
 
 The `/` query applies to the current view and matches whitespace-separated
-terms independently. `gitlab auth` finds a GitLab repo whose name/description
-also contains auth, regardless of word order.
+terms independently. Structured local filters include `tag:important`,
+`remote:none`, `size:>1GiB`, `phase:deprecated` and `where:archived` where
+applicable. `gitlab auth` still finds a GitLab repo whose name/description also
+contains auth, regardless of word order.
 
 ## Actions
 
@@ -59,14 +64,29 @@ REPOS:
 enter / o  ad-hoc open: no task, branch or worktree
 d          track direct work on the current branch (usually main)
 s          isolated task: branch + worktree + provisioning + runtime + entry
+space      edit repository tags and note
+O / R      cycle / reverse activity/latest/name/git/size/tasks sort
 ```
 
-The LIVE column makes runtime state explicit (`herdr:working`, `herdr:idle`);
-the detail pane includes the workspace handle. LATEST is the newest dirty-file
-mtime, commit time, or task update.
+The LIVE column makes runtime state explicit (`herdr:working`, `herdr:idle`).
+SIZE is `checkout + private Git` logical bytes; shared Git objects are shown in
+detail and never charged to every worktree. The detail pane also calls out
+`no remote`, local-only branches and multiple branch-upstream remotes.
 
-Columns and ordering are configured under `[tui.repos]`. In the view, `O`
-cycles activity/latest/name/git/tasks and `R` reverses the current sort.
+TRY:
+
+```
+enter / o  open a present Try
+n          create/clone a Try (name, optional clone ref, git yes/no)
+space      mark, deprecate/reactivate, archive/restore, or graduate
+a          include deprecated, archived, evicted and graduated history
+O / R      cycle / reverse activity/name/phase/size sort
+```
+
+Archive is a reversible same-filesystem move under `tries_root/.dev`; it does
+not reclaim disk space. Phase 1 has no evict/delete action. The catalog keeps a
+stable ID, per-host location, tags/note, last-opened time and graduation
+history; Git and size facts remain live/derived.
 
 REMOTE:
 

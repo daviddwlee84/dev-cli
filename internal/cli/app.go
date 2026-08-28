@@ -1,6 +1,7 @@
 // Package cli assembles dev's command tree. Commands stay thin: they parse
 // flags, call into the domain packages, and render. All policy lives in
-// config, gitx, wt, task and runtime so it can be tested without a terminal.
+// config, catalog, experiment, diskusage, gitx, wt, task and runtime so it can
+// be tested without a terminal.
 package cli
 
 import (
@@ -8,16 +9,23 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
 // App is the state shared by every command.
 type App struct {
-	Cfg   config.Config
-	Tasks *task.Store
+	Cfg      config.Config
+	Tasks    *task.Store
+	Catalog  *catalog.Store
+	Registry *catalog.Registry
+	Sizes    *diskusage.Manager
 
 	Out io.Writer
 	Err io.Writer
@@ -37,12 +45,20 @@ func (a *App) Load() error {
 		return err
 	}
 	a.Cfg = cfg
-	a.Tasks = task.NewStore(cfg.TasksDir())
 	if a.Out == nil {
 		a.Out = os.Stdout
 	}
 	if a.Err == nil {
 		a.Err = os.Stderr
+	}
+	a.Tasks = task.NewStore(cfg.TasksDir())
+	a.Catalog = catalog.NewStore(cfg.AssetsDir(), catalog.WithDiagnosticSink(func(diagnostic catalog.Diagnostic) {
+		fmt.Fprintf(a.Err, "dev: warning: %s\n", diagnostic.Error())
+	}))
+	a.Registry = catalog.NewRegistry(a.Catalog)
+	if a.Sizes == nil {
+		cache := diskusage.NewCache(filepath.Join(config.CacheHome(), "dev", "sizes-v1.json"), 10*time.Minute)
+		a.Sizes = diskusage.NewManager(cache, 2)
 	}
 	return nil
 }

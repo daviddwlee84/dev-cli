@@ -1,14 +1,18 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
@@ -29,6 +33,7 @@ This is the "what projects do I have?" half of dev, kept separate from the
 	}
 	cmd.AddCommand(
 		newRepoListCmd(app),
+		newRepoMarkCmd(app),
 		newRepoCloneCmd(app),
 		newRepoOpenCmd(app),
 		newRepoNewCmd(app),
@@ -45,9 +50,17 @@ func resolveRepoRef(app *App, ref string) (repo.Repo, []repo.Repo, error) {
 
 func newRepoListCmd(app *App) *cobra.Command {
 	var (
-		category  string
-		dirtyOnly bool
-		long      bool
+		category          string
+		dirtyOnly         bool
+		long              bool
+		jsonOut           bool
+		includeTries      bool
+		noRemote          bool
+		localOnly         bool
+		multipleRemotes   bool
+		multipleUpstreams bool
+		sizes             bool
+		refreshSizes      bool
 	)
 	cmd := &cobra.Command{
 		Use:     "list",
@@ -58,28 +71,71 @@ func newRepoListCmd(app *App) *cobra.Command {
 			ctx := ctxOf()
 			// Reuse the TUI's bounded-parallel collector. The old serial
 			// status/worktree/remote loop measured 4.2s over 56 repos.
-			rows, err := collectRepos(ctx, app, runtime.None{})
+			rows, err := collectReposWithOptions(ctx, app, runtime.None{}, repoCollectOptions{
+				IncludeTries: includeTries,
+			})
 			if err != nil {
 				return err
 			}
-			if len(rows) == 0 {
-				fmt.Fprintf(app.Out, "No repositories under %s\n",
-					strings.Join(contractAll(app.Cfg.ScanRoots()), ", "))
-				return nil
-			}
-
-			t := NewTable("REPO", "CATEGORY", "BRANCH", "GIT", "LATEST", "WT", "PATH")
+			filtered := make([]tui.RepoRow, 0, len(rows))
 			for _, row := range rows {
-				r := row.Repo
-				if category != "" && !strings.EqualFold(r.Category, category) {
+				if category != "" && !strings.EqualFold(row.Repo.Category, category) {
 					continue
-				}
-				branch, gitCol := row.Status.Branch, row.Status.Summary()
-				if r.Bare {
-					branch, gitCol = "(bare)", "—"
 				}
 				if dirtyOnly && !row.Status.Dirty() {
 					continue
+				}
+				if noRemote && (row.TopologyErr != nil || row.Topology.HasRemote()) {
+					continue
+				}
+				if localOnly && (row.TopologyErr != nil || len(row.Topology.LocalOnlyBranches) == 0) {
+					continue
+				}
+				if multipleRemotes && (row.TopologyErr != nil || !row.Topology.MultipleRemotes()) {
+					continue
+				}
+				if multipleUpstreams && (row.TopologyErr != nil || !row.Topology.MultipleUpstreams()) {
+					continue
+				}
+				filtered = append(filtered, row)
+			}
+			if sizes || refreshSizes {
+				measureRepoRows(ctx, app, filtered, refreshSizes)
+			}
+			if jsonOut {
+				encoded := make([]repoListJSONRow, 0, len(filtered))
+				for _, row := range filtered {
+					encoded = append(encoded, makeRepoListJSONRow(row))
+				}
+				encoder := json.NewEncoder(app.Out)
+				encoder.SetIndent("", "  ")
+				return encoder.Encode(encoded)
+			}
+			if len(filtered) == 0 {
+				if len(rows) == 0 {
+					fmt.Fprintf(app.Out, "No repositories under %s\n",
+						strings.Join(contractAll(app.Cfg.ScanRoots()), ", "))
+				} else {
+					fmt.Fprintln(app.Out, "No repositories match that filter.")
+				}
+				return nil
+			}
+
+			headings := []string{"REPO"}
+			if includeTries {
+				headings = append(headings, "KIND")
+			}
+			headings = append(headings, "CATEGORY", "BRANCH", "GIT", "REMOTE")
+			if sizes || refreshSizes {
+				headings = append(headings, "SIZE")
+			}
+			headings = append(headings, "LATEST", "WT", "PATH")
+			t := NewTable(headings...)
+			for _, row := range filtered {
+				r := row.Repo
+				branch, gitCol := row.Status.Branch, row.Status.Summary()
+				if r.Bare {
+					branch, gitCol = "(bare)", "—"
 				}
 				wtCount := ""
 				if row.Worktrees > 0 {
@@ -93,12 +149,24 @@ func newRepoListCmd(app *App) *cobra.Command {
 				if long {
 					path = config.Contract(r.Path)
 				}
-				t.Add(truncate(r.Name, 28), dash(r.Category), truncate(branch, 24),
-					gitCol, latest, dash(wtCount), path)
-			}
-			if t.Len() == 0 {
-				fmt.Fprintln(app.Out, "No repositories match that filter.")
-				return nil
+				remoteColumn := row.Topology.Summary()
+				if row.TopologyErr != nil {
+					remoteColumn = "?"
+				}
+				values := []string{truncate(r.Name, 28)}
+				if includeTries {
+					kind := catalog.KindRepository
+					if row.Asset != nil {
+						kind = row.Asset.Kind
+					}
+					values = append(values, string(kind))
+				}
+				values = append(values, dash(r.Category), truncate(branch, 24), gitCol, truncate(remoteColumn, 28))
+				if sizes || refreshSizes {
+					values = append(values, sizeColumn(row.Usage, row.SizeError))
+				}
+				values = append(values, latest, dash(wtCount), path)
+				t.Add(values...)
 			}
 			t.Render(app.Out)
 			return nil
@@ -108,7 +176,191 @@ func newRepoListCmd(app *App) *cobra.Command {
 	f.StringVarP(&category, "category", "c", "", "only this category")
 	f.BoolVar(&dirtyOnly, "dirty", false, "only repositories with uncommitted changes")
 	f.BoolVarP(&long, "long", "l", false, "show full paths")
+	f.BoolVar(&jsonOut, "json", false, "emit stable JSON")
+	f.BoolVar(&includeTries, "include-tries", false, "include active and deprecated Try repositories")
+	f.BoolVar(&noRemote, "no-remote", false, "only repositories with no configured Git remote")
+	f.BoolVar(&localOnly, "local-only", false, "only repositories with a branch lacking a remote-backed upstream")
+	f.BoolVar(&multipleRemotes, "multiple-remotes", false, "only repositories with multiple configured remotes")
+	f.BoolVar(&multipleUpstreams, "multiple-upstreams", false, "only repositories whose branches track multiple remotes")
+	f.BoolVar(&sizes, "sizes", false, "measure logical checkout/private/shared Git bytes")
+	f.BoolVar(&refreshSizes, "refresh-sizes", false, "ignore the size cache and measure again")
 	return cmd
+}
+
+func newRepoMarkCmd(app *App) *cobra.Command {
+	var add, remove []string
+	var note string
+	cmd := &cobra.Command{
+		Use:   "mark <repo>",
+		Short: "Add catalog tags or update a repository note",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(add) == 0 && len(remove) == 0 && !cmd.Flags().Changed("note") {
+				return fmt.Errorf("mark requires --add, --remove, or --note")
+			}
+			repository, _, err := resolveRepoRef(app, args[0])
+			if err != nil {
+				return err
+			}
+			var noteValue *string
+			if cmd.Flags().Changed("note") {
+				noteValue = &note
+			}
+			marked, err := patchRepositoryCatalog(ctxOf(), app, repository, add, remove, noteValue)
+			if err != nil {
+				return fmt.Errorf("mark repository %s: %w", repository.Display(), err)
+			}
+			fmt.Fprintf(app.Out, "%s\n  path  %s\n  tags  %s\n  note  %s\n",
+				repository.Display(), config.Contract(repository.Path),
+				dash(strings.Join(marked.Tags, ", ")), dash(marked.Note))
+			return nil
+		},
+	}
+	flags := cmd.Flags()
+	flags.StringArrayVar(&add, "add", nil, "tag to add (repeatable)")
+	flags.StringArrayVar(&remove, "remove", nil, "tag to remove (repeatable)")
+	flags.StringVar(&note, "note", "", "replace the note; pass an empty value to clear it")
+	return cmd
+}
+
+func patchRepositoryCatalog(ctx context.Context, app *App, repository repo.Repo, add, remove []string, note *string) (*catalog.Entry, error) {
+	commonDir := repository.CommonDir
+	realPath := repository.RealPath
+	if discovered, discoverErr := gitx.Discover(ctx, repository.Path); discoverErr == nil {
+		if commonDir == "" {
+			commonDir = discovered.GitCommonDir
+		}
+		if realPath == "" {
+			realPath = discovered.Root
+		}
+	}
+	observation := catalog.Observation{
+		Host: config.Hostname(), Path: repository.Path, RealPath: realPath,
+		CommonDir: commonDir, Name: repository.Name,
+		RemoteIdentity: gitx.RemoteFromConfig(commonDir, "origin"),
+	}
+	add = catalog.NormalizeTags(add)
+	remove = catalog.NormalizeTags(remove)
+	var marked *catalog.Entry
+	err := app.Catalog.WithLock(ctx, func() error {
+		entry, ensureErr := app.Registry.EnsureRepository(observation)
+		if ensureErr != nil {
+			return ensureErr
+		}
+		marked, ensureErr = app.Registry.Patch(entry.ID, func(candidate *catalog.Entry) error {
+			kept := make([]string, 0, len(candidate.Tags)+len(add))
+			for _, tag := range candidate.Tags {
+				if !slices.Contains(remove, tag) {
+					kept = append(kept, tag)
+				}
+			}
+			candidate.Tags = append(kept, add...)
+			if note != nil {
+				candidate.Note = *note
+			}
+			return nil
+		})
+		return ensureErr
+	})
+	return marked, err
+}
+
+type repoListJSONRow struct {
+	Name         string               `json:"name"`
+	Display      string               `json:"display"`
+	Kind         catalog.Kind         `json:"kind"`
+	Category     string               `json:"category,omitempty"`
+	Path         string               `json:"path"`
+	RealPath     string               `json:"real_path,omitempty"`
+	Symlink      bool                 `json:"symlink"`
+	Bare         bool                 `json:"bare"`
+	HasGit       bool                 `json:"has_git"`
+	Branch       string               `json:"branch,omitempty"`
+	Git          repoListJSONGit      `json:"git"`
+	Recovery     repoListJSONRecovery `json:"recovery"`
+	Size         *diskusage.Usage     `json:"size"`
+	SizeError    string               `json:"size_error,omitempty"`
+	LastActivity *string              `json:"last_activity"`
+	Worktrees    int                  `json:"worktrees"`
+	Asset        *repoListJSONAsset   `json:"asset,omitempty"`
+}
+
+type repoListJSONGit struct {
+	Dirty     bool `json:"dirty"`
+	Changed   int  `json:"changed"`
+	Staged    int  `json:"staged"`
+	Unstaged  int  `json:"unstaged"`
+	Untracked int  `json:"untracked"`
+	Ahead     int  `json:"ahead"`
+	Behind    int  `json:"behind"`
+}
+
+type repoListJSONRecovery struct {
+	Remotes           []gitx.RemoteInfo     `json:"remotes"`
+	Branches          []gitx.BranchUpstream `json:"branches"`
+	LocalOnlyBranches []string              `json:"local_only_branches,omitempty"`
+	UpstreamRemotes   []string              `json:"upstream_remotes,omitempty"`
+	NoRemote          bool                  `json:"no_remote"`
+	MultipleRemotes   bool                  `json:"multiple_remotes"`
+	MultipleUpstreams bool                  `json:"multiple_upstreams"`
+	Error             string                `json:"error,omitempty"`
+}
+
+type repoListJSONAsset struct {
+	ID    string                  `json:"id"`
+	Kind  catalog.Kind            `json:"kind"`
+	Phase catalog.ExperimentPhase `json:"phase,omitempty"`
+	Tags  []string                `json:"tags"`
+	Note  string                  `json:"note"`
+}
+
+func makeRepoListJSONRow(row tui.RepoRow) repoListJSONRow {
+	kind := catalog.KindRepository
+	if row.Asset != nil {
+		kind = row.Asset.Kind
+	}
+	result := repoListJSONRow{
+		Name: row.Repo.Name, Display: row.Repo.Display(), Kind: kind,
+		Category: row.Repo.Category, Path: row.Repo.Path, RealPath: row.Repo.RealPath,
+		Symlink: row.Repo.Symlink, Bare: row.Repo.Bare, HasGit: row.Repo.HasGit,
+		Branch: row.Status.Branch,
+		Git: repoListJSONGit{
+			Dirty: row.Status.Dirty(), Changed: row.Status.Changed,
+			Staged: row.Status.Staged, Unstaged: row.Status.Unstaged,
+			Untracked: row.Status.Untracked, Ahead: row.Status.Ahead, Behind: row.Status.Behind,
+		},
+		Recovery: repoListJSONRecovery{
+			Remotes:           append([]gitx.RemoteInfo{}, row.Topology.Remotes...),
+			Branches:          append([]gitx.BranchUpstream{}, row.Topology.Branches...),
+			LocalOnlyBranches: append([]string(nil), row.Topology.LocalOnlyBranches...),
+			UpstreamRemotes:   append([]string(nil), row.Topology.UpstreamRemotes...),
+			NoRemote:          row.TopologyErr == nil && !row.Topology.HasRemote(),
+			MultipleRemotes:   row.Topology.MultipleRemotes(),
+			MultipleUpstreams: row.Topology.MultipleUpstreams(),
+		},
+		LastActivity: rfc3339Value(row.LastActivity), Worktrees: row.Worktrees,
+	}
+	if row.TopologyErr != nil {
+		result.Recovery.Error = row.TopologyErr.Error()
+	}
+	if row.Usage != nil {
+		usage := *row.Usage
+		result.Size = &usage
+	}
+	if row.SizeError != nil {
+		result.SizeError = row.SizeError.Error()
+	}
+	if row.Asset != nil {
+		asset := &repoListJSONAsset{
+			ID: row.Asset.ID, Kind: row.Asset.Kind,
+			Tags: append([]string{}, row.Asset.Tags...), Note: row.Asset.Note,
+		}
+		if row.Asset.Experiment != nil {
+			asset.Phase = row.Asset.Experiment.Phase
+		}
+		result.Asset = asset
+	}
+	return result
 }
 
 func newRepoCloneCmd(app *App) *cobra.Command {

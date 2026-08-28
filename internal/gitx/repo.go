@@ -12,6 +12,9 @@ import (
 type Repo struct {
 	// Root is the working-tree root of the checkout that was probed.
 	Root string
+	// GitDir is this checkout's administrative directory. A linked worktree has
+	// its own entry below the shared common directory.
+	GitDir string
 	// GitCommonDir is the shared .git directory — the same value for every
 	// worktree of a clone, which makes it the natural identity.
 	GitCommonDir string
@@ -37,6 +40,7 @@ func Discover(ctx context.Context, dir string) (Repo, error) {
 		"rev-parse",
 		"--path-format=absolute",
 		"--show-toplevel",
+		"--git-dir",
 		"--git-common-dir",
 		"--is-bare-repository",
 	)
@@ -47,13 +51,15 @@ func Discover(ctx context.Context, dir string) (Repo, error) {
 	r := Repo{}
 	// A bare repo has no toplevel, so git prints one fewer line.
 	switch len(f) {
-	case 3:
+	case 4:
 		r.Root = f[0]
+		r.GitDir = f[1]
+		r.GitCommonDir = f[2]
+		r.Bare = f[3] == "true"
+	case 3:
+		r.GitDir = f[0]
 		r.GitCommonDir = f[1]
 		r.Bare = f[2] == "true"
-	case 2:
-		r.GitCommonDir = f[0]
-		r.Bare = f[1] == "true"
 	default:
 		return Repo{}, ErrNotARepo
 	}
@@ -62,10 +68,14 @@ func Discover(ctx context.Context, dir string) (Repo, error) {
 	// bare repo (where the common dir *is* the repo).
 	if r.Bare {
 		r.MainRoot = strings.TrimSuffix(r.GitCommonDir, string(filepath.Separator))
+	} else if r.GitDir == r.GitCommonDir {
+		// A normal checkout may use --separate-git-dir, so the common directory's
+		// parent is not necessarily the working-tree root.
+		r.MainRoot = r.Root
 	} else {
 		r.MainRoot = filepath.Dir(r.GitCommonDir)
 	}
-	r.IsLinkedWorktree = r.Root != "" && r.Root != r.MainRoot
+	r.IsLinkedWorktree = r.Root != "" && r.GitDir != r.GitCommonDir
 	r.Name = filepath.Base(r.MainRoot)
 	if r.Bare {
 		// ".../foo/.bare" or ".../foo.git" should both read as "foo".

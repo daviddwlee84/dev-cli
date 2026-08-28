@@ -9,6 +9,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/daviddwlee84/dev-cli/internal/catalog"
+	"github.com/daviddwlee84/dev-cli/internal/diskusage"
+	"github.com/daviddwlee84/dev-cli/internal/experiment"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
@@ -317,6 +321,30 @@ func repoRow(name string, tasks ...*task.Task) tui.RepoRow {
 	}
 }
 
+func tryRow(id, name string, phase catalog.ExperimentPhase, state catalog.LocationState, tags ...string) tui.TryRow {
+	path := "/src/tries/" + name
+	location := catalog.Location{State: state, CurrentPath: path}
+	if state == catalog.LocationArchived {
+		location.RestorePath = path
+		location.CurrentPath = "/src/tries/.dev/archive/" + id + "/" + name
+	}
+	entry := &catalog.Entry{
+		ID: id, Kind: catalog.KindTry, Name: name, Tags: tags,
+		Experiment: &catalog.Experiment{Phase: phase, Slug: name, OriginalPath: path},
+		Locations:  map[string]catalog.Location{"test": location},
+	}
+	item := experiment.Item{
+		Entry: entry, ID: id, Kind: catalog.KindTry, Name: name, Basename: name,
+		Slug: name, Phase: phase, Tags: append([]string(nil), tags...),
+		Live: experiment.LiveFacts{
+			Present: state == catalog.LocationPresent, CurrentPath: location.CurrentPath,
+			RealPath: location.CurrentPath,
+		},
+	}
+	copy := location
+	return tui.TryRow{Item: item, Location: &copy}
+}
+
 func TestTabSwitchesViews(t *testing.T) {
 	rows := []inventory.Row{row("a", "token refresh", task.Hot, "")}
 	repos := []tui.RepoRow{repoRow("api"), repoRow("web")}
@@ -338,11 +366,311 @@ func TestTabSwitchesViews(t *testing.T) {
 		t.Error("h should move to the previous view")
 	}
 	m = send(m, key("tab"))
+	if m.CurrentView() != tui.ViewTries {
+		t.Error("the third view should be Try")
+	}
+	m = send(m, key("tab"))
 	if m.CurrentView() != tui.ViewRemote {
-		t.Error("the third view should be remote")
+		t.Error("the fourth view should be remote")
 	}
 	if send(m, key("tab")).CurrentView() != tui.ViewTasks {
-		t.Error("a third tab should cycle back round")
+		t.Error("a fourth tab should cycle back round")
+	}
+}
+
+func TestTryViewRendersFiltersAndOpensThroughActions(t *testing.T) {
+	important := tryRow("try-a", "redis-streams", catalog.PhaseActive, catalog.LocationPresent, "important", "go")
+	important.Item.Note = "compare consumer groups"
+	other := tryRow("try-b", "queue-bench", catalog.PhaseActive, catalog.LocationPresent, "rust")
+	rows := []tui.TryRow{other, important}
+	var requests []tui.TryRequest
+	actions := newActions(&recorder{}, nil)
+	actions.Tries = tui.TryActions{
+		Reload: func(context.Context, bool) ([]tui.TryRow, error) { return rows, nil },
+		Apply: func(_ context.Context, request tui.TryRequest) (tui.TryActionResult, error) {
+			requests = append(requests, request)
+			return tui.TryActionResult{Status: "opened"}, nil
+		},
+	}
+	m := tui.New(actions, nil, nil).WithTries(rows)
+	m = send(m, key("tab"), key("tab"))
+	out := m.View()
+	for _, want := range []string{"redis-streams", "queue-bench", "PHASE", "WHERE", "important", "compare consumer groups"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("TRY view missing %q:\n%s", want, out)
+		}
+	}
+
+	m = send(m, key("/"))
+	for _, typed := range typeText("tag:important") {
+		m = send(m, typed)
+	}
+	if out := m.View(); !strings.Contains(out, "redis-streams") || strings.Contains(out, "queue-bench") {
+		t.Fatalf("structured Try filter did not narrow rows:\n%s", out)
+	}
+	m = send(m, key("enter"), key("enter"))
+	if len(requests) != 1 || requests[0].Action != tui.TryOpen || requests[0].ID != "try-a" {
+		t.Fatalf("Try open requests = %+v", requests)
+	}
+}
+
+func TestTryHistoryToggleReloadsOnlyTryInventory(t *testing.T) {
+	active := tryRow("active", "active", catalog.PhaseActive, catalog.LocationPresent)
+	archived := tryRow("archived", "archived", catalog.PhaseDeprecated, catalog.LocationArchived)
+	loads := 0
+	var requestedAll bool
+	actions := newActions(&recorder{}, nil)
+	actions.Tries.Reload = func(_ context.Context, all bool) ([]tui.TryRow, error) {
+		loads++
+		requestedAll = all
+		if all {
+			return []tui.TryRow{active, archived}, nil
+		}
+		return []tui.TryRow{active}, nil
+	}
+	m := tui.New(actions, nil, nil).WithTries([]tui.TryRow{active})
+	m = send(m, key("tab"), key("tab"), key("a"))
+	if loads != 1 || !requestedAll || !strings.Contains(m.View(), "archived") {
+		t.Fatalf("history toggle loads=%d all=%v:\n%s", loads, requestedAll, m.View())
+	}
+}
+
+func TestTryCreateFormSubmitsNormalizedRequest(t *testing.T) {
+	var request tui.TryRequest
+	actions := newActions(&recorder{}, nil)
+	actions.Tries = tui.TryActions{
+		Reload: func(context.Context, bool) ([]tui.TryRow, error) { return nil, nil },
+		Apply: func(_ context.Context, got tui.TryRequest) (tui.TryActionResult, error) {
+			request = got
+			return tui.TryActionResult{Status: "created"}, nil
+		},
+	}
+	m := tui.New(actions, nil, nil).WithTries(nil)
+	m = send(m, key("tab"), key("tab"), key("n"))
+	if !strings.Contains(m.View(), "NEW TRY") {
+		t.Fatalf("n did not open the create form:\n%s", m.View())
+	}
+	for _, typed := range typeText("cache probe") {
+		m = send(m, typed)
+	}
+	m = send(m, key("tab"), key("tab"))
+	// Replace the seeded yes with no using textinput's standard ctrl+w behavior.
+	m = send(m, tea.KeyMsg{Type: tea.KeyCtrlW})
+	for _, typed := range typeText("no") {
+		m = send(m, typed)
+	}
+	m = send(m, key("enter"))
+	if request.Action != tui.TryCreate || request.Name != "cache probe" || !request.NoGit {
+		t.Fatalf("create request = %+v", request)
+	}
+}
+
+func TestRepoMarkOverlayUsesSharedCatalogAction(t *testing.T) {
+	row := repoRow("api")
+	row.Asset = &catalog.Entry{Kind: catalog.KindRepository, Tags: []string{"keep"}, Note: "old"}
+	var gotTags []string
+	var gotNote string
+	actions := newActions(&recorder{}, nil)
+	actions.Repos.Patch = func(_ context.Context, got tui.RepoRow, tags []string, note string) (string, error) {
+		if got.Repo.Name != "api" {
+			t.Errorf("patched repo = %s", got.Repo.Name)
+		}
+		gotTags, gotNote = append([]string(nil), tags...), note
+		return "updated", nil
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{row})
+	m = send(m, key("tab"), key(" "))
+	if out := m.View(); !strings.Contains(out, "MARK API") || !strings.Contains(out, row.Repo.Path) {
+		t.Fatalf("repo mark form missing target:\n%s", out)
+	}
+	m = send(m, tea.KeyMsg{Type: tea.KeyCtrlW})
+	for _, typed := range typeText("important") {
+		m = send(m, typed)
+	}
+	m = send(m, key("tab"), tea.KeyMsg{Type: tea.KeyCtrlW})
+	for _, typed := range typeText("primary") {
+		m = send(m, typed)
+	}
+	m = send(m, key("enter"))
+	if strings.Join(gotTags, ",") != "important" || gotNote != "primary" {
+		t.Fatalf("repo patch tags=%v note=%q", gotTags, gotNote)
+	}
+}
+
+func TestTryMutationErrorCanRefreshWithoutHidingTheFailure(t *testing.T) {
+	row := tryRow("partial", "partial", catalog.PhaseActive, catalog.LocationPresent)
+	loads := 0
+	actions := newActions(&recorder{}, nil)
+	actions.Tries = tui.TryActions{
+		Reload: func(context.Context, bool) ([]tui.TryRow, error) {
+			loads++
+			return []tui.TryRow{row}, nil
+		},
+		Apply: func(context.Context, tui.TryRequest) (tui.TryActionResult, error) {
+			return tui.TryActionResult{RefreshRepos: true}, fmt.Errorf("created but runtime failed")
+		},
+	}
+	m := tui.New(actions, nil, nil).WithTries([]tui.TryRow{row})
+	m = send(m, key("tab"), key("tab"), key("enter"))
+	if loads != 1 || !strings.Contains(m.View(), "created but runtime failed") {
+		t.Fatalf("partial mutation refresh loads=%d:\n%s", loads, m.View())
+	}
+}
+
+func TestTryArchiveActionRequiresExactYES(t *testing.T) {
+	row := tryRow("archive-me", "archive-me", catalog.PhaseActive, catalog.LocationPresent)
+	var requests []tui.TryRequest
+	actions := newActions(&recorder{}, nil)
+	actions.Tries = tui.TryActions{
+		Reload: func(context.Context, bool) ([]tui.TryRow, error) { return []tui.TryRow{row}, nil },
+		Apply: func(_ context.Context, request tui.TryRequest) (tui.TryActionResult, error) {
+			requests = append(requests, request)
+			return tui.TryActionResult{Status: "archived"}, nil
+		},
+	}
+	m := tui.New(actions, nil, nil).WithTries([]tui.TryRow{row})
+	m = send(m, key("tab"), key("tab"), key(" "), key("down"), key("down"), key("enter"))
+	if !strings.Contains(m.View(), "CONFIRM ARCHIVE") || !strings.Contains(m.View(), row.Item.Live.CurrentPath) {
+		t.Fatalf("archive review did not show its target:\n%s", m.View())
+	}
+	for _, typed := range typeText("yes") {
+		m = send(m, typed)
+	}
+	m = send(m, key("enter"))
+	if len(requests) != 0 || !strings.Contains(m.View(), "exactly YES") {
+		t.Fatalf("lowercase confirmation applied archive: %+v\n%s", requests, m.View())
+	}
+	m = send(m, key("esc"), key(" "), key("down"), key("down"), key("enter"))
+	for _, typed := range typeText("YES") {
+		m = send(m, typed)
+	}
+	m = send(m, key("enter"))
+	if len(requests) != 1 || requests[0].Action != tui.TryArchive || requests[0].ID != row.Item.ID {
+		t.Fatalf("archive requests = %+v", requests)
+	}
+}
+
+func TestHelpOverlayIsDiscoverableAndClosesWithoutQuitting(t *testing.T) {
+	m := tui.New(newActions(&recorder{}, nil), nil, nil)
+	m = send(m, key("?"))
+	if out := m.View(); !strings.Contains(out, "KEYBOARD HELP") || !strings.Contains(out, "TRY") {
+		t.Fatalf("help overlay missing Try bindings:\n%s", out)
+	}
+	m = send(m, key("q"))
+	if out := m.View(); out == "" || strings.Contains(out, "KEYBOARD HELP") {
+		t.Fatalf("q should close help without quitting:\n%s", out)
+	}
+}
+
+func TestTrySortCyclesIndependently(t *testing.T) {
+	old := tryRow("old", "aaa-old", catalog.PhaseActive, catalog.LocationPresent)
+	old.Item.LastOpened = time.Now().Add(-24 * time.Hour)
+	newest := tryRow("new", "zzz-new", catalog.PhaseActive, catalog.LocationPresent)
+	newest.Item.LastOpened = time.Now()
+	m := tui.New(newActions(&recorder{}, nil), nil, nil).WithTries([]tui.TryRow{old, newest})
+	m = send(m, key("tab"), key("tab"))
+	if out := m.View(); strings.Index(out, "zzz-new") > strings.Index(out, "aaa-old") {
+		t.Fatalf("activity sort did not put newest first:\n%s", out)
+	}
+	m = send(m, key("O"))
+	if out := m.View(); strings.Index(out, "aaa-old") > strings.Index(out, "zzz-new") || !strings.Contains(out, "O sort:name") {
+		t.Fatalf("name sort did not apply:\n%s", out)
+	}
+}
+
+func TestSizeStreamUpdatesRepoAndTryRowsWithoutBlockingInitialRender(t *testing.T) {
+	repository := repoRow("api")
+	repository.SizeTarget = diskusage.Plain(repository.Repo.Path)
+	try := tryRow("sized-try", "sized-try", catalog.PhaseActive, catalog.LocationPresent)
+	try.SizeTarget = diskusage.Plain(try.Item.Live.CurrentPath)
+	starts := 0
+	forceSeen := false
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) { return []tui.RepoRow{repository}, nil }
+	actions.Tries.Reload = func(context.Context, bool) ([]tui.TryRow, error) { return []tui.TryRow{try}, nil }
+	actions.Sizes.Start = func(_ context.Context, targets []diskusage.Target, force bool) diskusage.Load {
+		starts++
+		forceSeen = force
+		results := make(chan diskusage.Result, len(targets))
+		for index, target := range targets {
+			owned := int64((index + 1) * 1024)
+			total := owned
+			usage := diskusage.Usage{
+				CheckoutBytes: owned, OwnedBytes: owned, TotalBytes: &total,
+				Complete: true, MeasuredAt: time.Now().UTC(),
+			}
+			results <- diskusage.Result{LoadID: 7, Key: target.Key, Usage: usage}
+		}
+		close(results)
+		return diskusage.Load{ID: 7, Results: results}
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{repository}).WithTries([]tui.TryRow{try})
+	// Before a reload completes, rows render immediately with a non-blocking marker.
+	m = send(m, key("tab"))
+	if out := m.View(); !strings.Contains(out, "SIZE") || !strings.Contains(out, "…") {
+		t.Fatalf("unmeasured repo row did not render immediately:\n%s", out)
+	}
+	m = send(m, key("r"))
+	if starts != 1 || !forceSeen || !strings.Contains(m.View(), "KiB") {
+		t.Fatalf("size stream starts=%d force=%v:\n%s", starts, forceSeen, m.View())
+	}
+	m = send(m, key("tab"))
+	if out := m.View(); !strings.Contains(out, "KiB") || !strings.Contains(out, "SIZE") {
+		t.Fatalf("Try size result missing:\n%s", out)
+	}
+}
+
+func TestTrySizeFilterSortAndSharedDetail(t *testing.T) {
+	small := tryRow("small", "small", catalog.PhaseActive, catalog.LocationPresent)
+	large := tryRow("large", "large", catalog.PhaseActive, catalog.LocationPresent)
+	for row, bytes := range map[*tui.TryRow]int64{&small: 512, &large: 4096} {
+		total := bytes
+		row.SizeTarget = diskusage.Plain(row.Item.Live.CurrentPath)
+		row.Usage = &diskusage.Usage{
+			CheckoutBytes: bytes, OwnedBytes: bytes, TotalBytes: &total,
+			Complete: true, MeasuredAt: time.Now().UTC(),
+		}
+	}
+	shared := int64(8192)
+	large.Usage.TotalBytes = nil
+	large.Usage.SharedGitBytes = &shared
+	m := tui.New(newActions(&recorder{}, nil), nil, nil).WithTries([]tui.TryRow{small, large})
+	m = send(m, key("tab"), key("tab"), key("/"))
+	for _, typed := range typeText("size:>1KiB") {
+		m = send(m, typed)
+	}
+	if out := m.View(); !strings.Contains(out, "large") || strings.Contains(out, "small") {
+		t.Fatalf("size filter failed:\n%s", out)
+	}
+	m = send(m, key("enter"))
+	if out := m.View(); !strings.Contains(out, "not reclaimable") {
+		t.Fatalf("shared size detail failed:\n%s", out)
+	}
+	m = send(m, key("O"), key("O"), key("O"))
+	if out := m.View(); !strings.Contains(out, "O sort:size") {
+		t.Fatalf("Try size sort did not cycle:\n%s", out)
+	}
+}
+
+func TestTryTableAdaptsWithoutScrollingTabsOffNarrowTerminals(t *testing.T) {
+	var rows []tui.TryRow
+	for index := 0; index < 30; index++ {
+		rows = append(rows, tryRow(fmt.Sprintf("try-%02d", index), fmt.Sprintf("實驗-%02d", index),
+			catalog.PhaseActive, catalog.LocationPresent, "important", "prototype"))
+	}
+	for _, width := range []int{60, 80, 120} {
+		m := tui.New(newActions(&recorder{}, nil), nil, nil).WithTries(rows)
+		m = send(m, tea.WindowSizeMsg{Width: width, Height: 24}, key("tab"), key("tab"))
+		output := m.View()
+		lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+		if len(lines) > 24 || !strings.Contains(lines[0], "TASKS") || !strings.Contains(lines[0], "TRY") {
+			t.Fatalf("width %d lost top tabs or overflowed height (%d lines):\n%s", width, len(lines), output)
+		}
+		for _, line := range lines {
+			if strings.Contains(line, "WHERE") && lipgloss.Width(line) > width {
+				t.Fatalf("width %d Try header is %d cells:\n%s", width, lipgloss.Width(line), line)
+			}
+		}
 	}
 }
 
@@ -359,6 +687,60 @@ func TestReposViewWorksWithNoTasks(t *testing.T) {
 	m = send(m, key("tab"))
 	if !strings.Contains(m.View(), "api") {
 		t.Errorf("repos should still be browsable:\n%s", m.View())
+	}
+}
+
+func TestRepoViewHidesTriesButRemoteMatchingUsesAndClearsThem(t *testing.T) {
+	ordinary := repoRow("api")
+	tryRepo := repoRow("scratch")
+	tryRepo.Asset = &catalog.Entry{
+		Kind: catalog.KindTry,
+		Experiment: &catalog.Experiment{
+			Phase: catalog.PhaseActive,
+		},
+	}
+	repos := []tui.RepoRow{ordinary, tryRepo}
+	remote := remoteRow(forge.GitHub, "owner/scratch", tryRepo.Repo.Path)
+	remote.LocalKind = catalog.KindTry
+
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) { return repos, nil }
+	m := tui.New(actions, nil, repos).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"))
+	if out := m.View(); strings.Contains(out, "scratch") || !strings.Contains(out, "api") {
+		t.Fatalf("REPOS should hide Try assets while retaining ordinary repos:\n%s", out)
+	}
+	if summary := m.Summary(); !strings.Contains(summary, "1 repos") || strings.Contains(summary, "2 repos") {
+		t.Errorf("summary counted hidden Try: %q", summary)
+	}
+
+	m = send(m, key("tab"), key("tab"))
+	if out := m.View(); !strings.Contains(out, "try") {
+		t.Fatalf("REMOTE should retain the Try local kind:\n%s", out)
+	}
+
+	// Once the Try disappears from the fresh local snapshot, an ordinary local
+	// reload must clear the cached marker rather than preserving stale state.
+	repos = []tui.RepoRow{ordinary}
+	m = send(m, key("tab"), key("tab"), key("r"), key("tab"), key("tab"))
+	if out := m.View(); !strings.Contains(out, "not cloned") {
+		t.Fatalf("stale remote Try marker survived local reload:\n%s", out)
+	}
+}
+
+func TestRemoteMatchingDoesNotChooseBetweenDuplicateLocalClones(t *testing.T) {
+	first := repoRow("first")
+	second := repoRow("second")
+	first.RemoteForge, first.RemoteName = forge.GitHub, "owner/shared"
+	second.RemoteForge, second.RemoteName = forge.GitHub, "owner/shared"
+	repos := []tui.RepoRow{first, second}
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) { return repos, nil }
+	remote := remoteRow(forge.GitHub, "owner/shared", "")
+	m := tui.New(actions, nil, repos).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("r"), key("tab"), key("tab"), key("tab"))
+	if out := m.View(); !strings.Contains(out, "not cloned") {
+		t.Fatalf("ambiguous local clones produced an arbitrary remote path:\n%s", out)
 	}
 }
 
@@ -537,6 +919,10 @@ func TestRemoteViewLoadsLazily(t *testing.T) {
 	if loads != 0 {
 		t.Fatal("the local repo view must not touch the forge")
 	}
+	m = send(m, key("tab")) // Try
+	if loads != 0 {
+		t.Fatal("the Try view must not touch the forge")
+	}
 	m = send(m, key("tab")) // remote
 	if loads != 1 {
 		t.Fatalf("first remote visit should load once, got %d", loads)
@@ -558,7 +944,7 @@ func TestRemoteFilterUsesNameDescriptionAndProvider(t *testing.T) {
 	actions := newActions(&recorder{}, nil)
 	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
 	m := tui.New(actions, nil, nil)
-	m = send(m, key("tab"), key("tab"), key("/"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("/"))
 	for _, k := range typeText("gitlab web") {
 		m = send(m, k)
 	}
@@ -574,7 +960,7 @@ func TestRemoteCloneRequiresConfirmation(t *testing.T) {
 	actions := newActions(rec, nil)
 	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
 	m := tui.New(actions, nil, nil)
-	m = send(m, key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"))
 
 	// Enter on an uncloned remote does nothing; c is the explicit action.
 	m = send(m, key("enter"))
@@ -597,10 +983,21 @@ func TestRemoteLocalCloneOpensWithEnter(t *testing.T) {
 	actions := newActions(rec, nil)
 	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
 	m := tui.New(actions, nil, nil)
-	m = send(m, key("tab"), key("tab"), key("enter"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("enter"))
 
 	if len(rec.opened) != 1 || rec.opened[0] != "remote:owner/api" {
 		t.Errorf("enter should open the existing local clone, got %v", rec.opened)
+	}
+}
+
+func TestRemoteViewLabelsLocalTryKind(t *testing.T) {
+	row := remoteRow(forge.GitHub, "owner/experiment", "/src/tries/experiment")
+	row.LocalKind = catalog.KindTry
+	m := tui.New(newActions(&recorder{}, nil), nil, nil).WithRemotes([]tui.RemoteRow{row})
+	m = send(m, key("tab"), key("tab"), key("tab"))
+	out := m.View()
+	if !strings.Contains(out, "try") || !strings.Contains(out, "asset") {
+		t.Errorf("REMOTE view did not identify the local Try:\n%s", out)
 	}
 }
 
@@ -612,7 +1009,7 @@ func TestRemoteRefreshQueriesAgain(t *testing.T) {
 		return nil, nil
 	}
 	m := tui.New(actions, nil, nil)
-	m = send(m, key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"))
 	m = send(m, key("r"))
 	if loads != 2 {
 		t.Errorf("initial visit + refresh should load twice, got %d", loads)
@@ -628,7 +1025,7 @@ func TestFreshRemoteCacheAvoidsNetworkOnFirstSwitch(t *testing.T) {
 	}
 	cached := []tui.RemoteRow{remoteRow(forge.GitHub, "owner/cached", "")}
 	m := tui.New(actions, nil, nil).WithRemotes(cached)
-	m = send(m, key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"))
 
 	if loads != 0 {
 		t.Errorf("fresh cache should make the first switch instant, network loads=%d", loads)
@@ -655,6 +1052,32 @@ func TestRepoViewShowsLiveRuntimeExplicitly(t *testing.T) {
 	}
 	if !strings.Contains(out, "herdr w7 · working") {
 		t.Errorf("detail should show the workspace handle:\n%s", out)
+	}
+}
+
+func TestRepoAndTryDetailsExposeRecoveryTopology(t *testing.T) {
+	topology := gitx.RecoveryTopology{
+		Branches:          []gitx.BranchUpstream{{Branch: "main", OID: "abc"}},
+		LocalOnlyBranches: []string{"main"},
+	}
+	repository := repoRow("local-only")
+	repository.Topology = topology
+	actions := newActions(&recorder{}, nil)
+	actions.RepoColumns = []string{"repo", "remote"}
+	m := tui.New(actions, nil, []tui.RepoRow{repository})
+	m = send(m, key("tab"))
+	if out := m.View(); !strings.Contains(out, "none · local:1") ||
+		!strings.Contains(out, "local Git has no remote backup") || !strings.Contains(out, "local refs") {
+		t.Fatalf("REPOS topology detail missing:\n%s", out)
+	}
+
+	try := tryRow("try-local", "try-local", catalog.PhaseActive, catalog.LocationPresent)
+	try.Item.Live.Repo = &gitx.Repo{Name: "try-local", Root: try.Item.Live.CurrentPath}
+	try.Topology = topology
+	m = tui.New(newActions(&recorder{}, nil), nil, nil).WithTries([]tui.TryRow{try})
+	m = send(m, key("tab"), key("tab"))
+	if out := m.View(); !strings.Contains(out, "local Git has no remote backup") || !strings.Contains(out, "main") {
+		t.Fatalf("TRY topology detail missing:\n%s", out)
 	}
 }
 
@@ -830,7 +1253,7 @@ func TestEmptyHeatmapCanBackfillSelectedRepo(t *testing.T) {
 func TestBeginLoadingShowsBeforeInventoryFinishes(t *testing.T) {
 	actions := newActions(&recorder{}, nil)
 	m := tui.New(actions, nil, nil).BeginLoading()
-	if !strings.Contains(m.View(), "Loading tasks and local repositories") {
+	if !strings.Contains(m.View(), "Loading tasks, repositories, and experiments") {
 		t.Errorf("startup should render a loading screen immediately:\n%s", m.View())
 	}
 	cmd := m.Init()

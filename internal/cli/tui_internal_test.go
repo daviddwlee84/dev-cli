@@ -1,10 +1,139 @@
 package cli
 
 import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/tui"
 )
+
+func TestAppLoadInitializesCatalog(t *testing.T) {
+	dataHome := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", dataHome)
+	var diagnostics bytes.Buffer
+	app := &App{
+		Out:        io.Discard,
+		Err:        &diagnostics,
+		configPath: filepath.Join(t.TempDir(), "missing.toml"),
+	}
+	if err := app.Load(); err != nil {
+		t.Fatal(err)
+	}
+	if app.Tasks == nil || app.Catalog == nil || app.Registry == nil || app.Sizes == nil {
+		t.Fatalf("stores were not initialized: %+v", app)
+	}
+	if got, want := app.Catalog.Dir, filepath.Join(dataHome, "dev", "assets"); got != want {
+		t.Errorf("catalog dir = %q, want %q", got, want)
+	}
+	if app.Registry.Store() != app.Catalog {
+		t.Error("registry should use App's catalog store")
+	}
+	if app.Sizes.Cache == nil || app.Sizes.Cache.Path != filepath.Join(config.CacheHome(), "dev", "sizes-v1.json") {
+		t.Fatalf("size manager cache = %+v", app.Sizes.Cache)
+	}
+
+	if err := os.MkdirAll(app.Catalog.Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(app.Catalog.Dir, "broken.toml"), []byte("not = = toml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := app.Catalog.List(); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(diagnostics.String(), "dev: warning: skipping broken.toml") {
+		t.Errorf("catalog diagnostics did not use App.Err: %q", diagnostics.String())
+	}
+}
+
+func TestPosixShellWrapperEvaluatesTrailingCDDirective(t *testing.T) {
+	bash, err := exec.LookPath("bash")
+	if err != nil {
+		t.Skipf("bash unavailable: %v", err)
+	}
+	target := t.TempDir()
+	fake := filepath.Join(t.TempDir(), "fake-dev")
+	directive := "cd " + shellQuote(target)
+	body := "#!/bin/sh\nprintf '%s\\n' first second third " + shellQuote(directive) + "\n"
+	if err := os.WriteFile(fake, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	wrapper := fmt.Sprintf(posixInit, shellQuote(fake), "bash")
+	script := wrapper + "\ncd /\ndev try\nprintf 'PWD=%s\\n' \"$PWD\"\n"
+	command := exec.Command(bash, "-c", script)
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("run generated shell wrapper: %v\n%s", err, output)
+	}
+	want := "first\nsecond\nthird\nPWD=" + target + "\n"
+	if string(output) != want {
+		t.Errorf("wrapper output = %q, want %q", output, want)
+	}
+}
+
+func TestOpenOrCDReportsFailedRuntimeHandoff(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	var diagnostics bytes.Buffer
+	app := &App{Cfg: config.Default(), Out: io.Discard, Err: &diagnostics}
+	app.Cfg.Runtime.Backend = "tmux"
+	if openOrCD(app, context.Background(), t.TempDir(), "try") {
+		t.Fatal("failed runtime open was reported as a successful handoff")
+	}
+	if !strings.Contains(diagnostics.String(), "could not open a session") {
+		t.Errorf("runtime failure diagnostic = %q", diagnostics.String())
+	}
+}
+
+func TestTryTUIAdapterCreatesListsAndArchivesThroughService(t *testing.T) {
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.Paths.TriesRoot = filepath.Join(root, "tries")
+	cfg.Paths.ProjectRoot = filepath.Join(root, "projects")
+	cfg.Paths.StateDir = filepath.Join(root, "state")
+	store := catalog.NewStore(cfg.AssetsDir())
+	app := &App{
+		Cfg: cfg, Catalog: store, Registry: catalog.NewRegistry(store),
+		Out: io.Discard, Err: io.Discard,
+	}
+
+	created, err := applyTryAction(context.Background(), app, runtime.None{}, tui.TryRequest{
+		Action: tui.TryCreate, Name: "adapter", NoGit: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.CD == "" || !created.RefreshRepos {
+		t.Fatalf("create result = %+v", created)
+	}
+	rows, err := collectTries(context.Background(), app, runtime.None{}, false)
+	if err != nil || len(rows) != 1 || rows[0].Item.ID == "" || !rows[0].Present() {
+		t.Fatalf("collected Try rows = %+v, %v", rows, err)
+	}
+
+	archived, err := applyTryAction(context.Background(), app, runtime.None{}, tui.TryRequest{
+		Action: tui.TryArchive, ID: rows[0].Item.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !archived.RefreshRepos || archived.CD != "" {
+		t.Fatalf("archive result = %+v", archived)
+	}
+	rows, err = collectTries(context.Background(), app, runtime.None{}, true)
+	if err != nil || len(rows) != 1 || rows[0].LocationState() != catalog.LocationArchived || rows[0].Present() {
+		t.Fatalf("archived Try rows = %+v, %v", rows, err)
+	}
+}
 
 func TestExternalToolCommandModesAreExplicit(t *testing.T) {
 	app := &App{Cfg: config.Default()}

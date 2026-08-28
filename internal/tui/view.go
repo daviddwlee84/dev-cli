@@ -43,6 +43,9 @@ func (m Model) View() string {
 	if m.quitting {
 		return ""
 	}
+	if m.overlay.kind != overlayNone {
+		return m.renderOverlay()
+	}
 	if m.mode == modeStats {
 		return m.renderStats()
 	}
@@ -53,6 +56,8 @@ func (m Model) View() string {
 	switch m.view {
 	case ViewRepos:
 		b.WriteString(m.renderRepos())
+	case ViewTries:
+		b.WriteString(m.renderTries())
 	case ViewRemote:
 		b.WriteString(m.renderRemotes())
 	default:
@@ -209,12 +214,14 @@ type repoColumnSpec struct {
 func (m Model) repoColumns() []repoColumnSpec {
 	names := m.actions.RepoColumns
 	if len(names) == 0 {
-		names = []string{"repo", "branch", "git", "live", "latest", "worktrees", "tasks"}
+		names = []string{"repo", "branch", "git", "size", "live", "latest", "worktrees", "tasks"}
 	}
 	defaults := map[string]repoColumnSpec{
 		"repo":      {"repo", "REPO", 28, 12},
 		"branch":    {"branch", "BRANCH", 22, 10},
 		"git":       {"git", "GIT", 16, 8},
+		"remote":    {"remote", "REMOTE", 24, 10},
+		"size":      {"size", "SIZE", 9, 6},
 		"live":      {"live", "LIVE", 15, 7},
 		"latest":    {"latest", "LATEST", 8, 6},
 		"worktrees": {"worktrees", "WT", 3, 2},
@@ -234,7 +241,7 @@ func (m Model) repoColumns() []repoColumnSpec {
 	for _, c := range columns {
 		total += c.width
 	}
-	for _, preferred := range []string{"path", "tasks", "repo", "branch", "live", "git"} {
+	for _, preferred := range []string{"path", "remote", "tasks", "repo", "branch", "live", "git", "size"} {
 		for i := range columns {
 			if columns[i].name != preferred {
 				continue
@@ -268,6 +275,13 @@ func repoColumnValue(r RepoRow, name string) string {
 			return "—"
 		}
 		return r.Status.Summary()
+	case "remote":
+		if r.TopologyErr != nil {
+			return "?"
+		}
+		return r.Topology.Summary()
+	case "size":
+		return sizeCell(r.Usage, r.SizeError, r.SizeTarget)
 	case "live":
 		if !r.Live {
 			return "—"
@@ -355,6 +369,12 @@ func (m Model) renderRemotes() string {
 		local := "—"
 		if r.Cloned() {
 			local = "yes"
+			if r.LocalKind != "" {
+				local = string(r.LocalKind)
+				if r.LocalKind == "repository" {
+					local = "repo"
+				}
+			}
 		}
 		vis := strings.ToLower(r.Repo.Visibility)
 		if vis == "" {
@@ -409,7 +429,7 @@ func (m Model) scrollNote(total, from, to int) string {
 
 func (m Model) emptyTasks() string {
 	if m.loadingLocal {
-		return "  " + styleDim.Render("Loading tasks and local repositories…") + "\n"
+		return "  " + styleDim.Render("Loading tasks, repositories, and experiments…") + "\n"
 	}
 	if len(m.rows) == 0 {
 		return "  " + styleDim.Render("No tasks recorded yet.\n") +
@@ -466,6 +486,54 @@ func (m Model) renderDetail() string {
 			"\n  " + styleHelp.Render("enter to clone into project_root · esc to cancel")
 	}
 
+	if r, ok := m.currentTry(); ok {
+		lines := []string{
+			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(r.Item.Live.CurrentPath)),
+			fmt.Sprintf("  %s %s · %s", styleDim.Render("state"), r.Item.Phase, r.Where()),
+		}
+		lines = append(lines, sizeDetailLines(r.Usage, r.SizeError, r.SizeTarget)...)
+		if r.Item.Live.Status != nil && r.Item.Live.Status.Dirty() {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("git  "), r.Item.Live.Status.Breakdown()))
+			if types := r.Item.Live.Status.TypeBreakdown(); types != "" {
+				lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("types"), types))
+			}
+		} else if r.Item.Live.Repo != nil {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("git  "), tryGitSummary(r)))
+		}
+		if r.Item.Live.Repo != nil {
+			if r.TopologyErr != nil {
+				lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("remote"), styleErr.Render("unknown: "+r.TopologyErr.Error())))
+			} else {
+				remoteSummary := r.Topology.Summary()
+				if !r.Topology.HasRemote() {
+					remoteSummary = styleDrift.Render(remoteSummary + " — local Git has no remote backup")
+				}
+				lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("remote"), remoteSummary))
+				if len(r.Topology.LocalOnlyBranches) > 0 {
+					lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("local refs"),
+						styleDrift.Render(strings.Join(r.Topology.LocalOnlyBranches, ", "))))
+				}
+			}
+		}
+		if len(r.Item.Tags) > 0 {
+			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("tags"), strings.Join(r.Item.Tags, ", ")))
+		}
+		if r.Item.Note != "" {
+			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("note"), r.Item.Note))
+		}
+		if r.Item.OriginURL != "" {
+			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("origin"), r.Item.OriginURL))
+		}
+		if r.Live {
+			live := r.Runtime + " " + r.RuntimeHandle
+			if r.RuntimeStatus != "" {
+				live += " · " + r.RuntimeStatus
+			}
+			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("live"), styleLive.Render(live)))
+		}
+		return strings.Join(lines, "\n") + "\n"
+	}
+
 	if r, ok := m.currentRemote(); ok {
 		lines := []string{
 			fmt.Sprintf("  %s %s", styleDim.Render("url  "), r.Repo.URL),
@@ -473,6 +541,9 @@ func (m Model) renderDetail() string {
 		}
 		if r.Cloned() {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("local "), contract(r.LocalPath)))
+			if r.LocalKind != "" {
+				lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("asset "), r.LocalKind))
+			}
 		} else {
 			lines = append(lines, "  "+styleDim.Render("local ")+" "+
 				styleDim.Render("not cloned — press c"))
@@ -486,6 +557,32 @@ func (m Model) renderDetail() string {
 	if r, ok := m.currentRepo(); ok {
 		lines := []string{
 			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(r.Repo.Path)),
+		}
+		lines = append(lines, sizeDetailLines(r.Usage, r.SizeError, r.SizeTarget)...)
+		if r.Asset != nil {
+			if len(r.Asset.Tags) > 0 {
+				lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("tags"), strings.Join(r.Asset.Tags, ", ")))
+			}
+			if r.Asset.Note != "" {
+				lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("note"), r.Asset.Note))
+			}
+		}
+		if r.TopologyErr != nil {
+			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("remote"), styleErr.Render("unknown: "+r.TopologyErr.Error())))
+		} else {
+			remoteSummary := r.Topology.Summary()
+			if !r.Topology.HasRemote() {
+				remoteSummary = styleDrift.Render(remoteSummary + " — local Git has no remote backup")
+			}
+			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("remote"), remoteSummary))
+			if len(r.Topology.LocalOnlyBranches) > 0 {
+				lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("local refs"),
+					styleDrift.Render(strings.Join(r.Topology.LocalOnlyBranches, ", "))))
+			}
+			if r.Topology.MultipleUpstreams() {
+				lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("upstreams"),
+					strings.Join(r.Topology.UpstreamRemotes, ", ")))
+			}
 		}
 		if r.Status.Dirty() {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("git  "), r.Status.Breakdown()))
@@ -571,7 +668,17 @@ func (m Model) renderFooter() string {
 		if m.actions.RepoReverse {
 			sortBy += "↑"
 		}
-		bindings = append(bindings, "enter ad hoc", "s worktree task", "d direct task",
+		bindings = append(bindings, "enter ad hoc", "s worktree task", "d direct task", "space mark",
+			"O sort:"+sortBy, "R reverse")
+	case ViewTries:
+		sortBy := m.trySort
+		if sortBy == "" {
+			sortBy = "activity"
+		}
+		if m.tryReverse {
+			sortBy += "↑"
+		}
+		bindings = append(bindings, "enter open", "n new", "space actions", "a history",
 			"O sort:"+sortBy, "R reverse")
 	case ViewRemote:
 		if r, ok := m.currentRemote(); ok && r.Cloned() {
@@ -582,7 +689,7 @@ func (m Model) renderFooter() string {
 	default:
 		bindings = append(bindings, "enter open", "p park", "c next")
 	}
-	bindings = append(bindings, "tab view", "/ filter", "H stats", "e config")
+	bindings = append(bindings, "tab view", "/ filter", "? help", "H stats", "e config")
 	for _, t := range m.Tools() {
 		bindings = append(bindings, t.Key+" "+t.Name)
 	}

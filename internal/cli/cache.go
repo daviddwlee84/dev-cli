@@ -17,8 +17,8 @@ func newCacheCmd(app *App) *cobra.Command {
 		Short: "Inspect and clear regenerable dev caches",
 		Long: `Manage files under $XDG_CACHE_HOME/dev.
 
-These are disposable accelerators: the remote forge inventory and fetched
-GitHub gitignore templates. Activity statistics are deliberately not here —
+These are disposable accelerators: the remote forge inventory, logical disk-size
+measurements and fetched GitHub gitignore templates. Activity statistics are deliberately not here —
 $XDG_DATA_HOME/dev/stats.db contains observations that may not be
 reconstructible; use "dev stats path/clear" for it.`,
 	}
@@ -68,27 +68,33 @@ type cacheItem struct{ name, path string }
 func cacheItems() []cacheItem {
 	return []cacheItem{
 		{"remote", filepath.Join(cacheRoot(), "remotes.json")},
+		{"size", filepath.Join(cacheRoot(), "sizes-v1.json")},
 		{"gitignore", filepath.Join(cacheRoot(), "gitignore")},
 	}
 }
 
 func newCacheClearCmd(app *App) *cobra.Command {
 	return &cobra.Command{
-		Use:       "clear <remote|gitignore|all>",
+		Use:       "clear <remote|size|gitignore|all>",
 		Short:     "Remove a regenerable cache",
 		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"remote", "gitignore", "all"},
+		ValidArgs: []string{"remote", "size", "gitignore", "all"},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			if name == "remotes" {
+				name = "remote"
+			}
+			if name == "sizes" {
+				name = "size"
+			}
 			var targets []cacheItem
-			switch args[0] {
-			case "remote", "remotes":
-				targets = cacheItems()[:1]
-			case "gitignore":
-				targets = cacheItems()[1:]
-			case "all":
-				targets = cacheItems()
-			default:
-				return fmt.Errorf("unknown cache %q: want remote, gitignore or all", args[0])
+			for _, item := range cacheItems() {
+				if name == "all" || item.name == name {
+					targets = append(targets, item)
+				}
+			}
+			if len(targets) == 0 {
+				return fmt.Errorf("unknown cache %q: want remote, size, gitignore or all", args[0])
 			}
 			removed := 0
 			for _, item := range targets {

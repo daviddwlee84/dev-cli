@@ -117,6 +117,14 @@ func AddWorktree(ctx context.Context, dir, path, branch, base string) error {
 	return err
 }
 
+// MoveWorktree relocates a linked worktree through Git so the shared
+// administrative metadata keeps pointing at the checkout's new path. dir may
+// be any checkout of the same repository.
+func MoveWorktree(ctx context.Context, dir, source, destination string) error {
+	_, err := run(ctx, dir, "worktree", "move", source, destination)
+	return err
+}
+
 // RemoveWorktree removes a linked worktree checkout. It never deletes the
 // branch — that is a separate, explicit decision.
 func RemoveWorktree(ctx context.Context, dir, path string, force bool) error {

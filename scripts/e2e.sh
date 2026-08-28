@@ -40,6 +40,12 @@ post_create = []
 CONFIG
 
 dev() { "$BIN" --config "$SANDBOX/config.toml" "$@"; }
+dev_has() {
+  local pattern="$1" output
+  shift
+  output="$(dev "$@")" || return
+  grep -q -- "$pattern" <<<"$output"
+}
 
 step() { printf '\n\033[1m▸ %s\033[0m\n' "$1"; }
 fail() { printf '\033[31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
@@ -62,9 +68,22 @@ git -C "$REPO" remote add origin "$SANDBOX/origin.git"
 git -C "$REPO" push --quiet -u origin main
 ok "demo repo created and pushed"
 
-step "repo list"
-dev repo list | grep -q demo || fail "demo not discovered"
-ok "repo discovered"
+step "repo inventory, recovery topology and metadata"
+dev_has demo repo list || fail "demo not discovered"
+dev_has '"owned_bytes"' repo list --sizes --json || fail "repo size JSON missing"
+dev repo mark demo --add important --note "primary fixture" >/dev/null
+dev_has '"important"' repo list --json || fail "repo catalog tag missing"
+
+LOCAL="$HOME/Program/local-only"
+git init --quiet --initial-branch=main "$LOCAL"
+git -C "$LOCAL" config user.email dev@example.test
+git -C "$LOCAL" config user.name  "dev e2e"
+printf '# local only\n' > "$LOCAL/README.md"
+git -C "$LOCAL" add README.md
+git -C "$LOCAL" commit --quiet -m "chore: local-only fixture"
+dev_has local-only repo list --no-remote || fail "no-remote repo not detected"
+dev_has local-only repo list --local-only || fail "local-only branch not detected"
+ok "repo discovery, topology, metadata and logical size"
 
 step "start a task"
 dev start demo --task auth --branch feat/auth --base main
@@ -75,8 +94,8 @@ WT="$HOME/Worktrees/demo/feat-auth"
 ok "worktree created at the templated path and provisioned"
 
 step "ls shows it hot"
-dev ls | grep -q HOT || fail "task is not hot"
-dev ls --json | grep -q '"branch": "feat/auth"' || fail "json output missing the branch"
+dev_has HOT ls || fail "task is not hot"
+dev_has '"branch": "feat/auth"' ls --json || fail "json output missing the branch"
 ok "inventory reflects the task"
 
 step "commit work on the branch"
@@ -89,14 +108,14 @@ ok "committed"
 
 step "park warm, with a next action"
 dev park feat/auth --next "add the regression test"
-dev ls | grep -q WARM                       || fail "task did not go warm"
-dev ls | grep -q "add the regression test"  || fail "next action not recorded"
+dev_has WARM ls                      || fail "task did not go warm"
+dev_has "add the regression test" ls  || fail "next action not recorded"
 [[ -d "$WT" ]]                              || fail "a warm task must keep its worktree"
 ok "parked warm, worktree intact"
 
 step "park cold with a push"
 dev park feat/auth --cold --push
-dev ls | grep -q COLD  || fail "task did not go cold"
+dev_has COLD ls  || fail "task did not go cold"
 [[ ! -d "$WT" ]]       || fail "a cold task must not keep its worktree"
 git -C "$REPO" rev-parse --verify --quiet origin/feat/auth >/dev/null \
   || fail "the branch was not pushed"
@@ -105,12 +124,13 @@ ok "cold: worktree gone, work safe on the remote"
 step "resume rebuilds the worktree from the branch"
 dev resume auth
 [[ -f "$WT/auth.go" ]] || fail "resume did not restore the committed work"
-dev ls | grep -q HOT   || fail "resumed task is not hot"
+dev_has HOT ls   || fail "resumed task is not hot"
 ok "rebuilt from origin"
 
 step "done without a mode only reports"
-dev done auth | grep -q "Nothing done" || fail "done should be a no-op without --ff or --pr"
-[[ -d "$WT" ]]                         || fail "reporting must not remove the worktree"
+DONE_REPORT="$(dev done auth)"
+grep -q "Nothing done" <<<"$DONE_REPORT" || fail "done should be a no-op without --ff or --pr"
+[[ -d "$WT" ]]                           || fail "reporting must not remove the worktree"
 ok "reported, changed nothing"
 
 step "done --ff integrates linearly"
@@ -123,11 +143,11 @@ git -C "$REPO" show-ref --verify --quiet refs/heads/feat/auth \
 ok "fast-forwarded, linear history, branch kept"
 
 step "sweep offers to reap the finished task"
-dev sweep | grep -q reap || fail "sweep did not offer to reap the done task"
+dev_has reap sweep || fail "sweep did not offer to reap the done task"
 ok "sweep reports"
 
 step "direct task on main"
-dev start demo --task "quick main fix" --direct | grep -q '(direct)' \
+dev_has '(direct)' start demo --task "quick main fix" --direct \
   || fail "direct mode was not reported"
 [[ "$(git -C "$REPO" branch --show-current)" == "main" ]] \
   || fail "direct mode changed branch"
@@ -136,7 +156,7 @@ dev start demo --task "quick main fix" --direct | grep -q '(direct)' \
 printf 'quick\n' > "$REPO/quick.txt"
 git -C "$REPO" add quick.txt
 git -C "$REPO" commit --quiet -m "fix: quick main change"
-dev done "quick main fix" | grep -q 'completed directly on main' \
+dev_has 'completed directly on main' done "quick main fix" \
   || fail "direct task required fake integration"
 ok "direct task stayed on main and finished without a worktree"
 
@@ -153,9 +173,28 @@ GRAD="$HOME/Program/Infra/redis-streams"
 git -C "$GRAD" rev-parse HEAD >/dev/null || fail "graduated project has no commit"
 ok "experiment promoted with its history"
 
+step "Try metadata, reversible archive and restore"
+dev try archive-sample --no-git >/dev/null
+ARCHIVE_TRY="$(find "$HOME/tries" -maxdepth 1 -mindepth 1 -type d -name '*-archive-sample' | head -1)"
+[[ -n "$ARCHIVE_TRY" ]] || fail "archive sample Try not created"
+printf 'reclaim candidate\n' > "$ARCHIVE_TRY/NOTES.md"
+dev tries mark archive-sample --add important --note "revisit later" >/dev/null
+dev tries deprecate archive-sample >/dev/null
+dev_has '"owned_bytes"' tries list --all --sizes --json \
+  || fail "Try logical size missing"
+dev tries archive archive-sample >/dev/null
+[[ ! -d "$ARCHIVE_TRY" ]] || fail "archive left the visible Try in place"
+[[ -n "$(find "$HOME/tries/.dev/archive" -type f -name NOTES.md -print -quit)" ]] \
+  || fail "archive did not preserve Try data"
+dev tries restore archive-sample >/dev/null
+[[ -f "$ARCHIVE_TRY/NOTES.md" ]] || fail "restore did not return Try data"
+dev tries reactivate archive-sample >/dev/null
+dev_has '"important"' tries list --json || fail "Try metadata did not survive lifecycle"
+ok "Try identity and data survived deprecate/archive/restore"
+
 step "stats"
 dev stats backfill --since 1mo >/dev/null
-dev stats --since 1mo | grep -q demo || fail "stats did not record the demo repo"
+dev_has demo stats --since 1mo || fail "stats did not record the demo repo"
 ok "activity recorded"
 
 step "skill install"
@@ -185,20 +224,20 @@ git -C "$REPO" add wip.txt
 git -C "$REPO" commit --quiet -m "feat: unmerged work"
 git -C "$REPO" switch --quiet main
 
-dev adopt | grep -q adopt-me || fail "adopt did not find the unmerged branch"
-if dev ls | grep -q adopt-me; then
+dev_has adopt-me adopt || fail "adopt did not find the unmerged branch"
+if dev_has adopt-me ls; then
   fail "adopt without --apply must create nothing"
 fi
 dev adopt --apply --yes >/dev/null
-dev ls | grep -q adopt-me || fail "adopt --apply did not record the task"
+dev_has adopt-me ls || fail "adopt --apply did not record the task"
 # Adopting twice must not duplicate.
-if dev adopt | grep -q adopt-me; then
+if dev_has adopt-me adopt; then
   fail "an already-tracked branch should not be offered again"
 fi
 ok "adopt reported, applied once, and stayed idempotent"
 
 step "config init detects the sandbox layout"
-dev config init --stdout | grep -q '\[paths\]' || fail "generated config looks wrong"
+dev_has '\[paths\]' config init --stdout || fail "generated config looks wrong"
 ok "config generated"
 
 step "bootstrap a non-destructive repo index"
@@ -213,7 +252,8 @@ dev bootstrap "$HOME/Program" --index "$INDEX" --apply \
 grep -q "repo-index" "$INDEX_CONFIG" || fail "generated config does not scan the index"
 grep -q 'project_root = "~/Program"' "$INDEX_CONFIG" \
   || fail "generated config would create physical repos inside the index"
-"$BIN" --config "$INDEX_CONFIG" repo list --long | grep -q '~/repo-index/demo' \
+INDEX_LIST="$("$BIN" --config "$INDEX_CONFIG" repo list --long)"
+grep -q '~/repo-index/demo' <<<"$INDEX_LIST" \
   || fail "normal repo discovery does not use the symlink index"
 ok "recursive scan + symlink index, physical layout untouched"
 

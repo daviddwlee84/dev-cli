@@ -4,6 +4,21 @@ Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
 
 ## Active
 
+### P1 · L — Verified backup receipts and safe local eviction
+Phase 1 intentionally stops at reversible archive. Before adding `dev reclaim`
+or any action that deletes a local checkout, build a fresh preflight that checks
+all local heads/tags/notes/stash against actual remote refs, plus dirty,
+untracked, ignored, LFS, submodule/nested-repo, live-runtime, task, cwd and
+linked-worktree state. `no remote` or any local-only ref must block safe
+removal; multiple remotes/upstreams require an explicit recovery target.
+
+Add an explicit `backup --push` receipt, report-only `reclaim`, typed/batch
+confirmation, separately named data-loss acknowledgements (never a generic
+`--force`), linked-worktree removal that preserves branch/common-dir, and
+remote/shared-Git restore. Non-Git experiments need a real archive/export
+format before they can be called recoverable. Do not infer safety merely from
+"origin exists" or the current branch being synced.
+
 ### P2 · M — Incremental local repo snapshot
 The TUI now renders immediately and probes repositories in the background with
 bounded concurrency, reducing perceived startup latency. A 56-repo refresh
@@ -70,10 +85,12 @@ Reconsider only if `doctor` grows a case where the *right* command is
 unambiguous and the user has asked for it.
 
 ### A second git database
-Anything derivable from git is derived live, every run. The registry holds
-state, owner, next action and a note — nothing else. The moment it caches a
-branch name or an ahead/behind count, it can disagree with git, and a tool that
-disagrees with git about git is worse than no tool.
+Anything derivable from git is derived live, every run. Durable stores hold
+human intent and identity: task state/owner/next action, asset tags/notes,
+experiment lifecycle and per-host location. Recovery receipts may record one
+past verification, but apply must verify again. Live branches, remotes,
+ahead/behind, dirty state and sizes remain derived/cache-only; a durable tool
+that disagrees with git about git is worse than no tool.
 
 ### Syncing runtime state between machines
 Each host runs its own multiplexer. What crosses machines is branches, through
@@ -92,10 +109,13 @@ only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 - Worktree ownership rule, path templates, provisioning, per-repo `.dev.toml`.
 - Runtime adapters: herdr, tmux, none, behind one contract suite.
 - Repo discovery and gh/glab-backed clone, create, sync.
-- `try` and `graduate`.
+- Durable Try catalog and lifecycle: create/clone/open, tags/notes, explicit
+  deprecate/reactivate, reversible archive/restore, and identity-preserving
+  graduate; no permanent local eviction in Phase 1.
 - Activity stats: sampler, git backfill, WakaTime import, heatmap.
-- Interactive TASKS / REPOS / REMOTE dashboard with vim navigation, lazy
-  gh/glab inventory, private XDG cache, local-clone matching and confirmed clone.
+- Interactive TASKS / REPOS / TRY / REMOTE dashboard with vim navigation,
+  full-screen help/forms, lifecycle actions, lazy gh/glab inventory, private XDG
+  caches, local-kind matching and confirmed clone.
 - Explicit configurable TUI tools, including interactive shell aliases/functions,
   with lazygit / yazi / editor / shell defaults.
 - `dev gitignore`, from GitHub's templates plus the sections no template has.
@@ -108,8 +128,11 @@ only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 - Explicit direct / branch-only / worktree task modes, including direct-main
   lifecycle and ad-hoc repo open with no task.
 - Rich starship-like Git status counts plus unique-path/type breakdown.
-- Latest repo activity from dirty-file mtime, commit, or task update; configurable
-  REPOS columns and activity/latest/name/git/tasks sorting.
+- Latest repo activity plus configurable REPOS columns and
+  activity/latest/name/git/size/tasks sorting; repository-wide remote/upstream
+  topology with no-remote/local-only/multi-upstream filters.
+- Portable logical disk usage split into checkout/private/shared Git, streamed
+  into the TUI behind a versioned 10-minute XDG cache.
 - Immediate TUI render with bounded-parallel repo probes (serial path measured
   4.2s); background rows replace the initial loading state.
 - Explicit Herdr/tmux LIVE repo status and selected-repo heatmap overlay in TUI,

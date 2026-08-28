@@ -290,6 +290,167 @@ func TestTryAndGraduate(t *testing.T) {
 	}
 }
 
+func TestTryArchiveRemainsAPositionalName(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("try", "archive", "--no-git")
+	if !strings.Contains(out, "archive") {
+		t.Fatalf("try archive output: %q", out)
+	}
+	triesRoot := filepath.Join(h.home, "tries")
+	entries, err := os.ReadDir(triesRoot)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("try archive entries = %d, %v", len(entries), err)
+	}
+	path := filepath.Join(triesRoot, entries[0].Name())
+	if !strings.HasSuffix(entries[0].Name(), "-archive") {
+		t.Errorf("archive was not treated as a positional name: %q", entries[0].Name())
+	}
+	if _, err := os.Stat(filepath.Join(path, ".git")); !os.IsNotExist(err) {
+		t.Errorf("--no-git created Git metadata: %v", err)
+	}
+
+	// A second positional invocation selects the same Try rather than becoming a
+	// future management subcommand or creating a duplicate.
+	h.mustRun("try", "archive", "--no-git")
+	entries, err = os.ReadDir(triesRoot)
+	if err != nil || len(entries) != 1 {
+		t.Errorf("second try archive entries = %d, %v", len(entries), err)
+	}
+}
+
+func TestTryAmbiguousNameDoesNotSilentlyPickOne(t *testing.T) {
+	h := newHarness(t)
+	triesRoot := filepath.Join(h.home, "tries")
+	for _, name := range []string{"2026-08-20-cache-alpha", "2026-08-21-cache-beta"} {
+		if err := os.MkdirAll(filepath.Join(triesRoot, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, _, err := h.run("try", "cache")
+	if err == nil || !strings.Contains(err.Error(), "ambiguous") ||
+		!strings.Contains(err.Error(), "cache-alpha") || !strings.Contains(err.Error(), "cache-beta") {
+		t.Errorf("ambiguous try error = %v", err)
+	}
+	entries, readErr := os.ReadDir(triesRoot)
+	if readErr != nil || len(entries) != 2 {
+		t.Errorf("ambiguous selection created a duplicate: %d, %v", len(entries), readErr)
+	}
+}
+
+func TestTryListDoesNotUseDirectoryMTimeAsActivity(t *testing.T) {
+	h := newHarness(t)
+	path := filepath.Join(h.home, "tries", "legacy-non-git")
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	future := time.Now().Add(365 * 24 * time.Hour)
+	if err := os.Chtimes(path, future, future); err != nil {
+		t.Fatal(err)
+	}
+	out := h.mustRun("try", "--list")
+	if !strings.Contains(out, "legacy-non-git") || !strings.Contains(out, "unknown") {
+		t.Errorf("Try list invented mtime activity: %q", out)
+	}
+}
+
+func TestTryCloneUsesLocalRepositoryAndVersionsCollisions(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("try", "--clone", h.repo.Root)
+	h.mustRun("try", "--clone", h.repo.Root)
+	entries, err := os.ReadDir(filepath.Join(h.home, "tries"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("clone entries = %d, want 2", len(entries))
+	}
+	var names []string
+	for _, entry := range entries {
+		names = append(names, entry.Name())
+	}
+	if !strings.HasSuffix(names[0], "-demo") || !strings.HasSuffix(names[1], "-demo-2") {
+		t.Errorf("clone collision names = %v", names)
+	}
+}
+
+func TestGraduateRemoteRefreshesCatalogOrigin(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("try", "remote-origin", "--no-git")
+
+	binDir := t.TempDir()
+	gh := filepath.Join(binDir, "gh")
+	script := `#!/bin/sh
+set -eu
+if [ "$1" != "repo" ] || [ "$2" != "create" ]; then
+  exit 2
+fi
+git remote add origin "git@github.com:owner/$3.git"
+printf 'https://github.com/owner/%s\n' "$3"
+`
+	if err := os.WriteFile(gh, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	out := h.mustRun("graduate", "remote-origin", "--remote", "--push=false")
+	if !strings.Contains(out, "https://github.com/owner/remote-origin") {
+		t.Fatalf("graduate remote output: %q", out)
+	}
+
+	assets, err := filepath.Glob(filepath.Join(h.home, "state", "assets", "*.toml"))
+	if err != nil || len(assets) != 1 {
+		t.Fatalf("catalog assets = %d, %v", len(assets), err)
+	}
+	body, err := os.ReadFile(assets[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "git@github.com:owner/remote-origin.git") ||
+		!strings.Contains(string(body), "github.com/owner/remote-origin") {
+		t.Errorf("graduated catalog did not retain remote origin:\n%s", body)
+	}
+}
+
+func TestGraduateRefreshesOriginAfterPartialRemoteFailure(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("try", "partial-remote", "--no-git")
+
+	binDir := t.TempDir()
+	gh := filepath.Join(binDir, "gh")
+	script := `#!/bin/sh
+set -eu
+if [ "$1" != "repo" ] || [ "$2" != "create" ]; then
+  exit 2
+fi
+git remote add origin "git@github.com:owner/$3.git"
+printf 'push failed\n' >&2
+exit 1
+`
+	if err := os.WriteFile(gh, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	_, errOut, err := h.run("graduate", "partial-remote", "--remote")
+	if err != nil {
+		t.Fatalf("partial remote failure should remain nonfatal: %v\n%s", err, errOut)
+	}
+	if !strings.Contains(errOut, "could not create the remote") {
+		t.Errorf("partial remote warning = %q", errOut)
+	}
+
+	assets, err := filepath.Glob(filepath.Join(h.home, "state", "assets", "*.toml"))
+	if err != nil || len(assets) != 1 {
+		t.Fatalf("catalog assets = %d, %v", len(assets), err)
+	}
+	body, err := os.ReadFile(assets[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "git@github.com:owner/partial-remote.git") ||
+		!strings.Contains(string(body), "github.com/owner/partial-remote") {
+		t.Errorf("partial remote origin was not retained:\n%s", body)
+	}
+}
+
 func TestStatusOutsideRepo(t *testing.T) {
 	h := newHarness(t)
 	dir := t.TempDir()
@@ -883,10 +1044,12 @@ func TestStatusAndJSONExposeRichChangeCounts(t *testing.T) {
 func TestCacheListAndClearLeavesStatsDataAlone(t *testing.T) {
 	h := newHarness(t)
 	remote := filepath.Join(config.CacheHome(), "dev", "remotes.json")
+	size := filepath.Join(config.CacheHome(), "dev", "sizes-v1.json")
 	gitignore := filepath.Join(config.CacheHome(), "dev", "gitignore", "Go.gitignore")
 	os.MkdirAll(filepath.Dir(remote), 0o755)
 	os.MkdirAll(filepath.Dir(gitignore), 0o755)
 	os.WriteFile(remote, []byte("remote cache"), 0o600)
+	os.WriteFile(size, []byte("size cache"), 0o600)
 	os.WriteFile(gitignore, []byte("*.test\n"), 0o644)
 
 	// Stats live under XDG data, not cache.
@@ -895,13 +1058,16 @@ func TestCacheListAndClearLeavesStatsDataAlone(t *testing.T) {
 	os.WriteFile(statsPath, []byte("durable"), 0o600)
 
 	out := h.mustRun("cache", "list")
-	if !strings.Contains(out, "remote") || !strings.Contains(out, "gitignore") ||
-		!strings.Contains(out, "not cache") {
+	if !strings.Contains(out, "remote") || !strings.Contains(out, "size") ||
+		!strings.Contains(out, "gitignore") || !strings.Contains(out, "not cache") {
 		t.Errorf("cache list:\n%s", out)
 	}
 	h.mustRun("cache", "clear", "all")
 	if _, err := os.Stat(remote); !os.IsNotExist(err) {
 		t.Error("remote cache should be gone")
+	}
+	if _, err := os.Stat(size); !os.IsNotExist(err) {
+		t.Error("size cache should be gone")
 	}
 	if _, err := os.Stat(gitignore); !os.IsNotExist(err) {
 		t.Error("gitignore cache should be gone")

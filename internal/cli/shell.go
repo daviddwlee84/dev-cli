@@ -18,11 +18,16 @@ const posixInit = `# dev shell integration — add to your rc file:
 #   eval "$(dev shell-init %[2]s)"
 export DEV_SHELL_INIT=1
 dev() {
-  local __dev_out __dev_status
+  local __dev_out __dev_status __dev_last __dev_before
   __dev_out="$(command %[1]s "$@")"
   __dev_status=$?
-  if [ $__dev_status -eq 0 ] && [ "${__dev_out#cd }" != "$__dev_out" ]; then
-    eval "$__dev_out"
+  __dev_last="${__dev_out##*$'\n'}"
+  if [ $__dev_status -eq 0 ] && [ "${__dev_last#cd }" != "$__dev_last" ]; then
+    if [ "$__dev_out" != "$__dev_last" ]; then
+      __dev_before="${__dev_out%%$'\n'*}"
+      [ -n "$__dev_before" ] && printf '%%s\n' "$__dev_before"
+    fi
+    eval "$__dev_last"
   elif [ -n "$__dev_out" ]; then
     printf '%%s\n' "$__dev_out"
   fi
@@ -36,9 +41,13 @@ set -gx DEV_SHELL_INIT 1
 function dev
     set -l __dev_out (command %[1]s $argv)
     set -l __dev_status $status
-    if test $__dev_status -eq 0; and string match -q 'cd *' -- "$__dev_out"
-        eval $__dev_out
-    else if test -n "$__dev_out"
+    set -l __dev_last $__dev_out[-1]
+    if test $__dev_status -eq 0; and string match -q 'cd *' -- "$__dev_last"
+        if test (count $__dev_out) -gt 1
+            printf '%%s\n' $__dev_out[1..-2]
+        end
+        eval $__dev_last
+    else if test (count $__dev_out) -gt 0
         printf '%%s\n' $__dev_out
     end
     return $__dev_status

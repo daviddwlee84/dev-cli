@@ -34,10 +34,11 @@ type Repo struct {
 	// human organisation metadata, preserved for `dev graduate` to place new
 	// projects consistently.
 	Category string
-	// CommonDir is Git's shared administrative directory. Its worktrees/
-	// children let inventory count linked checkouts without another git
-	// process per repository.
+	// GitDir is this checkout's administrative directory; CommonDir is shared
+	// by every linked worktree of the clone.
+	GitDir    string
 	CommonDir string
+	MainRoot  string
 	// Bare reports a bare repository (a worktree hub).
 	Bare bool
 	// HasGit distinguishes a real repo from a plain directory that was found
@@ -135,7 +136,7 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 					real = path
 				}
 				bare := isBareDir(path)
-				identity, commonDir := real, real
+				identity, gitDir, commonDir, mainRoot := real, real, real, real
 				if !bare {
 					if g, err := gitx.Discover(ctx, path); err == nil {
 						// A linked worktree is execution state, not another
@@ -143,7 +144,7 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 						if g.IsLinkedWorktree {
 							return filepath.SkipDir
 						}
-						identity, commonDir = g.GitCommonDir, g.GitCommonDir
+						identity, gitDir, commonDir, mainRoot = g.GitCommonDir, g.GitDir, g.GitCommonDir, g.MainRoot
 						real = g.MainRoot
 					}
 				}
@@ -156,7 +157,9 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 						Symlink:   isLink,
 						Root:      rootClean,
 						Category:  filepath.ToSlash(filepath.Dir(rel)),
+						GitDir:    gitDir,
 						CommonDir: commonDir,
+						MainRoot:  mainRoot,
 						Bare:      bare,
 						HasGit:    true,
 					})

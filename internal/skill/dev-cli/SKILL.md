@@ -120,7 +120,9 @@ dev wt plan                            # what a new worktree would be set up wit
 dev wt plan --write                    # seed a committed .dev.toml from it
 dev wt rm feat/auth                    # remove the checkout; the branch stays
 
-dev repo list              # every repo under the scan roots
+dev repo list --sizes      # repos, recovery topology, owned logical bytes
+dev repo list --no-remote  # local Git with no configured remote
+dev repo list --local-only # branches lacking a remote-backed upstream
 dev repo clone owner/name  # clone into the right place, via gh or glab
 dev repo sync --all        # fetch + prune, and report what moved
 dev repo remote [query]     # search authenticated gh + glab repositories
@@ -130,12 +132,14 @@ dev gitignore              # .gitignore from GitHub templates + the common bits
 dev adopt                  # import existing worktrees/sessions/branches as tasks
 
 dev try redis-streams      # dated scratch directory for an experiment
+dev tries mark redis-streams --add important  # durable personal metadata
+dev tries archive redis-streams               # reversible; does not delete
 dev graduate redis-streams --category Infra   # promote it into a real project
 
 dev stats --heatmap        # where the time actually went
 dev stats backfill --repo api  # seed one repo; TUI H then b does this in place
 dev stats path             # durable XDG data, not cache
-dev cache list             # regenerable forge/gitignore caches
+dev cache list             # regenerable forge/size/gitignore caches
 dev help worktrees         # quick-reference pages
 ```
 
@@ -161,22 +165,26 @@ or `dev repo list` to see what this machine is actually configured for.
 
 ## Dashboard and forge inventory
 
-The TUI has TASKS, REPOS and REMOTE views, switched with tab or vim-style h/l.
+The TUI has TASKS, REPOS, TRY and REMOTE views, switched with tab or vim-style
+h/l. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions;
+`a` includes retained history. Archive is a reversible same-filesystem move,
+not deletion or disk reclamation. `?` opens the full key map.
+
 REMOTE queries authenticated `gh` and `glab` lazily, uses a short-lived private
 cache, and `/` filters provider, owner/name and description. Enter opens a local
 clone; `c` confirms before cloning an absent remote. Use `dev repo remote
 [query] --json` for the non-interactive form; `--cached` avoids a network query.
 
-REPOS has explicit LIVE and LATEST columns: latest is the newest dirty-file
-mtime, commit, or task update. Detail shows the Herdr/tmux handle and agent
-status. `[tui.repos]` chooses columns and default sort; `O` cycles sort and `R`
-reverses it.
+REPOS has LIVE, LATEST and asynchronous SIZE. SIZE is logical
+checkout+private-Git bytes; shared Git is separate and marked `+S`. Detail also
+shows no-remote/local-only/multi-upstream recovery topology. `[tui.repos]`
+chooses columns and default sort; `O` cycles sort and `R` reverses it.
 
 `H` opens the selected repo's heatmap. On an empty panel, `b` backfills only
 that repo and redraws; `r` rereads existing stats. Stats live in
 `$XDG_DATA_HOME/dev/stats.db` and are durable observations, not cache — use
 `dev stats clear` with an explicit scope. `dev cache clear` only removes
-regenerable forge/gitignore data under `$XDG_CACHE_HOME/dev`.
+regenerable forge/size/gitignore data under `$XDG_CACHE_HOME/dev`.
 
 `e` edits config and returning live-reloads data/tool bindings; `r` reloads
 explicitly. Runtime
@@ -245,7 +253,12 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 
 11. **Do not call stats.db a cache.** Session/WakaTime observations may not be
    reconstructible. Use `dev stats clear --repo/--source/--all`; use
-   `dev cache clear` only for remote/gitignore caches.
+   `dev cache clear` only for regenerable remote/size/gitignore caches.
+
+12. **Archive is not eviction.** `dev tries archive` is a reversible hidden move
+   on the same filesystem; it does not free space. Phase 1 has no project-data
+   delete command. Never substitute `rm -rf` merely because a remote exists —
+   no-remote, local-only refs, ignored files and stash are independent risks.
 
 12. **Read Git state as counts, not a dirty boolean.** `⇡`/`⇣` are upstream
    divergence; `=` conflicts, `+` staged, `!` unstaged, `?` untracked. Use

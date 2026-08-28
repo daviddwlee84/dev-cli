@@ -10,7 +10,9 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
@@ -24,17 +26,21 @@ const (
 	ViewTasks View = iota
 	// ViewRepos lists every repository under the scan roots — what do I have.
 	ViewRepos
+	// ViewTries lists durable scratch experiments and retained lifecycle history.
+	ViewTries
 	// ViewRemote lists repositories visible through gh and glab.
 	ViewRemote
 )
 
 // Views is the cycle order.
-var Views = []View{ViewTasks, ViewRepos, ViewRemote}
+var Views = []View{ViewTasks, ViewRepos, ViewTries, ViewRemote}
 
 func (v View) String() string {
 	switch v {
 	case ViewRepos:
 		return "repos"
+	case ViewTries:
+		return "try"
 	case ViewRemote:
 		return "remote"
 	default:
@@ -53,6 +59,10 @@ type Actions struct {
 	// ReloadRemote queries gh and glab. It is lazy: the network is untouched
 	// until the REMOTE view is opened.
 	ReloadRemote func(ctx context.Context) ([]RemoteRow, error)
+	// Repos and Tries group asset-specific metadata and lifecycle actions.
+	Repos RepoActions
+	Tries TryActions
+	Sizes SizeActions
 	// Open makes a task live.
 	Open func(ctx context.Context, t *task.Task) (string, error)
 	// OpenRepo makes a repository live.
@@ -136,13 +146,16 @@ type Model struct {
 	view    View
 	rows    []inventory.Row
 	repos   []RepoRow
+	tries   []TryRow
 	remotes []RemoteRow
 	// Remote loading is lazy so opening the dashboard never waits on the
 	// network. The first switch to REMOTE triggers it.
-	remotesLoaded  bool
-	remotesLoading bool
-	initialLoad    bool
-	loadingLocal   bool
+	remotesLoaded   bool
+	remotesLoading  bool
+	initialLoad     bool
+	loadingLocal    bool
+	sizeLoad        diskusage.Load
+	forceSizeReload bool
 
 	// Cursors are plain fields, one per view, rather than a map: bubbletea
 	// passes the model by value and expects each returned copy to be
@@ -150,6 +163,7 @@ type Model struct {
 	// that produced two candidate models would have them silently agree.
 	taskCursor   int
 	repoCursor   int
+	tryCursor    int
 	remoteCursor int
 	// filter is the live text query; states narrows the task view.
 	filter string
@@ -157,10 +171,15 @@ type Model struct {
 	// showDone includes finished tasks, which are hidden by default because a
 	// finished task is not work in progress.
 	showDone bool
+	// showAllTries includes deprecated, archived, evicted, and graduated history.
+	showAllTries bool
+	trySort      string
+	tryReverse   bool
 
-	mode  mode
-	input textinput.Model
-	stats *StatsPanel
+	mode    mode
+	input   textinput.Model
+	stats   *StatsPanel
+	overlay overlayState
 
 	status string
 	err    error
@@ -192,7 +211,14 @@ func (m Model) WithRemotes(rows []RemoteRow) Model {
 	return m
 }
 
-// BeginLoading makes Init load task and repo data asynchronously. This lets
+// WithTries seeds the Try view, primarily for tests and embedded callers. The
+// production dashboard loads it with the other local inventories in Init.
+func (m Model) WithTries(rows []TryRow) Model {
+	m.tries = rows
+	return m
+}
+
+// BeginLoading makes Init load task, repository, and Try data asynchronously. This lets
 // the alternate screen appear immediately instead of blocking on dozens of Git
 // probes before Bubble Tea starts.
 func (m Model) BeginLoading() Model {
@@ -216,11 +242,16 @@ func (m Model) Init() tea.Cmd {
 }
 
 type reloadMsg struct {
-	rows      []inventory.Row
-	repos     []RepoRow
-	remotes   []RemoteRow
-	remoteSet bool
-	err       error
+	rows       []inventory.Row
+	repos      []RepoRow
+	tries      []TryRow
+	rowsSet    bool
+	reposSet   bool
+	triesSet   bool
+	remotes    []RemoteRow
+	remoteSet  bool
+	forceSizes bool
+	err        error
 }
 
 type remoteMsg struct {
@@ -252,25 +283,86 @@ type actionMsg struct {
 	cd         string
 	remoteName string
 	localPath  string
+	forceSizes bool
 	err        error
+}
+
+type triesMsg struct {
+	tries    []TryRow
+	triesSet bool
+	repos    []RepoRow
+	reposSet bool
+	err      error
+}
+
+type tryActionMsg struct {
+	result TryActionResult
+	err    error
 }
 
 func (m Model) reload() tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		out := reloadMsg{}
+		out := reloadMsg{forceSizes: m.forceSizeReload}
 		if m.actions.Reload != nil {
 			rows, err := m.actions.Reload(ctx)
-			out.rows, out.err = rows, err
+			out.rows, out.rowsSet, out.err = rows, true, err
 		}
 		if m.actions.ReloadRepos != nil {
 			repos, err := m.actions.ReloadRepos(ctx)
-			out.repos = repos
+			out.repos, out.reposSet = repos, true
+			if out.err == nil {
+				out.err = err
+			}
+		}
+		if m.actions.Tries.Reload != nil {
+			tries, err := m.actions.Tries.Reload(ctx, m.showAllTries)
+			out.tries, out.triesSet = tries, true
 			if out.err == nil {
 				out.err = err
 			}
 		}
 		return out
+	}
+}
+
+func (m Model) reloadTries(includeRepos bool) tea.Cmd {
+	return func() tea.Msg {
+		ctx := context.Background()
+		out := triesMsg{}
+		if m.actions.Tries.Reload != nil {
+			out.tries, out.err = m.actions.Tries.Reload(ctx, m.showAllTries)
+			out.triesSet = true
+		}
+		if includeRepos && m.actions.ReloadRepos != nil {
+			var err error
+			out.repos, err = m.actions.ReloadRepos(ctx)
+			out.reposSet = true
+			if out.err == nil {
+				out.err = err
+			}
+		}
+		return out
+	}
+}
+
+func (m Model) applyRepoPatch(row RepoRow, tags []string, note string) tea.Cmd {
+	if m.actions.Repos.Patch == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		status, err := m.actions.Repos.Patch(context.Background(), row, tags, note)
+		return actionMsg{status: status, err: err}
+	}
+}
+
+func (m Model) applyTry(request TryRequest) tea.Cmd {
+	if m.actions.Tries.Apply == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		result, err := m.actions.Tries.Apply(context.Background(), request)
+		return tryActionMsg{result: result, err: err}
 	}
 }
 
@@ -297,13 +389,23 @@ func (m Model) reloadConfig(refreshRemote bool) tea.Cmd {
 func (m Model) reloadAfterConfig(refreshRemote bool) tea.Cmd {
 	return func() tea.Msg {
 		ctx := context.Background()
-		out := reloadMsg{}
+		out := reloadMsg{forceSizes: m.forceSizeReload}
 		if m.actions.Reload != nil {
 			out.rows, out.err = m.actions.Reload(ctx)
+			out.rowsSet = true
 		}
 		if m.actions.ReloadRepos != nil {
 			var err error
 			out.repos, err = m.actions.ReloadRepos(ctx)
+			out.reposSet = true
+			if out.err == nil {
+				out.err = err
+			}
+		}
+		if m.actions.Tries.Reload != nil {
+			var err error
+			out.tries, err = m.actions.Tries.Reload(ctx, m.showAllTries)
+			out.triesSet = true
 			if out.err == nil {
 				out.err = err
 			}
@@ -345,7 +447,7 @@ func (m Model) visibleTasks() []inventory.Row {
 func (m Model) visibleRepos() []RepoRow {
 	var out []RepoRow
 	for _, r := range m.repos {
-		if !matches(r.searchText(), m.filter) {
+		if r.IsTry() || !r.matches(m.filter) {
 			continue
 		}
 		out = append(out, r)
@@ -361,6 +463,23 @@ func (m Model) visibleRepos() []RepoRow {
 		}
 		return cmp < 0
 	})
+	return out
+}
+
+// visibleTries applies structured experiment filters and keeps sorting local to
+// the view so repository ordering remains independent.
+func (m Model) visibleTries() []TryRow {
+	out := make([]TryRow, 0, len(m.tries))
+	for _, row := range m.tries {
+		if row.matches(m.filter) {
+			out = append(out, row)
+		}
+	}
+	sortBy := m.trySort
+	if sortBy == "" {
+		sortBy = "activity"
+	}
+	sortTryRows(out, sortBy, m.tryReverse)
 	return out
 }
 
@@ -431,6 +550,17 @@ func compareRepos(a, b RepoRow, sortBy string) int {
 		if c := descInt(a.Status.Changed, b.Status.Changed); c != 0 {
 			return c
 		}
+	case "size":
+		switch {
+		case a.Usage != nil && b.Usage == nil:
+			return -1
+		case a.Usage == nil && b.Usage != nil:
+			return 1
+		case a.Usage != nil && b.Usage != nil && a.Usage.OwnedBytes > b.Usage.OwnedBytes:
+			return -1
+		case a.Usage != nil && b.Usage != nil && a.Usage.OwnedBytes < b.Usage.OwnedBytes:
+			return 1
+		}
 	case "tasks":
 		if c := descInt(a.HotTasks(), b.HotTasks()); c != 0 {
 			return c
@@ -472,6 +602,8 @@ func (m Model) count() int {
 	switch m.view {
 	case ViewRepos:
 		return len(m.visibleRepos())
+	case ViewTries:
+		return len(m.visibleTries())
 	case ViewRemote:
 		return len(m.visibleRemotes())
 	default:
@@ -484,6 +616,8 @@ func (m Model) at() int {
 	switch m.view {
 	case ViewRepos:
 		return m.repoCursor
+	case ViewTries:
+		return m.tryCursor
 	case ViewRemote:
 		return m.remoteCursor
 	default:
@@ -505,6 +639,8 @@ func (m *Model) setAt(i int) {
 	switch m.view {
 	case ViewRepos:
 		m.repoCursor = i
+	case ViewTries:
+		m.tryCursor = i
 	case ViewRemote:
 		m.remoteCursor = i
 	default:
@@ -536,6 +672,18 @@ func (m Model) currentRepo() (RepoRow, bool) {
 	return repos[m.at()], true
 }
 
+// currentTry returns the selected experiment row.
+func (m Model) currentTry() (TryRow, bool) {
+	if m.view != ViewTries {
+		return TryRow{}, false
+	}
+	rows := m.visibleTries()
+	if m.at() >= len(rows) {
+		return TryRow{}, false
+	}
+	return rows[m.at()], true
+}
+
 // currentRemote returns the selected forge repository.
 func (m Model) currentRemote() (RemoteRow, bool) {
 	if m.view != ViewRemote {
@@ -552,18 +700,33 @@ func (m Model) currentRemote() (RemoteRow, bool) {
 // inventory without another scan.
 func (m *Model) matchRemoteLocals() {
 	byRemote := map[string]RepoRow{}
+	ambiguous := map[string]bool{}
 	for _, r := range m.repos {
-		if r.RemoteName != "" {
-			byRemote[string(r.RemoteForge)+"/"+strings.ToLower(r.RemoteName)] = r
+		if r.RemoteName == "" {
+			continue
 		}
+		key := string(r.RemoteForge) + "/" + strings.ToLower(r.RemoteName)
+		if ambiguous[key] {
+			continue
+		}
+		if _, exists := byRemote[key]; exists {
+			delete(byRemote, key)
+			ambiguous[key] = true
+			continue
+		}
+		byRemote[key] = r
 	}
 	for i := range m.remotes {
 		key := string(m.remotes[i].Repo.Forge) + "/" + strings.ToLower(m.remotes[i].Repo.FullName)
 		if local, ok := byRemote[key]; ok {
 			m.remotes[i].LocalPath = local.Repo.Path
 			m.remotes[i].LocalName = local.Repo.Display()
+			m.remotes[i].LocalKind = catalog.KindRepository
+			if local.Asset != nil {
+				m.remotes[i].LocalKind = local.Asset.Kind
+			}
 		} else {
-			m.remotes[i].LocalPath, m.remotes[i].LocalName = "", ""
+			m.remotes[i].LocalPath, m.remotes[i].LocalName, m.remotes[i].LocalKind = "", "", ""
 		}
 	}
 }
@@ -580,6 +743,9 @@ func (m Model) currentDir() string {
 	if r, ok := m.currentRepo(); ok {
 		return r.Repo.Path
 	}
+	if r, ok := m.currentTry(); ok && r.Present() {
+		return r.Item.Live.CurrentPath
+	}
 	if r, ok := m.currentRemote(); ok {
 		return r.LocalPath
 	}
@@ -595,23 +761,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case reloadMsg:
 		m.loadingLocal = false
-		if msg.err != nil {
-			m.err = msg.err
-			return m, nil
-		}
-		m.err = nil
-		if msg.rows != nil {
+		if msg.rowsSet && msg.rows != nil {
 			m.rows = msg.rows
 		}
-		if msg.repos != nil {
+		if msg.reposSet && msg.repos != nil {
 			m.repos = msg.repos
 			m.matchRemoteLocals()
+		}
+		if msg.triesSet {
+			m.tries = msg.tries
 		}
 		if msg.remoteSet {
 			m.remotes, m.remotesLoaded, m.remotesLoading = msg.remotes, true, false
 		}
+		m.err = msg.err
+		m.forceSizeReload = false
 		m.setAt(m.at())
-		return m, nil
+		return m.beginSizeLoad(msg.forceSizes)
+
+	case sizeMsg:
+		if msg.loadID == 0 || msg.loadID != m.sizeLoad.ID {
+			return m, nil
+		}
+		if msg.done {
+			m.sizeLoad = diskusage.Load{}
+			return m, nil
+		}
+		m.applySizeResult(msg.result)
+		return m, waitForSize(m.sizeLoad)
 
 	case remoteMsg:
 		m.remotes, m.remotesLoaded, m.remotesLoading = msg.rows, true, false
@@ -659,12 +836,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, nil
 
+	case triesMsg:
+		if msg.triesSet {
+			m.tries = msg.tries
+		}
+		if msg.reposSet && msg.repos != nil {
+			m.repos = msg.repos
+			m.matchRemoteLocals()
+		}
+		if msg.err != nil {
+			m.err = msg.err
+		}
+		m.setAt(m.at())
+		return m.beginSizeLoad(false)
+
+	case tryActionMsg:
+		if msg.err != nil {
+			m.err, m.status = msg.err, ""
+			if msg.result.RefreshRepos {
+				return m, m.reloadTries(true)
+			}
+			return m, nil
+		}
+		m.err, m.status = nil, msg.result.Status
+		if msg.result.CD != "" {
+			m.chosen, m.quitting = msg.result.CD, true
+			return m, tea.Quit
+		}
+		return m, m.reloadTries(msg.result.RefreshRepos)
+
 	case actionMsg:
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
 		}
 		m.err, m.status = nil, msg.status
+		m.forceSizeReload = msg.forceSizes
 		if msg.remoteName != "" && msg.localPath != "" {
 			for i := range m.remotes {
 				if m.remotes[i].Repo.FullName == msg.remoteName {
@@ -689,6 +896,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.reload()
 
 	case tea.KeyMsg:
+		if m.overlay.kind != overlayNone {
+			return m.updateOverlay(msg)
+		}
 		if m.mode == modeStats {
 			return m.updateStats(msg)
 		}
@@ -756,8 +966,27 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.input.Focus()
 		return m, textinput.Blink
 
+	case "?":
+		return m.openHelpOverlay(), nil
+
+	case "n":
+		if m.view != ViewTries {
+			return m, nil
+		}
+		return m.openTryForm(TryCreate, TryRow{})
+
+	case " ":
+		if row, ok := m.currentRepo(); ok {
+			return m.openRepoForm(row)
+		}
+		if row, ok := m.currentTry(); ok {
+			return m.openTryMenu(row), nil
+		}
+		return m, nil
+
 	case "r":
 		m.status = "reloading config + data…"
+		m.forceSizeReload = true
 		if m.view == ViewRemote {
 			m.remotesLoading = true
 		}
@@ -779,6 +1008,12 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.states, m.filter = nil, ""
 		m.setAt(0)
 	case "a":
+		if m.view == ViewTries {
+			m.showAllTries = !m.showAllTries
+			m.status = fmt.Sprintf("Try history visible: %v", m.showAllTries)
+			m.setAt(0)
+			return m, m.reloadTries(false)
+		}
 		m.showDone, m.states = !m.showDone, nil
 		m.setAt(0)
 
@@ -828,28 +1063,31 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		})
 
 	case "O":
-		if m.view != ViewRepos {
+		switch m.view {
+		case ViewRepos:
+			orders := []string{"activity", "latest", "name", "git", "size", "tasks"}
+			m.actions.RepoSort = nextSort(m.actions.RepoSort, orders)
+			m.status = "repo sort: " + m.actions.RepoSort
+		case ViewTries:
+			m.trySort = nextSort(m.trySort, []string{"activity", "name", "phase", "size"})
+			m.status = "Try sort: " + m.trySort
+		default:
 			return m, nil
 		}
-		orders := []string{"activity", "latest", "name", "git", "tasks"}
-		current := 0
-		for i, order := range orders {
-			if order == m.actions.RepoSort {
-				current = i
-				break
-			}
-		}
-		m.actions.RepoSort = orders[(current+1)%len(orders)]
-		m.status = "repo sort: " + m.actions.RepoSort
 		m.setAt(0)
 		return m, nil
 
 	case "R":
-		if m.view != ViewRepos {
+		switch m.view {
+		case ViewRepos:
+			m.actions.RepoReverse = !m.actions.RepoReverse
+			m.status = fmt.Sprintf("repo sort reversed: %v", m.actions.RepoReverse)
+		case ViewTries:
+			m.tryReverse = !m.tryReverse
+			m.status = fmt.Sprintf("Try sort reversed: %v", m.tryReverse)
+		default:
 			return m, nil
 		}
-		m.actions.RepoReverse = !m.actions.RepoReverse
-		m.status = fmt.Sprintf("repo sort reversed: %v", m.actions.RepoReverse)
 		m.setAt(0)
 		return m, nil
 
@@ -876,6 +1114,9 @@ func (m Model) selectedRepoName() string {
 	}
 	if r, ok := m.currentRepo(); ok {
 		return r.Repo.Name
+	}
+	if r, ok := m.currentTry(); ok && r.Item.Live.Repo != nil {
+		return r.Item.Live.Repo.Name
 	}
 	if r, ok := m.currentRemote(); ok && r.Cloned() {
 		if r.LocalName != "" {
@@ -1085,6 +1326,14 @@ func (m Model) openSelected() tea.Cmd {
 			return actionMsg{status: status, cd: cd, err: err}
 		}
 	}
+	if r, ok := m.currentTry(); ok {
+		if !r.Present() {
+			return func() tea.Msg {
+				return tryActionMsg{err: fmt.Errorf("Try %s is %s on this host", r.Item.DisplayName(), r.Where())}
+			}
+		}
+		return m.applyTry(TryRequest{Action: TryOpen, ID: r.Item.ID})
+	}
 	if r, ok := m.currentRemote(); ok {
 		if !r.Cloned() {
 			return nil // c is the explicit clone action
@@ -1127,7 +1376,7 @@ func (m Model) launchTool(key string) tea.Cmd {
 			if err != nil {
 				return actionMsg{err: fmt.Errorf("%s: %w", t.Name, err)}
 			}
-			return actionMsg{status: "back from " + t.Name}
+			return actionMsg{status: "back from " + t.Name, forceSizes: true}
 		})
 	}
 	return nil
@@ -1157,8 +1406,17 @@ func (m Model) Summary() string {
 			parts = append(parts, fmt.Sprintf("%s %d %s", s.Icon(), counts[s], s))
 		}
 	}
-	if len(m.repos) > 0 {
-		parts = append(parts, fmt.Sprintf("%d repos", len(m.repos)))
+	repoCount := 0
+	for _, row := range m.repos {
+		if !row.IsTry() {
+			repoCount++
+		}
+	}
+	if repoCount > 0 {
+		parts = append(parts, fmt.Sprintf("%d repos", repoCount))
+	}
+	if len(m.tries) > 0 {
+		parts = append(parts, fmt.Sprintf("%d tries", len(m.tries)))
 	}
 	if m.remotesLoaded {
 		parts = append(parts, fmt.Sprintf("%d remote", len(m.remotes)))

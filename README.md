@@ -12,8 +12,9 @@ dev             human intent: what am I working on, and what is next
 ```
 
 Everything derivable from git or the runtime is derived live. `dev` persists
-only what git cannot answer — a task's **state**, **owner** and **next
-action** — as one TOML file per task.
+only human intent Git cannot answer: task **state/owner/next action**, plus
+stable asset identity, personal tags/notes and experiment lifecycle. Live Git
+status stays live; logical size measurements are explicitly disposable cache.
 
 ## The problem
 
@@ -109,18 +110,21 @@ the parallel task depends on them.
 
 ### The dashboard
 
-Bare `dev` (or `dev tui`) opens three lists, switched with `tab`:
+Bare `dev` (or `dev tui`) opens four lists, switched with `tab`:
 
 - **TASKS** — the change streams dev is tracking. What am I working on.
-- **REPOS** — every repository under the scan roots, with its branch, dirty
-  state, worktree count and per-state task tally, sorted so anything in flight
-  is at the top. What do I have here.
+- **REPOS** — durable repositories under the scan roots, with branch, dirty
+  state, owned size, runtime, worktrees and task tally. What do I have here.
+- **TRY** — dated scratch experiments, including non-Git folders, with durable
+  tags/notes and explicit active/deprecated/archived/graduated state.
 - **REMOTE** — repositories visible through the authenticated `gh` and `glab`
-  CLIs, marked when a local clone exists. What can I open or clone.
+  CLIs, marked when a local repo or Try exists. What can I open or clone.
 
-TASKS and REPOS come from the same code paths as `dev ls` and `dev repo list`,
-so they cannot disagree. The repo list matters on day one: with forty repositories and
-no tasks recorded yet, a task-only dashboard would just be empty.
+TASKS, REPOS and TRY use the same services as their non-interactive commands.
+Git-backed Tries appear in TRY rather than being duplicated in REPOS; REMOTE
+still knows that local checkout exists. The repo list matters on day one: with
+forty repositories and no tasks recorded yet, a task-only dashboard would just
+be empty.
 
 Navigation is vim-style, arrows alongside:
 
@@ -132,9 +136,12 @@ g G        top / bottom         h l / tab       previous / next view
 
 `enter` opens the selected row in the runtime. In TASKS, `p` parks and prompts
 for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
-`s` starts an isolated worktree task, and `d` starts a tracked direct task on
-the current branch. That makes the branch/worktree cost an explicit choice,
-not something every task silently pays.
+`s` starts an isolated worktree task, `d` starts a tracked direct task, and
+`space` edits repository tags/notes. In TRY, `n` creates or clones an experiment;
+`space` opens mark/deprecate/archive/restore/graduate actions; `a` includes
+retained history. `?` opens the complete context-sensitive key map. That makes
+the branch/worktree and lifecycle costs explicit rather than silently applying
+them to every directory.
 
 **External tools are configured, not fixed.** They run through your shell in
 the selected row's checkout; the dashboard suspends and redraws when they exit:
@@ -181,21 +188,70 @@ pressing `r`, reparses config and reloads data/tool bindings without restarting
 the TUI; a runtime-backend change is reported as requiring restart.
 
 REPOS includes `LATEST`, defined as the newest dirty-file mtime, commit time, or
-task update. Columns and default ordering are config:
+task update, plus asynchronous `SIZE`. Size is portable logical bytes:
+
+- `checkout_bytes` excludes only the checkout root's `.git` entry.
+- `private_git_bytes` belongs only to this checkout and is included in
+  `owned_bytes`, the table value.
+- `shared_git_bytes` is shown separately and never charged to every linked
+  worktree. `+S` means shared Git storage exists but is not reclaimable with
+  that row.
+
+Measurements stream in after the first frame, use a 10-minute private XDG cache,
+and can be forced with `r`; unreadable subtrees display a lower bound (`≥`).
+Columns and default ordering are config:
 
 ```toml
 [tui.repos]
-columns = ["repo", "branch", "git", "live", "latest", "worktrees", "tasks"]
-sort = "activity"       # activity | latest | name | git | tasks
+columns = ["repo", "branch", "git", "size", "live", "latest", "worktrees", "tasks"]
+sort = "activity"       # activity | latest | name | git | size | tasks
 reverse = false
 ```
 
-In REPOS, `O` cycles sort and `R` reverses it. The configured order returns on
-reload. Local repo probes run with bounded parallelism, and the alternate screen
-appears before they finish; the measured serial 56-repo path was ~4.2s, while
-startup now immediately shows loading and fills rows in the background.
+In REPOS and TRY, `O` cycles sort and `R` reverses it. Structured filters include
+`tag:important`, `remote:none`, `size:>1GiB`, `phase:deprecated` and
+`where:archived` where applicable. Local repo probes run with bounded
+parallelism, and the alternate screen appears before they finish.
 
 See `dev help tui` for the full key map.
+
+### Experiments and local-data risk
+
+`dev try <name>` keeps its low-friction positional grammar. Lifecycle management
+uses the separate plural group, so `dev try archive` still means "open/create a
+Try named archive":
+
+```bash
+dev tries list --json                 # active, present Tries
+dev tries list --all --sizes          # include deprecated/archived history
+dev tries mark redis --add important --note "compare streams"
+dev tries deprecate redis             # intent only; files do not move
+dev tries archive redis               # reversible move under tries_root/.dev
+dev tries restore redis
+dev tries graduate redis -c Infra     # same service as dev graduate
+```
+
+Archive is organization, **not disk reclamation**: it moves the directory to a
+hidden location on the same filesystem and preserves its stable catalog ID.
+Phase 1 deliberately has no `evict`, recursive delete, or automatic remote
+backup. Safe local removal needs repo-wide ref verification and remains a
+follow-up rather than treating "has a remote" as proof.
+
+The catalog also exposes personal repository tags/notes (`dev repo mark`). To
+find local Git state at risk before any future cleanup:
+
+```bash
+dev repo list --no-remote              # no configured remotes at all
+dev repo list --local-only             # at least one branch lacks remote upstream
+dev repo list --multiple-remotes
+dev repo list --multiple-upstreams     # branches track more than one remote
+dev repo list --sizes --json           # full remotes/branches/size contract
+```
+
+`no remote`, `local-only branch`, and `multiple upstreams` are distinct facts.
+They do not claim whether commit objects are present remotely; a future reclaim
+preflight must compare every local head/tag/note/stash against actual remote
+refs immediately before removal.
 
 Going cold is safe because **the branch is the identity and the directory is a
 cache**. `dev park --cold` refuses unless the branch is pushed, and `dev resume`
@@ -294,11 +350,13 @@ python   uv       uv.lock            .venv         installed
 ## Other things it does
 
 ```bash
-dev repo list                  # every repo under the scan roots, with status
+dev repo list --sizes          # repos, remote topology and owned logical size
+dev repo list --no-remote      # find local Git with no configured backup remote
 dev repo clone owner/name -c Web   # clone into the right place, via gh or glab
 dev repo sync --all            # fetch + prune, and report what moved
 
 dev try redis-streams          # dated scratch directory for an experiment
+dev tries archive redis-streams    # reversible local archive; does not delete
 dev graduate redis-streams -c Infra --remote   # promote it into a real project
 
 dev gitignore                  # .gitignore from GitHub's templates + the rest
@@ -334,12 +392,14 @@ Regenerable data lives separately:
 dev cache list
 dev cache path
 dev cache clear remote
+dev cache clear size
 dev cache clear gitignore
 dev cache clear all
 ```
 
-Those remove only `$XDG_CACHE_HOME/dev/{remotes.json,gitignore/}` and never touch
-`stats.db`.
+Those remove only regenerable files under `$XDG_CACHE_HOME/dev/` (remote
+inventory, size measurements and gitignore templates) and never touch
+`stats.db` or project data.
 
 ## Bootstrapping an existing machine
 
@@ -448,6 +508,11 @@ worktree_root = "/mnt/fast/worktrees"
 worktree_path = "{{worktree_root}}/{{repo|lower}}/{{branch|slug}}"
 state_dir     = "~/.local/share/dev"        # point at a git repo to sync it
 ```
+
+`state_dir/tasks/*.toml` stores task intent; `state_dir/assets/*.toml` stores
+stable repository/Try identity, tags/notes, experiment lifecycle and per-host
+locations. Git status and byte counts are not copied there. The latter lives in
+`$XDG_CACHE_HOME/dev/sizes-v1.json` and is safe to delete.
 
 Template variables: `worktree_root`, `repo`, `repo_path`, `branch`, `category`,
 `host`, `date`. Filters: `|slug` (`feat/auth/x` → `feat-auth-x`), `|lower`,

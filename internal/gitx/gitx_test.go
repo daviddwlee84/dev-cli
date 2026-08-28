@@ -135,6 +135,38 @@ func TestAddWorktreeChecksOutExistingBranch(t *testing.T) {
 	}
 }
 
+func TestMoveWorktreePreservesBranchAndSharedCommonDir(t *testing.T) {
+	r := gittest.New(t)
+	ctx := gittest.Ctx()
+	root := t.TempDir()
+	source := filepath.Join(root, "before")
+	destination := filepath.Join(root, "after")
+	if err := gitx.AddWorktree(ctx, r.Root, source, "feat/move", "main"); err != nil {
+		t.Fatal(err)
+	}
+	before, err := gitx.Discover(ctx, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gitx.MoveWorktree(ctx, source, source, destination); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(source); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("old worktree remains: %v", err)
+	}
+	after, err := gitx.Discover(ctx, destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !after.IsLinkedWorktree || after.GitCommonDir != before.GitCommonDir {
+		t.Errorf("moved worktree identity = %+v, before %+v", after, before)
+	}
+	worktree, ok, err := gitx.WorktreeFor(ctx, r.Root, "feat/move")
+	if err != nil || !ok || worktree.Path != resolve(t, destination) {
+		t.Errorf("worktree registry = %+v, %t, %v", worktree, ok, err)
+	}
+}
+
 func TestRemoveWorktree(t *testing.T) {
 	r := gittest.New(t)
 	ctx := gittest.Ctx()

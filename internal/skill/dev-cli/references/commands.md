@@ -57,7 +57,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|gitignore|all>
+dev cache clear <remote|size|gitignore|all>
 ```
 
 ### `dev cache list`
@@ -252,7 +252,27 @@ dev repo list [flags]
 
 - `-c, --category` — only this category
 - `--dirty` — only repositories with uncommitted changes
+- `--include-tries` — include active and deprecated Try repositories
+- `--json` — emit stable JSON
+- `--local-only` — only repositories with a branch lacking a remote-backed upstream
 - `-l, --long` — show full paths
+- `--multiple-remotes` — only repositories with multiple configured remotes
+- `--multiple-upstreams` — only repositories whose branches track multiple remotes
+- `--no-remote` — only repositories with no configured Git remote
+- `--refresh-sizes` — ignore the size cache and measure again
+- `--sizes` — measure logical checkout/private/shared Git bytes
+
+### `dev repo mark`
+
+Add catalog tags or update a repository note
+
+```
+dev repo mark <repo> [flags]
+```
+
+- `--add` — tag to add (repeatable)
+- `--note` — replace the note; pass an empty value to clear it
+- `--remove` — tag to remove (repeatable)
 
 ### `dev repo new`
 
@@ -460,6 +480,112 @@ dev sweep [flags]
 - `--apply` — act on the suggestions instead of only reporting
 - `--stale-days` — days without a commit before a task counts as stale
 - `--yes` — with --apply, do not confirm each change
+
+### `dev tries`
+
+Manage experiment lifecycle and metadata
+
+```
+dev tries
+```
+
+### `dev tries archive`
+
+Move a present Try into hidden local archive storage
+
+```
+dev tries archive <ref>
+```
+
+### `dev tries attach`
+
+Attach a stable Try ID to a visible local path
+
+```
+dev tries attach <id> <path>
+```
+
+### `dev tries deprecate`
+
+Mark a Try deprecated without moving it
+
+```
+dev tries deprecate <ref>
+```
+
+### `dev tries graduate`
+
+Promote an experiment into a real project
+
+```
+dev tries graduate [try] [flags]
+```
+
+- `-c, --category` — category subdirectory under project_root
+- `--dry-run` — show what would happen without moving anything
+- `--name` — project name (default: the try name without its date prefix)
+- `--private` — create the remote as private
+- `--push` — push after creating the remote
+- `--remote` — create a remote repository with gh or glab
+
+### `dev tries list`
+
+List active Tries or retained history
+
+```
+dev tries list [query] [flags]
+```
+
+- `-a, --all` — include deprecated, archived, evicted, and graduated history
+- `--json` — emit stable nested JSON
+- `--refresh-sizes` — ignore the size cache and measure again
+- `--sizes` — measure logical checkout/private/shared Git bytes
+
+### `dev tries mark`
+
+Add tags or update a Try note
+
+```
+dev tries mark <ref> [flags]
+```
+
+- `--add` — tag to add (repeatable)
+- `--note` — replace the note; pass an empty value to clear it
+- `--remove` — tag to remove (repeatable)
+
+### `dev tries open`
+
+Open a present Try
+
+```
+dev tries open <ref>
+```
+
+### `dev tries reactivate`
+
+Mark a deprecated Try active again
+
+```
+dev tries reactivate <ref>
+```
+
+### `dev tries restore`
+
+Restore an archived Try to a visible path
+
+```
+dev tries restore <ref> [flags]
+```
+
+- `--to` — restore to this safe path under tries_root
+
+### `dev tries touch`
+
+Record explicit activity for a present Try
+
+```
+dev tries touch <ref>
+```
 
 ### `dev try`
 

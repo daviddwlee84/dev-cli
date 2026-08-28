@@ -90,6 +90,14 @@ func TestLoadMissingFileUsesDefaults(t *testing.T) {
 	}
 }
 
+func TestAssetsDirUsesStateDirectory(t *testing.T) {
+	cfg := Default()
+	cfg.Paths.StateDir = filepath.Join(t.TempDir(), "state")
+	if got, want := cfg.AssetsDir(), filepath.Join(Expand(cfg.Paths.StateDir), "assets"); got != want {
+		t.Errorf("AssetsDir = %q, want %q", got, want)
+	}
+}
+
 func TestLoadOverlay(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
@@ -219,7 +227,7 @@ func TestRepoTableConfigValidation(t *testing.T) {
 		t.Errorf("default sort = %q", c.EffectiveRepoSort())
 	}
 
-	c.TUI.Repos.Columns = []string{"repo", "latest", "git"}
+	c.TUI.Repos.Columns = []string{"repo", "latest", "git", "remote"}
 	c.TUI.Repos.Sort = "latest"
 	if err := c.Validate(); err != nil {
 		t.Errorf("valid repo table config: %v", err)

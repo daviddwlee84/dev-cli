@@ -12,7 +12,10 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/diskusage"
+	"github.com/daviddwlee84/dev-cli/internal/experiment"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
@@ -34,10 +37,11 @@ func newTUICmd(app *App) *cobra.Command {
 Shows exactly what "dev ls" shows, from the same code path, plus the ability
 to open, park and annotate a task without retyping its name.
 
-Three lists, switched with tab:
+Four lists, switched with tab:
 
   TASKS   change streams dev is tracking — what am I working on
-  REPOS   every repository under the scan roots — what do I have here
+  REPOS   durable repositories under the scan roots — what do I have here
+  TRY     scratch experiments and retained lifecycle history
   REMOTE  repositories visible through gh and glab — what can I clone/open
 
 Navigation is vim-style, with arrows alongside:
@@ -50,13 +54,14 @@ Actions depend on the list:
 
   TASKS   enter open · p park · c edit next
   REPOS   enter ad hoc · s worktree task · d direct/current-branch task
+  TRY     enter open · n create · space lifecycle/metadata actions
   REMOTE  enter open local · c clone after confirmation
 
   H       selected repo heatmap; b backfills it when empty
   e       edit config; returning live-reloads data, columns, sort and tools
-  O / R   cycle / reverse REPOS sort
+  O / R   cycle / reverse REPOS or TRY sort
   r       reload config + data     1 / 2 / 3  hot / warm / cold
-  0       clear filters            a include done    q quit
+  0       clear filters            a include history  ? help  q quit
 
 External tools are configured, not fixed — see [[tui.tools]] in the config,
 and "dev tui tools" for what is bound here. They run in the selected row's checkout;
@@ -155,21 +160,51 @@ func runTUI(app *App) error {
 		return inventory.Collect(ctx, tasks, rt, inventory.Options{}), nil
 	}
 	reloadRepos := func(ctx context.Context) ([]tui.RepoRow, error) {
-		return collectRepos(ctx, app, rt)
+		// Keep Try repositories in the model's local snapshot so cached REMOTE
+		// rows can be matched and cleared correctly. The REPOS view filters them.
+		return collectReposWithOptions(ctx, app, rt, repoCollectOptions{IncludeTries: true})
 	}
 	reloadRemote := func(ctx context.Context) ([]tui.RemoteRow, error) {
 		return collectRemotes(ctx, app, 200)
+	}
+	reloadTries := func(ctx context.Context, includeAll bool) ([]tui.TryRow, error) {
+		return collectTries(ctx, app, rt, includeAll)
 	}
 
 	actions := tui.Actions{
 		Reload:       reload,
 		ReloadRepos:  reloadRepos,
 		ReloadRemote: reloadRemote,
-		Runtime:      rt,
-		Tools:        externalTools(app),
-		RepoColumns:  app.Cfg.EffectiveRepoColumns(),
-		RepoSort:     app.Cfg.EffectiveRepoSort(),
-		RepoReverse:  app.Cfg.TUI.Repos.Reverse,
+		Repos: tui.RepoActions{
+			Patch: func(ctx context.Context, row tui.RepoRow, tags []string, note string) (string, error) {
+				remove := []string(nil)
+				if row.Asset != nil {
+					remove = append(remove, row.Asset.Tags...)
+				}
+				marked, err := patchRepositoryCatalog(ctx, app, row.Repo, tags, remove, &note)
+				if err != nil {
+					return "", err
+				}
+				return "updated metadata for " + marked.Title(), nil
+			},
+		},
+		Tries: tui.TryActions{
+			Reload: reloadTries,
+			Apply: func(ctx context.Context, request tui.TryRequest) (tui.TryActionResult, error) {
+				return applyTryAction(ctx, app, rt, request)
+			},
+		},
+		Sizes: tui.SizeActions{
+			Start: func(ctx context.Context, targets []diskusage.Target, force bool) diskusage.Load {
+				return app.Sizes.Start(ctx, targets, force)
+			},
+			Cancel: app.Sizes.Cancel,
+		},
+		Runtime:     rt,
+		Tools:       externalTools(app),
+		RepoColumns: app.Cfg.EffectiveRepoColumns(),
+		RepoSort:    app.Cfg.EffectiveRepoSort(),
+		RepoReverse: app.Cfg.TUI.Repos.Reverse,
 
 		// Open reuses the same paths the commands take, so a cold task
 		// selected here is rebuilt rather than reported broken.
@@ -422,12 +457,203 @@ func runTUI(app *App) error {
 	return nil
 }
 
-// collectRepos builds the repository view: what exists, plus how much of it is
-// in flight.
+func collectTries(ctx context.Context, app *App, rt runtime.Runtime, includeAll bool) ([]tui.TryRow, error) {
+	service, err := newExperimentService(app)
+	if err != nil {
+		return nil, err
+	}
+	items, diagnostics, listErr := service.List(ctx, experiment.ListOptions{All: includeAll})
+	warnExperimentDiagnostics(app, diagnostics)
+	sessions, _ := rt.List(ctx)
+	rows := make([]tui.TryRow, 0, len(items))
+	for _, item := range items {
+		row := tui.TryRow{Item: item}
+		if item.Entry != nil {
+			if location, ok := item.Entry.LocationFor(config.Hostname()); ok {
+				copy := location
+				row.Location = &copy
+			}
+		}
+		sizeRepo := item.Live.Repo
+		if sizeRepo == nil && item.Live.CurrentPath != "" {
+			if discovered, discoverErr := gitx.Discover(ctx, item.Live.CurrentPath); discoverErr == nil {
+				sizeRepo = &discovered
+			}
+		}
+		if sizeRepo != nil {
+			worktreeCount := 0
+			if worktrees, worktreeErr := gitx.Worktrees(ctx, item.Live.CurrentPath); worktreeErr == nil && len(worktrees) > 1 {
+				worktreeCount = len(worktrees) - 1
+			}
+			row.SizeTarget = diskusage.FromGit(*sizeRepo, worktreeCount)
+		} else if item.Live.CurrentPath != "" {
+			row.SizeTarget = diskusage.Plain(item.Live.CurrentPath)
+		}
+		if item.Live.Present && item.Live.Repo != nil {
+			row.Topology, row.TopologyErr = gitx.RecoveryTopologyOf(ctx, item.Live.CurrentPath)
+		}
+		if item.Live.Present {
+			for _, session := range sessions {
+				if session.Covers(item.Live.CurrentPath) ||
+					(item.Live.RealPath != "" && session.Covers(item.Live.RealPath)) {
+					row.Live = true
+					row.Runtime, row.RuntimeHandle, row.RuntimeStatus = rt.Name(), session.Handle, session.AgentStatus
+					break
+				}
+			}
+		}
+		rows = append(rows, row)
+	}
+	return rows, listErr
+}
+
+func applyTryAction(ctx context.Context, app *App, rt runtime.Runtime, request tui.TryRequest) (tui.TryActionResult, error) {
+	service, err := newExperimentService(app)
+	if err != nil {
+		return tui.TryActionResult{}, err
+	}
+	resolve := func() (experiment.Item, error) {
+		item, diagnostics, resolveErr := service.ResolveWithOptions(ctx, request.ID, experiment.ResolveOptions{
+			IncludeDeprecated: true, IncludeArchived: true,
+			IncludeEvicted: true, IncludeGraduated: true,
+		})
+		warnExperimentDiagnostics(app, diagnostics)
+		return item, resolveErr
+	}
+	open := func(item experiment.Item, status string) (tui.TryActionResult, error) {
+		if !item.Live.Present || item.Live.CurrentPath == "" {
+			return tui.TryActionResult{}, fmt.Errorf("Try %s is not present on this host", item.DisplayName())
+		}
+		handle, openErr := openCheckout(ctx, rt, item.Live.CurrentPath, item.DisplayName())
+		if openErr != nil {
+			return tui.TryActionResult{}, openErr
+		}
+		result := tui.TryActionResult{Status: status, RefreshRepos: true}
+		if rt.Name() == "none" {
+			result.CD = item.Live.CurrentPath
+		} else {
+			result.Status += fmt.Sprintf(" in %s (%s)", rt.Name(), handle)
+		}
+		if _, touchErr := service.Touch(ctx, item.ID); touchErr != nil {
+			return result, fmt.Errorf("%s, but could not record activity: %w", status, touchErr)
+		}
+		return result, nil
+	}
+
+	switch request.Action {
+	case tui.TryOpen:
+		item, resolveErr := resolve()
+		if resolveErr != nil {
+			return tui.TryActionResult{}, resolveErr
+		}
+		return open(item, "opened "+item.DisplayName())
+
+	case tui.TryCreate:
+		created, createErr := service.ResolveOrCreate(ctx, experiment.CreateRequest{
+			Name: request.Name, Clone: request.Clone, NoGit: request.NoGit,
+		})
+		warnExperimentDiagnostics(app, created.Diagnostics)
+		if created.InitWarning != nil {
+			app.warnf("could not git init: %v", created.InitWarning)
+		}
+		if createErr != nil {
+			return tui.TryActionResult{}, createErr
+		}
+		status := "created " + created.Item.DisplayName()
+		if created.Existing {
+			status = "opened existing " + created.Item.DisplayName()
+		}
+		result, openErr := open(created.Item, status)
+		result.RefreshRepos = true
+		return result, openErr
+
+	case tui.TryMark:
+		item, resolveErr := resolve()
+		if resolveErr != nil {
+			return tui.TryActionResult{}, resolveErr
+		}
+		desired := catalog.NormalizeTags(request.Tags)
+		remove := append([]string(nil), item.Tags...)
+		note := request.Note
+		updated, diagnostics, patchErr := service.Patch(ctx, experiment.PatchRequest{
+			Ref: item.ID, AddTags: desired, RemoveTags: remove, Note: &note,
+		})
+		warnExperimentDiagnostics(app, diagnostics)
+		return tui.TryActionResult{
+			Status: "updated metadata for " + updated.DisplayName(), RefreshRepos: true,
+		}, patchErr
+
+	case tui.TryDeprecate:
+		transition, transitionErr := service.Deprecate(ctx, experiment.TransitionRequest{Ref: request.ID})
+		warnExperimentDiagnostics(app, transition.Diagnostics)
+		return tui.TryActionResult{Status: "deprecated " + transition.Item.DisplayName()}, transitionErr
+
+	case tui.TryReactivate:
+		transition, transitionErr := service.Reactivate(ctx, experiment.TransitionRequest{Ref: request.ID})
+		warnExperimentDiagnostics(app, transition.Diagnostics)
+		return tui.TryActionResult{Status: "reactivated " + transition.Item.DisplayName()}, transitionErr
+
+	case tui.TryArchive:
+		transition, transitionErr := service.Archive(ctx, experiment.TransitionRequest{Ref: request.ID})
+		warnExperimentDiagnostics(app, transition.Diagnostics)
+		return tui.TryActionResult{
+			Status: "archived " + transition.Item.DisplayName(), RefreshRepos: true,
+		}, transitionErr
+
+	case tui.TryRestore:
+		transition, transitionErr := service.Restore(ctx, experiment.TransitionRequest{Ref: request.ID, To: request.To})
+		warnExperimentDiagnostics(app, transition.Diagnostics)
+		return tui.TryActionResult{
+			Status: "restored " + transition.Item.DisplayName(), RefreshRepos: true,
+		}, transitionErr
+
+	case tui.TryGraduate:
+		graduated, graduateErr := service.Graduate(ctx, experiment.GraduateRequest{
+			Ref: request.ID, Category: request.Category, Name: request.Name,
+		})
+		warnExperimentDiagnostics(app, graduated.Diagnostics)
+		if graduateErr != nil {
+			return tui.TryActionResult{}, graduateErr
+		}
+		result, openErr := open(graduated.Item, "graduated "+graduated.Plan.Name)
+		result.RefreshRepos = true
+		return result, openErr
+	}
+	return tui.TryActionResult{}, fmt.Errorf("unknown Try action %q", request.Action)
+}
+
+// repoCollectOptions leaves an opt-in path for the future TRY view while the
+// ordinary repository inventory suppresses active and deprecated Tries.
+type repoCollectOptions struct {
+	IncludeTries bool
+}
+
+// collectRepos builds the default repository view: what exists, plus how much
+// of it is in flight, excluding cataloged active/deprecated Tries.
 func collectRepos(ctx context.Context, app *App, rt runtime.Runtime) ([]tui.RepoRow, error) {
+	return collectReposWithOptions(ctx, app, rt, repoCollectOptions{})
+}
+
+func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, options repoCollectOptions) ([]tui.RepoRow, error) {
 	repos, err := repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
 	if err != nil {
 		return nil, err
+	}
+	assets, catalogComplete, err := joinRepoAssets(app, repos)
+	if err != nil {
+		return nil, err
+	}
+	if !options.IncludeTries {
+		visibleRepos := make([]repo.Repo, 0, len(repos))
+		visibleAssets := make([]*catalog.Entry, 0, len(repos))
+		for index, repository := range repos {
+			if suppressTryRepo(assets[index], catalogComplete) {
+				continue
+			}
+			visibleRepos = append(visibleRepos, repository)
+			visibleAssets = append(visibleAssets, assets[index])
+		}
+		repos, assets = visibleRepos, visibleAssets
 	}
 	tasks, err := app.Tasks.List()
 	if err != nil {
@@ -452,7 +678,10 @@ func collectRepos(ctx context.Context, app *App, rt runtime.Runtime) ([]tui.Repo
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			row := tui.RepoRow{Repo: r}
+			row := tui.RepoRow{Repo: r, Asset: assets[i]}
+			if r.HasGit {
+				row.Topology, row.TopologyErr = gitx.RecoveryTopologyOf(ctx, r.Path)
+			}
 			row.Tasks = append(row.Tasks, byRepo[r.Path]...)
 			if r.RealPath != "" && r.RealPath != r.Path {
 				row.Tasks = append(row.Tasks, byRepo[r.RealPath]...)
@@ -492,6 +721,14 @@ func collectRepos(ctx context.Context, app *App, rt runtime.Runtime) ([]tui.Repo
 						rt.Name(), session.Handle, session.AgentStatus
 					break
 				}
+			}
+			if r.HasGit {
+				row.SizeTarget = diskusage.FromGit(gitx.Repo{
+					Root: r.Path, GitDir: r.GitDir, GitCommonDir: r.CommonDir,
+					MainRoot: r.MainRoot, Name: r.Name, Bare: r.Bare,
+				}, row.Worktrees)
+			} else {
+				row.SizeTarget = diskusage.Plain(r.Path)
 			}
 			out[i] = row
 		}(i, r)
@@ -605,6 +842,7 @@ func cachedRemoteRows(app *App) ([]tui.RemoteRow, bool) {
 	for _, rr := range cache.Repos {
 		out = append(out, tui.RemoteRow{Repo: rr})
 	}
+	applyCatalogRemoteMatches(app, out)
 	return out, true
 }
 
@@ -616,19 +854,35 @@ func cachedRemotesForRepoRows(app *App, locals []tui.RepoRow) ([]tui.RemoteRow, 
 		return nil, false
 	}
 	byRemote := map[string]tui.RepoRow{}
+	ambiguous := map[string]bool{}
 	for _, r := range locals {
-		if r.RemoteForge != forge.Unknown && r.RemoteName != "" {
-			byRemote[string(r.RemoteForge)+"/"+strings.ToLower(r.RemoteName)] = r
+		if r.RemoteForge == forge.Unknown || r.RemoteName == "" {
+			continue
 		}
+		key := string(r.RemoteForge) + "/" + strings.ToLower(r.RemoteName)
+		if ambiguous[key] {
+			continue
+		}
+		if _, exists := byRemote[key]; exists {
+			delete(byRemote, key)
+			ambiguous[key] = true
+			continue
+		}
+		byRemote[key] = r
 	}
 	out := make([]tui.RemoteRow, 0, len(cache.Repos))
 	for _, rr := range cache.Repos {
 		row := tui.RemoteRow{Repo: rr}
 		if local, ok := byRemote[string(rr.Forge)+"/"+strings.ToLower(rr.FullName)]; ok {
 			row.LocalPath, row.LocalName = local.Repo.Path, local.Repo.Display()
+			row.LocalKind = catalog.KindRepository
+			if local.Asset != nil {
+				row.LocalKind = local.Asset.Kind
+			}
 		}
 		out = append(out, row)
 	}
+	applyCatalogRemoteMatches(app, out)
 	return out, true
 }
 
@@ -696,23 +950,100 @@ func collectRemotes(ctx context.Context, app *App, limit int) ([]tui.RemoteRow, 
 
 func matchRemoteLocals(ctx context.Context, app *App, remoteRepos []forge.RemoteRepo) []tui.RemoteRow {
 	locals, _ := repo.Discover(ctx, app.Cfg.ScanRoots(), repo.DefaultOptions())
-	localByRemote := map[string]repo.Repo{}
-	for _, r := range locals {
+	assets, _, assetErr := joinRepoAssets(app, locals)
+	if assetErr != nil {
+		app.warnf("could not join catalog metadata to remote locals: %v", assetErr)
+		assets = make([]*catalog.Entry, len(locals))
+	}
+	type localMatch struct {
+		repository repo.Repo
+		asset      *catalog.Entry
+	}
+	localByRemote := map[string]localMatch{}
+	ambiguous := map[string]bool{}
+	for index, r := range locals {
 		if r.Bare {
 			continue
 		}
 		kind, name := forge.IdentityFromURL(gitx.RemoteFromConfig(r.CommonDir, "origin"))
-		if kind != forge.Unknown && name != "" {
-			localByRemote[string(kind)+"/"+strings.ToLower(name)] = r
+		if kind == forge.Unknown || name == "" {
+			continue
 		}
+		key := string(kind) + "/" + strings.ToLower(name)
+		if ambiguous[key] {
+			continue
+		}
+		if _, exists := localByRemote[key]; exists {
+			delete(localByRemote, key)
+			ambiguous[key] = true
+			continue
+		}
+		localByRemote[key] = localMatch{repository: r, asset: assets[index]}
 	}
 	out := make([]tui.RemoteRow, 0, len(remoteRepos))
 	for _, rr := range remoteRepos {
 		row := tui.RemoteRow{Repo: rr}
 		if local, ok := localByRemote[string(rr.Forge)+"/"+strings.ToLower(rr.FullName)]; ok {
-			row.LocalPath, row.LocalName = local.Path, local.Display()
+			row.LocalPath, row.LocalName = local.repository.Path, local.repository.Display()
+			row.LocalKind = catalog.KindRepository
+			if local.asset != nil {
+				row.LocalKind = local.asset.Kind
+			}
 		}
 		out = append(out, row)
 	}
+	// Linked-worktree Tries are intentionally absent from repo.Discover's project
+	// inventory, so use their explicit catalog identity as a second safe source.
+	applyCatalogRemoteMatches(app, out)
 	return out
+}
+
+func applyCatalogRemoteMatches(app *App, rows []tui.RemoteRow) {
+	if app == nil || app.Catalog == nil || len(rows) == 0 {
+		return
+	}
+	entries, diagnostics, err := app.Catalog.ListWithDiagnostics()
+	if err != nil {
+		app.warnf("could not read catalog for remote matching: %v", err)
+		return
+	}
+	for _, diagnostic := range diagnostics {
+		app.warnf("%s", diagnostic.Error())
+	}
+	if len(diagnostics) > 0 {
+		return
+	}
+	host := config.Hostname()
+	byIdentity := make(map[string][]*catalog.Entry)
+	for _, entry := range entries {
+		location, ok := entry.LocationFor(host)
+		if !ok || location.State != catalog.LocationPresent || entry.RemoteIdentity == "" ||
+			liveCatalogLocationPath(location) == "" {
+			continue
+		}
+		byIdentity[entry.RemoteIdentity] = append(byIdentity[entry.RemoteIdentity], entry)
+	}
+	for index := range rows {
+		identity := catalog.NormalizeRemoteIdentity(rows[index].Repo.CloneURL)
+		matches := byIdentity[identity]
+		if identity == "" || len(matches) != 1 {
+			continue
+		}
+		location, _ := matches[0].LocationFor(host)
+		rows[index].LocalPath = liveCatalogLocationPath(location)
+		rows[index].LocalName = matches[0].Name
+		rows[index].LocalKind = matches[0].Kind
+	}
+}
+
+func liveCatalogLocationPath(location catalog.Location) string {
+	for _, candidate := range []string{location.CurrentPath, location.RealPath} {
+		if candidate == "" {
+			continue
+		}
+		if info, err := os.Stat(candidate); err == nil && info.IsDir() {
+			return candidate
+		}
+	}
+	return ""
 }

@@ -120,8 +120,8 @@ type TUI struct {
 
 // RepoTable configures columns and ordering in the TUI REPOS view.
 type RepoTable struct {
-	// Columns may contain repo, branch, git, live, latest, worktrees, tasks,
-	// category, or path, in the exact display order wanted.
+	// Columns may contain repo, branch, git, remote, size, live, latest,
+	// worktrees, tasks, category, or path, in the exact display order wanted.
 	Columns []string `toml:"columns"`
 	// Sort is activity, latest, name, git, or tasks.
 	Sort string `toml:"sort"`
@@ -132,7 +132,7 @@ type RepoTable struct {
 // DefaultRepoColumns is the useful full local inventory without paths (detail
 // shows the selected path).
 func DefaultRepoColumns() []string {
-	return []string{"repo", "branch", "git", "live", "latest", "worktrees", "tasks"}
+	return []string{"repo", "branch", "git", "size", "live", "latest", "worktrees", "tasks"}
 }
 
 // EffectiveRepoColumns returns configured columns or the defaults.
@@ -173,7 +173,8 @@ var reservedKeys = map[string]string{
 	"q": "quit", "j": "down", "k": "up", "g": "top", "G": "bottom",
 	"h": "previous view", "l": "next view", "tab": "next view",
 	"/": "filter", "r": "refresh", "o": "open", "p": "park",
-	"c": "edit next action", "s": "start a worktree task", "d": "start a direct task", "a": "include done",
+	"c": "edit next action", "s": "start a worktree task", "d": "start a direct task",
+	"a": "include hidden history", "n": "new Try", " ": "context actions",
 	"0": "clear filters", "1": "hot", "2": "warm", "3": "cold",
 	"?": "help", "H": "repo activity heatmap", "e": "edit config",
 	"O": "cycle repo sort", "R": "reverse repo sort",
@@ -319,7 +320,7 @@ func (c Config) Validate() error {
 		}
 	}
 	validColumns := map[string]bool{
-		"repo": true, "branch": true, "git": true, "live": true,
+		"repo": true, "branch": true, "git": true, "remote": true, "size": true, "live": true,
 		"latest": true, "worktrees": true, "tasks": true,
 		"category": true, "path": true,
 	}
@@ -329,9 +330,9 @@ func (c Config) Validate() error {
 		}
 	}
 	switch c.EffectiveRepoSort() {
-	case "activity", "latest", "name", "git", "tasks":
+	case "activity", "latest", "name", "git", "size", "tasks":
 	default:
-		return fmt.Errorf("tui.repos.sort %q: want activity, latest, name, git or tasks", c.TUI.Repos.Sort)
+		return fmt.Errorf("tui.repos.sort %q: want activity, latest, name, git, size or tasks", c.TUI.Repos.Sort)
 	}
 	seen := map[string]string{}
 	for i, t := range c.TUI.Tools {
@@ -367,11 +368,14 @@ func (c Config) probeVars() Vars {
 	}
 }
 
-// StateDir is the expanded directory holding tasks/, stats.db and cache/.
+// StateDir is the expanded directory holding tasks/, assets/ and stats.db.
 func (c Config) StateDir() string { return Expand(c.Paths.StateDir) }
 
 // TasksDir holds one TOML file per task.
 func (c Config) TasksDir() string { return filepath.Join(c.StateDir(), "tasks") }
+
+// AssetsDir holds one TOML file per catalog asset.
+func (c Config) AssetsDir() string { return filepath.Join(c.StateDir(), "assets") }
 
 // ScanRoots returns the expanded repo discovery roots.
 func (c Config) ScanRoots() []string {

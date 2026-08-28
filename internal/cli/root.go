@@ -23,8 +23,9 @@ It exists to keep three things separate that otherwise collapse into one:
   dev             human intent: what am I working on, and what is next
 
 Everything derivable from git or the runtime is derived live. dev persists only
-what git cannot answer — a task's state, its owner and its next action — so
-closing a runtime session never means losing the thread.`
+human intent Git cannot answer — task state/owner/next action and asset identity,
+tags, notes and experiment lifecycle — so closing a runtime session or moving a
+Try never means losing the thread.`
 
 // NewRootCommand builds the whole command tree writing to the process streams.
 func NewRootCommand() *cobra.Command {
@@ -92,6 +93,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		newRepoCmd(app),
 		newGitignoreCmd(app),
 		newTryCmd(app),
+		newTriesCmd(app),
 		newGraduateCmd(app),
 		newStatsCmd(app),
 		newHelpTopicCmd(app),
