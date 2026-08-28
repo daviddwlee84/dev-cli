@@ -432,7 +432,7 @@ const r = await tools.web__run({open:[
   {ref_id:"turn0search0"},
   {ref_id:"turn0search1"},
   {ref_id:"turn0search2"}
-],response_length:"long"});
+],response_length:"long"}); 
 text(r);
 
 ```
@@ -554,7 +554,7 @@ I’m examining how to manage stderr effectively, possibly restricting it to jus
 
 Stats get tricky if the `stats.db` branch lacks an author. When different authors are specified, I need to ensure I consider the context properly to maintain clarity and avoid misleading information.**Clarifying report recommendations**
 
-I want to clarify that the recommended `--author` report should hide local-only context unless the user flags `--include-local-context`. It’s also essential that if the user selected Git and current for the default, the default self includes context while the `--all-authors` option only attributes Git authorship.
+I want to clarify that the recommended `--author` report should hide local-only context unless the user flags `--include-local-context`. It’s also essential that if the user selected Git and current for the default, the default self includes context while the `--all-authors` option only attributes Git authorship. 
 
 I’m noting that querying session and WakaTime data separately can help, but I can only include whole days since the existing schema doesn't support hourly windows effectively. If someone queries a specific time range, the stats might be misleading.**Refining time range parsing**
 
@@ -695,7 +695,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 14:11:56Z)**_
 <think><details><summary>Thought Process</summary>
 **Evaluating stats implementation**
 
-I'm noticing a potential bug with the stats feature in the journal context. It sounds like I should also plan to fix how the stats sampler recognizes worktrees, especially since the user mentioned this feature. If stats don’t work, activity logging could be inaccurate. I need to ensure the sampler maps any session directory correctly using `gitx.Discover`.
+I'm noticing a potential bug with the stats feature in the journal context. It sounds like I should also plan to fix how the stats sampler recognizes worktrees, especially since the user mentioned this feature. If stats don’t work, activity logging could be inaccurate. I need to ensure the sampler maps any session directory correctly using `gitx.Discover`. 
 
 I could enhance the workflow by building a map of canonical directories for each repo, using Git common directory identification. This sounds like an intriguing challenge!**Considering task and stats documentation**
 
@@ -703,7 +703,7 @@ I’m thinking about how to incorporate task and stats information into the jour
 
 I need to clarify some aspects: granularity, metrics, output format, and cache refresh policy. Maybe I could suggest Markdown + JSON for reporting without needing to ask for it each time. I'm keeping the user’s high-impact expectations in mind!**Clarifying question wording and output details**
 
-I'm analyzing how to phrase the questions for reporting details about a repo, branch, or commit with metrics.
+I'm analyzing how to phrase the questions for reporting details about a repo, branch, or commit with metrics. 
 
 One approach could be to request details like additions, deletions, and files: A would include metrics, while B would not. For output, it seems best to offer Markdown by default with a JSON option.
 
@@ -954,7 +954,7 @@ Input (truncated): ```
 const r = await tools.exec_command({
   cmd: "sed -n '1,260p' internal/gitx/gittest/repo.go && sed -n '1,140p' internal/cli/cli_test.go",
   workdir: "/Users/david/Worktrees/dev-cli/feat-dev-journal",
-
+ 
 ...
 ```
 </details></tool-use>
@@ -1220,7 +1220,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 14:27:06Z)**_
 <summary>Tool use: **exec**</summary>
 Input (truncated): ```
 const r = await tools.exec_command({
-  cmd: "sed -n '1,230p' internal/runtime/runtime.go && rg -n \"type fake.*Runtime|List\\(context.Context\\).*\\[\\]runtime.Session\" internal --glob '*_test.go' |
+  cmd: "sed -n '1,230p' internal/runtime/runtime.go && rg -n \"type fake.*Runtime|List\\(context.Context\\).*\\[\\]runtime.Session\" internal --glob '*_test.go' | 
 ...
 ```
 </details></tool-use>
@@ -1486,7 +1486,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 14:33:06Z)**_
 <tool-use data-tool-type="unknown" data-tool-name="exec"><details>
 <summary>Tool use: **exec**</summary>
 Input (truncated): ```
-const patch = "*** Begin Patch\n*** Update File: /Users/david/Worktrees/dev-cli/feat-dev-journal/internal/cli/cli_test.go\n@@\n func TestRepoRemoteCachedSearchAndLocalMatch(t *testing.T) {\n@@\n \tif
+const patch = "*** Begin Patch\n*** Update File: /Users/david/Worktrees/dev-cli/feat-dev-journal/internal/cli/cli_test.go\n@@\n func TestRepoRemoteCachedSearchAndLocalMatch(t *testing.T) {\n@@\n \tif 
 ...
 ```
 </details></tool-use>
@@ -2026,7 +2026,7 @@ const r = await tools.exec_command({
   cmd: "sed -n '185,215p' scripts/e2e.sh && sed -n '1,40p' scripts/e2e.sh",
   workdir: "/Users/david/Worktrees/dev-cli/feat-dev-journal",
   yield_time_ms: 10000,
-
+ 
 ...
 ```
 </details></tool-use>
@@ -2691,7 +2691,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 15:08:03Z)**_
 <summary>Tool use: **exec**</summary>
 Input (truncated): ```
 const r = await tools.exec_command({
-  cmd: "rg -n \"Use:\\s+\\\"(summary|overview)|newSummary|summary\" internal/cli internal/inventory internal/tui README.md docs --glob '*.go' --glob '*.md' | head
+  cmd: "rg -n \"Use:\\s+\\\"(summary|overview)|newSummary|summary\" internal/cli internal/inventory internal/tui README.md docs --glob '*.go' --glob '*.md' | head 
 ...
 ```
 </details></tool-use>
@@ -2711,7 +2711,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 15:08:27Z)**_
 
 I'm thinking about how to create active worktrees that display the most recent commit for each branch and the overall status of repositories. A remote inventory could provide an overview of local repos without listing remote-only ones unless specified with an option. If the user wants to see all projects, maybe distinct sections for repositories and tries will help. I should also consider caching for better performance, especially when processing multiple repos.**Exploring output options**
 
-The user wants a quick view of data within 2-4 seconds. I might not implement a new persistent cache; instead, I could derive live data. There's an option to use a `--fast` flag for a cached version, but that would mean no local snapshot.
+The user wants a quick view of data within 2-4 seconds. I might not implement a new persistent cache; instead, I could derive live data. There's an option to use a `--fast` flag for a cached version, but that would mean no local snapshot. 
 
 Output granularity could be adjusted with options like `--detail compact|standard|full` or even `--recent-commits`. Filters could include `--attention` for specific focus areas, and I should contemplate defaulting to include tries. I should also think about how to present this in an organized and readable format.**Defaulting attention settings**
 
@@ -2774,7 +2774,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 15:10:43Z)**_
 <think><details><summary>Thought Process</summary>
 **Evaluating implementation choices**
 
-I’m considering the design choices for implementation. I could focus on criteria like dirty, live, hot, and warm tasks. Maybe I should include cold as well? The task should be clear, especially if we're looking at risks associated with remote access. If there are too many details, I'd think about putting risk badges in a compact manner.
+I’m considering the design choices for implementation. I could focus on criteria like dirty, live, hot, and warm tasks. Maybe I should include cold as well? The task should be clear, especially if we're looking at risks associated with remote access. If there are too many details, I'd think about putting risk badges in a compact manner. 
 
 I’ll also review how to handle non-Git tries and avoid duplicating efforts in the functions by deduplicating entries effectively. It’s important to streamline this process!**Assessing data collection methods**
 
@@ -2862,7 +2862,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 15:11:45Z)**_
 <think><details><summary>Thought Process</summary>
 **Considering risk markers display**
 
-I'm thinking about how to display risk markers, with the option to include various alert levels like dirty, live, hot, and warm. Safety issues should also be highlighted. For details, we need to balance between showing only the most critical information and providing useful summaries.
+I'm thinking about how to display risk markers, with the option to include various alert levels like dirty, live, hot, and warm. Safety issues should also be highlighted. For details, we need to balance between showing only the most critical information and providing useful summaries. 
 
 I’m contemplating limiting the output to around 200 lines, focusing on quick views and efficient displays. This way, I can ensure the user gets the information they need without being overwhelmed by lengthy details.**Considering project overview options**
 
@@ -2870,7 +2870,7 @@ I’m trying to create a quick view for all repositories, even when the project 
 
 If I set `recent-commits N`, I'll show only detailed items, and when N equals zero, I’ll omit those. I want to ensure that the JSON outputs remain stable and comprehensive while keeping Markdown details flexible.**Evaluating JSON output options**
 
-I think the user might be expecting a compact JSON format, which should be manageable at around 56 lines. Including `--attention` filters would help refine project displays in both formats.
+I think the user might be expecting a compact JSON format, which should be manageable at around 56 lines. Including `--attention` filters would help refine project displays in both formats. 
 
 I need to address the `--repo` option, ensuring it remains consistent. Then there’s the question of default recent commits—whether it should be set to 1, 0, or 3—and the criteria for the attention filter. Maybe I’ll need to set that based on predefined standards rather than user preference.
 </details></think>
@@ -2905,11 +2905,11 @@ _**Agent (gpt-5.6-sol 2026-08-28 15:18:45Z)**_
 <think><details><summary>Thought Process</summary>
 **Defining JSON Structure**
 
-I'm planning to define JSON absolute paths with some Markdown contraction, which seems important.
+I'm planning to define JSON absolute paths with some Markdown contraction, which seems important. 
 
 Agent session IDs can be sensitive, but they’ll be stored locally. I want to ensure they’re detailed in the JSON, matching the repository context.
 
-I need to consider how warnings and exit semantics work. For instance, retaining Git status errors per project makes sense.
+I need to consider how warnings and exit semantics work. For instance, retaining Git status errors per project makes sense. 
 
 The `--no-runtime` option should indicate that there's no runtime query and correctly updates the JSON, so things don't get misinterpreted.
 </details></think>
@@ -2945,7 +2945,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 16:10:10Z)**_
 Input (truncated): ```
 const r = await tools.update_plan({plan:[
   {step:"Add summary domain schema, classification, filtering, rendering, and tests","status":"in_progress"},
-  {step:"Add dev summary CLI orchestration over
+  {step:"Add dev summary CLI orchestration over 
 ...
 ```
 </details></tool-use>
@@ -2959,9 +2959,9 @@ I need to implement a summary package to accept a neutral `Project` in CLI witho
 
 The summary command in CLI will call `collectRepos` and `collectTries`, altering signatures as needed to include deprecated options. This seems manageable despite needing runtime sessions queried twice.**Defining output type for TUI**
 
-I need to establish the TUI output type, which we can postpone for now, though the plan suggests implementing it. I should define the function `collectReposWithSessions(...sessions []runtime.Session)`. It's simpler to extend `repoCollectOptions` to include `Sessions []runtime.Session` and `SessionsSet bool`, since TUI currently doesn't set sessions.
+I need to establish the TUI output type, which we can postpone for now, though the plan suggests implementing it. I should define the function `collectReposWithSessions(...sessions []runtime.Session)`. It's simpler to extend `repoCollectOptions` to include `Sessions []runtime.Session` and `SessionsSet bool`, since TUI currently doesn't set sessions. 
 
-For runtime options, I'll use `runtime.None` for non-runtime cases, keeping the list empty and marking it false. I'll create `collectTriesWithOptions` function for internal use.
+For runtime options, I'll use `runtime.None` for non-runtime cases, keeping the list empty and marking it false. I'll create `collectTriesWithOptions` function for internal use. 
 
 In the summary domain, I need to define types, including `Detail` enum and `Report` structures, while ensuring the `Project` type integrates existing structures. I could consider reusing `diskusage.Usage` within the summary package too.
 </details></think>
@@ -3153,7 +3153,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 16:15:48Z)**_
 <tool-use data-tool-type="unknown" data-tool-name="exec"><details>
 <summary>Tool use: **exec**</summary>
 Input (truncated): ```
-const patch = "*** Begin Patch\n*** Update File: /Users/david/Worktrees/dev-cli/feat-dev-journal/README.md\n@@\n dev stats --heatmap            # where the time actually went\n+dev summary
+const patch = "*** Begin Patch\n*** Update File: /Users/david/Worktrees/dev-cli/feat-dev-journal/README.md\n@@\n dev stats --heatmap            # where the time actually went\n+dev summary            
 ...
 ```
 </details></tool-use>
@@ -3206,7 +3206,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 16:17:06Z)**_
 <tool-use data-tool-type="unknown" data-tool-name="exec"><details>
 <summary>Tool use: **exec**</summary>
 Input (truncated): ```
-const patch = "*** Begin Patch\n*** Update File: /Users/david/Worktrees/dev-cli/feat-dev-journal/internal/summary/summary.go\n@@\n \tfor _, task := range project.Tasks {\n \t\tvalues = append(values,
+const patch = "*** Begin Patch\n*** Update File: /Users/david/Worktrees/dev-cli/feat-dev-journal/internal/summary/summary.go\n@@\n \tfor _, task := range project.Tasks {\n \t\tvalues = append(values, 
 ...
 ```
 </details></tool-use>
@@ -3762,7 +3762,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 16:27:12Z)**_
 <tool-use data-tool-type="unknown" data-tool-name="exec"><details>
 <summary>Tool use: **exec**</summary>
 Input (truncated): ```
-const patch = "*** Begin Patch\n*** Update File: /Users/david/Worktrees/dev-cli/feat-dev-journal/internal/summary/summary.go\n@@\n \tsort.SliceStable(report.Projects, func(i, j int) bool {\n \t\ta, b
+const patch = "*** Begin Patch\n*** Update File: /Users/david/Worktrees/dev-cli/feat-dev-journal/internal/summary/summary.go\n@@\n \tsort.SliceStable(report.Projects, func(i, j int) bool {\n \t\ta, b 
 ...
 ```
 </details></tool-use>
@@ -4081,7 +4081,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 16:38:00Z)**_
 <summary>Tool use: **exec**</summary>
 Input (truncated): ```
 const r = await tools.exec_command({
-  cmd: "git status --porcelain=v2 --branch; git symbolic-ref -q --short HEAD || echo DETACHED; git rev-parse --short HEAD; rebase_dir=\"$(git rev-parse --git-path
+  cmd: "git status --porcelain=v2 --branch; git symbolic-ref -q --short HEAD || echo DETACHED; git rev-parse --short HEAD; rebase_dir=\"$(git rev-parse --git-path 
 ...
 ```
 </details></tool-use>
@@ -4106,7 +4106,7 @@ _**Agent (gpt-5.6-sol 2026-08-28 16:38:13Z)**_
 <summary>Tool use: **exec**</summary>
 Input (truncated): ```
 const r = await tools.exec_command({
-  cmd: "bash .agents/skills/agent-history-hygiene/scripts/find-session.sh --json && git add CHANGELOG.md README.md TODO.md docs internal mkdocs.yml scripts/e2e.sh
+  cmd: "bash .agents/skills/agent-history-hygiene/scripts/find-session.sh --json && git add CHANGELOG.md README.md TODO.md docs internal mkdocs.yml scripts/e2e.sh 
 ...
 ```
 </details></tool-use>
@@ -4129,3 +4129,44 @@ const r = await tools.exec_command({
 ...
 ```
 </details></tool-use>
+
+_**Agent (gpt-5.6-sol 2026-08-28 16:38:35Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="exec"><details>
+<summary>Tool use: **exec**</summary>
+Input (truncated): ```
+const r = await tools.exec_command({
+  cmd: "git commit -m \"feat: add machine-wide project summary\"",
+  workdir: "/Users/david/Worktrees/dev-cli/feat-dev-journal",
+  yield_time_ms: 30000,
+  max_outp
+...
+```
+</details></tool-use>
+
+_**Agent (gpt-5.6-sol 2026-08-28 16:38:44Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="exec"><details>
+<summary>Tool use: **exec**</summary>
+Input (truncated): ```
+const r = await tools.exec_command({
+  cmd: "git status --short --branch && git log -2 --oneline --decorate && if [ -d \"$(git rev-parse --git-path rebase-merge)\" ]; then echo 'rebase: in progress'; 
+...
+```
+</details></tool-use>
+
+_**Agent (gpt-5.6-sol 2026-08-28 16:38:56Z)**_
+
+<think><details><summary>Thought Process</summary>
+**Finalizing commit notes**
+
+I’m all set with the successful commit. Now I need to note down the commit hash and confirm that the scan passed. I see that there are active artifacts that are dirty, which is a bit concerning. Also, it looks like the rebase metadata is still there. I could mention that I’m not continuing with further changes for now. I’ll make sure everything is tidy!
+</details></think>
+
+_**Agent (gpt-5.6-sol 2026-08-28 16:38:56Z)**_
+
+Committed:
+
+`72e5909 feat: add machine-wide project summary`
+
+Secret scan passed. Live SpecStory files changed again after commit, and the pre-existing interactive rebase metadata remains untouched.
