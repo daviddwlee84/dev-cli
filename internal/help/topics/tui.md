@@ -67,6 +67,8 @@ TASKS:
 
 ```
 enter / o  open in the selected runtime
+n          add a quick repository note
+N          browse/search/edit/delete repository notes
 p          park warm, prompting for the next action
 c          edit the next action
 1 / 2 / 3  show HOT / WARM / COLD
@@ -77,6 +79,7 @@ a          include DONE
 REPOS:
 
 ```
+n / N      quick-add / browse repository notes
 enter / o  ad-hoc open: no task, branch or worktree
 space      expand/collapse linked worktrees
 m          edit repository tags and note
@@ -85,6 +88,9 @@ s          isolated task: branch + worktree + provisioning + runtime + entry
 O / R      cycle / reverse activity/latest/name/git/size/tasks sort
 y          copy menu; follow with y/p/b/s/w
 ```
+
+In TRY, `n` remains “new Try”; quick notes intentionally do not attach to Try
+assets.
 
 The LIVE column makes runtime state explicit (`herdr:working`, `herdr:idle`). A
 collapsed repo with several sessions shows `herdr:N live`; expanded children
@@ -128,6 +134,7 @@ history; Git and size facts remain live/derived.
 REMOTE:
 
 ```
+n / N      notes, only when a local clone exists
 enter / o  open an existing local clone
 c          confirm and clone an absent repo into project_root
 r          refresh configured forge CLIs, replacing the cache

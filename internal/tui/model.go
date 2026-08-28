@@ -14,6 +14,8 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
+	"github.com/daviddwlee84/dev-cli/internal/note"
+	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
@@ -62,6 +64,7 @@ type Actions struct {
 	// Repos and Tries group asset-specific metadata and lifecycle actions.
 	Repos RepoActions
 	Tries TryActions
+	Notes NoteActions
 	Sizes SizeActions
 	// Open makes a task live.
 	Open func(ctx context.Context, t *task.Task) (OpenResult, error)
@@ -150,6 +153,10 @@ const (
 	modeConfirmClone
 	modeStats
 	modeCopy
+	modeNoteBrowse
+	modeNoteAdd
+	modeNoteSearch
+	modeNoteConfirmDelete
 )
 
 // Model is the dashboard state.
@@ -196,6 +203,15 @@ type Model struct {
 	input   textinput.Model
 	stats   *StatsPanel
 	overlay overlayState
+
+	notes              []*note.Note
+	noteTarget         NoteTarget
+	noteCursor         int
+	noteQuery          string
+	noteExpanded       bool
+	noteLoading        bool
+	noteReturnToBrowse bool
+	noteRequest        uint64
 
 	status string
 	err    error
@@ -297,6 +313,20 @@ type configMsg struct {
 	status        string
 	refreshRemote bool
 	err           error
+}
+
+type noteListMsg struct {
+	notes     []*note.Note
+	repos     []RepoRow
+	targetKey string
+	request   uint64
+	err       error
+}
+
+type noteActionMsg struct {
+	status       string
+	returnBrowse bool
+	err          error
 }
 
 type actionMsg struct {
@@ -973,6 +1003,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.reloadTries(msg.result.RefreshRepos)
 
+	case noteListMsg:
+		if msg.request != m.noteRequest || msg.targetKey != m.noteTarget.Key() || !m.noteMode() {
+			return m, nil // stale result for a repository/overlay already left
+		}
+		m.noteLoading = false
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.notes, m.err = msg.notes, nil
+		if msg.repos != nil {
+			m.repos = msg.repos
+			m.matchRemoteLocals()
+		}
+		m.clampNoteCursor()
+		return m, nil
+
+	case noteActionMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		m.err, m.status = nil, msg.status
+		if msg.returnBrowse {
+			m.mode, m.noteLoading = modeNoteBrowse, true
+			return m.beginNoteLoad(true)
+		}
+		m.mode = modeList
+		return m, m.reload()
+
 	case actionMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -1016,6 +1076,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		if m.mode == modeNoteBrowse || m.mode == modeNoteAdd ||
+			m.mode == modeNoteSearch || m.mode == modeNoteConfirmDelete {
+			return m.updateNotes(msg)
+		}
 		if m.overlay.kind != overlayNone {
 			return m.updateOverlay(msg)
 		}
@@ -1093,10 +1157,19 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.openHelpOverlay(), nil
 
 	case "n":
-		if m.view != ViewTries {
-			return m, nil
+		if m.view == ViewTries {
+			return m.openTryForm(TryCreate, TryRow{})
 		}
-		return m.openTryForm(TryCreate, TryRow{})
+		if target, ok := m.selectedNoteTarget(); ok {
+			return m.openNoteAdd(target, false)
+		}
+		return m, nil
+
+	case "N":
+		if target, ok := m.selectedNoteTarget(); ok {
+			return m.openNotes(target)
+		}
+		return m, nil
 
 	case "r":
 		m.status = "reloading config + data…"
@@ -1259,6 +1332,211 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.setAt(m.at())
+	return m, nil
+}
+
+func (m Model) selectedNoteTarget() (NoteTarget, bool) {
+	if row, ok := m.currentTask(); ok {
+		return NoteTarget{Repo: repo.Repo{
+			Name: row.Task.Repo, Path: row.Task.RepoPath,
+			RealPath: row.Task.RepoPath, HasGit: true,
+		}}, true
+	}
+	if item, ok := m.currentRepoItem(); ok {
+		id := ""
+		if item.Repo.Asset != nil {
+			id = item.Repo.Asset.ID
+		}
+		return NoteTarget{CatalogID: id, Repo: item.Repo.Repo}, true
+	}
+	if row, ok := m.currentRemote(); ok && row.Cloned() && row.LocalKind != catalog.KindTry {
+		return NoteTarget{Repo: repo.Repo{
+			Name: row.Repo.Name, Path: row.LocalPath,
+			RealPath: row.LocalPath, HasGit: true,
+		}}, true
+	}
+	return NoteTarget{}, false
+}
+
+func (m Model) openNoteAdd(target NoteTarget, returnToBrowse bool) (tea.Model, tea.Cmd) {
+	m.noteTarget, m.noteReturnToBrowse = target, returnToBrowse
+	m.mode, m.err = modeNoteAdd, nil
+	m.input.SetValue("")
+	m.input.Placeholder = "quick thought"
+	m.input.CursorEnd()
+	return m, m.input.Focus()
+}
+
+func (m Model) openNotes(target NoteTarget) (tea.Model, tea.Cmd) {
+	m.noteTarget, m.noteQuery = target, ""
+	m.noteCursor, m.noteExpanded = 0, false
+	m.mode, m.noteLoading, m.err = modeNoteBrowse, true, nil
+	return m.beginNoteLoad(false)
+}
+
+func (m Model) beginNoteLoad(refreshRepos bool) (Model, tea.Cmd) {
+	m.noteRequest++
+	request, targetKey, target := m.noteRequest, m.noteTarget.Key(), m.noteTarget
+	query := m.noteQuery
+	m.noteLoading = true
+	return m, func() tea.Msg {
+		if m.actions.Notes.List == nil {
+			return noteListMsg{request: request, targetKey: targetKey}
+		}
+		var (
+			notes []*note.Note
+			err   error
+		)
+		if query != "" && m.actions.Notes.Search != nil {
+			notes, err = m.actions.Notes.Search(context.Background(), target, query)
+		} else {
+			notes, err = m.actions.Notes.List(context.Background(), target)
+		}
+		msg := noteListMsg{notes: notes, request: request, targetKey: targetKey, err: err}
+		if refreshRepos && m.actions.ReloadRepos != nil {
+			msg.repos, err = m.actions.ReloadRepos(context.Background())
+			if msg.err == nil {
+				msg.err = err
+			}
+		}
+		return msg
+	}
+}
+
+func (m Model) currentNote() (*note.Note, bool) {
+	if m.noteCursor < 0 || m.noteCursor >= len(m.notes) {
+		return nil, false
+	}
+	return m.notes[m.noteCursor], true
+}
+
+func (m *Model) clampNoteCursor() {
+	switch {
+	case len(m.notes) == 0:
+		m.noteCursor = 0
+	case m.noteCursor >= len(m.notes):
+		m.noteCursor = len(m.notes) - 1
+	case m.noteCursor < 0:
+		m.noteCursor = 0
+	}
+}
+
+func (m Model) updateNotes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch m.mode {
+	case modeNoteBrowse:
+		switch msg.String() {
+		case "esc", "N", "q":
+			m.mode, m.notes, m.noteQuery, m.err = modeList, nil, "", nil
+			m.noteRequest++
+			return m, nil
+		case "j", "down":
+			m.noteCursor++
+			m.noteExpanded = false
+			m.clampNoteCursor()
+		case "k", "up":
+			m.noteCursor--
+			m.noteExpanded = false
+			m.clampNoteCursor()
+		case "g", "home":
+			m.noteCursor, m.noteExpanded = 0, false
+		case "G", "end":
+			m.noteCursor, m.noteExpanded = len(m.notes)-1, false
+			m.clampNoteCursor()
+		case "enter":
+			if _, ok := m.currentNote(); ok {
+				m.noteExpanded = !m.noteExpanded
+			}
+		case "a", "n":
+			return m.openNoteAdd(m.noteTarget, true)
+		case "/":
+			m.mode = modeNoteSearch
+			m.input.SetValue(m.noteQuery)
+			m.input.Placeholder = "search body, tags, repo"
+			m.input.CursorEnd()
+			return m, m.input.Focus()
+		case "d":
+			if _, ok := m.currentNote(); ok {
+				m.mode = modeNoteConfirmDelete
+			}
+		case "e":
+			n, ok := m.currentNote()
+			if !ok || m.actions.Notes.Edit == nil {
+				return m, nil
+			}
+			edit, err := m.actions.Notes.Edit(n)
+			if err != nil {
+				m.err = err
+				return m, nil
+			}
+			return m, tea.ExecProcess(edit.Command, func(runErr error) tea.Msg {
+				if edit.Complete != nil {
+					runErr = edit.Complete(runErr)
+				}
+				return noteActionMsg{status: "updated note " + n.ID[:8], returnBrowse: true, err: runErr}
+			})
+		}
+		return m, nil
+
+	case modeNoteAdd:
+		switch msg.String() {
+		case "esc":
+			m.input.Blur()
+			if m.noteReturnToBrowse {
+				m.mode = modeNoteBrowse
+			} else {
+				m.mode = modeList
+			}
+			return m, nil
+		case "enter":
+			body := strings.TrimSpace(m.input.Value())
+			if body == "" {
+				m.err = fmt.Errorf("note body is empty")
+				return m, nil
+			}
+			m.input.Blur()
+			returnBrowse := m.noteReturnToBrowse
+			return m, func() tea.Msg {
+				status, err := m.actions.Notes.Add(context.Background(), m.noteTarget, body)
+				return noteActionMsg{status: status, returnBrowse: returnBrowse, err: err}
+			}
+		}
+		input, cmd := m.input.Update(msg)
+		m.input = input
+		return m, cmd
+
+	case modeNoteSearch:
+		switch msg.String() {
+		case "esc":
+			m.input.Blur()
+			m.noteQuery, m.mode, m.noteLoading = "", modeNoteBrowse, true
+			return m.beginNoteLoad(false)
+		case "enter":
+			m.noteQuery = strings.TrimSpace(m.input.Value())
+			m.input.Blur()
+			m.mode, m.noteLoading, m.noteCursor = modeNoteBrowse, true, 0
+			return m.beginNoteLoad(false)
+		}
+		input, cmd := m.input.Update(msg)
+		m.input = input
+		return m, cmd
+
+	case modeNoteConfirmDelete:
+		switch msg.String() {
+		case "esc", "n":
+			m.mode = modeNoteBrowse
+		case "y", "Y":
+			n, ok := m.currentNote()
+			if !ok || m.actions.Notes.Delete == nil {
+				m.mode = modeNoteBrowse
+				return m, nil
+			}
+			return m, func() tea.Msg {
+				status, err := m.actions.Notes.Delete(context.Background(), n)
+				return noteActionMsg{status: status, returnBrowse: true, err: err}
+			}
+		}
+		return m, nil
+	}
 	return m, nil
 }
 
@@ -1678,3 +1956,13 @@ func (m Model) Summary() string {
 }
 
 func contract(p string) string { return config.Contract(p) }
+
+func (m Model) noteSummary(repoPath, repoName string) (int, *note.Note) {
+	for _, row := range m.repos {
+		if row.Repo.Path == repoPath || row.Repo.RealPath == repoPath ||
+			(row.Repo.Name == repoName && repoName != "") {
+			return row.NoteCount, row.LatestNote
+		}
+	}
+	return 0, nil
+}

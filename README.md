@@ -466,6 +466,37 @@ dev stats --heatmap            # where the time actually went
 dev help worktrees             # quick-reference pages for the workflow
 ```
 
+### Repository quick notes
+
+Quick thoughts live beside repos in dev state, not inside each checkout:
+
+```bash
+dev note add "try event subscription" --repo api --tag idea
+dev note list api
+dev note search "event subscription"
+dev note edit <id-or-prefix>
+dev note delete <id-or-prefix>
+```
+
+In TASKS/REPOS, `n` quick-adds and `N` opens a browse/search/edit/delete overlay.
+A REMOTE row supports notes only after it has a local clone; TRY keeps `n` for
+creating experiments. Add `notes` to `[tui.repos].columns` for the count; detail
+always shows count and latest preview.
+
+Durable Markdown lives under `$XDG_DATA_HOME/dev/notes/<catalog-id>/`. The
+catalog ID survives path moves, symlink indexes and linked worktrees. The
+private `$XDG_CACHE_HOME/dev/notes.db` is only an FTS index:
+
+```bash
+dev cache clear notes                    # Markdown remains
+dev note search "event"                 # index rebuilds automatically
+dev note reindex                         # explicit rebuild
+```
+
+`repo mark --note` remains a single catalog summary and is not overwritten.
+Structured task systems such as td/beads remain optional future adapters rather
+than creating dot-folders automatically.
+
 `dev stats` draws a contribution-style heatmap from two sources: a sampler
 watching live agent sessions (the only way to count time spent reading and
 debugging), and git history (which backfills the past and survives losing the
@@ -492,14 +523,15 @@ Regenerable data lives separately:
 dev cache list
 dev cache path
 dev cache clear remote
+dev cache clear notes          # FTS only; Markdown remains
 dev cache clear size
 dev cache clear gitignore
 dev cache clear all
 ```
 
 Those remove only regenerable files under `$XDG_CACHE_HOME/dev/` (remote
-inventory, size measurements and gitignore templates) and never touch
-`stats.db` or project data.
+inventory, note FTS, size measurements and gitignore templates) and never touch
+`stats.db`, durable note Markdown or project data.
 
 ## Bootstrapping an existing machine
 

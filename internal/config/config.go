@@ -134,7 +134,7 @@ type TUI struct {
 // RepoTable configures columns and ordering in the TUI REPOS view.
 type RepoTable struct {
 	// Columns may contain repo, branch, git, remote, size, live, latest,
-	// worktrees, tasks, category, or path, in the exact display order wanted.
+	// worktrees, tasks, notes, category, or path, in the exact display order wanted.
 	Columns []string `toml:"columns"`
 	// Sort is activity, latest, name, git, or tasks.
 	Sort string `toml:"sort"`
@@ -187,7 +187,7 @@ var reservedKeys = map[string]string{
 	"h": "previous view", "l": "next view", "tab": "next view",
 	"/": "filter", "r": "refresh", "o": "open", "p": "park",
 	"c": "edit next action", "s": "start a worktree task", "d": "start a direct task",
-	"a": "include hidden history", "n": "new Try", " ": "context actions",
+	"a": "include hidden history", "n": "new Try / add repo note", "N": "browse repo notes", " ": "context actions",
 	"0": "clear filters", "1": "hot", "2": "warm", "3": "cold",
 	"?": "help", "H": "repo activity heatmap", "e": "edit config",
 	"O": "cycle repo sort", "R": "reverse repo sort",
@@ -351,7 +351,7 @@ func (c Config) Validate() error {
 	}
 	validColumns := map[string]bool{
 		"repo": true, "branch": true, "git": true, "remote": true, "size": true, "live": true,
-		"latest": true, "worktrees": true, "tasks": true,
+		"latest": true, "worktrees": true, "tasks": true, "notes": true,
 		"category": true, "path": true,
 	}
 	for i, column := range c.TUI.Repos.Columns {
@@ -425,6 +425,12 @@ func (c Config) TasksDir() string { return filepath.Join(c.StateDir(), "tasks") 
 
 // AssetsDir holds one TOML file per catalog asset.
 func (c Config) AssetsDir() string { return filepath.Join(c.StateDir(), "assets") }
+
+// NotesDir holds append-only Markdown notes keyed by catalog asset ID.
+func (c Config) NotesDir() string { return filepath.Join(c.StateDir(), "notes") }
+
+// NotesIndexFile is the disposable FTS index; durable note files live in NotesDir.
+func (c Config) NotesIndexFile() string { return filepath.Join(CacheHome(), "dev", "notes.db") }
 
 // ScanRoots returns the expanded repo discovery roots.
 func (c Config) ScanRoots() []string {

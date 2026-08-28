@@ -16,6 +16,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
+	"github.com/daviddwlee84/dev-cli/internal/note"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
@@ -34,12 +35,16 @@ func row(id, name string, st task.State, next string) inventory.Row {
 
 // recorder captures which actions the dashboard triggered.
 type recorder struct {
-	opened  []string
-	parked  []string
-	started []string
-	cloned  []string
-	copied  []string
-	nexts   map[string]string
+	opened   []string
+	parked   []string
+	started  []string
+	cloned   []string
+	copied   []string
+	notes    []*note.Note
+	deleted  []string
+	searches []string
+	edits    []string
+	nexts    map[string]string
 }
 
 func newActions(r *recorder, rows []inventory.Row) tui.Actions {
@@ -87,6 +92,46 @@ func newActions(r *recorder, rows []inventory.Row) tui.Actions {
 		SetNext: func(_ context.Context, t *task.Task, next string) error {
 			r.nexts[t.ID] = next
 			return nil
+		},
+		Notes: tui.NoteActions{
+			List: func(context.Context, tui.NoteTarget) ([]*note.Note, error) {
+				return append([]*note.Note(nil), r.notes...), nil
+			},
+			Search: func(_ context.Context, _ tui.NoteTarget, query string) ([]*note.Note, error) {
+				r.searches = append(r.searches, query)
+				var out []*note.Note
+				for _, n := range r.notes {
+					if strings.Contains(strings.ToLower(n.Body), strings.ToLower(query)) {
+						out = append(out, n)
+					}
+				}
+				return out, nil
+			},
+			Add: func(_ context.Context, target tui.NoteTarget, body string) (string, error) {
+				n := &note.Note{
+					SchemaVersion: note.CurrentSchemaVersion,
+					ID:            fmt.Sprintf("%08d-0000-4000-8000-000000000000", len(r.notes)+1),
+					RepositoryID:  target.CatalogID, Repository: target.Name(), Body: body + "\n",
+					Created: time.Now(), Updated: time.Now(),
+				}
+				r.notes = append([]*note.Note{n}, r.notes...)
+				return "added note " + n.ID[:8], nil
+			},
+			Delete: func(_ context.Context, n *note.Note) (string, error) {
+				r.deleted = append(r.deleted, n.ID)
+				var kept []*note.Note
+				for _, candidate := range r.notes {
+					if candidate.ID != n.ID {
+						kept = append(kept, candidate)
+					}
+				}
+				r.notes = kept
+				return "deleted note " + n.ID[:8], nil
+			},
+			Edit: func(n *note.Note) (tui.NoteEdit, error) {
+				r.edits = append(r.edits, n.ID)
+				return tui.NoteEdit{Command: exec.Command("true"), Complete: func(error) error { return nil }}, nil
+			},
 		},
 		Copy: func(text string) error {
 			r.copied = append(r.copied, text)
@@ -1398,5 +1443,187 @@ func TestRepoViewNeverScrollsTopBarOffTerminal(t *testing.T) {
 	lines := strings.Count(strings.TrimRight(out, "\n"), "\n") + 1
 	if lines > 24 {
 		t.Errorf("view has %d lines in a 24-line terminal; top bar will scroll off:\n%s", lines, out)
+	}
+}
+
+func sampleNote(id, body string, age time.Duration, tags ...string) *note.Note {
+	return &note.Note{
+		SchemaVersion: note.CurrentSchemaVersion,
+		ID:            id, RepositoryID: "11111111-1111-4111-8111-111111111111",
+		Repository: "demo", Body: body + "\n", Tags: tags,
+		Created: time.Now().Add(-age), Updated: time.Now().Add(-age),
+	}
+}
+
+func TestNQuickAddsNoteFromTask(t *testing.T) {
+	rows := []inventory.Row{row("a", "task", task.Hot, "")}
+	rec := &recorder{}
+	m := tui.New(newActions(rec, rows), rows, nil)
+	m = send(m, key("n"))
+	if !strings.Contains(m.View(), "quick thought") {
+		t.Fatalf("n should open quick note prompt:\n%s", m.View())
+	}
+	for _, k := range typeText("try event subscription") {
+		m = send(m, k)
+	}
+	m = send(m, key("enter"))
+	if len(rec.notes) != 1 || strings.TrimSpace(rec.notes[0].Body) != "try event subscription" {
+		t.Errorf("quick note not added: %+v", rec.notes)
+	}
+	if strings.Contains(m.View(), "quick thought") {
+		t.Error("quick add should return to the main list")
+	}
+}
+
+func TestNBrowsesSearchesAndExpandsNotes(t *testing.T) {
+	rows := []inventory.Row{row("a", "task", task.Hot, "")}
+	rec := &recorder{notes: []*note.Note{
+		sampleNote("22222222-2222-4222-8222-222222222222", "event subscription", time.Minute, "idea"),
+		sampleNote("33333333-3333-4333-8333-333333333333", "settings redesign", 24*time.Hour, "ui"),
+	}}
+	m := tui.New(newActions(rec, rows), rows, nil)
+	m = send(m, key("N"))
+	out := m.View()
+	if !strings.Contains(out, "NOTES") || !strings.Contains(out, "event subscription") || !strings.Contains(out, "settings redesign") {
+		t.Fatalf("notes overlay:\n%s", out)
+	}
+	m = send(m, key("enter"))
+	if !strings.Contains(m.View(), "22222222-2222") {
+		t.Errorf("enter should expand full note metadata/body:\n%s", m.View())
+	}
+	m = send(m, key("/"))
+	for _, k := range typeText("settings") {
+		m = send(m, k)
+	}
+	m = send(m, key("enter"))
+	if len(rec.searches) != 1 || rec.searches[0] != "settings" {
+		t.Errorf("searches = %v", rec.searches)
+	}
+	if strings.Contains(m.View(), "event subscription") || !strings.Contains(m.View(), "settings redesign") {
+		t.Errorf("search result scope:\n%s", m.View())
+	}
+}
+
+func TestNotesDeleteRequiresVisibleConfirmation(t *testing.T) {
+	rows := []inventory.Row{row("a", "task", task.Hot, "")}
+	id := "22222222-2222-4222-8222-222222222222"
+	rec := &recorder{notes: []*note.Note{sampleNote(id, "delete me", time.Minute)}}
+	m := tui.New(newActions(rec, rows), rows, nil)
+	m = send(m, key("N"), key("d"))
+	if !strings.Contains(m.View(), "Delete note 22222222?") {
+		t.Fatalf("confirmation missing:\n%s", m.View())
+	}
+	m = send(m, key("n"))
+	if len(rec.deleted) != 0 || !strings.Contains(m.View(), "delete me") {
+		t.Error("n should cancel without deleting")
+	}
+	m = send(m, key("d"), key("y"))
+	if len(rec.deleted) != 1 || rec.deleted[0] != id {
+		t.Errorf("confirmed delete = %v", rec.deleted)
+	}
+	if !strings.Contains(m.View(), "No notes") {
+		t.Errorf("list should refresh after delete:\n%s", m.View())
+	}
+}
+
+func TestNotesEditHandsTerminalToEditor(t *testing.T) {
+	rows := []inventory.Row{row("a", "task", task.Hot, "")}
+	id := "22222222-2222-4222-8222-222222222222"
+	rec := &recorder{notes: []*note.Note{sampleNote(id, "edit me", time.Minute)}}
+	m := tui.New(newActions(rec, rows), rows, nil)
+	m = send(m, key("N"))
+	_, cmd := m.Update(key("e"))
+	if cmd == nil || len(rec.edits) != 1 || rec.edits[0] != id {
+		t.Errorf("editor boundary: cmd=%v edits=%v", cmd, rec.edits)
+	}
+}
+
+func TestUnclonedRemoteHasNoNoteTarget(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return []tui.RemoteRow{remote}, nil }
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"), key("tab"), key("n"))
+	if strings.Contains(m.View(), "quick thought") {
+		t.Error("uncloned remote must not accept a local sidecar note")
+	}
+}
+
+func TestRepoNotesColumnAndDetailPreview(t *testing.T) {
+	n := sampleNote("22222222-2222-4222-8222-222222222222", "latest thought", time.Minute)
+	r := repoRow("api")
+	r.NoteCount, r.LatestNote = 3, n
+	actions := newActions(&recorder{}, nil)
+	actions.RepoColumns = []string{"repo", "notes"}
+	m := tui.New(actions, nil, []tui.RepoRow{r})
+	m = send(m, key("tab"))
+	out := m.View()
+	if !strings.Contains(out, "NOTES") || !strings.Contains(out, "3") || !strings.Contains(out, "latest thought") {
+		t.Errorf("note count/preview missing:\n%s", out)
+	}
+}
+
+func TestTryNStillCreatesTryRatherThanNote(t *testing.T) {
+	m := tui.New(newActions(&recorder{}, nil), nil, nil).WithTries(nil)
+	m = send(m, key("tab"), key("tab"), key("n"))
+	if !strings.Contains(m.View(), "NEW TRY") {
+		t.Errorf("n in TRY view must retain its lifecycle meaning:\n%s", m.View())
+	}
+}
+
+func TestExpandedNoteStaysWithinTerminalHeight(t *testing.T) {
+	rows := []inventory.Row{row("a", "task", task.Hot, "")}
+	body := strings.Repeat("a long note line that wraps across the viewport\n", 50)
+	rec := &recorder{notes: []*note.Note{
+		sampleNote("22222222-2222-4222-8222-222222222222", body, time.Minute),
+	}}
+	m := tui.New(newActions(rec, rows), rows, nil)
+	m = send(m, tea.WindowSizeMsg{Width: 72, Height: 24}, key("N"), key("enter"))
+	out := m.View()
+	lines := strings.Count(strings.TrimRight(out, "\n"), "\n") + 1
+	if lines > 24 {
+		t.Errorf("expanded note has %d lines in a 24-line terminal:\n%s", lines, out)
+	}
+	if !strings.Contains(out, "…") {
+		t.Error("truncated expanded note should show an ellipsis")
+	}
+}
+
+func TestStaleNoteLoadCannotPopulateNewRepositoryOverlay(t *testing.T) {
+	rows := []inventory.Row{
+		{Task: &task.Task{ID: "a", Name: "A task", Repo: "repo-a", RepoPath: "/src/a", Branch: "main", State: task.Hot}, CheckoutExists: true},
+		{Task: &task.Task{ID: "b", Name: "B task", Repo: "repo-b", RepoPath: "/src/b", Branch: "main", State: task.Hot}, CheckoutExists: true},
+	}
+	aNote := sampleNote("22222222-2222-4222-8222-222222222222", "A private thought", time.Minute)
+	bNote := sampleNote("33333333-3333-4333-8333-333333333333", "B selected thought", time.Minute)
+	actions := newActions(&recorder{}, rows)
+	actions.Notes.List = func(_ context.Context, target tui.NoteTarget) ([]*note.Note, error) {
+		if target.Name() == "repo-a" {
+			return []*note.Note{aNote}, nil
+		}
+		return []*note.Note{bNote}, nil
+	}
+	m := tui.New(actions, rows, nil)
+
+	// Start A's async load but do not deliver its result yet.
+	next, cmdA := m.Update(key("N"))
+	m = next.(tui.Model)
+	if cmdA == nil {
+		t.Fatal("A load command missing")
+	}
+	// Leave A, select B, and start B's load.
+	m = send(m, key("N"), key("down"))
+	next, cmdB := m.Update(key("N"))
+	m = next.(tui.Model)
+	if cmdB == nil {
+		t.Fatal("B load command missing")
+	}
+
+	// B arrives first and is accepted; delayed A arrives second and must be ignored.
+	m = send(m, cmdB())
+	m = send(m, cmdA())
+	out := m.View()
+	if !strings.Contains(out, "B selected thought") || strings.Contains(out, "A private thought") {
+		t.Errorf("stale A result contaminated B overlay:\n%s", out)
 	}
 }

@@ -64,7 +64,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|size|gitignore|all>
+dev cache clear <remote|notes|size|gitignore|all>
 ```
 
 ### `dev cache list`
@@ -262,6 +262,100 @@ dev ls [flags]
 - `--no-session` — skip the runtime query (faster)
 - `-r, --repo` — only tasks whose repo name contains this
 - `-s, --state` — only these states (hot, warm, cold, done)
+
+### `dev note`
+
+Capture and search append-only thoughts beside repositories
+
+```
+dev note
+```
+
+### `dev note add`
+
+Append one thought to a repository
+
+```
+dev note add [thought...] [flags]
+```
+
+- `-e, --editor` — compose the body in VISUAL/EDITOR
+- `--editor-command` — editor command override
+- `-r, --repo` — repository (default: repo containing cwd)
+- `-t, --tag` — tag (repeatable)
+
+### `dev note delete`
+
+Delete one note after confirmation
+
+```
+dev note delete <note-id> [flags]
+```
+
+- `-y, --yes` — do not prompt
+
+### `dev note edit`
+
+Edit one note body safely in VISUAL/EDITOR
+
+```
+dev note edit <note-id> [flags]
+```
+
+- `--editor` — editor command override
+- `-t, --tag` — replace tags (repeatable; omit to preserve)
+
+### `dev note list`
+
+List notes newest-first
+
+```
+dev note list [repo] [flags]
+```
+
+- `-a, --all` — all repositories
+- `--json` — emit JSON
+- `-t, --tag` — only notes with this tag
+
+### `dev note path`
+
+Print the durable Markdown note path
+
+```
+dev note path [repo] [flags]
+```
+
+- `-a, --all` — print the notes root
+
+### `dev note reindex`
+
+Rebuild the disposable SQLite FTS index from Markdown notes
+
+```
+dev note reindex
+```
+
+### `dev note search`
+
+Full-text search note body, tags, and repository
+
+```
+dev note search <query...> [flags]
+```
+
+- `--json` — emit JSON
+- `--limit` — maximum matches
+- `-r, --repo` — scope to this repository
+
+### `dev note show`
+
+Show one complete note
+
+```
+dev note show <note-id> [flags]
+```
+
+- `--json` — emit JSON
 
 ### `dev park`
 

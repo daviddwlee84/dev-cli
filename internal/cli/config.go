@@ -248,9 +248,10 @@ relative_links = false
 
 [tui.repos]
 # Exact columns and order for the local repository view:
-# repo | branch | git | live | latest | worktrees | tasks | category | path
-columns = ["repo", "branch", "git", "live", "latest", "worktrees", "tasks"]
-# activity puts HOT/live/dirty repos first. Other values: latest, name, git, tasks.
+# repo | branch | git | remote | size | live | latest | worktrees | tasks | notes | category | path
+# "notes" is opt-in to preserve width; selected detail shows it regardless.
+columns = ["repo", "branch", "git", "size", "live", "latest", "worktrees", "tasks"]
+# activity puts HOT/live/dirty repos first. Other values: latest, name, git, size, tasks.
 sort = "activity"
 reverse = false
 

@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
+	"github.com/daviddwlee84/dev-cli/internal/note"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
@@ -50,6 +52,10 @@ type RepoRow struct {
 	Worktrees int
 	// Tasks are the recorded tasks belonging to this repository.
 	Tasks []*task.Task
+	// NoteCount/LatestNote are joined from the durable sidecar store when this
+	// repo already has a catalog identity.
+	NoteCount  int
+	LatestNote *note.Note
 	// Live reports a runtime session sitting in this repository.
 	Live          bool
 	Runtime       string
@@ -238,4 +244,42 @@ type StatsPanel struct {
 	ActiveDays int
 	Since      time.Time
 	Until      time.Time
+}
+
+// NoteTarget identifies the selected local repository. CatalogID may be empty
+// until the first note action persists the repository observation.
+type NoteTarget struct {
+	CatalogID string
+	Repo      repo.Repo
+}
+
+func (t NoteTarget) Name() string { return t.Repo.Name }
+func (t NoteTarget) Path() string { return t.Repo.Path }
+
+// Key identifies the target while an asynchronous load is in flight.
+func (t NoteTarget) Key() string {
+	for _, value := range []string{t.CatalogID, t.Repo.CommonDir, t.Repo.RealPath, t.Repo.Path} {
+		if value != "" {
+			return value
+		}
+	}
+	return t.Repo.Name
+}
+
+// NoteEdit suspends the TUI in an editor and atomically completes from its
+// temporary body after the process exits.
+type NoteEdit struct {
+	Command *exec.Cmd
+	// Complete always runs, even when the editor fails, so temporary files are
+	// cleaned. It may replace runErr with validation/index errors.
+	Complete func(runErr error) error
+}
+
+// NoteActions are the sidecar-note operations available to the dashboard.
+type NoteActions struct {
+	List   func(ctx context.Context, target NoteTarget) ([]*note.Note, error)
+	Search func(ctx context.Context, target NoteTarget, query string) ([]*note.Note, error)
+	Add    func(ctx context.Context, target NoteTarget, body string) (string, error)
+	Delete func(ctx context.Context, n *note.Note) (string, error)
+	Edit   func(n *note.Note) (NoteEdit, error)
 }

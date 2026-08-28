@@ -16,6 +16,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
+	"github.com/daviddwlee84/dev-cli/internal/note"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
@@ -26,6 +27,7 @@ type App struct {
 	Tasks    *task.Store
 	Catalog  *catalog.Store
 	Registry *catalog.Registry
+	Notes    *note.Service
 	Sizes    *diskusage.Manager
 
 	In  io.Reader
@@ -71,6 +73,13 @@ func (a *App) Load() error {
 		fmt.Fprintf(a.Err, "dev: warning: %s\n", diagnostic.Error())
 	}))
 	a.Registry = catalog.NewRegistry(a.Catalog)
+	noteStore := note.NewStore(cfg.NotesDir(), note.WithDiagnosticSink(func(path string, err error) {
+		fmt.Fprintf(a.Err, "dev: warning: skipping note %s: %v\n", filepath.Base(path), err)
+	}))
+	a.Notes = note.NewService(noteStore, cfg.NotesIndexFile())
+	a.Notes.IndexDiagnostic = func(err error) {
+		fmt.Fprintf(a.Err, "dev: warning: note search index: %v\n", err)
+	}
 	if a.Sizes == nil {
 		cache := diskusage.NewCache(filepath.Join(config.CacheHome(), "dev", "sizes-v1.json"), 10*time.Minute)
 		a.Sizes = diskusage.NewManager(cache, 2)

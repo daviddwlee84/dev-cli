@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,6 +21,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
+	"github.com/daviddwlee84/dev-cli/internal/note"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/stats"
@@ -212,6 +214,42 @@ func runTUI(app *App) error {
 			Reload: reloadTries,
 			Apply: func(ctx context.Context, request tui.TryRequest) (tui.TryActionResult, error) {
 				return applyTryAction(ctx, app, rt, request)
+			},
+		},
+		Notes: tui.NoteActions{
+			List: func(ctx context.Context, target tui.NoteTarget) ([]*note.Note, error) {
+				entry, _, err := ensureNoteRepository(ctx, app, target)
+				if err != nil {
+					return nil, err
+				}
+				return app.Notes.List(entry.ID)
+			},
+			Search: func(ctx context.Context, target tui.NoteTarget, query string) ([]*note.Note, error) {
+				entry, _, err := ensureNoteRepository(ctx, app, target)
+				if err != nil {
+					return nil, err
+				}
+				return app.Notes.Search(query, entry.ID, 100)
+			},
+			Add: func(ctx context.Context, target tui.NoteTarget, body string) (string, error) {
+				entry, _, err := ensureNoteRepository(ctx, app, target)
+				if err != nil {
+					return "", err
+				}
+				n, err := app.Notes.Add(ctx, entry.ID, entry.Title(), body, nil)
+				if err != nil {
+					return "", err
+				}
+				return "added note " + n.ID[:8] + " to " + entry.Title(), nil
+			},
+			Delete: func(ctx context.Context, n *note.Note) (string, error) {
+				if err := app.Notes.Delete(ctx, n.ID); err != nil {
+					return "", err
+				}
+				return "deleted note " + n.ID[:8], nil
+			},
+			Edit: func(n *note.Note) (tui.NoteEdit, error) {
+				return prepareTUINoteEdit(app, n)
 			},
 		},
 		Sizes: tui.SizeActions{
@@ -688,6 +726,16 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 		byRepo[t.RepoPath] = append(byRepo[t.RepoPath], t)
 	}
 	sessions, _ := rt.List(ctx)
+	notesByRepo := map[string][]*note.Note{}
+	if app.Notes != nil {
+		allNotes, noteErr := app.Notes.List("")
+		if noteErr != nil {
+			return nil, noteErr
+		}
+		for _, n := range allNotes {
+			notesByRepo[n.RepositoryID] = append(notesByRepo[n.RepositoryID], n)
+		}
+	}
 
 	out := make([]tui.RepoRow, len(repos))
 	// Each repo needs status, worktree and remote subprocesses. Serialising
@@ -703,6 +751,13 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 			defer func() { <-sem }()
 
 			row := tui.RepoRow{Repo: r, Asset: assets[i]}
+			if row.Asset != nil {
+				repoNotes := notesByRepo[row.Asset.ID]
+				row.NoteCount = len(repoNotes)
+				if len(repoNotes) > 0 {
+					row.LatestNote = repoNotes[0]
+				}
+			}
 			if r.HasGit {
 				row.Topology, row.TopologyErr = gitx.RecoveryTopologyOf(ctx, r.Path)
 			}
@@ -1072,4 +1127,49 @@ func liveCatalogLocationPath(location catalog.Location) string {
 		}
 	}
 	return ""
+}
+
+func prepareTUINoteEdit(app *App, n *note.Note) (tui.NoteEdit, error) {
+	tmp, err := os.CreateTemp("", "dev-note-*.md")
+	if err != nil {
+		return tui.NoteEdit{}, err
+	}
+	path := tmp.Name()
+	if _, err := io.WriteString(tmp, n.Body); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(path)
+		return tui.NoteEdit{}, err
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(path)
+		return tui.NoteEdit{}, err
+	}
+	proc, _, err := editorProcess(path, "")
+	if err != nil {
+		_ = os.Remove(path)
+		return tui.NoteEdit{}, err
+	}
+	return tui.NoteEdit{
+		Command: proc,
+		Complete: func(runErr error) error {
+			if runErr != nil {
+				_ = os.Remove(path)
+				return runErr
+			}
+			body, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("read edited body (preserved at %s): %w", path, err)
+			}
+			if strings.TrimSpace(string(body)) == "" {
+				_ = os.Remove(path)
+				return fmt.Errorf("edited note body is empty; not saved")
+			}
+			_, err = app.Notes.Update(context.Background(), n.ID, n.Revision(), string(body), n.Tags)
+			if err != nil {
+				return fmt.Errorf("save edited note: %w; edited body preserved at %s", err, path)
+			}
+			_ = os.Remove(path)
+			return nil
+		},
+	}, nil
 }

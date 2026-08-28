@@ -88,6 +88,31 @@ dev_has local-only repo list --no-remote || fail "no-remote repo not detected"
 dev_has local-only repo list --local-only || fail "local-only branch not detected"
 ok "repo discovery, topology, metadata and logical size"
 
+step "repository quick notes and rebuildable FTS"
+NOTE_OUTPUT="$(dev note add "try event subscription" --repo demo --tag idea)"
+NOTE_ID="$(awk 'NR == 1 { print $1 }' <<<"$NOTE_OUTPUT")"
+[[ ${#NOTE_ID} == 36 ]] || fail "note did not return a UUID"
+dev_has "${NOTE_ID:0:8}" note list demo || fail "note not listed"
+dev_has "${NOTE_ID:0:8}" note search "event subscription" --repo demo \
+  || fail "note search missed durable source"
+NOTE_DIR="$(dev note path demo)"
+[[ -f "$NOTE_DIR/$NOTE_ID.md" ]] || fail "durable Markdown note missing"
+dev cache clear notes >/dev/null
+[[ -f "$NOTE_DIR/$NOTE_ID.md" ]] || fail "cache clear deleted durable note"
+dev_has "${NOTE_ID:0:8}" note search "event" || fail "search did not rebuild FTS"
+NOTE_EDITOR="$SANDBOX/note-editor"
+cat > "$NOTE_EDITOR" <<'EDITOR'
+#!/bin/sh
+printf 'revised through editor
+' > "$1"
+EDITOR
+chmod +x "$NOTE_EDITOR"
+dev note edit "${NOTE_ID:0:8}" --editor "$NOTE_EDITOR" >/dev/null
+dev_has 'revised through editor' note show "$NOTE_ID" || fail "note editor update missing"
+dev note delete "$NOTE_ID" --yes >/dev/null
+dev_has 'No notes' note list demo || fail "deleted note remains"
+ok "Markdown notes survived index deletion, search rebuild, edit and delete"
+
 step "start a task"
 dev start demo --task auth --branch feat/auth --base main
 WT="$HOME/Worktrees/demo/feat-auth"
@@ -205,6 +230,8 @@ dev skill install --no-link >/dev/null
 [[ -f "$HOME/.agents/skills/dev-cli/SKILL.md" ]] || fail "skill not installed"
 [[ -f "$HOME/.agents/skills/dev-cli/references/worktree-ownership.md" ]] \
   || fail "skill references not installed"
+[[ -f "$HOME/.agents/skills/dev-cli/references/notes.md" ]] \
+  || fail "notes skill reference not installed"
 ok "skill installed"
 
 step "gitignore"

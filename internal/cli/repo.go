@@ -348,6 +348,7 @@ type repoListJSONRow struct {
 	SizeError    string               `json:"size_error,omitempty"`
 	LastActivity *string              `json:"last_activity"`
 	Worktrees    int                  `json:"worktrees"`
+	Notes        repoListJSONNotes    `json:"notes"`
 	Asset        *repoListJSONAsset   `json:"asset,omitempty"`
 }
 
@@ -370,6 +371,13 @@ type repoListJSONRecovery struct {
 	MultipleRemotes   bool                  `json:"multiple_remotes"`
 	MultipleUpstreams bool                  `json:"multiple_upstreams"`
 	Error             string                `json:"error,omitempty"`
+}
+
+type repoListJSONNotes struct {
+	Count         int     `json:"count"`
+	LatestID      string  `json:"latest_id,omitempty"`
+	LatestPreview string  `json:"latest_preview,omitempty"`
+	LatestUpdated *string `json:"latest_updated,omitempty"`
 }
 
 type repoListJSONAsset struct {
@@ -405,6 +413,12 @@ func makeRepoListJSONRow(row tui.RepoRow) repoListJSONRow {
 			MultipleUpstreams: row.Topology.MultipleUpstreams(),
 		},
 		LastActivity: rfc3339Value(row.LastActivity), Worktrees: row.Worktrees,
+		Notes: repoListJSONNotes{Count: row.NoteCount},
+	}
+	if row.LatestNote != nil {
+		result.Notes.LatestID = row.LatestNote.ID
+		result.Notes.LatestPreview = row.LatestNote.Preview(120)
+		result.Notes.LatestUpdated = rfc3339Value(row.LatestNote.Updated)
 	}
 	if row.TopologyErr != nil {
 		result.Recovery.Error = row.TopologyErr.Error()

@@ -26,14 +26,6 @@ still takes roughly three seconds because status + latest commit remain live Git
 queries. If inventories grow into the hundreds, persist a short-lived snapshot
 and stream changed rows into the model; keep `r` as the explicit live refresh.
 
-### P2 · M — Repo quick thoughts with a sidecar source + SQLite FTS index
-Add `dev note add/list/edit/search` and a TUI note action. Keep durable notes as
-one Markdown/JSONL file per repo under `$XDG_DATA_HOME/dev/notes/<repo-key>/`
-so they are readable, exportable and git-syncable without SQLite binary merge
-conflicts. Use SQLite FTS as a rebuildable search index, not as the sole source
-of human intent. Repo identity should prefer forge owner/name, falling back to
-Git common-dir fingerprint for local-only repos.
-
 ### P3 · M — Optional repo-local task backend adapters (td / beads)
 Research and detect repo-local task stores without making either a core
 dependency:
@@ -104,6 +96,10 @@ where herdr is not installed. dev creates the checkout with git and asks herdr
 only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 
 ## Done
+
+- Repository quick notes: append-only private Markdown keyed by catalog ID,
+  rebuildable SQLite FTS, complete CLI CRUD/search, `n` quick add and `N` TUI
+  overlay with browse/search/expand/editor/confirmed-delete.
 
 - Task lifecycle: `start` / `park` / `resume` / `done` / `sweep`.
 - Worktree ownership rule, path templates, provisioning, per-repo `.dev.toml`.

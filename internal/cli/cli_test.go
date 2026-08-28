@@ -1123,27 +1123,35 @@ func TestStatusAndJSONExposeRichChangeCounts(t *testing.T) {
 func TestCacheListAndClearLeavesStatsDataAlone(t *testing.T) {
 	h := newHarness(t)
 	remote := filepath.Join(config.CacheHome(), "dev", "remotes.json")
+	notesIndex := filepath.Join(config.CacheHome(), "dev", "notes.db")
 	size := filepath.Join(config.CacheHome(), "dev", "sizes-v1.json")
 	gitignore := filepath.Join(config.CacheHome(), "dev", "gitignore", "Go.gitignore")
 	os.MkdirAll(filepath.Dir(remote), 0o755)
 	os.MkdirAll(filepath.Dir(gitignore), 0o755)
 	os.WriteFile(remote, []byte("remote cache"), 0o600)
+	os.WriteFile(notesIndex, []byte("note index"), 0o600)
 	os.WriteFile(size, []byte("size cache"), 0o600)
 	os.WriteFile(gitignore, []byte("*.test\n"), 0o644)
 
-	// Stats live under XDG data, not cache.
+	// Stats and Markdown notes live under XDG data, not cache.
+	noteSource := filepath.Join(h.home, "state", "notes", "repo", "note.md")
+	os.MkdirAll(filepath.Dir(noteSource), 0o700)
+	os.WriteFile(noteSource, []byte("durable note"), 0o600)
 	statsPath := filepath.Join(h.home, "state", "stats.db")
 	os.MkdirAll(filepath.Dir(statsPath), 0o755)
 	os.WriteFile(statsPath, []byte("durable"), 0o600)
 
 	out := h.mustRun("cache", "list")
-	if !strings.Contains(out, "remote") || !strings.Contains(out, "size") ||
-		!strings.Contains(out, "gitignore") || !strings.Contains(out, "not cache") {
+	if !strings.Contains(out, "remote") || !strings.Contains(out, "notes") ||
+		!strings.Contains(out, "size") || !strings.Contains(out, "gitignore") || !strings.Contains(out, "not cache") {
 		t.Errorf("cache list:\n%s", out)
 	}
 	h.mustRun("cache", "clear", "all")
 	if _, err := os.Stat(remote); !os.IsNotExist(err) {
 		t.Error("remote cache should be gone")
+	}
+	if _, err := os.Stat(notesIndex); !os.IsNotExist(err) {
+		t.Error("notes FTS cache should be gone")
 	}
 	if _, err := os.Stat(size); !os.IsNotExist(err) {
 		t.Error("size cache should be gone")
@@ -1153,6 +1161,9 @@ func TestCacheListAndClearLeavesStatsDataAlone(t *testing.T) {
 	}
 	if _, err := os.Stat(statsPath); err != nil {
 		t.Error("cache clear must never touch stats data")
+	}
+	if _, err := os.Stat(noteSource); err != nil {
+		t.Error("cache clear must never touch durable Markdown notes")
 	}
 }
 
@@ -1227,5 +1238,156 @@ func TestRepoContextReportsWholeRepoFromLinkedWorktree(t *testing.T) {
 	if !strings.Contains(fromChild, "# dev repo context: demo") ||
 		!strings.Contains(fromChild, h.repo.Root) || !strings.Contains(fromChild, wtPath) {
 		t.Errorf("linked cwd should still report the whole repo:\n%s", fromChild)
+	}
+}
+
+func TestNoteAddListShowSearchAndPath(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("note", "add", "try event subscription", "--repo", "demo", "--tag", "Idea", "--tag", "git")
+	id := strings.Fields(out)[0]
+	if len(id) != 36 || !strings.Contains(out, "try event subscription") {
+		t.Fatalf("add output: %q", out)
+	}
+
+	out = h.mustRun("note", "list", "demo")
+	if !strings.Contains(out, id[:8]) || !strings.Contains(out, "git,idea") {
+		t.Errorf("list output: %q", out)
+	}
+	out = h.mustRun("note", "show", id[:8])
+	if !strings.Contains(out, id) || !strings.Contains(out, "try event subscription") {
+		t.Errorf("show output: %q", out)
+	}
+	out = h.mustRun("note", "search", "subscription event", "--repo", "demo")
+	if !strings.Contains(out, id[:8]) {
+		t.Errorf("search output: %q", out)
+	}
+	repoJSON := h.mustRun("repo", "list", "--json")
+	if !strings.Contains(repoJSON, `"count": 1`) || !strings.Contains(repoJSON, `"latest_preview": "try event subscription"`) {
+		t.Errorf("repo JSON note summary missing: %s", repoJSON)
+	}
+	out = strings.TrimSpace(h.mustRun("note", "path", "demo"))
+	if !strings.HasPrefix(out, filepath.Join(h.home, "state", "notes")) {
+		t.Errorf("note path = %q", out)
+	}
+	entries, err := os.ReadDir(out)
+	if err != nil || len(entries) != 1 || entries[0].Name() != id+".md" {
+		t.Errorf("durable source entries=%v err=%v", entries, err)
+	}
+}
+
+func TestNoteSearchRebuildsAfterCacheClear(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("note", "add", "survive index deletion", "--repo", "demo")
+	id := strings.Fields(out)[0]
+	if out = h.mustRun("note", "search", "survive"); !strings.Contains(out, id[:8]) {
+		t.Fatal("initial search did not find note")
+	}
+	index := filepath.Join(config.CacheHome(), "dev", "notes.db")
+	if _, err := os.Stat(index); err != nil {
+		t.Fatalf("search index not created: %v", err)
+	}
+	h.mustRun("cache", "clear", "notes")
+	if _, err := os.Stat(index); !os.IsNotExist(err) {
+		t.Error("cache should be gone")
+	}
+	out = h.mustRun("note", "search", "survive")
+	if !strings.Contains(out, id[:8]) {
+		t.Errorf("search should rebuild from Markdown: %q", out)
+	}
+}
+
+func TestNoteEditUsesTemporaryBodyAndPreservesMetadata(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("note", "add", "original thought", "--repo", "demo", "--tag", "idea")
+	id := strings.Fields(out)[0]
+	editor := filepath.Join(h.home, "note-editor")
+	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf 'revised by editor\\n' > \"$1\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out = h.mustRun("note", "edit", id[:8], "--editor", editor)
+	if !strings.Contains(out, "revised by editor") {
+		t.Errorf("edit output: %q", out)
+	}
+	out = h.mustRun("note", "show", id, "--json")
+	if !strings.Contains(out, `"body":"revised by editor\n"`) || !strings.Contains(out, `"idea"`) {
+		t.Errorf("body changed but tags should survive: %q", out)
+	}
+}
+
+func TestNoteDeleteRequiresYesOutsideTTY(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("note", "add", "delete me", "--repo", "demo")
+	id := strings.Fields(out)[0]
+	if _, _, err := h.run("note", "delete", id[:8]); err == nil || !strings.Contains(err.Error(), "without --yes") {
+		t.Errorf("noninteractive delete should be refused, got %v", err)
+	}
+	h.mustRun("note", "delete", id[:8], "--yes")
+	if out := h.mustRun("note", "list", "demo"); !strings.Contains(out, "No notes") {
+		t.Errorf("deleted note remains: %q", out)
+	}
+}
+
+func TestNoteAddEditorAndEmptyBodyGuard(t *testing.T) {
+	h := newHarness(t)
+	editor := filepath.Join(h.home, "note-editor")
+	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf 'written interactively\\n' > \"$1\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	out := h.mustRun("note", "add", "--repo", "demo", "--editor", "--editor-command", editor)
+	if !strings.Contains(out, "written interactively") {
+		t.Errorf("editor add: %q", out)
+	}
+	if _, _, err := h.run("note", "add", "--repo", "demo"); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Errorf("empty add should fail, got %v", err)
+	}
+}
+
+func TestNoteListAllAndTagFilter(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("note", "add", "first", "--repo", "demo", "--tag", "one")
+	h.mustRun("note", "add", "second", "--repo", "demo", "--tag", "two")
+	out := h.mustRun("note", "list", "--all", "--tag", "two")
+	if !strings.Contains(out, "second") || strings.Contains(out, "first") {
+		t.Errorf("tag filter: %q", out)
+	}
+	out = h.mustRun("note", "list", "--all", "--json")
+	var notes []map[string]any
+	if err := json.Unmarshal([]byte(out), &notes); err != nil || len(notes) != 2 {
+		t.Errorf("json notes=%v err=%v", notes, err)
+	}
+}
+
+func TestNoteFromLinkedWorktreeAttachesToCanonicalRepository(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "feature", "--branch", "feat/note", "--base", "main")
+	wtPath := filepath.Join(h.wtRoot, "demo", "feat-note")
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(wtPath); err != nil {
+		t.Fatal(err)
+	}
+	out := h.mustRun("note", "add", "thought from worktree")
+	_ = os.Chdir(cwd)
+	id := strings.Fields(out)[0]
+
+	out = h.mustRun("note", "list", "demo", "--json")
+	if !strings.Contains(out, id) || !strings.Contains(out, `"repository": "demo"`) {
+		t.Errorf("canonical repo should find worktree note: %q", out)
+	}
+	assets, err := os.ReadDir(filepath.Join(h.home, "state", "assets"))
+	if err != nil || len(assets) != 1 {
+		t.Errorf("one canonical catalog asset expected: entries=%v err=%v", assets, err)
+	}
+}
+
+func TestNoteResolutionRejectsEmptyAndTooShortPrefixes(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("note", "add", "only note", "--repo", "demo")
+	for _, ref := range []string{"", "2", "1234567"} {
+		if _, _, err := h.run("note", "delete", ref, "--yes"); err == nil || !strings.Contains(err.Error(), "at least 8") {
+			t.Errorf("delete ref %q = %v", ref, err)
+		}
+	}
+	if out := h.mustRun("note", "list", "demo"); !strings.Contains(out, "only note") {
+		t.Error("invalid prefix deleted the note")
 	}
 }

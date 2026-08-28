@@ -43,6 +43,9 @@ func (m Model) View() string {
 	if m.quitting {
 		return ""
 	}
+	if m.noteMode() {
+		return m.renderNotes()
+	}
 	if m.overlay.kind != overlayNone {
 		return m.renderOverlay()
 	}
@@ -269,6 +272,11 @@ func (m Model) repoItemColumnValue(item repoItem, name string) string {
 		return "—"
 	case "tasks":
 		return taskStateSummary(checkout.Tasks)
+	case "notes":
+		if r.NoteCount > 0 {
+			return fmt.Sprintf("%d", r.NoteCount)
+		}
+		return "—"
 	case "category":
 		return "—"
 	case "path":
@@ -342,6 +350,7 @@ func (m Model) repoColumns() []repoColumnSpec {
 		"latest":    {"latest", "LATEST", 8, 6},
 		"worktrees": {"worktrees", "WT", 3, 2},
 		"tasks":     {"tasks", "TASKS", 18, 8},
+		"notes":     {"notes", "NOTES", 6, 5},
 		"category":  {"category", "CATEGORY", 14, 8},
 		"path":      {"path", "PATH", 30, 12},
 	}
@@ -416,6 +425,11 @@ func repoColumnValue(r RepoRow, name string) string {
 	case "tasks":
 		if tasks := r.StateSummary(); tasks != "" {
 			return tasks
+		}
+		return "—"
+	case "notes":
+		if r.NoteCount > 0 {
+			return fmt.Sprintf("%d", r.NoteCount)
 		}
 		return "—"
 	case "category":
@@ -778,6 +792,10 @@ func (m Model) renderDetail() string {
 			}
 			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("live"), styleLive.Render(live)))
 		}
+		if r.NoteCount > 0 && r.LatestNote != nil {
+			lines = append(lines, fmt.Sprintf("  %s  %d · %s", styleDim.Render("notes"),
+				r.NoteCount, r.LatestNote.Preview(maxInt(20, m.width-18))))
+		}
 		if len(r.Tasks) > 0 {
 			var names []string
 			for _, t := range r.Tasks {
@@ -800,6 +818,10 @@ func (m Model) renderDetail() string {
 		fmt.Sprintf("  %s  %s", styleDim.Render("repo"), t.Repo),
 		fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(row.Checkout)),
 		fmt.Sprintf("  %s  %s", styleDim.Render("mode"), t.EffectiveMode()),
+	}
+	if count, latest := m.noteSummary(row.Task.RepoPath, row.Task.Repo); count > 0 && latest != nil {
+		lines = append(lines, fmt.Sprintf("  %s  %d · %s", styleDim.Render("notes"),
+			count, latest.Preview(maxInt(20, m.width-18))))
 	}
 	if row.Status.Dirty() {
 		lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("git  "), row.Status.Breakdown()))
@@ -849,7 +871,7 @@ func (m Model) renderFooter() string {
 		if item, ok := m.currentRepoItem(); ok && item.child() {
 			bindings = append(bindings, "enter open worktree", "space collapse")
 		} else {
-			bindings = append(bindings, "enter ad hoc", "space worktrees", "m metadata", "s worktree task", "d direct task")
+			bindings = append(bindings, "enter ad hoc", "space worktrees", "m metadata", "n add note", "N notes", "s worktree task", "d direct task")
 		}
 		bindings = append(bindings, "O sort:"+sortBy, "R reverse")
 	case ViewTries:
@@ -864,12 +886,12 @@ func (m Model) renderFooter() string {
 			"O sort:"+sortBy, "R reverse")
 	case ViewRemote:
 		if r, ok := m.currentRemote(); ok && r.Cloned() {
-			bindings = append(bindings, "enter open local")
+			bindings = append(bindings, "enter open local", "n add note", "N notes")
 		} else {
 			bindings = append(bindings, "c clone")
 		}
 	default:
-		bindings = append(bindings, "enter open", "p park", "c next")
+		bindings = append(bindings, "enter open", "n add note", "N notes", "p park", "c next")
 	}
 	if m.view == ViewRepos {
 		bindings = append(bindings, "y copy")

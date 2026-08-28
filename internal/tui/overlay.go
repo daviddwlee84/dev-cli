@@ -294,10 +294,10 @@ func (m Model) renderOverlay() string {
 		builder.WriteString("  navigation\n")
 		builder.WriteString("    j/k, arrows move · ctrl+d/u page · g/G first/last · tab/h/l switch view\n")
 		builder.WriteString("    / filter · 0 clear · r reload · esc close/clear/quit · q quit\n\n")
-		builder.WriteString("  TASKS   enter open · p park · c next · 1/2/3 state · a done\n")
-		builder.WriteString("  REPOS   enter open · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
+		builder.WriteString("  TASKS   enter open · n add note · N notes · p park · c next · 1/2/3 state · a done\n")
+		builder.WriteString("  REPOS   enter open · n add note · N notes · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
 		builder.WriteString("  TRY     enter open · n create · space actions · a history · O/R sort\n")
-		builder.WriteString("  REMOTE  enter open local · c clone\n\n")
+		builder.WriteString("  REMOTE  enter open local · n/N notes when cloned · c clone\n\n")
 		builder.WriteString("  " + styleHelp.Render("? / esc / q close help"))
 
 	case overlayTryMenu:

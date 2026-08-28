@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: 'Manage repositories and work-in-progress with the dev CLI: bootstrap existing machines, organise repos without destructive moves, own worktree lifecycle and provisioning, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when starting, parking or resuming work; scanning or organising repos; choosing a worktree mechanism; fixing worktree setup; or cleaning stale branches, checkouts and sessions.'
+description: 'Manage repositories and work-in-progress with the dev CLI: bootstrap and organise repos safely, own worktree lifecycle, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when starting, parking or resuming work; scanning repos; capturing/searching repo thoughts; choosing worktree isolation; or cleaning stale branches, checkouts and sessions.'
 ---
 
 # dev-cli
@@ -131,6 +131,8 @@ append a conflicting mode. Herdr `done` is turn-settled—not cleanup done.
 
 ```bash
 dev                        # interactive dashboard (plain listing when piped)
+dev note add "thought"     # append to repo containing cwd
+dev note search "query"    # rebuilds FTS index if needed
 dev edit                   # open the effective config; generate it first if absent
 dev ls                     # what am I working on, everywhere
 dev ls --json              # stable machine-readable form (also over ssh)
@@ -168,7 +170,7 @@ dev graduate redis-streams --category Infra   # promote it into a real project
 dev stats --heatmap        # where the time actually went
 dev stats backfill --repo api  # seed one repo; TUI H then b does this in place
 dev stats path             # durable XDG data, not cache
-dev cache list             # regenerable forge/size/gitignore caches
+dev cache list             # regenerable forge/size/gitignore/note-index caches
 dev help worktrees         # quick-reference pages
 ```
 
@@ -244,6 +246,21 @@ that exists only in shell rc, set `interactive = true`; dev uses `$SHELL -lic`
 and evaluates the command after rc loading. Prefer an executable on PATH when
 the binding should be portable across machines.
 
+## Repository quick notes
+
+Read `references/notes.md` before adding/searching/editing/deleting notes or
+when deciding whether content belongs in dev vs td/beads.
+
+Quick notes are append-only Markdown under
+`$XDG_DATA_HOME/dev/notes/<catalog-id>/`; the catalog ID attaches them to the
+canonical clone across worktrees, symlinks and moves. SQLite FTS at
+`$XDG_CACHE_HOME/dev/notes.db` is disposable: clearing it removes no thoughts
+and the next search rebuilds it.
+
+TUI context keys: `n` quick-adds on TASKS/REPOS; `N` browses with `/` search,
+Enter expand, `a` add, `e` editor, and confirmed `d` delete. In TRY, `n` remains
+“new Try.” REMOTE needs a local clone.
+
 ## Editing configuration
 
 Use `dev edit` (or `dev config edit`) rather than guessing the XDG path. It
@@ -314,20 +331,24 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    rather than applying it for them — which branches count as work in flight is
    their judgement, not yours.
 
-14. **Do not call stats.db a cache.** Session/WakaTime observations may not be
+14. **Treat Markdown notes as durable and notes.db as cache.** Never delete
+   `$XDG_DATA_HOME/dev/notes` to fix search; use `dev cache clear notes` and
+   reindex. Note deletion itself requires explicit confirmation.
+
+15. **Do not call stats.db a cache.** Session/WakaTime observations may not be
    reconstructible. Use `dev stats clear --repo/--source/--all`; use
    `dev cache clear` only for regenerable remote/size/gitignore caches.
 
-15. **Archive is not eviction.** `dev tries archive` is a reversible hidden move
+16. **Archive is not eviction.** `dev tries archive` is a reversible hidden move
    on the same filesystem; it does not free space. Phase 1 has no project-data
    delete command. Never substitute `rm -rf` merely because a remote exists —
    no-remote, local-only refs, ignored files and stash are independent risks.
 
-16. **Read Git state as counts, not a dirty boolean.** `⇡`/`⇣` are upstream
+17. **Read Git state as counts, not a dirty boolean.** `⇡`/`⇣` are upstream
    divergence; `=` conflicts, `+` staged, `!` unstaged, `?` untracked. Use
    `dev status` or JSON for the unique-path and type breakdown before cleanup.
 
-17. **Commit messages stay English** and follow Conventional Commits, even when
+18. **Commit messages stay English** and follow Conventional Commits, even when
    the conversation is in another language — see the companion `git-workflow`
    skill, which owns commit conventions, SemVer and branch naming. This skill
    does not duplicate them.
@@ -358,6 +379,8 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 
 ## Reference files
 
+- `references/notes.md` — read before repository quick-note operations or
+  choosing the boundary with td/beads.
 - `references/bootstrap.md` — read before scanning or organising an existing
   machine; includes the non-destructive index default and move safety gates.
 - `references/worktree-ownership.md` — who owns which worktree, and how a

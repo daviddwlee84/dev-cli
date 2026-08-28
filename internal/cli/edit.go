@@ -72,12 +72,8 @@ func configEditorProcess(app *App, editor string) (*exec.Cmd, string, bool, erro
 	if err != nil {
 		return nil, "", false, err
 	}
-	chosen, err := resolveEditor(editor)
-	if err != nil {
-		return nil, "", false, err
-	}
-	command := chosen + " " + shellQuote(path)
-	return exec.Command(shellPath(), "-c", command), chosen, created, nil
+	proc, chosen, err := editorProcess(path, editor)
+	return proc, chosen, created, err
 }
 
 // ensureConfigForEdit generates a usable config before opening an absent path.
@@ -100,6 +96,15 @@ func ensureConfigForEdit(path string) (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+func editorProcess(path, override string) (*exec.Cmd, string, error) {
+	chosen, err := resolveEditor(override)
+	if err != nil {
+		return nil, "", err
+	}
+	command := chosen + " " + shellQuote(path)
+	return exec.Command(shellPath(), "-c", command), chosen, nil
 }
 
 func resolveEditor(override string) (string, error) {

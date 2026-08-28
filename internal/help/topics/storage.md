@@ -8,6 +8,8 @@ cache so cleanup cannot erase the wrong thing.
 | `$XDG_CONFIG_HOME/dev/config.toml` | user policy | no |
 | `$XDG_DATA_HOME/dev/tasks/*.toml` | state/owner/next for tasks | partially |
 | `$XDG_DATA_HOME/dev/stats.db` | Git backfill, session samples, WakaTime imports | not always |
+| `$XDG_DATA_HOME/dev/notes/<repo-id>/*.md` | append-only repository thoughts | no |
+| `$XDG_CACHE_HOME/dev/notes.db` | note full-text search index | yes |
 | `$XDG_CACHE_HOME/dev/remotes.json` | short-lived forge inventory | yes |
 | `$XDG_CACHE_HOME/dev/gitignore/` | fetched GitHub templates | yes |
 
@@ -16,6 +18,7 @@ Inspect paths:
 ```bash
 dev config path
 dev stats path
+dev note path --all
 dev cache path
 dev cache list
 ```
@@ -24,6 +27,7 @@ Clear only regenerable cache:
 
 ```bash
 dev cache clear remote
+dev cache clear notes
 dev cache clear gitignore
 dev cache clear all
 ```
@@ -40,3 +44,9 @@ dev stats clear --all
 `stats.db` is not called a cache because session samples and WakaTime imports
 may not be reconstructible. Git-derived rows can be regenerated with
 `dev stats backfill [--repo api]`.
+
+
+Quick notes remain ordinary Markdown and can be synced/backed up as files.
+`notes.db` contains full note bodies for search and is mode 0600, but it is
+still disposable: `dev cache clear notes` followed by `dev note search ...`
+rebuilds it from Markdown.

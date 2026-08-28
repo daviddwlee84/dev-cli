@@ -297,3 +297,31 @@ func TestRepoTableConfigValidation(t *testing.T) {
 		t.Errorf("unknown sort should fail, got %v", err)
 	}
 }
+
+func TestNotePathsSeparateDurableSourceFromCache(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", filepath.Join(t.TempDir(), "data"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(t.TempDir(), "cache"))
+	c := Default()
+	if got := c.NotesDir(); got != filepath.Join(c.StateDir(), "notes") {
+		t.Errorf("NotesDir = %q", got)
+	}
+	if got := c.NotesIndexFile(); got != filepath.Join(CacheHome(), "dev", "notes.db") {
+		t.Errorf("NotesIndexFile = %q", got)
+	}
+	if filepath.Dir(c.NotesIndexFile()) == c.NotesDir() {
+		t.Error("disposable FTS index must not live beside durable Markdown")
+	}
+}
+
+func TestNotesRepoColumnIsOptionalButValid(t *testing.T) {
+	c := Default()
+	for _, column := range c.EffectiveRepoColumns() {
+		if column == "notes" {
+			t.Error("notes should not consume default width before a user opts in")
+		}
+	}
+	c.TUI.Repos.Columns = []string{"repo", "notes", "latest"}
+	if err := c.Validate(); err != nil {
+		t.Errorf("notes column should validate: %v", err)
+	}
+}
