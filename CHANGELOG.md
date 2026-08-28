@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `dev summary` machine-wide Markdown/JSON snapshots with adaptive detail,
+  attention filtering, recent commits, runtime controls and optional sizes.
 - Agent-safe retirement: `dev retire` closes covering runtime sessions and removes a linked worktree
   only from outside it, refusing active agents, mixed-purpose workspaces, dirty state, and in-progress
   Git operations; `dev sweep --merged-worktrees` reports and retires task-tracked and unmanaged

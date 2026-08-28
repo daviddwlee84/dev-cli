@@ -186,6 +186,7 @@ dev graduate redis-streams --category Infra   # promote it into a real project
 dev stats --heatmap        # where the time actually went
 dev stats backfill --repo api  # seed one repo; TUI H then b does this in place
 dev stats path             # durable XDG data, not cache
+dev summary                # current machine-wide agent context
 dev journal                # today's agent-ready development journal
 dev journal --since 7d --metrics | opencode run "summarize this"
 dev cache list             # regenerable forge/fleet/size/gitignore/note-index caches
@@ -236,6 +237,14 @@ commit details while retaining complete aggregates; `--max-commits 0` is
 unlimited. Use `--author <email>` or `--all-authors` for commit-only team views,
 and `--json` for a stable structured report. dev generates the context only; it
 does not launch the receiving agent.
+
+`dev summary` is the complementary current-state view across this machine. It
+combines durable repositories and present active/deprecated Tries with live Git,
+worktree, task, runtime, recovery and catalog facts. The default `auto` Markdown
+expands active work and leaves quiet projects in a compact index; `--attention`
+selects both active work and recovery hazards, while `--json` always emits the
+complete selected snapshot. Use journal for time ranges and `repo context` for
+one repository.
 
 Azure DevOps inventory is opt-in and cloud-only:
 

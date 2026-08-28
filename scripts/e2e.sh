@@ -347,6 +347,11 @@ dev_has 'Development journal' journal --since 1y || fail "journal Markdown missi
 dev_has '"schema_version": 1' journal --since 1y --json || fail "journal JSON contract missing"
 ok "journal rendered Markdown and JSON"
 
+step "summary"
+dev_has 'dev machine summary' summary --no-runtime || fail "summary Markdown missing"
+dev_has '"schema_version": 1' summary --no-runtime --json || fail "summary JSON contract missing"
+ok "summary rendered Markdown and JSON"
+
 step "skill install"
 dev skill install --no-link >/dev/null
 [[ -f "$HOME/.agents/skills/dev-cli/SKILL.md" ]] || fail "skill not installed"

@@ -577,13 +577,21 @@ func runTUI(app *App) error {
 }
 
 func collectTries(ctx context.Context, app *App, rt runtime.Runtime, includeAll bool) ([]tui.TryRow, error) {
+	options := experiment.ListOptions{All: includeAll}
+	return collectTriesWithOptions(ctx, app, rt, options, nil, false)
+}
+
+func collectTriesWithOptions(ctx context.Context, app *App, rt runtime.Runtime, options experiment.ListOptions,
+	sessions []runtime.Session, sessionsSet bool) ([]tui.TryRow, error) {
 	service, err := newExperimentService(app)
 	if err != nil {
 		return nil, err
 	}
-	items, diagnostics, listErr := service.List(ctx, experiment.ListOptions{All: includeAll})
+	items, diagnostics, listErr := service.List(ctx, options)
 	warnExperimentDiagnostics(app, diagnostics)
-	sessions, _ := rt.List(ctx)
+	if !sessionsSet {
+		sessions, _ = rt.List(ctx)
+	}
 	rows := make([]tui.TryRow, 0, len(items))
 	for _, item := range items {
 		row := tui.TryRow{Item: item}
@@ -746,6 +754,8 @@ func applyTryAction(ctx context.Context, app *App, rt runtime.Runtime, request t
 // ordinary repository inventory suppresses active and deprecated Tries.
 type repoCollectOptions struct {
 	IncludeTries bool
+	Sessions     []runtime.Session
+	SessionsSet  bool
 }
 
 // collectRepos builds the default repository view: what exists, plus how much
@@ -783,7 +793,10 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 	for _, t := range tasks {
 		byRepo[t.RepoPath] = append(byRepo[t.RepoPath], t)
 	}
-	sessions, _ := rt.List(ctx)
+	sessions := options.Sessions
+	if !options.SessionsSet {
+		sessions, _ = rt.List(ctx)
+	}
 	notesByRepo := map[string][]*note.Note{}
 	if app.Notes != nil {
 		allNotes, noteErr := app.Notes.List("")

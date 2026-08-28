@@ -30,7 +30,7 @@ lang: zh-TW
 | remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
-| activity/data | `journal`、`stats …`、`cache …` |
+| activity/data | `summary`、`journal`、`stats …`、`cache …` |
 | help | `help [topic]` |
 
 已安裝 binary 的精確資訊請執行 `dev <command> --help`；本站描述的是 freshness metadata 指定的 repository version。

@@ -115,6 +115,8 @@ only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 - Activity stats: sampler, git backfill, WakaTime import, heatmap.
 - Development journal generation with author/range/granularity controls,
   AI-friendly Markdown/JSON, optional diff metrics and current WIP context.
+- Machine-wide project summaries with adaptive Markdown, complete JSON,
+  repository/Try context, attention filtering and recent commit hints.
 - Interactive TASKS / REPOS / TRY / REMOTE dashboard with vim navigation,
   full-screen help/forms, lifecycle actions, lazy forge inventory, private XDG
   caches, local-kind matching and confirmed clone.

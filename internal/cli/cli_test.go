@@ -1108,6 +1108,37 @@ func TestJournalJSONAndMarkdown(t *testing.T) {
 	}
 }
 
+func TestSummaryJSONAndAdaptiveMarkdown(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("summary", "--no-runtime", "--json")
+	var report struct {
+		SchemaVersion int `json:"schema_version"`
+		Capabilities  struct {
+			RuntimeCollected bool `json:"runtime_collected"`
+		} `json:"capabilities"`
+		Projects []struct {
+			Name string `json:"name"`
+			Path string `json:"path"`
+		} `json:"projects"`
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("summary json: %v\n%s", err, out)
+	}
+	if report.SchemaVersion != 1 || report.Capabilities.RuntimeCollected || len(report.Projects) != 1 || report.Projects[0].Path != h.repo.Root {
+		t.Fatalf("summary report = %+v", report)
+	}
+
+	h.repo.Write("dirty.txt", "work\n")
+	out = h.mustRun("summary", "--no-runtime")
+	if !strings.Contains(out, "Active work") || !strings.Contains(out, "### demo") || !strings.Contains(out, "dirty") {
+		t.Fatalf("adaptive summary:\n%s", out)
+	}
+	out = h.mustRun("summary", "--no-runtime", "--detail", "compact")
+	if !strings.Contains(out, "Project index") || strings.Contains(out, "### demo") {
+		t.Fatalf("compact summary:\n%s", out)
+	}
+}
+
 func TestRepoRemoteCachedErrorsWhenMissing(t *testing.T) {
 	h := newHarness(t)
 	_, _, err := h.run("repo", "remote", "--cached")

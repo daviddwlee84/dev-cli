@@ -145,6 +145,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		newTriesCmd(app),
 		newGraduateCmd(app),
 		newJournalCmd(app),
+		newSummaryCmd(app),
 		newStatsCmd(app),
 		newHelpTopicCmd(app),
 		newSkillCmd(app),

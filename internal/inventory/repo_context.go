@@ -38,6 +38,8 @@ type RepoCheckout struct {
 	StatusErr    error
 	Exists       bool
 	LastActivity time.Time
+	LastCommit   time.Time
+	LastSubject  string
 	Sessions     []runtime.Session
 	Tasks        []*task.Task
 	Ownership    CheckoutOwnership
@@ -122,7 +124,7 @@ func CollectRepoContext(ctx context.Context, r repo.Repo, tasks []*task.Task,
 		main.Status, main.StatusErr = gitx.StatusOf(ctx, r.Path)
 		main.Worktree.Branch = main.Status.Branch
 		main.Worktree.Detached = main.Status.Detached
-		main.LastActivity = checkoutActivity(ctx, r.Path, main.Status)
+		main.LastActivity, main.LastCommit, main.LastSubject = checkoutActivity(ctx, r.Path, main.Status)
 	}
 	out.Checkouts = append(out.Checkouts, main)
 
@@ -142,7 +144,7 @@ func CollectRepoContext(ctx context.Context, r repo.Repo, tasks []*task.Task,
 				}
 				if checkout.Exists && !w.Prunable {
 					checkout.Status, checkout.StatusErr = gitx.StatusOf(ctx, w.Path)
-					checkout.LastActivity = checkoutActivity(ctx, w.Path, checkout.Status)
+					checkout.LastActivity, checkout.LastCommit, checkout.LastSubject = checkoutActivity(ctx, w.Path, checkout.Status)
 				}
 				if IsEphemeralWorktree(w.Path, w.Branch) {
 					checkout.Ownership = CheckoutEphemeral
@@ -204,15 +206,18 @@ func pathIsDir(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-func checkoutActivity(ctx context.Context, path string, status gitx.Status) time.Time {
+func checkoutActivity(ctx context.Context, path string, status gitx.Status) (time.Time, time.Time, string) {
 	latest := status.LatestChange
-	if unix, _, err := gitx.LastCommit(ctx, path); err == nil && unix > 0 {
-		commit := time.Unix(unix, 0)
+	var commit time.Time
+	var subject string
+	if unix, lastSubject, err := gitx.LastCommit(ctx, path); err == nil && unix > 0 {
+		commit = time.Unix(unix, 0)
 		if commit.After(latest) {
 			latest = commit
 		}
+		subject = lastSubject
 	}
-	return latest
+	return latest, commit, subject
 }
 
 func assignTasks(out *RepoContext, tasks []*task.Task) {

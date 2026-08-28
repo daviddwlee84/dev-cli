@@ -517,6 +517,7 @@ dev gitignore                  # .gitignore from GitHub's templates + the rest
 dev adopt                      # import existing worktrees/sessions as tasks
 
 dev stats --heatmap            # where the time actually went
+dev summary                    # current machine-wide project snapshot
 dev journal                    # today's commits plus current task/WIP context
 dev help worktrees             # quick-reference pages for the workflow
 ```
@@ -560,6 +561,25 @@ dev note reindex                         # explicit rebuild
 `dev note list/search/show --json` expose complete note records. Structured task
 systems such as td/beads remain optional future adapters rather than creating
 dot-folders automatically.
+
+### Machine-wide summary
+
+`dev summary` is the quick context dump for the whole machine. It combines
+repositories, present Tries, worktrees, tasks, runtime sessions, recovery risk,
+latest activity and one recent commit into Markdown suitable for a person or an
+agent. Active work is expanded; quiet projects remain in a compact index:
+
+```bash
+dev summary
+dev summary --attention
+dev summary --detail compact --no-runtime
+dev summary --recent-commits 3 --sizes
+dev summary --json | jq '.projects[] | select(.active)'
+dev summary | opencode run "give me a quick view of this machine"
+```
+
+Use `dev journal` when the question has a date range, and `dev repo context`
+when one repository needs every checkout/task/session detail.
 
 ### Development journal
 

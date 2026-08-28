@@ -26,7 +26,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | remote fleet | `fleet list`, `fleet status`, `fleet sync`, `fleet open`, `fleet config …` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
-| activity/data | `journal`, `stats …`, `cache …` |
+| activity/data | `summary`, `journal`, `stats …`, `cache …` |
 | help | `help [topic]` |
 
 Run `dev <command> --help` for the installed binary; this site describes the repository version identified in its freshness metadata.

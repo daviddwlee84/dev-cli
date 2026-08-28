@@ -120,6 +120,7 @@ nav:
       - Isolation Boundaries and Glossary: concepts/isolation-glossary.md
   - Using dev-cli:
       - Change-Stream Workflow: guides/change-stream-workflow.md
+      - Machine Summary: guides/machine-summary.md
       - Development Journal: guides/dev-journal.md
       - Worktrees and Provisioning: guides/worktrees-provisioning.md
       - Parallel Agents and Runtimes: guides/parallel-agents-runtimes.md

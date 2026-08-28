@@ -903,6 +903,21 @@ Show the full context of the current directory
 dev status
 ```
 
+### `dev summary`
+
+Generate an agent-ready snapshot of this machine's projects
+
+```
+dev summary [query] [flags]
+```
+
+- `--attention` — only projects with active work or recovery risk
+- `--detail` — Markdown detail: auto, compact or full
+- `--include-history` — include archived, evicted and graduated Try history
+- `--json` — emit the complete stable JSON snapshot
+- `--recent-commits` — recent commits per Git project (0 to omit)
+- `--sizes` — include cached or measured logical disk usage
+
 ### `dev sweep`
 
 Review stale tasks and drifted state, and act on them
