@@ -75,7 +75,7 @@ d         進入確認；y 才刪除
 Esc       不改資料並返回
 ```
 
-可選的 REPOS column `notes` 顯示數量。Table 寬度有限，因此預設不啟用；notes 存在時，repository 與 task detail 一律顯示數量與最新 preview。
+可選的 REPOS column `notes` 顯示數量。Table 寬度有限，因此預設不啟用。Notes 存在時，repository detail 顯示數量與最新 preview；task 能解析到已載入 repository row 時，task detail 才會顯示。
 
 不使用 TUI 也能操作同一份 source of truth：
 
@@ -89,6 +89,8 @@ dev note delete <id-or-prefix>       # 會確認
 dev note path api
 dev note reindex
 ```
+
+Note ID prefix 必須唯一，且至少八個字元。
 
 Configured `paths.state_dir/notes` 下的 Markdown 是 durable data；`$XDG_CACHE_HOME/dev/notes.db` 只是可重建的 search index。精確 flags 請見[命令與設定 reference](../reference/commands-config.md)中的完整 generated command reference。
 

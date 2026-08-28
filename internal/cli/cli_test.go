@@ -1325,6 +1325,9 @@ func TestNoteDeleteRequiresYesOutsideTTY(t *testing.T) {
 	if out := h.mustRun("note", "list", "demo"); !strings.Contains(out, "No notes") {
 		t.Errorf("deleted note remains: %q", out)
 	}
+	if out := strings.TrimSpace(h.mustRun("note", "list", "demo", "--json")); out != "[]" {
+		t.Errorf("empty JSON note list = %q, want []", out)
+	}
 }
 
 func TestNoteAddEditorAndEmptyBodyGuard(t *testing.T) {

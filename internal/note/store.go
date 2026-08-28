@@ -124,7 +124,7 @@ func (s *Store) List(repositoryID string) ([]*Note, error) {
 	if err != nil {
 		return nil, err
 	}
-	var notes []*Note
+	notes := make([]*Note, 0, len(paths))
 	for _, path := range paths {
 		n, err := s.read(path)
 		if err != nil {

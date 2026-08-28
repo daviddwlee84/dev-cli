@@ -3,6 +3,7 @@ package note_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -70,6 +71,29 @@ func TestSearchRepositoryScopeAndUnicode(t *testing.T) {
 	hits, err = i.Search("改善", repoID, 10)
 	if err != nil || len(hits) != 1 {
 		t.Errorf("unicode hits=%+v err=%v", hits, err)
+	}
+}
+
+func TestSearchUnicodeFallbackEscapesLIKEWildcards(t *testing.T) {
+	i := index(t)
+	literal := indexedNote(noteID, repoID, "dev-cli", `進度 100% 完成；項目_甲；路徑 C:\tmp`)
+	wildcardOnly := indexedNote(
+		"33333333-3333-4333-8333-333333333333",
+		repoID,
+		"dev-cli",
+		`進度 100x 完成；項目X甲；路徑 C:Xtmp`,
+	)
+	if err := i.Rebuild([]*note.Note{literal, wildcardOnly}); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{`進度 100%`, `項目_甲`, `路徑 C:\tmp`} {
+		hits, err := i.Search(query, repoID, 10)
+		if err != nil {
+			t.Fatalf("Search(%q): %v", query, err)
+		}
+		if len(hits) != 1 || hits[0].ID != literal.ID {
+			t.Errorf("Search(%q) = %+v, want only literal wildcard characters", query, hits)
+		}
 	}
 }
 
@@ -151,6 +175,9 @@ func TestSearchLiteralPunctuationDoesNotBecomeFTSSyntax(t *testing.T) {
 }
 
 func TestIndexDatabaseIsPrivate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows privacy follows the containing directory ACL")
+	}
 	path := filepath.Join(t.TempDir(), "cache", "notes.db")
 	i, err := note.OpenIndex(path)
 	if err != nil {

@@ -41,6 +41,8 @@ dev note reindex
 dev note path api
 ```
 
+A note ID prefix must be unique and at least eight characters.
+
 `add` requires text or `--editor`; it never creates an empty note. `edit` opens
 a temporary body, then validates and atomically replaces the durable file only
 when the editor succeeds with non-empty content. Tags survive unless `--tag`
@@ -77,8 +79,9 @@ N/Esc/q   return
 ```
 
 The configurable REPOS column `notes` shows a count; it is not enabled by
-default because the table is width-constrained. Repo/task detail always shows
-count + latest preview when notes exist.
+default because the table is width-constrained. Repo detail shows count +
+latest preview when notes exist; task detail does so when the task resolves to a
+loaded repository row.
 
 ## What is not a quick note
 
@@ -101,4 +104,5 @@ tasks into quick notes or initialize either tool automatically.
   after switching repositories; never remove that guard from `noteListMsg`.
 - Deleting `notes.db` deletes no thoughts; the next search rebuilds it.
 - Deleting a Markdown file is durable deletion and requires confirmation.
-- The FTS database contains full private note bodies and is mode 0600.
+- The FTS database contains full note bodies. Note files and the index use mode
+  0600 on Unix; Windows privacy follows the containing directory's ACL.

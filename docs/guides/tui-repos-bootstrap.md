@@ -71,7 +71,7 @@ d         enter confirmation; y deletes
 Esc       return without changing data
 ```
 
-The optional REPOS column `notes` shows a count. It is off by default because the table is width-constrained; repository and task detail always show the count and latest preview when notes exist.
+The optional REPOS column `notes` shows a count. It is off by default because the table is width-constrained. Repository detail shows the count and latest preview when notes exist; task detail does so when the task resolves to a loaded repository row.
 
 The same source-of-truth workflow is available without the TUI:
 
@@ -85,6 +85,8 @@ dev note delete <id-or-prefix>       # confirms
 dev note path api
 dev note reindex
 ```
+
+A note ID prefix must be unique and at least eight characters.
 
 Markdown under configured `paths.state_dir/notes` is durable; `$XDG_CACHE_HOME/dev/notes.db` is only a rebuildable search index. See the [complete generated command reference](../reference/commands-config.md#complete-generated-command-reference) for exact flags.
 

@@ -480,17 +480,20 @@ dev note edit <id-or-prefix>
 dev note delete <id-or-prefix>
 ```
 
+An ID prefix must be unique and at least eight characters.
+
 In TASKS/REPOS, `n` quick-adds and `N` opens a browse/search/edit/delete overlay.
 A REMOTE row supports notes only after it has a local clone; TRY keeps `n` for
-creating experiments. Add `notes` to `[tui.repos].columns` for the count; detail
-always shows count and latest preview.
+creating experiments. Add `notes` to `[tui.repos].columns` for the count;
+repository detail shows count/latest preview, and task detail does so when the
+task resolves to a loaded repository row.
 
 Durable Markdown lives under configured
 `paths.state_dir/notes/<catalog-id>/`, defaulting to
 `$XDG_DATA_HOME/dev/notes/<catalog-id>/`. The catalog ID survives path moves,
 symlink indexes and linked worktrees. `dev` does not synchronize notes or
 catalog state; synchronize both when attachments must travel between hosts.
-The private `$XDG_CACHE_HOME/dev/notes.db` is only an FTS index:
+The disposable `$XDG_CACHE_HOME/dev/notes.db` is only an FTS index:
 
 ```bash
 dev cache clear notes                    # Markdown remains

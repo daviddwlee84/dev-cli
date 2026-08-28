@@ -887,7 +887,7 @@ d         enter confirmation; y deletes
 Esc       return without changing data
 ```
 
-The optional REPOS column `notes` shows a count. It is off by default because the table is width-constrained; repository and task detail always show the count and latest preview when notes exist.
+The optional REPOS column `notes` shows a count. It is off by default because the table is width-constrained. Repository detail shows the count and latest preview when notes exist; task detail does so when the task resolves to a loaded repository row.
 
 The same source-of-truth workflow is available without the TUI:
 
@@ -901,6 +901,8 @@ dev note delete <id-or-prefix>       # confirms
 dev note path api
 dev note reindex
 ```
+
+A note ID prefix must be unique and at least eight characters.
 
 Markdown under configured `paths.state_dir/notes` is durable; `$XDG_CACHE_HOME/dev/notes.db` is only a rebuildable search index. See the [complete generated command reference](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#complete-generated-command-reference) for exact flags.
 
@@ -2855,7 +2857,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 
 Latin note queries use term-wise prefix FTS and SQLite ranking. Non-ASCII queries use literal term-wise substring matching because SQLite's `unicode61` tokenizer does not segment arbitrary CJK substrings; those results do not use the same FTS ranking.
 
-Note writes sync the file and atomically rename it on every supported platform. Unix also syncs the containing directory after rename/delete. The Windows implementation cannot provide that directory-fsync step, so a sudden power loss has a narrower durability guarantee there even though ordinary concurrent/process-safe operation remains atomic.
+Note writes sync the file and atomically rename it on every supported platform. Unix also syncs the containing directory after rename/delete. The Windows implementation cannot provide that directory-fsync step, so a sudden power loss has a narrower durability guarantee there. Concurrent mutations by cooperating `dev` processes are serialized and each Markdown replacement is atomic; arbitrary external writers do not participate in that lock.
 
 ### Pull-request completion is not tracked automatically
 
@@ -2981,7 +2983,7 @@ tested_with: optional
 | `done --pr` leaves task active | [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
-| quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
+| quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
 | current GitHub Flow has six branch/PR steps and no deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official, checked 2026-08-28 |
 | linked worktrees share repository data but own files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official, checked 2026-08-28 |
 | Conventional Commits structure | [Branches and commits](https://daviddwlee84.github.io/dev-cli/git/branches-commits-prs/) | [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) | versioned standard |
@@ -4120,7 +4122,7 @@ d         進入確認；y 才刪除
 Esc       不改資料並返回
 ```
 
-可選的 REPOS column `notes` 顯示數量。Table 寬度有限，因此預設不啟用；notes 存在時，repository 與 task detail 一律顯示數量與最新 preview。
+可選的 REPOS column `notes` 顯示數量。Table 寬度有限，因此預設不啟用。Notes 存在時，repository detail 顯示數量與最新 preview；task 能解析到已載入 repository row 時，task detail 才會顯示。
 
 不使用 TUI 也能操作同一份 source of truth：
 
@@ -4134,6 +4136,8 @@ dev note delete <id-or-prefix>       # 會確認
 dev note path api
 dev note reindex
 ```
+
+Note ID prefix 必須唯一，且至少八個字元。
 
 Configured `paths.state_dir/notes` 下的 Markdown 是 durable data；`$XDG_CACHE_HOME/dev/notes.db` 只是可重建的 search index。精確 flags 請見[命令與設定 reference](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/)中的完整 generated command reference。
 
@@ -6121,7 +6125,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 
 Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII query 改用 literal term-wise substring matching，因為 SQLite 的 `unicode61` tokenizer 不會切分任意 CJK substrings；這些結果不使用相同的 FTS ranking。
 
-所有支援平台的 note write 都會 sync file 並 atomic rename。Unix 也會在 rename/delete 後 sync containing directory。Windows implementation 無法提供 directory-fsync 步驟，因此 sudden power loss 時的 durability guarantee 較窄，但一般 concurrent/process-safe operation 仍保持 atomic。
+所有支援平台的 note write 都會 sync file 並 atomic rename。Unix 也會在 rename/delete 後 sync containing directory。Windows implementation 無法提供 directory-fsync 步驟，因此 sudden power loss 時的 durability guarantee 較窄。Cooperating `dev` processes 的 concurrent mutations 會被 serialized，且每次 Markdown replacement 都是 atomic；任意 external writer 不會參與這個 lock。
 
 ### Pull request completion 不會自動追蹤
 
@@ -6250,7 +6254,7 @@ tested_with: optional
 | `done --pr` 保持 task active | [變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktree 與 provisioning](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
-| quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
+| quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
 | 現行 GitHub Flow 有六個 branch/PR steps 且沒有 deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official，2026-08-28 查核 |
 | linked worktree 共享 repository data，但有自己的 files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/zh-TW/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official，2026-08-28 查核 |
 | Conventional Commits structure | [Branch 與 commit](https://daviddwlee84.github.io/dev-cli/zh-TW/git/branches-commits-prs/) | [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) | versioned standard |

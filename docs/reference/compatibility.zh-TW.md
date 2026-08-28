@@ -33,7 +33,7 @@ lang: zh-TW
 
 Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII query 改用 literal term-wise substring matching，因為 SQLite 的 `unicode61` tokenizer 不會切分任意 CJK substrings；這些結果不使用相同的 FTS ranking。
 
-所有支援平台的 note write 都會 sync file 並 atomic rename。Unix 也會在 rename/delete 後 sync containing directory。Windows implementation 無法提供 directory-fsync 步驟，因此 sudden power loss 時的 durability guarantee 較窄，但一般 concurrent/process-safe operation 仍保持 atomic。
+所有支援平台的 note write 都會 sync file 並 atomic rename。Unix 也會在 rename/delete 後 sync containing directory。Windows implementation 無法提供 directory-fsync 步驟，因此 sudden power loss 時的 durability guarantee 較窄。Cooperating `dev` processes 的 concurrent mutations 會被 serialized，且每次 Markdown replacement 都是 atomic；任意 external writer 不會參與這個 lock。
 
 ### Pull request completion 不會自動追蹤
 

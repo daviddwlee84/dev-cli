@@ -13,7 +13,8 @@ dev note edit <id-or-prefix>
 dev note delete <id-or-prefix>
 ```
 
-Inside a repo, `--repo` is optional.
+Inside a repo, `--repo` is optional. An ID prefix must be unique and at least
+eight characters.
 
 ## Choose the right note-like field
 
@@ -40,17 +41,21 @@ j/k move · / search · Enter expand · a/n add · e edit · d delete · Esc bac
 ```
 
 Delete opens a visible confirmation and requires `y`. Editing suspends the TUI,
-opens only the Markdown body in VISUAL/EDITOR, validates non-empty content, then
-atomically updates the source and FTS index. If another process changed the note
-while the editor was open, dev rejects the stale update and reports where the
-edited temporary body was preserved.
+opens only the Markdown body in VISUAL/EDITOR, validates non-empty content,
+atomically replaces the durable Markdown source, then updates the disposable
+index. A later search reconciles a stale index. If another process changed the
+note while the editor was open, dev rejects the stale update and reports where
+the edited temporary body was preserved.
 
 ## Where notes live
 
 ```text
-<paths.state_dir>/notes/<catalog-repo-id>/<note-id>.md  durable, mode 0600
-$XDG_CACHE_HOME/dev/notes.db                            disposable FTS, mode 0600
+<paths.state_dir>/notes/<catalog-repo-id>/<note-id>.md  durable source
+$XDG_CACHE_HOME/dev/notes.db                            disposable FTS
 ```
+
+Both files use mode 0600 on Unix. On Windows, privacy follows the containing
+directory's ACL rather than Unix permission bits.
 
 `paths.state_dir` defaults to `$XDG_DATA_HOME/dev`. Repository catalog IDs
 survive path moves, symlink indexes and linked worktree paths. A note created

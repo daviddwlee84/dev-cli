@@ -57,6 +57,7 @@ may not be reconstructible. Git-derived rows can be regenerated with
 Quick notes remain ordinary Markdown and can be synced or backed up as files,
 but `dev` does not synchronize them. Synchronize `state_dir/notes` together
 with the catalog assets when stable repository attachment must travel between
-hosts. `notes.db` contains full note bodies for search and is mode 0600, but it
-is still disposable: `dev cache clear notes` followed by `dev note search ...`
-rebuilds it from Markdown.
+hosts. `notes.db` contains full note bodies for search. Note files and the index
+use mode 0600 on Unix; Windows privacy follows the containing directory's ACL.
+The index is still disposable: `dev cache clear notes` followed by
+`dev note search ...` rebuilds it from Markdown.

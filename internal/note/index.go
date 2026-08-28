@@ -288,8 +288,8 @@ FROM notes_fts WHERE `
 	var clauses []string
 	var args []any
 	for _, term := range terms {
-		clauses = append(clauses, "(repository LIKE ? OR tags LIKE ? OR body LIKE ?)")
-		pattern := "%" + term + "%"
+		clauses = append(clauses, `(repository LIKE ? ESCAPE '\' OR tags LIKE ? ESCAPE '\' OR body LIKE ? ESCAPE '\')`)
+		pattern := likePattern(term)
 		args = append(args, pattern, pattern, pattern)
 	}
 	statement += strings.Join(clauses, " AND ")
@@ -313,6 +313,11 @@ FROM notes_fts WHERE `
 		hits = append(hits, h)
 	}
 	return hits, rows.Err()
+}
+
+func likePattern(term string) string {
+	escape := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+	return "%" + escape.Replace(term) + "%"
 }
 
 func ftsQuery(query string) string {

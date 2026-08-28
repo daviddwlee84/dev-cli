@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -68,8 +69,14 @@ func TestCreateWritesReadableMarkdown(t *testing.T) {
 	if strings.Count(text, noteID) != 1 {
 		t.Errorf("note ID should appear once in frontmatter:\n%s", text)
 	}
-	if info, err := os.Stat(created.Path); err != nil || info.Mode().Perm()&0o077 != 0 {
-		t.Errorf("note body can be private; mode=%v err=%v", info.Mode().Perm(), err)
+	if runtime.GOOS != "windows" {
+		info, err := os.Stat(created.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o077 != 0 {
+			t.Errorf("note mode = %o, want owner-only", info.Mode().Perm())
+		}
 	}
 
 	got, err := s.Get(noteID)
