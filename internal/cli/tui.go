@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -200,7 +201,7 @@ func runTUI(app *App) error {
 		return collectReposWithOptions(ctx, app, rt, repoCollectOptions{IncludeTries: true})
 	}
 	reloadRemote := func(ctx context.Context) ([]tui.RemoteRow, error) {
-		return collectRemotes(ctx, app, 200)
+		return collectRemotes(ctx, app)
 	}
 	reloadFleet := func(ctx context.Context) ([]tui.FleetRow, error) {
 		results, _, err := collectFleet(ctx, app, fleetCollectOptions{})
@@ -552,8 +553,8 @@ func runTUI(app *App) error {
 	// Init in the background rather than making the terminal appear frozen
 	// while dozens of repos are probed.
 	model := tui.New(actions, nil, nil).BeginLoading()
-	if cached, ok := cachedRemoteRows(app); ok {
-		model = model.WithRemotes(cached)
+	if cached, ok, stale := cachedRemoteRows(app); ok {
+		model = model.WithRemotes(cached).WithRemotesStale(stale)
 	}
 	if cached := cachedFleetRows(app); len(cached) > 0 {
 		model = model.WithFleet(cached)
@@ -946,17 +947,17 @@ func remoteCachePath() string {
 // cachedRemoteRows reads only the private JSON cache — no repository scan or
 // subprocess — so it is safe on the startup path. Local clone markers are
 // filled when the background local inventory arrives.
-func cachedRemoteRows(app *App) ([]tui.RemoteRow, bool) {
-	cache, ok := forge.LoadCache(remoteCachePath(), app.Cfg.Forge.CacheTTL.Duration)
+func cachedRemoteRows(app *App) ([]tui.RemoteRow, bool, bool) {
+	cache, ok := forge.LoadCacheAny(remoteCachePath())
 	if !ok {
-		return nil, false
+		return nil, false, false
 	}
 	out := make([]tui.RemoteRow, 0, len(cache.Repos))
 	for _, rr := range cache.Repos {
 		out = append(out, tui.RemoteRow{Repo: rr})
 	}
 	applyCatalogRemoteMatches(app, out)
-	return out, true
+	return out, true, !cache.Fresh(app.Cfg.Forge.CacheTTL.Duration)
 }
 
 // cachedRemotesForRepoRows uses the local repo data the dashboard already
@@ -1010,14 +1011,20 @@ func cachedRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, bool) {
 	return matchRemoteLocals(ctx, app, cache.Repos), true
 }
 
+func cachedRemotesAny(ctx context.Context, app *App) ([]tui.RemoteRow, forge.Cache, bool) {
+	cache, ok := forge.LoadCacheAny(remoteCachePath())
+	if !ok {
+		return nil, forge.Cache{}, false
+	}
+	return matchRemoteLocals(ctx, app, cache.Repos), cache, true
+}
+
 // collectRemotes aggregates configured forge CLIs, caches the normalised response, then
 // marks remotes that already have a checkout under the configured scan roots.
 // Calls run concurrently so one slow forge does not serialise the other.
-func collectRemotes(ctx context.Context, app *App, limit int) ([]tui.RemoteRow, error) {
-	if limit <= 0 {
-		limit = app.Cfg.Forge.RemoteLimit
-	}
+func collectRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, error) {
 	type result struct {
+		kind  forge.Kind
 		repos []forge.RemoteRepo
 		err   error
 	}
@@ -1026,49 +1033,105 @@ func collectRemotes(ctx context.Context, app *App, limit int) ([]tui.RemoteRow, 
 	var wg sync.WaitGroup
 	available := 0
 	var unavailable []error
+	expected := map[forge.Kind]bool{}
+	var unavailableKinds []forge.Kind
 	for _, f := range providers {
 		if !f.Available() {
 			// GitHub and GitLab remain opportunistic, but an explicit Azure
 			// target should report why it did not contribute any repositories.
 			if f.Kind() == forge.AzureDevOps {
 				unavailable = append(unavailable, &forge.ErrNoCLI{Kind: forge.AzureDevOps, Bin: "az"})
+				expected[f.Kind()] = true
+				unavailableKinds = append(unavailableKinds, f.Kind())
 			}
 			continue
 		}
+		expected[f.Kind()] = true
 		available++
 		wg.Add(1)
 		go func(f forge.Forge) {
 			defer wg.Done()
-			r, err := f.ListRepos(ctx, limit)
-			ch <- result{repos: r, err: err}
+			r, err := f.ListRepos(ctx)
+			ch <- result{kind: f.Kind(), repos: r, err: err}
 		}(f)
 	}
 	wg.Wait()
 	close(ch)
 	if available == 0 {
+		if cached, _, ok := cachedRemotesAny(ctx, app); ok {
+			if len(unavailable) > 0 {
+				return cached, errors.Join(unavailable...)
+			}
+			return cached, fmt.Errorf("no supported forge CLI is installed")
+		}
 		if len(unavailable) > 0 {
 			return nil, errors.Join(unavailable...)
 		}
 		return nil, fmt.Errorf("no supported forge CLI is installed")
 	}
 
-	var (
-		remoteRepos []forge.RemoteRepo
-		errs        = append([]error(nil), unavailable...)
-	)
+	old, _ := forge.LoadCacheAny(remoteCachePath())
+	byProvider := map[forge.Kind][]forge.RemoteRepo{}
+	statuses := map[forge.Kind]forge.ProviderStatus{}
+	for _, r := range old.Repos {
+		byProvider[r.Forge] = append(byProvider[r.Forge], r)
+	}
+	for kind, status := range old.Providers {
+		statuses[kind] = status
+	}
+	errs := append([]error(nil), unavailable...)
+	now := time.Now().UTC()
+	for _, kind := range unavailableKinds {
+		status := statuses[kind]
+		status.Error = "provider CLI unavailable"
+		statuses[kind] = status
+	}
 	for res := range ch {
 		if res.err != nil {
 			errs = append(errs, res.err)
+			status := statuses[res.kind]
+			status.Error = res.err.Error()
+			if len(byProvider[res.kind]) == 0 && len(res.repos) > 0 {
+				byProvider[res.kind] = res.repos
+				status.FetchedAt = now
+				status.Complete = false
+			}
+			statuses[res.kind] = status
+			continue
 		}
-		remoteRepos = append(remoteRepos, res.repos...)
+		byProvider[res.kind] = res.repos
+		statuses[res.kind] = forge.ProviderStatus{FetchedAt: now, Complete: true}
 	}
-	// Cache partial results too. They are exactly what was observed, and a
-	// partial list is more useful on the next switch than another six-second
-	// wait merely to rediscover the same provider failure.
-	if len(remoteRepos) > 0 && limit >= app.Cfg.Forge.RemoteLimit {
-		_ = forge.SaveCache(remoteCachePath(), remoteRepos)
+	var remoteRepos []forge.RemoteRepo
+	complete := true
+	providerStatuses := map[forge.Kind]forge.ProviderStatus{}
+	for kind := range expected {
+		status, ok := statuses[kind]
+		if !ok || !status.Complete {
+			complete = false
+		}
+		if ok {
+			providerStatuses[kind] = status
+		}
+		remoteRepos = append(remoteRepos, byProvider[kind]...)
+	}
+	sortRemoteRepos(remoteRepos)
+	if len(remoteRepos) > 0 {
+		_ = forge.SaveCacheState(remoteCachePath(), forge.Cache{
+			Version: forge.CacheVersion, FetchedAt: now, Complete: complete,
+			Providers: providerStatuses, Repos: remoteRepos,
+		})
 	}
 	return matchRemoteLocals(ctx, app, remoteRepos), errors.Join(errs...)
+}
+
+func sortRemoteRepos(repos []forge.RemoteRepo) {
+	sort.SliceStable(repos, func(i, j int) bool {
+		if !repos[i].UpdatedAt.Equal(repos[j].UpdatedAt) {
+			return repos[i].UpdatedAt.After(repos[j].UpdatedAt)
+		}
+		return repos[i].Label() < repos[j].Label()
+	})
 }
 
 func configuredForges(app *App) []forge.Forge {

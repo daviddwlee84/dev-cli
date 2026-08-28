@@ -85,7 +85,8 @@ type Worktree struct {
 
 // Forge configures the combined remote inventory.
 type Forge struct {
-	// RemoteLimit is requested from each provider. GitHub caps it at 100.
+	// RemoteLimit is a deprecated compatibility field. Inventory is now fully
+	// paginated; old generated configs containing remote_limit remain valid.
 	RemoteLimit int `toml:"remote_limit"`
 	// CacheTTL makes the REMOTE TUI view instant after its first load; r always
 	// refreshes explicitly.
@@ -319,7 +320,7 @@ func (c Config) Validate() error {
 		return fmt.Errorf("bootstrap.max_depth must be zero (unlimited) or positive")
 	}
 	if c.Forge.RemoteLimit < 0 {
-		return fmt.Errorf("forge.remote_limit must be zero (use default) or positive")
+		return fmt.Errorf("deprecated forge.remote_limit must be zero or positive")
 	}
 	seenAzureTargets := map[string]bool{}
 	for i, target := range c.Forge.AzureDevOps {

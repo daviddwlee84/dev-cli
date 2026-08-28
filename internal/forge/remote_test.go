@@ -107,7 +107,7 @@ func TestRemoteParsersRejectInvalidJSON(t *testing.T) {
 	if _, err := parseGitHubRepos("not json"); err == nil || !strings.Contains(err.Error(), "gh api user/repos") {
 		t.Errorf("github error = %v", err)
 	}
-	if _, err := parseGitLabRepos("not json"); err == nil || !strings.Contains(err.Error(), "glab repo list") {
+	if _, err := parseGitLabRepos("not json"); err == nil || !strings.Contains(err.Error(), "glab api projects") {
 		t.Errorf("gitlab error = %v", err)
 	}
 	if _, err := parseAzureDevOpsRepos("not json"); err == nil || !strings.Contains(err.Error(), "az repos list") {

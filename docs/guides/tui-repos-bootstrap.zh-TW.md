@@ -60,7 +60,12 @@ y         開啟 copy/context actions
 
 TRY 管理低成本 experiment、可逆 archive/restore、mark 與 graduation。Archive 是整理，不是 deletion 或 disk reclamation。
 
-REMOTE 延遲載入，因此 startup 不等待 network。Enter 開啟 local clone；`c` 在 clone 缺少的 repository 前確認；`r` 更新 forge inventories 與 private XDG cache。只有 REMOTE row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，不會改成 repository note。
+REMOTE 延遲載入，因此 startup 不等待 network。Private XDG cache 保存完整的
+paginated inventory；fresh rows 不需要 network，stale rows 仍可搜尋並在背景
+refresh。Enter 開啟 local clone；`c` 在 clone 缺少的 repository 前確認；`r`
+強制更新 forge inventories。使用 `/vis:private` 可精確過濾 visibility。只有 REMOTE
+row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，
+不會改成 repository note。
 
 ## Repository quick notes
 

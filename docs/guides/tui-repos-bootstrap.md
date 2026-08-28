@@ -56,7 +56,13 @@ Expanded rows explain every linked worktree, including harness-owned `(ephemeral
 
 TRY handles low-cost experiments, reversible archive/restore, marking, and graduation. Archive is organization, not deletion or disk reclamation.
 
-REMOTE loads lazily so startup does not wait for the network. Enter opens a local clone; `c` confirms before cloning an absent repository; `r` refreshes forge inventories and their private XDG cache. Notes are enabled only after a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a new Try rather than a repository note.
+REMOTE loads lazily so startup does not wait for the network. Its private XDG
+cache holds the complete paginated inventory. Fresh rows require no network;
+stale rows stay searchable while background refresh runs. Enter opens a local
+clone; `c` confirms before cloning an absent repository; `r` forces a refresh.
+Use `/vis:private` for an exact visibility filter. Notes are enabled only after
+a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a
+new Try rather than a repository note.
 
 ## Repository quick notes
 

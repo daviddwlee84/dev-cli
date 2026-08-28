@@ -1230,6 +1230,7 @@ func TestRemoteFilterUsesNameDescriptionAndProvider(t *testing.T) {
 		remoteRow(forge.GitHub, "owner/api", ""),
 		remoteRow(forge.GitLab, "group/web", ""),
 	}
+	rows[1].Repo.Visibility = "public"
 	actions := newActions(&recorder{}, nil)
 	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
 	m := tui.New(actions, nil, nil)
@@ -1240,6 +1241,14 @@ func TestRemoteFilterUsesNameDescriptionAndProvider(t *testing.T) {
 	out := m.View()
 	if !strings.Contains(out, "group/web") || strings.Contains(out, "owner/api") {
 		t.Errorf("remote search should match provider + name terms:\n%s", out)
+	}
+	m = send(m, key("esc"), key("/"))
+	for _, k := range typeText("vis:private") {
+		m = send(m, k)
+	}
+	out = m.View()
+	if !strings.Contains(out, "owner/api") || strings.Contains(out, "group/web") {
+		t.Errorf("structured visibility filter failed:\n%s", out)
 	}
 }
 

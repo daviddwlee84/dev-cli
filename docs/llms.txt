@@ -16,6 +16,7 @@
 ### Using dev-cli
 
 - [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/): Run a dev-cli change stream through start, park, resume, review or integration, and conservative cleanup.
+- [Development journal](https://daviddwlee84.github.io/dev-cli/guides/dev-journal/): Generate daily, weekly, or long-range development journals for people, scripts, and AI agents.
 - [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/): Choose the owner and location of each worktree, then provision ignored files and dependencies safely.
 - [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/): Coordinate several coding agents around change-stream ownership, explicit mutation boundaries, and replaceable runtimes.
 - [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/): Inventory repositories, tasks, and live runtime activity across SSH-reachable machines with dev fleet, and safely fast-forward a branch between them.
@@ -58,6 +59,7 @@
 ### 使用 dev-cli
 
 - [變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/): 使用 dev-cli 讓變更流依序經過 start、park、resume、review/integration 與保守 cleanup。
+- [Development journal](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dev-journal/): 產生日、週或長時間範圍的 development journal，供人、script 與 AI agent 使用。
 - [Worktree 與環境佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/): 選擇每個 worktree 的 owner 與位置，再安全佈建 ignored files 與 dependencies。
 - [平行 Agent 與 Runtime](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/): 以變更流 ownership、明確 mutation boundary 與可替換 runtime 協調多個 coding agents。
 - [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/): 透過 dev fleet 在 SSH 可連線的多台機器間盤點 repository、task 與 live runtime activity，並安全地在機器間 fast-forward 一個 branch。

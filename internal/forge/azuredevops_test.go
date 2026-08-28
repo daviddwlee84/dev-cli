@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestAzureDevOpsListReposKeepsPartialResultsAndCapsLimit(t *testing.T) {
+func TestAzureDevOpsListReposKeepsPartialResults(t *testing.T) {
 	logPath := installFakeAz(t, `
 if [ "$1" = "extension" ]; then
   printf 'azure-devops\n'
@@ -29,11 +29,11 @@ esac
 		{Organization: "https://dev.azure.com/acme", Project: "Platform"},
 		{Organization: "https://dev.azure.com/acme", Project: "Broken"},
 	})
-	repos, err := adapter.ListRepos(t.Context(), 1)
+	repos, err := adapter.ListRepos(t.Context())
 	if err == nil || !strings.Contains(err.Error(), "Broken") {
 		t.Fatalf("partial error = %v", err)
 	}
-	if len(repos) != 1 || repos[0].FullName != "acme/Platform/alpha" {
+	if len(repos) != 2 || repos[0].FullName != "acme/Platform/alpha" || repos[1].FullName != "acme/Platform/zeta" {
 		t.Fatalf("repos = %+v", repos)
 	}
 	log, _ := os.ReadFile(logPath)

@@ -11,10 +11,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
+	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/stats"
 )
+
+type sampleRuntime struct{ sessions []runtime.Session }
+
+func (s sampleRuntime) Name() string    { return "fake" }
+func (s sampleRuntime) Available() bool { return true }
+func (s sampleRuntime) Open(context.Context, string, string) (runtime.OpenResult, error) {
+	return runtime.OpenResult{}, nil
+}
+func (s sampleRuntime) Close(context.Context, string) error                       { return nil }
+func (s sampleRuntime) List(context.Context) ([]runtime.Session, error)           { return s.sessions, nil }
+func (s sampleRuntime) Annotate(context.Context, string, map[string]string) error { return nil }
 
 func open(t *testing.T) *stats.Store {
 	t.Helper()
@@ -220,6 +233,29 @@ func TestBackfillGitFiltersByAuthor(t *testing.T) {
 	}
 	if !s.Empty() {
 		t.Error("commits by another author should not be counted")
+	}
+}
+
+func TestSampleRecognizesExternalLinkedWorktree(t *testing.T) {
+	r := gittest.New(t)
+	wt := filepath.Join(t.TempDir(), "outside", "feature")
+	r.Git("worktree", "add", "-b", "feat/sample", wt)
+	discovered, err := gitx.Discover(context.Background(), r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	repos := []repo.Repo{{Name: "repo", Path: r.Root, CommonDir: discovered.GitCommonDir, HasGit: true}}
+	s := open(t)
+	rt := sampleRuntime{sessions: []runtime.Session{{
+		Handle: "one", Dirs: []string{wt}, AgentStatus: "working",
+	}}}
+	n, err := stats.Sample(context.Background(), s, rt, repos, 5*time.Minute, false)
+	if err != nil || n != 1 {
+		t.Fatalf("Sample = %d, %v", n, err)
+	}
+	rows, err := s.ActivityTotals(stats.Query{Since: time.Now().AddDate(0, 0, -1), Until: time.Now().AddDate(0, 0, 1)})
+	if err != nil || len(rows) != 1 || rows[0].Repo != "repo" || rows[0].Branch != "feat/sample" {
+		t.Fatalf("activity = %+v, %v", rows, err)
 	}
 }
 

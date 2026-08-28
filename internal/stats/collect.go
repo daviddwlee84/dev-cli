@@ -36,7 +36,7 @@ func Sample(ctx context.Context, s *Store, rt runtime.Runtime, repos []repo.Repo
 			continue
 		}
 		for _, dir := range sess.Dirs {
-			r, ok := repoContaining(repos, dir)
+			r, ok := repoContaining(ctx, repos, dir)
 			if !ok {
 				continue
 			}
@@ -74,13 +74,20 @@ func isActive(status string) bool {
 	return false
 }
 
-func repoContaining(repos []repo.Repo, dir string) (repo.Repo, bool) {
+func repoContaining(ctx context.Context, repos []repo.Repo, dir string) (repo.Repo, bool) {
 	var best repo.Repo
 	bestLen := 0
 	for _, r := range repos {
 		if dir == r.Path || strings.HasPrefix(dir, r.Path+"/") {
 			if len(r.Path) > bestLen {
 				best, bestLen = r, len(r.Path)
+			}
+		}
+	}
+	if discovered, err := gitx.Discover(ctx, dir); err == nil {
+		for _, r := range repos {
+			if r.CommonDir != "" && r.CommonDir == discovered.GitCommonDir {
+				return r, true
 			}
 		}
 	}

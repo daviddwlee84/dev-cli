@@ -47,6 +47,11 @@ Task schema 有 `AgentSession`，Herdr inventory 也能顯示 live agent session
 
 `dev config init` 會寫 `forge.cache_ttl = "15m"`。沒有 config file 時，目前 built-in `Forge.CacheTTL` 的 zero value 代表既有 valid cache 不會因 age 被拒絕；explicit `r` 仍會 refresh。Freshness 重要時請執行 `config init` 或設定 TTL。
 
+較舊的 generated config 可能包含 `forge.remote_limit = 100`。此欄位仍可解析，
+但 forge inventory 現在會完整 pagination，因此不再限制 synchronization。
+`dev config init` 不再寫入它；`dev repo remote --limit` 只在完整 inventory 搜尋
+完成後限制 rendered matches。
+
 ### Direct mode 的 lifecycle 較小
 
 Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 會移除 repository 必需的 directory。需要跨機器 reconstruction 時使用 branch-only 或 worktree mode。

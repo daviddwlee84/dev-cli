@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -94,26 +93,31 @@ func lastURL(out string) string {
 // owned, collaborated on, and organisation membership — most recently pushed
 // first. gh api is intentionally used instead of a custom HTTP client:
 // authentication and token refresh stay owned by the forge CLI.
-func (g *gh) ListRepos(ctx context.Context, limit int) ([]RemoteRepo, error) {
+func (g *gh) ListRepos(ctx context.Context) ([]RemoteRepo, error) {
 	if !g.Available() {
 		return nil, &ErrNoCLI{Kind: GitHub, Bin: "gh"}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	if limit <= 0 {
-		limit = 100
+	const pageSize = 100
+	var result []RemoteRepo
+	for page := 1; ; page++ {
+		out, err := run(ctx, "gh", "", "api", "user/repos", "--method", "GET",
+			"-f", "per_page=100", "-f", fmt.Sprintf("page=%d", page),
+			"-f", "sort=pushed", "-f", "direction=desc")
+		if err != nil {
+			return result, err
+		}
+		repos, err := parseGitHubRepos(out)
+		if err != nil {
+			return result, err
+		}
+		result = append(result, repos...)
+		if len(repos) < pageSize {
+			break
+		}
 	}
-	// GitHub caps per_page at 100. The remote view is a navigator, not a
-	// complete backup inventory; / filters this recent working set.
-	if limit > 100 {
-		limit = 100
-	}
-	out, err := run(ctx, "gh", "", "api", "user/repos", "--method", "GET",
-		"-f", "per_page="+strconv.Itoa(limit), "-f", "sort=pushed", "-f", "direction=desc")
-	if err != nil {
-		return nil, err
-	}
-	return parseGitHubRepos(out)
+	return result, nil
 }
 
 func parseGitHubRepos(out string) ([]RemoteRepo, error) {

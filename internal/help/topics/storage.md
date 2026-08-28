@@ -13,7 +13,7 @@ cache so cleanup cannot erase the wrong thing. `paths.state_dir` defaults to
 | `<state_dir>/stats.db` | Git backfill, session samples, WakaTime imports | not always |
 | `<state_dir>/notes/<repo-id>/*.md` | multiple timestamped repository thoughts | no |
 | `$XDG_CACHE_HOME/dev/notes.db` | note full-text search index | yes |
-| `$XDG_CACHE_HOME/dev/remotes.json` | short-lived forge inventory | yes |
+| `$XDG_CACHE_HOME/dev/remotes.json` | complete versioned forge inventory | yes |
 | `$XDG_CACHE_HOME/dev/fleet/v1/` | last successful per-host dev snapshots | yes |
 | `$XDG_CACHE_HOME/dev/gitignore/` | fetched GitHub templates | yes |
 

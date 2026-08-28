@@ -1064,10 +1064,10 @@ func TestRepoRemoteCachedSearchAndLocalMatch(t *testing.T) {
 	cachePath := filepath.Join(config.CacheHome(), "dev", "remotes.json")
 	if err := forge.SaveCache(cachePath, []forge.RemoteRepo{
 		{Forge: forge.GitHub, Name: "demo", FullName: "owner/demo",
-			Description: "API service", URL: "https://github.com/owner/demo", CloneURL: remoteURL},
+			Description: "API service", URL: "https://github.com/owner/demo", CloneURL: remoteURL, Visibility: "private"},
 		{Forge: forge.GitLab, Name: "other", FullName: "group/other",
 			Description: "unrelated", URL: "https://gitlab.com/group/other",
-			CloneURL: "https://gitlab.com/group/other.git"},
+			CloneURL: "https://gitlab.com/group/other.git", Visibility: "public"},
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -1084,12 +1084,34 @@ func TestRepoRemoteCachedSearchAndLocalMatch(t *testing.T) {
 	if !strings.Contains(out, `"local_path"`) || !strings.Contains(out, `"full_name": "owner/demo"`) {
 		t.Errorf("cached JSON should use stable keys and local match:\n%s", out)
 	}
+
+	out = h.mustRun("repo", "remote", "--cached", "--visibility", "private")
+	if !strings.Contains(out, "owner/demo") || strings.Contains(out, "group/other") {
+		t.Errorf("visibility filter failed:\n%s", out)
+	}
+}
+
+func TestJournalJSONAndMarkdown(t *testing.T) {
+	h := newHarness(t)
+	h.repo.Commit("journal.txt", "work\n", "feat: journal work")
+	out := h.mustRun("journal", "--since", "2026-01-01", "--until", "2026-01-01", "--json")
+	var report map[string]any
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("journal json: %v\n%s", err, out)
+	}
+	if report["schema_version"] != float64(1) {
+		t.Fatalf("journal schema: %+v", report)
+	}
+	out = h.mustRun("journal", "--since", "2026-01-01", "--until", "2026-01-01")
+	if !strings.Contains(out, "Development journal") || !strings.Contains(out, "feat: journal work") {
+		t.Fatalf("journal markdown:\n%s", out)
+	}
 }
 
 func TestRepoRemoteCachedErrorsWhenMissing(t *testing.T) {
 	h := newHarness(t)
 	_, _, err := h.run("repo", "remote", "--cached")
-	if err == nil || !strings.Contains(err.Error(), "no fresh remote cache") {
+	if err == nil || !strings.Contains(err.Error(), "no remote cache") {
 		t.Errorf("missing cache should explain how to populate it, got %v", err)
 	}
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -72,26 +71,34 @@ func (g *glab) CloneURL(ref string) string {
 	return "https://gitlab.com/" + strings.TrimSuffix(ref, ".git") + ".git"
 }
 
-// ListRepos lists GitLab projects owned by the authenticated user, most
-// recently active first. glab's broader --member endpoint is avoided here:
-// older releases can hang against GitLab.com, which would freeze the TUI. glab owns authentication and self-hosted instance
-// selection; dev only normalises the JSON into the shared shape.
-func (g *glab) ListRepos(ctx context.Context, limit int) ([]RemoteRepo, error) {
+// ListRepos lists every GitLab project of which the authenticated user is a
+// member, most recently active first. glab owns authentication and self-hosted
+// instance selection; dev only normalises the JSON into the shared shape.
+func (g *glab) ListRepos(ctx context.Context) ([]RemoteRepo, error) {
 	if !g.Available() {
 		return nil, &ErrNoCLI{Kind: GitLab, Bin: "glab"}
 	}
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	if limit <= 0 {
-		limit = 100
+	const pageSize = 100
+	var result []RemoteRepo
+	for page := 1; ; page++ {
+		out, err := run(ctx, "glab", "", "api", "projects", "--method", "GET",
+			"-f", "membership=true", "-f", "simple=true", "-f", "per_page=100",
+			"-f", fmt.Sprintf("page=%d", page), "-f", "order_by=last_activity_at", "-f", "sort=desc")
+		if err != nil {
+			return result, err
+		}
+		repos, err := parseGitLabRepos(out)
+		if err != nil {
+			return result, err
+		}
+		result = append(result, repos...)
+		if len(repos) < pageSize {
+			break
+		}
 	}
-	out, err := run(ctx, "glab", "", "repo", "list", "--mine",
-		"--per-page", strconv.Itoa(limit), "--order", "last_activity_at",
-		"--sort", "desc", "--output", "json")
-	if err != nil {
-		return nil, err
-	}
-	return parseGitLabRepos(out)
+	return result, nil
 }
 
 func parseGitLabRepos(out string) ([]RemoteRepo, error) {
@@ -109,7 +116,7 @@ func parseGitLabRepos(out string) ([]RemoteRepo, error) {
 		LastActivityAt    string `json:"last_activity_at"`
 	}
 	if err := json.Unmarshal([]byte(out), &raw); err != nil {
-		return nil, fmt.Errorf("decode glab repo list: %w", err)
+		return nil, fmt.Errorf("decode glab api projects: %w", err)
 	}
 	result := make([]RemoteRepo, 0, len(raw))
 	for _, r := range raw {

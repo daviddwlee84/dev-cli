@@ -25,10 +25,12 @@ REMOTE still labels their local checkout as `try`. Repos with active work sort
 first. On a first run with no tasks, switch to REPOS and press `s`, or use TRY
 `n` for a low-cost experiment.
 
-REMOTE loads lazily, so dashboard startup never waits on the network. A
-private XDG cache makes later switches instant; `r` refreshes explicitly. It
-marks remotes already cloned under `scan_roots`. Enter opens a local clone; `c`
-asks before cloning an absent repo into `project_root`.
+REMOTE loads lazily, so dashboard startup never waits on the network. Its
+private XDG cache holds the complete paginated inventory. Fresh rows avoid a
+network query; stale rows remain searchable while refresh runs in the
+background. `r` refreshes explicitly. It marks remotes already cloned under
+`scan_roots`. Enter opens a local clone; `c` asks before cloning an absent repo
+into `project_root`. Filters include visibility, for example `vis:private`.
 
 SKILLS also loads lazily, but local listing never contacts the network or
 downloads the provider. It keeps project/global copies of the same skill as

@@ -440,6 +440,25 @@ Quick-reference pages for the git workflow dev assumes
 dev help [topic]
 ```
 
+### `dev journal`
+
+Generate a development journal from Git and current context
+
+```
+dev journal [flags]
+```
+
+- `--all-authors` — include commits by every author
+- `--author` — exact author email (repeatable; default: effective Git user)
+- `--granularity` — detail level: auto, repo, branch or commit
+- `--include-merges` — include merge commits
+- `--json` — emit stable JSON
+- `--max-commits` — maximum commit details in auto/commit output (0 for all)
+- `--metrics` — include files, additions, deletions and churn
+- `-r, --repo` — limit to this repository (repeatable)
+- `--since` — start: today, yesterday, 7d, 4w, 3mo, 1y or YYYY-MM-DD
+- `--until` — inclusive end: today, yesterday or YYYY-MM-DD
+
 ### `dev ls`
 
 List work in progress across every repo
@@ -669,9 +688,11 @@ List and search repositories visible through configured forge CLIs
 dev repo remote [query] [flags]
 ```
 
-- `--cached` — use the fresh XDG cache without querying forge providers
+- `--cached` — use the XDG cache without querying forge providers
 - `--json` — emit JSON
-- `--limit` — maximum repositories requested from each forge (default: config forge.remote_limit)
+- `--limit` — maximum matching repositories to render (0 for all)
+- `--refresh` — force a complete forge inventory refresh
+- `--visibility` — filter visibility: public, private or internal
 
 ### `dev repo sync`
 

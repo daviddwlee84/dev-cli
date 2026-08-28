@@ -30,7 +30,7 @@ lang: zh-TW
 | remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
-| activity/data | `stats …`、`cache …` |
+| activity/data | `journal`、`stats …`、`cache …` |
 | help | `help [topic]` |
 
 已安裝 binary 的精確資訊請執行 `dev <command> --help`；本站描述的是 freshness metadata 指定的 repository version。
@@ -84,7 +84,7 @@ dev config path
 | `[paths]` | scan roots、project/tries/worktree roots、worktree template、state path |
 | `[runtime]` | `auto`、Herdr、tmux、Zellij 或 none，以及 metadata settings |
 | `[worktree]` | ignored includes、linked dirs、setup commands、strategies、timeout |
-| `[forge]` / `[[forge.azure_devops]]` | remote result limit、cache TTL，以及 opt-in Azure organization/project targets |
+| `[forge]` / `[[forge.azure_devops]]` | 完整 remote inventory 的 cache TTL，以及 opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
 | `[stats]` | sampler 與 optional WakaTime import |

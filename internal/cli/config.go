@@ -239,9 +239,8 @@ strategy = "reinstall"
 provision_timeout = "10m"
 
 [forge]
-# The REMOTE dashboard tab queries configured forge CLIs lazily. A short-lived
-# cache makes later switches instant; press r in that tab to refresh explicitly.
-remote_limit = 100
+# The complete REMOTE inventory is cached privately. Fresh cache is reused;
+# stale cache is shown immediately while the TUI refreshes in the background.
 cache_ttl = "15m"
 
 # Azure DevOps inventory is opt-in because az repos list requires both an

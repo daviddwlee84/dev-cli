@@ -48,6 +48,21 @@ func TestCacheExpiryAndMalformed(t *testing.T) {
 	}
 }
 
+func TestLegacyCacheIsUsableButNeverFresh(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "remotes.json")
+	data := `{"fetched_at":"2026-08-28T00:00:00Z","repos":[{"forge":"github","name":"repo","full_name":"owner/repo"}]}`
+	if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cache, ok := forge.LoadCacheAny(path)
+	if !ok || len(cache.Repos) != 1 || cache.Complete || cache.Fresh(0) {
+		t.Fatalf("legacy cache = %+v, ok=%v", cache, ok)
+	}
+	if _, ok := forge.LoadCache(path, time.Hour); ok {
+		t.Fatal("legacy capped cache must trigger refresh")
+	}
+}
+
 func TestSaveCacheRejectsEmptyPath(t *testing.T) {
 	if err := forge.SaveCache("", nil); err == nil {
 		t.Error("empty path should error")

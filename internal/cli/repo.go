@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -698,6 +699,8 @@ func newRepoRemoteCmd(app *App) *cobra.Command {
 	var (
 		jsonOut    bool
 		cachedOnly bool
+		refresh    bool
+		visibility string
 		limit      int
 	)
 	cmd := &cobra.Command{
@@ -710,22 +713,42 @@ under paths.scan_roots.
 
 The TUI exposes the same data in its REMOTE tab and filters it live with /.
 This command is the non-interactive form for scripts, pipes and terminals where
-a full-screen UI is not wanted. Use --cached for an instant, offline result;
-the cache is private and expires according to forge.cache_ttl.`,
+a full-screen UI is not wanted. Fresh complete cache is reused automatically;
+use --cached for an offline result or --refresh to force synchronization. The
+cache is private, and forge.cache_ttl decides when it needs refresh.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var (
 				rows []tui.RemoteRow
 				err  error
 			)
+			if cachedOnly && refresh {
+				return fmt.Errorf("--cached cannot be combined with --refresh")
+			}
+			visibility = strings.ToLower(strings.TrimSpace(visibility))
+			switch visibility {
+			case "", "public", "private", "internal":
+			default:
+				return fmt.Errorf("unknown --visibility %q: want public, private or internal", visibility)
+			}
 			if cachedOnly {
+				var ok bool
+				var cache forge.Cache
+				rows, cache, ok = cachedRemotesAny(ctxOf(), app)
+				if !ok {
+					return fmt.Errorf("no remote cache; run `dev repo remote --refresh` once online")
+				}
+				if !cache.Fresh(app.Cfg.Forge.CacheTTL.Duration) {
+					app.warnf("remote cache is stale or incomplete; run `dev repo remote --refresh`")
+				}
+			} else if !refresh {
 				var ok bool
 				rows, ok = cachedRemotes(ctxOf(), app)
 				if !ok {
-					return fmt.Errorf("no fresh remote cache; run `dev repo remote` once online")
+					rows, err = collectRemotes(ctxOf(), app)
 				}
 			} else {
-				rows, err = collectRemotes(ctxOf(), app, limit)
+				rows, err = collectRemotes(ctxOf(), app)
 			}
 			// Partial results are useful when one forge is authenticated and
 			// the other is not. Render them, then report the partial failure.
@@ -738,6 +761,9 @@ the cache is private and expires according to forge.cache_ttl.`,
 			}
 			var filtered []tui.RemoteRow
 			for _, r := range rows {
+				if visibility != "" && !strings.EqualFold(r.Repo.Visibility, visibility) {
+					continue
+				}
 				hay := strings.ToLower(strings.Join([]string{
 					string(r.Repo.Forge), r.Repo.FullName, r.Repo.Description,
 					r.Repo.Visibility, r.LocalName,
@@ -752,6 +778,15 @@ the cache is private and expires according to forge.cache_ttl.`,
 				if matched {
 					filtered = append(filtered, r)
 				}
+			}
+			sort.SliceStable(filtered, func(i, j int) bool {
+				if !filtered[i].Repo.UpdatedAt.Equal(filtered[j].Repo.UpdatedAt) {
+					return filtered[i].Repo.UpdatedAt.After(filtered[j].Repo.UpdatedAt)
+				}
+				return filtered[i].Repo.Label() < filtered[j].Repo.Label()
+			})
+			if limit > 0 && len(filtered) > limit {
+				filtered = filtered[:limit]
 			}
 
 			if jsonOut {
@@ -790,7 +825,10 @@ the cache is private and expires according to forge.cache_ttl.`,
 	}
 	f := cmd.Flags()
 	f.BoolVar(&jsonOut, "json", false, "emit JSON")
-	f.BoolVar(&cachedOnly, "cached", false, "use the fresh XDG cache without querying forge providers")
-	f.IntVar(&limit, "limit", 0, "maximum repositories requested from each forge (default: config forge.remote_limit)")
+	f.BoolVar(&cachedOnly, "cached", false, "use the XDG cache without querying forge providers")
+	f.BoolVar(&refresh, "refresh", false, "force a complete forge inventory refresh")
+	f.StringVar(&visibility, "visibility", "", "filter visibility: public, private or internal")
+	f.IntVar(&limit, "limit", 0, "maximum matching repositories to render (0 for all)")
+	registerFlagCompletion(cmd, "visibility", fixedCompletions("public", "private", "internal"))
 	return cmd
 }

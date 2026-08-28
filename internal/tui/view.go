@@ -476,7 +476,7 @@ func fitCell(s string, width int) string {
 }
 
 func (m Model) renderRemotes() string {
-	if m.remotesLoading {
+	if m.remotesLoading && len(m.remotes) == 0 {
 		return "  " + styleDim.Render("Loading repositories from forge CLIs…") + "\n"
 	}
 	rows := m.visibleRemotes()
@@ -496,6 +496,9 @@ func (m Model) renderRemotes() string {
 	}
 
 	var b strings.Builder
+	if m.remotesLoading {
+		b.WriteString("  " + styleDim.Render("Showing cached repositories while refreshing…") + "\n")
+	}
 	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-7s  %-*s  %-9s  %-12s  %-7s  %s",
 		"FORGE", nameW, "REPOSITORY", "VIS", "UPDATED", "LOCAL", "DESCRIPTION")) + "\n")
 	from, to := m.window(len(rows))

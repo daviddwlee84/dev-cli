@@ -292,10 +292,12 @@ implicit, and `dev tui tools` shows what is bound here and whether each one is
 actually installed — bindings for missing programs are not offered. A tool
 cannot take a key the dashboard already uses; dev reports the clash on load.
 
-REMOTE loads lazily, so dashboard startup never waits on the network. A private
-15-minute XDG cache makes later switches instant; `r` refreshes all configured
-forge providers.
-`/` searches provider, owner/name and description; enter opens a local clone,
+REMOTE loads lazily, so dashboard startup never waits on the network. Its
+private XDG cache contains the complete paginated inventory. Fresh rows are
+reused without network access; stale rows remain searchable while a background
+refresh runs. `r` forces a refresh of all configured forge providers.
+`/` searches provider, owner/name, visibility and description; `vis:private`
+is an exact visibility filter. Enter opens a local clone,
 and `c` confirms before cloning an absent repo into `project_root`. The same
 inventory is available without the full-screen UI via `dev repo remote [query]`;
 `--cached` is its instant/offline form.
@@ -515,6 +517,7 @@ dev gitignore                  # .gitignore from GitHub's templates + the rest
 dev adopt                      # import existing worktrees/sessions as tasks
 
 dev stats --heatmap            # where the time actually went
+dev journal                    # today's commits plus current task/WIP context
 dev help worktrees             # quick-reference pages for the workflow
 ```
 
@@ -558,9 +561,28 @@ dev note reindex                         # explicit rebuild
 systems such as td/beads remain optional future adapters rather than creating
 dot-folders automatically.
 
+### Development journal
+
+`dev journal` emits Markdown designed for a daily/weekly report or direct input
+to another tool. It does not invoke an AI agent or persist the generated prose:
+
+```bash
+dev journal
+dev journal --since 7d --metrics
+dev journal --since 3mo --granularity branch
+dev journal --author teammate@example.com --since 30d --json
+dev journal --since 7d | opencode run "summarize this development journal"
+```
+
+The default `auto` view expands commits, keeping complete repo/branch totals
+while limiting details to the newest 100 commits. Pass `--max-commits 0` for an
+unabridged report. The current user's report can also include source-separated
+session/WakaTime evidence, task intent and dirty linked worktrees whose latest
+file mtime falls inside the requested calendar-day range.
+
 `dev stats` draws a contribution-style heatmap from two sources: a sampler
 watching live agent sessions (the only way to count time spent reading and
-debugging), and git history (which backfills the past and survives losing the
+debugging, including sessions in external linked worktrees), and git history (which backfills the past and survives losing the
 database). WakaTime can be imported alongside for editor time.
 
 ```bash

@@ -28,6 +28,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Semantic color for human-readable output, controlled by a global `--color auto|always|never` and
   disabled automatically for `NO_COLOR`, `TERM=dumb`, non-TTY writers, and `--json`.
 - Catalog-backed repository quick notes with durable Markdown storage, rebuildable full-text search, CLI commands, and TUI add/browse workflows.
+- `dev journal` Markdown/JSON reports over calendar-day ranges, with author,
+  repository, granularity, truncation and optional Git diff metrics controls.
+- Fully paginated forge inventory with visibility filtering and a versioned,
+  cache-first stale-while-revalidate REMOTE experience.
 - Azure DevOps Services repository inventory, search, cloning, and opt-in forge configuration.
 - An interactive, context-aware `dev start` wizard for managed task creation.
 - Runtime session activation so opened or reused task surfaces can be focused or attached.
@@ -40,6 +44,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - `dev done` no longer closes the runtime, removes the worktree, or deletes the branch; it records
   MERGED and hands cleanup to `dev retire`, so a process can never delete the worktree it is running in.
+- Activity sampling now attributes sessions running in linked worktrees outside
+  the canonical repository path.
 - Focused starts now activate their runtime session after the interactive wizard completes.
 - Corrected command/config documentation to remove the unsupported `dev wt plan --json` example, include Azure forge configuration, and describe shell navigation without implying ordinary command output is evaluated.
 - Corrected bundled skill reference coverage and agent-rule numbering.

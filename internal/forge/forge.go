@@ -54,8 +54,8 @@ type Forge interface {
 	CreateRepo(ctx context.Context, dir string, req RepoRequest) (string, error)
 	// CloneURL renders the clone target for an owner/name reference.
 	CloneURL(ref string) string
-	// ListRepos lists repositories visible to the authenticated user.
-	ListRepos(ctx context.Context, limit int) ([]RemoteRepo, error)
+	// ListRepos lists every repository visible to the authenticated user.
+	ListRepos(ctx context.Context) ([]RemoteRepo, error)
 }
 
 // RemoteRepo is one repository visible through a forge CLI.

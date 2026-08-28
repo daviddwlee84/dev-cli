@@ -26,7 +26,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | remote fleet | `fleet list`, `fleet status`, `fleet sync`, `fleet open`, `fleet config …` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
-| activity/data | `stats …`, `cache …` |
+| activity/data | `journal`, `stats …`, `cache …` |
 | help | `help [topic]` |
 
 Run `dev <command> --help` for the installed binary; this site describes the repository version identified in its freshness metadata.
@@ -80,7 +80,7 @@ Key sections:
 | `[paths]` | scan roots, project/tries/worktree roots, worktree template, state path |
 | `[runtime]` | `auto`, Herdr, tmux, Zellij, or none plus metadata settings |
 | `[worktree]` | ignored includes, linked dirs, setup commands, strategies, timeout |
-| `[forge]` / `[[forge.azure_devops]]` | remote result limit, cache TTL, and opt-in Azure organization/project targets |
+| `[forge]` / `[[forge.azure_devops]]` | complete remote inventory cache TTL and opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
 | `[stats]` | sampler and optional WakaTime import |

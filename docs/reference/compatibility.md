@@ -43,6 +43,12 @@ The task schema has an `AgentSession` field and Herdr inventory can expose live 
 
 `dev config init` writes `forge.cache_ttl = "15m"`. With no config file, the current built-in `Forge.CacheTTL` zero value means an existing valid cache is not rejected by age; explicit `r` refresh still replaces it. Run `config init` or set the TTL when freshness matters.
 
+Older generated configs may contain `forge.remote_limit = 100`. The field is
+still accepted, but complete forge inventories are now paginated and it no
+longer caps synchronization. `dev config init` no longer writes it. The
+`--limit` flag on `dev repo remote` limits rendered matches after the complete
+inventory has been searched.
+
 ### Direct mode has a smaller lifecycle
 
 A direct task uses the canonical checkout and cannot go COLD, because cold cleanup would remove a directory the repository needs. Use branch-only or worktree mode for cross-machine reconstruction.

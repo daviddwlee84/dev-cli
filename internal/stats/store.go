@@ -10,6 +10,8 @@ package stats
 
 import (
 	"database/sql"
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
@@ -51,6 +53,24 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	return s, nil
+}
+
+// OpenReadOnly opens an existing stats database without creating directories,
+// running migrations or otherwise changing durable observation data.
+func OpenReadOnly(path string) (*Store, error) {
+	if _, err := os.Stat(path); err != nil {
+		return nil, err
+	}
+	u := &url.URL{Scheme: "file", Path: path}
+	db, err := sql.Open("sqlite", u.String()+"?mode=ro&_pragma=busy_timeout(5000)")
+	if err != nil {
+		return nil, err
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("open stats read-only: %w", err)
+	}
+	return &Store{db: db}, nil
 }
 
 // Close releases the database.
@@ -223,6 +243,38 @@ type RepoTotal struct {
 	Seconds int
 	Days    int
 	Last    string
+}
+
+// ActivityTotal is one source-separated repo/branch total. Callers must not
+// sum sources blindly: session and WakaTime can describe the same interval.
+type ActivityTotal struct {
+	Repo    string
+	Branch  string
+	Source  Source
+	Seconds int
+}
+
+// ActivityTotals returns source-separated totals for contextual reports.
+func (s *Store) ActivityTotals(q Query) ([]ActivityTotal, error) {
+	clause, args := q.where()
+	rows, err := s.db.Query(`
+SELECT repo, branch, source, SUM(seconds)
+FROM activity `+clause+`
+GROUP BY repo, branch, source
+ORDER BY repo, branch, source`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ActivityTotal
+	for rows.Next() {
+		var item ActivityTotal
+		if err := rows.Scan(&item.Repo, &item.Branch, &item.Source, &item.Seconds); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
 }
 
 // RepoTotals returns seconds per repository, busiest first.

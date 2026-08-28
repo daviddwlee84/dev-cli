@@ -200,6 +200,7 @@ type Model struct {
 	skillsLoaded    bool
 	skillsLoading   bool
 	skillsChecking  bool
+	remotesStale    bool
 	initialLoad     bool
 	loadingLocal    bool
 	sizeLoad        diskusage.Load
@@ -277,6 +278,12 @@ func (m Model) WithRemotes(rows []RemoteRow) Model {
 // WithFleet seeds cached fleet rows while the first live refresh remains lazy.
 func (m Model) WithFleet(rows []FleetRow) Model {
 	m.fleet = rows
+	return m
+}
+
+// WithRemotesStale marks seeded rows for background refresh on first visit.
+func (m Model) WithRemotesStale(stale bool) Model {
+	m.remotesStale = stale
 	return m
 }
 
@@ -714,7 +721,7 @@ func (m *Model) toggleRepo(r RepoRow) {
 func (m Model) visibleRemotes() []RemoteRow {
 	var out []RemoteRow
 	for _, r := range m.remotes {
-		if matches(r.searchText(), m.filter) {
+		if r.matches(m.filter) {
 			out = append(out, r)
 		}
 	}
@@ -1116,6 +1123,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.remoteSet {
 			m.remotes, m.remotesLoaded, m.remotesLoading = msg.remotes, true, false
+			m.remotesStale = msg.err != nil
 		}
 		m.err = msg.err
 		m.forceSizeReload = false
@@ -1135,6 +1143,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case remoteMsg:
 		m.remotes, m.remotesLoaded, m.remotesLoading = msg.rows, true, false
+		m.remotesStale = msg.err != nil
 		m.err = msg.err
 		m.status = ""
 		m.setAt(m.at())
@@ -1983,9 +1992,9 @@ func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 		m.status = "loading configured dev hosts…"
 		return m, m.reloadFleet()
 	}
-	if m.view == ViewRemote && !m.remotesLoaded && !m.remotesLoading {
+	if m.view == ViewRemote && (!m.remotesLoaded || m.remotesStale) && !m.remotesLoading {
 		m.remotesLoading = true
-		m.status = "loading remote repositories…"
+		m.status = "refreshing remote repositories…"
 		return m, m.reloadRemote()
 	}
 	if m.view == ViewSkills && !m.skillsLoaded && !m.skillsLoading {

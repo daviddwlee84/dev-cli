@@ -257,6 +257,23 @@ func (r RemoteRow) searchText() string {
 	}, " "))
 }
 
+func (r RemoteRow) matches(query string) bool {
+	query = strings.ToLower(strings.TrimSpace(query))
+	for _, term := range strings.Fields(query) {
+		key, value, structured := strings.Cut(term, ":")
+		if structured && (key == "vis" || key == "visibility") {
+			if strings.ToLower(r.Repo.Visibility) != value {
+				return false
+			}
+			continue
+		}
+		if !strings.Contains(r.searchText(), term) {
+			return false
+		}
+	}
+	return true
+}
+
 // StatsPanel is the repo activity overlay opened by H.
 type StatsPanel struct {
 	Repo       string

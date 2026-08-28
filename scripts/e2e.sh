@@ -342,6 +342,11 @@ dev stats backfill --since 1mo >/dev/null
 dev_has demo stats --since 1mo || fail "stats did not record the demo repo"
 ok "activity recorded"
 
+step "journal"
+dev_has 'Development journal' journal --since 1y || fail "journal Markdown missing"
+dev_has '"schema_version": 1' journal --since 1y --json || fail "journal JSON contract missing"
+ok "journal rendered Markdown and JSON"
+
 step "skill install"
 dev skill install --no-link >/dev/null
 [[ -f "$HOME/.agents/skills/dev-cli/SKILL.md" ]] || fail "skill not installed"

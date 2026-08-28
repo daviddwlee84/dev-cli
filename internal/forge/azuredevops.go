@@ -128,9 +128,8 @@ func (a *az) CreateRepo(context.Context, string, RepoRequest) (string, error) {
 func (a *az) CloneURL(ref string) string { return ref }
 
 // ListRepos queries every configured organization/project concurrently. Azure
-// CLI does not expose a per-command limit, so the merged inventory is sorted,
-// deduplicated and capped afterwards.
-func (a *az) ListRepos(ctx context.Context, limit int) ([]RemoteRepo, error) {
+// CLI already returns every repository in the selected team project.
+func (a *az) ListRepos(ctx context.Context) ([]RemoteRepo, error) {
 	if len(a.targets) == 0 {
 		return nil, errors.New("Azure DevOps remote inventory needs at least one [[forge.azure_devops]] target")
 	}
@@ -186,12 +185,6 @@ func (a *az) ListRepos(ctx context.Context, limit int) ([]RemoteRepo, error) {
 		}
 		seen[key] = true
 		unique = append(unique, repo)
-	}
-	if limit <= 0 {
-		limit = 100
-	}
-	if len(unique) > limit {
-		unique = unique[:limit]
 	}
 	return unique, errors.Join(errs...)
 }

@@ -113,6 +113,8 @@ only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
   deprecate/reactivate, reversible archive/restore, and identity-preserving
   graduate; no permanent local eviction in Phase 1.
 - Activity stats: sampler, git backfill, WakaTime import, heatmap.
+- Development journal generation with author/range/granularity controls,
+  AI-friendly Markdown/JSON, optional diff metrics and current WIP context.
 - Interactive TASKS / REPOS / TRY / REMOTE dashboard with vim navigation,
   full-screen help/forms, lifecycle actions, lazy forge inventory, private XDG
   caches, local-kind matching and confirmed clone.

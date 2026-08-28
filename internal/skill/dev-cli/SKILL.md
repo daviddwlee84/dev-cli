@@ -186,6 +186,8 @@ dev graduate redis-streams --category Infra   # promote it into a real project
 dev stats --heatmap        # where the time actually went
 dev stats backfill --repo api  # seed one repo; TUI H then b does this in place
 dev stats path             # durable XDG data, not cache
+dev journal                # today's agent-ready development journal
+dev journal --since 7d --metrics | opencode run "summarize this"
 dev cache list             # regenerable forge/fleet/size/gitignore/note-index caches
 dev help worktrees         # quick-reference pages
 ```
@@ -218,10 +220,22 @@ h/l. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions;
 not deletion or disk reclamation. `?` opens the full key map.
 
 REMOTE queries authenticated `gh` and `glab` plus configured Azure DevOps
-organization/project targets lazily, uses a short-lived private cache, and `/`
-filters provider, owner/name and description. Enter opens a local clone; `c`
+organization/project targets lazily and fully paginates every repository the
+account can access. A private cache is shown immediately; stale rows stay
+searchable while refresh runs. `/` filters provider, owner/name, visibility and
+description, with `vis:private` for an exact visibility match. Enter opens a local clone; `c`
 confirms before cloning an absent remote. Use `dev repo remote [query] --json`
-for the non-interactive form; `--cached` avoids a network query.
+for the non-interactive form; `--cached` avoids a network query and `--refresh`
+forces a complete synchronization.
+
+`dev journal` derives calendar-day reports from Git rather than storing a
+second history database. The default current-user report adds existing
+session/WakaTime observations, matching task intent and recent dirty-worktree
+snapshots, clearly separated from committed history. `auto` expands at most 100
+commit details while retaining complete aggregates; `--max-commits 0` is
+unlimited. Use `--author <email>` or `--all-authors` for commit-only team views,
+and `--json` for a stable structured report. dev generates the context only; it
+does not launch the receiving agent.
 
 Azure DevOps inventory is opt-in and cloud-only:
 
