@@ -193,10 +193,13 @@ dev done [task] [flags]
 ```
 
 - `--delete-branch` — delete the branch once its commits are in the base
+- `--dirty` — dirty checkout policy: auto, fail, commit or discard
 - `--ff` — rebase onto the base and fast-forward it
 - `--keep-worktree` — keep the worktree checkout
+- `-m, --message` — commit message for --dirty=commit
 - `--pr` — push and open a pull/merge request instead of merging locally
 - `--push` — push the resulting branch (direct mode pushes its current branch)
+- `-y, --yes` — confirm the selected finish plan (required for non-interactive discard)
 
 ### `dev edit`
 

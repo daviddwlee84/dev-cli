@@ -121,5 +121,7 @@ reports missing tools or failed setup without deleting the usable checkout.
 - `dev done --pr` leaves everything active for review.
 - `dev sweep` reports first; `--apply` is separate.
 
-Dirty checkout removal requires explicit force. Herdr `done` is not a cleanup
-signal, and `--cold --keep-session` is rejected.
+Bare `dev done` on a TTY classifies dirty content against the base before
+offering commit-all or discard-all; unique discard requires `DROP`. Direct
+`dev wt rm` still requires explicit force for a dirty checkout. Herdr `done` is
+not a cleanup signal, and `--cold --keep-session` is rejected.

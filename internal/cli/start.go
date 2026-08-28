@@ -95,7 +95,7 @@ use repo/branch so Herdr can show native nested repository provenance.`,
 				}
 				var confirmed bool
 				spec, confirmed, err = runStartWizard(ctx, app, req)
-				if errors.Is(err, errStartCanceled) {
+				if errors.Is(err, errPromptCanceled) {
 					fmt.Fprintln(app.Out, "Canceled; nothing was created.")
 					return nil
 				}

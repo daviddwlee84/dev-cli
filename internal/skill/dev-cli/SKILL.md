@@ -82,7 +82,8 @@ dev start api --task "token refresh" --base main   # isolated worktree → hot
 dev park --next "add the regression test" --wip    # → warm, session closed
 dev park --cold --push                             # → cold, worktree removed
 dev resume "token refresh"                         # → hot, rebuilt if needed
-dev done --ff                                      # → done, integrated
+dev done                                           # TTY wizard: inspect dirty state, then FF/PR/cleanup
+dev done --ff                                      # explicit → done, integrated
 ```
 
 **Parking is the move that matters.** `dev park --next "…"` is what makes it
@@ -412,7 +413,9 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   `.claude/settings.local.json`: only sticky/plain-Claude profiles opt in.
 - **Removing a worktree never deletes the branch.** Those are separate
   decisions; conflating them is how work gets lost.
-- **`dev done` defaults to reporting.** With neither `--ff` nor `--pr` it
-  explains the options and changes nothing.
+- **Bare `dev done` is interactive only on a TTY.** It reports branch relation
+  and dirty-content equivalence, then offers commit/discard and FF/PR/cleanup.
+  Non-interactive use remains report-only without `--ff`/`--pr`. Unique discard
+  requires `DROP` or explicit `--dirty=discard --yes`.
 - **The stats sampler must be scheduled.** `dev stats` is empty until
   `dev stats backfill` runs once and `dev stats sample` runs periodically.

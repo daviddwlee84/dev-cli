@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -38,11 +39,33 @@ func (e *Error) Unwrap() error { return e.Err }
 
 // run executes git in dir and returns trimmed stdout.
 func run(ctx context.Context, dir string, args ...string) (string, error) {
+	return runEnv(ctx, dir, nil, args...)
+}
+
+// runEnv executes git with task-scoped environment overrides. It is used for
+// alternate-index analysis that must never touch the user's real index.
+func runEnv(ctx context.Context, dir string, overrides []string, args ...string) (string, error) {
 	// -c core.quotepath=false keeps non-ASCII paths readable rather than
 	// octal-escaped, which matters for the Chinese-named files in these repos.
 	full := append([]string{"-c", "core.quotepath=false"}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Dir = dir
+	if len(overrides) > 0 {
+		keys := make(map[string]bool, len(overrides))
+		for _, override := range overrides {
+			key, _, _ := strings.Cut(override, "=")
+			keys[key] = true
+		}
+		env := make([]string, 0, len(os.Environ())+len(overrides))
+		for _, entry := range os.Environ() {
+			key, _, _ := strings.Cut(entry, "=")
+			if !keys[key] {
+				env = append(env, entry)
+			}
+		}
+		env = append(env, overrides...)
+		cmd.Env = env
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

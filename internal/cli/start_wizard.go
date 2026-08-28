@@ -14,18 +14,18 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
-var errStartCanceled = errors.New("start canceled")
+var errPromptCanceled = errors.New("prompt canceled")
 
-type startPrompter struct {
+type prompter struct {
 	in  *bufio.Reader
 	out io.Writer
 }
 
-func newStartPrompter(app *App) *startPrompter {
-	return &startPrompter{in: bufio.NewReader(app.In), out: app.Out}
+func newPrompter(app *App) *prompter {
+	return &prompter{in: bufio.NewReader(app.In), out: app.Out}
 }
 
-func (p *startPrompter) line(label, fallback string) (string, error) {
+func (p *prompter) line(label, fallback string) (string, error) {
 	if fallback == "" {
 		fmt.Fprintf(p.out, "? %s: ", label)
 	} else {
@@ -33,7 +33,7 @@ func (p *startPrompter) line(label, fallback string) (string, error) {
 	}
 	line, err := p.in.ReadString('\n')
 	if err != nil {
-		return "", errStartCanceled
+		return "", errPromptCanceled
 	}
 	value := strings.TrimSpace(line)
 	if value == "" {
@@ -42,7 +42,7 @@ func (p *startPrompter) line(label, fallback string) (string, error) {
 	return value, nil
 }
 
-func (p *startPrompter) choice(label, fallback string, choices map[string]string) (string, error) {
+func (p *prompter) choice(label, fallback, hint string, choices map[string]string) (string, error) {
 	for {
 		value, err := p.line(label, fallback)
 		if err != nil {
@@ -52,28 +52,36 @@ func (p *startPrompter) choice(label, fallback string, choices map[string]string
 		if resolved, ok := choices[value]; ok {
 			return resolved, nil
 		}
-		fmt.Fprintf(p.out, "  enter one of: worktree (w), branch-only (b), direct (d)\n")
+		fmt.Fprintf(p.out, "  enter one of: %s\n", hint)
 	}
 }
 
-func (p *startPrompter) confirm() (bool, error) {
+func (p *prompter) confirm(label string, defaultYes bool) (bool, error) {
+	fallback := "y/N"
+	if defaultYes {
+		fallback = "Y/n"
+	}
 	for {
-		value, err := p.line("Create this task?", "Y/n")
+		fmt.Fprintf(p.out, "? %s [%s]: ", label, fallback)
+		line, err := p.in.ReadString('\n')
 		if err != nil {
-			return false, err
+			return false, errPromptCanceled
 		}
+		value := strings.TrimSpace(line)
 		switch strings.ToLower(value) {
-		case "", "y", "yes", "y/n":
+		case "y", "yes":
 			return true, nil
 		case "n", "no":
 			return false, nil
+		case "":
+			return defaultYes, nil
 		default:
 			fmt.Fprintln(p.out, "  enter y or n")
 		}
 	}
 }
 
-func promptStartRepository(ctx context.Context, app *App, p *startPrompter, req startRequest) (repo.Repo, error) {
+func promptStartRepository(ctx context.Context, app *App, p *prompter, req startRequest) (repo.Repo, error) {
 	if req.RepoExplicit {
 		return resolveStartRepository(ctx, app, req.RepoRef)
 	}
@@ -143,7 +151,7 @@ func promptStartRepository(ctx context.Context, app *App, p *startPrompter, req 
 }
 
 func runStartWizard(ctx context.Context, app *App, req startRequest) (*startSpec, bool, error) {
-	p := newStartPrompter(app)
+	p := newPrompter(app)
 	fmt.Fprintln(p.out, "Start a tracked change stream")
 
 	r, err := promptStartRepository(ctx, app, p, req)
@@ -174,11 +182,12 @@ func runStartWizard(ctx context.Context, app *App, req startRequest) (*startSpec
 			case task.ModeDirect:
 				fallback = "direct"
 			}
-			selected, err := p.choice("Mode (w=worktree, b=branch-only, d=direct)", fallback, map[string]string{
-				"w": "worktree", "worktree": "worktree",
-				"b": "branch-only", "branch": "branch-only", "branch-only": "branch-only",
-				"d": "direct", "direct": "direct",
-			})
+			selected, err := p.choice("Mode (w=worktree, b=branch-only, d=direct)", fallback,
+				"worktree (w), branch-only (b), direct (d)", map[string]string{
+					"w": "worktree", "worktree": "worktree",
+					"b": "branch-only", "branch": "branch-only", "branch-only": "branch-only",
+					"d": "direct", "direct": "direct",
+				})
 			if err != nil {
 				return nil, false, err
 			}
@@ -256,7 +265,7 @@ func runStartWizard(ctx context.Context, app *App, req startRequest) (*startSpec
 			fmt.Fprintf(p.out, "  next        %s\n", spec.Next)
 		}
 
-		confirmed, err := p.confirm()
+		confirmed, err := p.confirm("Create this task?", true)
 		if err != nil {
 			return nil, false, err
 		}

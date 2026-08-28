@@ -112,10 +112,16 @@ dev start api --task "token refresh" --base main   # non-interactive fast path �
 dev park --next "add the regression test" --wip    # → warm, session closed
 dev park --cold --push                             # → cold, worktree removed
 dev resume "token refresh"                         # → hot, rebuilt if needed
+dev done                                           # TTY finish wizard
 dev done --ff                                      # → done, integrated + cleaned
 dev done --pr                                      # open review; keep task/worktree
 dev sweep                                          # report what has gone stale
 ```
+
+On a TTY, bare `dev done` reports branch ahead/behind and classifies every
+staged, unstaged and untracked path against the base before offering
+commit-all, discard-all or cancel. Unique discard requires typing `DROP`;
+scripts use `--dirty=commit --message ...` or `--dirty=discard --yes`.
 
 ### A task does not have to mean a worktree
 

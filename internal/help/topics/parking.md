@@ -85,6 +85,21 @@ If two machines genuinely need the same feature at once, split the branch —
 `feat/auth-ui`, `feat/auth-api` — and integrate afterwards. Parallel writers
 get parallel branches.
 
+## Finishing
+
+```bash
+dev done          # TTY: inspect dirty content, then choose FF/PR/cleanup
+dev done --ff     # explicit fast-forward path
+dev done --pr     # publish for review; keep task/worktree active
+```
+
+The interactive finish flow separates committed history from checkout content:
+it reports ahead/behind and which dirty paths already match the base. You can
+commit all changes, discard all changes, or cancel. Discarding unique content
+requires typing `DROP`; automation must use `--dirty=discard --yes`. If a live
+writer changes files during finalization, cleanup stops rather than removing a
+worktree whose latest content was not handled.
+
 ## Sweeping
 
 ```bash

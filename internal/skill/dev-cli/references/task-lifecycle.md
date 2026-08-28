@@ -188,6 +188,7 @@ requiring confirmation, is that guarantee.
 ```bash
 dev done --ff     # rebase onto the base, then fast-forward it
 dev done --pr     # push and open a pull/merge request via the detected forge CLI
+dev done          # TTY: inspect commits/dirty content and choose interactively
 ```
 
 Which one depends on a single question: **are this branch's commits worth
@@ -198,8 +199,18 @@ keeping in the base's history?**
 - No, it is WIP noise → squash at the integration point.
 - Someone (or CI) should look first → `--pr`.
 
-`dev done` refuses on a dirty tree, and `--delete-branch` only removes a branch
-git agrees is fully contained in the base. `dev done --ff` integrates, closes
+On a TTY, `dev done` reports branch ahead/behind plus which staged, unstaged and
+untracked paths are already equivalent to the base. It can commit all changes,
+discard all changes, or cancel before choosing FF/PR. Unique content requires
+typing `DROP`; scripts use `--dirty=commit --message ...` or the deliberately
+destructive `--dirty=discard --yes`. Ignored files are never discarded. If an
+active writer changes the checkout during confirmation or immediately after a
+commit, cleanup stops and the command must be rerun after that writer exits.
+
+For branch/worktree tasks, non-interactive `dev done` without `--ff`/`--pr`
+remains report-only. Direct tasks still finish without an integration mode.
+Conflicted checkouts always require manual resolution. `--delete-branch` only
+removes a branch git agrees is fully contained in the base. `dev done --ff` integrates, closes
 the runtime and removes the worktree unless `--keep-worktree` is explicit.
 `dev done --pr` only publishes/opens review: task, runtime and worktree remain
 active. "Merged" is not always "finished", so branches survive by default.

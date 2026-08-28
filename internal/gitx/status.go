@@ -136,6 +136,10 @@ func StatusOf(ctx context.Context, dir string) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
+	return statusFromOutput(dir, out), nil
+}
+
+func statusFromOutput(dir, out string) Status {
 	var s Status
 	for _, rec := range nulLines(out) {
 		if rec == "" {
@@ -173,7 +177,7 @@ func StatusOf(ctx context.Context, dir string) (Status, error) {
 			updateLatestChange(dir, strings.TrimPrefix(rec, "? "), &s)
 		}
 	}
-	return s, nil
+	return s
 }
 
 // statusPath extracts the final pathname from a porcelain-v2 record while
