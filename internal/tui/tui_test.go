@@ -38,6 +38,7 @@ type recorder struct {
 	parked  []string
 	started []string
 	cloned  []string
+	copied  []string
 	nexts   map[string]string
 }
 
@@ -52,6 +53,10 @@ func newActions(r *recorder, rows []inventory.Row) tui.Actions {
 		ReloadRemote: func(context.Context) ([]tui.RemoteRow, error) { return nil, nil },
 		OpenRepo: func(_ context.Context, rr tui.RepoRow) (string, error) {
 			r.opened = append(r.opened, "repo:"+rr.Repo.Name)
+			return "opened", nil
+		},
+		OpenCheckout: func(_ context.Context, rr tui.RepoRow, checkout inventory.RepoCheckout) (string, error) {
+			r.opened = append(r.opened, "worktree:"+checkout.Branch())
 			return "opened", nil
 		},
 		OpenRemote: func(_ context.Context, rr tui.RemoteRow) (string, error) {
@@ -81,6 +86,10 @@ func newActions(r *recorder, rows []inventory.Row) tui.Actions {
 		},
 		SetNext: func(_ context.Context, t *task.Task, next string) error {
 			r.nexts[t.ID] = next
+			return nil
+		},
+		Copy: func(text string) error {
+			r.copied = append(r.copied, text)
 			return nil
 		},
 	}
@@ -345,6 +354,84 @@ func tryRow(id, name string, phase catalog.ExperimentPhase, state catalog.Locati
 	return tui.TryRow{Item: item, Location: &copy}
 }
 
+func repoRowWithWorktrees() tui.RepoRow {
+	r := repoRow("api")
+	r.Runtime, r.Worktrees = "herdr", 2
+	r.Context = inventory.RepoContext{
+		Repo: r.Repo, Runtime: "herdr", WorktreeCount: 2,
+		Checkouts: []inventory.RepoCheckout{
+			{Worktree: gitx.Worktree{Path: "/src/api", Branch: "main", Main: true}, Exists: true,
+				Ownership: inventory.CheckoutCanonical, Sessions: []runtime.Session{{Handle: "w0", AgentStatus: "idle"}}},
+			{Worktree: gitx.Worktree{Path: "/wt/api/feat-one", Branch: "feat/one"}, Exists: true,
+				Ownership: inventory.CheckoutExternal, Sessions: []runtime.Session{{
+					Handle: "w1", AgentStatus: "working", AgentSessions: []string{"codex:one"},
+				}}},
+			{Worktree: gitx.Worktree{Path: "/src/api/.claude/worktrees/turn-2", Branch: "worktree-turn-2"}, Exists: true,
+				Ownership: inventory.CheckoutEphemeral},
+		},
+	}
+	r.Live = true
+	return r
+}
+
+func TestRepoWorktreeTreeExpandsNavigatesAndCollapses(t *testing.T) {
+	rec := &recorder{}
+	m := tui.New(newActions(rec, nil), nil, []tui.RepoRow{repoRowWithWorktrees()})
+	m = send(m, tea.WindowSizeMsg{Width: 180, Height: 40}, key("tab"))
+	if out := m.View(); !strings.Contains(out, "▸ api") || strings.Contains(out, "feat-one") {
+		t.Fatalf("collapsed repo tree:\n%s", out)
+	}
+	m = send(m, key(" "))
+	out := m.View()
+	for _, want := range []string{"▾ api", "├─ feat-one (external)", "└─ turn-2 (ephemeral)", "herdr:2 live"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expanded tree missing %q:\n%s", want, out)
+		}
+	}
+	send(m, key("down"), key("enter"))
+	if len(rec.opened) != 1 || rec.opened[0] != "worktree:feat/one" {
+		t.Errorf("child enter opened %v", rec.opened)
+	}
+	m = send(m, key("down"), key(" "))
+	if out := m.View(); strings.Contains(out, "feat-one") || !strings.Contains(out, "▸ api") {
+		t.Errorf("space on child should collapse to parent:\n%s", out)
+	}
+}
+
+func TestRepoCopyChordsUseContextualScope(t *testing.T) {
+	r := repoRowWithWorktrees()
+	rec := &recorder{}
+	m := tui.New(newActions(rec, nil), nil, []tui.RepoRow{r})
+	m = send(m, key("tab"), key("y"))
+	if !strings.Contains(m.View(), "y context") {
+		t.Fatalf("y should show the copy menu:\n%s", m.View())
+	}
+	m = send(m, key("y"))
+	if len(rec.copied) != 1 || !strings.Contains(rec.copied[0], "# dev repo context") ||
+		!strings.Contains(rec.copied[0], "/wt/api/feat-one") {
+		t.Fatalf("parent yy payload: %q", rec.copied)
+	}
+
+	m = send(m, key(" "), key("down"), key("y"), key("y"))
+	if len(rec.copied) != 2 || !strings.Contains(rec.copied[1], "# dev worktree context") ||
+		!strings.Contains(rec.copied[1], "/wt/api/feat-one") || strings.Contains(rec.copied[1], "turn-2") {
+		t.Fatalf("child yy payload: %q", rec.copied)
+	}
+	m = send(m, key("y"), key("p"), key("y"), key("b"), key("y"), key("s"), key("y"), key("w"))
+	if got := rec.copied[len(rec.copied)-4]; got != "/wt/api/feat-one" {
+		t.Errorf("yp = %q", got)
+	}
+	if got := rec.copied[len(rec.copied)-3]; got != "feat/one" {
+		t.Errorf("yb = %q", got)
+	}
+	if got := rec.copied[len(rec.copied)-2]; !strings.Contains(got, "codex:one") {
+		t.Errorf("ys = %q", got)
+	}
+	if got := rec.copied[len(rec.copied)-1]; got != "/wt/api/feat-one\n/src/api/.claude/worktrees/turn-2" {
+		t.Errorf("yw = %q", got)
+	}
+}
+
 func TestTabSwitchesViews(t *testing.T) {
 	rows := []inventory.Row{row("a", "token refresh", task.Hot, "")}
 	repos := []tui.RepoRow{repoRow("api"), repoRow("web")}
@@ -479,7 +566,7 @@ func TestRepoMarkOverlayUsesSharedCatalogAction(t *testing.T) {
 		return "updated", nil
 	}
 	m := tui.New(actions, nil, []tui.RepoRow{row})
-	m = send(m, key("tab"), key(" "))
+	m = send(m, key("tab"), key("m"))
 	if out := m.View(); !strings.Contains(out, "MARK API") || !strings.Contains(out, row.Repo.Path) {
 		t.Fatalf("repo mark form missing target:\n%s", out)
 	}

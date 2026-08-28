@@ -16,10 +16,12 @@ Switch with `tab`, `l`/`h`, or right/left:
 | REMOTE | What can I open or clone? | authenticated `gh` + `glab` inventories |
 
 REPOS shows branch, dirty state, owned logical size, linked-worktree count and
-HOT/WARM/COLD task tallies. Git-backed Tries are shown in TRY rather than
-appearing twice; REMOTE still labels their local checkout as `try`. Repos with
-active work sort first. On a first run with no tasks, switch to REPOS and press
-`s`, or use TRY `n` for a low-cost experiment.
+HOT/WARM/COLD task tallies. Press `space` to expand a repo into its linked
+worktrees; each child has its own Git, runtime and task state, and enter opens
+that checkout. Git-backed Tries are shown in TRY rather than appearing twice;
+REMOTE still labels their local checkout as `try`. Repos with active work sort
+first. On a first run with no tasks, switch to REPOS and press `s`, or use TRY
+`n` for a low-cost experiment.
 
 REMOTE loads lazily, so dashboard startup never waits on the network. A
 private XDG cache makes later switches instant; `r` refreshes explicitly. It
@@ -62,16 +64,37 @@ REPOS:
 
 ```
 enter / o  ad-hoc open: no task, branch or worktree
+space      expand/collapse linked worktrees
+m          edit repository tags and note
 d          track direct work on the current branch (usually main)
 s          isolated task: branch + worktree + provisioning + runtime + entry
-space      edit repository tags and note
 O / R      cycle / reverse activity/latest/name/git/size/tasks sort
+y          copy menu; follow with y/p/b/s/w
 ```
 
-The LIVE column makes runtime state explicit (`herdr:working`, `herdr:idle`).
-SIZE is `checkout + private Git` logical bytes; shared Git objects are shown in
-detail and never charged to every worktree. The detail pane also calls out
-`no remote`, local-only branches and multiple branch-upstream remotes.
+The LIVE column makes runtime state explicit (`herdr:working`, `herdr:idle`). A
+collapsed repo with several sessions shows `herdr:N live`; expanded children
+show their individual status or `closed`. Ephemeral agent-harness worktrees and
+other untracked worktrees stay visible as `(ephemeral)` / `(external)`, so the
+children always explain the WT count. LATEST is the newest dirty-file mtime,
+commit time, or task update. SIZE is `checkout + private Git` logical bytes;
+shared Git objects are shown in detail and never charged to every worktree. The
+detail pane also calls out `no remote`, local-only branches and multiple
+branch-upstream remotes.
+
+`y` opens a second-key copy menu:
+
+```
+yy  agent-ready Markdown context (whole repo on parent; one checkout on child)
+yp  selected checkout's absolute path
+yb  selected branch
+ys  runtime handles and agent session IDs (parent or child scope)
+yw  every linked-worktree path in the repo, one per line
+```
+
+The same full Markdown is available without a clipboard or TUI through
+`dev repo context [repo]`. With no argument it resolves the current repository;
+inside a linked worktree it still reports the whole repo.
 
 TRY:
 

@@ -193,6 +193,10 @@ func TestTUIToolConfigAndReservedKeys(t *testing.T) {
 	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "quit") {
 		t.Errorf("reserved q must fail with its meaning, got %v", err)
 	}
+	c.TUI.Tools = []Tool{{Key: "y", Name: "bad", Run: "echo nope"}}
+	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "copy repo metadata") {
+		t.Errorf("reserved y must fail with its meaning, got %v", err)
+	}
 	c.TUI.Tools = []Tool{{Key: "V", Name: "one", Run: "one"}, {Key: "V", Name: "two", Run: "two"}}
 	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "already bound") {
 		t.Errorf("duplicate key should fail, got %v", err)

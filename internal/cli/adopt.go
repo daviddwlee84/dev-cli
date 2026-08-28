@@ -10,6 +10,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
@@ -183,7 +184,7 @@ func scanRepo(ctx context.Context, app *App, r repo.Repo, sessions []runtime.Ses
 			// A harness's turn-scoped worktree is not a change stream a human
 			// tracks; adopting those would fill the inventory with noise that
 			// the harness will delete on its own.
-			if isEphemeralWorktree(w.Path, w.Branch) {
+			if inventory.IsEphemeralWorktree(w.Path, w.Branch) {
 				continue
 			}
 			state := target
@@ -216,13 +217,6 @@ func scanRepo(ctx context.Context, app *App, r repo.Repo, sessions []runtime.Ses
 		}
 	}
 	return out
-}
-
-// isEphemeralWorktree recognises the checkouts an agent harness creates and
-// cleans up itself.
-func isEphemeralWorktree(path, branch string) bool {
-	return strings.Contains(path, "/.claude/worktrees/") ||
-		strings.HasPrefix(branch, "worktree-")
 }
 
 func sessionAt(sessions []runtime.Session, dir string) *runtime.Session {
@@ -259,7 +253,7 @@ func unmergedBranches(ctx context.Context, repoPath string) []string {
 	var branches []string
 	for _, b := range strings.Split(out, "\n") {
 		b = strings.TrimSpace(b)
-		if b == "" || b == base || isEphemeralWorktree("", b) {
+		if b == "" || b == base || inventory.IsEphemeralWorktree("", b) {
 			continue
 		}
 		// Contained in the base means the work has already landed.

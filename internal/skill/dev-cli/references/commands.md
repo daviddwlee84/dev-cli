@@ -290,6 +290,14 @@ dev repo clone <owner/name|url> [flags]
 - `-c, --category` — category subdirectory under project_root
 - `-o, --open` — open the clone in the runtime afterwards
 
+### `dev repo context`
+
+Print agent-ready Git, worktree, runtime and task context
+
+```
+dev repo context [repo]
+```
+
 ### `dev repo list`
 
 List every repository under the scan roots

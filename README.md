@@ -168,12 +168,25 @@ g G        top / bottom         h l / tab       previous / next view
 
 `enter` opens the selected row in the runtime. In TASKS, `p` parks and prompts
 for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
-`s` starts an isolated worktree task, `d` starts a tracked direct task, and
-`space` edits repository tags/notes. In TRY, `n` creates or clones an experiment;
+`space` expands linked worktrees inline, `m` edits repository tags/notes, `s`
+starts an isolated worktree task, and `d` starts a tracked direct task.
+Expanded children carry their own Git/session/task state and can be opened
+directly. In TRY, `n` creates or clones an experiment;
 `space` opens mark/deprecate/archive/restore/graduate actions; `a` includes
 retained history. `?` opens the complete context-sensitive key map. That makes
 the branch/worktree and lifecycle costs explicit rather than silently applying
 them to every directory.
+
+REPOS also has an agent-handoff copy menu. Press `y`, then `y` for contextual
+Markdown, `p` for the checkout path, `b` for the branch, `s` for runtime/agent
+sessions, or `w` for every linked-worktree path. Parent `yy` includes the whole
+repo; child `yy` includes only that worktree. The same full context is
+pipe-friendly outside the TUI:
+
+```bash
+dev repo context api
+dev repo context          # current repo, even from inside a linked worktree
+```
 
 **External tools are configured, not fixed.** They run through your shell in
 the selected row's checkout; the dashboard suspends and redraws when they exit:
@@ -213,8 +226,11 @@ REMOTE loads lazily, so dashboard startup never waits on the network. A private
 and `c` confirms before cloning an absent repo into `project_root`. The same
 inventory is available without the full-screen UI via `dev repo remote [query]`;
 `--cached` is its instant/offline form.
-REPOS has an explicit LIVE column (`herdr:working`, `herdr:idle`, …); its
-detail pane includes the workspace handle. `H` opens the selected repo's
+REPOS has an explicit LIVE column (`herdr:working`, `herdr:idle`, …). Multiple
+repo sessions collapse to `herdr:N live`; expanding the repo reveals each
+checkout and whether its session is live or closed. External and turn-scoped
+agent worktrees remain visible with `(external)` / `(ephemeral)` labels, so the
+tree always reconciles with WT. `H` opens the selected repo's
 one-year activity heatmap and `e` edits config. Returning from the editor, or
 pressing `r`, reparses config and reloads data/tool bindings without restarting
 the TUI; a runtime-backend change is reported as requiring restart.
@@ -384,6 +400,7 @@ python   uv       uv.lock            .venv         installed
 ```bash
 dev repo list --sizes          # repos, remote topology and owned logical size
 dev repo list --no-remote      # find local Git with no configured backup remote
+dev repo context api           # agent-ready paths, Git, WT, runtime and tasks
 dev repo clone owner/name -c Web   # clone into the right place, via gh or glab
 dev repo sync --all            # fetch + prune, and report what moved
 

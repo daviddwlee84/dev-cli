@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -53,10 +54,11 @@ Navigation is vim-style, with arrows alongside:
 Actions depend on the list:
 
   TASKS   enter open · p park · c edit next
-  REPOS   enter ad hoc · s worktree task · d direct/current-branch task
+  REPOS   enter ad hoc · space worktrees · m metadata · s worktree task · d direct task
   TRY     enter open · n create · space lifecycle/metadata actions
   REMOTE  enter open local · c clone after confirmation
 
+  y       copy menu: yy context · yp path · yb branch · ys sessions · yw WT paths
   H       selected repo heatmap; b backfills it when empty
   e       edit config; returning live-reloads data, columns, sort and tools
   O / R   cycle / reverse REPOS or TRY sort
@@ -205,6 +207,7 @@ func runTUI(app *App) error {
 		RepoColumns: app.Cfg.EffectiveRepoColumns(),
 		RepoSort:    app.Cfg.EffectiveRepoSort(),
 		RepoReverse: app.Cfg.TUI.Repos.Reverse,
+		Copy:        clipboard.WriteAll,
 
 		// Open reuses the same paths the commands take, so a cold task
 		// selected here is rebuilt rather than reported broken.
@@ -240,6 +243,22 @@ func runTUI(app *App) error {
 				return "", nil
 			}
 			return fmt.Sprintf("%s open in %s (%s)", r.Repo.Name, rt.Name(), handle), nil
+		},
+
+		OpenCheckout: func(ctx context.Context, r tui.RepoRow, checkout inventory.RepoCheckout) (string, error) {
+			branch := checkout.Branch()
+			if branch == "" {
+				branch = filepath.Base(checkout.Worktree.Path)
+			}
+			label := r.Repo.Name + "/" + branch
+			handle, err := openCheckout(ctx, rt, checkout.Worktree.Path, label)
+			if err != nil {
+				return "", err
+			}
+			if rt.Name() == "none" {
+				return "", nil
+			}
+			return fmt.Sprintf("%s open in %s (%s)", label, rt.Name(), handle), nil
 		},
 
 		OpenRemote: func(ctx context.Context, r tui.RemoteRow) (string, error) {
@@ -686,41 +705,18 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 			if r.RealPath != "" && r.RealPath != r.Path {
 				row.Tasks = append(row.Tasks, byRepo[r.RealPath]...)
 			}
+			row.Context = inventory.CollectRepoContext(ctx, r, row.Tasks, sessions, rt.Name())
+			row.LastActivity = row.Context.LastActivity
+			row.Worktrees = row.Context.WorktreeCount
+			if main, ok := row.Context.Main(); ok {
+				row.Status = main.Status
+			}
 			if !r.Bare {
-				row.Status, _ = gitx.StatusOf(ctx, r.Path)
-				if row.Status.LatestChange.After(row.LastActivity) {
-					row.LastActivity = row.Status.LatestChange
-				}
-				// A normal clone stores one administrative directory per
-				// linked worktree. Reading it avoids spawning another git
-				// process for almost every repo in the main inventory.
-				if entries, err := os.ReadDir(filepath.Join(r.CommonDir, "worktrees")); err == nil {
-					for _, entry := range entries {
-						if entry.IsDir() {
-							row.Worktrees++
-						}
-					}
-				}
 				row.RemoteForge, row.RemoteName = forge.IdentityFromURL(gitx.RemoteFromConfig(r.CommonDir, "origin"))
-				if unix, _, err := gitx.LastCommit(ctx, r.Path); err == nil && unix > 0 {
-					commitTime := time.Unix(unix, 0)
-					if commitTime.After(row.LastActivity) {
-						row.LastActivity = commitTime
-					}
-				}
 			}
-			for _, tracked := range row.Tasks {
-				if tracked.Updated.After(row.LastActivity) {
-					row.LastActivity = tracked.Updated
-				}
-			}
-			for _, session := range sessions {
-				if session.Covers(r.Path) || (r.RealPath != "" && session.Covers(r.RealPath)) {
-					row.Live = true
-					row.Runtime, row.RuntimeHandle, row.RuntimeStatus =
-						rt.Name(), session.Handle, session.AgentStatus
-					break
-				}
+			if live := row.Context.Sessions(); len(live) > 0 {
+				row.Live, row.Runtime = true, rt.Name()
+				row.RuntimeHandle, row.RuntimeStatus = live[0].Handle, live[0].AgentStatus
 			}
 			if r.HasGit {
 				row.SizeTarget = diskusage.FromGit(gitx.Repo{

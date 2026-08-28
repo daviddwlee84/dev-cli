@@ -1131,3 +1131,26 @@ func TestRepoListShowsLatestDirtyEdit(t *testing.T) {
 		t.Errorf("repo list should show latest dirty edit:\n%s", out)
 	}
 }
+
+func TestRepoContextReportsWholeRepoFromLinkedWorktree(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "auth", "--branch", "feat/auth", "--base", "main")
+	wtPath := filepath.Join(h.wtRoot, "demo", "feat-auth")
+
+	out := h.mustRun("repo", "context", "demo")
+	for _, want := range []string{
+		"# dev repo context: demo", "Linked worktrees: 1", h.repo.Root, wtPath,
+		"demo__feat-auth", "feat/auth — dev",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("repo context missing %q:\n%s", want, out)
+		}
+	}
+
+	t.Chdir(wtPath)
+	fromChild := h.mustRun("repo", "context")
+	if !strings.Contains(fromChild, "# dev repo context: demo") ||
+		!strings.Contains(fromChild, h.repo.Root) || !strings.Contains(fromChild, wtPath) {
+		t.Errorf("linked cwd should still report the whole repo:\n%s", fromChild)
+	}
+}

@@ -169,8 +169,8 @@ func (m Model) renderTasks() string {
 }
 
 func (m Model) renderRepos() string {
-	repos := m.visibleRepos()
-	if len(repos) == 0 {
+	items := m.visibleRepoItems()
+	if len(items) == 0 {
 		if m.loadingLocal {
 			return "  " + styleDim.Render("Loading local repositories…") + "\n"
 		}
@@ -186,24 +186,140 @@ func (m Model) renderRepos() string {
 	}
 	b.WriteString(styleHeader.Render("  "+strings.Join(headers, "  ")) + "\n")
 
-	from, to := m.window(len(repos))
+	from, to := m.window(len(items))
 	for i := from; i < to; i++ {
-		r := repos[i]
+		item := items[i]
+		r := item.Repo
 		cells := make([]string, 0, len(columns))
 		for _, c := range columns {
-			cells = append(cells, fitCell(repoColumnValue(r, c.name), c.width))
+			cells = append(cells, fitCell(m.repoItemColumnValue(item, c.name), c.width))
 		}
 		line := strings.Join(cells, "  ")
 		styled := line
-		if r.Status.Dirty() {
+		if checkout, child := item.checkout(); child {
+			if checkout.Status.Dirty() {
+				styled = styleDirty.Render(line)
+			} else if checkout.Ownership == inventory.CheckoutExternal ||
+				checkout.Ownership == inventory.CheckoutEphemeral {
+				styled = styleDim.Render(line)
+			}
+		} else if r.Status.Dirty() {
 			styled = styleDirty.Render(line)
 		} else if len(r.Tasks) == 0 && !r.Live {
 			styled = styleClean.Render(line)
 		}
 		b.WriteString(m.renderLine(i, line, styled))
 	}
-	b.WriteString(m.scrollNote(len(repos), from, to))
+	b.WriteString(m.scrollNote(len(items), from, to))
 	return b.String()
+}
+
+func (m Model) repoItemColumnValue(item repoItem, name string) string {
+	r := item.Repo
+	checkout, child := item.checkout()
+	if !child {
+		if name == "repo" && r.Worktrees > 0 {
+			marker := "▸ "
+			if m.repoExpanded(r) {
+				marker = "▾ "
+			}
+			return marker + r.Repo.Display()
+		}
+		if name == "live" {
+			return parentLiveColumn(r)
+		}
+		return repoColumnValue(r, name)
+	}
+
+	switch name {
+	case "repo":
+		connector := "├─ "
+		if item.CheckoutIndex == len(r.Context.Checkouts)-1 {
+			connector = "└─ "
+		}
+		label := filepath.Base(checkout.Worktree.Path)
+		if label == "." || label == string(filepath.Separator) || label == "" {
+			label = checkout.Branch()
+		}
+		if checkout.Ownership == inventory.CheckoutExternal || checkout.Ownership == inventory.CheckoutEphemeral {
+			label += " (" + string(checkout.Ownership) + ")"
+		}
+		return connector + label
+	case "branch":
+		if branch := checkout.Branch(); branch != "" {
+			return branch
+		}
+		return "(detached)"
+	case "git":
+		switch {
+		case checkout.Worktree.Prunable || !checkout.Exists:
+			return "prunable"
+		case checkout.Worktree.Locked:
+			return "locked"
+		case checkout.StatusErr != nil:
+			return "?"
+		default:
+			return checkout.Status.Summary()
+		}
+	case "live":
+		return checkoutLiveColumn(r.Runtime, checkout)
+	case "latest":
+		return latestAge(checkout.LastActivity)
+	case "worktrees":
+		return "—"
+	case "tasks":
+		return taskStateSummary(checkout.Tasks)
+	case "category":
+		return "—"
+	case "path":
+		return contract(checkout.Worktree.Path)
+	}
+	return ""
+}
+
+func parentLiveColumn(r RepoRow) string {
+	sessions := r.Sessions()
+	if len(sessions) == 0 {
+		return repoColumnValue(r, "live")
+	}
+	if len(sessions) > 1 {
+		return fmt.Sprintf("%s:%d live", r.Runtime, len(sessions))
+	}
+	status := sessions[0].AgentStatus
+	if status != "" {
+		return r.Runtime + ":" + status
+	}
+	return r.Runtime
+}
+
+func checkoutLiveColumn(runtimeName string, checkout inventory.RepoCheckout) string {
+	if len(checkout.Sessions) == 0 {
+		return "closed"
+	}
+	if len(checkout.Sessions) > 1 {
+		return fmt.Sprintf("%s:%d live", runtimeName, len(checkout.Sessions))
+	}
+	if status := checkout.Sessions[0].AgentStatus; status != "" {
+		return runtimeName + ":" + status
+	}
+	return runtimeName
+}
+
+func taskStateSummary(tasks []*task.Task) string {
+	if len(tasks) == 0 {
+		return "—"
+	}
+	counts := map[task.State]int{}
+	for _, t := range tasks {
+		counts[t.State]++
+	}
+	var parts []string
+	for _, state := range task.States {
+		if counts[state] > 0 {
+			parts = append(parts, state.Icon()+fmt.Sprintf("%d", counts[state]))
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 type repoColumnSpec struct {
@@ -484,6 +600,10 @@ func (m Model) renderDetail() string {
 		return "  " + styleTitle.Render("clone "+r.Repo.FullName) +
 			"\n  to: " + contract(filepath.Join("<project_root>", r.Repo.Name)) +
 			"\n  " + styleHelp.Render("enter to clone into project_root · esc to cancel")
+	case modeCopy:
+		return "  " + styleTitle.Render("copy ") +
+			"y context · p path · b branch · s sessions · w worktree paths" +
+			"\n  " + styleHelp.Render("press a second key · esc to cancel")
 	}
 
 	if r, ok := m.currentTry(); ok {
@@ -554,6 +674,53 @@ func (m Model) renderDetail() string {
 		return strings.Join(lines, "\n") + "\n"
 	}
 
+	if item, ok := m.currentRepoItem(); ok && item.child() {
+		checkout, _ := item.checkout()
+		lines := []string{
+			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(checkout.Worktree.Path)),
+			fmt.Sprintf("  %s %s", styleDim.Render("branch"), checkout.Branch()),
+			fmt.Sprintf("  %s  %s", styleDim.Render("owner"), checkout.Ownership),
+		}
+		if checkout.StatusErr != nil {
+			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("git"), styleErr.Render(checkout.StatusErr.Error())))
+		} else if checkout.Status.Dirty() {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("git  "), checkout.Status.Breakdown()))
+			if types := checkout.Status.TypeBreakdown(); types != "" {
+				lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("types"), types))
+			}
+		}
+		if checkout.Worktree.Locked {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("state"), styleDrift.Render("locked")))
+		}
+		if checkout.Worktree.Prunable || !checkout.Exists {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("state"), styleDrift.Render("prunable; checkout missing")))
+		}
+		if len(checkout.Sessions) == 0 {
+			lines = append(lines, "  "+styleDim.Render("live")+"  "+styleDim.Render("closed"))
+		} else {
+			for _, session := range checkout.Sessions {
+				live := item.Repo.Runtime + " " + session.Handle
+				if session.AgentStatus != "" {
+					live += " · " + session.AgentStatus
+				}
+				lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("live"), styleLive.Render(live)))
+				if len(session.AgentSessions) > 0 {
+					lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("agents"), strings.Join(session.AgentSessions, "  ")))
+				}
+			}
+		}
+		if len(checkout.Tasks) > 0 {
+			var names []string
+			for _, t := range checkout.Tasks {
+				names = append(names, t.State.Icon()+" "+t.Title())
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("tasks"), strings.Join(names, "  ")))
+		} else {
+			lines = append(lines, "  "+styleDim.Render("tasks")+" "+styleDim.Render("untracked"))
+		}
+		return strings.Join(lines, "\n") + "\n"
+	}
+
 	if r, ok := m.currentRepo(); ok {
 		lines := []string{
 			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(r.Repo.Path)),
@@ -593,7 +760,18 @@ func (m Model) renderDetail() string {
 		if r.Repo.Category != "" {
 			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("group"), r.Repo.Category))
 		}
-		if r.Live {
+		if sessions := r.Sessions(); len(sessions) > 0 {
+			if len(sessions) == 1 {
+				live := r.Runtime + " " + sessions[0].Handle
+				if sessions[0].AgentStatus != "" {
+					live += " · " + sessions[0].AgentStatus
+				}
+				lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("live"), styleLive.Render(live)))
+			} else {
+				lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("live"),
+					styleLive.Render(fmt.Sprintf("%d %s sessions", len(sessions), r.Runtime))))
+			}
+		} else if r.Live {
 			live := r.Runtime + " " + r.RuntimeHandle
 			if r.RuntimeStatus != "" {
 				live += " · " + r.RuntimeStatus
@@ -668,8 +846,12 @@ func (m Model) renderFooter() string {
 		if m.actions.RepoReverse {
 			sortBy += "↑"
 		}
-		bindings = append(bindings, "enter ad hoc", "s worktree task", "d direct task", "space mark",
-			"O sort:"+sortBy, "R reverse")
+		if item, ok := m.currentRepoItem(); ok && item.child() {
+			bindings = append(bindings, "enter open worktree", "space collapse")
+		} else {
+			bindings = append(bindings, "enter ad hoc", "space worktrees", "m metadata", "s worktree task", "d direct task")
+		}
+		bindings = append(bindings, "O sort:"+sortBy, "R reverse")
 	case ViewTries:
 		sortBy := m.trySort
 		if sortBy == "" {
@@ -688,6 +870,9 @@ func (m Model) renderFooter() string {
 		}
 	default:
 		bindings = append(bindings, "enter open", "p park", "c next")
+	}
+	if m.view == ViewRepos {
+		bindings = append(bindings, "y copy")
 	}
 	bindings = append(bindings, "tab view", "/ filter", "? help", "H stats", "e config")
 	for _, t := range m.Tools() {

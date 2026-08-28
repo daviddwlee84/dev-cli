@@ -12,6 +12,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
+	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -38,6 +39,10 @@ type RepoRow struct {
 	// Asset is catalog metadata joined without persisting an otherwise
 	// unobserved repository. A Try asset lets callers suppress or label it.
 	Asset *catalog.Entry
+	// Context is the canonical checkout plus every linked worktree, enriched
+	// with task and runtime state. It is shared by the tree, copy actions and
+	// `dev repo context`, so those surfaces cannot disagree.
+	Context inventory.RepoContext
 	// LastActivity is the newest commit time in this checkout. It is a durable,
 	// cheap approximation of "when was this repo last touched" and is sortable.
 	LastActivity time.Time
@@ -55,6 +60,10 @@ type RepoRow struct {
 	RemoteForge forge.Kind
 	RemoteName  string
 }
+
+// Sessions returns every runtime session attached to any checkout in this
+// repository.
+func (r RepoRow) Sessions() []runtime.Session { return r.Context.Sessions() }
 
 // HotTasks counts the repository's tasks that are currently hot.
 // IsTry reports an ungraduated Try that should live in the dedicated TRY view,
@@ -120,6 +129,14 @@ func (r RepoRow) searchText() string {
 		b.WriteString(t.Title())
 		b.WriteString(" ")
 		b.WriteString(t.Branch)
+	}
+	for _, checkout := range r.Context.Checkouts {
+		b.WriteString(" ")
+		b.WriteString(checkout.Worktree.Path)
+		b.WriteString(" ")
+		b.WriteString(checkout.Branch())
+		b.WriteString(" ")
+		b.WriteString(string(checkout.Ownership))
 	}
 	return strings.ToLower(b.String())
 }

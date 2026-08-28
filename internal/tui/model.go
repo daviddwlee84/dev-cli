@@ -67,6 +67,8 @@ type Actions struct {
 	Open func(ctx context.Context, t *task.Task) (string, error)
 	// OpenRepo makes a repository live.
 	OpenRepo func(ctx context.Context, r RepoRow) (string, error)
+	// OpenCheckout makes one linked worktree live.
+	OpenCheckout func(ctx context.Context, r RepoRow, checkout inventory.RepoCheckout) (string, error)
 	// OpenRemote opens a remote's existing local checkout.
 	OpenRemote func(ctx context.Context, r RemoteRow) (string, error)
 	// CloneRemote clones a remote that has no local checkout and returns the
@@ -85,6 +87,8 @@ type Actions struct {
 	LoadStats func(ctx context.Context, repo string) (StatsPanel, error)
 	// BackfillStats derives this repository's history into the activity store.
 	BackfillStats func(ctx context.Context, repo string) error
+	// Copy writes one of the repo-context payloads to the system clipboard.
+	Copy func(text string) error
 	// EditConfig returns the editor process; tea suspends around it.
 	EditConfig func() (*exec.Cmd, error)
 	// ReloadConfig reparses config and returns live-updatable preferences.
@@ -137,6 +141,7 @@ const (
 	modeStartDirect
 	modeConfirmClone
 	modeStats
+	modeCopy
 )
 
 // Model is the dashboard state.
@@ -165,6 +170,9 @@ type Model struct {
 	repoCursor   int
 	tryCursor    int
 	remoteCursor int
+	// expandedRepos is a slice rather than a map because Bubble Tea copies the
+	// model by value; a map would make candidate models share mutation.
+	expandedRepos []string
 	// filter is the live text query; states narrows the task view.
 	filter string
 	states []task.State
@@ -297,6 +305,11 @@ type triesMsg struct {
 
 type tryActionMsg struct {
 	result TryActionResult
+	err    error
+}
+
+type copyMsg struct {
+	status string
 	err    error
 }
 
@@ -483,6 +496,66 @@ func (m Model) visibleTries() []TryRow {
 	return out
 }
 
+type repoItem struct {
+	Repo          RepoRow
+	CheckoutIndex int // -1 is the repository parent; 1+ is a linked worktree
+}
+
+func (i repoItem) child() bool { return i.CheckoutIndex > 0 }
+
+func (i repoItem) checkout() (inventory.RepoCheckout, bool) {
+	if i.CheckoutIndex < 0 || i.CheckoutIndex >= len(i.Repo.Context.Checkouts) {
+		return inventory.RepoCheckout{}, false
+	}
+	return i.Repo.Context.Checkouts[i.CheckoutIndex], true
+}
+
+// visibleRepoItems flattens expanded worktrees under their sorted parent.
+// Children never participate in repo sorting and therefore cannot drift away
+// from the repository they belong to.
+func (m Model) visibleRepoItems() []repoItem {
+	repos := m.visibleRepos()
+	out := make([]repoItem, 0, len(repos))
+	for _, r := range repos {
+		out = append(out, repoItem{Repo: r, CheckoutIndex: -1})
+		if !m.repoExpanded(r) {
+			continue
+		}
+		for i := 1; i < len(r.Context.Checkouts); i++ {
+			out = append(out, repoItem{Repo: r, CheckoutIndex: i})
+		}
+	}
+	return out
+}
+
+func repoKey(r RepoRow) string {
+	if r.Repo.CommonDir != "" {
+		return r.Repo.CommonDir
+	}
+	return r.Repo.Path
+}
+
+func (m Model) repoExpanded(r RepoRow) bool {
+	key := repoKey(r)
+	for _, expanded := range m.expandedRepos {
+		if expanded == key {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) toggleRepo(r RepoRow) {
+	key := repoKey(r)
+	for i, expanded := range m.expandedRepos {
+		if expanded == key {
+			m.expandedRepos = append(append([]string(nil), m.expandedRepos[:i]...), m.expandedRepos[i+1:]...)
+			return
+		}
+	}
+	m.expandedRepos = append(append([]string(nil), m.expandedRepos...), key)
+}
+
 // visibleRemotes filters the combined gh/glab inventory. Local clones sort
 // first, then recently updated repositories.
 func (m Model) visibleRemotes() []RemoteRow {
@@ -601,7 +674,7 @@ func containsState(list []task.State, s task.State) bool {
 func (m Model) count() int {
 	switch m.view {
 	case ViewRepos:
-		return len(m.visibleRepos())
+		return len(m.visibleRepoItems())
 	case ViewTries:
 		return len(m.visibleTries())
 	case ViewRemote:
@@ -665,11 +738,22 @@ func (m Model) currentRepo() (RepoRow, bool) {
 	if m.view != ViewRepos {
 		return RepoRow{}, false
 	}
-	repos := m.visibleRepos()
-	if m.at() >= len(repos) {
+	items := m.visibleRepoItems()
+	if m.at() >= len(items) || items[m.at()].child() {
 		return RepoRow{}, false
 	}
-	return repos[m.at()], true
+	return items[m.at()].Repo, true
+}
+
+func (m Model) currentRepoItem() (repoItem, bool) {
+	if m.view != ViewRepos {
+		return repoItem{}, false
+	}
+	items := m.visibleRepoItems()
+	if m.at() >= len(items) {
+		return repoItem{}, false
+	}
+	return items[m.at()], true
 }
 
 // currentTry returns the selected experiment row.
@@ -740,8 +824,14 @@ func (m Model) currentDir() string {
 		}
 		return ""
 	}
-	if r, ok := m.currentRepo(); ok {
-		return r.Repo.Path
+	if item, ok := m.currentRepoItem(); ok {
+		if checkout, child := item.checkout(); child {
+			if checkout.Exists && !checkout.Worktree.Prunable {
+				return checkout.Worktree.Path
+			}
+			return ""
+		}
+		return item.Repo.Repo.Path
 	}
 	if r, ok := m.currentTry(); ok && r.Present() {
 		return r.Item.Live.CurrentPath
@@ -895,12 +985,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.reload()
 
+	case copyMsg:
+		if msg.err != nil {
+			m.err, m.status = msg.err, ""
+		} else {
+			m.err, m.status = nil, msg.status
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		if m.overlay.kind != overlayNone {
 			return m.updateOverlay(msg)
 		}
 		if m.mode == modeStats {
 			return m.updateStats(msg)
+		}
+		if m.mode == modeCopy {
+			return m.updateCopy(msg)
 		}
 		switch m.mode {
 		case modeFilter:
@@ -975,15 +1076,6 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.openTryForm(TryCreate, TryRow{})
 
-	case " ":
-		if row, ok := m.currentRepo(); ok {
-			return m.openRepoForm(row)
-		}
-		if row, ok := m.currentTry(); ok {
-			return m.openTryMenu(row), nil
-		}
-		return m, nil
-
 	case "r":
 		m.status = "reloading config + data…"
 		m.forceSizeReload = true
@@ -1019,6 +1111,46 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "enter", "o":
 		return m, m.openSelected()
+
+	case " ":
+		if m.view == ViewRepos {
+			item, ok := m.currentRepoItem()
+			if !ok || item.Repo.Worktrees == 0 {
+				return m, nil
+			}
+			if item.Repo.Context.WorktreeErr != nil {
+				m.err = item.Repo.Context.WorktreeErr
+				return m, nil
+			}
+			if item.child() {
+				// The parent is the nearest preceding non-child item.
+				for i := m.repoCursor - 1; i >= 0; i-- {
+					if !m.visibleRepoItems()[i].child() {
+						m.repoCursor = i
+						break
+					}
+				}
+			}
+			m.toggleRepo(item.Repo)
+			return m, nil
+		}
+		if row, ok := m.currentTry(); ok {
+			return m.openTryMenu(row), nil
+		}
+		return m, nil
+
+	case "m":
+		if row, ok := m.currentRepo(); ok {
+			return m.openRepoForm(row)
+		}
+		return m, nil
+
+	case "y":
+		if _, ok := m.currentRepoItem(); !ok {
+			return m, nil
+		}
+		m.mode, m.err, m.status = modeCopy, nil, ""
+		return m, nil
 
 	case "p":
 		if _, ok := m.currentTask(); !ok {
@@ -1108,12 +1240,89 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) updateCopy(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "esc" {
+		m.mode = modeList
+		return m, nil
+	}
+	item, ok := m.currentRepoItem()
+	if !ok {
+		m.mode = modeList
+		return m, nil
+	}
+	checkoutIndex := -1
+	if item.child() {
+		checkoutIndex = item.CheckoutIndex
+	}
+
+	var payload, label string
+	switch msg.String() {
+	case "y":
+		payload = inventory.FormatRepoContext(item.Repo.Context, checkoutIndex)
+		if item.child() {
+			label = "worktree context"
+		} else {
+			label = "repo context"
+		}
+	case "p":
+		label = "checkout path"
+		if checkoutIndex >= 0 {
+			payload = item.Repo.Context.Checkouts[checkoutIndex].Worktree.Path
+		} else {
+			payload = item.Repo.Repo.Path
+		}
+	case "b":
+		label = "branch"
+		if checkoutIndex >= 0 {
+			payload = item.Repo.Context.Checkouts[checkoutIndex].Branch()
+		} else if main, found := item.Repo.Context.Main(); found {
+			payload = main.Branch()
+		} else {
+			payload = item.Repo.Status.Branch
+		}
+		if payload == "" {
+			m.mode, m.err = modeList, fmt.Errorf("selected checkout has detached HEAD")
+			return m, nil
+		}
+	case "s":
+		label = "runtime sessions"
+		payload = inventory.FormatSessions(item.Repo.Context, checkoutIndex)
+		if payload == "" {
+			m.mode, m.err = modeList, fmt.Errorf("no live runtime sessions to copy")
+			return m, nil
+		}
+	case "w":
+		label = "worktree paths"
+		payload = inventory.LinkedWorktreePaths(item.Repo.Context)
+		if payload == "" {
+			m.mode, m.err = modeList, fmt.Errorf("no linked worktrees to copy")
+			return m, nil
+		}
+	default:
+		m.mode, m.err = modeList, fmt.Errorf("unknown copy key %q", msg.String())
+		return m, nil
+	}
+
+	m.mode = modeList
+	if m.actions.Copy == nil {
+		m.err = fmt.Errorf("clipboard integration is unavailable; use `dev repo context`")
+		return m, nil
+	}
+	return m, func() tea.Msg {
+		err := m.actions.Copy(payload)
+		if err != nil {
+			return copyMsg{err: fmt.Errorf("copy %s: %w; use `dev repo context` as a fallback", label, err)}
+		}
+		return copyMsg{status: "copied " + label}
+	}
+}
+
 func (m Model) selectedRepoName() string {
 	if r, ok := m.currentTask(); ok {
 		return r.Task.Repo
 	}
-	if r, ok := m.currentRepo(); ok {
-		return r.Repo.Name
+	if item, ok := m.currentRepoItem(); ok {
+		return item.Repo.Repo.Name
 	}
 	if r, ok := m.currentTry(); ok && r.Item.Live.Repo != nil {
 		return r.Item.Live.Repo.Name
@@ -1319,6 +1528,24 @@ func (m Model) openSelected() tea.Cmd {
 		dir := r.Repo.Path
 		return func() tea.Msg {
 			status, err := m.actions.OpenRepo(context.Background(), r)
+			cd := ""
+			if err == nil && cdWanted {
+				cd = dir
+			}
+			return actionMsg{status: status, cd: cd, err: err}
+		}
+	}
+	if item, ok := m.currentRepoItem(); ok && item.child() {
+		checkout, _ := item.checkout()
+		dir := checkout.Worktree.Path
+		return func() tea.Msg {
+			if !checkout.Exists || checkout.Worktree.Prunable {
+				return actionMsg{err: fmt.Errorf("worktree checkout is missing or prunable: %s", dir)}
+			}
+			if m.actions.OpenCheckout == nil {
+				return actionMsg{err: fmt.Errorf("opening linked worktrees is unavailable")}
+			}
+			status, err := m.actions.OpenCheckout(context.Background(), item.Repo, checkout)
 			cd := ""
 			if err == nil && cdWanted {
 				cd = dir

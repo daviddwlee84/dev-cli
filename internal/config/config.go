@@ -178,6 +178,7 @@ var reservedKeys = map[string]string{
 	"0": "clear filters", "1": "hot", "2": "warm", "3": "cold",
 	"?": "help", "H": "repo activity heatmap", "e": "edit config",
 	"O": "cycle repo sort", "R": "reverse repo sort",
+	"m": "edit repo metadata", "y": "copy repo metadata",
 }
 
 // ReservedKey reports the dashboard binding a key would collide with.

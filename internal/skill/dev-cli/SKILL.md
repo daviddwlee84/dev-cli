@@ -123,6 +123,7 @@ dev wt rm feat/auth                    # remove the checkout; the branch stays
 dev repo list --sizes      # repos, recovery topology, owned logical bytes
 dev repo list --no-remote  # local Git with no configured remote
 dev repo list --local-only # branches lacking a remote-backed upstream
+dev repo context [repo]    # agent-ready checkouts, Git, runtime and task state
 dev repo clone owner/name  # clone into the right place, via gh or glab
 dev repo sync --all        # fetch + prune, and report what moved
 dev repo remote [query]     # search authenticated gh + glab repositories
@@ -177,8 +178,14 @@ clone; `c` confirms before cloning an absent remote. Use `dev repo remote
 
 REPOS has LIVE, LATEST and asynchronous SIZE. SIZE is logical
 checkout+private-Git bytes; shared Git is separate and marked `+S`. Detail also
-shows no-remote/local-only/multi-upstream recovery topology. `[tui.repos]`
-chooses columns and default sort; `O` cycles sort and `R` reverses it.
+shows no-remote/local-only/multi-upstream recovery topology. Press space to
+expand linked worktrees; children
+show their own Git/session/task state and mark harness-owned or untracked
+checkouts `(ephemeral)` / `(external)`. Press `y` followed by `y/p/b/s/w` to
+copy contextual Markdown, path, branch, runtime/agent sessions, or every
+worktree path. `dev repo context [repo]` prints the full Markdown without a TUI.
+`[tui.repos]` chooses columns and default sort; `O` cycles sort and `R` reverses
+it.
 
 `H` opens the selected repo's heatmap. On an empty panel, `b` backfills only
 that repo and redraws; `r` rereads existing stats. Stats live in
