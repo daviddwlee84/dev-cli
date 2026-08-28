@@ -127,6 +127,27 @@ dev done --pr
 
 This pushes the branch and opens a GitHub pull request or GitLab merge request when the corresponding CLI is available. It **does not** mark the task DONE or clean up the checkout. Current `dev sweep` also does not infer remote request merges, so confirm integration before finishing the local lifecycle.
 
+## The interactive `dev done` finish wizard
+
+Running `dev done` with neither `--ff` nor `--pr` on an interactive terminal opens a finish wizard instead of failing. It never guesses which integration mode you want; it walks the actual state of the checkout and asks only what it cannot infer.
+
+The wizard runs in up to three steps:
+
+1. **Preflight.** It reports the branch, the base, the branch/base commit relation (ahead/behind, or already contained), and — if the checkout is dirty — a path-by-path breakdown of which changes already match the base tree and which are unique.
+2. **Dirty changes**, only if the checkout is dirty: `c` commits everything with a message you supply, `d` discards everything (tracked and untracked), `q` cancels with nothing changed. Discarding unique content — anything not already equivalent to the base — requires typing `DROP` at a follow-up confirmation; discarding paths that already match the base does not.
+3. **Integration**, only if neither `--ff` nor `--pr` was passed and the branch is not already fully contained in the base: `f` rebases the branch onto the base and fast-forwards it (same as `--ff`), `p` pushes and opens a pull/merge request (same as `--pr`), `q` cancels. When the branch is already contained in the base, the wizard skips this step and moves straight to cleanup.
+
+Passing `--ff` or `--pr` up front answers step 3 for the wizard, so it only prompts for whatever the flags left unresolved — with both a clean tree and an explicit integration flag, nothing is prompted at all. A final summary lists the dirty action and the integration mode before anything runs; confirm it, or add `--yes` to skip that confirmation once the plan is fully specified by flags. If the checkout or branch changes while the plan is open, `dev` detects the drift after confirmation and refuses to apply the stale plan — rerun `dev done` to see the current state.
+
+Non-interactively — no TTY, or a script — the wizard never prompts. `dev done` with no integration flag just reports the same preflight and exits; pass `--ff` or `--pr` explicitly. A dirty checkout defaults to failing outside a TTY (`--dirty auto` behaves like `--dirty fail`), so scripts choose an explicit policy:
+
+```bash
+dev done --ff --dirty commit -m "chore: finalize before merge"
+dev done --pr --dirty discard --yes   # destructive; --yes is mandatory here
+```
+
+`--message`/`-m` only applies with `--dirty commit`. `--dirty discard` outside a TTY requires `--yes`; the `DROP` confirmation is an interactive-only safeguard.
+
 ## 6. Sweep drift and stale state
 
 ```bash
@@ -159,3 +180,5 @@ It never deletes uncommitted work. Reporting first is part of the safety model.
 - [`internal/cli/resume.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/resume.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/cli/done_flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done_flow.go)
+- [`internal/gitx/finish.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/finish.go)

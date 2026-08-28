@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- An interactive `dev done` finish wizard that analyzes a dirty checkout against the base and offers
+  commit, discard, or cancel, plus a `--dirty auto|fail|commit|discard` policy with `-m/--message`
+  and `-y/--yes` for non-interactive callers.
+- Semantic color for human-readable output, controlled by a global `--color auto|always|never` and
+  disabled automatically for `NO_COLOR`, `TERM=dumb`, non-TTY writers, and `--json`.
 - Catalog-backed repository quick notes with durable Markdown storage, rebuildable full-text search, CLI commands, and TUI add/browse workflows.
 - Azure DevOps Services repository inventory, search, cloning, and opt-in forge configuration.
 - An interactive, context-aware `dev start` wizard for managed task creation.

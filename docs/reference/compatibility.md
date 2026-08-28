@@ -56,6 +56,9 @@ These were historical gaps and should not be reintroduced as limitations:
 - Runtime handles now record backend provenance and are revalidated before cleanup.
 - `auto` runtime selection includes Zellij between tmux and none.
 
+- `dev done` opens an interactive finish wizard on a TTY when `--ff`/`--pr` are both omitted, analyzing a dirty checkout against the base (commit, discard, or cancel) instead of rejecting any uncommitted change outright; a non-interactive caller still passes an explicit `--dirty` policy and `--yes` for a destructive discard.
+- Human-readable output now carries semantic color (`--color auto|always|never`), automatically disabled when `NO_COLOR` is set, `TERM=dumb`, or stdout/stderr is not a terminal.
+
 ## Claude Code status matrix
 
 | Surface | Status on 2026-08-28 | Compatibility note |

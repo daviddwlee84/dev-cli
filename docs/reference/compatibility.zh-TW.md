@@ -60,6 +60,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - Runtime handle 現在保存 backend provenance，cleanup 前會重新驗證。
 - `auto` runtime selection 已在 tmux 與 none 之間加入 Zellij。
 
+- `dev done` 在省略 `--ff`/`--pr` 且為 TTY 時會開啟 interactive finish wizard，把 dirty checkout 拿去跟 base 比較（commit、discard 或 cancel），不再直接拒絕任何 uncommitted change；non-interactive caller 仍須明確傳入 `--dirty` policy，且 destructive discard 需要 `--yes`。
+- Human-readable output 現在具備 semantic color（`--color auto|always|never`），在 `NO_COLOR` 已設定、`TERM=dumb`，或 stdout/stderr 不是 terminal 時會自動停用。
+
 ## Claude Code status matrix
 
 | Surface | 2026-08-28 status | Compatibility note |

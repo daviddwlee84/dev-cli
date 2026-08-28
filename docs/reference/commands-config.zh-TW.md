@@ -48,6 +48,21 @@ dev bootstrap --json
 
 每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
 
+## `dev done` finish flags
+
+`dev done` 對 branch/worktree task 只透過下列其中一種方式 integrate：`--ff`（rebase 到 base 再 fast-forward）或 `--pr`（push 並開啟 pull/merge request）。兩者都省略時，在 TTY 上會開啟 interactive finish wizard —— 提示內容見[變更流工作流程](../guides/change-stream-workflow.zh-TW.md)。
+
+Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`）：
+
+| 值 | 行為 |
+|---|---|
+| `auto` | interactive：提示 commit 或 discard；non-interactive：直接失敗，等同 `fail` |
+| `fail` | dirty checkout 時拒絕 finish |
+| `commit` | 用 `--message`/`-m` commit 全部變更（未指定時 interactive 會提示輸入） |
+| `discard` | reset tracked 變更並移除 untracked files；具破壞性，沒有 TTY 時需要 `--yes` |
+
+`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--keep-worktree` 讓 `--ff` integration 後仍保留 worktree（預設 merge 後移除），`--push` 會一併 push 產生的 branch，`--delete-branch` 只在 branch 的 commits 已被 base 包含時才刪除它 —— 有 unpushed commits 的 branch 永遠不會被刪除。
+
 ## Configuration
 
 ```bash
@@ -73,6 +88,12 @@ dev config path
 Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
 
 Repository 可 commit `.dev.toml`，保存應跟著 project 移動的 worktree provisioning overrides。Host-specific path 與 credential 應放 user config 或 ignored environment file，不放 repository override。
+
+## 彩色輸出
+
+Human-readable output（tables、`dev status`、`dev done` finish wizard、warnings 與 cobra help）會透過一組 semantic role 套用 ANSI color：`title`/`header`/`prompt`（bold cyan）、`label`/`dim`（dim）、`success`（green）、`warning`（yellow）、`danger`（bold red），以及代表 PR/review handoff 的 `review`（magenta）。Git-status 與 task-state 字串則依它自身的意義上色，而非固定 role —— `clean` 是 green，`dirty`/`ahead`/`behind`/`conflict` 依情況為 yellow 或 red。
+
+用全域的 `--color <auto|always|never>` flag 控制（預設 `auto`）。`auto` 在 output 未連接 terminal、`NO_COLOR` 被設為任何非空值，或 `TERM=dumb` 時會停用 color。`--json` output 不論 mode 為何都不會上色。目前沒有對應的 config-file 欄位 —— `--color` 與 environment 是僅有的控制方式，因此 pipe `dev` 的輸出不需要額外傳 `--color never` 就是乾淨的。
 
 ## Shell integration
 
@@ -102,3 +123,5 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
+- [`internal/cli/color.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/color.go)
+- [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)

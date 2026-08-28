@@ -577,6 +577,27 @@ dev done --pr
 
 This pushes the branch and opens a GitHub pull request or GitLab merge request when the corresponding CLI is available. It **does not** mark the task DONE or clean up the checkout. Current `dev sweep` also does not infer remote request merges, so confirm integration before finishing the local lifecycle.
 
+## The interactive `dev done` finish wizard
+
+Running `dev done` with neither `--ff` nor `--pr` on an interactive terminal opens a finish wizard instead of failing. It never guesses which integration mode you want; it walks the actual state of the checkout and asks only what it cannot infer.
+
+The wizard runs in up to three steps:
+
+1. **Preflight.** It reports the branch, the base, the branch/base commit relation (ahead/behind, or already contained), and — if the checkout is dirty — a path-by-path breakdown of which changes already match the base tree and which are unique.
+2. **Dirty changes**, only if the checkout is dirty: `c` commits everything with a message you supply, `d` discards everything (tracked and untracked), `q` cancels with nothing changed. Discarding unique content — anything not already equivalent to the base — requires typing `DROP` at a follow-up confirmation; discarding paths that already match the base does not.
+3. **Integration**, only if neither `--ff` nor `--pr` was passed and the branch is not already fully contained in the base: `f` rebases the branch onto the base and fast-forwards it (same as `--ff`), `p` pushes and opens a pull/merge request (same as `--pr`), `q` cancels. When the branch is already contained in the base, the wizard skips this step and moves straight to cleanup.
+
+Passing `--ff` or `--pr` up front answers step 3 for the wizard, so it only prompts for whatever the flags left unresolved — with both a clean tree and an explicit integration flag, nothing is prompted at all. A final summary lists the dirty action and the integration mode before anything runs; confirm it, or add `--yes` to skip that confirmation once the plan is fully specified by flags. If the checkout or branch changes while the plan is open, `dev` detects the drift after confirmation and refuses to apply the stale plan — rerun `dev done` to see the current state.
+
+Non-interactively — no TTY, or a script — the wizard never prompts. `dev done` with no integration flag just reports the same preflight and exits; pass `--ff` or `--pr` explicitly. A dirty checkout defaults to failing outside a TTY (`--dirty auto` behaves like `--dirty fail`), so scripts choose an explicit policy:
+
+```bash
+dev done --ff --dirty commit -m "chore: finalize before merge"
+dev done --pr --dirty discard --yes   # destructive; --yes is mandatory here
+```
+
+`--message`/`-m` only applies with `--dirty commit`. `--dirty discard` outside a TTY requires `--yes`; the `DROP` confirmation is an interactive-only safeguard.
+
 ## 6. Sweep drift and stale state
 
 ```bash
@@ -609,6 +630,8 @@ It never deletes uncommitted work. Reporting first is part of the safety model.
 - [`internal/cli/resume.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/resume.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/cli/done_flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done_flow.go)
+- [`internal/gitx/finish.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/finish.go)
 
 ---
 
@@ -1931,6 +1954,21 @@ Prefer JSON or the agent-ready Markdown context over parsing human tables. Table
 
 Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
 
+## `dev done` finish flags
+
+`dev done` for branch/worktree tasks integrates through exactly one of `--ff` (rebase onto the base, then fast-forward it) or `--pr` (push and open a pull/merge request). Omitting both opens the interactive finish wizard on a TTY — see [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) for the prompts.
+
+A dirty checkout is handled by `--dirty <auto|fail|commit|discard>` (default `auto`):
+
+| Value | Behavior |
+|---|---|
+| `auto` | interactive: prompts to commit or discard; non-interactive: fails, same as `fail` |
+| `fail` | refuses to finish with a dirty checkout |
+| `commit` | commits everything with `--message`/`-m` (prompted interactively if omitted) |
+| `discard` | resets tracked changes and removes untracked files; destructive, requires `--yes` outside a TTY |
+
+`--yes`/`-y` confirms the selected finish plan; it is mandatory for a non-interactive `--dirty discard` and otherwise skips the interactive confirmation step. `--keep-worktree` keeps the worktree after `--ff` integration (default: removed once merged), `--push` also pushes the resulting branch, and `--delete-branch` deletes the branch once its commits are contained in the base — never a branch with unpushed commits.
+
 ## Configuration
 
 ```bash
@@ -1957,6 +1995,12 @@ Repository quick-note Markdown is durable under configured `paths.state_dir/note
 
 A repository may commit `.dev.toml` for worktree provisioning overrides that should travel with the project. Keep host-specific paths and credentials in the user config or ignored environment files, not in the repository override.
 
+## Colored output
+
+Human-readable output (tables, `dev status`, the `dev done` finish wizard, warnings, and cobra help) applies semantic ANSI color through a small set of roles: `title`/`header`/`prompt` (bold cyan), `label`/`dim` (dim), `success` (green), `warning` (yellow), `danger` (bold red), and `review` (magenta, for a PR/review handoff). Git-status and task-state strings are colored by their own meaning instead of a fixed role — `clean` is green, `dirty`/`ahead`/`behind`/`conflict` are yellow or red as appropriate.
+
+Control it with the global `--color <auto|always|never>` flag (default `auto`). `auto` disables color when output is not attached to a terminal, when `NO_COLOR` is set to any non-empty value, or when `TERM=dumb`. `--json` output is never colored regardless of mode. There is no config-file field for color — `--color` and the environment are the only controls, so piping `dev` never requires `--color never` to stay clean.
+
 ## Shell integration
 
 ```bash
@@ -1976,6 +2020,7 @@ The following content is included from `internal/skill/dev-cli/references/comman
 ### Global options
 
 - `--allow-shared-checkout` — allow a writer claim in a checkout occupied by another live agent
+- `--color` — colorize human output: auto, always or never
 - `--config` — path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)
 - `--no-runtime` — do not touch any terminal multiplexer
 - `--runtime` — override runtime backend: herdr, tmux, zellij or none
@@ -2158,10 +2203,13 @@ dev done [task] [flags]
 ```
 
 - `--delete-branch` — delete the branch once its commits are in the base
+- `--dirty` — dirty checkout policy: auto, fail, commit or discard
 - `--ff` — rebase onto the base and fast-forward it
 - `--keep-worktree` — keep the worktree checkout
+- `-m, --message` — commit message for --dirty=commit
 - `--pr` — push and open a pull/merge request instead of merging locally
 - `--push` — push the resulting branch (direct mode pushes its current branch)
+- `-y, --yes` — confirm the selected finish plan (required for non-interactive discard)
 
 ### `dev edit`
 
@@ -2827,6 +2875,8 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
+- [`internal/cli/color.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/color.go)
+- [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 
 ---
 
@@ -2883,6 +2933,9 @@ These were historical gaps and should not be reintroduced as limitations:
 - TUI navigation refuses to open a missing COLD checkout and directs the user to `dev resume`.
 - Runtime handles now record backend provenance and are revalidated before cleanup.
 - `auto` runtime selection includes Zellij between tmux and none.
+
+- `dev done` opens an interactive finish wizard on a TTY when `--ff`/`--pr` are both omitted, analyzing a dirty checkout against the base (commit, discard, or cancel) instead of rejecting any uncommitted change outright; a non-interactive caller still passes an explicit `--dirty` policy and `--yes` for a destructive discard.
+- Human-readable output now carries semantic color (`--color auto|always|never`), automatically disabled when `NO_COLOR` is set, `TERM=dumb`, or stdout/stderr is not a terminal.
 
 ## Claude Code status matrix
 
@@ -3803,6 +3856,27 @@ dev done --pr
 
 這會 push branch，並在對應 CLI 可用時建立 GitHub pull request 或 GitLab merge request。它**不會**標示 task DONE，也不會清理 checkout。目前 `dev sweep` 同樣不會推斷 remote request 已 merge，因此必須先確認整合，再結束本機 lifecycle。
 
+## 互動式 `dev done` finish wizard
+
+在 interactive terminal 上，省略 `--ff` 與 `--pr` 執行 `dev done` 不會直接失敗，而是開啟 finish wizard。它不會猜你要哪種 integration mode，而是先檢視 checkout 的實際狀態，只詢問它無法推斷的部分。
+
+Wizard 最多分三步：
+
+1. **Preflight。** 回報 branch、base、branch/base 的 commit relation（ahead/behind，或已被 base 包含），以及 — 若 checkout 是 dirty — 逐 path 說明哪些變更已與 base tree 相同、哪些是 unique。
+2. **Dirty changes**，僅在 checkout 為 dirty 時出現：`c` 用你輸入的訊息 commit 全部變更，`d` discard 全部（tracked 與 untracked），`q` 取消且不做任何變更。Discard unique content — 尚未與 base 等價的內容 — 需在後續確認時輸入 `DROP`；只 discard 與 base 相符的 path 則不需要。
+3. **Integration**，僅在未傳入 `--ff` 或 `--pr`、且 branch 尚未完全被 base 包含時出現：`f` 把 branch rebase 到 base 再 fast-forward（等同 `--ff`），`p` push 並開啟 pull/merge request（等同 `--pr`），`q` 取消。Branch 已被 base 包含時，wizard 會跳過此步驟，直接進入 cleanup。
+
+事先傳入 `--ff` 或 `--pr` 等於幫 wizard 回答了第 3 步，因此它只會詢問 flags 未解決的部分 —— 若 tree 乾淨且已明確給出 integration flag，則完全不會詢問。動作執行前會先列出 dirty action 與 integration mode 的摘要；確認它，或在 plan 已由 flags 完全指定時加上 `--yes` 跳過確認。若 plan 開啟期間 checkout 或 branch 發生變化，`dev` 會在確認後偵測到 drift 並拒絕套用過期的 plan —— 重新執行 `dev done` 以取得目前狀態。
+
+Non-interactive 情境 —— 沒有 TTY，或在 script 中 —— wizard 完全不會詢問。未指定 integration flag 時 `dev done` 只會回報同樣的 preflight 後結束；請明確傳入 `--ff` 或 `--pr`。Dirty checkout 在沒有 TTY 時預設失敗（`--dirty auto` 等同 `--dirty fail`），因此 script 應選擇明確的 policy：
+
+```bash
+dev done --ff --dirty commit -m "chore: finalize before merge"
+dev done --pr --dirty discard --yes   # destructive；此處 --yes 為必要
+```
+
+`--message`/`-m` 只在搭配 `--dirty commit` 時使用。`--dirty discard` 在沒有 TTY 時需要 `--yes`；輸入 `DROP` 的確認只存在於 interactive 情境。
+
 ## 6. Sweep drift 與 stale state
 
 ```bash
@@ -3835,6 +3909,8 @@ Sweep 可建議：
 - [`internal/cli/resume.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/resume.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/cli/done_flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done_flow.go)
+- [`internal/gitx/finish.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/finish.go)
 
 ---
 
@@ -5196,6 +5272,21 @@ dev bootstrap --json
 
 每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
 
+## `dev done` finish flags
+
+`dev done` 對 branch/worktree task 只透過下列其中一種方式 integrate：`--ff`（rebase 到 base 再 fast-forward）或 `--pr`（push 並開啟 pull/merge request）。兩者都省略時，在 TTY 上會開啟 interactive finish wizard —— 提示內容見[變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/)。
+
+Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`）：
+
+| 值 | 行為 |
+|---|---|
+| `auto` | interactive：提示 commit 或 discard；non-interactive：直接失敗，等同 `fail` |
+| `fail` | dirty checkout 時拒絕 finish |
+| `commit` | 用 `--message`/`-m` commit 全部變更（未指定時 interactive 會提示輸入） |
+| `discard` | reset tracked 變更並移除 untracked files；具破壞性，沒有 TTY 時需要 `--yes` |
+
+`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--keep-worktree` 讓 `--ff` integration 後仍保留 worktree（預設 merge 後移除），`--push` 會一併 push 產生的 branch，`--delete-branch` 只在 branch 的 commits 已被 base 包含時才刪除它 —— 有 unpushed commits 的 branch 永遠不會被刪除。
+
 ## Configuration
 
 ```bash
@@ -5222,6 +5313,12 @@ Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 dur
 
 Repository 可 commit `.dev.toml`，保存應跟著 project 移動的 worktree provisioning overrides。Host-specific path 與 credential 應放 user config 或 ignored environment file，不放 repository override。
 
+## 彩色輸出
+
+Human-readable output（tables、`dev status`、`dev done` finish wizard、warnings 與 cobra help）會透過一組 semantic role 套用 ANSI color：`title`/`header`/`prompt`（bold cyan）、`label`/`dim`（dim）、`success`（green）、`warning`（yellow）、`danger`（bold red），以及代表 PR/review handoff 的 `review`（magenta）。Git-status 與 task-state 字串則依它自身的意義上色，而非固定 role —— `clean` 是 green，`dirty`/`ahead`/`behind`/`conflict` 依情況為 yellow 或 red。
+
+用全域的 `--color <auto|always|never>` flag 控制（預設 `auto`）。`auto` 在 output 未連接 terminal、`NO_COLOR` 被設為任何非空值，或 `TERM=dumb` 時會停用 color。`--json` output 不論 mode 為何都不會上色。目前沒有對應的 config-file 欄位 —— `--color` 與 environment 是僅有的控制方式，因此 pipe `dev` 的輸出不需要額外傳 `--color never` 就是乾淨的。
+
 ## Shell integration
 
 ```bash
@@ -5241,6 +5338,7 @@ Child process 不能改變 parent working directory，因此受信任的 `shell-
 ### Global options
 
 - `--allow-shared-checkout` — allow a writer claim in a checkout occupied by another live agent
+- `--color` — colorize human output: auto, always or never
 - `--config` — path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)
 - `--no-runtime` — do not touch any terminal multiplexer
 - `--runtime` — override runtime backend: herdr, tmux, zellij or none
@@ -5423,10 +5521,13 @@ dev done [task] [flags]
 ```
 
 - `--delete-branch` — delete the branch once its commits are in the base
+- `--dirty` — dirty checkout policy: auto, fail, commit or discard
 - `--ff` — rebase onto the base and fast-forward it
 - `--keep-worktree` — keep the worktree checkout
+- `-m, --message` — commit message for --dirty=commit
 - `--pr` — push and open a pull/merge request instead of merging locally
 - `--push` — push the resulting branch (direct mode pushes its current branch)
+- `-y, --yes` — confirm the selected finish plan (required for non-interactive discard)
 
 ### `dev edit`
 
@@ -6092,6 +6193,8 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
+- [`internal/cli/color.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/color.go)
+- [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 
 ---
 
@@ -6151,6 +6254,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - TUI navigation 會拒絕開啟 checkout 不存在的 COLD task，並要求使用 `dev resume`。
 - Runtime handle 現在保存 backend provenance，cleanup 前會重新驗證。
 - `auto` runtime selection 已在 tmux 與 none 之間加入 Zellij。
+
+- `dev done` 在省略 `--ff`/`--pr` 且為 TTY 時會開啟 interactive finish wizard，把 dirty checkout 拿去跟 base 比較（commit、discard 或 cancel），不再直接拒絕任何 uncommitted change；non-interactive caller 仍須明確傳入 `--dirty` policy，且 destructive discard 需要 `--yes`。
+- Human-readable output 現在具備 semantic color（`--color auto|always|never`），在 `NO_COLOR` 已設定、`TERM=dumb`，或 stdout/stderr 不是 terminal 時會自動停用。
 
 ## Claude Code status matrix
 

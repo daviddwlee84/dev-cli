@@ -44,6 +44,21 @@ Prefer JSON or the agent-ready Markdown context over parsing human tables. Table
 
 Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
 
+## `dev done` finish flags
+
+`dev done` for branch/worktree tasks integrates through exactly one of `--ff` (rebase onto the base, then fast-forward it) or `--pr` (push and open a pull/merge request). Omitting both opens the interactive finish wizard on a TTY — see [Change-stream workflow](../guides/change-stream-workflow.md) for the prompts.
+
+A dirty checkout is handled by `--dirty <auto|fail|commit|discard>` (default `auto`):
+
+| Value | Behavior |
+|---|---|
+| `auto` | interactive: prompts to commit or discard; non-interactive: fails, same as `fail` |
+| `fail` | refuses to finish with a dirty checkout |
+| `commit` | commits everything with `--message`/`-m` (prompted interactively if omitted) |
+| `discard` | resets tracked changes and removes untracked files; destructive, requires `--yes` outside a TTY |
+
+`--yes`/`-y` confirms the selected finish plan; it is mandatory for a non-interactive `--dirty discard` and otherwise skips the interactive confirmation step. `--keep-worktree` keeps the worktree after `--ff` integration (default: removed once merged), `--push` also pushes the resulting branch, and `--delete-branch` deletes the branch once its commits are contained in the base — never a branch with unpushed commits.
+
 ## Configuration
 
 ```bash
@@ -69,6 +84,12 @@ Key sections:
 Repository quick-note Markdown is durable under configured `paths.state_dir/notes`, which defaults to `$XDG_DATA_HOME/dev/notes`. The full-text index at `$XDG_CACHE_HOME/dev/notes.db` is disposable and rebuilds from those files; changing `paths.state_dir` does not move the cache.
 
 A repository may commit `.dev.toml` for worktree provisioning overrides that should travel with the project. Keep host-specific paths and credentials in the user config or ignored environment files, not in the repository override.
+
+## Colored output
+
+Human-readable output (tables, `dev status`, the `dev done` finish wizard, warnings, and cobra help) applies semantic ANSI color through a small set of roles: `title`/`header`/`prompt` (bold cyan), `label`/`dim` (dim), `success` (green), `warning` (yellow), `danger` (bold red), and `review` (magenta, for a PR/review handoff). Git-status and task-state strings are colored by their own meaning instead of a fixed role — `clean` is green, `dirty`/`ahead`/`behind`/`conflict` are yellow or red as appropriate.
+
+Control it with the global `--color <auto|always|never>` flag (default `auto`). `auto` disables color when output is not attached to a terminal, when `NO_COLOR` is set to any non-empty value, or when `TERM=dumb`. `--json` output is never colored regardless of mode. There is no config-file field for color — `--color` and the environment are the only controls, so piping `dev` never requires `--color never` to stay clean.
 
 ## Shell integration
 
@@ -98,3 +119,5 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
+- [`internal/cli/color.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/color.go)
+- [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)

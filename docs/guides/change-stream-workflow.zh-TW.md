@@ -131,6 +131,27 @@ dev done --pr
 
 這會 push branch，並在對應 CLI 可用時建立 GitHub pull request 或 GitLab merge request。它**不會**標示 task DONE，也不會清理 checkout。目前 `dev sweep` 同樣不會推斷 remote request 已 merge，因此必須先確認整合，再結束本機 lifecycle。
 
+## 互動式 `dev done` finish wizard
+
+在 interactive terminal 上，省略 `--ff` 與 `--pr` 執行 `dev done` 不會直接失敗，而是開啟 finish wizard。它不會猜你要哪種 integration mode，而是先檢視 checkout 的實際狀態，只詢問它無法推斷的部分。
+
+Wizard 最多分三步：
+
+1. **Preflight。** 回報 branch、base、branch/base 的 commit relation（ahead/behind，或已被 base 包含），以及 — 若 checkout 是 dirty — 逐 path 說明哪些變更已與 base tree 相同、哪些是 unique。
+2. **Dirty changes**，僅在 checkout 為 dirty 時出現：`c` 用你輸入的訊息 commit 全部變更，`d` discard 全部（tracked 與 untracked），`q` 取消且不做任何變更。Discard unique content — 尚未與 base 等價的內容 — 需在後續確認時輸入 `DROP`；只 discard 與 base 相符的 path 則不需要。
+3. **Integration**，僅在未傳入 `--ff` 或 `--pr`、且 branch 尚未完全被 base 包含時出現：`f` 把 branch rebase 到 base 再 fast-forward（等同 `--ff`），`p` push 並開啟 pull/merge request（等同 `--pr`），`q` 取消。Branch 已被 base 包含時，wizard 會跳過此步驟，直接進入 cleanup。
+
+事先傳入 `--ff` 或 `--pr` 等於幫 wizard 回答了第 3 步，因此它只會詢問 flags 未解決的部分 —— 若 tree 乾淨且已明確給出 integration flag，則完全不會詢問。動作執行前會先列出 dirty action 與 integration mode 的摘要；確認它，或在 plan 已由 flags 完全指定時加上 `--yes` 跳過確認。若 plan 開啟期間 checkout 或 branch 發生變化，`dev` 會在確認後偵測到 drift 並拒絕套用過期的 plan —— 重新執行 `dev done` 以取得目前狀態。
+
+Non-interactive 情境 —— 沒有 TTY，或在 script 中 —— wizard 完全不會詢問。未指定 integration flag 時 `dev done` 只會回報同樣的 preflight 後結束；請明確傳入 `--ff` 或 `--pr`。Dirty checkout 在沒有 TTY 時預設失敗（`--dirty auto` 等同 `--dirty fail`），因此 script 應選擇明確的 policy：
+
+```bash
+dev done --ff --dirty commit -m "chore: finalize before merge"
+dev done --pr --dirty discard --yes   # destructive；此處 --yes 為必要
+```
+
+`--message`/`-m` 只在搭配 `--dirty commit` 時使用。`--dirty discard` 在沒有 TTY 時需要 `--yes`；輸入 `DROP` 的確認只存在於 interactive 情境。
+
 ## 6. Sweep drift 與 stale state
 
 ```bash
@@ -163,3 +184,5 @@ Sweep 可建議：
 - [`internal/cli/resume.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/resume.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/cli/done_flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done_flow.go)
+- [`internal/gitx/finish.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/finish.go)
