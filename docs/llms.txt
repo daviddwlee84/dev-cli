@@ -1,0 +1,83 @@
+# dev-cli
+
+> Documentation for dev-cli, Git workflows, coding-agent harnesses, and safe parallel work.
+
+## English
+
+### Overview
+
+- [dev-cli](https://daviddwlee84.github.io/dev-cli/): Use dev-cli to keep Git change streams durable while worktrees, runtimes, and coding agents remain replaceable.
+- [Getting started](https://daviddwlee84.github.io/dev-cli/getting-started/): Install dev-cli, initialize a machine, and run one change stream from start through integration.
+- [Best practices](https://daviddwlee84.github.io/dev-cli/best-practices/): A concise checklist for safe Git, worktree, and coding-agent collaboration with dev-cli.
+### Concepts
+
+- [Mental model and lifecycle](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/): Understand dev-cli as durable Git history, a small intent registry, disposable worktrees, and replaceable runtimes.
+- [Isolation boundaries and glossary](https://daviddwlee84.github.io/dev-cli/concepts/isolation-glossary/): Distinguish branches, worktrees, runtimes, agent contexts, tasks, and the shared state each leaves exposed.
+### Using dev-cli
+
+- [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/): Run a dev-cli change stream through start, park, resume, review or integration, and conservative cleanup.
+- [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/): Choose the owner and location of each worktree, then provision ignored files and dependencies safely.
+- [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/): Coordinate several coding agents around change-stream ownership, explicit mutation boundaries, and replaceable runtimes.
+- [TUI, repositories, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/): Navigate tasks, repositories, experiments, and remotes in the TUI; inventory or adopt existing work without destructive migration.
+### Git and GitHub
+
+- [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/): Follow the current GitHub Flow while keeping older deploy-and-merge variants in clearly labeled historical context.
+- [Branches, commits, and pull requests](https://daviddwlee84.github.io/dev-cli/git/branches-commits-prs/): Keep branches short-lived, commits meaningful, pull requests reviewable, and release semantics separate from message style.
+- [Worktree semantics and recovery](https://daviddwlee84.github.io/dev-cli/git/worktree-semantics-recovery/): Understand what Git worktrees isolate and share, then add, lock, remove, prune, move, and repair them without losing work.
+### Claude Code
+
+- [Agentic harness and tools](https://daviddwlee84.github.io/dev-cli/claude/agentic-loop-tools/): Understand Claude Code as an agentic harness around a model, with tools, context, permissions, sessions, and verification loops.
+- [Parallel work decision guide](https://daviddwlee84.github.io/dev-cli/claude/parallel-work-chooser/): Choose among one session, subagents, Agent view, agent teams, Dynamic Workflows, and worktrees for parallel work.
+- [Subagents and Agent view](https://daviddwlee84.github.io/dev-cli/claude/subagents-agent-view/): Compare delegated subagents inside one conversation with human-managed background sessions in Agent view.
+- [Agent teams and Dynamic Workflows](https://daviddwlee84.github.io/dev-cli/claude/teams-dynamic-workflows/): Choose experimental agent teams for communicating peers or Dynamic Workflows for repeatable scripted orchestration.
+- [Worktree isolation](https://daviddwlee84.github.io/dev-cli/claude/worktree-isolation/): Use Claude Code worktrees with correct paths, base selection, ignored-file provisioning, retention, and main-checkout enforcement.
+- [Hooks, skills, plugins, and Agent SDK](https://daviddwlee84.github.io/dev-cli/claude/extensions-agent-sdk/): Choose hooks, skills, plugins, MCP, or the Agent SDK according to whether you need automation, knowledge, packaging, integration, or an embedded harness.
+### Reference
+
+- [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/): Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
+- [Compatibility and known limitations](https://daviddwlee84.github.io/dev-cli/reference/compatibility/): Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
+- [Sources and freshness](https://daviddwlee84.github.io/dev-cli/reference/sources-freshness/): Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
+### Notes
+
+- [Notes index](https://daviddwlee84.github.io/dev-cli/notes/): Organize future dev-cli, Git, harness, experiment, incident, and source-review notes without destabilizing the main guides.
+- [Authoring notes](https://daviddwlee84.github.io/dev-cli/notes/authoring/): Use a repeatable metadata, source, bilingual-writing, and verification template for every new documentation note.
+
+## 繁體中文
+
+### 概覽
+
+- [dev-cli](https://daviddwlee84.github.io/dev-cli/zh-TW/): 使用 dev-cli 保存 Git 變更流，讓 worktree、runtime 與 coding agent 都能安全重建。
+- [快速開始](https://daviddwlee84.github.io/dev-cli/zh-TW/getting-started/): 安裝 dev-cli、初始化開發機器，並完成 start、park、resume 到 integration 的第一條變更流。
+- [最佳實務](https://daviddwlee84.github.io/dev-cli/zh-TW/best-practices/): 使用 dev-cli 進行安全 Git、worktree 與 coding-agent 協作的簡潔 checklist。
+### 核心概念
+
+- [心智模型與生命週期](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/): 以持久 Git history、小型 intent registry、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
+- [隔離邊界與詞彙](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/isolation-glossary/): 分辨 branch、worktree、runtime、agent context、task 與它們仍會共享的 state。
+### 使用 dev-cli
+
+- [變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/): 使用 dev-cli 讓變更流依序經過 start、park、resume、review/integration 與保守 cleanup。
+- [Worktree 與環境佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/): 選擇每個 worktree 的 owner 與位置，再安全佈建 ignored files 與 dependencies。
+- [平行 Agent 與 Runtime](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/): 以變更流 ownership、明確 mutation boundary 與可替換 runtime 協調多個 coding agents。
+- [TUI、Repository 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/): 在 TUI 瀏覽 tasks、repositories、experiments 與 remotes，並以非破壞方式 inventory 或 adopt 現有工作。
+### Git 與 GitHub
+
+- [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/): 遵循現行 GitHub Flow，並把舊版 deploy/merge 變體清楚標示為歷史脈絡。
+- [Branch、Commit 與 Pull Request](https://daviddwlee84.github.io/dev-cli/zh-TW/git/branches-commits-prs/): 讓 branch 保持短期、commit 有意義、pull request 可 review，並把 release semantics 與 message style 分開。
+- [Worktree 語義與復原](https://daviddwlee84.github.io/dev-cli/zh-TW/git/worktree-semantics-recovery/): 理解 Git worktree 隔離與共享的內容，再安全 add、lock、remove、prune、move 與 repair。
+### Claude Code
+
+- [Agentic Harness 與 Tools](https://daviddwlee84.github.io/dev-cli/zh-TW/claude/agentic-loop-tools/): 把 Claude Code 理解成模型外圍的 agentic harness，包含 tools、context、permissions、sessions 與 verification loop。
+- [平行工作決策指南](https://daviddwlee84.github.io/dev-cli/zh-TW/claude/parallel-work-chooser/): 在單一 session、subagent、Agent view、agent team、Dynamic Workflow 與 worktree 之間選擇正確平行工作方式。
+- [Subagent 與 Agent View](https://daviddwlee84.github.io/dev-cli/zh-TW/claude/subagents-agent-view/): 比較同一 conversation 內的 delegated subagent，與由 human 管理的 Agent view background sessions。
+- [Agent Team 與 Dynamic Workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/claude/teams-dynamic-workflows/): 需要 communicating peers 時選 experimental agent team，需要可重跑 scripted orchestration 時選 Dynamic Workflow。
+- [Worktree 隔離](https://daviddwlee84.github.io/dev-cli/zh-TW/claude/worktree-isolation/): 以正確 path、base selection、ignored-file provisioning、retention 與 main-checkout enforcement 使用 Claude Code worktree。
+- [Hooks、Skills、Plugins 與 Agent SDK](https://daviddwlee84.github.io/dev-cli/zh-TW/claude/extensions-agent-sdk/): 依 automation、knowledge、packaging、integration 或 embedded harness 需求選擇 hook、skill、plugin、MCP 或 Agent SDK。
+### 參考資料
+
+- [命令與設定](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/): 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
+- [相容性與已知限制](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/): 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
+- [來源與時效](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/sources-freshness/): 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
+### 筆記
+
+- [筆記索引](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/): 整理未來 dev-cli、Git、harness、experiment、incident 與 source-review notes，不讓 main guides 失去穩定性。
+- [撰寫筆記](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/authoring/): 對每份新 documentation note 使用可重複的 metadata、source、bilingual writing 與 verification template。

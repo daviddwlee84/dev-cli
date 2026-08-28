@@ -1,0 +1,150 @@
+site_name: dev-cli
+site_description: Documentation for dev-cli, Git workflows, coding-agent harnesses, and safe parallel work.
+site_url: https://daviddwlee84.github.io/dev-cli/
+repo_url: https://github.com/daviddwlee84/dev-cli
+repo_name: daviddwlee84/dev-cli
+edit_uri: edit/main/docs/
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+  language: en
+plugins:
+  - i18n:
+      docs_structure: suffix
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          name: English
+          default: true
+        - locale: zh-TW
+          name: 繁體中文 (zh-TW)
+          nav_translations:
+            Overview: 概覽
+            Home: 首頁
+            Getting Started: 快速開始
+            Best Practices: 最佳實務
+            Concepts: 核心概念
+            Mental Model and Lifecycle: 心智模型與生命週期
+            Isolation Boundaries and Glossary: 隔離邊界與詞彙
+            Using dev-cli: 使用 dev-cli
+            Change-Stream Workflow: 變更流工作流程
+            Worktrees and Provisioning: Worktree 與環境佈建
+            Parallel Agents and Runtimes: 平行 Agent 與 Runtime
+            TUI, Repositories, and Bootstrap: TUI、Repository 與 Bootstrap
+            Git and GitHub: Git 與 GitHub
+            GitHub Flow: GitHub Flow
+            Branches, Commits, and Pull Requests: Branch、Commit 與 Pull Request
+            Worktree Semantics and Recovery: Worktree 語義與復原
+            Claude Code: Claude Code
+            Agentic Harness and Tools: Agentic Harness 與 Tools
+            Parallel Work Decision Guide: 平行工作決策指南
+            Subagents and Agent View: Subagent 與 Agent View
+            Agent Teams and Dynamic Workflows: Agent Team 與 Dynamic Workflow
+            Worktree Isolation: Worktree 隔離
+            Hooks, Skills, Plugins, and Agent SDK: Hooks、Skills、Plugins 與 Agent SDK
+            Reference: 參考資料
+            Commands and Configuration: 命令與設定
+            Compatibility and Known Limitations: 相容性與已知限制
+            Sources and Freshness: 來源與時效
+            Notes: 筆記
+            Notes Index: 筆記索引
+            Authoring Notes: 撰寫筆記
+  - search
+  - copy-to-llm:
+      repo_url: "https://daviddwlee84.github.io/dev-cli"
+      base_path: "/dev-cli"
+      button_hover_color: "var(--md-primary-fg-color)"
+      toast_bg_color: "var(--md-primary-fg-color)"
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - tables
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets:
+      base_path:
+        - .
+        - docs
+        - docs/_snippets
+      check_paths: true
+  - pymdownx.tabbed:
+      alternate_style: true
+
+hooks:
+  - scripts/mkdocs_hooks.py
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Best Practices: best-practices.md
+  - Concepts:
+      - Mental Model and Lifecycle: concepts/mental-model.md
+      - Isolation Boundaries and Glossary: concepts/isolation-glossary.md
+  - Using dev-cli:
+      - Change-Stream Workflow: guides/change-stream-workflow.md
+      - Worktrees and Provisioning: guides/worktrees-provisioning.md
+      - Parallel Agents and Runtimes: guides/parallel-agents-runtimes.md
+      - TUI, Repositories, and Bootstrap: guides/tui-repos-bootstrap.md
+  - Git and GitHub:
+      - GitHub Flow: git/github-flow.md
+      - Branches, Commits, and Pull Requests: git/branches-commits-prs.md
+      - Worktree Semantics and Recovery: git/worktree-semantics-recovery.md
+  - Claude Code:
+      - Agentic Harness and Tools: claude/agentic-loop-tools.md
+      - Parallel Work Decision Guide: claude/parallel-work-chooser.md
+      - Subagents and Agent View: claude/subagents-agent-view.md
+      - Agent Teams and Dynamic Workflows: claude/teams-dynamic-workflows.md
+      - Worktree Isolation: claude/worktree-isolation.md
+      - Hooks, Skills, Plugins, and Agent SDK: claude/extensions-agent-sdk.md
+  - Reference:
+      - Commands and Configuration: reference/commands-config.md
+      - Compatibility and Known Limitations: reference/compatibility.md
+      - Sources and Freshness: reference/sources-freshness.md
+  - Notes:
+      - Notes Index: notes/index.md
+      - Authoring Notes: notes/authoring.md
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/daviddwlee84/dev-cli
+# `_snippets/` are include-only source and must not become pages/search entries.
+exclude_docs: |
+  /_snippets/
+
+validation:
+  links:
+    not_found: warn
+    anchors: warn
