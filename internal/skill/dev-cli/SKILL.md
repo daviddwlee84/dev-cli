@@ -318,16 +318,16 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    reconstructible. Use `dev stats clear --repo/--source/--all`; use
    `dev cache clear` only for regenerable remote/size/gitignore caches.
 
-12. **Archive is not eviction.** `dev tries archive` is a reversible hidden move
+15. **Archive is not eviction.** `dev tries archive` is a reversible hidden move
    on the same filesystem; it does not free space. Phase 1 has no project-data
    delete command. Never substitute `rm -rf` merely because a remote exists —
    no-remote, local-only refs, ignored files and stash are independent risks.
 
-15. **Read Git state as counts, not a dirty boolean.** `⇡`/`⇣` are upstream
+16. **Read Git state as counts, not a dirty boolean.** `⇡`/`⇣` are upstream
    divergence; `=` conflicts, `+` staged, `!` unstaged, `?` untracked. Use
    `dev status` or JSON for the unique-path and type breakdown before cleanup.
 
-16. **Commit messages stay English** and follow Conventional Commits, even when
+17. **Commit messages stay English** and follow Conventional Commits, even when
    the conversation is in another language — see the companion `git-workflow`
    skill, which owns commit conventions, SemVer and branch naming. This skill
    does not duplicate them.
@@ -373,10 +373,11 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 
 ## Gotchas
 
-- **`dev` is a shell function, not just a binary.** Commands that move you into
-  a checkout print a `cd` directive for the wrapper installed by
-  `eval "$(dev shell-init zsh)"`. Without it they print a path and do not move
-  you — that is not a bug.
+- **`dev` may be a shell wrapper around the binary.** The trusted `shell-init`
+  output defines a wrapper that gives navigation commands a private child-only
+  file descriptor, reads one NUL-terminated path and calls `builtin cd` without
+  evaluating command output. Without the wrapper, the binary's printable legacy
+  directive cannot change the parent shell — that is not a bug.
 - **A worktree is a clean checkout.** It has no `node_modules`, no `.venv` and
   none of the gitignored env files. `dev` provisions it; `--no-provision`
   skips that and leaves you to it.

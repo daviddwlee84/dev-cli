@@ -38,7 +38,6 @@ dev repo list --json
 dev repo context [repo]
 dev repo remote --json
 dev bootstrap --json
-dev wt plan --json
 ```
 
 不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。
@@ -60,7 +59,7 @@ dev config path
 | `[paths]` | scan roots、project/tries/worktree roots、worktree template、state path |
 | `[runtime]` | `auto`、Herdr、tmux、Zellij 或 none，以及 metadata settings |
 | `[worktree]` | ignored includes、linked dirs、setup commands、strategies、timeout |
-| `[forge]` | remote result limit 與 cache TTL |
+| `[forge]` / `[[forge.azure_devops]]` | remote result limit、cache TTL，以及 opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
 | `[stats]` | sampler 與 optional WakaTime import |
@@ -74,7 +73,7 @@ eval "$(dev shell-init zsh)"
 dev shell-init fish | source
 ```
 
-Child process 不能改變 parent working directory，因此 wrapper 會 evaluate `cd` directive。不要 evaluate 任意 `dev` output；只使用專用 shell-init wrapper/command behavior。
+Child process 不能改變 parent working directory，因此受信任的 `shell-init` output 會定義 wrapper。Navigation command 執行時，wrapper 從 private child-only file descriptor 讀取 NUL-terminated path，再呼叫 `builtin cd`；它不會把一般 `dev` command output 當成 shell code evaluate。
 
 ## 完整 generated command reference
 

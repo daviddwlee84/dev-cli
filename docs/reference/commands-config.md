@@ -34,7 +34,6 @@ dev repo list --json
 dev repo context [repo]
 dev repo remote --json
 dev bootstrap --json
-dev wt plan --json
 ```
 
 Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract.
@@ -56,7 +55,7 @@ Key sections:
 | `[paths]` | scan roots, project/tries/worktree roots, worktree template, state path |
 | `[runtime]` | `auto`, Herdr, tmux, Zellij, or none plus metadata settings |
 | `[worktree]` | ignored includes, linked dirs, setup commands, strategies, timeout |
-| `[forge]` | remote result limit and cache TTL |
+| `[forge]` / `[[forge.azure_devops]]` | remote result limit, cache TTL, and opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
 | `[stats]` | sampler and optional WakaTime import |
@@ -70,7 +69,7 @@ eval "$(dev shell-init zsh)"
 dev shell-init fish | source
 ```
 
-The wrapper evaluates a `cd` directive because a child process cannot change its parent's working directory. Do not evaluate arbitrary `dev` output; use the dedicated shell-init wrapper/command behavior.
+The trusted `shell-init` output defines a wrapper because a child process cannot change its parent's working directory. For navigation commands, that wrapper reads a NUL-terminated path from a private child-only file descriptor and calls `builtin cd`; it does not evaluate ordinary `dev` command output as shell code.
 
 ## Complete generated command reference
 
