@@ -139,3 +139,38 @@ func isolateTransactions(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 }
+
+// Git leaves REBASE_HEAD behind after a rebase completes. Treating that file as
+// evidence of an in-progress operation permanently blocked retirement for every
+// worktree that had ever been rebased, so it must not count.
+func TestInProgressIgnoresRebaseHeadLeftByACompletedRebase(t *testing.T) {
+	isolateTransactions(t)
+	r := gittest.New(t)
+	r.Write("feature.txt", "feature\n")
+	r.Git("add", "feature.txt")
+	r.Git("commit", "-m", "feat: work")
+
+	if err := os.WriteFile(filepath.Join(r.Root, ".git", "REBASE_HEAD"),
+		[]byte(r.Git("rev-parse", "HEAD")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	operation, active, err := gitx.InProgress(r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if active {
+		t.Fatalf("leftover REBASE_HEAD reported %q as in progress", operation)
+	}
+
+	// A real interrupted rebase still has to be reported.
+	if err := os.MkdirAll(filepath.Join(r.Root, ".git", "rebase-merge"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	operation, active, err = gitx.InProgress(r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !active || operation != "rebase-merge" {
+		t.Fatalf("in-progress rebase = %q/%v", operation, active)
+	}
+}

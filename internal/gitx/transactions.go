@@ -37,8 +37,12 @@ func InProgress(dir string) (string, bool, error) {
 	if err != nil {
 		return "", false, err
 	}
+	// REBASE_HEAD is deliberately absent: Git leaves it behind after a rebase
+	// *completes*, so treating it as evidence would permanently block every
+	// worktree that was ever rebased. Only the rebase state directories prove
+	// a rebase is still running.
 	for _, candidate := range []string{
-		"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "REBASE_HEAD",
+		"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD",
 		"rebase-merge", "rebase-apply", "sequencer",
 	} {
 		for _, root := range []string{repository.GitDir, repository.GitCommonDir} {

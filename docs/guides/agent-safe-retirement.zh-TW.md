@@ -99,7 +99,7 @@ dev done <task> --merged --base-ref origin/main --confirm-squash <merge-commit>
 - Agent status 無法辨識（不在已知集合內）——一律阻擋；
 - Runtime enumeration 本身失敗，**除非**呼叫者傳入 `--assume-no-runtime`。
 
-`--close-unknown` 與 `--assume-no-runtime` 只放寬 fail-closed 的*觀測結果*（無法讀取的 status、無法列舉的 runtime list）。這兩個 flag 都絕不會 bypass caller containment 或 active-agent state。`retirement.Service.Retire` 在 runtime session 關閉後，也會重新驗證 target identity、Git ancestry、進行中的 Git operation（`gitx.InProgress`，檢查 `MERGE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`、`REBASE_HEAD`、`rebase-merge`、`rebase-apply`、`sequencer`）以及 worktree 是否 clean——因為 runtime draining 期間現實可能已改變，先前的驗證結果不會跨越這個邊界沿用。
+`--close-unknown` 與 `--assume-no-runtime` 只放寬 fail-closed 的*觀測結果*（無法讀取的 status、無法列舉的 runtime list）。這兩個 flag 都絕不會 bypass caller containment 或 active-agent state。`retirement.Service.Retire` 在 runtime session 關閉後，也會重新驗證 target identity、Git ancestry、進行中的 Git operation（`gitx.InProgress`，檢查 `MERGE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`、`rebase-merge`、`rebase-apply`、`sequencer`；不含 `REBASE_HEAD`，因為 Git 在 rebase 完成後仍會保留它）以及 worktree 是否 clean——因為 runtime draining 期間現實可能已改變，先前的驗證結果不會跨越這個邊界沿用。
 
 ## 用 sweep 做定期 cleanup
 

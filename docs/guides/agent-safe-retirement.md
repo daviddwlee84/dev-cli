@@ -96,7 +96,7 @@ This proves only that the named squash commit is contained in the base; the oper
 - agent status is unrecognized (anything outside the known set) — always blocks;
 - runtime enumeration itself fails, **unless** the caller passes `--assume-no-runtime`.
 
-`--close-unknown` and `--assume-no-runtime` only relax fail-closed *observations* (an unreadable status, a runtime list that could not be enumerated). Neither flag ever bypasses caller containment or an active-agent state. `retirement.Service.Retire` also revalidates the target's identity, Git ancestry, in-progress Git operations (`gitx.InProgress`, checking `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `REBASE_HEAD`, `rebase-merge`, `rebase-apply`, `sequencer`), and worktree cleanliness after runtime sessions close — reality may have changed while a runtime was draining, so no earlier proof carries across that boundary.
+`--close-unknown` and `--assume-no-runtime` only relax fail-closed *observations* (an unreadable status, a runtime list that could not be enumerated). Neither flag ever bypasses caller containment or an active-agent state. `retirement.Service.Retire` also revalidates the target's identity, Git ancestry, in-progress Git operations (`gitx.InProgress`, checking `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `rebase-merge`, `rebase-apply`, `sequencer` — not `REBASE_HEAD`, which Git leaves behind after a rebase completes), and worktree cleanliness after runtime sessions close — reality may have changed while a runtime was draining, so no earlier proof carries across that boundary.
 
 ## Periodic cleanup with sweep
 

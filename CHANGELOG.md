@@ -44,6 +44,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Retirement no longer treats the `REBASE_HEAD` file Git leaves behind after a *completed* rebase as
+  an in-progress operation, which had permanently blocked `dev retire` and
+  `dev sweep --merged-worktrees` for any worktree that had ever been rebased.
 - Development builds derive `--version` only from `vMAJOR.MINOR.PATCH` tags, so an unrelated tag in
   the repository can no longer be reported as the CLI version.
 - `dev done` no longer closes the runtime, removes the worktree, or deletes the branch; it records
