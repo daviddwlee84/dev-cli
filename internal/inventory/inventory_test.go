@@ -19,8 +19,8 @@ type fakeRuntime struct{ sessions []runtime.Session }
 
 func (f *fakeRuntime) Name() string    { return "fake" }
 func (f *fakeRuntime) Available() bool { return true }
-func (f *fakeRuntime) Open(context.Context, string, string) (string, error) {
-	return "h", nil
+func (f *fakeRuntime) Open(context.Context, string, string) (runtime.OpenResult, error) {
+	return runtime.OpenResult{Handle: "h", Opened: true}, nil
 }
 func (f *fakeRuntime) Close(context.Context, string) error { return nil }
 func (f *fakeRuntime) List(context.Context) ([]runtime.Session, error) {

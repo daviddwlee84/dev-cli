@@ -32,8 +32,11 @@ runtime session — while leaving the branch and the worktree exactly where they
 are. Closing a session is not abandoning a task.
 
   warm (default)  worktree and branch stay; session closes. Back within days.
-  cold (--cold)   work is committed and pushed, worktree removed. Reconstruct
-                  it anywhere later with dev resume.
+  cold (--cold)   work is committed and pushed, session closed, worktree
+                  removed. Reconstruct it anywhere later with dev resume.
+
+--cold and --keep-session are incompatible: a runtime cannot stay pointed at a
+checkout that cold parking removes.
 
 A checkpoint commit is preferred over git stash: a stash is invisible in the
 log, easy to forget, and cannot be pushed — so it can never reach another
@@ -41,6 +44,9 @@ machine, which is exactly what parking needs to support.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
+			if cold && keepRT {
+				return fmt.Errorf("--cold and --keep-session cannot be combined: a session must not remain pointed at a removed checkout")
+			}
 			t, err := resolveTask(app, args)
 			if err != nil {
 				return err
@@ -112,14 +118,19 @@ machine, which is exactly what parking needs to support.`,
 				}
 			}
 
-			rt := app.Runtime()
+			rt := runtimeForTask(app, t)
 			if !keepRT && t.RuntimeHandle != "" {
-				if err := rt.Close(ctx, t.RuntimeHandle); err != nil {
-					app.warnf("could not close the runtime session: %v", err)
-				} else {
-					fmt.Fprintf(app.Out, "   closed     %s session %s\n", rt.Name(), t.RuntimeHandle)
+				handle := t.RuntimeHandle
+				resolved, closed, closeErr := closeTaskRuntime(ctx, app, t, checkout)
+				rt = resolved
+				if closeErr != nil {
+					if cold {
+						return fmt.Errorf("could not close %s session %s; refusing cold cleanup: %w", rt.Name(), handle, closeErr)
+					}
+					app.warnf("could not close the runtime session: %v", closeErr)
+				} else if closed {
+					fmt.Fprintf(app.Out, "   closed     %s session %s\n", rt.Name(), handle)
 				}
-				t.RuntimeHandle = ""
 			}
 
 			if cold && t.WorktreePath != "" {

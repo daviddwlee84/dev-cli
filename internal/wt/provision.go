@@ -3,8 +3,8 @@
 // Ownership, stated once so agents and humans stop improvising: dev owns every
 // worktree a person might come back to tomorrow — features, fixes, experiments,
 // cross-machine handoffs — and places them at the configured path template.
-// Claude Code's `.claude/worktrees/` stays for turn-scoped subagent isolation
-// that dies with the turn. dev never calls `herdr worktree create`, because
+// Claude Code's `.claude/worktrees/` stays for harness-owned, turn-scoped
+// subagent isolation. dev never calls `herdr worktree create`, because
 // the path policy has to hold on machines without herdr; it creates the
 // worktree with git and asks herdr only to *open* it.
 package wt
@@ -18,6 +18,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -73,7 +74,14 @@ func (p *Provisioner) Apply(ctx context.Context, plan Plan, src, dst string) (Re
 		switch step.Kind {
 		case StepCopyFile:
 			if err := p.copyFileStep(src, dst, step.What); err != nil {
-				res.Failures = append(res.Failures, err)
+				switch {
+				case errors.Is(err, errAlreadyPresent):
+					res.Skipped = append(res.Skipped, step.What+" (already present)")
+				case errors.Is(err, errSourceMissing):
+					res.Skipped = append(res.Skipped, step.What+" (source disappeared)")
+				default:
+					res.Failures = append(res.Failures, err)
+				}
 				continue
 			}
 			res.Copied = append(res.Copied, step.What)
@@ -117,21 +125,38 @@ func (p *Provisioner) Apply(ctx context.Context, plan Plan, src, dst string) (Re
 	return res, nil
 }
 
-var errAlreadyPresent = errors.New("already present")
+var (
+	errAlreadyPresent = errors.New("already present")
+	errSourceMissing  = errors.New("source disappeared")
+)
 
 func (p *Provisioner) copyFileStep(src, dst, rel string) error {
 	from, to := filepath.Join(src, rel), filepath.Join(dst, rel)
 	info, err := os.Lstat(from)
-	if err != nil {
-		return nil // vanished between planning and applying; nothing to do
+	if errors.Is(err, os.ErrNotExist) {
+		return errSourceMissing
 	}
-	if _, err := os.Stat(to); err == nil {
-		return nil // never clobber what the checkout already has
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("copy %s: refusing non-regular source", rel)
+	}
+	if err := rejectSymlinkParents(dst, filepath.Dir(to)); err != nil {
+		return fmt.Errorf("copy %s: %w", rel, err)
+	}
+	if _, err := os.Lstat(to); err == nil {
+		return errAlreadyPresent // never clobber what the checkout already has
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(to), 0o755); err != nil {
 		return err
 	}
-	if err := copyFile(from, to, info.Mode()); err != nil {
+	if err := rejectSymlinkParents(dst, filepath.Dir(to)); err != nil {
+		return fmt.Errorf("copy %s: %w", rel, err)
+	}
+	if err := copyFile(from, to, info); err != nil {
 		return fmt.Errorf("copy %s: %w", rel, err)
 	}
 	return nil
@@ -178,13 +203,46 @@ func (p *Provisioner) runShell(ctx context.Context, dir, command string) error {
 	return nil
 }
 
-func copyFile(from, to string, mode os.FileMode) error {
+func rejectSymlinkParents(root, parent string) error {
+	rel, err := filepath.Rel(root, parent)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return errors.New("destination escapes worktree")
+	}
+	current := filepath.Clean(root)
+	if rel == "." {
+		return nil
+	}
+	for _, part := range strings.Split(rel, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			continue
+		case err != nil:
+			return err
+		case info.Mode()&os.ModeSymlink != 0:
+			return fmt.Errorf("destination parent %s is a symlink", current)
+		case !info.IsDir():
+			return fmt.Errorf("destination parent %s is not a directory", current)
+		}
+	}
+	return nil
+}
+
+func copyFile(from, to string, expected os.FileInfo) error {
 	in, err := os.Open(from)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode.Perm())
+	opened, err := in.Stat()
+	if err != nil {
+		return err
+	}
+	if !opened.Mode().IsRegular() || !os.SameFile(expected, opened) {
+		return errors.New("source changed after validation")
+	}
+	out, err := os.OpenFile(to, os.O_WRONLY|os.O_CREATE|os.O_EXCL, expected.Mode().Perm())
 	if err != nil {
 		return err
 	}
@@ -229,7 +287,7 @@ func copyTree(from, to string) error {
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 				return err
 			}
-			return copyFile(path, target, info.Mode())
+			return copyFile(path, target, info)
 		}
 		return nil // sockets, devices and the like have no place in a checkout
 	})

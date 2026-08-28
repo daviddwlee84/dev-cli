@@ -151,6 +151,24 @@ func interactive() bool {
 	return true
 }
 
+func tuiStartRequest(r tui.RepoRow, branch, base string) wt.CreateRequest {
+	return wt.CreateRequest{
+		RepoPath: r.Repo.Path, RepoName: r.Repo.Name, Branch: branch,
+		Base: base, Category: r.Repo.Category,
+		Label: worktreeRuntimeLabel(r.Repo.Name, branch),
+	}
+}
+
+func tuiStartedTask(r tui.RepoRow, name, branch, base string, res *wt.CreateResult, rt runtime.Runtime) *task.Task {
+	t := &task.Task{
+		Name: name, Repo: r.Repo.Name, RepoPath: r.Repo.Path,
+		Branch: branch, Base: base, WorktreePath: res.Path, Mode: task.ModeWorktree,
+		State: task.Hot, Owner: config.Hostname(),
+	}
+	setTaskRuntime(t, rt, res.Runtime)
+	return t
+}
+
 func runTUI(app *App) error {
 	rt := app.Runtime()
 
@@ -220,18 +238,12 @@ func runTUI(app *App) error {
 			if err != nil {
 				return "", err
 			}
-			t.State, t.Owner = task.Hot, config.Hostname()
-			if rt.Name() != "none" {
-				t.RuntimeHandle = handle
-			}
-			if err := app.Tasks.Save(t); err != nil {
-				return "", err
-			}
-			annotate(app, rt, t)
+			// Enter is navigation only. Claiming a writer is an explicit
+			// `dev resume`/start action with collision checks.
 			if rt.Name() == "none" {
 				return "", nil
 			}
-			return fmt.Sprintf("%s open in %s (%s)", t.Title(), rt.Name(), handle), nil
+			return fmt.Sprintf("%s open in %s (%s)", t.Title(), rt.Name(), handle.Handle), nil
 		},
 
 		OpenRepo: func(ctx context.Context, r tui.RepoRow) (string, error) {
@@ -242,7 +254,7 @@ func runTUI(app *App) error {
 			if rt.Name() == "none" {
 				return "", nil
 			}
-			return fmt.Sprintf("%s open in %s (%s)", r.Repo.Name, rt.Name(), handle), nil
+			return fmt.Sprintf("%s open in %s (%s)", r.Repo.Name, rt.Name(), handle.Handle), nil
 		},
 
 		OpenCheckout: func(ctx context.Context, r tui.RepoRow, checkout inventory.RepoCheckout) (string, error) {
@@ -258,7 +270,7 @@ func runTUI(app *App) error {
 			if rt.Name() == "none" {
 				return "", nil
 			}
-			return fmt.Sprintf("%s open in %s (%s)", label, rt.Name(), handle), nil
+			return fmt.Sprintf("%s open in %s (%s)", label, rt.Name(), handle.Handle), nil
 		},
 
 		OpenRemote: func(ctx context.Context, r tui.RemoteRow) (string, error) {
@@ -272,7 +284,7 @@ func runTUI(app *App) error {
 			if rt.Name() == "none" {
 				return "", nil
 			}
-			return fmt.Sprintf("%s open in %s (%s)", r.Repo.FullName, rt.Name(), handle), nil
+			return fmt.Sprintf("%s open in %s (%s)", r.Repo.FullName, rt.Name(), handle.Handle), nil
 		},
 
 		CloneRemote: func(ctx context.Context, r tui.RemoteRow) (string, string, error) {
@@ -295,18 +307,18 @@ func runTUI(app *App) error {
 				return "cloned " + r.Repo.FullName + " to " + config.Contract(dest), dest, nil
 			}
 			return fmt.Sprintf("cloned %s to %s; open in %s (%s)",
-				r.Repo.FullName, config.Contract(dest), rt.Name(), handle), dest, nil
+				r.Repo.FullName, config.Contract(dest), rt.Name(), handle.Handle), dest, nil
 		},
 
 		Park: func(ctx context.Context, t *task.Task, next string) (string, error) {
 			if next != "" {
 				t.Next = next
 			}
+			runtimeForTask(app, t) // normalize empty handle/name provenance
 			if t.RuntimeHandle != "" {
-				if err := rt.Close(ctx, t.RuntimeHandle); err != nil {
+				if _, _, err := closeTaskRuntime(ctx, app, t, checkoutOf(t)); err != nil {
 					return "", err
 				}
-				t.RuntimeHandle = ""
 			}
 			// The dashboard only parks warm: going cold removes a checkout,
 			// which is too consequential for a single keystroke.
@@ -322,7 +334,7 @@ func runTUI(app *App) error {
 			if err := app.Tasks.Save(t); err != nil {
 				return err
 			}
-			annotate(app, rt, t)
+			annotate(app, runtimeForTask(app, t), t)
 			return nil
 		},
 
@@ -338,18 +350,11 @@ func runTUI(app *App) error {
 			}
 
 			m := &wt.Manager{Cfg: app.Cfg, Runtime: rt}
-			res, err := m.Create(ctx, wt.CreateRequest{
-				RepoPath: r.Repo.Path, RepoName: r.Repo.Name, Branch: branch,
-				Base: base, Category: r.Repo.Category, Label: name,
-			})
+			res, err := m.Create(ctx, tuiStartRequest(r, branch, base))
 			if err != nil {
 				return "", err
 			}
-			t := &task.Task{
-				Name: name, Repo: r.Repo.Name, RepoPath: r.Repo.Path,
-				Branch: branch, Base: base, WorktreePath: res.Path, Mode: task.ModeWorktree,
-				State: task.Hot, Owner: config.Hostname(), RuntimeHandle: res.RuntimeHandle,
-			}
+			t := tuiStartedTask(r, name, branch, base, res, rt)
 			if err := app.Tasks.Save(t); err != nil {
 				return "", err
 			}
@@ -358,6 +363,9 @@ func runTUI(app *App) error {
 		},
 
 		StartDirect: func(ctx context.Context, r tui.RepoRow, name string) (string, error) {
+			if err := guardSharedCheckout(ctx, app, rt, r.Repo.Path); err != nil {
+				return "", err
+			}
 			st, err := gitx.StatusOf(ctx, r.Repo.Path)
 			if err != nil {
 				return "", err
@@ -378,9 +386,7 @@ func runTUI(app *App) error {
 				Branch: st.Branch, Base: st.Branch, Mode: task.ModeDirect,
 				State: task.Hot, Owner: config.Hostname(),
 			}
-			if rt.Name() != "none" {
-				t.RuntimeHandle = handle
-			}
+			setTaskRuntime(t, rt, handle)
 			if err := app.Tasks.Save(t); err != nil {
 				return "", err
 			}
@@ -551,7 +557,7 @@ func applyTryAction(ctx context.Context, app *App, rt runtime.Runtime, request t
 		if rt.Name() == "none" {
 			result.CD = item.Live.CurrentPath
 		} else {
-			result.Status += fmt.Sprintf(" in %s (%s)", rt.Name(), handle)
+			result.Status += fmt.Sprintf(" in %s (%s)", rt.Name(), handle.Handle)
 		}
 		if _, touchErr := service.Touch(ctx, item.ID); touchErr != nil {
 			return result, fmt.Errorf("%s, but could not record activity: %w", status, touchErr)

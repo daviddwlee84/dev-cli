@@ -37,6 +37,13 @@ type App struct {
 	runtimeOverride string
 	// noRuntime disables all multiplexer interaction for one invocation.
 	noRuntime bool
+	// allowSharedCheckout is an explicit escape hatch for coordinated agents
+	// whose file ownership is known to be disjoint.
+	allowSharedCheckout bool
+	// runtimeInstance and runtimesByName are injection seams used by focused
+	// command tests.
+	runtimeInstance runtime.Runtime
+	runtimesByName  map[string]runtime.Runtime
 }
 
 // Load reads configuration and prepares the shared stores.
@@ -67,6 +74,9 @@ func (a *App) Load() error {
 // Runtime resolves the multiplexer backend for this invocation, honouring
 // --runtime and --no-runtime.
 func (a *App) Runtime() runtime.Runtime {
+	if a.runtimeInstance != nil {
+		return a.runtimeInstance
+	}
 	if a.noRuntime {
 		return runtime.None{}
 	}
@@ -74,7 +84,20 @@ func (a *App) Runtime() runtime.Runtime {
 	if a.runtimeOverride != "" {
 		backend = a.runtimeOverride
 	}
-	rt := runtime.Select(backend)
+	return a.runtimeNamed(backend)
+}
+
+// runtimeNamed resolves the backend that owns a persisted opaque handle. It
+// deliberately bypasses the current backend override: feeding a Herdr handle to
+// tmux after a config change is never valid.
+func (a *App) runtimeNamed(name string) runtime.Runtime {
+	if rt := a.runtimesByName[name]; rt != nil {
+		return rt
+	}
+	if a.runtimeInstance != nil && (name == "" || a.runtimeInstance.Name() == name) {
+		return a.runtimeInstance
+	}
+	rt := runtime.Select(name)
 	if h, ok := rt.(*runtime.Herdr); ok {
 		return h.WithMetadataSource(a.Cfg.Runtime.MetadataSource)
 	}

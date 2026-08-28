@@ -503,13 +503,13 @@ func newRepoOpenCmd(app *App) *cobra.Command {
 				return err
 			}
 			rt := app.Runtime()
-			handle, err := openCheckout(ctx, rt, r.Path, r.Name)
+			opened, err := openCheckout(ctx, rt, r.Path, r.Name)
 			if err != nil {
 				return err
 			}
 			fmt.Fprintf(app.Out, "%s  %s", r.Name, config.Contract(r.Path))
 			if rt.Name() != "none" {
-				fmt.Fprintf(app.Out, "  (%s %s)", rt.Name(), handle)
+				fmt.Fprintf(app.Out, "  (%s %s)", rt.Name(), opened.Handle)
 			}
 			fmt.Fprintln(app.Out)
 			if rt.Name() == "none" {

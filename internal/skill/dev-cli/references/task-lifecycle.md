@@ -77,13 +77,22 @@ the branch and linked checkout.
 you were from a diff, which is most of the cost of a context switch. Always
 supply one.
 
+Before parking agent work, sync the exact SpecStory session and stage the exact
+transcript/plan paths. A settled Herdr `done` state is not evidence that history,
+review or commits are complete.
+
 Useful variations:
 
 ```bash
 dev park --wip                    # checkpoint uncommitted work first
-dev park --cold --push            # push, remove the worktree, keep the branch
-dev park --keep-session           # record the state, leave the session open
+dev park --cold --push            # close session, push, remove worktree
+dev park --keep-session           # warm only: record state, keep session
 ```
+
+`--cold --keep-session` is rejected because a runtime must not remain pointed at
+a checkout that cold parking removes. A verified runtime-close failure likewise
+stops cold cleanup before deleting the checkout; warm park reports the close
+failure and keeps the recorded handle for reconciliation.
 
 ## Checkpoint commits, not stashes
 
@@ -106,6 +115,12 @@ Going cold removes the checkout. That feels lossy, and is not, because:
 - `dev park --cold` refuses unless the branch is pushed, so the remote holds
   them too;
 - `dev resume` rebuilds the worktree from `origin/<branch>`.
+
+Resume rebuilds/reopens checkout and runtime state only. Persisted runtime
+handles carry their backend name and are validated against live checkout
+coverage; stale/missing handles reopen instead of making a task falsely HOT.
+Production `dev` does not currently attach a Claude/Codex conversation; an agent
+handoff must supply explicit session/launcher arguments.
 
 The directory is a cache. The branch is the identity. Once that is true, a
 local filesystem stops being a graveyard of half-finished checkouts.
@@ -178,6 +193,10 @@ keeping in the base's history?**
 - Someone (or CI) should look first → `--pr`.
 
 `dev done` refuses on a dirty tree, and `--delete-branch` only removes a branch
-git agrees is fully contained in the base. "Merged" is not always "finished" —
-work often continues on a branch after its first integration, which is why the
-branch survives by default.
+git agrees is fully contained in the base. `dev done --ff` integrates, closes
+the runtime and removes the worktree unless `--keep-worktree` is explicit.
+`dev done --pr` only publishes/opens review: task, runtime and worktree remain
+active. "Merged" is not always "finished", so branches survive by default.
+
+Cleanup is never automatic from agent lifecycle state. `dev sweep` remains
+report-first and changes nothing without `--apply`.

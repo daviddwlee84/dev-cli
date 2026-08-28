@@ -51,13 +51,18 @@ a conflict, so dev asks before doing it.`,
 				}
 			}
 
-			rt := app.Runtime()
+			rt := runtimeForTask(app, t)
 			mode := t.EffectiveMode()
 			checkout := checkoutOf(t)
 
 			switch mode {
 			case task.ModeWorktree:
 				_, statErr := os.Stat(checkout)
+				if t.WorktreePath != "" && statErr == nil {
+					if err := guardSharedCheckout(ctx, app, rt, checkout); err != nil {
+						return err
+					}
+				}
 				// Rebuild the worktree when it is gone — the cold-to-hot path.
 				if t.WorktreePath == "" || statErr != nil {
 					base := t.Base
@@ -69,17 +74,21 @@ a conflict, so dev asks before doing it.`,
 					m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
 					res, err := m.Create(ctx, wt.CreateRequest{
 						RepoPath: t.RepoPath, RepoName: t.Repo, Branch: t.Branch,
-						Base: base, Label: t.Title(), NoProvision: noProvision,
+						Base: base, Label: worktreeRuntimeLabel(t.Repo, t.Branch), NoProvision: noProvision,
 					})
 					if err != nil {
 						var exists *wt.ErrExists
 						if asError(err, &exists) {
 							t.WorktreePath = exists.Path
+							if err := guardSharedCheckout(ctx, app, rt, exists.Path); err != nil {
+								return err
+							}
 						} else {
 							return err
 						}
 					} else {
-						t.WorktreePath, t.RuntimeHandle = res.Path, res.RuntimeHandle
+						t.WorktreePath = res.Path
+						setTaskRuntime(t, rt, res.Runtime)
 						reportProvision(app, res)
 						fmt.Fprintf(app.Out, "   rebuilt    %s\n", config.Contract(res.Path))
 					}
@@ -88,6 +97,9 @@ a conflict, so dev asks before doing it.`,
 
 			case task.ModeBranch:
 				checkout = t.RepoPath
+				if err := guardSharedCheckout(ctx, app, rt, checkout); err != nil {
+					return err
+				}
 				st, err := gitx.StatusOf(ctx, checkout)
 				if err != nil {
 					return err
@@ -104,6 +116,9 @@ a conflict, so dev asks before doing it.`,
 
 			case task.ModeDirect:
 				checkout = t.RepoPath
+				if err := guardSharedCheckout(ctx, app, rt, checkout); err != nil {
+					return err
+				}
 				st, err := gitx.StatusOf(ctx, checkout)
 				if err != nil {
 					return err
@@ -113,14 +128,25 @@ a conflict, so dev asks before doing it.`,
 						"switch back explicitly or start a worktree task", t.Title(), t.Branch, st.Branch)
 				}
 			}
+			if t.RuntimeHandle != "" {
+				live, err := runtimeHandleCovers(ctx, rt, t.RuntimeHandle, checkout)
+				if err != nil {
+					return fmt.Errorf("validate saved %s runtime session %s: %w", rt.Name(), t.RuntimeHandle, err)
+				}
+				if !live {
+					clearTaskRuntime(t)
+				}
+			}
 			if t.RuntimeHandle == "" {
-				handle, err := openCheckout(ctx, rt, checkout, t.Title())
+				label := t.Title()
+				if mode == task.ModeWorktree {
+					label = worktreeRuntimeLabel(t.Repo, t.Branch)
+				}
+				opened, err := openCheckout(ctx, rt, checkout, label)
 				if err != nil {
 					app.warnf("could not open a runtime session: %v", err)
 				}
-				if rt.Name() != "none" {
-					t.RuntimeHandle = handle
-				}
+				setTaskRuntime(t, rt, opened)
 			}
 
 			t.State = task.Hot

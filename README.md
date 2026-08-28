@@ -109,8 +109,9 @@ dev start api --task "token refresh" --base main   # → hot
 dev park --next "add the regression test" --wip    # → warm, session closed
 dev park --cold --push                             # → cold, worktree removed
 dev resume "token refresh"                         # → hot, rebuilt if needed
-dev done --ff                                      # → done, integrated
-dev sweep                                          # what has gone stale
+dev done --ff                                      # → done, integrated + cleaned
+dev done --pr                                      # open review; keep task/worktree
+dev sweep                                          # report what has gone stale
 ```
 
 ### A task does not have to mean a worktree
@@ -139,6 +140,26 @@ Start direct for one change stream, then create a normal worktree task later
 when real parallelism appears. A new worktree starts from committed HEAD; dirty
 main changes are deliberately not smuggled into it, so checkpoint first when
 the parallel task depends on them.
+
+For automation, `dev start … --json` emits one pure creation object with absolute
+paths and transient runtime facts. Only a newly created first-class Herdr
+worktree with a non-empty exact `root_pane_id` is a launch target; reuse,
+fallback, Tmux, none, or missing pane data fails closed. Worktree starts use the
+same `repo/branch` label as `dev wt create` and pins the Git-derived parent
+checkout with Herdr `--cwd`, preserving native nested repository/worktree
+grouping without separate provenance metadata.
+
+Herdr-aware writer claims—`start --direct`, `start --branch-only`, and
+`resume`—reject another recognized agent in the same canonical Git worktree.
+Every state, including `idle`, `done`, and `unknown`, is occupied. Pure
+`repo open`, `wt open`, and TUI Enter reuse/focus the live owner without
+claiming another writer. `--allow-shared-checkout` is only for explicitly
+coordinated disjoint ownership; normal new-worktree creation remains allowed.
+
+Task runtime handles carry their backend name and are validated against live
+checkout coverage before reuse or close. Stale handles reopen on resume; a
+verified close failure stops cold/done/worktree removal before deleting a
+checkout that may still host the runtime.
 
 ### The dashboard
 
@@ -333,11 +354,11 @@ to improvise:
 | Kind | Owner | Where | Lifetime |
 |---|---|---|---|
 | Feature, fix, experiment, cross-machine handoff | **`dev`** | `~/Worktrees/<repo>/<slug>` | until `dev done` / `dev sweep` |
-| Turn-scoped subagent isolation | **Claude Code** | `.claude/worktrees/` (gitignored) | dies with the turn |
+| Harness-owned turn-scoped subagent isolation | **Claude Code** | `.claude/worktrees/` (gitignored) | owned by that harness; no history-relocation guarantee |
 | `herdr worktree create` | **not used** — `dev` runs `git worktree add`, then `herdr worktree open --path …` | — | — |
 
-**Might you come back tomorrow → `dev`. Dies with this agent turn → Claude
-Code native.**
+**If code, history, or plans must remain reviewable—or you may return tomorrow—
+use `dev`.**
 
 `dev` does not delegate placement to herdr because the path policy has to hold
 on machines without herdr. It creates the checkout with plain git and asks
@@ -353,7 +374,10 @@ copy of the tree.
 A worktree is a clean checkout — no `node_modules`, no `.venv`, no `.env`.
 Without provisioning, every new one starts broken. `dev` copies the gitignored
 files you list, optionally symlinks heavy directories, and runs a setup
-command detected from the lockfiles:
+command detected from the lockfiles. Included files must remain the same
+regular file through open; source swaps and symlinked destination parents are
+refused, existing destinations are reported as skipped, and contents are never
+logged:
 
 ```toml
 [worktree]
@@ -361,6 +385,13 @@ include     = [".env", ".env.local"]   # only files that are ALSO gitignored
 link        = []                       # opt-in; sharing node_modules is risky
 post_create = "auto"                   # uv.lock → uv sync, package-lock.json → npm ci, …
 ```
+
+`.claude/settings.local.json` is not a universal include. Add that exact path
+only for an explicitly selected sticky/plain-Claude launcher and verify it
+arrives. `claude-copilot-once` preserves an existing Copilot pin and creates/
+removes only one it added when absent; its proxy must already run.
+`codex-copilot-once` injects backend via CLI and may auto-start its proxy path,
+so neither wrapper needs the copied file.
 
 **Copy or reinstall?** Reinstalling is always correct but can take minutes;
 copying is fast but only sound for dependency trees carrying no absolute paths.
@@ -524,9 +555,10 @@ dev gitignore --offline       # cached and bundled templates only
 
 Language sections come from [GitHub's templates](https://github.com/github/gitignore),
 fetched once and cached. On top of those it adds what no language template
-covers: the host platform's junk files, editor state, local env files, and the
-directories coding-agent harnesses create — an agent's linked worktree left
-untracked makes every `git status` in the main checkout unreadable.
+covers: the host platform's junk files, editor state, local env files, and
+ephemeral coding-agent state such as linked worktrees and local settings.
+Review artifacts such as SpecStory histories and agent plans remain trackable
+unless you add your own ignore rule for them.
 
 Everything it writes goes inside a delimited block, so re-running updates that
 block and leaves rules you added by hand alone.

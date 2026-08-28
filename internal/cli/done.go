@@ -36,9 +36,10 @@ Two integration modes, matching the two shapes a branch's history takes:
 
 With neither, dev only reports what it would do.
 
-Cleanup is deliberately conservative: the worktree is removed, the task entry
-is marked done, and the branch is deleted only with --delete-branch. A merged
-branch that still has unpushed commits is never deleted.`,
+Cleanup is deliberately conservative: --ff closes the runtime and removes the
+worktree unless --keep-worktree is explicit; --pr leaves task/runtime/worktree
+active for review. The branch is deleted only with --delete-branch, and one with
+unpushed commits is never deleted. Agent-done state never triggers cleanup.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
@@ -72,12 +73,11 @@ branch that still has unpushed commits is never deleted.`,
 						return err
 					}
 				}
-				rt := app.Runtime()
+				runtimeForTask(app, t) // normalize empty handle/name provenance
 				if t.RuntimeHandle != "" {
-					if err := rt.Close(ctx, t.RuntimeHandle); err != nil {
+					if _, _, err := closeTaskRuntime(ctx, app, t, checkout); err != nil {
 						app.warnf("could not close the runtime session: %v", err)
 					}
-					t.RuntimeHandle = ""
 				}
 				t.State = task.Done
 				if err := app.Tasks.Save(t); err != nil {
@@ -127,12 +127,17 @@ branch that still has unpushed commits is never deleted.`,
 				}
 			}
 
-			rt := app.Runtime()
+			rt := runtimeForTask(app, t)
 			if t.RuntimeHandle != "" {
-				if err := rt.Close(ctx, t.RuntimeHandle); err != nil {
-					app.warnf("could not close the runtime session: %v", err)
+				handle := t.RuntimeHandle
+				resolved, _, closeErr := closeTaskRuntime(ctx, app, t, checkout)
+				rt = resolved
+				if closeErr != nil {
+					if t.WorktreePath != "" && !keepWorktree {
+						return fmt.Errorf("merged, but could not close %s session %s; worktree kept: %w", rt.Name(), handle, closeErr)
+					}
+					app.warnf("could not close the runtime session: %v", closeErr)
 				}
-				t.RuntimeHandle = ""
 			}
 			if t.WorktreePath != "" && !keepWorktree {
 				m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}

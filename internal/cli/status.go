@@ -7,6 +7,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +17,8 @@ func newStatusCmd(app *App) *cobra.Command {
 		Short: "Show the full context of the current directory",
 		Long: `Answer "where am I and what is this?" for the current directory: which repo
 and checkout, which branch and how it stands against upstream, which task it
-belongs to, and whether a runtime session is hosting it.`,
+belongs to, whether a runtime session is hosting it, and which recognized Herdr
+agents occupy this canonical Git worktree.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
@@ -82,6 +84,25 @@ belongs to, and whether a runtime session is hosting it.`,
 						name = "(detached)"
 					}
 					fmt.Fprintf(app.Out, "  %s%-28s %s\n", marker, name, config.Contract(w.Path))
+				}
+			}
+
+			rt := app.Runtime()
+			if _, ok := rt.(runtime.AgentActivityLister); ok {
+				activities, err := checkoutAgentActivities(ctx, rt, g.Root, "")
+				if err != nil {
+					app.warnf("could not inspect live agent activity: %v", err)
+				} else if len(activities) == 0 {
+					fmt.Fprintln(app.Out, "activities — none")
+				} else {
+					for _, activity := range activities {
+						name := activity.Name
+						if name == "" {
+							name = activity.Agent
+						}
+						fmt.Fprintf(app.Out, "activity   %s:%s %s (%s)\n",
+							name, activity.Status, activity.PaneID, activity.WorkspaceID)
+					}
 				}
 			}
 

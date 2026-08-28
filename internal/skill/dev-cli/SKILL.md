@@ -16,8 +16,9 @@ dev             human intent: what am I working on, and what is next
 ```
 
 Everything derivable from git or the runtime is derived live. `dev` persists
-only what git cannot answer — a task's **state**, **owner** and **next
-action** — in one TOML file per task under `$XDG_DATA_HOME/dev/tasks/`.
+human/task facts such as identity, checkout mode, **state**, **owner** and **next
+action** in one TOML file per task under `$XDG_DATA_HOME/dev/tasks/`; transient
+pane data is not persisted.
 
 **The problem it solves:** when a terminal multiplexer's sidebar is the only
 record of what you are working on, nothing can ever be closed. `dev` gives that
@@ -44,11 +45,12 @@ is the most common source of confusion. The rule:
 | Kind of worktree | Owner | Where | Lifetime |
 |---|---|---|---|
 | Feature, fix, experiment, cross-machine handoff — anything you might return to | **`dev`** | `paths.worktree_path`, default `~/Worktrees/<repo>/<branch-slug>` | until `dev done` or `dev sweep` |
-| Turn-scoped subagent isolation (`isolation: worktree`, `/batch`, `EnterWorktree`) | **Claude Code** | `.claude/worktrees/` (keep gitignored) | dies with the turn |
+| Harness-owned turn-scoped isolation (`isolation: worktree`, `/batch`, `EnterWorktree`) | **Claude Code** | `.claude/worktrees/` (keep gitignored) | owned by that harness; not a transcript-relocation guarantee |
 | `herdr worktree create` | **not used** — `dev` runs `git worktree add` itself, then `herdr worktree open --path …` | — | — |
 
-**Rule of thumb: might a human come back to it tomorrow → `dev`. Does it die
-with this agent turn → Claude Code native.**
+**Rule of thumb: if code/history/plan must remain reviewable or a human may
+return tomorrow, use `dev`. Use native isolation only when the harness owns the
+entire turn-scoped lifecycle.**
 
 Why `dev` does not delegate to `herdr worktree create`: the path policy has to
 hold on machines where herdr is not installed. `dev` creates the checkout with
@@ -102,6 +104,26 @@ A task does not imply a worktree. Use the lightest explicit boundary:
 Do not create isolation before it has a job, but do not carry dirty main changes
 into a parallel task implicitly either: a worktree starts from committed HEAD.
 Checkpoint first when the new task depends on that work.
+
+## Parallel background work
+
+Read `references/parallel-agents.md` before spawning an independent agent while
+another remains live. The fail-closed workflow uses `dev start --json`, requires
+a newly created first-class Herdr worktree and its exact returned root pane,
+then launches an explicit SpecStory/profile command there. Reused, fallback,
+non-Herdr, missing or unverified panes are never launch targets.
+
+`dev` guards writer-claiming direct/branch starts and resume when another
+recognized Herdr agent occupies the same canonical Git worktree. Every state,
+including `idle`, `done`, and `unknown`, is occupied; Herdr resolves the current
+pane before excluding it. Pure repo/worktree/TUI open is navigation to the live
+owner, not writer authorization. Never add `--allow-shared-checkout` unless
+agents already have coordinated disjoint file ownership.
+
+A new external agent does not inherit the parent permission mode, and a resumed
+Claude fork does not restore bypass. Inspect the effective SpecStory/provider
+command: local wrappers may already be elevated, so never claim they are safe or
+append a conflicting mode. Herdr `done` is turn-settled—not cleanup done.
 
 ## Everyday commands
 
@@ -246,19 +268,35 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    because it bakes its own absolute path into `pyvenv.cfg`.
 
 8. **Do not create a worktree per agent.** Worktrees isolate *change streams*;
-   panes isolate *agents*. Several agents working on disjoint files of one
-   feature belong in one checkout.
+   panes isolate *agents*. A writer claim in one checkout needs explicit
+   disjoint ownership; pure open/focus may navigate to the existing owner.
 
-9. **Prefer `dev bootstrap --index` over `--move`.** If the problem is
+9. **Parallel launch is exact-pane and fail-closed.** Accept only a new
+   first-class Herdr worktree/root pane from `dev start --json`. Never infer from
+   focus/sidebar order, relocate SpecStory with mid-session `EnterWorktree`, or
+   treat any recognized agent state as a free pane. Never add
+   `--allow-shared-checkout` without coordinated ownership.
+
+10. **Launcher profile and effective permissions are explicit.** Standard
+    Claude/Codex put the complete native command inside SpecStory `-c`; verified
+    `*-copilot-once` wrappers already wrap SpecStory but inherit effective
+    provider permissions, which may be dangerous. Never append a conflicting
+    safer mode to an elevated command. Read `parallel-agents.md`.
+
+11. **Cleanup is explicit, never agent-state-driven.** Herdr `done` means a turn
+    settled. Sync/stage exact artifacts first; use park/done/sweep semantics,
+    and never auto-close from `done`.
+
+12. **Prefer `dev bootstrap --index` over `--move`.** If the problem is
    navigation, a symlink catalog solves it without changing the authoritative
    paths. For a physical move, never add `--apply --yes` on the user's behalf;
    blocked rows are preconditions to resolve, not checks to bypass.
 
-10. **`dev adopt` without `--apply` changes nothing.** Show the user its report
+13. **`dev adopt` without `--apply` changes nothing.** Show the user its report
    rather than applying it for them — which branches count as work in flight is
    their judgement, not yours.
 
-11. **Do not call stats.db a cache.** Session/WakaTime observations may not be
+14. **Do not call stats.db a cache.** Session/WakaTime observations may not be
    reconstructible. Use `dev stats clear --repo/--source/--all`; use
    `dev cache clear` only for regenerable remote/size/gitignore caches.
 
@@ -267,11 +305,11 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    delete command. Never substitute `rm -rf` merely because a remote exists —
    no-remote, local-only refs, ignored files and stash are independent risks.
 
-12. **Read Git state as counts, not a dirty boolean.** `⇡`/`⇣` are upstream
+15. **Read Git state as counts, not a dirty boolean.** `⇡`/`⇣` are upstream
    divergence; `=` conflicts, `+` staged, `!` unstaged, `?` untracked. Use
    `dev status` or JSON for the unique-path and type breakdown before cleanup.
 
-13. **Commit messages stay English** and follow Conventional Commits, even when
+16. **Commit messages stay English** and follow Conventional Commits, even when
    the conversation is in another language — see the companion `git-workflow`
    skill, which owns commit conventions, SemVer and branch naming. This skill
    does not duplicate them.
@@ -280,6 +318,7 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 
 - "What am I working on?" / "我在做什麼" / too many terminal workspaces open.
 - Starting, parking or resuming a piece of work.
+- Spawning independent background agents without disturbing a live checkout.
 - "Where should this worktree go?" / "should I use `claude --worktree` or herdr?"
 - A new worktree is missing `node_modules`, `.venv` or `.env`.
 - Cleaning up stale branches, worktrees and sessions.
@@ -295,7 +334,8 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 
 - **Commit messages, SemVer, branch naming, PR-vs-main tiering** — that is the
   `git-workflow` skill. This one links to it rather than restating it.
-- **Driving herdr panes and agents directly** — that is the `herdr` skill.
+- **Standalone Herdr pane/agent control** — that is the `herdr` skill. The
+  `dev start --json` cross-tool launch workflow remains here.
 - A single `git add` + `git commit` needs no tooling at all.
 
 ## Reference files
@@ -307,7 +347,9 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 - `references/task-lifecycle.md` — HOT/WARM/COLD/DONE, when to park, and how
   work moves between machines.
 - `references/runtime-herdr.md` — how `dev` and herdr divide responsibility,
-  and the sidebar configuration that makes task state visible.
+  including native worktree grouping, collisions and cleanup semantics.
+- `references/parallel-agents.md` — read before launching parallel background
+  work; exact JSON/pane validation, SpecStory profiles and permissions.
 - `references/commands.md` — the full command reference, generated from the
   binary by `dev skill sync` so it cannot drift.
 
@@ -320,9 +362,10 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 - **A worktree is a clean checkout.** It has no `node_modules`, no `.venv` and
   none of the gitignored env files. `dev` provisions it; `--no-provision`
   skips that and leaves you to it.
-- **Only gitignored files are copied into a worktree.** Listing a *tracked*
-  file in `worktree.include` does nothing, because git already put it there on
-  the correct branch — and copying it would overwrite that version.
+- **Only explicitly included, gitignored stable regular files are copied.**
+  Source swaps and symlinked destination parents are refused; existing targets
+  are reported skipped, not copied. Do not universally include
+  `.claude/settings.local.json`: only sticky/plain-Claude profiles opt in.
 - **Removing a worktree never deletes the branch.** Those are separate
   decisions; conflating them is how work gets lost.
 - **`dev done` defaults to reporting.** With neither `--ff` nor `--pr` it

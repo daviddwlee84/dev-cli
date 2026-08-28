@@ -17,8 +17,11 @@ func (None) Name() string { return "none" }
 // Available implements Runtime; the null backend always is.
 func (None) Available() bool { return true }
 
-// Open implements Runtime by reporting the directory to change into.
-func (None) Open(_ context.Context, dir, _ string) (string, error) { return dir, nil }
+// Open implements Runtime by reporting the directory to change into. None does
+// not open a runtime surface, so the result is never launchable.
+func (None) Open(_ context.Context, dir, _ string) (OpenResult, error) {
+	return OpenResult{Handle: dir}, nil
+}
 
 // Close implements Runtime as a no-op: there is no session to end.
 func (None) Close(context.Context, string) error { return nil }

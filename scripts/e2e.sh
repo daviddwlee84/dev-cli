@@ -210,14 +210,28 @@ ok "skill installed"
 step "gitignore"
 cd "$REPO"
 dev gitignore go --offline >/dev/null
-grep -q '.claude/worktrees/' "$REPO/.gitignore" || fail "harness section missing"
+grep -q '.claude/worktrees/' "$REPO/.gitignore" || fail "ephemeral agent-state section missing"
 grep -q '\*.exe' "$REPO/.gitignore"             || fail "language section missing"
+for artifact in \
+  '.specstory/history/session.md' \
+  '.claude/plans/plan.md' \
+  '.cursor/plans/plan.md' \
+  '.opencode/plans/plan.md' \
+  '.specify/spec.md' \
+  '.codex/plan.md'; do
+  if git -C "$REPO" check-ignore --no-index -q -- "$artifact"; then
+    fail "review artifact is unexpectedly ignored: $artifact"
+  else
+    status=$?
+    [[ "$status" == "1" ]] || fail "git check-ignore failed for $artifact (status $status)"
+  fi
+done
 printf '# hand written\nmy-rule/\n' >> "$REPO/.gitignore"
 dev gitignore python --offline >/dev/null
 grep -q 'my-rule/' "$REPO/.gitignore" || fail "regeneration lost a hand-written rule"
 [[ "$(grep -c '>>> dev gitignore >>>' "$REPO/.gitignore")" == "1" ]] || fail "markers duplicated"
 cd - >/dev/null
-ok "gitignore composed, and re-run preserved hand-written rules"
+ok "gitignore kept review artifacts trackable and preserved hand-written rules"
 
 step "adopt"
 # A branch genuinely ahead of main: that is what "work in flight" means.

@@ -1,7 +1,9 @@
 package wt_test
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/wt"
 )
 
@@ -22,6 +25,33 @@ func cfgFor(t *testing.T) config.Config {
 	c.Worktree.Include = nil
 	c.Worktree.PostCreate = config.PostCreate{} // no commands in tests
 	return c
+}
+
+type fakeRuntime struct {
+	result     runtime.OpenResult
+	err        error
+	closeErr   error
+	closeCalls []string
+}
+
+func (f *fakeRuntime) Name() string    { return "fake" }
+func (f *fakeRuntime) Available() bool { return true }
+func (f *fakeRuntime) Open(context.Context, string, string) (runtime.OpenResult, error) {
+	return f.result, f.err
+}
+func (f *fakeRuntime) Close(_ context.Context, handle string) error {
+	f.closeCalls = append(f.closeCalls, handle)
+	return f.closeErr
+}
+func (f *fakeRuntime) List(context.Context) ([]runtime.Session, error) {
+	return nil, nil
+}
+func (f *fakeRuntime) Annotate(context.Context, string, map[string]string) error { return nil }
+
+type fakeWorktreeRuntime struct{ *fakeRuntime }
+
+func (f *fakeWorktreeRuntime) OpenWorktree(context.Context, string, string) (runtime.OpenResult, error) {
+	return f.result, f.err
 }
 
 func TestCreateUsesPathTemplate(t *testing.T) {
@@ -44,6 +74,49 @@ func TestCreateUsesPathTemplate(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(res.Path, "README.md")); err != nil {
 		t.Errorf("checkout should contain the repo's tracked files: %v", err)
+	}
+}
+
+func TestCreatePropagatesRuntimeOpenResult(t *testing.T) {
+	r := gittest.New(t)
+	want := runtime.OpenResult{
+		Handle: "w7", Surface: "worktree", Opened: true,
+		Created: true, RootPaneID: "w7:p12",
+	}
+	rt := &fakeWorktreeRuntime{fakeRuntime: &fakeRuntime{result: want}}
+	m := &wt.Manager{Cfg: cfgFor(t), Runtime: rt}
+
+	res, err := m.Create(context.Background(), wt.CreateRequest{
+		RepoPath: r.Root, Branch: "feat/runtime-result", Base: "main",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Runtime != want || res.RuntimeName != "fake" {
+		t.Fatalf("runtime result = %+v (%s), want %+v (fake)", res.Runtime, res.RuntimeName, want)
+	}
+}
+
+func TestCreateKeepsCheckoutWhenRuntimeOpenFails(t *testing.T) {
+	r := gittest.New(t)
+	var log bytes.Buffer
+	rt := &fakeWorktreeRuntime{fakeRuntime: &fakeRuntime{err: errors.New("runtime unavailable")}}
+	m := &wt.Manager{Cfg: cfgFor(t), Runtime: rt, Log: &log}
+
+	res, err := m.Create(context.Background(), wt.CreateRequest{
+		RepoPath: r.Root, Branch: "feat/runtime-failure", Base: "main",
+	})
+	if err != nil {
+		t.Fatalf("runtime failure must not roll back the checkout: %v", err)
+	}
+	if res.Runtime != (runtime.OpenResult{}) {
+		t.Fatalf("runtime failure must return a zero result: %+v", res.Runtime)
+	}
+	if _, err := os.Stat(filepath.Join(res.Path, "README.md")); err != nil {
+		t.Fatalf("checkout should remain usable: %v", err)
+	}
+	if !strings.Contains(log.String(), "could not open a runtime session") {
+		t.Fatalf("runtime failure should be diagnosed on the log: %q", log.String())
 	}
 }
 
@@ -144,6 +217,30 @@ func TestRemoveKeepsBranchAndRefusesDirty(t *testing.T) {
 	}
 }
 
+func TestRemoveCloseFailureKeepsCheckout(t *testing.T) {
+	r := gittest.New(t)
+	rt := &fakeRuntime{closeErr: errors.New("close failed")}
+	m := &wt.Manager{Cfg: cfgFor(t), Runtime: rt}
+	res, err := m.Create(context.Background(), wt.CreateRequest{
+		RepoPath: r.Root, Branch: "feat/close-failure", Base: "main", NoRuntime: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = m.Remove(context.Background(), wt.RemoveRequest{
+		RepoPath: r.Root, Path: res.Path, RuntimeHandle: "w7",
+	})
+	if err == nil || !strings.Contains(err.Error(), "before removing checkout") {
+		t.Fatalf("close failure should stop removal: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(res.Path, "README.md")); err != nil {
+		t.Fatalf("checkout was removed after close failure: %v", err)
+	}
+	if len(rt.closeCalls) != 1 || rt.closeCalls[0] != "w7" {
+		t.Fatalf("close calls = %v", rt.closeCalls)
+	}
+}
+
 func TestRemoveMissingDirectoryPrunes(t *testing.T) {
 	r := gittest.New(t)
 	m := &wt.Manager{Cfg: cfgFor(t)}
@@ -170,14 +267,16 @@ func TestRemoveMissingDirectoryPrunes(t *testing.T) {
 // already there on the correct branch, and copying it would overwrite it.
 func TestProvisionCopiesOnlyGitignoredFiles(t *testing.T) {
 	r := gittest.New(t)
-	r.Commit(".gitignore", ".env\nsecrets/\n", "chore: ignore env")
+	r.Commit(".gitignore", ".env\nsecrets/\n.claude/settings.local.json\n", "chore: ignore local state")
 	r.Commit("tracked.json", `{"tracked":true}`, "chore: add tracked config")
 	r.Write(".env", "TOKEN=abc\n")
 	r.Write("secrets/key.txt", "shh\n")
+	r.Write(".claude/settings.local.json", `{"backend":"sticky"}`)
 
 	cfg := cfgFor(t)
-	cfg.Worktree.Include = []string{".env", "secrets/key.txt", "tracked.json"}
-	m := &wt.Manager{Cfg: cfg}
+	cfg.Worktree.Include = []string{".env", "secrets/key.txt", ".claude/settings.local.json", "tracked.json"}
+	var log bytes.Buffer
+	m := &wt.Manager{Cfg: cfg, Log: &log}
 
 	res, err := m.Create(context.Background(), wt.CreateRequest{
 		RepoPath: r.Root, Branch: "feat/env", Base: "main", NoRuntime: true,
@@ -191,12 +290,105 @@ func TestProvisionCopiesOnlyGitignoredFiles(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(res.Path, "secrets/key.txt")); err != nil {
 		t.Errorf("nested ignored file should have been copied: %v", err)
 	}
+	if got, err := os.ReadFile(filepath.Join(res.Path, ".claude", "settings.local.json")); err != nil || string(got) != `{"backend":"sticky"}` {
+		t.Errorf("explicitly included local settings should have been copied: %q %v", got, err)
+	}
+	if strings.Contains(log.String(), "sticky") {
+		t.Fatalf("provisioning must never log local settings contents: %q", log.String())
+	}
 	// tracked.json is in the checkout because git put it there, and it must
 	// not appear in the copied list.
 	for _, c := range res.Provision.Copied {
 		if c == "tracked.json" {
 			t.Error("a tracked file must never be copied over the checkout's own version")
 		}
+	}
+}
+
+func TestProvisionReportsExistingIncludedFileAsSkipped(t *testing.T) {
+	r := gittest.New(t)
+	r.Commit(".gitignore", ".claude/settings.local.json\n", "chore: ignore local Claude settings")
+	r.Write(".claude/settings.local.json", `{"backend":"source"}`)
+	dst := filepath.Join(t.TempDir(), "checkout")
+	if err := os.MkdirAll(filepath.Join(dst, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stale := filepath.Join(dst, ".claude", "settings.local.json")
+	if err := os.WriteFile(stale, []byte(`{"backend":"stale"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	set := wt.Settings{Include: []string{".claude/settings.local.json"}}
+	plan := wt.BuildPlan(context.Background(), set, r.Root)
+	res, err := (&wt.Provisioner{Settings: set}).Apply(context.Background(), plan, r.Root, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Copied) != 0 || len(res.Skipped) != 1 || !strings.Contains(res.Skipped[0], "already present") {
+		t.Fatalf("existing destination result = %+v", res)
+	}
+	got, err := os.ReadFile(stale)
+	if err != nil || string(got) != `{"backend":"stale"}` {
+		t.Fatalf("existing destination should remain unchanged: %q %v", got, err)
+	}
+}
+
+func TestProvisionRefusesSymlinkedDestinationParent(t *testing.T) {
+	r := gittest.New(t)
+	r.Commit(".gitignore", ".claude/settings.local.json\n", "chore: ignore local Claude settings")
+	r.Write(".claude/settings.local.json", `{"backend":"source"}`)
+	dst := filepath.Join(t.TempDir(), "checkout")
+	outside := filepath.Join(t.TempDir(), "outside")
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(dst, ".claude")); err != nil {
+		t.Fatal(err)
+	}
+	set := wt.Settings{Include: []string{".claude/settings.local.json"}}
+	plan := wt.BuildPlan(context.Background(), set, r.Root)
+	res, err := (&wt.Provisioner{Settings: set}).Apply(context.Background(), plan, r.Root, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Failures) != 1 || !strings.Contains(res.Failures[0].Error(), "destination parent") {
+		t.Fatalf("symlinked destination parent result = %+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "settings.local.json")); !os.IsNotExist(err) {
+		t.Fatalf("copy escaped through destination symlink: %v", err)
+	}
+}
+
+func TestProvisionRefusesIncludedFileSymlink(t *testing.T) {
+	r := gittest.New(t)
+	r.Commit(".gitignore", ".claude/settings.local.json\n", "chore: ignore local Claude settings")
+	secret := filepath.Join(t.TempDir(), "backend-secret.json")
+	if err := os.WriteFile(secret, []byte(`{"token":"do-not-copy"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(r.Root, ".claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(secret, filepath.Join(r.Root, ".claude", "settings.local.json")); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := cfgFor(t)
+	cfg.Worktree.Include = []string{".claude/settings.local.json"}
+	m := &wt.Manager{Cfg: cfg}
+	res, err := m.Create(context.Background(), wt.CreateRequest{
+		RepoPath: r.Root, Branch: "feat/safe-settings", Base: "main", NoRuntime: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Provision.Failures) != 1 || !strings.Contains(res.Provision.Failures[0].Error(), "refusing non-regular source") {
+		t.Fatalf("symlink copy should fail safely, got %v", res.Provision.Failures)
+	}
+	if _, err := os.Lstat(filepath.Join(res.Path, ".claude", "settings.local.json")); !os.IsNotExist(err) {
+		t.Fatalf("destination must not receive symlink target contents: %v", err)
 	}
 }
 

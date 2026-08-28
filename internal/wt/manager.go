@@ -56,7 +56,7 @@ type CreateResult struct {
 	Branch        string
 	BranchCreated bool
 	Provision     Result
-	RuntimeHandle string
+	Runtime       runtime.OpenResult
 	RuntimeName   string
 }
 
@@ -154,11 +154,12 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (*CreateResult,
 		if label == "" {
 			label = req.RepoName + "/" + req.Branch
 		}
-		handle, err := m.surface(ctx, path, label)
+		opened, err := m.surface(ctx, path, label)
 		if err != nil {
 			m.logf("warning: could not open a runtime session: %v", err)
-		} else if m.Runtime.Name() != "none" {
-			res.RuntimeHandle, res.RuntimeName = handle, m.Runtime.Name()
+		} else {
+			res.Runtime = opened
+			res.RuntimeName = m.Runtime.Name()
 		}
 	}
 	return res, nil
@@ -168,7 +169,7 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (*CreateResult,
 // understands git worktrees it is asked to open it as one, which is what makes
 // the checkout appear grouped under its parent repo with its own branch and
 // ahead/behind row rather than as an unrelated directory.
-func (m *Manager) surface(ctx context.Context, path, label string) (string, error) {
+func (m *Manager) surface(ctx context.Context, path, label string) (runtime.OpenResult, error) {
 	if wo, ok := m.Runtime.(runtime.WorktreeOpener); ok {
 		return wo.OpenWorktree(ctx, path, label)
 	}
@@ -218,7 +219,7 @@ type RemoveRequest struct {
 func (m *Manager) Remove(ctx context.Context, req RemoveRequest) error {
 	if req.RuntimeHandle != "" && m.Runtime != nil {
 		if err := m.Runtime.Close(ctx, req.RuntimeHandle); err != nil {
-			m.logf("warning: could not close runtime session %s: %v", req.RuntimeHandle, err)
+			return fmt.Errorf("close runtime session %s before removing checkout: %w", req.RuntimeHandle, err)
 		}
 	}
 	if _, err := os.Stat(req.Path); errors.Is(err, os.ErrNotExist) {

@@ -37,7 +37,7 @@ It exists to keep three things separate that otherwise collapse into one:
 Everything derivable from git or the runtime is derived live. dev persists only
 human intent Git cannot answer — task state/owner/next action and asset identity,
 tags, notes and experiment lifecycle — so closing a runtime session or moving a
-Try never means losing the thread.`
+Try never means losing the thread. Transient pane data is not persisted.`
 
 // NewRootCommand builds the whole command tree writing to the process streams.
 func NewRootCommand() *cobra.Command {
@@ -88,6 +88,8 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 	pf.StringVar(&app.configPath, "config", "", "path to config.toml (default: $XDG_CONFIG_HOME/dev/config.toml)")
 	pf.StringVar(&app.runtimeOverride, "runtime", "", "override runtime backend: herdr, tmux or none")
 	pf.BoolVar(&app.noRuntime, "no-runtime", false, "do not touch any terminal multiplexer")
+	pf.BoolVar(&app.allowSharedCheckout, "allow-shared-checkout", false,
+		"allow a writer claim in a checkout occupied by another live agent")
 	registerFlagCompletion(root, "runtime", runtimeCompletions())
 
 	// Mirrors `herdr --skill`: the binary is the authority for its own agent

@@ -113,13 +113,41 @@ func TestComposeIncludesExtras(t *testing.T) {
 		[]ignore.Section{{Name: "Go", Body: "*.exe", Source: ignore.SourceBundled}},
 		ignore.DefaultExtras(),
 	)
-	for _, want := range []string{"*.exe", ".claude/worktrees/", ".env", "Editors and IDEs"} {
+	for _, want := range []string{"*.exe", ".env", "Editors and IDEs", "Ephemeral coding-agent state"} {
 		if !strings.Contains(block, want) {
 			t.Errorf("composed block missing %q:\n%s", want, block)
 		}
 	}
 	if !ignore.HasManagedBlock(block) {
 		t.Error("the composed block should carry dev's markers")
+	}
+}
+
+func TestComposeAgentArtifactPolicy(t *testing.T) {
+	block := ignore.Compose(nil, ignore.DefaultExtras())
+	tests := []struct {
+		name    string
+		pattern string
+		want    bool
+	}{
+		{name: "worktrees", pattern: ".claude/worktrees/", want: true},
+		{name: "local settings", pattern: ".claude/settings.local.json", want: true},
+		{name: "aider state", pattern: ".aider*", want: true},
+		{name: "generated cursor rules", pattern: ".cursor/rules/_generated/", want: true},
+		{name: "specstory histories", pattern: ".specstory/history/", want: false},
+		{name: "claude plans", pattern: ".claude/plans/", want: false},
+		{name: "cursor plans", pattern: ".cursor/plans/", want: false},
+		{name: "opencode plans", pattern: ".opencode/plans/", want: false},
+		{name: "specify artifacts", pattern: ".specify/", want: false},
+		{name: "codex artifacts", pattern: ".codex/", want: false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := strings.Contains(block, "\n"+tc.pattern+"\n")
+			if got != tc.want {
+				t.Errorf("rule %q present = %v, want %v:\n%s", tc.pattern, got, tc.want, block)
+			}
+		})
 	}
 }
 

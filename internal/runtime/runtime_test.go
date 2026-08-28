@@ -29,14 +29,14 @@ func TestNoneIsAlwaysAvailable(t *testing.T) {
 	if !n.Available() {
 		t.Fatal("None must always be available — it is the floor dev degrades to")
 	}
-	h, err := n.Open(context.Background(), "/some/dir", "label")
-	if err != nil || h != "/some/dir" {
-		t.Errorf("None.Open = %q, %v; want the directory back as the handle", h, err)
+	opened, err := n.Open(context.Background(), "/some/dir", "label")
+	if err != nil || opened.Handle != "/some/dir" || opened.Opened || opened.RootPaneID != "" {
+		t.Errorf("None.Open = %+v, %v; want only the directory pseudo-handle", opened, err)
 	}
-	if err := n.Close(context.Background(), h); err != nil {
+	if err := n.Close(context.Background(), opened.Handle); err != nil {
 		t.Errorf("None.Close: %v", err)
 	}
-	if err := n.Annotate(context.Background(), h, map[string]string{"stage": "HOT"}); err != nil {
+	if err := n.Annotate(context.Background(), opened.Handle, map[string]string{"stage": "HOT"}); err != nil {
 		t.Errorf("None.Annotate should be a silent no-op: %v", err)
 	}
 }

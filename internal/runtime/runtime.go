@@ -45,6 +45,43 @@ func (s Session) Covers(dir string) bool {
 	return false
 }
 
+// OpenResult is the transient result of making a checkout live. Handle may be
+// persisted by callers, but the pane belongs to this one creation response and
+// must never be treated as durable state.
+type OpenResult struct {
+	Handle     string
+	Surface    string
+	Opened     bool
+	Created    bool
+	RootPaneID string
+}
+
+// AgentActivity is one recognized live coding agent occupying a runtime pane.
+// Every activity returned by a backend is occupied regardless of Status; idle,
+// done and unknown describe lifecycle state, not permission to share a checkout.
+type AgentActivity struct {
+	PaneID      string
+	WorkspaceID string
+	Agent       string
+	Name        string
+	Status      string
+	CWD         string
+}
+
+// AgentActivityLister is an optional runtime capability. Core runtimes need not
+// know about agents; Herdr implements it because its pane model can identify the
+// exact process and checkout involved.
+type AgentActivityLister interface {
+	AgentActivities(ctx context.Context) ([]AgentActivity, error)
+}
+
+// CurrentPaneResolver is an optional runtime capability for resolving the live
+// pane behind inherited caller context. Herdr pane IDs can change after a move,
+// so collision exclusions must not trust HERDR_PANE_ID alone.
+type CurrentPaneResolver interface {
+	CurrentPaneID(ctx context.Context) (string, error)
+}
+
 // Runtime is the contract every backend satisfies. Adapters must degrade
 // gracefully: an unavailable backend returns errors rather than panicking, and
 // List on an idle backend returns an empty slice, not an error.
@@ -54,9 +91,9 @@ type Runtime interface {
 	// Available reports whether this backend can be used on this machine right
 	// now (binary installed and, where relevant, a server reachable).
 	Available() bool
-	// Open makes dir live and returns a handle. Opening something already open
-	// focuses it rather than duplicating it.
-	Open(ctx context.Context, dir, label string) (string, error)
+	// Open makes dir live. Its result distinguishes a newly created surface from
+	// a reused one and may carry a root pane proven by that same create response.
+	Open(ctx context.Context, dir, label string) (OpenResult, error)
 	// Close ends the session without touching the checkout, the branch or the
 	// task entry.
 	Close(ctx context.Context, handle string) error
@@ -71,7 +108,7 @@ type Runtime interface {
 // can present one as a first-class session grouped under its parent repo.
 // dev always creates the worktree itself — this only surfaces it.
 type WorktreeOpener interface {
-	OpenWorktree(ctx context.Context, path, label string) (string, error)
+	OpenWorktree(ctx context.Context, path, label string) (OpenResult, error)
 }
 
 // ErrUnavailable reports a backend that is not usable on this machine.

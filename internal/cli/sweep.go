@@ -11,7 +11,6 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
-	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	"github.com/daviddwlee84/dev-cli/internal/wt"
 	"github.com/spf13/cobra"
@@ -54,7 +53,7 @@ Nothing here ever deletes uncommitted work.`,
 
 			var sugg []suggestion
 			for _, r := range rows {
-				sugg = append(sugg, suggestFor(app, ctx, rt, r, stale)...)
+				sugg = append(sugg, suggestFor(app, ctx, r, stale)...)
 			}
 
 			// Live sessions no task claims: the other half of a crowded sidebar.
@@ -113,7 +112,7 @@ Nothing here ever deletes uncommitted work.`,
 	return cmd
 }
 
-func suggestFor(app *App, ctx context.Context, rt runtime.Runtime, r inventory.Row, stale time.Duration) []suggestion {
+func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Duration) []suggestion {
 	t := r.Task
 	var out []suggestion
 
@@ -150,16 +149,23 @@ func suggestFor(app *App, ctx context.Context, rt runtime.Runtime, r inventory.R
 			reason: reason + ", clean and pushed",
 			action: fmt.Sprintf("go cold: remove %s (branch and remote keep the work)", config.Contract(r.Checkout)),
 			apply: func() error {
-				m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
+				taskRT := runtimeForTask(app, t)
 				if t.WorktreePath != "" {
+					resolved, _, err := closeTaskRuntime(ctx, app, t, t.WorktreePath)
+					if err != nil {
+						return fmt.Errorf("close runtime before cold cleanup: %w", err)
+					}
+					taskRT = resolved
+					m := &wt.Manager{Cfg: app.Cfg, Runtime: taskRT, Log: app.Err}
 					if err := m.Remove(ctx, wt.RemoveRequest{
-						RepoPath: t.RepoPath, Path: t.WorktreePath, RuntimeHandle: t.RuntimeHandle,
+						RepoPath: t.RepoPath, Path: t.WorktreePath,
 					}); err != nil {
 						return err
 					}
 					t.WorktreePath = ""
 				}
-				t.State, t.RuntimeHandle = task.Cold, ""
+				t.State = task.Cold
+				clearTaskRuntime(t)
 				return app.Tasks.Save(t)
 			},
 		})

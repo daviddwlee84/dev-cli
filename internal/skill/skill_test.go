@@ -40,6 +40,7 @@ func TestFilesIncludeReferences(t *testing.T) {
 		"references/worktree-ownership.md",
 		"references/task-lifecycle.md",
 		"references/runtime-herdr.md",
+		"references/parallel-agents.md",
 		"references/commands.md",
 	} {
 		if _, ok := all[want]; !ok {
@@ -54,7 +55,7 @@ func TestSkillReferencesResolve(t *testing.T) {
 	all, _ := skill.Files()
 	body := string(all["SKILL.md"])
 	for _, name := range []string{
-		"worktree-ownership.md", "task-lifecycle.md", "runtime-herdr.md", "commands.md",
+		"worktree-ownership.md", "task-lifecycle.md", "runtime-herdr.md", "parallel-agents.md", "commands.md",
 	} {
 		if !strings.Contains(body, name) {
 			continue

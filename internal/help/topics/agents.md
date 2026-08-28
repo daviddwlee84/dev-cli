@@ -4,73 +4,100 @@ How to run several coding agents without them stepping on each other.
 
 ## The one rule
 
-> **Worktree per change stream. Pane per agent.**
+> **Worktree per change stream. Exact pane per agent.**
 
-Not one worktree per agent. Isolation should follow the *git mutation
-boundary*, not the identity of who is typing.
+Not one worktree per agent. Isolation follows the *git mutation boundary*, not
+who is typing.
 
 ```
 one independent change stream
         → one worktree
-        → one workspace
-        → N tabs / panes
-        → N agents
+        → one Herdr workspace
+        → one exact launch pane
+        → one or more coordinated agents
 ```
+
+## Choose the operation
+
+| Intent | Action |
+|---|---|
+| Observe existing work | `herdr agent get/read/wait`; do not send probe keys or focus it |
+| Spawn independent work | `dev start <repo> --task <name> --base <committed-ref> --json`, validate the exact new pane, then launch there |
+| Handoff the same task | Settle the old session, checkpoint dirty code, get explicit user agreement, then resume with a new forked session ID |
+
+A new independent task does not need to wait for an unrelated agent. It does
+need a committed base: dirty state in another checkout is not inherited.
+
+## Shared-checkout collision guard
+
+Herdr-aware writer claims (`start --direct`, `start --branch-only`, and
+`resume`) compare recognized agents by canonical Git worktree root and reject a
+checkout occupied by another pane. `idle`, `done`, `blocked`, `working`, and
+`unknown` are all occupied states. Herdr resolves the current pane before
+excluding it, so an inherited ID made stale by a pane move is not trusted.
+
+Pure `repo open`, `wt open`, and TUI Enter/focus navigate to the live owner and
+do not authorize another writer. `--allow-shared-checkout` is an explicit
+escape hatch only for coordinated disjoint writer ownership. Default `dev
+start` worktree creation remains allowed because it creates a new boundary.
+
+Use `dev status` in a checkout to see recognized activities.
 
 ## When agents can share a checkout
 
-They can, and often should, when **file ownership is clear**:
+They can when file ownership is explicit and disjoint:
 
 | Parallel work | Same checkout? |
 |---|---|
-| One researching, one coding | yes |
-| Frontend and backend | yes |
-| Tests and implementation | usually |
-| `src/foo/*` and `src/bar/*` | yes |
-| Both editing `package.json` | risky |
-| Both changing one API surface | risky |
-| Both running a formatter or codegen | risky |
-| Both doing large refactors | no |
-| Either running `checkout` / `reset` / `rebase` | no |
+| One researching, one coding | yes, if only one writes |
+| Frontend and backend with owned paths | yes, with explicit coordination |
+| Both editing one manifest/API surface | no |
+| Either changing HEAD, rebasing, formatting globally, or running codegen | no |
+| Unknown file ranges | no |
 
-The question is never "how many agents?" It is **"can these two mutate the same
-state?"**
-
-## When they need worktrees
-
-- Mutually exclusive *approaches* to one problem, to be compared and one kept.
-- Unknown file ranges.
-- Any agent that will run git operations changing HEAD.
-
-```bash
-dev wt create exp/jwt      --base main
-dev wt create exp/session  --base main
-dev wt create exp/oauth    --base main
-```
-
-Then compare, keep one, remove the rest. These branches are execution
-artifacts, not architecture — they are meant to disappear.
-
-## Two layers, two owners
+## Ownership boundaries
 
 ```
-outer isolation   dev      change streams a human will return to
-inner isolation   Claude   turn-scoped subagent worktrees, auto-cleaned
+dev         durable task, branch and checkout lifecycle
+Herdr       workspace, pane, process detection and live state
+SpecStory   rendered history rooted at the launch checkout
+Git         durable code and review artifacts
 ```
 
-Do not nest one inside the other. A `dev` worktree containing a Claude worktree
-raises questions with no good answers: which branch am I committing to, who
-cleans up, does closing the session delete the branch.
+A pane move changes layout, not process cwd. `EnterWorktree` does not prove an
+already-running SpecStory writer rebound to a new path. Start the new process
+from the target worktree root instead.
 
-Inside a `dev` worktree, just run the agent — no `--worktree` flag needed. The
-directory is already the isolation.
+## Launching a background agent
+
+`dev start` creates the task/worktree/runtime target; it does not start an
+agent. The bundled `dev-cli` skill owns the fail-closed cross-tool workflow and
+supports standard Claude/Codex plus the local one-shot Copilot launchers.
+
+Do not infer a pane from focus or sidebar order. Missing, reused, fallback,
+non-Herdr, or unverified panes are not launch targets.
+
+## Cleanup is explicit
+
+Herdr `done` means a turn settled; it does not mean history is synced, review is
+complete, code is committed, or the workspace may close.
+
+- `dev park` closes the workspace and keeps the checkout.
+- `dev park --cold --push` closes the workspace and removes a reconstructible checkout.
+- `dev done --ff` integrates and cleans up the workspace/worktree.
+- `dev done --pr` leaves the task and checkout for review.
+- `dev sweep` reports first; `--apply` is a separate confirmed action.
+
+`--cold --keep-session` is rejected because a live session must not point at a
+removed checkout.
 
 ## Bringing environment into a worktree
 
-Every worktree is a clean checkout: no `node_modules`, no `.venv`, no `.env`.
-`dev` provisions on create. If an agent reports a project that will not run in
-a fresh worktree, that is usually the cause:
+Every worktree is a clean checkout. `dev` provisions gitignored files listed in
+`worktree.include` and dependencies configured for the repo.
 
-```bash
-dev wt provision      # re-run it
-```
+`.claude/settings.local.json` is not a universal default. The Claude one-shot
+wrapper preserves an existing Copilot pin and creates/removes one only when
+absent; Codex injects its backend. Add the exact file only for an explicit
+sticky/plain-Claude profile. `dev` rejects source swaps and destination-parent
+symlinks, reports an existing target as skipped, and never logs contents.

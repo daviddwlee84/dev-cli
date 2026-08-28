@@ -17,7 +17,8 @@ type Extras struct {
 	OS bool
 	// Editors adds editor and IDE local state.
 	Editors bool
-	// Agents adds the directories coding-agent harnesses create.
+	// Agents adds ephemeral local state created by coding-agent harnesses.
+	// Review artifacts such as histories and plans remain trackable.
 	Agents bool
 	// Env adds the usual local secret files.
 	Env bool
@@ -73,15 +74,13 @@ const editorsSection = `# Editors and IDEs
 .nvimlog
 .null-ls_*`
 
-// agentsSection covers the directories coding-agent harnesses create inside a
-// repository. The worktree entries matter most: an agent's linked checkout
-// left untracked makes every `git status` in the main checkout unreadable.
-const agentsSection = `# Coding agent harnesses
+// agentsSection covers ephemeral local state created by coding-agent harnesses.
+// Review artifacts such as histories and plans deliberately remain trackable.
+const agentsSection = `# Ephemeral coding-agent state
 .claude/worktrees/
 .claude/settings.local.json
 .aider*
-.cursor/rules/_generated/
-.specstory/history/`
+.cursor/rules/_generated/`
 
 const envSection = `# Local environment and secrets — never commit real values
 .env

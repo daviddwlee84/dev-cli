@@ -1,60 +1,70 @@
-# dev and herdr
+# dev and Herdr
 
-Read this when working on a machine that runs herdr, or when a task's state
-should be visible in the sidebar.
+Read this on a Herdr machine, when task state should appear in the sidebar, or
+when a `dev start --json` result will be used to launch an agent.
 
-## The division
+## Division of responsibility
 
 ```
-herdr    per-host runtime: what is running, where the panes are, which agent
-         is working right now
-dev      cross-host intent: which change streams exist, what state each is in,
-         what to do next
-git      durable truth: the commits
+Herdr       per-host workspace, pane, process and live-agent state
+dev         durable task, branch and checkout lifecycle
+SpecStory   history writer rooted at the launched process checkout
+Git         durable commits, transcript and plan
 ```
 
-herdr is deliberately **not** synced between machines, and `dev` does not try
-to. Each host runs its own herdr; `dev ls --json` is the aggregation point:
+Herdr is not synced between machines. `dev` persists an advisory runtime handle
+with its owning backend name, revalidates the handle against live checkout
+coverage before close/resume, and reopens stale handles. This prevents a Herdr
+handle being sent to Tmux/none after config changes. Legacy nameless handles are
+used only after exact current-backend validation. Root-pane data stays transient.
 
-```bash
-ssh jingle-235 dev ls --json
-ssh jingle-247 dev ls --json
-```
+## What dev asks Herdr to do
 
-## What dev asks herdr to do
-
-`dev` shells out to the herdr CLI, which emits JSON for everything it needs:
-
-| dev operation | herdr command |
+| dev operation | Herdr command |
 |---|---|
-| list live sessions | `workspace list` + `pane list` (panes carry the cwd) |
-| open a checkout | `workspace create --cwd <dir> --label <name>` |
-| open a **worktree** | `worktree open --path <path> --label <name>` |
+| list live sessions | `workspace list` + `pane list` |
+| list pane-level agent activity | `agent list` |
+| open a checkout | `workspace create --cwd <dir> --no-focus --label <name>` |
+| open a worktree | `worktree open --cwd <parent-root> --path <path> --no-focus --label <repo/branch>` |
 | close a session | `workspace close <id>` |
 | show task state | `workspace report-metadata <id> --source dev --token …` |
 
-`worktree open` rather than `workspace create` for a worktree is what gives the
-checkout git provenance in herdr: it appears grouped under its parent repo's
-space with its own branch and ahead/behind row, rather than as an unrelated
-directory.
+`dev` creates worktrees with Git and only asks Herdr to open them. It derives
+the canonical parent checkout from Git and passes it with `--cwd`, so grouping
+does not depend on whichever Herdr pane invoked `dev`. First-class `worktree
+open` gives the child native repository/worktree grouping plus branch/ahead-
+behind data. Worktree-mode `dev start` uses the same `repo/branch`
+label as `dev wt create`; no special origin labels or metadata are needed.
 
-`dev` does **not** call `herdr worktree create` — see
-`worktree-ownership.md` for why.
+A plain-workspace fallback reports `surface=workspace` honestly. A root pane is
+automatically launchable only when the same successful `worktree open` response
+proves a newly created layout. Reuse, fallback, missing/malformed responses,
+Tmux, and the `none` runtime never supply a launchable pane. `--no-focus`
+preserves the caller's context; never substitute the focused/current pane.
 
-Note that `workspace close` only ends herdr's session state. It does not delete
-the directory, the worktree or the branch. That separation is exactly the one
-`dev park` relies on.
+Read `parallel-agents.md` for exact machine validation, pane verification,
+SpecStory profiles and permission-mode rules.
 
-## Making task state visible in the sidebar
+## Collision preflight
 
-`dev` reports two metadata tokens on the workspace hosting a task:
+On Herdr, `dev` compares recognized agent cwd values by canonical Git worktree
+root before writer-claiming direct/branch starts and resume. It resolves
+`herdr pane current --current` before excluding the caller, because inherited
+`HERDR_PANE_ID` may be stale after a pane move. Every recognized state—including
+`idle`, `done`, and `unknown`—is occupied; malformed/missing activity data fails
+closed.
 
-- `$stage` — `HOT`, `WARM`, `COLD`, `DONE`
-- `$next` — the task's next action
+Pure repo/worktree open and TUI Enter/focus reuse the live owner's workspace and
+do not claim a second writer. The root `--allow-shared-checkout` escape hatch is
+only for coordinated writer ownership. A default worktree start remains
+separate and needs no override.
 
-A token only renders if the sidebar row layout names it. Setting one with no
-matching layout entry succeeds silently and shows nothing, so add this to
-`~/.config/herdr/config.toml`:
+`dev status` shows recognized activities for the current worktree.
+
+## Sidebar metadata
+
+Task annotations use `$stage` and `$next`. Tokens render only if the local Herdr
+row layout names them; reporting an unused token succeeds silently.
 
 ```toml
 [ui.sidebar.spaces]
@@ -65,51 +75,32 @@ rows = [
 ]
 ```
 
-Which turns a row into:
+## Cleanup semantics
 
-```
-● atp-sipui · HOT
-  fix/gx-security-recovery ↑2
-  finish the refresh regression test
-```
+Herdr agent `done` means the latest turn settled. It does not establish that
+history is synced, review is complete, code is committed, or cleanup is safe.
+Never auto-close based on agent state.
 
-That is far more useful than leaving four agents running in the hope that
-seeing their names jogs your memory.
+- `dev park` closes the workspace and keeps the worktree.
+- `dev park --cold --push` closes and removes a reconstructible checkout.
+- `dev done --ff` integrates and cleans up.
+- `dev done --pr` leaves task/runtime/worktree for review.
+- `dev sweep` reports first.
 
-Because the layout is pinned by hand, re-check it against `herdr --default-config`
-after a herdr upgrade — upstream changes to the default rows will not reach a
-customised layout.
+`workspace close` itself touches no branch or checkout. A verified close failure
+stops cold park, done worktree cleanup, sweep cleanup, and `wt rm` before the
+checkout is removed. `--cold --keep-session` is rejected so a session cannot
+remain pointed at a removed directory.
 
-## Sidebar hygiene
+## Agent sessions are not yet attached by dev
 
-The sidebar is working memory, not storage. Aim for three to seven hot spaces
-per machine; everything else lives in `dev ls`.
+Herdr exposes live agent session IDs and `Task.AgentSession` exists in the task
+schema, but production `start`, `park`, and `resume` do not currently capture or
+attach an agent conversation. Resume reopens/rebuilds the checkout and runtime;
+agent-session handoff remains an explicit launcher operation.
 
-`dev sweep` reports live sessions with no task recorded, which is usually where
-the excess is. For each one, either `dev start` in that directory to track it,
-or just close it — now that closing is not the same as forgetting.
+## Without Herdr
 
-## Agents are processes, not bookmarks
-
-An agent pane with useful context in it is tempting to leave running forever.
-Don't: herdr surfaces a resumable `agent_session` id, and `dev` stores it on
-the task, so the conversation can be resumed after the process is gone.
-
-Structure the isolation this way:
-
-```
-one independent change stream
-        → one worktree
-        → one workspace
-        → N tabs / panes
-        → N agents
-```
-
-Not one worktree per agent.
-
-## Without herdr
-
-`dev` selects `herdr` → `tmux` → `none`, in that order, and `runtime.backend`
-pins it explicitly. The `none` backend prints a `cd` directive for the shell
-wrapper instead of opening a session — so every core operation still works with
-nothing but git installed.
+Runtime selection is Herdr → Tmux → none unless pinned. Tmux can report session
+creation/reuse but no pane. `none` emits a shell `cd` directive in human mode;
+`dev start --json` suppresses that directive and stays pure JSON.

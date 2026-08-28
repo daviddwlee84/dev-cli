@@ -25,15 +25,15 @@ func newGitignoreCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "gitignore [language...]",
 		Aliases: []string{"ignore"},
-		Short:   "Write a .gitignore from GitHub's templates plus the entries every repo needs",
+		Short:   "Write a .gitignore from GitHub's templates plus common local-state rules",
 		Long: `Compose a .gitignore for this repository.
 
 Language sections come from GitHub's published templates, fetched once and
 cached. On top of those, dev adds the entries no language template covers but
 almost every repository wants: the host platform's junk files, editor state,
-local env files, and the directories coding-agent harnesses create — a
-harness's linked worktree left untracked makes every git status in the main
-checkout unreadable.
+local env files, and ephemeral coding-agent state. Linked worktrees and local
+settings stay out of git, while review artifacts such as histories and plans
+remain trackable.
 
 With no language argument, the languages are inferred from the files present.
 
@@ -43,7 +43,7 @@ block and leaves rules you added by hand alone.
   dev gitignore                 # detect from the repo's files
   dev gitignore python node     # explicit
   dev gitignore --stdout        # preview without writing
-  dev gitignore --no-agents     # skip the harness section`,
+  dev gitignore --no-agents     # skip ephemeral coding-agent state`,
 		Args: cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
@@ -138,7 +138,7 @@ block and leaves rules you added by hand alone.
 	f.BoolVar(&list, "list", false, "list the templates available offline")
 	f.BoolVar(&noOS, "no-os", false, "omit the host platform's junk files")
 	f.BoolVar(&noEditors, "no-editors", false, "omit editor and IDE state")
-	f.BoolVar(&noAgents, "no-agents", false, "omit coding-agent harness directories")
+	f.BoolVar(&noAgents, "no-agents", false, "omit ephemeral coding-agent state")
 	f.BoolVar(&noEnv, "no-env", false, "omit local env and secret files")
 	cmd.ValidArgsFunction = completeGitignoreNames
 	return cmd

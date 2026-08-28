@@ -5,7 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -22,6 +24,10 @@ type Herdr struct {
 	bin string
 	// metadataSource namespaces the workspace metadata tokens dev reports.
 	metadataSource string
+	// runCommand and worktreeSource are test seams for Herdr's JSON protocol
+	// and Git parent-workspace source resolution.
+	runCommand     func(context.Context, ...string) ([]byte, error)
+	worktreeSource func(context.Context, string) string
 }
 
 // NewHerdr returns the herdr adapter.
@@ -53,6 +59,9 @@ func (h *Herdr) Available() bool {
 }
 
 func (h *Herdr) run(ctx context.Context, args ...string) ([]byte, error) {
+	if h.runCommand != nil {
+		return h.runCommand(ctx, args...)
+	}
 	cmd := exec.CommandContext(ctx, h.bin, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -84,6 +93,9 @@ func (h *Herdr) call(ctx context.Context, out any, args ...string) error {
 	if err != nil {
 		return err
 	}
+	if out == nil && len(bytes.TrimSpace(raw)) == 0 {
+		return nil
+	}
 	var env herdrEnvelope
 	if err := json.Unmarshal(raw, &env); err != nil {
 		return fmt.Errorf("herdr %s: unexpected output: %w", strings.Join(args, " "), err)
@@ -106,11 +118,14 @@ type herdrWorkspace struct {
 }
 
 type herdrPane struct {
-	PaneID       string `json:"pane_id"`
-	WorkspaceID  string `json:"workspace_id"`
-	CWD          string `json:"cwd"`
-	Agent        string `json:"agent"`
-	AgentSession *struct {
+	PaneID        string `json:"pane_id"`
+	WorkspaceID   string `json:"workspace_id"`
+	CWD           string `json:"cwd"`
+	ForegroundCWD string `json:"foreground_cwd"`
+	Agent         string `json:"agent"`
+	Name          string `json:"name"`
+	AgentStatus   string `json:"agent_status"`
+	AgentSession  *struct {
 		Agent string `json:"agent"`
 		Value string `json:"value"`
 	} `json:"agent_session"`
@@ -137,9 +152,7 @@ func (h *Herdr) List(ctx context.Context) ([]Session, error) {
 		Panes []herdrPane `json:"panes"`
 	}
 	if err := h.call(ctx, &ps, "pane", "list"); err != nil {
-		// Directories are an enrichment; a workspace listing without them is
-		// still worth returning.
-		ps.Panes = nil
+		return nil, err
 	}
 
 	dirs := map[string]map[string]bool{}
@@ -173,17 +186,65 @@ func (h *Herdr) List(ctx context.Context) ([]Session, error) {
 	return out, nil
 }
 
+// CurrentPaneID implements CurrentPaneResolver without changing focus. --current
+// resolves Herdr's inherited caller context even when a pane move changed its
+// public ID after this process started.
+func (h *Herdr) CurrentPaneID(ctx context.Context) (string, error) {
+	var res struct {
+		Pane herdrPane `json:"pane"`
+	}
+	if err := h.call(ctx, &res, "pane", "current", "--current"); err != nil {
+		return "", err
+	}
+	if res.Pane.PaneID == "" {
+		return "", fmt.Errorf("herdr pane current --current: response has no pane id")
+	}
+	return res.Pane.PaneID, nil
+}
+
+// AgentActivities implements AgentActivityLister using Herdr's recognized-agent
+// inventory. Every returned row is occupied; lifecycle state is descriptive and
+// is deliberately not used to decide whether another agent may share its cwd.
+func (h *Herdr) AgentActivities(ctx context.Context) ([]AgentActivity, error) {
+	var res struct {
+		Agents *[]herdrPane `json:"agents"`
+	}
+	if err := h.call(ctx, &res, "agent", "list"); err != nil {
+		return nil, err
+	}
+	if res.Agents == nil {
+		return nil, fmt.Errorf("herdr agent list: response has no agents array")
+	}
+	out := make([]AgentActivity, 0, len(*res.Agents))
+	for _, p := range *res.Agents {
+		cwd := p.ForegroundCWD
+		if cwd == "" {
+			cwd = p.CWD
+		}
+		if cwd == "" {
+			return nil, fmt.Errorf("herdr agent list: recognized agent in pane %s has no cwd", p.PaneID)
+		}
+		out = append(out, AgentActivity{
+			PaneID: p.PaneID, WorkspaceID: p.WorkspaceID,
+			Agent: p.Agent, Name: p.Name, Status: p.AgentStatus, CWD: cwd,
+		})
+	}
+	return out, nil
+}
+
 // Open implements Runtime. An already-open directory is focused rather than
 // opened twice.
-func (h *Herdr) Open(ctx context.Context, dir, label string) (string, error) {
-	if existing, err := h.List(ctx); err == nil {
-		for _, s := range existing {
-			for _, d := range s.Dirs {
-				if d == dir {
-					_ = h.call(ctx, nil, "workspace", "focus", s.Handle)
-					return s.Handle, nil
-				}
+func (h *Herdr) Open(ctx context.Context, dir, label string) (OpenResult, error) {
+	existing, err := h.List(ctx)
+	if err != nil {
+		return OpenResult{}, err
+	}
+	for _, s := range existing {
+		if s.Covers(dir) {
+			if err := h.call(ctx, nil, "workspace", "focus", s.Handle); err != nil {
+				return OpenResult{}, err
 			}
+			return OpenResult{Handle: s.Handle, Surface: "workspace", Opened: true}, nil
 		}
 	}
 	args := []string{"workspace", "create", "--cwd", dir, "--no-focus"}
@@ -192,35 +253,111 @@ func (h *Herdr) Open(ctx context.Context, dir, label string) (string, error) {
 	}
 	var res struct {
 		Workspace herdrWorkspace `json:"workspace"`
+		RootPane  herdrPane      `json:"root_pane"`
 	}
 	if err := h.call(ctx, &res, args...); err != nil {
-		return "", err
+		return OpenResult{}, err
 	}
-	return res.Workspace.WorkspaceID, nil
+	if res.Workspace.WorkspaceID == "" {
+		return OpenResult{}, fmt.Errorf("herdr workspace create: response has no workspace id")
+	}
+	if res.RootPane.PaneID == "" || res.RootPane.WorkspaceID != res.Workspace.WorkspaceID {
+		return OpenResult{}, h.rejectCreatedWorkspace(ctx, res.Workspace.WorkspaceID,
+			"herdr workspace create: response has no correlated root pane")
+	}
+	return OpenResult{
+		Handle: res.Workspace.WorkspaceID, Surface: "workspace", Opened: true,
+		Created: true, RootPaneID: res.RootPane.PaneID,
+	}, nil
 }
 
 // OpenWorktree implements WorktreeOpener: it registers an already-created git
 // worktree as a herdr workspace, which is what makes the checkout appear in
 // the sidebar grouped under its parent repo with its own branch and
 // ahead/behind row.
-func (h *Herdr) OpenWorktree(ctx context.Context, path, label string) (string, error) {
-	args := []string{"worktree", "open", "--path", path, "--no-focus"}
+func (h *Herdr) OpenWorktree(ctx context.Context, path, label string) (OpenResult, error) {
+	args := []string{"worktree", "open"}
+	if source := h.parentWorktreeSource(ctx, path); source != "" {
+		// Pin the canonical parent checkout instead of relying on the calling
+		// pane. This preserves native nested grouping even when dev is invoked
+		// from a different Herdr workspace.
+		args = append(args, "--cwd", source)
+	}
+	args = append(args, "--path", path, "--no-focus")
 	if label != "" {
 		args = append(args, "--label", label)
 	}
 	var res struct {
-		Workspace herdrWorkspace `json:"workspace"`
-		Worktree  herdrWorktree  `json:"worktree"`
+		Workspace   herdrWorkspace `json:"workspace"`
+		Worktree    herdrWorktree  `json:"worktree"`
+		RootPane    herdrPane      `json:"root_pane"`
+		AlreadyOpen *bool          `json:"already_open"`
 	}
 	if err := h.call(ctx, &res, args...); err != nil {
 		// Fall back to a plain workspace: the checkout being visible matters
-		// more than it being tagged with git provenance.
-		return h.Open(ctx, path, label)
+		// more than it being tagged with git provenance. A fallback root pane is
+		// withheld so callers cannot mistake it for a first-class worktree target.
+		fallback, fallbackErr := h.Open(ctx, path, label)
+		fallback.RootPaneID = ""
+		fallback.Surface = "workspace"
+		return fallback, fallbackErr
 	}
-	if res.Workspace.WorkspaceID != "" {
-		return res.Workspace.WorkspaceID, nil
+	handle := res.Workspace.WorkspaceID
+	if handle == "" {
+		handle = res.Worktree.OpenWorkspaceID
 	}
-	return res.Worktree.OpenWorkspaceID, nil
+	if handle == "" {
+		return OpenResult{}, fmt.Errorf("herdr worktree open: response has no workspace id")
+	}
+	if res.AlreadyOpen == nil {
+		// Without this protocol field, the handle may belong to a reused
+		// workspace. Do not close it or expose its pane as newly created.
+		return OpenResult{}, fmt.Errorf("herdr worktree open: response does not say whether the workspace was reused")
+	}
+	created := !*res.AlreadyOpen
+	if created && (res.RootPane.PaneID == "" || res.RootPane.WorkspaceID != handle) {
+		return OpenResult{}, h.rejectCreatedWorkspace(ctx, handle,
+			"herdr worktree open: new workspace response has no correlated root pane")
+	}
+	rootPaneID := ""
+	if created {
+		rootPaneID = res.RootPane.PaneID
+	}
+	return OpenResult{
+		Handle: handle, Surface: "worktree", Opened: true,
+		Created: created, RootPaneID: rootPaneID,
+	}, nil
+}
+
+func (h *Herdr) rejectCreatedWorkspace(ctx context.Context, handle, reason string) error {
+	if err := h.Close(ctx, handle); err != nil {
+		return fmt.Errorf("%s; could not close incomplete workspace %s: %w", reason, handle, err)
+	}
+	return fmt.Errorf("%s; closed incomplete workspace %s", reason, handle)
+}
+
+func (h *Herdr) parentWorktreeSource(ctx context.Context, path string) string {
+	if h.worktreeSource != nil {
+		return h.worktreeSource(ctx, path)
+	}
+	cmd := exec.CommandContext(ctx, "git", "-C", path, "worktree", "list", "--porcelain")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	var parent string
+	for _, line := range strings.Split(string(out), "\n") {
+		switch {
+		case strings.HasPrefix(line, "worktree ") && parent == "":
+			parent = strings.TrimSpace(strings.TrimPrefix(line, "worktree "))
+		case line == "" && parent != "":
+			if info, err := os.Stat(parent); err == nil && info.IsDir() {
+				return filepath.Clean(parent)
+			}
+			return ""
+		}
+	}
+	return ""
 }
 
 // Close implements Runtime. This ends herdr's session state only — it never

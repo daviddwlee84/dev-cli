@@ -1,211 +1,117 @@
 # Worktree ownership
 
-Read this before creating a worktree, or when a new checkout is missing its
-dependencies or `.env`.
-
-## The confusion this resolves
-
-Three mechanisms create git worktrees, and they all look interchangeable:
-
-- `claude --worktree <name>` / `isolation: worktree` / `/batch` — Claude Code's
-  own, under `.claude/worktrees/`.
-- `herdr worktree create --branch … --base …` — creates a checkout under
-  `~/.herdr/worktrees/` and opens it as a herdr workspace.
-- `git worktree add` by hand, or a tool like Worktrunk.
-
-They are all standard git worktrees underneath, so nothing *breaks* if you mix
-them. What breaks is the mental model: two lifecycle owners for one checkout,
-and no single answer to "where do worktrees live on this machine?"
+Read this before creating a worktree, sharing a checkout between agents, or when
+a new checkout lacks dependencies, env files, or launcher backend state.
 
 ## The rule
 
-| Kind of worktree | Owner | Where | Lifetime |
+| Change boundary | Owner | Where | Lifetime |
 |---|---|---|---|
-| Feature, fix, experiment, cross-machine handoff | **`dev`** | `paths.worktree_path` | until `dev done` / `dev sweep` |
-| Turn-scoped subagent isolation | **Claude Code** | `.claude/worktrees/` | dies with the turn |
-| Everything else | **`dev`** | as above | as above |
+| Durable feature/fix/experiment/handoff | **`dev`** | `paths.worktree_path` | until explicit park/done/sweep cleanup |
+| Harness-owned turn-scoped isolation | Claude Code | `.claude/worktrees/` | managed by that harness; do not assume artifact relocation |
+| Runtime workspace/panes | Herdr | per-host runtime | until explicitly closed |
+| Rendered agent history | SpecStory | process launch checkout | until committed/removed with that checkout |
 
-**Might a human come back to it tomorrow → `dev`. Does it die with this agent
-turn → Claude Code native.**
+Use a `dev` worktree for independent approaches or any change stream whose code,
+history, or plan must remain reviewable. Agents with explicitly disjoint file
+ownership may share one checkout, but `--allow-shared-checkout` is a deliberate
+coordination override—not a default.
 
-Concretely:
+`EnterWorktree` changes an agent's working location; it does not prove an
+existing SpecStory wrapper/watcher rebound its source/output paths. Start the
+new process from the target worktree root.
 
-- Two agents implementing *different approaches* to the same problem, so the
-  best can be picked → Claude Code worktrees. They are disposable.
-- Two agents working on *disjoint files of one feature* → no worktree at all.
-  One checkout, one branch, separate panes. Worktrees isolate change streams;
-  panes isolate agents.
-- A feature you will still be working on next week → `dev start`.
-- Picking up on a different machine → `dev park --cold --push` here,
-  `dev resume` there. The branch is the identity; the directory is a cache.
+## Why dev creates the checkout
 
-## Why `dev` does not call `herdr worktree create`
+`dev` runs `git worktree add`, then asks Herdr to run
+`worktree open --path <path> --no-focus`. Path policy therefore remains stable
+on machines without Herdr, while Herdr still displays repo/branch provenance.
+A fallback plain workspace is reported as such and is not an exact agent launch
+target.
 
-`dev` runs `git worktree add` itself, then calls
-`herdr worktree open --path <path> --label <task>`.
+Never nest a durable worktree inside another checkout. Every watcher, language
+server, backup tool and search then sees a second copy of the repository.
 
-The path policy has to hold on machines without herdr — a laptop, a CI box, a
-server you ssh into. Delegating placement to herdr would mean worktrees land
-somewhere different depending on what happens to be installed. Creating the
-checkout with git and asking herdr only to *open* it keeps one policy and still
-gets the full sidebar treatment: the workspace is grouped under its parent repo
-with its own branch and ahead/behind row.
-
-## Never nest a worktree inside a repository
-
-`.claude/worktrees/` is acceptable for turn-scoped work because Claude Code
-cleans it up and the directory is gitignored. For anything longer-lived, a
-checkout inside another checkout means every file watcher, language server,
-indexer, backup tool and `rg` run in the outer repo sees a second copy of the
-whole tree.
-
-`dev` refuses to create one, and will tell you to point
-`paths.worktree_path` somewhere outside the repo.
-
-If you do use `.claude/worktrees/`, keep `.claude/worktrees/` in `.gitignore`
-so the contents never show as untracked files in the main checkout.
-
-## Where dev puts them
+## Paths
 
 Default:
 
-```
+```text
 ~/Worktrees/<repo>/<branch-slug>
 ```
 
-Fully configurable, because the right answer depends on the machine — a
-different volume, a different naming convention:
+Configurable through `paths.worktree_root` and `paths.worktree_path`, with
+`worktree_root`, `repo`, `repo_path`, `branch`, `category`, `host`, and `date`
+variables plus `slug`, `lower`, and `base` filters.
 
-```toml
-[paths]
-worktree_root = "/mnt/fast/worktrees"
-worktree_path = "{{worktree_root}}/{{repo|lower}}/{{branch|slug}}"
-```
+Always pass `--base` for unattended creation. A new branch otherwise inherits
+the current HEAD, which may be an unrelated feature.
 
-Variables: `worktree_root`, `repo`, `repo_path`, `branch`, `category`, `host`,
-`date`. Filters: `|slug` (filesystem-safe: `feat/auth/x` → `feat-auth-x`),
-`|lower`, `|base`.
+## Provisioning
 
-The reason for a separate root rather than siblings of the repo: with one or
-two worktrees, `repo/` and `repo.feat-auth/` side by side is perfectly clear.
-With ten, the projects directory stops answering "what projects do I have?" —
-the filesystem hierarchy starts doing git's job badly.
-
-## Provisioning: making a worktree actually usable
-
-A worktree is a **clean checkout**. It has no `node_modules`, no `.venv`, and
-none of the gitignored files the project needs to run. Without provisioning,
-every new worktree starts broken.
-
-`dev wt create` (and `dev start`) builds an inspectable provisioning plan,
-then applies it. See the plan before creating anything:
+A worktree is a clean checkout. `dev wt create` and `dev start` build and apply
+an inspectable plan:
 
 ```bash
-dev wt plan                 # detect project types and show every action
-dev wt plan --write         # seed a committed .dev.toml from the result
-dev wt provision --dry-run  # plan for an existing checkout
+dev wt plan
+dev wt plan --write
+dev wt provision --dry-run
 ```
 
-The settings live under `[worktree]` globally or in the repo's own `.dev.toml`:
+Effective settings come from global config or committed repo `.dev.toml`:
 
 ```toml
 [worktree]
-# Gitignored files to carry over.
 include = [".env", ".env.local"]
-
-# Heavy directories to symlink instead of copy. Opt-in and empty by default —
-# sharing node_modules across checkouts breaks native builds often enough that
-# it must never happen by accident.
 link = []
-
-# "auto" detects from lockfiles, or give an explicit list.
 post_create = "auto"
-
-# How installed dependencies arrive. The safe default is reinstall.
-strategy = "reinstall"      # reinstall | copy | link | skip
-
-[worktree.strategies]
-node = "copy"               # override one ecosystem
+strategy = "reinstall"
 ```
 
-**Only files that are both listed *and* gitignored are copied.** A tracked file
-is already in the new checkout on the correct branch; copying the source
-branch's version over it would be wrong. The classic mistake is listing
-`.vscode/settings.json` — it is committed, so it is already there.
+Only paths that are both explicitly included and genuinely gitignored are
+copied. Tracked files already have the branch-correct version. Included files
+must remain the same regular file from validation through open; source swaps and
+symlinked destination parents are refused. Existing destinations are reported
+as skipped, never falsely as copied, and file contents are never logged.
 
-`post_create = "auto"` detects one command per ecosystem:
+### Project-local Claude backend state
 
-| Marker | Command |
-|---|---|
-| `uv.lock` | `uv sync` |
-| `poetry.lock` | `poetry install` |
-| `pnpm-lock.yaml` | `pnpm install --frozen-lockfile` |
-| `package-lock.json` | `npm ci` |
-| `yarn.lock` | `yarn install --immutable` |
-| `go.mod` | `go mod download` |
-| `Cargo.toml` | `cargo fetch` |
-| `Gemfile.lock` | `bundle install` |
+`.claude/settings.local.json` stays gitignored and is **not** a universal default
+include. The verified `claude-copilot-once` wrapper preserves an existing
+Copilot pin and creates/removes only its own pin when one was absent;
+`codex-copilot-once` injects its backend via CLI. Neither needs a copied project
+file. Claude's Copilot proxy must already be running; the Codex path may
+self-start its proxy flow.
 
-A detected command whose tool is not installed is skipped, not failed. A failed
-command is reported but leaves the checkout in place — it is usable, and
-throwing it away would cost the branch for nothing.
-
-
-## Copy, reinstall, link, or skip?
-
-This is a per-ecosystem correctness decision, not merely a speed preference:
-
-| Strategy | Effect | Default use |
-|---|---|---|
-| `reinstall` | Run the lockfile-derived install command | Always sound; default |
-| `copy` | Duplicate the dependency directory from the source checkout | Faster where path-independent |
-| `link` | Share one directory between checkouts | Fastest; usually unsafe |
-| `skip` | Leave dependencies absent | Container/CI-driven projects |
-
-`dev` encodes the non-obvious facts:
-
-- Python `.venv` **cannot be copied or linked**: `pyvenv.cfg`, activation
-  scripts and entry points bake in the old absolute path. `uv sync` uses a
-  shared cache and is normally cheap anyway.
-- Node `node_modules` can be copied, including pnpm's symlinks (links are
-  recreated, not dereferenced). Sharing one tree is refused because an install
-  in either checkout silently changes the other.
-- Go modules are already in a global content-addressed cache; there is no local
-  directory worth copying.
-- Cargo `target/` can be copied, but is often larger than rebuilding. Sharing
-  it is refused because concurrent builds write the same lock/artifacts.
-
-An unsound configured strategy is not obeyed blindly: `dev wt plan` says why
-and narrows it back to `reinstall`. A typo likewise becomes a warning rather
-than silently skipping dependencies.
-
-`post_create` and strategy are separate axes. An explicit command list replaces
-the *derived install commands* but does not disable a `copy` strategy. A project
-can copy `node_modules` and then run `make bootstrap`.
-
-Per-repo override, committed next to the code so it reaches every machine:
+An explicitly selected sticky/plain-Claude profile may opt in exactly:
 
 ```toml
-# <repo>/.dev.toml
 [worktree]
-include     = [".env", "config/local.json"]
-post_create = ["make bootstrap"]
-
-[worktree.strategies]
-node = "copy"
+include = [".env", ".env.local", ".claude/settings.local.json"]
 ```
 
-Re-run provisioning on an existing checkout with `dev wt provision`.
+Verify the file arrived before launch. If absent, stop instead of allowing the
+launcher to fall back silently to another backend. `dev` logs the relative path
+only, never its contents.
+
+## Dependency strategies
+
+- `reinstall`: safe default; run lockfile-derived installer.
+- `copy`: duplicate path-independent dependency trees.
+- `link`: explicit and usually unsafe for mutable dependencies.
+- `skip`: for external/container-managed environments.
+
+`dev` refuses unsound choices, such as copied/linked Python virtualenvs, and
+reports missing tools or failed setup without deleting the usable checkout.
 
 ## Cleanup
 
-```bash
-dev wt rm feat/auth      # removes the checkout; the branch survives
-```
+- `dev wt rm <branch>` removes only the checkout; branch survives.
+- `dev park` closes runtime, keeps worktree/branch.
+- `dev park --cold --push` closes runtime and removes the pushed worktree.
+- `dev done --ff` integrates and cleans runtime/worktree.
+- `dev done --pr` leaves everything active for review.
+- `dev sweep` reports first; `--apply` is separate.
 
-Removing a worktree and abandoning a change stream are different decisions.
-`dev` never deletes a branch as a side effect, and refuses to remove a checkout
-with uncommitted changes without an explicit `--force`.
-
-If a directory was deleted behind git's back, `dev wt rm` and `dev sweep` prune
-the stale administrative entry instead of failing.
+Dirty checkout removal requires explicit force. Herdr `done` is not a cleanup
+signal, and `--cold --keep-session` is rejected.

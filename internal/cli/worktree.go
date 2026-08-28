@@ -19,8 +19,9 @@ Who owns which worktree — the rule dev encodes, so nobody has to improvise:
   dev            anything you might come back to tomorrow: features, fixes,
                  experiments, cross-machine handoffs. Placed at
                  paths.worktree_path, outside the repo.
-  Claude Code    turn-scoped subagent isolation that dies with the turn, in
-                 .claude/worktrees/ (keep that gitignored).
+  Claude Code    harness-owned turn-scoped subagent isolation in
+                 .claude/worktrees/ (keep that gitignored); not a history
+                 relocation guarantee.
   herdr          dev does not call "herdr worktree create". It creates the
                  worktree with git and asks herdr to open it, so the path
                  policy holds on machines without herdr too.
@@ -176,8 +177,8 @@ builds on feature/A.`,
 			}
 			fmt.Fprintf(app.Out, "%s  %s\n", branch, config.Contract(res.Path))
 			reportProvision(app, res)
-			if res.RuntimeHandle != "" {
-				fmt.Fprintf(app.Out, "   session   %s %s\n", res.RuntimeName, res.RuntimeHandle)
+			if res.Runtime.Handle != "" && res.RuntimeName != "none" {
+				fmt.Fprintf(app.Out, "   session   %s %s\n", res.RuntimeName, res.Runtime.Handle)
 			}
 			if track {
 				fmt.Fprintln(app.Err, "note: `dev start` also records a task, which is what makes the work survive closing the session")
@@ -221,13 +222,13 @@ func newWtOpenCmd(app *App) *cobra.Command {
 				return fmt.Errorf("no worktree for branch %q — create one with `dev wt create %s`", args[0], args[0])
 			}
 			rt := app.Runtime()
-			handle, err := openCheckout(ctx, rt, w.Path, repoName+"/"+w.Branch)
+			opened, err := openCheckout(ctx, rt, w.Path, repoName+"/"+w.Branch)
 			if err != nil {
 				return err
 			}
 			fmt.Fprintf(app.Out, "%s  %s", w.Branch, config.Contract(w.Path))
 			if rt.Name() != "none" {
-				fmt.Fprintf(app.Out, "  (%s %s)", rt.Name(), handle)
+				fmt.Fprintf(app.Out, "  (%s %s)", rt.Name(), opened.Handle)
 			}
 			fmt.Fprintln(app.Out)
 			if rt.Name() == "none" {
@@ -302,7 +303,8 @@ A checkout with uncommitted changes needs an explicit --force.`,
 
 			// Keep the registry honest about what is now gone.
 			if t, err := app.Tasks.FindByWorktree(w.Path); err == nil {
-				t.WorktreePath, t.RuntimeHandle = "", ""
+				t.WorktreePath = ""
+				clearTaskRuntime(t)
 				if err := app.Tasks.Save(t); err == nil {
 					fmt.Fprintf(app.Out, "task %s updated — the branch still has the work\n", t.ID)
 				}

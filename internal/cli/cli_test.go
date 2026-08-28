@@ -201,6 +201,14 @@ func TestStartRefusesDuplicate(t *testing.T) {
 	}
 }
 
+func TestParkRejectsColdKeepSession(t *testing.T) {
+	h := newHarness(t)
+	_, _, err := h.run("park", "missing", "--cold", "--keep-session")
+	if err == nil || !strings.Contains(err.Error(), "cannot be combined") {
+		t.Fatalf("--cold --keep-session should fail before task lookup, got %v", err)
+	}
+}
+
 func TestParkColdRefusesUnpushedWork(t *testing.T) {
 	h := newHarness(t)
 	h.mustRun("start", "demo", "--task", "cold", "--branch", "feat/cold", "--base", "main")
@@ -224,6 +232,31 @@ func TestDoneRefusesDirtyTree(t *testing.T) {
 	_, _, err := h.run("done", "feat/dirty", "--ff")
 	if err == nil || !strings.Contains(err.Error(), "uncommitted changes") {
 		t.Errorf("done on a dirty tree must be refused, got %v", err)
+	}
+}
+
+func TestDonePRLeavesTaskAndWorktreeForReview(t *testing.T) {
+	h := newHarness(t)
+	h.repo.WithRemote()
+	h.mustRun("start", "demo", "--task", "review", "--branch", "feat/review", "--base", "main")
+	wtPath := filepath.Join(h.wtRoot, "demo", "feat-review")
+	h.repo.GitIn(wtPath, "config", "user.email", "dev@example.test")
+	h.repo.GitIn(wtPath, "config", "user.name", "dev test")
+	if err := os.WriteFile(filepath.Join(wtPath, "review.txt"), []byte("ready\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.repo.GitIn(wtPath, "add", "review.txt")
+	h.repo.GitIn(wtPath, "commit", "-m", "feat: review")
+
+	out := h.mustRun("done", "review", "--pr")
+	if !strings.Contains(out, "under review") {
+		t.Fatalf("PR path should report review state: %q", out)
+	}
+	if _, err := os.Stat(wtPath); err != nil {
+		t.Fatalf("--pr must keep the worktree: %v", err)
+	}
+	if list := h.mustRun("ls", "--json"); !strings.Contains(list, `"state": "hot"`) {
+		t.Fatalf("--pr must keep the task active:\n%s", list)
 	}
 }
 
@@ -476,6 +509,9 @@ func TestSkillPrintsAndSyncChecks(t *testing.T) {
 	}
 	if !strings.Contains(out, "worktree-ownership.md") {
 		t.Error("the skill should point at its reference files")
+	}
+	if !strings.Contains(out, "`--allow-shared-checkout`") {
+		t.Error("the generated command reference should include root persistent options")
 	}
 }
 

@@ -5,13 +5,17 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
 
 // Tmux is the fallback backend for machines without herdr. It models a task as
 // a named tmux session rooted at the checkout.
-type Tmux struct{ bin string }
+type Tmux struct {
+	bin        string
+	runCommand func(context.Context, ...string) (string, error)
+}
 
 // NewTmux returns the tmux adapter.
 func NewTmux() *Tmux { return &Tmux{bin: "tmux"} }
@@ -24,6 +28,9 @@ func (t *Tmux) Name() string { return "tmux" }
 func (t *Tmux) Available() bool { return haveBinary(t.bin) }
 
 func (t *Tmux) run(ctx context.Context, args ...string) (string, error) {
+	if t.runCommand != nil {
+		return t.runCommand(ctx, args...)
+	}
 	cmd := exec.CommandContext(ctx, t.bin, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
@@ -81,15 +88,33 @@ func (t *Tmux) List(ctx context.Context) ([]Session, error) {
 
 // Open implements Runtime, reusing a session that already exists under that
 // name rather than creating a duplicate.
-func (t *Tmux) Open(ctx context.Context, dir, label string) (string, error) {
+func (t *Tmux) Open(ctx context.Context, dir, label string) (OpenResult, error) {
 	name := SessionName(label)
 	if _, err := t.run(ctx, "has-session", "-t", "="+name); err == nil {
-		return name, nil
+		existingDir, err := t.run(ctx, "display-message", "-p", "-t", "="+name, "#{session_path}")
+		if err != nil {
+			return OpenResult{}, err
+		}
+		if !sameDirectory(existingDir, dir) {
+			return OpenResult{}, fmt.Errorf("tmux session %s already exists at %s, not %s", name, existingDir, dir)
+		}
+		return OpenResult{Handle: name, Surface: "session", Opened: true}, nil
 	}
 	if _, err := t.run(ctx, "new-session", "-d", "-s", name, "-c", dir); err != nil {
-		return "", err
+		return OpenResult{}, err
 	}
-	return name, nil
+	return OpenResult{Handle: name, Surface: "session", Opened: true, Created: true}, nil
+}
+
+func sameDirectory(a, b string) bool {
+	canonical := func(path string) string {
+		path = filepath.Clean(path)
+		if resolved, err := filepath.EvalSymlinks(path); err == nil {
+			return filepath.Clean(resolved)
+		}
+		return path
+	}
+	return canonical(a) == canonical(b)
 }
 
 // Close implements Runtime: it kills the session only. The checkout is

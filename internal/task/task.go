@@ -113,13 +113,14 @@ type Task struct {
 	Note string   `toml:"note"`
 	Tags []string `toml:"tags"`
 
-	// AgentSession records a resumable agent context ("claude:<uuid>"), so a
-	// parked task can be resumed with its conversation intact.
+	// AgentSession reserves a resumable agent context ("claude:<uuid>"). The
+	// production start/park/resume flow does not yet capture or attach it.
 	AgentSession string `toml:"agent_session"`
-	// RuntimeHandle is the last known runtime session id (e.g. a herdr
-	// workspace id). Advisory only — always re-resolved against the live
-	// runtime before use.
+	// RuntimeHandle is the last known runtime session id (e.g. a Herdr
+	// workspace id). RuntimeName records which backend owns that opaque handle.
+	// Both are advisory and must be revalidated against live checkout coverage.
 	RuntimeHandle string `toml:"runtime_handle"`
+	RuntimeName   string `toml:"runtime_name"`
 
 	Created time.Time `toml:"created"`
 	Updated time.Time `toml:"updated"`

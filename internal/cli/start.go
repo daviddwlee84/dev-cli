@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -26,6 +28,7 @@ func newStartCmd(app *App) *cobra.Command {
 		noProvision bool
 		focus       bool
 		next        string
+		jsonOut     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "start [repo]",
@@ -46,7 +49,13 @@ For untracked ad-hoc navigation, use "dev repo open" or press Enter in the
 TUI's REPOS view; that opens the project without creating any task at all.
 
 With no repo argument, the repository containing the current directory is used.
-Always pass --base for an unattended branch/worktree task.`,
+Always pass --base for an unattended branch/worktree task.
+
+Herdr-aware direct/branch starts refuse a checkout occupied by another agent.
+Use the root --allow-shared-checkout override only after coordinating disjoint
+file ownership. --json emits one pure creation object; only a new first-class
+Herdr worktree with its exact returned root pane is launchable. Worktree labels
+use repo/branch so Herdr can show native nested repository provenance.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
@@ -130,17 +139,28 @@ Always pass --base for an unattended branch/worktree task.`,
 				State: task.Hot, Owner: config.Hostname(), Next: next,
 			}
 			rt := app.Runtime()
+			label := worktreeRuntimeLabel(repoName, branch)
+			if mode == task.ModeDirect {
+				label = repoName + "/" + name
+			}
+			var opened runtime.OpenResult
+			var err error
 
 			switch mode {
 			case task.ModeDirect:
-				handle, err := rt.Open(ctx, repoPath, repoName+"/"+name)
+				if err := guardSharedCheckout(ctx, app, rt, repoPath); err != nil {
+					return err
+				}
+				opened, err = rt.Open(ctx, repoPath, label)
 				if err != nil {
 					app.warnf("could not open a runtime session: %v", err)
-				} else if rt.Name() != "none" {
-					t.RuntimeHandle = handle
+					opened = runtime.OpenResult{}
 				}
 
 			case task.ModeBranch:
+				if err := guardSharedCheckout(ctx, app, rt, repoPath); err != nil {
+					return err
+				}
 				if gitx.BranchExists(ctx, repoPath, branch) {
 					if _, err := gitx.Run(ctx, repoPath, "switch", branch); err != nil {
 						return fmt.Errorf("switch to %s: %w", branch, err)
@@ -150,18 +170,17 @@ Always pass --base for an unattended branch/worktree task.`,
 						return fmt.Errorf("create and switch to %s from %s: %w", branch, base, err)
 					}
 				}
-				handle, err := rt.Open(ctx, repoPath, repoName+"/"+branch)
+				opened, err = rt.Open(ctx, repoPath, label)
 				if err != nil {
 					app.warnf("could not open a runtime session: %v", err)
-				} else if rt.Name() != "none" {
-					t.RuntimeHandle = handle
+					opened = runtime.OpenResult{}
 				}
 
 			case task.ModeWorktree:
 				m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
 				res, err := m.Create(ctx, wt.CreateRequest{
 					RepoPath: repoPath, RepoName: repoName, Branch: branch, Base: base,
-					Category: category, Label: name, NoProvision: noProvision, Focus: focus,
+					Category: category, Label: label, NoProvision: noProvision, Focus: focus,
 				})
 				if err != nil {
 					var exists *wt.ErrExists
@@ -170,15 +189,19 @@ Always pass --base for an unattended branch/worktree task.`,
 					}
 					return err
 				}
-				t.WorktreePath, t.RuntimeHandle = res.Path, res.RuntimeHandle
+				t.WorktreePath, opened = res.Path, res.Runtime
 				reportProvision(app, res)
 			}
+			setTaskRuntime(t, rt, opened)
 
 			if err := app.Tasks.Save(t); err != nil {
 				return err
 			}
 			annotate(app, rt, t)
 
+			if jsonOut {
+				return emitStartJSON(app, t, rt.Name(), opened)
+			}
 			fmt.Fprintf(app.Out, "%s %s  %s on %s (%s)\n",
 				task.Hot.Icon(), t.Name, t.Repo, t.Branch, t.Mode)
 			if t.WorktreePath != "" {
@@ -204,8 +227,62 @@ Always pass --base for an unattended branch/worktree task.`,
 	_ = f.MarkDeprecated("no-worktree", "use --branch-only (or --direct to stay on main)")
 	f.BoolVar(&noProvision, "no-provision", false, "skip dependency install and ignored-file copying")
 	f.BoolVar(&focus, "focus", false, "focus the new runtime session")
+	f.BoolVar(&jsonOut, "json", false, "emit one machine-readable creation result")
 	cmd.ValidArgsFunction = completeRepos(app)
 	return cmd
+}
+
+type startRuntimeJSON struct {
+	Name       string `json:"name"`
+	Handle     string `json:"handle"`
+	Surface    string `json:"surface"`
+	Opened     bool   `json:"opened"`
+	Created    bool   `json:"created"`
+	RootPaneID string `json:"root_pane_id"`
+}
+
+type startJSON struct {
+	TaskID       string           `json:"task_id"`
+	Repo         string           `json:"repo"`
+	RepoPath     string           `json:"repo_path"`
+	Branch       string           `json:"branch"`
+	Base         string           `json:"base"`
+	Mode         string           `json:"mode"`
+	WorktreePath string           `json:"worktree_path"`
+	Checkout     string           `json:"checkout"`
+	Runtime      startRuntimeJSON `json:"runtime"`
+}
+
+func emitStartJSON(app *App, t *task.Task, runtimeName string, opened runtime.OpenResult) error {
+	repoPath, err := filepath.Abs(t.RepoPath)
+	if err != nil {
+		return err
+	}
+	worktreePath := ""
+	if t.WorktreePath != "" {
+		worktreePath, err = filepath.Abs(t.WorktreePath)
+		if err != nil {
+			return err
+		}
+	}
+	checkout, err := filepath.Abs(checkoutOf(t))
+	if err != nil {
+		return err
+	}
+
+	rootPaneID := ""
+	if t.EffectiveMode() == task.ModeWorktree && runtimeName == "herdr" &&
+		opened.Surface == "worktree" && opened.Opened && opened.Created {
+		rootPaneID = opened.RootPaneID
+	}
+	return json.NewEncoder(app.Out).Encode(startJSON{
+		TaskID: t.ID, Repo: t.Repo, RepoPath: repoPath, Branch: t.Branch, Base: t.Base,
+		Mode: string(t.EffectiveMode()), WorktreePath: worktreePath, Checkout: checkout,
+		Runtime: startRuntimeJSON{
+			Name: runtimeName, Handle: opened.Handle, Surface: opened.Surface,
+			Opened: opened.Opened, Created: opened.Created, RootPaneID: rootPaneID,
+		},
+	})
 }
 
 // checkoutOf is where a task's code lives right now.

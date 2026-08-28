@@ -23,9 +23,9 @@ So the question is never "how many agents am I running?" It is:
 | Kind | Owner | Where | Lifetime |
 |---|---|---|---|
 | Feature, fix, experiment, handoff | `dev` | `~/Worktrees/<repo>/<slug>` | until done or swept |
-| Turn-scoped agent isolation | Claude Code | `.claude/worktrees/` | dies with the turn |
+| Harness-owned turn-scoped isolation | Claude Code | `.claude/worktrees/` | owned by that harness; no transcript-relocation guarantee |
 
-**Might you come back tomorrow → `dev`. Dies with this turn → Claude Code.**
+**Might you review or return to the code/history/plan later → `dev`.**
 
 Never put a long-lived worktree inside the repository. Every file watcher,
 language server, indexer and `rg` run in the outer repo then sees a second copy
