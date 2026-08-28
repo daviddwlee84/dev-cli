@@ -53,6 +53,10 @@ func newHarness(t *testing.T) *harness {
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
+	gitConfig := "[user]\n\temail = dev@example.test\n\tname = dev test\n[init]\n\tdefaultBranch = main\n"
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(gitConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	configPath := filepath.Join(home, "config.toml")
 	cfg := "" +

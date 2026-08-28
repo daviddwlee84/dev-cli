@@ -27,7 +27,14 @@ jobs:
           git config --global user.name "ci"
           git config --global init.defaultBranch main
 
-      - run: gofmt -l . | tee /dev/stderr | (! read -r)
+      - name: Check formatting
+        shell: bash
+        run: |
+          files="$(gofmt -l .)"
+          if [ -n "$files" ]; then
+            printf '%s\n' "$files" >&2
+            exit 1
+          fi
       - run: go vet ./...
       - run: go test -race ./...
       - run: go build ./cmd/dev
