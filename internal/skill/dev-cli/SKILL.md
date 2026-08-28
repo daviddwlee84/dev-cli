@@ -18,8 +18,8 @@ dev             human intent: what am I working on, and what is next
 
 Everything derivable from git or the runtime is derived live. `dev` persists
 human/task facts such as identity, checkout mode, **state**, **owner** and **next
-action** in one TOML file per task under `$XDG_DATA_HOME/dev/tasks/`; transient
-pane data is not persisted.
+action** in one TOML file per task under configured `paths.state_dir/tasks`
+(default `$XDG_DATA_HOME/dev/tasks`); transient pane data is not persisted.
 
 **The problem it solves:** when a terminal multiplexer's sidebar is the only
 record of what you are working on, nothing can ever be closed. `dev` gives that
@@ -233,7 +233,7 @@ it.
 that repo and redraws; `r` rereads existing stats. Stats live in
 `$XDG_DATA_HOME/dev/stats.db` and are durable observations, not cache — use
 `dev stats clear` with an explicit scope. `dev cache clear` only removes
-regenerable forge/size/gitignore data under `$XDG_CACHE_HOME/dev`.
+regenerable forge/size/gitignore/note-FTS data under `$XDG_CACHE_HOME/dev`.
 
 `e` edits config and returning live-reloads data/tool bindings; `r` reloads
 explicitly. Runtime
@@ -251,11 +251,12 @@ the binding should be portable across machines.
 Read `references/notes.md` before adding/searching/editing/deleting notes or
 when deciding whether content belongs in dev vs td/beads.
 
-Quick notes are append-only Markdown under
-`$XDG_DATA_HOME/dev/notes/<catalog-id>/`; the catalog ID attaches them to the
-canonical clone across worktrees, symlinks and moves. SQLite FTS at
-`$XDG_CACHE_HOME/dev/notes.db` is disposable: clearing it removes no thoughts
-and the next search rebuilds it.
+Quick notes are multiple timestamped Markdown files under configured
+`paths.state_dir/notes/<catalog-id>/` (default `$XDG_DATA_HOME/dev/notes`); the
+catalog ID attaches them to the canonical clone across worktrees, symlinks and
+moves. `dev` does not synchronize notes or catalog state, so cross-host
+attachment requires syncing both. SQLite FTS at `$XDG_CACHE_HOME/dev/notes.db`
+is disposable: clearing it removes no thoughts and the next search rebuilds it.
 
 TUI context keys: `n` quick-adds on TASKS/REPOS; `N` browses with `/` search,
 Enter expand, `a` add, `e` editor, and confirmed `d` delete. In TRY, `n` remains
@@ -332,12 +333,13 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    their judgement, not yours.
 
 14. **Treat Markdown notes as durable and notes.db as cache.** Never delete
-   `$XDG_DATA_HOME/dev/notes` to fix search; use `dev cache clear notes` and
-   reindex. Note deletion itself requires explicit confirmation.
+   configured `paths.state_dir/notes` to fix search; use `dev cache clear notes`
+   and reindex. Note deletion itself requires explicit confirmation, and `dev`
+   does not synchronize note/catalog state between hosts.
 
 15. **Do not call stats.db a cache.** Session/WakaTime observations may not be
    reconstructible. Use `dev stats clear --repo/--source/--all`; use
-   `dev cache clear` only for regenerable remote/size/gitignore caches.
+   `dev cache clear` only for regenerable remote/size/gitignore/note-FTS caches.
 
 16. **Archive is not eviction.** `dev tries archive` is a reversible hidden move
    on the same filesystem; it does not free space. Phase 1 has no project-data

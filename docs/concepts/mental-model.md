@@ -1,5 +1,5 @@
 ---
-description: Understand dev-cli as durable Git history, a small intent registry, disposable worktrees, and replaceable runtimes.
+description: Understand dev-cli as durable Git history, scoped intent and catalog state, repository quick-note sidecars, disposable worktrees, and replaceable runtimes.
 authority: project
 status: stable
 verified_on: 2026-08-28
@@ -21,7 +21,14 @@ runtime              Herdr workspace, tmux session, or current shell
 dev registry         human intent and reconstruction metadata
 ```
 
-The registry stores facts needed to act later: repository and branch identity, base, checkout path, lifecycle state, owner host, next action, notes/tags, runtime handle, optional agent session, and timestamps. Live Git status, ahead/behind, and runtime availability are derived again instead of treated as authoritative cached truth.
+Sidecar state has deliberately separate scopes:
+
+- each task stores checkout mode, repository/branch/base, lifecycle state, owner host, next executable action, task context, runtime hint, and timestamps;
+- the catalog stores stable repository/Try identity, tags, one metadata summary, experiment lifecycle, and host-local locations;
+- configured `paths.state_dir/notes` stores multiple durable Markdown observations keyed by catalog repository ID;
+- `$XDG_CACHE_HOME/dev/notes.db` is only the rebuildable full-text index for those Markdown files.
+
+The catalog ID keeps a quick note attached across linked worktrees, symlink indexes, path moves, and synchronized host state. `dev` does not itself synchronize notes or catalog files. Live Git status, ahead/behind, and runtime availability are derived again instead of treated as authoritative cached truth.
 
 ## The four lifecycle states
 
@@ -94,6 +101,8 @@ One writer owns a branch at a time. If two machines or agents need to mutate the
 ## Sources
 
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
+- [`internal/catalog/catalog.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/catalog/catalog.go)
+- [`internal/note/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/note.go)
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/help/topics/parking.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/parking.md)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)

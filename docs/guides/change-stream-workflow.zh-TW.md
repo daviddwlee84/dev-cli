@@ -78,7 +78,12 @@ Start 會解析 repository、驗證 branch/base、建立或切換 checkout、需
 dev park --next "add the failing expiry test"
 ```
 
-一般 transition 是 HOT → WARM：關閉 runtime，但保留 checkout。具體 `--next` 比很長的 note 更重要，因為它避免下次重新推導第一個動作。
+一般 transition 是 HOT → WARM：關閉 runtime，但保留 checkout。請依 scope 選擇欄位：
+
+- `--next` 是下一個 executable task action，避免下次重新推導第一步；
+- `dev park --note` 保存這一個 task 的 free-form context；
+- `dev repo mark --note` 取代 catalog 的單一 repository summary；
+- `dev note` 保存多筆 durable repository observations，不屬於 task lifecycle state。
 
 Working tree 尚未乾淨時：
 

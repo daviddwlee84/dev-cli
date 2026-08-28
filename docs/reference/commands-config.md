@@ -16,6 +16,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | task lifecycle | `start`, `park`, `resume`, `done`, `sweep`, `ls`, `status` |
 | linked worktrees | `wt list`, `wt create`, `wt open`, `wt rm`, `wt plan`, `wt provision` |
 | repositories/remotes | `repo list`, `repo context`, `repo clone`, `repo open`, `repo new`, `repo sync`, `repo remote`, `repo mark` |
+| repository quick notes | `note add`, `note list`, `note show`, `note search`, `note edit`, `note delete`, `note path`, `note reindex` |
 | machine inventory | `bootstrap`, `adopt`, `doctor` |
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools` |
@@ -33,10 +34,15 @@ dev ls --json
 dev repo list --json
 dev repo context [repo]
 dev repo remote --json
+dev note list [repo] --json
+dev note search <query> --json
+dev note show <note-id> --json
 dev bootstrap --json
 ```
 
 Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract.
+
+Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
 
 ## Configuration
 
@@ -59,6 +65,8 @@ Key sections:
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
 | `[stats]` | sampler and optional WakaTime import |
+
+Repository quick-note Markdown is durable under configured `paths.state_dir/notes`, which defaults to `$XDG_DATA_HOME/dev/notes`. The full-text index at `$XDG_CACHE_HOME/dev/notes.db` is disposable and rebuilds from those files; changing `paths.state_dir` does not move the cache.
 
 A repository may commit `.dev.toml` for worktree provisioning overrides that should travel with the project. Keep host-specific paths and credentials in the user config or ignored environment files, not in the repository override.
 

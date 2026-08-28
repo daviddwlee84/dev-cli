@@ -1,17 +1,26 @@
 # State, data, and cache locations
 
 `dev` follows XDG and separates intent, durable observations, and regenerable
-cache so cleanup cannot erase the wrong thing.
+cache so cleanup cannot erase the wrong thing. `paths.state_dir` defaults to
+`$XDG_DATA_HOME/dev` and may be overridden in config.
 
 | Path | Contains | Reconstructible? |
 |---|---|---|
 | `$XDG_CONFIG_HOME/dev/config.toml` | user policy | no |
-| `$XDG_DATA_HOME/dev/tasks/*.toml` | state/owner/next for tasks | partially |
-| `$XDG_DATA_HOME/dev/stats.db` | Git backfill, session samples, WakaTime imports | not always |
-| `$XDG_DATA_HOME/dev/notes/<repo-id>/*.md` | append-only repository thoughts | no |
+| `<state_dir>/tasks/*.toml` | state/owner/next/task note | partially |
+| `<state_dir>/assets/*.toml` | catalog identity, metadata summary, experiment lifecycle | partially |
+| `<state_dir>/stats.db` | Git backfill, session samples, WakaTime imports | not always |
+| `<state_dir>/notes/<repo-id>/*.md` | multiple timestamped repository thoughts | no |
 | `$XDG_CACHE_HOME/dev/notes.db` | note full-text search index | yes |
 | `$XDG_CACHE_HOME/dev/remotes.json` | short-lived forge inventory | yes |
 | `$XDG_CACHE_HOME/dev/gitignore/` | fetched GitHub templates | yes |
+
+These note-like fields have different scopes:
+
+- task `--next` is the next executable action;
+- `dev park --note` records context on one task;
+- `dev repo mark --note` stores one catalog metadata summary;
+- `dev note` stores multiple durable observations attached to a repository.
 
 Inspect paths:
 
@@ -45,8 +54,9 @@ dev stats clear --all
 may not be reconstructible. Git-derived rows can be regenerated with
 `dev stats backfill [--repo api]`.
 
-
-Quick notes remain ordinary Markdown and can be synced/backed up as files.
-`notes.db` contains full note bodies for search and is mode 0600, but it is
-still disposable: `dev cache clear notes` followed by `dev note search ...`
+Quick notes remain ordinary Markdown and can be synced or backed up as files,
+but `dev` does not synchronize them. Synchronize `state_dir/notes` together
+with the catalog assets when stable repository attachment must travel between
+hosts. `notes.db` contains full note bodies for search and is mode 0600, but it
+is still disposable: `dev cache clear notes` followed by `dev note search ...`
 rebuilds it from Markdown.

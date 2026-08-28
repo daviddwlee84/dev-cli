@@ -55,7 +55,7 @@ plugins:
             Change-Stream Workflow: 變更流工作流程
             Worktrees and Provisioning: Worktree 與環境佈建
             Parallel Agents and Runtimes: 平行 Agent 與 Runtime
-            TUI, Repositories, and Bootstrap: TUI、Repository 與 Bootstrap
+            TUI, Repositories, Quick Notes, and Bootstrap: TUI、Repository、Quick Notes 與 Bootstrap
             Git and GitHub: Git 與 GitHub
             GitHub Flow: GitHub Flow
             Branches, Commits, and Pull Requests: Branch、Commit 與 Pull Request
@@ -120,7 +120,7 @@ nav:
       - Change-Stream Workflow: guides/change-stream-workflow.md
       - Worktrees and Provisioning: guides/worktrees-provisioning.md
       - Parallel Agents and Runtimes: guides/parallel-agents-runtimes.md
-      - TUI, Repositories, and Bootstrap: guides/tui-repos-bootstrap.md
+      - TUI, Repositories, Quick Notes, and Bootstrap: guides/tui-repos-bootstrap.md
   - Git and GitHub:
       - GitHub Flow: git/github-flow.md
       - Branches, Commits, and Pull Requests: git/branches-commits-prs.md

@@ -1,12 +1,12 @@
 ---
-description: 在 TUI 瀏覽 tasks、repositories、experiments 與 remotes，並以非破壞方式 inventory 或 adopt 現有工作。
+description: 在 TUI 瀏覽 tasks、repositories、experiments 與 remotes、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
 authority: project
 status: evolving
 verified_on: 2026-08-28
 lang: zh-TW
 ---
 
-# TUI、Repository 與 Bootstrap
+# TUI、Repository、Quick Notes 與 Bootstrap
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -32,6 +32,7 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 enter/o   開啟選取的 task
 p         park warm 並輸入 next action
 c         編輯 next action
+n/N       quick-add／瀏覽 repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
@@ -42,7 +43,8 @@ COLD task 必須透過 `dev resume` 重建；TUI 不會用 generic open action �
 ```text
 enter/o   ad-hoc open，不建立 task
 space     展開 linked worktrees
-m         編輯 repository tags/note
+m         編輯 repository tags/summary
+n/N       quick-add／瀏覽 repository notes
 d         追蹤目前 branch 的 direct work
 s         啟動 isolated work：branch + worktree + provisioning + runtime
 H         開啟 repository activity heatmap
@@ -57,7 +59,38 @@ y         開啟 copy/context actions
 
 TRY 管理低成本 experiment、可逆 archive/restore、mark 與 graduation。Archive 是整理，不是 deletion 或 disk reclamation。
 
-REMOTE 延遲載入，因此 startup 不等待 network。Enter 開啟 local clone；`c` 在 clone 缺少的 repository 前確認；`r` 更新 forge inventories 與 private XDG cache。
+REMOTE 延遲載入，因此 startup 不等待 network。Enter 開啟 local clone；`c` 在 clone 缺少的 repository 前確認；`r` 更新 forge inventories 與 private XDG cache。只有 REMOTE row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，不會改成 repository note。
+
+## Repository quick notes
+
+在 TASKS 與 REPOS，lowercase `n` 開啟單行 quick-add prompt，uppercase `N` 開啟選取 repository 的 notes overlay。Child worktree 會透過 catalog identity 解析到同一個 canonical repository。
+
+```text
+j/k       移動
+/         搜尋 body、tags 與 repository
+Enter     展開或收合 Markdown body
+a or n    新增另一則 note
+e         用 VISUAL/EDITOR 編輯 body
+d         進入確認；y 才刪除
+Esc       不改資料並返回
+```
+
+可選的 REPOS column `notes` 顯示數量。Table 寬度有限，因此預設不啟用；notes 存在時，repository 與 task detail 一律顯示數量與最新 preview。
+
+不使用 TUI 也能操作同一份 source of truth：
+
+```bash
+dev note add "try event subscription" --repo api --tag idea
+dev note list api
+dev note search "event subscription" --repo api
+dev note show <id-or-prefix>
+dev note edit <id-or-prefix>
+dev note delete <id-or-prefix>       # 會確認
+dev note path api
+dev note reindex
+```
+
+Configured `paths.state_dir/notes` 下的 Markdown 是 durable data；`$XDG_CACHE_HOME/dev/notes.db` 只是可重建的 search index。精確 flags 請見[命令與設定 reference](../reference/commands-config.md)中的完整 generated command reference。
 
 ## External tools
 
@@ -110,6 +143,8 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 ## 來源
 
 - [`internal/help/topics/tui.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/tui.md)
+- [`internal/help/topics/notes.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/notes.md)
+- [`internal/cli/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/note.go)
 - [`internal/help/topics/bootstrap.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/bootstrap.md)
 - [`internal/cli/adopt.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/adopt.go)
 - [`internal/cli/bootstrap.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/bootstrap.go)

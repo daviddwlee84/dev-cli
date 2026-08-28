@@ -8,8 +8,10 @@ thoughts, or when deciding whether a thought belongs in dev, td, or beads.
 Durable source:
 
 ```text
-$XDG_DATA_HOME/dev/notes/<catalog-repository-id>/<note-id>.md
+<paths.state_dir>/notes/<catalog-repository-id>/<note-id>.md
 ```
+
+`paths.state_dir` defaults to `$XDG_DATA_HOME/dev` but is configurable.
 
 Search index:
 
@@ -20,10 +22,11 @@ $XDG_CACHE_HOME/dev/notes.db
 Markdown is authoritative. SQLite FTS is disposable and rebuilt automatically
 when absent or stale. `dev cache clear notes` must never remove Markdown.
 
-Each note is append-only by default and has a stable UUID, created/updated
-timestamps, normalized tags and a Markdown body. Repo rename, symlink index,
-worktree path or a second host do not change its attachment because the
-repository directory key is the catalog asset ID.
+Each note has a stable UUID, created/updated timestamps, normalized tags and a
+Markdown body. Repo rename, symlink index or worktree path does not change its
+attachment because the repository directory key is the catalog asset ID. `dev`
+does not synchronize sidecar files: cross-host attachment assumes both notes
+and catalog state have been synchronized.
 
 ## CLI workflow
 
@@ -68,7 +71,7 @@ j/k       move
 /         search body, tags and repo
 Enter     expand/collapse body
 a or n    add
- e        edit body in VISUAL/EDITOR
+e         edit body in VISUAL/EDITOR
 d         visible delete confirmation; y confirms
 N/Esc/q   return
 ```
@@ -79,8 +82,12 @@ count + latest preview when notes exist.
 
 ## What is not a quick note
 
-`catalog.Entry.Note` remains the single metadata summary used by `repo mark`
-and Try lifecycle. Quick notes do not overwrite it.
+- task `--next` is the next executable action;
+- `dev park --note` stores context for one task;
+- `catalog.Entry.Note`, exposed by `dev repo mark --note`, is one metadata
+  summary for a catalog asset;
+- `dev note` stores multiple durable repository observations and does not
+  overwrite either task context or catalog metadata.
 
 `td` / `beads` are structured repo-local task systems and may create dot-folders
 inside a checkout. They remain optional future adapters. Do not mirror their

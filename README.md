@@ -13,9 +13,10 @@ dev             human intent: what am I working on, and what is next
 ```
 
 Everything derivable from git or the runtime is derived live. `dev` persists
-only human intent Git cannot answer: task **state/owner/next action**, plus
-stable asset identity, personal tags/notes and experiment lifecycle. Live Git
-status stays live; logical size measurements are explicitly disposable cache.
+only human intent Git cannot answer: task **state/owner/next action/context**,
+stable asset identity, a catalog metadata summary, multiple repository quick
+notes, and experiment lifecycle. Live Git status stays live; logical size
+measurements are explicitly disposable cache.
 
 ## The problem
 
@@ -194,10 +195,11 @@ g G        top / bottom         h l / tab       previous / next view
 switches the current client; outside it exits the dashboard and attaches to
 the target session. In TASKS, `p` parks and prompts
 for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
-`space` expands linked worktrees inline, `m` edits repository tags/notes, `s`
-starts an isolated worktree task, and `d` starts a tracked direct task.
-Expanded children carry their own Git/session/task state and can be opened
-directly. In TRY, `n` creates or clones an experiment;
+`space` expands linked worktrees inline, `m` edits repository tags/summary,
+`s` starts an isolated worktree task, and `d` starts a tracked direct task.
+On TASKS and REPOS, `n` quick-adds a repository thought and `N` opens its notes
+overlay. Expanded children carry their own Git/session/task state and can be
+opened directly. In TRY, `n` creates or clones an experiment;
 `space` opens mark/deprecate/archive/restore/graduate actions; `a` includes
 retained history. `?` opens the complete context-sensitive key map. That makes
 the branch/worktree and lifecycle costs explicit rather than silently applying
@@ -483,9 +485,12 @@ A REMOTE row supports notes only after it has a local clone; TRY keeps `n` for
 creating experiments. Add `notes` to `[tui.repos].columns` for the count; detail
 always shows count and latest preview.
 
-Durable Markdown lives under `$XDG_DATA_HOME/dev/notes/<catalog-id>/`. The
-catalog ID survives path moves, symlink indexes and linked worktrees. The
-private `$XDG_CACHE_HOME/dev/notes.db` is only an FTS index:
+Durable Markdown lives under configured
+`paths.state_dir/notes/<catalog-id>/`, defaulting to
+`$XDG_DATA_HOME/dev/notes/<catalog-id>/`. The catalog ID survives path moves,
+symlink indexes and linked worktrees. `dev` does not synchronize notes or
+catalog state; synchronize both when attachments must travel between hosts.
+The private `$XDG_CACHE_HOME/dev/notes.db` is only an FTS index:
 
 ```bash
 dev cache clear notes                    # Markdown remains
@@ -494,8 +499,11 @@ dev note reindex                         # explicit rebuild
 ```
 
 `repo mark --note` remains a single catalog summary and is not overwritten.
-Structured task systems such as td/beads remain optional future adapters rather
-than creating dot-folders automatically.
+`dev repo list --json` always includes `notes.count` and adds
+`latest_id`/`latest_preview`/`latest_updated` when a latest note exists;
+`dev note list/search/show --json` expose complete note records. Structured task
+systems such as td/beads remain optional future adapters rather than creating
+dot-folders automatically.
 
 `dev stats` draws a contribution-style heatmap from two sources: a sampler
 watching live agent sessions (the only way to count time spent reading and
@@ -643,9 +651,11 @@ state_dir     = "~/.local/share/dev"        # point at a git repo to sync it
 ```
 
 `state_dir/tasks/*.toml` stores task intent; `state_dir/assets/*.toml` stores
-stable repository/Try identity, tags/notes, experiment lifecycle and per-host
-locations. Git status and byte counts are not copied there. The latter lives in
-`$XDG_CACHE_HOME/dev/sizes-v1.json` and is safe to delete.
+stable repository/Try identity, tags, one metadata summary, experiment
+lifecycle and per-host locations; `state_dir/notes/<catalog-id>/*.md` stores
+multiple repository quick notes. Git status and byte counts are not copied
+there. The latter lives in `$XDG_CACHE_HOME/dev/sizes-v1.json` and is safe to
+delete.
 
 Template variables: `worktree_root`, `repo`, `repo_path`, `branch`, `category`,
 `host`, `date`. Filters: `|slug` (`feat/auth/x` → `feat-auth-x`), `|lower`,

@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Catalog-backed repository quick notes with durable Markdown storage, rebuildable full-text search, CLI commands, and TUI add/browse workflows.
 - Azure DevOps Services repository inventory, search, cloning, and opt-in forge configuration.
 - An interactive, context-aware `dev start` wizard for managed task creation.
 - Runtime session activation so opened or reused task surfaces can be focused or attached.

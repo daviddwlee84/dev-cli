@@ -1,5 +1,5 @@
 ---
-description: 以持久 Git history、小型 intent registry、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
+description: 以持久 Git history、分層 intent/catalog state、repository quick-note sidecar、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
 authority: project
 status: stable
 verified_on: 2026-08-28
@@ -25,7 +25,14 @@ runtime              Herdr workspace、tmux session 或目前 shell
 dev registry         人類意圖與重建 metadata
 ```
 
-Registry 保存未來要能採取行動的資訊：repository 與 branch identity、base、checkout path、lifecycle state、owner host、next action、notes/tags、runtime handle、可選 agent session 與 timestamps。即時 Git status、ahead/behind 與 runtime availability 會重新推導，不會被當成權威 cache。
+Sidecar state 刻意分成不同 scope：
+
+- 每個 task 保存 checkout mode、repository/branch/base、lifecycle state、owner host、下一個 executable action、task context、runtime hint 與 timestamps；
+- catalog 保存穩定的 repository/Try identity、tags、一筆 metadata summary、experiment lifecycle 與 host-local locations；
+- configured `paths.state_dir/notes` 保存多筆 durable Markdown observations，並以 catalog repository ID 為 key；
+- `$XDG_CACHE_HOME/dev/notes.db` 只是這些 Markdown files 的可重建 full-text index。
+
+Catalog ID 讓 quick note 在 linked worktrees、symlink indexes、path moves 與已同步的 host state 之間維持 attachment。`dev` 本身不會同步 notes 或 catalog files。即時 Git status、ahead/behind 與 runtime availability 會重新推導，不會被當成權威 cache。
 
 ## 四個 lifecycle state
 
@@ -98,6 +105,8 @@ dev resume <task> --fetch
 ## 來源
 
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
+- [`internal/catalog/catalog.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/catalog/catalog.go)
+- [`internal/note/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/note.go)
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/help/topics/parking.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/parking.md)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)

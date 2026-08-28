@@ -265,7 +265,7 @@ dev ls [flags]
 
 ### `dev note`
 
-Capture and search append-only thoughts beside repositories
+Capture and search timestamped repository thoughts
 
 ```
 dev note

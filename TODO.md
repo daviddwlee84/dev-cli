@@ -97,8 +97,8 @@ only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 
 ## Done
 
-- Repository quick notes: append-only private Markdown keyed by catalog ID,
-  rebuildable SQLite FTS, complete CLI CRUD/search, `n` quick add and `N` TUI
+- Repository quick notes: multiple timestamped private Markdown files keyed by
+  catalog ID, rebuildable SQLite FTS, complete CLI CRUD/search, `n` quick add and `N` TUI
   overlay with browse/search/expand/editor/confirmed-delete.
 
 - Task lifecycle: `start` / `park` / `resume` / `done` / `sweep`.

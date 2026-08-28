@@ -20,6 +20,7 @@ lang: zh-TW
 | task lifecycle | `start`、`park`、`resume`、`done`、`sweep`、`ls`、`status` |
 | linked worktrees | `wt list`、`wt create`、`wt open`、`wt rm`、`wt plan`、`wt provision` |
 | repositories/remotes | `repo list`、`repo context`、`repo clone`、`repo open`、`repo new`、`repo sync`、`repo remote`、`repo mark` |
+| repository quick notes | `note add`、`note list`、`note show`、`note search`、`note edit`、`note delete`、`note path`、`note reindex` |
 | machine inventory | `bootstrap`、`adopt`、`doctor` |
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools` |
@@ -37,10 +38,15 @@ dev ls --json
 dev repo list --json
 dev repo context [repo]
 dev repo remote --json
+dev note list [repo] --json
+dev note search <query> --json
+dev note show <note-id> --json
 dev bootstrap --json
 ```
 
 不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。
+
+每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
 
 ## Configuration
 
@@ -63,6 +69,8 @@ dev config path
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
 | `[stats]` | sampler 與 optional WakaTime import |
+
+Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
 
 Repository 可 commit `.dev.toml`，保存應跟著 project 移動的 worktree provisioning overrides。Host-specific path 與 credential 應放 user config 或 ignored environment file，不放 repository override。
 

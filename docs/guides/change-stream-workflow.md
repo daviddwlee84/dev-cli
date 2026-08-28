@@ -74,7 +74,12 @@ Starting work resolves the repository, validates branch/base, creates or switche
 dev park --next "add the failing expiry test"
 ```
 
-The normal transition is HOT → WARM: close the runtime but keep the checkout. `--next` is more valuable than a long note because it removes the need to re-derive the first action later.
+The normal transition is HOT → WARM: close the runtime but keep the checkout. Choose the field by scope:
+
+- `--next` is the next executable task action and removes the need to re-derive the first step;
+- `dev park --note` preserves free-form context for this one task;
+- `dev repo mark --note` replaces the catalog's single repository summary;
+- `dev note` stores multiple durable repository observations outside task lifecycle state.
 
 If the tree is dirty:
 

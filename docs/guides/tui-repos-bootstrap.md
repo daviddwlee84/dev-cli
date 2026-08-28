@@ -1,11 +1,11 @@
 ---
-description: Navigate tasks, repositories, experiments, and remotes in the TUI; inventory or adopt existing work without destructive migration.
+description: Navigate tasks, repositories, experiments, and remotes in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
 verified_on: 2026-08-28
 ---
 
-# TUI, repositories, and bootstrap
+# TUI, repositories, quick notes, and bootstrap
 
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
 
@@ -28,6 +28,7 @@ Switch with `tab`, `h`/`l`, or arrows. Use `j`/`k`, `g`/`G`, `ctrl+d`/`ctrl+u`, 
 enter/o   open the selected task
 p         park warm and enter the next action
 c         edit the next action
+n/N       quick-add / browse repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
@@ -38,7 +39,8 @@ A COLD task must be rebuilt with `dev resume`; the TUI does not silently recreat
 ```text
 enter/o   ad-hoc open without creating a task
 space     expand linked worktrees
-m         edit repository tags/note
+m         edit repository tags/summary
+n/N       quick-add / browse repository notes
 d         track direct work on the current branch
 s         start isolated work: branch + worktree + provisioning + runtime
 H         open the repository activity heatmap
@@ -53,7 +55,38 @@ Expanded rows explain every linked worktree, including harness-owned `(ephemeral
 
 TRY handles low-cost experiments, reversible archive/restore, marking, and graduation. Archive is organization, not deletion or disk reclamation.
 
-REMOTE loads lazily so startup does not wait for the network. Enter opens a local clone; `c` confirms before cloning an absent repository; `r` refreshes forge inventories and their private XDG cache.
+REMOTE loads lazily so startup does not wait for the network. Enter opens a local clone; `c` confirms before cloning an absent repository; `r` refreshes forge inventories and their private XDG cache. Notes are enabled only after a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a new Try rather than a repository note.
+
+## Repository quick notes
+
+On TASKS and REPOS, lowercase `n` opens a one-line quick-add prompt and uppercase `N` opens the selected repository's notes overlay. A child worktree resolves to the same canonical repository through catalog identity.
+
+```text
+j/k       move
+/         search body, tags, and repository
+Enter     expand or collapse the Markdown body
+a or n    add another note
+e         edit the body in VISUAL/EDITOR
+d         enter confirmation; y deletes
+Esc       return without changing data
+```
+
+The optional REPOS column `notes` shows a count. It is off by default because the table is width-constrained; repository and task detail always show the count and latest preview when notes exist.
+
+The same source-of-truth workflow is available without the TUI:
+
+```bash
+dev note add "try event subscription" --repo api --tag idea
+dev note list api
+dev note search "event subscription" --repo api
+dev note show <id-or-prefix>
+dev note edit <id-or-prefix>
+dev note delete <id-or-prefix>       # confirms
+dev note path api
+dev note reindex
+```
+
+Markdown under configured `paths.state_dir/notes` is durable; `$XDG_CACHE_HOME/dev/notes.db` is only a rebuildable search index. See the [complete generated command reference](../reference/commands-config.md#complete-generated-command-reference) for exact flags.
 
 ## External tools
 
@@ -106,6 +139,8 @@ Adopt reports by default and only writes task entries after `--apply` plus confi
 ## Sources
 
 - [`internal/help/topics/tui.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/tui.md)
+- [`internal/help/topics/notes.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/notes.md)
+- [`internal/cli/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/note.go)
 - [`internal/help/topics/bootstrap.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/bootstrap.md)
 - [`internal/cli/adopt.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/adopt.go)
 - [`internal/cli/bootstrap.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/bootstrap.go)

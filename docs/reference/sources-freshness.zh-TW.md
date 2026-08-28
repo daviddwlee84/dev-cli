@@ -65,6 +65,7 @@ tested_with: optional
 | `done --pr` 保持 task active | [變更流 workflow](../guides/change-stream-workflow.md) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktree 與 provisioning](../guides/worktrees-provisioning.md) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents 與 runtimes](../guides/parallel-agents-runtimes.md) | `internal/runtime/runtime.go` | implemented |
+| quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository 與 Bootstrap](../guides/tui-repos-bootstrap.md) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
 | 現行 GitHub Flow 有六個 branch/PR steps 且沒有 deployment step | [GitHub Flow](../git/github-flow.md) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official，2026-08-28 查核 |
 | linked worktree 共享 repository data，但有自己的 files/index/HEAD | [Worktree semantics](../git/worktree-semantics-recovery.md) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official，2026-08-28 查核 |
 | Conventional Commits structure | [Branch 與 commit](../git/branches-commits-prs.md) | [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) | versioned standard |

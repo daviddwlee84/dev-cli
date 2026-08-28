@@ -11,14 +11,14 @@
 - [Best practices](https://daviddwlee84.github.io/dev-cli/best-practices/): A concise checklist for safe Git, worktree, and coding-agent collaboration with dev-cli.
 ### Concepts
 
-- [Mental model and lifecycle](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/): Understand dev-cli as durable Git history, a small intent registry, disposable worktrees, and replaceable runtimes.
+- [Mental model and lifecycle](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/): Understand dev-cli as durable Git history, scoped intent and catalog state, repository quick-note sidecars, disposable worktrees, and replaceable runtimes.
 - [Isolation boundaries and glossary](https://daviddwlee84.github.io/dev-cli/concepts/isolation-glossary/): Distinguish branches, worktrees, runtimes, agent contexts, tasks, and the shared state each leaves exposed.
 ### Using dev-cli
 
 - [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/): Run a dev-cli change stream through start, park, resume, review or integration, and conservative cleanup.
 - [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/): Choose the owner and location of each worktree, then provision ignored files and dependencies safely.
 - [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/): Coordinate several coding agents around change-stream ownership, explicit mutation boundaries, and replaceable runtimes.
-- [TUI, repositories, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/): Navigate tasks, repositories, experiments, and remotes in the TUI; inventory or adopt existing work without destructive migration.
+- [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/): Navigate tasks, repositories, experiments, and remotes in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 ### Git and GitHub
 
 - [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/): Follow the current GitHub Flow while keeping older deploy-and-merge variants in clearly labeled historical context.
@@ -51,14 +51,14 @@
 - [最佳實務](https://daviddwlee84.github.io/dev-cli/zh-TW/best-practices/): 使用 dev-cli 進行安全 Git、worktree 與 coding-agent 協作的簡潔 checklist。
 ### 核心概念
 
-- [心智模型與生命週期](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/): 以持久 Git history、小型 intent registry、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
+- [心智模型與生命週期](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/): 以持久 Git history、分層 intent/catalog state、repository quick-note sidecar、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
 - [隔離邊界與詞彙](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/isolation-glossary/): 分辨 branch、worktree、runtime、agent context、task 與它們仍會共享的 state。
 ### 使用 dev-cli
 
 - [變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/): 使用 dev-cli 讓變更流依序經過 start、park、resume、review/integration 與保守 cleanup。
 - [Worktree 與環境佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/): 選擇每個 worktree 的 owner 與位置，再安全佈建 ignored files 與 dependencies。
 - [平行 Agent 與 Runtime](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/): 以變更流 ownership、明確 mutation boundary 與可替換 runtime 協調多個 coding agents。
-- [TUI、Repository 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/): 在 TUI 瀏覽 tasks、repositories、experiments 與 remotes，並以非破壞方式 inventory 或 adopt 現有工作。
+- [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/): 在 TUI 瀏覽 tasks、repositories、experiments 與 remotes、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
 ### Git 與 GitHub
 
 - [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/): 遵循現行 GitHub Flow，並把舊版 deploy/merge 變體清楚標示為歷史脈絡。

@@ -255,7 +255,7 @@ Use the [parallel work decision guide](https://daviddwlee84.github.io/dev-cli/cl
 
 Source: https://daviddwlee84.github.io/dev-cli/concepts/mental-model/
 
-> Understand dev-cli as durable Git history, a small intent registry, disposable worktrees, and replaceable runtimes.
+> Understand dev-cli as durable Git history, scoped intent and catalog state, repository quick-note sidecars, disposable worktrees, and replaceable runtimes.
 
 `dev` treats a unit of work as a **change stream** whose durable identity is its Git branch. The checkout and runtime are replaceable projections of that stream.
 
@@ -271,7 +271,14 @@ runtime              Herdr workspace, tmux session, or current shell
 dev registry         human intent and reconstruction metadata
 ```
 
-The registry stores facts needed to act later: repository and branch identity, base, checkout path, lifecycle state, owner host, next action, notes/tags, runtime handle, optional agent session, and timestamps. Live Git status, ahead/behind, and runtime availability are derived again instead of treated as authoritative cached truth.
+Sidecar state has deliberately separate scopes:
+
+- each task stores checkout mode, repository/branch/base, lifecycle state, owner host, next executable action, task context, runtime hint, and timestamps;
+- the catalog stores stable repository/Try identity, tags, one metadata summary, experiment lifecycle, and host-local locations;
+- configured `paths.state_dir/notes` stores multiple durable Markdown observations keyed by catalog repository ID;
+- `$XDG_CACHE_HOME/dev/notes.db` is only the rebuildable full-text index for those Markdown files.
+
+The catalog ID keeps a quick note attached across linked worktrees, symlink indexes, path moves, and synchronized host state. `dev` does not itself synchronize notes or catalog files. Live Git status, ahead/behind, and runtime availability are derived again instead of treated as authoritative cached truth.
 
 ## The four lifecycle states
 
@@ -344,6 +351,8 @@ One writer owns a branch at a time. If two machines or agents need to mutate the
 ## Sources
 
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
+- [`internal/catalog/catalog.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/catalog/catalog.go)
+- [`internal/note/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/note.go)
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/help/topics/parking.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/parking.md)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
@@ -515,7 +524,12 @@ Starting work resolves the repository, validates branch/base, creates or switche
 dev park --next "add the failing expiry test"
 ```
 
-The normal transition is HOT → WARM: close the runtime but keep the checkout. `--next` is more valuable than a long note because it removes the need to re-derive the first action later.
+The normal transition is HOT → WARM: close the runtime but keep the checkout. Choose the field by scope:
+
+- `--next` is the next executable task action and removes the need to re-derive the first step;
+- `dev park --note` preserves free-form context for this one task;
+- `dev repo mark --note` replaces the catalog's single repository summary;
+- `dev note` stores multiple durable repository observations outside task lifecycle state.
 
 If the tree is dirty:
 
@@ -803,11 +817,11 @@ For Claude-specific primitive selection, continue with the [parallel work decisi
 
 ---
 
-### TUI, repositories, and bootstrap
+### TUI, repositories, quick notes, and bootstrap
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/
 
-> Navigate tasks, repositories, experiments, and remotes in the TUI; inventory or adopt existing work without destructive migration.
+> Navigate tasks, repositories, experiments, and remotes in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
 
@@ -830,6 +844,7 @@ Switch with `tab`, `h`/`l`, or arrows. Use `j`/`k`, `g`/`G`, `ctrl+d`/`ctrl+u`, 
 enter/o   open the selected task
 p         park warm and enter the next action
 c         edit the next action
+n/N       quick-add / browse repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
@@ -840,7 +855,8 @@ A COLD task must be rebuilt with `dev resume`; the TUI does not silently recreat
 ```text
 enter/o   ad-hoc open without creating a task
 space     expand linked worktrees
-m         edit repository tags/note
+m         edit repository tags/summary
+n/N       quick-add / browse repository notes
 d         track direct work on the current branch
 s         start isolated work: branch + worktree + provisioning + runtime
 H         open the repository activity heatmap
@@ -855,7 +871,38 @@ Expanded rows explain every linked worktree, including harness-owned `(ephemeral
 
 TRY handles low-cost experiments, reversible archive/restore, marking, and graduation. Archive is organization, not deletion or disk reclamation.
 
-REMOTE loads lazily so startup does not wait for the network. Enter opens a local clone; `c` confirms before cloning an absent repository; `r` refreshes forge inventories and their private XDG cache.
+REMOTE loads lazily so startup does not wait for the network. Enter opens a local clone; `c` confirms before cloning an absent repository; `r` refreshes forge inventories and their private XDG cache. Notes are enabled only after a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a new Try rather than a repository note.
+
+## Repository quick notes
+
+On TASKS and REPOS, lowercase `n` opens a one-line quick-add prompt and uppercase `N` opens the selected repository's notes overlay. A child worktree resolves to the same canonical repository through catalog identity.
+
+```text
+j/k       move
+/         search body, tags, and repository
+Enter     expand or collapse the Markdown body
+a or n    add another note
+e         edit the body in VISUAL/EDITOR
+d         enter confirmation; y deletes
+Esc       return without changing data
+```
+
+The optional REPOS column `notes` shows a count. It is off by default because the table is width-constrained; repository and task detail always show the count and latest preview when notes exist.
+
+The same source-of-truth workflow is available without the TUI:
+
+```bash
+dev note add "try event subscription" --repo api --tag idea
+dev note list api
+dev note search "event subscription" --repo api
+dev note show <id-or-prefix>
+dev note edit <id-or-prefix>
+dev note delete <id-or-prefix>       # confirms
+dev note path api
+dev note reindex
+```
+
+Markdown under configured `paths.state_dir/notes` is durable; `$XDG_CACHE_HOME/dev/notes.db` is only a rebuildable search index. See the [complete generated command reference](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#complete-generated-command-reference) for exact flags.
 
 ## External tools
 
@@ -908,6 +955,8 @@ Adopt reports by default and only writes task entries after `--apply` plus confi
 ## Sources
 
 - [`internal/help/topics/tui.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/tui.md)
+- [`internal/help/topics/notes.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/notes.md)
+- [`internal/cli/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/note.go)
 - [`internal/help/topics/bootstrap.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/bootstrap.md)
 - [`internal/cli/adopt.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/adopt.go)
 - [`internal/cli/bootstrap.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/bootstrap.go)
@@ -1852,6 +1901,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | task lifecycle | `start`, `park`, `resume`, `done`, `sweep`, `ls`, `status` |
 | linked worktrees | `wt list`, `wt create`, `wt open`, `wt rm`, `wt plan`, `wt provision` |
 | repositories/remotes | `repo list`, `repo context`, `repo clone`, `repo open`, `repo new`, `repo sync`, `repo remote`, `repo mark` |
+| repository quick notes | `note add`, `note list`, `note show`, `note search`, `note edit`, `note delete`, `note path`, `note reindex` |
 | machine inventory | `bootstrap`, `adopt`, `doctor` |
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools` |
@@ -1869,10 +1919,15 @@ dev ls --json
 dev repo list --json
 dev repo context [repo]
 dev repo remote --json
+dev note list [repo] --json
+dev note search <query> --json
+dev note show <note-id> --json
 dev bootstrap --json
 ```
 
 Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract.
+
+Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
 
 ## Configuration
 
@@ -1895,6 +1950,8 @@ Key sections:
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
 | `[stats]` | sampler and optional WakaTime import |
+
+Repository quick-note Markdown is durable under configured `paths.state_dir/notes`, which defaults to `$XDG_DATA_HOME/dev/notes`. The full-text index at `$XDG_CACHE_HOME/dev/notes.db` is disposable and rebuilds from those files; changing `paths.state_dir` does not move the cache.
 
 A repository may commit `.dev.toml` for worktree provisioning overrides that should travel with the project. Keep host-specific paths and credentials in the user config or ignored environment files, not in the repository override.
 
@@ -1970,7 +2027,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|size|gitignore|all>
+dev cache clear <remote|notes|size|gitignore|all>
 ```
 
 ### `dev cache list`
@@ -2168,6 +2225,100 @@ dev ls [flags]
 - `--no-session` — skip the runtime query (faster)
 - `-r, --repo` — only tasks whose repo name contains this
 - `-s, --state` — only these states (hot, warm, cold, done)
+
+### `dev note`
+
+Capture and search timestamped repository thoughts
+
+```
+dev note
+```
+
+### `dev note add`
+
+Append one thought to a repository
+
+```
+dev note add [thought...] [flags]
+```
+
+- `-e, --editor` — compose the body in VISUAL/EDITOR
+- `--editor-command` — editor command override
+- `-r, --repo` — repository (default: repo containing cwd)
+- `-t, --tag` — tag (repeatable)
+
+### `dev note delete`
+
+Delete one note after confirmation
+
+```
+dev note delete <note-id> [flags]
+```
+
+- `-y, --yes` — do not prompt
+
+### `dev note edit`
+
+Edit one note body safely in VISUAL/EDITOR
+
+```
+dev note edit <note-id> [flags]
+```
+
+- `--editor` — editor command override
+- `-t, --tag` — replace tags (repeatable; omit to preserve)
+
+### `dev note list`
+
+List notes newest-first
+
+```
+dev note list [repo] [flags]
+```
+
+- `-a, --all` — all repositories
+- `--json` — emit JSON
+- `-t, --tag` — only notes with this tag
+
+### `dev note path`
+
+Print the durable Markdown note path
+
+```
+dev note path [repo] [flags]
+```
+
+- `-a, --all` — print the notes root
+
+### `dev note reindex`
+
+Rebuild the disposable SQLite FTS index from Markdown notes
+
+```
+dev note reindex
+```
+
+### `dev note search`
+
+Full-text search note body, tags, and repository
+
+```
+dev note search <query...> [flags]
+```
+
+- `--json` — emit JSON
+- `--limit` — maximum matches
+- `-r, --repo` — scope to this repository
+
+### `dev note show`
+
+Show one complete note
+
+```
+dev note show <note-id> [flags]
+```
+
+- `--json` — emit JSON
 
 ### `dev park`
 
@@ -2696,8 +2847,15 @@ This page separates graceful degradation from real limitations. Reverify it when
 | GitLab merge requests/remotes | `glab` authenticated | same graceful fallback |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
+| repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
 
 ## Confirmed project limitations
+
+### Note search and filesystem durability vary by text and platform
+
+Latin note queries use term-wise prefix FTS and SQLite ranking. Non-ASCII queries use literal term-wise substring matching because SQLite's `unicode61` tokenizer does not segment arbitrary CJK substrings; those results do not use the same FTS ranking.
+
+Note writes sync the file and atomically rename it on every supported platform. Unix also syncs the containing directory after rename/delete. The Windows implementation cannot provide that directory-fsync step, so a sudden power loss has a narrower durability guarantee there even though ordinary concurrent/process-safe operation remains atomic.
 
 ### Pull-request completion is not tracked automatically
 
@@ -2756,6 +2914,9 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
 - [`internal/forge/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/cache.go)
+- [`internal/note/index.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/index.go)
+- [`internal/note/store.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/store.go)
+- [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
 
 ---
@@ -2820,6 +2981,7 @@ tested_with: optional
 | `done --pr` leaves task active | [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
+| quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
 | current GitHub Flow has six branch/PR steps and no deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official, checked 2026-08-28 |
 | linked worktrees share repository data but own files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official, checked 2026-08-28 |
 | Conventional Commits structure | [Branches and commits](https://daviddwlee84.github.io/dev-cli/git/branches-commits-prs/) | [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) | versioned standard |
@@ -3308,7 +3470,7 @@ dev sweep
 
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/
 
-> 以持久 Git history、小型 intent registry、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
+> 以持久 Git history、分層 intent/catalog state、repository quick-note sidecar、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -3327,7 +3489,14 @@ runtime              Herdr workspace、tmux session 或目前 shell
 dev registry         人類意圖與重建 metadata
 ```
 
-Registry 保存未來要能採取行動的資訊：repository 與 branch identity、base、checkout path、lifecycle state、owner host、next action、notes/tags、runtime handle、可選 agent session 與 timestamps。即時 Git status、ahead/behind 與 runtime availability 會重新推導，不會被當成權威 cache。
+Sidecar state 刻意分成不同 scope：
+
+- 每個 task 保存 checkout mode、repository/branch/base、lifecycle state、owner host、下一個 executable action、task context、runtime hint 與 timestamps；
+- catalog 保存穩定的 repository/Try identity、tags、一筆 metadata summary、experiment lifecycle 與 host-local locations；
+- configured `paths.state_dir/notes` 保存多筆 durable Markdown observations，並以 catalog repository ID 為 key；
+- `$XDG_CACHE_HOME/dev/notes.db` 只是這些 Markdown files 的可重建 full-text index。
+
+Catalog ID 讓 quick note 在 linked worktrees、symlink indexes、path moves 與已同步的 host state 之間維持 attachment。`dev` 本身不會同步 notes 或 catalog files。即時 Git status、ahead/behind 與 runtime availability 會重新推導，不會被當成權威 cache。
 
 ## 四個 lifecycle state
 
@@ -3400,6 +3569,8 @@ dev resume <task> --fetch
 ## 來源
 
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
+- [`internal/catalog/catalog.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/catalog/catalog.go)
+- [`internal/note/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/note.go)
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/help/topics/parking.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/parking.md)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
@@ -3577,7 +3748,12 @@ Start 會解析 repository、驗證 branch/base、建立或切換 checkout、需
 dev park --next "add the failing expiry test"
 ```
 
-一般 transition 是 HOT → WARM：關閉 runtime，但保留 checkout。具體 `--next` 比很長的 note 更重要，因為它避免下次重新推導第一個動作。
+一般 transition 是 HOT → WARM：關閉 runtime，但保留 checkout。請依 scope 選擇欄位：
+
+- `--next` 是下一個 executable task action，避免下次重新推導第一步；
+- `dev park --note` 保存這一個 task 的 free-form context；
+- `dev repo mark --note` 取代 catalog 的單一 repository summary；
+- `dev note` 保存多筆 durable repository observations，不屬於 task lifecycle state。
 
 Working tree 尚未乾淨時：
 
@@ -3871,11 +4047,11 @@ Claude-specific primitive 的選擇請接著看[平行工作決策指南](https:
 
 ---
 
-### TUI、Repository 與 Bootstrap
+### TUI、Repository、Quick Notes 與 Bootstrap
 
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/
 
-> 在 TUI 瀏覽 tasks、repositories、experiments 與 remotes，並以非破壞方式 inventory 或 adopt 現有工作。
+> 在 TUI 瀏覽 tasks、repositories、experiments 與 remotes、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -3901,6 +4077,7 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 enter/o   開啟選取的 task
 p         park warm 並輸入 next action
 c         編輯 next action
+n/N       quick-add／瀏覽 repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
@@ -3911,7 +4088,8 @@ COLD task 必須透過 `dev resume` 重建；TUI 不會用 generic open action �
 ```text
 enter/o   ad-hoc open，不建立 task
 space     展開 linked worktrees
-m         編輯 repository tags/note
+m         編輯 repository tags/summary
+n/N       quick-add／瀏覽 repository notes
 d         追蹤目前 branch 的 direct work
 s         啟動 isolated work：branch + worktree + provisioning + runtime
 H         開啟 repository activity heatmap
@@ -3926,7 +4104,38 @@ y         開啟 copy/context actions
 
 TRY 管理低成本 experiment、可逆 archive/restore、mark 與 graduation。Archive 是整理，不是 deletion 或 disk reclamation。
 
-REMOTE 延遲載入，因此 startup 不等待 network。Enter 開啟 local clone；`c` 在 clone 缺少的 repository 前確認；`r` 更新 forge inventories 與 private XDG cache。
+REMOTE 延遲載入，因此 startup 不等待 network。Enter 開啟 local clone；`c` 在 clone 缺少的 repository 前確認；`r` 更新 forge inventories 與 private XDG cache。只有 REMOTE row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，不會改成 repository note。
+
+## Repository quick notes
+
+在 TASKS 與 REPOS，lowercase `n` 開啟單行 quick-add prompt，uppercase `N` 開啟選取 repository 的 notes overlay。Child worktree 會透過 catalog identity 解析到同一個 canonical repository。
+
+```text
+j/k       移動
+/         搜尋 body、tags 與 repository
+Enter     展開或收合 Markdown body
+a or n    新增另一則 note
+e         用 VISUAL/EDITOR 編輯 body
+d         進入確認；y 才刪除
+Esc       不改資料並返回
+```
+
+可選的 REPOS column `notes` 顯示數量。Table 寬度有限，因此預設不啟用；notes 存在時，repository 與 task detail 一律顯示數量與最新 preview。
+
+不使用 TUI 也能操作同一份 source of truth：
+
+```bash
+dev note add "try event subscription" --repo api --tag idea
+dev note list api
+dev note search "event subscription" --repo api
+dev note show <id-or-prefix>
+dev note edit <id-or-prefix>
+dev note delete <id-or-prefix>       # 會確認
+dev note path api
+dev note reindex
+```
+
+Configured `paths.state_dir/notes` 下的 Markdown 是 durable data；`$XDG_CACHE_HOME/dev/notes.db` 只是可重建的 search index。精確 flags 請見[命令與設定 reference](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/)中的完整 generated command reference。
 
 ## External tools
 
@@ -3979,6 +4188,8 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 ## 來源
 
 - [`internal/help/topics/tui.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/tui.md)
+- [`internal/help/topics/notes.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/notes.md)
+- [`internal/cli/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/note.go)
 - [`internal/help/topics/bootstrap.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/bootstrap.md)
 - [`internal/cli/adopt.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/adopt.go)
 - [`internal/cli/bootstrap.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/bootstrap.go)
@@ -4953,6 +5164,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/
 | task lifecycle | `start`、`park`、`resume`、`done`、`sweep`、`ls`、`status` |
 | linked worktrees | `wt list`、`wt create`、`wt open`、`wt rm`、`wt plan`、`wt provision` |
 | repositories/remotes | `repo list`、`repo context`、`repo clone`、`repo open`、`repo new`、`repo sync`、`repo remote`、`repo mark` |
+| repository quick notes | `note add`、`note list`、`note show`、`note search`、`note edit`、`note delete`、`note path`、`note reindex` |
 | machine inventory | `bootstrap`、`adopt`、`doctor` |
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools` |
@@ -4970,10 +5182,15 @@ dev ls --json
 dev repo list --json
 dev repo context [repo]
 dev repo remote --json
+dev note list [repo] --json
+dev note search <query> --json
+dev note show <note-id> --json
 dev bootstrap --json
 ```
 
 不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。
+
+每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
 
 ## Configuration
 
@@ -4996,6 +5213,8 @@ dev config path
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
 | `[stats]` | sampler 與 optional WakaTime import |
+
+Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
 
 Repository 可 commit `.dev.toml`，保存應跟著 project 移動的 worktree provisioning overrides。Host-specific path 與 credential 應放 user config 或 ignored environment file，不放 repository override。
 
@@ -5071,7 +5290,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|size|gitignore|all>
+dev cache clear <remote|notes|size|gitignore|all>
 ```
 
 ### `dev cache list`
@@ -5269,6 +5488,100 @@ dev ls [flags]
 - `--no-session` — skip the runtime query (faster)
 - `-r, --repo` — only tasks whose repo name contains this
 - `-s, --state` — only these states (hot, warm, cold, done)
+
+### `dev note`
+
+Capture and search timestamped repository thoughts
+
+```
+dev note
+```
+
+### `dev note add`
+
+Append one thought to a repository
+
+```
+dev note add [thought...] [flags]
+```
+
+- `-e, --editor` — compose the body in VISUAL/EDITOR
+- `--editor-command` — editor command override
+- `-r, --repo` — repository (default: repo containing cwd)
+- `-t, --tag` — tag (repeatable)
+
+### `dev note delete`
+
+Delete one note after confirmation
+
+```
+dev note delete <note-id> [flags]
+```
+
+- `-y, --yes` — do not prompt
+
+### `dev note edit`
+
+Edit one note body safely in VISUAL/EDITOR
+
+```
+dev note edit <note-id> [flags]
+```
+
+- `--editor` — editor command override
+- `-t, --tag` — replace tags (repeatable; omit to preserve)
+
+### `dev note list`
+
+List notes newest-first
+
+```
+dev note list [repo] [flags]
+```
+
+- `-a, --all` — all repositories
+- `--json` — emit JSON
+- `-t, --tag` — only notes with this tag
+
+### `dev note path`
+
+Print the durable Markdown note path
+
+```
+dev note path [repo] [flags]
+```
+
+- `-a, --all` — print the notes root
+
+### `dev note reindex`
+
+Rebuild the disposable SQLite FTS index from Markdown notes
+
+```
+dev note reindex
+```
+
+### `dev note search`
+
+Full-text search note body, tags, and repository
+
+```
+dev note search <query...> [flags]
+```
+
+- `--json` — emit JSON
+- `--limit` — maximum matches
+- `-r, --repo` — scope to this repository
+
+### `dev note show`
+
+Show one complete note
+
+```
+dev note show <note-id> [flags]
+```
+
+- `--json` — emit JSON
 
 ### `dev park`
 
@@ -5800,8 +6113,15 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
+| repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
 
 ## 已確認的專案限制
+
+### Note search 與 filesystem durability 依文字及平台而異
+
+Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII query 改用 literal term-wise substring matching，因為 SQLite 的 `unicode61` tokenizer 不會切分任意 CJK substrings；這些結果不使用相同的 FTS ranking。
+
+所有支援平台的 note write 都會 sync file 並 atomic rename。Unix 也會在 rename/delete 後 sync containing directory。Windows implementation 無法提供 directory-fsync 步驟，因此 sudden power loss 時的 durability guarantee 較窄，但一般 concurrent/process-safe operation 仍保持 atomic。
 
 ### Pull request completion 不會自動追蹤
 
@@ -5860,6 +6180,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
 - [`internal/forge/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/cache.go)
+- [`internal/note/index.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/index.go)
+- [`internal/note/store.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/store.go)
+- [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
 
 ---
@@ -5927,6 +6250,7 @@ tested_with: optional
 | `done --pr` 保持 task active | [變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktree 與 provisioning](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
+| quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
 | 現行 GitHub Flow 有六個 branch/PR steps 且沒有 deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official，2026-08-28 查核 |
 | linked worktree 共享 repository data，但有自己的 files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/zh-TW/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official，2026-08-28 查核 |
 | Conventional Commits structure | [Branch 與 commit](https://daviddwlee84.github.io/dev-cli/zh-TW/git/branches-commits-prs/) | [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) | versioned standard |

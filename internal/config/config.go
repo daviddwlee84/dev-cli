@@ -417,7 +417,7 @@ func (c Config) probeVars() Vars {
 	}
 }
 
-// StateDir is the expanded directory holding tasks/, assets/ and stats.db.
+// StateDir is the expanded directory holding tasks/, assets/, notes/ and stats.db.
 func (c Config) StateDir() string { return Expand(c.Paths.StateDir) }
 
 // TasksDir holds one TOML file per task.
@@ -426,7 +426,7 @@ func (c Config) TasksDir() string { return filepath.Join(c.StateDir(), "tasks") 
 // AssetsDir holds one TOML file per catalog asset.
 func (c Config) AssetsDir() string { return filepath.Join(c.StateDir(), "assets") }
 
-// NotesDir holds append-only Markdown notes keyed by catalog asset ID.
+// NotesDir holds Markdown notes keyed by catalog asset ID.
 func (c Config) NotesDir() string { return filepath.Join(c.StateDir(), "notes") }
 
 // NotesIndexFile is the disposable FTS index; durable note files live in NotesDir.

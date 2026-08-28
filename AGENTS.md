@@ -57,8 +57,9 @@ cmd/dev/main.go
 - `runtime` abstracts Herdr, tmux, Zellij, and the no-multiplexer backend. Handles are backend-qualified hints and must be checked against live checkout coverage before reuse.
 - `repo` discovers and deduplicates repositories; `inventory` joins repositories, Git state, tasks, worktrees, and live runtime data. CLI listings and the TUI consume this joined view.
 - `catalog` stores stable repository/Try identity and personal metadata. `experiment` owns Try creation, archive/restore, and graduation, including intent records and rollback/reconciliation around moves.
+- `note` stores multiple repository thoughts as durable Markdown keyed by catalog ID and maintains a rebuildable SQLite FTS index. It is distinct from task context and the catalog's single metadata summary.
 - `tui` owns Bubble Tea state/rendering only. `internal/cli/tui.go` injects callbacks to the same services used by non-interactive commands.
-- `stats` is durable SQLite data; `diskusage` and forge/gitignore data are regenerable caches. Do not treat stats as cache.
+- `stats` is durable SQLite data; `diskusage`, note FTS, and forge/gitignore data are regenerable caches. Do not treat stats as cache.
 - `forge` wraps optional `gh`, `glab`, and Azure CLI integrations and must degrade to local Git behavior when they are unavailable.
 
 The principal task flow spans `internal/cli/start.go`, `start_flow.go`, `gitx`/`wt`, `runtime`, and `task`: resolve the canonical repository and explicit base, create or select the checkout, provision/open it, then persist and annotate the task. Lifecycle behavior lives in `park.go`, `resume.go`, `done.go`, and `sweep.go`; preserve their report-before-apply and no-data-loss ordering.
@@ -69,6 +70,7 @@ State is split intentionally:
 - Worktrees are disposable local checkouts.
 - Runtime sessions are per-host and re-derivable.
 - Task TOML and catalog assets hold only intent/identity that Git cannot answer.
+- Repository quick-note Markdown is durable sidecar data; `notes.db` is only its disposable search index.
 - `stats.db` is durable observation data; `$XDG_CACHE_HOME/dev/*` is disposable.
 
 ## Behavioral contracts
@@ -81,6 +83,7 @@ State is split intentionally:
 - A recognized agent in a canonical checkout occupies it regardless of whether its status is working, idle, done, or unknown. Shared-writer overrides require coordinated disjoint ownership.
 - A parallel launch target is only the exact root pane returned for a newly created first-class Herdr worktree; reused/fallback/unverified surfaces fail closed.
 - `dev ls --json` is an external automation contract. Add fields rather than renaming/removing existing fields; apply the same compatibility care to other documented structured output.
+- Quick notes attach to the canonical repository through catalog identity. Markdown is durable, note deletion requires confirmation, and clearing/rebuilding note FTS must never delete source files.
 - Filesystem transitions must retain path traversal/symlink, same-filesystem, source revalidation, and rollback/reconciliation checks.
 
 ## Versioning and changelog
@@ -114,6 +117,7 @@ Stable release tags only are accepted by the current workflow; prerelease tags a
 | Runtime protocol, fallback order, activation, agent collision, exact-pane launch, or cleanup behavior | Update `references/runtime-herdr.md`, `references/parallel-agents.md`, compatibility docs, and runtime/lifecycle tests. Keep the boundary clear: `dev start` prepares a checkout/runtime surface; it does not launch an agent. |
 | Bootstrap scan/layout/index/move behavior | Update `references/bootstrap.md`, public bootstrap docs, and bootstrap tests. |
 | Config fields/defaults or structured output | Update generated command help where applicable, authored reference pages and both locales, examples, and compatibility tests. |
+| Quick-note storage, identity, search, structured output, or TUI behavior | Update README, embedded help, `SKILL.md`, `references/notes.md`, and paired English/zh-TW mental-model, workflow, TUI, commands/config, compatibility, and freshness pages. |
 | Any user-visible feature or fix | Update `CHANGELOG.md`; update README/help/MkDocs/skill wherever they make the affected claim. |
 
 `make skill-check` proves only that generated command syntax matches the Cobra tree. It cannot detect drift in lifecycle semantics, JSON schemas, safety claims, examples, README, embedded help, or authored skill references; review those manually. Because the skill is compiled with `go:embed`, rebuild after any skill edit before testing the bundled output.

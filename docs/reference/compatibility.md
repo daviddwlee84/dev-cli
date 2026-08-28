@@ -21,8 +21,15 @@ This page separates graceful degradation from real limitations. Reverify it when
 | GitLab merge requests/remotes | `glab` authenticated | same graceful fallback |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
+| repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
 
 ## Confirmed project limitations
+
+### Note search and filesystem durability vary by text and platform
+
+Latin note queries use term-wise prefix FTS and SQLite ranking. Non-ASCII queries use literal term-wise substring matching because SQLite's `unicode61` tokenizer does not segment arbitrary CJK substrings; those results do not use the same FTS ranking.
+
+Note writes sync the file and atomically rename it on every supported platform. Unix also syncs the containing directory after rename/delete. The Windows implementation cannot provide that directory-fsync step, so a sudden power loss has a narrower durability guarantee there even though ordinary concurrent/process-safe operation remains atomic.
 
 ### Pull-request completion is not tracked automatically
 
@@ -81,4 +88,7 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
 - [`internal/forge/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/cache.go)
+- [`internal/note/index.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/index.go)
+- [`internal/note/store.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/store.go)
+- [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)

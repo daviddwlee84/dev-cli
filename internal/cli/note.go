@@ -22,11 +22,11 @@ import (
 func newNoteCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "note",
-		Short: "Capture and search append-only thoughts beside repositories",
-		Long: `Store quick thoughts outside the repository as ordinary Markdown files,
-keyed by the repository's stable catalog ID. The files under
-$XDG_DATA_HOME/dev/notes are durable truth; SQLite under $XDG_CACHE_HOME/dev
-is only a rebuildable FTS search index.
+		Short: "Capture and search timestamped repository thoughts",
+		Long: `Store multiple quick thoughts outside the repository as ordinary Markdown
+files keyed by the repository's stable catalog ID. The configured
+paths.state_dir/notes directory (default $XDG_DATA_HOME/dev/notes) is durable
+truth; SQLite under $XDG_CACHE_HOME/dev is only a rebuildable FTS search index.
 
 Use n in the TUI for quick add and N for the notes overlay.`,
 	}

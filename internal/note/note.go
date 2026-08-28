@@ -1,4 +1,4 @@
-// Package note stores append-only repository thoughts as ordinary Markdown
+// Package note stores timestamped repository thoughts as ordinary Markdown
 // files. SQLite indexes them for search, but the files are the durable source
 // of truth: readable without dev, syncable without database merge conflicts,
 // and recoverable after every cache is deleted.

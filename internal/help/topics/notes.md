@@ -15,6 +15,16 @@ dev note delete <id-or-prefix>
 
 Inside a repo, `--repo` is optional.
 
+## Choose the right note-like field
+
+- task `--next` is the next executable action;
+- `dev park --note` records context on one task;
+- `dev repo mark --note` stores one catalog metadata summary;
+- `dev note` stores multiple durable repository observations.
+
+Quick notes are not task lifecycle state and do not overwrite the catalog
+summary.
+
 ## TUI
 
 ```text
@@ -38,13 +48,15 @@ edited temporary body was preserved.
 ## Where notes live
 
 ```text
-$XDG_DATA_HOME/dev/notes/<catalog-repo-id>/<note-id>.md  durable, mode 0600
+<paths.state_dir>/notes/<catalog-repo-id>/<note-id>.md  durable, mode 0600
 $XDG_CACHE_HOME/dev/notes.db                            disposable FTS, mode 0600
 ```
 
-Repository catalog IDs survive path moves, symlink indexes and linked worktree
-paths. A note created while standing in a worktree therefore appears on the
-canonical repo.
+`paths.state_dir` defaults to `$XDG_DATA_HOME/dev`. Repository catalog IDs
+survive path moves, symlink indexes and linked worktree paths. A note created
+while standing in a worktree therefore appears on the canonical repo. `dev`
+does not synchronize note or catalog files; sync both parts of sidecar state
+when attachments must travel between hosts.
 
 ```bash
 dev note path api
@@ -57,6 +69,5 @@ dev note search "query"     # rebuilds missing/stale index
 Search is term-wise prefix FTS for Latin text, with literal term-wise fallback
 for CJK substrings.
 
-`repo mark --note` is a separate single-line catalog summary. Structured task
-systems such as td/beads are separate optional future adapters; dev does not
-initialize their repo dot-folders.
+Structured task systems such as td/beads are separate optional future adapters;
+dev does not initialize their repo dot-folders.
