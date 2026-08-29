@@ -3,6 +3,7 @@ package forge_test
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ func TestCacheRoundTrip(t *testing.T) {
 		t.Errorf("cache = %+v, ok=%v", got, ok)
 	}
 	info, _ := os.Stat(path)
-	if info.Mode().Perm()&0o077 != 0 {
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
 		t.Errorf("remote inventory can contain private repo names; mode = %o, want private", info.Mode().Perm())
 	}
 }

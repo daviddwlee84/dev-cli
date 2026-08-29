@@ -133,18 +133,21 @@ func reportDetection(app *App, l config.Layout) {
 		l.WorktreeRoot)
 }
 
-// renderStarterConfig fills the annotated template with detected paths.
+// renderStarterConfig fills the annotated template with detected paths. Paths
+// are written with forward slashes: a Windows path in a TOML basic string would
+// otherwise read "C:\Users" as an invalid \U escape, and Go accepts / on every
+// platform.
 func renderStarterConfig(l config.Layout) string {
 	roots := make([]string, len(l.ScanRoots))
 	for i, r := range l.ScanRoots {
-		roots[i] = strconv.Quote(r)
+		roots[i] = strconv.Quote(filepath.ToSlash(r))
 	}
 	r := strings.NewReplacer(
 		"@@SCAN_ROOTS@@", strings.Join(roots, ", "),
 		"@@REPO_PATHS@@", quotedStrings(l.RepoPaths),
-		"@@TRIES_ROOT@@", l.TriesRoot,
-		"@@PROJECT_ROOT@@", l.ProjectRoot,
-		"@@WORKTREE_ROOT@@", l.WorktreeRoot,
+		"@@TRIES_ROOT@@", filepath.ToSlash(l.TriesRoot),
+		"@@PROJECT_ROOT@@", filepath.ToSlash(l.ProjectRoot),
+		"@@WORKTREE_ROOT@@", filepath.ToSlash(l.WorktreeRoot),
 	)
 	return r.Replace(starterConfig)
 }
@@ -152,7 +155,7 @@ func renderStarterConfig(l config.Layout) string {
 func quotedStrings(values []string) string {
 	quoted := make([]string, len(values))
 	for index, value := range values {
-		quoted[index] = strconv.Quote(value)
+		quoted[index] = strconv.Quote(filepath.ToSlash(value))
 	}
 	return strings.Join(quoted, ", ")
 }
