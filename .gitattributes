@@ -1,0 +1,8 @@
+# Keep every text file LF on checkout, on every platform. Without this the
+# Windows CI runner (core.autocrlf=true in the image) checks out CRLF, and both
+# `gofmt -l` and `dev skill sync --check` then report spurious drift.
+* text=auto eol=lf
+
+# Generated lockfiles and sums: text, but never worth a diff review.
+go.sum   linguist-generated=true
+uv.lock  linguist-generated=true
