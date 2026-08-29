@@ -58,6 +58,10 @@ func runDoctor(app *App) error {
 	ctx := ctxOf()
 	var checks []check
 
+	// What am I running? A build several commits past its last release behaves
+	// differently from that release, and `dev --version` alone does not say so.
+	checks = append(checks, check{"dev", checkOK, versionSummary()})
+
 	// Required.
 	if v, err := exec.CommandContext(ctx, "git", "--version").Output(); err == nil {
 		checks = append(checks, check{"git", checkOK, strings.TrimSpace(string(v))})

@@ -1079,6 +1079,17 @@ List the external tool bindings and whether each one works here
 dev tui tools
 ```
 
+### `dev version`
+
+Report the running version, and optionally whether it is current
+
+```
+dev version [flags]
+```
+
+- `--check` — ask GitHub for the newest published release
+- `--refresh` — ignore the cached answer from a previous --check
+
 ### `dev wt`
 
 Create, list, open and remove worktrees

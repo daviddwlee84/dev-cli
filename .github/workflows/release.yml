@@ -37,10 +37,47 @@ jobs:
           make build
           test "$(./dev --version)" = "dev version $VERSION"
 
+      # modernc.org/sqlite is pure Go, so every target cross-compiles from one
+      # runner with CGO disabled and ships as a static binary.
+      - name: Build release archives
+        run: |
+          mkdir -p dist
+          ldflags="-s -w -X github.com/daviddwlee84/dev-cli/internal/cli.Version=$VERSION"
+          for target in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+            os="${target%/*}"; arch="${target#*/}"
+            CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
+              go build -ldflags "$ldflags" -o dist/dev ./cmd/dev
+            tar -czf "dist/dev-cli_${VERSION}_${os}_${arch}.tar.gz" -C dist dev
+            rm dist/dev
+          done
+          ( cd dist && sha256sum *.tar.gz > SHA256SUMS )
+          ls -l dist
+
+      # The changelog is the account a human wrote; generated notes are the
+      # fallback for a tag whose section is missing.
+      - name: Extract release notes
+        run: |
+          awk -v ver="${VERSION#v}" '
+            $0 ~ "^## \\[" ver "\\]" { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > notes.md
+          if [ ! -s notes.md ]; then
+            echo "no CHANGELOG section for $VERSION; falling back to generated notes"
+            rm -f notes.md
+          fi
+
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if ! gh release view "$VERSION" >/dev/null 2>&1; then
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "release $VERSION already exists"
+            exit 0
+          fi
+          if [ -s notes.md ]; then
+            gh release create "$VERSION" --verify-tag --notes-file notes.md --title "$VERSION"
+          else
             gh release create "$VERSION" --verify-tag --generate-notes --title "$VERSION"
           fi
+          gh release upload "$VERSION" dist/*.tar.gz dist/SHA256SUMS

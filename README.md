@@ -60,6 +60,22 @@ go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
+Every release also publishes `darwin/arm64`, `darwin/amd64`, `linux/amd64` and
+`linux/arm64` archives with a `SHA256SUMS` file, so a binary can be verified
+without a Go toolchain.
+
+To find out whether the binary you have is current:
+
+```bash
+dev version           # what this build is, and whether it is a published release
+dev version --check   # also ask GitHub for the newest release (cached for a day)
+dev doctor            # reports the running version alongside every other check
+```
+
+`dev version --check` is the only part of `dev` that reaches the network without
+being asked to, so it is opt-in: `dev --version` and `dev doctor` stay local and
+work offline.
+
 For a non-Homebrew install, generate completion files wherever your shell loads
 them:
 

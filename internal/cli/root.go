@@ -150,6 +150,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		newHelpTopicCmd(app),
 		newSkillCmd(app),
 		newDoctorCmd(app),
+		newVersionCmd(app),
 		newShellInitCmd(app),
 		newConfigCmd(app),
 		newCacheCmd(app),

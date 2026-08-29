@@ -13,6 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `dev help <command>` now resolves a command name or alias to its topic, so `dev help wt`
   reaches the worktrees page instead of failing.
 - `dev help tries` and `dev help skills` quick-reference pages.
+- `dev version`, reporting whether this build is a published release or some number of commits
+  past one, with an opt-in `--check` that asks GitHub for the newest release and caches the answer
+  for a day. `dev doctor` reports the running version too; neither `dev --version` nor `dev doctor`
+  touches the network.
+- Releases publish `darwin/arm64`, `darwin/amd64`, `linux/amd64` and `linux/arm64` archives with a
+  `SHA256SUMS` file, and take their notes from the matching `CHANGELOG.md` section. Previously a
+  release published nothing but a GitHub release object with generated notes, so the only way to
+  install `dev` was to build it.
 - `e` in the dashboard's FLEET view edits `remotes.toml` — the file that view is about — instead of
   dev's own `config.toml`, reparsing it on return and refreshing the fleet only when it is valid.
 - Semantic color now covers every human-readable surface. `dev fleet`, `dev skill`, `dev note`,

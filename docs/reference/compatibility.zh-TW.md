@@ -79,6 +79,8 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - `dev sweep` 會回報 task 記錄中存在、但 Git 未註冊，且只包含 agent artifact 目錄的 checkout。只有在其中每個檔案都與 repository 既有檔案 byte-identical 時才提議移除；其餘一律回報為 salvage 工作，即使加上 `--apply` 也絕不移除。
 - `dev sweep` 會處理 worktree 仍在磁碟上的 cold task。Inventory 一直有為 `dev ls` 與 dashboard 計算這項 drift，但 sweep 從未讀取它，因此只能顯示、無法處理。
 - `dev retire <path>` 會 reap 對應的 task record。先前只有 by-task 形式會設定 task identity，因此以 path 退休同一個 checkout 會留下 record；DONE 狀態與 identity 檢查維持不變。
+- `dev version` 會回報目前執行的 build 是否為已發布的 release，`dev doctor` 也帶有同一行資訊。先前工具中沒有任何地方能回答「我是不是最新的？」，而 `go install ...@latest` 只會解析到最新的 tag，因此未 tag 的 feature 對安裝者而言等同不存在。
+- Release 會發布各平台 archive 與 `SHA256SUMS`，並以 `CHANGELOG.md` 對應段落作為 release notes。先前的 release 只產生 GitHub release 物件，因此那些版本本來就沒有附加檔案。
 
 ## Claude Code status matrix
 

@@ -76,6 +76,8 @@ These were historical gaps and should not be reintroduced as limitations:
 - `dev sweep` reports a task-recorded checkout that exists but Git does not register and that holds nothing but agent artifact directories. Removal is offered only when every file inside is byte-identical to one already in the repository; anything else is reported as salvage work and is never removed, including under `--apply`.
 - `dev sweep` acts on a cold task whose worktree is still on disk. Inventory has always computed that drift for `dev ls` and the dashboard, but sweep never consulted it, so it was displayed and not actionable.
 - `dev retire <path>` reaps the matching task record. Only the by-task form set the task identity, so retiring the same checkout by path left the record behind; the DONE-state and identity checks are unchanged.
+- `dev version` reports whether the running build is a published release, and `dev doctor` carries the same line. Nothing in the tool answered "am I current?" before, and `go install ...@latest` resolves to the newest tag, so an untagged feature was invisible to anyone installing it.
+- A release publishes platform archives and `SHA256SUMS` and takes its notes from `CHANGELOG.md`. Earlier releases published a GitHub release object and nothing else, so their assets are absent by construction.
 
 ## Claude Code status matrix
 
