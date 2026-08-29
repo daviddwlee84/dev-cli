@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -98,7 +99,9 @@ invoke an agent or persist the generated journal.`,
 				enc.SetIndent("", "  ")
 				return enc.Encode(report)
 			}
-			journal.RenderMarkdown(app.Out, report, metrics)
+			var doc bytes.Buffer
+			journal.RenderMarkdown(&doc, report, metrics)
+			fmt.Fprint(app.Out, renderMarkdown(doc.String(), app.outStyle()))
 			return nil
 		},
 	}

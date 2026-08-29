@@ -6,7 +6,10 @@
 // retyping a task name.
 package tui
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+)
 
 // Colours are chosen from the 256-colour cube rather than truecolour so the
 // dashboard degrades sensibly in a basic terminal, and lipgloss adapts them to
@@ -31,3 +34,16 @@ var (
 	styleLive  = lipgloss.NewStyle().Foreground(lipgloss.Color("78"))
 	styleDrift = lipgloss.NewStyle().Foreground(lipgloss.Color("203"))
 )
+
+// SetColorEnabled makes the dashboard honour dev's global --color flag, which
+// previously stopped at the non-interactive commands: the styles below are
+// package-level, but lipgloss resolves their colours through the default
+// renderer at render time, so switching the profile before the program starts
+// is enough to strip them.
+func SetColorEnabled(enabled bool) {
+	if enabled {
+		lipgloss.SetColorProfile(termenv.ColorProfile())
+		return
+	}
+	lipgloss.SetColorProfile(termenv.Ascii)
+}

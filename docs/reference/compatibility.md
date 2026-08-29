@@ -71,6 +71,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - A stray argument to a command family is an error rather than a silent help render. `dev wt bogus` used to print `dev wt` help and exit 0 because a family has no `Run` of its own; every family node now reports the unknown subcommand and exits 1, while a bare family still prints its help and exits 0.
 - Argument-count and flag errors print the failing command's usage block. `--color` still governs whether that block is colorized.
 - Each command family's help carries an ASCII orientation diagram and a `See also: dev help <topic>` pointer, and `dev help <command>` resolves a command name or alias to its topic, so `dev help wt` reaches the worktrees page.
+- Semantic color covers every human-readable surface, including the interactive dashboard: `dev --color never`, `NO_COLOR` and `TERM=dumb` now disable dashboard color too, which they previously did not.
 
 ## Claude Code status matrix
 

@@ -118,10 +118,11 @@ func renderSkillTable(app *App, rows []agentskill.Skill, projectRoot string, pro
 		fmt.Fprintln(app.Out, "No agent skills found.")
 		return nil
 	}
-	t := NewTable("SCOPE", "SKILL", "UPDATE", "AGENTS", "SOURCE", "PATH")
+	style := app.outStyle()
+	t := app.newTable("SCOPE", "SKILL", "UPDATE", "AGENTS", "SOURCE", "PATH")
 	for _, row := range rows {
-		t.Add(string(row.Scope), row.Name, shortUpdate(row.UpdateStatus), compactAgents(row.Agents),
-			dash(row.Source), config.Contract(row.Path))
+		t.Add(style.dim(string(row.Scope)), row.Name, style.updateState(shortUpdate(row.UpdateStatus)),
+			compactAgents(row.Agents), dash(row.Source), config.Contract(row.Path))
 	}
 	t.Render(app.Out)
 	return nil

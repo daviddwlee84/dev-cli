@@ -90,7 +90,7 @@ a conflict, so dev asks before doing it.`,
 						t.WorktreePath = res.Path
 						setTaskRuntime(t, rt, res.Runtime)
 						reportProvision(app, res)
-						fmt.Fprintf(app.Out, "   rebuilt    %s\n", config.Contract(res.Path))
+						fmt.Fprintf(app.Out, "   %s    %s\n", app.outStyle().label("rebuilt"), config.Contract(res.Path))
 					}
 					checkout = t.WorktreePath
 				}
@@ -156,16 +156,17 @@ a conflict, so dev asks before doing it.`,
 			}
 			annotate(app, rt, t)
 
+			style := app.outStyle()
 			fmt.Fprintf(app.Out, "%s %s  %s on %s (%s)\n",
-				task.Hot.Icon(), t.Title(), t.Repo, t.Branch, mode)
+				task.Hot.Icon(), t.Title(), t.Repo, t.Branch, style.dim(string(mode)))
 			if t.Next != "" {
-				fmt.Fprintf(app.Out, "   next      %s\n", t.Next)
+				fmt.Fprintf(app.Out, "   %s      %s\n", style.label("next"), t.Next)
 			}
 			if t.AgentSession != "" {
-				fmt.Fprintf(app.Out, "   agent     %s (resumable)\n", t.AgentSession)
+				fmt.Fprintf(app.Out, "   %s     %s (resumable)\n", style.label("agent"), t.AgentSession)
 			}
 			if st, err := gitx.StatusOf(ctx, checkout); err == nil {
-				fmt.Fprintf(app.Out, "   git       %s\n", st.Summary())
+				fmt.Fprintf(app.Out, "   %s       %s\n", style.label("git"), style.git(st.Summary()))
 				if st.Behind > 0 {
 					app.warnf("branch is %d behind upstream — `git pull --ff-only` before you start", st.Behind)
 				}

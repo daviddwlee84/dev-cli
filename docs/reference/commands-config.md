@@ -91,9 +91,19 @@ A repository may commit `.dev.toml` for worktree provisioning overrides that sho
 
 ## Colored output
 
-Human-readable output (tables, `dev status`, the `dev done` finish wizard, warnings, and cobra help) applies semantic ANSI color through a small set of roles: `title`/`header`/`prompt` (bold cyan), `label`/`dim` (dim), `success` (green), `warning` (yellow), `danger` (bold red), and `review` (magenta, for a PR/review handoff). Git-status and task-state strings are colored by their own meaning instead of a fixed role — `clean` is green, `dirty`/`ahead`/`behind`/`conflict` are yellow or red as appropriate.
+Every human-readable surface applies semantic ANSI color through a small set of roles: `title`/`header`/`prompt` (bold cyan), `label`/`dim` (dim), `success` (green), `warning` (yellow), `danger` (bold red), `review` (magenta, for a PR/review handoff), and `strong`/`code` for Markdown. Values that carry their own meaning are colored by that meaning rather than by a fixed role:
 
-Control it with the global `--color <auto|always|never>` flag (default `auto`). `auto` disables color when output is not attached to a terminal, when `NO_COLOR` is set to any non-empty value, or when `TERM=dumb`. `--json` output is never colored regardless of mode. There is no config-file field for color — `--color` and the environment are the only controls, so piping `dev` never requires `--color never` to stay clean.
+| Value | Green | Yellow | Red |
+|---|---|---|---|
+| Git status | `clean` | `dirty`, `ahead`, `behind`, `no checkout` | `conflict`, `error` |
+| Task state | `hot`, `done` | `warm`, `cold`, `parked` | — |
+| Fleet host | `ok` | `stale`, `no-dev` | `unreachable`, `timeout`, `incompatible` |
+| Skill update | `current` | `update` | `missing`, `failed` |
+| Artifact intent | `finalized` | `armed`, `finalizing` | `failed` |
+
+`dev journal` and `dev summary` emit Markdown, so their headings and fenced code blocks are styled the same way `dev help <topic>` styles a quick-reference page. In command help, only the names you can type — command names and flag specs — are colored; descriptions stay plain, and the column alignment cobra computes is unaffected because a terminal gives an escape sequence no width.
+
+Control it with the global `--color <auto|always|never>` flag (default `auto`). `auto` disables color when output is not attached to a terminal, when `NO_COLOR` is set to any non-empty value, or when `TERM=dumb`. The setting reaches the interactive dashboard as well, so `dev --color never` renders it without color. `--json` output is never colored regardless of mode. There is no config-file field for color — `--color` and the environment are the only controls, so piping `dev` never requires `--color never` to stay clean.
 
 ## Shell integration
 

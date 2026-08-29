@@ -180,10 +180,11 @@ command.`,
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(app.Out, "%s  %s\n", branch, config.Contract(res.Path))
+			style := app.outStyle()
+			fmt.Fprintf(app.Out, "%s  %s\n", style.success(branch), config.Contract(res.Path))
 			reportProvision(app, res)
 			if res.Runtime.Handle != "" && res.RuntimeName != "none" {
-				fmt.Fprintf(app.Out, "   session   %s %s\n", res.RuntimeName, res.Runtime.Handle)
+				fmt.Fprintf(app.Out, "   %s   %s %s\n", style.label("session"), res.RuntimeName, res.Runtime.Handle)
 			}
 			if track {
 				fmt.Fprintln(app.Err, "note: `dev start` also records a task, which is what makes the work survive closing the session")
@@ -231,9 +232,10 @@ func newWtOpenCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(app.Out, "%s  %s", w.Branch, config.Contract(w.Path))
+			style := app.outStyle()
+			fmt.Fprintf(app.Out, "%s  %s", style.success(w.Branch), config.Contract(w.Path))
 			if rt.Name() != "none" {
-				fmt.Fprintf(app.Out, "  (%s %s)", rt.Name(), opened.Handle)
+				fmt.Fprintf(app.Out, "  %s", style.dim(fmt.Sprintf("(%s %s)", rt.Name(), opened.Handle)))
 			}
 			fmt.Fprintln(app.Out)
 			if rt.Name() == "none" {
@@ -295,14 +297,16 @@ A checkout with uncommitted changes needs an explicit --force.`,
 				closeUnknown, assumeNoRuntime, timeout); err != nil {
 				return err
 			}
-			fmt.Fprintf(app.Out, "removed %s (branch %s kept)\n", config.Contract(w.Path), w.Branch)
+			style := app.outStyle()
+			fmt.Fprintf(app.Out, "%s %s %s\n", style.success("removed"), config.Contract(w.Path),
+				style.dim(fmt.Sprintf("(branch %s kept)", w.Branch)))
 
 			// Keep the registry honest about what is now gone.
 			if t, err := app.Tasks.FindByWorktree(w.Path); err == nil {
 				t.WorktreePath = ""
 				clearTaskRuntime(t)
 				if err := app.Tasks.Save(t); err == nil {
-					fmt.Fprintf(app.Out, "task %s updated — the branch still has the work\n", t.ID)
+					fmt.Fprintf(app.Out, "%s %s — the branch still has the work\n", style.label("task"), t.ID)
 				}
 			}
 			return nil

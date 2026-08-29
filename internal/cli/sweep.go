@@ -55,6 +55,7 @@ Nothing here ever deletes uncommitted work.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
+			style := app.outStyle()
 			tasks, err := app.Tasks.List()
 			if err != nil {
 				return err
@@ -89,27 +90,27 @@ Nothing here ever deletes uncommitted work.`,
 							if len(s.Dirs) > 0 {
 								dir = config.Contract(s.Dirs[0])
 							}
-							fmt.Fprintf(app.Out, "  %-24s %s\n", truncate(s.Label, 24), dir)
+							fmt.Fprintf(app.Out, "  %-24s %s\n", truncate(s.Label, 24), style.dim(dir))
 						}
-						fmt.Fprintln(app.Out, "  → `dev start` in one of those directories to track it, or just close it.")
+						fmt.Fprintln(app.Out, style.dim("  → `dev start` in one of those directories to track it, or just close it."))
 					}
 				}
 			}
 
 			if len(sugg) == 0 {
-				fmt.Fprintln(app.Out, "\nNothing to sweep — no task drift or eligible merged worktree was found.")
+				fmt.Fprintln(app.Out, style.success("\nNothing to sweep")+" — no task drift or eligible merged worktree was found.")
 				return nil
 			}
 
-			fmt.Fprintf(app.Out, "\n%d suggestion(s):\n\n", len(sugg))
+			fmt.Fprintf(app.Out, "\n%s\n\n", style.title(fmt.Sprintf("%d suggestion(s):", len(sugg))))
 			for _, s := range sugg {
 				fmt.Fprintf(app.Out, "  %s %-28s %s\n", s.row.Task.State.Icon(),
-					truncate(s.row.Task.Title(), 28), s.reason)
+					truncate(s.row.Task.Title(), 28), style.warning(s.reason))
 				fmt.Fprintf(app.Out, "     → %s\n", s.action)
 			}
 
 			if !apply {
-				fmt.Fprintln(app.Out, "\nRe-run with --apply to act on these (each is confirmed individually).")
+				fmt.Fprintln(app.Out, style.dim("\nRe-run with --apply to act on these (each is confirmed individually)."))
 				return nil
 			}
 
@@ -125,7 +126,7 @@ Nothing here ever deletes uncommitted work.`,
 					app.warnf("%s: %v", s.row.Task.ID, err)
 					continue
 				}
-				fmt.Fprintf(app.Out, "  done: %s\n", s.action)
+				fmt.Fprintf(app.Out, "  %s %s\n", style.success("done:"), s.action)
 			}
 			return nil
 		},

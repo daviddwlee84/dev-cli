@@ -61,7 +61,7 @@ func TestCobraHelpColorModes(t *testing.T) {
 }
 
 func TestColoredTablePreservesPlainAlignment(t *testing.T) {
-	plain := NewTable("名稱", "STATE", "GIT")
+	plain := &Table{head: []string{"名稱", "STATE", "GIT"}}
 	plain.Add("專案", "HOT", "clean")
 	plain.Add("alpha", "WARM", "⇡2 !1")
 	var plainOut bytes.Buffer
@@ -146,5 +146,68 @@ func TestPrompterColorAndPlainFallbackMatch(t *testing.T) {
 	}
 	if stripANSI(colored) != plain {
 		t.Fatalf("color changed prompt text: colored=%q plain=%q", colored, plain)
+	}
+}
+
+func TestStateColorizersSeparateHealthFromTrouble(t *testing.T) {
+	style := cliStyle{enabled: true}
+	for name, tc := range map[string]struct{ got, want string }{
+		"host ok":            {style.hostState("ok"), style.success("ok")},
+		"host stale":         {style.hostState("stale"), style.warning("stale")},
+		"host unreachable":   {style.hostState("unreachable"), style.danger("unreachable")},
+		"skill current":      {style.updateState("current"), style.success("current")},
+		"skill update":       {style.updateState("update"), style.warning("update")},
+		"skill failed":       {style.updateState("failed"), style.danger("failed")},
+		"skill unchecked":    {style.updateState("unchecked"), style.dim("unchecked")},
+		"intent finalized":   {style.artifactState("finalized"), style.success("finalized")},
+		"intent armed":       {style.artifactState("armed"), style.warning("armed")},
+		"intent discarded":   {style.artifactState("discarded"), style.dim("discarded")},
+		"intent failed hard": {style.artifactState("failed"), style.danger("failed")},
+	} {
+		if tc.got != tc.want {
+			t.Errorf("%s: got %q, want %q", name, tc.got, tc.want)
+		}
+	}
+}
+
+func TestStateColorizersAreInertWhenDisabled(t *testing.T) {
+	style := cliStyle{}
+	for _, got := range []string{
+		style.hostState("unreachable"), style.updateState("update"), style.artifactState("armed"),
+		style.strong("x"), style.code("y"),
+	} {
+		if strings.Contains(got, "\x1b[") {
+			t.Errorf("disabled style emitted ANSI: %q", got)
+		}
+	}
+}
+
+func TestCobraHelpColorsNamesAndLeavesDescriptionsAlone(t *testing.T) {
+	body := strings.Join([]string{
+		"Available Commands:",
+		"  create      Create a worktree at the configured path",
+		"",
+		"Flags:",
+		"  -h, --help   help for wt",
+		"      --json   emit a stable machine-readable JSON array",
+		"",
+	}, "\n")
+
+	colored := renderCobraHelp(body, cliStyle{enabled: true})
+	if stripANSI(colored) != body {
+		t.Fatalf("coloring changed the plain text:\n%q\n%q", stripANSI(colored), body)
+	}
+	style := cliStyle{enabled: true}
+	for _, want := range []string{style.code("create"), style.code("-h, --help"), style.code("--json")} {
+		if !strings.Contains(colored, want) {
+			t.Errorf("help did not color %q:\n%q", stripANSI(want), colored)
+		}
+	}
+	// A description must stay plain, or the whole page reads as one color.
+	if strings.Contains(colored, style.code("Create a worktree at the configured path")) {
+		t.Error("help colored a description")
+	}
+	if plain := renderCobraHelp(body, cliStyle{}); plain != body {
+		t.Error("disabled style rewrote the help body")
 	}
 }

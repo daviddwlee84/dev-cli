@@ -94,7 +94,7 @@ machine, which is exactly what parking needs to support.`,
 						return err
 					}
 					if made {
-						fmt.Fprintf(app.Out, "   committed  %s\n", msg)
+						fmt.Fprintf(app.Out, "   %s  %s\n", app.outStyle().label("committed"), msg)
 					}
 				case st.Dirty() && cold:
 					return fmt.Errorf("%s has uncommitted changes; going cold removes the worktree.\n"+
@@ -150,7 +150,7 @@ machine, which is exactly what parking needs to support.`,
 						return closeErr
 					}
 					if closed.ClosedSessions > 0 {
-						fmt.Fprintf(app.Out, "   closed     %d %s session(s)\n", closed.ClosedSessions, rt.Name())
+						fmt.Fprintf(app.Out, "   %s     %d %s session(s)\n", app.outStyle().label("closed"), closed.ClosedSessions, rt.Name())
 					}
 					clearTaskRuntime(t)
 				}
@@ -176,9 +176,10 @@ machine, which is exactly what parking needs to support.`,
 			if err := app.Tasks.Save(t); err != nil {
 				return err
 			}
-			fmt.Fprintf(app.Out, "%s %s is %s", target.Icon(), t.Title(), target.Label())
+			style := app.outStyle()
+			fmt.Fprintf(app.Out, "%s %s is %s", target.Icon(), t.Title(), style.taskStateFor(string(target), target.Label()))
 			if t.Next != "" {
-				fmt.Fprintf(app.Out, " — next: %s", t.Next)
+				fmt.Fprintf(app.Out, " — %s %s", style.label("next:"), t.Next)
 			}
 			fmt.Fprintln(app.Out)
 			return nil
@@ -203,7 +204,7 @@ func pushBranch(ctx context.Context, app *App, dir, branch string) error {
 	if _, err := gitx.Run(ctx, dir, "push", "--set-upstream", "origin", branch); err != nil {
 		return fmt.Errorf("push %s: %w", branch, err)
 	}
-	fmt.Fprintf(app.Out, "   pushed     origin/%s\n", branch)
+	fmt.Fprintf(app.Out, "   %s     origin/%s\n", app.outStyle().label("pushed"), branch)
 	return nil
 }
 

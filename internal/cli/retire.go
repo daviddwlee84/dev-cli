@@ -55,16 +55,17 @@ with --close-unknown; working, blocked and waiting agents are never overridden.`
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(app.Out, "RETIRED %s\n", config.Contract(target.CheckoutPath))
-			fmt.Fprintf(app.Out, "   runtime  %d session(s) closed\n", result.ClosedSessions)
+			style := app.outStyle()
+			fmt.Fprintf(app.Out, "%s %s\n", style.success("RETIRED"), config.Contract(target.CheckoutPath))
+			fmt.Fprintf(app.Out, "   %s  %d session(s) closed\n", style.label("runtime"), result.ClosedSessions)
 			if result.RemovedWorktree {
-				fmt.Fprintln(app.Out, "   worktree removed")
+				fmt.Fprintf(app.Out, "   %s removed\n", style.label("worktree"))
 			}
 			if result.DeletedBranch {
-				fmt.Fprintf(app.Out, "   branch   %s deleted\n", target.Branch)
+				fmt.Fprintf(app.Out, "   %s   %s deleted\n", style.label("branch"), target.Branch)
 			}
 			if result.DeletedTask {
-				fmt.Fprintf(app.Out, "   task     %s reaped\n", target.TaskID)
+				fmt.Fprintf(app.Out, "   %s     %s reaped\n", style.label("task"), target.TaskID)
 			}
 			return nil
 		},

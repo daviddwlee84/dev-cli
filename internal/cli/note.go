@@ -407,7 +407,7 @@ func renderNotes(app *App, notes []*note.Note, jsonOut bool) error {
 		fmt.Fprintln(app.Out, "No notes.")
 		return nil
 	}
-	t := NewTable("ID", "WHEN", "REPO", "TAGS", "THOUGHT")
+	t := app.newTable("ID", "WHEN", "REPO", "TAGS", "THOUGHT")
 	for _, n := range notes {
 		t.Add(n.ID[:8], humanAge(time.Since(n.Created)), n.Repository,
 			dash(strings.Join(n.Tags, ",")), truncate(n.Preview(80), 80))

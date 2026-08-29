@@ -95,10 +95,19 @@ Repository 可 commit `.dev.toml`，保存應跟著 project 移動的 worktree p
 
 ## 彩色輸出
 
-Human-readable output（tables、`dev status`、`dev done` finish wizard、warnings 與 cobra help）會透過一組 semantic role 套用 ANSI color：`title`/`header`/`prompt`（bold cyan）、`label`/`dim`（dim）、`success`（green）、`warning`（yellow）、`danger`（bold red），以及代表 PR/review handoff 的 `review`（magenta）。Git-status 與 task-state 字串則依它自身的意義上色，而非固定 role —— `clean` 是 green，`dirty`/`ahead`/`behind`/`conflict` 依情況為 yellow 或 red。
+所有 human-readable 介面都透過一組 semantic role 套用 ANSI color：`title`/`header`/`prompt`（bold cyan）、`label`/`dim`（dim）、`success`（green）、`warning`（yellow）、`danger`（bold red）、代表 PR/review handoff 的 `review`（magenta），以及 Markdown 用的 `strong`/`code`。本身帶有意義的值依其意義上色，而非固定 role：
 
-用全域的 `--color <auto|always|never>` flag 控制（預設 `auto`）。`auto` 在 output 未連接 terminal、`NO_COLOR` 被設為任何非空值，或 `TERM=dumb` 時會停用 color。`--json` output 不論 mode 為何都不會上色。目前沒有對應的 config-file 欄位 —— `--color` 與 environment 是僅有的控制方式，因此 pipe `dev` 的輸出不需要額外傳 `--color never` 就是乾淨的。
+| 值 | 綠色 | 黃色 | 紅色 |
+|---|---|---|---|
+| Git status | `clean` | `dirty`、`ahead`、`behind`、`no checkout` | `conflict`、`error` |
+| Task state | `hot`、`done` | `warm`、`cold`、`parked` | — |
+| Fleet host | `ok` | `stale`、`no-dev` | `unreachable`、`timeout`、`incompatible` |
+| Skill update | `current` | `update` | `missing`、`failed` |
+| Artifact intent | `finalized` | `armed`、`finalizing` | `failed` |
 
+`dev journal` 與 `dev summary` 輸出 Markdown，因此其 heading 與 fenced code block 的樣式與 `dev help <topic>` 的 quick-reference 頁面相同。在 command help 中只有你會實際輸入的名稱 —— command 名稱與 flag spec —— 會上色；description 保持原色，且 cobra 計算出的欄位對齊不受影響，因為 terminal 不會給 escape sequence 任何寬度。
+
+用全域的 `--color <auto|always|never>` flag 控制（預設 `auto`）。`auto` 在 output 未連接 terminal、`NO_COLOR` 被設為任何非空值，或 `TERM=dumb` 時會停用 color。此設定同樣會傳到 interactive dashboard，因此 `dev --color never` 也會讓儀表板不上色。`--json` output 不論 mode 為何都不會上色。目前沒有對應的 config-file 欄位 —— `--color` 與 environment 是僅有的控制方式，因此 pipe `dev` 的輸出不需要額外傳 `--color never` 就是乾淨的。
 ## Shell integration
 
 ```bash

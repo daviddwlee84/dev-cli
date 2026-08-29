@@ -16,9 +16,6 @@ type Table struct {
 	style cliStyle
 }
 
-// NewTable starts a table with the given header.
-func NewTable(header ...string) *Table { return &Table{head: header} }
-
 // Add appends a row. Short rows are padded, long ones are truncated to the
 // header width so a stray field can never shift the whole table.
 func (t *Table) Add(cells ...string) {

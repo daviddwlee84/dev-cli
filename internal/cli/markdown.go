@@ -4,7 +4,8 @@ import (
 	"strings"
 )
 
-// renderMarkdown applies light terminal styling to a help page. This is
+// renderMarkdown applies light terminal styling to a Markdown document: help
+// pages, and the journal and summary reports. This is
 // deliberately not a full markdown renderer: the pages are written to read
 // well as plain text, and a heavyweight renderer would reflow the command
 // examples that need to stay copy-pasteable.
@@ -19,11 +20,11 @@ func renderMarkdown(body string, style cliStyle) string {
 		switch {
 		case strings.HasPrefix(trimmed, "```"):
 			inCode = !inCode
-			b.WriteString(ansiDim + line + ansiReset)
+			b.WriteString(style.dim(line))
 		case inCode:
-			b.WriteString(ansiCyan + line + ansiReset)
+			b.WriteString(style.code(line))
 		case strings.HasPrefix(trimmed, "#"):
-			b.WriteString(ansiBold + line + ansiReset)
+			b.WriteString(style.strong(line))
 		default:
 			b.WriteString(line)
 		}

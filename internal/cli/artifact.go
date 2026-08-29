@@ -223,10 +223,12 @@ func newArtifactListCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			table := NewTable("INTENT", "STATUS", "SESSION", "BRANCH", "COMMIT")
+			style := app.outStyle()
+			table := app.newTable("INTENT", "STATUS", "SESSION", "BRANCH", "COMMIT")
 			for _, intent := range intents {
-				table.Add(intent.ID, string(intent.Status), intent.Provider+":"+shortOID(intent.SessionID),
-					intent.Branch, shortOID(intent.ArtifactCommit))
+				table.Add(intent.ID, style.artifactState(string(intent.Status)),
+					style.dim(intent.Provider+":"+shortOID(intent.SessionID)),
+					intent.Branch, style.dim(shortOID(intent.ArtifactCommit)))
 			}
 			table.Render(app.Out)
 			return nil

@@ -181,6 +181,9 @@ func tuiStartedTask(r tui.RepoRow, name, branch, base string, res *wt.CreateResu
 }
 
 func runTUI(app *App) error {
+	// --color, NO_COLOR and TERM=dumb governed every other surface but stopped
+	// at the dashboard, which resolved its own palette independently.
+	tui.SetColorEnabled(app.outStyle().enabled)
 	rt := app.Runtime()
 	cwd, err := os.Getwd()
 	if err != nil {

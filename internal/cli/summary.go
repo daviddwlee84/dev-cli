@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -140,7 +141,9 @@ generates context; it does not invoke an AI agent or persist the rendered text.`
 				enc.SetIndent("", "  ")
 				return enc.Encode(report)
 			}
-			summary.RenderMarkdown(app.Out, report, parsedDetail, attention)
+			var doc bytes.Buffer
+			summary.RenderMarkdown(&doc, report, parsedDetail, attention)
+			fmt.Fprint(app.Out, renderMarkdown(doc.String(), app.outStyle()))
 			return nil
 		},
 	}

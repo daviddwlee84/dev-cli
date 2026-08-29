@@ -2374,9 +2374,19 @@ A repository may commit `.dev.toml` for worktree provisioning overrides that sho
 
 ## Colored output
 
-Human-readable output (tables, `dev status`, the `dev done` finish wizard, warnings, and cobra help) applies semantic ANSI color through a small set of roles: `title`/`header`/`prompt` (bold cyan), `label`/`dim` (dim), `success` (green), `warning` (yellow), `danger` (bold red), and `review` (magenta, for a PR/review handoff). Git-status and task-state strings are colored by their own meaning instead of a fixed role — `clean` is green, `dirty`/`ahead`/`behind`/`conflict` are yellow or red as appropriate.
+Every human-readable surface applies semantic ANSI color through a small set of roles: `title`/`header`/`prompt` (bold cyan), `label`/`dim` (dim), `success` (green), `warning` (yellow), `danger` (bold red), `review` (magenta, for a PR/review handoff), and `strong`/`code` for Markdown. Values that carry their own meaning are colored by that meaning rather than by a fixed role:
 
-Control it with the global `--color <auto|always|never>` flag (default `auto`). `auto` disables color when output is not attached to a terminal, when `NO_COLOR` is set to any non-empty value, or when `TERM=dumb`. `--json` output is never colored regardless of mode. There is no config-file field for color — `--color` and the environment are the only controls, so piping `dev` never requires `--color never` to stay clean.
+| Value | Green | Yellow | Red |
+|---|---|---|---|
+| Git status | `clean` | `dirty`, `ahead`, `behind`, `no checkout` | `conflict`, `error` |
+| Task state | `hot`, `done` | `warm`, `cold`, `parked` | — |
+| Fleet host | `ok` | `stale`, `no-dev` | `unreachable`, `timeout`, `incompatible` |
+| Skill update | `current` | `update` | `missing`, `failed` |
+| Artifact intent | `finalized` | `armed`, `finalizing` | `failed` |
+
+`dev journal` and `dev summary` emit Markdown, so their headings and fenced code blocks are styled the same way `dev help <topic>` styles a quick-reference page. In command help, only the names you can type — command names and flag specs — are colored; descriptions stay plain, and the column alignment cobra computes is unaffected because a terminal gives an escape sequence no width.
+
+Control it with the global `--color <auto|always|never>` flag (default `auto`). `auto` disables color when output is not attached to a terminal, when `NO_COLOR` is set to any non-empty value, or when `TERM=dumb`. The setting reaches the interactive dashboard as well, so `dev --color never` renders it without color. `--json` output is never colored regardless of mode. There is no config-file field for color — `--color` and the environment are the only controls, so piping `dev` never requires `--color never` to stay clean.
 
 ## Shell integration
 
@@ -3631,6 +3641,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - A stray argument to a command family is an error rather than a silent help render. `dev wt bogus` used to print `dev wt` help and exit 0 because a family has no `Run` of its own; every family node now reports the unknown subcommand and exits 1, while a bare family still prints its help and exits 0.
 - Argument-count and flag errors print the failing command's usage block. `--color` still governs whether that block is colorized.
 - Each command family's help carries an ASCII orientation diagram and a `See also: dev help <topic>` pointer, and `dev help <command>` resolves a command name or alias to its topic, so `dev help wt` reaches the worktrees page.
+- Semantic color covers every human-readable surface, including the interactive dashboard: `dev --color never`, `NO_COLOR` and `TERM=dumb` now disable dashboard color too, which they previously did not.
 
 ## Claude Code status matrix
 
@@ -6392,10 +6403,19 @@ Repository 可 commit `.dev.toml`，保存應跟著 project 移動的 worktree p
 
 ## 彩色輸出
 
-Human-readable output（tables、`dev status`、`dev done` finish wizard、warnings 與 cobra help）會透過一組 semantic role 套用 ANSI color：`title`/`header`/`prompt`（bold cyan）、`label`/`dim`（dim）、`success`（green）、`warning`（yellow）、`danger`（bold red），以及代表 PR/review handoff 的 `review`（magenta）。Git-status 與 task-state 字串則依它自身的意義上色，而非固定 role —— `clean` 是 green，`dirty`/`ahead`/`behind`/`conflict` 依情況為 yellow 或 red。
+所有 human-readable 介面都透過一組 semantic role 套用 ANSI color：`title`/`header`/`prompt`（bold cyan）、`label`/`dim`（dim）、`success`（green）、`warning`（yellow）、`danger`（bold red）、代表 PR/review handoff 的 `review`（magenta），以及 Markdown 用的 `strong`/`code`。本身帶有意義的值依其意義上色，而非固定 role：
 
-用全域的 `--color <auto|always|never>` flag 控制（預設 `auto`）。`auto` 在 output 未連接 terminal、`NO_COLOR` 被設為任何非空值，或 `TERM=dumb` 時會停用 color。`--json` output 不論 mode 為何都不會上色。目前沒有對應的 config-file 欄位 —— `--color` 與 environment 是僅有的控制方式，因此 pipe `dev` 的輸出不需要額外傳 `--color never` 就是乾淨的。
+| 值 | 綠色 | 黃色 | 紅色 |
+|---|---|---|---|
+| Git status | `clean` | `dirty`、`ahead`、`behind`、`no checkout` | `conflict`、`error` |
+| Task state | `hot`、`done` | `warm`、`cold`、`parked` | — |
+| Fleet host | `ok` | `stale`、`no-dev` | `unreachable`、`timeout`、`incompatible` |
+| Skill update | `current` | `update` | `missing`、`failed` |
+| Artifact intent | `finalized` | `armed`、`finalizing` | `failed` |
 
+`dev journal` 與 `dev summary` 輸出 Markdown，因此其 heading 與 fenced code block 的樣式與 `dev help <topic>` 的 quick-reference 頁面相同。在 command help 中只有你會實際輸入的名稱 —— command 名稱與 flag spec —— 會上色；description 保持原色，且 cobra 計算出的欄位對齊不受影響，因為 terminal 不會給 escape sequence 任何寬度。
+
+用全域的 `--color <auto|always|never>` flag 控制（預設 `auto`）。`auto` 在 output 未連接 terminal、`NO_COLOR` 被設為任何非空值，或 `TERM=dumb` 時會停用 color。此設定同樣會傳到 interactive dashboard，因此 `dev --color never` 也會讓儀表板不上色。`--json` output 不論 mode 為何都不會上色。目前沒有對應的 config-file 欄位 —— `--color` 與 environment 是僅有的控制方式，因此 pipe `dev` 的輸出不需要額外傳 `--color never` 就是乾淨的。
 ## Shell integration
 
 ```bash
@@ -7651,6 +7671,7 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - 對 command family 傳入多餘的 argument 現在是 error，而不是安靜地印出 help。`dev wt bogus` 過去會印出 `dev wt` help 並 exit 0，因為 family 本身沒有 `Run`；現在每個 family node 都會回報未知 subcommand 並 exit 1，而單獨執行 family 仍會印出 help 並 exit 0。
 - Argument 數量與 flag 錯誤會印出該 command 的 usage block。該 block 是否上色仍由 `--color` 決定。
 - 每個 command family 的 help 都附上 ASCII orientation diagram 與 `See also: dev help <topic>` 指引，且 `dev help <command>` 會把 command 名稱或 alias 解析成對應 topic，因此 `dev help wt` 會連到 worktrees 頁面。
+- Semantic color 已覆蓋所有 human-readable 介面，包含 interactive dashboard：`dev --color never`、`NO_COLOR` 與 `TERM=dumb` 現在也會關閉 dashboard 的顏色，先前並不會。
 
 ## Claude Code status matrix
 

@@ -417,10 +417,12 @@ func syncFleetHosts(ctx context.Context, hosts []fleet.Host, maxParallel int, re
 }
 
 func renderFleetSync(app *App, source fleet.SyncResult, targets []fleet.SyncResult) {
-	table := NewTable("HOST", "STATE", "REPO", "BRANCH", "PATH", "DETAIL")
-	table.Add(source.Host, string(source.State), source.Repo, source.Branch, config.Contract(source.Path), "source")
+	style := app.outStyle()
+	table := app.newTable("HOST", "STATE", "REPO", "BRANCH", "PATH", "DETAIL")
+	table.Add(source.Host, style.hostState(string(source.State)), source.Repo, source.Branch, config.Contract(source.Path), style.dim("source"))
 	for _, result := range targets {
-		table.Add(result.Host, string(result.State), dash(result.Repo), dash(result.Branch), config.Contract(result.Path), truncate(result.Error, 64))
+		table.Add(result.Host, style.hostState(string(result.State)), dash(result.Repo), dash(result.Branch),
+			config.Contract(result.Path), style.warning(truncate(result.Error, 64)))
 	}
 	table.Render(app.Out)
 }
@@ -644,12 +646,23 @@ func newFleetListCmd(app *App) *cobra.Command {
 	return cmd
 }
 
+// fleetLive keeps the placeholder neutral: an em dash means "no runtime here",
+// which is not a success worth painting green.
+func fleetLive(style cliStyle, live string) string {
+	if live == "" {
+		return "—"
+	}
+	return style.success(live)
+}
+
 func renderFleetList(app *App, results []fleet.HostResult, query string) {
-	table := NewTable("HOST", "STATE", "REPO", "BRANCH", "GIT", "LIVE", "TASKS", "LATEST", "PATH")
+	style := app.outStyle()
+	table := app.newTable("HOST", "STATE", "REPO", "BRANCH", "GIT", "LIVE", "TASKS", "LATEST", "PATH")
 	needle := strings.ToLower(strings.TrimSpace(query))
 	for _, result := range results {
 		if result.Snapshot == nil || len(result.Snapshot.Repositories) == 0 {
-			table.Add(result.Name, string(result.State), "—", "—", "—", "—", "—", "—", truncate(result.Error, 42))
+			table.Add(result.Name, style.hostState(string(result.State)), "—", "—", "—", "—", "—", "—",
+				style.warning(truncate(result.Error, 42)))
 			continue
 		}
 		for _, repository := range result.Snapshot.Repositories {
@@ -668,8 +681,9 @@ func renderFleetList(app *App, results []fleet.HostResult, query string) {
 			if !repository.LastActivity.IsZero() {
 				latest = humanAge(time.Since(repository.LastActivity))
 			}
-			table.Add(result.Name, string(result.State), truncate(repository.Display, 28), truncate(repository.Branch, 22),
-				repository.Status.Summary(), dash(live), fleetTaskSummary(repository.Tasks), latest, config.Contract(repository.Path))
+			table.Add(result.Name, style.hostState(string(result.State)), truncate(repository.Display, 28), truncate(repository.Branch, 22),
+				style.git(repository.Status.Summary()), fleetLive(style, live), fleetTaskSummary(repository.Tasks),
+				style.dim(latest), config.Contract(repository.Path))
 		}
 	}
 	table.Render(app.Out)
@@ -743,14 +757,16 @@ func newFleetStatusCmd(app *App) *cobra.Command {
 					return err
 				}
 			} else {
-				table := NewTable("HOST", "STATE", "REPOS", "SNAPSHOT", "DETAIL")
+				style := app.outStyle()
+				table := app.newTable("HOST", "STATE", "REPOS", "SNAPSHOT", "DETAIL")
 				for _, result := range results {
 					repos, age := "—", "—"
 					if result.Snapshot != nil {
 						repos = fmt.Sprintf("%d", len(result.Snapshot.Repositories))
 						age = humanAge(time.Since(result.Snapshot.GeneratedAt))
 					}
-					table.Add(result.Name, string(result.State), repos, age, truncate(result.Error, 72))
+					table.Add(result.Name, style.hostState(string(result.State)), repos, style.dim(age),
+						style.warning(truncate(result.Error, 72)))
 				}
 				table.Render(app.Out)
 				if len(cfg.Hosts) == 0 {

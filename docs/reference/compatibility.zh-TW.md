@@ -74,6 +74,7 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - 對 command family 傳入多餘的 argument 現在是 error，而不是安靜地印出 help。`dev wt bogus` 過去會印出 `dev wt` help 並 exit 0，因為 family 本身沒有 `Run`；現在每個 family node 都會回報未知 subcommand 並 exit 1，而單獨執行 family 仍會印出 help 並 exit 0。
 - Argument 數量與 flag 錯誤會印出該 command 的 usage block。該 block 是否上色仍由 `--color` 決定。
 - 每個 command family 的 help 都附上 ASCII orientation diagram 與 `See also: dev help <topic>` 指引，且 `dev help <command>` 會把 command 名稱或 alias 解析成對應 topic，因此 `dev help wt` 會連到 worktrees 頁面。
+- Semantic color 已覆蓋所有 human-readable 介面，包含 interactive dashboard：`dev --color never`、`NO_COLOR` 與 `TERM=dumb` 現在也會關閉 dashboard 的顏色，先前並不會。
 
 ## Claude Code status matrix
 

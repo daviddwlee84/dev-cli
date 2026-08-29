@@ -13,6 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `dev help <command>` now resolves a command name or alias to its topic, so `dev help wt`
   reaches the worktrees page instead of failing.
 - `dev help tries` and `dev help skills` quick-reference pages.
+- Semantic color now covers every human-readable surface. `dev fleet`, `dev skill`, `dev note`,
+  `dev artifact`, `dev retire`, `dev park`, `dev resume`, `dev wt` and the `dev sweep` report were
+  rendered entirely without it; fleet host state, skill update state and artifact intent state each
+  gained a colorizer alongside the existing Git-status and task-state ones.
+- `dev journal` and `dev summary` style their Markdown the way `dev help <topic>` does, and command
+  help colors command names and flag specs rather than only its section headings.
+- `--color` reaches the interactive dashboard, so `dev --color never` (and `NO_COLOR`, and
+  `TERM=dumb`) render it without color.
 
 ### Fixed
 
