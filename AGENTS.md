@@ -88,20 +88,29 @@ State is split intentionally:
 
 ## Versioning and changelog
 
-The current published baseline is `v0.1.0` (2026-08-28). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
+The current published baseline is `v0.1.11` (2026-08-29). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
 
-- `Makefile` derives development builds with `git describe --tags --always --dirty` and injects `internal/cli.Version` through `-ldflags`.
+- `Makefile` derives development builds with `git describe --tags --match 'v[0-9]*' --always --dirty` and injects `internal/cli.Version` through `-ldflags`. The `--match` filter is load-bearing: any other tag in the repository (a `backup/` or `rescue/` marker, say) must never become `--version`.
 - `go install ...@version` recovers the module version from Go build information.
 - `pyproject.toml` version `0.0.0` belongs only to the MkDocs environment and is not the CLI version.
 
-Every user-visible feature must be added to `[Unreleased]` in `CHANGELOG.md` as part of the feature change. Do not publish or describe a post-`v0.1.0` feature build as `v0.1.0`; a release containing new compatible behavior must receive a newer version (normally the next minor during `0.x`, while compatible fixes normally increment patch). Decide from public compatibility impact rather than blindly from the commit type.
+Every user-visible feature must be added to `[Unreleased]` in `CHANGELOG.md` as part of the feature change. Do not publish or describe a feature build under an older release's version; a release containing new compatible behavior must receive a newer version. Decide from public compatibility impact rather than blindly from the commit type.
+
+**When to release.** A tag is not an occasional ceremony; it is how a downstream binary learns it is stale. `go install ...@latest` resolves to the newest tag, so anything merged but untagged is invisible outside this repository.
+
+- A landed branch that stands alone is released immediately: bump the patch during `0.x` (`v0.1.x`) and tag it as the last step of landing.
+- A landed branch belonging to an announced milestone accumulates in `[Unreleased]`; the milestone closes with a minor bump (`v0.2.0`).
+- Never let `[Unreleased]` grow past one milestone's worth of work. `v0.1.0` to `v0.1.11` were tagged retroactively on 2026-08-29 precisely because 38 commits accumulated with no release.
+
+**What downstream gets.** Every release from `v0.2.0` forward publishes platform binaries and `SHA256SUMS` alongside the GitHub release, and `dev doctor` reports the running version so a user can compare without leaving the terminal. A release that ships neither leaves `dev --version` as the only signal, which is what the freshness work exists to fix.
 
 For a release:
 
 1. Move the relevant `[Unreleased]` entries into `## [x.y.z] - YYYY-MM-DD` and update comparison links.
 2. Update version-pinned install examples when the documented recommended release changes.
-3. Tag the exact commit on `main` as `vMAJOR.MINOR.PATCH`; never move or reuse a published tag.
-4. Let `.github/workflows/release.yml` run CI, verify `./dev --version`, and create the GitHub release.
+3. Push `main` first. `release.yml` asserts the tagged commit is an ancestor of `origin/main`, so a tag pushed ahead of its branch fails validation.
+4. Tag the exact commit on `main` as `vMAJOR.MINOR.PATCH`; never move or reuse a published tag. Never push `backup/*` or `rescue/*` tags — a tag reachable from a commit that predates the `--match` filter breaks the workflow's `./dev --version` assertion.
+5. Let `.github/workflows/release.yml` run CI, verify `./dev --version`, build the platform matrix, and create the GitHub release.
 
 Stable release tags only are accepted by the current workflow; prerelease tags are not supported.
 

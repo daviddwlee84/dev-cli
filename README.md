@@ -56,7 +56,7 @@ does not write into your home directory or install the bundled agent skill.
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.1.0 instead when you need a reproducible install.
+# Pin @v0.1.11 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
