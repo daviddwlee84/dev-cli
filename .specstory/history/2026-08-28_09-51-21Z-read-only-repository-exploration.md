@@ -66889,7 +66889,8 @@ _**Agent - sidechain (gpt-5.6-sol 2026-08-28 12:49:51Z)**_
 79	   natively, so neither layer re-redacts the other's output. (`first3...last3`
 80	   still appears in the *console report*, where a fingerprint helps identify
 81	   which credential to rotate; `--legacy` writes it to the file instead.)
-82	3. Private-key PEM blocks (`[REDACTED:private-key]`) are replaced wholesale with
+82	3. Private-key PEM blocks (`-----BEGIN ... PRIVATE KEY-----` … `-----END
+83	   ... PRIVATE KEY-----`) are replaced wholesale with
 84	   `[REDACTED:private-key]` — SpecStory's own label for this class — and any
 85	   stray key **header** token (a truncated key, or a header quoted in prose)
 86	   with `[REDACTED:private-key-header]`. These
