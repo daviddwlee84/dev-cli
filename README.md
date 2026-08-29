@@ -52,6 +52,16 @@ dev config init  # detects this machine's repo roots and writes a config
 The formula installs the `dev` binary plus bash, zsh and fish completions. It
 does not write into your home directory or install the bundled agent skill.
 
+### Scoop (Windows)
+
+```powershell
+scoop bucket add dev-cli https://github.com/daviddwlee84/scoop-bucket
+scoop install dev-cli
+```
+
+The manifest for each release is also attached to the GitHub release as
+`dev-cli.json` if you prefer `scoop install <url>`.
+
 ### Go or source
 
 ```bash
@@ -60,21 +70,37 @@ go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
-Every release also publishes `darwin/arm64`, `darwin/amd64`, `linux/amd64` and
-`linux/arm64` archives with a `SHA256SUMS` file, so a binary can be verified
-without a Go toolchain.
+Every release also publishes `darwin/arm64`, `darwin/amd64`, `linux/amd64`,
+`linux/arm64` (`.tar.gz`) and `windows/amd64`, `windows/arm64` (`.zip`) archives
+with a `SHA256SUMS` file, so a binary can be verified without a Go toolchain.
 
-To find out whether the binary you have is current:
+To find out whether the binary you have is current, and to update it:
 
 ```bash
 dev version           # what this build is, and whether it is a published release
-dev version --check   # also ask GitHub for the newest release (cached for a day)
+dev version --check    # also ask GitHub for the newest release (cached for a day)
 dev doctor            # reports the running version alongside every other check
+dev upgrade --check    # report whether a newer release exists
+dev upgrade            # download, verify against SHA256SUMS, and replace this binary
 ```
 
-`dev version --check` is the only part of `dev` that reaches the network without
-being asked to, so it is opt-in: `dev --version` and `dev doctor` stay local and
-work offline.
+`dev upgrade` replaces the binary in place only for a standalone install. If
+Homebrew, Scoop or `go install` owns the file, it prints that tool's upgrade
+command instead. Once a day an interactive `dev` command prints a one-line hint
+when a newer release is cached; set `[update] check = false` in `config.toml`
+(or export `DEV_NO_UPDATE_CHECK=1`) to silence it. Every network call here is
+either explicit or a best-effort background refresh — `dev --version` and
+`dev doctor` stay local and work offline.
+
+### Windows
+
+`dev` builds and runs on Windows, and core commands work. There is no tmux,
+Zellij or Herdr there, so `dev` uses the no-multiplexer backend (it prints a
+`cd` directive the shell wrapper consumes). Use the PowerShell wrapper:
+
+```powershell
+Invoke-Expression (& dev shell-init powershell | Out-String)
+```
 
 For a non-Homebrew install, generate completion files wherever your shell loads
 them:
@@ -96,6 +122,10 @@ Add the directory-changing wrapper to your shell rc file:
 eval "$(dev shell-init zsh)"      # zsh
 eval "$(dev shell-init bash)"     # bash
 dev shell-init fish | source      # fish
+```
+
+```powershell
+Invoke-Expression (& dev shell-init powershell | Out-String)   # PowerShell
 ```
 
 A child process cannot change its parent's working directory, so the wrapper

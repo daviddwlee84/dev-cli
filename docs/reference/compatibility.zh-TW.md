@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-08-28
+verified_on: 2026-08-29
 tested_with: Claude Code 2.1.250
 lang: zh-TW
 ---
@@ -26,6 +26,8 @@ lang: zh-TW
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
+| Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
+| in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為印出對應套件管理器的升級指令 |
 
 ## 已確認的專案限制
 
@@ -51,6 +53,15 @@ Task schema 有 `AgentSession`，Herdr inventory 也能顯示 live agent session
 但 forge inventory 現在會完整 pagination，因此不再限制 synchronization。
 `dev config init` 不再寫入它；`dev repo remote --limit` 只在完整 inventory 搜尋
 完成後限制 rendered matches。
+
+### Windows 是 build target，不是 full-feature 平台
+
+`dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心的 repository、task 與 worktree 操作可用。差異：
+
+- 沒有 tmux、Zellij 或 Herdr，因此 runtime backend 一律是 `none`。Grouped runtime/agent activity 與 named session 無法使用；`cd` 指令與 PowerShell wrapper 仍可運作。
+- Shell integration 是 `dev shell-init powershell`。POSIX shell 透過 file descriptor 3 回傳目錄；PowerShell 無法繼承它，wrapper 改用 `DEV_SHELL_CD_FILE` 傳入 temp-file path。
+- `dev fleet open` 會啟動子 shell（`%COMSPEC%`），而非取代 process，因為 Windows 沒有 `exec(2)`。
+- Domain test suites 仍有部分假設 POSIX filesystem，因此 Windows CI 的 test 僅供參考，compilation、`go vet` 與 build 則為強制項。
 
 ### Direct mode 的 lifecycle 較小
 
@@ -81,6 +92,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - `dev retire <path>` 會 reap 對應的 task record。先前只有 by-task 形式會設定 task identity，因此以 path 退休同一個 checkout 會留下 record；DONE 狀態與 identity 檢查維持不變。
 - `dev version` 會回報目前執行的 build 是否為已發布的 release，`dev doctor` 也帶有同一行資訊。先前工具中沒有任何地方能回答「我是不是最新的？」，而 `go install ...@latest` 只會解析到最新的 tag，因此未 tag 的 feature 對安裝者而言等同不存在。
 - Release 會發布各平台 archive 與 `SHA256SUMS`，並以 `CHANGELOG.md` 對應段落作為 release notes。先前的 release 只產生 GitHub release 物件，因此那些版本本來就沒有附加檔案。
+- Release 會在 Unix `.tar.gz` 之外一併發布 Windows `.zip`，並更新附在 release 上的 in-repo Scoop manifest（設定 token 時也會 push 到 bucket）。
+- `dev upgrade` 會下載此平台目前的 release、以 release `SHA256SUMS` 驗證，再以 atomic rename 取代執行中的 binary（Windows 會把 live `.exe` 移到旁邊，下次執行時清除）。若 Homebrew、Scoop 或 `go install` 擁有該檔案，則改為印出對應指令。
+- Interactive `dev` command 每天最多印一行 dim 的「有新版」提示，來源是一天內的 release cache，永不因網路而 block。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK` 可停用。
 
 ## Claude Code status matrix
 
@@ -117,4 +131,8 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - [`internal/note/index.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/index.go)
 - [`internal/note/store.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/store.go)
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
+- [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
+- [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
+- [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)

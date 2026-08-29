@@ -114,3 +114,7 @@ older releases report the missing switch capability instead of nesting a
 second client. Tmux and Zellij can report session creation/reuse but no pane.
 `none` emits a shell `cd` directive in human mode;
 `dev start --json` suppresses that directive and stays pure JSON.
+
+On Windows there is no tmux, Zellij or Herdr, so the backend is always `none`
+regardless of configuration. `dev shell-init powershell` still consumes the `cd`
+directive (via a `DEV_SHELL_CD_FILE` temp file rather than file descriptor 3).

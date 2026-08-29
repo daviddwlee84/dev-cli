@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Releases now publish `windows/amd64` and `windows/arm64` `.zip` archives alongside the
+  Unix `.tar.gz` set, all covered by `SHA256SUMS`. `dev` builds and runs on Windows; core
+  repository, task and worktree commands work. There is no tmux, Zellij or Herdr there, so
+  the runtime backend is always `none`, and `dev fleet open` starts a child shell rather than
+  replacing the process. Shell integration is `dev shell-init powershell`, which passes the
+  directory back through a `DEV_SHELL_CD_FILE` temp file since Windows cannot inherit
+  file descriptor 3. CI now includes `windows-latest` (build, `go vet` and `skill sync --check`
+  are enforced; the domain test suites run advisory-only until each POSIX assumption is guarded).
+- `dev upgrade` downloads the newest release for this platform, verifies it against the
+  release `SHA256SUMS`, and replaces the running binary with an atomic rename (Windows moves
+  the live `.exe` aside and sweeps it on the next run). It defers to Homebrew, Scoop or
+  `go install` when one of them owns the file. `dev upgrade --check` reports without changing
+  anything.
+- An interactive `dev` command prints one dim "newer release available" line at most once a
+  day, read only from the day-old release cache — it never blocks on the network, and a
+  best-effort background refresh keeps that cache warm. `[update] check = false` in
+  `config.toml` (or `DEV_NO_UPDATE_CHECK`) disables it. `dev version --check` gained a
+  `dev upgrade` hint and a `scoop update` hint on Windows.
+- A Scoop manifest (`packaging/scoop/dev-cli.json`) with `checkver`/`autoupdate`. The release
+  workflow refreshes its version and hashes, attaches it to the GitHub release, and pushes it
+  to the bucket repo when `SCOOP_BUCKET_TOKEN` is configured.
+
 ## [0.2.0] - 2026-08-29
 
 ### Added

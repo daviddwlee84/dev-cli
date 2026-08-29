@@ -103,7 +103,11 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 			if completionInvocation(cmd) {
 				return nil
 			}
-			return app.Load()
+			if err := app.Load(); err != nil {
+				return err
+			}
+			app.maybeNoteNewerRelease(cmd)
+			return nil
 		},
 	}
 
@@ -151,6 +155,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		newSkillCmd(app),
 		newDoctorCmd(app),
 		newVersionCmd(app),
+		newUpgradeCmd(app),
 		newShellInitCmd(app),
 		newConfigCmd(app),
 		newCacheCmd(app),
@@ -184,6 +189,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 // is printed here; ExecuteC hands back the command that failed so a usage
 // mistake can be answered with that command's usage rather than the root's.
 func Execute() int {
+	sweepStaleUpgradeArtifacts()
 	root := NewRootCommand()
 	cmd, err := root.ExecuteC()
 	if err == nil {

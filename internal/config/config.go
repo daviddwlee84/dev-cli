@@ -24,9 +24,19 @@ type Config struct {
 	TUI       TUI       `toml:"tui"`
 	Bootstrap Bootstrap `toml:"bootstrap"`
 	Forge     Forge     `toml:"forge"`
+	Update    Update    `toml:"update"`
 
 	// Source records where the config was loaded from; "" means defaults only.
 	Source string `toml:"-"`
+}
+
+// Update controls the release-freshness check.
+type Update struct {
+	// Check lets `dev` note when a newer release is available. It only ever
+	// reads a day-old cache on the command path; the network fetch that fills
+	// that cache is opportunistic and best-effort. Set to false (or export
+	// DEV_NO_UPDATE_CHECK) on CI and air-gapped machines.
+	Check bool `toml:"check"`
 }
 
 // Paths tells dev where repos live and where derived state goes. Every entry
@@ -270,6 +280,7 @@ func Default() Config {
 			WakaTime:       false,
 			WakaTimeConfig: "~/.wakatime.cfg",
 		},
+		Update: Update{Check: true},
 	}
 }
 

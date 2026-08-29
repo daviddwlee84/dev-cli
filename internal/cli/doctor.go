@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
@@ -61,6 +62,13 @@ func runDoctor(app *App) error {
 	// What am I running? A build several commits past its last release behaves
 	// differently from that release, and `dev --version` alone does not say so.
 	checks = append(checks, check{"dev", checkOK, versionSummary()})
+
+	// Windows has no tmux/Zellij/Herdr, so a warning against those backends
+	// below is expected rather than something to fix.
+	if goruntime.GOOS == "windows" {
+		checks = append(checks, check{"platform", checkWarn,
+			"windows — tmux, Zellij and Herdr are unavailable; dev uses the no-multiplexer backend"})
+	}
 
 	// Required.
 	if v, err := exec.CommandContext(ctx, "git", "--version").Output(); err == nil {
@@ -133,8 +141,12 @@ func runDoctor(app *App) error {
 	if os.Getenv("DEV_SHELL_INIT") == "1" {
 		checks = append(checks, check{"shell wrapper", checkOK, "active"})
 	} else {
-		checks = append(checks, check{"shell wrapper", checkWarn,
-			`not detected — add: eval "$(dev shell-init zsh)"`})
+		hint := `not detected — add: eval "$(dev shell-init zsh)"`
+		if goruntime.GOOS == "windows" {
+			hint = "not detected — add to your PowerShell profile: " +
+				"Invoke-Expression (& dev shell-init powershell | Out-String)"
+		}
+		checks = append(checks, check{"shell wrapper", checkWarn, hint})
 	}
 
 	// Paths.
