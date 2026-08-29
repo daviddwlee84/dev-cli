@@ -60293,3 +60293,174 @@ echo "size: $(wc -c < .specstory/history/2026-08-28_15-10-46Z-worktrees-dev-cli-
 size:  2551994 bytes
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-29 04:48:34Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Record the outcome and commit the transcript
+
+```bash
+cd /Users/david/Documents/Program/dev-cli
+python3 - <<'PY'
+import pathlib
+p = pathlib.Path(".claude/plans/worktrees-dev-cli-silly-newell.md"); s = p.read_text()
+s += """
+
+---
+
+## Outcome (2026-08-29)
+
+Executed in full. `v0.1.1` through `v0.1.11` and `v0.2.0` are published; `main` is linear and
+in sync with `origin/main`; all four fix branches plus the freshness work landed.
+
+Three deviations from the plan as written, each for a reason found during execution:
+
+1. **The repo-gone reap uses a live-session guard, not a parent-directory guard.** The record the
+   rule exists for lives under a deleted `mktemp` directory whose parent is also gone, so the
+   planned guard would have missed the one case that motivated it. A live runtime session is proof
+   the directory is there, and reaping drops only dev's record of intent — the branch, commits and
+   remote are untouched — so per-item confirmation carries the rest.
+2. **A single automatic CI retry was added to the tag sequence.** `v0.1.5` failed on Linux with
+   `TestPosixShellWrapperFallsBackFromStaleTMPDIR/bash` and passed unchanged on re-run, confirming
+   the flake the risk section predicted. Six tags remained, so retrying once and stopping on a
+   second failure replaced eleven possible interruptions. No other tag needed it.
+3. **The orphan sweep tests were rewritten after failing on Linux.** They built the orphan through
+   `dev wt rm`, which clears the recorded worktree path, so the state under test never existed;
+   they passed on macOS only because the harness puts `HOME` under a temp directory that Git
+   reports through `/private`, defeating dev's own path match. They now remove the worktree with
+   raw Git, the way the real incident happens, and assert that precondition explicitly.
+
+Left deliberately undone:
+
+- `~/Worktrees/agent-skills/feat-exact-agent-history-selectors/` still holds a 1.6 MB transcript
+  that is not in the `agent-skills` repository. `dev sweep` correctly refuses to remove it and its
+  task record is the only thing still pointing at it. Salvaging into another repository is the
+  owner's call.
+- `backup/*` and `rescue/*` tags remain local and were never pushed. `backup/main-pre-integration`
+  sits on the same commit as `v0.1.5`, which would have broken that release's version assertion.
+- `dev land`, the generic `[[gate]]` rule engine, and an MCP inventory remain deferred.
+"""
+p.write_text(s); print("plan updated with outcome")
+PY
+git add -A .claude/plans .specstory
+git -c commit.gpgsign=false commit -q -F - <<'EOF'
+chore: capture the release and CLI-legibility session
+
+Records the plan's outcome alongside the transcript: the three deviations
+made during execution and their reasons, and the work deliberately left
+undone, so the next session does not have to re-derive either.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01YJdLamUVyLm6qrmPCuM23R
+EOF
+git push origin main 2>&1 | tail -1
+git status --short; echo "clean"
+```
+
+```text
+plan updated with outcome
+   7306343..ebfff0d  main -> main
+ M .specstory/history/2026-08-28_15-10-46Z-worktrees-dev-cli-tool.md
+ M .specstory/statistics.json
+clean
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-29 04:48:47Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```markdown
+---
+name: flaky-shell-wrapper-test
+description: TestPosixShellWrapperFallsBackFromStaleTMPDIR fails intermittently on CI Linux only; re-run rather than investigate.
+metadata:
+  type: project
+---
+
+`TestPosixShellWrapperFallsBackFromStaleTMPDIR` in `internal/cli` fails
+intermittently on the GitHub ubuntu runner and passes on re-run with no code
+change. Observed on 2026-08-29: the `/zsh` subtest failed once locally under
+load, and the `/bash` subtest failed the `v0.1.5` release run, which then went
+green on `gh run rerun --failed`. Ten other tag releases passed first time.
+
+It spawns a real shell reading its script from stdin. It does not reproduce
+locally — 25 isolated runs and 4 concurrent full-package runs on macOS all
+passed — so it needs CI to observe.
+
+**Why:** it blocks releases, and `release.yml` creates no release object when
+validation fails, so a red run silently leaves a tag with no release behind it.
+
+**How to apply:** on a red CI run, check whether this is the only failure before
+investigating anything. If it is, re-run the failed jobs once; treat a second
+failure as real. Do not weaken the test or the CI gates to get a tag through.
+A durable fix would remove the stdin-piped-script pattern (run the script from a
+file instead), which is a known source of nondeterminism when the shell spawns
+children. Related: [[worktree-retire-close-herdr]].
+
+```
+
+```text
+File created successfully at: /Users/david/.claude/projects/-Users-david-Documents-Program-dev-cli/memory/flaky-shell-wrapper-test.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-29 04:48:50Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Index the new memory
+
+```bash
+cd /Users/david/.claude/projects/-Users-david-Documents-Program-dev-cli/memory
+printf -- '- [Flaky shell wrapper test](flaky-shell-wrapper-test.md) — release-blocking CI flake on Linux only; re-run once before investigating.\n' >> MEMORY.md
+cat MEMORY.md
+```
+
+```text
+- [Cross-workspace agent consent](cross-workspace-agent-consent.md) — announce topology just before launch, require independent QA for substantial work, and close runtimes after QA.
+- [Close Herdr after retiring worktrees](worktree-retire-close-herdr.md) — dev retire leaves workspaces pointing at deleted paths; close them manually.
+- [Flaky shell wrapper test](flaky-shell-wrapper-test.md) — release-blocking CI flake on Linux only; re-run once before investigating.
+Shell cwd was reset to /Users/david/Documents/Program/dev-cli
+```
+</details></tool-use>
+
+_**Agent (claude-opus-5 2026-08-29 04:49:14Z)**_
+
+All done. Everything you raised was real; two were worse than you thought.
+
+## 1. Versions, tags, changelog
+
+**13 releases now exist.** Your refinement — past features as `v0.1.x`, this round as `v0.2.0` — is what shipped: `v0.1.1`–`v0.1.11`, one per feature in merge order, each tagged at that feature's own last commit and dated by it rather than by today. Then **`v0.2.0`** closes this round.
+
+`go install …@latest` gave `v0.1.0` this morning — 38 commits behind. It now gives `v0.2.0`.
+
+**On CLAUDE.md: the answer was "partially", and that was the root cause.** `AGENTS.md` documented *how* to release but never *when* — which is exactly how 38 commits accumulated. It now states the cadence (standalone branch → patch immediately; a milestone's branches accumulate and close on a minor), the ordering `release.yml` forces (push main before any tag), the ban on pushing `backup/*` tags, and what a release owes downstream. Its `git describe` bullet was also stale — it still omitted the `--match` filter added days ago.
+
+**Downstream freshness** — all three, as you asked. `dev version` says whether your build is a release or N commits past one; `dev doctor` carries the same line; `dev version --check` asks GitHub, cached a day. And releases now publish darwin/linux × arm64/amd64 archives with `SHA256SUMS` — previously they published *nothing*, so building was the only way to install. I downloaded the published `v0.2.0` amd64 binary, verified its checksum, and ran it.
+
+## 2. Unclosed tasks
+
+`demo` was **unreachable by every command in the binary** — `done`/`resume`/`park`/`retire` all resolve the repo first, the dead-branch reap excludes direct mode, and nothing anywhere stat'd `RepoPath`. Hand-editing the TOML was the only exit. `dev sweep` now reaps it — and I did; it's gone.
+
+Also added: artifact-only orphan detection, and cold-with-worktree drift, which inventory has always computed for `ls` and the TUI while sweep never read it.
+
+I left the `agent-skills` record alone deliberately — sweep **refuses** to remove its directory because it holds a 1.6 MB transcript that genuinely isn't in that repo, and the record is the only thing still pointing at it. Different repo, your call.
+
+## 3. The UX items
+
+- **Silent unknown subcommand** — confirmed, and `dev wt bogus` was worse: it printed `wt` help and **exited 0**, silently discarding the argument. Both fixed, suggestions restored ("Did you mean… status?").
+- **Colour** — the cause was two table constructors; the exported one dropped the style. `fleet`, `skill`, `note`, `artifact`, `retire`, `park`, `resume`, `wt`, `sweep` had none at all. Also: `--color never` never reached the TUI. All fixed.
+- **TL;DR beyond the task loop** — `workflowTLDR` was the only diagram in the CLI. Six families now have one, help cross-links `dev help <topic>` both ways, and `dev help wt` resolves (it used to just fail).
+- **FLEET → remotes.toml** — `e` now edits the file that view is about, revalidates on return, and refreshes only if it parses.
+- **MCP** — not done, and I'd want a separate plan: there is **zero** MCP code anywhere. `internal/agentskill` shells out to an external `skills` CLI and has no vendor abstraction, so this is a new package parsing per-vendor configs, not an extension.
+
+## Three things worth flagging
+
+- **My own two new tests passed on macOS for the wrong reason** and failed on Linux. They built the orphan via `dev wt rm`, which clears the recorded path — the state under test never existed; a `/private` symlink in the test harness masked it locally. Rewritten to use raw git (how the real incident happens), with the precondition now asserted explicitly.
+- **`TestPosixShellWrapperFallsBackFromStaleTMPDIR` failed the `v0.1.5` release** and passed unchanged on re-run. I couldn't reproduce it in 25 isolated or 4 concurrent local runs. I added one automatic retry for the remaining tags (no others needed it) and saved a memory: re-run once before investigating. A durable fix means dropping the stdin-piped-script pattern.
+- **`backup/*` and `rescue/*` tags are still local and were never pushed** — `backup/main-pre-integration` sits on the same commit as `v0.1.5` and would have broken that release's version assertion. Delete when you're satisfied.
+
+Still deferred from the earlier plan: `dev land` and the generic `[[gate]]` engine.
