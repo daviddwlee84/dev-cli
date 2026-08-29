@@ -1737,7 +1737,21 @@ func TestSweepRefusesToRemoveAnOrphanHoldingUnsavedTranscripts(t *testing.T) {
 	h := newHarness(t)
 	h.mustRun("start", "demo", "--task", "gone", "--branch", "feat/gone", "--base", "main")
 	wtPath := filepath.Join(h.wtRoot, "demo", "feat-gone")
-	h.mustRun("wt", "rm", "feat/gone", "--repo", "demo")
+	// Remove it behind dev's back, which is how the real orphan appears: raw
+	// git from another checkout, leaving dev's record still pointing here.
+	// Going through `dev wt rm` would clear the recorded path and produce a
+	// different, already-handled kind of drift.
+	h.repo.Git("worktree", "remove", "--force", wtPath)
+
+	// The state under test is a task that still records a worktree Git no
+	// longer registers. Assert it rather than assume it: an earlier version of
+	// this test removed the worktree through dev, which clears the recorded
+	// path, and it passed on macOS only because a /private symlink made dev's
+	// own path match fail there.
+	if listed := h.mustRun("ls", "--json"); !strings.Contains(listed, `"worktree_path"`) ||
+		!strings.Contains(listed, filepath.Base(wtPath)) {
+		t.Fatalf("precondition lost: the task no longer records its worktree:\n%s", listed)
+	}
 
 	// Recreate the path the way a transcript writer that outlived its worktree
 	// does: artifacts only, and content the repository has never seen.
@@ -1767,7 +1781,17 @@ func TestSweepRemovesAnOrphanWhoseFilesTheRepositoryAlreadyHas(t *testing.T) {
 	h := newHarness(t)
 	h.mustRun("start", "demo", "--task", "shell", "--branch", "feat/shell", "--base", "main")
 	wtPath := filepath.Join(h.wtRoot, "demo", "feat-shell")
-	h.mustRun("wt", "rm", "feat/shell", "--repo", "demo")
+	h.repo.Git("worktree", "remove", "--force", wtPath)
+
+	// The state under test is a task that still records a worktree Git no
+	// longer registers. Assert it rather than assume it: an earlier version of
+	// this test removed the worktree through dev, which clears the recorded
+	// path, and it passed on macOS only because a /private symlink made dev's
+	// own path match fail there.
+	if listed := h.mustRun("ls", "--json"); !strings.Contains(listed, `"worktree_path"`) ||
+		!strings.Contains(listed, filepath.Base(wtPath)) {
+		t.Fatalf("precondition lost: the task no longer records its worktree:\n%s", listed)
+	}
 
 	const transcript = "already committed\n"
 	for _, root := range []string{wtPath, h.repo.Root} {
