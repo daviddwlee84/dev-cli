@@ -20,7 +20,13 @@ type Repo struct {
 // New initialises a repository with one commit on branch "main".
 func New(t *testing.T) *Repo {
 	t.Helper()
-	root := filepath.Join(t.TempDir(), "repo")
+	// Windows hands back an 8.3 short path (C:\Users\RUNNER~1\...) that git then
+	// reports in its long form, so canonicalize once up front.
+	tempDir := t.TempDir()
+	if resolved, err := filepath.EvalSymlinks(tempDir); err == nil {
+		tempDir = resolved
+	}
+	root := filepath.Join(tempDir, "repo")
 	if err := os.MkdirAll(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -31,6 +37,10 @@ func New(t *testing.T) *Repo {
 	r.Git("config", "user.email", "dev@example.test")
 	r.Git("config", "user.name", "dev test")
 	r.Git("config", "commit.gpgsign", "false")
+	// Keep line endings and symlinks byte-for-byte on every platform; the
+	// Windows CI runner defaults core.autocrlf to true.
+	r.Git("config", "core.autocrlf", "false")
+	r.Git("config", "core.symlinks", "true")
 	r.Write("README.md", "# test repo\n")
 	r.Git("add", "README.md")
 	r.Git("commit", "-m", "chore: initial commit")
@@ -49,8 +59,8 @@ func (r *Repo) GitIn(dir string, args ...string) string {
 	cmd := exec.Command("git", args...)
 	cmd.Dir = dir
 	cmd.Env = append(os.Environ(),
-		"GIT_CONFIG_GLOBAL=/dev/null", // ignore the developer's ~/.gitconfig
-		"GIT_CONFIG_SYSTEM=/dev/null",
+		"GIT_CONFIG_GLOBAL="+os.DevNull, // ignore the developer's ~/.gitconfig
+		"GIT_CONFIG_SYSTEM="+os.DevNull,
 		"GIT_AUTHOR_DATE=2026-01-01T00:00:00Z",
 		"GIT_COMMITTER_DATE=2026-01-01T00:00:00Z",
 	)

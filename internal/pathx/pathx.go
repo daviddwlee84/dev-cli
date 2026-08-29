@@ -104,7 +104,10 @@ func CanonicalChild(root, candidate string) (string, error) {
 
 	rel, err := filepath.Rel(canonicalRoot, canonicalCandidate)
 	if err != nil {
-		return "", fmt.Errorf("compare %q with root %q: %w", candidate, root, err)
+		// Rel only fails when the two paths cannot be expressed relative to one
+		// another — most often different Windows volumes. That is a definitive
+		// "not below root", not a filesystem error to surface.
+		return "", fmt.Errorf("%q is not below %q: %w", candidate, root, ErrOutsideRoot)
 	}
 	switch {
 	case rel == ".":
