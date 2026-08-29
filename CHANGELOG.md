@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Each command family's help carries an ASCII orientation diagram, and every command whose
+  workflow has a quick-reference page ends its help with `See also: dev help <topic>`.
+  `dev help <command>` now resolves a command name or alias to its topic, so `dev help wt`
+  reaches the worktrees page instead of failing.
+- `dev help tries` and `dev help skills` quick-reference pages.
+
+### Fixed
+
+- An unknown command is reported instead of discarded. `dev` sets cobra's `SilenceErrors` and
+  then also skipped printing any error beginning with `unknown command`, so `dev bogus` wrote
+  nothing to either stream and exited 1. The message, cobra's suggestions, and a pointer to
+  `--help` are now printed.
+- A stray argument to a command family is an error. `dev wt bogus` printed `dev wt` help and
+  exited 0, silently dropping the argument, because a family node has no `Run` of its own.
+- Argument-count and flag errors print the failing command's usage block instead of one bare line.
+- Removed the unparsed YAML frontmatter from the `retirement` help topic; `dev help` has no
+  frontmatter handling, so those keys never affected anything.
+
 ## [0.1.11] - 2026-08-29
 
 ### Added

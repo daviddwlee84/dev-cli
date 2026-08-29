@@ -520,6 +520,7 @@ dev stats --heatmap            # where the time actually went
 dev summary                    # current machine-wide project snapshot
 dev journal                    # today's commits plus current task/WIP context
 dev help worktrees             # quick-reference pages for the workflow
+dev help wt                    # same page, reached by command name
 ```
 
 ### Repository quick notes

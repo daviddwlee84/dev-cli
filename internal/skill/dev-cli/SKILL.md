@@ -190,7 +190,7 @@ dev summary                # current machine-wide agent context
 dev journal                # today's agent-ready development journal
 dev journal --since 7d --metrics | opencode run "summarize this"
 dev cache list             # regenerable forge/fleet/size/gitignore/note-index caches
-dev help worktrees         # quick-reference pages
+dev help worktrees         # quick-reference pages; dev help wt also works
 ```
 
 Complete generated reference: `references/commands.md`.

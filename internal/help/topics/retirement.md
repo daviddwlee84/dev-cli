@@ -1,8 +1,3 @@
----
-name: retirement
-summary: Why an agent integrates first, exits, and is cleaned up externally.
----
-
 # Agent-safe retirement
 
 A process must not delete the worktree that contains its own current directory.

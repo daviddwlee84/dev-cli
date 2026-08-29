@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
-	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/skill"
 	"github.com/spf13/cobra"
@@ -78,6 +77,7 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		Version:       versionFromBuild(),
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		Args:          rejectRootArgs,
 		// Bare `dev` shows the inventory, which is the question the tool
 		// exists to answer.
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -157,6 +157,11 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		newEditCmd(app),
 	)
 	root.SetHelpCommand(&cobra.Command{Hidden: true, Use: "no-help"})
+	// Inherited by every subcommand, so a bad flag anywhere in the tree is
+	// reported as a usage mistake rather than a bare error line.
+	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error {
+		return asUsageError(err)
+	})
 	root.SetOut(out)
 	root.SetErr(errOut)
 	defaultHelp := root.HelpFunc()
@@ -168,20 +173,25 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 		cmd.SetOut(previous)
 		fmt.Fprint(previous, renderCobraHelp(buf.String(), app.outStyle()))
 	})
+	enforceUsageErrors(root)
+	annotateHelp(root)
 	return root
 }
 
-// Execute runs the CLI and maps errors to exit codes.
+// Execute runs the CLI and maps errors to exit codes. SilenceErrors and
+// SilenceUsage are set on the root, so nothing reaches the terminal unless it
+// is printed here; ExecuteC hands back the command that failed so a usage
+// mistake can be answered with that command's usage rather than the root's.
 func Execute() int {
 	root := NewRootCommand()
-	if err := root.Execute(); err != nil {
-		msg := err.Error()
-		// cobra already printed usage errors in a readable form.
-		if !strings.HasPrefix(msg, "unknown command") {
-			style := styleForWriter(os.Stderr, colorModeFromArgs(os.Args[1:]))
-			fmt.Fprintln(os.Stderr, style.danger("dev:")+" "+msg)
-		}
-		return 1
+	cmd, err := root.ExecuteC()
+	if err == nil {
+		return 0
 	}
-	return 0
+	style := styleForWriter(os.Stderr, colorModeFromArgs(os.Args[1:]))
+	fmt.Fprintln(os.Stderr, style.danger("dev:")+" "+err.Error())
+	if cmd != nil && wantsUsage(err) {
+		fmt.Fprint(os.Stderr, renderCobraHelp(cmd.UsageString(), style))
+	}
+	return 1
 }

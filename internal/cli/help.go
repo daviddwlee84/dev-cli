@@ -33,7 +33,14 @@ Run without an argument to see the index.`,
 				fmt.Fprintln(app.Err, "\nRead one with: dev help <topic>")
 				return nil
 			}
-			topic, err := help.Get(args[0])
+			name := args[0]
+			// A user who just read `dev wt --help` reaches for `dev help wt`.
+			// Resolve command names and aliases before falling back to the
+			// filename match, which would only fail on them.
+			if mapped, ok := topicForCommand(name); ok {
+				name = mapped
+			}
+			topic, err := help.Get(name)
 			if err != nil {
 				return err
 			}
