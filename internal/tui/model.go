@@ -114,6 +114,13 @@ type Actions struct {
 	Copy func(text string) error
 	// EditConfig returns the editor process; tea suspends around it.
 	EditConfig func() (*exec.Cmd, error)
+	// EditFleetConfig does the same for remotes.toml, which is a separate file
+	// with its own schema — the FLEET view's `e` would otherwise open the
+	// config that has nothing to do with what it is showing.
+	EditFleetConfig func() (*exec.Cmd, error)
+	// ValidateFleetConfig reparses remotes.toml after an edit. It rejects
+	// unknown fields, so a typo has to surface rather than silently drop a host.
+	ValidateFleetConfig func() error
 	// ReloadConfig reparses config and returns live-updatable preferences.
 	// Runtime backend changes need a TUI restart, which status explains.
 	ReloadConfig func(ctx context.Context) (ConfigUpdate, string, error)
@@ -369,6 +376,8 @@ type statsBackfilledMsg struct {
 }
 
 type configEditedMsg struct{ err error }
+
+type fleetConfigEditedMsg struct{ err error }
 
 type configMsg struct {
 	update        ConfigUpdate
@@ -1207,6 +1216,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = "reloading config…"
 		return m, m.reloadConfig(m.view == ViewRemote)
 
+	case fleetConfigEditedMsg:
+		if msg.err != nil {
+			m.err, m.status = msg.err, ""
+			return m, nil
+		}
+		if m.actions.ValidateFleetConfig != nil {
+			if err := m.actions.ValidateFleetConfig(); err != nil {
+				// A rejected file is still on disk; showing the parse error is
+				// the only way the user learns why the fleet did not change.
+				m.err, m.status = err, "remotes.toml was not applied"
+				return m, nil
+			}
+		}
+		m.fleetLoading = true
+		m.status = "refreshing fleet…"
+		return m, m.reloadFleet()
+
 	case configMsg:
 		if msg.err != nil {
 			m.err, m.status = msg.err, ""
@@ -1577,6 +1603,20 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "e":
+		if m.view == ViewFleet {
+			if m.actions.EditFleetConfig == nil {
+				return m, nil
+			}
+			proc, err := m.actions.EditFleetConfig()
+			if err != nil {
+				m.err = err
+				return m, nil
+			}
+			m.status = "editing remotes.toml…"
+			return m, tea.ExecProcess(proc, func(err error) tea.Msg {
+				return fleetConfigEditedMsg{err: err}
+			})
+		}
 		if m.actions.EditConfig == nil {
 			return m, nil
 		}

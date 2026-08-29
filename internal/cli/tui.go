@@ -534,6 +534,18 @@ func runTUI(app *App) error {
 			return proc, err
 		},
 
+		EditFleetConfig: func() (*exec.Cmd, error) {
+			return fleetConfigEditorProcess(app, "")
+		},
+
+		// loadFleetConfig applies defaults and re-runs the private-mode check,
+		// so an edit that loosens remotes.toml's permissions while it holds a
+		// plaintext password is caught here rather than at the next fan-out.
+		ValidateFleetConfig: func() error {
+			_, err := loadFleetConfig(app)
+			return err
+		},
+
 		ReloadConfig: func(ctx context.Context) (tui.ConfigUpdate, string, error) {
 			oldRuntime := rt.Name()
 			if err := app.Load(); err != nil {

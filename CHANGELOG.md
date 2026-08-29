@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `dev help <command>` now resolves a command name or alias to its topic, so `dev help wt`
   reaches the worktrees page instead of failing.
 - `dev help tries` and `dev help skills` quick-reference pages.
+- `e` in the dashboard's FLEET view edits `remotes.toml` — the file that view is about — instead of
+  dev's own `config.toml`, reparsing it on return and refreshing the fleet only when it is valid.
 - Semantic color now covers every human-readable surface. `dev fleet`, `dev skill`, `dev note`,
   `dev artifact`, `dev retire`, `dev park`, `dev resume`, `dev wt` and the `dev sweep` report were
   rendered entirely without it; fleet host state, skill update state and artifact intent state each

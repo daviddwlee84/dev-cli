@@ -1095,6 +1095,7 @@ func (m Model) renderFooter() string {
 		if row, ok := m.currentFleet(); ok && row.Repository != nil {
 			bindings = append(bindings, "enter remote open")
 		}
+		bindings = append(bindings, "r refresh")
 	case ViewTries:
 		sortBy := m.trySort
 		if sortBy == "" {
@@ -1123,7 +1124,12 @@ func (m Model) renderFooter() string {
 	if m.view != ViewSkills {
 		bindings = append(bindings, "H stats")
 	}
-	bindings = append(bindings, "e config")
+	// `e` edits whichever configuration the current view is about.
+	if m.view == ViewFleet {
+		bindings = append(bindings, "e hosts")
+	} else {
+		bindings = append(bindings, "e config")
+	}
 	if m.view != ViewSkills {
 		for _, t := range m.Tools() {
 			bindings = append(bindings, t.Key+" "+t.Name)

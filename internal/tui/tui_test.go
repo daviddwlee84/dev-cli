@@ -2,6 +2,7 @@ package tui_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -1775,5 +1776,82 @@ func TestStaleNoteLoadCannotPopulateNewRepositoryOverlay(t *testing.T) {
 	out := m.View()
 	if !strings.Contains(out, "B selected thought") || strings.Contains(out, "A private thought") {
 		t.Errorf("stale A result contaminated B overlay:\n%s", out)
+	}
+}
+
+func TestFleetViewEditsRemotesNotTheMainConfig(t *testing.T) {
+	actions := newActions(&recorder{}, nil)
+	var editedConfig, editedRemotes, validated, reloaded bool
+	actions.ReloadFleet = func(context.Context) ([]tui.FleetRow, error) {
+		reloaded = true
+		return []tui.FleetRow{{Host: "lab", State: fleet.HostOK}}, nil
+	}
+	actions.EditConfig = func() (*exec.Cmd, error) {
+		editedConfig = true
+		return exec.Command("true"), nil
+	}
+	actions.EditFleetConfig = func() (*exec.Cmd, error) {
+		editedRemotes = true
+		return exec.Command("true"), nil
+	}
+	actions.ValidateFleetConfig = func() error {
+		validated = true
+		return nil
+	}
+
+	// `e` on the task list still opens dev's own config.
+	m := tui.New(actions, nil, nil)
+	_ = send(m, key("e"))
+	if !editedConfig || editedRemotes {
+		t.Fatalf("e outside FLEET edited the wrong file (config=%v remotes=%v)", editedConfig, editedRemotes)
+	}
+
+	// In FLEET it opens the file that view is actually about.
+	editedConfig = false
+	m = send(m, key("tab"), key("tab"))
+	if m.CurrentView() != tui.ViewFleet {
+		t.Fatalf("expected the fleet view, got %v", m.CurrentView())
+	}
+	m = send(m, key("e"))
+	if !editedRemotes || editedConfig {
+		t.Fatalf("e in FLEET edited the wrong file (config=%v remotes=%v)", editedConfig, editedRemotes)
+	}
+
+	reloaded = false
+	m = send(m, tui.FleetConfigEditedForTest(nil))
+	if !validated {
+		t.Error("remotes.toml was applied without being reparsed")
+	}
+	if !reloaded {
+		t.Error("the fleet was not refreshed after its configuration changed")
+	}
+	if out := m.View(); !strings.Contains(out, "e hosts") {
+		t.Errorf("the FLEET footer still advertises the wrong file:\n%s", out)
+	}
+}
+
+func TestFleetKeepsShowingWhatItHadWhenRemotesIsInvalid(t *testing.T) {
+	actions := newActions(&recorder{}, nil)
+	reloads := 0
+	actions.ReloadFleet = func(context.Context) ([]tui.FleetRow, error) {
+		reloads++
+		return []tui.FleetRow{{Host: "lab", State: fleet.HostOK}}, nil
+	}
+	actions.EditFleetConfig = func() (*exec.Cmd, error) { return exec.Command("true"), nil }
+	actions.ValidateFleetConfig = func() error {
+		return errors.New("unknown field(s) in remotes.toml: hosts.alais")
+	}
+
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"))
+	before := reloads
+
+	m = send(m, tui.FleetConfigEditedForTest(nil))
+	if reloads != before {
+		t.Error("dev fanned out to hosts using a file it had just rejected")
+	}
+	// A rejected file is still on disk; the reason has to reach the user.
+	if out := m.View(); !strings.Contains(out, "unknown field") {
+		t.Errorf("the parse error was swallowed:\n%s", out)
 	}
 }

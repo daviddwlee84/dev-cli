@@ -881,24 +881,36 @@ func newFleetConfigInitCmd(app *App) *cobra.Command {
 	return cmd
 }
 
+// fleetConfigEditorProcess builds the editor invocation for remotes.toml,
+// seeding the starter file when there is none. The TUI runs the same command
+// under tea.ExecProcess, so the two entry points cannot drift.
+func fleetConfigEditorProcess(app *App, editor string) (*exec.Cmd, error) {
+	path := fleetConfigPath(app)
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return nil, err
+		}
+		// 0600: remotes.toml may carry a plaintext SSH password.
+		if err := os.WriteFile(path, []byte(fleetStarterConfig), 0o600); err != nil {
+			return nil, err
+		}
+	}
+	chosen, err := resolveEditor(editor)
+	if err != nil {
+		return nil, err
+	}
+	process := exec.Command(shellPath(), "-c", chosen+" "+shellQuote(path))
+	process.Stdin, process.Stdout, process.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return process, nil
+}
+
 func newFleetConfigEditCmd(app *App) *cobra.Command {
 	var editor string
 	cmd := &cobra.Command{Use: "edit", Short: "Open remotes.toml in $VISUAL or $EDITOR", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		path := fleetConfigPath(app)
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				return err
-			}
-			if err := os.WriteFile(path, []byte(fleetStarterConfig), 0o600); err != nil {
-				return err
-			}
-		}
-		chosen, err := resolveEditor(editor)
+		process, err := fleetConfigEditorProcess(app, editor)
 		if err != nil {
 			return err
 		}
-		process := exec.Command(shellPath(), "-c", chosen+" "+shellQuote(path))
-		process.Stdin, process.Stdout, process.Stderr = os.Stdin, os.Stdout, os.Stderr
 		return process.Run()
 	}}
 	cmd.Flags().StringVar(&editor, "editor", "", "editor command override")
