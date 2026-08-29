@@ -58,9 +58,9 @@ func enableTryScanning(t *testing.T, h *harness) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	old := `scan_roots = ["` + h.scanRoot + `"]`
+	old := `scan_roots = ["` + filepath.ToSlash(h.scanRoot) + `"]`
 	triesRoot := filepath.Join(h.home, "tries")
-	replacement := `scan_roots = ["` + h.scanRoot + `", "` + triesRoot + `"]`
+	replacement := `scan_roots = ["` + filepath.ToSlash(h.scanRoot) + `", "` + filepath.ToSlash(triesRoot) + `"]`
 	updated := strings.Replace(string(body), old, replacement, 1)
 	if updated == string(body) {
 		t.Fatalf("scan_roots line not found in config:\n%s", body)

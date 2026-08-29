@@ -59,13 +59,17 @@ func newHarness(t *testing.T) *harness {
 	}
 
 	configPath := filepath.Join(home, "config.toml")
+	// TOML basic strings treat backslash as an escape, so a Windows path like
+	// C:\Users\... is invalid there. Forward slashes are valid TOML and Go
+	// normalizes them back to the OS separator on use.
+	slash := filepath.ToSlash
 	cfg := "" +
 		"[paths]\n" +
-		"scan_roots = [\"" + scanRoot + "\"]\n" +
-		"project_root = \"" + scanRoot + "\"\n" +
-		"tries_root = \"" + filepath.Join(home, "tries") + "\"\n" +
-		"worktree_root = \"" + wtRoot + "\"\n" +
-		"state_dir = \"" + filepath.Join(home, "state") + "\"\n" +
+		"scan_roots = [\"" + slash(scanRoot) + "\"]\n" +
+		"project_root = \"" + slash(scanRoot) + "\"\n" +
+		"tries_root = \"" + slash(filepath.Join(home, "tries")) + "\"\n" +
+		"worktree_root = \"" + slash(wtRoot) + "\"\n" +
+		"state_dir = \"" + slash(filepath.Join(home, "state")) + "\"\n" +
 		"\n[runtime]\nbackend = \"none\"\n" +
 		"\n[worktree]\ninclude = [\".env\"]\npost_create = []\n"
 	if err := os.WriteFile(configPath, []byte(cfg), 0o644); err != nil {

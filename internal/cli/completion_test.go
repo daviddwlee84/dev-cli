@@ -208,8 +208,8 @@ func TestRepoCompletionDisambiguatesDuplicateDisplays(t *testing.T) {
 		t.Fatal(err)
 	}
 	body = bytes.Replace(body,
-		[]byte(`scan_roots = ["`+h.scanRoot+`"]`),
-		[]byte(`scan_roots = ["`+rootA+`", "`+rootB+`"]`), 1,
+		[]byte(`scan_roots = ["`+filepath.ToSlash(h.scanRoot)+`"]`),
+		[]byte(`scan_roots = ["`+filepath.ToSlash(rootA)+`", "`+filepath.ToSlash(rootB)+`"]`), 1,
 	)
 	if err := os.WriteFile(h.configPath, body, 0o644); err != nil {
 		t.Fatal(err)
