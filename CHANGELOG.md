@@ -21,6 +21,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   help colors command names and flag specs rather than only its section headings.
 - `--color` reaches the interactive dashboard, so `dev --color never` (and `NO_COLOR`, and
   `TERM=dumb`) render it without color.
+- `dev sweep` reaps a task whose repository directory is gone. Such a record was unreachable by
+  every command in the binary, because `done`, `resume`, `park` and `retire` all resolve the
+  repository first, and neither existing reap rule covered it. A live runtime session rules the
+  suggestion out, and reaping drops only dev's record of intent.
+- `dev sweep` reports a task-recorded checkout that Git does not register and that holds nothing but
+  agent artifact directories — the residue of a worktree removed while its transcript writer was
+  still running. It offers removal only once every file inside is byte-identical to one the
+  repository already has; anything else is reported as salvage work and never removed.
+- `dev sweep` acts on a cold task whose worktree is still on disk, drift inventory has always
+  computed for `dev ls` and the dashboard but sweep never consulted.
 
 ### Fixed
 
@@ -33,6 +43,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Argument-count and flag errors print the failing command's usage block instead of one bare line.
 - Removed the unparsed YAML frontmatter from the `retirement` help topic; `dev help` has no
   frontmatter handling, so those keys never affected anything.
+- `dev retire <path>` reaps the matching task record. Only the by-task form set the task identity,
+  so retiring the same checkout by path left the record behind.
 
 ## [0.1.11] - 2026-08-29
 

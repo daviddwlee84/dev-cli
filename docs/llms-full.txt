@@ -1184,6 +1184,10 @@ fatal: not a git repository (or any of the parent directories): .git
 
 Treat `runtime alive + Git registration absent + artifact-only path` as an orphan that needs transcript salvage and external reconciliation — **never** as RETIRED.
 
+`dev sweep` now recognises that shape rather than leaving it to be spotted by eye. When a task records a checkout that exists but Git does not register, and the directory holds nothing but agent artifact folders, sweep reports it as an abandoned agent workspace. It offers to remove it only when every file inside is byte-identical to one the repository already has; anything that differs is listed as salvage work and left untouched, including by `--apply`.
+
+Byte equality rather than mere presence is the point. A transcript writer that outlives its worktree usually flushes a longer final version than the copy committed earlier, so a same-named file in the repository is not evidence that the tail was saved.
+
 ## Sources
 
 - [`internal/skill/dev-cli/references/agent-retirement.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/agent-retirement.md)
@@ -3642,6 +3646,10 @@ These were historical gaps and should not be reintroduced as limitations:
 - Argument-count and flag errors print the failing command's usage block. `--color` still governs whether that block is colorized.
 - Each command family's help carries an ASCII orientation diagram and a `See also: dev help <topic>` pointer, and `dev help <command>` resolves a command name or alias to its topic, so `dev help wt` reaches the worktrees page.
 - Semantic color covers every human-readable surface, including the interactive dashboard: `dev --color never`, `NO_COLOR` and `TERM=dumb` now disable dashboard color too, which they previously did not.
+- `dev sweep` reaps a task whose repository directory no longer exists. Such a record was unreachable by every command in the binary: `done`, `resume`, `park` and `retire` all resolve the repository first, the dead-branch rule excludes direct mode, and the stale-worktree rule requires a recorded worktree path. A live runtime session rules the suggestion out, and reaping removes only dev's record of intent.
+- `dev sweep` reports a task-recorded checkout that exists but Git does not register and that holds nothing but agent artifact directories. Removal is offered only when every file inside is byte-identical to one already in the repository; anything else is reported as salvage work and is never removed, including under `--apply`.
+- `dev sweep` acts on a cold task whose worktree is still on disk. Inventory has always computed that drift for `dev ls` and the dashboard, but sweep never consulted it, so it was displayed and not actionable.
+- `dev retire <path>` reaps the matching task record. Only the by-task form set the task identity, so retiring the same checkout by path left the record behind; the DONE-state and identity checks are unchanged.
 
 ## Claude Code status matrix
 
@@ -5181,6 +5189,10 @@ fatal: not a git repository (or any of the parent directories): .git
 ```
 
 請把「runtime 存活 + Git registration 不存在 + artifact-only path」視為需要 transcript salvage 與外部 reconciliation 的 orphan——**絕不能**視為 RETIRED。
+
+`dev sweep` 現在會自行辨識這個形狀，不再只能靠人眼察覺。當某個 task 記錄的 checkout 存在、但 Git 並未註冊它，且該目錄裡只有 agent artifact 資料夾時，sweep 會將它回報為 abandoned agent workspace。只有在其中每個檔案都與 repository 已有的檔案 byte-identical 時，sweep 才會提議移除；任何內容不同的檔案都會被列為 salvage 工作並保持原狀，`--apply` 也不會動它。
+
+這裡採用 byte equality 而非僅檢查檔案是否存在，正是重點所在。比 worktree 活得更久的 transcript writer，通常會 flush 出比先前 commit 版本更長的最終稿，因此 repository 中存在同名檔案並不能證明結尾內容已被保存。
 
 ## 來源
 
@@ -7672,6 +7684,10 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - Argument 數量與 flag 錯誤會印出該 command 的 usage block。該 block 是否上色仍由 `--color` 決定。
 - 每個 command family 的 help 都附上 ASCII orientation diagram 與 `See also: dev help <topic>` 指引，且 `dev help <command>` 會把 command 名稱或 alias 解析成對應 topic，因此 `dev help wt` 會連到 worktrees 頁面。
 - Semantic color 已覆蓋所有 human-readable 介面，包含 interactive dashboard：`dev --color never`、`NO_COLOR` 與 `TERM=dumb` 現在也會關閉 dashboard 的顏色，先前並不會。
+- `dev sweep` 會 reap repository 目錄已不存在的 task。這種 record 先前無法被 binary 中任何 command 觸及：`done`、`resume`、`park` 與 `retire` 都會先解析 repository，dead-branch 規則排除 direct mode，stale-worktree 規則又需要有記錄的 worktree path。若有 live runtime session 則不會提出此建議，且 reap 只移除 dev 的 intent record。
+- `dev sweep` 會回報 task 記錄中存在、但 Git 未註冊，且只包含 agent artifact 目錄的 checkout。只有在其中每個檔案都與 repository 既有檔案 byte-identical 時才提議移除；其餘一律回報為 salvage 工作，即使加上 `--apply` 也絕不移除。
+- `dev sweep` 會處理 worktree 仍在磁碟上的 cold task。Inventory 一直有為 `dev ls` 與 dashboard 計算這項 drift，但 sweep 從未讀取它，因此只能顯示、無法處理。
+- `dev retire <path>` 會 reap 對應的 task record。先前只有 by-task 形式會設定 task identity，因此以 path 退休同一個 checkout 會留下 record；DONE 狀態與 identity 檢查維持不變。
 
 ## Claude Code status matrix
 

@@ -75,6 +75,10 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - Argument 數量與 flag 錯誤會印出該 command 的 usage block。該 block 是否上色仍由 `--color` 決定。
 - 每個 command family 的 help 都附上 ASCII orientation diagram 與 `See also: dev help <topic>` 指引，且 `dev help <command>` 會把 command 名稱或 alias 解析成對應 topic，因此 `dev help wt` 會連到 worktrees 頁面。
 - Semantic color 已覆蓋所有 human-readable 介面，包含 interactive dashboard：`dev --color never`、`NO_COLOR` 與 `TERM=dumb` 現在也會關閉 dashboard 的顏色，先前並不會。
+- `dev sweep` 會 reap repository 目錄已不存在的 task。這種 record 先前無法被 binary 中任何 command 觸及：`done`、`resume`、`park` 與 `retire` 都會先解析 repository，dead-branch 規則排除 direct mode，stale-worktree 規則又需要有記錄的 worktree path。若有 live runtime session 則不會提出此建議，且 reap 只移除 dev 的 intent record。
+- `dev sweep` 會回報 task 記錄中存在、但 Git 未註冊，且只包含 agent artifact 目錄的 checkout。只有在其中每個檔案都與 repository 既有檔案 byte-identical 時才提議移除；其餘一律回報為 salvage 工作，即使加上 `--apply` 也絕不移除。
+- `dev sweep` 會處理 worktree 仍在磁碟上的 cold task。Inventory 一直有為 `dev ls` 與 dashboard 計算這項 drift，但 sweep 從未讀取它，因此只能顯示、無法處理。
+- `dev retire <path>` 會 reap 對應的 task record。先前只有 by-task 形式會設定 task identity，因此以 path 退休同一個 checkout 會留下 record；DONE 狀態與 identity 檢查維持不變。
 
 ## Claude Code status matrix
 

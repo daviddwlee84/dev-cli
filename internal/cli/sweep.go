@@ -147,6 +147,28 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 	t := r.Task
 	var out []suggestion
 
+	// A task whose repository is gone cannot be finished, resumed, parked or
+	// retired: every one of those resolves the repository first, and `dev done`
+	// refuses outright once the checkout is missing. Nothing else in this
+	// function reaches it either — the dead-branch rule below excludes direct
+	// mode, and the stale-worktree rule needs a recorded worktree path. Left
+	// alone, the record is unreachable by any command in the binary.
+	//
+	// Reaping removes dev's record of intent and nothing else; the branch, the
+	// commits and the remote are untouched. A live session proves the directory
+	// is there, so it is the one condition that rules this out.
+	if t.RepoPath != "" && !r.Live() && !dirExists(t.RepoPath) {
+		out = append(out, suggestion{
+			row:    r,
+			reason: fmt.Sprintf("repository %s no longer exists", config.Contract(t.RepoPath)),
+			action: fmt.Sprintf("reap the task entry %s (Git keeps any work; this drops only dev's record)", t.ID),
+			apply:  func() error { return app.Tasks.Delete(t.ID) },
+		})
+		return out
+	}
+
+	out = append(out, orphanSuggestions(app, r)...)
+
 	switch {
 	// A hot task with no live session is the commonest drift: the session was
 	// closed (or the machine rebooted) without parking.
@@ -244,6 +266,30 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 		return out
 	}
 
+	// A cold task keeps no checkout by definition: that is what going cold
+	// means. One still on disk is drift inventory already reports and nothing
+	// could act on.
+	if t.State == task.Cold && t.WorktreePath != "" && r.CheckoutExists && !r.WorktreeMissing &&
+		!r.Live() && !r.Status.Dirty() && r.Status.Synced() {
+		out = append(out, suggestion{
+			row:    r,
+			reason: "cold, but its worktree is still on disk",
+			action: fmt.Sprintf("remove %s (branch and remote keep the work)", config.Contract(t.WorktreePath)),
+			apply: func() error {
+				if err := ensureArtifactsFinalized(app, t.WorktreePath); err != nil {
+					return err
+				}
+				if err := safeRemoveWorktree(ctx, runtimeForTask(app, t), t.RepoPath, t.WorktreePath,
+					false, false, false, 5*time.Second); err != nil {
+					return err
+				}
+				t.WorktreePath = ""
+				clearTaskRuntime(t)
+				return app.Tasks.Save(t)
+			},
+		})
+	}
+
 	// Drift that is independent of the lifecycle stage.
 	if r.WorktreeMissing && t.WorktreePath != "" {
 		wtPath := t.WorktreePath
@@ -264,6 +310,46 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 		})
 	}
 	return out
+}
+
+// dirExists reports whether path is a directory that can be read right now.
+func dirExists(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}
+
+// orphanSuggestions handles the residue of a worktree removed while its
+// transcript writer was still running: the path exists, Git has no record of
+// it, and it holds only agent artifacts. Removing it is offered only once every
+// file in it is proven byte-identical to one the repository already has.
+func orphanSuggestions(app *App, r inventory.Row) []suggestion {
+	t := r.Task
+	if t.WorktreePath == "" || !r.WorktreeMissing || !r.CheckoutExists {
+		return nil
+	}
+	orphan, ok, err := retirement.InspectOrphan(t.WorktreePath)
+	if err != nil || !ok {
+		return nil
+	}
+	unsalvaged, err := retirement.Unsalvaged(orphan, t.RepoPath)
+	if err != nil {
+		return nil
+	}
+	if len(unsalvaged) > 0 {
+		return []suggestion{{
+			row: r,
+			reason: fmt.Sprintf("%s is an abandoned agent workspace holding %d file(s) the repository does not have",
+				config.Contract(t.WorktreePath), len(unsalvaged)),
+			action: fmt.Sprintf("salvage %s first — not removed automatically", strings.Join(unsalvaged, ", ")),
+		}}
+	}
+	return []suggestion{{
+		row:    r,
+		reason: fmt.Sprintf("%s is an abandoned agent workspace git does not know", config.Contract(t.WorktreePath)),
+		action: fmt.Sprintf("remove the empty shell %s (its %d artifact file(s) are already in the repository)",
+			config.Contract(t.WorktreePath), len(orphan.Files)),
+		apply: func() error { return os.RemoveAll(t.WorktreePath) },
+	}}
 }
 
 func suggestMergedWorktrees(app *App, ctx context.Context, rows []inventory.Row, requestedBase string, options sweepRetireOptions) ([]suggestion, error) {

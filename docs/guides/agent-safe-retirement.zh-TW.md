@@ -125,6 +125,10 @@ fatal: not a git repository (or any of the parent directories): .git
 
 請把「runtime 存活 + Git registration 不存在 + artifact-only path」視為需要 transcript salvage 與外部 reconciliation 的 orphan——**絕不能**視為 RETIRED。
 
+`dev sweep` 現在會自行辨識這個形狀，不再只能靠人眼察覺。當某個 task 記錄的 checkout 存在、但 Git 並未註冊它，且該目錄裡只有 agent artifact 資料夾時，sweep 會將它回報為 abandoned agent workspace。只有在其中每個檔案都與 repository 已有的檔案 byte-identical 時，sweep 才會提議移除；任何內容不同的檔案都會被列為 salvage 工作並保持原狀，`--apply` 也不會動它。
+
+這裡採用 byte equality 而非僅檢查檔案是否存在，正是重點所在。比 worktree 活得更久的 transcript writer，通常會 flush 出比先前 commit 版本更長的最終稿，因此 repository 中存在同名檔案並不能證明結尾內容已被保存。
+
 ## 來源
 
 - [`internal/skill/dev-cli/references/agent-retirement.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/agent-retirement.md)

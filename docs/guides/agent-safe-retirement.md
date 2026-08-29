@@ -122,6 +122,10 @@ fatal: not a git repository (or any of the parent directories): .git
 
 Treat `runtime alive + Git registration absent + artifact-only path` as an orphan that needs transcript salvage and external reconciliation — **never** as RETIRED.
 
+`dev sweep` now recognises that shape rather than leaving it to be spotted by eye. When a task records a checkout that exists but Git does not register, and the directory holds nothing but agent artifact folders, sweep reports it as an abandoned agent workspace. It offers to remove it only when every file inside is byte-identical to one the repository already has; anything that differs is listed as salvage work and left untouched, including by `--apply`.
+
+Byte equality rather than mere presence is the point. A transcript writer that outlives its worktree usually flushes a longer final version than the copy committed earlier, so a same-named file in the repository is not evidence that the tail was saved.
+
 ## Sources
 
 - [`internal/skill/dev-cli/references/agent-retirement.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/agent-retirement.md)

@@ -1708,3 +1708,88 @@ func TestSweepReapsATaskWhoseBranchIsGone(t *testing.T) {
 		t.Fatalf("task was not reaped:\n%s", listed)
 	}
 }
+
+func TestSweepReapsATaskWhoseRepositoryIsGone(t *testing.T) {
+	h := newHarness(t)
+	// A direct task is the shape that was unreachable: the dead-branch rule
+	// excludes direct mode, the stale-worktree rule needs a recorded worktree
+	// path, and every lifecycle command resolves the repository first.
+	h.mustRun("start", "demo", "--task", "leaked", "--direct")
+	if err := os.RemoveAll(h.repo.Root); err != nil {
+		t.Fatal(err)
+	}
+
+	report := h.mustRun("sweep")
+	if !strings.Contains(report, "no longer exists") || !strings.Contains(report, "reap the task entry") {
+		t.Fatalf("sweep did not report the missing repository:\n%s", report)
+	}
+	if listed := h.mustRun("ls", "--json"); !strings.Contains(listed, "leaked") {
+		t.Fatalf("report-only sweep removed the task:\n%s", listed)
+	}
+
+	h.mustRun("sweep", "--apply", "--yes")
+	if listed := h.mustRun("ls", "--json"); strings.Contains(listed, "leaked") {
+		t.Fatalf("task was not reaped:\n%s", listed)
+	}
+}
+
+func TestSweepRefusesToRemoveAnOrphanHoldingUnsavedTranscripts(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "gone", "--branch", "feat/gone", "--base", "main")
+	wtPath := filepath.Join(h.wtRoot, "demo", "feat-gone")
+	h.mustRun("wt", "rm", "feat/gone", "--repo", "demo")
+
+	// Recreate the path the way a transcript writer that outlived its worktree
+	// does: artifacts only, and content the repository has never seen.
+	history := filepath.Join(wtPath, ".specstory", "history")
+	if err := os.MkdirAll(history, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(history, "session.md"), []byte("the only copy\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report := h.mustRun("sweep")
+	if !strings.Contains(report, "abandoned agent workspace") {
+		t.Fatalf("sweep did not notice the orphan:\n%s", report)
+	}
+	if !strings.Contains(report, "salvage") || !strings.Contains(report, "not removed automatically") {
+		t.Fatalf("sweep offered to remove an orphan holding the only copy:\n%s", report)
+	}
+
+	h.mustRun("sweep", "--apply", "--yes")
+	if _, err := os.Stat(filepath.Join(history, "session.md")); err != nil {
+		t.Fatalf("--apply destroyed an unsalvaged transcript: %v", err)
+	}
+}
+
+func TestSweepRemovesAnOrphanWhoseFilesTheRepositoryAlreadyHas(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "shell", "--branch", "feat/shell", "--base", "main")
+	wtPath := filepath.Join(h.wtRoot, "demo", "feat-shell")
+	h.mustRun("wt", "rm", "feat/shell", "--repo", "demo")
+
+	const transcript = "already committed\n"
+	for _, root := range []string{wtPath, h.repo.Root} {
+		history := filepath.Join(root, ".specstory", "history")
+		if err := os.MkdirAll(history, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(history, "session.md"), []byte(transcript), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	report := h.mustRun("sweep")
+	if !strings.Contains(report, "remove the empty shell") {
+		t.Fatalf("sweep did not offer to remove a redundant shell:\n%s", report)
+	}
+
+	h.mustRun("sweep", "--apply", "--yes")
+	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
+		t.Fatalf("orphan shell survived --apply: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(h.repo.Root, ".specstory", "history", "session.md")); err != nil {
+		t.Fatalf("sweep touched the repository's own copy: %v", err)
+	}
+}

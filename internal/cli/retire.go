@@ -144,10 +144,19 @@ func retirementTargetForPath(ctx context.Context, app *App, path string) (retire
 		return retirement.Target{}, nil, fmt.Errorf("refusing to retire detached worktree %s; preserve or branch its commit first", config.Contract(path))
 	}
 	base := gitx.DefaultBranch(ctx, repository.MainRoot)
-	return retirement.Target{
+	target := retirement.Target{
 		RepoPath: repository.MainRoot, CheckoutPath: repository.Root,
 		Branch: status.Branch, Base: base, LinkedWorktree: true,
-	}, app.Runtime(), nil
+	}
+	// Retiring by path used to leave the task record behind, because only the
+	// by-task form set TaskID and Service.Retire reaps nothing without it. The
+	// same checkout is the same work however it was named, so claim the record
+	// when one points at this path; validateTaskIdentity still refuses to reap
+	// a task that is not DONE.
+	if t, err := app.Tasks.FindByWorktree(repository.Root); err == nil && t != nil && t.State == task.Done {
+		target.TaskID = t.ID
+	}
+	return target, app.Runtime(), nil
 }
 
 func safeRemoveWorktree(ctx context.Context, rt runtime.Runtime, repoPath, path string, force bool,
