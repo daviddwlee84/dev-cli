@@ -90,23 +90,57 @@ function dev
 end
 `
 
+// powershellInit is the Windows counterpart to posixInit. PowerShell does not
+// inherit an extra file descriptor from its parent, so the wrapper names a temp
+// file in DEV_SHELL_CD_FILE and reads the NUL-terminated path back after dev
+// exits, rather than reading fd 3.
+const powershellInit = `# dev shell integration — add to your PowerShell profile:
+#   Invoke-Expression (& dev shell-init powershell | Out-String)
+$env:DEV_SHELL_INIT = "1"
+function dev {
+    $__dev_exe = %[1]s
+    $__dev_direct = @('__complete','__completeNoDesc','--help','-h','--version','--skill','completion','config','doctor','done','retire','prepare','artifact','git','edit','gitignore','ignore','help','list','ls','park','skill','shell-init','cache','stats','status','sweep','adopt','bootstrap')
+    if ($args.Count -gt 0 -and $__dev_direct -contains $args[0]) {
+        & $__dev_exe @args
+        return
+    }
+    $__dev_cd_file = [System.IO.Path]::GetTempFileName()
+    try {
+        $env:DEV_SHELL_CD_FILE = $__dev_cd_file
+        & $__dev_exe @args
+        $__dev_status = $LASTEXITCODE
+        if ($__dev_status -eq 0 -and (Get-Item -LiteralPath $__dev_cd_file).Length -gt 0) {
+            $__dev_dir = [System.IO.File]::ReadAllText($__dev_cd_file).TrimEnd([char]0)
+            if ($__dev_dir) { Set-Location -LiteralPath $__dev_dir }
+        }
+        $global:LASTEXITCODE = $__dev_status
+    } finally {
+        Remove-Item -Force -ErrorAction SilentlyContinue -LiteralPath $__dev_cd_file
+        Remove-Item -ErrorAction SilentlyContinue Env:\DEV_SHELL_CD_FILE
+    }
+}
+`
+
 func newShellInitCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "shell-init <bash|zsh|fish>",
+		Use:   "shell-init <bash|zsh|fish|powershell>",
 		Short: "Print the shell wrapper that lets dev change your directory",
 		Long: `Print a shell function that wraps the dev binary.
 
 dev commands that move you into a checkout (resume, try, wt open with the
-"none" runtime) pass the destination through a child-only file descriptor,
-because a child process cannot change its parent's working directory. The
-wrapper reads that path and changes directory without evaluating shell code.
+"none" runtime) pass the destination through a private side channel, because a
+child process cannot change its parent's working directory. The wrapper reads
+that path and changes directory without evaluating shell code. POSIX shells
+receive it on a child-only file descriptor; PowerShell reads it from a temp
+file, since Windows shells do not inherit the descriptor.
 
 Add to your shell rc file:
 
-    eval "$(dev shell-init zsh)"          # bash and zsh
-    dev shell-init fish | source          # fish`,
+    eval "$(dev shell-init zsh)"                              # bash and zsh
+    dev shell-init fish | source                              # fish
+    Invoke-Expression (& dev shell-init powershell | Out-String)  # PowerShell`,
 		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"bash", "zsh", "fish"},
+		ValidArgs: []string{"bash", "zsh", "fish", "powershell", "pwsh"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			self, err := os.Executable()
 			if err != nil || self == "" {
@@ -117,8 +151,10 @@ Add to your shell rc file:
 				fmt.Fprintf(app.Out, posixInit, shellQuote(self), args[0])
 			case "fish":
 				fmt.Fprintf(app.Out, fishInit, shellQuote(self))
+			case "powershell", "pwsh":
+				fmt.Fprintf(app.Out, powershellInit, powershellQuote(self))
 			default:
-				return fmt.Errorf("unsupported shell %q: want bash, zsh or fish", args[0])
+				return fmt.Errorf("unsupported shell %q: want bash, zsh, fish or powershell", args[0])
 			}
 			return nil
 		},

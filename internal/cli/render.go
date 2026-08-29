@@ -187,6 +187,12 @@ func humanAge(d time.Duration) string {
 	}
 }
 
+// powershellQuote wraps s as a PowerShell single-quoted string literal, in
+// which the only metacharacter is the single quote itself, escaped by doubling.
+func powershellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "''") + "'"
+}
+
 // shellQuote makes a path safe to paste into a POSIX shell command.
 func shellQuote(s string) string {
 	if s == "" {

@@ -744,7 +744,7 @@ dev retire [task-or-worktree] [flags]
 Print the shell wrapper that lets dev change your directory
 
 ```
-dev shell-init <bash|zsh|fish>
+dev shell-init <bash|zsh|fish|powershell>
 ```
 
 ### `dev skill`
@@ -1078,6 +1078,18 @@ List the external tool bindings and whether each one works here
 ```
 dev tui tools
 ```
+
+### `dev upgrade`
+
+Update dev to the latest published release
+
+```
+dev upgrade [flags]
+```
+
+- `--check` — report whether a newer release exists and exit
+- `--force` — reinstall even if this build is already current
+- `-y, --yes` — do not prompt before replacing the binary
 
 ### `dev version`
 

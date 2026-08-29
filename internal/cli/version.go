@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -86,6 +88,68 @@ func versionSummary() string {
 type releaseCheck struct {
 	CheckedAt time.Time `json:"checked_at"`
 	TagName   string    `json:"tag_name"`
+	// NudgedAt records the last time a passive command printed the
+	// "newer release available" line, so the hint stays at most once a day.
+	NudgedAt time.Time `json:"nudged_at"`
+}
+
+// parseSemver splits a vMAJOR.MINOR.PATCH tag, ignoring any -suffix. The release
+// workflow only accepts stable tags, so this is all the comparison dev needs.
+func parseSemver(tag string) ([3]int, bool) {
+	base, _, _ := strings.Cut(strings.TrimPrefix(tag, "v"), "-")
+	fields := strings.Split(base, ".")
+	if len(fields) != 3 {
+		return [3]int{}, false
+	}
+	var out [3]int
+	for i, f := range fields {
+		n, err := strconv.Atoi(f)
+		if err != nil {
+			return [3]int{}, false
+		}
+		out[i] = n
+	}
+	return out, true
+}
+
+// semverLess reports whether release tag a is strictly older than tag b. An
+// unparseable tag is never "less", so a source build never nags.
+func semverLess(a, b string) bool {
+	av, aok := parseSemver(a)
+	bv, bok := parseSemver(b)
+	if !aok || !bok {
+		return false
+	}
+	for i := range av {
+		if av[i] != bv[i] {
+			return av[i] < bv[i]
+		}
+	}
+	return false
+}
+
+// updateCheckEnabled folds the config toggle and the escape-hatch env var.
+func updateCheckEnabled(cfg config.Config) bool {
+	if v := os.Getenv("DEV_NO_UPDATE_CHECK"); v != "" && v != "0" && v != "false" {
+		return false
+	}
+	return cfg.Update.Check
+}
+
+// printUpgradeHints prints the commands that update dev, most relevant first for
+// the current platform. Shared by `dev version --check` and `dev upgrade` when
+// it will not replace the binary itself.
+func printUpgradeHints(w io.Writer, style cliStyle) {
+	hints := []string{"go install github.com/daviddwlee84/dev-cli/cmd/dev@latest"}
+	if goruntime.GOOS == "windows" {
+		hints = append([]string{"scoop update dev-cli"}, hints...)
+	} else {
+		hints = append([]string{"brew upgrade dev-cli"}, hints...)
+	}
+	hints = append([]string{"dev upgrade"}, hints...)
+	for _, h := range hints {
+		fmt.Fprintln(w, style.dim("  "+h))
+	}
 }
 
 func releaseCheckPath() string {
@@ -109,8 +173,24 @@ func writeReleaseCheck(c releaseCheck) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return
 	}
-	if raw, err := json.Marshal(c); err == nil {
-		_ = os.WriteFile(path, raw, 0o644)
+	raw, err := json.Marshal(c)
+	if err != nil {
+		return
+	}
+	// Written from a detached background goroutine that a fast command can kill
+	// mid-flight, so stage and rename rather than risk a torn file.
+	tmp, err := os.CreateTemp(filepath.Dir(path), "release-check-*")
+	if err != nil {
+		return
+	}
+	if _, err := tmp.Write(raw); err != nil {
+		tmp.Close()
+		os.Remove(tmp.Name())
+		return
+	}
+	tmp.Close()
+	if os.Rename(tmp.Name(), path) != nil {
+		os.Remove(tmp.Name())
 	}
 }
 
@@ -146,8 +226,67 @@ func latestRelease(ctx context.Context, refresh bool) (string, error) {
 	if payload.TagName == "" {
 		return "", fmt.Errorf("github returned no tag name")
 	}
-	writeReleaseCheck(releaseCheck{CheckedAt: time.Now(), TagName: payload.TagName})
+	prior, _ := readReleaseCheck()
+	writeReleaseCheck(releaseCheck{
+		CheckedAt: time.Now(),
+		TagName:   payload.TagName,
+		NudgedAt:  prior.NudgedAt,
+	})
 	return payload.TagName, nil
+}
+
+// passiveCommandSkipsNudge names commands that must stay quiet: the ones that
+// report versions themselves, and machine-facing paths.
+func passiveCommandSkipsNudge(cmd *cobra.Command) bool {
+	for cur := cmd; cur != nil; cur = cur.Parent() {
+		switch cur.Name() {
+		case "version", "upgrade", "completion",
+			cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd:
+			return true
+		}
+	}
+	return false
+}
+
+// newerReleaseNote decides whether the cached release check warrants a nudge and
+// returns the line to print. It is pure: no IO, no clock beyond the passed
+// "now", so the policy is testable on its own.
+func newerReleaseNote(cached releaseCheck, currentVersion string, now time.Time) (string, bool) {
+	if cached.TagName == "" {
+		return "", false
+	}
+	release, _, _ := buildDescription(currentVersion)
+	if !semverLess(release, cached.TagName) {
+		return "", false
+	}
+	if !cached.NudgedAt.IsZero() && now.Sub(cached.NudgedAt) < releaseCheckTTL {
+		return "", false
+	}
+	return fmt.Sprintf("dev: %s available — run 'dev upgrade'", cached.TagName), true
+}
+
+// maybeNoteNewerRelease prints one dim line when the day-old release cache names
+// a newer version than this build. It never reaches the network on this path;
+// when the cache is stale it kicks off a detached refresh for next time.
+func (a *App) maybeNoteNewerRelease(cmd *cobra.Command) {
+	if !updateCheckEnabled(a.Cfg) || !interactive() || passiveCommandSkipsNudge(cmd) {
+		return
+	}
+	cached, fresh := readReleaseCheck()
+	if !fresh {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+			defer cancel()
+			_, _ = latestRelease(ctx, true)
+		}()
+	}
+	note, ok := newerReleaseNote(cached, versionFromBuild(), time.Now())
+	if !ok {
+		return
+	}
+	fmt.Fprintln(a.Err, a.errStyle().dim(note))
+	cached.NudgedAt = time.Now()
+	writeReleaseCheck(cached)
 }
 
 func newVersionCmd(app *App) *cobra.Command {
@@ -187,8 +326,7 @@ than failing.`,
 			default:
 				fmt.Fprintf(app.Out, "latest release %s — %s\n", style.warning(latest),
 					style.warning("this build is not it"))
-				fmt.Fprintln(app.Out, style.dim("  brew upgrade dev-cli"))
-				fmt.Fprintln(app.Out, style.dim("  go install github.com/daviddwlee84/dev-cli/cmd/dev@latest"))
+				printUpgradeHints(app.Out, style)
 			}
 			return nil
 		},

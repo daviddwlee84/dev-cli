@@ -149,6 +149,12 @@ func (a *App) warnf(format string, args ...any) {
 // newlines. Without the wrapper, retain the printable directive used by older
 // integrations.
 func (a *App) cdDirective(dir string) error {
+	// Windows shells do not inherit an extra descriptor the way the POSIX
+	// wrapper's `3>file` redirection does, so the PowerShell wrapper names a
+	// temp file instead and reads it back after dev exits.
+	if path := os.Getenv("DEV_SHELL_CD_FILE"); path != "" {
+		return os.WriteFile(path, append([]byte(dir), 0), 0o600)
+	}
 	if rawFD := os.Getenv("DEV_SHELL_CD_FD"); rawFD != "" {
 		fd, err := strconv.Atoi(rawFD)
 		if err != nil || fd < 3 {

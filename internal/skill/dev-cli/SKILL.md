@@ -449,10 +449,17 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 ## Gotchas
 
 - **`dev` may be a shell wrapper around the binary.** The trusted `shell-init`
-  output defines a wrapper that gives navigation commands a private child-only
-  file descriptor, reads one NUL-terminated path and calls `builtin cd` without
-  evaluating command output. Without the wrapper, the binary's printable legacy
-  directive cannot change the parent shell — that is not a bug.
+  output defines a wrapper that gives navigation commands a private side channel
+  (a child-only file descriptor for POSIX shells, a `DEV_SHELL_CD_FILE` temp
+  file for `shell-init powershell`), reads one NUL-terminated path and calls
+  `builtin cd` / `Set-Location` without evaluating command output. Without the
+  wrapper, the binary's printable legacy directive cannot change the parent
+  shell — that is not a bug.
+- **Windows runs without a multiplexer.** There is no tmux, Zellij or Herdr on
+  Windows, so the runtime backend is always `none`; `dev fleet open` starts a
+  child shell instead of replacing the process. `dev upgrade` self-replaces only
+  a standalone install and otherwise prints the Homebrew/Scoop/`go install`
+  command.
 - **A worktree is a clean checkout.** It has no `node_modules`, no `.venv` and
   none of the gitignored env files. `dev` provisions it; `--no-provision`
   skips that and leaves you to it.

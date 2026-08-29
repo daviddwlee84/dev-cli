@@ -84,6 +84,7 @@ Key sections:
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
 | `[stats]` | sampler and optional WakaTime import |
+| `[update]` | `check` (default `true`) — allow the once-a-day "newer release available" hint and its background cache refresh; `DEV_NO_UPDATE_CHECK` overrides it |
 
 Repository quick-note Markdown is durable under configured `paths.state_dir/notes`, which defaults to `$XDG_DATA_HOME/dev/notes`. The full-text index at `$XDG_CACHE_HOME/dev/notes.db` is disposable and rebuilds from those files; changing `paths.state_dir` does not move the cache.
 

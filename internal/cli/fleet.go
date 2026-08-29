@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -100,8 +99,7 @@ func newFleetOpenHelperCmd(app *App, use string, herdrOpen bool) *cobra.Command 
 			if err := os.Chdir(repository.Path); err != nil {
 				return err
 			}
-			shell := shellPath()
-			return syscall.Exec(shell, []string{"-" + filepath.Base(shell)}, os.Environ())
+			return replaceProcessWithShell()
 		},
 	}
 	cmd.Flags().StringVar(&encoded, "request", "", "encoded request")

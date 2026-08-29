@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-08-28
+verified_on: 2026-08-29
 tested_with: Claude Code 2.1.250
 ---
 
@@ -22,6 +22,8 @@ This page separates graceful degradation from real limitations. Reverify it when
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
+| terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
+| in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` prints the package manager's upgrade command instead |
 
 ## Confirmed project limitations
 
@@ -48,6 +50,15 @@ still accepted, but complete forge inventories are now paginated and it no
 longer caps synchronization. `dev config init` no longer writes it. The
 `--limit` flag on `dev repo remote` limits rendered matches after the complete
 inventory has been searched.
+
+### Windows is a build target, not a full-feature platform
+
+`dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository, task and worktree operations work. What differs:
+
+- There is no tmux, Zellij or Herdr, so the runtime backend is always `none`. Grouped runtime/agent activity and named sessions are unavailable; the `cd` directive and PowerShell wrapper still work.
+- Shell integration is `dev shell-init powershell`. POSIX shells hand the directory back on file descriptor 3; PowerShell cannot inherit it, so the wrapper passes a temp-file path in `DEV_SHELL_CD_FILE` instead.
+- `dev fleet open` starts a child shell (`%COMSPEC%`) rather than replacing the process, because Windows has no `exec(2)`.
+- The domain test suites still assume a POSIX filesystem in places, so Windows CI runs the tests advisory-only while compilation, `go vet` and the build are enforced.
 
 ### Direct mode has a smaller lifecycle
 
@@ -78,6 +89,9 @@ These were historical gaps and should not be reintroduced as limitations:
 - `dev retire <path>` reaps the matching task record. Only the by-task form set the task identity, so retiring the same checkout by path left the record behind; the DONE-state and identity checks are unchanged.
 - `dev version` reports whether the running build is a published release, and `dev doctor` carries the same line. Nothing in the tool answered "am I current?" before, and `go install ...@latest` resolves to the newest tag, so an untagged feature was invisible to anyone installing it.
 - A release publishes platform archives and `SHA256SUMS` and takes its notes from `CHANGELOG.md`. Earlier releases published a GitHub release object and nothing else, so their assets are absent by construction.
+- A release publishes Windows `.zip` archives alongside the Unix `.tar.gz` set, and refreshes an in-repo Scoop manifest attached to the release (and pushed to the bucket when a token is configured).
+- `dev upgrade` downloads the current release for this platform, verifies it against the release `SHA256SUMS`, and replaces the running binary with an atomic rename (Windows moves the live `.exe` aside and sweeps it on the next run). It defers to Homebrew, Scoop or `go install` when one of them owns the file.
+- An interactive `dev` command prints one dim "newer release available" line at most once a day, read from the day-old release cache; it never blocks on the network. `[update] check = false` or `DEV_NO_UPDATE_CHECK` disables it.
 
 ## Claude Code status matrix
 
@@ -114,4 +128,8 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/note/index.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/index.go)
 - [`internal/note/store.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/store.go)
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
+- [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
+- [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
+- [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
