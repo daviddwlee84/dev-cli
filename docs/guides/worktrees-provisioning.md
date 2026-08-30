@@ -2,7 +2,7 @@
 description: Choose the owner and location of each worktree, then provision ignored files and dependencies safely.
 authority: project
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-08-29
 ---
 
 # Worktrees and provisioning
@@ -25,7 +25,7 @@ Use `dev` when code, history, or plans must remain reviewable or a human may ret
 
 ```bash
 dev wt plan
-dev wt plan --write          # seed a repository-owned .dev.toml
+dev wt plan --write          # seed repository-owned .dev-cli/config.toml
 dev wt create feat/auth --base main
 dev wt list
 ```
@@ -63,6 +63,12 @@ Per-ecosystem overrides live in the project or global config:
 [worktree.strategies]
 node = "copy"
 ```
+
+New project-owned overrides belong in `.dev-cli/config.toml`; legacy
+`.dev.toml` remains readable under its compatibility behavior. A `post_create`
+command from `.dev-cli/config.toml` does not run until its exact
+executable-config hash is approved with `dev config trust . --yes`. Changing
+the command invalidates that approval.
 
 Important built-in decisions:
 

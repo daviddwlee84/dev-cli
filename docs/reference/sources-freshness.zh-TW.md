@@ -2,7 +2,7 @@
 description: 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
 authority: project-policy
 status: maintained
-verified_on: 2026-08-28
+verified_on: 2026-08-29
 lang: zh-TW
 ---
 
@@ -64,6 +64,7 @@ tested_with: optional
 | HOT/WARM/COLD/DONE 與 checkout modes | [心智模型](../concepts/mental-model.md) | `internal/task/task.go`、lifecycle CLI/tests | repository snapshot 2026-08-28 |
 | `done --pr` 保持 task active | [變更流 workflow](../guides/change-stream-workflow.md) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktree 與 provisioning](../guides/worktrees-provisioning.md) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
+| repository new/clone/setup presets、project trust、upstream publication 與 handoff | [Commands 與 configuration](commands-config.md#repository-bootstrap) | `internal/scaffold`、`internal/projectconfig`、`internal/cli/repo_create*.go`、focused repo-bootstrap tests | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents 與 runtimes](../guides/parallel-agents-runtimes.md) | `internal/runtime/runtime.go` | implemented |
 | SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](../guides/remote-fleet.md) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
 | READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](../guides/agent-safe-retirement.md) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |

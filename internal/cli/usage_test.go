@@ -156,7 +156,7 @@ func TestEveryAdvertisedHelpTopicResolves(t *testing.T) {
 	for _, topic := range []string{
 		"worktrees", "notes", "fleet", "journal", "summary", "retirement",
 		"bootstrap", "adopting", "parking", "storage", "tui", "branching",
-		"tries", "skills", "git-status",
+		"tries", "skills", "git-status", "repositories",
 	} {
 		if !strings.Contains(index, topic) {
 			t.Errorf("topic %q is advertised by a command but missing from the index", topic)

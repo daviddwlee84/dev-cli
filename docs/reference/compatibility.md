@@ -19,6 +19,8 @@ This page separates graceful degradation from real limitations. Reverify it when
 | named terminal session | tmux or compatible Zellij | `none` preserves core behavior and shell navigation |
 | GitHub pull requests/remotes | `gh` authenticated | branch still pushes when Git works; browser/manual flow may be needed |
 | GitLab merge requests/remotes | `glab` authenticated | same graceful fallback |
+| repository bootstrap publishing | authenticated `gh` or `glab` | local repository/scaffold still works; the wizard explains how to log in |
+| setup-capable project skills | skills provider plus the entrypoint interpreter | unselected skills are skipped; selected required setup fails before scaffold mutation when its interpreter is unavailable; a clone acquired first is retained |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
@@ -67,6 +69,9 @@ A direct task uses the canonical checkout and cannot go COLD, because cold clean
 ## Current behaviors that are implemented
 
 These were historical gaps and should not be reintroduced as limitations:
+
+- `dev repo new|create`, `repo clone`, and `repo setup` share a preset-driven bootstrap pipeline. Explicit `repo new NAME` remains minimal, while the no-argument wizard can initialize agent files, run explicitly selected skill setup, publish through an authenticated GitHub/GitLab CLI, and hand off by stay/cd/runtime/start.
+- Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
 
 - `dev start --focus` activates the runtime after non-JSON creation.
 - TUI navigation refuses to open a missing COLD checkout and directs the user to `dev resume`.
@@ -130,6 +135,8 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
+- [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)

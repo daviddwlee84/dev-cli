@@ -17,7 +17,10 @@ lang: zh-TW
 
 Remote fleet 是一份其他 host 的清單，每個 host 都執行自己的 `dev` binary，使用自己的 `$XDG_CONFIG_HOME`、自己的 scan roots、自己的 task registry 與自己的 runtime。`dev fleet` 從不集中管理或取得那份 state 的 ownership，它只會透過 SSH 向每個 host 的 `dev` 要一份 read-only snapshot，並回報收到的結果。沒有安裝 `dev` 的 host，或無法連線的 host，只會讓那一列 degrade；不會擋住 fleet 其餘部分。
 
-這與 REMOTE TUI view 及 `dev repo new`/PR flow 是不同概念——後者是與 forge CLI（`gh`、`glab` 或 Azure CLI）溝通、處理 hosted 在 GitHub、GitLab 或 Azure DevOps Services 上的 repository。Fleet 溝通的對象是*你自己的機器*上*你自己的 local checkout*。
+這與 REMOTE TUI view 及 publishing/PR flow 是不同概念——GitHub/GitLab
+repository publishing 與 PR 使用 `gh` 或 `glab`，Azure DevOps inventory 與 PR
+則使用 Azure CLI。Fleet 溝通的對象是*你自己的機器*上*你自己的 local
+checkout*。
 
 ## 設定 hosts
 
@@ -100,7 +103,12 @@ FLEET 是 TUI 六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE
 
 每個 host 都是獨立探測的，所以一個壞掉的 host 不會讓整個 fleet 失敗。每個 host 的狀態有 `ok`、`stale`（重用 cache，可能附帶說明原因的 error）、`no-dev`（remote 的 `PATH` 上沒有 `dev`——僅回報，不視為 error）、`unreachable`（SSH 本身失敗）、`timeout`、`incompatible`（remote 的 `dev` 版本過舊或無法辨識）與 `invalid-response`（snapshot JSON 格式不正確）。`ok` 與乾淨的 `no-dev` 不會讓 `--strict` 失敗；其餘狀態都會，包括帶有 error 的 `stale` 結果。
 
-另一方面，REMOTE view 與 `dev repo new`/PR flow 背後的 forge 整合（GitHub 用 `gh`、GitLab 用 `glab`、Azure DevOps Services 用 `az`）是各自獨立的選用功能。這些 CLI 缺少時，`dev doctor` 只會回報 warning，不是 failure；每個原本會用到它們的進入點都會退回 plain Git 行為——沒有 forge 提供的 repository 清單，也沒有 CLI 輔助的 pull/merge request 建立——因此這些 CLI 是否安裝，從來不是 `dev` 能否運作的必要條件。Azure DevOps inventory 還額外是 opt-in：未設定 `forge.azure_devops` targets 前一律停用。
+另一方面，forge integration 是 optional：`gh` 與 `glab` 提供 GitHub/GitLab
+inventory、publishing 與 pull/merge request；`az` 提供 Azure DevOps inventory 與
+pull request。缺少 CLI 時，`dev doctor` 只回報 warning，local Git workflow 仍可用；
+但 explicit non-interactive publication request 會附 login/install 指引失敗，不會靜默
+改變操作意義。Azure DevOps inventory 還額外是 opt-in：未設定
+`forge.azure_devops` targets 前一律停用。
 
 ## 來源
 

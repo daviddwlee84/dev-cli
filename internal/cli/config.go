@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/BurntSushi/toml"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/spf13/cobra"
 )
@@ -18,31 +17,12 @@ func newConfigCmd(app *App) *cobra.Command {
 		Short: "Show, edit, initialise and locate dev's configuration",
 	}
 	cmd.AddCommand(
-		&cobra.Command{
-			Use:   "show",
-			Short: "Print the effective configuration",
-			Long:  "Print the configuration actually in effect: the built-in defaults with any config.toml overlaid.",
-			Args:  cobra.NoArgs,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				src := app.Cfg.Source
-				if src == "" {
-					src = "built-in defaults (no config.toml)"
-				}
-				fmt.Fprintf(app.Err, "# source: %s\n", config.Contract(src))
-				return toml.NewEncoder(app.Out).Encode(app.Cfg)
-			},
-		},
-		&cobra.Command{
-			Use:   "path",
-			Short: "Print the config file path",
-			Args:  cobra.NoArgs,
-			RunE: func(cmd *cobra.Command, args []string) error {
-				fmt.Fprintln(app.Out, config.ConfigFile())
-				return nil
-			},
-		},
+		newConfigShowCmd(app),
+		newConfigPathCmd(app),
 		newConfigInitCmd(app),
 		newConfigEditCmd(app),
+		newConfigScaffoldsCmd(app),
+		newConfigTrustCmd(app),
 	)
 	return cmd
 }

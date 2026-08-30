@@ -2,7 +2,7 @@
 description: 選擇每個 worktree 的 owner 與位置，再安全佈建 ignored files 與 dependencies。
 authority: project
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-08-29
 lang: zh-TW
 ---
 
@@ -29,7 +29,7 @@ Code、history 或 plans 需要保持可 review，或人之後可能回來時，
 
 ```bash
 dev wt plan
-dev wt plan --write          # 建立 repository-owned .dev.toml
+dev wt plan --write          # 建立 repository-owned .dev-cli/config.toml
 dev wt create feat/auth --base main
 dev wt list
 ```
@@ -67,6 +67,11 @@ Included files 以檔案方式複製，內容不寫入 log。現行 provisioning
 [worktree.strategies]
 node = "copy"
 ```
+
+新的 project-owned overrides 應放在 `.dev-cli/config.toml`；legacy `.dev.toml`
+仍以 compatibility behavior 讀取。來自 `.dev-cli/config.toml` 的 `post_create`
+command 必須先用 `dev config trust . --yes` 核准其 exact executable-config hash
+才會執行；command 變更後原核准立即失效。
 
 重要內建判斷：
 

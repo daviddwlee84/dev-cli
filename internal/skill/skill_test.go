@@ -43,6 +43,7 @@ func TestFilesIncludeReferences(t *testing.T) {
 		"references/runtime-herdr.md",
 		"references/parallel-agents.md",
 		"references/commands.md",
+		"references/repository-bootstrap.md",
 	} {
 		if _, ok := all[want]; !ok {
 			t.Errorf("%s is not embedded (have: %v)", want, keys(all))
@@ -56,7 +57,7 @@ func TestSkillReferencesResolve(t *testing.T) {
 	all, _ := skill.Files()
 	body := string(all["SKILL.md"])
 	for _, name := range []string{
-		"bootstrap.md", "worktree-ownership.md", "task-lifecycle.md", "runtime-herdr.md", "parallel-agents.md", "commands.md",
+		"bootstrap.md", "worktree-ownership.md", "task-lifecycle.md", "runtime-herdr.md", "parallel-agents.md", "commands.md", "repository-bootstrap.md",
 	} {
 		reference := "references/" + name
 		if !strings.Contains(body, reference) {

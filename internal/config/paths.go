@@ -36,6 +36,9 @@ func CacheHome() string { return xdgDir("XDG_CACHE_HOME", ".cache") }
 // ConfigFile is the path dev loads its TOML configuration from.
 func ConfigFile() string { return filepath.Join(ConfigHome(), "dev", "config.toml") }
 
+// ScaffoldsFile is the optional repository-bootstrap preset catalog.
+func ScaffoldsFile() string { return filepath.Join(ConfigHome(), "dev", "scaffolds.toml") }
+
 // Expand resolves a leading ~ and any environment variables in p, then makes
 // the result absolute. Paths in config.toml are written by humans, so both
 // "~/Worktrees" and "$WORK/trees" have to work.

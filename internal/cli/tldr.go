@@ -15,6 +15,15 @@ import (
 // ASCII only, like workflowTLDR: this text lands in terminals whose encoding
 // dev does not control. assertASCIIDiagram enforces it.
 var familyTLDR = map[string]string{
+	"dev repo": `TL;DR: acquire the checkout, then choose how ready it should be
+
+  dev repo new/create --> scaffold --> optional upstream --> cd/open/start
+  dev repo clone      --> checkout --> optional setup    --> cd/open/start
+  dev repo setup      --> idempotent files/skills/hooks --> review or commit
+
+  Local-only is the default. Project-owned executable config must be trusted
+  by its exact content hash before dev runs it.`,
+
 	"dev wt": `TL;DR: the checkout is disposable, the branch is not
 
   dev start --mode worktree --> paths.worktree_path/<repo>/<branch>
@@ -85,6 +94,7 @@ var familyTLDR = map[string]string{
 // Before this map neither one mentioned the other.
 var helpTopics = map[string]string{
 	"dev wt":        "worktrees",
+	"dev repo":      "repositories",
 	"dev note":      "notes",
 	"dev fleet":     "fleet",
 	"dev journal":   "journal",

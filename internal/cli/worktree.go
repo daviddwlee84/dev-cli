@@ -9,6 +9,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/projectconfig"
 	"github.com/daviddwlee84/dev-cli/internal/wt"
 	"github.com/spf13/cobra"
 )
@@ -29,7 +30,7 @@ Who owns which worktree — the rule dev encodes, so nobody has to improvise:
 
 A new worktree is a clean checkout: no node_modules, no .venv, none of the
 gitignored env files the project needs. dev provisions it — see the config's
-[worktree] section, or a repo's own .dev.toml.`
+[worktree] section, or a repo's own .dev-cli/config.toml.`
 
 func newWorktreeCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
@@ -350,7 +351,10 @@ Use "dev wt plan" to see what it would do first.`,
 				return err
 			}
 
-			set := wt.SettingsFor(app.Cfg, g.MainRoot)
+			set, err := wt.SettingsForTrusted(ctx, app.Cfg, g.MainRoot)
+			if err != nil {
+				return err
+			}
 			plan := wt.BuildPlan(ctx, set, g.MainRoot)
 			if dryRun {
 				renderPlan(app, plan, g.MainRoot)
@@ -359,7 +363,7 @@ Use "dev wt plan" to see what it would do first.`,
 
 			p := &wt.Provisioner{
 				Settings: set,
-				Timeout:  app.Cfg.Worktree.ProvisionTimeout.Duration,
+				Timeout:  set.ProvisionTimeout,
 				Log:      app.Err,
 			}
 			res, err := p.Apply(ctx, plan, g.MainRoot, g.Root)
@@ -408,7 +412,7 @@ that depends on which lockfiles exist, which tools are installed here, and
 which files are genuinely gitignored. This computes all of it and changes
 nothing.
 
-With --write, seed a .dev.toml from what was detected, so the repository can
+With --write, seed .dev-cli/config.toml from what was detected, so the repository can
 commit its own setup and every machine gets the same one.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -429,7 +433,7 @@ commit its own setup and every machine gets the same one.`,
 	}
 	f := cmd.Flags()
 	f.StringVarP(&repoRef, "repo", "r", "", "repository (default: the current one)")
-	f.BoolVar(&write, "write", false, "seed a .dev.toml in the repository from what was detected")
+	f.BoolVar(&write, "write", false, "seed .dev-cli/config.toml in the repository from what was detected")
 	registerFlagCompletion(cmd, "repo", completeRepoFlag(app))
 	return cmd
 }
@@ -484,23 +488,30 @@ func renderPlan(app *App, plan wt.Plan, repoPath string) {
 	}
 	if plan.Empty() {
 		fmt.Fprintln(app.Err, "\nNothing would run. If a new worktree comes up broken, add what it needs to "+
-			"worktree.post_create, or commit a .dev.toml with `dev wt plan --write`.")
+			"worktree.post_create, or commit .dev-cli/config.toml with `dev wt plan --write`.")
 	}
 }
 
-// writeRepoTemplate seeds a .dev.toml from the detected plan.
+// writeRepoTemplate seeds .dev-cli/config.toml from the detected plan.
 //
 // Committing it is what makes a project's worktree setup reproducible: the
 // next machine, and the next person, get the same one without having to
 // rediscover it.
 func writeRepoTemplate(app *App, repoPath string, plan wt.Plan, set wt.Settings) error {
-	path := filepath.Join(repoPath, wt.OverrideFilename)
+	path, err := projectconfig.ConfigPath(repoPath)
+	if err != nil {
+		return err
+	}
 	if _, err := os.Stat(path); err == nil {
 		return fmt.Errorf("%s already exists — edit it directly", config.Contract(path))
 	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
 
 	var b strings.Builder
-	b.WriteString("# dev worktree setup for this repository.\n")
+	b.WriteString("# dev project configuration (versioned with this repository).\n")
+	b.WriteString("version = 1\n\n")
 	b.WriteString("#\n")
 	b.WriteString("# Committed on purpose: a worktree is a clean checkout, so without this a\n")
 	b.WriteString("# new one comes up with no dependencies and none of the gitignored files the\n")

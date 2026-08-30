@@ -41,6 +41,7 @@ dev cache clear remote
 dev cache clear notes
 dev cache clear fleet
 dev cache clear gitignore
+dev cache clear licenses
 dev cache clear all
 ```
 

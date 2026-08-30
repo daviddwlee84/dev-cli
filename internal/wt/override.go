@@ -8,8 +8,9 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 )
 
-// RepoOverride is a per-repository provisioning override, committed at the
-// repo root as .dev.toml. Global config sets a sensible default for every
+// RepoOverride is the legacy per-repository provisioning override committed at
+// the repo root as .dev.toml. New repositories use .dev-cli/config.toml;
+// this decoder remains for compatibility. Global config sets a sensible default for every
 // project; a repo that needs something specific (a Makefile bootstrap target,
 // an extra env file) says so next to its code, where a teammate on another
 // machine picks it up automatically.
@@ -31,7 +32,7 @@ type RepoOverride struct {
 	} `toml:"worktree"`
 }
 
-// OverrideFilename is the per-repo config file dev looks for.
+// OverrideFilename is the legacy per-repo config file dev still reads.
 const OverrideFilename = ".dev.toml"
 
 // LoadRepoOverride reads <repoPath>/.dev.toml if present. A malformed file is
@@ -48,6 +49,3 @@ func LoadRepoOverride(repoPath string) (RepoOverride, bool) {
 	}
 	return o, true
 }
-
-// applyOverride replaces only the fields the repo actually set, so a repo that
-// pins post_create still inherits the user's global include list.

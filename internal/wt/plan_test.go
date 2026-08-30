@@ -9,6 +9,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/projectconfig"
 	"github.com/daviddwlee84/dev-cli/internal/wt"
 )
 
@@ -263,5 +264,39 @@ func TestPlanWarnsAboutInvalidRepoDefaultStrategy(t *testing.T) {
 	}
 	if _, ok := stepFor(plan, wt.StepRun, "npm ci"); !ok {
 		t.Error("invalid value should fall back to reinstall")
+	}
+}
+
+func TestProjectWorktreeCommandsRequireContentHashTrust(t *testing.T) {
+	r := projectRepo(t, "go.mod")
+	projectDir := filepath.Join(r.Root, ".dev-cli")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := "version = 1\n[worktree]\npost_create = [\"make bootstrap\"]\n"
+	if err := os.WriteFile(filepath.Join(projectDir, "config.toml"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r.Git("add", ".dev-cli/config.toml")
+	r.Git("commit", "-m", "chore: configure worktrees")
+	cfg := config.Default()
+	cfg.Paths.StateDir = t.TempDir()
+	if _, err := wt.SettingsForTrusted(context.Background(), cfg, r.Root); err == nil || !strings.Contains(err.Error(), "not trusted") {
+		t.Fatalf("untrusted settings error = %v", err)
+	}
+	project, err := projectconfig.Load(r.Root, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := projectconfig.NewTrustStore(filepath.Join(cfg.StateDir(), "trust", "project-config-v1.json"))
+	if _, err := store.Approve(context.Background(), r.Root, project.ExecutionHash); err != nil {
+		t.Fatal(err)
+	}
+	settings, err := wt.SettingsForTrusted(context.Background(), cfg, r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(settings.Cmds.Commands) != 1 || settings.Cmds.Commands[0] != "make bootstrap" {
+		t.Fatalf("settings = %+v", settings)
 	}
 }

@@ -1354,12 +1354,15 @@ func TestCacheListAndClearLeavesStatsDataAlone(t *testing.T) {
 	notesIndex := filepath.Join(config.CacheHome(), "dev", "notes.db")
 	size := filepath.Join(config.CacheHome(), "dev", "sizes-v1.json")
 	gitignore := filepath.Join(config.CacheHome(), "dev", "gitignore", "Go.gitignore")
+	license := filepath.Join(config.CacheHome(), "dev", "licenses", "mit.json")
 	os.MkdirAll(filepath.Dir(remote), 0o755)
 	os.MkdirAll(filepath.Dir(gitignore), 0o755)
+	os.MkdirAll(filepath.Dir(license), 0o755)
 	os.WriteFile(remote, []byte("remote cache"), 0o600)
 	os.WriteFile(notesIndex, []byte("note index"), 0o600)
 	os.WriteFile(size, []byte("size cache"), 0o600)
 	os.WriteFile(gitignore, []byte("*.test\n"), 0o644)
+	os.WriteFile(license, []byte("{}\n"), 0o644)
 
 	// Stats and Markdown notes live under XDG data, not cache.
 	noteSource := filepath.Join(h.home, "state", "notes", "repo", "note.md")
@@ -1371,7 +1374,7 @@ func TestCacheListAndClearLeavesStatsDataAlone(t *testing.T) {
 
 	out := h.mustRun("cache", "list")
 	if !strings.Contains(out, "remote") || !strings.Contains(out, "notes") ||
-		!strings.Contains(out, "size") || !strings.Contains(out, "gitignore") || !strings.Contains(out, "not cache") {
+		!strings.Contains(out, "size") || !strings.Contains(out, "gitignore") || !strings.Contains(out, "licenses") || !strings.Contains(out, "not cache") {
 		t.Errorf("cache list:\n%s", out)
 	}
 	h.mustRun("cache", "clear", "all")
@@ -1386,6 +1389,9 @@ func TestCacheListAndClearLeavesStatsDataAlone(t *testing.T) {
 	}
 	if _, err := os.Stat(gitignore); !os.IsNotExist(err) {
 		t.Error("gitignore cache should be gone")
+	}
+	if _, err := os.Stat(license); !os.IsNotExist(err) {
+		t.Error("license cache should be gone")
 	}
 	if _, err := os.Stat(statsPath); err != nil {
 		t.Error("cache clear must never touch stats data")

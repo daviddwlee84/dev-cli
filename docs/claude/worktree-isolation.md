@@ -2,7 +2,7 @@
 description: Use Claude Code worktrees with correct paths, base selection, ignored-file provisioning, retention, and main-checkout enforcement.
 authority: anthropic-docs
 status: evolving
-verified_on: 2026-08-28
+verified_on: 2026-08-29
 tested_with: Claude Code 2.1.250
 ---
 
@@ -65,7 +65,7 @@ config/secrets.json
 
 Claude Code copies only paths that both match and are Git-ignored; tracked files already arrive through checkout. Keep the list minimal, review secret exposure, and install dependencies in the new directory.
 
-This is Claude Code's provisioning surface. `dev` uses `[worktree].include`, dependency strategies, and `.dev.toml` for `dev`-owned worktrees; do not assume the two formats are interchangeable.
+This is Claude Code's provisioning surface. `dev` uses `[worktree].include`, dependency strategies, and `.dev-cli/config.toml` (with legacy `.dev.toml` compatibility) for `dev`-owned worktrees; do not assume the two formats are interchangeable.
 
 ## Cleanup and retention
 

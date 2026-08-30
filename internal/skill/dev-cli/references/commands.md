@@ -16,6 +16,7 @@ in CI to catch drift.
 - `--no-runtime` — do not touch any terminal multiplexer
 - `--remotes` — path to remotes.toml (default: $XDG_CONFIG_HOME/dev/remotes.toml)
 - `--runtime` — override runtime backend: herdr, tmux, zellij or none
+- `--scaffolds` — path to scaffolds.toml (default: $XDG_CONFIG_HOME/dev/scaffolds.toml)
 
 ### `dev adopt`
 
@@ -106,7 +107,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|notes|fleet|size|gitignore|all>
+dev cache clear <remote|notes|fleet|size|gitignore|licenses|all>
 ```
 
 ### `dev cache list`
@@ -190,6 +191,7 @@ dev config edit [flags]
 ```
 
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
+- `--project` — edit .dev-cli/config.toml in the current repository
 
 ### `dev config init`
 
@@ -204,19 +206,80 @@ dev config init [flags]
 
 ### `dev config path`
 
-Print the config file path
+Print the global or project config file path
 
 ```
-dev config path
+dev config path [repo] [flags]
+```
+
+- `--project` — print the current/selected repository config path
+
+### `dev config scaffolds`
+
+Show, edit, initialise and locate repository scaffold presets
+
+```
+dev config scaffolds
+```
+
+### `dev config scaffolds edit`
+
+Open scaffolds.toml in an editor
+
+```
+dev config scaffolds edit [flags]
+```
+
+- `--editor` — editor command, overriding $VISUAL and $EDITOR
+
+### `dev config scaffolds init`
+
+Write a starter scaffolds.toml
+
+```
+dev config scaffolds init [flags]
+```
+
+- `-f, --force` — overwrite an existing file
+- `--stdout` — print instead of writing
+
+### `dev config scaffolds path`
+
+Print the scaffold config path
+
+```
+dev config scaffolds path
+```
+
+### `dev config scaffolds show`
+
+Print the effective scaffold catalog
+
+```
+dev config scaffolds show
 ```
 
 ### `dev config show`
 
-Print the effective configuration
+Print the effective global or project configuration
 
 ```
-dev config show
+dev config show [repo] [flags]
 ```
+
+- `--project` — show the current/selected repository overlay
+
+### `dev config trust`
+
+Approve or revoke executable project configuration by content hash
+
+```
+dev config trust [repo] [flags]
+```
+
+- `--list` — list trusted repository hashes
+- `--revoke` — remove trust for this repository
+- `-y, --yes` — approve without prompting
 
 ### `dev doctor`
 
@@ -255,6 +318,7 @@ dev edit [flags]
 ```
 
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
+- `--project` — edit .dev-cli/config.toml in the current repository
 
 ### `dev fleet`
 
@@ -620,14 +684,30 @@ dev repo
 
 ### `dev repo clone`
 
-Clone a repository into the right place under a scan root
+Clone a repository and optionally apply a setup preset
 
 ```
-dev repo clone <owner/name|url> [flags]
+dev repo clone [owner/name|url|path] [flags]
 ```
 
+- `--agent` — agent targets for selected project skills
+- `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
-- `-o, --open` — open the clone in the runtime afterwards
+- `--description` — repository description
+- `--disable` — disable a scaffold item by id (repeatable)
+- `--dry-run` — show the plan without changing anything
+- `--enable` — enable a scaffold item by id (repeatable)
+- `--gitignore` — gitignore template (repeatable or comma-separated)
+- `--handoff` — afterwards: stay, cd, open or start
+- `--import-orphan-plans` — copy matching global Claude plans into the repository
+- `--json` — emit a machine-readable result
+- `--license` — license keyword (for example mit or apache-2.0)
+- `--license-holder` — copyright holder used in the license template
+- `-o, --open` — open the clone in the runtime afterwards (alias for --handoff=open)
+- `--path` — exact destination path
+- `--preset` — scaffold preset
+- `--set` — preset input as key=value (repeatable)
+- `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo context`
 
@@ -674,13 +754,33 @@ dev repo mark <repo> [flags]
 Create a new local repository (optionally with a remote)
 
 ```
-dev repo new <name> [flags]
+dev repo new [name] [flags]
 ```
 
+- `--agent` — agent targets for selected project skills
+- `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
 - `--description` — repository description
-- `--private` — create the remote as private
-- `--remote` — also create a remote repository with gh or glab
+- `--disable` — disable a scaffold item by id (repeatable)
+- `--dry-run` — show the plan without changing anything
+- `--enable` — enable a scaffold item by id (repeatable)
+- `--forge` — upstream provider: auto, github, gitlab or none
+- `--gitignore` — gitignore template (repeatable or comma-separated)
+- `--handoff` — afterwards: stay, cd, open or start
+- `--import-orphan-plans` — copy matching global Claude plans into the repository
+- `--json` — emit a machine-readable result
+- `--license` — license keyword (for example mit or apache-2.0)
+- `--license-holder` — copyright holder used in the license template
+- `--namespace` — GitHub owner/org or GitLab namespace
+- `--path` — exact destination path
+- `--preset` — scaffold preset
+- `--private` — create a private upstream (compatibility flag)
+- `--public` — create a public upstream
+- `--push` — push the current branch after publishing
+- `--remote` — also create a GitHub or GitLab upstream
+- `--set` — preset input as key=value (repeatable)
+- `--visibility` — upstream visibility: private, public or internal
+- `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo open`
 
@@ -703,6 +803,39 @@ dev repo remote [query] [flags]
 - `--limit` — maximum matching repositories to render (0 for all)
 - `--refresh` — force a complete forge inventory refresh
 - `--visibility` — filter visibility: public, private or internal
+
+### `dev repo setup`
+
+Apply a scaffold to an existing repository
+
+```
+dev repo setup [repo-or-path] [flags]
+```
+
+- `--agent` — agent targets for selected project skills
+- `--browse-skills` — open the upstream skills installer during setup
+- `--commit` — commit only the setup changes (requires a clean starting checkout)
+- `--description` — repository description
+- `--disable` — disable a scaffold item by id (repeatable)
+- `--dry-run` — show the plan without changing anything
+- `--enable` — enable a scaffold item by id (repeatable)
+- `--forge` — upstream provider: auto, github, gitlab or none
+- `--gitignore` — gitignore template (repeatable or comma-separated)
+- `--handoff` — afterwards: stay, cd, open or start
+- `--import-orphan-plans` — copy matching global Claude plans into the repository
+- `--json` — emit a machine-readable result
+- `--license` — license keyword (for example mit or apache-2.0)
+- `--license-holder` — copyright holder used in the license template
+- `-m, --message` — setup commit message
+- `--namespace` — GitHub owner/org or GitLab namespace
+- `--preset` — scaffold preset
+- `--private` — create a private upstream (compatibility flag)
+- `--public` — create a public upstream
+- `--push` — push the current branch after publishing
+- `--remote` — also create a GitHub or GitLab upstream
+- `--set` — preset input as key=value (repeatable)
+- `--visibility` — upstream visibility: private, public or internal
+- `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo sync`
 
@@ -1154,7 +1287,7 @@ dev wt plan [flags]
 ```
 
 - `-r, --repo` — repository (default: the current one)
-- `--write` — seed a .dev.toml in the repository from what was detected
+- `--write` — seed .dev-cli/config.toml in the repository from what was detected
 
 ### `dev wt provision`
 

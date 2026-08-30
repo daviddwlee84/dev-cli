@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/projectconfig"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,7 @@ func newConfigEditCmd(app *App) *cobra.Command {
 
 func newConfigEditorCommand(app *App, use, short string) *cobra.Command {
 	var editor string
+	var project bool
 	cmd := &cobra.Command{
 		Use:   use,
 		Short: short,
@@ -37,6 +39,35 @@ An editor value may contain arguments (for example "code --wait"); it is
 executed through the user's shell with the config path safely quoted.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if project {
+				root, err := resolveSetupRepo(app, nil)
+				if err != nil {
+					return err
+				}
+				path, err := projectconfig.ConfigPath(root)
+				if err != nil {
+					return err
+				}
+				if _, err := os.Stat(path); os.IsNotExist(err) {
+					if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+						return err
+					}
+					body := "# Project-owned dev overrides. Host paths/runtime/state are not allowed here.\nversion = 1\n\n[worktree]\n"
+					if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+						return err
+					}
+					fmt.Fprintf(app.Err, "created %s\n", config.Contract(path))
+				}
+				proc, chosen, err := editorProcess(path, editor)
+				if err != nil {
+					return err
+				}
+				proc.Stdin, proc.Stdout, proc.Stderr = os.Stdin, os.Stdout, os.Stderr
+				if err := proc.Run(); err != nil {
+					return fmt.Errorf("editor %q: %w", chosen, err)
+				}
+				return nil
+			}
 			proc, chosen, created, err := configEditorProcess(app, editor)
 			if err != nil {
 				return err
@@ -56,6 +87,7 @@ executed through the user's shell with the config path safely quoted.`,
 		},
 	}
 	cmd.Flags().StringVar(&editor, "editor", "", "editor command, overriding $VISUAL and $EDITOR")
+	cmd.Flags().BoolVar(&project, "project", false, "edit .dev-cli/config.toml in the current repository")
 	return cmd
 }
 

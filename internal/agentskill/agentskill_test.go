@@ -153,6 +153,13 @@ func TestCommandsUseDefaultSourceAndExactScope(t *testing.T) {
 	if strings.Join(update.Args[1:], " ") != "update demo --yes --global" {
 		t.Fatalf("update args = %v", update.Args)
 	}
+	install, err := InstallCommand(context.Background(), t.TempDir(), "owner/catalog", []string{"one", "two"}, []string{"claude-code", "codex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Join(install.Args[1:], " ") != "add owner/catalog --skill one two --agent claude-code codex --yes" {
+		t.Fatalf("install args = %v", install.Args)
+	}
 }
 
 func initSkillRepo(t *testing.T, body string) string {

@@ -8,6 +8,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `dev repo new` now has a confirmed interactive repository-bootstrap wizard, with
+  `dev repo create` as an alias; `dev repo clone` can optionally apply the same setup,
+  and `dev repo setup` safely merges preset files into an existing clean checkout.
+  Presets live in versioned `scaffolds.toml`, support typed inputs, safe templates,
+  phased hooks, project skills with setup entrypoints, optional GitHub/GitLab
+  publication, and explicit stay/cd/runtime/start handoffs. The two recommended
+  agent skills use reviewed built-in project initializers instead of executing
+  newly downloaded setup code.
+- Repositories may commit allowlisted `.dev-cli/config.toml` and
+  `.dev-cli/scaffolds.toml` overrides. Host paths/runtime/state remain global, while
+  executable project configuration is content-hash trusted locally before it can run;
+  legacy `.dev.toml` worktree settings remain compatible.
+
 - Releases now publish `windows/amd64` and `windows/arm64` `.zip` archives alongside the
   Unix `.tar.gz` set, all covered by `SHA256SUMS`. `dev` builds and runs on Windows; core
   repository, task and worktree commands work. There is no tmux, Zellij or Herdr there, so

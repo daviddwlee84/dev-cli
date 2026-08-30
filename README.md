@@ -144,6 +144,65 @@ dev doctor       # what works on this machine, and what degrades
 Only **git** is required at runtime. `herdr`, `tmux`, `zellij`, `gh`, `glab` and
 Azure CLI each enable more and degrade cleanly when absent.
 
+## Create, clone, or set up a repository
+
+Repository bootstrap works from any directory. Bare `dev repo new` opens an
+interactive flow that chooses the destination under the configured
+`project_root`, previews the setup, and confirms before writing anything:
+
+```bash
+dev repo new                                  # interactive new-repository flow
+dev repo create api --preset agent-ready      # `create` is an alias for `new`
+dev repo clone owner/api                      # owner/name or a Git URL
+dev repo setup . --preset agent-ready         # add the same setup to an existing repo
+```
+
+`repo new NAME` keeps the small scripted default: `main`, README, and an
+initial commit. A URL belongs to `repo clone`; clone can optionally apply a
+preset after the checkout exists, while `repo setup` repeat-safely merges native
+initializers and preset files into a repository you already have. Custom hooks
+and skill setup remain responsible for their own idempotency. Use `--dry-run`
+to inspect the available plan without mutating the target repository.
+
+The built-in `agent-ready` preset adds a starter `AGENTS.md`, a common
+`.gitignore` section, and project-scoped Claude plans. If selected, the optional
+`agent-history-hygiene` and `project-knowledge-harness` skills are installed and
+dev's reviewed built-in initializers create the pre-commit/gitleaks and
+TODO/backlog/pitfalls surfaces during bootstrap; setup does not wait for a later
+agent to happen to trigger the skill. Presets may also declare
+typed inputs, repository-contained templates, and ordered
+`before_commit`/`after_commit`/`after_remote` hooks.
+
+When `gh` or `glab` is installed and authenticated, the wizard can create a
+GitHub or GitLab upstream using the local repository name and description,
+choose its namespace and visibility, add `origin`, and optionally push the
+initial/current branch. Local-only is the default and published repos
+default private. A forge or push failure leaves the local repository and any
+already-created upstream intact, with recovery information instead of deleting
+work.
+
+The final handoff is explicit:
+
+| Handoff | Result |
+|---|---|
+| `stay` | print the result and leave the shell where it is |
+| `cd` | enter the repository through the trusted `shell-init` wrapper |
+| `open` | open the configured Herdr/tmux/Zellij runtime; fall back to `cd` when runtime is `none` |
+| `start` | continue into the existing `dev start` task wizard with this repository fixed |
+
+Neither bootstrap nor `dev start` launches a coding agent. They prepare the
+repository, checkout, and optional runtime surface; starting an agent remains a
+separate, deliberate action.
+
+Global custom presets live in `$XDG_CONFIG_HOME/dev/scaffolds.toml`. A project
+may commit `.dev-cli/config.toml` for allowlisted worktree/setup wizard defaults
+and `.dev-cli/scaffolds.toml` for project presets, templates, hooks, and skill
+setup. Project files cannot override host paths, runtime selection, forge
+inventory, credentials, state, stats, update policy, or TUI policy. Legacy
+`.dev.toml` worktree settings remain readable; the `.dev-cli` files win when
+both are present. See [Commands and configuration](docs/reference/commands-config.md#repository-bootstrap)
+for the schema, precedence, and executable-config trust boundary.
+
 ## The lifecycle
 
 | State | Git | Runtime | Meaning |
@@ -528,7 +587,8 @@ reinstalling rather than silently producing a broken checkout.
 
 `dev wt plan` shows exactly what a new worktree of a repository would get:
 which project types were detected, which tools are missing, and every file and
-command involved. `dev wt plan --write` seeds a `<repo>/.dev.toml` from it, so
+command involved. `dev wt plan --write` seeds
+`<repo>/.dev-cli/config.toml` from it, so
 a project can commit its own setup and every machine provisions the same way.
 
 ```
@@ -549,7 +609,9 @@ python   uv       uv.lock            .venv         installed
 dev repo list --sizes          # repos, remote topology and owned logical size
 dev repo list --no-remote      # find local Git with no configured backup remote
 dev repo context api           # agent-ready paths, Git, WT, runtime and tasks
-dev repo clone owner/name -c Web   # clone into the right place, via gh or glab
+dev repo new                   # interactive local/published repository bootstrap
+dev repo setup . --preset agent-ready   # safely initialize an existing repo
+dev repo clone owner/name -c Web   # expand forge shorthand, then clone with Git
 dev repo clone https://dev.azure.com/acme/Platform/_git/api -c Work
 dev repo sync --all            # fetch + prune, and report what moved
 dev fleet list                 # Git/task/runtime state from every configured machine
@@ -677,6 +739,7 @@ dev cache clear notes          # FTS only; Markdown remains
 dev cache clear fleet
 dev cache clear size
 dev cache clear gitignore
+dev cache clear licenses
 dev cache clear all
 ```
 

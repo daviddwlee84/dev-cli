@@ -122,6 +122,13 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (*CreateResult,
 			return nil, fmt.Errorf("base ref %q does not exist in %s", base, repoPath)
 		}
 	}
+	var provisionSettings Settings
+	if !req.NoProvision {
+		provisionSettings, err = SettingsForTrusted(ctx, m.Cfg, repoPath)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return nil, fmt.Errorf("create worktree parent: %w", err)
@@ -134,11 +141,10 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (*CreateResult,
 	res := &CreateResult{Path: path, Branch: req.Branch, BranchCreated: !branchExisted}
 
 	if !req.NoProvision {
-		// SettingsFor folds in the repo's own .dev.toml, so a project can pin
-		// its setup where a teammate on another machine picks it up too.
+		// Trusted settings fold in the repository's portable project config.
 		p := &Provisioner{
-			Settings: SettingsFor(m.Cfg, repoPath),
-			Timeout:  m.Cfg.Worktree.ProvisionTimeout.Duration,
+			Settings: provisionSettings,
+			Timeout:  provisionSettings.ProvisionTimeout,
 			Log:      m.Log,
 		}
 		pr, err := p.Provision(ctx, repoPath, path)

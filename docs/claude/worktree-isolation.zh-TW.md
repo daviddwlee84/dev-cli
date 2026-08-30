@@ -2,7 +2,7 @@
 description: 以正確 path、base selection、ignored-file provisioning、retention 與 main-checkout enforcement 使用 Claude Code worktree。
 authority: anthropic-docs
 status: evolving
-verified_on: 2026-08-28
+verified_on: 2026-08-29
 tested_with: Claude Code 2.1.250
 lang: zh-TW
 ---
@@ -69,7 +69,7 @@ config/secrets.json
 
 Claude Code 只複製同時 match 且 Git-ignored 的 paths；tracked files 已透過 checkout 到達。List 應維持最小，review secret exposure，並在新 directory 安裝 dependencies。
 
-這是 Claude Code 的 provisioning surface。`dev`-owned worktree 使用 `[worktree].include`、dependency strategies 與 `.dev.toml`；兩種格式不能互換。
+這是 Claude Code 的 provisioning surface。`dev`-owned worktree 使用 `[worktree].include`、dependency strategies 與 `.dev-cli/config.toml`（並保留 legacy `.dev.toml` compatibility）；兩種格式不能互換。
 
 ## Cleanup 與 retention
 

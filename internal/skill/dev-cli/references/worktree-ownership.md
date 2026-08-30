@@ -66,7 +66,8 @@ dev wt plan --write
 dev wt provision --dry-run
 ```
 
-Effective settings come from global config or committed repo `.dev.toml`:
+Effective settings come from global config or committed repo
+`.dev-cli/config.toml` (legacy `.dev.toml` remains readable):
 
 ```toml
 [worktree]
@@ -75,6 +76,10 @@ link = []
 post_create = "auto"
 strategy = "reinstall"
 ```
+
+An executable `post_create` from `.dev-cli/config.toml` requires approval of its
+exact content hash with `dev config trust <repo> --yes`. Legacy `.dev.toml`
+retains its compatibility behavior.
 
 Only paths that are both explicitly included and genuinely gitignored are
 copied. Tracked files already have the branch-correct version. Included files

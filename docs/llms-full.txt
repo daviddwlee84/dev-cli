@@ -69,7 +69,7 @@ Source: https://daviddwlee84.github.io/dev-cli/getting-started/
 
 > Install dev-cli, initialize a machine, and run one change stream from start through integration.
 
-Install `dev`, let it discover the machine, then run one small change stream through `start`, `park`, `resume`, and `done`.
+Install `dev`, create or clone a repository, then run one small change stream through `start`, `park`, `resume`, and `done`.
 
 ## 1. Install and initialize
 
@@ -101,7 +101,39 @@ dev config show
 
 Only Git is required. Herdr, tmux, Zellij, `gh`, and `glab` add richer runtime and forge behavior but degrade cleanly when absent.
 
-## 2. Start work
+## 2. Create or clone a repository
+
+From any directory, open the repository bootstrap wizard:
+
+```bash
+dev repo new
+```
+
+It chooses a destination under configured `project_root`, previews the plan,
+and can use the built-in `minimal` or `agent-ready` preset. `agent-ready` adds
+starter agent guidance and project-scoped Claude plans; when selected, optional
+skills such as `agent-history-hygiene` and `project-knowledge-harness` are
+installed, while reviewed built-in initializers create their project surfaces
+during this flow without executing newly downloaded skill code.
+
+To acquire existing code, pass an owner/name or Git URL to clone. To apply the
+same setup to an existing checkout, use setup:
+
+```bash
+dev repo clone owner/api
+dev repo clone git@gitlab.example.com:group/api.git
+dev repo setup . --preset agent-ready
+```
+
+The wizard offers GitHub or GitLab publishing only when the corresponding
+`gh` or `glab` CLI is installed and authenticated. Local-only remains the
+default. Its final handoff can stay in place, `cd` into the repository, open
+the configured terminal runtime, or continue to the `dev start` wizard.
+Bootstrap and `dev start` do not launch a coding agent.
+
+If you already have a repository and need no setup, continue there directly.
+
+## 3. Start work
 
 From any discovered repository, start a named task. Pass the base explicitly in scripts and agent-driven commands:
 
@@ -122,7 +154,7 @@ dev start api --task "small local branch" --branch-only --base main
 - `--branch-only` creates a branch without a linked worktree.
 - The default worktree mode is best for independent or parallel mutation.
 
-## 3. Park with a useful next action
+## 4. Park with a useful next action
 
 ```bash
 dev park --next "reproduce the refresh race, then add a regression test"
@@ -140,7 +172,7 @@ For cross-machine handoff, commit and push before removing the checkout:
 dev park --cold --push
 ```
 
-## 4. Resume and inspect
+## 5. Resume and inspect
 
 ```bash
 dev ls
@@ -150,7 +182,7 @@ dev status
 
 A WARM task reopens its existing checkout. A COLD task reconstructs a worktree from the remote branch. The branch is the durable identity; the directory is a cache.
 
-## 5. Integrate deliberately
+## 6. Integrate deliberately
 
 ```bash
 dev done --ff
@@ -172,6 +204,7 @@ dev sweep --apply
 ## Next steps
 
 - [Mental model and lifecycle](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/)
+- [Repository bootstrap and project configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#repository-bootstrap)
 - [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/)
 - [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/)
 - [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/)
@@ -179,6 +212,7 @@ dev sweep --apply
 ## Sources
 
 - [`README.md`](https://github.com/daviddwlee84/dev-cli/blob/main/README.md)
+- [`internal/cli/repo_create.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/repo_create.go)
 - [`internal/help/topics/parking.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/parking.md)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 
@@ -768,7 +802,7 @@ Use `dev` when code, history, or plans must remain reviewable or a human may ret
 
 ```bash
 dev wt plan
-dev wt plan --write          # seed a repository-owned .dev.toml
+dev wt plan --write          # seed repository-owned .dev-cli/config.toml
 dev wt create feat/auth --base main
 dev wt list
 ```
@@ -806,6 +840,12 @@ Per-ecosystem overrides live in the project or global config:
 [worktree.strategies]
 node = "copy"
 ```
+
+New project-owned overrides belong in `.dev-cli/config.toml`; legacy
+`.dev.toml` remains readable under its compatibility behavior. A `post_create`
+command from `.dev-cli/config.toml` does not run until its exact
+executable-config hash is approved with `dev config trust . --yes`. Changing
+the command invalidates that approval.
 
 Important built-in decisions:
 
@@ -961,7 +1001,10 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/
 
 A remote fleet is a list of other hosts, each running its own `dev` binary against its own `$XDG_CONFIG_HOME`, its own scan roots, its own task registry, and its own runtime. `dev fleet` never centralizes or takes ownership of that state — it only asks each host's `dev` for a read-only snapshot over SSH and reports what comes back. A host with no `dev` installed, or an unreachable host, degrades that one row; it never blocks the rest of the fleet.
 
-This is a different concept from the REMOTE TUI view and `dev repo new`/PR flows, which talk to a forge CLI (`gh`, `glab`, or the Azure CLI) about repositories hosted on GitHub, GitLab, or Azure DevOps Services. Fleet talks to *your own machines* about *your own local checkouts* on those machines.
+This is a different concept from the REMOTE TUI view and publishing/PR flows,
+which use `gh` or `glab` for GitHub/GitLab repository publication and PRs, plus
+the Azure CLI for Azure DevOps inventory and PRs. Fleet talks to *your own
+machines* about *your own local checkouts* on those machines.
 
 ## Configure hosts
 
@@ -1044,7 +1087,13 @@ Its table shows `HOST`, `STATE`, `REPO`, `BRANCH`, `GIT`, `LIVE`, `TASKS`, and `
 
 Every host is probed independently, so one bad host never fails the fleet as a whole. Per-host states are `ok`, `stale` (cache reused, optionally with an error explaining why), `no-dev` (the remote has no `dev` on its `PATH` — reported, not an error), `unreachable` (SSH itself failed), `timeout`, `incompatible` (an old or unrecognized remote `dev`), and `invalid-response` (malformed snapshot JSON). `ok` and a clean `no-dev` never fail `--strict`; every other state does, including a `stale` result that carries an error.
 
-Separately, the forge integration behind the REMOTE view and `dev repo new`/PR flows (`gh` for GitHub, `glab` for GitLab, and `az` for Azure DevOps Services) is independently optional. `dev doctor` reports each as a warning, not a failure, when it is missing from `PATH`, and every entry point that would use one degrades to plain Git behavior instead — no forge-backed repository listing, and no CLI-assisted pull/merge request creation — so no forge CLI being installed is ever required for `dev` to work. Azure DevOps inventory is additionally opt-in: it stays disabled until `forge.azure_devops` targets are configured.
+Separately, forge integration is optional: `gh` and `glab` enable GitHub/GitLab
+inventory, publication, and pull/merge requests, while `az` enables Azure
+DevOps inventory and pull requests. `dev doctor` reports missing CLIs as
+warnings. Local Git workflows remain available, but an explicit non-interactive
+publication request fails with login/install guidance instead of silently
+changing its meaning. Azure DevOps inventory is additionally opt-in and stays
+disabled until `forge.azure_devops` targets are configured.
 
 ## Sources
 
@@ -2140,7 +2189,7 @@ config/secrets.json
 
 Claude Code copies only paths that both match and are Git-ignored; tracked files already arrive through checkout. Keep the list minimal, review secret exposure, and install dependencies in the new directory.
 
-This is Claude Code's provisioning surface. `dev` uses `[worktree].include`, dependency strategies, and `.dev.toml` for `dev`-owned worktrees; do not assume the two formats are interchangeable.
+This is Claude Code's provisioning surface. `dev` uses `[worktree].include`, dependency strategies, and `.dev-cli/config.toml` (with legacy `.dev.toml` compatibility) for `dev`-owned worktrees; do not assume the two formats are interchangeable.
 
 ## Cleanup and retention
 
@@ -2306,12 +2355,12 @@ Use the authored map for intent and the embedded generated reference for exact f
 | agent artifacts | `prepare`, `artifact finalize`, `artifact list`, `artifact discard` |
 | guarded Git transactions | `git uncommit`, `git recommit`, `git pull-rebase`, `git amend-all`, `git setup` |
 | linked worktrees | `wt list`, `wt create`, `wt open`, `wt rm`, `wt plan`, `wt provision` |
-| repositories/remotes | `repo list`, `repo context`, `repo clone`, `repo open`, `repo new`, `repo sync`, `repo remote`, `repo mark` |
+| repositories/remotes | `repo list`, `repo context`, `repo new`/`repo create`, `repo clone`, `repo setup`, `repo open`, `repo sync`, `repo remote`, `repo mark` |
 | repository quick notes | `note add`, `note list`, `note show`, `note search`, `note edit`, `note delete`, `note path`, `note reindex` |
 | machine inventory | `bootstrap`, `adopt`, `doctor` |
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools` |
-| configuration/shell | `config init/show/path`, `shell-init`, completion |
+| configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
 | remote fleet | `fleet list`, `fleet status`, `fleet sync`, `fleet open`, `fleet config …` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
@@ -2327,6 +2376,9 @@ dev ls --json
 dev repo list --json
 dev repo context [repo]
 dev repo remote --json
+dev repo new NAME --json
+dev repo clone <ref> --json
+dev repo setup [repo-or-path] --preset PRESET --json
 dev note list [repo] --json
 dev note search <query> --json
 dev note show <note-id> --json
@@ -2336,6 +2388,74 @@ dev bootstrap --json
 Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract.
 
 Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
+
+## Repository bootstrap
+
+Repository acquisition and setup are separate operations so a Git URL never
+silently changes the meaning of `new`:
+
+| Command | Behavior |
+|---|---|
+| `dev repo new` | interactive new-repository wizard |
+| `dev repo new NAME` / `dev repo create NAME` | create a new local repository; the explicit-name default remains the compatible `minimal` preset |
+| `dev repo clone [owner/name\|url]` | clone into the configured destination, then optionally apply a preset; setup defaults off |
+| `dev repo setup [repo-or-path]` | repeat-safely merge native initializers and preset files into an existing clean checkout; defaults to the current repository and does not commit unless requested |
+
+Across these commands, controls include `--preset`, `--path`, typed input values through
+`--set`, item selection through `--enable`/`--disable`, `--dry-run`, `--yes`,
+`--json`, and `--handoff <stay|cd|open|start>`. JSON mode is non-interactive
+and never changes directory or opens a runtime. Dry-run performs no target
+repository mutation; clone setup can only be planned in detail after the clone
+exists. Use the generated reference below for each command's exact flag
+availability.
+
+The wizard renders the selected scaffold and workflow summary before target
+repository mutation. The built-in presets are:
+
+- `minimal`: `main`, README, and an initial commit; this preserves existing
+  scripted `repo new NAME` behavior.
+- `agent-ready`: extends `minimal` with common ignores, starter `AGENTS.md`,
+  and project-scoped `.claude/settings.json` plus `.claude/plans/`.
+  `agent-history-hygiene` and `project-knowledge-harness` are offered but are
+  not selected silently. When selected, dev installs them and runs reviewed
+  built-in initializers for their project surfaces before the initial commit;
+  downloaded skill scripts are not executed for these built-ins.
+
+Presets can add typed `string`, `bool`, and `choice` inputs, text templates,
+hooks, and project skills. Hooks run in fixed `before_commit`, `after_commit`,
+and `after_remote` phases. The safe hook form is an argv `command`; a shell
+`run` is explicit, and only `interactive = true` loads an interactive shell.
+Required failures stop later commit/remote steps; optional failures are
+reported as warnings. Produced local files are retained for recovery. Native
+initializers and preset files are repeat-safe; custom hooks and skill setup are
+responsible for their own idempotency.
+
+### Upstream publishing
+
+Before offering publication, dev probes `gh` and `glab` without changing
+state. A provider is offered only when its CLI is installed and authenticated;
+otherwise the wizard gives the relevant installation or login guidance.
+Local-only is the default, and a newly published repository defaults private.
+
+Publishing uses the local repository name and configured description, then asks
+for the provider namespace/owner, visibility, and whether to push the
+initial/current branch. Dev creates the empty GitHub or GitLab repository after
+required local setup and commit steps succeed, then adds/verifies `origin` and
+optionally pushes with upstream tracking. A
+provider, name-conflict, or push failure never deletes the local checkout or
+an upstream that was already created.
+
+Publishing from `repo setup` requires `--commit`, so the newly created
+upstream cannot omit the generated setup changes.
+
+### Handoff
+
+`stay` prints the result only. `cd` uses the trusted `shell-init` wrapper to
+change the parent shell. `open` opens the configured Herdr/tmux/Zellij runtime
+and falls back to `cd` when runtime is `none`. `start` continues into the
+existing task wizard with the repository fixed, and is unavailable when setup
+leaves uncommitted files that a new worktree would omit. Neither repository
+bootstrap nor `dev start` launches a coding agent.
 
 ## `dev done` finish flags
 
@@ -2358,6 +2478,10 @@ A dirty checkout is handled by `--dirty <auto|fail|commit|discard>` (default `au
 dev config init
 dev config show
 dev config path
+dev config scaffolds init
+dev config scaffolds show
+dev config scaffolds path
+dev config scaffolds edit
 ```
 
 `config init` detects local roots and writes explicit defaults. A missing config file is allowed; the built-in defaults keep core Git behavior usable, but generated config is recommended because it makes machine policy reviewable.
@@ -2377,7 +2501,109 @@ Key sections:
 
 Repository quick-note Markdown is durable under configured `paths.state_dir/notes`, which defaults to `$XDG_DATA_HOME/dev/notes`. The full-text index at `$XDG_CACHE_HOME/dev/notes.db` is disposable and rebuilds from those files; changing `paths.state_dir` does not move the cache.
 
-A repository may commit `.dev.toml` for worktree provisioning overrides that should travel with the project. Keep host-specific paths and credentials in the user config or ignored environment files, not in the repository override.
+### Scaffold presets
+
+Global repository recipes live at `$XDG_CONFIG_HOME/dev/scaffolds.toml` (or
+the root `--scaffolds` override). Every authored file declares `version = 1`.
+A compact preset looks like:
+
+```toml
+version = 1
+default_preset = "team"
+default_agents = ["claude-code", "codex"]
+
+[presets.team]
+extends = "agent-ready"
+handoff = "cd"
+
+[[presets.team.inputs]]
+id = "deployment"
+type = "choice"
+choices = ["none", "docker"]
+default = "none"
+
+[[presets.team.files]]
+id = "service-readme"
+source = "service/README.md" # templates/service/README.md beside this file
+destination = "docs/service.md"
+
+[[presets.team.hooks]]
+id = "verify"
+phase = "before_commit"
+command = ["make", "test"]
+required = true
+
+[[presets.team.skills]]
+id = "knowledge"
+source = "daviddwlee84/agent-skills/skills"
+name = "project-knowledge-harness"
+agents = ["claude-code", "codex"]
+default = true
+
+[presets.team.skills.setup]
+phase = "before_commit"
+interpreter = "bash"
+script = "scripts/init.sh"
+args = ["--target", "{{path}}", "--project-name", "{{name}}"]
+required = true
+```
+
+Skill setup normally names a project-local script inside the installed skill.
+The shipped recommendations instead use `builtin = "agent-history-hygiene"` or
+`builtin = "project-knowledge-harness"`; these fixed reviewed initializers do
+not execute downloaded skill code.
+
+A preset may extend one parent. Scalars override; simple lists replace; files,
+hooks, and skills merge by `id`, and an inherited item can be disabled with
+`enabled = false`. Template sources must remain in the `templates/` tree next
+to their config source, destinations must remain inside the repository, and a
+skill setup script must remain inside the installed skill directory.
+
+### Safe project overlays
+
+A repository may commit these fixed files:
+
+- `.dev-cli/config.toml`: allowlisted worktree provisioning and repository
+  setup wizard defaults.
+- `.dev-cli/scaffolds.toml`: project presets, templates, hooks, and skill
+  setup using the same versioned schema.
+
+```toml
+# .dev-cli/config.toml
+version = 1
+
+[worktree]
+include = [".env.example"]
+strategy = "reinstall"
+
+[repo.setup]
+preset = "team"
+handoff = "cd"
+commit = false
+```
+
+Effective precedence, lowest to highest, is built-ins, global config/scaffolds,
+legacy `.dev.toml`, the target repository's `.dev-cli/*`, then explicit CLI or
+wizard choices. `.dev.toml` remains readable for compatibility; new project
+configuration should use `.dev-cli/config.toml`. Global `default_preset` and the
+project `[repo.setup]` preset, handoff, and commit fields seed interactive
+wizard choices; they do not change scripted defaults, which are controlled by
+the corresponding flags.
+
+Project files cannot override host paths, state location, runtime backend,
+forge inventory or credentials, stats, update, bootstrap, or TUI policy. They
+also cannot silently publish a repository. Before a post-create command from
+`.dev-cli/config.toml`, or a hook or skill setup from project
+`.dev-cli/scaffolds.toml`, executes, dev asks to trust the canonical repository
+plus an execution-content hash. Changed executable content requires new
+consent; non-interactive use without a matching trust record fails closed.
+Legacy `.dev.toml` retains its compatibility behavior. Keep credentials and
+host-specific paths in user config or ignored environment files, never in a
+committed project overlay.
+
+Project-authored skill setup must use a local source so its bytes can be bound
+to the trust hash. Remote project skills may still be installed, but cannot
+declare executable setup; global presets remain host-owned policy.
 
 ## Colored output
 
@@ -2419,6 +2645,7 @@ The following content is included from `internal/skill/dev-cli/references/comman
 - `--no-runtime` — do not touch any terminal multiplexer
 - `--remotes` — path to remotes.toml (default: $XDG_CONFIG_HOME/dev/remotes.toml)
 - `--runtime` — override runtime backend: herdr, tmux, zellij or none
+- `--scaffolds` — path to scaffolds.toml (default: $XDG_CONFIG_HOME/dev/scaffolds.toml)
 
 ### `dev adopt`
 
@@ -2509,7 +2736,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|notes|fleet|size|gitignore|all>
+dev cache clear <remote|notes|fleet|size|gitignore|licenses|all>
 ```
 
 ### `dev cache list`
@@ -2593,6 +2820,7 @@ dev config edit [flags]
 ```
 
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
+- `--project` — edit .dev-cli/config.toml in the current repository
 
 ### `dev config init`
 
@@ -2607,19 +2835,80 @@ dev config init [flags]
 
 ### `dev config path`
 
-Print the config file path
+Print the global or project config file path
 
 ```
-dev config path
+dev config path [repo] [flags]
+```
+
+- `--project` — print the current/selected repository config path
+
+### `dev config scaffolds`
+
+Show, edit, initialise and locate repository scaffold presets
+
+```
+dev config scaffolds
+```
+
+### `dev config scaffolds edit`
+
+Open scaffolds.toml in an editor
+
+```
+dev config scaffolds edit [flags]
+```
+
+- `--editor` — editor command, overriding $VISUAL and $EDITOR
+
+### `dev config scaffolds init`
+
+Write a starter scaffolds.toml
+
+```
+dev config scaffolds init [flags]
+```
+
+- `-f, --force` — overwrite an existing file
+- `--stdout` — print instead of writing
+
+### `dev config scaffolds path`
+
+Print the scaffold config path
+
+```
+dev config scaffolds path
+```
+
+### `dev config scaffolds show`
+
+Print the effective scaffold catalog
+
+```
+dev config scaffolds show
 ```
 
 ### `dev config show`
 
-Print the effective configuration
+Print the effective global or project configuration
 
 ```
-dev config show
+dev config show [repo] [flags]
 ```
+
+- `--project` — show the current/selected repository overlay
+
+### `dev config trust`
+
+Approve or revoke executable project configuration by content hash
+
+```
+dev config trust [repo] [flags]
+```
+
+- `--list` — list trusted repository hashes
+- `--revoke` — remove trust for this repository
+- `-y, --yes` — approve without prompting
 
 ### `dev doctor`
 
@@ -2658,6 +2947,7 @@ dev edit [flags]
 ```
 
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
+- `--project` — edit .dev-cli/config.toml in the current repository
 
 ### `dev fleet`
 
@@ -3023,14 +3313,30 @@ dev repo
 
 ### `dev repo clone`
 
-Clone a repository into the right place under a scan root
+Clone a repository and optionally apply a setup preset
 
 ```
-dev repo clone <owner/name|url> [flags]
+dev repo clone [owner/name|url|path] [flags]
 ```
 
+- `--agent` — agent targets for selected project skills
+- `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
-- `-o, --open` — open the clone in the runtime afterwards
+- `--description` — repository description
+- `--disable` — disable a scaffold item by id (repeatable)
+- `--dry-run` — show the plan without changing anything
+- `--enable` — enable a scaffold item by id (repeatable)
+- `--gitignore` — gitignore template (repeatable or comma-separated)
+- `--handoff` — afterwards: stay, cd, open or start
+- `--import-orphan-plans` — copy matching global Claude plans into the repository
+- `--json` — emit a machine-readable result
+- `--license` — license keyword (for example mit or apache-2.0)
+- `--license-holder` — copyright holder used in the license template
+- `-o, --open` — open the clone in the runtime afterwards (alias for --handoff=open)
+- `--path` — exact destination path
+- `--preset` — scaffold preset
+- `--set` — preset input as key=value (repeatable)
+- `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo context`
 
@@ -3077,13 +3383,33 @@ dev repo mark <repo> [flags]
 Create a new local repository (optionally with a remote)
 
 ```
-dev repo new <name> [flags]
+dev repo new [name] [flags]
 ```
 
+- `--agent` — agent targets for selected project skills
+- `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
 - `--description` — repository description
-- `--private` — create the remote as private
-- `--remote` — also create a remote repository with gh or glab
+- `--disable` — disable a scaffold item by id (repeatable)
+- `--dry-run` — show the plan without changing anything
+- `--enable` — enable a scaffold item by id (repeatable)
+- `--forge` — upstream provider: auto, github, gitlab or none
+- `--gitignore` — gitignore template (repeatable or comma-separated)
+- `--handoff` — afterwards: stay, cd, open or start
+- `--import-orphan-plans` — copy matching global Claude plans into the repository
+- `--json` — emit a machine-readable result
+- `--license` — license keyword (for example mit or apache-2.0)
+- `--license-holder` — copyright holder used in the license template
+- `--namespace` — GitHub owner/org or GitLab namespace
+- `--path` — exact destination path
+- `--preset` — scaffold preset
+- `--private` — create a private upstream (compatibility flag)
+- `--public` — create a public upstream
+- `--push` — push the current branch after publishing
+- `--remote` — also create a GitHub or GitLab upstream
+- `--set` — preset input as key=value (repeatable)
+- `--visibility` — upstream visibility: private, public or internal
+- `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo open`
 
@@ -3106,6 +3432,39 @@ dev repo remote [query] [flags]
 - `--limit` — maximum matching repositories to render (0 for all)
 - `--refresh` — force a complete forge inventory refresh
 - `--visibility` — filter visibility: public, private or internal
+
+### `dev repo setup`
+
+Apply a scaffold to an existing repository
+
+```
+dev repo setup [repo-or-path] [flags]
+```
+
+- `--agent` — agent targets for selected project skills
+- `--browse-skills` — open the upstream skills installer during setup
+- `--commit` — commit only the setup changes (requires a clean starting checkout)
+- `--description` — repository description
+- `--disable` — disable a scaffold item by id (repeatable)
+- `--dry-run` — show the plan without changing anything
+- `--enable` — enable a scaffold item by id (repeatable)
+- `--forge` — upstream provider: auto, github, gitlab or none
+- `--gitignore` — gitignore template (repeatable or comma-separated)
+- `--handoff` — afterwards: stay, cd, open or start
+- `--import-orphan-plans` — copy matching global Claude plans into the repository
+- `--json` — emit a machine-readable result
+- `--license` — license keyword (for example mit or apache-2.0)
+- `--license-holder` — copyright holder used in the license template
+- `-m, --message` — setup commit message
+- `--namespace` — GitHub owner/org or GitLab namespace
+- `--preset` — scaffold preset
+- `--private` — create a private upstream (compatibility flag)
+- `--public` — create a public upstream
+- `--push` — push the current branch after publishing
+- `--remote` — also create a GitHub or GitLab upstream
+- `--set` — preset input as key=value (repeatable)
+- `--visibility` — upstream visibility: private, public or internal
+- `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo sync`
 
@@ -3557,7 +3916,7 @@ dev wt plan [flags]
 ```
 
 - `-r, --repo` — repository (default: the current one)
-- `--write` — seed a .dev.toml in the repository from what was detected
+- `--write` — seed .dev-cli/config.toml in the repository from what was detected
 
 ### `dev wt provision`
 
@@ -3596,6 +3955,8 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
+- [`internal/scaffold/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/scaffold/types.go)
+- [`internal/projectconfig/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/projectconfig/types.go)
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
 - [`internal/cli/color.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/color.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
@@ -3619,6 +3980,8 @@ This page separates graceful degradation from real limitations. Reverify it when
 | named terminal session | tmux or compatible Zellij | `none` preserves core behavior and shell navigation |
 | GitHub pull requests/remotes | `gh` authenticated | branch still pushes when Git works; browser/manual flow may be needed |
 | GitLab merge requests/remotes | `glab` authenticated | same graceful fallback |
+| repository bootstrap publishing | authenticated `gh` or `glab` | local repository/scaffold still works; the wizard explains how to log in |
+| setup-capable project skills | skills provider plus the entrypoint interpreter | unselected skills are skipped; selected required setup fails before scaffold mutation when its interpreter is unavailable; a clone acquired first is retained |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
@@ -3667,6 +4030,9 @@ A direct task uses the canonical checkout and cannot go COLD, because cold clean
 ## Current behaviors that are implemented
 
 These were historical gaps and should not be reintroduced as limitations:
+
+- `dev repo new|create`, `repo clone`, and `repo setup` share a preset-driven bootstrap pipeline. Explicit `repo new NAME` remains minimal, while the no-argument wizard can initialize agent files, run explicitly selected skill setup, publish through an authenticated GitHub/GitLab CLI, and hand off by stay/cd/runtime/start.
+- Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
 
 - `dev start --focus` activates the runtime after non-JSON creation.
 - TUI navigation refuses to open a missing COLD checkout and directs the user to `dev resume`.
@@ -3730,6 +4096,8 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
+- [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
@@ -3795,6 +4163,7 @@ tested_with: optional
 | HOT/WARM/COLD/DONE and checkout modes | [Mental model](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/) | `internal/task/task.go`, lifecycle CLI/tests | repository snapshot 2026-08-28 |
 | `done --pr` leaves task active | [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
+| repository new/clone/setup presets, project trust, upstream publication, and handoff | [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#repository-bootstrap) | `internal/scaffold`, `internal/projectconfig`, `internal/cli/repo_create*.go`, focused repo-bootstrap tests | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
 | SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
 | READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
@@ -4100,7 +4469,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/getting-started/
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
-安裝 `dev`、讓它探索本機環境，再用一個小型變更流 (change stream) 走完 `start`、`park`、`resume` 與 `done`。
+安裝 `dev`、建立或 clone repository，再用一個小型變更流 (change stream) 走完 `start`、`park`、`resume` 與 `done`。
 
 ## 1. 安裝與初始化
 
@@ -4132,7 +4501,38 @@ dev config show
 
 只有 Git 是必要依賴。Herdr、tmux、Zellij、`gh` 與 `glab` 會啟用更完整的執行環境 (runtime) 或 forge 功能，缺少時則安全降級。
 
-## 2. 開始工作
+## 2. 建立或 clone repository
+
+在任意 directory 開啟 repository bootstrap wizard：
+
+```bash
+dev repo new
+```
+
+它會在 configured `project_root` 下選擇 destination、預覽 plan，並可使用
+built-in `minimal` 或 `agent-ready` preset。`agent-ready` 會加入 starter agent
+guidance 與 project-scoped Claude plans；選取 `agent-history-hygiene`、
+`project-knowledge-harness` 等 optional skills 後，流程會安裝它們，並由經 review 的
+內建 initializer 立即建立 project surfaces，不會執行剛下載的 skill code，也不必等
+日後某個 agent trigger。
+
+取得既有 code 時，將 owner/name 或 Git URL 傳給 clone。要把同一套 setup 套用至既有
+checkout，則使用 setup：
+
+```bash
+dev repo clone owner/api
+dev repo clone git@gitlab.example.com:group/api.git
+dev repo setup . --preset agent-ready
+```
+
+只有對應的 `gh` 或 `glab` CLI 已安裝且完成 authentication 時，wizard 才會提供
+GitHub 或 GitLab publishing；預設仍是 local-only。最後的 handoff 可選擇留在原處、
+`cd` 進 repository、開啟 configured terminal runtime，或接續 `dev start` wizard。
+Bootstrap 與 `dev start` 都不會啟動 coding agent。
+
+若已經位於 repository 且不需要 setup，可直接繼續下一步。
+
+## 3. 開始工作
 
 在任何已探索到的 repository 中啟動具名 task。script 或 agent-driven command 應明確寫出 base：
 
@@ -4153,7 +4553,7 @@ dev start api --task "small local branch" --branch-only --base main
 - `--branch-only` 建立 branch，但不建立 linked worktree。
 - 預設 worktree mode 適合獨立或平行寫入。
 
-## 3. Park 時留下可執行的下一步
+## 4. Park 時留下可執行的下一步
 
 ```bash
 dev park --next "reproduce the refresh race, then add a regression test"
@@ -4171,7 +4571,7 @@ dev park --wip --next "finish the regression test"
 dev park --cold --push
 ```
 
-## 4. Resume 與檢查
+## 5. Resume 與檢查
 
 ```bash
 dev ls
@@ -4181,7 +4581,7 @@ dev status
 
 WARM task 會重開現有 checkout；COLD task 會從 remote branch 重建 worktree。Branch 是持久身分，directory 只是 cache。
 
-## 5. 明確選擇整合方式
+## 6. 明確選擇整合方式
 
 ```bash
 dev done --ff
@@ -4203,6 +4603,7 @@ dev sweep --apply
 ## 下一步
 
 - [心智模型與生命週期](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/)
+- [Repository bootstrap 與 project configuration](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/#repository-bootstrap)
 - [變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/)
 - [Worktree 與環境佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/)
 - [命令與設定](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/)
@@ -4210,6 +4611,7 @@ dev sweep --apply
 ## 來源
 
 - [`README.md`](https://github.com/daviddwlee84/dev-cli/blob/main/README.md)
+- [`internal/cli/repo_create.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/repo_create.go)
 - [`internal/help/topics/parking.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/parking.md)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 
@@ -4812,7 +5214,7 @@ Code、history 或 plans 需要保持可 review，或人之後可能回來時，
 
 ```bash
 dev wt plan
-dev wt plan --write          # 建立 repository-owned .dev.toml
+dev wt plan --write          # 建立 repository-owned .dev-cli/config.toml
 dev wt create feat/auth --base main
 dev wt list
 ```
@@ -4850,6 +5252,11 @@ Included files 以檔案方式複製，內容不寫入 log。現行 provisioning
 [worktree.strategies]
 node = "copy"
 ```
+
+新的 project-owned overrides 應放在 `.dev-cli/config.toml`；legacy `.dev.toml`
+仍以 compatibility behavior 讀取。來自 `.dev-cli/config.toml` 的 `post_create`
+command 必須先用 `dev config trust . --yes` 核准其 exact executable-config hash
+才會執行；command 變更後原核准立即失效。
 
 重要內建判斷：
 
@@ -5011,7 +5418,10 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/
 
 Remote fleet 是一份其他 host 的清單，每個 host 都執行自己的 `dev` binary，使用自己的 `$XDG_CONFIG_HOME`、自己的 scan roots、自己的 task registry 與自己的 runtime。`dev fleet` 從不集中管理或取得那份 state 的 ownership，它只會透過 SSH 向每個 host 的 `dev` 要一份 read-only snapshot，並回報收到的結果。沒有安裝 `dev` 的 host，或無法連線的 host，只會讓那一列 degrade；不會擋住 fleet 其餘部分。
 
-這與 REMOTE TUI view 及 `dev repo new`/PR flow 是不同概念——後者是與 forge CLI（`gh`、`glab` 或 Azure CLI）溝通、處理 hosted 在 GitHub、GitLab 或 Azure DevOps Services 上的 repository。Fleet 溝通的對象是*你自己的機器*上*你自己的 local checkout*。
+這與 REMOTE TUI view 及 publishing/PR flow 是不同概念——GitHub/GitLab
+repository publishing 與 PR 使用 `gh` 或 `glab`，Azure DevOps inventory 與 PR
+則使用 Azure CLI。Fleet 溝通的對象是*你自己的機器*上*你自己的 local
+checkout*。
 
 ## 設定 hosts
 
@@ -5094,7 +5504,12 @@ FLEET 是 TUI 六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE
 
 每個 host 都是獨立探測的，所以一個壞掉的 host 不會讓整個 fleet 失敗。每個 host 的狀態有 `ok`、`stale`（重用 cache，可能附帶說明原因的 error）、`no-dev`（remote 的 `PATH` 上沒有 `dev`——僅回報，不視為 error）、`unreachable`（SSH 本身失敗）、`timeout`、`incompatible`（remote 的 `dev` 版本過舊或無法辨識）與 `invalid-response`（snapshot JSON 格式不正確）。`ok` 與乾淨的 `no-dev` 不會讓 `--strict` 失敗；其餘狀態都會，包括帶有 error 的 `stale` 結果。
 
-另一方面，REMOTE view 與 `dev repo new`/PR flow 背後的 forge 整合（GitHub 用 `gh`、GitLab 用 `glab`、Azure DevOps Services 用 `az`）是各自獨立的選用功能。這些 CLI 缺少時，`dev doctor` 只會回報 warning，不是 failure；每個原本會用到它們的進入點都會退回 plain Git 行為——沒有 forge 提供的 repository 清單，也沒有 CLI 輔助的 pull/merge request 建立——因此這些 CLI 是否安裝，從來不是 `dev` 能否運作的必要條件。Azure DevOps inventory 還額外是 opt-in：未設定 `forge.azure_devops` targets 前一律停用。
+另一方面，forge integration 是 optional：`gh` 與 `glab` 提供 GitHub/GitLab
+inventory、publishing 與 pull/merge request；`az` 提供 Azure DevOps inventory 與
+pull request。缺少 CLI 時，`dev doctor` 只回報 warning，local Git workflow 仍可用；
+但 explicit non-interactive publication request 會附 login/install 指引失敗，不會靜默
+改變操作意義。Azure DevOps inventory 還額外是 opt-in：未設定
+`forge.azure_devops` targets 前一律停用。
 
 ## 來源
 
@@ -6217,7 +6632,7 @@ config/secrets.json
 
 Claude Code 只複製同時 match 且 Git-ignored 的 paths；tracked files 已透過 checkout 到達。List 應維持最小，review secret exposure，並在新 directory 安裝 dependencies。
 
-這是 Claude Code 的 provisioning surface。`dev`-owned worktree 使用 `[worktree].include`、dependency strategies 與 `.dev.toml`；兩種格式不能互換。
+這是 Claude Code 的 provisioning surface。`dev`-owned worktree 使用 `[worktree].include`、dependency strategies 與 `.dev-cli/config.toml`（並保留 legacy `.dev.toml` compatibility）；兩種格式不能互換。
 
 ## Cleanup 與 retention
 
@@ -6389,12 +6804,12 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/
 | agent artifacts | `prepare`、`artifact finalize`、`artifact list`、`artifact discard` |
 | guarded Git transactions | `git uncommit`、`git recommit`、`git pull-rebase`、`git amend-all`、`git setup` |
 | linked worktrees | `wt list`、`wt create`、`wt open`、`wt rm`、`wt plan`、`wt provision` |
-| repositories/remotes | `repo list`、`repo context`、`repo clone`、`repo open`、`repo new`、`repo sync`、`repo remote`、`repo mark` |
+| repositories/remotes | `repo list`、`repo context`、`repo new`/`repo create`、`repo clone`、`repo setup`、`repo open`、`repo sync`、`repo remote`、`repo mark` |
 | repository quick notes | `note add`、`note list`、`note show`、`note search`、`note edit`、`note delete`、`note path`、`note reindex` |
 | machine inventory | `bootstrap`、`adopt`、`doctor` |
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools` |
-| configuration/shell | `config init/show/path`、`shell-init`、completion |
+| configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
 | remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
@@ -6410,6 +6825,9 @@ dev ls --json
 dev repo list --json
 dev repo context [repo]
 dev repo remote --json
+dev repo new NAME --json
+dev repo clone <ref> --json
+dev repo setup [repo-or-path] --preset PRESET --json
 dev note list [repo] --json
 dev note search <query> --json
 dev note show <note-id> --json
@@ -6419,6 +6837,67 @@ dev bootstrap --json
 不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。
 
 每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
+
+## Repository bootstrap
+
+Repository acquisition 與 setup 是分開的 operations，因此 Git URL 不會靜默改變
+`new` 的意義：
+
+| Command | 行為 |
+|---|---|
+| `dev repo new` | interactive new-repository wizard |
+| `dev repo new NAME` / `dev repo create NAME` | 建立新的 local repository；明確 name 的預設仍是相容的 `minimal` preset |
+| `dev repo clone [owner/name\|url]` | clone 至 configured destination，再選擇是否套 preset；setup 預設關閉 |
+| `dev repo setup [repo-or-path]` | repeat-safely merge native initializers 與 preset files 至既有 clean checkout；預設目前 repository，沒有明確要求時不 commit |
+
+這些 commands 的 controls 包含 `--preset`、`--path`、用 `--set` 傳入 typed input、用
+`--enable`/`--disable` 選擇 item、`--dry-run`、`--yes`、`--json`，以及
+`--handoff <stay|cd|open|start>`。JSON mode 不互動，也不會改變 directory 或開啟
+runtime。Dry-run 不會修改 target repository；clone setup 必須等 clone 存在後才能產生
+詳細 plan。每個 command 實際支援的精確 flags 請看下方 generated reference。
+
+Wizard 會在 target repository mutation 前顯示 selected scaffold 與 workflow
+summary。Built-in presets 為：
+
+- `minimal`：`main`、README 與 initial commit；保留既有 scripted
+  `repo new NAME` behavior。
+- `agent-ready`：在 `minimal` 上加入 common ignores、starter `AGENTS.md`，以及
+  project-scoped `.claude/settings.json` 與 `.claude/plans/`。
+  `agent-history-hygiene`、`project-knowledge-harness` 會出現在選項中，但不會靜默
+  啟用。選取後 dev 會安裝 skill，並在 initial commit 前執行經 review 的內建
+  initializer 來建立對應 project surfaces；這兩個 built-ins 不會執行剛下載的
+  skill scripts。
+
+Preset 可加入 `string`、`bool`、`choice` typed inputs、text templates、hooks 與
+project skills。Hooks 依固定 `before_commit`、`after_commit`、`after_remote` phases
+執行。安全形式是 argv `command`；shell `run` 必須明確宣告，且只有
+`interactive = true` 才載入 interactive shell。Required failure 會停止後續
+commit/remote steps；optional failure 只回報 warning。已產生的 local files 會保留供
+recovery。Native initializers 與 preset files 可 repeat-safe 套用；custom hooks 與
+skill setup 必須自行保證 idempotency。
+
+### Upstream publishing
+
+提供 publishing 選項前，dev 會以 read-only 方式 probe `gh` 與 `glab`。只有 CLI 已
+安裝且完成 authentication 的 provider 才會出現；否則 wizard 顯示對應的安裝或 login
+指引。預設 local-only，新 publish 的 repository 預設 private。
+
+Publishing 會沿用 local repository name 與 configured description，再詢問 provider
+namespace/owner、visibility，以及是否 push initial/current branch。Dev 會在必要的
+local setup 與 commit steps 成功後建立空的 GitHub 或 GitLab repository，再新增／驗證
+`origin`，並可選擇以 upstream tracking push。Provider、name-conflict 或 push failure
+絕不刪除 local checkout，也不會刪除已建立的 upstream。
+
+從 `repo setup` publish 時必須使用 `--commit`，避免新建 upstream 漏掉本次產生的
+setup changes。
+
+### Handoff
+
+`stay` 只輸出結果；`cd` 透過受信任的 `shell-init` wrapper 改變 parent shell；
+`open` 開啟 configured Herdr/tmux/Zellij runtime，runtime 為 `none` 時退回 `cd`；
+`start` 會固定此 repository 並接續現有 task wizard。Setup 留下 uncommitted files、
+導致新 worktree 會遺漏它們時，`start` 不可用。Repository bootstrap 與
+`dev start` 都不會啟動 coding agent。
 
 ## `dev done` finish flags
 
@@ -6441,6 +6920,10 @@ Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`�
 dev config init
 dev config show
 dev config path
+dev config scaffolds init
+dev config scaffolds show
+dev config scaffolds path
+dev config scaffolds edit
 ```
 
 `config init` 偵測 local roots 並寫出 explicit defaults。Config file 不存在仍可運作；built-in defaults 讓核心 Git behavior 可用，但 generated config 能讓 machine policy 可 review，因此較推薦。
@@ -6460,7 +6943,105 @@ dev config path
 
 Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
 
-Repository 可 commit `.dev.toml`，保存應跟著 project 移動的 worktree provisioning overrides。Host-specific path 與 credential 應放 user config 或 ignored environment file，不放 repository override。
+### Scaffold presets
+
+Global repository recipes 位於 `$XDG_CONFIG_HOME/dev/scaffolds.toml`（或 root
+`--scaffolds` override）。每個 authored file 都必須宣告 `version = 1`。精簡 preset
+範例：
+
+```toml
+version = 1
+default_preset = "team"
+default_agents = ["claude-code", "codex"]
+
+[presets.team]
+extends = "agent-ready"
+handoff = "cd"
+
+[[presets.team.inputs]]
+id = "deployment"
+type = "choice"
+choices = ["none", "docker"]
+default = "none"
+
+[[presets.team.files]]
+id = "service-readme"
+source = "service/README.md" # 此檔案旁的 templates/service/README.md
+destination = "docs/service.md"
+
+[[presets.team.hooks]]
+id = "verify"
+phase = "before_commit"
+command = ["make", "test"]
+required = true
+
+[[presets.team.skills]]
+id = "knowledge"
+source = "daviddwlee84/agent-skills/skills"
+name = "project-knowledge-harness"
+agents = ["claude-code", "codex"]
+default = true
+
+[presets.team.skills.setup]
+phase = "before_commit"
+interpreter = "bash"
+script = "scripts/init.sh"
+args = ["--target", "{{path}}", "--project-name", "{{name}}"]
+required = true
+```
+
+Skill setup 一般會指定 installed skill 內的 project-local script。內建推薦項目則使用
+`builtin = "agent-history-hygiene"` 或
+`builtin = "project-knowledge-harness"`；這些固定且經 review 的 initializer 不會執行
+下載回來的 skill code。
+
+Preset 最多 extend 一個 parent。Scalar 會 override；simple lists 會 replace；files、
+hooks 與 skills 依 `id` merge，inherited item 可用 `enabled = false` 停用。Template
+source 必須留在 config source 旁的 `templates/` tree，destination 必須留在 repository
+內，skill setup script 也必須位於 installed skill directory 內。
+
+### Safe project overlays
+
+Repository 可 commit 兩個固定檔案：
+
+- `.dev-cli/config.toml`：allowlisted worktree provisioning 與 repository setup
+  wizard defaults。
+- `.dev-cli/scaffolds.toml`：使用同一 versioned schema 的 project presets、
+  templates、hooks 與 skill setup。
+
+```toml
+# .dev-cli/config.toml
+version = 1
+
+[worktree]
+include = [".env.example"]
+strategy = "reinstall"
+
+[repo.setup]
+preset = "team"
+handoff = "cd"
+commit = false
+```
+
+Effective precedence 由低至高為 built-ins、global config/scaffolds、legacy
+`.dev.toml`、target repository 的 `.dev-cli/*`，最後是 explicit CLI 或 wizard
+choices。`.dev.toml` 為相容性仍可讀；新的 project configuration 應使用
+`.dev-cli/config.toml`。Global `default_preset` 與 project `[repo.setup]` 的 preset、
+handoff、commit fields 只用來預填 interactive wizard choices；它們不會改變 scripted
+defaults，後者由對應 flags 控制。
+
+Project files 不能 override host paths、state location、runtime backend、forge
+inventory 或 credentials、stats、update、bootstrap 或 TUI policy，也不能靜默 publish
+repository。執行來自 `.dev-cli/config.toml` 的 post-create command，或來自 project
+`.dev-cli/scaffolds.toml` 的 hook／skill setup 前，dev 會依 canonical repository 加
+execution-content hash 詢問 trust；executable content 變更後必須重新同意，
+non-interactive 且沒有 matching trust record 時 fail closed。Legacy `.dev.toml` 保留其
+compatibility behavior。Credential 與 host-specific path 應放 user config 或 ignored
+environment file，絕不放 committed project overlay。
+
+Project-authored skill setup 必須使用 local source，讓實際 bytes 能納入 trust hash。
+Remote project skill 仍可安裝，但不能宣告 executable setup；global preset 則仍屬於
+host-owned policy。
 
 ## 彩色輸出
 
@@ -6501,6 +7082,7 @@ Child process 不能改變 parent working directory，因此受信任的 `shell-
 - `--no-runtime` — do not touch any terminal multiplexer
 - `--remotes` — path to remotes.toml (default: $XDG_CONFIG_HOME/dev/remotes.toml)
 - `--runtime` — override runtime backend: herdr, tmux, zellij or none
+- `--scaffolds` — path to scaffolds.toml (default: $XDG_CONFIG_HOME/dev/scaffolds.toml)
 
 ### `dev adopt`
 
@@ -6591,7 +7173,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|notes|fleet|size|gitignore|all>
+dev cache clear <remote|notes|fleet|size|gitignore|licenses|all>
 ```
 
 ### `dev cache list`
@@ -6675,6 +7257,7 @@ dev config edit [flags]
 ```
 
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
+- `--project` — edit .dev-cli/config.toml in the current repository
 
 ### `dev config init`
 
@@ -6689,19 +7272,80 @@ dev config init [flags]
 
 ### `dev config path`
 
-Print the config file path
+Print the global or project config file path
 
 ```
-dev config path
+dev config path [repo] [flags]
+```
+
+- `--project` — print the current/selected repository config path
+
+### `dev config scaffolds`
+
+Show, edit, initialise and locate repository scaffold presets
+
+```
+dev config scaffolds
+```
+
+### `dev config scaffolds edit`
+
+Open scaffolds.toml in an editor
+
+```
+dev config scaffolds edit [flags]
+```
+
+- `--editor` — editor command, overriding $VISUAL and $EDITOR
+
+### `dev config scaffolds init`
+
+Write a starter scaffolds.toml
+
+```
+dev config scaffolds init [flags]
+```
+
+- `-f, --force` — overwrite an existing file
+- `--stdout` — print instead of writing
+
+### `dev config scaffolds path`
+
+Print the scaffold config path
+
+```
+dev config scaffolds path
+```
+
+### `dev config scaffolds show`
+
+Print the effective scaffold catalog
+
+```
+dev config scaffolds show
 ```
 
 ### `dev config show`
 
-Print the effective configuration
+Print the effective global or project configuration
 
 ```
-dev config show
+dev config show [repo] [flags]
 ```
+
+- `--project` — show the current/selected repository overlay
+
+### `dev config trust`
+
+Approve or revoke executable project configuration by content hash
+
+```
+dev config trust [repo] [flags]
+```
+
+- `--list` — list trusted repository hashes
+- `--revoke` — remove trust for this repository
+- `-y, --yes` — approve without prompting
 
 ### `dev doctor`
 
@@ -6740,6 +7384,7 @@ dev edit [flags]
 ```
 
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
+- `--project` — edit .dev-cli/config.toml in the current repository
 
 ### `dev fleet`
 
@@ -7105,14 +7750,30 @@ dev repo
 
 ### `dev repo clone`
 
-Clone a repository into the right place under a scan root
+Clone a repository and optionally apply a setup preset
 
 ```
-dev repo clone <owner/name|url> [flags]
+dev repo clone [owner/name|url|path] [flags]
 ```
 
+- `--agent` — agent targets for selected project skills
+- `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
-- `-o, --open` — open the clone in the runtime afterwards
+- `--description` — repository description
+- `--disable` — disable a scaffold item by id (repeatable)
+- `--dry-run` — show the plan without changing anything
+- `--enable` — enable a scaffold item by id (repeatable)
+- `--gitignore` — gitignore template (repeatable or comma-separated)
+- `--handoff` — afterwards: stay, cd, open or start
+- `--import-orphan-plans` — copy matching global Claude plans into the repository
+- `--json` — emit a machine-readable result
+- `--license` — license keyword (for example mit or apache-2.0)
+- `--license-holder` — copyright holder used in the license template
+- `-o, --open` — open the clone in the runtime afterwards (alias for --handoff=open)
+- `--path` — exact destination path
+- `--preset` — scaffold preset
+- `--set` — preset input as key=value (repeatable)
+- `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo context`
 
@@ -7159,13 +7820,33 @@ dev repo mark <repo> [flags]
 Create a new local repository (optionally with a remote)
 
 ```
-dev repo new <name> [flags]
+dev repo new [name] [flags]
 ```
 
+- `--agent` — agent targets for selected project skills
+- `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
 - `--description` — repository description
-- `--private` — create the remote as private
-- `--remote` — also create a remote repository with gh or glab
+- `--disable` — disable a scaffold item by id (repeatable)
+- `--dry-run` — show the plan without changing anything
+- `--enable` — enable a scaffold item by id (repeatable)
+- `--forge` — upstream provider: auto, github, gitlab or none
+- `--gitignore` — gitignore template (repeatable or comma-separated)
+- `--handoff` — afterwards: stay, cd, open or start
+- `--import-orphan-plans` — copy matching global Claude plans into the repository
+- `--json` — emit a machine-readable result
+- `--license` — license keyword (for example mit or apache-2.0)
+- `--license-holder` — copyright holder used in the license template
+- `--namespace` — GitHub owner/org or GitLab namespace
+- `--path` — exact destination path
+- `--preset` — scaffold preset
+- `--private` — create a private upstream (compatibility flag)
+- `--public` — create a public upstream
+- `--push` — push the current branch after publishing
+- `--remote` — also create a GitHub or GitLab upstream
+- `--set` — preset input as key=value (repeatable)
+- `--visibility` — upstream visibility: private, public or internal
+- `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo open`
 
@@ -7188,6 +7869,39 @@ dev repo remote [query] [flags]
 - `--limit` — maximum matching repositories to render (0 for all)
 - `--refresh` — force a complete forge inventory refresh
 - `--visibility` — filter visibility: public, private or internal
+
+### `dev repo setup`
+
+Apply a scaffold to an existing repository
+
+```
+dev repo setup [repo-or-path] [flags]
+```
+
+- `--agent` — agent targets for selected project skills
+- `--browse-skills` — open the upstream skills installer during setup
+- `--commit` — commit only the setup changes (requires a clean starting checkout)
+- `--description` — repository description
+- `--disable` — disable a scaffold item by id (repeatable)
+- `--dry-run` — show the plan without changing anything
+- `--enable` — enable a scaffold item by id (repeatable)
+- `--forge` — upstream provider: auto, github, gitlab or none
+- `--gitignore` — gitignore template (repeatable or comma-separated)
+- `--handoff` — afterwards: stay, cd, open or start
+- `--import-orphan-plans` — copy matching global Claude plans into the repository
+- `--json` — emit a machine-readable result
+- `--license` — license keyword (for example mit or apache-2.0)
+- `--license-holder` — copyright holder used in the license template
+- `-m, --message` — setup commit message
+- `--namespace` — GitHub owner/org or GitLab namespace
+- `--preset` — scaffold preset
+- `--private` — create a private upstream (compatibility flag)
+- `--public` — create a public upstream
+- `--push` — push the current branch after publishing
+- `--remote` — also create a GitHub or GitLab upstream
+- `--set` — preset input as key=value (repeatable)
+- `--visibility` — upstream visibility: private, public or internal
+- `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo sync`
 
@@ -7639,7 +8353,7 @@ dev wt plan [flags]
 ```
 
 - `-r, --repo` — repository (default: the current one)
-- `--write` — seed a .dev.toml in the repository from what was detected
+- `--write` — seed .dev-cli/config.toml in the repository from what was detected
 
 ### `dev wt provision`
 
@@ -7678,6 +8392,8 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
+- [`internal/scaffold/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/scaffold/types.go)
+- [`internal/projectconfig/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/projectconfig/types.go)
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
 - [`internal/cli/color.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/color.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
@@ -7704,6 +8420,8 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 | named terminal session | tmux 或相容 Zellij | `none` 保留核心 behavior 與 shell navigation |
 | GitHub pull requests/remotes | authenticated `gh` | Git 可用時 branch 仍能 push，可能需 browser/manual flow |
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |
+| repository bootstrap publishing | authenticated `gh` 或 `glab` | local repository/scaffold 仍可使用；wizard 會說明如何 login |
+| setup-capable project skills | skills provider 與 entrypoint interpreter | 未選取的 skill 會跳過；selected required setup 若缺少 interpreter，會在 scaffold mutation 前失敗；先取得的 clone 會保留 |
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
@@ -7751,6 +8469,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 ## 已實作、不能再列為 limitation 的 behavior
 
 以下是歷史缺口，現行版本已實作：
+
+- `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Explicit `repo new NAME` 仍維持 minimal；無參數 wizard 可初始化 agent files、執行明確選取的 skill setup、透過 authenticated GitHub/GitLab CLI publish，並以 stay/cd/runtime/start handoff。
+- Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
 
 - `dev start --focus` 會在 non-JSON creation 後 activate runtime。
 - TUI navigation 會拒絕開啟 checkout 不存在的 COLD task，並要求使用 `dev resume`。
@@ -7814,6 +8535,8 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
+- [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
@@ -7882,6 +8605,7 @@ tested_with: optional
 | HOT/WARM/COLD/DONE 與 checkout modes | [心智模型](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/) | `internal/task/task.go`、lifecycle CLI/tests | repository snapshot 2026-08-28 |
 | `done --pr` 保持 task active | [變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktree 與 provisioning](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
+| repository new/clone/setup presets、project trust、upstream publication 與 handoff | [Commands 與 configuration](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/#repository-bootstrap) | `internal/scaffold`、`internal/projectconfig`、`internal/cli/repo_create*.go`、focused repo-bootstrap tests | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
 | SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
 | READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |

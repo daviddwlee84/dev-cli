@@ -6,9 +6,11 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/projectconfig"
 )
 
 // StepKind is what a provisioning step does.
@@ -70,24 +72,27 @@ func (p Plan) Runnable() []Step {
 // Empty reports a plan that would do nothing at all.
 func (p Plan) Empty() bool { return len(p.Runnable()) == 0 }
 
-// Settings are the provisioning inputs, resolved from global config and any
-// per-repo .dev.toml.
+// Settings are the provisioning inputs, resolved from global config and the
+// repository's .dev-cli/config.toml (plus legacy .dev.toml compatibility).
 type Settings struct {
-	Include    []string
-	Link       []string
-	Cmds       config.PostCreate
-	Strategy   Strategy
-	Strategies map[string]string
+	Include          []string
+	Link             []string
+	Cmds             config.PostCreate
+	Strategy         Strategy
+	Strategies       map[string]string
+	ProvisionTimeout time.Duration
 }
 
-// SettingsFor resolves the effective provisioning settings for a repository.
+// SettingsFor resolves effective provisioning settings without enforcing
+// executable-config trust; use SettingsForTrusted before running commands.
 func SettingsFor(cfg config.Config, repoPath string) Settings {
 	s := Settings{
-		Include:    cfg.Worktree.Include,
-		Link:       cfg.Worktree.Link,
-		Cmds:       cfg.Worktree.PostCreate,
-		Strategy:   Reinstall,
-		Strategies: map[string]string{},
+		Include:          cfg.Worktree.Include,
+		Link:             cfg.Worktree.Link,
+		Cmds:             cfg.Worktree.PostCreate,
+		Strategy:         Reinstall,
+		Strategies:       map[string]string{},
+		ProvisionTimeout: cfg.Worktree.ProvisionTimeout.Duration,
 	}
 	if v, ok := ParseStrategy(cfg.Worktree.Strategy); ok {
 		s.Strategy = v
@@ -114,7 +119,53 @@ func SettingsFor(cfg config.Config, repoPath string) Settings {
 			s.Strategies[k] = v
 		}
 	}
+	// The directory-based project config supersedes the legacy .dev.toml while
+	// retaining the same deliberately narrow provisioning surface.
+	if project, err := projectconfig.Load(repoPath, nil); err == nil && project.ConfigPresent {
+		o := project.Effective.Worktree
+		if o.Include != nil {
+			s.Include = append([]string(nil), (*o.Include)...)
+		}
+		if o.Link != nil {
+			s.Link = append([]string(nil), (*o.Link)...)
+		}
+		if o.PostCreate != nil {
+			s.Cmds = *o.PostCreate
+		}
+		if o.Strategy != nil {
+			s.Strategy = Strategy(*o.Strategy)
+		}
+		if o.Strategies != nil {
+			for k, v := range *o.Strategies {
+				s.Strategies[k] = v
+			}
+		}
+		if o.ProvisionTimeout != nil {
+			s.ProvisionTimeout = o.ProvisionTimeout.Duration
+		}
+	}
 	return s
+}
+
+// SettingsForTrusted resolves provisioning settings and refuses executable
+// commands from the new project config until their exact content hash has been
+// approved locally. Legacy .dev.toml retains its compatibility behavior.
+func SettingsForTrusted(ctx context.Context, cfg config.Config, repoPath string) (Settings, error) {
+	project, err := projectconfig.Load(repoPath, nil)
+	if err != nil {
+		return Settings{}, err
+	}
+	if project.ConfigPresent && project.RequiresTrust() && project.Effective.Worktree.PostCreate != nil {
+		store := projectconfig.NewTrustStore(filepath.Join(cfg.StateDir(), "trust", "project-config-v1.json"))
+		trusted, err := store.Check(ctx, repoPath, project.ExecutionHash)
+		if err != nil {
+			return Settings{}, err
+		}
+		if !trusted {
+			return Settings{}, fmt.Errorf("project worktree setup is executable and not trusted; review it, then run dev config trust %s --yes", config.Contract(repoPath))
+		}
+	}
+	return SettingsFor(cfg, repoPath), nil
 }
 
 // strategyFor resolves the strategy for one ecosystem, narrowing to something

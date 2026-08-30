@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-08-28
+verified_on: 2026-08-29
 ---
 
 # Sources and freshness
@@ -60,6 +60,7 @@ tested_with: optional
 | HOT/WARM/COLD/DONE and checkout modes | [Mental model](../concepts/mental-model.md) | `internal/task/task.go`, lifecycle CLI/tests | repository snapshot 2026-08-28 |
 | `done --pr` leaves task active | [Change-stream workflow](../guides/change-stream-workflow.md) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktrees and provisioning](../guides/worktrees-provisioning.md) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
+| repository new/clone/setup presets, project trust, upstream publication, and handoff | [Commands and configuration](commands-config.md#repository-bootstrap) | `internal/scaffold`, `internal/projectconfig`, `internal/cli/repo_create*.go`, focused repo-bootstrap tests | implemented |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents and runtimes](../guides/parallel-agents-runtimes.md) | `internal/runtime/runtime.go` | implemented |
 | SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](../guides/remote-fleet.md) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
 | READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](../guides/agent-safe-retirement.md) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |

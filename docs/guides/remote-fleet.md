@@ -13,7 +13,10 @@ verified_on: 2026-08-28
 
 A remote fleet is a list of other hosts, each running its own `dev` binary against its own `$XDG_CONFIG_HOME`, its own scan roots, its own task registry, and its own runtime. `dev fleet` never centralizes or takes ownership of that state — it only asks each host's `dev` for a read-only snapshot over SSH and reports what comes back. A host with no `dev` installed, or an unreachable host, degrades that one row; it never blocks the rest of the fleet.
 
-This is a different concept from the REMOTE TUI view and `dev repo new`/PR flows, which talk to a forge CLI (`gh`, `glab`, or the Azure CLI) about repositories hosted on GitHub, GitLab, or Azure DevOps Services. Fleet talks to *your own machines* about *your own local checkouts* on those machines.
+This is a different concept from the REMOTE TUI view and publishing/PR flows,
+which use `gh` or `glab` for GitHub/GitLab repository publication and PRs, plus
+the Azure CLI for Azure DevOps inventory and PRs. Fleet talks to *your own
+machines* about *your own local checkouts* on those machines.
 
 ## Configure hosts
 
@@ -96,7 +99,13 @@ Its table shows `HOST`, `STATE`, `REPO`, `BRANCH`, `GIT`, `LIVE`, `TASKS`, and `
 
 Every host is probed independently, so one bad host never fails the fleet as a whole. Per-host states are `ok`, `stale` (cache reused, optionally with an error explaining why), `no-dev` (the remote has no `dev` on its `PATH` — reported, not an error), `unreachable` (SSH itself failed), `timeout`, `incompatible` (an old or unrecognized remote `dev`), and `invalid-response` (malformed snapshot JSON). `ok` and a clean `no-dev` never fail `--strict`; every other state does, including a `stale` result that carries an error.
 
-Separately, the forge integration behind the REMOTE view and `dev repo new`/PR flows (`gh` for GitHub, `glab` for GitLab, and `az` for Azure DevOps Services) is independently optional. `dev doctor` reports each as a warning, not a failure, when it is missing from `PATH`, and every entry point that would use one degrades to plain Git behavior instead — no forge-backed repository listing, and no CLI-assisted pull/merge request creation — so no forge CLI being installed is ever required for `dev` to work. Azure DevOps inventory is additionally opt-in: it stays disabled until `forge.azure_devops` targets are configured.
+Separately, forge integration is optional: `gh` and `glab` enable GitHub/GitLab
+inventory, publication, and pull/merge requests, while `az` enables Azure
+DevOps inventory and pull requests. `dev doctor` reports missing CLIs as
+warnings. Local Git workflows remain available, but an explicit non-interactive
+publication request fails with login/install guidance instead of silently
+changing its meaning. Azure DevOps inventory is additionally opt-in and stays
+disabled until `forge.azure_devops` targets are configured.
 
 ## Sources
 

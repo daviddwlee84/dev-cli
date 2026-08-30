@@ -545,6 +545,45 @@ func AddCommand(ctx context.Context, projectRoot, source string) (*exec.Cmd, err
 	return p.command(ctx, projectRoot, "add", source), nil
 }
 
+// InstallCommand installs an explicit set of skills for explicit agents in
+// project scope. The caller owns the surrounding confirmation UI; --yes only
+// suppresses the provider's duplicate prompt after that decision was made.
+func InstallCommand(ctx context.Context, projectRoot, source string, names, agents []string) (*exec.Cmd, error) {
+	if source == "" {
+		source = DefaultSource
+	}
+	if len(names) == 0 {
+		return nil, errors.New("at least one skill is required")
+	}
+	if len(agents) == 0 {
+		return nil, errors.New("at least one agent is required")
+	}
+	p, err := interactiveProvider()
+	if err != nil {
+		return nil, err
+	}
+	args := []string{"add", source, "--skill"}
+	args = append(args, names...)
+	args = append(args, "--agent")
+	args = append(args, agents...)
+	args = append(args, "--yes")
+	return p.command(ctx, ProjectRoot(ctx, projectRoot), args...), nil
+}
+
+// FindProject returns one installed project-scoped skill by name.
+func FindProject(ctx context.Context, projectRoot, name string) (Skill, error) {
+	rows, err := List(ctx, projectRoot, ListOptions{Project: true})
+	if err != nil {
+		return Skill{}, err
+	}
+	for _, row := range rows {
+		if row.Scope == ScopeProject && row.Name == name {
+			return row, nil
+		}
+	}
+	return Skill{}, fmt.Errorf("project skill %q is not installed", name)
+}
+
 // UpdateCommand updates exactly one lock-managed skill in exactly one scope.
 func UpdateCommand(ctx context.Context, projectRoot, name string, scope Scope) (*exec.Cmd, error) {
 	if name == "" {

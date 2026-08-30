@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: 'Manage repositories and work-in-progress with the dev CLI: bootstrap and organise repos safely, own worktree/task lifecycle, safely prepare/finalize/retire agent sessions, run guarded Git transactions, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when starting, parking, resuming or retiring work; preserving agent transcripts; scanning or organising repos; capturing/searching repo thoughts; choosing worktree isolation; or cleaning stale branches, checkouts and sessions.'
+description: 'Manage repositories and work-in-progress with the dev CLI: create/clone/setup agent-ready repos, bootstrap and organise them safely, own worktree/task lifecycle, safely prepare/finalize/retire agent sessions, run guarded Git transactions, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when creating, starting, parking, resuming or retiring work; preserving agent transcripts; scanning or organising repos; capturing/searching repo thoughts; choosing worktree isolation; or cleaning stale branches, checkouts and sessions.'
 ---
 
 # dev-cli
@@ -160,15 +160,18 @@ dev start -t "token refresh" --base main  # fast managed worktree task
 dev wt create feat/auth --base main    # worktree at the configured path
 dev wt list                            # every worktree of this repo
 dev wt plan                            # what a new worktree would be set up with
-dev wt plan --write                    # seed a committed .dev.toml from it
+dev wt plan --write                    # seed committed .dev-cli/config.toml
 dev wt rm feat/auth                    # remove the checkout; the branch stays
 
 dev repo list --sizes      # repos, recovery topology, owned logical bytes
 dev repo list --no-remote  # local Git with no configured remote
 dev repo list --local-only # branches lacking a remote-backed upstream
 dev repo context [repo]    # agent-ready checkouts, Git, runtime and task state
-dev repo clone owner/name  # clone into the right place, via gh or glab
+dev repo clone owner/name  # expand forge shorthand, then clone with Git
 dev repo clone https://dev.azure.com/acme/Platform/_git/api
+dev repo new               # confirmed repository/scaffold/upstream wizard
+dev repo create api        # minimal scripted creation (alias of repo new)
+dev repo setup . --preset agent-ready  # initialize an existing clean repo
 dev repo sync --all        # fetch + prune, and report what moved
 dev fleet list              # aggregate repo/task/runtime state over SSH
 dev fleet sync api --push   # publish, then fast-forward safe matching checkouts
@@ -189,7 +192,7 @@ dev stats path             # durable XDG data, not cache
 dev summary                # current machine-wide agent context
 dev journal                # today's agent-ready development journal
 dev journal --since 7d --metrics | opencode run "summarize this"
-dev cache list             # regenerable forge/fleet/size/gitignore/note-index caches
+dev cache list             # regenerable forge/fleet/size/gitignore/license/note-index caches
 dev help worktrees         # quick-reference pages; dev help wt also works
 ```
 
@@ -212,6 +215,18 @@ dev adopt --apply   # record them as tasks (nothing on disk changes)
 
 Do not assume the user's layout is `~/Documents/Program`. Run `dev config show`
 or `dev repo list` to see what this machine is actually configured for.
+
+## Creating and setting up repositories
+
+Read `references/repository-bootstrap.md` before creating a published repo,
+running project-owned hooks, or installing setup-capable skills. A bare
+`dev repo new` is interactive; `dev repo new NAME` deliberately retains the
+minimal README + initial-commit contract. Clone URLs belong to `dev repo clone`.
+
+Global recipes live in `scaffolds.toml`. Repositories may commit the allowlisted
+`.dev-cli/config.toml` and `.dev-cli/scaffolds.toml`, but executable project
+configuration in those files must be trusted by its exact content hash before
+it runs. Legacy `.dev.toml` retains its compatibility behavior.
 
 ## Dashboard and forge inventory
 
@@ -387,7 +402,7 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 
 15. **Do not call stats.db a cache.** Session/WakaTime observations may not be
    reconstructible. Use `dev stats clear --repo/--source/--all`; use
-   `dev cache clear` only for regenerable remote/size/gitignore/note-FTS caches.
+   `dev cache clear` only for regenerable remote/size/gitignore/license/note-FTS caches.
 
 16. **Archive is not eviction.** `dev tries archive` is a reversible hidden move
    on the same filesystem; it does not free space. Phase 1 has no project-data
@@ -402,6 +417,13 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    the conversation is in another language — see the companion `git-workflow`
    skill, which owns commit conventions, SemVer and branch naming. This skill
    does not duplicate them.
+
+19. **Never bypass `.dev-cli` project-config trust.** Inspect the rendered hooks
+    and skill entrypoints, then use `dev config trust <repo> --yes`. A changed
+    executable hash is a new decision. Pre-commit/gitleaks inspect generated
+    content; they do not make an untrusted command safe to execute. Legacy
+    `.dev.toml` remains a compatibility surface rather than acquiring this trust
+    contract retroactively.
 
 ## When to use this skill
 
@@ -445,6 +467,8 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   work; exact JSON/pane validation, SpecStory profiles and permissions.
 - `references/commands.md` — the full command reference, generated from the
   binary by `dev skill sync` so it cannot drift.
+- `references/repository-bootstrap.md` — new/clone/setup presets, project
+  overrides, skill initialization, upstream publishing, trust and handoff.
 
 ## Gotchas
 

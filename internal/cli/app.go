@@ -38,6 +38,8 @@ type App struct {
 	configPath string
 	// remotesPath is the --remotes override; empty means dev/remotes.toml.
 	remotesPath string
+	// scaffoldsPath is the --scaffolds override; empty means dev/scaffolds.toml.
+	scaffoldsPath string
 	// runtimeOverride is the --runtime flag; empty means use the config.
 	runtimeOverride string
 	// noRuntime disables all multiplexer interaction for one invocation.

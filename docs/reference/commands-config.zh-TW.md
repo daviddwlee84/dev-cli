@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-08-28
+verified_on: 2026-08-29
 lang: zh-TW
 ---
 
@@ -21,12 +21,12 @@ lang: zh-TW
 | agent artifacts | `prepare`、`artifact finalize`、`artifact list`、`artifact discard` |
 | guarded Git transactions | `git uncommit`、`git recommit`、`git pull-rebase`、`git amend-all`、`git setup` |
 | linked worktrees | `wt list`、`wt create`、`wt open`、`wt rm`、`wt plan`、`wt provision` |
-| repositories/remotes | `repo list`、`repo context`、`repo clone`、`repo open`、`repo new`、`repo sync`、`repo remote`、`repo mark` |
+| repositories/remotes | `repo list`、`repo context`、`repo new`/`repo create`、`repo clone`、`repo setup`、`repo open`、`repo sync`、`repo remote`、`repo mark` |
 | repository quick notes | `note add`、`note list`、`note show`、`note search`、`note edit`、`note delete`、`note path`、`note reindex` |
 | machine inventory | `bootstrap`、`adopt`、`doctor` |
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools` |
-| configuration/shell | `config init/show/path`、`shell-init`、completion |
+| configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
 | remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
@@ -42,6 +42,9 @@ dev ls --json
 dev repo list --json
 dev repo context [repo]
 dev repo remote --json
+dev repo new NAME --json
+dev repo clone <ref> --json
+dev repo setup [repo-or-path] --preset PRESET --json
 dev note list [repo] --json
 dev note search <query> --json
 dev note show <note-id> --json
@@ -51,6 +54,67 @@ dev bootstrap --json
 不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。
 
 每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
+
+## Repository bootstrap
+
+Repository acquisition 與 setup 是分開的 operations，因此 Git URL 不會靜默改變
+`new` 的意義：
+
+| Command | 行為 |
+|---|---|
+| `dev repo new` | interactive new-repository wizard |
+| `dev repo new NAME` / `dev repo create NAME` | 建立新的 local repository；明確 name 的預設仍是相容的 `minimal` preset |
+| `dev repo clone [owner/name\|url]` | clone 至 configured destination，再選擇是否套 preset；setup 預設關閉 |
+| `dev repo setup [repo-or-path]` | repeat-safely merge native initializers 與 preset files 至既有 clean checkout；預設目前 repository，沒有明確要求時不 commit |
+
+這些 commands 的 controls 包含 `--preset`、`--path`、用 `--set` 傳入 typed input、用
+`--enable`/`--disable` 選擇 item、`--dry-run`、`--yes`、`--json`，以及
+`--handoff <stay|cd|open|start>`。JSON mode 不互動，也不會改變 directory 或開啟
+runtime。Dry-run 不會修改 target repository；clone setup 必須等 clone 存在後才能產生
+詳細 plan。每個 command 實際支援的精確 flags 請看下方 generated reference。
+
+Wizard 會在 target repository mutation 前顯示 selected scaffold 與 workflow
+summary。Built-in presets 為：
+
+- `minimal`：`main`、README 與 initial commit；保留既有 scripted
+  `repo new NAME` behavior。
+- `agent-ready`：在 `minimal` 上加入 common ignores、starter `AGENTS.md`，以及
+  project-scoped `.claude/settings.json` 與 `.claude/plans/`。
+  `agent-history-hygiene`、`project-knowledge-harness` 會出現在選項中，但不會靜默
+  啟用。選取後 dev 會安裝 skill，並在 initial commit 前執行經 review 的內建
+  initializer 來建立對應 project surfaces；這兩個 built-ins 不會執行剛下載的
+  skill scripts。
+
+Preset 可加入 `string`、`bool`、`choice` typed inputs、text templates、hooks 與
+project skills。Hooks 依固定 `before_commit`、`after_commit`、`after_remote` phases
+執行。安全形式是 argv `command`；shell `run` 必須明確宣告，且只有
+`interactive = true` 才載入 interactive shell。Required failure 會停止後續
+commit/remote steps；optional failure 只回報 warning。已產生的 local files 會保留供
+recovery。Native initializers 與 preset files 可 repeat-safe 套用；custom hooks 與
+skill setup 必須自行保證 idempotency。
+
+### Upstream publishing
+
+提供 publishing 選項前，dev 會以 read-only 方式 probe `gh` 與 `glab`。只有 CLI 已
+安裝且完成 authentication 的 provider 才會出現；否則 wizard 顯示對應的安裝或 login
+指引。預設 local-only，新 publish 的 repository 預設 private。
+
+Publishing 會沿用 local repository name 與 configured description，再詢問 provider
+namespace/owner、visibility，以及是否 push initial/current branch。Dev 會在必要的
+local setup 與 commit steps 成功後建立空的 GitHub 或 GitLab repository，再新增／驗證
+`origin`，並可選擇以 upstream tracking push。Provider、name-conflict 或 push failure
+絕不刪除 local checkout，也不會刪除已建立的 upstream。
+
+從 `repo setup` publish 時必須使用 `--commit`，避免新建 upstream 漏掉本次產生的
+setup changes。
+
+### Handoff
+
+`stay` 只輸出結果；`cd` 透過受信任的 `shell-init` wrapper 改變 parent shell；
+`open` 開啟 configured Herdr/tmux/Zellij runtime，runtime 為 `none` 時退回 `cd`；
+`start` 會固定此 repository 並接續現有 task wizard。Setup 留下 uncommitted files、
+導致新 worktree 會遺漏它們時，`start` 不可用。Repository bootstrap 與
+`dev start` 都不會啟動 coding agent。
 
 ## `dev done` finish flags
 
@@ -73,6 +137,10 @@ Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`�
 dev config init
 dev config show
 dev config path
+dev config scaffolds init
+dev config scaffolds show
+dev config scaffolds path
+dev config scaffolds edit
 ```
 
 `config init` 偵測 local roots 並寫出 explicit defaults。Config file 不存在仍可運作；built-in defaults 讓核心 Git behavior 可用，但 generated config 能讓 machine policy 可 review，因此較推薦。
@@ -92,7 +160,105 @@ dev config path
 
 Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
 
-Repository 可 commit `.dev.toml`，保存應跟著 project 移動的 worktree provisioning overrides。Host-specific path 與 credential 應放 user config 或 ignored environment file，不放 repository override。
+### Scaffold presets
+
+Global repository recipes 位於 `$XDG_CONFIG_HOME/dev/scaffolds.toml`（或 root
+`--scaffolds` override）。每個 authored file 都必須宣告 `version = 1`。精簡 preset
+範例：
+
+```toml
+version = 1
+default_preset = "team"
+default_agents = ["claude-code", "codex"]
+
+[presets.team]
+extends = "agent-ready"
+handoff = "cd"
+
+[[presets.team.inputs]]
+id = "deployment"
+type = "choice"
+choices = ["none", "docker"]
+default = "none"
+
+[[presets.team.files]]
+id = "service-readme"
+source = "service/README.md" # 此檔案旁的 templates/service/README.md
+destination = "docs/service.md"
+
+[[presets.team.hooks]]
+id = "verify"
+phase = "before_commit"
+command = ["make", "test"]
+required = true
+
+[[presets.team.skills]]
+id = "knowledge"
+source = "daviddwlee84/agent-skills/skills"
+name = "project-knowledge-harness"
+agents = ["claude-code", "codex"]
+default = true
+
+[presets.team.skills.setup]
+phase = "before_commit"
+interpreter = "bash"
+script = "scripts/init.sh"
+args = ["--target", "{{path}}", "--project-name", "{{name}}"]
+required = true
+```
+
+Skill setup 一般會指定 installed skill 內的 project-local script。內建推薦項目則使用
+`builtin = "agent-history-hygiene"` 或
+`builtin = "project-knowledge-harness"`；這些固定且經 review 的 initializer 不會執行
+下載回來的 skill code。
+
+Preset 最多 extend 一個 parent。Scalar 會 override；simple lists 會 replace；files、
+hooks 與 skills 依 `id` merge，inherited item 可用 `enabled = false` 停用。Template
+source 必須留在 config source 旁的 `templates/` tree，destination 必須留在 repository
+內，skill setup script 也必須位於 installed skill directory 內。
+
+### Safe project overlays
+
+Repository 可 commit 兩個固定檔案：
+
+- `.dev-cli/config.toml`：allowlisted worktree provisioning 與 repository setup
+  wizard defaults。
+- `.dev-cli/scaffolds.toml`：使用同一 versioned schema 的 project presets、
+  templates、hooks 與 skill setup。
+
+```toml
+# .dev-cli/config.toml
+version = 1
+
+[worktree]
+include = [".env.example"]
+strategy = "reinstall"
+
+[repo.setup]
+preset = "team"
+handoff = "cd"
+commit = false
+```
+
+Effective precedence 由低至高為 built-ins、global config/scaffolds、legacy
+`.dev.toml`、target repository 的 `.dev-cli/*`，最後是 explicit CLI 或 wizard
+choices。`.dev.toml` 為相容性仍可讀；新的 project configuration 應使用
+`.dev-cli/config.toml`。Global `default_preset` 與 project `[repo.setup]` 的 preset、
+handoff、commit fields 只用來預填 interactive wizard choices；它們不會改變 scripted
+defaults，後者由對應 flags 控制。
+
+Project files 不能 override host paths、state location、runtime backend、forge
+inventory 或 credentials、stats、update、bootstrap 或 TUI policy，也不能靜默 publish
+repository。執行來自 `.dev-cli/config.toml` 的 post-create command，或來自 project
+`.dev-cli/scaffolds.toml` 的 hook／skill setup 前，dev 會依 canonical repository 加
+execution-content hash 詢問 trust；executable content 變更後必須重新同意，
+non-interactive 且沒有 matching trust record 時 fail closed。Legacy `.dev.toml` 保留其
+compatibility behavior。Credential 與 host-specific path 應放 user config 或 ignored
+environment file，絕不放 committed project overlay。
+
+Project-authored skill setup 必須使用 local source，讓實際 bytes 能納入 trust hash。
+Remote project skill 仍可安裝，但不能宣告 executable setup；global preset 則仍屬於
+host-owned policy。
 
 ## 彩色輸出
 
@@ -136,6 +302,8 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
+- [`internal/scaffold/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/scaffold/types.go)
+- [`internal/projectconfig/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/projectconfig/types.go)
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
 - [`internal/cli/color.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/color.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)

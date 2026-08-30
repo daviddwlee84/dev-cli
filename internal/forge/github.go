@@ -45,16 +45,12 @@ func (g *gh) CreateRepo(ctx context.Context, dir string, req RepoRequest) (strin
 	if !g.Available() {
 		return "", &ErrNoCLI{Kind: GitHub, Bin: "gh"}
 	}
-	remote := req.RemoteName
-	if remote == "" {
-		remote = "origin"
+	target, err := resolveRepoRequest(req)
+	if err != nil {
+		return "", err
 	}
-	args := []string{"repo", "create", req.Name, "--source", ".", "--remote", remote}
-	if req.Private {
-		args = append(args, "--private")
-	} else {
-		args = append(args, "--public")
-	}
+	args := []string{"repo", "create", target.fullName, "--source", ".", "--remote", target.remoteName,
+		visibilityFlag(target.visibility)}
 	if req.Description != "" {
 		args = append(args, "--description", req.Description)
 	}
@@ -63,6 +59,32 @@ func (g *gh) CreateRepo(ctx context.Context, dir string, req RepoRequest) (strin
 	}
 	out, err := run(ctx, "gh", dir, args...)
 	return lastURL(out), err
+}
+
+// PublishRepo creates an empty GitHub repository. Unlike CreateRepo it does
+// not pass --source, --remote or --push, leaving all local Git mutations to the
+// shared caller-side transaction.
+func (g *gh) PublishRepo(ctx context.Context, dir string, req RepoRequest) (CreateRepoResult, error) {
+	if !g.Available() {
+		return CreateRepoResult{}, &ErrNoCLI{Kind: GitHub, Bin: "gh"}
+	}
+	target, err := resolveRepoRequest(req)
+	if err != nil {
+		return CreateRepoResult{}, err
+	}
+	args := []string{"repo", "create", target.fullName, visibilityFlag(target.visibility)}
+	if req.Description != "" {
+		args = append(args, "--description", req.Description)
+	}
+	out, err := publishRunner(ctx, "gh", dir, args...)
+	if err != nil {
+		return createRepoResult(GitHub, target, out, false), err
+	}
+	result := createRepoResult(GitHub, target, out, true)
+	if result.RemoteURL == "" {
+		return result, fmt.Errorf("gh created %q but did not report a repository URL", target.fullName)
+	}
+	return result, nil
 }
 
 // CloneURL renders a clone target. gh accepts a bare owner/name, so a
@@ -77,12 +99,7 @@ func (g *gh) CloneURL(ref string) string {
 // lastURL picks the URL out of a CLI's chatter, which may print progress
 // lines before the created resource's address.
 func lastURL(out string) string {
-	var found string
-	for _, line := range strings.Fields(out) {
-		if strings.HasPrefix(line, "http://") || strings.HasPrefix(line, "https://") {
-			found = line
-		}
-	}
+	found := lastHTTPURL(out)
 	if found == "" {
 		return strings.TrimSpace(out)
 	}
