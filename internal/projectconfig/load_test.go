@@ -525,6 +525,26 @@ script = "scripts/setup.sh"
 	}
 }
 
+func TestProjectSetupCheckInOverridesLegacyCommitDefault(t *testing.T) {
+	root := t.TempDir()
+	legacyCommit := true
+	legacy := &projectconfig.Layer{Override: projectconfig.Override{Repo: projectconfig.RepoOverride{
+		Setup: projectconfig.SetupOverride{Commit: &legacyCommit},
+	}}}
+	writeProjectFile(t, root, projectconfig.ConfigFilename, `
+version = 1
+[repo.setup]
+check_in = "stage"
+`)
+	result, err := projectconfig.Load(root, legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Effective.Repo.Setup.CheckIn == nil || *result.Effective.Repo.Setup.CheckIn != "stage" || result.Effective.Repo.Setup.Commit != nil {
+		t.Fatalf("setup defaults = %+v", result.Effective.Repo.Setup)
+	}
+}
+
 func TestLoadRejectsUnsafeValuesAndUnsupportedVersions(t *testing.T) {
 	for _, test := range []struct {
 		name     string

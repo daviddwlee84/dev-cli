@@ -98,6 +98,7 @@ type RepoOverride struct {
 type SetupOverride struct {
 	Preset  *string `toml:"preset"`
 	Handoff *string `toml:"handoff"`
+	CheckIn *string `toml:"check_in"`
 	Commit  *bool   `toml:"commit"`
 }
 
@@ -203,6 +204,16 @@ func (o Override) validate() error {
 		default:
 			return fmt.Errorf("repo.setup.handoff %q: want stay, cd, open or start", *setup.Handoff)
 		}
+	}
+	if setup.CheckIn != nil {
+		switch *setup.CheckIn {
+		case "commit", "stage", "none":
+		default:
+			return fmt.Errorf("repo.setup.check_in %q: want commit, stage or none", *setup.CheckIn)
+		}
+	}
+	if setup.CheckIn != nil && setup.Commit != nil {
+		return fmt.Errorf("repo.setup cannot set both check_in and commit")
 	}
 	return nil
 }

@@ -124,6 +124,9 @@ func validateDocument(c Config) error {
 		if strings.TrimSpace(name) == "" {
 			return fmt.Errorf("preset name must not be empty")
 		}
+		if preset.InitialCheckIn != "" && preset.InitialCommit != nil {
+			return fmt.Errorf("preset %q cannot set both initial_check_in and initial_commit", name)
+		}
 		for kind, ids := range map[string][]string{
 			"input":   inputIDs(preset.Inputs),
 			"file":    fileIDs(preset.Files),

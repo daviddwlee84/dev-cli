@@ -71,10 +71,73 @@ func TestBootstrapAgentHistoryWritesConfigAndHonorsGlobalHooksPath(t *testing.T)
 	if err := bootstrapAgentHistoryHygiene(t.Context(), app, root); err != nil {
 		t.Fatal(err)
 	}
-	for _, relative := range []string{".pre-commit-config.yaml", ".gitleaks.toml"} {
+	for _, relative := range []string{".pre-commit-config.yaml", ".gitleaks.toml", ".specstory/.gitignore"} {
 		if _, err := os.Stat(filepath.Join(root, relative)); err != nil {
 			t.Fatalf("missing %s: %v", relative, err)
 		}
+	}
+	ignored, err := os.ReadFile(filepath.Join(root, ".specstory", ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(ignored) != specStoryLocalGitignore {
+		t.Fatalf("SpecStory ignore = %q", ignored)
+	}
+}
+
+func TestEnsureSpecStoryLocalGitignoreMergesMissingRules(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".specstory", ".gitignore")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("custom.local\n/.project.json\n"), 0o640); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureSpecStoryLocalGitignore(root); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureSpecStoryLocalGitignore(root); err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(body)
+	for _, line := range []string{"custom.local", "/.project.json", "/statistics.json"} {
+		if strings.Count(got, line) != 1 {
+			t.Fatalf("rule %q count in %q", line, got)
+		}
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o640 {
+		t.Fatalf("mode = %v", info.Mode().Perm())
+	}
+}
+
+func TestEnsureSpecStoryLocalGitignoreRejectsSymlink(t *testing.T) {
+	root := t.TempDir()
+	directory := filepath.Join(root, ".specstory")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	outside := filepath.Join(t.TempDir(), "ignore")
+	if err := os.WriteFile(outside, []byte("keep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(directory, ".gitignore")); err != nil {
+		t.Fatal(err)
+	}
+	if err := ensureSpecStoryLocalGitignore(root); err == nil {
+		t.Fatalf("error = %v", err)
+	}
+	body, err := os.ReadFile(outside)
+	if err != nil || string(body) != "keep\n" {
+		t.Fatalf("outside changed = %q, %v", body, err)
 	}
 }
 

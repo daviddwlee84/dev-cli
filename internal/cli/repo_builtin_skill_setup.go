@@ -41,6 +41,9 @@ func bootstrapAgentHistoryHygiene(ctx context.Context, app *App, root string) er
 	}); err != nil {
 		return err
 	}
+	if err := ensureSpecStoryLocalGitignore(root); err != nil {
+		return err
+	}
 	if hooksPath, err := gitx.Run(ctx, root, "config", "--get", "core.hooksPath"); err == nil && strings.TrimSpace(hooksPath) != "" {
 		fmt.Fprintf(app.Out, "core.hooksPath is set to %s; skipped per-repository pre-commit install\n", hooksPath)
 		return nil
@@ -64,6 +67,70 @@ func bootstrapAgentHistoryHygiene(ctx context.Context, app *App, root string) er
 		return fmt.Errorf("install pre-commit hook: %w", err)
 	}
 	return nil
+}
+
+func ensureSpecStoryLocalGitignore(root string) error {
+	canonicalRoot, err := pathx.Canonical(root)
+	if err != nil {
+		return err
+	}
+	relative := ".specstory/.gitignore"
+	directory := filepath.Join(canonicalRoot, ".specstory")
+	if info, statErr := os.Lstat(directory); statErr == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return errors.New(".specstory must be a regular directory, not a symlink or special file")
+		}
+	} else if !errors.Is(statErr, fs.ErrNotExist) {
+		return statErr
+	}
+	candidate := filepath.Join(canonicalRoot, filepath.FromSlash(relative))
+	path, err := pathx.CanonicalChild(canonicalRoot, candidate)
+	if err != nil {
+		return err
+	}
+	mode := fs.FileMode(0o644)
+	existing := ""
+	info, err := os.Lstat(candidate)
+	if err == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return fmt.Errorf("%s must be a regular file, not a symlink or special file", relative)
+		}
+		mode = info.Mode().Perm()
+		body, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		existing = string(body)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+
+	present := map[string]bool{}
+	for _, line := range strings.Split(existing, "\n") {
+		present[strings.TrimSpace(line)] = true
+	}
+	var additions []string
+	if !present["/.project.json"] {
+		additions = append(additions, "# SpecStory machine-local project identity", "/.project.json")
+	}
+	if !present["/statistics.json"] {
+		if len(additions) > 0 {
+			additions = append(additions, "")
+		}
+		additions = append(additions, "# SpecStory generated session statistics", "/statistics.json")
+	}
+	if len(additions) == 0 {
+		return nil
+	}
+	updated := strings.TrimRight(existing, "\n")
+	if updated != "" {
+		updated += "\n\n"
+	}
+	updated += strings.Join(additions, "\n") + "\n"
+	_, err = scaffold.ApplyFiles(scaffold.Plan{Root: canonicalRoot, Files: []scaffold.FilePlan{{
+		ID: relative, RelativePath: relative, Path: path, Content: updated, Mode: mode,
+	}}}, scaffold.ExistingOverwrite)
+	return err
 }
 
 func bootstrapProjectKnowledge(root, deployment string) error {
@@ -208,3 +275,10 @@ const projectReadmeRoadmap = `## Roadmap & lessons learned
 
 Future work is indexed in [TODO.md](TODO.md), with longer research under [backlog/](backlog/).
 Past traps and their workarounds live under [pitfalls/](pitfalls/).`
+
+const specStoryLocalGitignore = `# SpecStory machine-local project identity
+/.project.json
+
+# SpecStory generated session statistics
+/statistics.json
+`

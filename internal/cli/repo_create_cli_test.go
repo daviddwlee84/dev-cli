@@ -30,11 +30,38 @@ func TestRepoNewExplicitNameKeepsMinimalCompatibility(t *testing.T) {
 	}
 }
 
+func TestRepoNewCanStageForUserCheckIn(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("repo", "new", "review-first", "--check-in", "stage", "--message", "chore: review bootstrap")
+	destination := filepath.Join(h.scanRoot, "review-first")
+	status, err := gitx.StatusOf(t.Context(), destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.Staged == 0 || status.Unstaged != 0 || status.Untracked != 0 {
+		t.Fatalf("status = %+v", status)
+	}
+	if _, err := gitx.Run(t.Context(), destination, "rev-parse", "--verify", "HEAD"); err == nil {
+		t.Fatal("stage mode created a commit")
+	}
+	repository, err := gitx.Discover(t.Context(), destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, err := os.ReadFile(filepath.Join(repository.GitDir, "LAZYGIT_PENDING_COMMIT"))
+	if err != nil || string(body) != "chore: review bootstrap\n" {
+		t.Fatalf("lazygit draft = %q, %v", body, err)
+	}
+	if !strings.Contains(out, "staged") || !strings.Contains(out, "prefilled for lazygit c") {
+		t.Fatalf("output = %q", out)
+	}
+}
+
 func TestRepoCreateAliasAndDryRun(t *testing.T) {
 	h := newHarness(t)
 	destination := filepath.Join(h.scanRoot, "preview")
 	out := h.mustRun("repo", "create", "preview", "--dry-run")
-	for _, want := range []string{"nothing will be changed", "README.md", "commit     yes", "upstream   local only", "handoff    stay"} {
+	for _, want := range []string{"nothing will be changed", "README.md", "check-in   commit", "upstream   local only", "handoff    stay"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("dry-run output missing %q:\n%s", want, out)
 		}
@@ -62,11 +89,30 @@ func TestRepoNewDryRunJSONIncludesWorkflowDecisions(t *testing.T) {
 	}
 }
 
-func TestRepoNewRejectsCloneReference(t *testing.T) {
+func TestRepoNewRoutesCloneReferenceToClone(t *testing.T) {
 	h := newHarness(t)
-	_, _, err := h.run("repo", "new", "https://github.com/owner/repo.git")
-	if err == nil || !strings.Contains(err.Error(), "repo clone") {
-		t.Fatalf("error = %v", err)
+	destination := filepath.Join(h.scanRoot, "new-clone")
+	out := h.mustRun("repo", "new", h.repo.Root, "--path", destination)
+	if !strings.Contains(out, "cloned") {
+		t.Fatalf("output = %q", out)
+	}
+	if remote := gitx.Remote(t.Context(), destination, "origin"); remote == "" {
+		t.Fatal("clone reference did not preserve an origin remote")
+	}
+	if body, err := os.ReadFile(filepath.Join(destination, "README.md")); err != nil || len(body) == 0 {
+		t.Fatalf("cloned README = %q, %v", body, err)
+	}
+	_, _, err := h.run("repo", "new", h.repo.Root, "--path", filepath.Join(h.scanRoot, "invalid-clone"), "--template", h.repo.Root)
+	if err == nil || !strings.Contains(err.Error(), "fresh history") {
+		t.Fatalf("template/clone conflict = %v", err)
+	}
+}
+
+func TestRepoNewCloneDryRunRedactsURLCredentials(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("repo", "new", "https://user:secret@example.test/owner/repo.git", "--dry-run", "--json")
+	if strings.Contains(out, "secret") || !strings.Contains(out, `"source":"https://example.test/owner/repo.git"`) {
+		t.Fatalf("dry-run leaked or lost source: %s", out)
 	}
 }
 
@@ -75,6 +121,18 @@ func TestRepoCloneRejectsSetupOnlyFlagsWithoutPreset(t *testing.T) {
 	_, _, err := h.run("repo", "clone", h.repo.Root, "--browse-skills")
 	if err == nil || !strings.Contains(err.Error(), "require --preset") {
 		t.Fatalf("error = %v", err)
+	}
+	for _, mode := range []string{"auto", "none"} {
+		out := h.mustRun("repo", "clone", h.repo.Root, "--path", filepath.Join(h.scanRoot, "preview-"+mode),
+			"--check-in", mode, "--dry-run")
+		if !strings.Contains(out, "nothing will be cloned") {
+			t.Fatalf("check-in %s dry-run output = %q", mode, out)
+		}
+	}
+	_, _, err = h.run("repo", "clone", h.repo.Root, "--path", filepath.Join(h.scanRoot, "preview-stage"),
+		"--check-in", "stage", "--dry-run")
+	if err == nil || !strings.Contains(err.Error(), "require --preset") {
+		t.Fatalf("stage without setup error = %v", err)
 	}
 }
 
@@ -472,7 +530,7 @@ exit 0
 	destination := filepath.Join(h.scanRoot, "recommended")
 	for _, relative := range []string{
 		".pre-commit-config.yaml", ".gitleaks.toml", "TODO.md",
-		"backlog/README.md", "backlog/inbox.md", "pitfalls/README.md",
+		".specstory/.gitignore", "backlog/README.md", "backlog/inbox.md", "pitfalls/README.md",
 	} {
 		if _, err := gitx.Run(t.Context(), destination, "cat-file", "-e", "HEAD:"+relative); err != nil {
 			t.Fatalf("built-in initializer output %s was not committed: %v", relative, err)

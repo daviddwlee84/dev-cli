@@ -171,6 +171,7 @@ dev repo clone owner/name  # expand forge shorthand, then clone with Git
 dev repo clone https://dev.azure.com/acme/Platform/_git/api
 dev repo new               # confirmed repository/scaffold/upstream wizard
 dev repo create api        # minimal scripted creation (alias of repo new)
+dev repo new api --template owner/starter --check-in=stage
 dev repo setup . --preset agent-ready  # initialize an existing clean repo
 dev repo sync --all        # fetch + prune, and report what moved
 dev fleet list              # aggregate repo/task/runtime state over SSH
@@ -221,7 +222,30 @@ or `dev repo list` to see what this machine is actually configured for.
 Read `references/repository-bootstrap.md` before creating a published repo,
 running project-owned hooks, or installing setup-capable skills. A bare
 `dev repo new` is interactive; `dev repo new NAME` deliberately retains the
-minimal README + initial-commit contract. Clone URLs belong to `dev repo clone`.
+minimal README + initial-commit contract. A clear Git URL, local Git path, or
+`owner/name` argument to `new` or `create` automatically clones and preserves
+its remote; template and upstream-creation flags cannot accompany that route.
+Explicit `repo clone` remains available when scripts should state acquisition
+directly.
+`repo new --template` snapshots a local directory or Git tree into a fresh
+history; it is not a clone. `--template-ref` and `--template-subdir` select the
+exact source tree.
+
+Use `--check-in=commit|stage|none` to choose whether generated changes are
+committed, staged for human review, or left unstaged (`auto` follows a new
+repository's preset and otherwise defaults to none). `repo setup --commit`
+remains the compatibility spelling for commit.
+Stage mode cannot create an upstream and cannot hand dirty setup directly to
+`start`.
+
+On a TTY, wizard fields are real inline editors: arrows, Home/End,
+Backspace and Delete edit typed text rather than inserting escape sequences.
+Esc or Ctrl-C cancels; piped input remains line-oriented.
+
+The create/setup wizard asks one customization-gate question after preset
+selection. Declining uses resolved defaults and skips detailed template,
+README/gitignore/license/agent/skill questions; explicit customization flags or
+a required input without a default make yes the suggested answer.
 
 Global recipes live in `scaffolds.toml`. Repositories may commit the allowlisted
 `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml`, but executable project
@@ -491,6 +515,24 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   Source swaps and symlinked destination parents are refused; existing targets
   are reported skipped, not copied. Do not universally include
   `.claude/settings.local.json`: only sticky/plain-Claude profiles opt in.
+- **A repository template is a snapshot, not a clone.** Source Git metadata,
+  remotes and history are excluded. A local Git worktree without a ref includes
+  tracked plus nonignored untracked files; a non-Git directory includes its
+  complete current tree. Human plans preview paths and warn about live unpinned
+  sources. URL userinfo is redacted, while held root/directory/file handles
+  confine traversal. Symlinks, special files, traversal and source changes fail
+  closed, and the snapshot applies only to an otherwise-empty new repo.
+- **Lazygit commit drafts are a best-effort adapter.** `--check-in=stage` writes
+  `LAZYGIT_PENDING_COMMIT` in that worktree's Git directory so lowercase `c`
+  can preload the proposed message. This is not `commit.template` or
+  `COMMIT_EDITMSG`, uppercase `C` and other clients need not read it, and an
+  existing different draft is preserved. Draft write/sync failure is a warning,
+  not rollback: the successfully staged index remains ready for manual commit.
+- **Agent history remains reviewable.** Built-in `agent-history-hygiene` seeds
+  `.specstory/.gitignore` only for machine-local `.project.json` and generated
+  `statistics.json`; it does not ignore `.specstory/history/*.md`. An existing
+  nested ignore keeps its custom content and mode while missing required rules
+  are appended. Correct any broader parent `.specstory/` rule explicitly.
 - **Removing a worktree never deletes the branch.** Those are separate
   decisions; conflating them is how work gets lost.
 - **Bare `dev done` is interactive only on a TTY.** It reports branch relation

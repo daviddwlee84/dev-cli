@@ -24,7 +24,9 @@ lang: zh-TW
 | GitHub pull requests/remotes | authenticated `gh` | Git 可用時 branch 仍能 push，可能需 browser/manual flow |
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |
 | repository bootstrap publishing | authenticated `gh` 或 `glab` | local repository/scaffold 仍可使用；wizard 會說明如何 login |
+| remote repository snapshot template | Git，加上 source 所需的 network/authentication | validation 會在建立 destination 前失敗，rendered URL userinfo 會 redact；local template 仍可使用 |
 | setup-capable project skills | skills provider 與 entrypoint interpreter | 未選取的 skill 會跳過；selected required setup 若缺少 interpreter，會在 scaffold mutation 前失敗；先取得的 clone 會保留 |
+| staged lazygit message prefill | 會讀取 `LAZYGIT_PENDING_COMMIT` 的 lazygit version | files 仍保持 staged，dev 會印出建議 message；一般 Git commit 仍可使用 |
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
@@ -56,6 +58,15 @@ Task schema 有 `AgentSession`，Herdr inventory 也能顯示 live agent session
 `dev config init` 不再寫入它；`dev repo remote --limit` 只在完整 inventory 搜尋
 完成後限制 rendered matches。
 
+### Lazygit staged-message prefill 是 best effort
+
+`repo --check-in=stage` 會在正確的 worktree Git directory 寫入 pending message。
+[Lazygit v0.59.0 的小寫 `c` 會使用該
+檔案](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216)，但這是 lazygit implementation detail，不是 Git
+interface；大寫 `C` 與一般 `git commit` 不會讀取它。Dev 不會覆寫內容不同的既有
+draft。Draft write failure 只會產生 warning；staging 仍視為成功且不會 rollback。若
+upstream integration 日後改變，staged index 與已印出的 message 仍是 recovery path。
+
 ### Windows 是 build target，不是 full-feature 平台
 
 `dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心的 repository、task 與 worktree 操作可用。差異：
@@ -73,7 +84,10 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 
 以下是歷史缺口，現行版本已實作：
 
-- `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Explicit `repo new NAME` 仍維持 minimal；無參數 wizard 可初始化 agent files、執行明確選取的 skill setup、透過 authenticated GitHub/GitLab CLI publish，並以 stay/cd/runtime/start handoff。
+- `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Plain explicit `repo new NAME` 仍維持 minimal；清楚的 Git URL、local Git path 或 owner/name 會改走 clone acquisition，保留 source history/remote。無參數 wizard 的第一個欄位也會偵測同樣 reference；建立新 repository 時，預設為 no 的 customization gate 讓正常 `agent-ready` flow 保持精簡。Text fields 使用 TTY inline editor，因此 cursor keys 會編輯內容，不會插入 raw escape bytes；non-TTY reader 維持 line-oriented behavior。
+- `repo new` 可從 local directory/repository 或 Git source 的 optional branch、tag、commit 與 confined subdirectory 建立 fresh-history snapshot。未 pin 的 local Git tree 包含 tracked 加 untracked non-ignored files；non-Git directory 包含完整 current tree。Source `.git` metadata 會排除、URL userinfo 會 redact，不安全的 file types/paths 會在 destination 建立前失敗，held root/file handles 會限制 mutable-path races。Human plan 會預覽 paths 並警告 live snapshot，preset 也可選擇 catalog-repository subfolder。
+- Repository setup 支援 `--check-in=commit|stage|none`（`auto` 用於 preset compatibility）。Staged setup 會執行 before-commit setup 與 `git add -A`，但不執行 `after_commit` phase；它不能 publish 或 handoff 到 `start`，並可依前述方式預填 lazygit 小寫 `c`。
+- Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。`agent-history-hygiene` initializer 會寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。
 - Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
 
 - `dev start --focus` 會在 non-JSON creation 後 activate runtime。

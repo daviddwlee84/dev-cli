@@ -52,22 +52,72 @@ and can use the built-in `minimal` or `agent-ready` preset. `agent-ready` adds
 starter agent guidance and project-scoped Claude plans; when selected, optional
 skills such as `agent-history-hygiene` and `project-knowledge-harness` are
 installed, while reviewed built-in initializers create their project surfaces
-during this flow without executing newly downloaded skill code.
+during this flow without executing newly downloaded skill code. Matching skills
+with the same source and agent targets share one installer invocation. The
+history initializer writes pre-commit/gitleaks configuration and ensures
+`.specstory/.gitignore` contains rules for `.project.json` and
+`statistics.json`, not the trackable `.specstory/history/` transcripts.
+Existing custom ignore content is preserved and only missing rules are appended.
 
-To acquire existing code, pass an owner/name or Git URL to clone. To apply the
-same setup to an existing checkout, use setup:
+To start from existing content without retaining its Git history, use a template
+snapshot:
+
+```bash
+dev repo new api --template owner/starters --template-ref v2 \
+  --template-subdir go/service
+```
+
+`--template` also accepts a local directory/repository or Git URL. The optional
+ref may be a branch, tag, or commit; the subdirectory must stay within the
+source. Dev excludes source `.git` metadata, preserves regular-file modes, and
+rejects traversal, symlinks, and special files before creating the destination.
+Without a ref, a local Git working tree contributes tracked files plus
+untracked non-ignored files (not ignored build/cache content); a non-Git
+directory contributes its complete current tree. Human confirmation/dry-run
+output previews paths and warns that an unpinned local source is live. URL
+userinfo is redacted, and held root/file handles keep reads and writes confined
+to the validated roots.
+Presets may declare the same `template`, `template_ref`, and
+`template_subdir` values, so one catalog repository can hold several starters.
+
+To acquire existing code, pass an owner/name, Git URL, or local Git path to
+either `repo new`/`create` or the explicit `repo clone`. A clear clone reference
+routes to clone acquisition and preserves source history plus `origin`; the
+no-argument wizard detects the same input in its first field. To apply the same
+setup to an existing checkout, use setup:
 
 ```bash
 dev repo clone owner/api
 dev repo clone git@gitlab.example.com:group/api.git
+dev repo new ../existing-repository
 dev repo setup . --preset agent-ready
 ```
+
+Choose how generated changes are checked in with
+`--check-in <auto|commit|stage|none>`. The interactive wizard offers `commit`,
+`stage`, or `none`; for `repo new`, `auto` keeps the selected preset's default,
+while clone/setup otherwise perform no automatic check-in. `stage` runs
+`git add -A` without committing and best-effort prepares the message for current
+lazygit's lowercase `c`; use `--message` to change it. Staged setup cannot be
+published or handed to `start` until you review and commit it. Existing
+`repo setup --commit` remains compatible with `--check-in=commit`. Failure to
+write the optional lazygit draft produces a warning without undoing the staged
+index.
 
 The wizard offers GitHub or GitLab publishing only when the corresponding
 `gh` or `glab` CLI is installed and authenticated. Local-only remains the
 default. Its final handoff can stay in place, `cd` into the repository, open
 the configured terminal runtime, or continue to the `dev start` wizard.
 Bootstrap and `dev start` do not launch a coding agent.
+
+TTY text fields in the repository, `start`, and `done` wizards support inline
+editing with Left/Right, Home/End, Delete/Backspace, and Esc/Ctrl-C cancellation.
+Piped input remains line-oriented for scripts and tests.
+
+After choosing a preset, bare `repo new` asks “Customize preset and template
+options?” with a default of no. The normal `agent-ready` path therefore skips
+the individual template/file/input/skill questions and uses reviewed defaults;
+answer yes to expand them.
 
 If you already have a repository and need no setup, continue there directly.
 

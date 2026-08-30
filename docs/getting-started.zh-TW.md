@@ -56,21 +56,62 @@ built-in `minimal` 或 `agent-ready` preset。`agent-ready` 會加入 starter ag
 guidance 與 project-scoped Claude plans；選取 `agent-history-hygiene`、
 `project-knowledge-harness` 等 optional skills 後，流程會安裝它們，並由經 review 的
 內建 initializer 立即建立 project surfaces，不會執行剛下載的 skill code，也不必等
-日後某個 agent trigger。
+日後某個 agent trigger。同一 source 且 agent targets 相同的 skills 會共用一次
+installer invocation。History initializer 會寫入 pre-commit/gitleaks config，並確保
+`.specstory/.gitignore` 含有 `.project.json`、`statistics.json` 規則，不會忽略應納入
+review trail 的 `.specstory/history/` transcripts。既有 custom ignore content 會保留，
+只補上缺少的 managed rules。
 
-取得既有 code 時，將 owner/name 或 Git URL 傳給 clone。要把同一套 setup 套用至既有
-checkout，則使用 setup：
+若要沿用既有內容、但不保留原 Git history，可使用 template snapshot：
+
+```bash
+dev repo new api --template owner/starters --template-ref v2 \
+  --template-subdir go/service
+```
+
+`--template` 也接受 local directory/repository 或 Git URL；optional ref 可為 branch、
+tag 或 commit，subdirectory 則必須留在 source 內。Dev 會排除 source `.git`
+metadata、保留 regular-file modes，並在建立 destination 前拒絕 traversal、symlink 與
+special files。未指定 ref 時，local Git working tree 只提供 tracked files 加上
+untracked non-ignored files，不包含 ignored build/cache content；non-Git directory
+則提供完整 current tree。Human confirmation/dry-run 會預覽 paths，並警告未 pin 的 local
+source 是 live snapshot。URL userinfo 會 redact，held root/file handles 會把 read/write
+限制在已驗證 roots 內。Preset 也可宣告 `template`、`template_ref`、
+`template_subdir`，因此一個 catalog repository 可容納多個 starter folders。
+
+取得既有 code 時，可將 owner/name、Git URL 或 local Git path 傳給 `repo new`/`create`，
+也可使用明確的 `repo clone`。清楚的 clone reference 會直接走 clone acquisition，保留
+source history 與 `origin`；無參數 wizard 的第一個欄位也會偵測同樣輸入。要把同一套
+setup 套用至既有 checkout，則使用 setup：
 
 ```bash
 dev repo clone owner/api
 dev repo clone git@gitlab.example.com:group/api.git
+dev repo new ../existing-repository
 dev repo setup . --preset agent-ready
 ```
+
+使用 `--check-in <auto|commit|stage|none>` 選擇 generated changes 的 check-in
+方式。Interactive wizard 提供 `commit`、`stage`、`none`；在 `repo new` 中，`auto`
+沿用 selected preset default，clone/setup 則不自動 check-in。`stage` 只執行
+`git add -A`、不 commit，並 best-effort 為目前 lazygit 的小寫
+`c` 準備 message；可用 `--message` 修改。Staged setup 在 review 並 commit 前不能
+publish，也不能 handoff 到 `start`。既有 `repo setup --commit` 仍相容於
+`--check-in=commit`。Optional lazygit draft 若寫入失敗，只會產生 warning，不會撤銷已
+完成的 staging。
 
 只有對應的 `gh` 或 `glab` CLI 已安裝且完成 authentication 時，wizard 才會提供
 GitHub 或 GitLab publishing；預設仍是 local-only。最後的 handoff 可選擇留在原處、
 `cd` 進 repository、開啟 configured terminal runtime，或接續 `dev start` wizard。
 Bootstrap 與 `dev start` 都不會啟動 coding agent。
+
+Repository、`start` 與 `done` wizard 的 TTY text fields 支援 Left/Right、Home/End、
+Delete/Backspace inline editing，以及 Esc/Ctrl-C cancellation。Piped input 對 scripts
+與 tests 仍維持 line-oriented behavior。
+
+選完 preset 後，bare `repo new` 會詢問預設為 no 的「Customize preset and template
+options?」。正常 `agent-ready` flow 因此會略過個別 template/file/input/skill 問題並採用
+reviewed defaults；回答 yes 才會展開。
 
 若已經位於 repository 且不需要 setup，可直接繼續下一步。
 

@@ -89,11 +89,25 @@ func mergePreset(base, overlay Preset) Preset {
 	if overlay.Handoff != "" {
 		out.Handoff = overlay.Handoff
 	}
+	if overlay.Template != "" {
+		out.Template = overlay.Template
+	}
+	if overlay.TemplateRef != "" {
+		out.TemplateRef = overlay.TemplateRef
+	}
+	if overlay.TemplateSubdir != "" {
+		out.TemplateSubdir = overlay.TemplateSubdir
+	}
 	if overlay.InitialBranch != "" {
 		out.InitialBranch = overlay.InitialBranch
 	}
+	if overlay.InitialCheckIn != "" {
+		out.InitialCheckIn = overlay.InitialCheckIn
+		out.InitialCommit = nil
+	}
 	if overlay.InitialCommit != nil {
 		out.InitialCommit = cloneBool(overlay.InitialCommit)
+		out.InitialCheckIn = ""
 	}
 	if overlay.CommitMessage != "" {
 		out.CommitMessage = overlay.CommitMessage
@@ -421,6 +435,16 @@ func enabledCatalog(in []SkillCatalog) []SkillCatalog {
 }
 
 func validateResolvedPreset(name string, p Preset) error {
+	if strings.TrimSpace(p.Template) == "" && (strings.TrimSpace(p.TemplateRef) != "" || strings.TrimSpace(p.TemplateSubdir) != "") {
+		return fmt.Errorf("preset %q template_ref and template_subdir require template", name)
+	}
+	if p.InitialCheckIn != "" {
+		switch p.InitialCheckIn {
+		case "commit", "stage", "none":
+		default:
+			return fmt.Errorf("preset %q initial_check_in %q: want commit, stage, or none", name, p.InitialCheckIn)
+		}
+	}
 	if p.Remote != "" {
 		switch p.Remote {
 		case "none", "ask":

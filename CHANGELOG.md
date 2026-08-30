@@ -11,11 +11,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `dev repo new` now has a confirmed interactive repository-bootstrap wizard, with
   `dev repo create` as an alias; `dev repo clone` can optionally apply the same setup,
   and `dev repo setup` safely merges preset files into an existing clean checkout.
+  A clear Git URL, local Git path, or owner/repository argument to `new`/`create` is
+  acquired as a clone, preserving its history and remote. The no-argument wizard
+  detects the same references. Its default-no “Customize preset and template options?”
+  gate keeps the normal `agent-ready` path short while still exposing every detailed
+  question on request.
   Presets live in versioned `scaffolds.toml`, support typed inputs, safe templates,
   phased hooks, project skills with setup entrypoints, optional GitHub/GitLab
   publication, and explicit stay/cd/runtime/start handoffs. The two recommended
   agent skills use reviewed built-in project initializers instead of executing
-  newly downloaded setup code.
+  newly downloaded setup code. Skills with the same source and agent targets are
+  installed in one provider invocation; the history initializer also adds
+  `.specstory/.gitignore` rules for machine-local identity/statistics while keeping
+  session history trackable; existing custom content is preserved and missing managed
+  rules are appended.
+- `dev repo new` can seed a new Git history from a safe snapshot of a local directory,
+  local repository, Git URL, or owner/repository reference. `--template-ref` selects a
+  branch, tag, or commit and `--template-subdir` selects one confined folder; preset
+  `template`, `template_ref`, and `template_subdir` fields support catalog repositories
+  containing several starters. Source `.git` metadata is excluded, and symlinks,
+  special files, and path traversal are rejected. Plans redact URL userinfo, preview
+  selected paths, and warn when a local live snapshot is not pinned to a commit.
+- Repository bootstrap now has `--check-in <auto|commit|stage|none>`. `stage` leaves
+  generated changes staged for review and seeds lazygit's worktree-local pending
+  message as a best-effort convenience for lowercase `c`; staged setup cannot be
+  published, and the `start` handoff still requires committed setup. Presets can set
+  `initial_check_in`, and project setup defaults can set `repo.setup.check_in`. A draft
+  write failure is a warning after staging succeeds; it never rolls the index back.
+- TTY text prompts in the repository, task-start, and finish wizards now use an inline
+  editor with cursor movement, Home/End, Delete/Backspace, and Esc/Ctrl-C cancellation
+  instead of inserting raw arrow-key escape sequences. Buffered non-TTY input retains
+  its script/test behavior.
 - Repositories may commit allowlisted `.dev-cli/config.toml` and
   `.dev-cli/scaffolds.toml` overrides. Host paths/runtime/state remain global, while
   executable project configuration is content-hash trusted locally before it can run;

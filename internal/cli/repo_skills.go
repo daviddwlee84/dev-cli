@@ -38,16 +38,37 @@ type repoSkillResult struct {
 
 func installRepoSkills(ctx context.Context, app *App, root string, specs []repoSkillSpec) (repoSkillResult, error) {
 	var result repoSkillResult
+	type installGroup struct {
+		source string
+		agents []string
+		names  []string
+	}
+	var groups []installGroup
 	for _, spec := range specs {
-		process, err := agentskill.InstallCommand(ctx, root, spec.Source, []string{spec.Name}, spec.Agents)
+		key := spec.Source + "\x00" + strings.Join(spec.Agents, "\x00")
+		groupIndex := -1
+		for index := range groups {
+			if groups[index].source+"\x00"+strings.Join(groups[index].agents, "\x00") == key {
+				groupIndex = index
+				break
+			}
+		}
+		if groupIndex < 0 {
+			groups = append(groups, installGroup{source: spec.Source, agents: append([]string(nil), spec.Agents...)})
+			groupIndex = len(groups) - 1
+		}
+		groups[groupIndex].names = append(groups[groupIndex].names, spec.Name)
+	}
+	for _, group := range groups {
+		process, err := agentskill.InstallCommand(ctx, root, group.source, group.names, group.agents)
 		if err != nil {
-			return result, fmt.Errorf("prepare skill %s install: %w", spec.Name, err)
+			return result, fmt.Errorf("prepare skills %s install: %w", strings.Join(group.names, ", "), err)
 		}
 		process.Stdin, process.Stdout, process.Stderr = app.In, app.Out, app.Err
 		if err := process.Run(); err != nil {
-			return result, fmt.Errorf("install skill %s: %w", spec.Name, err)
+			return result, fmt.Errorf("install skills %s: %w", strings.Join(group.names, ", "), err)
 		}
-		result.Installed = append(result.Installed, spec.Name)
+		result.Installed = append(result.Installed, group.names...)
 	}
 	return result, nil
 }

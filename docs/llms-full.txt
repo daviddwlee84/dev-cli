@@ -114,22 +114,72 @@ and can use the built-in `minimal` or `agent-ready` preset. `agent-ready` adds
 starter agent guidance and project-scoped Claude plans; when selected, optional
 skills such as `agent-history-hygiene` and `project-knowledge-harness` are
 installed, while reviewed built-in initializers create their project surfaces
-during this flow without executing newly downloaded skill code.
+during this flow without executing newly downloaded skill code. Matching skills
+with the same source and agent targets share one installer invocation. The
+history initializer writes pre-commit/gitleaks configuration and ensures
+`.specstory/.gitignore` contains rules for `.project.json` and
+`statistics.json`, not the trackable `.specstory/history/` transcripts.
+Existing custom ignore content is preserved and only missing rules are appended.
 
-To acquire existing code, pass an owner/name or Git URL to clone. To apply the
-same setup to an existing checkout, use setup:
+To start from existing content without retaining its Git history, use a template
+snapshot:
+
+```bash
+dev repo new api --template owner/starters --template-ref v2 \
+  --template-subdir go/service
+```
+
+`--template` also accepts a local directory/repository or Git URL. The optional
+ref may be a branch, tag, or commit; the subdirectory must stay within the
+source. Dev excludes source `.git` metadata, preserves regular-file modes, and
+rejects traversal, symlinks, and special files before creating the destination.
+Without a ref, a local Git working tree contributes tracked files plus
+untracked non-ignored files (not ignored build/cache content); a non-Git
+directory contributes its complete current tree. Human confirmation/dry-run
+output previews paths and warns that an unpinned local source is live. URL
+userinfo is redacted, and held root/file handles keep reads and writes confined
+to the validated roots.
+Presets may declare the same `template`, `template_ref`, and
+`template_subdir` values, so one catalog repository can hold several starters.
+
+To acquire existing code, pass an owner/name, Git URL, or local Git path to
+either `repo new`/`create` or the explicit `repo clone`. A clear clone reference
+routes to clone acquisition and preserves source history plus `origin`; the
+no-argument wizard detects the same input in its first field. To apply the same
+setup to an existing checkout, use setup:
 
 ```bash
 dev repo clone owner/api
 dev repo clone git@gitlab.example.com:group/api.git
+dev repo new ../existing-repository
 dev repo setup . --preset agent-ready
 ```
+
+Choose how generated changes are checked in with
+`--check-in <auto|commit|stage|none>`. The interactive wizard offers `commit`,
+`stage`, or `none`; for `repo new`, `auto` keeps the selected preset's default,
+while clone/setup otherwise perform no automatic check-in. `stage` runs
+`git add -A` without committing and best-effort prepares the message for current
+lazygit's lowercase `c`; use `--message` to change it. Staged setup cannot be
+published or handed to `start` until you review and commit it. Existing
+`repo setup --commit` remains compatible with `--check-in=commit`. Failure to
+write the optional lazygit draft produces a warning without undoing the staged
+index.
 
 The wizard offers GitHub or GitLab publishing only when the corresponding
 `gh` or `glab` CLI is installed and authenticated. Local-only remains the
 default. Its final handoff can stay in place, `cd` into the repository, open
 the configured terminal runtime, or continue to the `dev start` wizard.
 Bootstrap and `dev start` do not launch a coding agent.
+
+TTY text fields in the repository, `start`, and `done` wizards support inline
+editing with Left/Right, Home/End, Delete/Backspace, and Esc/Ctrl-C cancellation.
+Piped input remains line-oriented for scripts and tests.
+
+After choosing a preset, bare `repo new` asks “Customize preset and template
+options?” with a default of no. The normal `agent-ready` path therefore skips
+the individual template/file/input/skill questions and uses reviewed defaults;
+answer yes to expand them.
 
 If you already have a repository and need no setup, continue there directly.
 
@@ -2391,20 +2441,27 @@ Every `dev repo list --json` row includes `notes.count`. When a latest note exis
 
 ## Repository bootstrap
 
-Repository acquisition and setup are separate operations so a Git URL never
-silently changes the meaning of `new`:
+Repository setup remains separate from acquisition. For acquisition,
+`new`/`create` distinguishes a plain repository name from a clear clone
+reference:
 
 | Command | Behavior |
 |---|---|
-| `dev repo new` | interactive new-repository wizard |
-| `dev repo new NAME` / `dev repo create NAME` | create a new local repository; the explicit-name default remains the compatible `minimal` preset |
+| `dev repo new` | interactive wizard; its first field accepts either a new name or a clone reference |
+| `dev repo new NAME` / `dev repo create NAME` | create a new local repository; a clear Git URL, local Git path, or owner/name instead routes to clone and preserves history/remote |
 | `dev repo clone [owner/name\|url]` | clone into the configured destination, then optionally apply a preset; setup defaults off |
 | `dev repo setup [repo-or-path]` | repeat-safely merge native initializers and preset files into an existing clean checkout; defaults to the current repository and does not commit unless requested |
 
+A clone-routed `new` retains the source `origin`; it therefore rejects
+new-upstream creation flags. It also rejects `--template*`, whose explicit
+meaning is “copy content into a fresh history.”
+
 Across these commands, controls include `--preset`, `--path`, typed input values through
-`--set`, item selection through `--enable`/`--disable`, `--dry-run`, `--yes`,
-`--json`, and `--handoff <stay|cd|open|start>`. JSON mode is non-interactive
-and never changes directory or opens a runtime. Dry-run performs no target
+`--set`, item selection through `--enable`/`--disable`, `--check-in
+<auto|commit|stage|none>`, `--dry-run`, `--yes`, `--json`, and `--handoff
+<stay|cd|open|start>`. `repo new` additionally accepts `--template`,
+`--template-ref`, and `--template-subdir`. JSON mode is non-interactive and
+never changes directory or opens a runtime. Dry-run performs no target
 repository mutation; clone setup can only be planned in detail after the clone
 exists. Use the generated reference below for each command's exact flag
 availability.
@@ -2419,7 +2476,19 @@ repository mutation. The built-in presets are:
   `agent-history-hygiene` and `project-knowledge-harness` are offered but are
   not selected silently. When selected, dev installs them and runs reviewed
   built-in initializers for their project surfaces before the initial commit;
-  downloaded skill scripts are not executed for these built-ins.
+  downloaded skill scripts are not executed for these built-ins. Matching
+  skills with the same source and identical agent targets share one installer
+  invocation, while their setup phases still run per skill. The history
+  initializer creates `.pre-commit-config.yaml` and `.gitleaks.toml`, then
+  ensures `.specstory/.gitignore` contains rules for SpecStory's `.project.json`
+  and `statistics.json`, never the trackable `.specstory/history/` directory.
+  Existing custom ignore content and its mode are preserved; only missing
+  managed rules are appended.
+
+After preset selection, the new-repository wizard asks “Customize preset and
+template options?” with a default of no. The ordinary `agent-ready` flow uses
+its reviewed template, file, input, and skill defaults without presenting each
+question. Answer yes—or provide customization flags—to expand those controls.
 
 Presets can add typed `string`, `bool`, and `choice` inputs, text templates,
 hooks, and project skills. Hooks run in fixed `before_commit`, `after_commit`,
@@ -2429,6 +2498,66 @@ Required failures stop later commit/remote steps; optional failures are
 reported as warnings. Produced local files are retained for recovery. Native
 initializers and preset files are repeat-safe; custom hooks and skill setup are
 responsible for their own idempotency.
+
+### Snapshot templates
+
+`dev repo new NAME --template SOURCE` seeds a fresh repository from a content
+snapshot. `SOURCE` may be a local directory/repository, Git URL, or owner/name.
+For a Git source, `--template-ref` selects an arbitrary branch, tag, or commit;
+`--template-subdir` selects a clean relative directory as the new repository
+root. Without a ref, a local Git working tree includes existing tracked files
+plus untracked files that are not ignored by Git; ignored build/cache content
+is omitted. A non-Git directory snapshots its complete current tree.
+
+The new repository does not inherit source history or remotes. Dev excludes
+every source `.git` entry, rejects traversal, symlinks and special files,
+preserves regular-file modes, and validates the complete snapshot before
+creating the destination. Snapshot files take precedence when the selected
+scaffold would write the same path; the scaffold still fills missing files and
+runs the selected initializers. Source and destination traversal is performed
+relative to held `os.Root` handles, and file bytes come from the already-open
+validated source handle rather than a second mutable pathname lookup.
+
+Confirmation and human dry-run output show a bounded preview of selected paths
+and warn when a local source is a live working-tree/directory snapshot rather
+than a commit. Credential-bearing URL userinfo is removed from summaries,
+structured output, and clone/template errors.
+
+Presets expose the same operation through scalar `template`, `template_ref`,
+and `template_subdir` fields. They inherit normally and explicit CLI flags win,
+which supports one starter catalog repository plus a child preset for each
+subfolder.
+
+### Check-in policy
+
+The interactive wizard offers `commit`, `stage`, and `none`; scripts may also
+pass `auto`. The behavior is:
+
+| Value | Behavior |
+|---|---|
+| `commit` | `git add -A`, commit with `--message`/the preset message, then run `after_commit` setup |
+| `stage` | run `before_commit` setup, then `git add -A`; leave the checkout staged and do not run `after_commit` |
+| `none` | leave generated changes unstaged and uncommitted |
+| `auto` | for `repo new`, use `initial_check_in` and compatible `initial_commit`; clone/setup otherwise perform no automatic check-in |
+
+In `stage` mode, dev best-effort writes `LAZYGIT_PENDING_COMMIT` in the exact
+worktree Git directory. [Lazygit v0.59.0 reads this
+file](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216)
+as the initial message for lowercase `c`; uppercase `C` and Git itself do not use this integration. An
+existing different draft is preserved and reported rather than overwritten.
+This is an implementation-detail adapter, not `commit.template`.
+
+Staging is the durable outcome: if the optional lazygit draft cannot be
+written, dev emits a warning and retains the staged index instead of rolling it
+back.
+
+Staged setup cannot create an upstream, and `handoff=start` requires committed
+setup because a new worktree would omit the staged files. `stay`, `cd`, and
+`open` remain available for review. `repo setup --commit` is retained as a
+compatibility alias for `--check-in=commit`; `--message` applies to both commit
+and stage. Structured results retain `committed` and add `staged`,
+`staged_paths`, `commit_message`, `commit_draft_provider`, and a content-free
+`template` summary where applicable.
 
 ### Upstream publishing
 
@@ -2445,8 +2574,11 @@ optionally pushes with upstream tracking. A
 provider, name-conflict, or push failure never deletes the local checkout or
 an upstream that was already created.
 
-Publishing from `repo setup` requires `--commit`, so the newly created
-upstream cannot omit the generated setup changes.
+Publishing from `repo setup` requires `--check-in=commit` (or the compatible
+`--commit` flag), so the newly created upstream cannot omit the generated setup
+changes. `--check-in=stage` is incompatible with any new upstream; for a new
+repository, `none` may create an intentionally empty upstream only with
+`--push=false`.
 
 ### Handoff
 
@@ -2456,6 +2588,12 @@ and falls back to `cd` when runtime is `none`. `start` continues into the
 existing task wizard with the repository fixed, and is unavailable when setup
 leaves uncommitted files that a new worktree would omit. Neither repository
 bootstrap nor `dev start` launches a coding agent.
+
+All shared TTY text fields in the repository, task-start, and finish wizards
+use an inline editor: Left/Right, Home/End, Delete/Backspace, insertion at the
+cursor, and Esc/Ctrl-C cancellation work as terminal actions rather than being
+inserted as raw escape bytes. Buffered and piped non-TTY input retains its
+line-oriented behavior.
 
 ## `dev done` finish flags
 
@@ -2515,6 +2653,10 @@ default_agents = ["claude-code", "codex"]
 [presets.team]
 extends = "agent-ready"
 handoff = "cd"
+initial_check_in = "stage"
+template = "acme/starter-catalog"
+template_ref = "v2"
+template_subdir = "services/go"
 
 [[presets.team.inputs]]
 id = "deployment"
@@ -2555,9 +2697,13 @@ not execute downloaded skill code.
 
 A preset may extend one parent. Scalars override; simple lists replace; files,
 hooks, and skills merge by `id`, and an inherited item can be disabled with
-`enabled = false`. Template sources must remain in the `templates/` tree next
-to their config source, destinations must remain inside the repository, and a
-skill setup script must remain inside the installed skill directory.
+`enabled = false`. A `[[presets.*.files]]` rendering source must remain in the
+`templates/` tree next to its config source; that file-level mechanism is
+separate from the repository snapshot `template` scalar above. Destinations
+must remain inside the repository, and a skill setup script must remain inside
+the installed skill directory. `initial_check_in` accepts `commit`, `stage`, or
+`none`; the legacy `initial_commit` boolean remains readable, but a preset must
+not set both.
 
 ### Safe project overlays
 
@@ -2579,16 +2725,17 @@ strategy = "reinstall"
 [repo.setup]
 preset = "team"
 handoff = "cd"
-commit = false
+check_in = "stage"
 ```
 
 Effective precedence, lowest to highest, is built-ins, global config/scaffolds,
 legacy `.dev.toml`, the target repository's `.dev-cli/*`, then explicit CLI or
 wizard choices. `.dev.toml` remains readable for compatibility; new project
 configuration should use `.dev-cli/config.toml`. Global `default_preset` and the
-project `[repo.setup]` preset, handoff, and commit fields seed interactive
+project `[repo.setup]` preset, handoff, and check-in fields seed interactive
 wizard choices; they do not change scripted defaults, which are controlled by
-the corresponding flags.
+the corresponding flags. The legacy `commit` boolean remains readable, but may
+not be combined with `check_in` in the same layer.
 
 Project files cannot override host paths, state location, runtime backend,
 forge inventory or credentials, stats, update, bootstrap, or TUI policy. They
@@ -3322,6 +3469,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--agent` — agent targets for selected project skills
 - `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
+- `--check-in` — finish generated changes: auto, commit, stage or none
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
@@ -3332,6 +3480,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--json` — emit a machine-readable result
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
+- `-m, --message` — commit message for --check-in=commit or stage
 - `-o, --open` — open the clone in the runtime afterwards (alias for --handoff=open)
 - `--path` — exact destination path
 - `--preset` — scaffold preset
@@ -3380,15 +3529,16 @@ dev repo mark <repo> [flags]
 
 ### `dev repo new`
 
-Create a new local repository (optionally with a remote)
+Create a new repository or clone an explicit source
 
 ```
-dev repo new [name] [flags]
+dev repo new [name|clone-ref] [flags]
 ```
 
 - `--agent` — agent targets for selected project skills
 - `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
+- `--check-in` — finish generated changes: auto, commit, stage or none
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
@@ -3400,6 +3550,7 @@ dev repo new [name] [flags]
 - `--json` — emit a machine-readable result
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
+- `-m, --message` — commit message for --check-in=commit or stage
 - `--namespace` — GitHub owner/org or GitLab namespace
 - `--path` — exact destination path
 - `--preset` — scaffold preset
@@ -3408,6 +3559,9 @@ dev repo new [name] [flags]
 - `--push` — push the current branch after publishing
 - `--remote` — also create a GitHub or GitLab upstream
 - `--set` — preset input as key=value (repeatable)
+- `--template` — local directory, Git URL, or owner/repo used as a snapshot template
+- `--template-ref` — Git branch, tag, or commit to snapshot from --template
+- `--template-subdir` — relative directory within --template to use as the repository root
 - `--visibility` — upstream visibility: private, public or internal
 - `-y, --yes` — confirm the non-interactive scaffold plan
 
@@ -3443,6 +3597,7 @@ dev repo setup [repo-or-path] [flags]
 
 - `--agent` — agent targets for selected project skills
 - `--browse-skills` — open the upstream skills installer during setup
+- `--check-in` — finish generated changes: auto, commit, stage or none
 - `--commit` — commit only the setup changes (requires a clean starting checkout)
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
@@ -3455,7 +3610,7 @@ dev repo setup [repo-or-path] [flags]
 - `--json` — emit a machine-readable result
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
-- `-m, --message` — setup commit message
+- `-m, --message` — commit message for --check-in=commit or stage
 - `--namespace` — GitHub owner/org or GitLab namespace
 - `--preset` — scaffold preset
 - `--private` — create a private upstream (compatibility flag)
@@ -3981,7 +4136,9 @@ This page separates graceful degradation from real limitations. Reverify it when
 | GitHub pull requests/remotes | `gh` authenticated | branch still pushes when Git works; browser/manual flow may be needed |
 | GitLab merge requests/remotes | `glab` authenticated | same graceful fallback |
 | repository bootstrap publishing | authenticated `gh` or `glab` | local repository/scaffold still works; the wizard explains how to log in |
+| remote repository snapshot template | Git plus network/authentication for the source | validation fails before the destination is created and rendered URL userinfo is redacted; local templates still work |
 | setup-capable project skills | skills provider plus the entrypoint interpreter | unselected skills are skipped; selected required setup fails before scaffold mutation when its interpreter is unavailable; a clone acquired first is retained |
+| staged lazygit message prefill | a lazygit version that reads `LAZYGIT_PENDING_COMMIT` | files remain staged and dev prints the suggested message; normal Git commit remains available |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
@@ -4014,6 +4171,17 @@ longer caps synchronization. `dev config init` no longer writes it. The
 `--limit` flag on `dev repo remote` limits rendered matches after the complete
 inventory has been searched.
 
+### Lazygit staged-message prefill is best effort
+
+`repo --check-in=stage` writes a pending message in the exact worktree Git
+directory. [Lazygit v0.59.0 uses that file for lowercase
+`c`](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216), but it is a
+lazygit implementation detail rather than a Git interface; uppercase `C` and
+plain `git commit` do not consume it. Dev never overwrites a different existing
+draft. A draft-write failure is warning-only: staging remains successful and
+is never rolled back. If the integration changes upstream, the staged index
+and printed message remain the recovery path.
+
 ### Windows is a build target, not a full-feature platform
 
 `dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository, task and worktree operations work. What differs:
@@ -4031,7 +4199,10 @@ A direct task uses the canonical checkout and cannot go COLD, because cold clean
 
 These were historical gaps and should not be reintroduced as limitations:
 
-- `dev repo new|create`, `repo clone`, and `repo setup` share a preset-driven bootstrap pipeline. Explicit `repo new NAME` remains minimal, while the no-argument wizard can initialize agent files, run explicitly selected skill setup, publish through an authenticated GitHub/GitLab CLI, and hand off by stay/cd/runtime/start.
+- `dev repo new|create`, `repo clone`, and `repo setup` share a preset-driven bootstrap pipeline. A plain explicit `repo new NAME` remains minimal, while a clear Git URL, local Git path, or owner/name routes through clone acquisition and preserves source history/remote. The no-argument wizard detects the same reference in its first field; for a new repository, a default-no customization gate keeps the normal `agent-ready` flow concise. Text fields use a TTY inline editor, so cursor keys edit rather than inserting raw escape bytes; non-TTY readers retain line-oriented behavior.
+- `repo new` can snapshot a local directory/repository or Git source at an optional branch, tag, or commit and confined subdirectory into a fresh history. An unpinned local Git tree includes tracked plus untracked non-ignored files; a non-Git directory includes its full current tree. Source `.git` metadata is excluded, URL userinfo is redacted, unsafe file types/paths fail before destination creation, and held root/file handles confine mutable-path races. Human plans preview paths and warn when the snapshot is live; presets can select catalog-repository subfolders.
+- Repository setup supports `--check-in=commit|stage|none` (`auto` for preset compatibility). Staged setup runs before-commit setup and `git add -A` without an `after_commit` phase, cannot publish or hand off to `start`, and may prefill lazygit lowercase `c` as described above.
+- Selected skills with matching source and agent targets share one installer invocation. The `agent-history-hygiene` initializer writes pre-commit/gitleaks policy and merges missing machine-local `.project.json`/`statistics.json` rules into `.specstory/.gitignore`; custom content and transcript history remain trackable.
 - Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
 
 - `dev start --focus` activates the runtime after non-JSON creation.
@@ -4163,7 +4334,8 @@ tested_with: optional
 | HOT/WARM/COLD/DONE and checkout modes | [Mental model](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/) | `internal/task/task.go`, lifecycle CLI/tests | repository snapshot 2026-08-28 |
 | `done --pr` leaves task active | [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
-| repository new/clone/setup presets, project trust, upstream publication, and handoff | [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#repository-bootstrap) | `internal/scaffold`, `internal/projectconfig`, `internal/cli/repo_create*.go`, focused repo-bootstrap tests | implemented |
+| repository new/clone routing, snapshot templates/confinement, check-in policy, project trust, skill batching, TTY editor, upstream publication, and handoff | [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`, `internal/scaffold`, `internal/repotemplate`, `internal/projectconfig`, `internal/cli/repo_{create,checkin,skills}*.go`, `internal/cli/prompt.go`, focused repo-bootstrap tests | implemented |
+| lazygit lowercase `c` pending-message integration | [Compatibility](https://daviddwlee84.github.io/dev-cli/reference/compatibility/#lazygit-staged-message-prefill-is-best-effort) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive, checked 2026-08-29 |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
 | SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
 | READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
@@ -4514,21 +4686,62 @@ built-in `minimal` 或 `agent-ready` preset。`agent-ready` 會加入 starter ag
 guidance 與 project-scoped Claude plans；選取 `agent-history-hygiene`、
 `project-knowledge-harness` 等 optional skills 後，流程會安裝它們，並由經 review 的
 內建 initializer 立即建立 project surfaces，不會執行剛下載的 skill code，也不必等
-日後某個 agent trigger。
+日後某個 agent trigger。同一 source 且 agent targets 相同的 skills 會共用一次
+installer invocation。History initializer 會寫入 pre-commit/gitleaks config，並確保
+`.specstory/.gitignore` 含有 `.project.json`、`statistics.json` 規則，不會忽略應納入
+review trail 的 `.specstory/history/` transcripts。既有 custom ignore content 會保留，
+只補上缺少的 managed rules。
 
-取得既有 code 時，將 owner/name 或 Git URL 傳給 clone。要把同一套 setup 套用至既有
-checkout，則使用 setup：
+若要沿用既有內容、但不保留原 Git history，可使用 template snapshot：
+
+```bash
+dev repo new api --template owner/starters --template-ref v2 \
+  --template-subdir go/service
+```
+
+`--template` 也接受 local directory/repository 或 Git URL；optional ref 可為 branch、
+tag 或 commit，subdirectory 則必須留在 source 內。Dev 會排除 source `.git`
+metadata、保留 regular-file modes，並在建立 destination 前拒絕 traversal、symlink 與
+special files。未指定 ref 時，local Git working tree 只提供 tracked files 加上
+untracked non-ignored files，不包含 ignored build/cache content；non-Git directory
+則提供完整 current tree。Human confirmation/dry-run 會預覽 paths，並警告未 pin 的 local
+source 是 live snapshot。URL userinfo 會 redact，held root/file handles 會把 read/write
+限制在已驗證 roots 內。Preset 也可宣告 `template`、`template_ref`、
+`template_subdir`，因此一個 catalog repository 可容納多個 starter folders。
+
+取得既有 code 時，可將 owner/name、Git URL 或 local Git path 傳給 `repo new`/`create`，
+也可使用明確的 `repo clone`。清楚的 clone reference 會直接走 clone acquisition，保留
+source history 與 `origin`；無參數 wizard 的第一個欄位也會偵測同樣輸入。要把同一套
+setup 套用至既有 checkout，則使用 setup：
 
 ```bash
 dev repo clone owner/api
 dev repo clone git@gitlab.example.com:group/api.git
+dev repo new ../existing-repository
 dev repo setup . --preset agent-ready
 ```
+
+使用 `--check-in <auto|commit|stage|none>` 選擇 generated changes 的 check-in
+方式。Interactive wizard 提供 `commit`、`stage`、`none`；在 `repo new` 中，`auto`
+沿用 selected preset default，clone/setup 則不自動 check-in。`stage` 只執行
+`git add -A`、不 commit，並 best-effort 為目前 lazygit 的小寫
+`c` 準備 message；可用 `--message` 修改。Staged setup 在 review 並 commit 前不能
+publish，也不能 handoff 到 `start`。既有 `repo setup --commit` 仍相容於
+`--check-in=commit`。Optional lazygit draft 若寫入失敗，只會產生 warning，不會撤銷已
+完成的 staging。
 
 只有對應的 `gh` 或 `glab` CLI 已安裝且完成 authentication 時，wizard 才會提供
 GitHub 或 GitLab publishing；預設仍是 local-only。最後的 handoff 可選擇留在原處、
 `cd` 進 repository、開啟 configured terminal runtime，或接續 `dev start` wizard。
 Bootstrap 與 `dev start` 都不會啟動 coding agent。
+
+Repository、`start` 與 `done` wizard 的 TTY text fields 支援 Left/Right、Home/End、
+Delete/Backspace inline editing，以及 Esc/Ctrl-C cancellation。Piped input 對 scripts
+與 tests 仍維持 line-oriented behavior。
+
+選完 preset 後，bare `repo new` 會詢問預設為 no 的「Customize preset and template
+options?」。正常 `agent-ready` flow 因此會略過個別 template/file/input/skill 問題並採用
+reviewed defaults；回答 yes 才會展開。
 
 若已經位於 repository 且不需要 setup，可直接繼續下一步。
 
@@ -6840,21 +7053,26 @@ dev bootstrap --json
 
 ## Repository bootstrap
 
-Repository acquisition 與 setup 是分開的 operations，因此 Git URL 不會靜默改變
-`new` 的意義：
+Repository setup 仍與 acquisition 分開。Acquisition 部分，`new`/`create` 會區分
+plain repository name 與清楚的 clone reference：
 
 | Command | 行為 |
 |---|---|
-| `dev repo new` | interactive new-repository wizard |
-| `dev repo new NAME` / `dev repo create NAME` | 建立新的 local repository；明確 name 的預設仍是相容的 `minimal` preset |
+| `dev repo new` | interactive wizard；第一個欄位可輸入新 name 或 clone reference |
+| `dev repo new NAME` / `dev repo create NAME` | 建立新的 local repository；若輸入清楚的 Git URL、local Git path 或 owner/name，則改走 clone 並保留 history/remote |
 | `dev repo clone [owner/name\|url]` | clone 至 configured destination，再選擇是否套 preset；setup 預設關閉 |
 | `dev repo setup [repo-or-path]` | repeat-safely merge native initializers 與 preset files 至既有 clean checkout；預設目前 repository，沒有明確要求時不 commit |
 
+改走 clone 的 `new` 會保留 source `origin`，因此拒絕 new-upstream creation flags；也會
+拒絕 `--template*`，因為後者的明確語意是「把 content 複製進 fresh history」。
+
 這些 commands 的 controls 包含 `--preset`、`--path`、用 `--set` 傳入 typed input、用
-`--enable`/`--disable` 選擇 item、`--dry-run`、`--yes`、`--json`，以及
-`--handoff <stay|cd|open|start>`。JSON mode 不互動，也不會改變 directory 或開啟
-runtime。Dry-run 不會修改 target repository；clone setup 必須等 clone 存在後才能產生
-詳細 plan。每個 command 實際支援的精確 flags 請看下方 generated reference。
+`--enable`/`--disable` 選擇 item、`--check-in <auto|commit|stage|none>`、
+`--dry-run`、`--yes`、`--json`，以及 `--handoff <stay|cd|open|start>`。
+`repo new` 另支援 `--template`、`--template-ref`、`--template-subdir`。JSON mode
+不互動，也不會改變 directory 或開啟 runtime。Dry-run 不會修改 target repository；
+clone setup 必須等 clone 存在後才能產生詳細 plan。每個 command 實際支援的精確 flags
+請看下方 generated reference。
 
 Wizard 會在 target repository mutation 前顯示 selected scaffold 與 workflow
 summary。Built-in presets 為：
@@ -6866,7 +7084,16 @@ summary。Built-in presets 為：
   `agent-history-hygiene`、`project-knowledge-harness` 會出現在選項中，但不會靜默
   啟用。選取後 dev 會安裝 skill，並在 initial commit 前執行經 review 的內建
   initializer 來建立對應 project surfaces；這兩個 built-ins 不會執行剛下載的
-  skill scripts。
+  skill scripts。同一 source 且 agent targets 完全相同的 skills 會共用一次 installer
+  invocation，各 skill 的 setup phase 仍分別執行。History initializer 會建立
+  `.pre-commit-config.yaml`、`.gitleaks.toml`，再確保 `.specstory/.gitignore` 含有
+  SpecStory 的 `.project.json`、`statistics.json` 規則，不會忽略應納入追蹤的
+  `.specstory/history/`。既有 custom ignore content 與 mode 會保留，只補上缺少的
+  managed rules。
+
+選完 preset 後，new-repository wizard 會詢問預設為 no 的「Customize preset and
+template options?」。一般 `agent-ready` flow 會直接使用 reviewed template、file、input
+與 skill defaults，不逐一顯示問題；回答 yes（或傳入 customization flags）才會展開。
 
 Preset 可加入 `string`、`bool`、`choice` typed inputs、text templates、hooks 與
 project skills。Hooks 依固定 `before_commit`、`after_commit`、`after_remote` phases
@@ -6875,6 +7102,57 @@ project skills。Hooks 依固定 `before_commit`、`after_commit`、`after_remot
 commit/remote steps；optional failure 只回報 warning。已產生的 local files 會保留供
 recovery。Native initializers 與 preset files 可 repeat-safe 套用；custom hooks 與
 skill setup 必須自行保證 idempotency。
+
+### Snapshot templates
+
+`dev repo new NAME --template SOURCE` 會用 content snapshot 建立全新 repository。
+`SOURCE` 可為 local directory/repository、Git URL 或 owner/name。Git source 可用
+`--template-ref` 指定任意 branch、tag 或 commit；`--template-subdir` 則指定作為新
+repository root 的乾淨 relative directory。未指定 ref 時，local Git working tree 會
+包含現存 tracked files，以及未被 Git ignore 的 untracked files；ignored build/cache
+content 會省略。Non-Git directory 則 snapshot 完整 current tree。
+
+新 repository 不會繼承 source history 或 remotes。Dev 會排除每個 source `.git`
+entry、拒絕 traversal、symlink 與 special files、保留 regular-file modes，並在建立
+destination 前驗證完整 snapshot。若 snapshot 與 selected scaffold 寫入同一路徑，
+snapshot 優先；scaffold 仍會補齊缺少的 files 並執行 selected initializers。
+Source 與 destination traversal 都相對於 held `os.Root` handles 進行；file bytes 來自
+已開啟且驗證過的 source handle，不會再次依 mutable pathname lookup。
+
+Confirmation 與 human dry-run output 會顯示 bounded selected-path preview；local source
+若是 live working-tree/directory snapshot 而非 commit，也會明確 warning。含 credential
+的 URL userinfo 會從 summaries、structured output 與 clone/template errors 移除。
+
+Preset 可用 scalar `template`、`template_ref`、`template_subdir` 宣告同一操作。它們依
+一般 inheritance 規則 resolve，explicit CLI flags 優先，因此可以一個 starter catalog
+repository 搭配每個 subfolder 各一個 child preset。
+
+### Check-in policy
+
+Interactive wizard 提供 `commit`、`stage`、`none`；script 也可傳 `auto`：
+
+| 值 | 行為 |
+|---|---|
+| `commit` | `git add -A`，以 `--message`／preset message commit，再執行 `after_commit` setup |
+| `stage` | 執行 `before_commit` setup 後 `git add -A`；保留 staged checkout，不執行 `after_commit` |
+| `none` | generated changes 保持 unstaged、uncommitted |
+| `auto` | `repo new` 使用 `initial_check_in` 與相容的 `initial_commit`；clone/setup 則不自動 check-in |
+
+`stage` mode 會 best-effort 在正確的 worktree Git directory 寫入
+`LAZYGIT_PENDING_COMMIT`。[Lazygit v0.59.0 會讀取此
+file](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216)，並將它作為小寫 `c` 的 initial message；大寫
+`C` 與 Git 本身不使用此 integration。不同內容的既有 draft 會保留並回報 warning，
+不會被覆寫。這是 implementation-detail adapter，不是 `commit.template`。
+
+Staging 才是 durable outcome：optional lazygit draft 若無法寫入，dev 會發出 warning
+並保留 staged index，不會 rollback。
+
+Staged setup 不能建立 upstream；`handoff=start` 也要求已 commit 的 setup，因為新
+worktree 會漏掉 staged files。`stay`、`cd`、`open` 仍可供 review。`repo setup
+--commit` 保留為 `--check-in=commit` 的 compatibility alias；`--message` 同時適用於
+commit 與 stage。Structured result 保留 `committed`，並在適用時加入 `staged`、
+`staged_paths`、`commit_message`、`commit_draft_provider` 與不含 file content 的
+`template` summary。
 
 ### Upstream publishing
 
@@ -6888,8 +7166,10 @@ local setup 與 commit steps 成功後建立空的 GitHub 或 GitLab repository�
 `origin`，並可選擇以 upstream tracking push。Provider、name-conflict 或 push failure
 絕不刪除 local checkout，也不會刪除已建立的 upstream。
 
-從 `repo setup` publish 時必須使用 `--commit`，避免新建 upstream 漏掉本次產生的
-setup changes。
+從 `repo setup` publish 時必須使用 `--check-in=commit`（或相容的 `--commit` flag），
+避免新建 upstream 漏掉本次產生的 setup changes。`--check-in=stage` 與任何新 upstream
+不相容；對新 repository 而言，`none` 只有搭配 `--push=false` 才能建立刻意保持空白的
+upstream。
 
 ### Handoff
 
@@ -6898,6 +7178,11 @@ setup changes。
 `start` 會固定此 repository 並接續現有 task wizard。Setup 留下 uncommitted files、
 導致新 worktree 會遺漏它們時，`start` 不可用。Repository bootstrap 與
 `dev start` 都不會啟動 coding agent。
+
+Repository、task-start 與 finish wizard 共用的 TTY text fields 都使用 inline editor：
+Left/Right、Home/End、Delete/Backspace、cursor 位置插入與 Esc/Ctrl-C cancellation 會
+被解讀為 terminal actions，不會成為 raw escape bytes。Buffered 或 piped non-TTY input
+仍維持 line-oriented behavior。
 
 ## `dev done` finish flags
 
@@ -6957,6 +7242,10 @@ default_agents = ["claude-code", "codex"]
 [presets.team]
 extends = "agent-ready"
 handoff = "cd"
+initial_check_in = "stage"
+template = "acme/starter-catalog"
+template_ref = "v2"
+template_subdir = "services/go"
 
 [[presets.team.inputs]]
 id = "deployment"
@@ -6996,9 +7285,12 @@ Skill setup 一般會指定 installed skill 內的 project-local script。內建
 下載回來的 skill code。
 
 Preset 最多 extend 一個 parent。Scalar 會 override；simple lists 會 replace；files、
-hooks 與 skills 依 `id` merge，inherited item 可用 `enabled = false` 停用。Template
-source 必須留在 config source 旁的 `templates/` tree，destination 必須留在 repository
-內，skill setup script 也必須位於 installed skill directory 內。
+hooks 與 skills 依 `id` merge，inherited item 可用 `enabled = false` 停用。
+`[[presets.*.files]]` 的 rendering source 必須留在 config source 旁的 `templates/`
+tree；這個 file-level mechanism 與前述 repository snapshot `template` scalar 不同。
+Destination 必須留在 repository 內，skill setup script 也必須位於 installed skill
+directory 內。`initial_check_in` 接受 `commit`、`stage`、`none`；legacy
+`initial_commit` boolean 仍可讀，但同一 preset 不可同時設定兩者。
 
 ### Safe project overlays
 
@@ -7020,15 +7312,16 @@ strategy = "reinstall"
 [repo.setup]
 preset = "team"
 handoff = "cd"
-commit = false
+check_in = "stage"
 ```
 
 Effective precedence 由低至高為 built-ins、global config/scaffolds、legacy
 `.dev.toml`、target repository 的 `.dev-cli/*`，最後是 explicit CLI 或 wizard
 choices。`.dev.toml` 為相容性仍可讀；新的 project configuration 應使用
 `.dev-cli/config.toml`。Global `default_preset` 與 project `[repo.setup]` 的 preset、
-handoff、commit fields 只用來預填 interactive wizard choices；它們不會改變 scripted
-defaults，後者由對應 flags 控制。
+handoff、check-in fields 只用來預填 interactive wizard choices；它們不會改變
+scripted defaults，後者由對應 flags 控制。Legacy `commit` boolean 仍可讀，但同一
+layer 不可與 `check_in` 並用。
 
 Project files 不能 override host paths、state location、runtime backend、forge
 inventory 或 credentials、stats、update、bootstrap 或 TUI policy，也不能靜默 publish
@@ -7759,6 +8052,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--agent` — agent targets for selected project skills
 - `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
+- `--check-in` — finish generated changes: auto, commit, stage or none
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
@@ -7769,6 +8063,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--json` — emit a machine-readable result
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
+- `-m, --message` — commit message for --check-in=commit or stage
 - `-o, --open` — open the clone in the runtime afterwards (alias for --handoff=open)
 - `--path` — exact destination path
 - `--preset` — scaffold preset
@@ -7817,15 +8112,16 @@ dev repo mark <repo> [flags]
 
 ### `dev repo new`
 
-Create a new local repository (optionally with a remote)
+Create a new repository or clone an explicit source
 
 ```
-dev repo new [name] [flags]
+dev repo new [name|clone-ref] [flags]
 ```
 
 - `--agent` — agent targets for selected project skills
 - `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
+- `--check-in` — finish generated changes: auto, commit, stage or none
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
@@ -7837,6 +8133,7 @@ dev repo new [name] [flags]
 - `--json` — emit a machine-readable result
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
+- `-m, --message` — commit message for --check-in=commit or stage
 - `--namespace` — GitHub owner/org or GitLab namespace
 - `--path` — exact destination path
 - `--preset` — scaffold preset
@@ -7845,6 +8142,9 @@ dev repo new [name] [flags]
 - `--push` — push the current branch after publishing
 - `--remote` — also create a GitHub or GitLab upstream
 - `--set` — preset input as key=value (repeatable)
+- `--template` — local directory, Git URL, or owner/repo used as a snapshot template
+- `--template-ref` — Git branch, tag, or commit to snapshot from --template
+- `--template-subdir` — relative directory within --template to use as the repository root
 - `--visibility` — upstream visibility: private, public or internal
 - `-y, --yes` — confirm the non-interactive scaffold plan
 
@@ -7880,6 +8180,7 @@ dev repo setup [repo-or-path] [flags]
 
 - `--agent` — agent targets for selected project skills
 - `--browse-skills` — open the upstream skills installer during setup
+- `--check-in` — finish generated changes: auto, commit, stage or none
 - `--commit` — commit only the setup changes (requires a clean starting checkout)
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
@@ -7892,7 +8193,7 @@ dev repo setup [repo-or-path] [flags]
 - `--json` — emit a machine-readable result
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
-- `-m, --message` — setup commit message
+- `-m, --message` — commit message for --check-in=commit or stage
 - `--namespace` — GitHub owner/org or GitLab namespace
 - `--preset` — scaffold preset
 - `--private` — create a private upstream (compatibility flag)
@@ -8421,7 +8722,9 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 | GitHub pull requests/remotes | authenticated `gh` | Git 可用時 branch 仍能 push，可能需 browser/manual flow |
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |
 | repository bootstrap publishing | authenticated `gh` 或 `glab` | local repository/scaffold 仍可使用；wizard 會說明如何 login |
+| remote repository snapshot template | Git，加上 source 所需的 network/authentication | validation 會在建立 destination 前失敗，rendered URL userinfo 會 redact；local template 仍可使用 |
 | setup-capable project skills | skills provider 與 entrypoint interpreter | 未選取的 skill 會跳過；selected required setup 若缺少 interpreter，會在 scaffold mutation 前失敗；先取得的 clone 會保留 |
+| staged lazygit message prefill | 會讀取 `LAZYGIT_PENDING_COMMIT` 的 lazygit version | files 仍保持 staged，dev 會印出建議 message；一般 Git commit 仍可使用 |
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
@@ -8453,6 +8756,15 @@ Task schema 有 `AgentSession`，Herdr inventory 也能顯示 live agent session
 `dev config init` 不再寫入它；`dev repo remote --limit` 只在完整 inventory 搜尋
 完成後限制 rendered matches。
 
+### Lazygit staged-message prefill 是 best effort
+
+`repo --check-in=stage` 會在正確的 worktree Git directory 寫入 pending message。
+[Lazygit v0.59.0 的小寫 `c` 會使用該
+檔案](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216)，但這是 lazygit implementation detail，不是 Git
+interface；大寫 `C` 與一般 `git commit` 不會讀取它。Dev 不會覆寫內容不同的既有
+draft。Draft write failure 只會產生 warning；staging 仍視為成功且不會 rollback。若
+upstream integration 日後改變，staged index 與已印出的 message 仍是 recovery path。
+
 ### Windows 是 build target，不是 full-feature 平台
 
 `dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心的 repository、task 與 worktree 操作可用。差異：
@@ -8470,7 +8782,10 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 
 以下是歷史缺口，現行版本已實作：
 
-- `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Explicit `repo new NAME` 仍維持 minimal；無參數 wizard 可初始化 agent files、執行明確選取的 skill setup、透過 authenticated GitHub/GitLab CLI publish，並以 stay/cd/runtime/start handoff。
+- `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Plain explicit `repo new NAME` 仍維持 minimal；清楚的 Git URL、local Git path 或 owner/name 會改走 clone acquisition，保留 source history/remote。無參數 wizard 的第一個欄位也會偵測同樣 reference；建立新 repository 時，預設為 no 的 customization gate 讓正常 `agent-ready` flow 保持精簡。Text fields 使用 TTY inline editor，因此 cursor keys 會編輯內容，不會插入 raw escape bytes；non-TTY reader 維持 line-oriented behavior。
+- `repo new` 可從 local directory/repository 或 Git source 的 optional branch、tag、commit 與 confined subdirectory 建立 fresh-history snapshot。未 pin 的 local Git tree 包含 tracked 加 untracked non-ignored files；non-Git directory 包含完整 current tree。Source `.git` metadata 會排除、URL userinfo 會 redact，不安全的 file types/paths 會在 destination 建立前失敗，held root/file handles 會限制 mutable-path races。Human plan 會預覽 paths 並警告 live snapshot，preset 也可選擇 catalog-repository subfolder。
+- Repository setup 支援 `--check-in=commit|stage|none`（`auto` 用於 preset compatibility）。Staged setup 會執行 before-commit setup 與 `git add -A`，但不執行 `after_commit` phase；它不能 publish 或 handoff 到 `start`，並可依前述方式預填 lazygit 小寫 `c`。
+- Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。`agent-history-hygiene` initializer 會寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。
 - Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
 
 - `dev start --focus` 會在 non-JSON creation 後 activate runtime。
@@ -8605,7 +8920,8 @@ tested_with: optional
 | HOT/WARM/COLD/DONE 與 checkout modes | [心智模型](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/) | `internal/task/task.go`、lifecycle CLI/tests | repository snapshot 2026-08-28 |
 | `done --pr` 保持 task active | [變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
 | worktree provisioning safety | [Worktree 與 provisioning](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
-| repository new/clone/setup presets、project trust、upstream publication 與 handoff | [Commands 與 configuration](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/#repository-bootstrap) | `internal/scaffold`、`internal/projectconfig`、`internal/cli/repo_create*.go`、focused repo-bootstrap tests | implemented |
+| repository new/clone routing、snapshot templates/confinement、check-in policy、project trust、skill batching、TTY editor、upstream publication 與 handoff | [Commands 與 configuration](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`、`internal/scaffold`、`internal/repotemplate`、`internal/projectconfig`、`internal/cli/repo_{create,checkin,skills}*.go`、`internal/cli/prompt.go`、focused repo-bootstrap tests | implemented |
+| lazygit 小寫 `c` pending-message integration | [相容性](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive，2026-08-29 查核 |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
 | SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
 | READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |

@@ -9,18 +9,27 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/scaffold"
 )
 
 func runRepoNewWizard(app *App, flags repoBootstrapFlags) (repoWorkflowRequest, bool, error) {
 	p := newPrompter(app)
 	fmt.Fprintln(p.out, p.style.title("Create a repository"))
-	name, err := p.line("Repository name", "")
+	name, err := p.line("Repository name or clone reference", "")
 	if err != nil {
 		return repoWorkflowRequest{}, false, err
 	}
 	if strings.TrimSpace(name) == "" {
 		return repoWorkflowRequest{}, false, fmt.Errorf("repository name is required")
+	}
+	if looksLikeCloneReference(name) {
+		if err := validateNewAsCloneFlags(flags); err != nil {
+			return repoWorkflowRequest{}, false, err
+		}
+		fmt.Fprintln(p.out, "  "+p.style.dim("detected a clone reference; source history and remote will be preserved"))
+		request, _, confirmed, err := promptRepoCloneWizard(app, p, flags, name, false)
+		return request, confirmed, err
 	}
 	flags.category, err = p.line("Category (optional)", flags.category)
 	if err != nil {
@@ -53,11 +62,62 @@ func runRepoNewWizard(app *App, flags repoBootstrapFlags) (repoWorkflowRequest, 
 	if err != nil {
 		return repoWorkflowRequest{}, false, err
 	}
-	if err := promptScaffoldOptions(p, catalog, flags.preset, &flags); err != nil {
+	customize, err := p.confirm("Customize preset and template options?", repoWizardCustomizationSelected(flags) || presetRequiresWizardInput(preset))
+	if err != nil {
 		return repoWorkflowRequest{}, false, err
+	}
+	if customize {
+		templateDefault := preset.Template
+		if flags.template != "" {
+			templateDefault = flags.template
+		}
+		flags.template, err = p.lineWithDisplayFallback(
+			"Template source (optional; local path, Git URL, or owner/repo)",
+			templateDefault,
+			repo.RedactCloneRef(templateDefault),
+		)
+		if err != nil {
+			return repoWorkflowRequest{}, false, err
+		}
+		if strings.EqualFold(strings.TrimSpace(flags.template), "none") {
+			flags.templateRef, flags.templateSubdir = "", ""
+		} else if strings.TrimSpace(flags.template) != "" {
+			refDefault := preset.TemplateRef
+			if flags.templateRef != "" {
+				refDefault = flags.templateRef
+			}
+			flags.templateRef, err = p.line("Template ref (optional branch/tag/commit)", refDefault)
+			if err != nil {
+				return repoWorkflowRequest{}, false, err
+			}
+			subdirDefault := preset.TemplateSubdir
+			if flags.templateSubdir != "" {
+				subdirDefault = flags.templateSubdir
+			}
+			flags.templateSubdir, err = p.line("Template subdirectory (optional)", subdirDefault)
+			if err != nil {
+				return repoWorkflowRequest{}, false, err
+			}
+		}
+		if err := promptScaffoldOptions(p, catalog, flags.preset, &flags); err != nil {
+			return repoWorkflowRequest{}, false, err
+		}
 	}
 	if flags.remote || preset.Remote == "ask" {
 		if err := promptUpstream(app, p, name, &flags); err != nil {
+			return repoWorkflowRequest{}, false, err
+		}
+	}
+	checkInDefault := presetInitialCheckIn(preset)
+	if flags.checkIn != "" && flags.checkIn != string(repoCheckInAuto) {
+		checkInDefault = flags.checkIn
+	}
+	if flags.remote && (flags.checkIn == "" || flags.checkIn == string(repoCheckInAuto)) {
+		flags.checkIn = string(repoCheckInCommit)
+		fmt.Fprintln(p.out, "  check-in     commit (required before publishing)")
+	} else {
+		flags.checkIn, err = promptRepoCheckIn(p, checkInDefault)
+		if err != nil {
 			return repoWorkflowRequest{}, false, err
 		}
 	}
@@ -84,14 +144,19 @@ func runRepoCloneWizard(app *App, flags repoBootstrapFlags) (repoWorkflowRequest
 	if err != nil {
 		return repoWorkflowRequest{}, false, false, err
 	}
-	name := repoNameFromRef(ref)
+	return promptRepoCloneWizard(app, p, flags, ref, true)
+}
+
+func promptRepoCloneWizard(app *App, p *prompter, flags repoBootstrapFlags, ref string, offerSetup bool) (repoWorkflowRequest, bool, bool, error) {
+	name := repoNameFromRef(repo.RedactCloneRef(ref))
 	if name == "" {
 		return repoWorkflowRequest{}, false, false, fmt.Errorf("could not derive a repository name from %q", ref)
 	}
-	flags.category, err = p.line("Category (optional)", flags.category)
+	category, err := p.line("Category (optional)", flags.category)
 	if err != nil {
 		return repoWorkflowRequest{}, false, false, err
 	}
+	flags.category = category
 	defaultDestination, err := repoDestination(app.Cfg.Paths.ProjectRoot, flags.category, name, flags.path)
 	if err != nil {
 		return repoWorkflowRequest{}, false, false, err
@@ -101,9 +166,12 @@ func runRepoCloneWizard(app *App, flags repoBootstrapFlags) (repoWorkflowRequest
 		return repoWorkflowRequest{}, false, false, err
 	}
 	flags.path = config.Expand(destination)
-	setup, err := p.confirm("Apply a repository setup preset after cloning?", false)
-	if err != nil {
-		return repoWorkflowRequest{}, false, false, err
+	setup := flags.preset != ""
+	if offerSetup && !setup {
+		setup, err = p.confirm("Apply a repository setup preset after cloning?", false)
+		if err != nil {
+			return repoWorkflowRequest{}, false, false, err
+		}
 	}
 	flags.handoff, err = promptRepoHandoff(p, defaultString(flags.handoff, "cd"))
 	if err != nil {
@@ -114,9 +182,13 @@ func runRepoCloneWizard(app *App, flags repoBootstrapFlags) (repoWorkflowRequest
 		return repoWorkflowRequest{}, false, false, err
 	}
 	fmt.Fprintln(p.out, "\n"+p.style.title("Summary"))
-	fmt.Fprintf(p.out, "  source       %s\n", ref)
+	fmt.Fprintf(p.out, "  source       %s\n", repo.RedactCloneRef(ref))
 	fmt.Fprintf(p.out, "  destination  %s\n", config.Contract(request.Destination))
-	fmt.Fprintf(p.out, "  setup        %t\n", setup)
+	if request.Scaffold.Preset != "" {
+		fmt.Fprintf(p.out, "  setup        %s\n", request.Scaffold.Preset)
+	} else {
+		fmt.Fprintf(p.out, "  setup        %t\n", setup)
+	}
 	fmt.Fprintf(p.out, "  handoff      %s\n", request.Handoff)
 	confirmed, err := p.confirm("Clone this repository?", true)
 	return request, setup, confirmed, err
@@ -141,28 +213,45 @@ func runRepoSetupWizard(app *App, root string, flags repoBootstrapFlags) (repoWo
 	if err != nil {
 		return repoWorkflowRequest{}, false, err
 	}
-	if err := promptScaffoldOptions(p, catalog, flags.preset, &flags); err != nil {
-		return repoWorkflowRequest{}, false, err
-	}
-	flags.importOrphans, err = p.confirm("Import matching orphan Claude plans?", flags.importOrphans)
+	customize, err := p.confirm("Customize preset options?", repoWizardCustomizationSelected(flags) || presetRequiresWizardInput(preset))
 	if err != nil {
 		return repoWorkflowRequest{}, false, err
+	}
+	if customize {
+		if err := promptScaffoldOptions(p, catalog, flags.preset, &flags); err != nil {
+			return repoWorkflowRequest{}, false, err
+		}
+		flags.importOrphans, err = p.confirm("Import matching orphan Claude plans?", flags.importOrphans)
+		if err != nil {
+			return repoWorkflowRequest{}, false, err
+		}
 	}
 	if gitRemote := gitRemoteAt(root); gitRemote == "" && (flags.remote || preset.Remote == "ask") {
 		if err := promptUpstream(app, p, filepath.Base(root), &flags); err != nil {
 			return repoWorkflowRequest{}, false, err
 		}
 	}
-	commitDefault := flags.commit
-	if project.Effective.Repo.Setup.Commit != nil {
-		commitDefault = *project.Effective.Repo.Setup.Commit
+	checkInDefault := string(repoCheckInNone)
+	if project.Effective.Repo.Setup.Commit != nil && *project.Effective.Repo.Setup.Commit {
+		checkInDefault = string(repoCheckInCommit)
 	}
-	if flags.remote {
-		commitDefault = true
+	if project.Effective.Repo.Setup.CheckIn != nil {
+		checkInDefault = *project.Effective.Repo.Setup.CheckIn
 	}
-	flags.commit, err = p.confirm("Commit setup changes?", commitDefault)
-	if err != nil {
-		return repoWorkflowRequest{}, false, err
+	if flags.commit {
+		checkInDefault = string(repoCheckInCommit)
+	}
+	if flags.checkIn != "" && flags.checkIn != string(repoCheckInAuto) {
+		checkInDefault = flags.checkIn
+	}
+	if flags.remote && (flags.checkIn == "" || flags.checkIn == string(repoCheckInAuto)) {
+		flags.checkIn = string(repoCheckInCommit)
+		fmt.Fprintln(p.out, "  check-in     commit (required before publishing)")
+	} else {
+		flags.checkIn, err = promptRepoCheckIn(p, checkInDefault)
+		if err != nil {
+			return repoWorkflowRequest{}, false, err
+		}
 	}
 	handoffDefault := defaultString(preset.Handoff, "stay")
 	if project.Effective.Repo.Setup.Handoff != nil {
@@ -285,25 +374,29 @@ func promptScaffoldOptions(p *prompter, catalog scaffold.Config, presetName stri
 		}
 	}
 
-	claudePlans := preset.ClaudePlans != nil && *preset.ClaudePlans
-	claudePlans, err = p.confirm("Keep Claude plans in .claude/plans?", claudePlans)
-	if err != nil {
-		return err
-	}
-	if presetHasItem(preset, "claude-settings") {
-		setSelection(flags, "claude-settings", claudePlans)
-	}
-	if presetHasItem(preset, "claude-plans-directory") {
-		setSelection(flags, "claude-plans-directory", claudePlans)
+	if preset.ClaudePlans != nil || presetHasItem(preset, "claude-settings") || presetHasItem(preset, "claude-plans-directory") {
+		claudePlans := preset.ClaudePlans != nil && *preset.ClaudePlans
+		claudePlans, err = p.confirm("Keep Claude plans in .claude/plans?", claudePlans)
+		if err != nil {
+			return err
+		}
+		if presetHasItem(preset, "claude-settings") {
+			setSelection(flags, "claude-settings", claudePlans)
+		}
+		if presetHasItem(preset, "claude-plans-directory") {
+			setSelection(flags, "claude-plans-directory", claudePlans)
+		}
 	}
 
-	agentContract := preset.AgentContract != "" && preset.AgentContract != "none"
-	agentContract, err = p.confirm("Create AGENTS.md guidance?", agentContract)
-	if err != nil {
-		return err
-	}
-	if presetHasItem(preset, "agent-contract") {
-		setSelection(flags, "agent-contract", agentContract)
+	if preset.AgentContract != "" || presetHasItem(preset, "agent-contract") {
+		agentContract := preset.AgentContract != "" && preset.AgentContract != "none"
+		agentContract, err = p.confirm("Create AGENTS.md guidance?", agentContract)
+		if err != nil {
+			return err
+		}
+		if presetHasItem(preset, "agent-contract") {
+			setSelection(flags, "agent-contract", agentContract)
+		}
 	}
 
 	for _, item := range preset.Catalog {
@@ -385,8 +478,59 @@ func promptRepoHandoff(p *prompter, fallback string) (string, error) {
 	})
 }
 
+func promptRepoCheckIn(p *prompter, fallback string) (string, error) {
+	return p.choice("Check-in generated changes (commit/stage/none)", fallback, "commit, stage, none", map[string]string{
+		"commit": "commit", "c": "commit",
+		"stage": "stage", "s": "stage",
+		"none": "none", "n": "none",
+	})
+}
+
+func presetInitialCheckIn(preset scaffold.Preset) string {
+	if preset.InitialCheckIn != "" {
+		return preset.InitialCheckIn
+	}
+	if preset.InitialCommit == nil || *preset.InitialCommit {
+		return string(repoCheckInCommit)
+	}
+	return string(repoCheckInNone)
+}
+
+func repoWizardCustomizationSelected(flags repoBootstrapFlags) bool {
+	return flags.template != "" || flags.templateRef != "" || flags.templateSubdir != "" ||
+		flags.gitignore != nil || flags.license != "" || flags.licenseHolder != "" ||
+		len(flags.set) > 0 || len(flags.enable) > 0 || len(flags.disable) > 0 ||
+		flags.agents != nil || flags.browseSkills || flags.importOrphans
+}
+
+func presetRequiresWizardInput(preset scaffold.Preset) bool {
+	for _, input := range preset.Inputs {
+		if input.IsRequired() && strings.TrimSpace(parseInputDefault(input.Default)) == "" {
+			return true
+		}
+	}
+	return false
+}
+
 func renderRepoWorkflowSummary(app *App, request repoWorkflowRequest) {
 	fmt.Fprintln(app.Out, app.outStyle().title("Repository workflow"))
+	if template := repoTemplateSummary(request.Template); template != nil {
+		selection := template.Source
+		if template.Ref != "" {
+			selection += "@" + template.Ref
+		}
+		if template.Subdir != "" {
+			selection += "//" + template.Subdir
+		}
+		fmt.Fprintf(app.Out, "  template   %s (%d files)\n", selection, template.Files)
+		renderRepoTemplateFilePreview(app, request.Template)
+	}
+	checkIn, message := plannedRepoCheckIn(request)
+	if message == "" {
+		fmt.Fprintf(app.Out, "  check-in   %s\n", checkIn)
+	} else {
+		fmt.Fprintf(app.Out, "  check-in   %s (%s)\n", checkIn, message)
+	}
 	fmt.Fprintf(app.Out, "  handoff    %s\n", request.Handoff)
 	if request.Publish == nil {
 		fmt.Fprintln(app.Out, "  upstream   local only")
@@ -397,9 +541,6 @@ func renderRepoWorkflowSummary(app *App, request repoWorkflowRequest) {
 		}
 		fmt.Fprintf(app.Out, "  upstream   %s:%s (%s, push=%t)\n",
 			request.Publish.Forge, fullName, request.Publish.Visibility, request.Publish.Push)
-	}
-	if request.CommitSetup {
-		fmt.Fprintf(app.Out, "  commit      %s\n", request.CommitMessage)
 	}
 }
 

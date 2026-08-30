@@ -101,13 +101,13 @@ func Acquire(ctx context.Context, request AcquireRequest) (AcquireResult, error)
 		result.GitInited = true
 	case AcquireClone:
 		cloneRef := NormalizeCloneRef(request.CloneRef)
-		result.CloneRef = cloneRef
+		result.CloneRef = RedactCloneRef(cloneRef)
 		if _, err := gitx.Run(ctx, filepath.Dir(destination), "clone", cloneRef, destination); err != nil {
-			return result, fmt.Errorf("clone repository: %w", err)
+			return result, fmt.Errorf("clone repository: %w", RedactCloneError(err, cloneRef, request.CloneRef))
 		}
 		result.Created, result.Cloned, result.GitInited = true, true, true
 		if result.Name == "" {
-			result.Name = NameFromRef(request.CloneRef)
+			result.Name = NameFromRef(RedactCloneRef(request.CloneRef))
 		}
 	}
 	return result, nil

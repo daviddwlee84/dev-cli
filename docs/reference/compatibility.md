@@ -20,7 +20,9 @@ This page separates graceful degradation from real limitations. Reverify it when
 | GitHub pull requests/remotes | `gh` authenticated | branch still pushes when Git works; browser/manual flow may be needed |
 | GitLab merge requests/remotes | `glab` authenticated | same graceful fallback |
 | repository bootstrap publishing | authenticated `gh` or `glab` | local repository/scaffold still works; the wizard explains how to log in |
+| remote repository snapshot template | Git plus network/authentication for the source | validation fails before the destination is created and rendered URL userinfo is redacted; local templates still work |
 | setup-capable project skills | skills provider plus the entrypoint interpreter | unselected skills are skipped; selected required setup fails before scaffold mutation when its interpreter is unavailable; a clone acquired first is retained |
+| staged lazygit message prefill | a lazygit version that reads `LAZYGIT_PENDING_COMMIT` | files remain staged and dev prints the suggested message; normal Git commit remains available |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
@@ -53,6 +55,17 @@ longer caps synchronization. `dev config init` no longer writes it. The
 `--limit` flag on `dev repo remote` limits rendered matches after the complete
 inventory has been searched.
 
+### Lazygit staged-message prefill is best effort
+
+`repo --check-in=stage` writes a pending message in the exact worktree Git
+directory. [Lazygit v0.59.0 uses that file for lowercase
+`c`](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216), but it is a
+lazygit implementation detail rather than a Git interface; uppercase `C` and
+plain `git commit` do not consume it. Dev never overwrites a different existing
+draft. A draft-write failure is warning-only: staging remains successful and
+is never rolled back. If the integration changes upstream, the staged index
+and printed message remain the recovery path.
+
 ### Windows is a build target, not a full-feature platform
 
 `dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository, task and worktree operations work. What differs:
@@ -70,7 +83,10 @@ A direct task uses the canonical checkout and cannot go COLD, because cold clean
 
 These were historical gaps and should not be reintroduced as limitations:
 
-- `dev repo new|create`, `repo clone`, and `repo setup` share a preset-driven bootstrap pipeline. Explicit `repo new NAME` remains minimal, while the no-argument wizard can initialize agent files, run explicitly selected skill setup, publish through an authenticated GitHub/GitLab CLI, and hand off by stay/cd/runtime/start.
+- `dev repo new|create`, `repo clone`, and `repo setup` share a preset-driven bootstrap pipeline. A plain explicit `repo new NAME` remains minimal, while a clear Git URL, local Git path, or owner/name routes through clone acquisition and preserves source history/remote. The no-argument wizard detects the same reference in its first field; for a new repository, a default-no customization gate keeps the normal `agent-ready` flow concise. Text fields use a TTY inline editor, so cursor keys edit rather than inserting raw escape bytes; non-TTY readers retain line-oriented behavior.
+- `repo new` can snapshot a local directory/repository or Git source at an optional branch, tag, or commit and confined subdirectory into a fresh history. An unpinned local Git tree includes tracked plus untracked non-ignored files; a non-Git directory includes its full current tree. Source `.git` metadata is excluded, URL userinfo is redacted, unsafe file types/paths fail before destination creation, and held root/file handles confine mutable-path races. Human plans preview paths and warn when the snapshot is live; presets can select catalog-repository subfolders.
+- Repository setup supports `--check-in=commit|stage|none` (`auto` for preset compatibility). Staged setup runs before-commit setup and `git add -A` without an `after_commit` phase, cannot publish or hand off to `start`, and may prefill lazygit lowercase `c` as described above.
+- Selected skills with matching source and agent targets share one installer invocation. The `agent-history-hygiene` initializer writes pre-commit/gitleaks policy and merges missing machine-local `.project.json`/`statistics.json` rules into `.specstory/.gitignore`; custom content and transcript history remain trackable.
 - Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
 
 - `dev start --focus` activates the runtime after non-JSON creation.

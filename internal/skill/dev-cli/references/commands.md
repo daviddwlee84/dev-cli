@@ -693,6 +693,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--agent` — agent targets for selected project skills
 - `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
+- `--check-in` — finish generated changes: auto, commit, stage or none
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
@@ -703,6 +704,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--json` — emit a machine-readable result
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
+- `-m, --message` — commit message for --check-in=commit or stage
 - `-o, --open` — open the clone in the runtime afterwards (alias for --handoff=open)
 - `--path` — exact destination path
 - `--preset` — scaffold preset
@@ -751,15 +753,16 @@ dev repo mark <repo> [flags]
 
 ### `dev repo new`
 
-Create a new local repository (optionally with a remote)
+Create a new repository or clone an explicit source
 
 ```
-dev repo new [name] [flags]
+dev repo new [name|clone-ref] [flags]
 ```
 
 - `--agent` — agent targets for selected project skills
 - `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
+- `--check-in` — finish generated changes: auto, commit, stage or none
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
@@ -771,6 +774,7 @@ dev repo new [name] [flags]
 - `--json` — emit a machine-readable result
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
+- `-m, --message` — commit message for --check-in=commit or stage
 - `--namespace` — GitHub owner/org or GitLab namespace
 - `--path` — exact destination path
 - `--preset` — scaffold preset
@@ -779,6 +783,9 @@ dev repo new [name] [flags]
 - `--push` — push the current branch after publishing
 - `--remote` — also create a GitHub or GitLab upstream
 - `--set` — preset input as key=value (repeatable)
+- `--template` — local directory, Git URL, or owner/repo used as a snapshot template
+- `--template-ref` — Git branch, tag, or commit to snapshot from --template
+- `--template-subdir` — relative directory within --template to use as the repository root
 - `--visibility` — upstream visibility: private, public or internal
 - `-y, --yes` — confirm the non-interactive scaffold plan
 
@@ -814,6 +821,7 @@ dev repo setup [repo-or-path] [flags]
 
 - `--agent` — agent targets for selected project skills
 - `--browse-skills` — open the upstream skills installer during setup
+- `--check-in` — finish generated changes: auto, commit, stage or none
 - `--commit` — commit only the setup changes (requires a clean starting checkout)
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
@@ -826,7 +834,7 @@ dev repo setup [repo-or-path] [flags]
 - `--json` — emit a machine-readable result
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
-- `-m, --message` — setup commit message
+- `-m, --message` — commit message for --check-in=commit or stage
 - `--namespace` — GitHub owner/org or GitLab namespace
 - `--preset` — scaffold preset
 - `--private` — create a private upstream (compatibility flag)

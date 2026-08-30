@@ -1,11 +1,9 @@
 package cli
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -13,83 +11,6 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
-
-var errPromptCanceled = errors.New("prompt canceled")
-
-type prompter struct {
-	in    *bufio.Reader
-	out   io.Writer
-	style cliStyle
-}
-
-func newPrompter(app *App) *prompter {
-	return &prompter{in: bufio.NewReader(app.In), out: app.Out, style: app.outStyle()}
-}
-
-func (p *prompter) line(label, fallback string) (string, error) {
-	if fallback == "" {
-		fmt.Fprintf(p.out, "%s %s: ", p.style.prompt("?"), p.style.prompt(label))
-	} else {
-		fmt.Fprintf(p.out, "%s %s %s: ", p.style.prompt("?"), p.style.prompt(label), p.style.dim("["+fallback+"]"))
-	}
-	line, err := p.in.ReadString('\n')
-	if err != nil {
-		return "", errPromptCanceled
-	}
-	value := strings.TrimSpace(line)
-	if value == "" {
-		value = fallback
-	}
-	return value, nil
-}
-
-func (p *prompter) dangerLine(label string) (string, error) {
-	fmt.Fprintf(p.out, "%s %s: ", p.style.danger("?"), p.style.danger(label))
-	line, err := p.in.ReadString('\n')
-	if err != nil {
-		return "", errPromptCanceled
-	}
-	return strings.TrimSpace(line), nil
-}
-
-func (p *prompter) choice(label, fallback, hint string, choices map[string]string) (string, error) {
-	for {
-		value, err := p.line(label, fallback)
-		if err != nil {
-			return "", err
-		}
-		value = strings.ToLower(value)
-		if resolved, ok := choices[value]; ok {
-			return resolved, nil
-		}
-		fmt.Fprintf(p.out, "  %s\n", p.style.warning("enter one of: "+hint))
-	}
-}
-
-func (p *prompter) confirm(label string, defaultYes bool) (bool, error) {
-	fallback := "y/N"
-	if defaultYes {
-		fallback = "Y/n"
-	}
-	for {
-		fmt.Fprintf(p.out, "%s %s %s: ", p.style.prompt("?"), p.style.prompt(label), p.style.dim("["+fallback+"]"))
-		line, err := p.in.ReadString('\n')
-		if err != nil {
-			return false, errPromptCanceled
-		}
-		value := strings.TrimSpace(line)
-		switch strings.ToLower(value) {
-		case "y", "yes":
-			return true, nil
-		case "n", "no":
-			return false, nil
-		case "":
-			return defaultYes, nil
-		default:
-			fmt.Fprintln(p.out, "  "+p.style.warning("enter y or n"))
-		}
-	}
-}
 
 func promptStartRepository(ctx context.Context, app *App, p *prompter, req startRequest) (repo.Repo, error) {
 	if req.RepoExplicit {

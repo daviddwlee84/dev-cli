@@ -91,6 +91,12 @@ default_agents = ["claude-code", "codex"]
 # extends = "agent-ready"
 # description = "Go module with agent-ready repository metadata"
 # gitignore = ["go"]
+# initial_check_in = "stage" # commit, stage, or none
+#
+# A starter catalog can also provide the initial filesystem snapshot:
+# template = "owner/starter-catalog"
+# template_ref = "v2"
+# template_subdir = "services/go"
 #
 # [[presets.go-agent.inputs]]
 # id = "module"

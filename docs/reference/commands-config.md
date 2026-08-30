@@ -53,20 +53,27 @@ Every `dev repo list --json` row includes `notes.count`. When a latest note exis
 
 ## Repository bootstrap
 
-Repository acquisition and setup are separate operations so a Git URL never
-silently changes the meaning of `new`:
+Repository setup remains separate from acquisition. For acquisition,
+`new`/`create` distinguishes a plain repository name from a clear clone
+reference:
 
 | Command | Behavior |
 |---|---|
-| `dev repo new` | interactive new-repository wizard |
-| `dev repo new NAME` / `dev repo create NAME` | create a new local repository; the explicit-name default remains the compatible `minimal` preset |
+| `dev repo new` | interactive wizard; its first field accepts either a new name or a clone reference |
+| `dev repo new NAME` / `dev repo create NAME` | create a new local repository; a clear Git URL, local Git path, or owner/name instead routes to clone and preserves history/remote |
 | `dev repo clone [owner/name\|url]` | clone into the configured destination, then optionally apply a preset; setup defaults off |
 | `dev repo setup [repo-or-path]` | repeat-safely merge native initializers and preset files into an existing clean checkout; defaults to the current repository and does not commit unless requested |
 
+A clone-routed `new` retains the source `origin`; it therefore rejects
+new-upstream creation flags. It also rejects `--template*`, whose explicit
+meaning is “copy content into a fresh history.”
+
 Across these commands, controls include `--preset`, `--path`, typed input values through
-`--set`, item selection through `--enable`/`--disable`, `--dry-run`, `--yes`,
-`--json`, and `--handoff <stay|cd|open|start>`. JSON mode is non-interactive
-and never changes directory or opens a runtime. Dry-run performs no target
+`--set`, item selection through `--enable`/`--disable`, `--check-in
+<auto|commit|stage|none>`, `--dry-run`, `--yes`, `--json`, and `--handoff
+<stay|cd|open|start>`. `repo new` additionally accepts `--template`,
+`--template-ref`, and `--template-subdir`. JSON mode is non-interactive and
+never changes directory or opens a runtime. Dry-run performs no target
 repository mutation; clone setup can only be planned in detail after the clone
 exists. Use the generated reference below for each command's exact flag
 availability.
@@ -81,7 +88,19 @@ repository mutation. The built-in presets are:
   `agent-history-hygiene` and `project-knowledge-harness` are offered but are
   not selected silently. When selected, dev installs them and runs reviewed
   built-in initializers for their project surfaces before the initial commit;
-  downloaded skill scripts are not executed for these built-ins.
+  downloaded skill scripts are not executed for these built-ins. Matching
+  skills with the same source and identical agent targets share one installer
+  invocation, while their setup phases still run per skill. The history
+  initializer creates `.pre-commit-config.yaml` and `.gitleaks.toml`, then
+  ensures `.specstory/.gitignore` contains rules for SpecStory's `.project.json`
+  and `statistics.json`, never the trackable `.specstory/history/` directory.
+  Existing custom ignore content and its mode are preserved; only missing
+  managed rules are appended.
+
+After preset selection, the new-repository wizard asks “Customize preset and
+template options?” with a default of no. The ordinary `agent-ready` flow uses
+its reviewed template, file, input, and skill defaults without presenting each
+question. Answer yes—or provide customization flags—to expand those controls.
 
 Presets can add typed `string`, `bool`, and `choice` inputs, text templates,
 hooks, and project skills. Hooks run in fixed `before_commit`, `after_commit`,
@@ -91,6 +110,66 @@ Required failures stop later commit/remote steps; optional failures are
 reported as warnings. Produced local files are retained for recovery. Native
 initializers and preset files are repeat-safe; custom hooks and skill setup are
 responsible for their own idempotency.
+
+### Snapshot templates
+
+`dev repo new NAME --template SOURCE` seeds a fresh repository from a content
+snapshot. `SOURCE` may be a local directory/repository, Git URL, or owner/name.
+For a Git source, `--template-ref` selects an arbitrary branch, tag, or commit;
+`--template-subdir` selects a clean relative directory as the new repository
+root. Without a ref, a local Git working tree includes existing tracked files
+plus untracked files that are not ignored by Git; ignored build/cache content
+is omitted. A non-Git directory snapshots its complete current tree.
+
+The new repository does not inherit source history or remotes. Dev excludes
+every source `.git` entry, rejects traversal, symlinks and special files,
+preserves regular-file modes, and validates the complete snapshot before
+creating the destination. Snapshot files take precedence when the selected
+scaffold would write the same path; the scaffold still fills missing files and
+runs the selected initializers. Source and destination traversal is performed
+relative to held `os.Root` handles, and file bytes come from the already-open
+validated source handle rather than a second mutable pathname lookup.
+
+Confirmation and human dry-run output show a bounded preview of selected paths
+and warn when a local source is a live working-tree/directory snapshot rather
+than a commit. Credential-bearing URL userinfo is removed from summaries,
+structured output, and clone/template errors.
+
+Presets expose the same operation through scalar `template`, `template_ref`,
+and `template_subdir` fields. They inherit normally and explicit CLI flags win,
+which supports one starter catalog repository plus a child preset for each
+subfolder.
+
+### Check-in policy
+
+The interactive wizard offers `commit`, `stage`, and `none`; scripts may also
+pass `auto`. The behavior is:
+
+| Value | Behavior |
+|---|---|
+| `commit` | `git add -A`, commit with `--message`/the preset message, then run `after_commit` setup |
+| `stage` | run `before_commit` setup, then `git add -A`; leave the checkout staged and do not run `after_commit` |
+| `none` | leave generated changes unstaged and uncommitted |
+| `auto` | for `repo new`, use `initial_check_in` and compatible `initial_commit`; clone/setup otherwise perform no automatic check-in |
+
+In `stage` mode, dev best-effort writes `LAZYGIT_PENDING_COMMIT` in the exact
+worktree Git directory. [Lazygit v0.59.0 reads this
+file](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216)
+as the initial message for lowercase `c`; uppercase `C` and Git itself do not use this integration. An
+existing different draft is preserved and reported rather than overwritten.
+This is an implementation-detail adapter, not `commit.template`.
+
+Staging is the durable outcome: if the optional lazygit draft cannot be
+written, dev emits a warning and retains the staged index instead of rolling it
+back.
+
+Staged setup cannot create an upstream, and `handoff=start` requires committed
+setup because a new worktree would omit the staged files. `stay`, `cd`, and
+`open` remain available for review. `repo setup --commit` is retained as a
+compatibility alias for `--check-in=commit`; `--message` applies to both commit
+and stage. Structured results retain `committed` and add `staged`,
+`staged_paths`, `commit_message`, `commit_draft_provider`, and a content-free
+`template` summary where applicable.
 
 ### Upstream publishing
 
@@ -107,8 +186,11 @@ optionally pushes with upstream tracking. A
 provider, name-conflict, or push failure never deletes the local checkout or
 an upstream that was already created.
 
-Publishing from `repo setup` requires `--commit`, so the newly created
-upstream cannot omit the generated setup changes.
+Publishing from `repo setup` requires `--check-in=commit` (or the compatible
+`--commit` flag), so the newly created upstream cannot omit the generated setup
+changes. `--check-in=stage` is incompatible with any new upstream; for a new
+repository, `none` may create an intentionally empty upstream only with
+`--push=false`.
 
 ### Handoff
 
@@ -118,6 +200,12 @@ and falls back to `cd` when runtime is `none`. `start` continues into the
 existing task wizard with the repository fixed, and is unavailable when setup
 leaves uncommitted files that a new worktree would omit. Neither repository
 bootstrap nor `dev start` launches a coding agent.
+
+All shared TTY text fields in the repository, task-start, and finish wizards
+use an inline editor: Left/Right, Home/End, Delete/Backspace, insertion at the
+cursor, and Esc/Ctrl-C cancellation work as terminal actions rather than being
+inserted as raw escape bytes. Buffered and piped non-TTY input retains its
+line-oriented behavior.
 
 ## `dev done` finish flags
 
@@ -177,6 +265,10 @@ default_agents = ["claude-code", "codex"]
 [presets.team]
 extends = "agent-ready"
 handoff = "cd"
+initial_check_in = "stage"
+template = "acme/starter-catalog"
+template_ref = "v2"
+template_subdir = "services/go"
 
 [[presets.team.inputs]]
 id = "deployment"
@@ -217,9 +309,13 @@ not execute downloaded skill code.
 
 A preset may extend one parent. Scalars override; simple lists replace; files,
 hooks, and skills merge by `id`, and an inherited item can be disabled with
-`enabled = false`. Template sources must remain in the `templates/` tree next
-to their config source, destinations must remain inside the repository, and a
-skill setup script must remain inside the installed skill directory.
+`enabled = false`. A `[[presets.*.files]]` rendering source must remain in the
+`templates/` tree next to its config source; that file-level mechanism is
+separate from the repository snapshot `template` scalar above. Destinations
+must remain inside the repository, and a skill setup script must remain inside
+the installed skill directory. `initial_check_in` accepts `commit`, `stage`, or
+`none`; the legacy `initial_commit` boolean remains readable, but a preset must
+not set both.
 
 ### Safe project overlays
 
@@ -241,16 +337,17 @@ strategy = "reinstall"
 [repo.setup]
 preset = "team"
 handoff = "cd"
-commit = false
+check_in = "stage"
 ```
 
 Effective precedence, lowest to highest, is built-ins, global config/scaffolds,
 legacy `.dev.toml`, the target repository's `.dev-cli/*`, then explicit CLI or
 wizard choices. `.dev.toml` remains readable for compatibility; new project
 configuration should use `.dev-cli/config.toml`. Global `default_preset` and the
-project `[repo.setup]` preset, handoff, and commit fields seed interactive
+project `[repo.setup]` preset, handoff, and check-in fields seed interactive
 wizard choices; they do not change scripted defaults, which are controlled by
-the corresponding flags.
+the corresponding flags. The legacy `commit` boolean remains readable, but may
+not be combined with `check_in` in the same layer.
 
 Project files cannot override host paths, state location, runtime backend,
 forge inventory or credentials, stats, update, bootstrap, or TUI policy. They

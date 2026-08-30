@@ -57,21 +57,26 @@ dev bootstrap --json
 
 ## Repository bootstrap
 
-Repository acquisition 與 setup 是分開的 operations，因此 Git URL 不會靜默改變
-`new` 的意義：
+Repository setup 仍與 acquisition 分開。Acquisition 部分，`new`/`create` 會區分
+plain repository name 與清楚的 clone reference：
 
 | Command | 行為 |
 |---|---|
-| `dev repo new` | interactive new-repository wizard |
-| `dev repo new NAME` / `dev repo create NAME` | 建立新的 local repository；明確 name 的預設仍是相容的 `minimal` preset |
+| `dev repo new` | interactive wizard；第一個欄位可輸入新 name 或 clone reference |
+| `dev repo new NAME` / `dev repo create NAME` | 建立新的 local repository；若輸入清楚的 Git URL、local Git path 或 owner/name，則改走 clone 並保留 history/remote |
 | `dev repo clone [owner/name\|url]` | clone 至 configured destination，再選擇是否套 preset；setup 預設關閉 |
 | `dev repo setup [repo-or-path]` | repeat-safely merge native initializers 與 preset files 至既有 clean checkout；預設目前 repository，沒有明確要求時不 commit |
 
+改走 clone 的 `new` 會保留 source `origin`，因此拒絕 new-upstream creation flags；也會
+拒絕 `--template*`，因為後者的明確語意是「把 content 複製進 fresh history」。
+
 這些 commands 的 controls 包含 `--preset`、`--path`、用 `--set` 傳入 typed input、用
-`--enable`/`--disable` 選擇 item、`--dry-run`、`--yes`、`--json`，以及
-`--handoff <stay|cd|open|start>`。JSON mode 不互動，也不會改變 directory 或開啟
-runtime。Dry-run 不會修改 target repository；clone setup 必須等 clone 存在後才能產生
-詳細 plan。每個 command 實際支援的精確 flags 請看下方 generated reference。
+`--enable`/`--disable` 選擇 item、`--check-in <auto|commit|stage|none>`、
+`--dry-run`、`--yes`、`--json`，以及 `--handoff <stay|cd|open|start>`。
+`repo new` 另支援 `--template`、`--template-ref`、`--template-subdir`。JSON mode
+不互動，也不會改變 directory 或開啟 runtime。Dry-run 不會修改 target repository；
+clone setup 必須等 clone 存在後才能產生詳細 plan。每個 command 實際支援的精確 flags
+請看下方 generated reference。
 
 Wizard 會在 target repository mutation 前顯示 selected scaffold 與 workflow
 summary。Built-in presets 為：
@@ -83,7 +88,16 @@ summary。Built-in presets 為：
   `agent-history-hygiene`、`project-knowledge-harness` 會出現在選項中，但不會靜默
   啟用。選取後 dev 會安裝 skill，並在 initial commit 前執行經 review 的內建
   initializer 來建立對應 project surfaces；這兩個 built-ins 不會執行剛下載的
-  skill scripts。
+  skill scripts。同一 source 且 agent targets 完全相同的 skills 會共用一次 installer
+  invocation，各 skill 的 setup phase 仍分別執行。History initializer 會建立
+  `.pre-commit-config.yaml`、`.gitleaks.toml`，再確保 `.specstory/.gitignore` 含有
+  SpecStory 的 `.project.json`、`statistics.json` 規則，不會忽略應納入追蹤的
+  `.specstory/history/`。既有 custom ignore content 與 mode 會保留，只補上缺少的
+  managed rules。
+
+選完 preset 後，new-repository wizard 會詢問預設為 no 的「Customize preset and
+template options?」。一般 `agent-ready` flow 會直接使用 reviewed template、file、input
+與 skill defaults，不逐一顯示問題；回答 yes（或傳入 customization flags）才會展開。
 
 Preset 可加入 `string`、`bool`、`choice` typed inputs、text templates、hooks 與
 project skills。Hooks 依固定 `before_commit`、`after_commit`、`after_remote` phases
@@ -92,6 +106,57 @@ project skills。Hooks 依固定 `before_commit`、`after_commit`、`after_remot
 commit/remote steps；optional failure 只回報 warning。已產生的 local files 會保留供
 recovery。Native initializers 與 preset files 可 repeat-safe 套用；custom hooks 與
 skill setup 必須自行保證 idempotency。
+
+### Snapshot templates
+
+`dev repo new NAME --template SOURCE` 會用 content snapshot 建立全新 repository。
+`SOURCE` 可為 local directory/repository、Git URL 或 owner/name。Git source 可用
+`--template-ref` 指定任意 branch、tag 或 commit；`--template-subdir` 則指定作為新
+repository root 的乾淨 relative directory。未指定 ref 時，local Git working tree 會
+包含現存 tracked files，以及未被 Git ignore 的 untracked files；ignored build/cache
+content 會省略。Non-Git directory 則 snapshot 完整 current tree。
+
+新 repository 不會繼承 source history 或 remotes。Dev 會排除每個 source `.git`
+entry、拒絕 traversal、symlink 與 special files、保留 regular-file modes，並在建立
+destination 前驗證完整 snapshot。若 snapshot 與 selected scaffold 寫入同一路徑，
+snapshot 優先；scaffold 仍會補齊缺少的 files 並執行 selected initializers。
+Source 與 destination traversal 都相對於 held `os.Root` handles 進行；file bytes 來自
+已開啟且驗證過的 source handle，不會再次依 mutable pathname lookup。
+
+Confirmation 與 human dry-run output 會顯示 bounded selected-path preview；local source
+若是 live working-tree/directory snapshot 而非 commit，也會明確 warning。含 credential
+的 URL userinfo 會從 summaries、structured output 與 clone/template errors 移除。
+
+Preset 可用 scalar `template`、`template_ref`、`template_subdir` 宣告同一操作。它們依
+一般 inheritance 規則 resolve，explicit CLI flags 優先，因此可以一個 starter catalog
+repository 搭配每個 subfolder 各一個 child preset。
+
+### Check-in policy
+
+Interactive wizard 提供 `commit`、`stage`、`none`；script 也可傳 `auto`：
+
+| 值 | 行為 |
+|---|---|
+| `commit` | `git add -A`，以 `--message`／preset message commit，再執行 `after_commit` setup |
+| `stage` | 執行 `before_commit` setup 後 `git add -A`；保留 staged checkout，不執行 `after_commit` |
+| `none` | generated changes 保持 unstaged、uncommitted |
+| `auto` | `repo new` 使用 `initial_check_in` 與相容的 `initial_commit`；clone/setup 則不自動 check-in |
+
+`stage` mode 會 best-effort 在正確的 worktree Git directory 寫入
+`LAZYGIT_PENDING_COMMIT`。[Lazygit v0.59.0 會讀取此
+file](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216)，並將它作為小寫 `c` 的 initial message；大寫
+`C` 與 Git 本身不使用此 integration。不同內容的既有 draft 會保留並回報 warning，
+不會被覆寫。這是 implementation-detail adapter，不是 `commit.template`。
+
+Staging 才是 durable outcome：optional lazygit draft 若無法寫入，dev 會發出 warning
+並保留 staged index，不會 rollback。
+
+Staged setup 不能建立 upstream；`handoff=start` 也要求已 commit 的 setup，因為新
+worktree 會漏掉 staged files。`stay`、`cd`、`open` 仍可供 review。`repo setup
+--commit` 保留為 `--check-in=commit` 的 compatibility alias；`--message` 同時適用於
+commit 與 stage。Structured result 保留 `committed`，並在適用時加入 `staged`、
+`staged_paths`、`commit_message`、`commit_draft_provider` 與不含 file content 的
+`template` summary。
 
 ### Upstream publishing
 
@@ -105,8 +170,10 @@ local setup 與 commit steps 成功後建立空的 GitHub 或 GitLab repository�
 `origin`，並可選擇以 upstream tracking push。Provider、name-conflict 或 push failure
 絕不刪除 local checkout，也不會刪除已建立的 upstream。
 
-從 `repo setup` publish 時必須使用 `--commit`，避免新建 upstream 漏掉本次產生的
-setup changes。
+從 `repo setup` publish 時必須使用 `--check-in=commit`（或相容的 `--commit` flag），
+避免新建 upstream 漏掉本次產生的 setup changes。`--check-in=stage` 與任何新 upstream
+不相容；對新 repository 而言，`none` 只有搭配 `--push=false` 才能建立刻意保持空白的
+upstream。
 
 ### Handoff
 
@@ -115,6 +182,11 @@ setup changes。
 `start` 會固定此 repository 並接續現有 task wizard。Setup 留下 uncommitted files、
 導致新 worktree 會遺漏它們時，`start` 不可用。Repository bootstrap 與
 `dev start` 都不會啟動 coding agent。
+
+Repository、task-start 與 finish wizard 共用的 TTY text fields 都使用 inline editor：
+Left/Right、Home/End、Delete/Backspace、cursor 位置插入與 Esc/Ctrl-C cancellation 會
+被解讀為 terminal actions，不會成為 raw escape bytes。Buffered 或 piped non-TTY input
+仍維持 line-oriented behavior。
 
 ## `dev done` finish flags
 
@@ -174,6 +246,10 @@ default_agents = ["claude-code", "codex"]
 [presets.team]
 extends = "agent-ready"
 handoff = "cd"
+initial_check_in = "stage"
+template = "acme/starter-catalog"
+template_ref = "v2"
+template_subdir = "services/go"
 
 [[presets.team.inputs]]
 id = "deployment"
@@ -213,9 +289,12 @@ Skill setup 一般會指定 installed skill 內的 project-local script。內建
 下載回來的 skill code。
 
 Preset 最多 extend 一個 parent。Scalar 會 override；simple lists 會 replace；files、
-hooks 與 skills 依 `id` merge，inherited item 可用 `enabled = false` 停用。Template
-source 必須留在 config source 旁的 `templates/` tree，destination 必須留在 repository
-內，skill setup script 也必須位於 installed skill directory 內。
+hooks 與 skills 依 `id` merge，inherited item 可用 `enabled = false` 停用。
+`[[presets.*.files]]` 的 rendering source 必須留在 config source 旁的 `templates/`
+tree；這個 file-level mechanism 與前述 repository snapshot `template` scalar 不同。
+Destination 必須留在 repository 內，skill setup script 也必須位於 installed skill
+directory 內。`initial_check_in` 接受 `commit`、`stage`、`none`；legacy
+`initial_commit` boolean 仍可讀，但同一 preset 不可同時設定兩者。
 
 ### Safe project overlays
 
@@ -237,15 +316,16 @@ strategy = "reinstall"
 [repo.setup]
 preset = "team"
 handoff = "cd"
-commit = false
+check_in = "stage"
 ```
 
 Effective precedence 由低至高為 built-ins、global config/scaffolds、legacy
 `.dev.toml`、target repository 的 `.dev-cli/*`，最後是 explicit CLI 或 wizard
 choices。`.dev.toml` 為相容性仍可讀；新的 project configuration 應使用
 `.dev-cli/config.toml`。Global `default_preset` 與 project `[repo.setup]` 的 preset、
-handoff、commit fields 只用來預填 interactive wizard choices；它們不會改變 scripted
-defaults，後者由對應 flags 控制。
+handoff、check-in fields 只用來預填 interactive wizard choices；它們不會改變
+scripted defaults，後者由對應 flags 控制。Legacy `commit` boolean 仍可讀，但同一
+layer 不可與 `check_in` 並用。
 
 Project files 不能 override host paths、state location、runtime backend、forge
 inventory 或 credentials、stats、update、bootstrap 或 TUI policy，也不能靜默 publish

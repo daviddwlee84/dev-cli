@@ -231,9 +231,18 @@ func overlay(base, next Override, source string, sources map[string]string) Over
 		base.Repo.Setup.Handoff = &value
 		sources["repo.setup.handoff"] = source
 	}
+	if next.Repo.Setup.CheckIn != nil {
+		value := *next.Repo.Setup.CheckIn
+		base.Repo.Setup.CheckIn = &value
+		base.Repo.Setup.Commit = nil
+		delete(sources, "repo.setup.commit")
+		sources["repo.setup.check_in"] = source
+	}
 	if next.Repo.Setup.Commit != nil {
 		value := *next.Repo.Setup.Commit
 		base.Repo.Setup.Commit = &value
+		base.Repo.Setup.CheckIn = nil
+		delete(sources, "repo.setup.check_in")
 		sources["repo.setup.commit"] = source
 	}
 	return base

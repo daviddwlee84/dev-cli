@@ -37,19 +37,23 @@ type Config struct {
 // Preset is one repository setup recipe. Pointer booleans distinguish an
 // omitted child value (inherit) from an explicit false value.
 type Preset struct {
-	Extends       string   `toml:"extends" json:"extends,omitempty"`
-	Description   string   `toml:"description" json:"description,omitempty"`
-	Readme        *bool    `toml:"readme" json:"readme,omitempty"`
-	Gitignore     []string `toml:"gitignore" json:"gitignore,omitempty"`
-	ClaudePlans   *bool    `toml:"claude_plans" json:"claude_plans,omitempty"`
-	AgentContract string   `toml:"agent_contract" json:"agent_contract,omitempty"`
-	License       string   `toml:"license" json:"license,omitempty"`
-	Remote        string   `toml:"remote" json:"remote,omitempty"`
-	Handoff       string   `toml:"handoff" json:"handoff,omitempty"`
+	Extends        string   `toml:"extends" json:"extends,omitempty"`
+	Description    string   `toml:"description" json:"description,omitempty"`
+	Readme         *bool    `toml:"readme" json:"readme,omitempty"`
+	Gitignore      []string `toml:"gitignore" json:"gitignore,omitempty"`
+	ClaudePlans    *bool    `toml:"claude_plans" json:"claude_plans,omitempty"`
+	AgentContract  string   `toml:"agent_contract" json:"agent_contract,omitempty"`
+	License        string   `toml:"license" json:"license,omitempty"`
+	Remote         string   `toml:"remote" json:"remote,omitempty"`
+	Handoff        string   `toml:"handoff" json:"handoff,omitempty"`
+	Template       string   `toml:"template" json:"template,omitempty"`
+	TemplateRef    string   `toml:"template_ref" json:"template_ref,omitempty"`
+	TemplateSubdir string   `toml:"template_subdir" json:"template_subdir,omitempty"`
 
-	InitialBranch string `toml:"initial_branch" json:"initial_branch,omitempty"`
-	InitialCommit *bool  `toml:"initial_commit" json:"initial_commit,omitempty"`
-	CommitMessage string `toml:"commit_message" json:"commit_message,omitempty"`
+	InitialBranch  string `toml:"initial_branch" json:"initial_branch,omitempty"`
+	InitialCheckIn string `toml:"initial_check_in" json:"initial_check_in,omitempty"`
+	InitialCommit  *bool  `toml:"initial_commit" json:"initial_commit,omitempty"`
+	CommitMessage  string `toml:"commit_message" json:"commit_message,omitempty"`
 
 	Inputs  []Input        `toml:"inputs" json:"inputs,omitempty"`
 	Files   []File         `toml:"files" json:"files,omitempty"`

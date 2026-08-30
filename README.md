@@ -153,24 +153,74 @@ interactive flow that chooses the destination under the configured
 ```bash
 dev repo new                                  # interactive new-repository flow
 dev repo create api --preset agent-ready      # `create` is an alias for `new`
+dev repo new owner/api                        # clear clone reference: preserve history/origin
+dev repo new api --template owner/starters --template-subdir go/service
+dev repo new api --check-in stage -m "chore: initialize api"
 dev repo clone owner/api                      # owner/name or a Git URL
 dev repo setup . --preset agent-ready         # add the same setup to an existing repo
 ```
 
 `repo new NAME` keeps the small scripted default: `main`, README, and an
-initial commit. A URL belongs to `repo clone`; clone can optionally apply a
-preset after the checkout exists, while `repo setup` repeat-safely merges native
+initial commit. When the argument is clearly a Git URL, local Git path, or
+owner/name, however, `new`/`create` routes to the clone flow and preserves the
+source history and configured remote; `repo clone` remains the explicit spelling.
+Clone can optionally apply a preset after the checkout exists, while `repo setup` repeat-safely merges native
 initializers and preset files into a repository you already have. Custom hooks
 and skill setup remain responsible for their own idempotency. Use `--dry-run`
 to inspect the available plan without mutating the target repository.
+
+`repo new` can also start from a content snapshot rather than an empty tree.
+`--template` accepts a local directory/repository, Git URL, or owner/name;
+`--template-ref` selects a branch, tag, or commit, and `--template-subdir`
+selects a confined folder within the source. The snapshot becomes a fresh Git
+history: source `.git` metadata is never copied, template files win scaffold
+conflicts, regular-file modes are preserved, and traversal, symlinks, and
+special files fail before the destination is created. A local Git working tree
+without `--template-ref` includes existing tracked files plus untracked,
+non-ignored files; Git-ignored files are omitted. A non-Git directory snapshots
+its complete current tree. The same `template`, `template_ref`, and
+`template_subdir` keys can live in a preset, which makes one starter catalog
+repository with a preset per subfolder practical.
+
+Human confirmation and dry-run plans preview the selected file paths (with a
+bounded list) and warn when the source is a live local snapshot rather than a
+commit. URL userinfo is removed from rendered summaries and errors. Filesystem
+walking and writes are confined relative to held `os.Root` handles, and source
+file content is read from the handle that was validated instead of reopening a
+mutable path.
+
+Bootstrap's check-in is explicit:
+
+| `--check-in` | Result |
+|---|---|
+| `commit` | stage and commit generated files, then permit commit-dependent publishing/hooks |
+| `stage` | `git add -A` for human review, but do not commit or run `after_commit` hooks |
+| `none` | leave generated files unstaged and uncommitted |
+| `auto` | for `repo new`, use the preset's compatible default; clone/setup otherwise perform no automatic check-in |
+
+`--message` supplies the commit or staged draft message. In `stage` mode dev
+best-effort writes the worktree-local `LAZYGIT_PENDING_COMMIT`; current lazygit
+uses it to prefill lowercase `c`. An existing different draft is preserved with
+a warning. This is a lazygit integration detail, not Git `commit.template`.
+Staged setup cannot create an upstream or use the worktree-creating `start`
+handoff; review and commit it first. The existing `repo setup --commit` remains
+a compatibility spelling for `--check-in=commit`. If the lazygit draft cannot
+be written, dev reports a warning but keeps the successfully staged index for
+manual review and commit.
 
 The built-in `agent-ready` preset adds a starter `AGENTS.md`, a common
 `.gitignore` section, and project-scoped Claude plans. If selected, the optional
 `agent-history-hygiene` and `project-knowledge-harness` skills are installed and
 dev's reviewed built-in initializers create the pre-commit/gitleaks and
 TODO/backlog/pitfalls surfaces during bootstrap; setup does not wait for a later
-agent to happen to trigger the skill. Presets may also declare
-typed inputs, repository-contained templates, and ordered
+agent to happen to trigger the skill. The history initializer also ensures
+`.specstory/.gitignore` contains rules for SpecStory's machine-local
+`.project.json` and generated `statistics.json`—not `.specstory/history/`, which
+remains part of the review trail. Existing custom ignore content and file mode
+are preserved; only missing managed rules are appended. Skills with the same
+source and identical agent targets are sent to the installer together, while
+each skill's declared setup still runs in its own phase. Presets may also declare
+typed inputs, repository-contained file templates, and ordered
 `before_commit`/`after_commit`/`after_remote` hooks.
 
 When `gh` or `glab` is installed and authenticated, the wizard can create a
@@ -180,6 +230,17 @@ initial/current branch. Local-only is the default and published repos
 default private. A forge or push failure leaves the local repository and any
 already-created upstream intact, with recovery information instead of deleting
 work.
+
+TTY text fields in the repository, task-start, and finish wizards support
+inline insertion plus Left/Right, Home/End, Delete/Backspace, and Esc/Ctrl-C
+cancellation. Arrow keys are interpreted by the editor rather than appearing
+as literal `^[[C`/`^[[D`; piped and buffered non-TTY input keeps its existing
+line-oriented behavior.
+
+The no-argument new-repository wizard places detailed file, template, input,
+and skill questions behind a default-no “Customize preset and template
+options?” gate. The normal `agent-ready` path therefore uses its reviewed
+defaults; answer yes when you want to override individual choices.
 
 The final handoff is explicit:
 

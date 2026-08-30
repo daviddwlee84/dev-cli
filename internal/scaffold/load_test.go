@@ -201,6 +201,50 @@ func TestResolvePresetReportsMissingParentAndCycle(t *testing.T) {
 	}
 }
 
+func TestInitialCheckInOverridesLegacyParentCommit(t *testing.T) {
+	cfg := Builtins()
+	cfg.Presets["review"] = Preset{Extends: "minimal", InitialCheckIn: "stage"}
+	resolved, err := cfg.ResolvePreset("review")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.InitialCheckIn != "stage" || resolved.InitialCommit != nil {
+		t.Fatalf("resolved check-in = %q, legacy commit = %#v", resolved.InitialCheckIn, resolved.InitialCommit)
+	}
+	_, err = Decode([]byte(`
+version = 1
+default_preset = "bad"
+[presets.bad]
+initial_check_in = "stage"
+initial_commit = true
+`), "memory.toml")
+	if err == nil || !strings.Contains(err.Error(), "cannot set both") {
+		t.Fatalf("conflicting check-in error = %v", err)
+	}
+}
+
+func TestTemplateSettingsInheritAndRequireSource(t *testing.T) {
+	cfg := Builtins()
+	cfg.Presets["template-base"] = Preset{
+		Extends: "minimal", Template: "owner/starters", TemplateRef: "v2",
+	}
+	cfg.Presets["go-service"] = Preset{
+		Extends: "template-base", TemplateSubdir: "services/go",
+	}
+	resolved, err := cfg.ResolvePreset("go-service")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.Template != "owner/starters" || resolved.TemplateRef != "v2" || resolved.TemplateSubdir != "services/go" {
+		t.Fatalf("resolved template = %#v", resolved)
+	}
+
+	cfg.Presets["missing-source"] = Preset{Extends: "minimal", TemplateRef: "main"}
+	if _, err := cfg.ResolvePreset("missing-source"); err == nil || !strings.Contains(err.Error(), "require template") {
+		t.Fatalf("missing template source error = %v", err)
+	}
+}
+
 func TestDecodeRejectsDuplicateItemIDs(t *testing.T) {
 	_, err := Decode([]byte(`
 version = 1

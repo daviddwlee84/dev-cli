@@ -17,29 +17,34 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
+	"github.com/daviddwlee84/dev-cli/internal/repotemplate"
 	"github.com/daviddwlee84/dev-cli/internal/scaffold"
 	"github.com/spf13/cobra"
 )
 
 type repoBootstrapFlags struct {
-	category      string
-	path          string
-	preset        string
-	handoff       string
-	description   string
-	gitignore     []string
-	license       string
-	licenseHolder string
-	set           []string
-	enable        []string
-	disable       []string
-	agents        []string
-	browseSkills  bool
-	importOrphans bool
-	dryRun        bool
-	yes           bool
-	json          bool
-	open          bool
+	category       string
+	path           string
+	preset         string
+	handoff        string
+	description    string
+	gitignore      []string
+	license        string
+	licenseHolder  string
+	set            []string
+	enable         []string
+	disable        []string
+	agents         []string
+	browseSkills   bool
+	importOrphans  bool
+	dryRun         bool
+	yes            bool
+	json           bool
+	open           bool
+	checkIn        string
+	template       string
+	templateRef    string
+	templateSubdir string
 
 	remote     bool
 	forge      string
@@ -60,42 +65,49 @@ type repoWorkflowRequest struct {
 	Destination   string
 	Scaffold      repoScaffoldRequest
 	Prepared      preparedRepoScaffold
+	Template      *repotemplate.Snapshot
 	Handoff       repoHandoff
 	Publish       *repoPublishRequest
 	BrowseSkills  bool
-	CommitSetup   bool
+	CheckIn       repoCheckIn
 	CommitMessage string
 	DryRun        bool
 	JSON          bool
 }
 
 type repoWorkflowResult struct {
-	Operation string              `json:"operation"`
-	Path      string              `json:"path"`
-	Preset    string              `json:"preset,omitempty"`
-	Created   bool                `json:"created"`
-	Cloned    bool                `json:"cloned"`
-	Scaffold  appliedRepoScaffold `json:"scaffold"`
-	Skills    repoSkillResult     `json:"skills"`
-	Hooks     []repoHookResult    `json:"hooks,omitempty"`
-	Commit    bool                `json:"committed"`
-	Remote    *repoPublishResult  `json:"remote,omitempty"`
-	Handoff   repoHandoff         `json:"handoff"`
-	Warnings  []string            `json:"warnings,omitempty"`
+	Operation           string                    `json:"operation"`
+	Path                string                    `json:"path"`
+	Preset              string                    `json:"preset,omitempty"`
+	Created             bool                      `json:"created"`
+	Cloned              bool                      `json:"cloned"`
+	Scaffold            appliedRepoScaffold       `json:"scaffold"`
+	Skills              repoSkillResult           `json:"skills"`
+	Hooks               []repoHookResult          `json:"hooks,omitempty"`
+	Commit              bool                      `json:"committed"`
+	Staged              bool                      `json:"staged"`
+	StagedPaths         int                       `json:"staged_paths,omitempty"`
+	CommitMessage       string                    `json:"commit_message,omitempty"`
+	CommitDraftProvider string                    `json:"commit_draft_provider,omitempty"`
+	Template            *repotemplate.ApplyResult `json:"template,omitempty"`
+	Remote              *repoPublishResult        `json:"remote,omitempty"`
+	Handoff             repoHandoff               `json:"handoff"`
+	Warnings            []string                  `json:"warnings,omitempty"`
 }
 
 func newRepoNewCmd(app *App) *cobra.Command {
 	flags := repoBootstrapFlags{private: true, push: true, forge: "auto"}
 	cmd := &cobra.Command{
-		Use:     "new [name]",
+		Use:     "new [name|clone-ref]",
 		Aliases: []string{"create"},
-		Short:   "Create a new local repository (optionally with a remote)",
+		Short:   "Create a new repository or clone an explicit source",
 		Long: `Create a repository under paths.project_root from any directory.
 
 With no name in an interactive terminal, a wizard chooses the destination,
 scaffold preset, agent setup, optional GitHub/GitLab upstream and final
 handoff. An explicit name keeps the original script-friendly minimal behavior
-unless --preset or other bootstrap flags are supplied.`,
+unless --preset or other bootstrap flags are supplied. A clear Git URL, path,
+or owner/name reference is acquired as a clone instead of a fresh history.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -113,7 +125,14 @@ unless --preset or other bootstrap flags are supplied.`,
 				return executeRepoWorkflow(app, request)
 			}
 			if looksLikeCloneReference(args[0]) {
-				return fmt.Errorf("%q looks like a clone reference; use `dev repo clone %s`", args[0], args[0])
+				if err := validateNewAsCloneFlags(flags); err != nil {
+					return err
+				}
+				request, err := buildCloneRepoRequest(app, args[0], flags)
+				if err != nil {
+					return err
+				}
+				return executeRepoWorkflow(app, request)
 			}
 			request, err := buildNewRepoRequest(app, args[0], flags)
 			if err != nil {
@@ -123,10 +142,25 @@ unless --preset or other bootstrap flags are supplied.`,
 		},
 	}
 	bindRepoBootstrapFlags(cmd, &flags, true, true, false)
+	cmd.Flags().StringVar(&flags.template, "template", "", "local directory, Git URL, or owner/repo used as a snapshot template")
+	cmd.Flags().StringVar(&flags.templateRef, "template-ref", "", "Git branch, tag, or commit to snapshot from --template")
+	cmd.Flags().StringVar(&flags.templateSubdir, "template-subdir", "", "relative directory within --template to use as the repository root")
 	registerFlagCompletion(cmd, "handoff", fixedCompletions(repoHandoffCompletions()...))
+	registerFlagCompletion(cmd, "check-in", fixedCompletions(repoCheckInCompletions()...))
 	registerFlagCompletion(cmd, "forge", fixedCompletions("auto", "github", "gitlab", "none"))
 	registerFlagCompletion(cmd, "visibility", fixedCompletions("private", "public", "internal"))
 	return cmd
+}
+
+func validateNewAsCloneFlags(flags repoBootstrapFlags) error {
+	if flags.template != "" || flags.templateRef != "" || flags.templateSubdir != "" {
+		return errors.New("--template flags create a fresh history and cannot be combined with a clone reference")
+	}
+	if flags.remote || flags.forge != "auto" || flags.namespace != "" || flags.visibility != "" ||
+		flags.public || !flags.private || !flags.push {
+		return errors.New("upstream-creation flags cannot be combined with a clone reference; the cloned remote is preserved")
+	}
+	return nil
 }
 
 func newRepoCloneCmd(app *App) *cobra.Command {
@@ -151,27 +185,28 @@ Setup is never selected by default for an existing team or third-party repo.`,
 				if err != nil {
 					return err
 				}
+				if !setup || request.Scaffold.Preset != "" || request.DryRun {
+					return executeRepoWorkflow(app, request)
+				}
 				if err := executeRepoCloneAcquire(app, &request); err != nil {
 					return err
 				}
-				if setup {
-					flags.handoff = string(request.Handoff)
-					setupRequest, ok, err := runRepoSetupWizard(app, request.Destination, flags)
-					if errors.Is(err, errPromptCanceled) {
-						fmt.Fprintln(app.Out, "Clone is ready; setup was canceled.")
-						return finishRepoClone(app, request)
+				flags.handoff = string(request.Handoff)
+				setupRequest, ok, err := runRepoSetupWizard(app, request.Destination, flags)
+				if errors.Is(err, errPromptCanceled) {
+					fmt.Fprintln(app.Out, "Clone is ready; setup was canceled.")
+					return finishRepoClone(app, request)
+				}
+				if err != nil {
+					return fmt.Errorf("clone is ready at %s but setup could not be prepared: %w", config.Contract(request.Destination), err)
+				}
+				if ok {
+					setupRequest.Kind = repo.AcquireClone
+					setupRequest.Ref = request.Ref
+					if err := executeRepoSetup(app, setupRequest); err != nil {
+						return fmt.Errorf("clone is ready at %s but setup failed: %w", config.Contract(request.Destination), err)
 					}
-					if err != nil {
-						return fmt.Errorf("clone is ready at %s but setup could not be prepared: %w", config.Contract(request.Destination), err)
-					}
-					if ok {
-						setupRequest.Kind = repo.AcquireClone
-						setupRequest.Ref = request.Ref
-						if err := executeRepoSetup(app, setupRequest); err != nil {
-							return fmt.Errorf("clone is ready at %s but setup failed: %w", config.Contract(request.Destination), err)
-						}
-						return nil
-					}
+					return nil
 				}
 				return finishRepoClone(app, request)
 			}
@@ -185,6 +220,7 @@ Setup is never selected by default for an existing team or third-party repo.`,
 	bindRepoBootstrapFlags(cmd, &flags, true, false, false)
 	cmd.Flags().BoolVarP(&flags.open, "open", "o", false, "open the clone in the runtime afterwards (alias for --handoff=open)")
 	registerFlagCompletion(cmd, "handoff", fixedCompletions(repoHandoffCompletions()...))
+	registerFlagCompletion(cmd, "check-in", fixedCompletions(repoCheckInCompletions()...))
 	return cmd
 }
 
@@ -222,6 +258,7 @@ func newRepoSetupCmd(app *App) *cobra.Command {
 	}
 	bindRepoBootstrapFlags(cmd, &flags, false, true, true)
 	registerFlagCompletion(cmd, "handoff", fixedCompletions(repoHandoffCompletions()...))
+	registerFlagCompletion(cmd, "check-in", fixedCompletions(repoCheckInCompletions()...))
 	registerFlagCompletion(cmd, "forge", fixedCompletions("auto", "github", "gitlab", "none"))
 	registerFlagCompletion(cmd, "visibility", fixedCompletions("private", "public", "internal"))
 	cmd.ValidArgsFunction = completeRepos(app)
@@ -236,6 +273,7 @@ func bindRepoBootstrapFlags(cmd *cobra.Command, flags *repoBootstrapFlags, acqui
 	}
 	f.StringVar(&flags.preset, "preset", "", "scaffold preset")
 	f.StringVar(&flags.handoff, "handoff", "", "afterwards: stay, cd, open or start")
+	f.StringVar(&flags.checkIn, "check-in", "", "finish generated changes: auto, commit, stage or none")
 	f.StringVar(&flags.description, "description", "", "repository description")
 	f.StringSliceVar(&flags.gitignore, "gitignore", nil, "gitignore template (repeatable or comma-separated)")
 	f.StringVar(&flags.license, "license", "", "license keyword (for example mit or apache-2.0)")
@@ -249,6 +287,11 @@ func bindRepoBootstrapFlags(cmd *cobra.Command, flags *repoBootstrapFlags, acqui
 	f.BoolVar(&flags.dryRun, "dry-run", false, "show the plan without changing anything")
 	f.BoolVarP(&flags.yes, "yes", "y", false, "confirm the non-interactive scaffold plan")
 	f.BoolVar(&flags.json, "json", false, "emit a machine-readable result")
+	messageDefault := ""
+	if setup {
+		messageDefault = "chore: initialize repository"
+	}
+	f.StringVarP(&flags.message, "message", "m", messageDefault, "commit message for --check-in=commit or stage")
 	if remote {
 		f.BoolVar(&flags.remote, "remote", false, "also create a GitHub or GitLab upstream")
 		f.StringVar(&flags.forge, "forge", "auto", "upstream provider: auto, github, gitlab or none")
@@ -260,7 +303,6 @@ func bindRepoBootstrapFlags(cmd *cobra.Command, flags *repoBootstrapFlags, acqui
 	}
 	if setup {
 		f.BoolVar(&flags.commit, "commit", false, "commit only the setup changes (requires a clean starting checkout)")
-		f.StringVarP(&flags.message, "message", "m", "chore: initialize repository", "setup commit message")
 	}
 }
 
@@ -286,6 +328,35 @@ func buildNewRepoRequest(app *App, name string, flags repoBootstrapFlags) (repoW
 	if err != nil {
 		return repoWorkflowRequest{}, err
 	}
+	templateSource := prepared.Plan.Settings.Template
+	templateRef := prepared.Plan.Settings.TemplateRef
+	templateSubdir := prepared.Plan.Settings.TemplateSubdir
+	if flags.template != "" {
+		if strings.EqualFold(strings.TrimSpace(flags.template), "none") {
+			templateSource, templateRef, templateSubdir = "", "", ""
+		} else {
+			templateSource = flags.template
+		}
+	}
+	if flags.templateRef != "" {
+		templateRef = flags.templateRef
+	}
+	if flags.templateSubdir != "" {
+		templateSubdir = flags.templateSubdir
+	}
+	if strings.TrimSpace(templateSource) == "" && (strings.TrimSpace(templateRef) != "" || strings.TrimSpace(templateSubdir) != "") {
+		return repoWorkflowRequest{}, errors.New("--template-ref and --template-subdir require --template or a preset template")
+	}
+	// The raw preset source may contain URL credentials. It is no longer needed
+	// by the scaffold pipeline once the effective template selection is copied
+	// above, so keep every rendered/JSON plan display-safe.
+	prepared.Plan.Settings.Template = ""
+	prepared.Plan.Settings.TemplateRef = ""
+	prepared.Plan.Settings.TemplateSubdir = ""
+	checkIn, err := resolveRepoCheckIn(flags, prepared, repo.AcquireNew)
+	if err != nil {
+		return repoWorkflowRequest{}, err
+	}
 	handoff, err := flagsHandoff(flags, repoHandoffStay)
 	if err != nil {
 		return repoWorkflowRequest{}, err
@@ -298,15 +369,31 @@ func buildNewRepoRequest(app *App, name string, flags repoBootstrapFlags) (repoW
 		Kind: repo.AcquireNew, Name: name, Destination: destination,
 		Scaffold: repoScaffoldRequest{Root: destination, Name: name}, Prepared: prepared,
 		Handoff: handoff, Publish: publish, BrowseSkills: flags.browseSkills,
-		DryRun: flags.dryRun, JSON: flags.json,
+		CheckIn: checkIn, CommitMessage: flags.message, DryRun: flags.dryRun, JSON: flags.json,
 	}
-	return request, validateRepoWorkflowRequest(app, request, flags.yes)
+	if err := validateRepoWorkflowRequest(app, request, flags.yes); err != nil {
+		return repoWorkflowRequest{}, err
+	}
+	if strings.TrimSpace(templateSource) != "" {
+		preparedTemplate, err := repotemplate.Prepare(ctxOf(), repotemplate.Request{
+			Source: templateSource, Ref: templateRef, Subdir: templateSubdir,
+		})
+		if err != nil {
+			return repoWorkflowRequest{}, err
+		}
+		request.Template = &preparedTemplate
+		request.Prepared.Plan.Settings.Template = preparedTemplate.Source
+		request.Prepared.Plan.Settings.TemplateRef = preparedTemplate.Ref
+		request.Prepared.Plan.Settings.TemplateSubdir = preparedTemplate.Subdir
+	}
+	return request, nil
 }
 
 func buildCloneRepoRequest(app *App, ref string, flags repoBootstrapFlags) (repoWorkflowRequest, error) {
-	name := repo.NameFromRef(ref)
+	safeRef := repo.RedactCloneRef(ref)
+	name := repo.NameFromRef(safeRef)
 	if name == "" {
-		return repoWorkflowRequest{}, fmt.Errorf("could not derive a directory name from %q", ref)
+		return repoWorkflowRequest{}, fmt.Errorf("could not derive a directory name from %q", safeRef)
 	}
 	destination, err := repoDestination(app.Cfg.Paths.ProjectRoot, flags.category, name, flags.path)
 	if err != nil {
@@ -316,9 +403,14 @@ func buildCloneRepoRequest(app *App, ref string, flags repoBootstrapFlags) (repo
 	if err != nil {
 		return repoWorkflowRequest{}, err
 	}
+	checkIn, err := resolveRepoCheckIn(flags, preparedRepoScaffold{}, repo.AcquireClone)
+	if err != nil {
+		return repoWorkflowRequest{}, err
+	}
 	request := repoWorkflowRequest{
 		Kind: repo.AcquireClone, Name: name, Ref: ref, Destination: destination,
-		Handoff: handoff, BrowseSkills: flags.browseSkills, DryRun: flags.dryRun, JSON: flags.json,
+		Handoff: handoff, BrowseSkills: flags.browseSkills, CheckIn: checkIn,
+		CommitMessage: flags.message, DryRun: flags.dryRun, JSON: flags.json,
 	}
 	if flags.preset == "" && cloneSetupOptionsSelected(flags) {
 		return request, errors.New("clone setup options require --preset")
@@ -345,9 +437,12 @@ func buildCloneRepoRequest(app *App, ref string, flags repoBootstrapFlags) (repo
 }
 
 func cloneSetupOptionsSelected(flags repoBootstrapFlags) bool {
+	checkInNeedsSetup := flags.checkIn != "" &&
+		!strings.EqualFold(flags.checkIn, string(repoCheckInAuto)) &&
+		!strings.EqualFold(flags.checkIn, string(repoCheckInNone))
 	return flags.description != "" || flags.gitignore != nil || flags.license != "" || flags.licenseHolder != "" ||
 		len(flags.set) > 0 || len(flags.enable) > 0 || len(flags.disable) > 0 || flags.agents != nil ||
-		flags.browseSkills || flags.importOrphans
+		flags.browseSkills || flags.importOrphans || checkInNeedsSetup || flags.message != ""
 }
 
 func buildSetupRepoRequest(app *App, root string, flags repoBootstrapFlags) (repoWorkflowRequest, error) {
@@ -365,6 +460,10 @@ func buildSetupRepoRequest(app *App, root string, flags repoBootstrapFlags) (rep
 	if err != nil {
 		return repoWorkflowRequest{}, err
 	}
+	checkIn, err := resolveRepoCheckIn(flags, prepared, "")
+	if err != nil {
+		return repoWorkflowRequest{}, err
+	}
 	handoff, err := flagsHandoff(flags, repoHandoffStay)
 	if err != nil {
 		return repoWorkflowRequest{}, err
@@ -373,13 +472,13 @@ func buildSetupRepoRequest(app *App, root string, flags repoBootstrapFlags) (rep
 	if err != nil {
 		return repoWorkflowRequest{}, err
 	}
-	if publish != nil && !flags.commit {
-		return repoWorkflowRequest{}, errors.New("publishing repository setup requires --commit so the upstream includes the setup changes")
+	if publish != nil && checkIn != repoCheckInCommit {
+		return repoWorkflowRequest{}, errors.New("publishing repository setup requires --check-in=commit (or --commit) so the upstream includes the setup changes")
 	}
 	request := repoWorkflowRequest{
 		Name: name, Destination: root, Prepared: prepared, Handoff: handoff,
 		Publish: publish, BrowseSkills: flags.browseSkills,
-		CommitSetup: flags.commit, CommitMessage: flags.message,
+		CheckIn: checkIn, CommitMessage: flags.message,
 		DryRun: flags.dryRun, JSON: flags.json,
 	}
 	return request, validateRepoWorkflowRequest(app, request, flags.yes)
@@ -399,10 +498,16 @@ func validateRepoWorkflowRequest(app *App, request repoWorkflowRequest, yes bool
 		return errors.New("--browse-skills requires an interactive terminal")
 	}
 	if request.Kind == repo.AcquireNew && request.Publish != nil && request.Publish.Push {
-		commit := request.Prepared.Plan.Settings.InitialCommit == nil || *request.Prepared.Plan.Settings.InitialCommit
-		if !commit {
-			return errors.New("pushing a new upstream requires preset initial_commit=true; use --push=false to create an empty upstream")
+		if request.CheckIn != repoCheckInCommit {
+			return errors.New("pushing a new upstream requires --check-in=commit; use --push=false to create an empty upstream")
 		}
+	}
+	if request.Publish != nil && request.CheckIn == repoCheckInStage {
+		return errors.New("--check-in=stage cannot create an upstream; review and commit locally before publishing")
+	}
+	if request.Handoff == repoHandoffStart && request.CheckIn != repoCheckInCommit &&
+		(request.Kind == repo.AcquireNew || request.Scaffold.Preset != "" || request.Prepared.Plan.Root != "") {
+		return errors.New("--handoff=start requires --check-in=commit when repository setup changes files")
 	}
 	if request.Kind != repo.AcquireNew && request.Publish != nil {
 		remoteName := strings.TrimSpace(request.Publish.RemoteName)
@@ -488,8 +593,14 @@ func executeRepoWorkflow(app *App, request repoWorkflowRequest) error {
 		Operation: "new", Path: acquired.Path, Preset: request.Prepared.Plan.Preset,
 		Created: true, Handoff: request.Handoff,
 	}
-	commit := request.Prepared.Plan.Settings.InitialCommit == nil || *request.Prepared.Plan.Settings.InitialCommit
-	if err := executeScaffoldPipeline(app, request, &result, commit); err != nil {
+	if request.Template != nil {
+		applied, err := request.Template.Apply(acquired.Path)
+		if err != nil {
+			return fmt.Errorf("repository remains at %s: apply template: %w", config.Contract(acquired.Path), err)
+		}
+		result.Template = &applied
+	}
+	if err := executeScaffoldPipeline(app, request, &result); err != nil {
 		return fmt.Errorf("repository remains at %s: %w", config.Contract(acquired.Path), err)
 	}
 	return finishRepoWorkflow(app, request, result)
@@ -544,13 +655,13 @@ func executeRepoSetup(app *App, request repoWorkflowRequest) error {
 		Operation: operation, Path: request.Destination, Preset: request.Prepared.Plan.Preset,
 		Created: created, Cloned: cloned, Handoff: request.Handoff,
 	}
-	if err := executeScaffoldPipeline(app, request, &result, request.CommitSetup); err != nil {
+	if err := executeScaffoldPipeline(app, request, &result); err != nil {
 		return err
 	}
 	return finishRepoWorkflow(app, request, result)
 }
 
-func executeScaffoldPipeline(app *App, request repoWorkflowRequest, result *repoWorkflowResult, commit bool) error {
+func executeScaffoldPipeline(app *App, request repoWorkflowRequest, result *repoWorkflowResult) error {
 	trustApp := app
 	if request.JSON {
 		copy := *app
@@ -561,7 +672,7 @@ func executeScaffoldPipeline(app *App, request repoWorkflowRequest, result *repo
 	if err := ensureProjectConfigTrust(trustApp, request.Destination, request.Prepared.Project, request.Prepared.Plan); err != nil {
 		return err
 	}
-	applied, err := applyPreparedRepoScaffold(request.Prepared, request.Kind != repo.AcquireNew)
+	applied, err := applyPreparedRepoScaffold(request.Prepared, request.Kind != repo.AcquireNew || request.Template != nil)
 	if err != nil {
 		return err
 	}
@@ -607,25 +718,38 @@ func executeScaffoldPipeline(app *App, request repoWorkflowRequest, result *repo
 		return err
 	}
 
-	if commit {
+	checkIn := request.CheckIn
+	if checkIn == repoCheckInAuto || checkIn == "" {
+		checkIn = repoCheckInNone
+	}
+	if checkIn != repoCheckInNone {
 		if request.Kind != repo.AcquireNew {
 			status, statusErr := gitx.StatusOf(ctxOf(), request.Destination)
 			if statusErr != nil {
 				return statusErr
 			}
 			if !status.Dirty() {
-				commit = false
+				checkIn = repoCheckInNone
 			}
 		}
 	}
-	if commit {
-		message := request.Prepared.Plan.Settings.CommitMessage
-		if request.CommitMessage != "" {
-			message = request.CommitMessage
+	if checkIn == repoCheckInStage {
+		message := repoCommitMessage(request)
+		staged, provider, warning, err := stageRepoForReview(ctxOf(), request.Destination, message)
+		if err != nil {
+			return err
 		}
-		if message == "" {
-			message = "chore: initial commit"
+		result.Staged = staged > 0
+		result.StagedPaths = staged
+		result.CommitMessage = message
+		result.CommitDraftProvider = provider
+		if warning != "" {
+			result.Warnings = append(result.Warnings, warning)
+			app.warnf("%s", warning)
 		}
+	}
+	if checkIn == repoCheckInCommit {
+		message := repoCommitMessage(request)
 		if _, err := gitx.Run(ctxOf(), request.Destination, "add", "-A"); err != nil {
 			return err
 		}
@@ -637,6 +761,7 @@ func executeScaffoldPipeline(app *App, request repoWorkflowRequest, result *repo
 			return err
 		}
 		result.Commit = true
+		result.CommitMessage = message
 		afterSkill, err := runRepoSkillSetups(ctxOf(), workingApp, request.Destination, repoHookAfterCommit, skills)
 		if err != nil {
 			return err
@@ -704,6 +829,19 @@ func finishRepoWorkflow(app *App, request repoWorkflowRequest, result repoWorkfl
 	if result.Remote != nil && result.Remote.Remote.URL != "" {
 		fmt.Fprintf(app.Out, "  remote  %s\n", result.Remote.Remote.URL)
 	}
+	if result.Template != nil {
+		fmt.Fprintf(app.Out, "  template %s (%d files)\n", result.Template.Source, result.Template.AppliedFiles)
+	}
+	if result.Commit {
+		fmt.Fprintf(app.Out, "  commit  %s\n", result.CommitMessage)
+	} else if result.Staged {
+		fmt.Fprintf(app.Out, "  staged  %d path(s) for review\n", result.StagedPaths)
+		if result.CommitDraftProvider == "lazygit" {
+			fmt.Fprintf(app.Out, "  message %s (prefilled for lazygit c)\n", result.CommitMessage)
+		} else {
+			fmt.Fprintf(app.Out, "  message %s\n", result.CommitMessage)
+		}
+	}
 	warnOutsideDiscovery(app, result.Path)
 	if result.Handoff == repoHandoffStart {
 		status, err := gitx.StatusOf(ctxOf(), result.Path)
@@ -719,25 +857,45 @@ func renderRepoDryRun(app *App, request repoWorkflowRequest) error {
 	if operation == "" {
 		operation = "setup"
 	}
-	commit, commitMessage := plannedRepoCommit(request)
+	checkIn, commitMessage := plannedRepoCheckIn(request)
+	template := repoTemplateSummary(request.Template)
 	if request.JSON {
 		return json.NewEncoder(app.Out).Encode(struct {
-			Operation     string              `json:"operation"`
-			DryRun        bool                `json:"dry_run"`
-			Path          string              `json:"path"`
-			Plan          scaffold.Plan       `json:"plan"`
-			Commit        bool                `json:"commit"`
-			CommitMessage string              `json:"commit_message,omitempty"`
-			Publish       *repoPublishRequest `json:"publish,omitempty"`
-			Handoff       repoHandoff         `json:"handoff"`
-		}{operation, true, request.Destination, request.Prepared.Plan, commit, commitMessage, request.Publish, request.Handoff})
+			Operation     string                `json:"operation"`
+			DryRun        bool                  `json:"dry_run"`
+			Path          string                `json:"path"`
+			Plan          scaffold.Plan         `json:"plan"`
+			CheckIn       repoCheckIn           `json:"check_in"`
+			Commit        bool                  `json:"commit"`
+			Stage         bool                  `json:"stage"`
+			CommitMessage string                `json:"commit_message,omitempty"`
+			Publish       *repoPublishRequest   `json:"publish,omitempty"`
+			Template      *repotemplate.Summary `json:"template,omitempty"`
+			Handoff       repoHandoff           `json:"handoff"`
+		}{operation, true, request.Destination, request.Prepared.Plan, checkIn, checkIn == repoCheckInCommit,
+			checkIn == repoCheckInStage, commitMessage, request.Publish, template, request.Handoff})
 	}
 	fmt.Fprintln(app.Out, app.outStyle().title("Dry run — nothing will be changed"))
+	if template != nil {
+		fmt.Fprintln(app.Out, app.outStyle().title("Template snapshot"))
+		fmt.Fprintf(app.Out, "  source     %s\n", template.Source)
+		if template.Ref != "" {
+			fmt.Fprintf(app.Out, "  ref        %s\n", template.Ref)
+		}
+		if template.Subdir != "" {
+			fmt.Fprintf(app.Out, "  subdir     %s\n", template.Subdir)
+		}
+		fmt.Fprintf(app.Out, "  contents   %d files, %d directories\n", template.Files, template.Directories)
+		renderRepoTemplateFilePreview(app, request.Template)
+	}
 	renderPreparedRepoScaffold(app, request.Prepared)
-	if commit {
-		fmt.Fprintf(app.Out, "  commit     yes (%s)\n", commitMessage)
-	} else {
-		fmt.Fprintln(app.Out, "  commit     no")
+	switch checkIn {
+	case repoCheckInCommit:
+		fmt.Fprintf(app.Out, "  check-in   commit (%s)\n", commitMessage)
+	case repoCheckInStage:
+		fmt.Fprintf(app.Out, "  check-in   stage for review (%s)\n", commitMessage)
+	default:
+		fmt.Fprintln(app.Out, "  check-in   none")
 	}
 	if request.Publish != nil {
 		fmt.Fprintf(app.Out, "  upstream   %s:%s/%s (%s)\n", request.Publish.Forge,
@@ -749,42 +907,65 @@ func renderRepoDryRun(app *App, request repoWorkflowRequest) error {
 	return nil
 }
 
+func repoTemplateSummary(snapshot *repotemplate.Snapshot) *repotemplate.Summary {
+	if snapshot == nil {
+		return nil
+	}
+	summary := snapshot.Summary()
+	return &summary
+}
+
+func renderRepoTemplateFilePreview(app *App, snapshot *repotemplate.Snapshot) {
+	if snapshot == nil {
+		return
+	}
+	summary := snapshot.Summary()
+	paths := make([]string, 0, len(summary.PathPreview))
+	for _, path := range summary.PathPreview {
+		paths = append(paths, strconv.Quote(path))
+	}
+	if len(paths) > 0 {
+		suffix := ""
+		if summary.PathPreviewTruncated {
+			suffix = " (more omitted)"
+		}
+		fmt.Fprintf(app.Out, "  paths      %s%s\n", strings.Join(paths, ", "), suffix)
+	}
+	if summary.Live {
+		fmt.Fprintln(app.Out, "  "+app.outStyle().warning("local template uses current files rather than a commit; review them before check-in or publishing"))
+	}
+}
+
 func renderCloneDryRun(app *App, request repoWorkflowRequest) error {
 	if request.JSON {
 		return json.NewEncoder(app.Out).Encode(map[string]any{
-			"operation": "clone", "dry_run": true, "source": request.Ref,
+			"operation": "clone", "dry_run": true, "source": repo.RedactCloneRef(request.Ref),
 			"path": request.Destination, "preset": request.Scaffold.Preset,
-			"commit": false, "publish": nil, "handoff": request.Handoff,
+			"check_in": request.CheckIn, "commit": request.CheckIn == repoCheckInCommit,
+			"stage": request.CheckIn == repoCheckInStage, "publish": nil, "handoff": request.Handoff,
 		})
 	}
 	fmt.Fprintln(app.Out, app.outStyle().title("Dry run — nothing will be cloned"))
-	fmt.Fprintf(app.Out, "  source      %s\n", request.Ref)
+	fmt.Fprintf(app.Out, "  source      %s\n", repo.RedactCloneRef(request.Ref))
 	fmt.Fprintf(app.Out, "  destination %s\n", config.Contract(request.Destination))
 	if request.Scaffold.Preset != "" {
 		fmt.Fprintf(app.Out, "  setup       %s (planned after clone)\n", request.Scaffold.Preset)
 	}
-	fmt.Fprintln(app.Out, "  commit      no (the cloned history is preserved)")
+	fmt.Fprintf(app.Out, "  check-in    %s\n", request.CheckIn)
 	fmt.Fprintln(app.Out, "  upstream    existing clone remote")
 	fmt.Fprintf(app.Out, "  handoff     %s\n", request.Handoff)
 	return nil
 }
 
-func plannedRepoCommit(request repoWorkflowRequest) (bool, string) {
-	commit := request.CommitSetup
-	if request.Kind == repo.AcquireNew {
-		commit = request.Prepared.Plan.Settings.InitialCommit == nil || *request.Prepared.Plan.Settings.InitialCommit
+func plannedRepoCheckIn(request repoWorkflowRequest) (repoCheckIn, string) {
+	mode := request.CheckIn
+	if mode == "" || mode == repoCheckInAuto {
+		mode = repoCheckInNone
 	}
-	if !commit {
-		return false, ""
+	if mode == repoCheckInNone {
+		return mode, ""
 	}
-	message := request.CommitMessage
-	if message == "" {
-		message = request.Prepared.Plan.Settings.CommitMessage
-	}
-	if message == "" {
-		message = "chore: initial commit"
-	}
-	return true, message
+	return mode, repoCommitMessage(request)
 }
 
 func repoDestination(projectRoot, category, name, exact string) (string, error) {
