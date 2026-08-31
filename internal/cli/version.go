@@ -266,19 +266,19 @@ func newerReleaseNote(cached releaseCheck, currentVersion string, now time.Time)
 }
 
 // maybeNoteNewerRelease prints one dim line when the day-old release cache names
-// a newer version than this build. It never reaches the network on this path;
-// when the cache is stale it kicks off a detached refresh for next time.
-func (a *App) maybeNoteNewerRelease(cmd *cobra.Command) {
+// a newer version than this build. TUI callers defer the optional network refresh
+// until their initial View has returned so it cannot contend with first render.
+func (a *App) maybeNoteNewerRelease(cmd *cobra.Command, deferRefresh bool) {
 	if !updateCheckEnabled(a.Cfg) || !interactive() || passiveCommandSkipsNudge(cmd) {
 		return
 	}
 	cached, fresh := readReleaseCheck()
 	if !fresh {
-		go func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
-			defer cancel()
-			_, _ = latestRelease(ctx, true)
-		}()
+		if deferRefresh {
+			a.deferredReleaseRefresh = true
+		} else {
+			a.refreshReleaseDetached()
+		}
 	}
 	note, ok := newerReleaseNote(cached, versionFromBuild(), time.Now())
 	if !ok {
@@ -287,6 +287,14 @@ func (a *App) maybeNoteNewerRelease(cmd *cobra.Command) {
 	fmt.Fprintln(a.Err, a.errStyle().dim(note))
 	cached.NudgedAt = time.Now()
 	writeReleaseCheck(cached)
+}
+
+func (a *App) refreshReleaseDetached() {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		defer cancel()
+		_, _ = latestRelease(ctx, true)
+	}()
 }
 
 func newVersionCmd(app *App) *cobra.Command {

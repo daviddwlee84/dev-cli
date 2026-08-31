@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
+	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -34,7 +35,7 @@ func (m Model) listHeight() int {
 
 func (m Model) listPreambleLines() int {
 	lines := 1 // the table header, or the one-line empty/loading state
-	if m.view == ViewRemote && m.remotesLoading && len(m.visibleRemotes()) > 0 {
+	if m.view == ViewRemote && m.viewLoad(ViewRemote).loading && len(m.visibleRemotes()) > 0 {
 		// Cached REMOTE rows retain an explicit refresh banner above the header.
 		lines++
 	}
@@ -50,7 +51,11 @@ func lineCount(s string) int {
 }
 
 // View implements tea.Model.
-func (m Model) View() string {
+func (m Model) View() (output string) {
+	defer func() {
+		m.trace.MarkOnce(perftrace.TUIInitialViewReturned, perftrace.Fields{View: perftrace.View(m.view.String())})
+		m.signalFirstView()
+	}()
 	if m.quitting {
 		return ""
 	}
@@ -189,7 +194,7 @@ func (m Model) renderTasks() string {
 func (m Model) renderRepos() string {
 	items := m.visibleRepoItems()
 	if len(items) == 0 {
-		if m.loadingLocal {
+		if m.viewLoad(ViewRepos).loading {
 			return "  " + styleDim.Render("Loading local repositories…") + "\n"
 		}
 		return "  " + styleDim.Render("No repositories found. Check paths.scan_roots in your config,"+
@@ -486,12 +491,12 @@ func fitCell(s string, width int) string {
 }
 
 func (m Model) renderRemotes() string {
-	if m.remotesLoading && len(m.remotes) == 0 {
+	if m.viewLoad(ViewRemote).loading && len(m.remotes) == 0 {
 		return "  " + styleDim.Render("Loading repositories from forge CLIs…") + "\n"
 	}
 	rows := m.visibleRemotes()
 	if len(rows) == 0 {
-		if !m.remotesLoaded {
+		if !m.viewLoad(ViewRemote).hasSnapshot {
 			return "  " + styleDim.Render("Remote repositories load when this view is opened.") + "\n"
 		}
 		if m.filter != "" {
@@ -506,7 +511,7 @@ func (m Model) renderRemotes() string {
 	}
 
 	var b strings.Builder
-	if m.remotesLoading {
+	if m.viewLoad(ViewRemote).loading {
 		b.WriteString("  " + styleDim.Render("Showing cached repositories while refreshing…") + "\n")
 	}
 	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-7s  %-*s  %-9s  %-12s  %-7s  %s",
@@ -546,10 +551,10 @@ func (m Model) renderRemotes() string {
 func (m Model) renderFleet() string {
 	rows := m.visibleFleet()
 	if len(rows) == 0 {
-		if m.fleetLoading {
+		if m.viewLoad(ViewFleet).loading {
 			return "  " + styleDim.Render("Loading configured dev hosts…") + "\n"
 		}
-		if !m.fleetLoaded {
+		if !m.viewLoad(ViewFleet).hasSnapshot {
 			return "  " + styleDim.Render("Fleet repositories load when this view is opened.") + "\n"
 		}
 		if !m.showLocalFleet {
@@ -603,15 +608,15 @@ func (m Model) renderFleet() string {
 	return b.String()
 }
 func (m Model) renderSkills() string {
-	if m.skillsLoading {
-		return "  " + styleDim.Render("Loading local agent skills…") + "\n"
-	}
 	if m.skillsChecking {
 		return "  " + styleDim.Render("Checking skill sources…") + "\n"
 	}
+	if m.viewLoad(ViewSkills).loading {
+		return "  " + styleDim.Render("Loading local agent skills…") + "\n"
+	}
 	rows := m.visibleSkills()
 	if len(rows) == 0 {
-		if !m.skillsLoaded {
+		if !m.viewLoad(ViewSkills).hasSnapshot {
 			return "  " + styleDim.Render("Agent skills load when this view is opened.") + "\n"
 		}
 		if m.filter != "" {
@@ -740,7 +745,7 @@ func (m Model) scrollNote(total, from, to int) string {
 }
 
 func (m Model) emptyTasks() string {
-	if m.loadingLocal {
+	if m.viewLoad(ViewTasks).loading {
 		return "  " + styleDim.Render("Loading tasks, repositories, and experiments…") + "\n"
 	}
 	if len(m.rows) == 0 {
@@ -1087,12 +1092,17 @@ func (m Model) renderDetail() string {
 }
 
 func (m Model) renderFooter() string {
+	viewErr, viewStatus := m.viewError(m.view), m.viewStatus(m.view)
 	var status string
 	switch {
 	case m.err != nil:
 		status = styleErr.Render("✗ " + m.err.Error())
+	case viewErr != nil:
+		status = styleErr.Render("✗ " + viewErr.Error())
 	case m.status != "":
 		status = styleOK.Render("✓ " + m.status)
+	case viewStatus != "":
+		status = styleOK.Render("✓ " + viewStatus)
 	}
 
 	var bindings []string

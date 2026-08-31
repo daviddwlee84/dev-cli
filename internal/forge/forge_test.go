@@ -61,9 +61,15 @@ func TestCloneURL(t *testing.T) {
 		t.Errorf("ssh URL should pass through, got %q", got)
 	}
 
+	t.Setenv("GITLAB_HOST", "")
+	t.Setenv("GLAB_HOST", "")
 	gl, _ := forge.For(forge.GitLab)
 	if got := gl.CloneURL("group/repo"); got != "https://gitlab.com/group/repo.git" {
 		t.Errorf("gitlab shorthand: %q", got)
+	}
+	t.Setenv("GITLAB_HOST", "gitlab.example.com")
+	if got := gl.CloneURL("group/repo"); got != "https://gitlab.example.com/group/repo.git" {
+		t.Errorf("self-hosted gitlab shorthand: %q", got)
 	}
 }
 

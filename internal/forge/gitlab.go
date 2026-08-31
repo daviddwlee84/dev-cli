@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 )
@@ -99,17 +100,27 @@ func (g *glab) PublishRepo(ctx context.Context, dir string, req RepoRequest) (Cr
 	return result, nil
 }
 
+func gitLabHost() string {
+	for _, name := range []string{"GITLAB_HOST", "GLAB_HOST"} {
+		if host := strings.TrimSpace(os.Getenv(name)); host != "" {
+			return host
+		}
+	}
+	return "gitlab.com"
+}
+
 // CloneURL renders a clone target.
 func (g *glab) CloneURL(ref string) string {
 	if strings.Contains(ref, "://") || strings.HasPrefix(ref, "git@") {
 		return ref
 	}
-	return "https://gitlab.com/" + strings.TrimSuffix(ref, ".git") + ".git"
+	return "https://" + gitLabHost() + "/" + strings.TrimSuffix(ref, ".git") + ".git"
 }
 
 // ListRepos lists every GitLab project of which the authenticated user is a
-// member, most recently active first. glab owns authentication and self-hosted
-// instance selection; dev only normalises the JSON into the shared shape.
+// member, most recently active first. glab owns authentication; dev passes an
+// explicit GITLAB_HOST/GLAB_HOST (default gitlab.com) so inventory and cache
+// identity never depend on the process's current Git repository.
 func (g *glab) ListRepos(ctx context.Context) ([]RemoteRepo, error) {
 	if !g.Available() {
 		return nil, &ErrNoCLI{Kind: GitLab, Bin: "glab"}
@@ -119,7 +130,7 @@ func (g *glab) ListRepos(ctx context.Context) ([]RemoteRepo, error) {
 	const pageSize = 100
 	var result []RemoteRepo
 	for page := 1; ; page++ {
-		out, err := run(ctx, "glab", "", "api", "projects", "--method", "GET",
+		out, err := run(ctx, "glab", "", "api", "--hostname", gitLabHost(), "projects", "--method", "GET",
 			"-f", "membership=true", "-f", "simple=true", "-f", "per_page=100",
 			"-f", fmt.Sprintf("page=%d", page), "-f", "order_by=last_activity_at", "-f", "sort=desc")
 		if err != nil {

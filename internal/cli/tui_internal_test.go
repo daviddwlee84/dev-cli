@@ -124,15 +124,9 @@ func TestExternalToolCommandModesAreExplicit(t *testing.T) {
 	}
 }
 
-func TestCommandRunnableCachesProbe(t *testing.T) {
-	// A known executable is enough to assert a stable result. The sync.Once in
-	// the closure is what prevents interactive probes from launching a login
-	// shell on every TUI frame.
+func TestCommandRunnableFindsKnownExecutable(t *testing.T) {
 	check := commandRunnable("go version", false)
-	first := check()
-	for i := 0; i < 10; i++ {
-		if check() != first {
-			t.Fatal("availability result changed within one dashboard")
-		}
+	if !check(context.Background()) {
+		t.Fatal("go should be available to the test process")
 	}
 }

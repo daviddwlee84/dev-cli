@@ -260,16 +260,31 @@ it runs. Legacy `.dev.toml` retains its compatibility behavior.
 
 ## Dashboard and forge inventory
 
-The TUI has TASKS, REPOS, FLEET, TRY, REMOTE and SKILLS views, switched with tab or vim-style
-h/l. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions;
+The TUI has TASKS, REPOS, FLEET, TRY, REMOTE and SKILLS views, switched with tab
+or vim-style h/l. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions;
 `a` includes retained history. Archive is a reversible same-filesystem move,
 not deletion or disk reclamation. `?` opens the full key map.
 
+The initial view never waits for runtime/project-root resolution, cache decoding,
+or shell tool probes. TASKS/REPOS/TRY publish independently from one shared local
+cycle; optional tabs remain lazy. Refreshes are generation-scoped: late results
+are ignored, failed refreshes keep usable rows, and valid empty results clear
+obsolete rows. For a one-run diagnostic, set `DEV_TUI_TRACE` to an absolute new
+file. The private bounded trace is written after TUI teardown with relative
+startup/view timings and aggregate row counts only; it excludes names, paths,
+commands, key values, URLs, handles and raw errors, and never enters `stats.db`
+or a network sink. In SKILLS, `c` waits for the initial local snapshot before it
+can run the explicit source check; it never cancels that inventory with an empty
+check.
+
 REMOTE queries authenticated `gh` and `glab` plus configured Azure DevOps
 organization/project targets lazily and fully paginates every repository the
-account can access. A private cache is shown immediately; stale rows stay
-searchable while refresh runs. `/` filters provider, owner/name, visibility and
-description, with `vis:private` for an exact visibility match. Enter opens a local clone; `c`
+account can access. A private cache is decoded after the first view; stale rows
+stay searchable while refresh runs. Malformed/oversized payloads and caches
+fingerprinted for another configured GH/GL host or Azure target are ignored.
+GitLab uses explicit `GITLAB_HOST`/`GLAB_HOST` (default `gitlab.com`) instead of
+cwd inference; a successful empty refresh clears obsolete rows. `/` filters provider,
+owner/name, visibility and description, with `vis:private` for an exact visibility match. Enter opens a local clone; `c`
 confirms before cloning an absent remote. Use `dev repo remote [query] --json`
 for the non-interactive form; `--cached` avoids a network query and `--refresh`
 forces a complete synchronization.
@@ -302,10 +317,14 @@ project = "Platform"
 Install Azure CLI's `azure-devops` extension separately. `dev` never installs
 the extension, logs in, changes Azure defaults, or stores a PAT.
 
-FLEET calls each configured host's own `dev` over SSH, preserving its XDG paths.
-The TUI hides this machine by default because REPOS already shows its richer
-local state; `a` includes local rows. `dev fleet list` remains local plus remote.
-Enter prefers Herdr remote navigation and falls back to an SSH login shell.
+FLEET reuses the accepted REPOS snapshot for the local host, then calls each
+configured host's own `dev` over SSH, preserving its XDG paths. If the current
+REPOS generation is still loading, FLEET waits while keeping usable cached rows
+visible rather than rescanning local repositories. The TUI hides this machine
+by default because REPOS already shows its richer local state; `a` includes
+local rows. Host cache identity includes the SSH port. `dev fleet list` remains
+local plus remote. Enter prefers Herdr remote navigation and falls back to an
+SSH login shell.
 `dev fleet sync` is explicit and strict: it only fast-forwards a clean checkout
 of the same behind-only branch; dirty/ahead/diverged clones are never rewritten.
 
@@ -435,7 +454,7 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 
 15. **Do not call stats.db a cache.** Session/WakaTime observations may not be
    reconstructible. Use `dev stats clear --repo/--source/--all`; use
-   `dev cache clear` only for regenerable remote/size/gitignore/license/note-FTS caches.
+   `dev cache clear` only for regenerable remote/fleet/size/gitignore/license/note-FTS caches.
 
 16. **Archive is not eviction.** `dev tries archive` is a reversible hidden move
    on the same filesystem; it does not free space. Phase 1 has no project-data

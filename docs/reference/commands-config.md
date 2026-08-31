@@ -252,6 +252,15 @@ Key sections:
 | `[stats]` | sampler and optional WakaTime import |
 | `[update]` | `check` (default `true`) — allow the once-a-day "newer release available" hint and its background cache refresh; `DEV_NO_UPDATE_CHECK` overrides it |
 
+`DEV_TUI_TRACE=/absolute/new-file.json` enables a one-run TUI startup/readiness
+trace. The target must be absolute and must not exist; dev never overwrites it.
+The private bounded document is written after TUI teardown and contains relative
+categorical timings plus aggregate row counts rather than names, paths, or raw
+payloads. It is not configuration,
+cache, durable stats, stdout, or network telemetry. For TUI invocations, the
+optional update-cache network refresh is also deferred until the initial view
+has returned.
+
 Repository quick-note Markdown is durable under configured `paths.state_dir/notes`, which defaults to `$XDG_DATA_HOME/dev/notes`. The full-text index at `$XDG_CACHE_HOME/dev/notes.db` is disposable and rebuilds from those files; changing `paths.state_dir` does not move the cache.
 
 ### Scaffold presets

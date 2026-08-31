@@ -6,7 +6,9 @@ import (
 	"io"
 	"os"
 	"runtime/debug"
+	"sync"
 
+	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/skill"
 	"github.com/spf13/cobra"
 )
@@ -68,8 +70,11 @@ func NewRootCommand() *cobra.Command {
 // tests use to capture output without redirecting the process's file
 // descriptors.
 func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
-	app := &App{In: os.Stdin, Out: out, Err: errOut}
+	return newRootCommand(&App{In: os.Stdin, Out: out, Err: errOut})
+}
 
+func newRootCommand(app *App) *cobra.Command {
+	out, errOut := app.Out, app.Err
 	root := &cobra.Command{
 		Use:           "dev",
 		Short:         "Manage repos, worktrees and work-in-progress across agent runtimes",
@@ -103,10 +108,14 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 			if completionInvocation(cmd) {
 				return nil
 			}
+			finish := app.trace.Start(perftrace.AppLoad, perftrace.Fields{})
 			if err := app.Load(); err != nil {
+				finish(perftrace.OutcomeFailed)
 				return err
 			}
-			app.maybeNoteNewerRelease(cmd)
+			finish(perftrace.OutcomeSuccess)
+			deferRefresh := cmd.Name() == "tui" || (cmd.Parent() == nil && app.interactive())
+			app.maybeNoteNewerRelease(cmd, deferRefresh)
 			return nil
 		},
 	}
@@ -190,8 +199,21 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 // is printed here; ExecuteC hands back the command that failed so a usage
 // mistake can be answered with that command's usage rather than the root's.
 func Execute() int {
+	trace, tracePath, traceErr := traceFromEnvironment()
+	app := &App{
+		In: os.Stdin, Out: os.Stdout, Err: os.Stderr,
+		trace: trace, tracePath: tracePath, traceOnce: &sync.Once{},
+	}
+	if traceErr != nil {
+		fmt.Fprintf(os.Stderr, "dev: warning: performance trace disabled: %v\n", traceErr)
+	}
+	app.trace.Mark(perftrace.CLIExecuteBegin, perftrace.Fields{})
+	defer app.finishTrace()
+
 	sweepStaleUpgradeArtifacts()
-	root := NewRootCommand()
+	finishRoot := app.trace.Start(perftrace.CLIRootBuild, perftrace.Fields{})
+	root := newRootCommand(app)
+	finishRoot(perftrace.OutcomeSuccess)
 	cmd, err := root.ExecuteC()
 	if err == nil {
 		return 0

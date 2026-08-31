@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
@@ -24,6 +25,8 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/note"
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
+	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/stats"
@@ -126,7 +129,7 @@ binding runs through $SHELL -lic and the mode is shown in this listing.`,
 			configuredTools := app.Cfg.EffectiveTools()
 			for i, tool := range externalTools(app) {
 				status := "yes"
-				if tool.Available != nil && !tool.Available() {
+				if tool.Probe != nil && !tool.Probe(ctxOf()) {
 					status = style.warning("no — not on PATH")
 				} else {
 					status = style.success(status)
@@ -180,65 +183,143 @@ func tuiStartedTask(r tui.RepoRow, name, branch, base string, res *wt.CreateResu
 	return t
 }
 
+func tuiRemoteCloneDestination(app *App, name string) (string, error) {
+	projectRoot := config.Expand(app.Cfg.Paths.ProjectRoot)
+	if err := os.MkdirAll(projectRoot, 0o755); err != nil {
+		return "", err
+	}
+	destination, err := pathx.JoinChild(projectRoot, name)
+	if err != nil {
+		return "", fmt.Errorf("remote repository name %q is not a safe clone destination: %w", name, err)
+	}
+	return destination, nil
+}
+
 func runTUI(app *App) error {
+	app.traceTUI = true
+	runCtx, cancelRun := context.WithCancel(context.Background())
+	defer cancelRun()
+	finishSetup := app.trace.Start(perftrace.TUISetup, perftrace.Fields{})
 	// --color, NO_COLOR and TERM=dumb governed every other surface but stopped
 	// at the dashboard, which resolved its own palette independently.
 	tui.SetColorEnabled(app.outStyle().enabled)
-	rt := app.Runtime()
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	projectRoot := agentskill.ProjectRoot(ctxOf(), cwd)
+	appState := newTUIAppState(app)
+	runtimeResolver := newTUIRuntimeResolver(app)
+	projectRootResolver := newTUIProjectRootResolver(app.trace, runCtx)
+	localLoader := newTUILocalLoader(app, runtimeResolver)
+	localLoader.current = appState.Current
 
 	reload := func(ctx context.Context) ([]inventory.Row, error) {
-		tasks, err := app.Tasks.List()
+		rt, err := runtimeResolver.Resolve(ctx)
+		if err != nil {
+			return nil, err
+		}
+		tasks, err := appState.Current().Tasks.List()
 		if err != nil {
 			return nil, err
 		}
 		return inventory.Collect(ctx, tasks, rt, inventory.Options{}), nil
 	}
 	reloadRepos := func(ctx context.Context) ([]tui.RepoRow, error) {
+		rt, err := runtimeResolver.Resolve(ctx)
+		if err != nil {
+			return nil, err
+		}
 		// Keep Try repositories in the model's local snapshot so cached REMOTE
 		// rows can be matched and cleared correctly. The REPOS view filters them.
-		return collectReposWithOptions(ctx, app, rt, repoCollectOptions{IncludeTries: true})
+		return collectReposWithOptions(ctx, appState.Current(), rt, repoCollectOptions{IncludeTries: true})
 	}
-	reloadRemote := func(ctx context.Context) ([]tui.RemoteRow, error) {
-		return collectRemotes(ctx, app)
+	reloadRemote := func(ctx context.Context, locals []tui.RepoRow) ([]tui.RemoteRow, error) {
+		return collectRemotesForRows(ctx, appState.Current(), locals)
 	}
-	reloadFleet := func(ctx context.Context) ([]tui.FleetRow, error) {
-		results, _, err := collectFleet(ctx, app, fleetCollectOptions{})
+	reloadFleet := func(ctx context.Context, locals []tui.RepoRow) ([]tui.FleetRow, error) {
+		rt, err := runtimeResolver.Resolve(ctx)
+		if err != nil {
+			return nil, err
+		}
+		snapshot := fleetSnapshotFromRepoRows(locals, rt.Name())
+		results, _, err := collectFleet(ctx, appState.Current(), fleetCollectOptions{LocalSnapshot: &snapshot})
 		return fleetRows(results), err
 	}
 	reloadSkills := func(ctx context.Context) ([]agentskill.Skill, error) {
+		projectRoot, err := projectRootResolver.Resolve(ctx)
+		if err != nil {
+			return nil, err
+		}
 		return agentskill.List(ctx, projectRoot, agentskill.ListOptions{})
 	}
 	reloadTries := func(ctx context.Context, includeAll bool) ([]tui.TryRow, error) {
-		return collectTries(ctx, app, rt, includeAll)
+		rt, err := runtimeResolver.Resolve(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return collectTries(ctx, appState.Current(), rt, includeAll)
+	}
+	openResolved := func(ctx context.Context, dir, label, statusLabel string) (tui.OpenResult, error) {
+		rt, err := runtimeResolver.Resolve(ctx)
+		if err != nil {
+			return tui.OpenResult{}, err
+		}
+		handle, err := openCheckout(ctx, rt, dir, label)
+		if err != nil {
+			return tui.OpenResult{}, err
+		}
+		if rt.Name() == "none" {
+			return tui.OpenResult{Directory: dir}, nil
+		}
+		if statusLabel == "" {
+			statusLabel = label
+		}
+		return tui.OpenResult{
+			Status:        fmt.Sprintf("%s open in %s (%s)", statusLabel, rt.Name(), handle.Handle),
+			RuntimeHandle: handle.Handle,
+		}, nil
 	}
 
 	actions := tui.Actions{
-		Reload:       reload,
-		ReloadRepos:  reloadRepos,
-		ReloadRemote: reloadRemote,
-		ReloadFleet:  reloadFleet,
-		ReloadSkills: reloadSkills,
+		Reload:                reload,
+		ReloadRepos:           reloadRepos,
+		ReloadRemoteWithRepos: reloadRemote,
+		ReloadFleetWithRepos:  reloadFleet,
+		ReloadSkills:          reloadSkills,
+		LoadRemoteCache: func(context.Context) tui.RemoteCacheResult {
+			rows, found, stale := cachedRemoteRows(appState.Current())
+			return tui.RemoteCacheResult{Rows: rows, Found: found, Stale: stale}
+		},
+		LoadFleetCache: func(context.Context) tui.FleetCacheResult {
+			rows := cachedFleetRows(appState.Current())
+			return tui.FleetCacheResult{Rows: rows, Found: len(rows) > 0}
+		},
+		AfterFirstView: func(context.Context) {
+			if app.deferredReleaseRefresh {
+				app.refreshReleaseDetached()
+			}
+		},
 		CheckSkills: func(ctx context.Context, rows []agentskill.Skill) []agentskill.Skill {
 			return agentskill.CheckUpdates(ctx, rows)
 		},
 		AddSkill: func() (*exec.Cmd, error) {
+			projectRoot, ok := projectRootResolver.Current()
+			if !ok {
+				return nil, errors.New("project root is still loading")
+			}
 			return agentskill.AddCommand(context.Background(), projectRoot, agentskill.DefaultSource)
 		},
 		UpdateSkill: func(row agentskill.Skill) (*exec.Cmd, error) {
+			projectRoot, ok := projectRootResolver.Current()
+			if !ok {
+				return nil, errors.New("project root is still loading")
+			}
 			return agentskill.UpdateCommand(context.Background(), projectRoot, row.Name, row.Scope)
 		},
 		Repos: tui.RepoActions{
 			Patch: func(ctx context.Context, row tui.RepoRow, tags []string, note string) (string, error) {
+				active := appState.Current()
 				remove := []string(nil)
 				if row.Asset != nil {
 					remove = append(remove, row.Asset.Tags...)
 				}
-				marked, err := patchRepositoryCatalog(ctx, app, row.Repo, tags, remove, &note)
+				marked, err := patchRepositoryCatalog(ctx, active, row.Repo, tags, remove, &note)
 				if err != nil {
 					return "", err
 				}
@@ -248,52 +329,59 @@ func runTUI(app *App) error {
 		Tries: tui.TryActions{
 			Reload: reloadTries,
 			Apply: func(ctx context.Context, request tui.TryRequest) (tui.TryActionResult, error) {
-				return applyTryAction(ctx, app, rt, request)
+				rt, err := runtimeResolver.Resolve(ctx)
+				if err != nil {
+					return tui.TryActionResult{}, err
+				}
+				return applyTryAction(ctx, appState.Current(), rt, request)
 			},
 		},
 		Notes: tui.NoteActions{
 			List: func(ctx context.Context, target tui.NoteTarget) ([]*note.Note, error) {
-				entry, _, err := ensureNoteRepository(ctx, app, target)
+				active := appState.Current()
+				entry, _, err := ensureNoteRepository(ctx, active, target)
 				if err != nil {
 					return nil, err
 				}
-				return app.Notes.List(entry.ID)
+				return active.Notes.List(entry.ID)
 			},
 			Search: func(ctx context.Context, target tui.NoteTarget, query string) ([]*note.Note, error) {
-				entry, _, err := ensureNoteRepository(ctx, app, target)
+				active := appState.Current()
+				entry, _, err := ensureNoteRepository(ctx, active, target)
 				if err != nil {
 					return nil, err
 				}
-				return app.Notes.Search(query, entry.ID, 100)
+				return active.Notes.Search(query, entry.ID, 100)
 			},
 			Add: func(ctx context.Context, target tui.NoteTarget, body string) (string, error) {
-				entry, _, err := ensureNoteRepository(ctx, app, target)
+				active := appState.Current()
+				entry, _, err := ensureNoteRepository(ctx, active, target)
 				if err != nil {
 					return "", err
 				}
-				n, err := app.Notes.Add(ctx, entry.ID, entry.Title(), body, nil)
+				n, err := active.Notes.Add(ctx, entry.ID, entry.Title(), body, nil)
 				if err != nil {
 					return "", err
 				}
 				return "added note " + n.ID[:8] + " to " + entry.Title(), nil
 			},
 			Delete: func(ctx context.Context, n *note.Note) (string, error) {
-				if err := app.Notes.Delete(ctx, n.ID); err != nil {
+				if err := appState.Current().Notes.Delete(ctx, n.ID); err != nil {
 					return "", err
 				}
 				return "deleted note " + n.ID[:8], nil
 			},
 			Edit: func(n *note.Note) (tui.NoteEdit, error) {
-				return prepareTUINoteEdit(app, n)
+				return prepareTUINoteEdit(appState.Current(), n)
 			},
 		},
 		Sizes: tui.SizeActions{
 			Start: func(ctx context.Context, targets []diskusage.Target, force bool) diskusage.Load {
-				return app.Sizes.Start(ctx, targets, force)
+				return appState.Current().Sizes.Start(ctx, targets, force)
 			},
-			Cancel: app.Sizes.Cancel,
+			Cancel: func(loadID uint64) { appState.Current().Sizes.Cancel(loadID) },
 		},
-		Runtime:     rt,
+		Local:       tui.LocalActions{Start: localLoader.Start},
 		Tools:       externalTools(app),
 		RepoColumns: app.Cfg.EffectiveRepoColumns(),
 		RepoSort:    app.Cfg.EffectiveRepoSort(),
@@ -308,27 +396,13 @@ func runTUI(app *App) error {
 			if _, err := os.Stat(checkout); err != nil {
 				return tui.OpenResult{}, fmt.Errorf("%s has no checkout — run `dev resume %s`", t.Title(), t.ID)
 			}
-			handle, err := openCheckout(ctx, rt, checkout, t.Title())
-			if err != nil {
-				return tui.OpenResult{}, err
-			}
 			// Enter is navigation only. Claiming a writer is an explicit
 			// `dev resume`/start action with collision checks.
-			if rt.Name() == "none" {
-				return tui.OpenResult{}, nil
-			}
-			return tui.OpenResult{Status: fmt.Sprintf("%s open in %s (%s)", t.Title(), rt.Name(), handle.Handle), RuntimeHandle: handle.Handle}, nil
+			return openResolved(ctx, checkout, t.Title(), "")
 		},
 
 		OpenRepo: func(ctx context.Context, r tui.RepoRow) (tui.OpenResult, error) {
-			handle, err := openCheckout(ctx, rt, r.Repo.Path, r.Repo.Name)
-			if err != nil {
-				return tui.OpenResult{}, err
-			}
-			if rt.Name() == "none" {
-				return tui.OpenResult{}, nil
-			}
-			return tui.OpenResult{Status: fmt.Sprintf("%s open in %s (%s)", r.Repo.Name, rt.Name(), handle.Handle), RuntimeHandle: handle.Handle}, nil
+			return openResolved(ctx, r.Repo.Path, r.Repo.Name, "")
 		},
 
 		OpenCheckout: func(ctx context.Context, r tui.RepoRow, checkout inventory.RepoCheckout) (tui.OpenResult, error) {
@@ -337,31 +411,18 @@ func runTUI(app *App) error {
 				branch = filepath.Base(checkout.Worktree.Path)
 			}
 			label := r.Repo.Name + "/" + branch
-			handle, err := openCheckout(ctx, rt, checkout.Worktree.Path, label)
-			if err != nil {
-				return tui.OpenResult{}, err
-			}
-			if rt.Name() == "none" {
-				return tui.OpenResult{}, nil
-			}
-			return tui.OpenResult{Status: fmt.Sprintf("%s open in %s (%s)", label, rt.Name(), handle.Handle), RuntimeHandle: handle.Handle}, nil
+			return openResolved(ctx, checkout.Worktree.Path, label, "")
 		},
 
 		OpenRemote: func(ctx context.Context, r tui.RemoteRow) (tui.OpenResult, error) {
 			if r.LocalPath == "" {
 				return tui.OpenResult{}, fmt.Errorf("%s has no local checkout; press c to clone it", r.Repo.FullName)
 			}
-			handle, err := openCheckout(ctx, rt, r.LocalPath, r.Repo.Name)
-			if err != nil {
-				return tui.OpenResult{}, err
-			}
-			if rt.Name() == "none" {
-				return tui.OpenResult{}, nil
-			}
-			return tui.OpenResult{Status: fmt.Sprintf("%s open in %s (%s)", r.Repo.FullName, rt.Name(), handle.Handle), RuntimeHandle: handle.Handle}, nil
+			return openResolved(ctx, r.LocalPath, r.Repo.Name, r.Repo.FullName)
 		},
 
 		OpenFleet: func(ctx context.Context, row tui.FleetRow) (*exec.Cmd, error) {
+			active := appState.Current()
 			if row.Repository == nil {
 				return nil, fmt.Errorf("host %s has no repository selected", row.Host)
 			}
@@ -370,11 +431,11 @@ func runTUI(app *App) error {
 				return nil, err
 			}
 			args := []string{}
-			if app.configPath != "" {
-				args = append(args, "--config", app.configPath)
+			if active.configPath != "" {
+				args = append(args, "--config", active.configPath)
 			}
-			if app.remotesPath != "" {
-				args = append(args, "--remotes", app.remotesPath)
+			if active.remotesPath != "" {
+				args = append(args, "--remotes", active.remotesPath)
 			}
 			if row.Local {
 				args = append(args, "repo", "open", row.Repository.Path)
@@ -385,55 +446,66 @@ func runTUI(app *App) error {
 		},
 
 		CloneRemote: func(ctx context.Context, r tui.RemoteRow) (tui.OpenResult, string, error) {
-			dest := filepath.Join(config.Expand(app.Cfg.Paths.ProjectRoot), r.Repo.Name)
+			dest, err := tuiRemoteCloneDestination(appState.Current(), r.Repo.Name)
+			if err != nil {
+				return tui.OpenResult{}, "", err
+			}
 			if _, err := os.Stat(dest); err == nil {
 				return tui.OpenResult{}, "", fmt.Errorf("%s already exists; add it to scan_roots or clone somewhere explicit",
 					config.Contract(dest))
 			}
-			if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-				return tui.OpenResult{}, "", err
-			}
 			if _, err := gitx.Run(ctx, filepath.Dir(dest), "clone", r.Repo.CloneURL, dest); err != nil {
 				return tui.OpenResult{}, "", err
 			}
-			handle, err := openCheckout(ctx, rt, dest, r.Repo.Name)
+			opened, err := openResolved(ctx, dest, r.Repo.Name, r.Repo.FullName)
 			if err != nil {
 				return tui.OpenResult{}, "", fmt.Errorf("cloned to %s, but could not open it: %w", config.Contract(dest), err)
 			}
-			if rt.Name() == "none" {
-				return tui.OpenResult{Status: "cloned " + r.Repo.FullName + " to " + config.Contract(dest)}, dest, nil
+			if opened.Directory != "" {
+				opened.Status = "cloned " + r.Repo.FullName + " to " + config.Contract(dest)
+			} else {
+				opened.Status = fmt.Sprintf("cloned %s to %s; %s", r.Repo.FullName, config.Contract(dest), opened.Status)
 			}
-			return tui.OpenResult{
-				Status:        fmt.Sprintf("cloned %s to %s; open in %s (%s)", r.Repo.FullName, config.Contract(dest), rt.Name(), handle.Handle),
-				RuntimeHandle: handle.Handle,
-			}, dest, nil
+			return opened, dest, nil
 		},
 
-		Park: func(ctx context.Context, t *task.Task, next string) (string, error) {
-			if next != "" {
-				t.Next = next
+		Park: func(ctx context.Context, selected *task.Task, next string) (string, error) {
+			active := appState.Current()
+			current, err := active.Tasks.Get(selected.ID)
+			if err != nil {
+				return "", err
 			}
-			runtimeForTask(app, t) // normalize empty handle/name provenance
-			if t.RuntimeHandle != "" {
-				if _, _, err := closeTaskRuntime(ctx, app, t, checkoutOf(t)); err != nil {
+			updated := *current
+			if next != "" {
+				updated.Next = next
+			}
+			runtimeForTask(active, &updated) // normalize empty handle/name provenance
+			if updated.RuntimeHandle != "" {
+				if _, _, err := closeTaskRuntime(ctx, active, &updated, checkoutOf(&updated)); err != nil {
 					return "", err
 				}
 			}
 			// The dashboard only parks warm: going cold removes a checkout,
 			// which is too consequential for a single keystroke.
-			t.State, t.Owner = task.Warm, config.Hostname()
-			if err := app.Tasks.Save(t); err != nil {
+			updated.State, updated.Owner = task.Warm, config.Hostname()
+			if err := active.Tasks.Save(&updated); err != nil {
 				return "", err
 			}
-			return t.Title() + " parked warm — worktree and branch kept", nil
+			return updated.Title() + " parked warm — worktree and branch kept", nil
 		},
 
-		SetNext: func(ctx context.Context, t *task.Task, next string) error {
-			t.Next = next
-			if err := app.Tasks.Save(t); err != nil {
+		SetNext: func(ctx context.Context, selected *task.Task, next string) error {
+			active := appState.Current()
+			current, err := active.Tasks.Get(selected.ID)
+			if err != nil {
 				return err
 			}
-			annotate(app, runtimeForTask(app, t), t)
+			updated := *current
+			updated.Next = next
+			if err := active.Tasks.Save(&updated); err != nil {
+				return err
+			}
+			annotate(active, runtimeForTask(active, &updated), &updated)
 			return nil
 		},
 
@@ -441,13 +513,20 @@ func runTUI(app *App) error {
 		// I am working on" — the step that otherwise means dropping out of the
 		// dashboard to type a command.
 		Start: func(ctx context.Context, r tui.RepoRow, name string) (string, error) {
-			spec, err := buildStartSpecForRepository(ctx, app, r.Repo, startRequest{
+			active := appState.Current()
+			rt, err := runtimeResolver.Resolve(ctx)
+			if err != nil {
+				return "", err
+			}
+			actionApp := *active
+			actionApp.runtimeInstance = rt
+			spec, err := buildStartSpecForRepository(ctx, &actionApp, r.Repo, startRequest{
 				Name: name, Mode: task.ModeWorktree,
 			})
 			if err != nil {
 				return "", err
 			}
-			started, err := executeStartSpec(ctx, app, spec, nil)
+			started, err := executeStartSpec(ctx, &actionApp, spec, nil)
 			if err != nil {
 				return "", err
 			}
@@ -455,7 +534,12 @@ func runTUI(app *App) error {
 		},
 
 		StartDirect: func(ctx context.Context, r tui.RepoRow, name string) (string, error) {
-			if err := guardSharedCheckout(ctx, app, rt, r.Repo.Path); err != nil {
+			active := appState.Current()
+			rt, err := runtimeResolver.Resolve(ctx)
+			if err != nil {
+				return "", err
+			}
+			if err := guardSharedCheckout(ctx, active, rt, r.Repo.Path); err != nil {
 				return "", err
 			}
 			st, err := gitx.StatusOf(ctx, r.Repo.Path)
@@ -466,7 +550,7 @@ func runTUI(app *App) error {
 				return "", fmt.Errorf("direct task needs a named branch; this repo has detached HEAD")
 			}
 			id := task.MakeID(r.Repo.Name, st.Branch)
-			if existing, err := app.Tasks.Get(id); err == nil && existing.State != task.Done {
+			if existing, err := active.Tasks.Get(id); err == nil && existing.State != task.Done {
 				return "", fmt.Errorf("task %s already exists (state %s)", existing.ID, existing.State)
 			}
 			handle, err := rt.Open(ctx, r.Repo.Path, r.Repo.Name+"/"+name)
@@ -479,15 +563,16 @@ func runTUI(app *App) error {
 				State: task.Hot, Owner: config.Hostname(),
 			}
 			setTaskRuntime(t, rt, handle)
-			if err := app.Tasks.Save(t); err != nil {
+			if err := active.Tasks.Save(t); err != nil {
 				return "", err
 			}
-			annotate(app, rt, t)
+			annotate(active, rt, t)
 			return fmt.Sprintf("tracking %s directly on %s; no branch/worktree created", name, st.Branch), nil
 		},
 
 		LoadStats: func(ctx context.Context, repoName string) (tui.StatsPanel, error) {
-			store, err := stats.Open(stats.Path(app.Cfg.StateDir()))
+			active := appState.Current()
+			store, err := stats.Open(stats.Path(active.Cfg.StateDir()))
 			if err != nil {
 				return tui.StatsPanel{}, err
 			}
@@ -517,11 +602,12 @@ func runTUI(app *App) error {
 		},
 
 		BackfillStats: func(ctx context.Context, repoName string) error {
-			r, _, err := repo.Resolve(ctx, app.Cfg.DiscoveryRoots(), repoName)
+			active := appState.Current()
+			r, _, err := repo.Resolve(ctx, active.Cfg.DiscoveryRoots(), repoName)
 			if err != nil {
 				return err
 			}
-			store, err := stats.Open(stats.Path(app.Cfg.StateDir()))
+			store, err := stats.Open(stats.Path(active.Cfg.StateDir()))
 			if err != nil {
 				return err
 			}
@@ -531,36 +617,42 @@ func runTUI(app *App) error {
 		},
 
 		EditConfig: func() (*exec.Cmd, error) {
-			proc, _, _, err := configEditorProcess(app, "")
+			proc, _, _, err := configEditorProcess(appState.Current(), "")
 			return proc, err
 		},
 
 		EditFleetConfig: func() (*exec.Cmd, error) {
-			return fleetConfigEditorProcess(app, "")
+			return fleetConfigEditorProcess(appState.Current(), "")
 		},
 
 		// loadFleetConfig applies defaults and re-runs the private-mode check,
 		// so an edit that loosens remotes.toml's permissions while it holds a
 		// plaintext password is caught here rather than at the next fan-out.
 		ValidateFleetConfig: func() error {
-			_, err := loadFleetConfig(app)
+			_, err := loadFleetConfig(appState.Current())
 			return err
 		},
 
 		ReloadConfig: func(ctx context.Context) (tui.ConfigUpdate, string, error) {
-			oldRuntime := rt.Name()
-			if err := app.Load(); err != nil {
+			currentRuntime, err := runtimeResolver.Resolve(ctx)
+			if err != nil {
+				return tui.ConfigUpdate{}, "", err
+			}
+			oldRuntime := currentRuntime.Name()
+			next, err := appState.Prepare(ctx)
+			if err != nil {
 				return tui.ConfigUpdate{}, "", err
 			}
 			status := "config + data reloaded"
-			if nextRuntime := app.Runtime().Name(); nextRuntime != oldRuntime {
+			if nextRuntime := next.Runtime().Name(); nextRuntime != oldRuntime {
 				status += fmt.Sprintf("; restart TUI to switch runtime %s → %s", oldRuntime, nextRuntime)
 			}
 			return tui.ConfigUpdate{
-				Tools:       externalTools(app),
-				RepoColumns: app.Cfg.EffectiveRepoColumns(),
-				RepoSort:    app.Cfg.EffectiveRepoSort(),
-				RepoReverse: app.Cfg.TUI.Repos.Reverse,
+				Apply:       func() { appState.Commit(next) },
+				Tools:       externalTools(next),
+				RepoColumns: next.Cfg.EffectiveRepoColumns(),
+				RepoSort:    next.Cfg.EffectiveRepoSort(),
+				RepoReverse: next.Cfg.TUI.Repos.Reverse,
 			}, status, nil
 		},
 	}
@@ -568,14 +660,12 @@ func runTUI(app *App) error {
 	// Enter the alternate screen immediately. Local inventory is loaded by
 	// Init in the background rather than making the terminal appear frozen
 	// while dozens of repos are probed.
-	model := tui.New(actions, nil, nil).BeginLoading()
-	if cached, ok, stale := cachedRemoteRows(app); ok {
-		model = model.WithRemotes(cached).WithRemotesStale(stale)
-	}
-	if cached := cachedFleetRows(app); len(cached) > 0 {
-		model = model.WithFleet(cached)
-	}
+	model := tui.New(actions, nil, nil).WithTrace(app.trace).WithContext(runCtx).BeginLoading()
+	finishSetup(perftrace.OutcomeSuccess)
+	app.trace.Mark(perftrace.TUIProgramRunBegin, perftrace.Fields{})
 	final, err := tea.NewProgram(model, tea.WithAltScreen()).Run()
+	cancelRun()
+	app.finishTrace()
 	if err != nil {
 		return err
 	}
@@ -586,6 +676,10 @@ func runTUI(app *App) error {
 			return app.cdDirective(dir)
 		}
 		if handle := m.Activation(); handle != "" {
+			rt, resolveErr := runtimeResolver.Resolve(ctxOf())
+			if resolveErr != nil {
+				return resolveErr
+			}
 			return activateRuntime(ctxOf(), rt, handle)
 		}
 	}
@@ -772,6 +866,11 @@ type repoCollectOptions struct {
 	IncludeTries bool
 	Sessions     []runtime.Session
 	SessionsSet  bool
+	Tasks        []*task.Task
+	TasksSet     bool
+	Repos        []repo.Repo
+	ReposSet     bool
+	Limiter      *inventory.Limiter
 }
 
 // collectRepos builds the default repository view: what exists, plus how much
@@ -781,9 +880,13 @@ func collectRepos(ctx context.Context, app *App, rt runtime.Runtime) ([]tui.Repo
 }
 
 func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, options repoCollectOptions) ([]tui.RepoRow, error) {
-	repos, err := repo.Discover(ctx, app.Cfg.DiscoveryRoots(), repo.DefaultOptions())
-	if err != nil {
-		return nil, err
+	repos := options.Repos
+	var err error
+	if !options.ReposSet {
+		repos, err = repo.Discover(ctx, app.Cfg.DiscoveryRoots(), repo.DefaultOptions())
+		if err != nil {
+			return nil, err
+		}
 	}
 	assets, catalogComplete, err := joinRepoAssets(app, repos)
 	if err != nil {
@@ -801,9 +904,12 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 		}
 		repos, assets = visibleRepos, visibleAssets
 	}
-	tasks, err := app.Tasks.List()
-	if err != nil {
-		return nil, err
+	tasks := options.Tasks
+	if !options.TasksSet {
+		tasks, err = app.Tasks.List()
+		if err != nil {
+			return nil, err
+		}
 	}
 	byRepo := map[string][]*task.Task{}
 	for _, t := range tasks {
@@ -827,15 +933,22 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 	out := make([]tui.RepoRow, len(repos))
 	// Each repo needs status, worktree and remote subprocesses. Serialising
 	// ~3*56 git processes was the measured 4.2s startup bottleneck; eight
-	// workers brings that down without forking hundreds at once.
-	sem := make(chan struct{}, 8)
+	// workers brings that down without forking hundreds at once. TUI callers
+	// share the limiter with task enrichment.
+	limiter := options.Limiter
+	if limiter == nil {
+		limiter = inventory.NewLimiter(8)
+	}
 	var wg sync.WaitGroup
 	for i, r := range repos {
 		wg.Add(1)
 		go func(i int, r repo.Repo) {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+			release, ok := limiter.Acquire(ctx)
+			if !ok {
+				return
+			}
+			defer release()
 
 			row := tui.RepoRow{Repo: r, Asset: assets[i]}
 			if row.Asset != nil {
@@ -903,27 +1016,23 @@ func externalTools(app *App) []tui.Tool {
 		}
 		out = append(out, tui.Tool{
 			Key: t.Key, Name: name, Command: command,
-			Available: commandRunnable(run, t.Interactive),
+			Probe: commandRunnable(run, t.Interactive),
 		})
 	}
 	return out
 }
 
 // commandRunnable resolves the command's first word on PATH, expanding a
-// leading environment variable so "$EDITOR ." checks the editor itself.
-func commandRunnable(run string, interactive bool) func() bool {
-	// Availability is stable for the lifetime of one dashboard. In particular,
-	// probing an interactive alias starts a login shell; doing that on every
-	// render would turn a 60fps UI into a shell-launch benchmark.
-	var once sync.Once
-	available := false
-	return func() bool {
-		once.Do(func() { available = checkCommandRunnable(run, interactive) })
-		return available
-	}
+// leading environment variable so "$EDITOR ." checks the editor itself. The
+// returned probe is run by a bounded Bubble Tea command, never by View.
+func commandRunnable(run string, interactive bool) func(context.Context) bool {
+	return func(ctx context.Context) bool { return checkCommandRunnable(ctx, run, interactive) }
 }
 
-func checkCommandRunnable(run string, interactive bool) bool {
+func checkCommandRunnable(ctx context.Context, run string, interactive bool) bool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	word := firstWord(run)
 	if strings.HasPrefix(word, "$") {
 		word = os.Getenv(strings.TrimPrefix(word, "$"))
@@ -938,9 +1047,9 @@ func checkCommandRunnable(run string, interactive bool) bool {
 	if interactive {
 		// Ask the configured shell after it loads its rc files; LookPath
 		// cannot see aliases or functions.
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		probeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
-		probe := exec.CommandContext(ctx, shellPath(), "-lic",
+		probe := exec.CommandContext(probeCtx, shellPath(), "-lic",
 			`command -v "$1" >/dev/null 2>&1`, "dev-tool-probe", word)
 		return probe.Run() == nil
 	}
@@ -973,29 +1082,48 @@ func remoteCachePath() string {
 	return filepath.Join(config.CacheHome(), "dev", "remotes.json")
 }
 
+func remoteCacheSourceID(app *App) string {
+	parts := []string{
+		"forge-source-v1",
+		"GH_HOST=" + os.Getenv("GH_HOST"),
+		"GITLAB_HOST=" + os.Getenv("GITLAB_HOST"),
+		"GLAB_HOST=" + os.Getenv("GLAB_HOST"),
+	}
+	for _, target := range app.Cfg.Forge.AzureDevOps {
+		parts = append(parts, "azure="+target.Organization+"\x00"+target.Project)
+	}
+	sort.Strings(parts)
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return fmt.Sprintf("%x", sum[:])
+}
+
 // cachedRemoteRows reads only the private JSON cache — no repository scan or
 // subprocess — so it is safe on the startup path. Local clone markers are
 // filled when the background local inventory arrives.
 func cachedRemoteRows(app *App) ([]tui.RemoteRow, bool, bool) {
 	cache, ok := forge.LoadCacheAny(remoteCachePath())
-	if !ok {
+	sourceID := remoteCacheSourceID(app)
+	if !ok || cache.SourceID != sourceID {
 		return nil, false, false
 	}
 	out := make([]tui.RemoteRow, 0, len(cache.Repos))
 	for _, rr := range cache.Repos {
 		out = append(out, tui.RemoteRow{Repo: rr})
 	}
-	applyCatalogRemoteMatches(app, out)
-	return out, true, !cache.Fresh(app.Cfg.Forge.CacheTTL.Duration)
+	return out, true, !cache.FreshFor(app.Cfg.Forge.CacheTTL.Duration, sourceID)
 }
 
 // cachedRemotesForRepoRows uses the local repo data the dashboard already
 // collected, avoiding another process-spawning scan on startup.
 func cachedRemotesForRepoRows(app *App, locals []tui.RepoRow) ([]tui.RemoteRow, bool) {
-	cache, ok := forge.LoadCache(remoteCachePath(), app.Cfg.Forge.CacheTTL.Duration)
-	if !ok {
+	cache, ok := forge.LoadCacheAny(remoteCachePath())
+	if !ok || !cache.FreshFor(app.Cfg.Forge.CacheTTL.Duration, remoteCacheSourceID(app)) {
 		return nil, false
 	}
+	return matchRemoteRepoRows(cache.Repos, locals), true
+}
+
+func matchRemoteRepoRows(remoteRepos []forge.RemoteRepo, locals []tui.RepoRow) []tui.RemoteRow {
 	byRemote := map[string]tui.RepoRow{}
 	ambiguous := map[string]bool{}
 	for _, r := range locals {
@@ -1013,8 +1141,8 @@ func cachedRemotesForRepoRows(app *App, locals []tui.RepoRow) ([]tui.RemoteRow, 
 		}
 		byRemote[key] = r
 	}
-	out := make([]tui.RemoteRow, 0, len(cache.Repos))
-	for _, rr := range cache.Repos {
+	out := make([]tui.RemoteRow, 0, len(remoteRepos))
+	for _, rr := range remoteRepos {
 		row := tui.RemoteRow{Repo: rr}
 		if local, ok := byRemote[string(rr.Forge)+"/"+strings.ToLower(rr.FullName)]; ok {
 			row.LocalPath, row.LocalName = local.Repo.Path, local.Repo.Display()
@@ -1025,16 +1153,15 @@ func cachedRemotesForRepoRows(app *App, locals []tui.RepoRow) ([]tui.RemoteRow, 
 		}
 		out = append(out, row)
 	}
-	applyCatalogRemoteMatches(app, out)
-	return out, true
+	return out
 }
 
 // cachedRemotes returns a fresh, already-local-matched cache for instant TUI
 // navigation. Local paths are recomputed rather than cached because clones can
 // move independently of the forge inventory.
 func cachedRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, bool) {
-	cache, ok := forge.LoadCache(remoteCachePath(), app.Cfg.Forge.CacheTTL.Duration)
-	if !ok {
+	cache, ok := forge.LoadCacheAny(remoteCachePath())
+	if !ok || !cache.FreshFor(app.Cfg.Forge.CacheTTL.Duration, remoteCacheSourceID(app)) {
 		return nil, false
 	}
 	return matchRemoteLocals(ctx, app, cache.Repos), true
@@ -1042,7 +1169,7 @@ func cachedRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, bool) {
 
 func cachedRemotesAny(ctx context.Context, app *App) ([]tui.RemoteRow, forge.Cache, bool) {
 	cache, ok := forge.LoadCacheAny(remoteCachePath())
-	if !ok {
+	if !ok || (cache.SourceID != "" && cache.SourceID != remoteCacheSourceID(app)) {
 		return nil, forge.Cache{}, false
 	}
 	return matchRemoteLocals(ctx, app, cache.Repos), cache, true
@@ -1051,13 +1178,38 @@ func cachedRemotesAny(ctx context.Context, app *App) ([]tui.RemoteRow, forge.Cac
 // collectRemotes aggregates configured forge CLIs, caches the normalised response, then
 // marks remotes that already have a checkout under the configured scan roots.
 // Calls run concurrently so one slow forge does not serialise the other.
+type remoteCollectOptions struct {
+	Locals       []tui.RepoRow
+	LocalsSet    bool
+	Providers    []forge.Forge
+	ProvidersSet bool
+}
+
 func collectRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, error) {
+	return collectRemotesWithOptions(ctx, app, remoteCollectOptions{})
+}
+
+func collectRemotesForRows(ctx context.Context, app *App, locals []tui.RepoRow) ([]tui.RemoteRow, error) {
+	return collectRemotesWithOptions(ctx, app, remoteCollectOptions{Locals: locals, LocalsSet: true})
+}
+
+func collectRemotesWithOptions(ctx context.Context, app *App, options remoteCollectOptions) ([]tui.RemoteRow, error) {
 	type result struct {
 		kind  forge.Kind
 		repos []forge.RemoteRepo
 		err   error
 	}
-	providers := configuredForges(app)
+	sourceID := remoteCacheSourceID(app)
+	matchRows := func(repos []forge.RemoteRepo) []tui.RemoteRow {
+		if options.LocalsSet {
+			return matchRemoteRepoRows(repos, options.Locals)
+		}
+		return matchRemoteLocals(ctx, app, repos)
+	}
+	providers := options.Providers
+	if !options.ProvidersSet {
+		providers = configuredForges(app)
+	}
 	ch := make(chan result, len(providers))
 	var wg sync.WaitGroup
 	available := 0
@@ -1087,11 +1239,12 @@ func collectRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, error) {
 	wg.Wait()
 	close(ch)
 	if available == 0 {
-		if cached, _, ok := cachedRemotesAny(ctx, app); ok {
+		if cached, ok := forge.LoadCacheAny(remoteCachePath()); ok && cached.SourceID == sourceID {
+			rows := matchRows(cached.Repos)
 			if len(unavailable) > 0 {
-				return cached, errors.Join(unavailable...)
+				return rows, errors.Join(unavailable...)
 			}
-			return cached, fmt.Errorf("no supported forge CLI is installed")
+			return rows, fmt.Errorf("no supported forge CLI is installed")
 		}
 		if len(unavailable) > 0 {
 			return nil, errors.Join(unavailable...)
@@ -1100,6 +1253,9 @@ func collectRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, error) {
 	}
 
 	old, _ := forge.LoadCacheAny(remoteCachePath())
+	if old.SourceID != sourceID {
+		old = forge.Cache{}
+	}
 	byProvider := map[forge.Kind][]forge.RemoteRepo{}
 	statuses := map[forge.Kind]forge.ProviderStatus{}
 	for _, r := range old.Repos {
@@ -1109,6 +1265,7 @@ func collectRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, error) {
 		statuses[kind] = status
 	}
 	errs := append([]error(nil), unavailable...)
+	successful := 0
 	now := time.Now().UTC()
 	for _, kind := range unavailableKinds {
 		status := statuses[kind]
@@ -1128,6 +1285,7 @@ func collectRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, error) {
 			statuses[res.kind] = status
 			continue
 		}
+		successful++
 		byProvider[res.kind] = res.repos
 		statuses[res.kind] = forge.ProviderStatus{FetchedAt: now, Complete: true}
 	}
@@ -1145,13 +1303,13 @@ func collectRemotes(ctx context.Context, app *App) ([]tui.RemoteRow, error) {
 		remoteRepos = append(remoteRepos, byProvider[kind]...)
 	}
 	sortRemoteRepos(remoteRepos)
-	if len(remoteRepos) > 0 {
-		_ = forge.SaveCacheState(remoteCachePath(), forge.Cache{
-			Version: forge.CacheVersion, FetchedAt: now, Complete: complete,
+	if successful > 0 {
+		_ = forge.SaveCacheStateContext(ctx, remoteCachePath(), forge.Cache{
+			Version: forge.CacheVersion, SourceID: sourceID, FetchedAt: now, Complete: complete,
 			Providers: providerStatuses, Repos: remoteRepos,
 		})
 	}
-	return matchRemoteLocals(ctx, app, remoteRepos), errors.Join(errs...)
+	return matchRows(remoteRepos), errors.Join(errs...)
 }
 
 func sortRemoteRepos(repos []forge.RemoteRepo) {

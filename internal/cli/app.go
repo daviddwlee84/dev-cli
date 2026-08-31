@@ -11,12 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/note"
+	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
@@ -56,6 +58,13 @@ type App struct {
 	// command tests.
 	runtimeInstance runtime.Runtime
 	runtimesByName  map[string]runtime.Runtime
+	// trace is an opt-in, process-local performance recorder. It is deliberately
+	// separate from durable activity stats and ordinary command output.
+	trace                  *perftrace.Recorder
+	tracePath              string
+	traceOnce              *sync.Once
+	traceTUI               bool
+	deferredReleaseRefresh bool
 }
 
 // Load reads configuration and prepares the shared stores.

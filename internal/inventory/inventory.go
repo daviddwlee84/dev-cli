@@ -95,6 +95,13 @@ type Options struct {
 	SkipRuntime bool
 	// SkipGit avoids running git per task, for a fast listing.
 	SkipGit bool
+	// Sessions lets a coordinating caller share one runtime query across task,
+	// repository, and Try inventories.
+	Sessions        []runtime.Session
+	SessionsSet     bool
+	SessionsTracked bool
+	// Limiter shares one process-heavy enrichment bound across collectors.
+	Limiter *Limiter
 }
 
 // Collect builds the enriched inventory. Git probes run concurrently: each is
@@ -103,9 +110,9 @@ type Options struct {
 func Collect(ctx context.Context, tasks []*task.Task, rt runtime.Runtime, opts Options) []Row {
 	rows := make([]Row, len(tasks))
 
-	var sessions []runtime.Session
-	tracked := false
-	if !opts.SkipRuntime && rt != nil && rt.Name() != "none" {
+	sessions := opts.Sessions
+	tracked := opts.SessionsTracked
+	if !opts.SessionsSet && !opts.SkipRuntime && rt != nil && rt.Name() != "none" {
 		if s, err := rt.List(ctx); err == nil {
 			sessions, tracked = s, true
 		}
@@ -113,8 +120,12 @@ func Collect(ctx context.Context, tasks []*task.Task, rt runtime.Runtime, opts O
 
 	var wg sync.WaitGroup
 	// Bound concurrency: git is process-heavy and an unbounded fan-out over a
-	// large inventory would thrash.
-	sem := make(chan struct{}, 8)
+	// large inventory would thrash. Coordinated TUI loads share this limiter with
+	// repository enrichment.
+	limiter := opts.Limiter
+	if limiter == nil {
+		limiter = NewLimiter(8)
+	}
 
 	for i, t := range tasks {
 		rows[i].Task = t
@@ -126,8 +137,11 @@ func Collect(ctx context.Context, tasks []*task.Task, rt runtime.Runtime, opts O
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
+			release, ok := limiter.Acquire(ctx)
+			if !ok {
+				return
+			}
+			defer release()
 			enrich(ctx, &rows[i])
 		}(i)
 	}

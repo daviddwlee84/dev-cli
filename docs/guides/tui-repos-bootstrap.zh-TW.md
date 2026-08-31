@@ -19,10 +19,30 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 |---|---|---|
 | TASKS | 我正在處理什麼？ | task registry 加即時 Git/runtime facts |
 | REPOS | 本機有哪些持久 repositories？ | 設定的 scan roots 與 local catalog |
-| FLEET | 其他機器有哪些 repository 與活動？ | 透過 SSH 取得的 remote `dev` snapshots |
+| FLEET | 設定的機器上有哪些 repository 與 active work？ | 已接受的 local REPOS snapshot 加上透過 SSH 取得的 remote `dev` snapshots |
 | TRY | 哪些 experiments 能 resume、archive 或 graduate？ | experiment catalog 加 live facts |
 | REMOTE | 有哪些 repository 能 open 或 clone？ | authenticated `gh`/`glab` inventories 與 cache |
 | SKILLS | Project 與 global scope 安裝了哪些 agent skills？ | upstream `skills` JSON 加 project/global locks |
+
+初始 TASKS frame 會先建立，不等待 runtime auto-detection、project-root lookup、
+cache decode、shell tool probe 或 optional release refresh 完成。TASKS、REPOS 與
+TRY 接著由同一個 shared local cycle 獨立發布；REMOTE、FLEET 與 SKILLS 維持
+lazy。每個被請求的 view 都有自己的 generation：`r` 會 supersede 舊讀取，晚到
+結果會被忽略，refresh 失敗時保留可用 rows，而成功的空結果會移除過時 rows。
+Cache acceptance 與目前 live load completion 是不同階段；可能從未開啟的 optional
+view 不存在虛構的 all-tabs-ready 狀態。
+
+單次診斷 trace 必須指定一個尚不存在的 absolute path：
+
+```bash
+DEV_TUI_TRACE=/tmp/dev-tui-trace.json dev
+```
+
+Private、bounded JSON 會在 alternate screen 還原後才寫入。內容只有 relative timing、
+aggregate row counts 與 categorical view/generation/outcome fields，不包含 repository/task/host/tool
+名稱、paths、commands、key values、URLs、handles 或 raw errors。它不是
+`stats.db`，也不會送出本機。`tui.initial_view_returned` 只代表 Bubble Tea view
+string 已建立，不代表 terminal 已 rasterize。
 
 用 `tab`、`h`/`l` 或左右鍵切換；`j`/`k`、`g`/`G`、`ctrl+d`/`ctrl+u` 移動；`/` filter；`?` 開 help；`esc`/`q` 離開目前 mode。
 
@@ -61,18 +81,26 @@ y         開啟 copy/context actions
 
 TRY 管理低成本 experiment、可逆 archive/restore、mark 與 graduation。Archive 是整理，不是 deletion 或 disk reclamation。
 
-REMOTE 延遲載入，因此 startup 不等待 network。Private XDG cache 保存完整的
-paginated inventory；fresh rows 不需要 network，stale rows 仍可搜尋並在背景
-refresh。Enter 開啟 local clone；`c` 在 clone 缺少的 repository 前確認；`r`
+REMOTE 延遲載入，因此 startup 不等待 network。Private XDG cache 會在 first
+view 後 decode，並保存完整 paginated inventory；fresh rows 不需要 network，
+stale rows 仍可搜尋並在背景 refresh。Oversized／malformed payload，以及
+fingerprint 屬於其他 configured GH/GL host 或 Azure target 的 cache 都會被忽略。
+GitLab 使用 explicit `GITLAB_HOST`／`GLAB_HOST`（預設 `gitlab.com`），不從 cwd
+推測 host；成功但為空的 inventory 會清除舊 rows。Enter 開啟 local clone；`c` 在
+clone 缺少的 repository 前確認，且 destination 受限於 `project_root`；`r`
 強制更新 forge inventories。使用 `/vis:private` 可精確過濾 visibility。只有 REMOTE
 row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，
 不會改成 repository note。
 
 ### FLEET
 
-FLEET 會延遲載入已設定的 hosts。它預設隱藏本機，因為 REPOS 已提供較完整的
-local inventory；按 `a` 可顯示或隱藏本機 rows，按 `r` refresh。這不會改變
-`dev fleet list`：其 non-interactive output 仍包含本機與所有已設定的 remote hosts。
+FLEET 同樣延遲載入。等待目前的 REPOS generation 被接受時，仍可使用 valid
+cached rows；接受後會重用該 snapshot 作為 local host 資料，不再重掃
+repositories，接著才 fan out 到設定的 SSH hosts。它預設隱藏本機，因為 REPOS
+已提供較完整的 local inventory；按 `a` 可顯示或隱藏 local rows。按 `r` 會
+supersede 舊 request 並強制執行 live reload。任何 endpoint field（包含 SSH
+port）改變都會讓該 host cache 失效。這不會改變 `dev fleet list`：其
+non-interactive output 仍包含本機與所有已設定的 remote hosts。
 
 ## Repository quick notes
 
@@ -109,8 +137,8 @@ Configured `paths.state_dir/notes` 下的 Markdown 是 durable data；`$XDG_CACH
 
 SKILLS 同樣延遲載入，因此 dashboard startup 不會啟動 Node。同名 skill
 在 project 與 global scope 會保留為不同列，並顯示 target agents、source、
-path、manager 與 update state。`r` 只重讀 local state；`c` 明確執行唯讀
-source check；`a` 以 `daviddwlee84/agent-skills/skills` 為預設 source 開啟
+path、manager 與 update state。`r` 只重讀 local state；local snapshot ready 後，
+`c` 才明確執行唯讀 source check（更早按 `c` 會等待，不會取消 inventory）；`a` 以 `daviddwlee84/agent-skills/skills` 為預設 source 開啟
 upstream interactive installer；`u` 先確認，再只更新選取且受 lock 管理的
 skill。Structured filters 包含 `scope:`、`agent:` 與 `update:`。
 
@@ -120,7 +148,7 @@ skill。Structured filters 包含 `scope:`、`agent:` 與 `update:`。
 dev tui tools
 ```
 
-設定的 tool 會在暫停 alternate screen 後，透過 `$SHELL` 於選取 checkout 執行。`interactive = true` 使用 `$SHELL -lic`，讓 local aliases/functions 能解析；跨機器需要 portability 時應使用 `PATH` 中的真實 executable。
+設定的 tool 會在暫停 alternate screen 後，透過 `$SHELL` 於選取 checkout 執行。`interactive = true` 使用 `$SHELL -lic`，讓 local aliases/functions 能解析；跨機器需要 portability 時應使用 `PATH` 中的真實 executable。Availability probe 會在 first view 後以 bounded background load 執行；rendering 不會啟動 login shell，尚未解析的 binding 會 fail closed。
 
 ```toml
 [[tui.tools]]

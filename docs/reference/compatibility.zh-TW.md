@@ -51,7 +51,7 @@ Task schema 有 `AgentSession`，Herdr inventory 也能顯示 live agent session
 
 ### Built-in forge cache TTL 與 generated config 不同
 
-`dev config init` 會寫 `forge.cache_ttl = "15m"`。沒有 config file 時，目前 built-in `Forge.CacheTTL` 的 zero value 代表既有 valid cache 不會因 age 被拒絕；explicit `r` 仍會 refresh。Freshness 重要時請執行 `config init` 或設定 TTL。
+`dev config init` 會寫 `forge.cache_ttl = "15m"`。沒有 config file 時，目前 built-in `Forge.CacheTTL` 的 zero value 代表既有 valid cache 不會因 age 被拒絕；explicit `r` 仍會 refresh。Freshness 也要求 source fingerprint 符合 configured GH/GL hosts 與 Azure targets，因此 endpoint change 不會被 zero TTL 隱藏。Legacy source-less cache 只能透過 explicit `--cached` 使用，並會標為 stale。Freshness 重要時請執行 `config init` 或設定 TTL。
 
 較舊的 generated config 可能包含 `forge.remote_limit = 100`。此欄位仍可解析，
 但 forge inventory 現在會完整 pagination，因此不再限制 synchronization。
@@ -95,6 +95,7 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
   worktree 的 exact root pane。它不能與 `--json`、non-worktree modes 或 non-Herdr
   runtimes 併用，也不等待 command exit。
 - TUI navigation 會拒絕開啟 checkout 不存在的 COLD task，並要求使用 `dev resume`。
+- `DEV_TUI_TRACE` 從 `cli.Execute` 起算，無法涵蓋 OS process loading。`tui.initial_view_returned` 量測 model construction，不是 renderer flush 或 physical terminal paint；它適合同 profile 比較，不是跨硬體／network 的 universal guarantee。
 - Runtime handle 現在保存 backend provenance，cleanup 前會重新驗證。
 - `auto` runtime selection 已在 tmux 與 none 之間加入 Zellij。
 
@@ -116,7 +117,7 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - Release 會發布各平台 archive 與 `SHA256SUMS`，並以 `CHANGELOG.md` 對應段落作為 release notes。先前的 release 只產生 GitHub release 物件，因此那些版本本來就沒有附加檔案。
 - Release 會在 Unix `.tar.gz` 之外一併發布 Windows `.zip`，並更新附在 release 上的 in-repo Scoop manifest（設定 token 時也會 push 到 bucket）。
 - `dev upgrade` 會下載此平台目前的 release、以 release `SHA256SUMS` 驗證，再以 atomic rename 取代執行中的 binary（Windows 會把 live `.exe` 移到旁邊，下次執行時清除）。若 Homebrew、Scoop 或 `go install` 擁有該檔案，則改為印出對應指令。
-- Interactive `dev` command 每天最多印一行 dim 的「有新版」提示，來源是一天內的 release cache，永不因網路而 block。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK` 可停用。
+- Interactive `dev` command 每天最多印一行 dim 的「有新版」提示，來源是一天內的 release cache，永不因網路而 block。TUI 的 stale-cache background refresh 只會在 initial view return 後啟動。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK` 可停用。
 
 ## Claude Code status matrix
 

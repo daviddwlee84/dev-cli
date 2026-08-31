@@ -2,11 +2,13 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,8 +18,8 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/note"
+	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
-	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -68,12 +70,22 @@ type Actions struct {
 	// ReloadRepos re-reads the repository list.
 	ReloadRepos func(ctx context.Context) ([]RepoRow, error)
 	// ReloadFleet fans out to configured dev hosts. It is lazy like REMOTE.
-	ReloadFleet func(ctx context.Context) ([]FleetRow, error)
+	ReloadFleet          func(ctx context.Context) ([]FleetRow, error)
+	ReloadFleetWithRepos func(ctx context.Context, repos []RepoRow) ([]FleetRow, error)
 	// ReloadRemote queries configured forge CLIs. It is lazy: the network is untouched
-	// until the REMOTE view is opened.
-	ReloadRemote func(ctx context.Context) ([]RemoteRow, error)
+	// until the REMOTE view is opened. Production supplies accepted local rows so
+	// matching does not trigger another repository discovery.
+	ReloadRemote          func(ctx context.Context) ([]RemoteRow, error)
+	ReloadRemoteWithRepos func(ctx context.Context, repos []RepoRow) ([]RemoteRow, error)
 	// ReloadSkills reads local project/global skill state without contacting sources.
 	ReloadSkills func(ctx context.Context) ([]agentskill.Skill, error)
+	// Cache seeds are local-only and asynchronous. Live REMOTE/FLEET work remains
+	// lazy until its view is requested.
+	LoadRemoteCache func(ctx context.Context) RemoteCacheResult
+	LoadFleetCache  func(ctx context.Context) FleetCacheResult
+	// AfterFirstView performs optional background work only after the initial
+	// application frame has been computed.
+	AfterFirstView func(ctx context.Context)
 	// CheckSkills performs the explicitly requested read-only network comparison.
 	CheckSkills func(ctx context.Context, rows []agentskill.Skill) []agentskill.Skill
 	// AddSkill and UpdateSkill return interactive processes for tea to suspend around.
@@ -84,6 +96,7 @@ type Actions struct {
 	Tries TryActions
 	Notes NoteActions
 	Sizes SizeActions
+	Local LocalActions
 	// Open makes a task live.
 	Open func(ctx context.Context, t *task.Task) (OpenResult, error)
 	// OpenRepo makes a repository live.
@@ -128,8 +141,6 @@ type Actions struct {
 	RepoColumns []string
 	RepoSort    string
 	RepoReverse bool
-	// Runtime names the active backend.
-	Runtime runtime.Runtime
 	// Tools are external programs the dashboard hands the terminal to.
 	Tools []Tool
 }
@@ -139,16 +150,33 @@ type Actions struct {
 // screen.
 type OpenResult struct {
 	Status        string
+	Directory     string
 	RuntimeHandle string
 }
 
 // ConfigUpdate is the subset of config a running TUI can safely apply without
 // rebuilding its runtime backend.
 type ConfigUpdate struct {
+	// Apply publishes the prepared immutable App snapshot only after this config
+	// generation is accepted by Update.
+	Apply       func()
 	Tools       []Tool
 	RepoColumns []string
 	RepoSort    string
 	RepoReverse bool
+}
+
+// RemoteCacheResult and FleetCacheResult carry local startup seeds without
+// exposing cache IO to the Bubble Tea model.
+type RemoteCacheResult struct {
+	Rows  []RemoteRow
+	Found bool
+	Stale bool
+}
+
+type FleetCacheResult struct {
+	Rows  []FleetRow
+	Found bool
 }
 
 // Tool is an external program launched in the selected row's directory.
@@ -156,14 +184,23 @@ type ConfigUpdate struct {
 // The dashboard suspends while one runs and redraws afterwards, so lazygit or
 // a file manager feels like part of it rather than something you have to quit
 // the dashboard to reach.
+type ToolAvailability uint8
+
+const (
+	ToolUnknown ToolAvailability = iota
+	ToolAvailable
+	ToolUnavailable
+)
+
 type Tool struct {
 	Key  string
 	Name string
 	// Command is the argv to run; the first element is looked up on PATH.
 	Command []string
-	// Available reports whether the program is installed. A tool that is not
-	// installed is left out of the footer rather than offered and then failing.
-	Available func() bool
+	// Probe is invoked only by an asynchronous command. Rendering reads the
+	// resolved Availability value and never launches a process.
+	Probe        func(context.Context) bool
+	Availability ToolAvailability
 	// NeedsRepo restricts the tool to rows that have a checkout on disk.
 	NeedsRepo bool
 }
@@ -190,6 +227,21 @@ const (
 // Model is the dashboard state.
 type Model struct {
 	actions Actions
+	// trace is the one intentional shared pointer in the value-copied model. The
+	// recorder is append-only, bounded and concurrency-safe; it never controls UI
+	// behavior.
+	trace *perftrace.Recorder
+	// runContext bounds read/probe commands to this Bubble Tea program. Mutating
+	// actions deliberately keep their own contexts and completion handling.
+	runContext     context.Context
+	loadContexts   [viewCount]context.Context
+	loadCancels    [viewCount]context.CancelFunc
+	configCancel   context.CancelFunc
+	configContext  context.Context
+	localCancel    context.CancelFunc
+	localContext   context.Context
+	firstViewReady chan struct{}
+	firstViewOnce  *sync.Once
 
 	view    View
 	rows    []inventory.Row
@@ -198,20 +250,20 @@ type Model struct {
 	remotes []RemoteRow
 	fleet   []FleetRow
 	skills  []agentskill.Skill
-	// Remote loading is lazy so opening the dashboard never waits on the
-	// network. The first switch to REMOTE triggers it.
-	remotesLoaded   bool
-	remotesLoading  bool
-	fleetLoaded     bool
-	fleetLoading    bool
-	skillsLoaded    bool
-	skillsLoading   bool
-	skillsChecking  bool
-	remotesStale    bool
-	initialLoad     bool
-	loadingLocal    bool
-	sizeLoad        diskusage.Load
-	forceSizeReload bool
+	// Each fixed view owns value-copied request/readiness state. Optional views
+	// stay lazy; no synthetic all-tabs-ready state exists.
+	loads        [viewCount]viewLoadState
+	viewErrors   [viewCount]error
+	viewStatuses [viewCount]string
+	initialLoad  bool
+	// skillsChecking is a separate explicit network operation, not initial tab
+	// readiness.
+	skillsChecking   bool
+	sizeLoad         diskusage.Load
+	forceSizeReload  bool
+	configGeneration uint64
+	localGeneration  uint64
+	toolGeneration   uint64
 
 	// Cursors are plain fields, one per view, rather than a map: bubbletea
 	// passes the model by value and expects each returned copy to be
@@ -268,32 +320,60 @@ func New(actions Actions, rows []inventory.Row, repos []RepoRow) Model {
 	in := textinput.New()
 	in.CharLimit = 200
 
-	return Model{
-		actions: actions,
-		rows:    rows,
-		repos:   repos,
-		input:   in,
-		width:   100,
-		height:  30,
+	m := Model{
+		actions:        actions,
+		rows:           rows,
+		repos:          repos,
+		input:          in,
+		width:          100,
+		height:         30,
+		firstViewReady: make(chan struct{}),
+		firstViewOnce:  &sync.Once{},
 	}
+	if len(actions.Tools) > 0 {
+		m.toolGeneration = 1
+	}
+	if rows != nil {
+		m.seedViewSnapshot(ViewTasks, perftrace.SourceLive, perftrace.FreshnessFresh, true)
+	}
+	if repos != nil {
+		m.seedViewSnapshot(ViewRepos, perftrace.SourceLive, perftrace.FreshnessFresh, true)
+	}
+	return m
+}
+
+// WithTrace observes performance boundaries without controlling model state.
+func (m Model) WithTrace(trace *perftrace.Recorder) Model {
+	m.trace = trace
+	return m
+}
+
+// WithContext bounds asynchronous read/probe commands to one dashboard run.
+func (m Model) WithContext(ctx context.Context) Model {
+	m.runContext = ctx
+	return m
 }
 
 // WithRemotes seeds the lazy forge view from a fresh on-disk cache. The first
 // switch is then instant; r still refreshes explicitly.
 func (m Model) WithRemotes(rows []RemoteRow) Model {
-	m.remotes, m.remotesLoaded = rows, true
+	m.remotes = rows
+	m.seedViewSnapshot(ViewRemote, perftrace.SourceCache, perftrace.FreshnessFresh, true)
 	return m
 }
 
 // WithFleet seeds cached fleet rows while the first live refresh remains lazy.
 func (m Model) WithFleet(rows []FleetRow) Model {
 	m.fleet = rows
+	m.seedViewSnapshot(ViewFleet, perftrace.SourceCache, perftrace.FreshnessStale, true)
 	return m
 }
 
 // WithRemotesStale marks seeded rows for background refresh on first visit.
 func (m Model) WithRemotesStale(stale bool) Model {
-	m.remotesStale = stale
+	if stale {
+		m.loads[int(ViewRemote)].freshness = perftrace.FreshnessStale
+	}
 	return m
 }
 
@@ -301,6 +381,8 @@ func (m Model) WithRemotesStale(stale bool) Model {
 // production dashboard loads it with the other local inventories in Init.
 func (m Model) WithTries(rows []TryRow) Model {
 	m.tries = rows
+	m.matchRemoteLocals()
+	m.seedViewSnapshot(ViewTries, perftrace.SourceLive, perftrace.FreshnessFresh, true)
 	return m
 }
 
@@ -308,7 +390,8 @@ func (m Model) WithTries(rows []TryRow) Model {
 // the alternate screen appear immediately instead of blocking on dozens of Git
 // probes before Bubble Tea starts.
 func (m Model) BeginLoading() Model {
-	m.initialLoad, m.loadingLocal = true, true
+	m.initialLoad = true
+	m.beginLocalLoads(loadInitial)
 	return m
 }
 
@@ -325,40 +408,86 @@ func (m Model) CurrentView() View { return m.view }
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
+	commands := []tea.Cmd{textinput.Blink}
 	if m.initialLoad {
-		return tea.Batch(textinput.Blink, m.reload())
+		commands = append(commands, m.reload())
 	}
-	return textinput.Blink
+	if len(m.actions.Tools) > 0 {
+		commands = append(commands, m.probeTools())
+	}
+	if m.actions.LoadRemoteCache != nil {
+		commands = append(commands, m.loadRemoteCache())
+	}
+	if m.actions.LoadFleetCache != nil {
+		commands = append(commands, m.loadFleetCache())
+	}
+	if m.actions.AfterFirstView != nil {
+		commands = append(commands, m.runAfterFirstView())
+	}
+	return tea.Batch(commands...)
 }
 
 type reloadMsg struct {
-	rows       []inventory.Row
-	repos      []RepoRow
-	tries      []TryRow
-	rowsSet    bool
-	reposSet   bool
-	triesSet   bool
-	remotes    []RemoteRow
-	remoteSet  bool
-	forceSizes bool
-	err        error
+	rows             []inventory.Row
+	repos            []RepoRow
+	tries            []TryRow
+	remotes          []RemoteRow
+	rowsSet          bool
+	reposSet         bool
+	triesSet         bool
+	remoteSet        bool
+	rowsValid        bool
+	reposValid       bool
+	triesValid       bool
+	remoteValid      bool
+	rowsGeneration   uint64
+	reposGeneration  uint64
+	triesGeneration  uint64
+	remoteGeneration uint64
+	rowsErr          error
+	reposErr         error
+	triesErr         error
+	remoteErr        error
+	forceSizes       bool
+}
+
+type remoteCacheMsg struct {
+	generation uint64
+	result     RemoteCacheResult
+}
+
+type fleetCacheMsg struct {
+	generation uint64
+	result     FleetCacheResult
 }
 
 type remoteMsg struct {
-	rows []RemoteRow
-	err  error
+	generation  uint64
+	rows        []RemoteRow
+	valid       bool
+	matchLocals bool
+	err         error
 }
 
 type fleetMsg struct {
-	rows []FleetRow
-	err  error
+	generation uint64
+	rows       []FleetRow
+	valid      bool
+	err        error
 }
 type skillsMsg struct {
-	rows    []agentskill.Skill
-	loaded  bool
-	checked bool
-	status  string
-	err     error
+	generation uint64
+	rows       []agentskill.Skill
+	valid      bool
+	loaded     bool
+	checked    bool
+	status     string
+	err        error
+}
+
+type toolsMsg struct {
+	generation uint64
+	tools      []Tool
 }
 
 type skillProcessMsg struct {
@@ -383,6 +512,7 @@ type configEditedMsg struct{ err error }
 type fleetConfigEditedMsg struct{ err error }
 
 type configMsg struct {
+	generation    uint64
 	update        ConfigUpdate
 	status        string
 	refreshRemote bool
@@ -390,11 +520,15 @@ type configMsg struct {
 }
 
 type noteListMsg struct {
-	notes     []*note.Note
-	repos     []RepoRow
-	targetKey string
-	request   uint64
-	err       error
+	notes           []*note.Note
+	repos           []RepoRow
+	reposSet        bool
+	reposValid      bool
+	reposGeneration uint64
+	reposErr        error
+	targetKey       string
+	request         uint64
+	err             error
 }
 
 type noteActionMsg struct {
@@ -414,11 +548,16 @@ type actionMsg struct {
 }
 
 type triesMsg struct {
-	tries    []TryRow
-	triesSet bool
-	repos    []RepoRow
-	reposSet bool
-	err      error
+	tries           []TryRow
+	triesSet        bool
+	triesValid      bool
+	triesGeneration uint64
+	triesErr        error
+	repos           []RepoRow
+	reposSet        bool
+	reposValid      bool
+	reposGeneration uint64
+	reposErr        error
 }
 
 type tryActionMsg struct {
@@ -431,27 +570,142 @@ type copyMsg struct {
 	err    error
 }
 
-func (m Model) reload() tea.Cmd {
+func traceOutcome(err error) perftrace.Outcome {
+	switch {
+	case err == nil:
+		return perftrace.OutcomeSuccess
+	case errors.Is(err, context.Canceled):
+		return perftrace.OutcomeCanceled
+	default:
+		return perftrace.OutcomeFailed
+	}
+}
+
+func snapshotValid[T any](rows []T, err error) bool { return err == nil || rows != nil }
+
+func batchCommands(commands ...tea.Cmd) tea.Cmd {
+	filtered := commands[:0]
+	for _, command := range commands {
+		if command != nil {
+			filtered = append(filtered, command)
+		}
+	}
+	switch len(filtered) {
+	case 0:
+		return nil
+	case 1:
+		return filtered[0]
+	default:
+		return tea.Batch(filtered...)
+	}
+}
+
+func (m Model) signalFirstView() {
+	if m.firstViewOnce != nil && m.firstViewReady != nil {
+		m.firstViewOnce.Do(func() { close(m.firstViewReady) })
+	}
+}
+
+func (m Model) runAfterFirstView() tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
-		out := reloadMsg{forceSizes: m.forceSizeReload}
+		select {
+		case <-m.baseContext().Done():
+			return nil
+		case <-m.firstViewReady:
+			m.actions.AfterFirstView(m.baseContext())
+			return nil
+		}
+	}
+}
+
+func (m Model) loadRemoteCache() tea.Cmd {
+	generation := m.viewLoad(ViewRemote).generation
+	return func() tea.Msg {
+		finish := m.trace.Start(perftrace.TUICacheRemoteRead, perftrace.Fields{
+			View: perftrace.ViewRemote, Generation: generation,
+		})
+		result := m.actions.LoadRemoteCache(m.baseContext())
+		finish(perftrace.OutcomeSuccess)
+		return remoteCacheMsg{generation: generation, result: result}
+	}
+}
+
+func (m Model) loadFleetCache() tea.Cmd {
+	generation := m.viewLoad(ViewFleet).generation
+	return func() tea.Msg {
+		finish := m.trace.Start(perftrace.TUICacheFleetRead, perftrace.Fields{
+			View: perftrace.ViewFleet, Generation: generation,
+		})
+		result := m.actions.LoadFleetCache(m.baseContext())
+		finish(perftrace.OutcomeSuccess)
+		return fleetCacheMsg{generation: generation, result: result}
+	}
+}
+
+func (m Model) probeTools() tea.Cmd {
+	generation := m.toolGeneration
+	tools := append([]Tool(nil), m.actions.Tools...)
+	ctx := m.baseContext()
+	return func() tea.Msg {
+		finish := m.trace.Start(perftrace.TUIProducerTools, perftrace.Fields{Generation: generation})
+		jobs := make(chan int, len(tools))
+		for index := range tools {
+			jobs <- index
+		}
+		close(jobs)
+		var workers sync.WaitGroup
+		for range min(2, len(tools)) {
+			workers.Go(func() {
+				for index := range jobs {
+					available := true
+					if tools[index].Probe != nil {
+						available = tools[index].Probe(ctx)
+					}
+					if ctx.Err() != nil {
+						tools[index].Availability = ToolUnknown
+					} else if available {
+						tools[index].Availability = ToolAvailable
+					} else {
+						tools[index].Availability = ToolUnavailable
+					}
+				}
+			})
+		}
+		workers.Wait()
+		finish(traceOutcome(ctx.Err()))
+		return toolsMsg{generation: generation, tools: tools}
+	}
+}
+
+func (m Model) reload() tea.Cmd {
+	if m.actions.Local.Start != nil {
+		return m.startLocalLoad()
+	}
+	return func() tea.Msg {
+		ctx := m.viewContext(ViewTasks)
+		out := reloadMsg{
+			forceSizes:      m.forceSizeReload,
+			rowsGeneration:  m.viewLoad(ViewTasks).generation,
+			reposGeneration: m.viewLoad(ViewRepos).generation,
+			triesGeneration: m.viewLoad(ViewTries).generation,
+		}
 		if m.actions.Reload != nil {
-			rows, err := m.actions.Reload(ctx)
-			out.rows, out.rowsSet, out.err = rows, true, err
+			finish := m.trace.Start(perftrace.TUIProducerTasks, perftrace.Fields{View: perftrace.ViewTasks})
+			out.rows, out.rowsErr = m.actions.Reload(ctx)
+			out.rowsSet, out.rowsValid = true, snapshotValid(out.rows, out.rowsErr)
+			finish(traceOutcome(out.rowsErr))
 		}
 		if m.actions.ReloadRepos != nil {
-			repos, err := m.actions.ReloadRepos(ctx)
-			out.repos, out.reposSet = repos, true
-			if out.err == nil {
-				out.err = err
-			}
+			finish := m.trace.Start(perftrace.TUIProducerRepos, perftrace.Fields{View: perftrace.ViewRepos})
+			out.repos, out.reposErr = m.actions.ReloadRepos(ctx)
+			out.reposSet, out.reposValid = true, snapshotValid(out.repos, out.reposErr)
+			finish(traceOutcome(out.reposErr))
 		}
 		if m.actions.Tries.Reload != nil {
-			tries, err := m.actions.Tries.Reload(ctx, m.showAllTries)
-			out.tries, out.triesSet = tries, true
-			if out.err == nil {
-				out.err = err
-			}
+			finish := m.trace.Start(perftrace.TUIProducerTries, perftrace.Fields{View: perftrace.ViewTries})
+			out.tries, out.triesErr = m.actions.Tries.Reload(ctx, m.showAllTries)
+			out.triesSet, out.triesValid = true, snapshotValid(out.tries, out.triesErr)
+			finish(traceOutcome(out.triesErr))
 		}
 		return out
 	}
@@ -459,19 +713,19 @@ func (m Model) reload() tea.Cmd {
 
 func (m Model) reloadTries(includeRepos bool) tea.Cmd {
 	return func() tea.Msg {
-		ctx := context.Background()
-		out := triesMsg{}
+		tryCtx := m.viewContext(ViewTries)
+		repoCtx := m.viewContext(ViewRepos)
+		out := triesMsg{
+			triesGeneration: m.viewLoad(ViewTries).generation,
+			reposGeneration: m.viewLoad(ViewRepos).generation,
+		}
 		if m.actions.Tries.Reload != nil {
-			out.tries, out.err = m.actions.Tries.Reload(ctx, m.showAllTries)
-			out.triesSet = true
+			out.tries, out.triesErr = m.actions.Tries.Reload(tryCtx, m.showAllTries)
+			out.triesSet, out.triesValid = true, snapshotValid(out.tries, out.triesErr)
 		}
 		if includeRepos && m.actions.ReloadRepos != nil {
-			var err error
-			out.repos, err = m.actions.ReloadRepos(ctx)
-			out.reposSet = true
-			if out.err == nil {
-				out.err = err
-			}
+			out.repos, out.reposErr = m.actions.ReloadRepos(repoCtx)
+			out.reposSet, out.reposValid = true, snapshotValid(out.repos, out.reposErr)
 		}
 		return out
 	}
@@ -498,58 +752,90 @@ func (m Model) applyTry(request TryRequest) tea.Cmd {
 }
 
 func (m Model) reloadRemote() tea.Cmd {
+	generation := m.viewLoad(ViewRemote).generation
+	locals := append([]RepoRow(nil), m.repos...)
 	return func() tea.Msg {
-		if m.actions.ReloadRemote == nil {
-			return remoteMsg{}
+		if m.actions.ReloadRemoteWithRepos == nil && m.actions.ReloadRemote == nil {
+			return remoteMsg{generation: generation, valid: true}
 		}
-		rows, err := m.actions.ReloadRemote(context.Background())
-		return remoteMsg{rows: rows, err: err}
+		finish := m.trace.Start(perftrace.TUIProducerRemote, perftrace.Fields{View: perftrace.ViewRemote, Generation: generation})
+		var rows []RemoteRow
+		var err error
+		matchLocals := m.actions.ReloadRemoteWithRepos != nil
+		if matchLocals {
+			rows, err = m.actions.ReloadRemoteWithRepos(m.viewContext(ViewRemote), locals)
+		} else {
+			rows, err = m.actions.ReloadRemote(m.viewContext(ViewRemote))
+		}
+		finish(traceOutcome(err))
+		return remoteMsg{
+			generation: generation, rows: rows, valid: snapshotValid(rows, err),
+			matchLocals: matchLocals, err: err,
+		}
 	}
 }
 
 func (m Model) reloadFleet() tea.Cmd {
+	generation := m.viewLoad(ViewFleet).generation
+	locals := append([]RepoRow(nil), m.repos...)
 	return func() tea.Msg {
-		if m.actions.ReloadFleet == nil {
-			return fleetMsg{}
+		if m.actions.ReloadFleetWithRepos == nil && m.actions.ReloadFleet == nil {
+			return fleetMsg{generation: generation, valid: true}
 		}
-		rows, err := m.actions.ReloadFleet(context.Background())
-		return fleetMsg{rows: rows, err: err}
+		finish := m.trace.Start(perftrace.TUIProducerFleet, perftrace.Fields{View: perftrace.ViewFleet, Generation: generation})
+		var rows []FleetRow
+		var err error
+		if m.actions.ReloadFleetWithRepos != nil {
+			rows, err = m.actions.ReloadFleetWithRepos(m.viewContext(ViewFleet), locals)
+		} else {
+			rows, err = m.actions.ReloadFleet(m.viewContext(ViewFleet))
+		}
+		finish(traceOutcome(err))
+		return fleetMsg{generation: generation, rows: rows, valid: snapshotValid(rows, err), err: err}
 	}
 }
 func (m Model) reloadSkills() tea.Cmd {
+	generation := m.viewLoad(ViewSkills).generation
 	return func() tea.Msg {
 		if m.actions.ReloadSkills == nil {
-			return skillsMsg{loaded: true}
+			return skillsMsg{generation: generation, valid: true, loaded: true}
 		}
-		rows, err := m.actions.ReloadSkills(context.Background())
-		return skillsMsg{rows: rows, loaded: true, err: err}
+		finish := m.trace.Start(perftrace.TUIProducerSkills, perftrace.Fields{View: perftrace.ViewSkills, Generation: generation})
+		rows, err := m.actions.ReloadSkills(m.viewContext(ViewSkills))
+		finish(traceOutcome(err))
+		return skillsMsg{
+			generation: generation, rows: rows, valid: snapshotValid(rows, err), loaded: true, err: err,
+		}
 	}
 }
 
 func (m Model) checkSkills(rows []agentskill.Skill) tea.Cmd {
+	generation := m.viewLoad(ViewSkills).generation
 	return func() tea.Msg {
 		if m.actions.CheckSkills == nil {
-			return skillsMsg{rows: rows, loaded: true, checked: true}
+			return skillsMsg{generation: generation, rows: rows, valid: true, loaded: true, checked: true}
 		}
 		return skillsMsg{
-			rows: m.actions.CheckSkills(context.Background(), rows), loaded: true, checked: true,
+			generation: generation, rows: m.actions.CheckSkills(m.viewContext(ViewSkills), rows),
+			valid: true, loaded: true, checked: true,
 		}
 	}
 }
 
 func (m Model) reloadUpdatedSkill(name string, scope agentskill.Scope) tea.Cmd {
+	generation := m.viewLoad(ViewSkills).generation
 	return func() tea.Msg {
 		if m.actions.ReloadSkills == nil {
-			return skillsMsg{loaded: true, status: "updated " + name}
+			return skillsMsg{generation: generation, valid: true, loaded: true, status: "updated " + name}
 		}
-		rows, err := m.actions.ReloadSkills(context.Background())
+		rows, err := m.actions.ReloadSkills(m.viewContext(ViewSkills))
 		if err != nil {
-			return skillsMsg{loaded: true, err: err}
+			return skillsMsg{generation: generation, valid: false, loaded: true, err: err}
 		}
 		if m.actions.CheckSkills != nil {
 			for i := range rows {
 				if rows[i].Name == name && rows[i].Scope == scope {
-					checked := m.actions.CheckSkills(context.Background(), []agentskill.Skill{rows[i]})
+					checked := m.actions.CheckSkills(m.viewContext(ViewSkills), []agentskill.Skill{rows[i]})
 					if len(checked) == 1 {
 						rows[i] = checked[0]
 					}
@@ -557,51 +843,67 @@ func (m Model) reloadUpdatedSkill(name string, scope agentskill.Scope) tea.Cmd {
 				}
 			}
 		}
-		return skillsMsg{rows: rows, loaded: true, checked: true, status: "updated " + name}
+		return skillsMsg{
+			generation: generation, rows: rows, valid: true, loaded: true,
+			checked: true, status: "updated " + name,
+		}
 	}
 }
 
 func (m Model) reloadConfig(refreshRemote bool) tea.Cmd {
+	generation := m.configGeneration
 	return func() tea.Msg {
 		if m.actions.ReloadConfig == nil {
-			return configMsg{refreshRemote: refreshRemote}
+			return configMsg{generation: generation, refreshRemote: refreshRemote}
 		}
-		update, status, err := m.actions.ReloadConfig(context.Background())
-		return configMsg{update: update, status: status, refreshRemote: refreshRemote, err: err}
+		update, status, err := m.actions.ReloadConfig(m.configReadContext())
+		return configMsg{
+			generation: generation, update: update, status: status,
+			refreshRemote: refreshRemote, err: err,
+		}
 	}
 }
 
 func (m Model) reloadAfterConfig(refreshRemote bool) tea.Cmd {
+	if m.actions.Local.Start != nil {
+		local := m.startLocalLoad()
+		if refreshRemote {
+			return tea.Batch(local, m.reloadRemote())
+		}
+		return local
+	}
 	return func() tea.Msg {
-		ctx := context.Background()
-		out := reloadMsg{forceSizes: m.forceSizeReload}
+		ctx := m.viewContext(ViewTasks)
+		out := reloadMsg{
+			forceSizes:       m.forceSizeReload,
+			rowsGeneration:   m.viewLoad(ViewTasks).generation,
+			reposGeneration:  m.viewLoad(ViewRepos).generation,
+			triesGeneration:  m.viewLoad(ViewTries).generation,
+			remoteGeneration: m.viewLoad(ViewRemote).generation,
+		}
 		if m.actions.Reload != nil {
-			out.rows, out.err = m.actions.Reload(ctx)
-			out.rowsSet = true
+			finish := m.trace.Start(perftrace.TUIProducerTasks, perftrace.Fields{View: perftrace.ViewTasks})
+			out.rows, out.rowsErr = m.actions.Reload(ctx)
+			out.rowsSet, out.rowsValid = true, snapshotValid(out.rows, out.rowsErr)
+			finish(traceOutcome(out.rowsErr))
 		}
 		if m.actions.ReloadRepos != nil {
-			var err error
-			out.repos, err = m.actions.ReloadRepos(ctx)
-			out.reposSet = true
-			if out.err == nil {
-				out.err = err
-			}
+			finish := m.trace.Start(perftrace.TUIProducerRepos, perftrace.Fields{View: perftrace.ViewRepos})
+			out.repos, out.reposErr = m.actions.ReloadRepos(ctx)
+			out.reposSet, out.reposValid = true, snapshotValid(out.repos, out.reposErr)
+			finish(traceOutcome(out.reposErr))
 		}
 		if m.actions.Tries.Reload != nil {
-			var err error
-			out.tries, err = m.actions.Tries.Reload(ctx, m.showAllTries)
-			out.triesSet = true
-			if out.err == nil {
-				out.err = err
-			}
+			finish := m.trace.Start(perftrace.TUIProducerTries, perftrace.Fields{View: perftrace.ViewTries})
+			out.tries, out.triesErr = m.actions.Tries.Reload(ctx, m.showAllTries)
+			out.triesSet, out.triesValid = true, snapshotValid(out.tries, out.triesErr)
+			finish(traceOutcome(out.triesErr))
 		}
 		if refreshRemote && m.actions.ReloadRemote != nil {
-			var err error
-			out.remotes, err = m.actions.ReloadRemote(ctx)
-			out.remoteSet = true
-			if out.err == nil {
-				out.err = err
-			}
+			finish := m.trace.Start(perftrace.TUIProducerRemote, perftrace.Fields{View: perftrace.ViewRemote})
+			out.remotes, out.remoteErr = m.actions.ReloadRemote(ctx)
+			out.remoteSet, out.remoteValid = true, snapshotValid(out.remotes, out.remoteErr)
+			finish(traceOutcome(out.remoteErr))
 		}
 		return out
 	}
@@ -1100,6 +1402,7 @@ func (m Model) currentSkill() (agentskill.Skill, bool) {
 // matchRemoteLocals fills cached remote rows from the freshly loaded local
 // inventory without another scan.
 func (m *Model) matchRemoteLocals() {
+	m.remotes = append([]RemoteRow(nil), m.remotes...)
 	byRemote := map[string]RepoRow{}
 	ambiguous := map[string]bool{}
 	for _, r := range m.repos {
@@ -1117,19 +1420,63 @@ func (m *Model) matchRemoteLocals() {
 		}
 		byRemote[key] = r
 	}
+	triesByIdentity := map[string]TryRow{}
+	ambiguousTry := map[string]bool{}
+	for _, row := range m.tries {
+		identity := row.Item.RemoteIdentity
+		if !row.Present() || identity == "" || ambiguousTry[identity] {
+			continue
+		}
+		if _, exists := triesByIdentity[identity]; exists {
+			delete(triesByIdentity, identity)
+			ambiguousTry[identity] = true
+			continue
+		}
+		triesByIdentity[identity] = row
+	}
 	for i := range m.remotes {
 		key := string(m.remotes[i].Repo.Forge) + "/" + strings.ToLower(m.remotes[i].Repo.FullName)
-		if local, ok := byRemote[key]; ok {
-			m.remotes[i].LocalPath = local.Repo.Path
-			m.remotes[i].LocalName = local.Repo.Display()
-			m.remotes[i].LocalKind = catalog.KindRepository
-			if local.Asset != nil {
-				m.remotes[i].LocalKind = local.Asset.Kind
+		identity := ""
+		for _, raw := range []string{m.remotes[i].Repo.CloneURL, m.remotes[i].Repo.SSHURL, m.remotes[i].Repo.URL} {
+			if identity = catalog.NormalizeRemoteIdentity(raw); identity != "" {
+				break
 			}
-		} else {
+		}
+		repository, repoOK := byRemote[key]
+		try, tryOK := triesByIdentity[identity]
+		sameCheckout := repoOK && tryOK && remotePathsOverlap(repository, try)
+		if ambiguous[key] || ambiguousTry[identity] || (repoOK && tryOK && !sameCheckout) {
 			m.remotes[i].LocalPath, m.remotes[i].LocalName, m.remotes[i].LocalKind = "", "", ""
+			continue
+		}
+		if repoOK {
+			m.remotes[i].LocalPath = repository.Repo.Path
+			m.remotes[i].LocalName = repository.Repo.Display()
+			m.remotes[i].LocalKind = catalog.KindRepository
+			if repository.Asset != nil {
+				m.remotes[i].LocalKind = repository.Asset.Kind
+			}
+			continue
+		}
+		if tryOK {
+			m.remotes[i].LocalPath = try.Item.Live.CurrentPath
+			m.remotes[i].LocalName = try.Item.DisplayName()
+			m.remotes[i].LocalKind = catalog.KindTry
+			continue
+		}
+		m.remotes[i].LocalPath, m.remotes[i].LocalName, m.remotes[i].LocalKind = "", "", ""
+	}
+}
+
+func remotePathsOverlap(repository RepoRow, try TryRow) bool {
+	for _, left := range []string{repository.Repo.Path, repository.Repo.RealPath} {
+		for _, right := range []string{try.Item.Live.CurrentPath, try.Item.Live.RealPath} {
+			if left != "" && right != "" && filepath.Clean(left) == filepath.Clean(right) {
+				return true
+			}
 		}
 	}
+	return false
 }
 
 // currentDir is the checkout the selected row points at, for the external
@@ -1166,26 +1513,77 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
 
+	case localMsg:
+		if msg.done {
+			request := msg.load.Request
+			current := m.localGeneration == request.CycleGeneration
+			if !current {
+				return m, nil
+			}
+			m.finishLocalLoad()
+			m.forceSizeReload = false
+			return m.beginSizeLoad(request.ForceSizes)
+		}
+		var accepted bool
+		m, accepted = m.applyLocalResult(msg.result)
+		next := waitForLocal(msg.load)
+		if accepted && msg.result.View == ViewRepos {
+			if fleet := m.afterReposResult(msg.result.Valid, msg.result.Err); fleet != nil {
+				return m, tea.Batch(next, fleet)
+			}
+		}
+		return m, next
+
 	case reloadMsg:
-		m.loadingLocal = false
-		if msg.rowsSet && msg.rows != nil {
-			m.rows = msg.rows
+		acceptedLocal := false
+		reposAccepted := false
+		if msg.rowsSet && m.applyViewResult(
+			ViewTasks, msg.rowsGeneration, msg.rowsValid, perftrace.SourceLive,
+			resultFreshness(msg.rowsErr), len(msg.rows), msg.rowsErr, msg.rowsValid,
+		) {
+			if msg.rowsValid {
+				m.rows = append([]inventory.Row(nil), msg.rows...)
+			}
+			acceptedLocal = true
 		}
-		if msg.reposSet && msg.repos != nil {
-			m.repos = msg.repos
-			m.matchRemoteLocals()
+		if msg.reposSet && m.applyViewResult(
+			ViewRepos, msg.reposGeneration, msg.reposValid, perftrace.SourceLive,
+			resultFreshness(msg.reposErr), len(msg.repos), msg.reposErr, msg.reposValid,
+		) {
+			if msg.reposValid {
+				m.repos = append([]RepoRow(nil), msg.repos...)
+				m.matchRemoteLocals()
+			}
+			acceptedLocal = true
+			reposAccepted = true
 		}
-		if msg.triesSet {
-			m.tries = msg.tries
+		if msg.triesSet && m.applyViewResult(
+			ViewTries, msg.triesGeneration, msg.triesValid, perftrace.SourceLive,
+			resultFreshness(msg.triesErr), len(msg.tries), msg.triesErr, msg.triesValid,
+		) {
+			if msg.triesValid {
+				m.tries = append([]TryRow(nil), msg.tries...)
+				m.matchRemoteLocals()
+			}
+			acceptedLocal = true
 		}
-		if msg.remoteSet {
-			m.remotes, m.remotesLoaded, m.remotesLoading = msg.remotes, true, false
-			m.remotesStale = msg.err != nil
+		if msg.remoteSet && m.applyViewResult(
+			ViewRemote, msg.remoteGeneration, msg.remoteValid, perftrace.SourceLive,
+			resultFreshness(msg.remoteErr), len(msg.remotes), msg.remoteErr, msg.remoteValid,
+		) && msg.remoteValid {
+			m.remotes = append([]RemoteRow(nil), msg.remotes...)
 		}
-		m.err = msg.err
-		m.forceSizeReload = false
+		if acceptedLocal {
+			m.forceSizeReload = false
+		}
 		m.setAt(m.at())
-		return m.beginSizeLoad(msg.forceSizes)
+		m, sizeCmd := m.beginSizeLoad(msg.forceSizes)
+		if reposAccepted {
+			if fleetCmd := m.afterReposResult(msg.reposValid, msg.reposErr); fleetCmd != nil {
+				return m, tea.Batch(sizeCmd, fleetCmd)
+			}
+		}
+		return m, sizeCmd
 
 	case sizeMsg:
 		if msg.loadID == 0 || msg.loadID != m.sizeLoad.ID {
@@ -1198,41 +1596,89 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applySizeResult(msg.result)
 		return m, waitForSize(m.sizeLoad)
 
+	case remoteCacheMsg:
+		if !msg.result.Found {
+			return m, nil
+		}
+		freshness := perftrace.FreshnessFresh
+		if msg.result.Stale {
+			freshness = perftrace.FreshnessStale
+		}
+		if m.applyCacheSeed(ViewRemote, msg.generation, len(msg.result.Rows), freshness) {
+			m.remotes = append([]RemoteRow(nil), msg.result.Rows...)
+			m.matchRemoteLocals()
+		}
+		return m, nil
+
+	case fleetCacheMsg:
+		if !msg.result.Found {
+			return m, nil
+		}
+		if m.applyCacheSeed(ViewFleet, msg.generation, len(msg.result.Rows), perftrace.FreshnessStale) {
+			m.fleet = append([]FleetRow(nil), msg.result.Rows...)
+		}
+		return m, nil
+
 	case remoteMsg:
-		m.remotes, m.remotesLoaded, m.remotesLoading = msg.rows, true, false
-		m.remotesStale = msg.err != nil
-		m.err = msg.err
-		m.status = ""
+		if !m.applyViewResult(
+			ViewRemote, msg.generation, msg.valid, perftrace.SourceLive,
+			resultFreshness(msg.err), len(msg.rows), msg.err, msg.valid,
+		) {
+			return m, nil
+		}
+		if msg.valid {
+			m.remotes = append([]RemoteRow(nil), msg.rows...)
+			if msg.matchLocals {
+				m.matchRemoteLocals()
+			}
+		}
+		m.setViewStatus(ViewRemote, "")
 		m.setAt(m.at())
 		return m, nil
 
 	case fleetMsg:
-		m.fleet, m.fleetLoaded, m.fleetLoading = msg.rows, true, false
-		m.err = msg.err
-		m.status = ""
+		if !m.applyViewResult(
+			ViewFleet, msg.generation, msg.valid, perftrace.SourceLive,
+			resultFreshness(msg.err), len(msg.rows), msg.err, msg.valid,
+		) {
+			return m, nil
+		}
+		if msg.valid {
+			m.fleet = append([]FleetRow(nil), msg.rows...)
+		}
+		m.setViewStatus(ViewFleet, "")
 		m.setAt(m.at())
 		return m, nil
 
 	case skillsMsg:
-		m.skillsLoading, m.skillsChecking = false, false
-		if msg.loaded {
-			m.skillsLoaded = true
+		if !m.applyViewResult(
+			ViewSkills, msg.generation, msg.valid, perftrace.SourceLive,
+			resultFreshness(msg.err), len(msg.rows), msg.err, msg.valid,
+		) {
+			return m, nil
 		}
-		if msg.rows != nil {
-			m.skills = msg.rows
+		m.skillsChecking = false
+		if msg.valid {
+			m.skills = append([]agentskill.Skill(nil), msg.rows...)
 		}
-		m.err = msg.err
 		switch {
 		case msg.err != nil:
-			m.status = ""
+			m.setViewStatus(ViewSkills, "")
 		case msg.status != "":
-			m.status = msg.status
+			m.setViewStatus(ViewSkills, msg.status)
 		case msg.checked:
-			m.status = "skill update check complete"
+			m.setViewStatus(ViewSkills, "skill update check complete")
 		default:
-			m.status = ""
+			m.setViewStatus(ViewSkills, "")
 		}
 		m.setAt(m.at())
+		return m, nil
+
+	case toolsMsg:
+		if msg.generation != m.toolGeneration {
+			return m, nil
+		}
+		m.actions.Tools = append([]Tool(nil), msg.tools...)
 		return m, nil
 
 	case skillProcessMsg:
@@ -1240,12 +1686,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err, m.status = msg.err, ""
 			return m, nil
 		}
-		m.err, m.skillsLoading = nil, true
+		m.err = nil
+		m.beginViewLoad(ViewSkills, loadAction)
 		if msg.action == "update" {
-			m.status = "reloading and verifying " + msg.name + "…"
+			m.setViewStatus(ViewSkills, "reloading and verifying "+msg.name+"…")
 			return m, m.reloadUpdatedSkill(msg.name, msg.scope)
 		}
-		m.status = "reloading agent skills…"
+		m.setViewStatus(ViewSkills, "reloading agent skills…")
 		return m, m.reloadSkills()
 
 	case statsBackfilledMsg:
@@ -1261,6 +1708,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.err, m.status = msg.err, ""
 			return m, nil
 		}
+		m.beginConfigLoad()
 		m.status = "reloading config…"
 		return m, m.reloadConfig(m.view == ViewRemote)
 
@@ -1277,21 +1725,43 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
-		m.fleetLoading = true
-		m.status = "refreshing fleet…"
+		m.beginViewLoad(ViewFleet, loadConfig)
+		m.setViewStatus(ViewFleet, "refreshing fleet…")
 		return m, m.reloadFleet()
 
 	case configMsg:
-		if msg.err != nil {
-			m.err, m.status = msg.err, ""
+		if msg.generation != m.configGeneration {
 			return m, nil
 		}
-		m.actions.Tools = msg.update.Tools
-		m.actions.RepoColumns = msg.update.RepoColumns
+		if m.configCancel != nil {
+			m.configCancel()
+			m.configCancel, m.configContext = nil, nil
+		}
+		if msg.err != nil {
+			m.err, m.status = msg.err, ""
+			m.forceSizeReload = false
+			return m, nil
+		}
+		if msg.update.Apply != nil {
+			msg.update.Apply()
+		}
+		m.beginLocalLoads(loadConfig)
+		if msg.refreshRemote {
+			m.beginViewLoad(ViewRemote, loadConfig)
+		} else {
+			m.invalidateView(ViewRemote)
+		}
+		m.actions.Tools = append([]Tool(nil), msg.update.Tools...)
+		m.toolGeneration++
+		m.actions.RepoColumns = append([]string(nil), msg.update.RepoColumns...)
 		m.actions.RepoSort = msg.update.RepoSort
 		m.actions.RepoReverse = msg.update.RepoReverse
 		m.err, m.status = nil, msg.status
-		return m, m.reloadAfterConfig(msg.refreshRemote)
+		reload := m.reloadAfterConfig(msg.refreshRemote)
+		if len(m.actions.Tools) == 0 {
+			return m, reload
+		}
+		return m, tea.Batch(reload, m.probeTools())
 
 	case statsMsg:
 		if msg.err != nil {
@@ -1305,23 +1775,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case triesMsg:
-		if msg.triesSet {
-			m.tries = msg.tries
+		accepted := false
+		reposAccepted := false
+		if msg.triesSet && m.applyViewResult(
+			ViewTries, msg.triesGeneration, msg.triesValid, perftrace.SourceLive,
+			resultFreshness(msg.triesErr), len(msg.tries), msg.triesErr, msg.triesValid,
+		) {
+			if msg.triesValid {
+				m.tries = append([]TryRow(nil), msg.tries...)
+				m.matchRemoteLocals()
+			}
+			accepted = true
 		}
-		if msg.reposSet && msg.repos != nil {
-			m.repos = msg.repos
-			m.matchRemoteLocals()
-		}
-		if msg.err != nil {
-			m.err = msg.err
+		if msg.reposSet && m.applyViewResult(
+			ViewRepos, msg.reposGeneration, msg.reposValid, perftrace.SourceLive,
+			resultFreshness(msg.reposErr), len(msg.repos), msg.reposErr, msg.reposValid,
+		) {
+			if msg.reposValid {
+				m.repos = append([]RepoRow(nil), msg.repos...)
+				m.matchRemoteLocals()
+			}
+			accepted = true
+			reposAccepted = true
 		}
 		m.setAt(m.at())
-		return m.beginSizeLoad(false)
+		var sizeCmd tea.Cmd
+		if accepted {
+			m, sizeCmd = m.beginSizeLoad(false)
+		}
+		if reposAccepted {
+			if fleetCmd := m.afterReposResult(msg.reposValid, msg.reposErr); fleetCmd != nil {
+				return m, tea.Batch(sizeCmd, fleetCmd)
+			}
+		}
+		return m, sizeCmd
 
 	case tryActionMsg:
 		if msg.err != nil {
 			m.err, m.status = msg.err, ""
 			if msg.result.RefreshRepos {
+				m.beginTryLoads(true, loadAction)
 				return m, m.reloadTries(true)
 			}
 			return m, nil
@@ -1335,24 +1828,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activate, m.quitting = msg.result.RuntimeHandle, true
 			return m, tea.Quit
 		}
+		m.beginTryLoads(msg.result.RefreshRepos, loadAction)
 		return m, m.reloadTries(msg.result.RefreshRepos)
 
 	case noteListMsg:
+		var fleetCmd, sizeCmd tea.Cmd
+		if msg.reposSet {
+			accepted := m.applyViewResult(
+				ViewRepos, msg.reposGeneration, msg.reposValid, perftrace.SourceLive,
+				resultFreshness(msg.reposErr), len(msg.repos), msg.reposErr, msg.reposValid,
+			)
+			if accepted && msg.reposValid {
+				m.repos = append([]RepoRow(nil), msg.repos...)
+				m.matchRemoteLocals()
+			}
+			if accepted {
+				m, sizeCmd = m.beginSizeLoad(false)
+				fleetCmd = m.afterReposResult(msg.reposValid, msg.reposErr)
+			}
+		}
+		followup := batchCommands(sizeCmd, fleetCmd)
 		if msg.request != m.noteRequest || msg.targetKey != m.noteTarget.Key() || !m.noteMode() {
-			return m, nil // stale result for a repository/overlay already left
+			return m, followup // note overlay moved; independent REPOS result is still resolved
 		}
 		m.noteLoading = false
 		if msg.err != nil {
 			m.err = msg.err
-			return m, nil
+			return m, followup
 		}
 		m.notes, m.err = msg.notes, nil
-		if msg.repos != nil {
-			m.repos = msg.repos
-			m.matchRemoteLocals()
-		}
 		m.clampNoteCursor()
-		return m, nil
+		return m, followup
 
 	case noteActionMsg:
 		if msg.err != nil {
@@ -1365,6 +1871,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.beginNoteLoad(true)
 		}
 		m.mode = modeList
+		m.beginLocalLoads(loadAction)
 		return m, m.reload()
 
 	case actionMsg:
@@ -1375,6 +1882,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err, m.status = nil, msg.status
 		m.forceSizeReload = msg.forceSizes
 		if msg.remoteName != "" && msg.localPath != "" {
+			m.remotes = append([]RemoteRow(nil), m.remotes...)
 			for i := range m.remotes {
 				if m.remotes[i].Repo.FullName == msg.remoteName {
 					m.remotes[i].LocalPath = msg.localPath
@@ -1393,12 +1901,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activate, m.quitting = msg.activate, true
 			return m, tea.Quit
 		}
-		if m.view == ViewRemote {
-			// Clone already updated the selected row; only local repo/task
-			// state needs a refresh. A network round-trip here would make a
-			// successful clone feel hung for several seconds.
-			return m, m.reload()
-		}
+		// Clone already updated the selected REMOTE row; only local data
+		// needs a refresh. A network round-trip here would make a successful
+		// clone feel hung for several seconds.
+		m.beginLocalLoads(loadAction)
 		return m, m.reload()
 
 	case copyMsg:
@@ -1410,6 +1916,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.KeyMsg:
+		fields := perftrace.Fields{View: perftrace.View(m.view.String())}
+		m.trace.MarkOnce(perftrace.TUIFirstKeyReceived, fields)
+		finish := m.trace.Start(perftrace.TUIKeyUpdate, fields)
+		defer finish(perftrace.OutcomeSuccess)
 		if m.mode == modeNoteBrowse || m.mode == modeNoteAdd ||
 			m.mode == modeNoteSearch || m.mode == modeNoteConfirmDelete {
 			return m.updateNotes(msg)
@@ -1507,20 +2017,28 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "r":
 		if m.view == ViewFleet {
-			m.fleetLoading = true
-			m.status = "refreshing fleet…"
+			m.beginViewLoad(ViewFleet, loadRefresh)
+			if err := m.fleetReposUnavailable(); err != nil {
+				fleet := m.viewLoad(ViewFleet)
+				m.applyViewResult(ViewFleet, fleet.generation, false, "", "", 0, err, false)
+				return m, nil
+			}
+			if m.fleetWaitsForRepos() {
+				m.setViewStatus(ViewFleet, "waiting for local repositories…")
+				return m, nil
+			}
+			m.setViewStatus(ViewFleet, "refreshing fleet…")
 			return m, m.reloadFleet()
 		}
 		if m.view == ViewSkills {
-			m.status, m.err = "reloading local agent skills…", nil
-			m.skillsLoading = true
+			m.err = nil
+			m.beginViewLoad(ViewSkills, loadRefresh)
+			m.setViewStatus(ViewSkills, "reloading local agent skills…")
 			return m, m.reloadSkills()
 		}
+		m.beginConfigLoad()
 		m.status = "reloading config + data…"
 		m.forceSizeReload = true
-		if m.view == ViewRemote {
-			m.remotesLoading = true
-		}
 		return m, m.reloadConfig(m.view == ViewRemote)
 
 	case "1":
@@ -1557,6 +2075,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.showAllTries = !m.showAllTries
 			m.status = fmt.Sprintf("Try history visible: %v", m.showAllTries)
 			m.setAt(0)
+			m.beginTryLoads(false, loadRefresh)
 			return m, m.reloadTries(false)
 		}
 		if m.view == ViewFleet {
@@ -1621,7 +2140,14 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "c":
 		if m.view == ViewSkills {
-			m.status, m.err = "checking skill sources…", nil
+			state := m.viewLoad(ViewSkills)
+			if state.loading || !state.hasSnapshot {
+				m.setViewStatus(ViewSkills, "wait for local agent skills to finish loading")
+				return m, nil
+			}
+			m.err = nil
+			m.beginViewLoad(ViewSkills, loadRefresh)
+			m.setViewStatus(ViewSkills, "checking skill sources…")
 			m.skillsChecking = true
 			return m, m.checkSkills(append([]agentskill.Skill(nil), m.skills...))
 		}
@@ -1774,27 +2300,32 @@ func (m Model) openNotes(target NoteTarget) (tea.Model, tea.Cmd) {
 func (m Model) beginNoteLoad(refreshRepos bool) (Model, tea.Cmd) {
 	m.noteRequest++
 	request, targetKey, target := m.noteRequest, m.noteTarget.Key(), m.noteTarget
+	reposGeneration := m.viewLoad(ViewRepos).generation
+	if refreshRepos {
+		reposGeneration = m.beginViewLoad(ViewRepos, loadAction)
+	}
 	query := m.noteQuery
 	m.noteLoading = true
 	return m, func() tea.Msg {
 		if m.actions.Notes.List == nil {
-			return noteListMsg{request: request, targetKey: targetKey}
+			return noteListMsg{request: request, targetKey: targetKey, reposGeneration: reposGeneration}
 		}
 		var (
 			notes []*note.Note
 			err   error
 		)
 		if query != "" && m.actions.Notes.Search != nil {
-			notes, err = m.actions.Notes.Search(context.Background(), target, query)
+			notes, err = m.actions.Notes.Search(m.baseContext(), target, query)
 		} else {
-			notes, err = m.actions.Notes.List(context.Background(), target)
+			notes, err = m.actions.Notes.List(m.baseContext(), target)
 		}
-		msg := noteListMsg{notes: notes, request: request, targetKey: targetKey, err: err}
+		msg := noteListMsg{
+			notes: notes, request: request, targetKey: targetKey, err: err,
+			reposGeneration: reposGeneration,
+		}
 		if refreshRepos && m.actions.ReloadRepos != nil {
-			msg.repos, err = m.actions.ReloadRepos(context.Background())
-			if msg.err == nil {
-				msg.err = err
-			}
+			msg.repos, msg.reposErr = m.actions.ReloadRepos(m.viewContext(ViewRepos))
+			msg.reposSet, msg.reposValid = true, snapshotValid(msg.repos, msg.reposErr)
 		}
 		return msg
 	}
@@ -2035,7 +2566,7 @@ func (m Model) selectedRepoName() string {
 
 func (m Model) loadStats(repo string) tea.Cmd {
 	return func() tea.Msg {
-		panel, err := m.actions.LoadStats(context.Background(), repo)
+		panel, err := m.actions.LoadStats(m.baseContext(), repo)
 		return statsMsg{panel: panel, err: err}
 	}
 }
@@ -2078,25 +2609,83 @@ func (m Model) updateStats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) fleetWaitsForRepos() bool {
+	return m.actions.ReloadFleetWithRepos != nil && m.viewLoad(ViewRepos).loading
+}
+
+func (m Model) fleetReposUnavailable() error {
+	if m.actions.ReloadFleetWithRepos == nil {
+		return nil
+	}
+	repos := m.viewLoad(ViewRepos)
+	if repos.loading || (repos.hasSnapshot && repos.freshness == perftrace.FreshnessFresh) {
+		return nil
+	}
+	if err := m.viewError(ViewRepos); err != nil {
+		return fmt.Errorf("local repository inventory: %w", err)
+	}
+	return errors.New("local repository inventory is unavailable")
+}
+
+func (m *Model) afterReposResult(valid bool, err error) tea.Cmd {
+	if m.actions.ReloadFleetWithRepos == nil {
+		return nil
+	}
+	fresh := valid && err == nil
+	fleet := m.viewLoad(ViewFleet)
+	if fleet.loading || (m.view == ViewFleet && fleet.hasSnapshot) {
+		m.beginViewLoad(ViewFleet, loadRefresh)
+		if fresh {
+			m.setViewStatus(ViewFleet, "loading configured dev hosts…")
+			return m.reloadFleet()
+		}
+		dependencyErr := err
+		if dependencyErr == nil {
+			dependencyErr = errors.New("local repository inventory is unavailable")
+		}
+		current := m.viewLoad(ViewFleet)
+		m.applyViewResult(ViewFleet, current.generation, false, "", "", 0, dependencyErr, false)
+		return nil
+	}
+	if fleet.hasSnapshot {
+		m.invalidateView(ViewFleet)
+	}
+	return nil
+}
+
 // afterViewSwitch lazily loads optional inventories only when their view is
 // first opened, so starting the dashboard never waits on the network, a forge
 // CLI, or Node tooling.
 func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 	m.setAt(m.at())
-	if m.view == ViewFleet && !m.fleetLoaded && !m.fleetLoading {
-		m.fleetLoading = true
-		m.status = "loading configured dev hosts…"
-		return m, m.reloadFleet()
-	}
-	if m.view == ViewRemote && (!m.remotesLoaded || m.remotesStale) && !m.remotesLoading {
-		m.remotesLoading = true
-		m.status = "refreshing remote repositories…"
-		return m, m.reloadRemote()
-	}
-	if m.view == ViewSkills && !m.skillsLoaded && !m.skillsLoading {
-		m.skillsLoading = true
-		m.status = "loading local agent skills…"
-		return m, m.reloadSkills()
+	switch m.view {
+	case ViewFleet:
+		if m.viewNeedsLoad(ViewFleet) {
+			m.beginViewLoad(ViewFleet, loadVisit)
+			if err := m.fleetReposUnavailable(); err != nil {
+				fleet := m.viewLoad(ViewFleet)
+				m.applyViewResult(ViewFleet, fleet.generation, false, "", "", 0, err, false)
+				return m, nil
+			}
+			if m.fleetWaitsForRepos() {
+				m.setViewStatus(ViewFleet, "waiting for local repositories…")
+				return m, nil
+			}
+			m.setViewStatus(ViewFleet, "loading configured dev hosts…")
+			return m, m.reloadFleet()
+		}
+	case ViewRemote:
+		if m.viewNeedsLoad(ViewRemote) {
+			m.beginViewLoad(ViewRemote, loadVisit)
+			m.setViewStatus(ViewRemote, "refreshing remote repositories…")
+			return m, m.reloadRemote()
+		}
+	case ViewSkills:
+		if m.viewNeedsLoad(ViewSkills) {
+			m.beginViewLoad(ViewSkills, loadVisit)
+			m.setViewStatus(ViewSkills, "loading local agent skills…")
+			return m, m.reloadSkills()
+		}
 	}
 	return m, nil
 }
@@ -2210,7 +2799,7 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 		return func() tea.Msg {
 			opened, path, err := m.actions.CloneRemote(context.Background(), r)
 			return actionMsg{
-				status: opened.Status, activate: opened.RuntimeHandle,
+				status: opened.Status, cd: opened.Directory, activate: opened.RuntimeHandle,
 				remoteName: r.Repo.FullName, localPath: path, err: err,
 			}
 		}
@@ -2232,32 +2821,20 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 }
 
 func (m Model) openSelected() tea.Cmd {
-	cdWanted := m.actions.Runtime != nil && m.actions.Runtime.Name() == "none"
-
 	if row, ok := m.currentTask(); ok {
 		if err := taskOpenBlocker(row); err != nil {
 			return func() tea.Msg { return actionMsg{err: err} }
 		}
 		t := row.Task
-		dir := row.Checkout
 		return func() tea.Msg {
 			opened, err := m.actions.Open(context.Background(), t)
-			cd := ""
-			if err == nil && cdWanted {
-				cd = dir
-			}
-			return actionMsg{status: opened.Status, cd: cd, activate: opened.RuntimeHandle, err: err}
+			return actionMsg{status: opened.Status, cd: opened.Directory, activate: opened.RuntimeHandle, err: err}
 		}
 	}
 	if r, ok := m.currentRepo(); ok {
-		dir := r.Repo.Path
 		return func() tea.Msg {
 			opened, err := m.actions.OpenRepo(context.Background(), r)
-			cd := ""
-			if err == nil && cdWanted {
-				cd = dir
-			}
-			return actionMsg{status: opened.Status, cd: cd, activate: opened.RuntimeHandle, err: err}
+			return actionMsg{status: opened.Status, cd: opened.Directory, activate: opened.RuntimeHandle, err: err}
 		}
 	}
 	if item, ok := m.currentRepoItem(); ok && item.child() {
@@ -2271,11 +2848,7 @@ func (m Model) openSelected() tea.Cmd {
 				return actionMsg{err: fmt.Errorf("opening linked worktrees is unavailable")}
 			}
 			opened, err := m.actions.OpenCheckout(context.Background(), item.Repo, checkout)
-			cd := ""
-			if err == nil && cdWanted {
-				cd = dir
-			}
-			return actionMsg{status: opened.Status, cd: cd, activate: opened.RuntimeHandle, err: err}
+			return actionMsg{status: opened.Status, cd: opened.Directory, activate: opened.RuntimeHandle, err: err}
 		}
 	}
 	if r, ok := m.currentTry(); ok {
@@ -2290,14 +2863,9 @@ func (m Model) openSelected() tea.Cmd {
 		if !r.Cloned() {
 			return nil // c is the explicit clone action
 		}
-		dir := r.LocalPath
 		return func() tea.Msg {
 			opened, err := m.actions.OpenRemote(context.Background(), r)
-			cd := ""
-			if err == nil && cdWanted {
-				cd = dir
-			}
-			return actionMsg{status: opened.Status, cd: cd, activate: opened.RuntimeHandle, err: err}
+			return actionMsg{status: opened.Status, cd: opened.Directory, activate: opened.RuntimeHandle, err: err}
 		}
 	}
 	if row, ok := m.currentFleet(); ok && row.Repository != nil && m.actions.OpenFleet != nil {
@@ -2323,9 +2891,13 @@ func (m Model) launchTool(key string) tea.Cmd {
 		if t.Key != key {
 			continue
 		}
-		if t.Available != nil && !t.Available() {
+		if t.Probe != nil && t.Availability != ToolAvailable {
+			detail := "availability is still being checked"
+			if t.Availability == ToolUnavailable {
+				detail = "is not installed"
+			}
 			return func() tea.Msg {
-				return actionMsg{err: fmt.Errorf("%s is not installed", t.Command[0])}
+				return actionMsg{err: fmt.Errorf("%s %s", t.Command[0], detail)}
 			}
 		}
 		dir := m.currentDir()
@@ -2351,7 +2923,7 @@ func (m Model) launchTool(key string) tea.Cmd {
 func (m Model) Tools() []Tool {
 	var out []Tool
 	for _, t := range m.actions.Tools {
-		if t.Available == nil || t.Available() {
+		if t.Probe == nil || t.Availability == ToolAvailable {
 			out = append(out, t)
 		}
 	}
@@ -2382,13 +2954,13 @@ func (m Model) Summary() string {
 	if len(m.tries) > 0 {
 		parts = append(parts, fmt.Sprintf("%d tries", len(m.tries)))
 	}
-	if m.remotesLoaded {
+	if m.viewLoad(ViewRemote).hasSnapshot {
 		parts = append(parts, fmt.Sprintf("%d remote", len(m.remotes)))
 	}
 	if count := m.fleetCount(); count > 0 {
 		parts = append(parts, fmt.Sprintf("%d fleet", count))
 	}
-	if m.skillsLoaded {
+	if m.viewLoad(ViewSkills).hasSnapshot {
 		project, global := 0, 0
 		for _, row := range m.skills {
 			if row.Scope == agentskill.ScopeProject {

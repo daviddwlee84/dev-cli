@@ -17,6 +17,29 @@ Switch with `tab`, `l`/`h`, or right/left:
 | REMOTE | What can I open or clone? | authenticated forge CLI inventories |
 | SKILLS | Which agent skills are active here and globally? | upstream `skills list --json` + lock metadata |
 
+The initial TASKS frame is built before runtime auto-detection, project-root
+lookup, cache decoding, shell tool probes or the optional release refresh can
+finish. TASKS, REPOS and TRY then publish independently from one shared local
+load cycle; optional REMOTE, FLEET and SKILLS live work remains lazy. Each view
+has its own generation: `r` supersedes the old read, late results are ignored,
+failed refreshes keep usable rows, and a successful empty result clears old
+rows. Cached rows and current live results are separate readiness stages; there
+is no all-tabs-ready state for views that may never be opened.
+
+For one run, set `DEV_TUI_TRACE` to an absolute file that does not already exist:
+
+```bash
+DEV_TUI_TRACE=/tmp/dev-tui-trace.json dev
+```
+
+The bounded versioned JSON is written with private permissions after the
+alternate screen is restored. It contains only relative timings, aggregate row
+counts and categorical view/generation/outcome fields—never project/host/tool
+names, paths, commands,
+key values, URLs, runtime handles or raw errors—and never enters `stats.db` or
+the network. `tui.initial_view_returned` means the view string was built, not
+that a terminal rasterized it.
+
 REPOS shows branch, dirty state, owned logical size, linked-worktree count and
 HOT/WARM/COLD task tallies. Press `space` to expand a repo into its linked
 worktrees; each child has its own Git, runtime and task state, and enter opens
@@ -26,16 +49,22 @@ first. On a first run with no tasks, switch to REPOS and press `s`, or use TRY
 `n` for a low-cost experiment.
 
 REMOTE loads lazily, so dashboard startup never waits on the network. Its
-private XDG cache holds the complete paginated inventory. Fresh rows avoid a
-network query; stale rows remain searchable while refresh runs in the
-background. `r` refreshes explicitly. It marks remotes already cloned under
+private XDG cache is decoded after the first view and holds the complete
+paginated inventory. Fresh rows avoid a network query; stale rows remain
+searchable while refresh runs in the background. Oversized/malformed cache
+payloads and caches fingerprinted for another configured GH/GL host or Azure
+target are ignored. GitLab uses explicit `GITLAB_HOST`/`GLAB_HOST` (default
+`gitlab.com`) rather than inferring a host from cwd; a successful empty refresh
+clears obsolete rows. `r`
+refreshes explicitly. It marks remotes already cloned under
 `scan_roots`. Enter opens a local clone; `c` asks before cloning an absent repo
 into `project_root`. Filters include visibility, for example `vis:private`.
 
 SKILLS also loads lazily, but local listing never contacts the network or
 downloads the provider. It keeps project/global copies of the same skill as
-separate rows. Press `c` for the explicit read-only source check; `r` only
-reloads local state.
+separate rows. After the local snapshot finishes loading, press `c` for the
+explicit read-only source check; pressing it earlier waits rather than canceling
+the inventory. `r` only reloads local state.
 
 GitHub and GitLab are discovered from authenticated `gh` and `glab` CLIs.
 Azure DevOps Services inventory is opt-in because each query needs an explicit
@@ -51,13 +80,16 @@ Repeat the table for additional projects. Azure CLI and its `azure-devops`
 extension must already be installed and authenticated; dev does not install the
 extension, change Azure defaults, or store credentials.
 
-FLEET is also lazy. It shows cached rows immediately when fresh, then queries
-the machines in `$XDG_CONFIG_HOME/dev/remotes.toml`. It hides this machine by
-default because REPOS already provides the richer local view; press `a` to
-include local rows. A remote row prefers native `herdr --remote` after focusing
-the checkout's workspace and falls back to `ssh -t` at that repository. Git
-synchronization is deliberately CLI-only through `dev fleet sync`; the CLI
-`dev fleet list` continues to include this machine.
+FLEET is also lazy. It shows cached rows immediately when fresh, waits for and
+reuses the accepted REPOS snapshot for this machine, then queries the machines
+in `$XDG_CONFIG_HOME/dev/remotes.toml`. It hides this machine by default because
+REPOS already provides the richer local view; press `a` to include local rows.
+Cache endpoint identity includes the SSH port. Enter opens an explicitly
+revealed local row in the normal runtime; a remote row prefers native
+`herdr --remote` after focusing the checkout's workspace and falls back to
+`ssh -t` at that repository. Git synchronization is deliberately CLI-only
+through `dev fleet sync`; the CLI `dev fleet list` continues to include this
+machine.
 
 ## Vim-style movement
 
@@ -246,6 +278,9 @@ and executable scripts work. `interactive = true` runs through `$SHELL -lic`
 and deliberately evaluates the command *after* rc loading, so this machine's
 `vibe` alias and `claude-plans-here` function work. Prefer a real script on PATH
 when the binding should be portable to machines with different shell configs.
+The dashboard resolves availability in a bounded background load after the first
+view; rendering itself never launches the shell. Unknown or missing bindings are
+hidden and fail closed until the current config generation has been checked.
 
 Keys are case-sensitive. A tool cannot take one the dashboard owns; config
 loading reports the collision instead of silently shadowing movement or quit.

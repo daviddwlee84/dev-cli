@@ -15,10 +15,33 @@ Bare `dev` opens an interactive dashboard when standard input/output are termina
 |---|---|---|
 | TASKS | What am I working on? | task registry plus live Git/runtime facts |
 | REPOS | What durable repositories exist here? | configured scan roots and local catalog |
-| FLEET | What exists and is active on other machines? | remote `dev` snapshots over SSH |
+| FLEET | What exists and is active on configured machines? | accepted local REPOS snapshot plus remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive, or graduate? | experiment catalog plus live facts |
 | REMOTE | What can I open or clone? | authenticated `gh`/`glab` inventories and cache |
 | SKILLS | Which agent skills are installed locally and globally? | upstream `skills` JSON plus project/global locks |
+
+The initial TASKS frame is built before runtime auto-detection, project-root
+lookup, cache decoding, shell tool probes, or the optional release refresh can
+finish. TASKS, REPOS, and TRY then publish independently from one shared local
+cycle. REMOTE, FLEET, and SKILLS stay lazy. Each requested view has a generation:
+`r` supersedes the previous read, late results are ignored, failed refreshes keep
+usable rows visible, and a successful empty result removes obsolete rows. Cache
+acceptance and current live completion are distinct; there is no all-tabs-ready
+state for optional views that may never be opened.
+
+Use an absolute path that does not exist for a one-run diagnostic trace:
+
+```bash
+DEV_TUI_TRACE=/tmp/dev-tui-trace.json dev
+```
+
+The private, bounded JSON is written after the alternate screen is restored. It
+contains relative timings, aggregate row counts, and categorical
+view/generation/outcome fields, never repository/task/host/tool names, paths,
+commands, key values, URLs, handles, or
+raw errors. It is not `stats.db` and is never sent anywhere.
+`tui.initial_view_returned` means the Bubble Tea view string was built, not that
+the terminal rasterized it.
 
 Switch with `tab`, `h`/`l`, or arrows. Use `j`/`k`, `g`/`G`, `ctrl+d`/`ctrl+u`, `/` to filter, `?` for help, and `esc`/`q` to leave the current mode.
 
@@ -58,19 +81,28 @@ Expanded rows explain every linked worktree, including harness-owned `(ephemeral
 TRY handles low-cost experiments, reversible archive/restore, marking, and graduation. Archive is organization, not deletion or disk reclamation.
 
 REMOTE loads lazily so startup does not wait for the network. Its private XDG
-cache holds the complete paginated inventory. Fresh rows require no network;
-stale rows stay searchable while background refresh runs. Enter opens a local
-clone; `c` confirms before cloning an absent repository; `r` forces a refresh.
+cache is decoded after the first view and holds the complete paginated inventory.
+Fresh rows require no network; stale rows stay searchable while background
+refresh runs. Oversized/malformed payloads and caches fingerprinted for another
+configured GH/GL host or Azure target are ignored. GitLab uses explicit
+`GITLAB_HOST`/`GLAB_HOST` (default `gitlab.com`) instead of inferring a host from
+cwd; successful empty inventories clear old rows. Enter opens a local clone; `c` confirms before
+cloning an absent repository into a path-confined `project_root`; `r` forces a
+refresh.
 Use `/vis:private` for an exact visibility filter. Notes are enabled only after
 a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a
 new Try rather than a repository note.
 
 ### FLEET
 
-FLEET loads configured hosts lazily and hides this machine by default because
-REPOS already provides the richer local inventory. Press `a` to include/hide
-local rows and `r` to refresh. This does not change `dev fleet list`, whose
-non-interactive output continues to include this machine.
+FLEET also loads lazily. It keeps valid cached rows usable while waiting for the
+current REPOS generation to be accepted, reuses that snapshot for the local host
+instead of scanning repositories again, and then fans out to configured SSH
+hosts. This machine is hidden by default because REPOS already provides the
+richer local inventory; press `a` to include/hide local rows. Press `r` to
+supersede an older request and force a live reload. Changing any endpoint field,
+including SSH port, invalidates that host's cache. None of this changes
+`dev fleet list`, whose non-interactive output continues to include this machine.
 
 ## Repository quick notes
 
@@ -108,7 +140,8 @@ Markdown under configured `paths.state_dir/notes` is durable; `$XDG_CACHE_HOME/d
 SKILLS also loads lazily, so dashboard startup does not invoke Node. It keeps
 same-named project and global skills as separate rows and shows their target
 agents, source, path, manager, and update state. `r` reloads only local state;
-`c` explicitly performs a read-only source check; `a` opens the upstream
+after that local snapshot is ready, `c` explicitly performs a read-only source
+check (an earlier `c` waits instead of canceling inventory); `a` opens the upstream
 interactive installer with `daviddwlee84/agent-skills/skills` as its default
 source; `u` confirms before updating only the selected lock-managed skill.
 Structured filters include `scope:`, `agent:`, and `update:`.
@@ -119,7 +152,7 @@ Structured filters include `scope:`, `agent:`, and `update:`.
 dev tui tools
 ```
 
-Configured tools run through `$SHELL` in the selected checkout while the alternate screen is suspended. `interactive = true` uses `$SHELL -lic` so local aliases/functions can resolve; use a real executable on `PATH` when the binding must be portable.
+Configured tools run through `$SHELL` in the selected checkout while the alternate screen is suspended. `interactive = true` uses `$SHELL -lic` so local aliases/functions can resolve; use a real executable on `PATH` when the binding must be portable. Availability probes run in a bounded background load after the first view; rendering never starts a login shell, and unresolved bindings fail closed.
 
 ```toml
 [[tui.tools]]

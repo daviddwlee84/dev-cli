@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/note"
+	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
@@ -53,7 +55,6 @@ type recorder struct {
 func newActions(r *recorder, rows []inventory.Row) tui.Actions {
 	r.nexts = map[string]string{}
 	return tui.Actions{
-		Runtime: runtime.None{},
 		Reload: func(context.Context) ([]inventory.Row, error) {
 			return rows, nil
 		},
@@ -226,6 +227,41 @@ func TestViewRendersTasksAndHelp(t *testing.T) {
 	}
 }
 
+func TestSkillsCheckWaitsForInitialLocalSnapshot(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	checks := 0
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadSkills = func(context.Context) ([]agentskill.Skill, error) {
+		close(started)
+		<-release
+		return []agentskill.Skill{{Name: "loaded", Scope: agentskill.ScopeProject}}, nil
+	}
+	actions.CheckSkills = func(_ context.Context, rows []agentskill.Skill) []agentskill.Skill {
+		checks++
+		return rows
+	}
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
+	next, loadCommand := m.Update(key("tab"))
+	m = next.(tui.Model)
+	loadResult := make(chan tea.Msg, 1)
+	go func() { loadResult <- loadCommand() }()
+	<-started
+
+	next, checkCommand := m.Update(key("c"))
+	m = next.(tui.Model)
+	if checkCommand != nil || checks != 0 || !strings.Contains(m.View(), "wait for local agent skills") {
+		t.Fatalf("check superseded initial skills load (checks=%d cmd=%v):\n%s", checks, checkCommand, m.View())
+	}
+	close(release)
+	m = send(m, <-loadResult)
+	m = send(m, key("c"))
+	if checks != 1 || !strings.Contains(m.View(), "loaded") {
+		t.Fatalf("check after local load failed (checks=%d):\n%s", checks, m.View())
+	}
+}
+
 func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 	rows := []agentskill.Skill{
 		{
@@ -378,7 +414,6 @@ func TestEnterOpensSelectedTask(t *testing.T) {
 func TestEnterDefersRuntimeActivationUntilAfterTUIExit(t *testing.T) {
 	rows := []inventory.Row{row("a", "first", task.Hot, "")}
 	actions := newActions(&recorder{}, rows)
-	actions.Runtime = runtime.NewTmux()
 	actions.Open = func(context.Context, *task.Task) (tui.OpenResult, error) {
 		return tui.OpenResult{Status: "opened", RuntimeHandle: "task-a"}, nil
 	}
@@ -702,6 +737,272 @@ func TestFleetOnlyLocalRowsExplainsHowToRevealThem(t *testing.T) {
 	m = send(m, key("tab"), key("tab"))
 	if out := m.View(); !strings.Contains(out, "Press a to include this machine") {
 		t.Fatalf("local-only fleet had no reveal hint:\n%s", out)
+	}
+}
+
+func TestFleetWaitsForAndReusesAcceptedRepositorySnapshot(t *testing.T) {
+	localResults := make(chan tui.LocalResult, 3)
+	var request tui.LocalLoadRequest
+	var gotRepos []tui.RepoRow
+	fleetLoads := 0
+	actions := newActions(&recorder{}, nil)
+	actions.Local.Start = func(_ context.Context, got tui.LocalLoadRequest) tui.LocalLoad {
+		request = got
+		return tui.LocalLoad{ID: 9, Request: got, Results: localResults}
+	}
+	actions.ReloadFleetWithRepos = func(_ context.Context, repos []tui.RepoRow) ([]tui.FleetRow, error) {
+		fleetLoads++
+		gotRepos = append([]tui.RepoRow(nil), repos...)
+		return []tui.FleetRow{{Host: "local", State: fleet.HostOK}}, nil
+	}
+	m := tui.New(actions, nil, nil).BeginLoading()
+	initial := m.Init()().(tea.BatchMsg)
+	m = send(m, key("tab"), key("tab"))
+	if fleetLoads != 0 || !strings.Contains(m.View(), "waiting for local repositories") {
+		t.Fatalf("fleet did not wait for REPOS (loads=%d):\n%s", fleetLoads, m.View())
+	}
+
+	localResults <- tui.LocalResult{
+		View: tui.ViewRepos, Generation: request.ReposGeneration,
+		Repos: []tui.RepoRow{repoRow("shared-api")}, Valid: true,
+	}
+	next, command := m.Update(initial[1]())
+	m = next.(tui.Model)
+	batch, ok := command().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("repo acceptance command = %T/%d", batch, len(batch))
+	}
+	m = send(m, batch[1]())
+	if fleetLoads != 1 || len(gotRepos) != 1 || gotRepos[0].Repo.Name != "shared-api" {
+		t.Fatalf("fleet loads=%d repos=%+v", fleetLoads, gotRepos)
+	}
+	if out := m.View(); !strings.Contains(out, "local") {
+		t.Fatalf("fleet result missing:\n%s", out)
+	}
+	close(localResults)
+}
+
+func TestFleetWaitsForCurrentReposWhenOlderSnapshotExists(t *testing.T) {
+	stream := make(chan tui.LocalResult, 3)
+	var request tui.LocalLoadRequest
+	var gotRepos []tui.RepoRow
+	actions := newActions(&recorder{}, nil)
+	actions.Local.Start = func(_ context.Context, got tui.LocalLoadRequest) tui.LocalLoad {
+		request = got
+		return tui.LocalLoad{ID: 1, Request: got, Results: stream}
+	}
+	actions.ReloadFleetWithRepos = func(_ context.Context, repos []tui.RepoRow) ([]tui.FleetRow, error) {
+		gotRepos = append([]tui.RepoRow(nil), repos...)
+		return []tui.FleetRow{{Host: "current", State: fleet.HostOK}}, nil
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{repoRow("old")})
+	next, configCommand := m.Update(key("r"))
+	m = next.(tui.Model)
+	next, localCommand := m.Update(configCommand())
+	m = next.(tui.Model)
+	m = send(m, key("tab"), key("tab"))
+	if len(gotRepos) != 0 || !strings.Contains(m.View(), "waiting for local repositories") {
+		t.Fatalf("fleet used old REPOS while refresh was active:\n%s", m.View())
+	}
+
+	stream <- tui.LocalResult{
+		View: tui.ViewRepos, Generation: request.ReposGeneration,
+		Repos: []tui.RepoRow{repoRow("new")}, Valid: true,
+	}
+	next, fleetBatchCommand := m.Update(localCommand())
+	m = next.(tui.Model)
+	fleetBatch := fleetBatchCommand().(tea.BatchMsg)
+	m = send(m, fleetBatch[1]())
+	if len(gotRepos) != 1 || gotRepos[0].Repo.Name != "new" {
+		t.Fatalf("fleet repos = %+v", gotRepos)
+	}
+	close(stream)
+}
+
+func TestRejectedStaleReposCannotFailCurrentFleetDependency(t *testing.T) {
+	var requests []tui.LocalLoadRequest
+	var streams []chan tui.LocalResult
+	fleetLoads := 0
+	actions := newActions(&recorder{}, nil)
+	actions.Local.Start = func(_ context.Context, request tui.LocalLoadRequest) tui.LocalLoad {
+		stream := make(chan tui.LocalResult, 3)
+		requests = append(requests, request)
+		streams = append(streams, stream)
+		return tui.LocalLoad{ID: uint64(len(streams)), Request: request, Results: stream}
+	}
+	actions.ReloadFleetWithRepos = func(_ context.Context, repos []tui.RepoRow) ([]tui.FleetRow, error) {
+		fleetLoads++
+		return []tui.FleetRow{{Host: "current", State: fleet.HostOK}}, nil
+	}
+	m := tui.New(actions, nil, nil).BeginLoading()
+	initial := m.Init()().(tea.BatchMsg)
+
+	next, configCommand := m.Update(key("r"))
+	m = next.(tui.Model)
+	next, currentLocalCommand := m.Update(configCommand())
+	m = next.(tui.Model)
+	if len(requests) != 2 {
+		t.Fatalf("local requests = %d, want 2", len(requests))
+	}
+	m = send(m, key("tab"), key("tab"))
+
+	streams[0] <- tui.LocalResult{
+		View: tui.ViewRepos, Generation: requests[0].ReposGeneration,
+		Repos: []tui.RepoRow{repoRow("stale")}, Valid: true,
+	}
+	next, _ = m.Update(initial[1]())
+	m = next.(tui.Model)
+	if fleetLoads != 0 || !strings.Contains(m.View(), "waiting for local repositories") {
+		t.Fatalf("stale REPOS changed current FLEET (loads=%d):\n%s", fleetLoads, m.View())
+	}
+
+	streams[1] <- tui.LocalResult{
+		View: tui.ViewRepos, Generation: requests[1].ReposGeneration,
+		Repos: []tui.RepoRow{repoRow("current")}, Valid: true,
+	}
+	next, fleetBatchCommand := m.Update(currentLocalCommand())
+	m = next.(tui.Model)
+	fleetBatch := fleetBatchCommand().(tea.BatchMsg)
+	m = send(m, fleetBatch[1]())
+	if fleetLoads != 1 || !strings.Contains(m.View(), "current") {
+		t.Fatalf("current REPOS did not start FLEET (loads=%d):\n%s", fleetLoads, m.View())
+	}
+	close(streams[0])
+	close(streams[1])
+}
+
+func TestFleetOlderGenerationCannotReplaceNewerRefresh(t *testing.T) {
+	var calls atomic.Int32
+	started := make(chan int, 2)
+	responses := [2]chan []tui.FleetRow{make(chan []tui.FleetRow, 1), make(chan []tui.FleetRow, 1)}
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadFleet = func(context.Context) ([]tui.FleetRow, error) {
+		index := int(calls.Add(1)) - 1
+		started <- index
+		return <-responses[index], nil
+	}
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"))
+	next, firstCmd := m.Update(key("tab"))
+	m = next.(tui.Model)
+	if firstCmd == nil {
+		t.Fatal("first fleet command missing")
+	}
+	firstResult := make(chan tea.Msg, 1)
+	go func() { firstResult <- firstCmd() }()
+	if index := <-started; index != 0 {
+		t.Fatalf("first load index = %d", index)
+	}
+
+	next, secondCmd := m.Update(key("r"))
+	m = next.(tui.Model)
+	if secondCmd == nil {
+		t.Fatal("second fleet command missing")
+	}
+	secondResult := make(chan tea.Msg, 1)
+	go func() { secondResult <- secondCmd() }()
+	if index := <-started; index != 1 {
+		t.Fatalf("second load index = %d", index)
+	}
+
+	responses[1] <- []tui.FleetRow{{Host: "new-host", State: fleet.HostOK}}
+	m = send(m, <-secondResult)
+	responses[0] <- []tui.FleetRow{{Host: "old-host", State: fleet.HostOK}}
+	m = send(m, <-firstResult)
+	if out := m.View(); !strings.Contains(out, "new-host") || strings.Contains(out, "old-host") {
+		t.Fatalf("older fleet result replaced the current generation:\n%s", out)
+	}
+}
+
+func TestFleetSupersedingRefreshCancelsOlderRead(t *testing.T) {
+	started := make(chan struct{})
+	canceled := make(chan struct{})
+	var calls atomic.Int32
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadFleet = func(ctx context.Context) ([]tui.FleetRow, error) {
+		if calls.Add(1) == 1 {
+			close(started)
+			<-ctx.Done()
+			close(canceled)
+			return nil, ctx.Err()
+		}
+		return []tui.FleetRow{{Host: "current", State: fleet.HostOK}}, nil
+	}
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"))
+	next, firstCmd := m.Update(key("tab"))
+	m = next.(tui.Model)
+	firstResult := make(chan tea.Msg, 1)
+	go func() { firstResult <- firstCmd() }()
+	<-started
+
+	next, secondCmd := m.Update(key("r"))
+	m = next.(tui.Model)
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("superseded fleet read was not canceled")
+	}
+	m = send(m, secondCmd())
+	m = send(m, <-firstResult)
+	if out := m.View(); !strings.Contains(out, "current") {
+		t.Fatalf("current result missing after cancellation:\n%s", out)
+	}
+}
+
+func TestViewReadinessTransitionsAreTraced(t *testing.T) {
+	trace := perftrace.New(32)
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadFleet = func(context.Context) ([]tui.FleetRow, error) {
+		return []tui.FleetRow{{Host: "lab", State: fleet.HostOK}}, nil
+	}
+	m := tui.New(actions, nil, nil).WithTrace(trace)
+	m = send(m, key("tab"), key("tab"))
+	events := trace.Freeze().Events
+	var requested, accepted, finished bool
+	for _, event := range events {
+		if event.View != perftrace.ViewFleet || event.Generation != 1 {
+			continue
+		}
+		switch event.Name {
+		case perftrace.TUIViewLoadRequested:
+			requested = true
+		case perftrace.TUIViewSnapshotAccepted:
+			accepted = event.Rows != nil && *event.Rows == 1
+		case perftrace.TUIViewLoadFinished:
+			finished = event.Outcome == perftrace.OutcomeSuccess
+		}
+	}
+	if !requested || !accepted || !finished {
+		t.Fatalf("readiness trace requested=%v accepted=%v finished=%v events=%+v", requested, accepted, finished, events)
+	}
+}
+
+func TestFleetFailedRefreshRetainsUsableRowsAndScopesError(t *testing.T) {
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadFleet = func(context.Context) ([]tui.FleetRow, error) {
+		return nil, errors.New("fleet unavailable")
+	}
+	cached := []tui.FleetRow{{Host: "cached-host", State: fleet.HostStale, FromCache: true}}
+	m := tui.New(actions, nil, nil).WithFleet(cached)
+	m = send(m, key("tab"), key("tab"))
+	if out := m.View(); !strings.Contains(out, "cached-host") || !strings.Contains(out, "fleet unavailable") {
+		t.Fatalf("failed refresh did not retain and label cached rows:\n%s", out)
+	}
+	m = send(m, key("tab"))
+	if out := m.View(); strings.Contains(out, "fleet unavailable") {
+		t.Fatalf("fleet error leaked into another view:\n%s", out)
+	}
+}
+
+func TestFleetSuccessfulEmptyRefreshClearsOlderRows(t *testing.T) {
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadFleet = func(context.Context) ([]tui.FleetRow, error) { return nil, nil }
+	cached := []tui.FleetRow{{Host: "cached-host", State: fleet.HostStale, FromCache: true}}
+	m := tui.New(actions, nil, nil).WithFleet(cached)
+	m = send(m, key("tab"), key("tab"))
+	if out := m.View(); strings.Contains(out, "cached-host") || !strings.Contains(out, "No fleet row") {
+		t.Fatalf("successful empty refresh did not clear old rows:\n%s", out)
 	}
 }
 
@@ -1032,6 +1333,9 @@ func TestRepoViewHidesTriesButRemoteMatchingUsesAndClearsThem(t *testing.T) {
 
 	actions := newActions(&recorder{}, nil)
 	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) { return repos, nil }
+	actions.ReloadRemoteWithRepos = func(context.Context, []tui.RepoRow) ([]tui.RemoteRow, error) {
+		return []tui.RemoteRow{remote}, nil
+	}
 	m := tui.New(actions, nil, repos).WithRemotes([]tui.RemoteRow{remote})
 	m = send(m, key("tab"))
 	if out := m.View(); strings.Contains(out, "scratch") || !strings.Contains(out, "api") {
@@ -1061,9 +1365,12 @@ func TestRemoteMatchingDoesNotChooseBetweenDuplicateLocalClones(t *testing.T) {
 	first.RemoteForge, first.RemoteName = forge.GitHub, "owner/shared"
 	second.RemoteForge, second.RemoteName = forge.GitHub, "owner/shared"
 	repos := []tui.RepoRow{first, second}
+	remote := remoteRow(forge.GitHub, "owner/shared", "")
 	actions := newActions(&recorder{}, nil)
 	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) { return repos, nil }
-	remote := remoteRow(forge.GitHub, "owner/shared", "")
+	actions.ReloadRemoteWithRepos = func(context.Context, []tui.RepoRow) ([]tui.RemoteRow, error) {
+		return []tui.RemoteRow{remote}, nil
+	}
 	m := tui.New(actions, nil, repos).WithRemotes([]tui.RemoteRow{remote})
 	m = send(m, key("r"), key("tab"), key("tab"), key("tab"), key("tab"))
 	if out := m.View(); !strings.Contains(out, "not cloned") {
@@ -1187,12 +1494,38 @@ func TestReposSortWorkInFlightFirst(t *testing.T) {
 	}
 }
 
+func TestViewNeverRunsToolProbe(t *testing.T) {
+	rows := []inventory.Row{row("a", "one", task.Hot, "")}
+	var calls atomic.Int32
+	actions := newActions(&recorder{}, rows)
+	actions.Tools = []tui.Tool{{
+		Key: "L", Name: "lazygit", Command: []string{"lazygit"},
+		Probe: func(context.Context) bool { calls.Add(1); return true },
+	}}
+	m := tui.New(actions, rows, nil)
+	if out := m.View(); calls.Load() != 0 || strings.Contains(out, "L lazygit") {
+		t.Fatalf("View invoked or advertised an unresolved tool (calls=%d):\n%s", calls.Load(), out)
+	}
+	batch, ok := m.Init()().(tea.BatchMsg)
+	if !ok {
+		t.Fatal("Init did not batch the background tool probe")
+	}
+	for _, command := range batch {
+		if msg, ready := runQuickly(command); ready && msg != nil {
+			m = send(m, msg)
+		}
+	}
+	if out := m.View(); calls.Load() != 1 || !strings.Contains(out, "L lazygit") {
+		t.Fatalf("background probe was not applied once (calls=%d):\n%s", calls.Load(), out)
+	}
+}
+
 func TestToolsOnlyListedWhenAvailable(t *testing.T) {
 	rows := []inventory.Row{row("a", "one", task.Hot, "")}
 	actions := newActions(&recorder{}, rows)
 	actions.Tools = []tui.Tool{
-		{Key: "L", Name: "lazygit", Command: []string{"lazygit"}, Available: func() bool { return true }},
-		{Key: "Z", Name: "absent", Command: []string{"absent"}, Available: func() bool { return false }},
+		{Key: "L", Name: "lazygit", Command: []string{"lazygit"}, Availability: tui.ToolAvailable},
+		{Key: "Z", Name: "absent", Command: []string{"absent"}, Probe: func(context.Context) bool { return false }, Availability: tui.ToolUnavailable},
 	}
 	m := tui.New(actions, rows, nil)
 
@@ -1410,6 +1743,40 @@ func TestRemoteViewLabelsLocalTryKind(t *testing.T) {
 	}
 }
 
+func TestLateStartupRemoteCacheCannotOverwriteVisitedView(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	actions := newActions(&recorder{}, nil)
+	actions.LoadRemoteCache = func(context.Context) tui.RemoteCacheResult {
+		close(started)
+		<-release
+		return tui.RemoteCacheResult{
+			Rows: []tui.RemoteRow{remoteRow(forge.GitHub, "owner/cached", "")}, Found: true,
+		}
+	}
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) {
+		return []tui.RemoteRow{remoteRow(forge.GitHub, "owner/live", "")}, nil
+	}
+	m := tui.New(actions, nil, nil)
+	batch, ok := m.Init()().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("Init commands = %T/%d, want blink + cache", batch, len(batch))
+	}
+	cacheResult := make(chan tea.Msg, 1)
+	go func() { cacheResult <- batch[1]() }()
+	<-started
+	if out := m.View(); !strings.Contains(out, "TASKS") {
+		t.Fatalf("blocked cache prevented initial View:\n%s", out)
+	}
+
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
+	close(release)
+	m = send(m, <-cacheResult)
+	if out := m.View(); !strings.Contains(out, "owner/live") || strings.Contains(out, "owner/cached") {
+		t.Fatalf("late generation-zero cache replaced live rows:\n%s", out)
+	}
+}
+
 func TestRemoteRefreshQueriesAgain(t *testing.T) {
 	loads := 0
 	actions := newActions(&recorder{}, nil)
@@ -1422,6 +1789,25 @@ func TestRemoteRefreshQueriesAgain(t *testing.T) {
 	m = send(m, key("r"))
 	if loads != 2 {
 		t.Errorf("initial visit + refresh should load twice, got %d", loads)
+	}
+}
+
+func TestOffscreenConfigReloadInvalidatesFreshRemoteSnapshot(t *testing.T) {
+	loads := 0
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) {
+		loads++
+		return []tui.RemoteRow{remoteRow(forge.GitHub, "owner/current", "")}, nil
+	}
+	cached := []tui.RemoteRow{remoteRow(forge.GitHub, "owner/cached", "")}
+	m := tui.New(actions, nil, nil).WithRemotes(cached)
+	m = send(m, key("r"))
+	if loads != 0 {
+		t.Fatalf("off-screen config reload queried REMOTE eagerly: %d", loads)
+	}
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
+	if loads != 1 || !strings.Contains(m.View(), "owner/current") {
+		t.Fatalf("invalidated REMOTE did not refresh on visit (loads=%d):\n%s", loads, m.View())
 	}
 }
 
@@ -1551,6 +1937,9 @@ func TestRReloadsConfigAsWellAsData(t *testing.T) {
 		dataReloads++
 		return rows, nil
 	}
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return []tui.RepoRow{repoRow("api")}, nil
+	}
 	m := tui.New(actions, rows, []tui.RepoRow{repoRow("api")})
 	m = send(m, key("r"))
 	if configReloads != 1 || dataReloads != 1 {
@@ -1659,6 +2048,85 @@ func TestEmptyHeatmapCanBackfillSelectedRepo(t *testing.T) {
 	}
 }
 
+func TestSharedLocalLoadPublishesEachViewWithoutWaitingForOthers(t *testing.T) {
+	results := make(chan tui.LocalResult, 3)
+	var request tui.LocalLoadRequest
+	var loadContext context.Context
+	actions := newActions(&recorder{}, nil)
+	actions.Local.Start = func(ctx context.Context, got tui.LocalLoadRequest) tui.LocalLoad {
+		loadContext, request = ctx, got
+		return tui.LocalLoad{ID: 7, Request: got, Results: results}
+	}
+	m := tui.New(actions, nil, nil).BeginLoading()
+	batch, ok := m.Init()().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("Init commands = %T/%d, want blink + local stream", batch, len(batch))
+	}
+	results <- tui.LocalResult{
+		View: tui.ViewTasks, Generation: request.TasksGeneration,
+		Tasks: []inventory.Row{row("task-a", "ready first", task.Hot, "")}, Valid: true,
+	}
+	message := batch[1]()
+	next, waitRepos := m.Update(message)
+	m = next.(tui.Model)
+	if out := m.View(); !strings.Contains(out, "ready first") {
+		t.Fatalf("TASKS did not publish independently:\n%s", out)
+	}
+	if err := loadContext.Err(); err != nil {
+		t.Fatalf("TASKS completion canceled the shared local cycle: %v", err)
+	}
+
+	results <- tui.LocalResult{
+		View: tui.ViewRepos, Generation: request.ReposGeneration,
+		Repos: []tui.RepoRow{repoRow("repo-second")}, Valid: true,
+	}
+	next, waitTries := m.Update(waitRepos())
+	m = next.(tui.Model)
+	m = send(m, key("tab"))
+	if out := m.View(); !strings.Contains(out, "repo-second") {
+		t.Fatalf("REPOS did not publish independently:\n%s", out)
+	}
+
+	results <- tui.LocalResult{
+		View: tui.ViewTries, Generation: request.TriesGeneration,
+		Tries: []tui.TryRow{tryRow("try-third", "try-third", catalog.PhaseActive, catalog.LocationPresent)}, Valid: true,
+	}
+	close(results)
+	next, waitDone := m.Update(waitTries())
+	m = next.(tui.Model)
+	next, _ = m.Update(waitDone())
+	m = next.(tui.Model)
+	m = send(m, key("tab"), key("tab"))
+	if out := m.View(); !strings.Contains(out, "try-third") {
+		t.Fatalf("TRY did not publish independently:\n%s", out)
+	}
+}
+
+func TestAfterFirstViewWorkWaitsForInitialView(t *testing.T) {
+	started := make(chan struct{})
+	actions := newActions(&recorder{}, nil)
+	actions.AfterFirstView = func(context.Context) { close(started) }
+	m := tui.New(actions, nil, nil)
+	batch, ok := m.Init()().(tea.BatchMsg)
+	if !ok || len(batch) != 2 {
+		t.Fatalf("Init commands = %T/%d, want blink + post-view work", batch, len(batch))
+	}
+	done := make(chan tea.Msg, 1)
+	go func() { done <- batch[1]() }()
+	select {
+	case <-started:
+		t.Fatal("post-view work started before View returned")
+	default:
+	}
+	_ = m.View()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("post-view work did not start after View returned")
+	}
+	<-done
+}
+
 func TestBeginLoadingShowsBeforeInventoryFinishes(t *testing.T) {
 	actions := newActions(&recorder{}, nil)
 	m := tui.New(actions, nil, nil).BeginLoading()
@@ -1692,7 +2160,7 @@ func TestRepoViewNeverScrollsTopBarOffTerminal(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		actions.Tools = append(actions.Tools, tui.Tool{
 			Key: fmt.Sprintf("X%d", i), Name: "long-tool-name",
-			Available: func() bool { return true },
+			Availability: tui.ToolAvailable,
 		})
 	}
 	m := tui.New(actions, nil, repos)

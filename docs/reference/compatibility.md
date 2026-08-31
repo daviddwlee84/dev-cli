@@ -47,7 +47,7 @@ The task schema has an `AgentSession` field and Herdr inventory can expose live 
 
 ### Built-in forge cache TTL differs from generated config
 
-`dev config init` writes `forge.cache_ttl = "15m"`. With no config file, the current built-in `Forge.CacheTTL` zero value means an existing valid cache is not rejected by age; explicit `r` refresh still replaces it. Run `config init` or set the TTL when freshness matters.
+`dev config init` writes `forge.cache_ttl = "15m"`. With no config file, the current built-in `Forge.CacheTTL` zero value means an existing valid cache is not rejected by age; explicit `r` refresh still replaces it. Freshness also requires a source fingerprint matching the configured GH/GL hosts and Azure targets, so an endpoint change is never hidden by the zero TTL. Legacy source-less caches remain available only through explicit `--cached` and are reported stale. Run `config init` or set the TTL when freshness matters.
 
 Older generated configs may contain `forge.remote_limit = 100`. The field is
 still accepted, but complete forge inventories are now paginated and it no
@@ -94,6 +94,7 @@ These were historical gaps and should not be reintroduced as limitations:
   a newly created first-class Herdr worktree. It is incompatible with `--json`,
   non-worktree modes, and non-Herdr runtimes, and does not wait for command exit.
 - TUI navigation refuses to open a missing COLD checkout and directs the user to `dev resume`.
+- `DEV_TUI_TRACE` starts at `cli.Execute`; it cannot include OS process loading. `tui.initial_view_returned` measures model construction, not renderer flush or physical terminal paint. Use it for same-profile comparisons rather than universal hardware/network guarantees.
 - Runtime handles now record backend provenance and are revalidated before cleanup.
 - `auto` runtime selection includes Zellij between tmux and none.
 
@@ -115,7 +116,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - A release publishes platform archives and `SHA256SUMS` and takes its notes from `CHANGELOG.md`. Earlier releases published a GitHub release object and nothing else, so their assets are absent by construction.
 - A release publishes Windows `.zip` archives alongside the Unix `.tar.gz` set, and refreshes an in-repo Scoop manifest attached to the release (and pushed to the bucket when a token is configured).
 - `dev upgrade` downloads the current release for this platform, verifies it against the release `SHA256SUMS`, and replaces the running binary with an atomic rename (Windows moves the live `.exe` aside and sweeps it on the next run). It defers to Homebrew, Scoop or `go install` when one of them owns the file.
-- An interactive `dev` command prints one dim "newer release available" line at most once a day, read from the day-old release cache; it never blocks on the network. `[update] check = false` or `DEV_NO_UPDATE_CHECK` disables it.
+- An interactive `dev` command prints one dim "newer release available" line at most once a day, read from the day-old release cache; it never blocks on the network. For the TUI, a stale-cache background refresh starts only after the initial view returns. `[update] check = false` or `DEV_NO_UPDATE_CHECK` disables it.
 
 ## Claude Code status matrix
 

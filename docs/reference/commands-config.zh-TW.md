@@ -232,6 +232,14 @@ dev config scaffolds edit
 | `[stats]` | sampler 與 optional WakaTime import |
 | `[update]` | `check`（預設 `true`）— 允許每天一次的「有新版」提示與其背景 cache refresh；`DEV_NO_UPDATE_CHECK` 可覆寫 |
 
+`DEV_TUI_TRACE=/absolute/new-file.json` 會啟用單次 TUI startup/readiness trace。
+Target 必須是 absolute 且尚不存在；dev 絕不 overwrite。Private、bounded document
+在 TUI teardown 後才寫入，只包含 relative categorical timings 與 aggregate row
+counts，不包含 names、paths 或 raw payloads；它不是 configuration、cache、durable
+stats、stdout 或 network telemetry。
+TUI invocation 的 optional update-cache network refresh 也會延後到 initial view
+return 之後。
+
 Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
 
 ### Scaffold presets

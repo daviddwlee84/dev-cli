@@ -2,11 +2,14 @@ package fleet
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
 )
 
 func TestLoadConfigAppliesDefaultsAndValidatesHosts(t *testing.T) {
@@ -104,7 +107,7 @@ func TestTransportPreservesRemoteNoDevExitCode(t *testing.T) {
 
 func TestCacheRejectsChangedEndpoint(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-	host := Host{Name: "lab", SSHAlias: "lab", DevPath: "auto"}
+	host := Host{Name: "lab", SSHAlias: "lab", Port: 22, DevPath: "auto"}
 	host.ConnectTimeout.Duration = time.Second
 	host.CommandTimeout.Duration = time.Minute
 	snapshot := Snapshot{SchemaVersion: SnapshotSchemaVersion, Host: "lab", GeneratedAt: time.Now().UTC()}
@@ -114,8 +117,60 @@ func TestCacheRejectsChangedEndpoint(t *testing.T) {
 	if _, _, ok := LoadCache(host); !ok {
 		t.Fatal("fresh cache was not loaded")
 	}
-	host.SSHAlias = "different"
+	changedAlias := host
+	changedAlias.SSHAlias = "different"
+	if _, _, ok := LoadCache(changedAlias); ok {
+		t.Fatal("cache survived SSH alias change")
+	}
+	changedPort := host
+	changedPort.Port = 2222
+	if _, _, ok := LoadCache(changedPort); ok {
+		t.Fatal("cache survived SSH port change")
+	}
+}
+
+func TestCacheRejectsOversizedFileAndFields(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	host := Host{Name: "lab", SSHAlias: "lab", Port: 22, DevPath: "auto"}
+	host.ConnectTimeout.Duration = time.Second
+	host.CommandTimeout.Duration = time.Minute
+	snapshot := Snapshot{
+		SchemaVersion: SnapshotSchemaVersion, Host: "lab", GeneratedAt: time.Now().UTC(),
+		Repositories: []RepoSnapshot{{Name: "api", Display: "api", Path: strings.Repeat("x", (16<<10)+1)}},
+	}
+	if err := SaveCache(host, snapshot); err != nil {
+		t.Fatal(err)
+	}
 	if _, _, ok := LoadCache(host); ok {
-		t.Fatal("cache survived endpoint change")
+		t.Fatal("cache with oversized repository path was accepted")
+	}
+	if err := os.Truncate(cachePath(host), maxCacheBytes+1); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := LoadCache(host); ok {
+		t.Fatal("oversized cache file was accepted")
+	}
+	snapshot.Repositories = []RepoSnapshot{{
+		Name: "api", Display: "api", Path: "/src/api", Status: gitx.Status{Changed: -1},
+	}}
+	if err := SaveCache(host, snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := LoadCache(host); ok {
+		t.Fatal("cache with a negative Git status count was accepted")
+	}
+}
+
+func TestCanceledCacheSaveDoesNotCreateTarget(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	host := Host{Name: "lab", SSHAlias: "lab", Port: 22, DevPath: "auto"}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := SaveCacheContext(ctx, host, Snapshot{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("save error = %v", err)
+	}
+	if _, err := os.Stat(cachePath(host)); !os.IsNotExist(err) {
+		t.Fatalf("canceled save created target: %v", err)
 	}
 }

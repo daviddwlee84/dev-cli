@@ -396,6 +396,15 @@ Bare `dev` (or `dev tui`) opens six lists, switched with `tab`:
 - **SKILLS** — project and global agent skills, their target agents, source and
   explicitly checked update state.
 
+The first view is constructed before runtime auto-detection, project-root lookup,
+cache decoding, shell-based tool checks, or the optional release refresh can
+finish. TASKS, REPOS, and TRY then publish independently from one shared local
+load cycle; REMOTE, FLEET, and SKILLS remain lazy. A cached REMOTE/FLEET snapshot
+is immediately usable but is tracked separately from a current live result.
+Every requested view has its own generation, so `r` cancels the old read, a late
+result cannot replace a newer one, a failed refresh keeps usable rows visible,
+and a successful empty result clears obsolete rows.
+
 TASKS, REPOS and TRY use the same services as their non-interactive commands.
 Git-backed Tries appear in TRY rather than being duplicated in REPOS; REMOTE
 still knows that local checkout exists. The repo list matters on day one: with
@@ -423,11 +432,29 @@ overlay. Expanded children carry their own Git/session/task state and can be
 opened directly. In TRY, `n` creates or clones an experiment;
 `space` opens mark/deprecate/archive/restore/graduate actions; `a` includes
 retained history. In SKILLS, `a` opens the upstream interactive installer, `c`
-performs the opt-in read-only network check, and `u` confirms before updating
+performs the opt-in read-only network check after the local snapshot has loaded,
+and `u` confirms before updating
 only the selected lock-managed skill. `r` reloads local state without checking
 the network. `?` opens the complete context-sensitive key map. That makes
 the branch/worktree and lifecycle costs explicit rather than silently applying
 them to every directory.
+
+For a one-run startup/readiness trace, name an absolute file that does not exist:
+
+```bash
+DEV_TUI_TRACE=/tmp/dev-tui-trace.json dev
+```
+
+The file is created with private permissions after the alternate screen is
+restored and before a selected runtime is activated. It contains only a bounded,
+versioned list of relative microsecond timings, aggregate row counts, and
+categorical view/generation/outcome fields; it never includes project names,
+paths, commands, key values,
+URLs, runtime handles, or raw errors, and it is not written to `stats.db` or sent
+anywhere. `tui.initial_view_returned` means the Bubble Tea view string was built,
+not that a terminal rasterized it. Cache acceptance, live snapshot acceptance,
+and load completion are separate events; there is no artificial “all tabs ready”
+event because REMOTE, FLEET, and SKILLS may never be visited.
 
 REPOS also has an agent-handoff copy menu. Press `y`, then `y` for contextual
 Markdown, `p` for the checkout path, `b` for the branch, `s` for runtime/agent
@@ -469,13 +496,22 @@ interactive = true
 
 `dev config init` writes the defaults out in full rather than leaving them
 implicit, and `dev tui tools` shows what is bound here and whether each one is
-actually installed — bindings for missing programs are not offered. A tool
-cannot take a key the dashboard already uses; dev reports the clash on load.
+actually installed. The dashboard checks bindings in a bounded background load
+after its first view; unresolved or missing programs are not offered, and
+rendering never launches a login shell. A tool cannot take a key the dashboard
+already uses; dev reports the clash on load.
 
 REMOTE loads lazily, so dashboard startup never waits on the network. Its
-private XDG cache contains the complete paginated inventory. Fresh rows are
-reused without network access; stale rows remain searchable while a background
-refresh runs. `r` forces a refresh of all configured forge providers.
+private XDG cache is decoded after the first view and contains the complete
+paginated inventory. Fresh rows are reused without network access; stale rows
+remain searchable while a background refresh runs. Cache payload size and
+identity fields are validated before display, and a source fingerprint binds
+the cache to configured GH/GL hosts and Azure targets so another endpoint is
+never seeded automatically. GitLab inventory passes `GITLAB_HOST` (or
+`GLAB_HOST`, default `gitlab.com`) explicitly, so the current repository cannot
+silently select another authenticated host. A successful empty provider inventory replaces old
+rows instead of resurrecting them later. `r` forces a
+refresh of all configured forge providers.
 `/` searches provider, owner/name, visibility and description; `vis:private`
 is an exact visibility filter. Enter opens a local clone,
 and `c` confirms before cloning an absent repo into `project_root`. The same
@@ -994,11 +1030,13 @@ ssh_alias = "jingle-235"
 
 `dev fleet list` runs each machine's own `dev`, so its XDG config and paths stay
 host-local. Missing `dev` installations are reported as `no-dev`; unreachable
-hosts can fall back to the last private XDG snapshot. The FLEET TUI view exposes
-the configured remote-host inventory by default; press `a` to include this
-machine. Enter opens a selected path through remote Herdr when its server is
-active, otherwise through `ssh -t` and a login shell. The CLI output remains the
-full local-plus-remote inventory.
+hosts can fall back to the last private XDG snapshot. Cache identity includes the
+complete SSH endpoint, including port. The FLEET TUI view reuses the accepted
+REPOS snapshot for its local host instead of scanning twice, but exposes the
+configured remote-host inventory by default; press `a` to include this machine.
+Enter opens a selected path through remote Herdr when its server is active,
+otherwise through `ssh -t` and a login shell. The CLI output remains the full
+local-plus-remote inventory.
 
 `dev fleet sync <repo> --push` publishes the clean source branch, then fetches
 matching clones by normalized Git remote identity. Only a clean checkout of the

@@ -146,7 +146,7 @@ func tryActivityAge(row TryRow) string {
 func (m Model) renderTries() string {
 	rows := m.visibleTries()
 	if len(rows) == 0 {
-		if m.loadingLocal {
+		if m.viewLoad(ViewTries).loading {
 			return "  " + styleDim.Render("Loading experiments…") + "\n"
 		}
 		if m.filter != "" {

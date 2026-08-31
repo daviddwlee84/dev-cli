@@ -27,6 +27,7 @@ func TestGitHubListReposPaginatesAllVisibleRepos(t *testing.T) {
 }
 
 func TestGitLabListReposUsesMembershipAndPaginates(t *testing.T) {
+	t.Setenv("GITLAB_HOST", "gitlab.example.com")
 	page1 := make([]map[string]any, 100)
 	for i := range page1 {
 		page1[i] = map[string]any{"name": fmt.Sprintf("r%d", i), "path_with_namespace": fmt.Sprintf("group/r%d", i), "visibility": "private"}
@@ -38,7 +39,8 @@ func TestGitLabListReposUsesMembershipAndPaginates(t *testing.T) {
 		t.Fatalf("repos = %d, %v", len(repos), err)
 	}
 	invocations, _ := os.ReadFile(log)
-	if !strings.Contains(string(invocations), "membership=true") || !strings.Contains(string(invocations), "page=2") {
+	if !strings.Contains(string(invocations), "--hostname gitlab.example.com") ||
+		!strings.Contains(string(invocations), "membership=true") || !strings.Contains(string(invocations), "page=2") {
 		t.Fatalf("membership pagination invocations:\n%s", invocations)
 	}
 }

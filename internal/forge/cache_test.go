@@ -1,6 +1,8 @@
 package forge_test
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -49,6 +51,19 @@ func TestCacheExpiryAndMalformed(t *testing.T) {
 	}
 }
 
+func TestCacheFreshnessRequiresMatchingSource(t *testing.T) {
+	now := time.Now().UTC()
+	cache := forge.Cache{
+		Version: forge.CacheVersion, SourceID: "source-a", FetchedAt: now, Complete: true,
+	}
+	if !cache.FreshFor(time.Hour, "source-a") {
+		t.Fatal("matching cache source was not fresh")
+	}
+	if cache.FreshFor(time.Hour, "source-b") || cache.FreshFor(time.Hour, "") {
+		t.Fatal("cache remained fresh for a different or absent source identity")
+	}
+}
+
 func TestLegacyCacheIsUsableButNeverFresh(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "remotes.json")
 	data := `{"fetched_at":"2026-08-28T00:00:00Z","repos":[{"forge":"github","name":"repo","full_name":"owner/repo"}]}`
@@ -61,6 +76,44 @@ func TestLegacyCacheIsUsableButNeverFresh(t *testing.T) {
 	}
 	if _, ok := forge.LoadCache(path, time.Hour); ok {
 		t.Fatal("legacy capped cache must trigger refresh")
+	}
+}
+
+func TestCacheRejectsUnsafeAndOversizedPayloads(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "remotes.json")
+	unsafe := `{"version":2,"fetched_at":"2026-08-31T00:00:00Z","complete":true,"repos":[{"forge":"github","name":"../outside","full_name":"owner/outside"}]}`
+	if err := os.WriteFile(path, []byte(unsafe), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := forge.LoadCacheAny(path); ok {
+		t.Fatal("cache with a path-traversing repository name was accepted")
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate((32 << 20) + 1); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := forge.LoadCacheAny(path); ok {
+		t.Fatal("oversized cache was accepted")
+	}
+}
+
+func TestCanceledCacheSaveDoesNotCreateTarget(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "remotes.json")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := forge.SaveCacheStateContext(ctx, path, forge.Cache{})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("save error = %v", err)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("canceled save created target: %v", err)
 	}
 }
 

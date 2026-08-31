@@ -445,8 +445,15 @@ func localFleetSnapshot(ctx context.Context, app *App) (fleet.Snapshot, error) {
 	if err != nil {
 		return fleet.Snapshot{}, err
 	}
+	return fleetSnapshotFromRepoRows(rows, rt.Name()), nil
+}
+
+func fleetSnapshotFromRepoRows(rows []tui.RepoRow, runtimeName string) fleet.Snapshot {
 	repositories := make([]fleet.RepoSnapshot, 0, len(rows))
 	for _, row := range rows {
+		if row.IsTry() {
+			continue
+		}
 		counts := fleet.TaskCounts{}
 		for _, tracked := range row.Tasks {
 			switch tracked.State {
@@ -460,10 +467,9 @@ func localFleetSnapshot(ctx context.Context, app *App) (fleet.Snapshot, error) {
 				counts.Done++
 			}
 		}
-		identities := remoteIdentities(row)
 		repositories = append(repositories, fleet.RepoSnapshot{
 			Name: row.Repo.Name, Display: row.Repo.Display(), Category: row.Repo.Category,
-			Path: row.Repo.Path, RealPath: row.Repo.RealPath, RemoteIdentities: identities,
+			Path: row.Repo.Path, RealPath: row.Repo.RealPath, RemoteIdentities: remoteIdentities(row),
 			Branch: row.Status.Branch, Status: row.Status, LastActivity: row.LastActivity,
 			Worktrees: row.Worktrees, Tasks: counts, Live: row.Live, Runtime: row.Runtime,
 			RuntimeHandle: row.RuntimeHandle, AgentStatus: row.RuntimeStatus, Topology: row.Topology,
@@ -474,9 +480,9 @@ func localFleetSnapshot(ctx context.Context, app *App) (fleet.Snapshot, error) {
 		Host:          config.Hostname(),
 		DevVersion:    versionFromBuild(),
 		GeneratedAt:   time.Now().UTC(),
-		Runtime:       rt.Name(),
+		Runtime:       runtimeName,
 		Repositories:  repositories,
-	}, nil
+	}
 }
 
 func remoteIdentities(row tui.RepoRow) []string {
@@ -512,8 +518,9 @@ func newFleetSnapshotCmd(app *App) *cobra.Command {
 }
 
 type fleetCollectOptions struct {
-	CachedOnly bool
-	Hosts      map[string]bool
+	CachedOnly    bool
+	Hosts         map[string]bool
+	LocalSnapshot *fleet.Snapshot
 }
 
 func collectFleet(ctx context.Context, app *App, options fleetCollectOptions) ([]fleet.HostResult, fleet.Config, error) {
@@ -521,9 +528,14 @@ func collectFleet(ctx context.Context, app *App, options fleetCollectOptions) ([
 	if err != nil {
 		return nil, cfg, err
 	}
-	local, err := localFleetSnapshot(ctx, app)
-	if err != nil {
-		return nil, cfg, err
+	var local fleet.Snapshot
+	if options.LocalSnapshot != nil {
+		local = *options.LocalSnapshot
+	} else {
+		local, err = localFleetSnapshot(ctx, app)
+		if err != nil {
+			return nil, cfg, err
+		}
 	}
 	var results []fleet.HostResult
 	if len(options.Hosts) == 0 || options.Hosts[local.Host] {
@@ -573,7 +585,7 @@ func collectFleetHost(ctx context.Context, host fleet.Host, cachedOnly bool) fle
 	if result.ExitCode == 0 {
 		var snapshot fleet.Snapshot
 		if err := json.Unmarshal(result.Stdout, &snapshot); err == nil && snapshot.SchemaVersion == fleet.SnapshotSchemaVersion {
-			_ = fleet.SaveCache(host, snapshot)
+			_ = fleet.SaveCacheContext(ctx, host, snapshot)
 			return fleet.HostResult{Name: host.Name, State: fleet.HostOK, Snapshot: &snapshot, PasswordAuth: result.UsedPassword, EndpointID: endpointID}
 		}
 		return cachedFleetFailure(host, fleet.HostInvalid, "remote dev returned invalid snapshot JSON", cached, cachedAt, haveCache)

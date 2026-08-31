@@ -40,7 +40,7 @@ func (m Model) beginSizeLoad(force bool) (Model, tea.Cmd) {
 			targets = append(targets, row.SizeTarget)
 		}
 	}
-	m.sizeLoad = m.actions.Sizes.Start(context.Background(), targets, force)
+	m.sizeLoad = m.actions.Sizes.Start(m.baseContext(), targets, force)
 	if m.sizeLoad.ID == 0 || m.sizeLoad.Results == nil {
 		return m, nil
 	}
@@ -58,6 +58,10 @@ func waitForSize(load diskusage.Load) tea.Cmd {
 }
 
 func (m *Model) applySizeResult(result diskusage.Result) {
+	// Bubble Tea copies Model by value; clone slice headers before patching rows so
+	// two candidate models never share a mutated backing array.
+	m.repos = append([]RepoRow(nil), m.repos...)
+	m.tries = append([]TryRow(nil), m.tries...)
 	for index := range m.repos {
 		if m.repos[index].SizeTarget.Key != result.Key {
 			continue

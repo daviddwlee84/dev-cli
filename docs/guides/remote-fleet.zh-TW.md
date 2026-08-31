@@ -87,13 +87,13 @@ ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 
 `$XDG_CONFIG_HOME/dev/remotes.toml` 是 durable、由使用者撰寫的設定，與 `config.toml` 地位相同——由 `dev fleet config init`/`edit` 管理，不會被自動重新產生。
 
-每次成功探測都會在 `$XDG_CACHE_HOME/dev/fleet/v1/<host-name-slug>.json` 寫入該 host 的 JSON snapshot。這份 cache 是可拋棄的加速機制，不是 durable data：它會依 host 的連線欄位與 timeout 產生一個「endpoint ID」指紋，因此修改 host 的 `ssh_alias`、`hostname`、`user`、`identity_file`、`dev_path` 或 timeout，下次 `dev` 讀取時會自動讓舊 cache 失效。`dev cache list` 會顯示它的路徑、大小與存在時間；`dev cache clear fleet`（或 `dev cache clear all`）可直接移除它。沒有需要手動「重建」的步驟——下一次 `dev fleet list`、`dev fleet status` 或 TUI 的 FLEET reload 就會用一次新的探測重新產生它。
+每次成功探測都會在 `$XDG_CACHE_HOME/dev/fleet/v1/<host-name-slug>.json` 寫入該 host 的 JSON snapshot。這份 cache 是可拋棄的加速機制，不是 durable data：它會依 host 的連線欄位與 timeout 產生一個「endpoint ID」指紋，因此修改 host 的 `ssh_alias`、`hostname`、`user`、`port`、`identity_file`、`dev_path` 或 timeout，下次 `dev` 讀取時會自動讓舊 cache 失效。Oversized snapshot、future timestamp、invalid count，以及過大或含 NUL 的 identity/path field 都會被忽略，不會顯示。`dev cache list` 會顯示它的路徑、大小與存在時間；`dev cache clear fleet`（或 `dev cache clear all`）可直接移除它。沒有需要手動「重建」的步驟——下一次 `dev fleet list`、`dev fleet status` 或 TUI 的 FLEET reload 就會用一次新的探測重新產生它。
 
 這份 cache 存在的目的，是讓 unreachable、timeout、incompatible 或 invalid-response 的 host 仍能回報上一次已知的狀態（標記為 `stale`，並設定 `FromCache`），而不是直接從清單消失；`--cached` 只會使用這份 cache，完全不連網路。每個 remote host 自己的 `config.toml`、task registry 與 repository path，在該 host 上仍是唯一權威來源——cache 只保存它們的 read-only snapshot。
 
 ## TUI 中的 FLEET
 
-FLEET 是 TUI 六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會抓取任何資料——但它會先用仍在 `defaults.cache_ttl` 期限內的 cached snapshot 填入畫面，讓初次顯示不是空的。TUI 預設隱藏本機，因為 REPOS 已提供較完整的 local inventory；`a` 可顯示或隱藏本機 rows，`r` 會強制對所有已設定的 host 做一次 live reload。Non-interactive 的 `dev fleet list` 仍會同時列出本機與 remote hosts。
+FLEET 是 TUI 六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會開始 live probe——但 cache 會在初始 TASKS view 後於背景 decode，讓仍在 `defaults.cache_ttl` 期限內的 valid snapshot 先填入 table。TUI 預設隱藏本機，因為 REPOS 已提供較完整的 local inventory；`a` 可顯示或隱藏 local rows。Local-host snapshot 會重用目前已接受的 REPOS generation，不再重跑 repository/task/runtime discovery；若該 generation 仍在 loading，FLEET 會保留 cached rows 並顯示 waiting。`r` 會 supersede 舊 request，並強制對所有已設定的 host 做一次 live reload。Non-interactive 的 `dev fleet list` 仍會同時列出本機與 remote hosts。
 
 它的表格欄位是 `HOST`、`STATE`、`REPO`、`BRANCH`、`GIT`、`LIVE`、`TASKS`、`PATH`。`enter` 會開啟選取的 repository：明確顯示出來的 local host row 使用一般的 local open；remote row 則在該 host 的 snapshot 回報 `herdr` runtime，且透過 `ssh_alias` 連線、不需要密碼步驟時，優先使用原生 Herdr remoting，否則退回在該 repository 目錄下開啟 interactive SSH login shell。這個 view 中 Git 的變更是唯讀的——FLEET 是用來檢視與開啟工作，不是在原地編輯它。
 

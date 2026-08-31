@@ -613,7 +613,7 @@ cache is private, and forge.cache_ttl decides when it needs refresh.`,
 				if !ok {
 					return fmt.Errorf("no remote cache; run `dev repo remote --refresh` once online")
 				}
-				if !cache.Fresh(app.Cfg.Forge.CacheTTL.Duration) {
+				if !cache.FreshFor(app.Cfg.Forge.CacheTTL.Duration, remoteCacheSourceID(app)) {
 					app.warnf("remote cache is stale or incomplete; run `dev repo remote --refresh`")
 				}
 			} else if !refresh {

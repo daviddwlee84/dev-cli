@@ -6,6 +6,35 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The TUI can write an opt-in, versioned performance trace when
+  `DEV_TUI_TRACE` names an absolute new file. Relative timings distinguish CLI
+  load, initial view construction, requested-tab cache/live snapshots, aggregate
+  row counts, producer completion, discarded stale generations, and key-update
+  work without recording repository/task/host/tool names, paths, commands, key
+  values, URLs, handles, or raw errors. Traces are bounded, private, local-only,
+  and written after the alternate screen is restored; activity `stats.db`
+  remains unchanged.
+- TASKS, REPOS, and TRY now publish independently from one shared local load
+  cycle. Each cycle reads task intent, runtime sessions, and repository discovery
+  once, shares an eight-slot TASKS/REPOS enrichment limit, and lets FLEET and
+  REMOTE reuse the accepted REPOS snapshot instead of rescanning local projects.
+
+### Fixed
+
+- TUI construction and rendering no longer wait for runtime auto-detection,
+  project-root discovery, cache decoding, interactive shell tool probes, or the
+  passive release refresh. Per-view generations reject late results, cancel
+  superseded reads, retain usable rows on refresh failure, and distinguish a
+  successful empty result from no result.
+- Successful empty forge refreshes now replace obsolete cached repositories;
+  fleet cache identity includes the SSH port; forge cache identity includes
+  configured GH/GL hosts and Azure targets; GitLab inventory no longer infers its
+  host from cwd; canceled refreshes cannot commit cache state; oversized or
+  malformed forge/fleet caches are ignored; and cached repository names cannot
+  escape `project_root` when cloning.
+
 ## [0.2.2] - 2026-08-31
 
 ### Added
