@@ -1956,3 +1956,52 @@ const r = await tools.exec_command({"cmd":"git add .specstory/history/2026-08-31
 ...
 ```
 </details></tool-use>
+
+_**Agent (gpt-5.6-sol 2026-08-31 12:11:46Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="exec"><details>
+<summary>Tool use: **exec**</summary>
+Input (truncated): ```
+const patch = "*** Begin Patch\n*** Update File: /Users/david/Documents/Program/dev-cli/README.md\n@@\n-# Pin @v0.2.1 instead when you need a reproducible install.\n+# Pin @v0.2.2 instead when you nee
+...
+```
+</details></tool-use>
+
+_**Agent (gpt-5.6-sol 2026-08-31 12:11:52Z)**_
+
+<think><details><summary>Thought Process</summary>
+**Checking git status**
+
+I need to inspect the status since the current transcript is modified after committing, which leaves it in a dirty state. I don't want to accidentally stage a release commit, especially since the old one is also dirty. I should only stage two files. Running a diff check might be necessary, but maybe I won't need to check the release docs. I'll use `git diff --check -- CHANGELOG README` before committing.
+</details></think>
+
+_**Agent (gpt-5.6-sol 2026-08-31 12:11:52Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="exec"><details>
+<summary>Tool use: **exec**</summary>
+Input (truncated): ```
+const r = await tools.exec_command({"cmd":"git diff --check -- CHANGELOG.md README.md\ngit add CHANGELOG.md README.md\ngit diff --cached --check\ngit diff --cached --stat\ngit commit -m \"docs: releas
+...
+```
+</details></tool-use>
+
+_**Agent (gpt-5.6-sol 2026-08-31 12:12:00Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="exec"><details>
+<summary>Tool use: **exec**</summary>
+Input (truncated): ```
+const r = await tools.exec_command({"cmd":"git log -3 --oneline --decorate\ngit status --short --branch\nsed -n '1,38p' CHANGELOG.md\nsed -n '64,72p' README.md\ngit show --stat --oneline --summary a9c
+...
+```
+</details></tool-use>
+
+_**Agent (gpt-5.6-sol 2026-08-31 12:12:12Z)**_
+
+已 commit，patch 升至 `v0.2.2`：
+
+- `a9c6ff7 feat: run commands in new Herdr worktrees`
+- `8f23c95 docs: release v0.2.2`
+
+目前 `main` ahead 3。尚未 push/tag；正確下一步是先 push `main`，再建立並 push `v0.2.2` tag。
+
+剩餘 dirty 檔案只有持續更新的 `.specstory` transcripts/statistics，沒有未 commit 的 source changes。
