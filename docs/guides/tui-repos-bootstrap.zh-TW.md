@@ -1,8 +1,8 @@
 ---
-description: 在 TUI 瀏覽 tasks、repositories、experiments、remotes 與 agent skills、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
+description: 在 TUI 瀏覽 tasks、repositories、fleet hosts、experiments、remotes 與 agent skills、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
 authority: project
 status: evolving
-verified_on: 2026-08-28
+verified_on: 2026-08-31
 lang: zh-TW
 ---
 
@@ -13,12 +13,13 @@ lang: zh-TW
 
 Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interactive dashboard；透過 pipe 執行時會輸出 plain task listing，讓 shell composition 保持可預期。
 
-## 五個 view
+## 六個 view
 
 | View | 回答問題 | 來源 |
 |---|---|---|
 | TASKS | 我正在處理什麼？ | task registry 加即時 Git/runtime facts |
 | REPOS | 本機有哪些持久 repositories？ | 設定的 scan roots 與 local catalog |
+| FLEET | 其他機器有哪些 repository 與活動？ | 透過 SSH 取得的 remote `dev` snapshots |
 | TRY | 哪些 experiments 能 resume、archive 或 graduate？ | experiment catalog 加 live facts |
 | REMOTE | 有哪些 repository 能 open 或 clone？ | authenticated `gh`/`glab` inventories 與 cache |
 | SKILLS | Project 與 global scope 安裝了哪些 agent skills？ | upstream `skills` JSON 加 project/global locks |
@@ -37,7 +38,7 @@ n/N       quick-add／瀏覽 repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
-COLD task 必須透過 `dev resume` 重建；TUI 不會用 generic open action 靜默重建。
+COLD worktree task 必須透過 `dev resume` 重建；TUI 不會用 generic open action 靜默重建。若 worktree 已遺失或不再由 Git 註冊，必須先執行 `dev sweep`，讓它在 resume 或 reap 前回報需要 salvage 的 agent artifacts。Enter 不會開啟只剩 artifacts 的 abandoned directory。
 
 ### REPOS
 
@@ -66,6 +67,12 @@ refresh。Enter 開啟 local clone；`c` 在 clone 缺少的 repository 前確�
 強制更新 forge inventories。使用 `/vis:private` 可精確過濾 visibility。只有 REMOTE
 row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，
 不會改成 repository note。
+
+### FLEET
+
+FLEET 會延遲載入已設定的 hosts。它預設隱藏本機，因為 REPOS 已提供較完整的
+local inventory；按 `a` 可顯示或隱藏本機 rows，按 `r` refresh。這不會改變
+`dev fleet list`：其 non-interactive output 仍包含本機與所有已設定的 remote hosts。
 
 ## Repository quick notes
 

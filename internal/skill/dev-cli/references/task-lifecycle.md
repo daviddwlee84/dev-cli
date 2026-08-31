@@ -203,6 +203,12 @@ tasks with runtime/worktree resources are reported as cleanup pending and routed
 through the same external-only retirement safety service; their records are not
 reaped first.
 
+The dashboard does not silently reconcile these states. A normal COLD worktree
+task points to explicit `dev resume`. A task whose recorded worktree is missing
+or no longer registered points to `dev sweep`; generic Enter refuses to open
+either the canonical checkout or an artifact-only directory. If sweep reports
+unique agent artifacts, salvage them before approving a resume/reap action.
+
 ## Integration
 
 ```bash

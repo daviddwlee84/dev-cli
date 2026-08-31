@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- The dashboard's FLEET view now hides this machine by default because REPOS
+  already provides its richer local inventory. Press `a` to include local rows;
+  the non-interactive `dev fleet list` contract still includes this machine.
+
+### Fixed
+
+- REMOTE keeps the top navigation bar visible while cached repositories refresh;
+  its extra refresh banner is now included in the terminal-height budget.
+- TASKS no longer opens a stale artifact directory or the canonical checkout for
+  an unavailable worktree task. Missing/unregistered worktrees point to
+  `dev sweep`, while a normal COLD worktree task points to explicit `dev resume`.
+
 ## [0.2.1] - 2026-08-30
 
 ### Added

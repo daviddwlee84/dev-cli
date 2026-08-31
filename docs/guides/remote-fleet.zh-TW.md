@@ -2,7 +2,7 @@
 description: 透過 dev fleet 在 SSH 可連線的多台機器間盤點 repository、task 與 live runtime activity，並安全地在機器間 fast-forward 一個 branch。
 authority: project
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-08-31
 lang: zh-TW
 ---
 
@@ -93,9 +93,9 @@ ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 
 ## TUI 中的 FLEET
 
-FLEET 是 TUI 六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會抓取任何資料——但它會先用仍在 `defaults.cache_ttl` 期限內的 cached snapshot 填入畫面，讓初次顯示不是空的。`r` 會強制對所有已設定的 host 做一次 live reload。
+FLEET 是 TUI 六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會抓取任何資料——但它會先用仍在 `defaults.cache_ttl` 期限內的 cached snapshot 填入畫面，讓初次顯示不是空的。TUI 預設隱藏本機，因為 REPOS 已提供較完整的 local inventory；`a` 可顯示或隱藏本機 rows，`r` 會強制對所有已設定的 host 做一次 live reload。Non-interactive 的 `dev fleet list` 仍會同時列出本機與 remote hosts。
 
-它的表格欄位是 `HOST`、`STATE`、`REPO`、`BRANCH`、`GIT`、`LIVE`、`TASKS`、`PATH`。`enter` 會開啟選取的 repository：local host 的列是一般的 local open；remote 的列則是，當該 host 的 snapshot 回報 `herdr` runtime，且該 host 透過 `ssh_alias` 連線、不需要密碼步驟時，優先使用原生 Herdr remoting，否則退回在該 repository 目錄下開啟 interactive SSH login shell。這個 view 中 Git 的變更是唯讀的——FLEET 是用來檢視與開啟工作，不是在原地編輯它。
+它的表格欄位是 `HOST`、`STATE`、`REPO`、`BRANCH`、`GIT`、`LIVE`、`TASKS`、`PATH`。`enter` 會開啟選取的 repository：明確顯示出來的 local host row 使用一般的 local open；remote row 則在該 host 的 snapshot 回報 `herdr` runtime，且透過 `ssh_alias` 連線、不需要密碼步驟時，優先使用原生 Herdr remoting，否則退回在該 repository 目錄下開啟 interactive SSH login shell。這個 view 中 Git 的變更是唯讀的——FLEET 是用來檢視與開啟工作，不是在原地編輯它。
 
 `e` 會用 `$VISUAL`/`$EDITOR` 開啟 `remotes.toml`——也就是這個 view 實際對應的檔案，而不是其他 view 中 `e` 所開啟的 dev 自身 `config.toml`。離開編輯器後，`dev` 會先重新解析該檔案才使用它。解析失敗、出現未知欄位，或含有明文密碼的檔案權限有問題時，都會被回報並保留原本的資料列，因此打錯字不會安靜地讓某台 host 從 fleet 中消失。檔案解析成功則會立即對所有已設定的 host 觸發一次 live reload。
 

@@ -2,7 +2,7 @@
 description: Inventory repositories, tasks, and live runtime activity across SSH-reachable machines with dev fleet, and safely fast-forward a branch between them.
 authority: project
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-08-31
 ---
 
 # Remote repository fleet
@@ -89,9 +89,9 @@ The cache exists so an unreachable, timed-out, incompatible, or invalid-response
 
 ## Fleet in the TUI
 
-FLEET is one of the TUI's six views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, `SKILLS`, switched with `tab`/`h`/`l`). Like REMOTE, it loads lazily — nothing is fetched until the view is first opened — but it seeds itself from any cached snapshots that are still within `defaults.cache_ttl` so the first render is not empty. `r` forces a live reload of every configured host.
+FLEET is one of the TUI's six views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, `SKILLS`, switched with `tab`/`h`/`l`). Like REMOTE, it loads lazily — nothing is fetched until the view is first opened — but it seeds itself from any cached snapshots that are still within `defaults.cache_ttl` so the first render is not empty. The TUI hides this machine by default because REPOS already provides its richer local inventory; `a` includes/hides local rows and `r` forces a live reload of every configured host. The non-interactive `dev fleet list` output remains local plus remote.
 
-Its table shows `HOST`, `STATE`, `REPO`, `BRANCH`, `GIT`, `LIVE`, `TASKS`, and `PATH`. `enter` opens the selected repository: for a local host row this is an ordinary local open; for a remote row `dev` prefers native Herdr remoting when that host's snapshot reports the `herdr` runtime and the host connects through `ssh_alias` with no password step, and otherwise falls back to an interactive SSH login shell in the repository's directory. Git changes are read-only in this view — FLEET is for inspecting and opening work, not editing it in place.
+Its table shows `HOST`, `STATE`, `REPO`, `BRANCH`, `GIT`, `LIVE`, `TASKS`, and `PATH`. `enter` opens the selected repository: an explicitly revealed local host row uses an ordinary local open; for a remote row `dev` prefers native Herdr remoting when that host's snapshot reports the `herdr` runtime and the host connects through `ssh_alias` with no password step, and otherwise falls back to an interactive SSH login shell in the repository's directory. Git changes are read-only in this view — FLEET is for inspecting and opening work, not editing it in place.
 
 `e` opens `remotes.toml` in `$VISUAL`/`$EDITOR` — the file this view is about, rather than dev's own `config.toml`, which `e` opens everywhere else. On leaving the editor `dev` reparses the file before using it. A parse failure, an unknown field, or a permissions problem on a file holding a plaintext password is reported and the previous rows are kept, so a typo cannot silently drop a host from the fleet. A file that parses triggers an immediate live reload of every configured host.
 

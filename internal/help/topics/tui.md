@@ -4,7 +4,7 @@ Bare `dev` opens the dashboard when stdin/stdout are terminals; `dev tui`
 opens it explicitly. When piped, bare `dev` prints `dev ls` instead, so shell
 composition stays predictable.
 
-## Five views
+## Six views
 
 Switch with `tab`, `l`/`h`, or right/left:
 
@@ -52,10 +52,12 @@ extension must already be installed and authenticated; dev does not install the
 extension, change Azure defaults, or store credentials.
 
 FLEET is also lazy. It shows cached rows immediately when fresh, then queries
-the machines in `$XDG_CONFIG_HOME/dev/remotes.toml`. Enter opens a local row in
-the normal runtime; a remote row prefers native `herdr --remote` after focusing
+the machines in `$XDG_CONFIG_HOME/dev/remotes.toml`. It hides this machine by
+default because REPOS already provides the richer local view; press `a` to
+include local rows. A remote row prefers native `herdr --remote` after focusing
 the checkout's workspace and falls back to `ssh -t` at that repository. Git
-synchronization is deliberately CLI-only through `dev fleet sync`.
+synchronization is deliberately CLI-only through `dev fleet sync`; the CLI
+`dev fleet list` continues to include this machine.
 
 ## Vim-style movement
 
@@ -91,6 +93,10 @@ c          edit the next action
 a          include DONE
 ```
 
+Generic open never repairs lifecycle drift. A normal COLD worktree task points
+to `dev resume`; a missing or unregistered checkout points to `dev sweep`, which
+reports any artifact salvage requirement before offering resume/reap cleanup.
+
 REPOS:
 
 ```
@@ -102,6 +108,14 @@ d          track direct work on the current branch (usually main)
 s          isolated task: branch + worktree + provisioning + runtime + entry
 O / R      cycle / reverse activity/latest/name/git/size/tasks sort
 y          copy menu; follow with y/p/b/s/w
+```
+
+FLEET:
+
+```
+enter / o  open the selected checkout
+a          include/hide this machine
+r          refresh configured hosts
 ```
 
 In TRY, `n` remains “new Try”; quick notes intentionally do not attach to Try

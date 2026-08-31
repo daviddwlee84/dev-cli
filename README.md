@@ -369,13 +369,15 @@ external `--close-unknown`. `dev done` never closes or removes anything.
 
 ### The dashboard
 
-Bare `dev` (or `dev tui`) opens five lists, switched with `tab`:
+Bare `dev` (or `dev tui`) opens six lists, switched with `tab`:
 
 - **TASKS** — the change streams dev is tracking. What am I working on.
 - **REPOS** — durable repositories under the scan roots, with branch, dirty
   state, owned size, runtime, worktrees and task tally. What do I have here.
-- **FLEET** — the same repository and activity facts from configured machines.
-  Enter opens the remote checkout through Herdr when possible, then SSH.
+- **FLEET** — repository and activity facts from configured remote machines.
+  The TUI hides this machine by default because REPOS already shows it; `a`
+  includes local rows. Enter opens the remote checkout through Herdr when
+  possible, then SSH. `dev fleet list` continues to include this machine.
 - **TRY** — dated scratch experiments, including non-Git folders, with durable
   tags/notes and explicit active/deprecated/archived/graduated state.
 - **REMOTE** — repositories visible through authenticated forge CLIs, including
@@ -398,9 +400,11 @@ g G        top / bottom         h l / tab       previous / next view
 /          filter as you type   esc             clear, then quit
 ```
 
-`enter` opens the selected row in the runtime. Inside Herdr/tmux/Zellij it
+`enter` opens a selected row only when its checkout is currently valid. Inside Herdr/tmux/Zellij it
 switches the current client; outside it exits the dashboard and attaches to
-the target session. In TASKS, `p` parks and prompts
+the target session. A COLD worktree task requires `dev resume`; a missing or
+unregistered worktree requires `dev sweep` first so artifacts can be salvaged
+before the task is resumed or reaped. In TASKS, `p` parks and prompts
 for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
 `space` expands linked worktrees inline, `m` edits repository tags/summary,
 `s` starts an isolated worktree task, and `d` starts a tracked direct task.
@@ -981,8 +985,10 @@ ssh_alias = "jingle-235"
 `dev fleet list` runs each machine's own `dev`, so its XDG config and paths stay
 host-local. Missing `dev` installations are reported as `no-dev`; unreachable
 hosts can fall back to the last private XDG snapshot. The FLEET TUI view exposes
-the same inventory and Enter opens a selected path through remote Herdr when its
-server is active, otherwise through `ssh -t` and a login shell.
+the configured remote-host inventory by default; press `a` to include this
+machine. Enter opens a selected path through remote Herdr when its server is
+active, otherwise through `ssh -t` and a login shell. The CLI output remains the
+full local-plus-remote inventory.
 
 `dev fleet sync <repo> --push` publishes the clean source branch, then fetches
 matching clones by normalized Git remote identity. Only a clean checkout of the

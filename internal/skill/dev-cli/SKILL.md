@@ -254,7 +254,7 @@ it runs. Legacy `.dev.toml` retains its compatibility behavior.
 
 ## Dashboard and forge inventory
 
-The TUI has TASKS, REPOS, FLEET, TRY and REMOTE views, switched with tab or vim-style
+The TUI has TASKS, REPOS, FLEET, TRY, REMOTE and SKILLS views, switched with tab or vim-style
 h/l. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions;
 `a` includes retained history. Archive is a reversible same-filesystem move,
 not deletion or disk reclamation. `?` opens the full key map.
@@ -297,6 +297,8 @@ Install Azure CLI's `azure-devops` extension separately. `dev` never installs
 the extension, logs in, changes Azure defaults, or stores a PAT.
 
 FLEET calls each configured host's own `dev` over SSH, preserving its XDG paths.
+The TUI hides this machine by default because REPOS already shows its richer
+local state; `a` includes local rows. `dev fleet list` remains local plus remote.
 Enter prefers Herdr remote navigation and falls back to an SSH login shell.
 `dev fleet sync` is explicit and strict: it only fast-forwards a clean checkout
 of the same behind-only branch; dirty/ahead/diverged clones are never rewritten.

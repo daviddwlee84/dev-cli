@@ -17,9 +17,10 @@ import (
 // chrome allowance let the complete view exceed terminal height, so Bubble
 // Tea scrolled the first lines and the top tab bar appeared to disappear.
 func (m Model) listHeight() int {
-	// Header + its blank line, table header, blank before detail, blank before
-	// footer. Detail and footer can each wrap/change by view and terminal width.
-	fixed := 2 + 1 + 1 + lineCount(m.renderDetail()) + 1 + lineCount(m.renderFooter())
+	// Header + its blank line, per-view list preamble, blank before detail,
+	// blank before footer. Detail and footer can each wrap/change by view and
+	// terminal width.
+	fixed := 2 + m.listPreambleLines() + 1 + lineCount(m.renderDetail()) + 1 + lineCount(m.renderFooter())
 	h := m.height - fixed
 	if h < 3 {
 		return 3
@@ -29,6 +30,15 @@ func (m Model) listHeight() int {
 		h--
 	}
 	return h
+}
+
+func (m Model) listPreambleLines() int {
+	lines := 1 // the table header, or the one-line empty/loading state
+	if m.view == ViewRemote && m.remotesLoading && len(m.visibleRemotes()) > 0 {
+		// Cached REMOTE rows retain an explicit refresh banner above the header.
+		lines++
+	}
+	return lines
 }
 
 func lineCount(s string) int {
@@ -541,6 +551,13 @@ func (m Model) renderFleet() string {
 		}
 		if !m.fleetLoaded {
 			return "  " + styleDim.Render("Fleet repositories load when this view is opened.") + "\n"
+		}
+		if !m.showLocalFleet {
+			for _, row := range m.fleet {
+				if row.Local && matches(row.searchText(), m.filter) {
+					return "  " + styleDim.Render("No remote fleet rows. Press a to include this machine.") + "\n"
+				}
+			}
 		}
 		return "  " + styleDim.Render("No fleet row matches the current filter.") + "\n"
 	}
@@ -1059,9 +1076,12 @@ func (m Model) renderDetail() string {
 	if drift := row.StateDrift(); drift != "" {
 		lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("drift"), styleDrift.Render(drift)))
 	}
-	if !row.CheckoutExists {
-		lines = append(lines, "  "+styleDim.Render("note ")+
-			styleDrift.Render("no checkout on disk — enter rebuilds it from the branch"))
+	if command := taskRecoveryCommand(row); command != "" {
+		hint := "run `" + command + "`"
+		if row.WorktreeMissing {
+			hint += "; salvage anything it reports, then resume or reap"
+		}
+		lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("action"), styleDrift.Render(hint)))
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
@@ -1095,7 +1115,11 @@ func (m Model) renderFooter() string {
 		if row, ok := m.currentFleet(); ok && row.Repository != nil {
 			bindings = append(bindings, "enter remote open")
 		}
-		bindings = append(bindings, "r refresh")
+		local := "hidden"
+		if m.showLocalFleet {
+			local = "shown"
+		}
+		bindings = append(bindings, "a local:"+local, "r refresh")
 	case ViewTries:
 		sortBy := m.trySort
 		if sortBy == "" {
@@ -1115,7 +1139,14 @@ func (m Model) renderFooter() string {
 	case ViewSkills:
 		bindings = append(bindings, "a add", "c check", "u update selected")
 	default:
-		bindings = append(bindings, "enter open", "n add note", "N notes", "p park", "c next")
+		if row, ok := m.currentTask(); ok {
+			if command := taskRecoveryCommand(row); command != "" {
+				bindings = append(bindings, "recovery "+command)
+			} else {
+				bindings = append(bindings, "enter open")
+			}
+		}
+		bindings = append(bindings, "n add note", "N notes", "p park", "c next")
 	}
 	if m.view == ViewRepos {
 		bindings = append(bindings, "y copy")

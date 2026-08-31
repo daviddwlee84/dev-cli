@@ -1,20 +1,21 @@
 ---
-description: Navigate tasks, repositories, experiments, remotes, and agent skills in the TUI; capture repository quick notes; inventory or adopt existing work safely.
+description: Navigate tasks, repositories, fleet hosts, experiments, remotes, and agent skills in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
-verified_on: 2026-08-28
+verified_on: 2026-08-31
 ---
 
 # TUI, repositories, quick notes, and bootstrap
 
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
 
-## Five views
+## Six views
 
 | View | Question | Source |
 |---|---|---|
 | TASKS | What am I working on? | task registry plus live Git/runtime facts |
 | REPOS | What durable repositories exist here? | configured scan roots and local catalog |
+| FLEET | What exists and is active on other machines? | remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive, or graduate? | experiment catalog plus live facts |
 | REMOTE | What can I open or clone? | authenticated `gh`/`glab` inventories and cache |
 | SKILLS | Which agent skills are installed locally and globally? | upstream `skills` JSON plus project/global locks |
@@ -33,7 +34,7 @@ n/N       quick-add / browse repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
-A COLD task must be rebuilt with `dev resume`; the TUI does not silently recreate it through a generic open action.
+A COLD worktree task must be rebuilt with `dev resume`; the TUI does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory.
 
 ### REPOS
 
@@ -63,6 +64,13 @@ clone; `c` confirms before cloning an absent repository; `r` forces a refresh.
 Use `/vis:private` for an exact visibility filter. Notes are enabled only after
 a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a
 new Try rather than a repository note.
+
+### FLEET
+
+FLEET loads configured hosts lazily and hides this machine by default because
+REPOS already provides the richer local inventory. Press `a` to include/hide
+local rows and `r` to refresh. This does not change `dev fleet list`, whose
+non-interactive output continues to include this machine.
 
 ## Repository quick notes
 

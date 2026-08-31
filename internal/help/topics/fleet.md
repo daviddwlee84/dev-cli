@@ -32,6 +32,11 @@ paths, task registry and runtime remain authoritative. A missing remote `dev`
 is `no-dev`, not a fleet-wide failure. Unreachable hosts reuse the last
 successful private XDG snapshot when available.
 
+The dashboard FLEET view hides this machine by default because REPOS already
+shows its richer local state. Press `a` to include local rows. This is a TUI
+display preference only: `dev fleet list` keeps returning local and configured
+remote hosts.
+
 Opening a remote repo prefers native Herdr remoting when an active remote Herdr
 server is visible. It otherwise opens `ssh -t`, validates the repository path
 through remote dev, changes directory and starts a login shell.

@@ -1127,9 +1127,9 @@ The cache exists so an unreachable, timed-out, incompatible, or invalid-response
 
 ## Fleet in the TUI
 
-FLEET is one of the TUI's six views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, `SKILLS`, switched with `tab`/`h`/`l`). Like REMOTE, it loads lazily — nothing is fetched until the view is first opened — but it seeds itself from any cached snapshots that are still within `defaults.cache_ttl` so the first render is not empty. `r` forces a live reload of every configured host.
+FLEET is one of the TUI's six views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, `SKILLS`, switched with `tab`/`h`/`l`). Like REMOTE, it loads lazily — nothing is fetched until the view is first opened — but it seeds itself from any cached snapshots that are still within `defaults.cache_ttl` so the first render is not empty. The TUI hides this machine by default because REPOS already provides its richer local inventory; `a` includes/hides local rows and `r` forces a live reload of every configured host. The non-interactive `dev fleet list` output remains local plus remote.
 
-Its table shows `HOST`, `STATE`, `REPO`, `BRANCH`, `GIT`, `LIVE`, `TASKS`, and `PATH`. `enter` opens the selected repository: for a local host row this is an ordinary local open; for a remote row `dev` prefers native Herdr remoting when that host's snapshot reports the `herdr` runtime and the host connects through `ssh_alias` with no password step, and otherwise falls back to an interactive SSH login shell in the repository's directory. Git changes are read-only in this view — FLEET is for inspecting and opening work, not editing it in place.
+Its table shows `HOST`, `STATE`, `REPO`, `BRANCH`, `GIT`, `LIVE`, `TASKS`, and `PATH`. `enter` opens the selected repository: an explicitly revealed local host row uses an ordinary local open; for a remote row `dev` prefers native Herdr remoting when that host's snapshot reports the `herdr` runtime and the host connects through `ssh_alias` with no password step, and otherwise falls back to an interactive SSH login shell in the repository's directory. Git changes are read-only in this view — FLEET is for inspecting and opening work, not editing it in place.
 
 `e` opens `remotes.toml` in `$VISUAL`/`$EDITOR` — the file this view is about, rather than dev's own `config.toml`, which `e` opens everywhere else. On leaving the editor `dev` reparses the file before using it. A parse failure, an unknown field, or a permissions problem on a file holding a plaintext password is reported and the previous rows are kept, so a typo cannot silently drop a host from the fleet. A file that parses triggers an immediate live reload of every configured host.
 
@@ -1307,16 +1307,17 @@ Byte equality rather than mere presence is the point. A transcript writer that o
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/
 
-> Navigate tasks, repositories, experiments, remotes, and agent skills in the TUI; capture repository quick notes; inventory or adopt existing work safely.
+> Navigate tasks, repositories, fleet hosts, experiments, remotes, and agent skills in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
 
-## Five views
+## Six views
 
 | View | Question | Source |
 |---|---|---|
 | TASKS | What am I working on? | task registry plus live Git/runtime facts |
 | REPOS | What durable repositories exist here? | configured scan roots and local catalog |
+| FLEET | What exists and is active on other machines? | remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive, or graduate? | experiment catalog plus live facts |
 | REMOTE | What can I open or clone? | authenticated `gh`/`glab` inventories and cache |
 | SKILLS | Which agent skills are installed locally and globally? | upstream `skills` JSON plus project/global locks |
@@ -1335,7 +1336,7 @@ n/N       quick-add / browse repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
-A COLD task must be rebuilt with `dev resume`; the TUI does not silently recreate it through a generic open action.
+A COLD worktree task must be rebuilt with `dev resume`; the TUI does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory.
 
 ### REPOS
 
@@ -1365,6 +1366,13 @@ clone; `c` confirms before cloning an absent repository; `r` forces a refresh.
 Use `/vis:private` for an exact visibility filter. Notes are enabled only after
 a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a
 new Try rather than a repository note.
+
+### FLEET
+
+FLEET loads configured hosts lazily and hides this machine by default because
+REPOS already provides the richer local inventory. Press `a` to include/hide
+local rows and `r` to refresh. This does not change `dev fleet list`, whose
+non-interactive output continues to include this machine.
 
 ## Repository quick notes
 
@@ -5707,9 +5715,9 @@ ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 
 ## TUI 中的 FLEET
 
-FLEET 是 TUI 六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會抓取任何資料——但它會先用仍在 `defaults.cache_ttl` 期限內的 cached snapshot 填入畫面，讓初次顯示不是空的。`r` 會強制對所有已設定的 host 做一次 live reload。
+FLEET 是 TUI 六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會抓取任何資料——但它會先用仍在 `defaults.cache_ttl` 期限內的 cached snapshot 填入畫面，讓初次顯示不是空的。TUI 預設隱藏本機，因為 REPOS 已提供較完整的 local inventory；`a` 可顯示或隱藏本機 rows，`r` 會強制對所有已設定的 host 做一次 live reload。Non-interactive 的 `dev fleet list` 仍會同時列出本機與 remote hosts。
 
-它的表格欄位是 `HOST`、`STATE`、`REPO`、`BRANCH`、`GIT`、`LIVE`、`TASKS`、`PATH`。`enter` 會開啟選取的 repository：local host 的列是一般的 local open；remote 的列則是，當該 host 的 snapshot 回報 `herdr` runtime，且該 host 透過 `ssh_alias` 連線、不需要密碼步驟時，優先使用原生 Herdr remoting，否則退回在該 repository 目錄下開啟 interactive SSH login shell。這個 view 中 Git 的變更是唯讀的——FLEET 是用來檢視與開啟工作，不是在原地編輯它。
+它的表格欄位是 `HOST`、`STATE`、`REPO`、`BRANCH`、`GIT`、`LIVE`、`TASKS`、`PATH`。`enter` 會開啟選取的 repository：明確顯示出來的 local host row 使用一般的 local open；remote row 則在該 host 的 snapshot 回報 `herdr` runtime，且透過 `ssh_alias` 連線、不需要密碼步驟時，優先使用原生 Herdr remoting，否則退回在該 repository 目錄下開啟 interactive SSH login shell。這個 view 中 Git 的變更是唯讀的——FLEET 是用來檢視與開啟工作，不是在原地編輯它。
 
 `e` 會用 `$VISUAL`/`$EDITOR` 開啟 `remotes.toml`——也就是這個 view 實際對應的檔案，而不是其他 view 中 `e` 所開啟的 dev 自身 `config.toml`。離開編輯器後，`dev` 會先重新解析該檔案才使用它。解析失敗、出現未知欄位，或含有明文密碼的檔案權限有問題時，都會被回報並保留原本的資料列，因此打錯字不會安靜地讓某台 host 從 fleet 中消失。檔案解析成功則會立即對所有已設定的 host 觸發一次 live reload。
 
@@ -5888,19 +5896,20 @@ fatal: not a git repository (or any of the parent directories): .git
 
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/
 
-> 在 TUI 瀏覽 tasks、repositories、experiments、remotes 與 agent skills、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
+> 在 TUI 瀏覽 tasks、repositories、fleet hosts、experiments、remotes 與 agent skills、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
 Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interactive dashboard；透過 pipe 執行時會輸出 plain task listing，讓 shell composition 保持可預期。
 
-## 五個 view
+## 六個 view
 
 | View | 回答問題 | 來源 |
 |---|---|---|
 | TASKS | 我正在處理什麼？ | task registry 加即時 Git/runtime facts |
 | REPOS | 本機有哪些持久 repositories？ | 設定的 scan roots 與 local catalog |
+| FLEET | 其他機器有哪些 repository 與活動？ | 透過 SSH 取得的 remote `dev` snapshots |
 | TRY | 哪些 experiments 能 resume、archive 或 graduate？ | experiment catalog 加 live facts |
 | REMOTE | 有哪些 repository 能 open 或 clone？ | authenticated `gh`/`glab` inventories 與 cache |
 | SKILLS | Project 與 global scope 安裝了哪些 agent skills？ | upstream `skills` JSON 加 project/global locks |
@@ -5919,7 +5928,7 @@ n/N       quick-add／瀏覽 repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
-COLD task 必須透過 `dev resume` 重建；TUI 不會用 generic open action 靜默重建。
+COLD worktree task 必須透過 `dev resume` 重建；TUI 不會用 generic open action 靜默重建。若 worktree 已遺失或不再由 Git 註冊，必須先執行 `dev sweep`，讓它在 resume 或 reap 前回報需要 salvage 的 agent artifacts。Enter 不會開啟只剩 artifacts 的 abandoned directory。
 
 ### REPOS
 
@@ -5948,6 +5957,12 @@ refresh。Enter 開啟 local clone；`c` 在 clone 缺少的 repository 前確�
 強制更新 forge inventories。使用 `/vis:private` 可精確過濾 visibility。只有 REMOTE
 row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，
 不會改成 repository note。
+
+### FLEET
+
+FLEET 會延遲載入已設定的 hosts。它預設隱藏本機，因為 REPOS 已提供較完整的
+local inventory；按 `a` 可顯示或隱藏本機 rows，按 `r` refresh。這不會改變
+`dev fleet list`：其 non-interactive output 仍包含本機與所有已設定的 remote hosts。
 
 ## Repository quick notes
 

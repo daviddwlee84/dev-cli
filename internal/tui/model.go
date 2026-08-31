@@ -234,8 +234,11 @@ type Model struct {
 	showDone bool
 	// showAllTries includes deprecated, archived, evicted, and graduated history.
 	showAllTries bool
-	trySort      string
-	tryReverse   bool
+	// showLocalFleet includes this machine in FLEET. It is hidden by default
+	// because REPOS already provides the richer local inventory.
+	showLocalFleet bool
+	trySort        string
+	tryReverse     bool
 
 	mode    mode
 	input   textinput.Model
@@ -749,6 +752,9 @@ func (m Model) visibleRemotes() []RemoteRow {
 func (m Model) visibleFleet() []FleetRow {
 	var out []FleetRow
 	for _, row := range m.fleet {
+		if row.Local && !m.showLocalFleet {
+			continue
+		}
 		if matches(row.searchText(), m.filter) {
 			out = append(out, row)
 		}
@@ -767,6 +773,48 @@ func (m Model) visibleFleet() []FleetRow {
 		return out[i].Host < out[j].Host
 	})
 	return out
+}
+
+func (m Model) fleetCount() int {
+	count := 0
+	for _, row := range m.fleet {
+		if !row.Local || m.showLocalFleet {
+			count++
+		}
+	}
+	return count
+}
+
+// taskRecoveryCommand returns the explicit lifecycle command required before
+// a task can be navigated to. Generic TUI open remains navigation-only: it
+// must not reconcile task state, claim a writer, or enter an artifact shell
+// that Git no longer recognizes as a worktree.
+func taskRecoveryCommand(row inventory.Row) string {
+	if row.Task == nil {
+		return ""
+	}
+	if row.WorktreeMissing || !row.CheckoutExists {
+		return "dev sweep"
+	}
+	if row.Task.EffectiveMode() == task.ModeWorktree && row.Task.WorktreePath == "" {
+		return "dev resume " + row.Task.ID
+	}
+	return ""
+}
+
+func taskOpenBlocker(row inventory.Row) error {
+	command := taskRecoveryCommand(row)
+	if command == "" {
+		return nil
+	}
+	switch {
+	case row.WorktreeMissing:
+		return fmt.Errorf("%s has a missing or unregistered worktree — run `%s` first", row.Task.Title(), command)
+	case !row.CheckoutExists:
+		return fmt.Errorf("%s has no checkout on disk — run `%s` first", row.Task.Title(), command)
+	default:
+		return fmt.Errorf("%s has no managed worktree — run `%s` to rebuild it", row.Task.Title(), command)
+	}
 }
 
 func (m Model) visibleSkills() []agentskill.Skill {
@@ -1511,8 +1559,16 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.setAt(0)
 			return m, m.reloadTries(false)
 		}
-		m.showDone, m.states = !m.showDone, nil
-		m.setAt(0)
+		if m.view == ViewFleet {
+			m.showLocalFleet = !m.showLocalFleet
+			m.status = fmt.Sprintf("local fleet rows visible: %v", m.showLocalFleet)
+			m.setAt(0)
+			return m, nil
+		}
+		if m.view == ViewTasks {
+			m.showDone, m.states = !m.showDone, nil
+			m.setAt(0)
+		}
 
 	case "enter", "o":
 		return m, m.openSelected()
@@ -2179,6 +2235,9 @@ func (m Model) openSelected() tea.Cmd {
 	cdWanted := m.actions.Runtime != nil && m.actions.Runtime.Name() == "none"
 
 	if row, ok := m.currentTask(); ok {
+		if err := taskOpenBlocker(row); err != nil {
+			return func() tea.Msg { return actionMsg{err: err} }
+		}
 		t := row.Task
 		dir := row.Checkout
 		return func() tea.Msg {
@@ -2326,8 +2385,8 @@ func (m Model) Summary() string {
 	if m.remotesLoaded {
 		parts = append(parts, fmt.Sprintf("%d remote", len(m.remotes)))
 	}
-	if len(m.fleet) > 0 {
-		parts = append(parts, fmt.Sprintf("%d fleet", len(m.fleet)))
+	if count := m.fleetCount(); count > 0 {
+		parts = append(parts, fmt.Sprintf("%d fleet", count))
 	}
 	if m.skillsLoaded {
 		project, global := 0, 0

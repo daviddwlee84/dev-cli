@@ -664,6 +664,47 @@ func TestFleetViewLoadsLazilyAndRendersRepositoryState(t *testing.T) {
 	}
 }
 
+func TestFleetHidesLocalRowsByDefaultAndTogglesThemWithA(t *testing.T) {
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadFleet = func(context.Context) ([]tui.FleetRow, error) {
+		return []tui.FleetRow{
+			{
+				Host: "laptop", Local: true, State: fleet.HostOK,
+				Repository: &fleet.RepoSnapshot{Name: "local-api", Display: "local-api", Path: "/src/local-api", Branch: "main"},
+			},
+			{
+				Host: "lab", State: fleet.HostOK,
+				Repository: &fleet.RepoSnapshot{Name: "remote-api", Display: "remote-api", Path: "/srv/remote-api", Branch: "main"},
+			},
+		}, nil
+	}
+
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"))
+	if out := m.View(); strings.Contains(out, "local-api") || !strings.Contains(out, "remote-api") ||
+		!strings.Contains(out, "1 fleet") || !strings.Contains(out, "a local:hidden") {
+		t.Fatalf("FLEET did not default to remote-only rows:\n%s", out)
+	}
+
+	m = send(m, key("a"))
+	if out := m.View(); !strings.Contains(out, "local-api") || !strings.Contains(out, "remote-api") ||
+		!strings.Contains(out, "2 fleet") || !strings.Contains(out, "a local:shown") {
+		t.Fatalf("a did not reveal local fleet rows:\n%s", out)
+	}
+}
+
+func TestFleetOnlyLocalRowsExplainsHowToRevealThem(t *testing.T) {
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadFleet = func(context.Context) ([]tui.FleetRow, error) {
+		return []tui.FleetRow{{Host: "laptop", Local: true, State: fleet.HostOK}}, nil
+	}
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"))
+	if out := m.View(); !strings.Contains(out, "Press a to include this machine") {
+		t.Fatalf("local-only fleet had no reveal hint:\n%s", out)
+	}
+}
+
 func TestTryViewRendersFiltersAndOpensThroughActions(t *testing.T) {
 	important := tryRow("try-a", "redis-streams", catalog.PhaseActive, catalog.LocationPresent, "important", "go")
 	important.Item.Note = "compare consumer groups"
@@ -1223,6 +1264,75 @@ func TestRemoteViewLoadsLazily(t *testing.T) {
 	}
 	if !strings.Contains(out, "github") || !strings.Contains(out, "gitlab") {
 		t.Errorf("providers should be visible:\n%s", out)
+	}
+}
+
+func TestRemoteRefreshBannerDoesNotScrollTabsOffTerminal(t *testing.T) {
+	var rows []tui.RemoteRow
+	for index := 0; index < 40; index++ {
+		rows = append(rows, remoteRow(forge.GitHub, fmt.Sprintf("owner/repo-%02d", index), ""))
+	}
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
+	m := tui.New(actions, nil, nil).WithRemotes(rows).WithRemotesStale(true)
+	m = send(m, tea.WindowSizeMsg{Width: 100, Height: 24}, key("tab"), key("tab"), key("tab"))
+
+	updated, cmd := m.Update(key("tab"))
+	if cmd == nil {
+		t.Fatal("opening a stale REMOTE cache did not start a refresh")
+	}
+	m = updated.(tui.Model)
+	output := m.View()
+	lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
+	if len(lines) > 24 || !strings.Contains(lines[0], "TASKS") || !strings.Contains(lines[0], "REMOTE") {
+		t.Fatalf("REMOTE refresh lost top tabs or overflowed height (%d lines):\n%s", len(lines), output)
+	}
+	if !strings.Contains(output, "Showing cached repositories while refreshing") {
+		t.Fatalf("REMOTE refresh lost its cached-row banner:\n%s", output)
+	}
+}
+
+func TestTaskWithMissingWorktreeRequiresSweepBeforeOpen(t *testing.T) {
+	rec := &recorder{}
+	missing := row("missing", "missing worktree", task.Warm, "recover it")
+	missing.Task.Mode = task.ModeWorktree
+	missing.Task.WorktreePath = "/src/orphan-shell"
+	missing.Checkout = missing.Task.WorktreePath
+	missing.CheckoutExists = true
+	missing.WorktreeMissing = true
+	m := tui.New(newActions(rec, []inventory.Row{missing}), []inventory.Row{missing}, nil)
+
+	if out := m.View(); !strings.Contains(out, "run `dev sweep`") ||
+		!strings.Contains(out, "salvage anything it reports") || strings.Contains(out, "enter open") {
+		t.Fatalf("missing-worktree recovery guidance is incomplete:\n%s", out)
+	}
+	m = send(m, key("enter"))
+	if len(rec.opened) != 0 {
+		t.Fatalf("missing worktree opened its orphan shell: %v", rec.opened)
+	}
+	if out := m.View(); !strings.Contains(out, "missing or unregistered worktree") {
+		t.Fatalf("missing-worktree open did not explain the blocker:\n%s", out)
+	}
+}
+
+func TestColdWorktreeTaskRequiresExplicitResume(t *testing.T) {
+	rec := &recorder{}
+	cold := row("cold-task", "cold task", task.Cold, "continue")
+	cold.Task.Mode = task.ModeWorktree
+	cold.Task.WorktreePath = ""
+	cold.Checkout = cold.Task.RepoPath
+	cold.CheckoutExists = true
+	m := tui.New(newActions(rec, []inventory.Row{cold}), []inventory.Row{cold}, nil)
+
+	if out := m.View(); !strings.Contains(out, "dev resume "+cold.Task.ID) || strings.Contains(out, "enter open") {
+		t.Fatalf("cold task did not require explicit resume:\n%s", out)
+	}
+	m = send(m, key("enter"))
+	if len(rec.opened) != 0 {
+		t.Fatalf("cold task opened the canonical checkout: %v", rec.opened)
+	}
+	if out := m.View(); !strings.Contains(out, "no managed worktree") {
+		t.Fatalf("cold-task open did not explain the blocker:\n%s", out)
 	}
 }
 

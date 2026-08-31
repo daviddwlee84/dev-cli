@@ -300,8 +300,9 @@ func runTUI(app *App) error {
 		RepoReverse: app.Cfg.TUI.Repos.Reverse,
 		Copy:        clipboard.WriteAll,
 
-		// Open reuses the same paths the commands take, so a cold task
-		// selected here is rebuilt rather than reported broken.
+		// Open is navigation-only. The model rejects missing/unregistered and
+		// cold worktree tasks before this callback so reconciliation and writer
+		// ownership remain explicit `dev sweep` / `dev resume` operations.
 		Open: func(ctx context.Context, t *task.Task) (tui.OpenResult, error) {
 			checkout := checkoutOf(t)
 			if _, err := os.Stat(checkout); err != nil {
