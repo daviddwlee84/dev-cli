@@ -27,6 +27,7 @@ used only after exact current-backend validation. Root-pane data stays transient
 | open a checkout | `workspace create --cwd <dir> --no-focus --label <name>` |
 | open a worktree | `worktree open --cwd <parent-root> --path <path> --no-focus --label <repo/branch>` |
 | activate an opened checkout | `workspace focus <id>`; outside Herdr, attach the default client |
+| dispatch an explicit start command | `pane run <exact-root-pane-id> <command>` |
 | close a session | `workspace close <id>` |
 | show task state | `workspace report-metadata <id> --source dev --token …` |
 
@@ -42,6 +43,12 @@ automatically launchable only when the same successful `worktree open` response
 proves a newly created layout. Reuse, fallback, missing/malformed responses,
 Tmux, and the `none` runtime never supply a launchable pane. `--no-focus`
 preserves the caller's context; never substitute the focused/current pane.
+
+`dev start --run '<shell command>'` consumes that proof directly, dispatches
+opaque shell text without persisting or echoing it, and returns after Herdr
+accepts the command. It does not wait for completion or report the command's
+exit status. `--focus` remains independent and runs only after successful
+dispatch. `--json` stays a separate pure creation contract.
 
 Read `parallel-agents.md` for exact machine validation, pane verification,
 SpecStory profiles and permission-mode rules.

@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-08-29
+verified_on: 2026-08-31
 tested_with: Claude Code 2.1.250
 lang: zh-TW
 ---
@@ -91,6 +91,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
 
 - `dev start --focus` 會在 non-JSON creation 後 activate runtime。
+- `dev start --run '<shell command>'` 只會 dispatch 到本次新建 first-class Herdr
+  worktree 的 exact root pane。它不能與 `--json`、non-worktree modes 或 non-Herdr
+  runtimes 併用，也不等待 command exit。
 - TUI navigation 會拒絕開啟 checkout 不存在的 COLD task，並要求使用 `dev resume`。
 - Runtime handle 現在保存 backend provenance，cleanup 前會重新驗證。
 - `auto` runtime selection 已在 tmux 與 none 之間加入 Zellij。

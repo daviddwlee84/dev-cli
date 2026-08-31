@@ -22,6 +22,7 @@ type startRequest struct {
 	Branch  string
 	Base    string
 	Next    string
+	Run     string
 	Mode    task.CheckoutMode
 
 	RepoExplicit   bool
@@ -42,6 +43,7 @@ type startSpec struct {
 	Branch   string
 	Base     string
 	Next     string
+	Run      string
 	Mode     task.CheckoutMode
 
 	WorktreePath string
@@ -138,6 +140,9 @@ func buildStartSpecForRepository(ctx context.Context, app *App, r repo.Repo, req
 	default:
 		return nil, fmt.Errorf("unknown start mode %q", mode)
 	}
+	if req.Run != "" && mode != task.ModeWorktree {
+		return nil, errors.New("--run requires the default worktree mode; it cannot be used with --direct or --branch-only")
+	}
 
 	id := task.MakeID(r.Name, branch)
 	if existing, err := app.Tasks.Get(id); err == nil && existing.State != task.Done {
@@ -147,7 +152,7 @@ func buildStartSpecForRepository(ctx context.Context, app *App, r repo.Repo, req
 
 	spec := &startSpec{
 		RepoPath: r.Path, RepoName: r.Name, Category: r.Category,
-		Name: name, Branch: branch, Base: base, Next: req.Next, Mode: mode,
+		Name: name, Branch: branch, Base: base, Next: req.Next, Run: req.Run, Mode: mode,
 		NoProvision: req.NoProvision, Focus: req.Focus,
 	}
 	if mode == task.ModeWorktree {

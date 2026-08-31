@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-08-29
+verified_on: 2026-08-31
 tested_with: Claude Code 2.1.250
 ---
 
@@ -90,6 +90,9 @@ These were historical gaps and should not be reintroduced as limitations:
 - Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
 
 - `dev start --focus` activates the runtime after non-JSON creation.
+- `dev start --run '<shell command>'` dispatches only to an exact root pane from
+  a newly created first-class Herdr worktree. It is incompatible with `--json`,
+  non-worktree modes, and non-Herdr runtimes, and does not wait for command exit.
 - TUI navigation refuses to open a missing COLD checkout and directs the user to `dev resume`.
 - Runtime handles now record backend provenance and are revalidated before cleanup.
 - `auto` runtime selection includes Zellij between tmux and none.

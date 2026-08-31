@@ -30,6 +30,11 @@ then shows the computed checkout/runtime summary before creating anything.
 `dev start -t <name>` remains the fast path; `--json` and non-TTY use never
 prompt.
 
+With a newly created first-class Herdr worktree, `--run '<shell command>'` can
+dispatch one reviewed command to the exact root pane. It is separate from the
+pure `--json` contract, and `--focus` independently controls whether the caller
+switches after dispatch.
+
 Direct tasks go HOT ↔ WARM and finish with plain `dev done`; they cannot go
 COLD because the canonical checkout cannot be removed. Branch-only tasks can go
 cold after push by switching the canonical checkout back to base. The full

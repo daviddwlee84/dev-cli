@@ -25,6 +25,7 @@ func newStartCmd(app *App) *cobra.Command {
 		noProvision bool
 		focus       bool
 		next        string
+		runCommand  string
 		jsonOut     bool
 	)
 	cmd := &cobra.Command{
@@ -57,10 +58,25 @@ Herdr-aware direct/branch starts refuse a checkout occupied by another agent.
 Use the root --allow-shared-checkout override only after coordinating disjoint
 file ownership. --json emits one pure creation object; only a new first-class
 Herdr worktree with its exact returned root pane is launchable. Worktree labels
-use repo/branch so Herdr can show native nested repository provenance.`,
+use repo/branch so Herdr can show native nested repository provenance.
+
+--run sends one shell command to that exact newly created Herdr worktree pane.
+It is worktree/Herdr-only, cannot be combined with --json, and only confirms
+dispatch; it does not wait for the command or report its exit status. Combine
+it with --focus to switch or attach after the command is sent.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
+			runExplicit := cmd.Flags().Changed("run")
+			if runExplicit && strings.TrimSpace(runCommand) == "" {
+				return errors.New("--run requires a non-empty shell command")
+			}
+			if runExplicit && jsonOut {
+				return errors.New("--run and --json are separate launch paths and cannot be used together")
+			}
+			if runExplicit && app.Runtime().Name() != "herdr" {
+				return errors.New("--run requires the Herdr runtime; remove --no-runtime or select --runtime herdr")
+			}
 			if direct && (branchOnly || noWorktree) {
 				return errors.New("--direct and --branch-only are different modes; pick one")
 			}
@@ -73,7 +89,7 @@ use repo/branch so Herdr can show native nested repository provenance.`,
 				mode = task.ModeBranch
 			}
 			req := startRequest{
-				Name: name, Branch: branch, Base: base, Next: next, Mode: mode,
+				Name: name, Branch: branch, Base: base, Next: next, Run: runCommand, Mode: mode,
 				ModeExplicit:   direct || branchOnly,
 				BranchExplicit: cmd.Flags().Changed("branch"),
 				BaseExplicit:   cmd.Flags().Changed("base"),
@@ -132,6 +148,21 @@ use repo/branch so Herdr can show native nested repository provenance.`,
 			if result.Task.RuntimeHandle != "" {
 				fmt.Fprintf(app.Out, "   session   %s %s\n", result.Runtime.Name(), result.Task.RuntimeHandle)
 			}
+			if spec.Run != "" {
+				paneID := launchableStartRootPane(result.Task, result.Runtime.Name(), result.Opened)
+				if paneID == "" {
+					return startRunUnavailable(result)
+				}
+				runner, ok := result.Runtime.(runtime.PaneRunner)
+				if !ok {
+					return startRunUnavailable(result)
+				}
+				if err := runner.RunInPane(ctx, paneID, spec.Run); err != nil {
+					return fmt.Errorf("task %s was created at %s, but --run was not dispatched: %w",
+						result.Task.ID, config.Contract(checkoutOf(result.Task)), err)
+				}
+				fmt.Fprintf(app.Out, "   command   dispatched to %s\n", paneID)
+			}
 			if result.Runtime.Name() == "none" {
 				return app.cdDirective(checkoutOf(result.Task))
 			}
@@ -146,6 +177,7 @@ use repo/branch so Herdr can show native nested repository provenance.`,
 	f.StringVarP(&branch, "branch", "b", "", "branch name (default: feat/<task-slug>)")
 	f.StringVar(&base, "base", "", "ref a new branch starts from (default: repo default branch)")
 	f.StringVar(&next, "next", "", "the first next action to record")
+	f.StringVar(&runCommand, "run", "", "send a shell command to the newly created Herdr worktree pane")
 	f.BoolVar(&direct, "direct", false, "track work on the currently checked-out branch; create no branch/worktree")
 	f.BoolVar(&branchOnly, "branch-only", false, "create/switch a branch in the canonical checkout; no worktree")
 	f.BoolVar(&noWorktree, "no-worktree", false, "deprecated alias for --branch-only")
@@ -203,11 +235,7 @@ func emitStartJSON(app *App, t *task.Task, runtimeName string, opened runtime.Op
 		return err
 	}
 
-	rootPaneID := ""
-	if t.EffectiveMode() == task.ModeWorktree && runtimeName == "herdr" &&
-		opened.Surface == "worktree" && opened.Opened && opened.Created {
-		rootPaneID = opened.RootPaneID
-	}
+	rootPaneID := launchableStartRootPane(t, runtimeName, opened)
 	return json.NewEncoder(app.Out).Encode(startJSON{
 		TaskID: t.ID, Repo: t.Repo, RepoPath: repoPath, Branch: t.Branch, Base: t.Base,
 		Mode: string(t.EffectiveMode()), WorktreePath: worktreePath, Checkout: checkout,
@@ -216,6 +244,23 @@ func emitStartJSON(app *App, t *task.Task, runtimeName string, opened runtime.Op
 			Opened: opened.Opened, Created: opened.Created, RootPaneID: rootPaneID,
 		},
 	})
+}
+
+func launchableStartRootPane(t *task.Task, runtimeName string, opened runtime.OpenResult) string {
+	if t.EffectiveMode() != task.ModeWorktree || runtimeName != "herdr" ||
+		opened.Surface != "worktree" || !opened.Opened || !opened.Created {
+		return ""
+	}
+	return opened.RootPaneID
+}
+
+func startRunUnavailable(result *startResult) error {
+	return fmt.Errorf("task %s was created at %s, but --run was not dispatched: "+
+		"the runtime did not return a newly created first-class Herdr worktree root pane "+
+		"(runtime=%s surface=%s opened=%t created=%t); open it with `dev wt open %s --repo %s` and run the command manually",
+		result.Task.ID, config.Contract(checkoutOf(result.Task)), result.Runtime.Name(),
+		result.Opened.Surface, result.Opened.Opened, result.Opened.Created,
+		result.Task.Branch, result.Task.Repo)
 }
 
 // checkoutOf is where a task's code lives right now.

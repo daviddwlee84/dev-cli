@@ -119,6 +119,11 @@ a newly created first-class Herdr worktree and its exact returned root pane,
 then launches an explicit SpecStory/profile command there. Reused, fallback,
 non-Herdr, missing or unverified panes are never launch targets.
 
+For a human one-liner, `dev start --run '<shell command>'` uses the same exact
+new-worktree/root-pane proof and `--focus` independently switches afterward.
+It does not choose a launcher profile, permission mode, agent name, or wait
+policy; use the full JSON workflow when those require separate validation.
+
 `dev` guards writer-claiming direct/branch starts and resume when another
 recognized Herdr agent occupies the same canonical Git worktree. Every state,
 including `idle`, `done`, and `unknown`, is occupied; Herdr resolves the current
@@ -156,6 +161,7 @@ dev git amend-all          # add -A + no-edit amend; hooks remain enabled
 
 dev start                  # context-aware wizard; confirms before creating
 dev start -t "token refresh" --base main  # fast managed worktree task
+dev start -t "token refresh" --base main --run 'codex' --focus
 
 dev wt create feat/auth --base main    # worktree at the configured path
 dev wt list                            # every worktree of this repo
@@ -396,7 +402,8 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    disjoint ownership; pure open/focus may navigate to the existing owner.
 
 9. **Parallel launch is exact-pane and fail-closed.** Accept only a new
-   first-class Herdr worktree/root pane from `dev start --json`. Never infer from
+   first-class Herdr worktree/root pane from `dev start --json` or the same
+   internal proof used by explicit `dev start --run`. Never infer from
    focus/sidebar order, relocate SpecStory with mid-session `EnterWorktree`, or
    treat any recognized agent state as a free pane. Never add
    `--allow-shared-checkout` without coordinated ownership.
@@ -472,7 +479,7 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 - **Commit messages, SemVer, branch naming, PR-vs-main tiering** — that is the
   `git-workflow` skill. This one links to it rather than restating it.
 - **Standalone Herdr pane/agent control** — that is the `herdr` skill. The
-  `dev start --json` cross-tool launch workflow remains here.
+  `dev start --json` and explicit `--run` cross-tool launch paths remain here.
 - A single `git add` + `git commit` needs no tooling at all.
 
 ## Reference files

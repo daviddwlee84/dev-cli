@@ -2,7 +2,7 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-08-29
+verified_on: 2026-08-31
 ---
 
 # Commands and configuration
@@ -199,7 +199,10 @@ change the parent shell. `open` opens the configured Herdr/tmux/Zellij runtime
 and falls back to `cd` when runtime is `none`. `start` continues into the
 existing task wizard with the repository fixed, and is unavailable when setup
 leaves uncommitted files that a new worktree would omit. Neither repository
-bootstrap nor `dev start` launches a coding agent.
+bootstrap nor a default `dev start` launches a coding agent. Explicit
+worktree-mode `dev start --run '<shell command>'` dispatches one command only
+when a newly created first-class Herdr worktree returns its exact root pane;
+`--focus` independently controls navigation afterward.
 
 All shared TTY text fields in the repository, task-start, and finish wizards
 use an inline editor: Left/Right, Home/End, Delete/Backspace, insertion at the

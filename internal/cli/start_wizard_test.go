@@ -51,6 +51,22 @@ func TestStartWizardAcceptsContextDefaults(t *testing.T) {
 	}
 }
 
+func TestStartWizardConfirmsRunWithoutEchoingCommand(t *testing.T) {
+	rt := exactStartRuntime()
+	f := newStartFixture(t, rt)
+	command := "launch --token secret-value"
+	input := "\nwizard command\n\n\n\n\n\n"
+	if err := f.runInteractive(input, "--run", command); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.stdout.String(), "configured for the new Herdr root pane") || strings.Contains(f.stdout.String(), command) {
+		t.Fatalf("wizard run summary = %q", f.stdout.String())
+	}
+	if len(rt.runCalls) != 1 {
+		t.Fatalf("wizard run calls = %v", rt.runCalls)
+	}
+}
+
 func TestStartWizardCanCustomizeCoreLifecycle(t *testing.T) {
 	f := newStartFixture(t, runtime.None{})
 	input := "\nsmall fix\nb\nfix/small\nmain\nship the fix\n\n"

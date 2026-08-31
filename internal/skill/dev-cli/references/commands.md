@@ -975,6 +975,7 @@ dev start [repo] [flags]
 - `--json` — emit one machine-readable creation result
 - `--next` — the first next action to record
 - `--no-provision` — skip dependency install and ignored-file copying
+- `--run` — send a shell command to the newly created Herdr worktree pane
 - `-t, --task` — human name for this change stream
 
 ### `dev stats`

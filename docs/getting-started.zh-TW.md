@@ -2,7 +2,7 @@
 description: 安裝 dev-cli、初始化開發機器，並完成 start、park、resume 到 integration 的第一條變更流。
 authority: project
 status: stable
-verified_on: 2026-08-29
+verified_on: 2026-08-31
 lang: zh-TW
 ---
 
@@ -103,7 +103,10 @@ publish，也不能 handoff 到 `start`。既有 `repo setup --commit` 仍相容
 只有對應的 `gh` 或 `glab` CLI 已安裝且完成 authentication 時，wizard 才會提供
 GitHub 或 GitLab publishing；預設仍是 local-only。最後的 handoff 可選擇留在原處、
 `cd` 進 repository、開啟 configured terminal runtime，或接續 `dev start` wizard。
-Bootstrap 與 `dev start` 都不會啟動 coding agent。
+Bootstrap 與預設的 `dev start` 都不會啟動 coding agent。明確使用 worktree mode
+的 `dev start --run '<shell command>'` 時，可以把一個 command dispatch 到新建
+first-class Herdr worktree 的 exact root pane；dev 不會代替使用者選擇 agent
+profile 或 permission mode。
 
 Repository、`start` 與 `done` wizard 的 TTY text fields 支援 Left/Right、Home/End、
 Delete/Backspace inline editing，以及 Esc/Ctrl-C cancellation。Piped input 對 scripts
@@ -124,6 +127,17 @@ dev start api --task "token refresh" --base main
 ```
 
 預設模式會建立 branch、在設定路徑建立 linked worktree、完成 environment provisioning、開啟最佳可用 runtime，並記錄 HOT task。
+
+Herdr 被選中且 worktree 為本次新建時，可以把明確 command dispatch 到 exact
+new root pane，並選擇轉跳過去：
+
+```bash
+dev start api --task "token refresh" --base main \
+  --run 'specstory run codex -c "codex"' --focus
+```
+
+`--run` 不能與 `--json` 或較輕量的 checkout modes 併用。它只確認 command
+已 dispatch，不等待完成，也不回傳 command exit status。
 
 只有在工作確實適合時，才選用更輕量的 checkout mode：
 

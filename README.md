@@ -251,9 +251,11 @@ The final handoff is explicit:
 | `open` | open the configured Herdr/tmux/Zellij runtime; fall back to `cd` when runtime is `none` |
 | `start` | continue into the existing `dev start` task wizard with this repository fixed |
 
-Neither bootstrap nor `dev start` launches a coding agent. They prepare the
-repository, checkout, and optional runtime surface; starting an agent remains a
-separate, deliberate action.
+Neither bootstrap nor a default `dev start` launches a coding agent. They
+prepare the repository, checkout, and optional runtime surface. An explicit
+worktree-mode `dev start --run '<shell command>'` can dispatch one command to a
+new first-class Herdr root pane; it never chooses an agent profile or permission
+mode on the user's behalf.
 
 Global custom presets live in `$XDG_CONFIG_HOME/dev/scaffolds.toml`. A project
 may commit `.dev-cli/config.toml` for allowlisted worktree/setup wizard defaults
@@ -279,6 +281,8 @@ An agent prepares and exits; an external coordinator integrates and retires it.
 ```bash
 dev start                                            # interactive managed-task wizard
 dev start api --task "token refresh" --base main     # non-interactive fast path → hot
+dev start api --task "token refresh" --base main \
+  --run 'specstory run codex -c "codex"' --focus      # dispatch, then switch to the exact new pane
 dev park --next "add the regression test" --wip      # → warm; self-runtime stays alive until exit
 dev park --cold --push                               # → cold, only from outside the target runtime
 dev resume "token refresh"                           # → hot, rebuilt if needed
@@ -353,6 +357,12 @@ fallback, Tmux, none, or missing pane data fails closed. Worktree starts use the
 same `repo/branch` label as `dev wt create` and pins the Git-derived parent
 checkout with Herdr `--cwd`, preserving native nested repository/worktree
 grouping without separate provenance metadata.
+
+For a human one-liner, `--run '<shell command>'` uses that same exact-pane proof
+and sends the command to the new worktree's interactive shell. It is incompatible
+with `--json`, `--direct`, `--branch-only`, and non-Herdr runtimes. It only
+confirms dispatch, never waits for command completion or reports its exit code;
+add `--focus` when the caller should switch or attach after dispatch.
 
 Herdr-aware writer claims—`start --direct`, `start --branch-only`, and
 `resume`—reject another recognized agent in the same canonical Git worktree.

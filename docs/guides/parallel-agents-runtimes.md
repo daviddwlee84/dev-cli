@@ -2,7 +2,7 @@
 description: Coordinate several coding agents around change-stream ownership, explicit mutation boundaries, and replaceable runtimes.
 authority: project-policy
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-08-31
 ---
 
 # Parallel agents and runtimes
@@ -61,6 +61,19 @@ Each approach gets its own branch and worktree. Compare results, integrate one d
 4. **none** everywhere else. Core Git/task/worktree behavior remains available, while shell integration changes directories.
 
 A runtime opens and displays a checkout; `dev`, not Herdr or tmux, owns branch/worktree lifecycle. Closing a runtime never deletes the task or checkout.
+
+For one reviewed shell command in a new independent worktree, Herdr supports a
+direct one-liner:
+
+```bash
+dev start api --task "token refresh" --base main --run 'codex' --focus
+```
+
+`--run` accepts only the exact root pane returned while creating a first-class
+Herdr worktree. Reuse, fallback, missing pane identity, another runtime, and
+direct/branch-only modes fail closed. The task and usable worktree remain if
+dispatch fails. `--focus` independently switches after a successful dispatch;
+dev does not wait for the command's exit status.
 
 ## Coordination contract
 

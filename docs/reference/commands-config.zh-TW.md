@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-08-29
+verified_on: 2026-08-31
 lang: zh-TW
 ---
 
@@ -181,7 +181,9 @@ upstream。
 `open` 開啟 configured Herdr/tmux/Zellij runtime，runtime 為 `none` 時退回 `cd`；
 `start` 會固定此 repository 並接續現有 task wizard。Setup 留下 uncommitted files、
 導致新 worktree 會遺漏它們時，`start` 不可用。Repository bootstrap 與
-`dev start` 都不會啟動 coding agent。
+預設的 `dev start` 都不會啟動 coding agent。明確使用 worktree mode 的
+`dev start --run '<shell command>'` 時，只有本次新建 first-class Herdr worktree
+回傳 exact root pane 才會 dispatch command；之後是否轉跳仍由 `--focus` 獨立控制。
 
 Repository、task-start 與 finish wizard 共用的 TTY text fields 都使用 inline editor：
 Left/Right、Home/End、Delete/Backspace、cursor 位置插入與 Esc/Ctrl-C cancellation 會

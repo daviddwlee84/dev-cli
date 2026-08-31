@@ -107,6 +107,13 @@ type Activator interface {
 	Activate(ctx context.Context, handle string) error
 }
 
+// PaneRunner is the optional exact-pane command surface. The command is shell
+// text for the pane's existing interactive shell, not argv for a child process
+// started by dev. Implementations must not include command text in errors.
+type PaneRunner interface {
+	RunInPane(ctx context.Context, paneID, command string) error
+}
+
 // Runtime is the contract every backend satisfies. Adapters must degrade
 // gracefully: an unavailable backend returns errors rather than panicking, and
 // List on an idle backend returns an empty slice, not an error.

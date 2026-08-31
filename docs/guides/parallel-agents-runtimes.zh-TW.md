@@ -2,7 +2,7 @@
 description: 以變更流 ownership、明確 mutation boundary 與可替換 runtime 協調多個 coding agents。
 authority: project-policy
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-08-31
 lang: zh-TW
 ---
 
@@ -65,6 +65,18 @@ dev wt create exp/oauth --base main
 4. **none：**其他情況都可用。核心 Git/task/worktree 行為不受影響，shell integration 負責切換 directory。
 
 Runtime 只開啟與顯示 checkout；branch/worktree lifecycle 由 `dev` 管理，不由 Herdr 或 tmux 管理。關閉 runtime 不會刪除 task 或 checkout。
+
+若要在新建的獨立 worktree 執行一個已 review 的 shell command，Herdr 支援直接
+one-liner：
+
+```bash
+dev start api --task "token refresh" --base main --run 'codex' --focus
+```
+
+`--run` 只接受建立 first-class Herdr worktree 時回傳的 exact root pane。Reuse、
+fallback、缺少 pane identity、其他 runtime，以及 direct/branch-only modes 都會
+fail closed。Dispatch 失敗時 task 與可用 worktree 仍會保留。`--focus` 只在成功
+dispatch 後獨立控制轉跳；dev 不等待 command exit status。
 
 ## 協調 contract
 

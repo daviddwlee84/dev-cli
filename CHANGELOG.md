@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `dev start --run '<shell command>'` can dispatch an explicit command to the
+  exact root pane returned for a newly created first-class Herdr worktree.
+  `--focus` remains an independent opt-in for switching to that workspace;
+  reuse, fallback, non-Herdr runtimes, non-worktree modes, and `--json` fail
+  closed without guessing another pane.
+
 ### Changed
 
 - The dashboard's FLEET view now hides this machine by default because REPOS

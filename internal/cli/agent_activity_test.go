@@ -31,6 +31,9 @@ type activityRuntime struct {
 	closeCalls        []string
 	activateErr       error
 	activateCalls     []string
+	runErr            error
+	runCalls          []paneRunCall
+	events            []string
 	annotationHandles []string
 	annotations       []map[string]string
 }
@@ -58,7 +61,13 @@ func (r *activityRuntime) Close(_ context.Context, handle string) error {
 }
 func (r *activityRuntime) Activate(_ context.Context, handle string) error {
 	r.activateCalls = append(r.activateCalls, handle)
+	r.events = append(r.events, "activate")
 	return r.activateErr
+}
+func (r *activityRuntime) RunInPane(_ context.Context, paneID, command string) error {
+	r.runCalls = append(r.runCalls, paneRunCall{PaneID: paneID, Command: command})
+	r.events = append(r.events, "run")
+	return r.runErr
 }
 func (r *activityRuntime) List(context.Context) ([]runtime.Session, error) {
 	return r.sessions, r.listErr
@@ -75,6 +84,11 @@ func (r *activityRuntime) Annotate(_ context.Context, handle string, kv map[stri
 func (r *activityRuntime) AgentActivities(context.Context) ([]runtime.AgentActivity, error) {
 	r.activityCalls++
 	return r.activities, r.activityErr
+}
+
+type paneRunCall struct {
+	PaneID  string
+	Command string
 }
 
 type currentPaneRuntime struct {

@@ -3,6 +3,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -80,6 +81,26 @@ func TestHerdrOpenReturnsExactCreatedRootPane(t *testing.T) {
 	want := OpenResult{Handle: "w7", Surface: "workspace", Opened: true, Created: true, RootPaneID: "w7:p12"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("Open = %+v, want %+v", got, want)
+	}
+}
+
+func TestHerdrRunInPaneUsesExactTargetAndRedactsCommandErrors(t *testing.T) {
+	command := `specstory run codex -c 'codex --token secret-value'`
+	h := scriptedHerdr(t, herdrCall{
+		args: []string{"pane", "run", "w7:p12", command},
+		out:  `{"id":"1","result":{}}`,
+	})
+	if err := h.RunInPane(context.Background(), "w7:p12", command); err != nil {
+		t.Fatal(err)
+	}
+
+	h = NewHerdr()
+	h.runCommand = func(_ context.Context, args ...string) ([]byte, error) {
+		return nil, fmt.Errorf("rejected command %s", args[len(args)-1])
+	}
+	err := h.RunInPane(context.Background(), "w7:p12", command)
+	if err == nil || strings.Contains(err.Error(), command) || !strings.Contains(err.Error(), "<command>") {
+		t.Fatalf("redacted pane-run error = %v", err)
 	}
 }
 

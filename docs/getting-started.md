@@ -2,7 +2,7 @@
 description: Install dev-cli, initialize a machine, and run one change stream from start through integration.
 authority: project
 status: stable
-verified_on: 2026-08-29
+verified_on: 2026-08-31
 ---
 
 # Getting started
@@ -108,7 +108,10 @@ The wizard offers GitHub or GitLab publishing only when the corresponding
 `gh` or `glab` CLI is installed and authenticated. Local-only remains the
 default. Its final handoff can stay in place, `cd` into the repository, open
 the configured terminal runtime, or continue to the `dev start` wizard.
-Bootstrap and `dev start` do not launch a coding agent.
+Bootstrap and a default `dev start` do not launch a coding agent. An explicit
+worktree-mode `dev start --run '<shell command>'` can dispatch one command to a
+new first-class Herdr root pane; dev does not choose the agent profile or
+permission mode.
 
 TTY text fields in the repository, `start`, and `done` wizards support inline
 editing with Left/Right, Home/End, Delete/Backspace, and Esc/Ctrl-C cancellation.
@@ -130,6 +133,18 @@ dev start api --task "token refresh" --base main
 ```
 
 The default mode creates a branch, a linked worktree at the configured path, provisions it, opens the best available runtime, and records a HOT task.
+
+When Herdr is selected and the worktree is newly created, an explicit command
+can be dispatched to the exact new root pane and optionally focused:
+
+```bash
+dev start api --task "token refresh" --base main \
+  --run 'specstory run codex -c "codex"' --focus
+```
+
+`--run` is incompatible with `--json` and lighter checkout modes. It confirms
+dispatch only; it does not wait for completion or return the command's exit
+status.
 
 Use a lighter checkout mode only when it matches the work:
 

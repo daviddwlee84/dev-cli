@@ -170,7 +170,10 @@ The wizard offers GitHub or GitLab publishing only when the corresponding
 `gh` or `glab` CLI is installed and authenticated. Local-only remains the
 default. Its final handoff can stay in place, `cd` into the repository, open
 the configured terminal runtime, or continue to the `dev start` wizard.
-Bootstrap and `dev start` do not launch a coding agent.
+Bootstrap and a default `dev start` do not launch a coding agent. An explicit
+worktree-mode `dev start --run '<shell command>'` can dispatch one command to a
+new first-class Herdr root pane; dev does not choose the agent profile or
+permission mode.
 
 TTY text fields in the repository, `start`, and `done` wizards support inline
 editing with Left/Right, Home/End, Delete/Backspace, and Esc/Ctrl-C cancellation.
@@ -192,6 +195,18 @@ dev start api --task "token refresh" --base main
 ```
 
 The default mode creates a branch, a linked worktree at the configured path, provisions it, opens the best available runtime, and records a HOT task.
+
+When Herdr is selected and the worktree is newly created, an explicit command
+can be dispatched to the exact new root pane and optionally focused:
+
+```bash
+dev start api --task "token refresh" --base main \
+  --run 'specstory run codex -c "codex"' --focus
+```
+
+`--run` is incompatible with `--json` and lighter checkout modes. It confirms
+dispatch only; it does not wait for completion or return the command's exit
+status.
 
 Use a lighter checkout mode only when it matches the work:
 
@@ -1003,6 +1018,19 @@ Each approach gets its own branch and worktree. Compare results, integrate one d
 4. **none** everywhere else. Core Git/task/worktree behavior remains available, while shell integration changes directories.
 
 A runtime opens and displays a checkout; `dev`, not Herdr or tmux, owns branch/worktree lifecycle. Closing a runtime never deletes the task or checkout.
+
+For one reviewed shell command in a new independent worktree, Herdr supports a
+direct one-liner:
+
+```bash
+dev start api --task "token refresh" --base main --run 'codex' --focus
+```
+
+`--run` accepts only the exact root pane returned while creating a first-class
+Herdr worktree. Reuse, fallback, missing pane identity, another runtime, and
+direct/branch-only modes fail closed. The task and usable worktree remain if
+dispatch fails. `--focus` independently switches after a successful dispatch;
+dev does not wait for the command's exit status.
 
 ## Coordination contract
 
@@ -2595,7 +2623,10 @@ change the parent shell. `open` opens the configured Herdr/tmux/Zellij runtime
 and falls back to `cd` when runtime is `none`. `start` continues into the
 existing task wizard with the repository fixed, and is unavailable when setup
 leaves uncommitted files that a new worktree would omit. Neither repository
-bootstrap nor `dev start` launches a coding agent.
+bootstrap nor a default `dev start` launches a coding agent. Explicit
+worktree-mode `dev start --run '<shell command>'` dispatches one command only
+when a newly created first-class Herdr worktree returns its exact root pane;
+`--focus` independently controls navigation afterward.
 
 All shared TTY text fields in the repository, task-start, and finish wizards
 use an inline editor: Left/Right, Home/End, Delete/Backspace, insertion at the
@@ -3759,6 +3790,7 @@ dev start [repo] [flags]
 - `--json` — emit one machine-readable creation result
 - `--next` — the first next action to record
 - `--no-provision` — skip dependency install and ignored-file copying
+- `--run` — send a shell command to the newly created Herdr worktree pane
 - `-t, --task` — human name for this change stream
 
 ### `dev stats`
@@ -4214,6 +4246,9 @@ These were historical gaps and should not be reintroduced as limitations:
 - Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
 
 - `dev start --focus` activates the runtime after non-JSON creation.
+- `dev start --run '<shell command>'` dispatches only to an exact root pane from
+  a newly created first-class Herdr worktree. It is incompatible with `--json`,
+  non-worktree modes, and non-Herdr runtimes, and does not wait for command exit.
 - TUI navigation refuses to open a missing COLD checkout and directs the user to `dev resume`.
 - Runtime handles now record backend provenance and are revalidated before cleanup.
 - `auto` runtime selection includes Zellij between tmux and none.
@@ -4344,7 +4379,7 @@ tested_with: optional
 | worktree provisioning safety | [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
 | repository new/clone routing, snapshot templates/confinement, check-in policy, project trust, skill batching, TTY editor, upstream publication, and handoff | [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`, `internal/scaffold`, `internal/repotemplate`, `internal/projectconfig`, `internal/cli/repo_{create,checkin,skills}*.go`, `internal/cli/prompt.go`, focused repo-bootstrap tests | implemented |
 | lazygit lowercase `c` pending-message integration | [Compatibility](https://daviddwlee84.github.io/dev-cli/reference/compatibility/#lazygit-staged-message-prefill-is-best-effort) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive, checked 2026-08-29 |
-| runtime fallback Herdr → tmux → Zellij → none | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
+| runtime fallback and exact-pane `start --run` dispatch | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go`, `internal/runtime/herdr.go`, focused start/runtime tests | implemented |
 | SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
 | READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
 | `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](https://daviddwlee84.github.io/dev-cli/guides/machine-summary/), [Development journal](https://daviddwlee84.github.io/dev-cli/guides/dev-journal/) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
@@ -4741,7 +4776,10 @@ publish，也不能 handoff 到 `start`。既有 `repo setup --commit` 仍相容
 只有對應的 `gh` 或 `glab` CLI 已安裝且完成 authentication 時，wizard 才會提供
 GitHub 或 GitLab publishing；預設仍是 local-only。最後的 handoff 可選擇留在原處、
 `cd` 進 repository、開啟 configured terminal runtime，或接續 `dev start` wizard。
-Bootstrap 與 `dev start` 都不會啟動 coding agent。
+Bootstrap 與預設的 `dev start` 都不會啟動 coding agent。明確使用 worktree mode
+的 `dev start --run '<shell command>'` 時，可以把一個 command dispatch 到新建
+first-class Herdr worktree 的 exact root pane；dev 不會代替使用者選擇 agent
+profile 或 permission mode。
 
 Repository、`start` 與 `done` wizard 的 TTY text fields 支援 Left/Right、Home/End、
 Delete/Backspace inline editing，以及 Esc/Ctrl-C cancellation。Piped input 對 scripts
@@ -4762,6 +4800,17 @@ dev start api --task "token refresh" --base main
 ```
 
 預設模式會建立 branch、在設定路徑建立 linked worktree、完成 environment provisioning、開啟最佳可用 runtime，並記錄 HOT task。
+
+Herdr 被選中且 worktree 為本次新建時，可以把明確 command dispatch 到 exact
+new root pane，並選擇轉跳過去：
+
+```bash
+dev start api --task "token refresh" --base main \
+  --run 'specstory run codex -c "codex"' --focus
+```
+
+`--run` 不能與 `--json` 或較輕量的 checkout modes 併用。它只確認 command
+已 dispatch，不等待完成，也不回傳 command exit status。
 
 只有在工作確實適合時，才選用更輕量的 checkout mode：
 
@@ -5588,6 +5637,18 @@ dev wt create exp/oauth --base main
 4. **none：**其他情況都可用。核心 Git/task/worktree 行為不受影響，shell integration 負責切換 directory。
 
 Runtime 只開啟與顯示 checkout；branch/worktree lifecycle 由 `dev` 管理，不由 Herdr 或 tmux 管理。關閉 runtime 不會刪除 task 或 checkout。
+
+若要在新建的獨立 worktree 執行一個已 review 的 shell command，Herdr 支援直接
+one-liner：
+
+```bash
+dev start api --task "token refresh" --base main --run 'codex' --focus
+```
+
+`--run` 只接受建立 first-class Herdr worktree 時回傳的 exact root pane。Reuse、
+fallback、缺少 pane identity、其他 runtime，以及 direct/branch-only modes 都會
+fail closed。Dispatch 失敗時 task 與可用 worktree 仍會保留。`--focus` 只在成功
+dispatch 後獨立控制轉跳；dev 不等待 command exit status。
 
 ## 協調 contract
 
@@ -7192,7 +7253,9 @@ upstream。
 `open` 開啟 configured Herdr/tmux/Zellij runtime，runtime 為 `none` 時退回 `cd`；
 `start` 會固定此 repository 並接續現有 task wizard。Setup 留下 uncommitted files、
 導致新 worktree 會遺漏它們時，`start` 不可用。Repository bootstrap 與
-`dev start` 都不會啟動 coding agent。
+預設的 `dev start` 都不會啟動 coding agent。明確使用 worktree mode 的
+`dev start --run '<shell command>'` 時，只有本次新建 first-class Herdr worktree
+回傳 exact root pane 才會 dispatch command；之後是否轉跳仍由 `--focus` 獨立控制。
 
 Repository、task-start 與 finish wizard 共用的 TTY text fields 都使用 inline editor：
 Left/Right、Home/End、Delete/Backspace、cursor 位置插入與 Esc/Ctrl-C cancellation 會
@@ -8349,6 +8412,7 @@ dev start [repo] [flags]
 - `--json` — emit one machine-readable creation result
 - `--next` — the first next action to record
 - `--no-provision` — skip dependency install and ignored-file copying
+- `--run` — send a shell command to the newly created Herdr worktree pane
 - `-t, --task` — human name for this change stream
 
 ### `dev stats`
@@ -8804,6 +8868,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
 
 - `dev start --focus` 會在 non-JSON creation 後 activate runtime。
+- `dev start --run '<shell command>'` 只會 dispatch 到本次新建 first-class Herdr
+  worktree 的 exact root pane。它不能與 `--json`、non-worktree modes 或 non-Herdr
+  runtimes 併用，也不等待 command exit。
 - TUI navigation 會拒絕開啟 checkout 不存在的 COLD task，並要求使用 `dev resume`。
 - Runtime handle 現在保存 backend provenance，cleanup 前會重新驗證。
 - `auto` runtime selection 已在 tmux 與 none 之間加入 Zellij。
@@ -8937,7 +9004,7 @@ tested_with: optional
 | worktree provisioning safety | [Worktree 與 provisioning](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
 | repository new/clone routing、snapshot templates/confinement、check-in policy、project trust、skill batching、TTY editor、upstream publication 與 handoff | [Commands 與 configuration](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`、`internal/scaffold`、`internal/repotemplate`、`internal/projectconfig`、`internal/cli/repo_{create,checkin,skills}*.go`、`internal/cli/prompt.go`、focused repo-bootstrap tests | implemented |
 | lazygit 小寫 `c` pending-message integration | [相容性](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive，2026-08-29 查核 |
-| runtime fallback Herdr → tmux → Zellij → none | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go` | implemented |
+| runtime fallback 與 exact-pane `start --run` dispatch | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go`、`internal/runtime/herdr.go`、focused start/runtime tests | implemented |
 | SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
 | READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |
 | `dev summary` 機器整體 snapshot 與 `dev journal` 日曆日期區間報告 | [機器整體摘要](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/machine-summary/)、[開發日誌](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dev-journal/) | `internal/summary`、`internal/journal`、focused summary/journal tests | implemented |

@@ -13,8 +13,12 @@ or when launching an agent into a worktree created by `dev start --json`.
 - SpecStory owns rendered history rooted at the process launch checkout.
 - Git owns the code, transcript and plan that survive cleanup.
 
-`dev start` does not start an agent. This workflow composes `dev`, Herdr and
-SpecStory after verifying each boundary.
+By default, `dev start` does not start an agent. An explicit
+`dev start --run '<shell command>'` can dispatch to the exact root pane of a
+newly created first-class Herdr worktree, with optional independent `--focus`.
+It does not choose or validate the launcher profile, permission mode, agent
+name, or wait policy. The JSON workflow below remains the composable path when
+those steps need separate inspection or automation.
 
 ## Preflight
 
@@ -34,6 +38,17 @@ copy another agent's checkout.
 Use Herdr's native repository/worktree tree as provenance. Worktree-mode
 `dev start` passes the same `repo/branch` label as `dev wt create`; do not invent
 special origin labels or metadata.
+
+For a human one-liner with an already reviewed command:
+
+```bash
+dev start <repo> --task '<task>' --base '<committed-ref>' \
+  --run '<launch-command>' --focus
+```
+
+This fails closed before creation for non-Herdr/non-worktree combinations and,
+after creation, refuses reuse, fallback, or missing exact root-pane data. A
+dispatch failure leaves the recorded task and usable worktree in place.
 
 ```bash
 result="$(dev start <repo> --task '<task>' --base '<committed-ref>' --json)" || {

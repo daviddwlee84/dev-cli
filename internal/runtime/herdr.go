@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -59,6 +60,12 @@ func (h *Herdr) Available() bool {
 }
 
 func (h *Herdr) run(ctx context.Context, args ...string) ([]byte, error) {
+	return h.runDisplayed(ctx, strings.Join(args, " "), args...)
+}
+
+// runDisplayed allows callers carrying sensitive argv to provide a redacted
+// description for diagnostics. The real argv still goes to Herdr unchanged.
+func (h *Herdr) runDisplayed(ctx context.Context, display string, args ...string) ([]byte, error) {
 	if h.runCommand != nil {
 		return h.runCommand(ctx, args...)
 	}
@@ -70,7 +77,7 @@ func (h *Herdr) run(ctx context.Context, args ...string) ([]byte, error) {
 		if msg == "" {
 			msg = err.Error()
 		}
-		return nil, fmt.Errorf("herdr %s: %s", strings.Join(args, " "), msg)
+		return nil, fmt.Errorf("herdr %s: %s", display, msg)
 	}
 	return stdout.Bytes(), nil
 }
@@ -89,7 +96,11 @@ type herdrError struct {
 
 // call runs a herdr subcommand and decodes result into out.
 func (h *Herdr) call(ctx context.Context, out any, args ...string) error {
-	raw, err := h.run(ctx, args...)
+	return h.callDisplayed(ctx, out, strings.Join(args, " "), args...)
+}
+
+func (h *Herdr) callDisplayed(ctx context.Context, out any, display string, args ...string) error {
+	raw, err := h.runDisplayed(ctx, display, args...)
 	if err != nil {
 		return err
 	}
@@ -98,15 +109,26 @@ func (h *Herdr) call(ctx context.Context, out any, args ...string) error {
 	}
 	var env herdrEnvelope
 	if err := json.Unmarshal(raw, &env); err != nil {
-		return fmt.Errorf("herdr %s: unexpected output: %w", strings.Join(args, " "), err)
+		return fmt.Errorf("herdr %s: unexpected output: %w", display, err)
 	}
 	if env.Error != nil {
-		return fmt.Errorf("herdr %s: %s (%s)", strings.Join(args, " "), env.Error.Message, env.Error.Code)
+		return fmt.Errorf("herdr %s: %s (%s)", display, env.Error.Message, env.Error.Code)
 	}
 	if out == nil {
 		return nil
 	}
 	return json.Unmarshal(env.Result, out)
+}
+
+// RunInPane atomically sends shell command text and Enter to one exact pane.
+// The command is intentionally redacted from every diagnostic path.
+func (h *Herdr) RunInPane(ctx context.Context, paneID, command string) error {
+	err := h.callDisplayed(ctx, nil, "pane run "+paneID+" <command>",
+		"pane", "run", paneID, command)
+	if err == nil || command == "" {
+		return err
+	}
+	return errors.New(strings.ReplaceAll(err.Error(), command, "<command>"))
 }
 
 type herdrWorkspace struct {

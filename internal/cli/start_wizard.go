@@ -192,6 +192,9 @@ func runStartWizard(ctx context.Context, app *App, req startRequest) (*startSpec
 		fmt.Fprintf(p.out, "  %s   %s\n", p.style.label("provision"), p.style.success(fmt.Sprint(!spec.NoProvision)))
 		fmt.Fprintf(p.out, "  %s     %s\n", p.style.label("runtime"), p.style.success(rt.Name()))
 		fmt.Fprintf(p.out, "  %s       %s\n", p.style.label("focus"), fmt.Sprint(spec.Focus))
+		if spec.Run != "" {
+			fmt.Fprintf(p.out, "  %s         %s\n", p.style.label("run"), "configured for the new Herdr root pane")
+		}
 		if spec.Next != "" {
 			fmt.Fprintf(p.out, "  %s        %s\n", p.style.label("next"), spec.Next)
 		}
