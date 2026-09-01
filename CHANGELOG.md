@@ -43,6 +43,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   installers and later failures are reported as resumable partial or unknown
   outcomes without unsafe rollback claims.
 
+### Fixed
+
+- The Zellij runtime no longer fails every session listing when an exited
+  session is left in Zellij's namespace. Zellij keeps exited sessions
+  resurrectable, and `dump-layout` against one errors with `There is no active
+  session!`, which previously turned `dev ls`, `dev doctor` and the TUI runtime
+  join into an error. Exited sessions are now excluded from the live view, and
+  `dev start` refuses to create over a name an exited session still owns
+  instead of silently resurrecting its old layout at the old directory.
+
 ## [0.2.7] - 2026-09-03
 
 ### Added
@@ -151,7 +161,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   closed, nested bare repositories are excluded, post-publication filesystem errors
   remove their own destination, and credential-bearing SCP-like tokens cannot enter
   catalog keys, protocol journals, or repository-context output.
-
 ## [0.2.4] - 2026-09-01
 
 ### Added

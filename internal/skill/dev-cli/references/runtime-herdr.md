@@ -126,6 +126,10 @@ sesh semantics: switch the current client inside tmux, attach outside. Zellij
 attaches outside and uses `action switch-session` inside on Zellij 0.44+;
 older releases report the missing switch capability instead of nesting a
 second client. Tmux and Zellij can report session creation/reuse but no pane.
+Zellij keeps exited sessions resurrectable in its listing; `dev` treats them
+as closed (they cover no checkout and are never killed), but a name an exited
+session still owns fails `dev start` closed rather than resurrecting its old
+layout — reclaim it with `zellij delete-session <name>`.
 `none` emits a shell `cd` directive in human mode;
 `dev start --json` suppresses that directive and stays pure JSON.
 

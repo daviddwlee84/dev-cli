@@ -42,7 +42,7 @@ func scriptedZellij(t *testing.T, calls ...zellijCall) *Zellij {
 
 func TestZellijListReadsNativeLayoutCWD(t *testing.T) {
 	z := scriptedZellij(t,
-		zellijCall{args: []string{"list-sessions", "--short", "--no-formatting"}, out: "alpha\nbeta"},
+		zellijCall{args: []string{"list-sessions", "--no-formatting"}, out: "alpha [Created 1m ago] (current)\nbeta [Created 2m ago]"},
 		zellijCall{args: []string{"--session", "alpha", "action", "dump-layout"}, out: "layout {\n    cwd \"/repo one\"\n}"},
 		zellijCall{args: []string{"--session", "beta", "action", "dump-layout"}, out: "layout {\n    cwd \"/repo-two\"\n}"},
 	)
@@ -61,7 +61,7 @@ func TestZellijListReadsNativeLayoutCWD(t *testing.T) {
 
 func TestZellijOpenCreatesBackgroundSessionAtDirectory(t *testing.T) {
 	z := scriptedZellij(t,
-		zellijCall{args: []string{"list-sessions", "--short", "--no-formatting"}, err: errors.New("No active zellij sessions found")},
+		zellijCall{args: []string{"list-sessions", "--no-formatting"}, err: errors.New("No active zellij sessions found")},
 		zellijCall{args: []string{"attach", "--create-background", "child-task", "options", "--default-cwd", "/repo"}},
 	)
 	got, err := z.Open(context.Background(), "/repo", "child task")
@@ -85,7 +85,7 @@ func TestZellijOpenReusesOnlySameDirectory(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			z := scriptedZellij(t,
-				zellijCall{args: []string{"list-sessions", "--short", "--no-formatting"}, out: "child-task"},
+				zellijCall{args: []string{"list-sessions", "--no-formatting"}, out: "child-task [Created 3m ago]"},
 				zellijCall{args: []string{"--session", "child-task", "action", "dump-layout"}, out: "layout {\n cwd \"" + tc.cwd + "\"\n}"},
 			)
 			got, err := z.Open(context.Background(), "/repo", "child task")
@@ -99,6 +99,62 @@ func TestZellijOpenReusesOnlySameDirectory(t *testing.T) {
 				t.Fatalf("Open = %+v, %v", got, err)
 			}
 		})
+	}
+}
+
+// Zellij keeps exited sessions in its listing, and every action command
+// against one fails. dev must skip them rather than fail the whole listing.
+func TestZellijListSkipsExitedSessions(t *testing.T) {
+	z := scriptedZellij(t,
+		zellijCall{args: []string{"list-sessions", "--no-formatting"}, out: "dead [Created 6months ago] (EXITED - attach to resurrect)\nalive [Created 1m ago]"},
+		zellijCall{args: []string{"--session", "alive", "action", "dump-layout"}, out: "layout {\n cwd \"/repo\"\n}"},
+	)
+	got, err := z.List(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Session{{Handle: "alive", Label: "alive", Dirs: []string{"/repo"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("List = %+v, want %+v", got, want)
+	}
+}
+
+// A session that dies between the listing and the dump must not fail the list.
+func TestZellijListToleratesSessionDyingMidListing(t *testing.T) {
+	z := scriptedZellij(t,
+		zellijCall{args: []string{"list-sessions", "--no-formatting"}, out: "racing [Created 1m ago]"},
+		zellijCall{
+			args: []string{"--session", "racing", "action", "dump-layout"},
+			err:  errors.New("zellij --session racing action dump-layout: There is no active session!"),
+		},
+	)
+	got, err := z.List(context.Background())
+	if err != nil || len(got) != 0 {
+		t.Fatalf("List = %+v, %v; want no sessions and no error", got, err)
+	}
+}
+
+// An exited session still owns its name: creating over it would resurrect the
+// old layout at the old cwd, so Open fails closed instead.
+func TestZellijOpenRefusesExitedSessionName(t *testing.T) {
+	z := scriptedZellij(t, zellijCall{
+		args: []string{"list-sessions", "--no-formatting"},
+		out:  "child-task [Created 6months ago] (EXITED - attach to resurrect)",
+	})
+	got, err := z.Open(context.Background(), "/repo", "child task")
+	if err == nil || !strings.Contains(err.Error(), "has exited") || got != (OpenResult{}) {
+		t.Fatalf("Open = %+v, %v", got, err)
+	}
+}
+
+// Close on a handle that only exists as an exited session has nothing to kill.
+func TestZellijCloseIgnoresExitedSession(t *testing.T) {
+	z := scriptedZellij(t, zellijCall{
+		args: []string{"list-sessions", "--no-formatting"},
+		out:  "child-task [Created 6months ago] (EXITED - attach to resurrect)",
+	})
+	if err := z.Close(context.Background(), "child-task"); err != nil {
+		t.Fatalf("Close: %v", err)
 	}
 }
 
