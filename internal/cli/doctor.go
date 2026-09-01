@@ -133,15 +133,35 @@ func runDoctor(app *App) error {
 			app.Cfg.Picker.Command[0] + " not found — using the built-in picker"})
 	}
 
-	// Optional forge CLIs.
-	for _, f := range []struct{ bin, purpose string }{
-		{"gh", "GitHub: clone, create, PRs"},
-		{"glab", "GitLab: clone, create, MRs"},
-	} {
-		if path, err := exec.LookPath(f.bin); err == nil {
-			checks = append(checks, check{f.bin, checkOK, path + " — " + f.purpose})
-		} else {
-			checks = append(checks, check{f.bin, checkWarn, "not found — " + f.purpose + " unavailable"})
+	// Optional forge CLIs. Presence alone is not the useful answer: an
+	// installed but signed-out gh fails every API call, and the provider's own
+	// "HTTP 401" is not a hint anyone can act on. Probe authentication here so
+	// that the first place someone looks is the place that tells them.
+	purposes := map[forge.Kind]string{
+		forge.GitHub: "GitHub: clone, create, PRs",
+		forge.GitLab: "GitLab: clone, create, MRs",
+	}
+	for _, readiness := range forge.ProbeAll(ctx) {
+		purpose := purposes[readiness.Forge]
+		switch readiness.Status {
+		case forge.ReadinessReady:
+			detail := purpose
+			if path, err := exec.LookPath(readiness.Bin); err == nil {
+				detail = path + " — " + purpose
+			}
+			checks = append(checks, check{readiness.Bin, checkOK, detail})
+		case forge.ReadinessMissingCLI:
+			checks = append(checks, check{readiness.Bin, checkWarn,
+				"not found — " + purpose + " unavailable; " + readiness.Action})
+		case forge.ReadinessUnauthenticated:
+			checks = append(checks, check{readiness.Bin, checkWarn,
+				"installed but signed out — " + purpose + " unavailable; " + readiness.Action})
+		default:
+			detail := "could not determine authentication state"
+			if readiness.Detail != "" {
+				detail += ": " + readiness.Detail
+			}
+			checks = append(checks, check{readiness.Bin, checkWarn, detail})
 		}
 	}
 	checks = append(checks, check{"agent skill inventory", checkOK,

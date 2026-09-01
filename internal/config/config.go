@@ -28,6 +28,10 @@ type Config struct {
 	Forge      Forge      `toml:"forge"`
 	Picker     Picker     `toml:"picker"`
 	Update     Update     `toml:"update"`
+	// Agents are the external commands dev can hand a rendered prompt to.
+	// There are no built-in entries: which coding agent you use is yours to
+	// choose, and shipping a default would make dev depend on one.
+	Agents []Agent `toml:"agent"`
 
 	// Source records where the config was loaded from; "" means defaults only.
 	Source string `toml:"-"`
@@ -276,6 +280,79 @@ func (c Config) EffectiveTools() []Tool {
 	return c.TUI.Tools
 }
 
+// Agent is one external program dev can hand a rendered prompt to.
+//
+// dev renders context and starts the command. It does not read the reply,
+// does not iterate, and has no opinion about which agent you use — the whole
+// integration is one command string you own.
+type Agent struct {
+	// Name selects the agent with --agent.
+	Name string `toml:"name"`
+	// Command is an argv, run directly with no shell. Preferred, and required
+	// when Input is "argv": a prompt interpolated into a shell string would be
+	// a command injection, and these prompts embed shell commands by design.
+	Command []string `toml:"command"`
+	// Run is a shell command line. Mutually exclusive with Command.
+	Run string `toml:"run"`
+	// Input decides how the prompt reaches the agent: "stdin" (the default)
+	// writes it to the process's standard input, "file" writes a private
+	// temporary file and substitutes {{prompt_file}}, and "argv" substitutes
+	// {{prompt}} into a Command element.
+	Input string `toml:"input"`
+	// Interactive runs through $SHELL -lic so a shell alias or function
+	// resolves, matching the behaviour of [[tui.tools]].
+	Interactive bool `toml:"interactive"`
+	// Default marks the agent used when --agent is not given.
+	Default bool `toml:"default"`
+	// Timeout bounds the run. Zero means ten minutes.
+	Timeout Duration `toml:"timeout"`
+}
+
+// Agent input modes.
+const (
+	AgentInputStdin = "stdin"
+	AgentInputFile  = "file"
+	AgentInputArgv  = "argv"
+)
+
+// EffectiveInput resolves the delivery mode, defaulting to stdin.
+func (a Agent) EffectiveInput() string {
+	if a.Input == "" {
+		return AgentInputStdin
+	}
+	return a.Input
+}
+
+// EffectiveTimeout resolves the run bound.
+func (a Agent) EffectiveTimeout() time.Duration {
+	if a.Timeout.Duration <= 0 {
+		return 10 * time.Minute
+	}
+	return a.Timeout.Duration
+}
+
+// AgentByName finds a configured agent. An empty name selects the one marked
+// default, or the only configured agent when there is exactly one.
+func (c Config) AgentByName(name string) (Agent, bool) {
+	if name != "" {
+		for _, agent := range c.Agents {
+			if strings.EqualFold(agent.Name, name) {
+				return agent, true
+			}
+		}
+		return Agent{}, false
+	}
+	for _, agent := range c.Agents {
+		if agent.Default {
+			return agent, true
+		}
+	}
+	if len(c.Agents) == 1 {
+		return c.Agents[0], true
+	}
+	return Agent{}, false
+}
+
 // Stats configures activity collection for the heatmap.
 type Stats struct {
 	// Sampler enables recording live agent/runtime activity into stats.db.
@@ -386,6 +463,9 @@ func (c Config) Validate() error {
 		if index == 0 && strings.TrimSpace(arg) == "" {
 			return errors.New("picker.command[0] must name an executable; use an empty command array for the built-in picker")
 		}
+	}
+	if err := c.validateAgents(); err != nil {
+		return err
 	}
 	seenAzureTargets := map[string]bool{}
 	for i, target := range c.Forge.AzureDevOps {
@@ -566,4 +646,54 @@ func Hostname() string {
 		return h
 	}
 	return "unknown"
+}
+
+// validateAgents rejects an agent definition that could not run, or that could
+// run in a way the user did not mean.
+func (c Config) validateAgents() error {
+	seen := map[string]int{}
+	defaultAt := -1
+	for i, agent := range c.Agents {
+		name := strings.TrimSpace(agent.Name)
+		if name == "" {
+			return fmt.Errorf("agent[%d].name must not be empty", i)
+		}
+		if previous, exists := seen[strings.ToLower(name)]; exists {
+			return fmt.Errorf("agent[%d].name %q duplicates agent[%d]", i, name, previous)
+		}
+		seen[strings.ToLower(name)] = i
+
+		hasCommand, hasRun := len(agent.Command) > 0, strings.TrimSpace(agent.Run) != ""
+		switch {
+		case hasCommand && hasRun:
+			return fmt.Errorf("agent[%d] %q: set command or run, not both", i, name)
+		case !hasCommand && !hasRun:
+			return fmt.Errorf("agent[%d] %q: one of command or run is required", i, name)
+		}
+
+		switch agent.EffectiveInput() {
+		case AgentInputStdin, AgentInputFile:
+		case AgentInputArgv:
+			// A prompt spliced into a shell string is a command injection, and
+			// these prompts deliberately contain shell commands. Argv delivery
+			// therefore requires the no-shell form.
+			if !hasCommand {
+				return fmt.Errorf("agent[%d] %q: input = %q requires command, not run", i, name, AgentInputArgv)
+			}
+		default:
+			return fmt.Errorf("agent[%d] %q: input %q: want %s, %s or %s",
+				i, name, agent.Input, AgentInputStdin, AgentInputFile, AgentInputArgv)
+		}
+
+		if agent.Timeout.Duration < 0 {
+			return fmt.Errorf("agent[%d] %q: timeout must not be negative", i, name)
+		}
+		if agent.Default {
+			if defaultAt >= 0 {
+				return fmt.Errorf("agent[%d] %q: agent[%d] is already the default", i, name, defaultAt)
+			}
+			defaultAt = i
+		}
+	}
+	return nil
 }

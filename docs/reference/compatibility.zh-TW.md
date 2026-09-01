@@ -55,11 +55,27 @@ Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII quer
 
 所有支援平台的 note write 都會 sync file 並 atomic rename。Unix 也會在 rename/delete 後 sync containing directory。Windows implementation 無法提供 directory-fsync 步驟，因此 sudden power loss 時的 durability guarantee 較窄。Cooperating `dev` processes 的 concurrent mutations 會被 serialized，且每次 Markdown replacement 都是 atomic；任意 external writer 不會參與這個 lock。
 
-### Pull request completion 不會自動追蹤
+### 已 merge 的 pull request 不會自動收掉它的 worktree
 
 `dev done --pr` push 並建立 pull/merge request，之後保留 task、runtime 與 worktree，因為 integration 由 review 負責。`dev sweep` 不會 query forge 推斷 request 後來已 merge。`dev flow` 只有在 operator 明確按 `R` 並核准 Query Review 時，才保留目前 run 的 exact head/base observation；它不會 persistent cache、poll 或自動 transition。
 
 Portable provider evidence 僅包含 review 是否存在、provider、`open`/`draft`/`merged`/`closed`、URL 與 observation time。它不涵蓋 CI check conclusions、approvals、mergeability、comments 或 deployment status；unsupported/unauthenticated/ambiguous/malformed/failed query 也不等於 absence。請 fetch/驗證 named ancestry，再用 `dev done --merged --base-ref <ref>` 或 Flow 的 Verify Merged 記錄 DONE。
+
+`dev pr list --scope local --state merged` 現在會報告 forge 認定已 merge 的 request，以及各自對應到哪一個本地 checkout。`dev sweep` 仍然不會去查它，這是刻意的：squash merge 產生的 commit 並不是本地 branch 的 ancestor，所以 forge 說「merged」無法證明這份工作能從 remote 復原。`dev sweep --merged-worktrees` 用 `git merge-base --is-ancestor` 在本地證明 containment，而 `dev done --merged` 需要明確的 `--confirm-squash` attestation。把 pull request 清單當成「該去看一下」的提示，而不是「可以刪」的許可。
+
+### Pull request inventory 受限於 provider surface
+
+`gh search prs` 無法回報 head branch、review decision 或 check status，因此 `dev pr list --scope account` 的這些欄位是空的，其結果也無法 join 到 worktree。每一列的 `detail` 欄位記錄它由哪個 surface 產生：account search 是 `summary`，per-repository listing 是 `full`。`summary` 列上的空欄位代表該 surface 無法回報，而不是值為空。`--state merged` 與 `--state closed` 只存在於 per-repository surface，因此指定它們時會自動選用該 surface。
+
+Per-repository 查詢只涵蓋 `dev` 有 task 的 repository，因為對每個被發現的 repository 各發一個 subprocess，在檔案很多的機器上就是數十次呼叫。要擴大範圍請用 `--all-repos`。
+
+GitLab 的列永遠不帶 check status：`head_pipeline` 只由 GitLab 的單一 merge request endpoint 回傳，而 `dev` 不會為每個 request 各發一次請求。Azure DevOps 的 pull request 完全不列出；已設定的 target 會被報告為 unsupported，而不是讓指令失敗。
+
+### Forge CLI 登入狀態只會被報告，不會自動重試
+
+`gh` 與 `glab` 是選用且彼此獨立的，`dev` 永遠不會代替你認證。當某個 provider 的憑證缺少或被拒絕時，`dev` 會報告是哪一個 provider 以及確切的登入指令 — 例如 ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — 並繼續使用另一個 provider 傳回的結果。`dev repo remote` 與 TUI REMOTE view 會呈現部分結果並發出 warning；`dev pr` 只有在完全沒有任何 provider 通過認證時才會失敗。`dev doctor` 會探測登入狀態，所以「已安裝但未登入」的 CLI 在某個指令需要它之前就看得到。
+
+只有缺少或被拒絕的憑證會用這種方式報告。Rate limit、權限或 scope 失敗，以及網路錯誤，都會保留完整的診斷文字（含失敗的指令），因為重新登入並不能解決它們。無論哪一種情況，原始指令與 provider 輸出都保留在被包裝的 error 之中。
 
 ### Agent session capture 只有保留欄位，尚未接線
 

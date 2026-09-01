@@ -27,11 +27,70 @@ decoding plus cross-process update locks, and explicitly migrate ambiguous
 legacy done records. Old binaries currently ignore and later erase unknown TOML
 fields, so this requires a deliberate minimum-version/downgrade policy.
 
-### P3 · M — Query forge merge status and squash identity
-Persist PR/MR identity and extend forge adapters to report open/draft/merged
-state, merge commit and method. Until then `done --merged` proves ordinary
-ancestry and squash completion requires explicit operator attestation; never
-infer a squash solely because the source branch disappeared.
+### P3 · M — Persist PR/MR identity and squash proof
+Read-only forge pull-request inventory now exists: `forge.PRLister`, the gh and
+glab adapters, and `dev pr list`, which reports open/draft/merged state, head
+branch, review decision and check rollup, and joins a request to its local
+worktree.
+
+What remains is the part that would let cleanup act on it: persisting PR/MR
+identity on the task, reporting the merge commit and method, and designing the
+attestation that would make a forge-reported squash trustworthy. Until then
+`done --merged` proves ordinary ancestry, squash completion requires explicit
+operator attestation, and `dev sweep` deliberately does not consult `dev pr`;
+never infer a squash solely because the source branch disappeared.
+
+### P2 · M — Forge-derived retirement suggestions (`dev sweep --merged-prs`)
+Let `dev sweep` propose retiring a worktree whose request the forge reports as
+merged. Blocked on the squash attestation above: a squashed merge leaves no
+local ancestor, so the forge's answer alone cannot prove the work is
+recoverable. Report-before-apply and the existing blocker inspection must still
+gate every suggestion.
+
+### P3 · S — Azure DevOps pull-request inventory
+The `az` adapter declines `PRLister` by omission, so `dev pr` reports Azure
+targets as unsupported rather than failing. Implement it over
+`az repos pr list --status active` against the configured organization/project
+targets, mapping to the same `forge.PullRequest` shape.
+
+### P3 · S — GitLab pipeline status in `dev pr`
+GitLab rows carry no `checks` value: `head_pipeline` is returned only by the
+single-MR endpoint, and a per-request fan-out is not worth it for a list view.
+Revisit if GitLab exposes pipeline status on the list endpoint, or if a bounded
+fan-out proves cheap enough.
+
+### P2 · S — Date-range filtering for `dev pr`
+An inbox accumulates aged requests, and the queue is only useful if the old
+ones can be separated from the live ones. `forge.PullRequest` already carries
+`CreatedAt`/`UpdatedAt`, rows already sort by `UpdatedAt` and the table already
+renders an updated column, so the filter itself is client-side work.
+
+Reuse `dev journal`'s `--since` / `--until` vocabulary (`today`, `yesterday`,
+`7d`, `4w`, `3mo`, `1y`, `YYYY-MM-DD`) rather than inventing a second date
+syntax, decide explicitly whether a bare range means created or last-updated,
+and keep the complement (show only what has gone quiet) reachable — that is the
+view that finds a year-old request. `dev pr prompt retire` inherits whatever
+this produces, which is the point: an unbounded retire prompt is not actionable.
+
+Push the range to the provider where each surface supports it, and record the
+asymmetry rather than pretending it away: `gh search prs` and `gh pr list
+--search` take `created:`/`updated:` qualifiers, while `glab mr list` offers
+`--created-after` / `--created-before` only. Client-side filtering stays the
+floor for any surface that cannot narrow server-side.
+
+### P3 · S — Keep the runtime contract suite off live machine state
+`TestBackendContract` iterates `runtime.All()` and probes any backend whose
+binary exists, so `make test` reads whatever sessions the developer's machine
+happens to hold. A seven-month-old exited Zellij session failed the suite with
+no code change involved. That found a real bug, but by accident, and the same
+mechanism can fail a clean tree for reasons no reviewer can reproduce.
+
+Split the two jobs the suite currently mixes: keep the contract assertions
+hermetic against the scripted `runCommand` fakes each adapter already supports,
+and move real-binary probing behind an explicit opt-in (an env guard or
+`scripts/e2e.sh`) so CI and `make test` never depend on host state. Zellij,
+tmux and Herdr are product backends, not test scaffolding, so the answer is to
+fence the live probe, not to drop it.
 
 ### P2 · M — Incremental local repo snapshot
 The TUI now renders immediately and probes repositories in the background with

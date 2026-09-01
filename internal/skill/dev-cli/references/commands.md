@@ -716,6 +716,50 @@ dev park [task] [flags]
 - `--timeout` — maximum time to wait for runtime closure
 - `--wip` — checkpoint uncommitted work as a wip: commit
 
+### `dev pr`
+
+List the pull requests waiting on you, and hand them to an agent
+
+```
+dev pr
+```
+
+### `dev pr list`
+
+List open pull requests you authored or were asked to review
+
+```
+dev pr list [query] [flags]
+```
+
+- `--actions` — print the gh/glab commands for each request
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--json` — emit structured output
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a local checkout
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev pr prompt`
+
+Render a prompt about the pull request queue, optionally handing it to an agent
+
+```
+dev pr prompt [triage|review|retire] [flags]
+```
+
+- `--agent` — hand the prompt to a configured [[agent]] instead of printing it
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--dry-run` — with --agent, print the command and the prompt without running anything
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a local checkout
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
 ### `dev prepare`
 
 Arm post-writer artifact finalization without closing this agent

@@ -82,6 +82,8 @@ tested_with: optional
 | Claude worktree path/base/cleanup | [Worktree isolation](../claude/worktree-isolation.md) | [Claude Code worktrees](https://code.claude.com/docs/en/worktrees) | version-sensitive, tested 2.1.250 |
 | teams and Dynamic Workflows | [Teams and workflows](../claude/teams-dynamic-workflows.md) | [agent teams](https://code.claude.com/docs/en/agent-teams), [workflows](https://code.claude.com/docs/en/workflows) | experimental/versioned |
 | hooks/skills/plugins/SDK roles | [Extensions](../claude/extensions-agent-sdk.md) | Anthropic feature references | evolving |
+| `dev pr` inbox, provider surfaces and the local worktree join | [Pull request inbox](../guides/pull-request-inbox.md) | `internal/forge/pr.go`, `internal/cli/pr*.go`, focused forge/CLI tests | implemented |
+| AI reviewer trigger phrases, workflow requirement and plan tiers | [AI pull-request review options](../notes/ai-pr-review-options.md) | [Claude Code GitHub Actions](https://code.claude.com/docs/en/github-actions), [Claude Code Review setup](https://support.claude.com/en/articles/14233555-set-up-code-review-for-claude-code), [Codex GitHub](https://developers.openai.com/codex/integrations/github), [CodeRabbit commands](https://docs.coderabbit.ai/guides/commands) | vendor docs, checked 2026-09-01 |
 
 ## Historical sources
 

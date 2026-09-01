@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `dev pr list` shows the pull and merge requests you opened and the ones
+  awaiting your review, and joins them to the local worktree for their head
+  branch. Two provider surfaces are used deliberately: an account-wide search
+  that costs two calls regardless of repository count but cannot report a head
+  branch, review decision or checks, and a per-repository listing that can.
+  `--scope` selects between them, `detail` on each row records which produced
+  it, and per-repository queries are limited to repositories `dev` has a task
+  for unless `--all-repos` widens them. `--actions` and `--json` emit the
+  `gh`/`glab` commands for each request; `dev` prints them and never runs them.
+- `dev pr prompt [triage|review|retire]` renders a prompt containing the live
+  queue, and with `--agent` hands it to a command from the new `[[agent]]`
+  configuration section. There is no built-in agent and no default entry:
+  `dev` starts a command you define, streams its output, and neither reads the
+  reply nor iterates. `[[agent]]` is host configuration and is rejected in a
+  repository's `.dev-cli/config.toml`.
+
+### Changed
+
+- `dev doctor` now reports whether `gh` and `glab` are signed in, not only
+  whether they are installed, with the exact login command for each.
+
 ## [0.2.10] - 2026-09-04
 
 ### Fixed
@@ -94,6 +117,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   join into an error. Exited sessions are now excluded from the live view, and
   `dev start` refuses to create over a name an exited session still owns
   instead of silently resurrecting its old layout at the old directory.
+- An unauthenticated `gh` or `glab` no longer surfaces its full command line
+  in the TUI REMOTE footer, in `dev repo remote` warnings, or in the cached
+  provider status. A rejected credential now reads as, for example,
+  ``glab is signed out — run `glab auth login --hostname gitlab.com` ``, with
+  the original command and provider output preserved in the wrapped error.
+  Rate limits, permission and network failures keep their full diagnostic text,
+  because signing in again would not fix them.
 
 ## [0.2.7] - 2026-09-03
 

@@ -183,6 +183,9 @@ dev flow [repo]            # TTY-only guarded repository lifecycle preview
 dev sweep                  # what has gone stale or drifted, and what to do
 dev sweep --apply          # act on it, confirming each change
 dev sweep --merged-worktrees  # from main, audit contained tracked/untracked worktrees
+dev pr list                # requests you opened or were asked to review
+dev pr list --scope local --state merged  # which checkouts the forge says are finished
+dev pr prompt retire --agent <name>       # hand that queue to a configured agent
 dev prepare --session claude:<uuid>  # arm exact post-writer artifact commit
 dev artifact list          # finalization handoffs and receipts
 dev done --ff              # integrate only; runtime/worktree stay alive
@@ -513,6 +516,10 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    from the canonical main checkout, present every candidate and blocker as a
    QA question, and use `--apply --yes` only after the user explicitly approves
    that exact set. Branch deletion remains a separate `--delete-branches` opt-in.
+   `dev pr list --scope local --state merged` finds candidates, but a merged
+   pull request is never on its own grounds to remove a checkout: a squash
+   merge leaves no local ancestor, so containment still has to be proven
+   locally. See `references/pull-requests.md`.
 
 5. **Prefer a checkpoint commit over `git stash`.** A stash is invisible in the
    log, easy to forget, and cannot be pushed — so it can never reach another
@@ -651,6 +658,9 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   binary by `dev skill sync` so it cannot drift.
 - `references/repository-bootstrap.md` — new/clone/setup presets, project
   overrides, skill initialization, upstream publishing, trust and handoff.
+- `references/pull-requests.md` — read before using `dev pr` or advising on a
+  pull request; covers why a field can be missing, and why a merged request is
+  never on its own grounds to retire a worktree.
 
 ## Gotchas
 

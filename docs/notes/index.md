@@ -42,6 +42,7 @@ When a note is added, list it here with type, status, verification date, and one
 | Note | Type | Status | Verified | Purpose |
 |---|---|---|---|---|
 | [Authoring notes](authoring.md) | recipe | maintained | 2026-08-28 | page template, bilingual/source rules, and validation loop |
+| [AI pull-request review options](ai-pr-review-options.md) | source-review | evolving | 2026-09-01 | which reviewer needs a workflow file, and the exact trigger phrase each expects |
 
 ## Rules
 

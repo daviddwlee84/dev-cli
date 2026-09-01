@@ -46,6 +46,7 @@ draft → verified → maintained
 | Note | Type | Status | Verified | Purpose |
 |---|---|---|---|---|
 | [撰寫筆記](authoring.md) | recipe | maintained | 2026-08-28 | page template、雙語/source rules 與 validation loop |
+| [AI pull-request review options](ai-pr-review-options.zh-TW.md) | source-review | evolving | 2026-09-01 | 哪一種 reviewer 需要 workflow 檔案，以及各自期待的 trigger phrase |
 
 ## 規則
 

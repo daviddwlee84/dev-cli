@@ -967,6 +967,11 @@ dev try redis-streams          # dated scratch directory for an experiment
 dev tries archive redis-streams    # reversible local archive; does not delete
 dev graduate redis-streams -c Infra --remote   # promote it into a real project
 
+dev pr list                    # requests you opened or were asked to review
+dev pr list --scope local      # with head branches, joined to your worktrees
+dev pr list --actions          # the gh/glab commands; dev prints, never runs
+dev pr prompt retire --agent claude   # hand the queue to a command you configure
+
 dev gitignore                  # .gitignore from GitHub's templates + the rest
 dev adopt                      # import existing worktrees/sessions as tasks
 

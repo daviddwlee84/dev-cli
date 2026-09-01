@@ -50,7 +50,7 @@ Latin note queries use term-wise prefix FTS and SQLite ranking. Non-ASCII querie
 
 Note writes sync the file and atomically rename it on every supported platform. Unix also syncs the containing directory after rename/delete. The Windows implementation cannot provide that directory-fsync step, so a sudden power loss has a narrower durability guarantee there. Concurrent mutations by cooperating `dev` processes are serialized and each Markdown replacement is atomic; arbitrary external writers do not participate in that lock.
 
-### Pull-request completion is not tracked automatically
+### A merged pull request does not retire its worktree
 
 `dev done --pr` pushes and opens a pull/merge request, then leaves the task,
 runtime, and worktree unchanged because review owns integration. `dev flow` can
@@ -59,6 +59,22 @@ portable existence, open/draft/merged/closed state, URL, provider, and observati
 time. It does not query review decisions or checks, persist that evidence, or
 turn it into DONE. Current `dev sweep` does not query the forge either. Verify
 integration with exact local ancestry and finish deliberately.
+
+`dev pr list --scope local --state merged` now reports which requests the forge considers merged, and which local checkout each belongs to. `dev sweep` still does not consult it, and that is deliberate: a squashed merge produces a commit that is not an ancestor of the local branch, so a forge saying "merged" cannot prove the work is recoverable from the remote. `dev sweep --merged-worktrees` proves containment locally with `git merge-base --is-ancestor`, and `dev done --merged` requires an explicit `--confirm-squash` attestation. Treat the pull-request list as a prompt to look, not as permission to delete.
+
+### Pull-request inventory is limited by the provider surfaces
+
+`gh search prs` cannot report a head branch, review decision, or check status, so `dev pr list --scope account` leaves those fields empty and its rows cannot be joined to a worktree. Each row's `detail` field records which surface produced it: `summary` from the account search, `full` from the per-repository listing. An empty field on a `summary` row means the surface could not report it, not that the value is empty. `--state merged` and `--state closed` exist only on the per-repository surface, so requesting them selects it automatically.
+
+Per-repository queries cover only repositories `dev` has a task for, because one subprocess per discovered repository would be dozens of calls on a populated machine. `--all-repos` widens the scan.
+
+GitLab rows never carry a check status: `head_pipeline` is returned only by GitLab's single-merge-request endpoint, and `dev` does not fan out per request. Azure DevOps pull requests are not listed at all; a configured target is reported as unsupported rather than failing the command.
+
+### Forge CLI sign-in is reported, never retried
+
+`gh` and `glab` are optional and independent, and `dev` never authenticates on your behalf. When a provider's stored credential is missing or rejected, `dev` reports which provider and the exact login command — for example ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — and continues with whatever the other provider returned. `dev repo remote` and the TUI REMOTE view render the partial result and warn; `dev pr` fails only when no provider is authenticated at all. `dev doctor` probes sign-in state, so an installed but signed-out CLI is visible before a command needs it.
+
+Only a missing or rejected credential is reported this way. A rate limit, a permissions or scope failure, and a network error keep their full diagnostic text including the command that failed, because signing in again would not fix them. The original command and provider output remain in the wrapped error in every case.
 
 ### Agent session capture is reserved, not wired
 
