@@ -505,6 +505,14 @@ def parse_html(path: Path) -> LinkParser:
     return parser
 
 
+def cached_html(parsed_cache: dict[Path, LinkParser], path: Path) -> LinkParser:
+    parser = parsed_cache.get(path)
+    if parser is None:
+        parser = parse_html(path)
+        parsed_cache[path] = parser
+    return parser
+
+
 def output_path(site: Path, relative: str, language: str) -> Path:
     stem = relative[:-3]
     prefix = Path(language) if language != "en" else Path()
@@ -617,7 +625,7 @@ def check_generated_markdown(
             fail(errors, f"{path.relative_to(site)}: broken generated Markdown link {href!r}")
             continue
         if fragment and target.suffix == ".html":
-            target_parser = parsed_cache.setdefault(target, parse_html(target))
+            target_parser = cached_html(parsed_cache, target)
             if fragment not in target_parser.anchors:
                 fail(errors, f"{path.relative_to(site)}: missing generated Markdown anchor {href!r}")
 
@@ -674,7 +682,7 @@ def check_site(site: Path) -> list[str]:
     for path in sorted(unexpected_html):
         fail(errors, f"unexpected rendered page: {path.relative_to(site)}")
     for source in html_files:
-        source_parser = parsed_cache.setdefault(source, parse_html(source))
+        source_parser = cached_html(parsed_cache, source)
         expected_assets = (
             ("copy-to-llm.js", source_parser.scripts),
             ("copy-to-llm.css", source_parser.stylesheets),
@@ -692,7 +700,7 @@ def check_site(site: Path) -> list[str]:
                 fail(errors, f"{source.relative_to(site)}: broken link {href!r}")
                 continue
             if fragment and target.suffix == ".html":
-                target_parser = parsed_cache.setdefault(target, parse_html(target))
+                target_parser = cached_html(parsed_cache, target)
                 if fragment not in target_parser.anchors:
                     fail(errors, f"{source.relative_to(site)}: missing anchor {href!r}")
 

@@ -32,7 +32,7 @@ abandoning a task.
 
 ```bash
 command -v dev || echo "not installed"
-dev doctor          # what works on this machine, and what degrades
+dev doctor          # version/install owner/path, PATH collisions, and capabilities
 ```
 
 Only **git** is required. `herdr`, `tmux`, `zellij`, `gh`, `glab` and Azure CLI
@@ -534,8 +534,8 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 - **Windows runs without a multiplexer.** There is no tmux, Zellij or Herdr on
   Windows, so the runtime backend is always `none`; `dev fleet open` starts a
   child shell instead of replacing the process. `dev upgrade` self-replaces only
-  a standalone install and otherwise prints the Homebrew/Scoop/`go install`
-  command. Stable releases advance the Homebrew tap; never overwrite its Cellar
+  a standalone install and otherwise delegates to the detected Homebrew/Scoop/
+  `go install` command. Stable releases advance the Homebrew tap; never overwrite its Cellar
   binary manually.
 - **A worktree is a clean checkout.** It has no `node_modules`, no `.venv` and
   none of the gitignored env files. `dev` provisions it; `--no-provision`

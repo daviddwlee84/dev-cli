@@ -52,8 +52,8 @@ dev config init  # detects this machine's repo roots and writes a config
 The formula installs the `dev` binary plus bash, zsh and fish completions. It
 does not write into your home directory or install the bundled agent skill.
 Each stable release updates the tap automatically. A Homebrew-owned `dev`
-never self-replaces: `dev upgrade` reports the matching `brew upgrade` command,
-which preserves Homebrew's install records, linking, rollback, and cleanup.
+never self-replaces: `dev upgrade` delegates to the matching `brew upgrade`
+command, which preserves Homebrew's install records, linking, rollback, and cleanup.
 Maintainers can retry or backfill formula publication for an existing release
 with `gh workflow run publish-homebrew.yml -f version=vMAJOR.MINOR.PATCH`.
 
@@ -71,7 +71,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.3 instead when you need a reproducible install.
+# Pin @v0.2.4 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -84,13 +84,13 @@ To find out whether the binary you have is current, and to update it:
 ```bash
 dev version           # what this build is, and whether it is a published release
 dev version --check    # also ask GitHub for the newest release (cached for a day)
-dev doctor            # reports the running version alongside every other check
+dev doctor            # reports the running version, install owner/path, and PATH collisions
 dev upgrade --check    # report whether a newer release exists
-dev upgrade            # download, verify against SHA256SUMS, and replace this binary
+dev upgrade            # delegate to its owner, or verify and replace a standalone binary
 ```
 
 `dev upgrade` replaces the binary in place only for a standalone install. If
-Homebrew, Scoop or `go install` owns the file, it prints that tool's upgrade
+Homebrew, Scoop or `go install` owns the file, it runs that tool's upgrade
 command instead; release automation advances the Homebrew tap so that command
 can see every stable tag. Once a day an interactive `dev` command prints a one-line hint
 when a newer release is cached; set `[update] check = false` in `config.toml`

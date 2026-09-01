@@ -14,6 +14,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
@@ -33,6 +34,12 @@ const (
 	methodGo
 )
 
+type detectedInstall struct {
+	Path     string
+	Resolved string
+	Method   installMethod
+}
+
 func (m installMethod) label() string {
 	switch m {
 	case methodHomebrew:
@@ -46,15 +53,23 @@ func (m installMethod) label() string {
 }
 
 func (m installMethod) command() string {
+	name, args := m.commandArgs()
+	if name == "" {
+		return ""
+	}
+	return strings.Join(append([]string{name}, args...), " ")
+}
+
+func (m installMethod) commandArgs() (string, []string) {
 	switch m {
 	case methodHomebrew:
-		return "brew upgrade dev-cli"
+		return "brew", []string{"upgrade", "dev-cli"}
 	case methodScoop:
-		return "scoop update dev-cli"
+		return "scoop", []string{"update", "dev-cli"}
 	case methodGo:
-		return "go install github.com/daviddwlee84/dev-cli/cmd/dev@latest"
+		return "go", []string{"install", "github.com/daviddwlee84/dev-cli/cmd/dev@latest"}
 	}
-	return ""
+	return "", nil
 }
 
 // detectInstallMethod guesses who owns the binary at exe. A package manager's
@@ -76,6 +91,74 @@ func detectInstallMethod(exe string) installMethod {
 		}
 	}
 	return methodStandalone
+}
+
+func detectInstall(exe string) detectedInstall {
+	path := exe
+	if abs, err := filepath.Abs(path); err == nil {
+		path = abs
+	}
+	resolved := path
+	if target, err := filepath.EvalSymlinks(path); err == nil {
+		resolved = target
+	}
+	return detectedInstall{Path: path, Resolved: resolved, Method: detectInstallMethod(resolved)}
+}
+
+func runningInstall() (detectedInstall, error) {
+	self, err := os.Executable()
+	if err != nil {
+		return detectedInstall{}, err
+	}
+	return detectInstall(self), nil
+}
+
+func devInstallsOnPath() []detectedInstall {
+	name := "dev"
+	if goruntime.GOOS == "windows" {
+		name = "dev.exe"
+	}
+	seen := map[string]bool{}
+	var installs []detectedInstall
+	for _, dir := range filepath.SplitList(os.Getenv("PATH")) {
+		if dir == "" {
+			continue
+		}
+		candidate := filepath.Join(dir, name)
+		info, err := os.Stat(candidate)
+		if err != nil || info.IsDir() || (goruntime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0) {
+			continue
+		}
+		install := detectInstall(candidate)
+		key := install.Resolved
+		if goruntime.GOOS == "windows" {
+			key = strings.ToLower(key)
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		installs = append(installs, install)
+	}
+	return installs
+}
+
+func otherDevInstalls(current detectedInstall, installs []detectedInstall) []detectedInstall {
+	currentKey := current.Resolved
+	if goruntime.GOOS == "windows" {
+		currentKey = strings.ToLower(currentKey)
+	}
+	var others []detectedInstall
+	for _, install := range installs {
+		key := install.Resolved
+		if goruntime.GOOS == "windows" {
+			key = strings.ToLower(key)
+		}
+		if key != currentKey {
+			others = append(others, install)
+		}
+	}
+	return others
 }
 
 func goBinDirs() []string {
@@ -107,26 +190,26 @@ func newUpgradeCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade",
 		Short: "Update dev to the latest published release",
-		Long: `Download the newest published release and replace this binary in place.
+		Long: `Update the running dev installation to the newest published release.
 
 dev asks GitHub for the latest release tag, compares it to this build, verifies
 the downloaded archive against the release's SHA256SUMS, and swaps the binary
 atomically. If a package manager owns the install (Homebrew, Scoop, or
-go install), dev prints that manager's upgrade command instead of touching the
+go install), dev runs that manager's upgrade command instead of touching the
 file itself.
 
-  dev upgrade            # replace the binary after a confirmation prompt
+  dev upgrade            # update through the detected owner after confirmation
   dev upgrade --check    # only report whether a newer release exists
   dev upgrade --yes      # no prompt
-  dev upgrade --force    # reinstall even when already current`,
+  dev upgrade --force    # run the update path even when already current`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runUpgrade(app, checkOnly, force, assumeYes)
 		},
 	}
 	cmd.Flags().BoolVar(&checkOnly, "check", false, "report whether a newer release exists and exit")
-	cmd.Flags().BoolVar(&force, "force", false, "reinstall even if this build is already current")
-	cmd.Flags().BoolVarP(&assumeYes, "yes", "y", false, "do not prompt before replacing the binary")
+	cmd.Flags().BoolVar(&force, "force", false, "run the update path even if this build is already current")
+	cmd.Flags().BoolVarP(&assumeYes, "yes", "y", false, "do not prompt before updating")
 	return cmd
 }
 
@@ -162,18 +245,19 @@ func runUpgrade(app *App, checkOnly, force, assumeYes bool) error {
 		return nil
 	}
 
-	self, err := os.Executable()
+	install, err := runningInstall()
 	if err != nil {
 		return fmt.Errorf("locate the running binary: %w", err)
 	}
-	if resolved, err := filepath.EvalSymlinks(self); err == nil {
-		self = resolved
-	}
+	self := install.Resolved
 
-	if method := detectInstallMethod(self); method != methodStandalone {
-		fmt.Fprintf(app.Out, "\n%s installed this binary. Update it with:\n\n    %s\n",
-			method.label(), method.command())
-		return nil
+	if method := install.Method; method != methodStandalone {
+		if !assumeYes {
+			if !confirm(app, bufio.NewReader(app.In), "run "+method.command()) {
+				return errors.New("upgrade cancelled")
+			}
+		}
+		return runManagedUpgrade(ctxOf(), app, method)
 	}
 
 	if !assumeYes {
@@ -195,6 +279,24 @@ func runUpgrade(app *App, checkOnly, force, assumeYes bool) error {
 	fmt.Fprintln(app.Out, style.success(fmt.Sprintf("dev %s → %s", current, latest)))
 	if goruntime.GOOS == "windows" {
 		fmt.Fprintln(app.Out, style.dim("the previous "+filepath.Base(self)+" is cleaned up on the next run"))
+	}
+	return nil
+}
+
+func runManagedUpgrade(ctx context.Context, app *App, method installMethod) error {
+	name, args := method.commandArgs()
+	if name == "" {
+		return fmt.Errorf("%s has no upgrade command", method.label())
+	}
+
+	fmt.Fprintf(app.Out, "\n%s installed this binary; running:\n\n    %s\n\n",
+		method.label(), method.command())
+	process := exec.CommandContext(ctx, name, args...)
+	process.Stdin = app.In
+	process.Stdout = app.Out
+	process.Stderr = app.Err
+	if err := process.Run(); err != nil {
+		return fmt.Errorf("run %s: %w", method.command(), err)
 	}
 	return nil
 }

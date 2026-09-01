@@ -1230,8 +1230,8 @@ dev upgrade [flags]
 ```
 
 - `--check` — report whether a newer release exists and exit
-- `--force` — reinstall even if this build is already current
-- `-y, --yes` — do not prompt before replacing the binary
+- `--force` — run the update path even if this build is already current
+- `-y, --yes` — do not prompt before updating
 
 ### `dev version`
 

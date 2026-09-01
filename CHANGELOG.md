@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.4] - 2026-09-01
+
 ### Added
 
 - Stable releases now render and publish `Formula/dev-cli.rb` to
@@ -15,6 +17,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   stable release without creating another tag. Homebrew installs remain
   package-manager-owned rather than letting `dev upgrade` overwrite a Cellar
   binary.
+
+### Changed
+
+- `dev upgrade` now delegates directly to the detected Homebrew, Scoop, or
+  `go install` owner after confirmation, while standalone binaries retain the
+  verified in-place replacement path.
+- `dev doctor` now reports the running executable's install owner and resolved
+  path, and warns when another `dev` binary on `PATH` could shadow it.
+
+### Fixed
+
+- Rendered-site documentation checks now reuse parsed HTML instead of eagerly
+  reparsing the same target for every link.
 
 ## [0.2.3] - 2026-09-01
 
@@ -330,7 +345,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.0...v0.2.1

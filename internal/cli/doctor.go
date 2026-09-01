@@ -62,6 +62,23 @@ func runDoctor(app *App) error {
 	// What am I running? A build several commits past its last release behaves
 	// differently from that release, and `dev --version` alone does not say so.
 	checks = append(checks, check{"dev", checkOK, versionSummary()})
+	if install, err := runningInstall(); err == nil {
+		detail := install.Method.label() + " — " + install.Path
+		if install.Resolved != install.Path {
+			detail += " → " + install.Resolved
+		}
+		checks = append(checks, check{"install", checkOK, detail})
+		if others := otherDevInstalls(install, devInstallsOnPath()); len(others) > 0 {
+			var copies []string
+			for _, other := range others {
+				copies = append(copies, other.Method.label()+" at "+other.Path)
+			}
+			checks = append(checks, check{"dev copies", checkWarn,
+				"other executable(s) on PATH may shadow this install: " + strings.Join(copies, "; ")})
+		}
+	} else {
+		checks = append(checks, check{"install", checkWarn, "cannot locate the running executable: " + err.Error()})
+	}
 
 	// Windows has no tmux/Zellij/Herdr, so a warning against those backends
 	// below is expected rather than something to fix.

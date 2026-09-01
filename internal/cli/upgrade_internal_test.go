@@ -5,12 +5,52 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
+
+func TestInstallMethodCommand(t *testing.T) {
+	cases := map[installMethod]string{
+		methodStandalone: "",
+		methodHomebrew:   "brew upgrade dev-cli",
+		methodScoop:      "scoop update dev-cli",
+		methodGo:         "go install github.com/daviddwlee84/dev-cli/cmd/dev@latest",
+	}
+	for method, want := range cases {
+		if got := method.command(); got != want {
+			t.Errorf("%s command = %q, want %q", method.label(), got, want)
+		}
+	}
+}
+
+func TestRunManagedUpgrade(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the command mapping is covered on Windows; this execution test uses a POSIX fixture")
+	}
+	dir := t.TempDir()
+	brew := filepath.Join(dir, "brew")
+	if err := os.WriteFile(brew, []byte("#!/bin/sh\nprintf 'manager args: %s\\n' \"$*\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	var out, errOut bytes.Buffer
+	app := &App{In: strings.NewReader(""), Out: &out, Err: &errOut}
+	if err := runManagedUpgrade(context.Background(), app, methodHomebrew); err != nil {
+		t.Fatal(err)
+	}
+	if got := out.String(); !strings.Contains(got, "brew upgrade dev-cli") || !strings.Contains(got, "manager args: upgrade dev-cli") {
+		t.Fatalf("managed upgrade output = %q", got)
+	}
+	if errOut.Len() != 0 {
+		t.Fatalf("managed upgrade stderr = %q", errOut.String())
+	}
+}
 
 func TestSemverLess(t *testing.T) {
 	cases := []struct {
@@ -63,6 +103,19 @@ func TestDetectInstallMethodGoBin(t *testing.T) {
 	t.Setenv("GOPATH", "/home/x/go")
 	if got := detectInstallMethod(filepath.FromSlash("/home/x/go/bin/dev")); got != methodGo {
 		t.Errorf("GOPATH/bin binary = %v, want methodGo", got)
+	}
+}
+
+func TestOtherDevInstalls(t *testing.T) {
+	current := detectedInstall{Path: "/usr/local/bin/dev", Resolved: "/usr/local/Cellar/dev-cli/0.2.2/bin/dev", Method: methodHomebrew}
+	installs := []detectedInstall{
+		current,
+		{Path: "/another/link/dev", Resolved: current.Resolved, Method: methodHomebrew},
+		{Path: "/home/x/.local/bin/dev", Resolved: "/home/x/.local/bin/dev", Method: methodStandalone},
+	}
+	others := otherDevInstalls(current, installs)
+	if len(others) != 1 || others[0].Path != "/home/x/.local/bin/dev" {
+		t.Fatalf("otherDevInstalls() = %+v", others)
 	}
 }
 
