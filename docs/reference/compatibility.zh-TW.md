@@ -115,8 +115,8 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - `dev retire <path>` 會 reap 對應的 task record。先前只有 by-task 形式會設定 task identity，因此以 path 退休同一個 checkout 會留下 record；DONE 狀態與 identity 檢查維持不變。
 - `dev version` 會回報目前執行的 build 是否為已發布的 release，`dev doctor` 也帶有同一行資訊。先前工具中沒有任何地方能回答「我是不是最新的？」，而 `go install ...@latest` 只會解析到最新的 tag，因此未 tag 的 feature 對安裝者而言等同不存在。
 - Release 會發布各平台 archive 與 `SHA256SUMS`，並以 `CHANGELOG.md` 對應段落作為 release notes。先前的 release 只產生 GitHub release 物件，因此那些版本本來就沒有附加檔案。
-- Release 會在 Unix `.tar.gz` 之外一併發布 Windows `.zip`，並更新附在 release 上的 in-repo Scoop manifest（設定 token 時也會 push 到 bucket）。
-- `dev upgrade` 會下載此平台目前的 release、以 release `SHA256SUMS` 驗證，再以 atomic rename 取代執行中的 binary（Windows 會把 live `.exe` 移到旁邊，下次執行時清除）。若 Homebrew、Scoop 或 `go install` 擁有該檔案，則改為印出對應指令。
+- Release 會在 Unix `.tar.gz` 之外一併發布 Windows `.zip`、更新附在 release 上的 in-repo Scoop manifest（設定 token 時也會 push 到 bucket），並把對應的 source formula 發布到 `daviddwlee84/homebrew-tap`。Homebrew 發布是必要的 release step；repository token 缺失或被拒絕時會明確讓 job 失敗。Manual workflow 可為既有 stable release retry 或 backfill formula，不會建立或移動 tag。
+- `dev upgrade` 會下載此平台目前的 release、以 release `SHA256SUMS` 驗證，再以 atomic rename 取代執行中的 binary（Windows 會把 live `.exe` 移到旁邊，下次執行時清除）。若 Homebrew、Scoop 或 `go install` 擁有該檔案，則改為印出對應指令；Homebrew 使用者透過自動推進的 tap 收到 release，不會就地覆寫 Cellar binary。
 - Interactive `dev` command 每天最多印一行 dim 的「有新版」提示，來源是一天內的 release cache，永不因網路而 block。TUI 的 stale-cache background refresh 只會在 initial view return 後啟動。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK` 可停用。
 
 ## Claude Code status matrix
@@ -156,8 +156,10 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`scripts/update-homebrew-formula.sh`](https://github.com/daviddwlee84/dev-cli/blob/main/scripts/update-homebrew-formula.sh)
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
+- [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)

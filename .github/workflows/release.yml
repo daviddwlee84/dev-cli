@@ -56,7 +56,7 @@ jobs:
             fi
             rm "dist/$bin"
           done
-          ( cd dist && sha256sum *.tar.gz *.zip > SHA256SUMS )
+          ( cd dist && sha256sum -- *.tar.gz *.zip > SHA256SUMS )
           ls -l dist
 
       # The changelog is the account a human wrote; generated notes are the
@@ -87,6 +87,15 @@ jobs:
             gh release create "$VERSION" --verify-tag --generate-notes --title "$VERSION"
           fi
           gh release upload "$VERSION" dist/*.tar.gz dist/*.zip dist/SHA256SUMS
+
+      # Homebrew owns its Cellar binary, so releases advance the tap rather
+      # than asking `dev upgrade` to overwrite a package-managed file. This is
+      # a required distribution path: a configured token failure fails the job
+      # and a rerun can safely retry an already-created GitHub release.
+      - name: Update Homebrew formula
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: ./scripts/update-homebrew-formula.sh "$VERSION"
 
       # Refresh the in-repo Scoop manifest from the built checksums and, when a
       # bucket token is configured, push it to the bucket repo. Never fail the

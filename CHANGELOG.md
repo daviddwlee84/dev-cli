@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Stable releases now render and publish `Formula/dev-cli.rb` to
+  `daviddwlee84/homebrew-tap`. The release job requires a fine-grained
+  `HOMEBREW_TAP_TOKEN`, fails visibly when the distribution update cannot be
+  published, and has a manual workflow for retrying or backfilling an existing
+  stable release without creating another tag. Homebrew installs remain
+  package-manager-owned rather than letting `dev upgrade` overwrite a Cellar
+  binary.
+
 ## [0.2.3] - 2026-09-01
 
 ### Added

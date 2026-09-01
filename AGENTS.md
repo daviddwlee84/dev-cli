@@ -110,7 +110,9 @@ For a release:
 2. Update version-pinned install examples when the documented recommended release changes.
 3. Push `main` first. `release.yml` asserts the tagged commit is an ancestor of `origin/main`, so a tag pushed ahead of its branch fails validation.
 4. Tag the exact commit on `main` as `vMAJOR.MINOR.PATCH`; never move or reuse a published tag. Never push `backup/*` or `rescue/*` tags — a tag reachable from a commit that predates the `--match` filter breaks the workflow's `./dev --version` assertion.
-5. Let `.github/workflows/release.yml` run CI, verify `./dev --version`, build the platform matrix, and create the GitHub release.
+5. Let `.github/workflows/release.yml` run CI, verify `./dev --version`, build the platform matrix, create the GitHub release, and publish the matching Homebrew formula. The repository secret `HOMEBREW_TAP_TOKEN` must be a fine-grained token with Contents write access to `daviddwlee84/homebrew-tap`; a tap publication failure fails the release job so it can be retried instead of leaving Homebrew users stale.
+
+If the Homebrew step needs a retry or an older stable release needs a one-time backfill, run `gh workflow run publish-homebrew.yml -f version=vMAJOR.MINOR.PATCH`. The manual workflow verifies that the release exists and republishes only the formula; it does not create or move a tag or GitHub release.
 
 Stable release tags only are accepted by the current workflow; prerelease tags are not supported.
 

@@ -4312,8 +4312,8 @@ These were historical gaps and should not be reintroduced as limitations:
 - `dev retire <path>` reaps the matching task record. Only the by-task form set the task identity, so retiring the same checkout by path left the record behind; the DONE-state and identity checks are unchanged.
 - `dev version` reports whether the running build is a published release, and `dev doctor` carries the same line. Nothing in the tool answered "am I current?" before, and `go install ...@latest` resolves to the newest tag, so an untagged feature was invisible to anyone installing it.
 - A release publishes platform archives and `SHA256SUMS` and takes its notes from `CHANGELOG.md`. Earlier releases published a GitHub release object and nothing else, so their assets are absent by construction.
-- A release publishes Windows `.zip` archives alongside the Unix `.tar.gz` set, and refreshes an in-repo Scoop manifest attached to the release (and pushed to the bucket when a token is configured).
-- `dev upgrade` downloads the current release for this platform, verifies it against the release `SHA256SUMS`, and replaces the running binary with an atomic rename (Windows moves the live `.exe` aside and sweeps it on the next run). It defers to Homebrew, Scoop or `go install` when one of them owns the file.
+- A release publishes Windows `.zip` archives alongside the Unix `.tar.gz` set, refreshes an in-repo Scoop manifest attached to the release (and pushed to the bucket when a token is configured), and publishes the matching source formula to `daviddwlee84/homebrew-tap`. Homebrew publication is a required release step and fails visibly when its repository token is missing or rejected. A manual workflow can retry or backfill the formula for an existing stable release without creating or moving a tag.
+- `dev upgrade` downloads the current release for this platform, verifies it against the release `SHA256SUMS`, and replaces the running binary with an atomic rename (Windows moves the live `.exe` aside and sweeps it on the next run). It defers to Homebrew, Scoop or `go install` when one of them owns the file; Homebrew users receive releases through the automatically advanced tap instead of an in-place Cellar overwrite.
 - An interactive `dev` command prints one dim "newer release available" line at most once a day, read from the day-old release cache; it never blocks on the network. For the TUI, a stale-cache background refresh starts only after the initial view returns. `[update] check = false` or `DEV_NO_UPDATE_CHECK` disables it.
 
 ## Claude Code status matrix
@@ -4353,10 +4353,12 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`scripts/update-homebrew-formula.sh`](https://github.com/daviddwlee84/dev-cli/blob/main/scripts/update-homebrew-formula.sh)
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
+- [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
 
 ---
@@ -4429,6 +4431,7 @@ tested_with: optional
 | agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |
 | TUI startup/readiness stages, generation handling, cache/live provenance, and private trace semantics | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/perftrace`, `internal/tui/{readiness,local}.go`, `internal/cli/tui*.go`, focused race tests | implemented |
 | quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
+| release archives, package-manager ownership, and Homebrew tap publication | [Compatibility](https://daviddwlee84.github.io/dev-cli/reference/compatibility/) | `internal/cli/upgrade.go`, `.github/workflows/release.yml`, `scripts/update-homebrew-formula.sh`, packaging helper test | implemented |
 | current GitHub Flow has six branch/PR steps and no deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official, checked 2026-08-28 |
 | linked worktrees share repository data but own files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official, checked 2026-08-28 |
 | Conventional Commits structure | [Branches and commits](https://daviddwlee84.github.io/dev-cli/git/branches-commits-prs/) | [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) | versioned standard |
@@ -8972,8 +8975,8 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - `dev retire <path>` 會 reap 對應的 task record。先前只有 by-task 形式會設定 task identity，因此以 path 退休同一個 checkout 會留下 record；DONE 狀態與 identity 檢查維持不變。
 - `dev version` 會回報目前執行的 build 是否為已發布的 release，`dev doctor` 也帶有同一行資訊。先前工具中沒有任何地方能回答「我是不是最新的？」，而 `go install ...@latest` 只會解析到最新的 tag，因此未 tag 的 feature 對安裝者而言等同不存在。
 - Release 會發布各平台 archive 與 `SHA256SUMS`，並以 `CHANGELOG.md` 對應段落作為 release notes。先前的 release 只產生 GitHub release 物件，因此那些版本本來就沒有附加檔案。
-- Release 會在 Unix `.tar.gz` 之外一併發布 Windows `.zip`，並更新附在 release 上的 in-repo Scoop manifest（設定 token 時也會 push 到 bucket）。
-- `dev upgrade` 會下載此平台目前的 release、以 release `SHA256SUMS` 驗證，再以 atomic rename 取代執行中的 binary（Windows 會把 live `.exe` 移到旁邊，下次執行時清除）。若 Homebrew、Scoop 或 `go install` 擁有該檔案，則改為印出對應指令。
+- Release 會在 Unix `.tar.gz` 之外一併發布 Windows `.zip`、更新附在 release 上的 in-repo Scoop manifest（設定 token 時也會 push 到 bucket），並把對應的 source formula 發布到 `daviddwlee84/homebrew-tap`。Homebrew 發布是必要的 release step；repository token 缺失或被拒絕時會明確讓 job 失敗。Manual workflow 可為既有 stable release retry 或 backfill formula，不會建立或移動 tag。
+- `dev upgrade` 會下載此平台目前的 release、以 release `SHA256SUMS` 驗證，再以 atomic rename 取代執行中的 binary（Windows 會把 live `.exe` 移到旁邊，下次執行時清除）。若 Homebrew、Scoop 或 `go install` 擁有該檔案，則改為印出對應指令；Homebrew 使用者透過自動推進的 tap 收到 release，不會就地覆寫 Cellar binary。
 - Interactive `dev` command 每天最多印一行 dim 的「有新版」提示，來源是一天內的 release cache，永不因網路而 block。TUI 的 stale-cache background refresh 只會在 initial view return 後啟動。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK` 可停用。
 
 ## Claude Code status matrix
@@ -9013,10 +9016,12 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`scripts/update-homebrew-formula.sh`](https://github.com/daviddwlee84/dev-cli/blob/main/scripts/update-homebrew-formula.sh)
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
+- [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
 
 ---
@@ -9092,6 +9097,7 @@ tested_with: optional
 | agent skill inventory、scopes 與明確的 update 動作 | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/agentskill`、`internal/cli/skill.go`、focused TUI tests | implemented |
 | TUI startup/readiness stages、generation handling、cache/live provenance 與 private trace semantics | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/perftrace`、`internal/tui/{readiness,local}.go`、`internal/cli/tui*.go`、focused race tests | implemented |
 | quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
+| release archives、package-manager ownership 與 Homebrew tap publication | [相容性](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/) | `internal/cli/upgrade.go`、`.github/workflows/release.yml`、`scripts/update-homebrew-formula.sh`、packaging helper test | implemented |
 | 現行 GitHub Flow 有六個 branch/PR steps 且沒有 deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official，2026-08-28 查核 |
 | linked worktree 共享 repository data，但有自己的 files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/zh-TW/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official，2026-08-28 查核 |
 | Conventional Commits structure | [Branch 與 commit](https://daviddwlee84.github.io/dev-cli/zh-TW/git/branches-commits-prs/) | [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) | versioned standard |

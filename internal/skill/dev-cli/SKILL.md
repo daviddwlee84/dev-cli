@@ -535,7 +535,8 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   Windows, so the runtime backend is always `none`; `dev fleet open` starts a
   child shell instead of replacing the process. `dev upgrade` self-replaces only
   a standalone install and otherwise prints the Homebrew/Scoop/`go install`
-  command.
+  command. Stable releases advance the Homebrew tap; never overwrite its Cellar
+  binary manually.
 - **A worktree is a clean checkout.** It has no `node_modules`, no `.venv` and
   none of the gitignored env files. `dev` provisions it; `--no-provision`
   skips that and leaves you to it.

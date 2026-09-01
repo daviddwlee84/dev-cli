@@ -51,6 +51,11 @@ dev config init  # detects this machine's repo roots and writes a config
 
 The formula installs the `dev` binary plus bash, zsh and fish completions. It
 does not write into your home directory or install the bundled agent skill.
+Each stable release updates the tap automatically. A Homebrew-owned `dev`
+never self-replaces: `dev upgrade` reports the matching `brew upgrade` command,
+which preserves Homebrew's install records, linking, rollback, and cleanup.
+Maintainers can retry or backfill formula publication for an existing release
+with `gh workflow run publish-homebrew.yml -f version=vMAJOR.MINOR.PATCH`.
 
 ### Scoop (Windows)
 
@@ -86,7 +91,8 @@ dev upgrade            # download, verify against SHA256SUMS, and replace this b
 
 `dev upgrade` replaces the binary in place only for a standalone install. If
 Homebrew, Scoop or `go install` owns the file, it prints that tool's upgrade
-command instead. Once a day an interactive `dev` command prints a one-line hint
+command instead; release automation advances the Homebrew tap so that command
+can see every stable tag. Once a day an interactive `dev` command prints a one-line hint
 when a newer release is cached; set `[update] check = false` in `config.toml`
 (or export `DEV_NO_UPDATE_CHECK=1`) to silence it. Every network call here is
 either explicit or a best-effort background refresh — `dev --version` and

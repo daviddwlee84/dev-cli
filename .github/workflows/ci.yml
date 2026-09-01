@@ -54,6 +54,10 @@ jobs:
       # The skill documents the CLI; drift between them is a bug.
       - run: go run ./cmd/dev skill sync --check
 
+      - name: Test packaging helpers
+        if: runner.os == 'Linux'
+        run: ./scripts/update-homebrew-formula_test.sh
+
       # e2e.sh is a POSIX shell lifecycle script.
       - name: End-to-end
         if: runner.os != 'Windows'
