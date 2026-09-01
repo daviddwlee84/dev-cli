@@ -9,6 +9,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	devconfig "github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/lease"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 )
 
@@ -66,6 +67,12 @@ type syncCandidate struct {
 }
 
 func ApplySync(ctx context.Context, cfg devconfig.Config, request SyncRequest) SyncResult {
+	return ApplySyncWithAuthority(ctx, cfg, request, lease.New(""))
+}
+
+// ApplySyncWithAuthority is the injectable form used by concurrency tests. The
+// production command uses the same durable authority as portable-file apply.
+func ApplySyncWithAuthority(ctx context.Context, cfg devconfig.Config, request SyncRequest, authority *lease.Authority) SyncResult {
 	result := SyncResult{Host: devconfig.Hostname(), Branch: request.Branch, ExpectedOID: request.ExpectedOID}
 	request.RemoteIdentity = catalog.NormalizeRemoteIdentity(request.RemoteIdentity)
 	if request.RemoteIdentity == "" || request.Branch == "" || request.ExpectedOID == "" {
@@ -121,34 +128,56 @@ func ApplySync(ctx context.Context, cfg devconfig.Config, request SyncRequest) S
 		result.State, result.Error = SyncFailed, "fetched remote branch does not contain the source commit"
 		return result
 	}
+	if authority == nil {
+		authority = lease.New("")
+	}
+	keys := []lease.Key{
+		lease.BranchKey(request.RemoteIdentity, request.Branch),
+		lease.BranchKey(lease.GitCommonDirIdentity(candidate.repository.CommonDir), request.Branch),
+	}
+	if err := authority.WithMutation(ctx, keys, func() error {
+		applySyncCheckout(ctx, candidate, request, remoteRef, remoteOID, &result)
+		return nil
+	}); err != nil {
+		result.State, result.Error = SyncFailed, err.Error()
+	}
+	return result
+}
+
+func applySyncCheckout(ctx context.Context, candidate syncCandidate, request SyncRequest, remoteRef, remoteOID string, result *SyncResult) {
+	repository, err := gitx.Discover(ctx, candidate.repository.Path)
+	if err != nil || repository.GitCommonDir != candidate.repository.CommonDir {
+		result.State, result.Error = SyncFailed, "target clone changed while acquiring operation lease"
+		return
+	}
 	worktree, checkedOut, err := gitx.WorktreeFor(ctx, candidate.repository.Path, request.Branch)
 	if err != nil {
 		result.State, result.Error = SyncFailed, err.Error()
-		return result
+		return
 	}
 	if !checkedOut {
 		result.State, result.AfterOID = SyncFetched, remoteOID
-		return result
+		return
 	}
 	result.Path = worktree.Path
 	status, err := gitx.StatusOf(ctx, worktree.Path)
 	if err != nil {
 		result.State, result.Error = SyncFailed, err.Error()
-		return result
+		return
 	}
 	if status.Dirty() || status.Conflicted > 0 {
 		result.State, result.Error = SyncDirty, status.Summary()
-		return result
+		return
 	}
 	localOID, err := gitx.Run(ctx, worktree.Path, "rev-parse", "HEAD")
 	if err != nil {
 		result.State, result.Error = SyncFailed, err.Error()
-		return result
+		return
 	}
 	result.BeforeOID = localOID
 	if localOID == remoteOID {
 		result.State, result.AfterOID = SyncCurrent, localOID
-		return result
+		return
 	}
 	if _, err := gitx.Run(ctx, worktree.Path, "merge-base", "--is-ancestor", localOID, remoteOID); err != nil {
 		if _, aheadErr := gitx.Run(ctx, worktree.Path, "merge-base", "--is-ancestor", remoteOID, localOID); aheadErr == nil {
@@ -156,20 +185,19 @@ func ApplySync(ctx context.Context, cfg devconfig.Config, request SyncRequest) S
 		} else {
 			result.State, result.Error = SyncDiverged, "checked-out branch diverged; rebase or merge manually"
 		}
-		return result
+		return
 	}
 	if _, err := gitx.Run(ctx, worktree.Path, "merge", "--ff-only", remoteRef); err != nil {
 		result.State, result.Error = SyncFailed, err.Error()
-		return result
+		return
 	}
 	after, err := gitx.Run(ctx, worktree.Path, "rev-parse", "HEAD")
 	if err != nil || after != remoteOID {
 		result.State = SyncFailed
 		result.Error = "fast-forward completed without reaching the fetched remote revision"
-		return result
+		return
 	}
 	result.State, result.AfterOID = SyncUpdated, after
-	return result
 }
 
 func matchingRemote(topology gitx.RecoveryTopology, identity string) string {

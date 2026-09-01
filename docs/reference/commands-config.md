@@ -2,7 +2,7 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-08-29
+verified_on: 2026-08-31
 ---
 
 # Commands and configuration
@@ -23,7 +23,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
-| remote fleet | `fleet list`, `fleet status`, `fleet sync`, `fleet open`, `fleet config …` |
+| remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
 | activity/data | `summary`, `journal`, `stats …`, `cache …` |
@@ -36,8 +36,10 @@ Run `dev <command> --help` for the installed binary; this site describes the rep
 ```bash
 dev ls --json
 dev repo list --json
-dev repo context [repo]
+dev repo context [repo] --json
 dev repo remote --json
+dev fleet machine-id <host> --json
+dev fleet files [repo-or-path] --to <host> --json
 dev repo new NAME --json
 dev repo clone <ref> --json
 dev repo setup [repo-or-path] --preset PRESET --json
@@ -47,7 +49,7 @@ dev note show <note-id> --json
 dev bootstrap --json
 ```
 
-Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract.
+Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract. `repo context --json` is an additive schema-v1 report: unavailable facts remain null/error entries with explicit provenance instead of becoming zero values. `fleet files --json` is content-free and never includes file hashes or bodies.
 
 Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
 
@@ -242,7 +244,8 @@ Key sections:
 |---|---|
 | `[paths]` | scan roots, project/tries/worktree roots, worktree template, state path |
 | `[runtime]` | `auto`, Herdr, tmux, Zellij, or none plus metadata settings |
-| `[worktree]` | ignored includes, linked dirs, setup commands, strategies, timeout |
+| `[worktree]` | local ignored-file provisioning, linked dirs, setup commands, strategies, timeout |
+| `[local_files]` | host ceilings for portable files; project overlays provide the separate off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | complete remote inventory cache TTL and opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
@@ -321,8 +324,8 @@ not set both.
 
 A repository may commit these fixed files:
 
-- `.dev-cli/config.toml`: allowlisted worktree provisioning and repository
-  setup wizard defaults.
+- `.dev-cli/config.toml`: allowlisted worktree provisioning, separately
+  proposed portable local-file patterns, and repository setup wizard defaults.
 - `.dev-cli/scaffolds.toml`: project presets, templates, hooks, and skill
   setup using the same versioned schema.
 
@@ -333,6 +336,10 @@ version = 1
 [worktree]
 include = [".env.example"]
 strategy = "reinstall"
+
+# Proposed candidates only; export still requires explicit fleet files --to.
+[local_files]
+include = [".env", ".mcp/**"]
 
 [repo.setup]
 preset = "team"
@@ -348,6 +355,8 @@ project `[repo.setup]` preset, handoff, and check-in fields seed interactive
 wizard choices; they do not change scripted defaults, which are controlled by
 the corresponding flags. The legacy `commit` boolean remains readable, but may
 not be combined with `check_in` in the same layer.
+
+`[local_files].include` never inherits `[worktree].include`: provisioning a local checkout is not authorization to export a secret. Project overlays may propose only the portable include list; host-owned count/size/path ceilings come from global config and cannot be raised by a repository. The command remains report-only until an explicit `--apply`, target pin, and confirmation.
 
 Project files cannot override host paths, state location, runtime backend,
 forge inventory or credentials, stats, update, bootstrap, or TUI policy. They

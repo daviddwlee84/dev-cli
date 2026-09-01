@@ -6,6 +6,42 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `dev repo context [repo]` now has an additive schema-v1 `--json` report and an
+  explicit `--refresh` path. Local checkout, Git, task, worktree, and runtime facts
+  stay live and network-free; optional forge and configured-fleet observations carry
+  source, age, freshness, completeness, and collection errors. Remote endpoints are
+  structurally sanitized before public output, and readiness remains split by scope
+  instead of collapsing unknown evidence into a global safe value. `dev status`
+  reuses the same cheap local readiness projection without network probes.
+- `dev fleet machine-id <host>` exposes the remote host's non-secret durable machine
+  UUID and compares it with the optional `machine_id` pin in `remotes.toml`.
+  `dev fleet files [repo-or-path] --to <host>` plans a one-way transfer of explicitly
+  allowlisted ignored files and mutates only with `--apply`; both hosts must prove
+  every exact path is untracked, ignored, regular, portable, bounded, and bound to the
+  same fetch identity, attached branch, and commit; apply additionally requires the
+  pinned target machine. Differing target bytes require a separate `--replace`;
+  `--yes` never implies replacement.
+
+### Fixed
+
+- Task writes now carry an in-memory revision from read to write, so existing
+  lifecycle callers cannot silently overwrite a concurrent process's newer task
+  record. Park holds the task transaction through runtime/worktree cleanup, and a
+  DONE direct-task ID starts a new compare-and-swap generation. Catalog create,
+  update, import, and experiment reconciliation share one
+  cross-process transaction lock, while corrupt task records make repository-context
+  inventory explicitly incomplete instead of disappearing behind a warning.
+- Portable-file retries now recover an interrupted store both before and after the
+  first journal write. Source branch/HEAD/fetch identity is revalidated around payload
+  reads; target sync/apply and remote aliases share the canonical clone lease. Durable
+  publication provenance plus exact digest/mode prevents rollback from deleting a
+  foreign identical file or retaining changed permissions. Target discovery errors fail
+  closed, nested bare repositories are excluded, post-publication filesystem errors
+  remove their own destination, and credential-bearing SCP-like tokens cannot enter
+  catalog keys, protocol journals, or repository-context output.
+
 ## [0.2.1] - 2026-08-30
 
 ### Added

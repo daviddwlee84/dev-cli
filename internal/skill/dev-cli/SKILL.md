@@ -140,7 +140,7 @@ dev note search "query"    # rebuilds FTS index if needed
 dev edit                   # open the effective config; generate it first if absent
 dev ls                     # what am I working on, everywhere
 dev ls --json              # stable machine-readable form (also over ssh)
-dev status                 # what is this directory: repo, branch, task, session
+dev status                 # local repo/branch/task/session + scoped readiness
 dev sweep                  # what has gone stale or drifted, and what to do
 dev sweep --apply          # act on it, confirming each change
 dev sweep --merged-worktrees  # from main, audit contained tracked/untracked worktrees
@@ -166,7 +166,8 @@ dev wt rm feat/auth                    # remove the checkout; the branch stays
 dev repo list --sizes      # repos, recovery topology, owned logical bytes
 dev repo list --no-remote  # local Git with no configured remote
 dev repo list --local-only # branches lacking a remote-backed upstream
-dev repo context [repo]    # agent-ready checkouts, Git, runtime and task state
+dev repo context [repo]    # agent-ready Markdown; --json is schema-v1
+# --refresh alone performs live forge/configured-fleet probes
 dev repo clone owner/name  # expand forge shorthand, then clone with Git
 dev repo clone https://dev.azure.com/acme/Platform/_git/api
 dev repo new               # confirmed repository/scaffold/upstream wizard
@@ -175,7 +176,9 @@ dev repo new api --template owner/starter --check-in=stage
 dev repo setup . --preset agent-ready  # initialize an existing clean repo
 dev repo sync --all        # fetch + prune, and report what moved
 dev fleet list              # aggregate repo/task/runtime state over SSH
+dev fleet machine-id lab    # verify the optional target machine pin
 dev fleet sync api --push   # publish, then fast-forward safe matching checkouts
+dev fleet files api --to lab  # report-only explicit ignored-file plan
 dev repo remote [query]     # search configured forge inventories
 dev bootstrap ~/code       # recursively inventory an existing machine
 dev bootstrap ~/code --index ~/Projects   # plan a non-destructive symlink catalog
@@ -300,6 +303,16 @@ FLEET calls each configured host's own `dev` over SSH, preserving its XDG paths.
 Enter prefers Herdr remote navigation and falls back to an SSH login shell.
 `dev fleet sync` is explicit and strict: it only fast-forwards a clean checkout
 of the same behind-only branch; dirty/ahead/diverged clones are never rewritten.
+
+`dev fleet files [repo-or-path] --to <host>` is a separate one-shot channel for
+explicitly exported ignored files. It is report-only unless `--apply` is passed;
+`--yes` never implies `--replace`. Both clones must already match by fetch
+identity, attached branch and exact commit, and each exact path must be untracked
+and ignored on both sides. Only bounded regular files are accepted. Apply also
+requires a `machine_id` pin obtained with the read-only `dev fleet machine-id
+<host>` command and verified independently. The operation never clones, switches
+branches, runs provisioning, transfers task/catalog/note state, deletes source
+files, or evicts a repository; native Windows payloads are disabled.
 
 REPOS has LIVE, LATEST and asynchronous SIZE. SIZE is logical
 checkout+private-Git bytes; shared Git is separate and marked `+S`. Detail also
@@ -437,12 +450,17 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    divergence; `=` conflicts, `+` staged, `!` unstaged, `?` untracked. Use
    `dev status` or JSON for the unique-path and type breakdown before cleanup.
 
-18. **Commit messages stay English** and follow Conventional Commits, even when
+18. **Portable export is separately authorized.** Never treat `[worktree].include`
+   as permission to send a file off-machine. Use only `[local_files].include` or
+   explicit `--file`, show the report first, independently verify and pin the
+   target UUID before apply, and never infer `--replace` from `--yes`.
+
+19. **Commit messages stay English** and follow Conventional Commits, even when
    the conversation is in another language — see the companion `git-workflow`
    skill, which owns commit conventions, SemVer and branch naming. This skill
    does not duplicate them.
 
-19. **Never bypass `.dev-cli` project-config trust.** Inspect the rendered hooks
+20. **Never bypass `.dev-cli` project-config trust.** Inspect the rendered hooks
     and skill entrypoints, then use `dev config trust <repo> --yes`. A changed
     executable hash is a new decision. Pre-commit/gitleaks inspect generated
     content; they do not make an untrusted command safe to execute. Legacy
@@ -515,6 +533,10 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   Source swaps and symlinked destination parents are refused; existing targets
   are reported skipped, not copied. Do not universally include
   `.claude/settings.local.json`: only sticky/plain-Claude profiles opt in.
+- **Worktree provisioning and fleet export use different allowlists.**
+  `[worktree].include` is local-only. `fleet files` reads `[local_files].include`
+  plus explicit `--file`, expands patterns before transport, and defaults to a
+  content-free plan. It is not task transfer, backup, restore, or eviction.
 - **A repository template is a snapshot, not a clone.** Source Git metadata,
   remotes and history are excluded. A local Git worktree without a ref includes
   tracked plus nonignored untracked files; a non-Git directory includes its

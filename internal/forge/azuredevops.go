@@ -224,6 +224,9 @@ func parseAzureDevOpsRepos(out string) ([]RemoteRepo, error) {
 // parseAzureDevOpsRemote returns the provider identity and browser-safe HTTPS
 // repository URL for supported Azure DevOps Services clone URL forms.
 func parseAzureDevOpsRemote(raw string) (identity, webURL string, ok bool) {
+	if !safeRawURLText(raw) {
+		return "", "", false
+	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", "", false
@@ -260,7 +263,11 @@ func parseAzureDevOpsRemote(raw string) (identity, webURL string, ok bool) {
 		return "", "", false
 	}
 	colon += at + 1
-	return parseAzureDevOpsSSH(raw[:at], strings.ToLower(raw[at+1:colon]), decodeSegments(strings.Split(strings.Trim(raw[colon+1:], "/"), "/")))
+	path := raw[colon+1:]
+	if strings.ContainsAny(path, "?#") {
+		return "", "", false
+	}
+	return parseAzureDevOpsSSH(raw[:at], strings.ToLower(raw[at+1:colon]), decodeSegments(strings.Split(strings.Trim(path, "/"), "/")))
 }
 
 func parseAzureDevOpsHTTPS(u *url.URL) (string, string, bool) {
@@ -282,11 +289,18 @@ func parseAzureDevOpsHTTPS(u *url.URL) (string, string, bool) {
 			return "", "", false
 		}
 	case strings.HasSuffix(host, ".visualstudio.com") && host != "vs-ssh.visualstudio.com":
-		if len(segments) < 3 || !strings.EqualFold(segments[len(segments)-2], "_git") || u.User != nil {
+		if u.User != nil {
+			return "", "", false
+		}
+		switch {
+		case len(segments) == 3 && strings.EqualFold(segments[1], "_git"):
+			project, repo = segments[0], segments[2]
+		case len(segments) == 4 && strings.EqualFold(segments[0], "DefaultCollection") && strings.EqualFold(segments[2], "_git"):
+			project, repo = segments[1], segments[3]
+		default:
 			return "", "", false
 		}
 		organization = strings.TrimSuffix(host, ".visualstudio.com")
-		project, repo = segments[len(segments)-3], segments[len(segments)-1]
 	default:
 		return "", "", false
 	}
@@ -308,6 +322,9 @@ func parseAzureDevOpsSSH(user, host string, segments []string) (string, string, 
 	case host == "vs-ssh.visualstudio.com" && len(segments) == 3 && strings.EqualFold(segments[1], "_ssh"):
 		organization, project, repo = user, segments[0], segments[2]
 		host = strings.ToLower(organization) + ".visualstudio.com"
+		if !validWebHost(host) {
+			return "", "", false
+		}
 	default:
 		return "", "", false
 	}
@@ -336,8 +353,12 @@ func decodeSegments(segments []string) []string {
 	}
 	out := make([]string, 0, len(segments))
 	for _, segment := range segments {
+		if segment == "" || hasEncodedSeparator(segment) {
+			return nil
+		}
 		decoded, err := url.PathUnescape(segment)
-		if err != nil || decoded == "" || strings.Contains(decoded, "/") {
+		if err != nil || decoded == "" || decoded == "." || decoded == ".." || !safeRawURLText(decoded) ||
+			strings.ContainsAny(decoded, `/\\`) || hasEncodedSeparator(decoded) {
 			return nil
 		}
 		out = append(out, decoded)

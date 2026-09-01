@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -27,7 +28,7 @@ func cachePath(host Host) string {
 }
 
 func EndpointID(host Host) string {
-	parts := []string{host.Name, host.SSHAlias, host.Hostname, host.User, host.IdentityFile, host.DevPath}
+	parts := []string{host.Name, host.MachineID, host.SSHAlias, host.Hostname, host.User, strconv.Itoa(host.Port), host.IdentityFile, host.DevPath}
 	parts = append(parts, time.Duration(host.ConnectTimeout.Duration).String(), time.Duration(host.CommandTimeout.Duration).String())
 	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
 	return hex.EncodeToString(sum[:])

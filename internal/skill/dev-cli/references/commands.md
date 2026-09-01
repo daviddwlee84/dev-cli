@@ -373,6 +373,21 @@ Print the effective remotes configuration
 dev fleet config show
 ```
 
+### `dev fleet files`
+
+Plan or apply one-way transfer of explicit ignored local files
+
+```
+dev fleet files [repo-or-path] [flags]
+```
+
+- `--apply` — apply the verified plan
+- `--file` — additional portable relative pattern (repeatable)
+- `--json` — emit content-free JSON
+- `--replace` — replace differing target files observed by this plan
+- `--to` — single configured target host (required)
+- `--yes` — confirm apply without prompting (does not imply --replace)
+
 ### `dev fleet list`
 
 List repositories and activity across this machine and configured hosts
@@ -386,6 +401,16 @@ dev fleet list [flags]
 - `--json` — emit versioned JSON
 - `--repo` — filter repository name, identity, branch or path
 - `--strict` — fail when a host is unreachable or incompatible
+
+### `dev fleet machine-id`
+
+Show and compare a remote host's stable machine ID
+
+```
+dev fleet machine-id <host> [flags]
+```
+
+- `--json` — emit JSON
 
 ### `dev fleet open`
 
@@ -716,8 +741,11 @@ dev repo clone [owner/name|url|path] [flags]
 Print agent-ready Git, worktree, runtime and task context
 
 ```
-dev repo context [repo]
+dev repo context [repo] [flags]
 ```
+
+- `--json` — emit the additive schema-v1 JSON report
+- `--refresh` — refresh external forge and configured fleet observations
 
 ### `dev repo list`
 

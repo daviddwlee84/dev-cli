@@ -2,7 +2,7 @@
 description: 使用 dev-cli 進行安全 Git、worktree 與 coding-agent 協作的簡潔 checklist。
 authority: project-policy
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-08-31
 lang: zh-TW
 ---
 
@@ -20,11 +20,12 @@ lang: zh-TW
 3. **依變動邊界 (mutation boundary) 決定 worktree，不要依 agent 數量。** Read-only researcher 與檔案範圍明確分離的 writer 可以共用 checkout；重疊或未知範圍則要分 branch 與 worktree。
 4. **指定唯一 integration owner。** 平行工作開始前，先分配 file ownership、dependency order、merge order 與最後測試責任。
 5. **只從 allowlist 佈建。** 只複製明確列出且 Git 確認為 ignored 的檔案；除非 ecosystem 證明 copy 安全，否則重新安裝 dependencies。
-6. **每個 branch 同時只有一位 writer。** 跨機器時先 push branch 並移交 ownership，另一位 writer 才 resume。
-7. **Handoff 前建立 checkpoint。** Commit、push 可復原工作並留下具體 `--next`；跨機器工作優先使用 feature branch 上的暫時 `wip:` commit，不要用 stash。
-8. **檢查整合後的結果。** 每個 worker 的局部測試不夠；組合所有變更後要跑完整相關 suite。
-9. **只有可復原時才清理。** Dirty、untracked、unpushed 或 locked worktree 都不能移除；移除 worktree 不得偷偷刪 branch。
-10. **標明 authority。** Git 語義、現行產品行為、experimental harness 行為、project policy 與歷史建議必須分開。
+6. **分開授權 export。** Local worktree include 不代表 off-machine permission。使用獨立 portable-file allowlist、先看 report、透過獨立管道驗證 target UUID，且不能讓 `--yes` 隱含 replacement。
+7. **每個 branch 同時只有一位 writer。** 跨機器時先 push branch 並移交 ownership，另一位 writer 才 resume。
+8. **Handoff 前建立 checkpoint。** Commit、push 可復原工作並留下具體 `--next`；跨機器工作優先使用 feature branch 上的暫時 `wip:` commit，不要用 stash。
+9. **檢查整合後的結果。** 每個 worker 的局部測試不夠；組合所有變更後要跑完整相關 suite。
+10. **只有可復原時才清理。** Dirty、untracked、unpushed 或 locked worktree 都不能移除；移除 worktree 不得偷偷刪 branch。
+11. **標明 authority。** Git 語義、現行產品行為、experimental harness 行為、project policy 與歷史建議必須分開。
 
 ## 選擇最小且安全的 topology
 

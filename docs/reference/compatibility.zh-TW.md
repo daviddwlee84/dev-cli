@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-08-29
+verified_on: 2026-08-31
 tested_with: Claude Code 2.1.250
 lang: zh-TW
 ---
@@ -28,6 +28,7 @@ lang: zh-TW
 | setup-capable project skills | skills provider 與 entrypoint interpreter | 未選取的 skill 會跳過；selected required setup 若缺少 interpreter，會在 scaffold mutation 前失敗；先取得的 clone 會保留 |
 | staged lazygit message prefill | 會讀取 `LAZYGIT_PENDING_COMMIT` 的 lazygit version | files 仍保持 staged，dev 會印出建議 message；一般 Git commit 仍可使用 |
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
+| remote portable-file plan/apply | Git、執行相容 `dev` 的 SSH target、matching existing clone/branch/commit；apply 另需 verified machine UUID pin | content 傳送前失敗或保持 target 不變；不推斷 clone/task fallback |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
 | Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
@@ -67,6 +68,12 @@ interface；大寫 `C` 與一般 `git commit` 不會讀取它。Dev 不會覆寫
 draft。Draft write failure 只會產生 warning；staging 仍視為成功且不會 rollback。若
 upstream integration 日後改變，staged index 與已印出的 message 仍是 recovery path。
 
+### Portable files 不是 project transfer 或 backup
+
+`dev fleet files` 只會傳送 explicit selected、bounded，且兩端都證明為 untracked 與 ignored 的 files。它不會取得 missing clone、轉移 task ownership/catalog/notes、執行 worktree provisioning、監看後續變更、傳播 deletion、移除 source bytes、建立 remote-backup receipt、驗證 restore，或授權 eviction。Private transaction staging 不是 user-facing backup/restore promise。
+
+Source 與 target 必須已依 fetch identity、attached branch 與 exact commit 相符；apply 另外需要 verified `machine_id` pin。Native Windows payload 在 ACL、reparse-point、held-root 與 atomic replacement guarantees 完成並測試前保持 disabled；machine identity diagnostics 仍是 content-free。
+
 ### Windows 是 build target，不是 full-feature 平台
 
 `dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心的 repository、task 與 worktree 操作可用。差異：
@@ -74,6 +81,7 @@ upstream integration 日後改變，staged index 與已印出的 message 仍是 
 - 沒有 tmux、Zellij 或 Herdr，因此 runtime backend 一律是 `none`。Grouped runtime/agent activity 與 named session 無法使用；`cd` 指令與 PowerShell wrapper 仍可運作。
 - Shell integration 是 `dev shell-init powershell`。POSIX shell 透過 file descriptor 3 回傳目錄；PowerShell 無法繼承它，wrapper 改用 `DEV_SHELL_CD_FILE` 傳入 temp-file path。
 - `dev fleet open` 會啟動子 shell（`%COMSPEC%`），而非取代 process，因為 Windows 沒有 `exec(2)`。
+- `dev fleet machine-id` 可執行 content-free probe，但 native `fleet files` payload apply 會在 content 傳送前被 capability-block。
 - Domain test suites 仍有部分假設 POSIX filesystem，因此 Windows CI 的 test 僅供參考，compilation、`go vet` 與 build 則為強制項。
 
 ### Direct mode 的 lifecycle 較小
@@ -89,6 +97,8 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - Repository setup 支援 `--check-in=commit|stage|none`（`auto` 用於 preset compatibility）。Staged setup 會執行 before-commit setup 與 `git add -A`，但不執行 `after_commit` phase；它不能 publish 或 handoff 到 `start`，並可依前述方式預填 lazygit 小寫 `c`。
 - Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。`agent-history-hygiene` initializer 會寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。
 - Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
+- `dev repo context --json` 提供 additive schema-v1 local/remote evidence，包含 source、age、freshness、completeness、null/error preservation 與 scoped readiness；只有 `--refresh` 執行 external probes。`dev status` 重用 cheap local readiness projection，不進行 network access。
+- `dev fleet machine-id` 回報 observed UUID，不修改設定。`dev fleet files` 預設 report-only，使用獨立 `[local_files]` allowlist，在 content 前協商只能調低的 limits，並要求 explicit apply/replacement controls 與 matching target pin。
 
 - `dev start --focus` 會在 non-JSON creation 後 activate runtime。
 - TUI navigation 會拒絕開啟 checkout 不存在的 COLD task，並要求使用 `dev resume`。
@@ -155,5 +165,8 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
+- [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
+- [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
+- [`internal/repocontext`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/repocontext)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)

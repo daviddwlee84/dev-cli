@@ -23,6 +23,26 @@ var (
 	ErrRepository = errors.New("invalid note repository")
 )
 
+// ImportConflictError describes a transported note ID already bound to
+// different durable content. Revisions identify the conflict without exposing
+// the private note body.
+type ImportConflictError struct {
+	ID               string
+	ExistingRevision string
+	ImportedRevision string
+	Reason           string
+}
+
+func (e *ImportConflictError) Error() string {
+	reason := e.Reason
+	if reason == "" {
+		reason = "same ID has different durable content"
+	}
+	return fmt.Sprintf("note %s import conflict: %s: %v", e.ID, reason, ErrConflict)
+}
+
+func (e *ImportConflictError) Unwrap() error { return ErrConflict }
+
 // Note is one timestamped thought attached to a stable catalog asset ID.
 type Note struct {
 	SchemaVersion int       `toml:"schema_version" json:"schema_version"`

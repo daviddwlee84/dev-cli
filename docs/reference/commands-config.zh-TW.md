@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-08-29
+verified_on: 2026-08-31
 lang: zh-TW
 ---
 
@@ -27,7 +27,7 @@ lang: zh-TW
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
-| remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
+| remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
 | activity/data | `summary`、`journal`、`stats …`、`cache …` |
@@ -40,8 +40,10 @@ lang: zh-TW
 ```bash
 dev ls --json
 dev repo list --json
-dev repo context [repo]
+dev repo context [repo] --json
 dev repo remote --json
+dev fleet machine-id <host> --json
+dev fleet files [repo-or-path] --to <host> --json
 dev repo new NAME --json
 dev repo clone <ref> --json
 dev repo setup [repo-or-path] --preset PRESET --json
@@ -51,7 +53,7 @@ dev note show <note-id> --json
 dev bootstrap --json
 ```
 
-不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。
+不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。`repo context --json` 是 additive schema-v1 report：unavailable facts 保持 null/error entries 並附 explicit provenance，不會變成 zero values。`fleet files --json` 是 content-free output，絕不包含 file hash 或 body。
 
 每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
 
@@ -223,7 +225,8 @@ dev config scaffolds edit
 |---|---|
 | `[paths]` | scan roots、project/tries/worktree roots、worktree template、state path |
 | `[runtime]` | `auto`、Herdr、tmux、Zellij 或 none，以及 metadata settings |
-| `[worktree]` | ignored includes、linked dirs、setup commands、strategies、timeout |
+| `[worktree]` | local ignored-file provisioning、linked dirs、setup commands、strategies、timeout |
+| `[local_files]` | portable files 的 host ceilings；project overlay 提供獨立的 off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | 完整 remote inventory 的 cache TTL，以及 opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
@@ -300,8 +303,8 @@ directory 內。`initial_check_in` 接受 `commit`、`stage`、`none`；legacy
 
 Repository 可 commit 兩個固定檔案：
 
-- `.dev-cli/config.toml`：allowlisted worktree provisioning 與 repository setup
-  wizard defaults。
+- `.dev-cli/config.toml`：allowlisted worktree provisioning、分開提出的 portable
+  local-file patterns 與 repository setup wizard defaults。
 - `.dev-cli/scaffolds.toml`：使用同一 versioned schema 的 project presets、
   templates、hooks 與 skill setup。
 
@@ -312,6 +315,10 @@ version = 1
 [worktree]
 include = [".env.example"]
 strategy = "reinstall"
+
+# 只提出 candidates；export 仍需 explicit fleet files --to。
+[local_files]
+include = [".env", ".mcp/**"]
 
 [repo.setup]
 preset = "team"
@@ -326,6 +333,8 @@ choices。`.dev.toml` 為相容性仍可讀；新的 project configuration 應�
 handoff、check-in fields 只用來預填 interactive wizard choices；它們不會改變
 scripted defaults，後者由對應 flags 控制。Legacy `commit` boolean 仍可讀，但同一
 layer 不可與 `check_in` 並用。
+
+`[local_files].include` 絕不繼承 `[worktree].include`：佈建 local checkout 不等於授權 export secret。Project overlay 只能提出 portable include list；host-owned count/size/path ceilings 來自 global config，repository 不能提高。Command 仍保持 report-only，直到 explicit `--apply`、target pin 與 confirmation 都具備。
 
 Project files 不能 override host paths、state location、runtime backend、forge
 inventory 或 credentials、stats、update、bootstrap 或 TUI policy，也不能靜默 publish

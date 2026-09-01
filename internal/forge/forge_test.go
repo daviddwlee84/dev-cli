@@ -7,6 +7,8 @@ import (
 )
 
 func TestFromURL(t *testing.T) {
+	t.Setenv("GH_HOST", "")
+	t.Setenv("GITLAB_HOST", "")
 	for _, tc := range []struct {
 		url  string
 		want forge.Kind
@@ -20,6 +22,10 @@ func TestFromURL(t *testing.T) {
 		{"https://acme.visualstudio.com/DefaultCollection/Platform/_git/api", forge.AzureDevOps},
 		{"git@evildev.azure.com:v3/acme/Platform/api", forge.Unknown},
 		{"https://git.sr.ht/~user/repo", forge.Unknown},
+		{"https://notgithub.com/owner/repo", forge.Unknown},
+		{"git@work:owner/repo", forge.Unknown},
+		{"git://github.com/owner/repo", forge.Unknown},
+		{"https://github.com/owner/repo\x1b[31m", forge.Unknown},
 		{"", forge.Unknown},
 	} {
 		if got := forge.FromURL(tc.url); got != tc.want {
@@ -85,12 +91,15 @@ func TestMissingCLIErrorsClearly(t *testing.T) {
 }
 
 func TestIdentityFromURL(t *testing.T) {
+	t.Setenv("GH_HOST", "")
+	t.Setenv("GITLAB_HOST", "")
 	for _, tc := range []struct {
 		url  string
 		kind forge.Kind
 		name string
 	}{
 		{"https://github.com/owner/repo.git", forge.GitHub, "owner/repo"},
+		{"https://user:password@github.com/owner/repo.git?token=secret#fragment", forge.GitHub, "owner/repo"},
 		{"git@github.com:owner/repo.git", forge.GitHub, "owner/repo"},
 		{"ssh://git@gitlab.com/group/sub/repo.git", forge.GitLab, "group/sub/repo"},
 		{"https://gitlab.example.com/group/repo", forge.GitLab, "group/repo"},
@@ -99,6 +108,9 @@ func TestIdentityFromURL(t *testing.T) {
 		{"ssh://git@ssh.dev.azure.com/v3/acme/Platform/api", forge.AzureDevOps, "acme/Platform/api"},
 		{"https://acme.visualstudio.com/DefaultCollection/Platform/_git/api", forge.AzureDevOps, "acme/Platform/api"},
 		{"acme@vs-ssh.visualstudio.com:Platform/_ssh/api", forge.AzureDevOps, "acme/Platform/api"},
+		{"https://notgithub.com/owner/repo", forge.Unknown, ""},
+		{"git@work:owner/repo.git", forge.Unknown, ""},
+		{"https://github.com/owner/repo%2Fother", forge.Unknown, ""},
 		{"", forge.Unknown, ""},
 	} {
 		kind, name := forge.IdentityFromURL(tc.url)

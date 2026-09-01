@@ -5,6 +5,9 @@
 package task
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"strings"
 	"time"
@@ -124,6 +127,53 @@ type Task struct {
 
 	Created time.Time `toml:"created"`
 	Updated time.Time `toml:"updated"`
+
+	// storedRevision is populated only by Store after a successful read/write.
+	// It never enters TOML or Revision and lets legacy Save callers participate
+	// in compare-and-swap without adding a persisted field older binaries erase.
+	storedRevision string
+}
+
+// Revision returns a deterministic fingerprint of the task identity and every
+// field represented by its TOML record. It is deliberately computed rather
+// than persisted: older dev binaries can continue to read and rewrite task
+// files without erasing a revision field they do not know about.
+func (t Task) Revision() string {
+	hash := sha256.New()
+	writeString := func(value string) {
+		var length [8]byte
+		binary.BigEndian.PutUint64(length[:], uint64(len(value)))
+		_, _ = hash.Write(length[:])
+		_, _ = hash.Write([]byte(value))
+	}
+	writeTime := func(value time.Time) {
+		writeString(value.UTC().Format(time.RFC3339Nano))
+	}
+
+	writeString("dev-task-revision-v1")
+	writeString(t.ID)
+	writeString(t.Name)
+	writeString(t.Repo)
+	writeString(t.RepoPath)
+	writeString(t.Branch)
+	writeString(t.Base)
+	writeString(t.WorktreePath)
+	writeString(string(t.Mode))
+	writeString(string(t.State))
+	writeString(t.Owner)
+	writeString(t.Next)
+	writeString(t.Note)
+	writeString(fmt.Sprint(len(t.Tags)))
+	for _, tag := range t.Tags {
+		writeString(tag)
+	}
+	writeString(t.AgentSession)
+	writeString(t.RuntimeHandle)
+	writeString(t.RuntimeName)
+	writeTime(t.Created)
+	writeTime(t.Updated)
+
+	return hex.EncodeToString(hash.Sum(nil))
 }
 
 // EffectiveMode returns the explicit mode, or infers a legacy task. Before
@@ -154,6 +204,11 @@ func (t Task) OwnedBy(host string) bool { return t.Owner == "" || t.Owner == hos
 
 // Validate rejects a task that could not be acted on later.
 func (t Task) Validate() error {
+	if t.ID != "" {
+		if err := ValidateID(t.ID); err != nil {
+			return fmt.Errorf("task ID: %w", err)
+		}
+	}
 	switch {
 	case t.Repo == "":
 		return fmt.Errorf("task %s: repo is required", t.ID)

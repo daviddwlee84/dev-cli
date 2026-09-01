@@ -2,19 +2,20 @@
 description: Navigate tasks, repositories, experiments, remotes, and agent skills in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
-verified_on: 2026-08-28
+verified_on: 2026-08-31
 ---
 
 # TUI, repositories, quick notes, and bootstrap
 
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
 
-## Five views
+## Six views
 
 | View | Question | Source |
 |---|---|---|
 | TASKS | What am I working on? | task registry plus live Git/runtime facts |
 | REPOS | What durable repositories exist here? | configured scan roots and local catalog |
+| FLEET | Where does this work exist on configured machines? | private cached/live SSH snapshots |
 | TRY | Which experiments can I resume, archive, or graduate? | experiment catalog plus live facts |
 | REMOTE | What can I open or clone? | authenticated `gh`/`glab` inventories and cache |
 | SKILLS | Which agent skills are installed locally and globally? | upstream `skills` JSON plus project/global locks |
@@ -50,7 +51,7 @@ y         open copy/context actions
 
 Expanded rows explain every linked worktree, including harness-owned `(ephemeral)` and otherwise unmanaged `(external)` checkouts. The LIVE column shows runtime activity separately from task state.
 
-`dev repo context [repo]` emits the same agent-ready Markdown context available from the TUI copy menu, including paths, Git/worktree/runtime facts, and tasks.
+`dev repo context [repo]` emits the same agent-ready Markdown context available from the TUI copy menu, including paths, Git/worktree/runtime facts, and tasks. `--json` adds the schema-v1 evidence/readiness contract; `--refresh` is the only form that live-probes optional forge and configured fleet sources.
 
 ### TRY and REMOTE
 

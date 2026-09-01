@@ -87,6 +87,10 @@ must remain the same regular file from validation through open; source swaps and
 symlinked destination parents are refused. Existing destinations are reported
 as skipped, never falsely as copied, and file contents are never logged.
 
+This is local provisioning only. Off-machine `dev fleet files` deliberately uses
+a separate `[local_files].include` allowlist plus explicit `--to`; never infer
+export permission from `[worktree].include`.
+
 ### Project-local Claude backend state
 
 `.claude/settings.local.json` stays gitignored and is **not** a universal default

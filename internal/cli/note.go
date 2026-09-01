@@ -357,15 +357,10 @@ func ensureNoteRepository(ctx context.Context, app *App, target tui.NoteTarget) 
 		CommonDir: r.CommonDir, Name: r.Name,
 		RemoteIdentity: gitx.RemoteFromConfig(r.CommonDir, "origin"),
 	}
-	var entry *catalog.Entry
-	err := app.Catalog.WithLock(ctx, func() error {
-		var ensureErr error
-		entry, ensureErr = app.Registry.EnsureRepository(observation)
-		if ensureErr == nil && entry.Kind != catalog.KindRepository {
-			ensureErr = fmt.Errorf("catalog asset %s is %s, not a repository", entry.ID, entry.Kind)
-		}
-		return ensureErr
-	})
+	entry, err := app.Registry.EnsureRepository(observation)
+	if err == nil && entry.Kind != catalog.KindRepository {
+		err = fmt.Errorf("catalog asset %s is %s, not a repository", entry.ID, entry.Kind)
+	}
 	return entry, r, err
 }
 

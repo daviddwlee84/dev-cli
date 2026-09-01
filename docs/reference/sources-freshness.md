@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-08-29
+verified_on: 2026-08-31
 ---
 
 # Sources and freshness
@@ -63,7 +63,8 @@ tested_with: optional
 | repository new/clone routing, snapshot templates/confinement, check-in policy, project trust, skill batching, TTY editor, upstream publication, and handoff | [Commands and configuration](commands-config.md#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`, `internal/scaffold`, `internal/repotemplate`, `internal/projectconfig`, `internal/cli/repo_{create,checkin,skills}*.go`, `internal/cli/prompt.go`, focused repo-bootstrap tests | implemented |
 | lazygit lowercase `c` pending-message integration | [Compatibility](compatibility.md#lazygit-staged-message-prefill-is-best-effort) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive, checked 2026-08-29 |
 | runtime fallback Herdr → tmux → Zellij → none | [Parallel agents and runtimes](../guides/parallel-agents-runtimes.md) | `internal/runtime/runtime.go` | implemented |
-| SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](../guides/remote-fleet.md) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
+| schema-v1 repository context, scoped readiness, sanitized remotes, and cache/live provenance | [Commands and configuration](commands-config.md#high-value-structured-interfaces) | `internal/repocontext`, `internal/cli/repo_context.go`, focused context tests | implemented |
+| SSH fleet snapshots, machine UUID pinning, `fleet sync`, and explicit bounded `fleet files` safety | [Remote repository fleet](../guides/remote-fleet.md) | `internal/fleet`, `internal/localfiles`, `internal/machineid`, focused fake-SSH/fault-injection tests | implemented |
 | READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](../guides/agent-safe-retirement.md) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
 | `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](../guides/machine-summary.md), [Development journal](../guides/dev-journal.md) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
 | agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |

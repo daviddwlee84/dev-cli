@@ -93,7 +93,7 @@ func TestTransportPreservesRemoteNoDevExitCode(t *testing.T) {
 	t.Setenv("PATH", bin)
 	host := Host{Name: "lab", SSHAlias: "lab", DevPath: "auto"}
 	host.ConnectTimeout.Duration = time.Second
-	host.CommandTimeout.Duration = 10 * time.Second
+	host.CommandTimeout.Duration = time.Minute
 	result := (Transport{}).Run(context.Background(), host, []string{"fleet", "_snapshot"}, nil, false)
 	if result.ExitCode != 127 {
 		t.Fatalf("transport exit = %d, stderr=%s", result.ExitCode, result.Stderr)

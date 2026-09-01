@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -140,7 +141,11 @@ func buildStartSpecForRepository(ctx context.Context, app *App, r repo.Repo, req
 	}
 
 	id := task.MakeID(r.Name, branch)
-	if existing, err := app.Tasks.Get(id); err == nil && existing.State != task.Done {
+	existing, err := existingTaskForStart(app.Tasks, id)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil && existing.State != task.Done {
 		return nil, fmt.Errorf("task %s already exists (state %s) — use `dev resume %s`",
 			existing.ID, existing.State, existing.ID)
 	}
@@ -168,11 +173,55 @@ func buildStartSpecForRepository(ctx context.Context, app *App, r repo.Repo, req
 	return spec, nil
 }
 
+func existingTaskForStart(store *task.Store, id string) (*task.Task, error) {
+	existing, err := store.Get(id)
+	if err == nil {
+		return existing, nil
+	}
+	if errors.Is(err, task.ErrNotFound) {
+		return nil, nil
+	}
+	if present, presentErr := store.RecordExists(id); presentErr == nil && present {
+		return nil, err
+	} else if presentErr != nil {
+		// Preserve the established late-save failure behavior for a task-store
+		// path whose existing ancestor is itself not a directory. Any usable store
+		// with an occupied corrupt record fails before external side effects.
+		if taskStoreBlockedByNonDirectory(store.Dir) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return nil, nil
+}
+
+func taskStoreBlockedByNonDirectory(path string) bool {
+	for {
+		info, err := os.Lstat(path)
+		if err == nil {
+			return !info.IsDir()
+		}
+		parent := filepath.Dir(path)
+		if parent == path {
+			return false
+		}
+		path = parent
+	}
+}
+
 func executeStartSpec(ctx context.Context, app *App, spec *startSpec, log io.Writer) (*startResult, error) {
 	id := task.MakeID(spec.RepoName, spec.Branch)
-	if existing, err := app.Tasks.Get(id); err == nil && existing.State != task.Done {
+	replaceDoneRevision := ""
+	existing, err := existingTaskForStart(app.Tasks, id)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case existing != nil && existing.State != task.Done:
 		return nil, fmt.Errorf("task %s already exists (state %s) — use `dev resume %s`",
 			existing.ID, existing.State, existing.ID)
+	case existing != nil:
+		replaceDoneRevision = existing.Revision()
 	}
 
 	t := &task.Task{
@@ -232,7 +281,12 @@ func executeStartSpec(ctx context.Context, app *App, spec *startSpec, log io.Wri
 	}
 
 	setTaskRuntime(t, rt, result.Opened)
-	if err := app.Tasks.Save(t); err != nil {
+	if replaceDoneRevision != "" {
+		err = app.Tasks.ReplaceDone(t, replaceDoneRevision)
+	} else {
+		err = app.Tasks.Save(t)
+	}
+	if err != nil {
 		return nil, err
 	}
 	annotate(app, rt, t)

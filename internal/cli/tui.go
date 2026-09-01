@@ -180,6 +180,54 @@ func tuiStartedTask(r tui.RepoRow, name, branch, base string, res *wt.CreateResu
 	return t
 }
 
+func startDirectFromTUI(ctx context.Context, app *App, rt runtime.Runtime, row tui.RepoRow, name string) (string, error) {
+	if err := guardSharedCheckout(ctx, app, rt, row.Repo.Path); err != nil {
+		return "", err
+	}
+	status, err := gitx.StatusOf(ctx, row.Repo.Path)
+	if err != nil {
+		return "", err
+	}
+	if status.Detached || status.Branch == "" {
+		return "", fmt.Errorf("direct task needs a named branch; this repo has detached HEAD")
+	}
+	id := task.MakeID(row.Repo.Name, status.Branch)
+	replaceDoneRevision := ""
+	existing, err := existingTaskForStart(app.Tasks, id)
+	if err != nil {
+		return "", err
+	}
+	if existing != nil && existing.State != task.Done {
+		return "", fmt.Errorf("task %s already exists (state %s)", existing.ID, existing.State)
+	}
+	if existing != nil {
+		replaceDoneRevision = existing.Revision()
+	}
+	handle, err := rt.Open(ctx, row.Repo.Path, row.Repo.Name+"/"+name)
+	if err != nil {
+		return "", err
+	}
+	tracked := &task.Task{
+		Name: name, Repo: row.Repo.Name, RepoPath: row.Repo.Path,
+		Branch: status.Branch, Base: status.Branch, Mode: task.ModeDirect,
+		State: task.Hot, Owner: config.Hostname(),
+	}
+	setTaskRuntime(tracked, rt, handle)
+	if replaceDoneRevision != "" {
+		err = app.Tasks.ReplaceDone(tracked, replaceDoneRevision)
+	} else {
+		err = app.Tasks.Save(tracked)
+	}
+	if err != nil {
+		if handle.Created && handle.Handle != "" {
+			_ = rt.Close(ctx, handle.Handle)
+		}
+		return "", err
+	}
+	annotate(app, rt, tracked)
+	return fmt.Sprintf("tracking %s directly on %s; no branch/worktree created", name, status.Branch), nil
+}
+
 func runTUI(app *App) error {
 	// --color, NO_COLOR and TERM=dumb governed every other surface but stopped
 	// at the dashboard, which resolved its own palette independently.
@@ -408,23 +456,37 @@ func runTUI(app *App) error {
 			}, dest, nil
 		},
 
-		Park: func(ctx context.Context, t *task.Task, next string) (string, error) {
-			if next != "" {
-				t.Next = next
-			}
-			runtimeForTask(app, t) // normalize empty handle/name provenance
-			if t.RuntimeHandle != "" {
-				if _, _, err := closeTaskRuntime(ctx, app, t, checkoutOf(t)); err != nil {
-					return "", err
+		Park: func(ctx context.Context, tracked *task.Task, next string) (string, error) {
+			expectedRevision := tracked.Revision()
+			var result string
+			err := app.Tasks.WithMutation(ctx, func() error {
+				current, err := app.Tasks.Get(tracked.ID)
+				if err != nil {
+					return err
 				}
-			}
-			// The dashboard only parks warm: going cold removes a checkout,
-			// which is too consequential for a single keystroke.
-			t.State, t.Owner = task.Warm, config.Hostname()
-			if err := app.Tasks.Save(t); err != nil {
-				return "", err
-			}
-			return t.Title() + " parked warm — worktree and branch kept", nil
+				if current.Revision() != expectedRevision {
+					return fmt.Errorf("task %s: %w", tracked.ID, task.ErrConflict)
+				}
+				if next != "" {
+					current.Next = next
+				}
+				runtimeForTask(app, current) // normalize empty handle/name provenance
+				if current.RuntimeHandle != "" {
+					if _, _, err := closeTaskRuntime(ctx, app, current, checkoutOf(current)); err != nil {
+						return err
+					}
+				}
+				// The dashboard only parks warm: going cold removes a checkout,
+				// which is too consequential for a single keystroke.
+				current.State, current.Owner = task.Warm, config.Hostname()
+				if err := app.Tasks.SaveIfRevisionUnderLock(current, expectedRevision); err != nil {
+					return err
+				}
+				*tracked = *current
+				result = current.Title() + " parked warm — worktree and branch kept"
+				return nil
+			})
+			return result, err
 		},
 
 		SetNext: func(ctx context.Context, t *task.Task, next string) error {
@@ -454,35 +516,7 @@ func runTUI(app *App) error {
 		},
 
 		StartDirect: func(ctx context.Context, r tui.RepoRow, name string) (string, error) {
-			if err := guardSharedCheckout(ctx, app, rt, r.Repo.Path); err != nil {
-				return "", err
-			}
-			st, err := gitx.StatusOf(ctx, r.Repo.Path)
-			if err != nil {
-				return "", err
-			}
-			if st.Detached || st.Branch == "" {
-				return "", fmt.Errorf("direct task needs a named branch; this repo has detached HEAD")
-			}
-			id := task.MakeID(r.Repo.Name, st.Branch)
-			if existing, err := app.Tasks.Get(id); err == nil && existing.State != task.Done {
-				return "", fmt.Errorf("task %s already exists (state %s)", existing.ID, existing.State)
-			}
-			handle, err := rt.Open(ctx, r.Repo.Path, r.Repo.Name+"/"+name)
-			if err != nil {
-				return "", err
-			}
-			t := &task.Task{
-				Name: name, Repo: r.Repo.Name, RepoPath: r.Repo.Path,
-				Branch: st.Branch, Base: st.Branch, Mode: task.ModeDirect,
-				State: task.Hot, Owner: config.Hostname(),
-			}
-			setTaskRuntime(t, rt, handle)
-			if err := app.Tasks.Save(t); err != nil {
-				return "", err
-			}
-			annotate(app, rt, t)
-			return fmt.Sprintf("tracking %s directly on %s; no branch/worktree created", name, st.Branch), nil
+			return startDirectFromTUI(ctx, app, rt, r, name)
 		},
 
 		LoadStats: func(ctx context.Context, repoName string) (tui.StatsPanel, error) {
@@ -770,6 +804,7 @@ func applyTryAction(ctx context.Context, app *App, rt runtime.Runtime, request t
 type repoCollectOptions struct {
 	IncludeTries bool
 	Sessions     []runtime.Session
+	SessionsErr  error
 	SessionsSet  bool
 }
 
@@ -800,17 +835,22 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 		}
 		repos, assets = visibleRepos, visibleAssets
 	}
-	tasks, err := app.Tasks.List()
+	tasks, taskDiagnostics, err := app.Tasks.ListWithDiagnostics()
 	if err != nil {
 		return nil, err
 	}
+	var taskInventoryErr error
+	for _, diagnostic := range taskDiagnostics {
+		taskInventoryErr = errors.Join(taskInventoryErr, diagnostic)
+	}
 	byRepo := map[string][]*task.Task{}
-	for _, t := range tasks {
-		byRepo[t.RepoPath] = append(byRepo[t.RepoPath], t)
+	for _, tracked := range tasks {
+		byRepo[tracked.RepoPath] = append(byRepo[tracked.RepoPath], tracked)
 	}
 	sessions := options.Sessions
+	runtimeErr := options.SessionsErr
 	if !options.SessionsSet {
-		sessions, _ = rt.List(ctx)
+		sessions, runtimeErr = rt.List(ctx)
 	}
 	notesByRepo := map[string][]*note.Note{}
 	if app.Notes != nil {
@@ -852,6 +892,8 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 				row.Tasks = append(row.Tasks, byRepo[r.RealPath]...)
 			}
 			row.Context = inventory.CollectRepoContext(ctx, r, row.Tasks, sessions, rt.Name())
+			row.Context.TaskErr = taskInventoryErr
+			row.Context.RuntimeErr = runtimeErr
 			row.LastActivity = row.Context.LastActivity
 			row.Worktrees = row.Context.WorktreeCount
 			if main, ok := row.Context.Main(); ok {

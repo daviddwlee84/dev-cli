@@ -2,7 +2,7 @@
 description: 在 TUI 瀏覽 tasks、repositories、experiments、remotes 與 agent skills、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
 authority: project
 status: evolving
-verified_on: 2026-08-28
+verified_on: 2026-08-31
 lang: zh-TW
 ---
 
@@ -13,12 +13,13 @@ lang: zh-TW
 
 Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interactive dashboard；透過 pipe 執行時會輸出 plain task listing，讓 shell composition 保持可預期。
 
-## 五個 view
+## 六個 view
 
 | View | 回答問題 | 來源 |
 |---|---|---|
 | TASKS | 我正在處理什麼？ | task registry 加即時 Git/runtime facts |
 | REPOS | 本機有哪些持久 repositories？ | 設定的 scan roots 與 local catalog |
+| FLEET | 這份工作位於哪些 configured machines？ | private cached/live SSH snapshots |
 | TRY | 哪些 experiments 能 resume、archive 或 graduate？ | experiment catalog 加 live facts |
 | REMOTE | 有哪些 repository 能 open 或 clone？ | authenticated `gh`/`glab` inventories 與 cache |
 | SKILLS | Project 與 global scope 安裝了哪些 agent skills？ | upstream `skills` JSON 加 project/global locks |
@@ -54,7 +55,7 @@ y         開啟 copy/context actions
 
 展開後會顯示每個 linked worktree，包括 harness-owned `(ephemeral)` 與未受管理的 `(external)` checkout。LIVE column 將 runtime activity 與 task state 分開。
 
-`dev repo context [repo]` 會輸出 TUI copy menu 相同的 agent-ready Markdown context，包含 paths、Git/worktree/runtime facts 與 tasks。
+`dev repo context [repo]` 會輸出 TUI copy menu 相同的 agent-ready Markdown context，包含 paths、Git/worktree/runtime facts 與 tasks。`--json` 加入 schema-v1 evidence/readiness contract；只有 `--refresh` 會 live-probe optional forge 與 configured fleet sources。
 
 ### TRY 與 REMOTE
 

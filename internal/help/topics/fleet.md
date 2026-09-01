@@ -9,13 +9,17 @@ their filesystem paths or copying their dev configuration.
 dev fleet config init
 dev fleet config edit
 dev fleet status
+dev fleet machine-id lab
 ```
 
 `$XDG_CONFIG_HOME/dev/remotes.toml` follows the same connection model as an
 ordinary OpenSSH invocation. Prefer `ssh_alias`; explicit
 `hostname`/`user`/`port`/`identity_file` fields are available when needed.
 Password fallback supports `prompt`, `plain` and `bitwarden`, but key or agent
-authentication is always attempted first.
+authentication is always attempted first. Read-only commands tolerate an
+unpinned host. Before a mutating file transfer, run `dev fleet machine-id
+<host>`, verify the UUID independently, and add it as that host's `machine_id`;
+the command reports but never writes the pin.
 
 ## Inspect and open
 
@@ -54,3 +58,23 @@ reported explicitly.
 
 There is no automatic rebase, force push, background hook or all-repository
 pull. Resolve divergent work interactively on the machine that owns it.
+
+## Transfer explicit ignored files
+
+```bash
+dev fleet files api --to lab
+dev fleet files api --to lab --apply --yes
+dev fleet files api --to lab --replace --apply
+```
+
+The report-only default expands `[local_files].include` plus repeatable `--file`
+patterns into exact source paths. Source and target must already match by fetch
+identity, attached branch and commit. Both sides must prove each path untracked
+and ignored; only bounded regular files pass. `--replace` separately authorizes
+a target whose bytes differ, and `--yes` never implies replacement.
+
+Apply requires a matching `machine_id` pin, uses a bounded non-PTY protocol,
+keeps file content and hashes out of public output/cache, writes owner-only
+files through held roots, and journals rollback before publication. It does not
+clone, switch branches, transfer tasks/catalog/notes, provision dependencies,
+delete source files, or evict a repository. Native Windows payloads are blocked.

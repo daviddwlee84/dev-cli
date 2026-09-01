@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/google/uuid"
 )
 
@@ -93,6 +94,149 @@ func (s *Store) Create(ctx context.Context, repositoryID, repositoryName, body s
 		return errors.New("generate unique note ID: too many collisions")
 	})
 	return created, err
+}
+
+// Import writes a transported note with its exact durable identity and
+// timestamps. Path is always derived from the validated repository and note IDs;
+// a source Path is never trusted. An identical revision is an idempotent replay,
+// while reusing an ID for different content is a conflict. Import changes only
+// Markdown source data and deliberately does not update or rebuild the FTS cache.
+func (s *Store) Import(ctx context.Context, source *Note) (*Note, error) {
+	if s == nil {
+		return nil, errors.New("import into nil note store")
+	}
+	if source == nil {
+		return nil, errors.New("import nil note")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	candidate := clone(source)
+	candidate.Path = ""
+	if candidate.SchemaVersion == 0 {
+		candidate.SchemaVersion = CurrentSchemaVersion
+	}
+	originalRevision := source.Revision()
+	candidate.Normalize()
+	if candidate.Revision() != originalRevision {
+		return nil, fmt.Errorf("import note %s must already be normalized to preserve its revision: %w",
+			source.ID, ErrInvalid)
+	}
+	if err := candidate.Validate(); err != nil {
+		return nil, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var imported *Note
+	err := s.withFileLock(ctx, func() error {
+		target, err := s.confinedImportPath(candidate.RepositoryID, candidate.ID)
+		if err != nil {
+			return err
+		}
+		current, err := s.importedNoteByID(candidate.ID)
+		switch {
+		case err == nil:
+			if current.Revision() != candidate.Revision() {
+				return fmt.Errorf("note %s already exists with different content: %w", candidate.ID, ErrConflict)
+			}
+			if filepath.Clean(current.Path) != filepath.Clean(target) {
+				return fmt.Errorf("note %s exists outside its imported repository path: %w", candidate.ID, ErrConflict)
+			}
+			imported = clone(current)
+			return nil
+		case !errors.Is(err, ErrNotFound):
+			return err
+		}
+
+		candidate.Path = target
+		if err := s.writeAtomic(candidate); err != nil {
+			return err
+		}
+		imported = clone(candidate)
+		return nil
+	})
+	return imported, err
+}
+
+func (s *Store) confinedImportPath(repositoryID, id string) (string, error) {
+	root, err := pathx.Canonical(s.Dir)
+	if err != nil {
+		return "", fmt.Errorf("canonicalize note store: %w", err)
+	}
+	repositoryDir := filepath.Join(root, repositoryID)
+	if info, err := os.Lstat(repositoryDir); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("note repository directory %s is a symlink: %w", repositoryID, ErrRepository)
+		}
+		if !info.IsDir() {
+			return "", fmt.Errorf("note repository path %s is not a directory: %w", repositoryID, ErrRepository)
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("inspect note repository directory %s: %w", repositoryID, err)
+	}
+
+	path := filepath.Join(repositoryDir, id+".md")
+	if info, err := os.Lstat(path); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return "", fmt.Errorf("note path %s is not a regular file: %w", id, ErrInvalid)
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return "", fmt.Errorf("inspect note path %s: %w", id, err)
+	}
+	confined, err := pathx.CanonicalChild(root, path)
+	if err != nil {
+		return "", fmt.Errorf("confine imported note path: %w", err)
+	}
+	return confined, nil
+}
+
+// importedNoteByID performs the global uniqueness lookup used by Import while
+// refusing to read through symlinks or accept legacy files nested more deeply
+// than the one-repository-directory layout.
+func (s *Store) importedNoteByID(id string) (*Note, error) {
+	paths, err := s.notePaths("")
+	if err != nil {
+		return nil, err
+	}
+	root, err := pathx.Canonical(s.Dir)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize note store: %w", err)
+	}
+	var match string
+	for _, path := range paths {
+		if strings.TrimSuffix(filepath.Base(path), ".md") != id {
+			continue
+		}
+		info, err := os.Lstat(path)
+		if err != nil {
+			return nil, fmt.Errorf("inspect existing note %s: %w", id, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("existing note %s is not a regular file: %w", id, ErrInvalid)
+		}
+		confined, err := pathx.CanonicalChild(root, path)
+		if err != nil {
+			return nil, fmt.Errorf("confine existing note %s: %w", id, err)
+		}
+		relative, err := filepath.Rel(root, confined)
+		if err != nil {
+			return nil, fmt.Errorf("relativize existing note %s: %w", id, err)
+		}
+		parts := strings.Split(filepath.Clean(relative), string(filepath.Separator))
+		if len(parts) != 2 || parts[0] == "" || parts[1] != id+".md" {
+			return nil, fmt.Errorf("existing note %s is outside the repository note layout: %w", id, ErrInvalid)
+		}
+		if match != "" {
+			return nil, fmt.Errorf("duplicate note ID %s: %w", id, ErrConflict)
+		}
+		match = confined
+	}
+	if match == "" {
+		return nil, fmt.Errorf("%s: %w", id, ErrNotFound)
+	}
+	return s.read(match)
 }
 
 func (s *Store) Get(id string) (*Note, error) {
@@ -248,6 +392,11 @@ func (s *Store) writeAtomic(n *Note) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
+	for _, privateDir := range []string{filepath.Dir(dir), dir} {
+		if err := os.Chmod(privateDir, 0o700); err != nil {
+			return fmt.Errorf("set private note directory mode: %w", err)
+		}
+	}
 	var front bytes.Buffer
 	if err := toml.NewEncoder(&front).Encode(n); err != nil {
 		return err
@@ -259,6 +408,10 @@ func (s *Store) writeAtomic(n *Note) error {
 	}
 	name := tmp.Name()
 	defer os.Remove(name)
+	if err := tmp.Chmod(0o600); err != nil {
+		_ = tmp.Close()
+		return fmt.Errorf("set private note temp file mode: %w", err)
+	}
 	if _, err := tmp.WriteString(content); err != nil {
 		_ = tmp.Close()
 		return err
@@ -268,9 +421,6 @@ func (s *Store) writeAtomic(n *Note) error {
 		return fmt.Errorf("sync note temp file: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(name, 0o600); err != nil {
 		return err
 	}
 	if err := os.Rename(name, n.Path); err != nil {
