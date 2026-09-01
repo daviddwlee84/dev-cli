@@ -20,9 +20,10 @@ import (
 const projectConfigVersion = 1
 
 type projectFile struct {
-	Version  *int             `toml:"version"`
-	Worktree WorktreeOverride `toml:"worktree"`
-	Repo     RepoOverride     `toml:"repo"`
+	Version    *int               `toml:"version"`
+	Worktree   WorktreeOverride   `toml:"worktree"`
+	LocalFiles LocalFilesOverride `toml:"local_files"`
+	Repo       RepoOverride       `toml:"repo"`
 }
 
 var deniedTopLevelSections = map[string]bool{
@@ -69,7 +70,7 @@ func Load(repoRoot string, legacy *Layer) (Result, error) {
 		if project.Version != nil && *project.Version != projectConfigVersion {
 			return Result{}, fmt.Errorf("parse %s: version %d is unsupported (want %d)", paths.Config, *project.Version, projectConfigVersion)
 		}
-		result.Project = Override{Worktree: project.Worktree, Repo: project.Repo}
+		result.Project = Override{Worktree: project.Worktree, LocalFiles: project.LocalFiles, Repo: project.Repo}
 		if err := result.Project.validate(); err != nil {
 			return Result{}, fmt.Errorf("validate %s: %w", paths.Config, err)
 		}
@@ -220,6 +221,11 @@ func overlay(base, next Override, source string, sources map[string]string) Over
 		value := *next.Worktree.ProvisionTimeout
 		base.Worktree.ProvisionTimeout = &value
 		sources["worktree.provision_timeout"] = source
+	}
+	if next.LocalFiles.Include != nil {
+		value := append([]string(nil), (*next.LocalFiles.Include)...)
+		base.LocalFiles.Include = &value
+		sources["local_files.include"] = source
 	}
 	if next.Repo.Setup.Preset != nil {
 		value := *next.Repo.Setup.Preset

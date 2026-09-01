@@ -298,11 +298,12 @@ Use this page as the short operating policy. Follow the links only when a decisi
 3. **Choose worktrees by mutation boundary, not agent count.** Read-only researchers and writers with clearly disjoint files can share a checkout; overlapping or unknown mutation needs separate branches and worktrees.
 4. **Use one integration owner.** Assign file ownership, dependency order, merge order, and the final test responsibility before parallel work starts.
 5. **Provision from an allowlist.** Copy only explicitly listed files that Git confirms are ignored. Prefer reinstalling dependencies unless the ecosystem makes copying sound.
-6. **Keep one writer per branch.** Across machines, push the branch and transfer ownership before another writer resumes it.
-7. **Checkpoint before handoff.** Commit and push recoverable work, and record a concrete `--next` action. Use temporary `wip:` commits on a feature branch rather than stash for cross-machine work.
-8. **Review the integrated result.** Worker-local tests are not enough; run the complete relevant suite after changes are combined.
-9. **Clean up only recoverable state.** Do not remove dirty, untracked, unpushed, or locked worktrees. Removing a worktree must not silently delete its branch.
-10. **Label the authority.** Keep Git semantics, current product behavior, experimental harness behavior, project policy, and historical advice visibly distinct.
+6. **Authorize export separately.** A local worktree include is not off-machine permission. Use a separate portable-file allowlist, inspect the report, independently verify the target UUID, and never let `--yes` imply replacement.
+7. **Keep one writer per branch.** Across machines, push the branch and transfer ownership before another writer resumes it.
+8. **Checkpoint before handoff.** Commit and push recoverable work, and record a concrete `--next` action. Use temporary `wip:` commits on a feature branch rather than stash for cross-machine work.
+9. **Review the integrated result.** Worker-local tests are not enough; run the complete relevant suite after changes are combined.
+10. **Clean up only recoverable state.** Do not remove dirty, untracked, unpushed, or locked worktrees. Removing a worktree must not silently delete its branch.
+11. **Label the authority.** Keep Git semantics, current product behavior, experimental harness behavior, project policy, and historical advice visibly distinct.
 
 ## Pick the smallest safe topology
 
@@ -1071,13 +1072,13 @@ For Claude-specific primitive selection, continue with the [parallel work decisi
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/
 
-> Inventory repositories, tasks, and live runtime activity across SSH-reachable machines with dev fleet, and safely fast-forward a branch between them.
+> Inventory repositories over SSH, pin remote machine identity, safely fast-forward branches, and explicitly transfer bounded ignored files with dev fleet.
 
 `dev fleet` fans out over SSH to other machines running their own `dev`, so you can see and open their repositories and safely propagate a branch, without merging their independent configuration into this machine's view.
 
 ## What a fleet is
 
-A remote fleet is a list of other hosts, each running its own `dev` binary against its own `$XDG_CONFIG_HOME`, its own scan roots, its own task registry, and its own runtime. `dev fleet` never centralizes or takes ownership of that state — it only asks each host's `dev` for a read-only snapshot over SSH and reports what comes back. A host with no `dev` installed, or an unreachable host, degrades that one row; it never blocks the rest of the fleet.
+A remote fleet is a list of other hosts, each running its own `dev` binary against its own `$XDG_CONFIG_HOME`, its own scan roots, its own task registry, and its own runtime. Inventory stays decentralized: each host's `dev` produces its own read-only snapshot over SSH, and one unreachable host never blocks the remaining rows. Mutation is confined to separately named commands such as `fleet sync` and `fleet files --apply`; neither makes this machine authoritative for the target's paths, task registry, or runtime.
 
 This is a different concept from the REMOTE TUI view and publishing/PR flows,
 which use `gh` or `glab` for GitHub/GitLab repository publication and PRs, plus
@@ -1108,6 +1109,8 @@ dev_path = "auto"
 [[hosts]]
 name = "lab"
 ssh_alias = "lab"
+# Add only after `dev fleet machine-id lab` and independent verification.
+machine_id = "00000000-0000-4000-8000-000000000000"
 
 [[hosts]]
 name = "vps"
@@ -1118,7 +1121,9 @@ identity_file = "~/.ssh/id_ed25519"
 ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 ```
 
-`schema_version = 1` is required. `[defaults]` supplies `connect_timeout`, `command_timeout`, `cache_ttl`, `max_parallel` (fan-out concurrency), and `dev_path` (`"auto"` searches `PATH`); each `[[hosts]]` entry inherits any of these it does not set explicitly. A host needs `name` plus either `ssh_alias` (preferred — it reuses `~/.ssh/config`'s `ProxyJump`, `IdentityAgent`, and host-key policy exactly like a plain `ssh` invocation) or `hostname` (optionally with `user`, `port`, `identity_file`). `ssh_login_password_source.type` is one of `none` (default), `prompt`, `plain` (inline `value`), or `bitwarden` (`item` looked up with the `bw` CLI). A config file with a `plain` password must be mode `0600`, or `dev fleet` refuses to load it.
+`schema_version = 1` is required. `[defaults]` supplies `connect_timeout`, `command_timeout`, `cache_ttl`, `max_parallel` (fan-out concurrency), and `dev_path` (`"auto"` searches `PATH`); each `[[hosts]]` entry inherits any of these it does not set explicitly. A host needs `name` plus either `ssh_alias` (preferred — it reuses `~/.ssh/config`'s `ProxyJump`, `IdentityAgent`, and host-key policy exactly like a plain `ssh` invocation) or `hostname` (optionally with `user`, `port`, `identity_file`). The optional `machine_id` is a durable UUID pin: read-only inventory can warn or proceed without it, but mutating portable-file apply requires an exact match. `ssh_login_password_source.type` is one of `none` (default), `prompt`, `plain` (inline `value`), or `bitwarden` (`item` looked up with the `bw` CLI). A config file with a `plain` password must be mode `0600`, or `dev fleet` refuses to load it.
+
+Discover a target UUID with `dev fleet machine-id <host>`, verify it through an independent channel on that machine, then copy it into `remotes.toml`. The command is read-only and reports `unpinned`, `match`, or `mismatch`; it never edits configuration on your behalf.
 
 ## `dev fleet` commands
 
@@ -1126,7 +1131,9 @@ ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 |---|---|---|
 | `dev fleet list` | `--host <name>` (repeatable), `--repo <query>`, `--json`, `--cached`, `--strict` | List repositories and activity across this machine and configured hosts |
 | `dev fleet status` | `--json`, `--strict` | Probe configured hosts and report snapshot health |
+| `dev fleet machine-id <host>` | `--json` | Show the observed durable UUID and compare the configured pin |
 | `dev fleet sync <repo>` | `--push`, `--remote <name>`, `--host <name>` (repeatable), `--json` | Push optionally, then safely fast-forward clean matching checkouts |
+| `dev fleet files [repo-or-path]` | `--to <host>`, `--file <pattern>` (repeatable), `--apply`, `--replace`, `--yes`, `--json` | Plan or apply one-way transfer of explicit ignored files |
 | `dev fleet open <host> <repo>` | — | Open a remote repository through Herdr or an SSH login shell |
 | `dev fleet config init` | `-f`/`--force`, `--stdout` | Write a starter `remotes.toml` |
 | `dev fleet config edit` | `--editor <cmd>` | Open `remotes.toml` in `$VISUAL`/`$EDITOR` |
@@ -1135,11 +1142,69 @@ ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 
 `--repo` on `list` filters by name, remote identity, branch, or path; `--cached` answers entirely from the last saved snapshot with no network activity; `--strict` turns an unreachable/timeout/incompatible/invalid host into a non-zero exit for both `list` and `status`. `sync <repo>` resolves `<repo>` locally like any other repository reference; without `--push` its `HEAD` must already equal the fetched upstream, and `--remote` picks which Git remote identifies the repository across hosts (default: the branch's upstream remote, then `origin`).
 
-`dev fleet` also registers four hidden commands (`_snapshot`, `_sync`, `_open-herdr`, `_shell`) that exist only to be invoked by `dev fleet` itself on the far end of an SSH connection — they are the wire protocol, not a user-facing surface.
+## Explicit portable local files
+
+A repository may propose export candidates separately from worktree provisioning:
+
+```toml
+# .dev-cli/config.toml
+version = 1
+
+[local_files]
+include = [".env", ".mcp/**"]
+```
+
+`[worktree].include` is local provisioning policy and is never inherited here.
+`[local_files].include` also grants no standing permission: an explicit invocation
+must select exactly one target, and repeatable `--file` adds ad-hoc patterns for
+that invocation only. Patterns expand on the source into sorted exact paths;
+no glob crosses the wire.
+
+```bash
+dev fleet files api --to lab                    # report only
+dev fleet files api --to lab --apply --yes      # create absent target files
+dev fleet files api --to lab --replace --apply  # authorize differing bytes separately
+```
+
+The source and target must already resolve to one clone with the same normalized
+**fetch** identity, attached branch, and exact commit. A push-only URL match is
+insufficient. Both hosts independently prove every exact path is untracked and
+ignored under their own Git configuration. Only regular files pass: no
+symlinks/reparse points, directories, sockets, devices, FIFOs, `.git`, nested
+repositories, or submodule boundaries. Compiled ceilings are 128 files,
+8 MiB per file, 32 MiB total, with bounded path length/depth; host policy may
+lower but never raise them. The source branch, HEAD, and fetch identity are
+revalidated both before and after payload reads; target apply shares the
+canonical Git-common-directory lease used by `fleet sync`.
+
+Plan is the default and sends no file body. Apply additionally requires the
+configured `machine_id` to match the content-free capability probe. Missing files
+are atomically created owner-only; identical files are no-ops; differing bytes
+block unless `--replace` was present in the displayed plan. Replacement binds the
+observed target digest/mode, retains a private rollback copy, revalidates both
+roots, and rolls back file changes on failure. `--yes` only answers confirmation
+and never implies replacement. Public human/JSON output contains path, size,
+mode, and state—never content or hashes.
+
+The transaction journal is durable before manifest/payload staging, so an
+interrupted request ID can resume or reconcile. Rollback intentionally leaves an
+empty parent directory when its post-crash identity cannot be proven; deleting
+another process's replacement would be worse. Native Windows payload transfer is
+capability-blocked before content is sent.
+
+This command is not repository/task ownership transfer, clone acquisition,
+provisioning, backup, restore, or eviction. It never switches a branch, copies
+task/catalog/note state, watches for changes, propagates deletions, or removes the
+source.
+
+`dev fleet` also registers bounded hidden capability/file commands in addition to
+`_snapshot`, `_sync`, `_open-herdr`, and `_shell`. They exist only for the two
+`dev` processes to invoke over SSH; they are wire protocols, not user-facing
+surfaces.
 
 ## Transport and authentication
 
-Every fleet command reaches a host by shelling out to the system `ssh` binary with `ConnectTimeout`, `ServerAliveInterval=15`, and `ServerAliveCountMax=2`, and first attempts `BatchMode=yes` — key or agent authentication only, exactly like a script-friendly `ssh` call. `dev fleet open` additionally allocates a PTY (`-t`) for its interactive login shell.
+Every fleet command reaches a host by shelling out to the system `ssh` binary with `ConnectTimeout`, `ServerAliveInterval=15`, and `ServerAliveCountMax=2`, and first attempts `BatchMode=yes` — key or agent authentication only, exactly like a script-friendly `ssh` call. Fixed protocols use non-PTY `-T` and disable agent, X11, local-command, and all port forwarding while retaining the user's normal host-key policy. `dev fleet open` separately allocates a PTY (`-t`) for its interactive login shell.
 
 If that attempt is rejected with "permission denied" and the host defines a `ssh_login_password_source`, `dev` retries once with password authentication. The password itself never touches argv or the environment: `dev` re-executes itself as a one-shot `SSH_ASKPASS` helper, and the secret is handed to that helper over an inherited file descriptor. `prompt` reads a hidden password from `/dev/tty` at run time; `plain` and `bitwarden` resolve it from the config file or from `bw get password <item>` respectively.
 
@@ -1149,7 +1214,7 @@ On the remote side, `dev_path = "auto"` (the default) searches common install lo
 
 `$XDG_CONFIG_HOME/dev/remotes.toml` is durable, user-authored configuration, on the same footing as `config.toml` — `dev fleet config init`/`edit` manage it, and nothing regenerates it automatically.
 
-Each successful probe writes a per-host JSON snapshot under `$XDG_CACHE_HOME/dev/fleet/v1/<host-name-slug>.json`. That cache is a disposable accelerator, not durable data: it is fingerprinted with an "endpoint ID" derived from the host's connection fields and timeouts, so editing a host's `ssh_alias`, `hostname`, `user`, `port`, `identity_file`, `dev_path`, or timeouts automatically invalidates its old cache the next time `dev` reads it. Oversized snapshots, future timestamps, invalid counts, and oversized/NUL-containing identity or path fields are ignored rather than displayed. `dev cache list` shows its path, size, and age; `dev cache clear fleet` (or `dev cache clear all`) removes it outright. There is nothing to "rebuild" explicitly — the next `dev fleet list`, `dev fleet status`, or TUI FLEET reload regenerates it from a fresh probe.
+Each successful probe writes a per-host JSON snapshot under `$XDG_CACHE_HOME/dev/fleet/v1/<host-name-slug>.json`. That cache is a disposable accelerator, not durable data: it is fingerprinted with an "endpoint ID" derived from the host's connection fields and timeouts, so editing a host's `machine_id`, `ssh_alias`, `hostname`, `user`, `port`, `identity_file`, `dev_path`, or timeouts automatically invalidates its old cache the next time `dev` reads it. Oversized snapshots, future timestamps, invalid counts, and oversized/NUL-containing identity or path fields are ignored rather than displayed. `dev cache list` shows its path, size, and age; `dev cache clear fleet` (or `dev cache clear all`) removes it outright. There is nothing to "rebuild" explicitly — the next `dev fleet list`, `dev fleet status`, or TUI FLEET reload regenerates it from a fresh probe.
 
 The cache exists so an unreachable, timed-out, incompatible, or invalid-response host can still report its last known state (marked `stale`, with `FromCache` set) instead of vanishing from the listing; `--cached` uses only this cache and never touches the network. Each remote host's own `config.toml`, task registry, and repository paths remain authoritative on that host — the cache only ever holds a read-only snapshot of them.
 
@@ -1179,7 +1244,11 @@ disabled until `forge.azure_devops` targets are configured.
 - [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
 - [`internal/fleet/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/types.go)
 - [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
+- [`internal/fleet/protocol.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/protocol.go)
 - [`internal/fleet/sync.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/sync.go)
+- [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
+- [`internal/machineid`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/machineid)
+- [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
 - [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
 - [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)
 - [`internal/cli/tui.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/tui.go)
@@ -1404,7 +1473,7 @@ y         open copy/context actions
 
 Expanded rows explain every linked worktree, including harness-owned `(ephemeral)` and otherwise unmanaged `(external)` checkouts. The LIVE column shows runtime activity separately from task state.
 
-`dev repo context [repo]` emits the same agent-ready Markdown context available from the TUI copy menu, including paths, Git/worktree/runtime facts, and tasks.
+`dev repo context [repo]` emits the same agent-ready Markdown context available from the TUI copy menu, including paths, Git/worktree/runtime facts, and tasks. `--json` adds the schema-v1 evidence/readiness contract; `--refresh` is the only form that live-probes optional forge and configured fleet sources.
 
 ### TRY and REMOTE
 
@@ -2480,7 +2549,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
-| remote fleet | `fleet list`, `fleet status`, `fleet sync`, `fleet open`, `fleet config …` |
+| remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
 | activity/data | `summary`, `journal`, `stats …`, `cache …` |
@@ -2493,8 +2562,10 @@ Run `dev <command> --help` for the installed binary; this site describes the rep
 ```bash
 dev ls --json
 dev repo list --json
-dev repo context [repo]
+dev repo context [repo] --json
 dev repo remote --json
+dev fleet machine-id <host> --json
+dev fleet files [repo-or-path] --to <host> --json
 dev repo new NAME --json
 dev repo clone <ref> --json
 dev repo setup [repo-or-path] --preset PRESET --json
@@ -2504,7 +2575,7 @@ dev note show <note-id> --json
 dev bootstrap --json
 ```
 
-Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract.
+Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract. `repo context --json` is an additive schema-v1 report: unavailable facts remain null/error entries with explicit provenance instead of becoming zero values. `fleet files --json` is content-free and never includes file hashes or bodies.
 
 Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
 
@@ -2702,7 +2773,8 @@ Key sections:
 |---|---|
 | `[paths]` | scan roots, project/tries/worktree roots, worktree template, state path |
 | `[runtime]` | `auto`, Herdr, tmux, Zellij, or none plus metadata settings |
-| `[worktree]` | ignored includes, linked dirs, setup commands, strategies, timeout |
+| `[worktree]` | local ignored-file provisioning, linked dirs, setup commands, strategies, timeout |
+| `[local_files]` | host ceilings for portable files; project overlays provide the separate off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | complete remote inventory cache TTL and opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
@@ -2790,8 +2862,8 @@ not set both.
 
 A repository may commit these fixed files:
 
-- `.dev-cli/config.toml`: allowlisted worktree provisioning and repository
-  setup wizard defaults.
+- `.dev-cli/config.toml`: allowlisted worktree provisioning, separately
+  proposed portable local-file patterns, and repository setup wizard defaults.
 - `.dev-cli/scaffolds.toml`: project presets, templates, hooks, and skill
   setup using the same versioned schema.
 
@@ -2802,6 +2874,10 @@ version = 1
 [worktree]
 include = [".env.example"]
 strategy = "reinstall"
+
+# Proposed candidates only; export still requires explicit fleet files --to.
+[local_files]
+include = [".env", ".mcp/**"]
 
 [repo.setup]
 preset = "team"
@@ -2817,6 +2893,8 @@ project `[repo.setup]` preset, handoff, and check-in fields seed interactive
 wizard choices; they do not change scripted defaults, which are controlled by
 the corresponding flags. The legacy `commit` boolean remains readable, but may
 not be combined with `check_in` in the same layer.
+
+`[local_files].include` never inherits `[worktree].include`: provisioning a local checkout is not authorization to export a secret. Project overlays may propose only the portable include list; host-owned count/size/path ceilings come from global config and cannot be raised by a repository. The command remains report-only until an explicit `--apply`, target pin, and confirmation.
 
 Project files cannot override host paths, state location, runtime backend,
 forge inventory or credentials, stats, update, bootstrap, or TUI policy. They
@@ -3230,6 +3308,21 @@ Print the effective remotes configuration
 dev fleet config show
 ```
 
+### `dev fleet files`
+
+Plan or apply one-way transfer of explicit ignored local files
+
+```
+dev fleet files [repo-or-path] [flags]
+```
+
+- `--apply` — apply the verified plan
+- `--file` — additional portable relative pattern (repeatable)
+- `--json` — emit content-free JSON
+- `--replace` — replace differing target files observed by this plan
+- `--to` — single configured target host (required)
+- `--yes` — confirm apply without prompting (does not imply --replace)
+
 ### `dev fleet list`
 
 List repositories and activity across this machine and configured hosts
@@ -3243,6 +3336,16 @@ dev fleet list [flags]
 - `--json` — emit versioned JSON
 - `--repo` — filter repository name, identity, branch or path
 - `--strict` — fail when a host is unreachable or incompatible
+
+### `dev fleet machine-id`
+
+Show and compare a remote host's stable machine ID
+
+```
+dev fleet machine-id <host> [flags]
+```
+
+- `--json` — emit JSON
 
 ### `dev fleet open`
 
@@ -3573,8 +3676,11 @@ dev repo clone [owner/name|url|path] [flags]
 Print agent-ready Git, worktree, runtime and task context
 
 ```
-dev repo context [repo]
+dev repo context [repo] [flags]
 ```
+
+- `--json` — emit the additive schema-v1 JSON report
+- `--refresh` — refresh external forge and configured fleet observations
 
 ### `dev repo list`
 
@@ -4222,6 +4328,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 | setup-capable project skills | skills provider plus the entrypoint interpreter | unselected skills are skipped; selected required setup fails before scaffold mutation when its interpreter is unavailable; a clone acquired first is retained |
 | staged lazygit message prefill | a lazygit version that reads `LAZYGIT_PENDING_COMMIT` | files remain staged and dev prints the suggested message; normal Git commit remains available |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
+| remote portable-file plan/apply | Git, SSH target running a compatible `dev`, matching existing clone/branch/commit; apply also needs a verified machine UUID pin | fails before content is sent or leaves the target unchanged; no clone/task fallback is inferred |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
 | terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
@@ -4264,6 +4371,12 @@ draft. A draft-write failure is warning-only: staging remains successful and
 is never rolled back. If the integration changes upstream, the staged index
 and printed message remain the recovery path.
 
+### Portable files are not project transfer or backup
+
+`dev fleet files` moves only explicitly selected, bounded files that both hosts prove are untracked and ignored. It does not acquire a missing clone, transfer task ownership/catalog/notes, run worktree provisioning, watch for later changes, propagate deletion, remove source bytes, produce a remote-backup receipt, verify restore, or authorize eviction. Private transaction staging is not a user-facing backup/restore promise.
+
+The source and target must already match by fetch identity, attached branch, and exact commit. An apply additionally needs a verified `machine_id` pin. Native Windows payloads remain disabled until ACL, reparse-point, held-root, and atomic replacement guarantees are implemented and tested there; machine identity diagnostics remain content-free.
+
 ### Windows is a build target, not a full-feature platform
 
 `dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository, task and worktree operations work. What differs:
@@ -4271,6 +4384,7 @@ and printed message remain the recovery path.
 - There is no tmux, Zellij or Herdr, so the runtime backend is always `none`. Grouped runtime/agent activity and named sessions are unavailable; the `cd` directive and PowerShell wrapper still work.
 - Shell integration is `dev shell-init powershell`. POSIX shells hand the directory back on file descriptor 3; PowerShell cannot inherit it, so the wrapper passes a temp-file path in `DEV_SHELL_CD_FILE` instead.
 - `dev fleet open` starts a child shell (`%COMSPEC%`) rather than replacing the process, because Windows has no `exec(2)`.
+- `dev fleet machine-id` can perform its content-free probe, but native `fleet files` payload apply is capability-blocked before content is sent.
 - The domain test suites still assume a POSIX filesystem in places, so Windows CI runs the tests advisory-only while compilation, `go vet` and the build are enforced.
 
 ### Direct mode has a smaller lifecycle
@@ -4286,6 +4400,8 @@ These were historical gaps and should not be reintroduced as limitations:
 - Repository setup supports `--check-in=commit|stage|none` (`auto` for preset compatibility). Staged setup runs before-commit setup and `git add -A` without an `after_commit` phase, cannot publish or hand off to `start`, and may prefill lazygit lowercase `c` as described above.
 - Selected skills with matching source and agent targets share one installer invocation. The `agent-history-hygiene` initializer writes pre-commit/gitleaks policy and merges missing machine-local `.project.json`/`statistics.json` rules into `.specstory/.gitignore`; custom content and transcript history remain trackable.
 - Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
+- `dev repo context --json` exposes additive schema-v1 local/remote evidence with source, age, freshness, completeness, null/error preservation, and scoped readiness; external probes happen only with `--refresh`. `dev status` reuses the cheap local readiness projection without network access.
+- `dev fleet machine-id` reports an observed UUID without changing configuration. `dev fleet files` is report-only by default, uses a separate `[local_files]` allowlist, negotiates downward-only limits before content, and requires explicit apply/replacement controls plus a matching target pin.
 
 - `dev start --focus` activates the runtime after non-JSON creation.
 - `dev start --run '<shell command>'` dispatches only to an exact root pane from
@@ -4357,6 +4473,9 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
+- [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
+- [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
+- [`internal/repocontext`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/repocontext)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
@@ -4425,7 +4544,8 @@ tested_with: optional
 | repository new/clone routing, snapshot templates/confinement, check-in policy, project trust, skill batching, TTY editor, upstream publication, and handoff | [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`, `internal/scaffold`, `internal/repotemplate`, `internal/projectconfig`, `internal/cli/repo_{create,checkin,skills}*.go`, `internal/cli/prompt.go`, focused repo-bootstrap tests | implemented |
 | lazygit lowercase `c` pending-message integration | [Compatibility](https://daviddwlee84.github.io/dev-cli/reference/compatibility/#lazygit-staged-message-prefill-is-best-effort) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive, checked 2026-08-29 |
 | runtime fallback and exact-pane `start --run` dispatch | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go`, `internal/runtime/herdr.go`, focused start/runtime tests | implemented |
-| SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
+| schema-v1 repository context, scoped readiness, sanitized remotes, and cache/live provenance | [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#high-value-structured-interfaces) | `internal/repocontext`, `internal/cli/repo_context.go`, focused context tests | implemented |
+| SSH fleet snapshots, machine UUID pinning, `fleet sync`, and explicit bounded `fleet files` safety | [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/) | `internal/fleet`, `internal/localfiles`, `internal/machineid`, focused fake-SSH/fault-injection tests | implemented |
 | READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
 | `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](https://daviddwlee84.github.io/dev-cli/guides/machine-summary/), [Development journal](https://daviddwlee84.github.io/dev-cli/guides/dev-journal/) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
 | agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |
@@ -4952,11 +5072,12 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/best-practices/
 3. **依變動邊界 (mutation boundary) 決定 worktree，不要依 agent 數量。** Read-only researcher 與檔案範圍明確分離的 writer 可以共用 checkout；重疊或未知範圍則要分 branch 與 worktree。
 4. **指定唯一 integration owner。** 平行工作開始前，先分配 file ownership、dependency order、merge order 與最後測試責任。
 5. **只從 allowlist 佈建。** 只複製明確列出且 Git 確認為 ignored 的檔案；除非 ecosystem 證明 copy 安全，否則重新安裝 dependencies。
-6. **每個 branch 同時只有一位 writer。** 跨機器時先 push branch 並移交 ownership，另一位 writer 才 resume。
-7. **Handoff 前建立 checkpoint。** Commit、push 可復原工作並留下具體 `--next`；跨機器工作優先使用 feature branch 上的暫時 `wip:` commit，不要用 stash。
-8. **檢查整合後的結果。** 每個 worker 的局部測試不夠；組合所有變更後要跑完整相關 suite。
-9. **只有可復原時才清理。** Dirty、untracked、unpushed 或 locked worktree 都不能移除；移除 worktree 不得偷偷刪 branch。
-10. **標明 authority。** Git 語義、現行產品行為、experimental harness 行為、project policy 與歷史建議必須分開。
+6. **分開授權 export。** Local worktree include 不代表 off-machine permission。使用獨立 portable-file allowlist、先看 report、透過獨立管道驗證 target UUID，且不能讓 `--yes` 隱含 replacement。
+7. **每個 branch 同時只有一位 writer。** 跨機器時先 push branch 並移交 ownership，另一位 writer 才 resume。
+8. **Handoff 前建立 checkpoint。** Commit、push 可復原工作並留下具體 `--next`；跨機器工作優先使用 feature branch 上的暫時 `wip:` commit，不要用 stash。
+9. **檢查整合後的結果。** 每個 worker 的局部測試不夠；組合所有變更後要跑完整相關 suite。
+10. **只有可復原時才清理。** Dirty、untracked、unpushed 或 locked worktree 都不能移除；移除 worktree 不得偷偷刪 branch。
+11. **標明 authority。** Git 語義、現行產品行為、experimental harness 行為、project policy 與歷史建議必須分開。
 
 ## 選擇最小且安全的 topology
 
@@ -5736,7 +5857,7 @@ Claude-specific primitive 的選擇請接著看[平行工作決策指南](https:
 
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/
 
-> 透過 dev fleet 在 SSH 可連線的多台機器間盤點 repository、task 與 live runtime activity，並安全地在機器間 fast-forward 一個 branch。
+> 透過 dev fleet 跨 SSH 盤點 repository、pin remote machine identity、安全 fast-forward branch，並明確傳送 bounded ignored files。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -5745,7 +5866,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/
 
 ## Fleet 是什麼
 
-Remote fleet 是一份其他 host 的清單，每個 host 都執行自己的 `dev` binary，使用自己的 `$XDG_CONFIG_HOME`、自己的 scan roots、自己的 task registry 與自己的 runtime。`dev fleet` 從不集中管理或取得那份 state 的 ownership，它只會透過 SSH 向每個 host 的 `dev` 要一份 read-only snapshot，並回報收到的結果。沒有安裝 `dev` 的 host，或無法連線的 host，只會讓那一列 degrade；不會擋住 fleet 其餘部分。
+Remote fleet 是一份其他 host 的清單，每個 host 都執行自己的 `dev` binary，使用自己的 `$XDG_CONFIG_HOME`、自己的 scan roots、自己的 task registry 與自己的 runtime。Inventory 維持 decentralized：每個 host 的 `dev` 透過 SSH 產生自己的 read-only snapshot，一個 unreachable host 不會擋住其他 rows。Mutation 只存在於分開命名的 commands，例如 `fleet sync` 與 `fleet files --apply`；兩者都不會讓這台機器成為 target paths、task registry 或 runtime 的 authority。
 
 這與 REMOTE TUI view 及 publishing/PR flow 是不同概念——GitHub/GitLab
 repository publishing 與 PR 使用 `gh` 或 `glab`，Azure DevOps inventory 與 PR
@@ -5776,6 +5897,8 @@ dev_path = "auto"
 [[hosts]]
 name = "lab"
 ssh_alias = "lab"
+# 執行 dev fleet machine-id lab 並透過獨立管道驗證後才加入：
+machine_id = "00000000-0000-4000-8000-000000000000"
 
 [[hosts]]
 name = "vps"
@@ -5786,7 +5909,9 @@ identity_file = "~/.ssh/id_ed25519"
 ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 ```
 
-`schema_version = 1` 為必填。`[defaults]` 提供 `connect_timeout`、`command_timeout`、`cache_ttl`、`max_parallel`（fan-out 並行度）與 `dev_path`（`"auto"` 會搜尋 `PATH`）；每個 `[[hosts]]` 項目未明確設定的欄位都會沿用這些預設值。一個 host 需要 `name`，並搭配 `ssh_alias`（優先——它會沿用 `~/.ssh/config` 的 `ProxyJump`、`IdentityAgent` 與 host-key policy，行為與單純的 `ssh` 呼叫完全一致）或 `hostname`（可搭配 `user`、`port`、`identity_file`）其中之一。`ssh_login_password_source.type` 可為 `none`（預設）、`prompt`、`plain`（內嵌 `value`）或 `bitwarden`（用 `item` 透過 `bw` CLI 查詢）。設定檔若含 `plain` 密碼，檔案權限必須是 `0600`，否則 `dev fleet` 會拒絕載入。
+`schema_version = 1` 為必填。`[defaults]` 提供 `connect_timeout`、`command_timeout`、`cache_ttl`、`max_parallel`（fan-out 並行度）與 `dev_path`（`"auto"` 會搜尋 `PATH`）；每個 `[[hosts]]` 項目未明確設定的欄位都會沿用這些預設值。一個 host 需要 `name`，並搭配 `ssh_alias`（優先——它會沿用 `~/.ssh/config` 的 `ProxyJump`、`IdentityAgent` 與 host-key policy，行為與單純的 `ssh` 呼叫完全一致）或 `hostname`（可搭配 `user`、`port`、`identity_file`）其中之一。Optional `machine_id` 是 durable UUID pin：read-only inventory 可在未設定時警告或繼續，但 mutating portable-file apply 必須 exact match。`ssh_login_password_source.type` 可為 `none`（預設）、`prompt`、`plain`（內嵌 `value`）或 `bitwarden`（用 `item` 透過 `bw` CLI 查詢）。設定檔若含 `plain` 密碼，檔案權限必須是 `0600`，否則 `dev fleet` 會拒絕載入。
+
+用 `dev fleet machine-id <host>` 取得 target UUID，在該機器上透過獨立管道驗證後，再複製到 `remotes.toml`。這個 command 是 read-only，只會回報 `unpinned`、`match` 或 `mismatch`，絕不代替使用者修改設定。
 
 ## `dev fleet` 指令
 
@@ -5794,7 +5919,9 @@ ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 |---|---|---|
 | `dev fleet list` | `--host <name>`（可重複）、`--repo <query>`、`--json`、`--cached`、`--strict` | List repositories and activity across this machine and configured hosts |
 | `dev fleet status` | `--json`、`--strict` | Probe configured hosts and report snapshot health |
+| `dev fleet machine-id <host>` | `--json` | 顯示 observed durable UUID 並比較 configured pin |
 | `dev fleet sync <repo>` | `--push`、`--remote <name>`、`--host <name>`（可重複）、`--json` | Push optionally, then safely fast-forward clean matching checkouts |
+| `dev fleet files [repo-or-path]` | `--to <host>`、`--file <pattern>`（可重複）、`--apply`、`--replace`、`--yes`、`--json` | Plan 或 apply 明確 ignored files 的 one-way transfer |
 | `dev fleet open <host> <repo>` | — | Open a remote repository through Herdr or an SSH login shell |
 | `dev fleet config init` | `-f`/`--force`、`--stdout` | Write a starter `remotes.toml` |
 | `dev fleet config edit` | `--editor <cmd>` | Open `remotes.toml` in `$VISUAL`/`$EDITOR` |
@@ -5803,11 +5930,62 @@ ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 
 `list` 的 `--repo` 會依 name、remote identity、branch 或 path 過濾；`--cached` 完全依最後一次儲存的 snapshot 回答，不會有任何 network activity；`--strict` 會讓 `list` 與 `status` 在 host 為 unreachable/timeout/incompatible/invalid 時回傳非零結果。`sync <repo>` 對 `<repo>` 的解析方式與其他 repository reference 相同；沒有 `--push` 時，其 `HEAD` 必須已等於 fetch 後的 upstream；`--remote` 決定用哪個 Git remote 在各 host 間識別這個 repository（預設：branch 的 upstream remote，其次是 `origin`）。
 
-`dev fleet` 還註冊了四個 hidden command（`_snapshot`、`_sync`、`_open-herdr`、`_shell`），它們的存在只是為了讓 `dev fleet` 在 SSH 連線的另一端自行呼叫——這是 wire protocol，不是給使用者直接使用的介面。
+## 明確 portable local files
+
+Repository 可用與 worktree provisioning 分離的設定提出 export candidates：
+
+```toml
+# .dev-cli/config.toml
+version = 1
+
+[local_files]
+include = [".env", ".mcp/**"]
+```
+
+`[worktree].include` 是 local provisioning policy，絕不會被這裡繼承。
+`[local_files].include` 也不代表 standing permission：每次都必須用 explicit invocation
+選擇恰好一個 target，repeatable `--file` 只為該次 invocation 加入 ad-hoc pattern。
+Patterns 會在 source 展開成 sorted exact paths；wire 上不傳 glob。
+
+```bash
+dev fleet files api --to lab                    # 只產生 report
+dev fleet files api --to lab --apply --yes      # 建立 target 不存在的 files
+dev fleet files api --to lab --replace --apply  # 分開授權不同 bytes
+```
+
+Source 與 target 必須已解析到一個具有相同 normalized **fetch** identity、attached
+branch 與 exact commit 的 clone；只有 push URL 相同不足以授權。兩端依自己的 Git
+configuration 分別證明每個 exact path 都是 untracked 且 ignored。只有 regular files
+可通過：不接受 symlink/reparse point、directory、socket、device、FIFO、`.git`、nested
+repository 或 submodule boundary。Compiled ceilings 是 128 files、每個 8 MiB、合計
+32 MiB，且 path length/depth 有界；host policy 只能調低，不能提高。Source branch、
+HEAD 與 fetch identity 會在 payload read 前後重驗；target apply 與 `fleet sync` 共用
+canonical Git-common-directory lease。
+
+預設 plan，不送 file body。Apply 另外要求 configured `machine_id` 與 content-free
+capability probe 一致。Target 不存在時以 owner-only mode atomic create；內容相同是
+no-op；內容不同預設 blocked，只有 displayed plan 明確帶 `--replace` 才可取代。
+Replacement 綁定 observed target digest/mode、保留 private rollback copy、重驗兩端
+roots，失敗時 rollback file changes。`--yes` 只回答 confirmation，絕不隱含
+replacement。Public human/JSON output 只有 path、size、mode 與 state，不含 content
+或 hash。
+
+Transaction journal 會先於 manifest/payload staging durable，因此 interrupted request ID
+可 resume 或 reconcile。Rollback 在 crash 後無法證明空 parent directory identity 時會
+刻意保留它；刪到其他 process 的 replacement 更糟。Native Windows payload transfer
+會在 content 傳送前被 capability-block。
+
+這個 command 不是 repository/task ownership transfer、clone acquisition、provisioning、
+backup、restore 或 eviction；它不會 switch branch、複製 task/catalog/note state、監看
+變更、傳播 deletion，或移除 source。
+
+`dev fleet` 除了 `_snapshot`、`_sync`、`_open-herdr` 與 `_shell`，也註冊 bounded hidden
+capability/file commands。它們只供兩端 `dev` 透過 SSH 互相呼叫，是 wire protocols，
+不是 user-facing surface。
 
 ## Transport 與認證
 
-每個 fleet command 都透過呼叫系統的 `ssh` binary 連到 host，帶上 `ConnectTimeout`、`ServerAliveInterval=15`、`ServerAliveCountMax=2`，並且第一次嘗試一律用 `BatchMode=yes`——只用 key 或 agent authentication，行為就像一次適合腳本化的 `ssh` 呼叫。`dev fleet open` 另外會為它的 interactive login shell 配置 PTY（`-t`）。
+每個 fleet command 都透過呼叫系統的 `ssh` binary 連到 host，帶上 `ConnectTimeout`、`ServerAliveInterval=15`、`ServerAliveCountMax=2`，並且第一次嘗試一律用 `BatchMode=yes`——只用 key 或 agent authentication，行為就像一次適合腳本化的 `ssh` 呼叫。Fixed protocols 使用 non-PTY `-T`，並停用 agent、X11、local-command 與所有 port forwarding，同時保留使用者原本的 host-key policy。`dev fleet open` 則另外為 interactive login shell 配置 PTY（`-t`）。
 
 若該次嘗試因 "permission denied" 被拒絕，且該 host 設定了 `ssh_login_password_source`，`dev` 會再重試一次、改用密碼驗證。密碼本身不會出現在 argv 或環境變數中：`dev` 會把自己重新以一次性的 `SSH_ASKPASS` helper 執行，密碼透過一個繼承的 file descriptor 交給那個 helper。`prompt` 會在執行當下從 `/dev/tty` 讀取隱藏輸入；`plain` 與 `bitwarden` 則分別從設定檔或 `bw get password <item>` 取得。
 
@@ -5817,7 +5995,7 @@ ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 
 `$XDG_CONFIG_HOME/dev/remotes.toml` 是 durable、由使用者撰寫的設定，與 `config.toml` 地位相同——由 `dev fleet config init`/`edit` 管理，不會被自動重新產生。
 
-每次成功探測都會在 `$XDG_CACHE_HOME/dev/fleet/v1/<host-name-slug>.json` 寫入該 host 的 JSON snapshot。這份 cache 是可拋棄的加速機制，不是 durable data：它會依 host 的連線欄位與 timeout 產生一個「endpoint ID」指紋，因此修改 host 的 `ssh_alias`、`hostname`、`user`、`port`、`identity_file`、`dev_path` 或 timeout，下次 `dev` 讀取時會自動讓舊 cache 失效。Oversized snapshot、future timestamp、invalid count，以及過大或含 NUL 的 identity/path field 都會被忽略，不會顯示。`dev cache list` 會顯示它的路徑、大小與存在時間；`dev cache clear fleet`（或 `dev cache clear all`）可直接移除它。沒有需要手動「重建」的步驟——下一次 `dev fleet list`、`dev fleet status` 或 TUI 的 FLEET reload 就會用一次新的探測重新產生它。
+每次成功探測都會在 `$XDG_CACHE_HOME/dev/fleet/v1/<host-name-slug>.json` 寫入該 host 的 JSON snapshot。這份 cache 是可拋棄的加速機制，不是 durable data：它會依 host 的連線欄位與 timeout 產生一個「endpoint ID」指紋，因此修改 host 的 `machine_id`、`ssh_alias`、`hostname`、`user`、`port`、`identity_file`、`dev_path` 或 timeout，下次 `dev` 讀取時會自動讓舊 cache 失效。Oversized snapshot、future timestamp、invalid count，以及過大或含 NUL 的 identity/path field 都會被忽略，不會顯示。`dev cache list` 會顯示它的路徑、大小與存在時間；`dev cache clear fleet`（或 `dev cache clear all`）可直接移除它。沒有需要手動「重建」的步驟——下一次 `dev fleet list`、`dev fleet status` 或 TUI 的 FLEET reload 就會用一次新的探測重新產生它。
 
 這份 cache 存在的目的，是讓 unreachable、timeout、incompatible 或 invalid-response 的 host 仍能回報上一次已知的狀態（標記為 `stale`，並設定 `FromCache`），而不是直接從清單消失；`--cached` 只會使用這份 cache，完全不連網路。每個 remote host 自己的 `config.toml`、task registry 與 repository path，在該 host 上仍是唯一權威來源——cache 只保存它們的 read-only snapshot。
 
@@ -5846,7 +6024,11 @@ pull request。缺少 CLI 時，`dev doctor` 只回報 warning，local Git workf
 - [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
 - [`internal/fleet/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/types.go)
 - [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
+- [`internal/fleet/protocol.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/protocol.go)
 - [`internal/fleet/sync.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/sync.go)
+- [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
+- [`internal/machineid`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/machineid)
+- [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
 - [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
 - [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)
 - [`internal/cli/tui.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/tui.go)
@@ -6073,7 +6255,7 @@ y         開啟 copy/context actions
 
 展開後會顯示每個 linked worktree，包括 harness-owned `(ephemeral)` 與未受管理的 `(external)` checkout。LIVE column 將 runtime activity 與 task state 分開。
 
-`dev repo context [repo]` 會輸出 TUI copy menu 相同的 agent-ready Markdown context，包含 paths、Git/worktree/runtime facts 與 tasks。
+`dev repo context [repo]` 會輸出 TUI copy menu 相同的 agent-ready Markdown context，包含 paths、Git/worktree/runtime facts 與 tasks。`--json` 加入 schema-v1 evidence/readiness contract；只有 `--refresh` 會 live-probe optional forge 與 configured fleet sources。
 
 ### TRY 與 REMOTE
 
@@ -7174,7 +7356,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
-| remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
+| remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
 | activity/data | `summary`、`journal`、`stats …`、`cache …` |
@@ -7187,8 +7369,10 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/
 ```bash
 dev ls --json
 dev repo list --json
-dev repo context [repo]
+dev repo context [repo] --json
 dev repo remote --json
+dev fleet machine-id <host> --json
+dev fleet files [repo-or-path] --to <host> --json
 dev repo new NAME --json
 dev repo clone <ref> --json
 dev repo setup [repo-or-path] --preset PRESET --json
@@ -7198,7 +7382,7 @@ dev note show <note-id> --json
 dev bootstrap --json
 ```
 
-不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。
+不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。`repo context --json` 是 additive schema-v1 report：unavailable facts 保持 null/error entries 並附 explicit provenance，不會變成 zero values。`fleet files --json` 是 content-free output，絕不包含 file hash 或 body。
 
 每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
 
@@ -7372,7 +7556,8 @@ dev config scaffolds edit
 |---|---|
 | `[paths]` | scan roots、project/tries/worktree roots、worktree template、state path |
 | `[runtime]` | `auto`、Herdr、tmux、Zellij 或 none，以及 metadata settings |
-| `[worktree]` | ignored includes、linked dirs、setup commands、strategies、timeout |
+| `[worktree]` | local ignored-file provisioning、linked dirs、setup commands、strategies、timeout |
+| `[local_files]` | portable files 的 host ceilings；project overlay 提供獨立的 off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | 完整 remote inventory 的 cache TTL，以及 opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
@@ -7457,8 +7642,8 @@ directory 內。`initial_check_in` 接受 `commit`、`stage`、`none`；legacy
 
 Repository 可 commit 兩個固定檔案：
 
-- `.dev-cli/config.toml`：allowlisted worktree provisioning 與 repository setup
-  wizard defaults。
+- `.dev-cli/config.toml`：allowlisted worktree provisioning、分開提出的 portable
+  local-file patterns 與 repository setup wizard defaults。
 - `.dev-cli/scaffolds.toml`：使用同一 versioned schema 的 project presets、
   templates、hooks 與 skill setup。
 
@@ -7469,6 +7654,10 @@ version = 1
 [worktree]
 include = [".env.example"]
 strategy = "reinstall"
+
+# 只提出 candidates；export 仍需 explicit fleet files --to。
+[local_files]
+include = [".env", ".mcp/**"]
 
 [repo.setup]
 preset = "team"
@@ -7483,6 +7672,8 @@ choices。`.dev.toml` 為相容性仍可讀；新的 project configuration 應�
 handoff、check-in fields 只用來預填 interactive wizard choices；它們不會改變
 scripted defaults，後者由對應 flags 控制。Legacy `commit` boolean 仍可讀，但同一
 layer 不可與 `check_in` 並用。
+
+`[local_files].include` 絕不繼承 `[worktree].include`：佈建 local checkout 不等於授權 export secret。Project overlay 只能提出 portable include list；host-owned count/size/path ceilings 來自 global config，repository 不能提高。Command 仍保持 report-only，直到 explicit `--apply`、target pin 與 confirmation 都具備。
 
 Project files 不能 override host paths、state location、runtime backend、forge
 inventory 或 credentials、stats、update、bootstrap 或 TUI policy，也不能靜默 publish
@@ -7893,6 +8084,21 @@ Print the effective remotes configuration
 dev fleet config show
 ```
 
+### `dev fleet files`
+
+Plan or apply one-way transfer of explicit ignored local files
+
+```
+dev fleet files [repo-or-path] [flags]
+```
+
+- `--apply` — apply the verified plan
+- `--file` — additional portable relative pattern (repeatable)
+- `--json` — emit content-free JSON
+- `--replace` — replace differing target files observed by this plan
+- `--to` — single configured target host (required)
+- `--yes` — confirm apply without prompting (does not imply --replace)
+
 ### `dev fleet list`
 
 List repositories and activity across this machine and configured hosts
@@ -7906,6 +8112,16 @@ dev fleet list [flags]
 - `--json` — emit versioned JSON
 - `--repo` — filter repository name, identity, branch or path
 - `--strict` — fail when a host is unreachable or incompatible
+
+### `dev fleet machine-id`
+
+Show and compare a remote host's stable machine ID
+
+```
+dev fleet machine-id <host> [flags]
+```
+
+- `--json` — emit JSON
 
 ### `dev fleet open`
 
@@ -8236,8 +8452,11 @@ dev repo clone [owner/name|url|path] [flags]
 Print agent-ready Git, worktree, runtime and task context
 
 ```
-dev repo context [repo]
+dev repo context [repo] [flags]
 ```
+
+- `--json` — emit the additive schema-v1 JSON report
+- `--refresh` — refresh external forge and configured fleet observations
 
 ### `dev repo list`
 
@@ -8888,6 +9107,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 | setup-capable project skills | skills provider 與 entrypoint interpreter | 未選取的 skill 會跳過；selected required setup 若缺少 interpreter，會在 scaffold mutation 前失敗；先取得的 clone 會保留 |
 | staged lazygit message prefill | 會讀取 `LAZYGIT_PENDING_COMMIT` 的 lazygit version | files 仍保持 staged，dev 會印出建議 message；一般 Git commit 仍可使用 |
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
+| remote portable-file plan/apply | Git、執行相容 `dev` 的 SSH target、matching existing clone/branch/commit；apply 另需 verified machine UUID pin | content 傳送前失敗或保持 target 不變；不推斷 clone/task fallback |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
 | Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
@@ -8927,6 +9147,12 @@ interface；大寫 `C` 與一般 `git commit` 不會讀取它。Dev 不會覆寫
 draft。Draft write failure 只會產生 warning；staging 仍視為成功且不會 rollback。若
 upstream integration 日後改變，staged index 與已印出的 message 仍是 recovery path。
 
+### Portable files 不是 project transfer 或 backup
+
+`dev fleet files` 只會傳送 explicit selected、bounded，且兩端都證明為 untracked 與 ignored 的 files。它不會取得 missing clone、轉移 task ownership/catalog/notes、執行 worktree provisioning、監看後續變更、傳播 deletion、移除 source bytes、建立 remote-backup receipt、驗證 restore，或授權 eviction。Private transaction staging 不是 user-facing backup/restore promise。
+
+Source 與 target 必須已依 fetch identity、attached branch 與 exact commit 相符；apply 另外需要 verified `machine_id` pin。Native Windows payload 在 ACL、reparse-point、held-root 與 atomic replacement guarantees 完成並測試前保持 disabled；machine identity diagnostics 仍是 content-free。
+
 ### Windows 是 build target，不是 full-feature 平台
 
 `dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心的 repository、task 與 worktree 操作可用。差異：
@@ -8934,6 +9160,7 @@ upstream integration 日後改變，staged index 與已印出的 message 仍是 
 - 沒有 tmux、Zellij 或 Herdr，因此 runtime backend 一律是 `none`。Grouped runtime/agent activity 與 named session 無法使用；`cd` 指令與 PowerShell wrapper 仍可運作。
 - Shell integration 是 `dev shell-init powershell`。POSIX shell 透過 file descriptor 3 回傳目錄；PowerShell 無法繼承它，wrapper 改用 `DEV_SHELL_CD_FILE` 傳入 temp-file path。
 - `dev fleet open` 會啟動子 shell（`%COMSPEC%`），而非取代 process，因為 Windows 沒有 `exec(2)`。
+- `dev fleet machine-id` 可執行 content-free probe，但 native `fleet files` payload apply 會在 content 傳送前被 capability-block。
 - Domain test suites 仍有部分假設 POSIX filesystem，因此 Windows CI 的 test 僅供參考，compilation、`go vet` 與 build 則為強制項。
 
 ### Direct mode 的 lifecycle 較小
@@ -8949,6 +9176,8 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - Repository setup 支援 `--check-in=commit|stage|none`（`auto` 用於 preset compatibility）。Staged setup 會執行 before-commit setup 與 `git add -A`，但不執行 `after_commit` phase；它不能 publish 或 handoff 到 `start`，並可依前述方式預填 lazygit 小寫 `c`。
 - Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。`agent-history-hygiene` initializer 會寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。
 - Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
+- `dev repo context --json` 提供 additive schema-v1 local/remote evidence，包含 source、age、freshness、completeness、null/error preservation 與 scoped readiness；只有 `--refresh` 執行 external probes。`dev status` 重用 cheap local readiness projection，不進行 network access。
+- `dev fleet machine-id` 回報 observed UUID，不修改設定。`dev fleet files` 預設 report-only，使用獨立 `[local_files]` allowlist，在 content 前協商只能調低的 limits，並要求 explicit apply/replacement controls 與 matching target pin。
 
 - `dev start --focus` 會在 non-JSON creation 後 activate runtime。
 - `dev start --run '<shell command>'` 只會 dispatch 到本次新建 first-class Herdr
@@ -9020,6 +9249,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
+- [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
+- [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
+- [`internal/repocontext`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/repocontext)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
@@ -9091,7 +9323,8 @@ tested_with: optional
 | repository new/clone routing、snapshot templates/confinement、check-in policy、project trust、skill batching、TTY editor、upstream publication 與 handoff | [Commands 與 configuration](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`、`internal/scaffold`、`internal/repotemplate`、`internal/projectconfig`、`internal/cli/repo_{create,checkin,skills}*.go`、`internal/cli/prompt.go`、focused repo-bootstrap tests | implemented |
 | lazygit 小寫 `c` pending-message integration | [相容性](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive，2026-08-29 查核 |
 | runtime fallback 與 exact-pane `start --run` dispatch | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go`、`internal/runtime/herdr.go`、focused start/runtime tests | implemented |
-| SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
+| schema-v1 repository context、scoped readiness、sanitized remotes 與 cache/live provenance | [Commands 與 configuration](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/) | `internal/repocontext`、`internal/cli/repo_context.go`、focused context tests | implemented |
+| SSH fleet snapshots、machine UUID pinning、`fleet sync` 與 explicit bounded `fleet files` safety | [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) | `internal/fleet`、`internal/localfiles`、`internal/machineid`、focused fake-SSH/fault-injection tests | implemented |
 | READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |
 | `dev summary` 機器整體 snapshot 與 `dev journal` 日曆日期區間報告 | [機器整體摘要](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/machine-summary/)、[開發日誌](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dev-journal/) | `internal/summary`、`internal/journal`、focused summary/journal tests | implemented |
 | agent skill inventory、scopes 與明確的 update 動作 | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/agentskill`、`internal/cli/skill.go`、focused TUI tests | implemented |

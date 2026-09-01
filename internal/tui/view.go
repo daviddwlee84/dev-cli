@@ -8,8 +8,10 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
+	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
+	"github.com/daviddwlee84/dev-cli/internal/repocontext"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -285,12 +287,15 @@ func (m Model) repoItemColumnValue(item repoItem, name string) string {
 			return checkout.Status.Summary()
 		}
 	case "live":
-		return checkoutLiveColumn(r.Runtime, checkout)
+		return checkoutLiveColumn(r.Runtime, checkout, r.Context.RuntimeErr)
 	case "latest":
 		return latestAge(checkout.LastActivity)
 	case "worktrees":
 		return "—"
 	case "tasks":
+		if r.Context.TaskErr != nil {
+			return "?"
+		}
 		return taskStateSummary(checkout.Tasks)
 	case "notes":
 		if r.NoteCount > 0 {
@@ -306,6 +311,9 @@ func (m Model) repoItemColumnValue(item repoItem, name string) string {
 }
 
 func parentLiveColumn(r RepoRow) string {
+	if r.Context.RuntimeErr != nil {
+		return "?"
+	}
 	sessions := r.Sessions()
 	if len(sessions) == 0 {
 		return repoColumnValue(r, "live")
@@ -320,7 +328,10 @@ func parentLiveColumn(r RepoRow) string {
 	return r.Runtime
 }
 
-func checkoutLiveColumn(runtimeName string, checkout inventory.RepoCheckout) string {
+func checkoutLiveColumn(runtimeName string, checkout inventory.RepoCheckout, runtimeErr error) string {
+	if runtimeErr != nil {
+		return "?"
+	}
 	if len(checkout.Sessions) == 0 {
 		return "closed"
 	}
@@ -428,6 +439,9 @@ func repoColumnValue(r RepoRow, name string) string {
 	case "size":
 		return sizeCell(r.Usage, r.SizeError, r.SizeTarget)
 	case "live":
+		if r.Context.RuntimeErr != nil {
+			return "?"
+		}
 		if !r.Live {
 			return "—"
 		}
@@ -443,6 +457,9 @@ func repoColumnValue(r RepoRow, name string) string {
 		}
 		return "—"
 	case "tasks":
+		if r.Context.TaskErr != nil {
+			return "?"
+		}
 		if tasks := r.StateSummary(); tasks != "" {
 			return tasks
 		}
@@ -933,6 +950,7 @@ func (m Model) renderDetail() string {
 			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(checkout.Worktree.Path)),
 			fmt.Sprintf("  %s %s", styleDim.Render("branch"), checkout.Branch()),
 			fmt.Sprintf("  %s  %s", styleDim.Render("owner"), checkout.Ownership),
+			fmt.Sprintf("  %s %s", styleDim.Render("ready"), repocontext.AssessLocal(item.Repo.Context, item.CheckoutIndex, config.Hostname()).Summary()),
 		}
 		if checkout.StatusErr != nil {
 			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("git"), styleErr.Render(checkout.StatusErr.Error())))
@@ -948,7 +966,9 @@ func (m Model) renderDetail() string {
 		if checkout.Worktree.Prunable || !checkout.Exists {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("state"), styleDrift.Render("prunable; checkout missing")))
 		}
-		if len(checkout.Sessions) == 0 {
+		if item.Repo.Context.RuntimeErr != nil {
+			lines = append(lines, "  "+styleDim.Render("live")+"  "+styleErr.Render("unavailable"))
+		} else if len(checkout.Sessions) == 0 {
 			lines = append(lines, "  "+styleDim.Render("live")+"  "+styleDim.Render("closed"))
 		} else {
 			for _, session := range checkout.Sessions {
@@ -962,7 +982,9 @@ func (m Model) renderDetail() string {
 				}
 			}
 		}
-		if len(checkout.Tasks) > 0 {
+		if item.Repo.Context.TaskErr != nil {
+			lines = append(lines, "  "+styleDim.Render("tasks")+" "+styleErr.Render("unavailable"))
+		} else if len(checkout.Tasks) > 0 {
 			var names []string
 			for _, t := range checkout.Tasks {
 				names = append(names, t.State.Icon()+" "+t.Title())
@@ -977,6 +999,7 @@ func (m Model) renderDetail() string {
 	if r, ok := m.currentRepo(); ok {
 		lines := []string{
 			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(r.Repo.Path)),
+			fmt.Sprintf("  %s %s", styleDim.Render("ready"), repocontext.AssessLocal(r.Context, 0, config.Hostname()).Summary()),
 		}
 		lines = append(lines, sizeDetailLines(r.Usage, r.SizeError, r.SizeTarget)...)
 		if r.Asset != nil {
@@ -1013,7 +1036,9 @@ func (m Model) renderDetail() string {
 		if r.Repo.Category != "" {
 			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("group"), r.Repo.Category))
 		}
-		if sessions := r.Sessions(); len(sessions) > 0 {
+		if r.Context.RuntimeErr != nil {
+			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("live"), styleErr.Render("unavailable")))
+		} else if sessions := r.Sessions(); len(sessions) > 0 {
 			if len(sessions) == 1 {
 				live := r.Runtime + " " + sessions[0].Handle
 				if sessions[0].AgentStatus != "" {
@@ -1035,7 +1060,9 @@ func (m Model) renderDetail() string {
 			lines = append(lines, fmt.Sprintf("  %s  %d · %s", styleDim.Render("notes"),
 				r.NoteCount, r.LatestNote.Preview(maxInt(20, m.width-18))))
 		}
-		if len(r.Tasks) > 0 {
+		if r.Context.TaskErr != nil {
+			lines = append(lines, "  "+styleDim.Render("tasks")+" "+styleErr.Render("unavailable"))
+		} else if len(r.Tasks) > 0 {
 			var names []string
 			for _, t := range r.Tasks {
 				names = append(names, t.State.Icon()+" "+t.Title())

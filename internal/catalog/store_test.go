@@ -566,6 +566,83 @@ func TestStoreWithLockSerializesAndStaysOutsideAssetDirectory(t *testing.T) {
 	}
 }
 
+func TestCreateAndUpdateShareCatalogTransactionLock(t *testing.T) {
+	t.Run("create", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "assets")
+		holder := catalog.NewStore(dir)
+		writer := catalog.NewStore(dir, catalog.WithIDGenerator(idSequence(firstID)))
+		entered := make(chan struct{})
+		release := make(chan struct{})
+		holderDone := make(chan error, 1)
+		go func() {
+			holderDone <- holder.WithLock(context.Background(), func() error {
+				close(entered)
+				<-release
+				return nil
+			})
+		}()
+		<-entered
+		writeDone := make(chan error, 1)
+		go func() { writeDone <- writer.Create(&catalog.Entry{Kind: catalog.Repository, Name: "created"}) }()
+		select {
+		case err := <-writeDone:
+			t.Fatalf("Create bypassed catalog transaction lock: %v", err)
+		case <-time.After(50 * time.Millisecond):
+		}
+		close(release)
+		if err := <-holderDone; err != nil {
+			t.Fatal(err)
+		}
+		if err := <-writeDone; err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("update", func(t *testing.T) {
+		dir := filepath.Join(t.TempDir(), "assets")
+		seed := catalog.NewStore(dir, catalog.WithIDGenerator(idSequence(firstID)))
+		entry := &catalog.Entry{Kind: catalog.Repository, Name: "before"}
+		if err := seed.Create(entry); err != nil {
+			t.Fatal(err)
+		}
+		holder := catalog.NewStore(dir)
+		writer := catalog.NewStore(dir)
+		entered := make(chan struct{})
+		release := make(chan struct{})
+		holderDone := make(chan error, 1)
+		go func() {
+			holderDone <- holder.WithLock(context.Background(), func() error {
+				close(entered)
+				<-release
+				return nil
+			})
+		}()
+		<-entered
+		mutated := make(chan struct{}, 1)
+		writeDone := make(chan error, 1)
+		go func() {
+			_, err := writer.Update(entry.ID, func(candidate *catalog.Entry) error {
+				mutated <- struct{}{}
+				candidate.Name = "after"
+				return nil
+			})
+			writeDone <- err
+		}()
+		select {
+		case <-mutated:
+			t.Fatal("Update read and mutated while catalog transaction lock was held")
+		case <-time.After(50 * time.Millisecond):
+		}
+		close(release)
+		if err := <-holderDone; err != nil {
+			t.Fatal(err)
+		}
+		if err := <-writeDone; err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
 func TestStoreLockReleasedWhenHolderProcessExits(t *testing.T) {
 	if os.Getenv("DEV_CATALOG_LOCK_HELPER") == "1" {
 		store := catalog.NewStore(os.Getenv("DEV_CATALOG_LOCK_DIR"))

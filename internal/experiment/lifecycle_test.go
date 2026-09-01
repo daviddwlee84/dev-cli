@@ -516,7 +516,7 @@ func TestGraduateCatalogFinalizeFailureRollsMoveBack(t *testing.T) {
 			if candidate.Kind == catalog.KindRepository {
 				return nil, finalizeFailure
 			}
-			return f.registry.Update(id, mutate)
+			return f.store.UpdateUnderLock(id, mutate)
 		},
 	})
 
@@ -574,7 +574,7 @@ func TestGraduateReportsRollbackFailureWithoutDeletingDestination(t *testing.T) 
 			if candidate.Kind == catalog.KindRepository {
 				return nil, finalizeFailure
 			}
-			return f.registry.Update(id, mutate)
+			return f.store.UpdateUnderLock(id, mutate)
 		},
 	})
 

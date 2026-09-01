@@ -41,7 +41,7 @@ func cachePath(host Host) string {
 
 func EndpointID(host Host) string {
 	parts := []string{
-		host.Name, host.SSHAlias, host.Hostname, host.User, strconv.Itoa(host.Port),
+		host.Name, host.MachineID, host.SSHAlias, host.Hostname, host.User, strconv.Itoa(host.Port),
 		host.IdentityFile, host.DevPath,
 	}
 	parts = append(parts, time.Duration(host.ConnectTimeout.Duration).String(), time.Duration(host.CommandTimeout.Duration).String())

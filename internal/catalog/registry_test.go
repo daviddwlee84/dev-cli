@@ -492,11 +492,12 @@ func TestRemoteIdentityPreservesCaseSensitivePath(t *testing.T) {
 		catalog.NormalizeRemoteIdentity("https://host/Org/Repo.git"); encoded == literal {
 		t.Errorf("escaped and literal remote paths collapsed to %q", encoded)
 	}
-	for _, local := range []string{
+	for _, unsafe := range []string{
 		"../origin.git", "file:///srv/origin.git", `C:\repos\origin.git`, "ssh://host", "user@host",
+		"oauth2:credential@example.test:owner/repo.git",
 	} {
-		if got := catalog.NormalizeRemoteIdentity(local); got != "" {
-			t.Errorf("local remote %q became relocation key %q", local, got)
+		if got := catalog.NormalizeRemoteIdentity(unsafe); got != "" {
+			t.Errorf("unsafe remote %q became relocation key %q", unsafe, got)
 		}
 	}
 

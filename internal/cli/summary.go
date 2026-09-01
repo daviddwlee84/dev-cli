@@ -56,19 +56,19 @@ generates context; it does not invoke an AI agent or persist the rendered text.`
 			ctx := ctxOf()
 			rt := app.Runtime()
 			var sessions []runtime.Session
+			var runtimeErr error
 			var warnings []string
 			runtimeCollected := !app.noRuntime
 			if !app.noRuntime {
-				var err error
-				sessions, err = rt.List(ctx)
-				if err != nil {
-					warnings = append(warnings, "runtime: "+err.Error())
+				sessions, runtimeErr = rt.List(ctx)
+				if runtimeErr != nil {
+					warnings = append(warnings, "runtime: "+runtimeErr.Error())
 					runtimeCollected = false
 				}
 			}
 
 			repoRows, err := collectReposWithOptions(ctx, app, rt, repoCollectOptions{
-				Sessions: sessions, SessionsSet: true,
+				Sessions: sessions, SessionsErr: runtimeErr, SessionsSet: true,
 			})
 			if err != nil {
 				return err

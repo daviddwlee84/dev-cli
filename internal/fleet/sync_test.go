@@ -7,8 +7,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/daviddwlee84/dev-cli/internal/assessment"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	devconfig "github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/lease"
 )
 
 func gitRun(t *testing.T, dir string, args ...string) string {
@@ -74,6 +77,30 @@ func TestApplySyncFastForwardsCleanCheckedOutBranch(t *testing.T) {
 	}
 	if got := stringsTrim(gitRun(t, target, "rev-parse", "HEAD")); got != oid {
 		t.Fatalf("target HEAD = %s, want %s", got, oid)
+	}
+}
+
+func TestApplySyncUsesCanonicalCheckoutLease(t *testing.T) {
+	_, target, identity, oid, cfg := syncFixture(t)
+	repository, err := gitx.Discover(t.Context(), target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority := lease.New(filepath.Join(t.TempDir(), "leases"))
+	key := lease.BranchKey(lease.GitCommonDirIdentity(repository.GitCommonDir), "main")
+	_, err = authority.Reserve(t.Context(), []lease.Key{key}, lease.Request{
+		OperationID: "portable-files-test", Digest: assessment.FingerprintBytes([]byte("test")),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := stringsTrim(gitRun(t, target, "rev-parse", "HEAD"))
+	result := ApplySyncWithAuthority(t.Context(), cfg, SyncRequest{RemoteIdentity: identity, Branch: "main", ExpectedOID: oid}, authority)
+	if result.State != SyncFailed {
+		t.Fatalf("reserved checkout sync = %+v", result)
+	}
+	if got := stringsTrim(gitRun(t, target, "rev-parse", "HEAD")); got != before {
+		t.Fatalf("leased target moved from %s to %s", before, got)
 	}
 }
 

@@ -627,6 +627,48 @@ func TestRepoCopyChordsUseContextualScope(t *testing.T) {
 	}
 }
 
+func TestRepoReadinessDetailUsesLoadedFactsWithoutNetwork(t *testing.T) {
+	remoteCalls, fleetCalls := 0, 0
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) {
+		remoteCalls++
+		return nil, errors.New("network must not run")
+	}
+	actions.ReloadFleet = func(context.Context) ([]tui.FleetRow, error) {
+		fleetCalls++
+		return nil, errors.New("network must not run")
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{repoRowWithWorktrees()})
+	m = send(m, tea.WindowSizeMsg{Width: 180, Height: 40}, key("tab"))
+	if remoteCalls != 0 || fleetCalls != 0 {
+		t.Fatalf("repo detail triggered external collection: forge=%d fleet=%d", remoteCalls, fleetCalls)
+	}
+	out := m.View()
+	if !strings.Contains(out, "ready") || !strings.Contains(out, "checkout eligible · task not-applicable · worktree blocked") {
+		t.Errorf("repo detail missing scoped local readiness:\n%s", out)
+	}
+	if remoteCalls != 0 || fleetCalls != 0 {
+		t.Fatalf("rendering repo detail triggered external collection: forge=%d fleet=%d", remoteCalls, fleetCalls)
+	}
+}
+
+func TestRepoDetailsRenderInventoryFailuresAsUnavailable(t *testing.T) {
+	row := repoRowWithWorktrees()
+	row.Context.TaskErr = errors.New("task inventory failed")
+	row.Context.RuntimeErr = errors.New("runtime inventory failed")
+	model := tui.New(newActions(&recorder{}, nil), nil, []tui.RepoRow{row})
+	model = send(model, tea.WindowSizeMsg{Width: 180, Height: 40}, key("tab"))
+	parent := model.View()
+	if !strings.Contains(parent, "tasks unavailable") || !strings.Contains(parent, "live  unavailable") || strings.Contains(parent, "none — press s") {
+		t.Fatalf("parent inventory errors rendered as known empty:\n%s", parent)
+	}
+	model = send(model, key(" "), key("down"))
+	child := model.View()
+	if !strings.Contains(child, "tasks unavailable") || !strings.Contains(child, "live  unavailable") || strings.Contains(child, "untracked") || strings.Contains(child, "live  closed") {
+		t.Fatalf("child inventory errors rendered as known empty:\n%s", child)
+	}
+}
+
 func TestTabSwitchesViews(t *testing.T) {
 	rows := []inventory.Row{row("a", "token refresh", task.Hot, "")}
 	repos := []tui.RepoRow{repoRow("api"), repoRow("web")}

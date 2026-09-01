@@ -168,6 +168,24 @@ func TestStartJSONNeverAdvertisesUnlaunchablePane(t *testing.T) {
 	}
 }
 
+func TestStartRejectsCorruptSameIDBeforeRuntimeSideEffects(t *testing.T) {
+	rt := &activityRuntime{openResult: runtime.OpenResult{Handle: "w7", Surface: "workspace", Opened: true, Created: true}}
+	f := newStartFixture(t, rt)
+	if err := os.MkdirAll(f.app.Tasks.Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	id := task.MakeID("repo", "main")
+	if err := os.WriteFile(filepath.Join(f.app.Tasks.Dir, id+".toml"), []byte("not = valid = toml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.run("--task", "must not start", "--direct", "--json"); err == nil {
+		t.Fatal("corrupt same-ID task was treated as absent")
+	}
+	if rt.openCalls != 0 {
+		t.Fatalf("runtime opened before corrupt task rejection: %d", rt.openCalls)
+	}
+}
+
 func TestStartJSONSaveFailureEmitsNoSuccessObject(t *testing.T) {
 	rt := &activityRuntime{openResult: runtime.OpenResult{Handle: "w7", Surface: "workspace", Opened: true, Created: true}}
 	f := newStartFixture(t, rt)

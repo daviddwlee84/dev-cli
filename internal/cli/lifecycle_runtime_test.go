@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
@@ -24,6 +25,78 @@ func lifecycleConfig(t *testing.T) config.Config {
 	cfg.Worktree.Include = nil
 	cfg.Worktree.PostCreate = config.PostCreate{}
 	return cfg
+}
+
+type blockingCloseRuntime struct {
+	activityRuntime
+	started chan struct{}
+	release chan struct{}
+}
+
+func (r *blockingCloseRuntime) Close(_ context.Context, handle string) error {
+	r.closeCalls = append(r.closeCalls, handle)
+	close(r.started)
+	<-r.release
+	r.sessions = nil
+	return nil
+}
+
+func TestParkHoldsTaskMutationLockThroughColdCleanup(t *testing.T) {
+	r := gittest.New(t)
+	r.WithRemote()
+	cfg := lifecycleConfig(t)
+	res, err := (&wt.Manager{Cfg: cfg}).Create(context.Background(), wt.CreateRequest{
+		RepoPath: r.Root, Branch: "feat/locked-cold", Base: "main", NoRuntime: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.GitIn(res.Path, "push", "-u", "origin", "feat/locked-cold")
+	rt := &blockingCloseRuntime{
+		activityRuntime: activityRuntime{sessions: []runtime.Session{{Handle: "w7", Dirs: []string{res.Path}, AgentStatus: "idle"}}},
+		started:         make(chan struct{}), release: make(chan struct{}),
+	}
+	store := task.NewStore(t.TempDir())
+	tk := &task.Task{
+		Name: "locked cold", Repo: "repo", RepoPath: r.Root,
+		Branch: "feat/locked-cold", Base: "main", WorktreePath: res.Path,
+		Mode: task.ModeWorktree, State: task.Hot, Owner: config.Hostname(),
+		RuntimeHandle: "w7", RuntimeName: "herdr",
+	}
+	if err := store.Save(tk); err != nil {
+		t.Fatal(err)
+	}
+	app := &App{Cfg: cfg, Tasks: store, Out: &bytes.Buffer{}, Err: &bytes.Buffer{}, runtimeInstance: rt}
+	cmd := newParkCmd(app)
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{tk.ID, "--cold"})
+	parkDone := make(chan error, 1)
+	go func() { parkDone <- cmd.Execute() }()
+	<-rt.started
+
+	concurrent, err := task.NewStore(store.Dir).Get(tk.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	concurrent.Next = "concurrent edit"
+	editDone := make(chan error, 1)
+	go func() { editDone <- task.NewStore(store.Dir).Save(concurrent) }()
+	select {
+	case err := <-editDone:
+		t.Fatalf("concurrent task edit bypassed cold cleanup lock: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(rt.release)
+	if err := <-parkDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-editDone; !errors.Is(err, task.ErrConflict) {
+		t.Fatalf("post-cleanup stale edit = %v, want ErrConflict", err)
+	}
+	stored, err := store.Get(tk.ID)
+	if err != nil || stored.State != task.Cold || stored.WorktreePath != "" {
+		t.Fatalf("cold task = %+v, %v", stored, err)
+	}
 }
 
 func TestParkColdCloseFailureKeepsCheckoutAndTaskRuntime(t *testing.T) {

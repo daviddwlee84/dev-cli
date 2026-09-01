@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -122,27 +123,32 @@ func (r *Registry) EnsureRepository(observation Observation) (*Entry, error) {
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	var result *Entry
+	err = r.store.WithLock(context.Background(), func() error {
+		matched, method, matchErr := r.match(normalized)
+		if matchErr == nil {
+			result, matchErr = r.attachUnderLock(matched.ID, normalized)
+			return matchErr
+		}
+		if !errors.Is(matchErr, ErrNotFound) && !(errors.Is(matchErr, ErrAmbiguous) && method == matchRemote) {
+			return matchErr
+		}
 
-	matched, method, matchErr := r.match(normalized)
-	if matchErr == nil {
-		return r.attach(matched.ID, normalized)
-	}
-	if !errors.Is(matchErr, ErrNotFound) && !(errors.Is(matchErr, ErrAmbiguous) && method == matchRemote) {
-		return nil, matchErr
-	}
-
-	entry := &Entry{
-		Kind:           KindRepository,
-		Name:           normalized.Name,
-		RemoteIdentity: normalized.RemoteIdentity,
-		Locations: map[string]Location{
-			normalized.Host: locationFromObservation(normalized),
-		},
-	}
-	if err := r.store.Create(entry); err != nil {
-		return nil, err
-	}
-	return entry.Clone(), nil
+		entry := &Entry{
+			Kind:           KindRepository,
+			Name:           normalized.Name,
+			RemoteIdentity: normalized.RemoteIdentity,
+			Locations: map[string]Location{
+				normalized.Host: locationFromObservation(normalized),
+			},
+		}
+		if err := r.store.CreateUnderLock(entry); err != nil {
+			return err
+		}
+		result = entry.Clone()
+		return nil
+	})
+	return result, err
 }
 
 // Patch applies an atomic catalog mutation.
@@ -163,11 +169,17 @@ func (r *Registry) Attach(id string, observation Observation) (*Entry, error) {
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.attach(id, normalized)
+	var result *Entry
+	err = r.store.WithLock(context.Background(), func() error {
+		var attachErr error
+		result, attachErr = r.attachUnderLock(id, normalized)
+		return attachErr
+	})
+	return result, err
 }
 
-func (r *Registry) attach(id string, observation Observation) (*Entry, error) {
-	return r.store.Update(id, func(entry *Entry) error {
+func (r *Registry) attachUnderLock(id string, observation Observation) (*Entry, error) {
+	return r.store.UpdateUnderLock(id, func(entry *Entry) error {
 		if observation.RemoteIdentity != "" {
 			entry.RemoteIdentity = observation.RemoteIdentity
 		}
@@ -540,6 +552,12 @@ func NormalizeRemoteIdentity(identity string) string {
 	user := ""
 	if at := strings.LastIndexByte(afterUser, '@'); at >= 0 {
 		user, afterUser = afterUser[:at], afterUser[at+1:]
+		// A colon in an scp-like user prefix is a password/token separator,
+		// not a stable SSH username. Reject the identity rather than persisting
+		// credential material in catalog keys, reports, or protocol journals.
+		if strings.Contains(user, ":") {
+			return ""
+		}
 	}
 	if host, remotePath, ok := splitSCPLike(afterUser); ok {
 		if user != "" && !strings.EqualFold(user, "git") && !strings.HasPrefix(remotePath, "/") {

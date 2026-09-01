@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
@@ -35,7 +36,11 @@ type RepoCheckout struct {
 	Status   gitx.Status
 	// StatusErr is retained so a prunable or unreadable checkout can remain
 	// visible without pretending its Git state was successfully inspected.
-	StatusErr    error
+	StatusErr error
+	// PathErr distinguishes an unreadable checkout path from a checkout which is
+	// conclusively missing. Callers must not turn either case into a clean Git
+	// status.
+	PathErr      error
 	Exists       bool
 	LastActivity time.Time
 	LastCommit   time.Time
@@ -63,6 +68,10 @@ type RepoContext struct {
 	// example cold or branch-only tasks on another branch).
 	OtherTasks []*task.Task
 	Runtime    string
+	// RuntimeErr and TaskErr retain collection failures so a report cannot
+	// mislabel unavailable observations as a closed runtime or an untracked task.
+	RuntimeErr error
+	TaskErr    error
 	// WorktreeCount is kept separately so a failed Git query can still explain
 	// the number shown from the administrative worktrees directory.
 	WorktreeCount int
@@ -86,6 +95,22 @@ func (c RepoContext) Linked() []RepoCheckout {
 	return c.Checkouts[1:]
 }
 
+// CheckoutIndexForPath returns the most-specific checkout containing path. It
+// uses the same symlink-aware matching as runtime assignment, so a current
+// directory under a nested linked worktree never resolves to the canonical
+// checkout merely because that checkout is its lexical parent.
+func (c RepoContext) CheckoutIndexForPath(path string) (int, bool) {
+	best, bestLen := -1, -1
+	for index := range c.Checkouts {
+		for _, root := range checkoutRoots(c.Repo, index, c.Checkouts[index]) {
+			if pathContains(root, path) && len(filepath.Clean(root)) > bestLen {
+				best, bestLen = index, len(filepath.Clean(root))
+			}
+		}
+	}
+	return best, best >= 0
+}
+
 // Sessions returns the repo's live sessions once each, preserving checkout
 // order so a pasted context reads canonical-first.
 func (c RepoContext) Sessions() []runtime.Session {
@@ -107,16 +132,29 @@ func (c RepoContext) Sessions() []runtime.Session {
 	return out
 }
 
-// CollectRepoContext joins Git, task and runtime state for one repository.
-// Repositories with no linked-worktree admin entries deliberately skip
-// `git worktree list`; this keeps the common whole-machine inventory path fast.
+// RepoContextOptions controls enrichment that does not affect readiness.
+type RepoContextOptions struct {
+	IncludeActivity bool
+}
+
+// CollectRepoContext joins Git, task and runtime state for one repository with
+// commit/activity enrichment enabled.
 func CollectRepoContext(ctx context.Context, r repo.Repo, tasks []*task.Task,
 	sessions []runtime.Session, runtimeName string) RepoContext {
+	return CollectRepoContextWithOptions(ctx, r, tasks, sessions, runtimeName, RepoContextOptions{IncludeActivity: true})
+}
+
+// CollectRepoContextWithOptions is the configurable form used by the fast
+// current-directory status path. Repositories with no linked-worktree admin
+// entries deliberately skip `git worktree list`.
+func CollectRepoContextWithOptions(ctx context.Context, r repo.Repo, tasks []*task.Task,
+	sessions []runtime.Session, runtimeName string, options RepoContextOptions) RepoContext {
 
 	out := RepoContext{Repo: r, Runtime: runtimeName}
+	mainExists, mainPathErr := pathIsDir(r.Path)
 	main := RepoCheckout{
 		Worktree: gitx.Worktree{Path: r.Path, Main: true},
-		Exists:   pathIsDir(r.Path), Ownership: CheckoutCanonical,
+		Exists:   mainExists, PathErr: mainPathErr, Ownership: CheckoutCanonical,
 	}
 	if r.Bare {
 		main.Worktree.Bare = true
@@ -124,12 +162,14 @@ func CollectRepoContext(ctx context.Context, r repo.Repo, tasks []*task.Task,
 		main.Status, main.StatusErr = gitx.StatusOf(ctx, r.Path)
 		main.Worktree.Branch = main.Status.Branch
 		main.Worktree.Detached = main.Status.Detached
-		main.LastActivity, main.LastCommit, main.LastSubject = checkoutActivity(ctx, r.Path, main.Status)
+		if options.IncludeActivity {
+			main.LastActivity, main.LastCommit, main.LastSubject = checkoutActivity(ctx, r.Path, main.Status)
+		}
 	}
 	out.Checkouts = append(out.Checkouts, main)
 
-	out.WorktreeCount = linkedAdminCount(r.CommonDir)
-	if !r.Bare && out.WorktreeCount > 0 {
+	out.WorktreeCount, out.WorktreeErr = linkedAdminCount(r.CommonDir)
+	if out.WorktreeErr == nil && out.WorktreeCount > 0 {
 		worktrees, err := gitx.Worktrees(ctx, r.Path)
 		if err != nil {
 			out.WorktreeErr = err
@@ -139,12 +179,9 @@ func CollectRepoContext(ctx context.Context, r repo.Repo, tasks []*task.Task,
 				if w.Main {
 					continue
 				}
+				exists, pathErr := pathIsDir(w.Path)
 				checkout := RepoCheckout{
-					Worktree: w, Exists: pathIsDir(w.Path), Ownership: CheckoutExternal,
-				}
-				if checkout.Exists && !w.Prunable {
-					checkout.Status, checkout.StatusErr = gitx.StatusOf(ctx, w.Path)
-					checkout.LastActivity, checkout.LastCommit, checkout.LastSubject = checkoutActivity(ctx, w.Path, checkout.Status)
+					Worktree: w, Exists: exists, PathErr: pathErr, Ownership: CheckoutExternal,
 				}
 				if IsEphemeralWorktree(w.Path, w.Branch) {
 					checkout.Ownership = CheckoutEphemeral
@@ -154,6 +191,7 @@ func CollectRepoContext(ctx context.Context, r repo.Repo, tasks []*task.Task,
 			}
 		}
 	}
+	inspectLinkedCheckouts(ctx, &out, options)
 
 	assignTasks(&out, tasks)
 	assignSessions(&out, sessions)
@@ -175,6 +213,31 @@ func CollectRepoContext(ctx context.Context, r repo.Repo, tasks []*task.Task,
 	return out
 }
 
+func inspectLinkedCheckouts(ctx context.Context, out *RepoContext, options RepoContextOptions) {
+	if out == nil || len(out.Checkouts) < 2 {
+		return
+	}
+	semaphore := make(chan struct{}, 8)
+	var wait sync.WaitGroup
+	for index := 1; index < len(out.Checkouts); index++ {
+		checkout := &out.Checkouts[index]
+		if !checkout.Exists || checkout.PathErr != nil || checkout.Worktree.Prunable {
+			continue
+		}
+		wait.Add(1)
+		go func(checkout *RepoCheckout) {
+			defer wait.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
+			checkout.Status, checkout.StatusErr = gitx.StatusOf(ctx, checkout.Worktree.Path)
+			if options.IncludeActivity {
+				checkout.LastActivity, checkout.LastCommit, checkout.LastSubject = checkoutActivity(ctx, checkout.Worktree.Path, checkout.Status)
+			}
+		}(checkout)
+	}
+	wait.Wait()
+}
+
 // IsEphemeralWorktree recognises turn-scoped checkouts owned by an agent
 // harness. They stay visible, but the label prevents an agent from treating
 // them like durable dev-owned work.
@@ -184,13 +247,16 @@ func IsEphemeralWorktree(path, branch string) bool {
 		strings.HasPrefix(branch, "worktree-")
 }
 
-func linkedAdminCount(commonDir string) int {
+func linkedAdminCount(commonDir string) (int, error) {
 	if commonDir == "" {
-		return 0
+		return 0, nil
 	}
 	entries, err := os.ReadDir(filepath.Join(commonDir, "worktrees"))
 	if err != nil {
-		return 0
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
 	}
 	n := 0
 	for _, entry := range entries {
@@ -198,12 +264,21 @@ func linkedAdminCount(commonDir string) int {
 			n++
 		}
 	}
-	return n
+	return n, nil
 }
 
-func pathIsDir(path string) bool {
+func pathIsDir(path string) (bool, error) {
 	info, err := os.Stat(path)
-	return err == nil && info.IsDir()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if !info.IsDir() {
+		return false, fmt.Errorf("checkout path is not a directory")
+	}
+	return true, nil
 }
 
 func checkoutActivity(ctx context.Context, path string, status gitx.Status) (time.Time, time.Time, string) {
@@ -342,6 +417,12 @@ func FormatRepoContext(c RepoContext, checkoutIndex int) string {
 	if c.WorktreeErr != nil {
 		fmt.Fprintf(&b, "- Worktree inventory error: %s\n", c.WorktreeErr)
 	}
+	if c.RuntimeErr != nil {
+		fmt.Fprintf(&b, "- Runtime inventory error: %s\n", c.RuntimeErr)
+	}
+	if c.TaskErr != nil {
+		fmt.Fprintf(&b, "- Task inventory error: %s\n", c.TaskErr)
+	}
 	b.WriteString("\n## Checkouts\n")
 	for i, checkout := range c.Checkouts {
 		b.WriteString("\n")
@@ -366,6 +447,8 @@ func writeCheckoutMarkdown(b *strings.Builder, c RepoContext, checkout RepoCheck
 	fmt.Fprintf(b, "- Branch: `%s`\n", displayBranch(checkout))
 	if checkout.Worktree.Bare {
 		b.WriteString("- Git: bare repository\n")
+	} else if checkout.PathErr != nil {
+		fmt.Fprintf(b, "- Git: unavailable (%s)\n", checkout.PathErr)
 	} else if checkout.Worktree.Prunable || !checkout.Exists {
 		b.WriteString("- Git: unavailable (checkout path is missing)\n")
 	} else if checkout.StatusErr != nil {
@@ -389,7 +472,7 @@ func writeCheckoutMarkdown(b *strings.Builder, c RepoContext, checkout RepoCheck
 		}
 		fmt.Fprintf(b, "- Worktree: locked — %s\n", reason)
 	}
-	if checkout.Worktree.Prunable || !checkout.Exists {
+	if checkout.Worktree.Prunable || checkout.PathErr == nil && !checkout.Exists {
 		reason := strings.TrimSpace(checkout.Worktree.PrunableReason)
 		if reason == "" {
 			reason = "checkout path is missing"
@@ -397,7 +480,11 @@ func writeCheckoutMarkdown(b *strings.Builder, c RepoContext, checkout RepoCheck
 		fmt.Fprintf(b, "- Worktree: prunable — %s\n", reason)
 	}
 	if len(checkout.Sessions) == 0 {
-		b.WriteString("- Runtime: closed\n")
+		if c.RuntimeErr != nil {
+			fmt.Fprintf(b, "- Runtime: unavailable (%s)\n", c.RuntimeErr)
+		} else {
+			b.WriteString("- Runtime: closed\n")
+		}
 	} else {
 		for _, session := range checkout.Sessions {
 			status := session.AgentStatus
@@ -411,7 +498,11 @@ func writeCheckoutMarkdown(b *strings.Builder, c RepoContext, checkout RepoCheck
 		}
 	}
 	if len(checkout.Tasks) == 0 {
-		b.WriteString("- Task: untracked\n")
+		if c.TaskErr != nil {
+			fmt.Fprintf(b, "- Task: unavailable (%s)\n", c.TaskErr)
+		} else {
+			b.WriteString("- Task: untracked\n")
+		}
 	} else {
 		for _, t := range checkout.Tasks {
 			writeTaskMarkdown(b, t)

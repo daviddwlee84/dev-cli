@@ -471,7 +471,15 @@ pipe-friendly outside the TUI:
 ```bash
 dev repo context api
 dev repo context          # current repo, even from inside a linked worktree
+dev repo context --json   # additive schema-v1 automation contract
+dev repo context --refresh  # live forge + configured fleet probes
 ```
+
+Local checkout, Git, task, worktree, and runtime facts are always collected live
+without network access. External forge/fleet facts come from private caches by
+default and retain their source, age, freshness, completeness, and errors; only
+`--refresh` performs network probes. Readiness stays split by checkout, task, and
+worktree scope, and unknown evidence is never rendered as clean.
 
 **External tools are configured, not fixed.** They run through your shell in
 the selected row's checkout; the dashboard suspends and redraws when they exit:
@@ -638,6 +646,9 @@ Every inventory surface uses the same compact, starship-like status:
 and type breakdown (added / modified / deleted / renamed). A path staged and
 then modified again is one changed path, while correctly appearing in both the
 staged and unstaged categories. JSON output exposes all counts separately.
+`dev status` also renders independent local `checkout`, `task`, and `worktree`
+readiness outcomes. It never contacts a forge/fleet host, and unavailable task,
+runtime, or worktree evidence remains indeterminate instead of looking clean.
 
 ## Worktree ownership
 
@@ -677,7 +688,17 @@ logged:
 include     = [".env", ".env.local"]   # only files that are ALSO gitignored
 link        = []                       # opt-in; sharing node_modules is risky
 post_create = "auto"                   # uv.lock → uv sync, package-lock.json → npm ci, …
+
+# Separate opt-in export policy for dev fleet files; worktree.include is never
+# inherited for off-machine transfer.
+[local_files]
+include = [".env", ".mcp/**"]
 ```
+
+`[local_files]` may be committed in `.dev-cli/config.toml`, but it only proposes
+portable patterns. Nothing leaves the host until an explicit `dev fleet files`
+invocation selects one target; every pattern expands locally to sorted exact
+paths before the protocol begins.
 
 `.claude/settings.local.json` is not a universal include. Add that exact path
 only for an explicitly selected sticky/plain-Claude launcher and verify it
@@ -732,7 +753,9 @@ dev repo clone owner/name -c Web   # expand forge shorthand, then clone with Git
 dev repo clone https://dev.azure.com/acme/Platform/_git/api -c Work
 dev repo sync --all            # fetch + prune, and report what moved
 dev fleet list                 # Git/task/runtime state from every configured machine
+dev fleet machine-id lab       # inspect/compare the target's stable machine pin
 dev fleet sync api --push      # push, then safely fast-forward clean remote checkouts
+dev fleet files api --to lab   # report-only plan for explicit ignored local files
 
 dev try redis-streams          # dated scratch directory for an experiment
 dev tries archive redis-streams    # reversible local archive; does not delete
@@ -1032,7 +1055,14 @@ dev_path = "auto"
 [[hosts]]
 name = "jingle"
 ssh_alias = "jingle-235"
+# After `dev fleet machine-id jingle` and independent verification:
+machine_id = "00000000-0000-4000-8000-000000000000"
 ```
+
+The UUID pin is optional for read-only inventory and diagnostics, but mandatory
+for `fleet files --apply`. `dev fleet machine-id <host>` is itself read-only: it
+shows the observed UUID, the configured value, and `unpinned`, `match`, or
+`mismatch`; it never edits `remotes.toml`.
 
 `dev fleet list` runs each machine's own `dev`, so its XDG config and paths stay
 host-local. Missing `dev` installations are reported as `no-dev`; unreachable
@@ -1049,6 +1079,30 @@ matching clones by normalized Git remote identity. Only a clean checkout of the
 same branch that is strictly behind is fast-forwarded. Dirty, ahead, divergent,
 ambiguous and unreachable targets remain untouched and make the command fail;
 hosts without `dev` or without that repository are explicitly ignored.
+
+`dev fleet files [repo-or-path] --to <host>` is a separate, one-shot channel for
+explicit ignored local files:
+
+```bash
+dev fleet files api --to jingle                    # plan only
+dev fleet files api --to jingle --apply --yes      # create absent files
+dev fleet files api --to jingle --replace --apply  # separately authorize conflicts
+```
+
+The source and target must already be the same fetch identity, attached branch,
+and exact commit. Both Git configurations must classify every selected path as
+untracked and ignored. Only bounded regular files are accepted (128 files,
+8 MiB each, 32 MiB total at most); directories, links, special files, nested
+repositories, `.git`, and submodule boundaries fail closed. The target reopens
+held roots, journals before staging payloads, publishes owner-only files
+atomically, and rolls back changed files on failure. It deliberately leaves
+unprovably-owned empty parent directories rather than risk deleting another
+process's replacement. Native Windows payload apply remains disabled.
+
+This is **not** repository/task ownership transfer, backup, restore, or clone
+eviction. It does not clone a missing target, switch branches, run provisioning,
+synchronize catalog/notes, delete source files, watch for changes, or merge in
+both directions.
 
 ## The agent skill
 

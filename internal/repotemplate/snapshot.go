@@ -8,18 +8,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
-	"unicode"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
+	"github.com/daviddwlee84/dev-cli/internal/safefile"
 )
 
 const pathPreviewLimit = 8
@@ -256,35 +255,7 @@ func snapshotDirectory(ctx context.Context, sourceLabel, rootPath, ref, commit, 
 }
 
 func openNamedRoot(path string) (*os.Root, fs.FileInfo, error) {
-	before, err := os.Lstat(path)
-	if err != nil {
-		return nil, nil, err
-	}
-	if before.Mode()&os.ModeSymlink != 0 {
-		return nil, nil, errors.New("root is a symlink")
-	}
-	if !before.IsDir() {
-		return nil, nil, errors.New("root is not a directory")
-	}
-	root, err := os.OpenRoot(path)
-	if err != nil {
-		return nil, nil, err
-	}
-	held, err := root.Stat(".")
-	if err != nil {
-		root.Close()
-		return nil, nil, err
-	}
-	current, err := os.Lstat(path)
-	if err != nil || current.Mode()&os.ModeSymlink != 0 || !current.IsDir() ||
-		!os.SameFile(before, held) || !os.SameFile(current, held) {
-		root.Close()
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, nil, errors.New("root changed while opening")
-	}
-	return root, held, nil
+	return safefile.OpenRoot(path)
 }
 
 func openRelativeRoot(base *os.Root, relative string) (*os.Root, fs.FileInfo, error) {
@@ -312,57 +283,15 @@ func openRelativeRoot(base *os.Root, relative string) (*os.Root, fs.FileInfo, er
 }
 
 func openChildRoot(parent *os.Root, name string) (*os.Root, fs.FileInfo, error) {
-	before, err := parent.Lstat(name)
-	if err != nil {
-		return nil, nil, err
-	}
-	if before.Mode()&os.ModeSymlink != 0 {
-		return nil, nil, fmt.Errorf("component %q is a symlink", name)
-	}
-	if !before.IsDir() {
-		return nil, nil, fmt.Errorf("component %q is not a directory", name)
-	}
-	child, err := parent.OpenRoot(name)
-	if err != nil {
-		return nil, nil, err
-	}
-	held, err := child.Stat(".")
-	if err != nil {
-		child.Close()
-		return nil, nil, err
-	}
-	current, err := parent.Lstat(name)
-	if err != nil || current.Mode()&os.ModeSymlink != 0 || !current.IsDir() ||
-		!os.SameFile(before, held) || !os.SameFile(current, held) {
-		child.Close()
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, nil, fmt.Errorf("component %q changed while opening", name)
-	}
-	return child, held, nil
+	return safefile.OpenChildRoot(parent, name)
 }
 
 func verifyNamedRoot(path string, expected fs.FileInfo) error {
-	current, err := os.Lstat(path)
-	if err != nil {
-		return err
-	}
-	if current.Mode()&os.ModeSymlink != 0 || !current.IsDir() || !os.SameFile(expected, current) {
-		return errors.New("root path changed")
-	}
-	return nil
+	return safefile.VerifyRoot(path, expected)
 }
 
 func verifyChildRoot(parent *os.Root, name string, expected fs.FileInfo) error {
-	current, err := parent.Lstat(name)
-	if err != nil {
-		return err
-	}
-	if current.Mode()&os.ModeSymlink != 0 || !current.IsDir() || !os.SameFile(expected, current) {
-		return fmt.Errorf("component %q changed", name)
-	}
-	return nil
+	return safefile.VerifyChildRoot(parent, name, expected)
 }
 
 func liveGitPaths(ctx context.Context, root string) ([]string, bool, error) {
@@ -595,65 +524,11 @@ func snapshotSelectedRoot(ctx context.Context, root *os.Root, node *selectionNod
 }
 
 func readStableRootFile(ctx context.Context, root *os.Root, name string, expected fs.FileInfo) ([]byte, fs.FileInfo, error) {
-	file, err := root.Open(name)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer file.Close()
-	opened, err := file.Stat()
-	if err != nil {
-		return nil, nil, err
-	}
-	if !opened.Mode().IsRegular() || !stableInfo(expected, opened) {
-		return nil, nil, errors.New("source changed while opening file")
-	}
-	current, err := root.Lstat(name)
-	if err != nil || current.Mode()&os.ModeSymlink != 0 || !stableInfo(opened, current) {
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, nil, errors.New("source changed while opening file")
-	}
-	data, err := readAllContext(ctx, file)
-	if err != nil {
-		return nil, nil, err
-	}
-	after, err := file.Stat()
-	if err != nil {
-		return nil, nil, err
-	}
-	current, err = root.Lstat(name)
-	if err != nil || current.Mode()&os.ModeSymlink != 0 || !stableInfo(opened, after) ||
-		!stableInfo(after, current) || after.Size() != int64(len(data)) {
-		if err != nil {
-			return nil, nil, err
-		}
-		return nil, nil, errors.New("source changed during snapshot")
-	}
-	return data, opened, nil
-}
-
-func readAllContext(ctx context.Context, reader io.Reader) ([]byte, error) {
-	var data []byte
-	buffer := make([]byte, 64*1024)
-	for {
-		if err := context.Cause(ctx); err != nil {
-			return nil, err
-		}
-		read, err := reader.Read(buffer)
-		data = append(data, buffer[:read]...)
-		if errors.Is(err, io.EOF) {
-			return data, nil
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
+	return safefile.ReadStableRegular(ctx, root, name, expected, 0)
 }
 
 func stableInfo(left, right fs.FileInfo) bool {
-	return left != nil && right != nil && os.SameFile(left, right) &&
-		left.Mode() == right.Mode() && left.Size() == right.Size() && left.ModTime().Equal(right.ModTime())
+	return safefile.SameFileState(left, right)
 }
 
 // Summary returns a content-free description suitable for user-facing plans.
@@ -820,37 +695,8 @@ func applyTree(root *os.Root, node *applyNode, result *ApplyResult) error {
 }
 
 func writeRootFile(root *os.Root, name string, file File) error {
-	writer, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if err != nil {
-		return err
-	}
-	keepOpen := true
-	defer func() {
-		if keepOpen {
-			_ = writer.Close()
-		}
-	}()
-	for remaining := file.Data; len(remaining) > 0; {
-		written, err := writer.Write(remaining)
-		if err != nil {
-			return err
-		}
-		if written == 0 {
-			return io.ErrShortWrite
-		}
-		remaining = remaining[written:]
-	}
-	if err := writer.Chmod(file.Mode.Perm()); err != nil {
-		return err
-	}
-	if err := writer.Sync(); err != nil {
-		return err
-	}
-	if err := writer.Close(); err != nil {
-		return err
-	}
-	keepOpen = false
-	return nil
+	_, err := safefile.CreateNoClobber(context.Background(), root, name, file.Data, file.Mode.Perm())
+	return err
 }
 
 func chmodRootDirectory(root *os.Root, mode fs.FileMode) error {
@@ -869,8 +715,18 @@ func finalizeSnapshot(snapshot *Snapshot) error {
 }
 
 func validateSnapshot(snapshot Snapshot) error {
-	types := make(map[string]string, len(snapshot.Directories)+len(snapshot.Files))
-	caseFolded := make(map[string]string, len(snapshot.Directories)+len(snapshot.Files))
+	paths := make([]string, 0, len(snapshot.Directories)+len(snapshot.Files))
+	for _, directory := range snapshot.Directories {
+		paths = append(paths, directory.Path)
+	}
+	for _, file := range snapshot.Files {
+		paths = append(paths, file.Path)
+	}
+	if err := pathx.ValidatePortablePathSet(paths, pathx.PortablePathLimits{}); err != nil {
+		return fmt.Errorf("template paths: %w", err)
+	}
+
+	types := make(map[string]string, len(paths))
 	validate := func(relative, kind string, mode fs.FileMode) error {
 		cleaned, err := validateSnapshotPath(relative)
 		if err != nil || cleaned != relative {
@@ -885,17 +741,12 @@ func validateSnapshot(snapshot Snapshot) error {
 		if previous, exists := types[relative]; exists {
 			return fmt.Errorf("template path %q is declared as both %s and %s", relative, previous, kind)
 		}
-		folded := strings.ToLower(relative)
-		if previous, exists := caseFolded[folded]; exists && previous != relative {
-			return fmt.Errorf("template paths %q and %q collide on case-insensitive filesystems", previous, relative)
-		}
 		for parent := filepath.ToSlash(filepath.Dir(filepath.FromSlash(relative))); parent != "."; parent = filepath.ToSlash(filepath.Dir(filepath.FromSlash(parent))) {
 			if types[parent] == "file" {
 				return fmt.Errorf("template %s %q is below file %q", kind, relative, parent)
 			}
 		}
 		types[relative] = kind
-		caseFolded[folded] = relative
 		return nil
 	}
 	for _, directory := range snapshot.Directories {
@@ -921,56 +772,21 @@ func cleanSubdir(value string) (string, error) {
 	if value == "" || value == "." {
 		return "", nil
 	}
-	if filepath.IsAbs(value) || filepath.VolumeName(value) != "" || strings.HasPrefix(value, "/") || strings.HasPrefix(value, "\\") {
-		return "", fmt.Errorf("template subdirectory %q must be relative", value)
+	if err := pathx.ValidatePortableSlashPath(value, pathx.PortablePathLimits{}); err != nil {
+		return "", fmt.Errorf("template subdirectory %q: %w", value, err)
 	}
-	components := strings.FieldsFunc(value, func(r rune) bool { return r == '/' || r == '\\' })
-	if len(components) == 0 {
-		return "", fmt.Errorf("template subdirectory %q is invalid", value)
-	}
-	for _, component := range components {
-		if component == ".." {
-			return "", fmt.Errorf("template subdirectory %q: %w", value, pathx.ErrTraversal)
-		}
-		if err := validateSnapshotComponent(component); err != nil {
-			return "", fmt.Errorf("template subdirectory %q: %w", value, err)
-		}
-	}
-	return strings.Join(components, "/"), nil
+	return value, nil
 }
 
 func validateSnapshotPath(value string) (string, error) {
-	if value == "" || filepath.ToSlash(value) != value || strings.HasPrefix(value, "/") {
-		return "", errors.New("path is not a clean relative path")
+	if err := pathx.ValidatePortableSlashPath(value, pathx.PortablePathLimits{}); err != nil {
+		return "", err
 	}
-	components := strings.Split(value, "/")
-	for _, component := range components {
-		if err := validateSnapshotComponent(component); err != nil {
-			return "", err
-		}
-	}
-	cleaned := strings.Join(components, "/")
-	if cleaned != value {
-		return "", errors.New("path is not a clean relative path")
-	}
-	return cleaned, nil
+	return value, nil
 }
 
 func validateSnapshotComponent(component string) error {
-	if err := pathx.ValidateComponent(component); err != nil {
-		return err
-	}
-	windowsName := strings.TrimRight(component, ". ")
-	if strings.EqualFold(windowsName, ".git") {
-		return fmt.Errorf("template path contains reserved Git metadata")
-	}
-	if windowsName != component || strings.ContainsRune(component, ':') {
-		return fmt.Errorf("template path component %q is not portable to Windows", component)
-	}
-	if strings.IndexFunc(component, unicode.IsControl) >= 0 {
-		return fmt.Errorf("template path component contains control characters")
-	}
-	return nil
+	return pathx.ValidatePortableComponent(component, 0)
 }
 
 func joinRelative(parent, name string) string {
