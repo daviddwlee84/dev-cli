@@ -61,6 +61,8 @@ cmd/dev/main.go
 - `tui` owns Bubble Tea state/rendering only. `internal/cli/tui.go` injects callbacks to the same services used by non-interactive commands.
 - `stats` is durable SQLite data; `diskusage`, note FTS, and forge/gitignore data are regenerable caches. Do not treat stats as cache.
 - `forge` wraps optional `gh`, `glab`, and Azure CLI integrations and must degrade to local Git behavior when they are unavailable.
+- `sshhost` owns bounded static discovery of the active user OpenSSH Include closure, canonical files under `~/.ssh/dev.d`, public-key selection/generation/bootstrap, fresh authentication proofs, and the explicit handoff into dev fleet. OpenSSH and plain `ssh -G` remain semantic authority; dev reads foreign host definitions but never rewrites them, copies private keys, weakens host-key policy, or treats every alias as a fleet member.
+- `fleet` merges the user-authored primary `remotes.toml` with strict dev-owned `remotes.d/ssh-<alias>.toml` registrations. Remote `dev` state remains host-local. `remote_os` selects target semantics: POSIX uses the shell launcher, while Windows uses an encoded PowerShell launcher that accepts only hidden fleet helpers, preserves sync stdin, and never applies controller path rules to remote paths.
 
 The principal task flow spans `internal/cli/start.go`, `start_flow.go`, `gitx`/`wt`, `runtime`, and `task`: resolve the canonical repository and explicit base, create or select the checkout, provision/open it, then persist and annotate the task. Lifecycle behavior lives in `park.go`, `resume.go`, `done.go`, and `sweep.go`; preserve their report-before-apply and no-data-loss ordering.
 
@@ -72,6 +74,8 @@ State is split intentionally:
 - Task TOML and catalog assets hold only intent/identity that Git cannot answer.
 - Repository quick-note Markdown is durable sidecar data; `notes.db` is only its disposable search index.
 - `stats.db` is durable observation data; `$XDG_CACHE_HOME/dev/*` is disposable.
+- The user's OpenSSH configuration is durable connection truth. Dev owns only its exact top-level `Include ~/.ssh/dev.d/*.conf` and structurally valid fragments in `~/.ssh/dev.d`; key bootstrap sends public material only and has no private-key transfer or remote-key revocation lifecycle.
+- Fleet intent is the merged primary `remotes.toml` plus generated sibling `remotes.d` fragments. A generated fragment exists only after explicit `dev ssh setup --fleet` and a fresh ordinary alias login; controller caches and each remote machine's paths/tasks/runtime remain re-derivable or host-local.
 
 ## Behavioral contracts
 
@@ -84,6 +88,7 @@ State is split intentionally:
 - A parallel launch target is only the exact root pane returned for a newly created first-class Herdr worktree; reused/fallback/unverified surfaces fail closed.
 - `dev ls --json` is an external automation contract. Add fields rather than renaming/removing existing fields; apply the same compatibility care to other documented structured output.
 - Quick notes attach to the canonical repository through catalog identity. Markdown is durable, note deletion requires confirmation, and clearing/rebuilding note FTS must never delete source files.
+- SSH initialization is report-before-apply; managed host changes are confined to canonical dev-owned fragments. Full bootstrap requires an explicit existing key or explicit generation, registers fleet only behind `--fleet`, and reports interrupted remote installation as unknown rather than pretending to roll it back.
 - Filesystem transitions must retain path traversal/symlink, same-filesystem, source revalidation, and rollback/reconciliation checks.
 
 ## Versioning and changelog

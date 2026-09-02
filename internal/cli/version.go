@@ -240,7 +240,7 @@ func latestRelease(ctx context.Context, refresh bool) (string, error) {
 func passiveCommandSkipsNudge(cmd *cobra.Command) bool {
 	for cur := cmd; cur != nil; cur = cur.Parent() {
 		switch cur.Name() {
-		case "version", "upgrade", "completion",
+		case "version", "upgrade", "completion", "doctor", "ssh",
 			cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd:
 			return true
 		}

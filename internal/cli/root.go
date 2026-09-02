@@ -153,6 +153,7 @@ func newRootCommand(app *App) *cobra.Command {
 		newWorktreeCmd(app),
 		newRepoCmd(app),
 		newFleetCmd(app),
+		newSSHCmd(app),
 		newGitCmd(app),
 		newGitignoreCmd(app),
 		newTryCmd(app),

@@ -13,10 +13,12 @@ dev             human intent: what am I working on, and what is next
 ```
 
 Everything derivable from git or the runtime is derived live. `dev` persists
-only human intent Git cannot answer: task **state/owner/next action/context**,
-stable asset identity, a catalog metadata summary, multiple repository quick
-notes, and experiment lifecycle. Live Git status stays live; logical size
-measurements are explicitly disposable cache.
+human intent Git cannot answer—task **state/owner/next action/context**, stable
+asset identity, catalog metadata, repository quick notes, and experiment
+lifecycle—and a few explicit machine policies such as generated SSH/fleet
+fragments. OpenSSH, Git, and each remote machine remain authoritative for the
+connection, code, and host-local state they own. Live Git status stays live;
+logical size measurements are explicitly disposable cache.
 
 ## The problem
 
@@ -100,9 +102,13 @@ either explicit or a best-effort background refresh — `dev --version` and
 
 ### Windows
 
-`dev` builds and runs on Windows, and core commands work. There is no tmux,
-Zellij or Herdr there, so `dev` uses the no-multiplexer backend (it prints a
-`cd` directive the shell wrapper consumes). Use the PowerShell wrapper:
+`dev` builds and runs on Windows, and core commands work. Native Windows support
+also covers SSH host discovery/managed fragments, OpenSSH key generation and
+bootstrap ACL checks, and fleet transport to POSIX or Windows OpenSSH servers.
+Windows fleet targets launch only dev's allowlisted hidden helpers through an
+encoded PowerShell command. There is no tmux, Zellij or Herdr on the controller,
+so `dev` uses the no-multiplexer backend (it prints a `cd` directive the shell
+wrapper consumes). Use the PowerShell wrapper:
 
 ```powershell
 Invoke-Expression (& dev shell-init powershell | Out-String)
@@ -119,8 +125,9 @@ dev completion fish > ~/.config/fish/completions/dev.fish
 ```
 
 Tab completion includes commands and flags plus local tasks, repositories,
-worktrees, help topics and bundled gitignore templates. Completion never queries
-a forge or the network.
+worktrees, statically discovered SSH aliases, help topics, and bundled gitignore
+templates. Completion never queries a forge, runs `ssh`/`Match exec`, or touches
+the network.
 
 Add the directory-changing wrapper to your shell rc file:
 
@@ -147,8 +154,107 @@ dev skill list    # project + global skills, agents and sources
 dev doctor       # what works on this machine, and what degrades
 ```
 
-Only **git** is required at runtime. `herdr`, `tmux`, `zellij`, `gh`, `glab` and
-Azure CLI each enable more and degrade cleanly when absent.
+Only **git** is required at runtime. The system `ssh` client enables SSH host
+inspection, probing, bootstrap, and fleet transport; `ssh-keygen` enables public
+companion derivation and key generation; PowerShell is needed on a Windows
+OpenSSH target. `herdr`, `tmux`, `zellij`, `gh`, `glab`, and Azure CLI each enable
+other capabilities and degrade cleanly when absent. `dev doctor` checks these
+capabilities locally without evaluating an alias or contacting a host.
+
+## Onboard OpenSSH hosts
+
+OpenSSH remains the source of truth. Dev can read exact aliases from the active
+user Include closure, but it mutates only canonical files in its dedicated
+namespace and never rewrites a foreign `Host` block.
+
+Run the one-time initialization as a report, then explicitly apply it:
+
+```bash
+dev ssh init                         # exact plan; no write
+dev ssh init --apply                 # confirm interactively
+dev ssh init --apply --yes           # confirm the local plan non-interactively
+```
+
+The only root directive dev installs is `Include ~/.ssh/dev.d/*.conf`, placed
+before the first `Host` or `Match`. If root metadata or the managed namespace
+cannot be preserved safely, init makes no change and gives manual placement
+guidance.
+
+Discover aliases statically, then cross into OpenSSH evaluation only when needed:
+
+```bash
+dev ssh list                         # no ssh, resolver, Match exec, agent, or network
+dev ssh list --format tsv            # alias/status/owner/source/line/fleet rows
+dev ssh list --json                  # one schema-versioned object
+dev ssh show lab                     # definitions plus plain `ssh -G lab`
+dev ssh probe lab                    # one fresh BatchMode login, sharing disabled
+```
+
+`show` includes system configuration because it runs plain `ssh -G`; configured
+`Match exec` and resolver behavior may run. `probe` preserves the user's host-key
+and known-hosts policy. Static discovery reports incomplete/dynamic closure and
+conflicts instead of calling uncertain aliases usable.
+
+Setup is one idempotent command for new managed aliases, existing managed
+aliases, and read-only foreign aliases:
+
+```bash
+dev ssh setup lab --hostname 192.0.2.20 --config-only
+dev ssh setup lab --hostname 192.0.2.20 --key ~/.ssh/id_ed25519 \
+  --target-os posix
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --fleet
+dev ssh setup winlab --hostname 198.51.100.30 --generate-key \
+  --key-path ~/.ssh/id_winlab --target-os windows --fleet
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --dry-run
+```
+
+Full setup requires exactly one explicit `--key` or `--generate-key`. Generated
+keys are Ed25519; noninteractive generation additionally requires
+`--no-passphrase`, while an interactive `ssh-keygen` owns hidden passphrase
+prompts. A private/security-key identity passed to `--key` must have a validated
+`.pub` companion; dev may derive a missing public companion with confirmed
+`ssh-keygen -y`, but never reads or transfers private bytes.
+
+ProxyJump routes are resolved outermost-first. Use repeatable
+`--hop-os alias=posix|windows` when a hop's OS cannot be determined; already
+working jumps are not modified unless `--install-on-working-jump` is explicit.
+Windows standard accounts use their profile `authorized_keys`; administrator
+group accounts require `--windows-admin-authorized-keys` before dev can target
+the shared administrators file, and elevation can still require manual action.
+
+`--fleet` is a separate, explicit durable decision. Dev writes a generated
+`remotes.d/ssh-<alias>.toml` only after exact-key proof and a second fresh
+ordinary alias login succeed. A remote without `dev` still onboards successfully
+and later appears as fleet `no-dev`. Failures after local setup retain valid
+config/generated keys and report partial or unknown remote state so rerunning can
+converge.
+
+Removal is deliberately narrower than setup:
+
+```bash
+dev ssh remove lab --dry-run
+dev ssh remove lab --yes
+dev ssh remove lab --fleet --yes       # remove generated fleet fragment first
+```
+
+It removes only a structurally valid dev-owned host fragment and, with explicit
+`--fleet`, its generated fleet fragment. It never removes the shared Include,
+local keys, `known_hosts` entries, or remote `authorized_keys`; key rotation and
+revocation remain manual. A primary user-authored `remotes.toml` reference blocks
+removal until it is changed with `dev fleet config edit`.
+
+| Data | Authority / owner | Durability |
+|---|---|---|
+| root SSH config and foreign Includes/`Host` blocks | user + OpenSSH | durable; read-only to dev except the exact managed Include |
+| `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | durable managed connection fragment |
+| private/public key pair | user + native `ssh-keygen` | durable; generated assets are retained, never removed by `ssh remove` |
+| primary `$XDG_CONFIG_HOME/dev/remotes.toml` | user via `dev fleet config init/edit` | durable, byte-for-byte user-authored |
+| sibling `remotes.d/ssh-<alias>.toml` | `dev ssh setup/remove --fleet` | durable generated fleet registration |
+| remote paths/tasks/runtime | that remote machine's `dev` | host-local authority, never copied into controller config |
+| `$XDG_CACHE_HOME/dev/fleet/` | controller cache | disposable snapshot |
+
+See [SSH host onboarding](docs/guides/ssh-hosts.md) and
+[Remote repository fleet](docs/guides/remote-fleet.md) for full contracts.
 
 ## Create, clone, or set up a repository
 
@@ -731,6 +837,9 @@ dev repo setup . --preset agent-ready   # safely initialize an existing repo
 dev repo clone owner/name -c Web   # expand forge shorthand, then clone with Git
 dev repo clone https://dev.azure.com/acme/Platform/_git/api -c Work
 dev repo sync --all            # fetch + prune, and report what moved
+dev ssh list                   # static OpenSSH aliases and source ownership
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --fleet
+dev ssh probe lab              # fresh ordinary BatchMode login
 dev fleet list                 # Git/task/runtime state from every configured machine
 dev fleet sync api --push      # push, then safely fast-forward clean remote checkouts
 
@@ -1016,7 +1125,8 @@ dev resume <task> --fetch   # on the machine picking it up
 without `--force`. Two machines committing to one branch is the reliable way
 to produce a conflict here; the ownership check prevents it.
 
-Configure SSH machines separately from host-local paths:
+Configure fleet profiles separately from each machine's host-local paths. The
+primary file remains user-authored:
 
 ```toml
 # $XDG_CONFIG_HOME/dev/remotes.toml
@@ -1030,19 +1140,36 @@ max_parallel = 4
 dev_path = "auto"
 
 [[hosts]]
-name = "jingle"
-ssh_alias = "jingle-235"
+name = "lab"
+ssh_alias = "lab"
+remote_os = "posix"       # omitted still means posix
 ```
 
+An explicit `dev ssh setup winlab --key ~/.ssh/id_ed25519 --target-os windows --fleet`
+instead generates the strict sibling
+`$XDG_CONFIG_HOME/dev/remotes.d/ssh-winlab.toml`; it never rewrites the primary
+file. A custom `--remotes /srv/dev/lab.toml` uses `/srv/dev/lab.d`, while a path
+without `.toml` appends `.d`. Fleet loads the primary first, then validated
+managed fragments in lexical order, and applies defaults after the merge.
+Duplicate names always fail. Existing primary profiles may share an SSH alias,
+but any alias collision involving a generated fragment fails closed.
+
+`dev fleet config show` prints the effective merge, redacts plaintext passwords,
+and identifies generated hosts with instructions to use `dev ssh setup/remove`.
+`dev fleet config edit` and the FLEET TUI `e` key continue to open only primary
+`remotes.toml`; generated registrations have a different owner.
+
 `dev fleet list` runs each machine's own `dev`, so its XDG config and paths stay
-host-local. Missing `dev` installations are reported as `no-dev`; unreachable
-hosts can fall back to the last private XDG snapshot. Cache identity includes the
-complete SSH endpoint, including port. The FLEET TUI view reuses the accepted
-REPOS snapshot for its local host instead of scanning twice, but exposes the
-configured remote-host inventory by default; press `a` to include this machine.
-Enter opens a selected path through remote Herdr when its server is active,
-otherwise through `ssh -t` and a login shell. The CLI output remains the full
-local-plus-remote inventory.
+host-local. `remote_os = "windows"` selects the encoded, argument-allowlisted
+PowerShell launcher and Windows target-path semantics; POSIX is the compatible
+default and uses the existing shell launcher. Missing `dev` installations are
+reported as `no-dev`; unreachable hosts can fall back to the last private XDG
+snapshot. Cache identity includes the complete SSH endpoint, including port and
+remote OS. The FLEET TUI view reuses the accepted REPOS snapshot for its local
+host instead of scanning twice, but exposes configured remote hosts by default;
+press `a` to include this machine. Enter opens a selected path through remote
+Herdr when available, otherwise through an SSH login shell. The CLI output
+remains the full local-plus-remote inventory.
 
 `dev fleet sync <repo> --push` publishes the clean source branch, then fetches
 matching clones by normalized Git remote identity. Only a clean checkout of the

@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 ---
 
 # Sources and freshness
@@ -63,7 +63,8 @@ tested_with: optional
 | repository new/clone routing, snapshot templates/confinement, check-in policy, project trust, skill batching, TTY editor, upstream publication, and handoff | [Commands and configuration](commands-config.md#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`, `internal/scaffold`, `internal/repotemplate`, `internal/projectconfig`, `internal/cli/repo_{create,checkin,skills}*.go`, `internal/cli/prompt.go`, focused repo-bootstrap tests | implemented |
 | lazygit lowercase `c` pending-message integration | [Compatibility](compatibility.md#lazygit-staged-message-prefill-is-best-effort) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive, checked 2026-08-29 |
 | runtime fallback and exact-pane `start --run` dispatch | [Parallel agents and runtimes](../guides/parallel-agents-runtimes.md) | `internal/runtime/runtime.go`, `internal/runtime/herdr.go`, focused start/runtime tests | implemented |
-| SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](../guides/remote-fleet.md) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
+| OpenSSH alias discovery/provenance, dev-owned Include/fragments, exact flags/JSON/TSV, public-key bootstrap, ProxyJump/Windows admin handling, partial outcomes, and removal limits | [SSH host onboarding](../guides/ssh-hosts.md) | `internal/sshhost`, `internal/cli/ssh.go`, SSH help, focused domain/CLI tests | implemented; repository snapshot 2026-09-01 |
+| fleet primary + generated-fragment merge, collision/ownership rules, `remote_os`, POSIX/Windows launchers, snapshots, and sync safety | [Remote repository fleet](../guides/remote-fleet.md) | `internal/fleet/{config,managed,transport}.go`, `internal/cli/fleet.go`, focused fleet/CLI tests, required Windows SSH CI job | implemented; repository snapshot 2026-09-01 |
 | READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](../guides/agent-safe-retirement.md) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
 | `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](../guides/machine-summary.md), [Development journal](../guides/dev-journal.md) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
 | agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |

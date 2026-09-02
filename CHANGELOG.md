@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Added the `dev ssh` command family for bounded static OpenSSH alias discovery,
+  source-aware `list`/`show`, report-before-apply Include initialization,
+  idempotent managed-host setup, fresh login probes, narrow removal, versioned
+  JSON, and a six-column TSV selector contract. Setup supports explicit existing
+  keys or Ed25519 generation, ProxyJump routes, POSIX and Windows OpenSSH targets,
+  config-only/dry-run operation, and opt-in fleet registration after a fresh
+  ordinary alias login succeeds.
+- Added strict dev-owned fleet fragments beside the primary remote config
+  (`remotes.d/ssh-<alias>.toml`, or the directory derived from `--remotes`) and
+  `remote_os = "posix"|"windows"`. Windows fleet targets now run allowlisted
+  hidden helpers through an encoded PowerShell launcher, with native Windows SSH,
+  ACL, reparse-point, key-generation, cancellation, and fleet behavior enforced
+  by a required CI gate plus Windows ARM64 compile coverage.
+
+### Changed
+
+- Fleet loading now merges the byte-for-byte user-authored primary
+  `remotes.toml` with generated fragments in lexical order, applies defaults
+  after the merge, includes `remote_os` in endpoint cache identity, and shows
+  generated ownership in `dev fleet config show`. `config edit` continues to
+  open only the primary file; `dev ssh setup --fleet` and
+  `dev ssh remove --fleet` own generated registrations.
+
+### Security
+
+- OpenSSH remains connection authority and foreign `Host` blocks stay read-only.
+  Dev writes only its dedicated `~/.ssh/dev.d/*.conf` namespace, validates
+  path/file ownership before replacement, preserves the user's host-key policy,
+  disables connection sharing for authentication proofs, and sends only one
+  bounded public-key record to fixed remote installers. It never copies private
+  keys, supplies passwords or host-key acceptance through `--yes`, removes
+  `known_hosts` entries, or revokes/deletes remote authorized keys; interrupted
+  installers and later failures are reported as resumable partial or unknown
+  outcomes without unsafe rollback claims.
+
 ## [0.2.4] - 2026-09-01
 
 ### Added

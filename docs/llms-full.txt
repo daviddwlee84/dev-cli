@@ -377,6 +377,8 @@ Sidecar state has deliberately separate scopes:
 - configured `paths.state_dir/notes` stores multiple durable Markdown observations keyed by catalog repository ID;
 - `$XDG_CACHE_HOME/dev/notes.db` is only the rebuildable full-text index for those Markdown files.
 
+Machine connection policy has a separate authority boundary. OpenSSH configuration is durable connection truth; dev reads foreign definitions but owns only its exact root Include and canonical `~/.ssh/dev.d` fragments. Fleet intent is the user-authored primary `remotes.toml` merged with explicit generated `remotes.d` registrations. Each remote machine's paths, tasks, repositories, and runtime remain authoritative there; fleet cache is only a controller snapshot.
+
 The catalog ID keeps a quick note attached across linked worktrees, symlink indexes, path moves, and synchronized host state. `dev` does not itself synchronize notes or catalog files. Live Git status, ahead/behind, and runtime availability are derived again instead of treated as authoritative cached truth.
 
 ## The four lifecycle states
@@ -1067,24 +1069,246 @@ For Claude-specific primitive selection, continue with the [parallel work decisi
 
 ---
 
+### SSH host onboarding
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/
+
+> Discover OpenSSH aliases, manage only dev-owned host fragments, bootstrap public-key access, and explicitly register verified hosts in dev fleet.
+
+`dev ssh` adds a conservative lifecycle around the OpenSSH configuration you already use. OpenSSH remains connection authority; dev provides static provenance, a small owned fragment namespace, public-key bootstrap, fresh authentication proofs, and an explicit bridge into [dev fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/).
+
+## Authority and ownership
+
+| Surface | Authority / owner | What dev may do |
+|---|---|---|
+| `~/.ssh/config`, its foreign Includes, and foreign `Host`/`Match` blocks | user + OpenSSH | read statically; evaluate an alias only through plain `ssh -G`; never rewrite |
+| `Include ~/.ssh/dev.d/*.conf` in the root config | dev, after explicit `ssh init --apply` | install once before the first `Host`, `Match`, or earlier Include; never remove automatically |
+| `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | create, reconcile, or remove only canonical v1 files with an allowlisted single `Host` block |
+| local key files | user + native `ssh-keygen` | validate an explicit key, derive a confirmed missing `.pub`, or generate a no-replace Ed25519 pair; never copy private bytes |
+| remote `authorized_keys` | remote OpenSSH account | append one bounded normalized public record idempotently; never remove or revoke it |
+| primary `remotes.toml` | user via `dev fleet config` | read and merge; never rewrite during SSH setup |
+| sibling `remotes.d/ssh-<alias>.toml` | `dev ssh setup/remove --fleet` | create only after a fresh ordinary login; remove only when explicitly requested |
+
+A foreign alias remains usable for `list`, `show`, `probe`, key bootstrap, and fleet registration, but connection flags are rejected during `setup`. Dev will not compete with its existing definition. New dev-managed aliases use a portable lowercase exact-name grammar and one deterministic file containing `HostName`, optional `User`, `Port`, `ProxyJump`, `IdentityFile`, and `IdentitiesOnly`. Arbitrary directives and wildcard/`Match` blocks are not managed.
+
+## Command map
+
+| Command | Exact local flags | Boundary |
+|---|---|---|
+| `dev ssh init` | `--apply`, `--yes`, `--json` | plan by default; only `--apply` may install the dedicated Include |
+| `dev ssh list` | `--json` or `--format tsv` | bounded static user-config scan; no subprocess or network |
+| `dev ssh show <alias>` | `--json` | static definitions plus effective values from plain `ssh -G <alias>` |
+| `dev ssh setup <alias>` | connection, key, route, fleet, plan, confirmation, and JSON flags listed below | owned local config, public-key bootstrap, optional fleet registration |
+| `dev ssh probe <alias>` | `--json` | one fresh ordinary BatchMode login with sharing disabled |
+| `dev ssh remove <alias>` | `--fleet`, `--dry-run`, `--yes`, `--json` | remove only canonical dev-owned SSH/fleet fragments |
+
+`dev doctor` also reports the local `ssh`/`ssh-keygen` capabilities, static Include reachability, managed namespace permissions/ACLs, and generated fleet-fragment health. It does not run `ssh -G`, contact a host, or repair anything.
+
+## One-time initialization is report-before-apply
+
+```bash
+dev ssh init
+dev ssh init --json
+dev ssh init --apply
+dev ssh init --apply --yes
+```
+
+Without `--apply`, init reports the root path, managed directory, exact Include, and `create`/`update`/`noop`/`blocked` action without writing. `--yes` is valid only with `--apply`; it confirms the local plan but supplies no credential and accepts no host key.
+
+The only inserted directive is:
+
+```sshconfig
+Include ~/.ssh/dev.d/*.conf
+```
+
+Dev preserves root bytes outside the insertion, BOM/newline style, and supported Unix metadata or Windows owner/DACL. It rejects unsafe path components, links/reparse points, special files, hardlinks, concurrent source changes, unrepresentable metadata, and foreign or drifted content in `dev.d`. On a blocked plan it makes no change and reports where to place the exact Include manually.
+
+## Static list versus OpenSSH or network evaluation
+
+```bash
+dev ssh list
+dev ssh list --format tsv
+dev ssh list --json
+dev ssh show lab
+dev ssh show lab --json
+dev ssh probe lab
+```
+
+`list` and SSH alias completion walk the active user Include closure rooted at `~/.ssh/config`. They do **not** run `ssh`, a resolver, `Match exec`, an SSH agent, or the network. The scanner follows bounded lexical Include expansion, records source line and Include provenance, and classifies each exact positive alias as active, inactive, unknown, or conflicting. Wildcard-only declarations are collision diagnostics rather than selectable aliases. Dynamic/unsupported guards, cycles, limits, and unprovable Include behavior set `complete: false`; uncertain declarations are never promoted to usable hosts.
+
+`--format tsv` emits one row per discovered definition, with no header and these six tab-separated fields:
+
+```text
+alias  status  ownership  source  line  comma-separated-fleet-names
+```
+
+Fields are sanitized to one physical line. The selector contract is intentionally small; use JSON for full definition/provenance/diagnostic data.
+
+`show` first retains the static definitions and then deliberately runs plain `ssh -G <alias>`—without replacing the user's config with `-F` and without parsing unstable `ssh -vv` prose. This includes system configuration and OpenSSH's scalar/additive semantics, but configured resolver behavior and user-authored `Match exec` may run.
+
+`probe` crosses the network. It runs one ordinary alias login equivalent to a fresh `ssh -S none -o BatchMode=yes …`, so an existing ControlMaster cannot produce a false success. It does not override `StrictHostKeyChecking`, `UserKnownHostsFile`, or related policy. User-configured `KnownHostsCommand`, `UpdateHostKeys`, resolver, and `Match exec` behavior may still run.
+
+## Setup modes and flags
+
+Setup handles three alias classes:
+
+1. **new:** requires `--hostname` outside the interactive HostName prompt and creates one dev-owned fragment;
+2. **managed:** reconciles only the existing canonical fragment;
+3. **foreign:** preserves all connection policy; any connection-field flag blocks the operation, but explicit key bootstrap and `--fleet` may proceed.
+
+Connection fields for a managed alias are:
+
+```text
+--hostname --user --port --proxy-jump --identity-file --identities-only
+```
+
+Operational flags are:
+
+```text
+--config-only
+--key <public-or-identity-path>
+--generate-key [--key-path <identity>] [--comment <text>] [--no-passphrase]
+--target-os <posix|windows>
+--hop-os <alias=posix|windows>       # repeatable
+--install-on-working-jump
+--windows-admin-authorized-keys
+--fleet [--fleet-name <name>]
+--dry-run --yes --json
+```
+
+`--config-only` cannot be combined with key, route, bootstrap, or fleet flags. It stops after local managed-config publication/verification; for a foreign alias it performs plain `ssh -G` verification only.
+
+`--dry-run` is side-effect-free: it does not generate keys, write files, run `ssh -G`, touch `known_hosts`, probe the network, or start a remote installer. Remote and route actions remain honestly `unknown`. It may perform bounded local reads needed to validate an explicitly named key or existing config. `--fleet` in a dry run still requires `--target-os` so the proposed fragment is determinate.
+
+Full non-dry-run setup requires exactly one explicit `--key` or `--generate-key`. JSON mode is noninteractive even on a terminal; any noninteractive full setup also requires `--target-os`, and local mutation requires `--yes`. `--yes` only approves the local plan. Native OpenSSH still owns password/passphrase and host-key interaction, and batch mode returns `interaction_required` rather than inventing a credential path.
+
+## Existing keys and generation
+
+```bash
+# Create only a local managed alias.
+dev ssh setup lab --hostname 192.0.2.20 --user dev --config-only
+
+# Bootstrap with an existing identity or public file.
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix
+
+# Generate an Ed25519 pair at the default ~/.ssh/id_ed25519_dev path.
+dev ssh setup lab --generate-key --target-os posix
+
+# A fully specified noninteractive generation.
+dev ssh setup winlab --hostname 198.51.100.30 \
+  --generate-key --key-path ~/.ssh/id_winlab --no-passphrase \
+  --target-os windows --yes
+```
+
+`--key` accepts a validated `.pub` record, a private identity with a companion `.pub`, or a security-key stub with a companion `.pub`. If an identity lacks its public companion, dev asks before running `ssh-keygen -y`; `--yes` supplies that local confirmation for a script. Encrypted noninteractive derivation fails with `interaction_required` rather than placing a passphrase in argv or the environment.
+
+`--generate-key` invokes native `ssh-keygen` for Ed25519. Interactive mode delegates hidden passphrase prompts to it. Noninteractive generation requires explicit `--no-passphrase`. Both halves are generated under a private staging basename, matched by fingerprint, hardened, and published with no-replace semantics; any destination collision blocks rather than overwrites. A successfully generated pair is retained after later route/bootstrap/fleet failure and is never removed by `dev ssh remove`.
+
+All output is content-safe: fingerprints, algorithms, paths, digests, and booleans may appear; private bytes, passphrases, passwords, complete public-key lines, agent payloads, and unredacted command-like SSH options do not.
+
+## ProxyJump and remote operating systems
+
+Dev evaluates plain `ssh -G` for the target and each discovered jump, flattens nested/comma-separated `ProxyJump` routes outermost-first, and supports alias, `user@alias`, `alias:port`, and bracketed IPv6 forms. It rejects cycles, repeated hops, unsupported URI/`ProxyCommand` routes, and ambiguous overrides instead of guessing.
+
+```bash
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix \
+  --hop-os bastion=posix --hop-os winjump=windows
+```
+
+`--target-os` applies to the final target. Use repeatable `--hop-os` for ambiguous jumps; interactive mode can ask, while noninteractive mode requires every unknown hop to be specified. Each hop is probed with ordinary fresh BatchMode authentication first. A jump that already works is not modified unless `--install-on-working-jump` is explicit.
+
+For a POSIX hop, a constant `sh` installer validates/creates `~/.ssh/authorized_keys`, applies `0700`/`0600`, and idempotently appends exactly one public record received on stdin. For Windows OpenSSH:
+
+- a standard account uses `%USERPROFILE%\.ssh\authorized_keys` with protected current-user + SYSTEM ACLs;
+- an administrator-group account requires explicit `--windows-admin-authorized-keys` before dev targets `%ProgramData%\ssh\administrators_authorized_keys`, with SYSTEM + BUILTIN\Administrators ACLs;
+- dev detects group membership, rejects reparse targets, and never automates a UAC/elevation grant. Elevation or a non-default server policy can require manual remediation.
+
+The system `ssh` binary is used on macOS, Linux, and Windows controllers. PowerShell is a target capability for Windows installers, not a controller-side host database or password backend.
+
+## Fresh proofs, partial outcomes, and fleet registration
+
+For every route hop, setup performs an ordinary fresh probe, an exact selected-key proof, any required public-key installation, another exact-key proof, and a separate ordinary alias gate. Every proof uses `-S none`; exact proofs add `IdentitiesOnly=yes` and the selected identity.
+
+Remote installation cannot be made transactional. Once an installer starts, timeout/cancellation or a non-zero result is reported as `unknown` because the remote may already have appended the public key. Dev never attempts unsafe compensating deletion. Local managed config and a generated key pair remain in place, completed hop facts are returned, later hops and fleet registration are skipped, and rerunning setup converges.
+
+Fleet registration is always opt-in:
+
+```bash
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --fleet
+dev ssh setup winlab --key ~/.ssh/id_winlab --target-os windows \
+  --fleet --fleet-name windows-builder
+```
+
+Only after the final fresh ordinary alias login succeeds does dev write the generated sibling fragment. The default primary path uses `$XDG_CONFIG_HOME/dev/remotes.d/ssh-<alias>.toml`; `--remotes /srv/dev/lab.toml` uses `/srv/dev/lab.d`, and a non-`.toml` path gains `.d`. The fragment contains only `name`, `ssh_alias`, and verified `remote_os`; it carries no password or alternate connection policy. A missing remote `dev` does not invalidate SSH onboarding and later appears as fleet `no-dev`.
+
+## Structured output
+
+All public SSH JSON is exactly one schema-versioned object on stdout. Operational failures still emit that one safe result object; CLI syntax/usage errors do not emit a partial JSON document. Diagnostics and child progress go to stderr.
+
+| Command | `kind` values | Notable fields |
+|---|---|---|
+| `ssh init --json` | `ssh_init_plan`, `ssh_init_result` | `status`, source-bound `plan`, optional `result`, `error_code` |
+| `ssh list --json` | `ssh_list` | `complete`, root/include state, aliases, definitions, fleet membership, diagnostics |
+| `ssh show --json` | `ssh_show` | alias status, definitions, safe effective subset, fleet membership |
+| `ssh setup --json` | `ssh_setup_plan`, `ssh_setup_result` | alias class, local/key/bootstrap plans/results, per-hop state, fleet action, partial/error code |
+| `ssh probe --json` | `ssh_probe` | safe `ready`/`not_ready` status, code, exit code |
+| `ssh remove --json` | `ssh_remove_plan`, `ssh_remove_result` | owned plan/result, explicit fleet action, status/error code |
+
+Consumers should branch on `schema_version`, `kind`, machine-readable `status`/`action`/`code`, and honest `partial`/`unknown` state rather than parse human tables or stderr.
+
+## Removal limits
+
+```bash
+dev ssh remove lab --dry-run
+dev ssh remove lab --yes
+dev ssh remove lab --fleet --yes
+```
+
+Removal accepts only a portable managed alias whose expected file is still canonical, secure, and structurally dev-owned. If its generated fleet fragment exists, omission of `--fleet` blocks instead of silently deleting a second durable intent; with the flag, fleet removal happens first. A reference in primary user-authored `remotes.toml` always blocks removal and points to `dev fleet config edit`. Manual drift, links/reparse points, changed sources, unsafe metadata, and ambiguous ownership also fail closed.
+
+Removal never deletes the shared Include, local private/public key files, `known_hosts`, remote `authorized_keys`, or foreign configuration.
+
+## Security boundary and deferred scope
+
+Implemented safety properties include source-bound plans, no-follow/reparse checks, private Unix modes or protected Windows DACLs, atomic/no-replace publication, concurrent-source revalidation, post-write plain-`ssh -G` verification for managed config, rollback only while the just-written local identity is still provably owned, process-group/Job-Object cancellation, and material-safe structured output.
+
+Deliberately deferred:
+
+- key rotation, expiry, revocation, or deletion from remote `authorized_keys`;
+- deletion of local keys or `known_hosts` repair/removal;
+- alias rename/adoption, managed wildcards/`Match`, arbitrary SSH directives, or an SSH config editor;
+- automated `ProxyCommand`, certificates/CAs, forwarding, custom `AuthorizedKeysFile`, or forced-shell policy;
+- password/vault storage, automatic password fallback, private-key copying, direct Bitwarden integration, or weakened host-key checks;
+- bulk/cloud/Tailscale/chezmoi fleet import, a dedicated SSH TUI, or background probing.
+
+When a server policy falls outside the verified POSIX/Windows installer contract, dev reports manual remediation rather than silently weakening it.
+
+## Sources
+
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
+- [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
+- [`internal/help/topics/ssh.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/ssh.md)
+
+---
+
 ### Remote repository fleet
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/
 
-> Inventory repositories, tasks, and live runtime activity across SSH-reachable machines with dev fleet, and safely fast-forward a branch between them.
+> Inventory repositories, tasks, and runtime activity across POSIX or Windows SSH hosts using merged user-authored and dev-managed fleet configuration.
 
-`dev fleet` fans out over SSH to other machines running their own `dev`, so you can see and open their repositories and safely propagate a branch, without merging their independent configuration into this machine's view.
+`dev fleet` fans out over SSH to other machines running their own `dev`, so you can inspect/open their repositories and safely propagate a branch without centralizing their paths, task registries, or runtime state.
+
+[SSH host onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/) is the optional entry point for discovering aliases, bootstrapping a public key, and explicitly generating a verified fleet registration. Fleet itself continues to accept user-authored profiles.
 
 ## What a fleet is
 
-A remote fleet is a list of other hosts, each running its own `dev` binary against its own `$XDG_CONFIG_HOME`, its own scan roots, its own task registry, and its own runtime. `dev fleet` never centralizes or takes ownership of that state — it only asks each host's `dev` for a read-only snapshot over SSH and reports what comes back. A host with no `dev` installed, or an unreachable host, degrades that one row; it never blocks the rest of the fleet.
+A fleet is a merged controller-side list of other hosts. Each remote runs its own `dev` against its own XDG config, scan roots, task registry, and runtime. Fleet asks for read-only snapshots and sends narrowly allowlisted sync/open helpers; it does not copy the remote configuration into the controller. A missing remote `dev` or unreachable host degrades one row rather than blocking other hosts.
 
-This is a different concept from the REMOTE TUI view and publishing/PR flows,
-which use `gh` or `glab` for GitHub/GitLab repository publication and PRs, plus
-the Azure CLI for Azure DevOps inventory and PRs. Fleet talks to *your own
-machines* about *your own local checkouts* on those machines.
+This differs from the REMOTE TUI view and repository publishing/PR flows. Those use authenticated `gh`/`glab`, plus Azure CLI for configured Azure DevOps inventory/PRs. Fleet talks to machines over ordinary OpenSSH about local checkouts on those machines.
 
-## Configure hosts
+## Two configuration ownership layers
 
 ```bash
 dev fleet config init
@@ -1093,7 +1317,26 @@ dev fleet config show
 dev fleet config path
 ```
 
-Hosts live in `$XDG_CONFIG_HOME/dev/remotes.toml` (override the path with the global `--remotes <path>` flag). `config init` writes a starter file (`--force` to overwrite, `--stdout` to print without writing); `config edit` opens it in `$VISUAL`/`$EDITOR` (`--editor` overrides); `config show` prints the effective configuration with any plaintext password redacted; `config path` prints the resolved path.
+Fleet loads two durable layers:
+
+1. **Primary user-authored config:** `$XDG_CONFIG_HOME/dev/remotes.toml`, or the root `--remotes <path>` override. `dev fleet config init` writes a starter (`--force` overwrites, `--stdout` prints); `config edit` opens only this file; `config path` prints only this path.
+2. **Generated dev-owned fragments:** the sibling `remotes.d/ssh-<alias>.toml` files created by explicit `dev ssh setup <alias> … --fleet` after a fresh ordinary alias login succeeds. `dev ssh remove <alias> --fleet` is their removal owner.
+
+Directory derivation is deterministic:
+
+| Primary path | Generated directory |
+|---|---|
+| default `$XDG_CONFIG_HOME/dev/remotes.toml` | `$XDG_CONFIG_HOME/dev/remotes.d` |
+| `--remotes /srv/dev/lab.toml` | `/srv/dev/lab.d` |
+| `--remotes /srv/dev/lab` | `/srv/dev/lab.d` |
+
+The primary file may be absent; valid generated fragments still load. The primary is decoded first, managed fragments load after it in lexical filename order, and defaults apply only after the merge. Loading never rewrites primary bytes or comments.
+
+Every generated file has a fixed v1 header, `schema_version = 1`, and exactly one `[host]` containing only `name`, `ssh_alias`, and `remote_os`. Defaults, passwords, explicit hostname/user/port/identity, and arbitrary fields are forbidden. The directory/file must satisfy private Unix mode or protected Windows DACL and no-link/reparse ownership checks; drift is a conflict, not permission to overwrite.
+
+`dev fleet config show` prints the effective merged config, redacts plaintext password values, and precedes generated entries with source/ownership comments directing edits to `dev ssh setup/remove`. `config edit` and the FLEET TUI `e` key still open only primary `remotes.toml`; they warn when generated entries are present.
+
+## Primary host profiles
 
 ```toml
 schema_version = 1
@@ -1108,6 +1351,12 @@ dev_path = "auto"
 [[hosts]]
 name = "lab"
 ssh_alias = "lab"
+remote_os = "posix"
+
+[[hosts]]
+name = "winlab"
+ssh_alias = "winlab"
+remote_os = "windows"
 
 [[hosts]]
 name = "vps"
@@ -1115,80 +1364,116 @@ hostname = "203.0.113.10"
 user = "dev"
 port = 22
 identity_file = "~/.ssh/id_ed25519"
+remote_os = "posix"
 ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 ```
 
-`schema_version = 1` is required. `[defaults]` supplies `connect_timeout`, `command_timeout`, `cache_ttl`, `max_parallel` (fan-out concurrency), and `dev_path` (`"auto"` searches `PATH`); each `[[hosts]]` entry inherits any of these it does not set explicitly. A host needs `name` plus either `ssh_alias` (preferred — it reuses `~/.ssh/config`'s `ProxyJump`, `IdentityAgent`, and host-key policy exactly like a plain `ssh` invocation) or `hostname` (optionally with `user`, `port`, `identity_file`). `ssh_login_password_source.type` is one of `none` (default), `prompt`, `plain` (inline `value`), or `bitwarden` (`item` looked up with the `bw` CLI). A config file with a `plain` password must be mode `0600`, or `dev fleet` refuses to load it.
+`schema_version = 1` is required when the primary exists. `[defaults]` supplies timeouts, cache TTL, fan-out concurrency, and `dev_path`; each primary host inherits values it does not set. A host needs `name` plus either `ssh_alias` (preferred because ordinary OpenSSH configuration retains `ProxyJump`, `IdentityAgent`, and host-key policy) or `hostname` with optional `user`, `port`, and `identity_file`.
+
+`remote_os` accepts `posix` or `windows`; omission remains POSIX for backward compatibility. It selects the remote command launcher and target path semantics, and participates in endpoint cache identity.
+
+`ssh_login_password_source.type` is `none` (default), `prompt`, `plain`, or `bitwarden`. Fleet always tries key/agent BatchMode first, then retries a permission-denied host only when a password source is configured. A primary containing a plaintext password must be mode `0600` or loading fails. Generated fragments cannot carry any password source.
+
+## Merge and collision rules
+
+- Host names are globally unique across primary and generated layers.
+- Existing primary profiles may continue to share one SSH alias; this preserves previously accepted configurations.
+- An SSH alias collision becomes an error when any generated fragment participates. A generated registration cannot silently compete with a primary profile or another managed entry.
+- Alias comparisons involving generated entries are case-insensitive.
+- A malformed, insecure, manually edited, or noncanonical generated fragment blocks the merged load.
+- Defaults are applied after all hosts are merged; generated fragments therefore inherit controller defaults without duplicating them.
+
+Use `dev fleet config edit` to resolve a primary collision. Use `dev ssh setup <alias> … --fleet` to reconcile a valid generated fragment; do not hand-edit it.
+
+## Explicit registration through `dev ssh`
+
+```bash
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --fleet
+dev ssh setup winlab --key ~/.ssh/id_winlab --target-os windows \
+  --fleet --fleet-name windows-builder
+```
+
+`--fleet` is never implied by alias discovery or successful SSH bootstrap. Setup writes the fleet fragment last, only after exact-key verification and a second fresh ordinary alias login succeed. The registered platform is the verified `--target-os`; managed Windows entries use `dev_path = "auto"`. A remote without `dev` is still a valid SSH onboarding result and appears as `no-dev` until installed.
+
+A partial/unknown bootstrap, failed ordinary gate, or fleet-fragment collision leaves valid local SSH config/generated keys in place but skips registration. Rerun setup after remediation.
 
 ## `dev fleet` commands
 
 | Command | Flags | Purpose |
 |---|---|---|
-| `dev fleet list` | `--host <name>` (repeatable), `--repo <query>`, `--json`, `--cached`, `--strict` | List repositories and activity across this machine and configured hosts |
-| `dev fleet status` | `--json`, `--strict` | Probe configured hosts and report snapshot health |
-| `dev fleet sync <repo>` | `--push`, `--remote <name>`, `--host <name>` (repeatable), `--json` | Push optionally, then safely fast-forward clean matching checkouts |
-| `dev fleet open <host> <repo>` | — | Open a remote repository through Herdr or an SSH login shell |
-| `dev fleet config init` | `-f`/`--force`, `--stdout` | Write a starter `remotes.toml` |
-| `dev fleet config edit` | `--editor <cmd>` | Open `remotes.toml` in `$VISUAL`/`$EDITOR` |
-| `dev fleet config show` | — | Print the effective configuration (passwords redacted) |
-| `dev fleet config path` | — | Print the resolved `remotes.toml` path |
+| `dev fleet list` | `--host <name>` (repeatable), `--repo <query>`, `--json`, `--cached`, `--strict` | list repositories/activity across this machine and merged configured hosts |
+| `dev fleet status` | `--json`, `--strict` | probe configured hosts and report snapshot health |
+| `dev fleet sync <repo>` | `--push`, `--remote <name>`, `--host <name>` (repeatable), `--json` | optionally publish, then safely fast-forward clean matching checkouts |
+| `dev fleet open <host> <repo>` | — | open a remote repository through Herdr or an SSH login shell |
+| `dev fleet config init` | `-f`/`--force`, `--stdout` | write/print starter primary `remotes.toml` |
+| `dev fleet config edit` | `--editor <cmd>` | open only primary `remotes.toml` |
+| `dev fleet config show` | — | print effective merged config with passwords redacted and generated ownership comments |
+| `dev fleet config path` | — | print the primary config path |
 
-`--repo` on `list` filters by name, remote identity, branch, or path; `--cached` answers entirely from the last saved snapshot with no network activity; `--strict` turns an unreachable/timeout/incompatible/invalid host into a non-zero exit for both `list` and `status`. `sync <repo>` resolves `<repo>` locally like any other repository reference; without `--push` its `HEAD` must already equal the fetched upstream, and `--remote` picks which Git remote identifies the repository across hosts (default: the branch's upstream remote, then `origin`).
+`list --repo` filters name, remote identity, branch, or path. `--cached` avoids network activity. `--strict` turns unreachable/timeout/incompatible/invalid/stale-error hosts into a non-zero exit; a clean `no-dev` is informational. `sync` resolves the repository locally; without `--push`, source `HEAD` must already equal fetched upstream. `--remote` selects the cross-host Git identity (branch upstream remote, then `origin`, by default).
 
-`dev fleet` also registers four hidden commands (`_snapshot`, `_sync`, `_open-herdr`, `_shell`) that exist only to be invoked by `dev fleet` itself on the far end of an SSH connection — they are the wire protocol, not a user-facing surface.
+Four hidden helpers—`_snapshot`, `_sync`, `_open-herdr`, and `_shell`—form the remote wire surface. Users should not invoke them directly.
 
-## Transport and authentication
+## POSIX and Windows transport
 
-Every fleet command reaches a host by shelling out to the system `ssh` binary with `ConnectTimeout`, `ServerAliveInterval=15`, and `ServerAliveCountMax=2`, and first attempts `BatchMode=yes` — key or agent authentication only, exactly like a script-friendly `ssh` call. `dev fleet open` additionally allocates a PTY (`-t`) for its interactive login shell.
+Every fleet operation shells out to the controller's system `ssh` with connection/server-alive bounds and starts with `BatchMode=yes`. `fleet open` allocates a PTY for its interactive login shell. No fleet launcher weakens the user's host-key or known-hosts policy.
 
-If that attempt is rejected with "permission denied" and the host defines a `ssh_login_password_source`, `dev` retries once with password authentication. The password itself never touches argv or the environment: `dev` re-executes itself as a one-shot `SSH_ASKPASS` helper, and the secret is handed to that helper over an inherited file descriptor. `prompt` reads a hidden password from `/dev/tty` at run time; `plain` and `bitwarden` resolve it from the config file or from `bw get password <item>` respectively.
+A POSIX target receives the existing injection-safe shell launcher. With `dev_path = "auto"`, it checks common local user/package-manager locations and `PATH`, returning exit `127` when `dev` is absent. An explicit path is quoted and interpreted with POSIX target semantics, never expanded using the controller environment.
 
-On the remote side, `dev_path = "auto"` (the default) searches common install locations (`~/.local/bin`, `~/go/bin`, mise shims, Homebrew/Linuxbrew, `/usr/local/bin`, `/snap/bin`) and then `PATH`, exiting `127` if no `dev` is found; an explicit absolute `dev_path` skips that search and execs it directly.
+A Windows target receives `powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand …`. The wrapper:
 
-## What's cached vs. durable
+- decodes helper arguments as data and permits only the four hidden fleet command shapes;
+- locates `dev.exe` in common user install/shim locations or through `Get-Command` when `dev_path = "auto"`;
+- returns `127` when no executable exists and propagates the remote dev exit code;
+- does not consume stdin, so `_sync` receives its JSON request unchanged;
+- validates explicit Windows drive/UNC paths using target-OS semantics rather than the controller's `filepath` rules.
 
-`$XDG_CONFIG_HOME/dev/remotes.toml` is durable, user-authored configuration, on the same footing as `config.toml` — `dev fleet config init`/`edit` manage it, and nothing regenerates it automatically.
+Generated Windows registrations require `dev_path = "auto"`. User-authored Windows profiles may use an absolute Windows target path. The encoded wrapper is a transport boundary, not permission to run arbitrary PowerShell supplied by a caller.
 
-Each successful probe writes a per-host JSON snapshot under `$XDG_CACHE_HOME/dev/fleet/v1/<host-name-slug>.json`. That cache is a disposable accelerator, not durable data: it is fingerprinted with an "endpoint ID" derived from the host's connection fields and timeouts, so editing a host's `ssh_alias`, `hostname`, `user`, `port`, `identity_file`, `dev_path`, or timeouts automatically invalidates its old cache the next time `dev` reads it. Oversized snapshots, future timestamps, invalid counts, and oversized/NUL-containing identity or path fields are ignored rather than displayed. `dev cache list` shows its path, size, and age; `dev cache clear fleet` (or `dev cache clear all`) removes it outright. There is nothing to "rebuild" explicitly — the next `dev fleet list`, `dev fleet status`, or TUI FLEET reload regenerates it from a fresh probe.
+If BatchMode is denied and a primary profile has a password source, fleet retries once. The password is not placed in SSH argv or the environment: a one-shot self-executed `SSH_ASKPASS` helper receives it over an inherited descriptor. `prompt` reads hidden terminal input; `plain` comes from the protected primary config; `bitwarden` invokes `bw get password <item>`. SSH-host bootstrap itself has no password backend—interactive setup leaves native prompts to OpenSSH, while noninteractive setup stays batch-only.
 
-The cache exists so an unreachable, timed-out, incompatible, or invalid-response host can still report its last known state (marked `stale`, with `FromCache` set) instead of vanishing from the listing; `--cached` uses only this cache and never touches the network. Each remote host's own `config.toml`, task registry, and repository paths remain authoritative on that host — the cache only ever holds a read-only snapshot of them.
+## Cache versus durable state
+
+| Data | Role |
+|---|---|
+| primary `remotes.toml` | durable user-authored fleet intent |
+| sibling `remotes.d/ssh-<alias>.toml` | durable dev-owned fleet intent created/removed only by explicit SSH commands |
+| each remote's config/tasks/repositories/runtime | host-local authority; never centralized |
+| `$XDG_CACHE_HOME/dev/fleet/v1/*.json` | disposable controller snapshots |
+
+A successful probe writes a private per-host JSON snapshot. Its endpoint ID includes connection fields, SSH port, timeouts, `dev_path`, and `remote_os`; changing the target invalidates stale cache identity. Oversized/malformed snapshots, future timestamps, invalid counts, and unsafe fields are ignored. `dev cache clear fleet` or `dev cache clear all` removes this cache; the next fleet request rebuilds it.
+
+The cache lets an unavailable host retain last-known state as `stale`; `--cached` reads only it. It never becomes authoritative for remote paths or tasks.
 
 ## Fleet in the TUI
 
-FLEET is one of the TUI's six views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, `SKILLS`, switched with `tab`/`h`/`l`). Like REMOTE, it loads lazily — no live probe starts until the view is first opened — but its cache is decoded in the background after the initial TASKS view so a valid snapshot still within `defaults.cache_ttl` can seed the table. The TUI hides this machine by default because REPOS already provides its richer local inventory; `a` includes/hides local rows. The local-host snapshot reuses the current accepted REPOS generation instead of running repository/task/runtime discovery again; if that generation is still loading, FLEET keeps cached rows visible and says it is waiting. `r` supersedes an older request and forces a live reload of every configured host. The non-interactive `dev fleet list` output remains local plus remote.
+FLEET is one of six views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, `SKILLS`). It loads live remotes lazily while decoding valid cache after the initial view. This machine is hidden by default because REPOS has richer local data; `a` toggles it. The local row reuses the accepted REPOS generation rather than rescanning. `r` supersedes prior work and refreshes all merged configured hosts. Noninteractive `dev fleet list` remains local plus remote.
 
-Its table shows `HOST`, `STATE`, `REPO`, `BRANCH`, `GIT`, `LIVE`, `TASKS`, and `PATH`. `enter` opens the selected repository: an explicitly revealed local host row uses an ordinary local open; for a remote row `dev` prefers native Herdr remoting when that host's snapshot reports the `herdr` runtime and the host connects through `ssh_alias` with no password step, and otherwise falls back to an interactive SSH login shell in the repository's directory. Git changes are read-only in this view — FLEET is for inspecting and opening work, not editing it in place.
+The table shows host/state/repository/branch/Git/runtime/task/path facts. Enter uses native Herdr remoting when an eligible POSIX-style profile reports Herdr and no password step is needed; otherwise it opens through SSH and a remote login shell. On a Windows controller, the local fallback starts a child `%COMSPEC%` shell because Windows has no `exec(2)`.
 
-`e` opens `remotes.toml` in `$VISUAL`/`$EDITOR` — the file this view is about, rather than dev's own `config.toml`, which `e` opens everywhere else. On leaving the editor `dev` reparses the file before using it. A parse failure, an unknown field, or a permissions problem on a file holding a plaintext password is reported and the previous rows are kept, so a typo cannot silently drop a host from the fleet. A file that parses triggers an immediate live reload of every configured host.
+The `e` key opens only primary `remotes.toml`. After return, dev reparses the full primary-plus-generated merge. An invalid primary or generated fragment reports the error and preserves previous usable rows; a valid merge triggers a live reload.
 
-## Degrading gracefully
+## Safe branch propagation and degradation
 
-Every host is probed independently, so one bad host never fails the fleet as a whole. Per-host states are `ok`, `stale` (cache reused, optionally with an error explaining why), `no-dev` (the remote has no `dev` on its `PATH` — reported, not an error), `unreachable` (SSH itself failed), `timeout`, `incompatible` (an old or unrecognized remote `dev`), and `invalid-response` (malformed snapshot JSON). `ok` and a clean `no-dev` never fail `--strict`; every other state does, including a `stale` result that carries an error.
+```bash
+dev fleet sync api --push
+dev fleet sync api                 # HEAD must already equal fetched upstream
+dev fleet sync api --host lab
+```
 
-Separately, forge integration is optional: `gh` and `glab` enable GitHub/GitLab
-inventory, publication, and pull/merge requests, while `az` enables Azure
-DevOps inventory and pull requests. `dev doctor` reports missing CLIs as
-warnings. Local Git workflows remain available, but an explicit non-interactive
-publication request fails with login/install guidance instead of silently
-changing its meaning. Azure DevOps inventory is additionally opt-in and stays
-disabled until `forge.azure_devops` targets are configured.
+The source must be clean and attached. Targets match normalized Git remote identity, not directory name. Each target fetches first; only a clean checkout on the same strictly-behind branch advances by fast-forward. Different branches are not switched. Dirty, ahead, divergent, ambiguous, or unreachable targets stay untouched and make sync non-zero. Hosts without `dev` or that repository are explicitly reported and ignored.
+
+Per-host states are `ok`, `stale`, `no-dev`, `unreachable`, `timeout`, `incompatible`, and `invalid-response`. No automatic rebase, force push, background hook, or all-repository pull exists.
 
 ## Sources
 
 - [`internal/cli/fleet.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet.go)
 - [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
-- [`internal/fleet/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/types.go)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
 - [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
-- [`internal/fleet/sync.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/sync.go)
 - [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
 - [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)
-- [`internal/cli/tui.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/tui.go)
-- [`internal/tui/model.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/model.go)
-- [`internal/tui/view.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/view.go)
-- [`internal/tui/rows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/rows.go)
-- [`internal/cli/doctor.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/doctor.go)
-- [`internal/cli/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/cache.go)
-- [`internal/forge/forge.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/forge.go)
 
 ---
 
@@ -2480,6 +2765,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
+| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh probe`, `ssh remove` |
 | remote fleet | `fleet list`, `fleet status`, `fleet sync`, `fleet open`, `fleet config …` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
@@ -2501,12 +2787,59 @@ dev repo setup [repo-or-path] --preset PRESET --json
 dev note list [repo] --json
 dev note search <query> --json
 dev note show <note-id> --json
+dev ssh init --json
+dev ssh list --json
+dev ssh list --format tsv
+dev ssh show <alias> --json
+dev ssh setup <alias> --dry-run --json
+dev ssh probe <alias> --json
+dev ssh remove <alias> --dry-run --json
 dev bootstrap --json
 ```
 
 Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract.
 
 Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
+
+## SSH host and fleet contracts
+
+`dev ssh` keeps OpenSSH authoritative while owning only the exact root
+`Include ~/.ssh/dev.d/*.conf`, canonical `~/.ssh/dev.d/<alias>.conf` files, and
+explicit generated fleet registrations. `ssh init` is report-only unless
+`--apply` is present. `ssh list` and completion are static and never run `ssh`,
+`Match exec`, a resolver, an agent, or the network; `ssh show` deliberately uses
+plain `ssh -G`, and `ssh probe` performs one fresh BatchMode login with connection
+sharing disabled.
+
+`ssh setup` handles new/managed/foreign aliases in one command. Connection flags
+(`--hostname`, `--user`, `--port`, `--proxy-jump`, `--identity-file`,
+`--identities-only`) apply only to new or managed aliases. `--config-only` stops
+after local verification. Full setup requires an explicit `--key` or
+`--generate-key`; noninteractive full setup also requires `--target-os`, and
+noninteractive generation requires `--no-passphrase`. Route/platform controls
+are `--hop-os`, `--install-on-working-jump`, and
+`--windows-admin-authorized-keys`. `--dry-run` does no OpenSSH evaluation,
+network access, generation, or writes. `--fleet` is an explicit final step after
+a fresh ordinary alias login; `--fleet-name` never implies it.
+
+Every SSH JSON form emits one object with `schema_version`, `kind`, and stable
+status/action/error codes; operational failures still emit one safe document and
+child diagnostics stay on stderr. Kinds are `ssh_init_plan|ssh_init_result`,
+`ssh_list`, `ssh_show`, `ssh_setup_plan|ssh_setup_result`, `ssh_probe`, and
+`ssh_remove_plan|ssh_remove_result`. `ssh list --format tsv` emits one definition
+per row with six fields: alias, status, ownership, source, line, and
+comma-separated fleet names. See [SSH host onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/)
+for schemas, partial/unknown outcomes, and the no-private-key/no-revocation
+boundary.
+
+Fleet's durable input is a merge, not one file: user-authored primary
+`remotes.toml` first, then strict dev-owned sibling
+`remotes.d/ssh-<alias>.toml` fragments in lexical order, then defaults.
+`remote_os = "posix"|"windows"` selects the target launcher/path semantics and
+participates in cache identity. `dev fleet config show` prints the effective
+merge with secrets redacted and generated origins identified; `config edit` and
+the TUI edit action continue to open only the primary file. Generated fragments
+are owned by `dev ssh setup/remove --fleet`.
 
 ## Repository bootstrap
 
@@ -2692,6 +3025,12 @@ dev config scaffolds init
 dev config scaffolds show
 dev config scaffolds path
 dev config scaffolds edit
+
+dev fleet config init      # user-authored primary remotes.toml
+dev fleet config show      # effective primary + generated remotes.d merge
+dev fleet config edit      # primary only
+dev ssh init               # report dedicated OpenSSH Include plan
+dev ssh init --apply       # install it after confirmation
 ```
 
 `config init` detects local roots and writes explicit defaults. A missing config file is allowed; the built-in defaults keep core Git behavior usable, but generated config is recommended because it makes machine policy reviewable.
@@ -3816,6 +4155,100 @@ dev skill update <skill> [flags]
 - `-p, --project` — update the project-scoped skill
 - `-y, --yes` — skip dev's confirmation
 
+### `dev ssh`
+
+Discover, configure, and bootstrap OpenSSH host aliases
+
+```
+dev ssh
+```
+
+### `dev ssh init`
+
+Plan or install the dedicated dev.d Include
+
+```
+dev ssh init [flags]
+```
+
+- `--apply` — apply the planned root Include change
+- `--json` — emit one versioned JSON plan or result
+- `--yes` — confirm the local plan without prompting
+
+### `dev ssh list`
+
+Statically list exact SSH aliases and their definitions
+
+```
+dev ssh list [flags]
+```
+
+- `--format` — machine format: tsv
+- `--json` — emit one versioned JSON object
+
+### `dev ssh probe`
+
+Perform one fresh noninteractive ordinary SSH login
+
+```
+dev ssh probe <alias> [flags]
+```
+
+- `--json` — emit one versioned JSON object
+
+### `dev ssh remove`
+
+Remove only dev-owned SSH and optional fleet fragments
+
+```
+dev ssh remove <alias> [flags]
+```
+
+- `--dry-run` — render removal plans without writing
+- `--fleet` — remove the owned fleet fragment first
+- `--json` — emit one versioned JSON plan or result
+- `--yes` — confirm removals without prompting
+
+### `dev ssh setup`
+
+Create or reconcile an alias, install a public key, and optionally register fleet
+
+```
+dev ssh setup <alias> [flags]
+```
+
+- `--comment` — public key comment for --generate-key
+- `--config-only` — stop after local config verification
+- `--dry-run` — render static local plans without running OpenSSH or writing
+- `--fleet` — register the verified alias in dev fleet
+- `--fleet-name` — fleet profile name (default: alias)
+- `--generate-key` — generate a new Ed25519 key pair
+- `--hop-os` — route OS override alias=posix|windows (repeatable)
+- `--hostname` — managed HostName value
+- `--identities-only` — set managed IdentitiesOnly=yes (explicit false writes no)
+- `--identity-file` — managed IdentityFile value
+- `--install-on-working-jump` — install the selected key on already-working jump hosts
+- `--json` — emit exactly one versioned JSON plan or result
+- `--key` — existing public key or identity path to install
+- `--key-path` — destination identity path for --generate-key
+- `--no-passphrase` — generate without a passphrase (required outside a TTY)
+- `--port` — managed SSH port
+- `--proxy-jump` — managed ProxyJump value
+- `--target-os` — target operating system: posix or windows
+- `--user` — managed User value
+- `--windows-admin-authorized-keys` — allow the Windows administrators_authorized_keys path
+- `--yes` — confirm the local plan without prompting
+
+### `dev ssh show`
+
+Show static definitions and plain ssh -G effective values
+
+```
+dev ssh show <alias> [flags]
+```
+
+- `--json` — emit one versioned JSON object
+
 ### `dev start`
 
 Track work directly, on a canonical branch, or in an isolated worktree
@@ -4197,6 +4630,10 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
 - [`internal/cli/color.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/color.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
+- [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
+- [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
 
 ---
 
@@ -4224,6 +4661,10 @@ This page separates graceful degradation from real limitations. Reverify it when
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
+| static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe files are diagnosed; no `ssh` process or network is needed |
+| SSH effective values, fresh probes, bootstrap, and fleet transport | system `ssh` client | static `ssh list`, dry-run, and local config plans remain available; effectful SSH operations fail with capability guidance |
+| public companion derivation and Ed25519 generation | system `ssh-keygen` | an existing validated `.pub` can still be used; derivation/generation is unavailable |
+| Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX targets remain available; Windows-specific installer/launcher fails without PowerShell rather than using a shell fallback |
 | terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
 | in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` delegates to the package manager's upgrade command instead |
 
@@ -4264,14 +4705,20 @@ draft. A draft-write failure is warning-only: staging remains successful and
 is never rolled back. If the integration changes upstream, the staged index
 and printed message remain the recovery path.
 
-### Windows is a build target, not a full-feature platform
+### Windows has native SSH support and a smaller runtime surface
 
-`dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository, task and worktree operations work. What differs:
+`dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository/task/worktree operations and the SSH host domain are native: static discovery, protected-DACL managed fragments, reparse-point rejection, native `ssh-keygen.exe`, Windows Job Object cancellation, and POSIX/Windows remote bootstrap are covered. Fleet can also target Windows OpenSSH through its encoded PowerShell launcher. What still differs:
 
 - There is no tmux, Zellij or Herdr, so the runtime backend is always `none`. Grouped runtime/agent activity and named sessions are unavailable; the `cd` directive and PowerShell wrapper still work.
 - Shell integration is `dev shell-init powershell`. POSIX shells hand the directory back on file descriptor 3; PowerShell cannot inherit it, so the wrapper passes a temp-file path in `DEV_SHELL_CD_FILE` instead.
 - `dev fleet open` starts a child shell (`%COMSPEC%`) rather than replacing the process, because Windows has no `exec(2)`.
-- The domain test suites still assume a POSIX filesystem in places, so Windows CI runs the tests advisory-only while compilation, `go vet` and the build are enforced.
+- CI keeps an advisory broad Windows suite for unrelated POSIX assumptions, but `internal/sshhost`, `internal/fleet`, and the SSH/fleet/doctor CLI contracts run in a separate required native `windows-latest` gate. Affected tests/packages and the CLI are also compiled for `windows/arm64`.
+
+### SSH host management is intentionally narrow
+
+Static `dev ssh list` is a provenance/candidate scanner, not a second OpenSSH evaluator. Dynamic `Match`, unsupported Include expansion, cycles, and scan bounds produce `complete: false`; they can block mutation even when plain `ssh` would eventually choose a value. `dev ssh show` and setup route resolution use plain `ssh -G`, so configured resolver and `Match exec` behavior may run. Fresh probes preserve `KnownHostsCommand`, `UpdateHostKeys`, and host-key policy rather than forcing a convenient answer.
+
+Setup requires an explicit key or explicit Ed25519 generation and installs public material only. It supports bounded ProxyJump forms plus fixed POSIX and Windows OpenSSH installers; `ProxyCommand`, custom `AuthorizedKeysFile`, forced-shell policy, and ACL-incapable filesystems require manual remediation. Once a remote installer starts, cancellation/failure is `unknown` because the key may have been appended. Dev retains local config/generated keys and never attempts key revocation, private-key deletion/copying, `known_hosts` cleanup, password storage/fallback, or automatic credential rollback. Alias rename/adoption, bulk onboarding, arbitrary directives, and an SSH TUI are also deferred.
 
 ### Direct mode has a smaller lifecycle
 
@@ -4286,6 +4733,8 @@ These were historical gaps and should not be reintroduced as limitations:
 - Repository setup supports `--check-in=commit|stage|none` (`auto` for preset compatibility). Staged setup runs before-commit setup and `git add -A` without an `after_commit` phase, cannot publish or hand off to `start`, and may prefill lazygit lowercase `c` as described above.
 - Selected skills with matching source and agent targets share one installer invocation. The `agent-history-hygiene` initializer writes pre-commit/gitleaks policy and merges missing machine-local `.project.json`/`statistics.json` rules into `.specstory/.gitignore`; custom content and transcript history remain trackable.
 - Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
+- `dev ssh init/list/show/setup/probe/remove` provides explicit OpenSSH host onboarding without a separate host database. Dev owns only its dedicated Include, canonical `dev.d` fragments, and opt-in generated fleet registrations; all public SSH JSON is one versioned object, and TSV listing is a documented six-field selector.
+- Fleet merges user-authored primary `remotes.toml` with strict generated `remotes.d` fragments, tracks `remote_os`, and uses a hidden-helper-only encoded PowerShell launcher for Windows targets. Primary duplicate aliases remain compatible; any generated alias collision fails closed.
 
 - `dev start --focus` activates the runtime after non-JSON creation.
 - `dev start --run '<shell command>'` dispatches only to an exact root pane from
@@ -4357,6 +4806,11 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
+- [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
+- [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
+- [`.github/workflows/ci.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/ci.yml)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
@@ -4425,7 +4879,8 @@ tested_with: optional
 | repository new/clone routing, snapshot templates/confinement, check-in policy, project trust, skill batching, TTY editor, upstream publication, and handoff | [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`, `internal/scaffold`, `internal/repotemplate`, `internal/projectconfig`, `internal/cli/repo_{create,checkin,skills}*.go`, `internal/cli/prompt.go`, focused repo-bootstrap tests | implemented |
 | lazygit lowercase `c` pending-message integration | [Compatibility](https://daviddwlee84.github.io/dev-cli/reference/compatibility/#lazygit-staged-message-prefill-is-best-effort) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive, checked 2026-08-29 |
 | runtime fallback and exact-pane `start --run` dispatch | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go`, `internal/runtime/herdr.go`, focused start/runtime tests | implemented |
-| SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
+| OpenSSH alias discovery/provenance, dev-owned Include/fragments, exact flags/JSON/TSV, public-key bootstrap, ProxyJump/Windows admin handling, partial outcomes, and removal limits | [SSH host onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/) | `internal/sshhost`, `internal/cli/ssh.go`, SSH help, focused domain/CLI tests | implemented; repository snapshot 2026-09-01 |
+| fleet primary + generated-fragment merge, collision/ownership rules, `remote_os`, POSIX/Windows launchers, snapshots, and sync safety | [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/) | `internal/fleet/{config,managed,transport}.go`, `internal/cli/fleet.go`, focused fleet/CLI tests, required Windows SSH CI job | implemented; repository snapshot 2026-09-01 |
 | READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
 | `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](https://daviddwlee84.github.io/dev-cli/guides/machine-summary/), [Development journal](https://daviddwlee84.github.io/dev-cli/guides/dev-journal/) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
 | agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |
@@ -5033,6 +5488,8 @@ Sidecar state 刻意分成不同 scope：
 - catalog 保存穩定的 repository/Try identity、tags、一筆 metadata summary、experiment lifecycle 與 host-local locations；
 - configured `paths.state_dir/notes` 保存多筆 durable Markdown observations，並以 catalog repository ID 為 key；
 - `$XDG_CACHE_HOME/dev/notes.db` 只是這些 Markdown files 的可重建 full-text index。
+
+Machine connection policy 有另一個 authority boundary。OpenSSH configuration 是 durable connection truth；dev 會讀 foreign definition，但只擁有 exact root Include 與 canonical `~/.ssh/dev.d` fragments。Fleet intent 是 user-authored primary `remotes.toml` 與 explicit generated `remotes.d` registrations 的 merge。每台 remote machine 的 paths、tasks、repositories 與 runtime 仍以該機器為 authority；fleet cache 只是 controller snapshot。
 
 Catalog ID 讓 quick note 在 linked worktrees、symlink indexes、path moves 與已同步的 host state 之間維持 attachment。`dev` 本身不會同步 notes 或 catalog files。即時 Git status、ahead/behind 與 runtime availability 會重新推導，不會被當成權威 cache。
 
@@ -5732,27 +6189,252 @@ Claude-specific primitive 的選擇請接著看[平行工作決策指南](https:
 
 ---
 
-### Remote repository fleet
+### SSH Host 設定與佈建
 
-Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/
 
-> 透過 dev fleet 在 SSH 可連線的多台機器間盤點 repository、task 與 live runtime activity，並安全地在機器間 fast-forward 一個 branch。
+> 探索 OpenSSH alias、只管理 dev-owned host fragment、佈建 public-key access，並將驗證成功的 host 明確登記到 dev fleet。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
-`dev fleet` 透過 SSH 連到其他執行自己 `dev` 的機器，讓你能查看並開啟它們的 repository、安全地傳播 branch，而不會把它們各自獨立的設定合併進這台機器的視角。
+`dev ssh` 在既有 OpenSSH configuration 外加上一層保守的 lifecycle。OpenSSH 仍是 connection authority；dev 提供 static provenance、小型 owned fragment namespace、public-key bootstrap、fresh authentication proof，以及通往 [dev fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) 的明確 bridge。
+
+## Authority 與 ownership
+
+| Surface | Authority / owner | Dev 可以做什麼 |
+|---|---|---|
+| `~/.ssh/config`、其中的 foreign Includes 與 foreign `Host`/`Match` blocks | user + OpenSSH | static read；只透過 plain `ssh -G` evaluate alias；絕不 rewrite |
+| root config 中的 `Include ~/.ssh/dev.d/*.conf` | dev，且必須明確執行 `ssh init --apply` | 在第一個 `Host`、`Match` 或更早的 Include 前安裝一次；絕不自動移除 |
+| `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | 只 create、reconcile 或 remove canonical v1 file，其內容是 allowlisted single `Host` block |
+| local key files | user + native `ssh-keygen` | 驗證 explicit key、經確認後 derive 缺少的 `.pub`，或以 no-replace 方式產生 Ed25519 pair；絕不複製 private bytes |
+| remote `authorized_keys` | remote OpenSSH account | idempotently append 一筆 bounded normalized public record；絕不 remove 或 revoke |
+| primary `remotes.toml` | user via `dev fleet config` | read/merge；SSH setup 絕不 rewrite |
+| sibling `remotes.d/ssh-<alias>.toml` | `dev ssh setup/remove --fleet` | 只有 fresh ordinary login 成功後才 create；只有明確要求才 remove |
+
+Foreign alias 仍可供 `list`、`show`、`probe`、key bootstrap 與 fleet registration 使用，但 `setup` 會拒絕 connection flags；dev 不會與既有 definition 競爭。新的 dev-managed alias 使用 portable lowercase exact-name grammar，且只有一個 deterministic file，內容可包含 `HostName`、optional `User`、`Port`、`ProxyJump`、`IdentityFile` 與 `IdentitiesOnly`。Arbitrary directives 與 wildcard/`Match` blocks 不在 managed scope。
+
+## Command map
+
+| Command | 精確 local flags | 邊界 |
+|---|---|---|
+| `dev ssh init` | `--apply`、`--yes`、`--json` | 預設只 plan；只有 `--apply` 可安裝 dedicated Include |
+| `dev ssh list` | `--json` 或 `--format tsv` | bounded static user-config scan；沒有 subprocess 或 network |
+| `dev ssh show <alias>` | `--json` | static definitions，加上 plain `ssh -G <alias>` 的 effective values |
+| `dev ssh setup <alias>` | 下方列出的 connection、key、route、fleet、plan、confirmation、JSON flags | owned local config、public-key bootstrap、optional fleet registration |
+| `dev ssh probe <alias>` | `--json` | sharing disabled 的單次 fresh ordinary BatchMode login |
+| `dev ssh remove <alias>` | `--fleet`、`--dry-run`、`--yes`、`--json` | 只移除 canonical dev-owned SSH/fleet fragments |
+
+`dev doctor` 也會回報 local `ssh`/`ssh-keygen` capability、static Include reachability、managed namespace permission/ACL，以及 generated fleet-fragment health。它不會執行 `ssh -G`、聯絡 host 或進行 repair。
+
+## 一次性 initialization 採 report-before-apply
+
+```bash
+dev ssh init
+dev ssh init --json
+dev ssh init --apply
+dev ssh init --apply --yes
+```
+
+沒有 `--apply` 時，init 只回報 root path、managed directory、exact Include，以及 `create`/`update`/`noop`/`blocked` action，不會寫入。`--yes` 只能與 `--apply` 一起用；它只確認 local plan，不提供 credential，也不接受 host key。
+
+Dev 唯一會插入的 directive 是：
+
+```sshconfig
+Include ~/.ssh/dev.d/*.conf
+```
+
+Dev 會保留 insertion 以外的 root bytes、BOM/newline style，以及受支援的 Unix metadata 或 Windows owner/DACL。Unsafe path component、link/reparse point、special file、hardlink、concurrent source change、無法表示的 metadata，以及 `dev.d` 中 foreign 或 drifted content 都會被拒絕。Plan 若 blocked，dev 不做變更，並回報 exact Include 應手動放在哪裡。
+
+## Static list 與 OpenSSH/network evaluation 的界線
+
+```bash
+dev ssh list
+dev ssh list --format tsv
+dev ssh list --json
+dev ssh show lab
+dev ssh show lab --json
+dev ssh probe lab
+```
+
+`list` 與 SSH alias completion 會 walk 以 `~/.ssh/config` 為 root 的 active user Include closure。它們**不會**執行 `ssh`、resolver、`Match exec`、SSH agent 或 network。Scanner 會依 bounded lexical Include expansion 追蹤來源，記錄 source line 與 Include provenance，並將每個 exact positive alias 分類為 active、inactive、unknown 或 conflicting。Wildcard-only declaration 只作為 collision diagnostic，不是 selectable alias。Dynamic/unsupported guard、cycle、limit 或無法證明的 Include behavior 會讓 `complete: false`；不確定的 declaration 絕不會被提升成 usable host。
+
+`--format tsv` 每個 discovered definition 輸出一列，沒有 header，依序是六個 tab-separated fields：
+
+```text
+alias  status  ownership  source  line  comma-separated-fleet-names
+```
+
+Fields 會 sanitize 成單一 physical line。Selector contract 刻意保持小型；完整 definition/provenance/diagnostic data 請使用 JSON。
+
+`show` 先保留 static definitions，再刻意執行 plain `ssh -G <alias>`；它不會用 `-F` 取代 user config，也不解析不穩定的 `ssh -vv` prose。因此 system configuration 與 OpenSSH 的 scalar/additive semantics 都會生效，但 configured resolver behavior 與 user-authored `Match exec` 也可能執行。
+
+`probe` 會跨越 network boundary。它執行一次 ordinary alias login，等價於 fresh `ssh -S none -o BatchMode=yes …`，因此既有 ControlMaster 不會造成 false success。它不會 override `StrictHostKeyChecking`、`UserKnownHostsFile` 或相關 policy；user-configured `KnownHostsCommand`、`UpdateHostKeys`、resolver 與 `Match exec` 仍可能執行。
+
+## Setup modes 與 flags
+
+Setup 處理三種 alias class：
+
+1. **new：**interactive HostName prompt 以外的情況需要 `--hostname`，並建立一個 dev-owned fragment；
+2. **managed：**只 reconcile 既有 canonical fragment；
+3. **foreign：**保留所有 connection policy；任何 connection-field flag 都會 block，但 explicit key bootstrap 與 `--fleet` 可繼續。
+
+Managed alias 的 connection fields 是：
+
+```text
+--hostname --user --port --proxy-jump --identity-file --identities-only
+```
+
+Operational flags 是：
+
+```text
+--config-only
+--key <public-or-identity-path>
+--generate-key [--key-path <identity>] [--comment <text>] [--no-passphrase]
+--target-os <posix|windows>
+--hop-os <alias=posix|windows>       # repeatable
+--install-on-working-jump
+--windows-admin-authorized-keys
+--fleet [--fleet-name <name>]
+--dry-run --yes --json
+```
+
+`--config-only` 不能與 key、route、bootstrap 或 fleet flags 併用。它會在 local managed-config publication/verification 後停止；若是 foreign alias，則只執行 plain `ssh -G` verification。
+
+`--dry-run` 沒有 side effect：不 generate key、不寫 file、不執行 `ssh -G`、不碰 `known_hosts`、不 probe network，也不啟動 remote installer。Remote 與 route action 會誠實保留為 `unknown`。它可進行驗證 explicit named key 或 existing config 所需的 bounded local reads。Dry run 使用 `--fleet` 時仍須提供 `--target-os`，讓 proposed fragment 可確定。
+
+非 dry-run 的 full setup 必須明確且二選一使用 `--key` 或 `--generate-key`。JSON mode 即使在 terminal 上也不互動；任何 noninteractive full setup 還需要 `--target-os`，local mutation 則需要 `--yes`。`--yes` 只批准 local plan。Password/passphrase 與 host-key interaction 仍由 native OpenSSH 負責；batch mode 會回傳 `interaction_required`，不會自行發明 credential path。
+
+## Existing key 與 generation
+
+```bash
+# 只建立 local managed alias。
+dev ssh setup lab --hostname 192.0.2.20 --user dev --config-only
+
+# 以 existing identity 或 public file 進行 bootstrap。
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix
+
+# 在預設 ~/.ssh/id_ed25519_dev path 產生 Ed25519 pair。
+dev ssh setup lab --generate-key --target-os posix
+
+# Fully specified noninteractive generation。
+dev ssh setup winlab --hostname 198.51.100.30 \
+  --generate-key --key-path ~/.ssh/id_winlab --no-passphrase \
+  --target-os windows --yes
+```
+
+`--key` 接受 validated `.pub` record、具有 companion `.pub` 的 private identity，或具有 companion `.pub` 的 security-key stub。Identity 缺少 public companion 時，dev 會先詢問，再執行 `ssh-keygen -y`；script 可用 `--yes` 提供該 local confirmation。Encrypted noninteractive derivation 會以 `interaction_required` 失敗，不會把 passphrase 放進 argv 或 environment。
+
+`--generate-key` 透過 native `ssh-keygen` 產生 Ed25519。Interactive mode 將 hidden passphrase prompt 交給它；noninteractive generation 必須明確使用 `--no-passphrase`。兩個 half 先在 private staging basename 產生，依 fingerprint 確認相符、harden，再以 no-replace semantics publish；任何 destination collision 都會 block，不會 overwrite。成功產生的 pair 在後續 route/bootstrap/fleet failure 後仍保留，`dev ssh remove` 也絕不移除。
+
+所有 output 都是 content-safe：可以包含 fingerprint、algorithm、path、digest 與 boolean；不包含 private bytes、passphrase、password、完整 public-key line、agent payload 或 unredacted command-like SSH option。
+
+## ProxyJump 與 remote operating system
+
+Dev 會對 target 與每個 discovered jump 執行 plain `ssh -G`，將 nested/comma-separated `ProxyJump` route 依 outermost-first flatten，並支援 alias、`user@alias`、`alias:port` 與 bracketed IPv6 forms。Cycle、repeated hop、unsupported URI/`ProxyCommand` route 與 ambiguous override 都會被拒絕，不會猜測。
+
+```bash
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix \
+  --hop-os bastion=posix --hop-os winjump=windows
+```
+
+`--target-os` 只套用 final target。Ambiguous jump 請使用 repeatable `--hop-os`；interactive mode 可以詢問，noninteractive mode 則要求每個 unknown hop 都指定。每個 hop 會先以 ordinary fresh BatchMode authentication probe。已能運作的 jump 不會被修改，除非明確加上 `--install-on-working-jump`。
+
+POSIX hop 使用 constant `sh` installer 驗證／建立 `~/.ssh/authorized_keys`、套用 `0700`/`0600`，再 idempotently append 從 stdin 收到的一筆 public record。Windows OpenSSH 則是：
+
+- standard account 使用 `%USERPROFILE%\.ssh\authorized_keys`，並設定 protected current-user + SYSTEM ACL；
+- administrator-group account 必須明確使用 `--windows-admin-authorized-keys`，dev 才會 target `%ProgramData%\ssh\administrators_authorized_keys`，其 ACL 為 SYSTEM + BUILTIN\Administrators；
+- dev 會偵測 group membership、拒絕 reparse target，且絕不自動授與 UAC/elevation。Elevation 或 non-default server policy 仍可能需要 manual remediation。
+
+macOS、Linux 與 Windows controller 都使用 system `ssh` binary。PowerShell 是 Windows installer 的 target capability，不是 controller-side host database 或 password backend。
+
+## Fresh proofs、partial outcome 與 fleet registration
+
+Setup 對每個 route hop 依序執行 ordinary fresh probe、exact selected-key proof、必要的 public-key installation、第二次 exact-key proof，以及獨立的 ordinary alias gate。每個 proof 都使用 `-S none`；exact proof 另加 `IdentitiesOnly=yes` 與 selected identity。
+
+Remote installation 無法變成 transaction。Installer 一旦開始，timeout/cancellation 或 non-zero result 會回報 `unknown`，因為 remote 可能已 append public key。Dev 絕不嘗試不安全的 compensating deletion。Local managed config 與 generated key pair 會保留，已完成的 hop facts 會回傳，後續 hops 與 fleet registration 會 skip；重新執行 setup 會 converge。
+
+Fleet registration 永遠是 opt-in：
+
+```bash
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --fleet
+dev ssh setup winlab --key ~/.ssh/id_winlab --target-os windows \
+  --fleet --fleet-name windows-builder
+```
+
+只有 final fresh ordinary alias login 成功後，dev 才寫 generated sibling fragment。Default primary path 對應 `$XDG_CONFIG_HOME/dev/remotes.d/ssh-<alias>.toml`；`--remotes /srv/dev/lab.toml` 對應 `/srv/dev/lab.d`，不是 `.toml` 結尾的 path 則 append `.d`。Fragment 只包含 `name`、`ssh_alias` 與已驗證的 `remote_os`，不含 password 或另一套 connection policy。Remote 缺少 `dev` 不會讓 SSH onboarding 失敗，之後 fleet 會顯示 `no-dev`。
+
+## Structured output
+
+所有 public SSH JSON 在 stdout 都是 exactly one schema-versioned object。Operational failure 仍會輸出該單一 safe result object；CLI syntax/usage error 不會輸出 partial JSON document。Diagnostic 與 child progress 會寫到 stderr。
+
+| Command | `kind` values | 重要 fields |
+|---|---|---|
+| `ssh init --json` | `ssh_init_plan`、`ssh_init_result` | `status`、source-bound `plan`、optional `result`、`error_code` |
+| `ssh list --json` | `ssh_list` | `complete`、root/include state、aliases、definitions、fleet membership、diagnostics |
+| `ssh show --json` | `ssh_show` | alias status、definitions、safe effective subset、fleet membership |
+| `ssh setup --json` | `ssh_setup_plan`、`ssh_setup_result` | alias class、local/key/bootstrap plans/results、per-hop state、fleet action、partial/error code |
+| `ssh probe --json` | `ssh_probe` | safe `ready`/`not_ready` status、code、exit code |
+| `ssh remove --json` | `ssh_remove_plan`、`ssh_remove_result` | owned plan/result、explicit fleet action、status/error code |
+
+Consumer 應依 `schema_version`、`kind`、machine-readable `status`/`action`/`code` 與誠實的 `partial`/`unknown` state 分支，不應解析 human table 或 stderr。
+
+## Removal limits
+
+```bash
+dev ssh remove lab --dry-run
+dev ssh remove lab --yes
+dev ssh remove lab --fleet --yes
+```
+
+Removal 只接受 portable managed alias，且 expected file 必須仍是 canonical、secure、structurally dev-owned。Generated fleet fragment 若存在，省略 `--fleet` 會 block，不會靜默刪除第二份 durable intent；加上 flag 時，fleet removal 先執行。Primary user-authored `remotes.toml` 中的 reference 一律 block，並指向 `dev fleet config edit`。Manual drift、link/reparse point、changed source、unsafe metadata 與 ambiguous ownership 也全部 fail closed。
+
+Removal 絕不刪除 shared Include、local private/public key file、`known_hosts`、remote `authorized_keys` 或 foreign configuration。
+
+## Security boundary 與 deferred scope
+
+已實作的 safety properties 包含 source-bound plan、no-follow/reparse check、private Unix mode 或 protected Windows DACL、atomic/no-replace publication、concurrent-source revalidation、managed config 寫入後的 plain-`ssh -G` verification、只有在剛寫入的 local identity 仍可證明為 owned 時才 rollback、process-group/Job-Object cancellation，以及 material-safe structured output。
+
+刻意 deferred 的項目：
+
+- key rotation、expiry、revocation，或從 remote `authorized_keys` 刪除 key；
+- 刪除 local key 或 `known_hosts` repair/removal；
+- alias rename/adoption、managed wildcard/`Match`、arbitrary SSH directive 或 SSH config editor；
+- 自動化 `ProxyCommand`、certificate/CA、forwarding、custom `AuthorizedKeysFile` 或 forced-shell policy；
+- password/vault storage、automatic password fallback、private-key copying、direct Bitwarden integration 或 weakened host-key check；
+- bulk/cloud/Tailscale/chezmoi fleet import、dedicated SSH TUI 或 background probing。
+
+Server policy 若超出 verified POSIX/Windows installer contract，dev 會回報 manual remediation，不會靜默削弱 protection。
+
+## 來源
+
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
+- [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
+- [`internal/help/topics/ssh.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/ssh.md)
+
+---
+
+### 遠端 Repository Fleet
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/
+
+> 透過 merged user-authored 與 dev-managed fleet configuration，盤點 POSIX 或 Windows SSH host 上的 repository、task 與 runtime activity。
+
+!!! note "術語規則"
+    有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
+
+`dev fleet` 透過 SSH fan out 到其他執行自己 `dev` 的機器，讓你 inspect/open 它們的 repository 並安全傳播 branch，而不會集中管理它們的 path、task registry 或 runtime state。
+
+[SSH Host 設定與佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)是 optional entry point，可探索 alias、bootstrap public key，並明確產生已驗證的 fleet registration。Fleet 本身仍接受 user-authored profile。
 
 ## Fleet 是什麼
 
-Remote fleet 是一份其他 host 的清單，每個 host 都執行自己的 `dev` binary，使用自己的 `$XDG_CONFIG_HOME`、自己的 scan roots、自己的 task registry 與自己的 runtime。`dev fleet` 從不集中管理或取得那份 state 的 ownership，它只會透過 SSH 向每個 host 的 `dev` 要一份 read-only snapshot，並回報收到的結果。沒有安裝 `dev` 的 host，或無法連線的 host，只會讓那一列 degrade；不會擋住 fleet 其餘部分。
+Fleet 是 controller-side merged 的其他 host 清單。每個 remote 執行自己的 `dev`，使用自己的 XDG config、scan roots、task registry 與 runtime。Fleet 只要求 read-only snapshot，並傳送狹窄 allowlist 內的 sync/open helper；不會把 remote configuration 複製到 controller。Remote 缺少 `dev` 或無法連線只會讓單一 row degrade，不阻擋其他 hosts。
 
-這與 REMOTE TUI view 及 publishing/PR flow 是不同概念——GitHub/GitLab
-repository publishing 與 PR 使用 `gh` 或 `glab`，Azure DevOps inventory 與 PR
-則使用 Azure CLI。Fleet 溝通的對象是*你自己的機器*上*你自己的 local
-checkout*。
+這與 REMOTE TUI view 及 repository publishing/PR flow 不同。後者使用 authenticated `gh`/`glab`；configured Azure DevOps inventory/PR 則使用 Azure CLI。Fleet 透過 ordinary OpenSSH 與機器溝通，查看那些機器上的 local checkout。
 
-## 設定 hosts
+## 兩層 configuration ownership
 
 ```bash
 dev fleet config init
@@ -5761,7 +6443,26 @@ dev fleet config show
 dev fleet config path
 ```
 
-Host 設定放在 `$XDG_CONFIG_HOME/dev/remotes.toml`（可用全域 `--remotes <path>` flag 覆寫路徑）。`config init` 會寫入一份 starter file（`--force` 覆寫既有檔案、`--stdout` 只印出不寫入）；`config edit` 會用 `$VISUAL`/`$EDITOR` 開啟它（`--editor` 可覆寫）；`config show` 印出目前生效的設定，明文密碼會被遮蔽；`config path` 印出解析後的路徑。
+Fleet 載入兩層 durable configuration：
+
+1. **Primary user-authored config：**`$XDG_CONFIG_HOME/dev/remotes.toml`，或 root `--remotes <path>` override。`dev fleet config init` 寫 starter（`--force` overwrite、`--stdout` 只 print）；`config edit` 只開這個 file；`config path` 也只輸出此 path。
+2. **Generated dev-owned fragments：**sibling `remotes.d/ssh-<alias>.toml` files。它們只有在 explicit `dev ssh setup <alias> … --fleet` 的 fresh ordinary alias login 成功後才建立；`dev ssh remove <alias> --fleet` 才是 removal owner。
+
+Directory derivation 是 deterministic：
+
+| Primary path | Generated directory |
+|---|---|
+| default `$XDG_CONFIG_HOME/dev/remotes.toml` | `$XDG_CONFIG_HOME/dev/remotes.d` |
+| `--remotes /srv/dev/lab.toml` | `/srv/dev/lab.d` |
+| `--remotes /srv/dev/lab` | `/srv/dev/lab.d` |
+
+Primary file 可以不存在；valid generated fragments 仍會載入。Loader 先 decode primary，再依 filename lexical order 載入 managed fragments，最後才 apply defaults。Load 過程絕不 rewrite primary bytes 或 comments。
+
+每個 generated file 有 fixed v1 header、`schema_version = 1`，以及 exactly one `[host]`，只含 `name`、`ssh_alias` 與 `remote_os`。Defaults、password、explicit hostname/user/port/identity 與 arbitrary field 都禁止。Directory/file 必須滿足 private Unix mode 或 protected Windows DACL，以及 no-link/reparse ownership check；drift 是 conflict，不是 overwrite permission。
+
+`dev fleet config show` 會印出 effective merged config、redact plaintext password value，並在 generated entry 前加入 source/ownership comment，要求使用 `dev ssh setup/remove`。`config edit` 與 FLEET TUI 的 `e` key 仍只開 primary `remotes.toml`；generated entry 存在時會顯示 warning。
+
+## Primary host profiles
 
 ```toml
 schema_version = 1
@@ -5776,6 +6477,12 @@ dev_path = "auto"
 [[hosts]]
 name = "lab"
 ssh_alias = "lab"
+remote_os = "posix"
+
+[[hosts]]
+name = "winlab"
+ssh_alias = "winlab"
+remote_os = "windows"
 
 [[hosts]]
 name = "vps"
@@ -5783,79 +6490,116 @@ hostname = "203.0.113.10"
 user = "dev"
 port = 22
 identity_file = "~/.ssh/id_ed25519"
+remote_os = "posix"
 ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 ```
 
-`schema_version = 1` 為必填。`[defaults]` 提供 `connect_timeout`、`command_timeout`、`cache_ttl`、`max_parallel`（fan-out 並行度）與 `dev_path`（`"auto"` 會搜尋 `PATH`）；每個 `[[hosts]]` 項目未明確設定的欄位都會沿用這些預設值。一個 host 需要 `name`，並搭配 `ssh_alias`（優先——它會沿用 `~/.ssh/config` 的 `ProxyJump`、`IdentityAgent` 與 host-key policy，行為與單純的 `ssh` 呼叫完全一致）或 `hostname`（可搭配 `user`、`port`、`identity_file`）其中之一。`ssh_login_password_source.type` 可為 `none`（預設）、`prompt`、`plain`（內嵌 `value`）或 `bitwarden`（用 `item` 透過 `bw` CLI 查詢）。設定檔若含 `plain` 密碼，檔案權限必須是 `0600`，否則 `dev fleet` 會拒絕載入。
+Primary 存在時必須有 `schema_version = 1`。`[defaults]` 提供 timeout、cache TTL、fan-out concurrency 與 `dev_path`；每個 primary host 都 inherit 未設定的 value。Host 需要 `name`，並搭配 `ssh_alias`（優先，因為 ordinary OpenSSH configuration 可保留 `ProxyJump`、`IdentityAgent` 與 host-key policy）或 `hostname` 加 optional `user`、`port`、`identity_file`。
 
-## `dev fleet` 指令
+`remote_os` 接受 `posix` 或 `windows`；省略時為了 backward compatibility 仍代表 POSIX。它決定 remote command launcher 與 target path semantics，也會納入 endpoint cache identity。
+
+`ssh_login_password_source.type` 可為 `none`（default）、`prompt`、`plain` 或 `bitwarden`。Fleet 一律先嘗試 key/agent BatchMode；只有 permission denied 且設定 password source 才重試。Primary 若含 plaintext password 必須是 mode `0600`，否則 load 失敗。Generated fragment 不能含任何 password source。
+
+## Merge 與 collision rules
+
+- Host name 在 primary 與 generated layers 全域唯一。
+- Existing primary profiles 可繼續共用同一 SSH alias，保留先前接受的 configuration。
+- 任何 generated fragment 參與時，SSH alias collision 就是 error。Generated registration 不能靜默與 primary profile 或另一個 managed entry 競爭。
+- Generated entry 參與的 alias comparison 不分大小寫。
+- Malformed、insecure、手動 edited 或 noncanonical generated fragment 會 block merged load。
+- 所有 host merge 完成後才 apply defaults；因此 generated fragment 可 inherit controller defaults，不需 duplicate。
+
+Primary collision 請用 `dev fleet config edit` 解決。Valid generated fragment 請用 `dev ssh setup <alias> … --fleet` reconcile；不要手動 edit。
+
+## 透過 `dev ssh` 明確 registration
+
+```bash
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --fleet
+dev ssh setup winlab --key ~/.ssh/id_winlab --target-os windows \
+  --fleet --fleet-name windows-builder
+```
+
+Alias discovery 或成功 SSH bootstrap 都不會 imply `--fleet`。Setup 最後才寫 fleet fragment，且必須先通過 exact-key verification 與第二次 fresh ordinary alias login。Registered platform 是已驗證的 `--target-os`；managed Windows entry 使用 `dev_path = "auto"`。Remote 缺少 `dev` 仍是 valid SSH onboarding result，安裝前 fleet 顯示 `no-dev`。
+
+Partial/unknown bootstrap、failed ordinary gate 或 fleet-fragment collision 都會保留 valid local SSH config/generated keys，但 skip registration；remediation 後重新執行 setup。
+
+## `dev fleet` commands
 
 | Command | Flags | Purpose |
 |---|---|---|
-| `dev fleet list` | `--host <name>`（可重複）、`--repo <query>`、`--json`、`--cached`、`--strict` | List repositories and activity across this machine and configured hosts |
-| `dev fleet status` | `--json`、`--strict` | Probe configured hosts and report snapshot health |
-| `dev fleet sync <repo>` | `--push`、`--remote <name>`、`--host <name>`（可重複）、`--json` | Push optionally, then safely fast-forward clean matching checkouts |
-| `dev fleet open <host> <repo>` | — | Open a remote repository through Herdr or an SSH login shell |
-| `dev fleet config init` | `-f`/`--force`、`--stdout` | Write a starter `remotes.toml` |
-| `dev fleet config edit` | `--editor <cmd>` | Open `remotes.toml` in `$VISUAL`/`$EDITOR` |
-| `dev fleet config show` | — | Print the effective configuration (passwords redacted) |
-| `dev fleet config path` | — | Print the resolved `remotes.toml` path |
+| `dev fleet list` | `--host <name>`（repeatable）、`--repo <query>`、`--json`、`--cached`、`--strict` | 列出本機與 merged configured hosts 的 repository/activity |
+| `dev fleet status` | `--json`、`--strict` | probe configured hosts 並回報 snapshot health |
+| `dev fleet sync <repo>` | `--push`、`--remote <name>`、`--host <name>`（repeatable）、`--json` | optional publish，然後安全 fast-forward clean matching checkout |
+| `dev fleet open <host> <repo>` | — | 透過 Herdr 或 SSH login shell 開啟 remote repository |
+| `dev fleet config init` | `-f`/`--force`、`--stdout` | 寫入／印出 starter primary `remotes.toml` |
+| `dev fleet config edit` | `--editor <cmd>` | 只開 primary `remotes.toml` |
+| `dev fleet config show` | — | 印出 effective merged config，redact password 並標示 generated ownership |
+| `dev fleet config path` | — | 印出 primary config path |
 
-`list` 的 `--repo` 會依 name、remote identity、branch 或 path 過濾；`--cached` 完全依最後一次儲存的 snapshot 回答，不會有任何 network activity；`--strict` 會讓 `list` 與 `status` 在 host 為 unreachable/timeout/incompatible/invalid 時回傳非零結果。`sync <repo>` 對 `<repo>` 的解析方式與其他 repository reference 相同；沒有 `--push` 時，其 `HEAD` 必須已等於 fetch 後的 upstream；`--remote` 決定用哪個 Git remote 在各 host 間識別這個 repository（預設：branch 的 upstream remote，其次是 `origin`）。
+`list --repo` 依 name、remote identity、branch 或 path filter。`--cached` 不會使用 network。`--strict` 會讓 unreachable/timeout/incompatible/invalid/stale-error host 回傳 non-zero；乾淨的 `no-dev` 只是資訊。`sync` 在本機 resolve repository；沒有 `--push` 時，source `HEAD` 必須已等於 fetched upstream。`--remote` 選擇 cross-host Git identity（default 依序為 branch upstream remote、`origin`）。
 
-`dev fleet` 還註冊了四個 hidden command（`_snapshot`、`_sync`、`_open-herdr`、`_shell`），它們的存在只是為了讓 `dev fleet` 在 SSH 連線的另一端自行呼叫——這是 wire protocol，不是給使用者直接使用的介面。
+四個 hidden helper——`_snapshot`、`_sync`、`_open-herdr`、`_shell`——構成 remote wire surface，使用者不應直接呼叫。
 
-## Transport 與認證
+## POSIX 與 Windows transport
 
-每個 fleet command 都透過呼叫系統的 `ssh` binary 連到 host，帶上 `ConnectTimeout`、`ServerAliveInterval=15`、`ServerAliveCountMax=2`，並且第一次嘗試一律用 `BatchMode=yes`——只用 key 或 agent authentication，行為就像一次適合腳本化的 `ssh` 呼叫。`dev fleet open` 另外會為它的 interactive login shell 配置 PTY（`-t`）。
+每個 fleet operation 都 shell out 到 controller 的 system `ssh`，帶 connection/server-alive bounds，並以 `BatchMode=yes` 開始。`fleet open` 會為 interactive login shell 配置 PTY。Fleet launcher 不會削弱 user host-key 或 known-hosts policy。
 
-若該次嘗試因 "permission denied" 被拒絕，且該 host 設定了 `ssh_login_password_source`，`dev` 會再重試一次、改用密碼驗證。密碼本身不會出現在 argv 或環境變數中：`dev` 會把自己重新以一次性的 `SSH_ASKPASS` helper 執行，密碼透過一個繼承的 file descriptor 交給那個 helper。`prompt` 會在執行當下從 `/dev/tty` 讀取隱藏輸入；`plain` 與 `bitwarden` 則分別從設定檔或 `bw get password <item>` 取得。
+POSIX target 使用既有 injection-safe shell launcher。`dev_path = "auto"` 會檢查常見 local user/package-manager locations 與 `PATH`，沒有 `dev` 時回傳 exit `127`。Explicit path 會 quote，並依 POSIX target semantics interpret，絕不用 controller environment expand。
 
-在遠端那一側，預設的 `dev_path = "auto"` 會搜尋常見安裝位置（`~/.local/bin`、`~/go/bin`、mise shims、Homebrew/Linuxbrew、`/usr/local/bin`、`/snap/bin`）再查 `PATH`，找不到 `dev` 就以 `127` 結束；明確指定絕對路徑的 `dev_path` 則會跳過搜尋，直接 exec 該路徑。
+Windows target 使用 `powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand …`。Wrapper 會：
 
-## 哪些是 cache、哪些是 durable
+- 將 helper arguments 當 data decode，只允許四種 hidden fleet command shape；
+- `dev_path = "auto"` 時在常見 user install/shim locations 或透過 `Get-Command` 尋找 `dev.exe`；
+- executable 不存在時回傳 `127`，並 propagate remote dev exit code；
+- 不 consume stdin，因此 `_sync` 可原封不動收到 JSON request；
+- 以 target-OS semantics 驗證 explicit Windows drive/UNC path，不套 controller 的 `filepath` rules。
 
-`$XDG_CONFIG_HOME/dev/remotes.toml` 是 durable、由使用者撰寫的設定，與 `config.toml` 地位相同——由 `dev fleet config init`/`edit` 管理，不會被自動重新產生。
+Generated Windows registration 要求 `dev_path = "auto"`。User-authored Windows profile 可使用 absolute Windows target path。Encoded wrapper 是 transport boundary，不是讓 caller 執行 arbitrary PowerShell 的 permission。
 
-每次成功探測都會在 `$XDG_CACHE_HOME/dev/fleet/v1/<host-name-slug>.json` 寫入該 host 的 JSON snapshot。這份 cache 是可拋棄的加速機制，不是 durable data：它會依 host 的連線欄位與 timeout 產生一個「endpoint ID」指紋，因此修改 host 的 `ssh_alias`、`hostname`、`user`、`port`、`identity_file`、`dev_path` 或 timeout，下次 `dev` 讀取時會自動讓舊 cache 失效。Oversized snapshot、future timestamp、invalid count，以及過大或含 NUL 的 identity/path field 都會被忽略，不會顯示。`dev cache list` 會顯示它的路徑、大小與存在時間；`dev cache clear fleet`（或 `dev cache clear all`）可直接移除它。沒有需要手動「重建」的步驟——下一次 `dev fleet list`、`dev fleet status` 或 TUI 的 FLEET reload 就會用一次新的探測重新產生它。
+BatchMode 被拒絕且 primary profile 有 password source 時，fleet 會 retry 一次。Password 不會放入 SSH argv 或 environment：一次性的 self-executed `SSH_ASKPASS` helper 透過 inherited descriptor 接收。`prompt` 讀 hidden terminal input；`plain` 來自 protected primary config；`bitwarden` 執行 `bw get password <item>`。SSH-host bootstrap 本身沒有 password backend——interactive setup 將 native prompt 留給 OpenSSH，noninteractive setup 維持 batch-only。
 
-這份 cache 存在的目的，是讓 unreachable、timeout、incompatible 或 invalid-response 的 host 仍能回報上一次已知的狀態（標記為 `stale`，並設定 `FromCache`），而不是直接從清單消失；`--cached` 只會使用這份 cache，完全不連網路。每個 remote host 自己的 `config.toml`、task registry 與 repository path，在該 host 上仍是唯一權威來源——cache 只保存它們的 read-only snapshot。
+## Cache 與 durable state
+
+| Data | Role |
+|---|---|
+| primary `remotes.toml` | durable user-authored fleet intent |
+| sibling `remotes.d/ssh-<alias>.toml` | durable dev-owned fleet intent，只由 explicit SSH commands create/remove |
+| each remote 的 config/tasks/repositories/runtime | host-local authority；絕不 centralized |
+| `$XDG_CACHE_HOME/dev/fleet/v1/*.json` | disposable controller snapshots |
+
+成功 probe 會寫 private per-host JSON snapshot。Endpoint ID 含 connection fields、SSH port、timeouts、`dev_path` 與 `remote_os`；改變 target 會讓舊 cache identity 失效。Oversized/malformed snapshot、future timestamp、invalid count 與 unsafe field 都忽略。`dev cache clear fleet` 或 `dev cache clear all` 可移除；下一次 fleet request 會重建。
+
+Cache 讓 unavailable host 可以 `stale` 保留 last-known state；`--cached` 只讀 cache。它永遠不會成為 remote path 或 task authority。
 
 ## TUI 中的 FLEET
 
-FLEET 是 TUI 六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會開始 live probe——但 cache 會在初始 TASKS view 後於背景 decode，讓仍在 `defaults.cache_ttl` 期限內的 valid snapshot 先填入 table。TUI 預設隱藏本機，因為 REPOS 已提供較完整的 local inventory；`a` 可顯示或隱藏 local rows。Local-host snapshot 會重用目前已接受的 REPOS generation，不再重跑 repository/task/runtime discovery；若該 generation 仍在 loading，FLEET 會保留 cached rows 並顯示 waiting。`r` 會 supersede 舊 request，並強制對所有已設定的 host 做一次 live reload。Non-interactive 的 `dev fleet list` 仍會同時列出本機與 remote hosts。
+FLEET 是六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`）。Live remote lazy-load，valid cache 則在 initial view 後 decode。預設隱藏本機，因為 REPOS 有較完整 local data；`a` toggle。Local row 重用 accepted REPOS generation，不 rescanning。`r` supersede prior work，refresh 所有 merged configured hosts。Noninteractive `dev fleet list` 仍包含 local 加 remote。
 
-它的表格欄位是 `HOST`、`STATE`、`REPO`、`BRANCH`、`GIT`、`LIVE`、`TASKS`、`PATH`。`enter` 會開啟選取的 repository：明確顯示出來的 local host row 使用一般的 local open；remote row 則在該 host 的 snapshot 回報 `herdr` runtime，且透過 `ssh_alias` 連線、不需要密碼步驟時，優先使用原生 Herdr remoting，否則退回在該 repository 目錄下開啟 interactive SSH login shell。這個 view 中 Git 的變更是唯讀的——FLEET 是用來檢視與開啟工作，不是在原地編輯它。
+Table 顯示 host/state/repository/branch/Git/runtime/task/path facts。Enter 在符合資格的 POSIX-style profile 回報 Herdr 且不需 password step 時使用 native Herdr remoting；否則透過 SSH 與 remote login shell 開啟。Windows controller 的 local fallback 會啟動 child `%COMSPEC%` shell，因為 Windows 沒有 `exec(2)`。
 
-`e` 會用 `$VISUAL`/`$EDITOR` 開啟 `remotes.toml`——也就是這個 view 實際對應的檔案，而不是其他 view 中 `e` 所開啟的 dev 自身 `config.toml`。離開編輯器後，`dev` 會先重新解析該檔案才使用它。解析失敗、出現未知欄位，或含有明文密碼的檔案權限有問題時，都會被回報並保留原本的資料列，因此打錯字不會安靜地讓某台 host 從 fleet 中消失。檔案解析成功則會立即對所有已設定的 host 觸發一次 live reload。
+`e` key 只開 primary `remotes.toml`。返回後，dev reparse 完整 primary-plus-generated merge。Invalid primary 或 generated fragment 會回報 error 並保留之前 usable rows；valid merge 觸發 live reload。
 
-## 優雅降級
+## 安全 branch propagation 與 degradation
 
-每個 host 都是獨立探測的，所以一個壞掉的 host 不會讓整個 fleet 失敗。每個 host 的狀態有 `ok`、`stale`（重用 cache，可能附帶說明原因的 error）、`no-dev`（remote 的 `PATH` 上沒有 `dev`——僅回報，不視為 error）、`unreachable`（SSH 本身失敗）、`timeout`、`incompatible`（remote 的 `dev` 版本過舊或無法辨識）與 `invalid-response`（snapshot JSON 格式不正確）。`ok` 與乾淨的 `no-dev` 不會讓 `--strict` 失敗；其餘狀態都會，包括帶有 error 的 `stale` 結果。
+```bash
+dev fleet sync api --push
+dev fleet sync api                 # HEAD 必須已等於 fetched upstream
+dev fleet sync api --host lab
+```
 
-另一方面，forge integration 是 optional：`gh` 與 `glab` 提供 GitHub/GitLab
-inventory、publishing 與 pull/merge request；`az` 提供 Azure DevOps inventory 與
-pull request。缺少 CLI 時，`dev doctor` 只回報 warning，local Git workflow 仍可用；
-但 explicit non-interactive publication request 會附 login/install 指引失敗，不會靜默
-改變操作意義。Azure DevOps inventory 還額外是 opt-in：未設定
-`forge.azure_devops` targets 前一律停用。
+Source 必須 clean 且 attached。Target 依 normalized Git remote identity match，不依 directory name。每個 target 先 fetch；只有同一 branch、clean 且 strictly behind 的 checkout 會 fast-forward。不同 branch 不會 switch。Dirty、ahead、divergent、ambiguous 或 unreachable target 保持不動，並讓 sync non-zero。缺少 `dev` 或該 repository 的 host 會明確回報並 ignore。
+
+Per-host states 是 `ok`、`stale`、`no-dev`、`unreachable`、`timeout`、`incompatible`、`invalid-response`。沒有 automatic rebase、force push、background hook 或 all-repository pull。
 
 ## 來源
 
 - [`internal/cli/fleet.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet.go)
 - [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
-- [`internal/fleet/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/types.go)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
 - [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
-- [`internal/fleet/sync.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/sync.go)
 - [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
 - [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)
-- [`internal/cli/tui.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/tui.go)
-- [`internal/tui/model.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/model.go)
-- [`internal/tui/view.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/view.go)
-- [`internal/tui/rows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/tui/rows.go)
-- [`internal/cli/doctor.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/doctor.go)
-- [`internal/cli/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/cache.go)
-- [`internal/forge/forge.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/forge.go)
 
 ---
 
@@ -7174,6 +7918,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
+| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh probe`、`ssh remove` |
 | remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
@@ -7195,12 +7940,56 @@ dev repo setup [repo-or-path] --preset PRESET --json
 dev note list [repo] --json
 dev note search <query> --json
 dev note show <note-id> --json
+dev ssh init --json
+dev ssh list --json
+dev ssh list --format tsv
+dev ssh show <alias> --json
+dev ssh setup <alias> --dry-run --json
+dev ssh probe <alias> --json
+dev ssh remove <alias> --dry-run --json
 dev bootstrap --json
 ```
 
 不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。
 
 每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
+
+## SSH host 與 fleet contracts
+
+`dev ssh` 維持 OpenSSH authority，只擁有 exact root
+`Include ~/.ssh/dev.d/*.conf`、canonical `~/.ssh/dev.d/<alias>.conf` files，以及
+explicit generated fleet registration。`ssh init` 沒有 `--apply` 時只回報。
+`ssh list` 與 completion 都是 static，絕不執行 `ssh`、`Match exec`、resolver、
+agent 或 network；`ssh show` 刻意使用 plain `ssh -G`，`ssh probe` 則執行一次
+sharing disabled 的 fresh BatchMode login。
+
+`ssh setup` 用一個 command 處理 new/managed/foreign alias。Connection flags
+（`--hostname`、`--user`、`--port`、`--proxy-jump`、`--identity-file`、
+`--identities-only`）只適用 new 或 managed alias。`--config-only` 在 local
+verification 後停止。Full setup 必須 explicit `--key` 或 `--generate-key`；
+noninteractive full setup 還需要 `--target-os`，noninteractive generation 需要
+`--no-passphrase`。Route/platform controls 是 `--hop-os`、
+`--install-on-working-jump` 與 `--windows-admin-authorized-keys`。`--dry-run`
+不執行 OpenSSH evaluation、network access、generation 或 write。`--fleet` 是
+fresh ordinary alias login 後才執行的 explicit final step；`--fleet-name` 不會
+imply 它。
+
+每個 SSH JSON form 都輸出一個含 `schema_version`、`kind` 與 stable
+status/action/error codes 的 object；operational failure 仍輸出一份 safe document，
+child diagnostic 留在 stderr。Kinds 是 `ssh_init_plan|ssh_init_result`、
+`ssh_list`、`ssh_show`、`ssh_setup_plan|ssh_setup_result`、`ssh_probe` 與
+`ssh_remove_plan|ssh_remove_result`。`ssh list --format tsv` 每個 definition 一列，
+共有六欄：alias、status、ownership、source、line、comma-separated fleet names。
+Schema、partial/unknown outcome 與 no-private-key/no-revocation boundary 請見
+[SSH Host 設定與佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
+
+Fleet 的 durable input 是 merge，不是單一 file：先載入 user-authored primary
+`remotes.toml`，再依 lexical order 載入 strict dev-owned sibling
+`remotes.d/ssh-<alias>.toml` fragments，最後 apply defaults。
+`remote_os = "posix"|"windows"` 決定 target launcher/path semantics，也納入 cache
+identity。`dev fleet config show` 印 effective merge、redact secret 並標示 generated
+origin；`config edit` 與 TUI edit action 仍只開 primary file。Generated fragments
+由 `dev ssh setup/remove --fleet` 擁有。
 
 ## Repository bootstrap
 
@@ -7362,6 +8151,12 @@ dev config scaffolds init
 dev config scaffolds show
 dev config scaffolds path
 dev config scaffolds edit
+
+dev fleet config init      # user-authored primary remotes.toml
+dev fleet config show      # effective primary + generated remotes.d merge
+dev fleet config edit      # primary only
+dev ssh init               # report dedicated OpenSSH Include plan
+dev ssh init --apply       # confirmation 後安裝
 ```
 
 `config init` 偵測 local roots 並寫出 explicit defaults。Config file 不存在仍可運作；built-in defaults 讓核心 Git behavior 可用，但 generated config 能讓 machine policy 可 review，因此較推薦。
@@ -8479,6 +9274,100 @@ dev skill update <skill> [flags]
 - `-p, --project` — update the project-scoped skill
 - `-y, --yes` — skip dev's confirmation
 
+### `dev ssh`
+
+Discover, configure, and bootstrap OpenSSH host aliases
+
+```
+dev ssh
+```
+
+### `dev ssh init`
+
+Plan or install the dedicated dev.d Include
+
+```
+dev ssh init [flags]
+```
+
+- `--apply` — apply the planned root Include change
+- `--json` — emit one versioned JSON plan or result
+- `--yes` — confirm the local plan without prompting
+
+### `dev ssh list`
+
+Statically list exact SSH aliases and their definitions
+
+```
+dev ssh list [flags]
+```
+
+- `--format` — machine format: tsv
+- `--json` — emit one versioned JSON object
+
+### `dev ssh probe`
+
+Perform one fresh noninteractive ordinary SSH login
+
+```
+dev ssh probe <alias> [flags]
+```
+
+- `--json` — emit one versioned JSON object
+
+### `dev ssh remove`
+
+Remove only dev-owned SSH and optional fleet fragments
+
+```
+dev ssh remove <alias> [flags]
+```
+
+- `--dry-run` — render removal plans without writing
+- `--fleet` — remove the owned fleet fragment first
+- `--json` — emit one versioned JSON plan or result
+- `--yes` — confirm removals without prompting
+
+### `dev ssh setup`
+
+Create or reconcile an alias, install a public key, and optionally register fleet
+
+```
+dev ssh setup <alias> [flags]
+```
+
+- `--comment` — public key comment for --generate-key
+- `--config-only` — stop after local config verification
+- `--dry-run` — render static local plans without running OpenSSH or writing
+- `--fleet` — register the verified alias in dev fleet
+- `--fleet-name` — fleet profile name (default: alias)
+- `--generate-key` — generate a new Ed25519 key pair
+- `--hop-os` — route OS override alias=posix|windows (repeatable)
+- `--hostname` — managed HostName value
+- `--identities-only` — set managed IdentitiesOnly=yes (explicit false writes no)
+- `--identity-file` — managed IdentityFile value
+- `--install-on-working-jump` — install the selected key on already-working jump hosts
+- `--json` — emit exactly one versioned JSON plan or result
+- `--key` — existing public key or identity path to install
+- `--key-path` — destination identity path for --generate-key
+- `--no-passphrase` — generate without a passphrase (required outside a TTY)
+- `--port` — managed SSH port
+- `--proxy-jump` — managed ProxyJump value
+- `--target-os` — target operating system: posix or windows
+- `--user` — managed User value
+- `--windows-admin-authorized-keys` — allow the Windows administrators_authorized_keys path
+- `--yes` — confirm the local plan without prompting
+
+### `dev ssh show`
+
+Show static definitions and plain ssh -G effective values
+
+```
+dev ssh show <alias> [flags]
+```
+
+- `--json` — emit one versioned JSON object
+
 ### `dev start`
 
 Track work directly, on a canonical branch, or in an isolated worktree
@@ -8860,6 +9749,10 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
 - [`internal/cli/color.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/color.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
+- [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
+- [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
 
 ---
 
@@ -8890,6 +9783,10 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
+| static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe file 會診斷；不需要 `ssh` process 或 network |
+| SSH effective values、fresh probe、bootstrap 與 fleet transport | system `ssh` client | static `ssh list`、dry-run 與 local config plan 仍可使用；effectful SSH operation 以 capability guidance 失敗 |
+| public companion derivation 與 Ed25519 generation | system `ssh-keygen` | 仍可使用 existing validated `.pub`；derivation/generation unavailable |
+| Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX target 仍可用；沒有 PowerShell 時 Windows-specific installer/launcher 失敗，不改用 shell fallback |
 | Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
 | in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為委派給對應套件管理器的升級指令 |
 
@@ -8927,14 +9824,20 @@ interface；大寫 `C` 與一般 `git commit` 不會讀取它。Dev 不會覆寫
 draft。Draft write failure 只會產生 warning；staging 仍視為成功且不會 rollback。若
 upstream integration 日後改變，staged index 與已印出的 message 仍是 recovery path。
 
-### Windows 是 build target，不是 full-feature 平台
+### Windows 有 native SSH support，但 runtime surface 較小
 
-`dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心的 repository、task 與 worktree 操作可用。差異：
+`dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心 repository/task/worktree operation 與 SSH host domain 都是 native：static discovery、protected-DACL managed fragment、reparse-point rejection、native `ssh-keygen.exe`、Windows Job Object cancellation，以及 POSIX/Windows remote bootstrap 都有 coverage。Fleet 也可透過 encoded PowerShell launcher target Windows OpenSSH。仍有下列差異：
 
 - 沒有 tmux、Zellij 或 Herdr，因此 runtime backend 一律是 `none`。Grouped runtime/agent activity 與 named session 無法使用；`cd` 指令與 PowerShell wrapper 仍可運作。
 - Shell integration 是 `dev shell-init powershell`。POSIX shell 透過 file descriptor 3 回傳目錄；PowerShell 無法繼承它，wrapper 改用 `DEV_SHELL_CD_FILE` 傳入 temp-file path。
 - `dev fleet open` 會啟動子 shell（`%COMSPEC%`），而非取代 process，因為 Windows 沒有 `exec(2)`。
-- Domain test suites 仍有部分假設 POSIX filesystem，因此 Windows CI 的 test 僅供參考，compilation、`go vet` 與 build 則為強制項。
+- CI 保留 broad advisory Windows suite 以容納 unrelated POSIX assumptions，但 `internal/sshhost`、`internal/fleet` 與 SSH/fleet/doctor CLI contracts 另有 required native `windows-latest` gate；affected tests/packages 與 CLI 也會針對 `windows/arm64` compile。
+
+### SSH host management 刻意保持狹窄
+
+Static `dev ssh list` 是 provenance/candidate scanner，不是第二套 OpenSSH evaluator。Dynamic `Match`、unsupported Include expansion、cycle 與 scan bound 會產生 `complete: false`；即使 plain `ssh` 最終可能選出 value，這些情況仍可 block mutation。`dev ssh show` 與 setup route resolution 使用 plain `ssh -G`，因此 configured resolver 與 `Match exec` behavior 可能執行。Fresh probe 會保留 `KnownHostsCommand`、`UpdateHostKeys` 與 host-key policy，不會強迫產生方便的答案。
+
+Setup 要求 explicit key 或 explicit Ed25519 generation，且只安裝 public material。它支援 bounded ProxyJump forms 與固定 POSIX/Windows OpenSSH installer；`ProxyCommand`、custom `AuthorizedKeysFile`、forced-shell policy 與無法提供 ACL 的 filesystem 需要 manual remediation。Remote installer 一旦啟動，cancellation/failure 會是 `unknown`，因為 key 可能已 append。Dev 會保留 local config/generated keys，且絕不嘗試 key revocation、private-key deletion/copying、`known_hosts` cleanup、password storage/fallback 或 automatic credential rollback。Alias rename/adoption、bulk onboarding、arbitrary directive 與 SSH TUI 也都 deferred。
 
 ### Direct mode 的 lifecycle 較小
 
@@ -8949,6 +9852,8 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - Repository setup 支援 `--check-in=commit|stage|none`（`auto` 用於 preset compatibility）。Staged setup 會執行 before-commit setup 與 `git add -A`，但不執行 `after_commit` phase；它不能 publish 或 handoff 到 `start`，並可依前述方式預填 lazygit 小寫 `c`。
 - Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。`agent-history-hygiene` initializer 會寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。
 - Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
+- `dev ssh init/list/show/setup/probe/remove` 提供 explicit OpenSSH host onboarding，不建立另一套 host database。Dev 只擁有 dedicated Include、canonical `dev.d` fragments 與 opt-in generated fleet registration；所有 public SSH JSON 都是一個 versioned object，TSV list 則是 documented six-field selector。
+- Fleet merge user-authored primary `remotes.toml` 與 strict generated `remotes.d` fragments、追蹤 `remote_os`，並對 Windows target 使用只允許 hidden helper 的 encoded PowerShell launcher。Primary duplicate aliases 保持 compatible；任何 generated alias collision 都 fail closed。
 
 - `dev start --focus` 會在 non-JSON creation 後 activate runtime。
 - `dev start --run '<shell command>'` 只會 dispatch 到本次新建 first-class Herdr
@@ -9020,6 +9925,11 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
+- [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
+- [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
+- [`.github/workflows/ci.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/ci.yml)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
@@ -9091,7 +10001,8 @@ tested_with: optional
 | repository new/clone routing、snapshot templates/confinement、check-in policy、project trust、skill batching、TTY editor、upstream publication 與 handoff | [Commands 與 configuration](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`、`internal/scaffold`、`internal/repotemplate`、`internal/projectconfig`、`internal/cli/repo_{create,checkin,skills}*.go`、`internal/cli/prompt.go`、focused repo-bootstrap tests | implemented |
 | lazygit 小寫 `c` pending-message integration | [相容性](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive，2026-08-29 查核 |
 | runtime fallback 與 exact-pane `start --run` dispatch | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go`、`internal/runtime/herdr.go`、focused start/runtime tests | implemented |
-| SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
+| OpenSSH alias discovery/provenance、dev-owned Include/fragments、精確 flags/JSON/TSV、public-key bootstrap、ProxyJump/Windows admin handling、partial outcome 與 removal limit | [SSH Host 設定與佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/) | `internal/sshhost`、`internal/cli/ssh.go`、SSH help、focused domain/CLI tests | implemented；repository snapshot 2026-09-01 |
+| fleet primary + generated-fragment merge、collision/ownership rules、`remote_os`、POSIX/Windows launcher、snapshot 與 sync safety | [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) | `internal/fleet/{config,managed,transport}.go`、`internal/cli/fleet.go`、focused fleet/CLI tests、required Windows SSH CI job | implemented；repository snapshot 2026-09-01 |
 | READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |
 | `dev summary` 機器整體 snapshot 與 `dev journal` 日曆日期區間報告 | [機器整體摘要](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/machine-summary/)、[開發日誌](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dev-journal/) | `internal/summary`、`internal/journal`、focused summary/journal tests | implemented |
 | agent skill inventory、scopes 與明確的 update 動作 | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/agentskill`、`internal/cli/skill.go`、focused TUI tests | implemented |

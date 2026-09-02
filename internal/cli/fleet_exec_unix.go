@@ -4,9 +4,14 @@ package cli
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"syscall"
 )
+
+func fleetEditorCommand(editor, path string) (*exec.Cmd, error) {
+	return exec.Command(shellPath(), "-c", editor+" "+shellQuote(path)), nil
+}
 
 // replaceProcessWithShell replaces the current process image with an interactive
 // login shell in the current working directory. On POSIX systems this is a true

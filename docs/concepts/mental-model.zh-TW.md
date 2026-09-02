@@ -2,7 +2,7 @@
 description: 以持久 Git history、分層 intent/catalog state、repository quick-note sidecar、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
 authority: project
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-09-01
 lang: zh-TW
 ---
 
@@ -31,6 +31,8 @@ Sidecar state 刻意分成不同 scope：
 - catalog 保存穩定的 repository/Try identity、tags、一筆 metadata summary、experiment lifecycle 與 host-local locations；
 - configured `paths.state_dir/notes` 保存多筆 durable Markdown observations，並以 catalog repository ID 為 key；
 - `$XDG_CACHE_HOME/dev/notes.db` 只是這些 Markdown files 的可重建 full-text index。
+
+Machine connection policy 有另一個 authority boundary。OpenSSH configuration 是 durable connection truth；dev 會讀 foreign definition，但只擁有 exact root Include 與 canonical `~/.ssh/dev.d` fragments。Fleet intent 是 user-authored primary `remotes.toml` 與 explicit generated `remotes.d` registrations 的 merge。每台 remote machine 的 paths、tasks、repositories 與 runtime 仍以該機器為 authority；fleet cache 只是 controller snapshot。
 
 Catalog ID 讓 quick note 在 linked worktrees、symlink indexes、path moves 與已同步的 host state 之間維持 attachment。`dev` 本身不會同步 notes 或 catalog files。即時 Git status、ahead/behind 與 runtime availability 會重新推導，不會被當成權威 cache。
 

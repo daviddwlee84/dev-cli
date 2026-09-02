@@ -44,6 +44,7 @@ do not make the rest of the fleet unusable.`,
 		newFleetConfigCmd(app),
 		newFleetSnapshotCmd(app),
 		newFleetApplySyncCmd(app),
+		newFleetConfigEditHelperCmd(app),
 		newFleetOpenHelperCmd(app, "_open-herdr", true),
 		newFleetOpenHelperCmd(app, "_shell", false),
 	)
@@ -426,7 +427,7 @@ func renderFleetSync(app *App, source fleet.SyncResult, targets []fleet.SyncResu
 }
 
 func loadFleetConfig(app *App) (fleet.Config, error) {
-	cfg, err := fleet.LoadConfig(app.remotesPath)
+	cfg, err := fleet.LoadConfig(fleetConfigPath(app))
 	if err != nil {
 		return cfg, err
 	}
@@ -819,6 +820,12 @@ func newFleetConfigCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			for _, host := range cfg.Hosts {
+				if host.Managed() {
+					fmt.Fprintf(app.Out, "# generated host %q (ssh_alias %q) from %q; use dev ssh setup/remove\n",
+						host.Name, host.SSHAlias, config.Contract(host.Origin()))
+				}
+			}
 			for index := range cfg.Hosts {
 				if cfg.Hosts[index].PasswordKind() == "plain" {
 					cfg.Hosts[index].SSHLoginPasswordSource.Value = "(redacted)"
@@ -873,56 +880,128 @@ func newFleetConfigInitCmd(app *App) *cobra.Command {
 			fmt.Fprint(app.Out, fleetStarterConfig)
 			return nil
 		}
-		path := fleetConfigPath(app)
-		if _, err := os.Stat(path); err == nil && !force {
-			return fmt.Errorf("%s already exists (use --force to overwrite)", config.Contract(path))
-		}
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			return err
-		}
-		if err := os.WriteFile(path, []byte(fleetStarterConfig), 0o600); err != nil {
-			return err
-		}
-		fmt.Fprintf(app.Out, "wrote %s\n", config.Contract(path))
-		return nil
+		return withSSHOperationLock(cmd.Context(), app, func() error {
+			path := fleetConfigPath(app)
+			_, statErr := os.Stat(path)
+			existed := statErr == nil
+			if existed && !force {
+				return fmt.Errorf("%s already exists (use --force to overwrite)", config.Contract(path))
+			}
+			if statErr != nil && !errors.Is(statErr, os.ErrNotExist) {
+				return statErr
+			}
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				return err
+			}
+			if err := fleet.WritePrivateConfigFile(path, []byte(fleetStarterConfig), existed); err != nil {
+				return err
+			}
+			fmt.Fprintf(app.Out, "wrote %s\n", config.Contract(path))
+			return nil
+		})
 	}}
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite an existing file")
 	cmd.Flags().BoolVar(&stdout, "stdout", false, "print without writing")
 	return cmd
 }
 
-// fleetConfigEditorProcess builds the editor invocation for remotes.toml,
-// seeding the starter file when there is none. The TUI runs the same command
-// under tea.ExecProcess, so the two entry points cannot drift.
+// fleetConfigEditorProcess builds the hidden Go helper used by the TUI's
+// tea.ExecProcess handoff. The helper, rather than a shell flock wrapper, owns
+// the cross-platform SSH-operation lock for the complete editor lifetime.
 func fleetConfigEditorProcess(app *App, editor string) (*exec.Cmd, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	args := make([]string, 0, 8)
+	if app.configPath != "" {
+		args = append(args, "--config", app.configPath)
+	}
+	if app.remotesPath != "" {
+		args = append(args, "--remotes", app.remotesPath)
+	}
+	args = append(args, "fleet", "_config-edit")
+	if editor != "" {
+		args = append(args, "--editor", editor)
+	}
+	process := exec.Command(executable, args...)
+	process.Stdin, process.Stdout, process.Stderr = os.Stdin, os.Stdout, os.Stderr
+	return process, nil
+}
+
+func fleetConfigLiveEditorProcess(app *App, editor string) (*exec.Cmd, error) {
 	path := fleetConfigPath(app)
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+	if info, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return nil, err
 		}
-		// 0600: remotes.toml may carry a plaintext SSH password.
-		if err := os.WriteFile(path, []byte(fleetStarterConfig), 0o600); err != nil {
+		if err := fleet.WritePrivateConfigFile(path, []byte(fleetStarterConfig), false); err != nil {
 			return nil, err
 		}
+	} else if err != nil {
+		return nil, err
+	} else if info.IsDir() {
+		return nil, fmt.Errorf("%s is a directory, not a config file", config.Contract(path))
 	}
 	chosen, err := resolveEditor(editor)
 	if err != nil {
 		return nil, err
 	}
-	process := exec.Command(shellPath(), "-c", chosen+" "+shellQuote(path))
+	process, err := fleetEditorCommand(chosen, path)
+	if err != nil {
+		return nil, err
+	}
 	process.Stdin, process.Stdout, process.Stderr = os.Stdin, os.Stdout, os.Stderr
 	return process, nil
+}
+
+func runFleetConfigEdit(ctx context.Context, app *App, editor string) error {
+	return withSSHOperationLock(ctx, app, func() error {
+		warnManagedFleetEditorScope(app)
+		process, err := fleetConfigLiveEditorProcess(app, editor)
+		if err != nil {
+			return err
+		}
+		return process.Run()
+	})
 }
 
 func newFleetConfigEditCmd(app *App) *cobra.Command {
 	var editor string
 	cmd := &cobra.Command{Use: "edit", Short: "Open remotes.toml in $VISUAL or $EDITOR", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
-		process, err := fleetConfigEditorProcess(app, editor)
-		if err != nil {
-			return err
-		}
-		return process.Run()
+		return runFleetConfigEdit(cmd.Context(), app, editor)
 	}}
 	cmd.Flags().StringVar(&editor, "editor", "", "editor command override")
 	return cmd
+}
+
+func newFleetConfigEditHelperCmd(app *App) *cobra.Command {
+	var editor string
+	cmd := &cobra.Command{
+		Use:    "_config-edit",
+		Hidden: true,
+		Args:   cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			return runFleetConfigEdit(cmd.Context(), app, editor)
+		},
+	}
+	cmd.Flags().StringVar(&editor, "editor", "", "editor command override")
+	_ = cmd.Flags().MarkHidden("editor")
+	return cmd
+}
+
+func warnManagedFleetEditorScope(app *App) {
+	cfg, err := loadFleetConfig(app)
+	if err != nil {
+		return
+	}
+	var names []string
+	for _, host := range cfg.Hosts {
+		if host.Managed() {
+			names = append(names, host.Name)
+		}
+	}
+	if len(names) > 0 {
+		app.warnf("fleet config edit opens only primary remotes.toml; generated host(s) %s are owned by dev ssh setup/remove", strings.Join(names, ", "))
+	}
 }

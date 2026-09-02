@@ -159,6 +159,8 @@ func TestEmbeddedAndFixedCompletions(t *testing.T) {
 		want string
 	}{
 		{[]string{"__complete", "help", "park"}, "parking\t"},
+		{[]string{"__complete", "help", "ss"}, "ssh\t"},
+		{[]string{"__complete", "ssh", "setup", "--target-os", "w"}, "windows"},
 		{[]string{"__complete", "gitignore", "py"}, "python\tPython bundled template"},
 		{[]string{"__complete", "--runtime", "a"}, "auto"},
 		{[]string{"__complete", "--runtime", "t"}, "tmux"},

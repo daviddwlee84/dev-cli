@@ -2,7 +2,7 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 ---
 
 # Commands and configuration
@@ -23,6 +23,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
+| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh probe`, `ssh remove` |
 | remote fleet | `fleet list`, `fleet status`, `fleet sync`, `fleet open`, `fleet config …` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
@@ -44,12 +45,59 @@ dev repo setup [repo-or-path] --preset PRESET --json
 dev note list [repo] --json
 dev note search <query> --json
 dev note show <note-id> --json
+dev ssh init --json
+dev ssh list --json
+dev ssh list --format tsv
+dev ssh show <alias> --json
+dev ssh setup <alias> --dry-run --json
+dev ssh probe <alias> --json
+dev ssh remove <alias> --dry-run --json
 dev bootstrap --json
 ```
 
 Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract.
 
 Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
+
+## SSH host and fleet contracts
+
+`dev ssh` keeps OpenSSH authoritative while owning only the exact root
+`Include ~/.ssh/dev.d/*.conf`, canonical `~/.ssh/dev.d/<alias>.conf` files, and
+explicit generated fleet registrations. `ssh init` is report-only unless
+`--apply` is present. `ssh list` and completion are static and never run `ssh`,
+`Match exec`, a resolver, an agent, or the network; `ssh show` deliberately uses
+plain `ssh -G`, and `ssh probe` performs one fresh BatchMode login with connection
+sharing disabled.
+
+`ssh setup` handles new/managed/foreign aliases in one command. Connection flags
+(`--hostname`, `--user`, `--port`, `--proxy-jump`, `--identity-file`,
+`--identities-only`) apply only to new or managed aliases. `--config-only` stops
+after local verification. Full setup requires an explicit `--key` or
+`--generate-key`; noninteractive full setup also requires `--target-os`, and
+noninteractive generation requires `--no-passphrase`. Route/platform controls
+are `--hop-os`, `--install-on-working-jump`, and
+`--windows-admin-authorized-keys`. `--dry-run` does no OpenSSH evaluation,
+network access, generation, or writes. `--fleet` is an explicit final step after
+a fresh ordinary alias login; `--fleet-name` never implies it.
+
+Every SSH JSON form emits one object with `schema_version`, `kind`, and stable
+status/action/error codes; operational failures still emit one safe document and
+child diagnostics stay on stderr. Kinds are `ssh_init_plan|ssh_init_result`,
+`ssh_list`, `ssh_show`, `ssh_setup_plan|ssh_setup_result`, `ssh_probe`, and
+`ssh_remove_plan|ssh_remove_result`. `ssh list --format tsv` emits one definition
+per row with six fields: alias, status, ownership, source, line, and
+comma-separated fleet names. See [SSH host onboarding](../guides/ssh-hosts.md)
+for schemas, partial/unknown outcomes, and the no-private-key/no-revocation
+boundary.
+
+Fleet's durable input is a merge, not one file: user-authored primary
+`remotes.toml` first, then strict dev-owned sibling
+`remotes.d/ssh-<alias>.toml` fragments in lexical order, then defaults.
+`remote_os = "posix"|"windows"` selects the target launcher/path semantics and
+participates in cache identity. `dev fleet config show` prints the effective
+merge with secrets redacted and generated origins identified; `config edit` and
+the TUI edit action continue to open only the primary file. Generated fragments
+are owned by `dev ssh setup/remove --fleet`.
 
 ## Repository bootstrap
 
@@ -235,6 +283,12 @@ dev config scaffolds init
 dev config scaffolds show
 dev config scaffolds path
 dev config scaffolds edit
+
+dev fleet config init      # user-authored primary remotes.toml
+dev fleet config show      # effective primary + generated remotes.d merge
+dev fleet config edit      # primary only
+dev ssh init               # report dedicated OpenSSH Include plan
+dev ssh init --apply       # install it after confirmation
 ```
 
 `config init` detects local roots and writes explicit defaults. A missing config file is allowed; the built-in defaults keep core Git behavior usable, but generated config is recommended because it makes machine policy reviewable.
@@ -424,3 +478,7 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
 - [`internal/cli/color.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/color.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
+- [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
+- [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)

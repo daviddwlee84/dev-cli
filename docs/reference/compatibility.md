@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 tested_with: Claude Code 2.1.250
 ---
 
@@ -26,6 +26,10 @@ This page separates graceful degradation from real limitations. Reverify it when
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
+| static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe files are diagnosed; no `ssh` process or network is needed |
+| SSH effective values, fresh probes, bootstrap, and fleet transport | system `ssh` client | static `ssh list`, dry-run, and local config plans remain available; effectful SSH operations fail with capability guidance |
+| public companion derivation and Ed25519 generation | system `ssh-keygen` | an existing validated `.pub` can still be used; derivation/generation is unavailable |
+| Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX targets remain available; Windows-specific installer/launcher fails without PowerShell rather than using a shell fallback |
 | terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
 | in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` delegates to the package manager's upgrade command instead |
 
@@ -66,14 +70,20 @@ draft. A draft-write failure is warning-only: staging remains successful and
 is never rolled back. If the integration changes upstream, the staged index
 and printed message remain the recovery path.
 
-### Windows is a build target, not a full-feature platform
+### Windows has native SSH support and a smaller runtime surface
 
-`dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository, task and worktree operations work. What differs:
+`dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository/task/worktree operations and the SSH host domain are native: static discovery, protected-DACL managed fragments, reparse-point rejection, native `ssh-keygen.exe`, Windows Job Object cancellation, and POSIX/Windows remote bootstrap are covered. Fleet can also target Windows OpenSSH through its encoded PowerShell launcher. What still differs:
 
 - There is no tmux, Zellij or Herdr, so the runtime backend is always `none`. Grouped runtime/agent activity and named sessions are unavailable; the `cd` directive and PowerShell wrapper still work.
 - Shell integration is `dev shell-init powershell`. POSIX shells hand the directory back on file descriptor 3; PowerShell cannot inherit it, so the wrapper passes a temp-file path in `DEV_SHELL_CD_FILE` instead.
 - `dev fleet open` starts a child shell (`%COMSPEC%`) rather than replacing the process, because Windows has no `exec(2)`.
-- The domain test suites still assume a POSIX filesystem in places, so Windows CI runs the tests advisory-only while compilation, `go vet` and the build are enforced.
+- CI keeps an advisory broad Windows suite for unrelated POSIX assumptions, but `internal/sshhost`, `internal/fleet`, and the SSH/fleet/doctor CLI contracts run in a separate required native `windows-latest` gate. Affected tests/packages and the CLI are also compiled for `windows/arm64`.
+
+### SSH host management is intentionally narrow
+
+Static `dev ssh list` is a provenance/candidate scanner, not a second OpenSSH evaluator. Dynamic `Match`, unsupported Include expansion, cycles, and scan bounds produce `complete: false`; they can block mutation even when plain `ssh` would eventually choose a value. `dev ssh show` and setup route resolution use plain `ssh -G`, so configured resolver and `Match exec` behavior may run. Fresh probes preserve `KnownHostsCommand`, `UpdateHostKeys`, and host-key policy rather than forcing a convenient answer.
+
+Setup requires an explicit key or explicit Ed25519 generation and installs public material only. It supports bounded ProxyJump forms plus fixed POSIX and Windows OpenSSH installers; `ProxyCommand`, custom `AuthorizedKeysFile`, forced-shell policy, and ACL-incapable filesystems require manual remediation. Once a remote installer starts, cancellation/failure is `unknown` because the key may have been appended. Dev retains local config/generated keys and never attempts key revocation, private-key deletion/copying, `known_hosts` cleanup, password storage/fallback, or automatic credential rollback. Alias rename/adoption, bulk onboarding, arbitrary directives, and an SSH TUI are also deferred.
 
 ### Direct mode has a smaller lifecycle
 
@@ -88,6 +98,8 @@ These were historical gaps and should not be reintroduced as limitations:
 - Repository setup supports `--check-in=commit|stage|none` (`auto` for preset compatibility). Staged setup runs before-commit setup and `git add -A` without an `after_commit` phase, cannot publish or hand off to `start`, and may prefill lazygit lowercase `c` as described above.
 - Selected skills with matching source and agent targets share one installer invocation. The `agent-history-hygiene` initializer writes pre-commit/gitleaks policy and merges missing machine-local `.project.json`/`statistics.json` rules into `.specstory/.gitignore`; custom content and transcript history remain trackable.
 - Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
+- `dev ssh init/list/show/setup/probe/remove` provides explicit OpenSSH host onboarding without a separate host database. Dev owns only its dedicated Include, canonical `dev.d` fragments, and opt-in generated fleet registrations; all public SSH JSON is one versioned object, and TSV listing is a documented six-field selector.
+- Fleet merges user-authored primary `remotes.toml` with strict generated `remotes.d` fragments, tracks `remote_os`, and uses a hidden-helper-only encoded PowerShell launcher for Windows targets. Primary duplicate aliases remain compatible; any generated alias collision fails closed.
 
 - `dev start --focus` activates the runtime after non-JSON creation.
 - `dev start --run '<shell command>'` dispatches only to an exact root pane from
@@ -159,6 +171,11 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
+- [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
+- [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
+- [`.github/workflows/ci.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/ci.yml)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)

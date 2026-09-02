@@ -959,6 +959,100 @@ dev skill update <skill> [flags]
 - `-p, --project` — update the project-scoped skill
 - `-y, --yes` — skip dev's confirmation
 
+### `dev ssh`
+
+Discover, configure, and bootstrap OpenSSH host aliases
+
+```
+dev ssh
+```
+
+### `dev ssh init`
+
+Plan or install the dedicated dev.d Include
+
+```
+dev ssh init [flags]
+```
+
+- `--apply` — apply the planned root Include change
+- `--json` — emit one versioned JSON plan or result
+- `--yes` — confirm the local plan without prompting
+
+### `dev ssh list`
+
+Statically list exact SSH aliases and their definitions
+
+```
+dev ssh list [flags]
+```
+
+- `--format` — machine format: tsv
+- `--json` — emit one versioned JSON object
+
+### `dev ssh probe`
+
+Perform one fresh noninteractive ordinary SSH login
+
+```
+dev ssh probe <alias> [flags]
+```
+
+- `--json` — emit one versioned JSON object
+
+### `dev ssh remove`
+
+Remove only dev-owned SSH and optional fleet fragments
+
+```
+dev ssh remove <alias> [flags]
+```
+
+- `--dry-run` — render removal plans without writing
+- `--fleet` — remove the owned fleet fragment first
+- `--json` — emit one versioned JSON plan or result
+- `--yes` — confirm removals without prompting
+
+### `dev ssh setup`
+
+Create or reconcile an alias, install a public key, and optionally register fleet
+
+```
+dev ssh setup <alias> [flags]
+```
+
+- `--comment` — public key comment for --generate-key
+- `--config-only` — stop after local config verification
+- `--dry-run` — render static local plans without running OpenSSH or writing
+- `--fleet` — register the verified alias in dev fleet
+- `--fleet-name` — fleet profile name (default: alias)
+- `--generate-key` — generate a new Ed25519 key pair
+- `--hop-os` — route OS override alias=posix|windows (repeatable)
+- `--hostname` — managed HostName value
+- `--identities-only` — set managed IdentitiesOnly=yes (explicit false writes no)
+- `--identity-file` — managed IdentityFile value
+- `--install-on-working-jump` — install the selected key on already-working jump hosts
+- `--json` — emit exactly one versioned JSON plan or result
+- `--key` — existing public key or identity path to install
+- `--key-path` — destination identity path for --generate-key
+- `--no-passphrase` — generate without a passphrase (required outside a TTY)
+- `--port` — managed SSH port
+- `--proxy-jump` — managed ProxyJump value
+- `--target-os` — target operating system: posix or windows
+- `--user` — managed User value
+- `--windows-admin-authorized-keys` — allow the Windows administrators_authorized_keys path
+- `--yes` — confirm the local plan without prompting
+
+### `dev ssh show`
+
+Show static definitions and plain ssh -G effective values
+
+```
+dev ssh show <alias> [flags]
+```
+
+- `--json` — emit one versioned JSON object
+
 ### `dev start`
 
 Track work directly, on a canonical branch, or in an isolated worktree

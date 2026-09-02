@@ -2,7 +2,7 @@
 description: 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
 authority: project-policy
 status: maintained
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 lang: zh-TW
 ---
 
@@ -67,7 +67,8 @@ tested_with: optional
 | repository new/clone routing、snapshot templates/confinement、check-in policy、project trust、skill batching、TTY editor、upstream publication 與 handoff | [Commands 與 configuration](commands-config.md#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`、`internal/scaffold`、`internal/repotemplate`、`internal/projectconfig`、`internal/cli/repo_{create,checkin,skills}*.go`、`internal/cli/prompt.go`、focused repo-bootstrap tests | implemented |
 | lazygit 小寫 `c` pending-message integration | [相容性](compatibility.zh-TW.md) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive，2026-08-29 查核 |
 | runtime fallback 與 exact-pane `start --run` dispatch | [Parallel agents 與 runtimes](../guides/parallel-agents-runtimes.zh-TW.md) | `internal/runtime/runtime.go`、`internal/runtime/herdr.go`、focused start/runtime tests | implemented |
-| SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](../guides/remote-fleet.md) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
+| OpenSSH alias discovery/provenance、dev-owned Include/fragments、精確 flags/JSON/TSV、public-key bootstrap、ProxyJump/Windows admin handling、partial outcome 與 removal limit | [SSH Host 設定與佈建](../guides/ssh-hosts.zh-TW.md) | `internal/sshhost`、`internal/cli/ssh.go`、SSH help、focused domain/CLI tests | implemented；repository snapshot 2026-09-01 |
+| fleet primary + generated-fragment merge、collision/ownership rules、`remote_os`、POSIX/Windows launcher、snapshot 與 sync safety | [遠端 Repository Fleet](../guides/remote-fleet.zh-TW.md) | `internal/fleet/{config,managed,transport}.go`、`internal/cli/fleet.go`、focused fleet/CLI tests、required Windows SSH CI job | implemented；repository snapshot 2026-09-01 |
 | READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](../guides/agent-safe-retirement.md) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |
 | `dev summary` 機器整體 snapshot 與 `dev journal` 日曆日期區間報告 | [機器整體摘要](../guides/machine-summary.md)、[開發日誌](../guides/dev-journal.md) | `internal/summary`、`internal/journal`、focused summary/journal tests | implemented |
 | agent skill inventory、scopes 與明確的 update 動作 | [TUI、Repository、Quick Notes 與 Bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agentskill`、`internal/cli/skill.go`、focused TUI tests | implemented |

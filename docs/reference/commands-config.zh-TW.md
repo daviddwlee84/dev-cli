@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 lang: zh-TW
 ---
 
@@ -27,6 +27,7 @@ lang: zh-TW
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
+| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh probe`、`ssh remove` |
 | remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
@@ -48,12 +49,56 @@ dev repo setup [repo-or-path] --preset PRESET --json
 dev note list [repo] --json
 dev note search <query> --json
 dev note show <note-id> --json
+dev ssh init --json
+dev ssh list --json
+dev ssh list --format tsv
+dev ssh show <alias> --json
+dev ssh setup <alias> --dry-run --json
+dev ssh probe <alias> --json
+dev ssh remove <alias> --dry-run --json
 dev bootstrap --json
 ```
 
 不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。
 
 每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
+
+## SSH host 與 fleet contracts
+
+`dev ssh` 維持 OpenSSH authority，只擁有 exact root
+`Include ~/.ssh/dev.d/*.conf`、canonical `~/.ssh/dev.d/<alias>.conf` files，以及
+explicit generated fleet registration。`ssh init` 沒有 `--apply` 時只回報。
+`ssh list` 與 completion 都是 static，絕不執行 `ssh`、`Match exec`、resolver、
+agent 或 network；`ssh show` 刻意使用 plain `ssh -G`，`ssh probe` 則執行一次
+sharing disabled 的 fresh BatchMode login。
+
+`ssh setup` 用一個 command 處理 new/managed/foreign alias。Connection flags
+（`--hostname`、`--user`、`--port`、`--proxy-jump`、`--identity-file`、
+`--identities-only`）只適用 new 或 managed alias。`--config-only` 在 local
+verification 後停止。Full setup 必須 explicit `--key` 或 `--generate-key`；
+noninteractive full setup 還需要 `--target-os`，noninteractive generation 需要
+`--no-passphrase`。Route/platform controls 是 `--hop-os`、
+`--install-on-working-jump` 與 `--windows-admin-authorized-keys`。`--dry-run`
+不執行 OpenSSH evaluation、network access、generation 或 write。`--fleet` 是
+fresh ordinary alias login 後才執行的 explicit final step；`--fleet-name` 不會
+imply 它。
+
+每個 SSH JSON form 都輸出一個含 `schema_version`、`kind` 與 stable
+status/action/error codes 的 object；operational failure 仍輸出一份 safe document，
+child diagnostic 留在 stderr。Kinds 是 `ssh_init_plan|ssh_init_result`、
+`ssh_list`、`ssh_show`、`ssh_setup_plan|ssh_setup_result`、`ssh_probe` 與
+`ssh_remove_plan|ssh_remove_result`。`ssh list --format tsv` 每個 definition 一列，
+共有六欄：alias、status、ownership、source、line、comma-separated fleet names。
+Schema、partial/unknown outcome 與 no-private-key/no-revocation boundary 請見
+[SSH Host 設定與佈建](../guides/ssh-hosts.zh-TW.md)。
+
+Fleet 的 durable input 是 merge，不是單一 file：先載入 user-authored primary
+`remotes.toml`，再依 lexical order 載入 strict dev-owned sibling
+`remotes.d/ssh-<alias>.toml` fragments，最後 apply defaults。
+`remote_os = "posix"|"windows"` 決定 target launcher/path semantics，也納入 cache
+identity。`dev fleet config show` 印 effective merge、redact secret 並標示 generated
+origin；`config edit` 與 TUI edit action 仍只開 primary file。Generated fragments
+由 `dev ssh setup/remove --fleet` 擁有。
 
 ## Repository bootstrap
 
@@ -215,6 +260,12 @@ dev config scaffolds init
 dev config scaffolds show
 dev config scaffolds path
 dev config scaffolds edit
+
+dev fleet config init      # user-authored primary remotes.toml
+dev fleet config show      # effective primary + generated remotes.d merge
+dev fleet config edit      # primary only
+dev ssh init               # report dedicated OpenSSH Include plan
+dev ssh init --apply       # confirmation 後安裝
 ```
 
 `config init` 偵測 local roots 並寫出 explicit defaults。Config file 不存在仍可運作；built-in defaults 讓核心 Git behavior 可用，但 generated config 能讓 machine policy 可 review，因此較推薦。
@@ -397,3 +448,7 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
 - [`internal/cli/color.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/color.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
+- [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
+- [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)

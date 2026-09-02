@@ -48,7 +48,7 @@ func TestUnknownCommandKeepsCobrasSuggestions(t *testing.T) {
 
 func TestUnknownSubcommandOfAFamilyFails(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "missing.toml")
-	for _, family := range []string{"wt", "note", "fleet", "tries", "skill", "artifact", "cache", "git", "repo", "stats", "config"} {
+	for _, family := range []string{"wt", "note", "fleet", "ssh", "tries", "skill", "artifact", "cache", "git", "repo", "stats", "config"} {
 		t.Run(family, func(t *testing.T) {
 			// A family has no Run of its own, so cobra answered a stray
 			// argument with its help text and exit code 0, losing the typo.
@@ -68,7 +68,7 @@ func TestUnknownSubcommandOfAFamilyFails(t *testing.T) {
 
 func TestBareFamilyStillPrintsItsHelp(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "missing.toml")
-	for _, family := range []string{"wt", "note", "fleet", "tries"} {
+	for _, family := range []string{"wt", "note", "fleet", "ssh", "tries"} {
 		t.Run(family, func(t *testing.T) {
 			out, _, err := runCLI(t, "--config", cfg, family)
 			if err != nil {
@@ -101,6 +101,7 @@ func TestHelpResolvesCommandNamesToTopics(t *testing.T) {
 		"note":    "# Repository quick notes",
 		"retire":  "# Agent-safe retirement",
 		"fleet":   "# Remote fleet",
+		"ssh":     "# SSH hosts",
 		"prepare": "# Agent-safe retirement",
 	} {
 		t.Run(command, func(t *testing.T) {
@@ -122,6 +123,7 @@ func TestFamilyHelpCarriesDiagramAndTopicPointer(t *testing.T) {
 		{"tries", "TL;DR: the experiment keeps its identity", "dev help tries"},
 		{"note", "TL;DR: thoughts that outlive the checkout", "dev help notes"},
 		{"fleet", "TL;DR: read other machines", "dev help fleet"},
+		{"ssh", "TL;DR: OpenSSH stays the source of truth", "dev help ssh"},
 		{"skill", "TL;DR: what the agents on this machine", "dev help skills"},
 		{"retire", "TL;DR: integrate, exit, then clean up", "dev help retirement"},
 	} {
@@ -156,7 +158,7 @@ func TestEveryAdvertisedHelpTopicResolves(t *testing.T) {
 	for _, topic := range []string{
 		"worktrees", "notes", "fleet", "journal", "summary", "retirement",
 		"bootstrap", "adopting", "parking", "storage", "tui", "branching",
-		"tries", "skills", "git-status", "repositories",
+		"tries", "skills", "git-status", "repositories", "ssh",
 	} {
 		if !strings.Contains(index, topic) {
 			t.Errorf("topic %q is advertised by a command but missing from the index", topic)
