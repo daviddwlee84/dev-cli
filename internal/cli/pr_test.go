@@ -7,19 +7,31 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
 )
 
 // installFakeGH puts a stub gh on PATH that satisfies the readiness probe and
 // answers `pr list` with the supplied rows. Returns the invocation log.
 func installFakeGH(t *testing.T, prListJSON string) string {
 	t.Helper()
+	return installFakeGHResponses(t, prListJSON, "[]")
+}
+
+func installFakeGHResponses(t *testing.T, prListJSON, searchJSON string) string {
+	t.Helper()
+	t.Setenv("GH_HOST", "")
 	if runtime.GOOS == "windows" {
 		t.Skip("the stub CLI is a POSIX shell script")
 	}
 	dir := t.TempDir()
 	log := filepath.Join(dir, "calls.log")
 	payload := filepath.Join(dir, "prs.json")
+	searchPayload := filepath.Join(dir, "search.json")
 	if err := os.WriteFile(payload, []byte(prListJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(searchPayload, []byte(searchJSON), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	script := `#!/bin/sh
@@ -28,7 +40,7 @@ printf '%s\n' "$*" >> "` + log + `"
 case "$*" in
   *'auth status'*) echo "logged in"; exit 0 ;;
   *'pr list'*)     exec cat "` + payload + `" ;;
-  *'search prs'*)  printf '[]' ;;
+  *'search prs'*)  exec cat "` + searchPayload + `" ;;
   *)               printf '[]' ;;
 esac
 `
@@ -77,9 +89,12 @@ func TestPRListJoinsAPullRequestToItsWorktree(t *testing.T) {
 			Detail         string            `json:"detail"`
 			Actions        map[string]string `json:"actions"`
 			Local          *struct {
-				TaskID   string `json:"task_id"`
-				Checkout string `json:"checkout"`
-				Branch   string `json:"branch"`
+				TaskID           string `json:"task_id"`
+				Checkout         string `json:"checkout"`
+				ExpectedBranch   string `json:"expected_branch"`
+				LiveBranch       string `json:"live_branch"`
+				BranchCheckedOut bool   `json:"branch_checked_out"`
+				StatusAvailable  bool   `json:"status_available"`
 			} `json:"local"`
 		} `json:"pull_requests"`
 	}
@@ -101,7 +116,9 @@ func TestPRListJoinsAPullRequestToItsWorktree(t *testing.T) {
 	if pr.Local == nil {
 		t.Fatalf("request was not joined to its worktree:\n%s", out)
 	}
-	if pr.Local.Branch != "feat/auth" || !strings.Contains(pr.Local.Checkout, "feat-auth") {
+	if pr.Local.ExpectedBranch != "feat/auth" || pr.Local.LiveBranch != "feat/auth" ||
+		!pr.Local.BranchCheckedOut || !pr.Local.StatusAvailable ||
+		!strings.Contains(pr.Local.Checkout, "feat-auth") {
 		t.Errorf("local join: %+v", *pr.Local)
 	}
 	// Commands are reported, never run.
@@ -111,6 +128,173 @@ func TestPRListJoinsAPullRequestToItsWorktree(t *testing.T) {
 	// A provider that could not be consulted must be visible as a gap.
 	if len(payload.Providers) == 0 {
 		t.Error("provider statuses were not reported")
+	}
+}
+
+func TestPRLocalScopeIncludesTaskRepositoryOutsideScanRoots(t *testing.T) {
+	h := newHarness(t)
+	outside := gittest.New(t)
+	outside.Git("remote", "add", "origin", "https://github.com/acme/outside.git")
+	h.mustRun("start", outside.Root, "--task", "outside", "--branch", "feat/outside", "--base", "main")
+	installFakeGH(t, `[{"number":9,"title":"outside","url":"u","state":"OPEN",
+		"author":{"login":"me"},"headRefName":"feat/outside","baseRefName":"main"}]`)
+
+	out := h.mustRun("pr", "list", "--scope", "local", "--json")
+	if !strings.Contains(out, `"repo": "acme/outside"`) || !strings.Contains(out, `"branch_checked_out": true`) {
+		t.Fatalf("outside task repository was omitted: %s", out)
+	}
+}
+
+func TestPRListJoinsUnmanagedGitWorktreeWithoutTask(t *testing.T) {
+	h := newHarness(t)
+	h.repo.Git("remote", "add", "origin", "https://github.com/acme/demo.git")
+	h.repo.Git("branch", "feat/unmanaged")
+	worktree := filepath.Join(h.home, "external-unmanaged")
+	h.repo.Git("worktree", "add", worktree, "feat/unmanaged")
+	installFakeGH(t, `[{"number":6,"title":"unmanaged","url":"u","state":"OPEN",
+		"author":{"login":"me"},"headRefName":"feat/unmanaged","baseRefName":"main"}]`)
+
+	out := h.mustRun("pr", "list", "--scope", "local", "--repo", "acme/demo", "--json")
+	var payload struct {
+		PullRequests []struct {
+			Local *struct {
+				TaskID           string `json:"task_id"`
+				Checkout         string `json:"checkout"`
+				BranchCheckedOut bool   `json:"branch_checked_out"`
+			} `json:"local"`
+		} `json:"pull_requests"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.PullRequests) != 1 || payload.PullRequests[0].Local == nil ||
+		payload.PullRequests[0].Local.TaskID != "" || !payload.PullRequests[0].Local.BranchCheckedOut {
+		t.Fatalf("unmanaged worktree was not joined: %s", out)
+	}
+	gotInfo, gotErr := os.Stat(payload.PullRequests[0].Local.Checkout)
+	wantInfo, wantErr := os.Stat(worktree)
+	if gotErr != nil || wantErr != nil || !os.SameFile(gotInfo, wantInfo) {
+		t.Fatalf("joined checkout %q is not %q", payload.PullRequests[0].Local.Checkout, worktree)
+	}
+}
+
+func TestPRListJoinsForkRequestToTheSourceRepository(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "fork", "--branch", "feat/fork", "--base", "main")
+	h.repo.Git("remote", "add", "origin", "https://github.com/me/fork.git")
+	installFakeGH(t, `[{"number":8,"title":"fork PR","url":"u","state":"OPEN",
+		"author":{"login":"me"},"headRepository":{"nameWithOwner":"me/fork"},"isCrossRepository":true,
+		"headRefName":"feat/fork","baseRefName":"main"}]`)
+
+	out := h.mustRun("pr", "list", "--scope", "local", "--repo", "org/upstream", "--json")
+	var payload struct {
+		PullRequests []struct {
+			HeadRepo string `json:"head_repo"`
+			Local    *struct {
+				TaskID string `json:"task_id"`
+			} `json:"local"`
+		} `json:"pull_requests"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.PullRequests) != 1 || payload.PullRequests[0].HeadRepo != "me/fork" ||
+		payload.PullRequests[0].Local == nil {
+		t.Fatalf("fork source was not joined: %s", out)
+	}
+}
+
+func TestPRListRepoRestrictsAccountRows(t *testing.T) {
+	h := newHarness(t)
+	installFakeGHResponses(t, "[]", `[
+		{"number":1,"title":"wanted","url":"u1","state":"OPEN","author":{"login":"me"},"repository":{"nameWithOwner":"acme/demo"}},
+		{"number":2,"title":"leak","url":"u2","state":"OPEN","author":{"login":"me"},"repository":{"nameWithOwner":"other/repo"}}
+	]`)
+
+	out := h.mustRun("pr", "list", "--scope", "account", "--repo", "acme/demo", "--json")
+	var payload struct {
+		PullRequests []struct {
+			Repo string `json:"repo"`
+		} `json:"pull_requests"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.PullRequests) != 1 || payload.PullRequests[0].Repo != "acme/demo" {
+		t.Fatalf("--repo leaked account rows: %s", out)
+	}
+}
+
+func TestPRListNormalizesURLAndReportsEffectiveScope(t *testing.T) {
+	h := newHarness(t)
+	log := installFakeGH(t, `[{"number":3,"title":"merged","url":"u","state":"MERGED","author":{"login":"me"}}]`)
+
+	out := h.mustRun("pr", "list", "--scope", "account", "--state", "merged",
+		"--repo", "https://github.com/acme/demo.git", "--json")
+	var payload struct {
+		Scope        string   `json:"scope"`
+		Repositories []string `json:"repositories"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload.Scope != "local" {
+		t.Errorf("effective scope = %q, want local", payload.Scope)
+	}
+	if len(payload.Repositories) != 1 || payload.Repositories[0] != "github:github.com/acme/demo" {
+		t.Errorf("normalized repositories = %v", payload.Repositories)
+	}
+	calls, _ := os.ReadFile(log)
+	if !strings.Contains(string(calls), "--repo acme/demo") || strings.Contains(string(calls), "https://github.com") {
+		t.Errorf("URL selector was not normalized before provider call:\n%s", calls)
+	}
+}
+
+func TestPRListRefusesRemoteOnDifferentConfiguredHost(t *testing.T) {
+	h := newHarness(t)
+	log := installFakeGH(t, `[{"number":1,"title":"wrong host","state":"OPEN"}]`)
+	_, _, err := h.run("pr", "list", "--scope", "local", "--repo", "https://github.corp/acme/demo.git")
+	if err == nil || !strings.Contains(err.Error(), "does not match configured host github.com") {
+		t.Fatalf("err = %v", err)
+	}
+	calls, _ := os.ReadFile(log)
+	if strings.Contains(string(calls), "pr list") {
+		t.Fatalf("mismatched enterprise remote was queried on github.com:\n%s", calls)
+	}
+}
+
+func TestPRListMissingWorktreeDoesNotLookClean(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "gone", "--branch", "feat/gone", "--base", "main")
+	h.repo.Git("remote", "add", "origin", "https://github.com/acme/demo.git")
+	worktree := filepath.Join(h.wtRoot, "demo", "feat-gone")
+	h.repo.Git("worktree", "remove", worktree)
+	installFakeGH(t, `[{"number":4,"title":"gone","url":"u","state":"OPEN","author":{"login":"me"},"headRefName":"feat/gone"}]`)
+
+	out := h.mustRun("pr", "list", "--scope", "local", "--repo", "acme/demo", "--json")
+	var payload struct {
+		PullRequests []struct {
+			Local *struct {
+				CheckoutExists   bool            `json:"checkout_exists"`
+				StatusAvailable  bool            `json:"status_available"`
+				BranchCheckedOut bool            `json:"branch_checked_out"`
+				StatusError      string          `json:"status_error"`
+				Git              json.RawMessage `json:"git"`
+			} `json:"local"`
+		} `json:"pull_requests"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.PullRequests) != 1 || payload.PullRequests[0].Local == nil {
+		t.Fatalf("missing task association: %s", out)
+	}
+	local := payload.PullRequests[0].Local
+	if local.CheckoutExists || local.StatusAvailable || local.BranchCheckedOut || len(local.Git) != 0 {
+		t.Errorf("missing worktree looks usable: %+v\n%s", *local, out)
+	}
+	if !strings.Contains(local.StatusError, "missing") {
+		t.Errorf("status error = %q", local.StatusError)
 	}
 }
 
@@ -164,72 +348,6 @@ func TestPRListRejectsUnknownFilters(t *testing.T) {
 				t.Errorf("error does not say what is valid: %v", err)
 			}
 		})
-	}
-}
-
-func TestPRPromptRendersTheQueueAndNeedsNoAgent(t *testing.T) {
-	h := newHarness(t)
-	installFakeGH(t, `[{
-		"number": 7, "title": "Tidy", "url": "https://github.com/acme/demo/pull/7",
-		"state": "OPEN", "author": {"login": "me"}, "headRefName": "feat/tidy",
-		"updatedAt": "2026-09-01T10:00:00Z"
-	}]`)
-
-	out := h.mustRun("pr", "prompt", "triage", "--repo", "acme/demo")
-	if !strings.Contains(out, "# Pull request triage") {
-		t.Fatalf("prompt was not rendered:\n%s", out)
-	}
-	// The prompt must carry the actual queue, not just instructions.
-	if !strings.Contains(out, `"number": 7`) {
-		t.Errorf("prompt does not embed the queue:\n%s", out)
-	}
-	// No template variable may survive into what an agent reads.
-	if strings.Contains(out, "{{") {
-		t.Errorf("prompt has unsubstituted variables:\n%s", out)
-	}
-}
-
-func TestPRPromptWithoutAConfiguredAgentExplainsHowToAddOne(t *testing.T) {
-	h := newHarness(t)
-	installFakeGH(t, `[]`)
-	_, _, err := h.run("pr", "prompt", "--agent", "claude", "--repo", "acme/demo")
-	if err == nil {
-		t.Fatal("expected --agent to fail with no [[agent]] configured")
-	}
-	// A refusal that does not say how to fix it is the failure mode this
-	// feature exists to avoid.
-	for _, want := range []string{"[[agent]]", "name =", "command ="} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("error does not show a usable example (%q): %v", want, err)
-		}
-	}
-}
-
-func TestPRPromptHandsTheRenderedPromptToAConfiguredAgent(t *testing.T) {
-	h := newHarness(t)
-	installFakeGH(t, `[]`)
-	// The agent reads the prompt from stdin, which is the default delivery.
-	appendConfig(t, h.configPath, "\n[[agent]]\nname = \"echoer\"\ncommand = [\"sh\", \"-c\", \"cat\"]\ndefault = true\n")
-
-	out := h.mustRun("pr", "prompt", "triage", "--repo", "acme/demo", "--agent", "echoer")
-	if !strings.Contains(out, "# Pull request triage") {
-		t.Fatalf("the agent did not receive the prompt on stdin:\n%s", out)
-	}
-}
-
-func TestPRPromptDryRunShowsTheCommandAndRunsNothing(t *testing.T) {
-	h := newHarness(t)
-	installFakeGH(t, `[]`)
-	marker := filepath.Join(h.home, "agent-ran")
-	appendConfig(t, h.configPath,
-		"\n[[agent]]\nname = \"tripwire\"\ncommand = [\"sh\", \"-c\", \"touch "+filepath.ToSlash(marker)+"\"]\ndefault = true\n")
-
-	out := h.mustRun("pr", "prompt", "--repo", "acme/demo", "--dry-run")
-	if !strings.Contains(out, "sh -c touch") {
-		t.Errorf("dry run did not show the command:\n%s", out)
-	}
-	if _, err := os.Stat(marker); err == nil {
-		t.Error("dry run executed the agent")
 	}
 }
 

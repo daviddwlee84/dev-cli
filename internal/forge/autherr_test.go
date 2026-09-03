@@ -56,6 +56,22 @@ func TestClassifyAuthRecognisesSignedOutProviders(t *testing.T) {
 	}
 }
 
+func TestClassifyAuthIgnoresAuthWordsInUserArguments(t *testing.T) {
+	original := &commandError{
+		Bin:    "gh",
+		Args:   []string{"repo", "create", "demo", "--description", "auth login documentation"},
+		Detail: "gh: repository name already exists (HTTP 422)",
+		Err:    errors.New("exit status 1"),
+	}
+	classified := classifyAuth(GitHub, "gh", original)
+	if IsAuth(classified) {
+		t.Fatalf("user argument caused false auth classification: %v", classified)
+	}
+	if classified != original {
+		t.Fatalf("non-auth error was replaced: %T", classified)
+	}
+}
+
 func TestClassifyAuthLeavesOtherFailuresAlone(t *testing.T) {
 	// Each of these is a real failure that signing in again would not fix, so
 	// the full diagnostic message must survive untouched.
@@ -89,6 +105,16 @@ func TestClassifyAuthIsIdempotentAndNilSafe(t *testing.T) {
 	twice := classifyAuth(GitHub, "gh", once)
 	if once != twice {
 		t.Error("re-classifying wrapped an already-classified error again")
+	}
+}
+
+func TestGitLabAuthProbeUsesTheSameHostAsAPIRequests(t *testing.T) {
+	t.Setenv("GITLAB_HOST", "")
+	t.Setenv("GLAB_HOST", "gitlab.corp.example")
+	args, action, ok := authProbe(GitLab)
+	if !ok || !strings.Contains(strings.Join(args, " "), "gitlab.corp.example") ||
+		!strings.Contains(action, "gitlab.corp.example") {
+		t.Fatalf("probe = %v, %q, %v", args, action, ok)
 	}
 }
 

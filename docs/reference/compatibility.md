@@ -64,11 +64,56 @@ integration with exact local ancestry and finish deliberately.
 
 ### Pull-request inventory is limited by the provider surfaces
 
-`gh search prs` cannot report a head branch, review decision, or check status, so `dev pr list --scope account` leaves those fields empty and its rows cannot be joined to a worktree. Each row's `detail` field records which surface produced it: `summary` from the account search, `full` from the per-repository listing. An empty field on a `summary` row means the surface could not report it, not that the value is empty. `--state merged` and `--state closed` exist only on the per-repository surface, so requesting them selects it automatically.
+GitHub's `gh search prs` account surface cannot report a head branch, review decision, or check status, so those rows are `detail: "summary"` and cannot be joined to a worktree. An absent field on a summary row means the surface could not report it, not that the value is empty. GitLab's account list does carry branch/merge detail and therefore returns full rows, but its list surfaces report neither pipeline checks nor a normalized review decision.
 
-Per-repository queries cover only repositories `dev` has a task for, because one subprocess per discovered repository would be dozens of calls on a populated machine. `--all-repos` widens the scan.
+Personal per-repository inventory may make one paginated query per requested role for each repository (author and reviewer by default). It covers repositories `dev` has a task for unless `--all-repos` widens the scan. `--repo` filters both account rows and local targets. Account search cannot distinguish merged from closed, so requesting merged/closed/all narrows an account/all request to local collection; JSON reports that effective scope.
 
-GitLab rows never carry a check status: `head_pipeline` is returned only by GitLab's single-merge-request endpoint, and `dev` does not fan out per request. Azure DevOps pull requests are not listed at all; a configured target is reported as unsupported rather than failing the command.
+The schema-version-1 local join reports expected and live branches, checkout existence, worktree registration, status availability/error, and whether the expected branch is actually checked out. Git details are omitted unless those live checks succeed. Azure DevOps pull requests are not listed at all; a configured target is reported as unsupported rather than failing the command.
+
+### Prompt open uses the current terminal, not runtime placement
+
+`dev prompt open <recipe>` runs one configured child in the foreground of the
+terminal/TTY that invoked it. It does not create, focus, reuse, or inject into a
+Herdr, tmux, or Zellij pane. Inside Herdr it naturally remains in the current
+pane. To use another Herdr pane, create or focus it manually, enter the exact
+checkout, and run `prompt open` there.
+
+This is intentionally separate from `dev start --run`, whose dispatch target is
+only the exact root pane returned for a newly created first-class Herdr worktree.
+`prompt open` neither supplies a fresh runtime surface nor weakens that
+exact-pane proof. `run` is the non-interactive alternative; it receives no user
+stdin and defaults to a 10-minute timeout, while `open` reserves stdin for the
+conversation and has no default timeout.
+
+The configured child retains its own permission policy. Recipe instructions are
+read-only guidance, not a sandbox; `dev` does not add permission flags, answer
+approval prompts, or parse the response into an action.
+
+### Prompt closeout reports do not authorize cleanup
+
+`session-close` computes runtime-closure evidence only. An `idle` or `done`
+covering agent can satisfy that one activity gate, but does not prove that work
+is committed, artifacts are finalized, review is complete, or task intent is
+done. Caller-contained, mixed-purpose, active, unknown, and unrecognized
+sessions remain blocked or unknown as their evidence requires.
+
+`workspace-closeout` performs the broader read-only audit: target kind,
+registration/path, status availability, clean Git state, no in-progress Git
+operation, known base and containment, task completion, artifact
+reachability/finalization, and runtime eligibility. A merged pull request is only
+evidence. Even an `eligible` audit is advisory; `dev retire` recollects and
+revalidates fresh state before any mutation. Neither recipe closes a runtime,
+changes Git/task state, deletes a branch/worktree, or grants permission to do so.
+
+### Zellij exited sessions are closed but keep their names
+
+Zellij keeps exited sessions available for resurrection. `dev` recognizes only
+the exact `(EXITED - attach to resurrect)` marker, omits those sessions from live
+coverage, and refuses to create over their names; reclaim one with
+`zellij delete-session <name>`. A live session name containing `EXITED` is not an
+exit marker. If a session exits between native listing and layout inspection,
+open fails closed and asks for a retry rather than resurrecting an old layout at
+the requested checkout.
 
 ### Forge CLI sign-in is reported, never retried
 
@@ -236,6 +281,10 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
+- [`internal/handoff`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/handoff)
+- [`internal/closeout`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/closeout)
+- [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
 - [`scripts/update-homebrew-formula.sh`](https://github.com/daviddwlee84/dev-cli/blob/main/scripts/update-homebrew-formula.sh)
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)

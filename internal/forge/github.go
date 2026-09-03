@@ -255,7 +255,7 @@ const prSearchFields = "number,title,url,state,isDraft,author,repository,created
 
 // prListFields are what gh pr list adds on top: the head branch that joins a
 // request to a local worktree, and the review/check state an inbox needs.
-const prListFields = "number,title,url,state,isDraft,author,headRefName,baseRefName," +
+const prListFields = "number,title,url,state,isDraft,author,headRepository,isCrossRepository,headRefName,baseRefName," +
 	"reviewDecision,mergeable,statusCheckRollup,createdAt,updatedAt"
 
 // ListAccountPRs searches every repository the authenticated user can see. It
@@ -267,6 +267,9 @@ const prListFields = "number,title,url,state,isDraft,author,headRefName,baseRefN
 func (g *gh) ListAccountPRs(ctx context.Context, q PRQuery) ([]PullRequest, error) {
 	if !g.Available() {
 		return nil, &ErrNoCLI{Kind: GitHub, Bin: "gh"}
+	}
+	if q.AnyRole {
+		return nil, &ErrUnsupported{Kind: GitHub, Operation: "account-wide any-role pull request inventory"}
 	}
 	if state := q.EffectiveState(); state != PRStateOpen {
 		return nil, &ErrUnsupported{Kind: GitHub,
@@ -308,20 +311,64 @@ func (g *gh) ListAccountPRs(ctx context.Context, q PRQuery) ([]PullRequest, erro
 }
 
 // ListRepoPRs lists one repository's requests with the head branch, review
-// decision and check rollup that the search surface cannot report.
+// decision and check rollup that the search surface cannot report. Personal
+// inbox queries run once per requested role and union the rows; workspace
+// closeout opts into AnyRole and pays for only one unfiltered call.
 func (g *gh) ListRepoPRs(ctx context.Context, repo string, q PRQuery) ([]PullRequest, error) {
 	if !g.Available() {
 		return nil, &ErrNoCLI{Kind: GitHub, Bin: "gh"}
 	}
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	out, err := g.run(ctx, "", "pr", "list", "--repo", repo,
+
+	if q.AnyRole {
+		return g.listRepoPRsForRole(ctx, repo, q, "")
+	}
+	byKey := map[string]PullRequest{}
+	var order []string
+	for _, role := range q.EffectiveRoles() {
+		prs, err := g.listRepoPRsForRole(ctx, repo, q, role)
+		for _, pr := range prs {
+			key := pr.Key()
+			if existing, ok := byKey[key]; ok {
+				existing.Roles = unionRoles(existing.Roles, pr.Roles)
+				byKey[key] = existing
+				continue
+			}
+			byKey[key] = pr
+			order = append(order, key)
+		}
+		if err != nil {
+			return collectPRs(byKey, order), err
+		}
+	}
+	return collectPRs(byKey, order), nil
+}
+
+func (g *gh) listRepoPRsForRole(ctx context.Context, repo string, q PRQuery, role PRRole) ([]PullRequest, error) {
+	args := []string{"pr", "list", "--repo", repo,
 		"--state", string(q.EffectiveState()),
-		"--limit", strconv.Itoa(q.EffectiveLimit()), "--json", prListFields)
+		"--limit", strconv.Itoa(q.EffectiveLimit()), "--json", prListFields}
+	switch role {
+	case RoleAuthor:
+		args = append(args, "--author", "@me")
+	case RoleReviewer:
+		args = append(args, "--search", "review-requested:@me")
+	}
+	out, err := g.run(ctx, "", args...)
 	if err != nil {
 		return nil, err
 	}
-	return parseGitHubRepoPRs(out, repo)
+	prs, err := parseGitHubRepoPRs(out, repo)
+	if err != nil {
+		return nil, err
+	}
+	if role != "" {
+		for i := range prs {
+			prs[i].Roles = []PRRole{role}
+		}
+	}
+	return prs, nil
 }
 
 // collectPRs renders a keyed set back into first-seen order, so that output is
@@ -360,7 +407,7 @@ func parseGitHubSearchPRs(out string, role PRRole) ([]PullRequest, error) {
 		created, _ := time.Parse(time.RFC3339, r.CreatedAt)
 		updated, _ := time.Parse(time.RFC3339, r.UpdatedAt)
 		result = append(result, PullRequest{
-			Forge: GitHub, Repo: r.Repository.NameWithOwner, Number: r.Number,
+			Forge: GitHub, Host: ConfiguredHost(GitHub), Repo: r.Repository.NameWithOwner, Number: r.Number,
 			Title: r.Title, URL: r.URL, State: githubPRState(r.State, false),
 			Draft: r.IsDraft, Author: r.Author.Login,
 			Roles: []PRRole{role}, Detail: PRDetailSummary,
@@ -372,16 +419,20 @@ func parseGitHubSearchPRs(out string, role PRRole) ([]PullRequest, error) {
 
 func parseGitHubRepoPRs(out, repo string) ([]PullRequest, error) {
 	var raw []struct {
-		Number            int            `json:"number"`
-		Title             string         `json:"title"`
-		URL               string         `json:"url"`
-		State             string         `json:"state"`
-		IsDraft           bool           `json:"isDraft"`
-		Author            githubPRAuthor `json:"author"`
-		HeadRefName       string         `json:"headRefName"`
-		BaseRefName       string         `json:"baseRefName"`
-		ReviewDecision    string         `json:"reviewDecision"`
-		Mergeable         string         `json:"mergeable"`
+		Number         int            `json:"number"`
+		Title          string         `json:"title"`
+		URL            string         `json:"url"`
+		State          string         `json:"state"`
+		IsDraft        bool           `json:"isDraft"`
+		Author         githubPRAuthor `json:"author"`
+		HeadRepository struct {
+			NameWithOwner string `json:"nameWithOwner"`
+		} `json:"headRepository"`
+		IsCrossRepository bool   `json:"isCrossRepository"`
+		HeadRefName       string `json:"headRefName"`
+		BaseRefName       string `json:"baseRefName"`
+		ReviewDecision    string `json:"reviewDecision"`
+		Mergeable         string `json:"mergeable"`
 		StatusCheckRollup []struct {
 			Status     string `json:"status"`
 			Conclusion string `json:"conclusion"`
@@ -402,9 +453,10 @@ func parseGitHubRepoPRs(out, repo string) ([]PullRequest, error) {
 			checks = append(checks, checkOutcome{Status: c.Status, Conclusion: c.Conclusion, State: c.State})
 		}
 		result = append(result, PullRequest{
-			Forge: GitHub, Repo: repo, Number: r.Number,
+			Forge: GitHub, Host: ConfiguredHost(GitHub), Repo: repo, Number: r.Number,
 			Title: r.Title, URL: r.URL, State: githubPRState(r.State, false),
 			Draft: r.IsDraft, Author: r.Author.Login, Detail: PRDetailFull,
+			HeadRepo: r.HeadRepository.NameWithOwner, CrossRepository: r.IsCrossRepository,
 			HeadBranch: r.HeadRefName, BaseBranch: r.BaseRefName,
 			ReviewDecision: strings.ToLower(r.ReviewDecision),
 			Mergeable:      strings.ToLower(r.Mergeable),

@@ -2,7 +2,7 @@
 description: Retire an integrated dev-cli worktree and runtime safely, from outside the workspace being removed.
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-02
 ---
 
 # Agent-safe retirement
@@ -42,6 +42,21 @@ first, offering commit or discard interactively, or taking an explicit
 [Change-stream workflow](change-stream-workflow.md) for that wizard. The
 `--keep-worktree` and `--delete-branch` flags remain accepted on `dev done`
 only to fail loudly and point at `dev retire`.
+
+For a read-only explanation before acting, render or open the generic
+`workspace-closeout` recipe from the exact checkout:
+
+```bash
+dev prompt render workspace-closeout .
+dev prompt open workspace-closeout . --agent my-agent
+```
+
+The recipe includes the full retirement audit, but its result is advisory.
+`eligible` and a merged PR never authorize cleanup; an external `dev retire`
+still recollects and revalidates every gate. If `dev done --ff` or
+`dev git pull-rebase` stops at a conflict, use `prompt open` only to discuss the
+semantic resolution, then explicitly continue/abort Git and rerun the lifecycle
+command. See [Prompt handoffs](prompt-handoffs.md).
 
 ## Normal local flow
 
@@ -151,4 +166,6 @@ Byte equality rather than mere presence is the point. A transcript writer that o
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/retire/safety.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/safety.go)
 - [`internal/retire/service.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/service.go)
+- [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
 - [`internal/gitx/transactions.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/transactions.go)

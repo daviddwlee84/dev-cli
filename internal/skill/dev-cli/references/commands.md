@@ -718,7 +718,7 @@ dev park [task] [flags]
 
 ### `dev pr`
 
-List the pull requests waiting on you, and hand them to an agent
+List the pull requests waiting on you and their local worktrees
 
 ```
 dev pr
@@ -736,25 +736,7 @@ dev pr list [query] [flags]
 - `--all-repos` — query every discovered repository, not only ones dev has a task for
 - `--json` — emit structured output
 - `--limit` — cap the rows rendered
-- `--linked` — only requests with a local checkout
-- `--repo` — restrict to these owner/name repositories
-- `--role` — limit to author or reviewer (default both)
-- `--scope` — which surface to query: account, local or all
-- `--state` — request state: open, merged, closed or all
-
-### `dev pr prompt`
-
-Render a prompt about the pull request queue, optionally handing it to an agent
-
-```
-dev pr prompt [triage|review|retire] [flags]
-```
-
-- `--agent` — hand the prompt to a configured [[agent]] instead of printing it
-- `--all-repos` — query every discovered repository, not only ones dev has a task for
-- `--dry-run` — with --agent, print the command and the prompt without running anything
-- `--limit` — cap the rows rendered
-- `--linked` — only requests with a local checkout
+- `--linked` — only requests with a checked-out local branch
 - `--repo` — restrict to these owner/name repositories
 - `--role` — limit to author or reviewer (default both)
 - `--scope` — which surface to query: account, local or all
@@ -772,6 +754,150 @@ dev prepare [task-or-worktree] [flags]
 - `--plan` — exact .claude/plans path to include (repeatable)
 - `--run-id` — outer wrapper run id (default: DEV_AGENT_RUN_ID or generated)
 - `--session` — exact agent session provider:uuid (inferred from task/runtime when unique)
+
+### `dev prompt`
+
+Render operational context, or hand it to a configured agent
+
+```
+dev prompt
+```
+
+### `dev prompt list`
+
+List built-in prompt recipes
+
+```
+dev prompt list [flags]
+```
+
+- `--json` — emit structured recipe metadata
+
+### `dev prompt open`
+
+Open an interactive foreground agent in the current terminal
+
+```
+dev prompt open
+```
+
+### `dev prompt open pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt open pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt open session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt open session-close
+```
+
+### `dev prompt open workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt open workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
+
+### `dev prompt render`
+
+Render a built-in prompt to stdout
+
+```
+dev prompt render
+```
+
+### `dev prompt render pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt render pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt render session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt render session-close
+```
+
+### `dev prompt render workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt render workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
+
+### `dev prompt run`
+
+Run a one-shot agent with a built-in prompt
+
+```
+dev prompt run
+```
+
+### `dev prompt run pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt run pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt run session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt run session-close
+```
+
+### `dev prompt run workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt run workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
 
 ### `dev repo`
 

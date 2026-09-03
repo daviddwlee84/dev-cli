@@ -1,428 +1,482 @@
-# `dev pr` — a stateless PR inbox, agent handoff, and forge-auth UX
+# Generalize prompt handoff beyond pull requests
 
 ## Context
 
-Opening a PR ends a worktree's useful life, but nothing tells you that. Open PRs
-accumulate: some are yours and waiting on review, some are waiting on *your*
-review, and the worktrees behind the merged ones sit around because `dev` has no
-way to know they merged. `dev sweep --merged-worktrees` only tests local ancestry
-(`git merge-base --is-ancestor`), and `dev done --pr` prints the PR URL and throws
-it away. This is the already-recorded gap in `TODO.md` ("P3 · M — Query forge
-merge status and squash identity") and in
-`docs/reference/compatibility.md` ("Pull-request completion is not tracked
-automatically"). This branch is that item.
+Commit `694cb70` added a useful first slice: `dev pr list`, three PR-specific
+prompt assets, and a configurable `[[agent]]` command. The next use cases expose
+that the handoff is the reusable product, not the PR command:
 
-Three outcomes:
+- decide which Herdr agent sessions can close;
+- decide which tasks/worktrees in one repository should finish, park, retire,
+  or be inspected;
+- escalate a hard integration/rebase/conflict case to an interactive agent,
+  while ordinary cases continue to use deterministic `done`, `sweep`, and
+  `retire` commands.
 
-1. **See the queue.** One command lists PRs you authored and PRs awaiting your
-   review, account-wide, joined against local worktrees and tasks so "this
-   checkout is done, retire it" becomes visible.
-2. **Hand it to an agent without hardcoding one.** `dev` renders a prompt from
-   built-in templates with the live scan embedded, and optionally pipes it to a
-   *user-configured* agent command. `dev` does not parse the reply, does not
-   loop, and does not know what Claude or Codex are.
-3. **Stop the signed-out-CLI noise.** A first run with an unauthenticated `gh`
-   currently shows
-   `✗ glab api projects --method GET -f membership=true …: glab: HTTP 401: exit status 1`
-   in the TUI footer. It should read: `glab is signed out — run` `glab auth login`.
+The current `dev pr prompt --agent` is only partly suitable. It always starts a
+foreground child and waits. With the default `input = "stdin"`, stdin is the
+finite prompt, so the user cannot continue a conversation. Its
+`interactive = true` flag only loads a login shell; it does not create a TTY,
+open Herdr, or make an agent conversational. File/argv input happens to preserve
+`app.In`, but this is not an explicit contract. The child also inherits whatever
+directory `dev` was invoked from, rather than the selected checkout.
 
-Explicitly **not** built: any scheduler or daemon. `dev pr ls` is a fast,
-repeatable query; cron/launchd or Claude Code's `/loop` handles recurrence.
+The intended result is therefore a small, generic escalation ladder:
 
-## Design
-
-### 1. Forge PR layer (`internal/forge`)
-
-Add an **optional capability interface**, following the `RepoPublisher`
-precedent (`forge.go:67`) rather than widening `Forge`. Callers type-assert and
-degrade when the assertion fails.
-
-```go
-type PRLister interface {
-	// ListPRs returns pull/merge requests matching q. Like ListRepos it may
-	// return partial results alongside an error.
-	ListPRs(ctx context.Context, q PRQuery) ([]PullRequest, error)
-}
-
-type PRRole string // "author" | "reviewer"
-type PRState string // "open" | "merged" | "closed"
-
-type PRQuery struct {
-	Roles []PRRole
-	// Repos restricts to specific owner/name identities. Empty means the
-	// account-wide search. A non-empty Repos selects the richer per-repo
-	// surface, which is the only one carrying HeadBranch and ReviewDecision.
-	Repos []string
-	State PRState
-	Limit int
-}
-
-type PullRequest struct {
-	Forge      Kind      `json:"forge"`
-	Repo       string    `json:"repo"`     // owner/name, matches IdentityFromURL
-	Number     int       `json:"number"`
-	Title      string    `json:"title"`
-	URL        string    `json:"url"`
-	State      PRState   `json:"state"`
-	Draft      bool      `json:"draft"`
-	Author     string    `json:"author"`
-	Roles      []PRRole  `json:"roles"`
-
-	// Present only from the repo-scoped surface; omitted from account search.
-	HeadBranch     string `json:"head_branch,omitempty"`
-	BaseBranch     string `json:"base_branch,omitempty"`
-	ReviewDecision string `json:"review_decision,omitempty"`
-	Checks         string `json:"checks,omitempty"`
-	Mergeable      string `json:"mergeable,omitempty"`
-
-	CreatedAt time.Time `json:"created_at,omitempty"`
-	UpdatedAt time.Time `json:"updated_at,omitempty"`
-}
+```text
+existing deterministic command/report
+    -> dev prompt render   # inspect/copy the exact prompt
+    -> dev prompt run      # one-shot, unattended advice
+    -> dev prompt open     # foreground conversation in the current terminal
+    -> user explicitly runs/approves done, park, sweep, retire, rebase, ...
 ```
 
-**Two surfaces, not GraphQL.** Verified against the installed CLIs
-(gh 2.98.0, glab 1.92.1):
+`dev` remains a context and lifecycle tool, not an embedded agentic workflow.
+It will not parse replies, iterate, change an agent's permission mode, or turn a
+model's conclusion into cleanup authorization.
 
-- `gh search prs --json` exposes only assignees, author, authorAssociation,
-  body, closedAt, commentsCount, createdAt, id, isDraft, isLocked,
-  isPullRequest, labels, number, repository, state, title, updatedAt, url —
-  **no `headRefName`, no `reviewDecision`, no `statusCheckRollup`.**
-- `gh pr list --json` does expose `headRefName`, `baseRefName`,
-  `reviewDecision`, `statusCheckRollup`, `mergeable`, `mergedAt`.
+## Recommended command surface
 
-So the account-wide inbox and the branch↔worktree join genuinely need different
-calls. Use `gh search prs --author=@me` / `--review-requested=@me` for the
-account sweep (two calls total, regardless of repo count) and
-`gh pr list --repo <r> --json …` per known repo for the join. Prefer this over
-one `gh api graphql` call: both are documented, versioned CLI surfaces that
-match the existing `gh api` idiom in `github.go`, and they are far easier to
-fake in tests than a GraphQL response.
+Create one generic command family. Generate each recipe as a Cobra child below
+each mode so recipe-specific flags, usage, and completions remain discoverable.
 
-GitLab mirrors the split: account-wide via
-`glab api merge_requests -f scope=created_by_me -f state=opened` (and
-`scope=assigned_to_me`, plus a reviewer query), reusing the pagination loop in
-`gitlab.go:145-170`; repo-scoped via `glab mr list -F json`. Azure DevOps
-returns `&ErrUnsupported{Kind: AzureDevOps, Operation: "list pull requests"}` —
-it simply does not implement `PRLister` in this change.
+```text
+dev prompt list [--json]
 
-Reuse the existing `ListRepos` shape throughout: 60 s context timeout, `per_page=100`
-pagination, and **return partial results with the error** rather than discarding.
+dev prompt render pr-triage [query] [PR flags]
+dev prompt render session-close
+dev prompt render workspace-closeout [repo-or-checkout] [--base REF]
 
-**Files:** `internal/forge/pr.go` (types + shared helpers), and `ListPRs` methods
-appended to `github.go` and `gitlab.go`.
-
-### 2. Auth error classification (`internal/forge`)
-
-The noise comes from `run()` (`forge.go:429-446`) embedding the full argv in
-every error. Do **not** change `run` — it is generic and has no `Kind`. Instead
-add a thin per-adapter wrapper:
-
-```go
-// internal/forge/autherr.go
-type ErrAuth struct {
-	Kind   Kind
-	Bin    string
-	Action string // reused verbatim from authProbe(kind)
-	cause  error  // the full argv + stderr, still reachable via errors.Unwrap
-}
-
-func (e *ErrAuth) Error() string { return e.Bin + " is signed out — " + e.Action }
-func (e *ErrAuth) Unwrap() error { return e.cause }
-
-// classifyAuth returns an *ErrAuth when err looks like an authentication
-// failure, and err unchanged otherwise.
-func classifyAuth(kind Kind, bin string, err error) error
+dev prompt run  <same recipes> [--agent NAME] [--dry-run]
+dev prompt open <same recipes> [--agent NAME] [--dry-run]
 ```
 
-Detection is a substring match over the wrapped message for `HTTP 401`,
-`HTTP 403`, `Bad credentials`, `401 Unauthorized`, `not logged in`,
-`authentication required`, and `auth login`. Each adapter routes its API calls
-through `g.run(ctx, dir, args...)` = `classifyAuth(kind, bin, run(...))`.
+Mode semantics are deliberately different:
 
-The **`Action` string is not new text** — reuse the one `authProbe(kind)` already
-produces (`forge.go:302-318`), so the remediation stays in one place:
-`` run `gh auth login --hostname github.com` ``.
+- **`render`** performs read-only context collection and writes only the final
+  Markdown prompt to stdout. No configured agent is needed.
+- **`run`** is batch/non-interactive. It selects `--agent`, then the configured
+  default, then the sole configured agent. It never inherits user stdin:
+  stdin transport receives the finite prompt; file/argv transport receives EOF.
+  It streams stdout/stderr, waits, and has a default 10-minute timeout. This is
+  the mode for `opencode run ...`, cron, or another scheduler.
+- **`open`** is a foreground interactive child in the **current terminal**. It
+  requires a TTY, inherits stdin/stdout/stderr, waits, and has no default
+  timeout. Prompt transport must be file or direct argv so stdin remains
+  available for the conversation. The recipe determines `Cmd.Dir`; for a
+  repository recipe this is the exact resolved checkout. If invoked inside a
+  Herdr pane, the agent naturally stays in that pane.
+- **`--dry-run`** on `run`/`open` still performs read-only collection and
+  rendering, but creates no temporary file and starts no process. It prints
+  the mode, selected agent, resolved cwd, transport, timeout, a redacted
+  command preview, and the exact prompt.
 
-Nothing downstream needs to change to benefit: `ErrAuth.Error()` is short, so the
-TUI footer (`internal/tui/view.go:1095-1103`), the `errors.Join` aggregate in
-`collectRemotesWithOptions` (`internal/cli/tui.go:1275-1286`), the
-`dev: partial remote results: …` warnings (`internal/cli/repo.go:626,695`), and
-the `status.Error` text persisted into `remotes.json` all improve automatically.
-Diagnostic detail is preserved in the `Unwrap` chain rather than in the headline.
+Remove `dev pr prompt` before release rather than keep two public models: the
+published baseline is `v0.2.4`, and that subcommand exists only in the
+unreleased feature commit. Keep `dev pr list`; update `dev pr` wording so it no
+longer claims to launch agents. Replace all branch docs/examples rather than
+adding a compatibility layer for an unpublished command.
 
-**`dev doctor` starts probing auth.** Replace the `exec.LookPath` loop at
-`doctor.go:118-128` with `forge.ProbeAll(ctx)` — which already exists and is
-currently used only by the repo-create wizard:
+## Agent configuration: separate batch from interactive launch
 
-| Readiness | doctor row |
-|---|---|
-| `ready` | `✓ gh   /usr/local/bin/gh — GitHub: clone, create, PRs` |
-| `missing-cli` | `! gh   not found — install `gh`, then run `gh auth login`` |
-| `unauthenticated` | `! gh   signed out — run `gh auth login --hostname github.com`` |
-| `probe-failed` | `! gh   probe failed — <detail>` |
-
-Still `checkWarn`, never `checkFail`: doctor's stated policy is that everything
-but git is optional. This is the direct answer to "a first-time user has not run
-`gh auth login` and should not see something bizarre".
-
-Cost caveat: `gh auth status` validates the token against the API, so this makes
-`dev doctor` do network work it previously avoided. `ProbeAll` runs the providers
-concurrently under the existing 10 s per-probe timeout (`forge.go:268`), so the
-worst case is bounded at roughly 10 s rather than multiplying. If that proves
-annoying, gate the probe behind a `--probe` flag and keep bare `dev doctor` on
-`LookPath` — decide after feeling the real latency, not up front.
-
-### 3. Command surface (`internal/cli/pr.go`)
-
-Standard group pattern: parent with no `RunE`, leaves as `newPrXCmd(app)`.
-Register with one line in `root.go:145-179`.
-
-```
-dev pr ls [query]
-  --scope account|local|all   default all
-  --mine / --review           role filters; default both
-  --repo <owner/name>         repeatable; implies repo-scoped surface
-  --all-repos                 widen local scope to every discovered repo
-  --state open|merged|closed|all   default open
-  --limit N
-  --json
-  --refresh / --cached
-  --commands                  add a suggested gh/glab command per row
-
-dev pr prompt [triage|review|retire]
-  --agent <name>              hand the prompt to a configured agent
-  --print                     force stdout even when an agent is default
-  (same filter flags as `pr ls`)
-```
-
-- `--scope account` — the two `gh search prs` calls
-  (`--author=@me` / `--review-requested=@me`, both `--state open`). Cheap,
-  whole-account, no `head_branch`/`review_decision`. Note that
-  `gh search prs --state` accepts only `open|closed` (verified via `--help`), so
-  **`--state merged` implies the repo-scoped surface** — account scope cannot
-  answer it. `dev pr ls --state merged` should therefore select `--scope local`
-  automatically and say so rather than silently returning nothing.
-- `--scope local` — one repo-scoped call per **engaged** repo, meaning a repo
-  with at least one `dev` task or linked worktree. This matters: `repo.Discover`
-  returns every repository under the scan roots (the TUI note in `TODO.md` cites
-  56 on this machine), and one `gh pr list` per discovered repo would make the
-  command unusably slow. Engaged repos are typically a handful, and they are
-  exactly the ones that can answer "can I close this worktree". Derive the set
-  from `inventory.Collect` rows plus `gitx.Worktrees()`. Bound the calls with a
-  small dedicated semaphore (~4) rather than reusing `inventory.NewLimiter`:
-  that limiter exists to bound *local* enrichment across collectors
-  (`internal/inventory/limiter.go:5-7`), and forge APIs rate-limit on a different
-  budget than disk. `--all-repos` widens to the
-  full `repo.Discover` set for anyone who wants it, and prints how many repos it
-  is about to query.
-
-  Key on `string(kind) + "/" + strings.ToLower(name)` from
-  `forge.IdentityFromURL(gitx.RemoteFromConfig(r.CommonDir, "origin"))` —
-  exactly what `matchRemoteLocals` does (`internal/cli/tui.go:1339-1386`).
-  **Reuse its ambiguity handling**: when two local clones map to the same remote
-  identity it drops the entry rather than guessing, and it skips bare repos.
-  Factor that loop out of `matchRemoteLocals` instead of copying it.
-- `--scope all` (default) — both, deduped by `(forge, repo, number)`, with local
-  rows upgrading account rows on overlap.
-
-**Local join.** Done inside `pr.go`, *not* by adding a field to
-`inventory.Row`. `inventory.Collect` runs on every `dev ls` and TUI refresh; a
-network probe there would make the hot path depend on a forge round-trip.
-`dev pr ls` calls `inventory.Collect(ctx, tasks, rt, inventory.Options{SkipRuntime: true})`
-itself and matches `Row.Status.Branch` against `PullRequest.HeadBranch`.
-
-Table: `PR  REPO  TITLE  ROLE  STATE  CHECKS  REVIEW  WORKTREE  AGE`.
-
-JSON row (`prJSONRow` + `makePRJSONRow`, declared in `pr.go` per house style,
-`omitempty` on every field the account surface cannot fill):
-
-```json
-{
-  "forge": "github", "repo": "owner/name", "number": 12,
-  "title": "…", "url": "…", "state": "open", "draft": false,
-  "author": "me", "roles": ["author"],
-  "head_branch": "feat/x", "base_branch": "main",
-  "review_decision": "REVIEW_REQUIRED", "checks": "passing",
-  "updated_at": "…",
-  "local": { "repo_path": "…", "worktree_path": "…", "task_id": "…",
-             "task_state": "hot", "branch_synced": true },
-  "commands": { "view": "gh pr view …", "approve": "…", "merge": "…" }
-}
-```
-
-Treat this as an automation contract from day one, like `dev ls --json`
-(AGENTS.md): add fields later, never rename or remove.
-
-**`--commands`** renders per-row `gh`/`glab` invocations (`view`, `approve`,
-`merge`, and a `comment` that posts a review-trigger phrase). They are *printed*,
-never executed — the user copies them or an agent reads them from `--json`.
-
-**Retirement stays in `dev sweep`.** `dev pr ls --scope local` reports a merged
-PR whose worktree still exists; it does not act. Wiring PR state into sweep's
-`--apply` path would mean inferring integration from a forge answer, which
-AGENTS.md and the existing `--confirm-squash` attestation deliberately refuse.
-The guide shows the composition (`dev pr ls --scope local --json` →
-`dev sweep --merged-worktrees`) instead.
-
-### 4. Prompt templates and the `[[agent]]` config
-
-**Templates** live in `internal/cli/assets/prompts/{triage,review,retire}.md`,
-embedded with `//go:embed` — the precedent is
-`internal/cli/repo_builtin_skill_setup.go:20`. No new package; `internal/prompt`
-would collide conceptually with the interactive prompter in
-`internal/cli/prompt.go`. Rendering reuses `scaffold.RenderTemplate`
-(`internal/scaffold/template.go:97`, `{{a.b.c}}` dotted lookup, unknown variable
-is an error) with variables `{{pr_json}}`, `{{pr_table}}`, `{{worktree_json}}`,
-`{{host}}`, `{{generated_at}}`.
-
-**Config** — new top-level repeated table, modeled on `[[tui.tools]]`
-(`config.go:196-243`):
+Replace the current flat pre-release schema (`command`/`run`/`input`/
+`interactive`/`timeout`) with nested launchers:
 
 ```toml
 [[agent]]
-name = "claude"
-run = "claude -p"
+name = "opencode"
 default = true
 
-[[agent]]
-name = "codex"
-run = "codex exec --file {{prompt_file}}"
+[agent.run]
+command = ["opencode", "run", "{{prompt_file}}"]
+input = "file"
 timeout = "10m"
+
+[agent.open]
+command = ["opencode", "{{prompt_file}}"]
+input = "file"
 ```
+
+The exact OpenCode/Claude/Codex examples must be checked against each installed
+CLI's current help before documentation is written; examples are not built-in
+defaults.
+
+Schema:
 
 ```go
 type Agent struct {
-	Name        string   `toml:"name"`
-	Run         string   `toml:"run"`
-	Interactive bool     `toml:"interactive"`
-	Default     bool     `toml:"default"`
-	Timeout     Duration `toml:"timeout"`
+    Name    string   `toml:"name"`
+    Default bool     `toml:"default"`
+    Run     Launcher `toml:"run"`
+    Open    Launcher `toml:"open"`
+}
+
+type Launcher struct {
+    Command     []string `toml:"command"` // direct argv, preferred
+    Shell       string   `toml:"shell"`   // static host-owned shell text
+    Input       string   `toml:"input"`   // stdin | file | argv
+    LoadShellRC bool     `toml:"load_shell_rc"`
+    Timeout     Duration `toml:"timeout"`
 }
 ```
 
-Deliberately **no `DefaultAgents()`**. An empty list means no agent is
-configured, and `--agent` then fails with a pointer to `dev edit`. Shipping a
-default `claude` entry would be exactly the hardcoding the user rejected.
+Rules enforced by `config.Validate` and by the process package:
 
-Validation in `Validate()`: unique non-empty names, non-empty `run`, at most one
-`default`, dotted-key error messages (`agent[%d].name must not be empty`).
-A commented block goes into `const starterConfig`
-(`internal/cli/config.go:143-345`) so `dev config init` documents it.
+- An agent needs at least one of `[agent.run]` or `[agent.open]`; at most one
+  agent is default; names are trimmed, non-empty, and case-insensitively unique.
+- A launcher has exactly one of non-empty `command` or `shell`; reject blank
+  `command[0]`.
+- `command` bypasses the shell. `shell` is static text; reject every `{{...}}`
+  placeholder in it. `load_shell_rc` is valid only with `shell` and means just
+  that — it is not interactivity.
+- `stdin` is valid only for `run` and contains no placeholder.
+- Direct `file` transport requires exactly one whole argv element
+  `{{prompt_file}}`. For shell/file transport, inject `DEV_PROMPT_FILE` and
+  require the shell text to reference `$DEV_PROMPT_FILE` or
+  `${DEV_PROMPT_FILE}`; never splice the path or prompt into shell text.
+- `argv` is direct-command only and requires exactly one whole argv element
+  `{{prompt}}`; reject prompts above a conservative argument-size bound.
+  Embedded forms such as `--prompt={{prompt}}` are rejected.
+- `open` rejects stdin transport and requires terminal stdin/stdout. It inherits
+  the process environment and terminal streams; `run` gets EOF unless stdin is
+  the prompt transport.
+- `run` defaults to a 10-minute timeout. `open` has no timeout and rejects one:
+  safely cancelling an interactive descendant tree requires terminal job
+  control, unlike the isolated process group used by batch mode.
+- Prompt files live in a private `0700` temporary directory, mode `0600`, for
+  the child lifetime only. Errors redact prompt contents and temporary paths.
+- No process replacement (`syscall.Exec`): a child preserves cleanup, error
+  reporting, Windows behavior, and return to the shell wrapper.
+- No configurable environment/secret map in this version. Normal inherited
+  environment or a reviewed wrapper executable covers that without making
+  `dev` a credential store.
 
-**Delivery.** The prompt goes to the agent's **stdin** by default; if `run`
-contains `{{prompt_file}}`, `dev` writes a 0600 temp file, substitutes the path,
-and removes it afterwards. Execution reuses the `[[tui.tools]]` mechanics
-(`tui.go:996-1022`): `$SHELL -c run`, or `$SHELL -lic 'eval "$1"' dev-agent run`
-when `interactive`, with stdio wired to `app.In/Out/Err` and a default 10 min
-timeout matching `runRepoHook`.
+`[[agent]]` remains host-only. Keep `agent` in
+`internal/projectconfig/load.go:deniedTopLevelSections` and strengthen the test
+to assert a `DiagnosticDenied`, not merely that the command did not run.
 
-**Security.** `[[agent]]` is host config only — a repository must never define a
-command `dev` will execute. This is already structurally true: `projectFile`
-(`internal/projectconfig/load.go:21-25`) decodes only `worktree` and `repo`, so a
-repo-supplied `[[agent]]` is inert. Add `"agent": true` to
-`deniedTopLevelSections` (`load.go:27-30`) anyway, so it is reported as **denied**
-rather than as an unknown key — the diagnostic is the point, not a hole being
-closed. The `projectconfig` trust store is not involved.
+## Architecture
 
-### 5. Cache
+### 1. `internal/handoff`: process and transport only
 
-New `$XDG_CACHE_HOME/dev/prs.json`, reusing the hardened primitives in
-`internal/forge/cache.go` (atomic temp + 0600 + rename, per-path write locks,
-size/clock-skew validation). Extract those helpers and add a sibling
-`PRCache{Version, SourceID, FetchedAt, Complete, Providers, PRs []PullRequest}`
-rather than genericizing `Cache`. `SourceID` fingerprints the forge hosts *and*
-the query (scope, roles, state, repo set) so a narrowed `--repo` run cannot serve
-a later full scan. Register `{"pr", …/prs.json"}` in `cacheItems()`
-(`internal/cli/cache.go:70`) and extend the `Use`/`ValidArgs` strings on
-`dev cache clear`.
+Extract the generic parts of `runAgent`/`agentProcess` from
+`internal/cli/pr_prompt.go` into a package with no PR, forge, runtime, Cobra, or
+`App` knowledge:
 
-This is the most separable slice — if it slips, `dev pr ls` still works, just
-without `--cached`.
+- normalized `Launcher`/`Mode`/`Spec`;
+- validation of command versus shell and transport placeholders;
+- private prompt-file lifecycle;
+- explicit cwd and injected IO;
+- batch EOF versus inherited TTY behavior;
+- timeout/cancellation and a dry-run `Preview` with redactions.
 
-## Out of scope (record in `TODO.md`)
+The CLI converts `config.Launcher` into `handoff.Spec`; cross-agent uniqueness
+and default selection stay in `internal/config`.
 
-- A TUI PR view. `dev pr ls` first; the TUI can consume the same collector later.
-- Persisting PR identity on the task TOML. That needs the versioned task-schema
-  work already listed as "P2 · L".
-- CI/check-run watching beyond the `statusCheckRollup` summary `gh pr list`
-  already returns.
-- Azure DevOps PR listing.
-- Any automatic retirement driven by forge state (see §3).
+### 2. `internal/templatex`: one-pass scalar rendering
 
-Update the existing `TODO.md` "P3 · M — Query forge merge status and squash
-identity" entry to record what this change delivers (read-only PR state) and what
-it still defers (persisted identity, squash proof).
+Move the pure `scaffold.RenderTemplate` implementation
+(`internal/scaffold/template.go:93-190`) into a lower-level package and keep
+`scaffold.RenderTemplate` as a compatibility wrapper. Prompt templates use one
+placeholder, `{{context_json}}`.
 
-## File-by-file work
+This fixes the current renderer's correctness bug: it substitutes JSON and then
+rescans provider-controlled content, so a PR title containing `{{value}}` is
+mistaken for an unknown template variable. The shared renderer validates only
+the template and never reparses inserted values.
 
-**New**
-- `internal/forge/pr.go` — `PRLister`, `PullRequest`, `PRQuery`, `PRRole`, `PRState`, shared parsing.
-- `internal/forge/autherr.go` — `ErrAuth`, `classifyAuth`.
-- `internal/cli/pr.go` — `newPrCmd`, `newPrListCmd`, `newPrPromptCmd`, `prJSONRow`, `makePRJSONRow`, local join, `--commands` rendering.
-- `internal/cli/assets/prompts/{triage,review,retire}.md`.
-- `internal/help/topics/pull-requests.md`.
-- `internal/skill/dev-cli/references/pull-requests.md`.
-- `docs/notes/ai-pr-review-options.md` + `.zh-TW.md`.
-- `docs/guides/pull-request-inbox.md` + `.zh-TW.md`.
+### 3. `internal/promptkit`: registry, envelope, templates
 
-**Modified**
-- `internal/forge/github.go`, `gitlab.go` — `ListPRs`, plus route API calls through the auth-classifying wrapper.
-- `internal/forge/cache.go` — extract atomic-write/validate helpers, add `PRCache`.
-- `internal/config/config.go` — `Agent` struct, `Config.Agents []Agent`, `Default()`, `Validate()`, `EffectiveAgents()`.
-- `internal/projectconfig/load.go` — deny `agent`.
-- `internal/cli/root.go` — register `newPrCmd(app)`.
-- `internal/cli/doctor.go` — `forge.ProbeAll` rows.
-- `internal/cli/cache.go` — register the `pr` cache.
-- `internal/cli/config.go` — `starterConfig` block.
-- `internal/cli/tldr.go` — `familyTLDR["dev pr"]` (ASCII only) and `helpTopics["dev pr"]`.
-- `internal/skill/dev-cli/SKILL.md` — link the new reference inline and in the index at :506-523.
-- `internal/skill/skill_test.go` — add the reference to both hardcoded slices at :33-70.
-- `mkdocs.yml` — two nav entries plus their `nav_translations` labels.
-- `docs/notes/index.md` (+ zh-TW) — index-table row for the new note.
-- `docs/reference/sources-freshness.md` (+ zh-TW) — claim-matrix rows.
-- `docs/reference/compatibility.md` (+ zh-TW) — revise "Pull-request completion is not tracked automatically", and add a new "Forge CLI authentication" subsection covering signed-out behavior and remediation.
-- `TODO.md`, `CHANGELOG.md` `[Unreleased]`.
+This package owns no collection policy. It provides:
 
-## Documentation specifics
+```go
+type Recipe struct {
+    Name, Summary, TargetUsage string
+    ContextVersion int
+    Template string
+}
 
-The four deliverables, all bilingual and subject to `scripts/check-docs.py`:
+type Snapshot struct {
+    Scope string
+    Target Target
+    WorkingDirectory string
+    Capabilities []Capability
+    Warnings []Warning
+    Context any
+}
+```
 
-1. **`docs/notes/ai-pr-review-options.md`** — a `source-review` note comparing
-   Claude managed Code Review, Claude Code GitHub Action, Codex Code Review, and
-   CodeRabbit: trigger phrase, whether a GitHub Action is required, plan tier and
-   prerequisites, cost, and when to pick which.
-   `.specstory/references/chatgpt-觸發-GitHub-Agent-Review-20260901-2038.md` is
-   background only — **every claim must be re-verified against the primary docs
-   at write time** and cited, because the note carries a `verified_on` date.
-2. **`docs/guides/pull-request-inbox.md`** — the queue, the agent handoff, and
-   composing with `dev sweep`.
-3. **`internal/skill/dev-cli/references/pull-requests.md`** — agent-facing;
-   English, no frontmatter, not part of the MkDocs corpus.
-4. **Forge-auth troubleshooting** into `docs/reference/compatibility.md`.
+A sorted registry rejects duplicate names and supports `prompt list`. Cobra
+recipe factories bind typed options to a provider callback and return a
+`Snapshot`.
 
-Constraints the checker enforces, worth stating because they are easy to trip:
-`status` must come from `evolving, experimental-and-versioned,
-generated-plus-authored, maintained, official, research-preview-partial, stable`
-— `draft`/`verified`/`historical` appear in `docs/notes/authoring.md` but are
-**rejected**. `verified_on` cannot be in the future. `authority: anthropic-docs`
-(or a preview/experimental status) requires `minimum_version` or `tested_with`.
-`authority`, `status`, `verified_on`, `minimum_version`, `tested_with` must be
-**identical** between the English and zh-TW siblings. zh-TW pages need
-`lang: zh-TW` and the standard `!!! note "術語規則"` admonition as the first body
-block. No `/Users/…` paths in any body. Every new page must appear in
-`mkdocs.yml` nav and its label in `nav_translations`.
+Every template receives this versioned JSON envelope:
+
+```json
+{
+  "schema_version": 1,
+  "recipe": "workspace-closeout",
+  "context_version": 1,
+  "generated_at": "2026-09-02T12:00:00Z",
+  "host": "host",
+  "scope": "repository",
+  "target": {
+    "kind": "checkout",
+    "name": "demo/feat-x",
+    "path": "/absolute/worktree",
+    "working_directory": "/absolute/worktree"
+  },
+  "capabilities": [
+    {"name": "runtime-agent-activity", "available": true, "detail": "herdr"}
+  ],
+  "warnings": [
+    {"source": "gitlab", "code": "unauthenticated", "message": "signed out", "action": "..."}
+  ],
+  "context": {}
+}
+```
+
+Rules:
+
+- one timestamp is created per invocation and passed through every builder;
+- `schema_version` changes only for a breaking common-envelope change;
+  each recipe owns its `context_version`;
+- fields are add-only within a version;
+- partial forge/runtime/artifact failures become capabilities/warnings, not
+  silent absences; a failure that prevents any meaningful snapshot is fatal;
+- machine-local context intentionally uses absolute paths, because it is fed
+  to a process on the same host, not published or persisted.
+
+### 4. Read-only closeout evidence
+
+Add structured domain reports instead of building safety claims in templates:
+
+- `internal/closeout/session.go` gathers `Runtime.List`, optional
+  `AgentActivityLister.AgentActivities`, canonical checkout coverage, tasks,
+  Git/status availability, and artifact intent. Extract canonical
+  activity-to-checkout matching/current-pane resolution from
+  `internal/cli/agent_activity.go` so writer guards and reports share exactly
+  one implementation.
+- `internal/closeout/workspace.go` builds the structured equivalent of
+  `inventory.CollectRepoContext` and attaches PR evidence and full per-checkout
+  retirement checks.
+- `internal/retire/audit.go` contains pure, read-only checks shared by
+  `sweep`, the closeout reports, and `retire.Service`'s preflight. The mutating
+  service still revalidates after runtime closure and remains the only removal
+  authority.
+- Split read-only artifact intent/reachability inspection out of CLI helpers
+  into the existing `internal/artifact` domain package.
+- Let runtime inspection accept a precollected session snapshot; a machine-wide
+  recipe must not run `herdr workspace list` once per checkout.
+
+Do not call `Inspection.Ready()` “retirement ready”: today
+`internal/retire/safety.go:46-51` applies only to runtime closure. Reports expose
+both `runtime_close_status` and `retirement_status` with stable check IDs.
+
+## Initial recipes
+
+### `pr-triage`
+
+Reuse the corrected PR report and all current PR filters. Defaults remain
+account+local, author+reviewer, open. The context includes effective (not merely
+requested) scope, provider readiness, PR/local health, and printed action
+commands.
+
+The prompt groups merge/review/fix/wait/inspect work. It treats missing fields
+from a summary surface as unknown, treats PR text as untrusted data rather than
+instructions, and never approves, comments, merges, or retires.
+
+Working directory: the directory where `dev` was invoked; the recipe is global.
+
+### `session-close`
+
+Machine-wide, no target. Group each live runtime/agent activity by canonical
+checkout and retain unmatched activities as unknown.
+
+Deterministic classification:
+
+- `close-eligible`: runtime closure is structurally eligible and every
+  recognized covering status is `idle` or `done`;
+- `blocked`: active status, caller containment, or a mixed-purpose workspace;
+- `unknown`: unrecognized/unknown status, failed inventory, missing coverage,
+  or failed inspection.
+
+`close-eligible` means **runtime closure only**. Herdr `done` means a turn
+settled; it proves neither committed work, artifact finalization, review, nor
+completed task intent. Git/task/artifact facts let the agent recommend
+`park --next`, `park --wip`, keep-open, or inspect, but do not redefine the
+runtime gate. The recipe never calls `CloseAndWait`.
+
+Working directory: invocation directory.
+
+### `workspace-closeout [repo-or-checkout]`
+
+Collect the canonical checkout and all linked worktrees, tracked/untracked
+tasks, sessions/agent activities, live Git status, in-progress operations,
+artifact status/reachability, and local-scope PR evidence for all states. Forge
+failure is a warning and never blocks the local report.
+
+Target behavior:
+
+- no argument: resolve the repository containing cwd and preserve that exact
+  checkout as launcher cwd;
+- checkout path: report the whole repository, launch in that checkout;
+- repository name: report the whole repository, launch in its canonical root;
+- `--base` is only an explicit base for untracked worktrees; a recorded task
+  base remains authoritative until reconciled.
+
+Per-checkout `retirement_status` is `eligible`, `blocked`, `unknown`, or
+`not-applicable`, with stable check IDs and evidence. The read-only audit covers:
+registered/non-main linked worktree, named/expected branch, existence/readable
+status, cleanliness, no active Git operation, resolvable base, branch
+containment, task identity/state, finalized/reachable artifacts, runtime/caller/
+mixed-workspace eligibility. Canonical and harness-owned ephemeral checkouts are
+`not-applicable`.
+
+The model groups work into `finish`, `park`, `retire`, and `inspect`, quoting
+existing deterministic commands only. A forge-reported merged PR never turns a
+failed ancestry/artifact/runtime check into eligibility.
+
+This recipe also covers the rebase/conflict escalation:
+
+1. inspect with `workspace-closeout`;
+2. use existing `dev done --ff` or `dev git pull-rebase` for the ordinary path;
+3. if Git stops at a conflict, run `dev prompt open workspace-closeout` from the
+   exact checkout;
+4. the prompt requires the agent to explain the state and ask before
+   rebase/abort/reset/force/retire actions;
+5. rerun `done`/`sweep`/`retire`, which re-read and revalidate state.
+
+There is no separate rebase workflow in this version.
+
+## Runtime/Herdr decision
+
+Ship only foreground current-terminal `open`.
+
+`dev start --run` is not reusable as a generic interactive launcher: it accepts
+opaque shell text only for the exact root pane returned by the same newly
+created first-class Herdr worktree response. It deliberately rejects reuse,
+fallback, malformed/missing root data, tmux, Zellij, and `none`; it has no stdio,
+wait, or exit-status channel. A persisted handle or focused/current pane is not
+an equivalent proof.
+
+Therefore `dev prompt open` does **not** call `Runtime.Open`, `Activator`, or
+`PaneRunner`, and has no `--herdr` flag. Inside Herdr it runs in the current
+pane; outside it runs in the current terminal. A new runtime surface is deferred
+until an optional backend-neutral capability can model require-new versus
+reuse, topology, creation-correlated transient target, argv versus shell text,
+detached versus foreground/wait semantics, and stdio/exit status. Never infer a
+launch target from a saved handle, focused pane, label, directory search, or
+reused surface.
+
+For a separate Herdr surface today, the documented safe manual workflow is:
+create/focus a fresh pane or workspace with Herdr, change to the target checkout,
+then run `dev prompt open ...` there. Do not disguise that manual step as a
+cross-backend feature.
+
+## Fix existing PR correctness before extraction
+
+The generic layer must not fossilize these current bugs:
+
+1. Per-repository GitHub/GitLab queries must honor requested roles and populate
+   `roles`; add an explicit any-role mode used only by workspace closeout.
+2. Normalize each `--repo` selector once. A URL becomes canonical forge plus
+   `owner/name`; a bare `owner/name` applies to matching ready providers.
+   Restrict both account rows and local targets.
+3. Return normalized/effective collection options, so an account-to-local
+   fallback cannot report the wrong scope in JSON/prompt context.
+4. Local joins expose `checkout_exists`, registration and status availability,
+   and status error. Prefer a readable live `Status.Branch`; a recorded branch
+   fallback is marked as such. Missing/unreadable state is never represented as
+   clean zero-values.
+5. Render missing/unreadable checkout state distinctly in tables and JSON.
+6. Replace the PR-only retire prompt with `workspace-closeout`; do not retain
+   its broken default of open PRs or contradictory ahead rules.
+7. Replace `strings.NewReplacer` with the one-pass strict renderer.
+8. Correct docs that say `dev pr` emits a reviewer trigger phrase: current
+   actions contain a generic body placeholder only.
+9. Add `schema_version` and document the complete PR JSON/config contract in
+   the paired commands/config pages.
+
+## Critical files and sequence
+
+1. **Normalize PR reports**
+   - `internal/forge/{pr,github,gitlab}.go`
+   - `internal/cli/{pr,pr_collect}.go`
+   - focused forge/CLI regression tests for roles, repo selectors, effective
+     scope, missing/cold/wrong-branch joins, and hostile brace content.
+
+2. **Create reusable evidence**
+   - add `internal/retire/audit.go`, `internal/closeout/{session,workspace}.go`,
+     and read-only artifact inspection;
+   - extract activity matching from `internal/cli/agent_activity.go`;
+   - have `internal/cli/sweep.go` and `internal/retire/service.go` reuse the same
+     check helpers without changing report-before-apply or revalidation order.
+
+3. **Create generic prompt/handoff core**
+   - add `internal/templatex`, retaining a wrapper in
+     `internal/scaffold/template.go`;
+   - add `internal/promptkit` registry/envelope/templates;
+   - add `internal/handoff` process/transport implementation;
+   - replace the flat agent schema in `internal/config/config.go` and the
+     commented starter config; retain project-config denial.
+
+4. **Wire CLI**
+   - add `internal/cli/prompt_command.go` and recipe-specific factories;
+   - register in `internal/cli/root.go`, TLDR/help topics and completions;
+   - remove `newPRPromptCmd`, PR-only launcher helpers, and old prompt assets;
+   - leave `dev pr list` as the PR inventory surface.
+
+5. **Tests**
+   - template one-pass/malformed/unknown tests, including provider strings with
+     `{{...}}`;
+   - registry order/duplicate/version/envelope tests;
+   - nested agent config validation and default/singleton selection;
+   - `run`: stdin/file/argv, EOF for non-stdin transport, timeout, cwd,
+     permissions/cleanup, stderr separation, and no-temp dry run;
+   - `open`: TTY requirement, file/argv, inherited IO, cwd, no default timeout,
+     and writer-collision guard (`guardSharedCheckout`);
+   - every Herdr status plus caller/mixed/failed-inventory session cases;
+   - workspace dirty/conflict/in-progress/missing/containment/task/artifact/
+     ephemeral/canonical cases, including “merged PR is not authorization.”
+
+6. **Product/docs synchronization**
+   - update `README.md`, `[Unreleased]` in `CHANGELOG.md`, and `TODO.md`;
+   - replace the PR-only handoff section in paired
+     `docs/guides/pull-request-inbox*.md`;
+   - add paired `docs/guides/prompt-handoffs.md` pages with the escalation table,
+     batch versus TTY behavior, cwd, permissions, and Herdr boundary;
+   - update paired commands/config, compatibility, retirement,
+     parallel-runtime, and sources/freshness pages;
+   - add/update bundled help and
+     `internal/skill/dev-cli/references/{pull-requests,prompt-handoffs}.md`;
+   - run `make skill-sync`, inspect generated commands, and `make skill-check`;
+   - regenerate `docs/llms*.txt` and run strict bilingual docs checks.
+
+## Out of scope
+
+- custom/project-authored recipes or executable prompt workflows;
+- a `machine-attention` recipe (existing `dev summary --attention --json` is
+  already the right deterministic surface and can join the registry later);
+- a dedicated integration/rebase agent workflow;
+- parsing, storing, or iterating on agent replies;
+- automatic PR comments/approvals/merges, session close, worktree removal,
+  branch deletion, rebase, reset, or force push;
+- built-in agent vendors/default launchers or secret/environment injection;
+- new Herdr/tmux/Zellij surfaces, pane injection, or persisted pane IDs;
+- treating forge merge state as retirement proof.
 
 ## Verification
 
 ```bash
-make fmt && make vet
+files="$(gofmt -l .)" && test -z "$files"
+make vet
 go test -race ./...
-go test ./internal/forge -run '^TestListPRs'
-go test ./internal/cli -run '^TestPr'
-go test ./internal/config -run '^TestAgent'
-
-make skill-sync && make skill-check      # regenerates references/commands.md
 make build
+make e2e
+
+make skill-sync
+make skill-check
 
 uv sync --frozen --extra docs
 uv run python scripts/check-docs.py --source --generate-llms
@@ -431,42 +485,19 @@ uv run mkdocs build --strict
 uv run python scripts/check-docs.py --site site
 ```
 
-Test plan:
+End-to-end manual checks:
 
-- **`internal/forge`** — `ListPRs` tests against recorded `gh search prs` /
-  `gh pr list` / `glab api` JSON. The list path is **not** faked through the
-  `probeRunner` seam: `pagination_test.go:48` installs a real stub script on
-  `PATH` (`installPagedCLI`, which logs `"$*"` and dispatches on `page=N`).
-  Generalize that helper — it currently hardcodes two pages and a `page=` switch
-  — rather than introducing a new runner variable. Cover pagination, the
-  partial-results-plus-error contract, and the account-vs-repo surface split.
-  `classifyAuth` unit tests over real gh/glab 401 stderr strings, asserting
-  `errors.As` finds `*ErrAuth`, that `Error()` contains no argv, and that
-  `Unwrap()` still does. Azure asserts `ErrUnsupported`.
-- **`internal/cli`** — `pr_test.go` in package `cli_test` driving
-  `cli.NewRootCommandWithIO(&out, &errOut)` with `--json`, asserting the schema
-  and that account-scope rows omit `head_branch`. A doctor test asserting an
-  unauthenticated probe renders a warn row with the login action and does not
-  fail the command. A `pr prompt` test asserting the rendered template reaches
-  stdout and that `--agent unknown` errors with the config pointer.
-- **`internal/config`** — `[[agent]]` round-trip and validation (duplicate name,
-  two defaults, empty `run`). A `projectconfig` test asserting a repo-supplied
-  `[[agent]]` is reported as `denied`.
-
-End-to-end, by hand: `dev doctor` with `gh` signed out shows the warn row and no
-argv; `dev pr ls` in a repo with an open PR shows the row; `dev pr ls --json |
-jq '.[0].local'` shows the worktree join; `dev pr prompt triage` prints a
-complete prompt; configuring `[[agent]]` and running
-`dev pr prompt triage --agent claude` hands it over.
-
-## Sequencing
-
-Each step builds and tests on its own:
-
-1. `ErrAuth` + `classifyAuth` + `dev doctor` probing. Standalone UX fix; ship-able alone.
-2. `PRLister` + gh/glab `ListPRs`.
-3. `dev pr ls` (account scope, table + `--json`).
-4. Local join, `--scope local|all`, `--commands`.
-5. Prompt templates + `[[agent]]` config + `dev pr prompt`.
-6. `prs.json` cache (droppable).
-7. Docs, skill reference, `make skill-sync`, CHANGELOG, TODO.
+1. `dev prompt render session-close` produces a prompt whose unknown/missing
+   capabilities are explicit and performs no mutation.
+2. A fake batch agent confirms `run` receives the prompt, cannot read user
+   stdin, runs in the expected cwd, and times out.
+3. A PTY-backed fake interactive agent confirms `open` receives the initial
+   prompt by file/argv and can continue reading user input without a default
+   timeout.
+4. From inside a Herdr pane, `open workspace-closeout` stays in that pane; from
+   outside, it uses the current terminal. Neither creates/reuses/focuses a
+   runtime surface.
+5. `session-close` never calls `CloseAndWait`; `workspace-closeout` never calls
+   removal; a merged/squashed PR with failed local checks remains blocked.
+6. Existing `dev sweep`, `dev done`, `dev retire`, and `dev start --run`
+   behavior and safety tests remain unchanged.

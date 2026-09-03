@@ -65,11 +65,49 @@ Portable provider evidence 僅包含 review 是否存在、provider、`open`/`dr
 
 ### Pull request inventory 受限於 provider surface
 
-`gh search prs` 無法回報 head branch、review decision 或 check status，因此 `dev pr list --scope account` 的這些欄位是空的，其結果也無法 join 到 worktree。每一列的 `detail` 欄位記錄它由哪個 surface 產生：account search 是 `summary`，per-repository listing 是 `full`。`summary` 列上的空欄位代表該 surface 無法回報，而不是值為空。`--state merged` 與 `--state closed` 只存在於 per-repository surface，因此指定它們時會自動選用該 surface。
+GitHub 的 `gh search prs` account surface 無法回報 head branch、review decision 或 check status，因此這些 rows 是 `detail: "summary"`，也無法 join 到 worktree。Summary row 的 absent field 表示 surface 無法回報，不是 value 為空。GitLab account list 帶有 branch/merge detail，因此回傳 full row；但 GitLab list surfaces 都不回報 pipeline checks 或 normalized review decision。
 
-Per-repository 查詢只涵蓋 `dev` 有 task 的 repository，因為對每個被發現的 repository 各發一個 subprocess，在檔案很多的機器上就是數十次呼叫。要擴大範圍請用 `--all-repos`。
+Personal per-repository inventory 對每個 repository 的每個 requested role（預設 author 與 reviewer）可能各發一個 paginated query。預設只涵蓋 `dev` 有 task 的 repository；`--all-repos` 擴大 scan。`--repo` 同時 filter account rows 與 local targets。Account search 無法區分 merged 與 closed，所以 merged/closed/all 會將 account/all request narrow 到 local collection；JSON 回報該 effective scope。
 
-GitLab 的列永遠不帶 check status：`head_pipeline` 只由 GitLab 的單一 merge request endpoint 回傳，而 `dev` 不會為每個 request 各發一次請求。Azure DevOps 的 pull request 完全不列出；已設定的 target 會被報告為 unsupported，而不是讓指令失敗。
+Schema-version-1 local join 回報 expected/live branch、checkout existence、worktree registration、status availability/error，以及 expected branch 是否確實 checked out。只有這些 live checks 成功時才出現 Git detail。Azure DevOps pull request 完全不列出；configured target 會被報告為 unsupported，而不是讓 command 失敗。
+
+### Prompt open 使用 current terminal，不負責 runtime placement
+
+`dev prompt open <recipe>` 在呼叫它的 terminal/TTY foreground 執行一個
+configured child。它不會建立、focus、reuse 或 inject Herdr、tmux 或 Zellij pane。
+在 Herdr 裡自然會留在 current pane。若要用另一個 Herdr pane，請手動建立或 focus、
+進入 exact checkout，再從那裡執行 `prompt open`。
+
+這與 `dev start --run` 刻意分開；後者唯一可 dispatch 的 target，是本次新建
+first-class Herdr worktree 回傳的 exact root pane。`prompt open` 不會提供 fresh runtime
+surface，也不會放寬 exact-pane proof。`run` 是 non-interactive alternative：沒有 user
+stdin，default timeout 為 10 分鐘；`open` 保留 stdin 給 conversation，沒有 default timeout。
+
+Configured child 保留自己的 permission policy。Recipe instruction 是 read-only
+guidance，不是 sandbox；`dev` 不會加入 permission flag、代答 approval prompt，或把
+response parse 成 action。
+
+### Prompt closeout report 不授權 cleanup
+
+`session-close` 只計算 runtime-closure evidence。Covering agent 為 `idle` 或 `done`
+時可以通過這一項 activity gate，但不證明 work 已 commit、artifact 已 finalize、review
+完成或 task intent done。Caller-contained、mixed-purpose、active、unknown 與
+unrecognized session 仍依 evidence 維持 blocked/unknown。
+
+`workspace-closeout` 執行較廣的 read-only audit：target kind、registration/path、
+status availability、clean Git state、沒有 in-progress Git operation、known base 與
+containment、task completion、artifact reachability/finalization、runtime eligibility。
+Merged pull request 只是 evidence。即使 audit 為 `eligible` 也只是 advisory；
+`dev retire` 在 mutation 前會重新收集與驗證 fresh state。兩個 recipe 都不會關閉
+runtime、改變 Git/task state、刪除 branch/worktree 或授予 permission。
+
+### Zellij exited session 已關閉，但仍保留 name
+
+Zellij 會保留可 resurrect 的 exited session。`dev` 只辨識 exact
+`(EXITED - attach to resurrect)` marker、從 live coverage 省略這些 session，並拒絕用其
+name 建立新 session；可用 `zellij delete-session <name>` 回收。Live session name 只是含
+`EXITED` 並不是 exit marker。若 session 在 native listing 與 layout inspection 之間退出，
+open 會 fail closed 並要求 retry，不會在 requested checkout resurrect 舊 layout。
 
 ### Forge CLI 登入狀態只會被報告，不會自動重試
 
@@ -223,6 +261,10 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
+- [`internal/handoff`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/handoff)
+- [`internal/closeout`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/closeout)
+- [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
 - [`scripts/update-homebrew-formula.sh`](https://github.com/daviddwlee84/dev-cli/blob/main/scripts/update-homebrew-formula.sh)
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)

@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: 'Manage repositories, SSH hosts, remote fleets, and work-in-progress with the dev CLI: create/clone/setup agent-ready repos, bootstrap and organise them safely, discover/configure OpenSSH aliases without copying private keys, own worktree/task lifecycle, safely prepare/finalize/retire agent sessions, run guarded Git transactions, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when onboarding or probing an SSH host, configuring fleet machines, creating/starting/parking/resuming/retiring work, preserving agent transcripts, scanning skills/MCP or organising repos, capturing/searching repo thoughts, choosing worktree isolation, or cleaning stale branches/checkouts/sessions.'
+description: 'Manage repositories, SSH hosts, remote fleets, and work-in-progress with the dev CLI: create/clone/setup agent-ready repos, bootstrap and organise them safely, discover/configure OpenSSH aliases without copying private keys, own worktree/task lifecycle, safely prepare/finalize/retire agent sessions, render or hand off deterministic prompt recipes, run guarded Git transactions, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when onboarding or probing an SSH host, configuring fleet machines, creating/starting/parking/resuming/retiring work, preserving agent transcripts, triaging pull requests or closeout context, scanning skills/MCP or organising repos, capturing/searching repo thoughts, choosing worktree isolation, or cleaning stale branches/checkouts/sessions.'
 ---
 
 # dev-cli
@@ -184,8 +184,10 @@ dev sweep                  # what has gone stale or drifted, and what to do
 dev sweep --apply          # act on it, confirming each change
 dev sweep --merged-worktrees  # from main, audit contained tracked/untracked worktrees
 dev pr list                # requests you opened or were asked to review
-dev pr list --scope local --state merged  # which checkouts the forge says are finished
-dev pr prompt retire --agent <name>       # hand that queue to a configured agent
+dev pr list --scope local --state merged  # forge evidence; never retirement authority
+dev prompt render pr-triage               # inspect/copy deterministic context
+dev prompt run session-close --agent <name>  # bounded batch; no user stdin
+dev prompt open workspace-closeout . --agent <name>  # current foreground TTY
 dev prepare --session claude:<uuid>  # arm exact post-writer artifact commit
 dev artifact list          # finalization handoffs and receipts
 dev done --ff              # integrate only; runtime/worktree stay alive
@@ -285,6 +287,10 @@ Treat partial and unknown results literally. If a remote installer started, the
 key may have arrived; do not "clean up" `authorized_keys`. Local config and
 generated keys are retained so a rerun can converge. `ssh remove` never revokes a
 remote key, deletes local keys/known_hosts, or removes the shared Include.
+
+Read `references/prompt-handoffs.md` before using `dev prompt`, configuring a
+launcher, or interpreting session/workspace closeout advice. Prompt recipes are
+read-only context handoffs, not mutation or permission authority.
 
 ## Bootstrapping and adopting an existing machine
 
@@ -519,7 +525,9 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    `dev pr list --scope local --state merged` finds candidates, but a merged
    pull request is never on its own grounds to remove a checkout: a squash
    merge leaves no local ancestor, so containment still has to be proven
-   locally. See `references/pull-requests.md`.
+   locally. See `references/pull-requests.md`. If an explanation is useful, use
+   the generic `workspace-closeout` recipe only after reading
+   `references/prompt-handoffs.md`; its audit is advisory and never an approval.
 
 5. **Prefer a checkpoint commit over `git stash`.** A stash is invisible in the
    log, easy to forget, and cannot be pushed — so it can never reach another
@@ -618,6 +626,7 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 - "Where should this worktree go?" / "should I use `claude --worktree` or herdr?"
 - A new worktree is missing `node_modules`, `.venv` or `.env`.
 - Cleaning up stale branches, worktrees and sessions.
+- Rendering or handing off pull-request/session/workspace operational context.
 - Cloning, creating or auditing repositories across a machine.
 - Discovering, inspecting, configuring, probing, or removing an OpenSSH alias.
 - Installing a public key through ProxyJump or registering a verified dev fleet host.
@@ -659,8 +668,11 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 - `references/repository-bootstrap.md` — new/clone/setup presets, project
   overrides, skill initialization, upstream publishing, trust and handoff.
 - `references/pull-requests.md` — read before using `dev pr` or advising on a
-  pull request; covers why a field can be missing, and why a merged request is
-  never on its own grounds to retire a worktree.
+  pull request; covers effective scope, local checkout health, why a field can
+  be missing, and why a merged request cannot authorize retirement.
+- `references/prompt-handoffs.md` — read before rendering/running/opening a
+  generic recipe or configuring a launcher; covers transports, current-terminal
+  behavior, permissions, closeout audits, and rebase-conflict safety.
 
 ## Gotchas
 

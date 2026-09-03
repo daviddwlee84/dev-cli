@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/daviddwlee84/dev-cli/internal/handoff"
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 )
 
@@ -280,63 +281,53 @@ func (c Config) EffectiveTools() []Tool {
 	return c.TUI.Tools
 }
 
-// Agent is one external program dev can hand a rendered prompt to.
-//
-// dev renders context and starts the command. It does not read the reply,
-// does not iterate, and has no opinion about which agent you use — the whole
-// integration is one command string you own.
+// Agent is one provider-neutral local program dev can hand a rendered prompt
+// to. Run and Open are separate because a batch command and an interactive TTY
+// command usually have different argv and input requirements.
 type Agent struct {
-	// Name selects the agent with --agent.
-	Name string `toml:"name"`
-	// Command is an argv, run directly with no shell. Preferred, and required
-	// when Input is "argv": a prompt interpolated into a shell string would be
-	// a command injection, and these prompts embed shell commands by design.
-	Command []string `toml:"command"`
-	// Run is a shell command line. Mutually exclusive with Command.
-	Run string `toml:"run"`
-	// Input decides how the prompt reaches the agent: "stdin" (the default)
-	// writes it to the process's standard input, "file" writes a private
-	// temporary file and substitutes {{prompt_file}}, and "argv" substitutes
-	// {{prompt}} into a Command element.
-	Input string `toml:"input"`
-	// Interactive runs through $SHELL -lic so a shell alias or function
-	// resolves, matching the behaviour of [[tui.tools]].
-	Interactive bool `toml:"interactive"`
-	// Default marks the agent used when --agent is not given.
-	Default bool `toml:"default"`
-	// Timeout bounds the run. Zero means ten minutes.
-	Timeout Duration `toml:"timeout"`
+	Name    string        `toml:"name"`
+	Default bool          `toml:"default"`
+	Run     AgentLauncher `toml:"run"`
+	Open    AgentLauncher `toml:"open"`
 }
 
-// Agent input modes.
-const (
-	AgentInputStdin = "stdin"
-	AgentInputFile  = "file"
-	AgentInputArgv  = "argv"
-)
-
-// EffectiveInput resolves the delivery mode, defaulting to stdin.
-func (a Agent) EffectiveInput() string {
-	if a.Input == "" {
-		return AgentInputStdin
-	}
-	return a.Input
+// AgentLauncher is one batch or foreground command definition. Exactly one of
+// Command and Shell is configured; prompt contents are never interpolated into
+// Shell.
+type AgentLauncher struct {
+	Command     []string `toml:"command"`
+	Shell       string   `toml:"shell"`
+	Input       string   `toml:"input"`
+	LoadShellRC bool     `toml:"load_shell_rc"`
+	Timeout     Duration `toml:"timeout"`
 }
 
-// EffectiveTimeout resolves the run bound.
-func (a Agent) EffectiveTimeout() time.Duration {
-	if a.Timeout.Duration <= 0 {
-		return 10 * time.Minute
+func (l AgentLauncher) Configured() bool {
+	return len(l.Command) > 0 || strings.TrimSpace(l.Shell) != "" || l.Input != "" ||
+		l.LoadShellRC || l.Timeout.Duration != 0
+}
+
+// Handoff converts configuration to the neutral process contract. Run gets a
+// ten-minute default; Open deliberately has no default deadline.
+func (l AgentLauncher) Handoff(mode handoff.Mode) handoff.Launcher {
+	timeout := l.Timeout.Duration
+	if mode == handoff.ModeRun && timeout == 0 {
+		timeout = 10 * time.Minute
 	}
-	return a.Timeout.Duration
+	return handoff.Launcher{
+		Command: append([]string(nil), l.Command...), Shell: l.Shell,
+		Input: handoff.Transport(l.Input), LoadShellRC: l.LoadShellRC,
+		Timeout: timeout,
+	}
 }
 
 // AgentByName finds a configured agent. An empty name selects the one marked
 // default, or the only configured agent when there is exactly one.
 func (c Config) AgentByName(name string) (Agent, bool) {
+	name = strings.TrimSpace(name)
 	if name != "" {
 		for _, agent := range c.Agents {
-			if strings.EqualFold(agent.Name, name) {
+			if strings.EqualFold(strings.TrimSpace(agent.Name), name) {
 				return agent, true
 			}
 		}
@@ -658,36 +649,31 @@ func (c Config) validateAgents() error {
 		if name == "" {
 			return fmt.Errorf("agent[%d].name must not be empty", i)
 		}
+		if name != agent.Name {
+			return fmt.Errorf("agent[%d].name %q must not have surrounding whitespace", i, agent.Name)
+		}
 		if previous, exists := seen[strings.ToLower(name)]; exists {
 			return fmt.Errorf("agent[%d].name %q duplicates agent[%d]", i, name, previous)
 		}
 		seen[strings.ToLower(name)] = i
 
-		hasCommand, hasRun := len(agent.Command) > 0, strings.TrimSpace(agent.Run) != ""
-		switch {
-		case hasCommand && hasRun:
-			return fmt.Errorf("agent[%d] %q: set command or run, not both", i, name)
-		case !hasCommand && !hasRun:
-			return fmt.Errorf("agent[%d] %q: one of command or run is required", i, name)
+		if !agent.Run.Configured() && !agent.Open.Configured() {
+			return fmt.Errorf("agent[%d] %q: configure run or open", i, name)
 		}
-
-		switch agent.EffectiveInput() {
-		case AgentInputStdin, AgentInputFile:
-		case AgentInputArgv:
-			// A prompt spliced into a shell string is a command injection, and
-			// these prompts deliberately contain shell commands. Argv delivery
-			// therefore requires the no-shell form.
-			if !hasCommand {
-				return fmt.Errorf("agent[%d] %q: input = %q requires command, not run", i, name, AgentInputArgv)
+		for mode, launcher := range map[handoff.Mode]AgentLauncher{
+			handoff.ModeRun: agent.Run, handoff.ModeOpen: agent.Open,
+		} {
+			if !launcher.Configured() {
+				continue
 			}
-		default:
-			return fmt.Errorf("agent[%d] %q: input %q: want %s, %s or %s",
-				i, name, agent.Input, AgentInputStdin, AgentInputFile, AgentInputArgv)
+			if launcher.Timeout.Duration < 0 {
+				return fmt.Errorf("agent[%d].%s.timeout must not be negative", i, mode)
+			}
+			if err := handoff.Validate(mode, launcher.Handoff(mode)); err != nil {
+				return fmt.Errorf("agent[%d].%s: %w", i, mode, err)
+			}
 		}
 
-		if agent.Timeout.Duration < 0 {
-			return fmt.Errorf("agent[%d] %q: timeout must not be negative", i, name)
-		}
 		if agent.Default {
 			if defaultAt >= 0 {
 				return fmt.Errorf("agent[%d] %q: agent[%d] is already the default", i, name, defaultAt)

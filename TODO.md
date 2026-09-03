@@ -69,14 +69,24 @@ Reuse `dev journal`'s `--since` / `--until` vocabulary (`today`, `yesterday`,
 `7d`, `4w`, `3mo`, `1y`, `YYYY-MM-DD`) rather than inventing a second date
 syntax, decide explicitly whether a bare range means created or last-updated,
 and keep the complement (show only what has gone quiet) reachable — that is the
-view that finds a year-old request. `dev pr prompt retire` inherits whatever
-this produces, which is the point: an unbounded retire prompt is not actionable.
+view that finds a year-old request. The generic `dev prompt … pr-triage`
+recipe should inherit the same filters, so unattended triage does not silently
+receive an unbounded inbox.
 
 Push the range to the provider where each surface supports it, and record the
 asymmetry rather than pretending it away: `gh search prs` and `gh pr list
 --search` take `created:`/`updated:` qualifiers, while `glab mr list` offers
 `--created-after` / `--created-before` only. Client-side filtering stays the
 floor for any surface that cannot narrow server-side.
+
+### P3 · M — Optional fresh runtime surface for interactive prompt handoff
+`dev prompt open` deliberately runs in the foreground of the current terminal;
+it does not create, focus or reuse a Herdr/tmux/Zellij pane. A future explicit
+launcher may create a separate fresh surface, but only with a verified target
+checkout, clear focus/close ownership, and fail-closed behavior for reused or
+ambiguous surfaces. Keep it separate from the exact newly-created Herdr root-pane
+contract of `dev start --run`, and do not make it an implicit side effect of
+`prompt open`.
 
 ### P3 · S — Keep the runtime contract suite off live machine state
 `TestBackendContract` iterates `runtime.All()` and probes any backend whose

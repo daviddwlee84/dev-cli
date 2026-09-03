@@ -313,26 +313,27 @@ run  = "$SHELL"
 # run  = "claude-plans-here"
 # interactive = true
 
-# Commands "dev pr prompt --agent <name>" can hand a rendered prompt to.
-# There are no built-in entries: which coding agent you use is your choice, and
-# a default here would make dev depend on one. dev starts the command and
-# streams its output; it does not read the reply or iterate.
+# Commands behind "dev prompt run/open". There are no built-in entries: which
+# local coding agent you use is your choice, and dev never reads its reply or
+# iterates. run is bounded/non-interactive; open keeps the current terminal so
+# the user can answer questions.
 #
-# The prompt arrives on stdin unless input says otherwise. Prefer "command"
-# (an argv, no shell) over "run" (a shell line) — a prompt spliced into a shell
-# string would be a command injection, and these prompts embed shell commands
-# on purpose, which is why input = "argv" requires "command".
+# Prefer "command" (direct argv, no shell). run may receive finite stdin.
+# open must use file or argv transport so stdin remains conversational.
+# Prompt contents are never interpolated into static shell text.
 #
 # [[agent]]
-# name    = "claude"
-# command = ["claude", "-p"]
+# name    = "my-agent"
 # default = true
 #
-# [[agent]]
-# name    = "codex"
-# command = ["codex", "exec", "--file", "{{prompt_file}}"]
-# input   = "file"          # stdin (default), file, or argv
+# [agent.run]
+# command = ["my-agent", "--batch"]
+# input   = "stdin"
 # timeout = "10m"
+#
+# [agent.open]
+# command = ["my-agent", "{{prompt_file}}"]
+# input   = "file"
 
 [stats]
 # Record activity locally for "dev stats --heatmap".

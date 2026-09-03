@@ -32,8 +32,17 @@ var familyTLDR = map[string]string{
                                              branch --> joins to a worktree
   --scope all     --> both, local upgrades account
 
-  dev pr prompt --agent <name> hands the queue to a command you configure.
+  dev prompt render/run/open pr-triage hands the queue to the generic prompt family.
   Nothing here approves, merges, or removes anything.`,
+
+	"dev prompt": `TL;DR: escalate only as far as the situation needs
+
+  dev prompt render <recipe>  --> inspect or copy the exact prompt
+  dev prompt run <recipe>     --> one-shot, no user stdin, bounded timeout
+  dev prompt open <recipe>    --> foreground TTY, user can answer questions
+
+  Recipes collect deterministic facts. Agents explain and prioritize them;
+  done, park, sweep and retire remain the lifecycle authorities.`,
 
 	"dev wt": `TL;DR: the checkout is disposable, the branch is not
 
@@ -149,6 +158,7 @@ var helpTopics = map[string]string{
 	"dev mcp":       "mcp",
 	"dev status":    "git-status",
 	"dev pr":        "pull-requests",
+	"dev prompt":    "prompts",
 }
 
 // topicForCommand resolves a bare command name or alias to its help topic, so

@@ -204,6 +204,12 @@ If the required file is absent or stale, stop rather than silently falling back.
 The `claude-copilot-once` and `codex-copilot-once` profiles do not need this
 copy: their verified wrappers manage backend selection themselves.
 
+For Zellij fallback, exited sessions remain resurrectable. `dev` recognizes only
+the exact `(EXITED - attach to resurrect)` marker, omits those sessions from
+live coverage, and refuses name reuse. A live name containing `EXITED` is not an
+exit marker; a session that changes state during layout inspection fails closed
+and should be retried.
+
 ## Finalize artifacts and clean up
 
 Before park/integration, settle the agent, identify the exact session UUID, and

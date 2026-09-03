@@ -11,11 +11,23 @@ import (
 )
 
 func guardSharedCheckout(ctx context.Context, app *App, rt runtime.Runtime, checkout string) error {
+	return guardCheckoutClaim(ctx, app, rt, checkout, true)
+}
+
+// guardNewAgentCheckout treats even the caller pane as occupied. The ordinary
+// writer guard excludes it because the existing agent is continuing its own
+// work; a prompt handoff starts a second agent and therefore needs a new writer
+// claim unless the user explicitly coordinates sharing.
+func guardNewAgentCheckout(ctx context.Context, app *App, rt runtime.Runtime, checkout string) error {
+	return guardCheckoutClaim(ctx, app, rt, checkout, false)
+}
+
+func guardCheckoutClaim(ctx context.Context, app *App, rt runtime.Runtime, checkout string, excludeCaller bool) error {
 	if app.allowSharedCheckout {
 		return nil
 	}
 	reportedPane := ""
-	if rt != nil {
+	if excludeCaller && rt != nil {
 		switch rt.Name() {
 		case "herdr":
 			reportedPane = os.Getenv("HERDR_PANE_ID")
@@ -63,6 +75,26 @@ func guardSharedCheckout(ctx context.Context, app *App, rt runtime.Runtime, chec
 	}
 	return fmt.Errorf("%s is already occupied by %s; use a separate worktree, or pass --allow-shared-checkout only after coordinating disjoint file ownership",
 		config.Contract(checkout), strings.Join(occupied, ", "))
+}
+
+func callerPaneID(ctx context.Context, rt runtime.Runtime) (string, error) {
+	if rt == nil {
+		return "", nil
+	}
+	switch rt.Name() {
+	case "herdr":
+		if resolver, ok := rt.(runtime.CurrentPaneResolver); ok {
+			return resolver.CurrentPaneID(ctx)
+		}
+		return os.Getenv("HERDR_PANE_ID"), nil
+	case "tmux":
+		return os.Getenv("TMUX_PANE"), nil
+	default:
+		if resolver, ok := rt.(runtime.CurrentPaneResolver); ok {
+			return resolver.CurrentPaneID(ctx)
+		}
+		return "", nil
+	}
 }
 
 // checkoutAgentActivities returns recognized agents whose reported cwd resolves

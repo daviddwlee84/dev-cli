@@ -2,7 +2,7 @@
 description: 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-02
 lang: zh-TW
 ---
 
@@ -51,6 +51,20 @@ policy。該 wizard 詳見[變更流工作流程](change-stream-workflow.zh-TW.m
 `dev flow` 把 persisted `DONE` intent 與 live cleanup evidence 分開。DONE/MERGED row 仍可顯示 runtime、worktree、branch 與 task record；只有 Retire result 完成最後的 CAS task deletion 才是 RETIRED。UNMANAGED row 使用的是永遠保留 branch 的 Remove Checkout，不會製造 DONE/RETIRED task milestone；canonical 與 harness row 不能 Remove Checkout。
 
 Flow TUI 沒有 `--close-unknown`、`--assume-no-runtime`、dirty discard 或 generic force。`runtime=none` 會保留「session/agent unobserved」，不冒充已證明 closed。需要 expert acknowledgement 時，離開 Flow 並明確執行 plan 顯示的 fallback CLI，再接受該 command 自己的 guards。完整 row/action matrix 見 [Repository Flow 預覽](repository-flow.zh-TW.md)。
+
+Action 前若需要 read-only explanation，從 exact checkout render 或 open generic
+`workspace-closeout` recipe：
+
+```bash
+dev prompt render workspace-closeout .
+dev prompt open workspace-closeout . --agent my-agent
+```
+
+Recipe 內含完整 retirement audit，但結果只是 advisory。`eligible` 與 merged PR 都不
+授權 cleanup；外部 `dev retire` 仍會重新收集並驗證所有 gate。若 `dev done --ff` 或
+`dev git pull-rebase` 停在 conflict，只用 `prompt open` 討論 semantic resolution，
+接著明確 continue/abort Git，再重新執行 lifecycle command。詳見
+[Prompt handoff](prompt-handoffs.zh-TW.md)。
 
 ## 一般 local flow
 
@@ -152,4 +166,6 @@ fatal: not a git repository (or any of the parent directories): .git
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/retire/safety.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/safety.go)
 - [`internal/retire/service.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/service.go)
+- [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
 - [`internal/gitx/transactions.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/transactions.go)

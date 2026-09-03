@@ -166,6 +166,24 @@ func TestGuardSharedCheckoutFailsClosedAndOverrideBypasses(t *testing.T) {
 	}
 }
 
+func TestNewAgentGuardDoesNotExcludeTheCallerPane(t *testing.T) {
+	t.Setenv("HERDR_PANE_ID", "w1:p1")
+	r := gittest.New(t)
+	rt := &currentPaneRuntime{
+		activityRuntime: &activityRuntime{activities: []runtime.AgentActivity{{
+			PaneID: "w1:p1", Agent: "claude", Name: "current-agent", Status: "working", CWD: r.Root,
+		}}},
+		currentPane: "w1:p1",
+	}
+	if err := guardNewAgentCheckout(context.Background(), &App{}, rt, r.Root); err == nil ||
+		!strings.Contains(err.Error(), "current-agent") {
+		t.Fatalf("new agent claim must collide with caller agent: %v", err)
+	}
+	if rt.currentCalls != 0 {
+		t.Fatalf("new agent guard should not resolve/exclude caller pane, calls = %d", rt.currentCalls)
+	}
+}
+
 func TestGuardResolvesMovedCallerPaneBeforeExclusion(t *testing.T) {
 	t.Setenv("HERDR_PANE_ID", "w1:p-old")
 	r := gittest.New(t)

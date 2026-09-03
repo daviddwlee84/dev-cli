@@ -6,22 +6,22 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/daviddwlee84/dev-cli/internal/handoff"
 )
 
-func TestAgentRoundTripsThroughTOML(t *testing.T) {
+func TestAgentRoundTripsNestedLaunchers(t *testing.T) {
 	cfg := Default()
 	body := `
 [[agent]]
-name = "claude"
-command = ["claude", "-p"]
+name = "opencode"
 default = true
-
-[[agent]]
-name = "codex"
-run = "codex exec --file {{prompt_file}}"
-input = "file"
-interactive = true
+[agent.run]
+command = ["opencode", "run"]
+input = "stdin"
 timeout = "5m"
+[agent.open]
+command = ["opencode", "{{prompt_file}}"]
+input = "file"
 `
 	if _, err := toml.Decode(body, &cfg); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -29,24 +29,23 @@ timeout = "5m"
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate: %v", err)
 	}
-	if len(cfg.Agents) != 2 {
+	if len(cfg.Agents) != 1 {
 		t.Fatalf("got %d agents", len(cfg.Agents))
 	}
-	if got := cfg.Agents[0].EffectiveInput(); got != AgentInputStdin {
-		t.Errorf("default input = %q, want %q", got, AgentInputStdin)
+	agent := cfg.Agents[0]
+	if got := agent.Run.Handoff(handoff.ModeRun).Timeout; got != 5*time.Minute {
+		t.Errorf("run timeout = %v", got)
 	}
-	if got := cfg.Agents[0].EffectiveTimeout(); got != 10*time.Minute {
-		t.Errorf("default timeout = %v", got)
-	}
-	if got := cfg.Agents[1].EffectiveTimeout(); got != 5*time.Minute {
-		t.Errorf("configured timeout = %v", got)
+	if got := agent.Open.Handoff(handoff.ModeOpen).Timeout; got != 0 {
+		t.Errorf("open timeout = %v, want no default", got)
 	}
 }
 
 func TestAgentByNameResolvesDefaultAndSingleton(t *testing.T) {
+	launcher := AgentLauncher{Command: []string{"agent"}, Input: "stdin"}
 	two := Config{Agents: []Agent{
-		{Name: "a", Run: "a"},
-		{Name: "b", Run: "b", Default: true},
+		{Name: "a", Run: launcher},
+		{Name: "b", Run: launcher, Default: true},
 	}}
 	if agent, ok := two.AgentByName(""); !ok || agent.Name != "b" {
 		t.Errorf("empty name did not select the default: %v %+v", ok, agent)
@@ -58,51 +57,66 @@ func TestAgentByNameResolvesDefaultAndSingleton(t *testing.T) {
 		t.Error("an unknown name resolved")
 	}
 
-	// One configured agent needs no default marker to be unambiguous.
-	one := Config{Agents: []Agent{{Name: "only", Run: "only"}}}
+	one := Config{Agents: []Agent{{Name: "only", Run: launcher}}}
 	if agent, ok := one.AgentByName(""); !ok || agent.Name != "only" {
 		t.Errorf("single agent was not selected: %v %+v", ok, agent)
 	}
 
-	// Two agents and no default is genuinely ambiguous, so it must not guess.
-	ambiguous := Config{Agents: []Agent{{Name: "a", Run: "a"}, {Name: "b", Run: "b"}}}
+	ambiguous := Config{Agents: []Agent{{Name: "a", Run: launcher}, {Name: "b", Run: launcher}}}
 	if _, ok := ambiguous.AgentByName(""); ok {
 		t.Error("an ambiguous configuration resolved to an agent")
 	}
 }
 
-func TestAgentValidationNamesTheOffendingKey(t *testing.T) {
+func TestAgentValidationNamesTheOffendingLauncher(t *testing.T) {
+	stdin := AgentLauncher{Command: []string{"agent"}, Input: "stdin"}
+	file := AgentLauncher{Command: []string{"agent", handoff.PromptFilePlaceholder}, Input: "file"}
 	for name, tc := range map[string]struct {
 		agents []Agent
 		want   string
 	}{
-		"missing name":     {[]Agent{{Run: "x"}}, "agent[0].name"},
-		"duplicate name":   {[]Agent{{Name: "a", Run: "x"}, {Name: "A", Run: "y"}}, "duplicates agent[0]"},
-		"no command":       {[]Agent{{Name: "a"}}, "one of command or run"},
-		"both forms":       {[]Agent{{Name: "a", Run: "x", Command: []string{"y"}}}, "not both"},
-		"unknown input":    {[]Agent{{Name: "a", Run: "x", Input: "telepathy"}}, "input \"telepathy\""},
-		"two defaults":     {[]Agent{{Name: "a", Run: "x", Default: true}, {Name: "b", Run: "y", Default: true}}, "already the default"},
-		"negative timeout": {[]Agent{{Name: "a", Run: "x", Timeout: Duration{-time.Second}}}, "must not be negative"},
-		// A prompt interpolated into a shell string is a command injection,
-		// and these prompts contain shell commands on purpose.
-		"argv through a shell": {[]Agent{{Name: "a", Run: "x", Input: AgentInputArgv}}, "requires command, not run"},
+		"missing name":             {[]Agent{{Run: stdin}}, "agent[0].name"},
+		"name whitespace":          {[]Agent{{Name: " agent ", Run: stdin}}, "surrounding whitespace"},
+		"duplicate name":           {[]Agent{{Name: "a", Run: stdin}, {Name: "A", Run: stdin}}, "duplicates agent[0]"},
+		"no launcher":              {[]Agent{{Name: "a"}}, "configure run or open"},
+		"empty executable":         {[]Agent{{Name: "a", Run: AgentLauncher{Command: []string{""}, Input: "stdin"}}}, "agent[0].run"},
+		"open stdin":               {[]Agent{{Name: "a", Open: stdin}}, "agent[0].open"},
+		"open timeout":             {[]Agent{{Name: "a", Open: AgentLauncher{Command: []string{"agent", handoff.PromptFilePlaceholder}, Input: "file", Timeout: Duration{time.Minute}}}}, "does not support a timeout"},
+		"file missing placeholder": {[]Agent{{Name: "a", Run: AgentLauncher{Command: []string{"agent"}, Input: "file"}}}, "exactly one"},
+		"shell interpolation":      {[]Agent{{Name: "a", Run: AgentLauncher{Shell: "agent {{prompt}}", Input: "stdin"}}}, "static text"},
+		"two defaults":             {[]Agent{{Name: "a", Run: stdin, Default: true}, {Name: "b", Run: stdin, Default: true}}, "already the default"},
+		"negative timeout":         {[]Agent{{Name: "a", Run: AgentLauncher{Command: []string{"agent"}, Input: "stdin", Timeout: Duration{-time.Second}}}}, "timeout"},
+		"valid run and open":       {[]Agent{{Name: "a", Run: stdin, Open: file}}, ""},
 	} {
 		t.Run(name, func(t *testing.T) {
 			cfg := Default()
 			cfg.Agents = tc.agents
 			err := cfg.Validate()
-			if err == nil {
-				t.Fatalf("%v was accepted", tc.agents)
+			if tc.want == "" {
+				if err != nil {
+					t.Fatalf("Validate: %v", err)
+				}
+				return
 			}
-			if !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("error %q does not mention %q", err, tc.want)
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error %q does not mention %q", err, tc.want)
 			}
 		})
 	}
 }
 
+func TestRunGetsDefaultTimeoutAndOpenDoesNot(t *testing.T) {
+	launcher := AgentLauncher{Command: []string{"agent"}, Input: "stdin"}
+	if got := launcher.Handoff(handoff.ModeRun).Timeout; got != 10*time.Minute {
+		t.Errorf("run timeout = %v", got)
+	}
+	// Open cannot use stdin, but timeout resolution is independent of transport.
+	if got := launcher.Handoff(handoff.ModeOpen).Timeout; got != 0 {
+		t.Errorf("open timeout = %v", got)
+	}
+}
+
 func TestNoAgentsAreConfiguredByDefault(t *testing.T) {
-	// Shipping a default agent would make dev depend on one particular tool.
 	if agents := Default().Agents; len(agents) != 0 {
 		t.Errorf("Default() ships agents: %+v", agents)
 	}

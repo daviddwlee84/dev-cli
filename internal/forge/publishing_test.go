@@ -34,7 +34,7 @@ func TestProbeDistinguishesMissingUnauthenticatedAndReady(t *testing.T) {
 		if bin != "gh" || dir != "" {
 			t.Fatalf("probe target = %q %q", bin, dir)
 		}
-		want := []string{"auth", "status", "--active", "--hostname", "github.com"}
+		want := []string{"auth", "status", "--hostname", "github.com"}
 		if !reflect.DeepEqual(args, want) {
 			t.Fatalf("probe args = %q, want %q", args, want)
 		}

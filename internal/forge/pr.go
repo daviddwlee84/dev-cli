@@ -48,6 +48,10 @@ const (
 type PRQuery struct {
 	// Roles defaults to author and reviewer when empty.
 	Roles []PRRole
+	// AnyRole asks a repository-scoped inventory for every request regardless
+	// of its relationship to the authenticated user. It is for workspace
+	// closeout, not the personal inbox. Account-wide listings reject it.
+	AnyRole bool
 	// State defaults to open. Only the per-repository surface can answer
 	// anything else.
 	State PRState
@@ -63,6 +67,7 @@ type PRQuery struct {
 // disambiguates.
 type PullRequest struct {
 	Forge  Kind     `json:"forge"`
+	Host   string   `json:"host,omitempty"`
 	Repo   string   `json:"repo"`
 	Number int      `json:"number"`
 	Title  string   `json:"title"`
@@ -73,14 +78,21 @@ type PullRequest struct {
 	Roles  []PRRole `json:"roles,omitempty"`
 	Detail PRDetail `json:"detail"`
 
-	HeadBranch     string `json:"head_branch,omitempty"`
-	BaseBranch     string `json:"base_branch,omitempty"`
-	ReviewDecision string `json:"review_decision,omitempty"`
-	Mergeable      string `json:"mergeable,omitempty"`
-	Checks         string `json:"checks,omitempty"`
+	HeadRepo        string `json:"head_repo,omitempty"`
+	CrossRepository bool   `json:"is_cross_repository,omitempty"`
+	HeadBranch      string `json:"head_branch,omitempty"`
+	BaseBranch      string `json:"base_branch,omitempty"`
+	ReviewDecision  string `json:"review_decision,omitempty"`
+	Mergeable       string `json:"mergeable,omitempty"`
+	Checks          string `json:"checks,omitempty"`
 
 	CreatedAt time.Time `json:"created_at,omitempty"`
 	UpdatedAt time.Time `json:"updated_at,omitempty"`
+
+	// headRepoID is a provider-internal lookup key. GitLab's list payload
+	// exposes source_project_id but not its namespace; adapters resolve it before
+	// returning a cross-repository request.
+	headRepoID int
 }
 
 // PRLister is implemented by forge adapters that can enumerate requests. It is
@@ -97,7 +109,8 @@ type PRLister interface {
 	ListAccountPRs(ctx context.Context, q PRQuery) ([]PullRequest, error)
 	// ListRepoPRs enumerates requests for one owner/name repository, including
 	// the head branch and review state an inbox cannot get from the search
-	// surface. Costs one call per repository.
+	// surface. Inbox queries cost up to one call per requested role and
+	// repository; AnyRole costs one.
 	ListRepoPRs(ctx context.Context, repo string, q PRQuery) ([]PullRequest, error)
 }
 
@@ -123,7 +136,7 @@ func ListRepoPRs(ctx context.Context, f Forge, repo string, q PRQuery) ([]PullRe
 // Key identifies a request across providers, for dedup between the account and
 // per-repository surfaces.
 func (p PullRequest) Key() string {
-	return string(p.Forge) + "/" + strings.ToLower(p.Repo) + "#" + strconv.Itoa(p.Number)
+	return string(p.Forge) + "/" + strings.ToLower(p.Host) + "/" + strings.ToLower(p.Repo) + "#" + strconv.Itoa(p.Number)
 }
 
 // Roles are the only thing the per-repository surface cannot determine, so a
@@ -178,15 +191,6 @@ func (q PRQuery) EffectiveLimit() int {
 		return 200
 	}
 	return q.Limit
-}
-
-func (q PRQuery) wants(role PRRole) bool {
-	for _, want := range q.EffectiveRoles() {
-		if want == role {
-			return true
-		}
-	}
-	return false
 }
 
 // Check outcome vocabulary reported in PullRequest.Checks.
@@ -253,7 +257,7 @@ func classifyCheck(c checkOutcome) string {
 	switch strings.ToUpper(c.Conclusion) {
 	case "SUCCESS", "NEUTRAL", "SKIPPED":
 		return ChecksPassing
-	case "FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE":
+	case "FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE", "STALE":
 		return ChecksFailing
 	}
 	return ""

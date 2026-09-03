@@ -58,6 +58,7 @@ plugins:
             SSH Host Onboarding: SSH Host 設定與佈建
             Remote Repository Fleet: 遠端 Repository Fleet
             Agent-Safe Retirement: Agent 安全退場
+            Prompt Handoffs: Prompt Handoff
             Pull Request Inbox: Pull Request 收件匣
             Machine Summary: 機器整體摘要
             Development Journal: 開發日誌
@@ -133,6 +134,7 @@ nav:
       - SSH Host Onboarding: guides/ssh-hosts.md
       - Remote Repository Fleet: guides/remote-fleet.md
       - Agent-Safe Retirement: guides/agent-safe-retirement.md
+      - Prompt Handoffs: guides/prompt-handoffs.md
       - Pull Request Inbox: guides/pull-request-inbox.md
       - TUI, Repositories, Quick Notes, and Bootstrap: guides/tui-repos-bootstrap.md
   - Git and GitHub:

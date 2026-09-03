@@ -1,8 +1,8 @@
 ---
-description: 列出你開的與等你 review 的 pull request，把它們對應到本地 worktree，並交給你自己設定的 agent。
+description: 列出你開的與等你 review 的 pull request，理解 provider cost 與 missing fields，並檢查 local checkout health。
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-02
 lang: zh-TW
 ---
 
@@ -11,14 +11,18 @@ lang: zh-TW
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
-`dev pr` 顯示正在等你的 pull request 與 merge request，以及它們屬於你的哪一個 worktree。它不會改變任何東西。
+`dev pr list` 顯示正在等你的 pull request／merge request；provider 有回報 head
+branch 時，也顯示 matching local task/checkout。它不會改變任何東西。
 
 !!! info "時效"
-    **Authority：**`internal/forge`、`internal/cli/pr*.go` 與其測試 · **Status：**stable · **Verified：**2026-09-01。
+    **Authority：**`internal/forge`、`internal/cli/pr*.go` 與其測試 ·
+    **Status：**stable · **Verified：**2026-09-02。
 
 ## 問題
 
-開一個 pull request 通常就是一個 worktree 使命的終點，但本地沒有任何東西會這樣告訴你。Branch 已經 push、後續由 review 決定，checkout 就留在磁碟上。同時 request 從兩個方向累積：你開的、在等別人的，以及在等你 review 的。
+開 pull request 通常代表 worktree 的 active writing phase 結束，但本地沒有任何東西
+會這樣說。Branch 已 push、後續由 review 決定，checkout 仍留在磁碟。同時 requests
+從兩個方向累積：你開的，以及正在等你 review 的。
 
 ```bash
 dev pr list
@@ -30,138 +34,161 @@ github:owner/api#12     Add retry      mine    open    pass    approved  ~/Workt
 github:owner/web#31     Fix parse      review  open    fail    —         —           2026-08-30
 ```
 
-## 兩個 surface，以及為什麼某一欄會是空的
+## Account 與 local surface
 
-Provider 提供兩種不同的列表，而這個差別不只是外觀問題。
+Provider 提供 account-wide 與 per-repository lists，fields 與 cost 不同。
 
 | | `--scope account` | `--scope local` |
 |---|---|---|
-| 成本 | 2 次呼叫，涵蓋整個帳號 | 每個 repository 1 次呼叫 |
-| 涵蓋範圍 | 帳號看得到的所有 repo | 有 `dev` task 的 repo |
-| head branch、review、checks | **不提供** | 提供 |
-| state | 只有 open | open、merged、closed、all |
+| coverage | authenticated account 的 requests | selected local repositories |
+| query cost | author 與 reviewer 是分開的 role query | 每個 repository 的**每個 requested role**最多一個 paginated query |
+| default roles | author + reviewer | author + reviewer（因此每個 repository 最多兩個 queries） |
+| repository set | 所有 account results，再由 `--repo` filter | 有 `dev` task 的 repositories；`--all-repos` 擴大 |
+| states | open | open、merged、closed、all |
 
-`gh search prs` 根本無法回傳 head branch、review decision 或 check status。所以 account scope 的列在那幾欄顯示 `—`，代表**這個 surface 不知道**，而不是「那裡沒有東西」。每一列都在 `detail` 欄位記錄它是由哪個 surface 產生的：`summary` 或 `full`。
+`--scope all` 是預設值，會 union 兩種 surface。同一 provider/repository/number 的
+request 會由較完整的 row upgrade summary row。
 
-`--scope all` 是預設值，兩者都跑，同一個 request 由 per-repository 的列覆蓋 account 的列。
+Provider fields 並不對稱：
 
-Per-repository 查詢只限於 `dev` 有 task 的 repository。若對 `paths.scan_roots` 底下所有 repository 都查一次，就是每個 repository 一個 subprocess；在檔案很多的機器上，那是為了你根本沒問的資料而發出數十次呼叫。要全掃描請用 `--all-repos`。
+- GitHub account search 產生 `detail: "summary"`，無法回報 `head_branch`、
+  `review_decision` 或 `checks`。
+- GitHub per-repository list 產生 `detail: "full"`，包含這些 fields。
+- GitLab 的 account/repository lists 都產生 full branch/merge detail，但都沒有
+  `checks`；pipeline status 只存在 single-request endpoint。這些 list surface 也不回報
+  `review_decision`。
+
+Absent field 表示 surface 沒有回報，不表示 underlying value 為空。下結論前先讀
+`detail` 與 provider capabilities。
 
 ```bash
-dev pr list --scope account          # 便宜、涵蓋整個帳號、沒有 branch
-dev pr list --scope local            # 有 branch 與 checks，只含 engaged repo
-dev pr list --repo owner/api         # 單一 repository
-dev pr list --linked                 # 只列有本地 checkout 的 request
+dev pr list --scope account
+dev pr list --scope local
+dev pr list --repo owner/api
+dev pr list --repo github:owner/api
+dev pr list --linked
 ```
 
-## 對一個 request 採取行動
+`--repo` 同時 filter account results 與 local query targets。它接受 `owner/name`、
+`provider:owner/name` 或 forge URL；provider-qualified value 會 pin provider。
+`--linked` 表示 request 的 expected branch 確實被 checkout 且 status 成功讀取，不只是
+某個 task 提到該 branch。
 
-`dev` 只印出指令，永遠不執行它們：
+Account search 無法區分 merged 與 closed。若用 account/all scope 要求 `--state
+merged`、`closed` 或 `all`，collection 會 narrow 到 local surface。Structured output
+回報這個 **effective** scope（`"local"`），不是原先要求的較廣 scope。
+
+## 對 request 採取行動
+
+`dev` 只印 command，永遠不執行：
 
 ```bash
 dev pr list --actions
 dev pr list --json | jq -r '.pull_requests[].actions.merge'
 ```
 
-Approve 與 merge 是決定，不是便利功能。觸發 review 的 comment 也一樣 — 各家 reviewer 期待的字串請見 [AI pull-request review options](../notes/ai-pr-review-options.zh-TW.md)。
+Approve、merge、comment、resume 與 retire 都仍是 operator action。目前 comment action
+只含 generic body placeholder（`'...'`）；`dev` 不會合成 vendor review-trigger phrase。
 
-## 收掉已 merge request 背後的 worktree
+## 收掉 merged request 背後的 worktree
 
-`dev pr` 會報告某個 request 已經 merge。它不會 retire 任何東西，而且 `dev sweep` 也不會去查它：
-
-```bash
-dev pr list --scope local --state merged   # 候選
-dev sweep --merged-worktrees               # 先證明 containment，先報告
-```
-
-這個分離是刻意的。當一個 request 被 squash 之後，merge 出來的 commit 並不是本地 branch 的 ancestor，所以「forge 說 merged」無法證明這份工作能從 remote 復原。`dev sweep --merged-worktrees` 用 `git merge-base --is-ancestor` 在本地證明 containment，而 `dev done --merged` 需要明確的 `--confirm-squash` attestation。把 PR 清單當成「該去看一下」的提示，而不是「可以刪」的許可。
-
-## 把佇列交給 agent
+Forge 回報 request 已 merge 只是 evidence，不是 retirement authorization：
 
 ```bash
-dev pr prompt                  # triage prompt 輸出到 stdout
-dev pr prompt review           # 處理你的 review 佇列
-dev pr prompt retire           # 哪些 checkout 可以收掉
+dev pr list --scope local --state merged   # candidates
+dev sweep --merged-worktrees               # 證明 containment，先 report
 ```
 
-Prompt 內含即時佇列的 JSON，所以可以 pipe 到任何地方：
+Squash merge 不會讓 local feature branch 成為 base 的 ancestor，因此 forge answer 無法
+單獨證明 recovery。`dev sweep --merged-worktrees` 在本地證明 containment；適用時
+`dev done --merged` 需要 explicit squash attestation。把 inbox 視為 inspect 的理由，
+絕不是 delete permission。
+
+要取得 deterministic agent-readable triage，請用 generic prompt surface，不是 PR
+subcommand：
 
 ```bash
-dev pr prompt | pbcopy
-dev pr prompt retire > /tmp/queue.md
+dev prompt render pr-triage
+dev prompt run pr-triage --agent my-agent
+dev prompt open pr-triage --agent my-agent
 ```
 
-加上 `--agent` 就會交給你設定的指令：
+Recipe、configuration、transport、TTY、permission 與 runtime boundaries 請見
+[Prompt handoff](prompt-handoffs.zh-TW.md)。
 
-```toml
-[[agent]]
-name = "claude"
-command = ["claude", "-p"]
-default = true
+## Provider availability
 
-[[agent]]
-name = "codex"
-command = ["codex", "exec", "--file", "{{prompt_file}}"]
-input = "file"
-timeout = "10m"
+`gh` 與 `glab` 是選用且彼此獨立的。Signed-out provider 會在 table 下方回報 exact login
+command；另一個 ready provider 仍會提供 rows。`dev doctor` 回報相同狀態。在 JSON
+中，先檢查 `providers`，不要直接把 empty `pull_requests` array 解讀成 empty inbox。
+
+目前不列出 Azure DevOps pull request。Configured Azure target 會被回報為 unsupported，
+不會讓成功的 GitHub/GitLab result 失敗。
+
+## Structured output
+
+`dev pr list --json` 輸出 schema-versioned object，不是 bare array：
+
+```json
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-02T12:00:00Z",
+  "scope": "local",
+  "state": "open",
+  "roles": ["author", "reviewer"],
+  "repositories": ["github:owner/api"],
+  "providers": [{"forge": "github", "status": "ready"}],
+  "pull_requests": [{
+    "forge": "github",
+    "repo": "owner/api",
+    "number": 12,
+    "detail": "full",
+    "head_branch": "feat/retry",
+    "local": {
+      "task_id": "retry",
+      "task_state": "hot",
+      "repo_path": "<repo-path>",
+      "checkout": "<checkout-path>",
+      "expected_branch": "feat/retry",
+      "live_branch": "feat/retry",
+      "branch_checked_out": true,
+      "checkout_exists": true,
+      "worktree_registered": true,
+      "status_available": true,
+      "git": {"dirty": false, "ahead": 0, "behind": 0, "upstream": "origin/feat/retry"}
+    },
+    "actions": {"comment": "gh pr comment 12 --repo owner/api --body '...'"}
+  }]
+}
 ```
 
-```bash
-dev pr prompt retire --agent claude
-dev pr prompt retire --agent codex --dry-run   # 顯示指令，不執行
-```
+Top-level `scope`、`state`、`roles`、`repositories` 描述 effective collection；
+`providers` 用來區分 empty inbox 與 unavailable source。
 
-這裡**沒有內建 agent，也沒有預設項目**。`dev` 渲染 prompt 並啟動你定義的指令；它不讀回應，也不做 loop。內建一個預設值會讓 `dev` 依賴某一個特定工具。
+Optional `local` object 把 durable task intent 與 live checkout facts 分開：
 
-Prompt 預設從 agent 的 stdin 進入。`input = "file"` 會寫一個私有暫存檔並替換 `{{prompt_file}}`。`run = "…"` 接受 shell 指令字串而非 argv，但 prompt 永遠不會被插進去 — 這些 prompt 本來就內含 shell 指令，所以 `input = "argv"` 必須搭配 `command` 形式。
+- `expected_branch` 是 task 記錄的 branch；`live_branch` 是 status 實際看到的 branch。
+- `checkout_exists`、`worktree_registered` 與 `status_available` 是各自獨立的 health gate。
+- 只有 checkout 存在、仍 registered、status available，且 live branch 等於 expected
+  branch 時，`branch_checked_out` 才是 true。
+- `status_error` 存在時說明 unavailable/missing/unregistered state。
+- `git` 是 optional；只有 expected branch 被證明 live 後才出現，包含 `dirty`、
+  `ahead`、`behind` 與 optional `upstream`。
 
-`[[agent]]` 屬於 host 設定。Repository 不能定義它：它指名一個 `dev` 會執行的指令，因此 `.dev-cli/config.toml` 會拒絕這個 section。
+Schema version 1 是 add-only：可新增 fields，但既有 field name 與 meaning 會保留。
 
-## 定時執行
+## Scheduling
 
-這裡刻意沒有 daemon，也沒有內建排程。`dev pr list` 只是一個普通查詢，所以週期性執行交給你原本就在用的東西：
+沒有 daemon 或 built-in scheduler。`dev pr list` 是 plain read-only query，recurrence
+交給 cron、launchd 或其他 scheduler：
 
 ```bash
 */30 * * * * dev pr list --json > ~/.cache/pr-inbox.json
 ```
 
-## 當某個 provider 未登入
-
-`gh` 與 `glab` 是選用且彼此獨立的。未登入的那一個會在表格下方被報告，並附上修復指令，另一個仍然照常列出：
-
-```text
-  gitlab: signed out; run `glab auth login --hostname gitlab.com`
-```
-
-`dev doctor` 在你開始之前就會報告同樣的狀態。在 `--json` 中，這個資訊放在 `providers` 陣列 — 在斷定佇列是空的之前，先讀它。
-
-## 結構化輸出
-
-`dev pr list --json` 輸出的是物件而不是陣列，這樣使用者才能分辨「沒有 request」與「GitLab 未登入」：
-
-```json
-{
-  "generated_at": "2026-09-01T12:00:00Z",
-  "scope": "all", "state": "open",
-  "providers":     [{"forge": "gitlab", "status": "unauthenticated", "action": "run `glab auth login ...`"}],
-  "pull_requests": [{"forge": "github", "repo": "owner/api", "number": 12, "detail": "full",
-                     "head_branch": "feat/retry", "review_decision": "approved", "checks": "passing",
-                     "local": {"task_id": "retry", "checkout": "…", "dirty": false},
-                     "actions": {"merge": "gh pr merge 12 --repo owner/api --squash"}}]
-}
-```
-
-欄位只會新增，不會被改名或移除，與 `dev ls --json` 是同一份相容性契約。
-
-## 已知限制
-
-- GitLab 的列永遠沒有 `checks`：pipeline status 只出現在 GitLab 的單一 merge request endpoint，而 `dev` 不會為每個 request 各發一次請求。
-- 不列出 Azure DevOps 的 request。已設定的 target 會被報告為 unsupported，而不是讓指令失敗。
-- `--state merged` 與 `--state closed` 需要 per-repository surface，因此指定它們時會自動選用該 surface。
-
 ## 相關頁面
 
-- [AI pull-request review options](../notes/ai-pr-review-options.zh-TW.md)
+- [Prompt handoff](prompt-handoffs.zh-TW.md)
 - [Agent-safe retirement](agent-safe-retirement.zh-TW.md)
-- [Change-stream workflow](change-stream-workflow.zh-TW.md)
-- [Compatibility and known limitations](../reference/compatibility.zh-TW.md)
+- [變更流 workflow](change-stream-workflow.zh-TW.md)
+- [相容性與已知限制](../reference/compatibility.zh-TW.md)

@@ -91,7 +91,7 @@ func TestGitHubAccountSearchUnionsRolesForOnePullRequest(t *testing.T) {
 	if len(prs) != 2 {
 		t.Fatalf("got %d requests, want 2: %+v", len(prs), prs)
 	}
-	if prs[0].Key() != "github/o/n#7" {
+	if prs[0].Key() != "github/github.com/o/n#7" {
 		t.Errorf("first key = %q", prs[0].Key())
 	}
 	if got := prs[0].Roles; len(got) != 2 || got[0] != RoleAuthor || got[1] != RoleReviewer {
@@ -121,11 +121,13 @@ func TestGitHubRepoListReportsBranchReviewAndChecks(t *testing.T) {
 		"pr list": []any{map[string]any{
 			"number": 12, "title": "Ship it", "url": "https://github.com/o/n/pull/12",
 			"state": "OPEN", "isDraft": false,
-			"author":         map[string]any{"login": "me"},
-			"headRefName":    "feat/ship",
-			"baseRefName":    "main",
-			"reviewDecision": "APPROVED",
-			"mergeable":      "MERGEABLE",
+			"author":            map[string]any{"login": "me"},
+			"headRepository":    map[string]any{"nameWithOwner": "fork-owner/fork-repo"},
+			"isCrossRepository": true,
+			"headRefName":       "feat/ship",
+			"baseRefName":       "main",
+			"reviewDecision":    "APPROVED",
+			"mergeable":         "MERGEABLE",
 			"statusCheckRollup": []any{
 				map[string]any{"status": "COMPLETED", "conclusion": "SUCCESS"},
 				map[string]any{"status": "COMPLETED", "conclusion": "SKIPPED"},
@@ -145,18 +147,23 @@ func TestGitHubRepoListReportsBranchReviewAndChecks(t *testing.T) {
 	if pr.Detail != PRDetailFull {
 		t.Errorf("detail = %q, want full", pr.Detail)
 	}
-	if pr.HeadBranch != "feat/ship" || pr.BaseBranch != "main" {
-		t.Errorf("branches = %q -> %q", pr.HeadBranch, pr.BaseBranch)
+	if pr.HeadRepo != "fork-owner/fork-repo" || !pr.CrossRepository || pr.HeadBranch != "feat/ship" || pr.BaseBranch != "main" {
+		t.Errorf("head = %s:%s -> %q", pr.HeadRepo, pr.HeadBranch, pr.BaseBranch)
 	}
 	if pr.ReviewDecision != "approved" || pr.Checks != ChecksPassing {
 		t.Errorf("review = %q, checks = %q", pr.ReviewDecision, pr.Checks)
+	}
+	if len(pr.Roles) != 2 || pr.Roles[0] != RoleAuthor || pr.Roles[1] != RoleReviewer {
+		t.Errorf("repo-scoped roles = %v, want author+reviewer", pr.Roles)
 	}
 	if pr.Repo != "o/n" {
 		t.Errorf("repo = %q", pr.Repo)
 	}
 	invocations, _ := os.ReadFile(log)
-	if !strings.Contains(string(invocations), "--repo o/n") {
-		t.Errorf("repo was not scoped:\n%s", invocations)
+	for _, want := range []string{"--repo o/n", "--author @me", "--search review-requested:@me"} {
+		if !strings.Contains(string(invocations), want) {
+			t.Errorf("repo query missing %q:\n%s", want, invocations)
+		}
 	}
 }
 
@@ -220,8 +227,81 @@ func TestGitLabAccountListParsesReferencesAndBranches(t *testing.T) {
 		t.Errorf("checks = %q, want empty for GitLab", pr.Checks)
 	}
 	invocations, _ := os.ReadFile(log)
-	if !strings.Contains(string(invocations), "reviewer_username=me") {
-		t.Errorf("reviewer query did not resolve the username:\n%s", invocations)
+	for _, want := range []string{"scope=all", "reviewer_username=me"} {
+		if !strings.Contains(string(invocations), want) {
+			t.Errorf("reviewer query missing %q:\n%s", want, invocations)
+		}
+	}
+}
+
+func TestGitLabRepoListHonorsInboxRoles(t *testing.T) {
+	mr := map[string]any{
+		"iid": 4, "title": "Review me", "web_url": "https://gitlab.com/g/p/-/merge_requests/4",
+		"state": "opened", "source_branch": "feat/review", "target_branch": "main",
+		"author": map[string]any{"username": "me"}, "references": map[string]any{"full": "g/p!4"},
+	}
+	log := installScriptedCLI(t, "glab", map[string]any{
+		"author_username=me":             []any{mr},
+		"reviewer_username=me":           []any{mr},
+		"api --hostname gitlab.com user": map[string]any{"username": "me"},
+	})
+
+	prs, err := (&glab{}).ListRepoPRs(t.Context(), "g/p", PRQuery{})
+	if err != nil {
+		t.Fatalf("ListRepoPRs: %v", err)
+	}
+	if len(prs) != 1 || len(prs[0].Roles) != 2 {
+		t.Fatalf("repo roles = %+v, want one author+reviewer row", prs)
+	}
+	invocations, _ := os.ReadFile(log)
+	for _, want := range []string{"projects/g%2Fp/merge_requests", "author_username=me", "reviewer_username=me"} {
+		if !strings.Contains(string(invocations), want) {
+			t.Errorf("repo query missing %q:\n%s", want, invocations)
+		}
+	}
+}
+
+func TestGitLabForkResolvesSourceRepositoryIdentity(t *testing.T) {
+	mr := map[string]any{
+		"iid": 5, "title": "fork", "web_url": "u", "state": "opened",
+		"source_branch": "feat/fork", "target_branch": "main",
+		"source_project_id": 42, "target_project_id": 99,
+		"author": map[string]any{"username": "me"}, "references": map[string]any{"full": "org/upstream!5"},
+	}
+	log := installScriptedCLI(t, "glab", map[string]any{
+		"projects/g%2Fp/merge_requests": []any{mr},
+		"projects/42":                   map[string]any{"path_with_namespace": "me/fork"},
+	})
+	prs, err := (&glab{}).ListRepoPRs(t.Context(), "g/p", PRQuery{AnyRole: true})
+	if err != nil || len(prs) != 1 {
+		t.Fatalf("ListRepoPRs = %+v, %v", prs, err)
+	}
+	if !prs[0].CrossRepository || prs[0].HeadRepo != "me/fork" {
+		t.Fatalf("fork identity = %+v", prs[0])
+	}
+	calls, _ := os.ReadFile(log)
+	if strings.Count(string(calls), "projects/42") != 1 {
+		t.Fatalf("source project lookup calls:\n%s", calls)
+	}
+}
+
+func TestAnyRoleRepoQueryRunsOnceAndLeavesRolesEmpty(t *testing.T) {
+	log := installScriptedCLI(t, "gh", map[string]any{
+		"pr list": []any{map[string]any{
+			"number": 2, "title": "Other user's PR", "url": "https://github.com/o/n/pull/2",
+			"state": "OPEN", "author": map[string]any{"login": "other"},
+		}},
+	})
+	prs, err := (&gh{}).ListRepoPRs(t.Context(), "o/n", PRQuery{AnyRole: true})
+	if err != nil || len(prs) != 1 {
+		t.Fatalf("ListRepoPRs(any role) = %+v, %v", prs, err)
+	}
+	if len(prs[0].Roles) != 0 {
+		t.Errorf("any-role query invented inbox roles: %v", prs[0].Roles)
+	}
+	invocations, _ := os.ReadFile(log)
+	if got := strings.Count(string(invocations), "pr list"); got != 1 {
+		t.Errorf("any-role query made %d calls, want 1:\n%s", got, invocations)
 	}
 }
 
@@ -267,8 +347,9 @@ func TestFoldChecksPrefersTheWorstOutcome(t *testing.T) {
 		"failure wins over success": {[]checkOutcome{
 			{Status: "COMPLETED", Conclusion: "SUCCESS"}, {Status: "COMPLETED", Conclusion: "TIMED_OUT"},
 		}, ChecksFailing},
-		"legacy commit status": {[]checkOutcome{{State: "FAILURE"}}, ChecksFailing},
-		"legacy pending":       {[]checkOutcome{{State: "PENDING"}}, ChecksPending},
+		"stale check is unhealthy": {[]checkOutcome{{Status: "COMPLETED", Conclusion: "SUCCESS"}, {Status: "COMPLETED", Conclusion: "STALE"}}, ChecksFailing},
+		"legacy commit status":     {[]checkOutcome{{State: "FAILURE"}}, ChecksFailing},
+		"legacy pending":           {[]checkOutcome{{State: "PENDING"}}, ChecksPending},
 	} {
 		t.Run(name, func(t *testing.T) {
 			if got := foldChecks(tc.checks); got != tc.want {

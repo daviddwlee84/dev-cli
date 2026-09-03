@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -16,7 +17,7 @@ import (
 func newPRCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pr",
-		Short: "List the pull requests waiting on you, and hand them to an agent",
+		Short: "List the pull requests waiting on you and their local worktrees",
 		Long: `Show the pull and merge requests you opened and the ones asking for your review.
 
 Opening a request usually ends a worktree's useful life, but nothing local says
@@ -26,7 +27,7 @@ one place and, where dev already has a checkout for the branch, says which one.
 Nothing here changes anything: no approving, no merging, no worktree removal.
 It reports, and prints the commands you would run next.`,
 	}
-	cmd.AddCommand(newPRListCmd(app), newPRPromptCmd(app))
+	cmd.AddCommand(newPRListCmd(app))
 	return cmd
 }
 
@@ -41,8 +42,8 @@ func newPRListCmd(app *App) *cobra.Command {
 Two provider surfaces are used, because they answer different questions. The
 account-wide search is two calls no matter how many repositories you have, but
 it cannot report a head branch, so its rows cannot be matched to a worktree.
-The per-repository listing does report one, at the cost of a call per
-repository, so it is used only for repositories dev is already engaged with
+The per-repository listing does report one, at up to one call per requested
+role and repository, so it is used only for repositories dev is already engaged with
 unless --all-repos widens it.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -54,23 +55,23 @@ unless --all-repos widens it.`,
 			if err != nil {
 				return err
 			}
-			rows, statuses, collectErr := collectPullRequests(ctxOf(), app, collectOptions)
-			if len(rows) == 0 && collectErr != nil {
-				return collectErr
+			collection := collectPullRequests(ctxOf(), app, collectOptions)
+			if len(collection.Rows) == 0 && collection.Err != nil {
+				return collection.Err
 			}
-			rows = filterPRRows(rows, query, opts)
+			rows := filterPRRows(collection.Rows, query, opts)
 
 			if opts.JSON {
 				encoder := json.NewEncoder(app.Out)
 				encoder.SetIndent("", "  ")
-				if err := encoder.Encode(makePRListJSON(rows, statuses, collectOptions)); err != nil {
+				if err := encoder.Encode(makePRListJSON(rows, collection.Providers, collection.Effective, collection.Err)); err != nil {
 					return err
 				}
 			} else {
-				renderPRTable(app, rows, statuses, opts.Actions)
+				renderPRTable(app, rows, collection.Providers, opts.Actions)
 			}
-			if collectErr != nil {
-				app.warnf("partial pull request results: %v", collectErr)
+			if collection.Err != nil {
+				app.warnf("partial pull request results: %v", collection.Err)
 			}
 			return nil
 		},
@@ -79,8 +80,8 @@ unless --all-repos widens it.`,
 	return cmd
 }
 
-// prFlags are shared by `pr list` and `pr prompt` so that a prompt is rendered
-// from exactly the inbox the user just looked at.
+// prFlags are shared by `pr list` and the generic `prompt ... pr-triage`
+// recipe so both collect the same inbox.
 type prFlags struct {
 	Scope    string
 	Roles    []string
@@ -94,18 +95,21 @@ type prFlags struct {
 }
 
 func (f *prFlags) register(cmd *cobra.Command) {
+	f.registerFilters(cmd)
+	flags := cmd.Flags()
+	flags.BoolVar(&f.JSON, "json", false, "emit structured output")
+	flags.BoolVar(&f.Actions, "actions", false, "print the gh/glab commands for each request")
+}
+
+func (f *prFlags) registerFilters(cmd *cobra.Command) {
 	flags := cmd.Flags()
 	flags.StringVar(&f.Scope, "scope", "all", "which surface to query: account, local or all")
 	flags.StringSliceVar(&f.Roles, "role", nil, "limit to author or reviewer (default both)")
 	flags.StringVar(&f.State, "state", "open", "request state: open, merged, closed or all")
 	flags.StringSliceVar(&f.Repos, "repo", nil, "restrict to these owner/name repositories")
 	flags.BoolVar(&f.AllRepos, "all-repos", false, "query every discovered repository, not only ones dev has a task for")
-	flags.BoolVar(&f.Linked, "linked", false, "only requests with a local checkout")
+	flags.BoolVar(&f.Linked, "linked", false, "only requests with a checked-out local branch")
 	flags.IntVar(&f.Limit, "limit", 0, "cap the rows rendered")
-	if cmd.Name() != "prompt" {
-		flags.BoolVar(&f.JSON, "json", false, "emit structured output")
-		flags.BoolVar(&f.Actions, "actions", false, "print the gh/glab commands for each request")
-	}
 }
 
 func (f *prFlags) collectOptions() (prCollectOptions, error) {
@@ -123,6 +127,14 @@ func (f *prFlags) collectOptions() (prCollectOptions, error) {
 		return prCollectOptions{}, fmt.Errorf("unknown --state %q: want open, merged, closed or all", f.State)
 	}
 
+	if f.Limit < 0 {
+		return prCollectOptions{}, errors.New("--limit must be zero or positive")
+	}
+	selectors, err := normalizePRSelectors(f.Repos)
+	if err != nil {
+		return prCollectOptions{}, err
+	}
+
 	var roles []forge.PRRole
 	for _, role := range f.Roles {
 		switch forge.PRRole(strings.ToLower(strings.TrimSpace(role))) {
@@ -138,7 +150,7 @@ func (f *prFlags) collectOptions() (prCollectOptions, error) {
 	return prCollectOptions{
 		Scope:    scope,
 		Query:    forge.PRQuery{Roles: roles, State: state},
-		Repos:    f.Repos,
+		Repos:    selectors,
 		AllRepos: f.AllRepos,
 	}, nil
 }
@@ -146,7 +158,7 @@ func (f *prFlags) collectOptions() (prCollectOptions, error) {
 func filterPRRows(rows []prRow, query string, opts prFlags) []prRow {
 	filtered := make([]prRow, 0, len(rows))
 	for _, row := range rows {
-		if opts.Linked && row.Local == nil {
+		if opts.Linked && (row.Local == nil || !row.Local.BranchCheckedOut) {
 			continue
 		}
 		if query != "" {
@@ -182,10 +194,7 @@ func renderPRTable(app *App, rows []prRow, statuses []prProviderStatus, showActi
 	}
 	table := app.newTable("PR", "TITLE", "ROLE", "STATE", "CHECKS", "REVIEW", "LOCAL", "UPDATED")
 	for _, row := range rows {
-		local := "—"
-		if row.Local != nil {
-			local = style.success(config.Contract(row.Local.Checkout))
-		}
+		local := prLocalLabel(style, row.Local)
 		updated := "—"
 		if !row.PR.UpdatedAt.IsZero() {
 			updated = row.PR.UpdatedAt.Format("2006-01-02")
@@ -263,8 +272,31 @@ func prProviderPhrase(status string) string {
 	return status
 }
 
+func prLocalLabel(style cliStyle, local *prLocal) string {
+	if local == nil {
+		return "—"
+	}
+	switch {
+	case !local.CheckoutExists:
+		return style.danger("missing")
+	case !local.WorktreeRegistered:
+		return style.warning("unregistered")
+	case !local.StatusAvailable:
+		return style.warning("unknown")
+	case !local.BranchCheckedOut:
+		return style.dim("not checked out")
+	default:
+		return style.success(config.Contract(local.Checkout))
+	}
+}
+
 func prLabel(pr forge.PullRequest) string {
-	return string(pr.Forge) + ":" + pr.Repo + "#" + strconv.Itoa(pr.Number)
+	repo := pr.Repo
+	publicHost := map[forge.Kind]string{forge.GitHub: "github.com", forge.GitLab: "gitlab.com"}[pr.Forge]
+	if pr.Host != "" && !strings.EqualFold(pr.Host, publicHost) {
+		repo = pr.Host + "/" + repo
+	}
+	return string(pr.Forge) + ":" + repo + "#" + strconv.Itoa(pr.Number)
 }
 
 func prRoleLabel(pr forge.PullRequest) string {
@@ -330,11 +362,15 @@ func prReviewLabel(style cliStyle, pr forge.PullRequest) string {
 // never renamed or removed. It is an object rather than a bare array because a
 // consumer needs to distinguish "no requests" from "GitLab was signed out".
 type prListJSON struct {
-	GeneratedAt  time.Time          `json:"generated_at"`
-	Scope        string             `json:"scope"`
-	State        string             `json:"state"`
-	Providers    []prProviderStatus `json:"providers"`
-	PullRequests []prJSONRow        `json:"pull_requests"`
+	SchemaVersion int                `json:"schema_version"`
+	GeneratedAt   time.Time          `json:"generated_at"`
+	Scope         string             `json:"scope"`
+	State         string             `json:"state"`
+	Roles         []forge.PRRole     `json:"roles"`
+	Repositories  []string           `json:"repositories,omitempty"`
+	Providers     []prProviderStatus `json:"providers"`
+	Warnings      []string           `json:"warnings"`
+	PullRequests  []prJSONRow        `json:"pull_requests"`
 }
 
 type prJSONRow struct {
@@ -343,16 +379,32 @@ type prJSONRow struct {
 	Actions map[string]string `json:"actions,omitempty"`
 }
 
-func makePRListJSON(rows []prRow, statuses []prProviderStatus, opts prCollectOptions) prListJSON {
+func makePRListJSON(rows []prRow, statuses []prProviderStatus, opts prCollectOptions, collectErr error) prListJSON {
 	out := prListJSON{
-		GeneratedAt:  time.Now().UTC(),
-		Scope:        string(opts.Scope),
-		State:        string(opts.Query.EffectiveState()),
-		Providers:    statuses,
-		PullRequests: make([]prJSONRow, 0, len(rows)),
+		SchemaVersion: 1,
+		GeneratedAt:   time.Now().UTC(),
+		Scope:         string(opts.Scope),
+		State:         string(opts.Query.EffectiveState()),
+		Roles:         opts.Query.EffectiveRoles(),
+		Providers:     statuses,
+		Warnings:      []string{},
+		PullRequests:  make([]prJSONRow, 0, len(rows)),
+	}
+	for _, selector := range opts.Repos {
+		name := selector.Name
+		if selector.Host != "" {
+			name = selector.Host + "/" + name
+		}
+		if selector.Kind != forge.Unknown {
+			name = string(selector.Kind) + ":" + name
+		}
+		out.Repositories = append(out.Repositories, name)
 	}
 	if out.Scope == "" {
 		out.Scope = string(scopeAll)
+	}
+	if collectErr != nil {
+		out.Warnings = append(out.Warnings, boundedError(collectErr))
 	}
 	for _, row := range rows {
 		out.PullRequests = append(out.PullRequests, makePRJSONRow(row))
@@ -377,21 +429,29 @@ func prActions(row prRow) map[string]string {
 	actions := map[string]string{}
 	switch row.PR.Forge {
 	case forge.GitHub:
-		actions["view"] = "gh pr view " + number + target + " --web"
-		actions["diff"] = "gh pr diff " + number + target
-		actions["checks"] = "gh pr checks " + number + target
+		prefix := ""
+		if row.PR.Host != "" && !strings.EqualFold(row.PR.Host, "github.com") {
+			prefix = "GH_HOST=" + shellQuote(row.PR.Host) + " "
+		}
+		actions["view"] = prefix + "gh pr view " + number + target + " --web"
+		actions["diff"] = prefix + "gh pr diff " + number + target
+		actions["checks"] = prefix + "gh pr checks " + number + target
 		if open {
-			actions["approve"] = "gh pr review " + number + target + " --approve"
-			actions["comment"] = "gh pr comment " + number + target + " --body '...'"
-			actions["merge"] = "gh pr merge " + number + target + " --squash"
+			actions["approve"] = prefix + "gh pr review " + number + target + " --approve"
+			actions["comment"] = prefix + "gh pr comment " + number + target + " --body '...'"
+			actions["merge"] = prefix + "gh pr merge " + number + target + " --squash"
 		}
 	case forge.GitLab:
-		actions["view"] = "glab mr view " + number + target + " --web"
-		actions["diff"] = "glab mr diff " + number + target
+		prefix := ""
+		if row.PR.Host != "" && !strings.EqualFold(row.PR.Host, "gitlab.com") {
+			prefix = "GITLAB_HOST=" + shellQuote(row.PR.Host) + " "
+		}
+		actions["view"] = prefix + "glab mr view " + number + target + " --web"
+		actions["diff"] = prefix + "glab mr diff " + number + target
 		if open {
-			actions["approve"] = "glab mr approve " + number + target
-			actions["comment"] = "glab mr note " + number + target + " --message '...'"
-			actions["merge"] = "glab mr merge " + number + target
+			actions["approve"] = prefix + "glab mr approve " + number + target
+			actions["comment"] = prefix + "glab mr note " + number + target + " --message '...'"
+			actions["merge"] = prefix + "glab mr merge " + number + target
 		}
 	default:
 		return nil
@@ -399,8 +459,8 @@ func prActions(row prRow) map[string]string {
 	if row.Local != nil && row.Local.TaskID != "" {
 		// Only offered once the request is actually merged; dev never infers
 		// integration from a forge answer on its own.
-		if row.PR.State == forge.PRStateMerged {
-			actions["retire"] = "dev sweep --merged-worktrees"
+		if row.PR.State == forge.PRStateMerged && row.Local.RepoPath != "" {
+			actions["retire"] = "cd " + shellQuote(row.Local.RepoPath) + " && dev sweep --merged-worktrees"
 		}
 		actions["resume"] = "dev resume " + row.Local.TaskID
 	}

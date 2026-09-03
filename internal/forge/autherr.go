@@ -80,7 +80,14 @@ func classifyAuth(kind Kind, bin string, err error) error {
 }
 
 func isAuthFailure(err error) bool {
-	message := strings.ToLower(err.Error())
+	message := err.Error()
+	var commandErr *commandError
+	if errors.As(err, &commandErr) {
+		// Args may contain arbitrary user data (title, description, branch).
+		// Only provider stderr can classify the failure.
+		message = commandErr.Detail
+	}
+	message = strings.ToLower(message)
 	for _, signal := range notAuthSignals {
 		if strings.Contains(message, signal) {
 			return false

@@ -104,6 +104,17 @@ func TestZellijOpenReusesOnlySameDirectory(t *testing.T) {
 
 // Zellij keeps exited sessions in its listing, and every action command
 // against one fails. dev must skip them rather than fail the whole listing.
+func TestZellijListDoesNotTreatExitedSubstringInNameAsDead(t *testing.T) {
+	z := scriptedZellij(t,
+		zellijCall{args: []string{"list-sessions", "--no-formatting"}, out: "fooEXITEDbar [Created 1m ago]"},
+		zellijCall{args: []string{"--session", "fooEXITEDbar", "action", "dump-layout"}, out: "layout {\n cwd \"/repo\"\n}"},
+	)
+	got, err := z.List(context.Background())
+	if err != nil || len(got) != 1 || got[0].Handle != "fooEXITEDbar" {
+		t.Fatalf("List = %+v, %v", got, err)
+	}
+}
+
 func TestZellijListSkipsExitedSessions(t *testing.T) {
 	z := scriptedZellij(t,
 		zellijCall{args: []string{"list-sessions", "--no-formatting"}, out: "dead [Created 6months ago] (EXITED - attach to resurrect)\nalive [Created 1m ago]"},
@@ -131,6 +142,20 @@ func TestZellijListToleratesSessionDyingMidListing(t *testing.T) {
 	got, err := z.List(context.Background())
 	if err != nil || len(got) != 0 {
 		t.Fatalf("List = %+v, %v; want no sessions and no error", got, err)
+	}
+}
+
+func TestZellijOpenDoesNotResurrectSessionThatExitsDuringInspection(t *testing.T) {
+	z := scriptedZellij(t,
+		zellijCall{args: []string{"list-sessions", "--no-formatting"}, out: "child-task [Created 1m ago]"},
+		zellijCall{
+			args: []string{"--session", "child-task", "action", "dump-layout"},
+			err:  errors.New("zellij --session child-task action dump-layout: There is no active session!"),
+		},
+	)
+	got, err := z.Open(context.Background(), "/repo", "child task")
+	if err == nil || !strings.Contains(err.Error(), "changed state") || got != (OpenResult{}) {
+		t.Fatalf("Open = %+v, %v", got, err)
 	}
 }
 

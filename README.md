@@ -970,7 +970,10 @@ dev graduate redis-streams -c Infra --remote   # promote it into a real project
 dev pr list                    # requests you opened or were asked to review
 dev pr list --scope local      # with head branches, joined to your worktrees
 dev pr list --actions          # the gh/glab commands; dev prints, never runs
-dev pr prompt retire --agent claude   # hand the queue to a command you configure
+dev prompt list                # built-in read-only context recipes
+dev prompt render pr-triage    # inspect/copy the exact prompt
+dev prompt run session-close --agent my-agent   # bounded one-shot, no user stdin
+dev prompt open workspace-closeout . --agent my-agent  # foreground current TTY
 
 dev gitignore                  # .gitignore from GitHub's templates + the rest
 dev adopt                      # import existing worktrees/sessions as tasks
@@ -981,6 +984,26 @@ dev journal                    # today's commits plus current task/WIP context
 dev help worktrees             # quick-reference pages for the workflow
 dev help wt                    # same page, reached by command name
 ```
+
+### Prompt handoffs
+
+Escalate only as far as the situation needs: use `dev status`, `dev sweep`, or a
+lifecycle command when deterministic facts already answer the question; use
+`dev prompt render <recipe>` to inspect or copy context; use `run` for a bounded
+batch answer; and use `open` only when a foreground conversation can resolve a
+semantic question.
+
+The built-in recipes are `pr-triage`, `session-close`, and
+`workspace-closeout`. They collect read-only deterministic context and instruct
+the receiver not to mutate it. `dev` never parses an agent reply, starts a loop,
+or treats the reply as permission for `done`, `park`, `sweep`, or `retire`.
+There is no built-in vendor or launcher: host config defines nested
+`[agent.run]` and `[agent.open]` commands. `run` receives finite prompt input and
+defaults to a 10-minute timeout; `open` reserves stdin for the conversation,
+has no default timeout, and stays in the current terminal/pane. It does not
+create, focus, or reuse a Herdr/tmux/Zellij surface. See
+[Prompt handoffs](docs/guides/prompt-handoffs.md) for configuration, transport,
+permission, closeout-audit, and rebase-conflict boundaries.
 
 ### Repository quick notes
 

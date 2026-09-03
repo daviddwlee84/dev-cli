@@ -9,25 +9,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ### Added
 
 - `dev pr list` shows the pull and merge requests you opened and the ones
-  awaiting your review, and joins them to the local worktree for their head
-  branch. Two provider surfaces are used deliberately: an account-wide search
-  that costs two calls regardless of repository count but cannot report a head
-  branch, review decision or checks, and a per-repository listing that can.
-  `--scope` selects between them, `detail` on each row records which produced
-  it, and per-repository queries are limited to repositories `dev` has a task
-  for unless `--all-repos` widens them. `--actions` and `--json` emit the
-  `gh`/`glab` commands for each request; `dev` prints them and never runs them.
-- `dev pr prompt [triage|review|retire]` renders a prompt containing the live
-  queue, and with `--agent` hands it to a command from the new `[[agent]]`
-  configuration section. There is no built-in agent and no default entry:
-  `dev` starts a command you define, streams its output, and neither reads the
-  reply nor iterates. `[[agent]]` is host configuration and is rejected in a
-  repository's `.dev-cli/config.toml`.
+  awaiting your review, and joins reported head branches to local task and
+  checkout health. Account and per-repository surfaces remain explicit;
+  personal per-repository queries may call once per requested role, engaged
+  repositories bound the default local scope, and `--all-repos` widens it.
+  `--actions` and schema-versioned `--json` emit reviewable `gh`/`glab` command
+  strings; `dev` prints them and never runs them.
+- `dev prompt list|render|run|open` provides a provider-neutral prompt handoff.
+  Built-in `pr-triage`, `session-close`, and `workspace-closeout` recipes collect
+  deterministic read-only context. `render` prints it, `run` launches a bounded
+  batch command with no user stdin (10-minute default), and `open` launches a
+  foreground conversation in the current terminal with no default timeout.
+  There is no built-in vendor, agent, or launcher, and `dev` never parses the
+  reply, loops, mutates lifecycle state, or changes permissions.
+- Agent launchers use host-only nested configuration: `[[agent]]` selects a
+  unique name/default, while `[agent.run]` and `[agent.open]` independently set
+  direct `command` argv or static `shell`, `stdin|file|argv` input, plus optional
+  batch timeout/shell-RC policy. `open` rejects stdin and timeout, prompts are never interpolated
+  into shell text, and repository `.dev-cli/config.toml` cannot define agents.
 
 ### Changed
 
 - `dev doctor` now reports whether `gh` and `glab` are signed in, not only
   whether they are installed, with the exact login command for each.
+
+### Fixed
+
+- Pull-request `--repo` selectors now constrain both account rows and local
+  query targets, and JSON reports the effective scope after non-open account
+  requests narrow to local collection. Schema version 1 local joins distinguish
+  `expected_branch` from `live_branch`, report checkout existence, worktree
+  registration and status availability/errors independently, and include Git
+  status only when the expected branch is actually checked out. Fork pull
+  requests join against their source repository (resolving GitLab source project
+  IDs when needed), canonical/unmanaged/external worktrees join without a task,
+  duplicate local clones no longer suppress the remote query, and ambiguous
+  same-branch local evidence fails closed instead of choosing a clone. Provider
+  host identity is preserved so an enterprise remote is never queried against
+  the public forge, partial failures appear in JSON `warnings`, and stale GitHub
+  checks are not reported as passing.
 
 ## [0.2.10] - 2026-09-04
 
@@ -116,14 +136,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   session!`, which previously turned `dev ls`, `dev doctor` and the TUI runtime
   join into an error. Exited sessions are now excluded from the live view, and
   `dev start` refuses to create over a name an exited session still owns
-  instead of silently resurrecting its old layout at the old directory.
+  instead of silently resurrecting its old layout at the old directory. If a
+  live session exits between listing and layout inspection, creation now also
+  fails closed rather than falling through to resurrection. Only Zellij's exact
+  exited marker is recognized; a live session name containing `EXITED` remains live.
 - An unauthenticated `gh` or `glab` no longer surfaces its full command line
   in the TUI REMOTE footer, in `dev repo remote` warnings, or in the cached
   provider status. A rejected credential now reads as, for example,
   ``glab is signed out — run `glab auth login --hostname gitlab.com` ``, with
   the original command and provider output preserved in the wrapped error.
   Rate limits, permission and network failures keep their full diagnostic text,
-  because signing in again would not fix them.
+  because signing in again would not fix them. Classification inspects provider
+  stderr rather than argv, so a title or description containing `auth login`
+  cannot turn an unrelated failure into a sign-in warning. GitLab probing now honors
+  `GLAB_HOST` as well as `GITLAB_HOST`, and reviewer inventory explicitly uses
+  account scope instead of GitLab's authored-by-me default.
+- Prompt handoffs now treat the invoking agent as an existing writer rather
+  than excluding its pane, so one agent cannot launch another in the same
+  checkout without the shared-checkout override. Batch timeout cancellation
+  terminates the launcher process tree rather than leaving a descendant agent
+  running after `dev` removes its prompt file.
+- Session and workspace prompts now reuse retirement's pane/mixed-workspace and
+  agent-status policy, Git branch relation logic, and read-only artifact
+  reachability inspection. Missing or failed evidence remains unknown instead
+  of being converted into a known blocker or safe zero value.
 
 ## [0.2.7] - 2026-09-03
 

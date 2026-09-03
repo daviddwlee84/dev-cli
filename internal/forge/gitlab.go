@@ -20,6 +20,9 @@ type glab struct {
 	once          sync.Once
 	usernameValue string
 	usernameErr   error
+
+	projectMu    sync.Mutex
+	projectPaths map[int]string
 }
 
 func (g *glab) Kind() Kind      { return GitLab }
@@ -300,6 +303,9 @@ func (g *glab) ListAccountPRs(ctx context.Context, q PRQuery) ([]PullRequest, er
 	if !g.Available() {
 		return nil, &ErrNoCLI{Kind: GitLab, Bin: "glab"}
 	}
+	if q.AnyRole {
+		return nil, &ErrUnsupported{Kind: GitLab, Operation: "account-wide any-role merge request inventory"}
+	}
 	if state := q.EffectiveState(); state != PRStateOpen {
 		return nil, &ErrUnsupported{Kind: GitLab,
 			Operation: "account-wide search for " + string(state) + " requests"}
@@ -318,7 +324,10 @@ func (g *glab) ListAccountPRs(ctx context.Context, q PRQuery) ([]PullRequest, er
 			if err != nil {
 				return collectPRs(byKey, order), err
 			}
-			filter = []string{"-f", "reviewer_username=" + username}
+			// GitLab's default account scope is created_by_me. Reviewer
+			// inventory must explicitly widen it or it omits every request
+			// authored by someone else.
+			filter = []string{"-f", "scope=all", "-f", "reviewer_username=" + username}
 		}
 		prs, err := g.listMergeRequests(ctx, "merge_requests", filter, role, q)
 		for _, pr := range prs {
@@ -338,7 +347,9 @@ func (g *glab) ListAccountPRs(ctx context.Context, q PRQuery) ([]PullRequest, er
 	return collectPRs(byKey, order), nil
 }
 
-// ListRepoPRs lists one project's merge requests.
+// ListRepoPRs lists one project's merge requests. Inbox queries preserve why
+// each row is present; workspace closeout can request the whole project with
+// AnyRole instead.
 func (g *glab) ListRepoPRs(ctx context.Context, repo string, q PRQuery) ([]PullRequest, error) {
 	if !g.Available() {
 		return nil, &ErrNoCLI{Kind: GitLab, Bin: "glab"}
@@ -346,7 +357,37 @@ func (g *glab) ListRepoPRs(ctx context.Context, repo string, q PRQuery) ([]PullR
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	path := "projects/" + url.PathEscape(strings.Trim(repo, "/")) + "/merge_requests"
-	return g.listMergeRequests(ctx, path, nil, "", q)
+	if q.AnyRole {
+		return g.listMergeRequests(ctx, path, nil, "", q)
+	}
+
+	username, err := g.username(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byKey := map[string]PullRequest{}
+	var order []string
+	for _, role := range q.EffectiveRoles() {
+		filter := []string{"-f", "author_username=" + username}
+		if role == RoleReviewer {
+			filter = []string{"-f", "reviewer_username=" + username}
+		}
+		prs, err := g.listMergeRequests(ctx, path, filter, role, q)
+		for _, pr := range prs {
+			key := pr.Key()
+			if existing, ok := byKey[key]; ok {
+				existing.Roles = unionRoles(existing.Roles, pr.Roles)
+				byKey[key] = existing
+				continue
+			}
+			byKey[key] = pr
+			order = append(order, key)
+		}
+		if err != nil {
+			return collectPRs(byKey, order), err
+		}
+	}
+	return collectPRs(byKey, order), nil
 }
 
 // listMergeRequests runs one paginated GitLab list, reusing the same loop shape
@@ -355,6 +396,7 @@ func (g *glab) ListRepoPRs(ctx context.Context, repo string, q PRQuery) ([]PullR
 func (g *glab) listMergeRequests(ctx context.Context, path string, filter []string, role PRRole, q PRQuery) ([]PullRequest, error) {
 	const pageSize = 100
 	var result []PullRequest
+	var lookupErrs []error
 	for page := 1; ; page++ {
 		args := []string{"api", "--hostname", gitLabHost(), path, "--method", "GET",
 			"-f", "state=" + gitLabMRState(q.EffectiveState()),
@@ -369,6 +411,17 @@ func (g *glab) listMergeRequests(ctx context.Context, path string, filter []stri
 		if err != nil {
 			return result, err
 		}
+		for i := range prs {
+			if !prs[i].CrossRepository || prs[i].headRepoID == 0 {
+				continue
+			}
+			path, err := g.projectPath(ctx, prs[i].headRepoID)
+			if err != nil {
+				lookupErrs = append(lookupErrs, fmt.Errorf("resolve source project for merge request %s!%d: %w", prs[i].Repo, prs[i].Number, err))
+				continue
+			}
+			prs[i].HeadRepo = path
+		}
 		result = append(result, prs...)
 		if len(prs) < pageSize || len(result) >= q.EffectiveLimit() {
 			break
@@ -377,7 +430,7 @@ func (g *glab) listMergeRequests(ctx context.Context, path string, filter []stri
 	if len(result) > q.EffectiveLimit() {
 		result = result[:q.EffectiveLimit()]
 	}
-	return result, nil
+	return result, errors.Join(lookupErrs...)
 }
 
 // username resolves and memoizes the authenticated GitLab account, which the
@@ -405,6 +458,36 @@ func (g *glab) username(ctx context.Context) (string, error) {
 	return g.usernameValue, g.usernameErr
 }
 
+func (g *glab) projectPath(ctx context.Context, id int) (string, error) {
+	g.projectMu.Lock()
+	if path := g.projectPaths[id]; path != "" {
+		g.projectMu.Unlock()
+		return path, nil
+	}
+	g.projectMu.Unlock()
+
+	out, err := g.run(ctx, "", "api", "--hostname", gitLabHost(), fmt.Sprintf("projects/%d", id))
+	if err != nil {
+		return "", err
+	}
+	var raw struct {
+		PathWithNamespace string `json:"path_with_namespace"`
+	}
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		return "", fmt.Errorf("decode glab api project %d: %w", id, err)
+	}
+	if raw.PathWithNamespace == "" {
+		return "", fmt.Errorf("glab api project %d did not report path_with_namespace", id)
+	}
+	g.projectMu.Lock()
+	if g.projectPaths == nil {
+		g.projectPaths = map[int]string{}
+	}
+	g.projectPaths[id] = raw.PathWithNamespace
+	g.projectMu.Unlock()
+	return raw.PathWithNamespace, nil
+}
+
 func gitLabMRState(state PRState) string {
 	switch state {
 	case PRStateMerged:
@@ -420,14 +503,16 @@ func gitLabMRState(state PRState) string {
 
 func parseGitLabMRs(out string, role PRRole) ([]PullRequest, error) {
 	var raw []struct {
-		IID          int    `json:"iid"`
-		Title        string `json:"title"`
-		WebURL       string `json:"web_url"`
-		State        string `json:"state"`
-		Draft        bool   `json:"draft"`
-		SourceBranch string `json:"source_branch"`
-		TargetBranch string `json:"target_branch"`
-		Author       struct {
+		IID             int    `json:"iid"`
+		Title           string `json:"title"`
+		WebURL          string `json:"web_url"`
+		State           string `json:"state"`
+		Draft           bool   `json:"draft"`
+		SourceBranch    string `json:"source_branch"`
+		TargetBranch    string `json:"target_branch"`
+		SourceProjectID int    `json:"source_project_id"`
+		TargetProjectID int    `json:"target_project_id"`
+		Author          struct {
 			Username string `json:"username"`
 		} `json:"author"`
 		References struct {
@@ -449,11 +534,13 @@ func parseGitLabMRs(out string, role PRRole) ([]PullRequest, error) {
 			roles = []PRRole{role}
 		}
 		result = append(result, PullRequest{
-			Forge: GitLab, Repo: gitLabRepoFromReference(r.References.Full),
+			Forge: GitLab, Host: ConfiguredHost(GitLab), Repo: gitLabRepoFromReference(r.References.Full),
 			Number: r.IID, Title: r.Title, URL: r.WebURL,
 			State: gitLabPRState(r.State), Draft: r.Draft,
 			Author: r.Author.Username, Roles: roles, Detail: PRDetailFull,
-			HeadBranch: r.SourceBranch, BaseBranch: r.TargetBranch,
+			CrossRepository: r.SourceProjectID != 0 && r.TargetProjectID != 0 && r.SourceProjectID != r.TargetProjectID,
+			headRepoID:      r.SourceProjectID,
+			HeadBranch:      r.SourceBranch, BaseBranch: r.TargetBranch,
 			Mergeable: strings.ToLower(r.DetailedMergeStatus),
 			CreatedAt: created, UpdatedAt: updated,
 		})
