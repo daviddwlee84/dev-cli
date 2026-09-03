@@ -117,7 +117,7 @@ func writeManagedFragmentOS(request ManagedFragmentWriteRequest) error {
 	published := false
 	defer func() {
 		if !published {
-			_ = deleteManagedWindowsHandle(stageHandle)
+			_ = deleteManagedWindowsObject(stageHandle)
 		}
 		_ = staged.Close()
 	}()
@@ -159,7 +159,7 @@ func writeManagedFragmentOS(request ManagedFragmentWriteRequest) error {
 
 	if request.Existed {
 		if err := replaceManagedWindowsFragment(
-			staged, stagedPath, stagedSnapshot, directory, directoryIdentity, request, before,
+			staged, stagedPath, stagedSnapshot, directoryHandle, directory, directoryIdentity, request, before, &published,
 		); err != nil {
 			return err
 		}
@@ -193,10 +193,12 @@ func replaceManagedWindowsFragment(
 	staged *os.File,
 	stagedPath string,
 	stagedSnapshot managedWindowsSnapshot,
+	directoryHandle windows.Handle,
 	directory string,
 	directoryIdentity managedWindowsIdentity,
 	request ManagedFragmentWriteRequest,
 	before managedWindowsSnapshot,
+	published *bool,
 ) error {
 	targetHandle, targetInformation, err := openManagedWindowsPath(
 		request.Path,
@@ -243,12 +245,44 @@ func replaceManagedWindowsFragment(
 	if err != nil {
 		return err
 	}
-	if err := replaceManagedWindowsFileAtomic(request.Path, stagedPath, backupPath); err != nil {
-		return managedWindowsError(request.Path, "atomic replacement failed: %v", err)
+	targetRenameHandle, err := reopenManagedWindowsHandle(targetHandle, windows.DELETE|windows.READ_CONTROL)
+	if err != nil {
+		return managedWindowsError(request.Path, "cannot reopen validated target for backup: %v", err)
+	}
+	defer windows.CloseHandle(targetRenameHandle)
+	if err := renameManagedWindowsHandleNoReplace(targetRenameHandle, directoryHandle, filepath.Base(backupPath)); err != nil {
+		return managedWindowsError(request.Path, "cannot move validated target to backup: %v", err)
+	}
+	if err := validateManagedWindowsBackup(target, backupPath, targetSnapshot, directory, directoryIdentity); err != nil {
+		return err
 	}
 	if managedWindowsAfterBackup != nil {
 		managedWindowsAfterBackup(backupPath, request.Path)
 	}
+	if _, err := os.Lstat(request.Path); err == nil {
+		return managedWindowsError(request.Path, "a concurrent target appeared after backup")
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if finalStage, err := validateManagedWindowsStage(staged, stagedPath, request.Content); err != nil ||
+		finalStage.identity != stagedSnapshot.identity || finalStage.digest != stagedSnapshot.digest {
+		if err != nil {
+			return err
+		}
+		return managedWindowsError(stagedPath, "changed after target backup")
+	}
+	if err := revalidateManagedWindowsDirectory(directory, directoryIdentity); err != nil {
+		return err
+	}
+	stageRenameHandle, err := reopenManagedWindowsHandle(windows.Handle(staged.Fd()), windows.DELETE|windows.READ_CONTROL)
+	if err != nil {
+		return managedWindowsError(stagedPath, "cannot reopen validated stage for publication: %v", err)
+	}
+	defer windows.CloseHandle(stageRenameHandle)
+	if err := renameManagedWindowsHandleNoReplace(stageRenameHandle, directoryHandle, filepath.Base(request.Path)); err != nil {
+		return managedWindowsError(request.Path, "publication conflicted after backup: %v", err)
+	}
+	*published = true
 	publishedSnapshot, publishedErr := readManagedWindowsSnapshot(request.Path)
 	backupSnapshot, backupErr := readManagedWindowsSnapshot(backupPath)
 	pathErr := revalidateManagedWindowsDirectory(directory, directoryIdentity)
@@ -256,32 +290,14 @@ func replaceManagedWindowsFragment(
 		publishedSnapshot.identity != stagedSnapshot.identity || publishedSnapshot.digest != stagedSnapshot.digest ||
 		!bytes.Equal(publishedSnapshot.content, request.Content) ||
 		backupSnapshot.identity != targetSnapshot.identity || backupSnapshot.digest != targetSnapshot.digest {
-		conflict := managedWindowsError(request.Path, "changed at the atomic replacement boundary")
-		rollbackErr := rollbackManagedWindowsReplacement(
-			request.Path, backupPath, staged, stagedSnapshot, backupSnapshot, directory, directoryIdentity,
-		)
-		return errors.Join(conflict, publishedErr, backupErr, pathErr, rollbackErr)
+		return errors.Join(managedWindowsError(request.Path, "changed at the guarded replacement boundary"), publishedErr, backupErr, pathErr)
 	}
 	if err := validateManagedWindowsBackup(target, backupPath, targetSnapshot, directory, directoryIdentity); err != nil {
-		rollbackErr := rollbackManagedWindowsReplacement(
-			request.Path, backupPath, staged, stagedSnapshot, backupSnapshot, directory, directoryIdentity,
-		)
-		return errors.Join(err, rollbackErr)
+		return err
 	}
 
-	deleteHandle, err := reopenManagedWindowsHandle(targetHandle, windows.DELETE|windows.READ_CONTROL)
-	if err != nil {
-		rollbackErr := rollbackManagedWindowsReplacement(
-			request.Path, backupPath, staged, stagedSnapshot, backupSnapshot, directory, directoryIdentity,
-		)
-		return errors.Join(managedWindowsError(backupPath, "cannot reopen validated private backup for deletion: %v", err), rollbackErr)
-	}
-	defer windows.CloseHandle(deleteHandle)
-	if err := deleteManagedWindowsHandle(deleteHandle); err != nil {
-		rollbackErr := rollbackManagedWindowsReplacement(
-			request.Path, backupPath, staged, stagedSnapshot, backupSnapshot, directory, directoryIdentity,
-		)
-		return errors.Join(managedWindowsError(backupPath, "cannot delete validated private backup: %v", err), rollbackErr)
+	if err := deleteManagedWindowsHandle(targetRenameHandle); err != nil {
+		return managedWindowsError(backupPath, "cannot delete validated private backup: %v", err)
 	}
 	// Delete disposition is the commit point: the new target is fully validated
 	// and the old object is being removed through its held handle. A close error
@@ -670,6 +686,15 @@ func deleteManagedWindowsHandle(handle windows.Handle) error {
 		(*byte)(unsafe.Pointer(&disposition)),
 		uint32(unsafe.Sizeof(disposition)),
 	)
+}
+
+func deleteManagedWindowsObject(handle windows.Handle) error {
+	deleteHandle, err := reopenManagedWindowsHandle(handle, windows.DELETE|windows.READ_CONTROL)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(deleteHandle)
+	return deleteManagedWindowsHandle(deleteHandle)
 }
 
 func validateManagedWindowsExpected(path string, expected []byte, expectedIdentity fs.FileInfo, existed bool) (managedWindowsSnapshot, error) {

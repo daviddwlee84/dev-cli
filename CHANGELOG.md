@@ -45,9 +45,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
-- Windows fleet config and generated-fragment publication now defer DELETE
-  access until the guarded rename/delete boundary, so held validation handles
-  do not block atomic replacement or concurrent-change detection.
+- Windows fleet config and generated-fragment publication now use exact held
+  handles for guarded backup and no-replace publication, so validation handles
+  do not block replacement and a concurrently created target wins safely.
 - Windows SSH staging files now explicitly receive current-user ownership as
   well as a protected DACL, including when an elevated token would otherwise
   default new files to the Administrators group.

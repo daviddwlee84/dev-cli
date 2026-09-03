@@ -71,7 +71,7 @@ func WritePrivateConfigFile(path string, content []byte, overwrite bool) error {
 	published := false
 	defer func() {
 		if !published {
-			_ = deleteManagedWindowsHandle(stageHandle)
+			_ = deleteManagedWindowsObject(stageHandle)
 		}
 		_ = staged.Close()
 	}()
@@ -140,27 +140,52 @@ func WritePrivateConfigFile(path string, content []byte, overwrite bool) error {
 	if err != nil {
 		return err
 	}
-	if err := replaceManagedWindowsFileAtomic(path, stagedPath, backupPath); err != nil {
-		return fmt.Errorf("atomically replace fleet config: %w", err)
+	targetRenameHandle, err := reopenManagedWindowsHandle(windows.Handle(target.Fd()), windows.DELETE|windows.READ_CONTROL)
+	if err != nil {
+		return fmt.Errorf("reopen validated fleet config for backup: %w", err)
 	}
+	defer windows.CloseHandle(targetRenameHandle)
+	if err := renameManagedWindowsHandleNoReplace(targetRenameHandle, directoryHandle, filepath.Base(backupPath)); err != nil {
+		return fmt.Errorf("move validated fleet config to backup: %w", err)
+	}
+	backupSnapshot, err := readManagedWindowsSnapshot(backupPath)
+	if err != nil || backupSnapshot.identity != before.identity || backupSnapshot.digest != before.digest {
+		return errors.Join(errors.New("fleet config backup changed at publication boundary"), err)
+	}
+	if _, err := os.Lstat(path); err == nil {
+		return errors.New("fleet config target appeared after backup")
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if finalStage, err := validateManagedWindowsStage(staged, stagedPath, content); err != nil ||
+		finalStage.identity != stageSnapshot.identity || finalStage.digest != stageSnapshot.digest {
+		if err != nil {
+			return err
+		}
+		return errors.New("fleet config stage changed after target backup")
+	}
+	if err := revalidatePrivateConfigWindowsDirectory(filepath.Dir(path), directoryIdentity); err != nil {
+		return err
+	}
+	stageRenameHandle, err := reopenManagedWindowsHandle(stageHandle, windows.DELETE|windows.READ_CONTROL)
+	if err != nil {
+		return fmt.Errorf("reopen validated fleet config stage: %w", err)
+	}
+	defer windows.CloseHandle(stageRenameHandle)
+	if err := renameManagedWindowsHandleNoReplace(stageRenameHandle, directoryHandle, filepath.Base(path)); err != nil {
+		return fmt.Errorf("publish fleet config after backup: %w", err)
+	}
+	published = true
 	publishedSnapshot, publishedErr := readManagedWindowsSnapshot(path)
 	backupSnapshot, backupErr := readManagedWindowsSnapshot(backupPath)
 	parentErr := revalidatePrivateConfigWindowsDirectory(filepath.Dir(path), directoryIdentity)
 	if publishedErr != nil || backupErr != nil || parentErr != nil ||
 		publishedSnapshot.identity != stageSnapshot.identity || publishedSnapshot.digest != stageSnapshot.digest ||
 		backupSnapshot.identity != before.identity {
-		rollbackErr := rollbackPrivateConfigWindowsReplacement(path, backupPath, staged, stageSnapshot)
-		return errors.Join(errors.New("fleet config changed at replacement boundary"), publishedErr, backupErr, parentErr, rollbackErr)
+		return errors.Join(errors.New("fleet config changed at guarded replacement boundary"), publishedErr, backupErr, parentErr)
 	}
-	deleteHandle, err := reopenManagedWindowsHandle(windows.Handle(target.Fd()), windows.DELETE|windows.READ_CONTROL)
-	if err != nil {
-		rollbackErr := rollbackPrivateConfigWindowsReplacement(path, backupPath, staged, stageSnapshot)
-		return errors.Join(fmt.Errorf("reopen validated fleet config backup for deletion: %w", err), rollbackErr)
-	}
-	defer windows.CloseHandle(deleteHandle)
-	if err := deleteManagedWindowsHandle(deleteHandle); err != nil {
-		rollbackErr := rollbackPrivateConfigWindowsReplacement(path, backupPath, staged, stageSnapshot)
-		return errors.Join(fmt.Errorf("delete validated fleet config backup: %w", err), rollbackErr)
+	if err := deleteManagedWindowsHandle(targetRenameHandle); err != nil {
+		return fmt.Errorf("delete validated fleet config backup: %w", err)
 	}
 	// Delete disposition is the commit point. Once it succeeds, returning an
 	// error would make deferred stage cleanup remove the already-published target.
