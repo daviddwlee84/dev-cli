@@ -4,6 +4,7 @@ package fleet
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -125,22 +126,30 @@ func TestWindowsWritePrivateConfigFileProtectsAndPreservesUnsafeTargets(t *testi
 			t.Fatal(err)
 		}
 		writeProtectedWindowsFile(t, concurrent, []byte("concurrent"))
+		var concurrentErr error
 		privateConfigWindowsBeforePublish = func(string) {
 			from, _ := windows.UTF16PtrFromString(concurrent)
 			to, _ := windows.UTF16PtrFromString(path)
-			if err := windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH); err != nil {
-				t.Fatal(err)
-			}
+			concurrentErr = windows.MoveFileEx(from, to, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
 		}
 		t.Cleanup(func() { privateConfigWindowsBeforePublish = nil })
 		err := WritePrivateConfigFile(path, []byte("replacement"), true)
 		privateConfigWindowsBeforePublish = nil
-		if err == nil {
-			t.Fatal("force overwrite replaced a concurrent object")
-		}
 		got, readErr := os.ReadFile(path)
-		if readErr != nil || !bytes.Equal(got, []byte("concurrent")) {
-			t.Fatalf("concurrent bytes changed: %q, err %v (write err %v)", got, readErr, err)
+		switch {
+		case concurrentErr == nil:
+			if err == nil {
+				t.Fatal("force overwrite replaced a concurrent object")
+			}
+			if readErr != nil || !bytes.Equal(got, []byte("concurrent")) {
+				t.Fatalf("concurrent bytes changed: %q, err %v (write err %v)", got, readErr, err)
+			}
+		case errors.Is(concurrentErr, windows.ERROR_ACCESS_DENIED), errors.Is(concurrentErr, windows.ERROR_SHARING_VIOLATION):
+			if err != nil || readErr != nil || !bytes.Equal(got, []byte("replacement")) {
+				t.Fatalf("held-handle replacement = %q, read err %v, write err %v, concurrent err %v", got, readErr, err, concurrentErr)
+			}
+		default:
+			t.Fatalf("unexpected concurrent replacement error: %v", concurrentErr)
 		}
 	})
 }
