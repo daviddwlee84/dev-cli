@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.10] - 2026-09-04
+
 ### Fixed
 
 - REMOTE cloning now stays visibly pending with an animated status, lets `enter`
@@ -539,7 +541,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.9...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.10...HEAD
+[0.2.10]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.6...v0.2.7
