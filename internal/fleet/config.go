@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -13,7 +14,11 @@ import (
 	devconfig "github.com/daviddwlee84/dev-cli/internal/config"
 )
 
-const ConfigSchemaVersion = 1
+const (
+	ConfigSchemaVersion = 1
+	RemoteOSPOSIX       = "posix"
+	RemoteOSWindows     = "windows"
+)
 
 type PasswordSource struct {
 	Type  string `toml:"type" json:"type"`
@@ -37,11 +42,15 @@ type Host struct {
 	Port         int    `toml:"port" json:"port,omitempty"`
 	IdentityFile string `toml:"identity_file" json:"identity_file,omitempty"`
 	DevPath      string `toml:"dev_path" json:"dev_path,omitempty"`
+	RemoteOS     string `toml:"remote_os" json:"remote_os"`
 
 	ConnectTimeout devconfig.Duration `toml:"connect_timeout" json:"-"`
 	CommandTimeout devconfig.Duration `toml:"command_timeout" json:"-"`
 
 	SSHLoginPasswordSource PasswordSource `toml:"ssh_login_password_source" json:"ssh_login_password_source"`
+
+	origin  string
+	managed bool
 }
 
 type Config struct {
@@ -49,6 +58,8 @@ type Config struct {
 	Defaults      Defaults `toml:"defaults"`
 	Hosts         []Host   `toml:"hosts"`
 	Source        string   `toml:"-"`
+
+	managedFragmentDir string
 }
 
 func DefaultConfig() Config {
@@ -68,22 +79,55 @@ func ConfigFile() string {
 	return filepath.Join(devconfig.ConfigHome(), "dev", "remotes.toml")
 }
 
-func LoadConfig(path string) (Config, error) {
-	cfg := DefaultConfig()
-	if path == "" {
-		path = ConfigFile()
+// ManagedFragmentDirectory reports the generated overlay directory associated
+// with this loaded configuration. It contains no connection credentials.
+func (c Config) ManagedFragmentDirectory() string { return c.managedFragmentDir }
+
+// Origin reports the file that supplied this host. It is deliberately omitted
+// from TOML and JSON output.
+func (h Host) Origin() string { return h.origin }
+
+// Managed reports whether this host came from a dev-owned managed fragment. It
+// is deliberately omitted from TOML and JSON output.
+func (h Host) Managed() bool { return h.managed }
+
+// EffectiveRemoteOS preserves compatibility with configurations written before
+// remote_os existed: an empty value always means a POSIX target.
+func (h Host) EffectiveRemoteOS() string {
+	if h.RemoteOS == "" {
+		return RemoteOSPOSIX
 	}
-	metadata, err := toml.DecodeFile(path, &cfg)
+	return h.RemoteOS
+}
+
+func LoadConfig(primaryPath string) (Config, error) {
+	cfg := DefaultConfig()
+	if primaryPath == "" {
+		primaryPath = ConfigFile()
+	}
+	cfg.managedFragmentDir = ManagedFragmentDir(primaryPath)
+
+	metadata, err := toml.DecodeFile(primaryPath, &cfg)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return cfg, nil
+		// A missing primary is valid. Managed fragments still participate.
 	case err != nil:
-		return cfg, fmt.Errorf("read %s: %w", path, err)
+		return cfg, fmt.Errorf("read %s: %w", primaryPath, err)
+	default:
+		if undecoded := metadata.Undecoded(); len(undecoded) > 0 {
+			return cfg, fmt.Errorf("read %s: unknown field(s): %v", primaryPath, undecoded)
+		}
+		cfg.Source = primaryPath
+		for index := range cfg.Hosts {
+			cfg.Hosts[index].origin = primaryPath
+		}
 	}
-	if undecoded := metadata.Undecoded(); len(undecoded) > 0 {
-		return cfg, fmt.Errorf("read %s: unknown field(s): %v", path, undecoded)
+
+	managed, err := loadManagedFragments(primaryPath)
+	if err != nil {
+		return cfg, err
 	}
-	cfg.Source = path
+	cfg.Hosts = append(cfg.Hosts, managed...)
 	cfg.ApplyDefaults()
 	if err := cfg.Validate(); err != nil {
 		return cfg, err
@@ -96,6 +140,9 @@ func (c *Config) ApplyDefaults() {
 		host := &c.Hosts[index]
 		if host.DevPath == "" {
 			host.DevPath = c.Defaults.DevPath
+		}
+		if host.RemoteOS == "" {
+			host.RemoteOS = RemoteOSPOSIX
 		}
 		if host.ConnectTimeout.Duration == 0 {
 			host.ConnectTimeout = c.Defaults.ConnectTimeout
@@ -116,15 +163,20 @@ func (c Config) Validate() error {
 	if c.Defaults.ConnectTimeout.Duration <= 0 || c.Defaults.CommandTimeout.Duration <= 0 {
 		return errors.New("default timeouts must be positive")
 	}
-	seen := map[string]bool{}
+	type aliasOwner struct {
+		name    string
+		managed bool
+	}
+	seenNames := map[string]bool{}
+	seenAliases := map[string]aliasOwner{}
 	for index, host := range c.Hosts {
 		if strings.TrimSpace(host.Name) == "" || host.Name != strings.TrimSpace(host.Name) {
 			return fmt.Errorf("hosts[%d].name is required and must be trimmed", index)
 		}
-		if seen[host.Name] {
+		if seenNames[host.Name] {
 			return fmt.Errorf("duplicate host name %q", host.Name)
 		}
-		seen[host.Name] = true
+		seenNames[host.Name] = true
 		if host.SSHAlias == "" && host.Hostname == "" {
 			return fmt.Errorf("host %q must define ssh_alias or hostname", host.Name)
 		}
@@ -134,14 +186,76 @@ func (c Config) Validate() error {
 		if host.ConnectTimeout.Duration <= 0 || host.CommandTimeout.Duration <= 0 {
 			return fmt.Errorf("host %q timeouts must be positive", host.Name)
 		}
-		if host.DevPath != "" && host.DevPath != "auto" && !filepath.IsAbs(devconfig.Expand(host.DevPath)) {
-			return fmt.Errorf("host %q dev_path must be auto or absolute", host.Name)
+		remoteOS := host.EffectiveRemoteOS()
+		if remoteOS != RemoteOSPOSIX && remoteOS != RemoteOSWindows {
+			return fmt.Errorf("host %q remote_os %q: want posix or windows", host.Name, host.RemoteOS)
+		}
+		if err := validateDevPath(host, remoteOS); err != nil {
+			return err
 		}
 		if err := validatePasswordSource(host.Name, host.SSHLoginPasswordSource); err != nil {
 			return err
 		}
+		if host.SSHAlias != "" {
+			aliasKey := strings.ToLower(host.SSHAlias)
+			if previous, ok := seenAliases[aliasKey]; ok && (previous.managed || host.managed) {
+				return fmt.Errorf("ssh_alias %q is shared by host %q and managed host %q", host.SSHAlias, previous.name, host.Name)
+			}
+			if _, ok := seenAliases[aliasKey]; !ok {
+				seenAliases[aliasKey] = aliasOwner{name: host.Name, managed: host.managed}
+			}
+		}
 	}
 	return nil
+}
+
+func validateDevPath(host Host, remoteOS string) error {
+	if host.DevPath == "" || host.DevPath == "auto" {
+		return nil
+	}
+	if host.managed && remoteOS == RemoteOSWindows {
+		return fmt.Errorf("managed Windows host %q requires dev_path = auto", host.Name)
+	}
+	valid := false
+	switch remoteOS {
+	case RemoteOSPOSIX:
+		valid = path.IsAbs(host.DevPath) && !strings.ContainsRune(host.DevPath, '\x00')
+	case RemoteOSWindows:
+		valid = isWindowsAbs(host.DevPath)
+	}
+	if !valid {
+		return fmt.Errorf("host %q dev_path must be auto or an absolute %s path", host.Name, remoteOS)
+	}
+	return nil
+}
+
+func isWindowsAbs(value string) bool {
+	if value == "" || strings.ContainsRune(value, '\x00') {
+		return false
+	}
+	isSeparator := func(value byte) bool { return value == '\\' || value == '/' }
+	isLetter := func(value byte) bool {
+		return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z'
+	}
+	if len(value) >= 3 && isLetter(value[0]) && value[1] == ':' && isSeparator(value[2]) {
+		return true
+	}
+	normalized := strings.ReplaceAll(value, "/", "\\")
+	if strings.HasPrefix(normalized, `\\.\`) {
+		return false
+	}
+	extendedUNC := `\\?\UNC\`
+	if len(normalized) >= len(extendedUNC) && strings.EqualFold(normalized[:len(extendedUNC)], extendedUNC) {
+		normalized = `\\` + normalized[len(extendedUNC):]
+	} else if strings.HasPrefix(normalized, `\\?\`) {
+		tail := strings.TrimPrefix(normalized, `\\?\`)
+		return len(tail) >= 3 && isLetter(tail[0]) && tail[1] == ':' && tail[2] == '\\'
+	}
+	if !strings.HasPrefix(normalized, `\\`) {
+		return false
+	}
+	parts := strings.Split(strings.TrimPrefix(normalized, `\\`), `\`)
+	return len(parts) >= 2 && parts[0] != "" && parts[1] != ""
 }
 
 func validatePasswordSource(host string, source PasswordSource) error {

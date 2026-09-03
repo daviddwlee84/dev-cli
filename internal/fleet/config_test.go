@@ -94,14 +94,18 @@ func TestTransportPreservesRemoteNoDevExitCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin)
-	host := Host{Name: "lab", SSHAlias: "lab", DevPath: "auto"}
-	host.ConnectTimeout.Duration = time.Second
-	// The timeout is not under test. Leave enough headroom for a full -race
-	// suite, where process startup can be delayed by other package tests.
-	host.CommandTimeout.Duration = time.Minute
-	result := (Transport{}).Run(context.Background(), host, []string{"fleet", "_snapshot"}, nil, false)
-	if result.ExitCode != 127 {
-		t.Fatalf("transport exit = %d, stderr=%s", result.ExitCode, result.Stderr)
+	for _, remoteOS := range []string{RemoteOSPOSIX, RemoteOSWindows} {
+		t.Run(remoteOS, func(t *testing.T) {
+			host := Host{Name: "lab", SSHAlias: "lab", DevPath: "auto", RemoteOS: remoteOS}
+			host.ConnectTimeout.Duration = time.Second
+			// The timeout is not under test. Leave enough headroom for a full -race
+			// suite, where process startup can be delayed by other package tests.
+			host.CommandTimeout.Duration = time.Minute
+			result := (Transport{}).Run(context.Background(), host, []string{"fleet", "_snapshot"}, nil, false)
+			if result.ExitCode != 127 {
+				t.Fatalf("transport exit = %d, stderr=%s", result.ExitCode, result.Stderr)
+			}
+		})
 	}
 }
 
@@ -126,6 +130,11 @@ func TestCacheRejectsChangedEndpoint(t *testing.T) {
 	changedPort.Port = 2222
 	if _, _, ok := LoadCache(changedPort); ok {
 		t.Fatal("cache survived SSH port change")
+	}
+	changedOS := host
+	changedOS.RemoteOS = RemoteOSWindows
+	if _, _, ok := LoadCache(changedOS); ok {
+		t.Fatal("cache survived remote OS change")
 	}
 }
 
