@@ -2,7 +2,7 @@
 description: 渲染 deterministic operational context，或交給 configured local agent，而不建立第二個 lifecycle authority。
 authority: project
 status: stable
-verified_on: 2026-09-02
+verified_on: 2026-09-03
 tested_with: OpenCode 1.18.25
 lang: zh-TW
 ---
@@ -19,7 +19,7 @@ permission manager 或 lifecycle engine。
 !!! info "時效"
     **Authority：**`internal/cli/prompt_command.go`、`internal/promptkit`、
     `internal/handoff`、`internal/closeout` 與 `internal/retire/audit.go` ·
-    **Status：**stable · **Verified：**2026-09-02。
+    **Status：**stable · **Verified：**2026-09-03。
 
 ## 只升級到需要的層級
 
@@ -45,6 +45,8 @@ parse reply、不會再跑下一輪，也不會把回答轉換為 mutation appro
 ```bash
 dev prompt list
 dev prompt list --json
+dev prompt agents
+dev prompt agents --json
 dev prompt render pr-triage
 dev prompt render session-close
 dev prompt render workspace-closeout [repo-or-checkout]
@@ -61,6 +63,19 @@ version、generation time、host、scope、適用時的 target、capabilities、
 recipe-specific context。收集到的 repository text、branch name、request title 與
 note 都是 data，不是 instruction。Missing 或 failed evidence 會維持明確 capability
 gap／warning，絕不變成看似安心的 clean/empty value。
+
+### 安全地發現 configured profiles
+
+`dev prompt agents` 印出 sorted `PROFILE DEFAULT RUN OPEN DESCRIPTION` table。
+Direct launcher 只顯示 `filepath.Base(command[0])`，shell launcher 顯示 `shell`，
+unavailable mode 顯示 `—`。Stable `--json` form 是相同 profile 順序的 array；每個
+object 都有 `name`、`description`、`default`，以及 nested `run`／`open` object，
+後者只含 `configured`、`kind`（`command`、`shell` 或 `none`）與 `executable`
+（direct command basename，其他情況為空字串）。
+
+兩種 form 都刻意不顯示 command arguments、shell source、executable directories、
+environment、rendered prompt 或 config path。Empty configuration 的 human output
+會明確說沒有 profile，JSON 則是 `[]`。
 
 ## 選擇 render、run 或 open
 
@@ -80,14 +95,20 @@ dev prompt open workspace-closeout . --agent my-agent
 dev prompt open workspace-closeout . --dry-run
 ```
 
-`--dry-run` 解析 agent、working directory、transport、timeout 與 safe command
-preview，再印出完整 rendered prompt，但不啟動 process，因此不建立 writer claim。
-真正的 `run` 或 `open` 若 working directory 是 checkout，即使 recipe 要求 read-only
-analysis，也會被視為 writer claim；shared-checkout occupancy guard 仍適用。這不是目前
-agent 繼續自己的工作，而是新 agent claim，因此 invoking agent 的 pane **不會**被排除。
-只有在協調好 disjoint ownership 後才可使用 `--allow-shared-checkout`。
+`run` 與 `open` 會先解析 globally selected profile 及其 requested launcher，之後才
+收集 recipe。Non-dry `open` 也會在同一個 early boundary 先檢查 interactive terminal。
+Missing、unknown 或 ambiguous profile、unavailable mode 與 missing TTY 因此會在不查詢
+forge 或 runtime 的情況下失敗。Diagnostic 會列出 sorted mode-capable profiles，並指向
+`dev prompt agents`。
 
-除 dry-run 外，`open` 必須有 interactive terminal，而且不接受 timeout。只有 `run`
+`--dry-run` 接著解析 working directory、transport、timeout 與 safe command preview，
+再印出完整 rendered prompt，但不啟動 process，因此不建立 writer claim。真正的 `run`
+或 `open` 若 collected working directory 是 checkout，shared-checkout occupancy guard 會
+在 collection 後套用。這不是目前 agent 繼續自己的工作，而是新 agent claim，因此
+invoking agent 的 pane **不會**被排除。只有在協調好 disjoint ownership 後才可使用
+`--allow-shared-checkout`。
+
+`open` 不接受 timeout。只有 `run`
 可設定 timeout，並在 absent/zero 時取得 10 分鐘 default。Batch timeout 到期時，`dev`
 會終止 launcher process tree，避免 descendant agent 在 handoff 返回後仍繼續修改 checkout。
 
@@ -99,6 +120,7 @@ config 中設定一個或多個 local command：
 ```toml
 [[agent]]
 name = "my-agent"
+description = "Local review and implementation agent"
 default = true
 
 [agent.run]
@@ -118,6 +140,7 @@ OpenCode 1.18.25 提供 `opencode run [message..]`；加上 `--interactive` 會�
 ```toml
 [[agent]]
 name = "opencode"
+description = "OpenCode batch and interactive handoff"
 default = true
 
 [agent.run]
@@ -132,16 +155,25 @@ input = "file"
 
 這只是文件範例，不是 built-in default。OpenCode 升級後請重新檢查 `opencode run --help`；不要加 `--auto`，那會改變 configured agent 的 approval policy。
 
-Selection 是 deterministic：
+Selection 是 deterministic 且 global：
 
 1. `--agent NAME` 選擇該 name（case-insensitive match）。
 2. 省略時選唯一 `default = true` 的 entry。
 3. 沒有 default 時，若只設定一個 `[[agent]]`，就選它。
-4. 多個 entries 且沒有 default 時視為 ambiguous，列出 names 後失敗。
+4. 多個 entries 且沒有 default 時視為 ambiguous 並失敗。
+5. Selection 完成後，才要求該 profile 的 requested launcher。
 
-Name 必填、不能有 surrounding whitespace，並且 case-insensitively unique；最多一個
-entry 可為 default。每個 agent 至少定義 `[agent.run]` 或 `[agent.open]` 其中之一；
-要求未定義的 mode 會失敗，不會借用另一個 launcher。
+Step 5 絕不 fallback 到另一個 profile，即使另一個 profile 支援 requested mode。Name
+必填、不能有 surrounding whitespace，並且 case-insensitively unique；`description`
+為 optional，可在 inventory 與 completion 中說明 profile。最多一個 entry 可為 default；
+每個 agent 至少定義 `[agent.run]` 或 `[agent.open]` 其中之一。
+
+`--agent` completion 會依 mode 過濾：`prompt run` 只提供 run-capable profiles，
+`prompt open` 只提供 open-capable profiles。它會在 Cobra parse root `--config` 後載入
+該 config，並可用 `default · run · <description>` 或
+`default · open · <description>` 說明 candidate。Shared completion protocol 會 sanitize
+tab/newline。Invalid config 會 degrade 成沒有 dynamic candidate，且停用 filesystem
+completion。
 
 Launcher fields：
 

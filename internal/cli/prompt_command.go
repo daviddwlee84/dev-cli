@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -39,6 +40,7 @@ authorization.`,
 	}
 	cmd.AddCommand(
 		newPromptListCmd(app),
+		newPromptAgentsCmd(app),
 		newPromptModeCmd(app, promptRender),
 		newPromptModeCmd(app, promptRun),
 		newPromptModeCmd(app, promptOpen),
@@ -75,6 +77,99 @@ func newPromptListCmd(app *App) *cobra.Command {
 	return cmd
 }
 
+type promptAgentInventory struct {
+	Name        string                       `json:"name"`
+	Description string                       `json:"description"`
+	Default     bool                         `json:"default"`
+	Run         promptAgentLauncherInventory `json:"run"`
+	Open        promptAgentLauncherInventory `json:"open"`
+}
+
+type promptAgentLauncherInventory struct {
+	Configured bool   `json:"configured"`
+	Kind       string `json:"kind"`
+	Executable string `json:"executable"`
+}
+
+func newPromptAgentsCmd(app *App) *cobra.Command {
+	var jsonOut bool
+	cmd := &cobra.Command{
+		Use:   "agents",
+		Short: "List configured agent profiles without private launch details",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			profiles := promptAgentInventoryRows(app.Cfg.Agents)
+			if jsonOut {
+				encoder := json.NewEncoder(app.Out)
+				encoder.SetIndent("", "  ")
+				return encoder.Encode(profiles)
+			}
+			if len(profiles) == 0 {
+				fmt.Fprintln(app.Out, "No agent profiles configured.")
+				return nil
+			}
+			table := app.newTable("PROFILE", "DEFAULT", "RUN", "OPEN", "DESCRIPTION")
+			for _, profile := range profiles {
+				defaultValue := "—"
+				if profile.Default {
+					defaultValue = "yes"
+				}
+				table.Add(profile.Name, defaultValue, promptAgentLauncherDisplay(profile.Run),
+					promptAgentLauncherDisplay(profile.Open), dash(promptAgentHumanDescription(profile.Description)))
+			}
+			table.Render(app.Out)
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit stable structured agent metadata")
+	return cmd
+}
+
+func promptAgentInventoryRows(agents []config.Agent) []promptAgentInventory {
+	sorted := append([]config.Agent(nil), agents...)
+	sort.Slice(sorted, func(i, j int) bool {
+		left, right := strings.ToLower(sorted[i].Name), strings.ToLower(sorted[j].Name)
+		if left == right {
+			return sorted[i].Name < sorted[j].Name
+		}
+		return left < right
+	})
+	rows := make([]promptAgentInventory, 0, len(sorted))
+	for _, agent := range sorted {
+		rows = append(rows, promptAgentInventory{
+			Name: agent.Name, Description: agent.Description, Default: agent.Default,
+			Run: promptAgentLauncherInventoryFor(agent.Run), Open: promptAgentLauncherInventoryFor(agent.Open),
+		})
+	}
+	return rows
+}
+
+func promptAgentLauncherInventoryFor(launcher config.AgentLauncher) promptAgentLauncherInventory {
+	switch {
+	case len(launcher.Command) > 0:
+		return promptAgentLauncherInventory{Configured: true, Kind: "command", Executable: filepath.Base(launcher.Command[0])}
+	case strings.TrimSpace(launcher.Shell) != "":
+		return promptAgentLauncherInventory{Configured: true, Kind: "shell"}
+	default:
+		return promptAgentLauncherInventory{Kind: "none"}
+	}
+}
+
+func promptAgentLauncherDisplay(launcher promptAgentLauncherInventory) string {
+	switch launcher.Kind {
+	case "command":
+		return launcher.Executable
+	case "shell":
+		return "shell"
+	default:
+		return "—"
+	}
+}
+
+func promptAgentHumanDescription(description string) string {
+	return strings.NewReplacer("\t", " ", "\n", " ", "\r", " ").Replace(strings.TrimSpace(description))
+}
+
 func newPromptModeCmd(app *App, mode promptMode) *cobra.Command {
 	var agentName string
 	var dryRun bool
@@ -86,7 +181,7 @@ func newPromptModeCmd(app *App, mode promptMode) *cobra.Command {
 		flags := cmd.PersistentFlags()
 		flags.StringVar(&agentName, "agent", "", "configured agent name (default or sole agent when omitted)")
 		flags.BoolVar(&dryRun, "dry-run", false, "show the resolved launch and prompt without starting a process")
-		registerFlagCompletion(cmd, "agent", agentCompletions(app))
+		registerFlagCompletion(cmd, "agent", completePromptAgents(app, mode))
 	}
 	cmd.AddCommand(
 		newPromptPRTriageCmd(app, mode, &agentName, &dryRun),
@@ -180,6 +275,15 @@ func executePrompt(app *App, mode promptMode, agentName string, dryRun bool, rec
 	if !ok {
 		return fmt.Errorf("unknown prompt recipe %q", recipeName)
 	}
+	var selection promptLauncherSelection
+	if mode != promptRender {
+		var err error
+		selection, err = resolvePromptLauncher(app, mode, agentName, dryRun)
+		if err != nil {
+			return err
+		}
+	}
+
 	snapshot, err := collect(ctxOf())
 	if err != nil {
 		return err
@@ -203,22 +307,9 @@ func executePrompt(app *App, mode promptMode, agentName string, dryRun bool, rec
 		return nil
 	}
 
-	agent, ok := app.Cfg.AgentByName(agentName)
-	if !ok {
-		return promptAgentError(app, agentName)
-	}
-	handoffMode := handoff.ModeRun
-	launcherConfig := agent.Run
-	if mode == promptOpen {
-		handoffMode = handoff.ModeOpen
-		launcherConfig = agent.Open
-		if !dryRun && !app.interactive() {
-			return errors.New("prompt open needs an interactive terminal; use prompt render or prompt run instead")
-		}
-	}
-	if !launcherConfig.Configured() {
-		return fmt.Errorf("agent %q has no [agent.%s] launcher", agent.Name, handoffMode)
-	}
+	agent := selection.Agent
+	handoffMode := selection.Mode
+	launcherConfig := selection.Launcher
 	// Starting an external coding agent is a new writer claim even when the
 	// recipe asks only for analysis. Unlike an existing agent continuing its own
 	// work, this guard does not exclude the caller pane: an agent must not launch
@@ -255,40 +346,98 @@ func executePrompt(app *App, mode promptMode, agentName string, dryRun bool, rec
 	return nil
 }
 
-func promptAgentError(app *App, name string) error {
+type promptLauncherSelection struct {
+	Agent    config.Agent
+	Mode     handoff.Mode
+	Launcher config.AgentLauncher
+}
+
+func resolvePromptLauncher(app *App, mode promptMode, name string, dryRun bool) (promptLauncherSelection, error) {
+	handoffMode, ok := promptHandoffMode(mode)
+	if !ok {
+		return promptLauncherSelection{}, fmt.Errorf("prompt mode %q has no agent launcher", mode)
+	}
+	agent, ok := app.Cfg.AgentByName(name)
+	if !ok {
+		return promptLauncherSelection{}, promptAgentError(app, name, handoffMode)
+	}
+	launcher := promptAgentLauncher(agent, handoffMode)
+	if !launcher.Configured() {
+		return promptLauncherSelection{}, fmt.Errorf("agent %q has no [agent.%s] launcher; %s",
+			agent.Name, handoffMode, promptAgentModeGuidance(app.Cfg.Agents, handoffMode))
+	}
+	if handoffMode == handoff.ModeOpen && !dryRun && !app.interactive() {
+		return promptLauncherSelection{}, errors.New("prompt open needs an interactive terminal; use prompt render or prompt run instead")
+	}
+	return promptLauncherSelection{Agent: agent, Mode: handoffMode, Launcher: launcher}, nil
+}
+
+func promptHandoffMode(mode promptMode) (handoff.Mode, bool) {
+	switch mode {
+	case promptRun:
+		return handoff.ModeRun, true
+	case promptOpen:
+		return handoff.ModeOpen, true
+	default:
+		return "", false
+	}
+}
+
+func promptAgentLauncher(agent config.Agent, mode handoff.Mode) config.AgentLauncher {
+	if mode == handoff.ModeOpen {
+		return agent.Open
+	}
+	return agent.Run
+}
+
+func promptAgentError(app *App, name string, mode handoff.Mode) error {
+	guidance := promptAgentModeGuidance(app.Cfg.Agents, mode)
 	if len(app.Cfg.Agents) == 0 {
 		return fmt.Errorf(`no [[agent]] is configured; add one to %s, for example:
 
 [[agent]]
 name = "my-agent"
+description = "My local coding agent"
 default = true
 [agent.run]
 command = ["my-agent", "--print"]
 input = "stdin"
 [agent.open]
 command = ["my-agent", "{{prompt_file}}"]
-input = "file"`, config.Contract(config.ConfigFile()))
+input = "file"
+
+%s`, config.Contract(config.ConfigFile()), guidance)
 	}
 	if strings.TrimSpace(name) == "" {
-		return fmt.Errorf("more than one [[agent]] is configured and none is the default; pass --agent with one of: %s",
-			strings.Join(agentNames(app), ", "))
+		return fmt.Errorf("more than one [[agent]] is configured and none is the default; %s", guidance)
 	}
-	return fmt.Errorf("unknown agent %q: configured agents are %s", name, strings.Join(agentNames(app), ", "))
+	return fmt.Errorf("unknown agent %q; %s", name, guidance)
 }
 
-func agentNames(app *App) []string {
-	names := make([]string, 0, len(app.Cfg.Agents))
-	for _, agent := range app.Cfg.Agents {
-		names = append(names, agent.Name)
+func promptAgentModeGuidance(agents []config.Agent, mode handoff.Mode) string {
+	names := promptAgentNamesForMode(agents, mode)
+	available := "none"
+	if len(names) > 0 {
+		available = strings.Join(names, ", ")
 	}
-	sort.Strings(names)
+	return fmt.Sprintf("%s-capable profiles: %s; inspect with `dev prompt agents`", mode, available)
+}
+
+func promptAgentNamesForMode(agents []config.Agent, mode handoff.Mode) []string {
+	names := make([]string, 0, len(agents))
+	for _, agent := range agents {
+		if promptAgentLauncher(agent, mode).Configured() {
+			names = append(names, agent.Name)
+		}
+	}
+	sort.Slice(names, func(i, j int) bool {
+		left, right := strings.ToLower(names[i]), strings.ToLower(names[j])
+		if left == right {
+			return names[i] < names[j]
+		}
+		return left < right
+	})
 	return names
-}
-
-func agentCompletions(app *App) func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-	return func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
-		return agentNames(app), cobra.ShellCompDirectiveNoFileComp
-	}
 }
 
 func renderPromptDryRun(app *App, agent string, preview handoff.Preview, prompt string) {

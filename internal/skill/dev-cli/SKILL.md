@@ -185,6 +185,7 @@ dev sweep --apply          # act on it, confirming each change
 dev sweep --merged-worktrees  # from main, audit contained tracked/untracked worktrees
 dev pr list                # requests you opened or were asked to review
 dev pr list --scope local --state merged  # forge evidence; never retirement authority
+dev prompt agents [--json]                # sorted, redacted host profile inventory
 dev prompt render pr-triage               # inspect/copy deterministic context
 dev prompt run session-close --agent <name>  # bounded batch; no user stdin
 dev prompt open workspace-closeout . --agent <name>  # current foreground TTY
@@ -289,8 +290,11 @@ generated keys are retained so a rerun can converge. `ssh remove` never revokes 
 remote key, deletes local keys/known_hosts, or removes the shared Include.
 
 Read `references/prompt-handoffs.md` before using `dev prompt`, configuring a
-launcher, or interpreting session/workspace closeout advice. Prompt recipes are
-read-only context handoffs, not mutation or permission authority.
+launcher, or interpreting session/workspace closeout advice. Discover profiles
+with `dev prompt agents`; its output is intentionally redacted. Profile selection
+is global before recipe collection, requested modes never fall back across
+profiles, and prompt recipes remain read-only context handoffs rather than
+mutation or permission authority.
 
 ## Bootstrapping and adopting an existing machine
 

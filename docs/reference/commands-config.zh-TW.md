@@ -30,7 +30,7 @@ lang: zh-TW
 | SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh probe`、`ssh remove` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
-| prompt handoff | `prompt list`、`prompt render`、`prompt run`、`prompt open` |
+| prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
@@ -150,20 +150,31 @@ optional `target_usage`、`context_version`）。三個 recipe 是 `pr-triage`�
 `dev prompt render <recipe>` 印出 Markdown prompt；其中 JSON envelope 含
 `schema_version: 1`、recipe/context versions、generation time、host、scope、optional
 target、capabilities、warnings 與 recipe context。Collection 是 read-only，missing
-evidence 保持明確。`run` 與 `open` 在選 launcher 前 render 相同 envelope：
+evidence 保持明確。
+
+`dev prompt agents [--json]` 是 sorted、redacted profile inventory。Human output 有
+`PROFILE DEFAULT RUN OPEN DESCRIPTION`；direct launcher 只顯示 executable basename，
+shell launcher 顯示 `shell`，unavailable mode 顯示 `—`。每個 JSON object 都有
+`name`、`description`、`default` 與 nested `run`／`open` object；後者包含
+`configured`、`kind`（`command|shell|none`）與 `executable`。兩種 form 都不會輸出
+argv、shell source、executable directories、environment、prompt text 或 config path。
 
 | Command | Process contract |
 |---|---|
-| `dev prompt run <recipe> [--agent NAME] [--dry-run]` | 一個 batch process；沒有 user stdin；prompt 可走 stdin/file/argv；等待完成，default timeout 為 10 分鐘。 |
-| `dev prompt open <recipe> [--agent NAME] [--dry-run]` | 一個 attach 到 current terminal/TTY 的 foreground process；prompt 必須走 file/argv，保留 stdin 給 conversation；沒有 default timeout。 |
+| `dev prompt run <recipe> [--agent NAME] [--dry-run]` | Collection 前先解析 global profile 與其 run launcher；之後才啟動沒有 user stdin 的 batch process，prompt 可走 stdin/file/argv，default timeout 為 10 分鐘。 |
+| `dev prompt open <recipe> [--agent NAME] [--dry-run]` | Collection 前先解析 global profile/open launcher，並先檢查 non-dry TTY；之後才啟動 file/argv transport、沒有 default timeout 的 foreground process。 |
 
 `--agent` 優先；否則選 unique configured default；再不然選 sole agent。多個 agent
-且沒有 default 時視為 ambiguous 並失敗。Dry-run 顯示 resolved mode、cwd、transport、
-timeout、safe command marker 與完整 prompt，不啟動任何東西。Checkout 中的 real launch
-仍受 writer-occupancy guard。`dev` 絕不 parse reply、啟動 agent loop、改變 permission 或
-把 advice 當成 lifecycle authorization。`open` 不會建立、focus 或 reuse
-Herdr/tmux/Zellij surface；在 Herdr 內會留在 current pane。詳見
-[Prompt handoff](../guides/prompt-handoffs.zh-TW.md)。
+且沒有 default 時視為 ambiguous 並失敗。Selection 不是 mode-local：selected profile
+缺少 requested mode 時會失敗，不會改用另一個 profile。Diagnostic 會列出 sorted
+mode-capable profiles 並指向 `dev prompt agents`。Dynamic completion 會載入 parsed
+`--config`、依 run/open capability 過濾 names、透過 shared completion format sanitize
+description；invalid config 則得到 no candidates 與 no file completion。Dry-run 顯示
+resolved mode、cwd、transport、timeout、safe command marker 與完整 prompt，不啟動任何
+東西。Checkout 中的 real launch 會在 collection 提供 cwd 後受 writer-occupancy guard。
+`dev` 絕不 parse reply、啟動 agent loop、改變 permission 或把 advice 當成 lifecycle
+authorization。`open` 不會建立、focus 或 reuse Herdr/tmux/Zellij surface；在 Herdr 內
+會留在 current pane。詳見 [Prompt handoff](../guides/prompt-handoffs.zh-TW.md)。
 
 ## Repository bootstrap
 
@@ -359,7 +370,7 @@ dev ssh init --apply       # confirmation 後安裝
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
 | `[stats]` | sampler 與 optional WakaTime import |
 | `[update]` | `check`（預設 `true`）— 允許每天一次的「有新版」提示與其背景 cache refresh；`DEV_NO_UPDATE_CHECK` 可覆寫 |
-| `[[agent]]`、`[agent.run]`、`[agent.open]` | host-only name/default selection 與各自獨立的 batch/foreground prompt launcher；沒有 built-in entry |
+| `[[agent]]`、`[agent.run]`、`[agent.open]` | host-only name、optional description、global default selection 與各自獨立的 batch/foreground prompt launcher；沒有 built-in entry |
 
 Interactive repository selection 使用直接 argv vector，絕不當作 shell source：
 
@@ -391,6 +402,7 @@ Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 dur
 ```toml
 [[agent]]
 name = "my-agent"
+description = "Local review and implementation agent"
 default = true
 
 [agent.run]
@@ -403,10 +415,11 @@ command = ["my-agent", "{{prompt_file}}"]
 input = "file"
 ```
 
-`[[agent]]` 有 required `name`、optional `default`，以及 nested `run`/`open`
-launchers。Name 不能有 surrounding whitespace、採 case-insensitive compare，且必須
-unique；最多一個 entry 可為 default。每個 entry 至少設定一種 mode；另一種 mode 不會
-inherit，而是維持 unavailable。
+`[[agent]]` 有 required `name`、optional `description` 與 `default`，以及 nested
+`run`/`open` launchers。Name 不能有 surrounding whitespace、採 case-insensitive
+compare，且必須 unique；最多一個 entry 可為 default。每個 entry 至少設定一種 mode。
+Selection 在所有 profiles 間仍採 explicit/default/sole，之後要求該 exact profile 的
+requested mode；另一種 mode 維持 unavailable，不會 inherit 或 fallback。
 
 每個 launcher 必須在 `command`（direct argv）與 `shell`（static shell text）中二選一，
 設定 required `input`，以及僅限 `shell` 的 optional `load_shell_rc`。只有 `run` 接受

@@ -26,7 +26,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh probe`, `ssh remove` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
-| prompt handoff | `prompt list`, `prompt render`, `prompt run`, `prompt open` |
+| prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
@@ -153,22 +153,35 @@ Schema 1 is add-only.
 `dev prompt render <recipe>` prints a Markdown prompt whose JSON envelope has
 `schema_version: 1`, recipe/context versions, generation time, host, scope,
 optional target, capabilities, warnings, and recipe context. Collection is
-read-only and missing evidence stays explicit. `run` and `open` render the same
-envelope before selecting a launcher:
+read-only and missing evidence stays explicit.
+
+`dev prompt agents [--json]` is the sorted, redacted profile inventory. Human
+output has `PROFILE DEFAULT RUN OPEN DESCRIPTION`; direct launchers expose only
+the executable basename, shell launchers say `shell`, and unavailable modes say
+`—`. Every JSON object has `name`, `description`, `default`, and nested
+`run`/`open` objects containing `configured`, `kind` (`command|shell|none`), and
+`executable`. Neither form emits argv, shell source, executable directories,
+environment, prompt text, or config path.
 
 | Command | Process contract |
 |---|---|
-| `dev prompt run <recipe> [--agent NAME] [--dry-run]` | One batch process; no user stdin; prompt may use stdin/file/argv; waits with a 10-minute default timeout. |
-| `dev prompt open <recipe> [--agent NAME] [--dry-run]` | One foreground process attached to the current terminal/TTY; prompt must use file/argv so stdin remains conversational; no default timeout. |
+| `dev prompt run <recipe> [--agent NAME] [--dry-run]` | Resolve the global profile and its run launcher before collection; then run one batch process with no user stdin, stdin/file/argv prompt transport, and a 10-minute default timeout. |
+| `dev prompt open <recipe> [--agent NAME] [--dry-run]` | Resolve the global profile/open launcher and check the non-dry TTY before collection; then run one foreground process with file/argv prompt transport and no default timeout. |
 
 `--agent` wins, otherwise the unique configured default wins, otherwise the sole
-agent wins. Multiple agents with no default fail as ambiguous. Dry-run shows the
-resolved mode, cwd, transport, timeout, safe command markers, and complete
-prompt, and starts nothing. Real launches in a checkout remain subject to the
-writer-occupancy guard. `dev` never parses a reply, starts an agent loop, changes
-permissions, or treats advice as lifecycle authorization. `open` never creates,
-focuses, or reuses a Herdr/tmux/Zellij surface; inside Herdr it remains in the
-current pane. See [Prompt handoffs](../guides/prompt-handoffs.md).
+agent wins. Multiple agents with no default fail as ambiguous. Selection is not
+mode-local: a selected profile missing the requested mode fails without using a
+different profile. Diagnostics list sorted mode-capable profiles and point to
+`dev prompt agents`. Dynamic completion loads parsed `--config`, filters names by
+run/open capability, sanitizes descriptions through the shared completion
+format, and degrades invalid config to no candidates plus no file completion.
+Dry-run shows the resolved mode, cwd, transport, timeout, safe command markers,
+and complete prompt, and starts nothing. Real launches in a checkout remain
+subject to the writer-occupancy guard after collection supplies the cwd. `dev`
+never parses a reply, starts an agent loop, changes permissions, or treats advice
+as lifecycle authorization. `open` never creates, focuses, or reuses a
+Herdr/tmux/Zellij surface; inside Herdr it remains in the current pane. See
+[Prompt handoffs](../guides/prompt-handoffs.md).
 
 ## Repository bootstrap
 
@@ -413,7 +426,7 @@ Key sections:
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
 | `[stats]` | sampler and optional WakaTime import |
 | `[update]` | `check` (default `true`) — allow the once-a-day "newer release available" hint and its background cache refresh; `DEV_NO_UPDATE_CHECK` overrides it |
-| `[[agent]]`, `[agent.run]`, `[agent.open]` | host-only names/default selection and independent batch/foreground prompt launchers; no built-in entries |
+| `[[agent]]`, `[agent.run]`, `[agent.open]` | host-only names, optional descriptions, global default selection, and independent batch/foreground prompt launchers; no built-in entries |
 
 Interactive repository selection uses one direct argv vector, never shell source:
 
@@ -448,6 +461,7 @@ config; the `agent` section is denied in repository `.dev-cli/config.toml`.
 ```toml
 [[agent]]
 name = "my-agent"
+description = "Local review and implementation agent"
 default = true
 
 [agent.run]
@@ -460,10 +474,12 @@ command = ["my-agent", "{{prompt_file}}"]
 input = "file"
 ```
 
-`[[agent]]` has required `name`, optional `default`, and nested `run`/`open`
-launchers. Names cannot have surrounding whitespace, compare case-insensitively,
-and must be unique; at most one entry may be default. An entry must configure at
-least one mode. The other mode remains unavailable rather than inheriting it.
+`[[agent]]` has required `name`, optional `description` and `default`, and nested
+`run`/`open` launchers. Names cannot have surrounding whitespace, compare
+case-insensitively, and must be unique; at most one entry may be default. An
+entry must configure at least one mode. Selection remains explicit/default/sole
+across all profiles, then the requested mode is required on that exact profile;
+the other mode remains unavailable rather than inheriting or falling back.
 
 Each launcher sets exactly one of `command` (direct argv) or `shell` (static
 shell text), a required `input`, and optional `load_shell_rc` for `shell` only.

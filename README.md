@@ -971,6 +971,7 @@ dev pr list                    # requests you opened or were asked to review
 dev pr list --scope local      # with head branches, joined to your worktrees
 dev pr list --actions          # the gh/glab commands; dev prints, never runs
 dev prompt list                # built-in read-only context recipes
+dev prompt agents --json       # sorted profile capabilities, no private argv/shell
 dev prompt render pr-triage    # inspect/copy the exact prompt
 dev prompt run session-close --agent my-agent   # bounded one-shot, no user stdin
 dev prompt open workspace-closeout . --agent my-agent  # foreground current TTY
@@ -997,13 +998,19 @@ The built-in recipes are `pr-triage`, `session-close`, and
 `workspace-closeout`. They collect read-only deterministic context and instruct
 the receiver not to mutate it. `dev` never parses an agent reply, starts a loop,
 or treats the reply as permission for `done`, `park`, `sweep`, or `retire`.
-There is no built-in vendor or launcher: host config defines nested
-`[agent.run]` and `[agent.open]` commands. `run` receives finite prompt input and
-defaults to a 10-minute timeout; `open` reserves stdin for the conversation,
-has no default timeout, and stays in the current terminal/pane. It does not
-create, focus, or reuse a Herdr/tmux/Zellij surface. See
-[Prompt handoffs](docs/guides/prompt-handoffs.md) for configuration, transport,
-permission, closeout-audit, and rebase-conflict boundaries.
+There is no built-in vendor or launcher: host config defines optionally
+described profiles with independent `[agent.run]` and `[agent.open]` commands.
+`dev prompt agents [--json]` lists their sorted capabilities while hiding argv,
+shell source, executable directories, prompt text, environment, and config path.
+Global explicit/default/sole selection happens before recipe collection; the
+selected profile must support the requested mode and never falls back to another
+profile. `--agent` completion is mode-specific. `run` receives finite prompt
+input and defaults to a 10-minute timeout; `open` checks for a TTY before
+collection, reserves stdin for the conversation, has no default timeout, and
+stays in the current terminal/pane. It does not create, focus, or reuse a
+Herdr/tmux/Zellij surface. See [Prompt handoffs](docs/guides/prompt-handoffs.md)
+for configuration, transport, permission, closeout-audit, and rebase-conflict
+boundaries.
 
 ### Repository quick notes
 

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -40,6 +41,42 @@ func completionInvocation(cmd *cobra.Command) bool {
 // flag completion entirely. Cobra invokes one custom provider per request, so
 // loading here avoids state leaking when a command tree is reused.
 func (a *App) loadCompletion() bool { return a.Load() == nil }
+
+func completePromptAgents(app *App, mode promptMode) cobra.CompletionFunc {
+	return func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if !app.loadCompletion() {
+			return nil, noFileCompletion
+		}
+		handoffMode, ok := promptHandoffMode(mode)
+		if !ok {
+			return nil, noFileCompletion
+		}
+		agents := append([]config.Agent(nil), app.Cfg.Agents...)
+		sort.Slice(agents, func(i, j int) bool {
+			left, right := strings.ToLower(agents[i].Name), strings.ToLower(agents[j].Name)
+			if left == right {
+				return agents[i].Name < agents[j].Name
+			}
+			return left < right
+		})
+		out := make([]string, 0, len(agents))
+		for _, agent := range agents {
+			if !promptAgentLauncher(agent, handoffMode).Configured() {
+				continue
+			}
+			parts := make([]string, 0, 3)
+			if agent.Default {
+				parts = append(parts, "default")
+			}
+			parts = append(parts, string(handoffMode))
+			if description := strings.TrimSpace(agent.Description); description != "" {
+				parts = append(parts, description)
+			}
+			out = addCompletion(out, agent.Name, strings.Join(parts, " · "), toComplete)
+		}
+		return out, noFileCompletion
+	}
+}
 
 func completeTasks(app *App, states ...task.State) cobra.CompletionFunc {
 	allowed := make(map[task.State]bool, len(states))

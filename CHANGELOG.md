@@ -27,6 +27,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   direct `command` argv or static `shell`, `stdin|file|argv` input, plus optional
   batch timeout/shell-RC policy. `open` rejects stdin and timeout, prompts are never interpolated
   into shell text, and repository `.dev-cli/config.toml` cannot define agents.
+- Agent profiles may include an optional description, and `dev prompt agents
+  [--json]` exposes a sorted discovery inventory. The stable JSON objects contain
+  name/description/default and redacted run/open capability metadata; neither
+  output form reveals argv, shell source, executable directories, environment,
+  prompt text, or config path.
 
 ### Changed
 
@@ -151,6 +156,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   cannot turn an unrelated failure into a sign-in warning. GitLab probing now honors
   `GLAB_HOST` as well as `GITLAB_HOST`, and reviewer inventory explicitly uses
   account scope instead of GitLab's authored-by-me default.
+- Prompt `run`/`open` now resolve the global explicit/default/sole profile and
+  requested launcher before recipe collection, never fall back to a different
+  profile for a missing mode, and check a non-dry `open` TTY before querying
+  forge/runtime evidence. Mode-aware `--agent` completion now honors parsed
+  `--config`, sanitized descriptions, prefixes, and invalid-config degradation.
 - Prompt handoffs now treat the invoking agent as an existing writer rather
   than excluding its pane, so one agent cannot launch another in the same
   checkout without the shared-checkout override. Batch timeout cancellation

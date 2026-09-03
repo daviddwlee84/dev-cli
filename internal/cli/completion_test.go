@@ -118,6 +118,85 @@ func TestDynamicCompletionUsesParsedConfig(t *testing.T) {
 	}
 }
 
+func TestPromptAgentCompletionLoadsParsedConfigAndFiltersByMode(t *testing.T) {
+	h := newHarness(t)
+	appendConfig(t, h.configPath, `
+[[agent]]
+name = "alpha"
+description = "Primary\tbatch\nprofile"
+default = true
+[agent.run]
+command = ["alpha-agent"]
+input = "stdin"
+
+[[agent]]
+name = "both"
+description = "Run and open"
+[agent.run]
+command = ["both-agent"]
+input = "stdin"
+[agent.open]
+command = ["both-agent", "{{prompt_file}}"]
+input = "file"
+
+[[agent]]
+name = "opener"
+[agent.open]
+command = ["open-agent", "{{prompt_file}}"]
+input = "file"
+`)
+
+	out, errOut, err := h.runRaw(
+		"__complete", "prompt", "run", "session-close", "--config", h.configPath, "--agent", "a",
+	)
+	if err != nil {
+		t.Fatalf("complete run profile: %v\nstderr: %s", err, errOut)
+	}
+	if !strings.Contains(out, "alpha\tdefault · run · Primary batch profile") || strings.Contains(out, "opener") {
+		t.Errorf("run completion did not filter/sanitize descriptions:\n%s", out)
+	}
+	if !strings.HasSuffix(out, ":4\n") {
+		t.Errorf("run completion should disable file completion:\n%s", out)
+	}
+
+	out, errOut, err = h.runRaw(
+		"__complete", "prompt", "open", "session-close", "--config", h.configPath, "--agent", "",
+	)
+	if err != nil {
+		t.Fatalf("complete open profile: %v\nstderr: %s", err, errOut)
+	}
+	if strings.Contains(out, "alpha\t") || !strings.Contains(out, "both\topen · Run and open") || !strings.Contains(out, "opener\topen") {
+		t.Errorf("open completion did not filter profiles:\n%s", out)
+	}
+
+	out, errOut, err = h.runRaw(
+		"__completeNoDesc", "prompt", "open", "session-close", "--config", h.configPath, "--agent", "",
+	)
+	if err != nil {
+		t.Fatalf("complete open profile without descriptions: %v\nstderr: %s", err, errOut)
+	}
+	if strings.Contains(out, "\t") || !strings.Contains(out, "both\n") || !strings.Contains(out, "opener\n") || !strings.HasSuffix(out, ":4\n") {
+		t.Errorf("__completeNoDesc should preserve values and directive only:\n%s", out)
+	}
+}
+
+func TestPromptAgentCompletionSurvivesInvalidConfig(t *testing.T) {
+	h := newHarness(t)
+	bad := filepath.Join(h.home, "bad-agent.toml")
+	if err := os.WriteFile(bad, []byte("not = [valid"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out, errOut, err := h.runRaw(
+		"__complete", "prompt", "run", "session-close", "--config", bad, "--agent", "",
+	)
+	if err != nil {
+		t.Fatalf("invalid agent config completion: %v\nstderr: %s", err, errOut)
+	}
+	if out != ":4\n" {
+		t.Errorf("invalid config should yield no agent candidates, got %q", out)
+	}
+}
+
 func TestCompletionSurvivesInvalidConfig(t *testing.T) {
 	h := newHarness(t)
 	bad := filepath.Join(h.home, "bad.toml")

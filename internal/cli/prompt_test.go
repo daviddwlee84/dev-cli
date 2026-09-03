@@ -2,11 +2,59 @@ package cli
 
 import (
 	"bytes"
+	"context"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/handoff"
+	"github.com/daviddwlee84/dev-cli/internal/promptkit"
 )
+
+func TestExecutePromptFailsBeforeRuntimeCollection(t *testing.T) {
+	run := config.AgentLauncher{Command: []string{"run-agent"}, Input: "stdin"}
+	open := config.AgentLauncher{
+		Command: []string{"open-agent", handoff.PromptFilePlaceholder}, Input: "file",
+	}
+	collectCalls := 0
+	fakeRuntime := &activityRuntime{}
+	collect := func(ctx context.Context) (promptkit.Snapshot, error) {
+		collectCalls++
+		_, _ = fakeRuntime.List(ctx)
+		return promptkit.Snapshot{
+			Scope: "machine", WorkingDirectory: t.TempDir(), Context: map[string]any{},
+		}, nil
+	}
+
+	cfg := config.Default()
+	cfg.Agents = []config.Agent{
+		{Name: "open-default", Default: true, Open: open},
+		{Name: "runner", Run: run},
+	}
+	app := &App{Cfg: cfg, Out: &bytes.Buffer{}, Err: &bytes.Buffer{}, runtimeInstance: fakeRuntime}
+	if err := executePrompt(app, promptRun, "", true, promptkit.RecipeSessionClose, collect); err == nil ||
+		!strings.Contains(err.Error(), `agent "open-default" has no [agent.run] launcher`) {
+		t.Fatalf("missing-mode error = %v", err)
+	}
+	if collectCalls != 0 {
+		t.Fatalf("runtime collection ran %d time(s) before launcher resolution", collectCalls)
+	}
+
+	collectCalls = 0
+	cfg.Agents = []config.Agent{{Name: "interactive", Default: true, Open: open}}
+	app = &App{
+		Cfg: cfg, Out: &bytes.Buffer{}, Err: &bytes.Buffer{}, runtimeInstance: fakeRuntime,
+		interactiveCheck: func() bool { return false },
+	}
+	if err := executePrompt(app, promptOpen, "", false, promptkit.RecipeSessionClose, collect); err == nil ||
+		!strings.Contains(err.Error(), "interactive terminal") {
+		t.Fatalf("TTY error = %v", err)
+	}
+	if collectCalls != 0 {
+		t.Fatalf("runtime collection ran %d time(s) before the TTY check", collectCalls)
+	}
+}
 
 func TestLineEditorSupportsInlineNavigationAndDeletion(t *testing.T) {
 	model := newLineEditorModel("? Value: ")

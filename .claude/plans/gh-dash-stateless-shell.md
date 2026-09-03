@@ -1,503 +1,561 @@
-# Generalize prompt handoff beyond pull requests
+# Recover stale workflow work, add agent profiles, and sweep verified ephemeral worktrees
 
 ## Context
 
-Commit `694cb70` added a useful first slice: `dev pr list`, three PR-specific
-prompt assets, and a configurable `[[agent]]` command. The next use cases expose
-that the handoff is the reusable product, not the PR command:
+The generic prompt handoff shipped locally in commit
+`b1e74e81b902f5af67957cfdc580d85440ae6807`. Two follow-up needs are now
+separate and explicit:
 
-- decide which Herdr agent sessions can close;
-- decide which tasks/worktrees in one repository should finish, park, retire,
-  or be inspected;
-- escalate a hard integration/rebase/conflict case to an interactive agent,
-  while ordinary cases continue to use deterministic `done`, `sweep`, and
-  `retire` commands.
+1. Reconcile two dirty Claude Workflow worktrees left by a killed workflow,
+   without deleting uncommitted bytes merely because their branches are
+   contained in `main`.
+2. Improve the agent-profile UX, then add a provider-verified,
+   report-before-apply cleanup path for future ephemeral worktrees.
 
-The current `dev pr prompt --agent` is only partly suitable. It always starts a
-foreground child and waits. With the default `input = "stdin"`, stdin is the
-finite prompt, so the user cannot continue a conversation. Its
-`interactive = true` flag only loads a login shell; it does not create a TTY,
-open Herdr, or make an agent conversational. File/argv input happens to preserve
-`app.In`, but this is not an explicit contract. The child also inherits whatever
-directory `dev` was invoked from, rather than the selected checkout.
+A semantic audit found that the two stale trees contain **no useful hunk absent
+from `feat/ssh-hosts`**: 16 files are byte-identical, 19 are superseded by
+stronger implementations/tests, and three `noreplace_*` files are unused
+alternatives. The remaining product integration is between current `main` and
+the already-complete SSH feature, chiefly the additive fleet cache/config/
+transport changes.
 
-The intended result is therefore a small, generic escalation ladder:
+The user also asked for execution from a clean context after planning. Do not
+rely on context compaction for correctness: automatic compaction is
+harness-controlled, and `/compact` is a manual user command. Instead, persist
+this plan and use one fresh **non-fork** execution agent per phase. Each agent
+reads only `AGENTS.md`, this plan, its phase ID, and the current tree; the main
+session receives a compact completion report and independently verifies the
+result.
+
+## User-authorized policy
+
+- Each phase may create its specified **local** commits/checkpoints after all
+  phase gates pass. Every agent-generated commit carries the repository's
+  `Co-Authored-By` trailer.
+- No push is authorized. Rescue tags must never be pushed.
+- Phase A may create two rescue commits, annotated rescue tags, a verified
+  bundle, two `git merge --no-ff -s ours` ancestry commits, the normal `main`
+  merge into `feat/ssh-hosts`, and one separate non-ff merge of exact commit
+  `4167d17df4a38359d6451c223f4d755e17383093` to carry the already-reviewed
+  exited-Zellij fix required by the host's full-suite gate. It may also create
+  one normal follow-up docs-fix commit limited to correcting the verified zh-TW
+  `structured-interfaces` anchor and regenerated `docs/llms*.txt` files after
+  strict MkDocs exposed the merge-resolution error.
+- After the observed competing-writer race, Phase A may perform exactly one
+  clean local `git reset --hard 0786a336870b69d8516ef90f1e9646d1cf1ad7c5`
+  from redundant merge `58cb94575a0875421f0640fedd91e423efe3df73`, whose
+  tree is byte-identical, then amend only that commit message to add the required
+  co-author trailer. The reconstructed commit must retain tree
+  `b480f97225a387d2952ed84224004a6fa855f587` and exact parents
+  `aa9dcfea55de70e319d9451719d06c1a975be75f`
+  `7b0ec57925f80dc61c6d197ebf5213f7ea39919b`; no other
+  reset/amend/update-ref is authorized.
+- Ephemeral V1 is strict: a killed workflow without a matching child result, or
+  any same-ID resumed transcript, is `unknown` and never apply-eligible. There
+  is no operator-attestation bypass in V1.
+
+## Clean-context execution contract
+
+Each phase is executed sequentially by a new non-fork agent, with exactly one
+writable worktree and no concurrent editing agent.
+
+Before each agent starts, the coordinator verifies:
+
+- exact branch and base SHA;
+- exact pre-existing dirty paths;
+- the worktree's current writer/runtime owner;
+- allowed/generated/forbidden paths from that phase.
+
+The fresh agent must:
+
+1. Read `AGENTS.md` and this plan's assigned phase before editing.
+2. Stop on a base mismatch, unexpected dirty path, live competing writer, or
+   need for an unlisted file; never silently expand scope.
+3. Never stash, reset, clean, force-remove, force-delete, or push.
+4. Format only owned Go files; use a read-only repository-wide `gofmt -l`
+   check rather than `make fmt` while foreign dirty files exist.
+5. Return:
 
 ```text
-existing deterministic command/report
-    -> dev prompt render   # inspect/copy the exact prompt
-    -> dev prompt run      # one-shot, unattended advice
-    -> dev prompt open     # foreground conversation in the current terminal
-    -> user explicitly runs/approves done, park, sweep, retire, rebase, ...
+phase: A|B|C
+status: complete|blocked
+start_head:
+end_head:
+commits_and_tags:
+changed_files:
+unexpected_files: []
+protected_paths_untouched: true|false
+invariants:
+tests: exact command + exit status + result
+external_effects:
+remaining_issues:
+next_phase_base:
 ```
 
-`dev` remains a context and lifecycle tool, not an embedded agentic workflow.
-It will not parse replies, iterate, change an agent's permission mode, or turn a
-model's conclusion into cleanup authorization.
+The main coordinator reviews status/diff/tests before accepting the phase and
+starting the next fresh agent.
 
-## Recommended command surface
+### Protected paths in `feat/pr-ci-scan`
 
-Create one generic command family. Generate each recipe as a Cobra child below
-each mode so recipe-specific flags, usage, and completions remain discoverable.
+Execution agents must never edit, format, stage, reset, or clean these recorder
+paths:
+
+- `.specstory/history/2026-09-01_12-41-38Z-gh-dash-user-pr.md`
+- `.specstory/history/2026-09-01_16-46-23Z-make-gofmt-w-go.md`
+- `.specstory/statistics.json`
+
+At an authorized feature commit, only the main coordinator may invoke
+`agent-history-hygiene` and stage the current phase's plan/session artifacts.
+The unrelated `make-gofmt-w-go` transcript and statistics remain excluded.
+
+---
+
+## Phase A — rescue, record semantic ancestry, and reconcile `feat/ssh-hosts`
+
+### Worktrees and expected state
+
+**Writable, one at a time:**
+
+1. Claude source 1:
+   `/Users/zhouhanru/Documents/David/Program/dev-cli/.claude/worktrees/wf_4602a254-247-1`
+2. Claude source 2:
+   `/Users/zhouhanru/Documents/David/Program/dev-cli/.claude/worktrees/wf_4602a254-247-2`
+3. Integration target:
+   `/Users/zhouhanru/Worktrees/dev-cli/feat-ssh-hosts`
+
+**Read-only:** canonical repo
+`/Users/zhouhanru/Documents/David/Program/dev-cli`.
+
+**Forbidden:** `feat/pr-ci-scan` and every unrelated worktree.
+
+Expected identities:
+
+- source branches `worktree-wf_4602a254-247-{1,2}` at
+  `437716db46d5cefe526dcb19835786459ee0d07e`;
+- target product branch `feat/ssh-hosts` at
+  `4ba2d0b21dfb3525f9336bf38ccd2300bd6c3171`;
+- exact current main/v0.2.7 snapshot
+  `7b0ec57925f80dc61c6d197ebf5213f7ea39919b`;
+- unique merge base `437716db46d5cefe526dcb19835786459ee0d07e`.
+
+The target is expected to have exactly two post-commit artifact tails and no
+product changes:
+
+- `.specstory/history/2026-09-01_10-07-35Z-ssh-host-fleet-chezmoi.md`
+- `.specstory/statistics.json`
+
+The owning `add-ssh-host-lifecycle` session confirmed it is read-only and no
+longer depends on orphan sibling `9228bc5`; ignore that unreferenced object and
+let Git GC it naturally. Any other mismatch stops Phase A for plan revision.
+
+### Semantic disposition
+
+| Source | Dirty | Exact target | Superseded | Unused alternatives | Missing useful hunks |
+|---|---:|---:|---:|---:|---:|
+| workflow 1 / `internal/sshhost` | 27 | 13 | 11 | 3 | 0 |
+| workflow 2 / `internal/fleet` | 11 | 3 | 8 | 0 | 0 |
+| total | 38 | 16 | 19 | 3 | 0 |
+
+No source hunk is copied into the target. The three unused alternatives are
+`internal/sshhost/noreplace_{darwin,linux,other_unix}.go`; they remain protected
+by the rescue checkpoint but are not integrated as product code.
+
+### A1. Fail-closed preflight
+
+For each source and target:
+
+- revalidate branch, HEAD, registered worktree path/common-dir, lock/prunable
+  state, cwd/runtime/process ownership, Git operation, full status, and artifact
+  state;
+- confirm source 1 has exactly 27 dirty files under `internal/sshhost` and
+  source 2 has exactly the 11 audited `internal/fleet` paths;
+- require `git clean -ndX` to remain empty in both removable source trees; any
+  ignored/environment/transcript path there stops the phase;
+- the non-removable SSH target may retain only its audited ignored roots
+  `.claude/settings.local.json`, `.venv/`, `dev`, `scripts/__pycache__/`, and
+  `site/`; record their top-level inventory, never stage/clean/remove them, and
+  stop if any additional ignored root appears;
+- hash the audited dirty files, wait for a quiet interval, and require the
+  second status/hash snapshot to match;
+- re-read Claude Workflow metadata: exact path mapping must remain; no current
+  writer may appear. Historical `killed` alone is not proof.
+
+### A2. Checkpoint target artifact tails
+
+The main coordinator—not the fresh integration agent—requires the owning
+SpecStory session to release the worktree, then waits for the two artifact files
+to remain quiet across two status/hash snapshots before staging and scanning
+exactly those paths. Create a separate local checkpoint atop `4ba2d0b`; do not
+amend `4ba2d0b`, use `9228bc5`, stash, reset, or touch product or ignored files.
+
+Require:
+
+- checkpoint parent exactly `4ba2d0b`;
+- checkpoint diff contains exactly the two artifact paths;
+- staged redaction/gitleaks and cached whitespace checks pass;
+- target becomes clean;
+- record `<A0_SHA>` and `<A0_TREE>`.
+
+The SSH transcript is absent from current main, and main's statistics blob is
+identical to the merge-base blob, so this checkpoint should not add a textual
+main-merge conflict. If either claim changes, stop and re-audit.
+
+### A3. Rescue exact source bytes
+
+One source worktree at a time:
+
+- stage only the audited paths with explicit pathspecs—never `git add .`, `-A`,
+  stash, restore, or clean;
+- inspect the cached diff and run `git diff --cached --check` plus staged
+  gitleaks/agent-history scanning; a leak stops for rotation/remediation;
+- commit the exact snapshot locally;
+- create annotated local tags:
+  - `rescue/claude-wf-4602a254-247-1-20260903`
+  - `rescue/claude-wf-4602a254-247-2-20260903`
+- create one bundle outside the repository under
+  `$XDG_DATA_HOME/dev/rescues/dev-cli/` containing both tag refs and verify it;
+- record source commit/tag/bundle hashes and require each source worktree clean.
+
+Never push the tags or bundle.
+
+### A4. Record semantic ancestry
+
+In clean `feat/ssh-hosts`:
+
+1. Use `<A0_TREE>` from the target artifact checkpoint as the immutable tree
+   baseline; keep `4ba2d0b^{tree}` only to prove A0 changed artifacts and no
+   product path.
+2. Merge each rescued source branch separately with
+   `git merge --no-ff -s ours` and a message stating that the target already
+   contains reviewed exact/superseding implementations.
+3. After each merge, require `HEAD^{tree} == <A0_TREE>` and the corresponding
+   rescue commit to be an ancestor.
+
+These are history-only decisions; any tree change is a failure.
+
+### A5. Merge current main semantically
+
+Immediately before merging, require main still exactly
+`7b0ec57925f80dc61c6d197ebf5213f7ea39919b`, target clean, and the unique merge
+base still `437716d`. Merge the pinned main SHA with `--no-ff --no-commit` so the
+full resolution is tested before creating the authorized merge commit. Never
+resolve an entire file with blanket ours/theirs.
+
+The read-only merge-tree predicts 27 overlaps: 19 textual conflicts and eight
+clean auto-merges. Inspect every auto-merge; manually resolve all conflicts.
+
+Core code unions:
+
+- `internal/fleet/cache.go`: `EndpointID` retains both main's `MachineID` and
+  target's `EffectiveRemoteOS()`.
+- `internal/fleet/config.go`: retain main's `machineid` import/field/validation
+  plus target's `RemoteOS`, managed-fragment provenance/loading, target-OS path
+  semantics, collision policy, and platform private-file validation.
+- `internal/fleet/transport.go`: retain main's retry policy, bounded IO/capture,
+  attempts/errors, no-PTY/forwarding lockdown, and guarded transfers; retain
+  target's checked POSIX/Windows dispatch, UTF-16LE PowerShell allowlist/stdin/
+  no-dev behavior, platform askpass carriers, and allow Windows `_capability`
+  for fleet machine ID while continuing to deny native-Windows file payload
+  protocols.
+- `internal/lockx/lockx.go`: preserve main's `Lease`, idempotent `Close`, and
+  `AcquireDir` API plus target's canonical-parent `WithFile`; `WithDir` keeps
+  nil-operation validation, cancellation before callback, directory lease
+  semantics, and release-error propagation.
+- `internal/cli/fleet.go`: retain main machine-ID/files/protocol helpers and
+  target generated-origin/config-edit/open helpers, locked/private writes, and
+  redaction.
+- `internal/cli/{doctor,root,tldr}.go`: inspect auto-merges and retain main
+  flow/MCP/native-skill wiring plus target SSH registration/diagnostics/help.
+
+Hand-authored conflicts also include `CHANGELOG.md`, `README.md`, paired
+remote-fleet/commands-config/compatibility/sources-freshness pages,
+`internal/help/topics/fleet.md`, and `internal/skill/dev-cli/SKILL.md`. Preserve
+main's released 0.2.5–0.2.7, guarded lifecycle, repository-aware skill/MCP, and
+machine-ID material while placing SSH/fleet onboarding under current
+`[Unreleased]`. Preserve bilingual parity and target OpenSSH/RemoteOS/Windows
+security claims.
+
+Inspect clean auto-merges in `AGENTS.md`, paired mental-model pages,
+`internal/cli/{doctor,root,tldr}.go`, `mkdocs.yml`, and generated commands.
+Regenerate `docs/llms*.txt` and generated command references only after code and
+hand-authored docs are resolved; do not hand-select a generated conflict side.
+
+Preserve target RemoteOS/cache/no-dev tests and main machine-ID, localfiles,
+protocol, transport-hardening, agent-skill/MCP, and guarded-sync suites. The
+main merge commit must have the pre-main-merge Phase A target as first parent
+and exact `7b0ec579...` as second parent.
+
+### A5b. Merge the already-reviewed exited-Zellij fix
+
+The host retains old `EXITED` Zellij entries that make the pinned `v0.2.7`
+`runtime.TestBackendContract/zellij` fail even though no live session exists.
+Do not delete or mutate that external state and do not waive or mask the full
+suite. After committing the resolved pinned-main merge, merge exact standalone
+commit `4167d17df4a38359d6451c223f4d755e17383093` with `--no-ff`; its parent must
+remain the shared `437716d` base. Preserve both sides of any changelog or skill
+reference conflict, then require the resulting commit to have the completed
+main merge as first parent and exact `4167d17...` as second parent. Do not
+cherry-pick it and do not merge later `feat/pr-ci-scan` commits `694cb70` or
+`b1e74e8`. The target must pass the previously failing focused Zellij contract
+and every A6 gate on this final tree.
+
+### A6. Verify target
+
+- `git diff --check` and read-only `gofmt -l`.
+- `go test -count=1 ./internal/sshhost ./internal/fleet ./internal/localfiles ./internal/lockx ./internal/agentskill ./internal/cli`
+- `go test -race -count=1 ./internal/sshhost ./internal/fleet ./internal/localfiles ./internal/lockx`
+- `go vet ./...`
+- `go test ./...`
+- `go test -race ./...`
+- build and E2E.
+- `make skill-sync`, inspect generated commands, `make skill-check`.
+- strict source/site bilingual docs checks and `docs/llms*.txt` generation if
+  drifted.
+- cross-compile the Windows/amd64 and Windows/ARM64 SSH/fleet/CLI test packages
+  to temporary outputs outside the repository. Native Windows/amd64 execution
+  remains a landing/CI acceptance gate after a future authorized push; because
+  this plan forbids push, it is recorded but does not block local source-tree
+  retirement once every runnable gate passes and the rescue refs/bundle remain.
+
+### A7. Retire source worktrees
+
+Only after all target gates pass and both rescue commits are ancestors:
+
+1. Recheck each source is clean, has no ignored/artifact/runtime/writer state,
+   and is outside caller cwd.
+2. Remove each with plain non-force `git worktree remove -- <path>`.
+3. Verify path and registry removal.
+4. Delete only the now-merged source branches with `git branch -d`; never `-D`.
+5. Run `git worktree prune` only after successful removals, then inspect the
+   resulting complete worktree list.
+6. Retain rescue tags and verified bundle through SSH feature acceptance.
+
+Phase A creates authorized local rescue/ours/main-merge commits and tags, but
+never pushes.
+
+---
+
+## Phase B — discoverable, mode-aware agent profiles
+
+**Writable:** `/Users/zhouhanru/Worktrees/dev-cli/feat-pr-ci-scan` only.  
+**Base:** `b1e74e81b902f5af67957cfdc580d85440ae6807`.  
+**Forbidden:** both workflow sources, `feat/ssh-hosts`, unrelated worktrees, and
+protected recorder paths.
+
+### Implementation
+
+1. Add optional `Description string` to `config.Agent`. Keep repeated
+   `[[agent]]`, one global default, explicit `--agent`, singleton selection, and
+   independent run/open launchers. Add no backend/model schema, inheritance,
+   built-in vendor/default, environment map, or secret store.
+
+2. Add `dev prompt agents [--json]`.
+   - Human table: `PROFILE DEFAULT RUN OPEN DESCRIPTION`, one row per sorted
+     profile.
+   - Direct launcher displays only `filepath.Base(command[0])`; shell displays
+     `shell`; unavailable displays `—`.
+   - Never display argv, shell source, executable directories, environment,
+     prompt, or config path.
+   - Stable JSON array; every object has `name`, `description`, `default`, and
+     nested `run`/`open`, each with `configured`, `kind`
+     (`command|shell|none`), and executable basename or empty string.
+
+3. Resolve profile and selected launcher **before** recipe collection.
+   - Preserve explicit/default/sole global selection.
+   - Never fallback to another profile when the selected one lacks the mode.
+   - Missing/unknown/ambiguous diagnostics list mode-capable profiles and point
+     to `dev prompt agents`.
+   - For non-dry-run open, check TTY before collection.
+   - Writer collision remains after collection when cwd is known.
+
+4. Fix `--agent` completion.
+   - Use `app.loadCompletion()` because root intentionally skips eager load for
+     `__complete`.
+   - Reuse `addCompletion` for prefix filtering/sanitized descriptions.
+   - `prompt run` lists run-capable profiles; `prompt open` lists open-capable
+     profiles; descriptions may say `default · run/open · <description>`.
+   - Invalid config degrades to no dynamic candidates and `NoFileComp`.
+
+5. Tests cover config description, sorted/redacted table+JSON, empty inventory,
+   no secret argv/shell leakage, explicit/default/sole/ambiguous selection,
+   missing-mode no-fallback, early failure before fake forge/runtime collection,
+   mode-specific `__complete`/`__completeNoDesc`, parsed `--config`, prefixes,
+   descriptions, and invalid config.
+
+### Files and synchronization
+
+Representative implementation paths:
+
+- `internal/config/config.go`, `internal/config/agent_test.go`
+- `internal/cli/prompt_command.go`, prompt/completion tests, starter config
+- README, changelog, prompt help/skill, paired prompt/commands-config docs
+- generated command reference and `docs/llms*.txt`
+
+Run focused tests, read-only format check, full vet/test/race/build/E2E,
+skill-sync/check, and strict bilingual docs checks. Gates green authorize the
+local Phase B commit; the coordinator stages current plan/session artifacts via
+hygiene, excludes protected unrelated artifacts, commits, and records the SHA
+as Phase C's base. No push.
+
+---
+
+## Phase C — verified Claude Workflow ephemeral sweep
+
+**Writable:** `feat/pr-ci-scan` only.  
+**Base:** exact accepted Phase B commit SHA.  
+**Forbidden:** source workflow trees, `feat/ssh-hosts`, unrelated worktrees,
+protected recorder paths.
+
+### Architecture
+
+Add provider-neutral `internal/ephemeral`:
+
+- `types.go`: targets, claims, liveness, stable checks, versioned report/apply
+  results, `OwnershipSource` interface;
+- `audit.go`: pure aggregation; zero facts are unknown and blocked outranks
+  unknown;
+- `service.go`: read-only collection plus a separately locked/revalidated apply.
+
+Add `internal/ephemeral/claudeworkflow` for the private Claude metadata layout.
+`inventory.IsEphemeralWorktree` remains a display/candidate hint only; rename
+its implementation to `LooksEphemeralWorktree` and retain the old function as a
+compatibility wrapper. A path/name pattern never authorizes deletion.
+
+### Metadata adapter
+
+Starting from a Git candidate, inspect only bounded, fixed-depth paths under
+`~/.claude/projects`:
+
+- workflow `<session>/workflows/wf_*.json`;
+- agent mappings
+  `<session>/subagents/workflows/<wf>/agent-*.meta.json`;
+- bounded `journal.jsonl` for matching started/result records;
+- same-ID resumed transcript existence at
+  `<session>/subagents/agent-<id>.jsonl`.
+
+Requirements:
+
+- validated single-component IDs and fixed containment;
+- regular, non-symlink files/directories; reject traversal, NUL, reparse,
+  group/world-writable metadata, source mutation during read, duplicate claims,
+  path mismatch, and bound exhaustion;
+- exact canonical `worktreePath`, `spawnedWithWorktree=true`, matching run/agent
+  IDs, `isolation=worktree`, and journal linkage;
+- tolerate unknown add-only JSON fields because upstream has no schema version,
+  but require exact types/presence for every fact used;
+- never decode/emit prompts, scripts, logs, result bodies, filenames from model
+  output, or transcript content;
+- last activity is the maximum trustworthy provider/journal timestamp and
+  relevant regular-file mtime; future/conflicting/unparseable time is unknown.
+
+V1 terminal status requires all of:
+
+- workflow status observed as `completed` or `killed`;
+- matching agent state `done`;
+- matching journal `started` and `result`;
+- no same-ID resumed transcript.
+
+A killed/progress/no-result or resumed agent is `unknown` and cannot be cleaned,
+regardless of age. No typed-attestation bypass exists in V1.
+
+### CLI
 
 ```text
-dev prompt list [--json]
-
-dev prompt render pr-triage [query] [PR flags]
-dev prompt render session-close
-dev prompt render workspace-closeout [repo-or-checkout] [--base REF]
-
-dev prompt run  <same recipes> [--agent NAME] [--dry-run]
-dev prompt open <same recipes> [--agent NAME] [--dry-run]
+dev sweep --ephemeral-worktrees [--base REF] [--stale-days N] [--json]
+dev sweep --ephemeral-worktrees --apply [--delete-branches --base REF]
 ```
 
-Mode semantics are deliberately different:
-
-- **`render`** performs read-only context collection and writes only the final
-  Markdown prompt to stdout. No configured agent is needed.
-- **`run`** is batch/non-interactive. It selects `--agent`, then the configured
-  default, then the sole configured agent. It never inherits user stdin:
-  stdin transport receives the finite prompt; file/argv transport receives EOF.
-  It streams stdout/stderr, waits, and has a default 10-minute timeout. This is
-  the mode for `opencode run ...`, cron, or another scheduler.
-- **`open`** is a foreground interactive child in the **current terminal**. It
-  requires a TTY, inherits stdin/stdout/stderr, waits, and has no default
-  timeout. Prompt transport must be file or direct argv so stdin remains
-  available for the conversation. The recipe determines `Cmd.Dir`; for a
-  repository recipe this is the exact resolved checkout. If invoked inside a
-  Herdr pane, the agent naturally stays in that pane.
-- **`--dry-run`** on `run`/`open` still performs read-only collection and
-  rendering, but creates no temporary file and starts no process. It prints
-  the mode, selected agent, resolved cwd, transport, timeout, a redacted
-  command preview, and the exact prompt.
-
-Remove `dev pr prompt` before release rather than keep two public models: the
-published baseline is `v0.2.4`, and that subcommand exists only in the
-unreleased feature commit. Keep `dev pr list`; update `dev pr` wording so it no
-longer claims to launch agents. Replace all branch docs/examples rather than
-adding a compatibility layer for an unpublished command.
-
-## Agent configuration: separate batch from interactive launch
-
-Replace the current flat pre-release schema (`command`/`run`/`input`/
-`interactive`/`timeout`) with nested launchers:
-
-```toml
-[[agent]]
-name = "opencode"
-default = true
-
-[agent.run]
-command = ["opencode", "run", "{{prompt_file}}"]
-input = "file"
-timeout = "10m"
-
-[agent.open]
-command = ["opencode", "{{prompt_file}}"]
-input = "file"
-```
-
-The exact OpenCode/Claude/Codex examples must be checked against each installed
-CLI's current help before documentation is written; examples are not built-in
-defaults.
-
-Schema:
-
-```go
-type Agent struct {
-    Name    string   `toml:"name"`
-    Default bool     `toml:"default"`
-    Run     Launcher `toml:"run"`
-    Open    Launcher `toml:"open"`
-}
-
-type Launcher struct {
-    Command     []string `toml:"command"` // direct argv, preferred
-    Shell       string   `toml:"shell"`   // static host-owned shell text
-    Input       string   `toml:"input"`   // stdin | file | argv
-    LoadShellRC bool     `toml:"load_shell_rc"`
-    Timeout     Duration `toml:"timeout"`
-}
-```
-
-Rules enforced by `config.Validate` and by the process package:
-
-- An agent needs at least one of `[agent.run]` or `[agent.open]`; at most one
-  agent is default; names are trimmed, non-empty, and case-insensitively unique.
-- A launcher has exactly one of non-empty `command` or `shell`; reject blank
-  `command[0]`.
-- `command` bypasses the shell. `shell` is static text; reject every `{{...}}`
-  placeholder in it. `load_shell_rc` is valid only with `shell` and means just
-  that — it is not interactivity.
-- `stdin` is valid only for `run` and contains no placeholder.
-- Direct `file` transport requires exactly one whole argv element
-  `{{prompt_file}}`. For shell/file transport, inject `DEV_PROMPT_FILE` and
-  require the shell text to reference `$DEV_PROMPT_FILE` or
-  `${DEV_PROMPT_FILE}`; never splice the path or prompt into shell text.
-- `argv` is direct-command only and requires exactly one whole argv element
-  `{{prompt}}`; reject prompts above a conservative argument-size bound.
-  Embedded forms such as `--prompt={{prompt}}` are rejected.
-- `open` rejects stdin transport and requires terminal stdin/stdout. It inherits
-  the process environment and terminal streams; `run` gets EOF unless stdin is
-  the prompt transport.
-- `run` defaults to a 10-minute timeout. `open` has no timeout and rejects one:
-  safely cancelling an interactive descendant tree requires terminal job
-  control, unlike the isolated process group used by batch mode.
-- Prompt files live in a private `0700` temporary directory, mode `0600`, for
-  the child lifetime only. Errors redact prompt contents and temporary paths.
-- No process replacement (`syscall.Exec`): a child preserves cleanup, error
-  reporting, Windows behavior, and return to the shell wrapper.
-- No configurable environment/secret map in this version. Normal inherited
-  environment or a reviewed wrapper executable covers that without making
-  `dev` a credential store.
-
-`[[agent]]` remains host-only. Keep `agent` in
-`internal/projectconfig/load.go:deniedTopLevelSections` and strengthen the test
-to assert a `DiagnosticDenied`, not merely that the command did not run.
-
-## Architecture
-
-### 1. `internal/handoff`: process and transport only
-
-Extract the generic parts of `runAgent`/`agentProcess` from
-`internal/cli/pr_prompt.go` into a package with no PR, forge, runtime, Cobra, or
-`App` knowledge:
-
-- normalized `Launcher`/`Mode`/`Spec`;
-- validation of command versus shell and transport placeholders;
-- private prompt-file lifecycle;
-- explicit cwd and injected IO;
-- batch EOF versus inherited TTY behavior;
-- timeout/cancellation and a dry-run `Preview` with redactions.
-
-The CLI converts `config.Launcher` into `handoff.Spec`; cross-agent uniqueness
-and default selection stay in `internal/config`.
-
-### 2. `internal/templatex`: one-pass scalar rendering
-
-Move the pure `scaffold.RenderTemplate` implementation
-(`internal/scaffold/template.go:93-190`) into a lower-level package and keep
-`scaffold.RenderTemplate` as a compatibility wrapper. Prompt templates use one
-placeholder, `{{context_json}}`.
-
-This fixes the current renderer's correctness bug: it substitutes JSON and then
-rescans provider-controlled content, so a PR title containing `{{value}}` is
-mistaken for an unknown template variable. The shared renderer validates only
-the template and never reparses inserted values.
-
-### 3. `internal/promptkit`: registry, envelope, templates
-
-This package owns no collection policy. It provides:
-
-```go
-type Recipe struct {
-    Name, Summary, TargetUsage string
-    ContextVersion int
-    Template string
-}
-
-type Snapshot struct {
-    Scope string
-    Target Target
-    WorkingDirectory string
-    Capabilities []Capability
-    Warnings []Warning
-    Context any
-}
-```
-
-A sorted registry rejects duplicate names and supports `prompt list`. Cobra
-recipe factories bind typed options to a provider callback and return a
-`Snapshot`.
-
-Every template receives this versioned JSON envelope:
-
-```json
-{
-  "schema_version": 1,
-  "recipe": "workspace-closeout",
-  "context_version": 1,
-  "generated_at": "2026-09-02T12:00:00Z",
-  "host": "host",
-  "scope": "repository",
-  "target": {
-    "kind": "checkout",
-    "name": "demo/feat-x",
-    "path": "/absolute/worktree",
-    "working_directory": "/absolute/worktree"
-  },
-  "capabilities": [
-    {"name": "runtime-agent-activity", "available": true, "detail": "herdr"}
-  ],
-  "warnings": [
-    {"source": "gitlab", "code": "unauthenticated", "message": "signed out", "action": "..."}
-  ],
-  "context": {}
-}
-```
-
-Rules:
-
-- one timestamp is created per invocation and passed through every builder;
-- `schema_version` changes only for a breaking common-envelope change;
-  each recipe owns its `context_version`;
-- fields are add-only within a version;
-- partial forge/runtime/artifact failures become capabilities/warnings, not
-  silent absences; a failure that prevents any meaningful snapshot is fatal;
-- machine-local context intentionally uses absolute paths, because it is fed
-  to a process on the same host, not published or persisted.
-
-### 4. Read-only closeout evidence
-
-Add structured domain reports instead of building safety claims in templates:
-
-- `internal/closeout/session.go` gathers `Runtime.List`, optional
-  `AgentActivityLister.AgentActivities`, canonical checkout coverage, tasks,
-  Git/status availability, and artifact intent. Extract canonical
-  activity-to-checkout matching/current-pane resolution from
-  `internal/cli/agent_activity.go` so writer guards and reports share exactly
-  one implementation.
-- `internal/closeout/workspace.go` builds the structured equivalent of
-  `inventory.CollectRepoContext` and attaches PR evidence and full per-checkout
-  retirement checks.
-- `internal/retire/audit.go` contains pure, read-only checks shared by
-  `sweep`, the closeout reports, and `retire.Service`'s preflight. The mutating
-  service still revalidates after runtime closure and remains the only removal
-  authority.
-- Split read-only artifact intent/reachability inspection out of CLI helpers
-  into the existing `internal/artifact` domain package.
-- Let runtime inspection accept a precollected session snapshot; a machine-wide
-  recipe must not run `herdr workspace list` once per checkout.
-
-Do not call `Inspection.Ready()` “retirement ready”: today
-`internal/retire/safety.go:46-51` applies only to runtime closure. Reports expose
-both `runtime_close_status` and `retirement_status` with stable check IDs.
-
-## Initial recipes
-
-### `pr-triage`
-
-Reuse the corrected PR report and all current PR filters. Defaults remain
-account+local, author+reviewer, open. The context includes effective (not merely
-requested) scope, provider readiness, PR/local health, and printed action
-commands.
-
-The prompt groups merge/review/fix/wait/inspect work. It treats missing fields
-from a summary surface as unknown, treats PR text as untrusted data rather than
-instructions, and never approves, comments, merges, or retires.
-
-Working directory: the directory where `dev` was invoked; the recipe is global.
-
-### `session-close`
-
-Machine-wide, no target. Group each live runtime/agent activity by canonical
-checkout and retain unmatched activities as unknown.
-
-Deterministic classification:
-
-- `close-eligible`: runtime closure is structurally eligible and every
-  recognized covering status is `idle` or `done`;
-- `blocked`: active status, caller containment, or a mixed-purpose workspace;
-- `unknown`: unrecognized/unknown status, failed inventory, missing coverage,
-  or failed inspection.
-
-`close-eligible` means **runtime closure only**. Herdr `done` means a turn
-settled; it proves neither committed work, artifact finalization, review, nor
-completed task intent. Git/task/artifact facts let the agent recommend
-`park --next`, `park --wip`, keep-open, or inspect, but do not redefine the
-runtime gate. The recipe never calls `CloseAndWait`.
-
-Working directory: invocation directory.
-
-### `workspace-closeout [repo-or-checkout]`
-
-Collect the canonical checkout and all linked worktrees, tracked/untracked
-tasks, sessions/agent activities, live Git status, in-progress operations,
-artifact status/reachability, and local-scope PR evidence for all states. Forge
-failure is a warning and never blocks the local report.
-
-Target behavior:
-
-- no argument: resolve the repository containing cwd and preserve that exact
-  checkout as launcher cwd;
-- checkout path: report the whole repository, launch in that checkout;
-- repository name: report the whole repository, launch in its canonical root;
-- `--base` is only an explicit base for untracked worktrees; a recorded task
-  base remains authoritative until reconciled.
-
-Per-checkout `retirement_status` is `eligible`, `blocked`, `unknown`, or
-`not-applicable`, with stable check IDs and evidence. The read-only audit covers:
-registered/non-main linked worktree, named/expected branch, existence/readable
-status, cleanliness, no active Git operation, resolvable base, branch
-containment, task identity/state, finalized/reachable artifacts, runtime/caller/
-mixed-workspace eligibility. Canonical and harness-owned ephemeral checkouts are
-`not-applicable`.
-
-The model groups work into `finish`, `park`, `retire`, and `inspect`, quoting
-existing deterministic commands only. A forge-reported merged PR never turns a
-failed ancestry/artifact/runtime check into eligibility.
-
-This recipe also covers the rebase/conflict escalation:
-
-1. inspect with `workspace-closeout`;
-2. use existing `dev done --ff` or `dev git pull-rebase` for the ordinary path;
-3. if Git stops at a conflict, run `dev prompt open workspace-closeout` from the
-   exact checkout;
-4. the prompt requires the agent to explain the state and ask before
-   rebase/abort/reset/force/retire actions;
-5. rerun `done`/`sweep`/`retire`, which re-read and revalidate state.
-
-There is no separate rebase workflow in this version.
-
-## Runtime/Herdr decision
-
-Ship only foreground current-terminal `open`.
-
-`dev start --run` is not reusable as a generic interactive launcher: it accepts
-opaque shell text only for the exact root pane returned by the same newly
-created first-class Herdr worktree response. It deliberately rejects reuse,
-fallback, malformed/missing root data, tmux, Zellij, and `none`; it has no stdio,
-wait, or exit-status channel. A persisted handle or focused/current pane is not
-an equivalent proof.
-
-Therefore `dev prompt open` does **not** call `Runtime.Open`, `Activator`, or
-`PaneRunner`, and has no `--herdr` flag. Inside Herdr it runs in the current
-pane; outside it runs in the current terminal. A new runtime surface is deferred
-until an optional backend-neutral capability can model require-new versus
-reuse, topology, creation-correlated transient target, argv versus shell text,
-detached versus foreground/wait semantics, and stdio/exit status. Never infer a
-launch target from a saved handle, focused pane, label, directory search, or
-reused surface.
-
-For a separate Herdr surface today, the documented safe manual workflow is:
-create/focus a fresh pane or workspace with Herdr, change to the target checkout,
-then run `dev prompt open ...` there. Do not disguise that manual step as a
-cross-backend feature.
-
-## Fix existing PR correctness before extraction
-
-The generic layer must not fossilize these current bugs:
-
-1. Per-repository GitHub/GitLab queries must honor requested roles and populate
-   `roles`; add an explicit any-role mode used only by workspace closeout.
-2. Normalize each `--repo` selector once. A URL becomes canonical forge plus
-   `owner/name`; a bare `owner/name` applies to matching ready providers.
-   Restrict both account rows and local targets.
-3. Return normalized/effective collection options, so an account-to-local
-   fallback cannot report the wrong scope in JSON/prompt context.
-4. Local joins expose `checkout_exists`, registration and status availability,
-   and status error. Prefer a readable live `Status.Branch`; a recorded branch
-   fallback is marked as such. Missing/unreadable state is never represented as
-   clean zero-values.
-5. Render missing/unreadable checkout state distinctly in tables and JSON.
-6. Replace the PR-only retire prompt with `workspace-closeout`; do not retain
-   its broken default of open PRs or contradictory ahead rules.
-7. Replace `strings.NewReplacer` with the one-pass strict renderer.
-8. Correct docs that say `dev pr` emits a reviewer trigger phrase: current
-   actions contain a generic body placeholder only.
-9. Add `schema_version` and document the complete PR JSON/config contract in
-   the paired commands/config pages.
-
-## Critical files and sequence
-
-1. **Normalize PR reports**
-   - `internal/forge/{pr,github,gitlab}.go`
-   - `internal/cli/{pr,pr_collect}.go`
-   - focused forge/CLI regression tests for roles, repo selectors, effective
-     scope, missing/cold/wrong-branch joins, and hostile brace content.
-
-2. **Create reusable evidence**
-   - add `internal/retire/audit.go`, `internal/closeout/{session,workspace}.go`,
-     and read-only artifact inspection;
-   - extract activity matching from `internal/cli/agent_activity.go`;
-   - have `internal/cli/sweep.go` and `internal/retire/service.go` reuse the same
-     check helpers without changing report-before-apply or revalidation order.
-
-3. **Create generic prompt/handoff core**
-   - add `internal/templatex`, retaining a wrapper in
-     `internal/scaffold/template.go`;
-   - add `internal/promptkit` registry/envelope/templates;
-   - add `internal/handoff` process/transport implementation;
-   - replace the flat agent schema in `internal/config/config.go` and the
-     commented starter config; retain project-config denial.
-
-4. **Wire CLI**
-   - add `internal/cli/prompt_command.go` and recipe-specific factories;
-   - register in `internal/cli/root.go`, TLDR/help topics and completions;
-   - remove `newPRPromptCmd`, PR-only launcher helpers, and old prompt assets;
-   - leave `dev pr list` as the PR inventory surface.
-
-5. **Tests**
-   - template one-pass/malformed/unknown tests, including provider strings with
-     `{{...}}`;
-   - registry order/duplicate/version/envelope tests;
-   - nested agent config validation and default/singleton selection;
-   - `run`: stdin/file/argv, EOF for non-stdin transport, timeout, cwd,
-     permissions/cleanup, stderr separation, and no-temp dry run;
-   - `open`: TTY requirement, file/argv, inherited IO, cwd, no default timeout,
-     and writer-collision guard (`guardSharedCheckout`);
-   - every Herdr status plus caller/mixed/failed-inventory session cases;
-   - workspace dirty/conflict/in-progress/missing/containment/task/artifact/
-     ephemeral/canonical cases, including “merged PR is not authorization.”
-
-6. **Product/docs synchronization**
-   - update `README.md`, `[Unreleased]` in `CHANGELOG.md`, and `TODO.md`;
-   - replace the PR-only handoff section in paired
-     `docs/guides/pull-request-inbox*.md`;
-   - add paired `docs/guides/prompt-handoffs.md` pages with the escalation table,
-     batch versus TTY behavior, cwd, permissions, and Herdr boundary;
-   - update paired commands/config, compatibility, retirement,
-     parallel-runtime, and sources/freshness pages;
-   - add/update bundled help and
-     `internal/skill/dev-cli/references/{pull-requests,prompt-handoffs}.md`;
-   - run `make skill-sync`, inspect generated commands, and `make skill-check`;
-   - regenerate `docs/llms*.txt` and run strict bilingual docs checks.
+- canonical non-bare checkout only;
+- mutually exclusive with `--merged-worktrees`;
+- `--stale-days` means provider inactivity, defaults to 14, minimum 1;
+- JSON is report-only; reject `--json --apply`;
+- apply requires an interactive terminal and per-item confirmation;
+- reject `--yes`, `--close-unknown`, `--assume-no-runtime`, and apply with
+  `--no-runtime`;
+- branch is retained by default; deleting branches requires explicit `--base`.
+
+Stable report schema version 1 includes repository/common-dir identity,
+capabilities/diagnostics, sorted candidates, provider/run/agent IDs, normalized
+states/times, Git/path/branch/HEAD facts, stable checks/classification, planned
+actions, and summary counts. It never persists or prints private metadata
+content.
+
+### Eligibility
+
+Checks include:
+
+- verified unique provider ownership/mapping/terminal/result/no-resume/inactivity;
+- registered present non-main named worktree, exact common-dir, branch, worktree
+  HEAD and live HEAD agreement, unlocked and non-prunable;
+- clean staged/unstaged/conflicted/untracked/submodule state;
+- zero ignored files in V1 (`git ls-files --others --ignored
+  --exclude-standard -z`); ignored content is blocked, never deleted;
+- no merge/rebase/cherry-pick/revert/sequencer/bisect operation;
+- no task claim;
+- artifact inventory known and every intent discarded or finalized/reachable;
+- caller outside target, runtime inventory known, no covering/mixed/active
+  session.
+
+Classification is `eligible`, `blocked`, `unknown`, or `not-applicable`.
+Missing/prunable/unregistered/orphaned paths are report-only; V1 does not prune,
+repair, rescue, stash, commit, or remove them. The two historical fixtures must
+remain blocked/unknown: both were dirty and younger than 14 days; source 1 also
+had resumed/no-result liveness ambiguity.
+
+A clean checkout with unique commits may be removed because its named branch is
+retained. Branch deletion is a separate action and additionally requires an
+unchanged tip, explicit base, containment, and zero unique commits.
+
+### Apply and revalidation
+
+Report construction is side-effect-free and uses `artifact.InspectWorktrees`,
+never `ensureArtifactsFinalized` or a lock that writes state.
+
+For apply:
+
+1. Acquire a common-dir advisory cleanup lock.
+2. Re-discover repo/common-dir and re-scan unique provider ownership/liveness/
+   inactivity.
+3. Re-list worktrees and require unchanged canonical path, branch, HEAD,
+   registration, lock/prunable state.
+4. Reload tasks, artifact inspection, every runtime, caller containment, full
+   status, ignored files, submodules, and Git operation.
+5. Compare a stable candidate fingerprint; any change becomes skipped-changed.
+6. Remove only with non-force `gitx.RemoveWorktree`.
+7. Verify path/registration gone; never delete Claude metadata and never prune
+   on normal success.
+8. If separately requested, re-resolve unchanged branch/base, use
+   `gitx.CompareBranches`, require containment/zero unique, and call only
+   `git branch -d`; failure leaves the branch retained and reports partial
+   completion.
+
+### Tests and docs
+
+- Audit precedence and every classification.
+- Adapter fixtures for completed/killed, progress/no-result, resume, malformed
+  types, unknown fields, duplicate/path mismatch, symlink/traversal, oversized/
+  over-count inputs, future/conflicting timestamps, privacy/redaction.
+- Service races mutating every proof between report/apply.
+- CLI canonical-only and flag conflicts, age minimum, JSON purity/schema,
+  report immutability, dirty/untracked/ignored/submodule/operation, task,
+  artifacts, runtime/caller, locked/prunable/missing/orphan, branch-retained
+  unique commits, safe branch-d, no force/prune/metadata deletion.
+- Update changelog, README/TODO, retirement help, paired retirement/
+  compatibility/commands docs, bundled agent-retirement/worktree-ownership
+  references, generated commands and llms files.
+- Full format/vet/test/race/build/E2E, skill and bilingual docs checks, Unix
+  native plus Windows compile/native filesystem-adapter gates.
+
+Gates green authorize the local Phase C commit with hygiene-staged current phase
+artifacts and no push.
 
 ## Out of scope
 
-- custom/project-authored recipes or executable prompt workflows;
-- a `machine-attention` recipe (existing `dev summary --attention --json` is
-  already the right deterministic surface and can join the registry later);
-- a dedicated integration/rebase agent workflow;
-- parsing, storing, or iterating on agent replies;
-- automatic PR comments/approvals/merges, session close, worktree removal,
-  branch deletion, rebase, reset, or force push;
-- built-in agent vendors/default launchers or secret/environment injection;
-- new Herdr/tmux/Zellij surfaces, pane injection, or persisted pane IDs;
-- treating forge merge state as retirement proof.
-
-## Verification
-
-```bash
-files="$(gofmt -l .)" && test -z "$files"
-make vet
-go test -race ./...
-make build
-make e2e
-
-make skill-sync
-make skill-check
-
-uv sync --frozen --extra docs
-uv run python scripts/check-docs.py --source --generate-llms
-uv run python scripts/check-docs.py --source
-uv run mkdocs build --strict
-uv run python scripts/check-docs.py --site site
-```
-
-End-to-end manual checks:
-
-1. `dev prompt render session-close` produces a prompt whose unknown/missing
-   capabilities are explicit and performs no mutation.
-2. A fake batch agent confirms `run` receives the prompt, cannot read user
-   stdin, runs in the expected cwd, and times out.
-3. A PTY-backed fake interactive agent confirms `open` receives the initial
-   prompt by file/argv and can continue reading user input without a default
-   timeout.
-4. From inside a Herdr pane, `open workspace-closeout` stays in that pane; from
-   outside, it uses the current terminal. Neither creates/reuses/focuses a
-   runtime surface.
-5. `session-close` never calls `CloseAndWait`; `workspace-closeout` never calls
-   removal; a merged/squashed PR with failed local checks remains blocked.
-6. Existing `dev sweep`, `dev done`, `dev retire`, and `dev start --run`
-   behavior and safety tests remain unchanged.
+- Backend/model inheritance or built-in agent profiles.
+- Secret/environment injection into agent profiles.
+- Operator-attested cleanup of unknown Claude workflows.
+- Automatic dirty rescue/commit/stash or ignored-file disposal.
+- Other agent-harness metadata adapters.
+- Automatic missing/prunable/orphan repair or repository-wide prune.
+- Force worktree removal, `branch -D`, metadata deletion, or rescue-tag push.
+- Automatic context compaction as a correctness mechanism.

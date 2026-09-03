@@ -763,6 +763,16 @@ Render operational context, or hand it to a configured agent
 dev prompt
 ```
 
+### `dev prompt agents`
+
+List configured agent profiles without private launch details
+
+```
+dev prompt agents [flags]
+```
+
+- `--json` — emit stable structured agent metadata
+
 ### `dev prompt list`
 
 List built-in prompt recipes

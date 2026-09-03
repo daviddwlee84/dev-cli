@@ -14,6 +14,7 @@ func TestAgentRoundTripsNestedLaunchers(t *testing.T) {
 	body := `
 [[agent]]
 name = "opencode"
+description = "Local review and implementation agent"
 default = true
 [agent.run]
 command = ["opencode", "run"]
@@ -33,6 +34,9 @@ input = "file"
 		t.Fatalf("got %d agents", len(cfg.Agents))
 	}
 	agent := cfg.Agents[0]
+	if agent.Description != "Local review and implementation agent" {
+		t.Errorf("description = %q", agent.Description)
+	}
 	if got := agent.Run.Handoff(handoff.ModeRun).Timeout; got != 5*time.Minute {
 		t.Errorf("run timeout = %v", got)
 	}

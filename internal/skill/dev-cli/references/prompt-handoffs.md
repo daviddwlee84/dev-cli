@@ -26,10 +26,20 @@ mutation. `dev` does not do any of those things either.
 ```bash
 dev prompt list
 dev prompt list --json
+dev prompt agents
+dev prompt agents --json
 dev prompt render pr-triage
 dev prompt render session-close
 dev prompt render workspace-closeout [repo-or-checkout]
 ```
+
+`prompt agents` is the discovery surface for host profiles. Human output is
+sorted `PROFILE DEFAULT RUN OPEN DESCRIPTION`; direct launchers expose only the
+executable basename, shell launchers say `shell`, and missing modes say `—`. JSON
+is a stable sorted array with `name`, `description`, `default`, and nested
+`run`/`open` `{configured,kind,executable}` objects. Never infer or reveal argv,
+shell source, executable directories, environment, prompt text, or config path
+from this inventory.
 
 - `pr-triage` uses the same query/filters as `dev pr list` and orders authored or
   review-requested items into merge/review/fix/wait/inspect. It performs no
@@ -66,10 +76,13 @@ dev prompt open workspace-closeout . --dry-run
 ```
 
 `--dry-run` prints resolved agent, mode, cwd, transport, timeout, safe command
-markers, and full prompt, and launches nothing. A real run/open in a checkout is
-a new writer claim and uses shared-checkout occupancy protection; the invoking
-agent's pane is not excluded, and dry-run is not a writer claim.
-`open` needs an interactive terminal except during dry-run.
+markers, and full prompt, and launches nothing. Resolve the globally selected
+profile and requested launcher before recipe collection. For non-dry `open`,
+verify the interactive terminal before collection too; missing/unknown/ambiguous
+profiles, absent modes, and TTY failure must not query a forge or runtime. A real
+run/open in a checkout is a new writer claim and uses shared-checkout occupancy
+protection after collection supplies the cwd; the invoking agent's pane is not
+excluded, and dry-run is not a writer claim.
 
 Both modes wait for the child. A launcher may set an explicit non-negative
 timeout; omitted/zero resolves to 10 minutes for run and no deadline for open.
@@ -82,6 +95,7 @@ the user's host config, not repository `.dev-cli/config.toml`:
 ```toml
 [[agent]]
 name = "my-agent"
+description = "Local review and implementation agent"
 default = true
 
 [agent.run]
@@ -99,11 +113,18 @@ Selection order:
 1. Explicit `--agent NAME` (case-insensitive name match).
 2. The unique `default = true` entry.
 3. The sole configured entry.
-4. Otherwise fail as ambiguous and list configured names.
+4. Otherwise fail as ambiguous.
+
+Selection is global, not per mode. After selecting, require that profile's
+requested launcher; never substitute another profile merely because it supports
+the mode. Errors list sorted mode-capable profiles and point to
+`dev prompt agents`. Dynamic `--agent` completion does filter by the command's
+mode, loads the parsed root `--config`, and uses sanitized optional descriptions;
+invalid config produces no candidates and keeps file completion disabled.
 
 Names are required, cannot have surrounding whitespace, and must be unique
-case-insensitively. At most one agent is default. Each entry must configure at
-least run or open; invoking an absent mode fails without borrowing the other.
+case-insensitively. `description` is optional. At most one agent is default. Each
+entry must configure at least run or open.
 
 Do not edit the user's config merely to make a handoff work unless they asked.
 Show a proposed block and explain that it names an executable process.

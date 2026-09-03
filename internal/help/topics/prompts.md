@@ -24,10 +24,19 @@ state, or turns advice into lifecycle authorization.
 ```bash
 dev prompt list
 dev prompt list --json
+dev prompt agents
+dev prompt agents --json
 dev prompt render pr-triage
 dev prompt render session-close
 dev prompt render workspace-closeout [repo-or-checkout]
 ```
+
+`prompt agents` lists profiles by name with default/run/open availability and
+optional descriptions. Direct launchers reveal only the executable basename;
+shell launchers say `shell`. The stable JSON array contains `name`,
+`description`, `default`, and nested `run`/`open` objects with only `configured`,
+`kind` (`command|shell|none`), and `executable`. It never reveals argv, shell
+source, executable directories, environment, prompt text, or the config path.
 
 - `pr-triage` uses the `dev pr list` query/filter surface and prioritizes
   requests authored by or awaiting review from the user.
@@ -58,11 +67,14 @@ dev prompt open workspace-closeout . --dry-run
 ```
 
 Dry-run prints the resolved agent, mode, cwd, transport, timeout, safe command
-markers, and complete prompt without starting anything. `open` otherwise needs
-an interactive terminal. A real run/open in a checkout is a new writer claim
-and uses the shared-checkout occupancy guard even though the recipe requests
-read-only analysis. The invoking agent's pane is not excluded; sharing remains
-an explicit coordinated override.
+markers, and complete prompt without starting anything. `run`/`open` resolve the
+global profile and requested launcher before collecting recipe evidence; a
+non-dry `open` also verifies its TTY first. Missing profiles, missing modes, and
+TTY failures therefore do not query forges or runtimes. A real run/open in a
+checkout is a new writer claim and uses the shared-checkout occupancy guard
+after collection supplies the cwd, even though the recipe requests read-only
+analysis. The invoking agent's pane is not excluded; sharing remains an explicit
+coordinated override.
 
 ## Host-only configuration
 
@@ -71,6 +83,7 @@ There is no built-in vendor, agent, or launcher:
 ```toml
 [[agent]]
 name = "my-agent"
+description = "Local review and implementation agent"
 default = true
 
 [agent.run]
@@ -84,10 +97,15 @@ input = "file"
 ```
 
 `--agent NAME` selects explicitly; otherwise the unique `default = true` entry
-wins; otherwise a sole configured agent wins. Multiple agents with no default
-fail as ambiguous. Names are required, have no surrounding whitespace, compare
-case-insensitively, and must be unique. At most one is default. An agent must
-configure run or open; one mode never silently borrows the other.
+wins; otherwise a sole configured agent wins. This is global profile selection:
+a default or sole profile missing the requested mode fails rather than falling
+back to another profile. Diagnostics list sorted mode-capable profiles and point
+to `dev prompt agents`. `--agent` completion also loads the parsed `--config` and
+shows only run-capable names below `prompt run` or open-capable names below
+`prompt open`, with sanitized optional descriptions; invalid config yields no
+dynamic candidates. Names are required, have no surrounding whitespace, compare
+case-insensitively, and must be unique. `description` is optional, at most one
+profile is default, and every profile configures run or open.
 
 Each launcher sets exactly one direct `command` argv or static `shell`, plus
 `input` and optional shell-only `load_shell_rc`. `run` may set a non-negative

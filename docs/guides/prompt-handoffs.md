@@ -2,7 +2,7 @@
 description: Render deterministic operational context or hand it to a configured local agent without creating a second lifecycle authority.
 authority: project
 status: stable
-verified_on: 2026-09-02
+verified_on: 2026-09-03
 tested_with: OpenCode 1.18.25
 ---
 
@@ -15,7 +15,7 @@ handoff, not an agent loop, scheduler, permission manager, or lifecycle engine.
 !!! info "Freshness"
     **Authority:** `internal/cli/prompt_command.go`, `internal/promptkit`,
     `internal/handoff`, `internal/closeout`, and `internal/retire/audit.go` ·
-    **Status:** stable · **Verified:** 2026-09-02.
+    **Status:** stable · **Verified:** 2026-09-03.
 
 ## Escalate only as far as needed
 
@@ -43,6 +43,8 @@ convert it into approval for a mutation.
 ```bash
 dev prompt list
 dev prompt list --json
+dev prompt agents
+dev prompt agents --json
 dev prompt render pr-triage
 dev prompt render session-close
 dev prompt render workspace-closeout [repo-or-checkout]
@@ -60,6 +62,20 @@ capabilities, warnings, and recipe-specific context. Collected repository text,
 branch names, request titles, and notes are data rather than instructions.
 Missing or failed evidence remains an explicit capability gap or warning; it is
 never changed into a reassuring clean/empty value.
+
+### Discover configured profiles safely
+
+`dev prompt agents` prints the sorted table `PROFILE DEFAULT RUN OPEN
+DESCRIPTION`. A direct launcher displays only `filepath.Base(command[0])`, a
+shell launcher displays `shell`, and an unavailable mode displays `—`. The
+stable `--json` form is an array in the same profile order. Every object has
+`name`, `description`, `default`, and nested `run`/`open` objects containing
+`configured`, `kind` (`command`, `shell`, or `none`), and `executable` (the
+basename for direct commands, otherwise an empty string).
+
+Both forms intentionally omit command arguments, shell source, executable
+directories, environment, rendered prompts, and the config path. An empty
+configuration reports no human profiles and emits `[]` in JSON.
 
 ## Choose render, run, or open
 
@@ -79,17 +95,23 @@ dev prompt open workspace-closeout . --agent my-agent
 dev prompt open workspace-closeout . --dry-run
 ```
 
-`--dry-run` resolves the agent, working directory, transport, timeout, and safe
-command preview, then prints the complete rendered prompt without starting the
-process. It therefore makes no writer claim. A real `run` or `open` is treated as
-a writer claim when its working directory is a checkout, even though the recipe
-asks for read-only analysis; the shared-checkout occupancy guard still applies.
-Unlike a command the current agent runs to continue its own work, a handoff is a
-new agent claim, so the invoking agent's pane is **not** excluded. Use
-`--allow-shared-checkout` only after coordinating disjoint ownership.
+`run` and `open` first resolve the globally selected profile and its requested
+launcher, before any recipe collection. A non-dry `open` checks for an
+interactive terminal at the same early boundary. Missing, unknown, or ambiguous
+profiles, an unavailable mode, and a missing TTY therefore fail without querying
+a forge or runtime. Diagnostics list sorted mode-capable profiles and point to
+`dev prompt agents`.
 
-`open` requires an interactive terminal unless it is a dry run and does not
-accept a timeout. Only `run` accepts a timeout and gains a 10-minute default when
+`--dry-run` then resolves the working directory, transport, timeout, and safe
+command preview and prints the complete rendered prompt without starting the
+process. It therefore makes no writer claim. A real `run` or `open` is treated as
+a writer claim when its collected working directory is a checkout; the
+shared-checkout occupancy guard still applies after collection. Unlike a command
+the current agent runs to continue its own work, a handoff is a new agent claim,
+so the invoking agent's pane is **not** excluded. Use `--allow-shared-checkout`
+only after coordinating disjoint ownership.
+
+`open` does not accept a timeout. Only `run` accepts a timeout and gains a 10-minute default when
 the value is absent or zero. When a batch timeout expires, `dev` terminates the
 launcher process tree so a descendant agent cannot continue modifying the
 checkout after the handoff returns.
@@ -102,6 +124,7 @@ local commands in the user config returned by `dev config path`:
 ```toml
 [[agent]]
 name = "my-agent"
+description = "Local review and implementation agent"
 default = true
 
 [agent.run]
@@ -124,6 +147,7 @@ short message tells OpenCode how to treat it:
 ```toml
 [[agent]]
 name = "opencode"
+description = "OpenCode batch and interactive handoff"
 default = true
 
 [agent.run]
@@ -140,17 +164,27 @@ This is documentation, not a built-in default. Re-check `opencode run --help`
 after upgrading; do not add `--auto`, because that would change the configured
 agent's approval policy.
 
-Selection is deterministic:
+Selection is deterministic and global:
 
 1. `--agent NAME` selects that name (matching is case-insensitive).
 2. Without it, the one entry with `default = true` is selected.
 3. Without a default, the sole configured `[[agent]]` is selected.
-4. Multiple entries with no default are ambiguous and fail with their names.
+4. Multiple entries with no default are ambiguous and fail.
+5. Only after selection does `dev` require that profile's requested launcher.
 
-Names are required, cannot have surrounding whitespace, and must be unique
-case-insensitively. At most one entry may be the default. Each agent must define
-at least one of `[agent.run]` or `[agent.open]`; asking for an undefined mode
-fails rather than borrowing the other launcher.
+Step 5 never falls back to another profile, even when another profile supports
+the requested mode. Names are required, cannot have surrounding whitespace, and
+must be unique case-insensitively. `description` is optional and may explain a
+profile in inventory and completion. At most one entry may be the default; every
+agent defines at least one of `[agent.run]` or `[agent.open]`.
+
+`--agent` completion is mode-aware: `prompt run` offers run-capable profiles and
+`prompt open` offers open-capable profiles. It loads the root `--config` after
+Cobra parses it and may describe a candidate as
+`default · run · <description>` or `default · open · <description>`. Tabs/newlines are sanitized
+through the shared completion
+protocol. Invalid config degrades to no dynamic candidates with filesystem
+completion disabled.
 
 A launcher has these fields:
 

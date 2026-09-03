@@ -285,10 +285,11 @@ func (c Config) EffectiveTools() []Tool {
 // to. Run and Open are separate because a batch command and an interactive TTY
 // command usually have different argv and input requirements.
 type Agent struct {
-	Name    string        `toml:"name"`
-	Default bool          `toml:"default"`
-	Run     AgentLauncher `toml:"run"`
-	Open    AgentLauncher `toml:"open"`
+	Name        string        `toml:"name"`
+	Description string        `toml:"description"`
+	Default     bool          `toml:"default"`
+	Run         AgentLauncher `toml:"run"`
+	Open        AgentLauncher `toml:"open"`
 }
 
 // AgentLauncher is one batch or foreground command definition. Exactly one of
