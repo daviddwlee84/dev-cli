@@ -13,7 +13,7 @@ import (
 
 func windowsFixtureService(t *testing.T) (*Service, Paths) {
 	t.Helper()
-	paths, err := NewPaths(t.TempDir())
+	paths, err := NewPaths(fixtureHome(t))
 	if err != nil {
 		t.Fatal(err)
 	}

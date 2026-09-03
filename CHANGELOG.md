@@ -45,6 +45,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- A successful fleet SSH password retry is no longer changed into exit 255
+  merely because the process completed without reading the optional askpass
+  secret pipe.
 - The Zellij runtime no longer fails every session listing when an exited
   session is left in Zellij's namespace. Zellij keeps exited sessions
   resurrectable, and `dump-layout` against one errors with `There is no active

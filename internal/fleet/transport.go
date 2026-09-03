@@ -87,6 +87,13 @@ func runCommandWithAskpass(cmd *exec.Cmd, password string) error {
 	go func() { writeDone <- carrier.writeSecret([]byte(password + "\n")) }()
 	waitErr := cmd.Wait()
 	writeErr := <-writeDone
+	if waitErr == nil {
+		// A successful SSH process may finish without invoking askpass (for
+		// example, when another configured authentication method succeeds).
+		// Its exit status remains authoritative even if the unused carrier's
+		// writer observes a closed reader.
+		return errors.Join(parentErr, carrier.close())
+	}
 	return errors.Join(waitErr, parentErr, writeErr, carrier.close())
 }
 

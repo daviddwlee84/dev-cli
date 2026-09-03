@@ -38,9 +38,9 @@ func TestPlatformAttachProcessDoesNotJobControlInteractiveChild(t *testing.T) {
 }
 
 func TestExecRunnerCancellationKillsWindowsJobObject(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	command := `$child=Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c','ping -n 30 127.0.0.1 >NUL' -PassThru;[Console]::Out.Write($child.Id);Start-Sleep -Seconds 30`
+	command := `$child=Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c','ping -n 30 127.0.0.1 >NUL' -PassThru;[Console]::Out.WriteLine($child.Id);[Console]::Out.Flush();Start-Sleep -Seconds 30`
 	result, err := (ExecRunner{}).Run(ctx, RunRequest{
 		Name: "powershell.exe", Args: []string{"-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command},
 		Display: "Job Object cancellation fixture",

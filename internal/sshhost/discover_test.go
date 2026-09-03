@@ -18,14 +18,12 @@ func (panicRunner) Run(context.Context, RunRequest) (RunResult, error) {
 
 func fixturePaths(t *testing.T) Paths {
 	t.Helper()
-	home := t.TempDir()
+	home := fixtureHome(t)
 	paths, err := NewPaths(home)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(paths.SSHDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	makeFixturePrivateDirectory(t, paths.SSHDir)
 	return paths
 }
 
@@ -37,6 +35,7 @@ func writeFixture(t *testing.T, path, content string) {
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	protectFixtureFile(t, path)
 }
 
 func newFixtureService(t *testing.T, paths Paths, options DiscoverOptions) *Service {

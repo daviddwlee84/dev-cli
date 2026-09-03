@@ -83,7 +83,7 @@ exit 255
 	authMarker := filepath.Join(t.TempDir(), "auth")
 	t.Setenv("ATTEMPT_FILE", authMarker)
 	auth := (Transport{}).RunWithOptions(context.Background(), host, []string{"fleet", "_protocol"}, nil, RunOptions{Retry: RetryAuthentication})
-	if auth.ExitCode != 0 || auth.Attempts != 2 || !auth.UsedPassword || string(auth.Stdout) != "success" {
+	if auth.ExitCode != 0 || auth.Attempts != 2 || !auth.UsedPassword || string(auth.Stdout) != "success" || auth.TransportError != "" {
 		t.Fatalf("RetryAuthentication result = %+v", auth)
 	}
 
