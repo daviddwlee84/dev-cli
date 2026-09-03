@@ -25,7 +25,7 @@ lang: zh-TW
 | repository quick notes | `note add`、`note list`、`note show`、`note search`、`note edit`、`note delete`、`note path`、`note reindex` |
 | machine inventory | `bootstrap`、`adopt`、`doctor` |
 | experiments | `try`、`tries …`、`graduate` |
-| terminal UI | `tui`、`tui tools` |
+| terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
 | remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
@@ -190,9 +190,15 @@ Left/Right、Home/End、Delete/Backspace、cursor 位置插入與 Esc/Ctrl-C can
 被解讀為 terminal actions，不會成為 raw escape bytes。Buffered 或 piped non-TTY input
 仍維持 line-oriented behavior。
 
+## `dev flow [repo]` preview
+
+`dev flow [repo]` 是獨立 full-screen command，只接受 interactive TTY；它沒有 JSON/non-interactive contract。省略 `repo` 時，canonical/linked checkout 會開啟同一 Git common-directory repository 並 focus exact current surface；Git 之外則非同步開 repository picker。明確 `repo` 會覆蓋 cwd。
+
+Startup 與 `r` 只載入 local topology/evidence。`R` 才提供 Fetch refs、Refresh PR/MR 或 Both；每個 choice 都先產生 exact guarded plan，再要求 approval。Provider review observation 只在 current run 保存最低限度的 existence、`open`/`draft`/`merged`/`closed`、URL、provider 與 observed time，不代表 CI checks 或 approvals。`runtime=none` 保持 unobserved，也不提供 `--assume-no-runtime` 等 expert override。詳細 keys、row kinds、partial ledger 與 escape boundary 見 [Repository Flow 預覽](../guides/repository-flow.zh-TW.md)。
+
 ## `dev done` finish flags
 
-`dev done` 對 branch/worktree task 只透過下列其中一種方式 integrate：`--ff`（rebase 到 base 再 fast-forward）或 `--pr`（push 並開啟 pull/merge request）。兩者都省略時，在 TTY 上會開啟 interactive finish wizard —— 提示內容見[變更流工作流程](../guides/change-stream-workflow.zh-TW.md)。
+`dev done` 對 branch/worktree task 透過 `--ff`（rebase 到 base 再 fast-forward）、`--pr`（push 並開啟 pull/merge request）或 `--merged`（依 `--base-ref` 驗證外部 integration）處理。未指定 integration choice 時，在 TTY 上會開啟 interactive finish wizard —— 提示內容見[變更流工作流程](../guides/change-stream-workflow.zh-TW.md)。
 
 Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`）：
 
@@ -203,7 +209,7 @@ Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`�
 | `commit` | 用 `--message`/`-m` commit 全部變更（未指定時 interactive 會提示輸入） |
 | `discard` | reset tracked 變更並移除 untracked files；具破壞性，沒有 TTY 時需要 `--yes` |
 
-`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--keep-worktree` 讓 `--ff` integration 後仍保留 worktree（預設 merge 後移除），`--push` 會一併 push 產生的 branch，`--delete-branch` 只在 branch 的 commits 已被 base 包含時才刪除它 —— 有 unpushed commits 的 branch 永遠不會被刪除。
+`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--push` 會依 selected integration push 對應 branch/base。成功的 local 或 externally verified integration 只記錄 DONE/MERGED，永遠保留 runtime、worktree 與 branch 給獨立的 `dev retire`；`--keep-worktree` 只保留為 no-op compatibility warning，`--delete-branch` 則會報錯並指向 `dev retire --delete-branch`。`--merged` 可用 `--confirm-squash <merge-commit>` 對 squash result 作明確 operator attestation，不能由 provider status 自動推斷。
 
 ## Configuration
 
@@ -237,8 +243,7 @@ Target 必須是 absolute 且尚不存在；dev 絕不 overwrite。Private、bou
 在 TUI teardown 後才寫入，只包含 relative categorical timings 與 aggregate row
 counts，不包含 names、paths 或 raw payloads；它不是 configuration、cache、durable
 stats、stdout 或 network telemetry。
-TUI invocation 的 optional update-cache network refresh 也會延後到 initial view
-return 之後。
+Dashboard 與 `dev flow` 這類 full-screen invocation 的 optional update-cache network refresh 也會延後到 initial view return 之後；這不會把 Flow 自己的 local `r` 變成 remote refresh。
 
 Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
 
@@ -391,6 +396,7 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 ## 來源
 
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
 - [`internal/scaffold/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/scaffold/types.go)
 - [`internal/projectconfig/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/projectconfig/types.go)

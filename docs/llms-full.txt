@@ -386,12 +386,12 @@ The catalog ID keeps a quick note attached across linked worktrees, symlink inde
 | 🔥 `hot` | branch plus checkout | open | active now |
 | 🌤 `warm` | branch plus checkout kept | closed | likely to return within days |
 | ❄️ `cold` | committed and pushed branch; worktree absent | none | paused and reconstructible elsewhere |
-| ✅ `done` | integrated | none | retained until cleanup reaps the entry |
+| ✅ `done` | integrated; branch/checkout may remain | may remain open | MERGED, pending explicit retirement |
 
 ```mermaid
 flowchart TD
     accTitle: dev-cli lifecycle states
-    accDescr: Tasks move between HOT, WARM, and eligible COLD states; direct or locally integrated work reaches DONE; review leaves the current state unchanged; and sweep reaps only an already completed entry.
+    accDescr: Tasks move between HOT, WARM, and eligible COLD states; direct or verified integrated work reaches DONE while resources remain; review leaves the current state unchanged; and external retirement reaps only an already completed entry.
 
     Start["dev start"] --> Hot["HOT"]
     Hot -->|dev park --next| Warm["WARM"]
@@ -408,12 +408,20 @@ flowchart TD
     Hot -.->|branch/worktree: dev done --pr; state unchanged| Review["push / review handoff"]
     Warm -.->|branch/worktree: dev done --pr; state unchanged| Review
     Review -.->|feedback: dev resume if WARM| Hot
+    Review -->|dev done --merged --base-ref REF| Done
 
-    Done -->|dev sweep: report| Report["cleanup candidate"]
-    Report -->|dev sweep --apply| Reaped["entry reaped"]
+    Done -->|dev retire from outside target| Reaped["RETIRED: resources cleaned; entry reaped"]
+    Done -.->|dev sweep: report candidate| Report["cleanup report"]
+    Report -.->|approved apply| Reaped
 ```
 
-For branch/worktree tasks, `dev done --pr` is intentionally not a HOT/WARM → DONE transition. It hands off a pushed branch (opening review when supported) and leaves state and cleanup unchanged; remote merge reconciliation remains manual.
+For branch/worktree tasks, `dev done --pr` is intentionally not a HOT/WARM → DONE transition. It hands off a pushed branch (opening review when supported) and leaves state and cleanup unchanged. `dev flow` can manually query portable review existence/state/draft/URL evidence, but never infers DONE. After an external merge, use `dev done --merged --base-ref <ref>` or Flow's Verify Merged action to prove named ancestry explicitly before a separate Retire plan performs cleanup.
+
+`dev flow [repo]` makes the underlying hybrid model visible: persisted intent,
+typed live observations, and a revision-bound guarded plan are distinct. Errors,
+unknowns, and stale facts do not become false; Apply revalidates exact task/Git/
+worktree/runtime/artifact identity before mutation. See [Repository lifecycle
+flow](../guides/repository-flow.md).
 
 ## Checkout modes
 
@@ -430,6 +438,8 @@ The mode is selected by collision and recovery needs, not by ceremony.
 ## Runtime is deliberately lossy
 
 `runtime.Runtime` exposes `Open`, `Close`, `List`, and `Annotate`. `auto` selects Herdr when available, then tmux, then Zellij, then the always-available `none` backend. Closing any backend must not remove the checkout, branch, or task entry.
+
+`none` means no observable multiplexer backend; it does not prove that no session or agent exists. Guarded actions that require occupancy or absence proof retain this as unobserved evidence. `dev flow` never presents it as known closed and does not offer the expert `--assume-no-runtime` override.
 
 This separation is why rebooting, closing a multiplexer, or changing runtime backend does not abandon work. `dev sweep` can compare the registry with live Git/runtime facts and report drift.
 
@@ -455,6 +465,8 @@ One writer owns a branch at a time. If two machines or agents need to mutate the
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/help/topics/parking.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/parking.md)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 
 ---
@@ -563,7 +575,7 @@ A `dev` task is a durable record of one line of work. Select the checkout mode, 
 ```mermaid
 flowchart TD
     accTitle: dev-cli change-stream workflow
-    accDescr: A change stream starts in direct, branch-only, or worktree mode and cycles through active, parked, and resumed work. Direct completion or local fast-forward reaches DONE and cleanup, while review hands off a pushed branch and remains active pending manual reconciliation.
+    accDescr: A change stream starts in direct, branch-only, or worktree mode and cycles through active, parked, and resumed work. Direct or verified integration reaches DONE while resources remain, review preserves the current state, and external retirement performs cleanup.
 
     Start["dev start"] --> Mode{"checkout mode"}
     Mode -->|direct| Direct["HOT: direct work / commit / test"]
@@ -585,15 +597,17 @@ flowchart TD
     Managed -->|dev done --pr| Review["push / review handoff: task stays active"]
     WarmManaged -->|dev done --pr| Review
     Review -->|feedback: dev resume if WARM| Managed
-    Review -->|merged externally| Reconcile["verify integration; local close-out is manual today"]
+    Review -->|merged externally| Reconcile["dev done --merged: verify exact ancestry"]
+    Reconcile --> Done
 
-    Done -->|dev sweep| Report["report cleanup candidates"]
-    Report -->|dev sweep --apply| Reaped["reap the DONE entry"]
+    Done -->|dev retire from outside target| Reaped["RETIRED: clean resources and reap task"]
+    Done -.->|dev sweep| Report["report cleanup candidates"]
+    Report -.->|approved apply| Reaped
     Reaped --> Next["next change stream"]
     Next --> Start
 ```
 
-The handoff path deliberately stops at manual reconciliation: `dev done --pr` leaves the task active and may only push when no supported forge CLI is available. `dev` does not currently detect a remote merge or provide a reconciliation-only command that safely marks the task DONE.
+The handoff path deliberately stops at manual reconciliation: `dev done --pr` leaves the task active and may only push when no supported forge CLI is available. `dev flow` can explicitly query run-local review existence/state/draft/URL evidence, but neither it nor `sweep` infers DONE from a forge response. Use `dev done --merged` with exact local ancestry evidence.
 
 ## 1. Select the checkout mode
 
@@ -613,6 +627,7 @@ Before changing the canonical checkout in direct or branch-only mode, `dev` guar
 dev start api --task "token refresh" --base main --next "reproduce expiry race"
 dev ls
 dev status
+dev flow api   # preview all repository surfaces and exact guarded actions
 ```
 
 Starting work resolves the repository, validates branch/base, creates or switches the checkout, provisions a worktree when needed, opens the selected runtime, and saves the task. If the branch is already tracked, use `dev resume` instead of creating a duplicate.
@@ -666,7 +681,7 @@ Preserve meaningful construction commits:
 dev done --ff
 ```
 
-This requires a clean tree, rebases the task branch onto the base, and runs a fast-forward-only merge in the canonical checkout. It then closes the runtime, removes the worktree unless retained, and marks the task DONE.
+This requires a clean tree, rebases the task branch onto the base when needed, and runs a fast-forward-only merge in the canonical checkout. It records DONE last while retaining the runtime, worktree, and branch. Run `dev retire` separately from outside the target.
 
 Use review/CI instead:
 
@@ -684,7 +699,7 @@ The wizard runs in up to three steps:
 
 1. **Preflight.** It reports the branch, the base, the branch/base commit relation (ahead/behind, or already contained), and — if the checkout is dirty — a path-by-path breakdown of which changes already match the base tree and which are unique.
 2. **Dirty changes**, only if the checkout is dirty: `c` commits everything with a message you supply, `d` discards everything (tracked and untracked), `q` cancels with nothing changed. Discarding unique content — anything not already equivalent to the base — requires typing `DROP` at a follow-up confirmation; discarding paths that already match the base does not.
-3. **Integration**, only if neither `--ff` nor `--pr` was passed and the branch is not already fully contained in the base: `f` rebases the branch onto the base and fast-forwards it (same as `--ff`), `p` pushes and opens a pull/merge request (same as `--pr`), `q` cancels. When the branch is already contained in the base, the wizard skips this step and moves straight to cleanup.
+3. **Integration**, only if neither `--ff` nor `--pr` was passed and the branch is not already fully contained in the base: `f` rebases the branch onto the base and fast-forwards it (same as `--ff`), `p` pushes and opens a pull/merge request (same as `--pr`), `q` cancels. When the branch is already contained in the base, the wizard skips this step and can record DONE; cleanup still belongs to `dev retire`.
 
 Passing `--ff` or `--pr` up front answers step 3 for the wizard, so it only prompts for whatever the flags left unresolved — with both a clean tree and an explicit integration flag, nothing is prompted at all. A final summary lists the dirty action and the integration mode before anything runs; confirm it, or add `--yes` to skip that confirmation once the plan is fully specified by flags. If the checkout or branch changes while the plan is open, `dev` detects the drift after confirmation and refuses to apply the stale plan — rerun `dev done` to see the current state.
 
@@ -696,6 +711,21 @@ dev done --pr --dirty discard --yes   # destructive; --yes is mandatory here
 ```
 
 `--message`/`-m` only applies with `--dirty commit`. `--dirty discard` outside a TTY requires `--yes`; the `DROP` confirmation is an interactive-only safeguard.
+
+## Repository flow preview
+
+Use `dev flow [repo]` when the question is not only “what state is this task?”
+but “which exact action is legal for each checkout?” It is a TTY-only interface
+independent of the dashboard. It includes every registered worktree plus task-
+only COLD/DONE rows, separates observed facts from persisted state, and requires
+Enter-to-plan followed by action-specific approval.
+
+Normal managed actions, exact unmanaged metadata-only Adopt/clean branch-
+preserving Remove, explicit remote fetch/query, revision revalidation, and
+partial result ledgers are described in [Repository lifecycle
+flow](repository-flow.md). Flow omits dirty/WIP/shared-writer/takeover/unknown-
+runtime overrides; use a blocked plan's CLI fallback when those expert flags are
+actually needed.
 
 ## 6. Sweep drift and stale state
 
@@ -730,7 +760,195 @@ It never deletes uncommitted work. Reporting first is part of the safety model.
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/cli/done_flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done_flow.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/gitx/finish.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/finish.go)
+
+---
+
+### Repository lifecycle flow
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/repository-flow/
+
+> Use the preview dev flow interface to inspect one repository and apply revision-bound lifecycle, adoption, removal, retirement, and remote-evidence plans.
+
+`dev flow [repo]` is a preview-labelled, full-screen, TTY-only interface for one
+repository's lifecycle. It is independent of the six-view `dev tui` dashboard:
+its only job is to show repository surfaces, observed evidence, and exact guarded
+actions.
+
+```bash
+dev flow              # current repository, or a picker outside Git
+dev flow api          # explicit repository overrides cwd
+```
+
+From either the canonical checkout or a linked worktree, bare `dev flow` resolves
+the canonical Git common-directory identity and focuses the exact current
+surface. Outside Git it loads a filterable repository picker asynchronously. A
+repository that is referenced by task metadata but temporarily unavailable
+remains inspectable as unavailable task-only rows.
+
+## Repository surfaces
+
+The left panel starts from every record in `git worktree list --porcelain`, then
+adds task records that have no checkout. Normal COLD and DONE tasks therefore do
+not disappear merely because no directory exists.
+
+| Row kind | Meaning | Guarded actions |
+|---|---|---|
+| `canonical` | the worktree Git marks Main, regardless of branch name | legal task actions when exactly bound; never checkout removal |
+| `managed` | a non-main checkout with one exact task binding | mode/state lifecycle actions |
+| `unmanaged` | a registered linked checkout with no task or harness claim | Adopt; clean branch-preserving Remove Checkout |
+| `harness` | strict path evidence places it under `.claude/worktrees` | inspect and eligible remote evidence only; harness owns cleanup |
+| `task-only` | task metadata has no registered checkout, normally COLD or DONE | Resume or Retire only when exact task identity permits it |
+| `conflict` | duplicate claims, mismatched identity, incomplete inventory, or other ambiguity | inspect/remediate; destructive actions fail closed |
+
+A branch name prefix is not harness ownership proof. Canonical, harness-owned,
+locked/prunable, detached, ambiguously claimed, or incompletely observed rows are
+never treated as removable merely because they look inactive.
+
+For an eligible unmanaged row:
+
+- **Adopt** creates one worktree-mode task record and does not change checkout
+  content, refs, runtime layout, or path. A dirty checkout may be adopted because
+  its bytes remain untouched. Fresh strict runtime evidence may derive HOT only
+  for one stable shell-only covering session with no recognized agent; otherwise
+  adoption is WARM. `runtime=none` is unobserved, so it derives WARM.
+- **Remove Checkout** requires an exact named clean linked checkout, complete task
+  inventory with no claims, ready artifacts, safe external runtime cleanup, and
+  no harness evidence. It uses non-force removal and verifies that the local
+  branch remains at the same OID.
+
+Repository-wide prune and drift reconciliation are not hidden Remove variants.
+The flow reports those conditions and leaves them for explicit recovery.
+
+## Intent, facts, and plans
+
+The three panels keep different kinds of truth separate:
+
+1. **Persisted intent** — task mode, HOT/WARM/COLD/DONE, owner, next action,
+   branch/base, expected checkout, and runtime hint.
+2. **Observed facts** — repository/worktree identity, HEAD and refs, Git status and
+   in-progress operations, artifact readiness, runtime sessions, and recognized
+   agents. A fact remains known, unknown, error, skipped, loading, or stale; a
+   failed observation never becomes false, clean, or closed.
+3. **Guarded plan** — legal source/target edge, READY/NEEDS INPUT/BLOCKED/UNKNOWN/
+   ERROR availability, ordered conditions and effects, remediation, resources
+   retained, confirmation class, PlanID, and CLI fallback.
+
+`runtime=none` cannot observe session or agent occupancy. That does not turn the
+observation into “closed,” but a complete local Git/task snapshot can still be
+fresh and useful for non-runtime facts.
+
+## Managed lifecycle choices
+
+Actions are concrete variants, not a generic force menu:
+
+| Current intent | Flow choices |
+|---|---|
+| HOT/WARM worktree or branch task | Park Warm; Park Cold; Park Cold + Push; Complete FF; Review Handoff; Verify Merged |
+| HOT/WARM direct task | Park Warm; Complete Direct |
+| WARM task | Resume (with an explicit fetch effect) |
+| COLD worktree/branch task | Resume and reconstruct/reopen; completion remains unavailable until HOT |
+| DONE task | Retire (Keep Branch); for eligible non-direct tasks, Retire + Delete Contained Branch |
+
+Review Handoff publishes the branch and creates a pull/merge request when the
+available provider supports it, but preserves HOT/WARM. Direct/FF/verified
+completion writes DONE last and keeps branch, checkout, and runtime resources.
+Retire is the separate externally safe close/wait/remove/task-reap operation.
+
+The preview always uses a fail-on-dirty completion policy. It intentionally does
+not expose dirty commit/discard, WIP checkpoint, shared-writer, ownership
+takeover, force removal, `--close-unknown`, or `--assume-no-runtime` choices.
+Blocked plans show the precise evidence, remediation, and compatible CLI
+fallback instead of manufacturing an override.
+
+## Keys and approval
+
+```text
+j/k or up/down       select a surface or picker/menu row
+h/l or left/right    select an already-concrete action
+Tab / Shift-Tab      move panel focus
+/                    filter the repository picker
+Enter                build and inspect a plan; never apply immediately
+y                    approve a READY non-typed plan
+r                    reload local facts only
+R                    choose Fetch Refs, Query Review, or Both
+?                    show evidence and key semantics
+Esc                  back out
+q                    quit; while Apply runs, queue quit until its ledger returns
+```
+
+Typed retirement displays the exact `DELETE <branch>` token; type it and press
+Enter. A mismatch remains non-mutating. Plans that are not READY have no Apply
+path and remain open for inspection.
+
+## Local and manual remote evidence
+
+Startup and `r` do not fetch or contact a forge. Network work happens only in a
+confirmed action that declares it: Resume fetch, Park Cold + Push, Review
+Handoff, or one of the `R` choices.
+
+`R` supplies three independent plan variants:
+
+- **Fetch Refs** runs `git fetch --prune` for the exact configured remote.
+- **Query Review** asks the supported GitHub, GitLab, or Azure CLI for the exact
+  head/base relationship without fetching.
+- **Both** fetches first, then queries; if fetch fails, review is not attempted.
+
+Remote results live only for the current flow run. Ref evidence contains exact
+named-ref OIDs or explicit absence/error. Portable review evidence contains only
+existence, provider state (open/draft/merged/closed), draft flag, URL, provider,
+and observation time. Unsupported providers, missing CLIs/extensions,
+authentication/provider failures, malformed or multiple matches, and
+not-yet-requested evidence stay UNKNOWN or ERROR. The flow does not query or
+infer review decisions, approvals, comments, or checks.
+
+## Plan and Apply revalidation
+
+Planning is side-effect-free. A plan seals the task record revision and exact
+repository, Git common directory, checkout path/branch/HEAD, refs, status,
+runtime/agent occupancy, artifacts, remote identity, concrete options, and
+ordered effects into an authority fingerprint and PlanID.
+
+Apply accepts only a plan produced by the current flow run and an approval bound
+to that PlanID. It locks repository then task state, reloads the task revision,
+re-observes authority, and rejects any difference before a new effect. Safety-
+critical checks repeat after runtime closure and immediately before checkout or
+branch removal. Task state is written last; retirement deletes the DONE record
+last.
+
+Apply is not canceled by refresh, row switching, or quit. Conflicting navigation
+is disabled, and quit/refresh waits for the result. The result ledger preserves
+every attempted/completed/failed effect plus warnings and recovery. Partial
+success means completed effects remain completed; no rollback is implied. A new
+local generation loads afterward, and directory/runtime/URL handoff occurs only
+after the alternate screen exits.
+
+## Compatibility boundary
+
+The same `internal/taskflow` authority backs normal task-managed park, resume,
+completion, and retirement commands plus exact unmanaged linked-checkout Adopt
+and Remove paths. Existing CLI flags and structured output remain compatible,
+including expert acknowledgements that the preview does not offer.
+
+This is not a claim that every historical cleanup path has migrated. Explicit
+unmanaged path retirement remains an isolated compatibility implementation, and
+`sweep` retains record-only, orphan-salvage, and other narrowly scoped
+reconciliation paths outside taskflow. `sweep` still reports before applying.
+
+Raw Git and configured external TUI tools do not participate in dev's task locks,
+PlanID approval, identity revalidation, or result ledger. They remain available,
+but they are outside dev-mediated safety guarantees.
+
+## Sources
+
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/inventory/repo_context.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/inventory/repo_context.go)
+- [`internal/task/store.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/store.go)
+- [`internal/forge/review.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/review.go)
 
 ---
 
@@ -855,13 +1073,19 @@ A Git worktree begins as a clean checkout. `dev` owns durable change-stream work
 
 | Worktree kind | Owner | Typical location | Lifetime |
 |---|---|---|---|
-| feature, fix, experiment, cross-machine handoff | `dev` | configured `paths.worktree_path` | until `dev done`, `dev wt rm`, or an approved sweep |
-| harness-scoped isolation | Claude Code or another harness | harness-owned directory such as `.claude/worktrees/<name>/` | governed by that harness's retention and safe-cleanup rules |
-| externally created linked worktree | external until adopted | tool-specific | visible to `dev`, unmanaged until explicit adoption |
+| feature, fix, experiment, cross-machine handoff | `dev` | configured `paths.worktree_path` | `dev done` records MERGED only; a later `dev retire`, explicit `dev wt rm`, or approved sweep removes it |
+| harness-scoped isolation | Claude Code or another harness | harness-owned directory such as `.claude/worktrees/<name>/` | governed by that harness's retention and safe-cleanup rules; Flow never adopts or removes it |
+| externally created linked worktree | external until adopted | tool-specific | visible to `dev`/`dev flow`; unmanaged until explicit adoption |
 
 Use `dev` when code, history, or plans must remain reviewable or a human may return later. Do not nest a long-lived `dev` worktree inside a repository; file watchers, language servers, backup tools, and searches in the outer checkout would see a second copy of the tree.
 
 `dev` creates the checkout with Git at its configured path. Herdr only opens that existing path, so worktree placement remains identical on machines without Herdr.
+
+`dev flow [repo]` uses Git's authoritative worktree records to show canonical,
+managed, unmanaged, and strict `.claude/worktrees/` harness rows, plus task-only
+rows that have no checkout. It never guesses ownership from a `worktree-*`
+branch prefix; ambiguous path/task binding is labelled CONFLICT and stops
+lifecycle mutation. See [Repository lifecycle flow](https://daviddwlee84.github.io/dev-cli/guides/repository-flow/).
 
 ## Inspect before creating
 
@@ -1224,6 +1448,7 @@ RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 | `dev done --merged --base-ref <ref> --confirm-squash <merge-commit>` | Same, but for a squash merge: attests that the named commit, already proven contained in `<ref>`, represents the feature branch. This is an operator assertion dev cannot verify on its own. |
 | `dev artifact discard <intent> --yes` | Records that an intent can never be finalized — its transcript was never written, or its HEAD is gone after a rebase — so it stops blocking integration and retirement. It commits and recovers nothing, prints exactly what is being abandoned, and refuses an intent that is still `armed`, because finalization is the path that preserves a transcript. |
 | `dev retire [task-or-worktree] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | Re-resolves every covering runtime session, refuses active agents and mixed-purpose workspaces, waits for closure, revalidates Git state, and only then removes the linked worktree without force. Deletes the task record only after every requested step succeeds. |
+| `dev flow [repo]` | Preview UI for an exact DONE task: Enter builds a revision-bound Retire plan, then approval applies it. Branch deletion requires the displayed typed token. |
 | `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | From the canonical checkout, reports (and, with `--apply`, retires) both task-tracked and unmanaged linked worktrees whose branches are already contained in the base. |
 
 A dirty checkout does not fail here: `dev done` classifies it against the base
@@ -1257,6 +1482,13 @@ dev retire <task> --delete-branch
 ```
 
 `dev done` only integrates and records MERGED. `dev retire` re-resolves every runtime pane, closes eligible sessions, waits for them to disappear, revalidates Git, and removes the worktree without force.
+
+In `dev flow`, Retire shows conditions, effects, retained resources, and the CLI
+fallback before approval. Apply locks and reloads the task revision plus exact
+repository/worktree/ref/runtime/artifact authority, repeats safety checks after
+runtime closure and before removal, and deletes the task record last. A later
+failure preserves a step ledger and recovery; completed effects are not called
+rolled back.
 
 ## Pull-request flow
 
@@ -1302,7 +1534,13 @@ This surfaces both task-tracked DONE worktrees and unmanaged linked worktrees wh
 
 ## Safety boundaries
 
-Raw `git worktree remove --force` bypasses dev entirely — never run it from an agent that occupies the target. dev's guarantee is only that no dev-mediated path performs a forced removal; it cannot stop an operator or script from calling Git directly.
+Raw `git worktree remove --force` and configured external tools bypass dev entirely — never run them from an agent that occupies the target. dev's guarantee is only for dev-mediated paths; it cannot stop an operator or script from calling Git directly.
+
+Normal task-backed retirement uses `internal/taskflow`. The explicit unmanaged
+path form of `dev retire` remains an isolated compatibility implementation, and
+some `sweep` record-only/orphan-salvage actions remain outside taskflow. Existing
+CLI acknowledgement flags remain compatible; the flow preview intentionally
+offers none of them.
 
 A real Codex session once deleted its own registered worktree and branch from another checkout. Herdr kept the workspace and terminal alive because a Unix process can hold an open cwd inode after the path is unlinked, and SpecStory then recreated the same path containing only `.specstory/` content. The shell looked alive but was no longer a Git checkout:
 
@@ -1322,6 +1560,7 @@ Byte equality rather than mere presence is the point. A transcript writer that o
 - [`internal/skill/dev-cli/references/agent-retirement.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/agent-retirement.md)
 - [`internal/help/topics/retirement.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/retirement.md)
 - [`internal/cli/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/retire.go)
+- [`internal/taskflow/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/retire.go)
 - [`internal/cli/artifact.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/artifact.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
@@ -1338,6 +1577,11 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/
 > Navigate tasks, repositories, fleet hosts, experiments, remotes, and agent skills in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
+
+There are two independent full-screen models. Bare `dev` / `dev tui` is the
+six-view inventory dashboard below. Preview-labelled `dev flow [repo]` is a
+TTY-only, plan-first lifecycle view for one canonical repository; it is not a
+dashboard tab or mode.
 
 ## Six views
 
@@ -1387,7 +1631,29 @@ n/N       quick-add / browse repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
-A COLD worktree task must be rebuilt with `dev resume`; the TUI does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory.
+A COLD worktree task must be rebuilt with `dev resume`; the dashboard does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory.
+
+### Repository flow
+
+```bash
+dev flow              # exact current surface, or picker outside Git
+dev flow api          # explicit repository
+```
+
+Flow lists every registered worktree plus task-only COLD/DONE rows and labels
+canonical/managed/unmanaged/harness/task-only/conflict topology. Use `j/k` for
+rows, `h/l` for actions, Tab for panel focus, Enter to build a plan, then `y` or
+the displayed typed token to approve only a READY plan. `r` reloads local facts;
+`R` offers explicit fetch, review query, or both. Startup and `r` never use the
+network.
+
+The plan separates persisted HOT/WARM/COLD/DONE intent from live evidence,
+shows remediation/fallback for blocked actions, and is revalidated against the
+exact task revision and Git/worktree/runtime/artifact identity before Apply.
+Partial effects remain in a result ledger. Eligible unmanaged rows can be
+metadata-only Adopted or cleanly Removed while preserving their branch;
+canonical/harness/conflict destruction fails closed. See [Repository lifecycle
+flow](repository-flow.md) for action and compatibility boundaries.
 
 ### REPOS
 
@@ -1527,6 +1793,8 @@ Adopt reports by default and only writes task entries after `--apply` plus confi
 ## Sources
 
 - [`internal/help/topics/tui.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/tui.md)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/help/topics/notes.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/notes.md)
 - [`internal/cli/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/note.go)
 - [`internal/help/topics/bootstrap.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/bootstrap.md)
@@ -2667,9 +2935,31 @@ cursor, and Esc/Ctrl-C cancellation work as terminal actions rather than being
 inserted as raw escape bytes. Buffered and piped non-TTY input retains its
 line-oriented behavior.
 
+## `dev flow [repo]` preview
+
+`dev flow [repo]` is an independent full-screen command for interactive TTYs;
+it has no JSON or non-interactive contract. With no `repo`, a canonical or
+linked checkout opens the repository identified by the same Git common
+directory and focuses the exact current surface. Outside Git it opens an
+asynchronous repository picker. An explicit `repo` overrides cwd.
+
+Startup and `r` load only local topology and evidence. `R` offers Fetch refs,
+Refresh PR/MR, or Both; every choice first creates an exact guarded plan and
+then requires approval. A provider review observation retains only portable,
+run-local existence, `open`/`draft`/`merged`/`closed` state, URL, provider, and
+observation time; it does not represent CI checks or approvals. `runtime=none`
+remains unobserved and does not expose expert overrides such as
+`--assume-no-runtime`. See [Repository lifecycle flow](https://daviddwlee84.github.io/dev-cli/guides/repository-flow/)
+for keys, row kinds, partial ledgers, and the raw-tool escape boundary.
+
 ## `dev done` finish flags
 
-`dev done` for branch/worktree tasks integrates through exactly one of `--ff` (rebase onto the base, then fast-forward it) or `--pr` (push and open a pull/merge request). Omitting both opens the interactive finish wizard on a TTY — see [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) for the prompts.
+`dev done` for branch/worktree tasks integrates through exactly one of `--ff`
+(rebase onto the base, then fast-forward it), `--pr` (push and open a pull/merge
+request), or `--merged` (verify external integration against `--base-ref`).
+Omitting an integration choice opens the interactive finish wizard on a TTY —
+see [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) for the
+prompts.
 
 A dirty checkout is handled by `--dirty <auto|fail|commit|discard>` (default `auto`):
 
@@ -2680,7 +2970,16 @@ A dirty checkout is handled by `--dirty <auto|fail|commit|discard>` (default `au
 | `commit` | commits everything with `--message`/`-m` (prompted interactively if omitted) |
 | `discard` | resets tracked changes and removes untracked files; destructive, requires `--yes` outside a TTY |
 
-`--yes`/`-y` confirms the selected finish plan; it is mandatory for a non-interactive `--dirty discard` and otherwise skips the interactive confirmation step. `--keep-worktree` keeps the worktree after `--ff` integration (default: removed once merged), `--push` also pushes the resulting branch, and `--delete-branch` deletes the branch once its commits are contained in the base — never a branch with unpushed commits.
+`--yes`/`-y` confirms the selected finish plan; it is mandatory for a
+non-interactive `--dirty discard` and otherwise skips the interactive
+confirmation step. `--push` pushes the branch or base selected by the
+integration mode. Successful local or externally verified integration records
+DONE/MERGED while always retaining the runtime, worktree, and branch for a
+separate `dev retire`; `--keep-worktree` remains only as a no-op compatibility
+warning, while `--delete-branch` fails with guidance to use
+`dev retire --delete-branch`. `--merged` can use
+`--confirm-squash <merge-commit>` as explicit operator attestation for a squash
+result; provider status never implies that attestation.
 
 ## Configuration
 
@@ -3275,6 +3574,14 @@ dev fleet sync <repo> [flags]
 - `--json` — emit JSON results
 - `--push` — push the source branch before fan-out
 - `--remote` — Git remote to publish/check (default: upstream, then origin)
+
+### `dev flow`
+
+Preview: inspect and run guarded repository lifecycle actions
+
+```
+dev flow [repo]
+```
 
 ### `dev git`
 
@@ -4223,6 +4530,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 | staged lazygit message prefill | a lazygit version that reads `LAZYGIT_PENDING_COMMIT` | files remain staged and dev prints the suggested message; normal Git commit remains available |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
+| preview repository flow | terminal input/output | `dev flow` refuses non-TTY use and points to `dev repo context` / JSON inventory |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
 | terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
 | in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` prints the package manager's upgrade command instead |
@@ -4237,7 +4545,13 @@ Note writes sync the file and atomically rename it on every supported platform. 
 
 ### Pull-request completion is not tracked automatically
 
-`dev done --pr` pushes and opens a pull/merge request, then leaves the task, runtime, and worktree unchanged because review owns integration. Current `dev sweep` does not query the forge to infer that a request later merged. Verify integration and finish/reconcile deliberately; do not assume remote merge implies local DONE.
+`dev done --pr` pushes and opens a pull/merge request, then leaves the task,
+runtime, and worktree unchanged because review owns integration. `dev flow` can
+run an explicit, run-local query for the exact head/base review and report only
+portable existence, open/draft/merged/closed state, URL, provider, and observation
+time. It does not query review decisions or checks, persist that evidence, or
+turn it into DONE. Current `dev sweep` does not query the forge either. Verify
+integration with exact local ancestry and finish deliberately.
 
 ### Agent session capture is reserved, not wired
 
@@ -4277,6 +4591,22 @@ and printed message remain the recovery path.
 
 A direct task uses the canonical checkout and cannot go COLD, because cold cleanup would remove a directory the repository needs. Use branch-only or worktree mode for cross-machine reconstruction.
 
+### Flow intentionally omits expert overrides
+
+`dev flow` offers normal managed lifecycle actions, exact unmanaged metadata-only
+Adopt/clean branch-preserving Remove, and explicit remote evidence. It does not
+offer dirty commit/discard, WIP, shared-writer, ownership takeover, force, unknown-
+runtime, or assume-no-runtime choices. A blocked plan shows remediation and the
+compatible CLI fallback; existing command flags and structured contracts remain
+available.
+
+Task-backed lifecycle and exact unmanaged linked-checkout actions share
+`internal/taskflow`. Explicit unmanaged path retirement remains an isolated
+compatibility implementation, while `sweep` retains record-only reaping, orphan
+salvage, and other narrow reconciliation paths. Do not assume every cleanup path
+has the same planner. Raw Git and configured external tools also bypass dev's
+PlanID, locks, revalidation, and result ledger.
+
 ## Current behaviors that are implemented
 
 These were historical gaps and should not be reintroduced as limitations:
@@ -4292,6 +4622,7 @@ These were historical gaps and should not be reintroduced as limitations:
   a newly created first-class Herdr worktree. It is incompatible with `--json`,
   non-worktree modes, and non-Herdr runtimes, and does not wait for command exit.
 - TUI navigation refuses to open a missing COLD checkout and directs the user to `dev resume`.
+- Preview-labelled `dev flow [repo]` is an independent full-screen TTY model. It resolves canonical/linked cwd to the exact surface, uses a picker outside Git, shows every registered worktree plus task-only records, and makes every mutation Enter-to-plan then approve. Apply revalidates task revision and exact repository/worktree/ref/runtime/artifact authority and retains partial step results. Local `r` is network-free; `R` explicitly selects fetch/query/both and keeps minimal review evidence run-local.
 - `DEV_TUI_TRACE` starts at `cli.Execute`; it cannot include OS process loading. `tui.initial_view_returned` measures model construction, not renderer flush or physical terminal paint. Use it for same-profile comparisons rather than universal hardware/network guarantees.
 - Runtime handles now record backend provenance and are revalidated before cleanup.
 - `auto` runtime selection includes Zellij between tmux and none.
@@ -4344,6 +4675,9 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 ## Sources
 
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
@@ -4417,17 +4751,18 @@ tested_with: optional
 
 | Topic or claim | Owning page | Primary authority | Status checked |
 |---|---|---|---|
-| HOT/WARM/COLD/DONE and checkout modes | [Mental model](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/) | `internal/task/task.go`, lifecycle CLI/tests | repository snapshot 2026-08-28 |
-| `done --pr` leaves task active | [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
+| HOT/WARM/COLD/DONE, checkout modes, and legal transitions | [Mental model](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/) | `internal/task/task.go`, `internal/taskflow/transitions.go`, lifecycle tests | repository snapshot 2026-09-01 |
+| repository flow topology, local/manual-remote observations, revision-bound Plan/Apply, and partial ledgers | [Repository lifecycle flow](https://daviddwlee84.github.io/dev-cli/guides/repository-flow/) | `internal/cli/flow.go`, `internal/flowtui`, `internal/taskflow`, focused flow tests | preview implemented 2026-09-01 |
+| `done --pr` leaves task active and DONE keeps resources until Retire | [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) | `internal/taskflow/{complete,retire}.go`, CLI lifecycle tests | implemented |
 | worktree provisioning safety | [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
 | repository new/clone routing, snapshot templates/confinement, check-in policy, project trust, skill batching, TTY editor, upstream publication, and handoff | [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`, `internal/scaffold`, `internal/repotemplate`, `internal/projectconfig`, `internal/cli/repo_{create,checkin,skills}*.go`, `internal/cli/prompt.go`, focused repo-bootstrap tests | implemented |
 | lazygit lowercase `c` pending-message integration | [Compatibility](https://daviddwlee84.github.io/dev-cli/reference/compatibility/#lazygit-staged-message-prefill-is-best-effort) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive, checked 2026-08-29 |
 | runtime fallback and exact-pane `start --run` dispatch | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go`, `internal/runtime/herdr.go`, focused start/runtime tests | implemented |
 | SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
-| READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
+| READY/MERGED/RETIRED milestones, task-backed retirement revalidation, compatibility boundaries, and merged-worktree sweep | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/) | `internal/taskflow/retire.go`, `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
 | `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](https://daviddwlee84.github.io/dev-cli/guides/machine-summary/), [Development journal](https://daviddwlee84.github.io/dev-cli/guides/dev-journal/) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
 | agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |
-| TUI startup/readiness stages, generation handling, cache/live provenance, and private trace semantics | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/perftrace`, `internal/tui/{readiness,local}.go`, `internal/cli/tui*.go`, focused race tests | implemented |
+| dashboard startup/readiness stages, generation handling, cache/live provenance, and private trace semantics | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/perftrace`, `internal/tui/{readiness,local}.go`, `internal/cli/tui*.go`, focused race tests | implemented |
 | quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
 | current GitHub Flow has six branch/PR steps and no deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official, checked 2026-08-28 |
 | linked worktrees share repository data but own files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official, checked 2026-08-28 |
@@ -5040,12 +5375,12 @@ Catalog ID 讓 quick note 在 linked worktrees、symlink indexes、path moves �
 | 🔥 `hot` | branch 加 checkout | 開啟 | 正在處理 |
 | 🌤 `warm` | 保留 branch 與 checkout | 關閉 | 幾天內會回來 |
 | ❄️ `cold` | branch 已 commit、push；worktree 不存在 | 無 | 已暫停，可在別處重建 |
-| ✅ `done` | 已整合 | 無 | 等待 cleanup 回收 entry |
+| ✅ `done` | 已具名的整合證據；checkout/branch 可能仍存在 | 可能仍存在 | MERGED，等待獨立 Retire cleanup |
 
 ```mermaid
 flowchart TD
     accTitle: dev-cli lifecycle states
-    accDescr: Task 會在 HOT、WARM 與符合條件的 COLD state 之間移動；direct 或本機整合完成的工作會進入 DONE；review 不改變目前 state；sweep 只回收已完成的 entry。
+    accDescr: Task 會在 HOT、WARM 與符合條件的 COLD state 之間移動；direct completion、本機 fast-forward 或具名 ancestry verification 會進入 DONE；review 不改變目前 state；Retire 才回收 local resources 與 task entry。
 
     Start["dev start"] --> Hot["HOT"]
     Hot -->|dev park --next| Warm["WARM"]
@@ -5054,7 +5389,7 @@ flowchart TD
     Warm -->|branch/worktree: dev park --cold --push| Cold
     Cold -->|dev resume --fetch| Hot
 
-    Hot -->|direct: dev done| Done["DONE"]
+    Hot -->|direct: dev done| Done["DONE / MERGED"]
     Warm -->|direct: dev done| Done
     Hot -->|branch/worktree: dev done --ff| Done
     Warm -->|branch/worktree: dev done --ff| Done
@@ -5062,12 +5397,17 @@ flowchart TD
     Hot -.->|branch/worktree: dev done --pr；state 不變| Review["push / review handoff"]
     Warm -.->|branch/worktree: dev done --pr；state 不變| Review
     Review -.->|feedback：若為 WARM 先 dev resume| Hot
+    Review -->|dev done --merged --base-ref REF| Done
 
-    Done -->|dev sweep：只回報| Report["cleanup candidate"]
-    Report -->|dev sweep --apply| Reaped["已回收 entry"]
+    Done -->|dev retire；或先由 dev sweep 回報| Retire["guarded Retire plan"]
+    Retire --> Reaped["RETIRED：runtime/worktree/task 已回收"]
 ```
 
-對 branch/worktree task 而言，`dev done --pr` 刻意不是 HOT/WARM → DONE transition。它會 handoff 已 push 的 branch（支援時建立 review），並保留原 state 與 cleanup 狀態；remote merge reconciliation 目前仍需手動處理。
+對 branch/worktree task 而言，`dev done --pr` 刻意不是 HOT/WARM → DONE transition。它會 handoff 已 push 的 branch（支援時建立 review），並保留原 state 與 cleanup 狀態。外部 merge 不會被自動推斷；請以 `dev done --merged --base-ref <ref>` 或 `dev flow` 的 Verify Merged action 明確證明 named ancestry，再以獨立 Retire plan cleanup。
+
+## Intent、evidence 與 action readiness
+
+Lifecycle state 只保存人類意圖，不會吸收所有外部事實。`dev flow [repo]` 把三層並列：recorded `HOT/WARM/COLD/DONE` intent、具 freshness 的 Git/runtime/agent/artifact/remote evidence，以及綁定 exact identity 的 guarded plan。`READY` 是某份 plan 的 action readiness；`REVIEW`、`MERGED` 與 `RETIRED` 是 result milestones，皆不是額外 TOML state。UNKNOWN/ERROR evidence 不會被當成 clean、closed 或 absent。完整操作方式見 [Repository Flow 預覽](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/)。
 
 ## Checkout mode
 
@@ -5084,6 +5424,8 @@ Task 記錄的是意圖，不一定要有 linked worktree。
 ## Runtime 刻意是可丟失的
 
 `runtime.Runtime` 提供 `Open`、`Close`、`List` 與 `Annotate`。`auto` 會依序選 Herdr、tmux、Zellij，最後使用永遠可用的 `none` backend。關閉任何 backend 都不能移除 checkout、branch 或 task entry。
+
+`none` 只表示沒有可觀察的 multiplexer backend，不等於已證明「沒有 session 或 agent」。需要 occupancy/absence proof 的 guarded action 必須保留 unobserved evidence；`dev flow` 不會把它顯示成已關閉，也不提供 `--assume-no-runtime` expert override。
 
 因此 reboot、關閉 multiplexer 或更換 runtime backend 都不代表放棄工作。`dev sweep` 能比較 registry 與即時 Git/runtime facts 並回報 drift。
 
@@ -5108,7 +5450,10 @@ dev resume <task> --fetch
 - [`internal/note/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/note.go)
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/help/topics/parking.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/parking.md)
+- [`internal/taskflow/transitions.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/transitions.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
+- [`internal/cli/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/retire.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 
 ---
@@ -5223,7 +5568,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workfl
 ```mermaid
 flowchart TD
     accTitle: dev-cli 變更流工作流程
-    accDescr: 變更流以 direct、branch-only 或 worktree mode 開始，並在 active work、park 與 resume 之間循環。Direct completion 或 local fast-forward 會進入 DONE 與 cleanup；review 則 handoff 已 push 的 branch，並保持 active 直到 manual reconciliation。
+    accDescr: 變更流以 direct、branch-only 或 worktree mode 開始，並在 active work、park 與 resume 之間循環。Direct completion、本機 fast-forward 或明確 merge verification 會進入 DONE；review 保持原 state；Retire 另行 cleanup。
 
     Start["dev start"] --> Mode{"checkout mode"}
     Mode -->|direct| Direct["HOT: direct work / commit / test"]
@@ -5237,23 +5582,24 @@ flowchart TD
     WarmManaged -->|dev park --cold --push| Cold
     Cold -->|dev resume --fetch| Managed
 
-    Direct -->|dev done| Done["DONE: 已確認整合"]
+    Direct -->|dev done| Done["DONE / MERGED"]
     WarmDirect -->|dev done| Done
     Managed -->|dev done --ff| Done
     WarmManaged -->|dev done --ff| Done
 
-    Managed -->|dev done --pr| Review["push / review handoff: task 保持 active"]
+    Managed -->|dev done --pr| Review["push / review handoff: state 不變"]
     WarmManaged -->|dev done --pr| Review
     Review -->|feedback：若為 WARM 先 dev resume| Managed
-    Review -->|已在 remote merge| Reconcile["確認整合；目前需手動結束本機 lifecycle"]
+    Review -->|dev done --merged --base-ref REF| Done
 
-    Done -->|dev sweep| Report["回報 cleanup candidates"]
-    Report -->|dev sweep --apply| Reaped["回收 DONE entry"]
-    Reaped --> Next["下一條 change stream"]
+    Done -->|dev retire| Retired["RETIRED: guarded cleanup 完成"]
+    Done -->|dev sweep| Report["先回報 cleanup candidates"]
+    Report -->|dev sweep --apply| Retired
+    Retired --> Next["下一條 change stream"]
     Next --> Start
 ```
 
-Handoff path 刻意停在 manual reconciliation：`dev done --pr` 會讓 task 保持 active；沒有支援的 forge CLI 時也可能只 push。`dev` 目前不會偵測 remote merge，也沒有能安全把 task 標成 DONE 的 reconciliation-only command。
+Handoff path 刻意保持 state：`dev done --pr` 會讓 task 保持 HOT/WARM；沒有支援的 forge CLI 時也可能只 push。`dev` 不會自動把 provider 的 merged 狀態當成 local DONE。Merge 完成後，以 `dev done --merged --base-ref <ref>` 或 `dev flow` 的 Verify Merged action 驗證 named ancestry；記錄 DONE 之後，再以 Retire 做 cleanup。
 
 ## 1. 選擇 checkout mode
 
@@ -5276,6 +5622,15 @@ dev status
 ```
 
 Start 會解析 repository、驗證 branch/base、建立或切換 checkout、需要時佈建 worktree、開啟 runtime，再保存 task。Branch 已被追蹤時應使用 `dev resume`，不要建立重複 task。
+
+需要把 intent、目前 Git/runtime/artifact evidence 與可執行 action 並排檢查時，可從 TTY 開啟獨立 preview：
+
+```bash
+dev flow              # 目前 checkout 的 canonical repository 與 exact surface
+dev flow api          # 明確指定 repository
+```
+
+`dev flow` 顯示 Git 註冊的所有 worktrees 與沒有 checkout 的 task-only rows。Enter 只建立 fresh guarded plan；plan 為 READY 且經第二次 approval 後才 Apply。小寫 `r` 只更新 local facts，大寫 `R` 才選擇 fetch refs、query exact PR/MR 或兩者。完整 row/action 與 safety boundary 見 [Repository Flow 預覽](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/)。
 
 ## 3. 有意識地 park
 
@@ -5326,7 +5681,7 @@ Runtime handle 只是 advisory。`dev` 會重新解析 live sessions，不會假
 dev done --ff
 ```
 
-這要求 clean tree，先把 task branch rebase 到 base，再於 canonical checkout 執行 fast-forward-only merge。完成後關閉 runtime、在未要求保留時移除 worktree，並標示 task DONE。
+這要求 clean tree，先把 task branch rebase 到 base，再於 canonical checkout 執行 fast-forward-only merge，最後標示 task DONE/MERGED。它不會關閉呼叫端 runtime、移除 worktree 或刪除 branch；請在外部 workspace 另行執行 `dev retire`。
 
 改由 review/CI 處理：
 
@@ -5334,7 +5689,15 @@ dev done --ff
 dev done --pr
 ```
 
-這會 push branch，並在對應 CLI 可用時建立 GitHub pull request 或 GitLab merge request。它**不會**標示 task DONE，也不會清理 checkout。目前 `dev sweep` 同樣不會推斷 remote request 已 merge，因此必須先確認整合，再結束本機 lifecycle。
+這會 push branch，並在對應 CLI 可用時建立 pull/merge request。它**不會**標示 task DONE，也不會清理 checkout。`dev sweep` 不會推斷 remote request 已 merge；`dev flow` 的明確 `R` query 也只保留目前 run 的 provider evidence，不會自動 transition。Merge 後請驗證 exact named ref：
+
+```bash
+git fetch origin
+dev done --merged --base-ref origin/main
+dev retire <task> --delete-branch
+```
+
+`--merged` 以 ancestry proof 記錄 DONE/MERGED；squash merge 另需 `--confirm-squash <merge-commit>` operator attestation。Review/CI checks、approvals 或 mergeability 不會由最低限度 provider status 推斷。
 
 ## 互動式 `dev done` finish wizard
 
@@ -5344,7 +5707,7 @@ Wizard 最多分三步：
 
 1. **Preflight。** 回報 branch、base、branch/base 的 commit relation（ahead/behind，或已被 base 包含），以及 — 若 checkout 是 dirty — 逐 path 說明哪些變更已與 base tree 相同、哪些是 unique。
 2. **Dirty changes**，僅在 checkout 為 dirty 時出現：`c` 用你輸入的訊息 commit 全部變更，`d` discard 全部（tracked 與 untracked），`q` 取消且不做任何變更。Discard unique content — 尚未與 base 等價的內容 — 需在後續確認時輸入 `DROP`；只 discard 與 base 相符的 path 則不需要。
-3. **Integration**，僅在未傳入 `--ff` 或 `--pr`、且 branch 尚未完全被 base 包含時出現：`f` 把 branch rebase 到 base 再 fast-forward（等同 `--ff`），`p` push 並開啟 pull/merge request（等同 `--pr`），`q` 取消。Branch 已被 base 包含時，wizard 會跳過此步驟，直接進入 cleanup。
+3. **Integration**，僅在未傳入 `--ff` 或 `--pr`、且 branch 尚未完全被 base 包含時出現：`f` 把 branch rebase 到 base 再 fast-forward（等同 `--ff`），`p` push 並開啟 pull/merge request（等同 `--pr`），`q` 取消。Branch 已被 base 包含時，wizard 會跳過此步驟，直接記錄 DONE/MERGED；runtime/worktree cleanup 仍留給之後的 `dev retire`。
 
 事先傳入 `--ff` 或 `--pr` 等於幫 wizard 回答了第 3 步，因此它只會詢問 flags 未解決的部分 —— 若 tree 乾淨且已明確給出 integration flag，則完全不會詢問。動作執行前會先列出 dirty action 與 integration mode 的摘要；確認它，或在 plan 已由 flags 完全指定時加上 `--yes` 跳過確認。若 plan 開啟期間 checkout 或 branch 發生變化，`dev` 會在確認後偵測到 drift 並拒絕套用過期的 plan —— 重新執行 `dev done` 以取得目前狀態。
 
@@ -5357,7 +5720,18 @@ dev done --pr --dirty discard --yes   # destructive；此處 --yes 為必要
 
 `--message`/`-m` 只在搭配 `--dirty commit` 時使用。`--dirty discard` 在沒有 TTY 時需要 `--yes`；輸入 `DROP` 的確認只存在於 interactive 情境。
 
-## 6. Sweep drift 與 stale state
+## 6. 從外部 Retire
+
+DONE 只代表 MERGED。離開 target checkout/runtime 後再執行：
+
+```bash
+dev retire <task>                  # 預設保留 branch
+dev retire <task> --delete-branch  # 另行確認 freshly contained branch deletion
+```
+
+Retire 會重新確認 caller/agent occupancy、關閉符合條件的 runtime、重新驗證 Git/artifact state、以 non-force 移除 worktree，最後才刪除 DONE task record。任一步驟失敗時保留 ordered ledger 與 recovery；已完成的 effects 不會被假裝 rollback。詳細條件見 [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/)。
+
+## 7. Sweep drift 與 stale state
 
 ```bash
 dev sweep                 # 只回報
@@ -5385,12 +5759,137 @@ Sweep 可建議：
 ## 來源
 
 - [`internal/cli/start_flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/start_flow.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
 - [`internal/cli/park.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/park.go)
 - [`internal/cli/resume.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/resume.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/cli/done_flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done_flow.go)
 - [`internal/gitx/finish.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/finish.go)
+
+---
+
+### Repository Lifecycle Flow
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/
+
+> 使用 preview dev flow 介面檢查單一 repository，並套用綁定 revision 的 lifecycle、adoption、removal、retirement 與 remote-evidence plans。
+
+!!! note "術語規則"
+    有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
+
+`dev flow [repo]` 是標示為 preview 的全螢幕 TTY-only 介面，專門處理單一 repository 的 lifecycle。它獨立於六個 view 的 `dev tui` dashboard；唯一任務是顯示 repository surfaces、observed evidence 與 exact guarded actions。
+
+```bash
+dev flow              # 目前 repository；在 Git 外則開啟 picker
+dev flow api          # 明確指定 repository，覆蓋 cwd
+```
+
+從 canonical checkout 或 linked worktree 執行不帶 argument 的 `dev flow` 時，它會解析 canonical Git common-directory identity，並 focus 目前所在的 exact surface。在 Git 之外執行時，則非同步載入可過濾的 repository picker。由 task metadata 引用、但暫時 unavailable 的 repository，仍會以 unavailable task-only rows 供檢查。
+
+## Repository surfaces
+
+左側 panel 先採用 `git worktree list --porcelain` 的每一筆 record，再加入沒有 checkout 的 task records。因此，正常 COLD 與 DONE tasks 不會只因 directory 不存在就消失。
+
+| Row kind | 意義 | Guarded actions |
+|---|---|---|
+| `canonical` | Git 標示為 Main 的 worktree，不受 branch name 影響 | Exact 綁定時提供合法 task actions；絕不移除 checkout |
+| `managed` | 有一筆 exact task binding 的 non-main checkout | 依 mode/state 提供 lifecycle actions |
+| `unmanaged` | 沒有 task 或 harness claim 的 registered linked checkout | Adopt；對 clean checkout 執行保留 branch 的 Remove Checkout |
+| `harness` | Strict path evidence 顯示它位於 `.claude/worktrees` 下 | 僅供 inspect，以及符合條件時取得 remote evidence；cleanup 由 harness 負責 |
+| `task-only` | Task metadata 沒有 registered checkout，通常是 COLD 或 DONE | 只有 exact task identity 允許時才能 Resume 或 Retire |
+| `conflict` | Duplicate claims、mismatched identity、incomplete inventory 或其他 ambiguity | Inspect/remediate；destructive actions fail closed |
+
+Branch name prefix 不是 harness ownership proof。Canonical、harness-owned、locked/prunable、detached、被 ambiguous claim 或 observation 不完整的 row，不會只因看似 inactive 就被視為可移除。
+
+符合條件的 unmanaged row：
+
+- **Adopt** 建立一筆 worktree-mode task record，不改 checkout content、refs、runtime layout 或 path。Dirty checkout 仍可 adopt，因為其 bytes 保持原狀。只有 fresh strict runtime evidence 證明恰有一個 stable、shell-only covering session，且沒有 recognized agent 時，才能 derive HOT；其他情況 adoption 都是 WARM。`runtime=none` 屬於 unobserved，因此 derive WARM。
+- **Remove Checkout** 要求 exact named clean linked checkout、完整且沒有 claim 的 task inventory、ready artifacts、可從外部安全 cleanup 的 runtime，以及沒有 harness evidence。它以 non-force 方式移除，並驗證 local branch 仍在相同 OID。
+
+Repository-wide prune 與 drift reconciliation 不是隱藏的 Remove variants。Flow 會回報這些 conditions，留待明確 recovery。
+
+## Intent、facts 與 plans
+
+三個 panels 刻意分開不同種類的 truth：
+
+1. **Persisted intent** — task mode、HOT/WARM/COLD/DONE、owner、next action、branch/base、expected checkout 與 runtime hint。
+2. **Observed facts** — repository/worktree identity、HEAD 與 refs、Git status 與進行中的 operations、artifact readiness、runtime sessions 與 recognized agents。Fact 會維持 known、unknown、error、skipped、loading 或 stale；failed observation 絕不會變成 false、clean 或 closed。
+3. **Guarded plan** — 合法的 source/target edge、READY/NEEDS INPUT/BLOCKED/UNKNOWN/ERROR availability、ordered conditions/effects、remediation、retained resources、confirmation class、PlanID 與 CLI fallback。
+
+`runtime=none` 無法觀察 session 或 agent occupancy。這不會把 observation 變成「closed」，但完整的 local Git/task snapshot 仍可對 non-runtime facts 提供 fresh 且有用的資訊。
+
+## Managed lifecycle choices
+
+Actions 是具體 variants，不是 generic force menu：
+
+| Current intent | Flow choices |
+|---|---|
+| HOT/WARM worktree 或 branch task | Park Warm；Park Cold；Park Cold + Push；Complete FF；Review Handoff；Verify Merged |
+| HOT/WARM direct task | Park Warm；Complete Direct |
+| WARM task | Resume（包含明確 fetch effect） |
+| COLD worktree/branch task | Resume 並 reconstruct/reopen；回到 HOT 前不能 completion |
+| DONE task | Retire (Keep Branch)；符合條件的 non-direct task 另有 Retire + Delete Contained Branch |
+
+Review Handoff 會 publish branch，且 available provider 支援時會建立 pull/merge request，但仍保留 HOT/WARM。Direct/FF/verified completion 最後寫入 DONE，並保留 branch、checkout 與 runtime resources。Retire 才是另一個可從外部安全執行的 close/wait/remove/task-reap operation。
+
+Preview 一律使用 dirty 時 fail 的 completion policy。它刻意不提供 dirty commit/discard、WIP checkpoint、shared-writer、ownership takeover、force removal、`--close-unknown` 或 `--assume-no-runtime` choices。Blocked plan 會顯示精確 evidence、remediation 與相容的 CLI fallback，不會憑空製造 override。
+
+## Keys 與 approval
+
+```text
+j/k 或 up/down         選擇 surface 或 picker/menu row
+h/l 或 left/right      選擇已具體化的 action
+Tab / Shift-Tab        移動 panel focus
+/                      過濾 repository picker
+Enter                  建立並檢查 plan；絕不立即 apply
+y                      核准 READY 且非 typed 的 plan
+r                      只重新載入 local facts
+R                      選擇 Fetch Refs、Query Review 或 Both
+?                      顯示 evidence 與 key semantics
+Esc                    返回上一層
+q                      離開；Apply 執行中會排隊，等 ledger 返回後才離開
+```
+
+Typed retirement 會顯示 exact `DELETE <branch>` token；輸入後按 Enter。任何 mismatch 都不會 mutation。不是 READY 的 plans 沒有 Apply path，但仍維持開啟供檢查。
+
+## Local 與 manual remote evidence
+
+Startup 與 `r` 不會 fetch 或聯絡 forge。只有已確認且明確宣告的 action 才執行 network work：Resume fetch、Park Cold + Push、Review Handoff，或其中一個 `R` choice。
+
+`R` 提供三種獨立 plan variant：
+
+- **Fetch Refs** 對 exact configured remote 執行 `git fetch --prune`。
+- **Query Review** 不 fetch，向支援的 GitHub、GitLab 或 Azure CLI 查詢 exact head/base relationship。
+- **Both** 先 fetch 再 query；fetch 失敗時不會嘗試 review query。
+
+Remote result 只存在於目前 flow run。Ref evidence 包含 exact named-ref OIDs，或明確 absence/error。Portable review evidence 只包含 existence、provider state（open/draft/merged/closed）、draft flag、URL、provider 與 observation time。Unsupported provider、missing CLI/extension、authentication/provider failure、malformed 或 multiple matches，以及尚未要求取得的 evidence，都維持 UNKNOWN 或 ERROR。Flow 不會 query 或推斷 review decisions、approvals、comments 或 checks。
+
+## Plan 與 Apply revalidation
+
+Planning 不產生 side effect。Plan 會將 task record revision，以及 exact repository、Git common directory、checkout path/branch/HEAD、refs、status、runtime/agent occupancy、artifacts、remote identity、concrete options 與 ordered effects，封入 authority fingerprint 與 PlanID。
+
+Apply 只接受目前 flow run 產生的 plan，以及綁定該 PlanID 的 approval。它依序鎖定 repository 與 task state、重新載入 task revision、重新 observe authority，且只要出現差異，就會在新 effect 前拒絕。Safety-critical checks 會在 runtime closure 後，以及 checkout 或 branch removal 前立即重做。Task state 最後才寫入；retirement 最後才刪除 DONE record。
+
+Refresh、切換 row 或 quit 都不會取消 Apply。互相衝突的 navigation 會停用，quit/refresh 則等待 result。Result ledger 保存每一個 attempted/completed/failed effect，以及 warnings 與 recovery。Partial success 表示 completed effects 維持完成；不暗示 rollback。之後會載入新的 local generation，directory/runtime/URL handoff 也只在 alternate screen 結束後發生。
+
+## Compatibility boundary
+
+同一個 `internal/taskflow` authority 支援一般 task-managed park、resume、completion 與 retirement commands，以及 exact unmanaged linked-checkout 的 Adopt/Remove paths。既有 CLI flags 與 structured output 維持相容，包括 preview 不提供的 expert acknowledgements。
+
+這不表示每一條 historical cleanup path 都已 migrate。Explicit unmanaged path retirement 仍是隔離的 compatibility implementation；`sweep` 的 record-only、orphan-salvage 與其他 narrowly scoped reconciliation paths 也仍在 taskflow 之外。`sweep` 仍維持先回報再套用。
+
+Raw Git 與 configured external TUI tools 不參與 dev 的 task locks、PlanID approval、identity revalidation 或 result ledger。這些工具仍可使用，但位於 dev-mediated safety guarantees 之外。
+
+## 來源
+
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/inventory/repo_context.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/inventory/repo_context.go)
+- [`internal/task/store.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/store.go)
+- [`internal/forge/review.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/review.go)
 
 ---
 
@@ -5516,13 +6015,15 @@ Git worktree 一開始是乾淨 checkout。`dev` 擁有持久變更流 (change s
 
 | Worktree 類型 | Owner | 常見位置 | Lifetime |
 |---|---|---|---|
-| feature、fix、experiment、跨機器 handoff | `dev` | 設定的 `paths.worktree_path` | 直到 `dev done`、`dev wt rm` 或核准的 sweep |
-| harness-scoped isolation | Claude Code 或其他 harness | harness-owned path，例如 `.claude/worktrees/<name>/` | 由該 harness 的 retention 與 safe-cleanup 規則管理 |
-| 外部建立的 linked worktree | adoption 前由外部管理 | tool-specific | `dev` 可看見，但明確 adopt 前不管理 |
+| feature、fix、experiment、跨機器 handoff | `dev` | 設定的 `paths.worktree_path` | `dev done` 只記錄 MERGED；直到後續 `dev retire`、明確 `dev wt rm` 或核准的 sweep 才移除 |
+| harness-scoped isolation | Claude Code 或其他 harness | harness-owned path，例如 `.claude/worktrees/<name>/` | 由該 harness 的 retention 與 safe-cleanup 規則管理；Flow 不會 Adopt/Remove |
+| 外部建立的 linked worktree | adoption 前由外部管理 | tool-specific | `dev`/`dev flow` 可看見；只有明確 Adopt 後才有 managed lifecycle |
 
 Code、history 或 plans 需要保持可 review，或人之後可能回來時，使用 `dev`。不要把長期 `dev` worktree 巢狀放在 repository 內；外層 checkout 的 file watcher、language server、backup tool 與搜尋會看到第二份 tree。
 
 `dev` 使用 Git 在設定路徑建立 checkout；Herdr 只開啟現有 path，因此沒有 Herdr 的機器仍維持相同 placement policy。
+
+`dev flow [repo]` 以 Git 的 authoritative worktree records 顯示 canonical、managed、unmanaged 與 strict `.claude/worktrees/` harness rows，另加入沒有 checkout 的 task-only rows。它不以 `worktree-*` branch prefix 猜 ownership；path/task binding 有歧義時標示 CONFLICT 並停止 lifecycle mutation。詳見 [Repository Flow 預覽](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/)。
 
 ## 建立前先檢查
 
@@ -5608,12 +6109,16 @@ dev wt rm feat/auth
 
 移除 worktree 與刪除 branch 是兩個決定。`dev wt rm` 會保留 branch，且沒有 explicit force 時拒絕 dirty checkout。Directory 若在 Git 之外消失，它會 prune stale administrative entry。
 
+在 `dev flow` 中，UNMANAGED row 的 Remove Checkout 只對 exact、clean、unlocked、non-prunable、non-harness linked checkout 出現，並在移除前後 revalidate task claims、Git/agent/runtime/artifact facts；branch 與其 OID 必須保留。Flow 不提供 force/dirty-discard/unknown-runtime override。Managed DONE row 不是 Remove Checkout，而是最後才 reap task record 的 Retire plan；可選 branch deletion 是另一個 typed confirmation。Raw `git worktree remove --force` 會繞過這些 guarantees。
+
 ## 來源
 
 - [`internal/wt/plan.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/wt/plan.go)
 - [`internal/wt/ecosystem.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/wt/ecosystem.go)
 - [`internal/wt/provision.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/wt/provision.go)
 - [`internal/wt/manager.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/wt/manager.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow/remove.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/remove.go)
 - [Claude Code worktrees](https://code.claude.com/docs/en/worktrees)
 
 ---
@@ -5889,6 +6394,7 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 | `dev done --pr` | Push branch，並透過可用的 forge CLI 開啟 pull/merge request。Task 保持在 review 狀態，不是 MERGED。 |
 | `dev done --merged --base-ref <ref>` | 驗證某個已在外部 merge 的 branch 是否被 `<ref>` 包含，並記錄為 MERGED。 |
 | `dev done --merged --base-ref <ref> --confirm-squash <merge-commit>` | 同上，但用於 squash merge：attest（斷言）已證明被 `<ref>` 包含的該 commit 代表這條 feature branch。這是 dev 無法自行驗證的 operator assertion。 |
+| `dev flow [repo]` | 在獨立 TTY preview 中顯示 DONE row 的 Retire (Keep Branch) 或 typed Retire + Delete Contained Branch plan；Enter 只規劃，第二次 approval 才套用。 |
 | `dev artifact discard <intent> --yes` | 記錄某個 intent 永遠無法 finalize——transcript 從未被寫出，或 rebase 之後 HEAD 已不存在——使它不再阻擋 integration 與 retirement。它不會 commit 也不會復原任何東西，會先印出確切將被放棄的內容，並拒絕仍為 `armed` 的 intent，因為 finalize 才是保存 transcript 的路徑。 |
 | `dev retire [task-or-worktree] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | 重新解析每一個 covering runtime session，拒絕 active agent 與 mixed-purpose workspace，等待其關閉，重新驗證 Git state，才移除 linked worktree（不使用 force）。只有在所有要求的步驟都成功後，才刪除 task record。 |
 | `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | 從 canonical checkout 執行，回報（加上 `--apply` 時則 retire）branch 已被 base 包含的 task-tracked 與 unmanaged linked worktree。 |
@@ -5898,6 +6404,12 @@ interactive 時提供 commit 或 discard，在 script 中則接受明確的 `--d
 policy。該 wizard 詳見[變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/)。
 `dev done` 上的 `--keep-worktree` 與 `--delete-branch` 之所以仍被接受，只是為了
 明確報錯並指向 `dev retire`。
+
+## Flow 中的 DONE 與 Retire
+
+`dev flow` 把 persisted `DONE` intent 與 live cleanup evidence 分開。DONE/MERGED row 仍可顯示 runtime、worktree、branch 與 task record；只有 Retire result 完成最後的 CAS task deletion 才是 RETIRED。UNMANAGED row 使用的是永遠保留 branch 的 Remove Checkout，不會製造 DONE/RETIRED task milestone；canonical 與 harness row 不能 Remove Checkout。
+
+Flow TUI 沒有 `--close-unknown`、`--assume-no-runtime`、dirty discard 或 generic force。`runtime=none` 會保留「session/agent unobserved」，不冒充已證明 closed。需要 expert acknowledgement 時，離開 Flow 並明確執行 plan 顯示的 fallback CLI，再接受該 command 自己的 guards。完整 row/action matrix 見 [Repository Flow 預覽](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/)。
 
 ## 一般 local flow
 
@@ -5956,6 +6468,8 @@ dev done <task> --merged --base-ref origin/main --confirm-squash <merge-commit>
 
 `--close-unknown` 與 `--assume-no-runtime` 只放寬 fail-closed 的*觀測結果*（無法讀取的 status、無法列舉的 runtime list）。這兩個 flag 都絕不會 bypass caller containment 或 active-agent state。`retirement.Service.Retire` 在 runtime session 關閉後，也會重新驗證 target identity、Git ancestry、進行中的 Git operation（`gitx.InProgress`，檢查 `MERGE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`、`rebase-merge`、`rebase-apply`、`sequencer`；不含 `REBASE_HEAD`，因為 Git 在 rebase 完成後仍會保留它）以及 worktree 是否 clean——因為 runtime draining 期間現實可能已改變，先前的驗證結果不會跨越這個邊界沿用。
 
+Taskflow Apply 也不信任畫面時的 snapshot：它鎖定 canonical repository/task store、重新讀取 task revision 與 authority fingerprint，並在 runtime closure、worktree removal、optional branch deletion 與最後 task reap 前逐段 revalidate。Result ledger 依序保留 `ATTEMPTED`/`COMPLETED`/`FAILED`；若前段 cleanup 已完成而後段失敗，會回報 partial success 與 recovery，而不宣稱 rollback。
+
 ## 用 sweep 做定期 cleanup
 
 ```bash
@@ -5968,7 +6482,9 @@ dev sweep --merged-worktrees --apply --yes
 
 ## 安全邊界
 
-原始的 `git worktree remove --force` 會完全繞過 dev——絕不要在佔用 target 的 agent 中執行它。dev 的保證僅止於：沒有任何 dev-mediated 路徑會執行 forced removal；它無法阻止 operator 或 script 直接呼叫 Git。
+原始的 `git worktree remove --force` 會完全繞過 dev——絕不要在佔用 target 的 agent 中執行它。dev 的保證僅止於：沒有任何 dev-mediated 路徑會執行 forced removal；它無法阻止 operator 或 script 直接呼叫 Git。Bare dashboard 的 configured `[[tui.tools]]` command 同樣是任意 external-tool escape boundary，不會繼承 Flow 的 PlanID、conditions、ledger 或 revalidation。
+
+一般 task-backed retirement 使用 `internal/taskflow`。Explicit unmanaged path 形式的 `dev retire` 仍是隔離的 compatibility implementation，部分 `sweep` record-only/orphan-salvage actions 也仍在 taskflow 之外。既有 CLI acknowledgement flags 維持相容，但 Flow preview 不提供其中任何一個；不能把本頁的 shared planner claim 擴張到所有 historical cleanup path。
 
 曾經真實發生過：一個 Codex session 從另一個 checkout 刪除了自己已註冊的 worktree 與 branch。Herdr 仍讓該 workspace 與 terminal 保持存活，因為 Unix process 在路徑被 unlink 之後仍可持有開啟中的 cwd inode；接著 SpecStory 又在同一路徑重新建立、但內容只剩 `.specstory/`。這個 shell 看起來還活著，但已經不再是一個 Git checkout：
 
@@ -5988,6 +6504,8 @@ fatal: not a git repository (or any of the parent directories): .git
 - [`internal/skill/dev-cli/references/agent-retirement.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/agent-retirement.md)
 - [`internal/help/topics/retirement.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/retirement.md)
 - [`internal/cli/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/retire.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/retire.go)
 - [`internal/cli/artifact.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/artifact.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
@@ -6001,12 +6519,14 @@ fatal: not a git repository (or any of the parent directories): .git
 
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/
 
-> 在 TUI 瀏覽 tasks、repositories、fleet hosts、experiments、remotes 與 agent skills、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
+> 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes 與 agent skills、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
 Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interactive dashboard；透過 pipe 執行時會輸出 plain task listing，讓 shell composition 保持可預期。
+
+`dev flow [repo]` 是另一個獨立、僅限 TTY 且標示為 preview 的全螢幕介面，不是 dashboard 的第七個 view。它聚焦單一 canonical repository 的所有 registered worktrees 與 task-only rows，並把 lifecycle intent、live evidence 與 plan-first actions 並列；完整說明見 [Repository Flow 預覽](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/)。
 
 ## 六個 view
 
@@ -6071,6 +6591,19 @@ y         開啟 copy/context actions
 展開後會顯示每個 linked worktree，包括 harness-owned `(ephemeral)` 與未受管理的 `(external)` checkout。LIVE column 將 runtime activity 與 task state 分開。
 
 `dev repo context [repo]` 會輸出 TUI copy menu 相同的 agent-ready Markdown context，包含 paths、Git/worktree/runtime facts 與 tasks。
+
+### 獨立 Repository Flow
+
+```text
+dev flow [repo]         依 cwd 或明確 repo 開啟 canonical repository
+j/k 或 Up/Down          選 surface row
+h/l 或 Left/Right       選 action
+Enter                   只建立 plan
+r                       只更新 local facts
+R                       明確選 fetch refs、query review 或 both
+```
+
+Flow 的 `CANONICAL`、`MANAGED`、`UNMANAGED`、`HARNESS`、`TASK-ONLY` 與 `CONFLICT` rows 各有不同 action set。只有 READY plan 經 `y` 或 exact typed token 的第二次 confirmation 後才 Apply；沒有 generic force、dirty discard、`--close-unknown`、`--assume-no-runtime` 或 shared-writer override。Runtime `none` 顯示為 unobserved，不會被解讀成已證明沒有 session。Result 會保留 partial step ledger，Apply 後再 fresh local reload。
 
 ### TRY 與 REMOTE
 
@@ -6154,6 +6687,8 @@ run = "lazygit"
 
 Key 區分大小寫，且不能覆蓋 dashboard-owned binding。離開 editor 後可 reload 多數 config；更換 runtime backend 需要重啟 TUI。
 
+Configured tool 是刻意保留的 escape hatch：它在選取 checkout 執行任意 configured command，不會自動繼承 `dev flow` 的 PlanID、conditions、agent occupancy 或 revalidation guards。Raw Git／forge command 也是同樣邊界；operator 必須自行確認其 safety。
+
 ## Inventory 現有機器
 
 先產生 report：
@@ -6188,6 +6723,8 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 ## 來源
 
 - [`internal/help/topics/tui.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/tui.md)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/help/topics/notes.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/notes.md)
 - [`internal/cli/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/note.go)
 - [`internal/help/topics/bootstrap.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/bootstrap.md)
@@ -7169,7 +7706,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/
 | repository quick notes | `note add`、`note list`、`note show`、`note search`、`note edit`、`note delete`、`note path`、`note reindex` |
 | machine inventory | `bootstrap`、`adopt`、`doctor` |
 | experiments | `try`、`tries …`、`graduate` |
-| terminal UI | `tui`、`tui tools` |
+| terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
 | remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
@@ -7334,9 +7871,15 @@ Left/Right、Home/End、Delete/Backspace、cursor 位置插入與 Esc/Ctrl-C can
 被解讀為 terminal actions，不會成為 raw escape bytes。Buffered 或 piped non-TTY input
 仍維持 line-oriented behavior。
 
+## `dev flow [repo]` preview
+
+`dev flow [repo]` 是獨立 full-screen command，只接受 interactive TTY；它沒有 JSON/non-interactive contract。省略 `repo` 時，canonical/linked checkout 會開啟同一 Git common-directory repository 並 focus exact current surface；Git 之外則非同步開 repository picker。明確 `repo` 會覆蓋 cwd。
+
+Startup 與 `r` 只載入 local topology/evidence。`R` 才提供 Fetch refs、Refresh PR/MR 或 Both；每個 choice 都先產生 exact guarded plan，再要求 approval。Provider review observation 只在 current run 保存最低限度的 existence、`open`/`draft`/`merged`/`closed`、URL、provider 與 observed time，不代表 CI checks 或 approvals。`runtime=none` 保持 unobserved，也不提供 `--assume-no-runtime` 等 expert override。詳細 keys、row kinds、partial ledger 與 escape boundary 見 [Repository Flow 預覽](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/)。
+
 ## `dev done` finish flags
 
-`dev done` 對 branch/worktree task 只透過下列其中一種方式 integrate：`--ff`（rebase 到 base 再 fast-forward）或 `--pr`（push 並開啟 pull/merge request）。兩者都省略時，在 TTY 上會開啟 interactive finish wizard —— 提示內容見[變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/)。
+`dev done` 對 branch/worktree task 透過 `--ff`（rebase 到 base 再 fast-forward）、`--pr`（push 並開啟 pull/merge request）或 `--merged`（依 `--base-ref` 驗證外部 integration）處理。未指定 integration choice 時，在 TTY 上會開啟 interactive finish wizard —— 提示內容見[變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/)。
 
 Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`）：
 
@@ -7347,7 +7890,7 @@ Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`�
 | `commit` | 用 `--message`/`-m` commit 全部變更（未指定時 interactive 會提示輸入） |
 | `discard` | reset tracked 變更並移除 untracked files；具破壞性，沒有 TTY 時需要 `--yes` |
 
-`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--keep-worktree` 讓 `--ff` integration 後仍保留 worktree（預設 merge 後移除），`--push` 會一併 push 產生的 branch，`--delete-branch` 只在 branch 的 commits 已被 base 包含時才刪除它 —— 有 unpushed commits 的 branch 永遠不會被刪除。
+`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--push` 會依 selected integration push 對應 branch/base。成功的 local 或 externally verified integration 只記錄 DONE/MERGED，永遠保留 runtime、worktree 與 branch 給獨立的 `dev retire`；`--keep-worktree` 只保留為 no-op compatibility warning，`--delete-branch` 則會報錯並指向 `dev retire --delete-branch`。`--merged` 可用 `--confirm-squash <merge-commit>` 對 squash result 作明確 operator attestation，不能由 provider status 自動推斷。
 
 ## Configuration
 
@@ -7381,8 +7924,7 @@ Target 必須是 absolute 且尚不存在；dev 絕不 overwrite。Private、bou
 在 TUI teardown 後才寫入，只包含 relative categorical timings 與 aggregate row
 counts，不包含 names、paths 或 raw payloads；它不是 configuration、cache、durable
 stats、stdout 或 network telemetry。
-TUI invocation 的 optional update-cache network refresh 也會延後到 initial view
-return 之後。
+Dashboard 與 `dev flow` 這類 full-screen invocation 的 optional update-cache network refresh 也會延後到 initial view return 之後；這不會把 Flow 自己的 local `r` 變成 remote refresh。
 
 Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
 
@@ -7935,6 +8477,14 @@ dev fleet sync <repo> [flags]
 - `--json` — emit JSON results
 - `--push` — push the source branch before fan-out
 - `--remote` — Git remote to publish/check (default: upstream, then origin)
+
+### `dev flow`
+
+Preview: inspect and run guarded repository lifecycle actions
+
+```
+dev flow [repo]
+```
 
 ### `dev git`
 
@@ -8851,6 +9401,7 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 ## 來源
 
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
 - [`internal/scaffold/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/scaffold/types.go)
 - [`internal/projectconfig/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/projectconfig/types.go)
@@ -8880,12 +9431,14 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 | named terminal session | tmux 或相容 Zellij | `none` 保留核心 behavior 與 shell navigation |
 | GitHub pull requests/remotes | authenticated `gh` | Git 可用時 branch 仍能 push，可能需 browser/manual flow |
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |
+| `dev flow` manual review observation | review-capable authenticated `gh`、`glab` 或含 Azure DevOps extension 的 `az` | local flow 與 fetch-only choice 仍可用；review query 保持 UNSUPPORTED/ERROR，不推斷 absence |
 | repository bootstrap publishing | authenticated `gh` 或 `glab` | local repository/scaffold 仍可使用；wizard 會說明如何 login |
 | remote repository snapshot template | Git，加上 source 所需的 network/authentication | validation 會在建立 destination 前失敗，rendered URL userinfo 會 redact；local template 仍可使用 |
 | setup-capable project skills | skills provider 與 entrypoint interpreter | 未選取的 skill 會跳過；selected required setup 若缺少 interpreter，會在 scaffold mutation 前失敗；先取得的 clone 會保留 |
 | staged lazygit message prefill | 會讀取 `LAZYGIT_PENDING_COMMIT` 的 lazygit version | files 仍保持 staged，dev 會印出建議 message；一般 Git commit 仍可使用 |
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
+| independent `dev flow [repo]` | interactive TTY input/output | 直接拒絕並指向 `dev repo context [repo]` 或 `dev ls --all --json`；沒有 piped/JSON Flow mode |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
 | Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
 | in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為印出對應套件管理器的升級指令 |
@@ -8900,7 +9453,9 @@ Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII quer
 
 ### Pull request completion 不會自動追蹤
 
-`dev done --pr` push 並建立 pull/merge request，之後保留 task、runtime 與 worktree，因為 integration 由 review 負責。目前 `dev sweep` 不會 query forge 推斷 request 後來已 merge。請驗證 integration 後再刻意 finish/reconcile；不能假設 remote merge 代表 local DONE。
+`dev done --pr` push 並建立 pull/merge request，之後保留 task、runtime 與 worktree，因為 integration 由 review 負責。`dev sweep` 不會 query forge 推斷 request 後來已 merge。`dev flow` 只有在 operator 明確按 `R` 並核准 Query Review 時，才保留目前 run 的 exact head/base observation；它不會 persistent cache、poll 或自動 transition。
+
+Portable provider evidence 僅包含 review 是否存在、provider、`open`/`draft`/`merged`/`closed`、URL 與 observation time。它不涵蓋 CI check conclusions、approvals、mergeability、comments 或 deployment status；unsupported/unauthenticated/ambiguous/malformed/failed query 也不等於 absence。請 fetch/驗證 named ancestry，再用 `dev done --merged --base-ref <ref>` 或 Flow 的 Verify Merged 記錄 DONE。
 
 ### Agent session capture 只有保留欄位，尚未接線
 
@@ -8937,6 +9492,12 @@ upstream integration 日後改變，staged index 與已印出的 message 仍是 
 
 Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 會移除 repository 必需的 directory。需要跨機器 reconstruction 時使用 branch-only 或 worktree mode。
 
+### Mediated safety 不涵蓋 raw/configured commands
+
+`dev flow` 與 taskflow 的 PlanID、conditions、locks、revalidation 和 partial ledger 只保護 dev-mediated action。Task-backed lifecycle 與 exact unmanaged linked-checkout actions 共用 `internal/taskflow`；但 explicit unmanaged path retirement 仍是隔離的 compatibility implementation，`sweep` 的 record-only reap、orphan salvage 與其他 narrow reconciliation paths 也仍在 taskflow 之外。不能假設每條 historical cleanup path 都已 migrate 或使用同一 planner。
+
+Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script，以及 bare dashboard 的 configured `[[tui.tools]]` command 都能繞過這個 boundary。它們是刻意保留的 expert/operator escape hatches，不應被描述成自動繼承相同 safety guarantees。
+
 ## 已實作、不能再列為 limitation 的 behavior
 
 以下是歷史缺口，現行版本已實作：
@@ -8952,6 +9513,8 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
   worktree 的 exact root pane。它不能與 `--json`、non-worktree modes 或 non-Herdr
   runtimes 併用，也不等待 command exit。
 - TUI navigation 會拒絕開啟 checkout 不存在的 COLD task，並要求使用 `dev resume`。
+- `dev flow [repo]` 是與 dashboard 分離的 TTY-only preview。它依 canonical Git common directory 顯示所有 registered worktrees 加 task-only rows；Enter 只建立 plan，`r` 只做 local reload，`R` 才選 fetch/query/both。Flow choices 不含 generic force、dirty discard、`--close-unknown`、`--assume-no-runtime`、shared writer 或 ownership takeover。
+- Flow Apply 會重新載入 task revision與 Git/worktree/runtime/agent/artifact/remote authority，並在 runtime closure 與 removal 邊界再次驗證。Result 保留 attempted/completed/failed ledger；partial success 不宣稱 rollback。
 - `DEV_TUI_TRACE` 從 `cli.Execute` 起算，無法涵蓋 OS process loading。`tui.initial_view_returned` 量測 model construction，不是 renderer flush 或 physical terminal paint；它適合同 profile 比較，不是跨硬體／network 的 universal guarantee。
 - Runtime handle 現在保存 backend provenance，cleanup 前會重新驗證。
 - `auto` runtime selection 已在 tmux 與 none 之間加入 Zellij。
@@ -9004,6 +9567,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 ## 來源
 
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/forge/review.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/review.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
@@ -9080,17 +9646,18 @@ tested_with: optional
 
 | Topic 或 claim | Owning page | Primary authority | Checked status |
 |---|---|---|---|
-| HOT/WARM/COLD/DONE 與 checkout modes | [心智模型](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/) | `internal/task/task.go`、lifecycle CLI/tests | repository snapshot 2026-08-28 |
-| `done --pr` 保持 task active | [變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/cli/done.go` | implemented |
+| HOT/WARM/COLD/DONE graph、checkout modes，以及 DONE/MERGED 與 Retire 的分界 | [心智模型](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/)、[變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/task/task.go`、`internal/taskflow/transitions.go`、focused lifecycle tests | repository snapshot 2026-09-01 |
+| `done --pr` 保持 task active；`done --merged` 需 named ancestry evidence | [變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/taskflow/complete.go`、`internal/cli/done_flow.go` | implemented |
+| 獨立 TTY-only `dev flow`、all-worktree/task-only topology、row action sets、plan/approval、local/remote freshness、run-local review evidence、partial ledger 與 revalidation | [Repository Flow 預覽](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/) | `internal/cli/flow.go`、`internal/flowtui`、`internal/taskflow`、`internal/inventory/repo_context.go`、`internal/forge/review.go`、focused flow/taskflow tests | preview implemented，2026-09-01 查核 |
 | worktree provisioning safety | [Worktree 與 provisioning](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
 | repository new/clone routing、snapshot templates/confinement、check-in policy、project trust、skill batching、TTY editor、upstream publication 與 handoff | [Commands 與 configuration](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`、`internal/scaffold`、`internal/repotemplate`、`internal/projectconfig`、`internal/cli/repo_{create,checkin,skills}*.go`、`internal/cli/prompt.go`、focused repo-bootstrap tests | implemented |
 | lazygit 小寫 `c` pending-message integration | [相容性](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive，2026-08-29 查核 |
 | runtime fallback 與 exact-pane `start --run` dispatch | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go`、`internal/runtime/herdr.go`、focused start/runtime tests | implemented |
 | SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
-| READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |
+| READY/MERGED/RETIRED 里程碑、retirement 拒絕條件、boundary revalidation/ledger 與 merged-worktree sweep | [Agent 安全退場](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/) | `internal/retire`、`internal/taskflow/retire.go`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |
 | `dev summary` 機器整體 snapshot 與 `dev journal` 日曆日期區間報告 | [機器整體摘要](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/machine-summary/)、[開發日誌](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dev-journal/) | `internal/summary`、`internal/journal`、focused summary/journal tests | implemented |
 | agent skill inventory、scopes 與明確的 update 動作 | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/agentskill`、`internal/cli/skill.go`、focused TUI tests | implemented |
-| TUI startup/readiness stages、generation handling、cache/live provenance 與 private trace semantics | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/perftrace`、`internal/tui/{readiness,local}.go`、`internal/cli/tui*.go`、focused race tests | implemented |
+| Main dashboard 的 startup/readiness stages、generation handling、cache/live provenance 與 private trace semantics | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/perftrace`、`internal/tui/{readiness,local}.go`、`internal/cli/tui*.go`、focused race tests | implemented |
 | quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
 | 現行 GitHub Flow 有六個 branch/PR steps 且沒有 deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official，2026-08-28 查核 |
 | linked worktree 共享 repository data，但有自己的 files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/zh-TW/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official，2026-08-28 查核 |

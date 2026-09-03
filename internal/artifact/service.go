@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/lockx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 )
 
@@ -42,6 +44,277 @@ type Service struct {
 	Store      *Store
 	ScanStaged Scanner
 	LargeLimit int64
+
+	beforeIntentCreate func()
+}
+
+// ReadinessState classifies one intent without changing its durable record.
+type ReadinessState string
+
+const (
+	ReadinessPending              ReadinessState = "pending"
+	ReadinessFailed               ReadinessState = "failed"
+	ReadinessDiscarded            ReadinessState = "discarded"
+	ReadinessFinalizedReachable   ReadinessState = "finalized-reachable"
+	ReadinessFinalizedUnreachable ReadinessState = "finalized-unreachable"
+	ReadinessObservationError     ReadinessState = "observation-error"
+)
+
+// IntentReadiness is the read-only finalization evidence for one intent matched
+// by exact checkout path or stable Git common-directory and branch identity.
+type IntentReadiness struct {
+	Intent           Intent
+	State            ReadinessState
+	Finalized        bool
+	ReceiptReachable bool
+	ObservationError error
+}
+
+// ReadinessInspection is a complete read-only observation for one selected
+// checkout. KnownEmpty is true only when the store was read successfully and no
+// intent matched the checkout; it distinguishes absence from failed observation.
+type ReadinessInspection struct {
+	Checkout         string
+	KnownEmpty       bool
+	Intents          []IntentReadiness
+	ObservationError error
+}
+
+// Ready applies only the existing artifact finalization contract: an exact
+// checkout is ready when it has no intents, or every intent was explicitly
+// discarded or has a finalized receipt that is still reachable. Missing or
+// incomplete evidence fails closed.
+func (i ReadinessInspection) Ready() bool {
+	if i.ObservationError != nil {
+		return false
+	}
+	if len(i.Intents) == 0 {
+		return i.KnownEmpty
+	}
+	if i.KnownEmpty {
+		return false
+	}
+	for _, intent := range i.Intents {
+		if intent.ObservationError != nil {
+			return false
+		}
+		switch intent.State {
+		case ReadinessDiscarded:
+			// Discard is the existing explicit operator escape hatch.
+		case ReadinessFinalizedReachable:
+			if !intent.Finalized || !intent.ReceiptReachable {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// InspectReadiness gathers artifact finalization evidence for one checkout,
+// including intents whose exact checkout moved but stable Git identity matches.
+// It never reconciles receipts, finalizes intents, or writes either
+// source files or intent records. The returned inspection retains partial
+// evidence and the same wrapped error returned separately to ordinary callers.
+func InspectReadiness(ctx context.Context, store *Store, checkout string) (ReadinessInspection, error) {
+	inspection := ReadinessInspection{}
+	if ctx == nil {
+		err := errors.New("artifact readiness inspection needs a context")
+		inspection.ObservationError = err
+		return inspection, err
+	}
+	if err := ctx.Err(); err != nil {
+		inspection.ObservationError = err
+		return inspection, err
+	}
+	if store == nil {
+		err := errors.New("artifact readiness inspection needs a store")
+		inspection.ObservationError = err
+		return inspection, err
+	}
+
+	canonical, err := pathx.Canonical(checkout)
+	if err != nil {
+		err = fmt.Errorf("canonicalize artifact readiness checkout: %w", err)
+		inspection.ObservationError = err
+		return inspection, err
+	}
+	inspection.Checkout = canonical
+
+	intents, err := store.List()
+	if err != nil {
+		err = fmt.Errorf("list artifact intents: %w", err)
+		inspection.ObservationError = err
+		return inspection, err
+	}
+	if err := ctx.Err(); err != nil {
+		inspection.ObservationError = err
+		return inspection, err
+	}
+
+	matched := make([]Intent, 0, len(intents))
+	unmatched := make([]Intent, 0, len(intents))
+	for _, intent := range intents {
+		if err := ctx.Err(); err != nil {
+			inspection.ObservationError = joinReadinessError(inspection.ObservationError, err)
+			break
+		}
+		intentCheckout, canonicalErr := pathx.Canonical(intent.WorktreePath)
+		if canonicalErr != nil {
+			canonicalErr = fmt.Errorf("canonicalize artifact intent %s checkout: %w", intent.ID, canonicalErr)
+			inspection.ObservationError = joinReadinessError(inspection.ObservationError, canonicalErr)
+			continue
+		}
+		if intentCheckout == canonical {
+			matched = append(matched, intent)
+		} else {
+			unmatched = append(unmatched, intent)
+		}
+	}
+
+	if len(unmatched) > 0 && inspection.ObservationError == nil {
+		identity, available, identityErr := inspectReadinessCheckoutIdentity(ctx, canonical)
+		if identityErr != nil {
+			inspection.ObservationError = joinReadinessError(inspection.ObservationError, identityErr)
+		} else if available {
+			for _, intent := range unmatched {
+				intentCommon, commonErr := pathx.Canonical(intent.GitCommonDir)
+				if commonErr != nil {
+					inspection.ObservationError = joinReadinessError(inspection.ObservationError,
+						fmt.Errorf("canonicalize artifact intent %s Git common directory: %w", intent.ID, commonErr))
+					continue
+				}
+				if intentCommon == identity.commonDir && intent.Branch == identity.branch {
+					matched = append(matched, intent)
+				}
+			}
+		}
+	}
+
+	for _, intent := range matched {
+		evidence, evidenceErr := inspectIntentReadiness(ctx, canonical, intent)
+		if evidenceErr != nil {
+			inspection.ObservationError = joinReadinessError(inspection.ObservationError, evidenceErr)
+		}
+		inspection.Intents = append(inspection.Intents, evidence)
+	}
+
+	inspection.KnownEmpty = len(inspection.Intents) == 0 && inspection.ObservationError == nil
+	return inspection, inspection.ObservationError
+}
+
+type readinessCheckoutIdentity struct {
+	commonDir string
+	branch    string
+}
+
+func inspectReadinessCheckoutIdentity(ctx context.Context, checkout string) (readinessCheckoutIdentity, bool, error) {
+	repository, err := gitx.Discover(ctx, checkout)
+	if errors.Is(err, gitx.ErrNotARepo) {
+		return readinessCheckoutIdentity{}, false, nil
+	}
+	if err != nil {
+		return readinessCheckoutIdentity{}, false, fmt.Errorf("discover artifact readiness checkout identity: %w", err)
+	}
+	commonDir, err := pathx.Canonical(repository.GitCommonDir)
+	if err != nil {
+		return readinessCheckoutIdentity{}, false, fmt.Errorf("canonicalize artifact readiness Git common directory: %w", err)
+	}
+	status, err := gitx.StatusOf(ctx, checkout)
+	if err != nil {
+		return readinessCheckoutIdentity{}, false, fmt.Errorf("observe artifact readiness checkout branch: %w", err)
+	}
+	if status.Detached || status.Branch == "" {
+		return readinessCheckoutIdentity{}, false, errors.New("artifact readiness checkout is detached; moved intent identity is ambiguous")
+	}
+	return readinessCheckoutIdentity{commonDir: commonDir, branch: status.Branch}, true, nil
+}
+
+func inspectIntentReadiness(ctx context.Context, checkout string, intent Intent) (IntentReadiness, error) {
+	evidence := IntentReadiness{Intent: intent, Finalized: intent.Status == Finalized}
+	var err error
+	switch intent.Status {
+	case Armed, Finalizing:
+		evidence.State = ReadinessPending
+	case Failed:
+		evidence.State = ReadinessFailed
+	case Discarded:
+		evidence.State = ReadinessDiscarded
+	case Finalized:
+		evidence.ReceiptReachable, err = receiptRemainsReachable(ctx, checkout, intent)
+		switch {
+		case err != nil:
+			err = fmt.Errorf("inspect artifact intent %s receipt: %w", intent.ID, err)
+			evidence.State = ReadinessObservationError
+			evidence.ObservationError = err
+		case evidence.ReceiptReachable:
+			evidence.State = ReadinessFinalizedReachable
+		default:
+			evidence.State = ReadinessFinalizedUnreachable
+		}
+	default:
+		// Store.List validates statuses, but fail closed if another Store
+		// implementation is introduced without preserving that contract.
+		err = fmt.Errorf("artifact intent %s has unrecognized status %q", intent.ID, intent.Status)
+		evidence.State = ReadinessObservationError
+		evidence.ObservationError = err
+	}
+	return evidence, err
+}
+
+func receiptRemainsReachable(ctx context.Context, checkout string, intent Intent) (bool, error) {
+	if intent.ArtifactCommit == "" {
+		return false, nil
+	}
+	candidates := []struct {
+		dir string
+		ref string
+	}{
+		{checkout, "HEAD"},
+		{intent.RepoPath, intent.Branch},
+		{intent.RepoPath, intent.Base},
+	}
+	seen := make(map[string]bool, len(candidates))
+	var observationErr error
+	for _, candidate := range candidates {
+		if candidate.dir == "" || candidate.ref == "" {
+			continue
+		}
+		key := candidate.dir + "\x00" + candidate.ref
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if err := ctx.Err(); err != nil {
+			return false, joinReadinessError(observationErr, err)
+		}
+		if _, err := gitx.Run(ctx, candidate.dir, "merge-base", "--is-ancestor", intent.ArtifactCommit, candidate.ref); err == nil {
+			return true, nil
+		} else if !gitNotAncestor(err) {
+			observationErr = joinReadinessError(observationErr,
+				fmt.Errorf("check %s against %s in %s: %w", intent.ArtifactCommit, candidate.ref, candidate.dir, err))
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		observationErr = joinReadinessError(observationErr, err)
+	}
+	return false, observationErr
+}
+
+func gitNotAncestor(err error) bool {
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) && exitErr.ExitCode() == 1
+}
+
+func joinReadinessError(current, next error) error {
+	if current == nil {
+		return next
+	}
+	if next == nil {
+		return current
+	}
+	return errors.Join(current, next)
 }
 
 func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (*Intent, error) {
@@ -133,12 +406,70 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (*Intent,
 		RunID: runID, Provider: provider, SessionID: sessionID, TaskID: request.TaskID,
 		RepoPath: repository.MainRoot, GitCommonDir: repository.GitCommonDir,
 		WorktreePath: repository.Root, Branch: status.Branch, Base: request.Base,
-		Head: head, PlanPaths: plans, UnrelatedArtifacts: filtered, AllowLarge: request.AllowLarge,
+		Head: strings.TrimSpace(head), PlanPaths: plans, UnrelatedArtifacts: filtered, AllowLarge: request.AllowLarge,
 	}
-	if err := s.Store.Create(ctx, intent); err != nil {
+	commonDir, err := pathx.Canonical(repository.GitCommonDir)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize artifact repository lock identity: %w", err)
+	}
+	if s.beforeIntentCreate != nil {
+		s.beforeIntentCreate()
+	}
+	if err := lockx.WithDir(ctx, filepath.Join(commonDir, "dev-taskflow"), "taskflow repository", func() error {
+		if err := revalidatePreparedIntent(ctx, intent); err != nil {
+			return err
+		}
+		return s.Store.Create(ctx, intent)
+	}); err != nil {
 		return nil, err
 	}
 	return intent, nil
+}
+
+func revalidatePreparedIntent(ctx context.Context, intent *Intent) error {
+	repository, err := gitx.Discover(ctx, intent.WorktreePath)
+	if err != nil {
+		return fmt.Errorf("revalidate artifact checkout before arming intent: %w", err)
+	}
+	checkout, err := pathx.Canonical(repository.Root)
+	if err != nil {
+		return fmt.Errorf("canonicalize revalidated artifact checkout: %w", err)
+	}
+	expectedCheckout, err := pathx.Canonical(intent.WorktreePath)
+	if err != nil {
+		return fmt.Errorf("canonicalize prepared artifact checkout: %w", err)
+	}
+	commonDir, err := pathx.Canonical(repository.GitCommonDir)
+	if err != nil {
+		return fmt.Errorf("canonicalize revalidated artifact Git common directory: %w", err)
+	}
+	expectedCommon, err := pathx.Canonical(intent.GitCommonDir)
+	if err != nil {
+		return fmt.Errorf("canonicalize prepared artifact Git common directory: %w", err)
+	}
+	if checkout != expectedCheckout || commonDir != expectedCommon {
+		return fmt.Errorf("artifact checkout identity changed before intent creation")
+	}
+	status, err := gitx.StatusOf(ctx, checkout)
+	if err != nil {
+		return fmt.Errorf("revalidate artifact checkout status: %w", err)
+	}
+	if status.Detached || status.Branch != intent.Branch {
+		return fmt.Errorf("artifact checkout branch changed from %s to %s before intent creation", intent.Branch, status.Branch)
+	}
+	if operation, active, err := gitx.InProgress(checkout); err != nil {
+		return fmt.Errorf("revalidate artifact Git operation: %w", err)
+	} else if active {
+		return fmt.Errorf("artifact preparation refuses Git operation %s that started before intent creation", operation)
+	}
+	head, err := gitx.Run(ctx, checkout, "rev-parse", "HEAD")
+	if err != nil {
+		return fmt.Errorf("revalidate artifact checkout HEAD: %w", err)
+	}
+	if strings.TrimSpace(head) != strings.TrimSpace(intent.Head) {
+		return fmt.Errorf("artifact checkout HEAD changed before intent creation")
+	}
+	return nil
 }
 
 func (s *Service) ObserveSessionEnd(ctx context.Context, runID string, when time.Time) error {

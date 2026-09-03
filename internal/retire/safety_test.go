@@ -26,6 +26,28 @@ type sequenceRuntime struct {
 	closed []string
 }
 
+type activityFakeRuntime struct {
+	*fakeRuntime
+	activities  []runtime.AgentActivity
+	activityErr error
+}
+
+func (r *activityFakeRuntime) AgentActivities(context.Context) ([]runtime.AgentActivity, error) {
+	return r.activities, r.activityErr
+}
+
+type currentPaneFakeRuntime struct {
+	*fakeRuntime
+	currentPane  string
+	currentErr   error
+	currentCalls int
+}
+
+func (r *currentPaneFakeRuntime) CurrentPaneID(context.Context) (string, error) {
+	r.currentCalls++
+	return r.currentPane, r.currentErr
+}
+
 func (s *sequenceRuntime) Name() string    { return "sequence" }
 func (s *sequenceRuntime) Available() bool { return true }
 func (s *sequenceRuntime) Open(context.Context, string, string) (runtime.OpenResult, error) {
@@ -106,6 +128,30 @@ func TestInspectRefusesCallerRuntimeAndMixedWorkspace(t *testing.T) {
 	}
 }
 
+func TestInspectResolvesMovedCallerPaneAndFailsClosedOnResolutionError(t *testing.T) {
+	target := t.TempDir()
+	rt := &currentPaneFakeRuntime{
+		fakeRuntime: runtimeAt(target, "idle"),
+		currentPane: "w1:p1",
+	}
+	inspection, err := retire.Inspect(context.Background(), rt, target, retire.Options{
+		CWD: t.TempDir(), CallerWorkspaceID: "old-workspace", CallerPaneID: "old:pane",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rt.currentCalls != 1 || inspection.Ready() || !inspection.CallerContained || !contains(inspection.Blockers, "caller runtime") {
+		t.Fatalf("resolved caller pane must block cleanup: calls=%d inspection=%+v", rt.currentCalls, inspection)
+	}
+
+	rt.currentErr = errors.New("current pane unavailable")
+	if _, err := retire.Inspect(context.Background(), rt, target, retire.Options{
+		CWD: t.TempDir(), CallerPaneID: "old:pane", AssumeNoRuntime: true,
+	}); err == nil || !strings.Contains(err.Error(), "current pane unavailable") {
+		t.Fatalf("current-pane resolution failure must not be acknowledged as a list failure: %v", err)
+	}
+}
+
 func TestInspectKeepsShellCWDWhenForegroundMovesOutside(t *testing.T) {
 	target := t.TempDir()
 	other := t.TempDir()
@@ -144,6 +190,64 @@ func TestInspectAgentStatusPolicy(t *testing.T) {
 	allowed, err := retire.Inspect(context.Background(), unknown, target, retire.Options{CWD: t.TempDir(), CloseUnknown: true})
 	if err != nil || !allowed.Ready() {
 		t.Fatalf("external acknowledgement should allow unknown: %+v, %v", allowed, err)
+	}
+}
+
+func TestInspectAgentActivityUsesCleanupStatusMatrix(t *testing.T) {
+	target := t.TempDir()
+	for _, tc := range []struct {
+		status       string
+		closeUnknown bool
+		wantReady    bool
+	}{
+		{status: "working"},
+		{status: "blocked"},
+		{status: "waiting"},
+		{status: "idle", wantReady: true},
+		{status: "done", wantReady: true},
+		{status: "unknown"},
+		{status: "unknown", closeUnknown: true, wantReady: true},
+		{status: "paused"},
+	} {
+		t.Run(tc.status, func(t *testing.T) {
+			base := runtimeAt(target, "idle")
+			rt := &activityFakeRuntime{
+				fakeRuntime: base,
+				activities: []runtime.AgentActivity{{
+					PaneID: "w1:p1", WorkspaceID: "w1", Agent: "claude", Status: tc.status, CWD: target,
+				}},
+			}
+			inspection, err := retire.Inspect(context.Background(), rt, target, retire.Options{
+				CWD: t.TempDir(), CloseUnknown: tc.closeUnknown,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if inspection.Ready() != tc.wantReady {
+				t.Fatalf("cleanup status %q ready = %v, want %v: %+v", tc.status, inspection.Ready(), tc.wantReady, inspection)
+			}
+		})
+	}
+}
+
+func TestInspectAgentActivityFailureAndUncorrelatedAgentFailClosed(t *testing.T) {
+	target := t.TempDir()
+	activityErr := errors.New("agent inventory unavailable")
+	rt := &activityFakeRuntime{fakeRuntime: runtimeAt(target, "idle"), activityErr: activityErr}
+	if _, err := retire.Inspect(context.Background(), rt, target, retire.Options{CWD: t.TempDir()}); err == nil || !strings.Contains(err.Error(), activityErr.Error()) {
+		t.Fatalf("agent activity failure must fail closed: %v", err)
+	}
+
+	rt.activityErr = nil
+	rt.activities = []runtime.AgentActivity{{
+		PaneID: "missing:p1", WorkspaceID: "missing", Agent: "claude", Status: "idle", CWD: target,
+	}}
+	inspection, err := retire.Inspect(context.Background(), rt, target, retire.Options{CWD: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Ready() || !contains(inspection.Blockers, "without a closeable runtime session") {
+		t.Fatalf("uncorrelated idle agent cannot be closed safely: %+v", inspection)
 	}
 }
 
@@ -205,6 +309,43 @@ func TestInspectRuntimeFailureRequiresAcknowledgement(t *testing.T) {
 	})
 	if err != nil || !inspection.RuntimeUnknown || !inspection.Ready() {
 		t.Fatalf("explicit external acknowledgement should proceed: %+v, %v", inspection, err)
+	}
+
+	active := &activityFakeRuntime{
+		fakeRuntime: &fakeRuntime{listErr: errors.New("offline")},
+		activities: []runtime.AgentActivity{{
+			PaneID: "p-active", WorkspaceID: "w-active", Agent: "claude", Status: "working", CWD: target,
+		}},
+	}
+	inspection, err = retire.Inspect(context.Background(), active, target, retire.Options{
+		CWD: t.TempDir(), AssumeNoRuntime: true,
+	})
+	if err != nil || !inspection.RuntimeUnknown || inspection.Ready() ||
+		!contains(inspection.Blockers, "recognized agent") {
+		t.Fatalf("assume-no-runtime ignored independent active-agent evidence: %+v, %v", inspection, err)
+	}
+
+	rt = &fakeRuntime{sessions: []runtime.Session{{
+		Handle: "w1", Panes: []runtime.Pane{{ID: "w1:p1", CWD: "\x00"}},
+	}}}
+	if _, err := retire.Inspect(context.Background(), rt, target, retire.Options{
+		CWD: t.TempDir(), AssumeNoRuntime: true,
+	}); err == nil {
+		t.Fatal("assume-no-runtime must not bypass a canonical coverage failure")
+	}
+}
+
+func TestInspectRuntimeNoneRequiresExplicitAcknowledgement(t *testing.T) {
+	target := t.TempDir()
+	inspection, err := retire.Inspect(context.Background(), runtime.None{}, target, retire.Options{CWD: t.TempDir()})
+	if err != nil || !inspection.RuntimeUnknown || inspection.Ready() || !contains(inspection.Blockers, "cannot enumerate") {
+		t.Fatalf("runtime none default=%+v err=%v", inspection, err)
+	}
+	inspection, err = retire.Inspect(context.Background(), runtime.None{}, target, retire.Options{
+		CWD: t.TempDir(), AssumeNoRuntime: true,
+	})
+	if err != nil || !inspection.RuntimeUnknown || !inspection.Ready() {
+		t.Fatalf("runtime none acknowledgement=%+v err=%v", inspection, err)
 	}
 }
 

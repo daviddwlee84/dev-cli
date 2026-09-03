@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 tested_with: Claude Code 2.1.250
 lang: zh-TW
 ---
@@ -23,12 +23,14 @@ lang: zh-TW
 | named terminal session | tmux 或相容 Zellij | `none` 保留核心 behavior 與 shell navigation |
 | GitHub pull requests/remotes | authenticated `gh` | Git 可用時 branch 仍能 push，可能需 browser/manual flow |
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |
+| `dev flow` manual review observation | review-capable authenticated `gh`、`glab` 或含 Azure DevOps extension 的 `az` | local flow 與 fetch-only choice 仍可用；review query 保持 UNSUPPORTED/ERROR，不推斷 absence |
 | repository bootstrap publishing | authenticated `gh` 或 `glab` | local repository/scaffold 仍可使用；wizard 會說明如何 login |
 | remote repository snapshot template | Git，加上 source 所需的 network/authentication | validation 會在建立 destination 前失敗，rendered URL userinfo 會 redact；local template 仍可使用 |
 | setup-capable project skills | skills provider 與 entrypoint interpreter | 未選取的 skill 會跳過；selected required setup 若缺少 interpreter，會在 scaffold mutation 前失敗；先取得的 clone 會保留 |
 | staged lazygit message prefill | 會讀取 `LAZYGIT_PENDING_COMMIT` 的 lazygit version | files 仍保持 staged，dev 會印出建議 message；一般 Git commit 仍可使用 |
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
+| independent `dev flow [repo]` | interactive TTY input/output | 直接拒絕並指向 `dev repo context [repo]` 或 `dev ls --all --json`；沒有 piped/JSON Flow mode |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
 | Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
 | in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為印出對應套件管理器的升級指令 |
@@ -43,7 +45,9 @@ Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII quer
 
 ### Pull request completion 不會自動追蹤
 
-`dev done --pr` push 並建立 pull/merge request，之後保留 task、runtime 與 worktree，因為 integration 由 review 負責。目前 `dev sweep` 不會 query forge 推斷 request 後來已 merge。請驗證 integration 後再刻意 finish/reconcile；不能假設 remote merge 代表 local DONE。
+`dev done --pr` push 並建立 pull/merge request，之後保留 task、runtime 與 worktree，因為 integration 由 review 負責。`dev sweep` 不會 query forge 推斷 request 後來已 merge。`dev flow` 只有在 operator 明確按 `R` 並核准 Query Review 時，才保留目前 run 的 exact head/base observation；它不會 persistent cache、poll 或自動 transition。
+
+Portable provider evidence 僅包含 review 是否存在、provider、`open`/`draft`/`merged`/`closed`、URL 與 observation time。它不涵蓋 CI check conclusions、approvals、mergeability、comments 或 deployment status；unsupported/unauthenticated/ambiguous/malformed/failed query 也不等於 absence。請 fetch/驗證 named ancestry，再用 `dev done --merged --base-ref <ref>` 或 Flow 的 Verify Merged 記錄 DONE。
 
 ### Agent session capture 只有保留欄位，尚未接線
 
@@ -80,6 +84,12 @@ upstream integration 日後改變，staged index 與已印出的 message 仍是 
 
 Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 會移除 repository 必需的 directory。需要跨機器 reconstruction 時使用 branch-only 或 worktree mode。
 
+### Mediated safety 不涵蓋 raw/configured commands
+
+`dev flow` 與 taskflow 的 PlanID、conditions、locks、revalidation 和 partial ledger 只保護 dev-mediated action。Task-backed lifecycle 與 exact unmanaged linked-checkout actions 共用 `internal/taskflow`；但 explicit unmanaged path retirement 仍是隔離的 compatibility implementation，`sweep` 的 record-only reap、orphan salvage 與其他 narrow reconciliation paths 也仍在 taskflow 之外。不能假設每條 historical cleanup path 都已 migrate 或使用同一 planner。
+
+Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script，以及 bare dashboard 的 configured `[[tui.tools]]` command 都能繞過這個 boundary。它們是刻意保留的 expert/operator escape hatches，不應被描述成自動繼承相同 safety guarantees。
+
 ## 已實作、不能再列為 limitation 的 behavior
 
 以下是歷史缺口，現行版本已實作：
@@ -95,6 +105,8 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
   worktree 的 exact root pane。它不能與 `--json`、non-worktree modes 或 non-Herdr
   runtimes 併用，也不等待 command exit。
 - TUI navigation 會拒絕開啟 checkout 不存在的 COLD task，並要求使用 `dev resume`。
+- `dev flow [repo]` 是與 dashboard 分離的 TTY-only preview。它依 canonical Git common directory 顯示所有 registered worktrees 加 task-only rows；Enter 只建立 plan，`r` 只做 local reload，`R` 才選 fetch/query/both。Flow choices 不含 generic force、dirty discard、`--close-unknown`、`--assume-no-runtime`、shared writer 或 ownership takeover。
+- Flow Apply 會重新載入 task revision與 Git/worktree/runtime/agent/artifact/remote authority，並在 runtime closure 與 removal 邊界再次驗證。Result 保留 attempted/completed/failed ledger；partial success 不宣稱 rollback。
 - `DEV_TUI_TRACE` 從 `cli.Execute` 起算，無法涵蓋 OS process loading。`tui.initial_view_returned` 量測 model construction，不是 renderer flush 或 physical terminal paint；它適合同 profile 比較，不是跨硬體／network 的 universal guarantee。
 - Runtime handle 現在保存 backend provenance，cleanup 前會重新驗證。
 - `auto` runtime selection 已在 tmux 與 none 之間加入 Zellij。
@@ -147,6 +159,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 ## 來源
 
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/forge/review.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/review.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)

@@ -10,6 +10,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/projectconfig"
+	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 	"github.com/daviddwlee84/dev-cli/internal/wt"
 	"github.com/spf13/cobra"
 )
@@ -275,41 +276,43 @@ A checkout with uncommitted changes needs an explicit --force.`,
 			if err != nil {
 				return err
 			}
-			w, ok, err := gitx.WorktreeFor(ctx, repoPath, args[0])
+			worktrees, err := gitx.Worktrees(ctx, repoPath)
 			if err != nil {
 				return err
 			}
-			if !ok {
-				return fmt.Errorf("no worktree for branch %q", args[0])
-			}
-			if w.Main {
-				return fmt.Errorf("%s is the main checkout, not a linked worktree", config.Contract(w.Path))
-			}
-			if dirty, st, err := wt.DirtyCheck(ctx, w.Path); err == nil && dirty && !force {
-				return fmt.Errorf("%s has uncommitted changes (%s).\n"+
-					"Commit them, or re-run with --force to discard them",
-					config.Contract(w.Path), st.Summary())
-			}
-
-			if err := ensureArtifactsFinalized(app, w.Path); err != nil {
-				return err
-			}
-			if err := safeRemoveWorktree(ctx, app.Runtime(), repoPath, w.Path, force,
-				closeUnknown, assumeNoRuntime, timeout); err != nil {
-				return err
-			}
-			style := app.outStyle()
-			fmt.Fprintf(app.Out, "%s %s %s\n", style.success("removed"), config.Contract(w.Path),
-				style.dim(fmt.Sprintf("(branch %s kept)", w.Branch)))
-
-			// Keep the registry honest about what is now gone.
-			if t, err := app.Tasks.FindByWorktree(w.Path); err == nil {
-				t.WorktreePath = ""
-				clearTaskRuntime(t)
-				if err := app.Tasks.Save(t); err == nil {
-					fmt.Fprintf(app.Out, "%s %s — the branch still has the work\n", style.label("task"), t.ID)
+			var matches []gitx.Worktree
+			for _, worktree := range worktrees {
+				if worktree.Branch == args[0] {
+					matches = append(matches, worktree)
 				}
 			}
+			switch len(matches) {
+			case 0:
+				return fmt.Errorf("no worktree for branch %q", args[0])
+			case 1:
+				// Continue with the exact registered path below.
+			default:
+				paths := make([]string, len(matches))
+				for index, worktree := range matches {
+					paths[index] = worktree.Path
+				}
+				return fmt.Errorf("branch %q has %d registered worktrees: %s; remove one by exact path after reconciling the ambiguity",
+					args[0], len(matches), strings.Join(paths, ", "))
+			}
+			locator, err := exactUnmanagedWorktreeLocator(ctx, repoPath, matches[0].Path)
+			if err != nil {
+				return err
+			}
+			if _, err := executeNonTaskLifecycle(ctx, app, locator, flow.RemoveCheckoutOptions{
+				DiscardDirty: force, CloseUnknown: closeUnknown,
+				AssumeNoRuntime: assumeNoRuntime, Timeout: timeout,
+			}, cmd.Flags().Changed("force") && force); err != nil {
+				return err
+			}
+
+			style := app.outStyle()
+			fmt.Fprintf(app.Out, "%s %s %s\n", style.success("removed"), config.Contract(locator.CheckoutPath),
+				style.dim(fmt.Sprintf("(branch %s kept)", locator.Branch)))
 			return nil
 		},
 	}

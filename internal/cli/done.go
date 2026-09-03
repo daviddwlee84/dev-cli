@@ -1,12 +1,8 @@
 package cli
 
 import (
-	"context"
 	"fmt"
 
-	"github.com/daviddwlee84/dev-cli/internal/config"
-	"github.com/daviddwlee84/dev-cli/internal/forge"
-	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	"github.com/spf13/cobra"
 )
@@ -103,78 +99,4 @@ worktree, or deletes a branch. Run dev retire later from outside the workspace.`
 	f.BoolVar(&deleteBranch, "delete-branch", false, "deprecated here: use dev retire --delete-branch")
 	cmd.ValidArgsFunction = completeTasks(app, task.Hot, task.Warm)
 	return cmd
-}
-
-// fastForward rebases the task branch onto its base and then moves the base
-// forward, producing a linear history with no merge commit.
-//
-// merge --ff-only is the guardrail: if the rebase did not actually put the
-// branch ahead of the base, the merge fails loudly instead of quietly creating
-// a merge commit the user did not ask for.
-func fastForward(ctx context.Context, app *App, t *task.Task, checkout, base string) error {
-	relation, err := gitx.AnalyzeFinish(ctx, checkout, base, t.Branch)
-	if err != nil {
-		return err
-	}
-	if relation.Relation.Contained() {
-		fmt.Fprintf(app.Out, "   integrated  %s is already contained in %s\n", t.Branch, base)
-		return nil
-	}
-	if relation.Relation.BaseOnly > 0 {
-		fmt.Fprintf(app.Out, "   rebasing   %s onto %s\n", t.Branch, base)
-		if _, err := gitx.Run(ctx, checkout, "rebase", base); err != nil {
-			return fmt.Errorf("%w\n\nThe rebase left conflicts to resolve in %s.\n"+
-				"Fix them, `git rebase --continue`, then re-run dev done --ff",
-				err, config.Contract(checkout))
-		}
-	}
-	// The base branch lives in the main checkout, not the worktree.
-	fmt.Fprintf(app.Out, "   merging    %s into %s (fast-forward only)\n", t.Branch, base)
-	if _, err := gitx.Run(ctx, t.RepoPath, "switch", base); err != nil {
-		return err
-	}
-	if _, err := gitx.Run(ctx, t.RepoPath, "merge", "--ff-only", t.Branch); err != nil {
-		return fmt.Errorf("%w\n\n%s could not be fast-forwarded. Something else moved it; "+
-			"rebase again or integrate by hand", err, base)
-	}
-	return nil
-}
-
-// deleteMergedBranch removes a branch only when git agrees its commits are already
-// contained in the base — the check that makes cleanup safe.
-func deleteMergedBranch(ctx context.Context, app *App, repoPath, branch, base string) error {
-	if _, err := gitx.Run(ctx, repoPath, "merge-base", "--is-ancestor", branch, base); err != nil {
-		return fmt.Errorf("keeping branch %s: it has commits not in %s", branch, base)
-	}
-	if _, err := gitx.Run(ctx, repoPath, "branch", "-d", branch); err != nil {
-		return fmt.Errorf("could not delete %s: %w", branch, err)
-	}
-	fmt.Fprintf(app.Out, "   deleted    branch %s\n", branch)
-	return nil
-}
-
-// openPR pushes the branch and asks the forge CLI to open a pull/merge
-// request. When no forge CLI is available dev prints the push result and the
-// URL to open by hand, rather than failing: the branch being published is the
-// part that actually matters.
-func openPR(ctx context.Context, app *App, t *task.Task, checkout, base string) error {
-	if err := pushBranch(ctx, app, checkout, t.Branch); err != nil {
-		return err
-	}
-	kind := forge.Detect(ctx, t.RepoPath)
-	f, err := forge.For(kind)
-	if err != nil || !f.Available() {
-		app.warnf("no forge CLI for this remote — the branch is pushed; open the request in your browser")
-		return nil
-	}
-	url, err := f.CreatePR(ctx, checkout, forge.PRRequest{
-		Base: base, Head: t.Branch, Fill: true,
-	})
-	if err != nil {
-		return err
-	}
-	if url != "" {
-		fmt.Fprintf(app.Out, "   opened     %s\n", url)
-	}
-	return nil
 }

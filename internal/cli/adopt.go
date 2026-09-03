@@ -14,6 +14,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 	"github.com/spf13/cobra"
 )
 
@@ -111,12 +112,32 @@ ever moved, renamed or deleted by this command.`,
 
 			in := bufio.NewReader(os.Stdin)
 			adopted := 0
+			stateExplicit := cmd.Flags().Changed("state")
 			for _, c := range found {
 				if !yes && !confirm(app, in, fmt.Sprintf("adopt %s / %s", c.Task.Repo, c.Task.Branch)) {
 					continue
 				}
-				if err := app.Tasks.Save(c.Task); err != nil {
-					app.warnf("%s: %v", c.Task.Branch, err)
+				if c.Task.EffectiveMode() == task.ModeWorktree && c.Task.WorktreePath != "" {
+					locator, locateErr := exactUnmanagedWorktreeLocator(ctx, c.Task.RepoPath, c.Task.WorktreePath)
+					if locateErr != nil {
+						app.warnf("%s: %v", c.Task.Branch, locateErr)
+						continue
+					}
+					requestedState := task.State("")
+					if stateExplicit {
+						requestedState = target
+					}
+					_, applyErr := executeNonTaskLifecycle(ctx, app, locator, flow.AdoptOptions{
+						Mode: task.ModeWorktree, State: requestedState,
+						Name: c.Task.Name, Base: c.Task.Base, Owner: c.Task.Owner,
+						Next: c.Task.Next, Note: c.Task.Note, Tags: flow.NewStringList(c.Task.Tags...),
+					}, false)
+					if applyErr != nil {
+						app.warnf("%s: %v", c.Task.Branch, applyErr)
+						continue
+					}
+				} else if _, createErr := app.Tasks.Create(ctx, c.Task); createErr != nil {
+					app.warnf("%s: %v", c.Task.Branch, createErr)
 					continue
 				}
 				adopted++
@@ -156,6 +177,10 @@ func scanRepo(ctx context.Context, app *App, r repo.Repo, sessions []runtime.Ses
 			return
 		}
 		seen[branch] = true
+		mode := task.ModeBranch
+		if worktree != "" {
+			mode = task.ModeWorktree
+		}
 		out = append(out, candidate{
 			Reason: reason,
 			Task: &task.Task{
@@ -166,6 +191,7 @@ func scanRepo(ctx context.Context, app *App, r repo.Repo, sessions []runtime.Ses
 				Branch:       branch,
 				Base:         gitx.DefaultBranch(ctx, r.Path),
 				WorktreePath: worktree,
+				Mode:         mode,
 				State:        state,
 				Owner:        config.Hostname(),
 			},

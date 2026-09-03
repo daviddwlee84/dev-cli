@@ -221,8 +221,10 @@ Cleanup remains explicit and is never triggered by Herdr `done`:
 
 - `dev park --next '<next>'` closes the workspace and keeps the worktree.
 - `dev park --cold --push` closes the workspace and removes the pushed checkout.
-- `dev done --ff` integrates and cleans up runtime/worktree.
+- `dev done --ff` integrates and records DONE; runtime/worktree/branch remain.
 - `dev done --pr` leaves task/runtime/worktree state for review.
+- `dev flow [repo]` can plan guarded DONE retirement from outside the target.
+- `dev retire <task>` closes/waits/removes/reaps; branch deletion is separate.
 - `dev sweep` reports first; use `--apply` only after review/confirmation.
 
 `dev park --cold --keep-session` is invalid because it would strand a live

@@ -2,12 +2,17 @@
 description: Navigate tasks, repositories, fleet hosts, experiments, remotes, and agent skills in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 ---
 
 # TUI, repositories, quick notes, and bootstrap
 
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
+
+There are two independent full-screen models. Bare `dev` / `dev tui` is the
+six-view inventory dashboard below. Preview-labelled `dev flow [repo]` is a
+TTY-only, plan-first lifecycle view for one canonical repository; it is not a
+dashboard tab or mode.
 
 ## Six views
 
@@ -57,7 +62,29 @@ n/N       quick-add / browse repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
-A COLD worktree task must be rebuilt with `dev resume`; the TUI does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory.
+A COLD worktree task must be rebuilt with `dev resume`; the dashboard does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory.
+
+### Repository flow
+
+```bash
+dev flow              # exact current surface, or picker outside Git
+dev flow api          # explicit repository
+```
+
+Flow lists every registered worktree plus task-only COLD/DONE rows and labels
+canonical/managed/unmanaged/harness/task-only/conflict topology. Use `j/k` for
+rows, `h/l` for actions, Tab for panel focus, Enter to build a plan, then `y` or
+the displayed typed token to approve only a READY plan. `r` reloads local facts;
+`R` offers explicit fetch, review query, or both. Startup and `r` never use the
+network.
+
+The plan separates persisted HOT/WARM/COLD/DONE intent from live evidence,
+shows remediation/fallback for blocked actions, and is revalidated against the
+exact task revision and Git/worktree/runtime/artifact identity before Apply.
+Partial effects remain in a result ledger. Eligible unmanaged rows can be
+metadata-only Adopted or cleanly Removed while preserving their branch;
+canonical/harness/conflict destruction fails closed. See [Repository lifecycle
+flow](repository-flow.md) for action and compatibility boundaries.
 
 ### REPOS
 
@@ -197,6 +224,8 @@ Adopt reports by default and only writes task entries after `--apply` plus confi
 ## Sources
 
 - [`internal/help/topics/tui.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/tui.md)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/help/topics/notes.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/notes.md)
 - [`internal/cli/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/note.go)
 - [`internal/help/topics/bootstrap.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/bootstrap.md)

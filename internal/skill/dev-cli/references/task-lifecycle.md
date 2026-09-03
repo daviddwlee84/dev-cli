@@ -70,6 +70,44 @@ dev park  │  │dev resume                        │ external dev retire
         ❄️ cold                              RETIRED (entry removed)
 ```
 
+The enforced graph is mode-aware: worktree/branch HOT or WARM can park WARM or
+COLD; WARM/COLD resume HOT; HOT/WARM can complete or hand off review; DONE can
+only Retire. Direct tasks omit COLD and branch integration. Review handoff is
+state-preserving. COLD must resume before completion, and no ordinary action
+moves DONE backward.
+
+### Plan it by repository
+
+`dev flow [repo]` is an independent preview-labelled, full-screen TUI, not a mode
+of the dashboard. From a canonical or linked checkout it opens the canonical
+repository and focuses that exact surface; outside Git it opens a repository
+picker. It projects every Git-registered worktree plus task-only records such as
+COLD/DONE tasks without a checkout.
+
+The UI shows three layers separately:
+
+1. persisted task intent: mode, HOT/WARM/COLD/DONE, owner, next, branch/base, and
+   expected checkout;
+2. observed facts: exact worktree identity, Git status/operation/refs, runtime and
+   agent occupancy, artifact readiness, each kept as known/unknown/error/skipped/
+   loading rather than converting probe failure into false;
+3. a guarded plan: availability, evidence/remediation, ordered effects, retained
+   resources, confirmation, exact fallback, task revision, and PlanID.
+
+Enter creates the plan; it never applies. READY non-typed plans need `y`; typed
+plans need the displayed token plus Enter. Apply locks and reloads the task
+revision and exact repository/worktree/ref/runtime/artifact authority. If any
+identity changed, it rejects the stale plan before a new effect. Apply itself is
+not canceled by row movement/refresh/quit; the UI retains completed/failed steps
+and recovery, then starts a new local read.
+
+The preview offers the normal managed choices but no dirty commit/discard, WIP,
+shared-writer, ownership takeover, or unknown-runtime acknowledgement. Blocked
+plans point to the compatible CLI fallback instead of adding a force path.
+`r` reads local state only; `R` explicitly plans fetch, portable review query, or
+both. Remote evidence is run-local and limited to named refs plus review
+existence/state/draft/URL/provider/time—not checks or review decisions.
+
 **A machine should hold roughly three to seven hot tasks.** That is a
 cognitive limit, not a technical one. Everything else belongs in `dev ls`.
 

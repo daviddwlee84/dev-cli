@@ -22,7 +22,7 @@ So the question is never "how many agents am I running?" It is:
 
 | Kind | Owner | Where | Lifetime |
 |---|---|---|---|
-| Feature, fix, experiment, handoff | `dev` | `~/Worktrees/<repo>/<slug>` | until done or swept |
+| Feature, fix, experiment, handoff | `dev` | `~/Worktrees/<repo>/<slug>` | until external retirement |
 | Harness-owned turn-scoped isolation | Claude Code | `.claude/worktrees/` | owned by that harness; no transcript-relocation guarantee |
 
 **Might you review or return to the code/history/plan later → `dev`.**
@@ -72,6 +72,13 @@ dev adopt --apply                   # record the selected candidates as tasks
 Until adoption, `dev park`, `dev resume`, and `dev done` have no task lifecycle
 to operate on. Use `dev start` when that lifecycle is wanted from the outset.
 
+`dev flow [repo]` also shows every registered checkout. An eligible unmanaged
+linked row offers plan-first **Adopt** (task metadata only; bytes stay untouched)
+and **Remove Checkout** (clean, non-force, branch always preserved). Canonical,
+harness, locked/prunable, task-claimed, or ambiguous rows have no destructive
+path. Flow does not prune repository-wide stale registrations; inspect and repair
+those explicitly.
+
 ## A worktree starts empty of everything untracked
 
 No `node_modules`, no `.venv`, no `.env`. `dev` fixes this on create:
@@ -93,5 +100,6 @@ dev wt rm feat/auth
 Never deletes the branch. A dirty checkout needs an explicit `--force`, and
 that refusal is the feature, not an obstacle.
 
-If the directory was deleted behind git's back, `git worktree prune` clears the
-stale entry — `dev wt rm` and `dev sweep` do this for you.
+If a directory was deleted behind Git's back, the registration is a recovery
+case. Inspect repository-wide `git worktree prune` scope before applying it;
+`dev flow` reports the drift and does not prune implicitly.

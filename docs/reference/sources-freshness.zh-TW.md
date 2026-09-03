@@ -2,7 +2,7 @@
 description: 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
 authority: project-policy
 status: maintained
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 lang: zh-TW
 ---
 
@@ -61,17 +61,18 @@ tested_with: optional
 
 | Topic 或 claim | Owning page | Primary authority | Checked status |
 |---|---|---|---|
-| HOT/WARM/COLD/DONE 與 checkout modes | [心智模型](../concepts/mental-model.md) | `internal/task/task.go`、lifecycle CLI/tests | repository snapshot 2026-08-28 |
-| `done --pr` 保持 task active | [變更流 workflow](../guides/change-stream-workflow.md) | `internal/cli/done.go` | implemented |
-| worktree provisioning safety | [Worktree 與 provisioning](../guides/worktrees-provisioning.md) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
+| HOT/WARM/COLD/DONE graph、checkout modes，以及 DONE/MERGED 與 Retire 的分界 | [心智模型](../concepts/mental-model.zh-TW.md)、[變更流 workflow](../guides/change-stream-workflow.zh-TW.md) | `internal/task/task.go`、`internal/taskflow/transitions.go`、focused lifecycle tests | repository snapshot 2026-09-01 |
+| `done --pr` 保持 task active；`done --merged` 需 named ancestry evidence | [變更流 workflow](../guides/change-stream-workflow.zh-TW.md) | `internal/taskflow/complete.go`、`internal/cli/done_flow.go` | implemented |
+| 獨立 TTY-only `dev flow`、all-worktree/task-only topology、row action sets、plan/approval、local/remote freshness、run-local review evidence、partial ledger 與 revalidation | [Repository Flow 預覽](../guides/repository-flow.zh-TW.md) | `internal/cli/flow.go`、`internal/flowtui`、`internal/taskflow`、`internal/inventory/repo_context.go`、`internal/forge/review.go`、focused flow/taskflow tests | preview implemented，2026-09-01 查核 |
+| worktree provisioning safety | [Worktree 與 provisioning](../guides/worktrees-provisioning.zh-TW.md) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
 | repository new/clone routing、snapshot templates/confinement、check-in policy、project trust、skill batching、TTY editor、upstream publication 與 handoff | [Commands 與 configuration](commands-config.md#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`、`internal/scaffold`、`internal/repotemplate`、`internal/projectconfig`、`internal/cli/repo_{create,checkin,skills}*.go`、`internal/cli/prompt.go`、focused repo-bootstrap tests | implemented |
 | lazygit 小寫 `c` pending-message integration | [相容性](compatibility.zh-TW.md) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive，2026-08-29 查核 |
 | runtime fallback 與 exact-pane `start --run` dispatch | [Parallel agents 與 runtimes](../guides/parallel-agents-runtimes.zh-TW.md) | `internal/runtime/runtime.go`、`internal/runtime/herdr.go`、focused start/runtime tests | implemented |
 | SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](../guides/remote-fleet.md) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
-| READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](../guides/agent-safe-retirement.md) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |
+| READY/MERGED/RETIRED 里程碑、retirement 拒絕條件、boundary revalidation/ledger 與 merged-worktree sweep | [Agent 安全退場](../guides/agent-safe-retirement.zh-TW.md) | `internal/retire`、`internal/taskflow/retire.go`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |
 | `dev summary` 機器整體 snapshot 與 `dev journal` 日曆日期區間報告 | [機器整體摘要](../guides/machine-summary.md)、[開發日誌](../guides/dev-journal.md) | `internal/summary`、`internal/journal`、focused summary/journal tests | implemented |
 | agent skill inventory、scopes 與明確的 update 動作 | [TUI、Repository、Quick Notes 與 Bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agentskill`、`internal/cli/skill.go`、focused TUI tests | implemented |
-| TUI startup/readiness stages、generation handling、cache/live provenance 與 private trace semantics | [TUI、Repository、Quick Notes 與 Bootstrap](../guides/tui-repos-bootstrap.md) | `internal/perftrace`、`internal/tui/{readiness,local}.go`、`internal/cli/tui*.go`、focused race tests | implemented |
+| Main dashboard 的 startup/readiness stages、generation handling、cache/live provenance 與 private trace semantics | [TUI、Repository、Quick Notes 與 Bootstrap](../guides/tui-repos-bootstrap.zh-TW.md) | `internal/perftrace`、`internal/tui/{readiness,local}.go`、`internal/cli/tui*.go`、focused race tests | implemented |
 | quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository、Quick Notes 與 Bootstrap](../guides/tui-repos-bootstrap.md) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
 | 現行 GitHub Flow 有六個 branch/PR steps 且沒有 deployment step | [GitHub Flow](../git/github-flow.md) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official，2026-08-28 查核 |
 | linked worktree 共享 repository data，但有自己的 files/index/HEAD | [Worktree semantics](../git/worktree-semantics-recovery.md) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official，2026-08-28 查核 |

@@ -286,6 +286,7 @@ dev start api --task "token refresh" --base main \
 dev park --next "add the regression test" --wip      # → warm; self-runtime stays alive until exit
 dev park --cold --push                               # → cold, only from outside the target runtime
 dev resume "token refresh"                           # → hot, rebuilt if needed
+dev flow api                                          # preview the repository lifecycle, plan first
 
 dev prepare --session claude:<uuid> --plan .claude/plans/task.md
 dev artifact finalize --intent <id> --writer-stopped # manual post-wrapper proof
@@ -376,6 +377,58 @@ checkout coverage before reuse or close. Destructive cleanup additionally
 resolves every covering pane. A caller inside the target, a mixed workspace, or
 a working/blocked/waiting agent always stops retirement; unknown status needs an
 external `--close-unknown`. `dev done` never closes or removes anything.
+
+### Repository flow preview
+
+`dev flow [repo]` is a preview-labelled, full-screen, TTY-only state-machine UI.
+It is independent of the six-view `dev tui` dashboard. From a canonical or linked
+checkout, `dev flow` resolves the canonical repository and focuses that exact
+surface; outside Git it opens a filterable repository picker. An explicit
+`dev flow api` overrides cwd.
+
+The left panel is the union of Git's registered worktrees and task records that
+have no checkout, including normal COLD and DONE tasks. Rows are labelled
+`canonical`, `managed`, `unmanaged`, `harness`, `task-only`, or `conflict`.
+Canonical worktrees are never removable; harness-owned and ambiguous/conflicting
+rows have no destructive path. An exact unmanaged linked checkout can be
+**Adopted** by creating task metadata without changing Git bytes, or **Removed**
+only when clean and safe; removal is non-force and always preserves the branch.
+
+The center distinguishes persisted task intent (`HOT`, `WARM`, `COLD`, `DONE`)
+from observed Git/worktree/runtime/artifact facts. Unknown, failed, loading, or
+stale evidence never becomes a false clean/closed fact. `runtime=none` leaves
+session occupancy unobserved, but the local Git/task snapshot can still be fresh;
+metadata-only adoption then remains WARM.
+
+The right panel offers concrete mode/state actions: warm/cold park, resume,
+direct or fast-forward completion, review handoff, verified-merge completion,
+and DONE retirement where legal. The preview deliberately excludes dirty
+commit/discard, WIP checkpoint, shared-writer, ownership-takeover, and unknown-
+runtime overrides. A blocked plan shows its exact evidence, remediation, and CLI
+fallback; existing command flags remain available outside the preview.
+
+```text
+j/k or ↑/↓       choose a surface      h/l or ←/→     choose an action
+Tab/Shift-Tab    move panel focus       Enter          build a plan, never apply
+r                reload local facts    R              Fetch refs / Query review / Both
+Esc              back out              ?              evidence and key help
+```
+
+A READY plan shows ordered conditions/effects, retained resources, network and
+destructive markers, and its exact PlanID. Press `y` only for a non-typed plan;
+typed branch deletion requires the displayed token and `Enter`. Apply locks and
+reloads the task revision plus repository, checkout, refs, runtime, artifact, and
+remote identities. Any change rejects the stale plan before a new effect. Once an
+effect starts, quit/refresh waits for the retained step ledger; partial success
+means completed effects remain completed and recovery is explicit.
+
+Startup and `r` never fetch or query a forge. `R` runs only the confirmed choice
+and keeps its evidence in this TUI run: named ref OIDs plus portable review
+existence, open/draft/merged/closed state, URL, provider, and observation time.
+It does not query review decisions or checks. Completion records DONE while
+keeping branch, checkout, and runtime resources; Retire cleans them from outside
+the target. Raw Git and configured external tools remain outside these
+`dev`-mediated locks and safety checks.
 
 ### The dashboard
 
@@ -720,6 +773,7 @@ python   uv       uv.lock            .venv         installed
 dev repo list --sizes          # repos, remote topology and owned logical size
 dev repo list --no-remote      # find local Git with no configured backup remote
 dev repo context api           # agent-ready paths, Git, WT, runtime and tasks
+dev flow api                   # TTY-only guarded repository lifecycle preview
 dev repo new                   # interactive local/published repository bootstrap
 dev repo setup . --preset agent-ready   # safely initialize an existing repo
 dev repo clone owner/name -c Web   # expand forge shorthand, then clone with Git

@@ -2,8 +2,10 @@ package gitx
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
@@ -26,6 +28,107 @@ type Worktree struct {
 	PrunableReason string
 	// Main reports the primary (non-linked) checkout.
 	Main bool
+}
+
+var (
+	// ErrWorktreeNotFound reports that Git's current registry has no worktree at
+	// the requested canonical path.
+	ErrWorktreeNotFound = errors.New("registered worktree not found")
+	// ErrWorktreeAmbiguous reports that multiple Git records resolve to the same
+	// canonical path. Callers must not choose one of the aliases implicitly.
+	ErrWorktreeAmbiguous = errors.New("registered worktree path is ambiguous")
+)
+
+// RegisteredWorktree is an identity snapshot from Git's worktree registry.
+// Worktree preserves the complete parsed Git record; the other fields are canonical
+// filesystem identities suitable for exact comparison across symlink and macOS
+// path aliases. A snapshot proves registration, not permission to remove it.
+type RegisteredWorktree struct {
+	Worktree       Worktree
+	RepositoryPath string
+	GitCommonDir   string
+	Path           string
+}
+
+// IsLinkedWorktree reports whether the record is a linked checkout rather than
+// Git's main checkout or a bare repository. It is classification, not a removal
+// safety decision.
+func (w RegisteredWorktree) IsLinkedWorktree() bool {
+	return !w.Worktree.Main && !w.Worktree.Bare
+}
+
+// ResolveRegisteredWorktree resolves exactPath against a fresh authoritative
+// `git worktree list --porcelain` query for the repository containing repoPath.
+// Matching is exclusively by canonical filesystem identity, never by branch.
+// It performs no prune, removal, or other mutation.
+func ResolveRegisteredWorktree(ctx context.Context, repoPath, exactPath string) (RegisteredWorktree, error) {
+	worktrees, err := Worktrees(ctx, repoPath)
+	if err != nil {
+		return RegisteredWorktree{}, fmt.Errorf("query registered worktrees: %w", err)
+	}
+	commonDir, err := run(ctx, repoPath, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return RegisteredWorktree{}, fmt.Errorf("resolve Git common directory: %w", err)
+	}
+	return resolveRegisteredWorktree(worktrees, commonDir, exactPath)
+}
+
+func resolveRegisteredWorktree(worktrees []Worktree, commonDir, exactPath string) (RegisteredWorktree, error) {
+	path, err := pathx.Canonical(exactPath)
+	if err != nil {
+		return RegisteredWorktree{}, fmt.Errorf("canonicalize requested worktree %q: %w", exactPath, err)
+	}
+	canonicalCommonDir, err := pathx.Canonical(commonDir)
+	if err != nil {
+		return RegisteredWorktree{}, fmt.Errorf("canonicalize Git common directory %q: %w", commonDir, err)
+	}
+
+	type match struct {
+		worktree Worktree
+		path     string
+	}
+	var (
+		repositoryPath string
+		matches        []match
+	)
+	for _, worktree := range worktrees {
+		canonicalPath, canonicalErr := pathx.Canonical(worktree.Path)
+		if canonicalErr != nil {
+			return RegisteredWorktree{}, fmt.Errorf("canonicalize registered worktree %q: %w", worktree.Path, canonicalErr)
+		}
+		if worktree.Main {
+			repositoryPath = canonicalPath
+		}
+		if sameCanonicalPath(path, canonicalPath) {
+			matches = append(matches, match{worktree: worktree, path: canonicalPath})
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return RegisteredWorktree{}, fmt.Errorf("%w: %s", ErrWorktreeNotFound, path)
+	case 1:
+		if repositoryPath == "" {
+			return RegisteredWorktree{}, errors.New("registered worktree query has no main repository record")
+		}
+		return RegisteredWorktree{
+			Worktree:       matches[0].worktree,
+			RepositoryPath: repositoryPath,
+			GitCommonDir:   canonicalCommonDir,
+			Path:           matches[0].path,
+		}, nil
+	default:
+		return RegisteredWorktree{}, fmt.Errorf("%w: %s resolves to %d records", ErrWorktreeAmbiguous, path, len(matches))
+	}
+}
+
+func sameCanonicalPath(left, right string) bool {
+	if left == right {
+		return true
+	}
+	leftInfo, leftErr := os.Stat(left)
+	rightInfo, rightErr := os.Stat(right)
+	return leftErr == nil && rightErr == nil && os.SameFile(leftInfo, rightInfo)
 }
 
 // Worktrees lists every worktree of the repository containing dir, in git's
@@ -85,8 +188,9 @@ func Worktrees(ctx context.Context, dir string) ([]Worktree, error) {
 	return list, nil
 }
 
-// WorktreeFor finds the worktree checked out on branch, if any. Git refuses to
-// check the same branch out twice, so at most one can match.
+// WorktreeFor finds the first worktree checked out on branch, if any. Git
+// normally refuses duplicate branch checkouts, but --force can create them;
+// identity-sensitive callers must use ResolveRegisteredWorktree instead.
 func WorktreeFor(ctx context.Context, dir, branch string) (Worktree, bool, error) {
 	list, err := Worktrees(ctx, dir)
 	if err != nil {
@@ -168,11 +272,29 @@ func BranchExists(ctx context.Context, dir, branch string) bool {
 	return err == nil
 }
 
-// RefExists reports whether any ref or commit-ish resolves.
-func RefExists(ctx context.Context, dir, ref string) bool {
+// RefState reports whether any ref or commit-ish resolves while preserving
+// observation failures. A normal rev-parse exit 1 with no diagnostic is an
+// authoritative missing ref; every other failure remains an error.
+func RefState(ctx context.Context, dir, ref string) (bool, error) {
 	if ref == "" {
-		return false
+		return false, nil
 	}
 	_, err := run(ctx, dir, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
-	return err == nil
+	if err == nil {
+		return true, nil
+	}
+	var commandErr *Error
+	var exitErr *exec.ExitError
+	if errors.As(err, &commandErr) && errors.As(commandErr.Err, &exitErr) &&
+		exitErr.ExitCode() == 1 && strings.TrimSpace(commandErr.Stderr) == "" {
+		return false, nil
+	}
+	return false, err
+}
+
+// RefExists is the compatibility predicate for callers where probe failure is
+// intentionally equivalent to absence. Guarded lifecycle code uses RefState.
+func RefExists(ctx context.Context, dir, ref string) bool {
+	exists, _ := RefState(ctx, dir, ref)
+	return exists
 }

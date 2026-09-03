@@ -2,7 +2,7 @@
 description: 以持久 Git history、分層 intent/catalog state、repository quick-note sidecar、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
 authority: project
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-09-01
 lang: zh-TW
 ---
 
@@ -41,12 +41,12 @@ Catalog ID 讓 quick note 在 linked worktrees、symlink indexes、path moves �
 | 🔥 `hot` | branch 加 checkout | 開啟 | 正在處理 |
 | 🌤 `warm` | 保留 branch 與 checkout | 關閉 | 幾天內會回來 |
 | ❄️ `cold` | branch 已 commit、push；worktree 不存在 | 無 | 已暫停，可在別處重建 |
-| ✅ `done` | 已整合 | 無 | 等待 cleanup 回收 entry |
+| ✅ `done` | 已具名的整合證據；checkout/branch 可能仍存在 | 可能仍存在 | MERGED，等待獨立 Retire cleanup |
 
 ```mermaid
 flowchart TD
     accTitle: dev-cli lifecycle states
-    accDescr: Task 會在 HOT、WARM 與符合條件的 COLD state 之間移動；direct 或本機整合完成的工作會進入 DONE；review 不改變目前 state；sweep 只回收已完成的 entry。
+    accDescr: Task 會在 HOT、WARM 與符合條件的 COLD state 之間移動；direct completion、本機 fast-forward 或具名 ancestry verification 會進入 DONE；review 不改變目前 state；Retire 才回收 local resources 與 task entry。
 
     Start["dev start"] --> Hot["HOT"]
     Hot -->|dev park --next| Warm["WARM"]
@@ -55,7 +55,7 @@ flowchart TD
     Warm -->|branch/worktree: dev park --cold --push| Cold
     Cold -->|dev resume --fetch| Hot
 
-    Hot -->|direct: dev done| Done["DONE"]
+    Hot -->|direct: dev done| Done["DONE / MERGED"]
     Warm -->|direct: dev done| Done
     Hot -->|branch/worktree: dev done --ff| Done
     Warm -->|branch/worktree: dev done --ff| Done
@@ -63,12 +63,17 @@ flowchart TD
     Hot -.->|branch/worktree: dev done --pr；state 不變| Review["push / review handoff"]
     Warm -.->|branch/worktree: dev done --pr；state 不變| Review
     Review -.->|feedback：若為 WARM 先 dev resume| Hot
+    Review -->|dev done --merged --base-ref REF| Done
 
-    Done -->|dev sweep：只回報| Report["cleanup candidate"]
-    Report -->|dev sweep --apply| Reaped["已回收 entry"]
+    Done -->|dev retire；或先由 dev sweep 回報| Retire["guarded Retire plan"]
+    Retire --> Reaped["RETIRED：runtime/worktree/task 已回收"]
 ```
 
-對 branch/worktree task 而言，`dev done --pr` 刻意不是 HOT/WARM → DONE transition。它會 handoff 已 push 的 branch（支援時建立 review），並保留原 state 與 cleanup 狀態；remote merge reconciliation 目前仍需手動處理。
+對 branch/worktree task 而言，`dev done --pr` 刻意不是 HOT/WARM → DONE transition。它會 handoff 已 push 的 branch（支援時建立 review），並保留原 state 與 cleanup 狀態。外部 merge 不會被自動推斷；請以 `dev done --merged --base-ref <ref>` 或 `dev flow` 的 Verify Merged action 明確證明 named ancestry，再以獨立 Retire plan cleanup。
+
+## Intent、evidence 與 action readiness
+
+Lifecycle state 只保存人類意圖，不會吸收所有外部事實。`dev flow [repo]` 把三層並列：recorded `HOT/WARM/COLD/DONE` intent、具 freshness 的 Git/runtime/agent/artifact/remote evidence，以及綁定 exact identity 的 guarded plan。`READY` 是某份 plan 的 action readiness；`REVIEW`、`MERGED` 與 `RETIRED` 是 result milestones，皆不是額外 TOML state。UNKNOWN/ERROR evidence 不會被當成 clean、closed 或 absent。完整操作方式見 [Repository Flow 預覽](../guides/repository-flow.zh-TW.md)。
 
 ## Checkout mode
 
@@ -85,6 +90,8 @@ Task 記錄的是意圖，不一定要有 linked worktree。
 ## Runtime 刻意是可丟失的
 
 `runtime.Runtime` 提供 `Open`、`Close`、`List` 與 `Annotate`。`auto` 會依序選 Herdr、tmux、Zellij，最後使用永遠可用的 `none` backend。關閉任何 backend 都不能移除 checkout、branch 或 task entry。
+
+`none` 只表示沒有可觀察的 multiplexer backend，不等於已證明「沒有 session 或 agent」。需要 occupancy/absence proof 的 guarded action 必須保留 unobserved evidence；`dev flow` 不會把它顯示成已關閉，也不提供 `--assume-no-runtime` expert override。
 
 因此 reboot、關閉 multiplexer 或更換 runtime backend 都不代表放棄工作。`dev sweep` 能比較 registry 與即時 Git/runtime facts 並回報 drift。
 
@@ -109,5 +116,8 @@ dev resume <task> --fetch
 - [`internal/note/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/note.go)
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/help/topics/parking.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/parking.md)
+- [`internal/taskflow/transitions.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/transitions.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
+- [`internal/cli/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/retire.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)

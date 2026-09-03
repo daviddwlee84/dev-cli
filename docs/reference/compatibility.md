@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 tested_with: Claude Code 2.1.250
 ---
 
@@ -25,6 +25,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 | staged lazygit message prefill | a lazygit version that reads `LAZYGIT_PENDING_COMMIT` | files remain staged and dev prints the suggested message; normal Git commit remains available |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
+| preview repository flow | terminal input/output | `dev flow` refuses non-TTY use and points to `dev repo context` / JSON inventory |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
 | terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
 | in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` prints the package manager's upgrade command instead |
@@ -39,7 +40,13 @@ Note writes sync the file and atomically rename it on every supported platform. 
 
 ### Pull-request completion is not tracked automatically
 
-`dev done --pr` pushes and opens a pull/merge request, then leaves the task, runtime, and worktree unchanged because review owns integration. Current `dev sweep` does not query the forge to infer that a request later merged. Verify integration and finish/reconcile deliberately; do not assume remote merge implies local DONE.
+`dev done --pr` pushes and opens a pull/merge request, then leaves the task,
+runtime, and worktree unchanged because review owns integration. `dev flow` can
+run an explicit, run-local query for the exact head/base review and report only
+portable existence, open/draft/merged/closed state, URL, provider, and observation
+time. It does not query review decisions or checks, persist that evidence, or
+turn it into DONE. Current `dev sweep` does not query the forge either. Verify
+integration with exact local ancestry and finish deliberately.
 
 ### Agent session capture is reserved, not wired
 
@@ -79,6 +86,22 @@ and printed message remain the recovery path.
 
 A direct task uses the canonical checkout and cannot go COLD, because cold cleanup would remove a directory the repository needs. Use branch-only or worktree mode for cross-machine reconstruction.
 
+### Flow intentionally omits expert overrides
+
+`dev flow` offers normal managed lifecycle actions, exact unmanaged metadata-only
+Adopt/clean branch-preserving Remove, and explicit remote evidence. It does not
+offer dirty commit/discard, WIP, shared-writer, ownership takeover, force, unknown-
+runtime, or assume-no-runtime choices. A blocked plan shows remediation and the
+compatible CLI fallback; existing command flags and structured contracts remain
+available.
+
+Task-backed lifecycle and exact unmanaged linked-checkout actions share
+`internal/taskflow`. Explicit unmanaged path retirement remains an isolated
+compatibility implementation, while `sweep` retains record-only reaping, orphan
+salvage, and other narrow reconciliation paths. Do not assume every cleanup path
+has the same planner. Raw Git and configured external tools also bypass dev's
+PlanID, locks, revalidation, and result ledger.
+
 ## Current behaviors that are implemented
 
 These were historical gaps and should not be reintroduced as limitations:
@@ -94,6 +117,7 @@ These were historical gaps and should not be reintroduced as limitations:
   a newly created first-class Herdr worktree. It is incompatible with `--json`,
   non-worktree modes, and non-Herdr runtimes, and does not wait for command exit.
 - TUI navigation refuses to open a missing COLD checkout and directs the user to `dev resume`.
+- Preview-labelled `dev flow [repo]` is an independent full-screen TTY model. It resolves canonical/linked cwd to the exact surface, uses a picker outside Git, shows every registered worktree plus task-only records, and makes every mutation Enter-to-plan then approve. Apply revalidates task revision and exact repository/worktree/ref/runtime/artifact authority and retains partial step results. Local `r` is network-free; `R` explicitly selects fetch/query/both and keeps minimal review evidence run-local.
 - `DEV_TUI_TRACE` starts at `cli.Execute`; it cannot include OS process loading. `tui.initial_view_returned` measures model construction, not renderer flush or physical terminal paint. Use it for same-profile comparisons rather than universal hardware/network guarantees.
 - Runtime handles now record backend provenance and are revalidated before cleanup.
 - `auto` runtime selection includes Zellij between tmux and none.
@@ -146,6 +170,9 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 ## Sources
 
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)

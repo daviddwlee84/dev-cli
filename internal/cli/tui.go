@@ -31,6 +31,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/stats"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 	"github.com/daviddwlee84/dev-cli/internal/tui"
 	"github.com/daviddwlee84/dev-cli/internal/wt"
 	"github.com/spf13/cobra"
@@ -471,41 +472,34 @@ func runTUI(app *App) error {
 
 		Park: func(ctx context.Context, selected *task.Task, next string) (string, error) {
 			active := appState.Current()
-			current, err := active.Tasks.Get(selected.ID)
+			rt, err := runtimeResolver.Resolve(ctx)
 			if err != nil {
 				return "", err
 			}
-			updated := *current
-			if next != "" {
-				updated.Next = next
-			}
-			runtimeForTask(active, &updated) // normalize empty handle/name provenance
-			if updated.RuntimeHandle != "" {
-				if _, _, err := closeTaskRuntime(ctx, active, &updated, checkoutOf(&updated)); err != nil {
-					return "", err
-				}
-			}
-			// The dashboard only parks warm: going cold removes a checkout,
-			// which is too consequential for a single keystroke.
-			updated.State, updated.Owner = task.Warm, config.Hostname()
-			if err := active.Tasks.Save(&updated); err != nil {
+			actionApp := *active
+			actionApp.runtimeInstance = rt
+			execution, err := executeTaskLifecycle(ctx, &actionApp, func() (*task.Task, error) {
+				return actionApp.Tasks.Get(selected.ID)
+			}, flow.ParkWarmOptions{Next: next})
+			if err != nil {
 				return "", err
 			}
-			return updated.Title() + " parked warm — worktree and branch kept", nil
+			return execution.Task.Title() + " parked warm — worktree and branch kept", nil
 		},
 
 		SetNext: func(ctx context.Context, selected *task.Task, next string) error {
 			active := appState.Current()
-			current, err := active.Tasks.Get(selected.ID)
+			current, err := active.Tasks.GetRecord(selected.ID)
 			if err != nil {
 				return err
 			}
-			updated := *current
+			updated := current.Task
 			updated.Next = next
-			if err := active.Tasks.Save(&updated); err != nil {
+			persisted, err := active.Tasks.Update(ctx, &updated, current.Revision)
+			if err != nil {
 				return err
 			}
-			annotate(active, runtimeForTask(active, &updated), &updated)
+			annotate(active, runtimeForTask(active, &persisted.Task), &persisted.Task)
 			return nil
 		},
 

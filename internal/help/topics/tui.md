@@ -26,6 +26,36 @@ failed refreshes keep usable rows, and a successful empty result clears old
 rows. Cached rows and current live results are separate readiness stages; there
 is no all-tabs-ready state for views that may never be opened.
 
+## Repository lifecycle preview
+
+`dev flow [repo]` is a separate preview-labelled, full-screen TUI; it does not
+share the dashboard model above and requires terminal input/output. In any
+canonical or linked checkout, bare `dev flow` opens the canonical repository and
+focuses that exact surface. Outside Git it opens a filterable repository picker;
+an explicit repo overrides cwd.
+
+Its rows are every Git-registered worktree plus task-only records, including
+COLD/DONE tasks with no checkout: `canonical`, `managed`, `unmanaged`, `harness`,
+`task-only`, and `conflict`. The center keeps persisted HOT/WARM/COLD/DONE intent
+separate from observed Git/runtime/artifact evidence. The right side offers exact
+managed lifecycle plans, or metadata-only Adopt and clean branch-preserving
+Remove for eligible unmanaged linked checkouts. Canonical checkout removal,
+harness cleanup, and destructive conflict resolution fail closed.
+
+```text
+j/k or arrows row    h/l or arrows action    Tab focus    Enter plan
+r local facts only   R fetch/query/both       ? help       Esc back
+```
+
+Enter never applies. A READY plan needs `y`, or its displayed exact typed token
+plus Enter. Apply revalidates the task revision and repository/checkout/ref/
+runtime/artifact identities, then retains an ordered result ledger even after a
+partial failure. The preview has no dirty commit/discard, WIP, takeover, shared-
+writer, or unknown-runtime override; blocked plans show remediation and a CLI
+fallback. Startup and `r` never use the network. Confirmed `R` evidence is
+run-local and limited to refs plus review existence/state/draft/URL/provider/time,
+not review decisions or checks.
+
 For one run, set `DEV_TUI_TRACE` to an absolute file that does not already exist:
 
 ```bash

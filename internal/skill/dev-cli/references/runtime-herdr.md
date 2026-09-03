@@ -104,6 +104,13 @@ workspace/pane containment, mixed workspaces, and working/blocked/waiting
 agents. Unknown status needs external `--close-unknown`; close failure or timeout
 stops worktree removal. `--cold --keep-session` remains rejected.
 
+The independent `dev flow [repo]` preview treats local refresh as local-only and
+does not expose `--close-unknown`, `--assume-no-runtime`, shared-writer, or
+takeover overrides. `runtime=none` means session/agent occupancy is unobserved,
+not known closed; otherwise complete Git/task snapshots may still be fresh.
+Resume handoff activates a runtime or changes directory only after the alternate
+screen exits.
+
 ## Agent-session handoff
 
 Herdr exposes live agent session IDs and `Task.AgentSession` exists in the task

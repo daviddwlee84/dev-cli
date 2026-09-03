@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 ---
 
 # Sources and freshness
@@ -57,17 +57,18 @@ tested_with: optional
 
 | Topic or claim | Owning page | Primary authority | Status checked |
 |---|---|---|---|
-| HOT/WARM/COLD/DONE and checkout modes | [Mental model](../concepts/mental-model.md) | `internal/task/task.go`, lifecycle CLI/tests | repository snapshot 2026-08-28 |
-| `done --pr` leaves task active | [Change-stream workflow](../guides/change-stream-workflow.md) | `internal/cli/done.go` | implemented |
+| HOT/WARM/COLD/DONE, checkout modes, and legal transitions | [Mental model](../concepts/mental-model.md) | `internal/task/task.go`, `internal/taskflow/transitions.go`, lifecycle tests | repository snapshot 2026-09-01 |
+| repository flow topology, local/manual-remote observations, revision-bound Plan/Apply, and partial ledgers | [Repository lifecycle flow](../guides/repository-flow.md) | `internal/cli/flow.go`, `internal/flowtui`, `internal/taskflow`, focused flow tests | preview implemented 2026-09-01 |
+| `done --pr` leaves task active and DONE keeps resources until Retire | [Change-stream workflow](../guides/change-stream-workflow.md) | `internal/taskflow/{complete,retire}.go`, CLI lifecycle tests | implemented |
 | worktree provisioning safety | [Worktrees and provisioning](../guides/worktrees-provisioning.md) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
 | repository new/clone routing, snapshot templates/confinement, check-in policy, project trust, skill batching, TTY editor, upstream publication, and handoff | [Commands and configuration](commands-config.md#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`, `internal/scaffold`, `internal/repotemplate`, `internal/projectconfig`, `internal/cli/repo_{create,checkin,skills}*.go`, `internal/cli/prompt.go`, focused repo-bootstrap tests | implemented |
 | lazygit lowercase `c` pending-message integration | [Compatibility](compatibility.md#lazygit-staged-message-prefill-is-best-effort) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive, checked 2026-08-29 |
 | runtime fallback and exact-pane `start --run` dispatch | [Parallel agents and runtimes](../guides/parallel-agents-runtimes.md) | `internal/runtime/runtime.go`, `internal/runtime/herdr.go`, focused start/runtime tests | implemented |
 | SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](../guides/remote-fleet.md) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
-| READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](../guides/agent-safe-retirement.md) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
+| READY/MERGED/RETIRED milestones, task-backed retirement revalidation, compatibility boundaries, and merged-worktree sweep | [Agent-safe retirement](../guides/agent-safe-retirement.md) | `internal/taskflow/retire.go`, `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
 | `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](../guides/machine-summary.md), [Development journal](../guides/dev-journal.md) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
 | agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |
-| TUI startup/readiness stages, generation handling, cache/live provenance, and private trace semantics | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/perftrace`, `internal/tui/{readiness,local}.go`, `internal/cli/tui*.go`, focused race tests | implemented |
+| dashboard startup/readiness stages, generation handling, cache/live provenance, and private trace semantics | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/perftrace`, `internal/tui/{readiness,local}.go`, `internal/cli/tui*.go`, focused race tests | implemented |
 | quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
 | current GitHub Flow has six branch/PR steps and no deployment step | [GitHub Flow](../git/github-flow.md) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official, checked 2026-08-28 |
 | linked worktrees share repository data but own files/index/HEAD | [Worktree semantics](../git/worktree-semantics-recovery.md) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official, checked 2026-08-28 |
