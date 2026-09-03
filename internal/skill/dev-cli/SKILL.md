@@ -392,8 +392,9 @@ clear obsolete rows. For a one-run diagnostic, set `DEV_TUI_TRACE` to an absolut
 file. The private bounded trace is written after TUI teardown with relative
 startup/view timings and aggregate row counts only; it excludes names, paths,
 commands, key values, URLs, handles and raw errors, and never enters `stats.db`
-or a network sink. SKILLS and MCP reuse the accepted REPOS snapshot and add a
-distinct startup linked checkout. Skill listing uses the native versioned
+or a network sink. SKILLS and MCP are startup-context-first: inside Git they
+scan only the exact current checkout plus global/user sources; outside Git they
+reuse every accepted REPOS target and the ordinary startup directory. Skill listing uses the native versioned
 77-agent path registry and never runs Node/`npx`; `c` hashes remote Git objects
 without checkout filters, while mutations require a trusted direct provider and
 are serialized. MCP inventories only sanitized static declarations for Claude

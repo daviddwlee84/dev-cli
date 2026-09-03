@@ -708,7 +708,7 @@ func (m Model) renderSkills() string {
 	state := m.viewLoad(ViewSkills)
 	rows := m.visibleSkills()
 	if state.loading && len(m.skills) == 0 {
-		return "  " + styleDim.Render("Loading agent skills across repositories…") + "\n"
+		return "  " + styleDim.Render("Loading agent skills…") + "\n"
 	}
 	if len(rows) == 0 {
 		if !state.hasSnapshot {

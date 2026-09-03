@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- The TUI SKILLS and MCP views are now startup-context-first. From a Git
+  checkout they scan only the exact current worktree plus global/user sources,
+  matching what an agent launched there can read instead of listing unrelated
+  projects. Outside Git they retain the cross-repository inventory and include
+  every accepted REPOS target.
+
 ## [0.2.11] - 2026-09-04
 
 ### Added
