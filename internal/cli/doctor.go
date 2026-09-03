@@ -10,8 +10,10 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/fleet"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 	"github.com/spf13/cobra"
 )
 
@@ -45,9 +47,9 @@ func newDoctorCmd(app *App) *cobra.Command {
 		Short: "Check dependencies, paths and runtime backends",
 		Long: `Report what dev can and cannot do on this machine.
 
-Only git is required. Everything else — a multiplexer, a forge CLI — enables
-extra behaviour and degrades cleanly when missing, so a warning here is not a
-problem to fix unless you want that capability.`,
+Only git is required. Everything else — OpenSSH, a multiplexer, a forge CLI —
+enables extra behaviour and degrades cleanly when missing, so a warning here is
+not a problem to fix unless you want that capability.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runDoctor(app)
@@ -93,6 +95,11 @@ func runDoctor(app *App) error {
 	} else {
 		checks = append(checks, check{"git", checkFail, "not found — dev cannot work without it"})
 	}
+
+	// Optional OpenSSH capabilities and static local ownership checks. These use
+	// LookPath, bounded file reads, and source-bound planning only: doctor never
+	// runs ssh -G, contacts a host, or repairs configuration.
+	checks = append(checks, sshDoctorChecks(app)...)
 
 	// Runtime backends.
 	active := app.Runtime().Name()
@@ -242,6 +249,81 @@ func runDoctor(app *App) error {
 	return nil
 }
 
+func sshDoctorChecks(app *App) []check {
+	checks := make([]check, 0, 5)
+	for _, binary := range []struct {
+		name    string
+		purpose string
+	}{
+		{name: "ssh", purpose: "SSH host evaluation and login unavailable"},
+		{name: "ssh-keygen", purpose: "SSH key generation and derivation unavailable"},
+	} {
+		if path, err := exec.LookPath(binary.name); err == nil {
+			checks = append(checks, check{binary.name, checkOK, path})
+		} else {
+			checks = append(checks, check{binary.name, checkWarn, "not found — " + binary.purpose})
+		}
+	}
+
+	service, err := app.sshHosts()
+	if err != nil {
+		checks = append(checks, check{"ssh config", checkWarn, "cannot derive ~/.ssh paths: " + err.Error()})
+		return checks
+	}
+	inventory, discoverErr := service.Discover(ctxOf())
+	if discoverErr != nil {
+		checks = append(checks, check{"ssh config", checkWarn, "static discovery failed: " + discoverErr.Error()})
+	} else {
+		status := checkOK
+		detail := fmt.Sprintf("%d exact alias(es); static Include closure complete", len(inventory.Aliases))
+		switch {
+		case inventory.RootMissing:
+			status = checkWarn
+			detail = config.Contract(inventory.Root) + " is absent; run dev ssh init --apply before managing aliases"
+		case !inventory.Complete:
+			status = checkWarn
+			detail = fmt.Sprintf("%d exact alias(es); Include closure incomplete", len(inventory.Aliases))
+		}
+		checks = append(checks, check{"ssh config", status, detail})
+		if inventory.ManagedIncludeActive {
+			checks = append(checks, check{"ssh managed", checkOK, "Include " + sshhost.ManagedInclude + " is statically active"})
+		} else {
+			checks = append(checks, check{"ssh managed", checkWarn, "managed Include is inactive; dev ssh init reports the exact change"})
+		}
+	}
+	if plan, planErr := service.PlanInit(ctxOf()); planErr != nil {
+		checks = append(checks, check{"ssh security", checkWarn, "read-only security check failed: " + planErr.Error()})
+	} else if plan.Action == sshhost.ActionBlocked {
+		detail := "SSH root or managed namespace needs manual security remediation"
+		if len(plan.Diagnostics) > 0 {
+			detail += " (" + plan.Diagnostics[0].Code + ")"
+		}
+		checks = append(checks, check{"ssh security", checkWarn, detail})
+	} else {
+		checks = append(checks, check{"ssh security", checkOK, "root and managed namespace pass read-only ownership/permission checks"})
+	}
+
+	managedDir := fleet.ManagedFragmentDir(fleetConfigPath(app))
+	if _, statErr := os.Lstat(managedDir); statErr == nil {
+		cfg, loadErr := loadFleetConfig(app)
+		if loadErr != nil {
+			checks = append(checks, check{"fleet fragments", checkWarn, loadErr.Error()})
+		} else {
+			managed := 0
+			for _, host := range cfg.Hosts {
+				if host.Managed() {
+					managed++
+				}
+			}
+			checks = append(checks, check{"fleet fragments", checkOK,
+				fmt.Sprintf("%d generated host fragment(s) validated under %s", managed, config.Contract(managedDir))})
+		}
+	} else if !os.IsNotExist(statErr) {
+		checks = append(checks, check{"fleet fragments", checkWarn, "cannot inspect " + config.Contract(managedDir) + ": " + statErr.Error()})
+	}
+	return checks
+}
+
 func pathCheck(p string) (checkStatus, string) {
 	info, err := os.Stat(p)
 	switch {
@@ -278,18 +360,4 @@ func writableNote(root string) string {
 		}
 		dir = parent
 	}
-}
-
-// dirWritable probes by creating and removing a temp file. There is no
-// portable stdlib permission check, and the mode bits alone would lie about
-// read-only mounts and ACLs.
-func dirWritable(dir string) bool {
-	f, err := os.CreateTemp(dir, ".dev-write-probe-*")
-	if err != nil {
-		return false
-	}
-	name := f.Name()
-	f.Close()
-	os.Remove(name)
-	return true
 }

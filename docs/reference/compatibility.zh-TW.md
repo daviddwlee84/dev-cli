@@ -35,6 +35,10 @@ lang: zh-TW
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
 | independent `dev flow [repo]` | interactive TTY input/output | 直接拒絕並指向 `dev repo context [repo]` 或 `dev ls --all --json`；沒有 piped/JSON Flow mode |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
+| static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe file 會診斷；不需要 `ssh` process 或 network |
+| SSH effective values、fresh probe、bootstrap 與 fleet transport | system `ssh` client | static `ssh list`、dry-run 與 local config plan 仍可使用；effectful SSH operation 以 capability guidance 失敗 |
+| public companion derivation 與 Ed25519 generation | system `ssh-keygen` | 仍可使用 existing validated `.pub`；derivation/generation unavailable |
+| Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX target 仍可用；沒有 PowerShell 時 Windows-specific installer/launcher 失敗，不改用 shell fallback |
 | Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
 | in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為委派給對應套件管理器的升級指令 |
 
@@ -80,19 +84,32 @@ upstream integration 日後改變，staged index 與已印出的 message 仍是 
 
 ### Portable files 不是 project transfer 或 backup
 
-`dev fleet files` 只會傳送 explicit selected、bounded，且兩端都證明為 untracked 與 ignored 的 files。它不會取得 missing clone、轉移 task ownership/catalog/notes、執行 worktree provisioning、監看後續變更、傳播 deletion、移除 source bytes、建立 remote-backup receipt、驗證 restore，或授權 eviction。Private transaction staging 不是 user-facing backup/restore promise。
+`dev fleet files` 只會傳送 explicit selected、bounded，且兩端都證明為
+untracked 與 ignored 的 files。它不會取得 missing clone、轉移 task ownership/
+catalog/notes、執行 worktree provisioning、監看後續變更、傳播 deletion、移除
+source bytes、建立 remote-backup receipt、驗證 restore，或授權 eviction。Private
+transaction staging 不是 user-facing backup/restore promise。
 
-Source 與 target 必須已依 fetch identity、attached branch 與 exact commit 相符；apply 另外需要 verified `machine_id` pin。Native Windows payload 在 ACL、reparse-point、held-root 與 atomic replacement guarantees 完成並測試前保持 disabled；machine identity diagnostics 仍是 content-free。
+Source 與 target 必須已依 fetch identity、attached branch 與 exact commit 相符；apply
+另外需要 verified `machine_id` pin。Native Windows payload 在 ACL、reparse-point、
+held-root 與 atomic replacement guarantees 完成並測試前保持 disabled；machine
+identity diagnostics 仍是 content-free。
 
-### Windows 是 build target，不是 full-feature 平台
+### Windows 有 native SSH support，但 runtime surface 較小
 
-`dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心的 repository、task 與 worktree 操作可用。差異：
+`dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心 repository/task/worktree operation 與 SSH host domain 都是 native：static discovery、protected-DACL managed fragment、reparse-point rejection、native `ssh-keygen.exe`、Windows Job Object cancellation，以及 POSIX/Windows remote bootstrap 都有 coverage。Fleet 也可透過 encoded PowerShell launcher target Windows OpenSSH。仍有下列差異：
 
 - 沒有 tmux、Zellij 或 Herdr，因此 runtime backend 一律是 `none`。Grouped runtime/agent activity 與 named session 無法使用；`cd` 指令與 PowerShell wrapper 仍可運作。
 - Shell integration 是 `dev shell-init powershell`。POSIX shell 透過 file descriptor 3 回傳目錄；PowerShell 無法繼承它，wrapper 改用 `DEV_SHELL_CD_FILE` 傳入 temp-file path。
 - `dev fleet open` 會啟動子 shell（`%COMSPEC%`），而非取代 process，因為 Windows 沒有 `exec(2)`。
-- `dev fleet machine-id` 可執行 content-free probe，但 native `fleet files` payload apply 會在 content 傳送前被 capability-block。
-- Domain test suites 仍有部分假設 POSIX filesystem，因此 Windows CI 的 test 僅供參考，compilation、`go vet` 與 build 則為強制項。
+- `dev fleet machine-id` 可執行 content-free `_capability` probe，但 native `fleet files` plan/apply payload helpers 會在 content 傳送前被拒絕。
+- CI 保留 broad advisory Windows suite 以容納 unrelated POSIX assumptions，但 `internal/sshhost`、`internal/fleet` 與 SSH/fleet/doctor CLI contracts 另有 required native `windows-latest` gate；affected tests/packages 與 CLI 也會針對 `windows/arm64` compile。
+
+### SSH host management 刻意保持狹窄
+
+Static `dev ssh list` 是 provenance/candidate scanner，不是第二套 OpenSSH evaluator。Dynamic `Match`、unsupported Include expansion、cycle 與 scan bound 會產生 `complete: false`；即使 plain `ssh` 最終可能選出 value，這些情況仍可 block mutation。`dev ssh show` 與 setup route resolution 使用 plain `ssh -G`，因此 configured resolver 與 `Match exec` behavior 可能執行。Fresh probe 會保留 `KnownHostsCommand`、`UpdateHostKeys` 與 host-key policy，不會強迫產生方便的答案。
+
+Setup 要求 explicit key 或 explicit Ed25519 generation，且只安裝 public material。它支援 bounded ProxyJump forms 與固定 POSIX/Windows OpenSSH installer；`ProxyCommand`、custom `AuthorizedKeysFile`、forced-shell policy 與無法提供 ACL 的 filesystem 需要 manual remediation。Remote installer 一旦啟動，cancellation/failure 會是 `unknown`，因為 key 可能已 append。Dev 會保留 local config/generated keys，且絕不嘗試 key revocation、private-key deletion/copying、`known_hosts` cleanup、password storage/fallback 或 automatic credential rollback。Alias rename/adoption、bulk onboarding、arbitrary directive 與 SSH TUI 也都 deferred。
 
 ### Direct mode 的 lifecycle 較小
 
@@ -113,6 +130,8 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - Repository setup 支援 `--check-in=commit|stage|none`（`auto` 用於 preset compatibility）。Staged setup 會執行 before-commit setup 與 `git add -A`，但不執行 `after_commit` phase；它不能 publish 或 handoff 到 `start`，並可依前述方式預填 lazygit 小寫 `c`。
 - Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。`agent-history-hygiene` initializer 會寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。
 - Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
+- `dev ssh init/list/show/setup/probe/remove` 提供 explicit OpenSSH host onboarding，不建立另一套 host database。Dev 只擁有 dedicated Include、canonical `dev.d` fragments 與 opt-in generated fleet registration；所有 public SSH JSON 都是一個 versioned object，TSV list 則是 documented six-field selector。
+- Fleet merge user-authored primary `remotes.toml` 與 strict generated `remotes.d` fragments、追蹤 `remote_os`，並對 Windows target 使用只允許 hidden helper 的 encoded PowerShell launcher。Primary duplicate aliases 保持 compatible；任何 generated alias collision 都 fail closed。
 - `dev repo context --json` 提供 additive schema-v1 local/remote evidence，包含 source、age、freshness、completeness、null/error preservation 與 scoped readiness；只有 `--refresh` 執行 external probes。`dev status` 重用 cheap local readiness projection，不進行 network access。
 - `dev fleet machine-id` 回報 observed UUID，不修改設定。`dev fleet files` 預設 report-only，使用獨立 `[local_files]` allowlist，在 content 前協商只能調低的 limits，並要求 explicit apply/replacement controls 與 matching target pin。
 
@@ -191,9 +210,14 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
+- [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
+- [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
+- [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
+- [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
 - [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
 - [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
 - [`internal/repocontext`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/repocontext)
+- [`.github/workflows/ci.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/ci.yml)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)

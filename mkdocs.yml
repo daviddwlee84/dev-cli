@@ -55,6 +55,7 @@ plugins:
             Change-Stream Workflow: 變更流工作流程
             Worktrees and Provisioning: Worktree 與環境佈建
             Parallel Agents and Runtimes: 平行 Agent 與 Runtime
+            SSH Host Onboarding: SSH Host 設定與佈建
             Remote Repository Fleet: 遠端 Repository Fleet
             Agent-Safe Retirement: Agent 安全退場
             Machine Summary: 機器整體摘要
@@ -127,6 +128,7 @@ nav:
       - Development Journal: guides/dev-journal.md
       - Worktrees and Provisioning: guides/worktrees-provisioning.md
       - Parallel Agents and Runtimes: guides/parallel-agents-runtimes.md
+      - SSH Host Onboarding: guides/ssh-hosts.md
       - Remote Repository Fleet: guides/remote-fleet.md
       - Agent-Safe Retirement: guides/agent-safe-retirement.md
       - TUI, Repositories, Quick Notes, and Bootstrap: guides/tui-repos-bootstrap.md

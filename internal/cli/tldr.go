@@ -68,6 +68,17 @@ var familyTLDR = map[string]string{
   Every host runs its own dev with its own config and its own paths. A host
   that is unreachable degrades to its cached snapshot; the fleet still answers.`,
 
+	"dev ssh": `TL;DR: OpenSSH stays the source of truth
+
+  dev ssh init --apply --> Include ~/.ssh/dev.d/*.conf
+                                  |
+  dev ssh setup <alias> ----------+--> public-key login --> optional --fleet
+          |                       |
+          +-- dev ssh list/show   +-- dev ssh probe
+          +-- dev ssh remove      removes owned fragments, never keys
+
+  Listing is static. Setup and probe may run OpenSSH; --dry-run never does.`,
+
 	"dev skill": `TL;DR: what the agents on this machine already know
 
   dev skill list        current checkout and global native inventory
@@ -106,6 +117,7 @@ var helpTopics = map[string]string{
 	"dev repo":      "repositories",
 	"dev note":      "notes",
 	"dev fleet":     "fleet",
+	"dev ssh":       "ssh",
 	"dev journal":   "journal",
 	"dev summary":   "summary",
 	"dev retire":    "retirement",

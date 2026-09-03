@@ -28,6 +28,8 @@ Sidecar state has deliberately separate scopes:
 - configured `paths.state_dir/notes` stores multiple durable Markdown observations keyed by catalog repository ID;
 - `$XDG_CACHE_HOME/dev/notes.db` is only the rebuildable full-text index for those Markdown files.
 
+Machine connection policy has a separate authority boundary. OpenSSH configuration is durable connection truth; dev reads foreign definitions but owns only its exact root Include and canonical `~/.ssh/dev.d` fragments. Fleet intent is the user-authored primary `remotes.toml` merged with explicit generated `remotes.d` registrations. Each remote machine's paths, tasks, repositories, and runtime remain authoritative there; fleet cache is only a controller snapshot.
+
 The catalog ID keeps a quick note attached across linked worktrees, symlink indexes, path moves, and synchronized host state. `dev` does not itself synchronize notes or catalog files. Live Git status, ahead/behind, and runtime availability are derived again instead of treated as authoritative cached truth.
 
 ## The four lifecycle states

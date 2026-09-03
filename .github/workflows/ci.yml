@@ -41,10 +41,10 @@ jobs:
       - name: Test (race)
         if: runner.os != 'Windows'
         run: go test -race ./...
-      # Windows is a supported build target; the domain test suites still assume
-      # a POSIX filesystem in places, so this run is advisory until each is
-      # guarded. Compilation, vet and the build below are hard requirements.
-      - name: Test
+      # The broad suite remains advisory on Windows while unrelated domain
+      # packages finish guarding POSIX-only assumptions. SSH/fleet behavior has
+      # a separate required native gate below.
+      - name: Test (broad Windows advisory)
         if: runner.os == 'Windows'
         continue-on-error: true
         run: go test ./...
@@ -62,3 +62,36 @@ jobs:
       - name: End-to-end
         if: runner.os != 'Windows'
         run: ./scripts/e2e.sh
+
+  windows-ssh-required:
+    name: Windows SSH required
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+
+      - name: Configure git
+        run: |
+          git config --global user.email "ci@example.test"
+          git config --global user.name "ci"
+          git config --global init.defaultBranch main
+
+      - name: Test SSH host domain natively
+        run: go test ./internal/sshhost
+      - name: Test fleet transport and managed config natively
+        run: go test ./internal/fleet
+      - name: Test SSH and fleet CLI contracts natively
+        run: go test ./internal/cli -run 'SSH|Fleet|Doctor'
+
+      - name: Compile affected packages and tests for windows/arm64
+        shell: pwsh
+        run: |
+          $env:GOOS = "windows"
+          $env:GOARCH = "arm64"
+          go test -c -o "$env:RUNNER_TEMP\sshhost-arm64.test.exe" ./internal/sshhost
+          go test -c -o "$env:RUNNER_TEMP\fleet-arm64.test.exe" ./internal/fleet
+          go test -c -o "$env:RUNNER_TEMP\cli-arm64.test.exe" ./internal/cli
+          go build -o "$env:RUNNER_TEMP\dev-arm64.exe" ./cmd/dev

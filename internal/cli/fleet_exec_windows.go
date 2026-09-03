@@ -4,9 +4,23 @@ package cli
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+
+	"golang.org/x/sys/windows"
 )
+
+func fleetEditorCommand(editor, path string) (*exec.Cmd, error) {
+	arguments, err := windows.DecomposeCommandLine(editor)
+	if err != nil {
+		return nil, fmt.Errorf("parse Windows editor command: %w", err)
+	}
+	if len(arguments) == 0 || arguments[0] == "" {
+		return nil, errors.New("Windows editor command is empty")
+	}
+	return exec.Command(arguments[0], append(arguments[1:], path)...), nil
+}
 
 // replaceProcessWithShell starts an interactive shell in the current working
 // directory. Windows has no exec(2), so dev runs the shell as a child that

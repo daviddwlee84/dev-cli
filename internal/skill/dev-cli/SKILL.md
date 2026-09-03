@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: 'Manage repositories and work-in-progress with the dev CLI: create/clone/setup agent-ready repos, bootstrap and organise them safely, own worktree/task lifecycle, safely prepare/finalize/retire agent sessions, run guarded Git transactions, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when creating, starting, parking, resuming or retiring work; preserving agent transcripts; scanning skills/MCP or organising repos; capturing/searching repo thoughts; choosing worktree isolation; or cleaning stale branches, checkouts and sessions.'
+description: 'Manage repositories, SSH hosts, remote fleets, and work-in-progress with the dev CLI: create/clone/setup agent-ready repos, bootstrap and organise them safely, discover/configure OpenSSH aliases without copying private keys, own worktree/task lifecycle, safely prepare/finalize/retire agent sessions, run guarded Git transactions, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when onboarding or probing an SSH host, configuring fleet machines, creating/starting/parking/resuming/retiring work, preserving agent transcripts, scanning skills/MCP or organising repos, capturing/searching repo thoughts, choosing worktree isolation, or cleaning stale branches/checkouts/sessions.'
 ---
 
 # dev-cli
@@ -20,6 +20,9 @@ Everything derivable from git or the runtime is derived live. `dev` persists
 human/task facts such as identity, checkout mode, **state**, **owner** and **next
 action** in one TOML file per task under configured `paths.state_dir/tasks`
 (default `$XDG_DATA_HOME/dev/tasks`); transient pane data is not persisted.
+Machine connection intent has separate owners: OpenSSH remains authoritative,
+while dev owns only canonical `~/.ssh/dev.d` fragments and explicit generated
+fleet registrations beside user-authored `remotes.toml`.
 
 **The problem it solves:** when a terminal multiplexer's sidebar is the only
 record of what you are working on, nothing can ever be closed. `dev` gives that
@@ -35,9 +38,11 @@ command -v dev || echo "not installed"
 dev doctor          # version/install owner/path, PATH collisions, and capabilities
 ```
 
-Only **git** is required. `herdr`, `tmux`, `zellij`, `gh`, `glab` and Azure CLI
-each enable more and degrade cleanly when absent — never make a step
-hard-depend on one.
+Only **git** is required. System `ssh` enables SSH evaluation/probing/bootstrap
+and fleet transport; `ssh-keygen` enables key derivation/generation; Windows
+OpenSSH targets need PowerShell. `herdr`, `tmux`, `zellij`, `gh`, `glab` and
+Azure CLI enable other capabilities and degrade cleanly when absent — never make
+a step hard-depend on one unless the requested operation crosses that boundary.
 
 ## Worktree ownership — read this before creating any worktree
 
@@ -210,6 +215,11 @@ dev repo create api        # minimal scripted creation (alias of repo new)
 dev repo new api --template owner/starter --check-in=stage
 dev repo setup . --preset agent-ready  # initialize an existing clean repo
 dev repo sync --all        # fetch + prune, and report what moved
+dev ssh init                # report the one-time managed Include plan
+dev ssh list                # static aliases/provenance; no ssh or network
+dev ssh show lab            # definitions plus plain ssh -G effective values
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --fleet
+dev ssh probe lab           # fresh ordinary BatchMode authentication
 dev fleet list              # aggregate repo/task/runtime state over SSH
 dev fleet machine-id lab    # verify the optional target machine pin
 dev fleet sync api --push   # publish, then fast-forward safe matching checkouts
@@ -236,6 +246,42 @@ dev help worktrees         # quick-reference pages; dev help wt also works
 ```
 
 Complete generated reference: `references/commands.md`.
+
+## SSH host onboarding and fleet registration
+
+Read `references/ssh-hosts.md` before changing SSH configuration, installing a
+key, or registering/removing a fleet host. The safe sequence is explicit:
+
+```bash
+dev ssh init                     # report only
+dev ssh init --apply             # confirm the one-time Include
+dev ssh list                     # static; no ssh/Match exec/network
+dev ssh show lab                 # deliberately runs plain ssh -G
+dev ssh setup lab --hostname 192.0.2.20 --config-only
+dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --fleet
+dev ssh probe lab
+dev ssh remove lab --fleet       # narrow owned-fragment removal
+```
+
+OpenSSH is authority. Dev reads foreign definitions but never edits them; only
+canonical portable aliases under `~/.ssh/dev.d` are mutable. Full setup needs an
+explicit `--key` or `--generate-key`. It sends only one public record to a fixed
+remote installer, preserves host-key policy, disables connection sharing for
+proofs, and never copies/reads private key bytes for transfer. A working
+ProxyJump is skipped unless `--install-on-working-jump` is explicit. Windows
+administrator authorized_keys needs the separate
+`--windows-admin-authorized-keys` consent and may still need manual elevation.
+
+`--fleet` is never inferred. It writes a strict generated `remotes.d` fragment
+only after a second fresh ordinary alias login succeeds. The primary
+`remotes.toml` remains user-authored and is edited through
+`dev fleet config edit`; `fleet config show` displays the merged config and identifies generated
+origins. `remote_os` selects POSIX shell or encoded Windows PowerShell transport.
+
+Treat partial and unknown results literally. If a remote installer started, the
+key may have arrived; do not "clean up" `authorized_keys`. Local config and
+generated keys are retained so a rerun can converge. `ssh remove` never revokes a
+remote key, deletes local keys/known_hosts, or removes the shared Include.
 
 ## Bootstrapping and adopting an existing machine
 
@@ -360,14 +406,17 @@ project = "Platform"
 Install Azure CLI's `azure-devops` extension separately. `dev` never installs
 the extension, logs in, changes Azure defaults, or stores a PAT.
 
-FLEET reuses the accepted REPOS snapshot for the local host, then calls each
-configured host's own `dev` over SSH, preserving its XDG paths. If the current
-REPOS generation is still loading, FLEET waits while keeping usable cached rows
-visible rather than rescanning local repositories. The TUI hides this machine
-by default because REPOS already shows its richer local state; `a` includes
-local rows. Host cache identity includes the SSH port. `dev fleet list` remains
-local plus remote. Enter prefers Herdr remote navigation and falls back to an
-SSH login shell.
+FLEET merges user-authored primary `remotes.toml` with strict dev-owned sibling
+`remotes.d/ssh-<alias>.toml` fragments, then reuses the accepted REPOS snapshot
+for the local host and calls each configured host's own `dev` over SSH. Generated
+entries are owned by explicit `dev ssh setup/remove --fleet`; FLEET `e` and
+`fleet config edit` open only the primary file, while `fleet config show` marks
+generated origins. `remote_os` selects POSIX shell or allowlisted encoded
+PowerShell transport and participates in endpoint cache identity with the SSH
+port and optional `machine_id` pin. If REPOS is still loading, FLEET waits while keeping cached rows instead
+of rescanning. The TUI hides this machine by default because REPOS is richer;
+`a` includes local rows. `dev fleet list` remains local plus remote. Enter
+prefers Herdr remote navigation and falls back to an SSH login shell.
 `dev fleet sync` is explicit and strict: it only fast-forwards a clean checkout
 of the same behind-only branch; dirty/ahead/diverged clones are never rewritten.
 
@@ -518,17 +567,24 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    divergence; `=` conflicts, `+` staged, `!` unstaged, `?` untracked. Use
    `dev status` or JSON for the unique-path and type breakdown before cleanup.
 
-18. **Portable export is separately authorized.** Never treat `[worktree].include`
+18. **OpenSSH is authority; foreign SSH config is read-only.** Run `ssh init`
+   without `--apply` first, never hand-edit a dev-owned fragment, and never turn
+   alias discovery into implicit `--fleet`. Full setup must name/generate a key,
+   but only its public record may reach the remote. Do not copy private keys,
+   weaken host-key policy, delete remote authorized_keys after an unknown
+   result, or promise that `ssh remove` performs revocation.
+
+19. **Portable export is separately authorized.** Never treat `[worktree].include`
    as permission to send a file off-machine. Use only `[local_files].include` or
    explicit `--file`, show the report first, independently verify and pin the
    target UUID before apply, and never infer `--replace` from `--yes`.
 
-19. **Commit messages stay English** and follow Conventional Commits, even when
+20. **Commit messages stay English** and follow Conventional Commits, even when
    the conversation is in another language — see the companion `git-workflow`
    skill, which owns commit conventions, SemVer and branch naming. This skill
    does not duplicate them.
 
-20. **Never bypass `.dev-cli` project-config trust.** Inspect the rendered hooks
+21. **Never bypass `.dev-cli` project-config trust.** Inspect the rendered hooks
     and skill entrypoints, then use `dev config trust <repo> --yes`. A changed
     executable hash is a new decision. Pre-commit/gitleaks inspect generated
     content; they do not make an untrusted command safe to execute. Legacy
@@ -544,6 +600,8 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 - A new worktree is missing `node_modules`, `.venv` or `.env`.
 - Cleaning up stale branches, worktrees and sessions.
 - Cloning, creating or auditing repositories across a machine.
+- Discovering, inspecting, configuring, probing, or removing an OpenSSH alias.
+- Installing a public key through ProxyJump or registering a verified dev fleet host.
 - Promoting an experiment into a real project.
 - "Which repo do I spend my time in?"
 - Setting up a `.gitignore`, or a harness worktree showing as untracked.
@@ -561,6 +619,8 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 
 ## Reference files
 
+- `references/ssh-hosts.md` — read before SSH discovery, managed-fragment
+  changes, public-key bootstrap, probing, or generated fleet registration/removal.
 - `references/notes.md` — read before repository quick-note operations or
   choosing the boundary with td/beads.
 - `references/bootstrap.md` — read before scanning or organising an existing
@@ -589,9 +649,12 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   `builtin cd` / `Set-Location` without evaluating command output. Without the
   wrapper, the binary's printable legacy directive cannot change the parent
   shell — that is not a bug.
-- **Windows runs without a multiplexer.** There is no tmux, Zellij or Herdr on
-  Windows, so the runtime backend is always `none`; `dev fleet open` starts a
-  child shell instead of replacing the process. `dev upgrade` self-replaces only
+- **Windows runs SSH natively but without a multiplexer.** SSH discovery,
+  protected managed fragments, ssh-keygen, public-key bootstrap, and Windows
+  fleet transport are supported. There is no tmux, Zellij or Herdr on Windows,
+  so the runtime backend is always `none`; `dev fleet open` starts a child shell
+  instead of replacing the process. Windows remote helpers use only the encoded
+  allowlisted PowerShell launcher; `remote_os` must match the target. `dev upgrade` self-replaces only
   a standalone install and otherwise delegates to the detected Homebrew/Scoop/
   `go install` command. Stable releases advance the Homebrew tap; never overwrite its Cellar
   binary manually.

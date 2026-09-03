@@ -20,6 +20,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/note"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -58,6 +59,10 @@ type App struct {
 	// command tests.
 	runtimeInstance runtime.Runtime
 	runtimesByName  map[string]runtime.Runtime
+	// sshHostRunner keeps SSH config/network behavior injectable. The concrete
+	// service owns policy; commands only orchestrate and render.
+	sshHostService *sshhost.Service
+	sshHostRunner  sshhost.Runner
 	// trace is an opt-in, process-local performance recorder. It is deliberately
 	// separate from durable activity stats and ordinary command output.
 	trace                  *perftrace.Recorder

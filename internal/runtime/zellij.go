@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -47,25 +48,52 @@ func (z *Zellij) run(ctx context.Context, args ...string) (string, error) {
 
 var zellijLayoutCWD = regexp.MustCompile(`(?m)^\s*cwd\s+((?:"(?:\\.|[^"\\])*")|\S+)`)
 
-// List implements Runtime. Zellij's short session list contains names only;
-// dump-layout is its native read API for each session's root cwd.
-func (z *Zellij) List(ctx context.Context) ([]Session, error) {
-	out, err := z.run(ctx, "list-sessions", "--short", "--no-formatting")
+// listSessionNames splits zellij's native listing into live sessions and
+// exited-but-resurrectable ones. Zellij keeps an exited session in its
+// namespace: the name still answers `attach` and still blocks a new session,
+// but no server backs it, so every action command against it fails. dev must
+// see both halves without ever calling a dead session live.
+func (z *Zellij) listSessionNames(ctx context.Context) (live, exited []string, err error) {
+	out, err := z.run(ctx, "list-sessions", "--no-formatting")
 	if err != nil {
 		if strings.Contains(err.Error(), "No active zellij sessions found") ||
 			strings.Contains(err.Error(), "No active sessions") {
-			return nil, nil
+			return nil, nil, nil
 		}
-		return nil, err
+		return nil, nil, err
 	}
-	var sessions []Session
-	for _, name := range strings.Split(out, "\n") {
-		name = strings.TrimSpace(name)
-		if name == "" {
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
 			continue
 		}
+		if strings.Contains(line, "EXITED") {
+			exited = append(exited, fields[0])
+			continue
+		}
+		live = append(live, fields[0])
+	}
+	return live, exited, nil
+}
+
+// zellijSessionGone reports whether an action failed because the named session
+// has no running server. Zellij's exit marker is the primary signal; this
+// tolerates listings whose wording changes between releases.
+func zellijSessionGone(err error) bool {
+	return err != nil && strings.Contains(strings.ToLower(err.Error()), "no active session")
+}
+
+// describe resolves each named session's root cwd. dump-layout is zellij's
+// native read API; a session that dies between the listing and the dump is
+// dropped rather than failing the whole listing.
+func (z *Zellij) describe(ctx context.Context, names []string) ([]Session, error) {
+	var sessions []Session
+	for _, name := range names {
 		layout, err := z.run(ctx, "--session", name, "action", "dump-layout")
 		if err != nil {
+			if zellijSessionGone(err) {
+				continue
+			}
 			return nil, fmt.Errorf("inspect zellij session %s: %w", name, err)
 		}
 		dirs := []string(nil)
@@ -85,25 +113,45 @@ func (z *Zellij) List(ctx context.Context) ([]Session, error) {
 	return sessions, nil
 }
 
+// List implements Runtime. Only live sessions are reported: an exited session
+// covers no checkout and must not inflate the runtime view dev joins into its
+// inventory.
+func (z *Zellij) List(ctx context.Context) ([]Session, error) {
+	live, _, err := z.listSessionNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return z.describe(ctx, live)
+}
+
 // Open creates a detached Zellij session rooted at dir, or reuses the named
 // session only when its native layout confirms the same directory.
 func (z *Zellij) Open(ctx context.Context, dir, label string) (OpenResult, error) {
 	name := SessionName(label)
-	sessions, err := z.List(ctx)
+	live, exited, err := z.listSessionNames(ctx)
 	if err != nil {
 		return OpenResult{}, err
 	}
-	for _, session := range sessions {
-		if session.Handle != name {
-			continue
+	if slices.Contains(live, name) {
+		sessions, err := z.describe(ctx, []string{name})
+		if err != nil {
+			return OpenResult{}, err
 		}
-		if len(session.Dirs) == 0 {
-			return OpenResult{}, fmt.Errorf("zellij session %s exists but its cwd is unavailable", name)
+		for _, session := range sessions {
+			if len(session.Dirs) == 0 {
+				return OpenResult{}, fmt.Errorf("zellij session %s exists but its cwd is unavailable", name)
+			}
+			if !sameDirectory(session.Dirs[0], dir) {
+				return OpenResult{}, fmt.Errorf("zellij session %s already exists at %s, not %s", name, session.Dirs[0], dir)
+			}
+			return OpenResult{Handle: name, Surface: "session", Opened: true}, nil
 		}
-		if !sameDirectory(session.Dirs[0], dir) {
-			return OpenResult{}, fmt.Errorf("zellij session %s already exists at %s, not %s", name, session.Dirs[0], dir)
-		}
-		return OpenResult{Handle: name, Surface: "session", Opened: true}, nil
+	}
+	// An exited session still owns the name, and `attach --create-background`
+	// would resurrect its old layout instead of creating one at dir. Fail
+	// closed rather than hand back a session rooted somewhere else.
+	if slices.Contains(exited, name) {
+		return OpenResult{}, fmt.Errorf("zellij session %s exists but has exited; run `zellij delete-session %s` to reclaim the name or `zellij attach %s` to resurrect it", name, name, name)
 	}
 	if _, err := z.run(ctx, "attach", "--create-background", name, "options", "--default-cwd", dir); err != nil {
 		return OpenResult{}, err
@@ -132,15 +180,15 @@ func (z *Zellij) Close(ctx context.Context, handle string) error {
 	if handle == "" {
 		return nil
 	}
-	sessions, err := z.List(ctx)
+	live, _, err := z.listSessionNames(ctx)
 	if err != nil {
 		return err
 	}
-	for _, session := range sessions {
-		if session.Handle == handle {
-			_, err := z.run(ctx, "kill-session", handle)
-			return err
-		}
+	// Only a live session has a server to kill. An exited one is already
+	// closed as far as dev is concerned, so a stale handle is a no-op.
+	if slices.Contains(live, handle) {
+		_, err := z.run(ctx, "kill-session", handle)
+		return err
 	}
 	return nil
 }
