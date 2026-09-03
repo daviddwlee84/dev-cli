@@ -5,7 +5,9 @@ package sshhost
 import (
 	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -40,17 +42,22 @@ func TestPlatformAttachProcessDoesNotJobControlInteractiveChild(t *testing.T) {
 func TestExecRunnerCancellationKillsWindowsJobObject(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	command := `$child=Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c','ping -n 30 127.0.0.1 >NUL' -PassThru;[Console]::Out.WriteLine($child.Id);[Console]::Out.Flush();Start-Sleep -Seconds 30`
-	result, err := (ExecRunner{}).Run(ctx, RunRequest{
+	pidPath := filepath.Join(t.TempDir(), "child.pid")
+	command := `$child=Start-Process -FilePath "$env:SystemRoot\System32\cmd.exe" -ArgumentList '/c','ping -n 30 127.0.0.1 >NUL' -PassThru;[IO.File]::WriteAllText($env:DEV_CLI_PID_FILE,$child.Id.ToString());Start-Sleep -Seconds 30`
+	_, err := (ExecRunner{}).Run(ctx, RunRequest{
 		Name: "powershell.exe", Args: []string{"-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command},
-		Display: "Job Object cancellation fixture",
+		Env: []string{"DEV_CLI_PID_FILE=" + pidPath}, Display: "Job Object cancellation fixture",
 	})
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("Run error = %v, want deadline", err)
 	}
-	pid, parseErr := strconv.Atoi(strings.TrimSpace(string(result.Stdout)))
+	pidBytes, readErr := os.ReadFile(pidPath)
+	if readErr != nil {
+		t.Fatalf("read child PID: %v", readErr)
+	}
+	pid, parseErr := strconv.Atoi(strings.TrimSpace(string(pidBytes)))
 	if parseErr != nil || pid <= 0 {
-		t.Fatalf("child PID output = %q, err %v", result.Stdout, parseErr)
+		t.Fatalf("child PID file = %q, err %v", pidBytes, parseErr)
 	}
 	deadline := time.Now().Add(5 * time.Second)
 	for {
