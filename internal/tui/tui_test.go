@@ -12,6 +12,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/daviddwlee84/dev-cli/internal/agentmcp"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
@@ -197,6 +198,8 @@ func key(s string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
 
+func boolPointer(value bool) *bool { return &value }
+
 func typeText(s string) []tea.KeyMsg {
 	out := make([]tea.KeyMsg, 0, len(s))
 	for _, r := range s {
@@ -224,6 +227,95 @@ func TestViewRendersTasksAndHelp(t *testing.T) {
 	}
 	if !strings.Contains(out, "TASKS") || !strings.Contains(out, "REPOS") {
 		t.Errorf("both views should be visible in the tab strip:\n%s", out)
+	}
+}
+
+func TestTasksTableResponsiveRepositoryColumn(t *testing.T) {
+	r := row("wide", "同步資料任務", task.Hot, "")
+	r.Task.Repo = "資料平台"
+
+	tests := []struct {
+		name      string
+		width     int
+		wantWidth int
+		wantRepo  bool
+	}{
+		{name: "below minimum", width: 78, wantWidth: 79},
+		{name: "minimum", width: 79, wantWidth: 79},
+		{name: "compact boundary", width: 96, wantWidth: 96},
+		{name: "repository boundary", width: 97, wantWidth: 97, wantRepo: true},
+		{name: "wide", width: 120, wantWidth: 120, wantRepo: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := tui.New(newActions(&recorder{}, []inventory.Row{r}), []inventory.Row{r}, nil)
+			m = send(m, tea.WindowSizeMsg{Width: tt.width, Height: 24})
+			lines := strings.Split(m.View(), "\n")
+			headerAt := -1
+			for i, line := range lines {
+				if strings.Contains(line, "TASK") && strings.Contains(line, "STATE") && strings.Contains(line, "BRANCH") {
+					headerAt = i
+					break
+				}
+			}
+			if headerAt < 0 || headerAt+1 >= len(lines) {
+				t.Fatalf("TASKS table not found:\n%s", m.View())
+			}
+			header, taskRow := lines[headerAt], lines[headerAt+1]
+			if got := lipgloss.Width(header); got != tt.wantWidth {
+				t.Errorf("header width = %d, want %d:\n%s", got, tt.wantWidth, header)
+			}
+			if got := lipgloss.Width(taskRow); got != tt.wantWidth {
+				t.Errorf("row width = %d, want %d:\n%s", got, tt.wantWidth, taskRow)
+			}
+			if got := strings.Contains(header, "REPO"); got != tt.wantRepo {
+				t.Errorf("REPO header present = %t, want %t:\n%s", got, tt.wantRepo, header)
+			}
+			if got := strings.Contains(taskRow, r.Task.Repo); got != tt.wantRepo {
+				t.Errorf("repository value present = %t, want %t:\n%s", got, tt.wantRepo, taskRow)
+			}
+			if !strings.Contains(taskRow, r.Task.Title()) {
+				t.Errorf("CJK task title missing:\n%s", taskRow)
+			}
+
+			columns := []string{"TASK", "STATE"}
+			if tt.wantRepo {
+				columns = append(columns, "REPO")
+			}
+			columns = append(columns, "BRANCH", "GIT", "AGE", "NEXT")
+			previous := -1
+			for _, column := range columns {
+				at := strings.Index(header, column)
+				if at <= previous {
+					t.Fatalf("column %s is missing or out of order:\n%s", column, header)
+				}
+				previous = at
+			}
+		})
+	}
+}
+
+func TestTaskRepoFilterPreservesDuplicateTitleSelection(t *testing.T) {
+	first := row("alpha", "shared title", task.Hot, "")
+	first.Task.Repo, first.Task.RepoPath = "alpha-repo", "/src/alpha-repo"
+	second := row("beta", "shared title", task.Hot, "")
+	second.Task.Repo, second.Task.RepoPath = "beta-repo", "/src/beta-repo"
+	rows := []inventory.Row{first, second}
+	rec := &recorder{}
+	m := tui.New(newActions(rec, rows), rows, nil)
+	m = send(m, tea.WindowSizeMsg{Width: 120, Height: 24}, key("/"))
+	for _, msg := range typeText("beta-repo") {
+		m = send(m, msg)
+	}
+	m = send(m, key("enter"))
+
+	out := m.View()
+	if !strings.Contains(out, "beta-repo") || strings.Contains(out, "alpha-repo") {
+		t.Fatalf("repository filter did not isolate the duplicate title:\n%s", out)
+	}
+	send(m, key("enter"))
+	if len(rec.opened) != 1 || rec.opened[0] != "beta" {
+		t.Fatalf("repository-filtered task opened %v, want beta", rec.opened)
 	}
 }
 
@@ -267,7 +359,9 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 		{
 			Name: "project-skill", Scope: agentskill.ScopeProject, ScopeRoot: "/src/demo",
 			Path: "/src/demo/.agents/skills/project-skill", Agents: []string{"Claude Code", "Codex"},
-			Source: "owner/repo", ManagedBy: agentskill.ManagedBySkills,
+			Attribution: agentskill.Attribution{AgentIDs: []string{"claude-code", "codex"}},
+			Source:      "owner/repo", ManagedBy: agentskill.ManagedBySkills,
+			Lock:         &agentskill.LockMetadata{Name: "project-skill", Source: "owner/repo", SourceType: "github", SkillPath: "skills/project-skill/SKILL.md"},
 			UpdateStatus: agentskill.UpdateUnchecked,
 		},
 		{
@@ -292,16 +386,16 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 		}
 		return out
 	}
-	actions.AddSkill = func() (*exec.Cmd, error) {
+	actions.AddSkill = func() (*agentskill.MutationCommand, error) {
 		added++
-		return exec.Command("true"), nil
+		return &agentskill.MutationCommand{Command: exec.Command("true")}, nil
 	}
-	actions.UpdateSkill = func(row agentskill.Skill) (*exec.Cmd, error) {
+	actions.UpdateSkill = func(row agentskill.Skill) (*agentskill.MutationCommand, error) {
 		updated++
 		if row.Name != "project-skill" || row.Scope != agentskill.ScopeProject {
 			t.Fatalf("updated wrong row: %+v", row)
 		}
-		return exec.Command("true"), nil
+		return &agentskill.MutationCommand{Command: exec.Command("true")}, nil
 	}
 
 	m := tui.New(actions, nil, nil)
@@ -356,6 +450,206 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 	if strings.Contains(filtered, "project-skill") || !strings.Contains(filtered, "global-skill") {
 		t.Fatalf("scope filter failed:\n%s", filtered)
 	}
+
+	m = tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"), key("/"))
+	for _, msg := range typeText("agent:claude-code") {
+		m = send(m, msg)
+	}
+	m = send(m, key("enter"))
+	filtered = m.View()
+	if !strings.Contains(filtered, "project-skill") || strings.Contains(filtered, "global-skill") {
+		t.Fatalf("canonical agent-ID filter failed:\n%s", filtered)
+	}
+}
+
+func TestMCPViewLoadsLazilyFiltersAndRendersSanitizedDetail(t *testing.T) {
+	rows := []agentmcp.Declaration{
+		{
+			Name: "project-api", Agent: agentmcp.AgentClaudeCode, Scope: agentmcp.ScopeProject,
+			Repository: "demo", RepositoryPath: "/src/demo", Checkout: "/src/demo",
+			ConfigPath: "/src/demo/.mcp.json", Source: agentmcp.SourceDirect,
+			Transport: agentmcp.TransportHTTP, Endpoint: "https://api.example.test/[path]",
+			Required: boolPointer(true), Trusted: boolPointer(true),
+			Policies:    []agentmcp.PolicyFact{{Kind: agentmcp.PolicyIncludeTools, Count: 2}},
+			Credentials: []agentmcp.CredentialReference{{Kind: agentmcp.CredentialHeader, Name: "authorization"}},
+			Redactions:  []agentmcp.Redaction{agentmcp.RedactionHeaderValue, agentmcp.RedactionURLPath},
+		},
+		{
+			Name: "cursor-tools", Agent: agentmcp.AgentCursor, Scope: agentmcp.ScopeUser,
+			ConfigPath: "/home/test/.cursor/mcp.json", Source: agentmcp.SourceDirect,
+			Transport: agentmcp.TransportStdio, Command: "cursor-server", ArgumentCount: 2,
+		},
+	}
+	for index := range 40 {
+		rows[0].Credentials = append(rows[0].Credentials, agentmcp.CredentialReference{
+			Kind: agentmcp.CredentialEnvironmentReference, Name: fmt.Sprintf("TOKEN_%02d", index),
+		})
+	}
+	loads := 0
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadMCP = func(context.Context) ([]agentmcp.Declaration, error) {
+		loads++
+		return append([]agentmcp.Declaration(nil), rows...), nil
+	}
+	m := tui.New(actions, nil, nil)
+	if loads != 0 {
+		t.Fatal("MCP must remain lazy during dashboard construction")
+	}
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
+	if loads != 1 || m.CurrentView() != tui.ViewMCP {
+		t.Fatalf("MCP load/view = %d/%s", loads, m.CurrentView())
+	}
+	view := m.View()
+	for _, want := range []string{"MCP", "project-api", "demo", "http", "authorization", "required", "trusted", "include-tools:2", "r reload declarations"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("MCP view missing %q:\n%s", want, view)
+		}
+	}
+	if strings.Contains(view, "fixture-secret-must-not-appear") {
+		t.Fatalf("MCP detail leaked a source value:\n%s", view)
+	}
+	m = send(m, tea.WindowSizeMsg{Width: 60, Height: 24})
+	narrow := m.View()
+	lines := strings.Split(strings.TrimRight(narrow, "\n"), "\n")
+	if len(lines) > 24 {
+		t.Fatalf("narrow MCP view has %d lines:\n%s", len(lines), narrow)
+	}
+	for _, line := range lines {
+		if strings.Contains(line, "REPO") && strings.Contains(line, "SERVER") && lipgloss.Width(line) > 60 {
+			t.Fatalf("narrow MCP header is %d cells:\n%s", lipgloss.Width(line), line)
+		}
+		if strings.Contains(line, "credentials") && (lipgloss.Width(line) > 60 || !strings.Contains(line, "+")) {
+			t.Fatalf("narrow MCP credentials were not summarized (%d cells): %s", lipgloss.Width(line), line)
+		}
+	}
+	m = send(m, key("/"))
+	for _, msg := range typeText(strings.Repeat("filter", 30)) {
+		m = send(m, msg)
+	}
+	if top := strings.Split(m.View(), "\n")[0]; lipgloss.Width(top) > 60 {
+		t.Fatalf("long filter overflowed narrow tab header (%d): %s", lipgloss.Width(top), top)
+	}
+
+	m = tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"), key("tab"), key("/"))
+	for _, msg := range typeText("agent:cursor") {
+		m = send(m, msg)
+	}
+	m = send(m, key("enter"))
+	filtered := m.View()
+	if !strings.Contains(filtered, "cursor-tools") || strings.Contains(filtered, "project-api") {
+		t.Fatalf("MCP agent filter failed:\n%s", filtered)
+	}
+}
+
+func TestMCPWaitsForAcceptedRepositorySnapshot(t *testing.T) {
+	localResults := make(chan tui.LocalResult, 3)
+	var request tui.LocalLoadRequest
+	var gotRepos []tui.RepoRow
+	loads := 0
+	actions := newActions(&recorder{}, nil)
+	actions.Local.Start = func(_ context.Context, got tui.LocalLoadRequest) tui.LocalLoad {
+		request = got
+		return tui.LocalLoad{ID: 41, Request: got, Results: localResults}
+	}
+	actions.ReloadMCPWithRepos = func(_ context.Context, repos []tui.RepoRow) ([]agentmcp.Declaration, error) {
+		loads++
+		gotRepos = append([]tui.RepoRow(nil), repos...)
+		return []agentmcp.Declaration{{
+			Name: "shared", Agent: agentmcp.AgentClaudeCode, Scope: agentmcp.ScopeProject,
+			Repository: "shared-api", Transport: agentmcp.TransportStdio,
+		}}, nil
+	}
+	m := tui.New(actions, nil, nil).BeginLoading()
+	initial := m.Init()().(tea.BatchMsg)
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
+	if loads != 0 || !strings.Contains(m.View(), "waiting for local repositories") {
+		t.Fatalf("MCP did not wait for REPOS (loads=%d):\n%s", loads, m.View())
+	}
+
+	localResults <- tui.LocalResult{
+		View: tui.ViewRepos, Generation: request.ReposGeneration,
+		Repos: []tui.RepoRow{repoRow("shared-api")}, Valid: true,
+	}
+	next, command := m.Update(initial[1]())
+	m = next.(tui.Model)
+	batch := command().(tea.BatchMsg)
+	m = send(m, batch[1]())
+	if loads != 1 || len(gotRepos) != 1 || gotRepos[0].Repo.Name != "shared-api" {
+		t.Fatalf("MCP loads=%d repos=%+v", loads, gotRepos)
+	}
+	if !strings.Contains(m.View(), "shared") {
+		t.Fatalf("MCP result missing:\n%s", m.View())
+	}
+	close(localResults)
+}
+
+func TestSkillsCheckRetainsInstalledRowsWhileRunning(t *testing.T) {
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadSkills = func(context.Context) ([]agentskill.Skill, error) {
+		return []agentskill.Skill{{
+			Name: "installed", Scope: agentskill.ScopeProject, Repository: "demo",
+			Presence: agentskill.PresencePresent, UpdateStatus: agentskill.UpdateUnchecked,
+		}}, tui.LoadWarning{Message: "malformed neighboring lock"}
+	}
+	actions.CheckSkills = func(_ context.Context, rows []agentskill.Skill) []agentskill.Skill {
+		rows[0].UpdateStatus = agentskill.UpdateCurrent
+		return rows
+	}
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
+	next, command := m.Update(key("c"))
+	m = next.(tui.Model)
+	if view := m.View(); !strings.Contains(view, "installed") || !strings.Contains(view, "while checking sources") {
+		t.Fatalf("skill rows disappeared during check:\n%s", view)
+	}
+	m = send(m, command())
+	if !strings.Contains(m.View(), "current") || !strings.Contains(m.View(), "malformed neighboring lock") {
+		t.Fatalf("skill check result or local diagnostic missing:\n%s", m.View())
+	}
+}
+
+func TestCapabilityWarningsRemainFreshAcrossTabRevisits(t *testing.T) {
+	t.Run("skills", func(t *testing.T) {
+		loads := 0
+		actions := newActions(&recorder{}, nil)
+		actions.ReloadSkills = func(context.Context) ([]agentskill.Skill, error) {
+			loads++
+			return []agentskill.Skill{{Name: "installed", Scope: agentskill.ScopeProject}}, tui.LoadWarning{Message: "1 skill diagnostic"}
+		}
+		model := tui.New(actions, nil, nil)
+		model = send(model, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
+		if loads != 1 || !strings.Contains(model.View(), "1 skill diagnostic") {
+			t.Fatalf("initial skill warning loads=%d:\n%s", loads, model.View())
+		}
+		for range 7 {
+			model = send(model, key("tab"))
+		}
+		if loads != 1 {
+			t.Fatalf("fresh skill warning reloaded %d times", loads)
+		}
+	})
+
+	t.Run("mcp", func(t *testing.T) {
+		loads := 0
+		actions := newActions(&recorder{}, nil)
+		actions.ReloadMCP = func(context.Context) ([]agentmcp.Declaration, error) {
+			loads++
+			return []agentmcp.Declaration{{Name: "server", Transport: agentmcp.TransportStdio}}, tui.LoadWarning{Message: "1 MCP diagnostic"}
+		}
+		model := tui.New(actions, nil, nil)
+		model = send(model, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
+		if loads != 1 || !strings.Contains(model.View(), "1 MCP diagnostic") {
+			t.Fatalf("initial MCP warning loads=%d:\n%s", loads, model.View())
+		}
+		for range 7 {
+			model = send(model, key("tab"))
+		}
+		if loads != 1 {
+			t.Fatalf("fresh MCP warning reloaded %d times", loads)
+		}
+	})
 }
 
 func TestFilterByState(t *testing.T) {
@@ -627,6 +921,48 @@ func TestRepoCopyChordsUseContextualScope(t *testing.T) {
 	}
 }
 
+func TestRepoReadinessDetailUsesLoadedFactsWithoutNetwork(t *testing.T) {
+	remoteCalls, fleetCalls := 0, 0
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) {
+		remoteCalls++
+		return nil, errors.New("network must not run")
+	}
+	actions.ReloadFleet = func(context.Context) ([]tui.FleetRow, error) {
+		fleetCalls++
+		return nil, errors.New("network must not run")
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{repoRowWithWorktrees()})
+	m = send(m, tea.WindowSizeMsg{Width: 180, Height: 40}, key("tab"))
+	if remoteCalls != 0 || fleetCalls != 0 {
+		t.Fatalf("repo detail triggered external collection: forge=%d fleet=%d", remoteCalls, fleetCalls)
+	}
+	out := m.View()
+	if !strings.Contains(out, "ready") || !strings.Contains(out, "checkout eligible · task not-applicable · worktree blocked") {
+		t.Errorf("repo detail missing scoped local readiness:\n%s", out)
+	}
+	if remoteCalls != 0 || fleetCalls != 0 {
+		t.Fatalf("rendering repo detail triggered external collection: forge=%d fleet=%d", remoteCalls, fleetCalls)
+	}
+}
+
+func TestRepoDetailsRenderInventoryFailuresAsUnavailable(t *testing.T) {
+	row := repoRowWithWorktrees()
+	row.Context.TaskErr = errors.New("task inventory failed")
+	row.Context.RuntimeErr = errors.New("runtime inventory failed")
+	model := tui.New(newActions(&recorder{}, nil), nil, []tui.RepoRow{row})
+	model = send(model, tea.WindowSizeMsg{Width: 180, Height: 40}, key("tab"))
+	parent := model.View()
+	if !strings.Contains(parent, "tasks unavailable") || !strings.Contains(parent, "live  unavailable") || strings.Contains(parent, "none — press s") {
+		t.Fatalf("parent inventory errors rendered as known empty:\n%s", parent)
+	}
+	model = send(model, key(" "), key("down"))
+	child := model.View()
+	if !strings.Contains(child, "tasks unavailable") || !strings.Contains(child, "live  unavailable") || strings.Contains(child, "untracked") || strings.Contains(child, "live  closed") {
+		t.Fatalf("child inventory errors rendered as known empty:\n%s", child)
+	}
+}
+
 func TestTabSwitchesViews(t *testing.T) {
 	rows := []inventory.Row{row("a", "token refresh", task.Hot, "")}
 	repos := []tui.RepoRow{repoRow("api"), repoRow("web")}
@@ -661,10 +997,14 @@ func TestTabSwitchesViews(t *testing.T) {
 	}
 	m = send(m, key("tab"))
 	if m.CurrentView() != tui.ViewSkills {
-		t.Error("the fifth view should be skills")
+		t.Error("the sixth view should be skills")
+	}
+	m = send(m, key("tab"))
+	if m.CurrentView() != tui.ViewMCP {
+		t.Error("the seventh view should be MCP")
 	}
 	if send(m, key("tab")).CurrentView() != tui.ViewTasks {
-		t.Error("a fifth tab should cycle back round")
+		t.Error("tab should cycle back after every registered view")
 	}
 }
 
@@ -1353,7 +1693,7 @@ func TestRepoViewHidesTriesButRemoteMatchingUsesAndClearsThem(t *testing.T) {
 	// Once the Try disappears from the fresh local snapshot, an ordinary local
 	// reload must clear the cached marker rather than preserving stale state.
 	repos = []tui.RepoRow{ordinary}
-	m = send(m, key("tab"), key("tab"), key("tab"), key("r"), key("tab"), key("tab"), key("tab"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("r"), key("tab"), key("tab"), key("tab"))
 	if out := m.View(); !strings.Contains(out, "not cloned") {
 		t.Fatalf("stale remote Try marker survived local reload:\n%s", out)
 	}
@@ -1419,7 +1759,7 @@ func TestFilterNarrowsAsYouType(t *testing.T) {
 	}
 	m := tui.New(newActions(&recorder{}, rows), rows, nil)
 
-	m = send(m, key("/"))
+	m = send(m, tea.WindowSizeMsg{Width: 120, Height: 24}, key("/"))
 	for _, k := range typeText("token") {
 		m = send(m, k)
 	}
@@ -1441,7 +1781,7 @@ func TestFilterMatchesTermsOutOfOrder(t *testing.T) {
 	rows := []inventory.Row{row("a", "api token auth", task.Hot, "")}
 	m := tui.New(newActions(&recorder{}, rows), rows, nil)
 
-	m = send(m, key("/"))
+	m = send(m, tea.WindowSizeMsg{Width: 120, Height: 24}, key("/"))
 	for _, k := range typeText("auth api") {
 		m = send(m, k)
 	}

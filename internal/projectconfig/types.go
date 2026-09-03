@@ -73,8 +73,16 @@ func ScaffoldsPath(repoRoot string) (string, error) {
 // Override is the complete project-owned configuration surface. Pointer
 // fields distinguish an omitted value from an explicit empty list or false.
 type Override struct {
-	Worktree WorktreeOverride `toml:"worktree"`
-	Repo     RepoOverride     `toml:"repo"`
+	Worktree   WorktreeOverride   `toml:"worktree"`
+	LocalFiles LocalFilesOverride `toml:"local_files"`
+	Repo       RepoOverride       `toml:"repo"`
+}
+
+// LocalFilesOverride is the repository-owned portable-file allowlist. Include
+// remains a pointer so omission and an explicit empty list retain different
+// meanings when project layers are overlaid.
+type LocalFilesOverride struct {
+	Include *[]string `toml:"include"`
 }
 
 // WorktreeOverride contains only provisioning settings. Placement and other
@@ -191,6 +199,13 @@ func (o Override) validate() error {
 		for index, value := range *w.Link {
 			if err := validateRelativePath(value); err != nil {
 				return fmt.Errorf("worktree.link[%d]: %w", index, err)
+			}
+		}
+	}
+	if o.LocalFiles.Include != nil {
+		for index, value := range *o.LocalFiles.Include {
+			if err := ValidateLocalFilePattern(value); err != nil {
+				return fmt.Errorf("local_files.include[%d]: %w", index, err)
 			}
 		}
 	}

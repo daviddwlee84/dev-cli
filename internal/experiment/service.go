@@ -469,8 +469,11 @@ func NewService(config ServiceConfig) (*Service, error) {
 		sameFilesystem: sameFilesystem,
 		getwd:          os.Getwd,
 	}
-	s.catalogCreate = store.Create
-	s.catalogUpdate = registry.Update
+	// Every experiment catalog hook runs inside store.WithLock. Use the
+	// non-reentrant forms so the outer read-check-write transaction remains one
+	// cross-process critical section.
+	s.catalogCreate = store.CreateUnderLock
+	s.catalogUpdate = store.UpdateUnderLock
 	applyHooks(s, config.Hooks)
 	return s, nil
 }

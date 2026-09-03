@@ -25,6 +25,9 @@ var (
 	ErrUnsupportedSchema = errors.New("unsupported catalog schema version")
 	// ErrInvalidID identifies a filename stem that cannot safely name one record.
 	ErrInvalidID = errors.New("invalid catalog ID")
+	// ErrConflict identifies an exact-ID import that disagrees with durable local
+	// catalog state or attempts to claim another asset's location.
+	ErrConflict = errors.New("catalog import conflict")
 )
 
 // UnsupportedSchemaError describes a record whose schema this version cannot
@@ -42,6 +45,32 @@ func (e *UnsupportedSchemaError) Error() string {
 }
 
 func (e *UnsupportedSchemaError) Unwrap() error { return ErrUnsupportedSchema }
+
+// ImportConflictError describes why an exact-ID import could not be reconciled.
+// ExistingID names the local owner when Field is a target location path.
+type ImportConflictError struct {
+	ID         string
+	ExistingID string
+	Field      string
+	Reason     string
+}
+
+func (e *ImportConflictError) Error() string {
+	detail := e.Reason
+	if detail == "" {
+		detail = "imported value disagrees with durable state"
+	}
+	if e.ExistingID != "" && e.ExistingID != e.ID {
+		return fmt.Sprintf("catalog asset %s conflicts with asset %s on %s: %s: %v",
+			e.ID, e.ExistingID, e.Field, detail, ErrConflict)
+	}
+	if e.Field != "" {
+		return fmt.Sprintf("catalog asset %s conflicts on %s: %s: %v", e.ID, e.Field, detail, ErrConflict)
+	}
+	return fmt.Sprintf("catalog asset %s: %s: %v", e.ID, detail, ErrConflict)
+}
+
+func (e *ImportConflictError) Unwrap() error { return ErrConflict }
 
 // Kind distinguishes short-lived experiments from ordinary repositories.
 type Kind string

@@ -152,7 +152,7 @@ func TestLifecycleEndToEnd(t *testing.T) {
 	}
 
 	// resume: back to hot.
-	out = h.mustRun("resume", "auth")
+	out = h.mustRun("--allow-shared-checkout", "resume", "auth")
 	if !strings.Contains(out, "feat/auth") {
 		t.Errorf("resume output: %q", out)
 	}
@@ -169,7 +169,7 @@ func TestLifecycleEndToEnd(t *testing.T) {
 	h.repo.GitIn(wtPath, "commit", "-m", "feat: add auth")
 
 	// done --ff integrates but leaves physical cleanup to an external retire.
-	out = h.mustRun("done", "auth", "--ff")
+	out = h.mustRun("--allow-shared-checkout", "done", "auth", "--ff")
 	if !strings.Contains(out, "merged into main") || !strings.Contains(out, "cleanup pending") {
 		t.Fatalf("done output: %q", out)
 	}
@@ -191,10 +191,10 @@ func TestLifecycleEndToEnd(t *testing.T) {
 
 	// Sweep reports cleanup pending; retire performs it from outside the target.
 	out = h.mustRun("sweep")
-	if !strings.Contains(out, "retire runtime/worktree") {
-		t.Errorf("sweep should offer to retire a done task: %q", out)
+	if !strings.Contains(out, "guarded retirement is blocked") || !strings.Contains(out, "cleanup-occupancy") {
+		t.Errorf("sweep should fail closed on unobserved runtime cleanup: %q", out)
 	}
-	out = h.mustRun("retire", "auth")
+	out = h.mustRun("retire", "auth", "--assume-no-runtime")
 	if !strings.Contains(out, "RETIRED") {
 		t.Fatalf("retire output: %q", out)
 	}
@@ -296,7 +296,7 @@ func TestDonePRLeavesTaskAndWorktreeForReview(t *testing.T) {
 	h.repo.GitIn(wtPath, "add", "review.txt")
 	h.repo.GitIn(wtPath, "commit", "-m", "feat: review")
 
-	out := h.mustRun("done", "review", "--pr")
+	out := h.mustRun("--allow-shared-checkout", "done", "review", "--pr")
 	if !strings.Contains(out, "READY FOR REVIEW") {
 		t.Fatalf("PR path should report review state: %q", out)
 	}
@@ -341,7 +341,7 @@ exit 2
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	out := h.mustRun("done", "azure-review", "--pr")
+	out := h.mustRun("--allow-shared-checkout", "done", "azure-review", "--pr")
 	if !strings.Contains(out, "https://dev.azure.com/acme/Platform/_git/demo/pullrequest/73") {
 		t.Fatalf("Azure PR output: %q", out)
 	}
@@ -611,7 +611,7 @@ func TestSkillInventoryAddAndUpdate(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: shared\n---\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: shared\ndescription: CLI fixture\n---\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -690,7 +690,7 @@ printf '%s|%s\n' "$PWD" "$*"
 	if len(rows) != 2 || rows[0]["scope"] != "project" || rows[1]["scope"] != "global" {
 		t.Fatalf("skill rows = %+v", rows)
 	}
-	if rows[0]["scope_root"] != projectRoot || rows[0]["managed_by"] != "skills" {
+	if rows[0]["scope_root"] != h.repo.Root || rows[0]["managed_by"] != "skills" {
 		t.Errorf("project row = %+v", rows[0])
 	}
 	table := h.mustRun("skill", "list", "--project")
@@ -706,7 +706,7 @@ printf '%s|%s\n' "$PWD" "$*"
 		t.Fatalf("unscoped update err = %v", err)
 	}
 	update := h.mustRun("skill", "update", "shared", "--global", "--yes")
-	if !strings.Contains(update, "update shared --yes --global") {
+	if !strings.Contains(update, "update --yes --global shared") {
 		t.Errorf("update = %q", update)
 	}
 }
@@ -1260,7 +1260,7 @@ func TestDirectTaskWarmResumeAndDone(t *testing.T) {
 	h.repo.Git("commit", "-m", "fix: quick change")
 
 	h.mustRun("park", "quick fix", "--next", "check the result")
-	out := h.mustRun("resume", "quick fix")
+	out := h.mustRun("--allow-shared-checkout", "resume", "quick fix")
 	if !strings.Contains(out, "(direct)") {
 		t.Errorf("resume should preserve direct mode: %q", out)
 	}
@@ -1268,7 +1268,7 @@ func TestDirectTaskWarmResumeAndDone(t *testing.T) {
 		t.Error("resuming a direct task must not invent a worktree")
 	}
 
-	out = h.mustRun("done", "quick fix")
+	out = h.mustRun("--allow-shared-checkout", "done", "quick fix")
 	if !strings.Contains(out, "completed directly on main") {
 		t.Errorf("direct done should need no integration mode: %q", out)
 	}
@@ -1709,7 +1709,9 @@ func TestSweepReapsATaskWhoseBranchIsGone(t *testing.T) {
 	h := newHarness(t)
 	h.mustRun("start", "demo", "--task", "landed", "--branch", "feat/landed", "--base", "main")
 	wtPath := filepath.Join(h.wtRoot, "demo", "feat-landed")
-	h.mustRun("wt", "rm", "feat/landed", "--repo", "demo")
+	// Simulate out-of-band deletion: managed `dev wt rm` now refuses to create
+	// task metadata drift and directs the caller to lifecycle/reconciliation.
+	h.repo.Git("worktree", "remove", wtPath)
 	if _, err := os.Stat(wtPath); !os.IsNotExist(err) {
 		t.Fatalf("worktree still present: %v", err)
 	}

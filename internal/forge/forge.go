@@ -181,21 +181,18 @@ func Detect(ctx context.Context, dir string) Kind {
 	return FromURL(gitx.Remote(ctx, dir, "origin"))
 }
 
-// FromURL classifies a remote URL.
-func FromURL(url string) Kind {
-	if _, _, ok := parseAzureDevOpsRemote(url); ok {
+// FromURL classifies a structurally valid forge remote. Host matching is exact
+// rather than substring-based so lookalike hosts and SSH aliases do not acquire
+// a provider identity.
+func FromURL(raw string) Kind {
+	if _, _, ok := parseAzureDevOpsRemote(raw); ok {
 		return AzureDevOps
 	}
-	u := strings.ToLower(url)
-	switch {
-	case u == "":
+	endpoint, ok := parseForgeEndpoint(raw)
+	if !ok {
 		return Unknown
-	case strings.Contains(u, "github.com"), strings.Contains(u, "github."):
-		return GitHub
-	case strings.Contains(u, "gitlab.com"), strings.Contains(u, "gitlab."):
-		return GitLab
 	}
-	return Unknown
+	return webHostPolicy(WebURLRequest{}).identityProvider(endpoint.host)
 }
 
 // For returns the adapter for a kind.
@@ -443,11 +440,13 @@ func defaultForgeHost(kind Kind) string {
 
 type cliRunner func(context.Context, string, string, ...string) (string, error)
 
-// Separate hooks keep readiness and publishing tests platform-independent;
-// production uses the same subprocess runner as the legacy adapter methods.
+// Separate hooks keep readiness, publishing and review-query tests
+// platform-independent; production uses the same subprocess runner as the
+// legacy adapter methods.
 var (
 	probeRunner   cliRunner = run
 	publishRunner cliRunner = runCombined
+	reviewRunner  cliRunner = run
 	lookupPath              = exec.LookPath
 )
 
@@ -508,33 +507,24 @@ func lastHTTPURL(out string) string {
 	return found
 }
 
-// IdentityFromURL returns a forge and owner/name identity for an HTTPS or SSH
-// Git remote. It is used to match remote inventories to local clones without
-// assuming the checkout directory has the same name.
+// IdentityFromURL returns a forge and decoded owner/name identity for a
+// structurally valid HTTPS or SSH Git remote. Query, fragment, and userinfo are
+// never part of the returned identity.
 func IdentityFromURL(raw string) (Kind, string) {
-	kind := FromURL(raw)
-	if kind == Unknown {
+	if identity, _, ok := parseAzureDevOpsRemote(raw); ok {
+		return AzureDevOps, identity
+	}
+	endpoint, ok := parseForgeEndpoint(raw)
+	if !ok {
 		return Unknown, ""
 	}
-	if kind == AzureDevOps {
-		identity, _, ok := parseAzureDevOpsRemote(raw)
-		if !ok {
-			return Unknown, ""
-		}
-		return kind, identity
+	kind := webHostPolicy(WebURLRequest{}).identityProvider(endpoint.host)
+	if kind == Unknown || !validRepositorySegments(kind, endpoint.segments) {
+		return Unknown, ""
 	}
-	s := strings.TrimSpace(raw)
-	if strings.Contains(s, "://") {
-		if parsed, err := url.Parse(s); err == nil {
-			s = strings.TrimPrefix(parsed.Path, "/")
-		}
-	} else if at := strings.IndexByte(s, '@'); at >= 0 {
-		// SCP-style SSH: git@github.com:owner/repo.git
-		s = s[at+1:]
-		if colon := strings.IndexByte(s, ':'); colon >= 0 {
-			s = s[colon+1:]
-		}
+	segments := stripGitSuffix(endpoint.segments)
+	if segments == nil {
+		return Unknown, ""
 	}
-	s = strings.Trim(strings.TrimSuffix(s, ".git"), "/")
-	return kind, s
+	return kind, strings.Join(segments, "/")
 }

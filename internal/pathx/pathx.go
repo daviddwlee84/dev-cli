@@ -12,6 +12,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 )
 
 var (
@@ -23,6 +28,14 @@ var (
 	ErrTraversal = errors.New("path contains parent traversal")
 	// ErrInvalidComponent reports a value that is not one filesystem component.
 	ErrInvalidComponent = errors.New("invalid path component")
+	// ErrNotPortable reports a relative path that cannot be represented safely
+	// and with the same meaning on supported Unix and Windows filesystems.
+	ErrNotPortable = errors.New("path is not portable")
+	// ErrPathCollision reports distinct spellings that identify the same path on
+	// a case-insensitive or Unicode-normalizing filesystem.
+	ErrPathCollision = errors.New("portable path collision")
+	// ErrPathLimit reports a portable path that exceeds an explicit policy limit.
+	ErrPathLimit = errors.New("portable path limit exceeded")
 )
 
 // Canonical returns an absolute, clean path with symlinks resolved. If the final
@@ -168,6 +181,152 @@ func ValidateComponent(component string) error {
 	default:
 		return nil
 	}
+}
+
+// PortablePathLimits bounds the encoded path, each encoded component, and path
+// depth. Zero means unbounded for that field; negative values are invalid.
+// File-count and byte-size ceilings live in safefile because they describe a
+// collection of files rather than a path.
+type PortablePathLimits struct {
+	MaxPathBytes      int
+	MaxComponentBytes int
+	MaxDepth          int
+}
+
+// ValidatePortableSlashPath accepts only a non-empty, clean, slash-separated
+// relative path that retains exactly one meaning on Unix and Windows. It rejects
+// Git metadata aliases, platform-specific separators and volumes, Windows
+// device names and invalid characters, trailing dots/spaces, controls, and
+// invalid UTF-8.
+func ValidatePortableSlashPath(value string, limits PortablePathLimits) error {
+	if limits.MaxPathBytes < 0 || limits.MaxComponentBytes < 0 || limits.MaxDepth < 0 {
+		return fmt.Errorf("negative portable path limit: %w", ErrPathLimit)
+	}
+	if !utf8.ValidString(value) {
+		return fmt.Errorf("path contains invalid UTF-8: %w", ErrNotPortable)
+	}
+	if value == "" {
+		return fmt.Errorf("path is empty: %w", ErrNotPortable)
+	}
+	if strings.ContainsRune(value, '\\') {
+		return fmt.Errorf("path contains a backslash path separator: %w", ErrNotPortable)
+	}
+	if strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") || filepath.IsAbs(value) || filepath.VolumeName(value) != "" || driveQualified(value) {
+		return fmt.Errorf("path %q is absolute, drive-qualified, or UNC: %w", value, ErrNotPortable)
+	}
+	if limits.MaxPathBytes > 0 && len(value) > limits.MaxPathBytes {
+		return fmt.Errorf("path is %d bytes; maximum is %d: %w", len(value), limits.MaxPathBytes, ErrPathLimit)
+	}
+	components := strings.Split(value, "/")
+	if limits.MaxDepth > 0 && len(components) > limits.MaxDepth {
+		return fmt.Errorf("path has %d components; maximum is %d: %w", len(components), limits.MaxDepth, ErrPathLimit)
+	}
+	for _, component := range components {
+		if component == ".." {
+			return fmt.Errorf("path contains parent traversal: %w", ErrTraversal)
+		}
+		if err := ValidatePortableComponent(component, limits.MaxComponentBytes); err != nil {
+			return fmt.Errorf("path component %q: %w", component, err)
+		}
+	}
+	return nil
+}
+
+// ValidatePortableComponent applies the per-component part of
+// ValidatePortableSlashPath. maxBytes may be zero for no size limit.
+func ValidatePortableComponent(component string, maxBytes int) error {
+	if maxBytes < 0 {
+		return fmt.Errorf("negative component limit: %w", ErrPathLimit)
+	}
+	if !utf8.ValidString(component) {
+		return fmt.Errorf("component contains invalid UTF-8: %w", ErrNotPortable)
+	}
+	if err := ValidateComponent(component); err != nil {
+		return fmt.Errorf("%w: %w", err, ErrNotPortable)
+	}
+	if maxBytes > 0 && len(component) > maxBytes {
+		return fmt.Errorf("component is %d bytes; maximum is %d: %w", len(component), maxBytes, ErrPathLimit)
+	}
+	if strings.IndexFunc(component, isPortableControl) >= 0 {
+		return fmt.Errorf("path component contains control characters: %w", ErrNotPortable)
+	}
+	windowsAlias := strings.TrimRight(component, ". ")
+	if strings.EqualFold(windowsAlias, ".git") {
+		return fmt.Errorf("path contains reserved Git metadata: %w", ErrNotPortable)
+	}
+	if windowsAlias != component {
+		return fmt.Errorf("path component %q has a trailing dot or space and is not portable to Windows: %w", component, ErrNotPortable)
+	}
+	if strings.ContainsAny(component, `<>:"|?*`) {
+		return fmt.Errorf("path component %q contains characters that are not portable to Windows: %w", component, ErrNotPortable)
+	}
+	if windowsReservedName(component) {
+		return fmt.Errorf("path component %q is a reserved Windows device name: %w", component, ErrNotPortable)
+	}
+	return nil
+}
+
+// ValidatePortablePathSet validates every path and rejects collisions at any
+// component boundary after Unicode normalization and full Unicode case folding.
+// Exact duplicate paths are left to the caller's type/cardinality policy.
+func ValidatePortablePathSet(paths []string, limits PortablePathLimits) error {
+	type collisionNode struct {
+		spelling string
+		first    string
+		children map[string]*collisionNode
+	}
+	root := &collisionNode{children: map[string]*collisionNode{}}
+	for _, value := range paths {
+		if err := ValidatePortableSlashPath(value, limits); err != nil {
+			return fmt.Errorf("portable path %q: %w", value, err)
+		}
+		current := root
+		for _, component := range strings.Split(value, "/") {
+			key := portableCollisionKey(component)
+			next, exists := current.children[key]
+			if exists && next.spelling != component {
+				return fmt.Errorf("paths %q and %q collide on case-insensitive or Unicode-normalizing filesystems at %q and %q: %w",
+					next.first, value, next.spelling, component, ErrPathCollision)
+			}
+			if !exists {
+				next = &collisionNode{spelling: component, first: value, children: map[string]*collisionNode{}}
+				current.children[key] = next
+			}
+			current = next
+		}
+	}
+	return nil
+}
+
+func portableCollisionKey(component string) string {
+	return norm.NFC.String(cases.Fold().String(norm.NFC.String(component)))
+}
+
+func isPortableControl(r rune) bool {
+	return unicode.IsControl(r) || unicode.Is(unicode.Cf, r)
+}
+
+func windowsReservedName(component string) bool {
+	base := component
+	if dot := strings.IndexByte(base, '.'); dot >= 0 {
+		base = base[:dot]
+	}
+	base = strings.TrimRight(base, " ")
+	upper := strings.ToUpper(base)
+	switch upper {
+	case "CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$", "CLOCK$":
+		return true
+	}
+	if len([]rune(upper)) != 4 {
+		return false
+	}
+	runes := []rune(upper)
+	prefix := string(runes[:3])
+	if prefix != "COM" && prefix != "LPT" {
+		return false
+	}
+	last := runes[3]
+	return last >= '1' && last <= '9' || last == '¹' || last == '²' || last == '³'
 }
 
 // JoinChild validates every component, joins it below root, and returns the

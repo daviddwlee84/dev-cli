@@ -2,7 +2,7 @@
 description: A concise checklist for safe Git, worktree, and coding-agent collaboration with dev-cli.
 authority: project-policy
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-08-31
 ---
 
 # Best practices
@@ -16,11 +16,12 @@ Use this page as the short operating policy. Follow the links only when a decisi
 3. **Choose worktrees by mutation boundary, not agent count.** Read-only researchers and writers with clearly disjoint files can share a checkout; overlapping or unknown mutation needs separate branches and worktrees.
 4. **Use one integration owner.** Assign file ownership, dependency order, merge order, and the final test responsibility before parallel work starts.
 5. **Provision from an allowlist.** Copy only explicitly listed files that Git confirms are ignored. Prefer reinstalling dependencies unless the ecosystem makes copying sound.
-6. **Keep one writer per branch.** Across machines, push the branch and transfer ownership before another writer resumes it.
-7. **Checkpoint before handoff.** Commit and push recoverable work, and record a concrete `--next` action. Use temporary `wip:` commits on a feature branch rather than stash for cross-machine work.
-8. **Review the integrated result.** Worker-local tests are not enough; run the complete relevant suite after changes are combined.
-9. **Clean up only recoverable state.** Do not remove dirty, untracked, unpushed, or locked worktrees. Removing a worktree must not silently delete its branch.
-10. **Label the authority.** Keep Git semantics, current product behavior, experimental harness behavior, project policy, and historical advice visibly distinct.
+6. **Authorize export separately.** A local worktree include is not off-machine permission. Use a separate portable-file allowlist, inspect the report, independently verify the target UUID, and never let `--yes` imply replacement.
+7. **Keep one writer per branch.** Across machines, push the branch and transfer ownership before another writer resumes it.
+8. **Checkpoint before handoff.** Commit and push recoverable work, and record a concrete `--next` action. Use temporary `wip:` commits on a feature branch rather than stash for cross-machine work.
+9. **Review the integrated result.** Worker-local tests are not enough; run the complete relevant suite after changes are combined.
+10. **Clean up only recoverable state.** Do not remove dirty, untracked, unpushed, or locked worktrees. Removing a worktree must not silently delete its branch.
+11. **Label the authority.** Keep Git semantics, current product behavior, experimental harness behavior, project policy, and historical advice visibly distinct.
 
 ## Pick the smallest safe topology
 

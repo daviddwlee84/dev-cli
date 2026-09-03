@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-01
+verified_on: 2026-09-02
 tested_with: Claude Code 2.1.250
 lang: zh-TW
 ---
@@ -23,12 +23,17 @@ lang: zh-TW
 | named terminal session | tmux 或相容 Zellij | `none` 保留核心 behavior 與 shell navigation |
 | GitHub pull requests/remotes | authenticated `gh` | Git 可用時 branch 仍能 push，可能需 browser/manual flow |
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |
+| `dev flow` manual review observation | review-capable authenticated `gh`、`glab` 或含 Azure DevOps extension 的 `az` | local flow 與 fetch-only choice 仍可用；review query 保持 UNSUPPORTED/ERROR，不推斷 absence |
 | repository bootstrap publishing | authenticated `gh` 或 `glab` | local repository/scaffold 仍可使用；wizard 會說明如何 login |
 | remote repository snapshot template | Git，加上 source 所需的 network/authentication | validation 會在建立 destination 前失敗，rendered URL userinfo 會 redact；local template 仍可使用 |
+| native skill inventory | local filesystem 加 versioned `skills@1.5.23` path registry | 永遠可用；explicit add/update 需要直接安裝的 `skills` executable，且可能使用 network；repository-local npm bins 會被跳過，cooperating mutations 會 serialized |
+| static MCP inventory | 可讀取的 supported agent config files | 缺少 source 代表 empty；malformed/unsupported source 產生 fresh partial diagnostics，runtime health 刻意不提供 |
 | setup-capable project skills | skills provider 與 entrypoint interpreter | 未選取的 skill 會跳過；selected required setup 若缺少 interpreter，會在 scaffold mutation 前失敗；先取得的 clone 會保留 |
 | staged lazygit message prefill | 會讀取 `LAZYGIT_PENDING_COMMIT` 的 lazygit version | files 仍保持 staged，dev 會印出建議 message；一般 Git commit 仍可使用 |
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
+| remote portable-file plan/apply | Git、執行相容 `dev` 的 SSH target、matching existing clone/branch/commit；apply 另需 verified machine UUID pin | content 傳送前失敗或保持 target 不變；不推斷 clone/task fallback |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
+| independent `dev flow [repo]` | interactive TTY input/output | 直接拒絕並指向 `dev repo context [repo]` 或 `dev ls --all --json`；沒有 piped/JSON Flow mode |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
 | static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe file 會診斷；不需要 `ssh` process 或 network |
 | SSH effective values、fresh probe、bootstrap 與 fleet transport | system `ssh` client | static `ssh list`、dry-run 與 local config plan 仍可使用；effectful SSH operation 以 capability guidance 失敗 |
@@ -39,6 +44,10 @@ lang: zh-TW
 
 ## 已確認的專案限制
 
+### MCP inventory 是 static 且刻意不完整
+
+`dev mcp list` 會讀取 Claude Code、Codex、Cursor、Gemini CLI 與 OpenCode 的 documented static files。Absolute `CLAUDE_CONFIG_DIR` 會搬移 Claude user sources；local Claude rows 會保留 project key，documented user/project/local/managed project approvals 則用來標註 declaration state。這個 narrow approval calculation 不是一般化的 runtime merge。Scanner 不會啟動 server、執行 helper、連線 endpoint、查詢 health 或解析 credentials。Plugin caches、hosted connectors、remote organization config、inline `OPENCODE_CONFIG_CONTENT` 與 command-line-only inputs 都會省略。對 inventory 做 automation 時必須保留 JSON `coverage` object、additive `local_project_path` 與 scope-qualified duplicate rows。
+
 ### Note search 與 filesystem durability 依文字及平台而異
 
 Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII query 改用 literal term-wise substring matching，因為 SQLite 的 `unicode61` tokenizer 不會切分任意 CJK substrings；這些結果不使用相同的 FTS ranking。
@@ -47,7 +56,9 @@ Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII quer
 
 ### Pull request completion 不會自動追蹤
 
-`dev done --pr` push 並建立 pull/merge request，之後保留 task、runtime 與 worktree，因為 integration 由 review 負責。目前 `dev sweep` 不會 query forge 推斷 request 後來已 merge。請驗證 integration 後再刻意 finish/reconcile；不能假設 remote merge 代表 local DONE。
+`dev done --pr` push 並建立 pull/merge request，之後保留 task、runtime 與 worktree，因為 integration 由 review 負責。`dev sweep` 不會 query forge 推斷 request 後來已 merge。`dev flow` 只有在 operator 明確按 `R` 並核准 Query Review 時，才保留目前 run 的 exact head/base observation；它不會 persistent cache、poll 或自動 transition。
+
+Portable provider evidence 僅包含 review 是否存在、provider、`open`/`draft`/`merged`/`closed`、URL 與 observation time。它不涵蓋 CI check conclusions、approvals、mergeability、comments 或 deployment status；unsupported/unauthenticated/ambiguous/malformed/failed query 也不等於 absence。請 fetch/驗證 named ancestry，再用 `dev done --merged --base-ref <ref>` 或 Flow 的 Verify Merged 記錄 DONE。
 
 ### Agent session capture 只有保留欄位，尚未接線
 
@@ -71,6 +82,19 @@ interface；大寫 `C` 與一般 `git commit` 不會讀取它。Dev 不會覆寫
 draft。Draft write failure 只會產生 warning；staging 仍視為成功且不會 rollback。若
 upstream integration 日後改變，staged index 與已印出的 message 仍是 recovery path。
 
+### Portable files 不是 project transfer 或 backup
+
+`dev fleet files` 只會傳送 explicit selected、bounded，且兩端都證明為
+untracked 與 ignored 的 files。它不會取得 missing clone、轉移 task ownership/
+catalog/notes、執行 worktree provisioning、監看後續變更、傳播 deletion、移除
+source bytes、建立 remote-backup receipt、驗證 restore，或授權 eviction。Private
+transaction staging 不是 user-facing backup/restore promise。
+
+Source 與 target 必須已依 fetch identity、attached branch 與 exact commit 相符；apply
+另外需要 verified `machine_id` pin。Native Windows payload 在 ACL、reparse-point、
+held-root 與 atomic replacement guarantees 完成並測試前保持 disabled；machine
+identity diagnostics 仍是 content-free。
+
 ### Windows 有 native SSH support，但 runtime surface 較小
 
 `dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心 repository/task/worktree operation 與 SSH host domain 都是 native：static discovery、protected-DACL managed fragment、reparse-point rejection、native `ssh-keygen.exe`、Windows Job Object cancellation，以及 POSIX/Windows remote bootstrap 都有 coverage。Fleet 也可透過 encoded PowerShell launcher target Windows OpenSSH。仍有下列差異：
@@ -78,6 +102,7 @@ upstream integration 日後改變，staged index 與已印出的 message 仍是 
 - 沒有 tmux、Zellij 或 Herdr，因此 runtime backend 一律是 `none`。Grouped runtime/agent activity 與 named session 無法使用；`cd` 指令與 PowerShell wrapper 仍可運作。
 - Shell integration 是 `dev shell-init powershell`。POSIX shell 透過 file descriptor 3 回傳目錄；PowerShell 無法繼承它，wrapper 改用 `DEV_SHELL_CD_FILE` 傳入 temp-file path。
 - `dev fleet open` 會啟動子 shell（`%COMSPEC%`），而非取代 process，因為 Windows 沒有 `exec(2)`。
+- `dev fleet machine-id` 可執行 content-free `_capability` probe，但 native `fleet files` plan/apply payload helpers 會在 content 傳送前被拒絕。
 - CI 保留 broad advisory Windows suite 以容納 unrelated POSIX assumptions，但 `internal/sshhost`、`internal/fleet` 與 SSH/fleet/doctor CLI contracts 另有 required native `windows-latest` gate；affected tests/packages 與 CLI 也會針對 `windows/arm64` compile。
 
 ### SSH host management 刻意保持狹窄
@@ -90,6 +115,12 @@ Setup 要求 explicit key 或 explicit Ed25519 generation，且只安裝 public 
 
 Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 會移除 repository 必需的 directory。需要跨機器 reconstruction 時使用 branch-only 或 worktree mode。
 
+### Mediated safety 不涵蓋 raw/configured commands
+
+`dev flow` 與 taskflow 的 PlanID、conditions、locks、revalidation 和 partial ledger 只保護 dev-mediated action。Task-backed lifecycle 與 exact unmanaged linked-checkout actions 共用 `internal/taskflow`；但 explicit unmanaged path retirement 仍是隔離的 compatibility implementation，`sweep` 的 record-only reap、orphan salvage 與其他 narrow reconciliation paths 也仍在 taskflow 之外。不能假設每條 historical cleanup path 都已 migrate 或使用同一 planner。
+
+Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script，以及 bare dashboard 的 configured `[[tui.tools]]` command 都能繞過這個 boundary。它們是刻意保留的 expert/operator escape hatches，不應被描述成自動繼承相同 safety guarantees。
+
 ## 已實作、不能再列為 limitation 的 behavior
 
 以下是歷史缺口，現行版本已實作：
@@ -101,12 +132,16 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
 - `dev ssh init/list/show/setup/probe/remove` 提供 explicit OpenSSH host onboarding，不建立另一套 host database。Dev 只擁有 dedicated Include、canonical `dev.d` fragments 與 opt-in generated fleet registration；所有 public SSH JSON 都是一個 versioned object，TSV list 則是 documented six-field selector。
 - Fleet merge user-authored primary `remotes.toml` 與 strict generated `remotes.d` fragments、追蹤 `remote_os`，並對 Windows target 使用只允許 hidden helper 的 encoded PowerShell launcher。Primary duplicate aliases 保持 compatible；任何 generated alias collision 都 fail closed。
+- `dev repo context --json` 提供 additive schema-v1 local/remote evidence，包含 source、age、freshness、completeness、null/error preservation 與 scoped readiness；只有 `--refresh` 執行 external probes。`dev status` 重用 cheap local readiness projection，不進行 network access。
+- `dev fleet machine-id` 回報 observed UUID，不修改設定。`dev fleet files` 預設 report-only，使用獨立 `[local_files]` allowlist，在 content 前協商只能調低的 limits，並要求 explicit apply/replacement controls 與 matching target pin。
 
 - `dev start --focus` 會在 non-JSON creation 後 activate runtime。
 - `dev start --run '<shell command>'` 只會 dispatch 到本次新建 first-class Herdr
   worktree 的 exact root pane。它不能與 `--json`、non-worktree modes 或 non-Herdr
   runtimes 併用，也不等待 command exit。
 - TUI navigation 會拒絕開啟 checkout 不存在的 COLD task，並要求使用 `dev resume`。
+- `dev flow [repo]` 是與 dashboard 分離的 TTY-only preview。它依 canonical Git common directory 顯示所有 registered worktrees 加 task-only rows；Enter 只建立 plan，`r` 只做 local reload，`R` 才選 fetch/query/both。Flow choices 不含 generic force、dirty discard、`--close-unknown`、`--assume-no-runtime`、shared writer 或 ownership takeover。
+- Flow Apply 會重新載入 task revision與 Git/worktree/runtime/agent/artifact/remote authority，並在 runtime closure 與 removal 邊界再次驗證。Result 保留 attempted/completed/failed ledger；partial success 不宣稱 rollback。
 - `DEV_TUI_TRACE` 從 `cli.Execute` 起算，無法涵蓋 OS process loading。`tui.initial_view_returned` 量測 model construction，不是 renderer flush 或 physical terminal paint；它適合同 profile 比較，不是跨硬體／network 的 universal guarantee。
 - Runtime handle 現在保存 backend provenance，cleanup 前會重新驗證。
 - `auto` runtime selection 已在 tmux 與 none 之間加入 Zellij。
@@ -159,6 +194,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 ## 來源
 
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/forge/review.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/review.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
@@ -176,6 +214,9 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 - [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
 - [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
 - [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
+- [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
+- [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
+- [`internal/repocontext`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/repocontext)
 - [`.github/workflows/ci.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/ci.yml)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)

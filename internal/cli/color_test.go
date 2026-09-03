@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 )
 
 func TestColorModeSelection(t *testing.T) {
@@ -93,16 +93,39 @@ func TestTruncatePreservesANSIAndDisplayWidth(t *testing.T) {
 func TestDoneWizardUsesSemanticColors(t *testing.T) {
 	var out bytes.Buffer
 	app := &App{Out: &out, Err: &out, colorMode: colorAlways}
-	item := &task.Task{Name: "color task", Branch: "feat/color"}
-	analysis := gitx.FinishAnalysis{
-		Status:   gitx.Status{Changed: 2, Unstaged: 1, Untracked: 1},
-		Relation: gitx.BranchRelation{BaseOnly: 1, BranchOnly: 2},
-		Changes: []gitx.DirtyPath{
-			{Path: "same.txt", Unstaged: true, BaseEquivalent: true},
-			{Path: "unique.txt", Untracked: true},
-		},
+	item := task.Task{Name: "color task", Branch: "feat/color"}
+	request, err := flow.NewRequest(flow.Locator{Mode: task.ModeWorktree, State: task.Hot}, flow.ReviewHandoffOptions{
+		Dirty: flow.DirtyDiscard,
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	renderDonePreflight(app, item, "main", analysis)
+	plan, err := flow.BuildPlan(request, flow.PlanSpec{
+		Authority: map[string]string{
+			"completion.base-ref":             "main",
+			"finish.base-only":                "1",
+			"finish.branch-only":              "2",
+			"finish.equivalent-dirty":         "1",
+			"finish.unique-dirty":             "1",
+			"finish.change-count":             "2",
+			"finish.change.0.path":            "same.txt",
+			"finish.change.0.base-equivalent": "true",
+			"finish.change.1.path":            "unique.txt",
+			"finish.change.1.base-equivalent": "false",
+			"git.changed":                     "2",
+			"git.unstaged":                    "1",
+			"git.untracked":                   "1",
+		},
+		Effects: []flow.Effect{
+			flow.NewEffect(flow.EffectDiscardAll, "discard changes", "checkout", true, false, nil),
+			flow.NewEffect(flow.EffectPushBranch, "publish branch", "feat/color", false, true, nil),
+		},
+		Confirmation: flow.Confirmation{Kind: flow.ConfirmationTyped, Prompt: "Type DROP", Token: "DROP"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	renderDonePreflight(app, item, plan)
 	got := out.String()
 	for _, want := range []string{
 		ansiBold + ansiCyan + "Finish",
@@ -117,8 +140,7 @@ func TestDoneWizardUsesSemanticColors(t *testing.T) {
 	out.Reset()
 	app.In = strings.NewReader("NO\n")
 	p := newPrompter(app)
-	plan := donePlan{DirtyAction: doneDirtyDiscard, Integration: doneIntegrationPR, Analysis: analysis}
-	if ok, err := confirmDonePlan(app, p, item, "main", plan); err != nil || ok {
+	if ok, _, err := confirmDonePlan(app, p, item, plan); err != nil || ok {
 		t.Fatalf("discard confirmation = %v, %v", ok, err)
 	}
 	got = out.String()

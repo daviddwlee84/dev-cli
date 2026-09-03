@@ -39,12 +39,12 @@ The catalog ID keeps a quick note attached across linked worktrees, symlink inde
 | 🔥 `hot` | branch plus checkout | open | active now |
 | 🌤 `warm` | branch plus checkout kept | closed | likely to return within days |
 | ❄️ `cold` | committed and pushed branch; worktree absent | none | paused and reconstructible elsewhere |
-| ✅ `done` | integrated | none | retained until cleanup reaps the entry |
+| ✅ `done` | integrated; branch/checkout may remain | may remain open | MERGED, pending explicit retirement |
 
 ```mermaid
 flowchart TD
     accTitle: dev-cli lifecycle states
-    accDescr: Tasks move between HOT, WARM, and eligible COLD states; direct or locally integrated work reaches DONE; review leaves the current state unchanged; and sweep reaps only an already completed entry.
+    accDescr: Tasks move between HOT, WARM, and eligible COLD states; direct or verified integrated work reaches DONE while resources remain; review leaves the current state unchanged; and external retirement reaps only an already completed entry.
 
     Start["dev start"] --> Hot["HOT"]
     Hot -->|dev park --next| Warm["WARM"]
@@ -61,12 +61,20 @@ flowchart TD
     Hot -.->|branch/worktree: dev done --pr; state unchanged| Review["push / review handoff"]
     Warm -.->|branch/worktree: dev done --pr; state unchanged| Review
     Review -.->|feedback: dev resume if WARM| Hot
+    Review -->|dev done --merged --base-ref REF| Done
 
-    Done -->|dev sweep: report| Report["cleanup candidate"]
-    Report -->|dev sweep --apply| Reaped["entry reaped"]
+    Done -->|dev retire from outside target| Reaped["RETIRED: resources cleaned; entry reaped"]
+    Done -.->|dev sweep: report candidate| Report["cleanup report"]
+    Report -.->|approved apply| Reaped
 ```
 
-For branch/worktree tasks, `dev done --pr` is intentionally not a HOT/WARM → DONE transition. It hands off a pushed branch (opening review when supported) and leaves state and cleanup unchanged; remote merge reconciliation remains manual.
+For branch/worktree tasks, `dev done --pr` is intentionally not a HOT/WARM → DONE transition. It hands off a pushed branch (opening review when supported) and leaves state and cleanup unchanged. `dev flow` can manually query portable review existence/state/draft/URL evidence, but never infers DONE. After an external merge, use `dev done --merged --base-ref <ref>` or Flow's Verify Merged action to prove named ancestry explicitly before a separate Retire plan performs cleanup.
+
+`dev flow [repo]` makes the underlying hybrid model visible: persisted intent,
+typed live observations, and a revision-bound guarded plan are distinct. Errors,
+unknowns, and stale facts do not become false; Apply revalidates exact task/Git/
+worktree/runtime/artifact identity before mutation. See [Repository lifecycle
+flow](../guides/repository-flow.md).
 
 ## Checkout modes
 
@@ -83,6 +91,8 @@ The mode is selected by collision and recovery needs, not by ceremony.
 ## Runtime is deliberately lossy
 
 `runtime.Runtime` exposes `Open`, `Close`, `List`, and `Annotate`. `auto` selects Herdr when available, then tmux, then Zellij, then the always-available `none` backend. Closing any backend must not remove the checkout, branch, or task entry.
+
+`none` means no observable multiplexer backend; it does not prove that no session or agent exists. Guarded actions that require occupancy or absence proof retain this as unobserved evidence. `dev flow` never presents it as known closed and does not offer the expert `--assume-no-runtime` override.
 
 This separation is why rebooting, closing a multiplexer, or changing runtime backend does not abandon work. `dev sweep` can compare the registry with live Git/runtime facts and report drift.
 
@@ -108,4 +118,6 @@ One writer owns a branch at a time. If two machines or agents need to mutate the
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/help/topics/parking.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/parking.md)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)

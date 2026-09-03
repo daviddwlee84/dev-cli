@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-09-01
+verified_on: 2026-09-02
 ---
 
 # Sources and freshness
@@ -57,18 +57,21 @@ tested_with: optional
 
 | Topic or claim | Owning page | Primary authority | Status checked |
 |---|---|---|---|
-| HOT/WARM/COLD/DONE and checkout modes | [Mental model](../concepts/mental-model.md) | `internal/task/task.go`, lifecycle CLI/tests | repository snapshot 2026-08-28 |
-| `done --pr` leaves task active | [Change-stream workflow](../guides/change-stream-workflow.md) | `internal/cli/done.go` | implemented |
+| HOT/WARM/COLD/DONE, checkout modes, and legal transitions | [Mental model](../concepts/mental-model.md) | `internal/task/task.go`, `internal/taskflow/transitions.go`, lifecycle tests | repository snapshot 2026-09-01 |
+| repository flow topology, local/manual-remote observations, revision-bound Plan/Apply, and partial ledgers | [Repository lifecycle flow](../guides/repository-flow.md) | `internal/cli/flow.go`, `internal/flowtui`, `internal/taskflow`, focused flow tests | preview implemented 2026-09-01 |
+| `done --pr` leaves task active and DONE keeps resources until Retire | [Change-stream workflow](../guides/change-stream-workflow.md) | `internal/taskflow/{complete,retire}.go`, CLI lifecycle tests | implemented |
 | worktree provisioning safety | [Worktrees and provisioning](../guides/worktrees-provisioning.md) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
 | repository new/clone routing, snapshot templates/confinement, check-in policy, project trust, skill batching, TTY editor, upstream publication, and handoff | [Commands and configuration](commands-config.md#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`, `internal/scaffold`, `internal/repotemplate`, `internal/projectconfig`, `internal/cli/repo_{create,checkin,skills}*.go`, `internal/cli/prompt.go`, focused repo-bootstrap tests | implemented |
 | lazygit lowercase `c` pending-message integration | [Compatibility](compatibility.md#lazygit-staged-message-prefill-is-best-effort) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive, checked 2026-08-29 |
 | runtime fallback and exact-pane `start --run` dispatch | [Parallel agents and runtimes](../guides/parallel-agents-runtimes.md) | `internal/runtime/runtime.go`, `internal/runtime/herdr.go`, focused start/runtime tests | implemented |
 | OpenSSH alias discovery/provenance, dev-owned Include/fragments, exact flags/JSON/TSV, public-key bootstrap, ProxyJump/Windows admin handling, partial outcomes, and removal limits | [SSH host onboarding](../guides/ssh-hosts.md) | `internal/sshhost`, `internal/cli/ssh.go`, SSH help, focused domain/CLI tests | implemented; repository snapshot 2026-09-01 |
-| fleet primary + generated-fragment merge, collision/ownership rules, `remote_os`, POSIX/Windows launchers, snapshots, and sync safety | [Remote repository fleet](../guides/remote-fleet.md) | `internal/fleet/{config,managed,transport}.go`, `internal/cli/fleet.go`, focused fleet/CLI tests, required Windows SSH CI job | implemented; repository snapshot 2026-09-01 |
-| READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](../guides/agent-safe-retirement.md) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
+| schema-v1 repository context, scoped readiness, sanitized remotes, and cache/live provenance | [Commands and configuration](commands-config.md#high-value-structured-interfaces) | `internal/repocontext`, `internal/cli/repo_context.go`, focused context tests | implemented |
+| fleet primary/generated-fragment ownership, `remote_os`, snapshots, machine UUID pinning, sync safety, explicit bounded `fleet files`, and POSIX/Windows launchers | [Remote repository fleet](../guides/remote-fleet.md) | `internal/fleet`, `internal/localfiles`, `internal/machineid`, `internal/cli/{fleet,fleet_files}.go`, focused fake-SSH/fault-injection tests, required Windows SSH CI job | implemented; SSH/fleet snapshot 2026-09-01 |
+| READY/MERGED/RETIRED milestones, task-backed retirement revalidation, compatibility boundaries, and merged-worktree sweep | [Agent-safe retirement](../guides/agent-safe-retirement.md) | `internal/taskflow/retire.go`, `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
 | `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](../guides/machine-summary.md), [Development journal](../guides/dev-journal.md) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
-| agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |
-| TUI startup/readiness stages, generation handling, cache/live provenance, and private trace semantics | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/perftrace`, `internal/tui/{readiness,local}.go`, `internal/cli/tui*.go`, focused race tests | implemented |
+| native cross-repository agent skill inventory, versioned path registry, local status, object-byte upstream checks, and serialized mutations | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agenttarget`, `internal/agentskill`, `internal/inventory/agent_skills.go`, `internal/cli/skill.go`, focused CLI/TUI tests | implemented; path registry snapshot `skills@1.5.23`; checked 2026-09-02 |
+| declaration-only MCP inventory, Claude approval annotation, and secret-redaction boundary | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | current official agent config docs; `internal/agentmcp`, `internal/cli/mcp.go`, fixture/security tests | implemented for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; checked 2026-09-02 |
+| dashboard startup/readiness stages, generation handling, cache/live provenance, and private trace semantics | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/perftrace`, `internal/tui/{readiness,local}.go`, `internal/cli/tui*.go`, focused race tests | implemented |
 | quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
 | release archives, package-manager ownership, and Homebrew tap publication | [Compatibility](compatibility.md) | `internal/cli/upgrade.go`, `.github/workflows/release.yml`, `scripts/update-homebrew-formula.sh`, packaging helper test | implemented |
 | current GitHub Flow has six branch/PR steps and no deployment step | [GitHub Flow](../git/github-flow.md) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official, checked 2026-08-28 |

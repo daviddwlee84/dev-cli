@@ -8,12 +8,16 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
-	retirement "github.com/daviddwlee84/dev-cli/internal/retire"
-	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/task"
-	"github.com/daviddwlee84/dev-cli/internal/wt"
+	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 	"github.com/spf13/cobra"
 )
+
+type retireCommandTarget struct {
+	Task *task.Task
+	Path string
+}
 
 func newRetireCmd(app *App) *cobra.Command {
 	var (
@@ -37,37 +41,18 @@ with --close-unknown; working, blocked and waiting agents are never overridden.`
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
-			target, rt, err := resolveRetirementTarget(ctx, app, args)
+			target, err := resolveRetireCommandTarget(ctx, app, args)
 			if err != nil {
 				return err
 			}
-			if err := ensureArtifactsFinalized(app, target.CheckoutPath); err != nil {
-				return err
+			if target.Task != nil {
+				return retireTaskWithTaskflow(ctx, app, target.Task, flow.RetireOptions{
+					CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime,
+					DeleteBranch: deleteBranch, Timeout: timeout,
+				}, cmd.Flags().Changed("delete-branch") && deleteBranch)
 			}
-			service := &retirement.Service{Runtime: rt, Tasks: app.Tasks}
-			result, err := service.Retire(ctx, retirement.Request{
-				Target: target,
-				Safety: retirement.Options{
-					CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, Timeout: timeout,
-				},
-				DeleteBranch: deleteBranch,
-			})
-			if err != nil {
-				return err
-			}
-			style := app.outStyle()
-			fmt.Fprintf(app.Out, "%s %s\n", style.success("RETIRED"), config.Contract(target.CheckoutPath))
-			fmt.Fprintf(app.Out, "   %s  %d session(s) closed\n", style.label("runtime"), result.ClosedSessions)
-			if result.RemovedWorktree {
-				fmt.Fprintf(app.Out, "   %s removed\n", style.label("worktree"))
-			}
-			if result.DeletedBranch {
-				fmt.Fprintf(app.Out, "   %s   %s deleted\n", style.label("branch"), target.Branch)
-			}
-			if result.DeletedTask {
-				fmt.Fprintf(app.Out, "   %s     %s reaped\n", style.label("task"), target.TaskID)
-			}
-			return nil
+			return retireUnmanagedPathCompatibility(ctx, app, target.Path, closeUnknown,
+				assumeNoRuntime, deleteBranch, timeout)
 		},
 	}
 	f := cmd.Flags()
@@ -79,98 +64,142 @@ with --close-unknown; working, blocked and waiting agents are never overridden.`
 	return cmd
 }
 
-func resolveRetirementTarget(ctx context.Context, app *App, args []string) (retirement.Target, runtime.Runtime, error) {
+func resolveRetireCommandTarget(ctx context.Context, app *App, args []string) (retireCommandTarget, error) {
 	if len(args) == 1 {
 		expanded := config.Expand(args[0])
 		if info, statErr := os.Stat(expanded); statErr == nil && info.IsDir() {
-			return retirementTargetForPath(ctx, app, expanded)
+			return retireCommandTargetForPath(ctx, app, expanded)
 		}
-		t, err := app.Tasks.Resolve(args[0])
+		candidate, err := app.Tasks.Resolve(args[0])
 		if err != nil {
-			return retirement.Target{}, nil, err
+			return retireCommandTarget{}, err
 		}
-		return retirementTargetForTask(ctx, app, t)
+		return retireCommandTarget{Task: candidate}, nil
 	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
-		return retirement.Target{}, nil, err
+		return retireCommandTarget{}, err
 	}
-	if t, taskErr := app.Tasks.FindByWorktree(cwd); taskErr == nil {
-		return retirementTargetForTask(ctx, app, t)
-	}
-	return retirementTargetForPath(ctx, app, cwd)
+	return retireCommandTargetForPath(ctx, app, cwd)
 }
 
-func retirementTargetForTask(ctx context.Context, app *App, t *task.Task) (retirement.Target, runtime.Runtime, error) {
-	if t.State != task.Done {
-		return retirement.Target{}, nil, fmt.Errorf("task %s is %s, not merged; run dev done first", t.ID, t.State)
-	}
-	base := t.Base
-	if base == "" {
-		base = gitx.DefaultBranch(ctx, t.RepoPath)
-	}
-	checkout := t.RepoPath
-	linked := false
-	rt := runtimeForTask(app, t)
-	if t.EffectiveMode() == task.ModeWorktree {
-		if t.WorktreePath != "" {
-			checkout, linked = t.WorktreePath, true
-		} else {
-			if t.RuntimeHandle != "" {
-				return retirement.Target{}, nil, fmt.Errorf("task %s has a runtime handle but no worktree path; reconcile it before retirement", t.ID)
-			}
-			rt = runtime.None{}
-		}
-	}
-	return retirement.Target{
-		TaskID: t.ID, RepoPath: t.RepoPath, CheckoutPath: checkout,
-		Branch: t.Branch, Base: base, LinkedWorktree: linked,
-	}, rt, nil
-}
-
-func retirementTargetForPath(ctx context.Context, app *App, path string) (retirement.Target, runtime.Runtime, error) {
+func retireCommandTargetForPath(ctx context.Context, app *App, path string) (retireCommandTarget, error) {
 	repository, err := gitx.Discover(ctx, path)
 	if err != nil {
-		return retirement.Target{}, nil, fmt.Errorf("resolve worktree %s: %w", config.Contract(path), err)
+		return retireCommandTarget{}, fmt.Errorf("resolve worktree %s: %w", config.Contract(path), err)
 	}
-	if !repository.IsLinkedWorktree {
-		return retirement.Target{}, nil, fmt.Errorf("%s is not a linked worktree; retire explicit paths only from their linked checkout", config.Contract(path))
-	}
-	status, err := gitx.StatusOf(ctx, repository.Root)
+	candidate, err := exactTaskForRetirementCheckout(app, repository.Root)
 	if err != nil {
-		return retirement.Target{}, nil, err
+		return retireCommandTarget{}, err
 	}
-	if status.Detached || status.Branch == "" {
-		return retirement.Target{}, nil, fmt.Errorf("refusing to retire detached worktree %s; preserve or branch its commit first", config.Contract(path))
+	if candidate != nil {
+		return retireCommandTarget{Task: candidate}, nil
 	}
-	base := gitx.DefaultBranch(ctx, repository.MainRoot)
-	target := retirement.Target{
-		RepoPath: repository.MainRoot, CheckoutPath: repository.Root,
-		Branch: status.Branch, Base: base, LinkedWorktree: true,
-	}
-	// Retiring by path used to leave the task record behind, because only the
-	// by-task form set TaskID and Service.Retire reaps nothing without it. The
-	// same checkout is the same work however it was named, so claim the record
-	// when one points at this path; validateTaskIdentity still refuses to reap
-	// a task that is not DONE.
-	if t, err := app.Tasks.FindByWorktree(repository.Root); err == nil && t != nil && t.State == task.Done {
-		target.TaskID = t.ID
-	}
-	return target, app.Runtime(), nil
+	return retireCommandTarget{Path: repository.Root}, nil
 }
 
-func safeRemoveWorktree(ctx context.Context, rt runtime.Runtime, repoPath, path string, force bool,
-	closeUnknown, assumeNoRuntime bool, timeout time.Duration,
+func exactTaskForRetirementCheckout(app *App, checkout string) (*task.Task, error) {
+	canonicalCheckout, err := pathx.Canonical(checkout)
+	if err != nil {
+		return nil, fmt.Errorf("canonicalize retirement checkout %s: %w", config.Contract(checkout), err)
+	}
+	records, _, err := app.Tasks.ListRecords()
+	if err != nil {
+		return nil, err
+	}
+	var matched *task.Task
+	for _, record := range records {
+		candidate := record.Task
+		if candidate.EffectiveMode() == task.ModeWorktree && candidate.WorktreePath == "" {
+			// A COLD/DONE worktree task with no checkout does not claim the
+			// canonical repository merely because checkoutOf falls back there.
+			continue
+		}
+		candidateCheckout, canonicalErr := pathx.Canonical(checkoutOf(&candidate))
+		if canonicalErr != nil || candidateCheckout != canonicalCheckout {
+			continue
+		}
+		if matched != nil {
+			return nil, fmt.Errorf("checkout %s is claimed by multiple tasks (%s, %s); name one explicitly or reconcile task metadata",
+				config.Contract(canonicalCheckout), matched.ID, candidate.ID)
+		}
+		matched = &candidate
+	}
+	return matched, nil
+}
+
+func retireTaskWithTaskflow(
+	ctx context.Context,
+	app *App,
+	selected *task.Task,
+	options flow.RetireOptions,
+	authorizeBranchDeletion bool,
 ) error {
-	if _, err := retirement.CloseAndWait(ctx, rt, path, retirement.Options{
+	session, err := newLifecycleSession(ctx, app, func() (*task.Task, error) { return selected, nil })
+	if err != nil {
+		return err
+	}
+	plan, err := session.plan(ctx, options)
+	if err != nil {
+		return err
+	}
+	approval := flow.Approve(plan.PlanID)
+	if plan.Confirmation.Kind == flow.ConfirmationTyped {
+		if !authorizeBranchDeletion {
+			return fmt.Errorf("%s requires its exact typed confirmation", plan.Summary)
+		}
+		approval = flow.ApproveWithToken(plan.PlanID, plan.Confirmation.Token)
+	}
+	result, applyErr := session.apply(ctx, plan, approval)
+	if applyErr != nil {
+		renderLifecycleResult(app, plan, result)
+		return presentLifecycleApplyError(plan, applyErr)
+	}
+	if err := session.requireRetired(app, result); err != nil {
+		return err
+	}
+
+	style := app.outStyle()
+	fmt.Fprintf(app.Out, "%s %s\n", style.success("RETIRED"), config.Contract(checkoutOf(selected)))
+	renderLifecycleResult(app, plan, result)
+	return nil
+}
+
+// retireUnmanagedPathCompatibility preserves the contained-only path contract
+// while routing every mutation through taskflow's exact unmanaged transaction.
+func retireUnmanagedPathCompatibility(
+	ctx context.Context,
+	app *App,
+	path string,
+	closeUnknown, assumeNoRuntime, deleteBranch bool,
+	timeout time.Duration,
+) error {
+	repository, err := gitx.Discover(ctx, path)
+	if err != nil {
+		return fmt.Errorf("resolve worktree %s: %w", config.Contract(path), err)
+	}
+	if !repository.IsLinkedWorktree {
+		return fmt.Errorf("%s is not a linked worktree; retire explicit paths only from their linked checkout", config.Contract(path))
+	}
+	locator, err := exactUnmanagedWorktreeLocator(ctx, repository.MainRoot, repository.Root)
+	if err != nil {
+		return err
+	}
+	base := gitx.DefaultBranch(ctx, repository.MainRoot)
+	if base == "" {
+		return fmt.Errorf("cannot prove unmanaged retirement without an explicit repository default branch")
+	}
+	execution, err := executeNonTaskLifecycle(ctx, app, locator, flow.RemoveCheckoutOptions{
+		RequireContained: true, ContainmentBase: base, DeleteContainedBranch: deleteBranch,
 		CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, Timeout: timeout,
-	}); err != nil {
+	}, deleteBranch)
+	if err != nil {
 		return err
 	}
-	if dirty, status, err := wt.DirtyCheck(ctx, path); err != nil {
-		return err
-	} else if dirty && !force {
-		return fmt.Errorf("%s has uncommitted changes (%s)", config.Contract(path), status.Breakdown())
+	if execution.Result.Milestone != flow.MilestoneNone {
+		return fmt.Errorf("unmanaged retirement returned unexpected milestone %s", execution.Result.Milestone)
 	}
-	return gitx.RemoveWorktree(ctx, repoPath, path, force)
+	fmt.Fprintf(app.Out, "%s %s\n", app.outStyle().success("RETIRED"), config.Contract(locator.CheckoutPath))
+	return nil
 }

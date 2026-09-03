@@ -13,13 +13,19 @@ A Git worktree begins as a clean checkout. `dev` owns durable change-stream work
 
 | Worktree kind | Owner | Typical location | Lifetime |
 |---|---|---|---|
-| feature, fix, experiment, cross-machine handoff | `dev` | configured `paths.worktree_path` | until `dev done`, `dev wt rm`, or an approved sweep |
-| harness-scoped isolation | Claude Code or another harness | harness-owned directory such as `.claude/worktrees/<name>/` | governed by that harness's retention and safe-cleanup rules |
-| externally created linked worktree | external until adopted | tool-specific | visible to `dev`, unmanaged until explicit adoption |
+| feature, fix, experiment, cross-machine handoff | `dev` | configured `paths.worktree_path` | `dev done` records MERGED only; a later `dev retire`, explicit `dev wt rm`, or approved sweep removes it |
+| harness-scoped isolation | Claude Code or another harness | harness-owned directory such as `.claude/worktrees/<name>/` | governed by that harness's retention and safe-cleanup rules; Flow never adopts or removes it |
+| externally created linked worktree | external until adopted | tool-specific | visible to `dev`/`dev flow`; unmanaged until explicit adoption |
 
 Use `dev` when code, history, or plans must remain reviewable or a human may return later. Do not nest a long-lived `dev` worktree inside a repository; file watchers, language servers, backup tools, and searches in the outer checkout would see a second copy of the tree.
 
 `dev` creates the checkout with Git at its configured path. Herdr only opens that existing path, so worktree placement remains identical on machines without Herdr.
+
+`dev flow [repo]` uses Git's authoritative worktree records to show canonical,
+managed, unmanaged, and strict `.claude/worktrees/` harness rows, plus task-only
+rows that have no checkout. It never guesses ownership from a `worktree-*`
+branch prefix; ambiguous path/task binding is labelled CONFLICT and stops
+lifecycle mutation. See [Repository lifecycle flow](repository-flow.md).
 
 ## Inspect before creating
 

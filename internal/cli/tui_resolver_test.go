@@ -5,20 +5,46 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/daviddwlee84/dev-cli/internal/agenttarget"
 )
+
+func TestProjectRootResolverCachesCompleteTarget(t *testing.T) {
+	resolver := newTUIProjectRootResolver(nil, t.Context())
+	resolver.getwd = func() (string, error) { return "/worktrees/demo", nil }
+	calls := 0
+	want := agenttarget.Target{
+		RepoName: "demo", RepoPath: "/repos/demo", CheckoutRoot: "/worktrees/demo", CommonDir: "/repos/demo/.git",
+	}
+	resolver.resolve = func(context.Context, string) (agenttarget.Target, error) {
+		calls++
+		return want, nil
+	}
+	first, err := resolver.ResolveTarget(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := resolver.ResolveTarget(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || first != want || second != want {
+		t.Fatalf("target calls=%d first=%+v second=%+v", calls, first, second)
+	}
+}
 
 func TestProjectRootResolverIsNotPoisonedByCanceledWaiter(t *testing.T) {
 	resolver := newTUIProjectRootResolver(nil, t.Context())
 	resolver.getwd = func() (string, error) { return "/repo/nested", nil }
 	started := make(chan struct{})
 	release := make(chan struct{})
-	resolver.projectRoot = func(ctx context.Context, _ string) string {
+	resolver.resolve = func(ctx context.Context, _ string) (agenttarget.Target, error) {
 		close(started)
 		select {
 		case <-ctx.Done():
-			return "/repo/nested"
+			return agenttarget.Target{CheckoutRoot: "/repo/nested"}, nil
 		case <-release:
-			return "/repo"
+			return agenttarget.Target{CheckoutRoot: "/repo"}, nil
 		}
 	}
 

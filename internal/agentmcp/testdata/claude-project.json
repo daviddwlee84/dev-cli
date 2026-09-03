@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "claude-stdio": {
+      "type": "stdio",
+      "command": "/usr/local/bin/claude-server",
+      "args": ["--token", "fixture-secret-must-not-appear"],
+      "env": {"API_TOKEN": "fixture-secret-must-not-appear"}
+    },
+    "claude-http": {
+      "type": "http",
+      "url": "https://user:fixture-secret-must-not-appear@example.test/private/path?token=fixture-secret-must-not-appear#fragment",
+      "headers": {"Authorization": "Bearer fixture-secret-must-not-appear"},
+      "headersHelper": "print-fixture-secret-must-not-appear"
+    }
+  }
+}

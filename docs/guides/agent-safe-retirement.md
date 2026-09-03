@@ -2,7 +2,7 @@
 description: Retire an integrated dev-cli worktree and runtime safely, from outside the workspace being removed.
 authority: project
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-09-01
 ---
 
 # Agent-safe retirement
@@ -33,6 +33,7 @@ RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 | `dev done --merged --base-ref <ref> --confirm-squash <merge-commit>` | Same, but for a squash merge: attests that the named commit, already proven contained in `<ref>`, represents the feature branch. This is an operator assertion dev cannot verify on its own. |
 | `dev artifact discard <intent> --yes` | Records that an intent can never be finalized — its transcript was never written, or its HEAD is gone after a rebase — so it stops blocking integration and retirement. It commits and recovers nothing, prints exactly what is being abandoned, and refuses an intent that is still `armed`, because finalization is the path that preserves a transcript. |
 | `dev retire [task-or-worktree] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | Re-resolves every covering runtime session, refuses active agents and mixed-purpose workspaces, waits for closure, revalidates Git state, and only then removes the linked worktree without force. Deletes the task record only after every requested step succeeds. |
+| `dev flow [repo]` | Preview UI for an exact DONE task: Enter builds a revision-bound Retire plan, then approval applies it. Branch deletion requires the displayed typed token. |
 | `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | From the canonical checkout, reports (and, with `--apply`, retires) both task-tracked and unmanaged linked worktrees whose branches are already contained in the base. |
 
 A dirty checkout does not fail here: `dev done` classifies it against the base
@@ -66,6 +67,13 @@ dev retire <task> --delete-branch
 ```
 
 `dev done` only integrates and records MERGED. `dev retire` re-resolves every runtime pane, closes eligible sessions, waits for them to disappear, revalidates Git, and removes the worktree without force.
+
+In `dev flow`, Retire shows conditions, effects, retained resources, and the CLI
+fallback before approval. Apply locks and reloads the task revision plus exact
+repository/worktree/ref/runtime/artifact authority, repeats safety checks after
+runtime closure and before removal, and deletes the task record last. A later
+failure preserves a step ledger and recovery; completed effects are not called
+rolled back.
 
 ## Pull-request flow
 
@@ -111,7 +119,13 @@ This surfaces both task-tracked DONE worktrees and unmanaged linked worktrees wh
 
 ## Safety boundaries
 
-Raw `git worktree remove --force` bypasses dev entirely — never run it from an agent that occupies the target. dev's guarantee is only that no dev-mediated path performs a forced removal; it cannot stop an operator or script from calling Git directly.
+Raw `git worktree remove --force` and configured external tools bypass dev entirely — never run them from an agent that occupies the target. dev's guarantee is only for dev-mediated paths; it cannot stop an operator or script from calling Git directly.
+
+Normal task-backed retirement uses `internal/taskflow`. The explicit unmanaged
+path form of `dev retire` remains an isolated compatibility implementation, and
+some `sweep` record-only/orphan-salvage actions remain outside taskflow. Existing
+CLI acknowledgement flags remain compatible; the flow preview intentionally
+offers none of them.
 
 A real Codex session once deleted its own registered worktree and branch from another checkout. Herdr kept the workspace and terminal alive because a Unix process can hold an open cwd inode after the path is unlinked, and SpecStory then recreated the same path containing only `.specstory/` content. The shell looked alive but was no longer a Git checkout:
 
@@ -131,6 +145,7 @@ Byte equality rather than mere presence is the point. A transcript writer that o
 - [`internal/skill/dev-cli/references/agent-retirement.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/agent-retirement.md)
 - [`internal/help/topics/retirement.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/retirement.md)
 - [`internal/cli/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/retire.go)
+- [`internal/taskflow/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/retire.go)
 - [`internal/cli/artifact.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/artifact.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)

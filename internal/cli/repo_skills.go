@@ -64,7 +64,7 @@ func installRepoSkills(ctx context.Context, app *App, root string, specs []repoS
 		if err != nil {
 			return result, fmt.Errorf("prepare skills %s install: %w", strings.Join(group.names, ", "), err)
 		}
-		process.Stdin, process.Stdout, process.Stderr = app.In, app.Out, app.Err
+		process.Command.Stdin, process.Command.Stdout, process.Command.Stderr = app.In, app.Out, app.Err
 		if err := process.Run(); err != nil {
 			return result, fmt.Errorf("install skills %s: %w", strings.Join(group.names, ", "), err)
 		}
@@ -141,6 +141,6 @@ func runUpstreamSkillCatalog(ctx context.Context, app *App, root, source string)
 	if err != nil {
 		return err
 	}
-	process.Stdin, process.Stdout, process.Stderr = app.In, app.Out, app.Err
+	process.Command.Stdin, process.Command.Stdout, process.Command.Stderr = app.In, app.Out, app.Err
 	return process.Run()
 }

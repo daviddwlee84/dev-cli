@@ -16,7 +16,9 @@ import (
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/agentmcp"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
+	"github.com/daviddwlee84/dev-cli/internal/agenttarget"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
@@ -31,6 +33,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/stats"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 	"github.com/daviddwlee84/dev-cli/internal/tui"
 	"github.com/daviddwlee84/dev-cli/internal/wt"
 	"github.com/spf13/cobra"
@@ -45,14 +48,15 @@ func newTUICmd(app *App) *cobra.Command {
 Shows exactly what "dev ls" shows, from the same code path, plus the ability
 to open, park and annotate a task without retyping its name.
 
-Six lists, switched with tab:
+Seven lists, switched with tab:
 
   TASKS   change streams dev is tracking — what am I working on
   REPOS   durable repositories under the scan roots — what do I have here
   FLEET   repositories and active work across configured SSH machines
   TRY     scratch experiments and retained lifecycle history
   REMOTE  repositories visible through configured forge CLIs — what can I clone/open
-  SKILLS  project/global agent skills, agents, sources and update state
+  SKILLS  repository/global agent skills, local status and update freshness
+  MCP     sanitized static MCP declarations for supported agents
 
 Navigation is vim-style, with arrows alongside:
 
@@ -68,6 +72,7 @@ Actions depend on the list:
 	  TRY     enter open · n create · space lifecycle/metadata actions
   REMOTE  enter open local · c clone after confirmation
   SKILLS  a interactive add · c check updates · u update selected after confirmation
+  MCP     r reload static declarations; no server is started or probed
 
   y       copy menu: yy context · yp path · yb branch · ys sessions · yw WT paths
   H       selected repo heatmap; b backfills it when empty
@@ -195,6 +200,54 @@ func tuiRemoteCloneDestination(app *App, name string) (string, error) {
 	return destination, nil
 }
 
+func startDirectFromTUI(ctx context.Context, app *App, rt runtime.Runtime, row tui.RepoRow, name string) (string, error) {
+	if err := guardSharedCheckout(ctx, app, rt, row.Repo.Path); err != nil {
+		return "", err
+	}
+	status, err := gitx.StatusOf(ctx, row.Repo.Path)
+	if err != nil {
+		return "", err
+	}
+	if status.Detached || status.Branch == "" {
+		return "", fmt.Errorf("direct task needs a named branch; this repo has detached HEAD")
+	}
+	id := task.MakeID(row.Repo.Name, status.Branch)
+	replaceDoneRevision := ""
+	existing, err := existingTaskForStart(app.Tasks, id)
+	if err != nil {
+		return "", err
+	}
+	if existing != nil && existing.State != task.Done {
+		return "", fmt.Errorf("task %s already exists (state %s)", existing.ID, existing.State)
+	}
+	if existing != nil {
+		replaceDoneRevision = existing.Revision()
+	}
+	handle, err := rt.Open(ctx, row.Repo.Path, row.Repo.Name+"/"+name)
+	if err != nil {
+		return "", err
+	}
+	tracked := &task.Task{
+		Name: name, Repo: row.Repo.Name, RepoPath: row.Repo.Path,
+		Branch: status.Branch, Base: status.Branch, Mode: task.ModeDirect,
+		State: task.Hot, Owner: config.Hostname(),
+	}
+	setTaskRuntime(tracked, rt, handle)
+	if replaceDoneRevision != "" {
+		err = app.Tasks.ReplaceDone(tracked, replaceDoneRevision)
+	} else {
+		err = app.Tasks.Save(tracked)
+	}
+	if err != nil {
+		if handle.Created && handle.Handle != "" {
+			_ = rt.Close(ctx, handle.Handle)
+		}
+		return "", err
+	}
+	annotate(app, rt, tracked)
+	return fmt.Sprintf("tracking %s directly on %s; no branch/worktree created", name, status.Branch), nil
+}
+
 func runTUI(app *App) error {
 	app.traceTUI = true
 	runCtx, cancelRun := context.WithCancel(context.Background())
@@ -241,12 +294,47 @@ func runTUI(app *App) error {
 		results, _, err := collectFleet(ctx, appState.Current(), fleetCollectOptions{LocalSnapshot: &snapshot})
 		return fleetRows(results), err
 	}
-	reloadSkills := func(ctx context.Context) ([]agentskill.Skill, error) {
-		projectRoot, err := projectRootResolver.Resolve(ctx)
+	capabilityTargets := func(ctx context.Context, locals []tui.RepoRow) ([]agenttarget.Target, error) {
+		repositories := make([]repo.Repo, 0, len(locals))
+		for _, row := range locals {
+			if !row.IsTry() {
+				repositories = append(repositories, row.Repo)
+			}
+		}
+		targets := agenttarget.FromRepositories(repositories)
+		current, err := projectRootResolver.ResolveTarget(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return agentskill.List(ctx, projectRoot, agentskill.ListOptions{})
+		return agenttarget.WithCurrent(targets, current), nil
+	}
+	reloadSkills := func(ctx context.Context, locals []tui.RepoRow) ([]agentskill.Skill, error) {
+		targets, err := capabilityTargets(ctx, locals)
+		if err != nil {
+			return nil, err
+		}
+		result, err := inventory.CollectAgentSkills(ctx, targets, inventory.AgentSkillOptions{})
+		if err != nil {
+			return result.Skills, err
+		}
+		if len(result.Diagnostics) > 0 {
+			return result.Skills, tui.LoadWarning{Message: fmt.Sprintf("%d skill inventory diagnostic(s); run `dev skill list --all` for details", len(result.Diagnostics))}
+		}
+		return result.Skills, nil
+	}
+	reloadMCP := func(ctx context.Context, locals []tui.RepoRow) ([]agentmcp.Declaration, error) {
+		targets, err := capabilityTargets(ctx, locals)
+		if err != nil {
+			return nil, err
+		}
+		result, err := agentmcp.Scan(ctx, targets)
+		if err != nil {
+			return result.Declarations, err
+		}
+		if len(result.Diagnostics) > 0 {
+			return result.Declarations, tui.LoadWarning{Message: fmt.Sprintf("%d MCP inventory diagnostic(s); run `dev mcp list --all` for details", len(result.Diagnostics))}
+		}
+		return result.Declarations, nil
 	}
 	reloadTries := func(ctx context.Context, includeAll bool) ([]tui.TryRow, error) {
 		rt, err := runtimeResolver.Resolve(ctx)
@@ -281,7 +369,8 @@ func runTUI(app *App) error {
 		ReloadRepos:           reloadRepos,
 		ReloadRemoteWithRepos: reloadRemote,
 		ReloadFleetWithRepos:  reloadFleet,
-		ReloadSkills:          reloadSkills,
+		ReloadSkillsWithRepos: reloadSkills,
+		ReloadMCPWithRepos:    reloadMCP,
 		LoadRemoteCache: func(context.Context) tui.RemoteCacheResult {
 			rows, found, stale := cachedRemoteRows(appState.Current())
 			return tui.RemoteCacheResult{Rows: rows, Found: found, Stale: stale}
@@ -298,19 +387,27 @@ func runTUI(app *App) error {
 		CheckSkills: func(ctx context.Context, rows []agentskill.Skill) []agentskill.Skill {
 			return agentskill.CheckUpdates(ctx, rows)
 		},
-		AddSkill: func() (*exec.Cmd, error) {
+		AddSkill: func() (*agentskill.MutationCommand, error) {
 			projectRoot, ok := projectRootResolver.Current()
 			if !ok {
 				return nil, errors.New("project root is still loading")
 			}
 			return agentskill.AddCommand(context.Background(), projectRoot, agentskill.DefaultSource)
 		},
-		UpdateSkill: func(row agentskill.Skill) (*exec.Cmd, error) {
-			projectRoot, ok := projectRootResolver.Current()
-			if !ok {
-				return nil, errors.New("project root is still loading")
+		UpdateSkill: func(row agentskill.Skill) (*agentskill.MutationCommand, error) {
+			projectRoot := row.Checkout
+			if row.Scope == agentskill.ScopeGlobal || projectRoot == "" {
+				var ok bool
+				projectRoot, ok = projectRootResolver.Current()
+				if !ok {
+					return nil, errors.New("project root is still loading")
+				}
 			}
-			return agentskill.UpdateCommand(context.Background(), projectRoot, row.Name, row.Scope)
+			managedName := row.Name
+			if row.Lock != nil {
+				managedName = row.Lock.Name
+			}
+			return agentskill.UpdateCommand(context.Background(), projectRoot, managedName, row.Scope)
 		},
 		Repos: tui.RepoActions{
 			Patch: func(ctx context.Context, row tui.RepoRow, tags []string, note string) (string, error) {
@@ -471,41 +568,34 @@ func runTUI(app *App) error {
 
 		Park: func(ctx context.Context, selected *task.Task, next string) (string, error) {
 			active := appState.Current()
-			current, err := active.Tasks.Get(selected.ID)
+			rt, err := runtimeResolver.Resolve(ctx)
 			if err != nil {
 				return "", err
 			}
-			updated := *current
-			if next != "" {
-				updated.Next = next
-			}
-			runtimeForTask(active, &updated) // normalize empty handle/name provenance
-			if updated.RuntimeHandle != "" {
-				if _, _, err := closeTaskRuntime(ctx, active, &updated, checkoutOf(&updated)); err != nil {
-					return "", err
-				}
-			}
-			// The dashboard only parks warm: going cold removes a checkout,
-			// which is too consequential for a single keystroke.
-			updated.State, updated.Owner = task.Warm, config.Hostname()
-			if err := active.Tasks.Save(&updated); err != nil {
+			actionApp := *active
+			actionApp.runtimeInstance = rt
+			execution, err := executeTaskLifecycle(ctx, &actionApp, func() (*task.Task, error) {
+				return actionApp.Tasks.Get(selected.ID)
+			}, flow.ParkWarmOptions{Next: next})
+			if err != nil {
 				return "", err
 			}
-			return updated.Title() + " parked warm — worktree and branch kept", nil
+			return execution.Task.Title() + " parked warm — worktree and branch kept", nil
 		},
 
 		SetNext: func(ctx context.Context, selected *task.Task, next string) error {
 			active := appState.Current()
-			current, err := active.Tasks.Get(selected.ID)
+			current, err := active.Tasks.GetRecord(selected.ID)
 			if err != nil {
 				return err
 			}
-			updated := *current
+			updated := current.Task
 			updated.Next = next
-			if err := active.Tasks.Save(&updated); err != nil {
+			persisted, err := active.Tasks.Update(ctx, &updated, current.Revision)
+			if err != nil {
 				return err
 			}
-			annotate(active, runtimeForTask(active, &updated), &updated)
+			annotate(active, runtimeForTask(active, &persisted.Task), &persisted.Task)
 			return nil
 		},
 
@@ -539,35 +629,7 @@ func runTUI(app *App) error {
 			if err != nil {
 				return "", err
 			}
-			if err := guardSharedCheckout(ctx, active, rt, r.Repo.Path); err != nil {
-				return "", err
-			}
-			st, err := gitx.StatusOf(ctx, r.Repo.Path)
-			if err != nil {
-				return "", err
-			}
-			if st.Detached || st.Branch == "" {
-				return "", fmt.Errorf("direct task needs a named branch; this repo has detached HEAD")
-			}
-			id := task.MakeID(r.Repo.Name, st.Branch)
-			if existing, err := active.Tasks.Get(id); err == nil && existing.State != task.Done {
-				return "", fmt.Errorf("task %s already exists (state %s)", existing.ID, existing.State)
-			}
-			handle, err := rt.Open(ctx, r.Repo.Path, r.Repo.Name+"/"+name)
-			if err != nil {
-				return "", err
-			}
-			t := &task.Task{
-				Name: name, Repo: r.Repo.Name, RepoPath: r.Repo.Path,
-				Branch: st.Branch, Base: st.Branch, Mode: task.ModeDirect,
-				State: task.Hot, Owner: config.Hostname(),
-			}
-			setTaskRuntime(t, rt, handle)
-			if err := active.Tasks.Save(t); err != nil {
-				return "", err
-			}
-			annotate(active, rt, t)
-			return fmt.Sprintf("tracking %s directly on %s; no branch/worktree created", name, st.Branch), nil
+			return startDirectFromTUI(ctx, active, rt, r, name)
 		},
 
 		LoadStats: func(ctx context.Context, repoName string) (tui.StatsPanel, error) {
@@ -865,6 +927,7 @@ func applyTryAction(ctx context.Context, app *App, rt runtime.Runtime, request t
 type repoCollectOptions struct {
 	IncludeTries bool
 	Sessions     []runtime.Session
+	SessionsErr  error
 	SessionsSet  bool
 	Tasks        []*task.Task
 	TasksSet     bool
@@ -905,19 +968,25 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 		repos, assets = visibleRepos, visibleAssets
 	}
 	tasks := options.Tasks
+	var taskDiagnostics []task.Diagnostic
 	if !options.TasksSet {
-		tasks, err = app.Tasks.List()
+		tasks, taskDiagnostics, err = app.Tasks.ListWithDiagnostics()
 		if err != nil {
 			return nil, err
 		}
 	}
+	var taskInventoryErr error
+	for _, diagnostic := range taskDiagnostics {
+		taskInventoryErr = errors.Join(taskInventoryErr, diagnostic)
+	}
 	byRepo := map[string][]*task.Task{}
-	for _, t := range tasks {
-		byRepo[t.RepoPath] = append(byRepo[t.RepoPath], t)
+	for _, tracked := range tasks {
+		byRepo[tracked.RepoPath] = append(byRepo[tracked.RepoPath], tracked)
 	}
 	sessions := options.Sessions
+	runtimeErr := options.SessionsErr
 	if !options.SessionsSet {
-		sessions, _ = rt.List(ctx)
+		sessions, runtimeErr = rt.List(ctx)
 	}
 	notesByRepo := map[string][]*note.Note{}
 	if app.Notes != nil {
@@ -966,6 +1035,8 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 				row.Tasks = append(row.Tasks, byRepo[r.RealPath]...)
 			}
 			row.Context = inventory.CollectRepoContext(ctx, r, row.Tasks, sessions, rt.Name())
+			row.Context.TaskErr = taskInventoryErr
+			row.Context.RuntimeErr = runtimeErr
 			row.LastActivity = row.Context.LastActivity
 			row.Worktrees = row.Context.WorktreeCount
 			if main, ok := row.Context.Main(); ok {

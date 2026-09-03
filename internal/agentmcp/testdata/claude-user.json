@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "claude-user": {"type": "sse", "url": "https://user.example.test/sse"}
+  },
+  "projects": {
+    "PROJECT_PATH": {
+      "mcpServers": {
+        "claude-local": {"type": "ws", "url": "wss://local.example.test/socket"}
+      },
+      "enabledMcpServers": ["claude-local"]
+    }
+  }
+}

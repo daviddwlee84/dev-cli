@@ -11,6 +11,7 @@ dev fleet config edit          # primary remotes.toml only
 dev fleet config show          # redacted effective merge + generated origins
 dev fleet config path          # primary path
 dev fleet status
+dev fleet machine-id lab
 ```
 
 Fleet merges the user-authored primary `$XDG_CONFIG_HOME/dev/remotes.toml` with
@@ -24,12 +25,16 @@ available in primary profiles. `remote_os = "posix"|"windows"` selects target
 launcher/path semantics; omission remains POSIX. Password fallback in primary
 profiles supports `prompt`, `plain`, and `bitwarden`, but key/agent authentication
 is attempted first. Generated fragments can contain only name, ssh_alias, and
-remote_os—never passwords or alternate connection policy.
+remote_os—never passwords, machine pins, or alternate connection policy.
 
 Host names are globally unique. Existing primary profiles may share an SSH alias,
 but any collision involving a generated fragment fails. Do not edit generated
 fragments: reconcile them with explicit `dev ssh setup <alias> … --fleet` and
 remove them with `dev ssh remove <alias> --fleet`.
+
+Read-only commands tolerate an unpinned host. Before a mutating file transfer,
+run `dev fleet machine-id <host>`, verify the UUID independently, and add it as
+that primary host's `machine_id`; the command reports but never writes the pin.
 
 ## Register a freshly verified alias
 
@@ -58,7 +63,7 @@ dev fleet open lab api
 Every host runs its own `dev`, so its `config.toml`, scan roots, exact repo paths,
 task registry, and runtime remain authoritative. An unreachable host can reuse
 the last successful private XDG snapshot. Cache identity includes the full SSH
-endpoint, port, timeouts, dev path, and remote OS.
+endpoint, port, timeouts, dev path, remote OS, and optional machine-ID pin.
 
 The dashboard FLEET view hides this machine by default because REPOS already
 shows richer local state; `a` includes local rows. `dev fleet list` always keeps
@@ -72,9 +77,11 @@ changes directory, and starts a login shell.
 ## POSIX and Windows remote transport
 
 POSIX hosts use an injection-safe shell launcher. Windows hosts use an encoded
-PowerShell wrapper that accepts only `_snapshot`, `_sync`, `_open-herdr`, and
-`_shell` helper shapes, locates `dev.exe` when `dev_path = "auto"`, preserves sync
-stdin, returns 127 when dev is absent, and propagates its status. Explicit paths
+PowerShell wrapper that accepts only `_snapshot`, `_sync`, content-free
+`_capability`, `_open-herdr`, and `_shell` helper shapes, locates `dev.exe` when
+`dev_path = "auto"`, preserves protocol stdin, returns 127 when dev is absent,
+and propagates its status. Native Windows `_files-plan`/`_files-apply` payloads
+remain denied before content is sent. Explicit paths
 are validated with target-OS semantics rather than controller filepath rules.
 Generated Windows hosts require automatic dev lookup.
 
@@ -98,3 +105,23 @@ or without that repository are ignored and reported explicitly.
 
 There is no automatic rebase, force push, background hook, or all-repository
 pull. Resolve divergent work interactively on the machine that owns it.
+
+## Transfer explicit ignored files
+
+```bash
+dev fleet files api --to lab
+dev fleet files api --to lab --apply --yes
+dev fleet files api --to lab --replace --apply
+```
+
+The report-only default expands `[local_files].include` plus repeatable `--file`
+patterns into exact source paths. Source and target must already match by fetch
+identity, attached branch and commit. Both sides must prove each path untracked
+and ignored; only bounded regular files pass. `--replace` separately authorizes
+a target whose bytes differ, and `--yes` never implies replacement.
+
+Apply requires a matching `machine_id` pin, uses a bounded non-PTY protocol,
+keeps file content and hashes out of public output/cache, writes owner-only
+files through held roots, and journals rollback before publication. It does not
+clone, switch branches, transfer tasks/catalog/notes, provision dependencies,
+delete source files, or evict a repository. Native Windows payloads are blocked.

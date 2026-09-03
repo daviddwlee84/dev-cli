@@ -29,6 +29,11 @@ types      1 modified, 1 deleted, 1 renamed/copied
 is one changed path, but correctly appears in both staged and unstaged
 categories — those category counts are not intended to be added together.
 
+`dev status` also adds one local-only readiness line with independent checkout,
+task, and worktree outcomes. It reuses the same collected facts as repository
+context, performs no forge/fleet network probe, and reports unavailable evidence
+as `indeterminate` rather than clean.
+
 Machine-readable output keeps every count separate:
 
 ```bash

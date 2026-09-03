@@ -407,7 +407,7 @@ func TestArchiveMoveFailureClearsIntentAndFinalizeFailureRollsBack(t *testing.T)
 				if location, ok := candidate.LocationFor("test-host"); ok && location.State == catalog.LocationArchived {
 					return nil, failure
 				}
-				return f.registry.Update(id, mutate)
+				return f.store.UpdateUnderLock(id, mutate)
 			},
 		})
 		result, err := service.Archive(context.Background(), experiment.TransitionRequest{Ref: item.ID})

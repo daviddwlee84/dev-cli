@@ -21,11 +21,12 @@ Use the authored map for intent and the embedded generated reference for exact f
 | repository quick notes | `note add`, `note list`, `note show`, `note search`, `note edit`, `note delete`, `note path`, `note reindex` |
 | machine inventory | `bootstrap`, `adopt`, `doctor` |
 | experiments | `try`, `tries …`, `graduate` |
-| terminal UI | `tui`, `tui tools` |
+| terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
 | SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh probe`, `ssh remove` |
-| remote fleet | `fleet list`, `fleet status`, `fleet sync`, `fleet open`, `fleet config …` |
+| remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
+| static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
 | activity/data | `summary`, `journal`, `stats …`, `cache …` |
 | help | `help [topic]` |
@@ -37,8 +38,10 @@ Run `dev <command> --help` for the installed binary; this site describes the rep
 ```bash
 dev ls --json
 dev repo list --json
-dev repo context [repo]
+dev repo context [repo] --json
 dev repo remote --json
+dev fleet machine-id <host> --json
+dev fleet files [repo-or-path] --to <host> --json
 dev repo new NAME --json
 dev repo clone <ref> --json
 dev repo setup [repo-or-path] --preset PRESET --json
@@ -52,10 +55,14 @@ dev ssh show <alias> --json
 dev ssh setup <alias> --dry-run --json
 dev ssh probe <alias> --json
 dev ssh remove <alias> --dry-run --json
+dev skill list --all --json
+dev mcp list --all --json
 dev bootstrap --json
 ```
 
-Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract.
+Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract. `repo context --json` is an additive schema-v1 report: unavailable facts remain null/error entries with explicit provenance instead of becoming zero values. `fleet files --json` is content-free and never includes file hashes or bodies.
+
+`dev skill list --json` keeps its existing array and keys while adding repository, checkout, installation, presence/integrity, registry, and lock metadata. `dev mcp list --json` begins with a `servers`/`diagnostics`/`coverage` envelope; exact Claude local rows add `local_project_path`. Every server field is already sanitized. Declaration state may include Claude's documented project approvals, but must not be interpreted as health or a generally effective merged configuration.
 
 Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
 
@@ -97,7 +104,15 @@ Fleet's durable input is a merge, not one file: user-authored primary
 participates in cache identity. `dev fleet config show` prints the effective
 merge with secrets redacted and generated origins identified; `config edit` and
 the TUI edit action continue to open only the primary file. Generated fragments
-are owned by `dev ssh setup/remove --fleet`.
+are owned by `dev ssh setup/remove --fleet` and cannot contain `machine_id`.
+
+`dev fleet machine-id <host>` performs the content-free `_capability` exchange,
+reports `unpinned`, `match`, or `mismatch`, and never writes the optional UUID
+pin. `dev fleet files` remains report-only until explicit `--apply`; it uses the
+separate `[local_files].include`/`--file` allowlist, requires a matching pin for
+apply, and never infers `--replace` from `--yes`. Windows transport allowlists the
+capability helper for identity diagnostics but blocks native file payload helpers
+before content is sent.
 
 ## Repository bootstrap
 
@@ -258,9 +273,31 @@ cursor, and Esc/Ctrl-C cancellation work as terminal actions rather than being
 inserted as raw escape bytes. Buffered and piped non-TTY input retains its
 line-oriented behavior.
 
+## `dev flow [repo]` preview
+
+`dev flow [repo]` is an independent full-screen command for interactive TTYs;
+it has no JSON or non-interactive contract. With no `repo`, a canonical or
+linked checkout opens the repository identified by the same Git common
+directory and focuses the exact current surface. Outside Git it opens an
+asynchronous repository picker. An explicit `repo` overrides cwd.
+
+Startup and `r` load only local topology and evidence. `R` offers Fetch refs,
+Refresh PR/MR, or Both; every choice first creates an exact guarded plan and
+then requires approval. A provider review observation retains only portable,
+run-local existence, `open`/`draft`/`merged`/`closed` state, URL, provider, and
+observation time; it does not represent CI checks or approvals. `runtime=none`
+remains unobserved and does not expose expert overrides such as
+`--assume-no-runtime`. See [Repository lifecycle flow](../guides/repository-flow.md)
+for keys, row kinds, partial ledgers, and the raw-tool escape boundary.
+
 ## `dev done` finish flags
 
-`dev done` for branch/worktree tasks integrates through exactly one of `--ff` (rebase onto the base, then fast-forward it) or `--pr` (push and open a pull/merge request). Omitting both opens the interactive finish wizard on a TTY — see [Change-stream workflow](../guides/change-stream-workflow.md) for the prompts.
+`dev done` for branch/worktree tasks integrates through exactly one of `--ff`
+(rebase onto the base, then fast-forward it), `--pr` (push and open a pull/merge
+request), or `--merged` (verify external integration against `--base-ref`).
+Omitting an integration choice opens the interactive finish wizard on a TTY —
+see [Change-stream workflow](../guides/change-stream-workflow.md) for the
+prompts.
 
 A dirty checkout is handled by `--dirty <auto|fail|commit|discard>` (default `auto`):
 
@@ -271,7 +308,16 @@ A dirty checkout is handled by `--dirty <auto|fail|commit|discard>` (default `au
 | `commit` | commits everything with `--message`/`-m` (prompted interactively if omitted) |
 | `discard` | resets tracked changes and removes untracked files; destructive, requires `--yes` outside a TTY |
 
-`--yes`/`-y` confirms the selected finish plan; it is mandatory for a non-interactive `--dirty discard` and otherwise skips the interactive confirmation step. `--keep-worktree` keeps the worktree after `--ff` integration (default: removed once merged), `--push` also pushes the resulting branch, and `--delete-branch` deletes the branch once its commits are contained in the base — never a branch with unpushed commits.
+`--yes`/`-y` confirms the selected finish plan; it is mandatory for a
+non-interactive `--dirty discard` and otherwise skips the interactive
+confirmation step. `--push` pushes the branch or base selected by the
+integration mode. Successful local or externally verified integration records
+DONE/MERGED while always retaining the runtime, worktree, and branch for a
+separate `dev retire`; `--keep-worktree` remains only as a no-op compatibility
+warning, while `--delete-branch` fails with guidance to use
+`dev retire --delete-branch`. `--merged` can use
+`--confirm-squash <merge-commit>` as explicit operator attestation for a squash
+result; provider status never implies that attestation.
 
 ## Configuration
 
@@ -299,7 +345,8 @@ Key sections:
 |---|---|
 | `[paths]` | scan roots, project/tries/worktree roots, worktree template, state path |
 | `[runtime]` | `auto`, Herdr, tmux, Zellij, or none plus metadata settings |
-| `[worktree]` | ignored includes, linked dirs, setup commands, strategies, timeout |
+| `[worktree]` | local ignored-file provisioning, linked dirs, setup commands, strategies, timeout |
+| `[local_files]` | host ceilings for portable files; project overlays provide the separate off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | complete remote inventory cache TTL and opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
@@ -387,8 +434,8 @@ not set both.
 
 A repository may commit these fixed files:
 
-- `.dev-cli/config.toml`: allowlisted worktree provisioning and repository
-  setup wizard defaults.
+- `.dev-cli/config.toml`: allowlisted worktree provisioning, separately
+  proposed portable local-file patterns, and repository setup wizard defaults.
 - `.dev-cli/scaffolds.toml`: project presets, templates, hooks, and skill
   setup using the same versioned schema.
 
@@ -399,6 +446,10 @@ version = 1
 [worktree]
 include = [".env.example"]
 strategy = "reinstall"
+
+# Proposed candidates only; export still requires explicit fleet files --to.
+[local_files]
+include = [".env", ".mcp/**"]
 
 [repo.setup]
 preset = "team"
@@ -414,6 +465,8 @@ project `[repo.setup]` preset, handoff, and check-in fields seed interactive
 wizard choices; they do not change scripted defaults, which are controlled by
 the corresponding flags. The legacy `commit` boolean remains readable, but may
 not be combined with `check_in` in the same layer.
+
+`[local_files].include` never inherits `[worktree].include`: provisioning a local checkout is not authorization to export a secret. Project overlays may propose only the portable include list; host-owned count/size/path ceilings come from global config and cannot be raised by a repository. The command remains report-only until an explicit `--apply`, target pin, and confirmation.
 
 Project files cannot override host paths, state location, runtime backend,
 forge inventory or credentials, stats, update, bootstrap, or TUI policy. They
@@ -472,6 +525,7 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 ## Sources
 
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
 - [`internal/scaffold/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/scaffold/types.go)
 - [`internal/projectconfig/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/projectconfig/types.go)
@@ -482,3 +536,6 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 - [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
 - [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
 - [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
+- [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
+- [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
+- [`internal/machineid`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/machineid)

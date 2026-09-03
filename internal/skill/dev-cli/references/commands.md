@@ -373,6 +373,21 @@ Print the effective remotes configuration
 dev fleet config show
 ```
 
+### `dev fleet files`
+
+Plan or apply one-way transfer of explicit ignored local files
+
+```
+dev fleet files [repo-or-path] [flags]
+```
+
+- `--apply` — apply the verified plan
+- `--file` — additional portable relative pattern (repeatable)
+- `--json` — emit content-free JSON
+- `--replace` — replace differing target files observed by this plan
+- `--to` — single configured target host (required)
+- `--yes` — confirm apply without prompting (does not imply --replace)
+
 ### `dev fleet list`
 
 List repositories and activity across this machine and configured hosts
@@ -386,6 +401,16 @@ dev fleet list [flags]
 - `--json` — emit versioned JSON
 - `--repo` — filter repository name, identity, branch or path
 - `--strict` — fail when a host is unreachable or incompatible
+
+### `dev fleet machine-id`
+
+Show and compare a remote host's stable machine ID
+
+```
+dev fleet machine-id <host> [flags]
+```
+
+- `--json` — emit JSON
 
 ### `dev fleet open`
 
@@ -418,6 +443,14 @@ dev fleet sync <repo> [flags]
 - `--json` — emit JSON results
 - `--push` — push the source branch before fan-out
 - `--remote` — Git remote to publish/check (default: upstream, then origin)
+
+### `dev flow`
+
+Preview: inspect and run guarded repository lifecycle actions
+
+```
+dev flow [repo]
+```
 
 ### `dev git`
 
@@ -548,6 +581,28 @@ dev ls [flags]
 - `--no-session` — skip the runtime query (faster)
 - `-r, --repo` — only tasks whose repo name contains this
 - `-s, --state` — only these states (hot, warm, cold, done)
+
+### `dev mcp`
+
+Inspect static agent MCP server declarations
+
+```
+dev mcp
+```
+
+### `dev mcp list`
+
+List configured MCP server declarations
+
+```
+dev mcp list [flags]
+```
+
+- `--agent` — agent format: claude-code, codex, cursor, gemini-cli, opencode
+- `--all` — scan every configured canonical repository
+- `--json` — emit a stable sanitized JSON envelope
+- `-r, --repo` — scan one repository or explicit checkout path
+- `--scope` — declaration scope: project, local, user, custom, system-defaults, system-override, managed
 
 ### `dev note`
 
@@ -716,8 +771,11 @@ dev repo clone [owner/name|url|path] [flags]
 Print agent-ready Git, worktree, runtime and task context
 
 ```
-dev repo context [repo]
+dev repo context [repo] [flags]
 ```
+
+- `--json` — emit the additive schema-v1 JSON report
+- `--refresh` — refresh external forge and configured fleet observations
 
 ### `dev repo list`
 
@@ -923,10 +981,12 @@ List project and global agent skills
 dev skill list [flags]
 ```
 
+- `--all` — scan every configured canonical repository
 - `--check` — contact Git sources and check for updates without installing them
 - `-g, --global` — list global skills
 - `--json` — emit a stable machine-readable JSON array
 - `-p, --project` — list project skills
+- `-r, --repo` — scan one repository or explicit checkout path
 
 ### `dev skill print`
 
@@ -957,6 +1017,7 @@ dev skill update <skill> [flags]
 
 - `-g, --global` — update the global skill
 - `-p, --project` — update the project-scoped skill
+- `-r, --repo` — project repository or explicit checkout path
 - `-y, --yes` — skip dev's confirmation
 
 ### `dev ssh`

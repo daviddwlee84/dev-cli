@@ -903,7 +903,7 @@ func TestReconcileAcrossProcessesCreatesOneStableRecord(t *testing.T) {
 				},
 				CatalogCreate: func(entry *catalog.Entry) error {
 					time.Sleep(50 * time.Millisecond)
-					return store.Create(entry)
+					return store.CreateUnderLock(entry)
 				},
 			},
 		})

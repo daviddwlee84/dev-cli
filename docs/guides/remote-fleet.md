@@ -1,5 +1,5 @@
 ---
-description: Inventory repositories, tasks, and runtime activity across POSIX or Windows SSH hosts using merged user-authored and dev-managed fleet configuration.
+description: Inventory repositories over POSIX or Windows SSH hosts using merged fleet configuration, pin remote identity, safely fast-forward branches, and explicitly transfer bounded ignored files.
 authority: project
 status: stable
 verified_on: 2026-09-01
@@ -13,7 +13,14 @@ verified_on: 2026-09-01
 
 ## What a fleet is
 
-A fleet is a merged controller-side list of other hosts. Each remote runs its own `dev` against its own XDG config, scan roots, task registry, and runtime. Fleet asks for read-only snapshots and sends narrowly allowlisted sync/open helpers; it does not copy the remote configuration into the controller. A missing remote `dev` or unreachable host degrades one row rather than blocking other hosts.
+A fleet is a merged controller-side list of other hosts, each running its own
+`dev` binary against its own `$XDG_CONFIG_HOME`, scan roots, task registry, and
+runtime. Inventory stays decentralized: each host produces its own read-only
+snapshot over SSH, and a missing remote `dev` or unreachable host degrades one
+row rather than blocking the rest. Mutation is confined to narrowly allowlisted,
+separately named commands such as `fleet sync` and `fleet files --apply`; neither
+copies remote configuration back to the controller or makes it authoritative for
+target paths, tasks, or runtime.
 
 This differs from the REMOTE TUI view and repository publishing/PR flows. Those use authenticated `gh`/`glab`, plus Azure CLI for configured Azure DevOps inventory/PRs. Fleet talks to machines over ordinary OpenSSH about local checkouts on those machines.
 
@@ -61,6 +68,8 @@ dev_path = "auto"
 name = "lab"
 ssh_alias = "lab"
 remote_os = "posix"
+# Add only after `dev fleet machine-id lab` and independent verification.
+machine_id = "00000000-0000-4000-8000-000000000000"
 
 [[hosts]]
 name = "winlab"
@@ -77,11 +86,26 @@ remote_os = "posix"
 ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 ```
 
-`schema_version = 1` is required when the primary exists. `[defaults]` supplies timeouts, cache TTL, fan-out concurrency, and `dev_path`; each primary host inherits values it does not set. A host needs `name` plus either `ssh_alias` (preferred because ordinary OpenSSH configuration retains `ProxyJump`, `IdentityAgent`, and host-key policy) or `hostname` with optional `user`, `port`, and `identity_file`.
+`schema_version = 1` is required when the primary exists. `[defaults]` supplies
+`connect_timeout`, `command_timeout`, `cache_ttl`, `max_parallel`, and `dev_path`;
+each primary host inherits values it does not set. A host needs `name` plus either
+`ssh_alias` (preferred because ordinary OpenSSH configuration retains `ProxyJump`,
+`IdentityAgent`, and host-key policy) or `hostname` with optional `user`, `port`,
+and `identity_file`.
 
-`remote_os` accepts `posix` or `windows`; omission remains POSIX for backward compatibility. It selects the remote command launcher and target path semantics, and participates in endpoint cache identity.
+`remote_os` accepts `posix` or `windows`; omission remains POSIX for backward
+compatibility. It selects remote launcher and target path semantics. Optional
+`machine_id` is a durable UUID pin: read-only inventory may proceed unpinned, but
+portable-file apply requires an exact match. Run `dev fleet machine-id <host>`,
+verify the UUID through an independent channel, then copy it into the primary
+`remotes.toml`; the command reports `unpinned`, `match`, or `mismatch` and never
+writes configuration.
 
-`ssh_login_password_source.type` is `none` (default), `prompt`, `plain`, or `bitwarden`. Fleet always tries key/agent BatchMode first, then retries a permission-denied host only when a password source is configured. A primary containing a plaintext password must be mode `0600` or loading fails. Generated fragments cannot carry any password source.
+`ssh_login_password_source.type` is `none` (default), `prompt`, `plain`, or
+`bitwarden`. Fleet always tries key/agent BatchMode first, then retries a
+permission-denied host only when a password source is configured. A primary
+containing a plaintext password must be mode `0600` or loading fails. Generated
+fragments cannot carry a password source or machine pin.
 
 ## Merge and collision rules
 
@@ -112,7 +136,9 @@ A partial/unknown bootstrap, failed ordinary gate, or fleet-fragment collision l
 |---|---|---|
 | `dev fleet list` | `--host <name>` (repeatable), `--repo <query>`, `--json`, `--cached`, `--strict` | list repositories/activity across this machine and merged configured hosts |
 | `dev fleet status` | `--json`, `--strict` | probe configured hosts and report snapshot health |
+| `dev fleet machine-id <host>` | `--json` | show the observed durable UUID and compare the configured primary pin |
 | `dev fleet sync <repo>` | `--push`, `--remote <name>`, `--host <name>` (repeatable), `--json` | optionally publish, then safely fast-forward clean matching checkouts |
+| `dev fleet files [repo-or-path]` | `--to <host>`, `--file <pattern>` (repeatable), `--apply`, `--replace`, `--yes`, `--json` | plan or apply one-way transfer of explicit ignored files |
 | `dev fleet open <host> <repo>` | — | open a remote repository through Herdr or an SSH login shell |
 | `dev fleet config init` | `-f`/`--force`, `--stdout` | write/print starter primary `remotes.toml` |
 | `dev fleet config edit` | `--editor <cmd>` | open only primary `remotes.toml` |
@@ -121,25 +147,95 @@ A partial/unknown bootstrap, failed ordinary gate, or fleet-fragment collision l
 
 `list --repo` filters name, remote identity, branch, or path. `--cached` avoids network activity. `--strict` turns unreachable/timeout/incompatible/invalid/stale-error hosts into a non-zero exit; a clean `no-dev` is informational. `sync` resolves the repository locally; without `--push`, source `HEAD` must already equal fetched upstream. `--remote` selects the cross-host Git identity (branch upstream remote, then `origin`, by default).
 
-Four hidden helpers—`_snapshot`, `_sync`, `_open-herdr`, and `_shell`—form the remote wire surface. Users should not invoke them directly.
+## Explicit portable local files
+
+A repository may propose export candidates separately from worktree provisioning:
+
+```toml
+# .dev-cli/config.toml
+version = 1
+
+[local_files]
+include = [".env", ".mcp/**"]
+```
+
+`[worktree].include` is local provisioning policy and is never inherited here.
+`[local_files].include` also grants no standing permission: an explicit invocation
+must select exactly one target, and repeatable `--file` adds ad-hoc patterns for
+that invocation only. Patterns expand on the source into sorted exact paths;
+no glob crosses the wire.
+
+```bash
+dev fleet files api --to lab                    # report only
+dev fleet files api --to lab --apply --yes      # create absent target files
+dev fleet files api --to lab --replace --apply  # authorize differing bytes separately
+```
+
+The source and target must already resolve to one clone with the same normalized
+**fetch** identity, attached branch, and exact commit. A push-only URL match is
+insufficient. Both hosts independently prove every exact path is untracked and
+ignored under their own Git configuration. Only regular files pass: no
+symlinks/reparse points, directories, sockets, devices, FIFOs, `.git`, nested
+repositories, or submodule boundaries. Compiled ceilings are 128 files,
+8 MiB per file, 32 MiB total, with bounded path length/depth; host policy may
+lower but never raise them. The source branch, HEAD, and fetch identity are
+revalidated both before and after payload reads; target apply shares the
+canonical Git-common-directory lease used by `fleet sync`.
+
+Plan is the default and sends no file body. Apply additionally requires the
+configured `machine_id` to match the content-free capability probe. Missing files
+are atomically created owner-only; identical files are no-ops; differing bytes
+block unless `--replace` was present in the displayed plan. Replacement binds the
+observed target digest/mode, retains a private rollback copy, revalidates both
+roots, and rolls back file changes on failure. `--yes` only answers confirmation
+and never implies replacement. Public human/JSON output contains path, size,
+mode, and state—never content or hashes.
+
+The transaction journal is durable before manifest/payload staging, so an
+interrupted request ID can resume or reconcile. Rollback intentionally leaves an
+empty parent directory when its post-crash identity cannot be proven; deleting
+another process's replacement would be worse. Native Windows payload transfer is
+capability-blocked before content is sent.
+
+This command is not repository/task ownership transfer, clone acquisition,
+provisioning, backup, restore, or eviction. It never switches a branch, copies
+task/catalog/note state, watches for changes, propagates deletions, or removes the
+source.
+
+`dev fleet` also registers bounded hidden capability/file commands in addition to
+`_snapshot`, `_sync`, `_open-herdr`, and `_shell`. They exist only for the two
+`dev` processes to invoke over SSH; they are wire protocols, not user-facing
+surfaces.
 
 ## POSIX and Windows transport
 
-Every fleet operation shells out to the controller's system `ssh` with connection/server-alive bounds and starts with `BatchMode=yes`. `fleet open` allocates a PTY for its interactive login shell. No fleet launcher weakens the user's host-key or known-hosts policy.
+Every fleet command reaches a host through the controller's system `ssh` binary
+with `ConnectTimeout`, `ServerAliveInterval=15`, and `ServerAliveCountMax=2`, and
+first attempts `BatchMode=yes`—key or agent authentication only. Fixed protocols
+use non-PTY `-T` and disable agent, X11, local-command, and all port forwarding
+while retaining the user's normal host-key and known-hosts policy. `dev fleet
+open` separately allocates a PTY (`-t`) for its interactive login shell.
 
 A POSIX target receives the existing injection-safe shell launcher. With `dev_path = "auto"`, it checks common local user/package-manager locations and `PATH`, returning exit `127` when `dev` is absent. An explicit path is quoted and interpreted with POSIX target semantics, never expanded using the controller environment.
 
 A Windows target receives `powershell.exe -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand …`. The wrapper:
 
-- decodes helper arguments as data and permits only the four hidden fleet command shapes;
+- decodes helper arguments as data and permits only `_snapshot`, `_sync`, content-free `_capability`, `_open-herdr`, and `_shell` shapes;
+- rejects native `_files-plan` and `_files-apply` payload helpers before content is sent;
 - locates `dev.exe` in common user install/shim locations or through `Get-Command` when `dev_path = "auto"`;
 - returns `127` when no executable exists and propagates the remote dev exit code;
-- does not consume stdin, so `_sync` receives its JSON request unchanged;
+- does not consume stdin, so `_sync` and `_capability` receive their JSON requests unchanged;
 - validates explicit Windows drive/UNC paths using target-OS semantics rather than the controller's `filepath` rules.
 
 Generated Windows registrations require `dev_path = "auto"`. User-authored Windows profiles may use an absolute Windows target path. The encoded wrapper is a transport boundary, not permission to run arbitrary PowerShell supplied by a caller.
 
-If BatchMode is denied and a primary profile has a password source, fleet retries once. The password is not placed in SSH argv or the environment: a one-shot self-executed `SSH_ASKPASS` helper receives it over an inherited descriptor. `prompt` reads hidden terminal input; `plain` comes from the protected primary config; `bitwarden` invokes `bw get password <item>`. SSH-host bootstrap itself has no password backend—interactive setup leaves native prompts to OpenSSH, while noninteractive setup stays batch-only.
+If BatchMode is denied and a primary profile has a password source, fleet retries
+once. The password is not placed in SSH argv or the environment: a one-shot
+self-executed `SSH_ASKPASS` helper receives it over a platform-specific inherited
+descriptor or handle. `prompt` reads hidden terminal input; `plain` comes from the
+protected primary config; `bitwarden` invokes `bw get password <item>`. SSH-host
+bootstrap itself has no password backend—interactive setup leaves native prompts
+to OpenSSH, while noninteractive setup stays batch-only.
 
 ## Cache versus durable state
 
@@ -150,13 +246,22 @@ If BatchMode is denied and a primary profile has a password source, fleet retrie
 | each remote's config/tasks/repositories/runtime | host-local authority; never centralized |
 | `$XDG_CACHE_HOME/dev/fleet/v1/*.json` | disposable controller snapshots |
 
-A successful probe writes a private per-host JSON snapshot. Its endpoint ID includes connection fields, SSH port, timeouts, `dev_path`, and `remote_os`; changing the target invalidates stale cache identity. Oversized/malformed snapshots, future timestamps, invalid counts, and unsafe fields are ignored. `dev cache clear fleet` or `dev cache clear all` removes this cache; the next fleet request rebuilds it.
+A successful probe writes a private per-host JSON snapshot. Its endpoint ID includes `machine_id`, connection fields, SSH port, timeouts,
+`dev_path`, and `remote_os`; changing the target invalidates stale cache identity. Oversized/malformed snapshots, future timestamps, invalid counts, and unsafe fields are ignored. `dev cache clear fleet` or `dev cache clear all` removes this cache; the next fleet request rebuilds it.
 
 The cache lets an unavailable host retain last-known state as `stale`; `--cached` reads only it. It never becomes authoritative for remote paths or tasks.
 
 ## Fleet in the TUI
 
-FLEET is one of six views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, `SKILLS`). It loads live remotes lazily while decoding valid cache after the initial view. This machine is hidden by default because REPOS has richer local data; `a` toggles it. The local row reuses the accepted REPOS generation rather than rescanning. `r` supersedes prior work and refreshes all merged configured hosts. Noninteractive `dev fleet list` remains local plus remote.
+FLEET is one of the TUI's seven views (`TASKS`, `REPOS`, `FLEET`, `TRY`,
+`REMOTE`, `SKILLS`, `MCP`, switched with `tab`/`h`/`l`). Like REMOTE, it loads
+lazily—no live probe starts until the view is first opened—but valid cache is
+decoded after the initial TASKS view. The TUI hides this machine by default
+because REPOS provides richer local inventory; `a` toggles local rows. The local
+snapshot reuses the accepted REPOS generation instead of rescanning, and cached
+rows remain visible while that generation loads. `r` supersedes older work and
+reloads every host from the merged primary-plus-generated configuration. The
+non-interactive `dev fleet list` output remains local plus remote.
 
 The table shows host/state/repository/branch/Git/runtime/task/path facts. Enter uses native Herdr remoting when an eligible POSIX-style profile reports Herdr and no password step is needed; otherwise it opens through SSH and a remote login shell. On a Windows controller, the local fallback starts a child `%COMSPEC%` shell because Windows has no `exec(2)`.
 
@@ -180,6 +285,11 @@ Per-host states are `ok`, `stale`, `no-dev`, `unreachable`, `timeout`, `incompat
 - [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
 - [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
 - [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
+- [`internal/fleet/protocol.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/protocol.go)
+- [`internal/fleet/sync.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/sync.go)
+- [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
+- [`internal/machineid`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/machineid)
+- [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
 - [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
 - [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
 - [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)

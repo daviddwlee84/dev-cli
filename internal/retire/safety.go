@@ -49,11 +49,37 @@ func (i Inspection) Ready() bool { return len(i.Blockers) == 0 }
 // Inspect discovers covering sessions and applies caller, mixed-workspace, and
 // agent-state safety policy.
 func Inspect(ctx context.Context, rt runtime.Runtime, target string, opts Options) (Inspection, error) {
-	canonicalTarget, err := pathx.Canonical(target)
-	if err != nil {
-		return Inspection{}, fmt.Errorf("canonicalize retirement target: %w", err)
+	runtimeName := ""
+	if rt != nil {
+		runtimeName = rt.Name()
 	}
-	result := Inspection{Target: canonicalTarget}
+	if opts.CallerWorkspaceID == "" && runtimeName != "tmux" && runtimeName != "zellij" && runtimeName != "none" {
+		opts.CallerWorkspaceID = os.Getenv("HERDR_WORKSPACE_ID")
+	}
+	if opts.CallerPaneID == "" {
+		switch runtimeName {
+		case "herdr":
+			opts.CallerPaneID = os.Getenv("HERDR_PANE_ID")
+		case "tmux":
+			opts.CallerPaneID = os.Getenv("TMUX_PANE")
+		case "zellij", "none":
+		default:
+			opts.CallerPaneID = os.Getenv("HERDR_PANE_ID")
+			if opts.CallerPaneID == "" {
+				opts.CallerPaneID = os.Getenv("TMUX_PANE")
+			}
+		}
+	}
+	evidence, err := runtime.InspectOccupancy(ctx, rt, target, runtime.OccupancyOptions{
+		Profile:           runtime.OccupancyCleanup,
+		CallerWorkspaceID: opts.CallerWorkspaceID,
+		CallerPaneID:      opts.CallerPaneID,
+		CloseUnknown:      opts.CloseUnknown,
+	})
+	if err != nil {
+		return Inspection{}, fmt.Errorf("inspect retirement occupancy: %w", err)
+	}
+	result := Inspection{Target: evidence.Target}
 	cwd := opts.CWD
 	if cwd == "" {
 		cwd, err = os.Getwd()
@@ -61,70 +87,77 @@ func Inspect(ctx context.Context, rt runtime.Runtime, target string, opts Option
 			return Inspection{}, fmt.Errorf("resolve caller directory: %w", err)
 		}
 	}
-	if inside, compareErr := pathx.Contains(canonicalTarget, cwd); compareErr != nil {
+	if inside, compareErr := pathx.Contains(evidence.Target, cwd); compareErr != nil {
 		return Inspection{}, fmt.Errorf("compare caller directory: %w", compareErr)
 	} else if inside {
 		result.CallerContained = true
 		result.Blockers = append(result.Blockers,
-			fmt.Sprintf("caller is inside target checkout %s", canonicalTarget))
+			fmt.Sprintf("caller is inside target checkout %s", evidence.Target))
 	}
 
-	if opts.CallerWorkspaceID == "" {
-		opts.CallerWorkspaceID = os.Getenv("HERDR_WORKSPACE_ID")
+	if evidence.CurrentPane.Err != nil {
+		return Inspection{}, fmt.Errorf("resolve current %s runtime pane: %w", evidence.Backend, evidence.CurrentPane.Err)
 	}
-	if opts.CallerPaneID == "" {
-		opts.CallerPaneID = os.Getenv("HERDR_PANE_ID")
-		if opts.CallerPaneID == "" {
-			opts.CallerPaneID = os.Getenv("TMUX_PANE")
+	if evidence.SessionCoverageErr != nil {
+		return Inspection{}, evidence.SessionCoverageErr
+	}
+	if !evidence.SessionList.Supported {
+		result.RuntimeUnknown = true
+		if !opts.AssumeNoRuntime {
+			result.Blockers = append(result.Blockers,
+				fmt.Sprintf("runtime backend %s cannot enumerate covering sessions; use the explicit assume-no-runtime acknowledgement from an external caller", evidence.Backend))
 		}
-	}
-	if rt == nil || rt.Name() == "none" {
 		return dedupe(result), nil
 	}
-	sessions, err := rt.List(ctx)
-	if err != nil {
+	if evidence.SessionList.Err != nil {
 		if !opts.AssumeNoRuntime {
-			return Inspection{}, fmt.Errorf("list %s runtime sessions: %w", rt.Name(), err)
+			return Inspection{}, fmt.Errorf("list %s runtime sessions: %w", evidence.Backend, evidence.SessionList.Err)
 		}
 		result.RuntimeUnknown = true
-		return dedupe(result), nil
 	}
-	for _, observed := range sessions {
-		covering, mixed, err := classifySession(canonicalTarget, observed)
-		if err != nil {
-			return Inspection{}, err
-		}
-		if len(covering) == 0 {
-			continue
-		}
-		result.Sessions = append(result.Sessions, Session{Runtime: observed, Panes: covering, Mixed: mixed})
-		if observed.Handle == opts.CallerWorkspaceID || panePresent(observed.Panes, opts.CallerPaneID) {
+	if evidence.AgentActivityList.Err != nil {
+		return Inspection{}, fmt.Errorf("list %s recognized agents: %w", evidence.Backend, evidence.AgentActivityList.Err)
+	}
+	for _, observed := range evidence.Sessions {
+		result.Sessions = append(result.Sessions, Session{
+			Runtime: observed.Runtime,
+			Panes:   observed.Panes,
+			Mixed:   observed.Mixed,
+		})
+		if observed.IsCaller {
 			result.CallerContained = true
 			result.Blockers = append(result.Blockers,
-				fmt.Sprintf("caller runtime %s contains the target checkout", observed.Handle))
+				fmt.Sprintf("caller runtime %s contains the target checkout", observed.Runtime.Handle))
 		}
-		if len(mixed) > 0 {
+		if len(observed.Mixed) > 0 {
 			result.Blockers = append(result.Blockers,
-				fmt.Sprintf("runtime %s also contains %d pane(s) outside the target", observed.Handle, len(mixed)))
+				fmt.Sprintf("runtime %s also contains %d pane(s) outside the target", observed.Runtime.Handle, len(observed.Mixed)))
 		}
-		statuses := coveringAgentStatuses(covering, observed.AgentStatus)
-		for _, status := range statuses {
-			switch status {
-			case "idle", "done":
-				// Eligible after all structural checks pass.
-			case "working", "running", "busy", "blocked", "waiting":
+		for _, status := range coveringAgentStatuses(observed.Panes, observed.Runtime.AgentStatus) {
+			appendAgentStatusBlocker(&result, observed.Runtime.Handle, status, opts.CloseUnknown)
+		}
+	}
+	for _, agent := range evidence.Agents {
+		if !agent.Blocking {
+			continue
+		}
+		if agent.IsCaller {
+			result.CallerContained = true
+			if agent.SessionHandle != "" {
 				result.Blockers = append(result.Blockers,
-					fmt.Sprintf("runtime %s has agent status %s", observed.Handle, status))
-			case "", "unknown":
-				if !opts.CloseUnknown {
-					result.Blockers = append(result.Blockers,
-						fmt.Sprintf("runtime %s has unknown agent status; pass --close-unknown from outside it", observed.Handle))
-				}
-			default:
+					fmt.Sprintf("caller runtime %s contains the target checkout", agent.SessionHandle))
+			} else {
 				result.Blockers = append(result.Blockers,
-					fmt.Sprintf("runtime %s has unrecognized agent status %s", observed.Handle, status))
+					fmt.Sprintf("caller runtime pane %s contains the target checkout", agent.Activity.PaneID))
 			}
+			continue
 		}
+		if agent.SessionHandle == "" {
+			result.Blockers = append(result.Blockers,
+				fmt.Sprintf("recognized agent in pane %s covers the target without a closeable runtime session", agent.Activity.PaneID))
+			continue
+		}
+		appendAgentStatusBlocker(&result, agent.SessionHandle, agent.Status, opts.CloseUnknown)
 	}
 	return dedupe(result), nil
 }
@@ -188,45 +221,6 @@ func CloseAndWait(ctx context.Context, rt runtime.Runtime, target string, opts O
 	}
 }
 
-func classifySession(target string, session runtime.Session) ([]runtime.Pane, []runtime.Pane, error) {
-	panes := session.Panes
-	if len(panes) == 0 {
-		for i, dir := range session.Dirs {
-			panes = append(panes, runtime.Pane{ID: fmt.Sprintf("%s:%d", session.Handle, i), CWD: dir})
-		}
-	}
-	var covering, mixed []runtime.Pane
-	for _, pane := range panes {
-		paths := []string{pane.CWD}
-		if pane.ShellCWD != "" && pane.ShellCWD != pane.CWD {
-			paths = append(paths, pane.ShellCWD)
-		}
-		paneCovers, paneOutside, observed := false, false, false
-		for _, path := range paths {
-			if path == "" {
-				continue
-			}
-			observed = true
-			inside, err := pathx.Contains(target, path)
-			if err != nil {
-				return nil, nil, fmt.Errorf("compare runtime pane %s path: %w", pane.ID, err)
-			}
-			if inside {
-				paneCovers = true
-			} else {
-				paneOutside = true
-			}
-		}
-		if paneCovers {
-			covering = append(covering, pane)
-		}
-		if paneOutside || !observed {
-			mixed = append(mixed, pane)
-		}
-	}
-	return covering, mixed, nil
-}
-
 func coveringAgentStatuses(panes []runtime.Pane, fallback string) []string {
 	set := make(map[string]bool)
 	for _, pane := range panes {
@@ -245,16 +239,23 @@ func coveringAgentStatuses(panes []runtime.Pane, fallback string) []string {
 	return out
 }
 
-func panePresent(panes []runtime.Pane, id string) bool {
-	if id == "" {
-		return false
-	}
-	for _, pane := range panes {
-		if pane.ID == id {
-			return true
+func appendAgentStatusBlocker(result *Inspection, handle, rawStatus string, closeUnknown bool) {
+	status := strings.ToLower(strings.TrimSpace(rawStatus))
+	switch status {
+	case "idle", "done":
+		// Eligible after all structural checks pass.
+	case "working", "running", "busy", "blocked", "waiting":
+		result.Blockers = append(result.Blockers,
+			fmt.Sprintf("runtime %s has agent status %s", handle, status))
+	case "", "unknown":
+		if !closeUnknown {
+			result.Blockers = append(result.Blockers,
+				fmt.Sprintf("runtime %s has unknown agent status; pass --close-unknown from outside it", handle))
 		}
+	default:
+		result.Blockers = append(result.Blockers,
+			fmt.Sprintf("runtime %s has unrecognized agent status %s", handle, status))
 	}
-	return false
 }
 
 func dedupe(inspection Inspection) Inspection {

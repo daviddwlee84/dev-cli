@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-01
+verified_on: 2026-09-02
 tested_with: Claude Code 2.1.250
 ---
 
@@ -21,10 +21,14 @@ This page separates graceful degradation from real limitations. Reverify it when
 | GitLab merge requests/remotes | `glab` authenticated | same graceful fallback |
 | repository bootstrap publishing | authenticated `gh` or `glab` | local repository/scaffold still works; the wizard explains how to log in |
 | remote repository snapshot template | Git plus network/authentication for the source | validation fails before the destination is created and rendered URL userinfo is redacted; local templates still work |
+| native skill inventory | local filesystem plus the versioned `skills@1.5.23` path registry | always available; explicit add/update requires a directly installed `skills` executable and may use the network; repository-local npm bins are skipped and cooperating mutations are serialized |
+| static MCP inventory | readable supported agent config files | missing sources are empty; malformed/unsupported sources produce fresh partial diagnostics, and runtime health is intentionally unavailable |
 | setup-capable project skills | skills provider plus the entrypoint interpreter | unselected skills are skipped; selected required setup fails before scaffold mutation when its interpreter is unavailable; a clone acquired first is retained |
 | staged lazygit message prefill | a lazygit version that reads `LAZYGIT_PENDING_COMMIT` | files remain staged and dev prints the suggested message; normal Git commit remains available |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
+| remote portable-file plan/apply | Git, SSH target running a compatible `dev`, matching existing clone/branch/commit; apply also needs a verified machine UUID pin | fails before content is sent or leaves the target unchanged; no clone/task fallback is inferred |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
+| preview repository flow | terminal input/output | `dev flow` refuses non-TTY use and points to `dev repo context` / JSON inventory |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
 | static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe files are diagnosed; no `ssh` process or network is needed |
 | SSH effective values, fresh probes, bootstrap, and fleet transport | system `ssh` client | static `ssh list`, dry-run, and local config plans remain available; effectful SSH operations fail with capability guidance |
@@ -35,6 +39,10 @@ This page separates graceful degradation from real limitations. Reverify it when
 
 ## Confirmed project limitations
 
+### MCP inventory is static and intentionally incomplete
+
+`dev mcp list` reads documented static files for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode. An absolute `CLAUDE_CONFIG_DIR` relocates Claude user sources; local Claude rows retain their project key, and documented user/project/local/managed project approvals annotate declaration state. That narrow approval calculation is not a general runtime merge. The scanner does not start servers, execute helpers, contact endpoints, query health, or resolve credentials. Plugin caches, hosted connectors, remote organization configuration, inline `OPENCODE_CONFIG_CONTENT`, and command-line-only inputs are omitted. Keep the JSON `coverage` object, additive `local_project_path`, and scope-qualified duplicate rows when automating against this inventory.
+
 ### Note search and filesystem durability vary by text and platform
 
 Latin note queries use term-wise prefix FTS and SQLite ranking. Non-ASCII queries use literal term-wise substring matching because SQLite's `unicode61` tokenizer does not segment arbitrary CJK substrings; those results do not use the same FTS ranking.
@@ -43,7 +51,13 @@ Note writes sync the file and atomically rename it on every supported platform. 
 
 ### Pull-request completion is not tracked automatically
 
-`dev done --pr` pushes and opens a pull/merge request, then leaves the task, runtime, and worktree unchanged because review owns integration. Current `dev sweep` does not query the forge to infer that a request later merged. Verify integration and finish/reconcile deliberately; do not assume remote merge implies local DONE.
+`dev done --pr` pushes and opens a pull/merge request, then leaves the task,
+runtime, and worktree unchanged because review owns integration. `dev flow` can
+run an explicit, run-local query for the exact head/base review and report only
+portable existence, open/draft/merged/closed state, URL, provider, and observation
+time. It does not query review decisions or checks, persist that evidence, or
+turn it into DONE. Current `dev sweep` does not query the forge either. Verify
+integration with exact local ancestry and finish deliberately.
 
 ### Agent session capture is reserved, not wired
 
@@ -70,6 +84,21 @@ draft. A draft-write failure is warning-only: staging remains successful and
 is never rolled back. If the integration changes upstream, the staged index
 and printed message remain the recovery path.
 
+### Portable files are not project transfer or backup
+
+`dev fleet files` moves only explicitly selected, bounded files that both hosts
+prove are untracked and ignored. It does not acquire a missing clone, transfer
+task ownership/catalog/notes, run worktree provisioning, watch for later changes,
+propagate deletion, remove source bytes, produce a remote-backup receipt, verify
+restore, or authorize eviction. Private transaction staging is not a user-facing
+backup/restore promise.
+
+The source and target must already match by fetch identity, attached branch, and
+exact commit. Apply additionally needs a verified `machine_id` pin. Native
+Windows payloads remain disabled until ACL, reparse-point, held-root, and atomic
+replacement guarantees are implemented and tested there; machine identity
+diagnostics remain content-free.
+
 ### Windows has native SSH support and a smaller runtime surface
 
 `dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository/task/worktree operations and the SSH host domain are native: static discovery, protected-DACL managed fragments, reparse-point rejection, native `ssh-keygen.exe`, Windows Job Object cancellation, and POSIX/Windows remote bootstrap are covered. Fleet can also target Windows OpenSSH through its encoded PowerShell launcher. What still differs:
@@ -77,6 +106,7 @@ and printed message remain the recovery path.
 - There is no tmux, Zellij or Herdr, so the runtime backend is always `none`. Grouped runtime/agent activity and named sessions are unavailable; the `cd` directive and PowerShell wrapper still work.
 - Shell integration is `dev shell-init powershell`. POSIX shells hand the directory back on file descriptor 3; PowerShell cannot inherit it, so the wrapper passes a temp-file path in `DEV_SHELL_CD_FILE` instead.
 - `dev fleet open` starts a child shell (`%COMSPEC%`) rather than replacing the process, because Windows has no `exec(2)`.
+- `dev fleet machine-id` can perform its content-free `_capability` probe, but native `fleet files` plan/apply payload helpers are denied before content is sent.
 - CI keeps an advisory broad Windows suite for unrelated POSIX assumptions, but `internal/sshhost`, `internal/fleet`, and the SSH/fleet/doctor CLI contracts run in a separate required native `windows-latest` gate. Affected tests/packages and the CLI are also compiled for `windows/arm64`.
 
 ### SSH host management is intentionally narrow
@@ -89,6 +119,22 @@ Setup requires an explicit key or explicit Ed25519 generation and installs publi
 
 A direct task uses the canonical checkout and cannot go COLD, because cold cleanup would remove a directory the repository needs. Use branch-only or worktree mode for cross-machine reconstruction.
 
+### Flow intentionally omits expert overrides
+
+`dev flow` offers normal managed lifecycle actions, exact unmanaged metadata-only
+Adopt/clean branch-preserving Remove, and explicit remote evidence. It does not
+offer dirty commit/discard, WIP, shared-writer, ownership takeover, force, unknown-
+runtime, or assume-no-runtime choices. A blocked plan shows remediation and the
+compatible CLI fallback; existing command flags and structured contracts remain
+available.
+
+Task-backed lifecycle and exact unmanaged linked-checkout actions share
+`internal/taskflow`. Explicit unmanaged path retirement remains an isolated
+compatibility implementation, while `sweep` retains record-only reaping, orphan
+salvage, and other narrow reconciliation paths. Do not assume every cleanup path
+has the same planner. Raw Git and configured external tools also bypass dev's
+PlanID, locks, revalidation, and result ledger.
+
 ## Current behaviors that are implemented
 
 These were historical gaps and should not be reintroduced as limitations:
@@ -100,12 +146,15 @@ These were historical gaps and should not be reintroduced as limitations:
 - Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
 - `dev ssh init/list/show/setup/probe/remove` provides explicit OpenSSH host onboarding without a separate host database. Dev owns only its dedicated Include, canonical `dev.d` fragments, and opt-in generated fleet registrations; all public SSH JSON is one versioned object, and TSV listing is a documented six-field selector.
 - Fleet merges user-authored primary `remotes.toml` with strict generated `remotes.d` fragments, tracks `remote_os`, and uses a hidden-helper-only encoded PowerShell launcher for Windows targets. Primary duplicate aliases remain compatible; any generated alias collision fails closed.
+- `dev repo context --json` exposes additive schema-v1 local/remote evidence with source, age, freshness, completeness, null/error preservation, and scoped readiness; external probes happen only with `--refresh`. `dev status` reuses the cheap local readiness projection without network access.
+- `dev fleet machine-id` reports an observed UUID without changing configuration. `dev fleet files` is report-only by default, uses a separate `[local_files]` allowlist, negotiates downward-only limits before content, and requires explicit apply/replacement controls plus a matching target pin.
 
 - `dev start --focus` activates the runtime after non-JSON creation.
 - `dev start --run '<shell command>'` dispatches only to an exact root pane from
   a newly created first-class Herdr worktree. It is incompatible with `--json`,
   non-worktree modes, and non-Herdr runtimes, and does not wait for command exit.
 - TUI navigation refuses to open a missing COLD checkout and directs the user to `dev resume`.
+- Preview-labelled `dev flow [repo]` is an independent full-screen TTY model. It resolves canonical/linked cwd to the exact surface, uses a picker outside Git, shows every registered worktree plus task-only records, and makes every mutation Enter-to-plan then approve. Apply revalidates task revision and exact repository/worktree/ref/runtime/artifact authority and retains partial step results. Local `r` is network-free; `R` explicitly selects fetch/query/both and keeps minimal review evidence run-local.
 - `DEV_TUI_TRACE` starts at `cli.Execute`; it cannot include OS process loading. `tui.initial_view_returned` measures model construction, not renderer flush or physical terminal paint. Use it for same-profile comparisons rather than universal hardware/network guarantees.
 - Runtime handles now record backend provenance and are revalidated before cleanup.
 - `auto` runtime selection includes Zellij between tmux and none.
@@ -158,6 +207,9 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 ## Sources
 
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
@@ -175,6 +227,9 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
 - [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
 - [`internal/fleet/transport.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/transport.go)
+- [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
+- [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
+- [`internal/repocontext`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/repocontext)
 - [`.github/workflows/ci.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/ci.yml)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)

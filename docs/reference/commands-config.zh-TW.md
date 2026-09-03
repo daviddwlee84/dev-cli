@@ -25,11 +25,12 @@ lang: zh-TW
 | repository quick notes | `note add`、`note list`、`note show`、`note search`、`note edit`、`note delete`、`note path`、`note reindex` |
 | machine inventory | `bootstrap`、`adopt`、`doctor` |
 | experiments | `try`、`tries …`、`graduate` |
-| terminal UI | `tui`、`tui tools` |
+| terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
 | SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh probe`、`ssh remove` |
-| remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
+| remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
+| static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
 | activity/data | `summary`、`journal`、`stats …`、`cache …` |
 | help | `help [topic]` |
@@ -41,8 +42,10 @@ lang: zh-TW
 ```bash
 dev ls --json
 dev repo list --json
-dev repo context [repo]
+dev repo context [repo] --json
 dev repo remote --json
+dev fleet machine-id <host> --json
+dev fleet files [repo-or-path] --to <host> --json
 dev repo new NAME --json
 dev repo clone <ref> --json
 dev repo setup [repo-or-path] --preset PRESET --json
@@ -56,10 +59,14 @@ dev ssh show <alias> --json
 dev ssh setup <alias> --dry-run --json
 dev ssh probe <alias> --json
 dev ssh remove <alias> --dry-run --json
+dev skill list --all --json
+dev mcp list --all --json
 dev bootstrap --json
 ```
 
-不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。
+不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。`repo context --json` 是 additive schema-v1 report：unavailable facts 保持 null/error entries 並附 explicit provenance，不會變成 zero values。`fleet files --json` 是 content-free output，絕不包含 file hash 或 body。
+
+`dev skill list --json` 保留既有 array 與 keys，只新增 repository、checkout、installation、presence/integrity、registry 與 lock metadata。`dev mcp list --json` 從 `servers`/`diagnostics`/`coverage` envelope 起版；exact Claude local row 另有 `local_project_path`。每個 server field 都已 sanitized。Declaration state 可包含 Claude documented project approvals，但不得解讀為 health 或一般化的 effective merged config。
 
 每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
 
@@ -98,7 +105,14 @@ Fleet 的 durable input 是 merge，不是單一 file：先載入 user-authored 
 `remote_os = "posix"|"windows"` 決定 target launcher/path semantics，也納入 cache
 identity。`dev fleet config show` 印 effective merge、redact secret 並標示 generated
 origin；`config edit` 與 TUI edit action 仍只開 primary file。Generated fragments
-由 `dev ssh setup/remove --fleet` 擁有。
+由 `dev ssh setup/remove --fleet` 擁有，且不能包含 `machine_id`。
+
+`dev fleet machine-id <host>` 執行 content-free `_capability` exchange，只回報
+`unpinned`、`match` 或 `mismatch`，絕不寫入 optional UUID pin。`dev fleet files`
+在 explicit `--apply` 前保持 report-only；它使用分開的 `[local_files].include`／
+`--file` allowlist，apply 需要 matching pin，且 `--yes` 絕不 imply `--replace`。
+Windows transport 允許 capability helper 做 identity diagnostics，但在 content
+送出前 block native file payload helpers。
 
 ## Repository bootstrap
 
@@ -235,9 +249,15 @@ Left/Right、Home/End、Delete/Backspace、cursor 位置插入與 Esc/Ctrl-C can
 被解讀為 terminal actions，不會成為 raw escape bytes。Buffered 或 piped non-TTY input
 仍維持 line-oriented behavior。
 
+## `dev flow [repo]` preview
+
+`dev flow [repo]` 是獨立 full-screen command，只接受 interactive TTY；它沒有 JSON/non-interactive contract。省略 `repo` 時，canonical/linked checkout 會開啟同一 Git common-directory repository 並 focus exact current surface；Git 之外則非同步開 repository picker。明確 `repo` 會覆蓋 cwd。
+
+Startup 與 `r` 只載入 local topology/evidence。`R` 才提供 Fetch refs、Refresh PR/MR 或 Both；每個 choice 都先產生 exact guarded plan，再要求 approval。Provider review observation 只在 current run 保存最低限度的 existence、`open`/`draft`/`merged`/`closed`、URL、provider 與 observed time，不代表 CI checks 或 approvals。`runtime=none` 保持 unobserved，也不提供 `--assume-no-runtime` 等 expert override。詳細 keys、row kinds、partial ledger 與 escape boundary 見 [Repository Flow 預覽](../guides/repository-flow.zh-TW.md)。
+
 ## `dev done` finish flags
 
-`dev done` 對 branch/worktree task 只透過下列其中一種方式 integrate：`--ff`（rebase 到 base 再 fast-forward）或 `--pr`（push 並開啟 pull/merge request）。兩者都省略時，在 TTY 上會開啟 interactive finish wizard —— 提示內容見[變更流工作流程](../guides/change-stream-workflow.zh-TW.md)。
+`dev done` 對 branch/worktree task 透過 `--ff`（rebase 到 base 再 fast-forward）、`--pr`（push 並開啟 pull/merge request）或 `--merged`（依 `--base-ref` 驗證外部 integration）處理。未指定 integration choice 時，在 TTY 上會開啟 interactive finish wizard —— 提示內容見[變更流工作流程](../guides/change-stream-workflow.zh-TW.md)。
 
 Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`）：
 
@@ -248,7 +268,7 @@ Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`�
 | `commit` | 用 `--message`/`-m` commit 全部變更（未指定時 interactive 會提示輸入） |
 | `discard` | reset tracked 變更並移除 untracked files；具破壞性，沒有 TTY 時需要 `--yes` |
 
-`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--keep-worktree` 讓 `--ff` integration 後仍保留 worktree（預設 merge 後移除），`--push` 會一併 push 產生的 branch，`--delete-branch` 只在 branch 的 commits 已被 base 包含時才刪除它 —— 有 unpushed commits 的 branch 永遠不會被刪除。
+`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--push` 會依 selected integration push 對應 branch/base。成功的 local 或 externally verified integration 只記錄 DONE/MERGED，永遠保留 runtime、worktree 與 branch 給獨立的 `dev retire`；`--keep-worktree` 只保留為 no-op compatibility warning，`--delete-branch` 則會報錯並指向 `dev retire --delete-branch`。`--merged` 可用 `--confirm-squash <merge-commit>` 對 squash result 作明確 operator attestation，不能由 provider status 自動推斷。
 
 ## Configuration
 
@@ -276,7 +296,8 @@ dev ssh init --apply       # confirmation 後安裝
 |---|---|
 | `[paths]` | scan roots、project/tries/worktree roots、worktree template、state path |
 | `[runtime]` | `auto`、Herdr、tmux、Zellij 或 none，以及 metadata settings |
-| `[worktree]` | ignored includes、linked dirs、setup commands、strategies、timeout |
+| `[worktree]` | local ignored-file provisioning、linked dirs、setup commands、strategies、timeout |
+| `[local_files]` | portable files 的 host ceilings；project overlay 提供獨立的 off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | 完整 remote inventory 的 cache TTL，以及 opt-in Azure organization/project targets |
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
@@ -288,8 +309,7 @@ Target 必須是 absolute 且尚不存在；dev 絕不 overwrite。Private、bou
 在 TUI teardown 後才寫入，只包含 relative categorical timings 與 aggregate row
 counts，不包含 names、paths 或 raw payloads；它不是 configuration、cache、durable
 stats、stdout 或 network telemetry。
-TUI invocation 的 optional update-cache network refresh 也會延後到 initial view
-return 之後。
+Dashboard 與 `dev flow` 這類 full-screen invocation 的 optional update-cache network refresh 也會延後到 initial view return 之後；這不會把 Flow 自己的 local `r` 變成 remote refresh。
 
 Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
 
@@ -361,8 +381,8 @@ directory 內。`initial_check_in` 接受 `commit`、`stage`、`none`；legacy
 
 Repository 可 commit 兩個固定檔案：
 
-- `.dev-cli/config.toml`：allowlisted worktree provisioning 與 repository setup
-  wizard defaults。
+- `.dev-cli/config.toml`：allowlisted worktree provisioning、分開提出的 portable
+  local-file patterns 與 repository setup wizard defaults。
 - `.dev-cli/scaffolds.toml`：使用同一 versioned schema 的 project presets、
   templates、hooks 與 skill setup。
 
@@ -373,6 +393,10 @@ version = 1
 [worktree]
 include = [".env.example"]
 strategy = "reinstall"
+
+# 只提出 candidates；export 仍需 explicit fleet files --to。
+[local_files]
+include = [".env", ".mcp/**"]
 
 [repo.setup]
 preset = "team"
@@ -387,6 +411,8 @@ choices。`.dev.toml` 為相容性仍可讀；新的 project configuration 應�
 handoff、check-in fields 只用來預填 interactive wizard choices；它們不會改變
 scripted defaults，後者由對應 flags 控制。Legacy `commit` boolean 仍可讀，但同一
 layer 不可與 `check_in` 並用。
+
+`[local_files].include` 絕不繼承 `[worktree].include`：佈建 local checkout 不等於授權 export secret。Project overlay 只能提出 portable include list；host-owned count/size/path ceilings 來自 global config，repository 不能提高。Command 仍保持 report-only，直到 explicit `--apply`、target pin 與 confirmation 都具備。
 
 Project files 不能 override host paths、state location、runtime backend、forge
 inventory 或 credentials、stats、update、bootstrap 或 TUI policy，也不能靜默 publish
@@ -442,6 +468,7 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 ## 來源
 
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
 - [`internal/scaffold/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/scaffold/types.go)
 - [`internal/projectconfig/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/projectconfig/types.go)
@@ -452,3 +479,6 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 - [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
 - [`internal/fleet/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/config.go)
 - [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
+- [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
+- [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
+- [`internal/machineid`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/machineid)

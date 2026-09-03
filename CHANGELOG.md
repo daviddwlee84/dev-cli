@@ -43,6 +43,115 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   installers and later failures are reported as resumable partial or unknown
   outcomes without unsafe rollback claims.
 
+## [0.2.7] - 2026-09-03
+
+### Added
+
+- Agent skill inventory is now provider-independent and repository-aware. A
+  versioned snapshot of the `skills@1.5.23` 77-agent path registry scans the
+  current checkout, a selected repository, or every canonical repository plus
+  global scope without executing Node; explicit source checks group shared
+  Git/ref inputs once and keep local presence/integrity separate from upstream
+  freshness.
+- `dev mcp list` and a lazy MCP TUI view inventory static declarations for
+  Claude Code, Codex, Cursor, Gemini CLI, and OpenCode. Output is scope-qualified,
+  never claims runtime health/effective precedence, and strips command arguments,
+  environment/header/OAuth values, URL credentials, and indirect file contents.
+- Wide TASKS tables now show the repository for each row; compact terminals keep
+  the previous layout and the detail pane continues to show the full repo/path.
+
+### Fixed
+
+- Read-only skill listing no longer treats the presence of `npx` as proof that
+  the `skills` package is cached. It never runs `npx --no-install skills`, so npm
+  cannot resolve a missing package from the registry and cancel the inventory.
+- Repository-scoped skill mutations now require a directly installed `skills`
+  executable, skip npm-local PATH shims in favor of a later trusted provider,
+  validate against the effective canonical repository root, use the canonical
+  lock key, reject option-like or source-less lock entries, and serialize provider
+  processes across cooperating `dev` invocations. TUI post-update verification
+  remains pinned to the confirmed checkout.
+- Explicit skill source checks terminate Git option parsing, reject unsafe refs,
+  and hash Git tree/blob objects without checking out remote content, so
+  `.gitattributes` filters and `core.autocrlf` cannot execute or invent updates.
+  Locale-dependent folder hashes with non-ASCII paths remain explicitly
+  unverifiable instead of reporting false freshness.
+- Native skill/MCP readers now open regular files non-blockingly before bounded
+  reads, closing stat/open FIFO races. Target identity preserves explicit linked
+  worktree aliases, canonicalizes missing suffixes below symlinks, attributes
+  nested Claude projects to the most specific checkout, and no longer attributes
+  project-only agents to global skill paths.
+- MCP normalization now honors `CLAUDE_CONFIG_DIR`, Claude user/project/local/
+  managed approval settings, exact local project paths, documented Gemini and
+  Claude transports, provider-specific environment references, and Codex OAuth
+  scope/resource facts. Null server members are diagnosed without producing
+  phantom rows, and values remain redacted.
+- Warning-only SKILLS/MCP diagnostics now keep fresh TUI snapshots instead of
+  causing reload loops; visible dependent views resume after REPOS recovers,
+  startup checkout identity is cached once, post-update skill reloads are traced,
+  and long credential summaries stay within the terminal viewport.
+
+## [0.2.6] - 2026-09-03
+
+### Added
+
+- `dev flow [repo]` adds a preview-labelled, full-screen repository lifecycle
+  interface independent of the dashboard. It projects every registered worktree
+  plus task-only records, separates persisted HOT/WARM/COLD/DONE intent from
+  live local/manual remote evidence, and requires an exact revision-bound plan
+  plus action-specific approval before managed lifecycle, unmanaged Adopt/Remove,
+  or remote refresh effects. Apply revalidates authority, reports partial steps,
+  preserves branches for unmanaged removal, and keeps DONE resources until
+  explicit retirement.
+
+### Fixed
+
+- Existing park, resume, completion, retirement, unmanaged worktree removal, and
+  sweep paths now share revision-bound taskflow plans instead of independently
+  mutating lifecycle state. Git ref probe failures, unobserved runtime or writer
+  occupancy, pending artifacts across checkout moves, changed remote/merge
+  authority, and fork review results fail closed; successful DONE/MERGED
+  completion retains runtime, worktree, and branch resources for explicit
+  retirement.
+
+## [0.2.5] - 2026-09-01
+
+### Added
+
+- `dev repo context [repo]` now has an additive schema-v1 `--json` report and an
+  explicit `--refresh` path. Local checkout, Git, task, worktree, and runtime facts
+  stay live and network-free; optional forge and configured-fleet observations carry
+  source, age, freshness, completeness, and collection errors. Remote endpoints are
+  structurally sanitized before public output, and readiness remains split by scope
+  instead of collapsing unknown evidence into a global safe value. `dev status`
+  reuses the same cheap local readiness projection without network probes.
+- `dev fleet machine-id <host>` exposes the remote host's non-secret durable machine
+  UUID and compares it with the optional `machine_id` pin in `remotes.toml`.
+  `dev fleet files [repo-or-path] --to <host>` plans a one-way transfer of explicitly
+  allowlisted ignored files and mutates only with `--apply`; both hosts must prove
+  every exact path is untracked, ignored, regular, portable, bounded, and bound to the
+  same fetch identity, attached branch, and commit; apply additionally requires the
+  pinned target machine. Differing target bytes require a separate `--replace`;
+  `--yes` never implies replacement.
+
+### Fixed
+
+- Task writes now carry an in-memory revision from read to write, so existing
+  lifecycle callers cannot silently overwrite a concurrent process's newer task
+  record. Park holds the task transaction through runtime/worktree cleanup, and a
+  DONE direct-task ID starts a new compare-and-swap generation. Catalog create,
+  update, import, and experiment reconciliation share one
+  cross-process transaction lock, while corrupt task records make repository-context
+  inventory explicitly incomplete instead of disappearing behind a warning.
+- Portable-file retries now recover an interrupted store both before and after the
+  first journal write. Source branch/HEAD/fetch identity is revalidated around payload
+  reads; target sync/apply and remote aliases share the canonical clone lease. Durable
+  publication provenance plus exact digest/mode prevents rollback from deleting a
+  foreign identical file or retaining changed permissions. Target discovery errors fail
+  closed, nested bare repositories are excluded, post-publication filesystem errors
+  remove their own destination, and credential-bearing SCP-like tokens cannot enter
+  catalog keys, protocol journals, or repository-context output.
+
 ## [0.2.4] - 2026-09-01
 
 ### Added
@@ -382,7 +491,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.6...v0.2.7
+[0.2.6]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.5...v0.2.6
+[0.2.5]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.1...v0.2.2

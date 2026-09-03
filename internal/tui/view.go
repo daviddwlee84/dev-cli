@@ -7,9 +7,12 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/daviddwlee84/dev-cli/internal/agentmcp"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
+	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
+	"github.com/daviddwlee84/dev-cli/internal/repocontext"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -35,9 +38,19 @@ func (m Model) listHeight() int {
 
 func (m Model) listPreambleLines() int {
 	lines := 1 // the table header, or the one-line empty/loading state
-	if m.view == ViewRemote && m.viewLoad(ViewRemote).loading && len(m.visibleRemotes()) > 0 {
-		// Cached REMOTE rows retain an explicit refresh banner above the header.
-		lines++
+	switch m.view {
+	case ViewRemote:
+		if m.viewLoad(ViewRemote).loading && len(m.visibleRemotes()) > 0 {
+			lines++
+		}
+	case ViewSkills:
+		if m.viewLoad(ViewSkills).loading && len(m.visibleSkills()) > 0 {
+			lines++
+		}
+	case ViewMCP:
+		if m.viewLoad(ViewMCP).loading && len(m.visibleMCP()) > 0 {
+			lines++
+		}
 	}
 	return lines
 }
@@ -83,6 +96,8 @@ func (m Model) View() (output string) {
 		b.WriteString(m.renderRemotes())
 	case ViewSkills:
 		b.WriteString(m.renderSkills())
+	case ViewMCP:
+		b.WriteString(m.renderMCP())
 	default:
 		b.WriteString(m.renderTasks())
 	}
@@ -129,19 +144,51 @@ func humanSeconds(seconds int) string {
 // renderHeader shows the tab strip, so which list is showing — and that there
 // is another one — is never in doubt.
 func (m Model) renderHeader() string {
-	var tabs []string
-	for _, v := range Views {
-		label := " " + strings.ToUpper(v.String()) + " "
-		if v == m.view {
-			tabs = append(tabs, styleSelected.Render(label))
-		} else {
-			tabs = append(tabs, styleDim.Render(label))
+	build := func(compact, summary bool) string {
+		short := map[View]string{
+			ViewTasks: "TSK", ViewRepos: "REP", ViewFleet: "FLT", ViewTries: "TRY",
+			ViewRemote: "REM", ViewSkills: "SKL", ViewMCP: "MCP",
 		}
+		var tabs []string
+		for _, view := range Views {
+			name := strings.ToUpper(view.String())
+			if compact {
+				name = short[view]
+			}
+			label := name
+			if !compact {
+				label = " " + name + " "
+			}
+			if view == m.view {
+				tabs = append(tabs, styleSelected.Render(label))
+			} else {
+				tabs = append(tabs, styleDim.Render(label))
+			}
+		}
+		line := styleTitle.Render("dev") + "  " + strings.Join(tabs, styleDim.Render("│"))
+		if summary {
+			line += "   " + styleDim.Render(m.Summary())
+		}
+		if m.filter != "" {
+			line += "   " + styleWarm.Render("/"+m.filter)
+		}
+		return line
 	}
-	line := styleTitle.Render("dev") + "  " + strings.Join(tabs, styleDim.Render("│")) +
-		"   " + styleDim.Render(m.Summary())
-	if m.filter != "" {
-		line += "   " + styleWarm.Render("/"+m.filter)
+	line := build(false, true)
+	if lipgloss.Width(line) > m.width {
+		line = build(false, false)
+	}
+	if lipgloss.Width(line) > m.width {
+		line = build(true, false)
+	}
+	if lipgloss.Width(line) > m.width {
+		line = styleTitle.Render("dev") + "  " + styleSelected.Render(strings.ToUpper(m.view.String()))
+		if m.filter != "" {
+			available := m.width - lipgloss.Width(line) - 4
+			if available > 1 {
+				line += "   " + styleWarm.Render("/"+pad(m.filter, available-1))
+			}
+		}
 	}
 	return line + "\n"
 }
@@ -163,28 +210,53 @@ func (m Model) window(n int) (from, to int) {
 	return from, from + h
 }
 
+const (
+	taskRepoBreakpoint = 97
+	taskRepoWidth      = 16
+)
+
 func (m Model) renderTasks() string {
 	rows := m.visibleTasks()
 	if len(rows) == 0 {
 		return m.emptyTasks()
 	}
 	nameW, branchW, nextW := m.columnWidths()
+	showRepo := m.width >= taskRepoBreakpoint
+
+	headers := []string{
+		fitCell("TASK", nameW),
+		fitCell("STATE", 6),
+	}
+	if showRepo {
+		headers = append(headers, fitCell("REPO", taskRepoWidth))
+	}
+	headers = append(headers,
+		fitCell("BRANCH", branchW),
+		fitCell("GIT", 16),
+		fitCell("AGE", 5),
+		fitCell("NEXT", nextW),
+	)
 
 	var b strings.Builder
-	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-*s  %-6s  %-*s  %-16s  %-5s  %s",
-		nameW, "TASK", "STATE", branchW, "BRANCH", "GIT", "AGE", "NEXT")) + "\n")
+	b.WriteString(styleHeader.Render("  "+strings.Join(headers, "  ")) + "\n")
 
 	from, to := m.window(len(rows))
 	for i := from; i < to; i++ {
 		r := rows[i]
-		line := fmt.Sprintf("%-*s  %-6s  %-*s  %-16s  %-5s  %s",
-			nameW, pad(r.Task.Title(), nameW),
-			r.Task.State.Label(),
-			branchW, pad(r.Task.Branch, branchW),
-			pad(gitColumn(r), 16),
-			pad(shortAge(r), 5),
-			pad(nextColumn(r), nextW),
+		cells := []string{
+			fitCell(r.Task.Title(), nameW),
+			fitCell(r.Task.State.Label(), 6),
+		}
+		if showRepo {
+			cells = append(cells, fitCell(r.Task.Repo, taskRepoWidth))
+		}
+		cells = append(cells,
+			fitCell(r.Task.Branch, branchW),
+			fitCell(gitColumn(r), 16),
+			fitCell(shortAge(r), 5),
+			fitCell(nextColumn(r), nextW),
 		)
+		line := strings.Join(cells, "  ")
 		b.WriteString(m.renderLine(i, line, colourState(r.Task.State, line)))
 	}
 	b.WriteString(m.scrollNote(len(rows), from, to))
@@ -285,12 +357,15 @@ func (m Model) repoItemColumnValue(item repoItem, name string) string {
 			return checkout.Status.Summary()
 		}
 	case "live":
-		return checkoutLiveColumn(r.Runtime, checkout)
+		return checkoutLiveColumn(r.Runtime, checkout, r.Context.RuntimeErr)
 	case "latest":
 		return latestAge(checkout.LastActivity)
 	case "worktrees":
 		return "—"
 	case "tasks":
+		if r.Context.TaskErr != nil {
+			return "?"
+		}
 		return taskStateSummary(checkout.Tasks)
 	case "notes":
 		if r.NoteCount > 0 {
@@ -306,6 +381,9 @@ func (m Model) repoItemColumnValue(item repoItem, name string) string {
 }
 
 func parentLiveColumn(r RepoRow) string {
+	if r.Context.RuntimeErr != nil {
+		return "?"
+	}
 	sessions := r.Sessions()
 	if len(sessions) == 0 {
 		return repoColumnValue(r, "live")
@@ -320,7 +398,10 @@ func parentLiveColumn(r RepoRow) string {
 	return r.Runtime
 }
 
-func checkoutLiveColumn(runtimeName string, checkout inventory.RepoCheckout) string {
+func checkoutLiveColumn(runtimeName string, checkout inventory.RepoCheckout, runtimeErr error) string {
+	if runtimeErr != nil {
+		return "?"
+	}
 	if len(checkout.Sessions) == 0 {
 		return "closed"
 	}
@@ -428,6 +509,9 @@ func repoColumnValue(r RepoRow, name string) string {
 	case "size":
 		return sizeCell(r.Usage, r.SizeError, r.SizeTarget)
 	case "live":
+		if r.Context.RuntimeErr != nil {
+			return "?"
+		}
 		if !r.Live {
 			return "—"
 		}
@@ -443,6 +527,9 @@ func repoColumnValue(r RepoRow, name string) string {
 		}
 		return "—"
 	case "tasks":
+		if r.Context.TaskErr != nil {
+			return "?"
+		}
 		if tasks := r.StateSummary(); tasks != "" {
 			return tasks
 		}
@@ -608,15 +695,13 @@ func (m Model) renderFleet() string {
 	return b.String()
 }
 func (m Model) renderSkills() string {
-	if m.skillsChecking {
-		return "  " + styleDim.Render("Checking skill sources…") + "\n"
-	}
-	if m.viewLoad(ViewSkills).loading {
-		return "  " + styleDim.Render("Loading local agent skills…") + "\n"
-	}
+	state := m.viewLoad(ViewSkills)
 	rows := m.visibleSkills()
+	if state.loading && len(m.skills) == 0 {
+		return "  " + styleDim.Render("Loading agent skills across repositories…") + "\n"
+	}
 	if len(rows) == 0 {
-		if !m.viewLoad(ViewSkills).hasSnapshot {
+		if !state.hasSnapshot {
 			return "  " + styleDim.Render("Agent skills load when this view is opened.") + "\n"
 		}
 		if m.filter != "" {
@@ -624,31 +709,47 @@ func (m Model) renderSkills() string {
 		}
 		return "  " + styleDim.Render("No agent skills found. Press a to open the installer.") + "\n"
 	}
-	skillW := clamp(m.width*24/100, 14, 30)
-	agentW := clamp(m.width*25/100, 16, 34)
-	showSource := m.width >= 76
-	sourceW := m.width - skillW - agentW - 35
-	if sourceW < 12 {
-		sourceW = 12
+
+	var headers []string
+	var values func(agentskill.Skill) []string
+	switch {
+	case m.width >= 110:
+		repoW, scopeW, skillW, installW, updateW, agentW := 16, 7, 20, 9, 10, 20
+		sourceW := max(12, m.width-96)
+		headers = []string{fitCell("REPO", repoW), fitCell("SCOPE", scopeW), fitCell("SKILL", skillW), fitCell("INSTALL", installW), fitCell("UPDATE", updateW), fitCell("AGENTS", agentW), fitCell("SOURCE", sourceW)}
+		values = func(row agentskill.Skill) []string {
+			return []string{fitCell(dashCell(row.Repository), repoW), fitCell(string(row.Scope), scopeW), fitCell(row.Name, skillW), fitCell(skillInstallState(row), installW), fitCell(skillUpdateLabel(row.UpdateStatus), updateW), fitCell(skillAgentSummary(row.Agents), agentW), fitCell(skillSource(row), sourceW)}
+		}
+	case m.width >= 82:
+		repoW, scopeW, installW, updateW := 16, 7, 9, 10
+		flex := max(28, m.width-54)
+		skillW, agentW := flex/2, flex-flex/2
+		headers = []string{fitCell("REPO", repoW), fitCell("SCOPE", scopeW), fitCell("SKILL", skillW), fitCell("INSTALL", installW), fitCell("UPDATE", updateW), fitCell("AGENTS", agentW)}
+		values = func(row agentskill.Skill) []string {
+			return []string{fitCell(dashCell(row.Repository), repoW), fitCell(string(row.Scope), scopeW), fitCell(row.Name, skillW), fitCell(skillInstallState(row), installW), fitCell(skillUpdateLabel(row.UpdateStatus), updateW), fitCell(skillAgentSummary(row.Agents), agentW)}
+		}
+	default:
+		repoW, updateW := 14, 10
+		skillW := max(12, m.width-30)
+		headers = []string{fitCell("REPO", repoW), fitCell("SKILL", skillW), fitCell("UPDATE", updateW)}
+		values = func(row agentskill.Skill) []string {
+			return []string{fitCell(dashCell(row.Repository), repoW), fitCell(row.Name, skillW), fitCell(skillUpdateLabel(row.UpdateStatus), updateW)}
+		}
 	}
 
 	var b strings.Builder
-	if showSource {
-		b.WriteString(styleHeader.Render(fmt.Sprintf("  %-7s  %-*s  %-10s  %-*s  %s",
-			"SCOPE", skillW, "SKILL", "UPDATE", agentW, "AGENTS", "SOURCE")) + "\n")
-	} else {
-		b.WriteString(styleHeader.Render(fmt.Sprintf("  %-7s  %-*s  %-10s  %s",
-			"SCOPE", skillW, "SKILL", "UPDATE", "AGENTS")) + "\n")
+	if state.loading {
+		message := "Showing installed skills while refreshing…"
+		if m.skillsChecking {
+			message = "Showing installed skills while checking sources…"
+		}
+		b.WriteString("  " + styleDim.Render(message) + "\n")
 	}
+	b.WriteString(styleHeader.Render("  "+strings.Join(headers, "  ")) + "\n")
 	from, to := m.window(len(rows))
 	for i := from; i < to; i++ {
 		row := rows[i]
-		line := fmt.Sprintf("%-7s  %-*s  %-10s  %s",
-			row.Scope, skillW, pad(row.Name, skillW), skillUpdateLabel(row.UpdateStatus),
-			pad(skillAgentSummary(row.Agents), agentW))
-		if showSource {
-			line += "  " + pad(skillSource(row), sourceW)
-		}
+		line := strings.Join(values(row), "  ")
 		styled := line
 		switch row.UpdateStatus {
 		case agentskill.UpdateAvailable, agentskill.UpdateMissing, agentskill.UpdateFailed:
@@ -662,6 +763,136 @@ func (m Model) renderSkills() string {
 	}
 	b.WriteString(m.scrollNote(len(rows), from, to))
 	return b.String()
+}
+
+func skillInstallState(row agentskill.Skill) string {
+	if row.Presence == agentskill.PresenceMissing {
+		return "missing"
+	}
+	switch row.Integrity {
+	case agentskill.IntegrityVerified:
+		return "verified"
+	case agentskill.IntegrityDrifted:
+		return "drifted"
+	default:
+		return "present"
+	}
+}
+
+func (m Model) renderMCP() string {
+	state := m.viewLoad(ViewMCP)
+	rows := m.visibleMCP()
+	if state.loading && len(m.mcp) == 0 {
+		return "  " + styleDim.Render("Loading static MCP declarations…") + "\n"
+	}
+	if len(rows) == 0 {
+		if !state.hasSnapshot {
+			return "  " + styleDim.Render("MCP declarations load when this view is opened.") + "\n"
+		}
+		if m.filter != "" {
+			return "  " + styleDim.Render("No MCP declaration matches /"+m.filter) + "\n"
+		}
+		return "  " + styleDim.Render("No MCP server declarations found.") + "\n"
+	}
+
+	var headers []string
+	var values func(agentmcp.Declaration) []string
+	switch {
+	case m.width >= 112:
+		repoW, scopeW, agentW, transportW, stateW, sourceW := 16, 12, 12, 16, 10, 14
+		serverW := max(18, m.width-94)
+		headers = []string{fitCell("REPO", repoW), fitCell("SCOPE", scopeW), fitCell("AGENT", agentW), fitCell("SERVER", serverW), fitCell("TRANSPORT", transportW), fitCell("STATE", stateW), fitCell("SOURCE", sourceW)}
+		values = func(row agentmcp.Declaration) []string {
+			return []string{fitCell(dashCell(row.Repository), repoW), fitCell(string(row.Scope), scopeW), fitCell(string(row.Agent), agentW), fitCell(row.Name, serverW), fitCell(string(row.Transport), transportW), fitCell(mcpDeclarationState(row), stateW), fitCell(mcpSource(row), sourceW)}
+		}
+	case m.width >= 94:
+		repoW, scopeW, agentW, transportW, stateW := 16, 12, 12, 16, 10
+		serverW := max(16, m.width-78)
+		headers = []string{fitCell("REPO", repoW), fitCell("SCOPE", scopeW), fitCell("AGENT", agentW), fitCell("SERVER", serverW), fitCell("TRANSPORT", transportW), fitCell("STATE", stateW)}
+		values = func(row agentmcp.Declaration) []string {
+			return []string{fitCell(dashCell(row.Repository), repoW), fitCell(string(row.Scope), scopeW), fitCell(string(row.Agent), agentW), fitCell(row.Name, serverW), fitCell(string(row.Transport), transportW), fitCell(mcpDeclarationState(row), stateW)}
+		}
+	default:
+		repoW, agentW, stateW := 14, 12, 10
+		serverW := max(12, m.width-44)
+		headers = []string{fitCell("REPO", repoW), fitCell("AGENT", agentW), fitCell("SERVER", serverW), fitCell("STATE", stateW)}
+		values = func(row agentmcp.Declaration) []string {
+			return []string{fitCell(dashCell(row.Repository), repoW), fitCell(string(row.Agent), agentW), fitCell(row.Name, serverW), fitCell(mcpDeclarationState(row), stateW)}
+		}
+	}
+
+	var b strings.Builder
+	if state.loading {
+		b.WriteString("  " + styleDim.Render("Showing MCP declarations while refreshing…") + "\n")
+	}
+	b.WriteString(styleHeader.Render("  "+strings.Join(headers, "  ")) + "\n")
+	from, to := m.window(len(rows))
+	for i := from; i < to; i++ {
+		row := rows[i]
+		line := strings.Join(values(row), "  ")
+		styled := line
+		if row.Enabled != nil && !*row.Enabled {
+			styled = styleDim.Render(line)
+		} else if row.Enabled != nil && *row.Enabled {
+			styled = styleLive.Render(line)
+		}
+		b.WriteString(m.renderLine(i, line, styled))
+	}
+	b.WriteString(m.scrollNote(len(rows), from, to))
+	return b.String()
+}
+
+func mcpSource(row agentmcp.Declaration) string {
+	source := string(row.Source)
+	if row.Plugin != "" {
+		source += ":" + row.Plugin
+	}
+	return source
+}
+
+func dashCell(value string) string {
+	if value == "" {
+		return "—"
+	}
+	return value
+}
+
+func mcpPolicySummary(row agentmcp.Declaration) string {
+	parts := make([]string, 0, len(row.Policies))
+	for _, policy := range row.Policies {
+		part := string(policy.Kind)
+		if policy.Value != "" {
+			part += ":" + policy.Value
+		}
+		if policy.Count > 0 {
+			part += fmt.Sprintf(":%d", policy.Count)
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, ", ")
+}
+
+func mcpCredentialSummary(row agentmcp.Declaration, maxWidth int) string {
+	parts := make([]string, 0, len(row.Credentials))
+	for index, credential := range row.Credentials {
+		part := string(credential.Kind)
+		if credential.Name != "" {
+			part += ":" + credential.Name
+		}
+		candidate := strings.Join(append(append([]string(nil), parts...), part), ", ")
+		if lipgloss.Width(candidate) > maxWidth {
+			remaining := len(row.Credentials) - index
+			if len(parts) == 0 {
+				if remaining == 1 {
+					return pad(part, maxWidth)
+				}
+				return pad(fmt.Sprintf("%s, +%d", part, remaining-1), maxWidth)
+			}
+			return pad(strings.Join(parts, ", ")+fmt.Sprintf(", +%d", remaining), maxWidth)
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, ", ")
 }
 
 func fleetTasks(hot, warm, cold, done int) string {
@@ -757,7 +988,10 @@ func (m Model) emptyTasks() string {
 }
 
 func (m Model) columnWidths() (name, branch, next int) {
-	const fixed = 2 + 6 + 16 + 5 + 10
+	fixed := 2 + 6 + 16 + 5 + 10
+	if m.width >= taskRepoBreakpoint {
+		fixed += taskRepoWidth + 2
+	}
 	avail := m.width - fixed
 	if avail < 40 {
 		avail = 40
@@ -802,7 +1036,7 @@ func (m Model) renderDetail() string {
 			"\n  to: " + contract(filepath.Join("<project_root>", r.Repo.Name)) +
 			"\n  " + styleHelp.Render("enter to clone into project_root · esc to cancel")
 	case modeConfirmSkillUpdate:
-		row, _ := m.currentSkill()
+		row := m.skillUpdateTarget
 		return "  " + styleTitle.Render("update "+string(row.Scope)+" skill "+row.Name) +
 			"\n  " + styleHelp.Render("enter to update this skill · esc to cancel")
 	case modeCopy:
@@ -835,6 +1069,57 @@ func (m Model) renderDetail() string {
 		}
 		if row.Error != "" {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("note "), styleDrift.Render(row.Error)))
+		}
+		return strings.Join(lines, "\n") + "\n"
+	}
+	if row, ok := m.currentMCP(); ok {
+		lines := []string{
+			fmt.Sprintf("  %s  %s", styleDim.Render("repo"), dashCell(row.Repository)),
+			fmt.Sprintf("  %s %s", styleDim.Render("scope "), row.Scope),
+			fmt.Sprintf("  %s %s", styleDim.Render("agent "), row.Agent),
+			fmt.Sprintf("  %s %s", styleDim.Render("config"), contract(row.ConfigPath)),
+			fmt.Sprintf("  %s %s", styleDim.Render("source"), mcpSource(row)),
+			fmt.Sprintf("  %s %s", styleDim.Render("state "), mcpDeclarationState(row)),
+			fmt.Sprintf("  %s %s", styleDim.Render("type  "), row.Transport),
+		}
+		if row.LocalProjectPath != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("project"), contract(row.LocalProjectPath)))
+		}
+		if row.Required != nil {
+			lines = append(lines, fmt.Sprintf("  %s %t", styleDim.Render("required"), *row.Required))
+		}
+		if row.Trusted != nil {
+			lines = append(lines, fmt.Sprintf("  %s %t", styleDim.Render("trusted "), *row.Trusted))
+		}
+		if summary := mcpPolicySummary(row); summary != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("policies"), summary))
+		}
+		if row.Endpoint != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("target"), row.Endpoint))
+		}
+		if row.Command != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("command"), row.Command))
+		}
+		if row.ArgumentCount > 0 {
+			lines = append(lines, fmt.Sprintf("  %s %d value(s) redacted", styleDim.Render("args  "), row.ArgumentCount))
+		}
+		credentialWidth := max(1, m.width-lipgloss.Width("  credentials "))
+		if summary := mcpCredentialSummary(row, credentialWidth); summary != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("credentials"), summary))
+		}
+		if len(row.Redactions) > 0 {
+			parts := make([]string, len(row.Redactions))
+			for i, redaction := range row.Redactions {
+				parts[i] = string(redaction)
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("redacted"), strings.Join(parts, ", ")))
+		}
+		if len(row.Coverage) > 0 {
+			parts := make([]string, len(row.Coverage))
+			for i, item := range row.Coverage {
+				parts[i] = string(item.Code)
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("coverage"), strings.Join(parts, ", ")))
 		}
 		return strings.Join(lines, "\n") + "\n"
 	}
@@ -933,6 +1218,7 @@ func (m Model) renderDetail() string {
 			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(checkout.Worktree.Path)),
 			fmt.Sprintf("  %s %s", styleDim.Render("branch"), checkout.Branch()),
 			fmt.Sprintf("  %s  %s", styleDim.Render("owner"), checkout.Ownership),
+			fmt.Sprintf("  %s %s", styleDim.Render("ready"), repocontext.AssessLocal(item.Repo.Context, item.CheckoutIndex, config.Hostname()).Summary()),
 		}
 		if checkout.StatusErr != nil {
 			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("git"), styleErr.Render(checkout.StatusErr.Error())))
@@ -948,7 +1234,9 @@ func (m Model) renderDetail() string {
 		if checkout.Worktree.Prunable || !checkout.Exists {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("state"), styleDrift.Render("prunable; checkout missing")))
 		}
-		if len(checkout.Sessions) == 0 {
+		if item.Repo.Context.RuntimeErr != nil {
+			lines = append(lines, "  "+styleDim.Render("live")+"  "+styleErr.Render("unavailable"))
+		} else if len(checkout.Sessions) == 0 {
 			lines = append(lines, "  "+styleDim.Render("live")+"  "+styleDim.Render("closed"))
 		} else {
 			for _, session := range checkout.Sessions {
@@ -962,7 +1250,9 @@ func (m Model) renderDetail() string {
 				}
 			}
 		}
-		if len(checkout.Tasks) > 0 {
+		if item.Repo.Context.TaskErr != nil {
+			lines = append(lines, "  "+styleDim.Render("tasks")+" "+styleErr.Render("unavailable"))
+		} else if len(checkout.Tasks) > 0 {
 			var names []string
 			for _, t := range checkout.Tasks {
 				names = append(names, t.State.Icon()+" "+t.Title())
@@ -977,6 +1267,7 @@ func (m Model) renderDetail() string {
 	if r, ok := m.currentRepo(); ok {
 		lines := []string{
 			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(r.Repo.Path)),
+			fmt.Sprintf("  %s %s", styleDim.Render("ready"), repocontext.AssessLocal(r.Context, 0, config.Hostname()).Summary()),
 		}
 		lines = append(lines, sizeDetailLines(r.Usage, r.SizeError, r.SizeTarget)...)
 		if r.Asset != nil {
@@ -1013,7 +1304,9 @@ func (m Model) renderDetail() string {
 		if r.Repo.Category != "" {
 			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("group"), r.Repo.Category))
 		}
-		if sessions := r.Sessions(); len(sessions) > 0 {
+		if r.Context.RuntimeErr != nil {
+			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("live"), styleErr.Render("unavailable")))
+		} else if sessions := r.Sessions(); len(sessions) > 0 {
 			if len(sessions) == 1 {
 				live := r.Runtime + " " + sessions[0].Handle
 				if sessions[0].AgentStatus != "" {
@@ -1035,7 +1328,9 @@ func (m Model) renderDetail() string {
 			lines = append(lines, fmt.Sprintf("  %s  %d · %s", styleDim.Render("notes"),
 				r.NoteCount, r.LatestNote.Preview(maxInt(20, m.width-18))))
 		}
-		if len(r.Tasks) > 0 {
+		if r.Context.TaskErr != nil {
+			lines = append(lines, "  "+styleDim.Render("tasks")+" "+styleErr.Render("unavailable"))
+		} else if len(r.Tasks) > 0 {
 			var names []string
 			for _, t := range r.Tasks {
 				names = append(names, t.State.Icon()+" "+t.Title())
@@ -1148,6 +1443,8 @@ func (m Model) renderFooter() string {
 		}
 	case ViewSkills:
 		bindings = append(bindings, "a add", "c check", "u update selected")
+	case ViewMCP:
+		bindings = append(bindings, "r reload declarations")
 	default:
 		if row, ok := m.currentTask(); ok {
 			if command := taskRecoveryCommand(row); command != "" {
@@ -1162,21 +1459,21 @@ func (m Model) renderFooter() string {
 		bindings = append(bindings, "y copy")
 	}
 	bindings = append(bindings, "tab view", "/ filter", "? help")
-	if m.view != ViewSkills {
+	if m.view != ViewSkills && m.view != ViewMCP {
 		bindings = append(bindings, "H stats")
 	}
 	// `e` edits whichever configuration the current view is about.
 	if m.view == ViewFleet {
 		bindings = append(bindings, "e hosts")
-	} else {
+	} else if m.view != ViewMCP {
 		bindings = append(bindings, "e config")
 	}
-	if m.view != ViewSkills {
+	if m.view != ViewSkills && m.view != ViewMCP {
 		for _, t := range m.Tools() {
 			bindings = append(bindings, t.Key+" "+t.Name)
 		}
 	}
-	if m.view != ViewSkills {
+	if m.view != ViewSkills && m.view != ViewMCP {
 		bindings = append(bindings, "1/2/3 state")
 	}
 	bindings = append(bindings, "0 clear", "r reload", "q quit")

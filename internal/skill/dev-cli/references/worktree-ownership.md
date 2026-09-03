@@ -38,7 +38,10 @@ root, Git registration lets dev discover the checkout without scanning
 `~/.herdr/worktrees`; dev does not auto-adopt, relocate, or provision it. Run
 `dev wt provision <path>` if it needs the project environment and `dev adopt`
 followed by `dev adopt --apply` only when it should enter the durable task
-lifecycle.
+lifecycle. For one exact checkout, `dev flow [repo]` offers plan-first
+metadata-only Adopt and clean branch-preserving Remove Checkout. It never removes
+the canonical checkout or a harness/conflicting/locked/prunable/task-claimed row,
+and it does not prune repository-wide stale registrations.
 
 ## Paths
 
@@ -86,6 +89,10 @@ copied. Tracked files already have the branch-correct version. Included files
 must remain the same regular file from validation through open; source swaps and
 symlinked destination parents are refused. Existing destinations are reported
 as skipped, never falsely as copied, and file contents are never logged.
+
+This is local provisioning only. Off-machine `dev fleet files` deliberately uses
+a separate `[local_files].include` allowlist plus explicit `--to`; never infer
+export permission from `[worktree].include`.
 
 ### Project-local Claude backend state
 

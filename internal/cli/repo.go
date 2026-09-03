@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -16,7 +15,6 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
-	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
@@ -48,55 +46,6 @@ This is the "what projects do I have?" half of dev, kept separate from the
 	return cmd
 }
 
-func newRepoContextCmd(app *App) *cobra.Command {
-	return &cobra.Command{
-		Use:   "context [repo]",
-		Short: "Print agent-ready Git, worktree, runtime and task context",
-		Long: `Print a deterministic Markdown handoff for one repository.
-
-The context includes the canonical checkout, every linked worktree, Git state,
-runtime and agent sessions, and tracked task state. With no repository argument,
-the repository containing the current directory is used; standing in a linked
-worktree still reports the whole repository.`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
-			ctx := ctxOf()
-			var r repo.Repo
-			if len(args) == 1 {
-				resolved, _, err := resolveRepoRef(app, args[0])
-				if err != nil {
-					return err
-				}
-				r = resolved
-			} else {
-				cwd, err := os.Getwd()
-				if err != nil {
-					return err
-				}
-				g, err := gitx.Discover(ctx, cwd)
-				if err != nil {
-					return fmt.Errorf("%s is not a git repository — pass a repo", config.Contract(cwd))
-				}
-				r = repo.Repo{
-					Name: g.Name, Path: g.MainRoot, RealPath: g.MainRoot,
-					CommonDir: g.GitCommonDir, HasGit: true, Bare: g.Bare,
-				}
-			}
-
-			tasks, err := app.Tasks.List()
-			if err != nil {
-				return err
-			}
-			tasks = tasksForRepo(tasks, r)
-			rt := app.Runtime()
-			sessions, _ := rt.List(ctx)
-			context := inventory.CollectRepoContext(ctx, r, tasks, sessions, rt.Name())
-			fmt.Fprint(app.Out, inventory.FormatRepoContext(context, -1))
-			return nil
-		},
-	}
-}
-
 func tasksForRepo(tasks []*task.Task, r repo.Repo) []*task.Task {
 	var out []*task.Task
 	for _, t := range tasks {
@@ -108,7 +57,20 @@ func tasksForRepo(tasks []*task.Task, r repo.Repo) []*task.Task {
 }
 
 func sameCleanPath(a, b string) bool {
-	return a != "" && b != "" && filepath.Clean(a) == filepath.Clean(b)
+	if a == "" || b == "" {
+		return false
+	}
+	left, right := filepath.Clean(a), filepath.Clean(b)
+	if left == right {
+		return true
+	}
+	if resolved, err := filepath.EvalSymlinks(left); err == nil {
+		left = filepath.Clean(resolved)
+	}
+	if resolved, err := filepath.EvalSymlinks(right); err == nil {
+		right = filepath.Clean(resolved)
+	}
+	return left == right
 }
 
 // resolveRepoRef looks a repo up and renders ambiguity as a helpful error.
@@ -310,28 +272,23 @@ func patchRepositoryCatalog(ctx context.Context, app *App, repository repo.Repo,
 	}
 	add = catalog.NormalizeTags(add)
 	remove = catalog.NormalizeTags(remove)
-	var marked *catalog.Entry
-	err := app.Catalog.WithLock(ctx, func() error {
-		entry, ensureErr := app.Registry.EnsureRepository(observation)
-		if ensureErr != nil {
-			return ensureErr
+	entry, err := app.Registry.EnsureRepository(observation)
+	if err != nil {
+		return nil, err
+	}
+	return app.Registry.Patch(entry.ID, func(candidate *catalog.Entry) error {
+		kept := make([]string, 0, len(candidate.Tags)+len(add))
+		for _, tag := range candidate.Tags {
+			if !slices.Contains(remove, tag) {
+				kept = append(kept, tag)
+			}
 		}
-		marked, ensureErr = app.Registry.Patch(entry.ID, func(candidate *catalog.Entry) error {
-			kept := make([]string, 0, len(candidate.Tags)+len(add))
-			for _, tag := range candidate.Tags {
-				if !slices.Contains(remove, tag) {
-					kept = append(kept, tag)
-				}
-			}
-			candidate.Tags = append(kept, add...)
-			if note != nil {
-				candidate.Note = *note
-			}
-			return nil
-		})
-		return ensureErr
+		candidate.Tags = append(kept, add...)
+		if note != nil {
+			candidate.Note = *note
+		}
+		return nil
 	})
-	return marked, err
 }
 
 type repoListJSONRow struct {

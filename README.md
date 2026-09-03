@@ -73,7 +73,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.4 instead when you need a reproducible install.
+# Pin @v0.2.7 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -150,8 +150,9 @@ The agent skill is an explicit, optional post-install step:
 
 ```bash
 dev skill install
-dev skill list    # project + global skills, agents and sources
-dev doctor       # what works on this machine, and what degrades
+dev skill list --all    # native project/global inventory across repositories
+dev mcp list --all     # static, sanitized MCP declarations for five agents
+dev doctor             # what works on this machine, and what degrades
 ```
 
 Only **git** is required at runtime. The system `ssh` client enables SSH host
@@ -398,6 +399,7 @@ dev start api --task "token refresh" --base main \
 dev park --next "add the regression test" --wip      # → warm; self-runtime stays alive until exit
 dev park --cold --push                               # → cold, only from outside the target runtime
 dev resume "token refresh"                           # → hot, rebuilt if needed
+dev flow api                                          # preview the repository lifecycle, plan first
 
 dev prepare --session claude:<uuid> --plan .claude/plans/task.md
 dev artifact finalize --intent <id> --writer-stopped # manual post-wrapper proof
@@ -489,9 +491,61 @@ resolves every covering pane. A caller inside the target, a mixed workspace, or
 a working/blocked/waiting agent always stops retirement; unknown status needs an
 external `--close-unknown`. `dev done` never closes or removes anything.
 
+### Repository flow preview
+
+`dev flow [repo]` is a preview-labelled, full-screen, TTY-only state-machine UI.
+It is independent of the six-view `dev tui` dashboard. From a canonical or linked
+checkout, `dev flow` resolves the canonical repository and focuses that exact
+surface; outside Git it opens a filterable repository picker. An explicit
+`dev flow api` overrides cwd.
+
+The left panel is the union of Git's registered worktrees and task records that
+have no checkout, including normal COLD and DONE tasks. Rows are labelled
+`canonical`, `managed`, `unmanaged`, `harness`, `task-only`, or `conflict`.
+Canonical worktrees are never removable; harness-owned and ambiguous/conflicting
+rows have no destructive path. An exact unmanaged linked checkout can be
+**Adopted** by creating task metadata without changing Git bytes, or **Removed**
+only when clean and safe; removal is non-force and always preserves the branch.
+
+The center distinguishes persisted task intent (`HOT`, `WARM`, `COLD`, `DONE`)
+from observed Git/worktree/runtime/artifact facts. Unknown, failed, loading, or
+stale evidence never becomes a false clean/closed fact. `runtime=none` leaves
+session occupancy unobserved, but the local Git/task snapshot can still be fresh;
+metadata-only adoption then remains WARM.
+
+The right panel offers concrete mode/state actions: warm/cold park, resume,
+direct or fast-forward completion, review handoff, verified-merge completion,
+and DONE retirement where legal. The preview deliberately excludes dirty
+commit/discard, WIP checkpoint, shared-writer, ownership-takeover, and unknown-
+runtime overrides. A blocked plan shows its exact evidence, remediation, and CLI
+fallback; existing command flags remain available outside the preview.
+
+```text
+j/k or ↑/↓       choose a surface      h/l or ←/→     choose an action
+Tab/Shift-Tab    move panel focus       Enter          build a plan, never apply
+r                reload local facts    R              Fetch refs / Query review / Both
+Esc              back out              ?              evidence and key help
+```
+
+A READY plan shows ordered conditions/effects, retained resources, network and
+destructive markers, and its exact PlanID. Press `y` only for a non-typed plan;
+typed branch deletion requires the displayed token and `Enter`. Apply locks and
+reloads the task revision plus repository, checkout, refs, runtime, artifact, and
+remote identities. Any change rejects the stale plan before a new effect. Once an
+effect starts, quit/refresh waits for the retained step ledger; partial success
+means completed effects remain completed and recovery is explicit.
+
+Startup and `r` never fetch or query a forge. `R` runs only the confirmed choice
+and keeps its evidence in this TUI run: named ref OIDs plus portable review
+existence, open/draft/merged/closed state, URL, provider, and observation time.
+It does not query review decisions or checks. Completion records DONE while
+keeping branch, checkout, and runtime resources; Retire cleans them from outside
+the target. Raw Git and configured external tools remain outside these
+`dev`-mediated locks and safety checks.
+
 ### The dashboard
 
-Bare `dev` (or `dev tui`) opens six lists, switched with `tab`:
+Bare `dev` (or `dev tui`) opens seven lists, switched with `tab`:
 
 - **TASKS** — the change streams dev is tracking. What am I working on.
 - **REPOS** — durable repositories under the scan roots, with branch, dirty
@@ -505,17 +559,24 @@ Bare `dev` (or `dev tui`) opens six lists, switched with `tab`:
 - **REMOTE** — repositories visible through authenticated forge CLIs, including
   configured Azure DevOps projects, marked when a local repo or Try exists.
   What can I open or clone.
-- **SKILLS** — project and global agent skills, their target agents, source and
-  explicitly checked update state.
+- **SKILLS** — native project/global agent-skill inventory across canonical
+  repositories plus the startup checkout, with local presence/integrity and an
+  explicitly checked upstream freshness state.
+- **MCP** — sanitized static MCP declarations for Claude Code, Codex, Cursor,
+  Gemini CLI, and OpenCode. It reports configured scopes and resolves only
+  Claude's documented project-approval settings; it does not claim connection
+  health or a generally effective merged runtime configuration.
 
 The first view is constructed before runtime auto-detection, project-root lookup,
 cache decoding, shell-based tool checks, or the optional release refresh can
 finish. TASKS, REPOS, and TRY then publish independently from one shared local
-load cycle; REMOTE, FLEET, and SKILLS remain lazy. A cached REMOTE/FLEET snapshot
+load cycle; REMOTE, FLEET, SKILLS, and MCP remain lazy. A cached REMOTE/FLEET snapshot
 is immediately usable but is tracked separately from a current live result.
 Every requested view has its own generation, so `r` cancels the old read, a late
 result cannot replace a newer one, a failed refresh keeps usable rows visible,
-and a successful empty result clears obsolete rows.
+and a successful empty result clears obsolete rows. Warning-only SKILLS/MCP
+source diagnostics keep a fresh partial snapshot, and a visible dependent view
+resumes automatically after a failed REPOS generation is repaired and reloaded.
 
 TASKS, REPOS and TRY use the same services as their non-interactive commands.
 Git-backed Tries appear in TRY rather than being duplicated in REPOS; REMOTE
@@ -535,19 +596,25 @@ g G        top / bottom         h l / tab       previous / next view
 switches the current client; outside it exits the dashboard and attaches to
 the target session. A COLD worktree task requires `dev resume`; a missing or
 unregistered worktree requires `dev sweep` first so artifacts can be salvaged
-before the task is resumed or reaped. In TASKS, `p` parks and prompts
-for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
+before the task is resumed or reaped. A wide TASKS table includes `REPO`; its
+compact layout keeps repository/path in the selected detail pane. In TASKS, `p`
+parks and prompts for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
 `space` expands linked worktrees inline, `m` edits repository tags/summary,
 `s` starts an isolated worktree task, and `d` starts a tracked direct task.
 On TASKS and REPOS, `n` quick-adds a repository thought and `N` opens its notes
 overlay. Expanded children carry their own Git/session/task state and can be
 opened directly. In TRY, `n` creates or clones an experiment;
 `space` opens mark/deprecate/archive/restore/graduate actions; `a` includes
-retained history. In SKILLS, `a` opens the upstream interactive installer, `c`
-performs the opt-in read-only network check after the local snapshot has loaded,
-and `u` confirms before updating
-only the selected lock-managed skill. `r` reloads local state without checking
-the network. `?` opens the complete context-sensitive key map. That makes
+retained history. SKILLS reuses the accepted REPOS snapshot, adds the exact
+startup worktree when distinct, and scans global paths once. `a` opens the
+upstream interactive installer, `c` performs the opt-in read-only network check
+after the local snapshot has loaded, and `u` confirms before updating only the
+selected lock-managed skill in that row's checkout. Source checks hash Git object
+bytes without running checkout filters; non-ASCII provider folder hashes that
+cannot be reproduced portably remain unverifiable. Mutations skip repository-local
+PATH shims and are serialized across `dev` processes. `r` reloads local state
+without checking the network. MCP only filters/reloads static declarations; it
+never starts a server or helper. `?` opens the complete context-sensitive key map. That makes
 the branch/worktree and lifecycle costs explicit rather than silently applying
 them to every directory.
 
@@ -566,7 +633,7 @@ URLs, runtime handles, or raw errors, and it is not written to `stats.db` or sen
 anywhere. `tui.initial_view_returned` means the Bubble Tea view string was built,
 not that a terminal rasterized it. Cache acceptance, live snapshot acceptance,
 and load completion are separate events; there is no artificial “all tabs ready”
-event because REMOTE, FLEET, and SKILLS may never be visited.
+event because REMOTE, FLEET, SKILLS, and MCP may never be visited.
 
 REPOS also has an agent-handoff copy menu. Press `y`, then `y` for contextual
 Markdown, `p` for the checkout path, `b` for the branch, `s` for runtime/agent
@@ -577,7 +644,15 @@ pipe-friendly outside the TUI:
 ```bash
 dev repo context api
 dev repo context          # current repo, even from inside a linked worktree
+dev repo context --json   # additive schema-v1 automation contract
+dev repo context --refresh  # live forge + configured fleet probes
 ```
+
+Local checkout, Git, task, worktree, and runtime facts are always collected live
+without network access. External forge/fleet facts come from private caches by
+default and retain their source, age, freshness, completeness, and errors; only
+`--refresh` performs network probes. Readiness stays split by checkout, task, and
+worktree scope, and unknown evidence is never rendered as clean.
 
 **External tools are configured, not fixed.** They run through your shell in
 the selected row's checkout; the dashboard suspends and redraws when they exit:
@@ -630,9 +705,13 @@ and `c` confirms before cloning an absent repo into `project_root`. The same
 inventory is available without the full-screen UI via `dev repo remote [query]`;
 `--cached` is its instant/offline form.
 
-SKILLS also loads lazily, so opening the dashboard does not start Node. Its
-plain and JSON forms are available through `dev skill list`; run with `--check`
-only when a remote freshness check is wanted.
+SKILLS also loads lazily. Native reads use the versioned `skills@1.5.23`
+77-agent path registry and lock files; they never start Node, `skills`, or `npx`.
+Use `dev skill list --all` for canonical repositories, `--repo` for one checkout,
+and `--check` only when a remote freshness check is wanted; checks hash Git object
+bytes without checkout filters. MCP is separately available through `dev mcp
+list`; it reads five agents' static config formats, resolves only Claude's documented
+project approvals, and redacts secret-bearing values before producing rows or JSON.
 
 Azure DevOps Services inventory is opt-in because `az repos list` requires an
 organization and team project. Repeat the target for every project wanted:
@@ -744,6 +823,9 @@ Every inventory surface uses the same compact, starship-like status:
 and type breakdown (added / modified / deleted / renamed). A path staged and
 then modified again is one changed path, while correctly appearing in both the
 staged and unstaged categories. JSON output exposes all counts separately.
+`dev status` also renders independent local `checkout`, `task`, and `worktree`
+readiness outcomes. It never contacts a forge/fleet host, and unavailable task,
+runtime, or worktree evidence remains indeterminate instead of looking clean.
 
 ## Worktree ownership
 
@@ -783,7 +865,17 @@ logged:
 include     = [".env", ".env.local"]   # only files that are ALSO gitignored
 link        = []                       # opt-in; sharing node_modules is risky
 post_create = "auto"                   # uv.lock → uv sync, package-lock.json → npm ci, …
+
+# Separate opt-in export policy for dev fleet files; worktree.include is never
+# inherited for off-machine transfer.
+[local_files]
+include = [".env", ".mcp/**"]
 ```
+
+`[local_files]` may be committed in `.dev-cli/config.toml`, but it only proposes
+portable patterns. Nothing leaves the host until an explicit `dev fleet files`
+invocation selects one target; every pattern expands locally to sorted exact
+paths before the protocol begins.
 
 `.claude/settings.local.json` is not a universal include. Add that exact path
 only for an explicitly selected sticky/plain-Claude launcher and verify it
@@ -832,6 +924,7 @@ python   uv       uv.lock            .venv         installed
 dev repo list --sizes          # repos, remote topology and owned logical size
 dev repo list --no-remote      # find local Git with no configured backup remote
 dev repo context api           # agent-ready paths, Git, WT, runtime and tasks
+dev flow api                   # TTY-only guarded repository lifecycle preview
 dev repo new                   # interactive local/published repository bootstrap
 dev repo setup . --preset agent-ready   # safely initialize an existing repo
 dev repo clone owner/name -c Web   # expand forge shorthand, then clone with Git
@@ -841,7 +934,9 @@ dev ssh list                   # static OpenSSH aliases and source ownership
 dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --fleet
 dev ssh probe lab              # fresh ordinary BatchMode login
 dev fleet list                 # Git/task/runtime state from every configured machine
+dev fleet machine-id lab       # inspect/compare the target's stable machine pin
 dev fleet sync api --push      # push, then safely fast-forward clean remote checkouts
+dev fleet files api --to lab   # report-only plan for explicit ignored local files
 
 dev try redis-streams          # dated scratch directory for an experiment
 dev tries archive redis-streams    # reversible local archive; does not delete
@@ -1143,6 +1238,8 @@ dev_path = "auto"
 name = "lab"
 ssh_alias = "lab"
 remote_os = "posix"       # omitted still means posix
+# Add only after `dev fleet machine-id lab` and independent verification:
+machine_id = "00000000-0000-4000-8000-000000000000"
 ```
 
 An explicit `dev ssh setup winlab --key ~/.ssh/id_ed25519 --target-os windows --fleet`
@@ -1158,6 +1255,11 @@ but any alias collision involving a generated fragment fails closed.
 and identifies generated hosts with instructions to use `dev ssh setup/remove`.
 `dev fleet config edit` and the FLEET TUI `e` key continue to open only primary
 `remotes.toml`; generated registrations have a different owner.
+
+The UUID pin is optional for read-only inventory and diagnostics, but mandatory
+for `fleet files --apply`. `dev fleet machine-id <host>` is itself read-only: it
+shows the observed UUID, the configured value, and `unpinned`, `match`, or
+`mismatch`; it never edits `remotes.toml`.
 
 `dev fleet list` runs each machine's own `dev`, so its XDG config and paths stay
 host-local. `remote_os = "windows"` selects the encoded, argument-allowlisted
@@ -1177,6 +1279,30 @@ same branch that is strictly behind is fast-forwarded. Dirty, ahead, divergent,
 ambiguous and unreachable targets remain untouched and make the command fail;
 hosts without `dev` or without that repository are explicitly ignored.
 
+`dev fleet files [repo-or-path] --to <host>` is a separate, one-shot channel for
+explicit ignored local files:
+
+```bash
+dev fleet files api --to jingle                    # plan only
+dev fleet files api --to jingle --apply --yes      # create absent files
+dev fleet files api --to jingle --replace --apply  # separately authorize conflicts
+```
+
+The source and target must already be the same fetch identity, attached branch,
+and exact commit. Both Git configurations must classify every selected path as
+untracked and ignored. Only bounded regular files are accepted (128 files,
+8 MiB each, 32 MiB total at most); directories, links, special files, nested
+repositories, `.git`, and submodule boundaries fail closed. The target reopens
+held roots, journals before staging payloads, publishes owner-only files
+atomically, and rolls back changed files on failure. It deliberately leaves
+unprovably-owned empty parent directories rather than risk deleting another
+process's replacement. Native Windows payload apply remains disabled.
+
+This is **not** repository/task ownership transfer, backup, restore, or clone
+eviction. It does not clone a missing target, switch branches, run provisioning,
+synchronize catalog/notes, delete source files, watch for changes, or merge in
+both directions.
+
 ## The agent skill
 
 `dev` ships the agent skill that documents it, embedded in the binary — the
@@ -1185,22 +1311,40 @@ tool it describes, and an agent reading a stale command list is worse than one
 reading none.
 
 ```bash
-dev skill list       # merged project + global inventory
-dev skill list --check --json
-dev skill add        # interactive wizard for daviddwlee84/agent-skills/skills
+dev skill list                 # current checkout + global native inventory
+dev skill list --all --check --json
+dev skill list --repo api --project
+dev skill add                  # interactive wizard for daviddwlee84/agent-skills/skills
 dev skill update project-knowledge-harness --global --yes
-dev skill install    # → ~/.agents/skills/dev-cli, symlinked into ~/.claude/skills
-dev --skill          # print it, for a dotfiles installer to sync
-dev skill sync       # regenerate the command reference from the command tree
-dev skill sync --check   # fail if it has drifted — wire into CI
+dev skill install              # → ~/.agents/skills/dev-cli, symlinked into ~/.claude/skills
+dev mcp list --all --json      # sanitized static declarations; never health probes
+dev --skill                    # print it, for a dotfiles installer to sync
+dev skill sync                 # regenerate the command reference from the command tree
+dev skill sync --check         # fail if it has drifted — wire into CI
 ```
 
 `dev skill add [package]` is only a shortcut into the upstream interactive
-wizard. It never selects all skills or agents. Listing uses an already
-available/cached `skills` CLI and never downloads it; add/update are explicit
-actions and may access the network. Project scope resolves to the current Git
-checkout root, so invoking the command from a nested directory gives the same
-inventory.
+wizard. It never selects all skills or agents. Listing is native and never runs
+`skills`, npm, `npx`, or project code. Add/update are explicit actions, require
+a directly installed `skills` executable, and may access the network; `dev` skips
+repository-local `node_modules` candidates, rejects source-less update locks, and
+serializes provider processes. `--all` scans each configured canonical checkout
+once, while the TUI also includes its exact startup linked worktree when distinct
+and reads global paths once. Freshness hashes Git object bytes without checkout
+filters or autocrlf transforms; locale-dependent non-ASCII folder hashes stay
+unverifiable. Lock hashes describe upstream freshness, not installed-file integrity;
+only the embedded `dev-cli` skill can verify that every bundled file matches
+(additional user files are ignored).
+
+`dev mcp list` inventories declarations from Claude Code, Codex, Cursor, Gemini
+CLI, and OpenCode files. It keeps scopes separate, honors absolute
+`CLAUDE_CONFIG_DIR`, retains exact Claude local project keys, and resolves only
+Claude's documented user/project/local/managed project approvals. It deliberately
+omits runtime health, a generally effective merged configuration, plugin caches,
+hosted connectors, remote organization config, and command-line-only config.
+Environment/header/OAuth values, raw arguments, URL credentials, and indirect file
+contents never enter normalized output; only safe reference names and finite
+policy/count facts remain.
 
 The skill defers to the companion `git-workflow` skill for commit conventions,
 SemVer and branch naming rather than restating them. It owns what is new: the

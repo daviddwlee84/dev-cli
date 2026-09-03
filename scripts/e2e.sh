@@ -227,7 +227,7 @@ dev_has "add the regression test" ls  || fail "next action not recorded"
 ok "parked warm, worktree intact"
 
 step "park cold with a push"
-dev park feat/auth --cold --push
+dev park feat/auth --cold --push --assume-no-runtime
 dev_has COLD ls  || fail "task did not go cold"
 [[ ! -d "$WT" ]]       || fail "a cold task must not keep its worktree"
 git -C "$REPO" rev-parse --verify --quiet origin/feat/auth >/dev/null \
@@ -235,7 +235,7 @@ git -C "$REPO" rev-parse --verify --quiet origin/feat/auth >/dev/null \
 ok "cold: worktree gone, work safe on the remote"
 
 step "resume rebuilds the worktree from the branch"
-dev resume auth
+dev --allow-shared-checkout resume auth
 [[ -f "$WT/auth.go" ]] || fail "resume did not restore the committed work"
 dev_has HOT ls   || fail "resumed task is not hot"
 ok "rebuilt from origin"
@@ -247,7 +247,7 @@ grep -q "Nothing done" <<<"$DONE_REPORT" || fail "done should be a no-op without
 ok "reported, changed nothing"
 
 step "done --ff integrates linearly without self-retirement"
-dev done auth --ff
+dev --allow-shared-checkout done auth --ff
 git -C "$REPO" cat-file -e main:auth.go || fail "the branch's commit is not on main"
 [[ -z "$(git -C "$REPO" log --merges --oneline)" ]] || fail "--ff created a merge commit"
 [[ -d "$WT" ]] || fail "done must keep the active worktree until external retirement"
@@ -256,8 +256,8 @@ git -C "$REPO" show-ref --verify --quiet refs/heads/feat/auth \
 ok "fast-forwarded, linear history, runtime/worktree kept"
 
 step "sweep reports cleanup pending and retire removes externally"
-dev_has 'retire runtime/worktree' sweep || fail "sweep did not offer to retire the merged task"
-dev retire auth >/dev/null
+dev_has 'retire runtime/worktree' sweep --assume-no-runtime || fail "sweep did not offer to retire the merged task"
+dev retire auth --assume-no-runtime >/dev/null
 [[ ! -d "$WT" ]] || fail "retire should remove the merged worktree"
 if dev_has '"name": "auth"' ls --all --json; then
   fail "retire should reap the task record"
@@ -271,20 +271,20 @@ printf 'merged and untracked\n' > "$MERGED_WT/merged.txt"
 git -C "$MERGED_WT" add merged.txt
 git -C "$MERGED_WT" commit --quiet -m "feat: merged unmanaged worktree"
 git -C "$REPO" merge --quiet --ff-only feat/merged-untracked
-if (cd "$MERGED_WT" && dev sweep --merged-worktrees) >/dev/null 2>&1; then
+if (cd "$MERGED_WT" && dev sweep --merged-worktrees --assume-no-runtime) >/dev/null 2>&1; then
   fail "merged-worktree sweep ran from inside a linked worktree"
 fi
-MERGED_SWEEP="$(cd "$REPO" && dev sweep --merged-worktrees)"
+MERGED_SWEEP="$(cd "$REPO" && dev sweep --merged-worktrees --assume-no-runtime)"
 grep -q 'feat/merged-untracked' <<<"$MERGED_SWEEP" \
   || fail "sweep did not discover the unmanaged merged worktree"
 grep -q 'Re-run with --apply' <<<"$MERGED_SWEEP" \
   || fail "merged-worktree sweep did not remain report-only by default"
-printf 'y\n' | (cd "$REPO" && dev sweep --merged-worktrees --apply) >/dev/null
+printf 'y\n' | (cd "$REPO" && dev sweep --merged-worktrees --assume-no-runtime --apply) >/dev/null
 [[ ! -d "$MERGED_WT" ]] || fail "confirmed sweep did not retire the merged worktree"
 git -C "$REPO" show-ref --verify --quiet refs/heads/feat/merged-untracked \
   || fail "merged-worktree sweep deleted the branch without --delete-branches"
 git -C "$REPO" worktree add --quiet "$MERGED_WT" feat/merged-untracked
-(cd "$REPO" && dev sweep --merged-worktrees --apply --yes --delete-branches) >/dev/null
+(cd "$REPO" && dev sweep --merged-worktrees --assume-no-runtime --apply --yes --delete-branches) >/dev/null
 [[ ! -d "$MERGED_WT" ]] || fail "branch-deleting sweep left the worktree"
 if git -C "$REPO" show-ref --verify --quiet refs/heads/feat/merged-untracked; then
   fail "--delete-branches did not delete the contained branch"
@@ -301,7 +301,7 @@ dev_has '(direct)' start demo --task "quick main fix" --direct \
 printf 'quick\n' > "$REPO/quick.txt"
 git -C "$REPO" add quick.txt
 git -C "$REPO" commit --quiet -m "fix: quick main change"
-dev_has 'completed directly on main' done "quick main fix" \
+dev_has 'completed directly on main' --allow-shared-checkout done "quick main fix" \
   || fail "direct task required fake integration"
 ok "direct task stayed on main and finished without a worktree"
 

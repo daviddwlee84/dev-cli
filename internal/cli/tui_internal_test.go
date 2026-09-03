@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,7 +12,10 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/task"
 	"github.com/daviddwlee84/dev-cli/internal/tui"
 )
 
@@ -61,6 +65,58 @@ func TestOpenOrCDReportsFailedRuntimeHandoff(t *testing.T) {
 	err := openOrCD(app, context.Background(), t.TempDir(), "try")
 	if err == nil || !strings.Contains(err.Error(), "open runtime session") {
 		t.Fatalf("failed runtime open should return its error, got %v", err)
+	}
+}
+
+func TestTUIStartDirectReplacesDoneGeneration(t *testing.T) {
+	repository := gittest.New(t)
+	store := task.NewStore(t.TempDir())
+	completed := &task.Task{
+		Name: "old", Repo: "repo", RepoPath: repository.Root, Branch: "main", Base: "main",
+		Mode: task.ModeDirect, State: task.Done, Owner: config.Hostname(),
+	}
+	if err := store.Save(completed); err != nil {
+		t.Fatal(err)
+	}
+	rt := &activityRuntime{openResult: runtime.OpenResult{Handle: "w7", Opened: true, Created: true}}
+	app := &App{Cfg: config.Default(), Tasks: store, Out: io.Discard, Err: io.Discard, runtimeInstance: rt}
+	row := tui.RepoRow{Repo: repo.Repo{Name: "repo", Path: repository.Root, RealPath: repository.Root, HasGit: true}}
+	if _, err := startDirectFromTUI(t.Context(), app, rt, row, "new direct task"); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := store.Get(completed.ID)
+	if err != nil || stored.Name != "new direct task" || stored.State != task.Hot {
+		t.Fatalf("TUI direct replacement = %+v, %v", stored, err)
+	}
+}
+
+func TestCollectReposPreservesTaskAndRuntimeInventoryErrors(t *testing.T) {
+	repository := gittest.New(t)
+	root := t.TempDir()
+	cfg := config.Default()
+	cfg.Paths.ScanRoots = nil
+	cfg.Paths.RepoPaths = []string{repository.Root}
+	cfg.Paths.StateDir = filepath.Join(root, "state")
+	tasksDir := filepath.Join(root, "tasks")
+	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tasksDir, "broken.toml"), []byte("not = valid = toml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assets := catalog.NewStore(cfg.AssetsDir())
+	runtimeFailure := errors.New("runtime inventory failed")
+	rt := &activityRuntime{name: "herdr", listErr: runtimeFailure}
+	app := &App{
+		Cfg: cfg, Tasks: task.NewStore(tasksDir), Catalog: assets, Registry: catalog.NewRegistry(assets),
+		Out: io.Discard, Err: io.Discard, runtimeInstance: rt,
+	}
+	rows, err := collectRepos(t.Context(), app, rt)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("collect repos = %d rows, %v", len(rows), err)
+	}
+	if rows[0].Context.TaskErr == nil || rows[0].Context.RuntimeErr == nil || !errors.Is(rows[0].Context.RuntimeErr, runtimeFailure) {
+		t.Fatalf("inventory errors were dropped: task=%v runtime=%v", rows[0].Context.TaskErr, rows[0].Context.RuntimeErr)
 	}
 }
 

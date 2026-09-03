@@ -3,6 +3,7 @@ package forge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -38,6 +39,77 @@ func (g *gh) CreatePR(ctx context.Context, dir string, req PRRequest) (string, e
 	}
 	out, err := run(ctx, "gh", dir, args...)
 	return lastURL(out), err
+}
+
+// QueryReview manually observes an exact GitHub pull request relationship.
+func (g *gh) QueryReview(ctx context.Context, dir string, query ReviewQuery) (*Review, error) {
+	if !g.Available() {
+		return nil, &ErrNoCLI{Kind: GitHub, Bin: "gh"}
+	}
+	if err := validateReviewQuery(query); err != nil {
+		return nil, err
+	}
+	out, err := reviewRunner(ctx, "gh", dir,
+		"pr", "list", "--repo", query.Repository,
+		"--head", query.Head, "--base", query.Base, "--state", "all",
+		"--limit", "1000",
+		"--json", "id,number,state,isDraft,url,headRefName,baseRefName,headRepository")
+	if err != nil {
+		return nil, err
+	}
+	return parseGitHubReviews(out, query)
+}
+
+func parseGitHubReviews(out string, query ReviewQuery) (*Review, error) {
+	var raw []struct {
+		ID             string `json:"id"`
+		Number         *int   `json:"number"`
+		State          string `json:"state"`
+		IsDraft        *bool  `json:"isDraft"`
+		URL            string `json:"url"`
+		HeadRefName    string `json:"headRefName"`
+		BaseRefName    string `json:"baseRefName"`
+		HeadRepository struct {
+			NameWithOwner string `json:"nameWithOwner"`
+		} `json:"headRepository"`
+	}
+	if err := decodeReviewJSON(GitHub, out, &raw); err != nil {
+		return nil, err
+	}
+	candidates := make([]reviewCandidate, 0, len(raw))
+	for _, item := range raw {
+		number := 0
+		if item.Number != nil {
+			number = *item.Number
+		}
+		var sourceMatches *bool
+		if source := strings.TrimSpace(item.HeadRepository.NameWithOwner); source != "" {
+			matches := strings.EqualFold(source, query.Repository)
+			sourceMatches = &matches
+		}
+		candidates = append(candidates, reviewCandidate{
+			ID: item.ID, Number: number, State: item.State, Draft: item.IsDraft,
+			URL: item.URL, Head: item.HeadRefName, Base: item.BaseRefName,
+			SourceMatchesRepository: sourceMatches,
+		})
+	}
+	return selectExactReview(GitHub, query, candidates, normalizeGitHubReviewState)
+}
+
+func normalizeGitHubReviewState(state string, draft bool) (ReviewState, error) {
+	switch strings.ToUpper(state) {
+	case "OPEN":
+		if draft {
+			return ReviewDraft, nil
+		}
+		return ReviewOpen, nil
+	case "MERGED":
+		return ReviewMerged, nil
+	case "CLOSED":
+		return ReviewClosed, nil
+	default:
+		return "", errors.New("unrecognized GitHub review state")
+	}
 }
 
 // CreateRepo creates a GitHub repository from the local checkout.

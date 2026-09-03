@@ -11,20 +11,22 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/daviddwlee84/dev-cli/internal/safefile"
 )
 
 // Config is the whole of dev's configuration. Zero values are never used
 // directly — Default() supplies the baseline and Load() overlays the user's
 // config.toml on top of it.
 type Config struct {
-	Paths     Paths     `toml:"paths"`
-	Runtime   Runtime   `toml:"runtime"`
-	Worktree  Worktree  `toml:"worktree"`
-	Stats     Stats     `toml:"stats"`
-	TUI       TUI       `toml:"tui"`
-	Bootstrap Bootstrap `toml:"bootstrap"`
-	Forge     Forge     `toml:"forge"`
-	Update    Update    `toml:"update"`
+	Paths      Paths      `toml:"paths"`
+	Runtime    Runtime    `toml:"runtime"`
+	Worktree   Worktree   `toml:"worktree"`
+	LocalFiles LocalFiles `toml:"local_files"`
+	Stats      Stats      `toml:"stats"`
+	TUI        TUI        `toml:"tui"`
+	Bootstrap  Bootstrap  `toml:"bootstrap"`
+	Forge      Forge      `toml:"forge"`
+	Update     Update     `toml:"update"`
 
 	// Source records where the config was loaded from; "" means defaults only.
 	Source string `toml:"-"`
@@ -78,7 +80,7 @@ type Worktree struct {
 	// must never be a default).
 	Link []string `toml:"link"`
 	// PostCreate is either the string "auto" (detect from lockfiles) or an
-	// explicit list of shell commands run in the new worktree.
+	// explicit list of shell commands run in a new worktree.
 	PostCreate PostCreate `toml:"post_create"`
 	// Strategy is how a new worktree gets its installed dependencies:
 	// "reinstall" (correct, the default), "copy", "link" or "skip". dev
@@ -91,6 +93,35 @@ type Worktree struct {
 	Strategies map[string]string `toml:"strategies"`
 	// ProvisionTimeout caps a single post-create command.
 	ProvisionTimeout Duration `toml:"provision_timeout"`
+}
+
+// LocalFiles is host policy for portable ignored-file operations. It contains
+// limits only: repositories authorize export through their own explicit
+// [local_files] section, never through global worktree provisioning patterns.
+type LocalFiles struct {
+	MaxFiles          int   `toml:"max_files"`
+	MaxFileBytes      int64 `toml:"max_file_bytes"`
+	MaxTotalBytes     int64 `toml:"max_total_bytes"`
+	MaxPathBytes      int   `toml:"max_path_bytes"`
+	MaxComponentBytes int   `toml:"max_component_bytes"`
+	MaxPathDepth      int   `toml:"max_path_depth"`
+}
+
+// Limits returns the safe-file policy represented by the host configuration.
+func (l LocalFiles) Limits() safefile.Limits {
+	return safefile.Limits{
+		MaxFiles: l.MaxFiles, MaxFileBytes: l.MaxFileBytes,
+		MaxTotalBytes: l.MaxTotalBytes, MaxPathBytes: l.MaxPathBytes,
+		MaxComponentBytes: l.MaxComponentBytes, MaxPathDepth: l.MaxPathDepth,
+	}
+}
+
+func localFilesFromLimits(limits safefile.Limits) LocalFiles {
+	return LocalFiles{
+		MaxFiles: limits.MaxFiles, MaxFileBytes: limits.MaxFileBytes,
+		MaxTotalBytes: limits.MaxTotalBytes, MaxPathBytes: limits.MaxPathBytes,
+		MaxComponentBytes: limits.MaxComponentBytes, MaxPathDepth: limits.MaxPathDepth,
+	}
 }
 
 // Forge configures the combined remote inventory.
@@ -270,6 +301,7 @@ func Default() Config {
 			Strategy:         "reinstall",
 			ProvisionTimeout: Duration{10 * time.Minute},
 		},
+		LocalFiles: localFilesFromLimits(safefile.DefaultLimits()),
 		Bootstrap: Bootstrap{
 			MaxDepth:       8,
 			FollowSymlinks: true,
@@ -321,6 +353,9 @@ func (c Config) Validate() error {
 	}
 	if _, err := Render(c.Paths.WorktreePath, c.probeVars()); err != nil {
 		return fmt.Errorf("paths.worktree_path: %w", err)
+	}
+	if err := c.LocalFiles.Limits().Validate(); err != nil {
+		return fmt.Errorf("local_files: %w", err)
 	}
 	switch c.Bootstrap.Layout {
 	case "", "flat", "preserve":

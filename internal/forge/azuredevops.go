@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -56,10 +57,14 @@ func (a *az) Bin() string     { return "az" }
 func (a *az) Available() bool { return have("az") }
 
 func (a *az) ensureExtension(ctx context.Context) error {
+	return a.ensureExtensionWithRunner(ctx, run)
+}
+
+func (a *az) ensureExtensionWithRunner(ctx context.Context, runner cliRunner) error {
 	if !a.Available() {
 		return &ErrNoCLI{Kind: AzureDevOps, Bin: "az"}
 	}
-	out, err := run(ctx, "az", "", "extension", "show", "--name", "azure-devops",
+	out, err := runner(ctx, "az", "", "extension", "show", "--name", "azure-devops",
 		"--query", "name", "--output", "tsv", "--only-show-errors")
 	if err != nil || strings.TrimSpace(out) != "azure-devops" {
 		return &ErrNoExtension{Name: "azure-devops"}
@@ -114,6 +119,178 @@ func (a *az) CreatePR(ctx context.Context, dir string, req PRRequest) (string, e
 		return "", fmt.Errorf("decode az repos pr create: unrecognized repository remote %q", result.RemoteURL)
 	}
 	return strings.TrimRight(repoURL, "/") + "/pullrequest/" + fmt.Sprint(result.PullRequestID), nil
+}
+
+const azureReviewJSONQuery = "[].{pullRequestId:pullRequestId,status:status,isDraft:isDraft,sourceRefName:sourceRefName,targetRefName:targetRefName,remoteUrl:remoteUrl,repositoryRemoteUrl:repository.remoteUrl,forkSource:forkSource}"
+
+// QueryReview manually observes an exact Azure Repos pull request relationship.
+func (a *az) QueryReview(ctx context.Context, dir string, query ReviewQuery) (*Review, error) {
+	if err := validateReviewQuery(query); err != nil {
+		return nil, err
+	}
+	if err := a.ensureExtensionWithRunner(ctx, reviewRunner); err != nil {
+		return nil, err
+	}
+
+	effectiveQuery, scopeArgs := a.reviewQueryScope(query)
+	const pageSize = 100
+	var candidates []reviewCandidate
+	for skip := 0; ; skip += pageSize {
+		args := []string{"repos", "pr", "list"}
+		args = append(args, scopeArgs...)
+		args = append(args,
+			"--source-branch", query.Head, "--target-branch", query.Base,
+			"--status", "all", "--top", strconv.Itoa(pageSize), "--skip", strconv.Itoa(skip),
+			"--query", azureReviewJSONQuery, "--output", "json", "--only-show-errors")
+		out, err := reviewRunner(ctx, "az", dir, args...)
+		if err != nil {
+			return nil, err
+		}
+		pageCandidates, err := parseAzureReviewCandidates(out)
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, pageCandidates...)
+		if len(pageCandidates) < pageSize {
+			break
+		}
+	}
+	return selectExactReview(AzureDevOps, effectiveQuery, candidates, normalizeAzureReviewState)
+}
+
+func (a *az) reviewQueryScope(query ReviewQuery) (ReviewQuery, []string) {
+	organization, project, repository, fullIdentity := splitAzureReviewIdentity(query.Repository)
+	if fullIdentity {
+		organizationURL := "https://dev.azure.com/" + url.PathEscape(organization)
+		for _, target := range a.targets {
+			if strings.EqualFold(target.Project, project) && strings.EqualFold(azureTargetOrganization(target.Organization), organization) {
+				organizationURL = target.Organization
+				break
+			}
+		}
+		query.Repository = strings.Join([]string{organization, project, repository}, "/")
+		query.Head = azureReviewBranch(query.Head)
+		query.Base = azureReviewBranch(query.Base)
+		return query, []string{
+			"--detect", "false", "--organization", organizationURL,
+			"--project", project, "--repository", repository,
+		}
+	}
+
+	if len(a.targets) == 1 {
+		target := a.targets[0]
+		repository := strings.Trim(query.Repository, "/")
+		if organization := azureTargetOrganization(target.Organization); organization != "" {
+			query.Repository = strings.Join([]string{organization, target.Project, repository}, "/")
+		}
+		query.Head = azureReviewBranch(query.Head)
+		query.Base = azureReviewBranch(query.Base)
+		return query, []string{
+			"--detect", "false", "--organization", target.Organization,
+			"--project", target.Project, "--repository", repository,
+		}
+	}
+
+	query.Head = azureReviewBranch(query.Head)
+	query.Base = azureReviewBranch(query.Base)
+	return query, []string{"--detect", "true", "--repository", query.Repository}
+}
+
+func splitAzureReviewIdentity(identity string) (organization, project, repository string, ok bool) {
+	parts := strings.Split(strings.Trim(identity, "/"), "/")
+	if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
+		return "", "", "", false
+	}
+	return parts[0], parts[1], parts[2], true
+}
+
+func azureTargetOrganization(raw string) string {
+	trimmed := strings.TrimSpace(raw)
+	parsed, err := url.Parse(trimmed)
+	if err == nil && parsed.Hostname() != "" {
+		host := strings.ToLower(parsed.Hostname())
+		switch {
+		case host == "dev.azure.com":
+			segments := escapedSegments(parsed.EscapedPath())
+			if len(segments) == 1 {
+				return segments[0]
+			}
+		case strings.HasSuffix(host, ".visualstudio.com"):
+			return strings.TrimSuffix(host, ".visualstudio.com")
+		}
+		return ""
+	}
+	if !strings.ContainsAny(trimmed, "/:") {
+		return trimmed
+	}
+	return ""
+}
+
+func parseAzureReviewCandidates(out string) ([]reviewCandidate, error) {
+	var raw []struct {
+		PullRequestID       *int            `json:"pullRequestId"`
+		Status              string          `json:"status"`
+		IsDraft             *bool           `json:"isDraft"`
+		SourceRefName       string          `json:"sourceRefName"`
+		TargetRefName       string          `json:"targetRefName"`
+		RemoteURL           string          `json:"remoteUrl"`
+		RepositoryRemoteURL string          `json:"repositoryRemoteUrl"`
+		ForkSource          json.RawMessage `json:"forkSource"`
+	}
+	if err := decodeReviewJSON(AzureDevOps, out, &raw); err != nil {
+		return nil, err
+	}
+	candidates := make([]reviewCandidate, 0, len(raw))
+	for _, item := range raw {
+		id, number := "", 0
+		if item.PullRequestID != nil {
+			number = *item.PullRequestID
+			id = strconv.Itoa(number)
+		}
+		reviewURL := item.RemoteURL
+		if !validReviewURL(reviewURL) && item.RepositoryRemoteURL != "" && number > 0 {
+			if _, repositoryURL, ok := parseAzureDevOpsRemote(item.RepositoryRemoteURL); ok {
+				reviewURL = strings.TrimRight(repositoryURL, "/") + "/pullrequest/" + strconv.Itoa(number)
+			}
+		}
+		var sourceMatches *bool
+		switch strings.TrimSpace(string(item.ForkSource)) {
+		case "null":
+			matches := true
+			sourceMatches = &matches
+		case "":
+			// Missing projection data is not proof that the source is local.
+		default:
+			matches := false
+			sourceMatches = &matches
+		}
+		candidates = append(candidates, reviewCandidate{
+			ID: id, Number: number, State: item.Status, Draft: item.IsDraft,
+			URL: reviewURL, Head: azureReviewBranch(item.SourceRefName), Base: azureReviewBranch(item.TargetRefName),
+			SourceMatchesRepository: sourceMatches,
+		})
+	}
+	return candidates, nil
+}
+
+func azureReviewBranch(ref string) string {
+	return strings.TrimPrefix(ref, "refs/heads/")
+}
+
+func normalizeAzureReviewState(state string, draft bool) (ReviewState, error) {
+	switch strings.ToLower(state) {
+	case "active":
+		if draft {
+			return ReviewDraft, nil
+		}
+		return ReviewOpen, nil
+	case "completed":
+		return ReviewMerged, nil
+	case "abandoned":
+		return ReviewClosed, nil
+	default:
+		return "", errors.New("unrecognized Azure DevOps review state")
+	}
 }
 
 // CreateRepo is deliberately deferred: Azure repository visibility belongs to
@@ -224,6 +401,9 @@ func parseAzureDevOpsRepos(out string) ([]RemoteRepo, error) {
 // parseAzureDevOpsRemote returns the provider identity and browser-safe HTTPS
 // repository URL for supported Azure DevOps Services clone URL forms.
 func parseAzureDevOpsRemote(raw string) (identity, webURL string, ok bool) {
+	if !safeRawURLText(raw) {
+		return "", "", false
+	}
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
 		return "", "", false
@@ -260,7 +440,11 @@ func parseAzureDevOpsRemote(raw string) (identity, webURL string, ok bool) {
 		return "", "", false
 	}
 	colon += at + 1
-	return parseAzureDevOpsSSH(raw[:at], strings.ToLower(raw[at+1:colon]), decodeSegments(strings.Split(strings.Trim(raw[colon+1:], "/"), "/")))
+	path := raw[colon+1:]
+	if strings.ContainsAny(path, "?#") {
+		return "", "", false
+	}
+	return parseAzureDevOpsSSH(raw[:at], strings.ToLower(raw[at+1:colon]), decodeSegments(strings.Split(strings.Trim(path, "/"), "/")))
 }
 
 func parseAzureDevOpsHTTPS(u *url.URL) (string, string, bool) {
@@ -282,11 +466,18 @@ func parseAzureDevOpsHTTPS(u *url.URL) (string, string, bool) {
 			return "", "", false
 		}
 	case strings.HasSuffix(host, ".visualstudio.com") && host != "vs-ssh.visualstudio.com":
-		if len(segments) < 3 || !strings.EqualFold(segments[len(segments)-2], "_git") || u.User != nil {
+		if u.User != nil {
+			return "", "", false
+		}
+		switch {
+		case len(segments) == 3 && strings.EqualFold(segments[1], "_git"):
+			project, repo = segments[0], segments[2]
+		case len(segments) == 4 && strings.EqualFold(segments[0], "DefaultCollection") && strings.EqualFold(segments[2], "_git"):
+			project, repo = segments[1], segments[3]
+		default:
 			return "", "", false
 		}
 		organization = strings.TrimSuffix(host, ".visualstudio.com")
-		project, repo = segments[len(segments)-3], segments[len(segments)-1]
 	default:
 		return "", "", false
 	}
@@ -308,6 +499,9 @@ func parseAzureDevOpsSSH(user, host string, segments []string) (string, string, 
 	case host == "vs-ssh.visualstudio.com" && len(segments) == 3 && strings.EqualFold(segments[1], "_ssh"):
 		organization, project, repo = user, segments[0], segments[2]
 		host = strings.ToLower(organization) + ".visualstudio.com"
+		if !validWebHost(host) {
+			return "", "", false
+		}
 	default:
 		return "", "", false
 	}
@@ -336,8 +530,12 @@ func decodeSegments(segments []string) []string {
 	}
 	out := make([]string, 0, len(segments))
 	for _, segment := range segments {
+		if segment == "" || hasEncodedSeparator(segment) {
+			return nil
+		}
 		decoded, err := url.PathUnescape(segment)
-		if err != nil || decoded == "" || strings.Contains(decoded, "/") {
+		if err != nil || decoded == "" || decoded == "." || decoded == ".." || !safeRawURLText(decoded) ||
+			strings.ContainsAny(decoded, `/\\`) || hasEncodedSeparator(decoded) {
 			return nil
 		}
 		out = append(out, decoded)

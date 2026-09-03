@@ -2,7 +2,7 @@
 description: Run a dev-cli change stream through start, park, resume, review or integration, and conservative cleanup.
 authority: project
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-09-01
 ---
 
 # Change-stream workflow
@@ -14,7 +14,7 @@ A `dev` task is a durable record of one line of work. Select the checkout mode, 
 ```mermaid
 flowchart TD
     accTitle: dev-cli change-stream workflow
-    accDescr: A change stream starts in direct, branch-only, or worktree mode and cycles through active, parked, and resumed work. Direct completion or local fast-forward reaches DONE and cleanup, while review hands off a pushed branch and remains active pending manual reconciliation.
+    accDescr: A change stream starts in direct, branch-only, or worktree mode and cycles through active, parked, and resumed work. Direct or verified integration reaches DONE while resources remain, review preserves the current state, and external retirement performs cleanup.
 
     Start["dev start"] --> Mode{"checkout mode"}
     Mode -->|direct| Direct["HOT: direct work / commit / test"]
@@ -36,15 +36,17 @@ flowchart TD
     Managed -->|dev done --pr| Review["push / review handoff: task stays active"]
     WarmManaged -->|dev done --pr| Review
     Review -->|feedback: dev resume if WARM| Managed
-    Review -->|merged externally| Reconcile["verify integration; local close-out is manual today"]
+    Review -->|merged externally| Reconcile["dev done --merged: verify exact ancestry"]
+    Reconcile --> Done
 
-    Done -->|dev sweep| Report["report cleanup candidates"]
-    Report -->|dev sweep --apply| Reaped["reap the DONE entry"]
+    Done -->|dev retire from outside target| Reaped["RETIRED: clean resources and reap task"]
+    Done -.->|dev sweep| Report["report cleanup candidates"]
+    Report -.->|approved apply| Reaped
     Reaped --> Next["next change stream"]
     Next --> Start
 ```
 
-The handoff path deliberately stops at manual reconciliation: `dev done --pr` leaves the task active and may only push when no supported forge CLI is available. `dev` does not currently detect a remote merge or provide a reconciliation-only command that safely marks the task DONE.
+The handoff path deliberately stops at manual reconciliation: `dev done --pr` leaves the task active and may only push when no supported forge CLI is available. `dev flow` can explicitly query run-local review existence/state/draft/URL evidence, but neither it nor `sweep` infers DONE from a forge response. Use `dev done --merged` with exact local ancestry evidence.
 
 ## 1. Select the checkout mode
 
@@ -64,6 +66,7 @@ Before changing the canonical checkout in direct or branch-only mode, `dev` guar
 dev start api --task "token refresh" --base main --next "reproduce expiry race"
 dev ls
 dev status
+dev flow api   # preview all repository surfaces and exact guarded actions
 ```
 
 Starting work resolves the repository, validates branch/base, creates or switches the checkout, provisions a worktree when needed, opens the selected runtime, and saves the task. If the branch is already tracked, use `dev resume` instead of creating a duplicate.
@@ -117,7 +120,7 @@ Preserve meaningful construction commits:
 dev done --ff
 ```
 
-This requires a clean tree, rebases the task branch onto the base, and runs a fast-forward-only merge in the canonical checkout. It then closes the runtime, removes the worktree unless retained, and marks the task DONE.
+This requires a clean tree, rebases the task branch onto the base when needed, and runs a fast-forward-only merge in the canonical checkout. It records DONE last while retaining the runtime, worktree, and branch. Run `dev retire` separately from outside the target.
 
 Use review/CI instead:
 
@@ -135,7 +138,7 @@ The wizard runs in up to three steps:
 
 1. **Preflight.** It reports the branch, the base, the branch/base commit relation (ahead/behind, or already contained), and — if the checkout is dirty — a path-by-path breakdown of which changes already match the base tree and which are unique.
 2. **Dirty changes**, only if the checkout is dirty: `c` commits everything with a message you supply, `d` discards everything (tracked and untracked), `q` cancels with nothing changed. Discarding unique content — anything not already equivalent to the base — requires typing `DROP` at a follow-up confirmation; discarding paths that already match the base does not.
-3. **Integration**, only if neither `--ff` nor `--pr` was passed and the branch is not already fully contained in the base: `f` rebases the branch onto the base and fast-forwards it (same as `--ff`), `p` pushes and opens a pull/merge request (same as `--pr`), `q` cancels. When the branch is already contained in the base, the wizard skips this step and moves straight to cleanup.
+3. **Integration**, only if neither `--ff` nor `--pr` was passed and the branch is not already fully contained in the base: `f` rebases the branch onto the base and fast-forwards it (same as `--ff`), `p` pushes and opens a pull/merge request (same as `--pr`), `q` cancels. When the branch is already contained in the base, the wizard skips this step and can record DONE; cleanup still belongs to `dev retire`.
 
 Passing `--ff` or `--pr` up front answers step 3 for the wizard, so it only prompts for whatever the flags left unresolved — with both a clean tree and an explicit integration flag, nothing is prompted at all. A final summary lists the dirty action and the integration mode before anything runs; confirm it, or add `--yes` to skip that confirmation once the plan is fully specified by flags. If the checkout or branch changes while the plan is open, `dev` detects the drift after confirmation and refuses to apply the stale plan — rerun `dev done` to see the current state.
 
@@ -147,6 +150,21 @@ dev done --pr --dirty discard --yes   # destructive; --yes is mandatory here
 ```
 
 `--message`/`-m` only applies with `--dirty commit`. `--dirty discard` outside a TTY requires `--yes`; the `DROP` confirmation is an interactive-only safeguard.
+
+## Repository flow preview
+
+Use `dev flow [repo]` when the question is not only “what state is this task?”
+but “which exact action is legal for each checkout?” It is a TTY-only interface
+independent of the dashboard. It includes every registered worktree plus task-
+only COLD/DONE rows, separates observed facts from persisted state, and requires
+Enter-to-plan followed by action-specific approval.
+
+Normal managed actions, exact unmanaged metadata-only Adopt/clean branch-
+preserving Remove, explicit remote fetch/query, revision revalidation, and
+partial result ledgers are described in [Repository lifecycle
+flow](repository-flow.md). Flow omits dirty/WIP/shared-writer/takeover/unknown-
+runtime overrides; use a blocked plan's CLI fallback when those expert flags are
+actually needed.
 
 ## 6. Sweep drift and stale state
 
@@ -181,4 +199,6 @@ It never deletes uncommitted work. Reporting first is part of the safety model.
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/cli/done_flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done_flow.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
+- [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/gitx/finish.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/finish.go)

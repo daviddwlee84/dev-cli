@@ -11,6 +11,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 	devconfig "github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/machineid"
 )
 
 const (
@@ -34,7 +35,10 @@ type Defaults struct {
 }
 
 type Host struct {
-	Name         string `toml:"name" json:"name"`
+	Name string `toml:"name" json:"name"`
+	// MachineID is an optional expected remote UUID pin. This config layer
+	// validates and fingerprints it; capability-aware callers must compare it.
+	MachineID    string `toml:"machine_id" json:"machine_id,omitempty"`
 	SSHAlias     string `toml:"ssh_alias" json:"ssh_alias,omitempty"`
 	Hostname     string `toml:"hostname" json:"hostname,omitempty"`
 	User         string `toml:"user" json:"user,omitempty"`
@@ -169,6 +173,11 @@ func (c Config) Validate() error {
 			return fmt.Errorf("duplicate host name %q", host.Name)
 		}
 		seenNames[host.Name] = true
+		if host.MachineID != "" {
+			if err := machineid.Validate(host.MachineID); err != nil {
+				return fmt.Errorf("host %q: %w", host.Name, err)
+			}
+		}
 		if host.SSHAlias == "" && host.Hostname == "" {
 			return fmt.Errorf("host %q must define ssh_alias or hostname", host.Name)
 		}

@@ -20,6 +20,7 @@ func TestWindowsRemoteCommandRoutesAllowlistedFleetHelpers(t *testing.T) {
 	tests := [][]string{
 		{"fleet", "_snapshot"},
 		{"fleet", "_sync"},
+		{"fleet", "_capability"},
 		{"fleet", "_open-herdr", "--request", request},
 		{"fleet", "_shell", "--request", request},
 	}
@@ -99,6 +100,8 @@ func TestWindowsRemoteCommandRejectsNonAllowlistedShapes(t *testing.T) {
 		{"fleet", "list"},
 		{"fleet", "_snapshot", "extra"},
 		{"fleet", "_sync", "--request"},
+		{"fleet", "_files-plan"},
+		{"fleet", "_files-apply"},
 		{"fleet", "_shell"},
 		{"fleet", "_shell", "--request", "not base64url!"},
 		{"fleet", "_shell", "--other", validRequest},

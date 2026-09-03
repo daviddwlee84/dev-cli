@@ -41,6 +41,14 @@ dev retire <task> --delete-branch
 pane, closes eligible sessions, waits for them to disappear, revalidates Git,
 and removes the worktree without force.
 
+`dev flow [repo]` offers Retire only for an exact DONE task. Enter first shows a
+revision-bound plan with conditions, ordered effects, retained resources, and a
+CLI fallback; branch deletion needs the displayed typed token. Apply locks and
+reloads task/repository/worktree/ref/runtime/artifact authority, repeats safety
+checks after closure and before removal, and deletes the task last. If a later
+effect fails, its ledger reports completed work and recovery without claiming a
+rollback.
+
 For periodic cleanup from the canonical main checkout:
 
 ```bash
@@ -90,8 +98,12 @@ Retirement always refuses when:
 target. Runtime enumeration failure requires external `--assume-no-runtime`.
 Neither flag bypasses caller containment or active-agent states.
 
-Raw `git worktree remove --force` can bypass dev. Never run it from an agent that
-occupies the target. dev's guarantee is that no dev-mediated path does so.
+Raw `git worktree remove --force` and configured external tools can bypass dev.
+Never run them from an agent that occupies the target. dev's guarantee covers
+only dev-mediated paths. Existing CLI expert acknowledgements remain compatible,
+but flow intentionally omits them. Task-backed retirement uses taskflow; explicit
+unmanaged path retirement and some record-only/salvage `sweep` actions remain
+isolated compatibility paths and must not be described as taskflow-managed.
 
 ## What self-deletion looks like
 

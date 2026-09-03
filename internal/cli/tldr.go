@@ -81,12 +81,21 @@ var familyTLDR = map[string]string{
 
 	"dev skill": `TL;DR: what the agents on this machine already know
 
-  dev skill list     project and global skills, their agents and update state
-  dev skill add      install one through the external skills provider
-  dev skill update   refresh a skill that provider manages
+  dev skill list        current checkout and global native inventory
+  dev skill list --all  every canonical repository, then global once
+  dev skill add/update  explicit mutation through a direct skills executable
 
   dev's own bundled skill ships inside the binary and updates with dev itself,
   never through the provider.`,
+
+	"dev mcp": `TL;DR: declared capabilities, not live connections
+
+  dev mcp list         current checkout plus user/system declarations
+  dev mcp list --all   every canonical repository, then user/system once
+  dev mcp list --json  sanitized servers, diagnostics and coverage
+
+  Static inventory never starts a server, runs a helper, resolves credentials,
+  or claims that a declaration is connected, healthy or effective.`,
 
 	"dev retire": `TL;DR: integrate, exit, then clean up from outside
 
@@ -126,6 +135,7 @@ var helpTopics = map[string]string{
 	"dev tries":     "tries",
 	"dev try":       "tries",
 	"dev skill":     "skills",
+	"dev mcp":       "mcp",
 	"dev status":    "git-status",
 }
 

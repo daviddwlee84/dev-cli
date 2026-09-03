@@ -40,11 +40,16 @@ do not make the rest of the fleet unusable.`,
 		newFleetListCmd(app),
 		newFleetStatusCmd(app),
 		newFleetSyncCmd(app),
+		newFleetMachineIDCmd(app),
+		newFleetFilesCmd(app),
 		newFleetOpenCmd(app),
 		newFleetConfigCmd(app),
 		newFleetSnapshotCmd(app),
 		newFleetApplySyncCmd(app),
 		newFleetConfigEditHelperCmd(app),
+		newFleetCapabilityProtocolCmd(app),
+		newFleetFilesPlanProtocolCmd(app),
+		newFleetFilesApplyProtocolCmd(app),
 		newFleetOpenHelperCmd(app, "_open-herdr", true),
 		newFleetOpenHelperCmd(app, "_shell", false),
 	)
@@ -854,6 +859,9 @@ dev_path = "auto"
 # [[hosts]]
 # name = "lab"
 # ssh_alias = "lab"
+# Run dev fleet machine-id lab, verify the UUID independently, then pin it
+# before any mutating fleet operation:
+# machine_id = "00000000-0000-4000-8000-000000000000"
 
 # Explicit connection fields are also supported. Password login is retried only
 # after key/agent authentication is rejected.
