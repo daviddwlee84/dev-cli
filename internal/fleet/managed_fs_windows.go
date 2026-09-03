@@ -45,6 +45,7 @@ var (
 	managedWindowsBeforePublish   func(stagedPath, targetPath string)
 	managedWindowsAfterBackup     func(backupPath, targetPath string)
 	managedWindowsReplaceFileProc = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReplaceFileW")
+	managedWindowsReOpenFileProc  = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReOpenFile")
 )
 
 func validateManagedPermissions(path string, info fs.FileInfo, expected fs.FileMode) error {
@@ -165,7 +166,12 @@ func writeManagedFragmentOS(request ManagedFragmentWriteRequest) error {
 		published = true
 		return nil
 	}
-	if err := renameManagedWindowsHandleNoReplace(stageHandle, directoryHandle, filepath.Base(request.Path)); err != nil {
+	renameHandle, err := reopenManagedWindowsHandle(stageHandle, windows.DELETE|windows.READ_CONTROL)
+	if err != nil {
+		return err
+	}
+	defer windows.CloseHandle(renameHandle)
+	if err := renameManagedWindowsHandleNoReplace(renameHandle, directoryHandle, filepath.Base(request.Path)); err != nil {
 		return managedWindowsError(request.Path, "creation conflicted at publication: %v", err)
 	}
 	publishedSnapshot, err := readManagedWindowsSnapshot(request.Path)
@@ -195,7 +201,7 @@ func replaceManagedWindowsFragment(
 	targetHandle, targetInformation, err := openManagedWindowsPath(
 		request.Path,
 		false,
-		windows.GENERIC_READ|windows.READ_CONTROL|windows.DELETE,
+		windows.GENERIC_READ|windows.READ_CONTROL,
 	)
 	if err != nil {
 		return err
@@ -263,7 +269,15 @@ func replaceManagedWindowsFragment(
 		return errors.Join(err, rollbackErr)
 	}
 
-	if err := deleteManagedWindowsHandle(targetHandle); err != nil {
+	deleteHandle, err := reopenManagedWindowsHandle(targetHandle, windows.DELETE|windows.READ_CONTROL)
+	if err != nil {
+		rollbackErr := rollbackManagedWindowsReplacement(
+			request.Path, backupPath, staged, stagedSnapshot, backupSnapshot, directory, directoryIdentity,
+		)
+		return errors.Join(managedWindowsError(backupPath, "cannot reopen validated private backup for deletion: %v", err), rollbackErr)
+	}
+	defer windows.CloseHandle(deleteHandle)
+	if err := deleteManagedWindowsHandle(deleteHandle); err != nil {
 		rollbackErr := rollbackManagedWindowsReplacement(
 			request.Path, backupPath, staged, stagedSnapshot, backupSnapshot, directory, directoryIdentity,
 		)
@@ -408,7 +422,7 @@ func createManagedWindowsStage(directory string) (*os.File, string, error) {
 		}
 		handle, err := windows.CreateFile(
 			pointer,
-			windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL|windows.DELETE,
+			windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL,
 			windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
 			&attributes,
 			windows.CREATE_NEW,
@@ -549,6 +563,20 @@ func replaceManagedWindowsFileAtomic(replaced, replacement, backup string) error
 		return callErr
 	}
 	return nil
+}
+
+func reopenManagedWindowsHandle(original windows.Handle, access uint32) (windows.Handle, error) {
+	const share = windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE | windows.FILE_SHARE_DELETE
+	handle, _, callErr := managedWindowsReOpenFileProc.Call(
+		uintptr(original), uintptr(access), uintptr(share), 0,
+	)
+	if windows.Handle(handle) == windows.InvalidHandle {
+		if callErr == nil || callErr == syscall.Errno(0) {
+			callErr = windows.ERROR_ACCESS_DENIED
+		}
+		return windows.InvalidHandle, callErr
+	}
+	return windows.Handle(handle), nil
 }
 
 func validateManagedWindowsBackup(

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -85,6 +86,9 @@ func TestSSHArgsSeparateKeyAndPasswordAuthentication(t *testing.T) {
 }
 
 func TestTransportPreservesRemoteNoDevExitCode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell fixture; Windows transport has native tests")
+	}
 	bin := filepath.Join(t.TempDir(), "bin")
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatal(err)

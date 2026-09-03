@@ -119,7 +119,12 @@ func WritePrivateConfigFile(path string, content []byte, overwrite bool) error {
 	}
 
 	if !exists {
-		if err := renameManagedWindowsHandleNoReplace(stageHandle, directoryHandle, filepath.Base(path)); err != nil {
+		renameHandle, err := reopenManagedWindowsHandle(stageHandle, windows.DELETE|windows.READ_CONTROL)
+		if err != nil {
+			return err
+		}
+		defer windows.CloseHandle(renameHandle)
+		if err := renameManagedWindowsHandleNoReplace(renameHandle, directoryHandle, filepath.Base(path)); err != nil {
 			return fmt.Errorf("create fleet config without replacement: %w", err)
 		}
 		publishedSnapshot, err := readManagedWindowsSnapshot(path)
@@ -147,7 +152,13 @@ func WritePrivateConfigFile(path string, content []byte, overwrite bool) error {
 		rollbackErr := rollbackPrivateConfigWindowsReplacement(path, backupPath, staged, stageSnapshot)
 		return errors.Join(errors.New("fleet config changed at replacement boundary"), publishedErr, backupErr, parentErr, rollbackErr)
 	}
-	if err := deleteManagedWindowsHandle(windows.Handle(target.Fd())); err != nil {
+	deleteHandle, err := reopenManagedWindowsHandle(windows.Handle(target.Fd()), windows.DELETE|windows.READ_CONTROL)
+	if err != nil {
+		rollbackErr := rollbackPrivateConfigWindowsReplacement(path, backupPath, staged, stageSnapshot)
+		return errors.Join(fmt.Errorf("reopen validated fleet config backup for deletion: %w", err), rollbackErr)
+	}
+	defer windows.CloseHandle(deleteHandle)
+	if err := deleteManagedWindowsHandle(deleteHandle); err != nil {
 		rollbackErr := rollbackPrivateConfigWindowsReplacement(path, backupPath, staged, stageSnapshot)
 		return errors.Join(fmt.Errorf("delete validated fleet config backup: %w", err), rollbackErr)
 	}
@@ -169,7 +180,7 @@ func openPrivateConfigWindowsTarget(path string) (managedWindowsSnapshot, bool, 
 		return managedWindowsSnapshot{}, false, nil, err
 	}
 	handle, information, err := openManagedWindowsPath(
-		path, false, windows.GENERIC_READ|windows.READ_CONTROL|windows.DELETE,
+		path, false, windows.GENERIC_READ|windows.READ_CONTROL,
 	)
 	if err != nil {
 		return managedWindowsSnapshot{}, false, nil, err

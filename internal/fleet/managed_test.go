@@ -163,13 +163,7 @@ func TestManagedFragmentWriterAndRemoverSeamsAreIdempotent(t *testing.T) {
 		if request.Existed {
 			t.Fatalf("unexpected existing write request: %+v", request)
 		}
-		if err := os.MkdirAll(filepath.Dir(request.Path), managedFragmentDirectoryMode); err != nil {
-			return err
-		}
-		if err := os.Chmod(filepath.Dir(request.Path), managedFragmentDirectoryMode); err != nil {
-			return err
-		}
-		return os.WriteFile(request.Path, request.Content, managedFragmentFileMode)
+		return writeManagedFragmentOS(request)
 	})
 	path, err := WriteManagedFragment(context.Background(), primary, host, writer)
 	if err != nil {
@@ -516,16 +510,7 @@ func writeManagedFixture(t *testing.T, primary string, host ManagedHost) string 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, content, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
+	if err := writeManagedFragmentOS(ManagedFragmentWriteRequest{Path: path, Content: content}); err != nil {
 		t.Fatal(err)
 	}
 	return path

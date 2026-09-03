@@ -4,10 +4,18 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 )
+
+func requirePOSIXTransportFixture(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell fixture; Windows askpass has native tests")
+	}
+}
 
 func TestSSHArgsHardenNoninteractiveFixedCommands(t *testing.T) {
 	host := Host{Name: "lab", SSHAlias: "lab"}
@@ -31,6 +39,7 @@ func TestSSHArgsHardenNoninteractiveFixedCommands(t *testing.T) {
 }
 
 func TestTransportBoundsCapturedStdoutAndStderr(t *testing.T) {
+	requirePOSIXTransportFixture(t)
 	bin := t.TempDir()
 	ssh := filepath.Join(bin, "ssh")
 	script := "#!/bin/sh\nprintf 'abcdefghijklmnop'\nprintf 'ABCDEFGHIJKLMNOP' >&2\n"
@@ -55,6 +64,7 @@ func TestTransportBoundsCapturedStdoutAndStderr(t *testing.T) {
 }
 
 func TestTransportRetryPolicyIsExplicit(t *testing.T) {
+	requirePOSIXTransportFixture(t)
 	bin := t.TempDir()
 	ssh := filepath.Join(bin, "ssh")
 	script := `#!/bin/sh
@@ -104,6 +114,7 @@ func TestTransportRejectsOversizedStdinBeforeStartingSSH(t *testing.T) {
 }
 
 func TestTransportReportsContextTimeoutAs124(t *testing.T) {
+	requirePOSIXTransportFixture(t)
 	bin := t.TempDir()
 	ssh := filepath.Join(bin, "ssh")
 	if err := os.WriteFile(ssh, []byte("#!/bin/sh\nexec /bin/sleep 10\n"), 0o755); err != nil {
@@ -119,6 +130,7 @@ func TestTransportReportsContextTimeoutAs124(t *testing.T) {
 }
 
 func TestTransportPreservesPasswordResolutionFailureWhenStderrIsFull(t *testing.T) {
+	requirePOSIXTransportFixture(t)
 	bin := t.TempDir()
 	ssh := filepath.Join(bin, "ssh")
 	denial := "Permission denied (publickey)." + strings.Repeat("x", 128)
@@ -140,6 +152,7 @@ func TestTransportPreservesPasswordResolutionFailureWhenStderrIsFull(t *testing.
 }
 
 func TestTransportStartsSSHBeforeWritingLargeAskpassSecret(t *testing.T) {
+	requirePOSIXTransportFixture(t)
 	bin := t.TempDir()
 	ssh := filepath.Join(bin, "ssh")
 	script := `#!/bin/sh
