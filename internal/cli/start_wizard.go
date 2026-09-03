@@ -8,6 +8,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
@@ -20,6 +21,9 @@ func promptStartRepository(ctx context.Context, app *App, p *prompter, req start
 	var current repo.Repo
 	if r, err := resolveStartRepository(ctx, app, ""); err == nil {
 		current = r
+	}
+	if current.Path == "" && app.canPick() {
+		return pickStartRepository(ctx, app, p)
 	}
 	if current.Path == "" {
 		all, err := repo.Discover(ctx, app.Cfg.DiscoveryRoots(), repo.DefaultOptions())
@@ -76,6 +80,74 @@ func promptStartRepository(ctx context.Context, app *App, p *prompter, req start
 		r, _, err := repo.Resolve(ctx, app.Cfg.DiscoveryRoots(), value)
 		if err == nil {
 			return r, nil
+		}
+		fmt.Fprintf(p.out, "  %s\n", p.style.warning(err.Error()))
+	}
+}
+
+const manualStartRepository = "\x00manual-start-repository"
+
+func pickStartRepository(ctx context.Context, app *App, p *prompter) (repo.Repo, error) {
+	for {
+		discovered, err := repo.Discover(ctx, app.Cfg.DiscoveryRoots(), repo.CompletionOptions())
+		if err != nil {
+			return repo.Repo{}, err
+		}
+
+		items := make([]picker.Item, 0, len(discovered)+1)
+		for _, repository := range discovered {
+			if !repository.HasGit || repository.Bare {
+				continue
+			}
+			items = append(items, picker.Item{
+				Value:       repository.Path,
+				Label:       repository.Display(),
+				Description: config.Contract(repository.Path),
+			})
+		}
+		if len(items) == 0 {
+			return repo.Repo{}, errors.New("no non-bare repositories found under paths.scan_roots")
+		}
+		items = append(items, picker.Item{
+			Value:       manualStartRepository,
+			Label:       "Enter a repository name or path manually…",
+			Description: "resolve a repository not present in the discovered list",
+		})
+
+		result, used, err := app.pick(ctx, picker.Request{Prompt: "Repository", Items: items})
+		if errors.Is(err, picker.ErrCanceled) {
+			return repo.Repo{}, errPromptCanceled
+		}
+		if err != nil {
+			return repo.Repo{}, err
+		}
+		if !used || result.Item.Value == manualStartRepository {
+			return promptManualStartRepository(ctx, app, p)
+		}
+		if result.Item.Value == "" {
+			return repo.Repo{}, errors.New("picker returned an empty repository path")
+		}
+		resolved, err := resolveStartRepository(ctx, app, result.Item.Value)
+		if err == nil {
+			return resolved, nil
+		}
+		fmt.Fprintf(p.out, "  %s\n", p.style.warning("selected repository changed or disappeared; choose again"))
+	}
+}
+
+func promptManualStartRepository(ctx context.Context, app *App, p *prompter) (repo.Repo, error) {
+	for {
+		value, err := p.line("Repository", "")
+		if err != nil {
+			return repo.Repo{}, err
+		}
+		if value == "" {
+			fmt.Fprintln(p.out, "  "+p.style.warning("repository is required"))
+			continue
+		}
+		resolved, _, err := repo.Resolve(ctx, app.Cfg.DiscoveryRoots(), value)
+		if err == nil {
+			return resolved, nil
 		}
 		fmt.Fprintf(p.out, "  %s\n", p.style.warning(err.Error()))
 	}

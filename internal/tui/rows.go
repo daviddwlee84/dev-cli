@@ -17,6 +17,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	"github.com/daviddwlee84/dev-cli/internal/textmatch"
 )
 
 // RepoRow is one repository as the dashboard shows it: what it is, plus how
@@ -201,16 +202,7 @@ func taskSearchText(r inventory.Row) string {
 // Term-wise rather than substring so "auth api" finds a task named "api token
 // auth" — the order words come to mind in is rarely the order they appear in.
 func matches(haystack, query string) bool {
-	query = strings.ToLower(strings.TrimSpace(query))
-	if query == "" {
-		return true
-	}
-	for _, term := range strings.Fields(query) {
-		if !strings.Contains(haystack, term) {
-			return false
-		}
-	}
-	return true
+	return textmatch.Terms(haystack, query)
 }
 
 // RemoteRow is one repository known to a configured forge, optionally matched to

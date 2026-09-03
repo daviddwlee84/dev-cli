@@ -2,7 +2,7 @@
 description: 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
 authority: project-policy
 status: maintained
-verified_on: 2026-09-02
+verified_on: 2026-09-03
 lang: zh-TW
 ---
 
@@ -65,7 +65,7 @@ tested_with: optional
 | `done --pr` 保持 task active；`done --merged` 需 named ancestry evidence | [變更流 workflow](../guides/change-stream-workflow.zh-TW.md) | `internal/taskflow/complete.go`、`internal/cli/done_flow.go` | implemented |
 | 獨立 TTY-only `dev flow`、all-worktree/task-only topology、row action sets、plan/approval、local/remote freshness、run-local review evidence、partial ledger 與 revalidation | [Repository Flow 預覽](../guides/repository-flow.zh-TW.md) | `internal/cli/flow.go`、`internal/flowtui`、`internal/taskflow`、`internal/inventory/repo_context.go`、`internal/forge/review.go`、focused flow/taskflow tests | preview implemented，2026-09-01 查核 |
 | worktree provisioning safety | [Worktree 與 provisioning](../guides/worktrees-provisioning.zh-TW.md) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
-| repository new/clone routing、snapshot templates/confinement、check-in policy、project trust、skill batching、TTY editor、upstream publication 與 handoff | [Commands 與 configuration](commands-config.md#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`、`internal/scaffold`、`internal/repotemplate`、`internal/projectconfig`、`internal/cli/repo_{create,checkin,skills}*.go`、`internal/cli/prompt.go`、focused repo-bootstrap tests | implemented |
+| repository new/clone routing、cached/local picker behavior、snapshot templates/confinement、check-in policy、project trust、skill batching、TTY editor、upstream publication 與 handoff | [Commands 與 configuration](commands-config.zh-TW.md#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`、`internal/picker`、`internal/scaffold`、`internal/repotemplate`、`internal/projectconfig`、`internal/cli/{picker,repo_create,start_wizard}.go`、focused picker/repo-bootstrap tests | implemented |
 | lazygit 小寫 `c` pending-message integration | [相容性](compatibility.zh-TW.md) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive，2026-08-29 查核 |
 | runtime fallback 與 exact-pane `start --run` dispatch | [Parallel agents 與 runtimes](../guides/parallel-agents-runtimes.zh-TW.md) | `internal/runtime/runtime.go`、`internal/runtime/herdr.go`、focused start/runtime tests | implemented |
 | OpenSSH alias discovery/provenance、dev-owned Include/fragments、精確 flags/JSON/TSV、public-key bootstrap、ProxyJump/Windows admin handling、partial outcome 與 removal limit | [SSH Host 設定與佈建](../guides/ssh-hosts.zh-TW.md) | `internal/sshhost`、`internal/cli/ssh.go`、SSH help、focused domain/CLI tests | implemented；repository snapshot 2026-09-01 |

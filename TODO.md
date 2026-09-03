@@ -53,10 +53,22 @@ into dev's own notes/tasks. Decide only after comparing lifecycle, multi-agent
 locking, git noise, cross-machine sync, archival and uninstall behavior. Until
 then, record the integration point rather than prematurely selecting a tool.
 
-### P3 · S — Television / fzf channel
-A `tv` channel over `dev ls --json` for fuzzy-picking a task, and an `fzf`
-fallback. Navigation by metadata rather than by remembering a path is the point
-of the tool; the TUI covers it, but a picker composes better with other tools.
+### P3 · M — Extend picker beyond repository entry points
+The first slice covers cached remote selection for `repo clone`, fast local
+repository selection for the outside-checkout `start` wizard, and Television/fzf composition for
+remote repositories. Adopt the shared selector elsewhere only when it improves
+over shell completion:
+
+- add a Television channel over `dev ls --json` for task navigation;
+- consider `tries *`, `graduate`, note show/edit/delete, fleet host/open,
+  artifact discard, and skill update;
+- open a picker for structured repo/experiment/catalog ambiguity errors;
+- add branch/base selection only after one canonical `gitx` branch enumerator;
+- consider larger enum sets currently served by `prompter.choice`.
+
+Do not automatically add a picker to lifecycle commands such as `dev done`:
+they already expose task completion, and their safety wizard should remain
+explicit and deliberate.
 
 ### P3 · S — `dev stats` per-repo heatmap
 `--repo X` currently filters the totals and the combined grid. A dedicated

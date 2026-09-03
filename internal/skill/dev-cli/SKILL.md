@@ -310,7 +310,13 @@ minimal README + initial-commit contract. A clear Git URL, local Git path, or
 `owner/name` argument to `new` or `create` automatically clones and preserves
 its remote; template and upstream-creation flags cannot accompany that route.
 Explicit `repo clone` remains available when scripts should state acquisition
-directly.
+directly. On a TTY, bare `repo clone` selects an exact clone URL from the
+existing private forge cache and retains a manual URL/path/owner-name option;
+it never refreshes providers implicitly. Outside a checkout, bare `start`
+selects a local repository with fast live discovery; inside one it keeps the
+immediate current-repository default. The configured line selector defaults to `fzf` and
+falls back to dev's built-in Bubble Tea picker when missing; non-TTY input stays
+line-oriented.
 `repo new --template` snapshots a local directory or Git tree into a fresh
 history; it is not a clone. `--template-ref` and `--template-subdir` select the
 exact source tree.

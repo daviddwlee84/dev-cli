@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-02
+verified_on: 2026-09-03
 tested_with: Claude Code 2.1.250
 lang: zh-TW
 ---
@@ -34,6 +34,7 @@ lang: zh-TW
 | remote portable-file plan/apply | Git、執行相容 `dev` 的 SSH target、matching existing clone/branch/commit；apply 另需 verified machine UUID pin | content 傳送前失敗或保持 target 不變；不推斷 clone/task fallback |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
 | independent `dev flow [repo]` | interactive TTY input/output | 直接拒絕並指向 `dev repo context [repo]` 或 `dev ls --all --json`；沒有 piped/JSON Flow mode |
+| interactive repository picker | terminal input/output；optional configured `fzf`-compatible selector | selector 缺少時使用 dev 的 built-in picker；non-TTY input 保留 line prompt |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
 | static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe file 會診斷；不需要 `ssh` process 或 network |
 | SSH effective values、fresh probe、bootstrap 與 fleet transport | system `ssh` client | static `ssh list`、dry-run 與 local config plan 仍可使用；effectful SSH operation 以 capability guidance 失敗 |
@@ -125,7 +126,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 
 以下是歷史缺口，現行版本已實作：
 
-- `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Plain explicit `repo new NAME` 仍維持 minimal；清楚的 Git URL、local Git path 或 owner/name 會改走 clone acquisition，保留 source history/remote。無參數 wizard 的第一個欄位也會偵測同樣 reference；建立新 repository 時，預設為 no 的 customization gate 讓正常 `agent-ready` flow 保持精簡。Text fields 使用 TTY inline editor，因此 cursor keys 會編輯內容，不會插入 raw escape bytes；non-TTY reader 維持 line-oriented behavior。
+- `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Plain explicit `repo new NAME` 仍維持 minimal；清楚的 Git URL、local Git path 或 owner/name 會改走 clone acquisition，保留 source history/remote。無參數 new-repository wizard 的第一個欄位也會偵測同樣 reference；建立新 repository 時，預設為 no 的 customization gate 讓正常 `agent-ready` flow 保持精簡。Bare `repo clone` 從既有 forge cache 選 exact URL；checkout 外的 bare `start` 會選 fast-discovered local repository，而 repository 內保留 immediate current default。兩者都保留 manual entry。Configured line selector 是 optional，且有 built-in fallback。Text fields 使用 TTY inline editor，因此 cursor keys 會編輯內容，不會插入 raw escape bytes；non-TTY reader 維持 line-oriented behavior。
 - `repo new` 可從 local directory/repository 或 Git source 的 optional branch、tag、commit 與 confined subdirectory 建立 fresh-history snapshot。未 pin 的 local Git tree 包含 tracked 加 untracked non-ignored files；non-Git directory 包含完整 current tree。Source `.git` metadata 會排除、URL userinfo 會 redact，不安全的 file types/paths 會在 destination 建立前失敗，held root/file handles 會限制 mutable-path races。Human plan 會預覽 paths 並警告 live snapshot，preset 也可選擇 catalog-repository subfolder。
 - Repository setup 支援 `--check-in=commit|stage|none`（`auto` 用於 preset compatibility）。Staged setup 會執行 before-commit setup 與 `git add -A`，但不執行 `after_commit` phase；它不能 publish 或 handoff 到 `start`，並可依前述方式預填 lazygit 小寫 `c`。
 - Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。`agent-history-hygiene` initializer 會寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。

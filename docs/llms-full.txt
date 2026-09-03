@@ -2086,6 +2086,42 @@ Use `/vis:private` for an exact visibility filter. Notes are enabled only after
 a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a
 new Try rather than a repository note.
 
+### CLI repository pickers
+
+Bare `dev repo clone` opens a picker over the existing private forge cache. It
+uses each provider's exact clone URL, never refreshes the network implicitly,
+and keeps a manual URL/path/`owner/name` choice. A stale or incomplete cache is
+still selectable with a warning; populate or replace it explicitly:
+
+```bash
+dev repo remote --refresh
+dev repo clone
+```
+
+Outside a checkout, bare `dev start` uses the same picker UI over fast live
+local discovery, then fully resolves the selected repository before planning a
+task. Inside a repository it retains the immediate current-repository default
+without scanning every configured root. The default
+external selector is `fzf`; a missing executable falls back to the built-in
+Bubble Tea list, and `[picker] command = []` forces that list. Compatible
+external commands receive candidates on stdin and must return one unchanged
+line on stdout. Non-TTY callers retain line prompts and never receive picker UI.
+
+The repository's `contrib/television/dev-remote-repos.toml` and
+`contrib/fzf/dev-repo-clone.bash` compose over the same public source instead of
+creating another inventory:
+
+```bash
+dev repo remote --refresh                 # populate once or refresh deliberately
+ref="$(tv dev-remote-repos)" && [ -n "$ref" ] && dev repo clone "$ref"
+source contrib/fzf/dev-repo-clone.bash
+dev-repo-clone-fzf
+```
+
+Both external recipes require `jq`, read `dev repo remote --cached --json`, and
+pass one quoted clone URL to `dev repo clone`. They are examples to copy or
+symlink; dev does not modify Television, shell, or chezmoi configuration.
+
 ### FLEET
 
 FLEET also loads lazily. It keeps valid cached rows usable while waiting for the
@@ -3499,10 +3535,25 @@ Key sections:
 | `[worktree]` | local ignored-file provisioning, linked dirs, setup commands, strategies, timeout |
 | `[local_files]` | host ceilings for portable files; project overlays provide the separate off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | complete remote inventory cache TTL and opt-in Azure organization/project targets |
+| `[picker]` | optional external selector argv; empty selects the built-in picker |
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
 | `[stats]` | sampler and optional WakaTime import |
 | `[update]` | `check` (default `true`) — allow the once-a-day "newer release available" hint and its background cache refresh; `DEV_NO_UPDATE_CHECK` overrides it |
+
+Interactive repository selection uses one direct argv vector, never shell source:
+
+```toml
+[picker]
+command = ["fzf", "--height=60%", "--layout=reverse", "--border", "--prompt", "{prompt}> "]
+```
+
+The executable must implement a line-selector contract: candidates arrive on
+stdin and the selected original line is returned on stdout. The default is
+`fzf`; compatible selectors can replace the entire array. A missing executable
+falls back to dev's Bubble Tea picker, and `command = []` forces that fallback.
+This is global host policy and cannot be overridden by a repository. Non-TTY
+callers retain deterministic line prompts.
 
 `DEV_TUI_TRACE=/absolute/new-file.json` enables a one-run TUI startup/readiness
 trace. The target must be absolute and must not exist; dev never overwrites it.
@@ -5191,6 +5242,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 | remote portable-file plan/apply | Git, SSH target running a compatible `dev`, matching existing clone/branch/commit; apply also needs a verified machine UUID pin | fails before content is sent or leaves the target unchanged; no clone/task fallback is inferred |
 | interactive dashboard | terminal input/output | bare `dev` prints the plain task list when piped |
 | preview repository flow | terminal input/output | `dev flow` refuses non-TTY use and points to `dev repo context` / JSON inventory |
+| interactive repository picker | terminal input/output; optional configured `fzf`-compatible selector | a missing selector uses dev's built-in picker; non-TTY input keeps line prompts |
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
 | static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe files are diagnosed; no `ssh` process or network is needed |
 | SSH effective values, fresh probes, bootstrap, and fleet transport | system `ssh` client | static `ssh list`, dry-run, and local config plans remain available; effectful SSH operations fail with capability guidance |
@@ -5301,7 +5353,7 @@ PlanID, locks, revalidation, and result ledger.
 
 These were historical gaps and should not be reintroduced as limitations:
 
-- `dev repo new|create`, `repo clone`, and `repo setup` share a preset-driven bootstrap pipeline. A plain explicit `repo new NAME` remains minimal, while a clear Git URL, local Git path, or owner/name routes through clone acquisition and preserves source history/remote. The no-argument wizard detects the same reference in its first field; for a new repository, a default-no customization gate keeps the normal `agent-ready` flow concise. Text fields use a TTY inline editor, so cursor keys edit rather than inserting raw escape bytes; non-TTY readers retain line-oriented behavior.
+- `dev repo new|create`, `repo clone`, and `repo setup` share a preset-driven bootstrap pipeline. A plain explicit `repo new NAME` remains minimal, while a clear Git URL, local Git path, or owner/name routes through clone acquisition and preserves source history/remote. The no-argument new-repository wizard detects the same reference in its first field; for a new repository, a default-no customization gate keeps the normal `agent-ready` flow concise. Bare `repo clone` selects exact URLs from the existing forge cache; outside a checkout, bare `start` selects a fast-discovered local repository, while the in-repository path keeps its immediate current default. Both retain manual entry. A configured line selector is optional, with a built-in fallback. Text fields use a TTY inline editor, so cursor keys edit rather than inserting raw escape bytes; non-TTY readers retain line-oriented behavior.
 - `repo new` can snapshot a local directory/repository or Git source at an optional branch, tag, or commit and confined subdirectory into a fresh history. An unpinned local Git tree includes tracked plus untracked non-ignored files; a non-Git directory includes its full current tree. Source `.git` metadata is excluded, URL userinfo is redacted, unsafe file types/paths fail before destination creation, and held root/file handles confine mutable-path races. Human plans preview paths and warn when the snapshot is live; presets can select catalog-repository subfolders.
 - Repository setup supports `--check-in=commit|stage|none` (`auto` for preset compatibility). Staged setup runs before-commit setup and `git add -A` without an `after_commit` phase, cannot publish or hand off to `start`, and may prefill lazygit lowercase `c` as described above.
 - Selected skills with matching source and agent targets share one installer invocation. The `agent-history-hygiene` initializer writes pre-commit/gitleaks policy and merges missing machine-local `.project.json`/`statistics.json` rules into `.specstory/.gitignore`; custom content and transcript history remain trackable.
@@ -5459,7 +5511,7 @@ tested_with: optional
 | repository flow topology, local/manual-remote observations, revision-bound Plan/Apply, and partial ledgers | [Repository lifecycle flow](https://daviddwlee84.github.io/dev-cli/guides/repository-flow/) | `internal/cli/flow.go`, `internal/flowtui`, `internal/taskflow`, focused flow tests | preview implemented 2026-09-01 |
 | `done --pr` leaves task active and DONE keeps resources until Retire | [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) | `internal/taskflow/{complete,retire}.go`, CLI lifecycle tests | implemented |
 | worktree provisioning safety | [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/) | `internal/wt/plan.go`, `ecosystem.go`, `provision.go` | implemented |
-| repository new/clone routing, snapshot templates/confinement, check-in policy, project trust, skill batching, TTY editor, upstream publication, and handoff | [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`, `internal/scaffold`, `internal/repotemplate`, `internal/projectconfig`, `internal/cli/repo_{create,checkin,skills}*.go`, `internal/cli/prompt.go`, focused repo-bootstrap tests | implemented |
+| repository new/clone routing, cached/local picker behavior, snapshot templates/confinement, check-in policy, project trust, skill batching, TTY editor, upstream publication, and handoff | [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`, `internal/picker`, `internal/scaffold`, `internal/repotemplate`, `internal/projectconfig`, `internal/cli/{picker,repo_create,start_wizard}.go`, focused picker/repo-bootstrap tests | implemented |
 | lazygit lowercase `c` pending-message integration | [Compatibility](https://daviddwlee84.github.io/dev-cli/reference/compatibility/#lazygit-staged-message-prefill-is-best-effort) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive, checked 2026-08-29 |
 | runtime fallback and exact-pane `start --run` dispatch | [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go`, `internal/runtime/herdr.go`, focused start/runtime tests | implemented |
 | OpenSSH alias discovery/provenance, dev-owned Include/fragments, exact flags/JSON/TSV, public-key bootstrap, ProxyJump/Windows admin handling, partial outcomes, and removal limits | [SSH host onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/) | `internal/sshhost`, `internal/cli/ssh.go`, SSH help, focused domain/CLI tests | implemented; repository snapshot 2026-09-01 |
@@ -7715,6 +7767,39 @@ clone 缺少的 repository 前確認，且 destination 受限於 `project_root`�
 row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，
 不會改成 repository note。
 
+### CLI repository pickers
+
+Bare `dev repo clone` 會對既有 private forge cache 開啟 picker。它使用各 provider
+的 exact clone URL，絕不 implicit refresh network，並保留 manual URL/path/`owner/name`
+選項。Stale 或 incomplete cache 仍可選，但會顯示 warning；cache 必須明確 populate
+或 replace：
+
+```bash
+dev repo remote --refresh
+dev repo clone
+```
+
+在 checkout 外，bare `dev start` 使用相同 picker UI 選 fast live local discovery
+的結果，之後才 full resolve 選定 repository 並規劃 task。在 repository 內則保留
+immediate current-repository default，不掃描所有 configured roots。Default external selector 是 `fzf`；
+executable 缺少時 fallback 到 built-in Bubble Tea list，`[picker] command = []` 會
+強制使用 built-in。相容 external command 從 stdin 讀 candidates，並須在 stdout
+原樣回傳一行。Non-TTY caller 保留 line prompt，絕不收到 picker UI。
+
+Repository 的 `contrib/television/dev-remote-repos.toml` 與
+`contrib/fzf/dev-repo-clone.bash` 會組合相同 public source，不建立另一份 inventory：
+
+```bash
+dev repo remote --refresh                 # 只在明確要求時 populate／refresh
+ref="$(tv dev-remote-repos)" && [ -n "$ref" ] && dev repo clone "$ref"
+source contrib/fzf/dev-repo-clone.bash
+dev-repo-clone-fzf
+```
+
+兩個 external recipe 都需要 `jq`、只讀 `dev repo remote --cached --json`，並將
+一個 quoted clone URL 傳給 `dev repo clone`。它們是供 copy 或 symlink 的範例；
+dev 不會修改 Television、shell 或 chezmoi config。
+
 ### FLEET
 
 FLEET 同樣延遲載入。等待目前的 REPOS generation 被接受時，仍可使用 valid
@@ -9101,10 +9186,24 @@ dev ssh init --apply       # confirmation 後安裝
 | `[worktree]` | local ignored-file provisioning、linked dirs、setup commands、strategies、timeout |
 | `[local_files]` | portable files 的 host ceilings；project overlay 提供獨立的 off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | 完整 remote inventory 的 cache TTL，以及 opt-in Azure organization/project targets |
+| `[picker]` | optional external selector argv；空 array 會選用 built-in picker |
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
 | `[stats]` | sampler 與 optional WakaTime import |
 | `[update]` | `check`（預設 `true`）— 允許每天一次的「有新版」提示與其背景 cache refresh；`DEV_NO_UPDATE_CHECK` 可覆寫 |
+
+Interactive repository selection 使用直接 argv vector，絕不當作 shell source：
+
+```toml
+[picker]
+command = ["fzf", "--height=60%", "--layout=reverse", "--border", "--prompt", "{prompt}> "]
+```
+
+Executable 必須遵守 line-selector contract：從 stdin 讀候選項，並把選取的原始整行
+寫到 stdout。預設使用 `fzf`；相容 selector 可替換整個 array。Executable 缺少時會
+fallback 到 dev 的 Bubble Tea picker，`command = []` 則強制使用該 fallback。
+這是 global host policy，repository 不能 override。Non-TTY caller 維持 deterministic
+line prompt。
 
 `DEV_TUI_TRACE=/absolute/new-file.json` 會啟用單次 TUI startup/readiness trace。
 Target 必須是 absolute 且尚不存在；dev 絕不 overwrite。Private、bounded document
@@ -10789,6 +10888,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 | remote portable-file plan/apply | Git、執行相容 `dev` 的 SSH target、matching existing clone/branch/commit；apply 另需 verified machine UUID pin | content 傳送前失敗或保持 target 不變；不推斷 clone/task fallback |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
 | independent `dev flow [repo]` | interactive TTY input/output | 直接拒絕並指向 `dev repo context [repo]` 或 `dev ls --all --json`；沒有 piped/JSON Flow mode |
+| interactive repository picker | terminal input/output；optional configured `fzf`-compatible selector | selector 缺少時使用 dev 的 built-in picker；non-TTY input 保留 line prompt |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
 | static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe file 會診斷；不需要 `ssh` process 或 network |
 | SSH effective values、fresh probe、bootstrap 與 fleet transport | system `ssh` client | static `ssh list`、dry-run 與 local config plan 仍可使用；effectful SSH operation 以 capability guidance 失敗 |
@@ -10880,7 +10980,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 
 以下是歷史缺口，現行版本已實作：
 
-- `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Plain explicit `repo new NAME` 仍維持 minimal；清楚的 Git URL、local Git path 或 owner/name 會改走 clone acquisition，保留 source history/remote。無參數 wizard 的第一個欄位也會偵測同樣 reference；建立新 repository 時，預設為 no 的 customization gate 讓正常 `agent-ready` flow 保持精簡。Text fields 使用 TTY inline editor，因此 cursor keys 會編輯內容，不會插入 raw escape bytes；non-TTY reader 維持 line-oriented behavior。
+- `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Plain explicit `repo new NAME` 仍維持 minimal；清楚的 Git URL、local Git path 或 owner/name 會改走 clone acquisition，保留 source history/remote。無參數 new-repository wizard 的第一個欄位也會偵測同樣 reference；建立新 repository 時，預設為 no 的 customization gate 讓正常 `agent-ready` flow 保持精簡。Bare `repo clone` 從既有 forge cache 選 exact URL；checkout 外的 bare `start` 會選 fast-discovered local repository，而 repository 內保留 immediate current default。兩者都保留 manual entry。Configured line selector 是 optional，且有 built-in fallback。Text fields 使用 TTY inline editor，因此 cursor keys 會編輯內容，不會插入 raw escape bytes；non-TTY reader 維持 line-oriented behavior。
 - `repo new` 可從 local directory/repository 或 Git source 的 optional branch、tag、commit 與 confined subdirectory 建立 fresh-history snapshot。未 pin 的 local Git tree 包含 tracked 加 untracked non-ignored files；non-Git directory 包含完整 current tree。Source `.git` metadata 會排除、URL userinfo 會 redact，不安全的 file types/paths 會在 destination 建立前失敗，held root/file handles 會限制 mutable-path races。Human plan 會預覽 paths 並警告 live snapshot，preset 也可選擇 catalog-repository subfolder。
 - Repository setup 支援 `--check-in=commit|stage|none`（`auto` 用於 preset compatibility）。Staged setup 會執行 before-commit setup 與 `git add -A`，但不執行 `after_commit` phase；它不能 publish 或 handoff 到 `start`，並可依前述方式預填 lazygit 小寫 `c`。
 - Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。`agent-history-hygiene` initializer 會寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。
@@ -11042,7 +11142,7 @@ tested_with: optional
 | `done --pr` 保持 task active；`done --merged` 需 named ancestry evidence | [變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/taskflow/complete.go`、`internal/cli/done_flow.go` | implemented |
 | 獨立 TTY-only `dev flow`、all-worktree/task-only topology、row action sets、plan/approval、local/remote freshness、run-local review evidence、partial ledger 與 revalidation | [Repository Flow 預覽](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/) | `internal/cli/flow.go`、`internal/flowtui`、`internal/taskflow`、`internal/inventory/repo_context.go`、`internal/forge/review.go`、focused flow/taskflow tests | preview implemented，2026-09-01 查核 |
 | worktree provisioning safety | [Worktree 與 provisioning](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/) | `internal/wt/plan.go`、`ecosystem.go`、`provision.go` | implemented |
-| repository new/clone routing、snapshot templates/confinement、check-in policy、project trust、skill batching、TTY editor、upstream publication 與 handoff | [Commands 與 configuration](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`、`internal/scaffold`、`internal/repotemplate`、`internal/projectconfig`、`internal/cli/repo_{create,checkin,skills}*.go`、`internal/cli/prompt.go`、focused repo-bootstrap tests | implemented |
+| repository new/clone routing、cached/local picker behavior、snapshot templates/confinement、check-in policy、project trust、skill batching、TTY editor、upstream publication 與 handoff | [Commands 與 configuration](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/#repository-bootstrap) | `internal/repo/{acquire,ref_security}.go`、`internal/picker`、`internal/scaffold`、`internal/repotemplate`、`internal/projectconfig`、`internal/cli/{picker,repo_create,start_wizard}.go`、focused picker/repo-bootstrap tests | implemented |
 | lazygit 小寫 `c` pending-message integration | [相容性](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/) | [lazygit v0.59.0 working-tree helper](https://github.com/jesseduffield/lazygit/blob/v0.59.0/pkg/gui/controllers/helpers/working_tree_helper.go#L191-L216) | version-sensitive，2026-08-29 查核 |
 | runtime fallback 與 exact-pane `start --run` dispatch | [Parallel agents 與 runtimes](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/) | `internal/runtime/runtime.go`、`internal/runtime/herdr.go`、focused start/runtime tests | implemented |
 | OpenSSH alias discovery/provenance、dev-owned Include/fragments、精確 flags/JSON/TSV、public-key bootstrap、ProxyJump/Windows admin handling、partial outcome 與 removal limit | [SSH Host 設定與佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/) | `internal/sshhost`、`internal/cli/ssh.go`、SSH help、focused domain/CLI tests | implemented；repository snapshot 2026-09-01 |

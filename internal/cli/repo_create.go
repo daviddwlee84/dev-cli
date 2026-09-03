@@ -169,8 +169,10 @@ func newRepoCloneCmd(app *App) *cobra.Command {
 		Use:   "clone [owner/name|url|path]",
 		Short: "Clone a repository and optionally apply a setup preset",
 		Long: `Clone into paths.project_root (or --path). In a terminal, omitting the
-reference opens a wizard and offers an idempotent scaffold after the clone.
-Setup is never selected by default for an existing team or third-party repo.`,
+reference opens a cache-backed repository picker, retains manual source entry,
+and offers an idempotent scaffold after the clone. Opening the picker never
+refreshes forge providers. Setup is never selected by default for an existing
+team or third-party repo.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -178,12 +180,16 @@ Setup is never selected by default for an existing team or third-party repo.`,
 					return errors.New("clone reference is required outside an interactive terminal")
 				}
 				request, setup, confirmed, err := runRepoCloneWizard(app, flags)
-				if errors.Is(err, errPromptCanceled) || !confirmed {
+				if errors.Is(err, errPromptCanceled) {
 					fmt.Fprintln(app.Out, "Canceled; nothing was cloned.")
 					return nil
 				}
 				if err != nil {
 					return err
+				}
+				if !confirmed {
+					fmt.Fprintln(app.Out, "Canceled; nothing was cloned.")
+					return nil
 				}
 				if !setup || request.Scaffold.Preset != "" || request.DryRun {
 					return executeRepoWorkflow(app, request)

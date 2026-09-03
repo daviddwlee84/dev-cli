@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/scaffold"
 )
@@ -137,14 +139,74 @@ func runRepoNewWizard(app *App, flags repoBootstrapFlags) (repoWorkflowRequest, 
 	return request, confirmed, err
 }
 
+const manualCloneReference = "\x00manual-clone-reference"
+
 func runRepoCloneWizard(app *App, flags repoBootstrapFlags) (repoWorkflowRequest, bool, bool, error) {
 	p := newPrompter(app)
 	fmt.Fprintln(p.out, p.style.title("Clone a repository"))
-	ref, err := p.line("Git URL, path, or owner/name", "")
+	ref, err := promptRepoCloneReference(app, p)
 	if err != nil {
 		return repoWorkflowRequest{}, false, false, err
 	}
 	return promptRepoCloneWizard(app, p, flags, ref, true)
+}
+
+func promptRepoCloneReference(app *App, p *prompter) (string, error) {
+	manual := func() (string, error) {
+		return p.line("Git URL, path, or owner/name", "")
+	}
+	if !app.canPick() {
+		return manual()
+	}
+
+	rows, ok, stale := cachedRemoteRows(app)
+	if !ok {
+		return manual()
+	}
+	items := make([]picker.Item, 0, len(rows)+1)
+	for _, row := range rows {
+		remote := row.Repo
+		if strings.TrimSpace(remote.CloneURL) == "" {
+			continue
+		}
+		var details []string
+		if remote.Visibility != "" {
+			details = append(details, strings.ToLower(remote.Visibility))
+		}
+		if remote.Archived {
+			details = append(details, "archived")
+		}
+		if remote.Description != "" {
+			details = append(details, truncate(remote.Description, 72))
+		}
+		items = append(items, picker.Item{
+			Value:       remote.CloneURL,
+			Label:       remote.Label(),
+			Description: strings.Join(details, " · "),
+		})
+	}
+	if len(items) == 0 {
+		return manual()
+	}
+	items = append(items, picker.Item{
+		Value:       manualCloneReference,
+		Label:       "Enter a URL, path, or owner/name manually…",
+		Description: "use a source not present in the cached forge inventory",
+	})
+	if stale {
+		app.warnf("remote cache is stale or incomplete; run `dev repo remote --refresh` to update picker candidates")
+	}
+	result, used, err := app.pick(ctxOf(), picker.Request{Prompt: "Repository to clone", Items: items})
+	if errors.Is(err, picker.ErrCanceled) {
+		return "", errPromptCanceled
+	}
+	if err != nil {
+		return "", err
+	}
+	if !used || result.Item.Value == manualCloneReference {
+		return manual()
+	}
+	return result.Item.Value, nil
 }
 
 func promptRepoCloneWizard(app *App, p *prompter, flags repoBootstrapFlags, ref string, offerSetup bool) (repoWorkflowRequest, bool, bool, error) {

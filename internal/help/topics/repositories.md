@@ -33,6 +33,15 @@ instead of inserting terminal escape bytes such as `^[[C`. Esc or Ctrl-C
 cancels the prompt. Piped input retains the line-oriented interface used by
 scripts and tests; a bracketed default remains a hint accepted with Enter.
 
+Bare `repo clone` selects exact clone URLs from the existing private forge cache,
+with a manual source item for URLs, paths, and `owner/name`. It accepts stale or
+incomplete candidates with a warning but never performs an implicit network
+refresh; use `dev repo remote --refresh` deliberately. Outside a checkout, bare
+`dev start` selects a local repository from fast live discovery and fully
+resolves it afterward; the in-repository path keeps its immediate current default.
+The configured selector defaults to `fzf`, falls back to dev's built-in picker
+when absent, and can be forced built-in with `[picker] command = []`.
+
 ## Templates and check-in
 
 `repo new` can seed the otherwise-empty repository from `--template`, using a

@@ -2,7 +2,7 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-01
+verified_on: 2026-09-03
 ---
 
 # Commands and configuration
@@ -348,10 +348,25 @@ Key sections:
 | `[worktree]` | local ignored-file provisioning, linked dirs, setup commands, strategies, timeout |
 | `[local_files]` | host ceilings for portable files; project overlays provide the separate off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | complete remote inventory cache TTL and opt-in Azure organization/project targets |
+| `[picker]` | optional external selector argv; empty selects the built-in picker |
 | `[bootstrap]` | recursion, symlink handling, index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
 | `[stats]` | sampler and optional WakaTime import |
 | `[update]` | `check` (default `true`) — allow the once-a-day "newer release available" hint and its background cache refresh; `DEV_NO_UPDATE_CHECK` overrides it |
+
+Interactive repository selection uses one direct argv vector, never shell source:
+
+```toml
+[picker]
+command = ["fzf", "--height=60%", "--layout=reverse", "--border", "--prompt", "{prompt}> "]
+```
+
+The executable must implement a line-selector contract: candidates arrive on
+stdin and the selected original line is returned on stdout. The default is
+`fzf`; compatible selectors can replace the entire array. A missing executable
+falls back to dev's Bubble Tea picker, and `command = []` forces that fallback.
+This is global host policy and cannot be overridden by a repository. Non-TTY
+callers retain deterministic line prompts.
 
 `DEV_TUI_TRACE=/absolute/new-file.json` enables a one-run TUI startup/readiness
 trace. The target must be absolute and must not exist; dev never overwrites it.

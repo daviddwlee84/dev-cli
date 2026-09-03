@@ -47,7 +47,9 @@ For untracked ad-hoc navigation, use "dev repo open" or press Enter in the
 TUI's REPOS view; that opens the project without creating any task at all.
 
 In an interactive terminal, omitting the task name opens a context-aware
-wizard for repo, task, mode, branch, base and next action. Defaults are shown
+wizard. Outside a checkout it offers fast local-repository selection; inside
+one it keeps the current repository as the immediate default. It then asks for
+task, mode, branch, base and next action. Defaults are shown
 inline, and the final summary must be confirmed before anything is created.
 Pipes and --json never prompt: pass --task for unattended use.
 

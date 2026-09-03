@@ -1,0 +1,24 @@
+# Cached remote repositories known to dev.
+#
+# Populate or refresh the private cache first:
+#   dev repo remote --refresh
+#
+# Usage:
+#   tv dev-remote-repos
+#   ref="$(tv dev-remote-repos)" && [ -n "$ref" ] && dev repo clone "$ref"
+#
+# Enter prints the exact provider clone URL. The source never refreshes the
+# network; stale cache is still useful and dev reports that it should be updated.
+
+[metadata]
+name = "dev-remote-repos"
+description = "Select a cached forge repository known to dev"
+requirements = ["dev", "jq"]
+
+[source]
+command = '''dev repo remote --cached --json | jq -r '.[] | select(.repo.clone_url != null and .repo.clone_url != "") | select((.repo.clone_url | test("[\\t\\r\\n]")) | not) | [.repo.clone_url, (.repo.forge + ":" + .repo.full_name), (.repo.visibility // ""), (.local_path // ""), ((.repo.description // "") | gsub("[\\t\\r\\n]+"; " "))] | @tsv' '''
+display = "{split:\\t:1}  {split:\\t:2}  {split:\\t:3}  │  {split:\\t:4}"
+output = "{split:\\t:0}"
+
+[ui]
+layout = "portrait"

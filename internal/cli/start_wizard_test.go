@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
@@ -20,6 +22,129 @@ func (f *startFixture) runInteractive(input string, args ...string) error {
 	f.app.In = strings.NewReader(input)
 	f.app.interactiveCheck = func() bool { return true }
 	return f.run(args...)
+}
+
+func TestStartRepositoryInsideCheckoutKeepsImmediateCurrentDefault(t *testing.T) {
+	f := newStartFixture(t, runtime.None{})
+	f.app.In = strings.NewReader("\n")
+	f.app.pickerSelect = func(context.Context, picker.Request) (picker.Result, error) {
+		t.Fatal("in-repository start should not scan all roots or open a picker")
+		return picker.Result{}, nil
+	}
+	selected, err := promptStartRepository(t.Context(), f.app, newPrompter(f.app), startRequest{})
+	if err != nil || selected.Path != f.repo.Root {
+		t.Fatalf("current selection = %+v, %v", selected, err)
+	}
+}
+
+func TestStartRepositoryPickerSelectsAndReresolvesFastCandidate(t *testing.T) {
+	f := newStartFixture(t, runtime.None{})
+	other := gittest.New(t)
+	f.app.Cfg.Paths.RepoPaths = []string{f.repo.Root, other.Root}
+	f.app.Cfg.Paths.ScanRoots = nil
+	outside := t.TempDir()
+	if err := os.Chdir(outside); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(f.repo.Root) })
+	f.app.In = strings.NewReader("")
+	f.app.pickerSelect = func(_ context.Context, request picker.Request) (picker.Result, error) {
+		if len(request.Items) < 3 {
+			t.Fatalf("picker items = %+v", request.Items)
+		}
+		for _, item := range request.Items {
+			if item.Value == other.Root {
+				return picker.Result{Item: item}, nil
+			}
+		}
+		t.Fatalf("other repository missing from picker: %+v", request.Items)
+		return picker.Result{}, nil
+	}
+
+	selected, err := promptStartRepository(t.Context(), f.app, newPrompter(f.app), startRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if selected.Path != other.Root {
+		t.Fatalf("selected = %+v", selected)
+	}
+	if selected.CommonDir == "" || selected.CommonDir == selected.Path {
+		t.Fatalf("selected repository was not fully re-resolved: %+v", selected)
+	}
+}
+
+func TestStartRepositoryPickerRepromptsWhenSelectionDisappears(t *testing.T) {
+	f := newStartFixture(t, runtime.None{})
+	other := gittest.New(t)
+	f.app.Cfg.Paths.RepoPaths = []string{other.Root, f.repo.Root}
+	f.app.Cfg.Paths.ScanRoots = nil
+	outside := t.TempDir()
+	if err := os.Chdir(outside); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(f.repo.Root) })
+	f.app.In = strings.NewReader("")
+	calls := 0
+	f.app.pickerSelect = func(_ context.Context, request picker.Request) (picker.Result, error) {
+		calls++
+		wanted := f.repo.Root
+		if calls == 1 {
+			wanted = other.Root
+		}
+		for _, item := range request.Items {
+			if item.Value == wanted {
+				if calls == 1 {
+					if err := os.RemoveAll(other.Root); err != nil {
+						t.Fatal(err)
+					}
+				}
+				return picker.Result{Item: item}, nil
+			}
+		}
+		t.Fatalf("wanted repository %q missing from picker: %+v", wanted, request.Items)
+		return picker.Result{}, nil
+	}
+	selected, err := promptStartRepository(t.Context(), f.app, newPrompter(f.app), startRequest{})
+	if err != nil || selected.Path != f.repo.Root || calls != 2 {
+		t.Fatalf("selection = %+v, calls = %d, err = %v", selected, calls, err)
+	}
+	if !strings.Contains(f.stdout.String(), "changed or disappeared") {
+		t.Fatalf("missing retry warning: %q", f.stdout.String())
+	}
+}
+
+func TestStartRepositoryPickerManualAndCancel(t *testing.T) {
+	f := newStartFixture(t, runtime.None{})
+	other := gittest.New(t)
+	f.app.Cfg.Paths.RepoPaths = []string{f.repo.Root, other.Root}
+	f.app.Cfg.Paths.ScanRoots = nil
+	outside := t.TempDir()
+	if err := os.Chdir(outside); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(f.repo.Root) })
+	f.app.In = strings.NewReader(other.Root + "\n")
+	f.app.pickerSelect = func(_ context.Context, request picker.Request) (picker.Result, error) {
+		for _, item := range request.Items {
+			if item.Value == manualStartRepository {
+				return picker.Result{Item: item}, nil
+			}
+		}
+		t.Fatal("manual picker item missing")
+		return picker.Result{}, nil
+	}
+	selected, err := promptStartRepository(t.Context(), f.app, newPrompter(f.app), startRequest{})
+	if err != nil || selected.Path != other.Root {
+		t.Fatalf("manual selection = %+v, %v", selected, err)
+	}
+
+	f.app.pickerSelect = func(context.Context, picker.Request) (picker.Result, error) {
+		return picker.Result{}, picker.ErrCanceled
+	}
+	_, err = promptStartRepository(t.Context(), f.app, newPrompter(f.app), startRequest{})
+	if !errors.Is(err, errPromptCanceled) {
+		t.Fatalf("cancel error = %v", err)
+	}
 }
 
 func TestStartWizardAcceptsContextDefaults(t *testing.T) {
