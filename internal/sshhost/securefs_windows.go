@@ -227,24 +227,31 @@ func protectedDescriptor(directory bool) (*windows.SECURITY_DESCRIPTOR, error) {
 }
 
 func setDescriptor(file *os.File, descriptor *windows.SECURITY_DESCRIPTOR) error {
+	owner, _, err := descriptor.Owner()
+	if err != nil {
+		return err
+	}
+	if owner == nil {
+		return errors.New("missing owner in Windows security descriptor")
+	}
 	dacl, _, err := descriptor.DACL()
 	if err != nil {
 		return err
 	}
-	handle, err := reopenFileForDACL(windows.Handle(file.Fd()))
+	handle, err := reopenFileForSecurity(windows.Handle(file.Fd()))
 	if err != nil {
 		return err
 	}
 	defer windows.CloseHandle(handle)
 	return windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
-		nil, nil, dacl, nil)
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		owner, nil, dacl, nil)
 }
 
-func reopenFileForDACL(original windows.Handle) (windows.Handle, error) {
+func reopenFileForSecurity(original windows.Handle) (windows.Handle, error) {
 	const share = windows.FILE_SHARE_READ | windows.FILE_SHARE_WRITE | windows.FILE_SHARE_DELETE
 	handle, _, callErr := reOpenFileProc.Call(
-		uintptr(original), uintptr(windows.WRITE_DAC|windows.READ_CONTROL), uintptr(share), 0,
+		uintptr(original), uintptr(windows.WRITE_DAC|windows.WRITE_OWNER|windows.READ_CONTROL), uintptr(share), 0,
 	)
 	if windows.Handle(handle) == windows.InvalidHandle {
 		if callErr == nil || callErr == syscall.Errno(0) {

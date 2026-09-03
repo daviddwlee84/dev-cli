@@ -45,6 +45,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Windows SSH staging files now explicitly receive current-user ownership as
+  well as a protected DACL, including when an elevated token would otherwise
+  default new files to the Administrators group.
 - A successful fleet SSH password retry is no longer changed into exit 255
   merely because the process completed without reading the optional askpass
   secret pipe.
