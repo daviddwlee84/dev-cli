@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-09-01
+verified_on: 2026-09-02
 ---
 
 # Sources and freshness
@@ -68,7 +68,8 @@ tested_with: optional
 | SSH fleet snapshots, machine UUID pinning, `fleet sync`, and explicit bounded `fleet files` safety | [Remote repository fleet](../guides/remote-fleet.md) | `internal/fleet`, `internal/localfiles`, `internal/machineid`, focused fake-SSH/fault-injection tests | implemented |
 | READY/MERGED/RETIRED milestones, task-backed retirement revalidation, compatibility boundaries, and merged-worktree sweep | [Agent-safe retirement](../guides/agent-safe-retirement.md) | `internal/taskflow/retire.go`, `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
 | `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](../guides/machine-summary.md), [Development journal](../guides/dev-journal.md) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
-| agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |
+| native cross-repository agent skill inventory, versioned path registry, local status, object-byte upstream checks, and serialized mutations | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agenttarget`, `internal/agentskill`, `internal/inventory/agent_skills.go`, `internal/cli/skill.go`, focused CLI/TUI tests | implemented; path registry snapshot `skills@1.5.23`; checked 2026-09-02 |
+| declaration-only MCP inventory, Claude approval annotation, and secret-redaction boundary | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | current official agent config docs; `internal/agentmcp`, `internal/cli/mcp.go`, fixture/security tests | implemented for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; checked 2026-09-02 |
 | dashboard startup/readiness stages, generation handling, cache/live provenance, and private trace semantics | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/perftrace`, `internal/tui/{readiness,local}.go`, `internal/cli/tui*.go`, focused race tests | implemented |
 | quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
 | release archives, package-manager ownership, and Homebrew tap publication | [Compatibility](compatibility.md) | `internal/cli/upgrade.go`, `.github/workflows/release.yml`, `scripts/update-homebrew-formula.sh`, packaging helper test | implemented |

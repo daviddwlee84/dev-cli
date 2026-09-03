@@ -143,8 +143,9 @@ The agent skill is an explicit, optional post-install step:
 
 ```bash
 dev skill install
-dev skill list    # project + global skills, agents and sources
-dev doctor       # what works on this machine, and what degrades
+dev skill list --all    # native project/global inventory across repositories
+dev mcp list --all     # static, sanitized MCP declarations for five agents
+dev doctor             # what works on this machine, and what degrades
 ```
 
 Only **git** is required at runtime. `herdr`, `tmux`, `zellij`, `gh`, `glab` and
@@ -438,7 +439,7 @@ the target. Raw Git and configured external tools remain outside these
 
 ### The dashboard
 
-Bare `dev` (or `dev tui`) opens six lists, switched with `tab`:
+Bare `dev` (or `dev tui`) opens seven lists, switched with `tab`:
 
 - **TASKS** — the change streams dev is tracking. What am I working on.
 - **REPOS** — durable repositories under the scan roots, with branch, dirty
@@ -452,17 +453,24 @@ Bare `dev` (or `dev tui`) opens six lists, switched with `tab`:
 - **REMOTE** — repositories visible through authenticated forge CLIs, including
   configured Azure DevOps projects, marked when a local repo or Try exists.
   What can I open or clone.
-- **SKILLS** — project and global agent skills, their target agents, source and
-  explicitly checked update state.
+- **SKILLS** — native project/global agent-skill inventory across canonical
+  repositories plus the startup checkout, with local presence/integrity and an
+  explicitly checked upstream freshness state.
+- **MCP** — sanitized static MCP declarations for Claude Code, Codex, Cursor,
+  Gemini CLI, and OpenCode. It reports configured scopes and resolves only
+  Claude's documented project-approval settings; it does not claim connection
+  health or a generally effective merged runtime configuration.
 
 The first view is constructed before runtime auto-detection, project-root lookup,
 cache decoding, shell-based tool checks, or the optional release refresh can
 finish. TASKS, REPOS, and TRY then publish independently from one shared local
-load cycle; REMOTE, FLEET, and SKILLS remain lazy. A cached REMOTE/FLEET snapshot
+load cycle; REMOTE, FLEET, SKILLS, and MCP remain lazy. A cached REMOTE/FLEET snapshot
 is immediately usable but is tracked separately from a current live result.
 Every requested view has its own generation, so `r` cancels the old read, a late
 result cannot replace a newer one, a failed refresh keeps usable rows visible,
-and a successful empty result clears obsolete rows.
+and a successful empty result clears obsolete rows. Warning-only SKILLS/MCP
+source diagnostics keep a fresh partial snapshot, and a visible dependent view
+resumes automatically after a failed REPOS generation is repaired and reloaded.
 
 TASKS, REPOS and TRY use the same services as their non-interactive commands.
 Git-backed Tries appear in TRY rather than being duplicated in REPOS; REMOTE
@@ -482,19 +490,25 @@ g G        top / bottom         h l / tab       previous / next view
 switches the current client; outside it exits the dashboard and attaches to
 the target session. A COLD worktree task requires `dev resume`; a missing or
 unregistered worktree requires `dev sweep` first so artifacts can be salvaged
-before the task is resumed or reaped. In TASKS, `p` parks and prompts
-for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
+before the task is resumed or reaped. A wide TASKS table includes `REPO`; its
+compact layout keeps repository/path in the selected detail pane. In TASKS, `p`
+parks and prompts for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
 `space` expands linked worktrees inline, `m` edits repository tags/summary,
 `s` starts an isolated worktree task, and `d` starts a tracked direct task.
 On TASKS and REPOS, `n` quick-adds a repository thought and `N` opens its notes
 overlay. Expanded children carry their own Git/session/task state and can be
 opened directly. In TRY, `n` creates or clones an experiment;
 `space` opens mark/deprecate/archive/restore/graduate actions; `a` includes
-retained history. In SKILLS, `a` opens the upstream interactive installer, `c`
-performs the opt-in read-only network check after the local snapshot has loaded,
-and `u` confirms before updating
-only the selected lock-managed skill. `r` reloads local state without checking
-the network. `?` opens the complete context-sensitive key map. That makes
+retained history. SKILLS reuses the accepted REPOS snapshot, adds the exact
+startup worktree when distinct, and scans global paths once. `a` opens the
+upstream interactive installer, `c` performs the opt-in read-only network check
+after the local snapshot has loaded, and `u` confirms before updating only the
+selected lock-managed skill in that row's checkout. Source checks hash Git object
+bytes without running checkout filters; non-ASCII provider folder hashes that
+cannot be reproduced portably remain unverifiable. Mutations skip repository-local
+PATH shims and are serialized across `dev` processes. `r` reloads local state
+without checking the network. MCP only filters/reloads static declarations; it
+never starts a server or helper. `?` opens the complete context-sensitive key map. That makes
 the branch/worktree and lifecycle costs explicit rather than silently applying
 them to every directory.
 
@@ -513,7 +527,7 @@ URLs, runtime handles, or raw errors, and it is not written to `stats.db` or sen
 anywhere. `tui.initial_view_returned` means the Bubble Tea view string was built,
 not that a terminal rasterized it. Cache acceptance, live snapshot acceptance,
 and load completion are separate events; there is no artificial “all tabs ready”
-event because REMOTE, FLEET, and SKILLS may never be visited.
+event because REMOTE, FLEET, SKILLS, and MCP may never be visited.
 
 REPOS also has an agent-handoff copy menu. Press `y`, then `y` for contextual
 Markdown, `p` for the checkout path, `b` for the branch, `s` for runtime/agent
@@ -585,9 +599,13 @@ and `c` confirms before cloning an absent repo into `project_root`. The same
 inventory is available without the full-screen UI via `dev repo remote [query]`;
 `--cached` is its instant/offline form.
 
-SKILLS also loads lazily, so opening the dashboard does not start Node. Its
-plain and JSON forms are available through `dev skill list`; run with `--check`
-only when a remote freshness check is wanted.
+SKILLS also loads lazily. Native reads use the versioned `skills@1.5.23`
+77-agent path registry and lock files; they never start Node, `skills`, or `npx`.
+Use `dev skill list --all` for canonical repositories, `--repo` for one checkout,
+and `--check` only when a remote freshness check is wanted; checks hash Git object
+bytes without checkout filters. MCP is separately available through `dev mcp
+list`; it reads five agents' static config formats, resolves only Claude's documented
+project approvals, and redacts secret-bearing values before producing rows or JSON.
 
 Azure DevOps Services inventory is opt-in because `az repos list` requires an
 organization and team project. Repeat the target for every project wanted:
@@ -1166,22 +1184,40 @@ tool it describes, and an agent reading a stale command list is worse than one
 reading none.
 
 ```bash
-dev skill list       # merged project + global inventory
-dev skill list --check --json
-dev skill add        # interactive wizard for daviddwlee84/agent-skills/skills
+dev skill list                 # current checkout + global native inventory
+dev skill list --all --check --json
+dev skill list --repo api --project
+dev skill add                  # interactive wizard for daviddwlee84/agent-skills/skills
 dev skill update project-knowledge-harness --global --yes
-dev skill install    # → ~/.agents/skills/dev-cli, symlinked into ~/.claude/skills
-dev --skill          # print it, for a dotfiles installer to sync
-dev skill sync       # regenerate the command reference from the command tree
-dev skill sync --check   # fail if it has drifted — wire into CI
+dev skill install              # → ~/.agents/skills/dev-cli, symlinked into ~/.claude/skills
+dev mcp list --all --json      # sanitized static declarations; never health probes
+dev --skill                    # print it, for a dotfiles installer to sync
+dev skill sync                 # regenerate the command reference from the command tree
+dev skill sync --check         # fail if it has drifted — wire into CI
 ```
 
 `dev skill add [package]` is only a shortcut into the upstream interactive
-wizard. It never selects all skills or agents. Listing uses an already
-available/cached `skills` CLI and never downloads it; add/update are explicit
-actions and may access the network. Project scope resolves to the current Git
-checkout root, so invoking the command from a nested directory gives the same
-inventory.
+wizard. It never selects all skills or agents. Listing is native and never runs
+`skills`, npm, `npx`, or project code. Add/update are explicit actions, require
+a directly installed `skills` executable, and may access the network; `dev` skips
+repository-local `node_modules` candidates, rejects source-less update locks, and
+serializes provider processes. `--all` scans each configured canonical checkout
+once, while the TUI also includes its exact startup linked worktree when distinct
+and reads global paths once. Freshness hashes Git object bytes without checkout
+filters or autocrlf transforms; locale-dependent non-ASCII folder hashes stay
+unverifiable. Lock hashes describe upstream freshness, not installed-file integrity;
+only the embedded `dev-cli` skill can verify that every bundled file matches
+(additional user files are ignored).
+
+`dev mcp list` inventories declarations from Claude Code, Codex, Cursor, Gemini
+CLI, and OpenCode files. It keeps scopes separate, honors absolute
+`CLAUDE_CONFIG_DIR`, retains exact Claude local project keys, and resolves only
+Claude's documented user/project/local/managed project approvals. It deliberately
+omits runtime health, a generally effective merged configuration, plugin caches,
+hosted connectors, remote organization config, and command-line-only config.
+Environment/header/OAuth values, raw arguments, URL credentials, and indirect file
+contents never enter normalized output; only safe reference names and finite
+policy/count facts remain.
 
 The skill defers to the companion `git-workflow` skill for commit conventions,
 SemVer and branch naming rather than restating them. It owns what is new: the

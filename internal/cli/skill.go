@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,7 +10,9 @@ import (
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
+	"github.com/daviddwlee84/dev-cli/internal/agenttarget"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/skill"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -38,94 +41,220 @@ vendoring a copy.`,
 }
 
 func newSkillListCmd(app *App) *cobra.Command {
-	var projectOnly, globalOnly, check, jsonOut bool
+	var (
+		projectOnly bool
+		globalOnly  bool
+		check       bool
+		jsonOut     bool
+		all         bool
+		repoRef     string
+	)
 	cmd := &cobra.Command{
 		Use:     "list",
 		Aliases: []string{"ls", "status"},
 		Short:   "List project and global agent skills",
-		Long: `List installed agent skills through the upstream skills CLI's JSON output.
+		Long: `List installed agent skills directly from documented agent paths and lock files.
 
-With no scope flags, project and global skills are merged while remaining
-separate rows. Project scope is rooted at the current Git checkout, even when
-dev is run from a subdirectory. Listing never downloads the provider.
+With no scope flags, project and global skills remain separate rows. Project
+scope defaults to the exact current checkout, including a linked worktree.
+--all scans each configured canonical repository; --repo selects one repository
+or explicit checkout path. Listing never runs Node, npm, npx, or agent code.
 
 --check is the only form that contacts skill sources. It compares lock-recorded
 content without writing installed skills or either lock file.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if all && repoRef != "" {
+				return fmt.Errorf("choose at most one of --all or --repo")
+			}
+			project := projectOnly || !globalOnly
+			if !project && (all || repoRef != "") {
+				return fmt.Errorf("--all and --repo require project scope")
+			}
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
 			}
-			rows, err := agentskill.List(cmd.Context(), cwd, agentskill.ListOptions{
+			targets, err := resolveAgentTargets(cmd.Context(), app, cwd, all, repoRef, project)
+			if err != nil {
+				return err
+			}
+			result, err := inventory.CollectAgentSkills(cmd.Context(), targets, inventory.AgentSkillOptions{
 				Project: projectOnly, Global: globalOnly, Check: check,
 			})
 			if err != nil {
 				return err
 			}
+			renderSkillDiagnostics(app, result.Diagnostics)
 			if jsonOut {
-				return renderSkillJSON(app, rows)
+				return renderSkillJSON(app, result.Skills)
 			}
-			return renderSkillTable(app, rows, agentskill.ProjectRoot(cmd.Context(), cwd), projectOnly, globalOnly)
+			return renderSkillTable(app, result.Skills, targets, projectOnly, globalOnly)
 		},
 	}
 	f := cmd.Flags()
 	f.BoolVarP(&projectOnly, "project", "p", false, "list project skills")
 	f.BoolVarP(&globalOnly, "global", "g", false, "list global skills")
+	f.BoolVar(&all, "all", false, "scan every configured canonical repository")
+	f.StringVarP(&repoRef, "repo", "r", "", "scan one repository or explicit checkout path")
 	f.BoolVar(&check, "check", false, "contact Git sources and check for updates without installing them")
 	f.BoolVar(&jsonOut, "json", false, "emit a stable machine-readable JSON array")
+	registerFlagCompletion(cmd, "repo", completeRepoFlag(app))
 	return cmd
 }
 
+func resolveAgentTargets(ctx context.Context, app *App, cwd string, all bool, repoRef string, project bool) ([]agenttarget.Target, error) {
+	if !project {
+		return nil, nil
+	}
+	if all {
+		return agenttarget.All(ctx, app.Cfg.DiscoveryRoots())
+	}
+	if repoRef != "" {
+		target, err := agenttarget.ResolveRepository(ctx, app.Cfg.DiscoveryRoots(), repoRef)
+		if err != nil {
+			return nil, err
+		}
+		return []agenttarget.Target{target}, nil
+	}
+	target, err := agenttarget.Current(ctx, cwd)
+	if err != nil {
+		return nil, err
+	}
+	canonical, discoverErr := agenttarget.All(ctx, app.Cfg.DiscoveryRoots())
+	if discoverErr == nil {
+		target = agenttarget.ReconcileCurrent(canonical, target)
+	}
+	return []agenttarget.Target{target}, nil
+}
+
+type skillInstallationJSON struct {
+	Path            string   `json:"path"`
+	RealPath        string   `json:"real_path"`
+	LogicalPaths    []string `json:"logical_paths"`
+	AgentIDs        []string `json:"agent_ids"`
+	Integrity       string   `json:"integrity"`
+	IntegrityDetail string   `json:"integrity_detail,omitempty"`
+}
+
 type skillJSON struct {
-	Name         string   `json:"name"`
-	Scope        string   `json:"scope"`
-	ScopeRoot    string   `json:"scope_root"`
-	Path         string   `json:"path"`
-	Agents       []string `json:"agents"`
-	Source       string   `json:"source,omitempty"`
-	SourceURL    string   `json:"source_url,omitempty"`
-	SourceType   string   `json:"source_type,omitempty"`
-	ManagedBy    string   `json:"managed_by"`
-	UpdateStatus string   `json:"update_status"`
-	UpdateDetail string   `json:"update_detail,omitempty"`
+	Name            string                  `json:"name"`
+	Scope           string                  `json:"scope"`
+	ScopeRoot       string                  `json:"scope_root"`
+	Path            string                  `json:"path"`
+	Agents          []string                `json:"agents"`
+	Source          string                  `json:"source,omitempty"`
+	SourceURL       string                  `json:"source_url,omitempty"`
+	SourceType      string                  `json:"source_type,omitempty"`
+	ManagedBy       string                  `json:"managed_by"`
+	UpdateStatus    string                  `json:"update_status"`
+	UpdateDetail    string                  `json:"update_detail,omitempty"`
+	Repo            string                  `json:"repo,omitempty"`
+	RepoPath        string                  `json:"repo_path,omitempty"`
+	Checkout        string                  `json:"checkout,omitempty"`
+	Installations   []skillInstallationJSON `json:"installations,omitempty"`
+	Presence        string                  `json:"presence"`
+	Integrity       string                  `json:"integrity"`
+	IntegrityDetail string                  `json:"integrity_detail,omitempty"`
+	AgentIDs        []string                `json:"agent_ids,omitempty"`
+	RegistrySource  string                  `json:"registry_source"`
+	RegistryVersion string                  `json:"registry_version"`
+	LockVersion     int                     `json:"lock_version,omitempty"`
+	Ref             string                  `json:"ref,omitempty"`
+	SkillPath       string                  `json:"skill_path,omitempty"`
+	Plugin          string                  `json:"plugin,omitempty"`
+	InstalledAt     string                  `json:"installed_at,omitempty"`
+	UpdatedAt       string                  `json:"updated_at,omitempty"`
+	WellKnownDigest string                  `json:"well_known_digest,omitempty"`
 }
 
 func renderSkillJSON(app *App, rows []agentskill.Skill) error {
 	out := make([]skillJSON, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, skillJSON{
+		installations := make([]skillInstallationJSON, 0, len(row.Installations))
+		for _, installation := range row.Installations {
+			installations = append(installations, skillInstallationJSON{
+				Path: installation.Path, RealPath: installation.RealPath,
+				LogicalPaths: installation.LogicalPaths, AgentIDs: installation.AgentIDs,
+				Integrity: string(installation.Integrity), IntegrityDetail: installation.IntegrityDetail,
+			})
+		}
+		item := skillJSON{
 			Name: row.Name, Scope: string(row.Scope), ScopeRoot: row.ScopeRoot,
 			Path: row.Path, Agents: row.Agents, Source: row.Source,
 			SourceURL: row.SourceURL, SourceType: row.SourceType,
 			ManagedBy: string(row.ManagedBy), UpdateStatus: string(row.UpdateStatus),
-			UpdateDetail: row.UpdateDetail,
-		})
+			UpdateDetail: row.UpdateDetail, Repo: row.Repository, RepoPath: row.RepositoryPath,
+			Checkout: row.Checkout, Installations: installations, Presence: string(row.Presence),
+			Integrity: string(row.Integrity), IntegrityDetail: row.IntegrityDetail,
+			AgentIDs: row.Attribution.AgentIDs, RegistrySource: row.Attribution.Registry,
+			RegistryVersion: row.RegistryVersion,
+		}
+		if row.Lock != nil {
+			item.LockVersion, item.Ref, item.SkillPath = row.Lock.Version, row.Lock.Ref, row.Lock.SkillPath
+			item.Plugin, item.InstalledAt, item.UpdatedAt = row.Lock.PluginName, row.Lock.InstalledAt, row.Lock.UpdatedAt
+			item.WellKnownDigest = row.Lock.WellKnownDigest
+		}
+		out = append(out, item)
 	}
 	enc := json.NewEncoder(app.Out)
 	enc.SetIndent("", "  ")
 	return enc.Encode(out)
 }
 
-func renderSkillTable(app *App, rows []agentskill.Skill, projectRoot string, project, global bool) error {
+func renderSkillTable(app *App, rows []agentskill.Skill, targets []agenttarget.Target, project, global bool) error {
 	if !project && !global {
 		project = true
 	}
 	if project {
-		fmt.Fprintf(app.Out, "project root  %s\n\n", config.Contract(projectRoot))
+		if len(targets) == 1 {
+			fmt.Fprintf(app.Out, "project root  %s\n\n", config.Contract(targets[0].CheckoutRoot))
+		} else {
+			fmt.Fprintf(app.Out, "project roots  %d repositories\n\n", len(targets))
+		}
 	}
 	if len(rows) == 0 {
 		fmt.Fprintln(app.Out, "No agent skills found.")
 		return nil
 	}
 	style := app.outStyle()
-	t := app.newTable("SCOPE", "SKILL", "UPDATE", "AGENTS", "SOURCE", "PATH")
+	t := app.newTable("REPO", "SCOPE", "SKILL", "INSTALL", "UPDATE", "AGENTS", "SOURCE", "PATH")
 	for _, row := range rows {
-		t.Add(style.dim(string(row.Scope)), row.Name, style.updateState(shortUpdate(row.UpdateStatus)),
-			compactAgents(row.Agents), dash(row.Source), config.Contract(row.Path))
+		path := "—"
+		if row.Path != "" {
+			path = config.Contract(row.Path)
+		}
+		t.Add(dash(row.Repository), style.dim(string(row.Scope)), row.Name,
+			style.updateState(skillInstallLabel(row)), style.updateState(shortUpdate(row.UpdateStatus)),
+			compactAgents(row.Agents), dash(row.Source), path)
 	}
 	t.Render(app.Out)
 	return nil
+}
+
+func skillInstallLabel(row agentskill.Skill) string {
+	if row.Presence == agentskill.PresenceMissing {
+		return "missing"
+	}
+	switch row.Integrity {
+	case agentskill.IntegrityVerified:
+		return "verified"
+	case agentskill.IntegrityDrifted:
+		return "drifted"
+	default:
+		return "present"
+	}
+}
+
+func renderSkillDiagnostics(app *App, diagnostics []agentskill.Diagnostic) {
+	for _, diagnostic := range diagnostics {
+		owner := string(diagnostic.Scope)
+		if diagnostic.Repository != "" {
+			owner = diagnostic.Repository + "/" + owner
+		}
+		fmt.Fprintf(app.Err, "warning: skill inventory %s (%s): %s\n",
+			owner, config.Contract(diagnostic.Path), diagnostic.Message)
+	}
 }
 
 func compactAgents(agents []string) string {
@@ -177,21 +306,27 @@ skills, agents, or a scope: those decisions remain in the upstream wizard.`,
 			if err != nil {
 				return err
 			}
-			proc.Stdin, proc.Stdout, proc.Stderr = app.In, app.Out, app.Err
+			proc.Command.Stdin, proc.Command.Stdout, proc.Command.Stderr = app.In, app.Out, app.Err
 			return proc.Run()
 		},
 	}
 }
 
 func newSkillUpdateCmd(app *App) *cobra.Command {
-	var project, global, yes bool
+	var (
+		project bool
+		global  bool
+		yes     bool
+		repoRef string
+	)
 	cmd := &cobra.Command{
 		Use:   "update <skill>",
 		Short: "Update one skill in one explicit scope",
 		Long: `Update exactly one lock-managed skill through the upstream skills CLI.
 
-Project or global scope is required. The command confirms in a terminal unless
---yes is supplied; a non-interactive invocation must always pass --yes.`,
+Project or global scope is required. --repo selects a non-current project
+checkout. The command confirms in a terminal unless --yes is supplied; a
+non-interactive invocation must always pass --yes.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if project == global {
@@ -205,8 +340,19 @@ Project or global scope is required. The command confirms in a terminal unless
 			if err != nil {
 				return err
 			}
+			if global && repoRef != "" {
+				return fmt.Errorf("--repo is only valid with --project")
+			}
 			projectRoot := agentskill.ProjectRoot(cmd.Context(), cwd)
-			if !agentskill.Managed(cmd.Context(), projectRoot, args[0], scope) {
+			if repoRef != "" {
+				target, err := agenttarget.ResolveRepository(cmd.Context(), app.Cfg.DiscoveryRoots(), repoRef)
+				if err != nil {
+					return err
+				}
+				projectRoot = target.CheckoutRoot
+			}
+			managedName, managed := agentskill.ManagedName(cmd.Context(), projectRoot, args[0], scope)
+			if !managed {
 				return fmt.Errorf("%s skill %s is not managed by the skills CLI", scope, args[0])
 			}
 			if !yes {
@@ -218,18 +364,20 @@ Project or global scope is required. The command confirms in a terminal unless
 					return nil
 				}
 			}
-			proc, err := agentskill.UpdateCommand(cmd.Context(), projectRoot, args[0], scope)
+			proc, err := agentskill.UpdateCommand(cmd.Context(), projectRoot, managedName, scope)
 			if err != nil {
 				return err
 			}
-			proc.Stdin, proc.Stdout, proc.Stderr = app.In, app.Out, app.Err
+			proc.Command.Stdin, proc.Command.Stdout, proc.Command.Stderr = app.In, app.Out, app.Err
 			return proc.Run()
 		},
 	}
 	f := cmd.Flags()
 	f.BoolVarP(&project, "project", "p", false, "update the project-scoped skill")
 	f.BoolVarP(&global, "global", "g", false, "update the global skill")
+	f.StringVarP(&repoRef, "repo", "r", "", "project repository or explicit checkout path")
 	f.BoolVarP(&yes, "yes", "y", false, "skip dev's confirmation")
+	registerFlagCompletion(cmd, "repo", completeRepoFlag(app))
 	return cmd
 }
 

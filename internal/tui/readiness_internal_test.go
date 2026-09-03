@@ -5,6 +5,9 @@ import (
 	"errors"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/agentmcp"
+	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/experiment"
@@ -173,5 +176,56 @@ func TestFleetFailsClosedWhenRepositoryInventoryAlreadyFailed(t *testing.T) {
 	if command != nil || got.viewLoad(ViewFleet).loading || got.viewError(ViewFleet) == nil {
 		t.Fatalf("fleet waited forever after terminal REPOS failure: state=%+v err=%v cmd=%v",
 			got.viewLoad(ViewFleet), got.viewError(ViewFleet), command)
+	}
+}
+
+func TestVisibleCapabilityWithoutSnapshotReloadsAfterReposRecovery(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		view    View
+		actions Actions
+	}{
+		{name: "skills", view: ViewSkills, actions: Actions{
+			ReloadSkillsWithRepos: func(context.Context, []RepoRow) ([]agentskill.Skill, error) {
+				return []agentskill.Skill{{Name: "skill"}}, nil
+			},
+		}},
+		{name: "mcp", view: ViewMCP, actions: Actions{
+			ReloadMCPWithRepos: func(context.Context, []RepoRow) ([]agentmcp.Declaration, error) {
+				return []agentmcp.Declaration{{Name: "server"}}, nil
+			},
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			model := New(test.actions, nil, nil)
+			model.view = test.view
+			model.viewErrors[int(test.view)] = errors.New("repository dependency failed")
+			model.beginViewLoad(ViewRepos, loadRefresh)
+			if !model.viewLoad(test.view).loading {
+				t.Fatalf("visible %s was not queued for REPOS recovery", test.view)
+			}
+			model.repos = []RepoRow{{Repo: repo.Repo{Name: "demo", Path: "/src/demo"}}}
+			command := model.afterReposResult(true, nil)
+			if command == nil {
+				t.Fatalf("REPOS recovery produced no %s command", test.view)
+			}
+			result := command()
+			if batch, ok := result.(tea.BatchMsg); ok {
+				if len(batch) != 1 {
+					t.Fatalf("REPOS recovery batch = %d", len(batch))
+				}
+				result = batch[0]()
+			}
+			switch test.view {
+			case ViewSkills:
+				if rows := result.(skillsMsg).rows; len(rows) != 1 || rows[0].Name != "skill" {
+					t.Fatalf("skills recovery result = %+v", rows)
+				}
+			case ViewMCP:
+				if rows := result.(mcpMsg).rows; len(rows) != 1 || rows[0].Name != "server" {
+					t.Fatalf("MCP recovery result = %+v", rows)
+				}
+			}
+		})
 	}
 }

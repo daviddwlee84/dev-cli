@@ -5,7 +5,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/daviddwlee84/dev-cli/internal/agentskill"
+	"github.com/daviddwlee84/dev-cli/internal/agenttarget"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 )
@@ -57,14 +57,14 @@ func (r *tuiRuntimeResolver) Resolve(ctx context.Context) (runtime.Runtime, erro
 // tuiProjectRootResolver keeps Git project-root discovery lazy and shared by
 // SKILLS reads/actions.
 type tuiProjectRootResolver struct {
-	trace       *perftrace.Recorder
-	ctx         context.Context
-	getwd       func() (string, error)
-	projectRoot func(context.Context, string) string
-	once        sync.Once
-	ready       chan struct{}
-	root        string
-	err         error
+	trace   *perftrace.Recorder
+	ctx     context.Context
+	getwd   func() (string, error)
+	resolve func(context.Context, string) (agenttarget.Target, error)
+	once    sync.Once
+	ready   chan struct{}
+	target  agenttarget.Target
+	err     error
 }
 
 func newTUIProjectRootResolver(trace *perftrace.Recorder, ctx context.Context) *tuiProjectRootResolver {
@@ -72,18 +72,18 @@ func newTUIProjectRootResolver(trace *perftrace.Recorder, ctx context.Context) *
 		ctx = context.Background()
 	}
 	return &tuiProjectRootResolver{
-		trace: trace, ctx: ctx, getwd: os.Getwd, projectRoot: agentskill.ProjectRoot,
+		trace: trace, ctx: ctx, getwd: os.Getwd, resolve: agenttarget.Current,
 		ready: make(chan struct{}),
 	}
 }
 
-func (r *tuiProjectRootResolver) Resolve(ctx context.Context) (string, error) {
+func (r *tuiProjectRootResolver) ResolveTarget(ctx context.Context) (agenttarget.Target, error) {
 	r.once.Do(func() {
 		go func() {
 			finish := r.trace.Start(perftrace.TUIProjectRootResolve, perftrace.Fields{})
 			cwd, err := r.getwd()
 			if err == nil {
-				r.root = r.projectRoot(r.ctx, cwd)
+				r.target, err = r.resolve(r.ctx, cwd)
 			}
 			r.err = err
 			finish(resolverOutcome(err))
@@ -95,16 +95,21 @@ func (r *tuiProjectRootResolver) Resolve(ctx context.Context) (string, error) {
 	}
 	select {
 	case <-ctx.Done():
-		return "", ctx.Err()
+		return agenttarget.Target{}, ctx.Err()
 	case <-r.ready:
-		return r.root, r.err
+		return r.target, r.err
 	}
+}
+
+func (r *tuiProjectRootResolver) Resolve(ctx context.Context) (string, error) {
+	target, err := r.ResolveTarget(ctx)
+	return target.CheckoutRoot, err
 }
 
 func (r *tuiProjectRootResolver) Current() (string, bool) {
 	select {
 	case <-r.ready:
-		return r.root, r.err == nil
+		return r.target.CheckoutRoot, r.err == nil
 	default:
 		return "", false
 	}

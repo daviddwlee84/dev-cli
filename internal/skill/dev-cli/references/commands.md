@@ -582,6 +582,28 @@ dev ls [flags]
 - `-r, --repo` — only tasks whose repo name contains this
 - `-s, --state` — only these states (hot, warm, cold, done)
 
+### `dev mcp`
+
+Inspect static agent MCP server declarations
+
+```
+dev mcp
+```
+
+### `dev mcp list`
+
+List configured MCP server declarations
+
+```
+dev mcp list [flags]
+```
+
+- `--agent` — agent format: claude-code, codex, cursor, gemini-cli, opencode
+- `--all` — scan every configured canonical repository
+- `--json` — emit a stable sanitized JSON envelope
+- `-r, --repo` — scan one repository or explicit checkout path
+- `--scope` — declaration scope: project, local, user, custom, system-defaults, system-override, managed
+
 ### `dev note`
 
 Capture and search timestamped repository thoughts
@@ -959,10 +981,12 @@ List project and global agent skills
 dev skill list [flags]
 ```
 
+- `--all` — scan every configured canonical repository
 - `--check` — contact Git sources and check for updates without installing them
 - `-g, --global` — list global skills
 - `--json` — emit a stable machine-readable JSON array
 - `-p, --project` — list project skills
+- `-r, --repo` — scan one repository or explicit checkout path
 
 ### `dev skill print`
 
@@ -993,6 +1017,7 @@ dev skill update <skill> [flags]
 
 - `-g, --global` — update the global skill
 - `-p, --project` — update the project-scoped skill
+- `-r, --repo` — project repository or explicit checkout path
 - `-y, --yes` — skip dev's confirmation
 
 ### `dev start`

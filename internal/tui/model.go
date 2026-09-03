@@ -12,6 +12,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/agentmcp"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -39,10 +40,12 @@ const (
 	ViewRemote
 	// ViewSkills lists project and global agent skills.
 	ViewSkills
+	// ViewMCP lists static MCP server declarations across agent formats.
+	ViewMCP
 )
 
 // Views is the cycle order.
-var Views = []View{ViewTasks, ViewRepos, ViewFleet, ViewTries, ViewRemote, ViewSkills}
+var Views = []View{ViewTasks, ViewRepos, ViewFleet, ViewTries, ViewRemote, ViewSkills, ViewMCP}
 
 func (v View) String() string {
 	switch v {
@@ -56,6 +59,8 @@ func (v View) String() string {
 		return "remote"
 	case ViewSkills:
 		return "skills"
+	case ViewMCP:
+		return "mcp"
 	default:
 		return "tasks"
 	}
@@ -64,6 +69,20 @@ func (v View) String() string {
 // Actions is everything the dashboard can do. The TUI owns no domain logic:
 // it calls back into the same code paths the non-interactive commands use, so
 // behaviour cannot diverge between them.
+// LoadWarning carries nonfatal inventory diagnostics without making an accepted
+// snapshot stale or retrying it on every tab visit.
+type LoadWarning struct{ Message string }
+
+func (w LoadWarning) Error() string { return w.Message }
+
+func splitLoadWarning(err error) (string, error) {
+	var warning LoadWarning
+	if errors.As(err, &warning) {
+		return warning.Message, nil
+	}
+	return "", err
+}
+
 type Actions struct {
 	// Reload re-reads the task inventory.
 	Reload func(ctx context.Context) ([]inventory.Row, error)
@@ -78,7 +97,11 @@ type Actions struct {
 	ReloadRemote          func(ctx context.Context) ([]RemoteRow, error)
 	ReloadRemoteWithRepos func(ctx context.Context, repos []RepoRow) ([]RemoteRow, error)
 	// ReloadSkills reads local project/global skill state without contacting sources.
-	ReloadSkills func(ctx context.Context) ([]agentskill.Skill, error)
+	ReloadSkills          func(ctx context.Context) ([]agentskill.Skill, error)
+	ReloadSkillsWithRepos func(ctx context.Context, repos []RepoRow) ([]agentskill.Skill, error)
+	// ReloadMCP reads static declarations only; it never starts or probes servers.
+	ReloadMCP          func(ctx context.Context) ([]agentmcp.Declaration, error)
+	ReloadMCPWithRepos func(ctx context.Context, repos []RepoRow) ([]agentmcp.Declaration, error)
 	// Cache seeds are local-only and asynchronous. Live REMOTE/FLEET work remains
 	// lazy until its view is requested.
 	LoadRemoteCache func(ctx context.Context) RemoteCacheResult
@@ -88,9 +111,9 @@ type Actions struct {
 	AfterFirstView func(ctx context.Context)
 	// CheckSkills performs the explicitly requested read-only network comparison.
 	CheckSkills func(ctx context.Context, rows []agentskill.Skill) []agentskill.Skill
-	// AddSkill and UpdateSkill return interactive processes for tea to suspend around.
-	AddSkill    func() (*exec.Cmd, error)
-	UpdateSkill func(row agentskill.Skill) (*exec.Cmd, error)
+	// AddSkill and UpdateSkill return locked interactive processes for tea to suspend around.
+	AddSkill    func() (*agentskill.MutationCommand, error)
+	UpdateSkill func(row agentskill.Skill) (*agentskill.MutationCommand, error)
 	// Repos and Tries group asset-specific metadata and lifecycle actions.
 	Repos RepoActions
 	Tries TryActions
@@ -250,6 +273,7 @@ type Model struct {
 	remotes []RemoteRow
 	fleet   []FleetRow
 	skills  []agentskill.Skill
+	mcp     []agentmcp.Declaration
 	// Each fixed view owns value-copied request/readiness state. Optional views
 	// stay lazy; no synthetic all-tabs-ready state exists.
 	loads        [viewCount]viewLoadState
@@ -258,12 +282,14 @@ type Model struct {
 	initialLoad  bool
 	// skillsChecking is a separate explicit network operation, not initial tab
 	// readiness.
-	skillsChecking   bool
-	sizeLoad         diskusage.Load
-	forceSizeReload  bool
-	configGeneration uint64
-	localGeneration  uint64
-	toolGeneration   uint64
+	skillsChecking         bool
+	skillsInventoryErr     error
+	skillsInventoryWarning string
+	sizeLoad               diskusage.Load
+	forceSizeReload        bool
+	configGeneration       uint64
+	localGeneration        uint64
+	toolGeneration         uint64
 
 	// Cursors are plain fields, one per view, rather than a map: bubbletea
 	// passes the model by value and expects each returned copy to be
@@ -275,6 +301,7 @@ type Model struct {
 	remoteCursor int
 	fleetCursor  int
 	skillCursor  int
+	mcpCursor    int
 	// expandedRepos is a slice rather than a map because Bubble Tea copies the
 	// model by value; a map would make candidate models share mutation.
 	expandedRepos []string
@@ -292,10 +319,11 @@ type Model struct {
 	trySort        string
 	tryReverse     bool
 
-	mode    mode
-	input   textinput.Model
-	stats   *StatsPanel
-	overlay overlayState
+	mode              mode
+	input             textinput.Model
+	skillUpdateTarget agentskill.Skill
+	stats             *StatsPanel
+	overlay           overlayState
 
 	notes              []*note.Note
 	noteTarget         NoteTarget
@@ -476,12 +504,22 @@ type fleetMsg struct {
 	err        error
 }
 type skillsMsg struct {
+	generation   uint64
+	rows         []agentskill.Skill
+	valid        bool
+	loaded       bool
+	checked      bool
+	status       string
+	warning      string
+	inventoryErr error
+	err          error
+}
+
+type mcpMsg struct {
 	generation uint64
-	rows       []agentskill.Skill
+	rows       []agentmcp.Declaration
 	valid      bool
-	loaded     bool
-	checked    bool
-	status     string
+	warning    string
 	err        error
 }
 
@@ -491,10 +529,12 @@ type toolsMsg struct {
 }
 
 type skillProcessMsg struct {
-	action string
-	name   string
-	scope  agentskill.Scope
-	err    error
+	action   string
+	name     string
+	lockName string
+	scope    agentskill.Scope
+	checkout string
+	err      error
 }
 
 type statsMsg struct {
@@ -796,16 +836,54 @@ func (m Model) reloadFleet() tea.Cmd {
 }
 func (m Model) reloadSkills() tea.Cmd {
 	generation := m.viewLoad(ViewSkills).generation
+	locals := append([]RepoRow(nil), m.repos...)
 	return func() tea.Msg {
-		if m.actions.ReloadSkills == nil {
+		if m.actions.ReloadSkillsWithRepos == nil && m.actions.ReloadSkills == nil {
 			return skillsMsg{generation: generation, valid: true, loaded: true}
 		}
 		finish := m.trace.Start(perftrace.TUIProducerSkills, perftrace.Fields{View: perftrace.ViewSkills, Generation: generation})
-		rows, err := m.actions.ReloadSkills(m.viewContext(ViewSkills))
-		finish(traceOutcome(err))
-		return skillsMsg{
-			generation: generation, rows: rows, valid: snapshotValid(rows, err), loaded: true, err: err,
+		var rows []agentskill.Skill
+		var err error
+		if m.actions.ReloadSkillsWithRepos != nil {
+			rows, err = m.actions.ReloadSkillsWithRepos(m.viewContext(ViewSkills), locals)
+		} else {
+			rows, err = m.actions.ReloadSkills(m.viewContext(ViewSkills))
 		}
+		warning, err := splitLoadWarning(err)
+		outcome := traceOutcome(err)
+		if warning != "" {
+			outcome = perftrace.OutcomePartial
+		}
+		finish(outcome)
+		return skillsMsg{
+			generation: generation, rows: rows, valid: snapshotValid(rows, err), loaded: true,
+			warning: warning, inventoryErr: err, err: err,
+		}
+	}
+}
+
+func (m Model) reloadMCP() tea.Cmd {
+	generation := m.viewLoad(ViewMCP).generation
+	locals := append([]RepoRow(nil), m.repos...)
+	return func() tea.Msg {
+		if m.actions.ReloadMCPWithRepos == nil && m.actions.ReloadMCP == nil {
+			return mcpMsg{generation: generation, valid: true}
+		}
+		finish := m.trace.Start(perftrace.TUIProducerMCP, perftrace.Fields{View: perftrace.ViewMCP, Generation: generation})
+		var rows []agentmcp.Declaration
+		var err error
+		if m.actions.ReloadMCPWithRepos != nil {
+			rows, err = m.actions.ReloadMCPWithRepos(m.viewContext(ViewMCP), locals)
+		} else {
+			rows, err = m.actions.ReloadMCP(m.viewContext(ViewMCP))
+		}
+		warning, err := splitLoadWarning(err)
+		outcome := traceOutcome(err)
+		if warning != "" {
+			outcome = perftrace.OutcomePartial
+		}
+		finish(outcome)
+		return mcpMsg{generation: generation, rows: rows, valid: snapshotValid(rows, err), warning: warning, err: err}
 	}
 }
 
@@ -813,39 +891,75 @@ func (m Model) checkSkills(rows []agentskill.Skill) tea.Cmd {
 	generation := m.viewLoad(ViewSkills).generation
 	return func() tea.Msg {
 		if m.actions.CheckSkills == nil {
-			return skillsMsg{generation: generation, rows: rows, valid: true, loaded: true, checked: true}
+			return skillsMsg{
+				generation: generation, rows: rows, valid: true, loaded: true, checked: true,
+				warning: m.skillsInventoryWarning, inventoryErr: m.skillsInventoryErr, err: m.skillsInventoryErr,
+			}
 		}
 		return skillsMsg{
 			generation: generation, rows: m.actions.CheckSkills(m.viewContext(ViewSkills), rows),
 			valid: true, loaded: true, checked: true,
+			warning: m.skillsInventoryWarning, inventoryErr: m.skillsInventoryErr, err: m.skillsInventoryErr,
 		}
 	}
 }
 
-func (m Model) reloadUpdatedSkill(name string, scope agentskill.Scope) tea.Cmd {
+func (m Model) reloadUpdatedSkill(name, lockName string, scope agentskill.Scope, checkout string) tea.Cmd {
 	generation := m.viewLoad(ViewSkills).generation
+	locals := append([]RepoRow(nil), m.repos...)
 	return func() tea.Msg {
-		if m.actions.ReloadSkills == nil {
-			return skillsMsg{generation: generation, valid: true, loaded: true, status: "updated " + name}
+		finish := m.trace.Start(perftrace.TUIProducerSkills, perftrace.Fields{View: perftrace.ViewSkills, Generation: generation})
+		if m.actions.ReloadSkillsWithRepos == nil && m.actions.ReloadSkills == nil {
+			finish(perftrace.OutcomeSuccess)
+			return skillsMsg{
+				generation: generation, valid: true, loaded: true, status: "updated " + name,
+				warning: m.skillsInventoryWarning, inventoryErr: m.skillsInventoryErr, err: m.skillsInventoryErr,
+			}
 		}
-		rows, err := m.actions.ReloadSkills(m.viewContext(ViewSkills))
-		if err != nil {
-			return skillsMsg{generation: generation, valid: false, loaded: true, err: err}
+		var rows []agentskill.Skill
+		var err error
+		if m.actions.ReloadSkillsWithRepos != nil {
+			rows, err = m.actions.ReloadSkillsWithRepos(m.viewContext(ViewSkills), locals)
+		} else {
+			rows, err = m.actions.ReloadSkills(m.viewContext(ViewSkills))
 		}
+		warning, err := splitLoadWarning(err)
+		if err != nil && rows == nil {
+			finish(traceOutcome(err))
+			return skillsMsg{generation: generation, valid: false, loaded: true, inventoryErr: err, err: err}
+		}
+		verified := false
 		if m.actions.CheckSkills != nil {
 			for i := range rows {
-				if rows[i].Name == name && rows[i].Scope == scope {
+				candidateName := rows[i].Name
+				if rows[i].Lock != nil {
+					candidateName = rows[i].Lock.Name
+				}
+				if candidateName == lockName && rows[i].Scope == scope && rows[i].Checkout == checkout {
 					checked := m.actions.CheckSkills(m.viewContext(ViewSkills), []agentskill.Skill{rows[i]})
 					if len(checked) == 1 {
 						rows[i] = checked[0]
+						verified = true
 					}
 					break
 				}
 			}
 		}
+		status := "updated " + name
+		if m.actions.CheckSkills != nil && !verified {
+			status += "; matching row was not found for source verification"
+		}
+		if warning != "" {
+			status += "; " + warning
+		}
+		outcome := traceOutcome(err)
+		if warning != "" {
+			outcome = perftrace.OutcomePartial
+		}
+		finish(outcome)
 		return skillsMsg{
-			generation: generation, rows: rows, valid: true, loaded: true,
-			checked: true, status: "updated " + name,
+			generation: generation, rows: rows, valid: snapshotValid(rows, err), loaded: true,
+			checked: verified, status: status, warning: warning, inventoryErr: err, err: err,
 		}
 	}
 }
@@ -1141,7 +1255,8 @@ func skillMatches(row agentskill.Skill, query string) bool {
 				}
 				continue
 			case "agent":
-				if !strings.Contains(strings.ToLower(strings.Join(row.Agents, " ")), value) {
+				agents := strings.Join(append(append([]string(nil), row.Agents...), row.Attribution.AgentIDs...), " ")
+				if !strings.Contains(strings.ToLower(agents), value) {
 					return false
 				}
 				continue
@@ -1150,17 +1265,95 @@ func skillMatches(row agentskill.Skill, query string) bool {
 					return false
 				}
 				continue
+			case "repo":
+				if !strings.Contains(strings.ToLower(row.Repository), value) {
+					return false
+				}
+				continue
+			case "presence":
+				if !strings.Contains(strings.ToLower(string(row.Presence)), value) {
+					return false
+				}
+				continue
+			case "integrity":
+				if !strings.Contains(strings.ToLower(string(row.Integrity)), value) {
+					return false
+				}
+				continue
 			}
 		}
 		search := strings.ToLower(strings.Join([]string{
-			row.Name, string(row.Scope), row.Source, row.SourceURL,
-			string(row.ManagedBy), string(row.UpdateStatus), strings.Join(row.Agents, " "),
+			row.Name, row.Repository, row.RepositoryPath, row.Checkout,
+			string(row.Scope), row.Source, row.SourceURL, string(row.Presence), string(row.Integrity),
+			string(row.ManagedBy), string(row.UpdateStatus),
+			strings.Join(append(append([]string(nil), row.Agents...), row.Attribution.AgentIDs...), " "),
 		}, " "))
 		if !strings.Contains(search, term) {
 			return false
 		}
 	}
 	return true
+}
+
+func (m Model) visibleMCP() []agentmcp.Declaration {
+	var out []agentmcp.Declaration
+	for _, row := range m.mcp {
+		if mcpMatches(row, m.filter) {
+			out = append(out, row)
+		}
+	}
+	return out
+}
+
+func mcpMatches(row agentmcp.Declaration, query string) bool {
+	query = strings.ToLower(strings.TrimSpace(query))
+	for _, term := range strings.Fields(query) {
+		key, value, structured := strings.Cut(term, ":")
+		if structured {
+			var field string
+			switch key {
+			case "repo":
+				field = row.Repository
+			case "agent":
+				field = string(row.Agent)
+			case "scope":
+				field = string(row.Scope)
+			case "transport":
+				field = string(row.Transport)
+			case "managed":
+				field = string(row.Source)
+			case "state":
+				field = mcpDeclarationState(row)
+			default:
+				field = ""
+			}
+			if field != "" {
+				if !strings.Contains(strings.ToLower(field), value) {
+					return false
+				}
+				continue
+			}
+		}
+		search := strings.ToLower(strings.Join([]string{
+			row.Name, string(row.Agent), string(row.Scope), row.Repository,
+			row.RepositoryPath, row.Checkout, string(row.Source), row.Plugin,
+			string(row.Transport), mcpDeclarationState(row), row.Endpoint, row.Command,
+		}, " "))
+		if !strings.Contains(search, term) {
+			return false
+		}
+	}
+	return true
+}
+
+func mcpDeclarationState(row agentmcp.Declaration) string {
+	if row.Enabled == nil {
+		return "configured"
+	}
+	if *row.Enabled {
+		return "enabled"
+	}
+	return "disabled"
 }
 
 // compareRepos returns negative when a belongs before b.
@@ -1269,6 +1462,8 @@ func (m Model) count() int {
 		return len(m.visibleRemotes())
 	case ViewSkills:
 		return len(m.visibleSkills())
+	case ViewMCP:
+		return len(m.visibleMCP())
 	default:
 		return len(m.visibleTasks())
 	}
@@ -1287,6 +1482,8 @@ func (m Model) at() int {
 		return m.remoteCursor
 	case ViewSkills:
 		return m.skillCursor
+	case ViewMCP:
+		return m.mcpCursor
 	default:
 		return m.taskCursor
 	}
@@ -1314,6 +1511,8 @@ func (m *Model) setAt(i int) {
 		m.remoteCursor = i
 	case ViewSkills:
 		m.skillCursor = i
+	case ViewMCP:
+		m.mcpCursor = i
 	default:
 		m.taskCursor = i
 	}
@@ -1395,6 +1594,17 @@ func (m Model) currentSkill() (agentskill.Skill, bool) {
 	rows := m.visibleSkills()
 	if m.at() >= len(rows) {
 		return agentskill.Skill{}, false
+	}
+	return rows[m.at()], true
+}
+
+func (m Model) currentMCP() (agentmcp.Declaration, bool) {
+	if m.view != ViewMCP {
+		return agentmcp.Declaration{}, false
+	}
+	rows := m.visibleMCP()
+	if m.at() >= len(rows) {
+		return agentmcp.Declaration{}, false
 	}
 	return rows[m.at()], true
 }
@@ -1658,6 +1868,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.skillsChecking = false
+		m.skillsInventoryErr = msg.inventoryErr
+		m.skillsInventoryWarning = msg.warning
 		if msg.valid {
 			m.skills = append([]agentskill.Skill(nil), msg.rows...)
 		}
@@ -1666,11 +1878,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setViewStatus(ViewSkills, "")
 		case msg.status != "":
 			m.setViewStatus(ViewSkills, msg.status)
+		case msg.warning != "":
+			m.setViewStatus(ViewSkills, msg.warning)
 		case msg.checked:
 			m.setViewStatus(ViewSkills, "skill update check complete")
 		default:
 			m.setViewStatus(ViewSkills, "")
 		}
+		m.setAt(m.at())
+		return m, nil
+
+	case mcpMsg:
+		if !m.applyViewResult(
+			ViewMCP, msg.generation, msg.valid, perftrace.SourceLive,
+			resultFreshness(msg.err), len(msg.rows), msg.err, msg.valid,
+		) {
+			return m, nil
+		}
+		if msg.valid {
+			m.mcp = append([]agentmcp.Declaration(nil), msg.rows...)
+		}
+		m.setViewStatus(ViewMCP, msg.warning)
 		m.setAt(m.at())
 		return m, nil
 
@@ -1690,7 +1918,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.beginViewLoad(ViewSkills, loadAction)
 		if msg.action == "update" {
 			m.setViewStatus(ViewSkills, "reloading and verifying "+msg.name+"…")
-			return m, m.reloadUpdatedSkill(msg.name, msg.scope)
+			return m, m.reloadUpdatedSkill(msg.name, msg.lockName, msg.scope, msg.checkout)
 		}
 		m.setViewStatus(ViewSkills, "reloading agent skills…")
 		return m, m.reloadSkills()
@@ -2018,23 +2246,33 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r":
 		if m.view == ViewFleet {
 			m.beginViewLoad(ViewFleet, loadRefresh)
-			if err := m.fleetReposUnavailable(); err != nil {
+			if err := m.dependentReposUnavailable(ViewFleet); err != nil {
 				fleet := m.viewLoad(ViewFleet)
 				m.applyViewResult(ViewFleet, fleet.generation, false, "", "", 0, err, false)
 				return m, nil
 			}
-			if m.fleetWaitsForRepos() {
+			if m.viewWaitsForRepos(ViewFleet) {
 				m.setViewStatus(ViewFleet, "waiting for local repositories…")
 				return m, nil
 			}
 			m.setViewStatus(ViewFleet, "refreshing fleet…")
 			return m, m.reloadFleet()
 		}
-		if m.view == ViewSkills {
+		if m.view == ViewSkills || m.view == ViewMCP {
+			view := m.view
 			m.err = nil
-			m.beginViewLoad(ViewSkills, loadRefresh)
-			m.setViewStatus(ViewSkills, "reloading local agent skills…")
-			return m, m.reloadSkills()
+			m.beginViewLoad(view, loadRefresh)
+			if err := m.dependentReposUnavailable(view); err != nil {
+				state := m.viewLoad(view)
+				m.applyViewResult(view, state.generation, false, "", "", 0, err, false)
+				return m, nil
+			}
+			if m.viewWaitsForRepos(view) {
+				m.setViewStatus(view, "waiting for local repositories…")
+				return m, nil
+			}
+			m.setViewStatus(view, dependentLoadingStatus(view))
+			return m, m.reloadDependentView(view)
 		}
 		m.beginConfigLoad()
 		m.status = "reloading config + data…"
@@ -2061,14 +2299,19 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.actions.AddSkill == nil {
 				return m, nil
 			}
-			proc, err := m.actions.AddSkill()
+			mutation, err := m.actions.AddSkill()
+			if err != nil {
+				m.err = err
+				return m, nil
+			}
+			proc, finish, err := mutation.Prepare()
 			if err != nil {
 				m.err = err
 				return m, nil
 			}
 			m.status = "opening interactive skill installer…"
 			return m, tea.ExecProcess(proc, func(err error) tea.Msg {
-				return skillProcessMsg{action: "add", err: err}
+				return skillProcessMsg{action: "add", err: finish(err)}
 			})
 		}
 		if m.view == ViewTries {
@@ -2173,14 +2416,19 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.prompt(modeStartDirect, "", "name for direct work on current branch")
 
 	case "u":
+		if m.viewLoad(ViewSkills).loading {
+			m.setViewStatus(ViewSkills, "wait for the current skill reload/check to finish")
+			return m, nil
+		}
 		row, ok := m.currentSkill()
 		if !ok {
 			return m, nil
 		}
-		if row.ManagedBy != agentskill.ManagedBySkills {
-			m.err = fmt.Errorf("%s is not managed by the skills CLI", row.Name)
+		if !agentskill.CanUpdate(row) {
+			m.err = fmt.Errorf("%s has no update-safe provider lock", row.Name)
 			return m, nil
 		}
+		m.skillUpdateTarget = row
 		m.mode = modeConfirmSkillUpdate
 		return m, nil
 
@@ -2198,6 +2446,9 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, tea.ExecProcess(proc, func(err error) tea.Msg {
 				return fleetConfigEditedMsg{err: err}
 			})
+		}
+		if m.view == ViewMCP {
+			return m, nil
 		}
 		if m.actions.EditConfig == nil {
 			return m, nil
@@ -2609,12 +2860,25 @@ func (m Model) updateStats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) fleetWaitsForRepos() bool {
-	return m.actions.ReloadFleetWithRepos != nil && m.viewLoad(ViewRepos).loading
+func (m Model) viewUsesRepos(view View) bool {
+	switch view {
+	case ViewFleet:
+		return m.actions.ReloadFleetWithRepos != nil
+	case ViewSkills:
+		return m.actions.ReloadSkillsWithRepos != nil
+	case ViewMCP:
+		return m.actions.ReloadMCPWithRepos != nil
+	default:
+		return false
+	}
 }
 
-func (m Model) fleetReposUnavailable() error {
-	if m.actions.ReloadFleetWithRepos == nil {
+func (m Model) viewWaitsForRepos(view View) bool {
+	return m.viewUsesRepos(view) && m.viewLoad(ViewRepos).loading
+}
+
+func (m Model) dependentReposUnavailable(view View) error {
+	if !m.viewUsesRepos(view) {
 		return nil
 	}
 	repos := m.viewLoad(ViewRepos)
@@ -2627,30 +2891,60 @@ func (m Model) fleetReposUnavailable() error {
 	return errors.New("local repository inventory is unavailable")
 }
 
+func dependentLoadingStatus(view View) string {
+	switch view {
+	case ViewFleet:
+		return "loading configured dev hosts…"
+	case ViewSkills:
+		return "loading agent skills across repositories…"
+	case ViewMCP:
+		return "loading MCP declarations across repositories…"
+	default:
+		return "loading…"
+	}
+}
+
+func (m Model) reloadDependentView(view View) tea.Cmd {
+	switch view {
+	case ViewFleet:
+		return m.reloadFleet()
+	case ViewSkills:
+		return m.reloadSkills()
+	case ViewMCP:
+		return m.reloadMCP()
+	default:
+		return nil
+	}
+}
+
 func (m *Model) afterReposResult(valid bool, err error) tea.Cmd {
-	if m.actions.ReloadFleetWithRepos == nil {
-		return nil
-	}
 	fresh := valid && err == nil
-	fleet := m.viewLoad(ViewFleet)
-	if fleet.loading || (m.view == ViewFleet && fleet.hasSnapshot) {
-		m.beginViewLoad(ViewFleet, loadRefresh)
-		if fresh {
-			m.setViewStatus(ViewFleet, "loading configured dev hosts…")
-			return m.reloadFleet()
+	var commands []tea.Cmd
+	for _, view := range []View{ViewFleet, ViewSkills, ViewMCP} {
+		if !m.viewUsesRepos(view) {
+			continue
 		}
-		dependencyErr := err
-		if dependencyErr == nil {
-			dependencyErr = errors.New("local repository inventory is unavailable")
+		state := m.viewLoad(view)
+		if state.loading || m.view == view {
+			m.beginViewLoad(view, loadRefresh)
+			if fresh {
+				m.setViewStatus(view, dependentLoadingStatus(view))
+				commands = append(commands, m.reloadDependentView(view))
+				continue
+			}
+			dependencyErr := err
+			if dependencyErr == nil {
+				dependencyErr = errors.New("local repository inventory is unavailable")
+			}
+			current := m.viewLoad(view)
+			m.applyViewResult(view, current.generation, false, "", "", 0, dependencyErr, false)
+			continue
 		}
-		current := m.viewLoad(ViewFleet)
-		m.applyViewResult(ViewFleet, current.generation, false, "", "", 0, dependencyErr, false)
-		return nil
+		if state.hasSnapshot {
+			m.invalidateView(view)
+		}
 	}
-	if fleet.hasSnapshot {
-		m.invalidateView(ViewFleet)
-	}
-	return nil
+	return batchCommands(commands...)
 }
 
 // afterViewSwitch lazily loads optional inventories only when their view is
@@ -2662,12 +2956,12 @@ func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 	case ViewFleet:
 		if m.viewNeedsLoad(ViewFleet) {
 			m.beginViewLoad(ViewFleet, loadVisit)
-			if err := m.fleetReposUnavailable(); err != nil {
+			if err := m.dependentReposUnavailable(ViewFleet); err != nil {
 				fleet := m.viewLoad(ViewFleet)
 				m.applyViewResult(ViewFleet, fleet.generation, false, "", "", 0, err, false)
 				return m, nil
 			}
-			if m.fleetWaitsForRepos() {
+			if m.viewWaitsForRepos(ViewFleet) {
 				m.setViewStatus(ViewFleet, "waiting for local repositories…")
 				return m, nil
 			}
@@ -2683,8 +2977,32 @@ func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 	case ViewSkills:
 		if m.viewNeedsLoad(ViewSkills) {
 			m.beginViewLoad(ViewSkills, loadVisit)
-			m.setViewStatus(ViewSkills, "loading local agent skills…")
+			if err := m.dependentReposUnavailable(ViewSkills); err != nil {
+				state := m.viewLoad(ViewSkills)
+				m.applyViewResult(ViewSkills, state.generation, false, "", "", 0, err, false)
+				return m, nil
+			}
+			if m.viewWaitsForRepos(ViewSkills) {
+				m.setViewStatus(ViewSkills, "waiting for local repositories…")
+				return m, nil
+			}
+			m.setViewStatus(ViewSkills, dependentLoadingStatus(ViewSkills))
 			return m, m.reloadSkills()
+		}
+	case ViewMCP:
+		if m.viewNeedsLoad(ViewMCP) {
+			m.beginViewLoad(ViewMCP, loadVisit)
+			if err := m.dependentReposUnavailable(ViewMCP); err != nil {
+				state := m.viewLoad(ViewMCP)
+				m.applyViewResult(ViewMCP, state.generation, false, "", "", 0, err, false)
+				return m, nil
+			}
+			if m.viewWaitsForRepos(ViewMCP) {
+				m.setViewStatus(ViewMCP, "waiting for local repositories…")
+				return m, nil
+			}
+			m.setViewStatus(ViewMCP, dependentLoadingStatus(ViewMCP))
+			return m, m.reloadMCP()
 		}
 	}
 	return m, nil
@@ -2805,16 +3123,27 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 		}
 
 	case modeConfirmSkillUpdate:
-		row, ok := m.currentSkill()
-		if !ok || m.actions.UpdateSkill == nil {
+		row := m.skillUpdateTarget
+		if row.Name == "" || m.actions.UpdateSkill == nil {
 			return nil
 		}
-		proc, err := m.actions.UpdateSkill(row)
+		mutation, err := m.actions.UpdateSkill(row)
 		if err != nil {
 			return func() tea.Msg { return skillProcessMsg{action: "update", err: err} }
 		}
+		proc, finish, err := mutation.Prepare()
+		if err != nil {
+			return func() tea.Msg { return skillProcessMsg{action: "update", err: err} }
+		}
+		lockName := row.Name
+		if row.Lock != nil {
+			lockName = row.Lock.Name
+		}
 		return tea.ExecProcess(proc, func(err error) tea.Msg {
-			return skillProcessMsg{action: "update", name: row.Name, scope: row.Scope, err: err}
+			return skillProcessMsg{
+				action: "update", name: row.Name, lockName: lockName,
+				scope: row.Scope, checkout: row.Checkout, err: finish(err),
+			}
 		})
 	}
 	return nil
@@ -2970,6 +3299,9 @@ func (m Model) Summary() string {
 			}
 		}
 		parts = append(parts, fmt.Sprintf("%dP/%dG skills", project, global))
+	}
+	if m.viewLoad(ViewMCP).hasSnapshot {
+		parts = append(parts, fmt.Sprintf("%d mcp", len(m.mcp)))
 	}
 	if len(parts) == 0 {
 		return "no tasks"

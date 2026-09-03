@@ -1,8 +1,9 @@
 ---
-description: Navigate tasks, repositories, fleet hosts, experiments, remotes, and agent skills in the TUI; capture repository quick notes; inventory or adopt existing work safely.
+description: Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
 verified_on: 2026-09-01
+tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 ---
 
 # TUI, repositories, quick notes, and bootstrap
@@ -10,11 +11,11 @@ verified_on: 2026-09-01
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
 
 There are two independent full-screen models. Bare `dev` / `dev tui` is the
-six-view inventory dashboard below. Preview-labelled `dev flow [repo]` is a
+seven-view inventory dashboard below. Preview-labelled `dev flow [repo]` is a
 TTY-only, plan-first lifecycle view for one canonical repository; it is not a
 dashboard tab or mode.
 
-## Six views
+## Seven views
 
 | View | Question | Source |
 |---|---|---|
@@ -23,12 +24,13 @@ dashboard tab or mode.
 | FLEET | What exists and is active on configured machines? | accepted local REPOS snapshot plus remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive, or graduate? | experiment catalog plus live facts |
 | REMOTE | What can I open or clone? | authenticated `gh`/`glab` inventories and cache |
-| SKILLS | Which agent skills are installed locally and globally? | upstream `skills` JSON plus project/global locks |
+| SKILLS | Which agent skills are installed across repositories and globally? | native versioned 77-agent path registry plus project/global locks |
+| MCP | Which MCP servers are declared for supported agents? | sanitized static configuration for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode |
 
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes, or the optional release refresh can
 finish. TASKS, REPOS, and TRY then publish independently from one shared local
-cycle. REMOTE, FLEET, and SKILLS stay lazy. Each requested view has a generation:
+cycle. REMOTE, FLEET, SKILLS, and MCP stay lazy. Each requested view has a generation:
 `r` supersedes the previous read, late results are ignored, failed refreshes keep
 usable rows visible, and a successful empty result removes obsolete rows. Cache
 acceptance and current live completion are distinct; there is no all-tabs-ready
@@ -62,7 +64,7 @@ n/N       quick-add / browse repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
-A COLD worktree task must be rebuilt with `dev resume`; the dashboard does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory.
+A COLD worktree task must be rebuilt with `dev resume`; the dashboard does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory. At 97 or more terminal cells the TASKS table includes a display-width-aware `REPO` column; narrower layouts retain the previous columns and show repo/path in detail.
 
 ### Repository flow
 
@@ -164,14 +166,37 @@ A note ID prefix must be unique and at least eight characters.
 
 Markdown under configured `paths.state_dir/notes` is durable; `$XDG_CACHE_HOME/dev/notes.db` is only a rebuildable search index. See the [complete generated command reference](../reference/commands-config.md#complete-generated-command-reference) for exact flags.
 
-SKILLS also loads lazily, so dashboard startup does not invoke Node. It keeps
-same-named project and global skills as separate rows and shows their target
-agents, source, path, manager, and update state. `r` reloads only local state;
-after that local snapshot is ready, `c` explicitly performs a read-only source
-check (an earlier `c` waits instead of canceling inventory); `a` opens the upstream
-interactive installer with `daviddwlee84/agent-skills/skills` as its default
-source; `u` confirms before updating only the selected lock-managed skill.
-Structured filters include `scope:`, `agent:`, and `update:`.
+SKILLS and MCP both load lazily after the current REPOS generation is accepted.
+They scan each canonical repository and add the exact startup checkout when it is
+a distinct linked worktree; global/user sources are read once. Refreshes keep
+usable rows visible, warning-only partial inventories stay fresh, and a visible
+capability view resumes automatically after REPOS recovers.
+
+SKILLS reads the versioned `skills@1.5.23` 77-agent path registry and lock files
+natively—no Node, `skills`, npm, `npx`, agent detector, or project code runs.
+Same-named project/global/repository rows remain distinct. Presence and embedded
+`dev-cli` integrity are local facts; update state is a separate lock-recorded
+upstream comparison. `c` is the explicit grouped Git source check, `a` opens the
+upstream interactive installer, and `u` confirms before updating only the
+selected lock-managed skill in that row's checkout. The check hashes Git object
+bytes without populating a checkout; locale-dependent non-ASCII folder hashes stay
+unverifiable. Mutations require a directly installed `skills` executable, skip
+repository-local npm shims, reject source-less locks, and serialize cooperating
+`dev` processes. Filters include `repo:`, `scope:`, `agent:`, `update:`,
+`presence:`, and `integrity:`.
+
+MCP reads static declarations for Claude Code, Codex, Cursor, Gemini CLI, and
+OpenCode. It preserves file/scope rows and exact Claude local project keys instead
+of guessing a generally effective configuration; only Claude's documented
+user/project/local/managed project approvals are resolved. An absolute
+`CLAUDE_CONFIG_DIR` relocates Claude user sources. Configured/enabled/disabled
+never means connected or healthy. Provider-specific environment reference names
+and finite OAuth facts remain, while values, raw arguments, URL
+credentials/path/query/fragment, and indirect file content are discarded before
+rows enter the model. The scanner never runs a server, helper, URL, or agent MCP
+command. Filters include `repo:`,
+`agent:`, `scope:`, `transport:`, `managed:`, and `state:`; `r` only rereads
+static files.
 
 ## External tools
 
@@ -223,6 +248,12 @@ Adopt reports by default and only writes task entries after `--apply` plus confi
 
 ## Sources
 
+- [`skills@1.5.23` agent path registry](https://github.com/vercel-labs/skills/blob/v1.5.23/src/agents.ts)
+- [Claude Code MCP configuration](https://code.claude.com/docs/en/mcp)
+- [Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
+- [Cursor MCP configuration](https://cursor.com/docs/mcp)
+- [Gemini CLI MCP configuration](https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html)
+- [OpenCode MCP configuration](https://opencode.ai/docs/mcp-servers/)
 - [`internal/help/topics/tui.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/tui.md)
 - [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)

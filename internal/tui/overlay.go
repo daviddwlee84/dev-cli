@@ -299,7 +299,8 @@ func (m Model) renderOverlay() string {
 		builder.WriteString("  FLEET   enter Herdr/SSH open · e edit remotes.toml · r refresh · read-only Git overview\n")
 		builder.WriteString("  TRY     enter open · n create · space actions · a history · O/R sort\n")
 		builder.WriteString("  REMOTE  enter open local · n/N notes when cloned · c clone\n")
-		builder.WriteString("  SKILLS  a interactive add · c check updates · u update selected\n\n")
+		builder.WriteString("  SKILLS  a interactive add · c check updates · u update selected\n")
+		builder.WriteString("  MCP     static declarations only · r reload\n\n")
 		builder.WriteString("  " + styleHelp.Render("? / esc / q close help"))
 
 	case overlayTryMenu:

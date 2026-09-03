@@ -23,7 +23,7 @@
 - [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/): Coordinate several coding agents around change-stream ownership, explicit mutation boundaries, and replaceable runtimes.
 - [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/): Inventory repositories over SSH, pin remote machine identity, safely fast-forward branches, and explicitly transfer bounded ignored files with dev fleet.
 - [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/): Retire an integrated dev-cli worktree and runtime safely, from outside the workspace being removed.
-- [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/): Navigate tasks, repositories, fleet hosts, experiments, remotes, and agent skills in the TUI; capture repository quick notes; inventory or adopt existing work safely.
+- [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/): Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 ### Git and GitHub
 
 - [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/): Follow the current GitHub Flow while keeping older deploy-and-merge variants in clearly labeled historical context.
@@ -68,7 +68,7 @@
 - [平行 Agent 與 Runtime](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/): 以變更流 ownership、明確 mutation boundary 與可替換 runtime 協調多個 coding agents。
 - [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/): 透過 dev fleet 跨 SSH 盤點 repository、pin remote machine identity、安全 fast-forward branch，並明確傳送 bounded ignored files。
 - [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/): 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。
-- [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/): 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes 與 agent skills、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
+- [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/): 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
 ### Git 與 GitHub
 
 - [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/): 遵循現行 GitHub Flow，並把舊版 deploy/merge 變體清楚標示為歷史脈絡。

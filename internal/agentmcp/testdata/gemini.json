@@ -1,0 +1,17 @@
+{
+  "mcp": {"allowed": ["gemini-http"], "excluded": ["gemini-sse"]},
+  "mcpServers": {
+    "gemini-http": {
+      "httpUrl": "https://gemini.example.test/private?token=fixture-secret-must-not-appear",
+      "headers": {"Authorization": "fixture-secret-must-not-appear"},
+      "trust": true,
+      "includeTools": ["query"]
+    },
+    "gemini-sse": {"type": "sse", "url": "https://sse.example.test/events"},
+    "gemini-stdio": {
+      "command": "/usr/bin/gemini-server",
+      "args": ["fixture-secret-must-not-appear"],
+      "env": {"TOKEN": "fixture-secret-must-not-appear"}
+    }
+  }
+}

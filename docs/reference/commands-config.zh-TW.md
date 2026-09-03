@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 lang: zh-TW
 ---
 
@@ -29,6 +29,7 @@ lang: zh-TW
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
+| static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
 | activity/data | `summary`、`journal`、`stats …`、`cache …` |
 | help | `help [topic]` |
@@ -50,10 +51,14 @@ dev repo setup [repo-or-path] --preset PRESET --json
 dev note list [repo] --json
 dev note search <query> --json
 dev note show <note-id> --json
+dev skill list --all --json
+dev mcp list --all --json
 dev bootstrap --json
 ```
 
 不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。`repo context --json` 是 additive schema-v1 report：unavailable facts 保持 null/error entries 並附 explicit provenance，不會變成 zero values。`fleet files --json` 是 content-free output，絕不包含 file hash 或 body。
+
+`dev skill list --json` 保留既有 array 與 keys，只新增 repository、checkout、installation、presence/integrity、registry 與 lock metadata。`dev mcp list --json` 從 `servers`/`diagnostics`/`coverage` envelope 起版；exact Claude local row 另有 `local_project_path`。每個 server field 都已 sanitized。Declaration state 可包含 Claude documented project approvals，但不得解讀為 health 或一般化的 effective merged config。
 
 每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
 

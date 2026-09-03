@@ -2,7 +2,7 @@
 description: 透過 dev fleet 跨 SSH 盤點 repository、pin remote machine identity、安全 fast-forward branch，並明確傳送 bounded ignored files。
 authority: project
 status: stable
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 lang: zh-TW
 ---
 
@@ -150,7 +150,7 @@ capability/file commands。它們只供兩端 `dev` 透過 SSH 互相呼叫，�
 
 ## TUI 中的 FLEET
 
-FLEET 是 TUI 六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會開始 live probe——但 cache 會在初始 TASKS view 後於背景 decode，讓仍在 `defaults.cache_ttl` 期限內的 valid snapshot 先填入 table。TUI 預設隱藏本機，因為 REPOS 已提供較完整的 local inventory；`a` 可顯示或隱藏 local rows。Local-host snapshot 會重用目前已接受的 REPOS generation，不再重跑 repository/task/runtime discovery；若該 generation 仍在 loading，FLEET 會保留 cached rows 並顯示 waiting。`r` 會 supersede 舊 request，並強制對所有已設定的 host 做一次 live reload。Non-interactive 的 `dev fleet list` 仍會同時列出本機與 remote hosts。
+FLEET 是 TUI 七個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`、`MCP`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會開始 live probe——但 cache 會在初始 TASKS view 後於背景 decode，讓仍在 `defaults.cache_ttl` 期限內的 valid snapshot 先填入 table。TUI 預設隱藏本機，因為 REPOS 已提供較完整的 local inventory；`a` 可顯示或隱藏 local rows。Local-host snapshot 會重用目前已接受的 REPOS generation，不再重跑 repository/task/runtime discovery；若該 generation 仍在 loading，FLEET 會保留 cached rows 並顯示 waiting。`r` 會 supersede 舊 request，並強制對所有已設定的 host 做一次 live reload。Non-interactive 的 `dev fleet list` 仍會同時列出本機與 remote hosts。
 
 它的表格欄位是 `HOST`、`STATE`、`REPO`、`BRANCH`、`GIT`、`LIVE`、`TASKS`、`PATH`。`enter` 會開啟選取的 repository：明確顯示出來的 local host row 使用一般的 local open；remote row 則在該 host 的 snapshot 回報 `herdr` runtime，且透過 `ssh_alias` 連線、不需要密碼步驟時，優先使用原生 Herdr remoting，否則退回在該 repository 目錄下開啟 interactive SSH login shell。這個 view 中 Git 的變更是唯讀的——FLEET 是用來檢視與開啟工作，不是在原地編輯它。
 

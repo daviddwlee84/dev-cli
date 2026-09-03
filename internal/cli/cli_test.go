@@ -611,7 +611,7 @@ func TestSkillInventoryAddAndUpdate(t *testing.T) {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: shared\n---\n"), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("---\nname: shared\ndescription: CLI fixture\n---\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -690,7 +690,7 @@ printf '%s|%s\n' "$PWD" "$*"
 	if len(rows) != 2 || rows[0]["scope"] != "project" || rows[1]["scope"] != "global" {
 		t.Fatalf("skill rows = %+v", rows)
 	}
-	if rows[0]["scope_root"] != projectRoot || rows[0]["managed_by"] != "skills" {
+	if rows[0]["scope_root"] != h.repo.Root || rows[0]["managed_by"] != "skills" {
 		t.Errorf("project row = %+v", rows[0])
 	}
 	table := h.mustRun("skill", "list", "--project")
@@ -706,7 +706,7 @@ printf '%s|%s\n' "$PWD" "$*"
 		t.Fatalf("unscoped update err = %v", err)
 	}
 	update := h.mustRun("skill", "update", "shared", "--global", "--yes")
-	if !strings.Contains(update, "update shared --yes --global") {
+	if !strings.Contains(update, "update --yes --global shared") {
 		t.Errorf("update = %q", update)
 	}
 }

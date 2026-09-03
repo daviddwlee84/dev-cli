@@ -2,7 +2,7 @@
 description: Inventory repositories over SSH, pin remote machine identity, safely fast-forward branches, and explicitly transfer bounded ignored files with dev fleet.
 authority: project
 status: stable
-verified_on: 2026-08-31
+verified_on: 2026-09-01
 ---
 
 # Remote repository fleet
@@ -153,7 +153,7 @@ The cache exists so an unreachable, timed-out, incompatible, or invalid-response
 
 ## Fleet in the TUI
 
-FLEET is one of the TUI's six views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, `SKILLS`, switched with `tab`/`h`/`l`). Like REMOTE, it loads lazily — no live probe starts until the view is first opened — but its cache is decoded in the background after the initial TASKS view so a valid snapshot still within `defaults.cache_ttl` can seed the table. The TUI hides this machine by default because REPOS already provides its richer local inventory; `a` includes/hides local rows. The local-host snapshot reuses the current accepted REPOS generation instead of running repository/task/runtime discovery again; if that generation is still loading, FLEET keeps cached rows visible and says it is waiting. `r` supersedes an older request and forces a live reload of every configured host. The non-interactive `dev fleet list` output remains local plus remote.
+FLEET is one of the TUI's seven views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, `SKILLS`, `MCP`, switched with `tab`/`h`/`l`). Like REMOTE, it loads lazily — no live probe starts until the view is first opened — but its cache is decoded in the background after the initial TASKS view so a valid snapshot still within `defaults.cache_ttl` can seed the table. The TUI hides this machine by default because REPOS already provides its richer local inventory; `a` includes/hides local rows. The local-host snapshot reuses the current accepted REPOS generation instead of running repository/task/runtime discovery again; if that generation is still loading, FLEET keeps cached rows visible and says it is waiting. `r` supersedes an older request and forces a live reload of every configured host. The non-interactive `dev fleet list` output remains local plus remote.
 
 Its table shows `HOST`, `STATE`, `REPO`, `BRANCH`, `GIT`, `LIVE`, `TASKS`, and `PATH`. `enter` opens the selected repository: an explicitly revealed local host row uses an ordinary local open; for a remote row `dev` prefers native Herdr remoting when that host's snapshot reports the `herdr` runtime and the host connects through `ssh_alias` with no password step, and otherwise falls back to an interactive SSH login shell in the repository's directory. Git changes are read-only in this view — FLEET is for inspecting and opening work, not editing it in place.
 

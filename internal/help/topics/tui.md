@@ -4,7 +4,7 @@ Bare `dev` opens the dashboard when stdin/stdout are terminals; `dev tui`
 opens it explicitly. When piped, bare `dev` prints `dev ls` instead, so shell
 composition stays predictable.
 
-## Six views
+## Seven views
 
 Switch with `tab`, `l`/`h`, or right/left:
 
@@ -15,16 +15,19 @@ Switch with `tab`, `l`/`h`, or right/left:
 | FLEET | What exists and is active on my other machines? | remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive or graduate? | experiment catalog + live Git/runtime state |
 | REMOTE | What can I open or clone? | authenticated forge CLI inventories |
-| SKILLS | Which agent skills are active here and globally? | upstream `skills list --json` + lock metadata |
+| SKILLS | Which agent skills are installed across repositories and globally? | native 77-agent path registry + lock metadata |
+| MCP | Which MCP servers are declared for supported agents? | sanitized static agent configuration files |
 
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes or the optional release refresh can
 finish. TASKS, REPOS and TRY then publish independently from one shared local
-load cycle; optional REMOTE, FLEET and SKILLS live work remains lazy. Each view
+load cycle; optional REMOTE, FLEET, SKILLS and MCP work remains lazy. Each view
 has its own generation: `r` supersedes the old read, late results are ignored,
 failed refreshes keep usable rows, and a successful empty result clears old
-rows. Cached rows and current live results are separate readiness stages; there
-is no all-tabs-ready state for views that may never be opened.
+rows. Warning-only SKILLS/MCP diagnostics remain fresh partial snapshots instead
+of causing revisit loops; a visible dependent view automatically resumes after
+REPOS recovers. Cached rows and current live results are separate readiness
+stages; there is no all-tabs-ready state for views that may never be opened.
 
 ## Repository lifecycle preview
 
@@ -90,11 +93,17 @@ refreshes explicitly. It marks remotes already cloned under
 `scan_roots`. Enter opens a local clone; `c` asks before cloning an absent repo
 into `project_root`. Filters include visibility, for example `vis:private`.
 
-SKILLS also loads lazily, but local listing never contacts the network or
-downloads the provider. It keeps project/global copies of the same skill as
-separate rows. After the local snapshot finishes loading, press `c` for the
-explicit read-only source check; pressing it earlier waits rather than canceling
-the inventory. `r` only reloads local state.
+SKILLS and MCP also load lazily after the accepted REPOS snapshot. Both scan
+each canonical repository plus a distinct startup linked checkout and read user/global
+sources once. Skill listing is native and never executes Node or a provider;
+press `c` for the explicit read-only upstream source check. Refresh/check keeps
+installed rows visible. MCP lists static, sanitized declarations only and does
+not start or health-check servers. `r` reloads local declarations.
+
+A wide TASKS table includes `REPO`; compact layouts keep repository/path in the
+selected detail pane. SKILLS filters include `repo:`, `scope:`, `agent:`,
+`update:`, `presence:`, and `integrity:`. MCP filters include `repo:`, `agent:`,
+`scope:`, `transport:`, `managed:`, and `state:`.
 
 GitHub and GitLab are discovered from authenticated `gh` and `glab` CLIs.
 Azure DevOps Services inventory is opt-in because each query needs an explicit
@@ -240,9 +249,21 @@ u          confirm and update only the selected lock-managed skill
 r          reload local project/global state without network access
 ```
 
-The detail pane shows the scope root, installed path, complete agent list,
-source URL, manager and update reason. Filters include `scope:global`,
-`agent:Codex` and `update:update_available`.
+The detail pane separates repository/checkout, local presence/integrity, agent
+compatibility, source, manager, and upstream freshness. Filters include
+`repo:api`, `scope:global`, `agent:Codex`, `presence:missing`, and
+`update:update_available`.
+
+MCP:
+
+```
+r          reload static declarations; no server is started or probed
+```
+
+The MCP detail pane contains sanitized config/source/transport/policy facts,
+exact Claude local project identity, bounded credential-reference summaries, and
+redaction markers—never raw args, environment/header/OAuth values, indirect file
+content, or connection health.
 
 ## Heatmap and live config
 
