@@ -2,12 +2,11 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
-	"github.com/daviddwlee84/dev-cli/internal/wt"
+	"github.com/daviddwlee84/dev-cli/internal/taskflow"
 	"github.com/spf13/cobra"
 )
 
@@ -33,148 +32,62 @@ a conflict, so dev asks before doing it.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
-			t, err := app.Tasks.Resolve(args[0])
+			execution, err := executeTaskLifecycle(ctx, app, func() (*task.Task, error) {
+				return app.Tasks.Resolve(args[0])
+			}, taskflow.ResumeOptions{
+				FetchRefs: fetch, NoProvision: noProvision, TakeOwnership: force,
+			})
 			if err != nil {
 				return err
 			}
 
-			host := config.Hostname()
-			if !t.OwnedBy(host) && !force {
-				return fmt.Errorf("task %s is owned by %s.\n"+
-					"Make sure that machine has pushed its work, then re-run with --force to take ownership",
-					t.ID, t.Owner)
+			resumed := &execution.Task
+			handoff, ok := execution.Result.Handoff()
+			if !ok || handoff.Path == "" {
+				return fmt.Errorf("task %s is HOT, but resume returned no activation handoff", resumed.ID)
+			}
+			checkout := handoff.Path
+			var activationRuntime runtime.Runtime
+			switch handoff.Kind {
+			case taskflow.HandoffDirectory:
+				if resumed.RuntimeName != "" || resumed.RuntimeHandle != "" {
+					return fmt.Errorf("task %s returned a directory handoff with persisted runtime %s/%s",
+						resumed.ID, resumed.RuntimeName, resumed.RuntimeHandle)
+				}
+			case taskflow.HandoffRuntime:
+				activationRuntime = app.runtimeNamed(handoff.Runtime)
+				if activationRuntime == nil || activationRuntime.Name() != handoff.Runtime {
+					return fmt.Errorf("resume handoff backend %q is unavailable", handoff.Runtime)
+				}
+				if resumed.RuntimeName != handoff.Runtime || resumed.RuntimeHandle != handoff.RuntimeHandle {
+					return fmt.Errorf("task %s persisted runtime %s/%s, but resume handed off %s/%s",
+						resumed.ID, resumed.RuntimeName, resumed.RuntimeHandle, handoff.Runtime, handoff.RuntimeHandle)
+				}
+				annotate(app, activationRuntime, resumed)
+			default:
+				return fmt.Errorf("task %s is HOT, but resume returned unsupported %s handoff", resumed.ID, handoff.Kind)
 			}
 
-			if fetch {
-				if _, err := gitx.Run(ctx, t.RepoPath, "fetch", "--prune", "origin"); err != nil {
-					app.warnf("fetch failed: %v", err)
-				}
-			}
-
-			rt := runtimeForTask(app, t)
-			mode := t.EffectiveMode()
-			checkout := checkoutOf(t)
-
-			switch mode {
-			case task.ModeWorktree:
-				_, statErr := os.Stat(checkout)
-				if t.WorktreePath != "" && statErr == nil {
-					if err := guardSharedCheckout(ctx, app, rt, checkout); err != nil {
-						return err
-					}
-				}
-				// Rebuild the worktree when it is gone — the cold-to-hot path.
-				if t.WorktreePath == "" || statErr != nil {
-					base := t.Base
-					// Prefer the published branch: a cold task's work lives on
-					// the remote, and a stale local ref could drop it.
-					if remote := "origin/" + t.Branch; gitx.RefExists(ctx, t.RepoPath, remote) {
-						base = remote
-					}
-					m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
-					res, err := m.Create(ctx, wt.CreateRequest{
-						RepoPath: t.RepoPath, RepoName: t.Repo, Branch: t.Branch,
-						Base: base, Label: worktreeRuntimeLabel(t.Repo, t.Branch), NoProvision: noProvision,
-					})
-					if err != nil {
-						var exists *wt.ErrExists
-						if asError(err, &exists) {
-							t.WorktreePath = exists.Path
-							if err := guardSharedCheckout(ctx, app, rt, exists.Path); err != nil {
-								return err
-							}
-						} else {
-							return err
-						}
-					} else {
-						t.WorktreePath = res.Path
-						setTaskRuntime(t, rt, res.Runtime)
-						reportProvision(app, res)
-						fmt.Fprintf(app.Out, "   %s    %s\n", app.outStyle().label("rebuilt"), config.Contract(res.Path))
-					}
-					checkout = t.WorktreePath
-				}
-
-			case task.ModeBranch:
-				checkout = t.RepoPath
-				if err := guardSharedCheckout(ctx, app, rt, checkout); err != nil {
-					return err
-				}
-				st, err := gitx.StatusOf(ctx, checkout)
-				if err != nil {
-					return err
-				}
-				if st.Branch != t.Branch {
-					if st.Dirty() {
-						return fmt.Errorf("cannot switch the canonical checkout from %s to %s: %s",
-							st.Branch, t.Branch, st.Breakdown())
-					}
-					if _, err := gitx.Run(ctx, checkout, "switch", t.Branch); err != nil {
-						return err
-					}
-				}
-
-			case task.ModeDirect:
-				checkout = t.RepoPath
-				if err := guardSharedCheckout(ctx, app, rt, checkout); err != nil {
-					return err
-				}
-				st, err := gitx.StatusOf(ctx, checkout)
-				if err != nil {
-					return err
-				}
-				if st.Branch != t.Branch {
-					return fmt.Errorf("direct task %s tracks %s, but the canonical checkout is on %s; "+
-						"switch back explicitly or start a worktree task", t.Title(), t.Branch, st.Branch)
-				}
-			}
-			if t.RuntimeHandle != "" {
-				live, err := runtimeHandleCovers(ctx, rt, t.RuntimeHandle, checkout)
-				if err != nil {
-					return fmt.Errorf("validate saved %s runtime session %s: %w", rt.Name(), t.RuntimeHandle, err)
-				}
-				if !live {
-					clearTaskRuntime(t)
-				}
-			}
-			if t.RuntimeHandle == "" {
-				label := t.Title()
-				if mode == task.ModeWorktree {
-					label = worktreeRuntimeLabel(t.Repo, t.Branch)
-				}
-				opened, err := openCheckout(ctx, rt, checkout, label)
-				if err != nil {
-					app.warnf("could not open a runtime session: %v", err)
-				}
-				setTaskRuntime(t, rt, opened)
-			}
-
-			t.State = task.Hot
-			t.Owner = host
-			if err := app.Tasks.Save(t); err != nil {
-				return err
-			}
-			annotate(app, rt, t)
-
+			mode := resumed.EffectiveMode()
 			style := app.outStyle()
 			fmt.Fprintf(app.Out, "%s %s  %s on %s (%s)\n",
-				task.Hot.Icon(), t.Title(), t.Repo, t.Branch, style.dim(string(mode)))
-			if t.Next != "" {
-				fmt.Fprintf(app.Out, "   %s      %s\n", style.label("next"), t.Next)
+				task.Hot.Icon(), resumed.Title(), resumed.Repo, resumed.Branch, style.dim(string(mode)))
+			if resumed.Next != "" {
+				fmt.Fprintf(app.Out, "   %s      %s\n", style.label("next"), resumed.Next)
 			}
-			if t.AgentSession != "" {
-				fmt.Fprintf(app.Out, "   %s     %s (resumable)\n", style.label("agent"), t.AgentSession)
+			if resumed.AgentSession != "" {
+				fmt.Fprintf(app.Out, "   %s     %s (resumable)\n", style.label("agent"), resumed.AgentSession)
 			}
-			if st, err := gitx.StatusOf(ctx, checkout); err == nil {
+			if st, statusErr := gitx.StatusOf(ctx, checkout); statusErr == nil {
 				fmt.Fprintf(app.Out, "   %s       %s\n", style.label("git"), style.git(st.Summary()))
 				if st.Behind > 0 {
 					app.warnf("branch is %d behind upstream — `git pull --ff-only` before you start", st.Behind)
 				}
 			}
-			if rt.Name() == "none" {
+			if handoff.Kind == taskflow.HandoffDirectory {
 				return app.cdDirective(checkout)
 			}
-			return activateRuntime(ctx, rt, t.RuntimeHandle)
+			return activateRuntime(ctx, activationRuntime, handoff.RuntimeHandle)
 		},
 	}
 	f := cmd.Flags()

@@ -2,7 +2,7 @@
 description: 使用 dev-cli 讓變更流依序經過 start、park、resume、review/integration 與保守 cleanup。
 authority: project
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-09-01
 lang: zh-TW
 ---
 
@@ -18,7 +18,7 @@ lang: zh-TW
 ```mermaid
 flowchart TD
     accTitle: dev-cli 變更流工作流程
-    accDescr: 變更流以 direct、branch-only 或 worktree mode 開始，並在 active work、park 與 resume 之間循環。Direct completion 或 local fast-forward 會進入 DONE 與 cleanup；review 則 handoff 已 push 的 branch，並保持 active 直到 manual reconciliation。
+    accDescr: 變更流以 direct、branch-only 或 worktree mode 開始，並在 active work、park 與 resume 之間循環。Direct completion、本機 fast-forward 或明確 merge verification 會進入 DONE；review 保持原 state；Retire 另行 cleanup。
 
     Start["dev start"] --> Mode{"checkout mode"}
     Mode -->|direct| Direct["HOT: direct work / commit / test"]
@@ -32,23 +32,24 @@ flowchart TD
     WarmManaged -->|dev park --cold --push| Cold
     Cold -->|dev resume --fetch| Managed
 
-    Direct -->|dev done| Done["DONE: 已確認整合"]
+    Direct -->|dev done| Done["DONE / MERGED"]
     WarmDirect -->|dev done| Done
     Managed -->|dev done --ff| Done
     WarmManaged -->|dev done --ff| Done
 
-    Managed -->|dev done --pr| Review["push / review handoff: task 保持 active"]
+    Managed -->|dev done --pr| Review["push / review handoff: state 不變"]
     WarmManaged -->|dev done --pr| Review
     Review -->|feedback：若為 WARM 先 dev resume| Managed
-    Review -->|已在 remote merge| Reconcile["確認整合；目前需手動結束本機 lifecycle"]
+    Review -->|dev done --merged --base-ref REF| Done
 
-    Done -->|dev sweep| Report["回報 cleanup candidates"]
-    Report -->|dev sweep --apply| Reaped["回收 DONE entry"]
-    Reaped --> Next["下一條 change stream"]
+    Done -->|dev retire| Retired["RETIRED: guarded cleanup 完成"]
+    Done -->|dev sweep| Report["先回報 cleanup candidates"]
+    Report -->|dev sweep --apply| Retired
+    Retired --> Next["下一條 change stream"]
     Next --> Start
 ```
 
-Handoff path 刻意停在 manual reconciliation：`dev done --pr` 會讓 task 保持 active；沒有支援的 forge CLI 時也可能只 push。`dev` 目前不會偵測 remote merge，也沒有能安全把 task 標成 DONE 的 reconciliation-only command。
+Handoff path 刻意保持 state：`dev done --pr` 會讓 task 保持 HOT/WARM；沒有支援的 forge CLI 時也可能只 push。`dev` 不會自動把 provider 的 merged 狀態當成 local DONE。Merge 完成後，以 `dev done --merged --base-ref <ref>` 或 `dev flow` 的 Verify Merged action 驗證 named ancestry；記錄 DONE 之後，再以 Retire 做 cleanup。
 
 ## 1. 選擇 checkout mode
 
@@ -71,6 +72,15 @@ dev status
 ```
 
 Start 會解析 repository、驗證 branch/base、建立或切換 checkout、需要時佈建 worktree、開啟 runtime，再保存 task。Branch 已被追蹤時應使用 `dev resume`，不要建立重複 task。
+
+需要把 intent、目前 Git/runtime/artifact evidence 與可執行 action 並排檢查時，可從 TTY 開啟獨立 preview：
+
+```bash
+dev flow              # 目前 checkout 的 canonical repository 與 exact surface
+dev flow api          # 明確指定 repository
+```
+
+`dev flow` 顯示 Git 註冊的所有 worktrees 與沒有 checkout 的 task-only rows。Enter 只建立 fresh guarded plan；plan 為 READY 且經第二次 approval 後才 Apply。小寫 `r` 只更新 local facts，大寫 `R` 才選擇 fetch refs、query exact PR/MR 或兩者。完整 row/action 與 safety boundary 見 [Repository Flow 預覽](repository-flow.zh-TW.md)。
 
 ## 3. 有意識地 park
 
@@ -121,7 +131,7 @@ Runtime handle 只是 advisory。`dev` 會重新解析 live sessions，不會假
 dev done --ff
 ```
 
-這要求 clean tree，先把 task branch rebase 到 base，再於 canonical checkout 執行 fast-forward-only merge。完成後關閉 runtime、在未要求保留時移除 worktree，並標示 task DONE。
+這要求 clean tree，先把 task branch rebase 到 base，再於 canonical checkout 執行 fast-forward-only merge，最後標示 task DONE/MERGED。它不會關閉呼叫端 runtime、移除 worktree 或刪除 branch；請在外部 workspace 另行執行 `dev retire`。
 
 改由 review/CI 處理：
 
@@ -129,7 +139,15 @@ dev done --ff
 dev done --pr
 ```
 
-這會 push branch，並在對應 CLI 可用時建立 GitHub pull request 或 GitLab merge request。它**不會**標示 task DONE，也不會清理 checkout。目前 `dev sweep` 同樣不會推斷 remote request 已 merge，因此必須先確認整合，再結束本機 lifecycle。
+這會 push branch，並在對應 CLI 可用時建立 pull/merge request。它**不會**標示 task DONE，也不會清理 checkout。`dev sweep` 不會推斷 remote request 已 merge；`dev flow` 的明確 `R` query 也只保留目前 run 的 provider evidence，不會自動 transition。Merge 後請驗證 exact named ref：
+
+```bash
+git fetch origin
+dev done --merged --base-ref origin/main
+dev retire <task> --delete-branch
+```
+
+`--merged` 以 ancestry proof 記錄 DONE/MERGED；squash merge 另需 `--confirm-squash <merge-commit>` operator attestation。Review/CI checks、approvals 或 mergeability 不會由最低限度 provider status 推斷。
 
 ## 互動式 `dev done` finish wizard
 
@@ -139,7 +157,7 @@ Wizard 最多分三步：
 
 1. **Preflight。** 回報 branch、base、branch/base 的 commit relation（ahead/behind，或已被 base 包含），以及 — 若 checkout 是 dirty — 逐 path 說明哪些變更已與 base tree 相同、哪些是 unique。
 2. **Dirty changes**，僅在 checkout 為 dirty 時出現：`c` 用你輸入的訊息 commit 全部變更，`d` discard 全部（tracked 與 untracked），`q` 取消且不做任何變更。Discard unique content — 尚未與 base 等價的內容 — 需在後續確認時輸入 `DROP`；只 discard 與 base 相符的 path 則不需要。
-3. **Integration**，僅在未傳入 `--ff` 或 `--pr`、且 branch 尚未完全被 base 包含時出現：`f` 把 branch rebase 到 base 再 fast-forward（等同 `--ff`），`p` push 並開啟 pull/merge request（等同 `--pr`），`q` 取消。Branch 已被 base 包含時，wizard 會跳過此步驟，直接進入 cleanup。
+3. **Integration**，僅在未傳入 `--ff` 或 `--pr`、且 branch 尚未完全被 base 包含時出現：`f` 把 branch rebase 到 base 再 fast-forward（等同 `--ff`），`p` push 並開啟 pull/merge request（等同 `--pr`），`q` 取消。Branch 已被 base 包含時，wizard 會跳過此步驟，直接記錄 DONE/MERGED；runtime/worktree cleanup 仍留給之後的 `dev retire`。
 
 事先傳入 `--ff` 或 `--pr` 等於幫 wizard 回答了第 3 步，因此它只會詢問 flags 未解決的部分 —— 若 tree 乾淨且已明確給出 integration flag，則完全不會詢問。動作執行前會先列出 dirty action 與 integration mode 的摘要；確認它，或在 plan 已由 flags 完全指定時加上 `--yes` 跳過確認。若 plan 開啟期間 checkout 或 branch 發生變化，`dev` 會在確認後偵測到 drift 並拒絕套用過期的 plan —— 重新執行 `dev done` 以取得目前狀態。
 
@@ -152,7 +170,18 @@ dev done --pr --dirty discard --yes   # destructive；此處 --yes 為必要
 
 `--message`/`-m` 只在搭配 `--dirty commit` 時使用。`--dirty discard` 在沒有 TTY 時需要 `--yes`；輸入 `DROP` 的確認只存在於 interactive 情境。
 
-## 6. Sweep drift 與 stale state
+## 6. 從外部 Retire
+
+DONE 只代表 MERGED。離開 target checkout/runtime 後再執行：
+
+```bash
+dev retire <task>                  # 預設保留 branch
+dev retire <task> --delete-branch  # 另行確認 freshly contained branch deletion
+```
+
+Retire 會重新確認 caller/agent occupancy、關閉符合條件的 runtime、重新驗證 Git/artifact state、以 non-force 移除 worktree，最後才刪除 DONE task record。任一步驟失敗時保留 ordered ledger 與 recovery；已完成的 effects 不會被假裝 rollback。詳細條件見 [Agent-safe retirement](agent-safe-retirement.zh-TW.md)。
+
+## 7. Sweep drift 與 stale state
 
 ```bash
 dev sweep                 # 只回報
@@ -180,6 +209,8 @@ Sweep 可建議：
 ## 來源
 
 - [`internal/cli/start_flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/start_flow.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
 - [`internal/cli/park.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/park.go)
 - [`internal/cli/resume.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/resume.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)

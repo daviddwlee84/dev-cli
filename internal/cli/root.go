@@ -73,6 +73,11 @@ func NewRootCommandWithIO(out, errOut io.Writer) *cobra.Command {
 	return newRootCommand(&App{In: os.Stdin, Out: out, Err: errOut})
 }
 
+func fullScreenInvocation(cmd *cobra.Command, app *App) bool {
+	return cmd != nil && (cmd.Name() == "tui" || cmd.Name() == "flow" ||
+		(cmd.Parent() == nil && app.interactive()))
+}
+
 func newRootCommand(app *App) *cobra.Command {
 	out, errOut := app.Out, app.Err
 	root := &cobra.Command{
@@ -114,8 +119,7 @@ func newRootCommand(app *App) *cobra.Command {
 				return err
 			}
 			finish(perftrace.OutcomeSuccess)
-			deferRefresh := cmd.Name() == "tui" || (cmd.Parent() == nil && app.interactive())
-			app.maybeNoteNewerRelease(cmd, deferRefresh)
+			app.maybeNoteNewerRelease(cmd, fullScreenInvocation(cmd, app))
 			return nil
 		},
 	}
@@ -139,6 +143,7 @@ func newRootCommand(app *App) *cobra.Command {
 	root.AddCommand(
 		newListCmd(app),
 		newTUICmd(app),
+		newFlowCmd(app),
 		newStatusCmd(app),
 		newStartCmd(app),
 		newParkCmd(app),

@@ -1,7 +1,9 @@
 package task
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -23,10 +25,37 @@ var (
 	ErrConflict = errors.New("task changed since it was read")
 	// ErrInvalidID is returned when an ID cannot name one visible task file.
 	ErrInvalidID = errors.New("invalid task ID")
+	// ErrAlreadyExists is returned when a create-only transaction finds an
+	// existing task with the same derived filename.
+	ErrAlreadyExists = errors.New("task already exists")
+	// ErrStaleRevision is returned when a conditional mutation was planned from
+	// bytes that are no longer current.
+	ErrStaleRevision = errors.New("stale task revision")
 )
+
+// StaleRevisionError describes an optimistic-concurrency failure.
+type StaleRevisionError struct {
+	ID       string
+	Expected string
+	Actual   string
+}
+
+func (e *StaleRevisionError) Error() string {
+	return fmt.Sprintf("task %q: %v (expected %q, actual %q)", e.ID, ErrStaleRevision, e.Expected, e.Actual)
+}
+
+func (e *StaleRevisionError) Unwrap() []error { return []error{ErrStaleRevision, ErrConflict} }
+
+// Record is a decoded task paired with an ephemeral fingerprint of its exact
+// persisted representation. Revision is not part of the task TOML schema.
+type Record struct {
+	Task     Task
+	Revision string
+}
 
 // Diagnostic describes one task record omitted from a partial listing.
 type Diagnostic struct {
+	ID   string
 	Path string
 	Err  error
 }
@@ -44,6 +73,10 @@ func (d Diagnostic) Unwrap() error { return d.Err }
 // simply be a git repo), and a shared central file would conflict on every
 // parallel edit while separate files merge cleanly.
 type Store struct{ Dir string }
+
+// Tx is a task-store transaction whose caller holds the store's cross-process
+// lock through its final guarded mutation.
+type Tx struct{ store *Store }
 
 // NewStore returns a store rooted at dir.
 func NewStore(dir string) *Store { return &Store{Dir: dir} }
@@ -131,6 +164,29 @@ func (s *Store) Save(t *Task) error {
 	}
 	*t = *candidate
 	return nil
+}
+
+// Create atomically writes t only when its derived ID is unused.
+func (s *Store) Create(ctx context.Context, t *Task) (*Record, error) {
+	var created *Record
+	err := s.WithLock(ctx, func(tx *Tx) error {
+		var err error
+		created, err = tx.Create(t)
+		return err
+	})
+	return created, err
+}
+
+// Update atomically replaces t only when expectedRevision still describes the
+// exact persisted bytes for its ID.
+func (s *Store) Update(ctx context.Context, t *Task, expectedRevision string) (*Record, error) {
+	var updated *Record
+	err := s.WithLock(ctx, func(tx *Tx) error {
+		var err error
+		updated, err = tx.Update(t, expectedRevision)
+		return err
+	})
+	return updated, err
 }
 
 // ReplaceDone starts a new task generation under an existing stable ID only
@@ -251,6 +307,14 @@ func (s *Store) Get(id string) (*Task, error) {
 	return s.get(id)
 }
 
+// GetRecord loads one task and fingerprints its exact persisted bytes plus ID.
+func (s *Store) GetRecord(id string) (*Record, error) {
+	if err := ValidateID(id); err != nil {
+		return nil, err
+	}
+	return s.getRecordUnlocked(id)
+}
+
 func (s *Store) get(id string) (*Task, error) {
 	var t Task
 	if _, err := toml.DecodeFile(s.path(id), &t); err != nil {
@@ -304,6 +368,115 @@ func (s *Store) WithMutation(ctx context.Context, operation func() error) error 
 		return errors.New("task store mutation requires an operation")
 	}
 	return lockx.WithDir(ctx, s.Dir, "task store", operation)
+}
+
+// WithLock runs operation while holding the task store's cross-process lock.
+func (s *Store) WithLock(ctx context.Context, operation func(*Tx) error) error {
+	if s == nil {
+		return errors.New("lock nil task store")
+	}
+	if operation == nil {
+		return errors.New("task store transaction callback is nil")
+	}
+	return lockx.WithDir(ctx, s.Dir, "task store", func() error {
+		return operation(&Tx{store: s})
+	})
+}
+
+func (tx *Tx) GetRecord(id string) (*Record, error) {
+	if err := ValidateID(id); err != nil {
+		return nil, err
+	}
+	return tx.store.getRecordUnlocked(id)
+}
+
+func (tx *Tx) ListRecords() ([]Record, []Diagnostic, error) {
+	return tx.store.listRecordsUnlocked()
+}
+
+func (tx *Tx) Save(t *Task) (*Record, error) {
+	if t == nil {
+		return nil, errors.New("save nil task")
+	}
+	candidate, err := prepareCandidate(t, true)
+	if err != nil {
+		return nil, err
+	}
+	stampForSave(candidate)
+	if err := tx.store.writeAtomic(candidate); err != nil {
+		return nil, err
+	}
+	record, err := tx.store.getRecordUnlocked(candidate.ID)
+	if err != nil {
+		return nil, err
+	}
+	*t = cloneTask(record.Task)
+	return record, nil
+}
+
+func (tx *Tx) Create(t *Task) (*Record, error) {
+	if t == nil {
+		return nil, errors.New("create nil task")
+	}
+	candidate, err := prepareCandidate(t, true)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Lstat(tx.store.path(candidate.ID)); err == nil {
+		return nil, fmt.Errorf("task %q: %w", candidate.ID, ErrAlreadyExists)
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("check task %s: %w", candidate.ID, err)
+	}
+	stampForSave(candidate)
+	if err := tx.store.writeAtomic(candidate); err != nil {
+		return nil, err
+	}
+	record, err := tx.store.getRecordUnlocked(candidate.ID)
+	if err != nil {
+		return nil, err
+	}
+	*t = cloneTask(record.Task)
+	return record, nil
+}
+
+func (tx *Tx) Update(t *Task, expectedRevision string) (*Record, error) {
+	if t == nil {
+		return nil, errors.New("update nil task")
+	}
+	candidate, err := prepareCandidate(t, true)
+	if err != nil {
+		return nil, err
+	}
+	current, err := tx.store.getRecordUnlocked(candidate.ID)
+	if err != nil {
+		return nil, err
+	}
+	if current.Revision != expectedRevision {
+		return nil, &StaleRevisionError{ID: candidate.ID, Expected: expectedRevision, Actual: current.Revision}
+	}
+	stampForSave(candidate)
+	if err := tx.store.writeAtomic(candidate); err != nil {
+		return nil, err
+	}
+	record, err := tx.store.getRecordUnlocked(candidate.ID)
+	if err != nil {
+		return nil, err
+	}
+	*t = cloneTask(record.Task)
+	return record, nil
+}
+
+func (tx *Tx) Delete(id string) error { return tx.store.deleteUnlocked(id) }
+
+func (tx *Tx) DeleteIfRevision(id, expectedRevision string) error {
+	current, err := tx.store.getRecordUnlocked(id)
+	if err != nil {
+		return err
+	}
+	if current.Revision != expectedRevision {
+		return &StaleRevisionError{ID: id, Expected: expectedRevision, Actual: current.Revision}
+	}
+	return tx.store.deleteUnlocked(id)
 }
 
 func (s *Store) withMutationLock(operation func() error) error {
@@ -379,7 +552,7 @@ func (s *Store) ListWithDiagnostics() ([]*Task, []Diagnostic, error) {
 		id := strings.TrimSuffix(name, ".toml")
 		tracked, err := s.Get(id)
 		if err != nil {
-			diagnostics = append(diagnostics, Diagnostic{Path: filepath.Join(s.Dir, name), Err: err})
+			diagnostics = append(diagnostics, Diagnostic{ID: id, Path: filepath.Join(s.Dir, name), Err: err})
 			continue
 		}
 		tasks = append(tasks, tracked)
@@ -387,6 +560,39 @@ func (s *Store) ListWithDiagnostics() ([]*Task, []Diagnostic, error) {
 	Sort(tasks)
 	sort.Slice(diagnostics, func(i, j int) bool { return diagnostics[i].Path < diagnostics[j].Path })
 	return tasks, diagnostics, nil
+}
+
+// ListRecords returns every valid task paired with an exact persisted revision.
+func (s *Store) ListRecords() ([]Record, []Diagnostic, error) {
+	return s.listRecordsUnlocked()
+}
+
+func (s *Store) listRecordsUnlocked() ([]Record, []Diagnostic, error) {
+	entries, err := os.ReadDir(s.Dir)
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, nil, nil
+		}
+		return nil, nil, err
+	}
+	var records []Record
+	var diagnostics []Diagnostic
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".toml") || strings.HasPrefix(name, ".") {
+			continue
+		}
+		id := strings.TrimSuffix(name, ".toml")
+		record, err := s.getRecordUnlocked(id)
+		if err != nil {
+			diagnostics = append(diagnostics, Diagnostic{ID: id, Path: filepath.Join(s.Dir, name), Err: err})
+			continue
+		}
+		records = append(records, *record)
+	}
+	sort.Slice(records, func(i, j int) bool { return taskLess(records[i].Task, records[j].Task) })
+	sort.Slice(diagnostics, func(i, j int) bool { return diagnostics[i].Path < diagnostics[j].Path })
+	return records, diagnostics, nil
 }
 
 // Delete removes a task entry under the mutation lock. It never touches git
@@ -408,6 +614,73 @@ func (s *Store) Delete(id string) error {
 		}
 		return nil
 	})
+}
+
+// DeleteIfRevision removes a task only while expectedRevision still describes
+// its exact persisted bytes.
+func (s *Store) DeleteIfRevision(ctx context.Context, id, expectedRevision string) error {
+	return s.WithLock(ctx, func(tx *Tx) error { return tx.DeleteIfRevision(id, expectedRevision) })
+}
+
+func (s *Store) deleteUnlocked(id string) error {
+	if err := ValidateID(id); err != nil {
+		return err
+	}
+	err := os.Remove(s.path(id))
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("%q: %w", id, ErrNotFound)
+	}
+	if err != nil {
+		return err
+	}
+	if err := syncDirectory(s.Dir); err != nil {
+		return fmt.Errorf("sync task directory after deleting %s: %w", id, err)
+	}
+	return nil
+}
+
+func (s *Store) getRecordUnlocked(id string) (*Record, error) {
+	data, err := os.ReadFile(s.path(id))
+	if err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return nil, fmt.Errorf("%q: %w", id, ErrNotFound)
+		}
+		return nil, fmt.Errorf("read task %s: %w", id, err)
+	}
+	var tracked Task
+	if _, err := toml.Decode(string(data), &tracked); err != nil {
+		return nil, fmt.Errorf("read task %s: %w", id, err)
+	}
+	tracked.ID = id
+	if err := tracked.Validate(); err != nil {
+		return nil, fmt.Errorf("validate task %s: %w", id, err)
+	}
+	tracked.storedRevision = tracked.Revision()
+	return &Record{Task: tracked, Revision: revisionFor(id, data)}, nil
+}
+
+func revisionFor(id string, data []byte) string {
+	var payload bytes.Buffer
+	payload.WriteString(id)
+	payload.WriteByte(0)
+	payload.Write(data)
+	return fmt.Sprintf("%x", sha256.Sum256(payload.Bytes()))
+}
+
+func cloneTask(t Task) Task {
+	t.Tags = append([]string(nil), t.Tags...)
+	return t
+}
+
+func taskLess(left, right Task) bool {
+	li, ri := stateRank(left.State), stateRank(right.State)
+	if li != ri {
+		return li < ri
+	}
+	if !left.Updated.Equal(right.Updated) {
+		return left.Updated.After(right.Updated)
+	}
+	return left.ID < right.ID
 }
 
 // Resolve finds a task from a loose user-supplied reference: an exact id, an

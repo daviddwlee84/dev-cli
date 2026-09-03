@@ -3,8 +3,10 @@ package forge
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -40,6 +42,100 @@ func (g *glab) CreatePR(ctx context.Context, dir string, req PRRequest) (string,
 	args = append(args, "--yes")
 	out, err := run(ctx, "glab", dir, args...)
 	return lastURL(out), err
+}
+
+// QueryReview manually observes an exact GitLab merge request relationship.
+func (g *glab) QueryReview(ctx context.Context, dir string, query ReviewQuery) (*Review, error) {
+	if !g.Available() {
+		return nil, &ErrNoCLI{Kind: GitLab, Bin: "glab"}
+	}
+	if err := validateReviewQuery(query); err != nil {
+		return nil, err
+	}
+
+	const pageSize = 100
+	var candidates []reviewCandidate
+	for page := 1; ; page++ {
+		out, err := reviewRunner(ctx, "glab", dir,
+			"mr", "list", "--repo", query.Repository,
+			"--source-branch", query.Head, "--target-branch", query.Base,
+			"--all", "--output", "json", "--per-page", strconv.Itoa(pageSize),
+			"--page", strconv.Itoa(page))
+		if err != nil {
+			return nil, err
+		}
+		pageCandidates, err := parseGitLabReviewCandidates(out)
+		if err != nil {
+			return nil, err
+		}
+		candidates = append(candidates, pageCandidates...)
+		if len(pageCandidates) < pageSize {
+			break
+		}
+	}
+	return selectExactReview(GitLab, query, candidates, normalizeGitLabReviewState)
+}
+
+func parseGitLabReviewCandidates(out string) ([]reviewCandidate, error) {
+	var raw []struct {
+		ID              *int   `json:"id"`
+		IID             *int   `json:"iid"`
+		State           string `json:"state"`
+		Draft           *bool  `json:"draft"`
+		WorkInProgress  *bool  `json:"work_in_progress"`
+		WebURL          string `json:"web_url"`
+		SourceBranch    string `json:"source_branch"`
+		TargetBranch    string `json:"target_branch"`
+		SourceProjectID *int   `json:"source_project_id"`
+		TargetProjectID *int   `json:"target_project_id"`
+	}
+	if err := decodeReviewJSON(GitLab, out, &raw); err != nil {
+		return nil, err
+	}
+	candidates := make([]reviewCandidate, 0, len(raw))
+	for _, item := range raw {
+		id := ""
+		if item.ID != nil {
+			id = strconv.Itoa(*item.ID)
+		}
+		number := 0
+		if item.IID != nil {
+			number = *item.IID
+		}
+		draft := item.Draft
+		if draft == nil {
+			draft = item.WorkInProgress
+		} else if item.WorkInProgress != nil && *draft != *item.WorkInProgress {
+			draft = nil
+		}
+		var sourceMatches *bool
+		if item.SourceProjectID != nil && item.TargetProjectID != nil && *item.SourceProjectID > 0 && *item.TargetProjectID > 0 {
+			matches := *item.SourceProjectID == *item.TargetProjectID
+			sourceMatches = &matches
+		}
+		candidates = append(candidates, reviewCandidate{
+			ID: id, Number: number, State: item.State, Draft: draft,
+			URL: item.WebURL, Head: item.SourceBranch, Base: item.TargetBranch,
+			SourceMatchesRepository: sourceMatches,
+		})
+	}
+	return candidates, nil
+}
+
+func normalizeGitLabReviewState(state string, draft bool) (ReviewState, error) {
+	switch strings.ToLower(state) {
+	case "opened", "open":
+		if draft {
+			return ReviewDraft, nil
+		}
+		return ReviewOpen, nil
+	case "merged":
+		return ReviewMerged, nil
+	case "closed":
+		return ReviewClosed, nil
+	default:
+		return "", errors.New("unrecognized GitLab review state")
+	}
 }
 
 // CreateRepo creates a GitLab project from the local checkout.

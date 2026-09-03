@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 )
 
 func runDoneForTest(f *startFixture, input string, interactive bool, args ...string) error {
@@ -24,7 +26,7 @@ func runDoneForTest(f *startFixture, input string, interactive bool, args ...str
 
 func mergedTaskFixture(t *testing.T, name string) (*startFixture, string) {
 	t.Helper()
-	f := newStartFixture(t, runtime.None{})
+	f := newStartFixture(t, &activityRuntime{name: "test"})
 	branch := "feat/" + name
 	if err := f.run("--task", name, "--branch", branch, "--base", "main"); err != nil {
 		t.Fatal(err)
@@ -104,7 +106,7 @@ func TestDoneInteractiveWrongDropConfirmationCancels(t *testing.T) {
 }
 
 func TestDoneInteractiveEquivalentDirtyNeedsOnlyNormalConfirmation(t *testing.T) {
-	f := newStartFixture(t, runtime.None{})
+	f := newStartFixture(t, &activityRuntime{name: "test"})
 	if err := f.run("--task", "equivalent", "--branch", "feat/equivalent", "--base", "main"); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +192,7 @@ func TestDoneContainedPRRefusesBeforeDiscard(t *testing.T) {
 }
 
 func TestDoneBareInteractiveChoosesFastForward(t *testing.T) {
-	f := newStartFixture(t, runtime.None{})
+	f := newStartFixture(t, &activityRuntime{name: "test"})
 	if err := f.run("--task", "choose-ff", "--branch", "feat/choose-ff", "--base", "main"); err != nil {
 		t.Fatal(err)
 	}
@@ -268,6 +270,44 @@ func TestDoneInteractiveDetectsWriterRaceBeforeDiscard(t *testing.T) {
 	}
 }
 
+func TestDoneInteractiveRejectsReviewRemoteChangeDuringPrompt(t *testing.T) {
+	f := newStartFixture(t, &activityRuntime{name: "test"})
+	f.repo.WithRemote()
+	if err := f.run("--task", "review-remote-race", "--branch", "feat/review-remote-race", "--base", "main"); err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := f.app.Tasks.Resolve("review-remote-race")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scratch := filepath.Join(candidate.WorktreePath, "review.txt")
+	if err := os.WriteFile(scratch, []byte("review me\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.app.In = &mutateOnRead{
+		reader: strings.NewReader("c\n"),
+		mutate: func() {
+			other := filepath.Join(f.repo.Root, "different-origin.git")
+			f.repo.GitIn(candidate.WorktreePath, "remote", "set-url", "origin", other)
+		},
+	}
+	f.app.interactiveCheck = func() bool { return true }
+	cmd := newDoneCmd(f.app)
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{"review-remote-race", "--pr", "--yes"})
+	err = cmd.Execute()
+	if !errors.Is(err, flow.ErrStalePlan) || !strings.Contains(err.Error(), "review.remote-url changed") {
+		t.Fatalf("remote race error=%v", err)
+	}
+	if _, err := os.Stat(scratch); err != nil {
+		t.Fatalf("remote race changed dirty checkout: %v", err)
+	}
+	stored, err := f.app.Tasks.Get(candidate.ID)
+	if err != nil || stored.State != task.Hot {
+		t.Fatalf("remote race changed task=%+v err=%v", stored, err)
+	}
+}
+
 func TestDoneRejectsInvalidDirtyPolicy(t *testing.T) {
 	f, _ := mergedTaskFixture(t, "invalid-policy")
 	err := runDoneForTest(f, "", false, "invalid-policy", "--ff", "--dirty=magic")
@@ -277,7 +317,7 @@ func TestDoneRejectsInvalidDirtyPolicy(t *testing.T) {
 }
 
 func TestDoneConflictedCheckoutRefusesEveryDirtyPolicy(t *testing.T) {
-	f := newStartFixture(t, runtime.None{})
+	f := newStartFixture(t, &activityRuntime{name: "test"})
 	f.repo.Commit("conflict.txt", "base\n", "chore: add conflict fixture")
 	if err := f.run("--task", "conflicted", "--branch", "feat/conflicted", "--base", "main"); err != nil {
 		t.Fatal(err)
@@ -321,6 +361,9 @@ func TestDoneCommitHookFailureKeepsTaskAndWorktree(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "commit dirty checkout") {
 		t.Fatalf("hook failure error = %v", err)
 	}
+	if !strings.Contains(f.stderr.String(), "failed:") || !strings.Contains(f.stderr.String(), "recovery:") {
+		t.Fatalf("partial taskflow ledger was not rendered before the error:\n%s", f.stderr.String())
+	}
 	if _, err := os.Stat(worktree); err != nil {
 		t.Fatalf("hook failure removed worktree: %v", err)
 	}
@@ -358,7 +401,7 @@ func TestDoneDetectsHookCreatedDirtyFileAfterCommit(t *testing.T) {
 }
 
 func TestDoneInteractiveDirectTaskCommitsAndCompletes(t *testing.T) {
-	f := newStartFixture(t, runtime.None{})
+	f := newStartFixture(t, &activityRuntime{name: "test"})
 	if err := f.run("--task", "direct-finish", "--direct"); err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +421,7 @@ func TestDoneInteractiveDirectTaskCommitsAndCompletes(t *testing.T) {
 }
 
 func TestDoneInteractiveBranchOnlyUsesSameFinishFlow(t *testing.T) {
-	f := newStartFixture(t, runtime.None{})
+	f := newStartFixture(t, &activityRuntime{name: "test"})
 	if err := f.run("--task", "branch-finish", "--branch-only", "--branch", "feat/branch-finish", "--base", "main"); err != nil {
 		t.Fatal(err)
 	}
@@ -393,5 +436,172 @@ func TestDoneInteractiveBranchOnlyUsesSameFinishFlow(t *testing.T) {
 	}
 	if got := f.repo.Git("show", "main:branch.txt"); got != "done" {
 		t.Fatalf("branch-only commit content = %q", got)
+	}
+}
+
+func TestDoneNamedColdOrDoneRejectedBeforeEffects(t *testing.T) {
+	for _, state := range []task.State{task.Cold, task.Done} {
+		t.Run(string(state), func(t *testing.T) {
+			rt := &activityRuntime{openResult: runtime.OpenResult{Handle: "done-runtime", Opened: true}}
+			f := newStartFixture(t, rt)
+			name := "reject-" + string(state)
+			branch := "feat/" + name
+			if err := f.run("--task", name, "--branch", branch, "--base", "main"); err != nil {
+				t.Fatal(err)
+			}
+			candidate, err := f.app.Tasks.Resolve(name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			candidate.State = state
+			if err := f.app.Tasks.Save(candidate); err != nil {
+				t.Fatal(err)
+			}
+			before, err := f.app.Tasks.GetRecord(candidate.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			head := f.repo.Git("rev-parse", "HEAD")
+			rt.openCalls, rt.activityCalls = 0, 0
+			rt.closeCalls = nil
+			f.stdout.Reset()
+			f.stderr.Reset()
+
+			err = runDoneForTest(f, "", false, candidate.ID, "--ff")
+			if !errors.Is(err, flow.ErrInvalidTransition) {
+				t.Fatalf("named %s done error = %v, want ErrInvalidTransition", state, err)
+			}
+			after, getErr := f.app.Tasks.GetRecord(candidate.ID)
+			if getErr != nil {
+				t.Fatal(getErr)
+			}
+			if after.Revision != before.Revision || after.Task.State != state {
+				t.Fatalf("named %s done changed task: before=%+v after=%+v", state, before, after)
+			}
+			if got := f.repo.Git("rev-parse", "HEAD"); got != head {
+				t.Fatalf("named %s done changed Git HEAD from %s to %s", state, head, got)
+			}
+			if rt.openCalls != 0 || len(rt.closeCalls) != 0 || rt.activityCalls != 0 {
+				t.Fatalf("named %s done reached runtime effects: open=%d close=%v activity=%d",
+					state, rt.openCalls, rt.closeCalls, rt.activityCalls)
+			}
+		})
+	}
+}
+
+func TestDoneInteractiveRejectsTaskRevisionChangeDuringPlan(t *testing.T) {
+	f, worktree := mergedTaskFixture(t, "task-revision-race")
+	scratch := filepath.Join(worktree, "scratch.txt")
+	if err := os.WriteFile(scratch, []byte("keep\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.app.In = &mutateOnRead{
+		reader: strings.NewReader("d\nDROP\n"),
+		mutate: func() {
+			candidate, err := f.app.Tasks.Resolve("task-revision-race")
+			if err != nil {
+				t.Errorf("resolve task for race: %v", err)
+				return
+			}
+			candidate.Next = "changed while plan was open"
+			if err := f.app.Tasks.Save(candidate); err != nil {
+				t.Errorf("mutate task for race: %v", err)
+			}
+		},
+	}
+	f.app.interactiveCheck = func() bool { return true }
+	cmd := newDoneCmd(f.app)
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{"task-revision-race"})
+	err := cmd.Execute()
+	if !errors.Is(err, flow.ErrStalePlan) || !strings.Contains(err.Error(), "changed while the finish plan was open") {
+		t.Fatalf("task revision race error = %v", err)
+	}
+	if _, err := os.Stat(scratch); err != nil {
+		t.Fatalf("stale task plan discarded content: %v", err)
+	}
+	stored, err := f.app.Tasks.Get(task.MakeID("repo", "feat/task-revision-race"))
+	if err != nil || stored.State != task.Hot || stored.Next != "changed while plan was open" {
+		t.Fatalf("task after revision race = %+v, %v", stored, err)
+	}
+}
+
+func TestDoneReviewPushOnlyWarnsWithoutInventingURL(t *testing.T) {
+	f := newStartFixture(t, &activityRuntime{name: "test"})
+	f.repo.WithRemote()
+	if err := f.run("--task", "push-only", "--branch", "feat/push-only", "--base", "main"); err != nil {
+		t.Fatal(err)
+	}
+	worktree := filepath.Join(f.app.Cfg.Paths.WorktreeRoot, "repo", "feat-push-only")
+	if err := os.WriteFile(filepath.Join(worktree, "review.txt"), []byte("ready\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.GitIn(worktree, "add", "review.txt")
+	f.repo.GitIn(worktree, "commit", "-m", "feat: push-only review")
+	f.stdout.Reset()
+	f.stderr.Reset()
+
+	if err := runDoneForTest(f, "", false, "push-only", "--pr"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.stdout.String(), "READY FOR REVIEW") {
+		t.Fatalf("push-only handoff missing review milestone:\n%s", f.stdout.String())
+	}
+	if !strings.Contains(f.stderr.String(), "branch was pushed, but no review URL was observed") {
+		t.Fatalf("push-only handoff missing provider warning:\n%s", f.stderr.String())
+	}
+	if strings.Contains(f.stdout.String(), "http://") || strings.Contains(f.stdout.String(), "https://") {
+		t.Fatalf("push-only handoff invented a review URL:\n%s", f.stdout.String())
+	}
+	stored, err := f.app.Tasks.Get(task.MakeID("repo", "feat/push-only"))
+	if err != nil || stored.State != task.Hot {
+		t.Fatalf("review handoff changed task state: %+v, %v", stored, err)
+	}
+}
+
+func TestDoneDirectIntegrationFlagsKeepExistingGuidance(t *testing.T) {
+	f := newStartFixture(t, &activityRuntime{name: "test"})
+	if err := f.run("--task", "direct-guidance", "--direct"); err != nil {
+		t.Fatal(err)
+	}
+	for _, flag := range []string{"--ff", "--pr", "--merged"} {
+		t.Run(flag, func(t *testing.T) {
+			err := runDoneForTest(f, "", false, "direct-guidance", flag)
+			if err == nil || !strings.Contains(err.Error(), "Run `dev done` without --ff/--pr/--merged") {
+				t.Fatalf("direct %s error = %v", flag, err)
+			}
+			stored, getErr := f.app.Tasks.Get(task.MakeID("repo", "main"))
+			if getErr != nil || stored.State != task.Hot {
+				t.Fatalf("direct %s changed task: %+v, %v", flag, stored, getErr)
+			}
+		})
+	}
+}
+
+func TestDoneCommandUsesTaskflowAsItsOnlyMutationBoundary(t *testing.T) {
+	for _, name := range []string{"done.go", "done_flow.go"} {
+		source, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(source)
+		for _, forbidden := range []string{
+			"gitx.AnalyzeFinish(", "gitx.CommitAllChanges(", "gitx.DiscardAllChanges(", "gitx.Run(",
+			"forge.", "ensureArtifactsFinalized(", "app.Tasks.Save(", "fastForward(", "openPR(",
+			"finishDirectTask(", "finishIntegratedTask(", "pushBranch(",
+		} {
+			if strings.Contains(text, forbidden) {
+				t.Errorf("%s contains forbidden completion mutation boundary %q", name, forbidden)
+			}
+		}
+	}
+	source, err := os.ReadFile("done_flow.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{"session.plan(", "session.apply(", "flow.Approve(", "flow.ApproveWithToken("} {
+		if !strings.Contains(string(source), required) {
+			t.Errorf("done_flow.go does not use taskflow boundary %q", required)
+		}
 	}
 }

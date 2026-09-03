@@ -31,10 +31,15 @@ uses the full lifecycle below.
 
 | State | Git | Runtime | Meaning |
 |---|---|---|---|
-| 🔥 hot | worktree + branch | session open | working on it now |
-| 🌤 warm | worktree + branch kept | session closed | back within days |
-| ❄️ cold | committed and pushed, worktree removed | nothing | paused, reconstructible |
-| ✅ done | merged | nothing | entry survives until swept |
+| 🔥 hot | branch + checkout | normally open | working on it now |
+| 🌤 warm | branch + checkout kept | normally closed | back within days |
+| ❄️ cold | committed and pushed, checkout removed/switched away | none | paused, reconstructible |
+| ✅ done | merged | may remain open | resources stay until external retirement |
+
+READY, REVIEW, MERGED, and RETIRED are plan/result milestones, not additional
+persisted states. `dev flow [repo]` previews this graph for one repository:
+Enter builds a guarded plan, then a separate approval applies it. Completion
+writes DONE but retains branch/checkout/runtime; Retire performs cleanup.
 
 Aim for **three to seven hot tasks per machine**. That is a cognitive limit,
 not a technical one.
@@ -88,9 +93,10 @@ get parallel branches.
 ## Finishing
 
 ```bash
-dev done          # TTY: inspect dirty content, then choose FF/PR/cleanup
-dev done --ff     # explicit fast-forward path
+dev done          # TTY: inspect dirty content, then choose FF/PR/merged handling
+dev done --ff     # fast-forward and record DONE; resources stay
 dev done --pr     # publish for review; keep task/worktree active
+dev retire <task> # external close/wait/remove after DONE
 ```
 
 The interactive finish flow separates committed history from checkout content:

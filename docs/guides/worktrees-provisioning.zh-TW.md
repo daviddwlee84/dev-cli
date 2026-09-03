@@ -17,13 +17,15 @@ Git worktree 一開始是乾淨 checkout。`dev` 擁有持久變更流 (change s
 
 | Worktree 類型 | Owner | 常見位置 | Lifetime |
 |---|---|---|---|
-| feature、fix、experiment、跨機器 handoff | `dev` | 設定的 `paths.worktree_path` | 直到 `dev done`、`dev wt rm` 或核准的 sweep |
-| harness-scoped isolation | Claude Code 或其他 harness | harness-owned path，例如 `.claude/worktrees/<name>/` | 由該 harness 的 retention 與 safe-cleanup 規則管理 |
-| 外部建立的 linked worktree | adoption 前由外部管理 | tool-specific | `dev` 可看見，但明確 adopt 前不管理 |
+| feature、fix、experiment、跨機器 handoff | `dev` | 設定的 `paths.worktree_path` | `dev done` 只記錄 MERGED；直到後續 `dev retire`、明確 `dev wt rm` 或核准的 sweep 才移除 |
+| harness-scoped isolation | Claude Code 或其他 harness | harness-owned path，例如 `.claude/worktrees/<name>/` | 由該 harness 的 retention 與 safe-cleanup 規則管理；Flow 不會 Adopt/Remove |
+| 外部建立的 linked worktree | adoption 前由外部管理 | tool-specific | `dev`/`dev flow` 可看見；只有明確 Adopt 後才有 managed lifecycle |
 
 Code、history 或 plans 需要保持可 review，或人之後可能回來時，使用 `dev`。不要把長期 `dev` worktree 巢狀放在 repository 內；外層 checkout 的 file watcher、language server、backup tool 與搜尋會看到第二份 tree。
 
 `dev` 使用 Git 在設定路徑建立 checkout；Herdr 只開啟現有 path，因此沒有 Herdr 的機器仍維持相同 placement policy。
+
+`dev flow [repo]` 以 Git 的 authoritative worktree records 顯示 canonical、managed、unmanaged 與 strict `.claude/worktrees/` harness rows，另加入沒有 checkout 的 task-only rows。它不以 `worktree-*` branch prefix 猜 ownership；path/task binding 有歧義時標示 CONFLICT 並停止 lifecycle mutation。詳見 [Repository Flow 預覽](repository-flow.zh-TW.md)。
 
 ## 建立前先檢查
 
@@ -109,10 +111,14 @@ dev wt rm feat/auth
 
 移除 worktree 與刪除 branch 是兩個決定。`dev wt rm` 會保留 branch，且沒有 explicit force 時拒絕 dirty checkout。Directory 若在 Git 之外消失，它會 prune stale administrative entry。
 
+在 `dev flow` 中，UNMANAGED row 的 Remove Checkout 只對 exact、clean、unlocked、non-prunable、non-harness linked checkout 出現，並在移除前後 revalidate task claims、Git/agent/runtime/artifact facts；branch 與其 OID 必須保留。Flow 不提供 force/dirty-discard/unknown-runtime override。Managed DONE row 不是 Remove Checkout，而是最後才 reap task record 的 Retire plan；可選 branch deletion 是另一個 typed confirmation。Raw `git worktree remove --force` 會繞過這些 guarantees。
+
 ## 來源
 
 - [`internal/wt/plan.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/wt/plan.go)
 - [`internal/wt/ecosystem.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/wt/ecosystem.go)
 - [`internal/wt/provision.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/wt/provision.go)
 - [`internal/wt/manager.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/wt/manager.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow/remove.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/remove.go)
 - [Claude Code worktrees](https://code.claude.com/docs/en/worktrees)

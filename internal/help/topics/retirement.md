@@ -18,12 +18,25 @@ Use three separate milestones:
    eligible runtime sessions, waits until they disappear, revalidates Git, and
    removes the worktree without force.
 
+`dev flow [repo]` exposes Retire only for an exact DONE task. It first shows
+conditions, ordered effects, resources retained, and a fallback command; branch
+deletion is a separate typed option. Apply reloads the exact task revision and
+Git/worktree/ref/runtime/artifact identity under locks, repeats safety checks
+after runtime closure and before removal, and deletes the task record last.
+Completed steps remain visible if a later step fails; no rollback is implied.
+
 Retirement never overrides `working`, `blocked`, or `waiting` agents. Unknown
 status needs external `--close-unknown`. A workspace containing panes outside
 the target is mixed-purpose and must be reorganized or closed manually.
 
-Raw `git worktree remove --force` bypasses these protections. Do not use it on
-an agent-owned checkout.
+Raw `git worktree remove --force` and configured external tools bypass these
+protections. Do not use them on an agent-owned checkout. Existing expert CLI
+acknowledgements remain available, but the flow preview deliberately omits dirty
+discard, shared-writer/takeover, and unknown-runtime overrides.
+
+Task-backed `dev retire` uses the guarded lifecycle service. Explicit unmanaged
+path retirement retains an isolated compatibility implementation; do not assume
+every cleanup or `sweep` reconciliation path has moved to the same planner.
 
 From the canonical main checkout, `dev sweep --merged-worktrees` reports both
 tracked and unmanaged linked worktrees whose named branches are contained in

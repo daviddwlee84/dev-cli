@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `dev flow [repo]` adds a preview-labelled, full-screen repository lifecycle
+  interface independent of the dashboard. It projects every registered worktree
+  plus task-only records, separates persisted HOT/WARM/COLD/DONE intent from
+  live local/manual remote evidence, and requires an exact revision-bound plan
+  plus action-specific approval before managed lifecycle, unmanaged Adopt/Remove,
+  or remote refresh effects. Apply revalidates authority, reports partial steps,
+  preserves branches for unmanaged removal, and keeps DONE resources until
+  explicit retirement.
+
+### Fixed
+
+- Existing park, resume, completion, retirement, unmanaged worktree removal, and
+  sweep paths now share revision-bound taskflow plans instead of independently
+  mutating lifecycle state. Git ref probe failures, unobserved runtime or writer
+  occupancy, pending artifacts across checkout moves, changed remote/merge
+  authority, and fork review results fail closed; successful DONE/MERGED
+  completion retains runtime, worktree, and branch resources for explicit
+  retirement.
+
 ## [0.2.5] - 2026-09-01
 
 ### Added

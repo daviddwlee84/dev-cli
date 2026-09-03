@@ -1,6 +1,7 @@
 package gitx_test
 
 import (
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -98,6 +99,237 @@ func TestWorktreesListing(t *testing.T) {
 	}
 	if _, ok, _ := gitx.WorktreeFor(ctx, r.Root, "nope"); ok {
 		t.Error("WorktreeFor should not match a nonexistent branch")
+	}
+}
+
+func TestResolveRegisteredWorktreeMain(t *testing.T) {
+	r := gittest.New(t)
+	ctx := gittest.Ctx()
+
+	got, err := gitx.ResolveRegisteredWorktree(ctx, r.Root, r.Root)
+	if err != nil {
+		t.Fatalf("ResolveRegisteredWorktree: %v", err)
+	}
+	repository, err := gitx.Discover(ctx, r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RepositoryPath != resolve(t, r.Root) {
+		t.Errorf("RepositoryPath = %q, want %q", got.RepositoryPath, resolve(t, r.Root))
+	}
+	if got.GitCommonDir != resolve(t, repository.GitCommonDir) {
+		t.Errorf("GitCommonDir = %q, want %q", got.GitCommonDir, resolve(t, repository.GitCommonDir))
+	}
+	if got.Path != resolve(t, r.Root) {
+		t.Errorf("Path = %q, want %q", got.Path, resolve(t, r.Root))
+	}
+	if !got.Worktree.Main || got.Worktree.Bare || got.IsLinkedWorktree() {
+		t.Errorf("main worktree classification = %+v", got.Worktree)
+	}
+	if got.Worktree.Branch != "main" {
+		t.Errorf("Branch = %q, want main", got.Worktree.Branch)
+	}
+	if want := r.Git("rev-parse", "HEAD"); got.Worktree.Head != want {
+		t.Errorf("Head = %q, want %q", got.Worktree.Head, want)
+	}
+}
+
+func TestResolveRegisteredWorktreeLinkedExactPath(t *testing.T) {
+	r := gittest.New(t)
+	ctx := gittest.Ctx()
+	wtPath := filepath.Join(t.TempDir(), "linked")
+
+	if _, err := gitx.ResolveRegisteredWorktree(ctx, r.Root, wtPath); !errors.Is(err, gitx.ErrWorktreeNotFound) {
+		t.Fatalf("lookup before registration = %v, want ErrWorktreeNotFound", err)
+	}
+	if err := gitx.AddWorktree(ctx, r.Root, wtPath, "feat/linked", "main"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := gitx.ResolveRegisteredWorktree(ctx, wtPath, wtPath)
+	if err != nil {
+		t.Fatalf("ResolveRegisteredWorktree: %v", err)
+	}
+	main, err := gitx.Discover(ctx, r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.RepositoryPath != resolve(t, r.Root) || got.GitCommonDir != resolve(t, main.GitCommonDir) {
+		t.Errorf("repository identity = %q, %q; want %q, %q",
+			got.RepositoryPath, got.GitCommonDir, resolve(t, r.Root), resolve(t, main.GitCommonDir))
+	}
+	if got.Path != resolve(t, wtPath) {
+		t.Errorf("Path = %q, want %q", got.Path, resolve(t, wtPath))
+	}
+	if got.Worktree.Main || got.Worktree.Bare || !got.IsLinkedWorktree() {
+		t.Errorf("linked worktree classification = %+v", got.Worktree)
+	}
+	if got.Worktree.Branch != "feat/linked" {
+		t.Errorf("Branch = %q, want feat/linked", got.Worktree.Branch)
+	}
+	if want := r.Git("rev-parse", "main"); got.Worktree.Head != want {
+		t.Errorf("Head = %q, want %q", got.Worktree.Head, want)
+	}
+}
+
+func TestResolveRegisteredWorktreeAcceptsSymlinkAliases(t *testing.T) {
+	r := gittest.New(t)
+	ctx := gittest.Ctx()
+	wtPath := filepath.Join(t.TempDir(), "physical-worktree")
+	if err := gitx.AddWorktree(ctx, r.Root, wtPath, "feat/alias", "main"); err != nil {
+		t.Fatal(err)
+	}
+	worktreeAlias := filepath.Join(t.TempDir(), "worktree-alias")
+	if err := os.Symlink(wtPath, worktreeAlias); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	repoAlias := filepath.Join(t.TempDir(), "repo-alias")
+	if err := os.Symlink(r.Root, repoAlias); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	got, err := gitx.ResolveRegisteredWorktree(ctx, repoAlias, worktreeAlias)
+	if err != nil {
+		t.Fatalf("ResolveRegisteredWorktree through aliases: %v", err)
+	}
+	if got.Path != resolve(t, wtPath) {
+		t.Errorf("Path = %q, want physical path %q", got.Path, resolve(t, wtPath))
+	}
+	if got.Worktree.Path != resolve(t, wtPath) {
+		t.Errorf("Git record path = %q, want %q", got.Worktree.Path, resolve(t, wtPath))
+	}
+}
+
+func TestResolveRegisteredWorktreeIgnoresBranchAmbiguity(t *testing.T) {
+	r := gittest.New(t)
+	ctx := gittest.Ctx()
+	duplicate := filepath.Join(t.TempDir(), "also-main")
+	// Git permits an explicitly forced second checkout of the same branch. The
+	// exact-path resolver must not silently select the first branch match.
+	r.Git("worktree", "add", "--force", duplicate, "main")
+
+	got, err := gitx.ResolveRegisteredWorktree(ctx, r.Root, duplicate)
+	if err != nil {
+		t.Fatalf("ResolveRegisteredWorktree: %v", err)
+	}
+	if got.Path != resolve(t, duplicate) || got.Worktree.Main || !got.IsLinkedWorktree() {
+		t.Errorf("resolved wrong main-branch checkout: %+v", got)
+	}
+	if got.Worktree.Branch != "main" {
+		t.Errorf("Branch = %q, want main", got.Worktree.Branch)
+	}
+}
+
+func TestResolveRegisteredWorktreeRequiresExactPath(t *testing.T) {
+	r := gittest.New(t)
+	ctx := gittest.Ctx()
+	descendant := filepath.Join(r.Root, "nested")
+	if err := os.Mkdir(descendant, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	unregistered := t.TempDir()
+
+	for _, path := range []string{descendant, unregistered} {
+		if _, err := gitx.ResolveRegisteredWorktree(ctx, r.Root, path); !errors.Is(err, gitx.ErrWorktreeNotFound) {
+			t.Errorf("ResolveRegisteredWorktree(%q) = %v, want ErrWorktreeNotFound", path, err)
+		}
+	}
+}
+
+func TestResolveRegisteredWorktreeDetached(t *testing.T) {
+	r := gittest.New(t)
+	ctx := gittest.Ctx()
+	wtPath := filepath.Join(t.TempDir(), "detached")
+	r.Git("worktree", "add", "--detach", wtPath, "main")
+
+	got, err := gitx.ResolveRegisteredWorktree(ctx, r.Root, wtPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Worktree.Detached || got.Worktree.Branch != "" || !got.IsLinkedWorktree() {
+		t.Errorf("detached record = %+v", got.Worktree)
+	}
+	if want := r.Git("rev-parse", "main"); got.Worktree.Head != want {
+		t.Errorf("Head = %q, want %q", got.Worktree.Head, want)
+	}
+}
+
+func TestResolveRegisteredWorktreeLocked(t *testing.T) {
+	r := gittest.New(t)
+	ctx := gittest.Ctx()
+	wtPath := filepath.Join(t.TempDir(), "locked")
+	if err := gitx.AddWorktree(ctx, r.Root, wtPath, "feat/locked", "main"); err != nil {
+		t.Fatal(err)
+	}
+	r.Git("worktree", "lock", "--reason", "reserved by test", wtPath)
+
+	got, err := gitx.ResolveRegisteredWorktree(ctx, r.Root, wtPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Worktree.Locked || got.Worktree.LockedReason != "reserved by test" {
+		t.Errorf("locked record = %+v", got.Worktree)
+	}
+}
+
+func TestResolveRegisteredWorktreePrunable(t *testing.T) {
+	r := gittest.New(t)
+	ctx := gittest.Ctx()
+	wtPath := filepath.Join(t.TempDir(), "prunable")
+	if err := gitx.AddWorktree(ctx, r.Root, wtPath, "feat/prunable", "main"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(wtPath); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := gitx.ResolveRegisteredWorktree(ctx, r.Root, wtPath)
+	if err != nil {
+		t.Fatalf("resolve missing registered checkout: %v", err)
+	}
+	if !got.Worktree.Prunable || got.Worktree.PrunableReason == "" || !got.IsLinkedWorktree() {
+		t.Errorf("prunable record = %+v", got.Worktree)
+	}
+	if got.Worktree.Branch != "feat/prunable" {
+		t.Errorf("Branch = %q, want feat/prunable", got.Worktree.Branch)
+	}
+}
+
+func TestResolveRegisteredWorktreeBare(t *testing.T) {
+	ctx := gittest.Ctx()
+	parent := t.TempDir()
+	bare := filepath.Join(parent, "repo.git")
+	if _, err := gitx.Run(ctx, parent, "init", "--bare", "--initial-branch=main", bare); err != nil {
+		t.Fatalf("init bare repository: %v", err)
+	}
+
+	got, err := gitx.ResolveRegisteredWorktree(ctx, bare, bare)
+	if err != nil {
+		t.Fatalf("ResolveRegisteredWorktree: %v", err)
+	}
+	want := resolve(t, bare)
+	if got.RepositoryPath != want || got.GitCommonDir != want || got.Path != want {
+		t.Errorf("bare identity = %q, %q, %q; want %q", got.RepositoryPath, got.GitCommonDir, got.Path, want)
+	}
+	if !got.Worktree.Main || !got.Worktree.Bare || got.IsLinkedWorktree() {
+		t.Errorf("bare record = %+v", got.Worktree)
+	}
+}
+
+func TestResolveRegisteredWorktreeRetainsQueryError(t *testing.T) {
+	r := gittest.New(t)
+	ctx, cancel := context.WithCancel(gittest.Ctx())
+	cancel()
+
+	_, err := gitx.ResolveRegisteredWorktree(ctx, r.Root, r.Root)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want wrapped context.Canceled", err)
+	}
+	var commandError *gitx.Error
+	if !errors.As(err, &commandError) {
+		t.Fatalf("error = %T %v, want retained *gitx.Error", err, err)
+	}
+	if got := strings.Join(commandError.Args, " "); got != "worktree list --porcelain" {
+		t.Errorf("failed command = %q, want worktree list --porcelain", got)
 	}
 }
 
@@ -326,6 +558,15 @@ func TestBranchAndRefExists(t *testing.T) {
 	}
 	if gitx.RefExists(ctx, r.Root, "refs/heads/absent") {
 		t.Error("absent ref should not resolve")
+	}
+	if exists, err := gitx.RefState(ctx, r.Root, "refs/heads/absent"); err != nil || exists {
+		t.Fatalf("absent RefState = %t, %v", exists, err)
+	}
+	if exists, err := gitx.RefState(ctx, r.Root, "HEAD"); err != nil || !exists {
+		t.Fatalf("present RefState = %t, %v", exists, err)
+	}
+	if exists, err := gitx.RefState(ctx, t.TempDir(), "HEAD"); err == nil || exists {
+		t.Fatalf("failed RefState collapsed to absence: %t, %v", exists, err)
 	}
 }
 

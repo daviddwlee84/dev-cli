@@ -440,11 +440,13 @@ func defaultForgeHost(kind Kind) string {
 
 type cliRunner func(context.Context, string, string, ...string) (string, error)
 
-// Separate hooks keep readiness and publishing tests platform-independent;
-// production uses the same subprocess runner as the legacy adapter methods.
+// Separate hooks keep readiness, publishing and review-query tests
+// platform-independent; production uses the same subprocess runner as the
+// legacy adapter methods.
 var (
 	probeRunner   cliRunner = run
 	publishRunner cliRunner = runCombined
+	reviewRunner  cliRunner = run
 	lookupPath              = exec.LookPath
 )
 

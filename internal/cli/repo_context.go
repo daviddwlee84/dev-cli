@@ -105,8 +105,9 @@ func collectLocalRepoContext(ctx context.Context, app *App, repository repo.Repo
 	rt := app.Runtime()
 	sessions, runtimeErr := rt.List(ctx)
 	local := localRepoContext{
-		Context: inventory.CollectRepoContextWithOptions(ctx, repository, tasks, sessions, rt.Name(), inventory.RepoContextOptions{
-			IncludeActivity: includeTopology,
+		Context: inventory.CollectRepoContextWithOptions(ctx, repository, tasks, inventory.RepoContextOptions{
+			Runtime: rt.Name(), Sessions: sessions, RuntimeObserved: runtimeErr == nil,
+			RuntimeErr: runtimeErr, IncludeActivity: includeTopology,
 		}),
 		Runtimes: []repocontext.RuntimeInput{{
 			Backend: rt.Name(), Available: rt.Available(), Sessions: sessions, Err: runtimeErr,

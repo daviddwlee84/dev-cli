@@ -444,6 +444,14 @@ dev fleet sync <repo> [flags]
 - `--push` — push the source branch before fan-out
 - `--remote` — Git remote to publish/check (default: upstream, then origin)
 
+### `dev flow`
+
+Preview: inspect and run guarded repository lifecycle actions
+
+```
+dev flow [repo]
+```
+
 ### `dev git`
 
 Guarded Git transactions that need receipts or recovery

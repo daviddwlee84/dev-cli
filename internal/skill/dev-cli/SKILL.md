@@ -46,7 +46,7 @@ is the most common source of confusion. The rule:
 
 | Kind of worktree | Owner | Where | Lifetime |
 |---|---|---|---|
-| Feature, fix, experiment, cross-machine handoff — anything you might return to | **`dev`** | `paths.worktree_path`, default `~/Worktrees/<repo>/<branch-slug>` | until `dev done` or `dev sweep` |
+| Feature, fix, experiment, cross-machine handoff — anything you might return to | **`dev`** | `paths.worktree_path`, default `~/Worktrees/<repo>/<branch-slug>` | until external `dev retire` |
 | Harness-owned turn-scoped isolation (`isolation: worktree`, `/batch`, `EnterWorktree`) | **Claude Code** | `.claude/worktrees/` (keep gitignored) | owned by that harness; not a transcript-relocation guarantee |
 | `herdr worktree create` | **not used** — `dev` runs `git worktree add` itself, then `herdr worktree open --path …` | — | — |
 
@@ -94,6 +94,34 @@ Always suggest a `--next` when parking.
 
 Full detail: `references/task-lifecycle.md`. Before integrating or deleting an
 agent-owned checkout, read `references/agent-retirement.md`.
+
+### Repository flow preview
+
+`dev flow [repo]` is a preview-labelled, full-screen, TTY-only repository
+state-machine UI independent of the six-view dashboard. From any canonical or
+linked checkout it opens the canonical repository and focuses that exact
+surface; outside Git it opens a picker. It lists every registered worktree plus
+task-only records, including COLD/DONE tasks without a checkout.
+
+Rows are `canonical`, `managed`, `unmanaged`, `harness`, `task-only`, or
+`conflict`. Managed bindings receive legal mode/state lifecycle actions.
+Eligible unmanaged linked rows receive metadata-only Adopt and clean, non-force,
+branch-preserving Remove Checkout. Canonical checkout removal, harness cleanup,
+and destructive conflict resolution fail closed.
+
+Enter always builds a plan first. The plan separates persisted HOT/WARM/COLD/DONE
+intent from live facts, shows conditions/remediation/effects/retained resources/
+fallback, and applies only after `y` or its displayed typed token. Apply locks and
+revalidates the task revision plus exact repository/worktree/ref/runtime/artifact
+identity; partial effects remain in a result ledger with recovery.
+
+`r` reloads local facts without network access. `R` offers explicit fetch,
+review query, or both; review evidence is run-local and only portable existence,
+state, draft, URL, provider, and observation time—not decisions or checks.
+Runtime `none` leaves occupancy unobserved without invalidating otherwise fresh
+local Git/task facts. The preview omits dirty commit/discard, WIP, shared-writer,
+takeover, and unknown-runtime overrides; use the displayed CLI fallback when an
+expert compatibility flag is actually required.
 
 ## Pick the task's checkout mode
 
@@ -146,6 +174,7 @@ dev edit                   # open the effective config; generate it first if abs
 dev ls                     # what am I working on, everywhere
 dev ls --json              # stable machine-readable form (also over ssh)
 dev status                 # local repo/branch/task/session + scoped readiness
+dev flow [repo]            # TTY-only guarded repository lifecycle preview
 dev sweep                  # what has gone stale or drifted, and what to do
 dev sweep --apply          # act on it, confirming each change
 dev sweep --merged-worktrees  # from main, audit contained tracked/untracked worktrees
@@ -263,7 +292,10 @@ it runs. Legacy `.dev.toml` retains its compatibility behavior.
 
 ## Dashboard and forge inventory
 
-The TUI has TASKS, REPOS, FLEET, TRY, REMOTE and SKILLS views, switched with tab
+Bare `dev` / `dev tui` is the six-view dashboard described here. It is separate
+from the plan-first `dev flow [repo]` repository lifecycle preview above.
+
+The dashboard has TASKS, REPOS, FLEET, TRY, REMOTE and SKILLS views, switched with tab
 or vim-style h/l. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions;
 `a` includes retained history. Archive is a reversible same-filesystem move,
 not deletion or disk reclamation. `?` opens the full key map.
@@ -587,8 +619,9 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 - **Removing a worktree never deletes the branch.** Those are separate
   decisions; conflating them is how work gets lost.
 - **Bare `dev done` is interactive only on a TTY.** It reports branch relation
-  and dirty-content equivalence, then offers commit/discard and FF/PR/cleanup.
-  Non-interactive use remains report-only without `--ff`/`--pr`. Unique discard
+  and dirty-content equivalence, then offers commit/discard and FF/PR/merged
+  handling. It records DONE without closing/removing resources; Retire is
+  separate. Non-interactive use remains report-only without `--ff`/`--pr`. Unique discard
   requires `DROP` or explicit `--dirty=discard --yes`.
 - **The stats sampler must be scheduled.** `dev stats` is empty until
   `dev stats backfill` runs once and `dev stats sample` runs periodically.

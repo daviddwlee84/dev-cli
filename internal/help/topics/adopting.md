@@ -41,6 +41,15 @@ turn-scoped worktrees an agent harness creates and cleans up itself.
 
 Nothing on disk changes either way. Adopting only writes task entries.
 
+For one exact linked checkout, `dev flow [repo]` offers the same metadata-only
+boundary without applying the command-wide candidate report. Select an
+`unmanaged` row, choose **Adopt**, inspect the plan, then approve it. The plan
+revalidates Git/worktree/task/base/runtime/agent identity and refuses canonical,
+harness-owned, already-claimed, locked/prunable, detached, or ambiguous rows.
+A dirty checkout may be adopted because no bytes change. With runtime `none`,
+occupancy is unobserved and the new task remains WARM rather than being called
+falsely HOT.
+
 Afterwards, give the ones you care about a next action — that is what makes
 parking them cheap later:
 

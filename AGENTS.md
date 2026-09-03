@@ -52,17 +52,19 @@ cmd/dev/main.go
 
 - `config` owns defaults, TOML overlays, validation, and XDG paths.
 - `gitx` is the Git porcelain boundary and canonicalizes repository identity through the shared Git common directory.
-- `task` persists only human intent Git cannot derive: task mode/state, owner, next action, and runtime hints.
+- `task` persists only human intent Git cannot derive: task mode/state, owner, next action, and runtime hints. Lifecycle callers use exact-record revisions and locked compare-and-update/delete transactions rather than treating a previously read task as current.
 - `wt` owns managed linked-worktree creation, placement, provisioning plans, and safe removal. Runtimes never create or manage Git worktrees; they surface checkout or experiment paths selected and validated by the calling `dev` flow, including managed, external, or adopted worktrees and non-Git Try directories.
 - `runtime` abstracts Herdr, tmux, Zellij, and the no-multiplexer backend. Handles are backend-qualified hints and must be checked against live checkout coverage before reuse.
-- `repo` discovers and deduplicates repositories; `inventory` joins repositories, Git state, tasks, worktrees, and live runtime data. CLI listings and the TUI consume this joined view.
+- `taskflow` is the UI-agnostic lifecycle authority: it separates recorded intent, typed live observations, immutable guarded plans, approvals, and partial result ledgers. Apply locks and reloads task/Git/worktree/runtime/artifact/remote identity, then rejects stale authority before mutation.
+- `repo` discovers and deduplicates repositories; `inventory` joins repositories, Git state, tasks, all registered worktrees, and live runtime data. CLI listings and UI projections consume this joined view.
+- `flowtui` is an independent Bubble Tea model for the preview `dev flow` repository state-machine UI. It receives repository reads and taskflow Plan/Apply callbacks; do not embed it in or add a mode to the dashboard's `tui` model.
 - `catalog` stores stable repository/Try identity and personal metadata. `experiment` owns Try creation, archive/restore, and graduation, including intent records and rollback/reconciliation around moves.
 - `note` stores multiple repository thoughts as durable Markdown keyed by catalog ID and maintains a rebuildable SQLite FTS index. It is distinct from task context and the catalog's single metadata summary.
 - `tui` owns Bubble Tea state/rendering only. `internal/cli/tui.go` injects callbacks to the same services used by non-interactive commands.
 - `stats` is durable SQLite data; `diskusage`, note FTS, and forge/gitignore data are regenerable caches. Do not treat stats as cache.
 - `forge` wraps optional `gh`, `glab`, and Azure CLI integrations and must degrade to local Git behavior when they are unavailable.
 
-The principal task flow spans `internal/cli/start.go`, `start_flow.go`, `gitx`/`wt`, `runtime`, and `task`: resolve the canonical repository and explicit base, create or select the checkout, provision/open it, then persist and annotate the task. Lifecycle behavior lives in `park.go`, `resume.go`, `done.go`, and `sweep.go`; preserve their report-before-apply and no-data-loss ordering.
+The principal task start flow spans `internal/cli/start.go`, `start_flow.go`, `gitx`/`wt`, `runtime`, and `task`: resolve the canonical repository and explicit base, create or select the checkout, provision/open it, then persist and annotate the task. Task-backed park/resume/completion/retirement and exact unmanaged Adopt/Remove policy belong in `taskflow`; CLI commands, the dashboard, `sweep`, and `flowtui` are adapters. Preserve report-before-apply and no-data-loss ordering, including the isolated compatibility paths that have not migrated to taskflow.
 
 State is split intentionally:
 
@@ -75,11 +77,16 @@ State is split intentionally:
 
 ## Behavioral contracts
 
-- Task modes are `worktree`, `branch`, and `direct`; lifecycle states are `hot`, `warm`, `cold`, and `done`.
+- Task modes are `worktree`, `branch`, and `direct`; lifecycle states are `hot`, `warm`, `cold`, and `done`. READY/REVIEW/MERGED/RETIRED are action readiness or result milestones, never extra persisted states.
+- Persisted intent, observed facts, and guarded action plans are separate layers. Unknown, failed, skipped, loading, or stale observations never become a false clean/closed fact.
 - Use an explicit base for branch/worktree creation. Do not infer a safe base from whichever branch happens to be checked out.
 - Never nest a managed worktree inside a repository. Removing a worktree does not remove its branch, and dirty removal stays opt-in.
 - Cold parking requires committed, pushed, reconstructible work before runtime/worktree cleanup.
-- Reconciliation flows such as `sweep`, `adopt`, and bootstrap organization plans report before applying changes. Direct actions such as `wt rm`, `tries archive`, and `cache clear` mutate immediately after their own safety checks; do not treat them as previews.
+- A taskflow Plan is bound to the exact task revision and repository/worktree/ref/runtime/artifact identities shown at Plan time. Apply must lock, reload, and revalidate those identities; a changed revision or authority produces a stale-plan result with no new effect.
+- Managed rows receive only legal mode/state lifecycle actions. An unmanaged linked checkout may be adopted by metadata-only task creation or removed only when exact, clean, unclaimed, non-harness, and branch-preserving; canonical, harness-owned, ambiguous/conflicting, locked, prunable, or incompletely observed rows fail closed for destructive actions.
+- Local repository refresh must not contact remotes. Fetching refs and querying a forge are explicit network actions, and review evidence is run-local manual evidence limited to portable existence/state/draft/URL/provider/time fields; never infer review decisions or checks.
+- Reconciliation flows such as `sweep`, command-level `adopt`, and bootstrap organization plans report before applying changes. Direct actions such as `wt rm`, `tries archive`, and `cache clear` mutate immediately after their own safety checks; do not treat them as previews. `dev flow` is plan-first regardless of the adapted command's normal CLI interaction.
+- Raw Git and configured external tools remain outside dev-mediated locks, revalidation, and safety guarantees. Existing expert CLI flags remain compatibility surface even when the preview flow deliberately omits them.
 - A recognized agent in a canonical checkout occupies it regardless of whether its status is working, idle, done, or unknown. Shared-writer overrides require coordinated disjoint ownership.
 - A parallel launch target is only the exact root pane returned for a newly created first-class Herdr worktree; reused/fallback/unverified surfaces fail closed.
 - `dev ls --json` is an external automation contract. Add fields rather than renaming/removing existing fields; apply the same compatibility care to other documented structured output.

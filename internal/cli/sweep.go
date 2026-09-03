@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	retirement "github.com/daviddwlee84/dev-cli/internal/retire"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 	"github.com/spf13/cobra"
 )
 
@@ -146,6 +148,18 @@ Nothing here ever deletes uncommitted work.`,
 func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Duration, retireOptions sweepRetireOptions) []suggestion {
 	t := r.Task
 	var out []suggestion
+	current, currentErr := app.Tasks.GetRecord(t.ID)
+	if currentErr != nil || !reflect.DeepEqual(current.Task, *t) {
+		detail := "task changed after the sweep inventory snapshot"
+		if currentErr != nil {
+			detail = "task could not be reloaded after the sweep inventory snapshot: " + currentErr.Error()
+		}
+		return []suggestion{{
+			row: r, reason: detail,
+			action: "rerun sweep to inspect the current task revision — not changed automatically",
+		}}
+	}
+	revision := current.Revision
 
 	// A task whose repository is gone cannot be finished, resumed, parked or
 	// retired: every one of those resolves the repository first, and `dev done`
@@ -162,7 +176,7 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 			row:    r,
 			reason: fmt.Sprintf("repository %s no longer exists", config.Contract(t.RepoPath)),
 			action: fmt.Sprintf("reap the task entry %s (Git keeps any work; this drops only dev's record)", t.ID),
-			apply:  func() error { return app.Tasks.Delete(t.ID) },
+			apply:  func() error { return sweepDeleteTask(ctx, app.Tasks, t.ID, revision) },
 		})
 		return out
 	}
@@ -172,14 +186,20 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 	switch {
 	// A hot task with no live session is the commonest drift: the session was
 	// closed (or the machine rebooted) without parking.
-	case t.State == task.Hot && !r.Live():
+	case t.State == task.Hot && r.StateDrift() == "no live session":
+		reason := fmt.Sprintf("hot but no live session, idle %s", humanAge(r.Age()))
+		session, plan, planErr := sweepTaskPlan(ctx, app, t.ID, flow.ParkWarmOptions{})
+		if planErr != nil || plan.Availability != flow.AvailabilityReady {
+			out = append(out, suggestion{row: r, reason: reason + ", but guarded warm parking is blocked",
+				action: sweepPlanBlocker(plan, planErr) + " — not changed automatically"})
+			break
+		}
 		out = append(out, suggestion{
-			row:    r,
-			reason: fmt.Sprintf("hot but no live session, idle %s", humanAge(r.Age())),
-			action: fmt.Sprintf("mark %s warm", t.ID),
+			row: r, reason: reason, action: fmt.Sprintf("mark %s warm", t.ID),
 			apply: func() error {
-				t.State = task.Warm
-				return app.Tasks.Save(t)
+				result, err := session.apply(ctx, plan, flow.Approve(plan.PlanID))
+				renderLifecycleResult(app, plan, result)
+				return err
 			},
 		})
 
@@ -187,6 +207,11 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 	// the worktree costs disk and clutters every listing.
 	case t.State == task.Warm && r.Age() > stale:
 		reason := fmt.Sprintf("warm and untouched for %s", humanAge(r.Age()))
+		if t.EffectiveMode() == task.ModeDirect {
+			out = append(out, suggestion{row: r, reason: reason + ", but direct tasks cannot go cold",
+				action: "keep it warm or finish it — not changed automatically"})
+			break
+		}
 		if r.Status.Dirty() {
 			out = append(out, suggestion{row: r, reason: reason + ", but has uncommitted work",
 				action: "commit or `dev park --wip` before going cold — not changed automatically"})
@@ -197,24 +222,21 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 				action: fmt.Sprintf("push %s so it can go cold: dev park %s --cold --push", t.Branch, t.ID)})
 			break
 		}
+		session, plan, planErr := sweepTaskPlan(ctx, app, t.ID, flow.ParkColdOptions{})
+		if planErr != nil || plan.Availability != flow.AvailabilityReady {
+			detail := sweepPlanBlocker(plan, planErr)
+			out = append(out, suggestion{row: r, reason: reason + ", but guarded cold parking is blocked",
+				action: detail + " — not changed automatically"})
+			break
+		}
 		out = append(out, suggestion{
 			row:    r,
 			reason: reason + ", clean and pushed",
 			action: fmt.Sprintf("go cold: remove %s (branch and remote keep the work)", config.Contract(r.Checkout)),
 			apply: func() error {
-				if t.WorktreePath != "" {
-					if err := ensureArtifactsFinalized(app, t.WorktreePath); err != nil {
-						return err
-					}
-					if err := safeRemoveWorktree(ctx, runtimeForTask(app, t), t.RepoPath, t.WorktreePath,
-						false, false, false, 5*time.Second); err != nil {
-						return err
-					}
-					t.WorktreePath = ""
-				}
-				t.State = task.Cold
-				clearTaskRuntime(t)
-				return app.Tasks.Save(t)
+				result, err := session.apply(ctx, plan, flow.Approve(plan.PlanID))
+				renderLifecycleResult(app, plan, result)
+				return err
 			},
 		})
 
@@ -225,26 +247,24 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 		if retireOptions.deleteBranches && t.Branch != "" && t.Branch != t.Base {
 			action += fmt.Sprintf(" and delete %s", t.Branch)
 		}
+		session, plan, planErr := sweepTaskPlan(ctx, app, t.ID, flow.RetireOptions{
+			CloseUnknown: retireOptions.closeUnknown, AssumeNoRuntime: retireOptions.assumeNoRuntime,
+			DeleteBranch: retireOptions.deleteBranches,
+		})
+		if planErr != nil || plan.Availability != flow.AvailabilityReady {
+			out = append(out, suggestion{row: r, reason: "merged, but guarded retirement is blocked",
+				action: sweepPlanBlocker(plan, planErr) + " — not changed automatically"})
+			break
+		}
 		out = append(out, suggestion{
-			row:    r,
-			reason: "merged, cleanup pending",
-			action: action,
+			row: r, reason: "merged, cleanup pending", action: action,
 			apply: func() error {
-				if err := ensureArtifactsFinalized(app, checkoutOf(t)); err != nil {
-					return err
+				approval := flow.Approve(plan.PlanID)
+				if plan.Confirmation.Kind == flow.ConfirmationTyped {
+					approval = flow.ApproveWithToken(plan.PlanID, plan.Confirmation.Token)
 				}
-				target, rt, err := retirementTargetForTask(ctx, app, t)
-				if err != nil {
-					return err
-				}
-				service := &retirement.Service{Runtime: rt, Tasks: app.Tasks}
-				_, err = service.Retire(ctx, retirement.Request{
-					Target: target,
-					Safety: retirement.Options{
-						CloseUnknown: retireOptions.closeUnknown, AssumeNoRuntime: retireOptions.assumeNoRuntime,
-					},
-					DeleteBranch: retireOptions.deleteBranches,
-				})
+				result, err := session.apply(ctx, plan, approval)
+				renderLifecycleResult(app, plan, result)
 				return err
 			},
 		})
@@ -261,7 +281,7 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 			row:    r,
 			reason: fmt.Sprintf("branch %s no longer exists", t.Branch),
 			action: fmt.Sprintf("reap the task entry %s", t.ID),
-			apply:  func() error { return app.Tasks.Delete(t.ID) },
+			apply:  func() error { return sweepDeleteTask(ctx, app.Tasks, t.ID, revision) },
 		})
 		return out
 	}
@@ -274,19 +294,7 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 		out = append(out, suggestion{
 			row:    r,
 			reason: "cold, but its worktree is still on disk",
-			action: fmt.Sprintf("remove %s (branch and remote keep the work)", config.Contract(t.WorktreePath)),
-			apply: func() error {
-				if err := ensureArtifactsFinalized(app, t.WorktreePath); err != nil {
-					return err
-				}
-				if err := safeRemoveWorktree(ctx, runtimeForTask(app, t), t.RepoPath, t.WorktreePath,
-					false, false, false, 5*time.Second); err != nil {
-					return err
-				}
-				t.WorktreePath = ""
-				clearTaskRuntime(t)
-				return app.Tasks.Save(t)
-			},
+			action: fmt.Sprintf("reconcile %s with an exact guarded plan — not changed automatically", config.Contract(t.WorktreePath)),
 		})
 	}
 
@@ -296,20 +304,42 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 		out = append(out, suggestion{
 			row:    r,
 			reason: "records a worktree that git no longer knows about",
-			action: fmt.Sprintf("clear the stale worktree path %s", config.Contract(wtPath)),
-			apply: func() error {
-				if err := gitx.PruneWorktrees(ctx, t.RepoPath); err != nil {
-					return err
-				}
-				t.WorktreePath = ""
-				if t.State == task.Hot || t.State == task.Warm {
-					t.State = task.Cold
-				}
-				return app.Tasks.Save(t)
-			},
+			action: fmt.Sprintf("inspect repository-wide prune scope before clearing %s — not changed automatically", config.Contract(wtPath)),
 		})
 	}
 	return out
+}
+
+func sweepTaskPlan(ctx context.Context, app *App, id string, options flow.ActionOptions) (lifecycleSession, flow.Plan, error) {
+	session, err := newLifecycleSession(ctx, app, func() (*task.Task, error) {
+		return app.Tasks.Get(id)
+	})
+	if err != nil {
+		return lifecycleSession{}, flow.Plan{}, err
+	}
+	plan, err := session.plan(ctx, options)
+	return session, plan, err
+}
+
+func sweepPlanBlocker(plan flow.Plan, err error) string {
+	if err != nil {
+		return err.Error()
+	}
+	var parts []string
+	for _, condition := range append(plan.InputConditions(), plan.BlockingConditions()...) {
+		parts = append(parts, string(condition.Code)+": "+condition.Evidence)
+	}
+	if len(parts) == 0 {
+		return "guarded plan is " + string(plan.Availability)
+	}
+	return strings.Join(parts, "; ")
+}
+
+func sweepDeleteTask(ctx context.Context, store *task.Store, id, revision string) error {
+	if revision == "" {
+		return fmt.Errorf("task %s had no report-time revision; rerun sweep", id)
+	}
+	return store.DeleteIfRevision(ctx, id, revision)
 }
 
 // dirExists reports whether path is a directory that can be read right now.
@@ -411,83 +441,57 @@ func suggestMergedWorktrees(app *App, ctx context.Context, rows []inventory.Row,
 			continue
 		}
 
-		synthetic := &task.Task{
+		displayTask := &task.Task{
 			ID: task.MakeID(repository.Name, worktree.Branch), Name: worktree.Branch,
 			Repo: repository.Name, RepoPath: repository.MainRoot, Branch: worktree.Branch,
 			Base: base, WorktreePath: canonical, Mode: task.ModeWorktree, State: task.Done,
 		}
-		row := inventory.Row{Task: synthetic, Checkout: canonical, CheckoutExists: true}
-		if worktree.Locked {
-			reason := "worktree is locked"
-			if worktree.LockedReason != "" {
-				reason += ": " + worktree.LockedReason
-			}
-			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, reason))
-			continue
-		}
-		if worktree.Prunable {
-			reason := "worktree registration is prunable"
-			if worktree.PrunableReason != "" {
-				reason += ": " + worktree.PrunableReason
-			}
-			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, reason))
-			continue
-		}
-		worktreeStatus, statusErr := gitx.StatusOf(ctx, canonical)
-		if statusErr != nil {
-			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, statusErr.Error()))
-			continue
-		}
-		row.Status = worktreeStatus
-		if worktreeStatus.Dirty() {
+		row := inventory.Row{Task: displayTask, Checkout: canonical, CheckoutExists: true}
+		if inventory.IsClaudeHarnessWorktree(repository.Root, canonical) {
 			suggestions = append(suggestions, mergedWorktreeBlocker(row, base,
-				fmt.Sprintf("worktree is dirty (%s)", worktreeStatus.Breakdown())))
+				"checkout is owned by the Claude harness"))
 			continue
 		}
-		if operation, active, operationErr := gitx.InProgress(canonical); operationErr != nil {
-			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, operationErr.Error()))
-			continue
-		} else if active {
-			suggestions = append(suggestions, mergedWorktreeBlocker(row, base,
-				fmt.Sprintf("Git operation %s is in progress", operation)))
+		locator, locateErr := exactUnmanagedWorktreeLocator(ctx, repository.MainRoot, canonical)
+		if locateErr != nil {
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, locateErr.Error()))
 			continue
 		}
-		if artifactErr := ensureArtifactsFinalized(app, canonical); artifactErr != nil {
-			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, artifactErr.Error()))
+		service, serviceErr := newCLILifecycleService(app)
+		if serviceErr != nil {
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, serviceErr.Error()))
 			continue
 		}
-		inspection, inspectErr := retirement.Inspect(ctx, app.Runtime(), canonical, retirement.Options{
-			CloseUnknown: options.closeUnknown, AssumeNoRuntime: options.assumeNoRuntime,
+		request, requestErr := flow.NewRequest(locator, flow.RemoveCheckoutOptions{
+			RequireContained: true, ContainmentBase: base,
+			DeleteContainedBranch: options.deleteBranches,
+			CloseUnknown:          options.closeUnknown, AssumeNoRuntime: options.assumeNoRuntime,
 		})
-		if inspectErr != nil {
-			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, inspectErr.Error()))
+		if requestErr != nil {
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, requestErr.Error()))
 			continue
 		}
-		if !inspection.Ready() {
-			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, strings.Join(inspection.Blockers, "; ")))
+		plan, planErr := service.Plan(ctx, request)
+		if planErr != nil || plan.Availability != flow.AvailabilityReady {
+			suggestions = append(suggestions, mergedWorktreeBlocker(row, base, sweepPlanBlocker(plan, planErr)))
 			continue
 		}
-
 		branch := worktree.Branch
-		checkout := canonical
-		action := fmt.Sprintf("retire merged worktree %s", config.Contract(checkout))
+		action := fmt.Sprintf("remove merged unmanaged worktree %s (branch %s kept)",
+			config.Contract(canonical), branch)
 		if options.deleteBranches {
-			action += fmt.Sprintf(" and delete %s", branch)
+			action = fmt.Sprintf("remove merged unmanaged worktree %s and delete contained branch %s",
+				config.Contract(canonical), branch)
 		}
 		suggestions = append(suggestions, suggestion{
 			row: row, reason: fmt.Sprintf("untracked worktree branch is contained in %s", base), action: action,
 			apply: func() error {
-				service := &retirement.Service{Runtime: app.Runtime()}
-				_, err := service.Retire(ctx, retirement.Request{
-					Target: retirement.Target{
-						RepoPath: repository.MainRoot, CheckoutPath: checkout,
-						Branch: branch, Base: base, LinkedWorktree: true,
-					},
-					Safety: retirement.Options{
-						CloseUnknown: options.closeUnknown, AssumeNoRuntime: options.assumeNoRuntime,
-					},
-					DeleteBranch: options.deleteBranches,
-				})
+				approval := flow.Approve(plan.PlanID)
+				if plan.Confirmation.Kind == flow.ConfirmationTyped {
+					approval = flow.ApproveWithToken(plan.PlanID, plan.Confirmation.Token)
+				}
+				result, err := service.Apply(ctx, plan, approval)
+				renderLifecycleResult(app, plan, result)
 				return err
 			},
 		})

@@ -2,7 +2,7 @@
 description: 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。
 authority: project
 status: stable
-verified_on: 2026-08-28
+verified_on: 2026-09-01
 lang: zh-TW
 ---
 
@@ -35,6 +35,7 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 | `dev done --pr` | Push branch，並透過可用的 forge CLI 開啟 pull/merge request。Task 保持在 review 狀態，不是 MERGED。 |
 | `dev done --merged --base-ref <ref>` | 驗證某個已在外部 merge 的 branch 是否被 `<ref>` 包含，並記錄為 MERGED。 |
 | `dev done --merged --base-ref <ref> --confirm-squash <merge-commit>` | 同上，但用於 squash merge：attest（斷言）已證明被 `<ref>` 包含的該 commit 代表這條 feature branch。這是 dev 無法自行驗證的 operator assertion。 |
+| `dev flow [repo]` | 在獨立 TTY preview 中顯示 DONE row 的 Retire (Keep Branch) 或 typed Retire + Delete Contained Branch plan；Enter 只規劃，第二次 approval 才套用。 |
 | `dev artifact discard <intent> --yes` | 記錄某個 intent 永遠無法 finalize——transcript 從未被寫出，或 rebase 之後 HEAD 已不存在——使它不再阻擋 integration 與 retirement。它不會 commit 也不會復原任何東西，會先印出確切將被放棄的內容，並拒絕仍為 `armed` 的 intent，因為 finalize 才是保存 transcript 的路徑。 |
 | `dev retire [task-or-worktree] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | 重新解析每一個 covering runtime session，拒絕 active agent 與 mixed-purpose workspace，等待其關閉，重新驗證 Git state，才移除 linked worktree（不使用 force）。只有在所有要求的步驟都成功後，才刪除 task record。 |
 | `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | 從 canonical checkout 執行，回報（加上 `--apply` 時則 retire）branch 已被 base 包含的 task-tracked 與 unmanaged linked worktree。 |
@@ -44,6 +45,12 @@ interactive 時提供 commit 或 discard，在 script 中則接受明確的 `--d
 policy。該 wizard 詳見[變更流工作流程](change-stream-workflow.zh-TW.md)。
 `dev done` 上的 `--keep-worktree` 與 `--delete-branch` 之所以仍被接受，只是為了
 明確報錯並指向 `dev retire`。
+
+## Flow 中的 DONE 與 Retire
+
+`dev flow` 把 persisted `DONE` intent 與 live cleanup evidence 分開。DONE/MERGED row 仍可顯示 runtime、worktree、branch 與 task record；只有 Retire result 完成最後的 CAS task deletion 才是 RETIRED。UNMANAGED row 使用的是永遠保留 branch 的 Remove Checkout，不會製造 DONE/RETIRED task milestone；canonical 與 harness row 不能 Remove Checkout。
+
+Flow TUI 沒有 `--close-unknown`、`--assume-no-runtime`、dirty discard 或 generic force。`runtime=none` 會保留「session/agent unobserved」，不冒充已證明 closed。需要 expert acknowledgement 時，離開 Flow 並明確執行 plan 顯示的 fallback CLI，再接受該 command 自己的 guards。完整 row/action matrix 見 [Repository Flow 預覽](repository-flow.zh-TW.md)。
 
 ## 一般 local flow
 
@@ -102,6 +109,8 @@ dev done <task> --merged --base-ref origin/main --confirm-squash <merge-commit>
 
 `--close-unknown` 與 `--assume-no-runtime` 只放寬 fail-closed 的*觀測結果*（無法讀取的 status、無法列舉的 runtime list）。這兩個 flag 都絕不會 bypass caller containment 或 active-agent state。`retirement.Service.Retire` 在 runtime session 關閉後，也會重新驗證 target identity、Git ancestry、進行中的 Git operation（`gitx.InProgress`，檢查 `MERGE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`、`rebase-merge`、`rebase-apply`、`sequencer`；不含 `REBASE_HEAD`，因為 Git 在 rebase 完成後仍會保留它）以及 worktree 是否 clean——因為 runtime draining 期間現實可能已改變，先前的驗證結果不會跨越這個邊界沿用。
 
+Taskflow Apply 也不信任畫面時的 snapshot：它鎖定 canonical repository/task store、重新讀取 task revision 與 authority fingerprint，並在 runtime closure、worktree removal、optional branch deletion 與最後 task reap 前逐段 revalidate。Result ledger 依序保留 `ATTEMPTED`/`COMPLETED`/`FAILED`；若前段 cleanup 已完成而後段失敗，會回報 partial success 與 recovery，而不宣稱 rollback。
+
 ## 用 sweep 做定期 cleanup
 
 ```bash
@@ -114,7 +123,9 @@ dev sweep --merged-worktrees --apply --yes
 
 ## 安全邊界
 
-原始的 `git worktree remove --force` 會完全繞過 dev——絕不要在佔用 target 的 agent 中執行它。dev 的保證僅止於：沒有任何 dev-mediated 路徑會執行 forced removal；它無法阻止 operator 或 script 直接呼叫 Git。
+原始的 `git worktree remove --force` 會完全繞過 dev——絕不要在佔用 target 的 agent 中執行它。dev 的保證僅止於：沒有任何 dev-mediated 路徑會執行 forced removal；它無法阻止 operator 或 script 直接呼叫 Git。Bare dashboard 的 configured `[[tui.tools]]` command 同樣是任意 external-tool escape boundary，不會繼承 Flow 的 PlanID、conditions、ledger 或 revalidation。
+
+一般 task-backed retirement 使用 `internal/taskflow`。Explicit unmanaged path 形式的 `dev retire` 仍是隔離的 compatibility implementation，部分 `sweep` record-only/orphan-salvage actions 也仍在 taskflow 之外。既有 CLI acknowledgement flags 維持相容，但 Flow preview 不提供其中任何一個；不能把本頁的 shared planner claim 擴張到所有 historical cleanup path。
 
 曾經真實發生過：一個 Codex session 從另一個 checkout 刪除了自己已註冊的 worktree 與 branch。Herdr 仍讓該 workspace 與 terminal 保持存活，因為 Unix process 在路徑被 unlink 之後仍可持有開啟中的 cwd inode；接著 SpecStory 又在同一路徑重新建立、但內容只剩 `.specstory/`。這個 shell 看起來還活著，但已經不再是一個 Git checkout：
 
@@ -134,6 +145,8 @@ fatal: not a git repository (or any of the parent directories): .git
 - [`internal/skill/dev-cli/references/agent-retirement.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/agent-retirement.md)
 - [`internal/help/topics/retirement.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/retirement.md)
 - [`internal/cli/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/retire.go)
+- [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
+- [`internal/taskflow/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/retire.go)
 - [`internal/cli/artifact.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/artifact.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)

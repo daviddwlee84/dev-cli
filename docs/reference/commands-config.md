@@ -212,9 +212,31 @@ cursor, and Esc/Ctrl-C cancellation work as terminal actions rather than being
 inserted as raw escape bytes. Buffered and piped non-TTY input retains its
 line-oriented behavior.
 
+## `dev flow [repo]` preview
+
+`dev flow [repo]` is an independent full-screen command for interactive TTYs;
+it has no JSON or non-interactive contract. With no `repo`, a canonical or
+linked checkout opens the repository identified by the same Git common
+directory and focuses the exact current surface. Outside Git it opens an
+asynchronous repository picker. An explicit `repo` overrides cwd.
+
+Startup and `r` load only local topology and evidence. `R` offers Fetch refs,
+Refresh PR/MR, or Both; every choice first creates an exact guarded plan and
+then requires approval. A provider review observation retains only portable,
+run-local existence, `open`/`draft`/`merged`/`closed` state, URL, provider, and
+observation time; it does not represent CI checks or approvals. `runtime=none`
+remains unobserved and does not expose expert overrides such as
+`--assume-no-runtime`. See [Repository lifecycle flow](../guides/repository-flow.md)
+for keys, row kinds, partial ledgers, and the raw-tool escape boundary.
+
 ## `dev done` finish flags
 
-`dev done` for branch/worktree tasks integrates through exactly one of `--ff` (rebase onto the base, then fast-forward it) or `--pr` (push and open a pull/merge request). Omitting both opens the interactive finish wizard on a TTY — see [Change-stream workflow](../guides/change-stream-workflow.md) for the prompts.
+`dev done` for branch/worktree tasks integrates through exactly one of `--ff`
+(rebase onto the base, then fast-forward it), `--pr` (push and open a pull/merge
+request), or `--merged` (verify external integration against `--base-ref`).
+Omitting an integration choice opens the interactive finish wizard on a TTY —
+see [Change-stream workflow](../guides/change-stream-workflow.md) for the
+prompts.
 
 A dirty checkout is handled by `--dirty <auto|fail|commit|discard>` (default `auto`):
 
@@ -225,7 +247,16 @@ A dirty checkout is handled by `--dirty <auto|fail|commit|discard>` (default `au
 | `commit` | commits everything with `--message`/`-m` (prompted interactively if omitted) |
 | `discard` | resets tracked changes and removes untracked files; destructive, requires `--yes` outside a TTY |
 
-`--yes`/`-y` confirms the selected finish plan; it is mandatory for a non-interactive `--dirty discard` and otherwise skips the interactive confirmation step. `--keep-worktree` keeps the worktree after `--ff` integration (default: removed once merged), `--push` also pushes the resulting branch, and `--delete-branch` deletes the branch once its commits are contained in the base — never a branch with unpushed commits.
+`--yes`/`-y` confirms the selected finish plan; it is mandatory for a
+non-interactive `--dirty discard` and otherwise skips the interactive
+confirmation step. `--push` pushes the branch or base selected by the
+integration mode. Successful local or externally verified integration records
+DONE/MERGED while always retaining the runtime, worktree, and branch for a
+separate `dev retire`; `--keep-worktree` remains only as a no-op compatibility
+warning, while `--delete-branch` fails with guidance to use
+`dev retire --delete-branch`. `--merged` can use
+`--confirm-squash <merge-commit>` as explicit operator attestation for a squash
+result; provider status never implies that attestation.
 
 ## Configuration
 

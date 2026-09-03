@@ -5,6 +5,7 @@ import (
 	"context"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -107,7 +108,7 @@ func TestResumeKeepsValidatedLiveHandle(t *testing.T) {
 	}
 }
 
-func TestResumeWithNoneDoesNotPersistPseudoHandle(t *testing.T) {
+func TestResumeWithNoneRequiresSharedWriterOverrideAndDoesNotPersistPseudoHandle(t *testing.T) {
 	r := gittest.New(t)
 	store := task.NewStore(t.TempDir())
 	tk := &task.Task{
@@ -119,6 +120,17 @@ func TestResumeWithNoneDoesNotPersistPseudoHandle(t *testing.T) {
 	}
 	app := &App{Cfg: config.Default(), Tasks: store, Out: &bytes.Buffer{}, Err: &bytes.Buffer{}, runtimeInstance: runtime.None{}}
 	cmd := newResumeCmd(app)
+	cmd.SilenceErrors, cmd.SilenceUsage = true, true
+	cmd.SetArgs([]string{tk.ID, "--fetch=false"})
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "session inventory is unsupported") {
+		t.Fatalf("runtime none resume error=%v", err)
+	}
+	blocked, err := store.Get(tk.ID)
+	if err != nil || blocked.State != task.Warm {
+		t.Fatalf("blocked runtime none resume changed task=%+v err=%v", blocked, err)
+	}
+	app.allowSharedCheckout = true
+	cmd = newResumeCmd(app)
 	cmd.SilenceErrors, cmd.SilenceUsage = true, true
 	cmd.SetArgs([]string{tk.ID, "--fetch=false"})
 	if err := cmd.Execute(); err != nil {

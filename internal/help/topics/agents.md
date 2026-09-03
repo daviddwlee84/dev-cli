@@ -82,11 +82,12 @@ non-Herdr, or unverified panes are not launch targets.
 Herdr `done` means a turn settled; it does not mean history is synced, review is
 complete, code is committed, or the workspace may close.
 
-- `dev park` closes the workspace and keeps the checkout.
-- `dev park --cold --push` closes the workspace and removes a reconstructible checkout.
-- `dev done --ff` integrates and cleans up the workspace/worktree.
+- `dev park` records WARM and keeps the checkout; a contained caller runtime stays alive.
+- `dev park --cold --push` closes externally and removes a reconstructible checkout.
+- `dev done --ff` integrates and records DONE; runtime/worktree/branch remain.
 - `dev done --pr` leaves the task and checkout for review.
-- `dev sweep` reports first; `--apply` is a separate confirmed action.
+- `dev flow [repo]` can plan DONE retirement, but Apply still requires an external safe caller.
+- `dev retire` closes/waits/removes/reaps; `dev sweep` reports first.
 
 `--cold --keep-session` is rejected because a live session must not point at a
 removed checkout.
