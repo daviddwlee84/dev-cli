@@ -572,13 +572,15 @@ Bare `dev` (or `dev tui`) opens seven lists, switched with `tab`:
 - **REMOTE** — repositories visible through authenticated forge CLIs, including
   configured Azure DevOps projects, marked when a local repo or Try exists.
   What can I open or clone.
-- **SKILLS** — native project/global agent-skill inventory across canonical
-  repositories plus the startup checkout, with local presence/integrity and an
-  explicitly checked upstream freshness state.
+- **SKILLS** — native project/global agent-skill inventory for the exact startup
+  checkout plus global sources, with local presence/integrity and an explicitly
+  checked upstream freshness state. Outside Git it becomes a cross-repository
+  inventory over accepted REPOS targets.
 - **MCP** — sanitized static MCP declarations for Claude Code, Codex, Cursor,
-  Gemini CLI, and OpenCode. It reports configured scopes and resolves only
-  Claude's documented project-approval settings; it does not claim connection
-  health or a generally effective merged runtime configuration.
+  Gemini CLI, and OpenCode, scoped to the same startup context inside Git and
+  widened across repositories outside Git. It resolves only Claude's documented
+  project-approval settings; it does not claim connection health or a generally
+  effective merged runtime configuration.
 
 The first view is constructed before runtime auto-detection, project-root lookup,
 cache decoding, shell-based tool checks, or the optional release refresh can
@@ -618,8 +620,9 @@ On TASKS and REPOS, `n` quick-adds a repository thought and `N` opens its notes
 overlay. Expanded children carry their own Git/session/task state and can be
 opened directly. In TRY, `n` creates or clones an experiment;
 `space` opens mark/deprecate/archive/restore/graduate actions; `a` includes
-retained history. SKILLS reuses the accepted REPOS snapshot, adds the exact
-startup worktree when distinct, and scans global paths once. `a` opens the
+retained history. Inside Git, SKILLS and MCP use only the exact startup worktree
+plus global/user sources; outside Git they reuse every accepted REPOS target and
+the ordinary startup directory. `a` opens the
 upstream interactive installer, `c` performs the opt-in read-only network check
 after the local snapshot has loaded, and `u` confirms before updating only the
 selected lock-managed skill in that row's checkout. Source checks hash Git object
@@ -730,7 +733,8 @@ contract also powers the optional Television channel and fzf shell helper under
 compose a selected exact clone URL with `dev repo clone` without teaching
 another command about forge freshness.
 
-SKILLS also loads lazily. Native reads use the versioned `skills@1.5.23`
+SKILLS also loads lazily. Inside Git it describes the exact startup checkout;
+outside Git it describes the accepted repository inventory. Native reads use the versioned `skills@1.5.23`
 77-agent path registry and lock files; they never start Node, `skills`, or `npx`.
 Use `dev skill list --all` for canonical repositories, `--repo` for one checkout,
 and `--check` only when a remote freshness check is wanted; checks hash Git object

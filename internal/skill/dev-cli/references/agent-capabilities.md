@@ -21,8 +21,10 @@ dev skill list --all --check --json
 
 Reads use a versioned snapshot of all 77 agent paths from `skills@1.5.23` plus
 project/global locks. They never execute `skills`, Node, npm, `npx`, agent
-detectors, or project code. `--all` scans canonical repositories; the TUI also
-adds its startup linked checkout when distinct and scans global paths once.
+detectors, or project code. `--all` scans canonical repositories. The TUI is
+context-first: inside Git it scans only the exact startup checkout plus global
+paths; outside Git it scans all accepted REPOS targets plus the ordinary startup
+directory.
 
 Keep status dimensions separate:
 
@@ -53,6 +55,9 @@ an absolute `CLAUDE_CONFIG_DIR` relocates user sources. `dev` resolves only
 Claude's documented user/project/local/managed project approvals; it does not
 guess a generally effective configuration. `configured`, `enabled`, and
 `disabled` are declaration/approval facts, not health.
+
+The TUI applies the same context-first target policy as SKILLS: the exact startup
+checkout inside Git, or the cross-repository REPOS inventory outside Git.
 
 The scanner never runs agent MCP commands, configured commands/helpers, servers,
 or URLs. It never expands environment variables, reads OAuth/token stores, or

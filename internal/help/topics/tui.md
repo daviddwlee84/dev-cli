@@ -15,8 +15,8 @@ Switch with `tab`, `l`/`h`, or right/left:
 | FLEET | What exists and is active on my other machines? | remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive or graduate? | experiment catalog + live Git/runtime state |
 | REMOTE | What can I open or clone? | authenticated forge CLI inventories |
-| SKILLS | Which agent skills are installed across repositories and globally? | native 77-agent path registry + lock metadata |
-| MCP | Which MCP servers are declared for supported agents? | sanitized static agent configuration files |
+| SKILLS | Which skills would an agent launched from this context read? | current checkout + global sources inside Git; all REPOS targets outside Git |
+| MCP | Which MCP declarations would that agent context expose? | sanitized static agent configuration files with the same context-first scope |
 
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes or the optional release refresh can
@@ -100,9 +100,11 @@ destination is labelled `inspect` with its exact path; dev does not delete it
 automatically. Filters include visibility, for example
 `vis:private`.
 
-SKILLS and MCP also load lazily after the accepted REPOS snapshot. Both scan
-each canonical repository plus a distinct startup linked checkout and read user/global
-sources once. Skill listing is native and never executes Node or a provider;
+SKILLS and MCP also load lazily after the accepted REPOS snapshot. Inside Git,
+both scan only the exact startup checkout and read user/global sources once, so
+unrelated projects do not add noise. Outside Git, both retain the dashboard's
+cross-repository inventory and scan every accepted REPOS target plus the
+ordinary startup directory. Skill listing is native and never executes Node or a provider;
 press `c` for the explicit read-only upstream source check. Refresh/check keeps
 installed rows visible. MCP lists static, sanitized declarations only and does
 not start or health-check servers. `r` reloads local declarations.

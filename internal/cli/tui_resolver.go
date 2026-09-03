@@ -54,8 +54,8 @@ func (r *tuiRuntimeResolver) Resolve(ctx context.Context) (runtime.Runtime, erro
 	}
 }
 
-// tuiProjectRootResolver keeps Git project-root discovery lazy and shared by
-// SKILLS reads/actions.
+// tuiProjectRootResolver keeps startup-context discovery lazy and shared by
+// SKILLS/MCP reads and skill actions.
 type tuiProjectRootResolver struct {
 	trace   *perftrace.Recorder
 	ctx     context.Context

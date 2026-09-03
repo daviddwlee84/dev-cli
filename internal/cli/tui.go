@@ -55,8 +55,8 @@ Seven lists, switched with tab:
   FLEET   repositories and active work across configured SSH machines
   TRY     scratch experiments and retained lifecycle history
   REMOTE  repositories visible through configured forge CLIs — what can I clone/open
-  SKILLS  repository/global agent skills, local status and update freshness
-  MCP     sanitized static MCP declarations for supported agents
+  SKILLS  startup-context/global agent skills; all repositories outside Git
+  MCP     startup-context static declarations; all repositories outside Git
 
 Navigation is vim-style, with arrows alongside:
 
@@ -323,18 +323,11 @@ func runTUI(app *App) error {
 		return fleetRows(results), err
 	}
 	capabilityTargets := func(ctx context.Context, locals []tui.RepoRow) ([]agenttarget.Target, error) {
-		repositories := make([]repo.Repo, 0, len(locals))
-		for _, row := range locals {
-			if !row.IsTry() {
-				repositories = append(repositories, row.Repo)
-			}
-		}
-		targets := agenttarget.FromRepositories(repositories)
 		current, err := projectRootResolver.ResolveTarget(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return agenttarget.WithCurrent(targets, current), nil
+		return tuiCapabilityTargets(locals, current), nil
 	}
 	reloadSkills := func(ctx context.Context, locals []tui.RepoRow) ([]agentskill.Skill, error) {
 		targets, err := capabilityTargets(ctx, locals)
@@ -754,6 +747,26 @@ func runTUI(app *App) error {
 		}
 	}
 	return nil
+}
+
+// tuiCapabilityTargets makes SKILLS and MCP describe the configuration an
+// agent launched from the startup context would see. Inside a Git checkout the
+// exact current worktree is the only project target; global sources are still
+// scanned once by the domain scanners. Outside Git, the dashboard retains its
+// cross-repository inventory role and includes every accepted REPOS target.
+func tuiCapabilityTargets(locals []tui.RepoRow, current agenttarget.Target) []agenttarget.Target {
+	repositories := make([]repo.Repo, 0, len(locals))
+	for _, row := range locals {
+		if !row.IsTry() {
+			repositories = append(repositories, row.Repo)
+		}
+	}
+	targets := agenttarget.FromRepositories(repositories)
+	if current.CheckoutRoot != "" && current.CommonDir != "" &&
+		!sameCleanPath(current.CheckoutRoot, current.CommonDir) {
+		return []agenttarget.Target{agenttarget.ReconcileCurrent(targets, current)}
+	}
+	return agenttarget.WithCurrent(targets, current)
 }
 
 func collectTries(ctx context.Context, app *App, rt runtime.Runtime, includeAll bool) ([]tui.TryRow, error) {

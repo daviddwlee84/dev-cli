@@ -25,8 +25,8 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 | FLEET | 設定的機器上有哪些 repository 與 active work？ | 已接受的 local REPOS snapshot 加上透過 SSH 取得的 remote `dev` snapshots |
 | TRY | 哪些 experiments 能 resume、archive 或 graduate？ | experiment catalog 加 live facts |
 | REMOTE | 有哪些 repository 能 open 或 clone？ | authenticated `gh`/`glab` inventories 與 cache |
-| SKILLS | Repositories 與 global scope 安裝了哪些 agent skills？ | native versioned 77-agent path registry 加 project/global locks |
-| MCP | Supported agents 宣告了哪些 MCP servers？ | Claude Code、Codex、Cursor、Gemini CLI 與 OpenCode 的 sanitized static config |
+| SKILLS | 從目前 context 啟動 agent 時會讀到哪些 skills？ | Git 內使用 exact startup checkout 加 global sources；Git 外使用所有 REPOS targets |
+| MCP | 該 context 會暴露哪些 MCP declarations？ | 採相同 context-first target scope 的 sanitized static config |
 
 初始 TASKS frame 會先建立，不等待 runtime auto-detection、project-root lookup、
 cache decode、shell tool probe 或 optional release refresh 完成。TASKS、REPOS 與
@@ -191,9 +191,10 @@ Note ID prefix 必須唯一，且至少八個字元。
 
 Configured `paths.state_dir/notes` 下的 Markdown 是 durable data；`$XDG_CACHE_HOME/dev/notes.db` 只是可重建的 search index。精確 flags 請見[命令與設定 reference](../reference/commands-config.md)中的完整 generated command reference。
 
-SKILLS 與 MCP 都會等目前 REPOS generation 被接受後才延遲載入。兩者會掃描每個
-canonical repository，並在 startup checkout 是不同 linked worktree 時額外加入它；
-global/user sources 只讀一次。Refresh 時會保留可用 rows；warning-only partial inventory
+SKILLS 與 MCP 都會等目前 REPOS generation 被接受後才延遲載入。在 Git 內，兩者只掃描
+exact startup checkout 加 global/user sources，符合從該處啟動 agent 實際會讀到的內容，
+不再混入無關 projects。在 Git 外則保留 cross-repository inventory，掃描所有 accepted
+REPOS targets 加 ordinary startup directory。Refresh 時會保留可用 rows；warning-only partial inventory
 仍維持 fresh，且 visible capability view 會在 REPOS recovery 後自動繼續載入。
 
 SKILLS 直接讀取 versioned `skills@1.5.23` 77-agent path registry 與 lock files；

@@ -24,8 +24,8 @@ dashboard tab or mode.
 | FLEET | What exists and is active on configured machines? | accepted local REPOS snapshot plus remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive, or graduate? | experiment catalog plus live facts |
 | REMOTE | What can I open or clone? | authenticated `gh`/`glab` inventories and cache |
-| SKILLS | Which agent skills are installed across repositories and globally? | native versioned 77-agent path registry plus project/global locks |
-| MCP | Which MCP servers are declared for supported agents? | sanitized static configuration for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode |
+| SKILLS | Which skills would an agent launched from this context read? | exact startup checkout plus global sources inside Git; all REPOS targets outside Git |
+| MCP | Which MCP declarations would that context expose? | sanitized static configuration with the same context-first target scope |
 
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes, or the optional release refresh can
@@ -210,8 +210,10 @@ A note ID prefix must be unique and at least eight characters.
 Markdown under configured `paths.state_dir/notes` is durable; `$XDG_CACHE_HOME/dev/notes.db` is only a rebuildable search index. See the [complete generated command reference](../reference/commands-config.md#complete-generated-command-reference) for exact flags.
 
 SKILLS and MCP both load lazily after the current REPOS generation is accepted.
-They scan each canonical repository and add the exact startup checkout when it is
-a distinct linked worktree; global/user sources are read once. Refreshes keep
+Inside Git they scan only the exact startup checkout plus global/user sources,
+matching what an agent launched there can read and excluding unrelated projects.
+Outside Git they retain the cross-repository inventory, scanning every accepted
+REPOS target plus the ordinary startup directory. Refreshes keep
 usable rows visible, warning-only partial inventories stay fresh, and a visible
 capability view resumes automatically after REPOS recovers.
 
