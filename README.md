@@ -277,6 +277,12 @@ dev repo setup . --preset agent-ready         # add the same setup to an existin
 initial commit. When the argument is clearly a Git URL, local Git path, or
 owner/name, however, `new`/`create` routes to the clone flow and preserves the
 source history and configured remote; `repo clone` remains the explicit spelling.
+Bare `dev repo clone` selects from the existing private forge cache without a
+network refresh, while still offering manual URL/path/`owner/name` entry. When run outside a checkout, bare
+`dev start` similarly selects a local repository with fast live discovery; inside
+a repository it keeps the immediate current-repository default.
+The external selector defaults to `fzf`; if it is missing (or `[picker] command = []`),
+dev uses its built-in Bubble Tea picker. Pipes remain line-oriented.
 Clone can optionally apply a preset after the checkout exists, while `repo setup` repeat-safely merges native
 initializers and preset files into a repository you already have. Custom hooks
 and skill setup remain responsible for their own idempotency. Use `--dry-run`
@@ -703,7 +709,10 @@ refresh of all configured forge providers.
 is an exact visibility filter. Enter opens a local clone,
 and `c` confirms before cloning an absent repo into `project_root`. The same
 inventory is available without the full-screen UI via `dev repo remote [query]`;
-`--cached` is its instant/offline form.
+`--cached` is its instant/offline form. That JSON contract also powers the
+optional Television channel and fzf shell helper under [`contrib/`](contrib/README.md):
+run `dev repo remote --refresh` once, then compose a selected exact clone URL
+with `dev repo clone` without teaching another command about forge freshness.
 
 SKILLS also loads lazily. Native reads use the versioned `skills@1.5.23`
 77-agent path registry and lock files; they never start Node, `skills`, or `npx`.

@@ -2,7 +2,7 @@
 description: Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
-verified_on: 2026-09-01
+verified_on: 2026-09-03
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 ---
 
@@ -121,6 +121,42 @@ refresh.
 Use `/vis:private` for an exact visibility filter. Notes are enabled only after
 a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a
 new Try rather than a repository note.
+
+### CLI repository pickers
+
+Bare `dev repo clone` opens a picker over the existing private forge cache. It
+uses each provider's exact clone URL, never refreshes the network implicitly,
+and keeps a manual URL/path/`owner/name` choice. A stale or incomplete cache is
+still selectable with a warning; populate or replace it explicitly:
+
+```bash
+dev repo remote --refresh
+dev repo clone
+```
+
+Outside a checkout, bare `dev start` uses the same picker UI over fast live
+local discovery, then fully resolves the selected repository before planning a
+task. Inside a repository it retains the immediate current-repository default
+without scanning every configured root. The default
+external selector is `fzf`; a missing executable falls back to the built-in
+Bubble Tea list, and `[picker] command = []` forces that list. Compatible
+external commands receive candidates on stdin and must return one unchanged
+line on stdout. Non-TTY callers retain line prompts and never receive picker UI.
+
+The repository's `contrib/television/dev-remote-repos.toml` and
+`contrib/fzf/dev-repo-clone.bash` compose over the same public source instead of
+creating another inventory:
+
+```bash
+dev repo remote --refresh                 # populate once or refresh deliberately
+ref="$(tv dev-remote-repos)" && [ -n "$ref" ] && dev repo clone "$ref"
+source contrib/fzf/dev-repo-clone.bash
+dev-repo-clone-fzf
+```
+
+Both external recipes require `jq`, read `dev repo remote --cached --json`, and
+pass one quoted clone URL to `dev repo clone`. They are examples to copy or
+symlink; dev does not modify Television, shell, or chezmoi configuration.
 
 ### FLEET
 

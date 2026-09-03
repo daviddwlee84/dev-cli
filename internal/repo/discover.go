@@ -254,10 +254,6 @@ func ResolveCompletion(ctx context.Context, roots []string, ref string) (Repo, [
 }
 
 func resolve(ctx context.Context, roots []string, ref string, opts Options) (Repo, []Repo, error) {
-	all, err := Discover(ctx, roots, opts)
-	if err != nil {
-		return Repo{}, nil, err
-	}
 	if abs, err := filepath.Abs(ref); err == nil {
 		if g, err := gitx.Discover(ctx, abs); err == nil {
 			real, _ := filepath.EvalSymlinks(abs)
@@ -272,6 +268,10 @@ func resolve(ctx context.Context, roots []string, ref string, opts Options) (Rep
 				Symlink: real != abs, CommonDir: g.GitCommonDir, HasGit: true, Bare: g.Bare,
 			}, nil, nil
 		}
+	}
+	all, err := Discover(ctx, roots, opts)
+	if err != nil {
+		return Repo{}, nil, err
 	}
 	for _, r := range all {
 		if r.Name == ref || r.Display() == ref || r.Path == ref {

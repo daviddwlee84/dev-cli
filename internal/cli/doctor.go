@@ -122,6 +122,17 @@ func runDoctor(app *App) error {
 		checks = append(checks, check{"runtime/" + name, st, detail})
 	}
 
+	// Optional selector. Missing is a degradation, not a blocker: the built-in
+	// Bubble Tea picker implements the same selection contract.
+	if len(app.Cfg.Picker.Command) == 0 {
+		checks = append(checks, check{"picker", checkOK, "built-in picker selected by configuration"})
+	} else if path, err := exec.LookPath(app.Cfg.Picker.Command[0]); err == nil {
+		checks = append(checks, check{"picker", checkOK, path + " — external picker available"})
+	} else {
+		checks = append(checks, check{"picker", checkWarn,
+			app.Cfg.Picker.Command[0] + " not found — using the built-in picker"})
+	}
+
 	// Optional forge CLIs.
 	for _, f := range []struct{ bin, purpose string }{
 		{"gh", "GitHub: clone, create, PRs"},

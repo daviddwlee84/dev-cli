@@ -157,6 +157,46 @@ provision_timeout = "90s"
 	}
 }
 
+func TestPickerConfigReplacesDefaultArgv(t *testing.T) {
+	cfg := Default()
+	if len(cfg.Picker.Command) == 0 || cfg.Picker.Command[0] != "fzf" {
+		t.Fatalf("default picker = %v", cfg.Picker.Command)
+	}
+
+	path := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(path, []byte("[picker]\ncommand = [\"tv\", \"--inline\"]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Picker.Command; len(got) != 2 || got[0] != "tv" || got[1] != "--inline" {
+		t.Fatalf("picker command = %v", got)
+	}
+	if err := os.WriteFile(path, []byte("[picker]\ncommand = []\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Picker.Command) != 0 {
+		t.Fatalf("empty picker command = %v", cfg.Picker.Command)
+	}
+
+	cfg.Picker.Command = nil
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("empty command should select the built-in picker: %v", err)
+	}
+	for _, bad := range [][]string{{""}, {"fzf", "bad\narg"}, {"fzf\x00"}} {
+		cfg.Picker.Command = bad
+		if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "picker.command") {
+			t.Fatalf("Validate(%q) = %v", bad, err)
+		}
+	}
+}
+
 func TestAzureDevOpsTargetsLoadAndValidate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.toml")
 	os.WriteFile(path, []byte(`

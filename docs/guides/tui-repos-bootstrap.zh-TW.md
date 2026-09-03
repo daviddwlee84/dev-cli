@@ -2,7 +2,7 @@
 description: 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
 authority: project
 status: evolving
-verified_on: 2026-09-01
+verified_on: 2026-09-03
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 lang: zh-TW
 ---
@@ -108,6 +108,39 @@ clone 缺少的 repository 前確認，且 destination 受限於 `project_root`�
 強制更新 forge inventories。使用 `/vis:private` 可精確過濾 visibility。只有 REMOTE
 row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，
 不會改成 repository note。
+
+### CLI repository pickers
+
+Bare `dev repo clone` 會對既有 private forge cache 開啟 picker。它使用各 provider
+的 exact clone URL，絕不 implicit refresh network，並保留 manual URL/path/`owner/name`
+選項。Stale 或 incomplete cache 仍可選，但會顯示 warning；cache 必須明確 populate
+或 replace：
+
+```bash
+dev repo remote --refresh
+dev repo clone
+```
+
+在 checkout 外，bare `dev start` 使用相同 picker UI 選 fast live local discovery
+的結果，之後才 full resolve 選定 repository 並規劃 task。在 repository 內則保留
+immediate current-repository default，不掃描所有 configured roots。Default external selector 是 `fzf`；
+executable 缺少時 fallback 到 built-in Bubble Tea list，`[picker] command = []` 會
+強制使用 built-in。相容 external command 從 stdin 讀 candidates，並須在 stdout
+原樣回傳一行。Non-TTY caller 保留 line prompt，絕不收到 picker UI。
+
+Repository 的 `contrib/television/dev-remote-repos.toml` 與
+`contrib/fzf/dev-repo-clone.bash` 會組合相同 public source，不建立另一份 inventory：
+
+```bash
+dev repo remote --refresh                 # 只在明確要求時 populate／refresh
+ref="$(tv dev-remote-repos)" && [ -n "$ref" ] && dev repo clone "$ref"
+source contrib/fzf/dev-repo-clone.bash
+dev-repo-clone-fzf
+```
+
+兩個 external recipe 都需要 `jq`、只讀 `dev repo remote --cached --json`，並將
+一個 quoted clone URL 傳給 `dev repo clone`。它們是供 copy 或 symlink 的範例；
+dev 不會修改 Television、shell 或 chezmoi config。
 
 ### FLEET
 

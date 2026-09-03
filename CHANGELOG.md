@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Bare `dev repo clone` and the interactive `dev start` repository step now
+  offer a configurable line picker. Clone candidates come from the existing
+  private forge cache without an implicit network refresh; outside a checkout,
+  start candidates use fast live discovery and are fully resolved after selection,
+  while the in-repository current default remains immediate. `fzf` is the
+  default when installed, a built-in Bubble Tea selector is the automatic
+  fallback, manual entry and non-TTY behavior remain available, and optional
+  Television/fzf compositions over `dev repo remote --cached --json` ship under
+  `contrib/`.
+
 ## [0.2.8] - 2026-09-03
 
 ### Added
@@ -134,7 +146,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   authority, and fork review results fail closed; successful DONE/MERGED
   completion retains runtime, worktree, and branch resources for explicit
   retirement.
-
 ## [0.2.5] - 2026-09-01
 
 ### Added

@@ -187,6 +187,13 @@ backend = "auto"
 # Namespace for the workspace metadata dev reports (herdr only).
 metadata_source = "dev"
 
+[picker]
+# Interactive commands prefer this line-oriented external selector when it is
+# installed, then fall back to dev's built-in picker. This is an argv array,
+# never shell source; {prompt} is replaced inside individual arguments.
+# Use command = [] to always use the built-in picker.
+command = ["fzf", "--height=60%", "--layout=reverse", "--border", "--prompt", "{prompt}> "]
+
 [worktree]
 # Gitignored files to carry into a new worktree. Only files that are BOTH
 # matched here AND gitignored are copied: a tracked file is already in the new

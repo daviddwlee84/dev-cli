@@ -38,6 +38,24 @@ being decoded as literal `^[[C`/`^[[D` bytes. Esc and Ctrl-C cancel. Bracketed
 defaults remain hints accepted by Enter rather than text silently inserted into
 the field. Non-TTY and piped callers retain deterministic line-based input.
 
+## Repository selection
+
+Bare `dev repo clone` uses the existing private forge cache as a candidate list.
+It passes the selected provider's exact clone URL into the normal acquisition
+flow, supports stale/incomplete cache with a warning, and never refreshes the
+network merely because the picker opened. Manual URL, path, and `owner/name`
+entry remains available; a missing or source-mismatched cache goes directly to
+that prompt.
+
+Outside a checkout, bare `dev start` uses fast live repository discovery for
+its picker and performs a full resolve after selection. Inside a repository it
+keeps the immediate current-repository default without scanning all roots. `[picker].command` is one direct argv vector,
+defaulting to `fzf`; no shell evaluates it. A missing executable falls back to
+the built-in Bubble Tea selector, while `command = []` forces that backend.
+Compatible external selectors read lines on stdin and return one unchanged line
+on stdout. See the repository `contrib/` directory for Television and fzf
+composition over `dev repo remote --cached --json`.
+
 ## Template snapshots
 
 Only `repo new` accepts a starter tree:

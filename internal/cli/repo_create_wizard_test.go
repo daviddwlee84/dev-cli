@@ -2,14 +2,19 @@ package cli
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
@@ -41,6 +46,130 @@ func newRepoWizardApp(t *testing.T, input string) (*App, *bytes.Buffer) {
 	}
 	app.Registry = catalog.NewRegistry(app.Catalog)
 	return app, &out
+}
+
+func TestRepoClonePickerUsesExactCachedCloneURL(t *testing.T) {
+	app, _ := newRepoWizardApp(t, "")
+	remote := forge.RemoteRepo{
+		Forge: forge.GitLab, Name: "api", FullName: "group/api",
+		CloneURL: "https://gitlab.example.test/group/api.git", Visibility: "private",
+	}
+	cache := forge.Cache{
+		Version: forge.CacheVersion, SourceID: remoteCacheSourceID(app), FetchedAt: time.Now().UTC(), Complete: true,
+		Repos: []forge.RemoteRepo{remote},
+	}
+	if err := forge.SaveCacheState(remoteCachePath(), cache); err != nil {
+		t.Fatal(err)
+	}
+	app.pickerSelect = func(_ context.Context, request picker.Request) (picker.Result, error) {
+		if len(request.Items) != 2 || request.Items[0].Label != remote.Label() {
+			t.Fatalf("picker request = %+v", request)
+		}
+		return picker.Result{Item: request.Items[0]}, nil
+	}
+
+	ref, err := promptRepoCloneReference(app, newPrompter(app))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ref != remote.CloneURL {
+		t.Fatalf("clone ref = %q, want %q", ref, remote.CloneURL)
+	}
+}
+
+func TestRepoClonePickerUsesStaleCacheAndCanCancel(t *testing.T) {
+	app, _ := newRepoWizardApp(t, "")
+	var errOut bytes.Buffer
+	app.Err = &errOut
+	remote := forge.RemoteRepo{
+		Forge: forge.GitHub, Name: "old", FullName: "owner/old",
+		CloneURL: "https://github.com/owner/old.git",
+	}
+	cache := forge.Cache{
+		Version: forge.CacheVersion, SourceID: remoteCacheSourceID(app), FetchedAt: time.Now().UTC(),
+		Complete: false, Repos: []forge.RemoteRepo{remote},
+	}
+	if err := forge.SaveCacheState(remoteCachePath(), cache); err != nil {
+		t.Fatal(err)
+	}
+	app.pickerSelect = func(_ context.Context, request picker.Request) (picker.Result, error) {
+		if request.Items[0].Value != remote.CloneURL {
+			t.Fatalf("stale candidate = %+v", request.Items[0])
+		}
+		return picker.Result{}, picker.ErrCanceled
+	}
+
+	_, err := promptRepoCloneReference(app, newPrompter(app))
+	if !errors.Is(err, errPromptCanceled) {
+		t.Fatalf("error = %v", err)
+	}
+	if !strings.Contains(errOut.String(), "stale or incomplete") {
+		t.Fatalf("warning = %q", errOut.String())
+	}
+}
+
+func TestRepoClonePickerBackendErrorIsNotCancellation(t *testing.T) {
+	app, out := newRepoWizardApp(t, "")
+	remote := forge.RemoteRepo{
+		Forge: forge.GitHub, Name: "api", FullName: "owner/api",
+		CloneURL: "https://github.com/owner/api.git",
+	}
+	cache := forge.Cache{
+		Version: forge.CacheVersion, SourceID: remoteCacheSourceID(app), FetchedAt: time.Now().UTC(), Complete: true,
+		Repos: []forge.RemoteRepo{remote},
+	}
+	if err := forge.SaveCacheState(remoteCachePath(), cache); err != nil {
+		t.Fatal(err)
+	}
+	app.pickerSelect = func(context.Context, picker.Request) (picker.Result, error) {
+		return picker.Result{}, errors.New("picker failed")
+	}
+	cmd := newRepoCloneCmd(app)
+	cmd.SetArgs(nil)
+	if err := cmd.Execute(); err == nil || !strings.Contains(err.Error(), "picker failed") {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(out.String(), "Canceled; nothing was cloned") {
+		t.Fatalf("backend error was reported as cancellation: %q", out.String())
+	}
+}
+
+func TestRepoClonePickerRejectsSourceLessCache(t *testing.T) {
+	app, _ := newRepoWizardApp(t, "owner/manual\n")
+	remote := forge.RemoteRepo{
+		Forge: forge.GitHub, Name: "legacy", FullName: "old-host/legacy",
+		CloneURL: "https://old.example.test/old-host/legacy.git",
+	}
+	if err := forge.SaveCacheState(remoteCachePath(), forge.Cache{
+		Version: forge.CacheVersion, FetchedAt: time.Now().UTC(), Complete: true,
+		Repos: []forge.RemoteRepo{remote},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	app.pickerSelect = func(context.Context, picker.Request) (picker.Result, error) {
+		t.Fatal("source-less cache must not seed clone candidates")
+		return picker.Result{}, nil
+	}
+	ref, err := promptRepoCloneReference(app, newPrompter(app))
+	if err != nil || ref != "owner/manual" {
+		t.Fatalf("ref = %q, err = %v", ref, err)
+	}
+}
+
+func TestRepoClonePickerMissingCacheKeepsManualPrompt(t *testing.T) {
+	app, _ := newRepoWizardApp(t, "owner/manual\n")
+	called := false
+	app.pickerSelect = func(_ context.Context, request picker.Request) (picker.Result, error) {
+		called = true
+		return picker.Result{}, nil
+	}
+	ref, err := promptRepoCloneReference(app, newPrompter(app))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called || ref != "owner/manual" {
+		t.Fatalf("picker called = %t, ref = %q", called, ref)
+	}
 }
 
 func TestRepoNewWizardCreatesAgentReadyRepoAndCDs(t *testing.T) {

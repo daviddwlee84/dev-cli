@@ -866,7 +866,8 @@ func TestConfigInitDetectsAndRefusesOverwrite(t *testing.T) {
 
 	out := h.mustRun("config", "init", "--stdout")
 	if !strings.Contains(out, "[paths]") || !strings.Contains(out, "worktree_path") ||
-		!strings.Contains(out, "[bootstrap]") || !strings.Contains(out, "[[tui.tools]]") {
+		!strings.Contains(out, "[picker]") || !strings.Contains(out, "[bootstrap]") ||
+		!strings.Contains(out, "[[tui.tools]]") {
 		t.Errorf("generated config looks wrong:\n%s", out)
 	}
 	preview := filepath.Join(h.home, "preview.toml")
@@ -877,7 +878,8 @@ func TestConfigInitDetectsAndRefusesOverwrite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("the generated template must parse as its own config: %v", err)
 	}
-	if len(parsed.EffectiveTools()) != 4 || parsed.Bootstrap.Layout != "flat" || parsed.Forge.CacheTTL.Duration == 0 {
+	if len(parsed.EffectiveTools()) != 4 || parsed.Bootstrap.Layout != "flat" ||
+		parsed.Forge.CacheTTL.Duration == 0 || len(parsed.Picker.Command) == 0 || parsed.Picker.Command[0] != "fzf" {
 		t.Errorf("generated policy did not round-trip: %+v", parsed)
 	}
 

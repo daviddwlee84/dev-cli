@@ -26,6 +26,7 @@ type Config struct {
 	TUI        TUI        `toml:"tui"`
 	Bootstrap  Bootstrap  `toml:"bootstrap"`
 	Forge      Forge      `toml:"forge"`
+	Picker     Picker     `toml:"picker"`
 	Update     Update     `toml:"update"`
 
 	// Source records where the config was loaded from; "" means defaults only.
@@ -39,6 +40,13 @@ type Update struct {
 	// that cache is opportunistic and best-effort. Set to false (or export
 	// DEV_NO_UPDATE_CHECK) on CI and air-gapped machines.
 	Check bool `toml:"check"`
+}
+
+// Picker configures the optional external selector used by interactive
+// commands. Command is an argv vector rather than shell source; an empty vector
+// forces dev's built-in selector.
+type Picker struct {
+	Command []string `toml:"command"`
 }
 
 // Paths tells dev where repos live and where derived state goes. Every entry
@@ -312,6 +320,9 @@ func Default() Config {
 			WakaTime:       false,
 			WakaTimeConfig: "~/.wakatime.cfg",
 		},
+		Picker: Picker{Command: []string{
+			"fzf", "--height=60%", "--layout=reverse", "--border", "--prompt", "{prompt}> ",
+		}},
 		Update: Update{Check: true},
 	}
 }
@@ -367,6 +378,14 @@ func (c Config) Validate() error {
 	}
 	if c.Forge.RemoteLimit < 0 {
 		return fmt.Errorf("deprecated forge.remote_limit must be zero or positive")
+	}
+	for index, arg := range c.Picker.Command {
+		if strings.ContainsAny(arg, "\x00\r\n") {
+			return fmt.Errorf("picker.command[%d] must not contain NUL or a newline", index)
+		}
+		if index == 0 && strings.TrimSpace(arg) == "" {
+			return errors.New("picker.command[0] must name an executable; use an empty command array for the built-in picker")
+		}
 	}
 	seenAzureTargets := map[string]bool{}
 	for i, target := range c.Forge.AzureDevOps {

@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-01
+verified_on: 2026-09-03
 lang: zh-TW
 ---
 
@@ -299,10 +299,24 @@ dev ssh init --apply       # confirmation 後安裝
 | `[worktree]` | local ignored-file provisioning、linked dirs、setup commands、strategies、timeout |
 | `[local_files]` | portable files 的 host ceilings；project overlay 提供獨立的 off-machine candidate allowlist |
 | `[forge]` / `[[forge.azure_devops]]` | 完整 remote inventory 的 cache TTL，以及 opt-in Azure organization/project targets |
+| `[picker]` | optional external selector argv；空 array 會選用 built-in picker |
 | `[bootstrap]` | recursion、symlink handling、index/layout policy |
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
 | `[stats]` | sampler 與 optional WakaTime import |
 | `[update]` | `check`（預設 `true`）— 允許每天一次的「有新版」提示與其背景 cache refresh；`DEV_NO_UPDATE_CHECK` 可覆寫 |
+
+Interactive repository selection 使用直接 argv vector，絕不當作 shell source：
+
+```toml
+[picker]
+command = ["fzf", "--height=60%", "--layout=reverse", "--border", "--prompt", "{prompt}> "]
+```
+
+Executable 必須遵守 line-selector contract：從 stdin 讀候選項，並把選取的原始整行
+寫到 stdout。預設使用 `fzf`；相容 selector 可替換整個 array。Executable 缺少時會
+fallback 到 dev 的 Bubble Tea picker，`command = []` 則強制使用該 fallback。
+這是 global host policy，repository 不能 override。Non-TTY caller 維持 deterministic
+line prompt。
 
 `DEV_TUI_TRACE=/absolute/new-file.json` 會啟用單次 TUI startup/readiness trace。
 Target 必須是 absolute 且尚不存在；dev 絕不 overwrite。Private、bounded document

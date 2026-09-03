@@ -19,6 +19,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/note"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
+	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 	"github.com/daviddwlee84/dev-cli/internal/task"
@@ -55,10 +56,11 @@ type App struct {
 	// interactiveCheck is a test seam for commands that prompt only when a real
 	// terminal is attached. Production falls back to interactive().
 	interactiveCheck func() bool
-	// runtimeInstance and runtimesByName are injection seams used by focused
-	// command tests.
+	// runtimeInstance, runtimesByName and pickerSelect are injection seams used by
+	// focused command tests.
 	runtimeInstance runtime.Runtime
 	runtimesByName  map[string]runtime.Runtime
+	pickerSelect    func(context.Context, picker.Request) (picker.Result, error)
 	// sshHostRunner keeps SSH config/network behavior injectable. The concrete
 	// service owns policy; commands only orchestrate and render.
 	sshHostService *sshhost.Service
