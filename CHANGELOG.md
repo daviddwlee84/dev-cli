@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.6] - 2026-09-03
+
 ### Added
 
 - `dev flow [repo]` adds a preview-labelled, full-screen repository lifecycle
@@ -404,7 +406,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.2...v0.2.3
