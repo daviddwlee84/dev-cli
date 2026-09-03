@@ -34,7 +34,9 @@ func TestFleetFilesExplicitPathSelectsLinkedCheckoutAndNameSelectsCanonical(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if checkout != canonicalLinked || status.Branch != "feat/portable" {
+	checkoutInfo, checkoutErr := os.Stat(checkout)
+	linkedInfo, linkedErr := os.Stat(canonicalLinked)
+	if checkoutErr != nil || linkedErr != nil || !os.SameFile(checkoutInfo, linkedInfo) || status.Branch != "feat/portable" {
 		t.Fatalf("explicit linked path selected checkout=%q branch=%q", checkout, status.Branch)
 	}
 
@@ -46,7 +48,9 @@ func TestFleetFilesExplicitPathSelectsLinkedCheckoutAndNameSelectsCanonical(t *t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if checkout != canonicalRoot || status.Branch != "main" {
+	checkoutInfo, checkoutErr = os.Stat(checkout)
+	rootInfo, rootErr := os.Stat(canonicalRoot)
+	if checkoutErr != nil || rootErr != nil || !os.SameFile(checkoutInfo, rootInfo) || status.Branch != "main" {
 		t.Fatalf("repository name selected checkout=%q branch=%q", checkout, status.Branch)
 	}
 }

@@ -501,8 +501,22 @@ func TestSSHListStaticHumanTSVJSONFleetAndCompletion(t *testing.T) {
 	if document["kind"] != "ssh_list" || document["complete"] != false {
 		t.Fatalf("list document = %#v", document)
 	}
+	managedSourceOK := false
+	if aliases, ok := document["aliases"].([]any); ok {
+		for _, item := range aliases {
+			alias, ok := item.(map[string]any)
+			if !ok || alias["name"] != "lab" {
+				continue
+			}
+			source, _ := alias["managed_source"].(string)
+			sourceInfo, sourceErr := os.Stat(source)
+			managedInfo, managedErr := os.Stat(fixture.managedPath("lab"))
+			managedSourceOK = sourceErr == nil && managedErr == nil && os.SameFile(sourceInfo, managedInfo)
+			break
+		}
+	}
 	if !strings.Contains(out, `"name": "lab"`) || !strings.Contains(out, `"ownership": "managed"`) ||
-		!strings.Contains(out, `"name": "lab-fleet"`) || !strings.Contains(out, fixture.managedPath("lab")) ||
+		!strings.Contains(out, `"name": "lab-fleet"`) || !managedSourceOK ||
 		!strings.Contains(out, `"name": "dynamic"`) || !strings.Contains(out, `"status": "unknown"`) ||
 		!strings.Contains(out, `"selectable": false`) {
 		t.Fatalf("list JSON lacks managed/fleet/unknown provenance:\n%s", out)
