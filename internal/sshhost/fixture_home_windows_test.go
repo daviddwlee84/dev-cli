@@ -35,3 +35,19 @@ func protectFixtureFile(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 }
+
+func assertFixturePrivateFile(t *testing.T, path string) {
+	t.Helper()
+	file, err := platformOpenNoFollow(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := platformValidatePrivateFile(path, file, info); err != nil {
+		t.Fatalf("generated path %s security: %v", path, err)
+	}
+}

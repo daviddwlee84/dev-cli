@@ -439,10 +439,7 @@ func TestGeneratedKeyInteractiveAndNoninteractiveArgv(t *testing.T) {
 				t.Fatalf("interactive argv supplied -N: %#v", request.Args)
 			}
 			for _, path := range []string{destination, destination + ".pub"} {
-				info, err := os.Stat(path)
-				if err != nil || info.Mode().Perm() != 0o600 {
-					t.Fatalf("generated path %s mode = %v, err %v", path, info.Mode(), err)
-				}
+				assertFixturePrivateFile(t, path)
 			}
 		})
 	}

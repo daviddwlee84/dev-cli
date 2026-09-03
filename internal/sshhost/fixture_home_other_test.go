@@ -22,3 +22,14 @@ func makeFixturePrivateDirectory(t *testing.T, path string) {
 func protectFixtureFile(t *testing.T, _ string) {
 	t.Helper()
 }
+
+func assertFixturePrivateFile(t *testing.T, path string) {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != 0o600 {
+		t.Fatalf("generated path %s mode = %v", path, info.Mode())
+	}
+}
