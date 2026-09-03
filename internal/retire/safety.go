@@ -14,6 +14,27 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 )
 
+// AgentCloseClass is the runtime-closure meaning of one observed agent state.
+type AgentCloseClass string
+
+const (
+	AgentCloseEligible AgentCloseClass = "eligible"
+	AgentCloseBlocked  AgentCloseClass = "blocked"
+	AgentCloseUnknown  AgentCloseClass = "unknown"
+)
+
+// ClassifyAgentStatus is shared by enforcement and read-only closeout reports.
+func ClassifyAgentStatus(status string) AgentCloseClass {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "idle", "done":
+		return AgentCloseEligible
+	case "working", "running", "busy", "blocked", "waiting":
+		return AgentCloseBlocked
+	default:
+		return AgentCloseUnknown
+	}
+}
+
 // Options controls only fail-closed observations. Caller protection and active
 // agent states are never bypassable.
 type Options struct {
@@ -162,6 +183,64 @@ func Inspect(ctx context.Context, rt runtime.Runtime, target string, opts Option
 	return dedupe(result), nil
 }
 
+// InspectSessions applies retirement policy to a caller-supplied runtime
+// snapshot. It is for read-only reports; destructive callers must use Inspect
+// so runtime and recognized-agent evidence are recollected immediately before
+// mutation.
+func InspectSessions(target string, sessions []runtime.Session, opts Options) (Inspection, error) {
+	canonicalTarget, err := pathx.Canonical(target)
+	if err != nil {
+		return Inspection{}, fmt.Errorf("canonicalize retirement target: %w", err)
+	}
+	result := Inspection{Target: canonicalTarget}
+	cwd := opts.CWD
+	if cwd == "" {
+		cwd, err = os.Getwd()
+		if err != nil {
+			return Inspection{}, fmt.Errorf("resolve caller directory: %w", err)
+		}
+	}
+	if inside, compareErr := pathx.Contains(canonicalTarget, cwd); compareErr != nil {
+		return Inspection{}, fmt.Errorf("compare caller directory: %w", compareErr)
+	} else if inside {
+		result.CallerContained = true
+		result.Blockers = append(result.Blockers,
+			fmt.Sprintf("caller is inside target checkout %s", canonicalTarget))
+	}
+	if opts.CallerWorkspaceID == "" {
+		opts.CallerWorkspaceID = os.Getenv("HERDR_WORKSPACE_ID")
+	}
+	if opts.CallerPaneID == "" {
+		opts.CallerPaneID = os.Getenv("HERDR_PANE_ID")
+		if opts.CallerPaneID == "" {
+			opts.CallerPaneID = os.Getenv("TMUX_PANE")
+		}
+	}
+	for _, observed := range sessions {
+		covering, mixed, classifyErr := classifySession(canonicalTarget, observed)
+		if classifyErr != nil {
+			return Inspection{}, classifyErr
+		}
+		if len(covering) == 0 {
+			continue
+		}
+		result.Sessions = append(result.Sessions, Session{Runtime: observed, Panes: covering, Mixed: mixed})
+		if observed.Handle == opts.CallerWorkspaceID || panePresent(observed.Panes, opts.CallerPaneID) {
+			result.CallerContained = true
+			result.Blockers = append(result.Blockers,
+				fmt.Sprintf("caller runtime %s contains the target checkout", observed.Handle))
+		}
+		if len(mixed) > 0 {
+			result.Blockers = append(result.Blockers,
+				fmt.Sprintf("runtime %s also contains %d pane(s) outside the target", observed.Handle, len(mixed)))
+		}
+		for _, status := range coveringAgentStatuses(covering, observed.AgentStatus) {
+			appendAgentStatusBlocker(&result, observed.Handle, status, opts.CloseUnknown)
+		}
+	}
+	return dedupe(result), nil
+}
+
 // CloseAndWait closes every eligible covering session and proves that no
 // runtime surface still covers target before returning.
 func CloseAndWait(ctx context.Context, rt runtime.Runtime, target string, opts Options) (Inspection, error) {
@@ -221,6 +300,45 @@ func CloseAndWait(ctx context.Context, rt runtime.Runtime, target string, opts O
 	}
 }
 
+func classifySession(target string, session runtime.Session) ([]runtime.Pane, []runtime.Pane, error) {
+	panes := session.Panes
+	if len(panes) == 0 {
+		for i, dir := range session.Dirs {
+			panes = append(panes, runtime.Pane{ID: fmt.Sprintf("%s:%d", session.Handle, i), CWD: dir})
+		}
+	}
+	var covering, mixed []runtime.Pane
+	for _, pane := range panes {
+		paths := []string{pane.CWD}
+		if pane.ShellCWD != "" && pane.ShellCWD != pane.CWD {
+			paths = append(paths, pane.ShellCWD)
+		}
+		paneCovers, paneOutside, observed := false, false, false
+		for _, path := range paths {
+			if path == "" {
+				continue
+			}
+			observed = true
+			inside, err := pathx.Contains(target, path)
+			if err != nil {
+				return nil, nil, fmt.Errorf("compare runtime pane %s path: %w", pane.ID, err)
+			}
+			if inside {
+				paneCovers = true
+			} else {
+				paneOutside = true
+			}
+		}
+		if paneCovers {
+			covering = append(covering, pane)
+		}
+		if paneOutside || !observed {
+			mixed = append(mixed, pane)
+		}
+	}
+	return covering, mixed, nil
+}
+
 func coveringAgentStatuses(panes []runtime.Pane, fallback string) []string {
 	set := make(map[string]bool)
 	for _, pane := range panes {
@@ -256,6 +374,18 @@ func appendAgentStatusBlocker(result *Inspection, handle, rawStatus string, clos
 		result.Blockers = append(result.Blockers,
 			fmt.Sprintf("runtime %s has unrecognized agent status %s", handle, status))
 	}
+}
+
+func panePresent(panes []runtime.Pane, id string) bool {
+	if id == "" {
+		return false
+	}
+	for _, pane := range panes {
+		if pane.ID == id {
+			return true
+		}
+	}
+	return false
 }
 
 func dedupe(inspection Inspection) Inspection {

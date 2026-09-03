@@ -86,6 +86,9 @@ tested_with: optional
 | Claude worktree path/base/cleanup | [Worktree isolation](../claude/worktree-isolation.md) | [Claude Code worktrees](https://code.claude.com/docs/en/worktrees) | version-sensitive，tested 2.1.250 |
 | teams 與 Dynamic Workflows | [Teams 與 workflows](../claude/teams-dynamic-workflows.md) | [agent teams](https://code.claude.com/docs/en/agent-teams)、[workflows](https://code.claude.com/docs/en/workflows) | experimental/versioned |
 | hooks/skills/plugins/SDK roles | [Extensions](../claude/extensions-agent-sdk.md) | Anthropic feature references | evolving |
+| generic prompt recipe、run/open transport、current-terminal boundary、session runtime-close meaning 與 workspace retirement audit | [Prompt handoff](../guides/prompt-handoffs.zh-TW.md) | `internal/cli/{prompt_command,prompt_providers}.go`、`internal/config/config.go`、`internal/promptkit`、`internal/handoff`、`internal/closeout`、`internal/retire/audit.go`、專項測試 | implemented |
+| `dev pr` 收件匣、provider surface、effective filtering/scope 與 local checkout-health join | [Pull request inbox](../guides/pull-request-inbox.zh-TW.md) | `internal/forge/pr.go`、`internal/forge/{github,gitlab}.go`、`internal/cli/pr*.go`、專項 forge/CLI 測試 | implemented |
+| AI reviewer 的 trigger phrase、是否需要 workflow 與 plan tier | [AI pull-request review options](../notes/ai-pr-review-options.zh-TW.md) | [Claude Code GitHub Actions](https://code.claude.com/docs/en/github-actions)、[Claude Code Review setup](https://support.claude.com/en/articles/14233555-set-up-code-review-for-claude-code)、[Codex GitHub](https://developers.openai.com/codex/integrations/github)、[CodeRabbit commands](https://docs.coderabbit.ai/guides/commands) | 廠商文件，2026-09-01 查核 |
 
 ## 歷史來源
 

@@ -2,7 +2,7 @@
 description: Coordinate several coding agents around change-stream ownership, explicit mutation boundaries, and replaceable runtimes.
 authority: project-policy
 status: stable
-verified_on: 2026-08-31
+verified_on: 2026-09-02
 ---
 
 # Parallel agents and runtimes
@@ -62,6 +62,13 @@ Each approach gets its own branch and worktree. Compare results, integrate one d
 
 A runtime opens and displays a checkout; `dev`, not Herdr or tmux, owns branch/worktree lifecycle. Closing a runtime never deletes the task or checkout.
 
+Zellij keeps exited sessions available for resurrection. `dev` recognizes only
+the exact `(EXITED - attach to resurrect)` marker, omits those sessions from live
+coverage, and refuses to create over their names. A live name merely containing
+the word `EXITED` remains live. If a session exits between listing and layout
+inspection, open fails closed and asks for a retry rather than resurrecting the
+old layout at an unrelated checkout.
+
 For one reviewed shell command in a new independent worktree, Herdr supports a
 direct one-liner:
 
@@ -74,6 +81,14 @@ Herdr worktree. Reuse, fallback, missing pane identity, another runtime, and
 direct/branch-only modes fail closed. The task and usable worktree remain if
 dispatch fails. `--focus` independently switches after a successful dispatch;
 dev does not wait for the command's exit status.
+
+`dev prompt open <recipe>` is a different contract: it starts one configured
+foreground process in the terminal that invoked it and never creates, focuses,
+reuses, or injects into a runtime pane. Inside Herdr it stays in the current
+pane. To hold the conversation in a separate pane, create/focus that pane
+manually, enter the exact checkout, and run `prompt open` there. It does not
+weaken the fresh-worktree/exact-root-pane proof of `start --run`; see
+[Prompt handoffs](prompt-handoffs.md).
 
 ## Coordination contract
 
@@ -106,4 +121,5 @@ For Claude-specific primitive selection, continue with the [parallel work decisi
 - [`internal/help/topics/agents.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/agents.md)
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/runtime/herdr.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/herdr.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
 - [Claude Code: run agents in parallel](https://code.claude.com/docs/en/agents)

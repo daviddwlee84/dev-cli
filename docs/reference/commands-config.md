@@ -25,6 +25,8 @@ Use the authored map for intent and the embedded generated reference for exact f
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
 | SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh probe`, `ssh remove` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
+| pull-request inventory | `pr list` |
+| prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
@@ -57,6 +59,10 @@ dev ssh probe <alias> --json
 dev ssh remove <alias> --dry-run --json
 dev skill list --all --json
 dev mcp list --all --json
+dev pr list --json
+dev prompt list --json
+dev prompt render <pr-triage|session-close|workspace-closeout>
+dev sweep --ephemeral-worktrees --json
 dev bootstrap --json
 ```
 
@@ -113,6 +119,104 @@ separate `[local_files].include`/`--file` allowlist, requires a matching pin for
 apply, and never infers `--replace` from `--yes`. Windows transport allowlists the
 capability helper for identity diagnostics but blocks native file payload helpers
 before content is sent.
+
+### Pull-request schema and effective scope
+
+`dev pr list --json` emits an object with `schema_version: 1`, `generated_at`,
+`scope`, `state`, `roles`, optional normalized `repositories`, provider readiness,
+`warnings`, and `pull_requests`. Partial role/provider failures appear in
+`warnings` even when useful rows are still returned. `scope` is the surface that actually ran: requesting
+merged/closed/all from account or all narrows collection to local, and JSON says
+`"local"`. `--repo` filters account rows as well as local query targets.
+Personal local inventory may make one paginated query per repository for each
+requested role (author and reviewer by default). Every row carries its provider
+`host`; a local enterprise remote whose host differs from `GH_HOST`/`GITLAB_HOST`
+is reported rather than queried against the wrong endpoint. Full GitHub rows also carry
+optional `head_repo` and `is_cross_repository`; local evidence joins against the
+source repository, and a deleted/unknown source never falls back to an unrelated
+target-repository branch with the same name.
+
+A request's optional `local` object distinguishes task intent from live checkout
+health. It carries `expected_branch`, observed `live_branch`, and independent
+`branch_checked_out`, `checkout_exists`, `worktree_registered`, and
+`status_available` booleans, plus optional `status_error`. Optional `git` appears
+only when the expected branch was actually proven checked out and status was
+available; it contains `dirty`, `ahead`, `behind`, and optional `upstream`.
+Missing/cold/unregistered status therefore cannot look clean through zero values.
+Schema 1 is add-only.
+
+### Ephemeral-worktree report and apply contract
+
+`dev sweep --ephemeral-worktrees --json` emits one object with
+`schema_version: 1`, generation time, canonical repository/common-dir identity,
+provider inactivity threshold, explicit-base/branch-deletion request, sorted
+capabilities/diagnostics/candidates, and summary counts. Candidates contain only
+validated provider/run/agent IDs, normalized states/times, worktree path/branch/
+registry HEAD, live Git facts and counts, task/artifact/caller/runtime facts,
+stable checks/classification, a separate branch-deletion audit, planned actions,
+and one stable fingerprint. It never includes metadata filenames or prompt,
+script, log, result-body, or transcript content. Empty collections are arrays and
+schema 1 is add-only.
+
+A candidate also has the `provider-git-identity` check. It is eligible only when
+the source recorded branch, HEAD, common-dir, and an opaque non-replayable
+registration generation that live collection independently matches. Claude Code
+2.1.259 records no such identity, so current Claude Workflow candidates expose
+that check as `unknown` and stay report-only. Path/name/GitDir reuse is not
+accepted as identity.
+
+The JSON form is report-only; `--json --apply` is rejected. Human apply requires
+an interactive terminal and one confirmation per eligible candidate. It rejects
+`--yes`, `--close-unknown`, `--assume-no-runtime`, and apply with `--no-runtime`.
+`--stale-days` is provider inactivity (default 14, minimum 1), not commit age.
+`--ephemeral-worktrees` and `--merged-worktrees` are mutually exclusive.
+
+Branches are retained by default, including branches with commits unique from a
+base. `--delete-branches` requires `--apply` plus an explicit `--base`; the
+candidate's branch action remains unsafe unless both tips resolve unchanged, the
+branch is contained, and it has zero unique commits. Apply recollects all proof
+under a common-dir lock and accepts only the same fingerprint. Results are
+versioned internally as removed, partial, skipped-changed, or failed; branch
+failure after worktree removal is partial and retains the branch.
+
+### Prompt recipes and structured behavior
+
+`dev prompt list --json` returns sorted recipe metadata (`name`, `summary`,
+`scope`, optional `target_usage`, and `context_version`). The three recipes are
+`pr-triage`, `session-close`, and `workspace-closeout`.
+
+`dev prompt render <recipe>` prints a Markdown prompt whose JSON envelope has
+`schema_version: 1`, recipe/context versions, generation time, host, scope,
+optional target, capabilities, warnings, and recipe context. Collection is
+read-only and missing evidence stays explicit.
+
+`dev prompt agents [--json]` is the sorted, redacted profile inventory. Human
+output has `PROFILE DEFAULT RUN OPEN DESCRIPTION`; direct launchers expose only
+the executable basename, shell launchers say `shell`, and unavailable modes say
+`—`. Every JSON object has `name`, `description`, `default`, and nested
+`run`/`open` objects containing `configured`, `kind` (`command|shell|none`), and
+`executable`. Neither form emits argv, shell source, executable directories,
+environment, prompt text, or config path.
+
+| Command | Process contract |
+|---|---|
+| `dev prompt run <recipe> [--agent NAME] [--dry-run]` | Resolve the global profile and its run launcher before collection; then run one batch process with no user stdin, stdin/file/argv prompt transport, and a 10-minute default timeout. |
+| `dev prompt open <recipe> [--agent NAME] [--dry-run]` | Resolve the global profile/open launcher and check the non-dry TTY before collection; then run one foreground process with file/argv prompt transport and no default timeout. |
+
+`--agent` wins, otherwise the unique configured default wins, otherwise the sole
+agent wins. Multiple agents with no default fail as ambiguous. Selection is not
+mode-local: a selected profile missing the requested mode fails without using a
+different profile. Diagnostics list sorted mode-capable profiles and point to
+`dev prompt agents`. Dynamic completion loads parsed `--config`, filters names by
+run/open capability, sanitizes descriptions through the shared completion
+format, and degrades invalid config to no candidates plus no file completion.
+Dry-run shows the resolved mode, cwd, transport, timeout, safe command markers,
+and complete prompt, and starts nothing. Real launches in a checkout remain
+subject to the writer-occupancy guard after collection supplies the cwd. `dev`
+never parses a reply, starts an agent loop, changes permissions, or treats advice
+as lifecycle authorization. `open` never creates, focuses, or reuses a
+Herdr/tmux/Zellij surface; inside Herdr it remains in the current pane. See
+[Prompt handoffs](../guides/prompt-handoffs.md).
 
 ## Repository bootstrap
 
@@ -357,6 +461,7 @@ Key sections:
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
 | `[stats]` | sampler and optional WakaTime import |
 | `[update]` | `check` (default `true`) — allow the once-a-day "newer release available" hint and its background cache refresh; `DEV_NO_UPDATE_CHECK` overrides it |
+| `[[agent]]`, `[agent.run]`, `[agent.open]` | host-only names, optional descriptions, global default selection, and independent batch/foreground prompt launchers; no built-in entries |
 
 Interactive repository selection uses one direct argv vector, never shell source:
 
@@ -382,6 +487,53 @@ optional update-cache network refresh is also deferred until the initial view
 has returned.
 
 Repository quick-note Markdown is durable under configured `paths.state_dir/notes`, which defaults to `$XDG_DATA_HOME/dev/notes`. The full-text index at `$XDG_CACHE_HOME/dev/notes.db` is disposable and rebuilds from those files; changing `paths.state_dir` does not move the cache.
+
+### Agent prompt launchers
+
+There are no built-in agent entries. Launchers are host-only policy in the user
+config; the `agent` section is denied in repository `.dev-cli/config.toml`.
+
+```toml
+[[agent]]
+name = "my-agent"
+description = "Local review and implementation agent"
+default = true
+
+[agent.run]
+command = ["my-agent", "--batch"]
+input = "stdin"
+timeout = "10m"
+
+[agent.open]
+command = ["my-agent", "{{prompt_file}}"]
+input = "file"
+```
+
+`[[agent]]` has required `name`, optional `description` and `default`, and nested
+`run`/`open` launchers. Names cannot have surrounding whitespace, compare
+case-insensitively, and must be unique; at most one entry may be default. An
+entry must configure at least one mode. Selection remains explicit/default/sole
+across all profiles, then the requested mode is required on that exact profile;
+the other mode remains unavailable rather than inheriting or falling back.
+
+Each launcher sets exactly one of `command` (direct argv) or `shell` (static
+shell text), a required `input`, and optional `load_shell_rc` for `shell` only.
+Only `run` accepts an optional non-negative `timeout`; `open` rejects one. `load_shell_rc = true` uses `$SHELL -lic`;
+otherwise shell launch uses `$SHELL -c`. Shell text cannot contain prompt
+placeholders, so prompt data is never interpolated into a command string.
+
+Transport constraints are exact:
+
+- `stdin`: `run` only; no placeholder; the finite prompt replaces child stdin.
+- `file`: a `command` needs exactly one whole `{{prompt_file}}` element; a
+  `shell` must reference `$DEV_PROMPT_FILE`/`${DEV_PROMPT_FILE}`. The temporary
+  directory/file modes are 0700/0600 and cleanup follows process exit.
+- `argv`: `command` only, with exactly one whole `{{prompt}}` element; maximum
+  rendered prompt size is 100 KiB.
+
+Embedded placeholder forms are rejected. Omitted/zero timeout resolves to 10
+minutes for `run`; `open` has no deadline and rejects a timeout. See
+[Prompt handoffs](../guides/prompt-handoffs.md) for recipe and runtime safety.
 
 ### Scaffold presets
 
@@ -546,6 +698,8 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
 - [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
+- [`internal/handoff`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/handoff)
 - [`internal/scaffold/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/scaffold/types.go)
 - [`internal/projectconfig/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/projectconfig/types.go)
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)

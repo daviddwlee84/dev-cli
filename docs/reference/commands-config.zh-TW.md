@@ -29,6 +29,8 @@ lang: zh-TW
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
 | SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh probe`、`ssh remove` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
+| pull-request inventory | `pr list` |
+| prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
@@ -61,6 +63,10 @@ dev ssh probe <alias> --json
 dev ssh remove <alias> --dry-run --json
 dev skill list --all --json
 dev mcp list --all --json
+dev pr list --json
+dev prompt list --json
+dev prompt render <pr-triage|session-close|workspace-closeout>
+dev sweep --ephemeral-worktrees --json
 dev bootstrap --json
 ```
 
@@ -113,6 +119,94 @@ origin；`config edit` 與 TUI edit action 仍只開 primary file。Generated fr
 `--file` allowlist，apply 需要 matching pin，且 `--yes` 絕不 imply `--replace`。
 Windows transport 允許 capability helper 做 identity diagnostics，但在 content
 送出前 block native file payload helpers。
+
+### Pull-request schema 與 effective scope
+
+`dev pr list --json` 輸出 object，包含 `schema_version: 1`、`generated_at`、
+`scope`、`state`、`roles`、optional normalized `repositories`、provider readiness、
+`warnings` 與 `pull_requests`。即使仍有 useful rows，partial role/provider failure 也會出現在
+`warnings`。`scope` 是實際執行的 surface：account/all 要求
+merged/closed/all 時，collection 會 narrow 到 local，JSON 回報 `"local"`。
+`--repo` 同時 filter account rows 與 local query targets。Personal local
+inventory 對每個 repository 的每個 requested role（預設 author 與 reviewer）可能各發
+一個 paginated query。每一列都帶 provider `host`；local enterprise remote 的 host 若與
+`GH_HOST`／`GITLAB_HOST` 不同，會被報告而不是查到錯誤 endpoint。完整 GitHub row 也會帶 optional `head_repo` 與
+`is_cross_repository`；local evidence 依 source repository join，若 source 已刪除或未知，
+絕不 fallback 到 target repository 中同名但無關的 branch。
+
+Request 的 optional `local` object 把 task intent 與 live checkout health 分開。
+它包含 `expected_branch`、observed `live_branch`，以及互相獨立的
+`branch_checked_out`、`checkout_exists`、`worktree_registered`、
+`status_available` booleans，另有 optional `status_error`。只有 expected branch
+確實被證明 checked out 且 status available 時才出現 optional `git`；其中包含
+`dirty`、`ahead`、`behind` 與 optional `upstream`。Missing/cold/unregistered status
+因此不會透過 zero value 看似 clean。Schema 1 是 add-only。
+
+### Ephemeral-worktree report 與 apply contract
+
+`dev sweep --ephemeral-worktrees --json` 輸出一個 object，包含
+`schema_version: 1`、generation time、canonical repository/common-dir identity、
+provider inactivity threshold、explicit-base/branch-deletion request、sorted
+capabilities/diagnostics/candidates 與 summary counts。Candidate 只包含 validated
+provider/run/agent IDs、normalized states/times、worktree path/branch/registry
+HEAD、live Git facts 與 counts、task/artifact/caller/runtime facts、stable checks/
+classification、獨立 branch-deletion audit、planned actions 與 stable fingerprint。
+它絕不包含 metadata filenames 或 prompt、script、log、result-body、transcript
+content。Empty collections 一律是 arrays；schema 1 是 add-only。
+
+Candidate 另有 `provider-git-identity` check。只有 source 記錄 branch、HEAD、
+common-dir 與 opaque non-replayable registration generation，且 live collection
+獨立比對一致時才 eligible。Claude Code 2.1.259 不記錄該 identity，因此目前 Claude
+Workflow candidate 會把此 check 顯示為 `unknown` 並保持 report-only。Path/name/GitDir
+reuse 不會被接受為 identity。
+
+JSON form 僅供 report；`--json --apply` 會被拒絕。Human apply 要求 interactive
+terminal，且每個 eligible candidate 都要個別確認。它拒絕 `--yes`、
+`--close-unknown`、`--assume-no-runtime`，也拒絕搭配 `--no-runtime` apply。
+`--stale-days` 指 provider inactivity（預設 14、最小 1），不是 commit age。
+`--ephemeral-worktrees` 與 `--merged-worktrees` 互斥。
+
+Branch 預設保留，包括含有 base-unique commits 的 branch。`--delete-branches`
+要求 `--apply` 與 explicit `--base`；只有兩個 tip 都能解析且 unchanged、branch
+contained、zero unique commits 時，candidate branch action 才 safe。Apply 在
+common-dir lock 下重新收集全部 proof，只接受相同 fingerprint。Result 內部有
+version，狀態為 removed、partial、skipped-changed 或 failed；worktree remove 後若
+branch step 失敗，會回報 partial 並保留 branch。
+
+### Prompt recipe 與 structured behavior
+
+`dev prompt list --json` 回傳 sorted recipe metadata（`name`、`summary`、`scope`、
+optional `target_usage`、`context_version`）。三個 recipe 是 `pr-triage`、
+`session-close` 與 `workspace-closeout`。
+
+`dev prompt render <recipe>` 印出 Markdown prompt；其中 JSON envelope 含
+`schema_version: 1`、recipe/context versions、generation time、host、scope、optional
+target、capabilities、warnings 與 recipe context。Collection 是 read-only，missing
+evidence 保持明確。
+
+`dev prompt agents [--json]` 是 sorted、redacted profile inventory。Human output 有
+`PROFILE DEFAULT RUN OPEN DESCRIPTION`；direct launcher 只顯示 executable basename，
+shell launcher 顯示 `shell`，unavailable mode 顯示 `—`。每個 JSON object 都有
+`name`、`description`、`default` 與 nested `run`／`open` object；後者包含
+`configured`、`kind`（`command|shell|none`）與 `executable`。兩種 form 都不會輸出
+argv、shell source、executable directories、environment、prompt text 或 config path。
+
+| Command | Process contract |
+|---|---|
+| `dev prompt run <recipe> [--agent NAME] [--dry-run]` | Collection 前先解析 global profile 與其 run launcher；之後才啟動沒有 user stdin 的 batch process，prompt 可走 stdin/file/argv，default timeout 為 10 分鐘。 |
+| `dev prompt open <recipe> [--agent NAME] [--dry-run]` | Collection 前先解析 global profile/open launcher，並先檢查 non-dry TTY；之後才啟動 file/argv transport、沒有 default timeout 的 foreground process。 |
+
+`--agent` 優先；否則選 unique configured default；再不然選 sole agent。多個 agent
+且沒有 default 時視為 ambiguous 並失敗。Selection 不是 mode-local：selected profile
+缺少 requested mode 時會失敗，不會改用另一個 profile。Diagnostic 會列出 sorted
+mode-capable profiles 並指向 `dev prompt agents`。Dynamic completion 會載入 parsed
+`--config`、依 run/open capability 過濾 names、透過 shared completion format sanitize
+description；invalid config 則得到 no candidates 與 no file completion。Dry-run 顯示
+resolved mode、cwd、transport、timeout、safe command marker 與完整 prompt，不啟動任何
+東西。Checkout 中的 real launch 會在 collection 提供 cwd 後受 writer-occupancy guard。
+`dev` 絕不 parse reply、啟動 agent loop、改變 permission 或把 advice 當成 lifecycle
+authorization。`open` 不會建立、focus 或 reuse Herdr/tmux/Zellij surface；在 Herdr 內
+會留在 current pane。詳見 [Prompt handoff](../guides/prompt-handoffs.zh-TW.md)。
 
 ## Repository bootstrap
 
@@ -308,6 +402,7 @@ dev ssh init --apply       # confirmation 後安裝
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
 | `[stats]` | sampler 與 optional WakaTime import |
 | `[update]` | `check`（預設 `true`）— 允許每天一次的「有新版」提示與其背景 cache refresh；`DEV_NO_UPDATE_CHECK` 可覆寫 |
+| `[[agent]]`、`[agent.run]`、`[agent.open]` | host-only name、optional description、global default selection 與各自獨立的 batch/foreground prompt launcher；沒有 built-in entry |
 
 Interactive repository selection 使用直接 argv vector，絕不當作 shell source：
 
@@ -330,6 +425,52 @@ stats、stdout 或 network telemetry。
 Dashboard 與 `dev flow` 這類 full-screen invocation 的 optional update-cache network refresh 也會延後到 initial view return 之後；這不會把 Flow 自己的 local `r` 變成 remote refresh。
 
 Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
+
+### Agent prompt launcher
+
+沒有 built-in agent entry。Launcher 是 user config 中的 host-only policy；repository
+`.dev-cli/config.toml` 不允許 `agent` section。
+
+```toml
+[[agent]]
+name = "my-agent"
+description = "Local review and implementation agent"
+default = true
+
+[agent.run]
+command = ["my-agent", "--batch"]
+input = "stdin"
+timeout = "10m"
+
+[agent.open]
+command = ["my-agent", "{{prompt_file}}"]
+input = "file"
+```
+
+`[[agent]]` 有 required `name`、optional `description` 與 `default`，以及 nested
+`run`/`open` launchers。Name 不能有 surrounding whitespace、採 case-insensitive
+compare，且必須 unique；最多一個 entry 可為 default。每個 entry 至少設定一種 mode。
+Selection 在所有 profiles 間仍採 explicit/default/sole，之後要求該 exact profile 的
+requested mode；另一種 mode 維持 unavailable，不會 inherit 或 fallback。
+
+每個 launcher 必須在 `command`（direct argv）與 `shell`（static shell text）中二選一，
+設定 required `input`，以及僅限 `shell` 的 optional `load_shell_rc`。只有 `run` 接受
+optional non-negative `timeout`；`open` 會拒絕 timeout。`load_shell_rc = true` 使用 `$SHELL -lic`；否則 shell launch 使用
+`$SHELL -c`。Shell text 不可含 prompt placeholder，因此 prompt data 絕不 interpolate
+into command string。
+
+Transport constraints 是 exact：
+
+- `stdin`：僅限 `run`；不可有 placeholder；finite prompt 取代 child stdin。
+- `file`：`command` 需要有且只有一個完整 `{{prompt_file}}` element；`shell` 必須引用
+  `$DEV_PROMPT_FILE`／`${DEV_PROMPT_FILE}`。Temporary directory/file modes 為
+  0700/0600，process exit 後 cleanup。
+- `argv`：僅限 `command`，有且只有一個完整 `{{prompt}}` element；rendered prompt
+  上限 100 KiB。
+
+Embedded placeholder form 會被拒絕。Omitted/zero timeout 對 `run` 解析為 10 分鐘；
+`open` 沒有 deadline，也不接受 timeout。Recipe 與 runtime safety 請見
+[Prompt handoff](../guides/prompt-handoffs.zh-TW.md)。
 
 ### Scaffold presets
 
@@ -488,6 +629,8 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
 - [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
+- [`internal/handoff`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/handoff)
 - [`internal/scaffold/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/scaffold/types.go)
 - [`internal/projectconfig/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/projectconfig/types.go)
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)

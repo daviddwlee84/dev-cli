@@ -29,6 +29,11 @@ type projectFile struct {
 var deniedTopLevelSections = map[string]bool{
 	"paths": true, "runtime": true, "stats": true, "tui": true,
 	"bootstrap": true, "forge": true, "update": true,
+	// agent defines a command dev will execute, so a cloned repository must
+	// never be able to supply one. projectFile does not decode it either;
+	// naming it here makes the refusal a clear diagnostic rather than an
+	// "unknown key" shrug.
+	"agent": true,
 }
 
 var allowedScaffoldTopLevel = map[string]bool{

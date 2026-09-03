@@ -406,41 +406,17 @@ func ensureArtifactsFinalized(app *App, worktree string) error {
 }
 
 func artifactCommitReachable(intent artifact.Intent) bool {
-	refs := []struct {
-		dir string
-		ref string
-	}{
-		{intent.WorktreePath, "HEAD"},
-		{intent.RepoPath, intent.Branch},
-		{intent.RepoPath, intent.Base},
-	}
-	for _, candidate := range refs {
-		if candidate.dir == "" || candidate.ref == "" {
-			continue
-		}
-		if _, err := gitx.Run(context.Background(), candidate.dir, "merge-base", "--is-ancestor", intent.ArtifactCommit, candidate.ref); err == nil {
-			return true
-		}
-	}
-	return false
+	return artifact.CommitReachable(context.Background(), intent)
 }
 
 func artifactStatuses(app *App) (map[string]string, error) {
-	intents, err := artifactStore(app).List()
+	inspections, err := artifact.InspectWorktrees(context.Background(), artifactStore(app))
 	if err != nil {
 		return nil, err
 	}
-	statuses := make(map[string]string)
-	priority := map[artifact.Status]int{artifact.Discarded: 1, artifact.Finalized: 1, artifact.Armed: 2, artifact.Finalizing: 3, artifact.Failed: 4}
-	for _, intent := range intents {
-		path, err := pathx.Canonical(intent.WorktreePath)
-		if err != nil {
-			continue
-		}
-		current := artifact.Status(statuses[path])
-		if priority[intent.Status] >= priority[current] {
-			statuses[path] = string(intent.Status)
-		}
+	statuses := make(map[string]string, len(inspections))
+	for path, inspection := range inspections {
+		statuses[path] = string(inspection.Status)
 	}
 	return statuses, nil
 }

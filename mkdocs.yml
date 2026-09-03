@@ -58,6 +58,8 @@ plugins:
             SSH Host Onboarding: SSH Host 設定與佈建
             Remote Repository Fleet: 遠端 Repository Fleet
             Agent-Safe Retirement: Agent 安全退場
+            Prompt Handoffs: Prompt Handoff
+            Pull Request Inbox: Pull Request 收件匣
             Machine Summary: 機器整體摘要
             Development Journal: 開發日誌
             TUI, Repositories, Quick Notes, and Bootstrap: TUI、Repository、Quick Notes 與 Bootstrap
@@ -79,6 +81,7 @@ plugins:
             Notes: 筆記
             Notes Index: 筆記索引
             Authoring Notes: 撰寫筆記
+            AI Pull-Request Review Options: AI Pull-Request Review 選項
   - search
   - copy-to-llm:
       repo_url: "https://daviddwlee84.github.io/dev-cli"
@@ -131,6 +134,8 @@ nav:
       - SSH Host Onboarding: guides/ssh-hosts.md
       - Remote Repository Fleet: guides/remote-fleet.md
       - Agent-Safe Retirement: guides/agent-safe-retirement.md
+      - Prompt Handoffs: guides/prompt-handoffs.md
+      - Pull Request Inbox: guides/pull-request-inbox.md
       - TUI, Repositories, Quick Notes, and Bootstrap: guides/tui-repos-bootstrap.md
   - Git and GitHub:
       - GitHub Flow: git/github-flow.md
@@ -150,6 +155,7 @@ nav:
   - Notes:
       - Notes Index: notes/index.md
       - Authoring Notes: notes/authoring.md
+      - AI Pull-Request Review Options: notes/ai-pr-review-options.md
 extra:
   social:
     - icon: fontawesome/brands/github

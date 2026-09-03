@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/daviddwlee84/dev-cli/internal/handoff"
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 )
 
@@ -28,6 +29,10 @@ type Config struct {
 	Forge      Forge      `toml:"forge"`
 	Picker     Picker     `toml:"picker"`
 	Update     Update     `toml:"update"`
+	// Agents are the external commands dev can hand a rendered prompt to.
+	// There are no built-in entries: which coding agent you use is yours to
+	// choose, and shipping a default would make dev depend on one.
+	Agents []Agent `toml:"agent"`
 
 	// Source records where the config was loaded from; "" means defaults only.
 	Source string `toml:"-"`
@@ -276,6 +281,70 @@ func (c Config) EffectiveTools() []Tool {
 	return c.TUI.Tools
 }
 
+// Agent is one provider-neutral local program dev can hand a rendered prompt
+// to. Run and Open are separate because a batch command and an interactive TTY
+// command usually have different argv and input requirements.
+type Agent struct {
+	Name        string        `toml:"name"`
+	Description string        `toml:"description"`
+	Default     bool          `toml:"default"`
+	Run         AgentLauncher `toml:"run"`
+	Open        AgentLauncher `toml:"open"`
+}
+
+// AgentLauncher is one batch or foreground command definition. Exactly one of
+// Command and Shell is configured; prompt contents are never interpolated into
+// Shell.
+type AgentLauncher struct {
+	Command     []string `toml:"command"`
+	Shell       string   `toml:"shell"`
+	Input       string   `toml:"input"`
+	LoadShellRC bool     `toml:"load_shell_rc"`
+	Timeout     Duration `toml:"timeout"`
+}
+
+func (l AgentLauncher) Configured() bool {
+	return len(l.Command) > 0 || strings.TrimSpace(l.Shell) != "" || l.Input != "" ||
+		l.LoadShellRC || l.Timeout.Duration != 0
+}
+
+// Handoff converts configuration to the neutral process contract. Run gets a
+// ten-minute default; Open deliberately has no default deadline.
+func (l AgentLauncher) Handoff(mode handoff.Mode) handoff.Launcher {
+	timeout := l.Timeout.Duration
+	if mode == handoff.ModeRun && timeout == 0 {
+		timeout = 10 * time.Minute
+	}
+	return handoff.Launcher{
+		Command: append([]string(nil), l.Command...), Shell: l.Shell,
+		Input: handoff.Transport(l.Input), LoadShellRC: l.LoadShellRC,
+		Timeout: timeout,
+	}
+}
+
+// AgentByName finds a configured agent. An empty name selects the one marked
+// default, or the only configured agent when there is exactly one.
+func (c Config) AgentByName(name string) (Agent, bool) {
+	name = strings.TrimSpace(name)
+	if name != "" {
+		for _, agent := range c.Agents {
+			if strings.EqualFold(strings.TrimSpace(agent.Name), name) {
+				return agent, true
+			}
+		}
+		return Agent{}, false
+	}
+	for _, agent := range c.Agents {
+		if agent.Default {
+			return agent, true
+		}
+	}
+	if len(c.Agents) == 1 {
+		return c.Agents[0], true
+	}
+	return Agent{}, false
+}
+
 // Stats configures activity collection for the heatmap.
 type Stats struct {
 	// Sampler enables recording live agent/runtime activity into stats.db.
@@ -386,6 +455,9 @@ func (c Config) Validate() error {
 		if index == 0 && strings.TrimSpace(arg) == "" {
 			return errors.New("picker.command[0] must name an executable; use an empty command array for the built-in picker")
 		}
+	}
+	if err := c.validateAgents(); err != nil {
+		return err
 	}
 	seenAzureTargets := map[string]bool{}
 	for i, target := range c.Forge.AzureDevOps {
@@ -566,4 +638,49 @@ func Hostname() string {
 		return h
 	}
 	return "unknown"
+}
+
+// validateAgents rejects an agent definition that could not run, or that could
+// run in a way the user did not mean.
+func (c Config) validateAgents() error {
+	seen := map[string]int{}
+	defaultAt := -1
+	for i, agent := range c.Agents {
+		name := strings.TrimSpace(agent.Name)
+		if name == "" {
+			return fmt.Errorf("agent[%d].name must not be empty", i)
+		}
+		if name != agent.Name {
+			return fmt.Errorf("agent[%d].name %q must not have surrounding whitespace", i, agent.Name)
+		}
+		if previous, exists := seen[strings.ToLower(name)]; exists {
+			return fmt.Errorf("agent[%d].name %q duplicates agent[%d]", i, name, previous)
+		}
+		seen[strings.ToLower(name)] = i
+
+		if !agent.Run.Configured() && !agent.Open.Configured() {
+			return fmt.Errorf("agent[%d] %q: configure run or open", i, name)
+		}
+		for mode, launcher := range map[handoff.Mode]AgentLauncher{
+			handoff.ModeRun: agent.Run, handoff.ModeOpen: agent.Open,
+		} {
+			if !launcher.Configured() {
+				continue
+			}
+			if launcher.Timeout.Duration < 0 {
+				return fmt.Errorf("agent[%d].%s.timeout must not be negative", i, mode)
+			}
+			if err := handoff.Validate(mode, launcher.Handoff(mode)); err != nil {
+				return fmt.Errorf("agent[%d].%s: %w", i, mode, err)
+			}
+		}
+
+		if agent.Default {
+			if defaultAt >= 0 {
+				return fmt.Errorf("agent[%d] %q: agent[%d] is already the default", i, name, defaultAt)
+			}
+			defaultAt = i
+		}
+	}
+	return nil
 }

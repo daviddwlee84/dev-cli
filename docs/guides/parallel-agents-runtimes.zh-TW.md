@@ -2,7 +2,7 @@
 description: 以變更流 ownership、明確 mutation boundary 與可替換 runtime 協調多個 coding agents。
 authority: project-policy
 status: stable
-verified_on: 2026-08-31
+verified_on: 2026-09-02
 lang: zh-TW
 ---
 
@@ -66,6 +66,12 @@ dev wt create exp/oauth --base main
 
 Runtime 只開啟與顯示 checkout；branch/worktree lifecycle 由 `dev` 管理，不由 Herdr 或 tmux 管理。關閉 runtime 不會刪除 task 或 checkout。
 
+Zellij 會保留可 resurrect 的 exited session。`dev` 只辨識 exact
+`(EXITED - attach to resurrect)` marker，從 live coverage 省略這些 session，並拒絕用
+同一 name 建立新 session；name 只是含有 `EXITED` 的 live session 仍視為 live。若 session
+在 listing 與 layout inspection 之間退出，open 會 fail closed 並要求 retry，不會在無關
+checkout resurrect 舊 layout。
+
 若要在新建的獨立 worktree 執行一個已 review 的 shell command，Herdr 支援直接
 one-liner：
 
@@ -77,6 +83,13 @@ dev start api --task "token refresh" --base main --run 'codex' --focus
 fallback、缺少 pane identity、其他 runtime，以及 direct/branch-only modes 都會
 fail closed。Dispatch 失敗時 task 與可用 worktree 仍會保留。`--focus` 只在成功
 dispatch 後獨立控制轉跳；dev 不等待 command exit status。
+
+`dev prompt open <recipe>` 是不同 contract：它在呼叫 terminal 中啟動一個 configured
+foreground process，絕不建立、focus、reuse 或 inject runtime pane。在 Herdr 裡會留在
+current pane。若要在 separate pane 對話，請手動建立/focus 該 pane、進入 exact
+checkout，再從那裡執行 `prompt open`。它不會放寬 `start --run` 的
+fresh-worktree/exact-root-pane proof；詳見
+[Prompt handoff](prompt-handoffs.zh-TW.md)。
 
 ## 協調 contract
 
@@ -109,4 +122,5 @@ Claude-specific primitive 的選擇請接著看[平行工作決策指南](../cla
 - [`internal/help/topics/agents.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/agents.md)
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/runtime/herdr.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/herdr.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
 - [Claude Code：平行執行 agents](https://code.claude.com/docs/en/agents)

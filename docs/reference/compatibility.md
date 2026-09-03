@@ -3,7 +3,7 @@ description: Record dev-cli dependencies, upstream preview status, documentation
 authority: project-and-upstream
 status: evolving
 verified_on: 2026-09-03
-tested_with: Claude Code 2.1.250
+tested_with: Claude Code 2.1.259
 ---
 
 # Compatibility and known limitations
@@ -37,6 +37,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX targets remain available; Windows-specific installer/launcher fails without PowerShell rather than using a shell fallback |
 | terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
 | in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` delegates to the package manager's upgrade command instead |
+| verified ephemeral worktree apply | Git, compatible bounded Claude Workflow metadata, known task/artifact state, and every available runtime inventory | report remains available, but missing/unknown proof is never apply-eligible |
 
 ## Confirmed project limitations
 
@@ -50,7 +51,7 @@ Latin note queries use term-wise prefix FTS and SQLite ranking. Non-ASCII querie
 
 Note writes sync the file and atomically rename it on every supported platform. Unix also syncs the containing directory after rename/delete. The Windows implementation cannot provide that directory-fsync step, so a sudden power loss has a narrower durability guarantee there. Concurrent mutations by cooperating `dev` processes are serialized and each Markdown replacement is atomic; arbitrary external writers do not participate in that lock.
 
-### Pull-request completion is not tracked automatically
+### A merged pull request does not retire its worktree
 
 `dev done --pr` pushes and opens a pull/merge request, then leaves the task,
 runtime, and worktree unchanged because review owns integration. `dev flow` can
@@ -59,6 +60,100 @@ portable existence, open/draft/merged/closed state, URL, provider, and observati
 time. It does not query review decisions or checks, persist that evidence, or
 turn it into DONE. Current `dev sweep` does not query the forge either. Verify
 integration with exact local ancestry and finish deliberately.
+
+`dev pr list --scope local --state merged` now reports which requests the forge considers merged, and which local checkout each belongs to. `dev sweep` still does not consult it, and that is deliberate: a squashed merge produces a commit that is not an ancestor of the local branch, so a forge saying "merged" cannot prove the work is recoverable from the remote. `dev sweep --merged-worktrees` proves containment locally with `git merge-base --is-ancestor`, and `dev done --merged` requires an explicit `--confirm-squash` attestation. Treat the pull-request list as a prompt to look, not as permission to delete.
+
+### Claude Workflow ephemeral cleanup is strict and version-sensitive
+
+`dev sweep --ephemeral-worktrees` supports the private layout verified with
+Claude Code 2.1.259: validated fixed-depth `wf_*.json`, matching worktree meta and
+journal paths, `runId`, `status`, `workflowProgress` agent state/isolation,
+`worktreePath`, `spawnedWithWorktree`, journal `started`/`result`, and same-ID
+resume existence. Unknown add-only JSON fields are tolerated because upstream has
+no metadata schema version. A missing/wrong required type, changed or unsafe
+source file, duplicate/path mismatch, exhausted bound, or uncertain timestamp
+makes the affected evidence unknown or unavailable; dev does not guess another
+layout or decode payload fields.
+
+The 2.1.259 layout does not record provider-observed branch, HEAD, common-dir, or
+an opaque non-replayable worktree-registration generation. Those are mandatory
+current-ownership facts, so this adapter leaves `provider-git-identity` unknown
+and its claims remain report-only. A canonical path, naming convention, or GitDir
+pathname can be reused and is deliberately not accepted; stale metadata must not
+attach to a replacement checkout.
+
+V1 has no operator attestation. `killed` without a matching child result,
+progress, or any same-ID resumed transcript remains `unknown` regardless of age.
+Apply is available only when provider inactivity and every Git/task/artifact/
+caller/runtime fact are known and safe. `--no-runtime` may produce a report but
+cannot apply. Missing, prunable, unregistered, and orphan paths are report-only.
+The command never closes runtimes, prunes worktree registrations, deletes Claude
+metadata, or force-removes/rescues/stashes/commits dirty or ignored work.
+
+This adapter is provider-specific behind a provider-neutral audit/service; no
+other agent harness is inferred from a path or branch name. If Claude changes the
+private layout, the safe behavior is an unavailable capability plus unknown
+candidates until the adapter, fixtures, tested version, and both documentation
+locales are updated.
+
+### Pull-request inventory is limited by the provider surfaces
+
+GitHub's `gh search prs` account surface cannot report a head branch, review decision, or check status, so those rows are `detail: "summary"` and cannot be joined to a worktree. An absent field on a summary row means the surface could not report it, not that the value is empty. GitLab's account list does carry branch/merge detail and therefore returns full rows, but its list surfaces report neither pipeline checks nor a normalized review decision.
+
+Personal per-repository inventory may make one paginated query per requested role for each repository (author and reviewer by default). It covers repositories `dev` has a task for unless `--all-repos` widens the scan. `--repo` filters both account rows and local targets. Account search cannot distinguish merged from closed, so requesting merged/closed/all narrows an account/all request to local collection; JSON reports that effective scope.
+
+The schema-version-1 local join reports expected and live branches, checkout existence, worktree registration, status availability/error, and whether the expected branch is actually checked out. Git details are omitted unless those live checks succeed. Azure DevOps pull requests are not listed at all; a configured target is reported as unsupported rather than failing the command.
+
+### Prompt open uses the current terminal, not runtime placement
+
+`dev prompt open <recipe>` runs one configured child in the foreground of the
+terminal/TTY that invoked it. It does not create, focus, reuse, or inject into a
+Herdr, tmux, or Zellij pane. Inside Herdr it naturally remains in the current
+pane. To use another Herdr pane, create or focus it manually, enter the exact
+checkout, and run `prompt open` there.
+
+This is intentionally separate from `dev start --run`, whose dispatch target is
+only the exact root pane returned for a newly created first-class Herdr worktree.
+`prompt open` neither supplies a fresh runtime surface nor weakens that
+exact-pane proof. `run` is the non-interactive alternative; it receives no user
+stdin and defaults to a 10-minute timeout, while `open` reserves stdin for the
+conversation and has no default timeout.
+
+The configured child retains its own permission policy. Recipe instructions are
+read-only guidance, not a sandbox; `dev` does not add permission flags, answer
+approval prompts, or parse the response into an action.
+
+### Prompt closeout reports do not authorize cleanup
+
+`session-close` computes runtime-closure evidence only. An `idle` or `done`
+covering agent can satisfy that one activity gate, but does not prove that work
+is committed, artifacts are finalized, review is complete, or task intent is
+done. Caller-contained, mixed-purpose, active, unknown, and unrecognized
+sessions remain blocked or unknown as their evidence requires.
+
+`workspace-closeout` performs the broader read-only audit: target kind,
+registration/path, status availability, clean Git state, no in-progress Git
+operation, known base and containment, task completion, artifact
+reachability/finalization, and runtime eligibility. A merged pull request is only
+evidence. Even an `eligible` audit is advisory; `dev retire` recollects and
+revalidates fresh state before any mutation. Neither recipe closes a runtime,
+changes Git/task state, deletes a branch/worktree, or grants permission to do so.
+
+### Zellij exited sessions are closed but keep their names
+
+Zellij keeps exited sessions available for resurrection. `dev` recognizes only
+the exact `(EXITED - attach to resurrect)` marker, omits those sessions from live
+coverage, and refuses to create over their names; reclaim one with
+`zellij delete-session <name>`. A live session name containing `EXITED` is not an
+exit marker. If a session exits between native listing and layout inspection,
+open fails closed and asks for a retry rather than resurrecting an old layout at
+the requested checkout.
+
+### Forge CLI sign-in is reported, never retried
+
+`gh` and `glab` are optional and independent, and `dev` never authenticates on your behalf. When a provider's stored credential is missing or rejected, `dev` reports which provider and the exact login command — for example ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — and continues with whatever the other provider returned. `dev repo remote` and the TUI REMOTE view render the partial result and warn; `dev pr` fails only when no provider is authenticated at all. `dev doctor` probes sign-in state, so an installed but signed-out CLI is visible before a command needs it.
+
+Only a missing or rejected credential is reported this way. A rate limit, a permissions or scope failure, and a network error keep their full diagnostic text including the command that failed, because signing in again would not fix them. The original command and provider output remain in the wrapped error in every case.
 
 ### Agent session capture is reserved, not wired
 
@@ -164,6 +259,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - Human-readable output now carries semantic color (`--color auto|always|never`), automatically disabled when `NO_COLOR` is set, `TERM=dumb`, or stdout/stderr is not a terminal.
 - `dev done` records MERGED only: it never closes the invoking runtime, removes a worktree, or deletes a branch. Cleanup moved to `dev retire`, which runs from outside the target workspace, refuses active agents and mixed-purpose workspaces, and revalidates Git state after every runtime closure. `dev done --delete-branch` is now an error pointing at `dev retire --delete-branch`, and `--keep-worktree` warns as a no-op.
 - `dev sweep --merged-worktrees` enumerates linked worktrees from Git rather than from the task registry, so unmanaged worktrees whose branches are contained in the base become retirable. Containment alone is never permission; dirty state, unfinalized artifacts, in-progress Git operations, and runtime refusals all still block it, and branches survive unless `--delete-branches` is passed.
+- `dev sweep --ephemeral-worktrees` adds a separate schema-v1 Claude Workflow report. The path/branch convention is only discovery; exact bounded provider linkage plus fresh Git/task/artifact/caller/runtime evidence authorizes TTY/per-item apply. Apply locks and re-fingerprints, removes without force, retains branches by default, and allows only explicit-base unchanged/contained/zero-unique `branch -d`.
 - `dev sweep` reports a branch-backed task whose branch Git no longer has as dead and offers to reap the record. Such a task cannot be finished, resumed, or retired, because every one of those paths resolves the branch first; the suggestion stays report-only until `--apply`.
 - An unknown command is reported instead of discarded. `dev` silences cobra's own error printing and previously also skipped printing anything whose message began with `unknown command`, so a mistyped command produced no output at all on either stream. The message, cobra's "Did you mean this?" suggestions, and a pointer to `--help` are now printed to stderr with exit status 1.
 - A stray argument to a command family is an error rather than a silent help render. `dev wt bogus` used to print `dev wt` help and exit 0 because a family has no `Run` of its own; every family node now reports the unknown subcommand and exits 1, while a bare family still prints its help and exits 0.
@@ -213,6 +309,7 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/ephemeral`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/ephemeral)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
 - [`internal/forge/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/cache.go)
 - [`internal/note/index.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/index.go)
@@ -220,6 +317,10 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
+- [`internal/handoff`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/handoff)
+- [`internal/closeout`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/closeout)
+- [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
 - [`scripts/update-homebrew-formula.sh`](https://github.com/daviddwlee84/dev-cli/blob/main/scripts/update-homebrew-formula.sh)
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)

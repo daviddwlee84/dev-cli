@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -295,6 +296,30 @@ func TestCloseAndWaitReinspectsBeforeClosing(t *testing.T) {
 	}
 	if len(rt.closed) != 0 {
 		t.Fatalf("stale idle inspection closed runtime: %v", rt.closed)
+	}
+}
+
+func TestInspectSessionsMatchesLiveInspectionPolicy(t *testing.T) {
+	target := t.TempDir()
+	outside := t.TempDir()
+	sessions := []runtime.Session{{
+		Handle: "w1",
+		Panes: []runtime.Pane{
+			{ID: "p1", CWD: target, Agent: "claude", AgentStatus: "idle"},
+			{ID: "p2", CWD: outside},
+		},
+	}}
+	opts := retire.Options{CWD: outside}
+	live, err := retire.Inspect(t.Context(), &fakeRuntime{sessions: sessions}, target, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	precollected, err := retire.InspectSessions(target, sessions, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(live, precollected) {
+		t.Fatalf("live = %+v\nprecollected = %+v", live, precollected)
 	}
 }
 

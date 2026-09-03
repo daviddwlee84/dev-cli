@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
+	"github.com/daviddwlee84/dev-cli/internal/templatex"
 )
 
 var ErrUnsafePath = errors.New("unsafe scaffold path")
@@ -91,102 +91,14 @@ func normalizeInput(input Input, value any) (any, error) {
 }
 
 // RenderTemplate substitutes {{name}}, {{path}}, {{preset}},
-// {{input.<id>}}, and caller-defined dotted map values. It intentionally does
-// not expose text/template functions or evaluation: scaffold sources can only
-// select values, never execute code.
+// {{input.<id>}}, and caller-defined dotted map values. The implementation is
+// shared with prompt rendering; the wrapper preserves the scaffold API.
 func RenderTemplate(tmpl string, variables map[string]any) (string, error) {
-	var out strings.Builder
-	rest := tmpl
-	for {
-		start := strings.Index(rest, "{{")
-		closeOnly := strings.Index(rest, "}}")
-		if start < 0 {
-			if closeOnly >= 0 {
-				return "", fmt.Errorf("template has an unmatched closing delimiter")
-			}
-			out.WriteString(rest)
-			return out.String(), nil
-		}
-		if closeOnly >= 0 && closeOnly < start {
-			return "", fmt.Errorf("template has an unmatched closing delimiter")
-		}
-		out.WriteString(rest[:start])
-		after := rest[start+2:]
-		end := strings.Index(after, "}}")
-		if end < 0 {
-			return "", fmt.Errorf("template has an unmatched opening delimiter")
-		}
-		expression := strings.TrimSpace(after[:end])
-		if !validVariableExpression(expression) {
-			return "", fmt.Errorf("invalid template variable %q", expression)
-		}
-		value, ok := lookupVariable(variables, strings.Split(expression, "."))
-		if !ok {
-			return "", fmt.Errorf("unknown template variable %q", expression)
-		}
-		rendered, err := scalarString(value)
-		if err != nil {
-			return "", fmt.Errorf("template variable %q: %w", expression, err)
-		}
-		out.WriteString(rendered)
-		rest = after[end+2:]
-	}
+	return templatex.Render(tmpl, variables)
 }
 
 func validVariableExpression(expression string) bool {
-	if expression == "" {
-		return false
-	}
-	for _, component := range strings.Split(expression, ".") {
-		if component == "" {
-			return false
-		}
-		for _, r := range component {
-			if !(unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-') {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-func lookupVariable(current any, components []string) (any, bool) {
-	for _, component := range components {
-		switch values := current.(type) {
-		case map[string]any:
-			var ok bool
-			current, ok = values[component]
-			if !ok {
-				return nil, false
-			}
-		case map[string]string:
-			value, ok := values[component]
-			if !ok {
-				return nil, false
-			}
-			current = value
-		default:
-			return nil, false
-		}
-	}
-	return current, true
-}
-
-func scalarString(value any) (string, error) {
-	switch v := value.(type) {
-	case string:
-		return v, nil
-	case bool:
-		return strconv.FormatBool(v), nil
-	case int:
-		return strconv.Itoa(v), nil
-	case int64:
-		return strconv.FormatInt(v, 10), nil
-	case float64:
-		return strconv.FormatFloat(v, 'g', -1, 64), nil
-	default:
-		return "", fmt.Errorf("want a string, boolean, or number, got %T", value)
-	}
+	return templatex.ValidExpression(expression)
 }
 
 // cleanRelativePath applies the same interpretation on Unix and Windows:

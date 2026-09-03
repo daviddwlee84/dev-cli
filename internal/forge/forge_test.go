@@ -96,6 +96,18 @@ func TestMissingCLIErrorsClearly(t *testing.T) {
 	}
 }
 
+func TestParseRemoteIdentityPreservesEnterpriseHost(t *testing.T) {
+	for _, raw := range []string{
+		"https://github.corp/acme/widget.git",
+		"git@github.corp:acme/widget.git",
+	} {
+		got := forge.ParseRemoteIdentity(raw)
+		if got.Kind != forge.GitHub || got.Host != "github.corp" || got.Name != "acme/widget" {
+			t.Errorf("ParseRemoteIdentity(%q) = %+v", raw, got)
+		}
+	}
+}
+
 func TestIdentityFromURL(t *testing.T) {
 	t.Setenv("GH_HOST", "")
 	t.Setenv("GITLAB_HOST", "")

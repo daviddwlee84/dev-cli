@@ -67,7 +67,7 @@ func (z *Zellij) listSessionNames(ctx context.Context) (live, exited []string, e
 		if len(fields) == 0 {
 			continue
 		}
-		if strings.Contains(line, "EXITED") {
+		if strings.Contains(line, "(EXITED - attach to resurrect)") {
 			exited = append(exited, fields[0])
 			continue
 		}
@@ -137,15 +137,21 @@ func (z *Zellij) Open(ctx context.Context, dir, label string) (OpenResult, error
 		if err != nil {
 			return OpenResult{}, err
 		}
-		for _, session := range sessions {
-			if len(session.Dirs) == 0 {
-				return OpenResult{}, fmt.Errorf("zellij session %s exists but its cwd is unavailable", name)
-			}
-			if !sameDirectory(session.Dirs[0], dir) {
-				return OpenResult{}, fmt.Errorf("zellij session %s already exists at %s, not %s", name, session.Dirs[0], dir)
-			}
-			return OpenResult{Handle: name, Surface: "session", Opened: true}, nil
+		if len(sessions) == 0 {
+			// The live name disappeared while its layout was inspected. Do not
+			// fall through to attach --create-background: Zellij may retain the
+			// exited layout and resurrect it at its old cwd. A fresh invocation
+			// will list the stable live/exited state and choose safely.
+			return OpenResult{}, fmt.Errorf("zellij session %s changed state while its cwd was inspected; retry", name)
 		}
+		session := sessions[0]
+		if len(session.Dirs) == 0 {
+			return OpenResult{}, fmt.Errorf("zellij session %s exists but its cwd is unavailable", name)
+		}
+		if !sameDirectory(session.Dirs[0], dir) {
+			return OpenResult{}, fmt.Errorf("zellij session %s already exists at %s, not %s", name, session.Dirs[0], dir)
+		}
+		return OpenResult{Handle: name, Surface: "session", Opened: true}, nil
 	}
 	// An exited session still owns the name, and `attach --create-background`
 	// would resurrect its old layout instead of creating one at dir. Fail

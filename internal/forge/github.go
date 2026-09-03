@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -15,6 +16,13 @@ type gh struct{}
 func (g *gh) Kind() Kind      { return GitHub }
 func (g *gh) Bin() string     { return "gh" }
 func (g *gh) Available() bool { return have("gh") }
+
+// run is run() with GitHub authentication failures classified, so a signed-out
+// or expired token reads as a remediation rather than as a failed argv.
+func (g *gh) run(ctx context.Context, dir string, args ...string) (string, error) {
+	out, err := run(ctx, "gh", dir, args...)
+	return out, classifyAuth(GitHub, "gh", err)
+}
 
 // CreatePR opens a GitHub pull request.
 func (g *gh) CreatePR(ctx context.Context, dir string, req PRRequest) (string, error) {
@@ -37,7 +45,7 @@ func (g *gh) CreatePR(ctx context.Context, dir string, req PRRequest) (string, e
 	if req.Web {
 		args = append(args, "--web")
 	}
-	out, err := run(ctx, "gh", dir, args...)
+	out, err := g.run(ctx, dir, args...)
 	return lastURL(out), err
 }
 
@@ -129,7 +137,7 @@ func (g *gh) CreateRepo(ctx context.Context, dir string, req RepoRequest) (strin
 	if req.Push {
 		args = append(args, "--push")
 	}
-	out, err := run(ctx, "gh", dir, args...)
+	out, err := g.run(ctx, dir, args...)
 	return lastURL(out), err
 }
 
@@ -150,7 +158,7 @@ func (g *gh) PublishRepo(ctx context.Context, dir string, req RepoRequest) (Crea
 	}
 	out, err := publishRunner(ctx, "gh", dir, args...)
 	if err != nil {
-		return createRepoResult(GitHub, target, out, false), err
+		return createRepoResult(GitHub, target, out, false), classifyAuth(GitHub, "gh", err)
 	}
 	result := createRepoResult(GitHub, target, out, true)
 	if result.RemoteURL == "" {
@@ -191,7 +199,7 @@ func (g *gh) ListRepos(ctx context.Context) ([]RemoteRepo, error) {
 	const pageSize = 100
 	var result []RemoteRepo
 	for page := 1; ; page++ {
-		out, err := run(ctx, "gh", "", "api", "user/repos", "--method", "GET",
+		out, err := g.run(ctx, "", "api", "user/repos", "--method", "GET",
 			"-f", "per_page=100", "-f", fmt.Sprintf("page=%d", page),
 			"-f", "sort=pushed", "-f", "direction=desc")
 		if err != nil {
@@ -238,4 +246,237 @@ func parseGitHubRepos(out string) ([]RemoteRepo, error) {
 		})
 	}
 	return result, nil
+}
+
+// prSearchFields are the only fields gh search prs can return. Notably absent:
+// headRefName, reviewDecision and statusCheckRollup — which is exactly why the
+// per-repository surface below has to exist.
+const prSearchFields = "number,title,url,state,isDraft,author,repository,createdAt,updatedAt"
+
+// prListFields are what gh pr list adds on top: the head branch that joins a
+// request to a local worktree, and the review/check state an inbox needs.
+const prListFields = "number,title,url,state,isDraft,author,headRepository,isCrossRepository,headRefName,baseRefName," +
+	"reviewDecision,mergeable,statusCheckRollup,createdAt,updatedAt"
+
+// ListAccountPRs searches every repository the authenticated user can see. It
+// is one call per requested role regardless of how many repositories exist,
+// which is what makes an account-wide inbox affordable.
+//
+// gh search prs supports --limit natively (no pagination loop) but only
+// --state open|closed, so a merged-state query has to go through ListRepoPRs.
+func (g *gh) ListAccountPRs(ctx context.Context, q PRQuery) ([]PullRequest, error) {
+	if !g.Available() {
+		return nil, &ErrNoCLI{Kind: GitHub, Bin: "gh"}
+	}
+	if q.AnyRole {
+		return nil, &ErrUnsupported{Kind: GitHub, Operation: "account-wide any-role pull request inventory"}
+	}
+	if state := q.EffectiveState(); state != PRStateOpen {
+		return nil, &ErrUnsupported{Kind: GitHub,
+			Operation: "account-wide search for " + string(state) + " requests"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	byKey := map[string]PullRequest{}
+	var order []string
+	var result []PullRequest
+	for _, role := range q.EffectiveRoles() {
+		flag := "--author"
+		if role == RoleReviewer {
+			flag = "--review-requested"
+		}
+		out, err := g.run(ctx, "", "search", "prs", flag, "@me", "--state", "open",
+			"--limit", strconv.Itoa(q.EffectiveLimit()), "--json", prSearchFields)
+		if err != nil {
+			return collectPRs(byKey, order), err
+		}
+		prs, err := parseGitHubSearchPRs(out, role)
+		if err != nil {
+			return collectPRs(byKey, order), err
+		}
+		for _, pr := range prs {
+			key := pr.Key()
+			if existing, ok := byKey[key]; ok {
+				existing.Roles = unionRoles(existing.Roles, pr.Roles)
+				byKey[key] = existing
+				continue
+			}
+			byKey[key] = pr
+			order = append(order, key)
+		}
+	}
+	result = collectPRs(byKey, order)
+	return result, nil
+}
+
+// ListRepoPRs lists one repository's requests with the head branch, review
+// decision and check rollup that the search surface cannot report. Personal
+// inbox queries run once per requested role and union the rows; workspace
+// closeout opts into AnyRole and pays for only one unfiltered call.
+func (g *gh) ListRepoPRs(ctx context.Context, repo string, q PRQuery) ([]PullRequest, error) {
+	if !g.Available() {
+		return nil, &ErrNoCLI{Kind: GitHub, Bin: "gh"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
+	defer cancel()
+
+	if q.AnyRole {
+		return g.listRepoPRsForRole(ctx, repo, q, "")
+	}
+	byKey := map[string]PullRequest{}
+	var order []string
+	for _, role := range q.EffectiveRoles() {
+		prs, err := g.listRepoPRsForRole(ctx, repo, q, role)
+		for _, pr := range prs {
+			key := pr.Key()
+			if existing, ok := byKey[key]; ok {
+				existing.Roles = unionRoles(existing.Roles, pr.Roles)
+				byKey[key] = existing
+				continue
+			}
+			byKey[key] = pr
+			order = append(order, key)
+		}
+		if err != nil {
+			return collectPRs(byKey, order), err
+		}
+	}
+	return collectPRs(byKey, order), nil
+}
+
+func (g *gh) listRepoPRsForRole(ctx context.Context, repo string, q PRQuery, role PRRole) ([]PullRequest, error) {
+	args := []string{"pr", "list", "--repo", repo,
+		"--state", string(q.EffectiveState()),
+		"--limit", strconv.Itoa(q.EffectiveLimit()), "--json", prListFields}
+	switch role {
+	case RoleAuthor:
+		args = append(args, "--author", "@me")
+	case RoleReviewer:
+		args = append(args, "--search", "review-requested:@me")
+	}
+	out, err := g.run(ctx, "", args...)
+	if err != nil {
+		return nil, err
+	}
+	prs, err := parseGitHubRepoPRs(out, repo)
+	if err != nil {
+		return nil, err
+	}
+	if role != "" {
+		for i := range prs {
+			prs[i].Roles = []PRRole{role}
+		}
+	}
+	return prs, nil
+}
+
+// collectPRs renders a keyed set back into first-seen order, so that output is
+// stable regardless of map iteration.
+func collectPRs(byKey map[string]PullRequest, order []string) []PullRequest {
+	out := make([]PullRequest, 0, len(order))
+	for _, key := range order {
+		out = append(out, byKey[key])
+	}
+	return out
+}
+
+type githubPRAuthor struct {
+	Login string `json:"login"`
+}
+
+func parseGitHubSearchPRs(out string, role PRRole) ([]PullRequest, error) {
+	var raw []struct {
+		Number     int            `json:"number"`
+		Title      string         `json:"title"`
+		URL        string         `json:"url"`
+		State      string         `json:"state"`
+		IsDraft    bool           `json:"isDraft"`
+		Author     githubPRAuthor `json:"author"`
+		Repository struct {
+			NameWithOwner string `json:"nameWithOwner"`
+		} `json:"repository"`
+		CreatedAt string `json:"createdAt"`
+		UpdatedAt string `json:"updatedAt"`
+	}
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		return nil, fmt.Errorf("decode gh search prs: %w", err)
+	}
+	result := make([]PullRequest, 0, len(raw))
+	for _, r := range raw {
+		created, _ := time.Parse(time.RFC3339, r.CreatedAt)
+		updated, _ := time.Parse(time.RFC3339, r.UpdatedAt)
+		result = append(result, PullRequest{
+			Forge: GitHub, Host: ConfiguredHost(GitHub), Repo: r.Repository.NameWithOwner, Number: r.Number,
+			Title: r.Title, URL: r.URL, State: githubPRState(r.State, false),
+			Draft: r.IsDraft, Author: r.Author.Login,
+			Roles: []PRRole{role}, Detail: PRDetailSummary,
+			CreatedAt: created, UpdatedAt: updated,
+		})
+	}
+	return result, nil
+}
+
+func parseGitHubRepoPRs(out, repo string) ([]PullRequest, error) {
+	var raw []struct {
+		Number         int            `json:"number"`
+		Title          string         `json:"title"`
+		URL            string         `json:"url"`
+		State          string         `json:"state"`
+		IsDraft        bool           `json:"isDraft"`
+		Author         githubPRAuthor `json:"author"`
+		HeadRepository struct {
+			NameWithOwner string `json:"nameWithOwner"`
+		} `json:"headRepository"`
+		IsCrossRepository bool   `json:"isCrossRepository"`
+		HeadRefName       string `json:"headRefName"`
+		BaseRefName       string `json:"baseRefName"`
+		ReviewDecision    string `json:"reviewDecision"`
+		Mergeable         string `json:"mergeable"`
+		StatusCheckRollup []struct {
+			Status     string `json:"status"`
+			Conclusion string `json:"conclusion"`
+			State      string `json:"state"`
+		} `json:"statusCheckRollup"`
+		CreatedAt string `json:"createdAt"`
+		UpdatedAt string `json:"updatedAt"`
+	}
+	if err := json.Unmarshal([]byte(out), &raw); err != nil {
+		return nil, fmt.Errorf("decode gh pr list: %w", err)
+	}
+	result := make([]PullRequest, 0, len(raw))
+	for _, r := range raw {
+		created, _ := time.Parse(time.RFC3339, r.CreatedAt)
+		updated, _ := time.Parse(time.RFC3339, r.UpdatedAt)
+		checks := make([]checkOutcome, 0, len(r.StatusCheckRollup))
+		for _, c := range r.StatusCheckRollup {
+			checks = append(checks, checkOutcome{Status: c.Status, Conclusion: c.Conclusion, State: c.State})
+		}
+		result = append(result, PullRequest{
+			Forge: GitHub, Host: ConfiguredHost(GitHub), Repo: repo, Number: r.Number,
+			Title: r.Title, URL: r.URL, State: githubPRState(r.State, false),
+			Draft: r.IsDraft, Author: r.Author.Login, Detail: PRDetailFull,
+			HeadRepo: r.HeadRepository.NameWithOwner, CrossRepository: r.IsCrossRepository,
+			HeadBranch: r.HeadRefName, BaseBranch: r.BaseRefName,
+			ReviewDecision: strings.ToLower(r.ReviewDecision),
+			Mergeable:      strings.ToLower(r.Mergeable),
+			Checks:         foldChecks(checks),
+			CreatedAt:      created, UpdatedAt: updated,
+		})
+	}
+	return result, nil
+}
+
+// githubPRState normalizes gh's uppercase states. gh reports a merged request
+// as MERGED rather than CLOSED, so the distinction survives.
+func githubPRState(state string, _ bool) PRState {
+	switch strings.ToUpper(state) {
+	case "OPEN":
+		return PRStateOpen
+	case "MERGED":
+		return PRStateMerged
+	case "CLOSED":
+		return PRStateClosed
+	}
+	return PRState(strings.ToLower(state))
 }

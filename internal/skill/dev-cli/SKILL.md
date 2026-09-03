@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: 'Manage repositories, SSH hosts, remote fleets, and work-in-progress with the dev CLI: create/clone/setup agent-ready repos, bootstrap and organise them safely, discover/configure OpenSSH aliases without copying private keys, own worktree/task lifecycle, safely prepare/finalize/retire agent sessions, run guarded Git transactions, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when onboarding or probing an SSH host, configuring fleet machines, creating/starting/parking/resuming/retiring work, preserving agent transcripts, scanning skills/MCP or organising repos, capturing/searching repo thoughts, choosing worktree isolation, or cleaning stale branches/checkouts/sessions.'
+description: 'Manage repositories, SSH hosts, remote fleets, and work-in-progress with the dev CLI: create/clone/setup agent-ready repos, bootstrap and organise them safely, discover/configure OpenSSH aliases without copying private keys, own worktree/task lifecycle, safely prepare/finalize/retire agent sessions, render or hand off deterministic prompt recipes, run guarded Git transactions, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when onboarding or probing an SSH host, configuring fleet machines, creating/starting/parking/resuming/retiring work, preserving agent transcripts, triaging pull requests or closeout context, scanning skills/MCP or organising repos, capturing/searching repo thoughts, choosing worktree isolation, or cleaning stale branches/checkouts/sessions.'
 ---
 
 # dev-cli
@@ -91,7 +91,24 @@ dev prepare --session claude:<uuid>                # arm final transcript handof
 dev done                                           # TTY wizard: inspect dirty state, then FF/PR/merged
 dev done --ff                                      # → done/MERGED; resources kept
 dev retire "token refresh"                         # external-only cleanup → RETIRED
+dev sweep --ephemeral-worktrees --json              # strict V1 report only
 ```
+
+For stale Claude Workflow isolation, run `dev sweep --ephemeral-worktrees` only
+from the canonical non-bare checkout. The bounded metadata adapter never emits
+prompt/script/log/result/transcript content. A candidate must have one exact
+mapping, terminal workflow, done agent, journal start/result, no same-ID resume,
+sufficient provider inactivity, clean Git including no ignored or recursive
+submodule content, no task/unsafe artifact/runtime/caller claim, and unchanged
+registration/branch/HEAD/common-dir facts. It additionally requires a provider-
+observed opaque registration generation matching the live registry. Claude Code
+2.1.259 does not expose that non-replayable Git identity, so current Claude claims
+report unknown and remain report-only; path/name/GitDir reuse is not proof. Apply
+is TTY-only, rejects bypass
+flags, confirms each item, and revalidates the fingerprint under a common-dir
+lock before non-force removal. It never prunes, closes runtimes, changes Claude
+metadata, or repairs dirty work. Branches are retained unless separately safe
+`--delete-branches --base <ref>` was requested.
 
 **Parking is the move that matters.** `dev park --next "…"` is what makes it
 safe to close a session, and the `--next` text is what makes resuming cheap.
@@ -183,6 +200,12 @@ dev flow [repo]            # TTY-only guarded repository lifecycle preview
 dev sweep                  # what has gone stale or drifted, and what to do
 dev sweep --apply          # act on it, confirming each change
 dev sweep --merged-worktrees  # from main, audit contained tracked/untracked worktrees
+dev pr list                # requests you opened or were asked to review
+dev pr list --scope local --state merged  # forge evidence; never retirement authority
+dev prompt agents [--json]                # sorted, redacted host profile inventory
+dev prompt render pr-triage               # inspect/copy deterministic context
+dev prompt run session-close --agent <name>  # bounded batch; no user stdin
+dev prompt open workspace-closeout . --agent <name>  # current foreground TTY
 dev prepare --session claude:<uuid>  # arm exact post-writer artifact commit
 dev artifact list          # finalization handoffs and receipts
 dev done --ff              # integrate only; runtime/worktree stay alive
@@ -282,6 +305,13 @@ Treat partial and unknown results literally. If a remote installer started, the
 key may have arrived; do not "clean up" `authorized_keys`. Local config and
 generated keys are retained so a rerun can converge. `ssh remove` never revokes a
 remote key, deletes local keys/known_hosts, or removes the shared Include.
+
+Read `references/prompt-handoffs.md` before using `dev prompt`, configuring a
+launcher, or interpreting session/workspace closeout advice. Discover profiles
+with `dev prompt agents`; its output is intentionally redacted. Profile selection
+is global before recipe collection, requested modes never fall back across
+profiles, and prompt recipes remain read-only context handoffs rather than
+mutation or permission authority.
 
 ## Bootstrapping and adopting an existing machine
 
@@ -513,6 +543,12 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    from the canonical main checkout, present every candidate and blocker as a
    QA question, and use `--apply --yes` only after the user explicitly approves
    that exact set. Branch deletion remains a separate `--delete-branches` opt-in.
+   `dev pr list --scope local --state merged` finds candidates, but a merged
+   pull request is never on its own grounds to remove a checkout: a squash
+   merge leaves no local ancestor, so containment still has to be proven
+   locally. See `references/pull-requests.md`. If an explanation is useful, use
+   the generic `workspace-closeout` recipe only after reading
+   `references/prompt-handoffs.md`; its audit is advisory and never an approval.
 
 5. **Prefer a checkpoint commit over `git stash`.** A stash is invisible in the
    log, easy to forget, and cannot be pushed — so it can never reach another
@@ -611,6 +647,7 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 - "Where should this worktree go?" / "should I use `claude --worktree` or herdr?"
 - A new worktree is missing `node_modules`, `.venv` or `.env`.
 - Cleaning up stale branches, worktrees and sessions.
+- Rendering or handing off pull-request/session/workspace operational context.
 - Cloning, creating or auditing repositories across a machine.
 - Discovering, inspecting, configuring, probing, or removing an OpenSSH alias.
 - Installing a public key through ProxyJump or registering a verified dev fleet host.
@@ -651,6 +688,12 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   binary by `dev skill sync` so it cannot drift.
 - `references/repository-bootstrap.md` — new/clone/setup presets, project
   overrides, skill initialization, upstream publishing, trust and handoff.
+- `references/pull-requests.md` — read before using `dev pr` or advising on a
+  pull request; covers effective scope, local checkout health, why a field can
+  be missing, and why a merged request cannot authorize retirement.
+- `references/prompt-handoffs.md` — read before rendering/running/opening a
+  generic recipe or configuring a launcher; covers transports, current-terminal
+  behavior, permissions, closeout audits, and rebase-conflict safety.
 
 ## Gotchas
 

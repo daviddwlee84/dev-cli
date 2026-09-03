@@ -88,6 +88,9 @@ commit = false
 [runtime]
 backend = "tmux"
 
+[[agent]]
+name = "must-not-run"
+
 [mystery]
 token = "must-not-be-reported"
 `)
@@ -131,6 +134,7 @@ value = true
 	want := map[string]projectconfig.DiagnosticKind{
 		"worktree.typo": projectconfig.DiagnosticUnknown,
 		"runtime":       projectconfig.DiagnosticDenied,
+		"agent":         projectconfig.DiagnosticDenied,
 		"mystery":       projectconfig.DiagnosticUnknown,
 		"paths":         projectconfig.DiagnosticDenied,
 		"surprise":      projectconfig.DiagnosticUnknown,

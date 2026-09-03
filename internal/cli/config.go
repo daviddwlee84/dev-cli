@@ -313,6 +313,30 @@ run  = "$SHELL"
 # run  = "claude-plans-here"
 # interactive = true
 
+# Commands behind "dev prompt run/open". There are no built-in entries: which
+# local coding agent you use is your choice, and dev never reads its reply or
+# iterates. Inspect configured modes safely with "dev prompt agents" or its
+# redacted --json form. run is bounded/non-interactive; open keeps the current
+# terminal so the user can answer questions.
+#
+# Prefer "command" (direct argv, no shell). run may receive finite stdin.
+# open must use file or argv transport so stdin remains conversational.
+# Prompt contents are never interpolated into static shell text.
+#
+# [[agent]]
+# name        = "my-agent"
+# description = "Local review and implementation agent"
+# default     = true
+#
+# [agent.run]
+# command = ["my-agent", "--batch"]
+# input   = "stdin"
+# timeout = "10m"
+#
+# [agent.open]
+# command = ["my-agent", "{{prompt_file}}"]
+# input   = "file"
+
 [stats]
 # Record activity locally for "dev stats --heatmap".
 sampler = true

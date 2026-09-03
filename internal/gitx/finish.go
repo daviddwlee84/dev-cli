@@ -22,6 +22,14 @@ type BranchRelation struct {
 // Contained reports that every branch commit is already reachable from base.
 func (r BranchRelation) Contained() bool { return r.BranchOnly == 0 }
 
+// CompareBranches reports committed history on each side without inspecting or
+// changing a worktree. Finish analysis and read-only closeout audits share this
+// implementation so provider errors remain unknown rather than looking like a
+// known non-contained branch.
+func CompareBranches(ctx context.Context, dir, base, branch string) (BranchRelation, error) {
+	return compareBranches(ctx, dir, base, branch)
+}
+
 // DirtyPath is one staged, unstaged, conflicted, or untracked checkout path.
 // BaseEquivalent is true only when neither its index snapshot nor the final
 // git-add-all worktree snapshot contains content absent from base.

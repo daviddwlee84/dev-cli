@@ -24,6 +24,26 @@ var familyTLDR = map[string]string{
   Local-only is the default. Project-owned executable config must be trusted
   by its exact content hash before dev runs it.`,
 
+	"dev pr": `TL;DR: two surfaces, because they answer different questions
+
+  --scope account --> gh search prs      --> whole account, 2 calls
+                                             no branch, no review, no checks
+  --scope local   --> gh pr list --repo  --> per engaged repo, 1 call each
+                                             branch --> joins to a worktree
+  --scope all     --> both, local upgrades account
+
+  dev prompt render/run/open pr-triage hands the queue to the generic prompt family.
+  Nothing here approves, merges, or removes anything.`,
+
+	"dev prompt": `TL;DR: escalate only as far as the situation needs
+
+  dev prompt render <recipe>  --> inspect or copy the exact prompt
+  dev prompt run <recipe>     --> one-shot, no user stdin, bounded timeout
+  dev prompt open <recipe>    --> foreground TTY, user can answer questions
+
+  Recipes collect deterministic facts. Agents explain and prioritize them;
+  done, park, sweep and retire remain the lifecycle authorities.`,
+
 	"dev wt": `TL;DR: the checkout is disposable, the branch is not
 
   dev start --mode worktree --> paths.worktree_path/<repo>/<branch>
@@ -137,6 +157,8 @@ var helpTopics = map[string]string{
 	"dev skill":     "skills",
 	"dev mcp":       "mcp",
 	"dev status":    "git-status",
+	"dev pr":        "pull-requests",
+	"dev prompt":    "prompts",
 }
 
 // topicForCommand resolves a bare command name or alias to its help topic, so

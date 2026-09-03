@@ -716,6 +716,32 @@ dev park [task] [flags]
 - `--timeout` — maximum time to wait for runtime closure
 - `--wip` — checkpoint uncommitted work as a wip: commit
 
+### `dev pr`
+
+List the pull requests waiting on you and their local worktrees
+
+```
+dev pr
+```
+
+### `dev pr list`
+
+List open pull requests you authored or were asked to review
+
+```
+dev pr list [query] [flags]
+```
+
+- `--actions` — print the gh/glab commands for each request
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--json` — emit structured output
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
 ### `dev prepare`
 
 Arm post-writer artifact finalization without closing this agent
@@ -728,6 +754,160 @@ dev prepare [task-or-worktree] [flags]
 - `--plan` — exact .claude/plans path to include (repeatable)
 - `--run-id` — outer wrapper run id (default: DEV_AGENT_RUN_ID or generated)
 - `--session` — exact agent session provider:uuid (inferred from task/runtime when unique)
+
+### `dev prompt`
+
+Render operational context, or hand it to a configured agent
+
+```
+dev prompt
+```
+
+### `dev prompt agents`
+
+List configured agent profiles without private launch details
+
+```
+dev prompt agents [flags]
+```
+
+- `--json` — emit stable structured agent metadata
+
+### `dev prompt list`
+
+List built-in prompt recipes
+
+```
+dev prompt list [flags]
+```
+
+- `--json` — emit structured recipe metadata
+
+### `dev prompt open`
+
+Open an interactive foreground agent in the current terminal
+
+```
+dev prompt open
+```
+
+### `dev prompt open pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt open pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt open session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt open session-close
+```
+
+### `dev prompt open workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt open workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
+
+### `dev prompt render`
+
+Render a built-in prompt to stdout
+
+```
+dev prompt render
+```
+
+### `dev prompt render pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt render pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt render session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt render session-close
+```
+
+### `dev prompt render workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt render workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
+
+### `dev prompt run`
+
+Run a one-shot agent with a built-in prompt
+
+```
+dev prompt run
+```
+
+### `dev prompt run pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt run pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt run session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt run session-close
+```
+
+### `dev prompt run workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt run workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
 
 ### `dev repo`
 
@@ -1235,11 +1415,13 @@ dev sweep [flags]
 
 - `--apply` — act on the suggestions instead of only reporting
 - `--assume-no-runtime` — continue when runtime enumeration fails during retirement
-- `--base` — containment base for --merged-worktrees (default: the repository default branch)
+- `--base` — explicit containment base for merged worktrees or ephemeral branch deletion
 - `--close-unknown` — allow external closure of unknown runtime status during retirement
 - `--delete-branches` — also delete contained local branches after worktree retirement
+- `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees
+- `--json` — print the versioned ephemeral-worktree report as JSON
 - `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
-- `--stale-days` — days without a commit before a task counts as stale
+- `--stale-days` — days without relevant activity before an item counts as stale
 - `--yes` — with --apply, do not confirm each change
 
 ### `dev tries`

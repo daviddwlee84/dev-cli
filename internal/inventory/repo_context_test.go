@@ -152,6 +152,26 @@ func TestRepoContextErrorsDoNotRenderAsClosedOrUntracked(t *testing.T) {
 	}
 }
 
+func TestLooksEphemeralWorktreeIsOnlyACompatibilityHint(t *testing.T) {
+	tests := []struct {
+		path, branch string
+		want         bool
+	}{
+		{"/repo/.claude/worktrees/turn-1", "feat/not-prefixed", true},
+		{"/outside/worktree", "worktree-turn-1", true},
+		{"/outside/worktree", "feat/durable", false},
+	}
+	for _, tc := range tests {
+		got := inventory.LooksEphemeralWorktree(tc.path, tc.branch)
+		if got != tc.want {
+			t.Errorf("LooksEphemeralWorktree(%q, %q) = %v, want %v", tc.path, tc.branch, got, tc.want)
+		}
+		if compatibility := inventory.IsEphemeralWorktree(tc.path, tc.branch); compatibility != got {
+			t.Errorf("compatibility wrapper = %v, want %v", compatibility, got)
+		}
+	}
+}
+
 func TestRepoContextCopyPayloads(t *testing.T) {
 	ctx := inventory.RepoContext{
 		Runtime: "herdr",

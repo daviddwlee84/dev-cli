@@ -2,7 +2,7 @@
 description: 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-03
 lang: zh-TW
 ---
 
@@ -39,6 +39,8 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 | `dev artifact discard <intent> --yes` | 記錄某個 intent 永遠無法 finalize——transcript 從未被寫出，或 rebase 之後 HEAD 已不存在——使它不再阻擋 integration 與 retirement。它不會 commit 也不會復原任何東西，會先印出確切將被放棄的內容，並拒絕仍為 `armed` 的 intent，因為 finalize 才是保存 transcript 的路徑。 |
 | `dev retire [task-or-worktree] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | 重新解析每一個 covering runtime session，拒絕 active agent 與 mixed-purpose workspace，等待其關閉，重新驗證 Git state，才移除 linked worktree（不使用 force）。只有在所有要求的步驟都成功後，才刪除 task record。 |
 | `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | 從 canonical checkout 執行，回報（加上 `--apply` 時則 retire）branch 已被 base 包含的 task-tracked 與 unmanaged linked worktree。 |
+| `dev sweep --ephemeral-worktrees [--stale-days <n>] [--json]` | 從 canonical non-bare checkout 產生 strict Claude Workflow V1 report；JSON schema 1 僅供 report。 |
+| `dev sweep --ephemeral-worktrees --apply [--delete-branches --base <ref>]` | 要求 TTY 與逐項 confirmation，接著在 common-dir cleanup lock 下重新驗證每個已核可 fingerprint，才用 plain non-force removal。 |
 
 Dirty checkout 在這裡不會直接失敗：`dev done` 會先把它與 base 比對分類，在
 interactive 時提供 commit 或 discard，在 script 中則接受明確的 `--dirty`
@@ -51,6 +53,20 @@ policy。該 wizard 詳見[變更流工作流程](change-stream-workflow.zh-TW.m
 `dev flow` 把 persisted `DONE` intent 與 live cleanup evidence 分開。DONE/MERGED row 仍可顯示 runtime、worktree、branch 與 task record；只有 Retire result 完成最後的 CAS task deletion 才是 RETIRED。UNMANAGED row 使用的是永遠保留 branch 的 Remove Checkout，不會製造 DONE/RETIRED task milestone；canonical 與 harness row 不能 Remove Checkout。
 
 Flow TUI 沒有 `--close-unknown`、`--assume-no-runtime`、dirty discard 或 generic force。`runtime=none` 會保留「session/agent unobserved」，不冒充已證明 closed。需要 expert acknowledgement 時，離開 Flow 並明確執行 plan 顯示的 fallback CLI，再接受該 command 自己的 guards。完整 row/action matrix 見 [Repository Flow 預覽](repository-flow.zh-TW.md)。
+
+Action 前若需要 read-only explanation，從 exact checkout render 或 open generic
+`workspace-closeout` recipe：
+
+```bash
+dev prompt render workspace-closeout .
+dev prompt open workspace-closeout . --agent my-agent
+```
+
+Recipe 內含完整 retirement audit，但結果只是 advisory。`eligible` 與 merged PR 都不
+授權 cleanup；外部 `dev retire` 仍會重新收集並驗證所有 gate。若 `dev done --ff` 或
+`dev git pull-rebase` 停在 conflict，只用 `prompt open` 討論 semantic resolution，
+接著明確 continue/abort Git，再重新執行 lifecycle command。詳見
+[Prompt handoff](prompt-handoffs.zh-TW.md)。
 
 ## 一般 local flow
 
@@ -107,7 +123,7 @@ dev done <task> --merged --base-ref origin/main --confirm-squash <merge-commit>
 - Agent status 無法辨識（不在已知集合內）——一律阻擋；
 - Runtime enumeration 本身失敗，**除非**呼叫者傳入 `--assume-no-runtime`。
 
-`--close-unknown` 與 `--assume-no-runtime` 只放寬 fail-closed 的*觀測結果*（無法讀取的 status、無法列舉的 runtime list）。這兩個 flag 都絕不會 bypass caller containment 或 active-agent state。`retirement.Service.Retire` 在 runtime session 關閉後，也會重新驗證 target identity、Git ancestry、進行中的 Git operation（`gitx.InProgress`，檢查 `MERGE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`、`rebase-merge`、`rebase-apply`、`sequencer`；不含 `REBASE_HEAD`，因為 Git 在 rebase 完成後仍會保留它）以及 worktree 是否 clean——因為 runtime draining 期間現實可能已改變，先前的驗證結果不會跨越這個邊界沿用。
+`--close-unknown` 與 `--assume-no-runtime` 只放寬 fail-closed 的*觀測結果*（無法讀取的 status、無法列舉的 runtime list）。這兩個 flag 都絕不會 bypass caller containment 或 active-agent state。`retirement.Service.Retire` 在 runtime session 關閉後，也會重新驗證 target identity、Git ancestry、進行中的 Git operation（`gitx.InProgress`，檢查 `MERGE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`、`BISECT_LOG`、`rebase-merge`、`rebase-apply`、`sequencer`；不含 `REBASE_HEAD`，因為 Git 在 rebase 完成後仍會保留它）以及 worktree 是否 clean——因為 runtime draining 期間現實可能已改變，先前的驗證結果不會跨越這個邊界沿用。
 
 Taskflow Apply 也不信任畫面時的 snapshot：它鎖定 canonical repository/task store、重新讀取 task revision 與 authority fingerprint，並在 runtime closure、worktree removal、optional branch deletion 與最後 task reap 前逐段 revalidate。Result ledger 依序保留 `ATTEMPTED`/`COMPLETED`/`FAILED`；若前段 cleanup 已完成而後段失敗，會回報 partial success 與 recovery，而不宣稱 rollback。
 
@@ -120,6 +136,58 @@ dev sweep --merged-worktrees --apply --yes
 ```
 
 這會同時列出 task-tracked 的 DONE worktree，以及 named branch 已被 base 包含的 unmanaged linked worktree——請從 canonical checkout 執行。它會先回報再套用：containment 本身絕不等於許可。Dirty 的 Git state、pending 或無法到達的 artifact、locked 或 prunable 的 worktree registration、進行中的 Git operation，以及與 `dev retire` 相同的 runtime 拒絕條件，都仍會阻擋 cleanup。Retirement 完成後預設保留 branch；只有在使用者另外核可刪除時，才加上 `--delete-branches`。
+
+### 經驗證的 Claude Workflow ephemeral cleanup
+
+Claude Workflow 的 turn-scoped worktree 使用另一條 strict V1 路徑：
+
+```bash
+dev sweep --ephemeral-worktrees --stale-days 14
+dev sweep --ephemeral-worktrees --json
+dev sweep --ephemeral-worktrees --apply
+dev sweep --ephemeral-worktrees --apply --delete-branches --base main
+```
+
+此 command 只能從 canonical non-bare checkout 執行。Bounded、fixed-depth adapter
+只讀取 `~/.claude/projects` 下的 private metadata，驗證 workflow/agent ID、exact
+canonical worktree mapping、`spawnedWithWorktree`、`isolation=worktree` 與 matching
+journal linkage；絕不 decode 或輸出 prompt、script、log、result body 或 transcript
+content。Unknown add-only fields 可接受；required type 錯誤、path mismatch、duplicate
+claim、不安全／symlink／reparse／group-or-world-writable metadata、讀取中 mutation、
+bound exhaustion，以及 future/conflicting/unparseable time 都會 fail closed。
+
+V1 terminal liveness 要求 workflow 為 `completed|killed`、matching agent 為 `done`、
+journal 同時有一筆 `started` 與 `result`，且不存在 same-ID resumed transcript。
+Killed 但沒有 result、progress，或已 resume 的狀態無論多舊都維持 `unknown`；沒有
+attestation bypass。`--stale-days` 衡量 provider inactivity，預設 14，最小 1。
+
+Path continuity 無法證明 current-provider ownership。Apply 另外要求 provider-observed
+branch、HEAD、common-dir 與 opaque non-replayable registration generation 都和 live
+registry 一致。Claude Code 2.1.259 不會記錄這些 Git identity facts，因此目前 Claude
+claim 會回報 `provider-git-identity: unknown`，即使要求 `--apply` 也只供 report。
+這可防止 stale terminal metadata 綁到同一路徑的 replacement checkout。Path、branch
+convention 或可重用的 GitDir pathname 都不能取代缺少的 generation。
+
+獨立 safety audit 還要求 worktree present、registered、non-main、named、unlocked、
+non-prunable，並且 common-dir、live branch、registry HEAD、live HEAD 完全一致。
+Staged、unstaged、conflicted、untracked、ignored 或 recursively inspected submodule
+content 都會阻擋；Git operation、task claim、不安全 artifact intent、caller
+containment、unknown runtime inventory 或任何 covering runtime 也會阻擋。Missing、
+prunable、unregistered 與 orphan path 僅供 report。
+
+JSON schema 1 只包含 normalized identity/state/time、Git/path/branch/HEAD facts、
+checks、actions、diagnostics、fingerprints 與 counts，且只供 report。Apply 拒絕
+`--yes`、`--close-unknown`、`--assume-no-runtime`、`--no-runtime` 與 JSON；它要求
+terminal 並逐項確認。在 common-dir cleanup lock 下，每次 remove 前都會重新 discover
+repository，並重新收集 provider、Git、task、artifact、runtime 與 caller proof；
+fingerprint 改變時回報 `skipped-changed`。
+
+Removal 使用 plain `git worktree remove`、不加 force，並驗證 path 與 registration 都已
+消失。它不會關閉 session、prune、刪除 Claude metadata，或 rescue/stash/commit dirty
+work。Named branch 預設保留，因此 unique commits 仍可復原。Optional deletion 另外要求
+`--delete-branches --base <ref>`、unchanged base/branch tips、containment、zero unique
+commits 與 ordinary `git branch -d`；remove 後任何 failure 都會保留 branch，並回報
+partial completion。
 
 ## 安全邊界
 
@@ -149,7 +217,10 @@ fatal: not a git repository (or any of the parent directories): .git
 - [`internal/taskflow/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/retire.go)
 - [`internal/cli/artifact.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/artifact.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/ephemeral`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/ephemeral)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/retire/safety.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/safety.go)
 - [`internal/retire/service.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/service.go)
+- [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
 - [`internal/gitx/transactions.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/transactions.go)

@@ -303,13 +303,14 @@ func authProbe(kind Kind) (args []string, action string, ok bool) {
 		if host == "" {
 			host = "github.com"
 		}
-		return []string{"auth", "status", "--active", "--hostname", host},
+		// --active is absent from older supported gh releases. Host-scoped auth
+		// status still verifies that this endpoint has a usable account.
+		return []string{"auth", "status", "--hostname", host},
 			"run `gh auth login --hostname " + host + "`", true
 	case GitLab:
-		host := strings.TrimSpace(os.Getenv("GITLAB_HOST"))
-		if host == "" {
-			host = "gitlab.com"
-		}
+		// Match every GitLab API call: gitLabHost checks GITLAB_HOST and
+		// GLAB_HOST in that order, then falls back to gitlab.com.
+		host := gitLabHost()
 		return []string{"auth", "status", "--hostname", host},
 			"run `glab auth login --hostname " + host + "`", true
 	default:
@@ -421,6 +422,11 @@ func createRepoResult(kind Kind, target repoTarget, out string, allowFallback bo
 	}
 }
 
+// ConfiguredHost reports the one host the provider CLI will query in a
+// repository-less command. Local remotes on another host must be skipped rather
+// than sent to this endpoint under the same owner/name.
+func ConfiguredHost(kind Kind) string { return defaultForgeHost(kind) }
+
 func defaultForgeHost(kind Kind) string {
 	switch kind {
 	case GitHub:
@@ -429,10 +435,7 @@ func defaultForgeHost(kind Kind) string {
 		}
 		return "github.com"
 	case GitLab:
-		if host := strings.TrimSpace(os.Getenv("GITLAB_HOST")); host != "" {
-			return host
-		}
-		return "gitlab.com"
+		return gitLabHost()
 	default:
 		return ""
 	}
@@ -450,6 +453,27 @@ var (
 	lookupPath              = exec.LookPath
 )
 
+// commandError keeps provider stderr separate from argv. Error preserves the
+// established diagnostic string, while classifiers inspect Detail only so a
+// user argument such as a repository description cannot impersonate an HTTP
+// authentication failure.
+type commandError struct {
+	Bin    string
+	Args   []string
+	Detail string
+	Err    error
+}
+
+func (e *commandError) Error() string {
+	prefix := strings.TrimSpace(e.Bin + " " + strings.Join(e.Args, " "))
+	if e.Detail != "" {
+		return fmt.Sprintf("%s: %s: %v", prefix, e.Detail, e.Err)
+	}
+	return fmt.Sprintf("%s: %v", prefix, e.Err)
+}
+
+func (e *commandError) Unwrap() error { return e.Err }
+
 // run executes a forge CLI, streaming stderr through so the user sees the
 // CLI's own authentication prompts and error messages verbatim.
 func run(ctx context.Context, bin, dir string, args ...string) (string, error) {
@@ -460,12 +484,10 @@ func run(ctx context.Context, bin, dir string, args ...string) (string, error) {
 	cmd.Stderr = &stderr
 	cmd.Stdin = os.Stdin
 	if err := cmd.Run(); err != nil {
-		detail := strings.TrimSpace(stderr.String())
-		if detail != "" {
-			return strings.TrimSpace(stdout.String()), fmt.Errorf("%s %s: %s: %w",
-				bin, strings.Join(args, " "), detail, err)
+		return strings.TrimSpace(stdout.String()), &commandError{
+			Bin: bin, Args: append([]string(nil), args...),
+			Detail: strings.TrimSpace(stderr.String()), Err: err,
 		}
-		return strings.TrimSpace(stdout.String()), fmt.Errorf("%s %s: %w", bin, strings.Join(args, " "), err)
 	}
 	return strings.TrimSpace(stdout.String()), nil
 }
@@ -481,12 +503,10 @@ func runCombined(ctx context.Context, bin, dir string, args ...string) (string, 
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		detail := strings.TrimSpace(stderr.String())
-		if detail != "" {
-			return strings.TrimSpace(stdout.String()), fmt.Errorf("%s %s: %s: %w",
-				bin, strings.Join(args, " "), detail, err)
+		return strings.TrimSpace(stdout.String()), &commandError{
+			Bin: bin, Args: append([]string(nil), args...),
+			Detail: strings.TrimSpace(stderr.String()), Err: err,
 		}
-		return strings.TrimSpace(stdout.String()), fmt.Errorf("%s %s: %w", bin, strings.Join(args, " "), err)
 	}
 	return strings.TrimSpace(strings.TrimSpace(stdout.String()) + "\n" + strings.TrimSpace(stderr.String())), nil
 }
@@ -507,24 +527,42 @@ func lastHTTPURL(out string) string {
 	return found
 }
 
-// IdentityFromURL returns a forge and decoded owner/name identity for a
-// structurally valid HTTPS or SSH Git remote. Query, fragment, and userinfo are
-// never part of the returned identity.
-func IdentityFromURL(raw string) (Kind, string) {
+// RemoteIdentity preserves the provider host as well as owner/name. Host is
+// load-bearing for enterprise remotes: github.corp/acme/widget must never be
+// queried as github.com/acme/widget.
+type RemoteIdentity struct {
+	Kind Kind
+	Host string
+	Name string
+}
+
+// ParseRemoteIdentity normalizes an HTTPS, ssh://, or SCP-style Git remote.
+func ParseRemoteIdentity(raw string) RemoteIdentity {
 	if identity, _, ok := parseAzureDevOpsRemote(raw); ok {
-		return AzureDevOps, identity
+		host := ""
+		if parsed, err := url.Parse(strings.TrimSpace(raw)); err == nil {
+			host = strings.ToLower(parsed.Hostname())
+		}
+		return RemoteIdentity{Kind: AzureDevOps, Host: host, Name: identity}
 	}
 	endpoint, ok := parseForgeEndpoint(raw)
 	if !ok {
-		return Unknown, ""
+		return RemoteIdentity{Kind: Unknown}
 	}
 	kind := webHostPolicy(WebURLRequest{}).identityProvider(endpoint.host)
 	if kind == Unknown || !validRepositorySegments(kind, endpoint.segments) {
-		return Unknown, ""
+		return RemoteIdentity{Kind: Unknown}
 	}
 	segments := stripGitSuffix(endpoint.segments)
 	if segments == nil {
-		return Unknown, ""
+		return RemoteIdentity{Kind: Unknown}
 	}
-	return kind, strings.Join(segments, "/")
+	return RemoteIdentity{Kind: kind, Host: endpoint.host, Name: strings.Join(segments, "/")}
+}
+
+// IdentityFromURL retains the original two-value API for callers that do not
+// cross a provider endpoint boundary.
+func IdentityFromURL(raw string) (Kind, string) {
+	identity := ParseRemoteIdentity(raw)
+	return identity.Kind, identity.Name
 }

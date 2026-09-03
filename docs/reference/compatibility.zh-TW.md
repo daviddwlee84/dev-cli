@@ -3,7 +3,7 @@ description: 記錄 dev-cli dependencies、upstream preview status、documentati
 authority: project-and-upstream
 status: evolving
 verified_on: 2026-09-03
-tested_with: Claude Code 2.1.250
+tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
 
@@ -42,6 +42,7 @@ lang: zh-TW
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX target 仍可用；沒有 PowerShell 時 Windows-specific installer/launcher 失敗，不改用 shell fallback |
 | Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
 | in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為委派給對應套件管理器的升級指令 |
+| verified ephemeral worktree apply | Git、compatible bounded Claude Workflow metadata、known task/artifact state 與每個 available runtime inventory | report 仍可使用，但 missing/unknown proof 絕不符合 apply eligibility |
 
 ## 已確認的專案限制
 
@@ -55,11 +56,94 @@ Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII quer
 
 所有支援平台的 note write 都會 sync file 並 atomic rename。Unix 也會在 rename/delete 後 sync containing directory。Windows implementation 無法提供 directory-fsync 步驟，因此 sudden power loss 時的 durability guarantee 較窄。Cooperating `dev` processes 的 concurrent mutations 會被 serialized，且每次 Markdown replacement 都是 atomic；任意 external writer 不會參與這個 lock。
 
-### Pull request completion 不會自動追蹤
+### 已 merge 的 pull request 不會自動收掉它的 worktree
 
 `dev done --pr` push 並建立 pull/merge request，之後保留 task、runtime 與 worktree，因為 integration 由 review 負責。`dev sweep` 不會 query forge 推斷 request 後來已 merge。`dev flow` 只有在 operator 明確按 `R` 並核准 Query Review 時，才保留目前 run 的 exact head/base observation；它不會 persistent cache、poll 或自動 transition。
 
 Portable provider evidence 僅包含 review 是否存在、provider、`open`/`draft`/`merged`/`closed`、URL 與 observation time。它不涵蓋 CI check conclusions、approvals、mergeability、comments 或 deployment status；unsupported/unauthenticated/ambiguous/malformed/failed query 也不等於 absence。請 fetch/驗證 named ancestry，再用 `dev done --merged --base-ref <ref>` 或 Flow 的 Verify Merged 記錄 DONE。
+
+`dev pr list --scope local --state merged` 現在會報告 forge 認定已 merge 的 request，以及各自對應到哪一個本地 checkout。`dev sweep` 仍然不會去查它，這是刻意的：squash merge 產生的 commit 並不是本地 branch 的 ancestor，所以 forge 說「merged」無法證明這份工作能從 remote 復原。`dev sweep --merged-worktrees` 用 `git merge-base --is-ancestor` 在本地證明 containment，而 `dev done --merged` 需要明確的 `--confirm-squash` attestation。把 pull request 清單當成「該去看一下」的提示，而不是「可以刪」的許可。
+
+### Claude Workflow ephemeral cleanup strict 且具版本敏感性
+
+`dev sweep --ephemeral-worktrees` 支援以 Claude Code 2.1.259 驗證的 private
+layout：validated fixed-depth `wf_*.json`、matching worktree meta 與 journal path、
+`runId`、`status`、`workflowProgress` agent state/isolation、`worktreePath`、
+`spawnedWithWorktree`、journal `started`/`result`，以及 same-ID resume existence。
+Upstream 沒有 metadata schema version，因此 unknown add-only JSON fields 可接受。
+Missing/wrong required type、changed 或 unsafe source file、duplicate/path mismatch、
+exhausted bound 或 uncertain timestamp 會讓對應 evidence 成為 unknown/unavailable；
+dev 不會猜測另一種 layout，也不會 decode payload fields。
+
+2.1.259 layout 不會記錄 provider-observed branch、HEAD、common-dir 或 opaque
+non-replayable worktree-registration generation。這些是 mandatory current-ownership
+facts，因此 adapter 會讓 `provider-git-identity` 維持 unknown，其 claims 只供 report。
+Canonical path、naming convention 或 GitDir pathname 都可能被重用，所以刻意不接受；
+stale metadata 絕不能綁到 replacement checkout。
+
+V1 沒有 operator attestation。`killed` 但缺少 matching child result、progress，或任何
+same-ID resumed transcript，無論 age 都維持 `unknown`。只有 provider inactivity 與每個
+Git/task/artifact/caller/runtime fact 都 known 且 safe 時才能 apply。`--no-runtime` 可產生
+report，但不能 apply。Missing、prunable、unregistered 與 orphan path 僅供 report。
+Command 絕不關閉 runtime、prune worktree registration、刪除 Claude metadata，或
+force-remove/rescue/stash/commit dirty/ignored work。
+
+此 adapter 在 provider-neutral audit/service 後方維持 provider-specific；dev 不會根據
+path 或 branch name 推測其他 agent harness。若 Claude 改變 private layout，安全行為是
+回報 unavailable capability 與 unknown candidate，直到 adapter、fixtures、tested version
+與兩種文件語言同步更新。
+
+### Pull request inventory 受限於 provider surface
+
+GitHub 的 `gh search prs` account surface 無法回報 head branch、review decision 或 check status，因此這些 rows 是 `detail: "summary"`，也無法 join 到 worktree。Summary row 的 absent field 表示 surface 無法回報，不是 value 為空。GitLab account list 帶有 branch/merge detail，因此回傳 full row；但 GitLab list surfaces 都不回報 pipeline checks 或 normalized review decision。
+
+Personal per-repository inventory 對每個 repository 的每個 requested role（預設 author 與 reviewer）可能各發一個 paginated query。預設只涵蓋 `dev` 有 task 的 repository；`--all-repos` 擴大 scan。`--repo` 同時 filter account rows 與 local targets。Account search 無法區分 merged 與 closed，所以 merged/closed/all 會將 account/all request narrow 到 local collection；JSON 回報該 effective scope。
+
+Schema-version-1 local join 回報 expected/live branch、checkout existence、worktree registration、status availability/error，以及 expected branch 是否確實 checked out。只有這些 live checks 成功時才出現 Git detail。Azure DevOps pull request 完全不列出；configured target 會被報告為 unsupported，而不是讓 command 失敗。
+
+### Prompt open 使用 current terminal，不負責 runtime placement
+
+`dev prompt open <recipe>` 在呼叫它的 terminal/TTY foreground 執行一個
+configured child。它不會建立、focus、reuse 或 inject Herdr、tmux 或 Zellij pane。
+在 Herdr 裡自然會留在 current pane。若要用另一個 Herdr pane，請手動建立或 focus、
+進入 exact checkout，再從那裡執行 `prompt open`。
+
+這與 `dev start --run` 刻意分開；後者唯一可 dispatch 的 target，是本次新建
+first-class Herdr worktree 回傳的 exact root pane。`prompt open` 不會提供 fresh runtime
+surface，也不會放寬 exact-pane proof。`run` 是 non-interactive alternative：沒有 user
+stdin，default timeout 為 10 分鐘；`open` 保留 stdin 給 conversation，沒有 default timeout。
+
+Configured child 保留自己的 permission policy。Recipe instruction 是 read-only
+guidance，不是 sandbox；`dev` 不會加入 permission flag、代答 approval prompt，或把
+response parse 成 action。
+
+### Prompt closeout report 不授權 cleanup
+
+`session-close` 只計算 runtime-closure evidence。Covering agent 為 `idle` 或 `done`
+時可以通過這一項 activity gate，但不證明 work 已 commit、artifact 已 finalize、review
+完成或 task intent done。Caller-contained、mixed-purpose、active、unknown 與
+unrecognized session 仍依 evidence 維持 blocked/unknown。
+
+`workspace-closeout` 執行較廣的 read-only audit：target kind、registration/path、
+status availability、clean Git state、沒有 in-progress Git operation、known base 與
+containment、task completion、artifact reachability/finalization、runtime eligibility。
+Merged pull request 只是 evidence。即使 audit 為 `eligible` 也只是 advisory；
+`dev retire` 在 mutation 前會重新收集與驗證 fresh state。兩個 recipe 都不會關閉
+runtime、改變 Git/task state、刪除 branch/worktree 或授予 permission。
+
+### Zellij exited session 已關閉，但仍保留 name
+
+Zellij 會保留可 resurrect 的 exited session。`dev` 只辨識 exact
+`(EXITED - attach to resurrect)` marker、從 live coverage 省略這些 session，並拒絕用其
+name 建立新 session；可用 `zellij delete-session <name>` 回收。Live session name 只是含
+`EXITED` 並不是 exit marker。若 session 在 native listing 與 layout inspection 之間退出，
+open 會 fail closed 並要求 retry，不會在 requested checkout resurrect 舊 layout。
+
+### Forge CLI 登入狀態只會被報告，不會自動重試
+
+`gh` 與 `glab` 是選用且彼此獨立的，`dev` 永遠不會代替你認證。當某個 provider 的憑證缺少或被拒絕時，`dev` 會報告是哪一個 provider 以及確切的登入指令 — 例如 ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — 並繼續使用另一個 provider 傳回的結果。`dev repo remote` 與 TUI REMOTE view 會呈現部分結果並發出 warning；`dev pr` 只有在完全沒有任何 provider 通過認證時才會失敗。`dev doctor` 會探測登入狀態，所以「已安裝但未登入」的 CLI 在某個指令需要它之前就看得到。
+
+只有缺少或被拒絕的憑證會用這種方式報告。Rate limit、權限或 scope 失敗，以及網路錯誤，都會保留完整的診斷文字（含失敗的指令），因為重新登入並不能解決它們。無論哪一種情況，原始指令與 provider 輸出都保留在被包裝的 error 之中。
 
 ### Agent session capture 只有保留欄位，尚未接線
 
@@ -151,6 +235,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - Human-readable output 現在具備 semantic color（`--color auto|always|never`），在 `NO_COLOR` 已設定、`TERM=dumb`，或 stdout/stderr 不是 terminal 時會自動停用。
 - `dev done` 只記錄 MERGED：它不會關閉呼叫端 runtime、移除 worktree 或刪除 branch。Cleanup 已移交 `dev retire`，後者必須從目標 workspace 之外執行，會拒絕 active agent 與 mixed-purpose workspace，並在每次關閉 runtime 之後重新驗證 Git state。`dev done --delete-branch` 現在會直接報錯並指向 `dev retire --delete-branch`，`--keep-worktree` 則以 no-op 警告。
 - `dev sweep --merged-worktrees` 直接從 Git 列舉 linked worktrees，而非從 task registry，因此 branch 已被 base 包含的 unmanaged worktree 也能被 retire。Containment 本身絕不等於許可；dirty state、未 finalize 的 artifact、進行中的 Git operation 與 runtime 拒絕條件都仍會阻擋，且未加 `--delete-branches` 時 branch 一律保留。
+- `dev sweep --ephemeral-worktrees` 加入獨立的 schema-v1 Claude Workflow report。Path/branch convention 只供 discovery；只有 exact bounded provider linkage 與 fresh Git/task/artifact/caller/runtime evidence 才能授權 TTY/per-item apply。Apply 會 lock 並重新計算 fingerprint，以 non-force 移除，預設保留 branch；只有 explicit-base、unchanged、contained、zero-unique proof 才能執行 `branch -d`。
 - `dev sweep` 會把 branch 已不存在於 Git 的 branch-backed task 視為 dead，並提供 reap 該 record 的建議。這種 task 無法 finish、resume 或 retire，因為這些路徑都必須先解析 branch；在 `--apply` 之前該建議仍只是報告。
 - 未知 command 會被回報，而不是被丟棄。`dev` 關閉了 cobra 自己的 error 輸出，先前又額外略過所有訊息開頭為 `unknown command` 的 error，因此打錯 command 時兩個 stream 都沒有任何輸出。現在會把訊息、cobra 的「Did you mean this?」建議，以及指向 `--help` 的提示寫到 stderr，exit status 為 1。
 - 對 command family 傳入多餘的 argument 現在是 error，而不是安靜地印出 help。`dev wt bogus` 過去會印出 `dev wt` help 並 exit 0，因為 family 本身沒有 `Run`；現在每個 family node 都會回報未知 subcommand 並 exit 1，而單獨執行 family 仍會印出 help 並 exit 0。
@@ -200,6 +285,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - [`internal/forge/review.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/review.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/ephemeral`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/ephemeral)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
 - [`internal/forge/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/cache.go)
 - [`internal/note/index.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/index.go)
@@ -207,6 +293,10 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
+- [`internal/handoff`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/handoff)
+- [`internal/closeout`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/closeout)
+- [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
 - [`scripts/update-homebrew-formula.sh`](https://github.com/daviddwlee84/dev-cli/blob/main/scripts/update-homebrew-formula.sh)
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)

@@ -866,6 +866,52 @@ to improvise:
 **If code, history, or plans must remain reviewable—or you may return tomorrow—
 use `dev`.**
 
+Claude Workflow cleanup is an explicit, stricter exception to the normal
+harness-owned lifetime. From the canonical non-bare checkout, first review:
+
+```bash
+dev sweep --ephemeral-worktrees --stale-days 14
+dev sweep --ephemeral-worktrees --json        # schema version 1; report only
+```
+
+The V1 adapter reads only bounded fixed-depth structure under
+`~/.claude/projects`; it reports normalized IDs/states/times and never emits
+prompts, scripts, logs, result bodies, or transcript content. A candidate needs
+one exact provider mapping, a `completed` or `killed` workflow, matching `done`
+agent plus journal `started` and `result`, no same-ID resumed transcript, and
+provider inactivity older than the threshold. Killed/no-result, progress, or
+resumed evidence remains `unknown` with no attestation bypass.
+
+There is one additional non-replay requirement: provider metadata must bind the
+run to the live branch, HEAD, common-dir, and an opaque registration generation
+that cannot be reused with the path. Claude Code 2.1.259 records none of that Git
+identity. Its current claims therefore show `provider-git-identity: unknown` and
+remain report-only; even `--apply` will not prompt for or remove them. This is
+intentional—stale terminal metadata must not authorize deleting a later checkout
+that reused the same path. Do not infer identity from the path, branch naming, or
+GitDir pathname.
+
+Eligibility also requires a present registered unlocked non-prunable named
+linked worktree with matching common-dir/branch/HEAD, no staged, unstaged,
+conflicted, untracked, ignored, or recursive-submodule content, no Git operation,
+no task or unsafe artifact intent, a caller outside the target, and known empty
+runtime coverage. Missing, prunable, unregistered, and orphan paths are report
+only. Apply is interactive and confirms each item, then reacquires every proof
+under a common-dir cleanup lock and compares a stable fingerprint before plain
+non-force removal:
+
+```bash
+dev sweep --ephemeral-worktrees --apply
+# Optional only when separately approved and proved safe:
+dev sweep --ephemeral-worktrees --apply --delete-branches --base main
+```
+
+A clean worktree may have commits unique to its branch because the branch is
+retained by default. Branch deletion separately requires unchanged branch/base
+tips, containment, zero unique commits, and `git branch -d`. This flow never
+prunes registrations, closes runtimes, deletes Claude metadata, or rescues,
+stashes, commits, or force-removes dirty work.
+
 `dev` does not delegate placement to herdr because the path policy has to hold
 on machines without herdr. It creates the checkout with plain git and asks
 herdr only to *open* it — which still surfaces it in the sidebar grouped under
@@ -967,6 +1013,15 @@ dev try redis-streams          # dated scratch directory for an experiment
 dev tries archive redis-streams    # reversible local archive; does not delete
 dev graduate redis-streams -c Infra --remote   # promote it into a real project
 
+dev pr list                    # requests you opened or were asked to review
+dev pr list --scope local      # with head branches, joined to your worktrees
+dev pr list --actions          # the gh/glab commands; dev prints, never runs
+dev prompt list                # built-in read-only context recipes
+dev prompt agents --json       # sorted profile capabilities, no private argv/shell
+dev prompt render pr-triage    # inspect/copy the exact prompt
+dev prompt run session-close --agent my-agent   # bounded one-shot, no user stdin
+dev prompt open workspace-closeout . --agent my-agent  # foreground current TTY
+
 dev gitignore                  # .gitignore from GitHub's templates + the rest
 dev adopt                      # import existing worktrees/sessions as tasks
 
@@ -976,6 +1031,32 @@ dev journal                    # today's commits plus current task/WIP context
 dev help worktrees             # quick-reference pages for the workflow
 dev help wt                    # same page, reached by command name
 ```
+
+### Prompt handoffs
+
+Escalate only as far as the situation needs: use `dev status`, `dev sweep`, or a
+lifecycle command when deterministic facts already answer the question; use
+`dev prompt render <recipe>` to inspect or copy context; use `run` for a bounded
+batch answer; and use `open` only when a foreground conversation can resolve a
+semantic question.
+
+The built-in recipes are `pr-triage`, `session-close`, and
+`workspace-closeout`. They collect read-only deterministic context and instruct
+the receiver not to mutate it. `dev` never parses an agent reply, starts a loop,
+or treats the reply as permission for `done`, `park`, `sweep`, or `retire`.
+There is no built-in vendor or launcher: host config defines optionally
+described profiles with independent `[agent.run]` and `[agent.open]` commands.
+`dev prompt agents [--json]` lists their sorted capabilities while hiding argv,
+shell source, executable directories, prompt text, environment, and config path.
+Global explicit/default/sole selection happens before recipe collection; the
+selected profile must support the requested mode and never falls back to another
+profile. `--agent` completion is mode-specific. `run` receives finite prompt
+input and defaults to a 10-minute timeout; `open` checks for a TTY before
+collection, reserves stdin for the conversation, has no default timeout, and
+stays in the current terminal/pane. It does not create, focus, or reuse a
+Herdr/tmux/Zellij surface. See [Prompt handoffs](docs/guides/prompt-handoffs.md)
+for configuration, transport, permission, closeout-audit, and rebase-conflict
+boundaries.
 
 ### Repository quick notes
 
