@@ -438,7 +438,7 @@ set -eu
 case "$1" in
   add)
     mkdir -p "$PWD/.agents/skills/demo/scripts"
-    printf '%s\n' '---' 'name: demo' '---' > "$PWD/.agents/skills/demo/SKILL.md"
+    printf '%s\n' '---' 'name: demo' 'description: test scaffold skill' '---' > "$PWD/.agents/skills/demo/SKILL.md"
     printf '%s\n' '#!/bin/sh' 'printf setup > setup-ran.txt' > "$PWD/.agents/skills/demo/scripts/setup.sh"
     chmod +x "$PWD/.agents/skills/demo/scripts/setup.sh"
     ;;

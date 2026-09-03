@@ -7,7 +7,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 )
 
-const viewCount = int(ViewSkills) + 1
+const viewCount = int(ViewMCP) + 1
 
 func (m Model) baseContext() context.Context {
 	if m.runContext != nil {
@@ -63,23 +63,29 @@ type viewLoadState struct {
 	actionable  bool
 }
 
-func (m *Model) prepareFleetForRepoReload() {
-	if m.actions.ReloadFleetWithRepos == nil {
+func (m *Model) prepareRepoDependentsForReload() {
+	m.prepareRepoDependentForReload(ViewFleet, m.actions.ReloadFleetWithRepos != nil)
+	m.prepareRepoDependentForReload(ViewSkills, m.actions.ReloadSkillsWithRepos != nil)
+	m.prepareRepoDependentForReload(ViewMCP, m.actions.ReloadMCPWithRepos != nil)
+}
+
+func (m *Model) prepareRepoDependentForReload(view View, enabled bool) {
+	if !enabled {
 		return
 	}
-	fleet := m.viewLoad(ViewFleet)
+	state := m.viewLoad(view)
 	switch {
-	case fleet.loading || (m.view == ViewFleet && fleet.hasSnapshot):
-		m.beginViewLoad(ViewFleet, loadRefresh)
-		m.setViewStatus(ViewFleet, "waiting for local repositories…")
-	case fleet.hasSnapshot:
-		m.invalidateView(ViewFleet)
+	case state.loading || m.view == view:
+		m.beginViewLoad(view, loadRefresh)
+		m.setViewStatus(view, "waiting for local repositories…")
+	case state.hasSnapshot:
+		m.invalidateView(view)
 	}
 }
 
 func (m *Model) beginViewLoad(view View, cause loadCause) uint64 {
 	if view == ViewRepos {
-		m.prepareFleetForRepoReload()
+		m.prepareRepoDependentsForReload()
 	}
 	index := int(view)
 	if cancel := m.loadCancels[index]; cancel != nil {

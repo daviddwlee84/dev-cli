@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-08-31
+verified_on: 2026-09-02
 tested_with: Claude Code 2.1.250
 ---
 
@@ -21,6 +21,8 @@ This page separates graceful degradation from real limitations. Reverify it when
 | GitLab merge requests/remotes | `glab` authenticated | same graceful fallback |
 | repository bootstrap publishing | authenticated `gh` or `glab` | local repository/scaffold still works; the wizard explains how to log in |
 | remote repository snapshot template | Git plus network/authentication for the source | validation fails before the destination is created and rendered URL userinfo is redacted; local templates still work |
+| native skill inventory | local filesystem plus the versioned `skills@1.5.23` path registry | always available; explicit add/update requires a directly installed `skills` executable and may use the network; repository-local npm bins are skipped and cooperating mutations are serialized |
+| static MCP inventory | readable supported agent config files | missing sources are empty; malformed/unsupported sources produce fresh partial diagnostics, and runtime health is intentionally unavailable |
 | setup-capable project skills | skills provider plus the entrypoint interpreter | unselected skills are skipped; selected required setup fails before scaffold mutation when its interpreter is unavailable; a clone acquired first is retained |
 | staged lazygit message prefill | a lazygit version that reads `LAZYGIT_PENDING_COMMIT` | files remain staged and dev prints the suggested message; normal Git commit remains available |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
@@ -30,6 +32,10 @@ This page separates graceful degradation from real limitations. Reverify it when
 | in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` prints the package manager's upgrade command instead |
 
 ## Confirmed project limitations
+
+### MCP inventory is static and intentionally incomplete
+
+`dev mcp list` reads documented static files for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode. An absolute `CLAUDE_CONFIG_DIR` relocates Claude user sources; local Claude rows retain their project key, and documented user/project/local/managed project approvals annotate declaration state. That narrow approval calculation is not a general runtime merge. The scanner does not start servers, execute helpers, contact endpoints, query health, or resolve credentials. Plugin caches, hosted connectors, remote organization configuration, inline `OPENCODE_CONFIG_CONTENT`, and command-line-only inputs are omitted. Keep the JSON `coverage` object, additive `local_project_path`, and scope-qualified duplicate rows when automating against this inventory.
 
 ### Note search and filesystem durability vary by text and platform
 

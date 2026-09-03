@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: 'Manage repositories and work-in-progress with the dev CLI: create/clone/setup agent-ready repos, bootstrap and organise them safely, own worktree/task lifecycle, safely prepare/finalize/retire agent sessions, run guarded Git transactions, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when creating, starting, parking, resuming or retiring work; preserving agent transcripts; scanning or organising repos; capturing/searching repo thoughts; choosing worktree isolation; or cleaning stale branches, checkouts and sessions.'
+description: 'Manage repositories and work-in-progress with the dev CLI: create/clone/setup agent-ready repos, bootstrap and organise them safely, own worktree/task lifecycle, safely prepare/finalize/retire agent sessions, run guarded Git transactions, capture sidecar repo notes, track HOT/WARM/COLD tasks, navigate via TUI, and bridge gh/glab/Azure DevOps/herdr/tmux/zellij. Use when creating, starting, parking, resuming or retiring work; preserving agent transcripts; scanning skills/MCP or organising repos; capturing/searching repo thoughts; choosing worktree isolation; or cleaning stale branches, checkouts and sessions.'
 ---
 
 # dev-cli
@@ -260,22 +260,30 @@ it runs. Legacy `.dev.toml` retains its compatibility behavior.
 
 ## Dashboard and forge inventory
 
-The TUI has TASKS, REPOS, FLEET, TRY, REMOTE and SKILLS views, switched with tab
-or vim-style h/l. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions;
+The TUI has TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS and MCP views, switched
+with tab or vim-style h/l. Wide TASKS tables show `REPO`; compact layouts keep it
+in detail. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions;
 `a` includes retained history. Archive is a reversible same-filesystem move,
 not deletion or disk reclamation. `?` opens the full key map.
 
 The initial view never waits for runtime/project-root resolution, cache decoding,
 or shell tool probes. TASKS/REPOS/TRY publish independently from one shared local
 cycle; optional tabs remain lazy. Refreshes are generation-scoped: late results
-are ignored, failed refreshes keep usable rows, and valid empty results clear
-obsolete rows. For a one-run diagnostic, set `DEV_TUI_TRACE` to an absolute new
+are ignored, failed refreshes keep usable rows, warning-only capability results
+stay fresh, visible tabs resume after REPOS recovery, and valid empty results
+clear obsolete rows. For a one-run diagnostic, set `DEV_TUI_TRACE` to an absolute new
 file. The private bounded trace is written after TUI teardown with relative
 startup/view timings and aggregate row counts only; it excludes names, paths,
 commands, key values, URLs, handles and raw errors, and never enters `stats.db`
-or a network sink. In SKILLS, `c` waits for the initial local snapshot before it
-can run the explicit source check; it never cancels that inventory with an empty
-check.
+or a network sink. SKILLS and MCP reuse the accepted REPOS snapshot and add a
+distinct startup linked checkout. Skill listing uses the native versioned
+77-agent path registry and never runs Node/`npx`; `c` hashes remote Git objects
+without checkout filters, while mutations require a trusted direct provider and
+are serialized. MCP inventories only sanitized static declarations for Claude
+Code, Codex, Cursor, Gemini CLI and OpenCode; only Claude's documented project
+approvals are resolved. It never starts or health-checks a server and never
+exposes secret-bearing values. Full detail:
+`references/agent-capabilities.md`.
 
 REMOTE queries authenticated `gh` and `glab` plus configured Azure DevOps
 organization/project targets lazily and fully paginates every repository the

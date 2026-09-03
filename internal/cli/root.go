@@ -163,6 +163,7 @@ func newRootCommand(app *App) *cobra.Command {
 		newStatsCmd(app),
 		newHelpTopicCmd(app),
 		newSkillCmd(app),
+		newMCPCmd(app),
 		newDoctorCmd(app),
 		newVersionCmd(app),
 		newUpgradeCmd(app),

@@ -1,8 +1,9 @@
 ---
-description: 在 TUI 瀏覽 tasks、repositories、fleet hosts、experiments、remotes 與 agent skills、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
+description: 在 TUI 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
 authority: project
 status: evolving
-verified_on: 2026-08-31
+verified_on: 2026-09-01
+tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 lang: zh-TW
 ---
 
@@ -13,7 +14,7 @@ lang: zh-TW
 
 Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interactive dashboard；透過 pipe 執行時會輸出 plain task listing，讓 shell composition 保持可預期。
 
-## 六個 view
+## 七個 view
 
 | View | 回答問題 | 來源 |
 |---|---|---|
@@ -22,11 +23,12 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 | FLEET | 設定的機器上有哪些 repository 與 active work？ | 已接受的 local REPOS snapshot 加上透過 SSH 取得的 remote `dev` snapshots |
 | TRY | 哪些 experiments 能 resume、archive 或 graduate？ | experiment catalog 加 live facts |
 | REMOTE | 有哪些 repository 能 open 或 clone？ | authenticated `gh`/`glab` inventories 與 cache |
-| SKILLS | Project 與 global scope 安裝了哪些 agent skills？ | upstream `skills` JSON 加 project/global locks |
+| SKILLS | Repositories 與 global scope 安裝了哪些 agent skills？ | native versioned 77-agent path registry 加 project/global locks |
+| MCP | Supported agents 宣告了哪些 MCP servers？ | Claude Code、Codex、Cursor、Gemini CLI 與 OpenCode 的 sanitized static config |
 
 初始 TASKS frame 會先建立，不等待 runtime auto-detection、project-root lookup、
 cache decode、shell tool probe 或 optional release refresh 完成。TASKS、REPOS 與
-TRY 接著由同一個 shared local cycle 獨立發布；REMOTE、FLEET 與 SKILLS 維持
+TRY 接著由同一個 shared local cycle 獨立發布；REMOTE、FLEET、SKILLS 與 MCP 維持
 lazy。每個被請求的 view 都有自己的 generation：`r` 會 supersede 舊讀取，晚到
 結果會被忽略，refresh 失敗時保留可用 rows，而成功的空結果會移除過時 rows。
 Cache acceptance 與目前 live load completion 是不同階段；可能從未開啟的 optional
@@ -58,7 +60,7 @@ n/N       quick-add／瀏覽 repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
-COLD worktree task 必須透過 `dev resume` 重建；TUI 不會用 generic open action 靜默重建。若 worktree 已遺失或不再由 Git 註冊，必須先執行 `dev sweep`，讓它在 resume 或 reap 前回報需要 salvage 的 agent artifacts。Enter 不會開啟只剩 artifacts 的 abandoned directory。
+COLD worktree task 必須透過 `dev resume` 重建；TUI 不會用 generic open action 靜默重建。若 worktree 已遺失或不再由 Git 註冊，必須先執行 `dev sweep`，讓它在 resume 或 reap 前回報需要 salvage 的 agent artifacts。Enter 不會開啟只剩 artifacts 的 abandoned directory。Terminal 寬度至少 97 cells 時，TASKS table 會顯示 display-width-aware `REPO` column；更窄時保留原 columns，並在 detail 顯示 repo/path。
 
 ### REPOS
 
@@ -135,12 +137,32 @@ Note ID prefix 必須唯一，且至少八個字元。
 
 Configured `paths.state_dir/notes` 下的 Markdown 是 durable data；`$XDG_CACHE_HOME/dev/notes.db` 只是可重建的 search index。精確 flags 請見[命令與設定 reference](../reference/commands-config.md)中的完整 generated command reference。
 
-SKILLS 同樣延遲載入，因此 dashboard startup 不會啟動 Node。同名 skill
-在 project 與 global scope 會保留為不同列，並顯示 target agents、source、
-path、manager 與 update state。`r` 只重讀 local state；local snapshot ready 後，
-`c` 才明確執行唯讀 source check（更早按 `c` 會等待，不會取消 inventory）；`a` 以 `daviddwlee84/agent-skills/skills` 為預設 source 開啟
-upstream interactive installer；`u` 先確認，再只更新選取且受 lock 管理的
-skill。Structured filters 包含 `scope:`、`agent:` 與 `update:`。
+SKILLS 與 MCP 都會等目前 REPOS generation 被接受後才延遲載入。兩者會掃描每個
+canonical repository，並在 startup checkout 是不同 linked worktree 時額外加入它；
+global/user sources 只讀一次。Refresh 時會保留可用 rows；warning-only partial inventory
+仍維持 fresh，且 visible capability view 會在 REPOS recovery 後自動繼續載入。
+
+SKILLS 直接讀取 versioned `skills@1.5.23` 77-agent path registry 與 lock files；
+不會執行 Node、`skills`、npm、`npx`、agent detector 或 project code。同名
+project/global/repository rows 保持分開。Presence 與 embedded `dev-cli` integrity
+是 local facts；update state 則是獨立的 lock-recorded upstream comparison。`c`
+是明確且 grouped 的 Git source check；`a` 開啟 upstream interactive installer；
+`u` 先確認，再於該 row 的 checkout 更新選取且受 lock 管理的 skill。Check 直接
+hash Git object bytes，不建立 checkout；依 locale 排序的 non-ASCII folder hash
+維持 unverifiable。Mutation 需要直接安裝的 `skills` executable，會跳過
+repository-local npm shim、拒絕 source-less lock，並在 cooperating `dev` processes
+之間 serialized。Filters 包含 `repo:`、`scope:`、`agent:`、`update:`、
+`presence:` 與 `integrity:`。
+
+MCP 會讀取 Claude Code、Codex、Cursor、Gemini CLI 與 OpenCode 的 static
+declarations。它保留 file/scope rows 與 exact Claude local project key，不猜測
+一般化的 effective config；只有 Claude documented user/project/local/managed
+project approvals 會被解析。Absolute `CLAUDE_CONFIG_DIR` 會搬移 Claude user
+sources。Configured/enabled/disabled 不代表 connected 或 healthy。Provider-specific
+environment reference names 與有限 OAuth facts 會保留；其 values、raw arguments、
+URL credentials/path/query/fragment 與 indirect file content 都會在 row 進入 model
+前被丟棄。Scanner 不會執行 server、helper、URL 或 agent MCP command。Filters 包含 `repo:`、`agent:`、`scope:`、`transport:`、
+`managed:` 與 `state:`；`r` 只重讀 static files。
 
 ## External tools
 
@@ -192,6 +214,12 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 
 ## 來源
 
+- [`skills@1.5.23` agent path registry](https://github.com/vercel-labs/skills/blob/v1.5.23/src/agents.ts)
+- [Claude Code MCP configuration](https://code.claude.com/docs/en/mcp)
+- [Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
+- [Cursor MCP configuration](https://cursor.com/docs/mcp)
+- [Gemini CLI MCP configuration](https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html)
+- [OpenCode MCP configuration](https://opencode.ai/docs/mcp-servers/)
 - [`internal/help/topics/tui.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/tui.md)
 - [`internal/help/topics/notes.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/notes.md)
 - [`internal/cli/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/note.go)

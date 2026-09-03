@@ -1,0 +1,18 @@
+{
+  // JSONC is part of OpenCode's documented config surface.
+  "mcp": {
+    "opencode-local": {
+      "type": "local",
+      "command": ["/usr/local/bin/opencode-server", "--token", "fixture-secret-must-not-appear"],
+      "environment": {"TOKEN": "{env:OPENCODE_TOKEN}"},
+      "enabled": true
+    },
+    "opencode-remote": {
+      "type": "remote",
+      "url": "https://user:fixture-secret-must-not-appear@open.example.test/private?token=fixture-secret-must-not-appear#fragment",
+      "headers": {"Authorization": "{file:fixture-secret-must-not-appear}"},
+      "oauth": {"clientId": "fixture-secret-must-not-appear", "clientSecret": "fixture-secret-must-not-appear"},
+      "enabled": false
+    }
+  }
+}

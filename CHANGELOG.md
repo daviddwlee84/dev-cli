@@ -8,6 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Agent skill inventory is now provider-independent and repository-aware. A
+  versioned snapshot of the `skills@1.5.23` 77-agent path registry scans the
+  current checkout, a selected repository, or every canonical repository plus
+  global scope without executing Node; explicit source checks group shared
+  Git/ref inputs once and keep local presence/integrity separate from upstream
+  freshness.
+- `dev mcp list` and a lazy MCP TUI view inventory static declarations for
+  Claude Code, Codex, Cursor, Gemini CLI, and OpenCode. Output is scope-qualified,
+  never claims runtime health/effective precedence, and strips command arguments,
+  environment/header/OAuth values, URL credentials, and indirect file contents.
+- Wide TASKS tables now show the repository for each row; compact terminals keep
+  the previous layout and the detail pane continues to show the full repo/path.
 - Stable releases now render and publish `Formula/dev-cli.rb` to
   `daviddwlee84/homebrew-tap`. The release job requires a fine-grained
   `HOMEBREW_TAP_TOKEN`, fails visibly when the distribution update cannot be
@@ -15,6 +27,37 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   stable release without creating another tag. Homebrew installs remain
   package-manager-owned rather than letting `dev upgrade` overwrite a Cellar
   binary.
+
+### Fixed
+
+- Read-only skill listing no longer treats the presence of `npx` as proof that
+  the `skills` package is cached. It never runs `npx --no-install skills`, so npm
+  cannot resolve a missing package from the registry and cancel the inventory.
+- Repository-scoped skill mutations now require a directly installed `skills`
+  executable, skip npm-local PATH shims in favor of a later trusted provider,
+  validate against the effective canonical repository root, use the canonical
+  lock key, reject option-like or source-less lock entries, and serialize provider
+  processes across cooperating `dev` invocations. TUI post-update verification
+  remains pinned to the confirmed checkout.
+- Explicit skill source checks terminate Git option parsing, reject unsafe refs,
+  and hash Git tree/blob objects without checking out remote content, so
+  `.gitattributes` filters and `core.autocrlf` cannot execute or invent updates.
+  Locale-dependent folder hashes with non-ASCII paths remain explicitly
+  unverifiable instead of reporting false freshness.
+- Native skill/MCP readers now open regular files non-blockingly before bounded
+  reads, closing stat/open FIFO races. Target identity preserves explicit linked
+  worktree aliases, canonicalizes missing suffixes below symlinks, attributes
+  nested Claude projects to the most specific checkout, and no longer attributes
+  project-only agents to global skill paths.
+- MCP normalization now honors `CLAUDE_CONFIG_DIR`, Claude user/project/local/
+  managed approval settings, exact local project paths, documented Gemini and
+  Claude transports, provider-specific environment references, and Codex OAuth
+  scope/resource facts. Null server members are diagnosed without producing
+  phantom rows, and values remain redacted.
+- Warning-only SKILLS/MCP diagnostics now keep fresh TUI snapshots instead of
+  causing reload loops; visible dependent views resume after REPOS recovers,
+  startup checkout identity is cached once, post-update skill reloads are traced,
+  and long credential summaries stay within the terminal viewport.
 
 ## [0.2.3] - 2026-09-01
 

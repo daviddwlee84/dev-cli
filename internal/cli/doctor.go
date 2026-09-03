@@ -109,14 +109,30 @@ func runDoctor(app *App) error {
 			checks = append(checks, check{f.bin, checkWarn, "not found — " + f.purpose + " unavailable"})
 		}
 	}
-	if cwd, err := os.Getwd(); err == nil {
-		if version, err := agentskill.ProviderVersion(ctx, cwd); err == nil {
-			checks = append(checks, check{"agent skills", checkOK, version})
+	checks = append(checks, check{"agent skill inventory", checkOK,
+		"native local scan — " + agentskill.RegistrySource + " " + agentskill.RegistryVersion + " paths"})
+	providerCWD, _ := os.Getwd()
+	if providerCWD != "" {
+		providerCWD = agentskill.ProjectRoot(ctx, providerCWD)
+	}
+	mutation := agentskill.MutationProviderStatusFor(providerCWD)
+	mutationState := checkWarn
+	if mutation.Available {
+		mutationState = checkOK
+	}
+	mutationDetail := mutation.Detail
+	if mutation.Command == "skills" {
+		if providerCWD == "" {
+			mutationState = checkWarn
+			mutationDetail = "skills executable found but current directory is unavailable"
+		} else if version, err := agentskill.ProviderVersion(ctx, providerCWD); err == nil {
+			mutationDetail = version + " — explicit add/update only"
 		} else {
-			checks = append(checks, check{"agent skills", checkWarn,
-				"provider unavailable without downloading — `dev skill add` bootstraps it explicitly"})
+			mutationState = checkWarn
+			mutationDetail = "skills executable found but its version probe failed"
 		}
 	}
+	checks = append(checks, check{"agent skill mutations", mutationState, mutationDetail})
 	azureTargets := len(app.Cfg.Forge.AzureDevOps)
 	if path, err := exec.LookPath("az"); err != nil {
 		detail := "not found — Azure DevOps PRs unavailable"

@@ -1155,7 +1155,7 @@ The cache exists so an unreachable, timed-out, incompatible, or invalid-response
 
 ## Fleet in the TUI
 
-FLEET is one of the TUI's six views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, `SKILLS`, switched with `tab`/`h`/`l`). Like REMOTE, it loads lazily — no live probe starts until the view is first opened — but its cache is decoded in the background after the initial TASKS view so a valid snapshot still within `defaults.cache_ttl` can seed the table. The TUI hides this machine by default because REPOS already provides its richer local inventory; `a` includes/hides local rows. The local-host snapshot reuses the current accepted REPOS generation instead of running repository/task/runtime discovery again; if that generation is still loading, FLEET keeps cached rows visible and says it is waiting. `r` supersedes an older request and forces a live reload of every configured host. The non-interactive `dev fleet list` output remains local plus remote.
+FLEET is one of the TUI's seven views (`TASKS`, `REPOS`, `FLEET`, `TRY`, `REMOTE`, `SKILLS`, `MCP`, switched with `tab`/`h`/`l`). Like REMOTE, it loads lazily — no live probe starts until the view is first opened — but its cache is decoded in the background after the initial TASKS view so a valid snapshot still within `defaults.cache_ttl` can seed the table. The TUI hides this machine by default because REPOS already provides its richer local inventory; `a` includes/hides local rows. The local-host snapshot reuses the current accepted REPOS generation instead of running repository/task/runtime discovery again; if that generation is still loading, FLEET keeps cached rows visible and says it is waiting. `r` supersedes an older request and forces a live reload of every configured host. The non-interactive `dev fleet list` output remains local plus remote.
 
 Its table shows `HOST`, `STATE`, `REPO`, `BRANCH`, `GIT`, `LIVE`, `TASKS`, and `PATH`. `enter` opens the selected repository: an explicitly revealed local host row uses an ordinary local open; for a remote row `dev` prefers native Herdr remoting when that host's snapshot reports the `herdr` runtime and the host connects through `ssh_alias` with no password step, and otherwise falls back to an interactive SSH login shell in the repository's directory. Git changes are read-only in this view — FLEET is for inspecting and opening work, not editing it in place.
 
@@ -1335,11 +1335,11 @@ Byte equality rather than mere presence is the point. A transcript writer that o
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/
 
-> Navigate tasks, repositories, fleet hosts, experiments, remotes, and agent skills in the TUI; capture repository quick notes; inventory or adopt existing work safely.
+> Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
 
-## Six views
+## Seven views
 
 | View | Question | Source |
 |---|---|---|
@@ -1348,12 +1348,13 @@ Bare `dev` opens an interactive dashboard when standard input/output are termina
 | FLEET | What exists and is active on configured machines? | accepted local REPOS snapshot plus remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive, or graduate? | experiment catalog plus live facts |
 | REMOTE | What can I open or clone? | authenticated `gh`/`glab` inventories and cache |
-| SKILLS | Which agent skills are installed locally and globally? | upstream `skills` JSON plus project/global locks |
+| SKILLS | Which agent skills are installed across repositories and globally? | native versioned 77-agent path registry plus project/global locks |
+| MCP | Which MCP servers are declared for supported agents? | sanitized static configuration for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode |
 
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes, or the optional release refresh can
 finish. TASKS, REPOS, and TRY then publish independently from one shared local
-cycle. REMOTE, FLEET, and SKILLS stay lazy. Each requested view has a generation:
+cycle. REMOTE, FLEET, SKILLS, and MCP stay lazy. Each requested view has a generation:
 `r` supersedes the previous read, late results are ignored, failed refreshes keep
 usable rows visible, and a successful empty result removes obsolete rows. Cache
 acceptance and current live completion are distinct; there is no all-tabs-ready
@@ -1387,7 +1388,7 @@ n/N       quick-add / browse repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
-A COLD worktree task must be rebuilt with `dev resume`; the TUI does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory.
+A COLD worktree task must be rebuilt with `dev resume`; the TUI does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory. At 97 or more terminal cells the TASKS table includes a display-width-aware `REPO` column; narrower layouts retain the previous columns and show repo/path in detail.
 
 ### REPOS
 
@@ -1467,14 +1468,37 @@ A note ID prefix must be unique and at least eight characters.
 
 Markdown under configured `paths.state_dir/notes` is durable; `$XDG_CACHE_HOME/dev/notes.db` is only a rebuildable search index. See the [complete generated command reference](https://daviddwlee84.github.io/dev-cli/reference/commands-config/#complete-generated-command-reference) for exact flags.
 
-SKILLS also loads lazily, so dashboard startup does not invoke Node. It keeps
-same-named project and global skills as separate rows and shows their target
-agents, source, path, manager, and update state. `r` reloads only local state;
-after that local snapshot is ready, `c` explicitly performs a read-only source
-check (an earlier `c` waits instead of canceling inventory); `a` opens the upstream
-interactive installer with `daviddwlee84/agent-skills/skills` as its default
-source; `u` confirms before updating only the selected lock-managed skill.
-Structured filters include `scope:`, `agent:`, and `update:`.
+SKILLS and MCP both load lazily after the current REPOS generation is accepted.
+They scan each canonical repository and add the exact startup checkout when it is
+a distinct linked worktree; global/user sources are read once. Refreshes keep
+usable rows visible, warning-only partial inventories stay fresh, and a visible
+capability view resumes automatically after REPOS recovers.
+
+SKILLS reads the versioned `skills@1.5.23` 77-agent path registry and lock files
+natively—no Node, `skills`, npm, `npx`, agent detector, or project code runs.
+Same-named project/global/repository rows remain distinct. Presence and embedded
+`dev-cli` integrity are local facts; update state is a separate lock-recorded
+upstream comparison. `c` is the explicit grouped Git source check, `a` opens the
+upstream interactive installer, and `u` confirms before updating only the
+selected lock-managed skill in that row's checkout. The check hashes Git object
+bytes without populating a checkout; locale-dependent non-ASCII folder hashes stay
+unverifiable. Mutations require a directly installed `skills` executable, skip
+repository-local npm shims, reject source-less locks, and serialize cooperating
+`dev` processes. Filters include `repo:`, `scope:`, `agent:`, `update:`,
+`presence:`, and `integrity:`.
+
+MCP reads static declarations for Claude Code, Codex, Cursor, Gemini CLI, and
+OpenCode. It preserves file/scope rows and exact Claude local project keys instead
+of guessing a generally effective configuration; only Claude's documented
+user/project/local/managed project approvals are resolved. An absolute
+`CLAUDE_CONFIG_DIR` relocates Claude user sources. Configured/enabled/disabled
+never means connected or healthy. Provider-specific environment reference names
+and finite OAuth facts remain, while values, raw arguments, URL
+credentials/path/query/fragment, and indirect file content are discarded before
+rows enter the model. The scanner never runs a server, helper, URL, or agent MCP
+command. Filters include `repo:`,
+`agent:`, `scope:`, `transport:`, `managed:`, and `state:`; `r` only rereads
+static files.
 
 ## External tools
 
@@ -1526,6 +1550,12 @@ Adopt reports by default and only writes task entries after `--apply` plus confi
 
 ## Sources
 
+- [`skills@1.5.23` agent path registry](https://github.com/vercel-labs/skills/blob/v1.5.23/src/agents.ts)
+- [Claude Code MCP configuration](https://code.claude.com/docs/en/mcp)
+- [Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
+- [Cursor MCP configuration](https://cursor.com/docs/mcp)
+- [Gemini CLI MCP configuration](https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html)
+- [OpenCode MCP configuration](https://opencode.ai/docs/mcp-servers/)
 - [`internal/help/topics/tui.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/tui.md)
 - [`internal/help/topics/notes.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/notes.md)
 - [`internal/cli/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/note.go)
@@ -2482,6 +2512,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
 | remote fleet | `fleet list`, `fleet status`, `fleet sync`, `fleet open`, `fleet config …` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
+| static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
 | activity/data | `summary`, `journal`, `stats …`, `cache …` |
 | help | `help [topic]` |
@@ -2501,10 +2532,14 @@ dev repo setup [repo-or-path] --preset PRESET --json
 dev note list [repo] --json
 dev note search <query> --json
 dev note show <note-id> --json
+dev skill list --all --json
+dev mcp list --all --json
 dev bootstrap --json
 ```
 
 Prefer JSON or the agent-ready Markdown context over parsing human tables. Tables are optimized for terminals and may change columns/width without changing the structured contract.
+
+`dev skill list --json` keeps its existing array and keys while adding repository, checkout, installation, presence/integrity, registry, and lock metadata. `dev mcp list --json` begins with a `servers`/`diagnostics`/`coverage` envelope; exact Claude local rows add `local_project_path`. Every server field is already sanitized. Declaration state may include Claude's documented project approvals, but must not be interpreted as health or a generally effective merged configuration.
 
 Every `dev repo list --json` row includes `notes.count`. When a latest note exists, the same object adds `notes.latest_id`, `notes.latest_preview`, and `notes.latest_updated`; these optional fields are omitted when the count is zero. `dev note list --json` and `dev note search --json` return arrays of complete note records, while `dev note show --json` returns one complete record.
 
@@ -3406,6 +3441,28 @@ dev ls [flags]
 - `-r, --repo` — only tasks whose repo name contains this
 - `-s, --state` — only these states (hot, warm, cold, done)
 
+### `dev mcp`
+
+Inspect static agent MCP server declarations
+
+```
+dev mcp
+```
+
+### `dev mcp list`
+
+List configured MCP server declarations
+
+```
+dev mcp list [flags]
+```
+
+- `--agent` — agent format: claude-code, codex, cursor, gemini-cli, opencode
+- `--all` — scan every configured canonical repository
+- `--json` — emit a stable sanitized JSON envelope
+- `-r, --repo` — scan one repository or explicit checkout path
+- `--scope` — declaration scope: project, local, user, custom, system-defaults, system-override, managed
+
 ### `dev note`
 
 Capture and search timestamped repository thoughts
@@ -3780,10 +3837,12 @@ List project and global agent skills
 dev skill list [flags]
 ```
 
+- `--all` — scan every configured canonical repository
 - `--check` — contact Git sources and check for updates without installing them
 - `-g, --global` — list global skills
 - `--json` — emit a stable machine-readable JSON array
 - `-p, --project` — list project skills
+- `-r, --repo` — scan one repository or explicit checkout path
 
 ### `dev skill print`
 
@@ -3814,6 +3873,7 @@ dev skill update <skill> [flags]
 
 - `-g, --global` — update the global skill
 - `-p, --project` — update the project-scoped skill
+- `-r, --repo` — project repository or explicit checkout path
 - `-y, --yes` — skip dev's confirmation
 
 ### `dev start`
@@ -4219,6 +4279,8 @@ This page separates graceful degradation from real limitations. Reverify it when
 | GitLab merge requests/remotes | `glab` authenticated | same graceful fallback |
 | repository bootstrap publishing | authenticated `gh` or `glab` | local repository/scaffold still works; the wizard explains how to log in |
 | remote repository snapshot template | Git plus network/authentication for the source | validation fails before the destination is created and rendered URL userinfo is redacted; local templates still work |
+| native skill inventory | local filesystem plus the versioned `skills@1.5.23` path registry | always available; explicit add/update requires a directly installed `skills` executable and may use the network; repository-local npm bins are skipped and cooperating mutations are serialized |
+| static MCP inventory | readable supported agent config files | missing sources are empty; malformed/unsupported sources produce fresh partial diagnostics, and runtime health is intentionally unavailable |
 | setup-capable project skills | skills provider plus the entrypoint interpreter | unselected skills are skipped; selected required setup fails before scaffold mutation when its interpreter is unavailable; a clone acquired first is retained |
 | staged lazygit message prefill | a lazygit version that reads `LAZYGIT_PENDING_COMMIT` | files remain staged and dev prints the suggested message; normal Git commit remains available |
 | worktree dependency setup | ecosystem manager (`uv`, npm, Cargo, etc.) | plan reports the missing tool and keeps the checkout |
@@ -4228,6 +4290,10 @@ This page separates graceful degradation from real limitations. Reverify it when
 | in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` prints the package manager's upgrade command instead |
 
 ## Confirmed project limitations
+
+### MCP inventory is static and intentionally incomplete
+
+`dev mcp list` reads documented static files for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode. An absolute `CLAUDE_CONFIG_DIR` relocates Claude user sources; local Claude rows retain their project key, and documented user/project/local/managed project approvals annotate declaration state. That narrow approval calculation is not a general runtime merge. The scanner does not start servers, execute helpers, contact endpoints, query health, or resolve credentials. Plugin caches, hosted connectors, remote organization configuration, inline `OPENCODE_CONFIG_CONTENT`, and command-line-only inputs are omitted. Keep the JSON `coverage` object, additive `local_project_path`, and scope-qualified duplicate rows when automating against this inventory.
 
 ### Note search and filesystem durability vary by text and platform
 
@@ -4428,7 +4494,8 @@ tested_with: optional
 | SSH fleet snapshots, per-host states, and `fleet sync` fast-forward safety | [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/) | `internal/fleet`, `internal/cli/fleet.go`, focused fleet tests | implemented |
 | READY/MERGED/RETIRED milestones, retirement refusal conditions, and merged-worktree sweep | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/) | `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
 | `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](https://daviddwlee84.github.io/dev-cli/guides/machine-summary/), [Development journal](https://daviddwlee84.github.io/dev-cli/guides/dev-journal/) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
-| agent skill inventory, scopes, and explicit update actions | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/agentskill`, `internal/cli/skill.go`, focused TUI tests | implemented |
+| native cross-repository agent skill inventory, versioned path registry, local status, object-byte upstream checks, and serialized mutations | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/agenttarget`, `internal/agentskill`, `internal/inventory/agent_skills.go`, `internal/cli/skill.go`, focused CLI/TUI tests | implemented; path registry snapshot `skills@1.5.23`; checked 2026-09-02 |
+| declaration-only MCP inventory, Claude approval annotation, and secret-redaction boundary | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | current official agent config docs; `internal/agentmcp`, `internal/cli/mcp.go`, fixture/security tests | implemented for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; checked 2026-09-02 |
 | TUI startup/readiness stages, generation handling, cache/live provenance, and private trace semantics | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/perftrace`, `internal/tui/{readiness,local}.go`, `internal/cli/tui*.go`, focused race tests | implemented |
 | quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
 | release archives, package-manager ownership, and Homebrew tap publication | [Compatibility](https://daviddwlee84.github.io/dev-cli/reference/compatibility/) | `internal/cli/upgrade.go`, `.github/workflows/release.yml`, `scripts/update-homebrew-formula.sh`, packaging helper test | implemented |
@@ -5823,7 +5890,7 @@ ssh_login_password_source = { type = "bitwarden", item = "ssh-vps-login" }
 
 ## TUI 中的 FLEET
 
-FLEET 是 TUI 六個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會開始 live probe——但 cache 會在初始 TASKS view 後於背景 decode，讓仍在 `defaults.cache_ttl` 期限內的 valid snapshot 先填入 table。TUI 預設隱藏本機，因為 REPOS 已提供較完整的 local inventory；`a` 可顯示或隱藏 local rows。Local-host snapshot 會重用目前已接受的 REPOS generation，不再重跑 repository/task/runtime discovery；若該 generation 仍在 loading，FLEET 會保留 cached rows 並顯示 waiting。`r` 會 supersede 舊 request，並強制對所有已設定的 host 做一次 live reload。Non-interactive 的 `dev fleet list` 仍會同時列出本機與 remote hosts。
+FLEET 是 TUI 七個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、`SKILLS`、`MCP`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣採延遲載入——view 第一次開啟前不會開始 live probe——但 cache 會在初始 TASKS view 後於背景 decode，讓仍在 `defaults.cache_ttl` 期限內的 valid snapshot 先填入 table。TUI 預設隱藏本機，因為 REPOS 已提供較完整的 local inventory；`a` 可顯示或隱藏 local rows。Local-host snapshot 會重用目前已接受的 REPOS generation，不再重跑 repository/task/runtime discovery；若該 generation 仍在 loading，FLEET 會保留 cached rows 並顯示 waiting。`r` 會 supersede 舊 request，並強制對所有已設定的 host 做一次 live reload。Non-interactive 的 `dev fleet list` 仍會同時列出本機與 remote hosts。
 
 它的表格欄位是 `HOST`、`STATE`、`REPO`、`BRANCH`、`GIT`、`LIVE`、`TASKS`、`PATH`。`enter` 會開啟選取的 repository：明確顯示出來的 local host row 使用一般的 local open；remote row 則在該 host 的 snapshot 回報 `herdr` runtime，且透過 `ssh_alias` 連線、不需要密碼步驟時，優先使用原生 Herdr remoting，否則退回在該 repository 目錄下開啟 interactive SSH login shell。這個 view 中 Git 的變更是唯讀的——FLEET 是用來檢視與開啟工作，不是在原地編輯它。
 
@@ -6004,14 +6071,14 @@ fatal: not a git repository (or any of the parent directories): .git
 
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/
 
-> 在 TUI 瀏覽 tasks、repositories、fleet hosts、experiments、remotes 與 agent skills、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
+> 在 TUI 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 repository quick notes，並安全地 inventory 或 adopt 現有工作。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
 Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interactive dashboard；透過 pipe 執行時會輸出 plain task listing，讓 shell composition 保持可預期。
 
-## 六個 view
+## 七個 view
 
 | View | 回答問題 | 來源 |
 |---|---|---|
@@ -6020,11 +6087,12 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 | FLEET | 設定的機器上有哪些 repository 與 active work？ | 已接受的 local REPOS snapshot 加上透過 SSH 取得的 remote `dev` snapshots |
 | TRY | 哪些 experiments 能 resume、archive 或 graduate？ | experiment catalog 加 live facts |
 | REMOTE | 有哪些 repository 能 open 或 clone？ | authenticated `gh`/`glab` inventories 與 cache |
-| SKILLS | Project 與 global scope 安裝了哪些 agent skills？ | upstream `skills` JSON 加 project/global locks |
+| SKILLS | Repositories 與 global scope 安裝了哪些 agent skills？ | native versioned 77-agent path registry 加 project/global locks |
+| MCP | Supported agents 宣告了哪些 MCP servers？ | Claude Code、Codex、Cursor、Gemini CLI 與 OpenCode 的 sanitized static config |
 
 初始 TASKS frame 會先建立，不等待 runtime auto-detection、project-root lookup、
 cache decode、shell tool probe 或 optional release refresh 完成。TASKS、REPOS 與
-TRY 接著由同一個 shared local cycle 獨立發布；REMOTE、FLEET 與 SKILLS 維持
+TRY 接著由同一個 shared local cycle 獨立發布；REMOTE、FLEET、SKILLS 與 MCP 維持
 lazy。每個被請求的 view 都有自己的 generation：`r` 會 supersede 舊讀取，晚到
 結果會被忽略，refresh 失敗時保留可用 rows，而成功的空結果會移除過時 rows。
 Cache acceptance 與目前 live load completion 是不同階段；可能從未開啟的 optional
@@ -6056,7 +6124,7 @@ n/N       quick-add／瀏覽 repository notes
 1/2/3     HOT/WARM/COLD filters
 ```
 
-COLD worktree task 必須透過 `dev resume` 重建；TUI 不會用 generic open action 靜默重建。若 worktree 已遺失或不再由 Git 註冊，必須先執行 `dev sweep`，讓它在 resume 或 reap 前回報需要 salvage 的 agent artifacts。Enter 不會開啟只剩 artifacts 的 abandoned directory。
+COLD worktree task 必須透過 `dev resume` 重建；TUI 不會用 generic open action 靜默重建。若 worktree 已遺失或不再由 Git 註冊，必須先執行 `dev sweep`，讓它在 resume 或 reap 前回報需要 salvage 的 agent artifacts。Enter 不會開啟只剩 artifacts 的 abandoned directory。Terminal 寬度至少 97 cells 時，TASKS table 會顯示 display-width-aware `REPO` column；更窄時保留原 columns，並在 detail 顯示 repo/path。
 
 ### REPOS
 
@@ -6133,12 +6201,32 @@ Note ID prefix 必須唯一，且至少八個字元。
 
 Configured `paths.state_dir/notes` 下的 Markdown 是 durable data；`$XDG_CACHE_HOME/dev/notes.db` 只是可重建的 search index。精確 flags 請見[命令與設定 reference](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/)中的完整 generated command reference。
 
-SKILLS 同樣延遲載入，因此 dashboard startup 不會啟動 Node。同名 skill
-在 project 與 global scope 會保留為不同列，並顯示 target agents、source、
-path、manager 與 update state。`r` 只重讀 local state；local snapshot ready 後，
-`c` 才明確執行唯讀 source check（更早按 `c` 會等待，不會取消 inventory）；`a` 以 `daviddwlee84/agent-skills/skills` 為預設 source 開啟
-upstream interactive installer；`u` 先確認，再只更新選取且受 lock 管理的
-skill。Structured filters 包含 `scope:`、`agent:` 與 `update:`。
+SKILLS 與 MCP 都會等目前 REPOS generation 被接受後才延遲載入。兩者會掃描每個
+canonical repository，並在 startup checkout 是不同 linked worktree 時額外加入它；
+global/user sources 只讀一次。Refresh 時會保留可用 rows；warning-only partial inventory
+仍維持 fresh，且 visible capability view 會在 REPOS recovery 後自動繼續載入。
+
+SKILLS 直接讀取 versioned `skills@1.5.23` 77-agent path registry 與 lock files；
+不會執行 Node、`skills`、npm、`npx`、agent detector 或 project code。同名
+project/global/repository rows 保持分開。Presence 與 embedded `dev-cli` integrity
+是 local facts；update state 則是獨立的 lock-recorded upstream comparison。`c`
+是明確且 grouped 的 Git source check；`a` 開啟 upstream interactive installer；
+`u` 先確認，再於該 row 的 checkout 更新選取且受 lock 管理的 skill。Check 直接
+hash Git object bytes，不建立 checkout；依 locale 排序的 non-ASCII folder hash
+維持 unverifiable。Mutation 需要直接安裝的 `skills` executable，會跳過
+repository-local npm shim、拒絕 source-less lock，並在 cooperating `dev` processes
+之間 serialized。Filters 包含 `repo:`、`scope:`、`agent:`、`update:`、
+`presence:` 與 `integrity:`。
+
+MCP 會讀取 Claude Code、Codex、Cursor、Gemini CLI 與 OpenCode 的 static
+declarations。它保留 file/scope rows 與 exact Claude local project key，不猜測
+一般化的 effective config；只有 Claude documented user/project/local/managed
+project approvals 會被解析。Absolute `CLAUDE_CONFIG_DIR` 會搬移 Claude user
+sources。Configured/enabled/disabled 不代表 connected 或 healthy。Provider-specific
+environment reference names 與有限 OAuth facts 會保留；其 values、raw arguments、
+URL credentials/path/query/fragment 與 indirect file content 都會在 row 進入 model
+前被丟棄。Scanner 不會執行 server、helper、URL 或 agent MCP command。Filters 包含 `repo:`、`agent:`、`scope:`、`transport:`、
+`managed:` 與 `state:`；`r` 只重讀 static files。
 
 ## External tools
 
@@ -6190,6 +6278,12 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 
 ## 來源
 
+- [`skills@1.5.23` agent path registry](https://github.com/vercel-labs/skills/blob/v1.5.23/src/agents.ts)
+- [Claude Code MCP configuration](https://code.claude.com/docs/en/mcp)
+- [Codex MCP configuration](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)
+- [Cursor MCP configuration](https://cursor.com/docs/mcp)
+- [Gemini CLI MCP configuration](https://google-gemini.github.io/gemini-cli/docs/tools/mcp-server.html)
+- [OpenCode MCP configuration](https://opencode.ai/docs/mcp-servers/)
 - [`internal/help/topics/tui.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/tui.md)
 - [`internal/help/topics/notes.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/notes.md)
 - [`internal/cli/note.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/note.go)
@@ -7176,6 +7270,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
 | remote fleet | `fleet list`、`fleet status`、`fleet sync`、`fleet open`、`fleet config …` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
+| static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
 | activity/data | `summary`、`journal`、`stats …`、`cache …` |
 | help | `help [topic]` |
@@ -7195,10 +7290,14 @@ dev repo setup [repo-or-path] --preset PRESET --json
 dev note list [repo] --json
 dev note search <query> --json
 dev note show <note-id> --json
+dev skill list --all --json
+dev mcp list --all --json
 dev bootstrap --json
 ```
 
 不要解析 human table，應優先使用 JSON 或 agent-ready Markdown context。Table 針對 terminal 最佳化，columns/width 可能變化，但 structured contract 不一定改變。
+
+`dev skill list --json` 保留既有 array 與 keys，只新增 repository、checkout、installation、presence/integrity、registry 與 lock metadata。`dev mcp list --json` 從 `servers`/`diagnostics`/`coverage` envelope 起版；exact Claude local row 另有 `local_project_path`。每個 server field 都已 sanitized。Declaration state 可包含 Claude documented project approvals，但不得解讀為 health 或一般化的 effective merged config。
 
 每個 `dev repo list --json` row 都包含 `notes.count`。最新 note 存在時，同一 object 會加入 `notes.latest_id`、`notes.latest_preview` 與 `notes.latest_updated`；count 為零時省略這些 optional fields。`dev note list --json` 與 `dev note search --json` 回傳完整 note records 的 arrays，`dev note show --json` 則回傳一筆完整 record。
 
@@ -8069,6 +8168,28 @@ dev ls [flags]
 - `-r, --repo` — only tasks whose repo name contains this
 - `-s, --state` — only these states (hot, warm, cold, done)
 
+### `dev mcp`
+
+Inspect static agent MCP server declarations
+
+```
+dev mcp
+```
+
+### `dev mcp list`
+
+List configured MCP server declarations
+
+```
+dev mcp list [flags]
+```
+
+- `--agent` — agent format: claude-code, codex, cursor, gemini-cli, opencode
+- `--all` — scan every configured canonical repository
+- `--json` — emit a stable sanitized JSON envelope
+- `-r, --repo` — scan one repository or explicit checkout path
+- `--scope` — declaration scope: project, local, user, custom, system-defaults, system-override, managed
+
 ### `dev note`
 
 Capture and search timestamped repository thoughts
@@ -8443,10 +8564,12 @@ List project and global agent skills
 dev skill list [flags]
 ```
 
+- `--all` — scan every configured canonical repository
 - `--check` — contact Git sources and check for updates without installing them
 - `-g, --global` — list global skills
 - `--json` — emit a stable machine-readable JSON array
 - `-p, --project` — list project skills
+- `-r, --repo` — scan one repository or explicit checkout path
 
 ### `dev skill print`
 
@@ -8477,6 +8600,7 @@ dev skill update <skill> [flags]
 
 - `-g, --global` — update the global skill
 - `-p, --project` — update the project-scoped skill
+- `-r, --repo` — project repository or explicit checkout path
 - `-y, --yes` — skip dev's confirmation
 
 ### `dev start`
@@ -8885,6 +9009,8 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |
 | repository bootstrap publishing | authenticated `gh` 或 `glab` | local repository/scaffold 仍可使用；wizard 會說明如何 login |
 | remote repository snapshot template | Git，加上 source 所需的 network/authentication | validation 會在建立 destination 前失敗，rendered URL userinfo 會 redact；local template 仍可使用 |
+| native skill inventory | local filesystem 加 versioned `skills@1.5.23` path registry | 永遠可用；explicit add/update 需要直接安裝的 `skills` executable，且可能使用 network；repository-local npm bins 會被跳過，cooperating mutations 會 serialized |
+| static MCP inventory | 可讀取的 supported agent config files | 缺少 source 代表 empty；malformed/unsupported source 產生 fresh partial diagnostics，runtime health 刻意不提供 |
 | setup-capable project skills | skills provider 與 entrypoint interpreter | 未選取的 skill 會跳過；selected required setup 若缺少 interpreter，會在 scaffold mutation 前失敗；先取得的 clone 會保留 |
 | staged lazygit message prefill | 會讀取 `LAZYGIT_PENDING_COMMIT` 的 lazygit version | files 仍保持 staged，dev 會印出建議 message；一般 Git commit 仍可使用 |
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
@@ -8894,6 +9020,10 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 | in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為印出對應套件管理器的升級指令 |
 
 ## 已確認的專案限制
+
+### MCP inventory 是 static 且刻意不完整
+
+`dev mcp list` 會讀取 Claude Code、Codex、Cursor、Gemini CLI 與 OpenCode 的 documented static files。Absolute `CLAUDE_CONFIG_DIR` 會搬移 Claude user sources；local Claude rows 會保留 project key，documented user/project/local/managed project approvals 則用來標註 declaration state。這個 narrow approval calculation 不是一般化的 runtime merge。Scanner 不會啟動 server、執行 helper、連線 endpoint、查詢 health 或解析 credentials。Plugin caches、hosted connectors、remote organization config、inline `OPENCODE_CONFIG_CONTENT` 與 command-line-only inputs 都會省略。對 inventory 做 automation 時必須保留 JSON `coverage` object、additive `local_project_path` 與 scope-qualified duplicate rows。
 
 ### Note search 與 filesystem durability 依文字及平台而異
 
@@ -9094,7 +9224,8 @@ tested_with: optional
 | SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
 | READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |
 | `dev summary` 機器整體 snapshot 與 `dev journal` 日曆日期區間報告 | [機器整體摘要](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/machine-summary/)、[開發日誌](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dev-journal/) | `internal/summary`、`internal/journal`、focused summary/journal tests | implemented |
-| agent skill inventory、scopes 與明確的 update 動作 | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/agentskill`、`internal/cli/skill.go`、focused TUI tests | implemented |
+| native cross-repository agent skill inventory、versioned path registry、local status、object-byte upstream checks 與 serialized mutations | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/agenttarget`、`internal/agentskill`、`internal/inventory/agent_skills.go`、`internal/cli/skill.go`、focused CLI/TUI tests | implemented；path registry snapshot `skills@1.5.23`；2026-09-02 查核 |
+| declaration-only MCP inventory、Claude approval annotation 與 secret-redaction boundary | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | 現行官方 agent config docs；`internal/agentmcp`、`internal/cli/mcp.go`、fixture/security tests | Claude Code、Codex、Cursor、Gemini CLI、OpenCode 已 implemented；2026-09-02 查核 |
 | TUI startup/readiness stages、generation handling、cache/live provenance 與 private trace semantics | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/perftrace`、`internal/tui/{readiness,local}.go`、`internal/cli/tui*.go`、focused race tests | implemented |
 | quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
 | release archives、package-manager ownership 與 Homebrew tap publication | [相容性](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/) | `internal/cli/upgrade.go`、`.github/workflows/release.yml`、`scripts/update-homebrew-formula.sh`、packaging helper test | implemented |

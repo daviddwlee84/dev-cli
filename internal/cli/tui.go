@@ -16,7 +16,9 @@ import (
 
 	"github.com/atotto/clipboard"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/agentmcp"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
+	"github.com/daviddwlee84/dev-cli/internal/agenttarget"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
@@ -45,14 +47,15 @@ func newTUICmd(app *App) *cobra.Command {
 Shows exactly what "dev ls" shows, from the same code path, plus the ability
 to open, park and annotate a task without retyping its name.
 
-Six lists, switched with tab:
+Seven lists, switched with tab:
 
   TASKS   change streams dev is tracking — what am I working on
   REPOS   durable repositories under the scan roots — what do I have here
   FLEET   repositories and active work across configured SSH machines
   TRY     scratch experiments and retained lifecycle history
   REMOTE  repositories visible through configured forge CLIs — what can I clone/open
-  SKILLS  project/global agent skills, agents, sources and update state
+  SKILLS  repository/global agent skills, local status and update freshness
+  MCP     sanitized static MCP declarations for supported agents
 
 Navigation is vim-style, with arrows alongside:
 
@@ -68,6 +71,7 @@ Actions depend on the list:
 	  TRY     enter open · n create · space lifecycle/metadata actions
   REMOTE  enter open local · c clone after confirmation
   SKILLS  a interactive add · c check updates · u update selected after confirmation
+  MCP     r reload static declarations; no server is started or probed
 
   y       copy menu: yy context · yp path · yb branch · ys sessions · yw WT paths
   H       selected repo heatmap; b backfills it when empty
@@ -241,12 +245,47 @@ func runTUI(app *App) error {
 		results, _, err := collectFleet(ctx, appState.Current(), fleetCollectOptions{LocalSnapshot: &snapshot})
 		return fleetRows(results), err
 	}
-	reloadSkills := func(ctx context.Context) ([]agentskill.Skill, error) {
-		projectRoot, err := projectRootResolver.Resolve(ctx)
+	capabilityTargets := func(ctx context.Context, locals []tui.RepoRow) ([]agenttarget.Target, error) {
+		repositories := make([]repo.Repo, 0, len(locals))
+		for _, row := range locals {
+			if !row.IsTry() {
+				repositories = append(repositories, row.Repo)
+			}
+		}
+		targets := agenttarget.FromRepositories(repositories)
+		current, err := projectRootResolver.ResolveTarget(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return agentskill.List(ctx, projectRoot, agentskill.ListOptions{})
+		return agenttarget.WithCurrent(targets, current), nil
+	}
+	reloadSkills := func(ctx context.Context, locals []tui.RepoRow) ([]agentskill.Skill, error) {
+		targets, err := capabilityTargets(ctx, locals)
+		if err != nil {
+			return nil, err
+		}
+		result, err := inventory.CollectAgentSkills(ctx, targets, inventory.AgentSkillOptions{})
+		if err != nil {
+			return result.Skills, err
+		}
+		if len(result.Diagnostics) > 0 {
+			return result.Skills, tui.LoadWarning{Message: fmt.Sprintf("%d skill inventory diagnostic(s); run `dev skill list --all` for details", len(result.Diagnostics))}
+		}
+		return result.Skills, nil
+	}
+	reloadMCP := func(ctx context.Context, locals []tui.RepoRow) ([]agentmcp.Declaration, error) {
+		targets, err := capabilityTargets(ctx, locals)
+		if err != nil {
+			return nil, err
+		}
+		result, err := agentmcp.Scan(ctx, targets)
+		if err != nil {
+			return result.Declarations, err
+		}
+		if len(result.Diagnostics) > 0 {
+			return result.Declarations, tui.LoadWarning{Message: fmt.Sprintf("%d MCP inventory diagnostic(s); run `dev mcp list --all` for details", len(result.Diagnostics))}
+		}
+		return result.Declarations, nil
 	}
 	reloadTries := func(ctx context.Context, includeAll bool) ([]tui.TryRow, error) {
 		rt, err := runtimeResolver.Resolve(ctx)
@@ -281,7 +320,8 @@ func runTUI(app *App) error {
 		ReloadRepos:           reloadRepos,
 		ReloadRemoteWithRepos: reloadRemote,
 		ReloadFleetWithRepos:  reloadFleet,
-		ReloadSkills:          reloadSkills,
+		ReloadSkillsWithRepos: reloadSkills,
+		ReloadMCPWithRepos:    reloadMCP,
 		LoadRemoteCache: func(context.Context) tui.RemoteCacheResult {
 			rows, found, stale := cachedRemoteRows(appState.Current())
 			return tui.RemoteCacheResult{Rows: rows, Found: found, Stale: stale}
@@ -298,19 +338,27 @@ func runTUI(app *App) error {
 		CheckSkills: func(ctx context.Context, rows []agentskill.Skill) []agentskill.Skill {
 			return agentskill.CheckUpdates(ctx, rows)
 		},
-		AddSkill: func() (*exec.Cmd, error) {
+		AddSkill: func() (*agentskill.MutationCommand, error) {
 			projectRoot, ok := projectRootResolver.Current()
 			if !ok {
 				return nil, errors.New("project root is still loading")
 			}
 			return agentskill.AddCommand(context.Background(), projectRoot, agentskill.DefaultSource)
 		},
-		UpdateSkill: func(row agentskill.Skill) (*exec.Cmd, error) {
-			projectRoot, ok := projectRootResolver.Current()
-			if !ok {
-				return nil, errors.New("project root is still loading")
+		UpdateSkill: func(row agentskill.Skill) (*agentskill.MutationCommand, error) {
+			projectRoot := row.Checkout
+			if row.Scope == agentskill.ScopeGlobal || projectRoot == "" {
+				var ok bool
+				projectRoot, ok = projectRootResolver.Current()
+				if !ok {
+					return nil, errors.New("project root is still loading")
+				}
 			}
-			return agentskill.UpdateCommand(context.Background(), projectRoot, row.Name, row.Scope)
+			managedName := row.Name
+			if row.Lock != nil {
+				managedName = row.Lock.Name
+			}
+			return agentskill.UpdateCommand(context.Background(), projectRoot, managedName, row.Scope)
 		},
 		Repos: tui.RepoActions{
 			Patch: func(ctx context.Context, row tui.RepoRow, tags []string, note string) (string, error) {

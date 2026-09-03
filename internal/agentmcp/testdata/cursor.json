@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "cursor-local": {
+      "type": "stdio",
+      "command": "/opt/tools/cursor-server",
+      "args": ["fixture-secret-must-not-appear"],
+      "envFile": "fixture-secret-must-not-appear"
+    },
+    "cursor-remote": {
+      "url": "https://cursor.example.test/private?token=fixture-secret-must-not-appear",
+      "headers": {"Authorization": "fixture-secret-must-not-appear"},
+      "auth": {"CLIENT_ID": "fixture-secret-must-not-appear", "CLIENT_SECRET": "fixture-secret-must-not-appear"}
+    }
+  }
+}

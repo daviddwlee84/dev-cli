@@ -2,7 +2,7 @@
 description: 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
 authority: project-policy
 status: maintained
-verified_on: 2026-08-31
+verified_on: 2026-09-02
 lang: zh-TW
 ---
 
@@ -70,7 +70,8 @@ tested_with: optional
 | SSH fleet snapshots、per-host states 與 `fleet sync` fast-forward 安全性 | [遠端 Repository Fleet](../guides/remote-fleet.md) | `internal/fleet`、`internal/cli/fleet.go`、focused fleet tests | implemented |
 | READY/MERGED/RETIRED 里程碑、retirement 拒絕條件與 merged-worktree sweep | [Agent 安全退場](../guides/agent-safe-retirement.md) | `internal/retire`、`internal/cli/{retire,artifact,sweep}.go`、focused retirement tests | implemented |
 | `dev summary` 機器整體 snapshot 與 `dev journal` 日曆日期區間報告 | [機器整體摘要](../guides/machine-summary.md)、[開發日誌](../guides/dev-journal.md) | `internal/summary`、`internal/journal`、focused summary/journal tests | implemented |
-| agent skill inventory、scopes 與明確的 update 動作 | [TUI、Repository、Quick Notes 與 Bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agentskill`、`internal/cli/skill.go`、focused TUI tests | implemented |
+| native cross-repository agent skill inventory、versioned path registry、local status、object-byte upstream checks 與 serialized mutations | [TUI、Repository、Quick Notes 與 Bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agenttarget`、`internal/agentskill`、`internal/inventory/agent_skills.go`、`internal/cli/skill.go`、focused CLI/TUI tests | implemented；path registry snapshot `skills@1.5.23`；2026-09-02 查核 |
+| declaration-only MCP inventory、Claude approval annotation 與 secret-redaction boundary | [TUI、Repository、Quick Notes 與 Bootstrap](../guides/tui-repos-bootstrap.md) | 現行官方 agent config docs；`internal/agentmcp`、`internal/cli/mcp.go`、fixture/security tests | Claude Code、Codex、Cursor、Gemini CLI、OpenCode 已 implemented；2026-09-02 查核 |
 | TUI startup/readiness stages、generation handling、cache/live provenance 與 private trace semantics | [TUI、Repository、Quick Notes 與 Bootstrap](../guides/tui-repos-bootstrap.md) | `internal/perftrace`、`internal/tui/{readiness,local}.go`、`internal/cli/tui*.go`、focused race tests | implemented |
 | quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository、Quick Notes 與 Bootstrap](../guides/tui-repos-bootstrap.md) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
 | release archives、package-manager ownership 與 Homebrew tap publication | [相容性](compatibility.zh-TW.md) | `internal/cli/upgrade.go`、`.github/workflows/release.yml`、`scripts/update-homebrew-formula.sh`、packaging helper test | implemented |

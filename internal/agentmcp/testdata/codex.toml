@@ -1,0 +1,23 @@
+[mcp_servers.codex_stdio]
+command = "/usr/local/bin/codex-server"
+args = ["--token", "fixture-secret-must-not-appear"]
+env = { API_TOKEN = "fixture-secret-must-not-appear" }
+enabled = true
+required = true
+enabled_tools = ["read", "write"]
+default_tools_approval_mode = "prompt"
+
+[mcp_servers.codex_http]
+url = "https://user:fixture-secret-must-not-appear@codex.example.test/private?token=fixture-secret-must-not-appear#fragment"
+bearer_token_env_var = "CODEX_TOKEN"
+http_headers = { Authorization = "fixture-secret-must-not-appear" }
+env_http_headers = { X_Token = "CODEX_HEADER_TOKEN" }
+auth = "oauth"
+http_headers_helper = "print-fixture-secret-must-not-appear"
+
+[plugins.demo]
+enabled = false
+
+[plugins.demo.mcp_servers.plugin_server]
+enabled = true
+enabled_tools = ["query"]

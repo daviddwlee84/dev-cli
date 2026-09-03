@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-08-31
+verified_on: 2026-09-02
 tested_with: Claude Code 2.1.250
 lang: zh-TW
 ---
@@ -25,6 +25,8 @@ lang: zh-TW
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |
 | repository bootstrap publishing | authenticated `gh` 或 `glab` | local repository/scaffold 仍可使用；wizard 會說明如何 login |
 | remote repository snapshot template | Git，加上 source 所需的 network/authentication | validation 會在建立 destination 前失敗，rendered URL userinfo 會 redact；local template 仍可使用 |
+| native skill inventory | local filesystem 加 versioned `skills@1.5.23` path registry | 永遠可用；explicit add/update 需要直接安裝的 `skills` executable，且可能使用 network；repository-local npm bins 會被跳過，cooperating mutations 會 serialized |
+| static MCP inventory | 可讀取的 supported agent config files | 缺少 source 代表 empty；malformed/unsupported source 產生 fresh partial diagnostics，runtime health 刻意不提供 |
 | setup-capable project skills | skills provider 與 entrypoint interpreter | 未選取的 skill 會跳過；selected required setup 若缺少 interpreter，會在 scaffold mutation 前失敗；先取得的 clone 會保留 |
 | staged lazygit message prefill | 會讀取 `LAZYGIT_PENDING_COMMIT` 的 lazygit version | files 仍保持 staged，dev 會印出建議 message；一般 Git commit 仍可使用 |
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
@@ -34,6 +36,10 @@ lang: zh-TW
 | in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為印出對應套件管理器的升級指令 |
 
 ## 已確認的專案限制
+
+### MCP inventory 是 static 且刻意不完整
+
+`dev mcp list` 會讀取 Claude Code、Codex、Cursor、Gemini CLI 與 OpenCode 的 documented static files。Absolute `CLAUDE_CONFIG_DIR` 會搬移 Claude user sources；local Claude rows 會保留 project key，documented user/project/local/managed project approvals 則用來標註 declaration state。這個 narrow approval calculation 不是一般化的 runtime merge。Scanner 不會啟動 server、執行 helper、連線 endpoint、查詢 health 或解析 credentials。Plugin caches、hosted connectors、remote organization config、inline `OPENCODE_CONFIG_CONTENT` 與 command-line-only inputs 都會省略。對 inventory 做 automation 時必須保留 JSON `coverage` object、additive `local_project_path` 與 scope-qualified duplicate rows。
 
 ### Note search 與 filesystem durability 依文字及平台而異
 
