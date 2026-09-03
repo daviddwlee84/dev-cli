@@ -71,7 +71,7 @@ type sshCLIRunner struct {
 
 func newSSHCLIFixture(t *testing.T) *sshCLIFixture {
 	t.Helper()
-	home := t.TempDir()
+	home := cliTestHome(t)
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))

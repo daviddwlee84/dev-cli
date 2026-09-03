@@ -37,6 +37,9 @@ type fleetFilesHarness struct {
 
 func newFleetFilesHarness(t *testing.T) *fleetFilesHarness {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("uses a POSIX shell fake-SSH wrapper; Windows transport is covered by native domain tests")
+	}
 	root := t.TempDir()
 	sourceHome := filepath.Join(root, "source-home")
 	remoteHome := filepath.Join(root, "remote-home")

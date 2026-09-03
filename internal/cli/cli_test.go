@@ -33,7 +33,7 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	t.Helper()
-	home := t.TempDir()
+	home := externalCLITestHome(t)
 	scanRoot := filepath.Join(home, "Program")
 	wtRoot := filepath.Join(home, "Worktrees")
 	if err := os.MkdirAll(scanRoot, 0o755); err != nil {
@@ -51,6 +51,7 @@ func newHarness(t *testing.T) *harness {
 
 	// Isolate every path dev touches from the developer's real machine.
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
