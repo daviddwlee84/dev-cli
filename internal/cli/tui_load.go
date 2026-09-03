@@ -169,7 +169,7 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 		}
 		send(tui.LocalResult{
 			View: tui.ViewTasks, Generation: request.TasksGeneration,
-			Tasks: rows, Valid: err == nil || rows != nil, Err: err,
+			Tasks: rows, Valid: !errors.Is(err, context.Canceled) && (err == nil || rows != nil), Err: err,
 		})
 	})
 	producers.Go(func() {
@@ -187,7 +187,7 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 		}
 		send(tui.LocalResult{
 			View: tui.ViewRepos, Generation: request.ReposGeneration,
-			Repos: rows, Valid: err == nil || rows != nil, Err: err,
+			Repos: rows, Valid: !errors.Is(err, context.Canceled) && (err == nil || rows != nil), Err: err,
 		})
 	})
 	producers.Go(func() {
@@ -202,7 +202,7 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 		}
 		send(tui.LocalResult{
 			View: tui.ViewTries, Generation: request.TriesGeneration,
-			Tries: rows, Valid: err == nil || rows != nil, Err: err,
+			Tries: rows, Valid: !errors.Is(err, context.Canceled) && (err == nil || rows != nil), Err: err,
 		})
 	})
 	go func() {

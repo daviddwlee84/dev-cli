@@ -88,10 +88,17 @@ searchable while refresh runs in the background. Oversized/malformed cache
 payloads and caches fingerprinted for another configured GH/GL host or Azure
 target are ignored. GitLab uses explicit `GITLAB_HOST`/`GLAB_HOST` (default
 `gitlab.com`) rather than inferring a host from cwd; a successful empty refresh
-clears obsolete rows. `r`
-refreshes explicitly. It marks remotes already cloned under
-`scan_roots`. Enter opens a local clone; `c` asks before cloning an absent repo
-into `project_root`. Filters include visibility, for example `vis:private`.
+clears obsolete rows. `r` refreshes explicitly. It marks remotes already cloned
+under `scan_roots`. Enter opens an existing local clone. For an absent repo, `c`
+opens a confirmation: `enter` clones and stays in the dashboard, while `o`
+clones and opens afterward. A `project_root` outside configured REPOS discovery
+roots/depth is rejected before mutation. An animated row/status marker remains
+visible until the local-only REPOS refresh accepts the clone; `q`/Ctrl-C
+requests cancellation without abandoning the in-flight result. Once accepted,
+REMOTE shows `repo` and REPOS can search it. A failed Git clone that leaves a
+destination is labelled `inspect` with its exact path; dev does not delete it
+automatically. Filters include visibility, for example
+`vis:private`.
 
 SKILLS and MCP also load lazily after the accepted REPOS snapshot. Both scan
 each canonical repository plus a distinct startup linked checkout and read user/global
@@ -236,7 +243,8 @@ REMOTE:
 ```
 n / N      notes, only when a local clone exists
 enter / o  open an existing local clone
-c          confirm and clone an absent repo into project_root
+c          confirm an absent repo; then enter stays or o opens after clone
+q / ctrl-c request cancellation while clone/refresh/open is pending
 r          refresh configured forge CLIs, replacing the cache
 ```
 

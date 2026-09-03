@@ -142,15 +142,19 @@ summary。Built-in presets 為：
 
 - `minimal`：`main`、README 與 initial commit；保留既有 scripted
   `repo new NAME` behavior。
-- `agent-ready`：在 `minimal` 上加入 common ignores、starter `AGENTS.md`，以及
-  project-scoped `.claude/settings.json` 與 `.claude/plans/`。
-  `agent-history-hygiene`、`project-knowledge-harness` 會出現在選項中，但不會靜默
-  啟用。選取後 dev 會安裝 skill，並在 initial commit 前執行經 review 的內建
-  initializer 來建立對應 project surfaces；這兩個 built-ins 不會執行剛下載的
-  skill scripts。同一 source 且 agent targets 完全相同的 skills 會共用一次 installer
-  invocation，各 skill 的 setup phase 仍分別執行。History initializer 會建立
-  `.pre-commit-config.yaml`、`.gitleaks.toml`，再確保 `.specstory/.gitignore` 含有
-  SpecStory 的 `.project.json`、`statistics.json` 規則，不會忽略應納入追蹤的
+- `agent-ready`：在 `minimal` 上加入 common ignores、明確標示 bootstrap 尚未
+  完成的 starter `AGENTS.md`，以及 project-scoped `.claude/settings.json` 與
+  `.claude/plans/`。Starter 提供安全的 repository-wide 與 handoff rules，但未知的
+  purpose、verified commands、architecture、invariants 會保留為 TODO，不會虛構
+  facts。Common ignore block 只排除 `.specstory/statistics.json`；history、project
+  identity 與 config 仍會被 Git 看見。`agent-history-hygiene`、
+  `project-knowledge-harness` 會出現在選項中，但不會靜默啟用。選取後 dev 會安裝
+  skill，並在 initial commit 前執行經 review 的內建 initializer 來建立對應 project
+  surfaces；這兩個 built-ins 不會執行剛下載的 skill scripts。同一 source 且 agent
+  targets 完全相同的 skills 會共用一次 installer invocation，各 skill 的 setup phase
+  仍分別執行。History initializer 會建立 `.pre-commit-config.yaml`、
+  `.gitleaks.toml`，再另外確保 `.specstory/.gitignore` 含有 SpecStory 的
+  `.project.json`、`statistics.json` 規則，不會忽略應納入追蹤的
   `.specstory/history/`。既有 custom ignore content 與 mode 會保留，只補上缺少的
   managed rules。
 

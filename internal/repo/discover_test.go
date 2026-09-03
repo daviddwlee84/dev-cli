@@ -10,6 +10,108 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 )
 
+func TestPathDiscoverableFromRootMatchesWalkPolicy(t *testing.T) {
+	root := t.TempDir()
+	outside := filepath.Join(t.TempDir(), "repo")
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "direct", path: filepath.Join(root, "repo"), want: true},
+		{name: "depth three", path: filepath.Join(root, "group", "team", "repo"), want: true},
+		{name: "too deep", path: filepath.Join(root, "one", "two", "three", "repo")},
+		{name: "hidden", path: filepath.Join(root, ".projects", "repo")},
+		{name: "skipped", path: filepath.Join(root, "node_modules", "repo")},
+		{name: "bare convention", path: filepath.Join(root, ".bare"), want: true},
+		{name: "outside", path: outside},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := repo.PathDiscoverableFromRoot(root, tc.path, repo.DefaultOptions())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got != tc.want {
+				t.Fatalf("discoverable = %v, want %v", got, tc.want)
+			}
+		})
+	}
+
+	realRoot := t.TempDir()
+	linkRoot := filepath.Join(t.TempDir(), "projects")
+	if err := os.Symlink(realRoot, linkRoot); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	discoverable, err := repo.PathDiscoverableFromRoot(linkRoot, filepath.Join(realRoot, "repo"), repo.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if discoverable {
+		t.Fatal("symlinked scan root incorrectly promised child traversal")
+	}
+
+	indexRoot := t.TempDir()
+	aliasTarget := filepath.Join(t.TempDir(), "future-repo")
+	if err := os.Symlink(aliasTarget, filepath.Join(indexRoot, "future-repo")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	discoverable, err = repo.PathDiscoverableFromRoot(indexRoot, aliasTarget, repo.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discoverable {
+		t.Fatal("direct repository symlink alias was not predicted as discoverable")
+	}
+
+	base := t.TempDir()
+	relativeIndex := filepath.Join(base, "index")
+	if err := os.Mkdir(relativeIndex, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	relativeTarget := filepath.Join(base, "projects", "api")
+	if err := os.Symlink(filepath.Join("..", "projects", "api"), filepath.Join(relativeIndex, "api")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	discoverable, err = repo.PathDiscoverableFromRoot(relativeIndex, relativeTarget, repo.DefaultOptions())
+	if err != nil || !discoverable {
+		t.Fatalf("relative direct alias discoverable = %v, %v", discoverable, err)
+	}
+
+	container := filepath.Join(indexRoot, "container")
+	if err := os.MkdirAll(filepath.Join(container, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(aliasTarget, filepath.Join(container, "nested")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	discoverable, err = repo.PathDiscoverableFromRoot(indexRoot, aliasTarget, repo.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !discoverable {
+		// The direct top-level alias remains a valid route even though the nested
+		// alias is hidden below a repository boundary.
+		t.Fatal("valid direct alias was lost while checking repository boundaries")
+	}
+
+	nestedOnlyRoot := t.TempDir()
+	nestedContainer := filepath.Join(nestedOnlyRoot, "container")
+	if err := os.MkdirAll(filepath.Join(nestedContainer, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(aliasTarget, filepath.Join(nestedContainer, "nested")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	discoverable, err = repo.PathDiscoverableFromRoot(nestedOnlyRoot, aliasTarget, repo.DefaultOptions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if discoverable {
+		t.Fatal("alias below an existing repository was incorrectly reachable")
+	}
+}
+
 // tree builds a directory layout: keys are relative paths, a value of "git"
 // makes the directory a repo root.
 func tree(t *testing.T, layout map[string]string) string {

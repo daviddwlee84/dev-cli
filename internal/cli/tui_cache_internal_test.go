@@ -11,6 +11,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/tui"
 )
@@ -152,7 +153,7 @@ func TestTUIRemoteCloneDestinationStaysInsideProjectRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	canonicalRoot, err := filepath.EvalSymlinks(root)
+	canonicalRoot, err := pathx.Canonical(root)
 	if err != nil {
 		t.Fatal(err)
 	}

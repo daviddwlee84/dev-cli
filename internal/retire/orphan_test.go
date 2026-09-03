@@ -100,6 +100,7 @@ func TestUnsalvagedTreatsALongerTranscriptAsUnsalvaged(t *testing.T) {
 func TestUnsalvagedIgnoresDerivedNoise(t *testing.T) {
 	orphanDir, repoDir := t.TempDir(), t.TempDir()
 	writeFile(t, filepath.Join(orphanDir, ".specstory", "statistics.json"), `{"n":1}`)
+	writeFile(t, filepath.Join(orphanDir, ".specstory", "nested", ".specstory", "statistics.json"), "unique")
 	writeFile(t, filepath.Join(orphanDir, ".DS_Store"), "junk")
 
 	orphan, ok, err := InspectOrphan(orphanDir)
@@ -110,7 +111,8 @@ func TestUnsalvagedIgnoresDerivedNoise(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(unsalvaged) != 0 {
-		t.Fatalf("derived files were treated as salvage work: %v", unsalvaged)
+	want := filepath.ToSlash(filepath.Join(".specstory", "nested", ".specstory", "statistics.json"))
+	if len(unsalvaged) != 1 || filepath.ToSlash(unsalvaged[0]) != want {
+		t.Fatalf("exact derived file policy lost nested user data: %v", unsalvaged)
 	}
 }

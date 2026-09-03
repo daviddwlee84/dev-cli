@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- REMOTE cloning now stays visibly pending with an animated status, lets `enter`
+  clone and stay or `o` clone and open, and waits for a local-only repository
+  refresh before marking the checkout as `repo` and making it searchable in
+  REPOS. Clone, discovery, and runtime-open failures retain the last known true
+  local state instead of reverting to a misleading `not cloned` row.
+- The built-in `agent-ready` preset now generates one canonical, explicitly
+  incomplete `AGENTS.md` starter with safe working rules, non-fabrication
+  guidance, project TODOs, and concrete handoff requirements instead of pointing
+  at undocumented checks. Its common ignore block now excludes only SpecStory's
+  derived root `statistics.json` while leaving session histories and project
+  config trackable; orphan salvage uses the same exact-path rule instead of
+  discarding similarly named nested files.
+
 ## [0.2.9] - 2026-09-03
 
 ### Added

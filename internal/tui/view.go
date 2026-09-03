@@ -606,8 +606,16 @@ func (m Model) renderRemotes() string {
 	from, to := m.window(len(rows))
 	for i := from; i < to; i++ {
 		r := rows[i]
+		pending := m.remoteCloneTargets(r)
 		local := "—"
-		if r.Cloned() {
+		if pending {
+			local = m.remoteCloneSpinner.View() + " repo"
+			if m.remoteClone.phase == remoteCloneRunning {
+				local = m.remoteCloneSpinner.View() + " clone"
+			}
+		} else if r.CloneProblemPath != "" {
+			local = "inspect"
+		} else if r.Cloned() {
 			local = "yes"
 			if r.LocalKind != "" {
 				local = string(r.LocalKind)
@@ -624,8 +632,10 @@ func (m Model) renderRemotes() string {
 			r.Repo.Forge, nameW, pad(r.Repo.FullName, nameW),
 			pad(vis, 9), pad(remoteAge(r), 12), pad(local, 7), pad(r.Repo.Description, descW))
 		styled := line
-		if r.Cloned() {
+		if r.Cloned() || pending {
 			styled = styleLive.Render(line)
+		} else if r.CloneProblemPath != "" {
+			styled = styleDrift.Render(line)
 		} else if r.Repo.Archived {
 			styled = styleDim.Render(line)
 		}
@@ -1031,10 +1041,10 @@ func (m Model) renderDetail() string {
 			"\n  name: " + m.input.View() +
 			"\n  " + styleHelp.Render("enter to track the current branch; no branch/worktree is created · esc to cancel")
 	case modeConfirmClone:
-		r, _ := m.currentRemote()
+		r := m.remoteClonePrompt
 		return "  " + styleTitle.Render("clone "+r.Repo.FullName) +
 			"\n  to: " + contract(filepath.Join("<project_root>", r.Repo.Name)) +
-			"\n  " + styleHelp.Render("enter to clone into project_root · esc to cancel")
+			"\n  " + styleHelp.Render("enter clone and stay · o clone and open · esc cancel")
 	case modeConfirmSkillUpdate:
 		row := m.skillUpdateTarget
 		return "  " + styleTitle.Render("update "+string(row.Scope)+" skill "+row.Name) +
@@ -1197,11 +1207,22 @@ func (m Model) renderDetail() string {
 			fmt.Sprintf("  %s %s", styleDim.Render("url  "), r.Repo.URL),
 			fmt.Sprintf("  %s %s", styleDim.Render("branch"), r.Repo.DefaultBranch),
 		}
-		if r.Cloned() {
+		if m.remoteCloneTargets(r) {
+			if r.LocalPath != "" {
+				lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("local "), contract(r.LocalPath)))
+				lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("asset "), "repository"))
+			}
+			lines = append(lines, fmt.Sprintf("  %s %s %s", styleDim.Render("state "),
+				m.remoteCloneSpinner.View(), m.remoteCloneStatus()))
+		} else if r.Cloned() {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("local "), contract(r.LocalPath)))
 			if r.LocalKind != "" {
 				lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("asset "), r.LocalKind))
 			}
+		} else if r.CloneProblemPath != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("inspect"), contract(r.CloneProblemPath)))
+			lines = append(lines, "  "+styleDim.Render("action")+" "+
+				styleDrift.Render("inspect or move this destination before retrying"))
 		} else {
 			lines = append(lines, "  "+styleDim.Render("local ")+" "+
 				styleDim.Render("not cloned — press c"))
@@ -1392,6 +1413,8 @@ func (m Model) renderFooter() string {
 	switch {
 	case m.err != nil:
 		status = styleErr.Render("✗ " + m.err.Error())
+	case m.remoteClone.active():
+		status = styleLive.Render(m.remoteCloneSpinner.View() + " " + m.remoteCloneStatus())
 	case viewErr != nil:
 		status = styleErr.Render("✗ " + viewErr.Error())
 	case m.status != "":
@@ -1401,6 +1424,15 @@ func (m Model) renderFooter() string {
 	}
 
 	var bindings []string
+	if m.remoteClone.active() {
+		bindings = []string{"q cancel clone", "tab view", "/ filter", "j/k move"}
+		var b strings.Builder
+		if status != "" {
+			b.WriteString("  " + status + "\n")
+		}
+		b.WriteString("  " + styleHelp.Render(wrapBindings(bindings, m.width-4)))
+		return b.String()
+	}
 	switch m.view {
 	case ViewRepos:
 		sortBy := m.actions.RepoSort
@@ -1436,8 +1468,12 @@ func (m Model) renderFooter() string {
 		bindings = append(bindings, "enter open", "n new", "space actions", "a history",
 			"O sort:"+sortBy, "R reverse")
 	case ViewRemote:
-		if r, ok := m.currentRemote(); ok && r.Cloned() {
+		if m.remoteClone.active() {
+			bindings = append(bindings, "q cancel clone")
+		} else if r, ok := m.currentRemote(); ok && r.Cloned() {
 			bindings = append(bindings, "enter open local", "n add note", "N notes")
+		} else if r, ok := m.currentRemote(); ok && r.CloneProblemPath != "" {
+			bindings = append(bindings, "inspect local destination")
 		} else {
 			bindings = append(bindings, "c clone")
 		}

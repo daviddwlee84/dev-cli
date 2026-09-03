@@ -378,11 +378,17 @@ account can access. A private cache is decoded after the first view; stale rows
 stay searchable while refresh runs. Malformed/oversized payloads and caches
 fingerprinted for another configured GH/GL host or Azure target are ignored.
 GitLab uses explicit `GITLAB_HOST`/`GLAB_HOST` (default `gitlab.com`) instead of
-cwd inference; a successful empty refresh clears obsolete rows. `/` filters provider,
-owner/name, visibility and description, with `vis:private` for an exact visibility match. Enter opens a local clone; `c`
-confirms before cloning an absent remote. Use `dev repo remote [query] --json`
-for the non-interactive form; `--cached` avoids a network query and `--refresh`
-forces a complete synchronization.
+cwd inference; a successful empty refresh clears obsolete rows. `/` filters
+provider, owner/name, visibility and description, with `vis:private` for an exact
+visibility match. Enter opens an existing local clone. For an absent remote, `c`
+confirms; `enter` clones and stays in the dashboard, while `o` clones and opens
+after a spinner-backed, local-only REPOS refresh. A `project_root` outside the
+configured REPOS discovery roots/depth is rejected before mutation. `q`/Ctrl-C
+requests cancellation without abandoning the in-flight result. Once accepted,
+REMOTE shows `repo` and REPOS can search the clone immediately. If Git leaves a
+destination after failure, REMOTE marks the exact path `inspect` and does not
+delete it automatically. Use `dev repo remote [query] --json` for the non-interactive form; `--cached` avoids
+a network query and `--refresh` forces a complete synchronization.
 
 `dev journal` derives calendar-day reports from Git rather than storing a
 second history database. The default current-user report adds existing
@@ -688,7 +694,13 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   `COMMIT_EDITMSG`, uppercase `C` and other clients need not read it, and an
   existing different draft is preserved. Draft write/sync failure is a warning,
   not rollback: the successfully staged index remains ready for manual commit.
-- **Agent history remains reviewable.** Built-in `agent-history-hygiene` seeds
+- **Agent-ready guidance is honest about unknowns.** Its canonical `AGENTS.md`
+  starter labels bootstrap status incomplete, supplies safe working/handoff
+  rules, and leaves project purpose, commands, architecture, and invariants as
+  TODOs rather than fabricating facts.
+- **Agent history remains reviewable.** The common managed ignore excludes only
+  `.specstory/statistics.json`; histories, project identity, and config remain
+  visible. Built-in `agent-history-hygiene` additionally seeds
   `.specstory/.gitignore` only for machine-local `.project.json` and generated
   `statistics.json`; it does not ignore `.specstory/history/*.md`. An existing
   nested ignore keeps its custom content and mode while missing required rules

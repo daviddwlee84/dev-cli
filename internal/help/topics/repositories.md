@@ -95,10 +95,15 @@ manually.
 ## Presets
 
 The built-in `minimal` preset matches scripted creation. `agent-ready` adds a
-managed `.gitignore`, `AGENTS.md`, and repository-local Claude plans. Optional
-skills may declare a setup entrypoint. For `agent-history-hygiene` and
-`project-knowledge-harness`, dev installs the skill but uses reviewed built-in
-initializers before the first commit instead of executing newly downloaded code.
+managed `.gitignore`, explicitly incomplete starter `AGENTS.md`, and
+repository-local Claude plans. The starter establishes safe working and handoff
+rules while leaving unknown purpose, verified commands, architecture, and
+invariants as TODOs instead of inventing project facts. The common ignore block
+excludes only `.specstory/statistics.json`; history, project identity, and config
+remain visible to Git. Optional skills may declare a setup entrypoint. For
+`agent-history-hygiene` and `project-knowledge-harness`, dev installs the skill
+but uses reviewed built-in initializers before the first commit instead of
+executing newly downloaded code.
 
 The built-in `agent-history-hygiene` initializer seeds
 `.pre-commit-config.yaml`, `.gitleaks.toml`, and, when absent,

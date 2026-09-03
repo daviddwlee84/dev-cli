@@ -80,7 +80,8 @@ const agentsSection = `# Ephemeral coding-agent state
 .claude/worktrees/
 .claude/settings.local.json
 .aider*
-.cursor/rules/_generated/`
+.cursor/rules/_generated/
+.specstory/statistics.json`
 
 const envSection = `# Local environment and secrets — never commit real values
 .env

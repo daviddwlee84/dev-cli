@@ -16,6 +16,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/scaffold"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -189,6 +190,19 @@ func TestRepoNewWizardCreatesAgentReadyRepoAndCDs(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(destination, relative)); err != nil {
 			t.Fatalf("missing %s: %v\n%s", relative, err, out.String())
 		}
+	}
+	agents, err := os.ReadFile(filepath.Join(destination, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAgents := scaffold.StarterAgentContract()
+	if string(agents) != wantAgents {
+		t.Fatalf("wizard AGENTS.md drifted from canonical starter:\n%s", agents)
+	}
+	gitignore, err := os.ReadFile(filepath.Join(destination, ".gitignore"))
+	if err != nil || !strings.Contains(string(gitignore), ".specstory/statistics.json") ||
+		strings.Contains(string(gitignore), "\n.specstory/\n") {
+		t.Fatalf("wizard .gitignore has unsafe SpecStory policy: %v\n%s", err, gitignore)
 	}
 	if !strings.Contains(out.String(), "Create a repository") || !strings.Contains(out.String(), "cd ") {
 		t.Fatalf("wizard output:\n%s", out.String())

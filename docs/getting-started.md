@@ -49,12 +49,19 @@ dev repo new
 
 It chooses a destination under configured `project_root`, previews the plan,
 and can use the built-in `minimal` or `agent-ready` preset. `agent-ready` adds
-starter agent guidance and project-scoped Claude plans; when selected, optional
-skills such as `agent-history-hygiene` and `project-knowledge-harness` are
-installed, while reviewed built-in initializers create their project surfaces
-during this flow without executing newly downloaded skill code. Matching skills
-with the same source and agent targets share one installer invocation. The
-history initializer writes pre-commit/gitleaks configuration and ensures
+an explicitly incomplete `AGENTS.md` starter and project-scoped Claude plans.
+The starter supplies safe repository-wide and handoff rules while leaving
+unknown purpose, verified commands, architecture, and invariants as TODOs rather
+than inventing project facts. Its common ignore block excludes only the derived
+`.specstory/statistics.json`; histories, project identity, and config remain
+visible to Git.
+
+When selected, optional skills such as `agent-history-hygiene` and
+`project-knowledge-harness` are installed, while reviewed built-in initializers
+create their project surfaces during this flow without executing newly
+downloaded skill code. Matching skills with the same source and agent targets
+share one installer invocation. The history initializer writes
+pre-commit/gitleaks configuration and additionally ensures
 `.specstory/.gitignore` contains rules for `.project.json` and
 `statistics.json`, not the trackable `.specstory/history/` transcripts.
 Existing custom ignore content is preserved and only missing rules are appended.

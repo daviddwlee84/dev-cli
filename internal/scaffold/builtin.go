@@ -55,10 +55,9 @@ func Builtins() Config {
 				},
 				Files: []File{
 					{
-						ID:          "agent-contract",
-						Destination: "AGENTS.md",
-						Content: stringp("# Project agent guidance\n\n" +
-							"Keep changes focused, preserve user work, and run the repository's documented checks before handoff.\n"),
+						ID:             "agent-contract",
+						Destination:    "AGENTS.md",
+						Content:        stringp(StarterAgentContract()),
 						Mode:           "0644",
 						Enabled:        boolp(true),
 						Origin:         "builtin",

@@ -12,6 +12,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
@@ -55,6 +56,78 @@ func TestAppLoadInitializesCatalog(t *testing.T) {
 	}
 	if !strings.Contains(diagnostics.String(), "dev: warning: skipping broken.toml") {
 		t.Errorf("catalog diagnostics did not use App.Err: %q", diagnostics.String())
+	}
+}
+
+func TestCloneRemoteFromTUIUsesRepositoryAcquire(t *testing.T) {
+	source := gittest.New(t)
+	projectRoot := filepath.Join(t.TempDir(), "projects")
+	cfg := config.Default()
+	cfg.Paths.ProjectRoot = projectRoot
+	cfg.Paths.ScanRoots = []string{projectRoot}
+	app := &App{Cfg: cfg}
+	row := tui.RemoteRow{Repo: forge.RemoteRepo{
+		Forge: forge.GitHub, Name: "copy", FullName: "owner/copy", CloneURL: source.Root,
+	}}
+
+	path, err := cloneRemoteFromTUI(t.Context(), app, row)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalRoot, err := filepath.EvalSymlinks(projectRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := filepath.Join(canonicalRoot, "copy")
+	if path != want {
+		t.Fatalf("clone path = %q, want %q", path, want)
+	}
+	body, err := os.ReadFile(filepath.Join(path, "README.md"))
+	if err != nil || string(body) != "# test repo\n" {
+		t.Fatalf("cloned README = %q, %v", body, err)
+	}
+	problem, err := cloneRemoteFromTUI(t.Context(), app, row)
+	if err == nil || !strings.Contains(err.Error(), "already exists") || problem != want {
+		t.Fatalf("existing destination result = %q, %v", problem, err)
+	}
+}
+
+func TestCloneRemoteFromTUIRejectsNestedRepository(t *testing.T) {
+	source := gittest.New(t)
+	other := gittest.New(t)
+	cfg := config.Default()
+	cfg.Paths.ProjectRoot = filepath.Join(other.Root, "projects")
+	cfg.Paths.ScanRoots = []string{cfg.Paths.ProjectRoot}
+	app := &App{Cfg: cfg}
+	row := tui.RemoteRow{Repo: forge.RemoteRepo{
+		Forge: forge.GitHub, Name: "copy", FullName: "owner/copy", CloneURL: source.Root,
+	}}
+
+	if _, err := cloneRemoteFromTUI(t.Context(), app, row); err == nil || !strings.Contains(err.Error(), "nested") {
+		t.Fatalf("nested clone error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(cfg.Paths.ProjectRoot, "copy")); !os.IsNotExist(err) {
+		t.Fatalf("nested clone destination was created: %v", err)
+	}
+}
+
+func TestCloneRemoteFromTUIRequiresDiscoverableProjectRoot(t *testing.T) {
+	source := gittest.New(t)
+	projectRoot := filepath.Join(t.TempDir(), "projects")
+	cfg := config.Default()
+	cfg.Paths.ProjectRoot = projectRoot
+	cfg.Paths.ScanRoots = []string{t.TempDir()}
+	cfg.Paths.RepoPaths = nil
+	app := &App{Cfg: cfg}
+	row := tui.RemoteRow{Repo: forge.RemoteRepo{
+		Forge: forge.GitHub, Name: "copy", FullName: "owner/copy", CloneURL: source.Root,
+	}}
+
+	if _, err := cloneRemoteFromTUI(t.Context(), app, row); err == nil || !strings.Contains(err.Error(), "outside paths.scan_roots") {
+		t.Fatalf("undiscoverable project root error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(projectRoot, "copy")); !os.IsNotExist(err) {
+		t.Fatalf("undiscoverable clone destination was created: %v", err)
 	}
 }
 

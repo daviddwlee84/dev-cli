@@ -67,24 +67,7 @@ func applyRepoInitializers(ctx context.Context, root string, selection repoInitS
 		} else if !errors.Is(err, os.ErrNotExist) {
 			return result, err
 		} else {
-			body := `# AGENTS.md
-
-Repository guidance for coding agents and human collaborators.
-
-## Toolchain and commands
-
-- Build: document the canonical build command here.
-- Test: document focused and full test commands here.
-- Format/lint: document commands that may modify files.
-
-## Architecture
-
-Describe the executable path, subsystem ownership, and important boundaries.
-
-## Behavioral contracts
-
-Record invariants that must remain true across implementations.
-`
+			body := scaffold.StarterAgentContract()
 			if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 				return result, err
 			}

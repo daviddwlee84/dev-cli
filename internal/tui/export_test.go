@@ -7,3 +7,11 @@ import tea "github.com/charmbracelet/bubbletea"
 // path without spawning one. Keeping it here rather than exporting the message
 // type leaves the production surface unchanged.
 func FleetConfigEditedForTest(err error) tea.Msg { return fleetConfigEditedMsg{err: err} }
+
+// WithReposForTest applies a fresh local repository snapshot without exposing
+// model internals in the production API.
+func (m Model) WithReposForTest(rows []RepoRow) Model {
+	m.repos = append([]RepoRow(nil), rows...)
+	m.matchRemoteLocals()
+	return m
+}

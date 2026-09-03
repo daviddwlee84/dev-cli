@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 )
 
 // Repo is one discovered repository.
@@ -82,6 +83,112 @@ var skipDirs = map[string]bool{
 	"vendor": true, "__pycache__": true, ".tox": true, "dist": true,
 	"build": true, ".next": true, ".cache": true, ".terraform": true,
 	"Library": true, ".Trash": true,
+}
+
+// PathDiscoverableFromRoot reports whether the normal discovery walk can reach
+// a repository at candidate from root. It mirrors the walk's depth and skipped
+// directory policy without requiring the not-yet-created repository to exist.
+func PathDiscoverableFromRoot(root, candidate string, opts Options) (bool, error) {
+	if opts.MaxDepth <= 0 {
+		opts.MaxDepth = DefaultOptions().MaxDepth
+	}
+	canonicalRoot, err := pathx.Canonical(root)
+	if err != nil {
+		return false, err
+	}
+	canonicalCandidate, err := pathx.Canonical(candidate)
+	if err != nil {
+		return false, err
+	}
+	absoluteRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false, err
+	}
+	if info, lstatErr := os.Lstat(absoluteRoot); lstatErr == nil && info.Mode()&os.ModeSymlink != 0 && canonicalCandidate != canonicalRoot {
+		// WalkDir can inspect a symlinked root itself, but it never follows that
+		// symlink into child repositories.
+		return false, nil
+	}
+	if alias, err := discoverableSymlinkAlias(absoluteRoot, canonicalCandidate, opts); err != nil || alias {
+		return alias, err
+	}
+	rel, err := filepath.Rel(canonicalRoot, canonicalCandidate)
+	if err != nil || rel == ".." || filepath.IsAbs(rel) || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return false, nil
+	}
+	if rel == "." {
+		return true, nil
+	}
+	components := strings.Split(rel, string(filepath.Separator))
+	if len(components) > opts.MaxDepth {
+		return false, nil
+	}
+	for _, component := range components {
+		if skipDirs[component] || (strings.HasPrefix(component, ".") && component != ".bare") {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func canonicalSymlinkTarget(path string) (string, error) {
+	target, err := os.Readlink(path)
+	if err != nil {
+		return "", err
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(path), target)
+	}
+	return pathx.Canonical(filepath.Clean(target))
+}
+
+func discoverableSymlinkAlias(root, canonicalCandidate string, opts Options) (bool, error) {
+	if _, err := os.Lstat(root); err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	found := false
+	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return nil
+		}
+		isRoot := path == root
+		rel := "."
+		depth := 0
+		if !isRoot {
+			rel, _ = filepath.Rel(root, path)
+			depth = len(strings.Split(rel, string(filepath.Separator)))
+		}
+		name := entry.Name()
+		if !isRoot && (skipDirs[name] || (strings.HasPrefix(name, ".") && name != ".bare")) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			if depth <= opts.MaxDepth {
+				if target, err := canonicalSymlinkTarget(path); err == nil && target == canonicalCandidate {
+					found = true
+					return fs.SkipAll
+				}
+			}
+			return nil
+		}
+		if entry.IsDir() && isRepoDir(path) {
+			return filepath.SkipDir
+		}
+		if entry.IsDir() && depth >= opts.MaxDepth {
+			return filepath.SkipDir
+		}
+		return nil
+	})
+	if err == fs.SkipAll {
+		return found, nil
+	}
+	return found, err
 }
 
 // Discover walks every root and returns the repositories found, sorted by

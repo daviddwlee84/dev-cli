@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
+	"github.com/daviddwlee84/dev-cli/internal/scaffold"
 )
 
 func TestApplyRepoInitializersIsIdempotent(t *testing.T) {
@@ -34,6 +35,21 @@ func TestApplyRepoInitializersIsIdempotent(t *testing.T) {
 	settings, _ := os.ReadFile(filepath.Join(root, ".claude", "settings.json"))
 	if !strings.Contains(string(settings), "plansDirectory") {
 		t.Fatalf("settings = %s", settings)
+	}
+	agents, err := os.ReadFile(filepath.Join(root, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantAgents := scaffold.StarterAgentContract()
+	if string(agents) != wantAgents {
+		t.Fatalf("native AGENTS.md drifted from canonical starter:\n%s", agents)
+	}
+	gitignore, err := os.ReadFile(filepath.Join(root, ".gitignore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(gitignore), ".specstory/statistics.json") != 1 || strings.Contains(string(gitignore), "\n.specstory/\n") {
+		t.Fatalf("generated .gitignore has unsafe SpecStory policy:\n%s", gitignore)
 	}
 }
 

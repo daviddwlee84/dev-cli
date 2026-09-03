@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 )
 
 // artifactOnlyEntries are the directory names an abandoned agent workspace is
@@ -112,5 +111,5 @@ func Unsalvaged(orphan Orphan, repoPath string) ([]string, error) {
 // no history worth preserving.
 func ignorableArtifact(rel string) bool {
 	base := filepath.Base(rel)
-	return base == ".DS_Store" || strings.HasSuffix(filepath.ToSlash(rel), ".specstory/statistics.json")
+	return base == ".DS_Store" || filepath.ToSlash(filepath.Clean(rel)) == ".specstory/statistics.json"
 }

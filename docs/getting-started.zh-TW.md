@@ -52,15 +52,20 @@ dev repo new
 ```
 
 它會在 configured `project_root` 下選擇 destination、預覽 plan，並可使用
-built-in `minimal` 或 `agent-ready` preset。`agent-ready` 會加入 starter agent
-guidance 與 project-scoped Claude plans；選取 `agent-history-hygiene`、
-`project-knowledge-harness` 等 optional skills 後，流程會安裝它們，並由經 review 的
-內建 initializer 立即建立 project surfaces，不會執行剛下載的 skill code，也不必等
-日後某個 agent trigger。同一 source 且 agent targets 相同的 skills 會共用一次
-installer invocation。History initializer 會寫入 pre-commit/gitleaks config，並確保
-`.specstory/.gitignore` 含有 `.project.json`、`statistics.json` 規則，不會忽略應納入
-review trail 的 `.specstory/history/` transcripts。既有 custom ignore content 會保留，
-只補上缺少的 managed rules。
+built-in `minimal` 或 `agent-ready` preset。`agent-ready` 會加入明確標示
+bootstrap 尚未完成的 `AGENTS.md` starter 與 project-scoped Claude plans。Starter
+提供安全的 repository-wide 與 handoff rules；未知的 purpose、verified commands、
+architecture、invariants 會保留為 TODO，不會虛構 project facts。Common ignore block
+只排除 derived `.specstory/statistics.json`；history、project identity 與 config 仍會被
+Git 看見。
+
+選取 `agent-history-hygiene`、`project-knowledge-harness` 等 optional skills 後，流程會
+安裝它們，並由經 review 的內建 initializer 立即建立 project surfaces，不會執行剛
+下載的 skill code，也不必等日後某個 agent trigger。同一 source 且 agent targets
+相同的 skills 會共用一次 installer invocation。History initializer 會寫入
+pre-commit/gitleaks config，並另外確保 `.specstory/.gitignore` 含有 `.project.json`、
+`statistics.json` 規則，不會忽略應納入 review trail 的 `.specstory/history/`
+transcripts。既有 custom ignore content 會保留，只補上缺少的 managed rules。
 
 若要沿用既有內容、但不保留原 Git history，可使用 template snapshot：
 

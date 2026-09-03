@@ -210,13 +210,17 @@ func matches(haystack, query string) bool {
 // forge" and "what is already on this machine".
 type RemoteRow struct {
 	Repo forge.RemoteRepo `json:"repo"`
-	// LocalPath is the checkout under the configured scan roots, empty when the
-	// remote has not been cloned here.
+	// LocalPath is a known checkout on this host, empty when the remote has not
+	// been cloned here. A just-created clone remains known even if local discovery
+	// is unavailable or its project root is not configured as a scan root.
 	LocalPath string `json:"local_path,omitempty"`
 	// LocalName is the discovered repo's display name.
 	LocalName string `json:"local_name,omitempty"`
 	// LocalKind distinguishes a cataloged Try from an ordinary repository.
 	LocalKind catalog.Kind `json:"local_kind,omitempty"`
+	// CloneProblemPath is a destination left by a failed clone. It is not a
+	// usable local checkout and must be inspected before another clone attempt.
+	CloneProblemPath string `json:"clone_problem_path,omitempty"`
 }
 
 // FleetRow is one host/repository observation. Repository is nil for a host

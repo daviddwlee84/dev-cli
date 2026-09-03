@@ -298,7 +298,7 @@ func (m Model) renderOverlay() string {
 		builder.WriteString("  REPOS   enter open · n add note · N notes · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
 		builder.WriteString("  FLEET   enter Herdr/SSH open · e edit remotes.toml · r refresh · read-only Git overview\n")
 		builder.WriteString("  TRY     enter open · n create · space actions · a history · O/R sort\n")
-		builder.WriteString("  REMOTE  enter open local · n/N notes when cloned · c clone\n")
+		builder.WriteString("  REMOTE  enter open local · n/N notes when cloned · c clone (enter stay / o open)\n")
 		builder.WriteString("  SKILLS  a interactive add · c check updates · u update selected\n")
 		builder.WriteString("  MCP     static declarations only · r reload\n\n")
 		builder.WriteString("  " + styleHelp.Render("? / esc / q close help"))
