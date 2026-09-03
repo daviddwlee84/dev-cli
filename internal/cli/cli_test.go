@@ -765,7 +765,7 @@ func TestGitignoreWritesAndIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"*.exe", ".claude/worktrees/", ".env"} {
+	for _, want := range []string{"*.exe", ".claude/worktrees/", ".specstory/statistics.json", ".env"} {
 		if !strings.Contains(string(body), want) {
 			t.Errorf(".gitignore missing %q", want)
 		}

@@ -111,12 +111,19 @@ dev repo new
 
 It chooses a destination under configured `project_root`, previews the plan,
 and can use the built-in `minimal` or `agent-ready` preset. `agent-ready` adds
-starter agent guidance and project-scoped Claude plans; when selected, optional
-skills such as `agent-history-hygiene` and `project-knowledge-harness` are
-installed, while reviewed built-in initializers create their project surfaces
-during this flow without executing newly downloaded skill code. Matching skills
-with the same source and agent targets share one installer invocation. The
-history initializer writes pre-commit/gitleaks configuration and ensures
+an explicitly incomplete `AGENTS.md` starter and project-scoped Claude plans.
+The starter supplies safe repository-wide and handoff rules while leaving
+unknown purpose, verified commands, architecture, and invariants as TODOs rather
+than inventing project facts. Its common ignore block excludes only the derived
+`.specstory/statistics.json`; histories, project identity, and config remain
+visible to Git.
+
+When selected, optional skills such as `agent-history-hygiene` and
+`project-knowledge-harness` are installed, while reviewed built-in initializers
+create their project surfaces during this flow without executing newly
+downloaded skill code. Matching skills with the same source and agent targets
+share one installer invocation. The history initializer writes
+pre-commit/gitleaks configuration and additionally ensures
 `.specstory/.gitignore` contains rules for `.project.json` and
 `statistics.json`, not the trackable `.specstory/history/` transcripts.
 Existing custom ignore content is preserved and only missing rules are appended.
@@ -2079,9 +2086,16 @@ Fresh rows require no network; stale rows stay searchable while background
 refresh runs. Oversized/malformed payloads and caches fingerprinted for another
 configured GH/GL host or Azure target are ignored. GitLab uses explicit
 `GITLAB_HOST`/`GLAB_HOST` (default `gitlab.com`) instead of inferring a host from
-cwd; successful empty inventories clear old rows. Enter opens a local clone; `c` confirms before
-cloning an absent repository into a path-confined `project_root`; `r` forces a
-refresh.
+cwd; successful empty inventories clear old rows. Enter opens an existing local
+clone. For an absent repository, `c` confirms a path-confined `project_root`
+destination; `enter` clones and stays in the dashboard, while `o` clones and
+opens afterward. A `project_root` outside the configured REPOS discovery
+roots/depth is rejected before mutation. An animated row/status marker remains
+visible through Git clone and the local-only, generation-guarded REPOS refresh;
+`q`/Ctrl-C requests cancellation without abandoning the in-flight result. Once
+accepted, REMOTE marks the checkout as `repo` and REPOS can search it
+immediately. If Git leaves a destination after failure, REMOTE marks its exact
+path `inspect` instead of deleting it or offering a misleading retry. `r` forces a forge refresh.
 Use `/vis:private` for an exact visibility filter. Notes are enabled only after
 a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a
 new Try rather than a repository note.
@@ -3333,19 +3347,23 @@ repository mutation. The built-in presets are:
 
 - `minimal`: `main`, README, and an initial commit; this preserves existing
   scripted `repo new NAME` behavior.
-- `agent-ready`: extends `minimal` with common ignores, starter `AGENTS.md`,
-  and project-scoped `.claude/settings.json` plus `.claude/plans/`.
-  `agent-history-hygiene` and `project-knowledge-harness` are offered but are
-  not selected silently. When selected, dev installs them and runs reviewed
-  built-in initializers for their project surfaces before the initial commit;
-  downloaded skill scripts are not executed for these built-ins. Matching
-  skills with the same source and identical agent targets share one installer
-  invocation, while their setup phases still run per skill. The history
-  initializer creates `.pre-commit-config.yaml` and `.gitleaks.toml`, then
-  ensures `.specstory/.gitignore` contains rules for SpecStory's `.project.json`
-  and `statistics.json`, never the trackable `.specstory/history/` directory.
-  Existing custom ignore content and its mode are preserved; only missing
-  managed rules are appended.
+- `agent-ready`: extends `minimal` with common ignores, an explicitly incomplete
+  starter `AGENTS.md`, and project-scoped `.claude/settings.json` plus
+  `.claude/plans/`. The starter supplies safe repository-wide and handoff rules,
+  but leaves unknown purpose, verified commands, architecture, and invariants as
+  TODOs rather than inventing facts. The common ignore block excludes only
+  `.specstory/statistics.json`; histories, project identity, and config remain
+  visible to Git. `agent-history-hygiene` and `project-knowledge-harness` are
+  offered but are not selected silently. When selected, dev installs them and
+  runs reviewed built-in initializers for their project surfaces before the
+  initial commit; downloaded skill scripts are not executed for these built-ins.
+  Matching skills with the same source and identical agent targets share one
+  installer invocation, while their setup phases still run per skill. The
+  history initializer creates `.pre-commit-config.yaml` and `.gitleaks.toml`,
+  then additionally ensures `.specstory/.gitignore` contains rules for
+  SpecStory's `.project.json` and `statistics.json`, never the trackable
+  `.specstory/history/` directory. Existing custom ignore content and its mode
+  are preserved; only missing managed rules are appended.
 
 After preset selection, the new-repository wizard asks “Customize preset and
 template options?” with a default of no. The ordinary `agent-ready` flow uses
@@ -5356,7 +5374,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - `dev repo new|create`, `repo clone`, and `repo setup` share a preset-driven bootstrap pipeline. A plain explicit `repo new NAME` remains minimal, while a clear Git URL, local Git path, or owner/name routes through clone acquisition and preserves source history/remote. The no-argument new-repository wizard detects the same reference in its first field; for a new repository, a default-no customization gate keeps the normal `agent-ready` flow concise. Bare `repo clone` selects exact URLs from the existing forge cache; outside a checkout, bare `start` selects a fast-discovered local repository, while the in-repository path keeps its immediate current default. Both retain manual entry. A configured line selector is optional, with a built-in fallback. Text fields use a TTY inline editor, so cursor keys edit rather than inserting raw escape bytes; non-TTY readers retain line-oriented behavior.
 - `repo new` can snapshot a local directory/repository or Git source at an optional branch, tag, or commit and confined subdirectory into a fresh history. An unpinned local Git tree includes tracked plus untracked non-ignored files; a non-Git directory includes its full current tree. Source `.git` metadata is excluded, URL userinfo is redacted, unsafe file types/paths fail before destination creation, and held root/file handles confine mutable-path races. Human plans preview paths and warn when the snapshot is live; presets can select catalog-repository subfolders.
 - Repository setup supports `--check-in=commit|stage|none` (`auto` for preset compatibility). Staged setup runs before-commit setup and `git add -A` without an `after_commit` phase, cannot publish or hand off to `start`, and may prefill lazygit lowercase `c` as described above.
-- Selected skills with matching source and agent targets share one installer invocation. The `agent-history-hygiene` initializer writes pre-commit/gitleaks policy and merges missing machine-local `.project.json`/`statistics.json` rules into `.specstory/.gitignore`; custom content and transcript history remain trackable.
+- `agent-ready` uses one explicitly incomplete, non-fabricating `AGENTS.md` starter across built-in and native setup paths. Its common top-level ignore excludes only `.specstory/statistics.json`; history, project identity, and config remain visible. Selected skills with matching source and agent targets share one installer invocation. The optional `agent-history-hygiene` initializer additionally writes pre-commit/gitleaks policy and merges missing machine-local `.project.json`/`statistics.json` rules into `.specstory/.gitignore`; custom content and transcript history remain trackable.
 - Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
 - `dev ssh init/list/show/setup/probe/remove` provides explicit OpenSSH host onboarding without a separate host database. Dev owns only its dedicated Include, canonical `dev.d` fragments, and opt-in generated fleet registrations; all public SSH JSON is one versioned object, and TSV listing is a documented six-field selector.
 - Fleet merges user-authored primary `remotes.toml` with strict generated `remotes.d` fragments, tracks `remote_os`, and uses a hidden-helper-only encoded PowerShell launcher for Windows targets. Primary duplicate aliases remain compatible; any generated alias collision fails closed.
@@ -5864,15 +5882,20 @@ dev repo new
 ```
 
 它會在 configured `project_root` 下選擇 destination、預覽 plan，並可使用
-built-in `minimal` 或 `agent-ready` preset。`agent-ready` 會加入 starter agent
-guidance 與 project-scoped Claude plans；選取 `agent-history-hygiene`、
-`project-knowledge-harness` 等 optional skills 後，流程會安裝它們，並由經 review 的
-內建 initializer 立即建立 project surfaces，不會執行剛下載的 skill code，也不必等
-日後某個 agent trigger。同一 source 且 agent targets 相同的 skills 會共用一次
-installer invocation。History initializer 會寫入 pre-commit/gitleaks config，並確保
-`.specstory/.gitignore` 含有 `.project.json`、`statistics.json` 規則，不會忽略應納入
-review trail 的 `.specstory/history/` transcripts。既有 custom ignore content 會保留，
-只補上缺少的 managed rules。
+built-in `minimal` 或 `agent-ready` preset。`agent-ready` 會加入明確標示
+bootstrap 尚未完成的 `AGENTS.md` starter 與 project-scoped Claude plans。Starter
+提供安全的 repository-wide 與 handoff rules；未知的 purpose、verified commands、
+architecture、invariants 會保留為 TODO，不會虛構 project facts。Common ignore block
+只排除 derived `.specstory/statistics.json`；history、project identity 與 config 仍會被
+Git 看見。
+
+選取 `agent-history-hygiene`、`project-knowledge-harness` 等 optional skills 後，流程會
+安裝它們，並由經 review 的內建 initializer 立即建立 project surfaces，不會執行剛
+下載的 skill code，也不必等日後某個 agent trigger。同一 source 且 agent targets
+相同的 skills 會共用一次 installer invocation。History initializer 會寫入
+pre-commit/gitleaks config，並另外確保 `.specstory/.gitignore` 含有 `.project.json`、
+`statistics.json` 規則，不會忽略應納入 review trail 的 `.specstory/history/`
+transcripts。既有 custom ignore content 會保留，只補上缺少的 managed rules。
 
 若要沿用既有內容、但不保留原 Git history，可使用 template snapshot：
 
@@ -7761,11 +7784,17 @@ view 後 decode，並保存完整 paginated inventory；fresh rows 不需要 net
 stale rows 仍可搜尋並在背景 refresh。Oversized／malformed payload，以及
 fingerprint 屬於其他 configured GH/GL host 或 Azure target 的 cache 都會被忽略。
 GitLab 使用 explicit `GITLAB_HOST`／`GLAB_HOST`（預設 `gitlab.com`），不從 cwd
-推測 host；成功但為空的 inventory 會清除舊 rows。Enter 開啟 local clone；`c` 在
-clone 缺少的 repository 前確認，且 destination 受限於 `project_root`；`r`
-強制更新 forge inventories。使用 `/vis:private` 可精確過濾 visibility。只有 REMOTE
-row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，
-不會改成 repository note。
+推測 host；成功但為空的 inventory 會清除舊 rows。Enter 開啟既有 local clone。
+對尚未 clone 的 repository，`c` 會確認受限於 `project_root` 的 destination；
+`enter` 執行 clone 並留在 dashboard，`o` 則在 clone 後開啟。若 `project_root`
+超出 configured REPOS discovery roots/depth，會在 mutation 前拒絕。Git clone 與
+local-only、generation-guarded REPOS refresh 期間，row 與 status 會持續顯示 animated
+marker；`q`／Ctrl-C 會要求取消，但不會拋棄 in-flight result。Snapshot 接受後，REMOTE
+會標成 `repo`，REPOS 也能立即搜尋。若 Git 失敗後留下 destination，REMOTE 會把
+exact path 標成 `inspect`，不會自動刪除或提供誤導性的 retry。`r` 才會
+強制更新 forge inventories。使用 `/vis:private` 可精確過濾 visibility。只有 REMOTE row
+能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，不會改成
+repository note。
 
 ### CLI repository pickers
 
@@ -9029,15 +9058,19 @@ summary。Built-in presets 為：
 
 - `minimal`：`main`、README 與 initial commit；保留既有 scripted
   `repo new NAME` behavior。
-- `agent-ready`：在 `minimal` 上加入 common ignores、starter `AGENTS.md`，以及
-  project-scoped `.claude/settings.json` 與 `.claude/plans/`。
-  `agent-history-hygiene`、`project-knowledge-harness` 會出現在選項中，但不會靜默
-  啟用。選取後 dev 會安裝 skill，並在 initial commit 前執行經 review 的內建
-  initializer 來建立對應 project surfaces；這兩個 built-ins 不會執行剛下載的
-  skill scripts。同一 source 且 agent targets 完全相同的 skills 會共用一次 installer
-  invocation，各 skill 的 setup phase 仍分別執行。History initializer 會建立
-  `.pre-commit-config.yaml`、`.gitleaks.toml`，再確保 `.specstory/.gitignore` 含有
-  SpecStory 的 `.project.json`、`statistics.json` 規則，不會忽略應納入追蹤的
+- `agent-ready`：在 `minimal` 上加入 common ignores、明確標示 bootstrap 尚未
+  完成的 starter `AGENTS.md`，以及 project-scoped `.claude/settings.json` 與
+  `.claude/plans/`。Starter 提供安全的 repository-wide 與 handoff rules，但未知的
+  purpose、verified commands、architecture、invariants 會保留為 TODO，不會虛構
+  facts。Common ignore block 只排除 `.specstory/statistics.json`；history、project
+  identity 與 config 仍會被 Git 看見。`agent-history-hygiene`、
+  `project-knowledge-harness` 會出現在選項中，但不會靜默啟用。選取後 dev 會安裝
+  skill，並在 initial commit 前執行經 review 的內建 initializer 來建立對應 project
+  surfaces；這兩個 built-ins 不會執行剛下載的 skill scripts。同一 source 且 agent
+  targets 完全相同的 skills 會共用一次 installer invocation，各 skill 的 setup phase
+  仍分別執行。History initializer 會建立 `.pre-commit-config.yaml`、
+  `.gitleaks.toml`，再另外確保 `.specstory/.gitignore` 含有 SpecStory 的
+  `.project.json`、`statistics.json` 規則，不會忽略應納入追蹤的
   `.specstory/history/`。既有 custom ignore content 與 mode 會保留，只補上缺少的
   managed rules。
 
@@ -10983,7 +11016,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Plain explicit `repo new NAME` 仍維持 minimal；清楚的 Git URL、local Git path 或 owner/name 會改走 clone acquisition，保留 source history/remote。無參數 new-repository wizard 的第一個欄位也會偵測同樣 reference；建立新 repository 時，預設為 no 的 customization gate 讓正常 `agent-ready` flow 保持精簡。Bare `repo clone` 從既有 forge cache 選 exact URL；checkout 外的 bare `start` 會選 fast-discovered local repository，而 repository 內保留 immediate current default。兩者都保留 manual entry。Configured line selector 是 optional，且有 built-in fallback。Text fields 使用 TTY inline editor，因此 cursor keys 會編輯內容，不會插入 raw escape bytes；non-TTY reader 維持 line-oriented behavior。
 - `repo new` 可從 local directory/repository 或 Git source 的 optional branch、tag、commit 與 confined subdirectory 建立 fresh-history snapshot。未 pin 的 local Git tree 包含 tracked 加 untracked non-ignored files；non-Git directory 包含完整 current tree。Source `.git` metadata 會排除、URL userinfo 會 redact，不安全的 file types/paths 會在 destination 建立前失敗，held root/file handles 會限制 mutable-path races。Human plan 會預覽 paths 並警告 live snapshot，preset 也可選擇 catalog-repository subfolder。
 - Repository setup 支援 `--check-in=commit|stage|none`（`auto` 用於 preset compatibility）。Staged setup 會執行 before-commit setup 與 `git add -A`，但不執行 `after_commit` phase；它不能 publish 或 handoff 到 `start`，並可依前述方式預填 lazygit 小寫 `c`。
-- Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。`agent-history-hygiene` initializer 會寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。
+- `agent-ready` 的 built-in 與 native setup paths 共用同一份明確標示 incomplete、不得虛構 facts 的 `AGENTS.md` starter。Common top-level ignore 只排除 `.specstory/statistics.json`；history、project identity 與 config 仍保持可見。Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。Optional `agent-history-hygiene` initializer 會另外寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。
 - Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
 - `dev ssh init/list/show/setup/probe/remove` 提供 explicit OpenSSH host onboarding，不建立另一套 host database。Dev 只擁有 dedicated Include、canonical `dev.d` fragments 與 opt-in generated fleet registration；所有 public SSH JSON 都是一個 versioned object，TSV list 則是 documented six-field selector。
 - Fleet merge user-authored primary `remotes.toml` 與 strict generated `remotes.d` fragments、追蹤 `remote_os`，並對 Windows target 使用只允許 hidden helper 的 encoded PowerShell launcher。Primary duplicate aliases 保持 compatible；任何 generated alias collision 都 fail closed。

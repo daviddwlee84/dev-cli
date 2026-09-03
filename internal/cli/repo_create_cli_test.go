@@ -180,6 +180,16 @@ func TestRepoCloneLocalThenSetupAgentReady(t *testing.T) {
 			t.Fatalf("setup missing %s: %v", path, err)
 		}
 	}
+	agents, err := os.ReadFile(filepath.Join(destination, "AGENTS.md"))
+	if err != nil || !strings.Contains(string(agents), "Bootstrap status: incomplete") ||
+		!strings.Contains(string(agents), "# Project agent guidance") {
+		t.Fatalf("setup AGENTS.md is not the canonical starter: %v\n%s", err, agents)
+	}
+	gitignore, err := os.ReadFile(filepath.Join(destination, ".gitignore"))
+	if err != nil || strings.Count(string(gitignore), ".specstory/statistics.json") != 1 ||
+		strings.Contains(string(gitignore), "\n.specstory/\n") {
+		t.Fatalf("setup .gitignore has unsafe SpecStory policy: %v\n%s", err, gitignore)
+	}
 	status, err := gitx.StatusOf(t.Context(), destination)
 	if err != nil || !status.Dirty() {
 		t.Fatalf("setup should leave reviewable changes: %+v, %v", status, err)

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -73,9 +75,9 @@ func newActions(r *recorder, rows []inventory.Row) tui.Actions {
 			r.opened = append(r.opened, "remote:"+rr.Repo.FullName)
 			return tui.OpenResult{Status: "opened"}, nil
 		},
-		CloneRemote: func(_ context.Context, rr tui.RemoteRow) (tui.OpenResult, string, error) {
+		CloneRemote: func(_ context.Context, rr tui.RemoteRow) (string, error) {
 			r.cloned = append(r.cloned, rr.Repo.FullName)
-			return tui.OpenResult{Status: "cloned"}, "/src/" + rr.Repo.Name, nil
+			return "/src/" + rr.Repo.Name, nil
 		},
 		Start: func(_ context.Context, rr tui.RepoRow, name string) (string, error) {
 			r.started = append(r.started, "worktree:"+rr.Repo.Name+"/"+name)
@@ -182,6 +184,39 @@ func runQuickly(cmd tea.Cmd) (tea.Msg, bool) {
 	case <-time.After(100 * time.Millisecond):
 		return nil, false
 	}
+}
+
+func updateOnce(m tui.Model, msg tea.Msg) (tui.Model, tea.Cmd) {
+	updated, cmd := m.Update(msg)
+	return updated.(tui.Model), cmd
+}
+
+func applyQuickCommand(t *testing.T, m tui.Model, cmd tea.Cmd) (tui.Model, tea.Cmd) {
+	t.Helper()
+	if cmd == nil {
+		t.Fatal("expected command")
+	}
+	msg, ok := runQuickly(cmd)
+	if !ok {
+		t.Fatal("command did not return promptly")
+	}
+	return updateOnce(m, msg)
+}
+
+func commandBatch(t *testing.T, cmd tea.Cmd) tea.BatchMsg {
+	t.Helper()
+	if cmd == nil {
+		t.Fatal("expected command batch")
+	}
+	msg, ok := runQuickly(cmd)
+	if !ok {
+		t.Fatal("command batch did not return promptly")
+	}
+	batch, ok := msg.(tea.BatchMsg)
+	if !ok {
+		t.Fatalf("command returned %T, want tea.BatchMsg", msg)
+	}
+	return batch
 }
 
 func key(s string) tea.KeyMsg {
@@ -1947,7 +1982,7 @@ func TestRemoteRefreshBannerDoesNotScrollTabsOffTerminal(t *testing.T) {
 	}
 	actions := newActions(&recorder{}, nil)
 	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
-	m := tui.New(actions, nil, nil).WithRemotes(rows).WithRemotesStale(true)
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes(rows).WithRemotesStale(true)
 	m = send(m, tea.WindowSizeMsg{Width: 100, Height: 24}, key("tab"), key("tab"), key("tab"))
 
 	updated, cmd := m.Update(key("tab"))
@@ -2036,12 +2071,12 @@ func TestRemoteFilterUsesNameDescriptionAndProvider(t *testing.T) {
 	}
 }
 
-func TestRemoteCloneRequiresConfirmation(t *testing.T) {
+func TestRemoteCloneRequiresConfirmationAndShowsProgress(t *testing.T) {
 	rows := []tui.RemoteRow{remoteRow(forge.GitHub, "owner/api", "")}
 	rec := &recorder{}
 	actions := newActions(rec, nil)
 	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) { return rows, nil }
-	m := tui.New(actions, nil, nil)
+	m := tui.New(actions, nil, []tui.RepoRow{})
 	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
 
 	// Enter on an uncloned remote does nothing; c is the explicit action.
@@ -2050,12 +2085,692 @@ func TestRemoteCloneRequiresConfirmation(t *testing.T) {
 		t.Error("enter must not clone without a confirmation")
 	}
 	m = send(m, key("c"))
-	if !strings.Contains(m.View(), "clone owner/api") {
-		t.Fatalf("c should open the confirmation:\n%s", m.View())
+	if out := m.View(); !strings.Contains(out, "clone owner/api") ||
+		!strings.Contains(out, "enter clone and stay") || !strings.Contains(out, "o clone and open") {
+		t.Fatalf("c should open the two-outcome confirmation:\n%s", out)
 	}
-	send(m, key("enter"))
+
+	m, start := updateOnce(m, key("enter"))
+	out := m.View()
+	if !strings.Contains(out, "cloning owner/api") || !strings.Contains(out, "⠋") || strings.Contains(out, "not cloned") {
+		t.Fatalf("clone should become visibly pending before its command returns:\n%s", out)
+	}
+	if len(rec.cloned) != 0 {
+		t.Fatal("rendering pending state should not imply the clone already completed")
+	}
+	batch := commandBatch(t, start)
+	if len(batch) != 2 {
+		t.Fatalf("clone start command count = %d, want clone + spinner", len(batch))
+	}
+	m, _ = applyQuickCommand(t, m, batch[1])
+	if out := m.View(); !strings.Contains(out, "⠙") {
+		t.Fatalf("spinner did not advance:\n%s", out)
+	}
+	m, _ = applyQuickCommand(t, m, batch[0])
 	if len(rec.cloned) != 1 || rec.cloned[0] != "owner/api" {
 		t.Errorf("confirmed clone not triggered: %v", rec.cloned)
+	}
+}
+
+func TestRemoteCloneConfirmationKeepsExactRowAcrossRefresh(t *testing.T) {
+	first := remoteRow(forge.GitHub, "owner/api", "")
+	second := remoteRow(forge.GitHub, "owner/web", "")
+	first.Repo.UpdatedAt = second.Repo.UpdatedAt.Add(time.Hour)
+	rec := &recorder{}
+	m := tui.New(newActions(rec, nil), nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{first, second})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m = m.WithRemotes([]tui.RemoteRow{second, first})
+	if out := m.View(); !strings.Contains(out, "clone owner/api") {
+		t.Fatalf("refresh changed the confirmed clone target:\n%s", out)
+	}
+	m, start := updateOnce(m, key("enter"))
+	batch := commandBatch(t, start)
+	_, _ = applyQuickCommand(t, m, batch[0])
+	if len(rec.cloned) != 1 || rec.cloned[0] != "owner/api" {
+		t.Fatalf("confirmation cloned a different refreshed row: %v", rec.cloned)
+	}
+}
+
+func TestRemoteCloneConfirmationEscCancels(t *testing.T) {
+	row := remoteRow(forge.GitHub, "owner/api", "")
+	rec := &recorder{}
+	m := tui.New(newActions(rec, nil), nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{row})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"), key("esc"))
+	if len(rec.cloned) != 0 || !strings.Contains(m.View(), "not cloned") {
+		t.Fatalf("escape should cancel without cloning: cloned=%v\n%s", rec.cloned, m.View())
+	}
+}
+
+func TestRemoteCloneWaitsForInitialLocalInventory(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	rec := &recorder{}
+	m := tui.New(newActions(rec, nil), nil, nil).BeginLoading().WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	if out := m.View(); strings.Contains(out, "clone owner/api") || !strings.Contains(out, "wait for local repositories") {
+		t.Fatalf("REMOTE allowed cloning before local inventory resolved:\n%s", out)
+	}
+	if len(rec.cloned) != 0 {
+		t.Fatalf("clone ran before local inventory: %v", rec.cloned)
+	}
+}
+
+func TestRemoteCloneRefreshesReposAndStaysInTUI(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	discovered := repoRow("api")
+	discovered.RemoteForge, discovered.RemoteName = forge.GitHub, "owner/api"
+	rec := &recorder{}
+	remoteReloads := 0
+	actions := newActions(rec, nil)
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return []tui.RepoRow{discovered}, nil
+	}
+	actions.ReloadRemote = func(context.Context) ([]tui.RemoteRow, error) {
+		remoteReloads++
+		return []tui.RemoteRow{remote}, nil
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("enter"))
+	batch := commandBatch(t, start)
+
+	var reload tea.Cmd
+	m, reload = applyQuickCommand(t, m, batch[0])
+	if out := m.View(); !strings.Contains(out, "/src/api") || !strings.Contains(out, "refreshing local repositories") {
+		t.Fatalf("successful clone should retain its path while refreshing:\n%s", out)
+	}
+	m, _ = applyQuickCommand(t, m, reload)
+	out := m.View()
+	if strings.Contains(out, "cloning") || strings.Contains(out, "refreshing local") ||
+		!strings.Contains(out, "repo") || !strings.Contains(out, "/src/api") {
+		t.Fatalf("accepted REPOS refresh should finalize the remote row:\n%s", out)
+	}
+	if remoteReloads != 0 {
+		t.Fatalf("clone triggered %d forge reloads, want local-only refresh", remoteReloads)
+	}
+	if len(rec.opened) != 0 || m.View() == "" {
+		t.Fatalf("enter should stay in the dashboard, opened=%v", rec.opened)
+	}
+
+	m = send(m, key("tab"), key("tab"), key("tab"), key("/"))
+	for _, k := range typeText("api") {
+		m = send(m, k)
+	}
+	if out := m.View(); !strings.Contains(out, "api") {
+		t.Fatalf("new clone is not searchable in REPOS:\n%s", out)
+	}
+}
+
+func TestRemoteCloneOpenWaitsForRepoRefresh(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	discovered := repoRow("api")
+	discovered.RemoteForge, discovered.RemoteName = forge.GitHub, "owner/api"
+	rec := &recorder{}
+	actions := newActions(rec, nil)
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return []tui.RepoRow{discovered}, nil
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("o"))
+	batch := commandBatch(t, start)
+
+	var reload tea.Cmd
+	m, reload = applyQuickCommand(t, m, batch[0])
+	if len(rec.opened) != 0 {
+		t.Fatalf("open ran before local refresh: %v", rec.opened)
+	}
+	var open tea.Cmd
+	m, open = applyQuickCommand(t, m, reload)
+	if len(rec.opened) != 0 || !strings.Contains(m.View(), "opening owner/api") {
+		t.Fatalf("accepted refresh should schedule, not pre-complete, open: %v\n%s", rec.opened, m.View())
+	}
+	m, _ = applyQuickCommand(t, m, open)
+	if len(rec.opened) != 1 || rec.opened[0] != "remote:owner/api" {
+		t.Fatalf("o should open after refresh, got %v", rec.opened)
+	}
+	if !strings.Contains(m.View(), "/src/api") {
+		t.Fatalf("open completion erased cloned path:\n%s", m.View())
+	}
+}
+
+func TestRemoteCloneFailureAndMissingDiscoveryKeepTruthfulRows(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	t.Run("clone failure remains uncloned", func(t *testing.T) {
+		actions := newActions(&recorder{}, nil)
+		actions.CloneRemote = func(context.Context, tui.RemoteRow) (string, error) {
+			return "", errors.New("network down")
+		}
+		m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+		m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+		m, start := updateOnce(m, key("enter"))
+		batch := commandBatch(t, start)
+		m, _ = applyQuickCommand(t, m, batch[0])
+		if out := m.View(); !strings.Contains(out, "network down") || !strings.Contains(out, "not cloned") {
+			t.Fatalf("clone failure state is misleading:\n%s", out)
+		}
+	})
+
+	t.Run("failed clone retains partial destination", func(t *testing.T) {
+		partial := filepath.Join(t.TempDir(), "api")
+		if err := os.Mkdir(partial, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		actions := newActions(&recorder{}, nil)
+		actions.CloneRemote = func(context.Context, tui.RemoteRow) (string, error) {
+			return partial, errors.New("checkout failed")
+		}
+		m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+		m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+		m, start := updateOnce(m, key("enter"))
+		batch := commandBatch(t, start)
+		m, _ = applyQuickCommand(t, m, batch[0])
+		out := m.View()
+		if !strings.Contains(out, "inspect") || !strings.Contains(out, partial) || strings.Contains(out, "not cloned") {
+			t.Fatalf("failed clone hid its residual destination:\n%s", out)
+		}
+		m = send(m, key("c"))
+		if out := m.View(); !strings.Contains(out, "inspect or move") {
+			t.Fatalf("partial clone allowed a misleading retry:\n%s", out)
+		}
+		m = m.WithRemotes([]tui.RemoteRow{remote})
+		if out := m.View(); !strings.Contains(out, "inspect") || !strings.Contains(out, partial) {
+			t.Fatalf("remote refresh erased the recovery path:\n%s", out)
+		}
+	})
+
+	t.Run("missing discovery retains known clone", func(t *testing.T) {
+		clonePath := filepath.Join(t.TempDir(), "api")
+		if err := os.MkdirAll(filepath.Join(clonePath, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		rec := &recorder{}
+		actions := newActions(rec, nil)
+		actions.CloneRemote = func(context.Context, tui.RemoteRow) (string, error) { return clonePath, nil }
+		actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) { return nil, nil }
+		m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+		m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+		m, start := updateOnce(m, key("enter"))
+		batch := commandBatch(t, start)
+		var reload tea.Cmd
+		m, reload = applyQuickCommand(t, m, batch[0])
+		m, _ = applyQuickCommand(t, m, reload)
+		out := m.View()
+		if strings.Contains(out, "not cloned") || !strings.Contains(out, clonePath) ||
+			!strings.Contains(out, "local discovery did not find it") {
+			t.Fatalf("missing discovery erased a successful clone:\n%s", out)
+		}
+	})
+}
+
+func TestRemoteCloneRefreshAndOpenFailuresPreserveClone(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+
+	t.Run("refresh failure", func(t *testing.T) {
+		actions := newActions(&recorder{}, nil)
+		actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+			return nil, errors.New("scan failed")
+		}
+		m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+		m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+		m, start := updateOnce(m, key("enter"))
+		batch := commandBatch(t, start)
+		var reload tea.Cmd
+		m, reload = applyQuickCommand(t, m, batch[0])
+		m, _ = applyQuickCommand(t, m, reload)
+		out := m.View()
+		if !strings.Contains(out, "scan failed") || !strings.Contains(out, "/src/api") || strings.Contains(out, "not cloned") {
+			t.Fatalf("refresh failure erased the successful clone:\n%s", out)
+		}
+	})
+
+	t.Run("open failure", func(t *testing.T) {
+		discovered := repoRow("api")
+		discovered.RemoteForge, discovered.RemoteName = forge.GitHub, "owner/api"
+		actions := newActions(&recorder{}, nil)
+		actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+			return []tui.RepoRow{discovered}, nil
+		}
+		actions.OpenRemote = func(context.Context, tui.RemoteRow) (tui.OpenResult, error) {
+			return tui.OpenResult{}, errors.New("runtime failed")
+		}
+		m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+		m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+		m, start := updateOnce(m, key("o"))
+		batch := commandBatch(t, start)
+		var reload, open tea.Cmd
+		m, reload = applyQuickCommand(t, m, batch[0])
+		m, open = applyQuickCommand(t, m, reload)
+		m, _ = applyQuickCommand(t, m, open)
+		out := m.View()
+		if !strings.Contains(out, "runtime failed") || !strings.Contains(out, "/src/api") || strings.Contains(out, "not cloned") {
+			t.Fatalf("open failure erased the successful clone:\n%s", out)
+		}
+	})
+}
+
+func TestRemoteCloneRefreshFailureSurvivesUnrelatedReconciliation(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	clonePath := filepath.Join(t.TempDir(), "api")
+	if err := os.MkdirAll(filepath.Join(clonePath, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	actions := newActions(&recorder{}, nil)
+	actions.CloneRemote = func(context.Context, tui.RemoteRow) (string, error) { return clonePath, nil }
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return nil, errors.New("scan failed")
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("enter"))
+	batch := commandBatch(t, start)
+	var reload tea.Cmd
+	m, reload = applyQuickCommand(t, m, batch[0])
+	m, _ = applyQuickCommand(t, m, reload)
+	m = m.WithTries(nil)
+	if out := m.View(); !strings.Contains(out, clonePath) || strings.Contains(out, "not cloned") {
+		t.Fatalf("unrelated reconciliation erased an existing clone after refresh failure:\n%s", out)
+	}
+}
+
+func TestRemoteCloneAcceptsPartialRefreshWhenCloneIsPresent(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	discovered := repoRow("api")
+	discovered.RemoteForge, discovered.RemoteName = forge.GitHub, "owner/api"
+	rec := &recorder{}
+	actions := newActions(rec, nil)
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return []tui.RepoRow{discovered}, errors.New("another scan root failed")
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("o"))
+	batch := commandBatch(t, start)
+	var reload, open tea.Cmd
+	m, reload = applyQuickCommand(t, m, batch[0])
+	m, open = applyQuickCommand(t, m, reload)
+	m, _ = applyQuickCommand(t, m, open)
+	if len(rec.opened) != 1 || rec.opened[0] != "remote:owner/api" {
+		t.Fatalf("usable partial refresh did not open clone: %v\n%s", rec.opened, m.View())
+	}
+}
+
+func TestRemoteCloneRejectsPartialRefreshIdentityConflict(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	clonePath := filepath.Join(t.TempDir(), "api")
+	if err := os.MkdirAll(filepath.Join(clonePath, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	conflict := repoRow("api")
+	conflict.Repo.Path = clonePath
+	conflict.RemoteForge, conflict.RemoteName = forge.GitHub, "owner/other"
+	actions := newActions(&recorder{}, nil)
+	actions.CloneRemote = func(context.Context, tui.RemoteRow) (string, error) { return clonePath, nil }
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return []tui.RepoRow{conflict}, errors.New("another scan root failed")
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("enter"))
+	batch := commandBatch(t, start)
+	var reload tea.Cmd
+	m, reload = applyQuickCommand(t, m, batch[0])
+	m, _ = applyQuickCommand(t, m, reload)
+	if out := m.View(); !strings.Contains(out, "could not match") || !strings.Contains(out, "inspect") || strings.Contains(out, "not cloned") {
+		t.Fatalf("conflicting partial identity was accepted:\n%s", out)
+	}
+}
+
+func TestRemoteCloneOpenContinuesAfterRefreshFailure(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	rec := &recorder{}
+	actions := newActions(rec, nil)
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return nil, errors.New("scan failed")
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("o"))
+	batch := commandBatch(t, start)
+	var reload, open tea.Cmd
+	m, reload = applyQuickCommand(t, m, batch[0])
+	m, open = applyQuickCommand(t, m, reload)
+	m, _ = applyQuickCommand(t, m, open)
+	if len(rec.opened) != 1 || rec.opened[0] != "remote:owner/api" {
+		t.Fatalf("refresh failure suppressed requested open: %v", rec.opened)
+	}
+	if out := m.View(); !strings.Contains(out, "scan failed") || !strings.Contains(out, "/src/api") {
+		t.Fatalf("open lost refresh warning or known clone:\n%s", out)
+	}
+}
+
+func TestRemoteCloneFailsClosedOnAmbiguousLocalMatch(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	first, second := repoRow("api"), repoRow("api-copy")
+	first.RemoteForge, first.RemoteName = forge.GitHub, "owner/api"
+	second.RemoteForge, second.RemoteName = forge.GitHub, "owner/api"
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return []tui.RepoRow{first, second}, nil
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("enter"))
+	batch := commandBatch(t, start)
+	var reload tea.Cmd
+	m, reload = applyQuickCommand(t, m, batch[0])
+	m, _ = applyQuickCommand(t, m, reload)
+	if out := m.View(); !strings.Contains(out, "could not match") || !strings.Contains(out, "inspect") || strings.Contains(out, "not cloned") {
+		t.Fatalf("ambiguous local clones selected remembered path:\n%s", out)
+	}
+}
+
+func TestRemoteCloneUsesRunContextAndPrunesMissingMarker(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	t.Run("run context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		actions := newActions(&recorder{}, nil)
+		actions.CloneRemote = func(ctx context.Context, _ tui.RemoteRow) (string, error) {
+			<-ctx.Done()
+			return "", ctx.Err()
+		}
+		m := tui.New(actions, nil, []tui.RepoRow{}).WithContext(ctx).WithRemotes([]tui.RemoteRow{remote})
+		m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+		m, start := updateOnce(m, key("enter"))
+		batch := commandBatch(t, start)
+		cancel()
+		m, _ = applyQuickCommand(t, m, batch[0])
+		if out := m.View(); !strings.Contains(out, "context canceled") || !strings.Contains(out, "not cloned") {
+			t.Fatalf("run cancellation did not stop clone state:\n%s", out)
+		}
+	})
+
+	t.Run("missing path", func(t *testing.T) {
+		clonePath := filepath.Join(t.TempDir(), "api")
+		if err := os.Mkdir(clonePath, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		discovered := repoRow("api")
+		discovered.Repo.Path = clonePath
+		discovered.RemoteForge, discovered.RemoteName = forge.GitHub, "owner/api"
+		actions := newActions(&recorder{}, nil)
+		actions.CloneRemote = func(context.Context, tui.RemoteRow) (string, error) { return clonePath, nil }
+		actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+			return []tui.RepoRow{discovered}, nil
+		}
+		m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+		m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+		m, start := updateOnce(m, key("enter"))
+		batch := commandBatch(t, start)
+		var reload tea.Cmd
+		m, reload = applyQuickCommand(t, m, batch[0])
+		m, _ = applyQuickCommand(t, m, reload)
+		if err := os.RemoveAll(clonePath); err != nil {
+			t.Fatal(err)
+		}
+		m = m.WithReposForTest(nil)
+		if out := m.View(); !strings.Contains(out, "not cloned") {
+			t.Fatalf("missing remembered checkout stayed local:\n%s", out)
+		}
+	})
+}
+
+func TestRemoteCloneQuitRequestsCancellationBeforeLeaving(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	actions := newActions(&recorder{}, nil)
+	actions.CloneRemote = func(ctx context.Context, _ tui.RemoteRow) (string, error) {
+		<-ctx.Done()
+		return "", ctx.Err()
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("enter"))
+	batch := commandBatch(t, start)
+	m = send(m, key("q"))
+	if out := m.View(); out == "" || !strings.Contains(out, "canceling owner/api") {
+		t.Fatalf("q should cancel without abandoning the command:\n%s", out)
+	}
+	m, _ = applyQuickCommand(t, m, batch[0])
+	if out := m.View(); !strings.Contains(out, "context canceled") || !strings.Contains(out, "not cloned") {
+		t.Fatalf("canceled clone did not return to a truthful row:\n%s", out)
+	}
+}
+
+func TestRemoteCloneCanCancelRepositoryRefresh(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	original := repoRow("existing")
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRepos = func(ctx context.Context) ([]tui.RepoRow, error) {
+		<-ctx.Done()
+		return []tui.RepoRow{repoRow("truncated")}, ctx.Err()
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{original}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("enter"))
+	batch := commandBatch(t, start)
+	m, reload := applyQuickCommand(t, m, batch[0])
+	m = send(m, key("q"))
+	m, _ = applyQuickCommand(t, m, reload)
+	if out := m.View(); !strings.Contains(out, "cancel post-clone repository refresh") || out == "" {
+		t.Fatalf("q did not cancel repository refresh:\n%s", out)
+	}
+	// REMOTE -> SKILLS -> MCP -> TASKS -> REPOS.
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
+	if out := m.View(); !strings.Contains(out, "existing") || strings.Contains(out, "truncated") {
+		t.Fatalf("canceled partial snapshot replaced REPOS:\n%s", out)
+	}
+}
+
+func TestRemoteCloneCanceledSupersedingStreamCannotStrandState(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	local := repoRow("local")
+	actions := newActions(&recorder{}, nil)
+	actions.Local.Start = func(context.Context, tui.LocalLoadRequest) tui.LocalLoad {
+		results := make(chan tui.LocalResult)
+		close(results)
+		return tui.LocalLoad{ID: 1, Results: results}
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{local}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"))
+	m, earlierOpen := updateOnce(m, key("enter"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("enter"))
+	batch := commandBatch(t, start)
+	m, _ = applyQuickCommand(t, m, batch[0])
+	m, sharedLoad := applyQuickCommand(t, m, earlierOpen)
+	m = send(m, key("q"))
+	m, _ = applyQuickCommand(t, m, sharedLoad)
+	if out := m.View(); !strings.Contains(out, "result stream closed") || strings.Contains(out, "canceling") {
+		t.Fatalf("closed superseding load stranded clone state:\n%s", out)
+	}
+}
+
+func TestRemoteCloneQueuedSuccessHonorsCancellationByStaying(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	discovered := repoRow("api")
+	discovered.RemoteForge, discovered.RemoteName = forge.GitHub, "owner/api"
+	rec := &recorder{}
+	actions := newActions(rec, nil)
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return []tui.RepoRow{discovered}, nil
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("o"))
+	batch := commandBatch(t, start)
+	cloneResult, ok := runQuickly(batch[0])
+	if !ok {
+		t.Fatal("clone command did not return")
+	}
+	m = send(m, key("q"))
+	m, reload := updateOnce(m, cloneResult)
+	m, _ = applyQuickCommand(t, m, reload)
+	if len(rec.opened) != 0 || m.View() == "" {
+		t.Fatalf("queued clone success ignored cancellation and opened: %v", rec.opened)
+	}
+	if out := m.View(); !strings.Contains(out, "cloned owner/api") || strings.Contains(out, "canceling") {
+		t.Fatalf("completed clone was not reconciled after cancellation:\n%s", out)
+	}
+}
+
+func TestRemoteCloneCompletionPreservesUserNavigation(t *testing.T) {
+	first := remoteRow(forge.GitHub, "owner/api", "")
+	second := remoteRow(forge.GitHub, "owner/web", "")
+	first.Repo.UpdatedAt = second.Repo.UpdatedAt.Add(time.Hour)
+	actions := newActions(&recorder{}, nil)
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{first, second})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("j"), key("c"))
+	m, start := updateOnce(m, key("enter"))
+	m = send(m, key("k"))
+	batch := commandBatch(t, start)
+	m, _ = applyQuickCommand(t, m, batch[0])
+	var selected string
+	for _, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(line, "▸") {
+			selected = line
+			break
+		}
+	}
+	if !strings.Contains(selected, "owner/api") {
+		t.Fatalf("clone completion jumped back to target row: %q\n%s", selected, m.View())
+	}
+}
+
+func TestRemoteCloneCanCancelPendingOpen(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	discovered := repoRow("api")
+	discovered.RemoteForge, discovered.RemoteName = forge.GitHub, "owner/api"
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return []tui.RepoRow{discovered}, nil
+	}
+	actions.OpenRemote = func(ctx context.Context, _ tui.RemoteRow) (tui.OpenResult, error) {
+		<-ctx.Done()
+		return tui.OpenResult{}, ctx.Err()
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("o"))
+	batch := commandBatch(t, start)
+	var reload, open tea.Cmd
+	m, reload = applyQuickCommand(t, m, batch[0])
+	m, open = applyQuickCommand(t, m, reload)
+	m = send(m, key("q"))
+	if out := m.View(); !strings.Contains(out, "canceling owner/api") {
+		t.Fatalf("open cancellation did not become visible:\n%s", out)
+	}
+	m, _ = applyQuickCommand(t, m, open)
+	if out := m.View(); !strings.Contains(out, "cancel opening owner/api") || out == "" {
+		t.Fatalf("canceled open abandoned the dashboard:\n%s", out)
+	}
+}
+
+func TestRemoteCloneQueuedOpenSuccessHonorsCancellation(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	discovered := repoRow("api")
+	discovered.RemoteForge, discovered.RemoteName = forge.GitHub, "owner/api"
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return []tui.RepoRow{discovered}, nil
+	}
+	actions.OpenRemote = func(context.Context, tui.RemoteRow) (tui.OpenResult, error) {
+		return tui.OpenResult{Status: "opened", RuntimeHandle: "session-1"}, nil
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("o"))
+	batch := commandBatch(t, start)
+	var reload, open tea.Cmd
+	m, reload = applyQuickCommand(t, m, batch[0])
+	m, open = applyQuickCommand(t, m, reload)
+	openResult, ok := runQuickly(open)
+	if !ok {
+		t.Fatal("open command did not return")
+	}
+	m = send(m, key("q"))
+	m, _ = updateOnce(m, openResult)
+	if m.Activation() != "" || m.View() == "" || !strings.Contains(m.View(), "open completed before cancellation") {
+		t.Fatalf("queued open success ignored cancellation: activation=%q\n%s", m.Activation(), m.View())
+	}
+}
+
+func TestRemoteCloneBlocksOtherActionsAndQuitWhileRunning(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	rec := &recorder{}
+	reloads, edits, stats := 0, 0, 0
+	actions := newActions(rec, nil)
+	actions.ReloadConfig = func(context.Context) (tui.ConfigUpdate, string, error) {
+		reloads++
+		return tui.ConfigUpdate{}, "", nil
+	}
+	actions.EditConfig = func() (*exec.Cmd, error) {
+		edits++
+		return exec.Command("true"), nil
+	}
+	actions.LoadStats = func(context.Context, string) (tui.StatsPanel, error) {
+		stats++
+		return tui.StatsPanel{}, nil
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{repoRow("local")}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("enter"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("r"), key("e"), key("H"), key("q"), key("enter"), key("c"))
+	if m.View() == "" || len(rec.cloned) != 0 || reloads != 0 || edits != 0 || stats != 0 {
+		t.Fatalf("pending clone accepted another action: cloned=%v reloads=%d edits=%d stats=%d", rec.cloned, reloads, edits, stats)
+	}
+	batch := commandBatch(t, start)
+	_, _ = applyQuickCommand(t, m, batch[0])
+	if len(rec.cloned) != 1 {
+		t.Fatalf("clone callback count = %d, want 1", len(rec.cloned))
+	}
+}
+
+func TestRemoteCloneDefersEarlierCompletedHandoff(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	local := repoRow("local")
+	discovered := repoRow("api")
+	discovered.RemoteForge, discovered.RemoteName = forge.GitHub, "owner/api"
+	actions := newActions(&recorder{}, nil)
+	actions.OpenRepo = func(context.Context, tui.RepoRow) (tui.OpenResult, error) {
+		return tui.OpenResult{Directory: local.Repo.Path}, nil
+	}
+	actions.ReloadRepos = func(context.Context) ([]tui.RepoRow, error) {
+		return []tui.RepoRow{local, discovered}, nil
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{local}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"))
+	m, earlierOpen := updateOnce(m, key("enter"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("enter"))
+	batch := commandBatch(t, start)
+	m, _ = applyQuickCommand(t, m, earlierOpen)
+	var reload tea.Cmd
+	m, reload = applyQuickCommand(t, m, batch[0])
+	m, _ = applyQuickCommand(t, m, reload)
+	if m.Chosen() != local.Repo.Path || m.View() != "" {
+		t.Fatalf("completed pre-clone handoff was lost: chosen=%q", m.Chosen())
+	}
+}
+
+func TestRemoteCloneFailureDoesNotHideBehindDeferredHandoff(t *testing.T) {
+	remote := remoteRow(forge.GitHub, "owner/api", "")
+	local := repoRow("local")
+	actions := newActions(&recorder{}, nil)
+	actions.OpenRepo = func(context.Context, tui.RepoRow) (tui.OpenResult, error) {
+		return tui.OpenResult{Directory: local.Repo.Path}, nil
+	}
+	actions.CloneRemote = func(context.Context, tui.RemoteRow) (string, error) {
+		return "", errors.New("clone failed")
+	}
+	m := tui.New(actions, nil, []tui.RepoRow{local}).WithRemotes([]tui.RemoteRow{remote})
+	m = send(m, key("tab"))
+	m, earlierOpen := updateOnce(m, key("enter"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("c"))
+	m, start := updateOnce(m, key("enter"))
+	batch := commandBatch(t, start)
+	m, _ = applyQuickCommand(t, m, earlierOpen)
+	m, _ = applyQuickCommand(t, m, batch[0])
+	if m.Chosen() != "" || m.View() == "" || !strings.Contains(m.View(), "clone failed") {
+		t.Fatalf("clone failure was hidden by deferred handoff: chosen=%q\n%s", m.Chosen(), m.View())
 	}
 }
 
@@ -2140,7 +2855,7 @@ func TestOffscreenConfigReloadInvalidatesFreshRemoteSnapshot(t *testing.T) {
 		return []tui.RemoteRow{remoteRow(forge.GitHub, "owner/current", "")}, nil
 	}
 	cached := []tui.RemoteRow{remoteRow(forge.GitHub, "owner/cached", "")}
-	m := tui.New(actions, nil, nil).WithRemotes(cached)
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes(cached)
 	m = send(m, key("r"))
 	if loads != 0 {
 		t.Fatalf("off-screen config reload queried REMOTE eagerly: %d", loads)
@@ -2159,7 +2874,7 @@ func TestFreshRemoteCacheAvoidsNetworkOnFirstSwitch(t *testing.T) {
 		return nil, nil
 	}
 	cached := []tui.RemoteRow{remoteRow(forge.GitHub, "owner/cached", "")}
-	m := tui.New(actions, nil, nil).WithRemotes(cached)
+	m := tui.New(actions, nil, []tui.RepoRow{}).WithRemotes(cached)
 	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
 
 	if loads != 0 {

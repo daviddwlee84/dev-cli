@@ -16,10 +16,13 @@ dev repo setup . --preset agent-ready --check-in=stage
 ```
 
 The interactive default is `agent-ready`; explicit `repo new NAME` remains
-`minimal`. Use `--dry-run` before a custom preset and `--json` for automation.
-Dry-run does not mutate the target repository. JSON never prompts, changes
-directory, or activates a runtime; automation supplies the required name/ref
-and an explicit setup preset.
+`minimal`. Its canonical `AGENTS.md` starter explicitly labels bootstrap status
+incomplete, supplies safe repository-wide and handoff rules, and leaves unknown
+purpose, commands, architecture, and invariants as TODOs rather than inventing
+project facts. Use `--dry-run` before a custom preset and `--json` for
+automation. Dry-run does not mutate the target repository. JSON never prompts,
+changes directory, or activates a runtime; automation supplies the required
+name/ref and an explicit setup preset.
 
 `repo setup` repeat-safely merges native initializers and preset files. Custom
 hooks and skill setup remain responsible for their own idempotency.
@@ -191,6 +194,11 @@ content-hashed sources. For `agent-history-hygiene` and
 `project-knowledge-harness`, dev uses reviewed built-in initializers for the
 pre-commit/gitleaks and TODO/backlog/pitfalls surfaces instead of executing newly
 downloaded skill code.
+
+For SpecStory, the common managed `.gitignore` used by `agent-ready` adds only
+the exact `.specstory/statistics.json` rule. It deliberately leaves
+`.specstory/history/*.md`, `.specstory/.project.json`, and `.specstory/cli/`
+visible to Git.
 
 The built-in `agent-history-hygiene` setup creates these files when absent:
 

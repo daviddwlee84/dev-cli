@@ -94,6 +94,11 @@ func (m *Model) beginViewLoad(view View, cause loadCause) uint64 {
 	ctx, cancel := context.WithCancel(m.baseContext())
 	m.loadContexts[index] = ctx
 	m.loadCancels[index] = cancel
+	if view == ViewRepos && m.remoteClone.phase == remoteCloneRefreshing {
+		// A newer REPOS generation may supersede the clone-triggered refresh.
+		// Cancellation must always follow the generation that can complete it.
+		m.remoteClone.cancel = cancel
+	}
 	state := &m.loads[index]
 	state.generation++
 	state.cause = cause
@@ -114,9 +119,15 @@ func (m *Model) beginLocalLoads(cause loadCause) (tasks, repos, tries uint64) {
 	}
 	m.localContext, m.localCancel = context.WithCancel(m.baseContext())
 	m.localGeneration++
-	return m.beginViewLoad(ViewTasks, cause),
-		m.beginViewLoad(ViewRepos, cause),
-		m.beginViewLoad(ViewTries, cause)
+	tasks = m.beginViewLoad(ViewTasks, cause)
+	repos = m.beginViewLoad(ViewRepos, cause)
+	tries = m.beginViewLoad(ViewTries, cause)
+	if m.remoteClone.phase == remoteCloneRefreshing {
+		// Production's shared loader reads localContext rather than the per-view
+		// context created above, so cancellation follows the actual producer.
+		m.remoteClone.cancel = m.localCancel
+	}
+	return tasks, repos, tries
 }
 
 func (m Model) localReadContext() context.Context {

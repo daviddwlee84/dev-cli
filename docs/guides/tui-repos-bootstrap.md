@@ -115,9 +115,16 @@ Fresh rows require no network; stale rows stay searchable while background
 refresh runs. Oversized/malformed payloads and caches fingerprinted for another
 configured GH/GL host or Azure target are ignored. GitLab uses explicit
 `GITLAB_HOST`/`GLAB_HOST` (default `gitlab.com`) instead of inferring a host from
-cwd; successful empty inventories clear old rows. Enter opens a local clone; `c` confirms before
-cloning an absent repository into a path-confined `project_root`; `r` forces a
-refresh.
+cwd; successful empty inventories clear old rows. Enter opens an existing local
+clone. For an absent repository, `c` confirms a path-confined `project_root`
+destination; `enter` clones and stays in the dashboard, while `o` clones and
+opens afterward. A `project_root` outside the configured REPOS discovery
+roots/depth is rejected before mutation. An animated row/status marker remains
+visible through Git clone and the local-only, generation-guarded REPOS refresh;
+`q`/Ctrl-C requests cancellation without abandoning the in-flight result. Once
+accepted, REMOTE marks the checkout as `repo` and REPOS can search it
+immediately. If Git leaves a destination after failure, REMOTE marks its exact
+path `inspect` instead of deleting it or offering a misleading retry. `r` forces a forge refresh.
 Use `/vis:private` for an exact visibility filter. Notes are enabled only after
 a REMOTE row resolves to a local clone. TRY keeps lowercase `n` for creating a
 new Try rather than a repository note.

@@ -103,11 +103,17 @@ view 後 decode，並保存完整 paginated inventory；fresh rows 不需要 net
 stale rows 仍可搜尋並在背景 refresh。Oversized／malformed payload，以及
 fingerprint 屬於其他 configured GH/GL host 或 Azure target 的 cache 都會被忽略。
 GitLab 使用 explicit `GITLAB_HOST`／`GLAB_HOST`（預設 `gitlab.com`），不從 cwd
-推測 host；成功但為空的 inventory 會清除舊 rows。Enter 開啟 local clone；`c` 在
-clone 缺少的 repository 前確認，且 destination 受限於 `project_root`；`r`
-強制更新 forge inventories。使用 `/vis:private` 可精確過濾 visibility。只有 REMOTE
-row 能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，
-不會改成 repository note。
+推測 host；成功但為空的 inventory 會清除舊 rows。Enter 開啟既有 local clone。
+對尚未 clone 的 repository，`c` 會確認受限於 `project_root` 的 destination；
+`enter` 執行 clone 並留在 dashboard，`o` 則在 clone 後開啟。若 `project_root`
+超出 configured REPOS discovery roots/depth，會在 mutation 前拒絕。Git clone 與
+local-only、generation-guarded REPOS refresh 期間，row 與 status 會持續顯示 animated
+marker；`q`／Ctrl-C 會要求取消，但不會拋棄 in-flight result。Snapshot 接受後，REMOTE
+會標成 `repo`，REPOS 也能立即搜尋。若 Git 失敗後留下 destination，REMOTE 會把
+exact path 標成 `inspect`，不會自動刪除或提供誤導性的 retry。`r` 才會
+強制更新 forge inventories。使用 `/vis:private` 可精確過濾 visibility。只有 REMOTE row
+能解析到 local clone 時才能使用 notes。TRY 保留 lowercase `n` 建立新 Try，不會改成
+repository note。
 
 ### CLI repository pickers
 

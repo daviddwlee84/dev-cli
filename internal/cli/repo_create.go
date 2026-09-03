@@ -1134,20 +1134,41 @@ func looksLikeRepoPath(value string) bool {
 		strings.ContainsAny(value, `/\\`)
 }
 
+func repositoryPathDiscoverable(cfg config.Config, path string) (bool, error) {
+	for _, root := range cfg.ScanRoots() {
+		discoverable, err := repo.PathDiscoverableFromRoot(root, path, repo.DefaultOptions())
+		if err != nil {
+			return false, fmt.Errorf("check scan root %s: %w", config.Contract(root), err)
+		}
+		if discoverable {
+			return true, nil
+		}
+	}
+	candidate, err := pathx.Canonical(path)
+	if err != nil {
+		return false, err
+	}
+	for _, exact := range cfg.RepoPaths() {
+		canonical, err := pathx.Canonical(exact)
+		if err != nil {
+			return false, fmt.Errorf("check repository path %s: %w", config.Contract(exact), err)
+		}
+		if canonical == candidate {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func warnOutsideDiscovery(app *App, path string) {
-	for _, root := range app.Cfg.ScanRoots() {
-		if contains, _ := pathx.Contains(root, path); contains {
-			return
-		}
+	discoverable, err := repositoryPathDiscoverable(app.Cfg, path)
+	if err != nil {
+		app.warnf("could not verify whether %s is discoverable: %v", config.Contract(path), err)
+		return
 	}
-	for _, exact := range app.Cfg.RepoPaths() {
-		left, _ := pathx.Canonical(exact)
-		right, _ := pathx.Canonical(path)
-		if left != "" && left == right {
-			return
-		}
+	if !discoverable {
+		app.warnf("%s is outside paths.scan_roots/repo_paths and will not appear in dev repo list", config.Contract(path))
 	}
-	app.warnf("%s is outside paths.scan_roots/repo_paths and will not appear in dev repo list", config.Contract(path))
 }
 
 func parseInputDefault(value any) string {

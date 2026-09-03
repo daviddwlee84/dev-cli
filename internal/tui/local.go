@@ -94,6 +94,7 @@ func (m Model) applyLocalResult(result LocalResult) (Model, bool) {
 			len(result.Repos), result.Err, result.Valid,
 		)
 		if accepted && result.Valid {
+			m.acceptCompleteRepoSnapshot(result.Err)
 			m.repos = append([]RepoRow(nil), result.Repos...)
 			m.matchRemoteLocals()
 		}

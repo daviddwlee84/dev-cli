@@ -4,12 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/agentmcp"
@@ -17,6 +21,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
+	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/note"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
@@ -131,8 +136,8 @@ type Actions struct {
 	// OpenFleet returns an interactive process for a local or remote fleet row.
 	OpenFleet func(ctx context.Context, r FleetRow) (*exec.Cmd, error)
 	// CloneRemote clones a remote that has no local checkout and returns the
-	// new path, so the row can be updated without querying the network again.
-	CloneRemote func(ctx context.Context, r RemoteRow) (OpenResult, string, error)
+	// new path. Opening is a separate step after local inventory accepts it.
+	CloneRemote func(ctx context.Context, r RemoteRow) (string, error)
 	// Park closes a task's session and records its next action.
 	Park func(ctx context.Context, t *task.Task, next string) (string, error)
 	// SetNext records a task's next action.
@@ -247,6 +252,50 @@ const (
 	modeNoteConfirmDelete
 )
 
+type remoteClonePhase uint8
+
+const (
+	remoteCloneIdle remoteClonePhase = iota
+	remoteCloneRunning
+	remoteCloneRefreshing
+	remoteCloneOpening
+)
+
+type remoteCloneState struct {
+	requestID          uint64
+	phase              remoteClonePhase
+	target             RemoteRow
+	path               string
+	openAfter          bool
+	cancel             context.CancelFunc
+	canceling          bool
+	refreshErr         error
+	deferredOpen       OpenResult
+	minReposGeneration uint64
+}
+
+func (s remoteCloneState) active() bool { return s.phase != remoteCloneIdle }
+
+type remoteLocalMarker struct {
+	key      string
+	matchKey string
+	path     string
+	name     string
+	kind     catalog.Kind
+}
+
+type remoteCloneMsg struct {
+	requestID uint64
+	path      string
+	err       error
+}
+
+type remoteCloneOpenMsg struct {
+	requestID uint64
+	result    OpenResult
+	err       error
+}
+
 // Model is the dashboard state.
 type Model struct {
 	actions Actions
@@ -290,6 +339,12 @@ type Model struct {
 	configGeneration       uint64
 	localGeneration        uint64
 	toolGeneration         uint64
+
+	remoteCloneSequence uint64
+	remoteClonePrompt   RemoteRow
+	remoteClone         remoteCloneState
+	remoteCloneSpinner  spinner.Model
+	unconfirmedRemotes  []remoteLocalMarker
 
 	// Cursors are plain fields, one per view, rather than a map: bubbletea
 	// passes the model by value and expects each returned copy to be
@@ -347,16 +402,19 @@ type Model struct {
 func New(actions Actions, rows []inventory.Row, repos []RepoRow) Model {
 	in := textinput.New()
 	in.CharLimit = 200
+	cloneSpinner := spinner.MiniDot
+	cloneSpinner.FPS = 200 * time.Millisecond
 
 	m := Model{
-		actions:        actions,
-		rows:           rows,
-		repos:          repos,
-		input:          in,
-		width:          100,
-		height:         30,
-		firstViewReady: make(chan struct{}),
-		firstViewOnce:  &sync.Once{},
+		actions:            actions,
+		rows:               rows,
+		repos:              repos,
+		input:              in,
+		remoteCloneSpinner: spinner.New(spinner.WithSpinner(cloneSpinner)),
+		width:              100,
+		height:             30,
+		firstViewReady:     make(chan struct{}),
+		firstViewOnce:      &sync.Once{},
 	}
 	if len(actions.Tools) > 0 {
 		m.toolGeneration = 1
@@ -385,7 +443,7 @@ func (m Model) WithContext(ctx context.Context) Model {
 // WithRemotes seeds the lazy forge view from a fresh on-disk cache. The first
 // switch is then instant; r still refreshes explicitly.
 func (m Model) WithRemotes(rows []RemoteRow) Model {
-	m.remotes = rows
+	m.replaceRemotes(rows)
 	m.seedViewSnapshot(ViewRemote, perftrace.SourceCache, perftrace.FreshnessFresh, true)
 	return m
 }
@@ -453,6 +511,13 @@ func (m Model) Init() tea.Cmd {
 		commands = append(commands, m.runAfterFirstView())
 	}
 	return tea.Batch(commands...)
+}
+
+type reposMsg struct {
+	rows       []RepoRow
+	generation uint64
+	valid      bool
+	err        error
 }
 
 type reloadMsg struct {
@@ -581,8 +646,6 @@ type actionMsg struct {
 	status     string
 	cd         string
 	activate   string
-	remoteName string
-	localPath  string
 	forceSizes bool
 	err        error
 }
@@ -621,7 +684,9 @@ func traceOutcome(err error) perftrace.Outcome {
 	}
 }
 
-func snapshotValid[T any](rows []T, err error) bool { return err == nil || rows != nil }
+func snapshotValid[T any](rows []T, err error) bool {
+	return !errors.Is(err, context.Canceled) && (err == nil || rows != nil)
+}
 
 func batchCommands(commands ...tea.Cmd) tea.Cmd {
 	filtered := commands[:0]
@@ -748,6 +813,25 @@ func (m Model) reload() tea.Cmd {
 			finish(traceOutcome(out.triesErr))
 		}
 		return out
+	}
+}
+
+func (m Model) reloadReposOnly() tea.Cmd {
+	generation := m.viewLoad(ViewRepos).generation
+	ctx := m.viewContext(ViewRepos)
+	reloadRepos := m.actions.ReloadRepos
+	trace := m.trace
+	return func() tea.Msg {
+		if reloadRepos == nil {
+			err := errors.New("reloading local repositories is unavailable")
+			return reposMsg{generation: generation, err: err}
+		}
+		finish := trace.Start(perftrace.TUIProducerRepos, perftrace.Fields{
+			View: perftrace.ViewRepos, Generation: generation,
+		})
+		rows, err := reloadRepos(ctx)
+		finish(traceOutcome(err))
+		return reposMsg{rows: rows, generation: generation, valid: snapshotValid(rows, err), err: err}
 	}
 }
 
@@ -1609,8 +1693,140 @@ func (m Model) currentMCP() (agentmcp.Declaration, bool) {
 	return rows[m.at()], true
 }
 
+func remoteIdentityKey(kind forge.Kind, fullName string) string {
+	return string(kind) + "/" + strings.ToLower(strings.TrimSpace(fullName))
+}
+
+func remoteRowKey(row RemoteRow) string {
+	return string(row.Repo.Forge) + "/" + strings.TrimSpace(row.Repo.FullName)
+}
+
+func (m *Model) replaceRemotes(rows []RemoteRow) {
+	problems := map[string]string{}
+	for _, row := range m.remotes {
+		if row.CloneProblemPath == "" {
+			continue
+		}
+		if _, err := os.Lstat(row.CloneProblemPath); err == nil {
+			problems[remoteRowKey(row)] = row.CloneProblemPath
+		}
+	}
+	m.remotes = append([]RemoteRow(nil), rows...)
+	for i := range m.remotes {
+		if path := problems[remoteRowKey(m.remotes[i])]; path != "" {
+			m.remotes[i].CloneProblemPath = path
+		}
+	}
+}
+
+func (m *Model) setRemoteLocal(row RemoteRow, path, name string, kind catalog.Kind) {
+	m.remotes = append([]RemoteRow(nil), m.remotes...)
+	key := remoteRowKey(row)
+	for i := range m.remotes {
+		if remoteRowKey(m.remotes[i]) == key {
+			m.remotes[i].LocalPath = path
+			m.remotes[i].LocalName = name
+			m.remotes[i].LocalKind = kind
+			if path != "" {
+				m.remotes[i].CloneProblemPath = ""
+			}
+			return
+		}
+	}
+}
+
+func (m *Model) setRemoteCloneProblem(row RemoteRow, path string) {
+	m.remotes = append([]RemoteRow(nil), m.remotes...)
+	key := remoteRowKey(row)
+	for i := range m.remotes {
+		if remoteRowKey(m.remotes[i]) == key {
+			m.remotes[i].CloneProblemPath = path
+			return
+		}
+	}
+}
+
+func (m *Model) rememberUnconfirmedRemote(row RemoteRow, path, name string, kind catalog.Kind) {
+	marker := remoteLocalMarker{
+		key: remoteRowKey(row), matchKey: remoteIdentityKey(row.Repo.Forge, row.Repo.FullName),
+		path: path, name: name, kind: kind,
+	}
+	markers := append([]remoteLocalMarker(nil), m.unconfirmedRemotes...)
+	for i := range markers {
+		if markers[i].key == marker.key {
+			markers[i] = marker
+			m.unconfirmedRemotes = markers
+			return
+		}
+	}
+	m.unconfirmedRemotes = append(markers, marker)
+}
+
+func (m *Model) forgetUnconfirmedRemote(row RemoteRow) {
+	key := remoteRowKey(row)
+	markers := make([]remoteLocalMarker, 0, len(m.unconfirmedRemotes))
+	for _, marker := range m.unconfirmedRemotes {
+		if marker.key != key {
+			markers = append(markers, marker)
+		}
+	}
+	m.unconfirmedRemotes = markers
+}
+
+func (m *Model) acceptCompleteRepoSnapshot(err error) {
+	if err == nil {
+		m.unconfirmedRemotes = nil
+	}
+}
+
+func localCloneStillExists(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	_, err = os.Lstat(filepath.Join(path, ".git"))
+	return err == nil
+}
+
+func remoteMarkerConflictsWithRepos(marker remoteLocalMarker, rows []RepoRow) bool {
+	for _, row := range rows {
+		matchesPath := sameCheckoutPath(marker.path, row.Repo.Path) ||
+			row.Repo.RealPath != "" && sameCheckoutPath(marker.path, row.Repo.RealPath)
+		if matchesPath && (row.RemoteName == "" ||
+			remoteIdentityKey(row.RemoteForge, row.RemoteName) != marker.matchKey) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) applyUnconfirmedRemoteLocals(blocked map[string]bool) {
+	byKey := make(map[string]remoteLocalMarker, len(m.unconfirmedRemotes))
+	kept := make([]remoteLocalMarker, 0, len(m.unconfirmedRemotes))
+	for _, marker := range m.unconfirmedRemotes {
+		if !localCloneStillExists(marker.path) || remoteMarkerConflictsWithRepos(marker, m.repos) {
+			continue
+		}
+		kept = append(kept, marker)
+		byKey[marker.key] = marker
+	}
+	m.unconfirmedRemotes = kept
+	for i := range m.remotes {
+		key := remoteRowKey(m.remotes[i])
+		if m.remotes[i].Cloned() || blocked[key] {
+			continue
+		}
+		if marker, ok := byKey[key]; ok {
+			m.remotes[i].LocalPath = marker.path
+			m.remotes[i].LocalName = marker.name
+			m.remotes[i].LocalKind = marker.kind
+		}
+	}
+}
+
 // matchRemoteLocals fills cached remote rows from the freshly loaded local
-// inventory without another scan.
+// inventory without another scan. A just-cloned path survives an unrelated
+// partial local result only while its Git checkout still exists.
 func (m *Model) matchRemoteLocals() {
 	m.remotes = append([]RemoteRow(nil), m.remotes...)
 	byRemote := map[string]RepoRow{}
@@ -1619,7 +1835,7 @@ func (m *Model) matchRemoteLocals() {
 		if r.RemoteName == "" {
 			continue
 		}
-		key := string(r.RemoteForge) + "/" + strings.ToLower(r.RemoteName)
+		key := remoteIdentityKey(r.RemoteForge, r.RemoteName)
 		if ambiguous[key] {
 			continue
 		}
@@ -1644,8 +1860,9 @@ func (m *Model) matchRemoteLocals() {
 		}
 		triesByIdentity[identity] = row
 	}
+	blockedUnconfirmed := map[string]bool{}
 	for i := range m.remotes {
-		key := string(m.remotes[i].Repo.Forge) + "/" + strings.ToLower(m.remotes[i].Repo.FullName)
+		key := remoteIdentityKey(m.remotes[i].Repo.Forge, m.remotes[i].Repo.FullName)
 		identity := ""
 		for _, raw := range []string{m.remotes[i].Repo.CloneURL, m.remotes[i].Repo.SSHURL, m.remotes[i].Repo.URL} {
 			if identity = catalog.NormalizeRemoteIdentity(raw); identity != "" {
@@ -1656,6 +1873,7 @@ func (m *Model) matchRemoteLocals() {
 		try, tryOK := triesByIdentity[identity]
 		sameCheckout := repoOK && tryOK && remotePathsOverlap(repository, try)
 		if ambiguous[key] || ambiguousTry[identity] || (repoOK && tryOK && !sameCheckout) {
+			blockedUnconfirmed[remoteRowKey(m.remotes[i])] = true
 			m.remotes[i].LocalPath, m.remotes[i].LocalName, m.remotes[i].LocalKind = "", "", ""
 			continue
 		}
@@ -1663,6 +1881,7 @@ func (m *Model) matchRemoteLocals() {
 			m.remotes[i].LocalPath = repository.Repo.Path
 			m.remotes[i].LocalName = repository.Repo.Display()
 			m.remotes[i].LocalKind = catalog.KindRepository
+			m.remotes[i].CloneProblemPath = ""
 			if repository.Asset != nil {
 				m.remotes[i].LocalKind = repository.Asset.Kind
 			}
@@ -1672,10 +1891,17 @@ func (m *Model) matchRemoteLocals() {
 			m.remotes[i].LocalPath = try.Item.Live.CurrentPath
 			m.remotes[i].LocalName = try.Item.DisplayName()
 			m.remotes[i].LocalKind = catalog.KindTry
+			m.remotes[i].CloneProblemPath = ""
 			continue
 		}
 		m.remotes[i].LocalPath, m.remotes[i].LocalName, m.remotes[i].LocalKind = "", "", ""
+		if m.remotes[i].CloneProblemPath != "" {
+			if _, err := os.Lstat(m.remotes[i].CloneProblemPath); os.IsNotExist(err) {
+				m.remotes[i].CloneProblemPath = ""
+			}
+		}
 	}
+	m.applyUnconfirmedRemoteLocals(blockedUnconfirmed)
 }
 
 func remotePathsOverlap(repository RepoRow, try TryRow) bool {
@@ -1687,6 +1913,261 @@ func remotePathsOverlap(repository RepoRow, try TryRow) bool {
 		}
 	}
 	return false
+}
+
+func (m Model) remoteCloneStatus() string {
+	if m.remoteClone.canceling {
+		return "canceling " + m.remoteClone.target.Repo.FullName + "…"
+	}
+	switch m.remoteClone.phase {
+	case remoteCloneRunning:
+		return "cloning " + m.remoteClone.target.Repo.FullName + "…"
+	case remoteCloneRefreshing:
+		return "cloned " + m.remoteClone.target.Repo.FullName + "; refreshing local repositories…"
+	case remoteCloneOpening:
+		return "opening " + m.remoteClone.target.Repo.FullName + "…"
+	default:
+		return ""
+	}
+}
+
+func (m *Model) finishRemoteCloneState() tea.Cmd {
+	deferred := m.remoteClone.deferredOpen
+	m.remoteClone = remoteCloneState{}
+	if deferred.Directory != "" {
+		m.chosen, m.quitting = deferred.Directory, true
+		return tea.Quit
+	}
+	if deferred.RuntimeHandle != "" {
+		m.activate, m.quitting = deferred.RuntimeHandle, true
+		return tea.Quit
+	}
+	return nil
+}
+
+func (m Model) remoteCloneTargets(row RemoteRow) bool {
+	return m.remoteClone.active() && remoteRowKey(m.remoteClone.target) == remoteRowKey(row)
+}
+
+func (m Model) selectedRemoteKey() string {
+	rows := m.visibleRemotes()
+	if m.remoteCursor < 0 || m.remoteCursor >= len(rows) {
+		return ""
+	}
+	return remoteRowKey(rows[m.remoteCursor])
+}
+
+func (m *Model) selectRemoteKey(key string) {
+	for i, row := range m.visibleRemotes() {
+		if remoteRowKey(row) == key {
+			m.remoteCursor = i
+			return
+		}
+	}
+}
+
+func (m Model) reposReadyForClone() bool {
+	repos := m.viewLoad(ViewRepos)
+	tries := m.viewLoad(ViewTries)
+	reposReady := !repos.loading && repos.hasSnapshot && repos.actionable &&
+		repos.freshness == perftrace.FreshnessFresh && repos.outcome == perftrace.OutcomeSuccess
+	triesReady := !tries.requested || !tries.loading && tries.hasSnapshot && tries.actionable &&
+		tries.freshness == perftrace.FreshnessFresh && tries.outcome == perftrace.OutcomeSuccess
+	return m.configContext == nil && reposReady && triesReady
+}
+
+func (m Model) beginRemoteClone(openAfter bool) (tea.Model, tea.Cmd) {
+	if m.remoteClone.active() || !m.reposReadyForClone() {
+		return m, nil
+	}
+	row, ok := RemoteRow{}, false
+	promptKey := remoteRowKey(m.remoteClonePrompt)
+	for _, candidate := range m.remotes {
+		if m.remoteClonePrompt.Repo.FullName != "" && remoteRowKey(candidate) == promptKey {
+			row, ok = candidate, true
+			break
+		}
+	}
+	if !ok || row.Cloned() {
+		m.remoteClonePrompt = RemoteRow{}
+		m.mode = modeList
+		m.input.Blur()
+		if !ok {
+			m.err = errors.New("the selected remote changed; choose it again")
+		} else {
+			m.status = row.Repo.FullName + " is already available locally"
+		}
+		return m, nil
+	}
+	m.remoteClonePrompt = RemoteRow{}
+	m.mode = modeList
+	m.input.Blur()
+	m.err, m.status = nil, ""
+	m.remoteCloneSequence++
+	cloneContext, cancel := context.WithCancel(m.baseContext())
+	m.remoteClone = remoteCloneState{
+		requestID: m.remoteCloneSequence,
+		phase:     remoteCloneRunning,
+		target:    row,
+		openAfter: openAfter,
+		cancel:    cancel,
+	}
+	requestID := m.remoteClone.requestID
+	cloneRemote := m.actions.CloneRemote
+	clone := func() tea.Msg {
+		if cloneRemote == nil {
+			return remoteCloneMsg{requestID: requestID, err: errors.New("cloning remote repositories is unavailable")}
+		}
+		path, err := cloneRemote(cloneContext, row)
+		return remoteCloneMsg{requestID: requestID, path: path, err: err}
+	}
+	return m, tea.Batch(clone, m.remoteCloneSpinner.Tick)
+}
+
+func sameCheckoutPath(left, right string) bool {
+	left, right = filepath.Clean(left), filepath.Clean(right)
+	return left == right || runtime.GOOS == "windows" && strings.EqualFold(left, right)
+}
+
+func repoRowAtPath(rows []RepoRow, path string) (RepoRow, bool) {
+	for _, row := range rows {
+		for _, candidate := range []string{row.Repo.Path, row.Repo.RealPath} {
+			if candidate != "" && sameCheckoutPath(candidate, path) {
+				return row, true
+			}
+		}
+	}
+	return RepoRow{}, false
+}
+
+func (m *Model) openRemoteAfterClone(clone remoteCloneState, warning error) tea.Cmd {
+	m.remoteClone.phase = remoteCloneOpening
+	m.remoteClone.canceling = false
+	m.remoteClone.refreshErr = warning
+	target := clone.target
+	target.LocalPath = clone.path
+	if target.LocalName == "" {
+		target.LocalName = clone.target.Repo.Name
+	}
+	if target.LocalKind == "" {
+		target.LocalKind = catalog.KindRepository
+	}
+	requestID := clone.requestID
+	openContext, cancel := context.WithCancel(m.baseContext())
+	m.remoteClone.cancel = cancel
+	openRemote := m.actions.OpenRemote
+	return func() tea.Msg {
+		if openRemote == nil {
+			return remoteCloneOpenMsg{requestID: requestID, err: errors.New("opening remote repositories is unavailable")}
+		}
+		result, err := openRemote(openContext, target)
+		return remoteCloneOpenMsg{requestID: requestID, result: result, err: err}
+	}
+}
+
+func (m *Model) finishRemoteCloneStream(request LocalLoadRequest) {
+	if m.remoteClone.phase != remoteCloneRefreshing || request.ReposGeneration < m.remoteClone.minReposGeneration {
+		return
+	}
+	clone := m.remoteClone
+	if clone.canceling {
+		m.err = fmt.Errorf("cancel post-clone repository refresh for %s: result stream closed", clone.target.Repo.FullName)
+	} else {
+		m.err = fmt.Errorf("cloned %s to %s, but local repository refresh completed without a REPOS result",
+			clone.target.Repo.FullName, config.Contract(clone.path))
+	}
+	m.remoteClone = remoteCloneState{}
+}
+
+func (m *Model) finishRemoteCloneRefresh(generation uint64, valid bool, refreshErr error) tea.Cmd {
+	clone := m.remoteClone
+	if clone.phase != remoteCloneRefreshing || generation < clone.minReposGeneration {
+		return nil
+	}
+	if clone.canceling {
+		if refreshErr == nil {
+			refreshErr = errors.New("canceled")
+		}
+		m.err = fmt.Errorf("cancel post-clone repository refresh for %s: %w",
+			clone.target.Repo.FullName, refreshErr)
+		m.remoteClone = remoteCloneState{}
+		return nil
+	}
+	if !valid {
+		if refreshErr == nil {
+			refreshErr = errors.New("local repository refresh returned no usable snapshot")
+		}
+		warning := fmt.Errorf("cloned %s to %s, but could not refresh local repositories: %w",
+			clone.target.Repo.FullName, config.Contract(clone.path), refreshErr)
+		m.setRemoteLocal(clone.target, clone.path, clone.target.Repo.Name, catalog.KindRepository)
+		if clone.openAfter {
+			return m.openRemoteAfterClone(clone, warning)
+		}
+		m.err = warning
+		m.remoteClone = remoteCloneState{}
+		return nil
+	}
+
+	discovered, ok := repoRowAtPath(m.repos, clone.path)
+	if !ok {
+		if !localCloneStillExists(clone.path) {
+			m.remoteClone = remoteCloneState{}
+			m.setRemoteLocal(clone.target, "", "", "")
+			m.err = fmt.Errorf("cloned checkout disappeared before local discovery completed: %s", config.Contract(clone.path))
+			return nil
+		}
+		m.rememberUnconfirmedRemote(clone.target, clone.path, clone.target.Repo.Name, catalog.KindRepository)
+		m.setRemoteLocal(clone.target, clone.path, clone.target.Repo.Name, catalog.KindRepository)
+		var warning error
+		if refreshErr != nil {
+			warning = fmt.Errorf("cloned %s to %s, but local discovery did not find it after a partial refresh: %w",
+				clone.target.Repo.FullName, config.Contract(clone.path), refreshErr)
+		} else {
+			warning = fmt.Errorf("cloned %s to %s, but local discovery did not find it; add paths.project_root to paths.scan_roots or add the clone to paths.repo_paths",
+				clone.target.Repo.FullName, config.Contract(clone.path))
+		}
+		if clone.openAfter {
+			return m.openRemoteAfterClone(clone, warning)
+		}
+		m.err = warning
+		m.remoteClone = remoteCloneState{}
+		return nil
+	}
+	matchedRemote := false
+	for _, row := range m.remotes {
+		if remoteRowKey(row) == remoteRowKey(clone.target) && row.LocalPath != "" &&
+			sameCheckoutPath(row.LocalPath, discovered.Repo.Path) {
+			matchedRemote = true
+			break
+		}
+	}
+	if !matchedRemote {
+		m.setRemoteCloneProblem(clone.target, clone.path)
+		warning := fmt.Errorf("cloned %s to %s, but local discovery could not match that checkout uniquely to the remote",
+			clone.target.Repo.FullName, config.Contract(clone.path))
+		if clone.openAfter {
+			return m.openRemoteAfterClone(clone, warning)
+		}
+		m.err = warning
+		m.remoteClone = remoteCloneState{}
+		return nil
+	}
+
+	kind := catalog.KindRepository
+	if discovered.Asset != nil && discovered.Asset.Kind != "" {
+		kind = discovered.Asset.Kind
+	}
+	m.forgetUnconfirmedRemote(clone.target)
+	if !clone.openAfter {
+		m.err = nil
+		m.status = "cloned " + clone.target.Repo.FullName + " to " + config.Contract(discovered.Repo.Path)
+		return m.finishRemoteCloneState()
+	}
+
+	clone.path = discovered.Repo.Path
+	clone.target.LocalName = discovered.Repo.Display()
+	clone.target.LocalKind = kind
+	return m.openRemoteAfterClone(clone, nil)
 }
 
 // currentDir is the checkout the selected row points at, for the external
@@ -1719,6 +2200,97 @@ func (m Model) currentDir() string {
 // Update implements tea.Model.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case spinner.TickMsg:
+		if !m.remoteClone.active() {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.remoteCloneSpinner, cmd = m.remoteCloneSpinner.Update(msg)
+		return m, cmd
+
+	case remoteCloneMsg:
+		if m.remoteClone.phase != remoteCloneRunning || msg.requestID != m.remoteClone.requestID {
+			return m, nil
+		}
+		clone := m.remoteClone
+		if clone.cancel != nil {
+			clone.cancel()
+		}
+		if msg.err != nil {
+			if strings.TrimSpace(msg.path) != "" {
+				m.setRemoteCloneProblem(clone.target, filepath.Clean(msg.path))
+			}
+			if clone.canceling {
+				m.err = fmt.Errorf("cancel clone %s: %w", clone.target.Repo.FullName, msg.err)
+			} else {
+				m.err = fmt.Errorf("clone %s: %w", clone.target.Repo.FullName, msg.err)
+			}
+			m.remoteClone = remoteCloneState{}
+			return m, nil
+		}
+		if strings.TrimSpace(msg.path) == "" {
+			m.err = fmt.Errorf("clone %s returned no local path", clone.target.Repo.FullName)
+			m.remoteClone = remoteCloneState{}
+			return m, nil
+		}
+		m.remoteClone.path = filepath.Clean(msg.path)
+		m.remoteClone.phase = remoteCloneRefreshing
+		m.remoteClone.openAfter = m.remoteClone.openAfter && !clone.canceling
+		selectedRemote := m.selectedRemoteKey()
+		m.rememberUnconfirmedRemote(clone.target, m.remoteClone.path, clone.target.Repo.Name, catalog.KindRepository)
+		m.setRemoteLocal(clone.target, m.remoteClone.path, clone.target.Repo.Name, catalog.KindRepository)
+		m.selectRemoteKey(selectedRemote)
+		reposGeneration := m.beginViewLoad(ViewRepos, loadAction)
+		m.remoteClone.canceling = false
+		m.remoteClone.minReposGeneration = reposGeneration
+		return m, m.reloadReposOnly()
+
+	case remoteCloneOpenMsg:
+		if m.remoteClone.phase != remoteCloneOpening || msg.requestID != m.remoteClone.requestID {
+			return m, nil
+		}
+		clone := m.remoteClone
+		if clone.cancel != nil {
+			clone.cancel()
+		}
+		if clone.canceling {
+			m.remoteClone = remoteCloneState{}
+			if msg.err != nil {
+				m.err = errors.Join(clone.refreshErr,
+					fmt.Errorf("cancel opening %s: %w", clone.target.Repo.FullName, msg.err))
+			} else {
+				m.err = clone.refreshErr
+				m.status = "open completed before cancellation; stayed in the dashboard"
+				if msg.result.Status != "" {
+					m.status += " — " + msg.result.Status
+				}
+			}
+			return m, nil
+		}
+		if msg.err != nil {
+			openErr := fmt.Errorf("cloned %s to %s, but could not open it: %w",
+				clone.target.Repo.FullName, config.Contract(clone.path), msg.err)
+			m.err = errors.Join(clone.refreshErr, openErr)
+			m.remoteClone = remoteCloneState{}
+			return m, nil
+		}
+		m.err = clone.refreshErr
+		m.status = msg.result.Status
+		if m.status == "" {
+			m.status = "cloned " + clone.target.Repo.FullName + " to " + config.Contract(clone.path)
+		}
+		if msg.result.Directory != "" {
+			m.remoteClone = remoteCloneState{}
+			m.chosen, m.quitting = msg.result.Directory, true
+			return m, tea.Quit
+		}
+		if msg.result.RuntimeHandle != "" {
+			m.remoteClone = remoteCloneState{}
+			m.activate, m.quitting = msg.result.RuntimeHandle, true
+			return m, tea.Quit
+		}
+		return m, m.finishRemoteCloneState()
+
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
@@ -1731,6 +2303,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.finishLocalLoad()
+			m.finishRemoteCloneStream(request)
 			m.forceSizeReload = false
 			return m.beginSizeLoad(request.ForceSizes)
 		}
@@ -1738,11 +2311,33 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m, accepted = m.applyLocalResult(msg.result)
 		next := waitForLocal(msg.load)
 		if accepted && msg.result.View == ViewRepos {
-			if fleet := m.afterReposResult(msg.result.Valid, msg.result.Err); fleet != nil {
-				return m, tea.Batch(next, fleet)
-			}
+			clone := m.finishRemoteCloneRefresh(msg.result.Generation, msg.result.Valid, msg.result.Err)
+			fleet := m.afterReposResult(msg.result.Valid, msg.result.Err)
+			return m, batchCommands(next, clone, fleet)
 		}
 		return m, next
+
+	case reposMsg:
+		accepted := m.applyViewResult(
+			ViewRepos, msg.generation, msg.valid, perftrace.SourceLive,
+			resultFreshness(msg.err), len(msg.rows), msg.err, msg.valid,
+		)
+		if !accepted {
+			return m, nil
+		}
+		if msg.valid {
+			m.acceptCompleteRepoSnapshot(msg.err)
+			m.repos = append([]RepoRow(nil), msg.rows...)
+			m.matchRemoteLocals()
+		}
+		m.setAt(m.at())
+		var sizeCmd tea.Cmd
+		if msg.valid {
+			m, sizeCmd = m.beginSizeLoad(false)
+		}
+		cloneCmd := m.finishRemoteCloneRefresh(msg.generation, msg.valid, msg.err)
+		fleetCmd := m.afterReposResult(msg.valid, msg.err)
+		return m, batchCommands(sizeCmd, cloneCmd, fleetCmd)
 
 	case reloadMsg:
 		acceptedLocal := false
@@ -1761,6 +2356,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			resultFreshness(msg.reposErr), len(msg.repos), msg.reposErr, msg.reposValid,
 		) {
 			if msg.reposValid {
+				m.acceptCompleteRepoSnapshot(msg.reposErr)
 				m.repos = append([]RepoRow(nil), msg.repos...)
 				m.matchRemoteLocals()
 			}
@@ -1781,19 +2377,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			ViewRemote, msg.remoteGeneration, msg.remoteValid, perftrace.SourceLive,
 			resultFreshness(msg.remoteErr), len(msg.remotes), msg.remoteErr, msg.remoteValid,
 		) && msg.remoteValid {
-			m.remotes = append([]RemoteRow(nil), msg.remotes...)
+			m.replaceRemotes(msg.remotes)
+			m.matchRemoteLocals()
 		}
 		if acceptedLocal {
 			m.forceSizeReload = false
 		}
 		m.setAt(m.at())
 		m, sizeCmd := m.beginSizeLoad(msg.forceSizes)
+		var cloneCmd, fleetCmd tea.Cmd
 		if reposAccepted {
-			if fleetCmd := m.afterReposResult(msg.reposValid, msg.reposErr); fleetCmd != nil {
-				return m, tea.Batch(sizeCmd, fleetCmd)
-			}
+			cloneCmd = m.finishRemoteCloneRefresh(msg.reposGeneration, msg.reposValid, msg.reposErr)
+			fleetCmd = m.afterReposResult(msg.reposValid, msg.reposErr)
 		}
-		return m, sizeCmd
+		return m, batchCommands(sizeCmd, cloneCmd, fleetCmd)
 
 	case sizeMsg:
 		if msg.loadID == 0 || msg.loadID != m.sizeLoad.ID {
@@ -1815,7 +2412,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			freshness = perftrace.FreshnessStale
 		}
 		if m.applyCacheSeed(ViewRemote, msg.generation, len(msg.result.Rows), freshness) {
-			m.remotes = append([]RemoteRow(nil), msg.result.Rows...)
+			m.replaceRemotes(msg.result.Rows)
 			m.matchRemoteLocals()
 		}
 		return m, nil
@@ -1837,7 +2434,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if msg.valid {
-			m.remotes = append([]RemoteRow(nil), msg.rows...)
+			m.replaceRemotes(msg.rows)
 			if msg.matchLocals {
 				m.matchRemoteLocals()
 			}
@@ -2020,6 +2617,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			resultFreshness(msg.reposErr), len(msg.repos), msg.reposErr, msg.reposValid,
 		) {
 			if msg.reposValid {
+				m.acceptCompleteRepoSnapshot(msg.reposErr)
 				m.repos = append([]RepoRow(nil), msg.repos...)
 				m.matchRemoteLocals()
 			}
@@ -2031,14 +2629,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if accepted {
 			m, sizeCmd = m.beginSizeLoad(false)
 		}
+		var cloneCmd, fleetCmd tea.Cmd
 		if reposAccepted {
-			if fleetCmd := m.afterReposResult(msg.reposValid, msg.reposErr); fleetCmd != nil {
-				return m, tea.Batch(sizeCmd, fleetCmd)
-			}
+			cloneCmd = m.finishRemoteCloneRefresh(msg.reposGeneration, msg.reposValid, msg.reposErr)
+			fleetCmd = m.afterReposResult(msg.reposValid, msg.reposErr)
 		}
-		return m, sizeCmd
+		return m, batchCommands(sizeCmd, cloneCmd, fleetCmd)
 
 	case tryActionMsg:
+		if m.remoteClone.active() {
+			if msg.result.CD != "" || msg.result.RuntimeHandle != "" {
+				m.remoteClone.deferredOpen = OpenResult{
+					Status: msg.result.Status, Directory: msg.result.CD, RuntimeHandle: msg.result.RuntimeHandle,
+				}
+			}
+			msg.result.CD, msg.result.RuntimeHandle = "", ""
+		}
 		if msg.err != nil {
 			m.err, m.status = msg.err, ""
 			if msg.result.RefreshRepos {
@@ -2060,22 +2666,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.reloadTries(msg.result.RefreshRepos)
 
 	case noteListMsg:
-		var fleetCmd, sizeCmd tea.Cmd
+		var cloneCmd, fleetCmd, sizeCmd tea.Cmd
 		if msg.reposSet {
 			accepted := m.applyViewResult(
 				ViewRepos, msg.reposGeneration, msg.reposValid, perftrace.SourceLive,
 				resultFreshness(msg.reposErr), len(msg.repos), msg.reposErr, msg.reposValid,
 			)
 			if accepted && msg.reposValid {
+				m.acceptCompleteRepoSnapshot(msg.reposErr)
 				m.repos = append([]RepoRow(nil), msg.repos...)
 				m.matchRemoteLocals()
 			}
 			if accepted {
 				m, sizeCmd = m.beginSizeLoad(false)
+				cloneCmd = m.finishRemoteCloneRefresh(msg.reposGeneration, msg.reposValid, msg.reposErr)
 				fleetCmd = m.afterReposResult(msg.reposValid, msg.reposErr)
 			}
 		}
-		followup := batchCommands(sizeCmd, fleetCmd)
+		followup := batchCommands(sizeCmd, cloneCmd, fleetCmd)
 		if msg.request != m.noteRequest || msg.targetKey != m.noteTarget.Key() || !m.noteMode() {
 			return m, followup // note overlay moved; independent REPOS result is still resolved
 		}
@@ -2103,21 +2711,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.reload()
 
 	case actionMsg:
+		if m.remoteClone.active() && (msg.cd != "" || msg.activate != "") {
+			// A command launched before cloning must not tear down the TUI while
+			// the clone mutation is in flight. Preserve its completed handoff and
+			// apply it as soon as the clone reaches a terminal state.
+			m.remoteClone.deferredOpen = OpenResult{
+				Status: msg.status, Directory: msg.cd, RuntimeHandle: msg.activate,
+			}
+			return m, nil
+		}
 		if msg.err != nil {
 			m.err = msg.err
 			return m, nil
 		}
 		m.err, m.status = nil, msg.status
 		m.forceSizeReload = msg.forceSizes
-		if msg.remoteName != "" && msg.localPath != "" {
-			m.remotes = append([]RemoteRow(nil), m.remotes...)
-			for i := range m.remotes {
-				if m.remotes[i].Repo.FullName == msg.remoteName {
-					m.remotes[i].LocalPath = msg.localPath
-					break
-				}
-			}
-		}
 		if msg.cd != "" {
 			// Under a runtime with no sessions the only useful outcome is
 			// putting the user in the directory, which needs the alternate
@@ -2129,9 +2737,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.activate, m.quitting = msg.activate, true
 			return m, tea.Quit
 		}
-		// Clone already updated the selected REMOTE row; only local data
-		// needs a refresh. A network round-trip here would make a successful
-		// clone feel hung for several seconds.
+		// Mutations that keep the dashboard open refresh local data only.
+		// Network-backed views remain explicit actions.
 		m.beginLocalLoads(loadAction)
 		return m, m.reload()
 
@@ -2148,6 +2755,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.trace.MarkOnce(perftrace.TUIFirstKeyReceived, fields)
 		finish := m.trace.Start(perftrace.TUIKeyUpdate, fields)
 		defer finish(perftrace.OutcomeSuccess)
+		if m.remoteClone.active() && (msg.String() == "q" || msg.String() == "ctrl+c") {
+			if !m.remoteClone.canceling {
+				m.remoteClone.canceling = true
+				if m.remoteClone.cancel != nil {
+					m.remoteClone.cancel()
+				}
+			}
+			return m, nil
+		}
 		if m.mode == modeNoteBrowse || m.mode == modeNoteAdd ||
 			m.mode == modeNoteSearch || m.mode == modeNoteConfirmDelete {
 			return m.updateNotes(msg)
@@ -2177,6 +2793,30 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	page := m.listHeight() / 2
 	if page < 1 {
 		page = 1
+	}
+
+	if m.remoteClone.active() {
+		if msg.String() == "q" || msg.String() == "ctrl+c" {
+			if !m.remoteClone.canceling {
+				m.remoteClone.canceling = true
+				if m.remoteClone.cancel != nil {
+					m.remoteClone.cancel()
+				}
+			}
+			return m, nil
+		}
+		switch msg.String() {
+		case "j", "down", "ctrl+n", "k", "up", "ctrl+p",
+			"ctrl+d", "pgdown", "ctrl+u", "pgup", "g", "home", "G", "end",
+			"tab", "l", "right", "shift+tab", "h", "left", "/", "0":
+			// Navigation and filtering remain available while the mutation runs.
+		case "esc":
+			if m.filter == "" && len(m.states) == 0 {
+				return m, nil
+			}
+		default:
+			return m, nil
+		}
 	}
 
 	switch msg.String() {
@@ -2398,8 +3038,20 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.prompt(modeEditNext, row.Task.Next, "next action")
 		}
 		if row, ok := m.currentRemote(); ok && !row.Cloned() {
+			if row.CloneProblemPath != "" {
+				if _, err := os.Lstat(row.CloneProblemPath); err == nil {
+					m.err = fmt.Errorf("inspect or move the existing clone destination at %s before retrying", config.Contract(row.CloneProblemPath))
+					return m, nil
+				}
+				m.setRemoteCloneProblem(row, "")
+			}
+			if !m.reposReadyForClone() {
+				m.setViewStatus(ViewRemote, "wait for local repositories to finish loading")
+				return m, nil
+			}
+			m.remoteClonePrompt = row
 			return m.prompt(modeConfirmClone, row.Repo.FullName,
-				"enter to clone; esc to cancel")
+				"enter clone; o clone and open; esc cancel")
 		}
 		return m, nil
 
@@ -3040,6 +3692,21 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updatePrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.mode == modeConfirmClone {
+		switch msg.String() {
+		case "esc":
+			m.remoteClonePrompt = RemoteRow{}
+			m.mode = modeList
+			m.input.Blur()
+			return m, nil
+		case "enter":
+			return m.beginRemoteClone(false)
+		case "o":
+			return m.beginRemoteClone(true)
+		default:
+			return m, nil
+		}
+	}
 	switch msg.String() {
 	case "esc":
 		m.mode = modeList
@@ -3107,19 +3774,6 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 		return func() tea.Msg {
 			status, err := m.actions.StartDirect(context.Background(), r, value)
 			return actionMsg{status: status, err: err}
-		}
-
-	case modeConfirmClone:
-		r, ok := m.currentRemote()
-		if !ok {
-			return nil
-		}
-		return func() tea.Msg {
-			opened, path, err := m.actions.CloneRemote(context.Background(), r)
-			return actionMsg{
-				status: opened.Status, cd: opened.Directory, activate: opened.RuntimeHandle,
-				remoteName: r.Repo.FullName, localPath: path, err: err,
-			}
 		}
 
 	case modeConfirmSkillUpdate:

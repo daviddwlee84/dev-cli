@@ -146,19 +146,23 @@ repository mutation. The built-in presets are:
 
 - `minimal`: `main`, README, and an initial commit; this preserves existing
   scripted `repo new NAME` behavior.
-- `agent-ready`: extends `minimal` with common ignores, starter `AGENTS.md`,
-  and project-scoped `.claude/settings.json` plus `.claude/plans/`.
-  `agent-history-hygiene` and `project-knowledge-harness` are offered but are
-  not selected silently. When selected, dev installs them and runs reviewed
-  built-in initializers for their project surfaces before the initial commit;
-  downloaded skill scripts are not executed for these built-ins. Matching
-  skills with the same source and identical agent targets share one installer
-  invocation, while their setup phases still run per skill. The history
-  initializer creates `.pre-commit-config.yaml` and `.gitleaks.toml`, then
-  ensures `.specstory/.gitignore` contains rules for SpecStory's `.project.json`
-  and `statistics.json`, never the trackable `.specstory/history/` directory.
-  Existing custom ignore content and its mode are preserved; only missing
-  managed rules are appended.
+- `agent-ready`: extends `minimal` with common ignores, an explicitly incomplete
+  starter `AGENTS.md`, and project-scoped `.claude/settings.json` plus
+  `.claude/plans/`. The starter supplies safe repository-wide and handoff rules,
+  but leaves unknown purpose, verified commands, architecture, and invariants as
+  TODOs rather than inventing facts. The common ignore block excludes only
+  `.specstory/statistics.json`; histories, project identity, and config remain
+  visible to Git. `agent-history-hygiene` and `project-knowledge-harness` are
+  offered but are not selected silently. When selected, dev installs them and
+  runs reviewed built-in initializers for their project surfaces before the
+  initial commit; downloaded skill scripts are not executed for these built-ins.
+  Matching skills with the same source and identical agent targets share one
+  installer invocation, while their setup phases still run per skill. The
+  history initializer creates `.pre-commit-config.yaml` and `.gitleaks.toml`,
+  then additionally ensures `.specstory/.gitignore` contains rules for
+  SpecStory's `.project.json` and `statistics.json`, never the trackable
+  `.specstory/history/` directory. Existing custom ignore content and its mode
+  are preserved; only missing managed rules are appended.
 
 After preset selection, the new-repository wizard asks “Customize preset and
 template options?” with a default of no. The ordinary `agent-ready` flow uses

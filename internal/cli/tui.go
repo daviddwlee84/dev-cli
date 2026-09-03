@@ -190,14 +190,42 @@ func tuiStartedTask(r tui.RepoRow, name, branch, base string, res *wt.CreateResu
 
 func tuiRemoteCloneDestination(app *App, name string) (string, error) {
 	projectRoot := config.Expand(app.Cfg.Paths.ProjectRoot)
-	if err := os.MkdirAll(projectRoot, 0o755); err != nil {
-		return "", err
-	}
 	destination, err := pathx.JoinChild(projectRoot, name)
 	if err != nil {
 		return "", fmt.Errorf("remote repository name %q is not a safe clone destination: %w", name, err)
 	}
 	return destination, nil
+}
+
+func cloneRemoteFromTUI(ctx context.Context, app *App, row tui.RemoteRow) (string, error) {
+	destination, err := tuiRemoteCloneDestination(app, row.Repo.Name)
+	if err != nil {
+		return "", err
+	}
+	discoverable, err := repositoryPathDiscoverable(app.Cfg, destination)
+	if err != nil {
+		return "", fmt.Errorf("verify REMOTE clone destination %s: %w", config.Contract(destination), err)
+	}
+	if !discoverable {
+		return "", fmt.Errorf("%s is outside paths.scan_roots/repo_paths; add paths.project_root to scan_roots before cloning from REMOTE",
+			config.Contract(destination))
+	}
+	if _, err := os.Lstat(destination); err == nil {
+		return destination, fmt.Errorf("%s already exists; add it to scan_roots/repo_paths or move it before cloning", config.Contract(destination))
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", fmt.Errorf("inspect clone destination %s: %w", config.Contract(destination), err)
+	}
+	acquired, err := repo.Acquire(ctx, repo.AcquireRequest{
+		Kind: repo.AcquireClone, Name: row.Repo.Name,
+		CloneRef: row.Repo.CloneURL, Destination: destination,
+	})
+	if err != nil {
+		if _, statErr := os.Lstat(destination); statErr == nil {
+			return destination, fmt.Errorf("%w; inspect the destination now present at %s before retrying", err, config.Contract(destination))
+		}
+		return "", err
+	}
+	return acquired.Path, nil
 }
 
 func startDirectFromTUI(ctx context.Context, app *App, rt runtime.Runtime, row tui.RepoRow, name string) (string, error) {
@@ -542,28 +570,8 @@ func runTUI(app *App) error {
 			return exec.CommandContext(ctx, executable, args...), nil
 		},
 
-		CloneRemote: func(ctx context.Context, r tui.RemoteRow) (tui.OpenResult, string, error) {
-			dest, err := tuiRemoteCloneDestination(appState.Current(), r.Repo.Name)
-			if err != nil {
-				return tui.OpenResult{}, "", err
-			}
-			if _, err := os.Stat(dest); err == nil {
-				return tui.OpenResult{}, "", fmt.Errorf("%s already exists; add it to scan_roots or clone somewhere explicit",
-					config.Contract(dest))
-			}
-			if _, err := gitx.Run(ctx, filepath.Dir(dest), "clone", r.Repo.CloneURL, dest); err != nil {
-				return tui.OpenResult{}, "", err
-			}
-			opened, err := openResolved(ctx, dest, r.Repo.Name, r.Repo.FullName)
-			if err != nil {
-				return tui.OpenResult{}, "", fmt.Errorf("cloned to %s, but could not open it: %w", config.Contract(dest), err)
-			}
-			if opened.Directory != "" {
-				opened.Status = "cloned " + r.Repo.FullName + " to " + config.Contract(dest)
-			} else {
-				opened.Status = fmt.Sprintf("cloned %s to %s; %s", r.Repo.FullName, config.Contract(dest), opened.Status)
-			}
-			return opened, dest, nil
+		CloneRemote: func(ctx context.Context, r tui.RemoteRow) (string, error) {
+			return cloneRemoteFromTUI(ctx, appState.Current(), r)
 		},
 
 		Park: func(ctx context.Context, selected *task.Task, next string) (string, error) {

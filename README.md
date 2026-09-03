@@ -327,19 +327,26 @@ a compatibility spelling for `--check-in=commit`. If the lazygit draft cannot
 be written, dev reports a warning but keeps the successfully staged index for
 manual review and commit.
 
-The built-in `agent-ready` preset adds a starter `AGENTS.md`, a common
-`.gitignore` section, and project-scoped Claude plans. If selected, the optional
-`agent-history-hygiene` and `project-knowledge-harness` skills are installed and
-dev's reviewed built-in initializers create the pre-commit/gitleaks and
-TODO/backlog/pitfalls surfaces during bootstrap; setup does not wait for a later
-agent to happen to trigger the skill. The history initializer also ensures
-`.specstory/.gitignore` contains rules for SpecStory's machine-local
-`.project.json` and generated `statistics.json`—not `.specstory/history/`, which
-remains part of the review trail. Existing custom ignore content and file mode
-are preserved; only missing managed rules are appended. Skills with the same
-source and identical agent targets are sent to the installer together, while
-each skill's declared setup still runs in its own phase. Presets may also declare
-typed inputs, repository-contained file templates, and ordered
+The built-in `agent-ready` preset adds an explicitly incomplete starter
+`AGENTS.md`, a common `.gitignore` section, and project-scoped Claude plans. The
+starter establishes safe repository-wide and handoff rules, but labels unknown
+purpose, commands, architecture, and invariants as TODOs instead of inventing
+project facts. Its common ignore block excludes only SpecStory's derived
+`.specstory/statistics.json`; histories, project identity, and config remain
+visible to Git.
+
+If selected, the optional `agent-history-hygiene` and
+`project-knowledge-harness` skills are installed and dev's reviewed built-in
+initializers create the pre-commit/gitleaks and TODO/backlog/pitfalls surfaces
+during bootstrap; setup does not wait for a later agent to happen to trigger the
+skill. The history initializer also ensures `.specstory/.gitignore` contains
+rules for SpecStory's machine-local `.project.json` and generated
+`statistics.json`—not `.specstory/history/`, which remains part of the review
+trail. Existing custom ignore content and file mode are preserved; only missing
+managed rules are appended. Skills with the same source and identical agent
+targets are sent to the installer together, while each skill's declared setup
+still runs in its own phase. Presets may also declare typed inputs,
+repository-contained file templates, and ordered
 `before_commit`/`after_commit`/`after_remote` hooks.
 
 When `gh` or `glab` is installed and authenticated, the wizard can create a
@@ -706,13 +713,22 @@ silently select another authenticated host. A successful empty provider inventor
 rows instead of resurrecting them later. `r` forces a
 refresh of all configured forge providers.
 `/` searches provider, owner/name, visibility and description; `vis:private`
-is an exact visibility filter. Enter opens a local clone,
-and `c` confirms before cloning an absent repo into `project_root`. The same
-inventory is available without the full-screen UI via `dev repo remote [query]`;
-`--cached` is its instant/offline form. That JSON contract also powers the
-optional Television channel and fzf shell helper under [`contrib/`](contrib/README.md):
-run `dev repo remote --refresh` once, then compose a selected exact clone URL
-with `dev repo clone` without teaching another command about forge freshness.
+is an exact visibility filter. Enter opens an existing local clone. For an
+absent repo, `c` opens a confirmation where `enter` clones and stays in the
+dashboard while `o` clones and opens it. REMOTE rejects a `project_root` outside
+the configured REPOS discovery depth/roots before mutation. The row and status
+spinner remain pending through Git clone and the generation-guarded local REPOS
+refresh; `q`/Ctrl-C requests cancellation without abandoning the in-flight
+result, and the refresh does not contact the forge. Once accepted, REMOTE marks
+the checkout as `repo` and REPOS can search it immediately. If Git fails after creating the
+destination, REMOTE labels the exact path `inspect` and requires inspection or
+a move before retrying; it never deletes that directory automatically. The same
+inventory is available without the full-screen UI via
+`dev repo remote [query]`; `--cached` is its instant/offline form. That JSON
+contract also powers the optional Television channel and fzf shell helper under
+[`contrib/`](contrib/README.md): run `dev repo remote --refresh` once, then
+compose a selected exact clone URL with `dev repo clone` without teaching
+another command about forge freshness.
 
 SKILLS also loads lazily. Native reads use the versioned `skills@1.5.23`
 77-agent path registry and lock files; they never start Node, `skills`, or `npx`.

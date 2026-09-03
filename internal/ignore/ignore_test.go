@@ -134,7 +134,11 @@ func TestComposeAgentArtifactPolicy(t *testing.T) {
 		{name: "local settings", pattern: ".claude/settings.local.json", want: true},
 		{name: "aider state", pattern: ".aider*", want: true},
 		{name: "generated cursor rules", pattern: ".cursor/rules/_generated/", want: true},
+		{name: "specstory statistics", pattern: ".specstory/statistics.json", want: true},
+		{name: "specstory root", pattern: ".specstory/", want: false},
 		{name: "specstory histories", pattern: ".specstory/history/", want: false},
+		{name: "specstory project identity", pattern: ".specstory/.project.json", want: false},
+		{name: "specstory config", pattern: ".specstory/cli/", want: false},
 		{name: "claude plans", pattern: ".claude/plans/", want: false},
 		{name: "cursor plans", pattern: ".cursor/plans/", want: false},
 		{name: "opencode plans", pattern: ".opencode/plans/", want: false},
@@ -153,7 +157,7 @@ func TestComposeAgentArtifactPolicy(t *testing.T) {
 
 func TestComposeRespectsDisabledExtras(t *testing.T) {
 	block := ignore.Compose(nil, ignore.Extras{OS: true})
-	if strings.Contains(block, ".claude/worktrees/") {
+	if strings.Contains(block, ".claude/worktrees/") || strings.Contains(block, ".specstory/statistics.json") {
 		t.Error("agents section should be omitted")
 	}
 	if strings.Contains(block, ".env\n") {
