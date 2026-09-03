@@ -571,14 +571,20 @@ func assignHarnessEvidence(out *RepoContext) {
 	}
 }
 
-// IsEphemeralWorktree is the legacy broad display heuristic. Its branch-prefix
-// compatibility is retained for existing adopters, but authoritative topology
-// uses DetectClaudeHarnessWorktree: a worktree-* branch alone is not ownership
-// evidence.
-func IsEphemeralWorktree(path, branch string) bool {
+// LooksEphemeralWorktree recognizes a path or branch convention commonly used
+// by turn-scoped agent isolation. It is a display and candidate-discovery hint
+// only; cleanup must independently verify provider ownership and every safety
+// fact.
+func LooksEphemeralWorktree(path, branch string) bool {
 	slashPath := filepath.ToSlash(path)
 	return strings.Contains(slashPath, "/.claude/worktrees/") ||
 		strings.HasPrefix(branch, "worktree-")
+}
+
+// IsEphemeralWorktree is retained for source compatibility. Callers must treat
+// its result with the same hint-only semantics as LooksEphemeralWorktree.
+func IsEphemeralWorktree(path, branch string) bool {
+	return LooksEphemeralWorktree(path, branch)
 }
 
 func linkedAdminCount(commonDir string) int {

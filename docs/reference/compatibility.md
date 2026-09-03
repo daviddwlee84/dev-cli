@@ -3,7 +3,7 @@ description: Record dev-cli dependencies, upstream preview status, documentation
 authority: project-and-upstream
 status: evolving
 verified_on: 2026-09-03
-tested_with: Claude Code 2.1.250
+tested_with: Claude Code 2.1.259
 ---
 
 # Compatibility and known limitations
@@ -37,6 +37,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX targets remain available; Windows-specific installer/launcher fails without PowerShell rather than using a shell fallback |
 | terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
 | in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` delegates to the package manager's upgrade command instead |
+| verified ephemeral worktree apply | Git, compatible bounded Claude Workflow metadata, known task/artifact state, and every available runtime inventory | report remains available, but missing/unknown proof is never apply-eligible |
 
 ## Confirmed project limitations
 
@@ -61,6 +62,39 @@ turn it into DONE. Current `dev sweep` does not query the forge either. Verify
 integration with exact local ancestry and finish deliberately.
 
 `dev pr list --scope local --state merged` now reports which requests the forge considers merged, and which local checkout each belongs to. `dev sweep` still does not consult it, and that is deliberate: a squashed merge produces a commit that is not an ancestor of the local branch, so a forge saying "merged" cannot prove the work is recoverable from the remote. `dev sweep --merged-worktrees` proves containment locally with `git merge-base --is-ancestor`, and `dev done --merged` requires an explicit `--confirm-squash` attestation. Treat the pull-request list as a prompt to look, not as permission to delete.
+
+### Claude Workflow ephemeral cleanup is strict and version-sensitive
+
+`dev sweep --ephemeral-worktrees` supports the private layout verified with
+Claude Code 2.1.259: validated fixed-depth `wf_*.json`, matching worktree meta and
+journal paths, `runId`, `status`, `workflowProgress` agent state/isolation,
+`worktreePath`, `spawnedWithWorktree`, journal `started`/`result`, and same-ID
+resume existence. Unknown add-only JSON fields are tolerated because upstream has
+no metadata schema version. A missing/wrong required type, changed or unsafe
+source file, duplicate/path mismatch, exhausted bound, or uncertain timestamp
+makes the affected evidence unknown or unavailable; dev does not guess another
+layout or decode payload fields.
+
+The 2.1.259 layout does not record provider-observed branch, HEAD, common-dir, or
+an opaque non-replayable worktree-registration generation. Those are mandatory
+current-ownership facts, so this adapter leaves `provider-git-identity` unknown
+and its claims remain report-only. A canonical path, naming convention, or GitDir
+pathname can be reused and is deliberately not accepted; stale metadata must not
+attach to a replacement checkout.
+
+V1 has no operator attestation. `killed` without a matching child result,
+progress, or any same-ID resumed transcript remains `unknown` regardless of age.
+Apply is available only when provider inactivity and every Git/task/artifact/
+caller/runtime fact are known and safe. `--no-runtime` may produce a report but
+cannot apply. Missing, prunable, unregistered, and orphan paths are report-only.
+The command never closes runtimes, prunes worktree registrations, deletes Claude
+metadata, or force-removes/rescues/stashes/commits dirty or ignored work.
+
+This adapter is provider-specific behind a provider-neutral audit/service; no
+other agent harness is inferred from a path or branch name. If Claude changes the
+private layout, the safe behavior is an unavailable capability plus unknown
+candidates until the adapter, fixtures, tested version, and both documentation
+locales are updated.
 
 ### Pull-request inventory is limited by the provider surfaces
 
@@ -225,6 +259,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - Human-readable output now carries semantic color (`--color auto|always|never`), automatically disabled when `NO_COLOR` is set, `TERM=dumb`, or stdout/stderr is not a terminal.
 - `dev done` records MERGED only: it never closes the invoking runtime, removes a worktree, or deletes a branch. Cleanup moved to `dev retire`, which runs from outside the target workspace, refuses active agents and mixed-purpose workspaces, and revalidates Git state after every runtime closure. `dev done --delete-branch` is now an error pointing at `dev retire --delete-branch`, and `--keep-worktree` warns as a no-op.
 - `dev sweep --merged-worktrees` enumerates linked worktrees from Git rather than from the task registry, so unmanaged worktrees whose branches are contained in the base become retirable. Containment alone is never permission; dirty state, unfinalized artifacts, in-progress Git operations, and runtime refusals all still block it, and branches survive unless `--delete-branches` is passed.
+- `dev sweep --ephemeral-worktrees` adds a separate schema-v1 Claude Workflow report. The path/branch convention is only discovery; exact bounded provider linkage plus fresh Git/task/artifact/caller/runtime evidence authorizes TTY/per-item apply. Apply locks and re-fingerprints, removes without force, retains branches by default, and allows only explicit-base unchanged/contained/zero-unique `branch -d`.
 - `dev sweep` reports a branch-backed task whose branch Git no longer has as dead and offers to reap the record. Such a task cannot be finished, resumed, or retired, because every one of those paths resolves the branch first; the suggestion stays report-only until `--apply`.
 - An unknown command is reported instead of discarded. `dev` silences cobra's own error printing and previously also skipped printing anything whose message began with `unknown command`, so a mistyped command produced no output at all on either stream. The message, cobra's "Did you mean this?" suggestions, and a pointer to `--help` are now printed to stderr with exit status 1.
 - A stray argument to a command family is an error rather than a silent help render. `dev wt bogus` used to print `dev wt` help and exit 0 because a family has no `Run` of its own; every family node now reports the unknown subcommand and exits 1, while a bare family still prints its help and exits 0.
@@ -274,6 +309,7 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/ephemeral`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/ephemeral)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
 - [`internal/forge/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/cache.go)
 - [`internal/note/index.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/index.go)

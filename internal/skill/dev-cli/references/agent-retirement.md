@@ -62,6 +62,50 @@ contained in main. It never treats containment alone as permission: dirty Git,
 pending artifacts and runtime blockers still stop cleanup. Branches remain by
 default; add `--delete-branches` only when the user approved that separately.
 
+Claude Workflow ephemeral worktrees use a separate, stricter path:
+
+```bash
+dev sweep --ephemeral-worktrees --stale-days 14
+dev sweep --ephemeral-worktrees --json
+dev sweep --ephemeral-worktrees --apply
+dev sweep --ephemeral-worktrees --apply --delete-branches --base main
+```
+
+Run it from the canonical non-bare checkout. The schema-v1 report joins one
+bounded, fixed-depth `~/.claude/projects` mapping to live Git state without
+decoding or emitting prompts, scripts, logs, result bodies, or transcript
+content. V1 requires workflow `completed|killed`, matching agent `done`, journal
+`started` and `result`, no same-ID resumed transcript, and provider inactivity
+older than `--stale-days` (default 14, minimum 1). Killed/no-result, progress,
+resume, malformed/mutating metadata, or unknown time stays `unknown`; there is no
+operator-attestation bypass.
+
+Ownership must also bind provider-observed branch, HEAD, common-dir, and an opaque
+non-replayable registration generation to the live target. Claude Code 2.1.259
+records no such Git identity, so current Claude Workflow claims report
+`provider-git-identity: unknown` and remain report-only even with `--apply`.
+A path, derived branch name, or reusable GitDir pathname is never a substitute;
+otherwise stale terminal metadata could authorize a replacement checkout at the
+same path.
+
+The worktree must remain registered, present, non-main, named, unlocked and
+non-prunable, with exact common-dir/branch/registry-HEAD/live-HEAD agreement. It
+must have no staged/unstaged/conflicted/untracked/ignored/recursive-submodule
+content, no Git operation, task claim, unsafe artifact intent, caller
+containment, or covering runtime. Missing, prunable, unregistered, and orphan
+paths are report only. Apply rejects `--yes`, `--close-unknown`,
+`--assume-no-runtime`, `--no-runtime`, and JSON; it requires a TTY and per-item
+confirmation. Under a common-dir cleanup lock it recollects every fact and
+compares the stable candidate fingerprint before plain non-force removal. It
+never prunes, closes sessions, deletes provider metadata, or rescues/stashes/
+commits dirty work.
+
+A branch is retained by default, so a clean checkout with unique commits may be
+removed safely. Optional branch deletion is a separate proof requiring an
+explicit base, unchanged branch/base tips, containment, zero unique commits, and
+ordinary `git branch -d`; any post-removal failure leaves the branch retained and
+reports partial completion.
+
 ## Pull-request flow
 
 ```bash

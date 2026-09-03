@@ -1415,11 +1415,13 @@ dev sweep [flags]
 
 - `--apply` — act on the suggestions instead of only reporting
 - `--assume-no-runtime` — continue when runtime enumeration fails during retirement
-- `--base` — containment base for --merged-worktrees (default: the repository default branch)
+- `--base` — explicit containment base for merged worktrees or ephemeral branch deletion
 - `--close-unknown` — allow external closure of unknown runtime status during retirement
 - `--delete-branches` — also delete contained local branches after worktree retirement
+- `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees
+- `--json` — print the versioned ephemeral-worktree report as JSON
 - `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
-- `--stale-days` — days without a commit before a task counts as stale
+- `--stale-days` — days without relevant activity before an item counts as stale
 - `--yes` — with --apply, do not confirm each change
 
 ### `dev tries`

@@ -66,6 +66,7 @@ dev mcp list --all --json
 dev pr list --json
 dev prompt list --json
 dev prompt render <pr-triage|session-close|workspace-closeout>
+dev sweep --ephemeral-worktrees --json
 dev bootstrap --json
 ```
 
@@ -140,6 +141,37 @@ Request 的 optional `local` object 把 task intent 與 live checkout health 分
 確實被證明 checked out 且 status available 時才出現 optional `git`；其中包含
 `dirty`、`ahead`、`behind` 與 optional `upstream`。Missing/cold/unregistered status
 因此不會透過 zero value 看似 clean。Schema 1 是 add-only。
+
+### Ephemeral-worktree report 與 apply contract
+
+`dev sweep --ephemeral-worktrees --json` 輸出一個 object，包含
+`schema_version: 1`、generation time、canonical repository/common-dir identity、
+provider inactivity threshold、explicit-base/branch-deletion request、sorted
+capabilities/diagnostics/candidates 與 summary counts。Candidate 只包含 validated
+provider/run/agent IDs、normalized states/times、worktree path/branch/registry
+HEAD、live Git facts 與 counts、task/artifact/caller/runtime facts、stable checks/
+classification、獨立 branch-deletion audit、planned actions 與 stable fingerprint。
+它絕不包含 metadata filenames 或 prompt、script、log、result-body、transcript
+content。Empty collections 一律是 arrays；schema 1 是 add-only。
+
+Candidate 另有 `provider-git-identity` check。只有 source 記錄 branch、HEAD、
+common-dir 與 opaque non-replayable registration generation，且 live collection
+獨立比對一致時才 eligible。Claude Code 2.1.259 不記錄該 identity，因此目前 Claude
+Workflow candidate 會把此 check 顯示為 `unknown` 並保持 report-only。Path/name/GitDir
+reuse 不會被接受為 identity。
+
+JSON form 僅供 report；`--json --apply` 會被拒絕。Human apply 要求 interactive
+terminal，且每個 eligible candidate 都要個別確認。它拒絕 `--yes`、
+`--close-unknown`、`--assume-no-runtime`，也拒絕搭配 `--no-runtime` apply。
+`--stale-days` 指 provider inactivity（預設 14、最小 1），不是 commit age。
+`--ephemeral-worktrees` 與 `--merged-worktrees` 互斥。
+
+Branch 預設保留，包括含有 base-unique commits 的 branch。`--delete-branches`
+要求 `--apply` 與 explicit `--base`；只有兩個 tip 都能解析且 unchanged、branch
+contained、zero unique commits 時，candidate branch action 才 safe。Apply 在
+common-dir lock 下重新收集全部 proof，只接受相同 fingerprint。Result 內部有
+version，狀態為 removed、partial、skipped-changed 或 failed；worktree remove 後若
+branch step 失敗，會回報 partial 並保留 branch。
 
 ### Prompt recipe 與 structured behavior
 

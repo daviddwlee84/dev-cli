@@ -3,17 +3,22 @@ package cli
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/ephemeral"
+	"github.com/daviddwlee84/dev-cli/internal/ephemeral/claudeworkflow"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	retirement "github.com/daviddwlee84/dev-cli/internal/retire"
+	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 	"github.com/spf13/cobra"
@@ -36,14 +41,16 @@ type sweepRetireOptions struct {
 
 func newSweepCmd(app *App) *cobra.Command {
 	var (
-		apply           bool
-		staleDays       int
-		yes             bool
-		mergedWorktrees bool
-		baseRef         string
-		closeUnknown    bool
-		assumeNoRuntime bool
-		deleteBranches  bool
+		apply              bool
+		staleDays          int
+		yes                bool
+		mergedWorktrees    bool
+		ephemeralWorktrees bool
+		jsonOutput         bool
+		baseRef            string
+		closeUnknown       bool
+		assumeNoRuntime    bool
+		deleteBranches     bool
 	)
 	cmd := &cobra.Command{
 		Use:   "sweep",
@@ -57,6 +64,21 @@ Nothing here ever deletes uncommitted work.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
+			if ephemeralWorktrees && mergedWorktrees {
+				return fmt.Errorf("--ephemeral-worktrees and --merged-worktrees are mutually exclusive")
+			}
+			if jsonOutput && !ephemeralWorktrees {
+				return fmt.Errorf("--json requires --ephemeral-worktrees")
+			}
+			if ephemeralWorktrees {
+				return runEphemeralSweep(ctx, app, cmd, ephemeralSweepOptions{
+					apply: apply, staleDays: staleDays, json: jsonOutput, baseRef: baseRef,
+					baseExplicit: cmd.Flags().Changed("base"), yesChanged: cmd.Flags().Changed("yes"),
+					closeUnknownChanged:    cmd.Flags().Changed("close-unknown"),
+					assumeNoRuntimeChanged: cmd.Flags().Changed("assume-no-runtime"),
+					deleteBranches:         deleteBranches,
+				})
+			}
 			style := app.outStyle()
 			tasks, err := app.Tasks.List()
 			if err != nil {
@@ -135,10 +157,12 @@ Nothing here ever deletes uncommitted work.`,
 	}
 	f := cmd.Flags()
 	f.BoolVar(&apply, "apply", false, "act on the suggestions instead of only reporting")
-	f.IntVar(&staleDays, "stale-days", 14, "days without a commit before a task counts as stale")
+	f.IntVar(&staleDays, "stale-days", 14, "days without relevant activity before an item counts as stale")
 	f.BoolVar(&yes, "yes", false, "with --apply, do not confirm each change")
 	f.BoolVar(&mergedWorktrees, "merged-worktrees", false, "focus on linked worktrees whose branches are contained in the main branch")
-	f.StringVar(&baseRef, "base", "", "containment base for --merged-worktrees (default: the repository default branch)")
+	f.BoolVar(&ephemeralWorktrees, "ephemeral-worktrees", false, "audit provider-verified stale ephemeral worktrees")
+	f.BoolVar(&jsonOutput, "json", false, "print the versioned ephemeral-worktree report as JSON")
+	f.StringVar(&baseRef, "base", "", "explicit containment base for merged worktrees or ephemeral branch deletion")
 	f.BoolVar(&closeUnknown, "close-unknown", false, "allow external closure of unknown runtime status during retirement")
 	f.BoolVar(&assumeNoRuntime, "assume-no-runtime", false, "continue when runtime enumeration fails during retirement")
 	f.BoolVar(&deleteBranches, "delete-branches", false, "also delete contained local branches after worktree retirement")
@@ -521,4 +545,162 @@ func confirm(app *App, in *bufio.Reader, action string) bool {
 	}
 	answer := strings.ToLower(strings.TrimSpace(line))
 	return answer == "y" || answer == "yes"
+}
+
+type ephemeralSweepOptions struct {
+	apply                  bool
+	staleDays              int
+	json                   bool
+	baseRef                string
+	baseExplicit           bool
+	yesChanged             bool
+	closeUnknownChanged    bool
+	assumeNoRuntimeChanged bool
+	deleteBranches         bool
+}
+
+func runEphemeralSweep(ctx context.Context, app *App, _ *cobra.Command, options ephemeralSweepOptions) error {
+	switch {
+	case options.staleDays < 1:
+		return fmt.Errorf("--stale-days must be at least 1 for --ephemeral-worktrees")
+	case options.json && options.apply:
+		return fmt.Errorf("--json is report-only and cannot be combined with --apply")
+	case options.yesChanged:
+		return fmt.Errorf("--ephemeral-worktrees does not accept --yes; each item requires confirmation")
+	case options.closeUnknownChanged:
+		return fmt.Errorf("--ephemeral-worktrees does not accept --close-unknown")
+	case options.assumeNoRuntimeChanged:
+		return fmt.Errorf("--ephemeral-worktrees does not accept --assume-no-runtime")
+	case options.apply && app.noRuntime:
+		return fmt.Errorf("--ephemeral-worktrees cannot apply with --no-runtime")
+	case options.deleteBranches && !options.apply:
+		return fmt.Errorf("--delete-branches with --ephemeral-worktrees requires --apply")
+	case options.deleteBranches && (!options.baseExplicit || strings.TrimSpace(options.baseRef) == ""):
+		return fmt.Errorf("--delete-branches with --ephemeral-worktrees requires an explicit --base")
+	case options.apply && !app.interactive():
+		return fmt.Errorf("--ephemeral-worktrees --apply requires an interactive terminal")
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return fmt.Errorf("resolve home directory for Claude Workflow metadata")
+	}
+	service := ephemeral.NewService(
+		claudeworkflow.New(filepath.Join(home, ".claude", "projects")),
+		ephemeral.ServiceOptions{
+			Tasks: app.Tasks, Artifacts: artifactStore(app), Runtimes: ephemeralSweepRuntimes(app),
+			RuntimeDisabled: app.noRuntime,
+		},
+	)
+	report, err := service.Report(ctx, ephemeral.ReportRequest{
+		RepoPath: mustGetwd(), StaleDays: options.staleDays,
+		BaseRef: options.baseRef, BaseExplicit: options.baseExplicit, DeleteBranches: options.deleteBranches,
+	})
+	if err != nil {
+		return err
+	}
+	if options.json {
+		encoder := json.NewEncoder(app.Out)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(report)
+	}
+	renderEphemeralReport(app, report)
+	if !options.apply {
+		return nil
+	}
+
+	reader := bufio.NewReader(app.In)
+	var approved []string
+	for _, candidate := range report.Candidates {
+		if candidate.Classification != ephemeral.Eligible {
+			continue
+		}
+		action := "remove ephemeral worktree " + config.Contract(candidate.Path) + " (branch retained)"
+		if candidate.BranchDeletion.Requested && candidate.BranchDeletion.Safe {
+			action = "remove ephemeral worktree " + config.Contract(candidate.Path) + " and delete branch " + candidate.Branch
+		}
+		if confirm(app, reader, action) {
+			approved = append(approved, candidate.Fingerprint)
+		}
+	}
+	if len(approved) == 0 {
+		fmt.Fprintln(app.Out, app.outStyle().dim("No eligible worktree was approved; nothing changed."))
+		return nil
+	}
+	result, err := service.Apply(ctx, ephemeral.ApplyRequest{Report: report, Fingerprints: approved})
+	if err != nil {
+		return err
+	}
+	renderEphemeralApply(app, result)
+	return nil
+}
+
+func ephemeralSweepRuntimes(app *App) []runtime.Runtime {
+	if app.runtimeInstance != nil {
+		return []runtime.Runtime{app.runtimeInstance}
+	}
+	out := make([]runtime.Runtime, 0, 3)
+	for _, name := range []string{"herdr", "tmux", "zellij"} {
+		out = append(out, app.runtimeNamed(name))
+	}
+	return out
+}
+
+func renderEphemeralReport(app *App, report ephemeral.Report) {
+	style := app.outStyle()
+	fmt.Fprintf(app.Out, "\n%s\n", style.title("Verified ephemeral worktree report (schema v1)"))
+	fmt.Fprintf(app.Out, "Repository: %s\n", config.Contract(report.Repository.Root))
+	fmt.Fprintf(app.Out, "Candidates: %d (%d eligible, %d blocked, %d unknown, %d report-only)\n",
+		report.Summary.Total, report.Summary.Eligible, report.Summary.Blocked,
+		report.Summary.Unknown, report.Summary.NotApplicable)
+	for _, capability := range report.Capabilities {
+		if !capability.Available {
+			fmt.Fprintf(app.Out, "  capability unavailable: %s\n", capability.Name)
+		}
+	}
+	for _, candidate := range report.Candidates {
+		fmt.Fprintf(app.Out, "\n  %-14s %s\n", strings.ToUpper(string(candidate.Classification)), config.Contract(candidate.Path))
+		if candidate.Provider != "" {
+			fmt.Fprintf(app.Out, "    provider=%s run=%s agent=%s workflow=%s agent-state=%s\n",
+				candidate.Provider, candidate.RunID, candidate.AgentID, candidate.WorkflowState, candidate.AgentState)
+		}
+		if candidate.LastActivityKnown {
+			fmt.Fprintf(app.Out, "    last activity: %s\n", candidate.LastActivity.UTC().Format(time.RFC3339))
+		} else {
+			fmt.Fprintln(app.Out, "    last activity: unknown")
+		}
+		for _, check := range candidate.Checks {
+			if check.Classification != ephemeral.Eligible {
+				fmt.Fprintf(app.Out, "    %s: %s — %s\n", check.ID, check.Classification, check.Detail)
+			}
+		}
+		for _, action := range candidate.PlannedActions {
+			fmt.Fprintf(app.Out, "    %s: %s (%s)\n", action.Kind, action.Status, action.Detail)
+		}
+	}
+	if report.Summary.Eligible == 0 {
+		fmt.Fprintln(app.Out, style.dim("\nNo eligible ephemeral worktree was found; report-only entries were not changed."))
+	} else {
+		fmt.Fprintln(app.Out, style.dim("\nRe-run with --apply from an interactive terminal; every eligible item is confirmed separately."))
+	}
+}
+
+func renderEphemeralApply(app *App, result ephemeral.ApplyResult) {
+	style := app.outStyle()
+	for _, item := range result.Results {
+		switch item.Status {
+		case ephemeral.ApplyRemoved:
+			branch := "branch retained"
+			if item.DeletedBranch {
+				branch = "branch deleted"
+			}
+			fmt.Fprintf(app.Out, "  %s %s (%s)\n", style.success("removed:"), config.Contract(item.Path), branch)
+		case ephemeral.ApplyPartial:
+			fmt.Fprintf(app.Out, "  %s %s — %s\n", style.warning("partial:"), config.Contract(item.Path), item.Detail)
+		case ephemeral.ApplySkippedChanged:
+			fmt.Fprintf(app.Out, "  %s %s — %s\n", style.warning("skipped-changed:"), config.Contract(item.Path), item.Detail)
+		default:
+			fmt.Fprintf(app.Out, "  %s %s — %s\n", style.warning("failed:"), config.Contract(item.Path), item.Detail)
+		}
+	}
 }

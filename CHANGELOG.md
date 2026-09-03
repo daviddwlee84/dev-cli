@@ -32,6 +32,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   name/description/default and redacted run/open capability metadata; neither
   output form reveals argv, shell source, executable directories, environment,
   prompt text, or config path.
+- `dev sweep --ephemeral-worktrees` adds a schema-version-1, report-before-apply
+  cleanup path for Claude Workflow worktrees. A bounded private-metadata adapter
+  verifies exact workflow/agent/path/journal linkage without decoding prompts,
+  scripts, logs, result bodies, or transcripts; strict V1 liveness, Git/task/
+  artifact/runtime/caller checks, ignored-file and recursive-submodule checks,
+  and locked fingerprint revalidation all fail closed. Apply is TTY-only with
+  per-item confirmation and plain non-force removal. Branches survive by default;
+  separately requested deletion needs an explicit unchanged base and safe `-d`.
+  Claude Code 2.1.259 does not expose branch/HEAD plus a non-replayable
+  registration generation, so its current claims report `provider-git-identity`
+  as unknown and remain report-only rather than authorizing path-reuse deletion.
 
 ### Changed
 

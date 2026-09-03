@@ -42,7 +42,7 @@ func InProgress(dir string) (string, bool, error) {
 	// worktree that was ever rebased. Only the rebase state directories prove
 	// a rebase is still running.
 	for _, candidate := range []string{
-		"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD",
+		"MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD", "BISECT_LOG",
 		"rebase-merge", "rebase-apply", "sequencer",
 	} {
 		for _, root := range []string{repository.GitDir, repository.GitCommonDir} {

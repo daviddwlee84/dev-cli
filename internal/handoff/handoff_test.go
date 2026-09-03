@@ -91,11 +91,16 @@ func TestRunTransportsPromptAndUsesRequestedDirectory(t *testing.T) {
 
 func TestRunFileTransportGetsEOFOnStdinAndCleansPrivateFile(t *testing.T) {
 	requireShell(t)
+	permissionCommand := `stat -c %a "$1"`
+	if runtime.GOOS == "darwin" {
+		permissionCommand = `stat -f %Lp "$1"`
+	}
+	script := `printf '%s|' "$(` + permissionCommand + `)"; if read x; then printf read; else printf eof; fi; printf '|%s|' "$1"; cat "$1"`
 	var out bytes.Buffer
 	_, err := Run(t.Context(), Spec{
 		Mode: ModeRun,
 		Launcher: Launcher{
-			Command: []string{"sh", "-c", `printf '%s|' "$(stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1")"; if read x; then printf read; else printf eof; fi; printf '|%s|' "$1"; cat "$1"`, "_", PromptFilePlaceholder},
+			Command: []string{"sh", "-c", script, "_", PromptFilePlaceholder},
 			Input:   TransportFile,
 		},
 		Prompt: "payload", Dir: t.TempDir(), In: strings.NewReader("do not read"), Out: &out, Err: &out,

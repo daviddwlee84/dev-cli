@@ -440,7 +440,14 @@ Requirements:
   group/world-writable metadata, source mutation during read, duplicate claims,
   path mismatch, and bound exhaustion;
 - exact canonical `worktreePath`, `spawnedWithWorktree=true`, matching run/agent
-  IDs, `isolation=worktree`, and journal linkage;
+  IDs, `isolation=worktree`, and journal `started`/`result` records sharing one
+  required opaque linkage key;
+- destructive eligibility additionally requires provider-observed branch, HEAD,
+  common-dir, and an opaque non-replayable registration generation that all
+  match live Git evidence. Claude Code 2.1.259 records none of these identity
+  facts, so this adapter leaves `provider-git-identity` unknown and all current
+  Claude claims report-only even under `--apply`; path/name conventions and a
+  reusable GitDir pathname are never substitutes;
 - tolerate unknown add-only JSON fields because upstream has no schema version,
   but require exact types/presence for every fact used;
 - never decode/emit prompts, scripts, logs, result bodies, filenames from model
@@ -485,6 +492,9 @@ content.
 Checks include:
 
 - verified unique provider ownership/mapping/terminal/result/no-resume/inactivity;
+- matching provider-observed branch/HEAD/common-dir/non-replayable registration
+  identity; absent identity is unknown and cannot be replaced by current Git
+  state, a path/branch pattern, or reusable administrative pathname;
 - registered present non-main named worktree, exact common-dir, branch, worktree
   HEAD and live HEAD agreement, unlocked and non-prunable;
 - clean staged/unstaged/conflicted/untracked/submodule state;
@@ -533,9 +543,12 @@ For apply:
 
 - Audit precedence and every classification.
 - Adapter fixtures for completed/killed, progress/no-result, resume, malformed
-  types, unknown fields, duplicate/path mismatch, symlink/traversal, oversized/
-  over-count inputs, future/conflicting timestamps, privacy/redaction.
-- Service races mutating every proof between report/apply.
+  types, unknown fields, duplicate/path mismatch, shared/mismatched journal keys,
+  symlink/traversal, oversized/over-count inputs including nonmatching directory
+  entries, directory/file mutation, future/conflicting timestamps, privacy/redaction.
+- Service races mutating every proof between report/apply, same-path metadata
+  replay, missing live/provider registration generation, unknown-path runtime
+  sessions, stale-day overflow, and local-branch base aliases.
 - CLI canonical-only and flag conflicts, age minimum, JSON purity/schema,
   report immutability, dirty/untracked/ignored/submodule/operation, task,
   artifacts, runtime/caller, locked/prunable/missing/orphan, branch-retained

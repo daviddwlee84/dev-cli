@@ -91,7 +91,24 @@ dev prepare --session claude:<uuid>                # arm final transcript handof
 dev done                                           # TTY wizard: inspect dirty state, then FF/PR/merged
 dev done --ff                                      # → done/MERGED; resources kept
 dev retire "token refresh"                         # external-only cleanup → RETIRED
+dev sweep --ephemeral-worktrees --json              # strict V1 report only
 ```
+
+For stale Claude Workflow isolation, run `dev sweep --ephemeral-worktrees` only
+from the canonical non-bare checkout. The bounded metadata adapter never emits
+prompt/script/log/result/transcript content. A candidate must have one exact
+mapping, terminal workflow, done agent, journal start/result, no same-ID resume,
+sufficient provider inactivity, clean Git including no ignored or recursive
+submodule content, no task/unsafe artifact/runtime/caller claim, and unchanged
+registration/branch/HEAD/common-dir facts. It additionally requires a provider-
+observed opaque registration generation matching the live registry. Claude Code
+2.1.259 does not expose that non-replayable Git identity, so current Claude claims
+report unknown and remain report-only; path/name/GitDir reuse is not proof. Apply
+is TTY-only, rejects bypass
+flags, confirms each item, and revalidates the fingerprint under a common-dir
+lock before non-force removal. It never prunes, closes runtimes, changes Claude
+metadata, or repairs dirty work. Branches are retained unless separately safe
+`--delete-branches --base <ref>` was requested.
 
 **Parking is the move that matters.** `dev park --next "…"` is what makes it
 safe to close a session, and the `--next` text is what makes resuming cheap.

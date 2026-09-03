@@ -24,6 +24,8 @@
 - [SSH host onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/): Discover OpenSSH aliases, manage only dev-owned host fragments, bootstrap public-key access, and explicitly register verified hosts in dev fleet.
 - [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/): Inventory repositories over POSIX or Windows SSH hosts using merged fleet configuration, pin remote identity, safely fast-forward branches, and explicitly transfer bounded ignored files.
 - [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/): Retire an integrated dev-cli worktree and runtime safely, from outside the workspace being removed.
+- [Prompt handoffs](https://daviddwlee84.github.io/dev-cli/guides/prompt-handoffs/): Render deterministic operational context or hand it to a configured local agent without creating a second lifecycle authority.
+- [Pull request inbox](https://daviddwlee84.github.io/dev-cli/guides/pull-request-inbox/): List pull requests you opened and requests awaiting your review, understand provider cost and missing fields, and inspect local checkout health.
 - [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/): Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 ### Git and GitHub
 
@@ -47,6 +49,7 @@
 
 - [Notes index](https://daviddwlee84.github.io/dev-cli/notes/): Organize future dev-cli, Git, harness, experiment, incident, and source-review notes without destabilizing the main guides.
 - [Authoring notes](https://daviddwlee84.github.io/dev-cli/notes/authoring/): Use a repeatable metadata, source, bilingual-writing, and verification template for every new documentation note.
+- [AI pull-request review options](https://daviddwlee84.github.io/dev-cli/notes/ai-pr-review-options/): Compare Claude Code Review, the Claude Code GitHub Action, Codex code review, and CodeRabbit by trigger phrase, workflow requirement, prerequisites, and cost.
 
 ## 繁體中文
 
@@ -70,6 +73,8 @@
 - [SSH Host 設定與佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/): 探索 OpenSSH alias、只管理 dev-owned host fragment、佈建 public-key access，並將驗證成功的 host 明確登記到 dev fleet。
 - [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/): 透過 merged fleet configuration 盤點 POSIX 或 Windows SSH host、pin remote identity、安全 fast-forward branch，並明確傳送 bounded ignored files。
 - [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/): 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。
+- [Prompt handoff](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/prompt-handoffs/): 渲染 deterministic operational context，或交給 configured local agent，而不建立第二個 lifecycle authority。
+- [Pull request inbox](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/): 列出你開的與等你 review 的 pull request，理解 provider cost 與 missing fields，並檢查 local checkout health。
 - [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/): 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
 ### Git 與 GitHub
 
@@ -93,3 +98,4 @@
 
 - [筆記索引](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/): 整理未來 dev-cli、Git、harness、experiment、incident 與 source-review notes，不讓 main guides 失去穩定性。
 - [撰寫筆記](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/authoring/): 對每份新 documentation note 使用可重複的 metadata、source、bilingual writing 與 verification template。
+- [AI pull-request review options](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/ai-pr-review-options/): 依觸發字串、是否需要 workflow、前置條件與費用，比較 Claude Code Review、Claude Code GitHub Action、Codex code review 與 CodeRabbit。

@@ -62,6 +62,7 @@ dev mcp list --all --json
 dev pr list --json
 dev prompt list --json
 dev prompt render <pr-triage|session-close|workspace-closeout>
+dev sweep --ephemeral-worktrees --json
 dev bootstrap --json
 ```
 
@@ -143,6 +144,40 @@ only when the expected branch was actually proven checked out and status was
 available; it contains `dirty`, `ahead`, `behind`, and optional `upstream`.
 Missing/cold/unregistered status therefore cannot look clean through zero values.
 Schema 1 is add-only.
+
+### Ephemeral-worktree report and apply contract
+
+`dev sweep --ephemeral-worktrees --json` emits one object with
+`schema_version: 1`, generation time, canonical repository/common-dir identity,
+provider inactivity threshold, explicit-base/branch-deletion request, sorted
+capabilities/diagnostics/candidates, and summary counts. Candidates contain only
+validated provider/run/agent IDs, normalized states/times, worktree path/branch/
+registry HEAD, live Git facts and counts, task/artifact/caller/runtime facts,
+stable checks/classification, a separate branch-deletion audit, planned actions,
+and one stable fingerprint. It never includes metadata filenames or prompt,
+script, log, result-body, or transcript content. Empty collections are arrays and
+schema 1 is add-only.
+
+A candidate also has the `provider-git-identity` check. It is eligible only when
+the source recorded branch, HEAD, common-dir, and an opaque non-replayable
+registration generation that live collection independently matches. Claude Code
+2.1.259 records no such identity, so current Claude Workflow candidates expose
+that check as `unknown` and stay report-only. Path/name/GitDir reuse is not
+accepted as identity.
+
+The JSON form is report-only; `--json --apply` is rejected. Human apply requires
+an interactive terminal and one confirmation per eligible candidate. It rejects
+`--yes`, `--close-unknown`, `--assume-no-runtime`, and apply with `--no-runtime`.
+`--stale-days` is provider inactivity (default 14, minimum 1), not commit age.
+`--ephemeral-worktrees` and `--merged-worktrees` are mutually exclusive.
+
+Branches are retained by default, including branches with commits unique from a
+base. `--delete-branches` requires `--apply` plus an explicit `--base`; the
+candidate's branch action remains unsafe unless both tips resolve unchanged, the
+branch is contained, and it has zero unique commits. Apply recollects all proof
+under a common-dir lock and accepts only the same fingerprint. Results are
+versioned internally as removed, partial, skipped-changed, or failed; branch
+failure after worktree removal is partial and retains the branch.
 
 ### Prompt recipes and structured behavior
 

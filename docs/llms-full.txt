@@ -1253,6 +1253,13 @@ Each approach gets its own branch and worktree. Compare results, integrate one d
 
 A runtime opens and displays a checkout; `dev`, not Herdr or tmux, owns branch/worktree lifecycle. Closing a runtime never deletes the task or checkout.
 
+Zellij keeps exited sessions available for resurrection. `dev` recognizes only
+the exact `(EXITED - attach to resurrect)` marker, omits those sessions from live
+coverage, and refuses to create over their names. A live name merely containing
+the word `EXITED` remains live. If a session exits between listing and layout
+inspection, open fails closed and asks for a retry rather than resurrecting the
+old layout at an unrelated checkout.
+
 For one reviewed shell command in a new independent worktree, Herdr supports a
 direct one-liner:
 
@@ -1265,6 +1272,14 @@ Herdr worktree. Reuse, fallback, missing pane identity, another runtime, and
 direct/branch-only modes fail closed. The task and usable worktree remain if
 dispatch fails. `--focus` independently switches after a successful dispatch;
 dev does not wait for the command's exit status.
+
+`dev prompt open <recipe>` is a different contract: it starts one configured
+foreground process in the terminal that invoked it and never creates, focuses,
+reuses, or injects into a runtime pane. Inside Herdr it stays in the current
+pane. To hold the conversation in a separate pane, create/focus that pane
+manually, enter the exact checkout, and run `prompt open` there. It does not
+weaken the fresh-worktree/exact-root-pane proof of `start --run`; see
+[Prompt handoffs](https://daviddwlee84.github.io/dev-cli/guides/prompt-handoffs/).
 
 ## Coordination contract
 
@@ -1297,6 +1312,7 @@ For Claude-specific primitive selection, continue with the [parallel work decisi
 - [`internal/help/topics/agents.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/agents.md)
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/runtime/herdr.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/herdr.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
 - [Claude Code: run agents in parallel](https://code.claude.com/docs/en/agents)
 
 ---
@@ -1853,6 +1869,8 @@ RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 | `dev retire [task-or-worktree] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | Re-resolves every covering runtime session, refuses active agents and mixed-purpose workspaces, waits for closure, revalidates Git state, and only then removes the linked worktree without force. Deletes the task record only after every requested step succeeds. |
 | `dev flow [repo]` | Preview UI for an exact DONE task: Enter builds a revision-bound Retire plan, then approval applies it. Branch deletion requires the displayed typed token. |
 | `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | From the canonical checkout, reports (and, with `--apply`, retires) both task-tracked and unmanaged linked worktrees whose branches are already contained in the base. |
+| `dev sweep --ephemeral-worktrees [--stale-days <n>] [--json]` | From a canonical non-bare checkout, emits a strict Claude Workflow V1 report; JSON schema 1 is report-only. |
+| `dev sweep --ephemeral-worktrees --apply [--delete-branches --base <ref>]` | Requires a TTY and per-item confirmation, then revalidates each approved fingerprint under the common-dir cleanup lock before plain non-force removal. |
 
 A dirty checkout does not fail here: `dev done` classifies it against the base
 first, offering commit or discard interactively, or taking an explicit
@@ -1860,6 +1878,21 @@ first, offering commit or discard interactively, or taking an explicit
 [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) for that wizard. The
 `--keep-worktree` and `--delete-branch` flags remain accepted on `dev done`
 only to fail loudly and point at `dev retire`.
+
+For a read-only explanation before acting, render or open the generic
+`workspace-closeout` recipe from the exact checkout:
+
+```bash
+dev prompt render workspace-closeout .
+dev prompt open workspace-closeout . --agent my-agent
+```
+
+The recipe includes the full retirement audit, but its result is advisory.
+`eligible` and a merged PR never authorize cleanup; an external `dev retire`
+still recollects and revalidates every gate. If `dev done --ff` or
+`dev git pull-rebase` stops at a conflict, use `prompt open` only to discuss the
+semantic resolution, then explicitly continue/abort Git and rerun the lifecycle
+command. See [Prompt handoffs](https://daviddwlee84.github.io/dev-cli/guides/prompt-handoffs/).
 
 ## Normal local flow
 
@@ -1923,7 +1956,7 @@ This proves only that the named squash commit is contained in the base; the oper
 - agent status is unrecognized (anything outside the known set) — always blocks;
 - runtime enumeration itself fails, **unless** the caller passes `--assume-no-runtime`.
 
-`--close-unknown` and `--assume-no-runtime` only relax fail-closed *observations* (an unreadable status, a runtime list that could not be enumerated). Neither flag ever bypasses caller containment or an active-agent state. `retirement.Service.Retire` also revalidates the target's identity, Git ancestry, in-progress Git operations (`gitx.InProgress`, checking `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `rebase-merge`, `rebase-apply`, `sequencer` — not `REBASE_HEAD`, which Git leaves behind after a rebase completes), and worktree cleanliness after runtime sessions close — reality may have changed while a runtime was draining, so no earlier proof carries across that boundary.
+`--close-unknown` and `--assume-no-runtime` only relax fail-closed *observations* (an unreadable status, a runtime list that could not be enumerated). Neither flag ever bypasses caller containment or an active-agent state. `retirement.Service.Retire` also revalidates the target's identity, Git ancestry, in-progress Git operations (`gitx.InProgress`, checking `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `BISECT_LOG`, `rebase-merge`, `rebase-apply`, `sequencer` — not `REBASE_HEAD`, which Git leaves behind after a rebase completes), and worktree cleanliness after runtime sessions close — reality may have changed while a runtime was draining, so no earlier proof carries across that boundary.
 
 ## Periodic cleanup with sweep
 
@@ -1934,6 +1967,66 @@ dev sweep --merged-worktrees --apply --yes
 ```
 
 This surfaces both task-tracked DONE worktrees and unmanaged linked worktrees whose named branches are already contained in the base — run it from the canonical checkout. It reports before applying: containment alone is never permission. Dirty Git state, a pending or unreachable artifact, a locked or prunable worktree registration, an in-progress Git operation, and the same runtime refusal conditions as `dev retire` all still block cleanup. Branches remain after retirement by default; pass `--delete-branches` only when the user separately approved deleting them.
+
+### Verified Claude Workflow ephemeral cleanup
+
+Claude Workflow turn-scoped worktrees have a separate strict V1 path:
+
+```bash
+dev sweep --ephemeral-worktrees --stale-days 14
+dev sweep --ephemeral-worktrees --json
+dev sweep --ephemeral-worktrees --apply
+dev sweep --ephemeral-worktrees --apply --delete-branches --base main
+```
+
+The command runs only from a canonical non-bare checkout. Its bounded,
+fixed-depth adapter reads private metadata under `~/.claude/projects`, verifies
+validated workflow/agent IDs, exact canonical worktree mapping,
+`spawnedWithWorktree`, `isolation=worktree`, and matching journal linkage, but
+never decodes or emits prompts, scripts, logs, result bodies, or transcript
+content. Unknown add-only fields are tolerated; wrong required types, path
+mismatch, duplicate claims, unsafe/symlink/reparse/group-or-world-writable
+metadata, source mutation, bound exhaustion, and future/conflicting/unparseable
+time fail closed.
+
+V1 terminal liveness requires workflow `completed|killed`, matching agent `done`,
+one journal `started` and `result`, and no same-ID resumed transcript. A killed
+workflow with no result, progress, or a resume is `unknown` regardless of age;
+there is no attestation bypass. `--stale-days` measures provider inactivity,
+defaults to 14, and has a minimum of 1.
+
+Current-provider ownership is not proved by path continuity. Apply additionally
+requires provider-observed branch, HEAD, common-dir, and an opaque non-replayable
+registration generation matching the live registry. Claude Code 2.1.259 records
+none of those Git identity facts, so current Claude claims report
+`provider-git-identity: unknown` and remain report-only even when `--apply` is
+requested. This prevents stale terminal metadata from attaching to a replacement
+checkout at the same path. A path, branch convention, or reusable GitDir pathname
+must never be treated as the missing generation.
+
+The independent safety audit also requires a present, registered, non-main,
+named, unlocked, non-prunable linked worktree with exact common-dir, live branch,
+registry HEAD, and live HEAD agreement. Staged, unstaged, conflicted, untracked,
+ignored, or recursively inspected submodule content blocks cleanup, as do Git
+operations, task claims, unsafe artifact intents, caller containment, unknown
+runtime inventory, or any covering runtime. Missing, prunable, unregistered, and
+orphan paths remain report only.
+
+JSON schema 1 contains only normalized identity/state/time, Git/path/branch/HEAD
+facts, checks, actions, diagnostics, fingerprints, and counts. It is report-only.
+Apply rejects `--yes`, `--close-unknown`, `--assume-no-runtime`, `--no-runtime`,
+and JSON; it requires a terminal and confirms each item. Under a common-dir
+cleanup lock it rediscovers the repository and recollects provider, Git, task,
+artifact, runtime, and caller proof immediately before each removal. A changed
+fingerprint is `skipped-changed`.
+
+Removal uses plain `git worktree remove` without force and verifies both path and
+registration are gone. It never closes sessions, prunes, deletes Claude metadata,
+or rescues/stashes/commits dirty work. The named branch survives by default, so
+unique commits remain recoverable. Optional deletion separately requires
+`--delete-branches --base <ref>`, unchanged base/branch tips, containment, zero
+unique commits, and ordinary `git branch -d`; any failure after removal keeps the
+branch and reports partial completion.
 
 ## Safety boundaries
 
@@ -1966,10 +2059,507 @@ Byte equality rather than mere presence is the point. A transcript writer that o
 - [`internal/taskflow/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/retire.go)
 - [`internal/cli/artifact.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/artifact.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/ephemeral`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/ephemeral)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/retire/safety.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/safety.go)
 - [`internal/retire/service.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/service.go)
+- [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
 - [`internal/gitx/transactions.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/transactions.go)
+
+---
+
+### Prompt handoffs
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/prompt-handoffs/
+
+> Render deterministic operational context or hand it to a configured local agent without creating a second lifecycle authority.
+
+`dev prompt` collects a read-only snapshot, places it in a built-in prompt, and
+either prints it or gives it to a local command you configured. It is a context
+handoff, not an agent loop, scheduler, permission manager, or lifecycle engine.
+
+!!! info "Freshness"
+    **Authority:** `internal/cli/prompt_command.go`, `internal/promptkit`,
+    `internal/handoff`, `internal/closeout`, and `internal/retire/audit.go` ·
+    **Status:** stable · **Verified:** 2026-09-03.
+
+## Escalate only as far as needed
+
+```text
+dev status / dev sweep / dev repo context
+    |
+    +-- facts are sufficient --> use done, park, sweep, or retire
+    |
+    +-- dev prompt render <recipe> --> inspect or copy the exact prompt
+    +-- dev prompt run <recipe>    --> bounded one-shot analysis, no user stdin
+    +-- dev prompt open <recipe>   --> foreground conversation in this terminal
+```
+
+Prefer the deterministic lifecycle command when the next step is already clear.
+Render when a person or another tool only needs the context. Use `run` for a
+finite unattended answer. Use `open` only when a semantic question needs a
+conversation, such as resolving what a conflicted change should mean.
+
+All three modes collect the same recipe context. The receiving agent may explain
+or prioritize it, but `dev` does not parse that reply, run a follow-up turn, or
+convert it into approval for a mutation.
+
+## The three recipes
+
+```bash
+dev prompt list
+dev prompt list --json
+dev prompt agents
+dev prompt agents --json
+dev prompt render pr-triage
+dev prompt render session-close
+dev prompt render workspace-closeout [repo-or-checkout]
+```
+
+| Recipe | Scope | Read-only result |
+|---|---|---|
+| `pr-triage` | account/local forge inbox | Orders requests you authored or were asked to review under merge/review/fix/wait/inspect. It accepts the same query and `--scope`, `--role`, `--state`, `--repo`, `--all-repos`, `--linked`, and `--limit` filters as `dev pr list`. |
+| `session-close` | selected runtime on this machine | Classifies sessions for runtime closure, checkpoint/park, keeping open, or inspection. It includes session/pane identity, recognized activity, matching task status, and artifact status where available. |
+| `workspace-closeout` | one repository | Joins tasks, every known checkout, live Git status, runtime coverage, artifacts, and pull requests, then includes a full read-only retirement audit for each checkout. `--base` supplies the audit base for an unmanaged linked worktree. |
+
+Each rendered prompt carries a JSON envelope with `schema_version: 1`, the recipe
+and context versions, generation time, host, scope, target where applicable,
+capabilities, warnings, and recipe-specific context. Collected repository text,
+branch names, request titles, and notes are data rather than instructions.
+Missing or failed evidence remains an explicit capability gap or warning; it is
+never changed into a reassuring clean/empty value.
+
+### Discover configured profiles safely
+
+`dev prompt agents` prints the sorted table `PROFILE DEFAULT RUN OPEN
+DESCRIPTION`. A direct launcher displays only `filepath.Base(command[0])`, a
+shell launcher displays `shell`, and an unavailable mode displays `—`. The
+stable `--json` form is an array in the same profile order. Every object has
+`name`, `description`, `default`, and nested `run`/`open` objects containing
+`configured`, `kind` (`command`, `shell`, or `none`), and `executable` (the
+basename for direct commands, otherwise an empty string).
+
+Both forms intentionally omit command arguments, shell source, executable
+directories, environment, rendered prompts, and the config path. An empty
+configuration reports no human profiles and emits `[]` in JSON.
+
+## Choose render, run, or open
+
+| Mode | Agent required? | Prompt transport | User stdin | Default timeout | Runtime behavior |
+|---|---:|---|---|---|---|
+| `render` | no | stdout | untouched | none | starts no process and touches no runtime |
+| `run` | yes | `stdin`, private `file`, or one `argv` element | never passed through | 10 minutes | waits for one batch process in the recipe working directory |
+| `open` | yes | private `file` or one `argv` element | attached to the child | none | runs one foreground process in the current terminal/TTY |
+
+Examples:
+
+```bash
+dev prompt render pr-triage --role reviewer --repo owner/api
+dev prompt run session-close --agent my-agent
+dev prompt run pr-triage --dry-run
+dev prompt open workspace-closeout . --agent my-agent
+dev prompt open workspace-closeout . --dry-run
+```
+
+`run` and `open` first resolve the globally selected profile and its requested
+launcher, before any recipe collection. A non-dry `open` checks for an
+interactive terminal at the same early boundary. Missing, unknown, or ambiguous
+profiles, an unavailable mode, and a missing TTY therefore fail without querying
+a forge or runtime. Diagnostics list sorted mode-capable profiles and point to
+`dev prompt agents`.
+
+`--dry-run` then resolves the working directory, transport, timeout, and safe
+command preview and prints the complete rendered prompt without starting the
+process. It therefore makes no writer claim. A real `run` or `open` is treated as
+a writer claim when its collected working directory is a checkout; the
+shared-checkout occupancy guard still applies after collection. Unlike a command
+the current agent runs to continue its own work, a handoff is a new agent claim,
+so the invoking agent's pane is **not** excluded. Use `--allow-shared-checkout`
+only after coordinating disjoint ownership.
+
+`open` does not accept a timeout. Only `run` accepts a timeout and gains a 10-minute default when
+the value is absent or zero. When a batch timeout expires, `dev` terminates the
+launcher process tree so a descendant agent cannot continue modifying the
+checkout after the handoff returns.
+
+## Host-only agent configuration
+
+There is no built-in agent, vendor, or default launcher. Configure one or more
+local commands in the user config returned by `dev config path`:
+
+```toml
+[[agent]]
+name = "my-agent"
+description = "Local review and implementation agent"
+default = true
+
+[agent.run]
+command = ["my-agent", "--batch"]
+input = "stdin"
+timeout = "10m"
+
+[agent.open]
+command = ["my-agent", "{{prompt_file}}"]
+input = "file"
+```
+
+### Concrete OpenCode example
+
+OpenCode 1.18.25 exposes `opencode run [message..]`; adding `--interactive`
+keeps a direct split-footer conversation. File input works well for a large
+workspace snapshot because `-f/--file` attaches the private prompt file while a
+short message tells OpenCode how to treat it:
+
+```toml
+[[agent]]
+name = "opencode"
+description = "OpenCode batch and interactive handoff"
+default = true
+
+[agent.run]
+command = ["opencode", "run", "--file", "{{prompt_file}}", "Read the attached dev prompt and follow its instructions."]
+input = "file"
+timeout = "10m"
+
+[agent.open]
+command = ["opencode", "run", "--interactive", "--file", "{{prompt_file}}", "Read the attached dev prompt, explain the evidence, and ask before changing anything."]
+input = "file"
+```
+
+This is documentation, not a built-in default. Re-check `opencode run --help`
+after upgrading; do not add `--auto`, because that would change the configured
+agent's approval policy.
+
+Selection is deterministic and global:
+
+1. `--agent NAME` selects that name (matching is case-insensitive).
+2. Without it, the one entry with `default = true` is selected.
+3. Without a default, the sole configured `[[agent]]` is selected.
+4. Multiple entries with no default are ambiguous and fail.
+5. Only after selection does `dev` require that profile's requested launcher.
+
+Step 5 never falls back to another profile, even when another profile supports
+the requested mode. Names are required, cannot have surrounding whitespace, and
+must be unique case-insensitively. `description` is optional and may explain a
+profile in inventory and completion. At most one entry may be the default; every
+agent defines at least one of `[agent.run]` or `[agent.open]`.
+
+`--agent` completion is mode-aware: `prompt run` offers run-capable profiles and
+`prompt open` offers open-capable profiles. It loads the root `--config` after
+Cobra parses it and may describe a candidate as
+`default · run · <description>` or `default · open · <description>`. Tabs/newlines are sanitized
+through the shared completion
+protocol. Invalid config degrades to no dynamic candidates with filesystem
+completion disabled.
+
+A launcher has these fields:
+
+| Field | Constraint |
+|---|---|
+| `command = ["program", "arg", ...]` | Direct argv. The first element must be non-empty. Set exactly one of `command` and `shell`. Preferred because it does not invoke a shell. |
+| `shell = "static command"` | Runs through `$SHELL -c`. It must be static and cannot contain prompt placeholders. |
+| `input = "stdin"` | `run` only. The prompt is the child's finite stdin; no placeholder is allowed. |
+| `input = "file"` | For `command`, exactly one whole argv element must be `{{prompt_file}}`. For `shell`, reference `$DEV_PROMPT_FILE` or `${DEV_PROMPT_FILE}`. |
+| `input = "argv"` | `command` only, with exactly one whole argv element `{{prompt}}`. The rendered prompt is limited to 100 KiB. |
+| `timeout = "10m"` | `run` only; optional non-negative duration, with 10 minutes when omitted/zero. `open` rejects a timeout because safe interactive process-tree cancellation needs terminal job control. |
+| `load_shell_rc = true` | Optional and valid only with `shell`; uses `$SHELL -lic` instead of `-c`. |
+
+Placeholders must be complete command elements; embedded forms such as
+`--prompt={{prompt}}` are rejected. For file transport, `dev` creates a temporary
+0700 directory and 0600 `prompt.md`, then removes it after the child exits.
+Prompt contents are never interpolated into shell text.
+
+`[[agent]]` is machine-owned executable policy. A repository's
+`.dev-cli/config.toml` is not allowed to define it, so checking out a project
+cannot choose a command for `dev` to execute.
+
+## Permissions and mutation boundary
+
+The built-in recipes instruct the receiver to analyze and quote possible next
+commands, not to approve, merge, rebase, close, delete, or retire anything.
+However, `dev prompt` is not a sandbox: the configured child retains whatever
+filesystem, network, tool, and approval policy its own command gives it. `dev`
+does not add a permissive mode, reduce permissions, answer an approval prompt,
+or edit configuration.
+
+No agent answer is authoritative. Review it, then invoke `dev done`, `dev park`,
+`dev sweep`, or `dev retire` yourself. Those commands recollect and revalidate
+fresh state at their mutation boundaries.
+
+## Current-terminal and Herdr boundary
+
+`dev prompt open` does **not** create, focus, reuse, or inject into a Herdr, tmux,
+or Zellij surface. It starts the configured process in the foreground of the
+terminal that invoked it. Inside Herdr, that naturally means the current pane.
+If a separate Herdr pane is wanted, create or focus that pane manually, enter the
+exact checkout there, and run `dev prompt open ...` from that terminal.
+
+This is separate from `dev start --run '<shell command>'`. That command may
+dispatch shell text only to the exact root pane returned for a newly created
+first-class Herdr worktree; reused, fallback, unverified, and non-Herdr surfaces
+fail closed. `prompt open` does not widen or reuse that exact-pane contract.
+
+## What the closeout classifications mean
+
+`session-close` reports **runtime closure only**. A recognized covering agent in
+`idle` or `done` may satisfy the activity gate, but that only says its current
+turn settled. It does not prove that changes were committed, artifacts were
+finalized, review completed, or task intent is done. Caller-contained,
+mixed-purpose, active, unrecognized, and insufficiently observed sessions do not
+become close candidates.
+
+`workspace-closeout` is broader, but still advisory. Its retirement audit checks
+target kind, worktree registration and path, status availability, cleanliness,
+in-progress Git operations, known base and branch containment, task state,
+artifact reachability/finalization, and runtime eligibility. Only a deterministic
+`retirement.status` of `eligible` may be suggested for retirement, and even that
+is not authorization: `dev retire` must recollect and revalidate before changing
+anything. A merged pull request is evidence only and cannot substitute for any
+of those gates.
+
+## Rebase conflicts
+
+Start with the deterministic transaction rather than an agent:
+
+```bash
+dev done <task> --ff
+# or, for an update of the current branch
+dev git pull-rebase
+```
+
+If Git stops at a conflict, stay in that exact checkout and open the full
+workspace context there:
+
+```bash
+dev prompt open workspace-closeout . --agent my-agent
+```
+
+Use the conversation to decide the semantic resolution. Only after the operator
+chooses should the Git rebase be continued or aborted. Then rerun the original
+lifecycle command so it derives fresh state. The prompt launcher never resolves
+the conflict, chooses continue versus abort, force-pushes, or grants cleanup
+permission on its own.
+
+## Scheduling and statelessness
+
+`dev` has no daemon, queue, or scheduler. Every `render`, `run`, or `open`
+invocation collects a fresh snapshot and forgets the agent's answer when the
+process exits. A scheduler may invoke a non-interactive `run`, but must choose a
+configured batch command and accept its timeout/error behavior. `open` is a
+foreground TTY operation and is not a scheduled-job surface.
+
+## Related pages
+
+- [Pull request inbox](https://daviddwlee84.github.io/dev-cli/guides/pull-request-inbox/)
+- [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/)
+- [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/)
+- [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/)
+- [Compatibility and known limitations](https://daviddwlee84.github.io/dev-cli/reference/compatibility/)
+
+---
+
+### Pull request inbox
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/pull-request-inbox/
+
+> List pull requests you opened and requests awaiting your review, understand provider cost and missing fields, and inspect local checkout health.
+
+`dev pr list` shows the pull and merge requests waiting on you and, when the
+provider reports a head branch, the matching local task/checkout. It changes
+nothing.
+
+!!! info "Freshness"
+    **Authority:** `internal/forge`, `internal/cli/pr*.go`, and their tests ·
+    **Status:** stable · **Verified:** 2026-09-02.
+
+## The problem
+
+Opening a pull request usually ends a worktree's active writing phase, but
+nothing local says so. The branch is pushed, review owns the outcome, and the
+checkout stays on disk. Meanwhile requests accumulate in two directions: ones
+you opened and ones awaiting your review.
+
+```bash
+dev pr list
+```
+
+```text
+PR                      TITLE          ROLE    STATE   CHECKS  REVIEW    LOCAL       UPDATED
+github:owner/api#12     Add retry      mine    open    pass    approved  ~/Worktr…   2026-09-01
+github:owner/web#31     Fix parse      review  open    fail    —         —           2026-08-30
+```
+
+## Account and local surfaces
+
+The providers expose account-wide and per-repository listings with different
+fields and costs.
+
+| | `--scope account` | `--scope local` |
+|---|---|---|
+| coverage | requests across the authenticated account | selected local repositories |
+| query cost | author and reviewer are separate role queries | up to one paginated query per repository **per requested role** |
+| default roles | author + reviewer | author + reviewer (therefore up to two queries per repository) |
+| repository set | all account results, then filtered by `--repo` | repositories carrying a `dev` task; `--all-repos` widens |
+| states | open | open, merged, closed, all |
+
+`--scope all` is the default and unions both surfaces. A richer row upgrades a
+summary row for the same provider/repository/number.
+
+Provider fields are not symmetrical:
+
+- GitHub's account search produces `detail: "summary"` and cannot report
+  `head_branch`, `review_decision`, or `checks`.
+- GitHub's per-repository list produces `detail: "full"` with those fields.
+- GitLab's account and repository lists produce full branch/merge detail, but
+  neither carries `checks`; pipeline status exists only on its single-request
+  endpoint. `review_decision` is also not reported by these list surfaces.
+
+An absent field means the surface did not report it, not that the underlying
+value is empty. Read `detail` and provider capabilities before drawing a
+conclusion.
+
+```bash
+dev pr list --scope account
+dev pr list --scope local
+dev pr list --repo owner/api
+dev pr list --repo github:owner/api
+dev pr list --linked
+```
+
+`--repo` filters both account results and local query targets. It accepts
+`owner/name`, `provider:owner/name`, or a forge URL; a provider-qualified value
+pins the provider. `--linked` means the request's expected branch is actually
+checked out and its status was read—it does not merely mean a task mentions the
+branch.
+
+Account search cannot distinguish merged from closed. If `--state merged`,
+`closed`, or `all` is requested with account/all scope, collection narrows to the
+local surface. Structured output reports this **effective** scope (`"local"`),
+not the broader value originally requested.
+
+## Acting on a request
+
+`dev` prints commands and never runs them:
+
+```bash
+dev pr list --actions
+dev pr list --json | jq -r '.pull_requests[].actions.merge'
+```
+
+Approving, merging, commenting, resuming, and retiring remain operator actions.
+The current comment action contains only a generic body placeholder (`'...'`);
+`dev` does not synthesize a vendor review-trigger phrase.
+
+## Retiring the worktree behind a merged request
+
+A forge reporting a merged request is evidence, not retirement authorization:
+
+```bash
+dev pr list --scope local --state merged   # candidates
+dev sweep --merged-worktrees               # proves containment, reports first
+```
+
+A squash merge does not make the local feature branch an ancestor of the base,
+so the forge answer alone cannot prove recovery. `dev sweep
+--merged-worktrees` proves containment locally, while `dev done --merged`
+requires explicit squash attestation where applicable. Treat the inbox as a
+reason to inspect, never as permission to delete.
+
+For deterministic agent-readable triage, use the generic prompt surface rather
+than a PR subcommand:
+
+```bash
+dev prompt render pr-triage
+dev prompt run pr-triage --agent my-agent
+dev prompt open pr-triage --agent my-agent
+```
+
+See [Prompt handoffs](https://daviddwlee84.github.io/dev-cli/guides/prompt-handoffs/) for recipe, configuration, transport,
+TTY, permission, and runtime boundaries.
+
+## Provider availability
+
+`gh` and `glab` are optional and independent. A signed-out provider is reported
+under the table with the exact login command, while another ready provider still
+contributes rows. `dev doctor` reports the same state. In JSON, inspect
+`providers` before concluding that an empty `pull_requests` array means an empty
+inbox.
+
+Azure DevOps pull requests are not currently listed. A configured Azure target is
+reported as unsupported rather than failing a successful GitHub/GitLab result.
+
+## Structured output
+
+`dev pr list --json` emits a schema-versioned object, not a bare array:
+
+```json
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-02T12:00:00Z",
+  "scope": "local",
+  "state": "open",
+  "roles": ["author", "reviewer"],
+  "repositories": ["github:owner/api"],
+  "providers": [{"forge": "github", "status": "ready"}],
+  "pull_requests": [{
+    "forge": "github",
+    "repo": "owner/api",
+    "number": 12,
+    "detail": "full",
+    "head_branch": "feat/retry",
+    "local": {
+      "task_id": "retry",
+      "task_state": "hot",
+      "repo_path": "<repo-path>",
+      "checkout": "<checkout-path>",
+      "expected_branch": "feat/retry",
+      "live_branch": "feat/retry",
+      "branch_checked_out": true,
+      "checkout_exists": true,
+      "worktree_registered": true,
+      "status_available": true,
+      "git": {"dirty": false, "ahead": 0, "behind": 0, "upstream": "origin/feat/retry"}
+    },
+    "actions": {"comment": "gh pr comment 12 --repo owner/api --body '...'"}
+  }]
+}
+```
+
+Top-level `scope`, `state`, `roles`, and `repositories` describe the effective
+collection. `providers` distinguishes an empty inbox from unavailable sources.
+
+The optional `local` object separates durable task intent from live checkout
+facts:
+
+- `expected_branch` is the branch recorded by the task; `live_branch` is what
+  status actually observed.
+- `checkout_exists`, `worktree_registered`, and `status_available` identify
+  independent health gates.
+- `branch_checked_out` is true only when the checkout exists, remains registered,
+  status was available, and live branch equals expected branch.
+- `status_error` explains unavailable/missing/unregistered state when present.
+- `git` is optional and appears only after the expected branch was proven live;
+  it contains `dirty`, `ahead`, `behind`, and optional `upstream`.
+
+Schema version 1 is add-only: fields may be added, while existing field names and
+meanings are preserved.
+
+## Scheduling
+
+There is no daemon or built-in scheduler. `dev pr list` is a plain read-only
+query, so recurrence belongs to cron, launchd, or another scheduler:
+
+```bash
+*/30 * * * * dev pr list --json > ~/.cache/pr-inbox.json
+```
+
+## Related pages
+
+- [Prompt handoffs](https://daviddwlee84.github.io/dev-cli/guides/prompt-handoffs/)
+- [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/)
+- [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/)
+- [Compatibility and known limitations](https://daviddwlee84.github.io/dev-cli/reference/compatibility/)
 
 ---
 
@@ -3226,6 +3816,8 @@ Use the authored map for intent and the embedded generated reference for exact f
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
 | SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh probe`, `ssh remove` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
+| pull-request inventory | `pr list` |
+| prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
 | agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
@@ -3258,6 +3850,10 @@ dev ssh probe <alias> --json
 dev ssh remove <alias> --dry-run --json
 dev skill list --all --json
 dev mcp list --all --json
+dev pr list --json
+dev prompt list --json
+dev prompt render <pr-triage|session-close|workspace-closeout>
+dev sweep --ephemeral-worktrees --json
 dev bootstrap --json
 ```
 
@@ -3314,6 +3910,104 @@ separate `[local_files].include`/`--file` allowlist, requires a matching pin for
 apply, and never infers `--replace` from `--yes`. Windows transport allowlists the
 capability helper for identity diagnostics but blocks native file payload helpers
 before content is sent.
+
+### Pull-request schema and effective scope
+
+`dev pr list --json` emits an object with `schema_version: 1`, `generated_at`,
+`scope`, `state`, `roles`, optional normalized `repositories`, provider readiness,
+`warnings`, and `pull_requests`. Partial role/provider failures appear in
+`warnings` even when useful rows are still returned. `scope` is the surface that actually ran: requesting
+merged/closed/all from account or all narrows collection to local, and JSON says
+`"local"`. `--repo` filters account rows as well as local query targets.
+Personal local inventory may make one paginated query per repository for each
+requested role (author and reviewer by default). Every row carries its provider
+`host`; a local enterprise remote whose host differs from `GH_HOST`/`GITLAB_HOST`
+is reported rather than queried against the wrong endpoint. Full GitHub rows also carry
+optional `head_repo` and `is_cross_repository`; local evidence joins against the
+source repository, and a deleted/unknown source never falls back to an unrelated
+target-repository branch with the same name.
+
+A request's optional `local` object distinguishes task intent from live checkout
+health. It carries `expected_branch`, observed `live_branch`, and independent
+`branch_checked_out`, `checkout_exists`, `worktree_registered`, and
+`status_available` booleans, plus optional `status_error`. Optional `git` appears
+only when the expected branch was actually proven checked out and status was
+available; it contains `dirty`, `ahead`, `behind`, and optional `upstream`.
+Missing/cold/unregistered status therefore cannot look clean through zero values.
+Schema 1 is add-only.
+
+### Ephemeral-worktree report and apply contract
+
+`dev sweep --ephemeral-worktrees --json` emits one object with
+`schema_version: 1`, generation time, canonical repository/common-dir identity,
+provider inactivity threshold, explicit-base/branch-deletion request, sorted
+capabilities/diagnostics/candidates, and summary counts. Candidates contain only
+validated provider/run/agent IDs, normalized states/times, worktree path/branch/
+registry HEAD, live Git facts and counts, task/artifact/caller/runtime facts,
+stable checks/classification, a separate branch-deletion audit, planned actions,
+and one stable fingerprint. It never includes metadata filenames or prompt,
+script, log, result-body, or transcript content. Empty collections are arrays and
+schema 1 is add-only.
+
+A candidate also has the `provider-git-identity` check. It is eligible only when
+the source recorded branch, HEAD, common-dir, and an opaque non-replayable
+registration generation that live collection independently matches. Claude Code
+2.1.259 records no such identity, so current Claude Workflow candidates expose
+that check as `unknown` and stay report-only. Path/name/GitDir reuse is not
+accepted as identity.
+
+The JSON form is report-only; `--json --apply` is rejected. Human apply requires
+an interactive terminal and one confirmation per eligible candidate. It rejects
+`--yes`, `--close-unknown`, `--assume-no-runtime`, and apply with `--no-runtime`.
+`--stale-days` is provider inactivity (default 14, minimum 1), not commit age.
+`--ephemeral-worktrees` and `--merged-worktrees` are mutually exclusive.
+
+Branches are retained by default, including branches with commits unique from a
+base. `--delete-branches` requires `--apply` plus an explicit `--base`; the
+candidate's branch action remains unsafe unless both tips resolve unchanged, the
+branch is contained, and it has zero unique commits. Apply recollects all proof
+under a common-dir lock and accepts only the same fingerprint. Results are
+versioned internally as removed, partial, skipped-changed, or failed; branch
+failure after worktree removal is partial and retains the branch.
+
+### Prompt recipes and structured behavior
+
+`dev prompt list --json` returns sorted recipe metadata (`name`, `summary`,
+`scope`, optional `target_usage`, and `context_version`). The three recipes are
+`pr-triage`, `session-close`, and `workspace-closeout`.
+
+`dev prompt render <recipe>` prints a Markdown prompt whose JSON envelope has
+`schema_version: 1`, recipe/context versions, generation time, host, scope,
+optional target, capabilities, warnings, and recipe context. Collection is
+read-only and missing evidence stays explicit.
+
+`dev prompt agents [--json]` is the sorted, redacted profile inventory. Human
+output has `PROFILE DEFAULT RUN OPEN DESCRIPTION`; direct launchers expose only
+the executable basename, shell launchers say `shell`, and unavailable modes say
+`—`. Every JSON object has `name`, `description`, `default`, and nested
+`run`/`open` objects containing `configured`, `kind` (`command|shell|none`), and
+`executable`. Neither form emits argv, shell source, executable directories,
+environment, prompt text, or config path.
+
+| Command | Process contract |
+|---|---|
+| `dev prompt run <recipe> [--agent NAME] [--dry-run]` | Resolve the global profile and its run launcher before collection; then run one batch process with no user stdin, stdin/file/argv prompt transport, and a 10-minute default timeout. |
+| `dev prompt open <recipe> [--agent NAME] [--dry-run]` | Resolve the global profile/open launcher and check the non-dry TTY before collection; then run one foreground process with file/argv prompt transport and no default timeout. |
+
+`--agent` wins, otherwise the unique configured default wins, otherwise the sole
+agent wins. Multiple agents with no default fail as ambiguous. Selection is not
+mode-local: a selected profile missing the requested mode fails without using a
+different profile. Diagnostics list sorted mode-capable profiles and point to
+`dev prompt agents`. Dynamic completion loads parsed `--config`, filters names by
+run/open capability, sanitizes descriptions through the shared completion
+format, and degrades invalid config to no candidates plus no file completion.
+Dry-run shows the resolved mode, cwd, transport, timeout, safe command markers,
+and complete prompt, and starts nothing. Real launches in a checkout remain
+subject to the writer-occupancy guard after collection supplies the cwd. `dev`
+never parses a reply, starts an agent loop, changes permissions, or treats advice
+as lifecycle authorization. `open` never creates, focuses, or reuses a
+Herdr/tmux/Zellij surface; inside Herdr it remains in the current pane. See
+[Prompt handoffs](https://daviddwlee84.github.io/dev-cli/guides/prompt-handoffs/).
 
 ## Repository bootstrap
 
@@ -3558,6 +4252,7 @@ Key sections:
 | `[tui]` / `[[tui.tools]]` | columns, sorting, and external-tool bindings |
 | `[stats]` | sampler and optional WakaTime import |
 | `[update]` | `check` (default `true`) — allow the once-a-day "newer release available" hint and its background cache refresh; `DEV_NO_UPDATE_CHECK` overrides it |
+| `[[agent]]`, `[agent.run]`, `[agent.open]` | host-only names, optional descriptions, global default selection, and independent batch/foreground prompt launchers; no built-in entries |
 
 Interactive repository selection uses one direct argv vector, never shell source:
 
@@ -3583,6 +4278,53 @@ optional update-cache network refresh is also deferred until the initial view
 has returned.
 
 Repository quick-note Markdown is durable under configured `paths.state_dir/notes`, which defaults to `$XDG_DATA_HOME/dev/notes`. The full-text index at `$XDG_CACHE_HOME/dev/notes.db` is disposable and rebuilds from those files; changing `paths.state_dir` does not move the cache.
+
+### Agent prompt launchers
+
+There are no built-in agent entries. Launchers are host-only policy in the user
+config; the `agent` section is denied in repository `.dev-cli/config.toml`.
+
+```toml
+[[agent]]
+name = "my-agent"
+description = "Local review and implementation agent"
+default = true
+
+[agent.run]
+command = ["my-agent", "--batch"]
+input = "stdin"
+timeout = "10m"
+
+[agent.open]
+command = ["my-agent", "{{prompt_file}}"]
+input = "file"
+```
+
+`[[agent]]` has required `name`, optional `description` and `default`, and nested
+`run`/`open` launchers. Names cannot have surrounding whitespace, compare
+case-insensitively, and must be unique; at most one entry may be default. An
+entry must configure at least one mode. Selection remains explicit/default/sole
+across all profiles, then the requested mode is required on that exact profile;
+the other mode remains unavailable rather than inheriting or falling back.
+
+Each launcher sets exactly one of `command` (direct argv) or `shell` (static
+shell text), a required `input`, and optional `load_shell_rc` for `shell` only.
+Only `run` accepts an optional non-negative `timeout`; `open` rejects one. `load_shell_rc = true` uses `$SHELL -lic`;
+otherwise shell launch uses `$SHELL -c`. Shell text cannot contain prompt
+placeholders, so prompt data is never interpolated into a command string.
+
+Transport constraints are exact:
+
+- `stdin`: `run` only; no placeholder; the finite prompt replaces child stdin.
+- `file`: a `command` needs exactly one whole `{{prompt_file}}` element; a
+  `shell` must reference `$DEV_PROMPT_FILE`/`${DEV_PROMPT_FILE}`. The temporary
+  directory/file modes are 0700/0600 and cleanup follows process exit.
+- `argv`: `command` only, with exactly one whole `{{prompt}}` element; maximum
+  rendered prompt size is 100 KiB.
+
+Embedded placeholder forms are rejected. Omitted/zero timeout resolves to 10
+minutes for `run`; `open` has no deadline and rejects a timeout. See
+[Prompt handoffs](https://daviddwlee84.github.io/dev-cli/guides/prompt-handoffs/) for recipe and runtime safety.
 
 ### Scaffold presets
 
@@ -4443,6 +5185,32 @@ dev park [task] [flags]
 - `--timeout` — maximum time to wait for runtime closure
 - `--wip` — checkpoint uncommitted work as a wip: commit
 
+### `dev pr`
+
+List the pull requests waiting on you and their local worktrees
+
+```
+dev pr
+```
+
+### `dev pr list`
+
+List open pull requests you authored or were asked to review
+
+```
+dev pr list [query] [flags]
+```
+
+- `--actions` — print the gh/glab commands for each request
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--json` — emit structured output
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
 ### `dev prepare`
 
 Arm post-writer artifact finalization without closing this agent
@@ -4455,6 +5223,160 @@ dev prepare [task-or-worktree] [flags]
 - `--plan` — exact .claude/plans path to include (repeatable)
 - `--run-id` — outer wrapper run id (default: DEV_AGENT_RUN_ID or generated)
 - `--session` — exact agent session provider:uuid (inferred from task/runtime when unique)
+
+### `dev prompt`
+
+Render operational context, or hand it to a configured agent
+
+```
+dev prompt
+```
+
+### `dev prompt agents`
+
+List configured agent profiles without private launch details
+
+```
+dev prompt agents [flags]
+```
+
+- `--json` — emit stable structured agent metadata
+
+### `dev prompt list`
+
+List built-in prompt recipes
+
+```
+dev prompt list [flags]
+```
+
+- `--json` — emit structured recipe metadata
+
+### `dev prompt open`
+
+Open an interactive foreground agent in the current terminal
+
+```
+dev prompt open
+```
+
+### `dev prompt open pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt open pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt open session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt open session-close
+```
+
+### `dev prompt open workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt open workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
+
+### `dev prompt render`
+
+Render a built-in prompt to stdout
+
+```
+dev prompt render
+```
+
+### `dev prompt render pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt render pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt render session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt render session-close
+```
+
+### `dev prompt render workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt render workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
+
+### `dev prompt run`
+
+Run a one-shot agent with a built-in prompt
+
+```
+dev prompt run
+```
+
+### `dev prompt run pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt run pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt run session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt run session-close
+```
+
+### `dev prompt run workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt run workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
 
 ### `dev repo`
 
@@ -4962,11 +5884,13 @@ dev sweep [flags]
 
 - `--apply` — act on the suggestions instead of only reporting
 - `--assume-no-runtime` — continue when runtime enumeration fails during retirement
-- `--base` — containment base for --merged-worktrees (default: the repository default branch)
+- `--base` — explicit containment base for merged worktrees or ephemeral branch deletion
 - `--close-unknown` — allow external closure of unknown runtime status during retirement
 - `--delete-branches` — also delete contained local branches after worktree retirement
+- `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees
+- `--json` — print the versioned ephemeral-worktree report as JSON
 - `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
-- `--stale-days` — days without a commit before a task counts as stale
+- `--stale-days` — days without relevant activity before an item counts as stale
 - `--yes` — with --apply, do not confirm each change
 
 ### `dev tries`
@@ -5218,6 +6142,8 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
 - [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
+- [`internal/handoff`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/handoff)
 - [`internal/scaffold/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/scaffold/types.go)
 - [`internal/projectconfig/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/projectconfig/types.go)
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
@@ -5268,6 +6194,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX targets remain available; Windows-specific installer/launcher fails without PowerShell rather than using a shell fallback |
 | terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
 | in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` delegates to the package manager's upgrade command instead |
+| verified ephemeral worktree apply | Git, compatible bounded Claude Workflow metadata, known task/artifact state, and every available runtime inventory | report remains available, but missing/unknown proof is never apply-eligible |
 
 ## Confirmed project limitations
 
@@ -5281,7 +6208,7 @@ Latin note queries use term-wise prefix FTS and SQLite ranking. Non-ASCII querie
 
 Note writes sync the file and atomically rename it on every supported platform. Unix also syncs the containing directory after rename/delete. The Windows implementation cannot provide that directory-fsync step, so a sudden power loss has a narrower durability guarantee there. Concurrent mutations by cooperating `dev` processes are serialized and each Markdown replacement is atomic; arbitrary external writers do not participate in that lock.
 
-### Pull-request completion is not tracked automatically
+### A merged pull request does not retire its worktree
 
 `dev done --pr` pushes and opens a pull/merge request, then leaves the task,
 runtime, and worktree unchanged because review owns integration. `dev flow` can
@@ -5290,6 +6217,100 @@ portable existence, open/draft/merged/closed state, URL, provider, and observati
 time. It does not query review decisions or checks, persist that evidence, or
 turn it into DONE. Current `dev sweep` does not query the forge either. Verify
 integration with exact local ancestry and finish deliberately.
+
+`dev pr list --scope local --state merged` now reports which requests the forge considers merged, and which local checkout each belongs to. `dev sweep` still does not consult it, and that is deliberate: a squashed merge produces a commit that is not an ancestor of the local branch, so a forge saying "merged" cannot prove the work is recoverable from the remote. `dev sweep --merged-worktrees` proves containment locally with `git merge-base --is-ancestor`, and `dev done --merged` requires an explicit `--confirm-squash` attestation. Treat the pull-request list as a prompt to look, not as permission to delete.
+
+### Claude Workflow ephemeral cleanup is strict and version-sensitive
+
+`dev sweep --ephemeral-worktrees` supports the private layout verified with
+Claude Code 2.1.259: validated fixed-depth `wf_*.json`, matching worktree meta and
+journal paths, `runId`, `status`, `workflowProgress` agent state/isolation,
+`worktreePath`, `spawnedWithWorktree`, journal `started`/`result`, and same-ID
+resume existence. Unknown add-only JSON fields are tolerated because upstream has
+no metadata schema version. A missing/wrong required type, changed or unsafe
+source file, duplicate/path mismatch, exhausted bound, or uncertain timestamp
+makes the affected evidence unknown or unavailable; dev does not guess another
+layout or decode payload fields.
+
+The 2.1.259 layout does not record provider-observed branch, HEAD, common-dir, or
+an opaque non-replayable worktree-registration generation. Those are mandatory
+current-ownership facts, so this adapter leaves `provider-git-identity` unknown
+and its claims remain report-only. A canonical path, naming convention, or GitDir
+pathname can be reused and is deliberately not accepted; stale metadata must not
+attach to a replacement checkout.
+
+V1 has no operator attestation. `killed` without a matching child result,
+progress, or any same-ID resumed transcript remains `unknown` regardless of age.
+Apply is available only when provider inactivity and every Git/task/artifact/
+caller/runtime fact are known and safe. `--no-runtime` may produce a report but
+cannot apply. Missing, prunable, unregistered, and orphan paths are report-only.
+The command never closes runtimes, prunes worktree registrations, deletes Claude
+metadata, or force-removes/rescues/stashes/commits dirty or ignored work.
+
+This adapter is provider-specific behind a provider-neutral audit/service; no
+other agent harness is inferred from a path or branch name. If Claude changes the
+private layout, the safe behavior is an unavailable capability plus unknown
+candidates until the adapter, fixtures, tested version, and both documentation
+locales are updated.
+
+### Pull-request inventory is limited by the provider surfaces
+
+GitHub's `gh search prs` account surface cannot report a head branch, review decision, or check status, so those rows are `detail: "summary"` and cannot be joined to a worktree. An absent field on a summary row means the surface could not report it, not that the value is empty. GitLab's account list does carry branch/merge detail and therefore returns full rows, but its list surfaces report neither pipeline checks nor a normalized review decision.
+
+Personal per-repository inventory may make one paginated query per requested role for each repository (author and reviewer by default). It covers repositories `dev` has a task for unless `--all-repos` widens the scan. `--repo` filters both account rows and local targets. Account search cannot distinguish merged from closed, so requesting merged/closed/all narrows an account/all request to local collection; JSON reports that effective scope.
+
+The schema-version-1 local join reports expected and live branches, checkout existence, worktree registration, status availability/error, and whether the expected branch is actually checked out. Git details are omitted unless those live checks succeed. Azure DevOps pull requests are not listed at all; a configured target is reported as unsupported rather than failing the command.
+
+### Prompt open uses the current terminal, not runtime placement
+
+`dev prompt open <recipe>` runs one configured child in the foreground of the
+terminal/TTY that invoked it. It does not create, focus, reuse, or inject into a
+Herdr, tmux, or Zellij pane. Inside Herdr it naturally remains in the current
+pane. To use another Herdr pane, create or focus it manually, enter the exact
+checkout, and run `prompt open` there.
+
+This is intentionally separate from `dev start --run`, whose dispatch target is
+only the exact root pane returned for a newly created first-class Herdr worktree.
+`prompt open` neither supplies a fresh runtime surface nor weakens that
+exact-pane proof. `run` is the non-interactive alternative; it receives no user
+stdin and defaults to a 10-minute timeout, while `open` reserves stdin for the
+conversation and has no default timeout.
+
+The configured child retains its own permission policy. Recipe instructions are
+read-only guidance, not a sandbox; `dev` does not add permission flags, answer
+approval prompts, or parse the response into an action.
+
+### Prompt closeout reports do not authorize cleanup
+
+`session-close` computes runtime-closure evidence only. An `idle` or `done`
+covering agent can satisfy that one activity gate, but does not prove that work
+is committed, artifacts are finalized, review is complete, or task intent is
+done. Caller-contained, mixed-purpose, active, unknown, and unrecognized
+sessions remain blocked or unknown as their evidence requires.
+
+`workspace-closeout` performs the broader read-only audit: target kind,
+registration/path, status availability, clean Git state, no in-progress Git
+operation, known base and containment, task completion, artifact
+reachability/finalization, and runtime eligibility. A merged pull request is only
+evidence. Even an `eligible` audit is advisory; `dev retire` recollects and
+revalidates fresh state before any mutation. Neither recipe closes a runtime,
+changes Git/task state, deletes a branch/worktree, or grants permission to do so.
+
+### Zellij exited sessions are closed but keep their names
+
+Zellij keeps exited sessions available for resurrection. `dev` recognizes only
+the exact `(EXITED - attach to resurrect)` marker, omits those sessions from live
+coverage, and refuses to create over their names; reclaim one with
+`zellij delete-session <name>`. A live session name containing `EXITED` is not an
+exit marker. If a session exits between native listing and layout inspection,
+open fails closed and asks for a retry rather than resurrecting an old layout at
+the requested checkout.
+
+### Forge CLI sign-in is reported, never retried
+
+`gh` and `glab` are optional and independent, and `dev` never authenticates on your behalf. When a provider's stored credential is missing or rejected, `dev` reports which provider and the exact login command — for example ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — and continues with whatever the other provider returned. `dev repo remote` and the TUI REMOTE view render the partial result and warn; `dev pr` fails only when no provider is authenticated at all. `dev doctor` probes sign-in state, so an installed but signed-out CLI is visible before a command needs it.
+
+Only a missing or rejected credential is reported this way. A rate limit, a permissions or scope failure, and a network error keep their full diagnostic text including the command that failed, because signing in again would not fix them. The original command and provider output remain in the wrapped error in every case.
 
 ### Agent session capture is reserved, not wired
 
@@ -5395,6 +6416,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - Human-readable output now carries semantic color (`--color auto|always|never`), automatically disabled when `NO_COLOR` is set, `TERM=dumb`, or stdout/stderr is not a terminal.
 - `dev done` records MERGED only: it never closes the invoking runtime, removes a worktree, or deletes a branch. Cleanup moved to `dev retire`, which runs from outside the target workspace, refuses active agents and mixed-purpose workspaces, and revalidates Git state after every runtime closure. `dev done --delete-branch` is now an error pointing at `dev retire --delete-branch`, and `--keep-worktree` warns as a no-op.
 - `dev sweep --merged-worktrees` enumerates linked worktrees from Git rather than from the task registry, so unmanaged worktrees whose branches are contained in the base become retirable. Containment alone is never permission; dirty state, unfinalized artifacts, in-progress Git operations, and runtime refusals all still block it, and branches survive unless `--delete-branches` is passed.
+- `dev sweep --ephemeral-worktrees` adds a separate schema-v1 Claude Workflow report. The path/branch convention is only discovery; exact bounded provider linkage plus fresh Git/task/artifact/caller/runtime evidence authorizes TTY/per-item apply. Apply locks and re-fingerprints, removes without force, retains branches by default, and allows only explicit-base unchanged/contained/zero-unique `branch -d`.
 - `dev sweep` reports a branch-backed task whose branch Git no longer has as dead and offers to reap the record. Such a task cannot be finished, resumed, or retired, because every one of those paths resolves the branch first; the suggestion stays report-only until `--apply`.
 - An unknown command is reported instead of discarded. `dev` silences cobra's own error printing and previously also skipped printing anything whose message began with `unknown command`, so a mistyped command produced no output at all on either stream. The message, cobra's "Did you mean this?" suggestions, and a pointer to `--help` are now printed to stderr with exit status 1.
 - A stray argument to a command family is an error rather than a silent help render. `dev wt bogus` used to print `dev wt` help and exit 0 because a family has no `Run` of its own; every family node now reports the unknown subcommand and exits 1, while a bare family still prints its help and exits 0.
@@ -5444,6 +6466,7 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/ephemeral`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/ephemeral)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
 - [`internal/forge/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/cache.go)
 - [`internal/note/index.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/index.go)
@@ -5451,6 +6474,10 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
+- [`internal/handoff`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/handoff)
+- [`internal/closeout`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/closeout)
+- [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
 - [`scripts/update-homebrew-formula.sh`](https://github.com/daviddwlee84/dev-cli/blob/main/scripts/update-homebrew-formula.sh)
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
@@ -5550,6 +6577,9 @@ tested_with: optional
 | Claude worktree path/base/cleanup | [Worktree isolation](https://daviddwlee84.github.io/dev-cli/claude/worktree-isolation/) | [Claude Code worktrees](https://code.claude.com/docs/en/worktrees) | version-sensitive, tested 2.1.250 |
 | teams and Dynamic Workflows | [Teams and workflows](https://daviddwlee84.github.io/dev-cli/claude/teams-dynamic-workflows/) | [agent teams](https://code.claude.com/docs/en/agent-teams), [workflows](https://code.claude.com/docs/en/workflows) | experimental/versioned |
 | hooks/skills/plugins/SDK roles | [Extensions](https://daviddwlee84.github.io/dev-cli/claude/extensions-agent-sdk/) | Anthropic feature references | evolving |
+| generic prompt recipes, run/open transport, current-terminal boundary, session runtime-close meaning, and workspace retirement audit | [Prompt handoffs](https://daviddwlee84.github.io/dev-cli/guides/prompt-handoffs/) | `internal/cli/{prompt_command,prompt_providers}.go`, `internal/config/config.go`, `internal/promptkit`, `internal/handoff`, `internal/closeout`, `internal/retire/audit.go`, focused tests | implemented |
+| `dev pr` inbox, provider surfaces, effective filtering/scope, and local checkout-health join | [Pull request inbox](https://daviddwlee84.github.io/dev-cli/guides/pull-request-inbox/) | `internal/forge/pr.go`, `internal/forge/{github,gitlab}.go`, `internal/cli/pr*.go`, focused forge/CLI tests | implemented |
+| AI reviewer trigger phrases, workflow requirement and plan tiers | [AI pull-request review options](https://daviddwlee84.github.io/dev-cli/notes/ai-pr-review-options/) | [Claude Code GitHub Actions](https://code.claude.com/docs/en/github-actions), [Claude Code Review setup](https://support.claude.com/en/articles/14233555-set-up-code-review-for-claude-code), [Codex GitHub](https://developers.openai.com/codex/integrations/github), [CodeRabbit commands](https://docs.coderabbit.ai/guides/commands) | vendor docs, checked 2026-09-01 |
 
 ## Historical sources
 
@@ -5629,6 +6659,7 @@ When a note is added, list it here with type, status, verification date, and one
 | Note | Type | Status | Verified | Purpose |
 |---|---|---|---|---|
 | [Authoring notes](https://daviddwlee84.github.io/dev-cli/notes/authoring/) | recipe | maintained | 2026-08-28 | page template, bilingual/source rules, and validation loop |
+| [AI pull-request review options](https://daviddwlee84.github.io/dev-cli/notes/ai-pr-review-options/) | source-review | evolving | 2026-09-01 | which reviewer needs a workflow file, and the exact trigger phrase each expects |
 
 ## Rules
 
@@ -5765,6 +6796,114 @@ The source check enforces metadata, nav membership, bilingual parity, snippet ta
 - [Notes index](https://daviddwlee84.github.io/dev-cli/notes/)
 - [Sources and freshness](https://daviddwlee84.github.io/dev-cli/reference/sources-freshness/)
 - [Best practices](https://daviddwlee84.github.io/dev-cli/best-practices/)
+
+---
+
+### AI pull-request review options
+
+Source: https://daviddwlee84.github.io/dev-cli/notes/ai-pr-review-options/
+
+> Compare Claude Code Review, the Claude Code GitHub Action, Codex code review, and CodeRabbit by trigger phrase, workflow requirement, prerequisites, and cost.
+
+Four products review pull requests with a model. They differ in one structural
+way that decides most of the choice: whether you maintain a workflow file.
+
+!!! info "Freshness"
+    **Authority:** vendor documentation plus a labeled local recommendation ·
+    **Status:** evolving — these products change quickly ·
+    **Verified:** 2026-09-01. Re-check trigger phrases and plan tiers before
+    relying on them; every row below was read from the vendor's own docs on
+    that date.
+
+## Decision table
+
+| | Workflow file? | Trigger | Prerequisites | Cost model |
+|---|---|---|---|---|
+| **Claude Code Review** | No | `@claude review` as a top-level PR comment, or automatic | Team or Enterprise plan; research preview; unavailable with zero data retention | Token usage, billed separately from plan usage; roughly $15–25 per review |
+| **Claude Code GitHub Action** | **Yes** | `@claude` in a comment (configurable), or a `prompt` input for unattended runs | Repository admin; `ANTHROPIC_API_KEY` or `CLAUDE_CODE_OAUTH_TOKEN` | GitHub Actions minutes plus API tokens, or your subscription via an OAuth token |
+| **Codex code review** | No | `@codex review` in a PR comment, or the *Automatic reviews* setting | GitHub connected in Codex | Codex usage |
+| **CodeRabbit** | No | Automatic on PRs against the primary branch; `@coderabbitai review` or `@coderabbitai full review` | GitHub App installed from the CodeRabbit dashboard | Per plan; an OSS plan exists |
+
+## The distinction that matters
+
+**A managed GitHub App** — Claude Code Review, Codex code review, CodeRabbit —
+receives a webhook and reviews. There is nothing in your repository to maintain,
+and nothing to keep up to date when the vendor changes.
+
+**A GitHub Action** — `anthropics/claude-code-action@v1` — runs inside your CI.
+You maintain the workflow file, you pay for the runner minutes, and in exchange
+the agent can do things a reviewer cannot: run your tests, push a fix, open a
+follow-up PR. It is not a reviewer that also edits; it is an agent that happens
+to be reviewing.
+
+Pick by what you want to happen *after* the finding. If the answer is "a human
+reads it", use a managed app. If the answer is "fix it and push", you want the
+Action.
+
+## Getting the trigger right
+
+The most common failure is a phrase that looks right and does nothing.
+
+- Claude Code Review needs the comment to **begin with `@claude review`**, as a
+  top-level comment rather than an inline one. The PR must be open and not a
+  draft, and the commenter needs owner, member, or collaborator access.
+  `@claude please review this` is not the documented trigger.
+- The Claude Code GitHub Action responds to `@claude` as a **complete word** —
+  not `/claude`, not `@claude-bot` — and only from a user with write access.
+  The default phrase is configurable with `trigger_phrase`.
+- The two are separate products that share a GitHub App. Installing the app
+  does not enable Code Review, and enabling Code Review does not give you the
+  Action. A `👀` reaction with no review usually means the app is installed but
+  the product you expected is not enabled.
+- CodeRabbit distinguishes `@coderabbitai review` (only what changed since its
+  last review) from `@coderabbitai full review` (everything, ignoring its own
+  prior comments).
+
+## Where `dev` fits
+
+`dev` does not install an App, write a workflow, or review anything. It tells
+you which requests are waiting and renders the comment that triggers whichever
+reviewer you chose:
+
+```bash
+dev pr list                    # what is open, and which worktree it belongs to
+dev pr list --actions          # the gh/glab commands, including `pr comment`
+```
+
+Posting the trigger is then an ordinary comment:
+
+```bash
+gh pr comment 12 --repo owner/name --body '@claude review'
+gh pr comment 12 --repo owner/name --body '@codex review'
+gh pr comment 12 --repo owner/name --body '@coderabbitai full review'
+```
+
+`dev` prints those and never runs them. Requesting a paid review is a decision,
+and at $15–25 per Claude Code Review it is not one to make on someone's behalf.
+
+## What this note does not claim
+
+- Review *quality* is not compared here. It depends on the codebase, the diff,
+  and the repository guidance file more than on the vendor.
+- Prices and plan tiers move. The figures above are the vendor's own, read on
+  the verification date, not a quote.
+- A widely repeated claim that CodeRabbit requires manual triggering on public
+  repositories below a star threshold could not be confirmed in CodeRabbit's
+  documentation and is deliberately omitted.
+
+## Sources
+
+- [Claude Code GitHub Actions](https://code.claude.com/docs/en/github-actions) — setup, `@claude` trigger, `trigger_phrase`, secrets, who can trigger runs, cost model.
+- [Set up Code Review for Claude Code](https://support.claude.com/en/articles/14233555-set-up-code-review-for-claude-code) — Team/Enterprise research preview, `@claude review` preconditions, frequency settings, token billing.
+- [Review GitHub pull requests with Codex](https://developers.openai.com/codex/integrations/github) — `@codex review`, the Automatic reviews setting.
+- [CodeRabbit commands](https://docs.coderabbit.ai/guides/commands) — `review` versus `full review`.
+- [CodeRabbit FAQ](https://docs.coderabbit.ai/faq) — GitHub App install, automatic review on the primary branch, no workflow required.
+
+## Related pages
+
+- [Pull request inbox](https://daviddwlee84.github.io/dev-cli/guides/pull-request-inbox/)
+- [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/)
+- [Sources and freshness](https://daviddwlee84.github.io/dev-cli/reference/sources-freshness/)
 
 ---
 
@@ -6973,6 +8112,12 @@ dev wt create exp/oauth --base main
 
 Runtime 只開啟與顯示 checkout；branch/worktree lifecycle 由 `dev` 管理，不由 Herdr 或 tmux 管理。關閉 runtime 不會刪除 task 或 checkout。
 
+Zellij 會保留可 resurrect 的 exited session。`dev` 只辨識 exact
+`(EXITED - attach to resurrect)` marker，從 live coverage 省略這些 session，並拒絕用
+同一 name 建立新 session；name 只是含有 `EXITED` 的 live session 仍視為 live。若 session
+在 listing 與 layout inspection 之間退出，open 會 fail closed 並要求 retry，不會在無關
+checkout resurrect 舊 layout。
+
 若要在新建的獨立 worktree 執行一個已 review 的 shell command，Herdr 支援直接
 one-liner：
 
@@ -6984,6 +8129,13 @@ dev start api --task "token refresh" --base main --run 'codex' --focus
 fallback、缺少 pane identity、其他 runtime，以及 direct/branch-only modes 都會
 fail closed。Dispatch 失敗時 task 與可用 worktree 仍會保留。`--focus` 只在成功
 dispatch 後獨立控制轉跳；dev 不等待 command exit status。
+
+`dev prompt open <recipe>` 是不同 contract：它在呼叫 terminal 中啟動一個 configured
+foreground process，絕不建立、focus、reuse 或 inject runtime pane。在 Herdr 裡會留在
+current pane。若要在 separate pane 對話，請手動建立/focus 該 pane、進入 exact
+checkout，再從那裡執行 `prompt open`。它不會放寬 `start --run` 的
+fresh-worktree/exact-root-pane proof；詳見
+[Prompt handoff](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/prompt-handoffs/)。
 
 ## 協調 contract
 
@@ -7016,6 +8168,7 @@ Claude-specific primitive 的選擇請接著看[平行工作決策指南](https:
 - [`internal/help/topics/agents.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/agents.md)
 - [`internal/runtime/runtime.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/runtime.go)
 - [`internal/runtime/herdr.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/herdr.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
 - [Claude Code：平行執行 agents](https://code.claude.com/docs/en/agents)
 
 ---
@@ -7567,6 +8720,8 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 | `dev artifact discard <intent> --yes` | 記錄某個 intent 永遠無法 finalize——transcript 從未被寫出，或 rebase 之後 HEAD 已不存在——使它不再阻擋 integration 與 retirement。它不會 commit 也不會復原任何東西，會先印出確切將被放棄的內容，並拒絕仍為 `armed` 的 intent，因為 finalize 才是保存 transcript 的路徑。 |
 | `dev retire [task-or-worktree] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | 重新解析每一個 covering runtime session，拒絕 active agent 與 mixed-purpose workspace，等待其關閉，重新驗證 Git state，才移除 linked worktree（不使用 force）。只有在所有要求的步驟都成功後，才刪除 task record。 |
 | `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | 從 canonical checkout 執行，回報（加上 `--apply` 時則 retire）branch 已被 base 包含的 task-tracked 與 unmanaged linked worktree。 |
+| `dev sweep --ephemeral-worktrees [--stale-days <n>] [--json]` | 從 canonical non-bare checkout 產生 strict Claude Workflow V1 report；JSON schema 1 僅供 report。 |
+| `dev sweep --ephemeral-worktrees --apply [--delete-branches --base <ref>]` | 要求 TTY 與逐項 confirmation，接著在 common-dir cleanup lock 下重新驗證每個已核可 fingerprint，才用 plain non-force removal。 |
 
 Dirty checkout 在這裡不會直接失敗：`dev done` 會先把它與 base 比對分類，在
 interactive 時提供 commit 或 discard，在 script 中則接受明確的 `--dirty`
@@ -7579,6 +8734,20 @@ policy。該 wizard 詳見[變更流工作流程](https://daviddwlee84.github.io
 `dev flow` 把 persisted `DONE` intent 與 live cleanup evidence 分開。DONE/MERGED row 仍可顯示 runtime、worktree、branch 與 task record；只有 Retire result 完成最後的 CAS task deletion 才是 RETIRED。UNMANAGED row 使用的是永遠保留 branch 的 Remove Checkout，不會製造 DONE/RETIRED task milestone；canonical 與 harness row 不能 Remove Checkout。
 
 Flow TUI 沒有 `--close-unknown`、`--assume-no-runtime`、dirty discard 或 generic force。`runtime=none` 會保留「session/agent unobserved」，不冒充已證明 closed。需要 expert acknowledgement 時，離開 Flow 並明確執行 plan 顯示的 fallback CLI，再接受該 command 自己的 guards。完整 row/action matrix 見 [Repository Flow 預覽](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/)。
+
+Action 前若需要 read-only explanation，從 exact checkout render 或 open generic
+`workspace-closeout` recipe：
+
+```bash
+dev prompt render workspace-closeout .
+dev prompt open workspace-closeout . --agent my-agent
+```
+
+Recipe 內含完整 retirement audit，但結果只是 advisory。`eligible` 與 merged PR 都不
+授權 cleanup；外部 `dev retire` 仍會重新收集並驗證所有 gate。若 `dev done --ff` 或
+`dev git pull-rebase` 停在 conflict，只用 `prompt open` 討論 semantic resolution，
+接著明確 continue/abort Git，再重新執行 lifecycle command。詳見
+[Prompt handoff](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/prompt-handoffs/)。
 
 ## 一般 local flow
 
@@ -7635,7 +8804,7 @@ dev done <task> --merged --base-ref origin/main --confirm-squash <merge-commit>
 - Agent status 無法辨識（不在已知集合內）——一律阻擋；
 - Runtime enumeration 本身失敗，**除非**呼叫者傳入 `--assume-no-runtime`。
 
-`--close-unknown` 與 `--assume-no-runtime` 只放寬 fail-closed 的*觀測結果*（無法讀取的 status、無法列舉的 runtime list）。這兩個 flag 都絕不會 bypass caller containment 或 active-agent state。`retirement.Service.Retire` 在 runtime session 關閉後，也會重新驗證 target identity、Git ancestry、進行中的 Git operation（`gitx.InProgress`，檢查 `MERGE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`、`rebase-merge`、`rebase-apply`、`sequencer`；不含 `REBASE_HEAD`，因為 Git 在 rebase 完成後仍會保留它）以及 worktree 是否 clean——因為 runtime draining 期間現實可能已改變，先前的驗證結果不會跨越這個邊界沿用。
+`--close-unknown` 與 `--assume-no-runtime` 只放寬 fail-closed 的*觀測結果*（無法讀取的 status、無法列舉的 runtime list）。這兩個 flag 都絕不會 bypass caller containment 或 active-agent state。`retirement.Service.Retire` 在 runtime session 關閉後，也會重新驗證 target identity、Git ancestry、進行中的 Git operation（`gitx.InProgress`，檢查 `MERGE_HEAD`、`CHERRY_PICK_HEAD`、`REVERT_HEAD`、`BISECT_LOG`、`rebase-merge`、`rebase-apply`、`sequencer`；不含 `REBASE_HEAD`，因為 Git 在 rebase 完成後仍會保留它）以及 worktree 是否 clean——因為 runtime draining 期間現實可能已改變，先前的驗證結果不會跨越這個邊界沿用。
 
 Taskflow Apply 也不信任畫面時的 snapshot：它鎖定 canonical repository/task store、重新讀取 task revision 與 authority fingerprint，並在 runtime closure、worktree removal、optional branch deletion 與最後 task reap 前逐段 revalidate。Result ledger 依序保留 `ATTEMPTED`/`COMPLETED`/`FAILED`；若前段 cleanup 已完成而後段失敗，會回報 partial success 與 recovery，而不宣稱 rollback。
 
@@ -7648,6 +8817,58 @@ dev sweep --merged-worktrees --apply --yes
 ```
 
 這會同時列出 task-tracked 的 DONE worktree，以及 named branch 已被 base 包含的 unmanaged linked worktree——請從 canonical checkout 執行。它會先回報再套用：containment 本身絕不等於許可。Dirty 的 Git state、pending 或無法到達的 artifact、locked 或 prunable 的 worktree registration、進行中的 Git operation，以及與 `dev retire` 相同的 runtime 拒絕條件，都仍會阻擋 cleanup。Retirement 完成後預設保留 branch；只有在使用者另外核可刪除時，才加上 `--delete-branches`。
+
+### 經驗證的 Claude Workflow ephemeral cleanup
+
+Claude Workflow 的 turn-scoped worktree 使用另一條 strict V1 路徑：
+
+```bash
+dev sweep --ephemeral-worktrees --stale-days 14
+dev sweep --ephemeral-worktrees --json
+dev sweep --ephemeral-worktrees --apply
+dev sweep --ephemeral-worktrees --apply --delete-branches --base main
+```
+
+此 command 只能從 canonical non-bare checkout 執行。Bounded、fixed-depth adapter
+只讀取 `~/.claude/projects` 下的 private metadata，驗證 workflow/agent ID、exact
+canonical worktree mapping、`spawnedWithWorktree`、`isolation=worktree` 與 matching
+journal linkage；絕不 decode 或輸出 prompt、script、log、result body 或 transcript
+content。Unknown add-only fields 可接受；required type 錯誤、path mismatch、duplicate
+claim、不安全／symlink／reparse／group-or-world-writable metadata、讀取中 mutation、
+bound exhaustion，以及 future/conflicting/unparseable time 都會 fail closed。
+
+V1 terminal liveness 要求 workflow 為 `completed|killed`、matching agent 為 `done`、
+journal 同時有一筆 `started` 與 `result`，且不存在 same-ID resumed transcript。
+Killed 但沒有 result、progress，或已 resume 的狀態無論多舊都維持 `unknown`；沒有
+attestation bypass。`--stale-days` 衡量 provider inactivity，預設 14，最小 1。
+
+Path continuity 無法證明 current-provider ownership。Apply 另外要求 provider-observed
+branch、HEAD、common-dir 與 opaque non-replayable registration generation 都和 live
+registry 一致。Claude Code 2.1.259 不會記錄這些 Git identity facts，因此目前 Claude
+claim 會回報 `provider-git-identity: unknown`，即使要求 `--apply` 也只供 report。
+這可防止 stale terminal metadata 綁到同一路徑的 replacement checkout。Path、branch
+convention 或可重用的 GitDir pathname 都不能取代缺少的 generation。
+
+獨立 safety audit 還要求 worktree present、registered、non-main、named、unlocked、
+non-prunable，並且 common-dir、live branch、registry HEAD、live HEAD 完全一致。
+Staged、unstaged、conflicted、untracked、ignored 或 recursively inspected submodule
+content 都會阻擋；Git operation、task claim、不安全 artifact intent、caller
+containment、unknown runtime inventory 或任何 covering runtime 也會阻擋。Missing、
+prunable、unregistered 與 orphan path 僅供 report。
+
+JSON schema 1 只包含 normalized identity/state/time、Git/path/branch/HEAD facts、
+checks、actions、diagnostics、fingerprints 與 counts，且只供 report。Apply 拒絕
+`--yes`、`--close-unknown`、`--assume-no-runtime`、`--no-runtime` 與 JSON；它要求
+terminal 並逐項確認。在 common-dir cleanup lock 下，每次 remove 前都會重新 discover
+repository，並重新收集 provider、Git、task、artifact、runtime 與 caller proof；
+fingerprint 改變時回報 `skipped-changed`。
+
+Removal 使用 plain `git worktree remove`、不加 force，並驗證 path 與 registration 都已
+消失。它不會關閉 session、prune、刪除 Claude metadata，或 rescue/stash/commit dirty
+work。Named branch 預設保留，因此 unique commits 仍可復原。Optional deletion 另外要求
+`--delete-branches --base <ref>`、unchanged base/branch tips、containment、zero unique
+commits 與 ordinary `git branch -d`；remove 後任何 failure 都會保留 branch，並回報
+partial completion。
 
 ## 安全邊界
 
@@ -7677,10 +8898,471 @@ fatal: not a git repository (or any of the parent directories): .git
 - [`internal/taskflow/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/retire.go)
 - [`internal/cli/artifact.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/artifact.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/ephemeral`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/ephemeral)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/retire/safety.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/safety.go)
 - [`internal/retire/service.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/service.go)
+- [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
 - [`internal/gitx/transactions.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/transactions.go)
+
+---
+
+### Prompt handoff
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/prompt-handoffs/
+
+> 渲染 deterministic operational context，或交給 configured local agent，而不建立第二個 lifecycle authority。
+
+!!! note "術語規則"
+    有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
+
+`dev prompt` 收集 read-only snapshot，放進 built-in prompt，再印出或交給你
+設定的 local command。它是 context handoff，不是 agent loop、scheduler、
+permission manager 或 lifecycle engine。
+
+!!! info "時效"
+    **Authority：**`internal/cli/prompt_command.go`、`internal/promptkit`、
+    `internal/handoff`、`internal/closeout` 與 `internal/retire/audit.go` ·
+    **Status：**stable · **Verified：**2026-09-03。
+
+## 只升級到需要的層級
+
+```text
+dev status / dev sweep / dev repo context
+    |
+    +-- facts 已足夠 --> 使用 done、park、sweep 或 retire
+    |
+    +-- dev prompt render <recipe> --> 檢查或複製 exact prompt
+    +-- dev prompt run <recipe>    --> bounded one-shot analysis，沒有 user stdin
+    +-- dev prompt open <recipe>   --> 在目前 terminal 進行 foreground conversation
+```
+
+若下一步已清楚，優先使用 deterministic lifecycle command。只需要 context
+供人或另一個工具閱讀時用 `render`；需要 finite unattended answer 時用 `run`；
+只有 semantic question 需要對話時才用 `open`，例如決定 conflicted change 應有的意義。
+
+三種 mode 收集相同 recipe context。接收端 agent 可以解釋或排序，但 `dev` 不會
+parse reply、不會再跑下一輪，也不會把回答轉換為 mutation approval。
+
+## 三個 recipe
+
+```bash
+dev prompt list
+dev prompt list --json
+dev prompt agents
+dev prompt agents --json
+dev prompt render pr-triage
+dev prompt render session-close
+dev prompt render workspace-closeout [repo-or-checkout]
+```
+
+| Recipe | Scope | Read-only result |
+|---|---|---|
+| `pr-triage` | account/local forge inbox | 將你開的或等你 review 的 request 排到 merge/review/fix/wait/inspect。接受與 `dev pr list` 相同的 query，以及 `--scope`、`--role`、`--state`、`--repo`、`--all-repos`、`--linked`、`--limit` filters。 |
+| `session-close` | 這台機器目前選定的 runtime | 將 session 分成 runtime closure、先 checkpoint/park、保持開啟或 inspect。可用時包含 session/pane identity、recognized activity、matching task status 與 artifact status。 |
+| `workspace-closeout` | 一個 repository | Join tasks、所有 known checkouts、live Git status、runtime coverage、artifacts 與 pull requests，並為每個 checkout 加入完整 read-only retirement audit。`--base` 為 unmanaged linked worktree 提供 audit base。 |
+
+每份 rendered prompt 都有 JSON envelope，含 `schema_version: 1`、recipe/context
+version、generation time、host、scope、適用時的 target、capabilities、warnings 與
+recipe-specific context。收集到的 repository text、branch name、request title 與
+note 都是 data，不是 instruction。Missing 或 failed evidence 會維持明確 capability
+gap／warning，絕不變成看似安心的 clean/empty value。
+
+### 安全地發現 configured profiles
+
+`dev prompt agents` 印出 sorted `PROFILE DEFAULT RUN OPEN DESCRIPTION` table。
+Direct launcher 只顯示 `filepath.Base(command[0])`，shell launcher 顯示 `shell`，
+unavailable mode 顯示 `—`。Stable `--json` form 是相同 profile 順序的 array；每個
+object 都有 `name`、`description`、`default`，以及 nested `run`／`open` object，
+後者只含 `configured`、`kind`（`command`、`shell` 或 `none`）與 `executable`
+（direct command basename，其他情況為空字串）。
+
+兩種 form 都刻意不顯示 command arguments、shell source、executable directories、
+environment、rendered prompt 或 config path。Empty configuration 的 human output
+會明確說沒有 profile，JSON 則是 `[]`。
+
+## 選擇 render、run 或 open
+
+| Mode | 需要 agent？ | Prompt transport | User stdin | Default timeout | Runtime behavior |
+|---|---:|---|---|---|---|
+| `render` | 否 | stdout | 不碰 | 無 | 不啟動 process，也不碰 runtime |
+| `run` | 是 | `stdin`、private `file` 或單一 `argv` element | 絕不傳給 child | 10 分鐘 | 在 recipe working directory 等待一個 batch process |
+| `open` | 是 | private `file` 或單一 `argv` element | attach 給 child | 無 | 在目前 terminal/TTY 跑一個 foreground process |
+
+範例：
+
+```bash
+dev prompt render pr-triage --role reviewer --repo owner/api
+dev prompt run session-close --agent my-agent
+dev prompt run pr-triage --dry-run
+dev prompt open workspace-closeout . --agent my-agent
+dev prompt open workspace-closeout . --dry-run
+```
+
+`run` 與 `open` 會先解析 globally selected profile 及其 requested launcher，之後才
+收集 recipe。Non-dry `open` 也會在同一個 early boundary 先檢查 interactive terminal。
+Missing、unknown 或 ambiguous profile、unavailable mode 與 missing TTY 因此會在不查詢
+forge 或 runtime 的情況下失敗。Diagnostic 會列出 sorted mode-capable profiles，並指向
+`dev prompt agents`。
+
+`--dry-run` 接著解析 working directory、transport、timeout 與 safe command preview，
+再印出完整 rendered prompt，但不啟動 process，因此不建立 writer claim。真正的 `run`
+或 `open` 若 collected working directory 是 checkout，shared-checkout occupancy guard 會
+在 collection 後套用。這不是目前 agent 繼續自己的工作，而是新 agent claim，因此
+invoking agent 的 pane **不會**被排除。只有在協調好 disjoint ownership 後才可使用
+`--allow-shared-checkout`。
+
+`open` 不接受 timeout。只有 `run`
+可設定 timeout，並在 absent/zero 時取得 10 分鐘 default。Batch timeout 到期時，`dev`
+會終止 launcher process tree，避免 descendant agent 在 handoff 返回後仍繼續修改 checkout。
+
+## Host-only agent configuration
+
+沒有 built-in agent、vendor 或 default launcher。在 `dev config path` 回傳的 user
+config 中設定一個或多個 local command：
+
+```toml
+[[agent]]
+name = "my-agent"
+description = "Local review and implementation agent"
+default = true
+
+[agent.run]
+command = ["my-agent", "--batch"]
+input = "stdin"
+timeout = "10m"
+
+[agent.open]
+command = ["my-agent", "{{prompt_file}}"]
+input = "file"
+```
+
+### 實際 OpenCode 範例
+
+OpenCode 1.18.25 提供 `opencode run [message..]`；加上 `--interactive` 會保留可直接對話的 split-footer 模式。Workspace snapshot 可能很大，因此 file input 比把整份 prompt 放進 argv 更穩定：`-f/--file` attach 私有 prompt file，再用短 message 告訴 OpenCode 如何處理：
+
+```toml
+[[agent]]
+name = "opencode"
+description = "OpenCode batch and interactive handoff"
+default = true
+
+[agent.run]
+command = ["opencode", "run", "--file", "{{prompt_file}}", "Read the attached dev prompt and follow its instructions."]
+input = "file"
+timeout = "10m"
+
+[agent.open]
+command = ["opencode", "run", "--interactive", "--file", "{{prompt_file}}", "Read the attached dev prompt, explain the evidence, and ask before changing anything."]
+input = "file"
+```
+
+這只是文件範例，不是 built-in default。OpenCode 升級後請重新檢查 `opencode run --help`；不要加 `--auto`，那會改變 configured agent 的 approval policy。
+
+Selection 是 deterministic 且 global：
+
+1. `--agent NAME` 選擇該 name（case-insensitive match）。
+2. 省略時選唯一 `default = true` 的 entry。
+3. 沒有 default 時，若只設定一個 `[[agent]]`，就選它。
+4. 多個 entries 且沒有 default 時視為 ambiguous 並失敗。
+5. Selection 完成後，才要求該 profile 的 requested launcher。
+
+Step 5 絕不 fallback 到另一個 profile，即使另一個 profile 支援 requested mode。Name
+必填、不能有 surrounding whitespace，並且 case-insensitively unique；`description`
+為 optional，可在 inventory 與 completion 中說明 profile。最多一個 entry 可為 default；
+每個 agent 至少定義 `[agent.run]` 或 `[agent.open]` 其中之一。
+
+`--agent` completion 會依 mode 過濾：`prompt run` 只提供 run-capable profiles，
+`prompt open` 只提供 open-capable profiles。它會在 Cobra parse root `--config` 後載入
+該 config，並可用 `default · run · <description>` 或
+`default · open · <description>` 說明 candidate。Shared completion protocol 會 sanitize
+tab/newline。Invalid config 會 degrade 成沒有 dynamic candidate，且停用 filesystem
+completion。
+
+Launcher fields：
+
+| Field | Constraint |
+|---|---|
+| `command = ["program", "arg", ...]` | Direct argv；第一個 element 不可空白。`command` 與 `shell` 必須二選一。因不會呼叫 shell，所以優先使用。 |
+| `shell = "static command"` | 透過 `$SHELL -c` 執行；必須是 static，且不能含 prompt placeholder。 |
+| `input = "stdin"` | 僅限 `run`。Prompt 是 child 的 finite stdin；不能有 placeholder。 |
+| `input = "file"` | `command` 必須有且只有一個完整 argv element 為 `{{prompt_file}}`；`shell` 必須引用 `$DEV_PROMPT_FILE` 或 `${DEV_PROMPT_FILE}`。 |
+| `input = "argv"` | 僅限 `command`，且必須有且只有一個完整 argv element `{{prompt}}`。Rendered prompt 上限 100 KiB。 |
+| `timeout = "10m"` | 僅限 `run`；optional non-negative duration，absent/zero 為 10 分鐘。`open` 拒絕 timeout，因為安全終止 interactive process tree 需要 terminal job control。 |
+| `load_shell_rc = true` | Optional，僅可搭配 `shell`；改用 `$SHELL -lic` 而非 `-c`。 |
+
+Placeholder 必須是完整 command element；`--prompt={{prompt}}` 這類 embedded form
+會被拒絕。File transport 會建立 0700 temporary directory 與 0600 `prompt.md`，child
+結束後移除。Prompt content 絕不 interpolated into shell text。
+
+`[[agent]]` 是 machine-owned executable policy。Repository 的
+`.dev-cli/config.toml` 不得定義它，因此 checkout project 不能替 `dev` 選擇要執行的 command。
+
+## Permission 與 mutation boundary
+
+Built-in recipe 要求接收端分析並 quote 可能的 next command，不要 approve、merge、
+rebase、close、delete 或 retire。但 `dev prompt` 不是 sandbox：configured child 保留
+其 command 原本給予的 filesystem、network、tool 與 approval policy。`dev` 不會增加
+permissive mode、不會降低 permission、不會代答 approval prompt，也不會修改 config。
+
+任何 agent answer 都不是 authority。Review 後由 operator 自己呼叫 `dev done`、
+`dev park`、`dev sweep` 或 `dev retire`；這些 command 會在 mutation boundary 重新收集
+並驗證 fresh state。
+
+## Current-terminal 與 Herdr boundary
+
+`dev prompt open` **不會**建立、focus、reuse 或 inject Herdr、tmux 或 Zellij
+surface。它在呼叫它的 terminal foreground 啟動 configured process。在 Herdr 裡，
+自然就是留在目前 pane。若想用另一個 Herdr pane，請手動建立或 focus 該 pane、在其中
+進入 exact checkout，再從該 terminal 執行 `dev prompt open ...`。
+
+這與 `dev start --run '<shell command>'` 分開。後者只可將 shell text dispatch 到
+本次新建 first-class Herdr worktree 回傳的 exact root pane；reused、fallback、
+unverified 與 non-Herdr surface 都 fail closed。`prompt open` 不會擴大或 reuse 這份
+exact-pane contract。
+
+## Closeout classification 的意義
+
+`session-close` 只回報 **runtime closure**。Recognized covering agent 為 `idle` 或
+`done` 時可能通過 activity gate，但只代表 current turn settled；它不證明 changes 已
+commit、artifacts 已 finalize、review 已完成或 task intent 已 done。Caller-contained、
+mixed-purpose、active、unrecognized 與 observation 不足的 session 都不會成為 close candidate。
+
+`workspace-closeout` 範圍較完整，但仍只是 advisory。Retirement audit 會檢查 target
+kind、worktree registration/path、status availability、cleanliness、in-progress Git
+operation、known base/branch containment、task state、artifact reachability/finalization
+與 runtime eligibility。只有 deterministic `retirement.status` 為 `eligible` 才能被建議
+retire；即使如此也不是 authorization：`dev retire` 必須在 mutation 前重新收集並驗證。
+Merged pull request 只是 evidence，不能替代任何 gate。
+
+## Rebase conflict
+
+先使用 deterministic transaction，不要先找 agent：
+
+```bash
+dev done <task> --ff
+# 或更新目前 branch
+dev git pull-rebase
+```
+
+若 Git 停在 conflict，留在該 exact checkout，從那裡開啟完整 workspace context：
+
+```bash
+dev prompt open workspace-closeout . --agent my-agent
+```
+
+用對話決定 semantic resolution。只有 operator 選擇後才 continue 或 abort Git rebase，
+之後重新執行原本 lifecycle command，讓它取得 fresh state。Prompt launcher 絕不會自行
+resolve conflict、選 continue/abort、force-push 或授予 cleanup permission。
+
+## Scheduling 與 statelessness
+
+`dev` 沒有 daemon、queue 或 scheduler。每次 `render`、`run`、`open` 都收集 fresh
+snapshot，process 結束後不保存 agent answer。Scheduler 可以呼叫 non-interactive
+`run`，但必須選 configured batch command，並接受其 timeout/error behavior。`open` 是
+foreground TTY operation，不是 scheduled-job surface。
+
+## 相關頁面
+
+- [Pull request inbox](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/)
+- [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/)
+- [平行 Agent 與 Runtime](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/)
+- [命令與設定](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/)
+- [相容性與已知限制](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/)
+
+---
+
+### Pull request inbox
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/
+
+> 列出你開的與等你 review 的 pull request，理解 provider cost 與 missing fields，並檢查 local checkout health。
+
+!!! note "術語規則"
+    有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
+
+`dev pr list` 顯示正在等你的 pull request／merge request；provider 有回報 head
+branch 時，也顯示 matching local task/checkout。它不會改變任何東西。
+
+!!! info "時效"
+    **Authority：**`internal/forge`、`internal/cli/pr*.go` 與其測試 ·
+    **Status：**stable · **Verified：**2026-09-02。
+
+## 問題
+
+開 pull request 通常代表 worktree 的 active writing phase 結束，但本地沒有任何東西
+會這樣說。Branch 已 push、後續由 review 決定，checkout 仍留在磁碟。同時 requests
+從兩個方向累積：你開的，以及正在等你 review 的。
+
+```bash
+dev pr list
+```
+
+```text
+PR                      TITLE          ROLE    STATE   CHECKS  REVIEW    LOCAL       UPDATED
+github:owner/api#12     Add retry      mine    open    pass    approved  ~/Worktr…   2026-09-01
+github:owner/web#31     Fix parse      review  open    fail    —         —           2026-08-30
+```
+
+## Account 與 local surface
+
+Provider 提供 account-wide 與 per-repository lists，fields 與 cost 不同。
+
+| | `--scope account` | `--scope local` |
+|---|---|---|
+| coverage | authenticated account 的 requests | selected local repositories |
+| query cost | author 與 reviewer 是分開的 role query | 每個 repository 的**每個 requested role**最多一個 paginated query |
+| default roles | author + reviewer | author + reviewer（因此每個 repository 最多兩個 queries） |
+| repository set | 所有 account results，再由 `--repo` filter | 有 `dev` task 的 repositories；`--all-repos` 擴大 |
+| states | open | open、merged、closed、all |
+
+`--scope all` 是預設值，會 union 兩種 surface。同一 provider/repository/number 的
+request 會由較完整的 row upgrade summary row。
+
+Provider fields 並不對稱：
+
+- GitHub account search 產生 `detail: "summary"`，無法回報 `head_branch`、
+  `review_decision` 或 `checks`。
+- GitHub per-repository list 產生 `detail: "full"`，包含這些 fields。
+- GitLab 的 account/repository lists 都產生 full branch/merge detail，但都沒有
+  `checks`；pipeline status 只存在 single-request endpoint。這些 list surface 也不回報
+  `review_decision`。
+
+Absent field 表示 surface 沒有回報，不表示 underlying value 為空。下結論前先讀
+`detail` 與 provider capabilities。
+
+```bash
+dev pr list --scope account
+dev pr list --scope local
+dev pr list --repo owner/api
+dev pr list --repo github:owner/api
+dev pr list --linked
+```
+
+`--repo` 同時 filter account results 與 local query targets。它接受 `owner/name`、
+`provider:owner/name` 或 forge URL；provider-qualified value 會 pin provider。
+`--linked` 表示 request 的 expected branch 確實被 checkout 且 status 成功讀取，不只是
+某個 task 提到該 branch。
+
+Account search 無法區分 merged 與 closed。若用 account/all scope 要求 `--state
+merged`、`closed` 或 `all`，collection 會 narrow 到 local surface。Structured output
+回報這個 **effective** scope（`"local"`），不是原先要求的較廣 scope。
+
+## 對 request 採取行動
+
+`dev` 只印 command，永遠不執行：
+
+```bash
+dev pr list --actions
+dev pr list --json | jq -r '.pull_requests[].actions.merge'
+```
+
+Approve、merge、comment、resume 與 retire 都仍是 operator action。目前 comment action
+只含 generic body placeholder（`'...'`）；`dev` 不會合成 vendor review-trigger phrase。
+
+## 收掉 merged request 背後的 worktree
+
+Forge 回報 request 已 merge 只是 evidence，不是 retirement authorization：
+
+```bash
+dev pr list --scope local --state merged   # candidates
+dev sweep --merged-worktrees               # 證明 containment，先 report
+```
+
+Squash merge 不會讓 local feature branch 成為 base 的 ancestor，因此 forge answer 無法
+單獨證明 recovery。`dev sweep --merged-worktrees` 在本地證明 containment；適用時
+`dev done --merged` 需要 explicit squash attestation。把 inbox 視為 inspect 的理由，
+絕不是 delete permission。
+
+要取得 deterministic agent-readable triage，請用 generic prompt surface，不是 PR
+subcommand：
+
+```bash
+dev prompt render pr-triage
+dev prompt run pr-triage --agent my-agent
+dev prompt open pr-triage --agent my-agent
+```
+
+Recipe、configuration、transport、TTY、permission 與 runtime boundaries 請見
+[Prompt handoff](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/prompt-handoffs/)。
+
+## Provider availability
+
+`gh` 與 `glab` 是選用且彼此獨立的。Signed-out provider 會在 table 下方回報 exact login
+command；另一個 ready provider 仍會提供 rows。`dev doctor` 回報相同狀態。在 JSON
+中，先檢查 `providers`，不要直接把 empty `pull_requests` array 解讀成 empty inbox。
+
+目前不列出 Azure DevOps pull request。Configured Azure target 會被回報為 unsupported，
+不會讓成功的 GitHub/GitLab result 失敗。
+
+## Structured output
+
+`dev pr list --json` 輸出 schema-versioned object，不是 bare array：
+
+```json
+{
+  "schema_version": 1,
+  "generated_at": "2026-09-02T12:00:00Z",
+  "scope": "local",
+  "state": "open",
+  "roles": ["author", "reviewer"],
+  "repositories": ["github:owner/api"],
+  "providers": [{"forge": "github", "status": "ready"}],
+  "pull_requests": [{
+    "forge": "github",
+    "repo": "owner/api",
+    "number": 12,
+    "detail": "full",
+    "head_branch": "feat/retry",
+    "local": {
+      "task_id": "retry",
+      "task_state": "hot",
+      "repo_path": "<repo-path>",
+      "checkout": "<checkout-path>",
+      "expected_branch": "feat/retry",
+      "live_branch": "feat/retry",
+      "branch_checked_out": true,
+      "checkout_exists": true,
+      "worktree_registered": true,
+      "status_available": true,
+      "git": {"dirty": false, "ahead": 0, "behind": 0, "upstream": "origin/feat/retry"}
+    },
+    "actions": {"comment": "gh pr comment 12 --repo owner/api --body '...'"}
+  }]
+}
+```
+
+Top-level `scope`、`state`、`roles`、`repositories` 描述 effective collection；
+`providers` 用來區分 empty inbox 與 unavailable source。
+
+Optional `local` object 把 durable task intent 與 live checkout facts 分開：
+
+- `expected_branch` 是 task 記錄的 branch；`live_branch` 是 status 實際看到的 branch。
+- `checkout_exists`、`worktree_registered` 與 `status_available` 是各自獨立的 health gate。
+- 只有 checkout 存在、仍 registered、status available，且 live branch 等於 expected
+  branch 時，`branch_checked_out` 才是 true。
+- `status_error` 存在時說明 unavailable/missing/unregistered state。
+- `git` 是 optional；只有 expected branch 被證明 live 後才出現，包含 `dirty`、
+  `ahead`、`behind` 與 optional `upstream`。
+
+Schema version 1 是 add-only：可新增 fields，但既有 field name 與 meaning 會保留。
+
+## Scheduling
+
+沒有 daemon 或 built-in scheduler。`dev pr list` 是 plain read-only query，recurrence
+交給 cron、launchd 或其他 scheduler：
+
+```bash
+*/30 * * * * dev pr list --json > ~/.cache/pr-inbox.json
+```
+
+## 相關頁面
+
+- [Prompt handoff](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/prompt-handoffs/)
+- [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/)
+- [變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/)
+- [相容性與已知限制](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/)
 
 ---
 
@@ -8945,6 +10627,8 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
 | SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh probe`、`ssh remove` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
+| pull-request inventory | `pr list` |
+| prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
 | agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
@@ -8977,6 +10661,10 @@ dev ssh probe <alias> --json
 dev ssh remove <alias> --dry-run --json
 dev skill list --all --json
 dev mcp list --all --json
+dev pr list --json
+dev prompt list --json
+dev prompt render <pr-triage|session-close|workspace-closeout>
+dev sweep --ephemeral-worktrees --json
 dev bootstrap --json
 ```
 
@@ -9029,6 +10717,94 @@ origin；`config edit` 與 TUI edit action 仍只開 primary file。Generated fr
 `--file` allowlist，apply 需要 matching pin，且 `--yes` 絕不 imply `--replace`。
 Windows transport 允許 capability helper 做 identity diagnostics，但在 content
 送出前 block native file payload helpers。
+
+### Pull-request schema 與 effective scope
+
+`dev pr list --json` 輸出 object，包含 `schema_version: 1`、`generated_at`、
+`scope`、`state`、`roles`、optional normalized `repositories`、provider readiness、
+`warnings` 與 `pull_requests`。即使仍有 useful rows，partial role/provider failure 也會出現在
+`warnings`。`scope` 是實際執行的 surface：account/all 要求
+merged/closed/all 時，collection 會 narrow 到 local，JSON 回報 `"local"`。
+`--repo` 同時 filter account rows 與 local query targets。Personal local
+inventory 對每個 repository 的每個 requested role（預設 author 與 reviewer）可能各發
+一個 paginated query。每一列都帶 provider `host`；local enterprise remote 的 host 若與
+`GH_HOST`／`GITLAB_HOST` 不同，會被報告而不是查到錯誤 endpoint。完整 GitHub row 也會帶 optional `head_repo` 與
+`is_cross_repository`；local evidence 依 source repository join，若 source 已刪除或未知，
+絕不 fallback 到 target repository 中同名但無關的 branch。
+
+Request 的 optional `local` object 把 task intent 與 live checkout health 分開。
+它包含 `expected_branch`、observed `live_branch`，以及互相獨立的
+`branch_checked_out`、`checkout_exists`、`worktree_registered`、
+`status_available` booleans，另有 optional `status_error`。只有 expected branch
+確實被證明 checked out 且 status available 時才出現 optional `git`；其中包含
+`dirty`、`ahead`、`behind` 與 optional `upstream`。Missing/cold/unregistered status
+因此不會透過 zero value 看似 clean。Schema 1 是 add-only。
+
+### Ephemeral-worktree report 與 apply contract
+
+`dev sweep --ephemeral-worktrees --json` 輸出一個 object，包含
+`schema_version: 1`、generation time、canonical repository/common-dir identity、
+provider inactivity threshold、explicit-base/branch-deletion request、sorted
+capabilities/diagnostics/candidates 與 summary counts。Candidate 只包含 validated
+provider/run/agent IDs、normalized states/times、worktree path/branch/registry
+HEAD、live Git facts 與 counts、task/artifact/caller/runtime facts、stable checks/
+classification、獨立 branch-deletion audit、planned actions 與 stable fingerprint。
+它絕不包含 metadata filenames 或 prompt、script、log、result-body、transcript
+content。Empty collections 一律是 arrays；schema 1 是 add-only。
+
+Candidate 另有 `provider-git-identity` check。只有 source 記錄 branch、HEAD、
+common-dir 與 opaque non-replayable registration generation，且 live collection
+獨立比對一致時才 eligible。Claude Code 2.1.259 不記錄該 identity，因此目前 Claude
+Workflow candidate 會把此 check 顯示為 `unknown` 並保持 report-only。Path/name/GitDir
+reuse 不會被接受為 identity。
+
+JSON form 僅供 report；`--json --apply` 會被拒絕。Human apply 要求 interactive
+terminal，且每個 eligible candidate 都要個別確認。它拒絕 `--yes`、
+`--close-unknown`、`--assume-no-runtime`，也拒絕搭配 `--no-runtime` apply。
+`--stale-days` 指 provider inactivity（預設 14、最小 1），不是 commit age。
+`--ephemeral-worktrees` 與 `--merged-worktrees` 互斥。
+
+Branch 預設保留，包括含有 base-unique commits 的 branch。`--delete-branches`
+要求 `--apply` 與 explicit `--base`；只有兩個 tip 都能解析且 unchanged、branch
+contained、zero unique commits 時，candidate branch action 才 safe。Apply 在
+common-dir lock 下重新收集全部 proof，只接受相同 fingerprint。Result 內部有
+version，狀態為 removed、partial、skipped-changed 或 failed；worktree remove 後若
+branch step 失敗，會回報 partial 並保留 branch。
+
+### Prompt recipe 與 structured behavior
+
+`dev prompt list --json` 回傳 sorted recipe metadata（`name`、`summary`、`scope`、
+optional `target_usage`、`context_version`）。三個 recipe 是 `pr-triage`、
+`session-close` 與 `workspace-closeout`。
+
+`dev prompt render <recipe>` 印出 Markdown prompt；其中 JSON envelope 含
+`schema_version: 1`、recipe/context versions、generation time、host、scope、optional
+target、capabilities、warnings 與 recipe context。Collection 是 read-only，missing
+evidence 保持明確。
+
+`dev prompt agents [--json]` 是 sorted、redacted profile inventory。Human output 有
+`PROFILE DEFAULT RUN OPEN DESCRIPTION`；direct launcher 只顯示 executable basename，
+shell launcher 顯示 `shell`，unavailable mode 顯示 `—`。每個 JSON object 都有
+`name`、`description`、`default` 與 nested `run`／`open` object；後者包含
+`configured`、`kind`（`command|shell|none`）與 `executable`。兩種 form 都不會輸出
+argv、shell source、executable directories、environment、prompt text 或 config path。
+
+| Command | Process contract |
+|---|---|
+| `dev prompt run <recipe> [--agent NAME] [--dry-run]` | Collection 前先解析 global profile 與其 run launcher；之後才啟動沒有 user stdin 的 batch process，prompt 可走 stdin/file/argv，default timeout 為 10 分鐘。 |
+| `dev prompt open <recipe> [--agent NAME] [--dry-run]` | Collection 前先解析 global profile/open launcher，並先檢查 non-dry TTY；之後才啟動 file/argv transport、沒有 default timeout 的 foreground process。 |
+
+`--agent` 優先；否則選 unique configured default；再不然選 sole agent。多個 agent
+且沒有 default 時視為 ambiguous 並失敗。Selection 不是 mode-local：selected profile
+缺少 requested mode 時會失敗，不會改用另一個 profile。Diagnostic 會列出 sorted
+mode-capable profiles 並指向 `dev prompt agents`。Dynamic completion 會載入 parsed
+`--config`、依 run/open capability 過濾 names、透過 shared completion format sanitize
+description；invalid config 則得到 no candidates 與 no file completion。Dry-run 顯示
+resolved mode、cwd、transport、timeout、safe command marker 與完整 prompt，不啟動任何
+東西。Checkout 中的 real launch 會在 collection 提供 cwd 後受 writer-occupancy guard。
+`dev` 絕不 parse reply、啟動 agent loop、改變 permission 或把 advice 當成 lifecycle
+authorization。`open` 不會建立、focus 或 reuse Herdr/tmux/Zellij surface；在 Herdr 內
+會留在 current pane。詳見 [Prompt handoff](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/prompt-handoffs/)。
 
 ## Repository bootstrap
 
@@ -9224,6 +11000,7 @@ dev ssh init --apply       # confirmation 後安裝
 | `[tui]` / `[[tui.tools]]` | columns、sorting 與 external-tool bindings |
 | `[stats]` | sampler 與 optional WakaTime import |
 | `[update]` | `check`（預設 `true`）— 允許每天一次的「有新版」提示與其背景 cache refresh；`DEV_NO_UPDATE_CHECK` 可覆寫 |
+| `[[agent]]`、`[agent.run]`、`[agent.open]` | host-only name、optional description、global default selection 與各自獨立的 batch/foreground prompt launcher；沒有 built-in entry |
 
 Interactive repository selection 使用直接 argv vector，絕不當作 shell source：
 
@@ -9246,6 +11023,52 @@ stats、stdout 或 network telemetry。
 Dashboard 與 `dev flow` 這類 full-screen invocation 的 optional update-cache network refresh 也會延後到 initial view return 之後；這不會把 Flow 自己的 local `r` 變成 remote refresh。
 
 Repository quick-note Markdown 是 configured `paths.state_dir/notes` 下的 durable data；該路徑預設為 `$XDG_DATA_HOME/dev/notes`。`$XDG_CACHE_HOME/dev/notes.db` 的 full-text index 是 disposable，會從 Markdown 重建；調整 `paths.state_dir` 不會移動 cache。
+
+### Agent prompt launcher
+
+沒有 built-in agent entry。Launcher 是 user config 中的 host-only policy；repository
+`.dev-cli/config.toml` 不允許 `agent` section。
+
+```toml
+[[agent]]
+name = "my-agent"
+description = "Local review and implementation agent"
+default = true
+
+[agent.run]
+command = ["my-agent", "--batch"]
+input = "stdin"
+timeout = "10m"
+
+[agent.open]
+command = ["my-agent", "{{prompt_file}}"]
+input = "file"
+```
+
+`[[agent]]` 有 required `name`、optional `description` 與 `default`，以及 nested
+`run`/`open` launchers。Name 不能有 surrounding whitespace、採 case-insensitive
+compare，且必須 unique；最多一個 entry 可為 default。每個 entry 至少設定一種 mode。
+Selection 在所有 profiles 間仍採 explicit/default/sole，之後要求該 exact profile 的
+requested mode；另一種 mode 維持 unavailable，不會 inherit 或 fallback。
+
+每個 launcher 必須在 `command`（direct argv）與 `shell`（static shell text）中二選一，
+設定 required `input`，以及僅限 `shell` 的 optional `load_shell_rc`。只有 `run` 接受
+optional non-negative `timeout`；`open` 會拒絕 timeout。`load_shell_rc = true` 使用 `$SHELL -lic`；否則 shell launch 使用
+`$SHELL -c`。Shell text 不可含 prompt placeholder，因此 prompt data 絕不 interpolate
+into command string。
+
+Transport constraints 是 exact：
+
+- `stdin`：僅限 `run`；不可有 placeholder；finite prompt 取代 child stdin。
+- `file`：`command` 需要有且只有一個完整 `{{prompt_file}}` element；`shell` 必須引用
+  `$DEV_PROMPT_FILE`／`${DEV_PROMPT_FILE}`。Temporary directory/file modes 為
+  0700/0600，process exit 後 cleanup。
+- `argv`：僅限 `command`，有且只有一個完整 `{{prompt}}` element；rendered prompt
+  上限 100 KiB。
+
+Embedded placeholder form 會被拒絕。Omitted/zero timeout 對 `run` 解析為 10 分鐘；
+`open` 沒有 deadline，也不接受 timeout。Recipe 與 runtime safety 請見
+[Prompt handoff](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/prompt-handoffs/)。
 
 ### Scaffold presets
 
@@ -10100,6 +11923,32 @@ dev park [task] [flags]
 - `--timeout` — maximum time to wait for runtime closure
 - `--wip` — checkpoint uncommitted work as a wip: commit
 
+### `dev pr`
+
+List the pull requests waiting on you and their local worktrees
+
+```
+dev pr
+```
+
+### `dev pr list`
+
+List open pull requests you authored or were asked to review
+
+```
+dev pr list [query] [flags]
+```
+
+- `--actions` — print the gh/glab commands for each request
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--json` — emit structured output
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
 ### `dev prepare`
 
 Arm post-writer artifact finalization without closing this agent
@@ -10112,6 +11961,160 @@ dev prepare [task-or-worktree] [flags]
 - `--plan` — exact .claude/plans path to include (repeatable)
 - `--run-id` — outer wrapper run id (default: DEV_AGENT_RUN_ID or generated)
 - `--session` — exact agent session provider:uuid (inferred from task/runtime when unique)
+
+### `dev prompt`
+
+Render operational context, or hand it to a configured agent
+
+```
+dev prompt
+```
+
+### `dev prompt agents`
+
+List configured agent profiles without private launch details
+
+```
+dev prompt agents [flags]
+```
+
+- `--json` — emit stable structured agent metadata
+
+### `dev prompt list`
+
+List built-in prompt recipes
+
+```
+dev prompt list [flags]
+```
+
+- `--json` — emit structured recipe metadata
+
+### `dev prompt open`
+
+Open an interactive foreground agent in the current terminal
+
+```
+dev prompt open
+```
+
+### `dev prompt open pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt open pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt open session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt open session-close
+```
+
+### `dev prompt open workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt open workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
+
+### `dev prompt render`
+
+Render a built-in prompt to stdout
+
+```
+dev prompt render
+```
+
+### `dev prompt render pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt render pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt render session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt render session-close
+```
+
+### `dev prompt render workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt render workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
+
+### `dev prompt run`
+
+Run a one-shot agent with a built-in prompt
+
+```
+dev prompt run
+```
+
+### `dev prompt run pr-triage`
+
+Prioritize pull requests you opened or were asked to review
+
+```
+dev prompt run pr-triage [query] [flags]
+```
+
+- `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--limit` — cap the rows rendered
+- `--linked` — only requests with a checked-out local branch
+- `--repo` — restrict to these owner/name repositories
+- `--role` — limit to author or reviewer (default both)
+- `--scope` — which surface to query: account, local or all
+- `--state` — request state: open, merged, closed or all
+
+### `dev prompt run session-close`
+
+Review live agent sessions and what must be saved before closing
+
+```
+dev prompt run session-close
+```
+
+### `dev prompt run workspace-closeout`
+
+Review which tasks and worktrees should finish, park, retire, or be inspected
+
+```
+dev prompt run workspace-closeout [repo-or-checkout] [flags]
+```
+
+- `--base` — base for auditing unmanaged linked worktrees
 
 ### `dev repo`
 
@@ -10619,11 +12622,13 @@ dev sweep [flags]
 
 - `--apply` — act on the suggestions instead of only reporting
 - `--assume-no-runtime` — continue when runtime enumeration fails during retirement
-- `--base` — containment base for --merged-worktrees (default: the repository default branch)
+- `--base` — explicit containment base for merged worktrees or ephemeral branch deletion
 - `--close-unknown` — allow external closure of unknown runtime status during retirement
 - `--delete-branches` — also delete contained local branches after worktree retirement
+- `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees
+- `--json` — print the versioned ephemeral-worktree report as JSON
 - `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
-- `--stale-days` — days without a commit before a task counts as stale
+- `--stale-days` — days without relevant activity before an item counts as stale
 - `--yes` — with --apply, do not confirm each change
 
 ### `dev tries`
@@ -10875,6 +12880,8 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 - [`internal/cli/root.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/root.go)
 - [`internal/cli/flow.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/flow.go)
 - [`internal/config/config.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/config/config.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
+- [`internal/handoff`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/handoff)
 - [`internal/scaffold/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/scaffold/types.go)
 - [`internal/projectconfig/types.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/projectconfig/types.go)
 - [`internal/skill/dev-cli/references/commands.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/skill/dev-cli/references/commands.md)
@@ -10929,6 +12936,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX target 仍可用；沒有 PowerShell 時 Windows-specific installer/launcher 失敗，不改用 shell fallback |
 | Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
 | in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為委派給對應套件管理器的升級指令 |
+| verified ephemeral worktree apply | Git、compatible bounded Claude Workflow metadata、known task/artifact state 與每個 available runtime inventory | report 仍可使用，但 missing/unknown proof 絕不符合 apply eligibility |
 
 ## 已確認的專案限制
 
@@ -10942,11 +12950,94 @@ Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII quer
 
 所有支援平台的 note write 都會 sync file 並 atomic rename。Unix 也會在 rename/delete 後 sync containing directory。Windows implementation 無法提供 directory-fsync 步驟，因此 sudden power loss 時的 durability guarantee 較窄。Cooperating `dev` processes 的 concurrent mutations 會被 serialized，且每次 Markdown replacement 都是 atomic；任意 external writer 不會參與這個 lock。
 
-### Pull request completion 不會自動追蹤
+### 已 merge 的 pull request 不會自動收掉它的 worktree
 
 `dev done --pr` push 並建立 pull/merge request，之後保留 task、runtime 與 worktree，因為 integration 由 review 負責。`dev sweep` 不會 query forge 推斷 request 後來已 merge。`dev flow` 只有在 operator 明確按 `R` 並核准 Query Review 時，才保留目前 run 的 exact head/base observation；它不會 persistent cache、poll 或自動 transition。
 
 Portable provider evidence 僅包含 review 是否存在、provider、`open`/`draft`/`merged`/`closed`、URL 與 observation time。它不涵蓋 CI check conclusions、approvals、mergeability、comments 或 deployment status；unsupported/unauthenticated/ambiguous/malformed/failed query 也不等於 absence。請 fetch/驗證 named ancestry，再用 `dev done --merged --base-ref <ref>` 或 Flow 的 Verify Merged 記錄 DONE。
+
+`dev pr list --scope local --state merged` 現在會報告 forge 認定已 merge 的 request，以及各自對應到哪一個本地 checkout。`dev sweep` 仍然不會去查它，這是刻意的：squash merge 產生的 commit 並不是本地 branch 的 ancestor，所以 forge 說「merged」無法證明這份工作能從 remote 復原。`dev sweep --merged-worktrees` 用 `git merge-base --is-ancestor` 在本地證明 containment，而 `dev done --merged` 需要明確的 `--confirm-squash` attestation。把 pull request 清單當成「該去看一下」的提示，而不是「可以刪」的許可。
+
+### Claude Workflow ephemeral cleanup strict 且具版本敏感性
+
+`dev sweep --ephemeral-worktrees` 支援以 Claude Code 2.1.259 驗證的 private
+layout：validated fixed-depth `wf_*.json`、matching worktree meta 與 journal path、
+`runId`、`status`、`workflowProgress` agent state/isolation、`worktreePath`、
+`spawnedWithWorktree`、journal `started`/`result`，以及 same-ID resume existence。
+Upstream 沒有 metadata schema version，因此 unknown add-only JSON fields 可接受。
+Missing/wrong required type、changed 或 unsafe source file、duplicate/path mismatch、
+exhausted bound 或 uncertain timestamp 會讓對應 evidence 成為 unknown/unavailable；
+dev 不會猜測另一種 layout，也不會 decode payload fields。
+
+2.1.259 layout 不會記錄 provider-observed branch、HEAD、common-dir 或 opaque
+non-replayable worktree-registration generation。這些是 mandatory current-ownership
+facts，因此 adapter 會讓 `provider-git-identity` 維持 unknown，其 claims 只供 report。
+Canonical path、naming convention 或 GitDir pathname 都可能被重用，所以刻意不接受；
+stale metadata 絕不能綁到 replacement checkout。
+
+V1 沒有 operator attestation。`killed` 但缺少 matching child result、progress，或任何
+same-ID resumed transcript，無論 age 都維持 `unknown`。只有 provider inactivity 與每個
+Git/task/artifact/caller/runtime fact 都 known 且 safe 時才能 apply。`--no-runtime` 可產生
+report，但不能 apply。Missing、prunable、unregistered 與 orphan path 僅供 report。
+Command 絕不關閉 runtime、prune worktree registration、刪除 Claude metadata，或
+force-remove/rescue/stash/commit dirty/ignored work。
+
+此 adapter 在 provider-neutral audit/service 後方維持 provider-specific；dev 不會根據
+path 或 branch name 推測其他 agent harness。若 Claude 改變 private layout，安全行為是
+回報 unavailable capability 與 unknown candidate，直到 adapter、fixtures、tested version
+與兩種文件語言同步更新。
+
+### Pull request inventory 受限於 provider surface
+
+GitHub 的 `gh search prs` account surface 無法回報 head branch、review decision 或 check status，因此這些 rows 是 `detail: "summary"`，也無法 join 到 worktree。Summary row 的 absent field 表示 surface 無法回報，不是 value 為空。GitLab account list 帶有 branch/merge detail，因此回傳 full row；但 GitLab list surfaces 都不回報 pipeline checks 或 normalized review decision。
+
+Personal per-repository inventory 對每個 repository 的每個 requested role（預設 author 與 reviewer）可能各發一個 paginated query。預設只涵蓋 `dev` 有 task 的 repository；`--all-repos` 擴大 scan。`--repo` 同時 filter account rows 與 local targets。Account search 無法區分 merged 與 closed，所以 merged/closed/all 會將 account/all request narrow 到 local collection；JSON 回報該 effective scope。
+
+Schema-version-1 local join 回報 expected/live branch、checkout existence、worktree registration、status availability/error，以及 expected branch 是否確實 checked out。只有這些 live checks 成功時才出現 Git detail。Azure DevOps pull request 完全不列出；configured target 會被報告為 unsupported，而不是讓 command 失敗。
+
+### Prompt open 使用 current terminal，不負責 runtime placement
+
+`dev prompt open <recipe>` 在呼叫它的 terminal/TTY foreground 執行一個
+configured child。它不會建立、focus、reuse 或 inject Herdr、tmux 或 Zellij pane。
+在 Herdr 裡自然會留在 current pane。若要用另一個 Herdr pane，請手動建立或 focus、
+進入 exact checkout，再從那裡執行 `prompt open`。
+
+這與 `dev start --run` 刻意分開；後者唯一可 dispatch 的 target，是本次新建
+first-class Herdr worktree 回傳的 exact root pane。`prompt open` 不會提供 fresh runtime
+surface，也不會放寬 exact-pane proof。`run` 是 non-interactive alternative：沒有 user
+stdin，default timeout 為 10 分鐘；`open` 保留 stdin 給 conversation，沒有 default timeout。
+
+Configured child 保留自己的 permission policy。Recipe instruction 是 read-only
+guidance，不是 sandbox；`dev` 不會加入 permission flag、代答 approval prompt，或把
+response parse 成 action。
+
+### Prompt closeout report 不授權 cleanup
+
+`session-close` 只計算 runtime-closure evidence。Covering agent 為 `idle` 或 `done`
+時可以通過這一項 activity gate，但不證明 work 已 commit、artifact 已 finalize、review
+完成或 task intent done。Caller-contained、mixed-purpose、active、unknown 與
+unrecognized session 仍依 evidence 維持 blocked/unknown。
+
+`workspace-closeout` 執行較廣的 read-only audit：target kind、registration/path、
+status availability、clean Git state、沒有 in-progress Git operation、known base 與
+containment、task completion、artifact reachability/finalization、runtime eligibility。
+Merged pull request 只是 evidence。即使 audit 為 `eligible` 也只是 advisory；
+`dev retire` 在 mutation 前會重新收集與驗證 fresh state。兩個 recipe 都不會關閉
+runtime、改變 Git/task state、刪除 branch/worktree 或授予 permission。
+
+### Zellij exited session 已關閉，但仍保留 name
+
+Zellij 會保留可 resurrect 的 exited session。`dev` 只辨識 exact
+`(EXITED - attach to resurrect)` marker、從 live coverage 省略這些 session，並拒絕用其
+name 建立新 session；可用 `zellij delete-session <name>` 回收。Live session name 只是含
+`EXITED` 並不是 exit marker。若 session 在 native listing 與 layout inspection 之間退出，
+open 會 fail closed 並要求 retry，不會在 requested checkout resurrect 舊 layout。
+
+### Forge CLI 登入狀態只會被報告，不會自動重試
+
+`gh` 與 `glab` 是選用且彼此獨立的，`dev` 永遠不會代替你認證。當某個 provider 的憑證缺少或被拒絕時，`dev` 會報告是哪一個 provider 以及確切的登入指令 — 例如 ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — 並繼續使用另一個 provider 傳回的結果。`dev repo remote` 與 TUI REMOTE view 會呈現部分結果並發出 warning；`dev pr` 只有在完全沒有任何 provider 通過認證時才會失敗。`dev doctor` 會探測登入狀態，所以「已安裝但未登入」的 CLI 在某個指令需要它之前就看得到。
+
+只有缺少或被拒絕的憑證會用這種方式報告。Rate limit、權限或 scope 失敗，以及網路錯誤，都會保留完整的診斷文字（含失敗的指令），因為重新登入並不能解決它們。無論哪一種情況，原始指令與 provider 輸出都保留在被包裝的 error 之中。
 
 ### Agent session capture 只有保留欄位，尚未接線
 
@@ -11038,6 +13129,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - Human-readable output 現在具備 semantic color（`--color auto|always|never`），在 `NO_COLOR` 已設定、`TERM=dumb`，或 stdout/stderr 不是 terminal 時會自動停用。
 - `dev done` 只記錄 MERGED：它不會關閉呼叫端 runtime、移除 worktree 或刪除 branch。Cleanup 已移交 `dev retire`，後者必須從目標 workspace 之外執行，會拒絕 active agent 與 mixed-purpose workspace，並在每次關閉 runtime 之後重新驗證 Git state。`dev done --delete-branch` 現在會直接報錯並指向 `dev retire --delete-branch`，`--keep-worktree` 則以 no-op 警告。
 - `dev sweep --merged-worktrees` 直接從 Git 列舉 linked worktrees，而非從 task registry，因此 branch 已被 base 包含的 unmanaged worktree 也能被 retire。Containment 本身絕不等於許可；dirty state、未 finalize 的 artifact、進行中的 Git operation 與 runtime 拒絕條件都仍會阻擋，且未加 `--delete-branches` 時 branch 一律保留。
+- `dev sweep --ephemeral-worktrees` 加入獨立的 schema-v1 Claude Workflow report。Path/branch convention 只供 discovery；只有 exact bounded provider linkage 與 fresh Git/task/artifact/caller/runtime evidence 才能授權 TTY/per-item apply。Apply 會 lock 並重新計算 fingerprint，以 non-force 移除，預設保留 branch；只有 explicit-base、unchanged、contained、zero-unique proof 才能執行 `branch -d`。
 - `dev sweep` 會把 branch 已不存在於 Git 的 branch-backed task 視為 dead，並提供 reap 該 record 的建議。這種 task 無法 finish、resume 或 retire，因為這些路徑都必須先解析 branch；在 `--apply` 之前該建議仍只是報告。
 - 未知 command 會被回報，而不是被丟棄。`dev` 關閉了 cobra 自己的 error 輸出，先前又額外略過所有訊息開頭為 `unknown command` 的 error，因此打錯 command 時兩個 stream 都沒有任何輸出。現在會把訊息、cobra 的「Did you mean this?」建議，以及指向 `--help` 的提示寫到 stderr，exit status 為 1。
 - 對 command family 傳入多餘的 argument 現在是 error，而不是安靜地印出 help。`dev wt bogus` 過去會印出 `dev wt` help 並 exit 0，因為 family 本身沒有 `Run`；現在每個 family node 都會回報未知 subcommand 並 exit 1，而單獨執行 family 仍會印出 help 並 exit 0。
@@ -11087,6 +13179,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - [`internal/forge/review.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/review.go)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/ephemeral`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/ephemeral)
 - [`internal/task/task.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/task.go)
 - [`internal/forge/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/cache.go)
 - [`internal/note/index.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/index.go)
@@ -11094,6 +13187,10 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - [`internal/note/sync_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/note/sync_windows.go)
 - [`internal/cli/upgrade.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/upgrade.go)
 - [`internal/cli/version.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/version.go)
+- [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
+- [`internal/handoff`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/handoff)
+- [`internal/closeout`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/closeout)
+- [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
 - [`scripts/update-homebrew-formula.sh`](https://github.com/daviddwlee84/dev-cli/blob/main/scripts/update-homebrew-formula.sh)
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
@@ -11196,6 +13293,9 @@ tested_with: optional
 | Claude worktree path/base/cleanup | [Worktree isolation](https://daviddwlee84.github.io/dev-cli/zh-TW/claude/worktree-isolation/) | [Claude Code worktrees](https://code.claude.com/docs/en/worktrees) | version-sensitive，tested 2.1.250 |
 | teams 與 Dynamic Workflows | [Teams 與 workflows](https://daviddwlee84.github.io/dev-cli/zh-TW/claude/teams-dynamic-workflows/) | [agent teams](https://code.claude.com/docs/en/agent-teams)、[workflows](https://code.claude.com/docs/en/workflows) | experimental/versioned |
 | hooks/skills/plugins/SDK roles | [Extensions](https://daviddwlee84.github.io/dev-cli/zh-TW/claude/extensions-agent-sdk/) | Anthropic feature references | evolving |
+| generic prompt recipe、run/open transport、current-terminal boundary、session runtime-close meaning 與 workspace retirement audit | [Prompt handoff](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/prompt-handoffs/) | `internal/cli/{prompt_command,prompt_providers}.go`、`internal/config/config.go`、`internal/promptkit`、`internal/handoff`、`internal/closeout`、`internal/retire/audit.go`、專項測試 | implemented |
+| `dev pr` 收件匣、provider surface、effective filtering/scope 與 local checkout-health join | [Pull request inbox](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/) | `internal/forge/pr.go`、`internal/forge/{github,gitlab}.go`、`internal/cli/pr*.go`、專項 forge/CLI 測試 | implemented |
+| AI reviewer 的 trigger phrase、是否需要 workflow 與 plan tier | [AI pull-request review options](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/ai-pr-review-options/) | [Claude Code GitHub Actions](https://code.claude.com/docs/en/github-actions)、[Claude Code Review setup](https://support.claude.com/en/articles/14233555-set-up-code-review-for-claude-code)、[Codex GitHub](https://developers.openai.com/codex/integrations/github)、[CodeRabbit commands](https://docs.coderabbit.ai/guides/commands) | 廠商文件，2026-09-01 查核 |
 
 ## 歷史來源
 
@@ -11278,6 +13378,7 @@ draft → verified → maintained
 | Note | Type | Status | Verified | Purpose |
 |---|---|---|---|---|
 | [撰寫筆記](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/authoring/) | recipe | maintained | 2026-08-28 | page template、雙語/source rules 與 validation loop |
+| [AI pull-request review options](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/ai-pr-review-options/) | source-review | evolving | 2026-09-01 | 哪一種 reviewer 需要 workflow 檔案，以及各自期待的 trigger phrase |
 
 ## 規則
 
@@ -11417,5 +13518,86 @@ Source check enforce metadata、nav membership、bilingual parity、snippet targ
 - [筆記索引](https://daviddwlee84.github.io/dev-cli/zh-TW/notes/)
 - [來源與時效](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/sources-freshness/)
 - [最佳實務](https://daviddwlee84.github.io/dev-cli/zh-TW/best-practices/)
+
+---
+
+### AI pull-request review options
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/notes/ai-pr-review-options/
+
+> 依觸發字串、是否需要 workflow、前置條件與費用，比較 Claude Code Review、Claude Code GitHub Action、Codex code review 與 CodeRabbit。
+
+!!! note "術語規則"
+    有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
+
+有四個產品會用模型 review pull request。它們之間有一個結構性差異，而這個差異決定了大部分的選擇：你需不需要自己維護一份 workflow 檔案。
+
+!!! info "時效"
+    **Authority：**各廠商官方文件，加上明確標示的本專案建議 · **Status：**evolving，這些產品變動很快 · **Verified：**2026-09-01。依賴這些資訊前請重新確認 trigger phrase 與 plan tier；下表每一列都是在該日期直接讀廠商官方文件而來。
+
+## 決策表
+
+| | 需要 workflow？ | Trigger | 前置條件 | 費用模式 |
+|---|---|---|---|---|
+| **Claude Code Review** | 否 | PR 的 top-level comment 以 `@claude review` 開頭，或自動 | Team 或 Enterprise plan；research preview；啟用 zero data retention 時無法使用 | 依 token usage 計費，與 plan 內含用量分開；一次 review 約 $15–25 |
+| **Claude Code GitHub Action** | **是** | comment 中的 `@claude`（可設定），或用 `prompt` input 免 mention 直接執行 | Repository admin 權限；`ANTHROPIC_API_KEY` 或 `CLAUDE_CODE_OAUTH_TOKEN` | GitHub Actions 分鐘數加上 API tokens；或用 OAuth token 走你的 subscription |
+| **Codex code review** | 否 | PR comment 中的 `@codex review`，或開啟 *Automatic reviews* 設定 | 在 Codex 中連接 GitHub | Codex 用量 |
+| **CodeRabbit** | 否 | 對 primary branch 開 PR 時自動觸發；`@coderabbitai review` 或 `@coderabbitai full review` | 從 CodeRabbit dashboard 安裝 GitHub App | 依 plan；有 OSS plan |
+
+## 真正的分界
+
+**Managed GitHub App**（Claude Code Review、Codex code review、CodeRabbit）收到 webhook 就 review。你的 repository 裡沒有東西要維護，廠商改版時也沒有東西要跟著更新。
+
+**GitHub Action**（`anthropics/claude-code-action@v1`）跑在你自己的 CI 裡。你要維護 workflow 檔案、要付 runner 分鐘數，換來的是 reviewer 做不到的事：跑你的 tests、push 一個修正、開一個 follow-up PR。它不是「順便會改東西的 reviewer」，而是「剛好在做 review 的 agent」。
+
+用「finding 出現之後你想發生什麼」來選。如果答案是「有人去讀它」，選 managed app。如果答案是「修好並 push」，你要的是 Action。
+
+## 把 trigger 下對
+
+最常見的失敗是：一句看起來沒問題、但什麼都不會發生的話。
+
+- Claude Code Review 要求 comment **以 `@claude review` 開頭**，而且必須是 top-level comment，不能是 inline comment。PR 必須是 open 且非 draft，留言者需要 owner、member 或 collaborator 權限。`@claude please review this` 不是官方文件所定義的 trigger。
+- Claude Code GitHub Action 只對作為**完整單字**的 `@claude` 有反應，`/claude` 與 `@claude-bot` 都不算，而且留言者必須有 write access。預設字串可以用 `trigger_phrase` 修改。
+- 這兩者是共用同一個 GitHub App 的**不同產品**。裝了 App 不代表啟用了 Code Review，啟用 Code Review 也不會給你 Action。如果只看到 `👀` reaction 卻沒有 review，通常代表 App 已安裝，但你以為會跑的那個產品並沒有啟用。
+- CodeRabbit 區分 `@coderabbitai review`（只看自上次 review 後的變更）與 `@coderabbitai full review`（整份重看，忽略它自己先前的留言）。
+
+## `dev` 在這裡的位置
+
+`dev` 不安裝 App、不寫 workflow，也不 review 任何東西。它只告訴你哪些 request 在等，並產生觸發你所選 reviewer 的那句 comment：
+
+```bash
+dev pr list                    # 有哪些 open，各自屬於哪個 worktree
+dev pr list --actions          # gh/glab 指令，包含 `pr comment`
+```
+
+送出 trigger 就只是一則普通 comment：
+
+```bash
+gh pr comment 12 --repo owner/name --body '@claude review'
+gh pr comment 12 --repo owner/name --body '@codex review'
+gh pr comment 12 --repo owner/name --body '@coderabbitai full review'
+```
+
+`dev` 只會印出這些指令，永遠不會替你執行。要求一次付費 review 是一個決定，而以 Claude Code Review 一次 $15–25 來說，這不是可以代替別人做的決定。
+
+## 本文沒有主張的事
+
+- 這裡不比較 review **品質**。品質取決於 codebase、diff 與 repository guidance 檔案的程度，高於取決於廠商。
+- 價格與 plan tier 會變動。上表數字是廠商自己的文件在驗證日期當天的說法，不是報價。
+- 有一個流傳很廣的說法：CodeRabbit 對 star 數低於某個門檻的 public repository 只能手動觸發。這在 CodeRabbit 官方文件中無法確認，因此本文刻意不收錄。
+
+## 來源
+
+- [Claude Code GitHub Actions](https://code.claude.com/docs/en/github-actions)：setup、`@claude` trigger、`trigger_phrase`、secrets、誰可以觸發、費用模式。
+- [Set up Code Review for Claude Code](https://support.claude.com/en/articles/14233555-set-up-code-review-for-claude-code)：Team/Enterprise research preview、`@claude review` 前置條件、頻率設定、token 計費。
+- [Review GitHub pull requests with Codex](https://developers.openai.com/codex/integrations/github)：`@codex review`、Automatic reviews 設定。
+- [CodeRabbit commands](https://docs.coderabbit.ai/guides/commands)：`review` 與 `full review` 的差別。
+- [CodeRabbit FAQ](https://docs.coderabbit.ai/faq)：GitHub App 安裝、對 primary branch 自動 review、不需要 workflow。
+
+## 相關頁面
+
+- [Pull request inbox](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/)
+- [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/)
+- [Sources and freshness](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/sources-freshness/)
 
 ---

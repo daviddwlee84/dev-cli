@@ -182,6 +182,13 @@ only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 
 ## Done
 
+- Verified Claude Workflow ephemeral cleanup: bounded private-metadata parsing,
+  strict no-result/resume fail-closed liveness, schema-v1 report, complete
+  Git/task/artifact/runtime/caller gates, per-item TTY confirmation, locked
+  fingerprint revalidation, non-force worktree removal, and explicit-base safe
+  branch `-d` with branch retention as the default. Claude 2.1.259 claims remain
+  report-only because upstream exposes no non-replayable Git registration
+  identity; path/name/GitDir reuse is never accepted as a substitute.
 - Repository quick notes: multiple timestamped sidecar Markdown files keyed by
   catalog ID, rebuildable SQLite FTS, complete CLI CRUD/search, `n` quick add and `N` TUI
   overlay with browse/search/expand/editor/confirmed-delete.

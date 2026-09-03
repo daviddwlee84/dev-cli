@@ -2,7 +2,7 @@
 description: Retire an integrated dev-cli worktree and runtime safely, from outside the workspace being removed.
 authority: project
 status: stable
-verified_on: 2026-09-02
+verified_on: 2026-09-03
 ---
 
 # Agent-safe retirement
@@ -35,6 +35,8 @@ RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 | `dev retire [task-or-worktree] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | Re-resolves every covering runtime session, refuses active agents and mixed-purpose workspaces, waits for closure, revalidates Git state, and only then removes the linked worktree without force. Deletes the task record only after every requested step succeeds. |
 | `dev flow [repo]` | Preview UI for an exact DONE task: Enter builds a revision-bound Retire plan, then approval applies it. Branch deletion requires the displayed typed token. |
 | `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | From the canonical checkout, reports (and, with `--apply`, retires) both task-tracked and unmanaged linked worktrees whose branches are already contained in the base. |
+| `dev sweep --ephemeral-worktrees [--stale-days <n>] [--json]` | From a canonical non-bare checkout, emits a strict Claude Workflow V1 report; JSON schema 1 is report-only. |
+| `dev sweep --ephemeral-worktrees --apply [--delete-branches --base <ref>]` | Requires a TTY and per-item confirmation, then revalidates each approved fingerprint under the common-dir cleanup lock before plain non-force removal. |
 
 A dirty checkout does not fail here: `dev done` classifies it against the base
 first, offering commit or discard interactively, or taking an explicit
@@ -120,7 +122,7 @@ This proves only that the named squash commit is contained in the base; the oper
 - agent status is unrecognized (anything outside the known set) — always blocks;
 - runtime enumeration itself fails, **unless** the caller passes `--assume-no-runtime`.
 
-`--close-unknown` and `--assume-no-runtime` only relax fail-closed *observations* (an unreadable status, a runtime list that could not be enumerated). Neither flag ever bypasses caller containment or an active-agent state. `retirement.Service.Retire` also revalidates the target's identity, Git ancestry, in-progress Git operations (`gitx.InProgress`, checking `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `rebase-merge`, `rebase-apply`, `sequencer` — not `REBASE_HEAD`, which Git leaves behind after a rebase completes), and worktree cleanliness after runtime sessions close — reality may have changed while a runtime was draining, so no earlier proof carries across that boundary.
+`--close-unknown` and `--assume-no-runtime` only relax fail-closed *observations* (an unreadable status, a runtime list that could not be enumerated). Neither flag ever bypasses caller containment or an active-agent state. `retirement.Service.Retire` also revalidates the target's identity, Git ancestry, in-progress Git operations (`gitx.InProgress`, checking `MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`, `BISECT_LOG`, `rebase-merge`, `rebase-apply`, `sequencer` — not `REBASE_HEAD`, which Git leaves behind after a rebase completes), and worktree cleanliness after runtime sessions close — reality may have changed while a runtime was draining, so no earlier proof carries across that boundary.
 
 ## Periodic cleanup with sweep
 
@@ -131,6 +133,66 @@ dev sweep --merged-worktrees --apply --yes
 ```
 
 This surfaces both task-tracked DONE worktrees and unmanaged linked worktrees whose named branches are already contained in the base — run it from the canonical checkout. It reports before applying: containment alone is never permission. Dirty Git state, a pending or unreachable artifact, a locked or prunable worktree registration, an in-progress Git operation, and the same runtime refusal conditions as `dev retire` all still block cleanup. Branches remain after retirement by default; pass `--delete-branches` only when the user separately approved deleting them.
+
+### Verified Claude Workflow ephemeral cleanup
+
+Claude Workflow turn-scoped worktrees have a separate strict V1 path:
+
+```bash
+dev sweep --ephemeral-worktrees --stale-days 14
+dev sweep --ephemeral-worktrees --json
+dev sweep --ephemeral-worktrees --apply
+dev sweep --ephemeral-worktrees --apply --delete-branches --base main
+```
+
+The command runs only from a canonical non-bare checkout. Its bounded,
+fixed-depth adapter reads private metadata under `~/.claude/projects`, verifies
+validated workflow/agent IDs, exact canonical worktree mapping,
+`spawnedWithWorktree`, `isolation=worktree`, and matching journal linkage, but
+never decodes or emits prompts, scripts, logs, result bodies, or transcript
+content. Unknown add-only fields are tolerated; wrong required types, path
+mismatch, duplicate claims, unsafe/symlink/reparse/group-or-world-writable
+metadata, source mutation, bound exhaustion, and future/conflicting/unparseable
+time fail closed.
+
+V1 terminal liveness requires workflow `completed|killed`, matching agent `done`,
+one journal `started` and `result`, and no same-ID resumed transcript. A killed
+workflow with no result, progress, or a resume is `unknown` regardless of age;
+there is no attestation bypass. `--stale-days` measures provider inactivity,
+defaults to 14, and has a minimum of 1.
+
+Current-provider ownership is not proved by path continuity. Apply additionally
+requires provider-observed branch, HEAD, common-dir, and an opaque non-replayable
+registration generation matching the live registry. Claude Code 2.1.259 records
+none of those Git identity facts, so current Claude claims report
+`provider-git-identity: unknown` and remain report-only even when `--apply` is
+requested. This prevents stale terminal metadata from attaching to a replacement
+checkout at the same path. A path, branch convention, or reusable GitDir pathname
+must never be treated as the missing generation.
+
+The independent safety audit also requires a present, registered, non-main,
+named, unlocked, non-prunable linked worktree with exact common-dir, live branch,
+registry HEAD, and live HEAD agreement. Staged, unstaged, conflicted, untracked,
+ignored, or recursively inspected submodule content blocks cleanup, as do Git
+operations, task claims, unsafe artifact intents, caller containment, unknown
+runtime inventory, or any covering runtime. Missing, prunable, unregistered, and
+orphan paths remain report only.
+
+JSON schema 1 contains only normalized identity/state/time, Git/path/branch/HEAD
+facts, checks, actions, diagnostics, fingerprints, and counts. It is report-only.
+Apply rejects `--yes`, `--close-unknown`, `--assume-no-runtime`, `--no-runtime`,
+and JSON; it requires a terminal and confirms each item. Under a common-dir
+cleanup lock it rediscovers the repository and recollects provider, Git, task,
+artifact, runtime, and caller proof immediately before each removal. A changed
+fingerprint is `skipped-changed`.
+
+Removal uses plain `git worktree remove` without force and verifies both path and
+registration are gone. It never closes sessions, prunes, deletes Claude metadata,
+or rescues/stashes/commits dirty work. The named branch survives by default, so
+unique commits remain recoverable. Optional deletion separately requires
+`--delete-branches --base <ref>`, unchanged base/branch tips, containment, zero
+unique commits, and ordinary `git branch -d`; any failure after removal keeps the
+branch and reports partial completion.
 
 ## Safety boundaries
 
@@ -163,6 +225,7 @@ Byte equality rather than mere presence is the point. A transcript writer that o
 - [`internal/taskflow/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/taskflow/retire.go)
 - [`internal/cli/artifact.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/artifact.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+- [`internal/ephemeral`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/ephemeral)
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/retire/safety.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/safety.go)
 - [`internal/retire/service.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/service.go)

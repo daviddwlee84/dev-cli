@@ -137,6 +137,17 @@ reports missing tools or failed setup without deleting the usable checkout.
   linked worktrees whose branches are contained in main. Agents must present
   that report for user confirmation before applying; branches are retained
   unless `--delete-branches` was separately approved.
+- From any canonical non-bare checkout, `dev sweep --ephemeral-worktrees` audits
+  Claude Workflow isolation through bounded provider metadata plus fresh Git,
+  task, artifact, caller, and every available runtime. The path/branch naming
+  pattern is only a candidate label and never deletion proof. Claude Code 2.1.259
+  exposes no branch/HEAD/non-replayable registration identity, so its current
+  claims remain unknown/report-only rather than authorizing a reused path.
+- Ephemeral apply is TTY/per-item only and revalidates a stable fingerprint under
+  a common-dir lock before plain non-force removal. It never closes runtimes,
+  prunes, deletes provider metadata, or repairs dirty/ignored work. Branches stay
+  by default; deletion needs separately approved `--delete-branches --base REF`
+  and unchanged containment/zero-unique proof before `git branch -d`.
 
 Bare `dev done` on a TTY classifies dirty content against the base before
 offering commit-all or discard-all; unique discard requires `DROP`. Dirty

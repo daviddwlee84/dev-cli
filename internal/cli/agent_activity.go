@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 )
 
@@ -115,4 +117,19 @@ func checkoutAgentActivities(ctx context.Context, rt runtime.Runtime, checkout, 
 		}
 	}
 	return out, nil
+}
+
+func canonicalWorktreeRoot(ctx context.Context, dir string) (string, bool) {
+	if dir == "" {
+		return "", false
+	}
+	repository, err := gitx.Discover(ctx, dir)
+	if err != nil || repository.Root == "" {
+		return "", false
+	}
+	root := filepath.Clean(repository.Root)
+	if resolved, err := filepath.EvalSymlinks(root); err == nil {
+		root = filepath.Clean(resolved)
+	}
+	return root, true
 }
