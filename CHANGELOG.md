@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.12] - 2026-09-04
+
 ### Changed
 
 - The TUI SKILLS and MCP views are now startup-context-first. From a Git
@@ -638,7 +640,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.11...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.12...HEAD
+[0.2.12]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.8...v0.2.9
