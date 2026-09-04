@@ -21,6 +21,10 @@ use explicit `repo clone` when the operation should be unmistakable.
 hooks and skill setup must provide their own idempotency. `--dry-run` does not
 mutate the target repository.
 
+The dashboard reuses this flow rather than maintaining a second repository
+creator. In REPOS, `n` suspends the TUI into `dev repo new --handoff stay`; when
+the wizard returns successfully, the dashboard refreshes local inventory only.
+
 After choosing a preset, the wizard asks once whether to customize its template
 and detailed options. Declining accepts the preset defaults and skips the
 README/gitignore/license/Claude/AGENTS/skill questionnaire. The gate defaults

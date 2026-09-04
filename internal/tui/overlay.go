@@ -296,7 +296,7 @@ func (m Model) renderOverlay() string {
 		builder.WriteString("    left click row/tab · wheel 3 rows · right click row actions · click never opens\n")
 		builder.WriteString("    / filter · 0 clear · r reload · esc close/clear/quit · q quit\n\n")
 		builder.WriteString("  TASKS   enter open · n add note · N notes · p park · c next · 1/2/3 state · a done\n")
-		builder.WriteString("  REPOS   enter open · n add note · N notes · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
+		builder.WriteString("  REPOS   enter open · n new repo · a add note · N notes · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
 		builder.WriteString("  FLEET   enter Herdr/SSH open · e edit remotes.toml · r refresh · read-only Git overview\n")
 		builder.WriteString("  TRY     enter open · n create · space actions · a history · O/R sort\n")
 		builder.WriteString("  REMOTE  enter open local · n/N notes when cloned · c clone (enter stay / o open)\n")

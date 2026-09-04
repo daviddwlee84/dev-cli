@@ -98,9 +98,10 @@ flow](repository-flow.md) for action and compatibility boundaries.
 
 ```text
 enter/o   ad-hoc open without creating a task
+n         new repository through the clone-aware `repo new` wizard
+a/N       quick-add / browse repository notes
 space     expand linked worktrees
 m         edit repository tags/summary
-n/N       quick-add / browse repository notes
 d         track direct work on the current branch
 s         start isolated work: branch + worktree + provisioning + runtime
 H         open the repository activity heatmap
@@ -108,6 +109,11 @@ y         open copy/context actions
 ```
 
 Expanded rows explain every linked worktree, including harness-owned `(ephemeral)` and otherwise unmanaged `(external)` checkouts. The LIVE column shows runtime activity separately from task state.
+
+`n` also works when REPOS is empty. The dashboard suspends into
+`dev repo new --handoff stay`, preserving config/scaffold overrides, and reloads
+local TASKS/REPOS/TRY state after success. It does not introduce a second,
+reduced repository-creation implementation.
 
 `dev repo context [repo]` emits the same agent-ready Markdown context available from the TUI copy menu, including paths, Git/worktree/runtime facts, and tasks. `--json` adds the schema-v1 evidence/readiness contract; `--refresh` is the only form that live-probes optional forge and configured fleet sources.
 
@@ -184,7 +190,10 @@ including SSH port, invalidates that host's cache. None of this changes
 
 ## Repository quick notes
 
-On TASKS and REPOS, lowercase `n` opens a one-line quick-add prompt and uppercase `N` opens the selected repository's notes overlay. A child worktree resolves to the same canonical repository through catalog identity.
+On TASKS, lowercase `n` opens a one-line quick-add prompt. REPOS reserves `n`
+for new repositories and uses `a` for quick-add. Uppercase `N` opens the selected
+repository's notes overlay in both views. A child worktree resolves to the same
+canonical repository through catalog identity.
 
 ```text
 j/k       move

@@ -382,7 +382,9 @@ with tab, vim-style h/l, or a left click on a visible tab. Left-click selects a
 row without opening it, the wheel moves three rows, and right-click selects a row
 and opens the same legal actions used by keyboard shortcuts. Repeated clicks do
 not imply open. Wide TASKS tables show `REPO`; compact layouts keep it in detail.
-TRY `n` creates an experiment; `space` opens metadata/lifecycle actions; `a`
+REPOS `n` suspends into the existing clone-aware `repo new --handoff stay`
+wizard and refreshes local inventory when it returns; `a` quick-adds a note and
+`N` browses notes. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions; `a`
 includes retained history. Archive is a reversible same-filesystem move, not
 deletion or disk reclamation. `?` opens the full key map.
 
@@ -521,9 +523,10 @@ moves. `dev` does not synchronize notes or catalog state, so cross-host
 attachment requires syncing both. SQLite FTS at `$XDG_CACHE_HOME/dev/notes.db`
 is disposable: clearing it removes no thoughts and the next search rebuilds it.
 
-TUI context keys: `n` quick-adds on TASKS/REPOS; `N` browses with `/` search,
-Enter expand, `a` add, `e` editor, and confirmed `d` delete. In TRY, `n` remains
-“new Try.” REMOTE needs a local clone.
+TUI context keys: `n` quick-adds on TASKS, while REPOS uses `n` for new
+repositories and `a` for quick-add. `N` browses with `/` search, Enter expand,
+`a` add, `e` editor, and confirmed `d` delete. In TRY, `n` remains “new Try.”
+REMOTE needs a local clone.
 
 ## Editing configuration
 

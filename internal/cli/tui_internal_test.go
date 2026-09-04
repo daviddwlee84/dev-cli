@@ -59,6 +59,19 @@ func TestAppLoadInitializesCatalog(t *testing.T) {
 	}
 }
 
+func TestTUIRepoNewProcessPreservesConfigAndStaysInDashboard(t *testing.T) {
+	app := &App{configPath: "/tmp/dev-config.toml", scaffoldsPath: "/tmp/dev-scaffolds.toml"}
+	process, err := tuiRepoNewProcess(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(process.Args[1:], " ")
+	want := "--config /tmp/dev-config.toml --scaffolds /tmp/dev-scaffolds.toml repo new --handoff stay"
+	if got != want {
+		t.Fatalf("repo new process args = %q, want %q", got, want)
+	}
+}
+
 func TestCloneRemoteFromTUIUsesRepositoryAcquire(t *testing.T) {
 	source := gittest.New(t)
 	projectRoot := filepath.Join(t.TempDir(), "projects")

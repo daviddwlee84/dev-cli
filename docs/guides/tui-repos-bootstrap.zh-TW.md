@@ -73,9 +73,10 @@ COLD worktree task 必須透過 `dev resume` 重建；TUI 不會用 generic open
 
 ```text
 enter/o   ad-hoc open，不建立 task
+n         透過 clone-aware `repo new` wizard 建立 repository
+a/N       quick-add／瀏覽 repository notes
 space     展開 linked worktrees
 m         編輯 repository tags/summary
-n/N       quick-add／瀏覽 repository notes
 d         追蹤目前 branch 的 direct work
 s         啟動 isolated work：branch + worktree + provisioning + runtime
 H         開啟 repository activity heatmap
@@ -83,6 +84,10 @@ y         開啟 copy/context actions
 ```
 
 展開後會顯示每個 linked worktree，包括 harness-owned `(ephemeral)` 與未受管理的 `(external)` checkout。LIVE column 將 runtime activity 與 task state 分開。
+
+REPOS 為空時仍可按 `n`。Dashboard 會 suspend 到
+`dev repo new --handoff stay`，保留 config/scaffold overrides，成功後重新載入
+local TASKS/REPOS/TRY state；TUI 不會另外維護一套縮減版 repository creator。
 
 `dev repo context [repo]` 會輸出 TUI copy menu 相同的 agent-ready Markdown context，包含 paths、Git/worktree/runtime facts 與 tasks。`--json` 加入 schema-v1 evidence/readiness contract；只有 `--refresh` 會 live-probe optional forge 與 configured fleet sources。
 
@@ -165,7 +170,9 @@ non-interactive output 仍包含本機與所有已設定的 remote hosts。
 
 ## Repository quick notes
 
-在 TASKS 與 REPOS，lowercase `n` 開啟單行 quick-add prompt，uppercase `N` 開啟選取 repository 的 notes overlay。Child worktree 會透過 catalog identity 解析到同一個 canonical repository。
+在 TASKS，lowercase `n` 開啟單行 quick-add prompt。REPOS 將 `n` 保留給 new
+repository，並以 `a` quick-add note；兩個 view 都用 uppercase `N` 開啟選取
+repository 的 notes overlay。Child worktree 會透過 catalog identity 解析到同一個 canonical repository。
 
 ```text
 j/k       移動

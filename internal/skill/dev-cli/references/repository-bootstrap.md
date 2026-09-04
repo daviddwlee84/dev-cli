@@ -227,3 +227,7 @@ local work intact.
 
 Handoff is explicit: `stay`, `cd`, `open`, or `start`. `start` enters the normal
 task wizard. None of these choices launches a coding agent.
+
+REPOS `n` uses this same wizard in a suspended terminal with `--handoff stay`,
+then refreshes local dashboard inventory. It is available even when no
+repository row exists; the TUI does not maintain a reduced second creator.

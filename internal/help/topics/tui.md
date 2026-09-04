@@ -85,8 +85,11 @@ HOT/WARM/COLD task tallies. Press `space` to expand a repo into its linked
 worktrees; each child has its own Git, runtime and task state, and enter opens
 that checkout. Git-backed Tries are shown in TRY rather than appearing twice;
 REMOTE still labels their local checkout as `try`. Repos with active work sort
-first. On a first run with no tasks, switch to REPOS and press `s`, or use TRY
-`n` for a low-cost experiment.
+first. Press `n` in REPOS—even when it is empty—to suspend into the existing
+clone-aware `dev repo new --handoff stay` wizard; successful completion refreshes
+local TASKS/REPOS/TRY state. On a first run with no tasks, press `n` to create a
+repository, `s` to start work in an existing one, or use TRY `n` for a low-cost
+experiment.
 
 REMOTE loads lazily, so dashboard startup never waits on the network. Its
 private XDG cache is decoded after the first view and holds the complete
@@ -194,7 +197,8 @@ reports any artifact salvage requirement before offering resume/reap cleanup.
 REPOS:
 
 ```
-n / N      quick-add / browse repository notes
+n          new repository through the clone-aware CLI wizard
+a / N      quick-add / browse repository notes
 enter / o  ad-hoc open: no task, branch or worktree
 space      expand/collapse linked worktrees
 m          edit repository tags and note
@@ -213,7 +217,7 @@ r          refresh configured hosts
 ```
 
 In TRY, `n` remains “new Try”; quick notes intentionally do not attach to Try
-assets.
+assets. Right-clicking a REPOS row exposes the same new-repository action.
 
 The LIVE column makes runtime state explicit (`herdr:working`, `herdr:idle`). A
 collapsed repo with several sessions shows `herdr:N live`; expanded children

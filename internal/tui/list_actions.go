@@ -22,6 +22,7 @@ const (
 	listActionPark
 	listActionEditNext
 	listActionToggleWorktrees
+	listActionRepoCreate
 	listActionRepoMetadata
 	listActionStartWorktree
 	listActionStartDirect
@@ -241,6 +242,9 @@ func (m Model) openActionMenu() Model {
 		m.addStatsOption(&overlay)
 
 	case ViewRepos:
+		if m.actions.Repos.Create != nil {
+			overlay.addOption(listActionRepoCreate, "new repository…")
+		}
 		item, _ := m.currentRepoItem()
 		if item.child() {
 			if checkout, ok := item.checkout(); ok && checkout.Exists && !checkout.Worktree.Prunable && m.actions.OpenCheckout != nil {
@@ -414,6 +418,20 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 		}
 	case listActionToggleWorktrees:
 		return m.toggleSelectedRepo()
+	case listActionRepoCreate:
+		if m.actions.Repos.Create == nil {
+			return m, nil
+		}
+		process, err := m.actions.Repos.Create()
+		if err != nil {
+			m.err = err
+			return m, nil
+		}
+		m.err = nil
+		m.status = "opening new repository wizard…"
+		return m, runExecProcess(process, func(runErr error) tea.Msg {
+			return actionMsg{status: "repository wizard completed", forceSizes: true, err: runErr}
+		})
 	case listActionRepoMetadata:
 		if row, ok := m.currentRepo(); ok {
 			return m.openRepoForm(row)

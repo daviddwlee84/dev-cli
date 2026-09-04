@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- REPOS now mirrors TRY's creation workflow: `n` suspends the dashboard into
+  the existing clone-aware `dev repo new --handoff stay` wizard, then refreshes
+  local TASKS/REPOS/TRY state without contacting remotes. It works even when
+  REPOS is empty and is also available from the row action menu. REPOS quick
+  note creation moves to `a`; `N` continues to open the notes browser.
+
 ## [0.2.13] - 2026-09-04
 
 ### Added
