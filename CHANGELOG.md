@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.16] - 2026-09-04
+
 ### Added
 
 - Interactive `dev done` can now recover from two common fast-forward blockers
@@ -699,7 +701,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.15...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.16...HEAD
+[0.2.16]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.12...v0.2.13
