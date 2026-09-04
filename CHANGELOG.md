@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.14] - 2026-09-04
+
 ### Added
 
 - REPOS now mirrors TRY's creation workflow: `n` suspends the dashboard into
@@ -668,7 +670,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.13...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.14...HEAD
+[0.2.14]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.10...v0.2.11
