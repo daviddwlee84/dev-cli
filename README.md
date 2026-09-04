@@ -77,6 +77,10 @@ go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
+Source checkouts include `mise.toml`, pinning the repository toolchain to Go
+1.26.4. With mise installed, `mise install` selects the same compiler used by
+the module and CI instead of relying on a possibly mismatched global GOROOT.
+
 Every release also publishes `darwin/arm64`, `darwin/amd64`, `linux/amd64`,
 `linux/arm64` (`.tar.gz`) and `windows/amd64`, `windows/arm64` (`.zip`) archives
 with a `SHA256SUMS` file, so a binary can be verified without a Go toolchain.
@@ -430,7 +434,12 @@ dev sweep --merged-worktrees --apply                 # confirm each safe retirem
 On a TTY, bare `dev done` reports branch ahead/behind and classifies every
 staged, unstaged and untracked path against the base before offering
 commit-all, discard-all or cancel. Unique discard requires typing `DROP`;
-scripts use `--dirty=commit --message ...` or `--dirty=discard --yes`.
+scripts use `--dirty=commit --message ...` or `--dirty=discard --yes`. After a
+managed worktree reaches MERGED, the bare wizard also previews covering
+runtime panes and agents, then offers keep, retire while keeping the branch, or
+retire and delete the freshly contained branch. A caller-owned Herdr workspace
+is closed only by a newly created external coordinator after a second fresh
+retirement audit; active agents and mixed workspaces remain blockers.
 
 ### A task does not have to mean a worktree
 

@@ -1,14 +1,17 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/retire"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
@@ -211,6 +214,154 @@ func TestDoneBareInteractiveChoosesFastForward(t *testing.T) {
 	}
 	if !strings.Contains(f.stdout.String(), "Integration (f=fast-forward") {
 		t.Fatalf("integration prompt missing:\n%s", f.stdout.String())
+	}
+}
+
+func TestDoneWizardHandsCallerHerdrWorkspaceToExternalCoordinator(t *testing.T) {
+	f, worktree := mergedTaskFixture(t, "external-retire")
+	rt := f.app.runtimeInstance.(*activityRuntime)
+	rt.name = "herdr"
+	rt.sessions = []runtime.Session{{
+		Handle: "w7", Label: "feature", AgentStatus: "idle",
+		Panes: []runtime.Pane{{ID: "w7:p1", CWD: worktree, Agent: "claude", AgentStatus: "idle"}},
+	}}
+	rt.openResult = runtime.OpenResult{
+		Handle: "w9", Surface: "workspace", Opened: true, Created: true, RootPaneID: "w9:p1",
+	}
+	candidate, err := f.app.Tasks.Resolve("external-retire")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate.RuntimeName, candidate.RuntimeHandle = "herdr", "w7"
+	if err := f.app.Tasks.Save(candidate); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_WORKSPACE_ID", "w7")
+
+	if err := runDoneForTest(f, "y\nr\ny\n", true, "external-retire"); err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.runCalls) != 1 || rt.runCalls[0].PaneID != "w9:p1" || !strings.Contains(rt.runCalls[0].Command, "__retire-coordinator") {
+		t.Fatalf("coordinator runs = %+v", rt.runCalls)
+	}
+	if len(rt.closeCalls) != 0 {
+		t.Fatalf("done process must not close its own workspace: %v", rt.closeCalls)
+	}
+	if _, err := os.Stat(worktree); err != nil {
+		t.Fatalf("fake coordinator should leave worktree for its separate process: %v", err)
+	}
+	if !strings.Contains(f.stdout.String(), "external herdr workspace w9") {
+		t.Fatalf("handoff output missing:\n%s", f.stdout.String())
+	}
+}
+
+func TestDoneWizardRefusesToCloseWorkingAgent(t *testing.T) {
+	f, worktree := mergedTaskFixture(t, "active-retire")
+	rt := f.app.runtimeInstance.(*activityRuntime)
+	rt.name = "herdr"
+	rt.sessions = []runtime.Session{{
+		Handle: "w7", AgentStatus: "working",
+		Panes: []runtime.Pane{{ID: "w7:p1", CWD: worktree, Agent: "codex", AgentStatus: "working"}},
+	}}
+	rt.activities = []runtime.AgentActivity{{
+		PaneID: "w7:p1", WorkspaceID: "w7", Agent: "codex", Status: "working", CWD: worktree,
+	}}
+	resolvedRT := &currentPaneRuntime{activityRuntime: rt, currentPane: "w7:p1"}
+	f.app.runtimeInstance = resolvedRT
+	candidate, err := f.app.Tasks.Resolve("active-retire")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate.RuntimeName, candidate.RuntimeHandle = "herdr", "w7"
+	if err := f.app.Tasks.Save(candidate); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HERDR_WORKSPACE_ID", "w7")
+
+	if err := runDoneForTest(f, "y\nr\n", true, "active-retire"); err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.runCalls) != 0 || len(rt.closeCalls) != 0 {
+		t.Fatalf("active agent must prevent cleanup: run=%v close=%v", rt.runCalls, rt.closeCalls)
+	}
+	if !strings.Contains(f.stderr.String(), "agent status working") {
+		t.Fatalf("active blocker missing:\n%s", f.stderr.String())
+	}
+}
+
+func TestRetireCoordinatorConsumesStaleIntentOnce(t *testing.T) {
+	f, _ := mergedTaskFixture(t, "stale-handoff")
+	candidate, err := f.app.Tasks.Resolve("stale-handoff")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate.State = task.Done
+	if err := f.app.Tasks.Save(candidate); err != nil {
+		t.Fatal(err)
+	}
+	id := strings.Repeat("a", 32)
+	dir := retireHandoffDir(f.app, id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRetireHandoffIntent(dir, retireHandoffIntent{
+		Version: 1, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
+		TaskID: candidate.ID, TaskRevision: "stale", CheckoutPath: candidate.WorktreePath,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	err = runRetireCoordinator(context.Background(), f.app, id)
+	if err == nil || !strings.Contains(err.Error(), "task revision changed") {
+		t.Fatalf("stale coordinator error = %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "intent.json")); !os.IsNotExist(statErr) {
+		t.Fatalf("consumed intent remains: %v", statErr)
+	}
+	if err = runRetireCoordinator(context.Background(), f.app, id); err == nil {
+		t.Fatal("consumed coordinator intent was replayable")
+	}
+}
+
+func TestRetireCoordinatorRevalidatesAndRetiresFromOutside(t *testing.T) {
+	f, worktree := mergedTaskFixture(t, "coordinator-success")
+	candidate, err := f.app.Tasks.Resolve("coordinator-success")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate.State = task.Done
+	if err := f.app.Tasks.Save(candidate); err != nil {
+		t.Fatal(err)
+	}
+	record, err := f.app.Tasks.GetRecord(candidate.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rt := runtimeForTask(f.app, &record.Task)
+	preview, err := retire.InspectForExternalCoordinator(context.Background(), rt, worktree, retire.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	head := strings.TrimSpace(f.repo.GitIn(worktree, "rev-parse", "HEAD"))
+	id := strings.Repeat("b", 32)
+	dir := retireHandoffDir(f.app, id)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeRetireHandoffIntent(dir, retireHandoffIntent{
+		Version: 1, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
+		TaskID: candidate.ID, TaskRevision: record.Revision, CheckoutPath: worktree,
+		HeadOID: head, PreviewFingerprint: preview.Fingerprint(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := runRetireCoordinator(context.Background(), f.app, id); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
+		t.Fatalf("coordinator left worktree: %v", err)
+	}
+	if _, err := f.app.Tasks.Get(candidate.ID); !errors.Is(err, task.ErrNotFound) {
+		t.Fatalf("coordinator left task: %v", err)
 	}
 }
 

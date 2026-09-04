@@ -111,6 +111,31 @@ func TestInspectRefusesCallerInsideEvenWithAcknowledgements(t *testing.T) {
 	}
 }
 
+func TestExternalCoordinatorPreviewReclassifiesCallerAgentAndKeepsActiveBlocker(t *testing.T) {
+	target := t.TempDir()
+	rt := &activityFakeRuntime{
+		fakeRuntime: &fakeRuntime{sessions: []runtime.Session{{
+			Handle: "w2", AgentStatus: "working",
+			Panes: []runtime.Pane{{ID: "w2:p1", CWD: target, Agent: "codex", AgentStatus: "working"}},
+		}}},
+		activities: []runtime.AgentActivity{{
+			PaneID: "w2:p1", WorkspaceID: "w2", Agent: "codex", Status: "working", CWD: target,
+		}},
+	}
+	inspection, err := retire.InspectForExternalCoordinator(context.Background(), rt, target, retire.Options{
+		CWD: target, CallerWorkspaceID: "w2", CallerPaneID: "w2:p1", CloseUnknown: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inspection.CallerContained || inspection.Ready() || !contains(inspection.Blockers, "agent status working") {
+		t.Fatalf("external preview must ignore caller location but retain active-agent policy: %+v", inspection)
+	}
+	if !reflect.DeepEqual(inspection.ActiveSessions, []string{"w2"}) {
+		t.Fatalf("active sessions = %v", inspection.ActiveSessions)
+	}
+}
+
 func TestInspectRefusesCallerRuntimeAndMixedWorkspace(t *testing.T) {
 	target := t.TempDir()
 	other := t.TempDir()

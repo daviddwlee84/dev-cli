@@ -114,6 +114,13 @@ type PaneRunner interface {
 	RunInPane(ctx context.Context, paneID, command string) error
 }
 
+// ExternalCoordinatorOpener creates a fresh, caller-external command surface.
+// A reused workspace is never acceptable because destructive coordination must
+// have an exact root pane from the same creation response.
+type ExternalCoordinatorOpener interface {
+	OpenExternalCoordinator(ctx context.Context, dir, label string) (OpenResult, error)
+}
+
 // Runtime is the contract every backend satisfies. Adapters must degrade
 // gracefully: an unavailable backend returns errors rather than panicking, and
 // List on an idle backend returns an empty slice, not an error.

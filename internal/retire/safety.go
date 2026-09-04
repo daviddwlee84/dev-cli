@@ -4,6 +4,8 @@ package retire
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"sort"
@@ -60,6 +62,8 @@ type Inspection struct {
 	Sessions        []Session
 	ClosedSessions  int
 	Blockers        []string
+	UnknownSessions []string
+	ActiveSessions  []string
 	RuntimeUnknown  bool
 	CallerContained bool
 }
@@ -70,6 +74,17 @@ func (i Inspection) Ready() bool { return len(i.Blockers) == 0 }
 // Inspect discovers covering sessions and applies caller, mixed-workspace, and
 // agent-state safety policy.
 func Inspect(ctx context.Context, rt runtime.Runtime, target string, opts Options) (Inspection, error) {
+	return inspect(ctx, rt, target, opts, false)
+}
+
+// InspectForExternalCoordinator previews cleanup as it will be seen by a
+// separately hosted coordinator. It is read-only and never authorizes cleanup:
+// the real coordinator must call Inspect again from its own external surface.
+func InspectForExternalCoordinator(ctx context.Context, rt runtime.Runtime, target string, opts Options) (Inspection, error) {
+	return inspect(ctx, rt, target, opts, true)
+}
+
+func inspect(ctx context.Context, rt runtime.Runtime, target string, opts Options, externalCoordinator bool) (Inspection, error) {
 	runtimeName := ""
 	if rt != nil {
 		runtimeName = rt.Name()
@@ -112,8 +127,10 @@ func Inspect(ctx context.Context, rt runtime.Runtime, target string, opts Option
 		return Inspection{}, fmt.Errorf("compare caller directory: %w", compareErr)
 	} else if inside {
 		result.CallerContained = true
-		result.Blockers = append(result.Blockers,
-			fmt.Sprintf("caller is inside target checkout %s", evidence.Target))
+		if !externalCoordinator {
+			result.Blockers = append(result.Blockers,
+				fmt.Sprintf("caller is inside target checkout %s", evidence.Target))
+		}
 	}
 
 	if evidence.CurrentPane.Err != nil {
@@ -147,8 +164,10 @@ func Inspect(ctx context.Context, rt runtime.Runtime, target string, opts Option
 		})
 		if observed.IsCaller {
 			result.CallerContained = true
-			result.Blockers = append(result.Blockers,
-				fmt.Sprintf("caller runtime %s contains the target checkout", observed.Runtime.Handle))
+			if !externalCoordinator {
+				result.Blockers = append(result.Blockers,
+					fmt.Sprintf("caller runtime %s contains the target checkout", observed.Runtime.Handle))
+			}
 		}
 		if len(observed.Mixed) > 0 {
 			result.Blockers = append(result.Blockers,
@@ -164,14 +183,16 @@ func Inspect(ctx context.Context, rt runtime.Runtime, target string, opts Option
 		}
 		if agent.IsCaller {
 			result.CallerContained = true
-			if agent.SessionHandle != "" {
-				result.Blockers = append(result.Blockers,
-					fmt.Sprintf("caller runtime %s contains the target checkout", agent.SessionHandle))
-			} else {
-				result.Blockers = append(result.Blockers,
-					fmt.Sprintf("caller runtime pane %s contains the target checkout", agent.Activity.PaneID))
+			if !externalCoordinator {
+				if agent.SessionHandle != "" {
+					result.Blockers = append(result.Blockers,
+						fmt.Sprintf("caller runtime %s contains the target checkout", agent.SessionHandle))
+				} else {
+					result.Blockers = append(result.Blockers,
+						fmt.Sprintf("caller runtime pane %s contains the target checkout", agent.Activity.PaneID))
+				}
+				continue
 			}
-			continue
 		}
 		if agent.SessionHandle == "" {
 			result.Blockers = append(result.Blockers,
@@ -363,9 +384,11 @@ func appendAgentStatusBlocker(result *Inspection, handle, rawStatus string, clos
 	case "idle", "done":
 		// Eligible after all structural checks pass.
 	case "working", "running", "busy", "blocked", "waiting":
+		result.ActiveSessions = append(result.ActiveSessions, handle)
 		result.Blockers = append(result.Blockers,
 			fmt.Sprintf("runtime %s has agent status %s", handle, status))
 	case "", "unknown":
+		result.UnknownSessions = append(result.UnknownSessions, handle)
 		if !closeUnknown {
 			result.Blockers = append(result.Blockers,
 				fmt.Sprintf("runtime %s has unknown agent status; pass --close-unknown from outside it", handle))
@@ -398,5 +421,45 @@ func dedupe(inspection Inspection) Inspection {
 		}
 	}
 	inspection.Blockers = out
+	inspection.UnknownSessions = uniqueSorted(inspection.UnknownSessions)
+	inspection.ActiveSessions = uniqueSorted(inspection.ActiveSessions)
 	return inspection
+}
+
+func uniqueSorted(values []string) []string {
+	seen := make(map[string]bool)
+	var out []string
+	for _, value := range values {
+		if value != "" && !seen[value] {
+			seen[value] = true
+			out = append(out, value)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// Fingerprint binds an operator preview to the exact target and covering
+// runtime topology without binding it to the coordinator's own caller pane.
+func (i Inspection) Fingerprint() string {
+	parts := []string{i.Target}
+	sessions := append([]Session(nil), i.Sessions...)
+	sort.Slice(sessions, func(a, b int) bool { return sessions[a].Runtime.Handle < sessions[b].Runtime.Handle })
+	for _, session := range sessions {
+		parts = append(parts, session.Runtime.Handle, session.Runtime.Label, session.Runtime.AgentStatus)
+		panes := append([]runtime.Pane(nil), session.Panes...)
+		sort.Slice(panes, func(a, b int) bool { return panes[a].ID < panes[b].ID })
+		for _, pane := range panes {
+			parts = append(parts, pane.ID, pane.CWD, pane.ShellCWD, pane.Agent, pane.AgentStatus, pane.AgentSession)
+		}
+		mixed := append([]runtime.Pane(nil), session.Mixed...)
+		sort.Slice(mixed, func(a, b int) bool { return mixed[a].ID < mixed[b].ID })
+		for _, pane := range mixed {
+			parts = append(parts, "mixed", pane.ID, pane.CWD, pane.ShellCWD)
+		}
+	}
+	parts = append(parts, i.UnknownSessions...)
+	parts = append(parts, i.ActiveSessions...)
+	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return hex.EncodeToString(sum[:])
 }

@@ -48,6 +48,12 @@ policy。該 wizard 詳見[變更流工作流程](change-stream-workflow.zh-TW.m
 `dev done` 上的 `--keep-worktree` 與 `--delete-branch` 之所以仍被接受，只是為了
 明確報錯並指向 `dev retire`。
 
+Bare interactive `dev done` 到達 MERGED 後，cleanup step 會先做 read-only
+retirement preview，再詢問保留、retire，或 retire 並刪除 contained branch。
+核可前會列出 covering Herdr panes 與 recognized agent 狀態；caller-owned Herdr
+workspace 改由 fresh exact-pane external coordinator 處理。Working、blocked、
+waiting agent 與 mixed workspace 永遠不能被 override。
+
 ## Flow 中的 DONE 與 Retire
 
 `dev flow` 把 persisted `DONE` intent 與 live cleanup evidence 分開。DONE/MERGED row 仍可顯示 runtime、worktree、branch 與 task record；只有 Retire result 完成最後的 CAS task deletion 才是 RETIRED。UNMANAGED row 使用的是永遠保留 branch 的 Remove Checkout，不會製造 DONE/RETIRED task milestone；canonical 與 harness row 不能 Remove Checkout。

@@ -368,6 +368,11 @@ Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`�
 
 `--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--push` 會依 selected integration push 對應 branch/base。成功的 local 或 externally verified integration 只記錄 DONE/MERGED，永遠保留 runtime、worktree 與 branch 給獨立的 `dev retire`；`--keep-worktree` 只保留為 no-op compatibility warning，`--delete-branch` 則會報錯並指向 `dev retire --delete-branch`。`--merged` 可用 `--confirm-squash <merge-commit>` 對 squash result 作明確 operator attestation，不能由 provider status 自動推斷。
 
+Managed worktree 的 bare interactive `dev done` 在 MERGED 後會增加 cleanup
+選擇：保留、retire 並保留 branch，或 retire 並刪除 contained branch。它會先
+preview covering runtime panes 與 agent 狀態；caller-owned Herdr workspace 交給
+fresh external coordinator。Explicit mode 與 non-interactive invocation 仍停在 DONE。
+
 ## Configuration
 
 ```bash
@@ -608,7 +613,7 @@ eval "$(dev shell-init zsh)"
 dev shell-init fish | source
 ```
 
-Child process 不能改變 parent working directory，因此受信任的 `shell-init` output 會定義 wrapper。Navigation command 執行時，wrapper 從 private child-only file descriptor 讀取 NUL-terminated path，再呼叫 `builtin cd`；它不會把一般 `dev` command output 當成 shell code evaluate。
+Child process 不能改變 parent working directory，因此受信任的 `shell-init` output 會定義 wrapper。Navigation 與 post-MERGED retirement 執行時，wrapper 從 private child-only file descriptors 讀取 NUL-terminated path 與窄化的固定 retire action，先 `builtin cd` 再以 exact task ID 執行；它不會 evaluate 一般 `dev` output 或 arbitrary shell code。
 
 ## 完整 generated command reference
 

@@ -153,13 +153,14 @@ dev retire <task> --delete-branch
 
 在 interactive terminal 上，省略 `--ff` 與 `--pr` 執行 `dev done` 不會直接失敗，而是開啟 finish wizard。它不會猜你要哪種 integration mode，而是先檢視 checkout 的實際狀態，只詢問它無法推斷的部分。
 
-Wizard 最多分三步：
+Wizard 最多分四步：
 
 1. **Preflight。** 回報 branch、base、branch/base 的 commit relation（ahead/behind，或已被 base 包含），以及 — 若 checkout 是 dirty — 逐 path 說明哪些變更已與 base tree 相同、哪些是 unique。
 2. **Dirty changes**，僅在 checkout 為 dirty 時出現：`c` 用你輸入的訊息 commit 全部變更，`d` discard 全部（tracked 與 untracked），`q` 取消且不做任何變更。Discard unique content — 尚未與 base 等價的內容 — 需在後續確認時輸入 `DROP`；只 discard 與 base 相符的 path 則不需要。
 3. **Integration**，僅在未傳入 `--ff` 或 `--pr`、且 branch 尚未完全被 base 包含時出現：`f` 把 branch rebase 到 base 再 fast-forward（等同 `--ff`），`p` push 並開啟 pull/merge request（等同 `--pr`），`q` 取消。Branch 已被 base 包含時，wizard 會跳過此步驟，直接記錄 DONE/MERGED；runtime/worktree cleanup 仍留給之後的 `dev retire`。
+4. **Cleanup**，僅在 managed worktree 確實到達 MERGED 後出現：`k` 保留 runtime/worktree/branch（預設）、`r` retire 但保留 branch、`d` retire 並刪除 freshly contained branch。Preview 會列出 covering workspace panes 與 agent 狀態；idle/done 可在確認後關閉，unknown 需要另外核可，active agent 與 mixed workspace 會阻擋 cleanup。若 caller 位於要回收的 Herdr workspace，dev 會在 canonical checkout 建立全新的外部 coordinator workspace，並在那裡重新驗證所有 identity 後才關閉原 workspace。
 
-事先傳入 `--ff` 或 `--pr` 等於幫 wizard 回答了第 3 步，因此它只會詢問 flags 未解決的部分 —— 若 tree 乾淨且已明確給出 integration flag，則完全不會詢問。動作執行前會先列出 dirty action 與 integration mode 的摘要；確認它，或在 plan 已由 flags 完全指定時加上 `--yes` 跳過確認。若 plan 開啟期間 checkout 或 branch 發生變化，`dev` 會在確認後偵測到 drift 並拒絕套用過期的 plan —— 重新執行 `dev done` 以取得目前狀態。
+事先傳入 `--ff` 或 `--pr` 會保留 compatibility 行為：explicit/non-interactive completion 不進入第 4 步。Integration 執行前仍先列出 dirty action 與 integration mode；cleanup 是 MERGED 後的獨立選擇，取消或 EOF 代表保留，而不是回滾 integration。Checkout、branch、task、runtime 或 agent evidence 若改變，cleanup 會 stale/fail-closed 並留下 DONE task。
 
 Non-interactive 情境 —— 沒有 TTY，或在 script 中 —— wizard 完全不會詢問。未指定 integration flag 時 `dev done` 只會回報同樣的 preflight 後結束；請明確傳入 `--ff` 或 `--pr`。Dirty checkout 在沒有 TTY 時預設失敗（`--dirty auto` 等同 `--dirty fail`），因此 script 應選擇明確的 policy：
 

@@ -151,6 +151,7 @@ func newRootCommand(app *App) *cobra.Command {
 		newPrepareCmd(app),
 		newDoneCmd(app),
 		newRetireCmd(app),
+		newRetireCoordinatorCmd(app),
 		newArtifactCmd(app),
 		newSweepCmd(app),
 		newPRCmd(app),
