@@ -300,14 +300,19 @@ func (t NoteTarget) Key() string {
 	return t.Repo.Name
 }
 
-// NoteEdit suspends the TUI in an editor and atomically completes from its
-// temporary body after the process exits.
-type NoteEdit struct {
+// EditProcess suspends the TUI in an editor and completes its guarded working
+// copy after the process exits.
+type EditProcess struct {
 	Command *exec.Cmd
 	// Complete always runs, even when the editor fails, so temporary files are
-	// cleaned. It may replace runErr with validation/index errors.
+	// cleaned. It may replace runErr with validation or conflict errors.
 	Complete func(runErr error) error
 }
+
+// NoteEdit and CapabilityEdit name the two product uses of the same terminal
+// handoff/completion contract.
+type NoteEdit = EditProcess
+type CapabilityEdit = EditProcess
 
 // NoteActions are the sidecar-note operations available to the dashboard.
 type NoteActions struct {

@@ -73,7 +73,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.12 instead when you need a reproducible install.
+# Pin @v0.2.13 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -574,11 +574,12 @@ Bare `dev` (or `dev tui`) opens seven lists, switched with `tab`:
   What can I open or clone.
 - **SKILLS** — native project/global agent-skill inventory for the exact startup
   checkout plus global sources, with local presence/integrity and an explicitly
-  checked upstream freshness state. Outside Git it becomes a cross-repository
-  inventory over accepted REPOS targets.
+  checked upstream freshness state. Outside Git it starts as a cross-repository
+  inventory over accepted REPOS targets; `A` toggles either launch context to all
+  accepted repositories for this TUI session.
 - **MCP** — sanitized static MCP declarations for Claude Code, Codex, Cursor,
-  Gemini CLI, and OpenCode, scoped to the same startup context inside Git and
-  widened across repositories outside Git. It resolves only Claude's documented
+  Gemini CLI, and OpenCode, scoped to the same startup context by default and
+  sharing the `A` context/all toggle. It resolves only Claude's documented
   project-approval settings; it does not claim connection health or a generally
   effective merged runtime configuration.
 
@@ -607,6 +608,13 @@ g G        top / bottom         h l / tab       previous / next view
 /          filter as you type   esc             clear, then quit
 ```
 
+Mouse cell tracking is enabled alongside the keyboard model. Left-click selects a
+visible row or tab, the wheel moves three rows, and right-click selects a row then
+opens the same available actions used by keyboard shortcuts. Clicks act on press;
+release/motion and modified clicks are ignored, and repeated clicks never imply
+open. Terminals that reserve tracked mouse input may require Shift/Option while
+selecting text.
+
 `enter` opens a selected row only when its checkout is currently valid. Inside Herdr/tmux/Zellij it
 switches the current client; outside it exits the dashboard and attaches to
 the target session. A COLD worktree task requires `dev resume`; a missing or
@@ -622,15 +630,20 @@ opened directly. In TRY, `n` creates or clones an experiment;
 `space` opens mark/deprecate/archive/restore/graduate actions; `a` includes
 retained history. Inside Git, SKILLS and MCP use only the exact startup worktree
 plus global/user sources; outside Git they reuse every accepted REPOS target and
-the ordinary startup directory. `a` opens the
-upstream interactive installer, `c` performs the opt-in read-only network check
-after the local snapshot has loaded, and `u` confirms before updating only the
-selected lock-managed skill in that row's checkout. Source checks hash Git object
-bytes without running checkout filters; non-ASCII provider folder hashes that
-cannot be reproduced portably remain unverifiable. Mutations skip repository-local
-PATH shims and are serialized across `dev` processes. `r` reloads local state
-without checking the network. MCP only filters/reloads static declarations; it
-never starts a server or helper. `?` opens the complete context-sensitive key map. That makes
+the ordinary startup directory. Uppercase `A` switches both views between that
+startup context and all accepted repositories for this TUI session, clearing old
+scope rows before a generation-guarded reload. In SKILLS, `a` opens the upstream
+interactive installer, `c` performs the opt-in read-only network check after the
+local snapshot has loaded, and `u` confirms before updating only the selected
+lock-managed skill in that row's checkout. Source checks hash Git object bytes
+without running checkout filters; non-ASCII provider folder hashes that cannot be
+reproduced portably remain unverifiable. Mutations skip repository-local PATH
+shims and are serialized across `dev` processes. `r` reloads local state without
+checking the network. MCP only filters/reloads static declarations; it never
+starts a server or helper. On either capability view, `e` edits a private working copy, revalidates the
+observed target immediately before atomic replacement, and preserves the working
+copy when it detects a conflict. `y` offers file copy choices. `?` opens the complete
+context-sensitive key map. That makes
 the branch/worktree and lifecycle costs explicit rather than silently applying
 them to every directory.
 
@@ -654,8 +667,14 @@ event because REMOTE, FLEET, SKILLS, and MCP may never be visited.
 REPOS also has an agent-handoff copy menu. Press `y`, then `y` for contextual
 Markdown, `p` for the checkout path, `b` for the branch, `s` for runtime/agent
 sessions, or `w` for every linked-worktree path. Parent `yy` includes the whole
-repo; child `yy` includes only that worktree. The same full context is
-pipe-friendly outside the TUI:
+repo; child `yy` includes only that worktree. SKILLS uses `yp` for the row's
+primary `SKILL.md` (or lock-file) path, `ys` for a sanitized summary, `yu` for its
+sanitized source URL, and `yf` for raw file contents. MCP uses `yp` for
+`ConfigPath`, `ys` for the sanitized declaration, and `yf` for the whole raw
+config file. Raw reads accept only a local regular file up to 1 MiB and perform no
+network access, but the system clipboard may then contain credentials and other
+servers stored in that file. The same full repository context is pipe-friendly
+outside the TUI:
 
 ```bash
 dev repo context api
@@ -701,8 +720,9 @@ interactive = true
 implicit, and `dev tui tools` shows what is bound here and whether each one is
 actually installed. The dashboard checks bindings in a bounded background load
 after its first view; unresolved or missing programs are not offered, and
-rendering never launches a login shell. A tool cannot take a key the dashboard
-already uses; dev reports the clash on load.
+rendering never launches a login shell. A tool cannot take a globally owned key;
+dev reports the clash on load. `A` remains configurable for compatibility but the
+SKILLS/MCP scope toggle takes precedence on those two views.
 
 REMOTE loads lazily, so dashboard startup never waits on the network. Its
 private XDG cache is decoded after the first view and contains the complete
@@ -734,13 +754,17 @@ compose a selected exact clone URL with `dev repo clone` without teaching
 another command about forge freshness.
 
 SKILLS also loads lazily. Inside Git it describes the exact startup checkout;
-outside Git it describes the accepted repository inventory. Native reads use the versioned `skills@1.5.23`
-77-agent path registry and lock files; they never start Node, `skills`, or `npx`.
-Use `dev skill list --all` for canonical repositories, `--repo` for one checkout,
-and `--check` only when a remote freshness check is wanted; checks hash Git object
-bytes without checkout filters. MCP is separately available through `dev mcp
-list`; it reads five agents' static config formats, resolves only Claude's documented
-project approvals, and redacts secret-bearing values before producing rows or JSON.
+outside Git it describes the accepted repository inventory. `A` can inspect all
+accepted repositories without changing the next TUI run's default. Native reads
+use the versioned `skills@1.5.23` 77-agent path registry and lock files; they never
+start Node, `skills`, or `npx`. Use `dev skill list --all` for canonical
+repositories, `--repo` for one checkout, and `--check` only when a remote freshness
+check is wanted; checks hash Git object bytes without checkout filters. MCP is
+separately available through `dev mcp list`; it reads five agents' static config
+formats, resolves only Claude's documented project approvals, and redacts
+secret-bearing values before producing rows or JSON. TUI `e` and raw `yf` operate
+on the local source file after inventory; they do not weaken the list/JSON
+redaction contract.
 
 Azure DevOps Services inventory is opt-in because `az repos list` requires an
 organization and team project. Repeat the target for every project wanted:
@@ -1439,8 +1463,10 @@ wizard. It never selects all skills or agents. Listing is native and never runs
 a directly installed `skills` executable, and may access the network; `dev` skips
 repository-local `node_modules` candidates, rejects source-less update locks, and
 serializes provider processes. `--all` scans each configured canonical checkout
-once, while the TUI also includes its exact startup linked worktree when distinct
-and reads global paths once. Freshness hashes Git object bytes without checkout
+once. The TUI instead defaults to its startup context—only the exact checkout
+inside Git, or accepted REPOS plus the ordinary directory outside Git—and `A`
+toggles all accepted repositories for that run; global paths are read once.
+Freshness hashes Git object bytes without checkout
 filters or autocrlf transforms; locale-dependent non-ASCII folder hashes stay
 unverifiable. Lock hashes describe upstream freshness, not installed-file integrity;
 only the embedded `dev-cli` skill can verify that every bundled file matches

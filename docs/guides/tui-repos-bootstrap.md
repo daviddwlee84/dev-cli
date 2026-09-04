@@ -2,7 +2,7 @@
 description: Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
-verified_on: 2026-09-03
+verified_on: 2026-09-04
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 ---
 
@@ -24,8 +24,8 @@ dashboard tab or mode.
 | FLEET | What exists and is active on configured machines? | accepted local REPOS snapshot plus remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive, or graduate? | experiment catalog plus live facts |
 | REMOTE | What can I open or clone? | authenticated `gh`/`glab` inventories and cache |
-| SKILLS | Which skills would an agent launched from this context read? | exact startup checkout plus global sources inside Git; all REPOS targets outside Git |
-| MCP | Which MCP declarations would that context expose? | sanitized static configuration with the same context-first target scope |
+| SKILLS | Which skills would an agent launched from this context read? | context-first targets plus an `A` all-repositories toggle |
+| MCP | Which MCP declarations would that context expose? | sanitized static configuration with the same shared scope |
 
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes, or the optional release refresh can
@@ -50,7 +50,13 @@ raw errors. It is not `stats.db` and is never sent anywhere.
 `tui.initial_view_returned` means the Bubble Tea view string was built, not that
 the terminal rasterized it.
 
-Switch with `tab`, `h`/`l`, or arrows. Use `j`/`k`, `g`/`G`, `ctrl+d`/`ctrl+u`, `/` to filter, `?` for help, and `esc`/`q` to leave the current mode.
+Switch with `tab`, `h`/`l`, arrows, or left-click a visible tab. A left-button
+press selects a visible row without opening it, the wheel moves three rows, and a
+right-button press selects a row then opens its available actions. Modified
+clicks, motion, releases, and repeated-click activation are ignored; Enter/`o`
+remains the explicit open action. Some terminals require Shift/Option for native
+text selection while mouse tracking is enabled. Keyboard movement, filtering,
+help, and mode exit remain unchanged.
 
 ## Common actions
 
@@ -212,10 +218,13 @@ Markdown under configured `paths.state_dir/notes` is durable; `$XDG_CACHE_HOME/d
 SKILLS and MCP both load lazily after the current REPOS generation is accepted.
 Inside Git they scan only the exact startup checkout plus global/user sources,
 matching what an agent launched there can read and excluding unrelated projects.
-Outside Git they retain the cross-repository inventory, scanning every accepted
-REPOS target plus the ordinary startup directory. Refreshes keep
-usable rows visible, warning-only partial inventories stay fresh, and a visible
-capability view resumes automatically after REPOS recovers.
+Outside Git their startup context retains the cross-repository inventory,
+scanning every accepted REPOS target plus the ordinary startup directory.
+Uppercase `A` switches both views between that context and all accepted
+repositories for this TUI session; old-scope rows are cleared before a guarded
+reload, and the other capability view remains lazy. Refreshes keep usable rows
+visible, warning-only partial inventories stay fresh, and a visible capability
+view resumes automatically after REPOS recovers.
 
 SKILLS reads the versioned `skills@1.5.23` 77-agent path registry and lock files
 natively—no Node, `skills`, npm, `npx`, agent detector, or project code runs.
@@ -228,7 +237,9 @@ bytes without populating a checkout; locale-dependent non-ASCII folder hashes st
 unverifiable. Mutations require a directly installed `skills` executable, skip
 repository-local npm shims, reject source-less locks, and serialize cooperating
 `dev` processes. Filters include `repo:`, `scope:`, `agent:`, `update:`,
-`presence:`, and `integrity:`.
+`presence:`, and `integrity:`. Press `e` to open the row's primary installed `SKILL.md` (or
+lock file for a missing row). The `y` menu copies the file path (`p`), safe
+summary (`s`), sanitized source URL (`u`), or whole raw file (`f`).
 
 MCP reads static declarations for Claude Code, Codex, Cursor, Gemini CLI, and
 OpenCode. It preserves file/scope rows and exact Claude local project keys instead
@@ -241,7 +252,13 @@ credentials/path/query/fragment, and indirect file content are discarded before
 rows enter the model. The scanner never runs a server, helper, URL, or agent MCP
 command. Filters include `repo:`,
 `agent:`, `scope:`, `transport:`, `managed:`, and `state:`; `r` only rereads
-static files.
+static files. Press `e` to open the selected declaration's `ConfigPath`; the `y`
+menu copies its path (`p`), sanitized declaration (`s`), or the entire raw file
+(`f`). Raw copy is a local regular-file read capped at 1 MiB and performs no
+network access, but it can put credentials and other declarations from that file
+into the system clipboard. Rows and structured output remain sanitized. `e`
+edits a private working copy, revalidates the observed source immediately before
+atomic replacement, and preserves the working copy when it detects a conflict.
 
 ## External tools
 
@@ -258,7 +275,7 @@ name = "lazygit"
 run = "lazygit"
 ```
 
-Keys are case-sensitive and cannot shadow dashboard-owned bindings. Returning from an editor can reload most config; switching runtime backend requires restarting the TUI.
+Keys are case-sensitive and cannot shadow globally owned dashboard bindings. `A` remains configurable for compatibility, but the SKILLS/MCP scope toggle takes precedence on those views. Returning from an editor can reload most config; switching runtime backend requires restarting the TUI.
 
 ## Inventory an existing machine
 

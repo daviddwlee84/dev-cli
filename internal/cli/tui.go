@@ -31,6 +31,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/safefile"
 	"github.com/daviddwlee84/dev-cli/internal/stats"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
@@ -38,6 +39,8 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/wt"
 	"github.com/spf13/cobra"
 )
+
+const tuiCapabilityFileMaxBytes = agentmcp.DefaultMaxFileBytes
 
 func newTUICmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
@@ -55,28 +58,30 @@ Seven lists, switched with tab:
   FLEET   repositories and active work across configured SSH machines
   TRY     scratch experiments and retained lifecycle history
   REMOTE  repositories visible through configured forge CLIs — what can I clone/open
-  SKILLS  startup-context/global agent skills; all repositories outside Git
-  MCP     startup-context static declarations; all repositories outside Git
+  SKILLS  startup-context/global agent skills; A toggles all repositories
+  MCP     startup-context static declarations; A toggles all repositories
 
-Navigation is vim-style, with arrows alongside:
+Navigation is vim-style, with arrows and mouse alongside:
 
   j k        move                 ctrl+d ctrl+u   half a page
   g G        top / bottom         h l / tab       previous / next view
   /          filter as you type   esc             clear, then quit
+  left click select row/tab       wheel            move three rows
+  right click selected row actions; click never opens a row directly
 
 Actions depend on the list:
 
   TASKS   enter open · p park · c edit next
-	  REPOS   enter ad hoc · space worktrees · m metadata · s worktree task · d direct task
-	  FLEET   enter Herdr/SSH open · Git changes are read-only here
-	  TRY     enter open · n create · space lifecycle/metadata actions
+  REPOS   enter ad hoc · space worktrees · m metadata · s worktree task · d direct task
+  FLEET   enter Herdr/SSH open · Git changes are read-only here
+  TRY     enter open · n create · space lifecycle/metadata actions
   REMOTE  enter open local · c clone after confirmation
-  SKILLS  a interactive add · c check updates · u update selected after confirmation
-  MCP     r reload static declarations; no server is started or probed
+  SKILLS  a add · c check · u update · e open file · y copy · A context/all
+  MCP     e open config · y copy · A context/all · r reload static declarations
 
-  y       copy menu: yy context · yp path · yb branch · ys sessions · yw WT paths
+  y       REPOS yy/yp/yb/ys/yw; SKILLS/MCP yp path · ys summary · yf raw file
   H       selected repo heatmap; b backfills it when empty
-  e       edit config; returning live-reloads data, columns, sort and tools
+  e       edit the current view's config/file; returning reloads that source
   O / R   cycle / reverse REPOS or TRY sort
   r       reload config + data     1 / 2 / 3  hot / warm / cold
   0       clear filters            a include history  ? help  q quit
@@ -322,15 +327,15 @@ func runTUI(app *App) error {
 		results, _, err := collectFleet(ctx, appState.Current(), fleetCollectOptions{LocalSnapshot: &snapshot})
 		return fleetRows(results), err
 	}
-	capabilityTargets := func(ctx context.Context, locals []tui.RepoRow) ([]agenttarget.Target, error) {
+	capabilityTargets := func(ctx context.Context, locals []tui.RepoRow, scope tui.CapabilityScope) ([]agenttarget.Target, error) {
 		current, err := projectRootResolver.ResolveTarget(ctx)
 		if err != nil {
 			return nil, err
 		}
-		return tuiCapabilityTargets(locals, current), nil
+		return tuiCapabilityTargets(locals, current, scope), nil
 	}
-	reloadSkills := func(ctx context.Context, locals []tui.RepoRow) ([]agentskill.Skill, error) {
-		targets, err := capabilityTargets(ctx, locals)
+	reloadSkills := func(ctx context.Context, locals []tui.RepoRow, scope tui.CapabilityScope) ([]agentskill.Skill, error) {
+		targets, err := capabilityTargets(ctx, locals, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -343,8 +348,8 @@ func runTUI(app *App) error {
 		}
 		return result.Skills, nil
 	}
-	reloadMCP := func(ctx context.Context, locals []tui.RepoRow) ([]agentmcp.Declaration, error) {
-		targets, err := capabilityTargets(ctx, locals)
+	reloadMCP := func(ctx context.Context, locals []tui.RepoRow, scope tui.CapabilityScope) ([]agentmcp.Declaration, error) {
+		targets, err := capabilityTargets(ctx, locals, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -505,6 +510,8 @@ func runTUI(app *App) error {
 		RepoSort:    app.Cfg.EffectiveRepoSort(),
 		RepoReverse: app.Cfg.TUI.Repos.Reverse,
 		Copy:        clipboard.WriteAll,
+		ReadFile:    readTUICapabilityFile,
+		EditFile:    prepareTUICapabilityEdit,
 
 		// Open is navigation-only. The model rejects missing/unregistered and
 		// cold worktree tasks before this callback so reconciliation and writer
@@ -726,7 +733,7 @@ func runTUI(app *App) error {
 	model := tui.New(actions, nil, nil).WithTrace(app.trace).WithContext(runCtx).BeginLoading()
 	finishSetup(perftrace.OutcomeSuccess)
 	app.trace.Mark(perftrace.TUIProgramRunBegin, perftrace.Fields{})
-	final, err := tea.NewProgram(model, tea.WithAltScreen()).Run()
+	final, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
 	cancelRun()
 	app.finishTrace()
 	if err != nil {
@@ -749,12 +756,27 @@ func runTUI(app *App) error {
 	return nil
 }
 
-// tuiCapabilityTargets makes SKILLS and MCP describe the configuration an
-// agent launched from the startup context would see. Inside a Git checkout the
-// exact current worktree is the only project target; global sources are still
-// scanned once by the domain scanners. Outside Git, the dashboard retains its
-// cross-repository inventory role and includes every accepted REPOS target.
-func tuiCapabilityTargets(locals []tui.RepoRow, current agenttarget.Target) []agenttarget.Target {
+func readTUICapabilityFile(ctx context.Context, path string) (string, error) {
+	resolved, err := pathx.Canonical(filepath.Clean(path))
+	if err != nil {
+		return "", err
+	}
+	root, err := os.OpenRoot(filepath.Dir(resolved))
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	body, _, err := safefile.ReadStableRegular(ctx, root, filepath.Base(resolved), nil, tuiCapabilityFileMaxBytes)
+	if err != nil {
+		return "", err
+	}
+	return string(body), nil
+}
+
+// tuiCapabilityTargets makes SKILLS and MCP describe either what an agent
+// launched from the startup context would see or every accepted repository.
+// Global sources are still scanned once by the domain collectors.
+func tuiCapabilityTargets(locals []tui.RepoRow, current agenttarget.Target, scope tui.CapabilityScope) []agenttarget.Target {
 	repositories := make([]repo.Repo, 0, len(locals))
 	for _, row := range locals {
 		if !row.IsTry() {
@@ -762,6 +784,9 @@ func tuiCapabilityTargets(locals []tui.RepoRow, current agenttarget.Target) []ag
 		}
 	}
 	targets := agenttarget.FromRepositories(repositories)
+	if scope == tui.CapabilityAllRepositories {
+		return agenttarget.WithCurrent(targets, current)
+	}
 	if current.CheckoutRoot != "" && current.CommonDir != "" &&
 		!sameCleanPath(current.CheckoutRoot, current.CommonDir) {
 		return []agenttarget.Target{agenttarget.ReconcileCurrent(targets, current)}

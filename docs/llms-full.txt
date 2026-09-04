@@ -2585,8 +2585,8 @@ dashboard tab or mode.
 | FLEET | What exists and is active on configured machines? | accepted local REPOS snapshot plus remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive, or graduate? | experiment catalog plus live facts |
 | REMOTE | What can I open or clone? | authenticated `gh`/`glab` inventories and cache |
-| SKILLS | Which skills would an agent launched from this context read? | exact startup checkout plus global sources inside Git; all REPOS targets outside Git |
-| MCP | Which MCP declarations would that context expose? | sanitized static configuration with the same context-first target scope |
+| SKILLS | Which skills would an agent launched from this context read? | context-first targets plus an `A` all-repositories toggle |
+| MCP | Which MCP declarations would that context expose? | sanitized static configuration with the same shared scope |
 
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes, or the optional release refresh can
@@ -2611,7 +2611,13 @@ raw errors. It is not `stats.db` and is never sent anywhere.
 `tui.initial_view_returned` means the Bubble Tea view string was built, not that
 the terminal rasterized it.
 
-Switch with `tab`, `h`/`l`, or arrows. Use `j`/`k`, `g`/`G`, `ctrl+d`/`ctrl+u`, `/` to filter, `?` for help, and `esc`/`q` to leave the current mode.
+Switch with `tab`, `h`/`l`, arrows, or left-click a visible tab. A left-button
+press selects a visible row without opening it, the wheel moves three rows, and a
+right-button press selects a row then opens its available actions. Modified
+clicks, motion, releases, and repeated-click activation are ignored; Enter/`o`
+remains the explicit open action. Some terminals require Shift/Option for native
+text selection while mouse tracking is enabled. Keyboard movement, filtering,
+help, and mode exit remain unchanged.
 
 ## Common actions
 
@@ -2773,10 +2779,13 @@ Markdown under configured `paths.state_dir/notes` is durable; `$XDG_CACHE_HOME/d
 SKILLS and MCP both load lazily after the current REPOS generation is accepted.
 Inside Git they scan only the exact startup checkout plus global/user sources,
 matching what an agent launched there can read and excluding unrelated projects.
-Outside Git they retain the cross-repository inventory, scanning every accepted
-REPOS target plus the ordinary startup directory. Refreshes keep
-usable rows visible, warning-only partial inventories stay fresh, and a visible
-capability view resumes automatically after REPOS recovers.
+Outside Git their startup context retains the cross-repository inventory,
+scanning every accepted REPOS target plus the ordinary startup directory.
+Uppercase `A` switches both views between that context and all accepted
+repositories for this TUI session; old-scope rows are cleared before a guarded
+reload, and the other capability view remains lazy. Refreshes keep usable rows
+visible, warning-only partial inventories stay fresh, and a visible capability
+view resumes automatically after REPOS recovers.
 
 SKILLS reads the versioned `skills@1.5.23` 77-agent path registry and lock files
 natively—no Node, `skills`, npm, `npx`, agent detector, or project code runs.
@@ -2789,7 +2798,9 @@ bytes without populating a checkout; locale-dependent non-ASCII folder hashes st
 unverifiable. Mutations require a directly installed `skills` executable, skip
 repository-local npm shims, reject source-less locks, and serialize cooperating
 `dev` processes. Filters include `repo:`, `scope:`, `agent:`, `update:`,
-`presence:`, and `integrity:`.
+`presence:`, and `integrity:`. Press `e` to open the row's primary installed `SKILL.md` (or
+lock file for a missing row). The `y` menu copies the file path (`p`), safe
+summary (`s`), sanitized source URL (`u`), or whole raw file (`f`).
 
 MCP reads static declarations for Claude Code, Codex, Cursor, Gemini CLI, and
 OpenCode. It preserves file/scope rows and exact Claude local project keys instead
@@ -2802,7 +2813,13 @@ credentials/path/query/fragment, and indirect file content are discarded before
 rows enter the model. The scanner never runs a server, helper, URL, or agent MCP
 command. Filters include `repo:`,
 `agent:`, `scope:`, `transport:`, `managed:`, and `state:`; `r` only rereads
-static files.
+static files. Press `e` to open the selected declaration's `ConfigPath`; the `y`
+menu copies its path (`p`), sanitized declaration (`s`), or the entire raw file
+(`f`). Raw copy is a local regular-file read capped at 1 MiB and performs no
+network access, but it can put credentials and other declarations from that file
+into the system clipboard. Rows and structured output remain sanitized. `e`
+edits a private working copy, revalidates the observed source immediately before
+atomic replacement, and preserves the working copy when it detects a conflict.
 
 ## External tools
 
@@ -2819,7 +2836,7 @@ name = "lazygit"
 run = "lazygit"
 ```
 
-Keys are case-sensitive and cannot shadow dashboard-owned bindings. Returning from an editor can reload most config; switching runtime backend requires restarting the TUI.
+Keys are case-sensitive and cannot shadow globally owned dashboard bindings. `A` remains configurable for compatibility, but the SKILLS/MCP scope toggle takes precedence on those views. Returning from an editor can reload most config; switching runtime backend requires restarting the TUI.
 
 ## Inventory an existing machine
 
@@ -9390,8 +9407,8 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 | FLEET | 設定的機器上有哪些 repository 與 active work？ | 已接受的 local REPOS snapshot 加上透過 SSH 取得的 remote `dev` snapshots |
 | TRY | 哪些 experiments 能 resume、archive 或 graduate？ | experiment catalog 加 live facts |
 | REMOTE | 有哪些 repository 能 open 或 clone？ | authenticated `gh`/`glab` inventories 與 cache |
-| SKILLS | 從目前 context 啟動 agent 時會讀到哪些 skills？ | Git 內使用 exact startup checkout 加 global sources；Git 外使用所有 REPOS targets |
-| MCP | 該 context 會暴露哪些 MCP declarations？ | 採相同 context-first target scope 的 sanitized static config |
+| SKILLS | 從目前 context 啟動 agent 時會讀到哪些 skills？ | context-first targets 加 `A` all-repositories toggle |
+| MCP | 該 context 會暴露哪些 MCP declarations？ | 使用相同 shared scope 的 sanitized static config |
 
 初始 TASKS frame 會先建立，不等待 runtime auto-detection、project-root lookup、
 cache decode、shell tool probe 或 optional release refresh 完成。TASKS、REPOS 與
@@ -9413,7 +9430,12 @@ aggregate row counts 與 categorical view/generation/outcome fields，不包含 
 `stats.db`，也不會送出本機。`tui.initial_view_returned` 只代表 Bubble Tea view
 string 已建立，不代表 terminal 已 rasterize。
 
-用 `tab`、`h`/`l` 或左右鍵切換；`j`/`k`、`g`/`G`、`ctrl+d`/`ctrl+u` 移動；`/` filter；`?` 開 help；`esc`/`q` 離開目前 mode。
+用 `tab`、`h`/`l`、左右鍵，或 left-click visible tab 切換。Left-button
+press 只選取 visible row，不會直接 open；wheel 每次移動三列；right-button press
+會先選取 row，再開啟該 row 可用的 actions。Modified click、motion、release 與
+repeated-click activation 都會被忽略，Enter/`o` 仍是 explicit open。Mouse tracking
+啟用時，部分 terminal 的原生文字選取需要按住 Shift/Option。原有鍵盤移動、filter、
+help 與 mode exit 都不變。
 
 ## 常用 actions
 
@@ -9558,9 +9580,12 @@ Configured `paths.state_dir/notes` 下的 Markdown 是 durable data；`$XDG_CACH
 
 SKILLS 與 MCP 都會等目前 REPOS generation 被接受後才延遲載入。在 Git 內，兩者只掃描
 exact startup checkout 加 global/user sources，符合從該處啟動 agent 實際會讀到的內容，
-不再混入無關 projects。在 Git 外則保留 cross-repository inventory，掃描所有 accepted
-REPOS targets 加 ordinary startup directory。Refresh 時會保留可用 rows；warning-only partial inventory
-仍維持 fresh，且 visible capability view 會在 REPOS recovery 後自動繼續載入。
+不再混入無關 projects。在 Git 外，startup context 保留 cross-repository inventory，掃描
+所有 accepted REPOS targets 加 ordinary startup directory。Uppercase `A` 會在本次 TUI
+session 讓兩個 view 共用 context/all-repositories scope；切換時先清掉舊 scope rows，再以
+generation guard reload，而未顯示的另一個 capability view 仍維持 lazy。Refresh 時會保留
+可用 rows；warning-only partial inventory 仍維持 fresh，且 visible capability view 會在
+REPOS recovery 後自動繼續載入。
 
 SKILLS 直接讀取 versioned `skills@1.5.23` 77-agent path registry 與 lock files；
 不會執行 Node、`skills`、npm、`npx`、agent detector 或 project code。同名
@@ -9572,7 +9597,9 @@ hash Git object bytes，不建立 checkout；依 locale 排序的 non-ASCII fold
 維持 unverifiable。Mutation 需要直接安裝的 `skills` executable，會跳過
 repository-local npm shim、拒絕 source-less lock，並在 cooperating `dev` processes
 之間 serialized。Filters 包含 `repo:`、`scope:`、`agent:`、`update:`、
-`presence:` 與 `integrity:`。
+`presence:` 與 `integrity:`。按 `e` 會開啟 row 的 primary installed `SKILL.md`（missing row
+則開 lock file）；`y` menu 可複製 file path (`p`)、safe summary (`s`)、sanitized
+source URL (`u`) 或整份 raw file (`f`)。
 
 MCP 會讀取 Claude Code、Codex、Cursor、Gemini CLI 與 OpenCode 的 static
 declarations。它保留 file/scope rows 與 exact Claude local project key，不猜測
@@ -9582,7 +9609,12 @@ sources。Configured/enabled/disabled 不代表 connected 或 healthy。Provider
 environment reference names 與有限 OAuth facts 會保留；其 values、raw arguments、
 URL credentials/path/query/fragment 與 indirect file content 都會在 row 進入 model
 前被丟棄。Scanner 不會執行 server、helper、URL 或 agent MCP command。Filters 包含 `repo:`、`agent:`、`scope:`、`transport:`、
-`managed:` 與 `state:`；`r` 只重讀 static files。
+`managed:` 與 `state:`；`r` 只重讀 static files。按 `e` 會開啟 selected declaration
+的 `ConfigPath`；`y` menu 可複製 path (`p`)、sanitized declaration (`s`) 或整份 raw
+file (`f`)。Raw copy 只讀 local regular file、上限 1 MiB 且不使用 network，但可能把
+同檔的 credentials 與其他 declarations 放進 system clipboard；rows 與 structured
+output 仍維持 sanitized。`e` 會編輯 private working copy，在 atomic replacement
+前立即 revalidate observed source，並在偵測到 conflict 時保留 working copy。
 
 ## External tools
 
@@ -9599,7 +9631,7 @@ name = "lazygit"
 run = "lazygit"
 ```
 
-Key 區分大小寫，且不能覆蓋 dashboard-owned binding。離開 editor 後可 reload 多數 config；更換 runtime backend 需要重啟 TUI。
+Key 區分大小寫，且不能覆蓋 globally owned dashboard binding。為相容既有設定，`A` 仍可配置，但在 SKILLS/MCP view 會優先執行 scope toggle。離開 editor 後可 reload 多數 config；更換 runtime backend 需要重啟 TUI。
 
 Configured tool 是刻意保留的 escape hatch：它在選取 checkout 執行任意 configured command，不會自動繼承 `dev flow` 的 PlanID、conditions、agent occupancy 或 revalidation guards。Raw Git／forge command 也是同樣邊界；operator 必須自行確認其 safety。
 

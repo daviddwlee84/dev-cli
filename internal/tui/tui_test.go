@@ -359,7 +359,7 @@ func TestSkillsCheckWaitsForInitialLocalSnapshot(t *testing.T) {
 	release := make(chan struct{})
 	checks := 0
 	actions := newActions(&recorder{}, nil)
-	actions.ReloadSkills = func(context.Context) ([]agentskill.Skill, error) {
+	actions.ReloadSkills = func(context.Context, tui.CapabilityScope) ([]agentskill.Skill, error) {
 		close(started)
 		<-release
 		return []agentskill.Skill{{Name: "loaded", Scope: agentskill.ScopeProject}}, nil
@@ -394,9 +394,10 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 		{
 			Name: "project-skill", Scope: agentskill.ScopeProject, ScopeRoot: "/src/demo",
 			Path: "/src/demo/.agents/skills/project-skill", Agents: []string{"Claude Code", "Codex"},
+			Repository: "demo", Checkout: "/src/demo", Presence: agentskill.PresencePresent, Integrity: agentskill.IntegrityVerified,
 			Attribution: agentskill.Attribution{AgentIDs: []string{"claude-code", "codex"}},
 			Source:      "owner/repo", ManagedBy: agentskill.ManagedBySkills,
-			Lock:         &agentskill.LockMetadata{Name: "project-skill", Source: "owner/repo", SourceType: "github", SkillPath: "skills/project-skill/SKILL.md"},
+			Lock:         &agentskill.LockMetadata{Name: "project-skill", File: "/src/demo/skills-lock.json", Source: "owner/repo", SourceType: "github", SkillPath: "skills/project-skill/SKILL.md"},
 			UpdateStatus: agentskill.UpdateUnchecked,
 		},
 		{
@@ -407,7 +408,10 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 	}
 	loaded, checked, added, updated := 0, 0, 0, 0
 	actions := newActions(&recorder{}, nil)
-	actions.ReloadSkills = func(context.Context) ([]agentskill.Skill, error) {
+	actions.EditFile = func(string) (tui.CapabilityEdit, error) {
+		return tui.CapabilityEdit{Command: exec.Command("true")}, nil
+	}
+	actions.ReloadSkills = func(context.Context, tui.CapabilityScope) ([]agentskill.Skill, error) {
 		loaded++
 		return append([]agentskill.Skill(nil), rows...), nil
 	}
@@ -442,7 +446,7 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 		t.Fatalf("skills load/view = %d/%s", loaded, m.CurrentView())
 	}
 	view := m.View()
-	for _, want := range []string{"SKILLS", "project-skill", "global-skill", "project", "global", "a add", "c check", "u update selected"} {
+	for _, want := range []string{"SKILLS", "project-skill", "global-skill", "project", "global", "checkout", "presence", "verified", "skills-lock.json", "a add", "c check", "u update selected", "A scope:context", "e file", "y copy"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("skills view missing %q:\n%s", want, view)
 		}
@@ -523,7 +527,7 @@ func TestMCPViewLoadsLazilyFiltersAndRendersSanitizedDetail(t *testing.T) {
 	}
 	loads := 0
 	actions := newActions(&recorder{}, nil)
-	actions.ReloadMCP = func(context.Context) ([]agentmcp.Declaration, error) {
+	actions.ReloadMCP = func(context.Context, tui.CapabilityScope) ([]agentmcp.Declaration, error) {
 		loads++
 		return append([]agentmcp.Declaration(nil), rows...), nil
 	}
@@ -578,6 +582,55 @@ func TestMCPViewLoadsLazilyFiltersAndRendersSanitizedDetail(t *testing.T) {
 	}
 }
 
+func TestMCPWideLayoutCapsServerColumn(t *testing.T) {
+	rows := []agentmcp.Declaration{
+		{Name: strings.Repeat("server", 10), Agent: agentmcp.AgentClaudeCode, Scope: agentmcp.ScopeProject, Transport: agentmcp.TransportStdio},
+	}
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadMCP = func(context.Context, tui.CapabilityScope) ([]agentmcp.Declaration, error) {
+		return rows, nil
+	}
+	m := tui.New(actions, nil, nil)
+	m = send(m, tea.WindowSizeMsg{Width: 200, Height: 30})
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
+
+	var header string
+	for _, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(line, "SERVER") && strings.Contains(line, "TRANSPORT") {
+			header = line
+			break
+		}
+	}
+	if header == "" {
+		t.Fatalf("MCP header missing:\n%s", m.View())
+	}
+	if !strings.Contains(m.View(), rows[0].Name) {
+		t.Fatalf("MCP detail omitted the full server name:\n%s", m.View())
+	}
+	if got := lipgloss.Width(header); got != 126 {
+		t.Fatalf("wide MCP header width = %d, want 126 with a 32-cell SERVER cap:\n%s", got, header)
+	}
+	if got := strings.Index(header, "TRANSPORT"); got > 82 {
+		t.Fatalf("TRANSPORT starts at cell %d; SERVER still absorbed wide-screen padding:\n%s", got, header)
+	}
+
+	m = send(m, key("/"))
+	for _, msg := range typeText("server") {
+		m = send(m, msg)
+	}
+	m = send(m, key("enter"))
+	var filteredHeader string
+	for _, line := range strings.Split(m.View(), "\n") {
+		if strings.Contains(line, "SERVER") && strings.Contains(line, "TRANSPORT") {
+			filteredHeader = line
+			break
+		}
+	}
+	if lipgloss.Width(filteredHeader) != lipgloss.Width(header) {
+		t.Fatalf("filter shifted MCP columns:\nbefore: %s\nafter:  %s", header, filteredHeader)
+	}
+}
+
 func TestMCPWaitsForAcceptedRepositorySnapshot(t *testing.T) {
 	localResults := make(chan tui.LocalResult, 3)
 	var request tui.LocalLoadRequest
@@ -588,7 +641,7 @@ func TestMCPWaitsForAcceptedRepositorySnapshot(t *testing.T) {
 		request = got
 		return tui.LocalLoad{ID: 41, Request: got, Results: localResults}
 	}
-	actions.ReloadMCPWithRepos = func(_ context.Context, repos []tui.RepoRow) ([]agentmcp.Declaration, error) {
+	actions.ReloadMCPWithRepos = func(_ context.Context, repos []tui.RepoRow, _ tui.CapabilityScope) ([]agentmcp.Declaration, error) {
 		loads++
 		gotRepos = append([]tui.RepoRow(nil), repos...)
 		return []agentmcp.Declaration{{
@@ -622,7 +675,7 @@ func TestMCPWaitsForAcceptedRepositorySnapshot(t *testing.T) {
 
 func TestSkillsCheckRetainsInstalledRowsWhileRunning(t *testing.T) {
 	actions := newActions(&recorder{}, nil)
-	actions.ReloadSkills = func(context.Context) ([]agentskill.Skill, error) {
+	actions.ReloadSkills = func(context.Context, tui.CapabilityScope) ([]agentskill.Skill, error) {
 		return []agentskill.Skill{{
 			Name: "installed", Scope: agentskill.ScopeProject, Repository: "demo",
 			Presence: agentskill.PresencePresent, UpdateStatus: agentskill.UpdateUnchecked,
@@ -649,7 +702,7 @@ func TestCapabilityWarningsRemainFreshAcrossTabRevisits(t *testing.T) {
 	t.Run("skills", func(t *testing.T) {
 		loads := 0
 		actions := newActions(&recorder{}, nil)
-		actions.ReloadSkills = func(context.Context) ([]agentskill.Skill, error) {
+		actions.ReloadSkills = func(context.Context, tui.CapabilityScope) ([]agentskill.Skill, error) {
 			loads++
 			return []agentskill.Skill{{Name: "installed", Scope: agentskill.ScopeProject}}, tui.LoadWarning{Message: "1 skill diagnostic"}
 		}
@@ -669,7 +722,7 @@ func TestCapabilityWarningsRemainFreshAcrossTabRevisits(t *testing.T) {
 	t.Run("mcp", func(t *testing.T) {
 		loads := 0
 		actions := newActions(&recorder{}, nil)
-		actions.ReloadMCP = func(context.Context) ([]agentmcp.Declaration, error) {
+		actions.ReloadMCP = func(context.Context, tui.CapabilityScope) ([]agentmcp.Declaration, error) {
 			loads++
 			return []agentmcp.Declaration{{Name: "server", Transport: agentmcp.TransportStdio}}, tui.LoadWarning{Message: "1 MCP diagnostic"}
 		}
@@ -685,6 +738,161 @@ func TestCapabilityWarningsRemainFreshAcrossTabRevisits(t *testing.T) {
 			t.Fatalf("fresh MCP warning reloaded %d times", loads)
 		}
 	})
+}
+
+func TestCapabilityFilesOpenAndCopyExplicitPayloads(t *testing.T) {
+	t.Run("skill", func(t *testing.T) {
+		recorder := &recorder{}
+		actions := newActions(recorder, nil)
+		actions.ReloadSkills = func(context.Context, tui.CapabilityScope) ([]agentskill.Skill, error) {
+			return []agentskill.Skill{{
+				Name: "demo", Scope: agentskill.ScopeProject, Path: "/skills/demo",
+				Presence: agentskill.PresencePresent, Agents: []string{"Claude Code"},
+				Source: "owner/repo", SourceURL: "https://example.test/owner/repo",
+			}}, nil
+		}
+		var opened, read string
+		actions.EditFile = func(path string) (tui.CapabilityEdit, error) {
+			opened = path
+			return tui.CapabilityEdit{Command: exec.Command("true")}, nil
+		}
+		actions.ReadFile = func(_ context.Context, path string) (string, error) {
+			read = path
+			return "raw-skill-secret", nil
+		}
+		m := tui.New(actions, nil, nil)
+		m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
+		if _, cmd := m.Update(key("e")); opened != "/skills/demo/SKILL.md" || cmd == nil {
+			t.Fatalf("skill editor target=%q cmd=%v", opened, cmd)
+		}
+		m = send(m, key("y"), key("p"))
+		if got := recorder.copied[len(recorder.copied)-1]; got != "/skills/demo/SKILL.md" {
+			t.Fatalf("skill path copy = %q", got)
+		}
+		m = send(m, key("y"), key("s"))
+		summary := recorder.copied[len(recorder.copied)-1]
+		if !strings.Contains(summary, "name: demo") || strings.Contains(summary, "raw-skill-secret") {
+			t.Fatalf("skill summary = %q", summary)
+		}
+		m = send(m, key("y"), key("u"))
+		if got := recorder.copied[len(recorder.copied)-1]; got != "https://example.test/owner/repo" {
+			t.Fatalf("skill source URL copy = %q", got)
+		}
+		m = send(m, key("y"), key("f"))
+		if read != "/skills/demo/SKILL.md" || recorder.copied[len(recorder.copied)-1] != "raw-skill-secret" {
+			t.Fatalf("raw skill copy path=%q copied=%q", read, recorder.copied[len(recorder.copied)-1])
+		}
+	})
+
+	t.Run("missing skill uses lock", func(t *testing.T) {
+		recorder := &recorder{}
+		actions := newActions(recorder, nil)
+		actions.ReloadSkills = func(context.Context, tui.CapabilityScope) ([]agentskill.Skill, error) {
+			return []agentskill.Skill{{
+				Name: "missing", Scope: agentskill.ScopeProject, Presence: agentskill.PresenceMissing,
+				Lock: &agentskill.LockMetadata{File: "/project/skills-lock.json"},
+			}}, nil
+		}
+		actions.EditFile = func(path string) (tui.CapabilityEdit, error) {
+			if path != "/project/skills-lock.json" {
+				t.Fatalf("lock-only editor path = %q", path)
+			}
+			return tui.CapabilityEdit{Command: exec.Command("true")}, nil
+		}
+		m := tui.New(actions, nil, nil)
+		m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
+		if _, cmd := m.Update(key("e")); cmd == nil {
+			t.Fatal("lock-only skill did not return an editor command")
+		}
+		m = send(m, key("y"), key("p"))
+		if got := recorder.copied[len(recorder.copied)-1]; got != "/project/skills-lock.json" {
+			t.Fatalf("lock file copy = %q", got)
+		}
+	})
+
+	t.Run("mcp", func(t *testing.T) {
+		recorder := &recorder{}
+		actions := newActions(recorder, nil)
+		actions.ReloadMCP = func(context.Context, tui.CapabilityScope) ([]agentmcp.Declaration, error) {
+			return []agentmcp.Declaration{{
+				Name: "demo", Agent: agentmcp.AgentClaudeCode, Scope: agentmcp.ScopeProject,
+				ConfigPath: "/project/.mcp.json", Transport: agentmcp.TransportStdio,
+				Command: "[redacted]", ArgumentCount: 2,
+				Redactions: []agentmcp.Redaction{agentmcp.RedactionArguments},
+			}}, nil
+		}
+		var opened, read string
+		actions.EditFile = func(path string) (tui.CapabilityEdit, error) {
+			opened = path
+			return tui.CapabilityEdit{Command: exec.Command("true")}, nil
+		}
+		actions.ReadFile = func(_ context.Context, path string) (string, error) {
+			read = path
+			return `{"token":"fixture-secret"}`, nil
+		}
+		m := tui.New(actions, nil, nil)
+		m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
+		if _, cmd := m.Update(key("e")); opened != "/project/.mcp.json" || cmd == nil {
+			t.Fatalf("MCP editor target=%q cmd=%v", opened, cmd)
+		}
+		m = send(m, key("y"), key("s"))
+		summary := recorder.copied[len(recorder.copied)-1]
+		if !strings.Contains(summary, "arguments: 2 value(s) redacted") || strings.Contains(summary, "fixture-secret") {
+			t.Fatalf("MCP summary = %q", summary)
+		}
+		m = send(m, key("y"), key("f"))
+		if read != "/project/.mcp.json" || recorder.copied[len(recorder.copied)-1] != `{"token":"fixture-secret"}` {
+			t.Fatalf("raw MCP copy path=%q copied=%q", read, recorder.copied[len(recorder.copied)-1])
+		}
+	})
+}
+
+func TestCapabilityScopeToggleReloadsCurrentAndKeepsOtherLazy(t *testing.T) {
+	var skillScopes, mcpScopes []tui.CapabilityScope
+	actions := newActions(&recorder{}, nil)
+	actions.ReloadSkills = func(_ context.Context, scope tui.CapabilityScope) ([]agentskill.Skill, error) {
+		skillScopes = append(skillScopes, scope)
+		return []agentskill.Skill{{Name: "skill-" + scope.String(), Scope: agentskill.ScopeProject}}, nil
+	}
+	actions.ReloadMCP = func(_ context.Context, scope tui.CapabilityScope) ([]agentmcp.Declaration, error) {
+		mcpScopes = append(mcpScopes, scope)
+		return []agentmcp.Declaration{{Name: "mcp-" + scope.String(), Transport: agentmcp.TransportStdio}}, nil
+	}
+
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
+	if m.CapabilityScope() != tui.CapabilityStartupContext || !strings.Contains(m.View(), "skill-context") {
+		t.Fatalf("initial Skills scope = %s:\n%s", m.CapabilityScope(), m.View())
+	}
+	m = send(m, key("tab"))
+	if !strings.Contains(m.View(), "mcp-context") {
+		t.Fatalf("initial MCP context row missing:\n%s", m.View())
+	}
+	m = send(m, key("h"), key("A"))
+	if m.CapabilityScope() != tui.CapabilityAllRepositories || !strings.Contains(m.View(), "skill-all") || strings.Contains(m.View(), "skill-context") {
+		t.Fatalf("Skills did not replace context rows with all-scope rows:\n%s", m.View())
+	}
+	if len(mcpScopes) != 1 {
+		t.Fatalf("inactive MCP reloaded eagerly: scopes=%v", mcpScopes)
+	}
+	m = send(m, key("tab"))
+	if !strings.Contains(m.View(), "mcp-all") || strings.Contains(m.View(), "mcp-context") {
+		t.Fatalf("MCP did not lazily load all scope:\n%s", m.View())
+	}
+	m = send(m, key("A"))
+	if m.CapabilityScope() != tui.CapabilityStartupContext || !strings.Contains(m.View(), "mcp-context") || strings.Contains(m.View(), "mcp-all") {
+		t.Fatalf("MCP did not toggle back to context:\n%s", m.View())
+	}
+	m = send(m, key("h"))
+	if !strings.Contains(m.View(), "skill-context") || strings.Contains(m.View(), "skill-all") {
+		t.Fatalf("Skills did not lazily return to context scope:\n%s", m.View())
+	}
+	if got, want := fmt.Sprint(skillScopes), "[context all context]"; got != want {
+		t.Fatalf("skill scopes = %s, want %s", got, want)
+	}
+	if got, want := fmt.Sprint(mcpScopes), "[context all context]"; got != want {
+		t.Fatalf("MCP scopes = %s, want %s", got, want)
+	}
 }
 
 func TestFilterByState(t *testing.T) {
@@ -1556,11 +1764,11 @@ func TestTryArchiveActionRequiresExactYES(t *testing.T) {
 func TestHelpOverlayIsDiscoverableAndClosesWithoutQuitting(t *testing.T) {
 	m := tui.New(newActions(&recorder{}, nil), nil, nil)
 	m = send(m, key("?"))
-	if out := m.View(); !strings.Contains(out, "KEYBOARD HELP") || !strings.Contains(out, "TRY") || !strings.Contains(out, "SKILLS") {
+	if out := m.View(); !strings.Contains(out, "INPUT HELP") || !strings.Contains(out, "TRY") || !strings.Contains(out, "SKILLS") || !strings.Contains(out, "right click") {
 		t.Fatalf("help overlay missing view bindings:\n%s", out)
 	}
 	m = send(m, key("q"))
-	if out := m.View(); out == "" || strings.Contains(out, "KEYBOARD HELP") {
+	if out := m.View(); out == "" || strings.Contains(out, "INPUT HELP") {
 		t.Fatalf("q should close help without quitting:\n%s", out)
 	}
 }

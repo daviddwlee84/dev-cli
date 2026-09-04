@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.13] - 2026-09-04
+
+### Added
+
+- The dashboard now supports cell-motion mouse input: left-click selects rows or
+  switches visible tabs, the wheel moves three rows, and right-click opens the
+  selected row's existing actions without making a click implicitly open it.
+- SKILLS and MCP share a session-only `A` context/all scope toggle and can open
+  the selected local configuration in `$VISUAL`/`$EDITOR` or copy its path,
+  sanitized summary, and explicitly requested raw file. Raw file copy is bounded
+  to 1 MiB but may put credentials and other declarations into the system
+  clipboard. A configured `A` tool remains available on other views; capability
+  views give the scope toggle precedence.
+
+### Changed
+
+- MCP caps its content-responsive `SERVER` column at 32 cells, keeping transport,
+  state, and source columns together instead of pushing them to the far edge of a
+  wide terminal.
+
 ## [0.2.12] - 2026-09-04
 
 ### Changed
@@ -640,7 +660,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.12...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.13...HEAD
+[0.2.13]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.10...v0.2.11
 [0.2.10]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.9...v0.2.10

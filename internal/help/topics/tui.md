@@ -6,7 +6,7 @@ composition stays predictable.
 
 ## Seven views
 
-Switch with `tab`, `l`/`h`, or right/left:
+Switch with `tab`, `l`/`h`, right/left, or by left-clicking a visible tab:
 
 | View | Answers | Data source |
 |---|---|---|
@@ -15,8 +15,8 @@ Switch with `tab`, `l`/`h`, or right/left:
 | FLEET | What exists and is active on my other machines? | remote `dev` snapshots over SSH |
 | TRY | Which experiments can I resume, archive or graduate? | experiment catalog + live Git/runtime state |
 | REMOTE | What can I open or clone? | authenticated forge CLI inventories |
-| SKILLS | Which skills would an agent launched from this context read? | current checkout + global sources inside Git; all REPOS targets outside Git |
-| MCP | Which MCP declarations would that agent context expose? | sanitized static agent configuration files with the same context-first scope |
+| SKILLS | Which skills would an agent launched from this context read? | context-first targets plus an `A` all-repositories toggle |
+| MCP | Which MCP declarations would that agent context expose? | sanitized static agent configuration with the same shared scope |
 
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes or the optional release refresh can
@@ -28,6 +28,13 @@ rows. Warning-only SKILLS/MCP diagnostics remain fresh partial snapshots instead
 of causing revisit loops; a visible dependent view automatically resumes after
 REPOS recovers. Cached rows and current live results are separate readiness
 stages; there is no all-tabs-ready state for views that may never be opened.
+
+Mouse tracking supplements rather than replaces the keyboard model. A left-button
+press selects a visible row or tab, the wheel moves three rows, and a right-button
+press selects a row then opens its available action menu. Releases, motion,
+modified clicks, and repeated-click activation are ignored; Enter/`o` remains the
+explicit open action. Depending on the terminal, hold Shift/Option for native text
+selection while tracking is enabled.
 
 ## Repository lifecycle preview
 
@@ -102,12 +109,16 @@ automatically. Filters include visibility, for example
 
 SKILLS and MCP also load lazily after the accepted REPOS snapshot. Inside Git,
 both scan only the exact startup checkout and read user/global sources once, so
-unrelated projects do not add noise. Outside Git, both retain the dashboard's
-cross-repository inventory and scan every accepted REPOS target plus the
-ordinary startup directory. Skill listing is native and never executes Node or a provider;
-press `c` for the explicit read-only upstream source check. Refresh/check keeps
-installed rows visible. MCP lists static, sanitized declarations only and does
-not start or health-check servers. `r` reloads local declarations.
+unrelated projects do not add noise. Outside Git, context mode retains the
+dashboard's cross-repository inventory and scans every accepted REPOS target plus
+the ordinary startup directory. Uppercase `A` switches both views between this
+startup context and all accepted repositories for the current TUI run; old rows
+are cleared before the new generation loads. Skill listing is native and never
+executes Node or a provider; press `c` for the explicit read-only upstream source
+check. Refresh/check keeps installed rows visible. MCP lists static, sanitized
+declarations only and does not start or health-check servers. `r` reloads local
+declarations. On either view, `e` opens the selected local file and `y` offers
+path, sanitized-summary, and explicit raw-file copy actions.
 
 A wide TASKS table includes `REPO`; compact layouts keep repository/path in the
 selected detail pane. SKILLS filters include `repo:`, `scope:`, `agent:`,
@@ -147,9 +158,12 @@ ctrl+d / ctrl+u      half page down / up
 g / G                top / bottom
 h / l, shift-tab/tab previous / next view
 /                    filter as you type
-?                    full keyboard help overlay
+?                    full input help overlay
 esc                  close prompt/filter/overlay; when clear, quit
 q                    quit (or close help/action menu)
+left click           select a visible row or switch a visible tab
+wheel                 move three rows up/down
+right click          select a row and open its available actions
 ```
 
 The `/` query applies to the current view and matches whitespace-separated
@@ -256,6 +270,9 @@ SKILLS:
 a          open the interactive installer (default personal skill catalog)
 c          check lock-managed Git sources without installing updates
 u          confirm and update only the selected lock-managed skill
+A          toggle shared context/all repository scope for this TUI session
+e          open the primary SKILL.md, or the lock file for a missing skill
+y          p path · s safe summary · u source URL · f whole raw file
 r          reload local project/global state without network access
 ```
 
@@ -267,21 +284,29 @@ compatibility, source, manager, and upstream freshness. Filters include
 MCP:
 
 ```
+A          toggle the same context/all repository scope
+e          open the selected declaration's ConfigPath
+y          p path · s safe summary · f whole raw config file
 r          reload static declarations; no server is started or probed
 ```
 
 The MCP detail pane contains sanitized config/source/transport/policy facts,
 exact Claude local project identity, bounded credential-reference summaries, and
 redaction markers—never raw args, environment/header/OAuth values, indirect file
-content, or connection health.
+content, or connection health. That normalization still governs rows, safe
+summaries, and JSON. Explicit `yf` instead reads the entire local source file (up
+to 1 MiB) into the system clipboard; it performs no network access but may copy
+credentials and other declarations from the same file. Capability editing uses a
+private working copy, revalidates the observed identity immediately before
+atomic replacement, and preserves the working copy when a conflict is detected.
 
-## Heatmap and live config
+## Heatmap and editors
 
 ```
 H   open the selected repository's one-year activity heatmap
     b backfills only that repo; r rereads stats; H / esc returns
 
-e   edit the effective config in VISUAL/EDITOR
+e   edit effective dev config on ordinary views; edit the selected capability file on SKILLS/MCP
 r   reparse config and reload local/remote data and tool bindings
 ```
 
@@ -289,7 +314,8 @@ An empty heatmap is actionable: press `b` to derive only the selected repo's
 history into stats.db and automatically redraw. `r` does not manufacture data;
 it rereads what collectors/backfill have stored.
 
-Returning from `e` live-reloads the config. Changes to scan roots, worktree
+Returning from an ordinary-view `e` live-reloads dev config; returning from a
+SKILLS/MCP editor reloads only that capability inventory. Changes to scan roots, worktree
 policy, forge cache settings and `[[tui.tools]]` take effect immediately. A
 runtime backend change needs a restart because existing callbacks and sessions
 belong to the backend the TUI opened with; the status line says so rather than
@@ -343,5 +369,7 @@ The dashboard resolves availability in a bounded background load after the first
 view; rendering itself never launches the shell. Unknown or missing bindings are
 hidden and fail closed until the current config generation has been checked.
 
-Keys are case-sensitive. A tool cannot take one the dashboard owns; config
-loading reports the collision instead of silently shadowing movement or quit.
+Keys are case-sensitive. A tool cannot take a globally owned dashboard key;
+config loading reports the collision instead of silently shadowing movement or
+quit. `A` remains configurable, but the SKILLS/MCP scope toggle takes precedence
+on those two views.

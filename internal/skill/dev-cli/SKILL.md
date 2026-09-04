@@ -378,10 +378,13 @@ Bare `dev` / `dev tui` is the seven-view dashboard described here. It is separat
 from the plan-first `dev flow [repo]` repository lifecycle preview above.
 
 The dashboard has TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS and MCP views, switched
-with tab or vim-style h/l. Wide TASKS tables show `REPO`; compact layouts keep it
-in detail. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions;
-`a` includes retained history. Archive is a reversible same-filesystem move,
-not deletion or disk reclamation. `?` opens the full key map.
+with tab, vim-style h/l, or a left click on a visible tab. Left-click selects a
+row without opening it, the wheel moves three rows, and right-click selects a row
+and opens the same legal actions used by keyboard shortcuts. Repeated clicks do
+not imply open. Wide TASKS tables show `REPO`; compact layouts keep it in detail.
+TRY `n` creates an experiment; `space` opens metadata/lifecycle actions; `a`
+includes retained history. Archive is a reversible same-filesystem move, not
+deletion or disk reclamation. `?` opens the full key map.
 
 The initial view never waits for runtime/project-root resolution, cache decoding,
 or shell tool probes. TASKS/REPOS/TRY publish independently from one shared local
@@ -394,13 +397,17 @@ startup/view timings and aggregate row counts only; it excludes names, paths,
 commands, key values, URLs, handles and raw errors, and never enters `stats.db`
 or a network sink. SKILLS and MCP are startup-context-first: inside Git they
 scan only the exact current checkout plus global/user sources; outside Git they
-reuse every accepted REPOS target and the ordinary startup directory. Skill listing uses the native versioned
-77-agent path registry and never runs Node/`npx`; `c` hashes remote Git objects
-without checkout filters, while mutations require a trusted direct provider and
-are serialized. MCP inventories only sanitized static declarations for Claude
-Code, Codex, Cursor, Gemini CLI and OpenCode; only Claude's documented project
-approvals are resolved. It never starts or health-checks a server and never
-exposes secret-bearing values. Full detail:
+reuse every accepted REPOS target and the ordinary startup directory. Uppercase
+`A` toggles both views to all accepted repositories for the current TUI run.
+Skill listing uses the native versioned 77-agent path registry and never runs
+Node/`npx`; `c` hashes remote Git objects without checkout filters, while
+mutations require a trusted direct provider and are serialized. MCP inventories
+only sanitized static declarations for Claude Code, Codex, Cursor, Gemini CLI and
+OpenCode; only Claude's documented project approvals are resolved. It never
+starts or health-checks a server. In either capability view, `e` opens the selected
+local source and `y` copies its path, safe summary, or explicit raw file; raw reads
+are regular-file-only, capped at 1 MiB, and may put credentials into the system
+clipboard without changing sanitized inventory output. Full detail:
 `references/agent-capabilities.md`.
 
 REMOTE queries authenticated `gh` and `glab` plus configured Azure DevOps
@@ -490,9 +497,10 @@ that repo and redraws; `r` rereads existing stats. Stats live in
 `dev stats clear` with an explicit scope. `dev cache clear` only removes
 regenerable forge/size/gitignore/note-FTS data under `$XDG_CACHE_HOME/dev`.
 
-`e` edits config and returning live-reloads data/tool bindings; `r` reloads
-explicitly. Runtime
-backend changes require restarting the TUI.
+On ordinary views, `e` edits dev config and returning live-reloads data/tool
+bindings; on SKILLS/MCP it opens the selected capability file and reloads only
+that inventory. `r` reloads explicitly. Runtime backend changes require restarting
+the TUI.
 
 External tools are explicit `[[tui.tools]]` config. Run `dev tui tools` before
 recommending a binding; it shows the exact command and whether it is available.
