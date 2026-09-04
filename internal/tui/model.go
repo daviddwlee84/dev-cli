@@ -52,6 +52,23 @@ const (
 // Views is the cycle order.
 var Views = []View{ViewTasks, ViewRepos, ViewFleet, ViewTries, ViewRemote, ViewSkills, ViewMCP}
 
+// CapabilityScope controls which project-local SKILLS and MCP sources are
+// scanned. Global sources remain part of both scopes and are deduplicated by
+// the domain collectors.
+type CapabilityScope uint8
+
+const (
+	CapabilityStartupContext CapabilityScope = iota
+	CapabilityAllRepositories
+)
+
+func (s CapabilityScope) String() string {
+	if s == CapabilityAllRepositories {
+		return "all"
+	}
+	return "context"
+}
+
 func (v View) String() string {
 	switch v {
 	case ViewRepos:
@@ -102,11 +119,11 @@ type Actions struct {
 	ReloadRemote          func(ctx context.Context) ([]RemoteRow, error)
 	ReloadRemoteWithRepos func(ctx context.Context, repos []RepoRow) ([]RemoteRow, error)
 	// ReloadSkills reads local project/global skill state without contacting sources.
-	ReloadSkills          func(ctx context.Context) ([]agentskill.Skill, error)
-	ReloadSkillsWithRepos func(ctx context.Context, repos []RepoRow) ([]agentskill.Skill, error)
+	ReloadSkills          func(ctx context.Context, scope CapabilityScope) ([]agentskill.Skill, error)
+	ReloadSkillsWithRepos func(ctx context.Context, repos []RepoRow, scope CapabilityScope) ([]agentskill.Skill, error)
 	// ReloadMCP reads static declarations only; it never starts or probes servers.
-	ReloadMCP          func(ctx context.Context) ([]agentmcp.Declaration, error)
-	ReloadMCPWithRepos func(ctx context.Context, repos []RepoRow) ([]agentmcp.Declaration, error)
+	ReloadMCP          func(ctx context.Context, scope CapabilityScope) ([]agentmcp.Declaration, error)
+	ReloadMCPWithRepos func(ctx context.Context, repos []RepoRow, scope CapabilityScope) ([]agentmcp.Declaration, error)
 	// Cache seeds are local-only and asynchronous. Live REMOTE/FLEET work remains
 	// lazy until its view is requested.
 	LoadRemoteCache func(ctx context.Context) RemoteCacheResult
@@ -151,8 +168,12 @@ type Actions struct {
 	LoadStats func(ctx context.Context, repo string) (StatsPanel, error)
 	// BackfillStats derives this repository's history into the activity store.
 	BackfillStats func(ctx context.Context, repo string) error
-	// Copy writes one of the repo-context payloads to the system clipboard.
+	// Copy writes a selected payload to the system clipboard.
 	Copy func(text string) error
+	// ReadFile returns bounded local regular-file contents for an explicit raw
+	// capability copy action. OpenFile hands the same selected file to an editor.
+	ReadFile func(ctx context.Context, path string) (string, error)
+	EditFile func(path string) (CapabilityEdit, error)
 	// EditConfig returns the editor process; tea suspends around it.
 	EditConfig func() (*exec.Cmd, error)
 	// EditFleetConfig does the same for remotes.toml, which is a separate file
@@ -370,12 +391,17 @@ type Model struct {
 	showAllTries bool
 	// showLocalFleet includes this machine in FLEET. It is hidden by default
 	// because REPOS already provides the richer local inventory.
-	showLocalFleet bool
-	trySort        string
-	tryReverse     bool
+	showLocalFleet  bool
+	capabilityScope CapabilityScope
+	trySort         string
+	tryReverse      bool
 
 	mode              mode
 	input             textinput.Model
+	taskPromptTarget  *task.Task
+	repoPromptTarget  RepoRow
+	repoPromptSet     bool
+	copySelection     selectionToken
 	skillUpdateTarget agentskill.Skill
 	stats             *StatsPanel
 	overlay           overlayState
@@ -491,6 +517,10 @@ func (m Model) Activation() string { return m.activate }
 
 // CurrentView reports which list is showing.
 func (m Model) CurrentView() View { return m.view }
+
+// CapabilityScope reports whether SKILLS and MCP are scoped to the startup
+// context or all accepted repositories.
+func (m Model) CapabilityScope() CapabilityScope { return m.capabilityScope }
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
@@ -614,6 +644,11 @@ type statsBackfilledMsg struct {
 
 type configEditedMsg struct{ err error }
 
+type capabilityFileEditedMsg struct {
+	view View
+	err  error
+}
+
 type fleetConfigEditedMsg struct{ err error }
 
 type configMsg struct {
@@ -671,6 +706,16 @@ type tryActionMsg struct {
 type copyMsg struct {
 	status string
 	err    error
+}
+
+type execFinishedMsg struct{ message tea.Msg }
+
+func afterExec(message tea.Msg) tea.Msg { return execFinishedMsg{message: message} }
+
+func runExecProcess(command *exec.Cmd, complete func(error) tea.Msg) tea.Cmd {
+	return tea.ExecProcess(command, func(err error) tea.Msg {
+		return afterExec(complete(err))
+	})
 }
 
 func traceOutcome(err error) perftrace.Outcome {
@@ -921,6 +966,7 @@ func (m Model) reloadFleet() tea.Cmd {
 func (m Model) reloadSkills() tea.Cmd {
 	generation := m.viewLoad(ViewSkills).generation
 	locals := append([]RepoRow(nil), m.repos...)
+	capabilityScope := m.capabilityScope
 	return func() tea.Msg {
 		if m.actions.ReloadSkillsWithRepos == nil && m.actions.ReloadSkills == nil {
 			return skillsMsg{generation: generation, valid: true, loaded: true}
@@ -929,9 +975,9 @@ func (m Model) reloadSkills() tea.Cmd {
 		var rows []agentskill.Skill
 		var err error
 		if m.actions.ReloadSkillsWithRepos != nil {
-			rows, err = m.actions.ReloadSkillsWithRepos(m.viewContext(ViewSkills), locals)
+			rows, err = m.actions.ReloadSkillsWithRepos(m.viewContext(ViewSkills), locals, capabilityScope)
 		} else {
-			rows, err = m.actions.ReloadSkills(m.viewContext(ViewSkills))
+			rows, err = m.actions.ReloadSkills(m.viewContext(ViewSkills), capabilityScope)
 		}
 		warning, err := splitLoadWarning(err)
 		outcome := traceOutcome(err)
@@ -949,6 +995,7 @@ func (m Model) reloadSkills() tea.Cmd {
 func (m Model) reloadMCP() tea.Cmd {
 	generation := m.viewLoad(ViewMCP).generation
 	locals := append([]RepoRow(nil), m.repos...)
+	capabilityScope := m.capabilityScope
 	return func() tea.Msg {
 		if m.actions.ReloadMCPWithRepos == nil && m.actions.ReloadMCP == nil {
 			return mcpMsg{generation: generation, valid: true}
@@ -957,9 +1004,9 @@ func (m Model) reloadMCP() tea.Cmd {
 		var rows []agentmcp.Declaration
 		var err error
 		if m.actions.ReloadMCPWithRepos != nil {
-			rows, err = m.actions.ReloadMCPWithRepos(m.viewContext(ViewMCP), locals)
+			rows, err = m.actions.ReloadMCPWithRepos(m.viewContext(ViewMCP), locals, capabilityScope)
 		} else {
-			rows, err = m.actions.ReloadMCP(m.viewContext(ViewMCP))
+			rows, err = m.actions.ReloadMCP(m.viewContext(ViewMCP), capabilityScope)
 		}
 		warning, err := splitLoadWarning(err)
 		outcome := traceOutcome(err)
@@ -991,6 +1038,7 @@ func (m Model) checkSkills(rows []agentskill.Skill) tea.Cmd {
 func (m Model) reloadUpdatedSkill(name, lockName string, scope agentskill.Scope, checkout string) tea.Cmd {
 	generation := m.viewLoad(ViewSkills).generation
 	locals := append([]RepoRow(nil), m.repos...)
+	capabilityScope := m.capabilityScope
 	return func() tea.Msg {
 		finish := m.trace.Start(perftrace.TUIProducerSkills, perftrace.Fields{View: perftrace.ViewSkills, Generation: generation})
 		if m.actions.ReloadSkillsWithRepos == nil && m.actions.ReloadSkills == nil {
@@ -1003,9 +1051,9 @@ func (m Model) reloadUpdatedSkill(name, lockName string, scope agentskill.Scope,
 		var rows []agentskill.Skill
 		var err error
 		if m.actions.ReloadSkillsWithRepos != nil {
-			rows, err = m.actions.ReloadSkillsWithRepos(m.viewContext(ViewSkills), locals)
+			rows, err = m.actions.ReloadSkillsWithRepos(m.viewContext(ViewSkills), locals, capabilityScope)
 		} else {
-			rows, err = m.actions.ReloadSkills(m.viewContext(ViewSkills))
+			rows, err = m.actions.ReloadSkills(m.viewContext(ViewSkills), capabilityScope)
 		}
 		warning, err := splitLoadWarning(err)
 		if err != nil && rows == nil {
@@ -2208,6 +2256,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.remoteCloneSpinner, cmd = m.remoteCloneSpinner.Update(msg)
 		return m, cmd
 
+	case execFinishedMsg:
+		updated, command := m.Update(msg.message)
+		return updated, batchCommands(command, tea.EnableMouseCellMotion)
+
 	case remoteCloneMsg:
 		if m.remoteClone.phase != remoteCloneRunning || msg.requestID != m.remoteClone.requestID {
 			return m, nil
@@ -2294,6 +2346,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m, nil
+
+	case tea.MouseMsg:
+		return m.updateMouse(msg)
 
 	case localMsg:
 		if msg.done {
@@ -2536,6 +2591,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.beginConfigLoad()
 		m.status = "reloading config…"
 		return m, m.reloadConfig(m.view == ViewRemote)
+
+	case capabilityFileEditedMsg:
+		if msg.err != nil {
+			m.err, m.status = msg.err, ""
+			return m, nil
+		}
+		m.err, m.status = nil, ""
+		m.beginViewLoad(msg.view, loadAction)
+		if err := m.dependentReposUnavailable(msg.view); err != nil {
+			state := m.viewLoad(msg.view)
+			m.applyViewResult(msg.view, state.generation, false, "", "", 0, err, false)
+			return m, nil
+		}
+		if m.viewWaitsForRepos(msg.view) {
+			m.setViewStatus(msg.view, "waiting for local repositories…")
+			return m, nil
+		}
+		m.setViewStatus(msg.view, dependentLoadingStatus(msg.view))
+		return m, m.reloadDependentView(msg.view)
 
 	case fleetConfigEditedMsg:
 		if msg.err != nil {
@@ -2872,16 +2946,10 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.view == ViewTries {
 			return m.openTryForm(TryCreate, TryRow{})
 		}
-		if target, ok := m.selectedNoteTarget(); ok {
-			return m.openNoteAdd(target, false)
-		}
-		return m, nil
+		return m.runListAction(listActionAddNote)
 
 	case "N":
-		if target, ok := m.selectedNoteTarget(); ok {
-			return m.openNotes(target)
-		}
-		return m, nil
+		return m.runListAction(listActionBrowseNotes)
 
 	case "r":
 		if m.view == ViewFleet {
@@ -2934,6 +3002,13 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "0":
 		m.states, m.filter = nil, ""
 		m.setAt(0)
+	case "A":
+		if m.view == ViewSkills || m.view == ViewMCP {
+			return m.toggleCapabilityScope()
+		}
+		if command := m.launchTool("A"); command != nil {
+			return m, command
+		}
 	case "a":
 		if m.view == ViewSkills {
 			if m.actions.AddSkill == nil {
@@ -2950,7 +3025,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.status = "opening interactive skill installer…"
-			return m, tea.ExecProcess(proc, func(err error) tea.Msg {
+			return m, runExecProcess(proc, func(err error) tea.Msg {
 				return skillProcessMsg{action: "add", err: finish(err)}
 			})
 		}
@@ -2973,53 +3048,30 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "enter", "o":
-		return m, m.openSelected()
+		return m.runListAction(listActionOpen)
 
 	case " ":
 		if m.view == ViewRepos {
-			item, ok := m.currentRepoItem()
-			if !ok || item.Repo.Worktrees == 0 {
-				return m, nil
-			}
-			if item.Repo.Context.WorktreeErr != nil {
-				m.err = item.Repo.Context.WorktreeErr
-				return m, nil
-			}
-			if item.child() {
-				// The parent is the nearest preceding non-child item.
-				for i := m.repoCursor - 1; i >= 0; i-- {
-					if !m.visibleRepoItems()[i].child() {
-						m.repoCursor = i
-						break
-					}
-				}
-			}
-			m.toggleRepo(item.Repo)
-			return m, nil
+			return m.runListAction(listActionToggleWorktrees)
 		}
-		if row, ok := m.currentTry(); ok {
-			return m.openTryMenu(row), nil
+		if m.view == ViewTries {
+			return m.openActionMenu(), nil
 		}
 		return m, nil
 
 	case "m":
-		if row, ok := m.currentRepo(); ok {
-			return m.openRepoForm(row)
-		}
-		return m, nil
+		return m.runListAction(listActionRepoMetadata)
 
 	case "y":
-		if _, ok := m.currentRepoItem(); !ok {
+		switch m.view {
+		case ViewRepos, ViewSkills, ViewMCP:
+			return m.runListAction(listActionCopy)
+		default:
 			return m, nil
 		}
-		m.mode, m.err, m.status = modeCopy, nil, ""
-		return m, nil
 
 	case "p":
-		if _, ok := m.currentTask(); !ok {
-			return m, nil
-		}
-		return m.prompt(modeConfirmPark, "", "what to do when you come back")
+		return m.runListAction(listActionPark)
 
 	case "c":
 		if m.view == ViewSkills {
@@ -3034,57 +3086,27 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.skillsChecking = true
 			return m, m.checkSkills(append([]agentskill.Skill(nil), m.skills...))
 		}
-		if row, ok := m.currentTask(); ok {
-			return m.prompt(modeEditNext, row.Task.Next, "next action")
+		if m.view == ViewTasks {
+			return m.runListAction(listActionEditNext)
 		}
-		if row, ok := m.currentRemote(); ok && !row.Cloned() {
-			if row.CloneProblemPath != "" {
-				if _, err := os.Lstat(row.CloneProblemPath); err == nil {
-					m.err = fmt.Errorf("inspect or move the existing clone destination at %s before retrying", config.Contract(row.CloneProblemPath))
-					return m, nil
-				}
-				m.setRemoteCloneProblem(row, "")
-			}
-			if !m.reposReadyForClone() {
-				m.setViewStatus(ViewRemote, "wait for local repositories to finish loading")
-				return m, nil
-			}
-			m.remoteClonePrompt = row
-			return m.prompt(modeConfirmClone, row.Repo.FullName,
-				"enter clone; o clone and open; esc cancel")
+		if m.view == ViewRemote {
+			return m.runListAction(listActionRemoteClone)
 		}
 		return m, nil
 
 	case "s":
-		if _, ok := m.currentRepo(); !ok {
-			return m, nil
-		}
-		return m.prompt(modeStartTask, "", "name for the new worktree task")
+		return m.runListAction(listActionStartWorktree)
 
 	case "d":
-		if _, ok := m.currentRepo(); !ok {
-			return m, nil
-		}
-		return m.prompt(modeStartDirect, "", "name for direct work on current branch")
+		return m.runListAction(listActionStartDirect)
 
 	case "u":
-		if m.viewLoad(ViewSkills).loading {
-			m.setViewStatus(ViewSkills, "wait for the current skill reload/check to finish")
-			return m, nil
-		}
-		row, ok := m.currentSkill()
-		if !ok {
-			return m, nil
-		}
-		if !agentskill.CanUpdate(row) {
-			m.err = fmt.Errorf("%s has no update-safe provider lock", row.Name)
-			return m, nil
-		}
-		m.skillUpdateTarget = row
-		m.mode = modeConfirmSkillUpdate
-		return m, nil
+		return m.runListAction(listActionSkillUpdate)
 
 	case "e":
+		if m.view == ViewSkills || m.view == ViewMCP {
+			return m.runListAction(listActionOpenCapabilityFile)
+		}
 		if m.view == ViewFleet {
 			if m.actions.EditFleetConfig == nil {
 				return m, nil
@@ -3095,12 +3117,9 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			m.status = "editing remotes.toml…"
-			return m, tea.ExecProcess(proc, func(err error) tea.Msg {
+			return m, runExecProcess(proc, func(err error) tea.Msg {
 				return fleetConfigEditedMsg{err: err}
 			})
-		}
-		if m.view == ViewMCP {
-			return m, nil
 		}
 		if m.actions.EditConfig == nil {
 			return m, nil
@@ -3111,7 +3130,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.status = "editing config…"
-		return m, tea.ExecProcess(proc, func(err error) tea.Msg {
+		return m, runExecProcess(proc, func(err error) tea.Msg {
 			return configEditedMsg{err: err}
 		})
 
@@ -3145,12 +3164,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "H":
-		repo := m.selectedRepoName()
-		if repo == "" || m.actions.LoadStats == nil {
-			return m, nil
-		}
-		m.mode, m.stats, m.status = modeStats, nil, "loading activity…"
-		return m, m.loadStats(repo)
+		return m.runListAction(listActionStats)
 
 	default:
 		if cmd := m.launchTool(msg.String()); cmd != nil {
@@ -3299,7 +3313,7 @@ func (m Model) updateNotes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.err = err
 				return m, nil
 			}
-			return m, tea.ExecProcess(edit.Command, func(runErr error) tea.Msg {
+			return m, runExecProcess(edit.Command, func(runErr error) tea.Msg {
 				if edit.Complete != nil {
 					runErr = edit.Complete(runErr)
 				}
@@ -3374,8 +3388,29 @@ func (m Model) updateNotes(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) updateCopy(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if msg.String() == "esc" {
 		m.mode = modeList
+		m.copySelection = selectionToken{}
 		return m, nil
 	}
+	if m.copySelection.key == "" || !m.selectToken(m.copySelection) {
+		m.mode = modeList
+		m.copySelection = selectionToken{}
+		m.err = fmt.Errorf("selected row changed before the copy action completed")
+		return m, nil
+	}
+	m.copySelection = selectionToken{}
+
+	switch m.view {
+	case ViewRepos:
+		return m.copyRepoValue(msg.String())
+	case ViewSkills, ViewMCP:
+		return m.copyCapabilityValue(msg.String())
+	default:
+		m.mode = modeList
+		return m, nil
+	}
+}
+
+func (m Model) copyRepoValue(key string) (tea.Model, tea.Cmd) {
 	item, ok := m.currentRepoItem()
 	if !ok {
 		m.mode = modeList
@@ -3387,7 +3422,7 @@ func (m Model) updateCopy(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	var payload, label string
-	switch msg.String() {
+	switch key {
 	case "y":
 		payload = inventory.FormatRepoContext(item.Repo.Context, checkoutIndex)
 		if item.child() {
@@ -3430,19 +3465,106 @@ func (m Model) updateCopy(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	default:
-		m.mode, m.err = modeList, fmt.Errorf("unknown copy key %q", msg.String())
+		m.mode, m.err = modeList, fmt.Errorf("unknown copy key %q", key)
 		return m, nil
 	}
+	return m.copyText(payload, label, true)
+}
 
+func (m Model) copyCapabilityValue(key string) (tea.Model, tea.Cmd) {
+	var payload, label string
+	path, pathErr := m.capabilityFilePath()
+	switch m.view {
+	case ViewSkills:
+		row, ok := m.currentSkill()
+		if !ok {
+			m.mode = modeList
+			return m, nil
+		}
+		switch key {
+		case "p":
+			payload, label = path, "skill file path"
+		case "s":
+			payload, label = formatSkillSummary(row), "skill summary"
+		case "u":
+			if row.SourceURL == "" {
+				m.mode, m.err = modeList, fmt.Errorf("skill %s has no source URL", row.Name)
+				return m, nil
+			}
+			payload, label = row.SourceURL, "skill source URL"
+		case "f":
+			return m.copyRawFile(path, pathErr, "raw skill file")
+		default:
+			m.mode, m.err = modeList, fmt.Errorf("unknown skill copy key %q", key)
+			return m, nil
+		}
+	case ViewMCP:
+		row, ok := m.currentMCP()
+		if !ok {
+			m.mode = modeList
+			return m, nil
+		}
+		switch key {
+		case "p":
+			payload, label = path, "MCP config path"
+		case "s":
+			payload, label = formatMCPSummary(row), "MCP declaration summary"
+		case "f":
+			return m.copyRawFile(path, pathErr, "raw MCP config file")
+		default:
+			m.mode, m.err = modeList, fmt.Errorf("unknown MCP copy key %q", key)
+			return m, nil
+		}
+	}
+	if pathErr != nil && key == "p" {
+		m.mode, m.err = modeList, pathErr
+		return m, nil
+	}
+	return m.copyText(payload, label, false)
+}
+
+func (m Model) copyRawFile(path string, pathErr error, label string) (tea.Model, tea.Cmd) {
+	m.mode = modeList
+	if pathErr != nil {
+		m.err = pathErr
+		return m, nil
+	}
+	if m.actions.ReadFile == nil {
+		m.err = fmt.Errorf("reading capability files is unavailable")
+		return m, nil
+	}
+	if m.actions.Copy == nil {
+		m.err = fmt.Errorf("clipboard integration is unavailable")
+		return m, nil
+	}
+	ctx := m.baseContext()
+	return m, func() tea.Msg {
+		payload, err := m.actions.ReadFile(ctx, path)
+		if err != nil {
+			return copyMsg{err: fmt.Errorf("read %s: %w", label, err)}
+		}
+		if err := m.actions.Copy(payload); err != nil {
+			return copyMsg{err: fmt.Errorf("copy %s: %w", label, err)}
+		}
+		return copyMsg{status: "copied " + label}
+	}
+}
+
+func (m Model) copyText(payload, label string, repoFallback bool) (tea.Model, tea.Cmd) {
 	m.mode = modeList
 	if m.actions.Copy == nil {
-		m.err = fmt.Errorf("clipboard integration is unavailable; use `dev repo context`")
+		m.err = fmt.Errorf("clipboard integration is unavailable")
+		if repoFallback {
+			m.err = fmt.Errorf("clipboard integration is unavailable; use `dev repo context`")
+		}
 		return m, nil
 	}
 	return m, func() tea.Msg {
-		err := m.actions.Copy(payload)
-		if err != nil {
-			return copyMsg{err: fmt.Errorf("copy %s: %w; use `dev repo context` as a fallback", label, err)}
+		if err := m.actions.Copy(payload); err != nil {
+			if repoFallback {
+				return copyMsg{err: fmt.Errorf("copy %s: %w; use `dev repo context` as a fallback", label, err)}
+			}
+			return copyMsg{err: fmt.Errorf("copy %s: %w", label, err)}
 		}
 		return copyMsg{status: "copied " + label}
 	}
@@ -3512,6 +3634,50 @@ func (m Model) updateStats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m *Model) resetCapabilityView(view View) {
+	m.invalidateView(view)
+	generation := m.loads[int(view)].generation
+	m.loads[int(view)] = viewLoadState{generation: generation}
+	m.viewErrors[int(view)] = nil
+	m.viewStatuses[int(view)] = ""
+	switch view {
+	case ViewSkills:
+		m.skills = nil
+		m.skillCursor = 0
+		m.skillsChecking = false
+		m.skillsInventoryErr = nil
+		m.skillsInventoryWarning = ""
+	case ViewMCP:
+		m.mcp = nil
+		m.mcpCursor = 0
+	}
+}
+
+func (m Model) toggleCapabilityScope() (tea.Model, tea.Cmd) {
+	if m.capabilityScope == CapabilityAllRepositories {
+		m.capabilityScope = CapabilityStartupContext
+	} else {
+		m.capabilityScope = CapabilityAllRepositories
+	}
+	m.resetCapabilityView(ViewSkills)
+	m.resetCapabilityView(ViewMCP)
+	m.err, m.status = nil, ""
+
+	view := m.view
+	m.beginViewLoad(view, loadRefresh)
+	if err := m.dependentReposUnavailable(view); err != nil {
+		state := m.viewLoad(view)
+		m.applyViewResult(view, state.generation, false, "", "", 0, err, false)
+		return m, nil
+	}
+	if m.viewWaitsForRepos(view) {
+		m.setViewStatus(view, "waiting for local repositories…")
+		return m, nil
+	}
+	m.setViewStatus(view, dependentLoadingStatus(view))
+	return m, m.reloadDependentView(view)
+}
+
 func (m Model) viewUsesRepos(view View) bool {
 	switch view {
 	case ViewFleet:
@@ -3548,9 +3714,9 @@ func dependentLoadingStatus(view View) string {
 	case ViewFleet:
 		return "loading configured dev hosts…"
 	case ViewSkills:
-		return "loading agent skills across repositories…"
+		return "loading agent skills…"
 	case ViewMCP:
-		return "loading MCP declarations across repositories…"
+		return "loading MCP declarations…"
 	default:
 		return "loading…"
 	}
@@ -3711,27 +3877,35 @@ func (m Model) updatePrompt(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.mode = modeList
 		m.input.Blur()
+		m.clearPromptTargets()
 		return m, nil
 	case "enter":
 		md := m.mode
 		value := strings.TrimSpace(m.input.Value())
 		m.mode = modeList
 		m.input.Blur()
-		return m, m.submit(md, value)
+		command := m.submit(md, value)
+		m.clearPromptTargets()
+		return m, command
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
 }
 
+func (m *Model) clearPromptTargets() {
+	m.taskPromptTarget = nil
+	m.repoPromptTarget = RepoRow{}
+	m.repoPromptSet = false
+}
+
 func (m Model) submit(md mode, value string) tea.Cmd {
 	switch md {
 	case modeEditNext:
-		row, ok := m.currentTask()
-		if !ok {
+		t := m.taskPromptTarget
+		if t == nil {
 			return nil
 		}
-		t := row.Task
 		return func() tea.Msg {
 			if err := m.actions.SetNext(context.Background(), t, value); err != nil {
 				return actionMsg{err: err}
@@ -3740,21 +3914,20 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 		}
 
 	case modeConfirmPark:
-		row, ok := m.currentTask()
-		if !ok {
+		t := m.taskPromptTarget
+		if t == nil {
 			return nil
 		}
-		t := row.Task
 		return func() tea.Msg {
 			status, err := m.actions.Park(context.Background(), t, value)
 			return actionMsg{status: status, err: err}
 		}
 
 	case modeStartTask:
-		r, ok := m.currentRepo()
-		if !ok {
+		if !m.repoPromptSet {
 			return nil
 		}
+		r := m.repoPromptTarget
 		if value == "" {
 			return func() tea.Msg { return actionMsg{err: fmt.Errorf("a task needs a name")} }
 		}
@@ -3764,10 +3937,10 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 		}
 
 	case modeStartDirect:
-		r, ok := m.currentRepo()
-		if !ok {
+		if !m.repoPromptSet {
 			return nil
 		}
+		r := m.repoPromptTarget
 		if value == "" {
 			return func() tea.Msg { return actionMsg{err: fmt.Errorf("a task needs a name")} }
 		}
@@ -3793,7 +3966,7 @@ func (m Model) submit(md mode, value string) tea.Cmd {
 		if row.Lock != nil {
 			lockName = row.Lock.Name
 		}
-		return tea.ExecProcess(proc, func(err error) tea.Msg {
+		return runExecProcess(proc, func(err error) tea.Msg {
 			return skillProcessMsg{
 				action: "update", name: row.Name, lockName: lockName,
 				scope: row.Scope, checkout: row.Checkout, err: finish(err),
@@ -3856,7 +4029,7 @@ func (m Model) openSelected() tea.Cmd {
 		if err != nil {
 			return func() tea.Msg { return actionMsg{err: err} }
 		}
-		return tea.ExecProcess(process, func(err error) tea.Msg {
+		return runExecProcess(process, func(err error) tea.Msg {
 			if err != nil {
 				return actionMsg{err: fmt.Errorf("fleet open: %w", err)}
 			}
@@ -3891,7 +4064,7 @@ func (m Model) launchTool(key string) tea.Cmd {
 		}
 		c := exec.Command(t.Command[0], t.Command[1:]...)
 		c.Dir = dir
-		return tea.ExecProcess(c, func(err error) tea.Msg {
+		return runExecProcess(c, func(err error) tea.Msg {
 			if err != nil {
 				return actionMsg{err: fmt.Errorf("%s: %w", t.Name, err)}
 			}

@@ -33,7 +33,16 @@ connectors, remote organization configuration, inline
 as coverage limits. Duplicate names in different files/scopes are not merged
 into a guessed effective configuration.
 
-The MCP TUI view reuses the accepted REPOS snapshot, includes the exact startup
-linked worktree when distinct, and offers navigation, filtering, and reload only.
-It never starts, connects, adds, removes, or authenticates a server. Filters
-include `repo:`, `agent:`, `scope:`, `transport:`, `managed:`, and `state:`.
+The MCP TUI view defaults to the startup context: inside Git it scans only the
+exact startup checkout; outside Git it reuses every accepted REPOS target plus
+the ordinary startup directory. Uppercase `A` switches both MCP and SKILLS to
+all accepted repositories for the current TUI run. It never starts, connects,
+adds, removes, or authenticates a server. Filters include `repo:`, `agent:`,
+`scope:`, `transport:`, `managed:`, and `state:`.
+
+Press `e` to open the selected declaration's local `ConfigPath`. The `y` copy
+menu offers that path (`p`), a normalized sanitized summary (`s`), or the entire
+raw local config file (`f`). Raw copy accepts only a regular file up to 1 MiB and
+performs no network access, but it can place credentials and other declarations
+from the same file into the system clipboard. It does not alter the sanitized
+inventory or JSON contract.

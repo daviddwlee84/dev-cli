@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"context"
+	"crypto/sha256"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -8,7 +11,10 @@ import (
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/projectconfig"
+	"github.com/daviddwlee84/dev-cli/internal/safefile"
+	"github.com/daviddwlee84/dev-cli/internal/tui"
 	"github.com/spf13/cobra"
 )
 
@@ -108,6 +114,94 @@ func configEditorProcess(app *App, editor string) (*exec.Cmd, string, bool, erro
 	return proc, chosen, created, err
 }
 
+func prepareTUICapabilityEdit(path string) (tui.CapabilityEdit, error) {
+	logical := filepath.Clean(path)
+	resolved, err := pathx.Canonical(logical)
+	if err != nil {
+		return tui.CapabilityEdit{}, fmt.Errorf("resolve capability file %s: %w", config.Contract(logical), err)
+	}
+	root, rootInfo, err := safefile.OpenRoot(filepath.Dir(resolved))
+	if err != nil {
+		return tui.CapabilityEdit{}, fmt.Errorf("open capability file directory %s: %w", config.Contract(logical), err)
+	}
+	completeOwnsRoot := false
+	defer func() {
+		if !completeOwnsRoot {
+			_ = root.Close()
+		}
+	}()
+	original, observed, err := safefile.ReadStableRegular(
+		context.Background(), root, filepath.Base(resolved), nil, safefile.CompiledMaxFileBytes,
+	)
+	if err != nil {
+		return tui.CapabilityEdit{}, fmt.Errorf("read capability file %s: %w", config.Contract(logical), err)
+	}
+	originalSize := len(original)
+	originalDigest := sha256.Sum256(original)
+
+	working, err := os.CreateTemp("", "dev-capability-edit-*")
+	if err != nil {
+		return tui.CapabilityEdit{}, err
+	}
+	workingPath := working.Name()
+	cleanup := true
+	defer func() {
+		if cleanup {
+			_ = os.Remove(workingPath)
+		}
+	}()
+	if _, err := working.Write(original); err != nil {
+		_ = working.Close()
+		return tui.CapabilityEdit{}, err
+	}
+	if err := working.Sync(); err != nil {
+		_ = working.Close()
+		return tui.CapabilityEdit{}, err
+	}
+	if err := working.Close(); err != nil {
+		return tui.CapabilityEdit{}, err
+	}
+	original = nil
+	process, _, err := editorProcess(workingPath, "")
+	if err != nil {
+		return tui.CapabilityEdit{}, err
+	}
+	cleanup = false
+	completeOwnsRoot = true
+
+	return tui.CapabilityEdit{
+		Command: process,
+		Complete: func(runErr error) error {
+			defer root.Close()
+			if runErr != nil {
+				return fmt.Errorf("capability editor failed; working copy preserved at %s: %w", config.Contract(workingPath), runErr)
+			}
+			edited, err := safefile.ReadRegular(context.Background(), workingPath, safefile.CompiledMaxFileBytes)
+			if err != nil {
+				return fmt.Errorf("read edited capability file; working copy preserved at %s: %w", config.Contract(workingPath), err)
+			}
+			if len(edited) == originalSize && sha256.Sum256(edited) == originalDigest {
+				return os.Remove(workingPath)
+			}
+			currentResolved, err := pathx.Canonical(logical)
+			if err != nil || !sameCleanPath(currentResolved, resolved) {
+				return fmt.Errorf("capability file target changed; working copy preserved at %s: %w",
+					config.Contract(workingPath), errors.Join(err, safefile.ErrChanged))
+			}
+			if err := safefile.VerifyRoot(filepath.Dir(resolved), rootInfo); err != nil {
+				return fmt.Errorf("capability file directory changed; working copy preserved at %s: %w",
+					config.Contract(workingPath), err)
+			}
+			if _, err := safefile.AtomicReplace(
+				context.Background(), root, filepath.Base(resolved), observed, edited, observed.Mode().Perm(),
+			); err != nil {
+				return fmt.Errorf("replace changed capability file; working copy preserved at %s: %w", config.Contract(workingPath), err)
+			}
+			return os.Remove(workingPath)
+		},
+	}, nil
+}
+
 // ensureConfigForEdit generates a usable config before opening an absent path.
 // Editing an empty file would hide every default the user is trying to change.
 func ensureConfigForEdit(path string) (bool, error) {
@@ -135,8 +229,8 @@ func editorProcess(path, override string) (*exec.Cmd, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	command := chosen + " " + shellQuote(path)
-	return exec.Command(shellPath(), "-c", command), chosen, nil
+	command, err := fleetEditorCommand(chosen, path)
+	return command, chosen, err
 }
 
 func resolveEditor(override string) (string, error) {

@@ -186,12 +186,12 @@ func TestVisibleCapabilityWithoutSnapshotReloadsAfterReposRecovery(t *testing.T)
 		actions Actions
 	}{
 		{name: "skills", view: ViewSkills, actions: Actions{
-			ReloadSkillsWithRepos: func(context.Context, []RepoRow) ([]agentskill.Skill, error) {
+			ReloadSkillsWithRepos: func(context.Context, []RepoRow, CapabilityScope) ([]agentskill.Skill, error) {
 				return []agentskill.Skill{{Name: "skill"}}, nil
 			},
 		}},
 		{name: "mcp", view: ViewMCP, actions: Actions{
-			ReloadMCPWithRepos: func(context.Context, []RepoRow) ([]agentmcp.Declaration, error) {
+			ReloadMCPWithRepos: func(context.Context, []RepoRow, CapabilityScope) ([]agentmcp.Declaration, error) {
 				return []agentmcp.Declaration{{Name: "server"}}, nil
 			},
 		}},

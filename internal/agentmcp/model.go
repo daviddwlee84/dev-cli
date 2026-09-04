@@ -191,6 +191,21 @@ type Declaration struct {
 	Coverage         []CoverageDiagnostic  `json:"coverage,omitempty"`
 }
 
+// IdentityKey identifies one declaration at one normalized source location.
+// Runtime state and sanitized payload fields are intentionally excluded so a
+// refresh can update them without making the row look like a different source.
+func (d Declaration) IdentityKey() string {
+	return strings.Join(declarationOrderingKey(d), "\x00")
+}
+
+func declarationOrderingKey(d Declaration) []string {
+	return []string{
+		string(d.Agent), scopeSortKey(d.Scope), strings.ToLower(d.Repository), d.RepositoryPath,
+		d.Checkout, d.LocalProjectPath, d.ConfigPath, string(d.Source), strings.ToLower(d.Plugin),
+		d.Plugin, strings.ToLower(d.Name), d.Name,
+	}
+}
+
 // Target is shared with native skill inventory so repository and linked-
 // checkout identity cannot drift between the two domains.
 type Target = agenttarget.Target
@@ -272,8 +287,8 @@ func FilterDeclarations(rows []Declaration, f Filter) []Declaration {
 func SortDeclarations(rows []Declaration) {
 	sort.SliceStable(rows, func(i, j int) bool {
 		a, b := rows[i], rows[j]
-		ak := []string{string(a.Agent), scopeSortKey(a.Scope), strings.ToLower(a.Repository), a.RepositoryPath, a.Checkout, a.LocalProjectPath, a.ConfigPath, string(a.Source), strings.ToLower(a.Plugin), a.Plugin, strings.ToLower(a.Name), a.Name}
-		bk := []string{string(b.Agent), scopeSortKey(b.Scope), strings.ToLower(b.Repository), b.RepositoryPath, b.Checkout, b.LocalProjectPath, b.ConfigPath, string(b.Source), strings.ToLower(b.Plugin), b.Plugin, strings.ToLower(b.Name), b.Name}
+		ak := declarationOrderingKey(a)
+		bk := declarationOrderingKey(b)
 		for n := range ak {
 			if ak[n] != bk[n] {
 				return ak[n] < bk[n]

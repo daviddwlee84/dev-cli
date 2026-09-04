@@ -62,6 +62,26 @@ func TestInitialFrameAndQuitWhileLocalLoadIsBlocked(t *testing.T) {
 			t.Fatalf("initial frame did not appear while producer was blocked:\n%s", output.Bytes())
 		}
 	}
+	for _, sequence := range [][]byte{[]byte("\x1b[?1002h"), []byte("\x1b[?1006h")} {
+		if !bytes.Contains(output.Bytes(), sequence) {
+			t.Fatalf("initial frame did not enable mouse tracking %q:\n%s", sequence, output.Bytes())
+		}
+	}
+	if _, err := terminal.Write([]byte("e")); err != nil {
+		t.Fatal(err)
+	}
+	restoreDeadline := time.NewTimer(5 * time.Second)
+	defer restoreDeadline.Stop()
+	for bytes.Count(output.Bytes(), []byte("\x1b[?1002h")) < 2 {
+		select {
+		case chunk := <-chunks:
+			output.Write(chunk)
+		case err := <-readErr:
+			t.Fatalf("PTY closed before subprocess restored mouse tracking: %v\n%s", err, output.Bytes())
+		case <-restoreDeadline.C:
+			t.Fatalf("subprocess return did not restore mouse tracking:\n%s", output.Bytes())
+		}
+	}
 	if _, err := terminal.Write([]byte("q")); err != nil {
 		t.Fatal(err)
 	}
@@ -78,6 +98,34 @@ func TestInitialFrameAndQuitWhileLocalLoadIsBlocked(t *testing.T) {
 		<-exited
 		t.Fatalf("TUI did not process q while producer was blocked:\n%s", output.Bytes())
 	}
+
+	drain := time.NewTimer(time.Second)
+	defer drain.Stop()
+drainOutput:
+	for {
+		select {
+		case chunk := <-chunks:
+			output.Write(chunk)
+		case <-readErr:
+			break drainOutput
+		case <-drain.C:
+			break drainOutput
+		}
+	}
+drainBuffered:
+	for {
+		select {
+		case chunk := <-chunks:
+			output.Write(chunk)
+		default:
+			break drainBuffered
+		}
+	}
+	for _, sequence := range [][]byte{[]byte("\x1b[?1002l"), []byte("\x1b[?1006l")} {
+		if !bytes.Contains(output.Bytes(), sequence) {
+			t.Fatalf("TUI exit did not disable mouse tracking %q:\n%s", sequence, output.Bytes())
+		}
+	}
 }
 
 func TestTUIBlockedLoadHelper(t *testing.T) {
@@ -86,11 +134,14 @@ func TestTUIBlockedLoadHelper(t *testing.T) {
 	}
 	ctx := t.Context()
 	results := make(chan LocalResult)
-	actions := Actions{Local: LocalActions{Start: func(context.Context, LocalLoadRequest) LocalLoad {
-		return LocalLoad{ID: 1, Results: results}
-	}}}
+	actions := Actions{
+		Local: LocalActions{Start: func(context.Context, LocalLoadRequest) LocalLoad {
+			return LocalLoad{ID: 1, Results: results}
+		}},
+		EditConfig: func() (*exec.Cmd, error) { return exec.Command("true"), nil },
+	}
 	model := New(actions, nil, nil).WithContext(ctx).BeginLoading()
-	if _, err := tea.NewProgram(model, tea.WithAltScreen()).Run(); err != nil {
+	if _, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run(); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -85,28 +85,32 @@ func (m Model) View() (output string) {
 	b.WriteString(m.renderHeader())
 	b.WriteString("\n")
 
-	switch m.view {
-	case ViewRepos:
-		b.WriteString(m.renderRepos())
-	case ViewFleet:
-		b.WriteString(m.renderFleet())
-	case ViewTries:
-		b.WriteString(m.renderTries())
-	case ViewRemote:
-		b.WriteString(m.renderRemotes())
-	case ViewSkills:
-		b.WriteString(m.renderSkills())
-	case ViewMCP:
-		b.WriteString(m.renderMCP())
-	default:
-		b.WriteString(m.renderTasks())
-	}
+	b.WriteString(m.renderCurrentList())
 
 	b.WriteString("\n")
 	b.WriteString(m.renderDetail())
 	b.WriteString("\n")
 	b.WriteString(m.renderFooter())
 	return b.String()
+}
+
+func (m Model) renderCurrentList() string {
+	switch m.view {
+	case ViewRepos:
+		return m.renderRepos()
+	case ViewFleet:
+		return m.renderFleet()
+	case ViewTries:
+		return m.renderTries()
+	case ViewRemote:
+		return m.renderRemotes()
+	case ViewSkills:
+		return m.renderSkills()
+	case ViewMCP:
+		return m.renderMCP()
+	default:
+		return m.renderTasks()
+	}
 }
 
 func (m Model) renderStats() string {
@@ -141,16 +145,35 @@ func humanSeconds(seconds int) string {
 	return fmt.Sprintf("%dh %dm", int(d.Hours()), int(d.Minutes())%60)
 }
 
-// renderHeader shows the tab strip, so which list is showing — and that there
-// is another one — is never in doubt.
-func (m Model) renderHeader() string {
-	build := func(compact, summary bool) string {
+type tabHit struct {
+	view     View
+	from, to int
+}
+
+type headerLayout struct {
+	line string
+	tabs []tabHit
+}
+
+// buildHeaderLayout renders the tab strip and records the exact cell spans it
+// used, so mouse hit testing cannot drift from responsive labels or styles.
+func (m Model) buildHeaderLayout() headerLayout {
+	build := func(compact, summary bool) headerLayout {
 		short := map[View]string{
 			ViewTasks: "TSK", ViewRepos: "REP", ViewFleet: "FLT", ViewTries: "TRY",
 			ViewRemote: "REM", ViewSkills: "SKL", ViewMCP: "MCP",
 		}
-		var tabs []string
-		for _, view := range Views {
+		var builder strings.Builder
+		prefix := styleTitle.Render("dev") + "  "
+		builder.WriteString(prefix)
+		x := lipgloss.Width(prefix)
+		hits := make([]tabHit, 0, len(Views))
+		for index, view := range Views {
+			if index > 0 {
+				separator := styleDim.Render("│")
+				builder.WriteString(separator)
+				x += lipgloss.Width(separator)
+			}
 			name := strings.ToUpper(view.String())
 			if compact {
 				name = short[view]
@@ -159,39 +182,54 @@ func (m Model) renderHeader() string {
 			if !compact {
 				label = " " + name + " "
 			}
+			rendered := styleDim.Render(label)
 			if view == m.view {
-				tabs = append(tabs, styleSelected.Render(label))
-			} else {
-				tabs = append(tabs, styleDim.Render(label))
+				rendered = styleSelected.Render(label)
 			}
+			from := x
+			builder.WriteString(rendered)
+			x += lipgloss.Width(rendered)
+			hits = append(hits, tabHit{view: view, from: from, to: x})
 		}
-		line := styleTitle.Render("dev") + "  " + strings.Join(tabs, styleDim.Render("│"))
 		if summary {
-			line += "   " + styleDim.Render(m.Summary())
+			builder.WriteString("   " + styleDim.Render(m.Summary()))
 		}
 		if m.filter != "" {
-			line += "   " + styleWarm.Render("/"+m.filter)
+			builder.WriteString("   " + styleWarm.Render("/"+m.filter))
 		}
-		return line
+		return headerLayout{line: builder.String(), tabs: hits}
 	}
-	line := build(false, true)
-	if lipgloss.Width(line) > m.width {
-		line = build(false, false)
+
+	layout := build(false, true)
+	if lipgloss.Width(layout.line) > m.width {
+		layout = build(false, false)
 	}
-	if lipgloss.Width(line) > m.width {
-		line = build(true, false)
+	if lipgloss.Width(layout.line) > m.width {
+		layout = build(true, false)
 	}
-	if lipgloss.Width(line) > m.width {
-		line = styleTitle.Render("dev") + "  " + styleSelected.Render(strings.ToUpper(m.view.String()))
-		if m.filter != "" {
-			available := m.width - lipgloss.Width(line) - 4
-			if available > 1 {
-				line += "   " + styleWarm.Render("/"+pad(m.filter, available-1))
-			}
+	if lipgloss.Width(layout.line) <= m.width {
+		return layout
+	}
+
+	prefix := styleTitle.Render("dev") + "  "
+	name := strings.ToUpper(m.view.String())
+	line := prefix + styleSelected.Render(name)
+	layout = headerLayout{
+		line: line,
+		tabs: []tabHit{{view: m.view, from: lipgloss.Width(prefix), to: lipgloss.Width(line)}},
+	}
+	if m.filter != "" {
+		available := m.width - lipgloss.Width(layout.line) - 4
+		if available > 1 {
+			layout.line += "   " + styleWarm.Render("/"+pad(m.filter, available-1))
 		}
 	}
-	return line + "\n"
+	return layout
 }
+
+// renderHeader shows the tab strip, so which list is showing — and that there
+// is another one — is never in doubt.
+func (m Model) renderHeader() string { return m.buildHeaderLayout().line + "\n" }
 
 // window returns the slice of a list visible around the cursor, and the offset
 // it starts at, so a long inventory scrolls instead of overflowing.
@@ -789,6 +827,15 @@ func skillInstallState(row agentskill.Skill) string {
 	}
 }
 
+func (m Model) mcpServerWidth(minimum, available int) int {
+	preferred := lipgloss.Width("SERVER")
+	for _, row := range m.mcp {
+		preferred = max(preferred, lipgloss.Width(row.Name))
+	}
+	maximum := max(minimum, min(32, available))
+	return clamp(preferred, minimum, maximum)
+}
+
 func (m Model) renderMCP() string {
 	state := m.viewLoad(ViewMCP)
 	rows := m.visibleMCP()
@@ -810,21 +857,21 @@ func (m Model) renderMCP() string {
 	switch {
 	case m.width >= 112:
 		repoW, scopeW, agentW, transportW, stateW, sourceW := 16, 12, 12, 16, 10, 14
-		serverW := max(18, m.width-94)
+		serverW := m.mcpServerWidth(18, m.width-94)
 		headers = []string{fitCell("REPO", repoW), fitCell("SCOPE", scopeW), fitCell("AGENT", agentW), fitCell("SERVER", serverW), fitCell("TRANSPORT", transportW), fitCell("STATE", stateW), fitCell("SOURCE", sourceW)}
 		values = func(row agentmcp.Declaration) []string {
 			return []string{fitCell(dashCell(row.Repository), repoW), fitCell(string(row.Scope), scopeW), fitCell(string(row.Agent), agentW), fitCell(row.Name, serverW), fitCell(string(row.Transport), transportW), fitCell(mcpDeclarationState(row), stateW), fitCell(mcpSource(row), sourceW)}
 		}
 	case m.width >= 94:
 		repoW, scopeW, agentW, transportW, stateW := 16, 12, 12, 16, 10
-		serverW := max(16, m.width-78)
+		serverW := m.mcpServerWidth(16, m.width-78)
 		headers = []string{fitCell("REPO", repoW), fitCell("SCOPE", scopeW), fitCell("AGENT", agentW), fitCell("SERVER", serverW), fitCell("TRANSPORT", transportW), fitCell("STATE", stateW)}
 		values = func(row agentmcp.Declaration) []string {
 			return []string{fitCell(dashCell(row.Repository), repoW), fitCell(string(row.Scope), scopeW), fitCell(string(row.Agent), agentW), fitCell(row.Name, serverW), fitCell(string(row.Transport), transportW), fitCell(mcpDeclarationState(row), stateW)}
 		}
 	default:
 		repoW, agentW, stateW := 14, 12, 10
-		serverW := max(12, m.width-44)
+		serverW := m.mcpServerWidth(12, m.width-44)
 		headers = []string{fitCell("REPO", repoW), fitCell("AGENT", agentW), fitCell("SERVER", serverW), fitCell("STATE", stateW)}
 		values = func(row agentmcp.Declaration) []string {
 			return []string{fitCell(dashCell(row.Repository), repoW), fitCell(string(row.Agent), agentW), fitCell(row.Name, serverW), fitCell(mcpDeclarationState(row), stateW)}
@@ -1026,18 +1073,19 @@ func (m Model) renderDetail() string {
 		return "  " + styleTitle.Render("next action ") + m.input.View() +
 			"\n  " + styleHelp.Render("enter to save · esc to cancel")
 	case modeConfirmPark:
-		row, _ := m.currentTask()
-		return "  " + styleTitle.Render("park "+row.Task.Title()) +
+		title := "selected task"
+		if m.taskPromptTarget != nil {
+			title = m.taskPromptTarget.Title()
+		}
+		return "  " + styleTitle.Render("park "+title) +
 			"\n  next: " + m.input.View() +
 			"\n  " + styleHelp.Render("enter to park (session closes, worktree stays) · esc to cancel")
 	case modeStartTask:
-		r, _ := m.currentRepo()
-		return "  " + styleTitle.Render("start work in "+r.Repo.Name) +
+		return "  " + styleTitle.Render("start work in "+m.repoPromptTarget.Repo.Name) +
 			"\n  name: " + m.input.View() +
 			"\n  " + styleHelp.Render("enter to create the branch, worktree and session · esc to cancel")
 	case modeStartDirect:
-		r, _ := m.currentRepo()
-		return "  " + styleTitle.Render("track direct work in "+r.Repo.Name) +
+		return "  " + styleTitle.Render("track direct work in "+m.repoPromptTarget.Repo.Name) +
 			"\n  name: " + m.input.View() +
 			"\n  " + styleHelp.Render("enter to track the current branch; no branch/worktree is created · esc to cancel")
 	case modeConfirmClone:
@@ -1050,8 +1098,7 @@ func (m Model) renderDetail() string {
 		return "  " + styleTitle.Render("update "+string(row.Scope)+" skill "+row.Name) +
 			"\n  " + styleHelp.Render("enter to update this skill · esc to cancel")
 	case modeCopy:
-		return "  " + styleTitle.Render("copy ") +
-			"y context · p path · b branch · s sessions · w worktree paths" +
+		return "  " + styleTitle.Render("copy ") + m.copyBindingHelp() +
 			"\n  " + styleHelp.Render("press a second key · esc to cancel")
 	}
 
@@ -1084,6 +1131,7 @@ func (m Model) renderDetail() string {
 	}
 	if row, ok := m.currentMCP(); ok {
 		lines := []string{
+			fmt.Sprintf("  %s %s", styleDim.Render("server"), row.Name),
 			fmt.Sprintf("  %s  %s", styleDim.Render("repo"), dashCell(row.Repository)),
 			fmt.Sprintf("  %s %s", styleDim.Render("scope "), row.Scope),
 			fmt.Sprintf("  %s %s", styleDim.Render("agent "), row.Agent),
@@ -1135,12 +1183,25 @@ func (m Model) renderDetail() string {
 	}
 	if row, ok := m.currentSkill(); ok {
 		lines := []string{
-			fmt.Sprintf("  %s %s", styleDim.Render("scope  "), row.Scope),
-			fmt.Sprintf("  %s %s", styleDim.Render("root   "), contract(row.ScopeRoot)),
-			fmt.Sprintf("  %s %s", styleDim.Render("path   "), contract(row.Path)),
-			fmt.Sprintf("  %s %s", styleDim.Render("managed"), row.ManagedBy),
-			fmt.Sprintf("  %s %s", styleDim.Render("agents "), strings.Join(row.Agents, ", ")),
-			fmt.Sprintf("  %s %s", styleDim.Render("update "), row.UpdateStatus),
+			fmt.Sprintf("  %s %s", styleDim.Render("scope   "), row.Scope),
+		}
+		if row.Repository != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("repo    "), row.Repository))
+		}
+		if row.Checkout != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("checkout"), contract(row.Checkout)))
+		}
+		lines = append(lines,
+			fmt.Sprintf("  %s %s", styleDim.Render("root    "), contract(row.ScopeRoot)),
+			fmt.Sprintf("  %s %s", styleDim.Render("path    "), contract(row.Path)),
+			fmt.Sprintf("  %s %s", styleDim.Render("presence"), row.Presence),
+			fmt.Sprintf("  %s %s", styleDim.Render("integrity"), row.Integrity),
+			fmt.Sprintf("  %s %s", styleDim.Render("managed "), row.ManagedBy),
+			fmt.Sprintf("  %s %s", styleDim.Render("agents  "), strings.Join(row.Agents, ", ")),
+			fmt.Sprintf("  %s %s", styleDim.Render("update  "), row.UpdateStatus),
+		)
+		if row.Lock != nil && row.Lock.File != "" {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("lock    "), contract(row.Lock.File)))
 		}
 		if row.Source != "" {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("source "), row.Source))
@@ -1478,9 +1539,13 @@ func (m Model) renderFooter() string {
 			bindings = append(bindings, "c clone")
 		}
 	case ViewSkills:
-		bindings = append(bindings, "a add", "c check", "u update selected")
+		bindings = append(bindings, "a add", "c check")
+		if row, ok := m.currentSkill(); ok && agentskill.CanUpdate(row) {
+			bindings = append(bindings, "u update selected")
+		}
+		bindings = append(bindings, "A scope:"+m.capabilityScope.String())
 	case ViewMCP:
-		bindings = append(bindings, "r reload declarations")
+		bindings = append(bindings, "A scope:"+m.capabilityScope.String(), "r reload declarations")
 	default:
 		if row, ok := m.currentTask(); ok {
 			if command := taskRecoveryCommand(row); command != "" {
@@ -1488,10 +1553,14 @@ func (m Model) renderFooter() string {
 			} else {
 				bindings = append(bindings, "enter open")
 			}
+			bindings = append(bindings, "n add note", "N notes")
+			if row.Task.State == task.Hot || row.Task.State == task.Warm {
+				bindings = append(bindings, "p park")
+			}
+			bindings = append(bindings, "c next")
 		}
-		bindings = append(bindings, "n add note", "N notes", "p park", "c next")
 	}
-	if m.view == ViewRepos {
+	if m.view == ViewRepos || m.view == ViewSkills || m.view == ViewMCP {
 		bindings = append(bindings, "y copy")
 	}
 	bindings = append(bindings, "tab view", "/ filter", "? help")
@@ -1499,9 +1568,14 @@ func (m Model) renderFooter() string {
 		bindings = append(bindings, "H stats")
 	}
 	// `e` edits whichever configuration the current view is about.
-	if m.view == ViewFleet {
+	switch m.view {
+	case ViewFleet:
 		bindings = append(bindings, "e hosts")
-	} else if m.view != ViewMCP {
+	case ViewSkills, ViewMCP:
+		if _, err := m.capabilityFilePath(); err == nil && m.actions.EditFile != nil {
+			bindings = append(bindings, "e file")
+		}
+	default:
 		bindings = append(bindings, "e config")
 	}
 	if m.view != ViewSkills && m.view != ViewMCP {

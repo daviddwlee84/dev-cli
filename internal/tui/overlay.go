@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/daviddwlee84/dev-cli/internal/catalog"
+	"github.com/charmbracelet/lipgloss"
 )
 
 type overlayKind int
@@ -15,7 +15,7 @@ const (
 	overlayNone overlayKind = iota
 	overlayHelp
 	overlayRepoForm
-	overlayTryMenu
+	overlayActionMenu
 	overlayTryForm
 	overlayTryConfirm
 )
@@ -26,19 +26,26 @@ type formField struct {
 	input textinput.Model
 }
 
+type actionOption struct {
+	action listAction
+	label  string
+}
+
 // overlayState uses fixed arrays so copying Model also copies the mutable form
 // and menu state. A slice or pointer would violate Bubble Tea's value semantics.
 type overlayState struct {
 	kind       overlayKind
 	title      string
+	subject    string
+	detail     string
+	selection  selectionToken
 	target     TryRow
 	repoTarget RepoRow
 	action     TryAction
 
-	options      [8]TryAction
-	optionLabels [8]string
-	optionCount  int
-	optionIndex  int
+	options     [16]actionOption
+	optionCount int
+	optionIndex int
 
 	fields     [4]formField
 	fieldCount int
@@ -46,41 +53,16 @@ type overlayState struct {
 }
 
 func (m Model) openHelpOverlay() Model {
-	m.overlay = overlayState{kind: overlayHelp, title: "keyboard help"}
+	m.overlay = overlayState{kind: overlayHelp, title: "input help"}
 	m.err = nil
 	return m
 }
 
-func (m Model) openTryMenu(row TryRow) Model {
-	overlay := overlayState{kind: overlayTryMenu, title: "Try actions", target: row}
-	overlay.addOption(TryMark, "edit tags and note")
-	switch row.Item.Phase {
-	case catalog.PhaseActive:
-		overlay.addOption(TryDeprecate, "deprecate (metadata only)")
-	case catalog.PhaseDeprecated:
-		overlay.addOption(TryReactivate, "reactivate")
-	}
-	if row.Item.Phase != catalog.PhaseGraduated {
-		switch row.LocationState() {
-		case catalog.LocationPresent:
-			overlay.addOption(TryArchive, "archive locally (reversible move)")
-			overlay.addOption(TryGraduate, "graduate into a project")
-		case catalog.LocationArchived:
-			overlay.addOption(TryRestore, "restore from local archive")
-			overlay.addOption(TryGraduate, "graduate archived Try")
-		}
-	}
-	m.overlay = overlay
-	m.err = nil
-	return m
-}
-
-func (o *overlayState) addOption(action TryAction, label string) {
+func (o *overlayState) addOption(action listAction, label string) {
 	if o.optionCount >= len(o.options) {
 		return
 	}
-	o.options[o.optionCount] = action
-	o.optionLabels[o.optionCount] = label
+	o.options[o.optionCount] = actionOption{action: action, label: label}
 	o.optionCount++
 }
 
@@ -167,6 +149,13 @@ func (m Model) focusOverlayField(index int) (Model, tea.Cmd) {
 	return m, m.overlay.fields[index].input.Focus()
 }
 
+func (m *Model) moveActionMenu(delta int) {
+	if m.overlay.optionCount == 0 {
+		return
+	}
+	m.overlay.optionIndex = (m.overlay.optionIndex + delta + m.overlay.optionCount) % m.overlay.optionCount
+}
+
 func (m Model) updateOverlay(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.overlay.kind {
 	case overlayHelp:
@@ -176,37 +165,19 @@ func (m Model) updateOverlay(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case overlayTryMenu:
+	case overlayActionMenu:
 		switch message.String() {
 		case "esc", "q":
 			m.overlay = overlayState{}
 			return m, nil
 		case "j", "down":
-			if m.overlay.optionCount > 0 {
-				m.overlay.optionIndex = (m.overlay.optionIndex + 1) % m.overlay.optionCount
-			}
+			m.moveActionMenu(1)
 			return m, nil
 		case "k", "up":
-			if m.overlay.optionCount > 0 {
-				m.overlay.optionIndex = (m.overlay.optionIndex + m.overlay.optionCount - 1) % m.overlay.optionCount
-			}
+			m.moveActionMenu(-1)
 			return m, nil
 		case "enter":
-			if m.overlay.optionCount == 0 {
-				return m, nil
-			}
-			action := m.overlay.options[m.overlay.optionIndex]
-			row := m.overlay.target
-			switch action {
-			case TryMark, TryRestore, TryGraduate:
-				return m.openTryForm(action, row)
-			case TryArchive:
-				return m.openTryConfirmation(action, row)
-			case TryDeprecate, TryReactivate:
-				m.overlay = overlayState{}
-				m.status = string(action) + " in progress…"
-				return m, m.applyTry(TryRequest{Action: action, ID: row.Item.ID})
-			}
+			return m.runOverlayAction()
 		}
 		return m, nil
 
@@ -286,6 +257,35 @@ func (m Model) submitTryOverlay() (tea.Model, tea.Cmd) {
 	return m, m.applyTry(request)
 }
 
+type actionMenuLayout struct {
+	heading      string
+	firstOptionY int
+}
+
+func (m Model) buildActionMenuLayout() actionMenuLayout {
+	var builder strings.Builder
+	builder.WriteString("  " + m.overlay.subject + "\n")
+	first := 4 // title, blank, subject, blank
+	if m.overlay.detail != "" {
+		builder.WriteString("  " + m.overlay.detail + "\n")
+		first++
+	}
+	builder.WriteString("\n")
+	return actionMenuLayout{heading: builder.String(), firstOptionY: first}
+}
+
+func (m Model) actionMenuOptionAt(x, y int) (int, bool) {
+	layout := m.buildActionMenuLayout()
+	index := y - layout.firstOptionY
+	if index < 0 || index >= m.overlay.optionCount {
+		return 0, false
+	}
+	if x < 0 || x >= 2+lipgloss.Width(m.overlay.options[index].label) {
+		return 0, false
+	}
+	return index, true
+}
+
 func (m Model) renderOverlay() string {
 	var builder strings.Builder
 	builder.WriteString(styleTitle.Render("dev  "+strings.ToUpper(m.overlay.title)) + "\n\n")
@@ -293,21 +293,23 @@ func (m Model) renderOverlay() string {
 	case overlayHelp:
 		builder.WriteString("  navigation\n")
 		builder.WriteString("    j/k, arrows move · ctrl+d/u page · g/G first/last · tab/h/l switch view\n")
+		builder.WriteString("    left click row/tab · wheel 3 rows · right click row actions · click never opens\n")
 		builder.WriteString("    / filter · 0 clear · r reload · esc close/clear/quit · q quit\n\n")
 		builder.WriteString("  TASKS   enter open · n add note · N notes · p park · c next · 1/2/3 state · a done\n")
 		builder.WriteString("  REPOS   enter open · n add note · N notes · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
 		builder.WriteString("  FLEET   enter Herdr/SSH open · e edit remotes.toml · r refresh · read-only Git overview\n")
 		builder.WriteString("  TRY     enter open · n create · space actions · a history · O/R sort\n")
 		builder.WriteString("  REMOTE  enter open local · n/N notes when cloned · c clone (enter stay / o open)\n")
-		builder.WriteString("  SKILLS  a interactive add · c check updates · u update selected\n")
-		builder.WriteString("  MCP     static declarations only · r reload\n\n")
+		builder.WriteString("  SKILLS  a add · c check · u update · e open file · y copy · A context/all scope\n")
+		builder.WriteString("  MCP     static declarations only · e open config · y copy · A context/all scope · r reload\n\n")
 		builder.WriteString("  " + styleHelp.Render("? / esc / q close help"))
 
-	case overlayTryMenu:
-		builder.WriteString(fmt.Sprintf("  %s\n  %s\n\n", m.overlay.target.Item.DisplayName(), contract(m.overlay.target.Item.Live.CurrentPath)))
+	case overlayActionMenu:
+		layout := m.buildActionMenuLayout()
+		builder.WriteString(layout.heading)
 		for index := 0; index < m.overlay.optionCount; index++ {
 			prefix := "  "
-			line := fmt.Sprintf("%-12s %s", m.overlay.options[index], m.overlay.optionLabels[index])
+			line := m.overlay.options[index].label
 			if index == m.overlay.optionIndex {
 				prefix = "▸ "
 				line = styleSelected.Render(line)

@@ -63,7 +63,7 @@ func TestReloadUpdatedSkillChecksExactCheckout(t *testing.T) {
 	}
 	checked := ""
 	actions := Actions{
-		ReloadSkillsWithRepos: func(context.Context, []RepoRow) ([]agentskill.Skill, error) {
+		ReloadSkillsWithRepos: func(context.Context, []RepoRow, CapabilityScope) ([]agentskill.Skill, error) {
 			return append([]agentskill.Skill(nil), rows...), nil
 		},
 		CheckSkills: func(_ context.Context, rows []agentskill.Skill) []agentskill.Skill {

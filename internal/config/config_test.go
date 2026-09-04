@@ -295,6 +295,10 @@ func TestTUIToolConfigAndReservedKeys(t *testing.T) {
 	if got := c.EffectiveTools(); len(got) != 1 || got[0].Name != "nvim" {
 		t.Errorf("configured list should replace defaults: %+v", got)
 	}
+	c.TUI.Tools = []Tool{{Key: "A", Name: "allowed outside capabilities", Run: "true"}}
+	if err := c.Validate(); err != nil {
+		t.Errorf("contextual capability key should remain configurable: %v", err)
+	}
 
 	c.TUI.Tools = []Tool{{Key: "q", Name: "bad", Run: "echo nope"}}
 	if err := c.Validate(); err == nil || !strings.Contains(err.Error(), "quit") {

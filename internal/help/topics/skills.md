@@ -25,9 +25,17 @@ paths such as `.agents/skills` report registry compatibility; they do not claim
 the corresponding agent executables are installed.
 
 Project scope defaults to the exact current checkout, including a linked
-worktree. `--all` scans canonical configured repositories. The TUI reuses its
-accepted REPOS snapshot and additionally includes the startup checkout when it
-is a distinct linked worktree. Global paths are scanned once.
+worktree. `--all` scans canonical configured repositories. The TUI defaults to
+its startup context: inside Git that is only the exact checkout, while outside
+Git it is the accepted REPOS snapshot plus the ordinary startup directory.
+Uppercase `A` switches both SKILLS and MCP to all accepted repositories for the
+current TUI run. Global paths are scanned once.
+
+In the SKILLS view, `e` opens the row's primary installed `SKILL.md`, or the lock file
+for a missing row. The `y` copy menu offers its path (`p`), sanitized summary
+(`s`), sanitized source URL (`u`), or the whole raw local file (`f`). Raw copy is
+bounded to 1 MiB and does not contact a source, but the system clipboard receives
+the file verbatim.
 
 A missing lock is normal. Malformed, unreadable, oversized, unsupported, or
 ambiguous lock data is diagnosed without hiding valid neighboring rows. Absolute
