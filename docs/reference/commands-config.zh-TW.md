@@ -372,6 +372,9 @@ Managed worktree 的 bare interactive `dev done` 在 MERGED 後會增加 cleanup
 選擇：保留、retire 並保留 branch，或 retire 並刪除 contained branch。它會先
 preview covering runtime panes 與 agent 狀態；caller-owned Herdr workspace 交給
 fresh external coordinator。Explicit mode 與 non-interactive invocation 仍停在 DONE。
+Integration 前，interactive wizard 也可關閉 agent 仍為 idle/done 的 exact
+non-caller Herdr pane，或在 canonical target dirty 時改走 PR、選擇 typed `DROP`
+guarded discard，或取消。
 
 ## Configuration
 

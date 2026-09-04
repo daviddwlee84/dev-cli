@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Interactive `dev done` can now recover from two common fast-forward blockers
+  without dropping back to a raw error: it may close freshly revalidated
+  non-caller Herdr panes whose agents are still exactly `idle`/`done`, and it
+  can show canonical-checkout dirty paths before offering PR handoff, typed
+  `DROP` discard, or cancel. Working/blocked/waiting/unknown agents remain
+  non-closeable, and canonical discard is a guarded taskflow effect that
+  revalidates exact status, HEAD, and occupancy before integration continues.
+
 ## [0.2.15] - 2026-09-04
 
 ### Added

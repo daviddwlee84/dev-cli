@@ -441,6 +441,14 @@ retire and delete the freshly contained branch. A caller-owned Herdr workspace
 is closed only by a newly created external coordinator after a second fresh
 retirement audit; active agents and mixed workspaces remain blockers.
 
+Before MERGED, the same wizard can recover from selected local blockers. An
+exact non-caller Herdr pane whose recognized agent is still `idle` or `done`
+can be closed after confirmation and a fresh identity check. If local
+fast-forward is blocked only by dirty canonical-checkout bytes, dev lists the
+paths and offers PR handoff, typed `DROP` discard, or cancel. It never silently
+commits unrelated canonical bytes, and active or unknown agents are not
+closeable from this flow.
+
 ### A task does not have to mean a worktree
 
 Choose the lightest mode that preserves the boundary you need:

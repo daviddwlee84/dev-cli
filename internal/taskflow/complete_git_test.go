@@ -152,6 +152,48 @@ func TestCompletionRealGitFFWithoutRebasePushesBase(t *testing.T) {
 	assertResourcesRetained(t, fixture, fixture.worktree, "feature")
 }
 
+func TestCompletionRealGitFFCanDiscardCanonicalTargetUnderTypedPlan(t *testing.T) {
+	fixture := newLifecycleGitFixture(t, task.ModeWorktree, task.Hot)
+	completionCommit(t, fixture.worktree, "feature.txt", "feature\n", "feat: add feature")
+	canonicalOnly := filepath.Join(fixture.repo, "canonical-only.txt")
+	if err := os.WriteFile(canonicalOnly, []byte("drop\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	blocked, err := fixture.service.Plan(context.Background(), fixture.request(t, CompleteFFOptions{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if blocked.Availability != AvailabilityBlocked {
+		t.Fatalf("dirty canonical target availability=%s", blocked.Availability)
+	}
+
+	plan, err := fixture.service.Plan(context.Background(), fixture.request(t, CompleteFFOptions{
+		DiscardIntegrationTarget: true,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Availability != AvailabilityReady || plan.Confirmation.Kind != ConfirmationTyped || plan.Confirmation.Token != "DROP" {
+		t.Fatalf("discard plan availability=%s confirmation=%+v conditions=%+v", plan.Availability, plan.Confirmation, plan.Conditions())
+	}
+	if got := effectCodes(plan); !reflect.DeepEqual(got, []EffectCode{
+		EffectDiscardTarget, EffectSwitchBase, EffectMergeFF, EffectUpdateTask,
+	}) {
+		t.Fatalf("effects=%v", got)
+	}
+	result, err := fixture.service.Apply(context.Background(), plan, ApproveWithToken(plan.PlanID, "DROP"))
+	if err != nil {
+		t.Fatalf("Apply: %v steps=%+v", err, result.AttemptedSteps())
+	}
+	if _, err := os.Stat(canonicalOnly); !os.IsNotExist(err) {
+		t.Fatalf("canonical untracked path survived discard: %v", err)
+	}
+	if got := mustGitCommand(t, fixture.repo, "show", "main:feature.txt"); got != "feature" {
+		t.Fatalf("integrated feature=%q", got)
+	}
+}
+
 func TestCompletionRealGitFFRebasesOnlyWhenBaseHasCommits(t *testing.T) {
 	fixture := newLifecycleGitFixture(t, task.ModeWorktree, task.Hot)
 	oldFeature := completionCommit(t, fixture.worktree, "feature.txt", "feature\n", "feat: add feature")

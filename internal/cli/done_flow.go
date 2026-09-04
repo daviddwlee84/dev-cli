@@ -42,9 +42,10 @@ type doneOptions struct {
 }
 
 type doneSelection struct {
-	Integration doneIntegration
-	Dirty       flow.DirtyPolicy
-	Message     string
+	Integration              doneIntegration
+	Dirty                    flow.DirtyPolicy
+	Message                  string
+	DiscardIntegrationTarget bool
 }
 
 type doneChangeView struct {
@@ -220,7 +221,20 @@ func runDone(ctx context.Context, app *App, args []string, opts doneOptions) err
 	}
 
 	if err := donePlanReadinessError(selected, plan, selection); err != nil {
-		return err
+		if interactive && !opts.Yes {
+			var canceled bool
+			plan, selection, canceled, err = recoverDoneBlockers(ctx, app, p, session, selected, plan, selection, opts)
+			if err != nil {
+				return err
+			}
+			if canceled {
+				return nil
+			}
+			prompted = true
+		}
+		if err := donePlanReadinessError(selected, plan, selection); err != nil {
+			return err
+		}
 	}
 
 	approval := flow.Approve(plan.PlanID)
@@ -283,6 +297,7 @@ func doneActionOptions(selected task.Task, selection doneSelection, opts doneOpt
 	default:
 		return flow.CompleteFFOptions{
 			Dirty: selection.Dirty, CommitMessage: selection.Message, PushBase: opts.Push,
+			DiscardIntegrationTarget: selection.DiscardIntegrationTarget,
 		}
 	}
 }
@@ -462,6 +477,10 @@ func confirmDonePlan(app *App, p *prompter, t task.Task, plan flow.Plan) (bool, 
 	s := app.outStyle()
 	fmt.Fprintln(app.Out, "\n"+s.title("Summary"))
 	fmt.Fprintf(app.Out, "  %s        %s\n", s.label("task"), t.Title())
+	if donePlanHasEffect(plan, flow.EffectDiscardTarget) {
+		fmt.Fprintf(app.Out, "  %s       %s\n", s.label("canonical"),
+			s.danger("discard all staged, unstaged and untracked integration-target changes"))
+	}
 	switch {
 	case donePlanHasEffect(plan, flow.EffectCommitAll):
 		message := doneEffectDetails(plan, flow.EffectCommitAll)["message"]

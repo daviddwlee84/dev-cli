@@ -769,5 +769,8 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   Herdr workspace uses a fresh external coordinator; active/mixed workspaces
   still block. Non-interactive use remains report-only without `--ff`/`--pr`.
   Unique discard requires `DROP` or explicit `--dirty=discard --yes`.
+  Before integration, idle/done non-caller Herdr panes can be explicitly closed
+  and a dirty canonical target can switch to PR or enter a typed-`DROP` guarded
+  discard; active/unknown agents still fail closed.
 - **The stats sampler must be scheduled.** `dev stats` is empty until
   `dev stats backfill` runs once and `dev stats sample` runs periodically.

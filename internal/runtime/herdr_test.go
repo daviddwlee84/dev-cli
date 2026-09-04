@@ -104,6 +104,15 @@ func TestHerdrRunInPaneUsesExactTargetAndRedactsCommandErrors(t *testing.T) {
 	}
 }
 
+func TestHerdrClosePaneUsesExactTarget(t *testing.T) {
+	h := scriptedHerdr(t, herdrCall{
+		args: []string{"pane", "close", "w7:p12"}, out: `{"id":"1","result":{}}`,
+	})
+	if err := h.ClosePane(context.Background(), "w7:p12"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestHerdrOpenReuseStaysDetachedAndHasNoLaunchablePane(t *testing.T) {
 	h := scriptedHerdr(t,
 		herdrCall{args: []string{"workspace", "list"}, out: `{"id":"1","result":{"workspaces":[{"workspace_id":"w4"}]}}`},

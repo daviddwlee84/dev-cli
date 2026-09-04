@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -214,6 +215,83 @@ func TestDoneBareInteractiveChoosesFastForward(t *testing.T) {
 	}
 	if !strings.Contains(f.stdout.String(), "Integration (f=fast-forward") {
 		t.Fatalf("integration prompt missing:\n%s", f.stdout.String())
+	}
+}
+
+func TestDoneWizardCanDiscardDirtyCanonicalIntegrationTarget(t *testing.T) {
+	f := newStartFixture(t, &activityRuntime{name: "test"})
+	if err := f.run("--task", "canonical-discard", "--branch", "feat/canonical-discard", "--base", "main"); err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := f.app.Tasks.Resolve("canonical-discard")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(candidate.WorktreePath, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.GitIn(candidate.WorktreePath, "add", "feature.txt")
+	f.repo.GitIn(candidate.WorktreePath, "commit", "-m", "feat: canonical discard")
+	canonicalOnly := filepath.Join(f.repo.Root, "canonical-only.txt")
+	if err := os.WriteFile(canonicalOnly, []byte("drop\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := runDoneForTest(f, "f\nd\nDROP\n", true, "canonical-discard"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(canonicalOnly); !os.IsNotExist(err) {
+		t.Fatalf("canonical path survived discard: %v", err)
+	}
+	if got := f.repo.Git("show", "main:feature.txt"); got != "feature" {
+		t.Fatalf("integrated feature=%q", got)
+	}
+	for _, want := range []string{"Canonical checkout blocker", "canonical-only.txt", "Type DROP", "cleanup pending"} {
+		if !strings.Contains(f.stdout.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, f.stdout.String())
+		}
+	}
+}
+
+func TestDoneWizardCanCloseExactIdleHerdrPaneAndReplan(t *testing.T) {
+	baseRT := &activityRuntime{name: "herdr"}
+	rt := &currentPaneRuntime{activityRuntime: baseRT, currentPane: "wP:p2"}
+	f := newStartFixture(t, rt)
+	if err := f.run("--task", "idle-pane", "--branch", "feat/idle-pane", "--base", "main"); err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := f.app.Tasks.Resolve("idle-pane")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(candidate.WorktreePath, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.GitIn(candidate.WorktreePath, "add", "feature.txt")
+	f.repo.GitIn(candidate.WorktreePath, "commit", "-m", "feat: idle pane")
+	baseRT.sessions = []runtime.Session{{
+		Handle: "wP", Panes: []runtime.Pane{
+			{ID: "wP:p1", CWD: candidate.WorktreePath, Agent: "claude", AgentStatus: "idle"},
+			{ID: "wP:p2", CWD: candidate.WorktreePath},
+		},
+	}}
+	baseRT.activities = []runtime.AgentActivity{{
+		PaneID: "wP:p1", WorkspaceID: "wP", Agent: "claude", Status: "idle", CWD: candidate.WorktreePath,
+	}}
+	t.Setenv("HERDR_WORKSPACE_ID", "wP")
+	t.Setenv("HERDR_PANE_ID", "wP:p2")
+
+	if err := runDoneForTest(f, "f\ny\ny\n", true, "idle-pane"); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(baseRT.closePaneCalls, []string{"wP:p1"}) {
+		t.Fatalf("closed panes=%v", baseRT.closePaneCalls)
+	}
+	if got := f.repo.Git("show", "main:feature.txt"); got != "feature" {
+		t.Fatalf("integrated feature=%q", got)
+	}
+	if !strings.Contains(f.stdout.String(), "Idle agent blocker") || !strings.Contains(f.stdout.String(), "closed     Herdr pane wP:p1") {
+		t.Fatalf("idle pane recovery output missing:\n%s", f.stdout.String())
 	}
 }
 

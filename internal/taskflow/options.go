@@ -101,9 +101,10 @@ func (CompleteDirectOptions) isActionOptions() {}
 
 // CompleteFFOptions controls local fast-forward integration.
 type CompleteFFOptions struct {
-	Dirty         DirtyPolicy
-	CommitMessage string
-	PushBase      bool
+	Dirty                    DirtyPolicy
+	CommitMessage            string
+	PushBase                 bool
+	DiscardIntegrationTarget bool
 }
 
 func (CompleteFFOptions) Action() Action   { return CompleteFF }

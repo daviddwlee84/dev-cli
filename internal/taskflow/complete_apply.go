@@ -66,6 +66,35 @@ func (e *executionState) applyCompleteFF(ctx context.Context) (Result, error) {
 			if observed.mode == task.ModeBranch {
 				syncBranchIntegration(observed)
 			}
+		case EffectDiscardTarget:
+			fresh, inspectErr := e.service.inspectIntegrationTarget(ctx, observed, false)
+			if inspectErr != nil {
+				return e.fail(inspectErr, "refresh the canonical integration checkout before discarding")
+			}
+			if integrationAuthority(fresh) != integrationAuthority(observed.integration) {
+				return e.fail(staleBoundary("canonical integration checkout changed before discard"),
+					"review its current paths and rerun dev done")
+			}
+			beforeHead := fresh.head
+			err := e.run(effect, func() (string, error) {
+				if discardErr := e.service.discardAll(ctx, observed.repoPath); discardErr != nil {
+					return "canonical discard may have partially changed checkout content",
+						fmt.Errorf("discard canonical integration checkout changes: %w", discardErr)
+				}
+				return "discarded canonical integration checkout changes", nil
+			})
+			if err != nil {
+				e.partial = true
+				return e.fail(err, "the task branch remains intact; inspect canonical checkout content before retrying")
+			}
+			if err := e.service.refreshIntegrationTarget(ctx, observed, observed.integration.status.Branch); err != nil {
+				return e.fail(fmt.Errorf("verify canonical checkout after discard: %w", err),
+					"inspect the canonical checkout before retrying integration")
+			}
+			if observed.integration.head != beforeHead {
+				return e.fail(staleBoundary("canonical discard changed committed HEAD"),
+					"inspect the canonical branch before retrying")
+			}
 		case EffectRebaseBranch:
 			if err := e.service.revalidateFFBeforeIntegration(ctx, observed, integrationTouched); err != nil {
 				return e.fail(err, "refresh branch and canonical checkout authority before rebasing")
@@ -640,7 +669,7 @@ func (s *lifecycleService) revalidateIntegrationTarget(
 	compareAuthority bool,
 	expectedBranch string,
 ) error {
-	fresh, err := s.inspectIntegrationTarget(ctx, observed)
+	fresh, err := s.inspectIntegrationTarget(ctx, observed, true)
 	if err != nil {
 		return err
 	}
@@ -659,6 +688,7 @@ func (s *lifecycleService) revalidateIntegrationTarget(
 func (s *lifecycleService) inspectIntegrationTarget(
 	ctx context.Context,
 	observed *lifecycleObservation,
+	requireClean bool,
 ) (completionIntegrationObservation, error) {
 	var fresh completionIntegrationObservation
 	registered, err := s.resolveWorktree(ctx, observed.repoPath, observed.repoPath)
@@ -675,7 +705,7 @@ func (s *lifecycleService) inspectIntegrationTarget(
 	if fresh.statusErr != nil {
 		return fresh, fresh.statusErr
 	}
-	if fresh.status.Dirty() || fresh.status.Conflicted > 0 {
+	if fresh.status.Conflicted > 0 || requireClean && fresh.status.Dirty() {
 		return fresh, fmt.Errorf("canonical integration checkout is not clean: %s", fresh.status.Breakdown())
 	}
 	fresh.head, fresh.headErr = s.gitRun(ctx, observed.repoPath, "rev-parse", "HEAD")
@@ -709,7 +739,7 @@ func (s *lifecycleService) refreshIntegrationTarget(
 	observed *lifecycleObservation,
 	expectedBranch string,
 ) error {
-	fresh, err := s.inspectIntegrationTarget(ctx, observed)
+	fresh, err := s.inspectIntegrationTarget(ctx, observed, true)
 	if err != nil {
 		return err
 	}
