@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Bare interactive `dev done` now follows a successful managed-worktree merge
+  with a cleanup wizard that previews covering runtime panes and agent states,
+  then offers keep, retire while retaining the branch, or retire and delete the
+  freshly contained branch. Caller-owned Herdr workspaces are handed to a new
+  exact-pane external coordinator; active agents, mixed workspaces, stale
+  authority, and unapproved unknown status still fail closed.
+- Source checkouts include `mise.toml` pinning Go 1.26.4, matching the module
+  toolchain used by development and CI.
+
+### Changed
+
+- The trusted shell wrapper now carries a narrow post-exit retirement action
+  on a private side channel, allowing it to leave the target checkout before a
+  fresh `dev retire` without evaluating ordinary command output as shell code.
+
 ## [0.2.14] - 2026-09-04
 
 ### Added

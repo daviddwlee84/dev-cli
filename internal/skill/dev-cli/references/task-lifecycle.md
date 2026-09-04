@@ -276,12 +276,19 @@ destructive `--dirty=discard --yes`. Ignored files are never discarded. If an
 active writer changes the checkout during confirmation or immediately after a
 commit, integration stops and the command must be rerun after that writer exits.
 
+After a bare interactive managed-worktree completion reaches MERGED, the
+wizard previews covering runtime panes and agents. It can keep everything,
+retire while preserving the branch, or retire and delete the contained branch.
+Caller-owned Herdr workspaces are handed to a freshly created external
+coordinator; unknown status needs explicit approval and active/mixed sessions
+remain blockers.
+
 For branch/worktree tasks, non-interactive `dev done` without an integration
 mode remains report-only. Direct tasks still finish without one. Conflicted
 checkouts always require manual resolution.
 
-`--ff` integrates and records DONE/MERGED but always leaves runtime, worktree
-and branch intact — cleanup belongs to `dev retire`. `--pr` only publishes and
+Explicit `--ff` integrates and records DONE/MERGED but always leaves runtime,
+worktree and branch intact — cleanup belongs to `dev retire`. `--pr` only publishes and
 opens review; after a commit-preserving external merge use
 `dev done --merged --base-ref <ref>`. Squash requires explicit
 `--confirm-squash <commit>` attestation. `--delete-branch` and `--keep-worktree`
@@ -289,7 +296,7 @@ are deprecated on `done`: the branch is deleted only by
 `dev retire --delete-branch`, and only when git agrees it is fully contained in
 the base. "Merged" is not always "finished", so branches survive by default.
 
-Cleanup is never automatic from agent lifecycle state. Run `dev retire` from a
-different checkout/runtime; it closes eligible sessions, waits for release,
-revalidates Git, then removes without force. Read `agent-retirement.md` before
-retiring an agent-owned checkout.
+Cleanup is never inferred from agent lifecycle state. A user must select it in
+the post-MERGED wizard or run `dev retire` from a different checkout/runtime;
+both paths revalidate, close eligible sessions, wait for release, and remove
+without force. Read `agent-retirement.md` before retiring an agent-owned checkout.

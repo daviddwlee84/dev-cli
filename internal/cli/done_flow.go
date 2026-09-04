@@ -256,7 +256,14 @@ func runDone(ctx context.Context, app *App, args []string, opts doneOptions) err
 	if err != nil {
 		return err
 	}
-	return renderDoneSuccess(app, selected, final, plan, result, doneView(initial))
+	offerCleanup := shouldOfferDoneCleanup(selected, opts, interactive, plan.Action)
+	if err := renderDoneSuccess(app, selected, final, plan, result, doneView(initial), offerCleanup); err != nil {
+		return err
+	}
+	if offerCleanup {
+		return runDoneCleanupWizard(ctx, app, p, final)
+	}
+	return nil
 }
 
 func doneActionOptions(selected task.Task, selection doneSelection, opts doneOptions) flow.ActionOptions {
@@ -512,7 +519,7 @@ func presentDoneApplyError(result flow.Result, err error) error {
 	return err
 }
 
-func renderDoneSuccess(app *App, selected, final task.Task, plan flow.Plan, result flow.Result, initial donePlanView) error {
+func renderDoneSuccess(app *App, selected, final task.Task, plan flow.Plan, result flow.Result, initial donePlanView, offerCleanup bool) error {
 	switch plan.Action {
 	case flow.ReviewHandoff:
 		if result.Milestone != flow.MilestoneReviewReady {
@@ -546,7 +553,11 @@ func renderDoneSuccess(app *App, selected, final task.Task, plan flow.Plan, resu
 	}
 	fmt.Fprintf(app.Out, "%s %s merged into %s\n", task.Done.Icon(), final.Title(), view.Base)
 	fmt.Fprintln(app.Out, "   MERGED · runtime and worktree kept")
-	fmt.Fprintf(app.Out, "   cleanup pending · run `dev retire %s` from outside its workspace\n", final.ID)
+	if offerCleanup {
+		fmt.Fprintln(app.Out, "   cleanup choice follows after a fresh runtime and agent preview")
+	} else {
+		fmt.Fprintf(app.Out, "   cleanup pending · run `dev retire %s` from outside its workspace\n", final.ID)
+	}
 	return nil
 }
 

@@ -55,6 +55,11 @@ func (r *activityRuntime) OpenWorktree(_ context.Context, _, label string) (runt
 	r.openLabels = append(r.openLabels, label)
 	return r.openResult, r.openErr
 }
+func (r *activityRuntime) OpenExternalCoordinator(_ context.Context, _, label string) (runtime.OpenResult, error) {
+	r.openCalls++
+	r.openLabels = append(r.openLabels, label)
+	return r.openResult, r.openErr
+}
 func (r *activityRuntime) Close(_ context.Context, handle string) error {
 	r.closeCalls = append(r.closeCalls, handle)
 	return r.closeErr

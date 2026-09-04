@@ -88,7 +88,7 @@ dev park --next "add the regression test" --wip    # → warm, session closed
 dev park --cold --push                             # → cold, worktree removed
 dev resume "token refresh"                         # → hot, rebuilt if needed
 dev prepare --session claude:<uuid>                # arm final transcript handoff
-dev done                                           # TTY wizard: inspect dirty state, then FF/PR/merged
+dev done                                           # TTY wizard: integrate, then optionally preview/retire cleanup
 dev done --ff                                      # → done/MERGED; resources kept
 dev retire "token refresh"                         # external-only cleanup → RETIRED
 dev sweep --ephemeral-worktrees --json              # strict V1 report only
@@ -763,9 +763,11 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 - **Removing a worktree never deletes the branch.** Those are separate
   decisions; conflating them is how work gets lost.
 - **Bare `dev done` is interactive only on a TTY.** It reports branch relation
-  and dirty-content equivalence, then offers commit/discard and FF/PR/merged
-  handling. It records DONE without closing/removing resources; Retire is
-  separate. Non-interactive use remains report-only without `--ff`/`--pr`. Unique discard
-  requires `DROP` or explicit `--dirty=discard --yes`.
+  and dirty-content equivalence, then offers commit/discard and FF/PR handling.
+  After a managed worktree reaches MERGED it previews covering runtime agents
+  and offers keep, retire, or retire plus contained-branch deletion. A caller
+  Herdr workspace uses a fresh external coordinator; active/mixed workspaces
+  still block. Non-interactive use remains report-only without `--ff`/`--pr`.
+  Unique discard requires `DROP` or explicit `--dirty=discard --yes`.
 - **The stats sampler must be scheduled.** `dev stats` is empty until
   `dev stats backfill` runs once and `dev stats sample` runs periodically.

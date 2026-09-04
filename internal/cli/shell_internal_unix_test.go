@@ -68,10 +68,13 @@ fail_status=$?
 set -e
 dev cd "$DEV_TEST_TARGET"
 cd_status=$?
+dev done-retire "$DEV_TEST_TARGET" task-id
+retire_status=$?
 printf 'stream_status=%s\nfail_status=%s\ncd_status=%s\npwd=%s\n' \
   "$stream_status" "$fail_status" "$cd_status" "$PWD"
+printf 'retire_status=%s\n' "$retire_status"
 dev __complete
-if [ -n "$(find "$TMPDIR" -name 'dev-cd.*' -print -quit)" ]; then
+if [ -n "$(find "$TMPDIR" \( -name 'dev-cd.*' -o -name 'dev-action.*' \) -print -quit)" ]; then
   printf 'leaked=yes\n'
 else
   printf 'leaked=no\n'
@@ -87,7 +90,8 @@ fi
 			}
 			for _, want := range []string{
 				"streamed stdout\n", "stream_status=0\n", "fail_status=7\n",
-				"cd_status=0\n", "pwd=" + target + "\n", "completion-direct\n", "leaked=no\n",
+				"cd_status=0\n", "pwd=" + target + "\n", "retire_status=0\n",
+				"retired task-id at " + target + "\n", "completion-direct\n", "leaked=no\n",
 			} {
 				if !strings.Contains(stdout.String(), want) {
 					t.Errorf("stdout missing %q:\n%s", want, stdout.String())
@@ -148,10 +152,13 @@ dev fail
 set fail_status $status
 dev cd "$DEV_TEST_TARGET"
 set cd_status $status
+dev done-retire "$DEV_TEST_TARGET" task-id
+set retire_status $status
 printf 'stream_status=%s\nfail_status=%s\ncd_status=%s\npwd=%s\n' \
   $stream_status $fail_status $cd_status $PWD
+printf 'retire_status=%s\n' $retire_status
 dev __complete
-if test -n (find "$TMPDIR" -name 'dev-cd.*' -print -quit)
+if test -n (find "$TMPDIR" \( -name 'dev-cd.*' -o -name 'dev-action.*' \) -print -quit)
     printf 'leaked=yes\n'
 else
     printf 'leaked=no\n'
@@ -167,7 +174,8 @@ end
 	}
 	for _, want := range []string{
 		"streamed stdout\n", "stream_status=0\n", "fail_status=7\n",
-		"cd_status=0\n", "pwd=" + target + "\n", "completion-direct\n", "leaked=no\n",
+		"cd_status=0\n", "pwd=" + target + "\n", "retire_status=0\n",
+		"retired task-id at " + target + "\n", "completion-direct\n", "leaked=no\n",
 	} {
 		if !strings.Contains(stdout.String(), want) {
 			t.Errorf("stdout missing %q:\n%s", want, stdout.String())
@@ -204,6 +212,15 @@ case "${1:-}" in
     ;;
   cd)
     printf '%s\0' "$2" >&3
+    ;;
+  done-retire)
+    printf '%s\0' "$2" >&3
+    printf 'retire\0%s\0false\0false\0' "$3" >&4
+    ;;
+  retire)
+    shift
+    if [ "${1:-}" = "--" ]; then shift; fi
+    printf 'retired %s at %s\n' "$1" "$PWD"
     ;;
   __complete|__completeNoDesc)
     if [ -n "${DEV_SHELL_CD_FD:-}" ]; then

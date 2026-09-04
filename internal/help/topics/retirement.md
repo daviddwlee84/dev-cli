@@ -11,9 +11,10 @@ Use three separate milestones:
    post-SpecStory finalizer can commit the exact final transcript. A manual
    external finalizer must pass `--writer-stopped`; a Claude SessionEnd observer
    can provide the same durable proof without staging during teardown.
-2. **MERGED** — an external coordinator runs `dev done --ff`, or verifies an
-   external merge with `dev done --merged --base-ref <ref>`. Runtime and
-   worktree remain intact.
+2. **MERGED** — `dev done --ff`, or external-merge verification with
+   `dev done --merged --base-ref <ref>`, records DONE. Explicit and
+   non-interactive completion keeps runtime/worktree/branch. Bare interactive
+   completion may continue into a separately confirmed cleanup preview.
 3. **RETIRED** — from outside the target workspace run `dev retire`. It closes
    eligible runtime sessions, waits until they disappear, revalidates Git, and
    removes the worktree without force.
@@ -28,6 +29,13 @@ Completed steps remain visible if a later step fails; no rollback is implied.
 Retirement never overrides `working`, `blocked`, or `waiting` agents. Unknown
 status needs external `--close-unknown`. A workspace containing panes outside
 the target is mixed-purpose and must be reorganized or closed manually.
+
+The bare interactive `dev done` cleanup preview shows those workspace panes and
+agent states before offering keep, retire, or retire plus branch deletion. If
+the target is the caller's Herdr workspace, dev creates a fresh exact-root-pane
+workspace in the canonical checkout and hands a short-lived, single-use intent
+to that external coordinator. It revalidates task, checkout HEAD, runtime
+fingerprint, and the full ordinary retirement plan before closing anything.
 
 Raw `git worktree remove --force` and configured external tools bypass these
 protections. Do not use them on an agent-owned checkout. Existing expert CLI

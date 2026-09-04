@@ -45,6 +45,13 @@ first, offering commit or discard interactively, or taking an explicit
 `--keep-worktree` and `--delete-branch` flags remain accepted on `dev done`
 only to fail loudly and point at `dev retire`.
 
+After a bare interactive `dev done` reaches MERGED, its cleanup step performs
+a read-only retirement preview and asks whether to keep, retire, or retire and
+delete the contained branch. Covering Herdr panes and recognized agent states
+are shown before approval. Caller-owned Herdr workspaces use a fresh exact-pane
+external coordinator; working/blocked/waiting agents and mixed workspaces are
+never overridden.
+
 For a read-only explanation before acting, render or open the generic
 `workspace-closeout` recipe from the exact checkout:
 

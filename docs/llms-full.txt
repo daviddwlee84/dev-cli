@@ -705,13 +705,14 @@ This pushes the branch and opens a GitHub pull request or GitLab merge request w
 
 Running `dev done` with neither `--ff` nor `--pr` on an interactive terminal opens a finish wizard instead of failing. It never guesses which integration mode you want; it walks the actual state of the checkout and asks only what it cannot infer.
 
-The wizard runs in up to three steps:
+The wizard runs in up to four steps:
 
 1. **Preflight.** It reports the branch, the base, the branch/base commit relation (ahead/behind, or already contained), and — if the checkout is dirty — a path-by-path breakdown of which changes already match the base tree and which are unique.
 2. **Dirty changes**, only if the checkout is dirty: `c` commits everything with a message you supply, `d` discards everything (tracked and untracked), `q` cancels with nothing changed. Discarding unique content — anything not already equivalent to the base — requires typing `DROP` at a follow-up confirmation; discarding paths that already match the base does not.
 3. **Integration**, only if neither `--ff` nor `--pr` was passed and the branch is not already fully contained in the base: `f` rebases the branch onto the base and fast-forwards it (same as `--ff`), `p` pushes and opens a pull/merge request (same as `--pr`), `q` cancels. When the branch is already contained in the base, the wizard skips this step and can record DONE; cleanup still belongs to `dev retire`.
+4. **Cleanup**, only after a managed worktree actually reaches MERGED: `k` keeps runtime/worktree/branch (the default), `r` retires while preserving the branch, and `d` retires and deletes the freshly contained branch. The preview lists covering workspace panes and agent states. Idle/done agents are closeable after confirmation; unknown status needs a separate acknowledgement; active agents and mixed workspaces block cleanup. If the caller is inside the Herdr workspace being retired, dev creates a fresh canonical-checkout coordinator workspace and revalidates every identity there before closing the original workspace.
 
-Passing `--ff` or `--pr` up front answers step 3 for the wizard, so it only prompts for whatever the flags left unresolved — with both a clean tree and an explicit integration flag, nothing is prompted at all. A final summary lists the dirty action and the integration mode before anything runs; confirm it, or add `--yes` to skip that confirmation once the plan is fully specified by flags. If the checkout or branch changes while the plan is open, `dev` detects the drift after confirmation and refuses to apply the stale plan — rerun `dev done` to see the current state.
+Passing `--ff` or `--pr` up front answers step 3 and keeps the compatibility behavior: explicit/non-interactive completion does not enter step 4. A final integration summary lists the dirty action and integration mode before anything runs. Cleanup is a separate post-MERGED choice; cancel or EOF there means keep, not rollback. If checkout, branch, task, runtime, or agent evidence changes while either plan is open, dev refuses the stale cleanup and leaves the task DONE.
 
 Non-interactively — no TTY, or a script — the wizard never prompts. `dev done` with no integration flag just reports the same preflight and exits; pass `--ff` or `--pr` explicitly. A dirty checkout defaults to failing outside a TTY (`--dirty auto` behaves like `--dirty fail`), so scripts choose an explicit policy:
 
@@ -1878,6 +1879,13 @@ first, offering commit or discard interactively, or taking an explicit
 [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) for that wizard. The
 `--keep-worktree` and `--delete-branch` flags remain accepted on `dev done`
 only to fail loudly and point at `dev retire`.
+
+After a bare interactive `dev done` reaches MERGED, its cleanup step performs
+a read-only retirement preview and asks whether to keep, retire, or retire and
+delete the contained branch. Covering Herdr panes and recognized agent states
+are shown before approval. Caller-owned Herdr workspaces use a fresh exact-pane
+external coordinator; working/blocked/waiting agents and mixed workspaces are
+never overridden.
 
 For a read-only explanation before acting, render or open the generic
 `workspace-closeout` recipe from the exact checkout:
@@ -4246,6 +4254,12 @@ warning, while `--delete-branch` fails with guidance to use
 `--confirm-squash <merge-commit>` as explicit operator attestation for a squash
 result; provider status never implies that attestation.
 
+For a managed worktree, bare interactive `dev done` adds a post-MERGED cleanup
+choice: keep, retire while keeping the branch, or retire and delete the
+contained branch. It previews covering runtime panes and agent states first.
+Caller-owned Herdr workspaces are handed to a fresh external coordinator;
+explicit modes and non-interactive invocations continue to stop at DONE.
+
 ## Configuration
 
 ```bash
@@ -4496,7 +4510,7 @@ eval "$(dev shell-init zsh)"
 dev shell-init fish | source
 ```
 
-The trusted `shell-init` output defines a wrapper because a child process cannot change its parent's working directory. For navigation commands, that wrapper reads a NUL-terminated path from a private child-only file descriptor and calls `builtin cd`; it does not evaluate ordinary `dev` command output as shell code.
+The trusted `shell-init` output defines a wrapper because a child process cannot change its parent's working directory. For navigation and post-MERGED retirement, that wrapper reads a NUL-terminated path plus a narrow fixed retire action from private child-only file descriptors and calls `builtin cd` before invoking the exact task ID. It does not evaluate ordinary `dev` output or arbitrary shell code.
 
 ## Complete generated command reference
 
@@ -6442,7 +6456,7 @@ These were historical gaps and should not be reintroduced as limitations:
 
 - `dev done` opens an interactive finish wizard on a TTY when `--ff`/`--pr` are both omitted, analyzing a dirty checkout against the base (commit, discard, or cancel) instead of rejecting any uncommitted change outright; a non-interactive caller still passes an explicit `--dirty` policy and `--yes` for a destructive discard.
 - Human-readable output now carries semantic color (`--color auto|always|never`), automatically disabled when `NO_COLOR` is set, `TERM=dumb`, or stdout/stderr is not a terminal.
-- `dev done` records MERGED only: it never closes the invoking runtime, removes a worktree, or deletes a branch. Cleanup moved to `dev retire`, which runs from outside the target workspace, refuses active agents and mixed-purpose workspaces, and revalidates Git state after every runtime closure. `dev done --delete-branch` is now an error pointing at `dev retire --delete-branch`, and `--keep-worktree` warns as a no-op.
+- Explicit and non-interactive `dev done` records MERGED only and keeps runtime/worktree/branch. Bare interactive completion may continue into a separate cleanup wizard: it previews runtime agents and can hand caller-owned Herdr cleanup to a newly created external coordinator, which still uses ordinary `dev retire` guards. Active agents and mixed-purpose workspaces remain blockers. `dev done --delete-branch` remains an error pointing at `dev retire --delete-branch`, and `--keep-worktree` warns as a no-op.
 - `dev sweep --merged-worktrees` enumerates linked worktrees from Git rather than from the task registry, so unmanaged worktrees whose branches are contained in the base become retirable. Containment alone is never permission; dirty state, unfinalized artifacts, in-progress Git operations, and runtime refusals all still block it, and branches survive unless `--delete-branches` is passed.
 - `dev sweep --ephemeral-worktrees` adds a separate schema-v1 Claude Workflow report. The path/branch convention is only discovery; exact bounded provider linkage plus fresh Git/task/artifact/caller/runtime evidence authorizes TTY/per-item apply. Apply locks and re-fingerprints, removes without force, retains branches by default, and allows only explicit-base unchanged/contained/zero-unique `branch -d`.
 - `dev sweep` reports a branch-backed task whose branch Git no longer has as dead and offers to reap the record. Such a task cannot be finished, resumed, or retired, because every one of those paths resolves the branch first; the suggestion stays report-only until `--apply`.
@@ -7656,13 +7670,14 @@ dev retire <task> --delete-branch
 
 在 interactive terminal 上，省略 `--ff` 與 `--pr` 執行 `dev done` 不會直接失敗，而是開啟 finish wizard。它不會猜你要哪種 integration mode，而是先檢視 checkout 的實際狀態，只詢問它無法推斷的部分。
 
-Wizard 最多分三步：
+Wizard 最多分四步：
 
 1. **Preflight。** 回報 branch、base、branch/base 的 commit relation（ahead/behind，或已被 base 包含），以及 — 若 checkout 是 dirty — 逐 path 說明哪些變更已與 base tree 相同、哪些是 unique。
 2. **Dirty changes**，僅在 checkout 為 dirty 時出現：`c` 用你輸入的訊息 commit 全部變更，`d` discard 全部（tracked 與 untracked），`q` 取消且不做任何變更。Discard unique content — 尚未與 base 等價的內容 — 需在後續確認時輸入 `DROP`；只 discard 與 base 相符的 path 則不需要。
 3. **Integration**，僅在未傳入 `--ff` 或 `--pr`、且 branch 尚未完全被 base 包含時出現：`f` 把 branch rebase 到 base 再 fast-forward（等同 `--ff`），`p` push 並開啟 pull/merge request（等同 `--pr`），`q` 取消。Branch 已被 base 包含時，wizard 會跳過此步驟，直接記錄 DONE/MERGED；runtime/worktree cleanup 仍留給之後的 `dev retire`。
+4. **Cleanup**，僅在 managed worktree 確實到達 MERGED 後出現：`k` 保留 runtime/worktree/branch（預設）、`r` retire 但保留 branch、`d` retire 並刪除 freshly contained branch。Preview 會列出 covering workspace panes 與 agent 狀態；idle/done 可在確認後關閉，unknown 需要另外核可，active agent 與 mixed workspace 會阻擋 cleanup。若 caller 位於要回收的 Herdr workspace，dev 會在 canonical checkout 建立全新的外部 coordinator workspace，並在那裡重新驗證所有 identity 後才關閉原 workspace。
 
-事先傳入 `--ff` 或 `--pr` 等於幫 wizard 回答了第 3 步，因此它只會詢問 flags 未解決的部分 —— 若 tree 乾淨且已明確給出 integration flag，則完全不會詢問。動作執行前會先列出 dirty action 與 integration mode 的摘要；確認它，或在 plan 已由 flags 完全指定時加上 `--yes` 跳過確認。若 plan 開啟期間 checkout 或 branch 發生變化，`dev` 會在確認後偵測到 drift 並拒絕套用過期的 plan —— 重新執行 `dev done` 以取得目前狀態。
+事先傳入 `--ff` 或 `--pr` 會保留 compatibility 行為：explicit/non-interactive completion 不進入第 4 步。Integration 執行前仍先列出 dirty action 與 integration mode；cleanup 是 MERGED 後的獨立選擇，取消或 EOF 代表保留，而不是回滾 integration。Checkout、branch、task、runtime 或 agent evidence 若改變，cleanup 會 stale/fail-closed 並留下 DONE task。
 
 Non-interactive 情境 —— 沒有 TTY，或在 script 中 —— wizard 完全不會詢問。未指定 integration flag 時 `dev done` 只會回報同樣的 preflight 後結束；請明確傳入 `--ff` 或 `--pr`。Dirty checkout 在沒有 TTY 時預設失敗（`--dirty auto` 等同 `--dirty fail`），因此 script 應選擇明確的 policy：
 
@@ -8756,6 +8771,12 @@ interactive 時提供 commit 或 discard，在 script 中則接受明確的 `--d
 policy。該 wizard 詳見[變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/)。
 `dev done` 上的 `--keep-worktree` 與 `--delete-branch` 之所以仍被接受，只是為了
 明確報錯並指向 `dev retire`。
+
+Bare interactive `dev done` 到達 MERGED 後，cleanup step 會先做 read-only
+retirement preview，再詢問保留、retire，或 retire 並刪除 contained branch。
+核可前會列出 covering Herdr panes 與 recognized agent 狀態；caller-owned Herdr
+workspace 改由 fresh exact-pane external coordinator 處理。Working、blocked、
+waiting agent 與 mixed workspace 永遠不能被 override。
 
 ## Flow 中的 DONE 與 Retire
 
@@ -11017,6 +11038,11 @@ Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`�
 
 `--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--push` 會依 selected integration push 對應 branch/base。成功的 local 或 externally verified integration 只記錄 DONE/MERGED，永遠保留 runtime、worktree 與 branch 給獨立的 `dev retire`；`--keep-worktree` 只保留為 no-op compatibility warning，`--delete-branch` 則會報錯並指向 `dev retire --delete-branch`。`--merged` 可用 `--confirm-squash <merge-commit>` 對 squash result 作明確 operator attestation，不能由 provider status 自動推斷。
 
+Managed worktree 的 bare interactive `dev done` 在 MERGED 後會增加 cleanup
+選擇：保留、retire 並保留 branch，或 retire 並刪除 contained branch。它會先
+preview covering runtime panes 與 agent 狀態；caller-owned Herdr workspace 交給
+fresh external coordinator。Explicit mode 與 non-interactive invocation 仍停在 DONE。
+
 ## Configuration
 
 ```bash
@@ -11257,7 +11283,7 @@ eval "$(dev shell-init zsh)"
 dev shell-init fish | source
 ```
 
-Child process 不能改變 parent working directory，因此受信任的 `shell-init` output 會定義 wrapper。Navigation command 執行時，wrapper 從 private child-only file descriptor 讀取 NUL-terminated path，再呼叫 `builtin cd`；它不會把一般 `dev` command output 當成 shell code evaluate。
+Child process 不能改變 parent working directory，因此受信任的 `shell-init` output 會定義 wrapper。Navigation 與 post-MERGED retirement 執行時，wrapper 從 private child-only file descriptors 讀取 NUL-terminated path 與窄化的固定 retire action，先 `builtin cd` 再以 exact task ID 執行；它不會 evaluate 一般 `dev` output 或 arbitrary shell code。
 
 ## 完整 generated command reference
 
@@ -13178,7 +13204,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 
 - `dev done` 在省略 `--ff`/`--pr` 且為 TTY 時會開啟 interactive finish wizard，把 dirty checkout 拿去跟 base 比較（commit、discard 或 cancel），不再直接拒絕任何 uncommitted change；non-interactive caller 仍須明確傳入 `--dirty` policy，且 destructive discard 需要 `--yes`。
 - Human-readable output 現在具備 semantic color（`--color auto|always|never`），在 `NO_COLOR` 已設定、`TERM=dumb`，或 stdout/stderr 不是 terminal 時會自動停用。
-- `dev done` 只記錄 MERGED：它不會關閉呼叫端 runtime、移除 worktree 或刪除 branch。Cleanup 已移交 `dev retire`，後者必須從目標 workspace 之外執行，會拒絕 active agent 與 mixed-purpose workspace，並在每次關閉 runtime 之後重新驗證 Git state。`dev done --delete-branch` 現在會直接報錯並指向 `dev retire --delete-branch`，`--keep-worktree` 則以 no-op 警告。
+- Explicit 與 non-interactive `dev done` 只記錄 MERGED，並保留 runtime/worktree/branch。Bare interactive completion 可接續獨立 cleanup wizard：先 preview runtime agents，再把 caller-owned Herdr cleanup 交給 freshly created external coordinator，但仍使用普通 `dev retire` guards。Active agent 與 mixed-purpose workspace 仍會阻擋。`dev done --delete-branch` 仍直接報錯並指向 `dev retire --delete-branch`，`--keep-worktree` 則以 no-op 警告。
 - `dev sweep --merged-worktrees` 直接從 Git 列舉 linked worktrees，而非從 task registry，因此 branch 已被 base 包含的 unmanaged worktree 也能被 retire。Containment 本身絕不等於許可；dirty state、未 finalize 的 artifact、進行中的 Git operation 與 runtime 拒絕條件都仍會阻擋，且未加 `--delete-branches` 時 branch 一律保留。
 - `dev sweep --ephemeral-worktrees` 加入獨立的 schema-v1 Claude Workflow report。Path/branch convention 只供 discovery；只有 exact bounded provider linkage 與 fresh Git/task/artifact/caller/runtime evidence 才能授權 TTY/per-item apply。Apply 會 lock 並重新計算 fingerprint，以 non-force 移除，預設保留 branch；只有 explicit-base、unchanged、contained、zero-unique proof 才能執行 `branch -d`。
 - `dev sweep` 會把 branch 已不存在於 Git 的 branch-backed task 視為 dead，並提供 reap 該 record 的建議。這種 task 無法 finish、resume 或 retire，因為這些路徑都必須先解析 branch；在 `--apply` 之前該建議仍只是報告。

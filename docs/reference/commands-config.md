@@ -427,6 +427,12 @@ warning, while `--delete-branch` fails with guidance to use
 `--confirm-squash <merge-commit>` as explicit operator attestation for a squash
 result; provider status never implies that attestation.
 
+For a managed worktree, bare interactive `dev done` adds a post-MERGED cleanup
+choice: keep, retire while keeping the branch, or retire and delete the
+contained branch. It previews covering runtime panes and agent states first.
+Caller-owned Herdr workspaces are handed to a fresh external coordinator;
+explicit modes and non-interactive invocations continue to stop at DONE.
+
 ## Configuration
 
 ```bash
@@ -677,7 +683,7 @@ eval "$(dev shell-init zsh)"
 dev shell-init fish | source
 ```
 
-The trusted `shell-init` output defines a wrapper because a child process cannot change its parent's working directory. For navigation commands, that wrapper reads a NUL-terminated path from a private child-only file descriptor and calls `builtin cd`; it does not evaluate ordinary `dev` command output as shell code.
+The trusted `shell-init` output defines a wrapper because a child process cannot change its parent's working directory. For navigation and post-MERGED retirement, that wrapper reads a NUL-terminated path plus a narrow fixed retire action from private child-only file descriptors and calls `builtin cd` before invoking the exact task ID. It does not evaluate ordinary `dev` output or arbitrary shell code.
 
 ## Complete generated command reference
 

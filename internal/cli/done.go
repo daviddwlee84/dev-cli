@@ -44,8 +44,10 @@ cancel. Unique content requires typing DROP before discard. Scripts select an
 explicit --dirty policy; destructive discard also requires --yes.
 
 A successful local or externally verified merge records DONE, meaning MERGED
-with cleanup possibly pending. It never closes the invoking runtime, removes a
-worktree, or deletes a branch. Run dev retire later from outside the workspace.`,
+with cleanup possibly pending. The bare interactive wizard can then preview
+covering runtime/agent state and hand retirement to a freshly revalidated
+external coordinator. Explicit and non-interactive modes still keep the
+runtime, worktree and branch for a later dev retire.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			modes := 0

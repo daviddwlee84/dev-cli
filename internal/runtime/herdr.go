@@ -284,6 +284,16 @@ func (h *Herdr) Open(ctx context.Context, dir, label string) (OpenResult, error)
 			return OpenResult{Handle: s.Handle, Surface: "workspace", Opened: true}, nil
 		}
 	}
+	return h.createWorkspace(ctx, dir, label)
+}
+
+// OpenExternalCoordinator always creates a fresh workspace. Destructive
+// cleanup cannot run in a reused or caller-owned surface.
+func (h *Herdr) OpenExternalCoordinator(ctx context.Context, dir, label string) (OpenResult, error) {
+	return h.createWorkspace(ctx, dir, label)
+}
+
+func (h *Herdr) createWorkspace(ctx context.Context, dir, label string) (OpenResult, error) {
 	args := []string{"workspace", "create", "--cwd", dir, "--no-focus"}
 	if label != "" {
 		args = append(args, "--label", label)

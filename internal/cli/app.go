@@ -6,6 +6,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -192,6 +193,36 @@ func (a *App) cdDirective(dir string) error {
 	}
 	_, err := fmt.Fprintf(a.Out, "cd %s\n", shellQuote(dir))
 	return err
+}
+
+// retireDirective asks the trusted shell wrapper to leave a worktree and then
+// invoke one exact dev retire command. The action channel is deliberately
+// narrower than arbitrary shell text.
+func (a *App) retireDirective(dir, taskID string, deleteBranch, closeUnknown bool) error {
+	payload := []byte("retire\x00" + taskID + "\x00" + strconv.FormatBool(deleteBranch) + "\x00" + strconv.FormatBool(closeUnknown) + "\x00")
+	if path := os.Getenv("DEV_SHELL_ACTION_FILE"); path != "" {
+		if err := os.WriteFile(path, payload, 0o600); err != nil {
+			return fmt.Errorf("write shell retirement action: %w", err)
+		}
+	} else if rawFD := os.Getenv("DEV_SHELL_ACTION_FD"); rawFD != "" {
+		fd, err := strconv.Atoi(rawFD)
+		if err != nil || fd < 4 {
+			return fmt.Errorf("invalid DEV_SHELL_ACTION_FD %q", rawFD)
+		}
+		file := os.NewFile(uintptr(fd), "dev-shell-action")
+		if file == nil {
+			return fmt.Errorf("invalid shell action descriptor %d", fd)
+		}
+		if _, err := file.Write(payload); err != nil {
+			return fmt.Errorf("write shell retirement action: %w", err)
+		}
+		if err := file.Close(); err != nil {
+			return fmt.Errorf("close shell retirement action: %w", err)
+		}
+	} else {
+		return errors.New("shell wrapper has no retirement action channel")
+	}
+	return a.cdDirective(dir)
 }
 
 // ctx is the cancellable context commands run under.
