@@ -277,6 +277,7 @@ func TestDoneWizardRefusesToCloseWorkingAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HERDR_WORKSPACE_ID", "w7")
+	t.Setenv("HERDR_PANE_ID", "w7:p1")
 
 	if err := runDoneForTest(f, "y\nr\n", true, "active-retire"); err != nil {
 		t.Fatal(err)
