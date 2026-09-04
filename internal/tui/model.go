@@ -2946,6 +2946,9 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.view == ViewTries {
 			return m.openTryForm(TryCreate, TryRow{})
 		}
+		if m.view == ViewRepos {
+			return m.runListAction(listActionRepoCreate)
+		}
 		return m.runListAction(listActionAddNote)
 
 	case "N":
@@ -3010,6 +3013,9 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, command
 		}
 	case "a":
+		if m.view == ViewRepos {
+			return m.runListAction(listActionAddNote)
+		}
 		if m.view == ViewSkills {
 			if m.actions.AddSkill == nil {
 				return m, nil

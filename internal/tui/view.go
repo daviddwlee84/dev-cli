@@ -1504,9 +1504,9 @@ func (m Model) renderFooter() string {
 			sortBy += "↑"
 		}
 		if item, ok := m.currentRepoItem(); ok && item.child() {
-			bindings = append(bindings, "enter open worktree", "space collapse")
+			bindings = append(bindings, "enter open worktree", "space collapse", "n new repo", "a add note", "N notes")
 		} else {
-			bindings = append(bindings, "enter ad hoc", "space worktrees", "m metadata", "n add note", "N notes", "s worktree task", "d direct task")
+			bindings = append(bindings, "enter ad hoc", "n new repo", "a add note", "N notes", "space worktrees", "m metadata", "s worktree task", "d direct task")
 		}
 		bindings = append(bindings, "O sort:"+sortBy, "R reverse")
 	case ViewFleet:

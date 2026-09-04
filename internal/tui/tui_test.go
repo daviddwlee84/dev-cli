@@ -1676,6 +1676,31 @@ func TestTryCreateFormSubmitsNormalizedRequest(t *testing.T) {
 	}
 }
 
+func TestRepoNLaunchesNewRepositoryWizardWithoutASelectedRow(t *testing.T) {
+	creates := 0
+	actions := newActions(&recorder{}, nil)
+	actions.Repos.Create = func() (*exec.Cmd, error) {
+		creates++
+		return exec.Command("true"), nil
+	}
+	m := tui.New(actions, nil, nil)
+	m = send(m, key("tab"))
+	next, command := m.Update(key("n"))
+	m = next.(tui.Model)
+	if creates != 1 || command == nil || !strings.Contains(m.View(), "opening new repository wizard") {
+		t.Fatalf("REPOS n create calls=%d command=%v:\n%s", creates, command, m.View())
+	}
+}
+
+func TestRepoAMovesQuickNoteOffNewRepositoryKey(t *testing.T) {
+	rec := &recorder{}
+	m := tui.New(newActions(rec, nil), nil, []tui.RepoRow{repoRow("api")})
+	m = send(m, key("tab"), key("a"))
+	if !strings.Contains(m.View(), "quick thought") {
+		t.Fatalf("REPOS a should open quick note prompt:\n%s", m.View())
+	}
+}
+
 func TestRepoMarkOverlayUsesSharedCatalogAction(t *testing.T) {
 	row := repoRow("api")
 	row.Asset = &catalog.Entry{Kind: catalog.KindRepository, Tags: []string{"keep"}, Note: "old"}

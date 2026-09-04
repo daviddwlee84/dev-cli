@@ -624,9 +624,11 @@ compact layout keeps repository/path in the selected detail pane. In TASKS, `p`
 parks and prompts for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
 `space` expands linked worktrees inline, `m` edits repository tags/summary,
 `s` starts an isolated worktree task, and `d` starts a tracked direct task.
-On TASKS and REPOS, `n` quick-adds a repository thought and `N` opens its notes
-overlay. Expanded children carry their own Git/session/task state and can be
-opened directly. In TRY, `n` creates or clones an experiment;
+In REPOS, `n` suspends into the same clone-aware `dev repo new` wizard used by
+the CLI and returns with refreshed local inventory; it also works when the list
+is empty. `a` quick-adds a repository thought and `N` opens its notes overlay.
+TASKS retains `n` for quick notes. Expanded children carry their own
+Git/session/task state and can be opened directly. In TRY, `n` creates or clones an experiment;
 `space` opens mark/deprecate/archive/restore/graduate actions; `a` includes
 retained history. Inside Git, SKILLS and MCP use only the exact startup worktree
 plus global/user sources; outside Git they reuse every accepted REPOS target and
@@ -1100,7 +1102,8 @@ dev note delete <id-or-prefix>
 
 An ID prefix must be unique and at least eight characters.
 
-In TASKS/REPOS, `n` quick-adds and `N` opens a browse/search/edit/delete overlay.
+In TASKS, `n` quick-adds a note. In REPOS, `a` quick-adds while `n` opens the
+new-repository wizard. `N` opens a browse/search/edit/delete overlay in both.
 A REMOTE row supports notes only after it has a local clone; TRY keeps `n` for
 creating experiments. Add `notes` to `[tui.repos].columns` for the count;
 repository detail shows count/latest preview, and task detail does so when the

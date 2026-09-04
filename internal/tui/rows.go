@@ -29,7 +29,8 @@ import (
 // here?" has to come before "what am I working on?"
 // RepoActions groups catalog metadata mutations for ordinary repositories.
 type RepoActions struct {
-	Patch func(ctx context.Context, row RepoRow, tags []string, note string) (string, error)
+	Create func() (*exec.Cmd, error)
+	Patch  func(ctx context.Context, row RepoRow, tags []string, note string) (string, error)
 }
 
 type RepoRow struct {

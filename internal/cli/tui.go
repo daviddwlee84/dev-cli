@@ -436,6 +436,9 @@ func runTUI(app *App) error {
 			return agentskill.UpdateCommand(context.Background(), projectRoot, managedName, row.Scope)
 		},
 		Repos: tui.RepoActions{
+			Create: func() (*exec.Cmd, error) {
+				return tuiRepoNewProcess(appState.Current())
+			},
 			Patch: func(ctx context.Context, row tui.RepoRow, tags []string, note string) (string, error) {
 				active := appState.Current()
 				remove := []string(nil)
@@ -754,6 +757,22 @@ func runTUI(app *App) error {
 		}
 	}
 	return nil
+}
+
+func tuiRepoNewProcess(app *App) (*exec.Cmd, error) {
+	executable, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	args := make([]string, 0, 8)
+	if app.configPath != "" {
+		args = append(args, "--config", app.configPath)
+	}
+	if app.scaffoldsPath != "" {
+		args = append(args, "--scaffolds", app.scaffoldsPath)
+	}
+	args = append(args, "repo", "new", "--handoff", "stay")
+	return exec.Command(executable, args...), nil
 }
 
 func readTUICapabilityFile(ctx context.Context, path string) (string, error) {
