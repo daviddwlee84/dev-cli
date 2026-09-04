@@ -432,6 +432,9 @@ choice: keep, retire while keeping the branch, or retire and delete the
 contained branch. It previews covering runtime panes and agent states first.
 Caller-owned Herdr workspaces are handed to a fresh external coordinator;
 explicit modes and non-interactive invocations continue to stop at DONE.
+Before integration, the interactive wizard may also close exact non-caller
+Herdr panes whose agents remain idle/done, or resolve a dirty canonical target
+by switching to PR, selecting a typed-`DROP` guarded discard, or canceling.
 
 ## Configuration
 

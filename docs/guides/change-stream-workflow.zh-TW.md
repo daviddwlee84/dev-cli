@@ -162,6 +162,13 @@ Wizard 最多分四步：
 
 事先傳入 `--ff` 或 `--pr` 會保留 compatibility 行為：explicit/non-interactive completion 不進入第 4 步。Integration 執行前仍先列出 dirty action 與 integration mode；cleanup 是 MERGED 後的獨立選擇，取消或 EOF 代表保留，而不是回滾 integration。Checkout、branch、task、runtime 或 agent evidence 若改變，cleanup 會 stale/fail-closed 並留下 DONE task。
 
+Interactive fast-forward 在 integration 前被阻擋時，wizard 會處理兩種窄化的
+recovery，而不是立即只回傳 error。只有 exact non-caller Herdr pane 中同一個
+recognized agent 仍為 `idle`/`done` 時，才可確認後關閉；active、blocked、
+waiting 或 unknown 仍 fail-closed。Canonical checkout dirty 時會列出所有 path，
+提供 PR handoff、typed `DROP` discard 或取消。Canonical discard 是 guarded
+taskflow plan 的 effect，在任何 rebase/ref movement 前會重新驗證。
+
 Non-interactive 情境 —— 沒有 TTY，或在 script 中 —— wizard 完全不會詢問。未指定 integration flag 時 `dev done` 只會回報同樣的 preflight 後結束；請明確傳入 `--ff` 或 `--pr`。Dirty checkout 在沒有 TTY 時預設失敗（`--dirty auto` 等同 `--dirty fail`），因此 script 應選擇明確的 policy：
 
 ```bash

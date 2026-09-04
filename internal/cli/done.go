@@ -38,6 +38,11 @@ For branch/worktree tasks, omitting every mode opens a finish wizard on an
 interactive terminal. A non-interactive caller still gets a report and must
 pass a mode explicitly. Direct tasks need no integration mode.
 
+When interactive fast-forward is blocked, the wizard may close exact
+non-caller Herdr panes whose agents remain idle/done. A dirty canonical
+integration checkout can switch to PR, be discarded under typed DROP
+confirmation, or cancel; unrelated canonical bytes are never auto-committed.
+
 A dirty checkout is analyzed against the base, not rejected as one opaque
 condition. Interactive use can commit everything, discard everything, or
 cancel. Unique content requires typing DROP before discard. Scripts select an

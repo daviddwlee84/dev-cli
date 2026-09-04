@@ -75,6 +75,7 @@ const (
 	EffectOpenRuntime    EffectCode = "open-runtime"
 	EffectCommitAll      EffectCode = "commit-all"
 	EffectDiscardAll     EffectCode = "discard-all"
+	EffectDiscardTarget  EffectCode = "discard-integration-target"
 	EffectRebaseBranch   EffectCode = "rebase-branch"
 	EffectMergeFF        EffectCode = "merge-ff"
 	EffectPushBase       EffectCode = "push-base"

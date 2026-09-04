@@ -131,6 +131,15 @@ func (h *Herdr) RunInPane(ctx context.Context, paneID, command string) error {
 	return errors.New(strings.ReplaceAll(err.Error(), command, "<command>"))
 }
 
+// ClosePane closes one exact Herdr pane without closing sibling panes or the
+// containing workspace.
+func (h *Herdr) ClosePane(ctx context.Context, paneID string) error {
+	if paneID == "" {
+		return nil
+	}
+	return h.call(ctx, nil, "pane", "close", paneID)
+}
+
 type herdrWorkspace struct {
 	WorkspaceID string `json:"workspace_id"`
 	Label       string `json:"label"`

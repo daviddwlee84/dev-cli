@@ -37,6 +37,13 @@ workspace in the canonical checkout and hands a short-lived, single-use intent
 to that external coordinator. It revalidates task, checkout HEAD, runtime
 fingerprint, and the full ordinary retirement plan before closing anything.
 
+Before MERGED, interactive FF has two explicit recovery paths. It may close a
+non-caller Herdr pane only after proving the same recognized agent is still
+`idle`/`done`; active and unknown states remain blockers. If the canonical
+integration checkout is dirty, dev lists its paths and offers PR handoff,
+typed-`DROP` guarded discard, or cancel. It never silently commits unrelated
+canonical bytes.
+
 Raw `git worktree remove --force` and configured external tools bypass these
 protections. Do not use them on an agent-owned checkout. Existing expert CLI
 acknowledgements remain available, but the flow preview deliberately omits dirty

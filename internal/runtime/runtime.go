@@ -114,6 +114,12 @@ type PaneRunner interface {
 	RunInPane(ctx context.Context, paneID, command string) error
 }
 
+// PaneCloser is an optional exact-pane cleanup surface. Callers must freshly
+// verify pane identity and agent state before using it.
+type PaneCloser interface {
+	ClosePane(ctx context.Context, paneID string) error
+}
+
 // ExternalCoordinatorOpener creates a fresh, caller-external command surface.
 // A reused workspace is never acceptable because destructive coordination must
 // have an exact root pane from the same creation response.

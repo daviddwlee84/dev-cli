@@ -146,7 +146,8 @@ func (s *lifecycleService) completeFFSpec(request Request, observed lifecycleObs
 	conditions := s.completionConditions(observed, options.Dirty, options.CommitMessage)
 	relation := effectiveCompletionRelation(observed, options.Dirty, options.CommitMessage)
 	if !relation.Contained() {
-		conditions = append(conditions, completionIntegrationCondition(observed, options.Dirty, options.CommitMessage))
+		conditions = append(conditions, completionIntegrationCondition(
+			observed, options.Dirty, options.CommitMessage, options.DiscardIntegrationTarget))
 		if observed.mode == task.ModeWorktree {
 			conditions = append(conditions, s.completionIntegrationOccupancyCondition(observed))
 		}
@@ -164,6 +165,12 @@ func (s *lifecycleService) completeFFSpec(request Request, observed lifecycleObs
 	effects := s.completionDirtyEffects(observed, options.Dirty, options.CommitMessage)
 	if completionDirtyExecutable(observed, options.Dirty, options.CommitMessage) {
 		if !relation.Contained() {
+			if observed.integration.statusErr == nil && observed.integration.status.Dirty() && options.DiscardIntegrationTarget {
+				effects = append(effects, NewEffect(
+					EffectDiscardTarget, "discard canonical integration checkout changes", observed.repoPath, true, false,
+					map[string]string{"scope": "all", "token": "DROP", "integration-authority": integrationAuthority(observed.integration)},
+				))
+			}
 			if relation.BaseOnly > 0 {
 				effects = append(effects, NewEffect(
 					EffectRebaseBranch, "rebase the task branch onto the explicit base", observed.checkout, false, false,
@@ -188,7 +195,7 @@ func (s *lifecycleService) completeFFSpec(request Request, observed lifecycleObs
 	}
 	return s.completionPlanSpec(
 		request, observed, conditions, effects,
-		completionConfirmation(observed, options.Dirty, "Integrate this task with fast-forward only?"),
+		completionFFConfirmation(observed, options),
 		completionFallback(observed.task.ID, "--ff", options.Dirty, options.CommitMessage, options.PushBase, "", ""),
 		"Fast-forward "+observed.task.Title()+" into "+observed.completionBaseRef,
 	)
@@ -545,7 +552,12 @@ func completionBaseCondition(observed lifecycleObservation) Condition {
 	}
 }
 
-func completionIntegrationCondition(observed lifecycleObservation, dirty DirtyPolicy, message string) Condition {
+func completionIntegrationCondition(
+	observed lifecycleObservation,
+	dirty DirtyPolicy,
+	message string,
+	discardTarget bool,
+) Condition {
 	if observed.mode == task.ModeBranch {
 		verdict, _ := completionDirtyCondition(observed, dirty, message)
 		if verdict == VerdictMet {
@@ -583,6 +595,10 @@ func completionIntegrationCondition(observed lifecycleObservation, dirty DirtyPo
 		return condition(ConditionIntegrationTarget, VerdictBlocked, RequirementRequired,
 			fmt.Sprintf("canonical checkout has %d conflicted path(s)", integration.status.Conflicted), "resolve or abort conflicts")
 	case integration.status.Dirty():
+		if discardTarget {
+			return condition(ConditionIntegrationTarget, VerdictMet, RequirementRequired,
+				"canonical checkout changes will be discarded under typed confirmation", "")
+		}
 		return condition(ConditionIntegrationTarget, VerdictBlocked, RequirementRequired,
 			"canonical checkout is dirty: "+integration.status.Breakdown(), "preserve its unrelated bytes before integration")
 	case integration.worktree.Worktree.Head != integration.head:
@@ -719,6 +735,20 @@ func completionConfirmation(observed lifecycleObservation, dirty DirtyPolicy, pr
 		}
 	}
 	return Confirmation{Kind: ConfirmationApproval, Prompt: prompt}
+}
+
+func completionFFConfirmation(observed lifecycleObservation, options CompleteFFOptions) Confirmation {
+	if options.DiscardIntegrationTarget && observed.integration.statusErr == nil && observed.integration.status.Dirty() {
+		detail := fmt.Sprintf("%d canonical integration checkout path(s)", observed.integration.status.Changed)
+		if observed.statusErr == nil && observed.status.Dirty() && options.Dirty == DirtyDiscard && observed.finish.UniqueDirty() > 0 {
+			detail += fmt.Sprintf(" and %d unique task-checkout path(s)", observed.finish.UniqueDirty())
+		}
+		return Confirmation{
+			Kind: ConfirmationTyped, Token: "DROP",
+			Prompt: "Type DROP to discard " + detail + " under this exact plan",
+		}
+	}
+	return completionConfirmation(observed, options.Dirty, "Integrate this task with fast-forward only?")
 }
 
 func completionPushBaseEffect(observed lifecycleObservation) Effect {

@@ -143,6 +143,14 @@ The wizard runs in up to four steps:
 
 Passing `--ff` or `--pr` up front answers step 3 and keeps the compatibility behavior: explicit/non-interactive completion does not enter step 4. A final integration summary lists the dirty action and integration mode before anything runs. Cleanup is a separate post-MERGED choice; cancel or EOF there means keep, not rollback. If checkout, branch, task, runtime, or agent evidence changes while either plan is open, dev refuses the stale cleanup and leaves the task DONE.
 
+When interactive fast-forward is blocked before integration, the wizard handles
+two narrow recovery cases instead of returning immediately. It can close an
+exact non-caller Herdr pane only while the same recognized agent remains
+`idle`/`done`; active, blocked, waiting, or unknown status still fails closed.
+For a dirty canonical checkout it lists every path and offers PR handoff,
+typed-`DROP` discard, or cancel. Canonical discard is part of the guarded
+taskflow plan and is revalidated before any rebase or ref movement.
+
 Non-interactively — no TTY, or a script — the wizard never prompts. `dev done` with no integration flag just reports the same preflight and exits; pass `--ff` or `--pr` explicitly. A dirty checkout defaults to failing outside a TTY (`--dirty auto` behaves like `--dirty fail`), so scripts choose an explicit policy:
 
 ```bash

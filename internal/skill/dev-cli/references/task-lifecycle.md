@@ -283,6 +283,12 @@ Caller-owned Herdr workspaces are handed to a freshly created external
 coordinator; unknown status needs explicit approval and active/mixed sessions
 remain blockers.
 
+Before integration, the TTY wizard can close exact non-caller Herdr panes only
+while their recognized agents remain `idle`/`done`. If FF is blocked by dirty
+canonical-checkout bytes, it lists the paths and offers PR, typed `DROP`
+discard, or cancel. The discard is an explicit taskflow effect and no unrelated
+canonical bytes are committed automatically.
+
 For branch/worktree tasks, non-interactive `dev done` without an integration
 mode remains report-only. Direct tasks still finish without one. Conflicted
 checkouts always require manual resolution.

@@ -29,6 +29,8 @@ type activityRuntime struct {
 	listErr           error
 	closeErr          error
 	closeCalls        []string
+	closePaneErr      error
+	closePaneCalls    []string
 	activateErr       error
 	activateCalls     []string
 	runErr            error
@@ -63,6 +65,29 @@ func (r *activityRuntime) OpenExternalCoordinator(_ context.Context, _, label st
 func (r *activityRuntime) Close(_ context.Context, handle string) error {
 	r.closeCalls = append(r.closeCalls, handle)
 	return r.closeErr
+}
+func (r *activityRuntime) ClosePane(_ context.Context, paneID string) error {
+	r.closePaneCalls = append(r.closePaneCalls, paneID)
+	if r.closePaneErr != nil {
+		return r.closePaneErr
+	}
+	var kept []runtime.AgentActivity
+	for _, activity := range r.activities {
+		if activity.PaneID != paneID {
+			kept = append(kept, activity)
+		}
+	}
+	r.activities = kept
+	for index := range r.sessions {
+		var panes []runtime.Pane
+		for _, pane := range r.sessions[index].Panes {
+			if pane.ID != paneID {
+				panes = append(panes, pane)
+			}
+		}
+		r.sessions[index].Panes = panes
+	}
+	return nil
 }
 func (r *activityRuntime) Activate(_ context.Context, handle string) error {
 	r.activateCalls = append(r.activateCalls, handle)
