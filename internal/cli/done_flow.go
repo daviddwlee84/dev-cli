@@ -42,10 +42,10 @@ type doneOptions struct {
 }
 
 type doneSelection struct {
-	Integration              doneIntegration
-	Dirty                    flow.DirtyPolicy
-	Message                  string
-	DiscardIntegrationTarget bool
+	Integration             doneIntegration
+	Dirty                   flow.DirtyPolicy
+	Message                 string
+	IntegrationTargetPolicy flow.IntegrationTargetPolicy
 }
 
 type doneChangeView struct {
@@ -94,9 +94,10 @@ func runDone(ctx context.Context, app *App, args []string, opts doneOptions) err
 	}
 
 	selection := doneSelection{
-		Integration: opts.Integration,
-		Dirty:       flow.DirtyPolicy(opts.DirtyPolicy),
-		Message:     strings.TrimSpace(opts.Message),
+		Integration:             opts.Integration,
+		Dirty:                   flow.DirtyPolicy(opts.DirtyPolicy),
+		Message:                 strings.TrimSpace(opts.Message),
+		IntegrationTargetPolicy: flow.IntegrationTargetFail,
 	}
 	plan, err := session.plan(ctx, doneActionOptions(selected, selection, opts))
 	if err != nil {
@@ -297,7 +298,7 @@ func doneActionOptions(selected task.Task, selection doneSelection, opts doneOpt
 	default:
 		return flow.CompleteFFOptions{
 			Dirty: selection.Dirty, CommitMessage: selection.Message, PushBase: opts.Push,
-			DiscardIntegrationTarget: selection.DiscardIntegrationTarget,
+			IntegrationTargetPolicy: selection.IntegrationTargetPolicy,
 		}
 	}
 }
@@ -480,6 +481,12 @@ func confirmDonePlan(app *App, p *prompter, t task.Task, plan flow.Plan) (bool, 
 	if donePlanHasEffect(plan, flow.EffectDiscardTarget) {
 		fmt.Fprintf(app.Out, "  %s       %s\n", s.label("canonical"),
 			s.danger("discard all staged, unstaged and untracked integration-target changes"))
+	}
+	if donePlanHasEffect(plan, flow.EffectStashTarget) {
+		fmt.Fprintf(app.Out, "  %s       %s\n", s.label("canonical"),
+			s.warning("stash exact staged/unstaged/untracked state, then restore it after fast-forward"))
+		fmt.Fprintf(app.Out, "  %s       %s\n", s.label("recovery"),
+			"retain the exact stash if restoration conflicts or its safe drop cannot be verified")
 	}
 	switch {
 	case donePlanHasEffect(plan, flow.EffectCommitAll):

@@ -154,3 +154,8 @@ offering commit-all or discard-all; unique discard requires `DROP`. Dirty
 checkout removal may require explicit force, but caller/runtime safety is never
 bypassable. Herdr `done` is not a cleanup signal, and `--cold --keep-session` is
 rejected. Never raw-force-remove an agent's cwd.
+
+When unrelated dirty bytes block the canonical fast-forward target, the same
+wizard may use exact stash+restore for ordinary staged, unstaged, and untracked
+work. Dirty submodules and nested repositories require separate preservation;
+restore conflicts keep the exact stash and the task rather than claiming DONE.

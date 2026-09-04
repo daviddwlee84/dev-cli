@@ -166,8 +166,13 @@ Interactive fast-forward 在 integration 前被阻擋時，wizard 會處理兩�
 recovery，而不是立即只回傳 error。只有 exact non-caller Herdr pane 中同一個
 recognized agent 仍為 `idle`/`done` 時，才可確認後關閉；active、blocked、
 waiting 或 unknown 仍 fail-closed。Canonical checkout dirty 時會列出所有 path，
-提供 PR handoff、typed `DROP` discard 或取消。Canonical discard 是 guarded
-taskflow plan 的 effect，在任何 rebase/ref movement 前會重新驗證。
+並標示 agent artifacts，接著提供 PR handoff、exact stash+restore、typed
+`DROP` discard 或取消。Stash+restore 會在 feature rebase 後以 exact OID 保存
+staged、unstaged 與 non-ignored untracked 內容，fast-forward 後恢復 index 與
+worktree，且只 drop 該 OID 對應的 stash entry。Restore conflict 會保留 stash、
+維持 task active，並輸出 exact `git stash apply --index <oid>` recovery command。
+Dirty submodule 與 nested repository 不能使用此路徑；canonical discard 仍是
+獨立、guarded 的 destructive effect。
 
 Non-interactive 情境 —— 沒有 TTY，或在 script 中 —— wizard 完全不會詢問。未指定 integration flag 時 `dev done` 只會回報同樣的 preflight 後結束；請明確傳入 `--ff` 或 `--pr`。Dirty checkout 在沒有 TTY 時預設失敗（`--dirty auto` 等同 `--dirty fail`），因此 script 應選擇明確的 policy：
 

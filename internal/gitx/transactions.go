@@ -27,6 +27,18 @@ type PullRebaseResult struct {
 	HadLocalWork bool
 }
 
+// ExactStashResult reports whether an exact stash commit was restored and
+// whether its matching reflog entry was subsequently removed.
+type ExactStashResult struct {
+	OID      string
+	Restored bool
+	Dropped  bool
+}
+
+// ErrExactStashSelectorMissing means the requested stash commit was applied,
+// but its reflog selector disappeared before it could be dropped safely.
+var ErrExactStashSelectorMissing = errors.New("exact stash selector is missing")
+
 type AmendOptions struct {
 	RewritePublished bool
 	ExcludeArtifacts bool
@@ -158,15 +170,9 @@ func PullRebase(ctx context.Context, dir string) (PullRebaseResult, error) {
 		if current.Dirty() {
 			result.HadLocalWork = true
 			tag := fmt.Sprintf("dev-pull-rebase-%d", time.Now().UnixNano())
-			if _, err := Run(ctx, repository.Root, "stash", "push", "--include-untracked", "-m", tag); err != nil {
-				return err
-			}
-			result.StashOID, err = stashOIDForTag(ctx, repository.Root, tag)
+			result.StashOID, err = CaptureExactStash(ctx, repository.Root, tag)
 			if err != nil {
 				return fmt.Errorf("capture created stash oid: %w", err)
-			}
-			if result.StashOID == "" {
-				return fmt.Errorf("Git reported local work but created no stash; refusing to reuse an existing stash")
 			}
 		}
 		if _, err := Run(ctx, repository.Root, "-c", "rebase.autoStash=false", "pull", "--rebase"); err != nil {
@@ -175,24 +181,64 @@ func PullRebase(ctx context.Context, dir string) (PullRebaseResult, error) {
 		if result.StashOID == "" {
 			return nil
 		}
-		if _, err := Run(ctx, repository.Root, "stash", "apply", "--index", result.StashOID); err != nil {
-			return fmt.Errorf("restore local work from stash %s failed; stash retained: %w", result.StashOID, err)
+		restored, restoreErr := RestoreExactStash(ctx, repository.Root, result.StashOID)
+		result.Restored = restored.Restored
+		result.Dropped = restored.Dropped
+		if errors.Is(restoreErr, ErrExactStashSelectorMissing) {
+			return nil
 		}
-		result.Restored = true
-		selector, ok, err := stashSelector(ctx, repository.Root, result.StashOID)
-		if err != nil {
-			return err
-		}
-		if !ok {
-			return nil // Applied bytes are safe; retaining an extra stash beats dropping the wrong one.
-		}
-		if _, err := Run(ctx, repository.Root, "stash", "drop", selector); err != nil {
-			return fmt.Errorf("local work restored, but exact stash %s was retained: %w", result.StashOID, err)
-		}
-		result.Dropped = true
-		return nil
+		return restoreErr
 	})
 	return result, err
+}
+
+// CaptureExactStash stores staged, unstaged, and non-ignored untracked work and
+// resolves the newly created stash by a unique transaction tag. Callers must
+// serialize repository mutations around this operation.
+func CaptureExactStash(ctx context.Context, dir, tag string) (string, error) {
+	tag = strings.TrimSpace(tag)
+	if tag == "" {
+		return "", errors.New("exact stash transaction tag is required")
+	}
+	if _, err := Run(ctx, dir, "stash", "push", "--include-untracked", "-m", tag); err != nil {
+		return "", err
+	}
+	oid, err := stashOIDForTag(ctx, dir, tag)
+	if err != nil {
+		return "", err
+	}
+	if oid == "" {
+		return "", errors.New("Git created no exact stash; refusing to reuse an existing stash")
+	}
+	return oid, nil
+}
+
+// RestoreExactStash applies one exact stash commit with its index state, then
+// drops only the reflog selector that still resolves to that OID. A restored
+// result with an error means the working bytes are safe but the stash was kept.
+// Callers must serialize repository mutations around this operation.
+func RestoreExactStash(ctx context.Context, dir, oid string) (ExactStashResult, error) {
+	result := ExactStashResult{OID: strings.TrimSpace(oid)}
+	if result.OID == "" {
+		return result, errors.New("exact stash OID is required")
+	}
+	if _, err := Run(ctx, dir, "stash", "apply", "--index", result.OID); err != nil {
+		return result, fmt.Errorf("restore local work from stash %s failed; stash retained: %w", result.OID, err)
+	}
+	result.Restored = true
+	selector, ok, err := stashSelector(ctx, dir, result.OID)
+	if err != nil {
+		return result, fmt.Errorf("local work restored, but exact stash %s was retained: %w", result.OID, err)
+	}
+	if !ok {
+		return result, fmt.Errorf("%w: local work restored, but exact stash %s has no droppable selector and was retained",
+			ErrExactStashSelectorMissing, result.OID)
+	}
+	if _, err := Run(ctx, dir, "stash", "drop", selector); err != nil {
+		return result, fmt.Errorf("local work restored, but exact stash %s was retained: %w", result.OID, err)
+	}
+	result.Dropped = true
+	return result, nil
 }
 
 func AmendAll(ctx context.Context, dir string, options AmendOptions) (string, []string, error) {

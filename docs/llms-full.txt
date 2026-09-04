@@ -719,8 +719,14 @@ two narrow recovery cases instead of returning immediately. It can close an
 exact non-caller Herdr pane only while the same recognized agent remains
 `idle`/`done`; active, blocked, waiting, or unknown status still fails closed.
 For a dirty canonical checkout it lists every path and offers PR handoff,
-typed-`DROP` discard, or cancel. Canonical discard is part of the guarded
-taskflow plan and is revalidated before any rebase or ref movement.
+exact stash+restore, typed-`DROP` discard, or cancel. Agent artifacts are marked
+in the path list. Stash+restore captures staged, unstaged and non-ignored
+untracked work under one exact OID after any feature rebase, restores index and
+worktree state after fast-forward, and drops only the matching stash entry.
+Restore conflicts retain the stash, leave the task active, and print an exact
+`git stash apply --index <oid>` recovery command. Dirty submodules and nested
+repositories cannot use this path. Canonical discard remains a separately
+guarded destructive effect.
 
 Non-interactively — no TTY, or a script — the wizard never prompts. `dev done` with no integration flag just reports the same preflight and exits; pass `--ff` or `--pr` explicitly. A dirty checkout defaults to failing outside a TTY (`--dirty auto` behaves like `--dirty fail`), so scripts choose an explicit policy:
 
@@ -1887,6 +1893,11 @@ first, offering commit or discard interactively, or taking an explicit
 [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) for that wizard. The
 `--keep-worktree` and `--delete-branch` flags remain accepted on `dev done`
 only to fail loudly and point at `dev retire`.
+
+If fast-forward is blocked by unrelated dirty bytes in the canonical checkout,
+the interactive wizard can preserve them with an exact stash+restore
+transaction. It restores staged state and untracked files after integration;
+dirty submodules and nested repositories still require independent handling.
 
 After a bare interactive `dev done` reaches MERGED, its cleanup step performs
 a read-only retirement preview and asks whether to keep, retire, or retire and
@@ -7695,8 +7706,13 @@ Interactive fast-forward 在 integration 前被阻擋時，wizard 會處理兩�
 recovery，而不是立即只回傳 error。只有 exact non-caller Herdr pane 中同一個
 recognized agent 仍為 `idle`/`done` 時，才可確認後關閉；active、blocked、
 waiting 或 unknown 仍 fail-closed。Canonical checkout dirty 時會列出所有 path，
-提供 PR handoff、typed `DROP` discard 或取消。Canonical discard 是 guarded
-taskflow plan 的 effect，在任何 rebase/ref movement 前會重新驗證。
+並標示 agent artifacts，接著提供 PR handoff、exact stash+restore、typed
+`DROP` discard 或取消。Stash+restore 會在 feature rebase 後以 exact OID 保存
+staged、unstaged 與 non-ignored untracked 內容，fast-forward 後恢復 index 與
+worktree，且只 drop 該 OID 對應的 stash entry。Restore conflict 會保留 stash、
+維持 task active，並輸出 exact `git stash apply --index <oid>` recovery command。
+Dirty submodule 與 nested repository 不能使用此路徑；canonical discard 仍是
+獨立、guarded 的 destructive effect。
 
 Non-interactive 情境 —— 沒有 TTY，或在 script 中 —— wizard 完全不會詢問。未指定 integration flag 時 `dev done` 只會回報同樣的 preflight 後結束；請明確傳入 `--ff` 或 `--pr`。Dirty checkout 在沒有 TTY 時預設失敗（`--dirty auto` 等同 `--dirty fail`），因此 script 應選擇明確的 policy：
 
@@ -8790,6 +8806,10 @@ interactive 時提供 commit 或 discard，在 script 中則接受明確的 `--d
 policy。該 wizard 詳見[變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/)。
 `dev done` 上的 `--keep-worktree` 與 `--delete-branch` 之所以仍被接受，只是為了
 明確報錯並指向 `dev retire`。
+
+若 fast-forward 只被 canonical checkout 中無關的 dirty bytes 阻擋，互動式
+wizard 可用 exact stash+restore 保存它們，並在 integration 後恢復 staged state
+與 untracked files；dirty submodule 與 nested repository 仍需各自處理。
 
 Bare interactive `dev done` 到達 MERGED 後，cleanup step 會先做 read-only
 retirement preview，再詢問保留、retire，或 retire 並刪除 contained branch。

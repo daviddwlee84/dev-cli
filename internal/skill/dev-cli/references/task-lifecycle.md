@@ -286,8 +286,13 @@ remain blockers.
 Before integration, the TTY wizard can close exact non-caller Herdr panes only
 while their recognized agents remain `idle`/`done`. If FF is blocked by dirty
 canonical-checkout bytes, it lists the paths and offers PR, typed `DROP`
-discard, or cancel. The discard is an explicit taskflow effect and no unrelated
-canonical bytes are committed automatically.
+discard, exact stash+restore, or cancel. Agent artifacts are labeled.
+Stash+restore preserves staged, unstaged, and non-ignored untracked state under
+an exact OID, restores the index/worktree after fast-forward, and drops only
+that matching stash entry. A conflict retains the stash and task with an exact
+recovery command. Dirty submodules and nested repositories remain blockers.
+The discard is a separate explicit taskflow effect and no unrelated canonical
+bytes are committed automatically.
 
 For branch/worktree tasks, non-interactive `dev done` without an integration
 mode remains report-only. Direct tasks still finish without one. Conflicted

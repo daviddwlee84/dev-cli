@@ -253,6 +253,57 @@ func TestDoneWizardCanDiscardDirtyCanonicalIntegrationTarget(t *testing.T) {
 	}
 }
 
+func TestDoneWizardCanStashAndRestoreDirtyCanonicalIntegrationTarget(t *testing.T) {
+	f := newStartFixture(t, &activityRuntime{name: "test"})
+	if err := f.run("--task", "canonical-stash", "--branch", "feat/canonical-stash", "--base", "main"); err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := f.app.Tasks.Resolve("canonical-stash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(candidate.WorktreePath, "feature.txt"), []byte("feature\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.GitIn(candidate.WorktreePath, "add", "feature.txt")
+	f.repo.GitIn(candidate.WorktreePath, "commit", "-m", "feat: canonical stash")
+	history := filepath.Join(f.repo.Root, ".specstory", "history", "session.md")
+	statistics := filepath.Join(f.repo.Root, ".specstory", "statistics.json")
+	if err := os.MkdirAll(filepath.Dir(history), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(history, []byte("history\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statistics, []byte("statistics\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.Git("add", ".specstory/statistics.json")
+
+	if err := runDoneForTest(f, "f\ns\ny\n", true, "canonical-stash"); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.repo.Git("show", "main:feature.txt"); got != "feature" {
+		t.Fatalf("integrated feature=%q", got)
+	}
+	if staged := f.repo.Git("diff", "--cached", "--name-only"); staged != ".specstory/statistics.json" {
+		t.Fatalf("restored staged paths=%q", staged)
+	}
+	for _, path := range []string{history, statistics} {
+		if _, statErr := os.Stat(path); statErr != nil {
+			t.Fatalf("restored %s: %v", path, statErr)
+		}
+	}
+	for _, want := range []string{
+		"Canonical checkout blocker", "session.md (agent artifact)", "s=stash+restore",
+		"stash exact staged/unstaged/untracked state", "cleanup pending",
+	} {
+		if !strings.Contains(f.stdout.String(), want) {
+			t.Errorf("output missing %q:\n%s", want, f.stdout.String())
+		}
+	}
+}
+
 func TestDoneWizardCanCloseExactIdleHerdrPaneAndReplan(t *testing.T) {
 	baseRT := &activityRuntime{name: "herdr"}
 	rt := &currentPaneRuntime{activityRuntime: baseRT, currentPane: "wP:p2"}

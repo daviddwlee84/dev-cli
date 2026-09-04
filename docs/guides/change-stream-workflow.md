@@ -148,8 +148,14 @@ two narrow recovery cases instead of returning immediately. It can close an
 exact non-caller Herdr pane only while the same recognized agent remains
 `idle`/`done`; active, blocked, waiting, or unknown status still fails closed.
 For a dirty canonical checkout it lists every path and offers PR handoff,
-typed-`DROP` discard, or cancel. Canonical discard is part of the guarded
-taskflow plan and is revalidated before any rebase or ref movement.
+exact stash+restore, typed-`DROP` discard, or cancel. Agent artifacts are marked
+in the path list. Stash+restore captures staged, unstaged and non-ignored
+untracked work under one exact OID after any feature rebase, restores index and
+worktree state after fast-forward, and drops only the matching stash entry.
+Restore conflicts retain the stash, leave the task active, and print an exact
+`git stash apply --index <oid>` recovery command. Dirty submodules and nested
+repositories cannot use this path. Canonical discard remains a separately
+guarded destructive effect.
 
 Non-interactively — no TTY, or a script — the wizard never prompts. `dev done` with no integration flag just reports the same preflight and exits; pass `--ff` or `--pr` explicitly. A dirty checkout defaults to failing outside a TTY (`--dirty auto` behaves like `--dirty fail`), so scripts choose an explicit policy:
 

@@ -445,9 +445,13 @@ Before MERGED, the same wizard can recover from selected local blockers. An
 exact non-caller Herdr pane whose recognized agent is still `idle` or `done`
 can be closed after confirmation and a fresh identity check. If local
 fast-forward is blocked only by dirty canonical-checkout bytes, dev lists the
-paths and offers PR handoff, typed `DROP` discard, or cancel. It never silently
-commits unrelated canonical bytes, and active or unknown agents are not
-closeable from this flow.
+paths (marking agent artifacts) and offers PR handoff, exact stash+restore,
+typed `DROP` discard, or cancel. Stash+restore preserves staged state and
+untracked files, drops only its exact stash OID after a successful restore, and
+retains that stash with a recovery command if restore conflicts. Dirty
+submodules and nested repositories remain blockers. It never silently commits
+unrelated canonical bytes, and active or unknown agents are not closeable from
+this flow.
 
 ### A task does not have to mean a worktree
 

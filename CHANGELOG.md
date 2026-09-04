@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Interactive `dev done` can now preserve a dirty canonical integration
+  checkout while fast-forwarding: `stash+restore` captures staged, unstaged,
+  and non-ignored untracked work under an exact stash OID, restores the index
+  and worktree after integration, and drops only that exact stash entry. Dirty
+  submodules and nested repositories remain blockers; restore conflicts retain
+  the stash and keep the task active with an exact recovery command.
+
 ## [0.2.16] - 2026-09-04
 
 ### Added

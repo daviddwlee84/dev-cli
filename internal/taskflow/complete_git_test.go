@@ -169,7 +169,7 @@ func TestCompletionRealGitFFCanDiscardCanonicalTargetUnderTypedPlan(t *testing.T
 	}
 
 	plan, err := fixture.service.Plan(context.Background(), fixture.request(t, CompleteFFOptions{
-		DiscardIntegrationTarget: true,
+		IntegrationTargetPolicy: IntegrationTargetDiscard,
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -191,6 +191,232 @@ func TestCompletionRealGitFFCanDiscardCanonicalTargetUnderTypedPlan(t *testing.T
 	}
 	if got := mustGitCommand(t, fixture.repo, "show", "main:feature.txt"); got != "feature" {
 		t.Fatalf("integrated feature=%q", got)
+	}
+}
+
+func TestCompletionRealGitFFStashesAndRestoresCanonicalTarget(t *testing.T) {
+	fixture := newLifecycleGitFixture(t, task.ModeWorktree, task.Hot)
+	completionCommit(t, fixture.worktree, "feature.txt", "feature\n", "feat: add feature")
+	completionCommit(t, fixture.repo, "main.txt", "main\n", "chore: advance main")
+	statistics := filepath.Join(fixture.repo, ".specstory", "statistics.json")
+	history := filepath.Join(fixture.repo, ".specstory", "history", "session.md")
+	if err := os.MkdirAll(filepath.Dir(history), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(statistics, []byte("staged\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustGitCommand(t, fixture.repo, "add", ".specstory/statistics.json")
+	if err := os.WriteFile(history, []byte("untracked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := fixture.service.Plan(context.Background(), fixture.request(t, CompleteFFOptions{
+		IntegrationTargetPolicy: IntegrationTargetStashRestore,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Availability != AvailabilityReady || plan.Confirmation.Kind != ConfirmationApproval {
+		t.Fatalf("stash plan availability=%s confirmation=%+v conditions=%+v", plan.Availability, plan.Confirmation, plan.Conditions())
+	}
+	if got := effectCodes(plan); !reflect.DeepEqual(got, []EffectCode{
+		EffectRebaseBranch, EffectStashTarget, EffectSwitchBase, EffectMergeFF, EffectRestoreTarget, EffectUpdateTask,
+	}) {
+		t.Fatalf("effects=%v", got)
+	}
+	result, err := fixture.service.Apply(context.Background(), plan, Approve(plan.PlanID))
+	if err != nil {
+		t.Fatalf("Apply: %v steps=%+v recovery=%v", err, result.AttemptedSteps(), result.Recovery())
+	}
+	if got := mustGitCommand(t, fixture.repo, "show", "main:feature.txt"); got != "feature" {
+		t.Fatalf("integrated feature=%q", got)
+	}
+	if staged := mustGitCommand(t, fixture.repo, "diff", "--cached", "--name-only"); staged != ".specstory/statistics.json" {
+		t.Fatalf("restored index=%q", staged)
+	}
+	for _, path := range []string{statistics, history} {
+		if _, statErr := os.Stat(path); statErr != nil {
+			t.Fatalf("restored %s: %v", path, statErr)
+		}
+	}
+	if stash := mustGitCommand(t, fixture.repo, "stash", "list", "--format=%gs"); strings.Contains(stash, "dev-done-") {
+		t.Fatalf("completed exact stash was retained: %s", stash)
+	}
+	record, err := fixture.tasks.GetRecord(fixture.record.Task.ID)
+	if err != nil || record.Task.State != task.Done {
+		t.Fatalf("task state=%v err=%v", record, err)
+	}
+}
+
+func TestCompletionRealGitFFRestoreConflictRetainsExactStashAndHotTask(t *testing.T) {
+	fixture := newLifecycleGitFixture(t, task.ModeWorktree, task.Hot)
+	completionCommit(t, fixture.worktree, "tracked.txt", "feature\n", "feat: change tracked")
+	if err := os.WriteFile(filepath.Join(fixture.repo, "tracked.txt"), []byte("canonical\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := fixture.service.Plan(context.Background(), fixture.request(t, CompleteFFOptions{
+		IntegrationTargetPolicy: IntegrationTargetStashRestore,
+	}))
+	if err != nil || plan.Availability != AvailabilityReady {
+		t.Fatalf("Plan availability=%s err=%v conditions=%+v", plan.Availability, err, plan.Conditions())
+	}
+	result, err := fixture.service.Apply(context.Background(), plan, Approve(plan.PlanID))
+	if err == nil || !result.PartialSuccess || len(result.Recovery()) == 0 {
+		t.Fatalf("Apply err=%v partial=%t recovery=%v steps=%+v", err, result.PartialSuccess, result.Recovery(), result.AttemptedSteps())
+	}
+	if !strings.Contains(strings.Join(result.Recovery(), "\n"), "stash apply --index") {
+		t.Fatalf("recovery=%v", result.Recovery())
+	}
+	if stash := mustGitCommand(t, fixture.repo, "stash", "list", "--format=%H"); strings.TrimSpace(stash) == "" {
+		t.Fatal("restore conflict dropped the exact stash")
+	}
+	status, statusErr := gitx.StatusOf(context.Background(), fixture.repo)
+	if statusErr != nil || status.Conflicted == 0 {
+		t.Fatalf("conflict status=%+v err=%v", status, statusErr)
+	}
+	record, loadErr := fixture.tasks.GetRecord(fixture.record.Task.ID)
+	if loadErr != nil || record.Task.State != task.Hot {
+		t.Fatalf("task=%v err=%v", record, loadErr)
+	}
+	retry, retryErr := fixture.service.Plan(context.Background(), fixture.request(t, CompleteFFOptions{}))
+	if retryErr != nil || retry.Availability != AvailabilityBlocked {
+		t.Fatalf("conflicted retry availability=%s err=%v conditions=%+v", retry.Availability, retryErr, retry.Conditions())
+	}
+}
+
+func TestCompletionRealGitFFRestoresCanonicalTargetWhenSwitchFails(t *testing.T) {
+	fixture := newLifecycleGitFixture(t, task.ModeWorktree, task.Hot)
+	completionCommit(t, fixture.worktree, "feature.txt", "feature\n", "feat: add feature")
+	canonical := filepath.Join(fixture.repo, "canonical.txt")
+	if err := os.WriteFile(canonical, []byte("preserve\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service := fixture.serviceWith(t, newLifecycleFakeRuntime(), fixture.root, LifecycleHooks{
+		GitRun: func(ctx context.Context, dir string, args ...string) (string, error) {
+			if len(args) > 0 && args[0] == "switch" {
+				return "", errors.New("injected switch failure")
+			}
+			return gitx.Run(ctx, dir, args...)
+		},
+	})
+	plan, err := service.Plan(context.Background(), fixture.request(t, CompleteFFOptions{
+		IntegrationTargetPolicy: IntegrationTargetStashRestore,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Apply(context.Background(), plan, Approve(plan.PlanID))
+	if err == nil || !strings.Contains(strings.Join(result.Warnings(), "\n"), "restored after integration stopped") {
+		t.Fatalf("Apply err=%v warnings=%v recovery=%v", err, result.Warnings(), result.Recovery())
+	}
+	if data, readErr := os.ReadFile(canonical); readErr != nil || string(data) != "preserve\n" {
+		t.Fatalf("canonical restore=%q err=%v", data, readErr)
+	}
+	if main, feature := mustGitCommand(t, fixture.repo, "rev-parse", "main"), mustGitCommand(t, fixture.repo, "rev-parse", "feature"); main == feature {
+		t.Fatalf("main unexpectedly integrated feature: %s", main)
+	}
+}
+
+func TestCompletionRealGitFFDetectsCanonicalWriteAfterRestore(t *testing.T) {
+	fixture := newLifecycleGitFixture(t, task.ModeWorktree, task.Hot)
+	completionCommit(t, fixture.worktree, "feature.txt", "feature\n", "feat: add feature")
+	if err := os.WriteFile(filepath.Join(fixture.repo, "canonical.txt"), []byte("preserve\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mutated := false
+	service := fixture.serviceWith(t, newLifecycleFakeRuntime(), fixture.root, LifecycleHooks{
+		IsAncestor: func(ctx context.Context, dir, ancestor, descendant string) (bool, error) {
+			contained, ancestorErr := gitIsAncestor(ctx, dir, ancestor, descendant)
+			if !mutated && contained {
+				mutated = true
+				if writeErr := os.WriteFile(filepath.Join(fixture.repo, "concurrent.txt"), []byte("late\n"), 0o644); writeErr != nil {
+					return false, writeErr
+				}
+			}
+			return contained, ancestorErr
+		},
+	})
+	plan, err := service.Plan(context.Background(), fixture.request(t, CompleteFFOptions{
+		IntegrationTargetPolicy: IntegrationTargetStashRestore,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutated = false
+	result, err := service.Apply(context.Background(), plan, Approve(plan.PlanID))
+	if err == nil || !errors.Is(err, ErrStalePlan) {
+		t.Fatalf("Apply err=%v steps=%+v recovery=%v", err, result.AttemptedSteps(), result.Recovery())
+	}
+	record, loadErr := fixture.tasks.GetRecord(fixture.record.Task.ID)
+	if loadErr != nil || record.Task.State != task.Hot {
+		t.Fatalf("task=%v err=%v", record, loadErr)
+	}
+}
+
+func TestCompletionRealGitFFBlocksStashForNestedRepository(t *testing.T) {
+	fixture := newLifecycleGitFixture(t, task.ModeWorktree, task.Hot)
+	completionCommit(t, fixture.worktree, "feature.txt", "feature\n", "feat: add feature")
+	nested := filepath.Join(fixture.repo, "nested")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	mustGitCommand(t, nested, "init")
+	if err := os.WriteFile(filepath.Join(nested, "content.txt"), []byte("nested\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := fixture.service.Plan(context.Background(), fixture.request(t, CompleteFFOptions{
+		IntegrationTargetPolicy: IntegrationTargetStashRestore,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	nestedEvidence := false
+	for _, condition := range plan.Conditions() {
+		if condition.Code == ConditionIntegrationTarget && strings.Contains(condition.Evidence, "nested repositories") {
+			nestedEvidence = true
+		}
+	}
+	if plan.Availability != AvailabilityBlocked || !nestedEvidence {
+		t.Fatalf("availability=%s conditions=%+v", plan.Availability, plan.Conditions())
+	}
+}
+
+func TestCompletionRealGitFFContinuesWhenRestoredStashCannotBeDropped(t *testing.T) {
+	fixture := newLifecycleGitFixture(t, task.ModeWorktree, task.Hot)
+	completionCommit(t, fixture.worktree, "feature.txt", "feature\n", "feat: add feature")
+	canonical := filepath.Join(fixture.repo, "canonical.txt")
+	if err := os.WriteFile(canonical, []byte("preserve\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	service := fixture.serviceWith(t, newLifecycleFakeRuntime(), fixture.root, LifecycleHooks{
+		CaptureStash: func(ctx context.Context, dir, tag string) (string, error) {
+			oid, captureErr := gitx.CaptureExactStash(ctx, dir, tag)
+			if captureErr != nil {
+				return "", captureErr
+			}
+			if _, dropErr := gitx.Run(ctx, dir, "stash", "drop", "stash@{0}"); dropErr != nil {
+				return "", dropErr
+			}
+			return oid, nil
+		},
+	})
+	plan, err := service.Plan(context.Background(), fixture.request(t, CompleteFFOptions{
+		IntegrationTargetPolicy: IntegrationTargetStashRestore,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.Apply(context.Background(), plan, Approve(plan.PlanID))
+	if err != nil || len(result.Warnings()) == 0 || !strings.Contains(strings.Join(result.Warnings(), "\n"), "no droppable selector") {
+		t.Fatalf("Apply err=%v warnings=%v steps=%+v", err, result.Warnings(), result.AttemptedSteps())
+	}
+	if data, readErr := os.ReadFile(canonical); readErr != nil || string(data) != "preserve\n" {
+		t.Fatalf("canonical restore=%q err=%v", data, readErr)
+	}
+	record, loadErr := fixture.tasks.GetRecord(fixture.record.Task.ID)
+	if loadErr != nil || record.Task.State != task.Done {
+		t.Fatalf("task=%v err=%v", record, loadErr)
 	}
 }
 

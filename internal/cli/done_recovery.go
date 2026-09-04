@@ -91,14 +91,41 @@ func recoverDoneBlockers(
 	fmt.Fprintf(app.Out, "  %s  %s\n", s.label("checkout"), config.Contract(current.Locator.RepoPath))
 	fmt.Fprintf(app.Out, "  %s    %s\n", s.label("status"), s.warning(status.Breakdown()))
 	for _, path := range paths {
-		fmt.Fprintf(app.Out, "    %s\n", path)
+		label := path
+		if gitx.IsAgentArtifact(path) {
+			label += " (agent artifact)"
+		}
+		fmt.Fprintf(app.Out, "    %s\n", label)
 	}
-	choice, promptErr := p.choice("Resolve canonical changes (p=PR, d=discard, q=cancel)", "cancel",
-		"pull request (p), discard canonical changes (d), cancel (q)", map[string]string{
-			"p": "pr", "pr": "pr", "pull-request": "pr",
-			"d": "discard", "discard": "discard", "drop": "discard",
-			"q": "cancel", "cancel": "cancel",
-		})
+	stashSafety, stashErr := gitx.InspectStashSafety(ctx, current.Locator.RepoPath)
+	stashAvailable := stashErr == nil && stashSafety.Safe()
+	prompt := "Resolve canonical changes (p=PR, d=discard, q=cancel)"
+	description := "pull request (p), discard canonical changes (d), cancel (q)"
+	choices := map[string]string{
+		"p": "pr", "pr": "pr", "pull-request": "pr",
+		"d": "discard", "discard": "discard", "drop": "discard",
+		"q": "cancel", "cancel": "cancel",
+	}
+	if stashAvailable {
+		prompt = "Resolve canonical changes (p=PR, s=stash+restore, d=discard, q=cancel)"
+		description = "pull request (p), stash and restore canonical changes (s), discard canonical changes (d), cancel (q)"
+		choices["s"] = "stash-restore"
+		choices["stash"] = "stash-restore"
+		choices["stash-restore"] = "stash-restore"
+		fmt.Fprintln(app.Out, "  stash       preserves staged, unstaged, untracked, and agent-artifact changes")
+	} else {
+		reason := "stash safety could not be observed"
+		switch {
+		case stashErr != nil:
+			reason += ": " + stashErr.Error()
+		case stashSafety.DirtySubmodules > 0:
+			reason = fmt.Sprintf("stash unavailable: %d dirty or unavailable submodule checkout(s)", stashSafety.DirtySubmodules)
+		case len(stashSafety.NestedRepositories) > 0:
+			reason = "stash unavailable: nested repositories at " + strings.Join(stashSafety.NestedRepositories, ", ")
+		}
+		fmt.Fprintf(app.Out, "  %s\n", s.warning(reason))
+	}
+	choice, promptErr := p.choice(prompt, "cancel", description, choices)
 	if errors.Is(promptErr, errPromptCanceled) || choice == "cancel" {
 		fmt.Fprintln(app.Out, "Integration canceled; any approved pane closures remain complete.")
 		return current, selection, true, nil
@@ -106,10 +133,16 @@ func recoverDoneBlockers(
 	if promptErr != nil {
 		return current, selection, false, promptErr
 	}
-	selection.DiscardIntegrationTarget = choice == "discard"
+	selection.IntegrationTargetPolicy = flow.IntegrationTargetFail
+	if choice == "discard" {
+		selection.IntegrationTargetPolicy = flow.IntegrationTargetDiscard
+	}
+	if choice == "stash-restore" {
+		selection.IntegrationTargetPolicy = flow.IntegrationTargetStashRestore
+	}
 	if choice == "pr" {
 		selection.Integration = doneIntegrationPR
-		selection.DiscardIntegrationTarget = false
+		selection.IntegrationTargetPolicy = flow.IntegrationTargetFail
 	}
 	fresh, err := replanDone(ctx, session, current, doneActionOptions(selected, selection, opts))
 	if err != nil {

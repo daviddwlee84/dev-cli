@@ -48,6 +48,10 @@ policy。該 wizard 詳見[變更流工作流程](change-stream-workflow.zh-TW.m
 `dev done` 上的 `--keep-worktree` 與 `--delete-branch` 之所以仍被接受，只是為了
 明確報錯並指向 `dev retire`。
 
+若 fast-forward 只被 canonical checkout 中無關的 dirty bytes 阻擋，互動式
+wizard 可用 exact stash+restore 保存它們，並在 integration 後恢復 staged state
+與 untracked files；dirty submodule 與 nested repository 仍需各自處理。
+
 Bare interactive `dev done` 到達 MERGED 後，cleanup step 會先做 read-only
 retirement preview，再詢問保留、retire，或 retire 並刪除 contained branch。
 核可前會列出 covering Herdr panes 與 recognized agent 狀態；caller-owned Herdr

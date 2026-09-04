@@ -50,6 +50,9 @@ type (
 	AnalyzeFinishFunc    func(context.Context, string, string, string) (gitx.FinishAnalysis, error)
 	CommitAllFunc        func(context.Context, string, string) error
 	DiscardAllFunc       func(context.Context, string) error
+	InspectStashFunc     func(context.Context, string) (gitx.StashSafety, error)
+	CaptureStashFunc     func(context.Context, string, string) (string, error)
+	RestoreStashFunc     func(context.Context, string, string) (gitx.ExactStashResult, error)
 	IsAncestorFunc       func(context.Context, string, string, string) (bool, error)
 	RemoveWorktreeFunc   func(context.Context, string, string, bool) error
 	ArtifactInspectFunc  func(context.Context, *artifact.Store, string) (artifact.ReadinessInspection, error)
@@ -85,6 +88,9 @@ type LifecycleHooks struct {
 	AnalyzeFinish    AnalyzeFinishFunc
 	CommitAll        CommitAllFunc
 	DiscardAll       DiscardAllFunc
+	InspectStash     InspectStashFunc
+	CaptureStash     CaptureStashFunc
+	RestoreStash     RestoreStashFunc
 	IsAncestor       IsAncestorFunc
 	RemoveWorktree   RemoveWorktreeFunc
 	InspectArtifacts ArtifactInspectFunc
@@ -153,6 +159,9 @@ type lifecycleService struct {
 	analyzeFinish    AnalyzeFinishFunc
 	commitAll        CommitAllFunc
 	discardAll       DiscardAllFunc
+	inspectStash     InspectStashFunc
+	captureStash     CaptureStashFunc
+	restoreStash     RestoreStashFunc
 	isAncestor       IsAncestorFunc
 	removeWorktree   RemoveWorktreeFunc
 	inspectArtifacts ArtifactInspectFunc
@@ -283,6 +292,9 @@ func newLifecycleImplementation(input LifecycleConfig) (*lifecycleService, error
 		analyzeFinish:    gitx.AnalyzeFinish,
 		commitAll:        gitx.CommitAllChanges,
 		discardAll:       gitx.DiscardAllChanges,
+		inspectStash:     gitx.InspectStashSafety,
+		captureStash:     gitx.CaptureExactStash,
+		restoreStash:     gitx.RestoreExactStash,
 		isAncestor:       gitIsAncestor,
 		removeWorktree:   gitx.RemoveWorktree,
 		inspectArtifacts: artifact.InspectReadiness,
@@ -373,6 +385,15 @@ func applyLifecycleHooks(s *lifecycleService, hooks LifecycleHooks) {
 	}
 	if hooks.DiscardAll != nil {
 		s.discardAll = hooks.DiscardAll
+	}
+	if hooks.InspectStash != nil {
+		s.inspectStash = hooks.InspectStash
+	}
+	if hooks.CaptureStash != nil {
+		s.captureStash = hooks.CaptureStash
+	}
+	if hooks.RestoreStash != nil {
+		s.restoreStash = hooks.RestoreStash
 	}
 	if hooks.IsAncestor != nil {
 		s.isAncestor = hooks.IsAncestor

@@ -45,6 +45,11 @@ first, offering commit or discard interactively, or taking an explicit
 `--keep-worktree` and `--delete-branch` flags remain accepted on `dev done`
 only to fail loudly and point at `dev retire`.
 
+If fast-forward is blocked by unrelated dirty bytes in the canonical checkout,
+the interactive wizard can preserve them with an exact stash+restore
+transaction. It restores staged state and untracked files after integration;
+dirty submodules and nested repositories still require independent handling.
+
 After a bare interactive `dev done` reaches MERGED, its cleanup step performs
 a read-only retirement preview and asks whether to keep, retire, or retire and
 delete the contained branch. Covering Herdr panes and recognized agent states

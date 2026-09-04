@@ -39,6 +39,33 @@ func validateDirty(policy DirtyPolicy, message string) error {
 	return nil
 }
 
+// IntegrationTargetPolicy is the explicitly selected treatment of unrelated
+// changes in the canonical checkout used for fast-forward integration.
+type IntegrationTargetPolicy string
+
+const (
+	IntegrationTargetFail         IntegrationTargetPolicy = "fail"
+	IntegrationTargetStashRestore IntegrationTargetPolicy = "stash-restore"
+	IntegrationTargetDiscard      IntegrationTargetPolicy = "discard"
+)
+
+func normalizeIntegrationTargetPolicy(policy IntegrationTargetPolicy) IntegrationTargetPolicy {
+	if policy == "" {
+		return IntegrationTargetFail
+	}
+	return policy
+}
+
+func validateIntegrationTargetPolicy(policy IntegrationTargetPolicy) error {
+	policy = normalizeIntegrationTargetPolicy(policy)
+	switch policy {
+	case IntegrationTargetFail, IntegrationTargetStashRestore, IntegrationTargetDiscard:
+		return nil
+	default:
+		return fmt.Errorf("unknown integration target policy %q", policy)
+	}
+}
+
 // ActionOptions is a closed set of operation-specific values. Implementations
 // are value types; Request normalizes pointers to independent values at package
 // boundaries.
@@ -101,10 +128,10 @@ func (CompleteDirectOptions) isActionOptions() {}
 
 // CompleteFFOptions controls local fast-forward integration.
 type CompleteFFOptions struct {
-	Dirty                    DirtyPolicy
-	CommitMessage            string
-	PushBase                 bool
-	DiscardIntegrationTarget bool
+	Dirty                   DirtyPolicy
+	CommitMessage           string
+	PushBase                bool
+	IntegrationTargetPolicy IntegrationTargetPolicy
 }
 
 func (CompleteFFOptions) Action() Action   { return CompleteFF }
@@ -303,6 +330,7 @@ func cloneActionOptions(options ActionOptions, action Action) (ActionOptions, er
 		return copy, nil
 	case CompleteFFOptions:
 		value.Dirty = normalizeDirty(value.Dirty)
+		value.IntegrationTargetPolicy = normalizeIntegrationTargetPolicy(value.IntegrationTargetPolicy)
 		return value, nil
 	case *CompleteFFOptions:
 		if value == nil {
@@ -310,6 +338,7 @@ func cloneActionOptions(options ActionOptions, action Action) (ActionOptions, er
 		}
 		copy := *value
 		copy.Dirty = normalizeDirty(copy.Dirty)
+		copy.IntegrationTargetPolicy = normalizeIntegrationTargetPolicy(copy.IntegrationTargetPolicy)
 		return copy, nil
 	case ReviewHandoffOptions:
 		value.Dirty = normalizeDirty(value.Dirty)
@@ -419,7 +448,10 @@ func validateActionOptions(options ActionOptions) error {
 	case CompleteDirectOptions:
 		return validateDirty(value.Dirty, value.CommitMessage)
 	case CompleteFFOptions:
-		return validateDirty(value.Dirty, value.CommitMessage)
+		if err := validateDirty(value.Dirty, value.CommitMessage); err != nil {
+			return err
+		}
+		return validateIntegrationTargetPolicy(value.IntegrationTargetPolicy)
 	case ReviewHandoffOptions:
 		return validateDirty(value.Dirty, value.CommitMessage)
 	case VerifyMergedOptions:
@@ -502,6 +534,7 @@ func appendOptionsIdentity(writer *identityWriter, options ActionOptions) {
 		appendCompletionOptionsIdentity(writer, value.Dirty, value.CommitMessage, value.Push)
 	case CompleteFFOptions:
 		appendCompletionOptionsIdentity(writer, value.Dirty, value.CommitMessage, value.PushBase)
+		writer.addString("integration-target-policy", string(value.IntegrationTargetPolicy))
 	case ReviewHandoffOptions:
 		writer.addString("dirty", string(value.Dirty))
 		writer.addString("commit-message", value.CommitMessage)

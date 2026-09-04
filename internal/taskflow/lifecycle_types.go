@@ -75,6 +75,8 @@ const (
 	EffectOpenRuntime    EffectCode = "open-runtime"
 	EffectCommitAll      EffectCode = "commit-all"
 	EffectDiscardAll     EffectCode = "discard-all"
+	EffectStashTarget    EffectCode = "stash-integration-target"
+	EffectRestoreTarget  EffectCode = "restore-integration-target"
 	EffectDiscardTarget  EffectCode = "discard-integration-target"
 	EffectRebaseBranch   EffectCode = "rebase-branch"
 	EffectMergeFF        EffectCode = "merge-ff"
@@ -166,18 +168,20 @@ type lifecycleObservation struct {
 }
 
 type completionIntegrationObservation struct {
-	worktree      gitx.RegisteredWorktree
-	worktreeFound bool
-	worktreeErr   error
-	status        gitx.Status
-	statusErr     error
-	head          string
-	headErr       error
-	operation     string
-	inProgress    bool
-	operationErr  error
-	occupancy     runtime.Occupancy
-	occupancyErr  error
+	worktree       gitx.RegisteredWorktree
+	worktreeFound  bool
+	worktreeErr    error
+	status         gitx.Status
+	statusErr      error
+	head           string
+	headErr        error
+	operation      string
+	inProgress     bool
+	operationErr   error
+	occupancy      runtime.Occupancy
+	occupancyErr   error
+	stashSafety    gitx.StashSafety
+	stashSafetyErr error
 }
 
 func (o lifecycleObservation) hasCheckout() bool {
@@ -251,6 +255,10 @@ type executionState struct {
 	resumePath          string
 	resumeRuntimeName   string
 	resumeRuntimeHandle string
+
+	targetStashOID       string
+	targetStashRestored  bool
+	targetRestoreAttempt bool
 }
 
 func (e *executionState) run(effect Effect, operation func() (string, error)) error {
@@ -472,6 +480,9 @@ func integrationAuthority(observed completionIntegrationObservation) string {
 		observed.head, errorString(observed.headErr),
 		observed.operation, boolString(observed.inProgress), errorString(observed.operationErr),
 		occupancyAuthority(observed.occupancy, observed.occupancyErr),
+		strconv.Itoa(observed.stashSafety.DirtySubmodules),
+		strings.Join(observed.stashSafety.NestedRepositories, "\x00"),
+		observed.stashSafety.Fingerprint, errorString(observed.stashSafetyErr),
 	)
 }
 

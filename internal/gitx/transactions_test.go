@@ -110,6 +110,55 @@ func TestPullRebaseRestoresExactStashAndIndex(t *testing.T) {
 	}
 }
 
+func TestExactStashRestoresIndexAndPreservesUnrelatedStash(t *testing.T) {
+	isolateTransactions(t)
+	r := gittest.New(t)
+	r.Write("old-stash.txt", "older\n")
+	r.Git("stash", "push", "--include-untracked", "-m", "unrelated")
+	unrelated := r.Git("rev-parse", "refs/stash")
+	r.Write("staged.txt", "staged\n")
+	r.Git("add", "staged.txt")
+	r.Write("untracked.txt", "untracked\n")
+	if err := os.WriteFile(filepath.Join(r.Root, "README.md"), []byte("unstaged\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	oid, err := gitx.CaptureExactStash(context.Background(), r.Root, "test-exact-stash")
+	if err != nil || oid == "" || oid == unrelated {
+		t.Fatalf("capture oid=%q err=%v", oid, err)
+	}
+	if status, statusErr := gitx.StatusOf(context.Background(), r.Root); statusErr != nil || status.Dirty() {
+		t.Fatalf("post-capture status=%+v err=%v", status, statusErr)
+	}
+	restored, err := gitx.RestoreExactStash(context.Background(), r.Root, oid)
+	if err != nil || !restored.Restored || !restored.Dropped {
+		t.Fatalf("restore=%+v err=%v", restored, err)
+	}
+	if staged := r.Git("diff", "--cached", "--name-only"); staged != "staged.txt" {
+		t.Fatalf("staged state=%q", staged)
+	}
+	if got := r.Git("rev-parse", "refs/stash"); got != unrelated {
+		t.Fatalf("unrelated stash moved: got=%s want=%s", got, unrelated)
+	}
+}
+
+func TestExactStashReportsRestoredWhenSelectorWasRemoved(t *testing.T) {
+	isolateTransactions(t)
+	r := gittest.New(t)
+	r.Write("saved.txt", "saved\n")
+	oid, err := gitx.CaptureExactStash(context.Background(), r.Root, "test-retained-stash")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Git("stash", "drop", "stash@{0}")
+	restored, err := gitx.RestoreExactStash(context.Background(), r.Root, oid)
+	if err == nil || !restored.Restored || restored.Dropped || !strings.Contains(err.Error(), "no droppable selector") {
+		t.Fatalf("restore=%+v err=%v", restored, err)
+	}
+	if _, statErr := os.Stat(filepath.Join(r.Root, "saved.txt")); statErr != nil {
+		t.Fatalf("restored bytes missing: %v", statErr)
+	}
+}
+
 func TestAmendAllCanExcludeAgentArtifacts(t *testing.T) {
 	isolateTransactions(t)
 	r := gittest.New(t)

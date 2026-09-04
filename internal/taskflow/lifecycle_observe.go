@@ -614,7 +614,7 @@ func appendOptionAuthority(authority map[string]string, options ActionOptions) {
 	case CompleteFFOptions:
 		appendCompletionOptionAuthority(authority, value.Dirty, value.CommitMessage)
 		authority["option.push-base"] = boolString(value.PushBase)
-		authority["option.discard-integration-target"] = boolString(value.DiscardIntegrationTarget)
+		authority["option.integration-target-policy"] = string(value.IntegrationTargetPolicy)
 	case ReviewHandoffOptions:
 		appendCompletionOptionAuthority(authority, value.Dirty, value.CommitMessage)
 		authority["option.draft"] = boolString(value.Draft)

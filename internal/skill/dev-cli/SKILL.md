@@ -770,7 +770,9 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   still block. Non-interactive use remains report-only without `--ff`/`--pr`.
   Unique discard requires `DROP` or explicit `--dirty=discard --yes`.
   Before integration, idle/done non-caller Herdr panes can be explicitly closed
-  and a dirty canonical target can switch to PR or enter a typed-`DROP` guarded
-  discard; active/unknown agents still fail closed.
+  and a dirty canonical target can switch to PR, use exact stash+restore, or
+  enter a typed-`DROP` guarded discard. Stash restore preserves index and
+  untracked state, retains its exact OID on conflict, and refuses dirty
+  submodules or nested repositories; active/unknown agents still fail closed.
 - **The stats sampler must be scheduled.** `dev stats` is empty until
   `dev stats backfill` runs once and `dev stats sample` runs periodically.

@@ -113,6 +113,10 @@ func (s *lifecycleService) observeIntegrationFacts(ctx context.Context, observed
 	observed.integration.head = strings.TrimSpace(observed.integration.head)
 	observed.integration.operation, observed.integration.inProgress, observed.integration.operationErr =
 		s.gitInProgress(ctx, observed.repoPath)
+	if observed.integration.status.Dirty() {
+		observed.integration.stashSafety, observed.integration.stashSafetyErr =
+			s.inspectStash(ctx, observed.repoPath)
+	}
 }
 
 func (s *lifecycleService) completeDirectSpec(request Request, observed lifecycleObservation) PlanSpec {
@@ -147,10 +151,12 @@ func (s *lifecycleService) completeFFSpec(request Request, observed lifecycleObs
 	relation := effectiveCompletionRelation(observed, options.Dirty, options.CommitMessage)
 	if !relation.Contained() {
 		conditions = append(conditions, completionIntegrationCondition(
-			observed, options.Dirty, options.CommitMessage, options.DiscardIntegrationTarget))
+			observed, options.Dirty, options.CommitMessage, options.IntegrationTargetPolicy))
 		if observed.mode == task.ModeWorktree {
 			conditions = append(conditions, s.completionIntegrationOccupancyCondition(observed))
 		}
+	} else if observed.mode == task.ModeWorktree {
+		conditions = append(conditions, completionContainedIntegrationCondition(observed))
 	}
 
 	relationEvidence := fmt.Sprintf("%s is behind %d and ahead %d relative to %s",
@@ -165,17 +171,25 @@ func (s *lifecycleService) completeFFSpec(request Request, observed lifecycleObs
 	effects := s.completionDirtyEffects(observed, options.Dirty, options.CommitMessage)
 	if completionDirtyExecutable(observed, options.Dirty, options.CommitMessage) {
 		if !relation.Contained() {
-			if observed.integration.statusErr == nil && observed.integration.status.Dirty() && options.DiscardIntegrationTarget {
-				effects = append(effects, NewEffect(
-					EffectDiscardTarget, "discard canonical integration checkout changes", observed.repoPath, true, false,
-					map[string]string{"scope": "all", "token": "DROP", "integration-authority": integrationAuthority(observed.integration)},
-				))
-			}
 			if relation.BaseOnly > 0 {
 				effects = append(effects, NewEffect(
 					EffectRebaseBranch, "rebase the task branch onto the explicit base", observed.checkout, false, false,
 					map[string]string{"branch": observed.task.Branch, "base": observed.completionBaseRef},
 				))
+			}
+			if observed.integration.statusErr == nil && observed.integration.status.Dirty() {
+				switch options.IntegrationTargetPolicy {
+				case IntegrationTargetStashRestore:
+					effects = append(effects, NewEffect(
+						EffectStashTarget, "stash canonical integration checkout changes by exact OID", observed.repoPath, false, false,
+						map[string]string{"scope": "staged-unstaged-untracked", "integration-authority": integrationAuthority(observed.integration)},
+					))
+				case IntegrationTargetDiscard:
+					effects = append(effects, NewEffect(
+						EffectDiscardTarget, "discard canonical integration checkout changes", observed.repoPath, true, false,
+						map[string]string{"scope": "all", "token": "DROP", "integration-authority": integrationAuthority(observed.integration)},
+					))
+				}
 			}
 			effects = append(effects,
 				NewEffect(
@@ -187,6 +201,13 @@ func (s *lifecycleService) completeFFSpec(request Request, observed lifecycleObs
 					map[string]string{"base": observed.completionBaseRef, "branch": observed.task.Branch, "strategy": "ff-only"},
 				),
 			)
+			if options.IntegrationTargetPolicy == IntegrationTargetStashRestore &&
+				observed.integration.statusErr == nil && observed.integration.status.Dirty() {
+				effects = append(effects, NewEffect(
+					EffectRestoreTarget, "restore canonical integration checkout changes from the exact stash", observed.repoPath, false, false,
+					map[string]string{"index": "restore", "retain-on-failure": "true"},
+				))
+			}
 		}
 		if options.PushBase {
 			effects = append(effects, completionPushBaseEffect(observed))
@@ -556,7 +577,7 @@ func completionIntegrationCondition(
 	observed lifecycleObservation,
 	dirty DirtyPolicy,
 	message string,
-	discardTarget bool,
+	targetPolicy IntegrationTargetPolicy,
 ) Condition {
 	if observed.mode == task.ModeBranch {
 		verdict, _ := completionDirtyCondition(observed, dirty, message)
@@ -595,9 +616,27 @@ func completionIntegrationCondition(
 		return condition(ConditionIntegrationTarget, VerdictBlocked, RequirementRequired,
 			fmt.Sprintf("canonical checkout has %d conflicted path(s)", integration.status.Conflicted), "resolve or abort conflicts")
 	case integration.status.Dirty():
-		if discardTarget {
+		switch targetPolicy {
+		case IntegrationTargetDiscard:
 			return condition(ConditionIntegrationTarget, VerdictMet, RequirementRequired,
 				"canonical checkout changes will be discarded under typed confirmation", "")
+		case IntegrationTargetStashRestore:
+			switch {
+			case integration.stashSafetyErr != nil:
+				return condition(ConditionIntegrationTarget, VerdictError, RequirementRequired,
+					integration.stashSafetyErr.Error(), "repair canonical stash-safety observation")
+			case integration.stashSafety.DirtySubmodules > 0:
+				return condition(ConditionIntegrationTarget, VerdictBlocked, RequirementRequired,
+					fmt.Sprintf("canonical checkout has %d dirty or unavailable submodule checkout(s)", integration.stashSafety.DirtySubmodules),
+					"commit, stash, or clean each submodule independently")
+			case len(integration.stashSafety.NestedRepositories) > 0:
+				return condition(ConditionIntegrationTarget, VerdictBlocked, RequirementRequired,
+					"canonical checkout contains nested repositories at "+strings.Join(integration.stashSafety.NestedRepositories, ", "),
+					"preserve each nested repository independently")
+			default:
+				return condition(ConditionIntegrationTarget, VerdictMet, RequirementRequired,
+					"canonical checkout changes will be stashed by exact OID and restored with index state after integration", "")
+			}
 		}
 		return condition(ConditionIntegrationTarget, VerdictBlocked, RequirementRequired,
 			"canonical checkout is dirty: "+integration.status.Breakdown(), "preserve its unrelated bytes before integration")
@@ -607,6 +646,37 @@ func completionIntegrationCondition(
 	default:
 		return condition(ConditionIntegrationTarget, VerdictMet, RequirementRequired,
 			"canonical main checkout is exact, clean, conflict-free, and switchable", "")
+	}
+}
+
+func completionContainedIntegrationCondition(observed lifecycleObservation) Condition {
+	integration := observed.integration
+	switch {
+	case integration.worktreeErr != nil:
+		return condition(ConditionIntegrationTarget, VerdictError, RequirementRequired,
+			integration.worktreeErr.Error(), "repair canonical main worktree identity")
+	case !integration.worktreeFound:
+		return condition(ConditionIntegrationTarget, VerdictBlocked, RequirementRequired,
+			"canonical main checkout is not registered", "restore the canonical main checkout")
+	case integration.statusErr != nil:
+		return condition(ConditionIntegrationTarget, VerdictError, RequirementRequired,
+			integration.statusErr.Error(), "repair canonical checkout status observation")
+	case integration.operationErr != nil:
+		return condition(ConditionIntegrationTarget, VerdictError, RequirementRequired,
+			integration.operationErr.Error(), "repair canonical checkout Git-operation observation")
+	case integration.inProgress:
+		return condition(ConditionIntegrationTarget, VerdictBlocked, RequirementRequired,
+			"canonical checkout has Git operation "+integration.operation+" in progress", "finish or abort it")
+	case integration.status.Conflicted > 0:
+		return condition(ConditionIntegrationTarget, VerdictBlocked, RequirementRequired,
+			fmt.Sprintf("canonical checkout has %d conflicted path(s)", integration.status.Conflicted),
+			"resolve or reset the failed restore before recording DONE")
+	case integration.headErr != nil:
+		return condition(ConditionIntegrationTarget, VerdictError, RequirementRequired,
+			integration.headErr.Error(), "repair canonical checkout HEAD observation")
+	default:
+		return condition(ConditionIntegrationTarget, VerdictMet, RequirementRequired,
+			"canonical checkout has no unresolved integration operation or conflict", "")
 	}
 }
 
@@ -738,7 +808,7 @@ func completionConfirmation(observed lifecycleObservation, dirty DirtyPolicy, pr
 }
 
 func completionFFConfirmation(observed lifecycleObservation, options CompleteFFOptions) Confirmation {
-	if options.DiscardIntegrationTarget && observed.integration.statusErr == nil && observed.integration.status.Dirty() {
+	if options.IntegrationTargetPolicy == IntegrationTargetDiscard && observed.integration.statusErr == nil && observed.integration.status.Dirty() {
 		detail := fmt.Sprintf("%d canonical integration checkout path(s)", observed.integration.status.Changed)
 		if observed.statusErr == nil && observed.status.Dirty() && options.Dirty == DirtyDiscard && observed.finish.UniqueDirty() > 0 {
 			detail += fmt.Sprintf(" and %d unique task-checkout path(s)", observed.finish.UniqueDirty())
@@ -747,6 +817,13 @@ func completionFFConfirmation(observed lifecycleObservation, options CompleteFFO
 			Kind: ConfirmationTyped, Token: "DROP",
 			Prompt: "Type DROP to discard " + detail + " under this exact plan",
 		}
+	}
+	if options.IntegrationTargetPolicy == IntegrationTargetStashRestore &&
+		observed.integration.statusErr == nil && observed.integration.status.Dirty() {
+		return Confirmation{Kind: ConfirmationApproval, Prompt: fmt.Sprintf(
+			"Stash %d canonical path(s), fast-forward, then restore their index and worktree state?",
+			observed.integration.status.Changed,
+		)}
 	}
 	return completionConfirmation(observed, options.Dirty, "Integrate this task with fast-forward only?")
 }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
@@ -51,11 +52,31 @@ func (e *executionState) applyCompleteDirect(ctx context.Context) (Result, error
 	return e.result(), nil
 }
 
-func (e *executionState) applyCompleteFF(ctx context.Context) (Result, error) {
+func (e *executionState) applyCompleteFF(ctx context.Context) (result Result, err error) {
 	options := e.plan.Request.Options.(CompleteFFOptions)
 	observed := &e.observed
 	integrated := effectiveCompletionRelation(*observed, options.Dirty, options.CommitMessage).Contained()
 	integrationTouched := false
+	defer func() {
+		if err == nil || e.targetStashOID == "" || e.targetStashRestored || e.targetRestoreAttempt {
+			return
+		}
+		e.targetRestoreAttempt = true
+		restoreCtx, cancelRestore := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+		defer cancelRestore()
+		restored, restoreErr := e.service.restoreStash(restoreCtx, observed.repoPath, e.targetStashOID)
+		if restored.Restored {
+			e.targetStashRestored = true
+			e.warnings = append(e.warnings, "canonical checkout changes were restored after integration stopped")
+			if restoreErr != nil {
+				e.warnings = append(e.warnings, restoreErr.Error())
+			}
+			e.recovery = append(e.recovery, "the task remains active; refresh dev done after reviewing the restored canonical checkout")
+		} else {
+			e.recovery = append(e.recovery, exactStashRecovery(observed.repoPath, e.targetStashOID, restoreErr))
+		}
+		result = e.result()
+	}()
 
 	for _, effect := range e.plan.Effects() {
 		switch effect.Code {
@@ -95,8 +116,40 @@ func (e *executionState) applyCompleteFF(ctx context.Context) (Result, error) {
 				return e.fail(staleBoundary("canonical discard changed committed HEAD"),
 					"inspect the canonical branch before retrying")
 			}
+		case EffectStashTarget:
+			fresh, inspectErr := e.service.inspectIntegrationTarget(ctx, observed, false)
+			if inspectErr != nil {
+				return e.fail(inspectErr, "refresh the canonical integration checkout before stashing")
+			}
+			if integrationAuthority(fresh) != integrationAuthority(observed.integration) {
+				return e.fail(staleBoundary("canonical integration checkout changed before stash"),
+					"review its current paths and rerun dev done")
+			}
+			beforeHead := fresh.head
+			err := e.run(effect, func() (string, error) {
+				tag := fmt.Sprintf("dev-done-%s-%d", e.plan.PlanID, e.service.now().UnixNano())
+				oid, stashErr := e.service.captureStash(ctx, observed.repoPath, tag)
+				if stashErr != nil {
+					return "", fmt.Errorf("stash canonical integration checkout changes: %w", stashErr)
+				}
+				e.targetStashOID = oid
+				return "stashed canonical integration checkout changes as " + oid, nil
+			})
+			if err != nil {
+				return e.fail(err, "the task branch and canonical checkout remain active; inspect canonical changes before retrying")
+			}
+			if err := e.service.refreshIntegrationTarget(ctx, observed, observed.integration.status.Branch); err != nil {
+				return e.fail(fmt.Errorf("verify canonical checkout after stash: %w", err),
+					"the exact stash is retained until canonical checkout recovery succeeds")
+			}
+			if observed.integration.head != beforeHead {
+				return e.fail(staleBoundary("canonical stash changed committed HEAD"),
+					"inspect the canonical branch before retrying")
+			}
 		case EffectRebaseBranch:
-			if err := e.service.revalidateFFBeforeIntegration(ctx, observed, integrationTouched); err != nil {
+			allowDirtyTarget := options.IntegrationTargetPolicy == IntegrationTargetStashRestore ||
+				options.IntegrationTargetPolicy == IntegrationTargetDiscard
+			if err := e.service.revalidateFFBeforeIntegration(ctx, observed, integrationTouched, allowDirtyTarget); err != nil {
 				return e.fail(err, "refresh branch and canonical checkout authority before rebasing")
 			}
 			err := e.run(effect, func() (string, error) {
@@ -122,7 +175,7 @@ func (e *executionState) applyCompleteFF(ctx context.Context) (Result, error) {
 				syncBranchIntegration(observed)
 			}
 		case EffectSwitchBase:
-			if err := e.service.revalidateFFBeforeIntegration(ctx, observed, integrationTouched); err != nil {
+			if err := e.service.revalidateFFBeforeIntegration(ctx, observed, integrationTouched, false); err != nil {
 				return e.fail(err, "refresh both checkouts before switching the canonical main checkout")
 			}
 			err := e.run(effect, func() (string, error) {
@@ -187,11 +240,53 @@ func (e *executionState) applyCompleteFF(ctx context.Context) (Result, error) {
 				return e.fail(errors.New("task branch is not contained after fast-forward merge"), "refresh and inspect the retained refs")
 			}
 			integrated = true
+		case EffectRestoreTarget:
+			if !integrated || e.targetStashOID == "" {
+				return e.fail(&InvalidPlanError{PlanID: e.plan.PlanID, Reason: "canonical restore reached without completed integration and exact stash"})
+			}
+			if err := e.service.revalidateIntegrationTarget(ctx, observed, true, observed.completionBaseRef); err != nil {
+				return e.fail(err, "refresh the integrated canonical checkout before restoring its saved changes")
+			}
+			e.targetRestoreAttempt = true
+			var restored gitx.ExactStashResult
+			var restoreWarning error
+			err := e.run(effect, func() (string, error) {
+				var restoreErr error
+				restored, restoreErr = e.service.restoreStash(ctx, observed.repoPath, e.targetStashOID)
+				if !restored.Restored {
+					if restoreErr == nil {
+						restoreErr = errors.New("stash restore returned without restoring canonical checkout changes")
+					}
+					return "canonical restore may have left conflicts; exact stash retained",
+						fmt.Errorf("restore canonical checkout changes: %w", restoreErr)
+				}
+				e.targetStashRestored = true
+				restoreWarning = restoreErr
+				return "restored canonical checkout index and worktree from " + e.targetStashOID, nil
+			})
+			if err != nil {
+				e.partial = true
+				return e.fail(err, exactStashRecovery(observed.repoPath, e.targetStashOID, err))
+			}
+			if restoreWarning != nil {
+				e.warnings = append(e.warnings, restoreWarning.Error())
+			}
+			fresh, inspectErr := e.service.inspectIntegrationTarget(ctx, observed, false)
+			if inspectErr != nil {
+				return e.fail(fmt.Errorf("verify canonical checkout after restore: %w", inspectErr),
+					"the restored bytes remain in the canonical checkout; inspect them before recording DONE")
+			}
+			if fresh.status.Detached || fresh.status.Branch != observed.completionBaseRef ||
+				fresh.worktree.Worktree.Branch != observed.completionBaseRef || fresh.head != observed.completionBaseOID {
+				return e.fail(staleBoundary("canonical checkout identity changed while restoring saved changes"),
+					"preserve the restored bytes and inspect the canonical branch")
+			}
+			observed.integration = fresh
 		case EffectPushBase:
 			if !integrated {
 				return e.fail(&InvalidPlanError{PlanID: e.plan.PlanID, Reason: "base push reached before integration"})
 			}
-			if err := e.service.revalidateFFCompleted(ctx, observed, integrationTouched); err != nil {
+			if err := e.service.revalidateFFCompleted(ctx, observed, integrationTouched, e.targetStashRestored); err != nil {
 				return e.fail(err, "refresh integrated authority before the optional base push")
 			}
 			pushedBase := false
@@ -204,7 +299,7 @@ func (e *executionState) applyCompleteFF(ctx context.Context) (Result, error) {
 				return "pushed origin/" + observed.completionBaseRef, nil
 			}, "optional base push failed")
 			if pushedBase && integrationTouched {
-				if err := e.service.refreshIntegrationTarget(ctx, observed, observed.completionBaseRef); err != nil {
+				if err := e.service.refreshIntegrationTargetWithClean(ctx, observed, observed.completionBaseRef, !e.targetStashRestored); err != nil {
 					return e.fail(fmt.Errorf("refresh after optional base push: %w", err), "inspect the pushed base before recording DONE")
 				}
 				if observed.mode == task.ModeBranch {
@@ -218,7 +313,7 @@ func (e *executionState) applyCompleteFF(ctx context.Context) (Result, error) {
 			if !integrated {
 				return e.fail(&InvalidPlanError{PlanID: e.plan.PlanID, Reason: "DONE update reached before integration proof"})
 			}
-			if err := e.service.revalidateFFCompleted(ctx, observed, integrationTouched); err != nil {
+			if err := e.service.revalidateFFCompleted(ctx, observed, integrationTouched, e.targetStashRestored); err != nil {
 				return e.fail(err, "refresh exact containment before recording DONE")
 			}
 			if err := e.writeCompletionDone(effect); err != nil {
@@ -229,6 +324,16 @@ func (e *executionState) applyCompleteFF(ctx context.Context) (Result, error) {
 		}
 	}
 	return e.result(), nil
+}
+
+func exactStashRecovery(repoPath, oid string, cause error) string {
+	detail := ""
+	if cause != nil {
+		detail = ": " + cause.Error()
+	}
+	return "exact canonical stash " + oid + " was retained" + detail +
+		"; after resolving or resetting conflicts, run `git -C " + shellQuote(repoPath) +
+		" stash apply --index " + shellQuote(oid) + "`"
 }
 
 func (e *executionState) applyReviewHandoff(ctx context.Context) (Result, error) {
@@ -592,12 +697,13 @@ func (s *lifecycleService) revalidateFFBeforeIntegration(
 	ctx context.Context,
 	observed *lifecycleObservation,
 	integrationTouched bool,
+	allowDirtyIntegration bool,
 ) error {
 	if err := s.revalidateCompletionSafety(ctx, observed); err != nil {
 		return err
 	}
 	if observed.mode == task.ModeWorktree {
-		return s.revalidateIntegrationTarget(ctx, observed, !integrationTouched, "")
+		return s.revalidateIntegrationTargetWithClean(ctx, observed, !integrationTouched, "", !allowDirtyIntegration)
 	}
 	return nil
 }
@@ -636,12 +742,15 @@ func (s *lifecycleService) revalidateFFCompleted(
 	ctx context.Context,
 	observed *lifecycleObservation,
 	integrationTouched bool,
+	allowDirtyIntegration bool,
 ) error {
 	if err := s.revalidateCompletionSafety(ctx, observed); err != nil {
 		return err
 	}
 	if observed.mode == task.ModeWorktree && integrationTouched {
-		if err := s.revalidateIntegrationTarget(ctx, observed, true, observed.completionBaseRef); err != nil {
+		if err := s.revalidateIntegrationTargetWithClean(
+			ctx, observed, true, observed.completionBaseRef, !allowDirtyIntegration,
+		); err != nil {
 			return err
 		}
 	}
@@ -660,6 +769,13 @@ func (s *lifecycleService) revalidateFFCompleted(
 	if !contained {
 		return errors.New("task branch is no longer contained in the exact base")
 	}
+	if observed.mode == task.ModeWorktree && integrationTouched {
+		if err := s.revalidateIntegrationTargetWithClean(
+			ctx, observed, true, observed.completionBaseRef, !allowDirtyIntegration,
+		); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -669,7 +785,17 @@ func (s *lifecycleService) revalidateIntegrationTarget(
 	compareAuthority bool,
 	expectedBranch string,
 ) error {
-	fresh, err := s.inspectIntegrationTarget(ctx, observed, true)
+	return s.revalidateIntegrationTargetWithClean(ctx, observed, compareAuthority, expectedBranch, true)
+}
+
+func (s *lifecycleService) revalidateIntegrationTargetWithClean(
+	ctx context.Context,
+	observed *lifecycleObservation,
+	compareAuthority bool,
+	expectedBranch string,
+	requireClean bool,
+) error {
+	fresh, err := s.inspectIntegrationTarget(ctx, observed, requireClean)
 	if err != nil {
 		return err
 	}
@@ -705,6 +831,12 @@ func (s *lifecycleService) inspectIntegrationTarget(
 	if fresh.statusErr != nil {
 		return fresh, fresh.statusErr
 	}
+	if fresh.status.Dirty() {
+		fresh.stashSafety, fresh.stashSafetyErr = s.inspectStash(ctx, observed.repoPath)
+		if fresh.stashSafetyErr != nil {
+			return fresh, fresh.stashSafetyErr
+		}
+	}
 	if fresh.status.Conflicted > 0 || requireClean && fresh.status.Dirty() {
 		return fresh, fmt.Errorf("canonical integration checkout is not clean: %s", fresh.status.Breakdown())
 	}
@@ -739,7 +871,16 @@ func (s *lifecycleService) refreshIntegrationTarget(
 	observed *lifecycleObservation,
 	expectedBranch string,
 ) error {
-	fresh, err := s.inspectIntegrationTarget(ctx, observed, true)
+	return s.refreshIntegrationTargetWithClean(ctx, observed, expectedBranch, true)
+}
+
+func (s *lifecycleService) refreshIntegrationTargetWithClean(
+	ctx context.Context,
+	observed *lifecycleObservation,
+	expectedBranch string,
+	requireClean bool,
+) error {
+	fresh, err := s.inspectIntegrationTarget(ctx, observed, requireClean)
 	if err != nil {
 		return err
 	}
