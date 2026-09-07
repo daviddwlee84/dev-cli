@@ -4,6 +4,14 @@ Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
 
 ## Active
 
+### P2 · L — Agent configuration interoperability (MCP bridge and shared skills)
+Add explicit, previewed Claude Code → Codex project MCP bridging with runtime
+secret references, plus per-skill links from `.agents/skills` into
+`.claude/skills`. Preserve static inventory, foreign configuration, provider
+ownership and exact-checkout boundaries. Start with the verified Grafana case;
+do not expand into bidirectional config sync or a new secret store.
+See [implementation plan](backlog/agent-config-interop-plan.md).
+
 ### P1 · L — Verified backup receipts and safe local eviction
 Phase 1 intentionally stops at reversible archive. Before adding `dev reclaim`
 or any action that deletes a local checkout, build a fresh preflight that checks
