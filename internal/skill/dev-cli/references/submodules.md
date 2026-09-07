@@ -1,5 +1,42 @@
 # Submodule workspaces
 
+## Add a known repository
+
+```bash
+dev submodule add owner/library libs/library --dry-run --json
+dev submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes --json
+dev repo add-as-submodule owner/library libs/library --checkout=default-branch --yes
+```
+
+Use the dry-run to verify the exact parent checkout, portable network source,
+relative path and mode. Only apply the approved request. `--parent PATH` selects
+an exact checkout; the default is the nearest repo containing cwd, not its
+canonical or outermost checkout. Source selection combines known local remotes
+and cached forge repositories without refreshing. Ambiguous names need an exact
+URL or interactive selection. Local-only sources and existing targets/stores are
+not adopted. REPOS/REMOTE `y u` copies the selected network clone URL locally.
+
+The wizard offers pinned/default-branch. Non-interactive default is pinned;
+`--ref` is pinned-only, and a missing ref resolves the fresh clone's default
+branch commit. Default-branch mode tracks the real default, not an assumed main.
+Both stage a fixed gitlink; neither enables remote-following updates or creates
+task-member intent. `--submodules=recursive|none` controls only new descendants.
+Only `.gitmodules` and the new gitlink are staged; unrelated staged/dirty work
+and other checkouts are preserved. No commit, push, task branch or runtime is
+created. Use `develop` separately for managed task membership.
+
+**Gotchas:** `.gitmodules` must be absent or unchanged, including hidden index
+edits; filters/encodings, conflicts, active Git operations, detached/unborn
+parents and unsafe paths block addition. `--yes` is required for non-interactive
+mutation; `--json` never prompts. A local `planned` result has no resolved HEAD.
+An error may still return a partial result (`phase`, `git_dir`, `head`, `staged`,
+`warnings`). Inspect retained paths and finish metadata/staging manually; for
+`initialization-incomplete`, run `dev submodule init` inside the new child.
+Never force-delete partial clones or replay add over them. The retirement
+`recover` journal format does not apply to addition.
+
+## Initialize and develop existing gitlinks
+
 `dev repo clone`, clone-style `repo new`, and new linked worktrees initialize
 recursively at committed gitlinks by default. Use `--submodules=none` to opt out;
 `--no-provision` only skips environment provisioning. Global and project

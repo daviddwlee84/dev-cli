@@ -1100,6 +1100,8 @@ func (m Model) renderDetail() string {
 	case modeCopy:
 		return "  " + styleTitle.Render("copy ") + m.copyBindingHelp() +
 			"\n  " + styleHelp.Render("press a second key · esc to cancel")
+	case modeCloneURL:
+		return m.renderCloneURLs()
 	}
 
 	if row, ok := m.currentFleet(); ok {
@@ -1574,7 +1576,7 @@ func (m Model) renderFooter() string {
 			bindings = append(bindings, "c next")
 		}
 	}
-	if m.view == ViewRepos || m.view == ViewSkills || m.view == ViewMCP {
+	if m.view == ViewRepos || m.view == ViewRemote || m.view == ViewSkills || m.view == ViewMCP {
 		bindings = append(bindings, "y copy")
 	}
 	bindings = append(bindings, "tab view", "/ filter", "? help")

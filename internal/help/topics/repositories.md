@@ -53,6 +53,17 @@ when absent, and can be forced built-in with `[picker] command = []`.
 
 ## Templates and check-in
 
+To add a dependency inside a repository, use `dev submodule add [source] [path]`
+or `dev repo add-as-submodule`, not `repo clone`. The source picker combines
+known local remotes and cached forge repositories. The wizard offers pinned or
+remote-default-branch checkout; non-interactive default is pinned. Optional
+`--ref` is pinned-only, `--parent` selects an exact checkout, and `--submodules`
+controls descendants. Preview with `--dry-run`; non-interactive mutation requires
+`--yes`. Only `.gitmodules` and the new gitlink are staged. Existing targets,
+dirty `.gitmodules`, conflicts and unsafe paths block addition. Failures retain
+partial clones and report their phase; inspect them instead of force deleting.
+REPOS/REMOTE `y u` copies a clone URL without fetching.
+
 `repo new` can seed the otherwise-empty repository from `--template`, using a
 local directory, Git URL, or forge shorthand. `--template-ref` selects a
 branch, tag, or commit and `--template-subdir` selects the directory that

@@ -22,6 +22,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/note"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
@@ -170,6 +171,8 @@ type Actions struct {
 	BackfillStats func(ctx context.Context, repo string) error
 	// Copy writes a selected payload to the system clipboard.
 	Copy func(text string) error
+	// CloneSources reads the selected checkout's fetch URLs without network access.
+	CloneSources func(context.Context, string) ([]gitx.CloneSource, error)
 	// ReadFile returns bounded local regular-file contents for an explicit raw
 	// capability copy action. OpenFile hands the same selected file to an editor.
 	ReadFile func(ctx context.Context, path string) (string, error)
@@ -267,6 +270,7 @@ const (
 	modeConfirmSkillUpdate
 	modeStats
 	modeCopy
+	modeCloneURL
 	modeNoteBrowse
 	modeNoteAdd
 	modeNoteSearch
@@ -396,15 +400,20 @@ type Model struct {
 	trySort         string
 	tryReverse      bool
 
-	mode              mode
-	input             textinput.Model
-	taskPromptTarget  *task.Task
-	repoPromptTarget  RepoRow
-	repoPromptSet     bool
-	copySelection     selectionToken
-	skillUpdateTarget agentskill.Skill
-	stats             *StatsPanel
-	overlay           overlayState
+	mode               mode
+	input              textinput.Model
+	taskPromptTarget   *task.Task
+	repoPromptTarget   RepoRow
+	repoPromptSet      bool
+	copySelection      selectionToken
+	cloneURLSelection  selectionToken
+	cloneURLSources    []gitx.CloneSource
+	cloneURLCursor     int
+	cloneURLLoading    bool
+	cloneURLGeneration uint64
+	skillUpdateTarget  agentskill.Skill
+	stats              *StatsPanel
+	overlay            overlayState
 
 	notes              []*note.Note
 	noteTarget         NoteTarget
@@ -2816,6 +2825,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.beginLocalLoads(loadAction)
 		return m, m.reload()
 
+	case cloneSourcesMsg:
+		return m.acceptCloneSources(msg)
 	case copyMsg:
 		if msg.err != nil {
 			m.err, m.status = msg.err, ""
@@ -2850,6 +2861,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.mode == modeCopy {
 			return m.updateCopy(msg)
+		}
+		if m.mode == modeCloneURL {
+			return m.updateCloneURL(msg)
 		}
 		switch m.mode {
 		case modeFilter:
@@ -3070,7 +3084,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "y":
 		switch m.view {
-		case ViewRepos, ViewSkills, ViewMCP:
+		case ViewRepos, ViewRemote, ViewSkills, ViewMCP:
 			return m.runListAction(listActionCopy)
 		default:
 			return m, nil
@@ -3408,6 +3422,12 @@ func (m Model) updateCopy(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.view {
 	case ViewRepos:
 		return m.copyRepoValue(msg.String())
+	case ViewRemote:
+		if msg.String() == "u" {
+			return m.copyCloneURL()
+		}
+		m.mode, m.err = modeList, fmt.Errorf("use u to copy the clone URL")
+		return m, nil
 	case ViewSkills, ViewMCP:
 		return m.copyCapabilityValue(msg.String())
 	default:
@@ -3429,6 +3449,8 @@ func (m Model) copyRepoValue(key string) (tea.Model, tea.Cmd) {
 
 	var payload, label string
 	switch key {
+	case "u":
+		return m.copyCloneURL()
 	case "y":
 		payload = inventory.FormatRepoContext(item.Repo.Context, checkoutIndex)
 		if item.child() {

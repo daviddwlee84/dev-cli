@@ -1223,6 +1223,61 @@ A superproject records commit IDs for its submodules. A complete workspace
 contains the outer worktree and an independent checkout of each child repository.
 It does not copy uncommitted work from the original checkout.
 
+## Add a repository as a submodule
+
+```bash
+dev submodule add                           # source/path/mode wizard
+dev submodule add owner/library libs/library --dry-run --json
+dev submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes
+dev repo add-as-submodule owner/library libs/library --checkout=default-branch --yes
+```
+
+`source` may be an exact known name, `owner/name`, or a network Git URL.
+The picker merges known local remotes and the existing private forge cache;
+it never refreshes providers implicitly. Ambiguous names need selection or an
+exact URL. Local repositories supply a remote URL, not their working files or
+local object store. Local-only sources, credential-bearing URLs and adoption of
+existing directories are not supported. Use `dev repo remote --refresh` explicitly
+when the cached inventory needs updating.
+
+The parent is the nearest checkout containing cwd, including a linked worktree
+or a submodule; `--parent PATH` selects another exact checkout. Paths are relative
+to that checkout's root, defaulting to the source name. A path crossing an existing
+child repo is rejected: select that child as the parent instead. The parent must
+have a commit and be on a branch. Existing targets/stores, symlinks, conflicts,
+in-progress Git operations and modified `.gitmodules` block addition; unrelated
+staged/dirty work is preserved. Filters/encodings on `.gitmodules` are unsupported.
+
+The wizard offers `pinned` and `default-branch`; non-interactive default is
+`pinned`. `--ref` selects a fetched commit/tag/branch only in pinned mode;
+otherwise the new clone's actual default branch determines the commit. Default-
+branch mode creates a tracking branch without assuming its name is `main`.
+Both modes stage a fixed gitlink. This is not an `update --remote` policy and
+does not change future clone/worktree initialization or create task-member intent.
+Use `dev submodule develop` separately when the child belongs to a managed task.
+
+`--submodules=recursive|none` overrides the parent's effective initialization
+policy for the new child's descendants only. Addition stages `.gitmodules` and
+the new gitlink, never commits, pushes, creates a runtime, or changes other
+checkouts' shared submodule configuration. Non-interactive mutation needs a source
+and `--yes`; `--json` never prompts. `--dry-run` neither writes nor connects and
+marks unresolved refs as pending rather than claiming a verified commit.
+
+JSON includes `operation`, `parent`, `source`, relative `path`, `checkout`,
+optional `ref`, `submodules`, `phase`, `git_dir`, optional `head`/`branch`,
+`staged`, and optional `warnings`. Phases distinguish `planned`, `not-added`,
+`clone-incomplete`, `cloned`, `added-unstaged`, `added`,
+`initialization-incomplete`, and `complete`; failures exit nonzero while still
+reporting any partial result. A failed clone/ref/staging step may retain files
+and metadata. Inspect the exact paths, finish metadata/staging manually where
+needed, and use `dev submodule init` inside the new child to retry missing
+descendants. Do not rerun add over existing paths, force-delete partial clones,
+or use the retirement-only `recover` command for an interrupted addition.
+
+REPOS/REMOTE `y u` copies a network clone URL; REPOS uses the selected checkout's
+origin (or asks among remaining remotes), REMOTE uses CloneURL then SSHURL.
+It never copies the browser URL as a substitute or fetches to resolve one.
+
 ## Initialize and develop
 
 ```bash
@@ -2739,6 +2794,14 @@ dashboard tab or mode.
 
 ## Seven views
 
+REPOS and REMOTE support `y u` (also row action **copy clone URL**). REPOS reads
+the selected checkout's fetch URLs locally, preferring origin and asking when
+multiple choices remain. REMOTE copies CloneURL, falling back only to SSHURL,
+not the browser URL. Missing/unsafe URLs, stale selections and clipboard errors
+do not trigger clone/fetch or an empty copy. To add the selected repository as a
+dependency, use the CLI [submodule addition wizard](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/#add-a-repository-as-a-submodule);
+the dashboard does not add submodules itself.
+
 | View | Question | Source |
 |---|---|---|
 | TASKS | What am I working on? | task registry plus live Git/runtime facts |
@@ -3986,6 +4049,12 @@ For production agents:
 Source: https://daviddwlee84.github.io/dev-cli/reference/commands-config/
 
 > Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
+
+`dev submodule add [source] [path]` and `dev repo add-as-submodule` share
+`--parent`, `--checkout=pinned|default-branch`, pinned-only `--ref`,
+`--submodules=recursive|none`, `--dry-run`, `--yes` and `--json`. Addition stages
+only its metadata/gitlink and emits partial-result phases on failure; see
+[Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
 
 Submodule configuration is shared by clone and worktree acquisition: `[submodules] init = "recursive"` (or `"none"`) and `develop = ["path"]`, with project overrides in `.dev-cli/config.toml`. CLI uses `--submodules`, repeatable `start --submodule` / `--submodule-base`, and explicit cleanup `--recursive`. See [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
 
@@ -5587,6 +5656,22 @@ List, clone, create and sync repositories
 dev repo
 ```
 
+### `dev repo add-as-submodule`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev repo add-as-submodule [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
 ### `dev repo clone`
 
 Clone a repository and optionally apply a setup preset
@@ -6074,6 +6159,22 @@ Inspect, initialize and develop the submodules of a workspace
 dev submodule
 ```
 
+### `dev submodule add`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev submodule add [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
 ### `dev submodule develop`
 
 Add selected submodules to the current managed task branch
@@ -6422,6 +6523,13 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 Source: https://daviddwlee84.github.io/dev-cli/reference/compatibility/
 
 > Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
+
+Submodule addition and REPOS/REMOTE clone-URL copy are additive commands/actions.
+Addition supports network sources and new destinations only, defaults to pinned,
+and preserves unrelated staged work. It does not adopt local clones or change
+future initialization policy. Failed additions retain data with explicit phases;
+retirement recovery journals cannot recover additions. Existing JSON fields and
+copy bindings are unchanged; `y u` is the new URL binding.
 
 Submodule workspace support is additive: legacy tasks and existing JSON fields remain readable; member intent has its own versioned record. Full child-clone disposal requires remote proofs and rejects shared/external storage, local-only data and unsupported filtered/private metadata. Reload shell integration for recursive post-done handoff. See [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
 
@@ -8339,6 +8447,53 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces
 Superproject 以 gitlink 記錄各 submodule 的 commit ID。完整工作區包含外層
 worktree 與各自獨立的子 repository checkout，不會帶入原 checkout 的未提交內容。
 
+## 把已知 repository 加為 submodule
+
+```bash
+dev submodule add                           # 選來源、路徑、checkout 模式
+dev submodule add owner/library libs/library --dry-run --json
+dev submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes
+dev repo add-as-submodule owner/library libs/library --checkout=default-branch --yes
+```
+
+來源可以是精確的已知名稱、`owner/name` 或網路 Git URL。Picker 合併本機已知 repo
+的 remote 與既有 forge 快取，不隱含更新遠端清單；同名歧義須選擇或提供精確 URL。
+選本機 repo 是使用其 remote URL，不搬移工作目錄、不重用其 objects。第一版不支援
+local-only 來源、含憑證的 URL 或收編既有目錄；清單過時時明確執行
+`dev repo remote --refresh`。
+
+Parent 是 cwd 最近一層 checkout，包含 linked worktree 或 submodule；可用
+`--parent PATH` 指定另一個 checkout。目標路徑相對於該 checkout 根目錄，預設為
+來源名稱。跨越既有子 repo 的路徑會被阻擋，應明確以該子 repo 為 parent。Parent
+須已有 commit 並位於 branch；既有目標／Git store、symlink、conflict、進行中的
+Git operation 或修改過的 `.gitmodules` 都會阻擋。其他 staged／dirty 工作保留；
+不支援 `.gitmodules` 的 filter／working-tree encoding。
+
+Wizard 提供 `pinned`／`default-branch`，非互動預設 pinned。`--ref` 僅在 pinned
+模式選擇已取得的 commit／tag／branch；省略時使用新增當次 default branch 的
+commit。Default-branch 模式建立 tracking branch，不假設名稱為 `main`。兩種模式
+都 stage 固定 gitlink，不設定 `update --remote` 政策、不改變日後 clone／worktree
+的初始化方式，也不自動建立 task-member intent。需要任務分支時另用
+`dev submodule develop`。
+
+`--submodules=recursive|none` 覆蓋 parent 的有效初始化設定，只處理新子 repo 的
+後代。只 stage `.gitmodules` 與新 gitlink，不 commit／push／建立 runtime，也不
+修改其他 checkout 共用的 submodule 設定。非互動變更須有來源與 `--yes`；`--json`
+不開提示。`--dry-run` 不連線、不寫入，尚未解析的 ref 明確顯示為待解析。
+
+JSON 包含 `operation`、`parent`、`source`、相對 `path`、`checkout`、選用 `ref`、
+`submodules`、`phase`、`git_dir`、選用 `head`／`branch`、`staged` 與選用 `warnings`。
+Phase 區分 `planned`、`not-added`、`clone-incomplete`、`cloned`、`added-unstaged`、
+`added`、`initialization-incomplete`、`complete`；失敗回傳非零並保留部分結果。
+Clone／ref／staging 失敗可能留下檔案或 metadata：先檢查回報的精確路徑，必要時
+手動完成 metadata／staging，再於新子 repo 內用 `dev submodule init` 重試缺少的
+後代。不覆蓋重跑 add、不強制刪除殘留 clone；retirement 專用的 `recover` 不是
+新增流程的復原指令。
+
+REPOS／REMOTE 的 `y u` 可複製網路 clone URL：REPOS 使用選中 checkout 的 origin，
+或要求選擇其餘 remote；REMOTE 使用 CloneURL，其次 SSHURL。不拿瀏覽器網頁 URL
+代替，也不為了複製而 fetch。
+
 ## 初始化與開發
 
 ```bash
@@ -9785,6 +9940,13 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 
 ## 七個 view
 
+REPOS／REMOTE 支援 `y u`，row action menu 也有 **copy clone URL**。REPOS 只在
+本機讀取選中 checkout 的 fetch URL，優先 origin，多個候選時要求選擇。REMOTE
+複製 CloneURL，其次 SSHURL，不拿瀏覽器 URL 代替。缺少／不安全的 URL、stale
+selection 與 clipboard 錯誤不會觸發 clone／fetch 或複製空字串。要加入 dependency，
+請用 CLI 的 [submodule 新增 wizard](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)；dashboard
+本身不新增 submodule。
+
 | View | 回答問題 | 來源 |
 |---|---|---|
 | TASKS | 我正在處理什麼？ | task registry 加即時 Git/runtime facts |
@@ -11032,6 +11194,11 @@ Production agent 應：
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/
 
 > 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
+
+`dev submodule add [source] [path]` 與 `dev repo add-as-submodule` 共用
+`--parent`、`--checkout=pinned|default-branch`、pinned 專用的 `--ref`、
+`--submodules=recursive|none`、`--dry-run`、`--yes`、`--json`。只 stage 新增的
+metadata／gitlink，失敗回報部分結果 phase；見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
 
 Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"none"`）與 `develop = ["path"]`，`.dev-cli/config.toml` 可覆寫。CLI 提供 `--submodules`、可重複的 `start --submodule`／`--submodule-base`，以及明確清理旗標 `--recursive`。見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
 
@@ -12562,6 +12729,22 @@ List, clone, create and sync repositories
 dev repo
 ```
 
+### `dev repo add-as-submodule`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev repo add-as-submodule [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
 ### `dev repo clone`
 
 Clone a repository and optionally apply a setup preset
@@ -13049,6 +13232,22 @@ Inspect, initialize and develop the submodules of a workspace
 dev submodule
 ```
 
+### `dev submodule add`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev submodule add [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
 ### `dev submodule develop`
 
 Add selected submodules to the current managed task branch
@@ -13397,6 +13596,11 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 
 > 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
+
+Submodule 新增與 REPOS／REMOTE clone-URL 複製是擴充指令／動作。新增只支援網路
+來源及全新目標，預設 pinned，保留其他 staged 工作；不收編 local clone，也不改變
+日後初始化政策。新增失敗以明確 phase 回報並保留資料，retirement recovery journal
+不適用於新增。既有 JSON 欄位與複製快捷鍵不變；`y u` 是新增的 URL 快捷鍵。
 
 Submodule 工作區採擴充方式：舊 task 與既有 JSON 欄位維持可讀，成員意圖另有版本化紀錄。完整子 clone 回收要求遠端證明；共享／外部 storage、本地獨有資料與不支援的 filtered／私有 metadata 會阻擋。Done 後遞迴 handoff 需重新載入 shell integration。見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
 

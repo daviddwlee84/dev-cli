@@ -8,6 +8,13 @@ tested_with: Claude Code 2.1.259
 
 # Compatibility and known limitations
 
+Submodule addition and REPOS/REMOTE clone-URL copy are additive commands/actions.
+Addition supports network sources and new destinations only, defaults to pinned,
+and preserves unrelated staged work. It does not adopt local clones or change
+future initialization policy. Failed additions retain data with explicit phases;
+retirement recovery journals cannot recover additions. Existing JSON fields and
+copy bindings are unchanged; `y u` is the new URL binding.
+
 Submodule workspace support is additive: legacy tasks and existing JSON fields remain readable; member intent has its own versioned record. Full child-clone disposal requires remote proofs and rejects shared/external storage, local-only data and unsupported filtered/private metadata. Reload shell integration for recursive post-done handoff. See [Submodule workspaces](../guides/submodule-workspaces.md).
 
 This page separates graceful degradation from real limitations. Reverify it whenever command/runtime code or version-sensitive Claude Code documentation changes.

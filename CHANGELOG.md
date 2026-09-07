@@ -8,6 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `dev submodule add [source] [path]` (also `dev repo add-as-submodule`)
+  selects known local remotes/cached forge repositories or network URLs, with
+  pinned or remote-default-branch checkouts. Local previews, explicit approval,
+  private child Git stores and partial-result reporting preserve unrelated
+  staged work and other checkouts; only `.gitmodules` and the new gitlink are staged.
+- REPOS and REMOTE `y u` and row actions copy clone URLs without fetching.
+  Local rows prefer origin and ask when multiple fetch URLs remain; missing,
+  unsafe and stale selections never silently copy an empty or browser URL.
 - Submodule-aware workspaces: clone and linked-worktree creation initialize
   submodules recursively at their gitlinks by default, with global/project
   `[submodules]` settings and `--submodules=none` for an explicit opt-out.

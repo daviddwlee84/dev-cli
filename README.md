@@ -9,6 +9,11 @@ children get task branches. Explicit `--recursive` cleanup proves child recovery
 before removing the parent. See [Submodule workspaces](docs/guides/submodule-workspaces.md)
 for configuration, inside-out integration and recovery limits.
 
+Use `dev submodule add` (or `dev repo add-as-submodule`) to select a known
+repository and add it to this checkout. Choose pinned/default-branch checkout;
+only the new gitlink and `.gitmodules` are staged, with no commit or push.
+In REPOS/REMOTE, `y u` copies a clone URL without fetching.
+
 It exists to stop four things collapsing into one:
 
 ```

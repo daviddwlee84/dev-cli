@@ -117,7 +117,7 @@ func newSubmoduleCmd(app *App) *cobra.Command {
 		}, recoveryDryRun)
 	}}
 	recover.Flags().BoolVar(&recoveryDryRun, "dry-run", false, "validate the recovery journal without changing files")
-	cmd.AddCommand(status, init, develop, recover)
+	cmd.AddCommand(status, init, develop, recover, newSubmoduleAddCmd(app, false))
 	return cmd
 }
 

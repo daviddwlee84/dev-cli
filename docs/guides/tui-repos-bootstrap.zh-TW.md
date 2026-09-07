@@ -18,6 +18,13 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 
 ## 七個 view
 
+REPOS／REMOTE 支援 `y u`，row action menu 也有 **copy clone URL**。REPOS 只在
+本機讀取選中 checkout 的 fetch URL，優先 origin，多個候選時要求選擇。REMOTE
+複製 CloneURL，其次 SSHURL，不拿瀏覽器 URL 代替。缺少／不安全的 URL、stale
+selection 與 clipboard 錯誤不會觸發 clone／fetch 或複製空字串。要加入 dependency，
+請用 CLI 的 [submodule 新增 wizard](submodule-workspaces.zh-TW.md)；dashboard
+本身不新增 submodule。
+
 | View | 回答問題 | 來源 |
 |---|---|---|
 | TASKS | 我正在處理什麼？ | task registry 加即時 Git/runtime facts |

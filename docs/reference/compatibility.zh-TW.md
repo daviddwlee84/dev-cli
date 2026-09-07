@@ -9,6 +9,11 @@ lang: zh-TW
 
 # 相容性與已知限制
 
+Submodule 新增與 REPOS／REMOTE clone-URL 複製是擴充指令／動作。新增只支援網路
+來源及全新目標，預設 pinned，保留其他 staged 工作；不收編 local clone，也不改變
+日後初始化政策。新增失敗以明確 phase 回報並保留資料，retirement recovery journal
+不適用於新增。既有 JSON 欄位與複製快捷鍵不變；`y u` 是新增的 URL 快捷鍵。
+
 Submodule 工作區採擴充方式：舊 task 與既有 JSON 欄位維持可讀，成員意圖另有版本化紀錄。完整子 clone 回收要求遠端證明；共享／外部 storage、本地獨有資料與不支援的 filtered／私有 metadata 會阻擋。Done 後遞迴 handoff 需重新載入 shell integration。見 [Submodule 工作區](../guides/submodule-workspaces.md)。
 
 !!! note "術語規則"

@@ -2,7 +2,7 @@
 description: Initialize complete submodule workspaces, select task branches, and retire child repositories before their parent.
 authority: project
 status: evolving
-verified_on: 2026-09-06
+verified_on: 2026-09-07
 tested_with: Git 2.55.0
 ---
 
@@ -11,6 +11,61 @@ tested_with: Git 2.55.0
 A superproject records commit IDs for its submodules. A complete workspace
 contains the outer worktree and an independent checkout of each child repository.
 It does not copy uncommitted work from the original checkout.
+
+## Add a repository as a submodule
+
+```bash
+dev submodule add                           # source/path/mode wizard
+dev submodule add owner/library libs/library --dry-run --json
+dev submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes
+dev repo add-as-submodule owner/library libs/library --checkout=default-branch --yes
+```
+
+`source` may be an exact known name, `owner/name`, or a network Git URL.
+The picker merges known local remotes and the existing private forge cache;
+it never refreshes providers implicitly. Ambiguous names need selection or an
+exact URL. Local repositories supply a remote URL, not their working files or
+local object store. Local-only sources, credential-bearing URLs and adoption of
+existing directories are not supported. Use `dev repo remote --refresh` explicitly
+when the cached inventory needs updating.
+
+The parent is the nearest checkout containing cwd, including a linked worktree
+or a submodule; `--parent PATH` selects another exact checkout. Paths are relative
+to that checkout's root, defaulting to the source name. A path crossing an existing
+child repo is rejected: select that child as the parent instead. The parent must
+have a commit and be on a branch. Existing targets/stores, symlinks, conflicts,
+in-progress Git operations and modified `.gitmodules` block addition; unrelated
+staged/dirty work is preserved. Filters/encodings on `.gitmodules` are unsupported.
+
+The wizard offers `pinned` and `default-branch`; non-interactive default is
+`pinned`. `--ref` selects a fetched commit/tag/branch only in pinned mode;
+otherwise the new clone's actual default branch determines the commit. Default-
+branch mode creates a tracking branch without assuming its name is `main`.
+Both modes stage a fixed gitlink. This is not an `update --remote` policy and
+does not change future clone/worktree initialization or create task-member intent.
+Use `dev submodule develop` separately when the child belongs to a managed task.
+
+`--submodules=recursive|none` overrides the parent's effective initialization
+policy for the new child's descendants only. Addition stages `.gitmodules` and
+the new gitlink, never commits, pushes, creates a runtime, or changes other
+checkouts' shared submodule configuration. Non-interactive mutation needs a source
+and `--yes`; `--json` never prompts. `--dry-run` neither writes nor connects and
+marks unresolved refs as pending rather than claiming a verified commit.
+
+JSON includes `operation`, `parent`, `source`, relative `path`, `checkout`,
+optional `ref`, `submodules`, `phase`, `git_dir`, optional `head`/`branch`,
+`staged`, and optional `warnings`. Phases distinguish `planned`, `not-added`,
+`clone-incomplete`, `cloned`, `added-unstaged`, `added`,
+`initialization-incomplete`, and `complete`; failures exit nonzero while still
+reporting any partial result. A failed clone/ref/staging step may retain files
+and metadata. Inspect the exact paths, finish metadata/staging manually where
+needed, and use `dev submodule init` inside the new child to retry missing
+descendants. Do not rerun add over existing paths, force-delete partial clones,
+or use the retirement-only `recover` command for an interrupted addition.
+
+REPOS/REMOTE `y u` copies a network clone URL; REPOS uses the selected checkout's
+origin (or asks among remaining remotes), REMOTE uses CloneURL then SSHURL.
+It never copies the browser URL as a substitute or fetches to resolve one.
 
 ## Initialize and develop
 

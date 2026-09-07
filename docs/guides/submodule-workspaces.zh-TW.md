@@ -2,7 +2,7 @@
 description: 初始化完整的 submodule 工作區、選擇任務分支，並由內往外回收子 repository。
 authority: project
 status: evolving
-verified_on: 2026-09-06
+verified_on: 2026-09-07
 tested_with: Git 2.55.0
 lang: zh-TW
 ---
@@ -11,6 +11,53 @@ lang: zh-TW
 
 Superproject 以 gitlink 記錄各 submodule 的 commit ID。完整工作區包含外層
 worktree 與各自獨立的子 repository checkout，不會帶入原 checkout 的未提交內容。
+
+## 把已知 repository 加為 submodule
+
+```bash
+dev submodule add                           # 選來源、路徑、checkout 模式
+dev submodule add owner/library libs/library --dry-run --json
+dev submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes
+dev repo add-as-submodule owner/library libs/library --checkout=default-branch --yes
+```
+
+來源可以是精確的已知名稱、`owner/name` 或網路 Git URL。Picker 合併本機已知 repo
+的 remote 與既有 forge 快取，不隱含更新遠端清單；同名歧義須選擇或提供精確 URL。
+選本機 repo 是使用其 remote URL，不搬移工作目錄、不重用其 objects。第一版不支援
+local-only 來源、含憑證的 URL 或收編既有目錄；清單過時時明確執行
+`dev repo remote --refresh`。
+
+Parent 是 cwd 最近一層 checkout，包含 linked worktree 或 submodule；可用
+`--parent PATH` 指定另一個 checkout。目標路徑相對於該 checkout 根目錄，預設為
+來源名稱。跨越既有子 repo 的路徑會被阻擋，應明確以該子 repo 為 parent。Parent
+須已有 commit 並位於 branch；既有目標／Git store、symlink、conflict、進行中的
+Git operation 或修改過的 `.gitmodules` 都會阻擋。其他 staged／dirty 工作保留；
+不支援 `.gitmodules` 的 filter／working-tree encoding。
+
+Wizard 提供 `pinned`／`default-branch`，非互動預設 pinned。`--ref` 僅在 pinned
+模式選擇已取得的 commit／tag／branch；省略時使用新增當次 default branch 的
+commit。Default-branch 模式建立 tracking branch，不假設名稱為 `main`。兩種模式
+都 stage 固定 gitlink，不設定 `update --remote` 政策、不改變日後 clone／worktree
+的初始化方式，也不自動建立 task-member intent。需要任務分支時另用
+`dev submodule develop`。
+
+`--submodules=recursive|none` 覆蓋 parent 的有效初始化設定，只處理新子 repo 的
+後代。只 stage `.gitmodules` 與新 gitlink，不 commit／push／建立 runtime，也不
+修改其他 checkout 共用的 submodule 設定。非互動變更須有來源與 `--yes`；`--json`
+不開提示。`--dry-run` 不連線、不寫入，尚未解析的 ref 明確顯示為待解析。
+
+JSON 包含 `operation`、`parent`、`source`、相對 `path`、`checkout`、選用 `ref`、
+`submodules`、`phase`、`git_dir`、選用 `head`／`branch`、`staged` 與選用 `warnings`。
+Phase 區分 `planned`、`not-added`、`clone-incomplete`、`cloned`、`added-unstaged`、
+`added`、`initialization-incomplete`、`complete`；失敗回傳非零並保留部分結果。
+Clone／ref／staging 失敗可能留下檔案或 metadata：先檢查回報的精確路徑，必要時
+手動完成 metadata／staging，再於新子 repo 內用 `dev submodule init` 重試缺少的
+後代。不覆蓋重跑 add、不強制刪除殘留 clone；retirement 專用的 `recover` 不是
+新增流程的復原指令。
+
+REPOS／REMOTE 的 `y u` 可複製網路 clone URL：REPOS 使用選中 checkout 的 origin，
+或要求選擇其餘 remote；REMOTE 使用 CloneURL，其次 SSHURL。不拿瀏覽器網頁 URL
+代替，也不為了複製而 fetch。
 
 ## 初始化與開發
 

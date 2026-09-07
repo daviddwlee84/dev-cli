@@ -918,6 +918,22 @@ List, clone, create and sync repositories
 dev repo
 ```
 
+### `dev repo add-as-submodule`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev repo add-as-submodule [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
 ### `dev repo clone`
 
 Clone a repository and optionally apply a setup preset
@@ -1404,6 +1420,22 @@ Inspect, initialize and develop the submodules of a workspace
 ```
 dev submodule
 ```
+
+### `dev submodule add`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev submodule add [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
 
 ### `dev submodule develop`
 

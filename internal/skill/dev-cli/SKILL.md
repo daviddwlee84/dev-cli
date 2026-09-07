@@ -70,7 +70,9 @@ the tree. `dev` refuses to do it.
 
 Full detail: `references/worktree-ownership.md`.
 
-For superprojects with gitlinks, read `references/submodules.md`. Initialization
+Before adding submodules or working with existing gitlinks, read
+`references/submodules.md`. `submodule add` stages only new metadata/gitlinks;
+it does not commit, push or create task branches. Initialization
 defaults to recursive pinned checkouts; selected children get task branches.
 Recursive disposal needs explicit approval and fresh child recovery proofs.
 
@@ -491,9 +493,11 @@ checkout+private-Git bytes; shared Git is separate and marked `+S`. Detail also
 shows no-remote/local-only/multi-upstream recovery topology. Press space to
 expand linked worktrees; children
 show their own Git/session/task state and mark harness-owned or untracked
-checkouts `(ephemeral)` / `(external)`. Press `y` followed by `y/p/b/s/w` to
+checkouts `(ephemeral)` / `(external)`. Press `y` followed by `y/p/b/s/w/u` to
 copy contextual Markdown, path, branch, runtime/agent sessions, or every
-worktree path. `dev repo context [repo]` prints the full Markdown without a TUI.
+worktree path; `u` copies a clone URL (also in REMOTE), never a browser URL.
+Multiple local fetch URLs require selection; copying does not fetch.
+`dev repo context [repo]` prints the full Markdown without a TUI.
 `[tui.repos]` chooses columns and default sort; `O` cycles sort and `R` reverses
 it.
 

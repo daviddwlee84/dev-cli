@@ -299,7 +299,7 @@ func (m Model) renderOverlay() string {
 		builder.WriteString("  REPOS   enter open · n new repo · a add note · N notes · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
 		builder.WriteString("  FLEET   enter Herdr/SSH open · e edit remotes.toml · r refresh · read-only Git overview\n")
 		builder.WriteString("  TRY     enter open · n create · space actions · a history · O/R sort\n")
-		builder.WriteString("  REMOTE  enter open local · n/N notes when cloned · c clone (enter stay / o open)\n")
+		builder.WriteString("  REMOTE  enter open local · n/N notes when cloned · c clone (enter stay / o open) · y u copy clone URL\n")
 		builder.WriteString("  SKILLS  a add · c check · u update · e open file · y copy · A context/all scope\n")
 		builder.WriteString("  MCP     static declarations only · e open config · y copy · A context/all scope · r reload\n\n")
 		builder.WriteString("  " + styleHelp.Render("? / esc / q close help"))
