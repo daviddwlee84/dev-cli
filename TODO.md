@@ -4,12 +4,11 @@ Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
 
 ## Active
 
-### P2 · L — Agent configuration interoperability (MCP bridge and shared skills)
-Add explicit, previewed Claude Code → Codex project MCP bridging with runtime
-secret references, plus per-skill links from `.agents/skills` into
-`.claude/skills`. Preserve static inventory, foreign configuration, provider
-ownership and exact-checkout boundaries. Start with the verified Grafana case;
-do not expand into bidirectional config sync or a new secret store.
+### P2 · L — Agent configuration interoperability (implementation in progress)
+Implement guarded copy/move/mirror for five MCP formats, upstream-backed or
+independent skill transfers, and AGENTS.md/CLAUDE.md sharing across exact
+checkouts and project/user scope. Keep credentials as runtime references,
+preserve native config and skills locks, and make portable recipes optional.
 See [implementation plan](backlog/agent-config-interop-plan.md).
 
 ### P1 · L — Verified backup receipts and safe local eviction

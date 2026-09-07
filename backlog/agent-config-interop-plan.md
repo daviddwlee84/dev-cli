@@ -1,9 +1,61 @@
 # Agent configuration interoperability: Claude MCP → Codex and shared skills
 
-**Status**: P2 — proposed; implementation has not started
+**Status**: P2 — implementation in progress on `feat/agent-config-interop`
 **Effort**: L, split into independently useful phases
 **Recorded**: 2026-09-07
 **Related**: [TODO](../TODO.md), [MCP inventory](../internal/help/topics/mcp.md), [skill inventory](../internal/help/topics/skills.md), [agent capability reference](../internal/skill/dev-cli/references/agent-capabilities.md)
+
+## Accepted implementation amendment (2026-09-07)
+
+The user approved implementing the complete design in ordered commits. This
+amendment supersedes the narrower first-release scope and open decisions below.
+
+- MCP adapters: Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; supported
+  common stdio/Streamable HTTP fields only. Unknown transport, policy, OAuth,
+  helpers, or schema must not silently lose semantics in conversion.
+- Exact project/worktree and user/global scopes support independent copies,
+  guarded moves, and explicit one-way mirrors. MCP mirrors refresh by reviewed
+  projection; skill mirrors use per-skill relative symlinks. No daemon/proxy.
+- Across repositories prefer a verified upstream install, then an explicitly
+  selected independent copy. No automatic fallback or latest-version upgrade.
+- Keep native agent files and upstream locks. Optional `.agents/interop.toml`
+  stores reconstruction intent only; ordinary transfers need no dev manifest.
+- Share AGENTS.md through a CLAUDE.md symlink or explicit @AGENTS.md import.
+  Never merge different instruction text or generalize project rules implicitly.
+- Env references and explicitly selected legacy local-env sources are the
+  initial secret backends. Cross-scope credential use requires a new binding.
+  Keychain, external secret-manager, and hardware-key adapters are follow-ups.
+- Keep plans, ownership, and recovery records under Config.StateDir() with
+  private permissions. Plan/apply revalidate scope and file identities, expose
+  sanitized reports, and keep accurate partial-effect ledgers.
+- Initial skills compatibility profile is 1.5.23. Validate provider version,
+  project/global lock schema, and content separately. Upstream install is not a
+  frozen install: stage and verify before publication. Raw SHA refs are not
+  assumed to work with upstream's `git clone --branch`.
+
+Ordered commits: compatibility/plan; guarded filesystem core; local skills;
+provider staging and reproducibility; Claude/Codex MCP; remaining MCP adapters;
+env launcher and mirror refresh; cross-scope moves/recovery; instructions and
+optional recipes; E2E/docs/release readiness. Tests and affected product docs
+travel with each exposed feature.
+
+Verified references: [skills installer](https://github.com/vercel-labs/skills/blob/v1.5.23/src/install.ts),
+[project lock](https://github.com/vercel-labs/skills/blob/v1.5.23/src/local-lock.ts),
+[global lock](https://github.com/vercel-labs/skills/blob/v1.5.23/src/skill-lock.ts),
+[clone/ref handling](https://github.com/vercel-labs/skills/blob/v1.5.23/src/git.ts),
+[Claude instructions](https://code.claude.com/docs/en/memory),
+[Cursor MCP](https://prod.cursor.com/docs/mcp),
+[Gemini MCP](https://geminicli.com/docs/tools/mcp-server/),
+[OpenCode MCP](https://opencode.ai/docs/mcp-servers/).
+
+### Implementation ledger
+
+- [x] Record approved scope and compatibility baseline.
+- [ ] Guarded transfer engine and recovery.
+- [ ] Skills copy/mirror and provider staging.
+- [ ] Five MCP adapters and env launcher.
+- [ ] Cross-scope moves, instructions, optional recipes.
+- [ ] Full validation and documentation synchronization.
 
 ## Context and intended outcome
 
