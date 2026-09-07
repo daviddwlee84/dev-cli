@@ -1557,3 +1557,77 @@ text(await tools.exec_command({cmd:"python3 - <<'PY'\nfrom pathlib import Path\n
 ...
 ```
 </details></tool-use>
+
+_**Agent (gpt-6-astra 2026-09-07 17:46:17Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="exec"><details>
+<summary>Tool use: **exec**</summary>
+Input (truncated): ```
+text(await tools.write_stdin({session_id:74660,chars:"",max_output_tokens:3000,yield_time_ms:1000}));
+text(await tools.exec_command({cmd:"git status --short && git log -5 --oneline",max_output_tokens:
+...
+```
+</details></tool-use>
+
+_**Agent (gpt-6-astra 2026-09-07 17:47:51Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="exec"><details>
+<summary>Tool use: **exec**</summary>
+Input (truncated): ```
+const r=await Promise.allSettled([
+tools.exec_command({cmd:"gitleaks git --redact --no-banner --log-opts='main..HEAD' && gitleaks dir internal/agentinterop --redact --no-banner",yield_time_ms:1000,max
+...
+```
+</details></tool-use>
+
+_**Agent (gpt-6-astra 2026-09-07 17:48:29Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="exec"><details>
+<summary>Tool use: **exec**</summary>
+Input (truncated): ```
+const r=await Promise.allSettled([
+tools.write_stdin({session_id:36006,chars:"",max_output_tokens:1500,yield_time_ms:1000}),
+tools.write_stdin({session_id:90589,chars:"",max_output_tokens:1800,yield_t
+...
+```
+</details></tool-use>
+
+_**Agent (gpt-6-astra 2026-09-07 17:49:57Z)**_
+
+實作與驗證已完成，正在提交最後的 backlog／驗收紀錄。新的實際 CLI smoke test 也通過了：從巢狀 Git 目錄啟動 bridge、顯示 inventory 關係、重建 recipe，以及 undo MCP stanza 時保留使用者設定。
+
+功能已在 feature branch；目前的明確限制是 Windows transfer 寫入，以及後續的 Keychain／Vault／YubiKey backend。
+
+_**Agent (gpt-6-astra 2026-09-07 17:49:57Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="exec"><details>
+<summary>Tool use: **exec**</summary>
+Input (truncated): ```
+text(await tools.exec_command({cmd:"python3 - <<'PY'\nfrom pathlib import Path\nimport subprocess\ntranscript='.specstory/history/2026-09-07_14-39-53Z-at-backlog-agent-config.md'\np=Path(transcript);d
+...
+```
+</details></tool-use>
+
+_**Agent (gpt-6-astra 2026-09-07 17:50:39Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="exec"><details>
+<summary>Tool use: **exec**</summary>
+Input (truncated): ```
+const r=await Promise.allSettled([
+tools.write_stdin({session_id:66816,chars:"",max_output_tokens:1500,yield_time_ms:1000}),
+tools.write_stdin({session_id:93604,chars:"",max_output_tokens:1500,yield_t
+...
+```
+</details></tool-use>
+
+_**Agent (gpt-6-astra 2026-09-07 17:51:07Z)**_
+
+已實作並提交 **5 個 commits** 到 `feat/agent-config-interop`。
+
+包含五種 MCP 格式轉移、skills 跨 repo/global、plan/apply/undo、env 憑證引用、指令共用及選配 recipes。
+
+Race 檢查、vet、E2E、文件與 secret scan 已完成；CLI 測試延長時限，失敗 fixture 修正後重跑通過。
+
+Windows 寫入及 Keychain／Vault／YubiKey backend 仍未支援。
+
+可用 `./dev help interop`，或查看[使用說明](/Users/zhouhanru/Documents/David/Program/dev-cli/docs/guides/agent-interop.zh-TW.md)。

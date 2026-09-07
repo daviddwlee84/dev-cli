@@ -1,6 +1,6 @@
 # Agent configuration interoperability: Claude MCP → Codex and shared skills
 
-**Status**: P2 — implementation in progress on `feat/agent-config-interop`
+**Status**: implemented on `feat/agent-config-interop`; release pending landing
 **Effort**: L, split into independently useful phases
 **Recorded**: 2026-09-07
 **Related**: [TODO](../TODO.md), [MCP inventory](../internal/help/topics/mcp.md), [skill inventory](../internal/help/topics/skills.md), [agent capability reference](../internal/skill/dev-cli/references/agent-capabilities.md)
@@ -51,11 +51,52 @@ Verified references: [skills installer](https://github.com/vercel-labs/skills/bl
 ### Implementation ledger
 
 - [x] Record approved scope and compatibility baseline.
-- [ ] Guarded transfer engine and recovery.
-- [ ] Skills copy/mirror and provider staging.
-- [ ] Five MCP adapters and env launcher.
-- [ ] Cross-scope moves, instructions, optional recipes.
-- [ ] Full validation and documentation synchronization.
+- [x] Guarded transfer engine and recovery.
+- [x] Skills copy/mirror and provider staging, including lock-only restoration.
+- [x] Five MCP adapters and env launcher, with independently authored fixtures.
+- [x] Cross-scope moves, instructions, optional recipes.
+- [x] Validation and documentation synchronization (details below).
+
+### Delivered behavior and validation
+
+The public entrypoints are `dev mcp transfer`, `dev skill transfer`, and
+`dev instructions transfer`. MCP receipts own individual stanzas, so unrelated
+later client settings and other servers survive refresh/undo. Plans still bind
+exact file and checkout/Git identities until apply. The optional launcher pins
+the selected checkout/executable, resolves only the declared environment at
+launch, and refuses structural source drift. Provider preparation pins skills
+1.5.23, stages privately, verifies native provenance/content, and never invokes
+npx. Copy/mirror recipes remain optional; native files and locks stay authoritative.
+
+Validation on the implementation host:
+
+- Race checks passed for every package across the full run and focused reruns.
+  The initial CLI run reached the default 10-minute package limit; an extended
+  run passed in 895.630 seconds. The extended run also identified a test-fixture
+  HOME-directory collision after isolation was tightened; that fixture was
+  corrected and agentinterop/agentskill/inventory race checks were rerun green.
+- `go vet ./...`, `make e2e`, generated skill sync/check, strict English/zh-TW
+  source/site checks, and MkDocs build passed.
+- Windows/amd64 and Linux/amd64 transfer test binaries cross-compiled.
+- A real CLI smoke test verified native plan/apply, inventory receipts, the
+  hidden launcher handshake from nested Git, instruction sharing, recipe
+  reconstruction, and stanza-only undo preserving user settings.
+- Code and branch-history secret scans passed. A historical PEM-header detector
+  constant was confirmed to contain no key body and received only an exact
+  commit/file/line fingerprint exception; private-key detection remains enabled.
+
+Runtime/native client activation is not inferred from these checks. Normal tests
+use synthetic MCP servers and provider fixtures; no real Grafana credentials or
+endpoints are a test dependency. Native Windows transfer writes fail closed
+pending protected-DACL/persistent-identity recovery support, consistent with the
+repository's other guarded payload boundaries. Keychain, external secret-manager
+and hardware-key adapters remain the explicitly deferred follow-ups.
+
+Private recovery is refused inside Git even when task state is Git-backed.
+Host-local launcher/credential bindings and absolute cross-project dependencies
+are not exported in recipes. Launcher-backed declarations retain their source
+and therefore support copy/mirror, not source-removing moves. Source policy is
+checked at plan and apply, but credentials are resolved only at launch.
 
 ## Context and intended outcome
 
