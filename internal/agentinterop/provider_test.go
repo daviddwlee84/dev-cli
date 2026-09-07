@@ -105,6 +105,13 @@ func TestProviderRejectsVersionFailureAndDrift(t *testing.T) {
 }
 
 func TestLockSchemaAndCommitRefAreNotAssumedCompatible(t *testing.T) {
+	ssh, err := sourceArgument(skillLockEntry{Source: "git@example.test:team/skills.git", SourceURL: "git@example.test:team/skills.git", SourceType: "git", Ref: "v1"})
+	if err != nil || ssh != "ssh://git@example.test/team/skills.git#v1" {
+		t.Fatalf("SSH identity was not preserved: %v", err)
+	}
+	if _, err = sourceArgument(skillLockEntry{Source: "private", SourceURL: "ssh://git:synthetic@example.test/repo.git", SourceType: "git"}); err == nil {
+		t.Fatal("URL password accepted")
+	}
 	if _, _, err := readLock([]byte(`{"version":2,"skills":{"example":{}}}`), "project", "example"); err == nil {
 		t.Fatal("future schema accepted")
 	}
@@ -113,5 +120,38 @@ func TestLockSchemaAndCommitRefAreNotAssumedCompatible(t *testing.T) {
 	}
 	if _, err := sourceArgument(skillLockEntry{Source: "x/y", SourceType: "github", Ref: strings.Repeat("a", 40)}); err == nil {
 		t.Fatal("raw SHA treated as branch")
+	}
+}
+
+func TestProviderRestoresLockOnlyCheckout(t *testing.T) {
+	s, root := testService(t)
+	req := setupProvider(t, s, root, SkillsProviderVersion, "")
+	req.To.Root = root
+	if err := os.RemoveAll(filepath.Join(root, ".agents/skills/example")); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(filepath.Join(root, "skills-lock.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	prep, err := s.Prepare(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Prepared = prep.ID
+	p, err := s.Plan(context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Apply(context.Background(), p.ID); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(root, ".claude/skills/example/SKILL.md"))
+	if err != nil || string(data) != skillFixture {
+		t.Fatal("lock-only restore did not recreate skill")
+	}
+	after, _ := os.ReadFile(filepath.Join(root, "skills-lock.json"))
+	if string(before) != string(after) {
+		t.Fatal("restoration rewrote the frozen lock")
 	}
 }

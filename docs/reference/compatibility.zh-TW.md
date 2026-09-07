@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-03
+verified_on: 2026-09-07
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
@@ -313,3 +313,13 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
+
+### Agent transfer 使用明確的相容設定
+
+[Agent 設定互通](../guides/agent-interop.zh-TW.md) 提供 skills、五種 MCP 格式及
+AGENTS.md／CLAUDE.md 的 plan/apply/undo。初始 mutation backend 為 POSIX；
+Windows 在 protected-DACL／recovery 驗證前拒絕寫入。未知 policy／authentication
+extension、OpenCode v2 與不能安全修改的 TOML layout 仍需原生 client 處理。
+Local env launcher 綁定本機並保留來源，HTTP client 需要自己的 environment。
+只有明確 prepare 可以執行固定版本的 skills provider，只有 check 初始化 MCP。
+Inventory 新增的 interop receipts 是歷史紀錄，不代表 live health。

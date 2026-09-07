@@ -12,6 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   revalidation, explicit apply/undo, and local skill copy/move/per-skill mirrors.
 - Explicit skill transfer preparation with a pinned provider compatibility
   profile, private staging, source/content verification, and native lock updates.
+- Five-agent MCP copy/move/reviewed mirrors, per-stanza ownership and undo,
+  deferred environment bindings, an optional exact-checkout stdio launcher,
+  and separately requested MCP initialization checks.
+- Cross-project/project-user skill moves and lock-only restoration, guarded
+  AGENTS.md/CLAUDE.md symlink/import sharing, optional portable recipes, and
+  additive inventory ownership receipts. Native Windows transfer writes remain
+  unavailable until private ACL/recovery support is verified.
 
 ## [0.2.17] - 2026-09-05
 

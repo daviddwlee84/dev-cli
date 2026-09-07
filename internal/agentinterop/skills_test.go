@@ -10,6 +10,22 @@ import (
 
 const skillFixture = "---\nname: example\ndescription: Example fixture\n---\nInstructions.\n"
 
+func TestSecretMaterialDistinguishesDetectionCodeFromKeyBodies(t *testing.T) {
+	header := "-----BEGIN " + "PRIVATE KEY-----"
+	footer := "-----END " + "PRIVATE KEY-----"
+	if secretMaterial("detector.go", []byte("check(\""+header+"\")")) {
+		t.Fatal("header detection code treated as a private key")
+	}
+	if !secretMaterial("material.txt", []byte(header+"\nAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n"+footer)) {
+		t.Fatal("key-shaped body was not rejected")
+	}
+	for _, name := range []string{".credentials.json", "application_default_credentials.json", "id_ecdsa", "key.ppk", "bundle.pfx"} {
+		if !secretMaterial(name, []byte("fixture")) {
+			t.Fatal("credential file not recognized", name)
+		}
+	}
+}
+
 func skillRequest(root string, mode string) TransferRequest {
 	return TransferRequest{Kind: "skill", Mode: mode, Name: "example", From: ArtifactRef{ScopeRef: ScopeRef{Scope: "project", Root: root}, Agent: "universal"}, To: ArtifactRef{ScopeRef: ScopeRef{Scope: "project", Root: root}, Agent: "claude-code"}}
 }

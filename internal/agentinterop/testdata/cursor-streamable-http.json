@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "test.server": {
+      "url": "https://example.test/mcp",
+      "headers": {
+        "Authorization": "Bearer ${env:API_TOKEN}"
+      }
+    }
+  }
+}

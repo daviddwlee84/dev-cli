@@ -42,7 +42,7 @@ func (b *builder) root(path string) (*os.Root, error) {
 	if err != nil {
 		return nil, err
 	}
-	id, err := fileIdentity(info)
+	id, err := rootIdentity(path, info)
 	if err != nil {
 		_ = r.Close()
 		return nil, err
@@ -223,7 +223,7 @@ func (b *builder) remove(l Location) error {
 }
 
 func (b *builder) save() (Plan, error) {
-	if len(b.r.Effects) == 0 && b.r.Status == "planned" {
+	if len(b.r.Effects) == 0 && len(b.r.MCPEdits) == 0 && b.r.Status == "planned" {
 		b.r.Notes = append(b.r.Notes, "Already equivalent; no ownership is claimed for existing content.")
 	}
 	b.r.Notes = append(b.r.Notes, "Recovery payloads are private local state; undo revalidates the resulting files before restoring them.")

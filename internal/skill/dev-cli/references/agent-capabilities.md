@@ -80,6 +80,11 @@ Treat the coverage metadata as part of the result.
 
 ## Explicit transfers
 
+Full workflow and safety boundaries: `references/agent-interop.md`. MCP has
+per-stanza copy/move/mirror ownership, instructions support symlink/import, and
+optional recipes contain only reconstruction intent. JSON adds `interop` receipts
+without changing existing inventory fields or claiming current client activation.
+
 `dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
 previews one local per-skill relative link. Copy creates an independent tree;
 move plans destination publication before source cleanup. Different existing

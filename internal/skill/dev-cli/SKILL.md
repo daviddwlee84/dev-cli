@@ -31,6 +31,12 @@ abandoning a task.
 
 ## Check it is there first
 
+For selected MCP, skill, or AGENTS.md/CLAUDE.md transfers, read
+`references/agent-interop.md`. Use plan/apply, preserve native source/lock
+ownership, and never copy resolved credentials. Cross-project upstream skills
+require explicit preparation; ordinary inventory never executes an installer or
+MCP server. Native Windows transfer writes currently fail closed.
+
 `dev` is not installed everywhere. Before using it:
 
 ```bash

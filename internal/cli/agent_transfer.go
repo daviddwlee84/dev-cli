@@ -62,6 +62,66 @@ func newAgentTransferCmd(app *App, kind string) *cobra.Command {
 	}}
 	status.Flags().BoolVar(&statusJSON, "json", false, "emit sanitized operation ledgers")
 	cmd.AddCommand(status)
+	var exportEntry string
+	export := &cobra.Command{Use: "export <id>", Short: "Print an optional credential-free reconstruction recipe", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		service := interopService(app)
+		info, err := service.Inspect(cmd.Context(), args[0])
+		if err != nil {
+			return err
+		}
+		if info.Kind != kind {
+			return errors.New("ID belongs to another artifact family")
+		}
+		data, err := service.ExportRecipe(cmd.Context(), args[0], exportEntry)
+		if err != nil {
+			return err
+		}
+		_, err = app.Out.Write(data)
+		return err
+	}}
+	export.Flags().StringVar(&exportEntry, "entry", "", "portable recipe entry name")
+	cmd.AddCommand(export)
+	var recipeEntry, recipeRepo string
+	var recipeJSON bool
+	recipe := &cobra.Command{Use: "recipe <file>", Short: "Plan one entry from an optional reconstruction recipe", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		targets, err := resolveAgentTargets(cmd.Context(), app, cwd, false, recipeRepo, true)
+		if err != nil {
+			return err
+		}
+		if len(targets) != 1 {
+			return errors.New("select one recipe checkout")
+		}
+		plan, err := interopService(app).PlanRecipe(cmd.Context(), targets[0].CheckoutRoot, args[0], recipeEntry, kind)
+		if err != nil {
+			return err
+		}
+		return renderTransfer(app, plan, nil, recipeJSON)
+	}}
+	recipe.Flags().StringVar(&recipeEntry, "entry", "", "one recipe entry")
+	recipe.Flags().StringVar(&recipeRepo, "repo", "", "repository or exact checkout containing the recipe")
+	recipe.Flags().BoolVar(&recipeJSON, "json", false, "emit a sanitized plan")
+	registerFlagCompletion(recipe, "repo", completeRepoFlag(app))
+	cmd.AddCommand(recipe)
+	if kind == "mcp" {
+		var jsonOut bool
+		check := &cobra.Command{Use: "check <id>", Short: "Explicitly initialize an applied MCP server", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+			result, err := interopService(app).Check(cmd.Context(), args[0])
+			if jsonOut {
+				if e := writeTransferJSON(app, result); e != nil {
+					return e
+				}
+			} else {
+				fmt.Fprintf(app.Out, "%s: %s; authentication %s; native client loading %s\n", result.ID, result.Status, result.Authentication, result.ClientLoaded)
+			}
+			return err
+		}}
+		check.Flags().BoolVar(&jsonOut, "json", false, "emit connection evidence without server payloads")
+		cmd.AddCommand(check)
+	}
 	for _, action := range []string{"refresh", "undo"} {
 		var jsonOut bool
 		c := &cobra.Command{Use: action + " <id>", Short: "Create a reviewed " + action + " plan", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
@@ -95,6 +155,7 @@ func newAgentTransferPlanCmd(app *App, kind string) *cobra.Command {
 	var fromRepo, toRepo string
 	var jsonOut bool
 	var bindings []string
+	var bridge bool
 	req.Kind = kind
 	use := "plan"
 	if kind == "skill" {
@@ -155,7 +216,7 @@ func newAgentTransferPlanCmd(app *App, kind string) *cobra.Command {
 			}
 			req.Bindings = append(req.Bindings, agentinterop.SecretRef{Name: parts[0], Variable: parts[1]})
 		}
-		if req.EnvFile != "" {
+		if req.EnvFile != "" || bridge {
 			req.Launcher, err = os.Executable()
 			if err != nil {
 				return err
@@ -188,6 +249,8 @@ func newAgentTransferPlanCmd(app *App, kind string) *cobra.Command {
 		f.StringVar(&req.Transport, "transport", "", "explicit transport for ambiguous remote declarations")
 		f.StringSliceVar(&bindings, "bind", nil, "destination environment binding SERVER_ENV=PROCESS_ENV")
 		f.StringVar(&req.EnvFile, "secret-env-file", "", "explicit local JSON env source for the optional launcher")
+		f.BoolVar(&bridge, "bridge", false, "use the installed dev stdio launcher with a host-local binding")
+		f.BoolVar(&req.Adopt, "adopt", false, "adopt an equivalent MCP stanza or explicitly change its managed source")
 	}
 	if kind == "instructions" {
 		f.StringVar(&req.Style, "style", "symlink", "mirror style: symlink or import")

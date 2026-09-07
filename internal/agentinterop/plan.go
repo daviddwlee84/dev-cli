@@ -25,6 +25,16 @@ func safeText(s string) bool {
 	return true
 }
 
+func projectRoots(req TransferRequest) []string {
+	var roots []string
+	for _, ref := range []ArtifactRef{req.From, req.To} {
+		if ref.Scope == "project" {
+			roots = append(roots, ref.Root)
+		}
+	}
+	return roots
+}
+
 func normalize(req TransferRequest) (TransferRequest, error) {
 	for _, s := range []string{req.Name, req.TargetName, req.From.Root, req.To.Root, req.From.Path, req.To.Path, req.EnvFile, req.Launcher} {
 		if !safeText(s) {
@@ -34,13 +44,18 @@ func normalize(req TransferRequest) (TransferRequest, error) {
 	if req.Kind != "skill" && req.Kind != "mcp" && req.Kind != "instructions" {
 		return req, ErrUnsupported
 	}
-	if req.Kind != "instructions" && (req.Name == "" || !safeText(req.Name)) {
+	if req.Kind != "instructions" && (req.Name == "" || !safeText(req.Name) || len(req.Name) > 256 || strings.HasPrefix(req.Name, "-") || knownKey.MatchString(req.Name)) {
 		return req, errors.New("select exactly one named artifact")
+	}
+	if req.Name != strings.TrimSpace(req.Name) || req.TargetName != strings.TrimSpace(req.TargetName) || len(req.TargetName) > 256 || knownKey.MatchString(req.TargetName) {
+		return req, errors.New("invalid artifact name")
 	}
 	if req.Mode == "" {
 		req.Mode = "copy"
 		if req.Kind == "skill" {
-			if req.From.Root == req.To.Root {
+			if req.Prepared != "" {
+				req.Mode = "install"
+			} else if req.From.Root == req.To.Root {
 				req.Mode = "mirror"
 			} else {
 				req.Mode = "install"
@@ -193,6 +208,10 @@ func buildTransfer(b *builder, owner *record) error {
 	switch b.r.Request.Kind {
 	case "skill":
 		return planSkill(b, owner)
+	case "mcp":
+		return planMCP(b, owner)
+	case "instructions":
+		return planInstructions(b, owner)
 	default:
 		return fmt.Errorf("%s adapter: %w", b.r.Request.Kind, ErrUnsupported)
 	}

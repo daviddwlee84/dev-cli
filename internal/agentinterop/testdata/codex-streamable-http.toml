@@ -1,0 +1,3 @@
+[mcp_servers."test.server"]
+url = "https://example.test/mcp"
+bearer_token_env_var = "API_TOKEN"

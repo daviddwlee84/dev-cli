@@ -24,7 +24,7 @@ func openRoots(r record) (*heldRoots, error) {
 			h.close()
 			return nil, ErrStale
 		}
-		actual, err := fileIdentity(info)
+		actual, err := rootIdentity(path, info)
 		if err != nil || actual != id {
 			_ = root.Close()
 			h.close()
@@ -93,6 +93,9 @@ func verifyAncestors(ctx context.Context, st *store, h *heldRoots, r record, l L
 // Apply locks, reopens all scope roots, and checks every observation before the
 // first target mutation. The journal is synced before and after every effect.
 func (s Service) Apply(ctx context.Context, id string) (out ApplyResult, err error) {
+	if err = platformTransfers(); err != nil {
+		return out, err
+	}
 	err = s.withLock(ctx, func() error {
 		st, e := s.open(false)
 		if e != nil {
@@ -110,10 +113,24 @@ func (s Service) Apply(ctx context.Context, id string) (out ApplyResult, err err
 		}
 		defer h.close()
 		if r.Status == "applied" {
-			return verifyPost(ctx, st, h, r)
+			return verifyReceipt(ctx, st, h, r)
 		}
 		if r.Status != "planned" || r.Completed != 0 || r.InFlight != nil {
 			return errors.New("operation is no longer a fresh plan; inspect status and create an undo plan")
+		}
+		if r.Request.Kind == "mcp" && r.Request.Mode != "undo" {
+			if e = validateMCPPolicy(ctx, r.Request); e != nil {
+				return e
+			}
+		}
+		if r.Parent != "" {
+			parent, e := st.load(ctx, r.Parent)
+			if e != nil {
+				return e
+			}
+			if parent.Status != "applied" && !(r.Request.Mode == "undo" && parent.Status == "partial") {
+				return ErrStale
+			}
 		}
 		for _, g := range r.Guards {
 			if e = validLocation(g.Location); e != nil {
@@ -156,7 +173,7 @@ func (s Service) Apply(ctx context.Context, id string) (out ApplyResult, err err
 		}
 		for i := range r.Effects {
 			eff := r.Effects[i]
-			if eff.After.Kind == "absent" {
+			if eff.After.Kind == "absent" || eff.Retirement {
 				if e = verifyPost(ctx, st, h, r); e != nil {
 					return fail(e)
 				}
@@ -190,6 +207,11 @@ func (s Service) Apply(ctx context.Context, id string) (out ApplyResult, err err
 			if e = publish(ctx, h.roots[eff.Root], eff, data); e != nil {
 				return fail(fmt.Errorf("transfer effect %d was not confirmed: %w", i+1, e))
 			}
+			if s.hooks != nil && s.hooks.afterPublish != nil {
+				if e = s.hooks.afterPublish(i); e != nil {
+					return fail(e)
+				}
+			}
 			post, _, e := snapshot(ctx, h.roots[eff.Root], eff.Path, st.key)
 			if e != nil {
 				return fail(e)
@@ -221,13 +243,21 @@ func (s Service) Apply(ctx context.Context, id string) (out ApplyResult, err err
 			if e = st.save(ctx, &r, false); e != nil {
 				return fail(e)
 			}
+			if s.hooks != nil && s.hooks.afterConfirm != nil {
+				if e = s.hooks.afterConfirm(i); e != nil {
+					return fail(e)
+				}
+			}
 		}
 		r.Status = "applied"
 		e = st.save(ctx, &r, false)
 		out = r.result()
+		if e == nil {
+			e = updateRelationship(ctx, st, r)
+		}
 		return e
 	})
-	if errors.Is(err, ErrStale) {
+	if errors.Is(err, ErrStale) && out.Completed == 0 && !out.Uncertain {
 		out.Status = "stale"
 	}
 	return out, err
@@ -257,7 +287,7 @@ func (s Service) Undo(ctx context.Context, id string) (out Plan, err error) {
 			return e
 		}
 		defer h.close()
-		if e = verifyPost(ctx, st, h, r); e != nil {
+		if e = verifyReceipt(ctx, st, h, r); e != nil {
 			return e
 		}
 		req := r.Request
@@ -265,6 +295,13 @@ func (s Service) Undo(ctx context.Context, id string) (out Plan, err error) {
 		b := newBuilder(ctx, st, req)
 		defer b.close()
 		b.r.Parent = id
+		if r.Request.Kind == "mcp" && len(r.MCPEdits) > 0 {
+			if e = planMCPUndo(b, r); e != nil {
+				return e
+			}
+			out, e = b.save()
+			return e
+		}
 		for i := r.Completed - 1; i >= 0; i-- {
 			eff := r.Effects[i]
 			data, e := st.bytes(ctx, eff.Before)

@@ -1,0 +1,4 @@
+[mcp_servers."test.server"]
+command = "uvx"
+args = ["fixture-mcp@1.0"]
+env_vars = ["API_TOKEN"]

@@ -13,13 +13,24 @@ import (
 )
 
 var knownKey = regexp.MustCompile(`(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{20,}|ghp_[A-Za-z0-9]{25,}|github_pat_[A-Za-z0-9_]{25,}|AKIA[0-9A-Z]{16})`)
+var privatePEM = regexp.MustCompile(`(?m)-----BEGIN (?:RSA |DSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----\r?\n(?:[A-Za-z0-9+/=]{16,}\r?\n)+-----END (?:RSA |DSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----`)
 
 func secretMaterial(path string, data []byte) bool {
 	base := strings.ToLower(filepath.Base(path))
+	for _, name := range []string{".credentials.json", "application_default_credentials.json", ".auth.json", "token.json", "tokens.json", "oauth-tokens.json", "id_dsa", "id_ecdsa", "id_ecdsa_sk", "id_ed25519_sk"} {
+		if base == name {
+			return true
+		}
+	}
+	for _, extension := range []string{".ppk", ".p12", ".pfx"} {
+		if strings.HasSuffix(base, extension) {
+			return true
+		}
+	}
 	if base == ".env" || strings.HasPrefix(base, ".env.") && base != ".env.example" && base != ".env.sample" || base == "id_rsa" || base == "id_ed25519" || base == "auth.json" || base == "credentials.json" {
 		return true
 	}
-	return knownKey.Match(data) || bytes.Contains(data, []byte("-----BEGIN PRIVATE KEY-----")) || bytes.Contains(data, []byte("-----BEGIN RSA PRIVATE KEY-----")) || bytes.Contains(data, []byte("-----BEGIN OPENSSH PRIVATE KEY-----"))
+	return knownKey.Match(data) || privatePEM.Match([]byte(strings.ReplaceAll(string(data), `\n`, "\n")))
 }
 
 type treeEntry struct {
@@ -163,6 +174,28 @@ func planSkill(b *builder, owner *record) error {
 	if err = validateSkill(entries); err != nil {
 		return err
 	}
+	var proof *moveProof
+	if req.Mode == "move" {
+		proof, err = sourceMoveProof(b, source, entries)
+		if err != nil {
+			return err
+		}
+		if proof != nil {
+			canonical, e := canonicalSkill(req.To, req.TargetName)
+			if e != nil {
+				return e
+			}
+			target = location(canonical)
+			if target == source {
+				return errors.New("universal canonical skills cannot be hidden from one agent by moving them; use mirror")
+			}
+		}
+	}
+	if req.From.Root != req.To.Root || req.From.Scope != req.To.Scope {
+		if err = rejectTargetMembership(b, req.To, req.TargetName); err != nil {
+			return err
+		}
+	}
 	if req.Mode != "mirror" {
 		v, _, e := b.read(target)
 		if e != nil {
@@ -219,25 +252,22 @@ func planSkill(b *builder, owner *record) error {
 		}
 	}
 	if req.Mode == "move" {
-		// Existing provider membership needs the dedicated lock-aware migration.
-		lock := Location{source.Root, "skills-lock.json"}
-		if req.From.Scope == "user" {
-			lock.Path = filepath.Join(".agents", ".skill-lock.json")
-		}
-		v, _, e := b.read(lock)
-		if e != nil {
-			return e
-		}
-		if v.Kind != "absent" {
-			return errors.New("provider lock present: use verified install and a lock-aware source retirement")
-		}
-		if source != location(req.From) {
-			return b.remove(location(req.From))
-		}
-		for i := len(entries) - 1; i >= 0; i-- {
-			if err = b.remove(Location{source.Root, filepath.Join(source.Path, entries[i].rel)}); err != nil {
+		if proof != nil {
+			if err = addMoveMembership(b, proof, entries); err != nil {
 				return err
 			}
+			if target != location(req.To) {
+				rel, e := filepath.Rel(filepath.Dir(filepath.Join(req.To.Root, req.To.Path)), filepath.Join(target.Root, target.Path))
+				if e != nil {
+					return e
+				}
+				if err = b.link(location(req.To), rel, false); err != nil {
+					return err
+				}
+			}
+		}
+		if err = retireSkillSource(b, source, entries, proof); err != nil {
+			return err
 		}
 	}
 	b.r.Notes = append(b.r.Notes, "Independent copies retain their bytes; no upstream lock or update ownership is invented.")

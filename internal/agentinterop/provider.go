@@ -12,12 +12,11 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/google/uuid"
@@ -26,6 +25,9 @@ import (
 )
 
 const SkillsProviderVersion = "1.5.23"
+
+var scpGitSource = regexp.MustCompile(`^([A-Za-z0-9._-]{1,64})@([A-Za-z0-9.-]+):([^?#\s]+)$`)
+var sshUserName = regexp.MustCompile(`^[A-Za-z0-9._-]{1,64}$`)
 
 type skillLockEntry struct {
 	Source          string `json:"source"`
@@ -102,6 +104,9 @@ func sourceArgument(entry skillLockEntry) (string, error) {
 		return "", errors.New("source is not reproducible through the supported Git provider; select copy explicitly")
 	}
 	source := entry.SourceURL
+	if parts := scpGitSource.FindStringSubmatch(source); parts != nil {
+		source = "ssh://" + parts[1] + "@" + parts[2] + "/" + parts[3]
+	}
 	if source == "" && entry.SourceType == "github" {
 		parts := strings.Split(strings.Trim(entry.Source, "/"), "/")
 		if len(parts) < 2 {
@@ -110,8 +115,14 @@ func sourceArgument(entry skillLockEntry) (string, error) {
 		source = "https://github.com/" + parts[0] + "/" + parts[1] + ".git"
 	}
 	u, err := url.Parse(source)
-	if err != nil || u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Host == "" || (u.Scheme != "https" && u.Scheme != "ssh") {
+	if err != nil || u.RawQuery != "" || u.Fragment != "" || u.Host == "" || (u.Scheme != "https" && u.Scheme != "ssh") {
 		return "", errors.New("upstream source needs a credential-free HTTPS or SSH URL")
+	}
+	if u.User != nil {
+		_, password := u.User.Password()
+		if u.Scheme != "ssh" || password || !sshUserName.MatchString(u.User.Username()) || knownKey.MatchString(u.User.Username()) {
+			return "", errors.New("URL credentials are not portable; use native Git credential helpers or SSH agent authentication")
+		}
 	}
 	if !safeText(source) || !safeText(entry.Ref) || strings.HasPrefix(entry.Ref, "-") || strings.ContainsAny(entry.Ref, "#@") {
 		return "", errors.New("invalid upstream source/ref")
@@ -290,25 +301,46 @@ func (s Service) Prepare(ctx context.Context, request TransferRequest) (out Plan
 		if e != nil {
 			return e
 		}
-		original, e := b.tree(loc)
+		originalHash, originalTree := "", ""
+		presence, _, e := b.read(loc)
 		if e != nil {
 			return e
 		}
-		if e = validateSkill(original); e != nil {
-			return e
+		if presence.Kind == "absent" {
+			if req.From.Scope == "project" {
+				originalHash = entry.ComputedHash
+			} else {
+				originalTree = entry.SkillFolderHash
+			}
+			if originalHash == "" && originalTree == "" {
+				return errors.New("lock-only source has no verifiable content hash")
+			}
+			b.r.Notes = append(b.r.Notes, "Restoring a lock-only source; the provider's staged content must match the native lock before publication.")
+		} else {
+			original, e := b.tree(loc)
+			if e != nil {
+				return e
+			}
+			if e = validateSkill(original); e != nil {
+				return e
+			}
+			originalHash, originalTree, e = skillHashes(original)
+			if e != nil {
+				return e
+			}
+			if req.From.Scope == "project" && originalHash != entry.ComputedHash || req.From.Scope == "user" && originalTree != entry.SkillFolderHash {
+				return errors.New("installed source differs from its upstream lock; choose copy explicitly or restore it first")
+			}
 		}
-		originalHash, originalTree, e := skillHashes(original)
-		if e != nil {
-			return e
+		providerRoot := ""
+		if req.From.Scope == "project" {
+			providerRoot = req.From.Root
 		}
-		if req.From.Scope == "project" && originalHash != entry.ComputedHash || req.From.Scope == "user" && originalTree != entry.SkillFolderHash {
-			return errors.New("installed source differs from its upstream lock; choose copy explicitly or restore it first")
-		}
-		provider := agentskill.MutationProviderStatusFor(req.From.Root)
+		provider := agentskill.MutationProviderStatusFor(providerRoot)
 		if !provider.Available {
 			return errors.New(provider.Detail)
 		}
-		if pathInside(req.To.Root, provider.Path) {
+		if req.To.Scope == "project" && pathInside(req.To.Root, provider.Path) {
 			return errors.New("skills provider is inside destination checkout")
 		}
 		stageName := uuid.NewString() + ".stage"
@@ -323,7 +355,7 @@ func (s Service) Prepare(ctx context.Context, request TransferRequest) (out Plan
 			var stdout, stderr boundedOutput
 			cmd := exec.CommandContext(limited, provider.Path, args...)
 			cmd.Dir = stage
-			cmd.Env = providerEnvironment(stage, req.From.Root, req.To.Root)
+			cmd.Env = providerEnvironment(stage, projectRoots(req)...)
 			cmd.Stdout = &stdout
 			cmd.Stderr = &stderr
 			if cmd.Run() != nil {
@@ -359,7 +391,7 @@ func (s Service) Prepare(ctx context.Context, request TransferRequest) (out Plan
 		if e != nil {
 			return e
 		}
-		if hash != originalHash || tree != originalTree {
+		if originalHash != "" && hash != originalHash || originalTree != "" && tree != originalTree {
 			return errors.New("upstream content drifted from the selected installation; no agent files changed")
 		}
 		_, lockBytes, e := probe.read(Location{stageRoot, "skills-lock.json"})
@@ -490,6 +522,7 @@ func planPreparedSkill(b *builder) error {
 		return err
 	}
 	version := 1
+	keepMembership := false
 	if req.To.Scope == "user" {
 		version = 3
 		_, tree, e := skillHashes(entries)
@@ -516,16 +549,33 @@ func planPreparedSkill(b *builder) error {
 		if json.Unmarshal(root["version"], &actual) != nil || actual != version {
 			return errors.New("destination lock schema is unsupported")
 		}
-		if v.Find(pointer("skills", req.Name)) != nil {
-			return conflict("destination lock membership")
+		if node := v.Find(pointer("skills", req.Name)); node != nil {
+			current, e := jsonMap(node)
+			if e != nil {
+				return e
+			}
+			comparison := map[string]any{}
+			for key, value := range entry {
+				comparison[key] = value
+			}
+			for _, key := range []string{"installedAt", "updatedAt"} {
+				delete(comparison, key)
+				delete(current, key)
+			}
+			if !fieldEquivalent(current, comparison) {
+				return conflict("destination lock membership")
+			}
+			keepMembership = true
 		}
 	}
-	patched, err := patchJSON(data, false, []string{"skills", req.Name}, entry, false)
-	if err != nil {
-		return err
-	}
-	if err = b.write(lock, patched, 0o600, true); err != nil {
-		return err
+	if !keepMembership {
+		patched, e := patchJSON(data, false, []string{"skills", req.Name}, entry, false)
+		if e != nil {
+			return e
+		}
+		if err = b.write(lock, patched, 0o600, true); err != nil {
+			return err
+		}
 	}
 	if location(req.To) != target {
 		rel, e := filepath.Rel(filepath.Dir(filepath.Join(req.To.Root, req.To.Path)), filepath.Join(target.Root, target.Path))
@@ -538,10 +588,4 @@ func planPreparedSkill(b *builder) error {
 	}
 	b.r.Notes = append(b.r.Notes, "Published verified provider content and native lock membership; no installer runs during apply.")
 	return nil
-}
-
-// Keep source paths portable and credential-free before including them in a
-// provider profile. This is also used by portable recipe validation.
-func portableSourcePath(p string) bool {
-	return utf8.ValidString(p) && safeText(p) && !strings.HasPrefix(p, "/") && !strings.Contains(p, "\\") && path.Clean(p) == p && !strings.HasPrefix(p, "../")
 }

@@ -30,7 +30,7 @@ func (s Service) Refresh(ctx context.Context, id string) (out Plan, err error) {
 			return errors.New("refresh requires an applied mirror relation")
 		}
 		owner := r
-		for n := 0; len(owner.Effects) == 0 && owner.Parent != ""; n++ {
+		for n := 0; len(owner.Effects) == 0 && len(owner.MCPEdits) == 0 && owner.Parent != ""; n++ {
 			if n >= 32 {
 				return errors.New("mirror history limit exceeded")
 			}
@@ -44,12 +44,12 @@ func (s Service) Refresh(ctx context.Context, id string) (out Plan, err error) {
 			return e
 		}
 		defer h.close()
-		if e = verifyPost(ctx, st, h, owner); e != nil {
+		if e = verifyReceipt(ctx, st, h, owner); e != nil {
 			return e
 		}
 		b := newBuilder(ctx, st, r.Request)
 		defer b.close()
-		b.r.Parent = id
+		b.r.Parent = owner.ID
 		if e = buildTransfer(b, &owner); e != nil {
 			return e
 		}

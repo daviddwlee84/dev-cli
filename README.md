@@ -1463,6 +1463,16 @@ both directions.
 
 ## The agent skill
 
+For configuration sharing, see [Agent configuration interoperability](docs/guides/agent-interop.md).
+`dev mcp transfer`, `dev skill transfer`, and `dev instructions transfer` use
+reviewed plans, exact source/target revalidation, and guarded undo. Skills can
+share one tree through relative links or use verified upstream preparation in
+another repository. MCP writers support five native formats and retain unrelated
+settings; optional launchers resolve selected credentials only at runtime.
+Copy/mirror recipes are optional, and ordinary native copies have no dev runtime
+dependency. Private recovery stays outside Git; native Windows transfer writes
+are currently disabled. Static inventories remain local and do not probe tools.
+
 `dev` ships the agent skill that documents it, embedded in the binary — the
 same pattern `herdr --skill` uses. A skill vendored separately drifts from the
 tool it describes, and an agent reading a stale command list is worse than one

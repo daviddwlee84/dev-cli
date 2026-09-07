@@ -120,3 +120,14 @@ When code or an upstream feature changes:
 - [Skills](https://code.claude.com/docs/en/skills)
 - [Plugins](https://code.claude.com/docs/en/plugins)
 - [Agent SDK loop](https://code.claude.com/docs/en/agent-sdk/agent-loop)
+
+### Agent interoperability profile (2026-09-07)
+
+[Agent interoperability](../guides/agent-interop.md) is grounded in
+`internal/agentinterop`, native inventory/CLI tests, and synthetic MCP servers.
+The skills profile is fixed at 1.5.23 with project-v1/global-v3 locks; it does
+not follow latest. The MCP initialization probe uses specification 2025-06-18.
+Current Codex canonical user discovery is additive to the pinned registry's
+legacy paths. Schema/fixture verification does not prove that a running native
+client has loaded the generated configuration. Windows transfer writes remain
+unavailable pending a separately verified privacy/identity adapter.

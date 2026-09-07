@@ -124,3 +124,12 @@ Code 或 upstream feature 改變時：
 - [Skills](https://code.claude.com/docs/en/skills)
 - [Plugins](https://code.claude.com/docs/en/plugins)
 - [Agent SDK loop](https://code.claude.com/docs/en/agent-sdk/agent-loop)
+
+### Agent interoperability profile（2026-09-07）
+
+[Agent 設定互通](../guides/agent-interop.zh-TW.md) 依據 `internal/agentinterop`、
+native inventory／CLI 測試與 synthetic MCP server。Skills profile 固定 1.5.23，
+使用 project-v1／global-v3 lock，不追蹤 latest。MCP 初始化探測使用 2025-06-18 規格。
+Codex 目前的 canonical user discovery 是對固定 registry legacy paths 的額外支援。
+Schema／fixture 驗證不表示正在執行的原生 client 已載入生成設定。
+Windows transfer 寫入在獨立驗證 privacy／identity adapter 前維持不可用。

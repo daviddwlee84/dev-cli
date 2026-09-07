@@ -63,6 +63,11 @@ func parseValue(agent, value string) (envValue, error) {
 	if !safeText(value) || knownKey.MatchString(value) {
 		return v, ErrCredentials
 	}
+	if strings.Contains(value, "://") {
+		if u, err := url.Parse(value); err == nil && (u.User != nil || u.RawQuery != "") {
+			return v, ErrCredentials
+		}
+	}
 	switch agent {
 	case "claude-code", "gemini-cli":
 		if m := claudeRef.FindStringSubmatch(value); m != nil {
@@ -236,6 +241,12 @@ func parseMCP(agent string, fields map[string]json.RawMessage, transport string)
 			}
 		}
 	} else if d.URL != "" {
+		if agent == "opencode" && kind != "remote" {
+			return d, errors.New("OpenCode remote declarations require type remote")
+		}
+		if kind == "remote" && agent != "opencode" {
+			return d, ErrUnsupported
+		}
 		switch kind {
 		case "http", "streamable-http":
 			d.Transport = "streamable-http"
@@ -366,6 +377,12 @@ func parseMCP(agent string, fields map[string]json.RawMessage, transport string)
 			}
 			d.Headers["Authorization"] = envValue{Variable: bearer, Prefix: "Bearer "}
 		}
+	}
+	if d.Transport == "stdio" && len(d.Headers) > 0 {
+		return d, errors.New("HTTP header fields do not apply to a stdio server")
+	}
+	if d.Transport == "streamable-http" && (len(d.Args) > 0 || d.Cwd != "") {
+		return d, errors.New("stdio arguments/cwd do not apply to an HTTP server")
 	}
 	return d, nil
 }

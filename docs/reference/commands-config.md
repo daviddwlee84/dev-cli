@@ -738,3 +738,11 @@ with the source/destination selectors, then `transfer plan <name> --mode install
 `skills@1.5.23` and verifies native lock provenance and staged content before any
 agent files are published. A version/schema/hash mismatch fails without silently
 upgrading or falling back to copy.
+
+MCP and instruction transfers use the same guarded family: `dev mcp transfer`
+and `dev instructions transfer`. MCP offers explicit `check`; all three families
+can `export` an optional recipe and plan one `recipe` entry. See the
+[complete interoperability workflow](../guides/agent-interop.md) for native
+scope mappings, stanza ownership, credential references and platform limits.
+Skill JSON rows and MCP JSON envelopes may add `interop` and `interop_coverage`;
+`receipts-only` never means the native client loaded or authenticated a tool.

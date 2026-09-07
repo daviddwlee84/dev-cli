@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-03
+verified_on: 2026-09-07
 tested_with: Claude Code 2.1.259
 ---
 
@@ -40,6 +40,17 @@ This page separates graceful degradation from real limitations. Reverify it when
 | verified ephemeral worktree apply | Git, compatible bounded Claude Workflow metadata, known task/artifact state, and every available runtime inventory | report remains available, but missing/unknown proof is never apply-eligible |
 
 ## Confirmed project limitations
+
+### Agent transfers use explicit capability profiles
+
+[Agent interoperability](../guides/agent-interop.md) adds plan/apply/undo for
+skills, five MCP formats, and AGENTS.md/CLAUDE.md. The initial mutation backend
+is POSIX; Windows writes fail closed pending protected-DACL/recovery validation.
+Unknown policies/authentication extensions, OpenCode v2 and uneditable TOML
+layouts remain native-client work. Local env launchers retain their source and
+are host-local; HTTP clients need their own environment. Only explicit prepare
+may run the pinned skills provider, and only explicit check initializes MCP.
+Inventory's additive interop receipts are historical, not live health evidence.
 
 ### MCP inventory is static and intentionally incomplete
 

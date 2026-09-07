@@ -27,7 +27,8 @@ func jsonDocument(data []byte, comments bool) (hujson.Value, error) {
 			seen := map[string]bool{}
 			for _, m := range obj.Members {
 				var key string
-				if json.Unmarshal(m.Name.Pack(), &key) != nil {
+				literal, ok := m.Name.Value.(hujson.Literal)
+				if !ok || json.Unmarshal(literal, &key) != nil {
 					return v, errors.New("invalid JSON member")
 				}
 				if seen[key] {

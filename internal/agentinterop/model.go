@@ -3,6 +3,7 @@
 package agentinterop
 
 import (
+	"encoding/json"
 	"errors"
 	"io/fs"
 )
@@ -98,14 +99,23 @@ type observation struct {
 
 type effect struct {
 	Location
-	Before image  `json:"before"`
-	After  image  `json:"after"`
-	Post   *image `json:"post,omitempty"`
+	Before     image  `json:"before"`
+	After      image  `json:"after"`
+	Post       *image `json:"post,omitempty"`
+	Retirement bool   `json:"retirement,omitempty"`
 }
 
 type payload struct {
 	Path  string `json:"path"`
 	Image image  `json:"image"`
+}
+
+type mcpEdit struct {
+	Location
+	Agent  string                     `json:"agent"`
+	Name   string                     `json:"name"`
+	Before map[string]json.RawMessage `json:"before,omitempty"`
+	After  map[string]json.RawMessage `json:"after,omitempty"`
 }
 
 type record struct {
@@ -123,9 +133,20 @@ type record struct {
 	MAC          string            `json:"mac"`
 	Payload      []payload         `json:"payload,omitempty"`
 	ProviderLock *image            `json:"provider_lock,omitempty"`
+	Bridge       *bridgeBinding    `json:"bridge,omitempty"`
+	MCPEdits     []mcpEdit         `json:"mcp_edits,omitempty"`
 }
 
-type Service struct{ StateDir string }
+type Service struct {
+	StateDir string
+	hooks    *applyHooks
+}
+
+// Test seams bracket durable confirmation; production services leave these nil.
+type applyHooks struct {
+	afterPublish func(int) error
+	afterConfirm func(int) error
+}
 
 func (r record) public() Plan {
 	p := Plan{SchemaVersion: SchemaVersion, ID: r.ID, Kind: r.Request.Kind,

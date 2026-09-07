@@ -4,10 +4,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestSkillTransferCLIPlansBeforeApply(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("native transfer mutation is intentionally unavailable")
+	}
 	h := newHarness(t)
 	source := filepath.Join(h.repo.Root, ".agents/skills/example")
 	if err := os.MkdirAll(source, 0o755); err != nil {

@@ -1,0 +1,14 @@
+{
+  "mcp": {
+    "test.server": {
+      "type": "local",
+      "command": [
+        "uvx",
+        "fixture-mcp@1.0"
+      ],
+      "environment": {
+        "API_TOKEN": "{env:API_TOKEN}"
+      }
+    }
+  }
+}

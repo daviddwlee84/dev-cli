@@ -21,8 +21,19 @@ type store struct {
 }
 
 func (s Service) open(create bool) (*store, error) {
+	if create {
+		if err := platformTransfers(); err != nil {
+			return nil, err
+		}
+	}
 	if !filepath.IsAbs(s.StateDir) {
 		return nil, errors.New("interop state directory must be absolute")
+	}
+	// Recovery may contain an existing destination's unrelated credentials.
+	// Never place that material in a checkout, even when task state was
+	// intentionally configured to be Git-backed.
+	if err := stateOutsideCheckout(s.StateDir); err != nil {
+		return nil, err
 	}
 	if create {
 		if err := os.MkdirAll(s.StateDir, 0o700); err != nil {
@@ -40,6 +51,18 @@ func (s Service) open(create bool) (*store, error) {
 	ctx := context.Background()
 	key, _, err := safefile.ReadStableRegular(ctx, r, "key", nil, 32)
 	if errors.Is(err, fs.ErrNotExist) && create {
+		f, e := r.Open(".")
+		if e != nil {
+			return fail(e)
+		}
+		names, e := f.Readdirnames(-1)
+		_ = f.Close()
+		if e != nil {
+			return fail(e)
+		}
+		if len(names) > 0 {
+			return fail(errors.New("interop signing key is missing from existing state; preserve recovery objects rather than resetting authority"))
+		}
 		key = make([]byte, 32)
 		if _, err = rand.Read(key); err != nil {
 			return fail(err)
@@ -57,6 +80,39 @@ func (s Service) open(create bool) (*store, error) {
 		return fail(errors.New("invalid private interop key"))
 	}
 	return &store{root: r, key: key}, nil
+}
+
+func stateOutsideCheckout(path string) error {
+	parent := path
+	for {
+		if _, err := os.Lstat(parent); err == nil {
+			break
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		next := filepath.Dir(parent)
+		if next == parent {
+			break
+		}
+		parent = next
+	}
+	resolved, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		return err
+	}
+	for {
+		if _, err := os.Lstat(filepath.Join(resolved, ".git")); err == nil {
+			return errors.New("private interop state cannot be inside a Git checkout; configure paths.state_dir outside the codebase")
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		next := filepath.Dir(resolved)
+		if next == resolved {
+			break
+		}
+		resolved = next
+	}
+	return nil
 }
 
 func (st *store) close() { _ = st.root.Close() }

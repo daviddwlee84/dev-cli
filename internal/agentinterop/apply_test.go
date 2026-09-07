@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -13,7 +14,16 @@ import (
 
 func testService(t *testing.T) (Service, string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("native transfer mutation requires a verified private Windows ACL adapter")
+	}
 	base := t.TempDir()
+	home := filepath.Join(base, "home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	root := filepath.Join(base, "repo")
 	if err := os.Mkdir(root, 0o755); err != nil {
 		t.Fatal(err)
@@ -209,5 +219,99 @@ func TestTamperedRecordRejected(t *testing.T) {
 	_ = os.WriteFile(path, data, 0o600)
 	if _, err := s.Apply(context.Background(), p.ID); err == nil {
 		t.Fatal("accepted edited authority")
+	}
+}
+
+func TestInterruptedAndConfirmedPartialTransfersRetainSource(t *testing.T) {
+	for _, kind := range []string{"unconfirmed", "confirmed", "destination-changed"} {
+		t.Run(kind, func(t *testing.T) {
+			s, root := testService(t)
+			writeFixture(t, filepath.Join(root, "source"), "recoverable")
+			p := testPlan(t, s, func(b *builder) error {
+				_, data, err := b.read(Location{root, "source"})
+				if err != nil {
+					return err
+				}
+				if err = b.write(Location{root, "destination"}, data, 0o600, false); err != nil {
+					return err
+				}
+				return b.remove(Location{root, "source"})
+			})
+			s.hooks = &applyHooks{}
+			if kind == "unconfirmed" {
+				s.hooks.afterPublish = func(int) error { return errors.New("simulated interruption") }
+			} else {
+				s.hooks.afterConfirm = func(step int) error {
+					if step != 0 {
+						return nil
+					}
+					if kind == "destination-changed" {
+						writeFixture(t, filepath.Join(root, "destination"), "user edit")
+						return nil
+					}
+					return errors.New("simulated failure after confirmation")
+				}
+			}
+			result, err := s.Apply(context.Background(), p.ID)
+			if err == nil {
+				t.Fatal("injected failure ignored")
+			}
+			if _, err = os.Stat(filepath.Join(root, "source")); err != nil {
+				t.Fatal("source retired before destination confirmation")
+			}
+			s.hooks = nil
+			if kind == "unconfirmed" {
+				if !result.Uncertain || result.Completed != 0 {
+					t.Fatal("uncertain effect overstated")
+				}
+				if _, err = s.Undo(context.Background(), p.ID); err == nil {
+					t.Fatal("unknown ownership was guessed")
+				}
+			} else {
+				if result.Status != "partial" || result.Completed != 1 || result.Uncertain {
+					t.Fatalf("partial result = %+v", result)
+				}
+				u, err := s.Undo(context.Background(), p.ID)
+				if kind == "destination-changed" {
+					if !errors.Is(err, ErrStale) {
+						t.Fatal("undo would overwrite intervening edit")
+					}
+				} else {
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, err = s.Apply(context.Background(), u.ID); err != nil {
+						t.Fatal(err)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestRecoveryStateCannotEnterGitAndMissingKeysAreNotReset(t *testing.T) {
+	s, root := testService(t)
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	blocked := Service{StateDir: filepath.Join(root, "state")}
+	if st, err := blocked.open(true); err == nil {
+		st.close()
+		t.Fatal("private recovery was placed in a checkout")
+	}
+	st, err := s.open(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = st.put(context.Background(), []byte("recovery")); err != nil {
+		t.Fatal(err)
+	}
+	st.close()
+	if err = os.Remove(filepath.Join(s.StateDir, "key")); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := s.open(true); err == nil {
+		st.close()
+		t.Fatal("missing authority key was silently replaced")
 	}
 }
