@@ -7,6 +7,8 @@ verified_on: 2026-09-02
 
 # Parallel agents and runtimes
 
+A submodule task uses one complete outer worktree with independent child checkouts. Only explicitly selected children receive task branches; initialization failure prevents runtime/agent handoff. Child task, artifact and runtime claims participate in recursive retirement. See [Submodule workspaces](submodule-workspaces.md).
+
 > **Worktree per change stream. Pane per cooperating agent.**
 
 Do not create one worktree merely because another agent exists. Create one when another independent writer can mutate overlapping or unknown state.

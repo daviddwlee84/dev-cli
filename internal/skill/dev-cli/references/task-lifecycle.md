@@ -1,5 +1,7 @@
 # Task lifecycle
 
+For submodule workspaces, Cold verifies every child's remote recoverability; Retire also verifies recorded child integration. Explicit `--recursive` permits child-clone disposal before outer removal. Parent `--push` never implicitly pushes children. Read `submodules.md`; member intent is versioned separately from legacy task TOML.
+
 Read this when work needs to be paused, picked up on another machine, or when
 a machine has accumulated more open sessions than anyone can hold in mind.
 

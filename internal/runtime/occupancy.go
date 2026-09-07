@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
@@ -257,6 +258,34 @@ func activityCoversCheckout(ctx context.Context, target checkoutIdentity, cwd st
 		}
 		if profile == OccupancyCleanup && target.linked {
 			return pathx.Contains(target.path, activity.path)
+		}
+		pairs := [][2]string{{target.path, activity.path}}
+		if profile == OccupancyStrict {
+			pairs = append(pairs, [2]string{activity.path, target.path})
+		}
+		for _, pair := range pairs {
+			inside, err := pathx.Contains(pair[0], pair[1])
+			if err != nil {
+				return false, err
+			}
+			if !inside {
+				continue
+			}
+			graph, err := gitx.SubmodulesOf(ctx, pair[0])
+			if err != nil {
+				return false, err
+			}
+			for _, node := range graph.Nodes {
+				if node.Initialized {
+					root, err := pathx.Canonical(filepath.Join(pair[0], filepath.FromSlash(node.Path)))
+					if err != nil {
+						return false, err
+					}
+					if root == pair[1] {
+						return true, nil
+					}
+				}
+			}
 		}
 		return false, nil
 	}

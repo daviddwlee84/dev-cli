@@ -15,7 +15,7 @@ import (
 
 func (e *executionState) applyCompleteDirect(ctx context.Context) (Result, error) {
 	observed := &e.observed
-	for _, effect := range e.plan.Effects() {
+	for _, effect := range e.executionEffects() {
 		switch effect.Code {
 		case EffectCommitAll, EffectDiscardAll:
 			if err := e.applyCompletionDirtyEffect(ctx, effect); err != nil {
@@ -78,7 +78,7 @@ func (e *executionState) applyCompleteFF(ctx context.Context) (result Result, er
 		result = e.result()
 	}()
 
-	for _, effect := range e.plan.Effects() {
+	for _, effect := range e.executionEffects() {
 		switch effect.Code {
 		case EffectCommitAll, EffectDiscardAll:
 			if err := e.applyCompletionDirtyEffect(ctx, effect); err != nil {
@@ -342,7 +342,7 @@ func (e *executionState) applyReviewHandoff(ctx context.Context) (Result, error)
 	pushed := false
 	created := false
 
-	for _, effect := range e.plan.Effects() {
+	for _, effect := range e.executionEffects() {
 		switch effect.Code {
 		case EffectCommitAll, EffectDiscardAll:
 			if err := e.applyCompletionDirtyEffect(ctx, effect); err != nil {
@@ -423,7 +423,7 @@ func (e *executionState) applyReviewHandoff(ctx context.Context) (Result, error)
 func (e *executionState) applyVerifyMerged(ctx context.Context) (Result, error) {
 	observed := &e.observed
 	verified := false
-	for _, effect := range e.plan.Effects() {
+	for _, effect := range e.executionEffects() {
 		switch effect.Code {
 		case EffectCommitAll, EffectDiscardAll:
 			if err := e.applyCompletionDirtyEffect(ctx, effect); err != nil {

@@ -34,12 +34,14 @@ type suggestion struct {
 }
 
 type sweepRetireOptions struct {
+	recursive       bool
 	closeUnknown    bool
 	assumeNoRuntime bool
 	deleteBranches  bool
 }
 
 func newSweepCmd(app *App) *cobra.Command {
+	var recursive bool
 	var (
 		apply              bool
 		staleDays          int
@@ -88,6 +90,7 @@ Nothing here ever deletes uncommitted work.`,
 			rows := inventory.Collect(ctx, tasks, rt, inventory.Options{})
 			stale := time.Duration(staleDays) * 24 * time.Hour
 			retireOptions := sweepRetireOptions{
+				recursive:    recursive,
 				closeUnknown: closeUnknown, assumeNoRuntime: assumeNoRuntime, deleteBranches: deleteBranches,
 			}
 
@@ -157,6 +160,7 @@ Nothing here ever deletes uncommitted work.`,
 	}
 	f := cmd.Flags()
 	f.BoolVar(&apply, "apply", false, "act on the suggestions instead of only reporting")
+	f.BoolVar(&recursive, "recursive", false, "include guarded disposal of workspace-owned submodule clones")
 	f.IntVar(&staleDays, "stale-days", 14, "days without relevant activity before an item counts as stale")
 	f.BoolVar(&yes, "yes", false, "with --apply, do not confirm each change")
 	f.BoolVar(&mergedWorktrees, "merged-worktrees", false, "focus on linked worktrees whose branches are contained in the main branch")
@@ -246,7 +250,7 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 				action: fmt.Sprintf("push %s so it can go cold: dev park %s --cold --push", t.Branch, t.ID)})
 			break
 		}
-		session, plan, planErr := sweepTaskPlan(ctx, app, t.ID, flow.ParkColdOptions{})
+		session, plan, planErr := sweepTaskPlan(ctx, app, t.ID, flow.ParkColdOptions{Recursive: retireOptions.recursive})
 		if planErr != nil || plan.Availability != flow.AvailabilityReady {
 			detail := sweepPlanBlocker(plan, planErr)
 			out = append(out, suggestion{row: r, reason: reason + ", but guarded cold parking is blocked",
@@ -272,6 +276,7 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 			action += fmt.Sprintf(" and delete %s", t.Branch)
 		}
 		session, plan, planErr := sweepTaskPlan(ctx, app, t.ID, flow.RetireOptions{
+			Recursive:    retireOptions.recursive,
 			CloseUnknown: retireOptions.closeUnknown, AssumeNoRuntime: retireOptions.assumeNoRuntime,
 			DeleteBranch: retireOptions.deleteBranches,
 		})
@@ -487,6 +492,7 @@ func suggestMergedWorktrees(app *App, ctx context.Context, rows []inventory.Row,
 			continue
 		}
 		request, requestErr := flow.NewRequest(locator, flow.RemoveCheckoutOptions{
+			Recursive:        options.recursive,
 			RequireContained: true, ContainmentBase: base,
 			DeleteContainedBranch: options.deleteBranches,
 			CloseUnknown:          options.closeUnknown, AssumeNoRuntime: options.assumeNoRuntime,

@@ -7,6 +7,8 @@ verified_on: 2026-09-01
 
 # Mental model and lifecycle
 
+A submodule superproject has several independent Git histories. Workspace member intent links selected child branches to one outer task without adding lifecycle states. See [Submodule workspaces](../guides/submodule-workspaces.md): initialization stays at gitlinks, Cold requires recovery, and Retire also requires child integration.
+
 `dev` treats a unit of work as a **change stream** whose durable identity is its Git branch. The checkout and runtime are replaceable projections of that stream.
 
 ## Four responsibilities

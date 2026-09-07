@@ -17,6 +17,7 @@ import (
 type StepKind string
 
 const (
+	StepInitSubmodules StepKind = "submodule-init"
 	// StepCopyFile copies one gitignored file into the new checkout.
 	StepCopyFile StepKind = "copy"
 	// StepCopyDir duplicates a dependency directory.
@@ -75,6 +76,7 @@ func (p Plan) Empty() bool { return len(p.Runnable()) == 0 }
 // Settings are the provisioning inputs, resolved from global config and the
 // repository's .dev-cli/config.toml (plus legacy .dev.toml compatibility).
 type Settings struct {
+	Submodules       config.Submodules
 	Include          []string
 	Link             []string
 	Cmds             config.PostCreate
@@ -87,6 +89,7 @@ type Settings struct {
 // executable-config trust; use SettingsForTrusted before running commands.
 func SettingsFor(cfg config.Config, repoPath string) Settings {
 	s := Settings{
+		Submodules:       cfg.Submodules,
 		Include:          cfg.Worktree.Include,
 		Link:             cfg.Worktree.Link,
 		Cmds:             cfg.Worktree.PostCreate,
@@ -122,6 +125,12 @@ func SettingsFor(cfg config.Config, repoPath string) Settings {
 	// The directory-based project config supersedes the legacy .dev.toml while
 	// retaining the same deliberately narrow provisioning surface.
 	if project, err := projectconfig.Load(repoPath, nil); err == nil && project.ConfigPresent {
+		if project.Effective.Submodules.Init != nil {
+			s.Submodules.Init = *project.Effective.Submodules.Init
+		}
+		if project.Effective.Submodules.Develop != nil {
+			s.Submodules.Develop = append([]string(nil), (*project.Effective.Submodules.Develop)...)
+		}
 		o := project.Effective.Worktree
 		if o.Include != nil {
 			s.Include = append([]string(nil), (*o.Include)...)
@@ -210,6 +219,11 @@ func joinStrategies() string {
 // nothing.
 func BuildPlan(ctx context.Context, set Settings, repoPath string) Plan {
 	p := Plan{RepoPath: repoPath, Ecosystems: DetectEcosystems(repoPath)}
+	if graph, err := gitx.SubmodulesOf(ctx, repoPath); err != nil {
+		p.Warnings = append(p.Warnings, "submodule observation unavailable: "+err.Error())
+	} else if len(graph.Nodes) > 0 {
+		p.Steps = append(p.Steps, Step{Kind: StepInitSubmodules, What: "recursive submodule initialization at gitlinks", Why: "Git acquisition; may fetch declared sources", Skipped: set.Submodules.Init == "none"})
+	}
 
 	// Gitignored files to carry over.
 	if files, err := ignoredMatching(ctx, repoPath, set.Include); err != nil {

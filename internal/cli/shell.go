@@ -58,7 +58,16 @@ dev() {
        IFS= read -r -d '' __dev_task <&4 &&
        IFS= read -r -d '' __dev_delete <&4 &&
        IFS= read -r -d '' __dev_unknown <&4 &&
-       [ "$__dev_action" = retire ]; then
+       { [ "$__dev_action" = retire ] || [ "$__dev_action" = retire-recursive ]; }; then
+      if [ "$__dev_action" = retire-recursive ]; then
+        case "$__dev_delete:$__dev_unknown" in
+          false:false) command %[1]s retire --recursive -- "$__dev_task" || __dev_status=$? ;;
+          true:false) command %[1]s retire --recursive --delete-branch -- "$__dev_task" || __dev_status=$? ;;
+          false:true) command %[1]s retire --recursive --close-unknown -- "$__dev_task" || __dev_status=$? ;;
+          true:true) command %[1]s retire --recursive --delete-branch --close-unknown -- "$__dev_task" || __dev_status=$? ;;
+          *) __dev_status=1 ;;
+        esac
+      else
       case "$__dev_delete:$__dev_unknown" in
         false:false) command %[1]s retire -- "$__dev_task" || __dev_status=$? ;;
         true:false)  command %[1]s retire --delete-branch -- "$__dev_task" || __dev_status=$? ;;
@@ -66,6 +75,7 @@ dev() {
         true:true)   command %[1]s retire --delete-branch --close-unknown -- "$__dev_task" || __dev_status=$? ;;
         *) __dev_status=1 ;;
       esac
+      fi
     else
       __dev_status=1
     fi
@@ -130,7 +140,21 @@ function dev
             read -z -l __dev_task
             read -z -l __dev_delete
             read -z -l __dev_unknown
-            if test "$__dev_action" = retire
+            if test "$__dev_action" = retire; or test "$__dev_action" = retire-recursive
+                if test "$__dev_action" = retire-recursive
+                    switch "$__dev_delete:$__dev_unknown"
+                        case false:false
+                            command %[1]s retire --recursive -- "$__dev_task"
+                        case true:false
+                            command %[1]s retire --recursive --delete-branch -- "$__dev_task"
+                        case false:true
+                            command %[1]s retire --recursive --close-unknown -- "$__dev_task"
+                        case true:true
+                            command %[1]s retire --recursive --delete-branch --close-unknown -- "$__dev_task"
+                        case '*'
+                            false
+                    end
+                else
                 switch "$__dev_delete:$__dev_unknown"
                     case false:false
                         command %[1]s retire -- "$__dev_task"
@@ -142,6 +166,7 @@ function dev
                         command %[1]s retire --delete-branch --close-unknown -- "$__dev_task"
                     case '*'
                         false
+                end
                 end
                 set __dev_status $status
             else
@@ -181,10 +206,11 @@ function dev {
         }
         if ($__dev_status -eq 0 -and (Get-Item -LiteralPath $__dev_action_file).Length -gt 0) {
             $__dev_fields = ([System.Text.Encoding]::UTF8.GetString([System.IO.File]::ReadAllBytes($__dev_action_file))).Split([char]0)
-            if ($__dev_fields.Count -lt 5 -or $__dev_fields[0] -ne 'retire') {
+            if ($__dev_fields.Count -lt 5 -or $__dev_fields[0] -notin @('retire','retire-recursive')) {
                 $__dev_status = 1
             } else {
                 $__dev_retire_args = @('retire')
+                if ($__dev_fields[0] -eq 'retire-recursive') { $__dev_retire_args += '--recursive' }
                 if ($__dev_fields[2] -eq 'true') { $__dev_retire_args += '--delete-branch' }
                 if ($__dev_fields[3] -eq 'true') { $__dev_retire_args += '--close-unknown' }
                 $__dev_retire_args += @('--', $__dev_fields[1])

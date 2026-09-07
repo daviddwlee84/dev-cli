@@ -20,6 +20,7 @@ type retireCommandTarget struct {
 }
 
 func newRetireCmd(app *App) *cobra.Command {
+	var recursive bool
 	var (
 		closeUnknown    bool
 		assumeNoRuntime bool
@@ -47,15 +48,17 @@ with --close-unknown; working, blocked and waiting agents are never overridden.`
 			}
 			if target.Task != nil {
 				return retireTaskWithTaskflow(ctx, app, target.Task, flow.RetireOptions{
+					Recursive:    recursive,
 					CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime,
 					DeleteBranch: deleteBranch, Timeout: timeout,
 				}, cmd.Flags().Changed("delete-branch") && deleteBranch)
 			}
 			return retireUnmanagedPathCompatibility(ctx, app, target.Path, closeUnknown,
-				assumeNoRuntime, deleteBranch, timeout)
+				assumeNoRuntime, deleteBranch, timeout, recursive)
 		},
 	}
 	f := cmd.Flags()
+	f.BoolVar(&recursive, "recursive", false, "verify and dispose workspace-owned submodule clones from the inside out")
 	f.BoolVar(&closeUnknown, "close-unknown", false, "allow an external caller to close unknown/empty runtime status")
 	f.BoolVar(&assumeNoRuntime, "assume-no-runtime", false, "continue when runtime enumeration fails (external callers only)")
 	f.BoolVar(&deleteBranch, "delete-branch", false, "delete the contained local branch after worktree removal")
@@ -174,6 +177,7 @@ func retireUnmanagedPathCompatibility(
 	path string,
 	closeUnknown, assumeNoRuntime, deleteBranch bool,
 	timeout time.Duration,
+	recursive ...bool,
 ) error {
 	repository, err := gitx.Discover(ctx, path)
 	if err != nil {
@@ -191,6 +195,7 @@ func retireUnmanagedPathCompatibility(
 		return fmt.Errorf("cannot prove unmanaged retirement without an explicit repository default branch")
 	}
 	execution, err := executeNonTaskLifecycle(ctx, app, locator, flow.RemoveCheckoutOptions{
+		Recursive:        len(recursive) > 0 && recursive[0],
 		RequireContained: true, ContainmentBase: base, DeleteContainedBranch: deleteBranch,
 		CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, Timeout: timeout,
 	}, deleteBranch)

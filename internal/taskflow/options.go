@@ -92,6 +92,7 @@ func (ParkWarmOptions) isActionOptions() {}
 
 // ParkColdOptions controls reconstructible parking and checkout cleanup.
 type ParkColdOptions struct {
+	Recursive       bool
 	Next            string
 	Note            string
 	CommitWIP       bool
@@ -167,6 +168,7 @@ func (VerifyMergedOptions) isActionOptions() {}
 // separate from worktree removal and must be proven safe by the injected
 // executor.
 type RetireOptions struct {
+	Recursive       bool
 	DeleteBranch    bool
 	CloseUnknown    bool
 	AssumeNoRuntime bool
@@ -196,6 +198,7 @@ func (AdoptOptions) isActionOptions() {}
 // action preserves the checkout's branch; contained branch deletion is a
 // separate CLI-only compatibility intent that the flow TUI never supplies.
 type RemoveCheckoutOptions struct {
+	Recursive bool
 	// DiscardDirty is the explicit compatibility intent behind `dev wt rm
 	// --force`. The flow TUI never sets it and planners must require a typed
 	// confirmation before allowing it.

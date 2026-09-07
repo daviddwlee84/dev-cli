@@ -26,16 +26,18 @@ import (
 const retireHandoffTTL = 2 * time.Minute
 
 type retireHandoffIntent struct {
-	Version            int       `json:"version"`
-	CreatedAt          time.Time `json:"created_at"`
-	ExpiresAt          time.Time `json:"expires_at"`
-	TaskID             string    `json:"task_id"`
-	TaskRevision       string    `json:"task_revision"`
-	CheckoutPath       string    `json:"checkout_path"`
-	HeadOID            string    `json:"head_oid"`
-	PreviewFingerprint string    `json:"preview_fingerprint"`
-	DeleteBranch       bool      `json:"delete_branch"`
-	CloseUnknown       bool      `json:"close_unknown"`
+	Recursive            bool      `json:"recursive,omitempty"`
+	SubmoduleFingerprint string    `json:"submodule_fingerprint,omitempty"`
+	Version              int       `json:"version"`
+	CreatedAt            time.Time `json:"created_at"`
+	ExpiresAt            time.Time `json:"expires_at"`
+	TaskID               string    `json:"task_id"`
+	TaskRevision         string    `json:"task_revision"`
+	CheckoutPath         string    `json:"checkout_path"`
+	HeadOID              string    `json:"head_oid"`
+	PreviewFingerprint   string    `json:"preview_fingerprint"`
+	DeleteBranch         bool      `json:"delete_branch"`
+	CloseUnknown         bool      `json:"close_unknown"`
 }
 
 func shouldOfferDoneCleanup(selected task.Task, opts doneOptions, interactive bool, action flow.Action) bool {
@@ -70,6 +72,23 @@ func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task
 		return promptErr
 	}
 	deleteBranch := choice == "delete"
+	recursive := false
+	graph, graphErr := gitx.SubmodulesOf(ctx, final.WorktreePath)
+	if graphErr != nil {
+		return graphErr
+	}
+	if len(graph.Nodes) > 0 {
+		renderSubmodules(app, graph.Nodes)
+		var err error
+		recursive, err = p.confirm("Verify remote recovery and dispose these workspace-owned submodule repositories too?", false)
+		if err != nil {
+			return err
+		}
+		if !recursive {
+			fmt.Fprintln(app.Out, "   cleanup kept · submodule disposal was not authorized")
+			return nil
+		}
+	}
 	closeUnknown := false
 	if len(preview.UnknownSessions) > 0 {
 		confirmed, confirmErr := p.confirm(fmt.Sprintf(
@@ -110,9 +129,9 @@ func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task
 	}
 
 	if rt.Name() == "herdr" && preview.CallerContained && len(preview.Sessions) > 0 {
-		return launchExternalRetireCoordinator(ctx, app, rt, final, preview, deleteBranch, closeUnknown)
+		return launchExternalRetireCoordinator(ctx, app, rt, final, preview, deleteBranch, closeUnknown, recursive)
 	}
-	if err := app.retireDirective(final.RepoPath, final.ID, deleteBranch, closeUnknown); err != nil {
+	if err := app.retireDirective(final.RepoPath, final.ID, deleteBranch, closeUnknown, recursive); err != nil {
 		app.warnf("integration is complete, but automatic retirement needs a refreshed dev shell wrapper: %v", err)
 		printRetireFallback(app, final, deleteBranch, closeUnknown)
 		return err
@@ -173,6 +192,7 @@ func launchExternalRetireCoordinator(
 	final task.Task,
 	preview retiredomain.Inspection,
 	deleteBranch, closeUnknown bool,
+	recursive ...bool,
 ) (err error) {
 	opener, ok := rt.(runtime.ExternalCoordinatorOpener)
 	if !ok {
@@ -210,10 +230,18 @@ func launchExternalRetireCoordinator(
 		}
 	}()
 	intent := retireHandoffIntent{
-		Version: 1, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(retireHandoffTTL),
+		Recursive: len(recursive) > 0 && recursive[0],
+		Version:   1, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(retireHandoffTTL),
 		TaskID: final.ID, TaskRevision: record.Revision, CheckoutPath: final.WorktreePath,
 		HeadOID: strings.TrimSpace(head), PreviewFingerprint: preview.Fingerprint(),
 		DeleteBranch: deleteBranch, CloseUnknown: closeUnknown,
+	}
+	if intent.Recursive {
+		graph, err := gitx.SubmodulesOf(ctx, final.WorktreePath)
+		if err != nil {
+			return err
+		}
+		intent.SubmoduleFingerprint = graph.Fingerprint
 	}
 	if err := writeRetireHandoffIntent(dir, intent); err != nil {
 		return err
@@ -351,10 +379,20 @@ func runRetireCoordinator(ctx context.Context, app *App, id string) (err error) 
 	if preview.Fingerprint() != intent.PreviewFingerprint {
 		return errors.New("retirement handoff is stale: runtime workspace or agent state changed")
 	}
+	if intent.Recursive {
+		graph, err := gitx.SubmodulesOf(ctx, selected.WorktreePath)
+		if err != nil {
+			return err
+		}
+		if graph.Fingerprint != intent.SubmoduleFingerprint {
+			return errors.New("retirement handoff is stale: submodule graph changed")
+		}
+	}
 	if !preview.Ready() {
 		return fmt.Errorf("retirement blocked: %s", strings.Join(preview.Blockers, "; "))
 	}
 	return retireTaskWithTaskflow(ctx, app, &selected, flow.RetireOptions{
+		Recursive:    intent.Recursive,
 		CloseUnknown: intent.CloseUnknown, DeleteBranch: intent.DeleteBranch, Timeout: 5 * time.Second,
 	}, intent.DeleteBranch)
 }

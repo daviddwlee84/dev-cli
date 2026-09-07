@@ -16,17 +16,19 @@ import (
 
 func newStartCmd(app *App) *cobra.Command {
 	var (
-		name        string
-		branch      string
-		base        string
-		direct      bool
-		branchOnly  bool
-		noWorktree  bool // deprecated spelling of branch-only
-		noProvision bool
-		focus       bool
-		next        string
-		runCommand  string
-		jsonOut     bool
+		submoduleMode                  string
+		submodulePaths, submoduleBases []string
+		name                           string
+		branch                         string
+		base                           string
+		direct                         bool
+		branchOnly                     bool
+		noWorktree                     bool // deprecated spelling of branch-only
+		noProvision                    bool
+		focus                          bool
+		next                           string
+		runCommand                     string
+		jsonOut                        bool
 	)
 	cmd := &cobra.Command{
 		Use:   "start [repo]",
@@ -69,6 +71,10 @@ it with --focus to switch or attach after the command is sent.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
+			bases, baseErr := parseSubmoduleBases(submoduleBases)
+			if baseErr != nil {
+				return baseErr
+			}
 			runExplicit := cmd.Flags().Changed("run")
 			if runExplicit && strings.TrimSpace(runCommand) == "" {
 				return errors.New("--run requires a non-empty shell command")
@@ -91,6 +97,7 @@ it with --focus to switch or attach after the command is sent.`,
 				mode = task.ModeBranch
 			}
 			req := startRequest{
+				Submodules: submoduleMode, DevelopSubmodules: submodulePaths, SubmoduleBases: bases,
 				Name: name, Branch: branch, Base: base, Next: next, Run: runCommand, Mode: mode,
 				ModeExplicit:   direct || branchOnly,
 				BranchExplicit: cmd.Flags().Changed("branch"),
@@ -175,6 +182,9 @@ it with --focus to switch or attach after the command is sent.`,
 		},
 	}
 	f := cmd.Flags()
+	f.StringVar(&submoduleMode, "submodules", "", "initialize submodules: recursive or none (default: configured, otherwise recursive)")
+	f.StringArrayVar(&submodulePaths, "submodule", nil, "submodule path to develop on the task branch (repeatable)")
+	f.StringArrayVar(&submoduleBases, "submodule-base", nil, "submodule integration target PATH=REF (repeatable)")
 	f.StringVarP(&name, "task", "t", "", "human name for this change stream")
 	f.StringVarP(&branch, "branch", "b", "", "branch name (default: feat/<task-slug>)")
 	f.StringVar(&base, "base", "", "ref a new branch starts from (default: repo default branch)")

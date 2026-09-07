@@ -8,6 +8,8 @@ lang: zh-TW
 
 # Worktree 與環境佈建
 
+Submodule Git 初始化先於環境 provisioning，預設遞迴建立固定在 gitlink 的 checkout。`--no-provision` 不略過它，需使用 `--submodules=none`。初始化失敗保留 worktree，但不開 runtime。見 [Submodule 工作區](submodule-workspaces.md)。
+
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 

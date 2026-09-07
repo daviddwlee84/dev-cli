@@ -18,13 +18,16 @@ import (
 )
 
 type startRequest struct {
-	RepoRef string
-	Name    string
-	Branch  string
-	Base    string
-	Next    string
-	Run     string
-	Mode    task.CheckoutMode
+	Submodules        string
+	DevelopSubmodules []string
+	SubmoduleBases    map[string]string
+	RepoRef           string
+	Name              string
+	Branch            string
+	Base              string
+	Next              string
+	Run               string
+	Mode              task.CheckoutMode
 
 	RepoExplicit   bool
 	ModeExplicit   bool
@@ -37,15 +40,18 @@ type startRequest struct {
 }
 
 type startSpec struct {
-	RepoPath string
-	RepoName string
-	Category string
-	Name     string
-	Branch   string
-	Base     string
-	Next     string
-	Run      string
-	Mode     task.CheckoutMode
+	Submodules        string
+	DevelopSubmodules []string
+	SubmoduleBases    map[string]string
+	RepoPath          string
+	RepoName          string
+	Category          string
+	Name              string
+	Branch            string
+	Base              string
+	Next              string
+	Run               string
+	Mode              task.CheckoutMode
 
 	WorktreePath string
 	NoProvision  bool
@@ -156,9 +162,16 @@ func buildStartSpecForRepository(ctx context.Context, app *App, r repo.Repo, req
 	}
 
 	spec := &startSpec{
+		Submodules: req.Submodules, DevelopSubmodules: req.DevelopSubmodules, SubmoduleBases: req.SubmoduleBases,
 		RepoPath: r.Path, RepoName: r.Name, Category: r.Category,
 		Name: name, Branch: branch, Base: base, Next: req.Next, Run: req.Run, Mode: mode,
 		NoProvision: req.NoProvision, Focus: req.Focus,
+	}
+	if mode != task.ModeWorktree && len(req.DevelopSubmodules) > 0 {
+		return nil, errors.New("--submodule requires worktree mode")
+	}
+	if err := (config.Submodules{Init: req.Submodules, Develop: req.DevelopSubmodules}).Validate(); err != nil {
+		return nil, err
 	}
 	if mode == task.ModeWorktree {
 		if existing, ok, err := gitx.WorktreeFor(ctx, r.Path, branch); err != nil {
@@ -215,6 +228,16 @@ func taskStoreBlockedByNonDirectory(path string) bool {
 }
 
 func executeStartSpec(ctx context.Context, app *App, spec *startSpec, log io.Writer) (*startResult, error) {
+	r, err := gitx.Discover(ctx, spec.RepoPath)
+	if err != nil {
+		return nil, err
+	}
+	var result *startResult
+	err = gitx.WithLifecycleLock(ctx, r.GitCommonDir, func() error { var err error; result, err = executeStartSpecLocked(ctx, app, spec, log); return err })
+	return result, err
+}
+
+func executeStartSpecLocked(ctx context.Context, app *App, spec *startSpec, log io.Writer) (*startResult, error) {
 	id := task.MakeID(spec.RepoName, spec.Branch)
 	replaceDoneRevision := ""
 	existing, err := existingTaskForStart(app.Tasks, id)
@@ -274,6 +297,8 @@ func executeStartSpec(ctx context.Context, app *App, spec *startSpec, log io.Wri
 	case task.ModeWorktree:
 		m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: log}
 		created, err := m.Create(ctx, wt.CreateRequest{
+			LockHeld:   true,
+			Submodules: spec.Submodules, DevelopSubmodules: spec.DevelopSubmodules, SubmoduleBases: spec.SubmoduleBases, TaskStart: true,
 			RepoPath: spec.RepoPath, RepoName: spec.RepoName,
 			Branch: spec.Branch, Base: spec.Base, Category: spec.Category,
 			Path: spec.WorktreePath, Label: label,

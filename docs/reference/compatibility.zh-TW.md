@@ -9,6 +9,8 @@ lang: zh-TW
 
 # 相容性與已知限制
 
+Submodule 工作區採擴充方式：舊 task 與既有 JSON 欄位維持可讀，成員意圖另有版本化紀錄。完整子 clone 回收要求遠端證明；共享／外部 storage、本地獨有資料與不支援的 filtered／私有 metadata 會阻擋。Done 後遞迴 handoff 需重新載入 shell integration。見 [Submodule 工作區](../guides/submodule-workspaces.md)。
+
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 

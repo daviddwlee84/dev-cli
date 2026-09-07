@@ -13,6 +13,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/retire"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/submodule"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -237,11 +238,12 @@ type lifecycleCaller struct {
 
 // executionState accumulates one final-status entry per declared effect.
 type executionState struct {
-	service  *lifecycleService
-	plan     Plan
-	observed lifecycleObservation
-	tx       *task.Tx
-	revision string
+	submoduleRemoval *submodule.Removal
+	service          *lifecycleService
+	plan             Plan
+	observed         lifecycleObservation
+	tx               *task.Tx
+	revision         string
 
 	steps     []StepResult
 	warnings  []string

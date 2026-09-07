@@ -141,6 +141,7 @@ func newRootCommand(app *App) *cobra.Command {
 	root.Flags().Bool("skill", false, "print the bundled agent skill and exit")
 
 	root.AddCommand(
+		newSubmoduleCmd(app),
 		newListCmd(app),
 		newTUICmd(app),
 		newFlowCmd(app),

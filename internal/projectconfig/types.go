@@ -73,9 +73,15 @@ func ScaffoldsPath(repoRoot string) (string, error) {
 // Override is the complete project-owned configuration surface. Pointer
 // fields distinguish an omitted value from an explicit empty list or false.
 type Override struct {
+	Submodules SubmodulesOverride `toml:"submodules"`
 	Worktree   WorktreeOverride   `toml:"worktree"`
 	LocalFiles LocalFilesOverride `toml:"local_files"`
 	Repo       RepoOverride       `toml:"repo"`
+}
+
+type SubmodulesOverride struct {
+	Init    *string   `toml:"init"`
+	Develop *[]string `toml:"develop"`
 }
 
 // LocalFilesOverride is the repository-owned portable-file allowlist. Include
@@ -170,6 +176,16 @@ func (r Result) SourceFor(key string) (string, bool) {
 func (r Result) RequiresTrust() bool { return r.ExecutionHash != "" }
 
 func (o Override) validate() error {
+	sm := config.Submodules{}
+	if o.Submodules.Init != nil {
+		sm.Init = *o.Submodules.Init
+	}
+	if o.Submodules.Develop != nil {
+		sm.Develop = *o.Submodules.Develop
+	}
+	if err := sm.Validate(); err != nil {
+		return err
+	}
 	w := o.Worktree
 	validStrategy := func(value string) bool {
 		switch value {

@@ -198,8 +198,12 @@ func (a *App) cdDirective(dir string) error {
 // retireDirective asks the trusted shell wrapper to leave a worktree and then
 // invoke one exact dev retire command. The action channel is deliberately
 // narrower than arbitrary shell text.
-func (a *App) retireDirective(dir, taskID string, deleteBranch, closeUnknown bool) error {
-	payload := []byte("retire\x00" + taskID + "\x00" + strconv.FormatBool(deleteBranch) + "\x00" + strconv.FormatBool(closeUnknown) + "\x00")
+func (a *App) retireDirective(dir, taskID string, deleteBranch, closeUnknown bool, recursive ...bool) error {
+	action := "retire"
+	if len(recursive) > 0 && recursive[0] {
+		action = "retire-recursive"
+	}
+	payload := []byte(action + "\x00" + taskID + "\x00" + strconv.FormatBool(deleteBranch) + "\x00" + strconv.FormatBool(closeUnknown) + "\x00")
 	if path := os.Getenv("DEV_SHELL_ACTION_FILE"); path != "" {
 		if err := os.WriteFile(path, payload, 0o600); err != nil {
 			return fmt.Errorf("write shell retirement action: %w", err)

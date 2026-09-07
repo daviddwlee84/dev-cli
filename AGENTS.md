@@ -52,6 +52,7 @@ cmd/dev/main.go
 
 - `config` owns defaults, TOML overlays, validation, and XDG paths.
 - `gitx` is the Git porcelain boundary and canonicalizes repository identity through the shared Git common directory.
+- `submodule` owns versioned workspace-member intent and reversible child-clone disposal mechanisms. `gitx` supplies the local gitlink graph; `taskflow` owns recursive lifecycle policy and fresh remote-proof ordering. Gitlink checkouts are legitimate submodules, not nested managed linked worktrees.
 - `task` persists only human intent Git cannot derive: task mode/state, owner, next action, and runtime hints. Lifecycle callers use exact-record revisions and locked compare-and-update/delete transactions rather than treating a previously read task as current.
 - `wt` owns managed linked-worktree creation, placement, provisioning plans, and safe removal. Runtimes never create or manage Git worktrees; they surface checkout or experiment paths selected and validated by the calling `dev` flow, including managed, external, or adopted worktrees and non-Git Try directories.
 - `runtime` abstracts Herdr, tmux, Zellij, and the no-multiplexer backend. Handles are backend-qualified hints and must be checked against live checkout coverage before reuse.
@@ -86,6 +87,7 @@ State is split intentionally:
 - Use an explicit base for branch/worktree creation. Do not infer a safe base from whichever branch happens to be checked out.
 - Never nest a managed worktree inside a repository. Removing a worktree does not remove its branch, and dirty removal stays opt-in.
 - Cold parking requires committed, pushed, reconstructible work before runtime/worktree cleanup.
+- Submodule initialization uses committed gitlinks, never implicitly advances to `main`. Whole child-clone disposal requires explicit recursive approval and fresh recovery proof for its private refs/objects; outer and shared canonical repositories are retained. Local graph refresh never performs remote proof. Child task/runtime/artifact claims block parent disposal.
 - A taskflow Plan is bound to the exact task revision and repository/worktree/ref/runtime/artifact identities shown at Plan time. Apply must lock, reload, and revalidate those identities; a changed revision or authority produces a stale-plan result with no new effect.
 - Managed rows receive only legal mode/state lifecycle actions. An unmanaged linked checkout may be adopted by metadata-only task creation or removed only when exact, clean, unclaimed, non-harness, and branch-preserving; canonical, harness-owned, ambiguous/conflicting, locked, prunable, or incompletely observed rows fail closed for destructive actions.
 - Local repository refresh must not contact remotes. Fetching refs and querying a forge are explicit network actions, and review evidence is run-local manual evidence limited to portable existence/state/draft/URL/provider/time fields; never infer review decisions or checks.

@@ -2,6 +2,11 @@
 
 Create, clone, or initialize a repository from any directory.
 
+Clones initialize submodules recursively at gitlinks by default; they do not
+advance children to main. Use `--submodules=none` or `[submodules].init = "none"`
+to opt out. Initialization failure retains the clone without runtime handoff;
+`dev submodule init` retries missing children.
+
 ```bash
 dev repo new                         # interactive wizard
 dev repo create api                  # minimal scripted creation

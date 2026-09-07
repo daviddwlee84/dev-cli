@@ -7,6 +7,8 @@ verified_on: 2026-09-03
 
 # Commands and configuration
 
+Submodule configuration is shared by clone and worktree acquisition: `[submodules] init = "recursive"` (or `"none"`) and `develop = ["path"]`, with project overrides in `.dev-cli/config.toml`. CLI uses `--submodules`, repeatable `start --submodule` / `--submodule-base`, and explicit cleanup `--recursive`. See [Submodule workspaces](../guides/submodule-workspaces.md).
+
 Use the authored map for intent and the embedded generated reference for exact flags. The generated block comes from the binary's Cobra command tree and is checked by `dev skill sync --check`.
 
 ## Command map

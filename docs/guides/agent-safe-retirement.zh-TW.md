@@ -8,6 +8,8 @@ lang: zh-TW
 
 # Agent-safe retirement
 
+Submodule 工作區需明確 `--recursive` 核准，取得當次遠端證明後才能刪除其獨立子 clone。先處理內層，再移除外層；canonical／共享 Git 與外層分支保留。中斷時保留 recovery journal，見 [Submodule 工作區](submodule-workspaces.md)。
+
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 

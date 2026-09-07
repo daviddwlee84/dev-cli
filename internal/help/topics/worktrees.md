@@ -1,5 +1,12 @@
 # Worktrees
 
+Submodule workspaces initialize recursively at committed gitlinks by default.
+Use `--submodules=none` to skip, or `start --submodule PATH` to select children
+for task branches. `dev submodule status/init/develop/recover` inspects, prepares
+and restores child checkouts. Explicit `--recursive` cleanup verifies child
+remote recovery before removing their private clones and the outer worktree;
+canonical repositories and the outer branch are retained.
+
 A worktree is a second working directory for the same repository: its own
 files, its own checked-out branch, sharing one history and one remote.
 

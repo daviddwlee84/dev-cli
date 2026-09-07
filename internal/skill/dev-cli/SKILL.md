@@ -70,6 +70,10 @@ the tree. `dev` refuses to do it.
 
 Full detail: `references/worktree-ownership.md`.
 
+For superprojects with gitlinks, read `references/submodules.md`. Initialization
+defaults to recursive pinned checkouts; selected children get task branches.
+Recursive disposal needs explicit approval and fresh child recovery proofs.
+
 ## The task lifecycle
 
 | State | Git | Runtime | Meaning |

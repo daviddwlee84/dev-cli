@@ -137,6 +137,7 @@ func newWtListCmd(app *App) *cobra.Command {
 }
 
 func newWtCreateCmd(app *App) *cobra.Command {
+	var submodules string
 	var (
 		repoRef     string
 		base        string
@@ -170,6 +171,7 @@ command.`,
 			rt := app.Runtime()
 			m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: app.Err}
 			res, err := m.Create(ctx, wt.CreateRequest{
+				Submodules:  submodules,
 				RepoPath:    repoPath,
 				RepoName:    repoName,
 				Branch:      branch,
@@ -200,6 +202,7 @@ command.`,
 	f := cmd.Flags()
 	f.StringVarP(&repoRef, "repo", "r", "", "repository (default: the current one)")
 	f.StringVar(&base, "base", "", "ref a new branch starts from")
+	f.StringVar(&submodules, "submodules", "", "initialize submodules: recursive or none (default: configured, otherwise recursive)")
 	f.StringVar(&path, "path", "", "override the templated location")
 	f.StringVar(&label, "label", "", "runtime session label")
 	f.BoolVar(&noProvision, "no-provision", false, "skip dependency install and gitignored-file copying")
@@ -253,6 +256,7 @@ func newWtOpenCmd(app *App) *cobra.Command {
 }
 
 func newWtRemoveCmd(app *App) *cobra.Command {
+	var recursive bool
 	var (
 		repoRef         string
 		force           bool
@@ -304,6 +308,7 @@ A checkout with uncommitted changes needs an explicit --force.`,
 				return err
 			}
 			if _, err := executeNonTaskLifecycle(ctx, app, locator, flow.RemoveCheckoutOptions{
+				Recursive:    recursive,
 				DiscardDirty: force, CloseUnknown: closeUnknown,
 				AssumeNoRuntime: assumeNoRuntime, Timeout: timeout,
 			}, cmd.Flags().Changed("force") && force); err != nil {
@@ -319,6 +324,7 @@ A checkout with uncommitted changes needs an explicit --force.`,
 	f := cmd.Flags()
 	f.StringVarP(&repoRef, "repo", "r", "", "repository (default: the current one)")
 	f.BoolVarP(&force, "force", "f", false, "remove even with uncommitted changes (never bypasses caller/runtime safety)")
+	f.BoolVar(&recursive, "recursive", false, "verify and dispose workspace-owned submodule clones from the inside out")
 	f.BoolVar(&closeUnknown, "close-unknown", false, "allow external closure of unknown runtime status")
 	f.BoolVar(&assumeNoRuntime, "assume-no-runtime", false, "continue when runtime enumeration fails")
 	f.DurationVar(&timeout, "timeout", 5*time.Second, "maximum time to wait for runtime closure")
@@ -446,7 +452,17 @@ func renderPlan(app *App, plan wt.Plan, repoPath string) {
 	fmt.Fprintf(app.Out, "%s\n\n", config.Contract(repoPath))
 
 	if len(plan.Ecosystems) == 0 {
-		fmt.Fprintln(app.Out, "No project type detected — only gitignored files will be carried over.")
+		gitInit := false
+		for _, step := range plan.Steps {
+			if step.Kind == wt.StepInitSubmodules {
+				gitInit = true
+			}
+		}
+		if gitInit {
+			fmt.Fprintln(app.Out, "Submodule Git acquisition and configured files; no dependency manager detected.")
+		} else {
+			fmt.Fprintln(app.Out, "No project type detected — only gitignored files will be carried over.")
+		}
 	} else {
 		t := app.newTable("PROJECT", "MANAGER", "FROM", "DEPENDENCIES", "TOOL")
 		style := app.outStyle()
@@ -566,6 +582,23 @@ func writeRepoTemplate(app *App, repoPath string, plan wt.Plan, set wt.Settings)
 		b.WriteString("post_create = \"auto\"\n")
 	}
 
+	for _, step := range plan.Steps {
+		if step.Kind == wt.StepInitSubmodules {
+			mode := set.Submodules.Init
+			if mode == "" {
+				mode = "recursive"
+			}
+			fmt.Fprintf(&b, "\n[submodules]\ninit = %q\ndevelop = [", mode)
+			for i, member := range set.Submodules.Develop {
+				if i > 0 {
+					b.WriteString(", ")
+				}
+				fmt.Fprintf(&b, "%q", member)
+			}
+			b.WriteString("]\n")
+			break
+		}
+	}
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		return err
 	}

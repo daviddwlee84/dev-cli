@@ -7,6 +7,8 @@ verified_on: 2026-09-03
 
 # Sources and freshness
 
+Submodule graph/initialization, selective task branches, recursive remote proof and quarantine recovery are defined by `internal/gitx/submodule*`, `internal/submodule`, taskflow/CLI tests and [Submodule workspaces](../guides/submodule-workspaces.md), checked against Git 2.55.0 on 2026-09-06.
+
 This site mixes product documentation, external specifications, fast-moving harness behavior, project policy, and history. Every page identifies which kind of statement it contains and when it was checked.
 
 ## Authority order

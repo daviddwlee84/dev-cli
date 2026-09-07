@@ -903,7 +903,7 @@ func (l *flowLoader) projectRow(
 	if managedExact && len(conflicts) == 0 {
 		row.Actions = flowtui.NewActionList(managedFlowChoices(*tracked)...)
 	} else if row.Kind == flowtui.SurfaceUnmanaged && taskInventoryComplete && exactFlowLocator(row.Locator) {
-		row.Actions = flowtui.NewActionList(unmanagedFlowChoices(defaultBase)...)
+		row.Actions = flowtui.NewActionList(unmanagedFlowChoices(defaultBase, contextRow.Checkout != nil && len(contextRow.Checkout.Submodules) > 0)...)
 	}
 	if exactFlowRemoteLocator(row.Locator) {
 		choices := append(row.Actions.Values(), remoteFlowChoices()...)
@@ -995,6 +995,12 @@ func flowCheckoutEvidence(contextSnapshot inventory.RepoContext, checkout invent
 	}
 	if checkout.Worktree.Locked {
 		lines = append(lines, "registered lock reason: "+emptyEvidence(checkout.Worktree.LockedReason))
+	}
+	for _, n := range checkout.Submodules {
+		lines = append(lines, fmt.Sprintf("submodule %s: %s HEAD=%s gitlink=%s %s", n.Path, n.State, n.HEAD, n.Gitlink, strings.Join(n.Blockers, "; ")))
+	}
+	if checkout.SubmoduleErr != nil {
+		lines = append(lines, "submodules: ERROR "+checkout.SubmoduleErr.Error())
 	}
 	if checkout.Worktree.Prunable {
 		lines = append(lines, "registered prunable reason: "+emptyEvidence(checkout.Worktree.PrunableReason))
@@ -1144,6 +1150,11 @@ func managedFlowChoices(tracked task.Task) []flowtui.ActionChoice {
 		choice("verify-merged", "Verify Merged", "Prove external integration before recording DONE.", taskflow.VerifyMergedOptions{Dirty: taskflow.DirtyFail}),
 		choice("retire-keep-branch", "Retire (Keep Branch)", "Remove local task resources while retaining the branch.", taskflow.RetireOptions{}),
 	}
+	if tracked.WorktreePath != "" {
+		if graph, err := gitx.SubmodulesOf(context.Background(), tracked.WorktreePath); err == nil && len(graph.Nodes) > 0 {
+			candidates = append(candidates, choice("park-cold-recursive", "Park Cold (Include Submodules)", "Verify remote recovery for every child before inside-out cleanup.", taskflow.ParkColdOptions{Recursive: true}), choice("retire-recursive", "Retire (Include Submodule Repositories)", "Verify integration and remote recovery, then dispose private child clones.", taskflow.RetireOptions{Recursive: true}))
+		}
+	}
 	if tracked.EffectiveMode() != task.ModeDirect && tracked.Branch != tracked.Base {
 		candidates = append(candidates,
 			choice("retire-delete-branch", "Retire + Delete Contained Branch", "Delete the branch only when fresh containment evidence proves it safe.", taskflow.RetireOptions{DeleteBranch: true}),
@@ -1161,13 +1172,16 @@ func managedFlowChoices(tracked task.Task) []flowtui.ActionChoice {
 	return choices
 }
 
-func unmanagedFlowChoices(base string) []flowtui.ActionChoice {
+func unmanagedFlowChoices(base string, recursive ...bool) []flowtui.ActionChoice {
 	choices := make([]flowtui.ActionChoice, 0, 2)
 	if base != "" {
 		choices = append(choices, flowtui.NewActionChoice(
 			"adopt", "Adopt", "Create metadata for this exact linked checkout without changing Git content.",
 			taskflow.AdoptOptions{Mode: task.ModeWorktree, Base: base},
 		))
+	}
+	if len(recursive) > 0 && recursive[0] {
+		choices = append(choices, flowtui.NewActionChoice("remove-checkout-recursive", "Remove Checkout (Include Submodules)", "Verify fresh recovery for every child clone; preserve the outer branch.", taskflow.RemoveCheckoutOptions{Recursive: true}))
 	}
 	return append(choices, flowtui.NewActionChoice(
 		"remove-checkout", "Remove Checkout", "Remove only a clean exact linked checkout and always preserve its branch.",

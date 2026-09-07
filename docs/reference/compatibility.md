@@ -8,6 +8,8 @@ tested_with: Claude Code 2.1.259
 
 # Compatibility and known limitations
 
+Submodule workspace support is additive: legacy tasks and existing JSON fields remain readable; member intent has its own versioned record. Full child-clone disposal requires remote proofs and rejects shared/external storage, local-only data and unsupported filtered/private metadata. Reload shell integration for recursive post-done handoff. See [Submodule workspaces](../guides/submodule-workspaces.md).
+
 This page separates graceful degradation from real limitations. Reverify it whenever command/runtime code or version-sensitive Claude Code documentation changes.
 
 ## dev-cli capability matrix

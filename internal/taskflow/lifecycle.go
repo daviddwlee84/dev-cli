@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -14,7 +13,6 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
-	"github.com/daviddwlee84/dev-cli/internal/lockx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/retire"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
@@ -272,7 +270,7 @@ func newLifecycleImplementation(input LifecycleConfig) (*lifecycleService, error
 		allowSharedCheckout: input.AllowSharedCheckout,
 		clock:               clock, logf: logf,
 		repoLock: func(ctx context.Context, commonDir string, operation func() error) error {
-			return lockx.WithDir(ctx, filepath.Join(commonDir, "dev-taskflow"), "taskflow repository", operation)
+			return gitx.WithLifecycleLock(ctx, commonDir, operation)
 		},
 		gitDiscover: gitx.Discover,
 		gitStatus:   gitx.StatusOf,
@@ -329,6 +327,7 @@ func newLifecycleImplementation(input LifecycleConfig) (*lifecycleService, error
 	}
 	s.createWorktree = func(ctx context.Context, request wt.CreateRequest) (*wt.CreateResult, error) {
 		manager := &wt.Manager{Cfg: s.cfg, Log: lifecycleLogWriter{s.logf}}
+		request.LockHeld = true
 		return manager.Create(ctx, request)
 	}
 	applyLifecycleHooks(s, input.Hooks)

@@ -22,6 +22,7 @@ type Config struct {
 	Paths      Paths      `toml:"paths"`
 	Runtime    Runtime    `toml:"runtime"`
 	Worktree   Worktree   `toml:"worktree"`
+	Submodules Submodules `toml:"submodules"`
 	LocalFiles LocalFiles `toml:"local_files"`
 	Stats      Stats      `toml:"stats"`
 	TUI        TUI        `toml:"tui"`
@@ -45,6 +46,24 @@ type Update struct {
 	// that cache is opportunistic and best-effort. Set to false (or export
 	// DEV_NO_UPDATE_CHECK) on CI and air-gapped machines.
 	Check bool `toml:"check"`
+}
+
+// Submodules controls materialization, independently of dependency setup.
+type Submodules struct {
+	Init    string   `toml:"init"`
+	Develop []string `toml:"develop"`
+}
+
+func (s Submodules) Validate() error {
+	if s.Init != "" && s.Init != "recursive" && s.Init != "none" {
+		return errors.New("submodules.init: want recursive or none")
+	}
+	for _, p := range s.Develop {
+		if p == "" || p == "." || filepath.IsAbs(p) || strings.Contains(p, "\\") || strings.HasPrefix(p, "-") || filepath.ToSlash(filepath.Clean(p)) != p || strings.HasPrefix(p, "../") {
+			return fmt.Errorf("invalid submodule path %q", p)
+		}
+	}
+	return nil
 }
 
 // Picker configures the optional external selector used by interactive
@@ -371,6 +390,7 @@ func Default() Config {
 			Backend:        "auto",
 			MetadataSource: "dev",
 		},
+		Submodules: Submodules{Init: "recursive"},
 		Worktree: Worktree{
 			Include:          []string{".env", ".env.local"},
 			Link:             nil,
@@ -423,6 +443,9 @@ func Load(path string) (Config, error) {
 // Validate catches the settings that would otherwise fail deep inside a
 // worktree create, when a directory has already been made.
 func (c Config) Validate() error {
+	if err := c.Submodules.Validate(); err != nil {
+		return err
+	}
 	switch c.Runtime.Backend {
 	case "", "auto", "herdr", "tmux", "zellij", "none":
 	default:

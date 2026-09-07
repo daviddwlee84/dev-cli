@@ -1,5 +1,7 @@
 # Parallel background agents
 
+Submodule workspaces retain a complete outer directory tree. Only selected children get task branches. Initialization must succeed before launching; child claims and recovery proofs also gate cleanup. See `submodules.md`.
+
 Read this when starting independent agent work while another agent remains live,
 or when launching an agent into a worktree created by `dev start --json`.
 

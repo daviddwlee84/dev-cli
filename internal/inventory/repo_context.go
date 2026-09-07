@@ -205,6 +205,8 @@ const (
 // Worktree record is retained unchanged; canonical fields are derived beside it
 // for identity and matching.
 type RepoCheckout struct {
+	Submodules   []gitx.SubmoduleNode
+	SubmoduleErr error
 	// ID is the stable host-local row identity: the canonical registered path.
 	ID           string
 	RepositoryID string
@@ -534,6 +536,8 @@ func enrichRepoCheckouts(ctx context.Context, checkouts []RepoCheckout, limiter 
 			defer release()
 			checkout := &checkouts[index]
 			checkout.Status, checkout.StatusErr = gitx.StatusOf(ctx, checkout.Worktree.Path)
+			graph, graphErr := gitx.SubmodulesOf(ctx, checkout.Worktree.Path)
+			checkout.Submodules, checkout.SubmoduleErr = graph.Nodes, graphErr
 			if includeActivity {
 				checkout.LastActivity, checkout.LastCommit, checkout.LastSubject = checkoutActivity(
 					ctx, checkout.Worktree.Path, checkout.Status,

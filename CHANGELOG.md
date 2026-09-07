@@ -6,6 +6,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Submodule-aware workspaces: clone and linked-worktree creation initialize
+  submodules recursively at their gitlinks by default, with global/project
+  `[submodules]` settings and `--submodules=none` for an explicit opt-out.
+  Initialization failure retains the checkout without opening a runtime.
+- Select task members with repeatable `start --submodule PATH` and optional
+  `--submodule-base PATH=REF`; `dev submodule develop` adds members later.
+  Versioned workspace intent survives cold parking separately from task TOML.
+- Local submodule graphs in status/context/JSON and repository UI evidence,
+  plus `dev submodule status`, repeat-safe `init`, and journal-based `recover`.
+- Explicit `--recursive` cold parking, retirement, checkout removal and sweep
+  verify child repository recovery against fresh remote refs before inside-out
+  cleanup. Dirty/ignored content, stashes, local-only refs, unknown private Git
+  data, external/shared storage and other child worktrees block disposal.
+  Interrupted removal retains a synced recovery journal and quarantined data.
+
+### Fixed
+
+- Resolve absorbed submodule main checkouts and their linked worktrees using
+  the physical checkout, rather than displaying `.git/modules` as a worktree.
+
 ## [0.2.17] - 2026-09-05
 
 ### Added

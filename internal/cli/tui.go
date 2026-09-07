@@ -221,7 +221,8 @@ func cloneRemoteFromTUI(ctx context.Context, app *App, row tui.RemoteRow) (strin
 		return "", fmt.Errorf("inspect clone destination %s: %w", config.Contract(destination), err)
 	}
 	acquired, err := repo.Acquire(ctx, repo.AcquireRequest{
-		Kind: repo.AcquireClone, Name: row.Repo.Name,
+		Config: app.Cfg,
+		Kind:   repo.AcquireClone, Name: row.Repo.Name,
 		CloneRef: row.Repo.CloneURL, Destination: destination,
 	})
 	if err != nil {

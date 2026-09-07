@@ -1,5 +1,7 @@
 # Worktree ownership
 
+Submodule initialization is core Git acquisition, before provisioning/runtime, and defaults to recursive pinned checkouts. `--no-provision` does not skip it; `--submodules=none` does. Gitlink children are independent submodule clones, not nested managed linked worktrees. Read `submodules.md` for selection and explicit disposal rules.
+
 Read this before creating a worktree, sharing a checkout between agents, or when
 a new checkout lacks dependencies, env files, or launcher backend state.
 

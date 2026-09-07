@@ -20,6 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
 )
 
 // Provisioner brings a fresh checkout up to a working state.
@@ -72,6 +74,11 @@ func (p *Provisioner) Apply(ctx context.Context, plan Plan, src, dst string) (Re
 			continue
 		}
 		switch step.Kind {
+		case StepInitSubmodules:
+			if _, err := gitx.InitSubmodules(ctx, dst); err != nil {
+				return res, err
+			}
+			res.Ran = append(res.Ran, "submodule initialization at gitlinks")
 		case StepCopyFile:
 			if err := p.copyFileStep(src, dst, step.What); err != nil {
 				switch {

@@ -68,7 +68,7 @@ func (s *lifecycleService) observeRemoveCheckout(ctx context.Context, request Re
 	if err != nil {
 		return PlanSpec{}, observed, err
 	}
-	return s.removeCheckoutSpec(request, observed), observed, nil
+	return s.decorateSubmodules(ctx, request, s.removeCheckoutSpec(request, observed), observed.checkout), observed, nil
 }
 
 func (s *lifecycleService) runtimeForUnmanaged() (runtime.Runtime, error) {
@@ -439,10 +439,13 @@ func (s *lifecycleService) applyRemoveCheckout(ctx context.Context, approved Pla
 }
 
 func (e *executionState) executeRemoveCheckout(ctx context.Context, baseline destructiveObservation) (Result, error) {
+	if err := e.prepareSubmodules(ctx); err != nil {
+		return e.fail(err, "preserve every child repository and retry the recursive plan")
+	}
 	options := e.plan.Request.Options.(RemoveCheckoutOptions)
 	closedRuntime := false
 
-	for _, effect := range e.plan.Effects() {
+	for _, effect := range e.executionEffects() {
 		switch effect.Code {
 		case EffectDiscardAll:
 			fresh, err := e.reinspectRemoveCheckout(ctx, baseline, false, false)
@@ -500,7 +503,7 @@ func (e *executionState) executeRemoveCheckout(ctx context.Context, baseline des
 			}
 			baseline = fresh
 			err = e.run(effect, func() (string, error) {
-				if removeErr := e.service.removeWorktree(ctx, baseline.repoPath, baseline.checkout, false); removeErr != nil {
+				if removeErr := e.removeWithSubmodules(ctx, baseline.repoPath, baseline.checkout); removeErr != nil {
 					return "checkout removal may be partial", fmt.Errorf("remove exact unmanaged checkout %s: %w", baseline.checkout, removeErr)
 				}
 				return "removed exact clean linked checkout without force; branch preserved", nil

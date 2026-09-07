@@ -2,6 +2,13 @@
 
 A thin glue layer over git, worktrees, forges and agent runtimes.
 
+Submodule superprojects can use a complete worktree with independently
+initialized child repositories. Clone/worktree creation defaults to recursive
+initialization at committed gitlinks; `start --submodule PATH` selects which
+children get task branches. Explicit `--recursive` cleanup proves child recovery
+before removing the parent. See [Submodule workspaces](docs/guides/submodule-workspaces.md)
+for configuration, inside-out integration and recovery limits.
+
 It exists to stop four things collapsing into one:
 
 ```
