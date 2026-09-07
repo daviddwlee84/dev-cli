@@ -103,19 +103,26 @@ type effect struct {
 	Post   *image `json:"post,omitempty"`
 }
 
+type payload struct {
+	Path  string `json:"path"`
+	Image image  `json:"image"`
+}
+
 type record struct {
-	Schema    int               `json:"schema"`
-	ID        string            `json:"id"`
-	Request   TransferRequest   `json:"request"`
-	Status    string            `json:"status"`
-	Roots     map[string]string `json:"roots"`
-	Guards    []observation     `json:"guards"`
-	Effects   []effect          `json:"effects"`
-	Completed int               `json:"completed"`
-	InFlight  *int              `json:"in_flight,omitempty"`
-	Notes     []string          `json:"notes"`
-	Parent    string            `json:"parent,omitempty"`
-	MAC       string            `json:"mac"`
+	Schema       int               `json:"schema"`
+	ID           string            `json:"id"`
+	Request      TransferRequest   `json:"request"`
+	Status       string            `json:"status"`
+	Roots        map[string]string `json:"roots"`
+	Guards       []observation     `json:"guards"`
+	Effects      []effect          `json:"effects"`
+	Completed    int               `json:"completed"`
+	InFlight     *int              `json:"in_flight,omitempty"`
+	Notes        []string          `json:"notes"`
+	Parent       string            `json:"parent,omitempty"`
+	MAC          string            `json:"mac"`
+	Payload      []payload         `json:"payload,omitempty"`
+	ProviderLock *image            `json:"provider_lock,omitempty"`
 }
 
 type Service struct{ StateDir string }

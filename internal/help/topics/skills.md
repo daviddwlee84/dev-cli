@@ -82,3 +82,26 @@ The `dev-cli` skill is compiled into the binary. It updates when `dev` updates,
 not through the upstream provider, and `make install` links it into agent
 directories. The inventory marks it as directly managed and can verify its local
 content against the embedded files.
+
+## Local transfers
+
+`dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+previews per-skill relative links from `.agents/skills`. Use `--mode copy` for an
+independent tree, or `--mode move` for a reviewed source retirement. `--from-repo`
+and `--to-repo` select exact checkouts. Existing different trees and foreign links
+are conflicts. Skills containing known credential files or private keys are rejected.
+
+`dev skill transfer apply --plan <id>` applies only the reviewed observations.
+`transfer status` lists local ledgers; `transfer undo <id>` creates a reverse plan
+that preserves intervening edits. `transfer refresh <id>` previews mirror refresh.
+Private recovery payloads live under dev's state directory, never in plan JSON.
+A symlink does not itself prove that an agent has loaded the skill.
+
+For a cross-repository upstream install, use `transfer prepare <name>` with the
+same source/destination selectors, then `transfer plan <name> --mode install
+--prepared <id>`. Prepare is an explicit network action: only a trusted
+`skills@1.5.23` executable runs, inside private staging. The source's native lock,
+installed contents, staged contents, generated provenance, and provider version
+must agree before publication. A changed upstream is an error, not a silent
+upgrade. Unknown lock schemas, raw commit refs unsupported by the provider, and
+unverifiable hash ordering require an explicit alternative such as copy.

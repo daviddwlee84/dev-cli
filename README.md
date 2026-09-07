@@ -1472,6 +1472,8 @@ reading none.
 dev skill list                 # current checkout + global native inventory
 dev skill list --all --check --json
 dev skill list --repo api --project
+dev skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
+dev skill transfer apply --plan <id> # apply the exact reviewed file/link changes
 dev skill add                  # interactive wizard for daviddwlee84/agent-skills/skills
 dev skill update project-knowledge-harness --global --yes
 dev skill install              # → ~/.agents/skills/dev-cli, symlinked into ~/.claude/skills

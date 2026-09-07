@@ -149,6 +149,7 @@ func snapshot(ctx context.Context, root *os.Root, rel string, key []byte) (image
 		sort.Strings(names)
 		b, _ := json.Marshal(names)
 		out.Digest = digest(key, b)
+		return out, b, nil
 	case info.Mode().IsRegular():
 		out.Kind = "file"
 		b, _, e := safefile.ReadStableRegular(ctx, parent, leaf, info, maxBytes)

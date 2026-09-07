@@ -1187,6 +1187,97 @@ dev skill sync [flags]
 - `--check` — report drift and exit non-zero instead of writing
 - `-h, --help` — help for sync
 
+### `dev skill transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev skill transfer
+```
+
+### `dev skill transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev skill transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev skill transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev skill transfer plan <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer prepare`
+
+Fetch and verify one skill in private staging
+
+```
+dev skill transfer prepare <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev skill transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev skill transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev skill transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev skill transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev skill transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
 ### `dev skill update`
 
 Update one skill in one explicit scope

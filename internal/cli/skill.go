@@ -36,6 +36,7 @@ vendoring a copy.`,
 		newSkillPrintCmd(app),
 		newSkillInstallCmd(app),
 		newSkillSyncCmd(app),
+		newAgentTransferCmd(app, "skill"),
 	)
 	return cmd
 }

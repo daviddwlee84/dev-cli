@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Agent artifact transfer plans with private recovery records, stale-plan
+  revalidation, explicit apply/undo, and local skill copy/move/per-skill mirrors.
+- Explicit skill transfer preparation with a pinned provider compatibility
+  profile, private staging, source/content verification, and native lock updates.
+
 ## [0.2.17] - 2026-09-05
 
 ### Added

@@ -2,11 +2,13 @@ package agentinterop
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 	"github.com/google/uuid"
@@ -121,6 +123,22 @@ func (b *builder) change(l Location, after image, data []byte) error {
 	if _, exists := b.planned[l]; exists {
 		return errors.New("overlapping transfer effects")
 	}
+	if before.Kind == "absent" {
+		parent := Location{Root: l.Root, Path: filepath.Dir(l.Path)}
+		v, data, e := b.read(parent)
+		if e != nil {
+			return e
+		}
+		if v.Kind == "dir" {
+			var names []string
+			_ = json.Unmarshal(data, &names)
+			for _, name := range names {
+				if strings.EqualFold(name, filepath.Base(l.Path)) && name != filepath.Base(l.Path) {
+					return errors.New("destination has a case-insensitive name collision")
+				}
+			}
+		}
+	}
 	if after.Kind == "file" {
 		after.Digest = digest(b.st.key, data)
 	}
@@ -205,7 +223,7 @@ func (b *builder) remove(l Location) error {
 }
 
 func (b *builder) save() (Plan, error) {
-	if len(b.r.Effects) == 0 {
+	if len(b.r.Effects) == 0 && b.r.Status == "planned" {
 		b.r.Notes = append(b.r.Notes, "Already equivalent; no ownership is claimed for existing content.")
 	}
 	b.r.Notes = append(b.r.Notes, "Recovery payloads are private local state; undo revalidates the resulting files before restoring them.")

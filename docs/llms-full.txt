@@ -5720,6 +5720,97 @@ dev skill sync [flags]
 - `--check` — report drift and exit non-zero instead of writing
 - `-h, --help` — help for sync
 
+### `dev skill transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev skill transfer
+```
+
+### `dev skill transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev skill transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev skill transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev skill transfer plan <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer prepare`
+
+Fetch and verify one skill in private staging
+
+```
+dev skill transfer prepare <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev skill transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev skill transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev skill transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev skill transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev skill transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
 ### `dev skill update`
 
 Update one skill in one explicit scope
@@ -6220,6 +6311,16 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 - [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
 - [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
 - [`internal/machineid`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/machineid)
+
+## Agent artifact transfers
+
+Use `dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+for a reviewed per-skill link. `--mode copy` creates independent content and
+`--mode move` publishes the destination before source cleanup. Select exact
+checkouts with `--from-repo`/`--to-repo`; apply with `transfer apply --plan <id>`.
+`transfer status`, `transfer undo <id>`, and `transfer refresh <id>` expose the
+local ledger and create guarded follow-up plans. Private recovery content is
+stored under the configured state directory and is omitted from JSON reports.
 
 ---
 
@@ -12513,6 +12614,97 @@ dev skill sync [flags]
 - `--check` — report drift and exit non-zero instead of writing
 - `-h, --help` — help for sync
 
+### `dev skill transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev skill transfer
+```
+
+### `dev skill transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev skill transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev skill transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev skill transfer plan <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer prepare`
+
+Fetch and verify one skill in private staging
+
+```
+dev skill transfer prepare <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev skill transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev skill transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev skill transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev skill transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev skill transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
 ### `dev skill update`
 
 Update one skill in one explicit scope
@@ -13013,6 +13205,14 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 - [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
 - [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
 - [`internal/machineid`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/machineid)
+
+## Agent 內容轉移
+
+使用 `dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+預覽逐項 skill 連結。`--mode copy` 建立獨立內容，`--mode move` 先完成目的端再清理來源。
+以 `--from-repo`／`--to-repo` 選定 checkout，再用 `transfer apply --plan <id>` 套用。
+`transfer status` 顯示本機紀錄，`transfer undo <id>` 與 `transfer refresh <id>` 建立新的受保護計畫。
+私人復原內容位於設定的 state 目錄，不會出現在 JSON 報告。
 
 ---
 
