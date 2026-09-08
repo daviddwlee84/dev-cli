@@ -106,6 +106,7 @@ func splitLoadWarning(err error) (string, error) {
 }
 
 type Actions struct {
+	Workflow func(context.Context, WorkflowRequest) (Workflow, error)
 	// Reload re-reads the task inventory.
 	Reload func(ctx context.Context) ([]inventory.Row, error)
 	// ReloadRepos re-reads the repository list.
@@ -319,7 +320,8 @@ type remoteCloneOpenMsg struct {
 
 // Model is the dashboard state.
 type Model struct {
-	actions Actions
+	afterExit func() error
+	actions   Actions
 	// trace is the one intentional shared pointer in the value-copied model. The
 	// recorder is append-only, bounded and concurrency-safe; it never controls UI
 	// behavior.
@@ -2784,6 +2786,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.beginLocalLoads(loadAction)
 		return m, m.reload()
 
+	case workflowMsg:
+		m.err, m.status = msg.err, msg.result.Status
+		if msg.result.AfterExit != nil {
+			m.afterExit, m.quitting = msg.result.AfterExit, true
+			return m, tea.Quit
+		}
+		m.forceSizeReload = true
+		m.beginLocalLoads(loadAction)
+		return m, m.reload()
+
 	case actionMsg:
 		if m.remoteClone.active() && (msg.cd != "" || msg.activate != "") {
 			// A command launched before cloning must not tear down the TUI while
@@ -3056,11 +3068,14 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", "o":
 		return m.runListAction(listActionOpen)
 
+	case "ctrl+o":
+		return m.openActionMenu(), nil
+
 	case " ":
 		if m.view == ViewRepos {
 			return m.runListAction(listActionToggleWorktrees)
 		}
-		if m.view == ViewTries {
+		if m.view == ViewTries || m.view == ViewTasks {
 			return m.openActionMenu(), nil
 		}
 		return m, nil

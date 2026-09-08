@@ -323,3 +323,7 @@ extension、OpenCode v2 與不能安全修改的 TOML layout 仍需原生 client
 Local env launcher 綁定本機並保留來源，HTTP client 需要自己的 environment。
 只有明確 prepare 可以執行固定版本的 skills provider，只有 check 初始化 MCP。
 Inventory 新增的 interop receipts 是歷史紀錄，不代表 live health。
+
+## Dashboard 生命週期新增功能
+
+Dashboard workflows 共用 CLI／taskflow 規則，terminal handoff 在退出後執行。Try removal 是明確 disposal，不是已驗證備份的 eviction。Trash 使用 macOS／Windows native facilities 或 Linux GIO；不支援回收時停止，絕不自動永久刪除。Local Try JSON 只增加 removal identity／method，不移除既有 fields。詳見 [Dashboard 操作](../guides/dashboard-actions.md)。

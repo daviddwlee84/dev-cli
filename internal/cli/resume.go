@@ -87,7 +87,7 @@ a conflict, so dev asks before doing it.`,
 			if handoff.Kind == taskflow.HandoffDirectory {
 				return app.cdDirective(checkout)
 			}
-			return activateRuntime(ctx, activationRuntime, handoff.RuntimeHandle)
+			return app.activate(ctx, activationRuntime, handoff.RuntimeHandle)
 		},
 	}
 	f := cmd.Flags()

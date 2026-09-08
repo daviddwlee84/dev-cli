@@ -94,6 +94,17 @@ dev bootstrap [path...] [flags]
 - `--worktrees` — include linked worktrees in the report
 - `--yes` — with --move --apply, do not confirm each repository
 
+### `dev browse`
+
+Open the repository homepage, or print its URL without opening
+
+```
+dev browse [repo-or-path] [flags]
+```
+
+- `--print` — print the HTTPS URL without opening a browser
+- `--remote` — select a configured Git remote
+
 ### `dev cache`
 
 Inspect and clear regenerable dev caches
@@ -1124,6 +1135,17 @@ List, clone, create and sync repositories
 dev repo
 ```
 
+### `dev repo browse`
+
+Open the repository homepage, or print its URL without opening
+
+```
+dev repo browse [repo-or-path] [flags]
+```
+
+- `--print` — print the HTTPS URL without opening a browser
+- `--remote` — select a configured Git remote
+
 ### `dev repo clone`
 
 Clone a repository and optionally apply a setup preset
@@ -1742,6 +1764,7 @@ dev sweep [flags]
 - `--json` — print the versioned ephemeral-worktree report as JSON
 - `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
 - `--stale-days` — days without relevant activity before an item counts as stale
+- `--task` — limit ordinary recovery suggestions to one exact task ID
 - `--yes` — with --apply, do not confirm each change
 
 ### `dev tries`
@@ -1767,6 +1790,21 @@ Attach a stable Try ID to a visible local path
 ```
 dev tries attach <id> <path>
 ```
+
+### `dev tries delete`
+
+Move a Try to system Trash, or explicitly discard it permanently
+
+```
+dev tries delete <ref> [flags]
+```
+
+- `--assume-no-runtime` — acknowledge unobserved runtime coverage; never overrides observed occupation
+- `--confirm-delete` — confirm permanent data loss for this exact catalog ID
+- `--dry-run` — preview without removing anything
+- `--json` — emit a structured preview/result without prompting
+- `--permanent` — permanently discard all Try contents instead of using Trash
+- `--yes` — approve moving the selected Try to Trash
 
 ### `dev tries deprecate`
 
@@ -1834,12 +1872,13 @@ dev tries reactivate <ref>
 
 ### `dev tries restore`
 
-Restore an archived Try to a visible path
+Restore an archive or reassociate a folder returned from Trash
 
 ```
 dev tries restore <ref> [flags]
 ```
 
+- `--from` — reassociate the original folder after restoring it from system Trash
 - `--to` — restore to this safe path under tries_root
 
 ### `dev tries touch`

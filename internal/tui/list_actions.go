@@ -41,11 +41,20 @@ const (
 	listActionTryArchive
 	listActionTryRestore
 	listActionTryGraduate
+	listActionDone
+	listActionResume
+	listActionRetire
+	listActionSweep
+	listActionBrowse
+	listActionTryDelete
+	listActionTryDeletePermanent
+	listActionTryRecover
 )
 
 type selectionToken struct {
-	view View
-	key  string
+	revision string
+	view     View
+	key      string
 }
 
 func repoItemKey(item repoItem) string {
@@ -79,7 +88,7 @@ func (m Model) currentSelectionToken() (selectionToken, bool) {
 		if !ok || row.Task == nil {
 			return selectionToken{}, false
 		}
-		return selectionToken{view: m.view, key: row.Task.ID}, true
+		return selectionToken{view: m.view, key: row.Task.ID, revision: row.Task.Revision()}, true
 	case ViewRepos:
 		row, ok := m.currentRepoItem()
 		if !ok {
@@ -228,6 +237,20 @@ func (m Model) openActionMenu() Model {
 
 	switch m.view {
 	case ViewTasks:
+		if row, ok := m.currentTask(); ok && m.actions.Workflow != nil {
+			switch row.Task.State {
+			case task.Hot, task.Warm:
+				if taskOpenBlocker(row) == nil {
+					overlay.addOption(listActionDone, "finish task…")
+				}
+			case task.Done:
+				overlay.addOption(listActionRetire, "retire task (keep branch)…")
+			}
+			if row.Task.State == task.Warm || row.Task.State == task.Cold {
+				overlay.addOption(listActionResume, "resume task…")
+			}
+			overlay.addOption(listActionSweep, "inspect and recover this task…")
+		}
 		if row, ok := m.currentTask(); ok && m.actions.Open != nil && taskOpenBlocker(row) == nil {
 			overlay.addOption(listActionOpen, "open task")
 		}
@@ -351,6 +374,26 @@ func (m Model) openActionMenu() Model {
 		}
 	}
 
+	if m.actions.Workflow != nil {
+		switch m.view {
+		case ViewTasks, ViewRepos, ViewRemote:
+			overlay.addOption(listActionBrowse, "open repository in browser…")
+		case ViewTries:
+			row, _ := m.currentTry()
+			if row.Item.Live.Repo != nil {
+				overlay.addOption(listActionBrowse, "open repository in browser…")
+			}
+			if row.Item.Phase != catalog.PhaseGraduated {
+				pendingTrash := row.Item.Entry != nil && row.Item.Entry.MoveIntent != nil && row.Item.Entry.MoveIntent.Operation == "remove-trash"
+				if row.LocationState() == catalog.LocationEvicted || pendingTrash {
+					overlay.addOption(listActionTryRecover, "reassociate a folder restored from Trash…")
+				} else if row.Item.Live.Present {
+					overlay.addOption(listActionTryDelete, "move to Trash…")
+					overlay.addOption(listActionTryDeletePermanent, "permanently delete…")
+				}
+			}
+		}
+	}
 	if overlay.optionCount == 0 {
 		return m
 	}
@@ -394,6 +437,43 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 
 func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 	switch action {
+	case listActionDone, listActionResume, listActionRetire, listActionSweep:
+		if row, ok := m.currentTask(); ok {
+			name := map[listAction]string{listActionDone: "done", listActionResume: "resume", listActionRetire: "retire", listActionSweep: "sweep"}[action]
+			return m.runWorkflow(WorkflowRequest{Action: name, Task: row.Task})
+		}
+	case listActionBrowse:
+		request := WorkflowRequest{Action: "browse"}
+		switch m.view {
+		case ViewTasks:
+			if row, ok := m.currentTask(); ok {
+				request.Path = row.Task.RepoPath
+			}
+		case ViewRepos:
+			if row, ok := m.currentRepoItem(); ok {
+				request.Path = row.Repo.Repo.Path
+				if checkout, child := row.checkout(); child {
+					request.Path = checkout.Worktree.Path
+				}
+			}
+		case ViewTries:
+			if row, ok := m.currentTry(); ok {
+				request.Path = row.Item.Live.CurrentPath
+			}
+		case ViewRemote:
+			if row, ok := m.currentRemote(); ok {
+				remote := row.Repo
+				request.Remote = &remote
+			}
+		}
+		if request.Path != "" || request.Remote != nil {
+			return m.runWorkflow(request)
+		}
+	case listActionTryDelete, listActionTryDeletePermanent, listActionTryRecover:
+		if row, ok := m.currentTry(); ok {
+			name := map[listAction]string{listActionTryDelete: "delete-try", listActionTryDeletePermanent: "delete-try-permanently", listActionTryRecover: "restore-removed-try"}[action]
+			return m.runWorkflow(WorkflowRequest{Action: name, Try: row})
+		}
 	case listActionOpen:
 		return m, m.openSelected()
 	case listActionAddNote:
@@ -438,11 +518,17 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 		}
 	case listActionStartWorktree:
 		if row, ok := m.currentRepo(); ok {
+			if m.actions.Workflow != nil {
+				return m.runWorkflow(WorkflowRequest{Action: "start-worktree", Repo: row.Repo})
+			}
 			m.repoPromptTarget, m.repoPromptSet = row, true
 			return m.prompt(modeStartTask, "", "name for the new worktree task")
 		}
 	case listActionStartDirect:
 		if row, ok := m.currentRepo(); ok {
+			if m.actions.Workflow != nil {
+				return m.runWorkflow(WorkflowRequest{Action: "start-direct", Repo: row.Repo})
+			}
 			m.repoPromptTarget, m.repoPromptSet = row, true
 			return m.prompt(modeStartDirect, "", "name for direct work on current branch")
 		}

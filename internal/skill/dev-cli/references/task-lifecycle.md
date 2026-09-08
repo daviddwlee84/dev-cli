@@ -316,3 +316,5 @@ Cleanup is never inferred from agent lifecycle state. A user must select it in
 the post-MERGED wizard or run `dev retire` from a different checkout/runtime;
 both paths revalidate, close eligible sessions, wait for release, and remove
 without force. Read `agent-retirement.md` before retiring an agent-owned checkout.
+
+Dashboard row actions now invoke these same finish/resume/retire workflows. Missing checkout recovery is scoped with `dev sweep --task <id>`. See [dashboard actions](dashboard-actions.md).

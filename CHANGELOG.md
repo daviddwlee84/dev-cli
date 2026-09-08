@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.20] - 2026-09-09
+
+### Added
+
+- Dashboard task action menus with shared finish/resume/retire/recovery workflows,
+  `Ctrl+O` row actions, and full start wizards with an explicit attach/stay choice.
+  `dev sweep --task <id>` limits recovery to the selected task.
+- `dev tries delete` / `rm`, preferring system Trash with separately confirmed
+  permanent disposal, exact source revalidation, retained catalog history and
+  durable operation records. `tries restore --from` reassociates the original
+  folder after system Trash restoration; automatic backup/reclaim is not implied.
+- `dev repo browse` / `dev browse`, with local remote selection, `--remote` and
+  `--print`, plus repository homepage actions in the dashboard.
+
+### Fixed
+
+- TASKS help now labels `a` as showing done tasks instead of implying completion.
+
 ## [0.2.19] - 2026-09-08
 
 ### Added
@@ -751,7 +769,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.19...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.20...HEAD
+[0.2.20]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.19...v0.2.20
 [0.2.19]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.18...v0.2.19
 [0.2.18]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.17...v0.2.18
 [0.2.17]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.16...v0.2.17

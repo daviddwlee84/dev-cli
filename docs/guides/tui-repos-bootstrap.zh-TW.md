@@ -2,7 +2,7 @@
 description: 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
 authority: project
 status: evolving
-verified_on: 2026-09-04
+verified_on: 2026-09-08
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 lang: zh-TW
 ---
@@ -307,3 +307,7 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 - [`internal/help/topics/bootstrap.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/bootstrap.md)
 - [`internal/cli/adopt.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/adopt.go)
 - [`internal/cli/bootstrap.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/bootstrap.go)
+
+## Dashboard 生命週期新增功能
+
+[Dashboard 生命週期操作](dashboard-actions.md) 說明 task 完成／恢復／retire／recovery、完整 start wizard、Trash 與 repository browser actions。`Ctrl+O` 開啟所選 row 的選單；TASKS 的 `a` 只顯示已完成 tasks。

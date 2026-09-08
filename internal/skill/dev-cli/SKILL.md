@@ -625,8 +625,9 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
    `dev cache clear` only for regenerable remote/fleet/size/gitignore/license/note-FTS caches.
 
 16. **Archive is not eviction.** `dev tries archive` is a reversible hidden move
-   on the same filesystem; it does not free space. Phase 1 has no project-data
-   delete command. Never substitute `rm -rf` merely because a remote exists —
+   on the same filesystem; it does not free space. Explicit `tries delete` prefers
+   system Trash; permanent disposal requires separate exact-ID approval.
+   Never substitute `rm -rf` merely because a remote exists —
    no-remote, local-only refs, ignored files and stash are independent risks.
 
 17. **Read Git state as counts, not a dirty boolean.** `⇡`/`⇣` are upstream
@@ -787,3 +788,14 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   submodules or nested repositories; active/unknown agents still fail closed.
 - **The stats sampler must be scheduled.** `dev stats` is empty until
   `dev stats backfill` runs once and `dev stats sample` runs periodically.
+
+## Dashboard actions, disposal and browser navigation
+
+See [dashboard-actions.md](references/dashboard-actions.md). `Ctrl+O` / right-click
+open row actions; TASKS and TRY also use Space. TASKS finish/resume/retire/recovery
+reuse the CLI workflows. `a` shows DONE records, not a completion toggle. REPOS
+`s`/`d` use full start wizards with open/stay choice (open by default).
+
+`dev browse` / `dev repo browse [repo-or-path]` opens a repository homepage;
+`--print` is local URL-only output, and `--remote` selects an explicit remote.
+`dev repo context` remains the information report.

@@ -131,7 +131,9 @@ type Experiment struct {
 // now; RestorePath is where an archived or evicted asset should return. RealPath
 // and GitCommonDir make symlink aliases and linked worktrees match the same clone.
 type Location struct {
-	State LocationState `toml:"state" json:"state"`
+	RemovalID     string        `toml:"removal_id,omitempty" json:"removal_id,omitempty"`
+	RemovalMethod string        `toml:"removal_method,omitempty" json:"removal_method,omitempty"`
+	State         LocationState `toml:"state" json:"state"`
 
 	CurrentPath  string `toml:"current_path" json:"current_path"`
 	RestorePath  string `toml:"restore_path" json:"restore_path"`

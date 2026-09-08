@@ -49,6 +49,12 @@ jobs:
         continue-on-error: true
         run: go test ./...
 
+      - name: Test Try removal and browse contracts (required on Windows)
+        if: runner.os == 'Windows'
+        run: |
+          go test ./internal/desktop ./internal/experiment ./internal/repobrowse -run 'Test(Removal|Trash|Permanent|Browse|Recycle)'
+          go test ./internal/cli -run 'Test(Dashboard|TryDeleteCLI|BrowseCLI|Removal)'
+
       - run: go build ./cmd/dev
 
       # The skill documents the CLI; drift between them is a bug.

@@ -749,3 +749,7 @@ can `export` an optional recipe and plan one `recipe` entry. See the
 scope mappings, stanza ownership, credential references and platform limits.
 Skill JSON rows and MCP JSON envelopes may add `interop` and `interop_coverage`;
 `receipts-only` never means the native client loaded or authenticated a tool.
+
+## Dashboard lifecycle additions
+
+New commands: `dev browse` / `dev repo browse [repo-or-path] --remote <name> --print`; `dev sweep --task <id>`; `dev tries delete <ref>` (`rm` alias) with `--dry-run`, `--json`, `--yes`, `--permanent`, `--confirm-delete <id>` and `--assume-no-runtime`; `dev tries restore <ref> --from <restored-path>`. [Behavior and confirmation rules](../guides/dashboard-actions.md).

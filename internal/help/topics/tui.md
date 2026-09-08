@@ -248,14 +248,14 @@ TRY:
 ```
 enter / o  open a present Try
 n          create/clone a Try (name, optional clone ref, git yes/no)
-space      mark, deprecate/reactivate, archive/restore, or graduate
+space      metadata/lifecycle actions, Trash or permanent disposal
 a          include deprecated, archived, evicted and graduated history
 O / R      cycle / reverse activity/name/phase/size sort
 ```
 
 Archive is a reversible same-filesystem move under `tries_root/.dev`; it does
-not reclaim disk space. Phase 1 has no evict/delete action. The catalog keeps a
-stable ID, per-host location, tags/note, last-opened time and graduation
+not reclaim disk space. Explicit delete prefers system Trash and retains history.
+The catalog keeps a stable ID, per-host location, tags/note, last-opened time and graduation
 history; Git and size facts remain live/derived.
 
 REMOTE:
@@ -377,3 +377,19 @@ Keys are case-sensitive. A tool cannot take a globally owned dashboard key;
 config loading reports the collision instead of silently shadowing movement or
 quit. `A` remains configurable, but the SKILLS/MCP scope toggle takes precedence
 on those two views.
+
+## Lifecycle action menus
+
+`Ctrl+O` and right-click open row actions. Space does the same on TASKS and TRY;
+REPOS Space still expands worktrees. TASKS offers finish, resume, retire and
+selected-task recovery via the existing CLI workflows, with fresh task revision
+checks. `a` means show completed tasks. Missing checkouts require recovery.
+
+REPOS `s`/`d` use the complete start wizard with worktree/direct preselected.
+Choose open (default) or stay before the final creation confirmation. Terminal
+handoffs run only after the dashboard exits; cancellation and ordinary completion
+refresh the dashboard. Browser actions open the selected repository homepage.
+
+TRY actions include move to Trash, separately confirmed permanent deletion, and
+reassociation after restoring the original folder through the OS. Trash does not
+release disk space until emptied. See `dev help tries` for guards and recovery.

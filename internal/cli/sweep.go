@@ -41,6 +41,7 @@ type sweepRetireOptions struct {
 
 func newSweepCmd(app *App) *cobra.Command {
 	var (
+		taskID             string
 		apply              bool
 		staleDays          int
 		yes                bool
@@ -64,6 +65,9 @@ Nothing here ever deletes uncommitted work.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
+			if taskID != "" && (mergedWorktrees || ephemeralWorktrees) {
+				return fmt.Errorf("--task cannot be combined with worktree-wide sweep modes")
+			}
 			if ephemeralWorktrees && mergedWorktrees {
 				return fmt.Errorf("--ephemeral-worktrees and --merged-worktrees are mutually exclusive")
 			}
@@ -83,6 +87,16 @@ Nothing here ever deletes uncommitted work.`,
 			tasks, err := app.Tasks.List()
 			if err != nil {
 				return err
+			}
+			if taskID != "" {
+				selected, err := app.Tasks.Get(taskID)
+				if err != nil {
+					return err
+				}
+				if err := app.checkWorkflowTask(selected); err != nil {
+					return err
+				}
+				tasks = []*task.Task{selected}
 			}
 			rt := app.Runtime()
 			rows := inventory.Collect(ctx, tasks, rt, inventory.Options{})
@@ -105,7 +119,7 @@ Nothing here ever deletes uncommitted work.`,
 			}
 
 			// Live sessions no task claims: the other half of a crowded sidebar.
-			if !mergedWorktrees {
+			if !mergedWorktrees && taskID == "" {
 				if sessions, err := rt.List(ctx); err == nil {
 					if orphans := inventory.Orphans(sessions, rows); len(orphans) > 0 {
 						fmt.Fprintf(app.Out, "\n%d live session(s) with no task recorded:\n", len(orphans))
@@ -138,7 +152,7 @@ Nothing here ever deletes uncommitted work.`,
 				return nil
 			}
 
-			in := bufio.NewReader(os.Stdin)
+			in := bufio.NewReader(app.In)
 			for _, s := range sugg {
 				if s.apply == nil {
 					continue
@@ -156,6 +170,7 @@ Nothing here ever deletes uncommitted work.`,
 		},
 	}
 	f := cmd.Flags()
+	f.StringVar(&taskID, "task", "", "limit ordinary recovery suggestions to one exact task ID")
 	f.BoolVar(&apply, "apply", false, "act on the suggestions instead of only reporting")
 	f.IntVar(&staleDays, "stale-days", 14, "days without relevant activity before an item counts as stale")
 	f.BoolVar(&yes, "yes", false, "with --apply, do not confirm each change")

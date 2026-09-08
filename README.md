@@ -73,7 +73,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.19 instead when you need a reproducible install.
+# Pin @v0.2.20 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -658,7 +658,7 @@ the CLI and returns with refreshed local inventory; it also works when the list
 is empty. `a` quick-adds a repository thought and `N` opens its notes overlay.
 TASKS retains `n` for quick notes. Expanded children carry their own
 Git/session/task state and can be opened directly. In TRY, `n` creates or clones an experiment;
-`space` opens mark/deprecate/archive/restore/graduate actions; `a` includes
+`space` opens mark/deprecate/archive/restore/graduate/Trash/delete actions; `a` includes
 retained history. Inside Git, SKILLS and MCP use only the exact startup worktree
 plus global/user sources; outside Git they reuse every accepted REPOS target and
 the ordinary startup directory. Uppercase `A` switches both views between that
@@ -677,6 +677,20 @@ copy when it detects a conflict. `y` offers file copy choices. `?` opens the com
 context-sensitive key map. That makes
 the branch/worktree and lifecycle costs explicit rather than silently applying
 them to every directory.
+
+
+### Dashboard lifecycle actions
+
+Press `Ctrl+O` or right-click a row for actions; TASKS and TRY also accept Space.
+REPOS Space continues to expand worktrees. TASKS offers the existing finish,
+resume, retirement and selected-task recovery workflows. `a` shows completed
+tasks; it does not mark a task done. Missing checkout rows go through recovery.
+The dashboard suspends for the shared CLI wizard and refreshes on return.
+
+REPOS `s`/`d` open the full start wizard with worktree/direct preselected. The
+last steps let you open the task (default) or stay in the dashboard. Browser
+homepage actions leave the dashboard open. See the
+[dashboard action guide](docs/guides/dashboard-actions.md) for Trash and recovery.
 
 For a one-run startup/readiness trace, name an absolute file that does not exist:
 
@@ -710,6 +724,8 @@ outside the TUI:
 ```bash
 dev repo context api
 dev repo context          # current repo, even from inside a linked worktree
+dev browse --print        # current repository homepage, no browser launch
+dev repo browse api       # open a selected repository homepage
 dev repo context --json   # additive schema-v1 automation contract
 dev repo context --refresh  # live forge + configured fleet probes
 ```
@@ -864,9 +880,18 @@ dev tries graduate redis -c Infra     # same service as dev graduate
 
 Archive is organization, **not disk reclamation**: it moves the directory to a
 hidden location on the same filesystem and preserves its stable catalog ID.
-Phase 1 deliberately has no `evict`, recursive delete, or automatic remote
-backup. Safe local removal needs repo-wide ref verification and remains a
-follow-up rather than treating "has a remote" as proof.
+`dev tries delete <ref>` moves a cataloged Try to system Trash after a preview.
+Trash is also retained storage until emptied. Permanent disposal requires
+`--permanent` and typing `DELETE <catalog-id>` (or `--confirm-delete <id>` for
+scripts); `--yes` alone never authorizes it. Task/runtime claims, linked/shared
+Git, nested repositories, cwd and unsafe paths block removal. Unobserved runtime
+coverage needs a separate `--assume-no-runtime` acknowledgement.
+
+The catalog ID and host-local removal history survive. After restoring the
+original folder in the system Trash UI, run
+`dev tries restore <ref> --from <restored-path>` before editing it. Interrupted
+operations retain their record and never automatically retry. Verified remote
+backup and safe automatic reclamation remain future work.
 
 The catalog also exposes personal repository tags/notes (`dev repo mark`). To
 find local Git state at risk before any future cleanup:
@@ -1544,3 +1569,6 @@ Tests build throwaway repositories under `t.TempDir()` via
 `internal/gitx/gittest`, and the runtime adapters share one contract suite that
 skips backends not installed on the machine — so the suite is meaningful in CI
 (where only the null backend exists) and locally (where herdr and tmux do).
+
+The opt-in macOS desktop smoke test moves and restores only unique temporary
+folders: `DEV_TEST_NATIVE_TRASH=1 go test ./internal/desktop -run TestNativeTrashRoundTrip`.

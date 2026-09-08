@@ -4,6 +4,16 @@ Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
 
 ## Active
 
+### P3 · L — Dashboard-native task lifecycle forms
+Keep complete taskflow preview/input/approval/result forms in the inventory
+Dashboard. The current implementation suspends into shared CLI workflows.
+See [deferred lifecycle UI alternatives](backlog/dashboard-lifecycle-ui.md).
+
+### P3 · M — Dashboard handoff into focused dev flow
+Open independent `dev flow` at an exact selected task/worktree, including task-only
+records, and return cleanly to the dashboard. Keep both Bubble Tea models separate.
+See [deferred lifecycle UI alternatives](backlog/dashboard-lifecycle-ui.md).
+
 ### P3 · L — Native Windows agent-transfer privacy and recovery
 The POSIX interoperability implementation is complete. Before enabling Windows
 transfer writes, add protected-DACL creation/cloning, persistent handle-based
@@ -12,8 +22,9 @@ Unix permission bits, automatic junctions/copies, or elevation for those proofs.
 See [interoperability plan](backlog/agent-config-interop-plan.md).
 
 ### P1 · L — Verified backup receipts and safe local eviction
-Phase 1 intentionally stops at reversible archive. Before adding `dev reclaim`
-or any action that deletes a local checkout, build a fresh preflight that checks
+Explicit Try disposal now offers system Trash and separately approved permanent
+data loss. Verified backup-based reclamation is still pending. Before adding
+`dev reclaim` or calling removal recoverable from a remote, build a fresh preflight that checks
 all local heads/tags/notes/stash against actual remote refs, plus dirty,
 untracked, ignored, LFS, submodule/nested-repo, live-runtime, task, cwd and
 linked-worktree state. `no remote` or any local-only ref must block safe

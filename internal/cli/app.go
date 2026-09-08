@@ -28,12 +28,17 @@ import (
 
 // App is the state shared by every command.
 type App struct {
-	Cfg      config.Config
-	Tasks    *task.Store
-	Catalog  *catalog.Store
-	Registry *catalog.Registry
-	Notes    *note.Service
-	Sizes    *diskusage.Manager
+	// workflowHandoff defers navigation until the dashboard releases the terminal.
+	workflowHandoff        func(func() error) error
+	startHandoffPrompt     bool
+	workflowTask           *task.Task
+	workflowRecordRevision string
+	Cfg                    config.Config
+	Tasks                  *task.Store
+	Catalog                *catalog.Store
+	Registry               *catalog.Registry
+	Notes                  *note.Service
+	Sizes                  *diskusage.Manager
 
 	In  io.Reader
 	Out io.Writer
@@ -168,6 +173,11 @@ func (a *App) warnf(format string, args ...any) {
 // newlines. Without the wrapper, retain the printable directive used by older
 // integrations.
 func (a *App) cdDirective(dir string) error {
+	if a.workflowHandoff != nil {
+		copy := *a
+		copy.workflowHandoff = nil
+		return a.workflowHandoff(func() error { return copy.cdDirective(dir) })
+	}
 	// Windows shells do not inherit an extra descriptor the way the POSIX
 	// wrapper's `3>file` redirection does, so the PowerShell wrapper names a
 	// temp file instead and reads it back after dev exits.
@@ -199,6 +209,11 @@ func (a *App) cdDirective(dir string) error {
 // invoke one exact dev retire command. The action channel is deliberately
 // narrower than arbitrary shell text.
 func (a *App) retireDirective(dir, taskID string, deleteBranch, closeUnknown bool) error {
+	if a.workflowHandoff != nil {
+		copy := *a
+		copy.workflowHandoff = nil
+		return a.workflowHandoff(func() error { return copy.retireDirective(dir, taskID, deleteBranch, closeUnknown) })
+	}
 	payload := []byte("retire\x00" + taskID + "\x00" + strconv.FormatBool(deleteBranch) + "\x00" + strconv.FormatBool(closeUnknown) + "\x00")
 	if path := os.Getenv("DEV_SHELL_ACTION_FILE"); path != "" {
 		if err := os.WriteFile(path, payload, 0o600); err != nil {

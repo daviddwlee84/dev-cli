@@ -153,3 +153,12 @@ Final handoffs are explicit:
 - `start` continues into the normal tracked-task wizard.
 
 Neither repository bootstrap nor `dev start` launches a coding agent.
+
+## Repository homepage
+
+`dev browse` and `dev repo browse [repo-or-path]` open the repository homepage.
+Use `--print` to output only the HTTPS URL, or `--remote <name>` to select a remote.
+The default is the current branch's upstream, then origin, then the sole remote;
+otherwise interactive use asks and scripts must select. Resolution is local and
+never fetches or queries a forge. Unsupported SSH aliases are not guessed.
+`dev repo context` remains the detailed local/context report.

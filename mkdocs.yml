@@ -51,6 +51,7 @@ plugins:
             Concepts: 核心概念
             Mental Model and Lifecycle: 心智模型與生命週期
             Isolation Boundaries and Glossary: 隔離邊界與詞彙
+            Dashboard Lifecycle Actions: Dashboard 生命週期操作
             Using dev-cli: 使用 dev-cli
             Change-Stream Workflow: 變更流工作流程
             Worktrees and Provisioning: Worktree 與環境佈建
@@ -139,6 +140,7 @@ nav:
       - Prompt Handoffs: guides/prompt-handoffs.md
       - Pull Request Inbox: guides/pull-request-inbox.md
       - TUI, Repositories, Quick Notes, and Bootstrap: guides/tui-repos-bootstrap.md
+      - Dashboard Lifecycle Actions: guides/dashboard-actions.md
   - Git and GitHub:
       - GitHub Flow: git/github-flow.md
       - Branches, Commits, and Pull Requests: git/branches-commits-prs.md

@@ -153,3 +153,5 @@ redacted executable/argv digest. Supported probe failures block; background jobs
 are unobserved. Version-2 coordinator handoffs bind this evidence and permit
 only the exact dev caller returning to its original foreground shell. See
 `agent-retirement.md` for the full scope and cancellation rules.
+
+Dashboard start wizards offer open/stay, defaulting to open. Runtime and external retirement handoffs execute only after the dashboard exits. See [dashboard actions](dashboard-actions.md).

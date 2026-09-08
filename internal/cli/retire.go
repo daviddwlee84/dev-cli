@@ -56,6 +56,9 @@ external coordinator that waits for this command to exit into its shell.`,
 			if err != nil {
 				return err
 			}
+			if err := app.checkWorkflowTask(target.Task); err != nil {
+				return err
+			}
 			options := flow.RetireOptions{CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, DeleteBranch: deleteBranch, Timeout: timeout}
 			if app.interactive() && (target.Task == nil || target.Task.State == task.Done && target.Task.EffectiveMode() == task.ModeWorktree && target.Task.WorktreePath != "") {
 				path := target.Path

@@ -391,6 +391,15 @@ func runTUI(app *App) error {
 	}
 
 	actions := tui.Actions{
+		Workflow: func(ctx context.Context, request tui.WorkflowRequest) (tui.Workflow, error) {
+			rt, err := runtimeResolver.Resolve(ctx)
+			if err != nil {
+				return nil, err
+			}
+			active := *appState.Current()
+			active.runtimeInstance = rt
+			return newTUIWorkflow(ctx, &active, request), nil
+		},
 		Reload:                reload,
 		ReloadRepos:           reloadRepos,
 		ReloadRemoteWithRepos: reloadRemote,
@@ -745,6 +754,9 @@ func runTUI(app *App) error {
 	// A directory choice can only be honoured once the alternate screen is
 	// torn down, and only by the shell wrapper.
 	if m, ok := final.(tui.Model); ok {
+		if handoff := m.AfterExit(); handoff != nil {
+			return handoff()
+		}
 		if dir := m.Chosen(); dir != "" {
 			return app.cdDirective(dir)
 		}
@@ -885,6 +897,14 @@ func applyTryAction(ctx context.Context, app *App, rt runtime.Runtime, request t
 		return item, resolveErr
 	}
 	open := func(item experiment.Item, status string) (tui.TryActionResult, error) {
+		if item.Entry == nil {
+			return tui.TryActionResult{}, errors.New("Try catalog identity is unavailable")
+		}
+		location, located := item.Entry.LocationFor(config.Hostname())
+		if !located || location.State != catalog.LocationPresent || item.Entry.MoveIntent != nil {
+			return tui.TryActionResult{}, errors.New("restore or reconcile this Try before opening it")
+		}
+
 		if !item.Live.Present || item.Live.CurrentPath == "" {
 			return tui.TryActionResult{}, fmt.Errorf("Try %s is not present on this host", item.DisplayName())
 		}

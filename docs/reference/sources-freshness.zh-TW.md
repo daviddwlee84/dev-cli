@@ -134,3 +134,7 @@ native inventory／CLI 測試與 synthetic MCP server。Skills profile 固定 1.
 Codex 目前的 canonical user discovery 是對固定 registry legacy paths 的額外支援。
 Schema／fixture 驗證不表示正在執行的原生 client 已載入生成設定。
 Windows transfer 寫入在獨立驗證 privacy／identity adapter 前維持不可用。
+
+## Dashboard 生命週期新增功能
+
+Repository 首頁解析只讀 local Git。Assets 旁的 Try removal journals 是 durable operation history，不是 disposable cache 或 verified remote-backup receipt。未知 removal outcome 仍保持 unknown。詳見 [Dashboard 操作](../guides/dashboard-actions.md)。

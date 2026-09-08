@@ -43,7 +43,7 @@ type overlayState struct {
 	repoTarget RepoRow
 	action     TryAction
 
-	options     [16]actionOption
+	options     [24]actionOption
 	optionCount int
 	optionIndex int
 
@@ -293,9 +293,9 @@ func (m Model) renderOverlay() string {
 	case overlayHelp:
 		builder.WriteString("  navigation\n")
 		builder.WriteString("    j/k, arrows move · ctrl+d/u page · g/G first/last · tab/h/l switch view\n")
-		builder.WriteString("    left click row/tab · wheel 3 rows · right click row actions · click never opens\n")
+		builder.WriteString("    left click row/tab · wheel 3 rows · right click / ctrl+o row actions · click never opens\n")
 		builder.WriteString("    / filter · 0 clear · r reload · esc close/clear/quit · q quit\n\n")
-		builder.WriteString("  TASKS   enter open · n add note · N notes · p park · c next · 1/2/3 state · a done\n")
+		builder.WriteString("  TASKS   enter open · n add note · N notes · p park · c next · 1/2/3 state · a show done · space actions\n")
 		builder.WriteString("  REPOS   enter open · n new repo · a add note · N notes · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
 		builder.WriteString("  FLEET   enter Herdr/SSH open · e edit remotes.toml · r refresh · read-only Git overview\n")
 		builder.WriteString("  TRY     enter open · n create · space actions · a history · O/R sort\n")

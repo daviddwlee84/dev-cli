@@ -31,7 +31,15 @@ type TryRow struct {
 }
 
 // Present reports whether this host has an openable checkout for the Try.
-func (r TryRow) Present() bool { return r.Item.Live.Present && r.Item.Live.CurrentPath != "" }
+func (r TryRow) Present() bool {
+	if r.Location != nil && r.Location.State != catalog.LocationPresent {
+		return false
+	}
+	if r.Item.Entry != nil && r.Item.Entry.MoveIntent != nil {
+		return false
+	}
+	return r.Item.Live.Present && r.Item.Live.CurrentPath != ""
+}
 
 // LocationState returns this host's durable disposition, or an empty value when
 // the catalog has no location for it.

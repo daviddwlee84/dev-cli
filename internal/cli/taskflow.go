@@ -42,6 +42,9 @@ func newLifecycleSession(ctx context.Context, app *App, resolve lifecycleTaskRes
 	if selected == nil {
 		return session, errors.New("task resolver returned no task")
 	}
+	if err := app.checkWorkflowTask(selected); err != nil {
+		return session, err
+	}
 	session.Selected = *selected
 
 	service, err := newCLILifecycleService(app)
@@ -52,6 +55,9 @@ func newLifecycleSession(ctx context.Context, app *App, resolve lifecycleTaskRes
 	session.Locator, err = service.LocateTask(ctx, selected.ID)
 	if err != nil {
 		return session, err
+	}
+	if app.workflowRecordRevision != "" && session.Locator.TaskRevision != app.workflowRecordRevision {
+		return session, errors.New("selected task revision changed before planning")
 	}
 	return session, nil
 }

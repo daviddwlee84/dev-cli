@@ -36,6 +36,7 @@ This is the "what projects do I have?" half of dev, kept separate from the
 		newRepoListCmd(app),
 		newRepoMarkCmd(app),
 		newRepoContextCmd(app),
+		newRepoBrowseCmd(app),
 		newRepoCloneCmd(app),
 		newRepoOpenCmd(app),
 		newRepoNewCmd(app),

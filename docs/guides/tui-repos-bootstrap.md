@@ -2,7 +2,7 @@
 description: Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
-verified_on: 2026-09-04
+verified_on: 2026-09-08
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 ---
 
@@ -333,3 +333,7 @@ Adopt reports by default and only writes task entries after `--apply` plus confi
 - [`internal/help/topics/bootstrap.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/bootstrap.md)
 - [`internal/cli/adopt.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/adopt.go)
 - [`internal/cli/bootstrap.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/bootstrap.go)
+
+## Dashboard lifecycle additions
+
+Use [dashboard lifecycle actions](dashboard-actions.md) for task finish/resume/retire/recovery, full start wizards, Trash disposal and repository browser actions. `Ctrl+O` opens the selected row menu; TASKS `a` shows completed tasks.

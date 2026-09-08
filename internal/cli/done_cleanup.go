@@ -52,6 +52,19 @@ func shouldOfferDoneCleanup(selected task.Task, opts doneOptions, interactive bo
 }
 
 func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task.Task) error {
+	if app.workflowTask != nil {
+		copy := *app
+		copy.workflowTask = &final
+		record, err := app.Tasks.GetRecord(final.ID)
+		if err != nil {
+			return err
+		}
+		if record.Task.Revision() != final.Revision() {
+			return errors.New("completed task changed before cleanup")
+		}
+		copy.workflowRecordRevision = record.Revision
+		app = &copy
+	}
 	rt := runtimeForTask(app, &final)
 	authority, err := captureRetirementAuthority(ctx, app, retireCommandTarget{Task: &final}, flow.RetireOptions{})
 	if err != nil {
@@ -172,6 +185,13 @@ func launchExternalRetireCoordinator(
 	processClosures map[string]string,
 	previewAuthority flow.Fields,
 ) (err error) {
+	if app.workflowHandoff != nil {
+		copy := *app
+		copy.workflowHandoff = nil
+		return app.workflowHandoff(func() error {
+			return launchExternalRetireCoordinator(ctx, &copy, rt, final, preview, deleteBranch, closeUnknown, processClosures, previewAuthority)
+		})
+	}
 	if err := validateRetirementAuthority(ctx, app, final, previewAuthority); err != nil {
 		return err
 	}

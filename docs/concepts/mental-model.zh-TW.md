@@ -125,3 +125,7 @@ dev resume <task> --fetch
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 
 Worktree task 的完成與清理限於自己的 checkout 及符合條件的 runtime，parent agent session 保留。FF 仍會在占用檢查及必要的前景程序確認後更新 canonical base 檔案。詳見[retirement 範圍](../guides/agent-safe-retirement.zh-TW.md#task-worktree-scope)。
+
+## Dashboard 生命週期新增功能
+
+Try 明確刪除會保留 catalog identity，本機 location 成為 `evicted`。Trash 與 archive 都保留 bytes，不代表已有備份或回收空間。Task DONE 仍表示已整合，retirement 另行處理。詳見 [Dashboard 操作](../guides/dashboard-actions.md)。

@@ -123,3 +123,7 @@ One writer owns a branch at a time. If two machines or agents need to mutate the
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 
 A worktree task scopes completion to its own checkout and eligible runtime. Parent agent sessions stay open; FF may still update canonical base files after occupancy checks and any required foreground-program consent. See [retirement scope](../guides/agent-safe-retirement.md#task-worktree-scope).
+
+## Dashboard lifecycle additions
+
+Explicit Try disposal retains catalog identity while the host location becomes `evicted`. Trash and archive both retain bytes; neither is proof of backup or reclaimed space. Task DONE still means integrated work, with retirement separate. See [dashboard actions](../guides/dashboard-actions.md).

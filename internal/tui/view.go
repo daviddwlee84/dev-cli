@@ -1484,7 +1484,7 @@ func (m Model) renderFooter() string {
 		status = styleOK.Render("✓ " + viewStatus)
 	}
 
-	var bindings []string
+	bindings := []string{"ctrl+o actions"}
 	if m.remoteClone.active() {
 		bindings = []string{"q cancel clone", "tab view", "/ filter", "j/k move"}
 		var b strings.Builder

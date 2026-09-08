@@ -132,3 +132,7 @@ Current Codex canonical user discovery is additive to the pinned registry's
 legacy paths. Schema/fixture verification does not prove that a running native
 client has loaded the generated configuration. Windows transfer writes remain
 unavailable pending a separately verified privacy/identity adapter.
+
+## Dashboard lifecycle additions
+
+Repository homepage resolution reads local Git only. Try removal journals beside assets are durable operation history; they are neither a disposable cache nor a verified remote-backup receipt. Unknown removal outcomes remain unknown. See [dashboard actions](../guides/dashboard-actions.md).

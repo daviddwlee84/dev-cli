@@ -481,6 +481,10 @@ One writer owns a branch at a time. If two machines or agents need to mutate the
 
 A worktree task scopes completion to its own checkout and eligible runtime. Parent agent sessions stay open; FF may still update canonical base files after occupancy checks and any required foreground-program consent. See [retirement scope](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/#task-worktree-scope).
 
+## Dashboard lifecycle additions
+
+Explicit Try disposal retains catalog identity while the host location becomes `evicted`. Trash and archive both retain bytes; neither is proof of backup or reclaimed space. Task DONE still means integrated work, with retirement separate. See [dashboard actions](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/).
+
 ---
 
 ### Isolation boundaries and glossary
@@ -3161,6 +3165,121 @@ Adopt reports by default and only writes task entries after `--apply` plus confi
 - [`internal/cli/adopt.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/adopt.go)
 - [`internal/cli/bootstrap.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/bootstrap.go)
 
+## Dashboard lifecycle additions
+
+Use [dashboard lifecycle actions](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/) for task finish/resume/retire/recovery, full start wizards, Trash disposal and repository browser actions. `Ctrl+O` opens the selected row menu; TASKS `a` shows completed tasks.
+
+---
+
+### Dashboard lifecycle actions
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/
+
+> Finish and recover tasks from the dashboard, dispose of Tries through system Trash, and open repository homepages.
+
+## Select an action
+
+Press `Ctrl+O` or right-click a row. TASKS and TRY also accept Space; REPOS Space
+still expands linked worktrees. TASKS `a` shows completed tasks and does not mark
+a task done. A missing checkout offers recovery instead of completion.
+
+TASKS finish, resume, retirement and recovery use the existing CLI workflows.
+The dashboard suspends during their prompts and refreshes when they finish,
+including after an error. Task ID/revision checks prevent using a stale selection.
+`dev sweep --task <id>` reports only the selected task; add `--apply` to confirm
+its eligible suggestions. Other worktree-wide sweep modes cannot be combined
+with `--task`.
+
+Finishing through PR preserves HOT/WARM intent. Integration records DONE;
+retirement separately removes eligible execution state and keeps the branch by
+default. These actions retain the existing taskflow safety rules.
+
+## Start and open work
+
+REPOS Enter opens the selected repository without creating a task. `s` and `d`
+open the full start wizard with worktree or direct preselected. The wizard asks
+for the task and necessary branch/base/next action, then offers open (default)
+or stay before final creation confirmation. A base is explicit in the reviewed
+plan, never inferred from an arbitrary checked-out branch.
+
+The dashboard releases its terminal before an attach, shell-directory handoff,
+or external retirement coordinator runs. An ordinary completion/cancellation
+returns to the dashboard. No agent is launched automatically.
+
+## Dispose of a Try
+
+```bash
+dev tries delete <ref> --dry-run
+dev tries delete <ref>
+dev tries delete <id> --permanent --confirm-delete <id>
+```
+
+`rm` is an alias for `delete`. The default moves the selected folder to macOS
+Trash, Linux GIO Trash, or Windows Recycle Bin. Missing helpers, unsupported
+volumes or failures never cause a permanent-delete fallback.
+Linux removal also requires kernel/filesystem support for statx mount identity,
+so bind mounts cannot be mistaken for owned child directories. Trash, like archive,
+still occupies disk space until the bytes are deleted. Helpers are not installed
+automatically. On macOS 15+ the system `trash --stopOnError` utility is preferred;
+older systems use Foundation through JXA without out-pointer bridging.
+
+Permanent disposal is a separate choice requiring `DELETE <exact-id>` in the
+interactive prompt or `--permanent --confirm-delete <id>` in scripts. `--yes`
+alone approves only Trash. `--json` never prompts; `--dry-run` never deletes.
+The preview covers ignored/untracked files and all local Git storage, including
+branches, tags and stash. No remote backup has been verified.
+
+Only independent, cataloged, local active/deprecated Tries can be disposed of,
+including archived folders. Task claims, live runtime, cwd, nested repositories,
+linked/shared Git, mount boundaries and unsafe paths block removal. Unknown
+runtime coverage requires a separate `--assume-no-runtime` acknowledgement;
+this does not override an observed live session.
+
+Catalog ID, phase, metadata and other-host locations remain. The local location
+becomes `evicted` with additive `removal_id`/`removal_method` fields. Durable
+operation JSON is stored in `try-removals` beside assets; this is not cache or a
+verified backup receipt. Interrupted operations stay indeterminate and never
+retry deletion automatically. A recorded successful removal may finish an
+interrupted catalog update during reconciliation.
+
+## Restore through the system Trash
+
+First restore the original directory using the OS Trash UI, then reassociate it
+before editing its contents:
+
+```bash
+dev tries restore <ref> --from <restored-path>
+```
+
+The TRY history action provides the same path prompt. dev verifies the retained
+filesystem identity and content inventory, restoring the same catalog ID.
+It does not search Trash or recover permanently discarded bytes. Existing archive
+restoration still uses `dev tries restore <ref> [--to <path>]`.
+
+## Open a repository homepage
+
+```bash
+dev browse
+dev repo browse api --remote origin
+dev browse --print
+dev repo context
+```
+
+With no argument, browse resolves the current repository, including a linked
+worktree. It chooses current branch upstream, then origin, then the sole remote;
+otherwise interactive use asks and scripts require `--remote`. `--print` only
+prints an HTTPS URL and never prompts or opens a browser. Resolution uses local
+Git, never fetch or a forge query. Unsupported hosts/SSH aliases are not guessed.
+
+TASKS, REPOS, Git-backed TRY and REMOTE have browser actions. These keep the
+dashboard open. `repo context` remains the detailed information report; browse
+opens the repository homepage rather than a branch/file-specific page.
+
+After an interrupted Trash operation, `restore --from` can explicitly reassociate
+an unchanged original/restored folder; it never retries deletion. A folder put
+back into its original archive path remains archived and can then use ordinary
+`tries restore` to become visible again.
+
 ---
 
 ### GitHub Flow
@@ -4869,6 +4988,17 @@ dev bootstrap [path...] [flags]
 - `--worktrees` — include linked worktrees in the report
 - `--yes` — with --move --apply, do not confirm each repository
 
+### `dev browse`
+
+Open the repository homepage, or print its URL without opening
+
+```
+dev browse [repo-or-path] [flags]
+```
+
+- `--print` — print the HTTPS URL without opening a browser
+- `--remote` — select a configured Git remote
+
 ### `dev cache`
 
 Inspect and clear regenerable dev caches
@@ -5899,6 +6029,17 @@ List, clone, create and sync repositories
 dev repo
 ```
 
+### `dev repo browse`
+
+Open the repository homepage, or print its URL without opening
+
+```
+dev repo browse [repo-or-path] [flags]
+```
+
+- `--print` — print the HTTPS URL without opening a browser
+- `--remote` — select a configured Git remote
+
 ### `dev repo clone`
 
 Clone a repository and optionally apply a setup preset
@@ -6517,6 +6658,7 @@ dev sweep [flags]
 - `--json` — print the versioned ephemeral-worktree report as JSON
 - `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
 - `--stale-days` — days without relevant activity before an item counts as stale
+- `--task` — limit ordinary recovery suggestions to one exact task ID
 - `--yes` — with --apply, do not confirm each change
 
 ### `dev tries`
@@ -6542,6 +6684,21 @@ Attach a stable Try ID to a visible local path
 ```
 dev tries attach <id> <path>
 ```
+
+### `dev tries delete`
+
+Move a Try to system Trash, or explicitly discard it permanently
+
+```
+dev tries delete <ref> [flags]
+```
+
+- `--assume-no-runtime` — acknowledge unobserved runtime coverage; never overrides observed occupation
+- `--confirm-delete` — confirm permanent data loss for this exact catalog ID
+- `--dry-run` — preview without removing anything
+- `--json` — emit a structured preview/result without prompting
+- `--permanent` — permanently discard all Try contents instead of using Trash
+- `--yes` — approve moving the selected Try to Trash
 
 ### `dev tries deprecate`
 
@@ -6609,12 +6766,13 @@ dev tries reactivate <ref>
 
 ### `dev tries restore`
 
-Restore an archived Try to a visible path
+Restore an archive or reassociate a folder returned from Trash
 
 ```
 dev tries restore <ref> [flags]
 ```
 
+- `--from` — reassociate the original folder after restoring it from system Trash
 - `--to` — restore to this safe path under tries_root
 
 ### `dev tries touch`
@@ -6807,6 +6965,10 @@ can `export` an optional recipe and plan one `recipe` entry. See the
 scope mappings, stanza ownership, credential references and platform limits.
 Skill JSON rows and MCP JSON envelopes may add `interop` and `interop_coverage`;
 `receipts-only` never means the native client loaded or authenticated a tool.
+
+## Dashboard lifecycle additions
+
+New commands: `dev browse` / `dev repo browse [repo-or-path] --remote <name> --print`; `dev sweep --task <id>`; `dev tries delete <ref>` (`rm` alias) with `--dry-run`, `--json`, `--yes`, `--permanent`, `--confirm-delete <id>` and `--assume-no-runtime`; `dev tries restore <ref> --from <restored-path>`. [Behavior and confirmation rules](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/).
 
 ---
 
@@ -7157,6 +7319,10 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
 
+## Dashboard lifecycle additions
+
+Dashboard workflows reuse CLI/taskflow policy and defer terminal handoffs until exit. Try removal is explicit disposal, not verified backup-based eviction. Trash uses native macOS/Windows facilities or Linux GIO, fails without supported recycling, and never authorizes permanent fallback. Local Try JSON adds removal identity/method without removing existing fields. See [dashboard actions](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/).
+
 ---
 
 ### Sources and freshness
@@ -7290,6 +7456,10 @@ Current Codex canonical user discovery is additive to the pinned registry's
 legacy paths. Schema/fixture verification does not prove that a running native
 client has loaded the generated configuration. Windows transfer writes remain
 unavailable pending a separately verified privacy/identity adapter.
+
+## Dashboard lifecycle additions
+
+Repository homepage resolution reads local Git only. Try removal journals beside assets are durable operation history; they are neither a disposable cache nor a verified remote-backup receipt. Unknown removal outcomes remain unknown. See [dashboard actions](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/).
 
 ---
 
@@ -8057,6 +8227,10 @@ dev resume <task> --fetch
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
 
 Worktree task 的完成與清理限於自己的 checkout 及符合條件的 runtime，parent agent session 保留。FF 仍會在占用檢查及必要的前景程序確認後更新 canonical base 檔案。詳見[retirement 範圍](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/#task-worktree-scope)。
+
+## Dashboard 生命週期新增功能
+
+Try 明確刪除會保留 catalog identity，本機 location 成為 `evicted`。Trash 與 archive 都保留 bytes，不代表已有備份或回收空間。Task DONE 仍表示已整合，retirement 另行處理。詳見 [Dashboard 操作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/)。
 
 ---
 
@@ -10578,6 +10752,108 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 - [`internal/cli/adopt.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/adopt.go)
 - [`internal/cli/bootstrap.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/bootstrap.go)
 
+## Dashboard 生命週期新增功能
+
+[Dashboard 生命週期操作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/) 說明 task 完成／恢復／retire／recovery、完整 start wizard、Trash 與 repository browser actions。`Ctrl+O` 開啟所選 row 的選單；TASKS 的 `a` 只顯示已完成 tasks。
+
+---
+
+### Dashboard 生命週期操作
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/
+
+> 從 Dashboard 完成與恢復 task、透過系統垃圾桶處理 Try，並開啟 repository 首頁。
+
+## 選擇操作
+
+按 `Ctrl+O` 或右鍵開啟 row actions。TASKS 與 TRY 也可按 Space；REPOS 的
+Space 仍用來展開 linked worktrees。TASKS 的 `a` 是顯示已完成 tasks，並不會
+把 task 標成 done。Checkout 遺失時提供 recovery，不能直接當成完成。
+
+TASKS 的完成、恢復、退休與 recovery 沿用既有 CLI workflows。Dashboard 在
+提示期間暫停，完成或失敗後重新載入。Task ID／revision 檢查會拒絕過期選取。
+`dev sweep --task <id>` 只回報指定 task；加上 `--apply` 後逐項確認可執行的
+建議。`--task` 不能與掃描整批 worktrees 的 sweep modes 合用。
+
+透過 PR 完成 handoff 時保留 HOT／WARM；integration 才寫入 DONE。Retirement
+另行移除合格的 execution state，預設保留 branch，並沿用 taskflow 安全規則。
+
+## 建立與開啟工作
+
+REPOS Enter 只開啟所選 repository，不建立 task。`s`／`d` 開啟完整 start
+wizard，分別預選 worktree／direct。Wizard 詢問 task 與必要的 branch、base、
+next action，最終建立確認前可選 open（預設）或 stay。Reviewed plan 的 base
+必須明確，不能由任意 checked-out branch 推定。
+
+Attach、shell-directory handoff 或外部 retirement coordinator 都在 Dashboard
+釋放 terminal 後才執行。一般完成或取消則返回 Dashboard，不會自動啟動 agent。
+
+## 處理不再需要的 Try
+
+```bash
+dev tries delete <ref> --dry-run
+dev tries delete <ref>
+dev tries delete <id> --permanent --confirm-delete <id>
+```
+
+`rm` 是 `delete` 的 alias。預設移入 macOS Trash、Linux GIO Trash 或 Windows
+Recycle Bin。Helper 缺失、volume 不支援或執行失敗，都不會自動轉為永久刪除。
+Linux removal 另需 kernel／filesystem 提供 statx mount identity，避免將 bind
+mount 誤認為 Try 擁有的子目錄。
+垃圾桶與 archive 一樣，在 bytes 真正被刪除前仍占用空間；helper 不會自動安裝。
+macOS 15+ 優先使用系統 `trash --stopOnError`，舊版則透過不使用 out-pointer
+bridge 的 JXA 呼叫 Foundation。
+
+永久刪除是獨立選項，互動時需輸入 `DELETE <完整 ID>`，scripts 則需明確指定
+`--permanent --confirm-delete <id>`。單獨 `--yes` 只確認 Trash。`--json` 不會
+提示輸入；`--dry-run` 不會刪除。預覽涵蓋 ignored／untracked files 與所有 local
+Git storage，包括 branches、tags、stash；不表示 remote backup 已驗證。
+
+只有本機獨立且已 cataloged 的 active／deprecated Tries 可以處理，也包含
+archived folders。Task claims、live runtime、cwd、nested repositories、
+linked／shared Git、mount boundaries 與不安全路徑都會阻擋刪除。Runtime coverage
+未知時，需要另外明示 `--assume-no-runtime`；不能覆蓋已觀察到的 live session。
+
+Catalog ID、phase、metadata 與其他主機位置保留。本機 location 成為 `evicted`，
+並增加 `removal_id`／`removal_method`。Durable operation JSON 存於 assets 旁的
+`try-removals`，不是 cache，也不是 verified backup receipt。中斷的操作保持
+indeterminate，不會自動重試刪除；若已記錄成功移除，reconciliation 可完成尚未
+寫入的 catalog update。
+
+## 從系統垃圾桶還原
+
+先透過 OS Trash UI 還原原資料夾，再於修改內容前重新關聯：
+
+```bash
+dev tries restore <ref> --from <restored-path>
+```
+
+TRY history 中的操作也提供相同 path prompt。Dev 驗證原 filesystem identity 與
+content inventory，恢復相同 catalog ID；不搜尋垃圾桶，也不能救回永久丟棄的
+bytes。原本的 archive restore 仍使用 `dev tries restore <ref> [--to <path>]`。
+
+## 開啟 repository 首頁
+
+```bash
+dev browse
+dev repo browse api --remote origin
+dev browse --print
+dev repo context
+```
+
+不帶參數時，browse 解析目前 repository，也支援 linked worktree。Remote 依序
+選目前 branch upstream、origin、唯一 remote；仍有歧義時互動選擇，scripts 必須
+指定 `--remote`。`--print` 只印出 HTTPS URL，不提示輸入或開啟瀏覽器。解析只讀
+local Git，不 fetch 或查詢 forge，也不猜測未知 host／SSH alias。
+
+TASKS、REPOS、Git-backed TRY 與 REMOTE 都有 browser actions，開啟後留在
+Dashboard。詳細資訊仍使用 `repo context`；browse 開 repository 首頁，不定位
+特定 branch 或 file。
+
+Trash 操作中斷後，`restore --from` 可明確重新關聯未變更的原資料夾或已還原
+資料夾，不會重試刪除。若系統將資料夾放回原 archive path，location 仍為
+archived；之後再用一般 `tries restore` 回到可見位置。
+
 ---
 
 ### GitHub Flow
@@ -12241,6 +12517,17 @@ dev bootstrap [path...] [flags]
 - `--worktrees` — include linked worktrees in the report
 - `--yes` — with --move --apply, do not confirm each repository
 
+### `dev browse`
+
+Open the repository homepage, or print its URL without opening
+
+```
+dev browse [repo-or-path] [flags]
+```
+
+- `--print` — print the HTTPS URL without opening a browser
+- `--remote` — select a configured Git remote
+
 ### `dev cache`
 
 Inspect and clear regenerable dev caches
@@ -13271,6 +13558,17 @@ List, clone, create and sync repositories
 dev repo
 ```
 
+### `dev repo browse`
+
+Open the repository homepage, or print its URL without opening
+
+```
+dev repo browse [repo-or-path] [flags]
+```
+
+- `--print` — print the HTTPS URL without opening a browser
+- `--remote` — select a configured Git remote
+
 ### `dev repo clone`
 
 Clone a repository and optionally apply a setup preset
@@ -13889,6 +14187,7 @@ dev sweep [flags]
 - `--json` — print the versioned ephemeral-worktree report as JSON
 - `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
 - `--stale-days` — days without relevant activity before an item counts as stale
+- `--task` — limit ordinary recovery suggestions to one exact task ID
 - `--yes` — with --apply, do not confirm each change
 
 ### `dev tries`
@@ -13914,6 +14213,21 @@ Attach a stable Try ID to a visible local path
 ```
 dev tries attach <id> <path>
 ```
+
+### `dev tries delete`
+
+Move a Try to system Trash, or explicitly discard it permanently
+
+```
+dev tries delete <ref> [flags]
+```
+
+- `--assume-no-runtime` — acknowledge unobserved runtime coverage; never overrides observed occupation
+- `--confirm-delete` — confirm permanent data loss for this exact catalog ID
+- `--dry-run` — preview without removing anything
+- `--json` — emit a structured preview/result without prompting
+- `--permanent` — permanently discard all Try contents instead of using Trash
+- `--yes` — approve moving the selected Try to Trash
 
 ### `dev tries deprecate`
 
@@ -13981,12 +14295,13 @@ dev tries reactivate <ref>
 
 ### `dev tries restore`
 
-Restore an archived Try to a visible path
+Restore an archive or reassociate a folder returned from Trash
 
 ```
 dev tries restore <ref> [flags]
 ```
 
+- `--from` — reassociate the original folder after restoring it from system Trash
 - `--to` — restore to this safe path under tries_root
 
 ### `dev tries touch`
@@ -14174,6 +14489,10 @@ entry 建立 plan。原生 scope mapping、stanza 所有權、憑證 reference �
 請見[完整互通流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-interop/)。Skill JSON rows 與 MCP JSON
 envelope 可新增 `interop`、`interop_coverage`；`receipts-only` 不代表原生 client
 已載入或已完成工具認證。
+
+## Dashboard 生命週期新增功能
+
+新增命令：`dev browse`／`dev repo browse [repo-or-path] --remote <name> --print`；`dev sweep --task <id>`；`dev tries delete <ref>`（alias `rm`）支援 `--dry-run`、`--json`、`--yes`、`--permanent`、`--confirm-delete <id>`、`--assume-no-runtime`；`dev tries restore <ref> --from <restored-path>`。[行為與確認規則](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/)。
 
 ---
 
@@ -14498,6 +14817,10 @@ Local env launcher 綁定本機並保留來源，HTTP client 需要自己的 env
 只有明確 prepare 可以執行固定版本的 skills provider，只有 check 初始化 MCP。
 Inventory 新增的 interop receipts 是歷史紀錄，不代表 live health。
 
+## Dashboard 生命週期新增功能
+
+Dashboard workflows 共用 CLI／taskflow 規則，terminal handoff 在退出後執行。Try removal 是明確 disposal，不是已驗證備份的 eviction。Trash 使用 macOS／Windows native facilities 或 Linux GIO；不支援回收時停止，絕不自動永久刪除。Local Try JSON 只增加 removal identity／method，不移除既有 fields。詳見 [Dashboard 操作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/)。
+
 ---
 
 ### 來源與時效
@@ -14632,6 +14955,10 @@ native inventory／CLI 測試與 synthetic MCP server。Skills profile 固定 1.
 Codex 目前的 canonical user discovery 是對固定 registry legacy paths 的額外支援。
 Schema／fixture 驗證不表示正在執行的原生 client 已載入生成設定。
 Windows transfer 寫入在獨立驗證 privacy／identity adapter 前維持不可用。
+
+## Dashboard 生命週期新增功能
+
+Repository 首頁解析只讀 local Git。Assets 旁的 Try removal journals 是 durable operation history，不是 disposable cache 或 verified remote-backup receipt。未知 removal outcome 仍保持 unknown。詳見 [Dashboard 操作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/)。
 
 ---
 

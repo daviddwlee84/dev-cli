@@ -34,6 +34,7 @@ valid experiment names.`,
 		newTriesReactivateCmd(app),
 		newTriesArchiveCmd(app),
 		newTriesRestoreCmd(app),
+		newTriesDeleteCmd(app),
 		newGraduateCmdWithUse(app, "graduate [try]"),
 	)
 	return cmd
@@ -313,12 +314,18 @@ func newTriesArchiveCmd(app *App) *cobra.Command {
 }
 
 func newTriesRestoreCmd(app *App) *cobra.Command {
-	var to string
+	var to, from string
 	cmd := &cobra.Command{
 		Use:   "restore <ref>",
-		Short: "Restore an archived Try to a visible path",
+		Short: "Restore an archive or reassociate a folder returned from Trash",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if from != "" {
+				if to != "" {
+					return fmt.Errorf("--from and --to are alternatives")
+				}
+				return restoreRemovedTry(ctxOf(), app, args[0], from)
+			}
 			service, err := newExperimentService(app)
 			if err != nil {
 				return err
@@ -337,6 +344,7 @@ func newTriesRestoreCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&to, "to", "", "restore to this safe path under tries_root")
+	cmd.Flags().StringVar(&from, "from", "", "reassociate the original folder after restoring it from system Trash")
 	return cmd
 }
 
@@ -370,13 +378,15 @@ type tryJSONExperiment struct {
 }
 
 type tryJSONLocation struct {
-	Host         string                `json:"host"`
-	State        catalog.LocationState `json:"state"`
-	CurrentPath  string                `json:"current_path,omitempty"`
-	RestorePath  string                `json:"restore_path,omitempty"`
-	RealPath     string                `json:"real_path,omitempty"`
-	GitCommonDir string                `json:"git_common_dir,omitempty"`
-	Updated      *string               `json:"updated"`
+	RemovalID     string                `json:"removal_id,omitempty"`
+	RemovalMethod string                `json:"removal_method,omitempty"`
+	Host          string                `json:"host"`
+	State         catalog.LocationState `json:"state"`
+	CurrentPath   string                `json:"current_path,omitempty"`
+	RestorePath   string                `json:"restore_path,omitempty"`
+	RealPath      string                `json:"real_path,omitempty"`
+	GitCommonDir  string                `json:"git_common_dir,omitempty"`
+	Updated       *string               `json:"updated"`
 }
 
 type tryJSONLive struct {
@@ -437,6 +447,7 @@ func makeTryJSONRow(item experiment.Item, host string, measurement sizeMeasureme
 		}
 		if location, ok := item.Entry.LocationFor(host); ok {
 			row.Location = &tryJSONLocation{
+				RemovalID: location.RemovalID, RemovalMethod: location.RemovalMethod,
 				Host: host, State: location.State, CurrentPath: location.CurrentPath,
 				RestorePath: location.RestorePath, RealPath: location.RealPath,
 				GitCommonDir: location.GitCommonDir, Updated: rfc3339Value(location.Updated),

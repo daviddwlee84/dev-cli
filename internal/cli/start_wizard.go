@@ -249,6 +249,12 @@ func runStartWizard(ctx context.Context, app *App, req startRequest) (*startSpec
 			continue
 		}
 
+		if app.startHandoffPrompt {
+			spec.Focus, err = p.confirm("Open the task after creation?", true)
+			if err != nil {
+				return nil, false, err
+			}
+		}
 		rt := app.Runtime()
 		checkout := spec.RepoPath
 		if spec.WorktreePath != "" {

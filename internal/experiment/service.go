@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
+	"github.com/daviddwlee84/dev-cli/internal/desktop"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 )
 
@@ -363,11 +364,14 @@ type CatalogUpdateFunc func(string, func(*catalog.Entry) error) (*catalog.Entry,
 // implementations. It is intentionally small and operation-shaped rather than
 // exposing the Service's internals.
 type Hooks struct {
-	GitRun        GitRunFunc
-	GitDiscover   GitDiscoverFunc
-	GitStatus     GitStatusFunc
-	GitLastCommit GitLastCommitFunc
-	GitWorktrees  GitWorktreesFunc
+	RemovalGuard   func(context.Context, string) (string, error)
+	Trash          func(context.Context, string) error
+	TrashAvailable func() error
+	GitRun         GitRunFunc
+	GitDiscover    GitDiscoverFunc
+	GitStatus      GitStatusFunc
+	GitLastCommit  GitLastCommitFunc
+	GitWorktrees   GitWorktreesFunc
 
 	Rename         RenameFunc
 	MoveWorktree   MoveWorktreeFunc
@@ -397,8 +401,11 @@ type ServiceConfig struct {
 // Service owns all Try policy while delegating persistence and Git porcelain to
 // their focused packages.
 type Service struct {
-	registry *catalog.Registry
-	store    *catalog.Store
+	removalGuard   func(context.Context, string) (string, error)
+	trash          func(context.Context, string) error
+	trashAvailable func() error
+	registry       *catalog.Registry
+	store          *catalog.Store
 
 	reconcileMu sync.Mutex
 	triesRoot   string
@@ -459,6 +466,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 	}
 
 	s := &Service{
+		trash: desktop.Trash, trashAvailable: desktop.TrashAvailable,
 		registry: registry, store: store,
 		triesRoot: triesRoot, projectRoot: projectRoot, host: host,
 		clock: clock, workers: workers,
@@ -479,6 +487,13 @@ func NewService(config ServiceConfig) (*Service, error) {
 }
 
 func applyHooks(service *Service, hooks Hooks) {
+	service.removalGuard = hooks.RemovalGuard
+	if hooks.Trash != nil {
+		service.trash = hooks.Trash
+	}
+	if hooks.TrashAvailable != nil {
+		service.trashAvailable = hooks.TrashAvailable
+	}
 	if hooks.GitRun != nil {
 		service.gitRun = hooks.GitRun
 	}

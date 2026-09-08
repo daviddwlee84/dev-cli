@@ -348,3 +348,7 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
+
+## Dashboard lifecycle additions
+
+Dashboard workflows reuse CLI/taskflow policy and defer terminal handoffs until exit. Try removal is explicit disposal, not verified backup-based eviction. Trash uses native macOS/Windows facilities or Linux GIO, fails without supported recycling, and never authorizes permanent fallback. Local Try JSON adds removal identity/method without removing existing fields. See [dashboard actions](../guides/dashboard-actions.md).

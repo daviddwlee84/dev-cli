@@ -906,6 +906,29 @@ func (s *Service) reconcileMoveIntent(ctx context.Context, snapshot *catalog.Ent
 	if intent == nil || intent.Host != s.host {
 		return nil
 	}
+	if strings.HasPrefix(intent.Operation, "remove-") {
+		return s.store.WithLock(ctx, func() error {
+			current, err := s.store.Get(snapshot.ID)
+			if err != nil {
+				return err
+			}
+			if !moveIntentEqual(current.MoveIntent, intent) {
+				return errors.New("removal intent changed during reconciliation")
+			}
+			id := strings.TrimSuffix(filepath.Base(intent.DestinationPath), ".json")
+			journal, err := s.readRemovalJournal(ctx, id)
+			if err != nil {
+				return err
+			}
+			if journal.Outcome != "removed" || journal.ID != snapshot.ID {
+				return errors.New("removal outcome unknown; inspect the retained operation record; no automatic retry")
+			}
+			if exists, err := pathExists(journal.Source); err != nil || exists {
+				return errors.New("removal source is present or unknown; intent retained")
+			}
+			return s.finalizeRemoval(journal)
+		})
+	}
 	operation := TransitionOperation(intent.Operation)
 	if err := s.validateTransitionContainment(snapshot.ID, operation, intent.SourcePath, intent.DestinationPath); err != nil {
 		return err

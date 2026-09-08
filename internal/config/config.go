@@ -242,7 +242,7 @@ type Tool struct {
 // reservedKeys are the dashboard's own bindings. A tool cannot take one,
 // because losing the ability to quit or move is not a trade anyone wants.
 var reservedKeys = map[string]string{
-	"q": "quit", "j": "down", "k": "up", "g": "top", "G": "bottom",
+	"ctrl+o": "row actions", "q": "quit", "j": "down", "k": "up", "g": "top", "G": "bottom",
 	"h": "previous view", "l": "next view", "tab": "next view",
 	"/": "filter", "r": "refresh", "o": "open", "p": "park",
 	"c": "edit next action", "s": "start a worktree task", "d": "start a direct task",

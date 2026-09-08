@@ -673,3 +673,7 @@ entry 建立 plan。原生 scope mapping、stanza 所有權、憑證 reference �
 請見[完整互通流程](../guides/agent-interop.zh-TW.md)。Skill JSON rows 與 MCP JSON
 envelope 可新增 `interop`、`interop_coverage`；`receipts-only` 不代表原生 client
 已載入或已完成工具認證。
+
+## Dashboard 生命週期新增功能
+
+新增命令：`dev browse`／`dev repo browse [repo-or-path] --remote <name> --print`；`dev sweep --task <id>`；`dev tries delete <ref>`（alias `rm`）支援 `--dry-run`、`--json`、`--yes`、`--permanent`、`--confirm-delete <id>`、`--assume-no-runtime`；`dev tries restore <ref> --from <restored-path>`。[行為與確認規則](../guides/dashboard-actions.md)。
