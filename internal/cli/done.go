@@ -23,7 +23,7 @@ func newDoneCmd(app *App) *cobra.Command {
 	)
 	cmd := &cobra.Command{
 		Use:   "done [task]",
-		Short: "Integrate a finished change stream without destroying its workspace",
+		Short: "Finish a task with optional worktree retirement",
 		Long: `Finish integration while leaving runtime and filesystem cleanup to an
 external coordinator.
 
@@ -38,8 +38,12 @@ For branch/worktree tasks, omitting every mode opens a finish wizard on an
 interactive terminal. A non-interactive caller still gets a report and must
 pass a mode explicitly. Direct tasks need no integration mode.
 
-When interactive fast-forward is blocked, the wizard may close exact
-non-caller Herdr panes whose agents remain idle/done. A dirty canonical
+Parent/canonical agents and workspaces are preserved. An occupied parent blocks
+fast-forward: recheck after handling it independently, choose PR, or cancel.
+The wizard can include exact idle/done task-worktree agent panes in the final
+plan; they close only after final approval. General foreground programs require
+a separate confirmation that FF will change files while they keep running.
+Neither --yes nor --close-unknown supplies this program consent. A dirty canonical
 integration checkout can switch to PR, be discarded under typed DROP
 confirmation, or cancel; unrelated canonical bytes are never auto-committed.
 
@@ -51,8 +55,11 @@ explicit --dirty policy; destructive discard also requires --yes.
 A successful local or externally verified merge records DONE, meaning MERGED
 with cleanup possibly pending. The bare interactive wizard can then preview
 covering runtime/agent state and hand retirement to a freshly revalidated
-external coordinator. Explicit and non-interactive modes still keep the
-runtime, worktree and branch for a later dev retire.`,
+external coordinator. Interactive dev retire shares its pane/process preview
+and requires CLOSE <workspace-id> to terminate listed non-agent programs.
+Background jobs are not inspected. Active agents and protected/mixed workspaces
+remain blockers. Explicit integration modes keep the worktree and branch for
+a later dev retire; selected task-pane closures are reported separately.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			modes := 0
@@ -71,7 +78,7 @@ runtime, worktree and branch for a later dev retire.`,
 				return fmt.Errorf("--delete-branch is cleanup; run dev retire --delete-branch after integration")
 			}
 			if keepWorktree {
-				app.warnf("--keep-worktree is deprecated: dev done always keeps runtime and worktree state")
+				app.warnf("--keep-worktree is deprecated: integration retains the worktree; interactive cleanup is a separate explicit choice")
 			}
 			integration := doneIntegrationNone
 			switch {

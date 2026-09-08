@@ -2,7 +2,7 @@
 description: Understand dev-cli as durable Git history, scoped intent and catalog state, repository quick-note sidecars, disposable worktrees, and replaceable runtimes.
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-08
 ---
 
 # Mental model and lifecycle
@@ -121,3 +121,5 @@ One writer owns a branch at a time. If two machines or agents need to mutate the
 - [`internal/taskflow`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/taskflow)
 - [`internal/flowtui`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/flowtui)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+
+A worktree task scopes completion to its own checkout and eligible runtime. Parent agent sessions stay open; FF may still update canonical base files after occupancy checks and any required foreground-program consent. See [retirement scope](../guides/agent-safe-retirement.md#task-worktree-scope).

@@ -74,6 +74,7 @@ func (s *lifecycleService) observeRetire(ctx context.Context, request Request, r
 	cleanup := retire.Options{
 		CWD: s.cwd, CallerWorkspaceID: s.callerWorkspace, CallerPaneID: s.callerPane,
 		CloseUnknown: options.CloseUnknown, AssumeNoRuntime: options.AssumeNoRuntime, Timeout: options.Timeout,
+		ProcessClosures: options.ProcessClosures.Map(),
 	}
 	observed, err := s.inspectDestructive(ctx, destructiveInspectInput{
 		locator: request.Locator, base: candidate.Base, runtime: rt, rtErr: rtErr, cleanup: cleanup,
@@ -83,7 +84,10 @@ func (s *lifecycleService) observeRetire(ctx context.Context, request Request, r
 	if err != nil {
 		return PlanSpec{}, observed, err
 	}
-	return s.retireSpec(request, record, observed), observed, nil
+	spec := s.retireSpec(request, record, observed)
+	spec.Conditions = append(spec.Conditions, retirementPreviewCondition(options.RuntimeFingerprint, observed.cleanup))
+	spec.Conditions = append(spec.Conditions, retirementIdentityPreviewCondition(options.PreviewAuthority, spec.Authority))
+	return spec, observed, nil
 }
 
 func (s *lifecycleService) retireSpec(request Request, record task.Record, observed destructiveObservation) PlanSpec {
@@ -647,6 +651,7 @@ func (e *executionState) executeRetire(ctx context.Context, record task.Record, 
 				inspection, closeErr := e.service.closeAndWait(ctx, baseline.runtime, baseline.checkout, retire.Options{
 					CWD: e.service.cwd, CallerWorkspaceID: e.service.callerWorkspace, CallerPaneID: e.service.callerPane,
 					CloseUnknown: options.CloseUnknown, AssumeNoRuntime: options.AssumeNoRuntime, Timeout: options.Timeout,
+					ProcessClosures: options.ProcessClosures.Map(),
 				})
 				if closeErr != nil {
 					return "runtime closure may be partial", closeErr
@@ -769,7 +774,13 @@ func (e *executionState) reinspectRetire(ctx context.Context, record task.Record
 		}
 		return destructiveObservation{}, staleTaskRevision(record.Revision, actual, "task changed at a retirement boundary")
 	}
-	spec, fresh, err := e.service.observeRetire(ctx, e.plan.Request, *current, e.tx.ListRecords)
+	request := e.plan.Request
+	if allowRuntimeChange {
+		options := request.Options.(RetireOptions)
+		options.RuntimeFingerprint = "" // the declared close must now prove empty coverage
+		request.Options = options
+	}
+	spec, fresh, err := e.service.observeRetire(ctx, request, *current, e.tx.ListRecords)
 	if err != nil {
 		return fresh, err
 	}

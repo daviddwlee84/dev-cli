@@ -2,7 +2,7 @@
 description: 以持久 Git history、分層 intent/catalog state、repository quick-note sidecar、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-08
 lang: zh-TW
 ---
 
@@ -123,3 +123,5 @@ dev resume <task> --fetch
 - [`internal/cli/done.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/done.go)
 - [`internal/cli/retire.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/retire.go)
 - [`internal/cli/sweep.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/sweep.go)
+
+Worktree task 的完成與清理限於自己的 checkout 及符合條件的 runtime，parent agent session 保留。FF 仍會在占用檢查及必要的前景程序確認後更新 canonical base 檔案。詳見[retirement 範圍](../guides/agent-safe-retirement.zh-TW.md#task-worktree-scope)。

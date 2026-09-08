@@ -9,7 +9,6 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
-	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 )
@@ -25,49 +24,61 @@ func recoverDoneBlockers(
 	opts doneOptions,
 ) (flow.Plan, doneSelection, bool, error) {
 	current := plan
-	for _, target := range []struct {
-		condition flow.ConditionCode
-		path      string
-		label     string
-	}{
-		{flow.ConditionAgentOccupancy, current.Locator.CheckoutPath, "task checkout"},
-		{flow.ConditionIntegrationOccupancy, current.Locator.RepoPath, "canonical integration checkout"},
-	} {
-		condition, ok := doneCondition(current, target.condition)
-		if !ok || condition.Verdict == flow.VerdictMet {
-			continue
+	for {
+		condition, blocked := doneCondition(current, flow.ConditionIntegrationOccupancy)
+		if !blocked || condition.Verdict == flow.VerdictMet {
+			break
 		}
-		changed, err := offerIdleAgentPaneClosure(ctx, app, p, selected, target.path, target.label)
+		fmt.Fprintf(app.Out, "\nParent checkout is preserved: %s\n  %s\n", config.Contract(current.Locator.RepoPath), condition.Evidence)
+		fmt.Fprintln(app.Out, "  dev done will not close parent agents or tabs. Handle them independently through Herdr.")
+		if occupancy, err := doneOccupancy(ctx, app, selected, current.Locator.RepoPath); err == nil {
+			renderForegroundOccupancy(app, occupancy, "KEEP")
+		}
+		choice, err := p.choice("Parent occupied (r=recheck, p=PR, q=cancel)", "cancel", "recheck (r), pull request (p), cancel (q)", map[string]string{"r": "recheck", "recheck": "recheck", "p": "pr", "pr": "pr", "q": "cancel", "cancel": "cancel"})
+		if canceledDone(app, err, choice == "cancel") {
+			return current, selection, true, nil
+		}
 		if err != nil {
 			return current, selection, false, err
 		}
-		if !changed {
-			fresh, planErr := session.plan(ctx, doneActionOptions(selected, selection, opts))
-			if planErr != nil {
-				return current, selection, false, planErr
-			}
-			if changed := changedDoneNonRuntimeAuthority(current, fresh); changed != "" {
-				return current, selection, false, presentDoneApplyError(flow.Result{}, &flow.StalePlanError{
-					ExpectedPlanID: current.PlanID, ActualPlanID: fresh.PlanID,
-					Reason: changed + " changed while refreshing agent occupancy",
-				})
-			}
-			current = fresh
-			condition, stillBlocked := doneCondition(current, target.condition)
-			if stillBlocked && condition.Verdict != flow.VerdictMet {
-				return current, selection, false, nil
-			}
-			continue
+		if choice == "pr" {
+			selection.Integration = doneIntegrationPR
+			selection.IntegrationTargetPolicy = flow.IntegrationTargetFail
+			selection.Runtime = flow.CompletionRuntimeOptions{}
 		}
 		fresh, err := session.plan(ctx, doneActionOptions(selected, selection, opts))
 		if err != nil {
 			return current, selection, false, err
 		}
 		if changed := changedDoneNonRuntimeAuthority(current, fresh); changed != "" {
-			return current, selection, false, presentDoneApplyError(flow.Result{}, &flow.StalePlanError{
-				ExpectedPlanID: current.PlanID, ActualPlanID: fresh.PlanID,
-				Reason: changed + " changed while closing an approved idle agent pane",
-			})
+			return current, selection, false, presentDoneApplyError(flow.Result{}, &flow.StalePlanError{Reason: changed + " changed while refreshing parent occupancy"})
+		}
+		current = fresh
+	}
+	if condition, blocked := doneCondition(current, flow.ConditionAgentOccupancy); blocked && condition.Verdict != flow.VerdictMet {
+		panes, err := offerIdleAgentPaneClosure(ctx, app, p, selected, current.Locator.CheckoutPath, "task checkout")
+		if err != nil {
+			return current, selection, false, err
+		}
+		if len(panes) == 0 {
+			return current, selection, false, nil
+		}
+		selection.Runtime.CloseTaskPanes = flow.NewFields(panes)
+		fresh, err := replanDone(ctx, session, current, doneActionOptions(selected, selection, opts))
+		if err != nil {
+			return current, selection, false, err
+		}
+		current = fresh
+	}
+	if condition, blocked := doneCondition(current, flow.ConditionForegroundPrograms); blocked && condition.Verdict != flow.VerdictMet {
+		consent, canceled, err := confirmDoneForegroundPrograms(ctx, app, p, selected, current)
+		if err != nil || canceled {
+			return current, selection, canceled, err
+		}
+		selection.Runtime.ProgramConsent = flow.NewFields(consent)
+		fresh, err := replanDone(ctx, session, current, doneActionOptions(selected, selection, opts))
+		if err != nil {
+			return current, selection, false, err
 		}
 		current = fresh
 	}
@@ -127,7 +138,7 @@ func recoverDoneBlockers(
 	}
 	choice, promptErr := p.choice(prompt, "cancel", description, choices)
 	if errors.Is(promptErr, errPromptCanceled) || choice == "cancel" {
-		fmt.Fprintln(app.Out, "Integration canceled; any approved pane closures remain complete.")
+		fmt.Fprintln(app.Out, "Integration canceled; no panes were closed and nothing was changed.")
 		return current, selection, true, nil
 	}
 	if promptErr != nil {
@@ -151,76 +162,30 @@ func recoverDoneBlockers(
 	return fresh, selection, false, nil
 }
 
-func offerIdleAgentPaneClosure(
-	ctx context.Context,
-	app *App,
-	p *prompter,
-	selected task.Task,
-	checkout, label string,
-) (bool, error) {
-	rt := runtimeForTask(app, &selected)
-	if rt.Name() != "herdr" {
-		return false, nil
-	}
-	closer, ok := rt.(runtime.PaneCloser)
-	if !ok {
-		return false, nil
-	}
-	caller, err := callerPaneID(ctx, rt)
+func offerIdleAgentPaneClosure(ctx context.Context, app *App, p *prompter, selected task.Task, checkout, label string) (map[string]string, error) {
+	occupancy, err := doneOccupancy(ctx, app, selected, checkout)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	agents, err := checkoutAgentActivities(ctx, rt, checkout, caller)
-	if err != nil || len(agents) == 0 {
-		return false, err
-	}
-	for _, agent := range agents {
-		if agent.Status != "idle" && agent.Status != "done" {
-			return false, nil
+	panes := flow.CloseableTaskPanes(selected.EffectiveMode(), occupancy)
+	for _, agent := range occupancy.Agents {
+		if agent.Blocking && panes[agent.Activity.PaneID] == "" {
+			return nil, nil
 		}
 	}
-	sort.Slice(agents, func(i, j int) bool { return agents[i].PaneID < agents[j].PaneID })
-	fmt.Fprintf(app.Out, "\n%s\n", app.outStyle().title("Idle agent blocker · "+label))
-	for _, agent := range agents {
-		name := agent.Agent
-		if agent.Name != "" {
-			name = agent.Name
-		}
-		fmt.Fprintf(app.Out, "  %s  %s · %s · %s\n", agent.PaneID, name, agent.Status, config.Contract(agent.CWD))
+	if len(panes) == 0 {
+		return nil, nil
 	}
-	confirmed, promptErr := p.confirm(fmt.Sprintf("Close %d exact idle/done Herdr pane(s) and recheck?", len(agents)), false)
-	if errors.Is(promptErr, errPromptCanceled) || !confirmed {
-		return false, nil
+	fmt.Fprintf(app.Out, "\nIdle agent blocker · %s\n", label)
+	renderForegroundOccupancy(app, occupancy, "CANDIDATE")
+	confirmed, err := p.confirm(fmt.Sprintf("Include closure of these %d exact idle/done TASK agent pane(s) in the final plan? Their sessions will end only after final approval", len(panes)), false)
+	if errors.Is(err, errPromptCanceled) || !confirmed {
+		return nil, nil
 	}
-	if promptErr != nil {
-		return false, promptErr
+	if err != nil {
+		return nil, err
 	}
-	for _, expected := range agents {
-		fresh, err := checkoutAgentActivities(ctx, rt, checkout, caller)
-		if err != nil {
-			return false, err
-		}
-		matched := false
-		for _, candidate := range fresh {
-			if candidate.PaneID != expected.PaneID {
-				continue
-			}
-			matched = true
-			if candidate.Agent != expected.Agent || candidate.Name != expected.Name || candidate.Status != expected.Status ||
-				candidate.CWD != expected.CWD || candidate.Status != "idle" && candidate.Status != "done" {
-				return false, fmt.Errorf("agent pane %s changed while its close prompt was open", expected.PaneID)
-			}
-			break
-		}
-		if !matched {
-			return false, fmt.Errorf("agent pane %s disappeared while its close prompt was open", expected.PaneID)
-		}
-		if err := closer.ClosePane(ctx, expected.PaneID); err != nil {
-			return false, fmt.Errorf("close idle Herdr pane %s: %w", expected.PaneID, err)
-		}
-		fmt.Fprintf(app.Out, "   closed     Herdr pane %s\n", expected.PaneID)
-	}
-	return true, nil
+	return panes, nil
 }
 
 func changedDoneNonRuntimeAuthority(previous, fresh flow.Plan) string {

@@ -2,7 +2,7 @@
 description: Run a dev-cli change stream through start, park, resume, review or integration, and conservative cleanup.
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-08
 ---
 
 # Change-stream workflow
@@ -144,9 +144,12 @@ The wizard runs in up to four steps:
 Passing `--ff` or `--pr` up front answers step 3 and keeps the compatibility behavior: explicit/non-interactive completion does not enter step 4. A final integration summary lists the dirty action and integration mode before anything runs. Cleanup is a separate post-MERGED choice; cancel or EOF there means keep, not rollback. If checkout, branch, task, runtime, or agent evidence changes while either plan is open, dev refuses the stale cleanup and leaves the task DONE.
 
 When interactive fast-forward is blocked before integration, the wizard handles
-two narrow recovery cases instead of returning immediately. It can close an
-exact non-caller Herdr pane only while the same recognized agent remains
-`idle`/`done`; active, blocked, waiting, or unknown status still fails closed.
+the task scope explicitly. Parent agents stay open and block FF with recheck,
+PR, or cancel. Exact idle/done task-worktree panes may be selected for closure
+only in the final Apply. General foreground programs need separate consent to
+FF file changes while they keep running. Both interactive cleanup entrances
+require `CLOSE <workspace-id>` before terminating known programs; background
+jobs are not inspected. See [scope and process rules](agent-safe-retirement.md#task-worktree-scope).
 For a dirty canonical checkout it lists every path and offers PR handoff,
 exact stash+restore, typed-`DROP` discard, or cancel. Agent artifacts are marked
 in the path list. Stash+restore captures staged, unstaged and non-ignored

@@ -9,6 +9,8 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
+	"github.com/daviddwlee84/dev-cli/internal/retire"
+	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 	"github.com/spf13/cobra"
@@ -37,7 +39,16 @@ runtime closure, revalidates Git state, and only then removes a linked worktree
 without force. A task is deleted only after every requested cleanup step works.
 
 Unknown runtime status fails closed. An external coordinator may acknowledge it
-with --close-unknown; working, blocked and waiting agents are never overridden.`,
+with --close-unknown; working, blocked and waiting agents are never overridden.
+
+Interactive linked-worktree retirement lists workspace/tab/pane identities,
+agent states and foreground programs before final approval. Non-agent programs
+require typing CLOSE <workspace-id>; --close-unknown does not authorize known
+program termination. Non-interactive calls requiring this approval stop.
+Background jobs are not inspected. Parent/canonical and other-checkout Herdr
+workspaces stay open, even when a pane has changed into the target directory.
+A managed worktree's caller-owned Herdr workspace can be handed to a fresh
+external coordinator that waits for this command to exit into its shell.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ctx := ctxOf()
@@ -45,14 +56,41 @@ with --close-unknown; working, blocked and waiting agents are never overridden.`
 			if err != nil {
 				return err
 			}
-			if target.Task != nil {
-				return retireTaskWithTaskflow(ctx, app, target.Task, flow.RetireOptions{
-					CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime,
-					DeleteBranch: deleteBranch, Timeout: timeout,
-				}, cmd.Flags().Changed("delete-branch") && deleteBranch)
+			options := flow.RetireOptions{CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, DeleteBranch: deleteBranch, Timeout: timeout}
+			if app.interactive() && (target.Task == nil || target.Task.State == task.Done && target.Task.EffectiveMode() == task.ModeWorktree && target.Task.WorktreePath != "") {
+				path := target.Path
+				var rt runtime.Runtime
+				if target.Task != nil {
+					path = target.Task.WorktreePath
+					rt = runtimeForTask(app, target.Task)
+				} else {
+					rt = app.Runtime()
+				}
+				options.PreviewAuthority, err = captureRetirementAuthority(ctx, app, target, options)
+				if err != nil {
+					return err
+				}
+				preview, err := retire.InspectForExternalCoordinator(ctx, rt, path, retire.Options{CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime})
+				if err != nil {
+					return err
+				}
+				if target.Task != nil {
+					fmt.Fprintf(app.Out, "Retire task %s · base %s\n", target.Task.ID, target.Task.Base)
+				}
+				renderRetirementPreview(app, rt, preview)
+				var canceled bool
+				options, preview, canceled, err = confirmRetirement(ctx, app, newPrompter(app), rt, preview, options)
+				if err != nil || canceled {
+					return err
+				}
+				if target.Task != nil && rt.Name() == "herdr" && preview.CallerContained && len(preview.Sessions) > 0 {
+					return launchExternalRetireCoordinator(ctx, app, rt, *target.Task, preview, deleteBranch, options.CloseUnknown, options.ProcessClosures.Map(), options.PreviewAuthority)
+				}
 			}
-			return retireUnmanagedPathCompatibility(ctx, app, target.Path, closeUnknown,
-				assumeNoRuntime, deleteBranch, timeout)
+			if target.Task != nil {
+				return retireTaskWithTaskflow(ctx, app, target.Task, options, cmd.Flags().Changed("delete-branch") && deleteBranch)
+			}
+			return retireUnmanagedPathWithOptions(ctx, app, target.Path, options)
 		},
 	}
 	f := cmd.Flags()
@@ -175,6 +213,10 @@ func retireUnmanagedPathCompatibility(
 	closeUnknown, assumeNoRuntime, deleteBranch bool,
 	timeout time.Duration,
 ) error {
+	return retireUnmanagedPathWithOptions(ctx, app, path, flow.RetireOptions{CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, DeleteBranch: deleteBranch, Timeout: timeout})
+}
+
+func retireUnmanagedPathWithOptions(ctx context.Context, app *App, path string, options flow.RetireOptions) error {
 	repository, err := gitx.Discover(ctx, path)
 	if err != nil {
 		return fmt.Errorf("resolve worktree %s: %w", config.Contract(path), err)
@@ -191,9 +233,10 @@ func retireUnmanagedPathCompatibility(
 		return fmt.Errorf("cannot prove unmanaged retirement without an explicit repository default branch")
 	}
 	execution, err := executeNonTaskLifecycle(ctx, app, locator, flow.RemoveCheckoutOptions{
-		RequireContained: true, ContainmentBase: base, DeleteContainedBranch: deleteBranch,
-		CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, Timeout: timeout,
-	}, deleteBranch)
+		RequireContained: true, ContainmentBase: base, DeleteContainedBranch: options.DeleteBranch,
+		CloseUnknown: options.CloseUnknown, AssumeNoRuntime: options.AssumeNoRuntime, Timeout: options.Timeout,
+		ProcessClosures: options.ProcessClosures, RuntimeFingerprint: options.RuntimeFingerprint, PreviewAuthority: options.PreviewAuthority,
+	}, options.DeleteBranch)
 	if err != nil {
 		return err
 	}

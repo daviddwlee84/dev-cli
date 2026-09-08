@@ -58,6 +58,7 @@ func (s *lifecycleService) observeRemoveCheckout(ctx context.Context, request Re
 	cleanup := retire.Options{
 		CWD: s.cwd, CallerWorkspaceID: s.callerWorkspace, CallerPaneID: s.callerPane,
 		CloseUnknown: options.CloseUnknown, AssumeNoRuntime: options.AssumeNoRuntime, Timeout: options.Timeout,
+		ProcessClosures: options.ProcessClosures.Map(),
 	}
 	observed, err := s.inspectDestructive(ctx, destructiveInspectInput{
 		locator: request.Locator, base: options.ContainmentBase,
@@ -68,7 +69,10 @@ func (s *lifecycleService) observeRemoveCheckout(ctx context.Context, request Re
 	if err != nil {
 		return PlanSpec{}, observed, err
 	}
-	return s.removeCheckoutSpec(request, observed), observed, nil
+	spec := s.removeCheckoutSpec(request, observed)
+	spec.Conditions = append(spec.Conditions, retirementPreviewCondition(options.RuntimeFingerprint, observed.cleanup))
+	spec.Conditions = append(spec.Conditions, retirementIdentityPreviewCondition(options.PreviewAuthority, spec.Authority))
+	return spec, observed, nil
 }
 
 func (s *lifecycleService) runtimeForUnmanaged() (runtime.Runtime, error) {
@@ -476,6 +480,7 @@ func (e *executionState) executeRemoveCheckout(ctx context.Context, baseline des
 				inspection, closeErr := e.service.closeAndWait(ctx, baseline.runtime, baseline.checkout, retire.Options{
 					CWD: e.service.cwd, CallerWorkspaceID: e.service.callerWorkspace, CallerPaneID: e.service.callerPane,
 					CloseUnknown: options.CloseUnknown, AssumeNoRuntime: options.AssumeNoRuntime, Timeout: options.Timeout,
+					ProcessClosures: options.ProcessClosures.Map(),
 				})
 				if closeErr != nil {
 					return "runtime closure may be partial", closeErr
@@ -551,7 +556,13 @@ func (e *executionState) executeRemoveCheckout(ctx context.Context, baseline des
 }
 
 func (e *executionState) reinspectRemoveCheckout(ctx context.Context, baseline destructiveObservation, allowDiscard, allowRuntimeChange bool) (destructiveObservation, error) {
-	spec, fresh, err := e.service.observeRemoveCheckout(ctx, e.plan.Request, e.tx.ListRecords)
+	request := e.plan.Request
+	if allowRuntimeChange {
+		options := request.Options.(RemoveCheckoutOptions)
+		options.RuntimeFingerprint = ""
+		request.Options = options
+	}
+	spec, fresh, err := e.service.observeRemoveCheckout(ctx, request, e.tx.ListRecords)
 	if err != nil {
 		return fresh, err
 	}

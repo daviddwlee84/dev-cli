@@ -2,7 +2,7 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-03
+verified_on: 2026-09-08
 ---
 
 # Commands and configuration
@@ -420,7 +420,7 @@ A dirty checkout is handled by `--dirty <auto|fail|commit|discard>` (default `au
 non-interactive `--dirty discard` and otherwise skips the interactive
 confirmation step. `--push` pushes the branch or base selected by the
 integration mode. Successful local or externally verified integration records
-DONE/MERGED while always retaining the runtime, worktree, and branch for a
+DONE/MERGED while retaining the worktree and branch for a
 separate `dev retire`; `--keep-worktree` remains only as a no-op compatibility
 warning, while `--delete-branch` fails with guidance to use
 `dev retire --delete-branch`. `--merged` can use
@@ -432,9 +432,12 @@ choice: keep, retire while keeping the branch, or retire and delete the
 contained branch. It previews covering runtime panes and agent states first.
 Caller-owned Herdr workspaces are handed to a fresh external coordinator;
 explicit modes and non-interactive invocations continue to stop at DONE.
-Before integration, the interactive wizard may also close exact non-caller
-Herdr panes whose agents remain idle/done, or resolve a dirty canonical target
-by switching to PR, selecting a typed-`DROP` guarded discard, or canceling.
+Parent agents remain open and block FF with recheck/PR/cancel. Only exact
+idle/done task-worktree panes may close under final Apply approval. General
+foreground programs require separate FF file-change consent; both interactive
+cleanup entrances require `CLOSE <workspace-id>` for known program termination.
+Background jobs are not inspected. A dirty canonical target still offers PR,
+stash+restore, typed `DROP`, or cancel. See [retirement scope](../guides/agent-safe-retirement.md#task-worktree-scope).
 
 ## Configuration
 

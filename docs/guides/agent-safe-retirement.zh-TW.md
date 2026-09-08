@@ -2,7 +2,7 @@
 description: 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。
 authority: project
 status: stable
-verified_on: 2026-09-03
+verified_on: 2026-09-08
 lang: zh-TW
 ---
 
@@ -31,7 +31,7 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 |---|---|
 | `dev prepare --session <provider:uuid> --plan <path>` | 在不關閉目前執行中 agent 的情況下，arm post-writer artifact finalization。Product changes 必須已先 commit；transcript 本身刻意尚未 stage。 |
 | `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | 在 writer 停止後，commit 唯一 exact、stable 的 transcript。`--if-pending` 在沒有對應 armed intent 時靜默 no-op；`--writer-stopped` 確認外層 wrapper 已 return。 |
-| `dev done --ff` | 把 task branch rebase 到其 base 上並在本機 fast-forward。記錄為 MERGED；不會關閉 runtime、移除 worktree 或刪除 branch。 |
+| `dev done --ff` | 把 task branch rebase 到其 base 上並在本機 fast-forward。記錄為 MERGED，保留 worktree/branch；明確選定的 task pane 關閉另行記錄，parent 保留。 |
 | `dev done --pr` | Push branch，並透過可用的 forge CLI 開啟 pull/merge request。Task 保持在 review 狀態，不是 MERGED。 |
 | `dev done --merged --base-ref <ref>` | 驗證某個已在外部 merge 的 branch 是否被 `<ref>` 包含，並記錄為 MERGED。 |
 | `dev done --merged --base-ref <ref> --confirm-squash <merge-commit>` | 同上，但用於 squash merge：attest（斷言）已證明被 `<ref>` 包含的該 commit 代表這條 feature branch。這是 dev 無法自行驗證的 operator assertion。 |
@@ -234,3 +234,34 @@ fatal: not a git repository (or any of the parent directories): .git
 - [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
 - [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
 - [`internal/gitx/transactions.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/gitx/transactions.go)
+
+## Task worktree scope
+
+Worktree 模式的 `dev start --focus -t <name>` 會建立 linked checkout；`--focus`
+只負責切換焦點。完成該 task 會保留 parent／canonical agent session 與其他 task
+的 tabs。Parent 有任何狀態的 recognized agent 都會阻擋 FF：先獨立透過 Herdr
+處理再重新檢查、改走 PR，或取消。若 integration 已證明完成而只剩 retirement，
+parent agent 不會阻擋獨立 child worktree 的清理。
+
+Interactive finish plan 可以選擇關閉 **task worktree** 中 exact idle/done agent
+pane，但最後核可 Apply 前不會關閉任何 pane。Parent、其他 checkout、mixed 或
+無法確認歸屬的 Herdr workspace 都會保留，即使其中 pane 已切換到目標目錄。
+這些 workspace 仍有 pane 使用 worktree 時，retire 會阻擋並列出須保留的 pane。
+Working／blocked／waiting agent 仍不可強制關閉。一般前景程序（編輯器、server、
+測試指令）則需要另外確認 FF 將更新畫面所列 checkout 的檔案，程序仍繼續執行。
+`--yes` 不提供這項授權；需要此確認的 non-interactive 呼叫會停止。
+
+Interactive `dev done` cleanup 與獨立 `dev retire` 共用預覽，列出目標、保留資源、
+workspace／tab／pane ID、agent 狀態，以及前景程序名稱、PID、目錄。終止已知的
+非 agent 程序，必須對每個受影響 workspace 輸入 `CLOSE <workspace-id>`，再核可
+最後的 retirement。`--close-unknown` 不授權終止已知程序。只有證明 shell 位於前景
+才會這樣標示；觀測失敗顯示 unknown，不冒充 idle。Herdr 提供前景資訊；其他
+backend 維持原有明確標示的 unknown-runtime 政策。**背景 jobs 未檢查**，關閉
+terminal 可能一併停止它們。畫面不輸出完整 argv 或環境變數。
+
+授權綁定精確 task／checkout、terminal topology 與程序 fingerprint。程序替換、
+新增 tab 或移動 pane 都需要重新預覽。單次使用的 version-2 coordinator handoff
+會等待本次 dev PID 結束，並驗證原 pane 已回到前景 shell；新程序不會繼承 caller
+豁免。舊 handoff 需要重建。Apply 前最後取消不產生變更；開始執行後若失敗，會
+如實列出已完成的關閉及保留資源。Raw Git／Herdr 操作仍在 dev 的鎖與再驗證
+保證之外。

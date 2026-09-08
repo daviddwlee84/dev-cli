@@ -33,6 +33,8 @@ type OccupancyOptions struct {
 	CallerWorkspaceID string
 	CallerPaneID      string
 	CloseUnknown      bool
+	InspectProcesses  bool
+	CallerPID         int
 }
 
 // OccupancyObservation distinguishes an observed empty inventory from evidence
@@ -133,6 +135,17 @@ func InspectOccupancy(ctx context.Context, rt Runtime, target string, opts Occup
 		result.SessionList.Err = listErr
 	} else {
 		for _, observed := range sessions {
+			if opts.InspectProcesses {
+				observed.Panes = append([]Pane(nil), observed.Panes...)
+				// Probe only sessions covering the target; unrelated programs are
+				// outside this action's scope.
+				covering, _, _ := classifyOccupancySession(ctx, checkout, observed, opts.Profile)
+				if len(covering) > 0 {
+					for i, pane := range observed.Panes {
+						observed.Panes[i] = observePaneProcess(ctx, rt, pane, result.CallerPaneID, opts.CallerPID)
+					}
+				}
+			}
 			covering, mixed, classifyErr := classifyOccupancySession(ctx, checkout, observed, opts.Profile)
 			if classifyErr != nil {
 				result.SessionCoverageErr = classifyErr
@@ -273,6 +286,13 @@ func classifyOccupancySession(ctx context.Context, target checkoutIdentity, sess
 	var covering, mixed []Pane
 	for _, pane := range panes {
 		paths := []string{pane.CWD}
+		if pane.Process != nil {
+			for _, process := range pane.Process.Processes {
+				if process.CWD != "" {
+					paths = append(paths, process.CWD)
+				}
+			}
+		}
 		if pane.ShellCWD != "" && pane.ShellCWD != pane.CWD {
 			paths = append(paths, pane.ShellCWD)
 		}

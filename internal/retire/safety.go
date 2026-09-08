@@ -47,13 +47,16 @@ type Options struct {
 	AssumeNoRuntime   bool
 	PollInterval      time.Duration
 	Timeout           time.Duration
+	// Exact pane fingerprints explicitly approved in an interactive preview.
+	ProcessClosures map[string]string
 }
 
 // Session is one runtime session that currently covers the target checkout.
 type Session struct {
-	Runtime runtime.Session
-	Panes   []runtime.Pane
-	Mixed   []runtime.Pane
+	Runtime    runtime.Session
+	Panes      []runtime.Pane
+	Mixed      []runtime.Pane
+	Protection string
 }
 
 // Inspection is a fresh view of every runtime surface covering a checkout.
@@ -66,6 +69,7 @@ type Inspection struct {
 	ActiveSessions  []string
 	RuntimeUnknown  bool
 	CallerContained bool
+	ProcessSessions []string
 }
 
 // Ready reports whether destructive cleanup may proceed.
@@ -111,6 +115,7 @@ func inspect(ctx context.Context, rt runtime.Runtime, target string, opts Option
 		CallerWorkspaceID: opts.CallerWorkspaceID,
 		CallerPaneID:      opts.CallerPaneID,
 		CloseUnknown:      opts.CloseUnknown,
+		InspectProcesses:  true,
 	})
 	if err != nil {
 		return Inspection{}, fmt.Errorf("inspect retirement occupancy: %w", err)
@@ -157,11 +162,16 @@ func inspect(ctx context.Context, rt runtime.Runtime, target string, opts Option
 		return Inspection{}, fmt.Errorf("list %s recognized agents: %w", evidence.Backend, evidence.AgentActivityList.Err)
 	}
 	for _, observed := range evidence.Sessions {
+		protection := runtime.WorkspaceProtection(observed.Runtime, evidence.Target)
 		result.Sessions = append(result.Sessions, Session{
-			Runtime: observed.Runtime,
-			Panes:   observed.Panes,
-			Mixed:   observed.Mixed,
+			Runtime:    observed.Runtime,
+			Panes:      observed.Panes,
+			Mixed:      observed.Mixed,
+			Protection: protection,
 		})
+		if protection != "" {
+			result.Blockers = append(result.Blockers, fmt.Sprintf("workspace %s is preserved: %s", observed.Runtime.Handle, protection))
+		}
 		if observed.IsCaller {
 			result.CallerContained = true
 			if !externalCoordinator {
@@ -173,8 +183,12 @@ func inspect(ctx context.Context, rt runtime.Runtime, target string, opts Option
 			result.Blockers = append(result.Blockers,
 				fmt.Sprintf("runtime %s also contains %d pane(s) outside the target", observed.Runtime.Handle, len(observed.Mixed)))
 		}
-		for _, status := range coveringAgentStatuses(observed.Panes, observed.Runtime.AgentStatus) {
-			appendAgentStatusBlocker(&result, observed.Runtime.Handle, status, opts.CloseUnknown)
+		if _, detailed := rt.(runtime.PaneProcessInspector); detailed {
+			inspectForegroundActivity(&result, observed, opts)
+		} else {
+			for _, status := range coveringAgentStatuses(observed.Panes, observed.Runtime.AgentStatus) {
+				appendAgentStatusBlocker(&result, observed.Runtime.Handle, status, opts.CloseUnknown)
+			}
 		}
 	}
 	for _, agent := range evidence.Agents {
@@ -285,6 +299,10 @@ func CloseAndWait(ctx context.Context, rt runtime.Runtime, target string, opts O
 	}
 	deadline := time.Now().Add(timeout)
 	closed := make(map[string]bool)
+	approved := make(map[string]string)
+	for _, session := range inspection.Sessions {
+		approved[session.Runtime.Handle] = runtime.WorkspaceFingerprint(session.Runtime)
+	}
 	for {
 		fresh, inspectErr := Inspect(ctx, rt, inspection.Target, opts)
 		if inspectErr != nil {
@@ -306,6 +324,9 @@ func CloseAndWait(ctx context.Context, rt runtime.Runtime, target string, opts O
 			handle := session.Runtime.Handle
 			if closed[handle] {
 				continue
+			}
+			if approved[handle] != runtime.WorkspaceFingerprint(session.Runtime) {
+				return fresh, fmt.Errorf("retirement plan is stale: workspace %s topology or foreground processes changed", handle)
 			}
 			if err := rt.Close(ctx, handle); err != nil {
 				return inspection, fmt.Errorf("close %s runtime %s: %w", rt.Name(), handle, err)
@@ -423,6 +444,7 @@ func dedupe(inspection Inspection) Inspection {
 	inspection.Blockers = out
 	inspection.UnknownSessions = uniqueSorted(inspection.UnknownSessions)
 	inspection.ActiveSessions = uniqueSorted(inspection.ActiveSessions)
+	inspection.ProcessSessions = uniqueSorted(inspection.ProcessSessions)
 	return inspection
 }
 
@@ -446,11 +468,11 @@ func (i Inspection) Fingerprint() string {
 	sessions := append([]Session(nil), i.Sessions...)
 	sort.Slice(sessions, func(a, b int) bool { return sessions[a].Runtime.Handle < sessions[b].Runtime.Handle })
 	for _, session := range sessions {
-		parts = append(parts, session.Runtime.Handle, session.Runtime.Label, session.Runtime.AgentStatus)
+		parts = append(parts, runtime.WorkspaceFingerprint(session.Runtime), session.Runtime.AgentStatus, session.Protection)
 		panes := append([]runtime.Pane(nil), session.Panes...)
 		sort.Slice(panes, func(a, b int) bool { return panes[a].ID < panes[b].ID })
 		for _, pane := range panes {
-			parts = append(parts, pane.ID, pane.CWD, pane.ShellCWD, pane.Agent, pane.AgentStatus, pane.AgentSession)
+			parts = append(parts, runtime.PaneFingerprint(pane))
 		}
 		mixed := append([]runtime.Pane(nil), session.Mixed...)
 		sort.Slice(mixed, func(a, b int) bool { return mixed[a].ID < mixed[b].ID })

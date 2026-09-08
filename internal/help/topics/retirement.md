@@ -13,7 +13,8 @@ Use three separate milestones:
    can provide the same durable proof without staging during teardown.
 2. **MERGED** — `dev done --ff`, or external-merge verification with
    `dev done --merged --base-ref <ref>`, records DONE. Explicit and
-   non-interactive completion keeps runtime/worktree/branch. Bare interactive
+   non-interactive completion keeps worktree/branch; selected interactive task
+   pane closures are reported separately. Bare interactive
    completion may continue into a separately confirmed cleanup preview.
 3. **RETIRED** — from outside the target workspace run `dev retire`. It closes
    eligible runtime sessions, waits until they disappear, revalidates Git, and
@@ -37,9 +38,17 @@ workspace in the canonical checkout and hands a short-lived, single-use intent
 to that external coordinator. It revalidates task, checkout HEAD, runtime
 fingerprint, and the full ordinary retirement plan before closing anything.
 
-Before MERGED, interactive FF has two explicit recovery paths. It may close a
-non-caller Herdr pane only after proving the same recognized agent is still
-`idle`/`done`; active and unknown states remain blockers. If the canonical
+Before MERGED, parent/canonical agents are preserved and block FF: recheck,
+choose PR, or cancel. Exact idle/done task-worktree panes can be selected for
+closure, but only final Apply closes them. Other active agents remain blockers.
+General foreground programs require independent FF file-change consent while
+they keep running. Interactive done/retire cleanup lists workspace/tab/pane IDs
+and program names/PIDs/directories. Known programs require CLOSE <workspace-id>
+and final retirement approval; --close-unknown does not grant this consent.
+A foreground shell is not proof of no background jobs: those are not inspected.
+Parent/mixed workspaces remain open. Cancellation before Apply closes nothing;
+partial failures list completed closures. Old coordinator handoffs must be
+recreated; version 2 verifies the launching PID has returned to a shell. If the canonical
 integration checkout is dirty, dev lists its paths and offers PR handoff,
 typed-`DROP` guarded discard, or cancel. It never silently commits unrelated
 canonical bytes.
