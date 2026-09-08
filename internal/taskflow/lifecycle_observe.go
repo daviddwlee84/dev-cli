@@ -356,10 +356,18 @@ func (s *lifecycleService) observeActionRuntime(ctx context.Context, request Req
 			observed.savedRuntimeLive = savedHandleLive(observed.occupancy, observed.task.RuntimeHandle)
 		}
 	case CompleteDirectOptions, CompleteFFOptions, ReviewHandoffOptions, VerifyMergedOptions:
+		observed.completionRuntime = completionRuntimeOptions(request.Options)
+		observed.completionClaimsErr = s.completionTaskClaimError(ctx, *observed)
+		if ff, ok := request.Options.(CompleteFFOptions); ok {
+			relation := effectiveCompletionRelation(*observed, ff.Dirty, ff.CommitMessage)
+			observed.checkTaskPrograms = !relation.Contained() || (observed.status.Dirty() && (ff.Dirty == DirtyCommit || ff.Dirty == DirtyDiscard))
+			observed.checkParentPrograms = !relation.Contained() && observed.mode == task.ModeWorktree
+		}
 		if !observed.hasCheckout() {
 			return
 		}
 		occupancyOptions := runtime.OccupancyOptions{
+			InspectProcesses:  true,
 			Profile:           runtime.OccupancyStrict,
 			CallerWorkspaceID: s.callerWorkspace,
 			CallerPaneID:      s.callerPane,

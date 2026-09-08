@@ -182,3 +182,42 @@ RETIRED.
 - Artifact commits are on the same feature branch, not necessarily the same
   product commit; they carry `Agent-Artifact-Session` and
   `Dev-Artifact-Intent` trailers.
+
+## Task worktree scope
+
+Worktree-mode `dev start --focus -t <name>` creates a linked checkout; `--focus`
+only changes focus. Finishing that task preserves its parent/canonical agent
+sessions and other tasks' tabs. A recognized parent agent in any state blocks
+FF: recheck after handling it independently in Herdr, choose PR, or cancel.
+When integration is already proven and only retirement remains, a parent agent
+does not prevent cleanup of the separate child worktree.
+
+The interactive finish plan may select exact idle/done **task-worktree** agent
+panes for closure. Nothing closes until final Apply approval. Parent, other
+checkout, mixed, or unverified Herdr workspaces are protected even when a pane
+has changed into the target directory. If they still cover the worktree,
+retirement stops and identifies the preserved panes. Working/blocked/waiting
+agents remain blockers. General foreground programs (an editor, server, or
+test command) require a separate FF confirmation: files in the displayed
+checkout will change while those programs continue running. `--yes` does not
+supply that confirmation; non-interactive calls requiring it stop.
+
+Interactive `dev done` cleanup and standalone `dev retire` share a preview of
+the target, retained resources, workspace/tab/pane IDs, agent states, and
+foreground program names, PIDs and directories. Closing known non-agent
+programs requires typing `CLOSE <workspace-id>` for each affected workspace,
+then approving the final retirement. `--close-unknown` does not authorize
+known program termination. Only a proven foreground shell is labeled as such;
+unavailable process evidence is shown as unknown, never idle. Herdr provides
+foreground evidence; other backends keep their existing explicitly qualified
+unknown-runtime policy. Background jobs are **not inspected** and may also stop
+when their terminal closes. Raw argv and environment values are not displayed.
+
+Approvals bind exact task/checkout, terminal topology and program fingerprints.
+A changed program, new tab or moved pane requires a refreshed preview. The
+single-use version-2 coordinator handoff waits for the exact launching dev PID
+to exit and verifies the original pane has returned to its foreground shell;
+a replacement program is not exempt. Old handoffs must be recreated. Final
+cancellation before Apply changes nothing; failures after effects begin list
+completed closures and retained resources. Raw Git and Herdr actions remain
+outside dev's locks and revalidation guarantees.

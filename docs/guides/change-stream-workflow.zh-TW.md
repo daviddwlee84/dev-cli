@@ -2,7 +2,7 @@
 description: 使用 dev-cli 讓變更流依序經過 start、park、resume、review/integration 與保守 cleanup。
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-08
 lang: zh-TW
 ---
 
@@ -162,10 +162,11 @@ Wizard 最多分四步：
 
 事先傳入 `--ff` 或 `--pr` 會保留 compatibility 行為：explicit/non-interactive completion 不進入第 4 步。Integration 執行前仍先列出 dirty action 與 integration mode；cleanup 是 MERGED 後的獨立選擇，取消或 EOF 代表保留，而不是回滾 integration。Checkout、branch、task、runtime 或 agent evidence 若改變，cleanup 會 stale/fail-closed 並留下 DONE task。
 
-Interactive fast-forward 在 integration 前被阻擋時，wizard 會處理兩種窄化的
-recovery，而不是立即只回傳 error。只有 exact non-caller Herdr pane 中同一個
-recognized agent 仍為 `idle`/`done` 時，才可確認後關閉；active、blocked、
-waiting 或 unknown 仍 fail-closed。Canonical checkout dirty 時會列出所有 path，
+Interactive fast-forward 保留 parent agent；占用時可重新檢查、改 PR 或取消。
+只有 exact idle/done task-worktree pane 可選入最後 Apply 的關閉計畫，取消前
+不會關閉。一般前景程序需要獨立確認 FF 改檔且程序繼續執行。兩個 interactive
+cleanup 入口都要求 `CLOSE <workspace-id>` 才能終止已知程序；背景 jobs 未檢查。
+詳見[範圍與程序規則](agent-safe-retirement.zh-TW.md#task-worktree-scope)。Canonical checkout dirty 時會列出所有 path，
 並標示 agent artifacts，接著提供 PR handoff、exact stash+restore、typed
 `DROP` discard 或取消。Stash+restore 會在 feature rebase 後以 exact OID 保存
 staged、unstaged 與 non-ignored untracked 內容，fast-forward 後恢復 index 與

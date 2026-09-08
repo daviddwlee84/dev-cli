@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- `dev done` preserves parent/canonical agent sessions and other task workspaces.
+  Parent occupancy offers recheck, PR, or cancel. Exact idle/done task-worktree
+  pane closures now run only inside the final guarded taskflow Apply and appear
+  in its result ledger; final cancellation no longer closes a pane first.
+- Herdr cleanup validates first-class workspace identity and foreground program
+  snapshots, preserving parent, mixed and other-checkout workspaces even when
+  their panes use the task directory. Changed programs or tabs require a fresh
+  preview; version-2 coordinator handoffs verify the exact dev caller returns
+  to its shell and reject old handoffs.
+
+### Added
+
+- Interactive `dev done` and `dev retire` show workspace/tab/pane identities,
+  agent states and foreground program names, PIDs and directories. FF requires
+  independent consent to changing files while general programs keep running;
+  retirement requires `CLOSE <workspace-id>` to terminate known programs.
+  Background jobs are explicitly unobserved. `--yes` and `--close-unknown` do
+  not implicitly authorize known program termination or FF program consent.
+
 ## [0.2.17] - 2026-09-05
 
 ### Added

@@ -24,6 +24,7 @@ used only after exact current-backend validation. Root-pane data stays transient
 |---|---|
 | list live sessions | `workspace list` + `pane list` |
 | list pane-level agent activity | `agent list` |
+| inspect exact foreground programs | `pane process-info --pane <id>` |
 | open a checkout | `workspace create --cwd <dir> --no-focus --label <name>` |
 | open a worktree | `worktree open --cwd <parent-root> --path <path> --no-focus --label <repo/branch>` |
 | activate an opened checkout | `workspace focus <id>`; outside Herdr, attach the default client |
@@ -93,7 +94,7 @@ Never auto-close based on agent state.
 
 - `dev park` records WARM; inside its own workspace it leaves runtime alive for normal agent exit.
 - `dev park --cold --push` closes/removes only from an external safe caller.
-- `dev done --ff` integrates but keeps runtime/worktree/branch.
+- `dev done --ff` integrates and keeps worktree/branch; selected task pane closures are explicit and reported.
 - `dev done --pr` leaves task/runtime/worktree for review.
 - `dev retire` externally closes, waits, revalidates and removes.
 - `dev sweep` reports first and routes DONE cleanup through retire.
@@ -139,3 +140,16 @@ rather than resurrecting its old layout — reclaim it with
 On Windows there is no tmux, Zellij or Herdr, so the backend is always `none`
 regardless of configuration. `dev shell-init powershell` still consumes the `cd`
 directive (via a `DEV_SHELL_CD_FILE` temp file rather than file descriptor 3).
+
+## Completion and process consent
+
+Parent/canonical and other-checkout workspaces are preserved, including when
+their panes cd into a task worktree. Missing first-class Herdr workspace
+ownership blocks retirement. Only task-worktree idle/done panes can be selected
+for closure under final taskflow Apply. General programs need separate FF
+file-change consent and `CLOSE <workspace-id>` for interactive retirement.
+Process evidence includes tab/terminal incarnation, shell/group PID and a
+redacted executable/argv digest. Supported probe failures block; background jobs
+are unobserved. Version-2 coordinator handoffs bind this evidence and permit
+only the exact dev caller returning to its original foreground shell. See
+`agent-retirement.md` for the full scope and cancellation rules.

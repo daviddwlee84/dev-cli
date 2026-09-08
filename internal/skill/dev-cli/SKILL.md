@@ -769,8 +769,13 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
   Herdr workspace uses a fresh external coordinator; active/mixed workspaces
   still block. Non-interactive use remains report-only without `--ff`/`--pr`.
   Unique discard requires `DROP` or explicit `--dirty=discard --yes`.
-  Before integration, idle/done non-caller Herdr panes can be explicitly closed
-  and a dirty canonical target can switch to PR, use exact stash+restore, or
+  Parent/canonical agent sessions and other tasks remain open. Parent occupancy
+  blocks FF with recheck/PR/cancel. Only exact idle/done task-worktree panes may
+  be selected for closure, and only final Apply closes them. Foreground programs
+  need independent FF file-change consent; interactive done/retire cleanup needs
+  `CLOSE <workspace-id>` to terminate known programs. Neither `--yes` nor
+  `--close-unknown` supplies those permissions. Background jobs are not inspected.
+  A dirty canonical target can switch to PR, use exact stash+restore, or
   enter a typed-`DROP` guarded discard. Stash restore preserves index and
   untracked state, retains its exact OID on conflict, and refuses dirty
   submodules or nested repositories; active/unknown agents still fail closed.

@@ -28,6 +28,7 @@ type Herdr struct {
 	// runCommand and worktreeSource are test seams for Herdr's JSON protocol
 	// and Git parent-workspace source resolution.
 	runCommand     func(context.Context, ...string) ([]byte, error)
+	processProbe   func(context.Context, ...string) ([]byte, int, error)
 	worktreeSource func(context.Context, string) string
 }
 
@@ -146,10 +147,16 @@ type herdrWorkspace struct {
 	AgentStatus string `json:"agent_status"`
 	Focused     bool   `json:"focused"`
 	Number      int    `json:"number"`
+	Worktree    *struct {
+		CheckoutPath string `json:"checkout_path"`
+		Linked       bool   `json:"is_linked_worktree"`
+	} `json:"worktree"`
 }
 
 type herdrPane struct {
 	PaneID        string `json:"pane_id"`
+	TabID         string `json:"tab_id"`
+	TerminalID    string `json:"terminal_id"`
 	WorkspaceID   string `json:"workspace_id"`
 	CWD           string `json:"cwd"`
 	ForegroundCWD string `json:"foreground_cwd"`
@@ -215,14 +222,19 @@ func (h *Herdr) List(ctx context.Context) ([]Session, error) {
 			agents[p.WorkspaceID][agentSession] = true
 		}
 		panes[p.WorkspaceID] = append(panes[p.WorkspaceID], Pane{
-			ID: p.PaneID, CWD: cwd, ShellCWD: p.CWD, Agent: p.Agent,
-			AgentStatus: p.AgentStatus, AgentSession: agentSession,
+			ID: p.PaneID, TabID: p.TabID, TerminalID: p.TerminalID, CWD: cwd, ShellCWD: p.CWD, Agent: p.Agent,
+			AgentName: p.Name, AgentStatus: p.AgentStatus, AgentSession: agentSession,
 		})
 	}
 
 	out := make([]Session, 0, len(ws.Workspaces))
 	for _, w := range ws.Workspaces {
+		checkout, linked := "", false
+		if w.Worktree != nil {
+			checkout, linked = w.Worktree.CheckoutPath, w.Worktree.Linked
+		}
 		out = append(out, Session{
+			WorkspaceIdentityObserved: true, WorkspaceCheckout: checkout, WorkspaceLinked: linked,
 			Handle:        w.WorkspaceID,
 			Label:         w.Label,
 			Dirs:          keys(dirs[w.WorkspaceID]),

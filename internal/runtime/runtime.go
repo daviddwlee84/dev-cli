@@ -20,11 +20,15 @@ import (
 // Pane is one terminal surface inside a runtime session.
 type Pane struct {
 	ID           string
+	TabID        string
+	TerminalID   string
 	CWD          string
 	ShellCWD     string
 	Agent        string
+	AgentName    string
 	AgentStatus  string
 	AgentSession string
+	Process      *PaneProcessObservation
 }
 
 // Session is one live workspace/session of a runtime backend.
@@ -33,6 +37,11 @@ type Session struct {
 	// session name). Opaque to the rest of dev.
 	Handle string
 	Label  string
+	// Herdr's first-class workspace identity is independent of pane cwd.
+	// An observed parent/generic workspace must not be retired as a child.
+	WorkspaceIdentityObserved bool
+	WorkspaceCheckout         string
+	WorkspaceLinked           bool
 	// Dirs lists the working directories observed in this session. A session
 	// can span several (multiple panes), which is why this is not a single
 	// value.

@@ -24,18 +24,25 @@ import (
 )
 
 const retireHandoffTTL = 2 * time.Minute
+const retireHandoffVersion = 2
 
 type retireHandoffIntent struct {
-	Version            int       `json:"version"`
-	CreatedAt          time.Time `json:"created_at"`
-	ExpiresAt          time.Time `json:"expires_at"`
-	TaskID             string    `json:"task_id"`
-	TaskRevision       string    `json:"task_revision"`
-	CheckoutPath       string    `json:"checkout_path"`
-	HeadOID            string    `json:"head_oid"`
-	PreviewFingerprint string    `json:"preview_fingerprint"`
-	DeleteBranch       bool      `json:"delete_branch"`
-	CloseUnknown       bool      `json:"close_unknown"`
+	PreviewAuthority         map[string]string `json:"preview_authority,omitempty"`
+	ProcessClosures          map[string]string `json:"process_closures,omitempty"`
+	CallerPaneID             string            `json:"caller_pane_id,omitempty"`
+	CallerPID                int               `json:"caller_pid,omitempty"`
+	CallerShellPID           int               `json:"caller_shell_pid,omitempty"`
+	CallerProcessFingerprint string            `json:"caller_process_fingerprint,omitempty"`
+	Version                  int               `json:"version"`
+	CreatedAt                time.Time         `json:"created_at"`
+	ExpiresAt                time.Time         `json:"expires_at"`
+	TaskID                   string            `json:"task_id"`
+	TaskRevision             string            `json:"task_revision"`
+	CheckoutPath             string            `json:"checkout_path"`
+	HeadOID                  string            `json:"head_oid"`
+	PreviewFingerprint       string            `json:"preview_fingerprint"`
+	DeleteBranch             bool              `json:"delete_branch"`
+	CloseUnknown             bool              `json:"close_unknown"`
 }
 
 func shouldOfferDoneCleanup(selected task.Task, opts doneOptions, interactive bool, action flow.Action) bool {
@@ -46,6 +53,10 @@ func shouldOfferDoneCleanup(selected task.Task, opts doneOptions, interactive bo
 
 func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task.Task) error {
 	rt := runtimeForTask(app, &final)
+	authority, err := captureRetirementAuthority(ctx, app, retireCommandTarget{Task: &final}, flow.RetireOptions{})
+	if err != nil {
+		return err
+	}
 	preview, err := retiredomain.InspectForExternalCoordinator(ctx, rt, final.WorktreePath, retiredomain.Options{})
 	if err != nil {
 		app.warnf("retirement preview failed; cleanup was not attempted: %v", err)
@@ -70,48 +81,24 @@ func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task
 		return promptErr
 	}
 	deleteBranch := choice == "delete"
-	closeUnknown := false
-	if len(preview.UnknownSessions) > 0 {
-		confirmed, confirmErr := p.confirm(fmt.Sprintf(
-			"Close %d workspace(s) with unknown or empty agent status?", len(preview.UnknownSessions)), false)
-		if errors.Is(confirmErr, errPromptCanceled) || !confirmed {
-			fmt.Fprintln(app.Out, "   cleanup kept · unknown runtime status was not authorized")
-			return nil
-		}
-		if confirmErr != nil {
-			return confirmErr
-		}
-		closeUnknown = true
-	}
-
-	preview, err = retiredomain.InspectForExternalCoordinator(ctx, rt, final.WorktreePath, retiredomain.Options{
-		CloseUnknown: closeUnknown,
-	})
+	options, fresh, canceled, err := confirmRetirement(ctx, app, p, rt, preview, flow.RetireOptions{DeleteBranch: deleteBranch, Timeout: 5 * time.Second, PreviewAuthority: authority})
 	if err != nil {
-		app.warnf("retirement preview changed; cleanup was not attempted: %v", err)
-		printRetireFallback(app, final, deleteBranch, closeUnknown)
+		app.warnf("retirement was not attempted: %v", err)
+		printRetireFallback(app, final, deleteBranch, options.CloseUnknown)
 		return nil
 	}
-	if !preview.Ready() {
-		app.warnf("retirement is blocked: %s", strings.Join(preview.Blockers, "; "))
-		printRetireFallback(app, final, deleteBranch, closeUnknown)
+	if canceled {
 		return nil
 	}
-	if len(preview.Sessions) > 0 {
-		confirmed, confirmErr := p.confirm(fmt.Sprintf(
-			"Close %d eligible runtime workspace(s) and retire this task?", len(preview.Sessions)), false)
-		if errors.Is(confirmErr, errPromptCanceled) || !confirmed {
-			fmt.Fprintln(app.Out, "   cleanup kept · no runtime workspace was closed")
-			return nil
-		}
-		if confirmErr != nil {
-			return confirmErr
-		}
+	preview = fresh
+	closeUnknown := options.CloseUnknown
+	if rt.Name() == "herdr" && preview.CallerContained && len(preview.Sessions) > 0 {
+		return launchExternalRetireCoordinator(ctx, app, rt, final, preview, deleteBranch, closeUnknown, options.ProcessClosures.Map(), options.PreviewAuthority)
+	}
+	if rt.Name() == "herdr" && !preview.CallerContained {
+		return retireTaskWithTaskflow(ctx, app, &final, options, deleteBranch)
 	}
 
-	if rt.Name() == "herdr" && preview.CallerContained && len(preview.Sessions) > 0 {
-		return launchExternalRetireCoordinator(ctx, app, rt, final, preview, deleteBranch, closeUnknown)
-	}
 	if err := app.retireDirective(final.RepoPath, final.ID, deleteBranch, closeUnknown); err != nil {
 		app.warnf("integration is complete, but automatic retirement needs a refreshed dev shell wrapper: %v", err)
 		printRetireFallback(app, final, deleteBranch, closeUnknown)
@@ -125,6 +112,8 @@ func renderRetirementPreview(app *App, rt runtime.Runtime, preview retiredomain.
 	s := app.outStyle()
 	fmt.Fprintln(app.Out, "\n"+s.title("Cleanup preview"))
 	fmt.Fprintf(app.Out, "  %s  %s\n", s.label("runtime"), rt.Name())
+	fmt.Fprintf(app.Out, "  target checkout %s\n  KEEP parent workspace and other tasks\n", config.Contract(preview.Target))
+	fmt.Fprintln(app.Out, foregroundLimit)
 	if len(preview.Sessions) == 0 {
 		fmt.Fprintln(app.Out, "  sessions  none covering the worktree")
 		return
@@ -136,21 +125,28 @@ func renderRetirementPreview(app *App, rt runtime.Runtime, preview retiredomain.
 		if session.Runtime.Label != "" {
 			label += " (" + session.Runtime.Label + ")"
 		}
-		fmt.Fprintf(app.Out, "  workspace %s\n", label)
+		disposition := "CLOSE candidate"
+		if session.Protection != "" || len(session.Mixed) > 0 {
+			disposition = "KEEP / BLOCKED"
+		}
+		paneIDs := make(map[string]bool)
+		for _, pane := range append(append([]runtime.Pane(nil), session.Panes...), session.Mixed...) {
+			paneIDs[pane.ID] = true
+		}
+		fmt.Fprintf(app.Out, "  %s workspace %s (%d pane(s))\n", disposition, runtime.DisplayText(label), len(paneIDs))
 		for _, pane := range session.Panes {
-			agent := pane.Agent
-			if agent == "" {
-				agent = "shell"
-			}
-			status := pane.AgentStatus
-			if status == "" {
-				status = "unknown"
-			}
-			fmt.Fprintf(app.Out, "    %s  %s · %s · %s\n", pane.ID, agent, status, config.Contract(pane.CWD))
+			renderForegroundPane(app, pane)
+		}
+		if session.Protection != "" {
+			fmt.Fprintf(app.Out, "    preserved: %s\n", session.Protection)
 		}
 		if len(session.Mixed) > 0 {
-			fmt.Fprintf(app.Out, "    %s\n", s.warning(fmt.Sprintf("mixed workspace: %d pane(s) are outside the target", len(session.Mixed))))
+			fmt.Fprintln(app.Out, "    preserved panes outside the target (mixed workspace blocks retirement):")
+			for _, pane := range session.Mixed {
+				renderForegroundPane(app, pane)
+			}
 		}
+
 	}
 }
 
@@ -173,7 +169,12 @@ func launchExternalRetireCoordinator(
 	final task.Task,
 	preview retiredomain.Inspection,
 	deleteBranch, closeUnknown bool,
+	processClosures map[string]string,
+	previewAuthority flow.Fields,
 ) (err error) {
+	if err := validateRetirementAuthority(ctx, app, final, previewAuthority); err != nil {
+		return err
+	}
 	opener, ok := rt.(runtime.ExternalCoordinatorOpener)
 	if !ok {
 		return fmt.Errorf("runtime %s cannot create an external retirement coordinator", rt.Name())
@@ -210,11 +211,13 @@ func launchExternalRetireCoordinator(
 		}
 	}()
 	intent := retireHandoffIntent{
-		Version: 1, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(retireHandoffTTL),
+		Version: retireHandoffVersion, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(retireHandoffTTL),
 		TaskID: final.ID, TaskRevision: record.Revision, CheckoutPath: final.WorktreePath,
 		HeadOID: strings.TrimSpace(head), PreviewFingerprint: preview.Fingerprint(),
-		DeleteBranch: deleteBranch, CloseUnknown: closeUnknown,
+		DeleteBranch: deleteBranch, CloseUnknown: closeUnknown, ProcessClosures: processClosures, PreviewAuthority: previewAuthority.Map(),
 	}
+	bindRetireCaller(&intent, preview)
+	intent.PreviewFingerprint = retireHandoffFingerprint(preview, intent.CallerPaneID)
 	if err := writeRetireHandoffIntent(dir, intent); err != nil {
 		return err
 	}
@@ -323,8 +326,8 @@ func runRetireCoordinator(ctx context.Context, app *App, id string) (err error) 
 	if err := json.Unmarshal(body, &intent); err != nil {
 		return fmt.Errorf("decode retirement handoff: %w", err)
 	}
-	if intent.Version != 1 || time.Now().UTC().After(intent.ExpiresAt) {
-		return errors.New("retirement handoff expired or has an unsupported version")
+	if intent.Version != retireHandoffVersion || time.Now().UTC().After(intent.ExpiresAt) {
+		return errors.New("retirement handoff expired or has an unsupported version; rerun dev done or dev retire")
 	}
 	record, err := app.Tasks.GetRecord(intent.TaskID)
 	if err != nil {
@@ -342,19 +345,19 @@ func runRetireCoordinator(ctx context.Context, app *App, id string) (err error) 
 		return errors.New("retirement handoff is stale: checkout HEAD changed")
 	}
 	rt := runtimeForTask(app, &selected)
-	preview, err := retiredomain.InspectForExternalCoordinator(ctx, rt, selected.WorktreePath, retiredomain.Options{
-		CloseUnknown: intent.CloseUnknown,
-	})
+	preview, err := awaitRetireCaller(ctx, rt, selected.WorktreePath, intent)
 	if err != nil {
 		return err
 	}
-	if preview.Fingerprint() != intent.PreviewFingerprint {
-		return errors.New("retirement handoff is stale: runtime workspace or agent state changed")
+	if retireHandoffFingerprint(preview, intent.CallerPaneID) != intent.PreviewFingerprint {
+		return errors.New("retirement handoff is stale: runtime workspace or foreground state changed")
 	}
+
 	if !preview.Ready() {
 		return fmt.Errorf("retirement blocked: %s", strings.Join(preview.Blockers, "; "))
 	}
 	return retireTaskWithTaskflow(ctx, app, &selected, flow.RetireOptions{
 		CloseUnknown: intent.CloseUnknown, DeleteBranch: intent.DeleteBranch, Timeout: 5 * time.Second,
+		ProcessClosures: flow.NewFields(intent.ProcessClosures), RuntimeFingerprint: preview.Fingerprint(), PreviewAuthority: flow.NewFields(intent.PreviewAuthority),
 	}, intent.DeleteBranch)
 }
