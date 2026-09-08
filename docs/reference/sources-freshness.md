@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-09-03
+verified_on: 2026-09-08
 ---
 
 # Sources and freshness
@@ -57,6 +57,7 @@ tested_with: optional
 
 | Topic or claim | Owning page | Primary authority | Status checked |
 |---|---|---|---|
+| parent-preserving task completion, foreground program consent and coordinator v2 | [Agent-safe retirement](../guides/agent-safe-retirement.md#task-worktree-scope) | runtime process/occupancy, taskflow completion/retire and CLI scope regression tests | Unreleased |
 | HOT/WARM/COLD/DONE, checkout modes, and legal transitions | [Mental model](../concepts/mental-model.md) | `internal/task/task.go`, `internal/taskflow/transitions.go`, lifecycle tests | repository snapshot 2026-09-01 |
 | repository flow topology, local/manual-remote observations, revision-bound Plan/Apply, and partial ledgers | [Repository lifecycle flow](../guides/repository-flow.md) | `internal/cli/flow.go`, `internal/flowtui`, `internal/taskflow`, focused flow tests | preview implemented 2026-09-01 |
 | `done --pr` leaves task active and DONE keeps resources until Retire | [Change-stream workflow](../guides/change-stream-workflow.md) | `internal/taskflow/{complete,retire}.go`, CLI lifecycle tests | implemented |

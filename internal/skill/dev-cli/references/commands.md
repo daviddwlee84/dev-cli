@@ -291,7 +291,7 @@ dev doctor
 
 ### `dev done`
 
-Integrate a finished change stream without destroying its workspace
+Finish a task with optional worktree retirement
 
 ```
 dev done [task] [flags]

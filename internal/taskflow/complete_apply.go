@@ -17,6 +17,10 @@ func (e *executionState) applyCompleteDirect(ctx context.Context) (Result, error
 	observed := &e.observed
 	for _, effect := range e.plan.Effects() {
 		switch effect.Code {
+		case EffectCloseTaskPane:
+			if err := e.applyCompletionPaneClosure(ctx, effect); err != nil {
+				return e.fail(err, "inspect the completed pane closures and refresh completion; remaining resources are retained")
+			}
 		case EffectCommitAll, EffectDiscardAll:
 			if err := e.applyCompletionDirtyEffect(ctx, effect); err != nil {
 				return e.fail(err, "the task checkout and lifecycle state were retained; inspect the content finalization before retrying")
@@ -80,6 +84,10 @@ func (e *executionState) applyCompleteFF(ctx context.Context) (result Result, er
 
 	for _, effect := range e.plan.Effects() {
 		switch effect.Code {
+		case EffectCloseTaskPane:
+			if err := e.applyCompletionPaneClosure(ctx, effect); err != nil {
+				return e.fail(err, "inspect the completed pane closures and refresh completion; remaining resources are retained")
+			}
 		case EffectCommitAll, EffectDiscardAll:
 			if err := e.applyCompletionDirtyEffect(ctx, effect); err != nil {
 				return e.fail(err, "the task remains active; inspect content finalization and refresh fast-forward completion")
@@ -344,6 +352,10 @@ func (e *executionState) applyReviewHandoff(ctx context.Context) (Result, error)
 
 	for _, effect := range e.plan.Effects() {
 		switch effect.Code {
+		case EffectCloseTaskPane:
+			if err := e.applyCompletionPaneClosure(ctx, effect); err != nil {
+				return e.fail(err, "inspect the completed pane closures and refresh completion; remaining resources are retained")
+			}
 		case EffectCommitAll, EffectDiscardAll:
 			if err := e.applyCompletionDirtyEffect(ctx, effect); err != nil {
 				return e.fail(err, "the task remains active; inspect content finalization and refresh review handoff")
@@ -425,6 +437,10 @@ func (e *executionState) applyVerifyMerged(ctx context.Context) (Result, error) 
 	verified := false
 	for _, effect := range e.plan.Effects() {
 		switch effect.Code {
+		case EffectCloseTaskPane:
+			if err := e.applyCompletionPaneClosure(ctx, effect); err != nil {
+				return e.fail(err, "inspect the completed pane closures and refresh completion; remaining resources are retained")
+			}
 		case EffectCommitAll, EffectDiscardAll:
 			if err := e.applyCompletionDirtyEffect(ctx, effect); err != nil {
 				return e.fail(err, "the task remains active; inspect content finalization and refresh merge verification")
@@ -682,11 +698,20 @@ func (s *lifecycleService) revalidateCompletionOccupancy(ctx context.Context, ob
 	}
 	fresh, err := s.inspectOccupancy(ctx, observed.runtime, observed.checkout, runtime.OccupancyOptions{
 		Profile:           runtime.OccupancyStrict,
+		InspectProcesses:  true,
 		CallerWorkspaceID: observed.taskflowCallerWorkspace,
 		CallerPaneID:      observed.taskflowCallerPane,
 	})
-	if occupancyErr := s.writerOccupancyError(fresh, err); occupancyErr != nil {
+	candidate := *observed
+	candidate.occupancy, candidate.occupancyErr = fresh, err
+	if occupancyErr := s.writerOccupancyError(completionAllowedOccupancy(candidate), err); occupancyErr != nil {
 		return occupancyErr
+	}
+	if occupancyAuthority(fresh, err) != occupancyAuthority(observed.occupancy, observed.occupancyErr) {
+		return staleBoundary("task runtime or foreground processes changed")
+	}
+	if err := completionProgramError(candidate); err != nil {
+		return err
 	}
 	observed.occupancy = fresh
 	observed.occupancyErr = nil
@@ -857,11 +882,17 @@ func (s *lifecycleService) inspectIntegrationTarget(
 	}
 	fresh.occupancy, fresh.occupancyErr = s.inspectOccupancy(ctx, observed.runtime, observed.repoPath, runtime.OccupancyOptions{
 		Profile:           runtime.OccupancyStrict,
+		InspectProcesses:  true,
 		CallerWorkspaceID: observed.taskflowCallerWorkspace,
 		CallerPaneID:      observed.taskflowCallerPane,
 	})
 	if occupancyErr := s.writerOccupancyError(fresh.occupancy, fresh.occupancyErr); occupancyErr != nil {
 		return fresh, occupancyErr
+	}
+	candidate := *observed
+	candidate.integration = fresh
+	if err := completionProgramError(candidate); err != nil {
+		return fresh, err
 	}
 	return fresh, nil
 }

@@ -2,7 +2,7 @@
 description: 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
 authority: project-policy
 status: maintained
-verified_on: 2026-09-03
+verified_on: 2026-09-08
 lang: zh-TW
 ---
 
@@ -61,6 +61,7 @@ tested_with: optional
 
 | Topic 或 claim | Owning page | Primary authority | Checked status |
 |---|---|---|---|
+| 保留 parent 的 task completion、前景程序授權與 coordinator v2 | [Agent-safe retirement](../guides/agent-safe-retirement.zh-TW.md#task-worktree-scope) | runtime process/occupancy、taskflow completion/retire 與 CLI scope regression tests | Unreleased |
 | HOT/WARM/COLD/DONE graph、checkout modes，以及 DONE/MERGED 與 Retire 的分界 | [心智模型](../concepts/mental-model.zh-TW.md)、[變更流 workflow](../guides/change-stream-workflow.zh-TW.md) | `internal/task/task.go`、`internal/taskflow/transitions.go`、focused lifecycle tests | repository snapshot 2026-09-01 |
 | `done --pr` 保持 task active；`done --merged` 需 named ancestry evidence | [變更流 workflow](../guides/change-stream-workflow.zh-TW.md) | `internal/taskflow/complete.go`、`internal/cli/done_flow.go` | implemented |
 | 獨立 TTY-only `dev flow`、all-worktree/task-only topology、row action sets、plan/approval、local/remote freshness、run-local review evidence、partial ledger 與 revalidation | [Repository Flow 預覽](../guides/repository-flow.zh-TW.md) | `internal/cli/flow.go`、`internal/flowtui`、`internal/taskflow`、`internal/inventory/repo_context.go`、`internal/forge/review.go`、focused flow/taskflow tests | preview implemented，2026-09-01 查核 |

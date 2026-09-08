@@ -118,6 +118,7 @@ func (ResumeOptions) isActionOptions() {}
 // CompleteDirectOptions records completion in the canonical branch without an
 // integration operation.
 type CompleteDirectOptions struct {
+	Runtime       CompletionRuntimeOptions
 	Dirty         DirtyPolicy
 	CommitMessage string
 	Push          bool
@@ -128,6 +129,7 @@ func (CompleteDirectOptions) isActionOptions() {}
 
 // CompleteFFOptions controls local fast-forward integration.
 type CompleteFFOptions struct {
+	Runtime                 CompletionRuntimeOptions
 	Dirty                   DirtyPolicy
 	CommitMessage           string
 	PushBase                bool
@@ -140,6 +142,7 @@ func (CompleteFFOptions) isActionOptions() {}
 // ReviewHandoffOptions controls publication and review creation while keeping
 // the persisted lifecycle state unchanged.
 type ReviewHandoffOptions struct {
+	Runtime       CompletionRuntimeOptions
 	Dirty         DirtyPolicy
 	CommitMessage string
 	Draft         bool
@@ -153,6 +156,7 @@ func (ReviewHandoffOptions) isActionOptions() {}
 // VerifyMergedOptions names the base and optional squash evidence used to prove
 // an externally integrated branch.
 type VerifyMergedOptions struct {
+	Runtime       CompletionRuntimeOptions
 	Dirty         DirtyPolicy
 	CommitMessage string
 	BaseRef       string
@@ -167,10 +171,13 @@ func (VerifyMergedOptions) isActionOptions() {}
 // separate from worktree removal and must be proven safe by the injected
 // executor.
 type RetireOptions struct {
-	DeleteBranch    bool
-	CloseUnknown    bool
-	AssumeNoRuntime bool
-	Timeout         time.Duration
+	ProcessClosures    Fields
+	RuntimeFingerprint string
+	PreviewAuthority   Fields
+	DeleteBranch       bool
+	CloseUnknown       bool
+	AssumeNoRuntime    bool
+	Timeout            time.Duration
 }
 
 func (RetireOptions) Action() Action   { return Retire }
@@ -196,6 +203,9 @@ func (AdoptOptions) isActionOptions() {}
 // action preserves the checkout's branch; contained branch deletion is a
 // separate CLI-only compatibility intent that the flow TUI never supplies.
 type RemoveCheckoutOptions struct {
+	ProcessClosures    Fields
+	RuntimeFingerprint string
+	PreviewAuthority   Fields
 	// DiscardDirty is the explicit compatibility intent behind `dev wt rm
 	// --force`. The flow TUI never sets it and planners must require a typed
 	// confirmation before allowing it.
@@ -319,6 +329,7 @@ func cloneActionOptions(options ActionOptions, action Action) (ActionOptions, er
 		}
 		return *value, nil
 	case CompleteDirectOptions:
+		value.Runtime = value.Runtime.clone()
 		value.Dirty = normalizeDirty(value.Dirty)
 		return value, nil
 	case *CompleteDirectOptions:
@@ -326,9 +337,11 @@ func cloneActionOptions(options ActionOptions, action Action) (ActionOptions, er
 			return nil, fmt.Errorf("nil complete-direct options")
 		}
 		copy := *value
+		copy.Runtime = copy.Runtime.clone()
 		copy.Dirty = normalizeDirty(copy.Dirty)
 		return copy, nil
 	case CompleteFFOptions:
+		value.Runtime = value.Runtime.clone()
 		value.Dirty = normalizeDirty(value.Dirty)
 		value.IntegrationTargetPolicy = normalizeIntegrationTargetPolicy(value.IntegrationTargetPolicy)
 		return value, nil
@@ -337,10 +350,12 @@ func cloneActionOptions(options ActionOptions, action Action) (ActionOptions, er
 			return nil, fmt.Errorf("nil complete-ff options")
 		}
 		copy := *value
+		copy.Runtime = copy.Runtime.clone()
 		copy.Dirty = normalizeDirty(copy.Dirty)
 		copy.IntegrationTargetPolicy = normalizeIntegrationTargetPolicy(copy.IntegrationTargetPolicy)
 		return copy, nil
 	case ReviewHandoffOptions:
+		value.Runtime = value.Runtime.clone()
 		value.Dirty = normalizeDirty(value.Dirty)
 		return value, nil
 	case *ReviewHandoffOptions:
@@ -348,9 +363,11 @@ func cloneActionOptions(options ActionOptions, action Action) (ActionOptions, er
 			return nil, fmt.Errorf("nil review-handoff options")
 		}
 		copy := *value
+		copy.Runtime = copy.Runtime.clone()
 		copy.Dirty = normalizeDirty(copy.Dirty)
 		return copy, nil
 	case VerifyMergedOptions:
+		value.Runtime = value.Runtime.clone()
 		value.Dirty = normalizeDirty(value.Dirty)
 		return value, nil
 	case *VerifyMergedOptions:
@@ -358,15 +375,21 @@ func cloneActionOptions(options ActionOptions, action Action) (ActionOptions, er
 			return nil, fmt.Errorf("nil verify-merged options")
 		}
 		copy := *value
+		copy.Runtime = copy.Runtime.clone()
 		copy.Dirty = normalizeDirty(copy.Dirty)
 		return copy, nil
 	case RetireOptions:
+		value.ProcessClosures = value.ProcessClosures.clone()
+		value.PreviewAuthority = value.PreviewAuthority.clone()
 		return value, nil
 	case *RetireOptions:
 		if value == nil {
 			return nil, fmt.Errorf("nil retire options")
 		}
-		return *value, nil
+		copy := *value
+		copy.ProcessClosures = copy.ProcessClosures.clone()
+		copy.PreviewAuthority = copy.PreviewAuthority.clone()
+		return copy, nil
 	case AdoptOptions:
 		value.Tags = value.Tags.clone()
 		return value, nil
@@ -378,12 +401,17 @@ func cloneActionOptions(options ActionOptions, action Action) (ActionOptions, er
 		copy.Tags = copy.Tags.clone()
 		return copy, nil
 	case RemoveCheckoutOptions:
+		value.ProcessClosures = value.ProcessClosures.clone()
+		value.PreviewAuthority = value.PreviewAuthority.clone()
 		return value, nil
 	case *RemoveCheckoutOptions:
 		if value == nil {
 			return nil, fmt.Errorf("nil remove-checkout options")
 		}
-		return *value, nil
+		copy := *value
+		copy.ProcessClosures = copy.ProcessClosures.clone()
+		copy.PreviewAuthority = copy.PreviewAuthority.clone()
+		return copy, nil
 	case RefreshRemoteOptions:
 		return value, nil
 	case *RefreshRemoteOptions:
@@ -512,6 +540,11 @@ func validateTimeout(timeout time.Duration) error {
 
 func appendOptionsIdentity(writer *identityWriter, options ActionOptions) {
 	writer.addString("options.action", string(options.Action()))
+	if isCompletionAction(options.Action()) {
+		r := completionRuntimeOptions(options)
+		writer.addFields("close-task-panes", r.CloseTaskPanes)
+		writer.addFields("foreground-consent", r.ProgramConsent)
+	}
 	switch value := options.(type) {
 	case ParkWarmOptions:
 		writer.addString("next", value.Next)
@@ -549,6 +582,9 @@ func appendOptionsIdentity(writer *identityWriter, options ActionOptions) {
 		writer.addBool("push-base", value.PushBase)
 	case RetireOptions:
 		writer.addBool("delete-branch", value.DeleteBranch)
+		writer.addFields("process-closures", value.ProcessClosures)
+		writer.addString("runtime-preview", value.RuntimeFingerprint)
+		writer.addFields("retirement-preview", value.PreviewAuthority)
 		appendRuntimeOptionsIdentity(writer, value.CloseUnknown, value.AssumeNoRuntime, value.Timeout)
 	case AdoptOptions:
 		writer.addString("mode", string(value.Mode))
@@ -561,6 +597,9 @@ func appendOptionsIdentity(writer *identityWriter, options ActionOptions) {
 		writer.addStrings("tags", value.Tags.values)
 	case RemoveCheckoutOptions:
 		writer.addBool("discard-dirty", value.DiscardDirty)
+		writer.addFields("process-closures", value.ProcessClosures)
+		writer.addString("runtime-preview", value.RuntimeFingerprint)
+		writer.addFields("retirement-preview", value.PreviewAuthority)
 		writer.addBool("require-contained", value.RequireContained)
 		writer.addString("containment-base", value.ContainmentBase)
 		writer.addBool("delete-contained-branch", value.DeleteContainedBranch)

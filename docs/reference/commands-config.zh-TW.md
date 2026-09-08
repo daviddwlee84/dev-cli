@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-03
+verified_on: 2026-09-08
 lang: zh-TW
 ---
 
@@ -366,15 +366,17 @@ Dirty checkout 由 `--dirty <auto|fail|commit|discard>` 處理（預設 `auto`�
 | `commit` | 用 `--message`/`-m` commit 全部變更（未指定時 interactive 會提示輸入） |
 | `discard` | reset tracked 變更並移除 untracked files；具破壞性，沒有 TTY 時需要 `--yes` |
 
-`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--push` 會依 selected integration push 對應 branch/base。成功的 local 或 externally verified integration 只記錄 DONE/MERGED，永遠保留 runtime、worktree 與 branch 給獨立的 `dev retire`；`--keep-worktree` 只保留為 no-op compatibility warning，`--delete-branch` 則會報錯並指向 `dev retire --delete-branch`。`--merged` 可用 `--confirm-squash <merge-commit>` 對 squash result 作明確 operator attestation，不能由 provider status 自動推斷。
+`--yes`/`-y` 用來確認選定的 finish plan；non-interactive 的 `--dirty discard` 必須要有它，其他情況則是跳過 interactive 確認步驟。`--push` 會依 selected integration push 對應 branch/base。成功的 local 或 externally verified integration 只記錄 DONE/MERGED，保留 worktree 與 branch 給獨立的 `dev retire`，明確選定的 task pane 關閉則另行記錄；`--keep-worktree` 只保留為 no-op compatibility warning，`--delete-branch` 則會報錯並指向 `dev retire --delete-branch`。`--merged` 可用 `--confirm-squash <merge-commit>` 對 squash result 作明確 operator attestation，不能由 provider status 自動推斷。
 
 Managed worktree 的 bare interactive `dev done` 在 MERGED 後會增加 cleanup
 選擇：保留、retire 並保留 branch，或 retire 並刪除 contained branch。它會先
 preview covering runtime panes 與 agent 狀態；caller-owned Herdr workspace 交給
 fresh external coordinator。Explicit mode 與 non-interactive invocation 仍停在 DONE。
-Integration 前，interactive wizard 也可關閉 agent 仍為 idle/done 的 exact
-non-caller Herdr pane，或在 canonical target dirty 時改走 PR、選擇 typed `DROP`
-guarded discard，或取消。
+Parent agent 會保留並阻擋 FF，可重新檢查、改 PR 或取消。只有 exact idle/done
+task-worktree pane 可在最後 Apply 核可後關閉。一般前景程序需要另行確認 FF
+改檔；兩個 interactive cleanup 入口都需要 `CLOSE <workspace-id>` 才能終止
+已知程序。背景 jobs 未檢查。Canonical dirty 仍可改 PR、stash+restore、typed
+`DROP` 或取消。詳見[retirement 範圍](../guides/agent-safe-retirement.zh-TW.md#task-worktree-scope)。
 
 ## Configuration
 

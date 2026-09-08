@@ -283,8 +283,12 @@ Caller-owned Herdr workspaces are handed to a freshly created external
 coordinator; unknown status needs explicit approval and active/mixed sessions
 remain blockers.
 
-Before integration, the TTY wizard can close exact non-caller Herdr panes only
-while their recognized agents remain `idle`/`done`. If FF is blocked by dirty
+Before integration, the TTY wizard can select exact idle/done task-worktree
+agent panes for closure only under the final guarded Apply. Parent/canonical
+agents remain open and block FF; recheck, choose PR, or cancel. Foreground
+non-agent programs require separate consent to changing files while they run.
+Interactive retirement separately requires `CLOSE <workspace-id>` to terminate
+known programs. Background jobs are unobserved. See `agent-retirement.md`. If FF is blocked by dirty
 canonical-checkout bytes, it lists the paths and offers PR, typed `DROP`
 discard, exact stash+restore, or cancel. Agent artifacts are labeled.
 Stash+restore preserves staged, unstaged, and non-ignored untracked state under
@@ -298,8 +302,9 @@ For branch/worktree tasks, non-interactive `dev done` without an integration
 mode remains report-only. Direct tasks still finish without one. Conflicted
 checkouts always require manual resolution.
 
-Explicit `--ff` integrates and records DONE/MERGED but always leaves runtime,
-worktree and branch intact — cleanup belongs to `dev retire`. `--pr` only publishes and
+Explicit `--ff` integrates and records DONE/MERGED while retaining the worktree
+and branch for `dev retire`. Any explicitly selected task agent pane closures
+are recorded in the result ledger; no parent pane is closed. `--pr` only publishes and
 opens review; after a commit-preserving external merge use
 `dev done --merged --base-ref <ref>`. Squash requires explicit
 `--confirm-squash <commit>` attestation. `--delete-branch` and `--keep-worktree`

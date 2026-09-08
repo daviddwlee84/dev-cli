@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.19] - 2026-09-08
+
 ### Added
 
 - Agent artifact transfer plans with private recovery records, stale-plan
@@ -19,6 +21,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   AGENTS.md/CLAUDE.md symlink/import sharing, optional portable recipes, and
   additive inventory ownership receipts. Native Windows transfer writes remain
   unavailable until private ACL/recovery support is verified.
+
+## [0.2.18] - 2026-09-08
+
+### Fixed
+
+- `dev done` preserves parent/canonical agent sessions and other task workspaces.
+  Parent occupancy offers recheck, PR, or cancel. Exact idle/done task-worktree
+  pane closures now run only inside the final guarded taskflow Apply and appear
+  in its result ledger; final cancellation no longer closes a pane first.
+- Herdr cleanup validates first-class workspace identity and foreground program
+  snapshots, preserving parent, mixed and other-checkout workspaces even when
+  their panes use the task directory. Changed programs or tabs require a fresh
+  preview; version-2 coordinator handoffs verify the exact dev caller returns
+  to its shell and reject old handoffs.
+
+### Added
+
+- Interactive `dev done` and `dev retire` show workspace/tab/pane identities,
+  agent states and foreground program names, PIDs and directories. FF requires
+  independent consent to changing files while general programs keep running;
+  retirement requires `CLOSE <workspace-id>` to terminate known programs.
+  Background jobs are explicitly unobserved. `--yes` and `--close-unknown` do
+  not implicitly authorize known program termination or FF program consent.
 
 ## [0.2.17] - 2026-09-05
 
@@ -726,7 +751,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.17...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.19...HEAD
+[0.2.19]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.18...v0.2.19
+[0.2.18]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.17...v0.2.18
 [0.2.17]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.16...v0.2.17
 [0.2.16]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.14...v0.2.15

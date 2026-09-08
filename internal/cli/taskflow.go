@@ -236,6 +236,8 @@ func renderLifecycleResult(app *App, plan flow.Plan, result flow.Result) {
 				pushed = "origin/" + step.Effect.Target
 			}
 			fmt.Fprintf(app.Out, "   %s     %s\n", style.label("pushed"), pushed)
+		case flow.EffectCloseTaskPane:
+			fmt.Fprintf(app.Out, "   %s     Herdr pane %s (task agent session ended)\n", style.label("closed"), details["pane"])
 		case flow.EffectCloseRuntime:
 			closed := strings.TrimPrefix(step.Detail, "closed ")
 			fmt.Fprintf(app.Out, "   %s     %s\n", style.label("closed"), closed)

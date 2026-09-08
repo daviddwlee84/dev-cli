@@ -324,6 +324,8 @@ func (s *lifecycleService) completionPlanSpec(
 	fallback string,
 	summary string,
 ) PlanSpec {
+	conditions = append(conditions, completionPaneCondition(observed), completionProgramCondition(observed))
+	effects = append(completionPaneEffects(observed), effects...)
 	return PlanSpec{
 		Authority:         s.baseAuthority(request, observed),
 		Conditions:        conditions,
@@ -527,7 +529,10 @@ func (s *lifecycleService) completionRuntimeConditions(observed lifecycleObserva
 		availableVerdict = VerdictBlocked
 		availableEvidence = "runtime backend " + observed.runtime.Name() + " is unavailable"
 	}
-	occupancyVerdict, occupancyEvidence := s.completionOccupancyVerdict(observed.occupancy, observed.occupancyErr)
+	occupancyVerdict, occupancyEvidence := s.completionOccupancyVerdict(completionAllowedOccupancy(observed), observed.occupancyErr)
+	if occupancyVerdict == VerdictMet && len(observed.completionRuntime.CloseTaskPanes.Entries()) > 0 {
+		occupancyEvidence = "the selected task agent panes will close only under final plan approval; parent panes are preserved"
+	}
 	return []Condition{
 		condition(ConditionRuntimeAvailable, availableVerdict, RequirementRequired,
 			availableEvidence, "select an available runtime backend"),

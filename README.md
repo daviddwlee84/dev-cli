@@ -73,7 +73,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.17 instead when you need a reproducible install.
+# Pin @v0.2.19 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -441,9 +441,17 @@ retire and delete the freshly contained branch. A caller-owned Herdr workspace
 is closed only by a newly created external coordinator after a second fresh
 retirement audit; active agents and mixed workspaces remain blockers.
 
-Before MERGED, the same wizard can recover from selected local blockers. An
-exact non-caller Herdr pane whose recognized agent is still `idle` or `done`
-can be closed after confirmation and a fresh identity check. If local
+Parent/canonical agent sessions and other tasks' tabs are preserved. A parent
+agent blocks FF; the wizard offers recheck, PR, or cancel. It can select exact
+idle/done task-worktree panes for closure under the final guarded plan, with no
+closure before final approval. General foreground programs need an independent
+confirmation that FF changes checkout files while they keep running. Interactive
+`dev done` cleanup and `dev retire` list workspace/tab/pane IDs, program names,
+PIDs and directories, and require `CLOSE <workspace-id>` before terminating
+known non-agent programs. Background jobs are not inspected; unknown process
+observations are not presented as idle shells. Parent and mixed workspaces stay
+open. See [retirement scope](docs/guides/agent-safe-retirement.md#task-worktree-scope).
+If local
 fast-forward is blocked only by dirty canonical-checkout bytes, dev lists the
 paths (marking agent artifacts) and offers PR handoff, exact stash+restore,
 typed `DROP` discard, or cancel. Stash+restore preserves staged state and

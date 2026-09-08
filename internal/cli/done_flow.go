@@ -42,6 +42,7 @@ type doneOptions struct {
 }
 
 type doneSelection struct {
+	Runtime                 flow.CompletionRuntimeOptions
 	Integration             doneIntegration
 	Dirty                   flow.DirtyPolicy
 	Message                 string
@@ -284,20 +285,23 @@ func runDone(ctx context.Context, app *App, args []string, opts doneOptions) err
 func doneActionOptions(selected task.Task, selection doneSelection, opts doneOptions) flow.ActionOptions {
 	if selected.EffectiveMode() == task.ModeDirect {
 		return flow.CompleteDirectOptions{
-			Dirty: selection.Dirty, CommitMessage: selection.Message, Push: opts.Push,
+			Runtime: selection.Runtime,
+			Dirty:   selection.Dirty, CommitMessage: selection.Message, Push: opts.Push,
 		}
 	}
 	switch selection.Integration {
 	case doneIntegrationPR:
-		return flow.ReviewHandoffOptions{Dirty: selection.Dirty, CommitMessage: selection.Message}
+		return flow.ReviewHandoffOptions{Runtime: selection.Runtime, Dirty: selection.Dirty, CommitMessage: selection.Message}
 	case doneIntegrationMerged:
 		return flow.VerifyMergedOptions{
-			Dirty: selection.Dirty, CommitMessage: selection.Message,
+			Runtime: selection.Runtime,
+			Dirty:   selection.Dirty, CommitMessage: selection.Message,
 			BaseRef: opts.BaseRef, SquashCommit: opts.ConfirmSquash, PushBase: opts.Push,
 		}
 	default:
 		return flow.CompleteFFOptions{
-			Dirty: selection.Dirty, CommitMessage: selection.Message, PushBase: opts.Push,
+			Runtime: selection.Runtime,
+			Dirty:   selection.Dirty, CommitMessage: selection.Message, PushBase: opts.Push,
 			IntegrationTargetPolicy: selection.IntegrationTargetPolicy,
 		}
 	}
@@ -478,6 +482,12 @@ func confirmDonePlan(app *App, p *prompter, t task.Task, plan flow.Plan) (bool, 
 	s := app.outStyle()
 	fmt.Fprintln(app.Out, "\n"+s.title("Summary"))
 	fmt.Fprintf(app.Out, "  %s        %s\n", s.label("task"), t.Title())
+	fmt.Fprintf(app.Out, "  worktree    %s\n  base        %s\n  KEEP parent workspace and other tasks: %s\n", config.Contract(plan.Locator.CheckoutPath), view.Base, config.Contract(plan.Locator.RepoPath))
+	for _, effect := range plan.Effects() {
+		if effect.Code == flow.EffectCloseTaskPane {
+			fmt.Fprintf(app.Out, "  CLOSE task agent pane %s after this final approval (ends its session)\n", effect.Details.Map()["pane"])
+		}
+	}
 	if donePlanHasEffect(plan, flow.EffectDiscardTarget) {
 		fmt.Fprintf(app.Out, "  %s       %s\n", s.label("canonical"),
 			s.danger("discard all staged, unstaged and untracked integration-target changes"))
@@ -554,7 +564,11 @@ func renderDoneSuccess(app *App, selected, final task.Task, plan flow.Plan, resu
 		if final.State != selected.State {
 			return fmt.Errorf("review handoff changed task state from %s to %s", selected.State, final.State)
 		}
-		fmt.Fprintln(app.Out, "\nREADY FOR REVIEW · runtime and worktree kept")
+		if donePlanHasEffect(plan, flow.EffectCloseTaskPane) {
+			fmt.Fprintln(app.Out, "\nREADY FOR REVIEW · worktree kept; selected task agent panes were closed as listed above")
+		} else {
+			fmt.Fprintln(app.Out, "\nREADY FOR REVIEW · runtime and worktree kept")
+		}
 		fmt.Fprintln(app.Out, "After merge: dev done --merged --base-ref origin/"+doneView(plan).Base)
 		return nil
 	case flow.CompleteDirect, flow.CompleteFF, flow.VerifyMerged:
@@ -578,7 +592,11 @@ func renderDoneSuccess(app *App, selected, final task.Task, plan flow.Plan, resu
 		fmt.Fprintf(app.Out, "   already merged  %s is contained in %s\n", final.Branch, view.Base)
 	}
 	fmt.Fprintf(app.Out, "%s %s merged into %s\n", task.Done.Icon(), final.Title(), view.Base)
-	fmt.Fprintln(app.Out, "   MERGED · runtime and worktree kept")
+	if donePlanHasEffect(plan, flow.EffectCloseTaskPane) {
+		fmt.Fprintln(app.Out, "   MERGED · worktree and branch kept; selected task agent panes were closed as listed above")
+	} else {
+		fmt.Fprintln(app.Out, "   MERGED · runtime and worktree kept")
+	}
 	if offerCleanup {
 		fmt.Fprintln(app.Out, "   cleanup choice follows after a fresh runtime and agent preview")
 	} else {

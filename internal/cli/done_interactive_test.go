@@ -435,7 +435,7 @@ func TestRetireCoordinatorConsumesStaleIntentOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := writeRetireHandoffIntent(dir, retireHandoffIntent{
-		Version: 1, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
+		Version: retireHandoffVersion, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
 		TaskID: candidate.ID, TaskRevision: "stale", CheckoutPath: candidate.WorktreePath,
 	}); err != nil {
 		t.Fatal(err)
@@ -478,7 +478,7 @@ func TestRetireCoordinatorRevalidatesAndRetiresFromOutside(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := writeRetireHandoffIntent(dir, retireHandoffIntent{
-		Version: 1, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
+		Version: retireHandoffVersion, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(time.Minute),
 		TaskID: candidate.ID, TaskRevision: record.Revision, CheckoutPath: worktree,
 		HeadOID: head, PreviewFingerprint: preview.Fingerprint(),
 	}); err != nil {

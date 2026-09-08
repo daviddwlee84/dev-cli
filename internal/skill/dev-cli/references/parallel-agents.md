@@ -235,3 +235,13 @@ Cleanup remains explicit and is never triggered by Herdr `done`:
 
 `dev park --cold --keep-session` is invalid because it would strand a live
 session on a removed checkout.
+
+## Finishing one parallel task
+
+`dev done` preserves parent/canonical agents and other tasks' tabs. Parent
+occupancy blocks local FF; use recheck, PR or cancel. Select only exact idle/done
+panes in this task's linked worktree for closure, then approve the final plan.
+Other foreground programs keep running during FF only after separate file-change
+consent; interactive retirement requires `CLOSE <workspace-id>` to end known
+programs. Never interpret an unknown process observation as an idle shell.
+Background jobs are not inspected. See `agent-retirement.md`.

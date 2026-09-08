@@ -90,7 +90,15 @@ const (
 	EffectCreateTask     EffectCode = "create-task"
 )
 
+const ConditionForegroundPrograms ConditionCode = "foreground-programs"
+const ConditionTaskPaneClosure ConditionCode = "task-pane-closure"
+const EffectCloseTaskPane EffectCode = "close-task-pane"
+
 type lifecycleObservation struct {
+	completionRuntime   CompletionRuntimeOptions
+	completionClaimsErr error
+	checkTaskPrograms   bool
+	checkParentPrograms bool
 	lifecycleCaller
 
 	record task.Record
@@ -397,6 +405,7 @@ func artifactAuthority(inspection artifact.ReadinessInspection, err error) strin
 func cleanupAuthority(inspection retire.Inspection, err error) string {
 	values := []string{
 		inspection.Target,
+		inspection.Fingerprint(),
 		strconv.Itoa(inspection.ClosedSessions),
 		boolString(inspection.RuntimeUnknown),
 		boolString(inspection.CallerContained),
@@ -431,7 +440,7 @@ func occupancyAuthority(occupancy runtime.Occupancy, err error) string {
 		errorString(err),
 	}
 	for _, session := range occupancy.Sessions {
-		values = append(values, session.Runtime.Handle, boolString(session.IsCaller))
+		values = append(values, runtime.WorkspaceFingerprint(session.Runtime), boolString(session.IsCaller))
 		for _, pane := range session.Panes {
 			values = append(values, pane.ID, pane.CWD, pane.ShellCWD, pane.Agent, pane.AgentStatus, pane.AgentSession)
 		}
