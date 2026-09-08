@@ -302,18 +302,34 @@ func (s *Service) ApplyRemoval(ctx context.Context, plan RemovalPlan) (RemovalRe
 		if err := safefile.VerifyRoot(plan.Source, held); err != nil {
 			return err
 		}
+		parentPath, name := filepath.Dir(plan.Source), filepath.Base(plan.Source)
+		parent, parentInfo, err := safefile.OpenRoot(parentPath)
+		if err != nil {
+			return err
+		}
+		defer parent.Close()
+		if err := safefile.VerifyChildRoot(parent, name, held); err != nil {
+			return err
+		}
+		// os.Root intentionally prevents its own directory from being renamed
+		// or deleted on Windows. Release only our target inspection handle;
+		// keep the parent held and recheck the persistent target identity at
+		// the effect boundary. Other processes' handles remain untouched.
+		if err := root.Close(); err != nil {
+			return err
+		}
+		if err := safefile.VerifyRoot(parentPath, parentInfo); err != nil {
+			return err
+		}
+		identity, _, err := removalIdentity(plan.Source)
+		if err != nil || identity != plan.identity {
+			return errors.Join(errors.New("removal target changed after inspection; intent retained"), err)
+		}
 		result.Outcome = "unknown"
 		if plan.Method == "trash" {
 			err = s.trash(ctx, plan.Source)
 		} else {
-			parent, _, openErr := safefile.OpenRoot(filepath.Dir(plan.Source))
-			if openErr != nil {
-				return openErr
-			}
-			defer parent.Close()
-			if err = safefile.VerifyChildRoot(parent, filepath.Base(plan.Source), held); err == nil {
-				err = parent.RemoveAll(filepath.Base(plan.Source))
-			}
+			err = parent.RemoveAll(name)
 		}
 		if err != nil {
 			return fmt.Errorf("removal outcome unknown; inspect %s before recovery: %w", result.Journal, err)

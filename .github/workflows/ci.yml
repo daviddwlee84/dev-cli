@@ -41,6 +41,14 @@ jobs:
       - name: Test (race)
         if: runner.os != 'Windows'
         run: go test -race ./...
+      - name: Test Try removal and browse contracts (required on Windows)
+        if: runner.os == 'Windows'
+        run: go test ./internal/desktop ./internal/experiment ./internal/repobrowse -run 'Test(Removal|Trash|Permanent|Browse|Recycle)'
+
+      - name: Test dashboard and Try CLI contracts (required on Windows)
+        if: runner.os == 'Windows'
+        run: go test ./internal/cli -run 'Test(Dashboard|TryDeleteCLI|BrowseCLI|Removal)'
+
       # The broad suite remains advisory on Windows while unrelated domain
       # packages finish guarding POSIX-only assumptions. SSH/fleet behavior has
       # a separate required native gate below.
@@ -48,12 +56,6 @@ jobs:
         if: runner.os == 'Windows'
         continue-on-error: true
         run: go test ./...
-
-      - name: Test Try removal and browse contracts (required on Windows)
-        if: runner.os == 'Windows'
-        run: |
-          go test ./internal/desktop ./internal/experiment ./internal/repobrowse -run 'Test(Removal|Trash|Permanent|Browse|Recycle)'
-          go test ./internal/cli -run 'Test(Dashboard|TryDeleteCLI|BrowseCLI|Removal)'
 
       - run: go build ./cmd/dev
 

@@ -1230,7 +1230,13 @@ func TestDoctorSSHChecksAreStaticAndFleetConfigMarksGeneratedHosts(t *testing.T)
 	}
 	fixture.runner.resetCalls()
 
+	// This test checks static SSH/fleet inventory, not host forge readiness.
+	// In particular, a real Azure CLI can leave a telemetry child writing to
+	// the temporary HOME after doctor returns, racing TempDir cleanup.
+	originalPath := os.Getenv("PATH")
+	t.Setenv("PATH", staticDoctorPath(t))
 	out, _, err := fixture.run("doctor")
+	t.Setenv("PATH", originalPath)
 	if err != nil {
 		t.Fatalf("doctor: %v\n%s", err, out)
 	}
