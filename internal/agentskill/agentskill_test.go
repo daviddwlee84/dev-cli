@@ -80,8 +80,11 @@ func TestListMergesScopesAtCurrentCheckout(t *testing.T) {
 	if rows[1].Scope != ScopeGlobal || rows[1].Path != globalPath || !contains(rows[1].Agents, "Cline") {
 		t.Errorf("global row = %+v", rows[1])
 	}
-	if contains(rows[1].Attribution.AgentIDs, "promptscript") || contains(rows[1].Attribution.AgentIDs, "codex") {
+	if contains(rows[1].Attribution.AgentIDs, "promptscript") || contains(rows[1].Attribution.AgentIDs, "amp") {
 		t.Errorf("global attribution included project-only or differently rooted agents: %+v", rows[1].Attribution)
+	}
+	if !contains(rows[1].Attribution.AgentIDs, "codex") || !contains(rows[1].Attribution.AgentIDs, "universal") {
+		t.Errorf("canonical user store lacks Codex/universal attribution: %+v", rows[1].Attribution)
 	}
 	for _, row := range rows {
 		if row.ManagedBy != ManagedBySkills || row.Presence != PresencePresent || row.UpdateStatus != UpdateUnchecked {

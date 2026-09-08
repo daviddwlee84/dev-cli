@@ -1337,6 +1337,201 @@ For Claude-specific primitive selection, continue with the [parallel work decisi
 
 ---
 
+### Agent configuration interoperability
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/agent-interop/
+
+> Copy, move, mirror, and reconstruct selected agent configuration while keeping credentials and ownership separate.
+
+Use native agent files as runtime configuration. A transfer plan names the exact
+source, destination, scope and changes; `apply` checks those observations again.
+Ordinary copies and relative skill links do not require dev at agent startup.
+
+## Choose the relationship
+
+| Need | Operation |
+|---|---|
+| One skill shared by agents in a checkout | Per-skill `mirror` from `.agents/skills` |
+| Reuse a skill in another repository | Verified upstream `prepare`, then `install` |
+| Independent local content | `copy`; future source edits do not propagate |
+| Relocate selected content | `move`; publish and verify before retiring the source |
+| One MCP definition with generated client projections | `mirror`, followed by reviewed `refresh` |
+| Shared instructions | `CLAUDE.md -> AGENTS.md`, or a Claude `@AGENTS.md` import |
+
+Keep each repository independently reproducible. Commit its native configuration,
+relative links, and project `skills-lock.json`; commit installed skill contents
+too when offline reproduction is required. Cross-project mirrors are explicit
+dependencies on another local checkout, not portable package installations.
+Putting a skill in `~/.agents/skills` enables user-wide discovery in Codex; a
+private skills Git repository is a better source for selectively installed
+skills. [Codex skills](https://developers.openai.com/codex/skills/)
+
+## Skills
+
+```bash
+dev skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
+dev skill transfer apply --plan <id>
+
+dev skill transfer prepare example --from-repo api --to-repo web
+dev skill transfer plan example --from-repo api --to-repo web --mode install --prepared <id>
+dev skill transfer apply --plan <id>
+```
+
+Only `prepare` invokes the directly installed `skills@1.5.23` provider and may
+fetch. It uses a private staging directory and checks the provider version,
+source identity, native lock, and installed/staged content. Plan/apply do not run
+an installer. Missing installed content can be reconstructed from a supported
+lock: select the same checkout for source and destination. An existing matching
+lock is retained byte for byte.
+
+Provider version, lock schema and skill content are separate compatibility
+checks. Project v1 uses a folder content hash; global v3 uses a Git tree hash.
+Unsupported versions/fields, non-ASCII hash ordering, changed upstream content,
+and raw commit refs that the provider cannot clone are reported explicitly.
+There is no fallback to latest, npx, or an independent copy.
+The legacy `skill add` wizard and `skill update` remain explicit native provider
+operations; they are not frozen restores.
+[Project lock](https://github.com/vercel-labs/skills/blob/v1.5.23/src/local-lock.ts),
+[global lock](https://github.com/vercel-labs/skills/blob/v1.5.23/src/skill-lock.ts),
+[upstream install](https://github.com/vercel-labs/skills/blob/v1.5.23/src/install.ts)
+
+Moves verify lock-owned contents, preserve native destination membership, then
+retire matching source membership and exact native symlinks. Independent agent
+copies remain untouched. Active cross-project mirrors block canonical retirement
+until those consumers are migrated. Local copies do not invent upstream hashes.
+
+## MCP: five explicit adapters
+
+```bash
+dev mcp transfer plan --server grafana --from-agent claude-code --to-agent codex --mode copy
+dev mcp transfer apply --plan <id>
+
+dev mcp transfer plan --server grafana --from-agent claude-code --to-agent codex \
+  --mode mirror --secret-env-file .claude/settings.local.json
+dev mcp transfer apply --plan <id>
+dev mcp transfer refresh <relation-id>
+```
+
+The five adapters are Claude Code, Codex, Cursor, Gemini CLI and OpenCode.
+Project and user/global are explicit scopes; `--from-repo` and `--to-repo`
+select exact checkouts. Native user-home overrides remain supported. Claude's
+project-local entries inside `~/.claude.json`, plugins, system policy and managed
+config are inventory surfaces, not transfer scopes.
+
+Supported conversion is deliberately the common subset: stdio command/arguments,
+compatible environment references, and explicit Streamable HTTP URLs/header
+references. Ambiguous remote declarations require `--transport streamable-http`.
+Unknown fields, disabled source declarations, applicable source tool restrictions,
+SSE, OAuth configuration/token stores and dynamic helpers are not silently dropped.
+OpenCode's classic `mcp.<name>` schema is supported; v2 `mcp.servers` requires a
+separate profile.
+
+Writers patch the selected JSON/JSONC member or TOML table ranges. Unrelated
+settings and comments survive. A selected inline/dotted TOML definition or an
+inline `mcp_servers` container requires a native edit. An equivalent existing
+stanza is a no-op without ownership; use `--adopt --mode mirror` to adopt it.
+Changing a managed source also requires explicit adoption.
+
+MCP mirror updates are reviewed projections, not background synchronization.
+Ownership is per stanza: editing an unrelated model setting or adding a second
+server does not invalidate the first relation. Undo restores only selected
+stanzas and preserves later unrelated edits; empty native container files may
+remain.
+
+### Credentials and the optional launcher
+
+Keep secret values outside version-controlled content. Configuration carries
+environment names, not copied tokens. Cross-scope credential use requires
+explicit `--bind SERVER_ENV=PROCESS_ENV` mappings. The preview lists references
+without their values.
+
+Native mappings are preferred. Codex forwards same-name stdio variables through
+`env_vars` and uses its native HTTP reference fields. When a stdio mapping needs
+a local JSON `env` source or variable renaming, choose `--bridge` or
+`--secret-env-file`. The latter is relative to the destination scope and must be
+an owner-private regular file. This is compatibility for an existing local file;
+dev does not create secret files or copy them to another project.
+
+The launcher resolves selected references at launch: process environment first,
+then the selected local `env` object, then an explicit fallback. An empty value
+is set, not missing. Rotation takes effect at the next launch. Other model/provider
+variables are not passed to the server. Source policy files may be parsed during
+planning, but credential resolution and injection happen only during launch.
+
+The launcher is host-local, binds an exact checkout and executable, and requires
+the referenced dev installation. Moving/cloning needs a new binding. Source
+execution/reference changes require refresh; ordinary secret rotation does not.
+A launcher cannot inject credentials into an already-running HTTP client, and a
+launcher-backed declaration cannot be moved away from its source.
+
+Environment variables are not isolation from other processes owned by the same
+user. An existing secret manager can inject them before client startup, for
+example with [1Password runtime injection](https://developer.1password.com/docs/cli/secrets-environment-variables/).
+Native Keychain/Vault/YubiKey integrations are not implemented. OAuth login
+stores and private-key files are never migration payloads.
+
+### Optional connection evidence
+
+```bash
+dev mcp transfer check <applied-id> --json
+```
+
+This explicitly starts a stdio server or contacts its HTTP endpoint, negotiates
+MCP 2025-06-18 and sends the initialized notification. It does not call application
+tools. The result distinguishes `configured` from `initialized`; authentication
+and native-client loading stay `not-checked`. Ordinary list/plan/apply do not
+probe servers, install tools or contact endpoints.
+[MCP lifecycle](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle)
+
+## Instructions and optional recipes
+
+```bash
+dev instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror
+dev instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror --style import
+dev instructions transfer apply --plan <id>
+
+dev skill transfer export <applied-id> > .agents/interop.toml
+dev skill transfer recipe .agents/interop.toml --entry skill-example
+dev skill transfer apply --plan <id>
+```
+
+Import prepends the shared source while retaining Claude-specific bytes and order.
+A symlink can replace an identical regular instruction file only with `--adopt`;
+different content is a conflict. Moves do not generalize project assumptions and
+refuse to leave another native instruction link dangling.
+[Claude instructions](https://code.claude.com/docs/en/memory)
+
+Recipes are optional v1 TOML with named `transfers` entries. Select one entry per
+fresh plan. They record copy/mirror intent and native source references, never
+absolute checkout paths, credentials, receipts or host-local launcher bindings.
+User entries resolve the current agent's native home. Unknown fields or profiles
+fail closed. Cross-project absolute dependencies, moves and prepared payloads
+remain explicit operations; upstream installs already have native locks.
+
+## Recovery and platform boundaries
+
+`transfer status` reports recorded operations; `transfer undo <id>` creates a
+reverse plan. Neither a receipt nor inventory's additive `interop` metadata is
+evidence of current client activation or health. Apply locks and revalidates exact
+file/checkout/Git identities. A stale plan has no new effect; later failures
+report confirmed steps and an unconfirmed in-flight step separately.
+
+Recovery objects live under `paths.state_dir/agent-interop`, with 0700 directories
+and 0600 files. This is durable private state, not a cache or sync directory.
+Git-backed state locations are refused because recovery of an existing mixed
+configuration may contain unrelated credentials. There is no automatic expiry:
+retain records while a launcher, refresh or undo depends on them. Do not commit
+or synchronize this directory. An unconfirmed crash effect requires inspection;
+dev does not guess ownership and delete it.
+
+The initial mutation backend is POSIX. Native Windows transfers fail before agent
+writes pending a verified protected-DACL/recovery adapter; inventory and existing
+native provider commands remain available. Symlink failure never silently becomes
+a copy, junction or elevation request. External editors, raw Git and native
+provider commands remain outside dev's cooperative transaction guarantees.
+
+---
+
 ### SSH host onboarding
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/
@@ -5127,6 +5322,106 @@ Quick-reference pages for the git workflow dev assumes
 dev help [topic]
 ```
 
+### `dev instructions`
+
+Share AGENTS.md and CLAUDE.md with guarded transfers
+
+```
+dev instructions
+```
+
+### `dev instructions transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev instructions transfer
+```
+
+### `dev instructions transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev instructions transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev instructions transfer export`
+
+Print an optional credential-free reconstruction recipe
+
+```
+dev instructions transfer export <id> [flags]
+```
+
+- `--entry` — portable recipe entry name
+
+### `dev instructions transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev instructions transfer plan [flags]
+```
+
+- `--adopt` — adopt an equivalent instruction file with private recovery
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--style` — mirror style: symlink or import
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev instructions transfer recipe`
+
+Plan one entry from an optional reconstruction recipe
+
+```
+dev instructions transfer recipe <file> [flags]
+```
+
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
+
+### `dev instructions transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev instructions transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev instructions transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev instructions transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev instructions transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev instructions transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
 ### `dev journal`
 
 Generate a development journal from Git and current context
@@ -5183,6 +5478,113 @@ dev mcp list [flags]
 - `--json` — emit a stable sanitized JSON envelope
 - `-r, --repo` — scan one repository or explicit checkout path
 - `--scope` — declaration scope: project, local, user, custom, system-defaults, system-override, managed
+
+### `dev mcp transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev mcp transfer
+```
+
+### `dev mcp transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev mcp transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev mcp transfer check`
+
+Explicitly initialize an applied MCP server
+
+```
+dev mcp transfer check <id> [flags]
+```
+
+- `--json` — emit connection evidence without server payloads
+
+### `dev mcp transfer export`
+
+Print an optional credential-free reconstruction recipe
+
+```
+dev mcp transfer export <id> [flags]
+```
+
+- `--entry` — portable recipe entry name
+
+### `dev mcp transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev mcp transfer plan [flags]
+```
+
+- `--adopt` — adopt an equivalent MCP stanza or explicitly change its managed source
+- `--as` — destination server name
+- `--bind` — destination environment binding SERVER_ENV=PROCESS_ENV
+- `--bridge` — use the installed dev stdio launcher with a host-local binding
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--secret-env-file` — explicit local JSON env source for the optional launcher
+- `--server` — one source server name
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+- `--transport` — explicit transport for ambiguous remote declarations
+
+### `dev mcp transfer recipe`
+
+Plan one entry from an optional reconstruction recipe
+
+```
+dev mcp transfer recipe <file> [flags]
+```
+
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
+
+### `dev mcp transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev mcp transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev mcp transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev mcp transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev mcp transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev mcp transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
 
 ### `dev note`
 
@@ -5767,6 +6169,119 @@ dev skill sync [flags]
 - `--check` — report drift and exit non-zero instead of writing
 - `-h, --help` — help for sync
 
+### `dev skill transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev skill transfer
+```
+
+### `dev skill transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev skill transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev skill transfer export`
+
+Print an optional credential-free reconstruction recipe
+
+```
+dev skill transfer export <id> [flags]
+```
+
+- `--entry` — portable recipe entry name
+
+### `dev skill transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev skill transfer plan <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer prepare`
+
+Fetch and verify one skill in private staging
+
+```
+dev skill transfer prepare <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer recipe`
+
+Plan one entry from an optional reconstruction recipe
+
+```
+dev skill transfer recipe <file> [flags]
+```
+
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
+
+### `dev skill transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev skill transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev skill transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev skill transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev skill transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev skill transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
 ### `dev skill update`
 
 Update one skill in one explicit scope
@@ -6268,6 +6783,31 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 - [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
 - [`internal/machineid`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/machineid)
 
+## Agent artifact transfers
+
+Use `dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+for a reviewed per-skill link. `--mode copy` creates independent content and
+`--mode move` publishes the destination before source cleanup. Select exact
+checkouts with `--from-repo`/`--to-repo`; apply with `transfer apply --plan <id>`.
+`transfer status`, `transfer undo <id>`, and `transfer refresh <id>` expose the
+local ledger and create guarded follow-up plans. Private recovery content is
+stored under the configured state directory and is omitted from JSON reports.
+
+For upstream reuse across repositories, run `dev skill transfer prepare <name>`
+with the source/destination selectors, then `transfer plan <name> --mode install
+--prepared <id>`. Only prepare may fetch. The initial compatibility profile pins
+`skills@1.5.23` and verifies native lock provenance and staged content before any
+agent files are published. A version/schema/hash mismatch fails without silently
+upgrading or falling back to copy.
+
+MCP and instruction transfers use the same guarded family: `dev mcp transfer`
+and `dev instructions transfer`. MCP offers explicit `check`; all three families
+can `export` an optional recipe and plan one `recipe` entry. See the
+[complete interoperability workflow](https://daviddwlee84.github.io/dev-cli/guides/agent-interop/) for native
+scope mappings, stanza ownership, credential references and platform limits.
+Skill JSON rows and MCP JSON envelopes may add `interop` and `interop_coverage`;
+`receipts-only` never means the native client loaded or authenticated a tool.
+
 ---
 
 ### Compatibility and known limitations
@@ -6308,6 +6848,17 @@ This page separates graceful degradation from real limitations. Reverify it when
 | verified ephemeral worktree apply | Git, compatible bounded Claude Workflow metadata, known task/artifact state, and every available runtime inventory | report remains available, but missing/unknown proof is never apply-eligible |
 
 ## Confirmed project limitations
+
+### Agent transfers use explicit capability profiles
+
+[Agent interoperability](https://daviddwlee84.github.io/dev-cli/guides/agent-interop/) adds plan/apply/undo for
+skills, five MCP formats, and AGENTS.md/CLAUDE.md. The initial mutation backend
+is POSIX; Windows writes fail closed pending protected-DACL/recovery validation.
+Unknown policies/authentication extensions, OpenCode v2 and uneditable TOML
+layouts remain native-client work. Local env launchers retain their source and
+are host-local; HTTP clients need their own environment. Only explicit prepare
+may run the pinned skills provider, and only explicit check initializes MCP.
+Inventory's additive interop receipts are historical, not live health evidence.
 
 ### MCP inventory is static and intentionally incomplete
 
@@ -6728,6 +7279,17 @@ When code or an upstream feature changes:
 - [Skills](https://code.claude.com/docs/en/skills)
 - [Plugins](https://code.claude.com/docs/en/plugins)
 - [Agent SDK loop](https://code.claude.com/docs/en/agent-sdk/agent-loop)
+
+### Agent interoperability profile (2026-09-07)
+
+[Agent interoperability](https://daviddwlee84.github.io/dev-cli/guides/agent-interop/) is grounded in
+`internal/agentinterop`, native inventory/CLI tests, and synthetic MCP servers.
+The skills profile is fixed at 1.5.23 with project-v1/global-v3 locks; it does
+not follow latest. The MCP initialization probe uses specification 2025-06-18.
+Current Codex canonical user discovery is additive to the pinned registry's
+legacy paths. Schema/fixture verification does not prove that a running native
+client has loaded the generated configuration. Windows transfer writes remain
+unavailable pending a separately verified privacy/identity adapter.
 
 ---
 
@@ -8299,6 +8861,181 @@ Claude-specific primitive 的選擇請接著看[平行工作決策指南](https:
 - [`internal/runtime/herdr.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/runtime/herdr.go)
 - [`internal/cli/prompt_command.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/prompt_command.go)
 - [Claude Code：平行執行 agents](https://code.claude.com/docs/en/agents)
+
+---
+
+### Agent 設定互通
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-interop/
+
+> 複製、遷移、鏡像與重建選定的 agent 設定，同時分開處理憑證與所有權。
+
+Agent 原生檔案維持 runtime 設定來源。Transfer plan 顯示精確來源、目的地、
+scope 與變更，`apply` 重新驗證後才套用。一般複製和 skill 相對連結，
+不要求 agent 啟動時安裝 dev。
+
+## 選擇關係
+
+| 需求 | 操作 |
+|---|---|
+| 同 checkout 的多個 agent 共用 skill | 從 `.agents/skills` 建立逐項 `mirror` |
+| 另一個 repo 重用 skill | 驗證上游的 `prepare`，再 `install` |
+| 獨立內容 | `copy`，後續來源修改不會傳播 |
+| 遷移選定內容 | `move`，先寫入並驗證目的地再清理來源 |
+| 一份 MCP 定義供多個 client 使用 | `mirror`，經審閱的 `refresh` 更新投影 |
+| 共用指令 | `CLAUDE.md -> AGENTS.md`，或 Claude 的 `@AGENTS.md` import |
+
+各 repo 應保持獨立可重現。提交原生設定、相對 symlink 和 project
+`skills-lock.json`；需要離線重現時，也提交安裝後的 skill tree。
+跨 repo mirror 明確依賴另一個本機 checkout，並非可攜的套件安裝。
+Codex 會從 `~/.agents/skills` 載入 user skills；只想選擇性分享的 skills，
+可放在獨立私人 Git repo，再安裝到各專案。
+[Codex skills](https://developers.openai.com/codex/skills/)
+
+## Skills
+
+```bash
+dev skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
+dev skill transfer apply --plan <id>
+
+dev skill transfer prepare example --from-repo api --to-repo web
+dev skill transfer plan example --from-repo api --to-repo web --mode install --prepared <id>
+dev skill transfer apply --plan <id>
+```
+
+只有 `prepare` 會執行可信任、已安裝的 `skills@1.5.23`，並可能連網。
+它使用私人暫存目錄，驗證 provider 版本、來源、原生 lock 與本機／暫存內容。
+Plan/apply 不執行 installer。只有 lock、尚未安裝內容的 checkout 也能重建：
+把來源與目的地選成同一 checkout；相符的既有 lock 保留原始 bytes。
+
+Provider 版本、lock schema、skill 內容分開檢查。Project v1 使用內容 hash，
+global v3 使用 Git tree hash。未知版本／欄位、無法重現的非 ASCII 排序、
+上游內容漂移，以及 provider 無法 clone 的裸 commit ref 都會明確停止。
+不會改用 latest、npx 或自行 fallback 成 copy。
+既有 `skill add` wizard 與 `skill update` 仍是明確執行的原生 provider 操作，
+不代表 frozen restore。
+[Project lock](https://github.com/vercel-labs/skills/blob/v1.5.23/src/local-lock.ts)、
+[global lock](https://github.com/vercel-labs/skills/blob/v1.5.23/src/skill-lock.ts)、
+[上游 install](https://github.com/vercel-labs/skills/blob/v1.5.23/src/install.ts)
+
+Move 會驗證 lock 管理的內容、建立目的端原生 membership，再清理相符的來源
+membership 與精確的原生 symlink。其他 agent 的獨立副本保留。
+仍有跨 repo mirror 使用來源時，必須先遷移那些 consumer。
+本機 copy 不會捏造上游 hash。
+
+## MCP：五種明確的 adapter
+
+```bash
+dev mcp transfer plan --server grafana --from-agent claude-code --to-agent codex --mode copy
+dev mcp transfer apply --plan <id>
+
+dev mcp transfer plan --server grafana --from-agent claude-code --to-agent codex \
+  --mode mirror --secret-env-file .claude/settings.local.json
+dev mcp transfer apply --plan <id>
+dev mcp transfer refresh <relation-id>
+```
+
+五種 adapter 為 Claude Code、Codex、Cursor、Gemini CLI、OpenCode。
+Scope 明確選 project 或 user/global；`--from-repo`、`--to-repo` 選精確 checkout，
+並支援各 agent 原生 user-home override。Claude 在 `~/.claude.json` 內的
+project-local entries，以及 plugin、system policy、managed config，
+仍是 inventory 範圍，不是 transfer scope。
+
+轉換支援共同子集：stdio command/arguments、相容的 env reference、
+明確的 Streamable HTTP URL/header reference。無法靜態判定的 remote 宣告，
+需明確選 `--transport streamable-http`。未知欄位、停用的來源、
+相關 tool policy、SSE、OAuth 設定／token store、動態 helper 都不會被偷偷忽略。
+OpenCode 支援 classic `mcp.<name>`；v2 的 `mcp.servers` 需要獨立相容設定。
+
+Writer 只修改選定 JSON/JSONC member 或 TOML table range，保留其他設定與註解。
+選定 server 使用 inline/dotted TOML，或整個 `mcp_servers` 是 inline container
+時，需要原生編輯。相等的既有 stanza 是不接管所有權的 no-op；
+可用 `--adopt --mode mirror` 接管。變更已管理的來源也需要明確 adoption。
+
+MCP mirror 透過審閱更新投影，不跑背景同步。所有權以 stanza 為單位；
+修改其他 model 設定或新增第二個 server，不會使原關係失效。
+Undo 只還原選定 stanza，保留後來的無關修改，空的原生 container 檔案可能保留。
+
+### 憑證與選配 launcher
+
+Secret 值應留在版本控制內容之外，設定只放 env 名稱。
+跨 scope 使用憑證需明確指定 `--bind SERVER_ENV=PROCESS_ENV`；
+預覽顯示 reference 名稱，不顯示值。
+
+優先使用原生 mapping。Codex 的 stdio 同名變數使用 `env_vars`，
+HTTP 使用其原生 reference 欄位。Stdio 若需要本機 JSON `env` 來源或變數改名，
+才選 `--bridge` 或 `--secret-env-file`。後者相對於目的 scope，
+必須是 owner-private 的 regular file。這只相容既有本機檔案，
+dev 不建立 secret 檔，也不把它複製到另一個 project。
+
+Launcher 在啟動時解析選定 reference：process environment 優先，
+再讀選定本機 `env`，最後才使用明確 fallback。空值表示已設定，不是缺值。
+輪替在下次啟動生效，其他 model/provider 變數不會傳給 server。
+Plan 可能解析來源 policy 檔案，但憑證的解析與注入只在啟動時發生。
+
+Launcher 綁定本機 checkout、executable 與指定 dev 安裝。
+搬動或 clone 後需重新建立 binding；來源執行／reference 結構改變需要 refresh，
+一般 secret 輪替則不需要。Stdio launcher 無法注入已啟動的 HTTP client；
+依賴 launcher 的宣告也不能透過 move 移除其來源。
+
+Env 不是對同一使用者之其他程序的隔離。既有 secret manager 可以在 client
+啟動前注入，例如 [1Password runtime injection](https://developer.1password.com/docs/cli/secrets-environment-variables/)。
+尚未實作原生 Keychain／Vault／YubiKey adapter；OAuth 登入 store 與私鑰檔案
+不會成為遷移 payload。
+
+### 選配連線證據
+
+```bash
+dev mcp transfer check <applied-id> --json
+```
+
+這會明確啟動 stdio server 或連線 HTTP endpoint，協商 MCP 2025-06-18，
+再送出 initialized notification，不呼叫 application tools。
+結果區分 `configured` 與 `initialized`；
+authentication 與 native-client loading 保持 `not-checked`。
+一般 list/plan/apply 不探測 server、不安裝工具，也不聯絡 endpoint。
+[MCP lifecycle](https://modelcontextprotocol.io/specification/2025-06-18/basic/lifecycle)
+
+## 指令與選配 recipe
+
+```bash
+dev instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror
+dev instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror --style import
+dev instructions transfer apply --plan <id>
+
+dev skill transfer export <applied-id> > .agents/interop.toml
+dev skill transfer recipe .agents/interop.toml --entry skill-example
+dev skill transfer apply --plan <id>
+```
+
+Import 在前方加入共用來源，保留 Claude 專屬內容原始 bytes 與順序。
+Symlink 取代相同 regular file 需要 `--adopt`，不同內容會衝突。
+Move 不自動泛化專案假設，也不會留下另一個懸空的原生 instruction link。
+[Claude 指令](https://code.claude.com/docs/en/memory)
+
+Recipe 是選配 v1 TOML，使用命名的 `transfers` entries，每次 fresh plan 選一項。
+只記錄 copy/mirror 意圖與原生來源 reference，不放 checkout 絕對路徑、憑證、
+receipt 或本機 launcher binding。User entry 解析目前 agent 的原生 home。
+未知欄位或 profile 會停止。跨 project 絕對路徑、move 與 prepared payload
+保持為明確操作；上游安裝本來就有原生 lock。
+
+## 復原與平台邊界
+
+`transfer status` 顯示操作紀錄；`transfer undo <id>` 建立反向計畫。
+Receipt 和 inventory 新增的 `interop` metadata 不是目前 client activation
+或 health 的證據。Apply 加鎖並重新驗證檔案／checkout／Git 身分。
+Stale plan 不產生新效果；後續失敗分開回報已確認步驟與尚未確認的 in-flight 步驟。
+
+復原資料位於 `paths.state_dir/agent-interop`，目錄 0700、檔案 0600。
+這是本機私人 durable state，不是 cache 或同步目錄。
+既有混合設定的復原資料可能含無關憑證，因此拒絕 Git-backed state 位置。
+目前沒有自動到期清理；launcher、refresh 或 undo 仍依賴時必須保留。
+不要提交或同步此目錄。Crash 後未確認的效果需要檢查，dev 不會猜測所有權並刪除。
+
+初始 mutation backend 為 POSIX。原生 Windows transfer 在驗證 protected-DACL／
+recovery adapter 前，會於寫入 agent 檔案前停止；inventory 和既有原生 provider
+命令仍可使用。Symlink 失敗不會默默變成 copy、junction 或要求提權。
+外部 editor、raw Git 與原生 provider 命令仍在 dev 的協作式 transaction 保證之外。
 
 ---
 
@@ -11957,6 +12694,106 @@ Quick-reference pages for the git workflow dev assumes
 dev help [topic]
 ```
 
+### `dev instructions`
+
+Share AGENTS.md and CLAUDE.md with guarded transfers
+
+```
+dev instructions
+```
+
+### `dev instructions transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev instructions transfer
+```
+
+### `dev instructions transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev instructions transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev instructions transfer export`
+
+Print an optional credential-free reconstruction recipe
+
+```
+dev instructions transfer export <id> [flags]
+```
+
+- `--entry` — portable recipe entry name
+
+### `dev instructions transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev instructions transfer plan [flags]
+```
+
+- `--adopt` — adopt an equivalent instruction file with private recovery
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--style` — mirror style: symlink or import
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev instructions transfer recipe`
+
+Plan one entry from an optional reconstruction recipe
+
+```
+dev instructions transfer recipe <file> [flags]
+```
+
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
+
+### `dev instructions transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev instructions transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev instructions transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev instructions transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev instructions transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev instructions transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
 ### `dev journal`
 
 Generate a development journal from Git and current context
@@ -12013,6 +12850,113 @@ dev mcp list [flags]
 - `--json` — emit a stable sanitized JSON envelope
 - `-r, --repo` — scan one repository or explicit checkout path
 - `--scope` — declaration scope: project, local, user, custom, system-defaults, system-override, managed
+
+### `dev mcp transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev mcp transfer
+```
+
+### `dev mcp transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev mcp transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev mcp transfer check`
+
+Explicitly initialize an applied MCP server
+
+```
+dev mcp transfer check <id> [flags]
+```
+
+- `--json` — emit connection evidence without server payloads
+
+### `dev mcp transfer export`
+
+Print an optional credential-free reconstruction recipe
+
+```
+dev mcp transfer export <id> [flags]
+```
+
+- `--entry` — portable recipe entry name
+
+### `dev mcp transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev mcp transfer plan [flags]
+```
+
+- `--adopt` — adopt an equivalent MCP stanza or explicitly change its managed source
+- `--as` — destination server name
+- `--bind` — destination environment binding SERVER_ENV=PROCESS_ENV
+- `--bridge` — use the installed dev stdio launcher with a host-local binding
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--secret-env-file` — explicit local JSON env source for the optional launcher
+- `--server` — one source server name
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+- `--transport` — explicit transport for ambiguous remote declarations
+
+### `dev mcp transfer recipe`
+
+Plan one entry from an optional reconstruction recipe
+
+```
+dev mcp transfer recipe <file> [flags]
+```
+
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
+
+### `dev mcp transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev mcp transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev mcp transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev mcp transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev mcp transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev mcp transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
 
 ### `dev note`
 
@@ -12597,6 +13541,119 @@ dev skill sync [flags]
 - `--check` — report drift and exit non-zero instead of writing
 - `-h, --help` — help for sync
 
+### `dev skill transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev skill transfer
+```
+
+### `dev skill transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev skill transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev skill transfer export`
+
+Print an optional credential-free reconstruction recipe
+
+```
+dev skill transfer export <id> [flags]
+```
+
+- `--entry` — portable recipe entry name
+
+### `dev skill transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev skill transfer plan <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer prepare`
+
+Fetch and verify one skill in private staging
+
+```
+dev skill transfer prepare <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer recipe`
+
+Plan one entry from an optional reconstruction recipe
+
+```
+dev skill transfer recipe <file> [flags]
+```
+
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
+
+### `dev skill transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev skill transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev skill transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev skill transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev skill transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev skill transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
 ### `dev skill update`
 
 Update one skill in one explicit scope
@@ -13098,6 +14155,26 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 - [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
 - [`internal/machineid`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/machineid)
 
+## Agent 內容轉移
+
+使用 `dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+預覽逐項 skill 連結。`--mode copy` 建立獨立內容，`--mode move` 先完成目的端再清理來源。
+以 `--from-repo`／`--to-repo` 選定 checkout，再用 `transfer apply --plan <id>` 套用。
+`transfer status` 顯示本機紀錄，`transfer undo <id>` 與 `transfer refresh <id>` 建立新的受保護計畫。
+私人復原內容位於設定的 state 目錄，不會出現在 JSON 報告。
+
+跨 repo 重用上游 skill 時，先以相同來源／目的地選項執行 `dev skill transfer prepare <name>`，
+再執行 `transfer plan <name> --mode install --prepared <id>`。只有 prepare 可以下載。
+初始相容設定固定 `skills@1.5.23`，並在寫入 agent 檔案前驗證原生 lock 來源與暫存內容。
+版本、schema 或 hash 不符時會停止，不會默默升級或改為複製。
+
+`dev mcp transfer` 與 `dev instructions transfer` 共用相同的受保護流程。
+MCP 另有明確的 `check`；三個 family 都能 `export` 選配 recipe，再為單一 `recipe`
+entry 建立 plan。原生 scope mapping、stanza 所有權、憑證 reference 與平台限制，
+請見[完整互通流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-interop/)。Skill JSON rows 與 MCP JSON
+envelope 可新增 `interop`、`interop_coverage`；`receipts-only` 不代表原生 client
+已載入或已完成工具認證。
+
 ---
 
 ### 相容性與已知限制
@@ -13411,6 +14488,16 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
 
+### Agent transfer 使用明確的相容設定
+
+[Agent 設定互通](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-interop/) 提供 skills、五種 MCP 格式及
+AGENTS.md／CLAUDE.md 的 plan/apply/undo。初始 mutation backend 為 POSIX；
+Windows 在 protected-DACL／recovery 驗證前拒絕寫入。未知 policy／authentication
+extension、OpenCode v2 與不能安全修改的 TOML layout 仍需原生 client 處理。
+Local env launcher 綁定本機並保留來源，HTTP client 需要自己的 environment。
+只有明確 prepare 可以執行固定版本的 skills provider，只有 check 初始化 MCP。
+Inventory 新增的 interop receipts 是歷史紀錄，不代表 live health。
+
 ---
 
 ### 來源與時效
@@ -13536,6 +14623,15 @@ Code 或 upstream feature 改變時：
 - [Skills](https://code.claude.com/docs/en/skills)
 - [Plugins](https://code.claude.com/docs/en/plugins)
 - [Agent SDK loop](https://code.claude.com/docs/en/agent-sdk/agent-loop)
+
+### Agent interoperability profile（2026-09-07）
+
+[Agent 設定互通](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-interop/) 依據 `internal/agentinterop`、
+native inventory／CLI 測試與 synthetic MCP server。Skills profile 固定 1.5.23，
+使用 project-v1／global-v3 lock，不追蹤 latest。MCP 初始化探測使用 2025-06-18 規格。
+Codex 目前的 canonical user discovery 是對固定 registry legacy paths 的額外支援。
+Schema／fixture 驗證不表示正在執行的原生 client 已載入生成設定。
+Windows transfer 寫入在獨立驗證 privacy／identity adapter 前維持不可用。
 
 ---
 

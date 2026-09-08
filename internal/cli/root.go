@@ -172,6 +172,7 @@ func newRootCommand(app *App) *cobra.Command {
 		newStatsCmd(app),
 		newHelpTopicCmd(app),
 		newSkillCmd(app),
+		newInstructionsCmd(app),
 		newMCPCmd(app),
 		newDoctorCmd(app),
 		newVersionCmd(app),

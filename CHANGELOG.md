@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.19] - 2026-09-08
+
+### Added
+
+- Agent artifact transfer plans with private recovery records, stale-plan
+  revalidation, explicit apply/undo, and local skill copy/move/per-skill mirrors.
+- Explicit skill transfer preparation with a pinned provider compatibility
+  profile, private staging, source/content verification, and native lock updates.
+- Five-agent MCP copy/move/reviewed mirrors, per-stanza ownership and undo,
+  deferred environment bindings, an optional exact-checkout stdio launcher,
+  and separately requested MCP initialization checks.
+- Cross-project/project-user skill moves and lock-only restoration, guarded
+  AGENTS.md/CLAUDE.md symlink/import sharing, optional portable recipes, and
+  additive inventory ownership receipts. Native Windows transfer writes remain
+  unavailable until private ACL/recovery support is verified.
+
 ## [0.2.18] - 2026-09-08
 
 ### Fixed
@@ -735,7 +751,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.18...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.19...HEAD
+[0.2.19]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.18...v0.2.19
 [0.2.18]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.17...v0.2.18
 [0.2.17]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.16...v0.2.17
 [0.2.16]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.15...v0.2.16

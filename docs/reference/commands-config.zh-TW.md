@@ -653,3 +653,23 @@ Command help 改變時透過 `dev skill sync` regenerate；不要手動修改 ge
 - [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
 - [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
 - [`internal/machineid`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/machineid)
+
+## Agent 內容轉移
+
+使用 `dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+預覽逐項 skill 連結。`--mode copy` 建立獨立內容，`--mode move` 先完成目的端再清理來源。
+以 `--from-repo`／`--to-repo` 選定 checkout，再用 `transfer apply --plan <id>` 套用。
+`transfer status` 顯示本機紀錄，`transfer undo <id>` 與 `transfer refresh <id>` 建立新的受保護計畫。
+私人復原內容位於設定的 state 目錄，不會出現在 JSON 報告。
+
+跨 repo 重用上游 skill 時，先以相同來源／目的地選項執行 `dev skill transfer prepare <name>`，
+再執行 `transfer plan <name> --mode install --prepared <id>`。只有 prepare 可以下載。
+初始相容設定固定 `skills@1.5.23`，並在寫入 agent 檔案前驗證原生 lock 來源與暫存內容。
+版本、schema 或 hash 不符時會停止，不會默默升級或改為複製。
+
+`dev mcp transfer` 與 `dev instructions transfer` 共用相同的受保護流程。
+MCP 另有明確的 `check`；三個 family 都能 `export` 選配 recipe，再為單一 `recipe`
+entry 建立 plan。原生 scope mapping、stanza 所有權、憑證 reference 與平台限制，
+請見[完整互通流程](../guides/agent-interop.zh-TW.md)。Skill JSON rows 與 MCP JSON
+envelope 可新增 `interop`、`interop_coverage`；`receipts-only` 不代表原生 client
+已載入或已完成工具認證。

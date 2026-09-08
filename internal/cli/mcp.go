@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/daviddwlee84/dev-cli/internal/agentinterop"
 	"github.com/daviddwlee84/dev-cli/internal/agentmcp"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/spf13/cobra"
@@ -22,6 +23,7 @@ claim that a declaration is the effective merged config, connected, healthy, or
 authenticated. Secret-bearing values are redacted before rows are returned.`,
 	}
 	cmd.AddCommand(newMCPListCmd(app))
+	cmd.AddCommand(newAgentTransferCmd(app, "mcp"), newMCPLaunchCmd(app))
 	return cmd
 }
 
@@ -70,7 +72,30 @@ func newMCPListCmd(app *App) *cobra.Command {
 			if jsonOut {
 				encoder := json.NewEncoder(app.Out)
 				encoder.SetIndent("", "  ")
-				return encoder.Encode(result)
+				relations, relErr := interopService(app).Relationships(cmd.Context())
+				selected := []agentinterop.Relationship{}
+				for _, relation := range relations {
+					if relation.Kind != "mcp" {
+						continue
+					}
+					for _, row := range result.Declarations {
+						if relation.DestinationPath() == row.ConfigPath && relation.Name == row.Name && relation.Destination.Agent == string(row.Agent) {
+							selected = append(selected, relation)
+							break
+						}
+					}
+				}
+				coverage := ""
+				if relErr != nil {
+					coverage = "unavailable"
+				} else if len(selected) > 0 {
+					coverage = "receipts-only"
+				}
+				return encoder.Encode(struct {
+					agentmcp.Result
+					Interop         []agentinterop.Relationship `json:"interop,omitempty"`
+					InteropCoverage string                      `json:"interop_coverage,omitempty"`
+				}{result, selected, coverage})
 			}
 			renderMCPDiagnostics(app, result.Diagnostics)
 			return renderMCPTable(app, result.Declarations)

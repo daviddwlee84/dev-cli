@@ -73,7 +73,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.18 instead when you need a reproducible install.
+# Pin @v0.2.19 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -1471,6 +1471,16 @@ both directions.
 
 ## The agent skill
 
+For configuration sharing, see [Agent configuration interoperability](docs/guides/agent-interop.md).
+`dev mcp transfer`, `dev skill transfer`, and `dev instructions transfer` use
+reviewed plans, exact source/target revalidation, and guarded undo. Skills can
+share one tree through relative links or use verified upstream preparation in
+another repository. MCP writers support five native formats and retain unrelated
+settings; optional launchers resolve selected credentials only at runtime.
+Copy/mirror recipes are optional, and ordinary native copies have no dev runtime
+dependency. Private recovery stays outside Git; native Windows transfer writes
+are currently disabled. Static inventories remain local and do not probe tools.
+
 `dev` ships the agent skill that documents it, embedded in the binary — the
 same pattern `herdr --skill` uses. A skill vendored separately drifts from the
 tool it describes, and an agent reading a stale command list is worse than one
@@ -1480,6 +1490,8 @@ reading none.
 dev skill list                 # current checkout + global native inventory
 dev skill list --all --check --json
 dev skill list --repo api --project
+dev skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
+dev skill transfer apply --plan <id> # apply the exact reviewed file/link changes
 dev skill add                  # interactive wizard for daviddwlee84/agent-skills/skills
 dev skill update project-knowledge-harness --global --yes
 dev skill install              # → ~/.agents/skills/dev-cli, symlinked into ~/.claude/skills

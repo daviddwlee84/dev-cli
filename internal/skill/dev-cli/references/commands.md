@@ -547,6 +547,106 @@ Quick-reference pages for the git workflow dev assumes
 dev help [topic]
 ```
 
+### `dev instructions`
+
+Share AGENTS.md and CLAUDE.md with guarded transfers
+
+```
+dev instructions
+```
+
+### `dev instructions transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev instructions transfer
+```
+
+### `dev instructions transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev instructions transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev instructions transfer export`
+
+Print an optional credential-free reconstruction recipe
+
+```
+dev instructions transfer export <id> [flags]
+```
+
+- `--entry` — portable recipe entry name
+
+### `dev instructions transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev instructions transfer plan [flags]
+```
+
+- `--adopt` — adopt an equivalent instruction file with private recovery
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--style` — mirror style: symlink or import
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev instructions transfer recipe`
+
+Plan one entry from an optional reconstruction recipe
+
+```
+dev instructions transfer recipe <file> [flags]
+```
+
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
+
+### `dev instructions transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev instructions transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev instructions transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev instructions transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev instructions transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev instructions transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
 ### `dev journal`
 
 Generate a development journal from Git and current context
@@ -603,6 +703,113 @@ dev mcp list [flags]
 - `--json` — emit a stable sanitized JSON envelope
 - `-r, --repo` — scan one repository or explicit checkout path
 - `--scope` — declaration scope: project, local, user, custom, system-defaults, system-override, managed
+
+### `dev mcp transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev mcp transfer
+```
+
+### `dev mcp transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev mcp transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev mcp transfer check`
+
+Explicitly initialize an applied MCP server
+
+```
+dev mcp transfer check <id> [flags]
+```
+
+- `--json` — emit connection evidence without server payloads
+
+### `dev mcp transfer export`
+
+Print an optional credential-free reconstruction recipe
+
+```
+dev mcp transfer export <id> [flags]
+```
+
+- `--entry` — portable recipe entry name
+
+### `dev mcp transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev mcp transfer plan [flags]
+```
+
+- `--adopt` — adopt an equivalent MCP stanza or explicitly change its managed source
+- `--as` — destination server name
+- `--bind` — destination environment binding SERVER_ENV=PROCESS_ENV
+- `--bridge` — use the installed dev stdio launcher with a host-local binding
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--secret-env-file` — explicit local JSON env source for the optional launcher
+- `--server` — one source server name
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+- `--transport` — explicit transport for ambiguous remote declarations
+
+### `dev mcp transfer recipe`
+
+Plan one entry from an optional reconstruction recipe
+
+```
+dev mcp transfer recipe <file> [flags]
+```
+
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
+
+### `dev mcp transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev mcp transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev mcp transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev mcp transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev mcp transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev mcp transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
 
 ### `dev note`
 
@@ -1186,6 +1393,119 @@ dev skill sync [flags]
 
 - `--check` — report drift and exit non-zero instead of writing
 - `-h, --help` — help for sync
+
+### `dev skill transfer`
+
+Plan and apply explicit agent artifact transfers
+
+```
+dev skill transfer
+```
+
+### `dev skill transfer apply`
+
+Apply one exact reviewed transfer plan
+
+```
+dev skill transfer apply [flags]
+```
+
+- `--json` — emit a sanitized transfer result
+- `--plan` — exact transfer plan ID
+
+### `dev skill transfer export`
+
+Print an optional credential-free reconstruction recipe
+
+```
+dev skill transfer export <id> [flags]
+```
+
+- `--entry` — portable recipe entry name
+
+### `dev skill transfer plan`
+
+Preview a selected transfer without changing agent files
+
+```
+dev skill transfer plan <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer prepare`
+
+Fetch and verify one skill in private staging
+
+```
+dev skill transfer prepare <skill> [flags]
+```
+
+- `--as` — destination skill directory name
+- `--from` — explicit source path within selected scope
+- `--from-agent` — source agent format or skill installation
+- `--from-repo` — source repository or exact checkout
+- `--from-scope` — source scope: project or user/global
+- `--json` — emit a sanitized transfer plan
+- `--mode` — copy, move, mirror, or skill install
+- `--prepared` — verified upstream preparation ID
+- `--to` — explicit destination path within selected scope
+- `--to-agent` — destination agent format or skill installation
+- `--to-repo` — destination repository or exact checkout
+- `--to-scope` — destination scope: project or user/global
+
+### `dev skill transfer recipe`
+
+Plan one entry from an optional reconstruction recipe
+
+```
+dev skill transfer recipe <file> [flags]
+```
+
+- `--entry` — one recipe entry
+- `--json` — emit a sanitized plan
+- `--repo` — repository or exact checkout containing the recipe
+
+### `dev skill transfer refresh`
+
+Create a reviewed refresh plan
+
+```
+dev skill transfer refresh <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
+
+### `dev skill transfer status`
+
+List local transfer plans and operation ledgers
+
+```
+dev skill transfer status [flags]
+```
+
+- `--json` — emit sanitized operation ledgers
+
+### `dev skill transfer undo`
+
+Create a reviewed undo plan
+
+```
+dev skill transfer undo <id> [flags]
+```
+
+- `--json` — emit the sanitized plan
 
 ### `dev skill update`
 

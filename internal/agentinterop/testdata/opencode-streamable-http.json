@@ -1,0 +1,12 @@
+{
+  "mcp": {
+    "test.server": {
+      "type": "remote",
+      "url": "https://example.test/mcp",
+      "oauth": false,
+      "headers": {
+        "Authorization": "Bearer {env:API_TOKEN}"
+      }
+    }
+  }
+}

@@ -77,3 +77,24 @@ clipboard without changing normalized rows or JSON.
 Omitted sources include plugin caches, hosted connectors, remote organization
 configuration, inline `OPENCODE_CONFIG_CONTENT`, and command-line-only inputs.
 Treat the coverage metadata as part of the result.
+
+## Explicit transfers
+
+Full workflow and safety boundaries: `references/agent-interop.md`. MCP has
+per-stanza copy/move/mirror ownership, instructions support symlink/import, and
+optional recipes contain only reconstruction intent. JSON adds `interop` receipts
+without changing existing inventory fields or claiming current client activation.
+
+`dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+previews one local per-skill relative link. Copy creates an independent tree;
+move plans destination publication before source cleanup. Different existing
+content and foreign links conflict. Apply uses `transfer apply --plan <id>`.
+Status is a private operation ledger, not an inventory or connectivity cache.
+Undo and refresh create new plans, and must be applied explicitly. Never turn
+an unreadable source, unknown provider lock, or unavailable symlink into a copy.
+
+Across repositories, prefer `skill transfer prepare <name>` followed by an
+install plan with `--prepared <id>`. Only prepare invokes the pinned 1.5.23
+provider and may fetch; it verifies staged content/provenance against the source
+lock. Plan/apply consume private verified payloads. This does not make the
+legacy interactive `skill add` wizard or native provider update a frozen install.

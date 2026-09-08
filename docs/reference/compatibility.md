@@ -41,6 +41,17 @@ This page separates graceful degradation from real limitations. Reverify it when
 
 ## Confirmed project limitations
 
+### Agent transfers use explicit capability profiles
+
+[Agent interoperability](../guides/agent-interop.md) adds plan/apply/undo for
+skills, five MCP formats, and AGENTS.md/CLAUDE.md. The initial mutation backend
+is POSIX; Windows writes fail closed pending protected-DACL/recovery validation.
+Unknown policies/authentication extensions, OpenCode v2 and uneditable TOML
+layouts remain native-client work. Local env launchers retain their source and
+are host-local; HTTP clients need their own environment. Only explicit prepare
+may run the pinned skills provider, and only explicit check initializes MCP.
+Inventory's additive interop receipts are historical, not live health evidence.
+
 ### MCP inventory is static and intentionally incomplete
 
 `dev mcp list` reads documented static files for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode. An absolute `CLAUDE_CONFIG_DIR` relocates Claude user sources; local Claude rows retain their project key, and documented user/project/local/managed project approvals annotate declaration state. That narrow approval calculation is not a general runtime merge. The scanner does not start servers, execute helpers, contact endpoints, query health, or resolve credentials. Plugin caches, hosted connectors, remote organization configuration, inline `OPENCODE_CONFIG_CONTENT`, and command-line-only inputs are omitted. Keep the JSON `coverage` object, additive `local_project_path`, and scope-qualified duplicate rows when automating against this inventory.

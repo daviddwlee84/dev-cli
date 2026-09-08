@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
+	"github.com/daviddwlee84/dev-cli/internal/agentinterop"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/agenttarget"
 	"github.com/daviddwlee84/dev-cli/internal/config"
@@ -36,6 +38,7 @@ vendoring a copy.`,
 		newSkillPrintCmd(app),
 		newSkillInstallCmd(app),
 		newSkillSyncCmd(app),
+		newAgentTransferCmd(app, "skill"),
 	)
 	return cmd
 }
@@ -138,37 +141,40 @@ type skillInstallationJSON struct {
 }
 
 type skillJSON struct {
-	Name            string                  `json:"name"`
-	Scope           string                  `json:"scope"`
-	ScopeRoot       string                  `json:"scope_root"`
-	Path            string                  `json:"path"`
-	Agents          []string                `json:"agents"`
-	Source          string                  `json:"source,omitempty"`
-	SourceURL       string                  `json:"source_url,omitempty"`
-	SourceType      string                  `json:"source_type,omitempty"`
-	ManagedBy       string                  `json:"managed_by"`
-	UpdateStatus    string                  `json:"update_status"`
-	UpdateDetail    string                  `json:"update_detail,omitempty"`
-	Repo            string                  `json:"repo,omitempty"`
-	RepoPath        string                  `json:"repo_path,omitempty"`
-	Checkout        string                  `json:"checkout,omitempty"`
-	Installations   []skillInstallationJSON `json:"installations,omitempty"`
-	Presence        string                  `json:"presence"`
-	Integrity       string                  `json:"integrity"`
-	IntegrityDetail string                  `json:"integrity_detail,omitempty"`
-	AgentIDs        []string                `json:"agent_ids,omitempty"`
-	RegistrySource  string                  `json:"registry_source"`
-	RegistryVersion string                  `json:"registry_version"`
-	LockVersion     int                     `json:"lock_version,omitempty"`
-	Ref             string                  `json:"ref,omitempty"`
-	SkillPath       string                  `json:"skill_path,omitempty"`
-	Plugin          string                  `json:"plugin,omitempty"`
-	InstalledAt     string                  `json:"installed_at,omitempty"`
-	UpdatedAt       string                  `json:"updated_at,omitempty"`
-	WellKnownDigest string                  `json:"well_known_digest,omitempty"`
+	Name            string                      `json:"name"`
+	Scope           string                      `json:"scope"`
+	ScopeRoot       string                      `json:"scope_root"`
+	Path            string                      `json:"path"`
+	Agents          []string                    `json:"agents"`
+	Source          string                      `json:"source,omitempty"`
+	SourceURL       string                      `json:"source_url,omitempty"`
+	SourceType      string                      `json:"source_type,omitempty"`
+	ManagedBy       string                      `json:"managed_by"`
+	UpdateStatus    string                      `json:"update_status"`
+	UpdateDetail    string                      `json:"update_detail,omitempty"`
+	Repo            string                      `json:"repo,omitempty"`
+	RepoPath        string                      `json:"repo_path,omitempty"`
+	Checkout        string                      `json:"checkout,omitempty"`
+	Installations   []skillInstallationJSON     `json:"installations,omitempty"`
+	Presence        string                      `json:"presence"`
+	Integrity       string                      `json:"integrity"`
+	IntegrityDetail string                      `json:"integrity_detail,omitempty"`
+	AgentIDs        []string                    `json:"agent_ids,omitempty"`
+	RegistrySource  string                      `json:"registry_source"`
+	RegistryVersion string                      `json:"registry_version"`
+	LockVersion     int                         `json:"lock_version,omitempty"`
+	Ref             string                      `json:"ref,omitempty"`
+	SkillPath       string                      `json:"skill_path,omitempty"`
+	Plugin          string                      `json:"plugin,omitempty"`
+	InstalledAt     string                      `json:"installed_at,omitempty"`
+	UpdatedAt       string                      `json:"updated_at,omitempty"`
+	WellKnownDigest string                      `json:"well_known_digest,omitempty"`
+	Interop         []agentinterop.Relationship `json:"interop,omitempty"`
+	InteropCoverage string                      `json:"interop_coverage,omitempty"`
 }
 
 func renderSkillJSON(app *App, rows []agentskill.Skill) error {
+	relations, relErr := interopService(app).Relationships(context.Background())
 	out := make([]skillJSON, 0, len(rows))
 	for _, row := range rows {
 		installations := make([]skillInstallationJSON, 0, len(row.Installations))
@@ -194,6 +200,24 @@ func renderSkillJSON(app *App, rows []agentskill.Skill) error {
 			item.LockVersion, item.Ref, item.SkillPath = row.Lock.Version, row.Lock.Ref, row.Lock.SkillPath
 			item.Plugin, item.InstalledAt, item.UpdatedAt = row.Lock.PluginName, row.Lock.InstalledAt, row.Lock.UpdatedAt
 			item.WellKnownDigest = row.Lock.WellKnownDigest
+		}
+		if relErr != nil {
+			item.InteropCoverage = "unavailable"
+		} else {
+			paths := map[string]bool{filepath.Clean(row.Path): true}
+			for _, installation := range row.Installations {
+				for _, path := range installation.LogicalPaths {
+					paths[filepath.Clean(path)] = true
+				}
+			}
+			for _, relation := range relations {
+				if relation.Kind == "skill" && paths[filepath.Clean(relation.DestinationPath())] {
+					item.Interop = append(item.Interop, relation)
+				}
+			}
+			if len(item.Interop) > 0 {
+				item.InteropCoverage = "receipts-only"
+			}
 		}
 		out = append(out, item)
 	}

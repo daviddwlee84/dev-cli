@@ -1,0 +1,3 @@
+# Historical false positive: PEM-header detection constants in Go source,
+# not private-key material. Keep this exact commit/file/line exception narrow.
+6827c195c83036affb68098ab660fd335747a5d8:internal/agentinterop/skills.go:private-key:22

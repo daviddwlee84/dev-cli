@@ -1,5 +1,10 @@
 # MCP declarations
 
+For guarded copy/move/mirror actions, run `dev help interop`. Static inventory
+does not initiate those actions. JSON may add `interop` ownership receipts with
+`interop_coverage: receipts-only`; these are past operations, not current health
+or client-loading evidence. Unreadable private metadata reports unavailable coverage.
+
 Inspect static MCP server declarations across repositories and supported agent
 configuration formats without starting servers or contacting endpoints.
 

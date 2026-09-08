@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "test.server": {
+      "command": "uvx",
+      "args": [
+        "fixture-mcp@1.0"
+      ],
+      "env": {
+        "API_TOKEN": "${env:API_TOKEN}"
+      }
+    }
+  }
+}

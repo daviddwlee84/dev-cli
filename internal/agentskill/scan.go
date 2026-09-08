@@ -102,6 +102,12 @@ func safePathComponent(value string) bool {
 
 func globalScanLocations(definitions []AgentDefinition) []physicalScanLocation {
 	logical := make([]logicalScanLocation, 0, len(definitions))
+	// Keep the pinned registry's legacy paths and the canonical user store.
+	// Current Codex discovers ~/.agents/skills directly; no extra projection is
+	// necessary. This is placement attribution, not client activation evidence.
+	if home := homeDirectory(); home != "" {
+		logical = append(logical, logicalScanLocation{Path: filepath.Join(home, ".agents", "skills"), AgentIDs: []string{"universal", "codex"}})
+	}
 	for _, definition := range definitions {
 		if definition.GlobalSkillsDir == "" {
 			continue

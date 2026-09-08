@@ -724,3 +724,28 @@ If command help changes, regenerate through `dev skill sync`; do not hand-edit t
 - [`internal/cli/fleet_files.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_files.go)
 - [`internal/localfiles`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/localfiles)
 - [`internal/machineid`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/machineid)
+
+## Agent artifact transfers
+
+Use `dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+for a reviewed per-skill link. `--mode copy` creates independent content and
+`--mode move` publishes the destination before source cleanup. Select exact
+checkouts with `--from-repo`/`--to-repo`; apply with `transfer apply --plan <id>`.
+`transfer status`, `transfer undo <id>`, and `transfer refresh <id>` expose the
+local ledger and create guarded follow-up plans. Private recovery content is
+stored under the configured state directory and is omitted from JSON reports.
+
+For upstream reuse across repositories, run `dev skill transfer prepare <name>`
+with the source/destination selectors, then `transfer plan <name> --mode install
+--prepared <id>`. Only prepare may fetch. The initial compatibility profile pins
+`skills@1.5.23` and verifies native lock provenance and staged content before any
+agent files are published. A version/schema/hash mismatch fails without silently
+upgrading or falling back to copy.
+
+MCP and instruction transfers use the same guarded family: `dev mcp transfer`
+and `dev instructions transfer`. MCP offers explicit `check`; all three families
+can `export` an optional recipe and plan one `recipe` entry. See the
+[complete interoperability workflow](../guides/agent-interop.md) for native
+scope mappings, stanza ownership, credential references and platform limits.
+Skill JSON rows and MCP JSON envelopes may add `interop` and `interop_coverage`;
+`receipts-only` never means the native client loaded or authenticated a tool.

@@ -4,6 +4,13 @@ Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
 
 ## Active
 
+### P3 · L — Native Windows agent-transfer privacy and recovery
+The POSIX interoperability implementation is complete. Before enabling Windows
+transfer writes, add protected-DACL creation/cloning, persistent handle-based
+file identity, and interrupted-publication recovery tests. Do not substitute
+Unix permission bits, automatic junctions/copies, or elevation for those proofs.
+See [interoperability plan](backlog/agent-config-interop-plan.md).
+
 ### P1 · L — Verified backup receipts and safe local eviction
 Phase 1 intentionally stops at reversible archive. Before adding `dev reclaim`
 or any action that deletes a local checkout, build a fresh preflight that checks
@@ -181,6 +188,13 @@ where herdr is not installed. dev creates the checkout with git and asks herdr
 only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 
 ## Done
+
+- Agent configuration interoperability: guarded five-format MCP transfers,
+  per-stanza ownership/undo, deferred env launchers, explicit initialization
+  probes, verified skills preparation and lock-only restore, project/user moves,
+  instruction symlink/import sharing, and optional recipes. Native Windows
+  mutation and secret-manager/hardware backends remain explicitly separate work.
+  See [implementation and validation](backlog/agent-config-interop-plan.md).
 
 - Verified Claude Workflow ephemeral cleanup: bounded private-metadata parsing,
   strict no-result/resume fail-closed liveness, schema-v1 report, complete
