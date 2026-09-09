@@ -17,6 +17,7 @@
 
 - [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/): Run a dev-cli change stream through start, park, resume, review or integration, and conservative cleanup.
 - [Repository lifecycle flow](https://daviddwlee84.github.io/dev-cli/guides/repository-flow/): Use the preview dev flow interface to inspect one repository and apply revision-bound lifecycle, adoption, removal, retirement, and remote-evidence plans.
+- [Local work triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/): Find forgotten local work across ordinary repositories and Tries, review synchronization batches, and preserve ignored data during checkout cleanup.
 - [Machine summary](https://daviddwlee84.github.io/dev-cli/guides/machine-summary/): Generate a current machine-wide snapshot of repositories, Tries, tasks, worktrees, runtimes, and recovery risks.
 - [Development journal](https://daviddwlee84.github.io/dev-cli/guides/dev-journal/): Generate daily, weekly, or long-range development journals for people, scripts, and AI agents.
 - [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/): Choose the owner and location of each worktree, then provision ignored files and dependencies safely.
@@ -69,6 +70,7 @@
 
 - [變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/): 使用 dev-cli 讓變更流依序經過 start、park、resume、review/integration 與保守 cleanup。
 - [Repository Lifecycle Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/): 使用 preview dev flow 介面檢查單一 repository，並套用綁定 revision 的 lifecycle、adoption、removal、retirement 與 remote-evidence plans。
+- [本地工作整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/): 找回普通 repository 與 Try 中遺漏的本地工作，預覽批次同步，並在清理 checkout 時保護 ignored 資料。
 - [Machine summary](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/machine-summary/): 產生目前機器上 repositories、Tries、tasks、worktrees、runtimes 與 recovery risks 的完整 snapshot。
 - [Development journal](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dev-journal/): 產生日、週或長時間範圍的 development journal，供人、script 與 AI agent 使用。
 - [Worktree 與環境佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/): 選擇每個 worktree 的 owner 與位置，再安全佈建 ignored files 與 dependencies。

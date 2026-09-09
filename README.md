@@ -558,6 +558,29 @@ resolves every covering pane. A caller inside the target, a mixed workspace, or
 a working/blocked/waiting agent always stops retirement; unknown status needs an
 external `--close-unknown`. `dev done` never closes or removes anything.
 
+### Find forgotten local work
+
+`dev triage` finds uncommitted work, unpushed commits, missing upstreams, diverged
+branches, ignored data and runtime/task drift across ordinary repos and Tries.
+It includes branches that are not checked out and every registered worktree.
+
+```bash
+dev triage                         # forgotten work; Tab for quick batches
+dev triage --report                 # read-only text, also the non-TTY default
+dev triage --json                   # schema-v1 report with completeness
+dev triage --kind try --stale-days 30
+```
+
+Select an action and rows, press Enter to preview, then approve that exact batch.
+Fetch is a separate round; push and fast-forward never auto-commit or rebase.
+Checkout removal preserves branches and requires a typed `CLEAN N` confirmation.
+Ignored files remain blockers unless you explicitly declare their exact directory
+replaceable with `R`. Whole-repository eviction still requires future verified
+backup/restore work. `L` marks intentional local work and `s` snoozes seven days;
+new work brings either back. Local refresh does not contact remotes or reconcile
+catalog records. See [local triage](docs/guides/local-triage.md) for keys, guards,
+Try handoffs and partial-result receipts.
+
 ### Repository flow preview
 
 `dev flow [repo]` is a preview-labelled, full-screen, TTY-only state-machine UI.

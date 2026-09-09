@@ -129,6 +129,21 @@ Always suggest a `--next` when parking.
 Full detail: `references/task-lifecycle.md`. Before integrating or deleting an
 agent-owned checkout, read `references/agent-retirement.md`.
 
+### Cross-repository local triage
+
+Use `dev triage --json` to find forgotten local changes and all local branches,
+including those without upstreams or checkouts. `dev triage` provides a separate
+interactive forgotten-work/quick-batch interface. Ordinary repos and Tries stay
+separately filterable. Reads never fetch or reconcile catalog records.
+
+Each fetch/push/fast-forward/cleanup batch requires an exact preview and second
+approval. New candidates after fetch require another round. Ignored data blocks
+removal unless the operator explicitly enrolled a clone-bound disposable
+relative directory; cleanup still preserves branches and checks ownership,
+runtime and contents under the shared lock. Keep-local/snooze intent never
+supplies cleanup authority. See [local triage](references/local-triage.md) for
+keys, report semantics and interrupted-result recovery.
+
 ### Repository flow preview
 
 `dev flow [repo]` is a preview-labelled, full-screen, TTY-only repository
@@ -208,6 +223,8 @@ dev edit                   # open the effective config; generate it first if abs
 dev ls                     # what am I working on, everywhere
 dev ls --json              # stable machine-readable form (also over ssh)
 dev status                 # local repo/branch/task/session + scoped readiness
+dev triage --json          # local repo/Try/all-branch recovery inventory
+dev triage                 # reviewed cross-repository batches
 dev flow [repo]            # TTY-only guarded repository lifecycle preview
 dev sweep                  # what has gone stale or drifted, and what to do
 dev sweep --apply          # act on it, confirming each change

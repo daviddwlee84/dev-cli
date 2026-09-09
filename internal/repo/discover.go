@@ -58,6 +58,9 @@ func (r Repo) Display() string {
 
 // Options tunes discovery.
 type Options struct {
+	// OnError optionally reports skipped filesystem observations to auditing callers.
+	OnError func(string, error)
+
 	// MaxDepth limits how deep below a scan root a repo may be found. The
 	// default layout is <root>/<Category>/<Repo>, so 2 suffices; 3 leaves room
 	// for a nested grouping without walking an entire home directory.
@@ -209,12 +212,18 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 	for _, root := range roots {
 		info, err := os.Stat(root)
 		if err != nil || !info.IsDir() {
+			if opts.OnError != nil && err != nil {
+				opts.OnError(root, err)
+			}
 			continue // a missing scan root is normal on a fresh machine
 		}
 		rootClean := filepath.Clean(root)
 
 		err = filepath.WalkDir(rootClean, func(path string, d fs.DirEntry, err error) error {
 			if err != nil {
+				if opts.OnError != nil {
+					opts.OnError(path, err)
+				}
 				return nil // unreadable entry: skip, keep walking
 			}
 			if ctx.Err() != nil {

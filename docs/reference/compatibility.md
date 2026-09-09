@@ -370,3 +370,7 @@ enable/disable are selected actions with a preview. `dev ssh format`, `organize`
 and `restore` provide optional guarded local edits and private recovery. Existing
 `ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
 [SSH host management](../guides/ssh-hosts.md#machine-management-and-configuration-organization).
+
+## Local triage compatibility
+
+`dev triage` is an additive interface with its own schema-v1 JSON report. Its guarded synchronization actions preserve task states, and its cleanup uses a stricter clone-bound ignored-directory guard. Existing sweep, flow, expert CLI flags, and `dev ls --json` retain their contracts. See [local triage](../guides/local-triage.md).

@@ -139,3 +139,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 `dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
 既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
 [SSH 主機管理](../guides/ssh-hosts.md)。
+
+## Triage intent
+
+Triage 彙整觀察到的工作與個人整理意圖。刻意保留本地、暫緩與可重建目錄宣告都不屬於 task lifecycle state，也不把 cached refs 當成備份證明。[本地工作整理](../guides/local-triage.md) 分開遺漏工作與快速批次。

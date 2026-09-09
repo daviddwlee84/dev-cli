@@ -169,3 +169,13 @@ and start the remote server; native approvals remain required. Disabling or
 removing a profile leaves remote sessions running. This registration workflow
 does not replace fleet's host-local repo snapshots or change fleet open's runtime
 selection. See `dev help ssh` for plans and multi-select management.
+
+## Cross-repository triage
+
+`dev triage` joins supported available backend observations without starting
+sessions. Handles remain backend-qualified and runtime activation rechecks live
+coverage. Triage batches never close recognized agents, including idle/done
+agents; mixed backend coverage requires individual handling. Disabled or failed
+runtime inspection stays unknown. Batch cancellation stops scheduling after the
+current operation returns so its result ledger can be retained. See
+[local triage](local-triage.md).

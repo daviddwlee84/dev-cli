@@ -496,6 +496,10 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 `ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
 [SSH host management](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#machine-management-and-configuration-organization).
 
+## Triage intent
+
+Triage is a view of observed work plus personal review intent. Keep-local, snooze and disposable-directory declarations live outside task lifecycle state. They never turn cached refs into backup proof. [Local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/) separates forgotten work from quick batches.
+
 ---
 
 ### Isolation boundaries and glossary
@@ -996,6 +1000,147 @@ but they are outside dev-mediated safety guarantees.
 - [`internal/inventory/repo_context.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/inventory/repo_context.go)
 - [`internal/task/store.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/store.go)
 - [`internal/forge/review.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/review.go)
+
+## Cross-repository triage
+
+[`dev triage`](https://daviddwlee84.github.io/dev-cli/guides/local-triage/) aggregates forgotten work across local repos and Tries, with separate synchronization rounds and stricter ignored-data cleanup guards. It can hand off to this focused repository flow; the two UI models remain independent and refreshed generations invalidate old approvals.
+
+---
+
+### Local work triage
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/local-triage/
+
+> Find forgotten local work across ordinary repositories and Tries, review synchronization batches, and preserve ignored data during checkout cleanup.
+
+`dev triage` opens an independent cross-repository interface. Its default view
+finds forgotten work; Tab switches to batches grouped by the selected action.
+
+```bash
+dev triage
+dev triage --report
+dev triage --json
+dev triage --kind try
+dev triage --root ~/other-projects --stale-days 30
+dev triage --all                 # include retained catalog history
+```
+
+Redirected output is a read-only text report. `--json` returns schema version 1
+with source completeness, exact local identities, findings, action candidates,
+runtime links, and recorded triage intent. Existing `dev ls --json` is unchanged.
+
+## What is discovered
+
+The scan combines configured discovery roots, additional roots, the current
+checkout, local catalog and task paths, and paths observed in supported available
+runtimes. Every registered worktree and local branch is inspected, including
+branches that are not checked out. Common Git directories deduplicate physical
+repositories; cataloged Try checkouts retain their own identity. Immediate Try
+directories are observed without automatically enrolling them in the catalog.
+
+Ordinary repositories and Tries can be filtered separately. Active and
+deprecated local Tries appear by default; `--all` includes retained history.
+Git Tries can participate in synchronization. Non-Git Tries remain visible for
+individual preservation, archive, graduation, or disposal.
+
+Findings retain uncommitted changes, missing upstream configuration, unavailable
+upstream refs, ahead/behind/divergence, stash/tags/notes, ignored paths, task drift,
+and runtime occupancy. A missing upstream does not prove that commits have never
+been published. Runtime errors and incomplete observations are visible rather
+than interpreted as clean or closed. `--no-runtime` disables multiplexer probes
+and leaves checkout mutation blocked where runtime evidence is required.
+
+Startup and `r` do not fetch, query a forge or fleet, refresh release information,
+write task/catalog records, or start runtime sessions. Remote comparisons use
+locally cached tracking refs. An explicit fetch is a separate approved action.
+
+## Views and keys
+
+Forgotten work sorts uncommitted work before unsynchronized branches and other
+remediation, followed by idle candidates. Older observed activity sorts first
+within a class. The default idle threshold is 14 days. Age is a sorting signal,
+not backup proof or removal permission. The four-cell summary separates work
+needing preservation/synchronization from other work, and batch candidates from
+items requiring individual review; it does not infer personal importance.
+
+| Key | Action |
+|---|---|
+| Tab | Forgotten work / quick batches |
+| g, / | Filter ordinary repositories/Tries; text filter |
+| j/k, arrows | Select a row |
+| Space, a, n | Toggle selection; select visible candidates; clear selection |
+| f, p, u | Select fetch, push, or fast-forward batches |
+| w, c, t, x | Select Park Warm, Park Cold, Retire, or Remove Checkout |
+| Enter | Build exact plans and show effects and blockers |
+| y | Approve a non-removal batch after preview |
+| PgUp/PgDn | Scroll the full preview |
+| ?, b | Full row details; last batch results |
+| o, e, v | Individual flow/Try actions; shell; exact runtime activation |
+| L, s, U | Keep local; snooze seven days; clear row intent |
+| R | Replace this clone's disposable-directory list; blank clears it |
+| d, r, q | Show deferred rows; refresh local facts; quit |
+
+The individual shell starts at the selected path and does not switch branches.
+Use existing Git/editor tools there, then exit to refresh the triage view.
+An uncataloged Try must be explicitly reconciled with `dev tries list` before
+its catalog lifecycle operations become available.
+
+## Approved batches
+
+Each round chooses one action: select, preview, approve, execute, refresh. After
+fetching, select a new push, fast-forward, or cleanup round. Newly eligible rows
+do not inherit an old approval. Candidate rows still need fresh guarded plans;
+a candidate label is not a READY result.
+
+- Fetch updates the selected remote-tracking branch namespace, including pruning
+  deleted remote branches, without fetching tags or recursing into submodules.
+- Push sends the exact previewed commit and branch to one unambiguous endpoint.
+  It never force-pushes or includes extra tags/branches. Triangular or multiple
+  destinations, first publication, and divergent branches require individual
+  review. Uncommitted changes remain visible after a successful push.
+- Fast-forward requires an exact clean checked-out branch and runtime evidence.
+  It uses `--ff-only --no-overwrite-ignore`; an ignored-file collision aborts.
+  It does not switch branches, stash changes, or rebase.
+- Task actions retain the existing mode/state graph. Cleanup preserves branches
+  and Git common directories. Whole-repository eviction is not provided.
+
+Plans lock and revalidate repository, refs, checkout, task revision, runtime and
+relevant content evidence before effects. Cleanup also checks contents and the
+disposable policy immediately before removing a checkout. Active agents,
+including idle/done agents, are not closed by triage batches. Canonical,
+harness-owned, conflicted, locked/prunable or incompletely observed checkouts
+cannot be removed through this interface.
+
+Removal batches require the displayed `CLEAN N` token in addition to reviewing
+the exact paths and effects. Independent items continue after an item fails;
+same-repository operations are serialized. Esc during Apply stops the remaining
+queue after the current operation returns; quitting waits for its ledger.
+Receipts under `<state_dir>/triage/runs/` retain completed, skipped, canceled,
+failed, stale and partial outcomes. An interrupted `running` entry is unknown
+and requires fresh inspection, not an assumed rollback or automatic replay.
+
+## Intent and ignored files
+
+Triage intent is durable under `<state_dir>/triage/`; observed Git state is not
+stored as truth. Keep-local and snooze bind to the observed item fingerprint.
+New commits, edits or findings bring the item back. Serious observation errors
+remain visible. Deferral never authorizes cleanup.
+
+Disposable directories default to an empty list. `R` accepts exact
+checkout-relative directories such as `node_modules` or `.venv`, separated by
+commas. This is an explicit decision that their ignored contents may be lost
+during an approved linked-checkout removal. It applies only to this clone and
+its worktrees. It does not follow a replacement clone at the same path.
+
+All other ignored files remain blockers. Previews list the affected ignored paths
+and sizes. Traversal, globs, Git administrative paths, symlink roots, nested repos
+and submodules cannot be authorized by a disposable-directory rule. Symlink
+targets outside the checkout are never traversed. Platforms without stable
+filesystem identity cannot enroll such policies or perform protected cleanup.
+
+Verified whole-repository backup/restore, external-reference analysis, permanent
+repo deletion, and automatic commit/rebase remain separate work. Being synced
+on the current branch is insufficient evidence to remove a whole clone.
 
 ---
 
@@ -7135,6 +7280,21 @@ dev sweep [flags]
 - `--task` — limit ordinary recovery suggestions to one exact task ID
 - `--yes` — with --apply, do not confirm each change
 
+### `dev triage`
+
+Find forgotten local work and preview batches of safe actions
+
+```
+dev triage [flags]
+```
+
+- `--all` — include archived and other historical catalog locations
+- `--json` — print the additive schema-v1 triage report
+- `--kind` — limit items to all, repo, or try
+- `--report` — print a read-only text report instead of opening the interface
+- `--root` — additional local discovery root (repeatable)
+- `--stale-days` — days without observed activity before an item is an idle candidate
+
 ### `dev tries`
 
 Manage experiment lifecycle and metadata
@@ -7454,6 +7614,10 @@ enable/disable are selected actions with a preview. `dev ssh format`, `organize`
 and `restore` provide optional guarded local edits and private recovery. Existing
 `ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
 [SSH host management](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#machine-management-and-configuration-organization).
+
+## Local triage report and intent
+
+`dev triage --json` includes schema version, generation time, source completeness, items and cached-remote evidence. Items retain ordinary repo/Try kind, branch/checkout identity, findings, action candidates, deferred intent and disposable-directory declarations. `--report`, `--kind`, repeated `--root`, `--all` and `--stale-days` control inspection. Intent and batch ledgers live under `<state_dir>/triage/`, separately from task TOML. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
 
 ---
 
@@ -7826,6 +7990,10 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 `ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
 [SSH host management](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#machine-management-and-configuration-organization).
 
+## Local triage compatibility
+
+`dev triage` is an additive interface with its own schema-v1 JSON report. Its guarded synchronization actions preserve task states, and its cleanup uses a stricter clone-bound ignored-directory guard. Existing sweep, flow, expert CLI flags, and `dev ls --json` retain their contracts. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
+
 ---
 
 ### Sources and freshness
@@ -7965,6 +8133,10 @@ unavailable pending a separately verified privacy/identity adapter.
 ## Dashboard lifecycle additions
 
 Repository homepage resolution reads local Git only. Try removal journals beside assets are durable operation history; they are neither a disposable cache nor a verified remote-backup receipt. Unknown removal outcomes remain unknown. See [dashboard actions](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/).
+
+## Local triage authority
+
+[Local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/) is defined by `internal/triage`, `internal/triagetui`, taskflow synchronization/protected cleanup and their Git-backed tests. Branch comparisons use local cached refs; interrupted batch receipts retain uncertainty. Reviewed 2026-09-09.
 
 ---
 
@@ -8747,6 +8919,10 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
 [SSH 主機管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
 
+## Triage intent
+
+Triage 彙整觀察到的工作與個人整理意圖。刻意保留本地、暫緩與可重建目錄宣告都不屬於 task lifecycle state，也不把 cached refs 當成備份證明。[本地工作整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/) 分開遺漏工作與快速批次。
+
 ---
 
 ### 隔離邊界與詞彙
@@ -9197,6 +9373,89 @@ Raw Git 與 configured external TUI tools 不參與 dev 的 task locks、PlanID 
 - [`internal/inventory/repo_context.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/inventory/repo_context.go)
 - [`internal/task/store.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/store.go)
 - [`internal/forge/review.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/review.go)
+
+## 跨 repository 整理
+
+[`dev triage`](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/) 彙整所有本地 repo／Try 的遺漏工作，提供分輪批次同步與更嚴格的 ignored-data 清理 guard。從 triage 返回單一 repo flow 時，兩個 UI 維持獨立；刷新會失效舊 approval。
+
+---
+
+### 本地工作整理
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/
+
+> 找回普通 repository 與 Try 中遺漏的本地工作，預覽批次同步，並在清理 checkout 時保護 ignored 資料。
+
+`dev triage` 是獨立的跨 repository 介面。首頁先找回可能遺漏的工作，Tab 切換成依所選操作分組的快速批次檢視。
+
+```bash
+dev triage
+dev triage --report
+dev triage --json
+dev triage --kind try
+dev triage --root ~/other-projects --stale-days 30
+dev triage --all                 # 包含 catalog 保留的歷史位置
+```
+
+重新導向輸出時會產生唯讀文字報表。`--json` 提供 schema version 1，包含來源完整度、本機 identity、問題、操作候選、runtime 關聯與整理意圖；既有 `dev ls --json` 維持相容。
+
+## 盤點內容
+
+掃描合併 configured discovery roots、額外 roots、目前 checkout、catalog/task 的本機路徑，以及支援且可用的 runtime 所觀察到的路徑。盤點所有 registered worktree 與本地分支，包括未 checkout 的分支。以 Git common directory 去重，保留 catalog 中 Try checkout 的獨立身分。Tries root 的直接子目錄只做觀察，不會順便登記 catalog。
+
+普通 repo 與 Try 可分開篩選。預設包含本機 active/deprecated Try；`--all` 可查看歷史。Git Try 可參與同步，非 Git Try 仍列出，供個別保存、archive、graduate 或 disposal。
+
+問題保留未提交修改、無 upstream、upstream ref 不可用、ahead/behind/diverged、stash/tags/notes、ignored paths、task drift 與 runtime occupancy。無 upstream 不等於 commits 從未上傳。Runtime 失敗與不完整觀察維持可見，不當成 clean/closed。`--no-runtime` 停用 multiplexer 探測，需要 runtime 證據的 checkout mutation 會被阻擋。
+
+啟動與 `r` 不會 fetch、查詢 forge/fleet、更新 release 資訊、寫入 task/catalog，或啟動 runtime。遠端比較使用本地 cached tracking refs；fetch 是另一個明確核准的操作。
+
+## 檢視與按鍵
+
+首頁優先排列未提交工作，其次是未同步分支與其他待處理問題，最後是閒置候選。同類內較舊的活動排前。預設閒置門檻為 14 天；年齡只影響排序，不證明備份或授權刪除。四格摘要以「待保存／同步工作或其他工作」及「批次候選或需個別處理」分類，不推斷個人重要性。
+
+| 按鍵 | 操作 |
+|---|---|
+| Tab | 遺漏工作／快速批次 |
+| g、/ | 篩選普通 repo／Try；文字搜尋 |
+| j/k、方向鍵 | 選擇項目 |
+| Space、a、n | 多選切換；選取可見候選；清除選取 |
+| f、p、u | 選擇 fetch、push、fast-forward |
+| w、c、t、x | 選擇 Park Warm、Park Cold、Retire、Remove Checkout |
+| Enter | 建立精確 plan，檢查 effects 與 blockers |
+| y | 預覽後核准非移除批次 |
+| PgUp/PgDn | 捲動完整預覽 |
+| ?、b | 完整項目資訊；上一批結果 |
+| o、e、v | 個別 flow／Try 操作；shell；精確 runtime activation |
+| L、s、U | 刻意保留本地；暫緩七天；清除意圖 |
+| R | 取代此 clone 的可重建目錄清單；空白表示清除 |
+| d、r、q | 顯示暫緩項目；重新讀取本地狀態；離開 |
+
+個別 shell 從所選路徑啟動，不切換分支。可使用既有 Git/editor 工具，exit 後重新整理 triage。尚未有 catalog 身分的 Try，需明確執行 `dev tries list` reconcile，才進行 catalog lifecycle 操作。
+
+## 批次核准與執行
+
+每輪只選一種動作：選取、預覽、核准、執行、重新分類。Fetch 後再選 push、快轉或清理，新符合條件的項目不承接舊 approval。候選只是可建立 plan，仍需 fresh guarded plan 才能得到 READY。
+
+- Fetch 更新選定 remote 的 tracking branch namespace，包括 prune 已刪除的遠端分支，不抓 tags，也不遞迴抓取 submodule。
+- Push 只把預覽的確切 commit/branch 推送至單一明確 endpoint，不 force、不附帶其他 branches/tags。Triangular/multiple destinations、首次 publish 或 diverged 分支需個別處理。Push 後仍顯示未提交修改。
+- Fast-forward 要求精確、乾淨、已 checkout 的分支與 runtime 證據，使用 `--ff-only --no-overwrite-ignore`。Ignored file 碰撞會停止，不切換分支、stash 或 rebase。
+- Task 操作沿用既有 mode/state graph。清理保留 branch 與 Git common directory，不移除整個 repo。
+
+Plan 在 effects 前鎖定並重新驗證 repository、refs、checkout、task revision、runtime 與相關內容。真正移除前再檢查 contents 與可重建規則。Triage 批次不關閉 recognized agent，包含 idle/done agent。Canonical、harness-owned、conflicted、locked/prunable 或觀察不完整的 checkout 都不能透過此介面移除。
+
+移除批次必須先檢查確切路徑與 effects，再輸入畫面上的 `CLEAN N`。單項失敗後繼續其他獨立項目，同 repo 串行執行。Apply 中按 Esc，會等目前操作返回後停止剩餘佇列；離開也會等待 ledger。
+
+`<state_dir>/triage/runs/` 保存 completed、skipped、canceled、failed、stale、partial 結果。中斷後留下的 `running` 表示 unknown，需重新觀察，不推定 rollback，也不自動重播。
+
+## 整理意圖與 ignored files
+
+意圖保存在 `<state_dir>/triage/`，不把觀察到的 Git 狀態存成真相。刻意保留本地與暫緩綁定當時 item fingerprint，新 commits、修改或問題會重新提醒；嚴重觀察錯誤仍可見。暫緩永遠不授權清理。
+
+可重建目錄預設為空。`R` 接受 checkout-relative 的明確目錄，例如 `node_modules`、`.venv`，以逗號分隔。這表示你明確同意：核准移除 linked checkout 時，可丟棄這些目錄中的 ignored 內容。規則僅適用於該 clone 及其 worktree，不承接同路徑後來替換的 clone。
+
+其餘 ignored files 仍阻擋移除。預覽列出受影響路徑與大小。路徑逃逸、glob、Git administrative paths、symlink roots、nested repo 或 submodule 不會因規則而被略過；不追蹤 checkout 外的 symlink 目標。缺少穩定 filesystem identity 的平台不能登記此規則或執行 protected cleanup。
+
+完整 repo 的可驗證備份／restore、外部引用分析、永久 repo 刪除與自動 commit/rebase 留待另外處理。目前分支已同步不足以證明整個 clone 可刪。
 
 ---
 
@@ -15123,6 +15382,21 @@ dev sweep [flags]
 - `--task` — limit ordinary recovery suggestions to one exact task ID
 - `--yes` — with --apply, do not confirm each change
 
+### `dev triage`
+
+Find forgotten local work and preview batches of safe actions
+
+```
+dev triage [flags]
+```
+
+- `--all` — include archived and other historical catalog locations
+- `--json` — print the additive schema-v1 triage report
+- `--kind` — limit items to all, repo, or try
+- `--report` — print a read-only text report instead of opening the interface
+- `--root` — additional local discovery root (repeatable)
+- `--stale-days` — days without observed activity before an item is an idle candidate
+
 ### `dev tries`
 
 Manage experiment lifecycle and metadata
@@ -15436,6 +15710,10 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 `dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
 既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
 [SSH 主機管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
+
+## Local triage report and intent
+
+`dev triage --json` 包含 schema version、產生時間、來源完整度、items 與 cached-remote evidence。Item 保留普通 repo／Try 類型、branch/checkout 身分、findings、操作候選、暫緩意圖與可重建目錄。`--report`、`--kind`、可重複 `--root`、`--all`、`--stale-days` 控制盤點。意圖與 batch ledger 位於 `<state_dir>/triage/`，與 task TOML 分開。參見[本地工作整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
 ---
 
@@ -15779,6 +16057,10 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
 [SSH 主機管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
 
+## Local triage compatibility
+
+`dev triage` 是新增介面，使用獨立 schema-v1 JSON。Guarded 同步不改 task state，清理另加 clone-bound ignored-directory guard。既有 sweep、flow、expert CLI flags 與 `dev ls --json` 維持原有契約。參見[本地工作整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
+
 ---
 
 ### 來源與時效
@@ -15919,6 +16201,10 @@ Windows transfer 寫入在獨立驗證 privacy／identity adapter 前維持不�
 ## Dashboard 生命週期新增功能
 
 Repository 首頁解析只讀 local Git。Assets 旁的 Try removal journals 是 durable operation history，不是 disposable cache 或 verified remote-backup receipt。未知 removal outcome 仍保持 unknown。詳見 [Dashboard 操作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/)。
+
+## Local triage authority
+
+[本地工作整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/) 的依據為 `internal/triage`、`internal/triagetui`、taskflow 同步／protected cleanup 與 Git 整合測試。分支比較使用本地 cached refs；中斷的 batch receipts 保留不確定性。檢查日期：2026-09-09。
 
 ---
 

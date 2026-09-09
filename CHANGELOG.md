@@ -48,6 +48,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `dev triage` finds forgotten work across ordinary repos, Tries, every local
+  branch and registered checkout, with separate forgotten-work and quick-batch
+  views, read-only text/JSON reports, local-only intent and expiring snoozes.
+- Reviewed fetch, exact-branch push, fast-forward and task/worktree cleanup
+  batches, with fresh authority checks, per-clone ignored-directory policy,
+  branch-preserving removal and durable partial-result receipts.
+
 - Explicit SSH/fleet/Herdr machine management with a multi-select wizard, native
   Herdr 0.9.0 profile actions, fresh-login fleet registration without key
   reinstallation, and comment-preserving fleet profile rename/removal.

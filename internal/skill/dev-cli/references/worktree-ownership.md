@@ -161,3 +161,14 @@ When unrelated dirty bytes block the canonical fast-forward target, the same
 wizard may use exact stash+restore for ordinary staged, unstaged, and untracked
 work. Dirty submodules and nested repositories require separate preservation;
 restore conflicts keep the exact stash and the task rather than claiming DONE.
+
+## Triage cleanup batches
+
+`dev triage` adds a strict ignored-data guard to its reviewed linked-checkout
+cleanup. All ignored paths block by default. The operator may declare exact
+clone-bound disposable relative directories; previews expose the affected paths
+and sizes and removal requires the displayed CLEAN token. Nested repositories,
+submodules, harness claims, unknown occupancy and canonical checkouts stay
+protected. The extra guard runs inside the shared repository lock and directly
+before removal. Branches and common directories are retained. See
+[local triage](local-triage.md).

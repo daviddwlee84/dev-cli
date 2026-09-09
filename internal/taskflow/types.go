@@ -70,18 +70,21 @@ func (s StringList) clone() StringList { return NewStringList(s.values...) }
 type Action string
 
 const (
-	ParkWarm       Action = "park-warm"
-	ParkCold       Action = "park-cold"
-	Resume         Action = "resume"
-	CompleteDirect Action = "complete-direct"
-	CompleteFF     Action = "complete-ff"
-	ReviewHandoff  Action = "review-handoff"
-	VerifyMerged   Action = "verify-merged"
-	Retire         Action = "retire"
-	Adopt          Action = "adopt"
-	RemoveCheckout Action = "remove-checkout"
-	RefreshRemote  Action = "refresh-remote"
-	Reconcile      Action = "reconcile"
+	ParkWarm          Action = "park-warm"
+	ParkCold          Action = "park-cold"
+	Resume            Action = "resume"
+	CompleteDirect    Action = "complete-direct"
+	CompleteFF        Action = "complete-ff"
+	ReviewHandoff     Action = "review-handoff"
+	VerifyMerged      Action = "verify-merged"
+	Retire            Action = "retire"
+	Adopt             Action = "adopt"
+	RemoveCheckout    Action = "remove-checkout"
+	RefreshRemote     Action = "refresh-remote"
+	Reconcile         Action = "reconcile"
+	FetchRepository   Action = "fetch-repository"
+	PushBranch        Action = "push-branch"
+	FastForwardBranch Action = "fast-forward-branch"
 )
 
 var actionOrder = []Action{
@@ -97,6 +100,7 @@ var actionOrder = []Action{
 	RemoveCheckout,
 	RefreshRemote,
 	Reconcile,
+	FetchRepository, PushBranch, FastForwardBranch,
 }
 
 // Actions returns every supported action in stable display order.

@@ -140,3 +140,7 @@ Windows transfer 寫入在獨立驗證 privacy／identity adapter 前維持不�
 ## Dashboard 生命週期新增功能
 
 Repository 首頁解析只讀 local Git。Assets 旁的 Try removal journals 是 durable operation history，不是 disposable cache 或 verified remote-backup receipt。未知 removal outcome 仍保持 unknown。詳見 [Dashboard 操作](../guides/dashboard-actions.md)。
+
+## Local triage authority
+
+[本地工作整理](../guides/local-triage.md) 的依據為 `internal/triage`、`internal/triagetui`、taskflow 同步／protected cleanup 與 Git 整合測試。分支比較使用本地 cached refs；中斷的 batch receipts 保留不確定性。檢查日期：2026-09-09。

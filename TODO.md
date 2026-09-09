@@ -28,6 +28,7 @@ Unix permission bits, automatic junctions/copies, or elevation for those proofs.
 See [interoperability plan](backlog/agent-config-interop-plan.md).
 
 ### P1 · L — Verified backup receipts and safe local eviction
+`dev triage` now supplies local recovery inventory and guarded synchronization/linked-checkout batches; whole-clone eviction remains pending.
 Explicit Try disposal now offers system Trash and separately approved permanent
 data loss. Verified backup-based reclamation is still pending. Before adding
 `dev reclaim` or calling removal recoverable from a remote, build a fresh preflight that checks

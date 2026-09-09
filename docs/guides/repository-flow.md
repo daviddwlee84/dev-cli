@@ -184,3 +184,7 @@ but they are outside dev-mediated safety guarantees.
 - [`internal/inventory/repo_context.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/inventory/repo_context.go)
 - [`internal/task/store.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/store.go)
 - [`internal/forge/review.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/review.go)
+
+## Cross-repository triage
+
+[`dev triage`](local-triage.md) aggregates forgotten work across local repos and Tries, with separate synchronization rounds and stricter ignored-data cleanup guards. It can hand off to this focused repository flow; the two UI models remain independent and refreshed generations invalidate old approvals.

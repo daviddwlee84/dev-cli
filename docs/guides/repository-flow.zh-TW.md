@@ -122,3 +122,7 @@ Raw Git 與 configured external TUI tools 不參與 dev 的 task locks、PlanID 
 - [`internal/inventory/repo_context.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/inventory/repo_context.go)
 - [`internal/task/store.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/task/store.go)
 - [`internal/forge/review.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/forge/review.go)
+
+## 跨 repository 整理
+
+[`dev triage`](local-triage.md) 彙整所有本地 repo／Try 的遺漏工作，提供分輪批次同步與更嚴格的 ignored-data 清理 guard。從 triage 返回單一 repo flow 時，兩個 UI 維持獨立；刷新會失效舊 approval。

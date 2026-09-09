@@ -1917,6 +1917,21 @@ dev sweep [flags]
 - `--task` — limit ordinary recovery suggestions to one exact task ID
 - `--yes` — with --apply, do not confirm each change
 
+### `dev triage`
+
+Find forgotten local work and preview batches of safe actions
+
+```
+dev triage [flags]
+```
+
+- `--all` — include archived and other historical catalog locations
+- `--json` — print the additive schema-v1 triage report
+- `--kind` — limit items to all, repo, or try
+- `--report` — print a read-only text report instead of opening the interface
+- `--root` — additional local discovery root (repeatable)
+- `--stale-days` — days without observed activity before an item is an idle candidate
+
 ### `dev tries`
 
 Manage experiment lifecycle and metadata

@@ -138,3 +138,7 @@ unavailable pending a separately verified privacy/identity adapter.
 ## Dashboard lifecycle additions
 
 Repository homepage resolution reads local Git only. Try removal journals beside assets are durable operation history; they are neither a disposable cache nor a verified remote-backup receipt. Unknown removal outcomes remain unknown. See [dashboard actions](../guides/dashboard-actions.md).
+
+## Local triage authority
+
+[Local triage](../guides/local-triage.md) is defined by `internal/triage`, `internal/triagetui`, taskflow synchronization/protected cleanup and their Git-backed tests. Branch comparisons use local cached refs; interrupted batch receipts retain uncertainty. Reviewed 2026-09-09.

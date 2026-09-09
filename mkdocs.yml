@@ -51,6 +51,7 @@ plugins:
             Concepts: 核心概念
             Mental Model and Lifecycle: 心智模型與生命週期
             Isolation Boundaries and Glossary: 隔離邊界與詞彙
+            Local Work Triage: 本地工作整理
             Dashboard Lifecycle Actions: Dashboard 生命週期操作
             Using dev-cli: 使用 dev-cli
             Change-Stream Workflow: 變更流工作流程
@@ -130,6 +131,7 @@ nav:
   - Using dev-cli:
       - Change-Stream Workflow: guides/change-stream-workflow.md
       - Repository Lifecycle Flow: guides/repository-flow.md
+      - Local Work Triage: guides/local-triage.md
       - Machine Summary: guides/machine-summary.md
       - Development Journal: guides/dev-journal.md
       - Worktrees and Provisioning: guides/worktrees-provisioning.md

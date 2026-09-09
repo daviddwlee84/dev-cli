@@ -145,6 +145,7 @@ func newRootCommand(app *App) *cobra.Command {
 		newListCmd(app),
 		newTUICmd(app),
 		newFlowCmd(app),
+		newTriageCmd(app),
 		newStatusCmd(app),
 		newStartCmd(app),
 		newParkCmd(app),

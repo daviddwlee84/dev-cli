@@ -138,3 +138,7 @@ enable/disable are selected actions with a preview. `dev ssh format`, `organize`
 and `restore` provide optional guarded local edits and private recovery. Existing
 `ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
 [SSH host management](../guides/ssh-hosts.md#machine-management-and-configuration-organization).
+
+## Triage intent
+
+Triage is a view of observed work plus personal review intent. Keep-local, snooze and disposable-directory declarations live outside task lifecycle state. They never turn cached refs into backup proof. [Local triage](../guides/local-triage.md) separates forgotten work from quick batches.

@@ -74,6 +74,12 @@ type ActionOptions interface {
 	isActionOptions()
 }
 
+// SyncOptions names an explicit repository synchronization operation.
+type SyncOptions struct{ Operation Action }
+
+func (o SyncOptions) Action() Action { return o.Operation }
+func (SyncOptions) isActionOptions() {}
+
 // ParkWarmOptions controls non-destructive parking while retaining checkout
 // resources.
 type ParkWarmOptions struct {
@@ -310,6 +316,13 @@ func cloneActionOptions(options ActionOptions, action Action) (ActionOptions, er
 		return defaultActionOptions(action)
 	}
 	switch value := options.(type) {
+	case SyncOptions:
+		return value, nil
+	case *SyncOptions:
+		if value == nil {
+			return nil, fmt.Errorf("nil sync options")
+		}
+		return *value, nil
 	case ParkWarmOptions:
 		return value, nil
 	case *ParkWarmOptions:
@@ -439,6 +452,8 @@ func cloneActionOptions(options ActionOptions, action Action) (ActionOptions, er
 
 func defaultActionOptions(action Action) (ActionOptions, error) {
 	switch action {
+	case FetchRepository, PushBranch, FastForwardBranch:
+		return SyncOptions{Operation: action}, nil
 	case ParkWarm:
 		return ParkWarmOptions{}, nil
 	case ParkCold:
@@ -470,6 +485,12 @@ func defaultActionOptions(action Action) (ActionOptions, error) {
 
 func validateActionOptions(options ActionOptions) error {
 	switch value := options.(type) {
+	case SyncOptions:
+		switch value.Operation {
+		case FetchRepository, PushBranch, FastForwardBranch:
+			return nil
+		}
+		return fmt.Errorf("invalid sync operation")
 	case ParkWarmOptions:
 		return validateTimeout(value.Timeout)
 	case ParkColdOptions:

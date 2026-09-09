@@ -65,6 +65,7 @@ func TestActionsAndTypedOptionsCoverProtocol(t *testing.T) {
 	wantActions := []Action{
 		ParkWarm, ParkCold, Resume, CompleteDirect, CompleteFF, ReviewHandoff,
 		VerifyMerged, Retire, Adopt, RemoveCheckout, RefreshRemote, Reconcile,
+		FetchRepository, PushBranch, FastForwardBranch,
 	}
 	if got := Actions(); !reflect.DeepEqual(got, wantActions) {
 		t.Fatalf("Actions() = %v, want %v", got, wantActions)
@@ -86,6 +87,9 @@ func TestActionsAndTypedOptionsCoverProtocol(t *testing.T) {
 		{Locator{RowKey: "unmanaged"}, RemoveCheckoutOptions{}},
 		{testLocator(task.ModeBranch, task.Done), RefreshRemoteOptions{FetchRefs: true}},
 		{Locator{RowKey: "drift"}, ReconcileOptions{Name: "repair-moved-path"}},
+		{Locator{RowKey: "repository"}, SyncOptions{Operation: FetchRepository}},
+		{Locator{RowKey: "branch"}, SyncOptions{Operation: PushBranch}},
+		{Locator{RowKey: "checkout"}, SyncOptions{Operation: FastForwardBranch}},
 	}
 	for _, test := range tests {
 		request, err := NewRequest(test.locator, test.options)

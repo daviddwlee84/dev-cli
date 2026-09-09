@@ -770,3 +770,7 @@ enable/disable are selected actions with a preview. `dev ssh format`, `organize`
 and `restore` provide optional guarded local edits and private recovery. Existing
 `ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
 [SSH host management](../guides/ssh-hosts.md#machine-management-and-configuration-organization).
+
+## Local triage report and intent
+
+`dev triage --json` includes schema version, generation time, source completeness, items and cached-remote evidence. Items retain ordinary repo/Try kind, branch/checkout identity, findings, action candidates, deferred intent and disposable-directory declarations. `--report`, `--kind`, repeated `--root`, `--all` and `--stale-days` control inspection. Intent and batch ledgers live under `<state_dir>/triage/`, separately from task TOML. See [local triage](../guides/local-triage.md).

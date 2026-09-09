@@ -178,3 +178,16 @@ The default is the current branch's upstream, then origin, then the sole remote;
 otherwise interactive use asks and scripts must select. Resolution is local and
 never fetches or queries a forge. Unsupported SSH aliases are not guessed.
 `dev repo context` remains the detailed local/context report.
+
+## Forgotten local work
+
+Use `dev triage` to find forgotten work across ordinary repositories and Tries,
+including uncommitted files, all local branches, missing upstreams and linked
+worktrees. `--report` and `--json` are read-only; local refresh never fetches or
+reconciles the catalog. Tab switches between forgotten work and quick batches.
+Select rows and an action, Enter to preview, then approve. Fetch is a separate
+round before push or fast-forward. Ignored paths block cleanup unless you have
+explicitly declared their exact relative directory disposable for this clone.
+Removal requires its displayed CLEAN token and retains the branch. No whole-repo
+removal, automatic commit or rebase is performed. Press o for individual flow,
+e for a shell, L to keep local, s to snooze, and R to edit disposable directories.

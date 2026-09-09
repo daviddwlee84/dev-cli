@@ -692,3 +692,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 `dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
 既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
 [SSH 主機管理](../guides/ssh-hosts.md)。
+
+## Local triage report and intent
+
+`dev triage --json` 包含 schema version、產生時間、來源完整度、items 與 cached-remote evidence。Item 保留普通 repo／Try 類型、branch/checkout 身分、findings、操作候選、暫緩意圖與可重建目錄。`--report`、`--kind`、可重複 `--root`、`--all`、`--stale-days` 控制盤點。意圖與 batch ledger 位於 `<state_dir>/triage/`，與 task TOML 分開。參見[本地工作整理](../guides/local-triage.md)。
