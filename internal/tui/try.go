@@ -16,6 +16,7 @@ import (
 // TryRow is one durable experiment plus the live runtime facts the dashboard
 // adds to experiment.Service's filesystem and Git inventory.
 type TryRow struct {
+	RuntimeErr  error
 	Item        experiment.Item
 	Location    *catalog.Location
 	Topology    gitx.RecoveryTopology
@@ -28,6 +29,13 @@ type TryRow struct {
 	Runtime       string
 	RuntimeHandle string
 	RuntimeStatus string
+}
+
+func (r TryRow) reference() string {
+	if r.Item.ID != "" {
+		return r.Item.ID
+	}
+	return r.Item.Live.CurrentPath
 }
 
 // Present reports whether this host has an openable checkout for the Try.
@@ -56,6 +64,9 @@ func (r TryRow) LocationState() catalog.LocationState {
 func (r TryRow) Where() string {
 	if state := r.LocationState(); state != "" {
 		if state == catalog.LocationPresent && !r.Item.Live.Present {
+			if r.Item.Live.Presence == "unavailable" {
+				return "unavailable"
+			}
 			return "missing"
 		}
 		return string(state)
@@ -165,14 +176,14 @@ func (m Model) renderTries() string {
 		}
 		return "  " + styleDim.Render("No active Tries. Press n to create one, or a to include history.") + "\n"
 	}
-	contentWidth := m.width - 2
+	contentWidth := m.width - 6
 	if contentWidth < 40 {
 		contentWidth = 40
 	}
 	var header string
 	var formatRow func(TryRow) string
 	switch {
-	case contentWidth >= 96:
+	case contentWidth >= 92:
 		nameWidth := clamp(contentWidth-78, 18, 36)
 		tagWidth := contentWidth - nameWidth - 68
 		header = fmt.Sprintf("  %-2s  %-*s  %-10s  %-10s  %-16s  %-7s  %-9s  %s",
@@ -207,11 +218,11 @@ func (m Model) renderTries() string {
 	}
 
 	var builder strings.Builder
-	builder.WriteString(styleHeader.Render(header) + "\n")
+	builder.WriteString(styleHeader.Render("    "+header) + "\n")
 	from, to := m.window(len(rows))
 	for index := from; index < to; index++ {
 		row := rows[index]
-		line := formatRow(row)
+		line := m.trySelectionMark(row) + formatRow(row)
 		styled := line
 		switch {
 		case row.Where() != string(catalog.LocationPresent) || row.Item.Phase != catalog.PhaseActive:

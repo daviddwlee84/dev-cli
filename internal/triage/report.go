@@ -36,8 +36,11 @@ type Item struct {
 	RepositoryPath        string            `json:"repository_path"`
 	Path                  string            `json:"path"`
 	Name                  string            `json:"name"`
+	Tags                  []string          `json:"tags,omitempty"`
+	Note                  string            `json:"note,omitempty"`
 	Kind                  string            `json:"kind"`
 	Scope                 string            `json:"scope"`
+	Presence              string            `json:"presence,omitempty"`
 	CatalogID             string            `json:"catalog_id,omitempty"`
 	Phase                 string            `json:"phase,omitempty"`
 	History               bool              `json:"history"`
@@ -58,9 +61,10 @@ type Item struct {
 	PreferenceFingerprint string            `json:"-"`
 }
 type Source struct {
-	Name     string `json:"name"`
-	Complete bool   `json:"complete"`
-	Detail   string `json:"detail,omitempty"`
+	ObservedAt time.Time `json:"observed_at,omitempty"`
+	Name       string    `json:"name"`
+	Complete   bool      `json:"complete"`
+	Detail     string    `json:"detail,omitempty"`
 }
 type Report struct {
 	SchemaVersion  int       `json:"schema_version"`

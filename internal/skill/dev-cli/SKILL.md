@@ -131,6 +131,17 @@ agent-owned checkout, read `references/agent-retirement.md`.
 
 ### Cross-repository local triage
 
+REPOS/TRY `x` selects, `Ctrl+A` selects visible, and Enter hands the scope to
+triage. `Ctrl+O` offers one-item triage/clear-selection; `o` still opens the row.
+Scope includes every local branch/worktree of selected repos. Reuse in-memory
+metadata; inspect selected repositories only; refresh affected rows/SIZE on return.
+No new persistent repo snapshot cache is introduced. TRY dashboard reads are
+read-only, including confirmed missing entries. `A` chooses compatible actions.
+Try Trash batches require `TRASH N`; forgotten missing entries require `FORGET N`
+or `dev tries forget <id> --confirm-forget <id>`. Forgetting fails closed on
+other host locations, task/runtime/artifact/note or recovery references. Catalog
+notes/tags require separate review. No permanent batch deletion is available.
+
 Use `dev triage --json` to find forgotten local changes and all local branches,
 including those without upstreams or checkouts. `dev triage` provides a separate
 interactive forgotten-work/quick-batch interface. Ordinary repos and Tries stay

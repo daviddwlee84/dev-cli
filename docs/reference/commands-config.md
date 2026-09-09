@@ -774,3 +774,12 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 ## Local triage report and intent
 
 `dev triage --json` includes schema version, generation time, source completeness, items and cached-remote evidence. Items retain ordinary repo/Try kind, branch/checkout identity, findings, action candidates, deferred intent and disposable-directory declarations. `--report`, `--kind`, repeated `--root`, `--all` and `--stale-days` control inspection. Intent and batch ledgers live under `<state_dir>/triage/`, separately from task TOML. See [local triage](../guides/local-triage.md).
+
+REPOS/TRY selections hand off existing metadata to scoped triage, with affected-only
+refresh on return. There is no new persistent local repo snapshot cache. `x` and
+`Ctrl+A` are reserved dashboard keys; move any custom tool binding using them.
+`dev tries forget <ref> --dry-run --json` previews missing-entry metadata removal;
+`--confirm-forget <id>` supplies exact approval. Read-only TRY dashboard inventory
+keeps confirmed missing separate from unavailable; Trash and forget use distinct
+guarded plans. The triage JSON adds `presence`, catalog `note`/`tags`, and optional
+source observation times. See [local triage](../guides/local-triage.md).

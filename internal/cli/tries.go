@@ -35,6 +35,7 @@ valid experiment names.`,
 		newTriesArchiveCmd(app),
 		newTriesRestoreCmd(app),
 		newTriesDeleteCmd(app),
+		newTriesForgetCmd(app),
 		newGraduateCmdWithUse(app, "graduate [try]"),
 	)
 	return cmd

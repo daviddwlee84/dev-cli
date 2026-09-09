@@ -238,6 +238,9 @@ func latestRelease(ctx context.Context, refresh bool) (string, error) {
 // passiveCommandSkipsNudge names commands that must stay quiet: the ones that
 // report versions themselves, and machine-facing paths.
 func passiveCommandSkipsNudge(cmd *cobra.Command) bool {
+	if cmd.Name() == "forget" && cmd.Parent() != nil && cmd.Parent().Name() == "tries" {
+		return true
+	}
 	for cur := cmd; cur != nil; cur = cur.Parent() {
 		switch cur.Name() {
 		case "version", "upgrade", "completion", "doctor", "ssh", "triage",

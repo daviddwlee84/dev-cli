@@ -318,3 +318,7 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 ## Dashboard 生命週期新增功能
 
 [Dashboard 生命週期操作](dashboard-actions.md) 說明 task 完成／恢復／retire／recovery、完整 start wizard、Trash 與 repository browser actions。`Ctrl+O` 開啟所選 row 的選單；TASKS 的 `a` 只顯示已完成 tasks。
+
+## Dashboard 多選與遺失 Try
+
+REPOS／TRY 的 `x` 切換選取，`Ctrl+A` 選取可見列，有選取時 Enter 開啟限定範圍 triage；`o` 保持開啟目前列，Space 不變。`Ctrl+O` 提供單項整理與清除選取。Try 批次可移動完整目錄到垃圾桶，必要時在核准 Apply 才登錄所選目錄；確認遺失且無引用的條目可只忘記 metadata。使用 `dev tries forget <ref> --dry-run --json` 預覽，`--confirm-forget <id>` 提供非互動式精確核准。多主機、task、runtime、artifact、筆記／tags 或 recovery 引用都會阻擋忘記。完整限制與 cache 行為見[本地整理](local-triage.md)。

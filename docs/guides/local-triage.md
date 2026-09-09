@@ -64,7 +64,8 @@ items requiring individual review; it does not infer personal importance.
 | j/k, arrows | Select a row |
 | Space, a, n | Toggle selection; select visible candidates; clear selection |
 | f, p, u | Select fetch, push, or fast-forward batches |
-| w, c, t, x | Select Park Warm, Park Cold, Retire, or Remove Checkout |
+| w, c, t | Select Park Warm, Park Cold, or Retire |
+| A, x | Available action chooser; Remove Checkout / Trash or forget Try |
 | Enter | Build exact plans and show effects and blockers |
 | y | Approve a non-removal batch after preview |
 | PgUp/PgDn | Scroll the full preview |
@@ -76,8 +77,8 @@ items requiring individual review; it does not infer personal importance.
 
 The individual shell starts at the selected path and does not switch branches.
 Use existing Git/editor tools there, then exit to refresh the triage view.
-An uncataloged Try must be explicitly reconciled with `dev tries list` before
-its catalog lifecycle operations become available.
+Trash can enroll an uncataloged Try during its reviewed Apply. Other catalog
+lifecycle operations can use explicit `dev tries list` reconciliation.
 
 ## Approved batches
 
@@ -105,7 +106,7 @@ including idle/done agents, are not closed by triage batches. Canonical,
 harness-owned, conflicted, locked/prunable or incompletely observed checkouts
 cannot be removed through this interface.
 
-Removal batches require the displayed `CLEAN N` token in addition to reviewing
+Checkout removal batches require the displayed `CLEAN N` token in addition to reviewing
 the exact paths and effects. Independent items continue after an item fails;
 same-repository operations are serialized. Esc during Apply stops the remaining
 queue after the current operation returns; quitting waits for its ledger.
@@ -126,7 +127,7 @@ commas. This is an explicit decision that their ignored contents may be lost
 during an approved linked-checkout removal. It applies only to this clone and
 its worktrees. It does not follow a replacement clone at the same path.
 
-All other ignored files remain blockers. Previews list the affected ignored paths
+For linked-checkout cleanup, all other ignored files remain blockers. Previews list the affected ignored paths
 and sizes. Traversal, globs, Git administrative paths, symlink roots, nested repos
 and submodules cannot be authorized by a disposable-directory rule. Symlink
 targets outside the checkout are never traversed. Platforms without stable
@@ -135,3 +136,60 @@ filesystem identity cannot enroll such policies or perform protected cleanup.
 Verified whole-repository backup/restore, external-reference analysis, permanent
 repo deletion, and automatic commit/rebase remain separate work. Being synced
 on the current branch is insufficient evidence to remove a whole clone.
+
+## Select from REPOS or TRY
+
+In the dashboard, `x` toggles a repository/Try selection and `Ctrl+A` selects
+visible items. Filtering keeps hidden selections, with their count shown in the
+footer. `Ctrl+O` offers clear selection and a single-item triage entry. With a
+selection, Enter opens this independent interface for that scope; without one,
+Enter keeps its normal open behavior. `o` always opens the current row and REPOS
+Space still expands worktrees. Selecting a repository includes all its local
+branches and registered worktrees. `A` lists available actions and candidate
+counts; choose an action, adjust the preselected candidates, then Enter to preview.
+
+The handoff reuses accepted dashboard metadata and task/worktree observations.
+Only selected repositories receive deeper Git/content inspection; no other roots
+are discovered. The first round can reuse the in-memory metadata snapshot; later
+refreshes inspect the selected scope again. Returning after an action updates
+only affected rows and invalidates their SIZE entries. SIZE retains its existing
+10-minute cache. There is no new persistent repository snapshot or watcher:
+standalone `dev triage` still collects the full inventory on startup/refresh.
+Cached observations never authorize Apply. Local refresh does not fetch.
+The dashboard TRY read path observes directories without enrolling them or
+reconciling moves; explicit CLI lifecycle commands retain their reconciliation.
+
+## Trash or forget a Try
+
+`A` offers `trash-try` for existing independent Tries and `forget-try` for a
+confirmed missing directory. `x` chooses the corresponding Try action, or
+Remove Checkout for an ordinary checkout. Unknown activity displays as `—`;
+`missing` and `unavailable` describe separate presence observations. An access
+failure or an unavailable root cannot authorize forgetting.
+
+Trash batches require the displayed `TRASH N` token and preserve the **whole**
+directory, including ignored and untracked contents. Trash still occupies disk
+space until emptied. Task/runtime claims, shared or external Git storage, unsafe
+paths, and changed source identity/content block removal. A missing Trash backend
+never falls back to permanent deletion. For an uncataloged Try, the preview
+explicitly includes selected-only registration during Apply. Cancellation writes
+nothing; if registration succeeds and Trash fails, the record and remaining
+contents are retained and the result reports partial progress. Other host
+locations and ordinary Trash recovery history remain intact.
+
+A missing accidental Try can be completely forgotten with a `FORGET N` batch,
+or through the same guarded service:
+
+```bash
+dev tries forget <ref> --dry-run --json
+dev tries forget <id> --confirm-forget <id> --json
+```
+
+Forgetting requires one local location, an accessible expected parent, confirmed
+absence, and no task, runtime, agent-artifact, note-source, other catalog or
+recovery reference. Personal catalog notes/tags must be reviewed and cleared
+first. A second host location blocks forgetting even when its path text matches.
+Apply locks and rereads the exact catalog record; a reappeared directory or
+changed authority rejects the plan. It removes only that catalog record and
+writes an audit result; it never deletes project files, note Markdown, or stats.
+Permanent batch deletion and ordinary canonical-repository deletion are excluded.

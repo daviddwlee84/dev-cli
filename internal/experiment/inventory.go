@@ -162,7 +162,14 @@ func (s *Service) Reconcile(ctx context.Context) ([]Item, []Diagnostic, error) {
 // List reconciles visible directories, joins requested catalog history, and
 // enriches Git repositories with bounded status/last-commit probes.
 func (s *Service) List(ctx context.Context, options ListOptions) ([]Item, []Diagnostic, error) {
-	visible, diagnostics, err := s.Reconcile(ctx)
+	var visible []Item
+	var diagnostics []Diagnostic
+	var err error
+	if options.ReadOnly {
+		visible, diagnostics, err = s.observeVisible(ctx, options.Paths)
+	} else {
+		visible, diagnostics, err = s.Reconcile(ctx)
+	}
 	if err != nil {
 		return visible, diagnostics, err
 	}
@@ -195,6 +202,16 @@ func (s *Service) List(ctx context.Context, options ListOptions) ([]Item, []Diag
 	}
 
 	for _, entry := range entries {
+		if options.Paths != nil {
+			location, _ := entry.LocationFor(s.host)
+			selected := false
+			for _, p := range options.Paths {
+				selected = selected || pathKey(p) == pathKey(location.CurrentPath) || pathKey(p) == pathKey(location.RestorePath)
+			}
+			if !selected {
+				continue
+			}
+		}
 		if _, ok := seen[entry.ID]; ok {
 			continue
 		}
@@ -238,7 +255,7 @@ func (s *Service) List(ctx context.Context, options ListOptions) ([]Item, []Diag
 			}
 		}
 		if location.State == catalog.LocationPresent && !present &&
-			!options.All && !options.IncludeNonPresent {
+			!options.All && !options.IncludeNonPresent && !options.IncludeMissing {
 			continue
 		}
 
@@ -246,6 +263,7 @@ func (s *Service) List(ctx context.Context, options ListOptions) ([]Item, []Diag
 		if located {
 			live.CurrentPath = location.CurrentPath
 			live.RealPath = location.RealPath
+			live.Presence = s.Presence(location.CurrentPath)
 		}
 		if present {
 			probe := s.probeDirectory(ctx, location.CurrentPath)
@@ -274,6 +292,55 @@ func (s *Service) List(ctx context.Context, options ListOptions) ([]Item, []Diag
 	sortItemsByActivity(items)
 	diagnostics = deduplicateDiagnostics(diagnostics)
 	sortDiagnostics(diagnostics)
+	return items, diagnostics, nil
+}
+
+// observeVisible is the dashboard/triage read boundary. It neither enrolls
+// directories nor reconciles moves; explicit CLI List keeps that legacy role.
+func (s *Service) observeVisible(ctx context.Context, selected []string) ([]Item, []Diagnostic, error) {
+	entries, problems, err := s.store.ListWithDiagnostics()
+	if err != nil {
+		return nil, nil, err
+	}
+	diagnostics := catalogDiagnostics(problems)
+	paths := append([]string{}, selected...)
+	if selected == nil {
+		dirs, err := os.ReadDir(s.triesRoot)
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return nil, diagnostics, err
+		}
+		for _, d := range dirs {
+			if d.IsDir() && !strings.HasPrefix(d.Name(), ".") {
+				paths = append(paths, filepath.Join(s.triesRoot, d.Name()))
+			}
+		}
+	}
+	items := []Item{}
+	for _, path := range paths {
+		if err := ctx.Err(); err != nil {
+			return items, diagnostics, err
+		}
+		probe := s.probeDirectory(ctx, path)
+		if !probe.valid {
+			if probe.diagnostic != nil {
+				diagnostics = append(diagnostics, *probe.diagnostic)
+			}
+			continue
+		}
+		if err := s.validateVisibleTryPath(path); err != nil {
+			continue
+		}
+		probe.live.Presence = "present"
+		matches := matchingEntries(entries, s.host, probe)
+		switch len(matches) {
+		case 0:
+			items = append(items, s.transientItem(probe, nil))
+		case 1:
+			items = append(items, itemFromEntry(matches[0], probe.live))
+		default:
+			items = append(items, s.transientItem(probe, errors.New("ambiguous Try catalog identity")))
+		}
+	}
 	return items, diagnostics, nil
 }
 

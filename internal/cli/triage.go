@@ -11,14 +11,12 @@ import (
 	"os/exec"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/taskflow"
 	"github.com/daviddwlee84/dev-cli/internal/triage"
-	"github.com/daviddwlee84/dev-cli/internal/triagetui"
 	"github.com/spf13/cobra"
 )
 
@@ -33,8 +31,10 @@ produces a read-only report. Remote comparisons use cached tracking refs.
 
 Batch actions require selection, exact preview, and a separate approval.
 Commit, rebase, first publication, and whole-repository eviction remain individual
-decisions. Ignored files block removal unless their exact directory was explicitly
-declared disposable for this clone.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+decisions. Ignored files block linked-checkout removal unless their exact directory
+was explicitly declared disposable for this clone. Try Trash preserves the whole
+directory; confirmed missing Tries can be forgotten only without durable references.
+REPOS and TRY selections open a scoped triage view reusing dashboard metadata.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if opts.Kind != "all" && opts.Kind != "repo" && opts.Kind != "try" {
 			return errors.New("--kind must be all, repo, or try")
 		}
@@ -57,21 +57,7 @@ declared disposable for this clone.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.
 			}
 			return triage.WriteReport(app.Out, r)
 		}
-		a := triagetui.Actions{
-			Load:    func(ctx context.Context) (triage.Report, error) { return s.Collect(ctx, opts) },
-			Prepare: s.Prepare,
-			Apply: func(ctx context.Context, b triage.Batch, token string) (triage.Ledger, error) {
-				return s.Apply(ctx, b, b.ID, token, nil)
-			},
-			Intent: s.Store.SetIntent,
-			Directories: func(ctx context.Context, item triage.Item, dirs []string) error {
-				return s.Store.SetDisposable(ctx, item.RepositoryID, dirs)
-			},
-			Open: func(item triage.Item, kind string) tea.Cmd {
-				return tea.Exec(&triageProcess{app: *app, item: item, kind: kind}, func(err error) tea.Msg { return triagetui.HandoffDone{Err: err} })
-			},
-		}
-		_, err = tea.NewProgram(triagetui.New(a), tea.WithAltScreen(), tea.WithInput(app.In), tea.WithOutput(app.Out)).Run()
+		_, err = runTriageUI(cmd.Context(), app, s, opts)
 		return err
 	}}
 	f := cmd.Flags()
@@ -85,6 +71,10 @@ declared disposable for this clone.`, Args: cobra.NoArgs, RunE: func(cmd *cobra.
 }
 
 func newTriageService(app *App) (*triage.Service, error) {
+	return newTriageServiceWithCoverage(app, false)
+}
+
+func newTriageServiceWithCoverage(app *App, allAvailable bool) (*triage.Service, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return nil, err
@@ -97,9 +87,10 @@ func newTriageService(app *App) (*triage.Service, error) {
 	if !app.noRuntime && backend != "none" {
 		if app.runtimeInstance != nil {
 			backends = append(backends, app.runtimeInstance)
-		} else {
+		}
+		if app.runtimeInstance == nil || allAvailable {
 			for _, rt := range runtime.All() {
-				if rt.Name() != "none" && rt.Available() {
+				if rt.Name() != "none" && rt.Available() && (app.runtimeInstance == nil || app.runtimeInstance.Name() != rt.Name()) {
 					backends = append(backends, app.runtimeNamed(rt.Name()))
 				}
 			}

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
+	"github.com/daviddwlee84/dev-cli/internal/experiment"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
@@ -29,10 +30,11 @@ type Preview struct {
 	Discard []gitx.LocalPath `json:"discard,omitempty"`
 }
 type batchEntry struct {
-	preview Preview
-	item    Item
-	plan    taskflow.Plan
-	service *taskflow.Service
+	tryApply func(context.Context) (experiment.RemovalResult, error)
+	preview  Preview
+	item     Item
+	plan     taskflow.Plan
+	service  *taskflow.Service
 }
 type Batch struct {
 	ID      string
@@ -68,10 +70,12 @@ func (s *Service) Prepare(ctx context.Context, items []Item, action string) (Bat
 	seen := map[string]bool{}
 	destructive := 0
 	for _, item := range items {
+		matched := false
 		for _, a := range item.Actions {
 			if a.Name != action {
 				continue
 			}
+			matched = true
 			key := item.RepositoryID + ":" + item.ID + ":" + a.Name + ":" + a.Remote
 			if a.Name == "fetch" {
 				key = item.RepositoryID + ":" + a.Remote
@@ -86,6 +90,14 @@ func (s *Service) Prepare(ctx context.Context, items []Item, action string) (Bat
 			e := batchEntry{item: item, preview: Preview{ItemID: item.ID, Path: item.Path, Action: a.Name, Reasons: []string{}, Effects: []string{}}}
 			if a.Availability == "blocked" {
 				e.preview.Reasons = append(e.preview.Reasons, a.Reason)
+				b.entries = append(b.entries, e)
+				continue
+			}
+			if a.Name == "trash-try" || a.Name == "forget-try" {
+				e = s.prepareTry(ctx, item, a.Name)
+				if e.preview.Ready {
+					destructive++
+				}
 				b.entries = append(b.entries, e)
 				continue
 			}
@@ -171,12 +183,21 @@ func (s *Service) Prepare(ctx context.Context, items []Item, action string) (Bat
 			}
 			b.entries = append(b.entries, e)
 		}
+		if !matched {
+			b.entries = append(b.entries, batchEntry{item: item, preview: Preview{ItemID: item.ID, Path: item.Path, Action: action, Reasons: []string{"action does not apply to this item; choose an action from its available actions"}, Effects: []string{}}})
+		}
 	}
 	if len(b.entries) == 0 {
 		return b, errors.New("selected items have no matching action")
 	}
 	if destructive > 0 {
 		b.Token = fmt.Sprintf("CLEAN %d", destructive)
+		if action == "trash-try" {
+			b.Token = fmt.Sprintf("TRASH %d", destructive)
+		}
+		if action == "forget-try" {
+			b.Token = fmt.Sprintf("FORGET %d", destructive)
+		}
 	}
 	b.seal = b.fingerprint()
 	return b, nil
@@ -285,12 +306,14 @@ func (s *Service) cleanupGuard(ctx context.Context, item Item, action string) (f
 }
 
 type Outcome struct {
-	ItemID string                `json:"item_id"`
-	Path   string                `json:"path"`
-	Action string                `json:"action"`
-	Status string                `json:"status"`
-	Error  string                `json:"error,omitempty"`
-	Steps  []taskflow.StepResult `json:"steps,omitempty"`
+	CatalogID       string                `json:"catalog_id,omitempty"`
+	OperationRecord string                `json:"operation_record,omitempty"`
+	ItemID          string                `json:"item_id"`
+	Path            string                `json:"path"`
+	Action          string                `json:"action"`
+	Status          string                `json:"status"`
+	Error           string                `json:"error,omitempty"`
+	Steps           []taskflow.StepResult `json:"steps,omitempty"`
 }
 type Ledger struct {
 	SchemaVersion int       `json:"schema_version"`
@@ -349,21 +372,33 @@ func (s *Service) Apply(ctx context.Context, b Batch, approval, token string, no
 				return l, err
 			}
 			l.Outcomes = l.Outcomes[:len(l.Outcomes)-1]
-			approval := taskflow.Approve(e.plan.PlanID)
-			if e.plan.Confirmation.Kind == taskflow.ConfirmationTyped {
-				approval = taskflow.ApproveWithToken(e.plan.PlanID, e.plan.Confirmation.Token)
-			}
-			result, err := e.service.Apply(context.WithoutCancel(ctx), e.plan, approval)
-			o.Steps = result.AttemptedSteps()
-			o.Status = "completed"
-			if err != nil {
-				o.Status = "failed"
-				o.Error = SafeText(err.Error())
-				if errors.Is(err, taskflow.ErrStalePlan) {
-					o.Status = "stale"
+			if e.tryApply != nil {
+				result, err := e.tryApply(context.WithoutCancel(ctx))
+				o.CatalogID, o.OperationRecord = result.ID, result.Journal
+				o.Status = "completed"
+				if err != nil {
+					o.Status, o.Error = "failed", SafeText(err.Error())
+					if result.Outcome != "" && result.Outcome != "not-applied" {
+						o.Status = "partial"
+					}
 				}
-				if len(result.CompletedSteps()) > 0 {
-					o.Status = "partial"
+			} else {
+				approval := taskflow.Approve(e.plan.PlanID)
+				if e.plan.Confirmation.Kind == taskflow.ConfirmationTyped {
+					approval = taskflow.ApproveWithToken(e.plan.PlanID, e.plan.Confirmation.Token)
+				}
+				result, err := e.service.Apply(context.WithoutCancel(ctx), e.plan, approval)
+				o.Steps = result.AttemptedSteps()
+				o.Status = "completed"
+				if err != nil {
+					o.Status = "failed"
+					o.Error = SafeText(err.Error())
+					if errors.Is(err, taskflow.ErrStalePlan) {
+						o.Status = "stale"
+					}
+					if len(result.CompletedSteps()) > 0 {
+						o.Status = "partial"
+					}
 				}
 			}
 		}

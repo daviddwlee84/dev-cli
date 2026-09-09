@@ -345,3 +345,15 @@ Adopt reports by default and only writes task entries after `--apply` plus confi
 ## Dashboard lifecycle additions
 
 Use [dashboard lifecycle actions](dashboard-actions.md) for task finish/resume/retire/recovery, full start wizards, Trash disposal and repository browser actions. `Ctrl+O` opens the selected row menu; TASKS `a` shows completed tasks.
+
+## Dashboard selection and missing Tries
+
+REPOS/TRY `x` toggles selection and `Ctrl+A` selects visible rows. Enter with
+selections opens scoped triage; `o` keeps normal opening and Space is unchanged.
+`Ctrl+O` includes a single-item triage entry and clear selection. Try batches
+support whole-directory Trash, with registration during approved Apply when
+needed, or metadata-only forgetting of a confirmed missing unreferenced entry.
+Use `dev tries forget <ref> --dry-run --json` to inspect and
+`--confirm-forget <id>` for exact noninteractive approval. Multi-host, task,
+runtime, artifact, note/tag and recovery references block forgetting. See
+[local triage](local-triage.md) for the full guard and cache behavior.

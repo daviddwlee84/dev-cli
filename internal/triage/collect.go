@@ -12,6 +12,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/experiment"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
@@ -22,12 +23,16 @@ import (
 )
 
 type Options struct {
+	// A non-nil Selection disables root discovery, including an empty selection.
+	Selection []Target
+	Snapshots []RepositorySnapshot
 	Roots     []string
 	Kind      string
 	All       bool
 	StaleDays int
 }
 type Config struct {
+	TryHooks  experiment.Hooks
 	Config    config.Config
 	Tasks     *task.Store
 	Catalog   *catalog.Store
@@ -52,6 +57,8 @@ type runtimeSnapshot struct {
 }
 type asset struct {
 	id, kind, phase string
+	name, note      string
+	tags            []string
 	history         bool
 	pending         bool
 }
@@ -62,7 +69,7 @@ func (s *Service) Collect(ctx context.Context, opts Options) (Report, error) {
 	}
 	r := Report{SchemaVersion: 1, GeneratedAt: time.Now().UTC(), Complete: true, Sources: []Source{}, Items: []Item{}, RemoteEvidence: "local remote-tracking refs; fetch explicitly to refresh"}
 	addSource := func(name string, complete bool, detail string) {
-		r.Sources = append(r.Sources, Source{name, complete, detail})
+		r.Sources = append(r.Sources, Source{Name: name, Complete: complete, Detail: detail})
 		if !complete {
 			r.Complete = false
 		}
@@ -78,6 +85,14 @@ func (s *Service) Collect(ctx context.Context, opts Options) (Report, error) {
 		v, _ = filepath.Abs(p)
 		return v
 	}
+	scoped := opts.Selection != nil
+	for _, snapshot := range opts.Snapshots {
+		r.Sources = append(r.Sources, Source{Name: "dashboard:" + snapshot.Repo.CommonDir, ObservedAt: snapshot.ObservedAt, Complete: snapshot.TopologyErr == nil && snapshot.Context.IdentityErr == nil && snapshot.Context.TaskErr == nil && snapshot.Context.WorktreeErr == nil, Detail: "in-memory metadata snapshot; action plans revalidate live authority"})
+	}
+	selectedPaths := map[string]Target{}
+	for _, target := range opts.Selection {
+		selectedPaths[canonical(target.Path)] = target
+	}
 	entries, diagnostics, err := s.cfg.Catalog.ListWithDiagnostics()
 	catalogOK := err == nil && len(diagnostics) == 0
 	addSource("catalog", catalogOK, "catalog records with errors cannot authorize cleanup")
@@ -87,7 +102,7 @@ func (s *Service) Collect(ctx context.Context, opts Options) (Report, error) {
 			continue
 		}
 		p := canonical(l.CurrentPath)
-		a := asset{id: e.ID, kind: "repo", history: l.State != catalog.LocationPresent, pending: e.MoveIntent != nil}
+		a := asset{id: e.ID, kind: "repo", history: l.State != catalog.LocationPresent, pending: e.MoveIntent != nil, name: e.Title(), note: e.Note, tags: e.Tags}
 		if e.Experiment != nil {
 			a.phase = string(e.Experiment.Phase)
 		}
@@ -99,7 +114,8 @@ func (s *Service) Collect(ctx context.Context, opts Options) (Report, error) {
 			catalogOK = false
 		}
 		assets[p] = a
-		if opts.All || !a.history {
+		_, selected := selectedPaths[p]
+		if (!scoped || selected) && (opts.All || !a.history) {
 			seeds[p] = true
 			if a.kind == "try" {
 				plain[p] = true
@@ -109,43 +125,71 @@ func (s *Service) Collect(ctx context.Context, opts Options) (Report, error) {
 	// Observe immediate Try directories without calling List/Reconcile: listing
 	// must neither create catalog entries nor reconcile interrupted moves.
 	triesRoot := config.Expand(s.cfg.Config.Paths.TriesRoot)
-	if ds, e := os.ReadDir(triesRoot); e == nil {
-		for _, d := range ds {
-			if strings.HasPrefix(d.Name(), ".") || !d.IsDir() {
-				continue
+	if !scoped {
+		if ds, e := os.ReadDir(triesRoot); e == nil {
+			for _, d := range ds {
+				if strings.HasPrefix(d.Name(), ".") || !d.IsDir() {
+					continue
+				}
+				p := canonical(filepath.Join(triesRoot, d.Name()))
+				if _, ok := assets[p]; !ok {
+					assets[p] = asset{kind: "try", phase: "active"}
+				}
+				seeds[p] = true
+				plain[p] = true
 			}
-			p := canonical(filepath.Join(triesRoot, d.Name()))
-			if _, ok := assets[p]; !ok {
-				assets[p] = asset{kind: "try", phase: "active"}
+		} else if !os.IsNotExist(e) {
+			addSource("tries", false, "Try root could not be read")
+		}
+		roots := append(append([]string{}, s.cfg.Config.DiscoveryRoots()...), opts.Roots...)
+		for _, root := range roots {
+			root = config.Expand(root)
+			scanOptions := repo.DefaultOptions()
+			scanComplete := true
+			scanOptions.OnError = func(string, error) { scanComplete = false }
+			found, e := repo.Discover(ctx, []string{root}, scanOptions)
+			_, statErr := os.Stat(root)
+			addSource(root, e == nil && statErr == nil && scanComplete, "discovery root unavailable or incomplete")
+			for _, entry := range found {
+				seeds[entry.Path] = true
+			}
+		}
+		if s.cfg.CWD != "" {
+			if g, e := gitx.Discover(ctx, s.cfg.CWD); e == nil {
+				seeds[g.Root] = true
+			}
+		}
+	} else {
+		for p, target := range selectedPaths {
+			if target.Kind == "try" {
+				if target.CatalogID != "" && assets[p].id != target.CatalogID {
+					delete(seeds, p)
+					delete(plain, p)
+					if assets[p].id != "" {
+						addSource(p, false, "selected Try catalog identity changed; refresh selection")
+					}
+					continue
+				}
+				if target.CatalogID == "" {
+					if _, err := os.Lstat(p); os.IsNotExist(err) {
+						continue
+					}
+					if _, ok := assets[p]; !ok {
+						assets[p] = asset{kind: "try", phase: "active"}
+					}
+				}
+				plain[p] = true
 			}
 			seeds[p] = true
-			plain[p] = true
-		}
-	} else if !os.IsNotExist(e) {
-		addSource("tries", false, "Try root could not be read")
-	}
-	roots := append(append([]string{}, s.cfg.Config.DiscoveryRoots()...), opts.Roots...)
-	for _, root := range roots {
-		root = config.Expand(root)
-		scanOptions := repo.DefaultOptions()
-		scanComplete := true
-		scanOptions.OnError = func(string, error) { scanComplete = false }
-		found, e := repo.Discover(ctx, []string{root}, scanOptions)
-		_, statErr := os.Stat(root)
-		addSource(root, e == nil && statErr == nil && scanComplete, "discovery root unavailable or incomplete")
-		for _, entry := range found {
-			seeds[entry.Path] = true
-		}
-	}
-	if s.cfg.CWD != "" {
-		if g, e := gitx.Discover(ctx, s.cfg.CWD); e == nil {
-			seeds[g.Root] = true
 		}
 	}
 	tasks, td, te := s.cfg.Tasks.ListWithDiagnostics()
 	tasksOK := te == nil && len(td) == 0
 	addSource("tasks", tasksOK, "task records with errors cannot authorize cleanup")
 	for _, t := range tasks {
+		if scoped {
+			continue
+		}
 		if t.RepoPath != "" {
 			seeds[t.RepoPath] = true
 		}
@@ -162,6 +206,9 @@ func (s *Service) Collect(ctx context.Context, opts Options) (Report, error) {
 		addSource("runtime:"+rt.Name(), ok, "runtime coverage unavailable")
 		runtimeOK = runtimeOK && ok
 		for _, session := range sessions {
+			if scoped {
+				continue
+			}
 			for _, p := range session.Dirs {
 				if g, e := gitx.Discover(ctx, p); e == nil {
 					seeds[g.Root] = true
@@ -189,6 +236,10 @@ func (s *Service) Collect(ctx context.Context, opts Options) (Report, error) {
 		if e == nil {
 			common, ce := pathx.Canonical(g.GitCommonDir)
 			if ce == nil {
+				if target, ok := selectedPaths[canonical(path)]; ok && target.RepositoryID != "" && target.RepositoryID != common {
+					addSource(path, false, "selected repository identity changed; select it again")
+					continue
+				}
 				g.GitCommonDir = common
 				repositories[common] = g
 				continue
@@ -197,7 +248,7 @@ func (s *Service) Collect(ctx context.Context, opts Options) (Report, error) {
 		p := canonical(path)
 		a := assets[p]
 		_, markerErr := os.Lstat(filepath.Join(p, ".git"))
-		if plain[p] || a.id != "" || markerErr == nil {
+		if plain[p] || a.id != "" || markerErr == nil || scoped {
 			i := Item{ID: digest([]string{"directory", p}), RepositoryID: p, RepositoryPath: p, Path: p, Name: filepath.Base(p), Kind: a.kind, Scope: "directory", CatalogID: a.id, Phase: a.phase, History: a.history, Complete: false, Findings: []Finding{}, Actions: []Action{}}
 			if i.Kind == "" {
 				i.Kind = "repo"
@@ -259,6 +310,13 @@ func (s *Service) Collect(ctx context.Context, opts Options) (Report, error) {
 		}
 	}
 	for _, t := range tasks {
+		if scoped {
+			_, repoSelected := selectedPaths[canonical(t.RepoPath)]
+			_, checkoutSelected := selectedPaths[canonical(t.WorktreePath)]
+			if !repoSelected && !checkoutSelected {
+				continue
+			}
+		}
 		if seenTasks[t.ID] {
 			continue
 		}
@@ -268,6 +326,10 @@ func (s *Service) Collect(ctx context.Context, opts Options) (Report, error) {
 	}
 	filtered := r.Items[:0]
 	for _, i := range r.Items {
+		if a, ok := assets[i.Path]; ok && a.id != "" {
+			i.Name, i.Note, i.Tags = a.name, a.note, append([]string{}, a.tags...)
+		}
+		s.tryCandidates(ctx, &i)
 		if !i.Complete {
 			r.Complete = false
 		}
@@ -280,6 +342,11 @@ func (s *Service) Collect(ctx context.Context, opts Options) (Report, error) {
 		filtered = append(filtered, i)
 	}
 	r.Items = filtered
+	for _, source := range r.Sources {
+		if !source.Complete {
+			r.Complete = false
+		}
+	}
 	SortItems(r.Items, false)
 	return r, ctx.Err()
 }
@@ -291,6 +358,9 @@ func (s *Service) collectRepo(ctx context.Context, g gitx.Repo, tasks []*task.Ta
 		base.Path = g.Root
 	}
 	base.ID = digest([]string{base.RepositoryID, "repository"})
+	if a, ok := assets[base.Path]; ok {
+		base.Kind, base.CatalogID, base.Phase, base.History = a.kind, a.id, a.phase, a.history
+	}
 	pref, pe := s.Store.Read(g.GitCommonDir)
 	if pe != nil {
 		base.Complete = false
@@ -298,7 +368,20 @@ func (s *Service) collectRepo(ctx context.Context, g gitx.Repo, tasks []*task.Ta
 	}
 	base.PreferenceFingerprint = digest(pref)
 	base.DisposableDirs = append([]string{}, pref.DisposableDirs...)
-	top, topErr := gitx.RecoveryTopologyOf(ctx, base.RepositoryPath)
+	var seed *RepositorySnapshot
+	for n := range opts.Snapshots {
+		if opts.Snapshots[n].Repo.CommonDir == g.GitCommonDir {
+			seed = &opts.Snapshots[n]
+			break
+		}
+	}
+	var top gitx.RecoveryTopology
+	var topErr error
+	if seed != nil {
+		top, topErr = seed.Topology, seed.TopologyErr
+	} else {
+		top, topErr = gitx.RecoveryTopologyOf(ctx, base.RepositoryPath)
+	}
 	branches, branchErr := gitx.BranchStates(ctx, base.RepositoryPath)
 	worktrees, wtErr := gitx.Worktrees(ctx, base.RepositoryPath)
 	if topErr != nil || branchErr != nil || wtErr != nil {
@@ -336,7 +419,12 @@ func (s *Service) collectRepo(ctx context.Context, g gitx.Repo, tasks []*task.Ta
 			related = append(related, t)
 		}
 	}
-	joined := inventory.CollectRepoContextWithOptions(ctx, repo.Repo{Path: base.RepositoryPath, RealPath: base.RepositoryPath, MainRoot: base.RepositoryPath, CommonDir: g.GitCommonDir, HasGit: true, Bare: g.Bare}, related, inventory.RepoContextOptions{Limiter: inventory.NewLimiter(1)})
+	var joined inventory.RepoContext
+	if seed != nil && seed.Context.WorktreeErr == nil && sameSnapshotTasks(seed.Context, related, worktrees) {
+		joined = seed.Context
+	} else {
+		joined = inventory.CollectRepoContextWithOptions(ctx, repo.Repo{Path: base.RepositoryPath, RealPath: base.RepositoryPath, MainRoot: base.RepositoryPath, CommonDir: g.GitCommonDir, HasGit: true, Bare: g.Bare}, related, inventory.RepoContextOptions{Limiter: inventory.NewLimiter(1)})
+	}
 	if joined.WorktreeErr != nil || joined.IdentityErr != nil {
 		base.Complete = false
 	}

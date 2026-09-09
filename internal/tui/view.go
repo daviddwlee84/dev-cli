@@ -317,7 +317,7 @@ func (m Model) renderRepos() string {
 	for _, c := range columns {
 		headers = append(headers, fitCell(c.header, c.width))
 	}
-	b.WriteString(styleHeader.Render("  "+strings.Join(headers, "  ")) + "\n")
+	b.WriteString(styleHeader.Render("      "+strings.Join(headers, "  ")) + "\n")
 
 	from, to := m.window(len(items))
 	for i := from; i < to; i++ {
@@ -327,7 +327,7 @@ func (m Model) renderRepos() string {
 		for _, c := range columns {
 			cells = append(cells, fitCell(m.repoItemColumnValue(item, c.name), c.width))
 		}
-		line := strings.Join(cells, "  ")
+		line := m.repoSelectionMark(r) + strings.Join(cells, "  ")
 		styled := line
 		if checkout, child := item.checkout(); child {
 			if checkout.Status.Dirty() {
@@ -501,7 +501,7 @@ func (m Model) repoColumns() []repoColumnSpec {
 	}
 	// Shrink flexible columns to fit. Configuration controls what exists and in
 	// what order; width adapts to the current pane.
-	total := 2 + 2*(len(columns)-1)
+	total := 6 + 2*(len(columns)-1)
 	for _, c := range columns {
 		total += c.width
 	}
@@ -1222,6 +1222,12 @@ func (m Model) renderDetail() string {
 			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(r.Item.Live.CurrentPath)),
 			fmt.Sprintf("  %s %s · %s", styleDim.Render("state"), r.Item.Phase, r.Where()),
 		}
+		if r.RuntimeErr != nil {
+			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("runtime"), styleErr.Render("unknown: "+r.RuntimeErr.Error())))
+		}
+		if r.Item.ID == "" {
+			lines = append(lines, "  "+styleDim.Render("catalog")+" unregistered; triage Trash previews selected-only enrollment")
+		}
 		lines = append(lines, sizeDetailLines(r.Usage, r.SizeError, r.SizeTarget)...)
 		if r.Item.Live.Status != nil && r.Item.Live.Status.Dirty() {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("git  "), r.Item.Live.Status.Breakdown()))
@@ -1356,6 +1362,7 @@ func (m Model) renderDetail() string {
 
 	if r, ok := m.currentRepo(); ok {
 		lines := []string{
+			fmt.Sprintf("  %s %s", styleDim.Render("triage"), triageSummary(r)),
 			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(r.Repo.Path)),
 			fmt.Sprintf("  %s %s", styleDim.Render("ready"), repocontext.AssessLocal(r.Context, 0, config.Hostname()).Summary()),
 		}
@@ -1501,6 +1508,15 @@ func (m Model) renderFooter() string {
 	}
 
 	bindings := []string{"ctrl+o actions"}
+	if m.view == ViewRepos || m.view == ViewTries {
+		bindings = append(bindings, "x select", "ctrl+a select visible")
+		if summary := m.selectionSummary(); summary != "" {
+			if status != "" {
+				status += " · "
+			}
+			status += summary
+		}
+	}
 	if m.remoteClone.active() {
 		bindings = []string{"q cancel clone", "tab view", "/ filter", "j/k move"}
 		var b strings.Builder

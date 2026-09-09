@@ -4,6 +4,7 @@ package triagetui
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -40,6 +41,10 @@ type changed struct{ Err error }
 type HandoffDone struct{ Err error }
 
 type Model struct {
+	chooser               bool
+	chooseAll             bool
+	choiceCursor          int
+	touched               []triage.Item
 	generation            int
 	actions               Actions
 	report                triage.Report
@@ -59,6 +64,50 @@ type Model struct {
 	lastLedger            *triage.Ledger
 	overlay               []string
 	quit                  bool
+}
+
+// NewScoped starts with an action chooser for the dashboard's selected scope.
+func NewScoped(a Actions) Model        { m := New(a); m.chooser, m.chooseAll = true, true; return m }
+func (m Model) Touched() []triage.Item { return append([]triage.Item{}, m.touched...) }
+
+type actionChoice struct {
+	name                string
+	candidates, blocked int
+}
+
+func (m Model) choiceItems() []triage.Item {
+	if !m.chooseAll {
+		return m.chosen()
+	}
+	m.quick = false
+	m.filterRows()
+	return m.visible
+}
+func (m Model) choices() []actionChoice {
+	counts := map[string]actionChoice{}
+	for _, item := range m.choiceItems() {
+		seen := map[string]bool{}
+		for _, a := range item.Actions {
+			if seen[a.Name] {
+				continue
+			}
+			seen[a.Name] = true
+			c := counts[a.Name]
+			c.name = a.Name
+			if a.Availability == "candidate" {
+				c.candidates++
+			} else {
+				c.blocked++
+			}
+			counts[a.Name] = c
+		}
+	}
+	choices := []actionChoice{}
+	for _, c := range counts {
+		choices = append(choices, c)
+	}
+	sort.Slice(choices, func(i, j int) bool { return choices[i].name < choices[j].name })
+	return choices
 }
 
 func New(a Actions) Model {
@@ -83,7 +132,7 @@ func (m *Model) filterRows() {
 		if m.kind != "all" && i.Kind != m.kind {
 			continue
 		}
-		text := i.Name + " " + i.Path
+		text := i.Name + " " + i.Path + " " + i.Note + " " + strings.Join(i.Tags, " ")
 		for _, f := range i.Findings {
 			text += " " + f.Code + " " + f.Detail
 		}
@@ -151,6 +200,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if v.Err != nil {
 			m.message = triage.SafeText(v.Err.Error())
 		}
+		if len(v.Report.Items) == 0 {
+			for _, source := range v.Report.Sources {
+				if !source.Complete {
+					m.message = source.Detail
+					break
+				}
+			}
+		}
 		return m, nil
 	case prepared:
 		if v.Generation != m.generation {
@@ -170,6 +227,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case applied:
+		for _, outcome := range v.Ledger.Outcomes {
+			if outcome.Status == "skipped" || outcome.Status == "canceled" {
+				continue
+			}
+			for _, item := range m.report.Items {
+				if item.ID == outcome.ItemID {
+					m.touched = append(m.touched, item)
+				}
+			}
+		}
 		m.busy = ""
 		m.stop = nil
 		m.batch = nil
@@ -298,7 +365,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input, cmd = m.input.Update(v)
 			return m, cmd
 		}
+		if m.chooser {
+			choices := m.choices()
+			switch key {
+			case "q", "ctrl+c":
+				return m, tea.Quit
+			case "esc", "A":
+				m.chooser = false
+			case "j", "down":
+				m.choiceCursor = min(max(0, len(choices)-1), m.choiceCursor+1)
+			case "k", "up":
+				m.choiceCursor = max(0, m.choiceCursor-1)
+			case "enter":
+				if len(choices) == 0 {
+					m.message = "No batch actions here; inspect details (?) or open the individual flow (o)"
+					m.chooser = false
+					return m, nil
+				}
+				m.action = choices[min(m.choiceCursor, len(choices)-1)].name
+				items := m.choiceItems()
+				m.selected = map[string]bool{}
+				for _, item := range items {
+					if a, ok := item.Action(m.action); ok && a.Availability == "candidate" {
+						m.selected[item.ID] = true
+					}
+				}
+				m.chooser = false
+				m.quick = true
+				m.filterRows()
+				m.message = "Review selected candidates; Enter builds exact plans, Space deselects, A changes action"
+			}
+			return m, nil
+		}
 		switch key {
+		case "A":
+			m.chooser, m.choiceCursor = true, 0
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "j", "down":
@@ -349,6 +450,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "?":
 			if i, ok := m.current(); ok {
 				m.overlay = []string{i.Kind + " / " + i.Scope + " · " + i.Path}
+				if i.Note != "" {
+					m.overlay = append(m.overlay, "note: "+i.Note)
+				}
+				if len(i.Tags) > 0 {
+					m.overlay = append(m.overlay, "tags: "+strings.Join(i.Tags, ", "))
+				}
 				if i.Branch != nil {
 					m.overlay = append(m.overlay, fmt.Sprintf("%s @ %s; upstream %s @ %s", i.Branch.Ref, i.Branch.OID, i.Branch.Upstream, i.Branch.UpstreamOID))
 				}
@@ -373,6 +480,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "R":
 			if i, ok := m.current(); ok {
+				m.touched = append(m.touched, i)
 				m.inputMode = "directories"
 				m.inputItem = i
 				m.input.SetValue(strings.Join(i.DisposableDirs, ", "))
@@ -381,6 +489,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "L", "s", "U":
 			if i, ok := m.current(); ok {
+				m.touched = append(m.touched, i)
 				kind := "local"
 				until := time.Time{}
 				if key == "s" {
@@ -395,6 +504,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "o", "e", "v":
 			if i, ok := m.current(); ok && m.actions.Open != nil {
+				m.touched = append(m.touched, i)
 				kind := "flow"
 				if key == "e" {
 					kind = "shell"
@@ -407,10 +517,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "f", "p", "u", "w", "c", "t", "x":
 			names := map[string]string{"f": "fetch", "p": "push", "u": "fast-forward", "w": "park-warm", "c": "park-cold", "t": "retire", "x": "remove-checkout"}
 			m.action = names[key]
+			if key == "x" {
+				if i, ok := m.current(); ok && i.Kind == "try" {
+					if i.Presence == "missing" {
+						m.action = "forget-try"
+					} else {
+						m.action = "trash-try"
+					}
+				}
+			}
 			m.selected = map[string]bool{}
 			m.filterRows()
 		case "enter":
 			items := m.chosen()
+			matching := false
+			for _, item := range items {
+				_, ok := item.Action(m.action)
+				matching = matching || ok
+			}
+			if !matching {
+				m.chooser, m.chooseAll, m.choiceCursor = true, false, 0
+				return m, nil
+			}
 			action := m.action
 			m.busy = "Building exact plans…"
 			return m, func() tea.Msg {
@@ -448,6 +576,21 @@ func (m Model) View() string {
 	fmt.Fprintf(&b, "%s · action: %s · %d selected · %d visible\n", m.kind, m.action, lenSelected(m.selected), len(m.visible))
 	if m.busy != "" {
 		fmt.Fprintln(&b, highlight.Render(m.busy))
+	}
+	if m.chooser && m.busy == "" {
+		fmt.Fprintln(&b, "\nAvailable actions · candidates still require an exact preview")
+		for n, c := range m.choices() {
+			mark := "  "
+			if n == m.choiceCursor {
+				mark = "› "
+			}
+			fmt.Fprintf(&b, "%s%-18s %d candidates · %d blocked\n", mark, c.name, c.candidates, c.blocked)
+		}
+		if len(m.choices()) == 0 {
+			fmt.Fprintln(&b, "No batch action; return to inspect details or use the individual flow.")
+		}
+		fmt.Fprintln(&b, "\n↑/↓ choose · Enter select candidates · Esc return · q back to dashboard")
+		return b.String()
 	}
 	if m.overlay != nil {
 		start := min(m.scroll, max(0, len(m.overlay)-1))
@@ -502,6 +645,7 @@ func (m Model) View() string {
 		}
 		fmt.Fprintf(&b, "Work to save: %d batch / %d individual   Other: %d batch / %d individual\n", quadrants[0], quadrants[1], quadrants[2], quadrants[3])
 		fmt.Fprintln(&b, muted.Render("Remote comparisons use cached refs. Fetch is an explicit separate round."))
+		fmt.Fprintln(&b, muted.Render("      KIND ACTIVITY   ITEM                           FINDINGS"))
 		available := max(2, m.height-17)
 		start := max(0, m.cursor-available+1)
 		end := min(len(m.visible), start+available)
@@ -519,7 +663,7 @@ func (m Model) View() string {
 			for _, f := range i.Findings {
 				codes = append(codes, f.Code)
 			}
-			age := "unknown"
+			age := "—"
 			if !i.LastActivity.IsZero() {
 				age = i.LastActivity.Format("2006-01-02")
 			}
@@ -549,8 +693,8 @@ func (m Model) View() string {
 			}
 			fmt.Fprintln(&b, prompt+m.input.View())
 		}
-		fmt.Fprintln(&b, muted.Render("Tab views · g repo/Try · / filter · space select · a candidates · n clear · Enter preview"))
-		fmt.Fprintln(&b, muted.Render("f fetch · p push · u fast-forward · w warm · c cold · t retire · x remove checkout"))
+		fmt.Fprintln(&b, muted.Render("A actions · Tab views · g repo/Try · / filter · space select · a candidates · n clear · Enter preview"))
+		fmt.Fprintln(&b, muted.Render("f fetch · p push · u fast-forward · w warm · c cold · t retire · x remove checkout / Trash or forget Try"))
 		fmt.Fprintln(&b, muted.Render("o individual flow · e shell · v runtime · L keep local · s snooze 7d · U clear intent"))
 		fmt.Fprintln(&b, muted.Render("? details · b results · R disposable directories · d deferred · r refresh · q quit"))
 	}
@@ -579,6 +723,12 @@ func ledgerLines(l triage.Ledger) []string {
 	lines := []string{"Batch results · " + l.BatchID, "Receipt: " + l.Path}
 	for _, o := range l.Outcomes {
 		lines = append(lines, fmt.Sprintf("[%s] %s · %s", o.Status, o.Action, o.Path))
+		if o.CatalogID != "" {
+			lines = append(lines, "  catalog: "+o.CatalogID)
+		}
+		if o.OperationRecord != "" {
+			lines = append(lines, "  operation: "+o.OperationRecord)
+		}
 		if o.Error != "" {
 			lines = append(lines, "  "+o.Error)
 		}

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/BurntSushi/toml"
+	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/google/uuid"
 )
@@ -281,6 +282,45 @@ func (s *Store) List(repositoryID string) ([]*Note, error) {
 	}
 	Sort(notes)
 	return notes, nil
+}
+
+// CheckUnreferenced inspects durable sources, including malformed files. The
+// disposable FTS index must never authorize deleting an asset identity.
+func (s *Store) CheckUnreferenced(repositoryID string) error {
+	if err := catalog.ValidateID(repositoryID); err != nil {
+		return err
+	}
+	path := filepath.Join(s.Dir, repositoryID)
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return errors.New("note sources cannot be inspected")
+	}
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return err
+	}
+	if len(entries) > 0 {
+		return errors.New("asset has note sources; preserve or handle them individually")
+	}
+	return nil
+}
+
+// WithUnreferenced serializes catalog forgetting against dev note writers.
+func (s *Store) WithUnreferenced(ctx context.Context, id string, operation func() error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.withFileLock(ctx, func() error {
+		if err := s.CheckUnreferenced(id); err != nil {
+			return err
+		}
+		return operation()
+	})
 }
 
 // Update replaces body/tags while preserving identity, repository and Created.

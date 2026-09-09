@@ -500,6 +500,15 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 Triage is a view of observed work plus personal review intent. Keep-local, snooze and disposable-directory declarations live outside task lifecycle state. They never turn cached refs into backup proof. [Local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/) separates forgotten work from quick batches.
 
+REPOS/TRY selections hand off existing metadata to scoped triage, with affected-only
+refresh on return. There is no new persistent local repo snapshot cache. `x` and
+`Ctrl+A` are reserved dashboard keys; move any custom tool binding using them.
+`dev tries forget <ref> --dry-run --json` previews missing-entry metadata removal;
+`--confirm-forget <id>` supplies exact approval. Read-only TRY dashboard inventory
+keeps confirmed missing separate from unavailable; Trash and forget use distinct
+guarded plans. The triage JSON adds `presence`, catalog `note`/`tags`, and optional
+source observation times. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
+
 ---
 
 ### Isolation boundaries and glossary
@@ -1070,7 +1079,8 @@ items requiring individual review; it does not infer personal importance.
 | j/k, arrows | Select a row |
 | Space, a, n | Toggle selection; select visible candidates; clear selection |
 | f, p, u | Select fetch, push, or fast-forward batches |
-| w, c, t, x | Select Park Warm, Park Cold, Retire, or Remove Checkout |
+| w, c, t | Select Park Warm, Park Cold, or Retire |
+| A, x | Available action chooser; Remove Checkout / Trash or forget Try |
 | Enter | Build exact plans and show effects and blockers |
 | y | Approve a non-removal batch after preview |
 | PgUp/PgDn | Scroll the full preview |
@@ -1082,8 +1092,8 @@ items requiring individual review; it does not infer personal importance.
 
 The individual shell starts at the selected path and does not switch branches.
 Use existing Git/editor tools there, then exit to refresh the triage view.
-An uncataloged Try must be explicitly reconciled with `dev tries list` before
-its catalog lifecycle operations become available.
+Trash can enroll an uncataloged Try during its reviewed Apply. Other catalog
+lifecycle operations can use explicit `dev tries list` reconciliation.
 
 ## Approved batches
 
@@ -1111,7 +1121,7 @@ including idle/done agents, are not closed by triage batches. Canonical,
 harness-owned, conflicted, locked/prunable or incompletely observed checkouts
 cannot be removed through this interface.
 
-Removal batches require the displayed `CLEAN N` token in addition to reviewing
+Checkout removal batches require the displayed `CLEAN N` token in addition to reviewing
 the exact paths and effects. Independent items continue after an item fails;
 same-repository operations are serialized. Esc during Apply stops the remaining
 queue after the current operation returns; quitting waits for its ledger.
@@ -1132,7 +1142,7 @@ commas. This is an explicit decision that their ignored contents may be lost
 during an approved linked-checkout removal. It applies only to this clone and
 its worktrees. It does not follow a replacement clone at the same path.
 
-All other ignored files remain blockers. Previews list the affected ignored paths
+For linked-checkout cleanup, all other ignored files remain blockers. Previews list the affected ignored paths
 and sizes. Traversal, globs, Git administrative paths, symlink roots, nested repos
 and submodules cannot be authorized by a disposable-directory rule. Symlink
 targets outside the checkout are never traversed. Platforms without stable
@@ -1141,6 +1151,63 @@ filesystem identity cannot enroll such policies or perform protected cleanup.
 Verified whole-repository backup/restore, external-reference analysis, permanent
 repo deletion, and automatic commit/rebase remain separate work. Being synced
 on the current branch is insufficient evidence to remove a whole clone.
+
+## Select from REPOS or TRY
+
+In the dashboard, `x` toggles a repository/Try selection and `Ctrl+A` selects
+visible items. Filtering keeps hidden selections, with their count shown in the
+footer. `Ctrl+O` offers clear selection and a single-item triage entry. With a
+selection, Enter opens this independent interface for that scope; without one,
+Enter keeps its normal open behavior. `o` always opens the current row and REPOS
+Space still expands worktrees. Selecting a repository includes all its local
+branches and registered worktrees. `A` lists available actions and candidate
+counts; choose an action, adjust the preselected candidates, then Enter to preview.
+
+The handoff reuses accepted dashboard metadata and task/worktree observations.
+Only selected repositories receive deeper Git/content inspection; no other roots
+are discovered. The first round can reuse the in-memory metadata snapshot; later
+refreshes inspect the selected scope again. Returning after an action updates
+only affected rows and invalidates their SIZE entries. SIZE retains its existing
+10-minute cache. There is no new persistent repository snapshot or watcher:
+standalone `dev triage` still collects the full inventory on startup/refresh.
+Cached observations never authorize Apply. Local refresh does not fetch.
+The dashboard TRY read path observes directories without enrolling them or
+reconciling moves; explicit CLI lifecycle commands retain their reconciliation.
+
+## Trash or forget a Try
+
+`A` offers `trash-try` for existing independent Tries and `forget-try` for a
+confirmed missing directory. `x` chooses the corresponding Try action, or
+Remove Checkout for an ordinary checkout. Unknown activity displays as `—`;
+`missing` and `unavailable` describe separate presence observations. An access
+failure or an unavailable root cannot authorize forgetting.
+
+Trash batches require the displayed `TRASH N` token and preserve the **whole**
+directory, including ignored and untracked contents. Trash still occupies disk
+space until emptied. Task/runtime claims, shared or external Git storage, unsafe
+paths, and changed source identity/content block removal. A missing Trash backend
+never falls back to permanent deletion. For an uncataloged Try, the preview
+explicitly includes selected-only registration during Apply. Cancellation writes
+nothing; if registration succeeds and Trash fails, the record and remaining
+contents are retained and the result reports partial progress. Other host
+locations and ordinary Trash recovery history remain intact.
+
+A missing accidental Try can be completely forgotten with a `FORGET N` batch,
+or through the same guarded service:
+
+```bash
+dev tries forget <ref> --dry-run --json
+dev tries forget <id> --confirm-forget <id> --json
+```
+
+Forgetting requires one local location, an accessible expected parent, confirmed
+absence, and no task, runtime, agent-artifact, note-source, other catalog or
+recovery reference. Personal catalog notes/tags must be reviewed and cleared
+first. A second host location blocks forgetting even when its path text matches.
+Apply locks and rereads the exact catalog record; a reappeared directory or
+changed authority rejects the plan. It removes only that catalog record and
+writes an audit result; it never deletes project files, note Markdown, or stats.
+Permanent batch deletion and ordinary canonical-repository deletion are excluded.
 
 ---
 
@@ -3630,6 +3697,18 @@ Adopt reports by default and only writes task entries after `--apply` plus confi
 
 Use [dashboard lifecycle actions](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/) for task finish/resume/retire/recovery, full start wizards, Trash disposal and repository browser actions. `Ctrl+O` opens the selected row menu; TASKS `a` shows completed tasks.
 
+## Dashboard selection and missing Tries
+
+REPOS/TRY `x` toggles selection and `Ctrl+A` selects visible rows. Enter with
+selections opens scoped triage; `o` keeps normal opening and Space is unchanged.
+`Ctrl+O` includes a single-item triage entry and clear selection. Try batches
+support whole-directory Trash, with registration during approved Apply when
+needed, or metadata-only forgetting of a confirmed missing unreferenced entry.
+Use `dev tries forget <ref> --dry-run --json` to inspect and
+`--confirm-forget <id>` for exact noninteractive approval. Multi-host, task,
+runtime, artifact, note/tag and recovery references block forgetting. See
+[local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/) for the full guard and cache behavior.
+
 ---
 
 ### Dashboard lifecycle actions
@@ -3740,6 +3819,18 @@ After an interrupted Trash operation, `restore --from` can explicitly reassociat
 an unchanged original/restored folder; it never retries deletion. A folder put
 back into its original archive path remains archived and can then use ordinary
 `tries restore` to become visible again.
+
+## Dashboard selection and missing Tries
+
+REPOS/TRY `x` toggles selection and `Ctrl+A` selects visible rows. Enter with
+selections opens scoped triage; `o` keeps normal opening and Space is unchanged.
+`Ctrl+O` includes a single-item triage entry and clear selection. Try batches
+support whole-directory Trash, with registration during approved Apply when
+needed, or metadata-only forgetting of a confirmed missing unreferenced entry.
+Use `dev tries forget <ref> --dry-run --json` to inspect and
+`--confirm-forget <id>` for exact noninteractive approval. Multi-host, task,
+runtime, artifact, note/tag and recovery references block forgetting. See
+[local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/) for the full guard and cache behavior.
 
 ---
 
@@ -7619,6 +7710,15 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 `dev triage --json` includes schema version, generation time, source completeness, items and cached-remote evidence. Items retain ordinary repo/Try kind, branch/checkout identity, findings, action candidates, deferred intent and disposable-directory declarations. `--report`, `--kind`, repeated `--root`, `--all` and `--stale-days` control inspection. Intent and batch ledgers live under `<state_dir>/triage/`, separately from task TOML. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
 
+REPOS/TRY selections hand off existing metadata to scoped triage, with affected-only
+refresh on return. There is no new persistent local repo snapshot cache. `x` and
+`Ctrl+A` are reserved dashboard keys; move any custom tool binding using them.
+`dev tries forget <ref> --dry-run --json` previews missing-entry metadata removal;
+`--confirm-forget <id>` supplies exact approval. Read-only TRY dashboard inventory
+keeps confirmed missing separate from unavailable; Trash and forget use distinct
+guarded plans. The triage JSON adds `presence`, catalog `note`/`tags`, and optional
+source observation times. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
+
 ---
 
 ### Compatibility and known limitations
@@ -7994,6 +8094,15 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 `dev triage` is an additive interface with its own schema-v1 JSON report. Its guarded synchronization actions preserve task states, and its cleanup uses a stricter clone-bound ignored-directory guard. Existing sweep, flow, expert CLI flags, and `dev ls --json` retain their contracts. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
 
+REPOS/TRY selections hand off existing metadata to scoped triage, with affected-only
+refresh on return. There is no new persistent local repo snapshot cache. `x` and
+`Ctrl+A` are reserved dashboard keys; move any custom tool binding using them.
+`dev tries forget <ref> --dry-run --json` previews missing-entry metadata removal;
+`--confirm-forget <id>` supplies exact approval. Read-only TRY dashboard inventory
+keeps confirmed missing separate from unavailable; Trash and forget use distinct
+guarded plans. The triage JSON adds `presence`, catalog `note`/`tags`, and optional
+source observation times. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
+
 ---
 
 ### Sources and freshness
@@ -8137,6 +8246,15 @@ Repository homepage resolution reads local Git only. Try removal journals beside
 ## Local triage authority
 
 [Local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/) is defined by `internal/triage`, `internal/triagetui`, taskflow synchronization/protected cleanup and their Git-backed tests. Branch comparisons use local cached refs; interrupted batch receipts retain uncertainty. Reviewed 2026-09-09.
+
+REPOS/TRY selections hand off existing metadata to scoped triage, with affected-only
+refresh on return. There is no new persistent local repo snapshot cache. `x` and
+`Ctrl+A` are reserved dashboard keys; move any custom tool binding using them.
+`dev tries forget <ref> --dry-run --json` previews missing-entry metadata removal;
+`--confirm-forget <id>` supplies exact approval. Read-only TRY dashboard inventory
+keeps confirmed missing separate from unavailable; Trash and forget use distinct
+guarded plans. The triage JSON adds `presence`, catalog `note`/`tags`, and optional
+source observation times. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
 
 ---
 
@@ -8923,6 +9041,8 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 Triage 彙整觀察到的工作與個人整理意圖。刻意保留本地、暫緩與可重建目錄宣告都不屬於 task lifecycle state，也不把 cached refs 當成備份證明。[本地工作整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/) 分開遺漏工作與快速批次。
 
+REPOS／TRY 多選將既有 metadata 交給限定範圍 triage，返回只刷新受影響項目，沒有新增跨啟動本地 repo 快照快取。`x`、`Ctrl+A` 成為 dashboard 保留鍵，既有同鍵自訂工具需改綁。`dev tries forget <ref> --dry-run --json` 預覽遺失條目的 metadata 移除，`--confirm-forget <id>` 提供精確核准。唯讀 TRY 盤點區分確認遺失與無法檢查；垃圾桶與忘記使用不同 guarded plan。Triage JSON 增補 `presence`、catalog `note`／`tags` 與來源觀察時間。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
+
 ---
 
 ### 隔離邊界與詞彙
@@ -9420,7 +9540,8 @@ dev triage --all                 # 包含 catalog 保留的歷史位置
 | j/k、方向鍵 | 選擇項目 |
 | Space、a、n | 多選切換；選取可見候選；清除選取 |
 | f、p、u | 選擇 fetch、push、fast-forward |
-| w、c、t、x | 選擇 Park Warm、Park Cold、Retire、Remove Checkout |
+| w、c、t | 選擇 Park Warm、Park Cold、Retire |
+| A、x | 可用動作選單；Remove Checkout／Try 垃圾桶或忘記 |
 | Enter | 建立精確 plan，檢查 effects 與 blockers |
 | y | 預覽後核准非移除批次 |
 | PgUp/PgDn | 捲動完整預覽 |
@@ -9430,7 +9551,7 @@ dev triage --all                 # 包含 catalog 保留的歷史位置
 | R | 取代此 clone 的可重建目錄清單；空白表示清除 |
 | d、r、q | 顯示暫緩項目；重新讀取本地狀態；離開 |
 
-個別 shell 從所選路徑啟動，不切換分支。可使用既有 Git/editor 工具，exit 後重新整理 triage。尚未有 catalog 身分的 Try，需明確執行 `dev tries list` reconcile，才進行 catalog lifecycle 操作。
+個別 shell 從所選路徑啟動，不切換分支。可使用既有 Git/editor 工具，exit 後重新整理 triage。尚未登錄的 Try 可在核准 Trash 的 Apply 中登錄；其他 catalog lifecycle 操作仍可明確執行 `dev tries list` reconcile。
 
 ## 批次核准與執行
 
@@ -9456,6 +9577,27 @@ Plan 在 effects 前鎖定並重新驗證 repository、refs、checkout、task re
 其餘 ignored files 仍阻擋移除。預覽列出受影響路徑與大小。路徑逃逸、glob、Git administrative paths、symlink roots、nested repo 或 submodule 不會因規則而被略過；不追蹤 checkout 外的 symlink 目標。缺少穩定 filesystem identity 的平台不能登記此規則或執行 protected cleanup。
 
 完整 repo 的可驗證備份／restore、外部引用分析、永久 repo 刪除與自動 commit/rebase 留待另外處理。目前分支已同步不足以證明整個 clone 可刪。
+
+## 從 REPOS 或 TRY 多選
+
+Dashboard 的 `x` 切換 repo／Try 選取，`Ctrl+A` 選取目前可見項目。篩選保留隱藏的選取，footer 會顯示數量。`Ctrl+O` 提供清除選取與單項整理入口。有選取時 Enter 開啟限定範圍的獨立 triage；沒有選取時保持原本的開啟行為。`o` 永遠開啟目前列，REPOS Space 仍展開 worktrees。選 repo 包含其所有本地分支與 registered worktrees；`A` 顯示可用動作及候選數量，選擇後可取消預選，再按 Enter 預覽。
+
+交接復用 dashboard 已接受的 metadata 與 task／worktree 觀察，只深入檢查選中 repo 的 Git／contents，不重新探索其他 roots。第一輪可復用記憶體 metadata 快照，之後 refresh 重新檢查選中範圍。操作返回後只更新受影響列並失效其 SIZE cache；SIZE 延用既有 10 分鐘快取。本次沒有新增跨啟動的 repo 快照或 watcher，獨立 `dev triage` 啟動／refresh 仍盤點全域。快取不授權 Apply，本地 refresh 不 fetch。Dashboard TRY 的讀取不會登錄目錄或 reconcile move；明確的 CLI lifecycle 操作維持既有 reconciliation。
+
+## Try：垃圾桶或忘記條目
+
+`A` 對存在且獨立的 Try 提供 `trash-try`，對確認遺失的目錄提供 `forget-try`。`x` 選擇對應 Try 動作，普通 checkout 則選 Remove Checkout。活動時間不明顯示 `—`；presence 另外區分 `missing` 與 `unavailable`。存取失敗或 root 不可用，不能授權忘記。
+
+垃圾桶批次要求輸入 `TRASH N`，保留**完整目錄**，包含 ignored／untracked 內容。垃圾桶在清空前仍佔用空間。Task／runtime 佔用、shared／external Git、安全路徑或來源身分／內容變動都會阻擋。垃圾桶不可用時不會改成永久刪除。尚未登錄的 Try 會在預覽明列 Apply 時只登錄所選目錄；取消不寫入，登錄成功而 Trash 失敗時保留 catalog 與剩餘內容，回報部分完成。其他主機位置及既有 Trash recovery 歷史維持保留。
+
+確認遺失的意外 Try 可透過 `FORGET N` 批次完全忘記，也可使用共用 guarded service：
+
+```bash
+dev tries forget <ref> --dry-run --json
+dev tries forget <id> --confirm-forget <id> --json
+```
+
+要求只有本機位置、預期 parent 可存取、目錄確實不存在，而且沒有 task、runtime、agent artifact、筆記來源、其他 catalog 或 recovery 引用。Catalog 的個人 note／tags 也必須先檢閱清除。有第二個主機位置就不能整筆忘記，即使路徑文字相同。Apply 加鎖重讀精確 catalog 記錄，路徑重現或權限依據改變就拒絕。只移除該 catalog 記錄並留下操作結果，不刪專案檔案、筆記 Markdown 或 stats。不提供批次永久刪除，也不刪普通 canonical repo。
 
 ---
 
@@ -11791,6 +11933,10 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 
 [Dashboard 生命週期操作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/) 說明 task 完成／恢復／retire／recovery、完整 start wizard、Trash 與 repository browser actions。`Ctrl+O` 開啟所選 row 的選單；TASKS 的 `a` 只顯示已完成 tasks。
 
+## Dashboard 多選與遺失 Try
+
+REPOS／TRY 的 `x` 切換選取，`Ctrl+A` 選取可見列，有選取時 Enter 開啟限定範圍 triage；`o` 保持開啟目前列，Space 不變。`Ctrl+O` 提供單項整理與清除選取。Try 批次可移動完整目錄到垃圾桶，必要時在核准 Apply 才登錄所選目錄；確認遺失且無引用的條目可只忘記 metadata。使用 `dev tries forget <ref> --dry-run --json` 預覽，`--confirm-forget <id>` 提供非互動式精確核准。多主機、task、runtime、artifact、筆記／tags 或 recovery 引用都會阻擋忘記。完整限制與 cache 行為見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
+
 ---
 
 ### Dashboard 生命週期操作
@@ -11888,6 +12034,10 @@ Dashboard。詳細資訊仍使用 `repo context`；browse 開 repository 首頁�
 Trash 操作中斷後，`restore --from` 可明確重新關聯未變更的原資料夾或已還原
 資料夾，不會重試刪除。若系統將資料夾放回原 archive path，location 仍為
 archived；之後再用一般 `tries restore` 回到可見位置。
+
+## Dashboard 多選與遺失 Try
+
+REPOS／TRY 的 `x` 切換選取，`Ctrl+A` 選取可見列，有選取時 Enter 開啟限定範圍 triage；`o` 保持開啟目前列，Space 不變。`Ctrl+O` 提供單項整理與清除選取。Try 批次可移動完整目錄到垃圾桶，必要時在核准 Apply 才登錄所選目錄；確認遺失且無引用的條目可只忘記 metadata。使用 `dev tries forget <ref> --dry-run --json` 預覽，`--confirm-forget <id>` 提供非互動式精確核准。多主機、task、runtime、artifact、筆記／tags 或 recovery 引用都會阻擋忘記。完整限制與 cache 行為見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
 ---
 
@@ -15715,6 +15865,8 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 `dev triage --json` 包含 schema version、產生時間、來源完整度、items 與 cached-remote evidence。Item 保留普通 repo／Try 類型、branch/checkout 身分、findings、操作候選、暫緩意圖與可重建目錄。`--report`、`--kind`、可重複 `--root`、`--all`、`--stale-days` 控制盤點。意圖與 batch ledger 位於 `<state_dir>/triage/`，與 task TOML 分開。參見[本地工作整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
+REPOS／TRY 多選將既有 metadata 交給限定範圍 triage，返回只刷新受影響項目，沒有新增跨啟動本地 repo 快照快取。`x`、`Ctrl+A` 成為 dashboard 保留鍵，既有同鍵自訂工具需改綁。`dev tries forget <ref> --dry-run --json` 預覽遺失條目的 metadata 移除，`--confirm-forget <id>` 提供精確核准。唯讀 TRY 盤點區分確認遺失與無法檢查；垃圾桶與忘記使用不同 guarded plan。Triage JSON 增補 `presence`、catalog `note`／`tags` 與來源觀察時間。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
+
 ---
 
 ### 相容性與已知限制
@@ -16061,6 +16213,8 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 `dev triage` 是新增介面，使用獨立 schema-v1 JSON。Guarded 同步不改 task state，清理另加 clone-bound ignored-directory guard。既有 sweep、flow、expert CLI flags 與 `dev ls --json` 維持原有契約。參見[本地工作整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
+REPOS／TRY 多選將既有 metadata 交給限定範圍 triage，返回只刷新受影響項目，沒有新增跨啟動本地 repo 快照快取。`x`、`Ctrl+A` 成為 dashboard 保留鍵，既有同鍵自訂工具需改綁。`dev tries forget <ref> --dry-run --json` 預覽遺失條目的 metadata 移除，`--confirm-forget <id>` 提供精確核准。唯讀 TRY 盤點區分確認遺失與無法檢查；垃圾桶與忘記使用不同 guarded plan。Triage JSON 增補 `presence`、catalog `note`／`tags` 與來源觀察時間。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
+
 ---
 
 ### 來源與時效
@@ -16205,6 +16359,8 @@ Repository 首頁解析只讀 local Git。Assets 旁的 Try removal journals 是
 ## Local triage authority
 
 [本地工作整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/) 的依據為 `internal/triage`、`internal/triagetui`、taskflow 同步／protected cleanup 與 Git 整合測試。分支比較使用本地 cached refs；中斷的 batch receipts 保留不確定性。檢查日期：2026-09-09。
+
+REPOS／TRY 多選將既有 metadata 交給限定範圍 triage，返回只刷新受影響項目，沒有新增跨啟動本地 repo 快照快取。`x`、`Ctrl+A` 成為 dashboard 保留鍵，既有同鍵自訂工具需改綁。`dev tries forget <ref> --dry-run --json` 預覽遺失條目的 metadata 移除，`--confirm-forget <id>` 提供精確核准。唯讀 TRY 盤點區分確認遺失與無法檢查；垃圾桶與忘記使用不同 guarded plan。Triage JSON 增補 `presence`、catalog `note`／`tags` 與來源觀察時間。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
 ---
 

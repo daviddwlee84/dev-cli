@@ -696,3 +696,5 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 ## Local triage report and intent
 
 `dev triage --json` 包含 schema version、產生時間、來源完整度、items 與 cached-remote evidence。Item 保留普通 repo／Try 類型、branch/checkout 身分、findings、操作候選、暫緩意圖與可重建目錄。`--report`、`--kind`、可重複 `--root`、`--all`、`--stale-days` 控制盤點。意圖與 batch ledger 位於 `<state_dir>/triage/`，與 task TOML 分開。參見[本地工作整理](../guides/local-triage.md)。
+
+REPOS／TRY 多選將既有 metadata 交給限定範圍 triage，返回只刷新受影響項目，沒有新增跨啟動本地 repo 快照快取。`x`、`Ctrl+A` 成為 dashboard 保留鍵，既有同鍵自訂工具需改綁。`dev tries forget <ref> --dry-run --json` 預覽遺失條目的 metadata 移除，`--confirm-forget <id>` 提供精確核准。唯讀 TRY 盤點區分確認遺失與無法檢查；垃圾桶與忘記使用不同 guarded plan。Triage JSON 增補 `presence`、catalog `note`／`tags` 與來源觀察時間。詳見[本地整理](../guides/local-triage.md)。

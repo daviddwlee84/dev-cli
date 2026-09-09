@@ -41,6 +41,7 @@ func (f *tuiFuture[T]) wait(ctx context.Context) (T, error) {
 }
 
 type tuiRuntimeSnapshot struct {
+	err             error
 	runtime         runtime.Runtime
 	sessions        []runtime.Session
 	sessionsTracked bool
@@ -95,6 +96,7 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 				snapshot.sessions = sessions
 				snapshot.sessionsTracked = true
 			}
+			snapshot.err = listErr
 			return snapshot, nil
 		}
 	}
@@ -122,7 +124,8 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 			return collectReposWithOptions(ctx, &appSnapshot, runtimeSnapshot.runtime, repoCollectOptions{
 				IncludeTries: true,
 				Sessions:     runtimeSnapshot.sessions, SessionsSet: true,
-				Tasks: tracked, TasksSet: true,
+				SessionsErr: runtimeSnapshot.err,
+				Tasks:       tracked, TasksSet: true,
 				Repos: discovered, ReposSet: true,
 				Limiter: limiter,
 			})
@@ -131,8 +134,12 @@ func (l *tuiLocalLoader) Start(ctx context.Context, request tui.LocalLoadRequest
 	collectTries := l.collectTries
 	if collectTries == nil {
 		collectTries = func(ctx context.Context, all bool, runtimeSnapshot tuiRuntimeSnapshot) ([]tui.TryRow, error) {
-			return collectTriesWithOptions(ctx, &appSnapshot, runtimeSnapshot.runtime,
+			rows, err := collectTriesWithOptions(ctx, &appSnapshot, runtimeSnapshot.runtime,
 				experiment.ListOptions{All: all}, runtimeSnapshot.sessions, true)
+			for n := range rows {
+				rows[n].RuntimeErr = runtimeSnapshot.err
+			}
+			return rows, errors.Join(err, runtimeSnapshot.err)
 		}
 	}
 

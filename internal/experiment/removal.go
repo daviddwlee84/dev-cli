@@ -22,7 +22,9 @@ import (
 
 // RemovalRequest describes explicit disposal, never a verified backup/reclaim.
 type RemovalRequest struct {
-	Ref       string
+	Ref string
+	// Path explicitly enrolls one uncataloged Try during Apply, never planning.
+	Path      string
 	Permanent bool
 	Expected  *catalog.Entry
 }
@@ -30,6 +32,7 @@ type RemovalRequest struct {
 // RemovalPlan seals its authority privately. Callers can display it, but may
 // not replace its path, mode or observations between confirmation and apply.
 type RemovalPlan struct {
+	Register                    bool     `json:"register,omitempty"`
 	ID                          string   `json:"id"`
 	Source                      string   `json:"source"`
 	Method                      string   `json:"method"`
@@ -67,12 +70,28 @@ func removalDigest(value any) string {
 }
 
 func (p RemovalPlan) fingerprint() string {
-	return removalDigest([]any{p.ID, p.Source, p.Method, p.Bytes, p.Files, p.Warnings, p.entry, p.identity, p.tree, p.guard})
+	return removalDigest([]any{p.ID, p.Source, p.Method, p.Register, p.Bytes, p.Files, p.Warnings, p.entry, p.identity, p.tree, p.guard})
 }
 
 func (s *Service) PlanRemoval(ctx context.Context, request RemovalRequest) (RemovalPlan, error) {
 	var plan RemovalPlan
-	entry, err := s.resolveRemovalEntry(request.Ref)
+	var entry *catalog.Entry
+	var err error
+	if request.Path != "" {
+		if request.Ref != "" || request.Permanent || request.Expected != nil {
+			return plan, errors.New("selected-only enrollment supports Trash by path only")
+		}
+		if err := s.unclaimedTryPath(request.Path); err != nil {
+			return plan, err
+		}
+		probe := s.probeDirectory(ctx, request.Path)
+		if !probe.valid {
+			return plan, errors.New("selected Try could not be inspected for enrollment")
+		}
+		entry = s.newEntry(probe)
+	} else {
+		entry, err = s.resolveRemovalEntry(request.Ref)
+	}
 	if err != nil {
 		return plan, err
 	}
@@ -84,6 +103,7 @@ func (s *Service) PlanRemoval(ctx context.Context, request RemovalRequest) (Remo
 		return plan, errors.New("Try is not present or archived on this host")
 	}
 	plan = RemovalPlan{ID: entry.ID, Source: location.CurrentPath, Method: "trash", entry: entry.Clone()}
+	plan.Register = request.Path != ""
 	if request.Permanent {
 		plan.Method = "permanent"
 	} else if err := s.trashAvailable(); err != nil {
@@ -96,6 +116,28 @@ func (s *Service) PlanRemoval(ctx context.Context, request RemovalRequest) (Remo
 	return plan, nil
 }
 
+func (s *Service) unclaimedTryPath(path string) error {
+	if err := s.validateVisibleTryPath(path); err != nil {
+		return err
+	}
+	entries, diagnostics, err := s.store.ListWithDiagnostics()
+	if err != nil {
+		return err
+	}
+	if len(diagnostics) > 0 {
+		return incompleteCatalogError(diagnostics)
+	}
+	for _, entry := range entries {
+		if intent := entry.MoveIntent; intent != nil && intent.Host == s.host && (pathsRelated(path, intent.SourcePath) || pathsRelated(path, intent.DestinationPath)) {
+			return errors.New("Try path is referenced by a pending catalog move")
+		}
+		if l, ok := entry.LocationFor(s.host); ok && (pathsRelated(path, l.CurrentPath) || pathsRelated(path, l.RealPath) || pathsRelated(path, l.RestorePath)) {
+			return errors.New("Try path is already claimed by catalog metadata; refresh selection")
+		}
+	}
+	return nil
+}
+
 func (s *Service) inspectRemoval(ctx context.Context, plan *RemovalPlan) error {
 	entry := plan.entry
 	if entry == nil || !eligibleTryRecord(entry) || entry.MoveIntent != nil {
@@ -103,6 +145,28 @@ func (s *Service) inspectRemoval(ctx context.Context, plan *RemovalPlan) error {
 	}
 	if entry.Experiment.Phase == catalog.PhaseGraduated {
 		return errors.New("graduated repositories cannot be deleted through Try lifecycle")
+	}
+	entries, diagnostics, listErr := s.store.ListWithDiagnostics()
+	if listErr != nil {
+		return listErr
+	}
+	if len(diagnostics) > 0 {
+		return incompleteCatalogError(diagnostics)
+	}
+	for _, other := range entries {
+		if other.ID == entry.ID {
+			continue
+		}
+		if location, ok := other.LocationFor(s.host); ok {
+			for _, path := range []string{location.CurrentPath, location.RealPath, location.GitCommonDir, location.RestorePath} {
+				if pathsRelated(plan.Source, path) {
+					return errors.New("another catalog asset references the removal target")
+				}
+			}
+		}
+		if intent := other.MoveIntent; intent != nil && intent.Host == s.host && (pathsRelated(plan.Source, intent.SourcePath) || pathsRelated(plan.Source, intent.DestinationPath)) {
+			return errors.New("another catalog move references the removal target")
+		}
 	}
 	if err := s.validateVisibleTryPath(plan.Source); err != nil {
 		if archiveErr := s.validateArchivedPath(entry.ID, plan.Source); archiveErr != nil {
@@ -248,6 +312,25 @@ func (s *Service) ApplyRemoval(ctx context.Context, plan RemovalPlan) (RemovalRe
 		return result, errors.New("invalid or modified removal plan")
 	}
 	err := s.store.WithLock(ctx, func() error {
+		if plan.Register {
+			if err := s.unclaimedTryPath(plan.Source); err != nil {
+				return err
+			}
+			observed := plan
+			if err := s.inspectRemoval(ctx, &observed); err != nil {
+				return err
+			}
+			if observed.fingerprint() != plan.seal {
+				return errors.New("Try changed after enrollment preview")
+			}
+			entry := plan.entry.Clone()
+			if err := s.catalogCreate(entry); err != nil {
+				return err
+			}
+			plan.ID, plan.entry, plan.Register = entry.ID, entry.Clone(), false
+			plan.seal = plan.fingerprint()
+			result.ID, result.Outcome = entry.ID, "registered"
+		}
 		fresh, err := s.store.Get(plan.ID)
 		if err != nil {
 			return err

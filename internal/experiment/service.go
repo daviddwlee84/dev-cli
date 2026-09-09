@@ -101,6 +101,7 @@ type AmbiguousMatchError = AmbiguousError
 // separate from StatusError and LastCommitError so one failed probe does not
 // erase the facts gathered by the others.
 type LiveFacts struct {
+	Presence    string
 	Present     bool
 	CurrentPath string
 	RealPath    string
@@ -202,6 +203,10 @@ func (i Item) OpenTarget() OpenTarget {
 // returned. IncludeNonPresent is retained as the compatibility umbrella for
 // archived and evicted locations; All enables every history class.
 type ListOptions struct {
+	ReadOnly       bool
+	IncludeMissing bool
+	// Non-nil Paths limits reads to exact selected paths, without root discovery.
+	Paths             []string
 	All               bool
 	IncludeDeprecated bool
 	IncludeArchived   bool
@@ -364,6 +369,7 @@ type CatalogUpdateFunc func(string, func(*catalog.Entry) error) (*catalog.Entry,
 // implementations. It is intentionally small and operation-shaped rather than
 // exposing the Service's internals.
 type Hooks struct {
+	ForgetGuard    func(context.Context, *catalog.Entry) (string, error)
 	RemovalGuard   func(context.Context, string) (string, error)
 	Trash          func(context.Context, string) error
 	TrashAvailable func() error
@@ -401,6 +407,7 @@ type ServiceConfig struct {
 // Service owns all Try policy while delegating persistence and Git porcelain to
 // their focused packages.
 type Service struct {
+	forgetGuard    func(context.Context, *catalog.Entry) (string, error)
 	removalGuard   func(context.Context, string) (string, error)
 	trash          func(context.Context, string) error
 	trashAvailable func() error
@@ -487,6 +494,7 @@ func NewService(config ServiceConfig) (*Service, error) {
 }
 
 func applyHooks(service *Service, hooks Hooks) {
+	service.forgetGuard = hooks.ForgetGuard
 	service.removalGuard = hooks.RemovalGuard
 	if hooks.Trash != nil {
 		service.trash = hooks.Trash

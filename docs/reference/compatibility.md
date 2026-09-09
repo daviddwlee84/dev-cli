@@ -374,3 +374,12 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 ## Local triage compatibility
 
 `dev triage` is an additive interface with its own schema-v1 JSON report. Its guarded synchronization actions preserve task states, and its cleanup uses a stricter clone-bound ignored-directory guard. Existing sweep, flow, expert CLI flags, and `dev ls --json` retain their contracts. See [local triage](../guides/local-triage.md).
+
+REPOS/TRY selections hand off existing metadata to scoped triage, with affected-only
+refresh on return. There is no new persistent local repo snapshot cache. `x` and
+`Ctrl+A` are reserved dashboard keys; move any custom tool binding using them.
+`dev tries forget <ref> --dry-run --json` previews missing-entry metadata removal;
+`--confirm-forget <id>` supplies exact approval. Read-only TRY dashboard inventory
+keeps confirmed missing separate from unavailable; Trash and forget use distinct
+guarded plans. The triage JSON adds `presence`, catalog `note`/`tags`, and optional
+source observation times. See [local triage](../guides/local-triage.md).

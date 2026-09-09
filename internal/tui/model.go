@@ -324,8 +324,10 @@ type remoteCloneOpenMsg struct {
 
 // Model is the dashboard state.
 type Model struct {
-	afterExit func() error
-	actions   Actions
+	repoSelections []string
+	trySelections  []string
+	afterExit      func() error
+	actions        Actions
 	// trace is the one intentional shared pointer in the value-copied model. The
 	// recorder is append-only, bounded and concurrency-safe; it never controls UI
 	// behavior.
@@ -362,6 +364,8 @@ type Model struct {
 	skillsInventoryErr     error
 	skillsInventoryWarning string
 	sizeLoad               diskusage.Load
+	scopedSizeLoads        []diskusage.Load
+	sizeOwners             []sizeOwner
 	forceSizeReload        bool
 	configGeneration       uint64
 	localGeneration        uint64
@@ -2459,15 +2463,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, batchCommands(sizeCmd, cloneCmd, fleetCmd)
 
 	case sizeMsg:
-		if msg.loadID == 0 || msg.loadID != m.sizeLoad.ID {
-			return m, nil
-		}
-		if msg.done {
-			m.sizeLoad = diskusage.Load{}
-			return m, nil
-		}
-		m.applySizeResult(msg.result)
-		return m, waitForSize(m.sizeLoad)
+		return m.updateSize(msg)
 
 	case remoteCacheMsg:
 		if !msg.result.Found {
@@ -2801,6 +2797,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.afterExit, m.quitting = msg.result.AfterExit, true
 			return m, tea.Quit
 		}
+		if msg.result.Scoped {
+			if msg.result.Local != nil {
+				return m.applyTriageDelta(*msg.result.Local)
+			}
+			return m, nil
+		}
 		m.forceSizeReload = true
 		m.beginLocalLoads(loadAction)
 		return m, m.reload()
@@ -3079,7 +3081,16 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.setAt(0)
 		}
 
-	case "enter", "o":
+	case "x":
+		return m.toggleTriageSelection(), nil
+	case "ctrl+a":
+		return m.selectVisibleTriage(), nil
+	case "enter":
+		if m.triageSelectionCount() > 0 {
+			return m.openTriageSelection(false)
+		}
+		return m.runListAction(listActionOpen)
+	case "o":
 		return m.runListAction(listActionOpen)
 
 	case "ctrl+o":
@@ -4056,7 +4067,7 @@ func (m Model) openSelected() tea.Cmd {
 				return tryActionMsg{err: fmt.Errorf("Try %s is %s on this host", r.Item.DisplayName(), r.Where())}
 			}
 		}
-		return m.applyTry(TryRequest{Action: TryOpen, ID: r.Item.ID})
+		return m.applyTry(TryRequest{Action: TryOpen, ID: r.reference()})
 	}
 	if r, ok := m.currentRemote(); ok {
 		if !r.Cloned() {

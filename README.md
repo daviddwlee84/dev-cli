@@ -560,6 +560,12 @@ external `--close-unknown`. `dev done` never closes or removes anything.
 
 ### Find forgotten local work
 
+REPOS and TRY support `x` selection and `Ctrl+A` select-visible. With selections,
+Enter opens scoped triage; `o` keeps normal opening, and Space keeps its existing
+behavior. `Ctrl+O` offers single-item triage and clearing selection. The handoff
+reuses dashboard metadata and inspects only selected repositories; returning
+updates affected rows/SIZE caches. No new persistent repo snapshot cache is added.
+
 `dev triage` finds uncommitted work, unpushed commits, missing upstreams, diverged
 branches, ignored data and runtime/task drift across ordinary repos and Tries.
 It includes branches that are not checked out and every registered worktree.
@@ -928,6 +934,13 @@ dev tries graduate redis -c Infra     # same service as dev graduate
 
 Archive is organization, **not disk reclamation**: it moves the directory to a
 hidden location on the same filesystem and preserves its stable catalog ID.
+TRY multi-selection supports reviewed whole-directory Trash, including ignored
+and untracked files; an uncataloged Try is registered only during approved Apply.
+Confirmed missing accidental Tries offer `forget-try`, also available as
+`dev tries forget <ref> --dry-run` and exact-ID `--confirm-forget <id>` approval.
+Other host locations, tasks, runtime/agent claims, notes/tags and recovery
+references block forgetting. It deletes catalog metadata only.
+
 `dev tries delete <ref>` moves a cataloged Try to system Trash after a preview.
 Trash is also retained storage until emptied. Permanent disposal requires
 `--permanent` and typing `DELETE <catalog-id>` (or `--confirm-delete <id>` for

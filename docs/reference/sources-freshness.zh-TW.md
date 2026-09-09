@@ -144,3 +144,5 @@ Repository 首頁解析只讀 local Git。Assets 旁的 Try removal journals 是
 ## Local triage authority
 
 [本地工作整理](../guides/local-triage.md) 的依據為 `internal/triage`、`internal/triagetui`、taskflow 同步／protected cleanup 與 Git 整合測試。分支比較使用本地 cached refs；中斷的 batch receipts 保留不確定性。檢查日期：2026-09-09。
+
+REPOS／TRY 多選將既有 metadata 交給限定範圍 triage，返回只刷新受影響項目，沒有新增跨啟動本地 repo 快照快取。`x`、`Ctrl+A` 成為 dashboard 保留鍵，既有同鍵自訂工具需改綁。`dev tries forget <ref> --dry-run --json` 預覽遺失條目的 metadata 移除，`--confirm-forget <id>` 提供精確核准。唯讀 TRY 盤點區分確認遺失與無法檢查；垃圾桶與忘記使用不同 guarded plan。Triage JSON 增補 `presence`、catalog `note`／`tags` 與來源觀察時間。詳見[本地整理](../guides/local-triage.md)。

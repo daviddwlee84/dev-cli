@@ -221,7 +221,7 @@ func (m Model) submitTryOverlay() (tea.Model, tea.Cmd) {
 		return m, m.applyRepoPatch(row, tags, note)
 	}
 
-	request := TryRequest{Action: m.overlay.action, ID: m.overlay.target.Item.ID}
+	request := TryRequest{Action: m.overlay.action, ID: m.overlay.target.reference()}
 	switch m.overlay.action {
 	case TryCreate:
 		request.Name, request.Clone = value("name"), value("clone")
@@ -295,6 +295,7 @@ func (m Model) renderOverlay() string {
 		builder.WriteString("    j/k, arrows move · ctrl+d/u page · g/G first/last · tab/h/l switch view\n")
 		builder.WriteString("    left click row/tab · wheel 3 rows · right click / ctrl+o row actions · click never opens\n")
 		builder.WriteString("    / filter · 0 clear · r reload · esc close/clear/quit · q quit\n\n")
+		builder.WriteString("  REPOS/TRY selection: x toggle · ctrl+a select visible · enter triage selected · o open current · ctrl+o clear selection\n")
 		builder.WriteString("  TASKS   enter open · n add note · N notes · p park · c next · 1/2/3 state · a show done · space actions\n")
 		builder.WriteString("  REPOS   enter open · n new repo · a add note · N notes · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
 		builder.WriteString("  FLEET   enter Herdr/SSH open · e edit remotes.toml · r refresh · read-only Git overview\n")

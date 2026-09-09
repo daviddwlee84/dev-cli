@@ -97,3 +97,7 @@ Dashboard。詳細資訊仍使用 `repo context`；browse 開 repository 首頁�
 Trash 操作中斷後，`restore --from` 可明確重新關聯未變更的原資料夾或已還原
 資料夾，不會重試刪除。若系統將資料夾放回原 archive path，location 仍為
 archived；之後再用一般 `tries restore` 回到可見位置。
+
+## Dashboard 多選與遺失 Try
+
+REPOS／TRY 的 `x` 切換選取，`Ctrl+A` 選取可見列，有選取時 Enter 開啟限定範圍 triage；`o` 保持開啟目前列，Space 不變。`Ctrl+O` 提供單項整理與清除選取。Try 批次可移動完整目錄到垃圾桶，必要時在核准 Apply 才登錄所選目錄；確認遺失且無引用的條目可只忘記 metadata。使用 `dev tries forget <ref> --dry-run --json` 預覽，`--confirm-forget <id>` 提供非互動式精確核准。多主機、task、runtime、artifact、筆記／tags 或 recovery 引用都會阻擋忘記。完整限制與 cache 行為見[本地整理](local-triage.md)。

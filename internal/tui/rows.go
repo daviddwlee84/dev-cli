@@ -34,6 +34,7 @@ type RepoActions struct {
 }
 
 type RepoRow struct {
+	ObservedAt  time.Time
 	Repo        repo.Repo
 	Status      gitx.Status
 	Topology    gitx.RecoveryTopology

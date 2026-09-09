@@ -512,6 +512,7 @@ func runTUI(app *App) error {
 			},
 		},
 		Sizes: tui.SizeActions{
+			Invalidate: func(targets ...diskusage.Target) error { return appState.Current().Sizes.Invalidate(targets...) },
 			Start: func(ctx context.Context, targets []diskusage.Target, force bool) diskusage.Load {
 				return appState.Current().Sizes.Start(ctx, targets, force)
 			},
@@ -834,6 +835,7 @@ func collectTries(ctx context.Context, app *App, rt runtime.Runtime, includeAll 
 
 func collectTriesWithOptions(ctx context.Context, app *App, rt runtime.Runtime, options experiment.ListOptions,
 	sessions []runtime.Session, sessionsSet bool) ([]tui.TryRow, error) {
+	options.ReadOnly, options.IncludeMissing = true, true
 	service, err := newExperimentService(app)
 	if err != nil {
 		return nil, err
@@ -1106,7 +1108,7 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 			}
 			defer release()
 
-			row := tui.RepoRow{Repo: r, Asset: assets[i]}
+			row := tui.RepoRow{Repo: r, Asset: assets[i], ObservedAt: time.Now()}
 			if row.Asset != nil {
 				repoNotes := notesByRepo[row.Asset.ID]
 				row.NoteCount = len(repoNotes)

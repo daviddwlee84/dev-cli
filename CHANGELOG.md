@@ -48,6 +48,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- REPOS/TRY multi-selection with scoped triage handoff, reuse of dashboard
+  metadata, and affected-only row/SIZE refresh after actions.
+- Reviewed Try Trash batches, selected-only enrollment for uncataloged Tries,
+  and `dev tries forget` for confirmed missing entries without durable references.
+
 - `dev triage` finds forgotten work across ordinary repos, Tries, every local
   branch and registered checkout, with separate forgotten-work and quick-batch
   views, read-only text/JSON reports, local-only intent and expiring snoozes.
@@ -63,6 +68,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   through `dev ssh restore` on macOS/Linux.
 
 ### Fixed
+
+- TRY dashboard reads no longer enroll directories or reconcile moves; missing
+  locations remain actionable, while unavailable observations fail closed.
 
 - SSH discovery restores the parent Host/Match context after each included file,
   matching OpenSSH instead of leaking child conditions into sibling Includes.

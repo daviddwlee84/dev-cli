@@ -7,20 +7,27 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	"github.com/daviddwlee84/dev-cli/internal/triage"
 )
 
 // WorkflowRequest pins the row selected before the terminal is suspended.
 // Policy and all prompts belong to the CLI's shared workflow runners.
 type WorkflowRequest struct {
-	Action string
-	Task   *task.Task
-	Repo   repo.Repo
-	Try    TryRow
-	Remote *forge.RemoteRepo
-	Path   string
+	Selection       []triage.Target
+	Snapshots       []triage.RepositorySnapshot
+	LocalGeneration uint64
+	ShowAllTries    bool
+	Action          string
+	Task            *task.Task
+	Repo            repo.Repo
+	Try             TryRow
+	Remote          *forge.RemoteRepo
+	Path            string
 }
 
 type WorkflowResult struct {
+	Scoped    bool
+	Local     *TriageDelta
 	Status    string
 	AfterExit func() error
 }

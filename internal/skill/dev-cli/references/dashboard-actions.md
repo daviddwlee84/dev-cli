@@ -48,3 +48,15 @@ After an interrupted Trash operation, `restore --from` can explicitly reassociat
 an unchanged original/restored folder; it never retries deletion. A folder put
 back into its original archive path remains archived and can then use ordinary
 `tries restore` to become visible again.
+
+## Dashboard selection and missing Tries
+
+REPOS/TRY `x` toggles selection and `Ctrl+A` selects visible rows. Enter with
+selections opens scoped triage; `o` keeps normal opening and Space is unchanged.
+`Ctrl+O` includes a single-item triage entry and clear selection. Try batches
+support whole-directory Trash, with registration during approved Apply when
+needed, or metadata-only forgetting of a confirmed missing unreferenced entry.
+Use `dev tries forget <ref> --dry-run --json` to inspect and
+`--confirm-forget <id>` for exact noninteractive approval. Multi-host, task,
+runtime, artifact, note/tag and recovery references block forgetting. See
+[local triage](local-triage.md) for the full guard and cache behavior.

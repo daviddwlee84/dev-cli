@@ -1979,6 +1979,18 @@ Mark a Try deprecated without moving it
 dev tries deprecate <ref>
 ```
 
+### `dev tries forget`
+
+Preview forgetting an unreferenced Try whose local directory is confirmed missing
+
+```
+dev tries forget <ref> [flags]
+```
+
+- `--confirm-forget` — approve forgetting this exact catalog ID
+- `--dry-run` — preview without forgetting metadata
+- `--json` — emit structured preview/result without prompting
+
 ### `dev tries graduate`
 
 Promote an experiment into a real project

@@ -42,7 +42,8 @@ dev triage --all                 # 包含 catalog 保留的歷史位置
 | j/k、方向鍵 | 選擇項目 |
 | Space、a、n | 多選切換；選取可見候選；清除選取 |
 | f、p、u | 選擇 fetch、push、fast-forward |
-| w、c、t、x | 選擇 Park Warm、Park Cold、Retire、Remove Checkout |
+| w、c、t | 選擇 Park Warm、Park Cold、Retire |
+| A、x | 可用動作選單；Remove Checkout／Try 垃圾桶或忘記 |
 | Enter | 建立精確 plan，檢查 effects 與 blockers |
 | y | 預覽後核准非移除批次 |
 | PgUp/PgDn | 捲動完整預覽 |
@@ -52,7 +53,7 @@ dev triage --all                 # 包含 catalog 保留的歷史位置
 | R | 取代此 clone 的可重建目錄清單；空白表示清除 |
 | d、r、q | 顯示暫緩項目；重新讀取本地狀態；離開 |
 
-個別 shell 從所選路徑啟動，不切換分支。可使用既有 Git/editor 工具，exit 後重新整理 triage。尚未有 catalog 身分的 Try，需明確執行 `dev tries list` reconcile，才進行 catalog lifecycle 操作。
+個別 shell 從所選路徑啟動，不切換分支。可使用既有 Git/editor 工具，exit 後重新整理 triage。尚未登錄的 Try 可在核准 Trash 的 Apply 中登錄；其他 catalog lifecycle 操作仍可明確執行 `dev tries list` reconcile。
 
 ## 批次核准與執行
 
@@ -78,3 +79,24 @@ Plan 在 effects 前鎖定並重新驗證 repository、refs、checkout、task re
 其餘 ignored files 仍阻擋移除。預覽列出受影響路徑與大小。路徑逃逸、glob、Git administrative paths、symlink roots、nested repo 或 submodule 不會因規則而被略過；不追蹤 checkout 外的 symlink 目標。缺少穩定 filesystem identity 的平台不能登記此規則或執行 protected cleanup。
 
 完整 repo 的可驗證備份／restore、外部引用分析、永久 repo 刪除與自動 commit/rebase 留待另外處理。目前分支已同步不足以證明整個 clone 可刪。
+
+## 從 REPOS 或 TRY 多選
+
+Dashboard 的 `x` 切換 repo／Try 選取，`Ctrl+A` 選取目前可見項目。篩選保留隱藏的選取，footer 會顯示數量。`Ctrl+O` 提供清除選取與單項整理入口。有選取時 Enter 開啟限定範圍的獨立 triage；沒有選取時保持原本的開啟行為。`o` 永遠開啟目前列，REPOS Space 仍展開 worktrees。選 repo 包含其所有本地分支與 registered worktrees；`A` 顯示可用動作及候選數量，選擇後可取消預選，再按 Enter 預覽。
+
+交接復用 dashboard 已接受的 metadata 與 task／worktree 觀察，只深入檢查選中 repo 的 Git／contents，不重新探索其他 roots。第一輪可復用記憶體 metadata 快照，之後 refresh 重新檢查選中範圍。操作返回後只更新受影響列並失效其 SIZE cache；SIZE 延用既有 10 分鐘快取。本次沒有新增跨啟動的 repo 快照或 watcher，獨立 `dev triage` 啟動／refresh 仍盤點全域。快取不授權 Apply，本地 refresh 不 fetch。Dashboard TRY 的讀取不會登錄目錄或 reconcile move；明確的 CLI lifecycle 操作維持既有 reconciliation。
+
+## Try：垃圾桶或忘記條目
+
+`A` 對存在且獨立的 Try 提供 `trash-try`，對確認遺失的目錄提供 `forget-try`。`x` 選擇對應 Try 動作，普通 checkout 則選 Remove Checkout。活動時間不明顯示 `—`；presence 另外區分 `missing` 與 `unavailable`。存取失敗或 root 不可用，不能授權忘記。
+
+垃圾桶批次要求輸入 `TRASH N`，保留**完整目錄**，包含 ignored／untracked 內容。垃圾桶在清空前仍佔用空間。Task／runtime 佔用、shared／external Git、安全路徑或來源身分／內容變動都會阻擋。垃圾桶不可用時不會改成永久刪除。尚未登錄的 Try 會在預覽明列 Apply 時只登錄所選目錄；取消不寫入，登錄成功而 Trash 失敗時保留 catalog 與剩餘內容，回報部分完成。其他主機位置及既有 Trash recovery 歷史維持保留。
+
+確認遺失的意外 Try 可透過 `FORGET N` 批次完全忘記，也可使用共用 guarded service：
+
+```bash
+dev tries forget <ref> --dry-run --json
+dev tries forget <id> --confirm-forget <id> --json
+```
+
+要求只有本機位置、預期 parent 可存取、目錄確實不存在，而且沒有 task、runtime、agent artifact、筆記來源、其他 catalog 或 recovery 引用。Catalog 的個人 note／tags 也必須先檢閱清除。有第二個主機位置就不能整筆忘記，即使路徑文字相同。Apply 加鎖重讀精確 catalog 記錄，路徑重現或權限依據改變就拒絕。只移除該 catalog 記錄並留下操作結果，不刪專案檔案、筆記 Markdown 或 stats。不提供批次永久刪除，也不刪普通 canonical repo。

@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -118,6 +119,29 @@ func (s *Store) WithLock(ctx context.Context, operation func() error) error {
 	return lockx.WithDir(ctx, s.Dir, "catalog", operation)
 }
 func (s *Store) path(id string) string { return filepath.Join(s.Dir, id+".toml") }
+
+// DeleteExactUnderLock removes only the reviewed record. The caller must hold
+// WithLock and establish that no durable references or recovery depend on it.
+func (s *Store) DeleteExactUnderLock(expected *Entry) error {
+	if expected == nil {
+		return errors.New("missing expected catalog record")
+	}
+	current, err := s.Get(expected.ID)
+	if err != nil {
+		return err
+	}
+	if !reflect.DeepEqual(current.Clone(), expected.Clone()) {
+		return errors.New("catalog record changed after preview")
+	}
+	info, err := os.Lstat(s.path(expected.ID))
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return errors.New("catalog record is not a regular file")
+	}
+	return os.Remove(s.path(expected.ID))
+}
 
 // Create assigns a random stable ID and atomically persists entry. The caller's
 // value is updated only after the rename succeeds.

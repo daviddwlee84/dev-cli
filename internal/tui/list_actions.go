@@ -50,6 +50,9 @@ const (
 	listActionTryDelete
 	listActionTryDeletePermanent
 	listActionTryRecover
+	listActionTriage
+	listActionClearSelection
+	listActionTriageSelection
 )
 
 type selectionToken struct {
@@ -107,7 +110,7 @@ func (m Model) currentSelectionToken() (selectionToken, bool) {
 		if !ok {
 			return selectionToken{}, false
 		}
-		return selectionToken{view: m.view, key: row.Item.ID}, true
+		return selectionToken{view: m.view, key: trySelectionKey(row)}, true
 	case ViewRemote:
 		row, ok := m.currentRemote()
 		if !ok {
@@ -159,7 +162,7 @@ func (m *Model) selectToken(token selectionToken) bool {
 		}
 	case ViewTries:
 		for i, row := range m.visibleTries() {
-			if row.Item.ID == token.key {
+			if trySelectionKey(row) == token.key {
 				m.setAt(i)
 				return true
 			}
@@ -228,6 +231,11 @@ func (m Model) selectionHeading() (string, string) {
 func (m Model) openActionMenu() Model {
 	token, ok := m.currentSelectionToken()
 	if !ok {
+		if m.triageSelectionCount() > 0 {
+			m.overlay = overlayState{kind: overlayActionMenu, title: "Selected items"}
+			m.overlay.addOption(listActionTriageSelection, "triage selected items…")
+			m.overlay.addOption(listActionClearSelection, "clear selection")
+		}
 		return m
 	}
 	subject, detail := m.selectionHeading()
@@ -383,6 +391,17 @@ func (m Model) openActionMenu() Model {
 	}
 
 	if m.actions.Workflow != nil {
+		if m.view == ViewRepos || m.view == ViewTries {
+			label := "triage / finish up this item…"
+			if row, ok := m.currentTry(); ok && row.Item.Live.Presence == "missing" {
+				label = "forget missing Try entry…"
+			}
+			overlay.addOption(listActionTriage, label)
+			if m.triageSelectionCount() > 0 {
+				overlay.addOption(listActionTriageSelection, "triage selected items…")
+				overlay.addOption(listActionClearSelection, "clear selection")
+			}
+		}
 		switch m.view {
 		case ViewTasks, ViewRepos, ViewRemote:
 			overlay.addOption(listActionBrowse, "open repository in browser…")
@@ -397,7 +416,9 @@ func (m Model) openActionMenu() Model {
 					overlay.addOption(listActionTryRecover, "reassociate a folder restored from Trash…")
 				} else if row.Item.Live.Present {
 					overlay.addOption(listActionTryDelete, "move to Trash…")
-					overlay.addOption(listActionTryDeletePermanent, "permanently delete…")
+					if row.Item.ID != "" {
+						overlay.addOption(listActionTryDeletePermanent, "permanently delete…")
+					}
 				}
 			}
 		}
@@ -434,7 +455,7 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 	}
 	action := m.overlay.options[m.overlay.optionIndex].action
 	token := m.overlay.selection
-	if !m.selectToken(token) {
+	if action != listActionClearSelection && action != listActionTriageSelection && !m.selectToken(token) {
 		m.overlay = overlayState{}
 		m.err = fmt.Errorf("selected row changed while its action menu was open")
 		return m, nil
@@ -445,6 +466,18 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 
 func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 	switch action {
+	case listActionTriageSelection:
+		return m.openTriageSelection(false)
+	case listActionTriage:
+		return m.openTriageSelection(true)
+	case listActionClearSelection:
+		if m.view == ViewRepos {
+			m.repoSelections = nil
+		}
+		if m.view == ViewTries {
+			m.trySelections = nil
+		}
+		return m, nil
 	case listActionDone, listActionResume, listActionRetire, listActionSweep:
 		if row, ok := m.currentTask(); ok {
 			name := map[listAction]string{listActionDone: "done", listActionResume: "resume", listActionRetire: "retire", listActionSweep: "sweep"}[action]
@@ -479,6 +512,9 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 		}
 	case listActionTryDelete, listActionTryDeletePermanent, listActionTryRecover:
 		if row, ok := m.currentTry(); ok {
+			if action == listActionTryDelete && row.Item.ID == "" {
+				return m.openTriageSelection(true)
+			}
 			name := map[listAction]string{listActionTryDelete: "delete-try", listActionTryDeletePermanent: "delete-try-permanently", listActionTryRecover: "restore-removed-try"}[action]
 			return m.runWorkflow(WorkflowRequest{Action: name, Try: row})
 		}
@@ -692,7 +728,7 @@ func (m Model) runTryListAction(action listAction) (tea.Model, tea.Cmd) {
 		return m.openTryConfirmation(tryAction, row)
 	case TryDeprecate, TryReactivate:
 		m.status = string(tryAction) + " in progress…"
-		return m, m.applyTry(TryRequest{Action: tryAction, ID: row.Item.ID})
+		return m, m.applyTry(TryRequest{Action: tryAction, ID: row.reference()})
 	default:
 		return m, nil
 	}
