@@ -327,3 +327,11 @@ Inventory 新增的 interop receipts 是歷史紀錄，不代表 live health。
 ## Dashboard 生命週期新增功能
 
 Dashboard workflows 共用 CLI／taskflow 規則，terminal handoff 在退出後執行。Try removal 是明確 disposal，不是已驗證備份的 eviction。Trash 使用 macOS／Windows native facilities 或 Linux GIO；不支援回收時停止，絕不自動永久刪除。Local Try JSON 只增加 removal identity／method，不移除既有 fields。詳見 [Dashboard 操作](../guides/dashboard-actions.md)。
+
+## 明確的 SSH 主機管理
+
+`dev ssh manage` 比對 SSH alias、fleet profile 及選用的 Herdr 0.9.0 saved
+machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停用都先選擇再預覽。
+`dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
+既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
+[SSH 主機管理](../guides/ssh-hosts.md)。

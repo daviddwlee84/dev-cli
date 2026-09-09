@@ -7,8 +7,8 @@ public key, or registering/removing a fleet host.
 
 - OpenSSH is the connection authority. `dev ssh list` is a static
   provenance/candidate scan; plain `ssh -G` owns effective values.
-- Foreign Include/Host/Match content is read-only. Never use raw file edits to
-  make `dev` "adopt" it.
+- Foreign Include/Host/Match content stays user-owned. Setup/remove cannot rewrite
+  it; explicit format/organize can transform selected user files with recovery.
 - Dev owns only the exact root `Include ~/.ssh/dev.d/*.conf`, canonical
   `~/.ssh/dev.d/<alias>.conf` files, and strict generated fleet fragments.
 - Only a bounded normalized **public** key record may cross the connection.
@@ -16,8 +16,8 @@ public key, or registering/removing a fleet host.
   argv/environment, or bypass the SSH agent protocol.
 - Preserve host-key and known-hosts policy. `--yes` approves local plans only; it
   never accepts a host key or supplies credentials.
-- `--fleet` is always explicit and occurs only after a fresh ordinary alias
-  login. Discovery and successful bootstrap do not imply registration.
+- Fleet registration (`setup --fleet` or `manage --to fleet|both`) is explicit
+  and occurs only after a fresh ordinary alias login. Discovery and successful bootstrap do not imply registration.
 - Remote installation cannot be rolled back safely. Unknown means the public key
   may already be present. Do not delete from `authorized_keys` on the user's
   behalf.
@@ -253,3 +253,102 @@ ssh_remove_plan | ssh_remove_result
 
 Treat `partial`, `unknown`, `blocked`, `interaction_required`, and source/security
 errors as real outcomes, not warnings to override.
+
+## Machine management and configuration organization
+
+`dev ssh` opens a menu on a terminal; pipes retain the command help. The default
+configuration-cleanup choice is formatting. Group restructuring is a separate,
+explicit operation.
+
+```bash
+dev ssh manage                          # joint inventory and multi-select wizard
+dev ssh manage --json                   # local inventory; no SSH authentication
+dev ssh manage --action register --alias lab --alias build --to both --target-os posix
+dev ssh manage --action register --alias lab --to herdr --herdr-session agents --apply --yes
+dev ssh manage --action rename --fleet-host lab --name workstation --apply
+dev ssh manage --action disable --herdr-profile <profile-id> --apply
+dev ssh manage --action remove --fleet-host lab --fleet-host build --apply
+
+dev ssh format                          # four-space indentation preview
+dev ssh format --indent 2 --file ~/.ssh/config.d/work/lab.conf
+dev ssh format --apply                  # confirm local changes and retain recovery
+dev ssh organize                        # select complete Host blocks and assign groups
+dev ssh organize --group lab=work --group nas=personal --numbered --json
+dev ssh restore <receipt>               # preview undo; --apply confirms it
+```
+
+Explicit management actions and file transformations are plan-only until
+`--apply`; noninteractive apply requires `--yes`. The wizard previews all selected
+operations before confirmation. `manage --json` reports a versioned joint
+inventory, or a plan/result when `--action` is present. Registration plans expose
+`fleet_registration` with the desired name, SSH alias and target OS. Existing `ssh list`
+JSON/TSV remains unchanged and invokes no subprocess; `manage` additionally calls
+local `herdr machine list --json`, but listing/planning never runs SSH or Match
+exec. Failed or unsupported provider reads stay unavailable, rather than becoming
+an empty, authoritative inventory.
+
+SSH aliases, fleet profile names and Herdr labels are distinct. New names default
+to the selected alias; existing custom names remain intact. One-alias registration
+accepts `--fleet-name` and `--herdr-label`. `Host a b` remains one configuration
+block with two selectable aliases; choosing one does not remove the other. Do not
+merge aliases by IP: aliases may intentionally select different SSH options.
+Herdr membership is matched by exact SSH target and explicit session; changes
+use the native profile ID. Existing disabled profiles stay disabled during
+registration. Use an explicit enable action to reconnect them.
+
+Herdr 0.9.0 or a compatible machine CLI is optional. Its native `machine add`
+prepares a remote installation and starts the selected server before saving;
+open clients then connect automatically. The plan lists these effects. Native
+installation/server-replacement confirmations remain Herdr's, even with dev
+`--yes`. Missing approvals in a noninteractive run fail without inventing a saved
+profile. Remove/disable only affects registration/client connections; remote
+sessions keep running. Remote servers must meet Herdr's Linux/macOS requirements.
+Fleet remains the repo/task inventory authority, and its existing remote-open
+behavior is unchanged.
+
+Already-working aliases can join fleet after a fresh ordinary login without
+reinstalling keys. Each requested provider action gets a result, and failures
+retain completed actions. Retry compares current membership before adding.
+Fleet rename/remove supports canonical generated fragments and normal primary
+`[[hosts]]` tables, preserving comments, child tables and unrelated bytes. Bulk
+removals in one source are coalesced. Unsupported inline host layouts require a
+native edit; removal never deletes SSH definitions or remote repositories.
+
+Formatting changes leading indentation only (four spaces by default; `2` or
+`tab` are supported), preserving option values, quotes, order and line endings.
+Select the root config or explicit user files under `config.d`; dev/provider-owned
+fragments remain with their owner. Previews redact command-like/sensitive lines.
+
+Organization moves complete Host blocks and adjacent leading comments into
+`~/.ssh/config.d/<group>/<host>.conf`. Multi-alias blocks remain together. Root
+Includes are explicit and retain original evaluation order, including interleaved
+groups. Filenames are unnumbered by default; `--numbered` adds original ordinals
+for readability. `--group alias=group` or `--group @block-id=group` assigns blocks;
+unassigned blocks retain their group or use `ungrouped`. Re-running the wizard
+can move existing grouped fragments without opening several editors. Single-block
+fragments retain their existing basename during an unnumbered regroup.
+
+The organizer handles inline root Host blocks and directly included grouped
+fragments. Foreign Includes retain their position. Match, dynamic/incomplete
+Includes and repeated selected references require manual organization; formatting
+remains available. Existing dormant files are not activated by a new broad glob.
+New files or directories covered by an existing Include glob are blocked because
+they would be read before the root switch. Existing destination files are not
+silently overwritten.
+
+File plans are bound to original bytes/identities and cooperative owner locks.
+Apply creates new fragments before switching the root, then removes retired
+sources. Interruptions leave a private recovery receipt under
+`$XDG_DATA_HOME/dev/ssh-recovery/` (or the XDG default), outside Git and outside
+cache. `restore` reverses verified completed steps and rejects subsequent user edits or
+file replacement. A hard crash before an after-state is recorded requires manual
+reconciliation using the retained private originals.
+Representable metadata is retained; security attributes, unsupported inode flags,
+unsafe links or writable-by-others ancestors require native handling. New local
+file writes require the macOS/Linux backend. Herdr's external CLI and raw editors
+remain outside dev's cooperative locks.
+
+These explicit format/organize/management operations are the only exceptions to
+setup/remove's narrow ownership rules. Normal setup never rewrites foreign SSH
+connection definitions. Key vault import and hardware-key provisioning are
+separate future work; private key bytes are not part of machine registration.

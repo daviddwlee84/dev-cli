@@ -485,6 +485,15 @@ A worktree task scopes completion to its own checkout and eligible runtime. Pare
 
 Explicit Try disposal retains catalog identity while the host location becomes `evicted`. Trash and archive both retain bytes; neither is proof of backup or reclaimed space. Task DONE still means integrated work, with retirement separate. See [dashboard actions](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/).
 
+## Explicit SSH machine management
+
+`dev ssh manage` compares SSH aliases, fleet profiles and optional Herdr 0.9.0 saved
+machines. Existing names stay independent; registration, rename/remove and Herdr
+enable/disable are selected actions with a preview. `dev ssh format`, `organize`
+and `restore` provide optional guarded local edits and private recovery. Existing
+`ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
+[SSH host management](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#machine-management-and-configuration-organization).
+
 ---
 
 ### Isolation boundaries and glossary
@@ -1548,7 +1557,7 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/
 
 | Surface | Authority / owner | What dev may do |
 |---|---|---|
-| `~/.ssh/config`, its foreign Includes, and foreign `Host`/`Match` blocks | user + OpenSSH | read statically; evaluate an alias only through plain `ssh -G`; never rewrite |
+| `~/.ssh/config`, its foreign Includes, and foreign `Host`/`Match` blocks | user + OpenSSH | read statically; evaluate with plain `ssh -G`; explicit format/organize can transform selected user files |
 | `Include ~/.ssh/dev.d/*.conf` in the root config | dev, after explicit `ssh init --apply` | install once before the first `Host`, `Match`, or earlier Include; never remove automatically |
 | `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | create, reconcile, or remove only canonical v1 files with an allowlisted single `Host` block |
 | local key files | user + native `ssh-keygen` | validate an explicit key, derive a confirmed missing `.pub`, or generate a no-replace Ed25519 pair; never copy private bytes |
@@ -1756,6 +1765,105 @@ When a server policy falls outside the verified POSIX/Windows installer contract
 - [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
 - [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
 - [`internal/help/topics/ssh.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/ssh.md)
+
+## Machine management and configuration organization
+
+`dev ssh` opens a menu on a terminal; pipes retain the command help. The default
+configuration-cleanup choice is formatting. Group restructuring is a separate,
+explicit operation.
+
+```bash
+dev ssh manage                          # joint inventory and multi-select wizard
+dev ssh manage --json                   # local inventory; no SSH authentication
+dev ssh manage --action register --alias lab --alias build --to both --target-os posix
+dev ssh manage --action register --alias lab --to herdr --herdr-session agents --apply --yes
+dev ssh manage --action rename --fleet-host lab --name workstation --apply
+dev ssh manage --action disable --herdr-profile <profile-id> --apply
+dev ssh manage --action remove --fleet-host lab --fleet-host build --apply
+
+dev ssh format                          # four-space indentation preview
+dev ssh format --indent 2 --file ~/.ssh/config.d/work/lab.conf
+dev ssh format --apply                  # confirm local changes and retain recovery
+dev ssh organize                        # select complete Host blocks and assign groups
+dev ssh organize --group lab=work --group nas=personal --numbered --json
+dev ssh restore <receipt>               # preview undo; --apply confirms it
+```
+
+Explicit management actions and file transformations are plan-only until
+`--apply`; noninteractive apply requires `--yes`. The wizard previews all selected
+operations before confirmation. `manage --json` reports a versioned joint
+inventory, or a plan/result when `--action` is present. Registration plans expose
+`fleet_registration` with the desired name, SSH alias and target OS. Existing `ssh list`
+JSON/TSV remains unchanged and invokes no subprocess; `manage` additionally calls
+local `herdr machine list --json`, but listing/planning never runs SSH or Match
+exec. Failed or unsupported provider reads stay unavailable, rather than becoming
+an empty, authoritative inventory.
+
+SSH aliases, fleet profile names and Herdr labels are distinct. New names default
+to the selected alias; existing custom names remain intact. One-alias registration
+accepts `--fleet-name` and `--herdr-label`. `Host a b` remains one configuration
+block with two selectable aliases; choosing one does not remove the other. Do not
+merge aliases by IP: aliases may intentionally select different SSH options.
+Herdr membership is matched by exact SSH target and explicit session; changes
+use the native profile ID. Existing disabled profiles stay disabled during
+registration. Use an explicit enable action to reconnect them.
+
+Herdr 0.9.0 or a compatible machine CLI is optional. Its native `machine add`
+prepares a remote installation and starts the selected server before saving;
+open clients then connect automatically. The plan lists these effects. Native
+installation/server-replacement confirmations remain Herdr's, even with dev
+`--yes`. Missing approvals in a noninteractive run fail without inventing a saved
+profile. Remove/disable only affects registration/client connections; remote
+sessions keep running. Remote servers must meet Herdr's Linux/macOS requirements.
+Fleet remains the repo/task inventory authority, and its existing remote-open
+behavior is unchanged.
+
+Already-working aliases can join fleet after a fresh ordinary login without
+reinstalling keys. Each requested provider action gets a result, and failures
+retain completed actions. Retry compares current membership before adding.
+Fleet rename/remove supports canonical generated fragments and normal primary
+`[[hosts]]` tables, preserving comments, child tables and unrelated bytes. Bulk
+removals in one source are coalesced. Unsupported inline host layouts require a
+native edit; removal never deletes SSH definitions or remote repositories.
+
+Formatting changes leading indentation only (four spaces by default; `2` or
+`tab` are supported), preserving option values, quotes, order and line endings.
+Select the root config or explicit user files under `config.d`; dev/provider-owned
+fragments remain with their owner. Previews redact command-like/sensitive lines.
+
+Organization moves complete Host blocks and adjacent leading comments into
+`~/.ssh/config.d/<group>/<host>.conf`. Multi-alias blocks remain together. Root
+Includes are explicit and retain original evaluation order, including interleaved
+groups. Filenames are unnumbered by default; `--numbered` adds original ordinals
+for readability. `--group alias=group` or `--group @block-id=group` assigns blocks;
+unassigned blocks retain their group or use `ungrouped`. Re-running the wizard
+can move existing grouped fragments without opening several editors. Single-block
+fragments retain their existing basename during an unnumbered regroup.
+
+The organizer handles inline root Host blocks and directly included grouped
+fragments. Foreign Includes retain their position. Match, dynamic/incomplete
+Includes and repeated selected references require manual organization; formatting
+remains available. Existing dormant files are not activated by a new broad glob.
+New files or directories covered by an existing Include glob are blocked because
+they would be read before the root switch. Existing destination files are not
+silently overwritten.
+
+File plans are bound to original bytes/identities and cooperative owner locks.
+Apply creates new fragments before switching the root, then removes retired
+sources. Interruptions leave a private recovery receipt under
+`$XDG_DATA_HOME/dev/ssh-recovery/` (or the XDG default), outside Git and outside
+cache. `restore` reverses verified completed steps and rejects subsequent user edits or
+file replacement. A hard crash before an after-state is recorded requires manual
+reconciliation using the retained private originals.
+Representable metadata is retained; security attributes, unsupported inode flags,
+unsafe links or writable-by-others ancestors require native handling. New local
+file writes require the macOS/Linux backend. Herdr's external CLI and raw editors
+remain outside dev's cooperative locks.
+
+These explicit format/organize/management operations are the only exceptions to
+setup/remove's narrow ownership rules. Normal setup never rewrites foreign SSH
+connection definitions. Key vault import and hardware-key provisioning are
+separate future work; private key bytes are not part of machine registration.
 
 ---
 
@@ -2051,6 +2159,15 @@ Per-host states are `ok`, `stale`, `no-dev`, `unreachable`, `timeout`, `incompat
 - [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
 - [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
 - [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)
+
+## Explicit SSH machine management
+
+`dev ssh manage` compares SSH aliases, fleet profiles and optional Herdr 0.9.0 saved
+machines. Existing names stay independent; registration, rename/remove and Herdr
+enable/disable are selected actions with a preview. `dev ssh format`, `organize`
+and `restore` provide optional guarded local edits and private recovery. Existing
+`ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
+[SSH host management](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#machine-management-and-configuration-organization).
 
 ---
 
@@ -6438,11 +6555,25 @@ dev skill update <skill> [flags]
 
 ### `dev ssh`
 
-Discover, configure, and bootstrap OpenSSH host aliases
+Manage SSH hosts, fleet registrations, and Herdr machines
 
 ```
 dev ssh
 ```
+
+### `dev ssh format`
+
+Preview or apply SSH indentation changes with recovery
+
+```
+dev ssh format [flags]
+```
+
+- `--apply` — apply after reviewing the plan
+- `--file` — SSH root or user config.d file (repeatable; default: ~/.ssh/config)
+- `--indent` — indentation: 2, 4 or tab
+- `--json` — emit one versioned plan or result
+- `--yes` — confirm local file changes without prompting
 
 ### `dev ssh init`
 
@@ -6467,6 +6598,42 @@ dev ssh list [flags]
 - `--format` — machine format: tsv
 - `--json` — emit one versioned JSON object
 
+### `dev ssh manage`
+
+Compare SSH, fleet and Herdr machines and plan selected operations
+
+```
+dev ssh manage [flags]
+```
+
+- `--action` — register, probe, rename, remove, enable or disable
+- `--alias` — exact SSH alias (repeatable)
+- `--apply` — apply the displayed plan
+- `--fleet-host` — exact fleet profile name (repeatable)
+- `--fleet-name` — fleet name for one new alias (default: SSH alias)
+- `--herdr-label` — Herdr label for one new alias (default: SSH alias)
+- `--herdr-profile` — exact Herdr profile ID (repeatable)
+- `--herdr-session` — Herdr session for registration
+- `--json` — emit one versioned inventory, plan or result
+- `--name` — new display name for one selected record
+- `--target-os` — fleet target OS: posix or windows
+- `--to` — registration destination: fleet, herdr or both
+- `--yes` — confirm the dev plan; never answer native Herdr approvals
+
+### `dev ssh organize`
+
+Move complete Host blocks into group directories without reordering
+
+```
+dev ssh organize [flags]
+```
+
+- `--apply` — apply after reviewing the plan
+- `--group` — assign a complete block: alias=group or @block-id=group (repeatable)
+- `--json` — emit one versioned plan or result
+- `--numbered` — prefix fragment names with original ordinal numbers; Include order remains authoritative
+- `--yes` — confirm local file changes without prompting
+
 ### `dev ssh probe`
 
 Perform one fresh noninteractive ordinary SSH login
@@ -6489,6 +6656,18 @@ dev ssh remove <alias> [flags]
 - `--fleet` — remove the owned fleet fragment first
 - `--json` — emit one versioned JSON plan or result
 - `--yes` — confirm removals without prompting
+
+### `dev ssh restore`
+
+Preview or restore an unchanged local configuration transaction
+
+```
+dev ssh restore <receipt> [flags]
+```
+
+- `--apply` — apply after reviewing the plan
+- `--json` — emit one versioned plan or result
+- `--yes` — confirm local file changes without prompting
 
 ### `dev ssh setup`
 
@@ -6970,6 +7149,15 @@ Skill JSON rows and MCP JSON envelopes may add `interop` and `interop_coverage`;
 
 New commands: `dev browse` / `dev repo browse [repo-or-path] --remote <name> --print`; `dev sweep --task <id>`; `dev tries delete <ref>` (`rm` alias) with `--dry-run`, `--json`, `--yes`, `--permanent`, `--confirm-delete <id>` and `--assume-no-runtime`; `dev tries restore <ref> --from <restored-path>`. [Behavior and confirmation rules](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/).
 
+## Explicit SSH machine management
+
+`dev ssh manage` compares SSH aliases, fleet profiles and optional Herdr 0.9.0 saved
+machines. Existing names stay independent; registration, rename/remove and Herdr
+enable/disable are selected actions with a preview. `dev ssh format`, `organize`
+and `restore` provide optional guarded local edits and private recovery. Existing
+`ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
+[SSH host management](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#machine-management-and-configuration-organization).
+
 ---
 
 ### Compatibility and known limitations
@@ -7322,6 +7510,15 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 ## Dashboard lifecycle additions
 
 Dashboard workflows reuse CLI/taskflow policy and defer terminal handoffs until exit. Try removal is explicit disposal, not verified backup-based eviction. Trash uses native macOS/Windows facilities or Linux GIO, fails without supported recycling, and never authorizes permanent fallback. Local Try JSON adds removal identity/method without removing existing fields. See [dashboard actions](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/).
+
+## Explicit SSH machine management
+
+`dev ssh manage` compares SSH aliases, fleet profiles and optional Herdr 0.9.0 saved
+machines. Existing names stay independent; registration, rename/remove and Herdr
+enable/disable are selected actions with a preview. `dev ssh format`, `organize`
+and `restore` provide optional guarded local edits and private recovery. Existing
+`ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
+[SSH host management](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#machine-management-and-configuration-organization).
 
 ---
 
@@ -8231,6 +8428,14 @@ Worktree task 的完成與清理限於自己的 checkout 及符合條件的 runt
 ## Dashboard 生命週期新增功能
 
 Try 明確刪除會保留 catalog identity，本機 location 成為 `evicted`。Trash 與 archive 都保留 bytes，不代表已有備份或回收空間。Task DONE 仍表示已整合，retirement 另行處理。詳見 [Dashboard 操作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/)。
+
+## 明確的 SSH 主機管理
+
+`dev ssh manage` 比對 SSH alias、fleet profile 及選用的 Herdr 0.9.0 saved
+machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停用都先選擇再預覽。
+`dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
+既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
+[SSH 主機管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
 
 ---
 
@@ -9228,7 +9433,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/
 
 | Surface | Authority / owner | Dev 可以做什麼 |
 |---|---|---|
-| `~/.ssh/config`、其中的 foreign Includes 與 foreign `Host`/`Match` blocks | user + OpenSSH | static read；只透過 plain `ssh -G` evaluate alias；絕不 rewrite |
+| `~/.ssh/config`、其中的 foreign Includes 與 foreign `Host`/`Match` blocks | user + OpenSSH | static read；透過 plain `ssh -G` evaluate；明確 format/organize 可整理選定的使用者檔案 |
 | root config 中的 `Include ~/.ssh/dev.d/*.conf` | dev，且必須明確執行 `ssh init --apply` | 在第一個 `Host`、`Match` 或更早的 Include 前安裝一次；絕不自動移除 |
 | `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | 只 create、reconcile 或 remove canonical v1 file，其內容是 allowlisted single `Host` block |
 | local key files | user + native `ssh-keygen` | 驗證 explicit key、經確認後 derive 缺少的 `.pub`，或以 no-replace 方式產生 Ed25519 pair；絕不複製 private bytes |
@@ -9436,6 +9641,87 @@ Server policy 若超出 verified POSIX/Windows installer contract，dev 會回�
 - [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
 - [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
 - [`internal/help/topics/ssh.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/ssh.md)
+
+## 主機管理與設定整理
+
+在終端執行 `dev ssh` 會開啟選單；管線仍顯示 help。設定整理預設只做
+formatting，群組重整必須另外選擇。
+
+```bash
+dev ssh manage                          # 聯合清單與多選 wizard
+dev ssh manage --json                   # 本機 inventory，不做 SSH 登入
+dev ssh manage --action register --alias lab --alias build --to both --target-os posix
+dev ssh manage --action register --alias lab --to herdr --herdr-session agents --apply --yes
+dev ssh manage --action rename --fleet-host lab --name workstation --apply
+dev ssh manage --action disable --herdr-profile <profile-id> --apply
+dev ssh manage --action remove --fleet-host lab --fleet-host build --apply
+
+dev ssh format                          # 預覽四格縮排
+dev ssh format --indent 2 --file ~/.ssh/config.d/work/lab.conf
+dev ssh format --apply                  # 確認並保存復原紀錄
+dev ssh organize                        # 多選完整 Host 區塊並指定群組
+dev ssh organize --group lab=work --group nas=personal --numbered --json
+dev ssh restore <receipt>               # 預覽還原；--apply 才套用
+```
+
+明確 action 與檔案操作預設只產生計畫，`--apply` 才執行；非互動套用須加
+`--yes`。wizard 先顯示所有勾選動作再確認。`manage --json` 輸出版本化聯合
+inventory，有 `--action` 時輸出計畫或結果。註冊計畫的 `fleet_registration`
+會列出要寫入的名稱、SSH alias 與 target OS。既有 `ssh list` JSON／TSV
+不變，也不執行 subprocess；`manage` 另外呼叫本機的
+`herdr machine list --json`，但列出及規劃都不做 SSH 登入或執行 Match exec。
+無法讀取的 provider 維持 unavailable，不當成可信的空清單。
+
+SSH alias、fleet profile 名稱及 Herdr label 分開保存。新項目預設使用 alias，
+既有自訂名稱保留；單一 alias 可指定 `--fleet-name`、`--herdr-label`。
+`Host a b` 仍是同一設定區塊的兩個可選入口，選其中一個不會移除另一個。
+不按 IP 合併 alias，因為不同入口可能選用不同 SSH 選項。Herdr 依精確 target
+加 session 比對，修改時使用原生 profile ID；註冊時不會順便啟用既有停用項目。
+
+Herdr 0.9.0 或相容的 machine CLI 是選用整合。原生 `machine add` 會準備遠端
+安裝、啟動指定 server 再儲存，開啟中的 client 隨後會自動連線；計畫會列出
+這些影響。原生安裝／server replacement 確認仍交由 Herdr，即使 dev 使用
+`--yes` 也不代答。非互動缺少必要確認會失敗，不假裝已新增 profile。
+remove／disable 只影響註冊及 client 連線，遠端 session 繼續運行。遠端
+server 必須符合 Herdr 的 Linux／macOS 支援範圍。fleet 仍負責 repo／task
+inventory，原有 remote-open 行為保持相容。
+
+已能登入的 alias 通過新的普通登入驗證即可加入 fleet，不必重新安裝 key。
+各 provider 動作分別記錄結果，失敗保留先前完成的動作；重跑先比對現況。
+fleet 改名／移除支援 canonical generated fragments 與主檔正常的
+`[[hosts]]` 表格，保留註解、子表及其他內容；同一來源的批次移除會合併成
+一筆檔案交易。無法安全定位的 inline hosts 需原生編輯。移除註冊不會刪除
+SSH 定義或遠端 repository。
+
+formatting 僅修改行首縮排，預設四格，可改 `2` 或 `tab`；選項值、引號、
+順序及換行格式保留。可選主檔或 `config.d` 中明確的使用者檔案；dev／其他
+provider 管理的片段仍由原 owner 處理。預覽遮蔽命令型及敏感內容。
+
+群組重整把完整 Host 區塊及相鄰前置註解搬到
+`~/.ssh/config.d/<group>/<host>.conf`，多 alias 留在同檔。主檔使用明列的
+Include 保持原始順序，即使 work／personal 交錯也不重新排序。預設不加檔名
+編號；`--numbered` 可加上原始序號方便閱讀。`--group alias=group` 或
+`--group @block-id=group` 指定區塊；未指定者保留既有群組或使用 `ungrouped`。
+之後可再次用 wizard 移動群組，不必手動開多個檔案複製貼上；未選編號時，
+單一區塊片段保留原檔名。
+
+首版處理主檔內 Host 區塊及直接引用的群組片段；其他 Include 保留位置。
+Match、動態／不完整 Include、重複引用的選定片段需手動整理，仍可先做
+formatting。不加入廣泛 wildcard 啟用原本休眠的檔案。若新的檔案或目錄已被既有
+Include glob 涵蓋，會拒絕搬移，避免入口切換前就生效；目的地碰撞也不覆蓋。
+
+計畫綁定原始內容及檔案身分，套用時使用合作式 owner lock 並重新驗證。
+先建立新片段、切換主檔，再移除退役來源。中斷時保留私有 receipt，位於
+Git 與 cache 外的 `$XDG_DATA_HOME/dev/ssh-recovery/`（未設定時使用 XDG
+預設）。`restore` 反向還原已驗證的完成步驟，若後來被修改或替換則拒絕覆蓋。
+若程序在記錄 after-state 前被強制終止，須使用保留的私有原始內容手動復原。
+可還原的 metadata 會保留；security attributes、不支援的 inode flags、
+不安全的連結或其他使用者可寫的祖先目錄需原生處理。新的本機寫入僅支援
+macOS／Linux backend；Herdr 原生 CLI 與一般 editor 不受 dev 合作式鎖控制。
+
+只有明確的 format／organize／manage 操作擴充使用者選定內容的修改範圍；
+一般 setup／remove 維持原本 ownership 規則。key vault 匯入與硬體 key
+provisioning 留待獨立後續工作，主機註冊不傳遞私鑰內容。
 
 ---
 
@@ -9720,6 +10006,14 @@ Per-host states 是 `ok`、`stale`、`no-dev`、`unreachable`、`timeout`、`inc
 - [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
 - [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
 - [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)
+
+## 明確的 SSH 主機管理
+
+`dev ssh manage` 比對 SSH alias、fleet profile 及選用的 Herdr 0.9.0 saved
+machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停用都先選擇再預覽。
+`dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
+既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
+[SSH 主機管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
 
 ---
 
@@ -13967,11 +14261,25 @@ dev skill update <skill> [flags]
 
 ### `dev ssh`
 
-Discover, configure, and bootstrap OpenSSH host aliases
+Manage SSH hosts, fleet registrations, and Herdr machines
 
 ```
 dev ssh
 ```
+
+### `dev ssh format`
+
+Preview or apply SSH indentation changes with recovery
+
+```
+dev ssh format [flags]
+```
+
+- `--apply` — apply after reviewing the plan
+- `--file` — SSH root or user config.d file (repeatable; default: ~/.ssh/config)
+- `--indent` — indentation: 2, 4 or tab
+- `--json` — emit one versioned plan or result
+- `--yes` — confirm local file changes without prompting
 
 ### `dev ssh init`
 
@@ -13996,6 +14304,42 @@ dev ssh list [flags]
 - `--format` — machine format: tsv
 - `--json` — emit one versioned JSON object
 
+### `dev ssh manage`
+
+Compare SSH, fleet and Herdr machines and plan selected operations
+
+```
+dev ssh manage [flags]
+```
+
+- `--action` — register, probe, rename, remove, enable or disable
+- `--alias` — exact SSH alias (repeatable)
+- `--apply` — apply the displayed plan
+- `--fleet-host` — exact fleet profile name (repeatable)
+- `--fleet-name` — fleet name for one new alias (default: SSH alias)
+- `--herdr-label` — Herdr label for one new alias (default: SSH alias)
+- `--herdr-profile` — exact Herdr profile ID (repeatable)
+- `--herdr-session` — Herdr session for registration
+- `--json` — emit one versioned inventory, plan or result
+- `--name` — new display name for one selected record
+- `--target-os` — fleet target OS: posix or windows
+- `--to` — registration destination: fleet, herdr or both
+- `--yes` — confirm the dev plan; never answer native Herdr approvals
+
+### `dev ssh organize`
+
+Move complete Host blocks into group directories without reordering
+
+```
+dev ssh organize [flags]
+```
+
+- `--apply` — apply after reviewing the plan
+- `--group` — assign a complete block: alias=group or @block-id=group (repeatable)
+- `--json` — emit one versioned plan or result
+- `--numbered` — prefix fragment names with original ordinal numbers; Include order remains authoritative
+- `--yes` — confirm local file changes without prompting
+
 ### `dev ssh probe`
 
 Perform one fresh noninteractive ordinary SSH login
@@ -14018,6 +14362,18 @@ dev ssh remove <alias> [flags]
 - `--fleet` — remove the owned fleet fragment first
 - `--json` — emit one versioned JSON plan or result
 - `--yes` — confirm removals without prompting
+
+### `dev ssh restore`
+
+Preview or restore an unchanged local configuration transaction
+
+```
+dev ssh restore <receipt> [flags]
+```
+
+- `--apply` — apply after reviewing the plan
+- `--json` — emit one versioned plan or result
+- `--yes` — confirm local file changes without prompting
 
 ### `dev ssh setup`
 
@@ -14494,6 +14850,14 @@ envelope 可新增 `interop`、`interop_coverage`；`receipts-only` 不代表原
 
 新增命令：`dev browse`／`dev repo browse [repo-or-path] --remote <name> --print`；`dev sweep --task <id>`；`dev tries delete <ref>`（alias `rm`）支援 `--dry-run`、`--json`、`--yes`、`--permanent`、`--confirm-delete <id>`、`--assume-no-runtime`；`dev tries restore <ref> --from <restored-path>`。[行為與確認規則](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/)。
 
+## 明確的 SSH 主機管理
+
+`dev ssh manage` 比對 SSH alias、fleet profile 及選用的 Herdr 0.9.0 saved
+machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停用都先選擇再預覽。
+`dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
+既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
+[SSH 主機管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
+
 ---
 
 ### 相容性與已知限制
@@ -14820,6 +15184,14 @@ Inventory 新增的 interop receipts 是歷史紀錄，不代表 live health。
 ## Dashboard 生命週期新增功能
 
 Dashboard workflows 共用 CLI／taskflow 規則，terminal handoff 在退出後執行。Try removal 是明確 disposal，不是已驗證備份的 eviction。Trash 使用 macOS／Windows native facilities 或 Linux GIO；不支援回收時停止，絕不自動永久刪除。Local Try JSON 只增加 removal identity／method，不移除既有 fields。詳見 [Dashboard 操作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/)。
+
+## 明確的 SSH 主機管理
+
+`dev ssh manage` 比對 SSH alias、fleet profile 及選用的 Herdr 0.9.0 saved
+machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停用都先選擇再預覽。
+`dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
+既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
+[SSH 主機管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
 
 ---
 

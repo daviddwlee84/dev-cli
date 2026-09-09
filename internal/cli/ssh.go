@@ -166,10 +166,14 @@ type sshRemoveDocument struct {
 func newSSHCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "ssh",
-		Short: "Discover, configure, and bootstrap OpenSSH host aliases",
-		Long: `Manage only dev-owned host fragments under ~/.ssh/dev.d while keeping
-OpenSSH as the source of truth. Static listing never runs ssh or Match exec;
-show, setup, and probe explicitly cross into OpenSSH evaluation or login.`,
+		Short: "Manage SSH hosts, fleet registrations, and Herdr machines",
+		Long: `Discover OpenSSH aliases and manage selected fleet/Herdr registrations.
+Setup/remove own canonical fragments under ~/.ssh/dev.d. Explicit format/organize
+operations transform selected user configuration with a preview and recovery.
+Listing/planning never authenticates; setup, show and probe explicitly evaluate
+OpenSSH or log in. Herdr machine add keeps its native installation approvals.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error { return runSSHEntry(cmd, app) },
 	}
 	cmd.AddCommand(
 		newSSHInitCmd(app),
@@ -178,6 +182,10 @@ show, setup, and probe explicitly cross into OpenSSH evaluation or login.`,
 		newSSHSetupCmd(app),
 		newSSHProbeCmd(app),
 		newSSHRemoveCmd(app),
+		newSSHManageCmd(app),
+		newSSHFormatCmd(app),
+		newSSHOrganizeCmd(app),
+		newSSHRestoreCmd(app),
 	)
 	return cmd
 }

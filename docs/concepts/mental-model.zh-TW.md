@@ -129,3 +129,11 @@ Worktree task 的完成與清理限於自己的 checkout 及符合條件的 runt
 ## Dashboard 生命週期新增功能
 
 Try 明確刪除會保留 catalog identity，本機 location 成為 `evicted`。Trash 與 archive 都保留 bytes，不代表已有備份或回收空間。Task DONE 仍表示已整合，retirement 另行處理。詳見 [Dashboard 操作](../guides/dashboard-actions.md)。
+
+## 明確的 SSH 主機管理
+
+`dev ssh manage` 比對 SSH alias、fleet profile 及選用的 Herdr 0.9.0 saved
+machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停用都先選擇再預覽。
+`dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
+既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
+[SSH 主機管理](../guides/ssh-hosts.md)。

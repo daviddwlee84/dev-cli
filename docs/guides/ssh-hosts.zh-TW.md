@@ -2,7 +2,7 @@
 description: 探索 OpenSSH alias、只管理 dev-owned host fragment、佈建 public-key access，並將驗證成功的 host 明確登記到 dev fleet。
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-09
 lang: zh-TW
 ---
 
@@ -17,7 +17,7 @@ lang: zh-TW
 
 | Surface | Authority / owner | Dev 可以做什麼 |
 |---|---|---|
-| `~/.ssh/config`、其中的 foreign Includes 與 foreign `Host`/`Match` blocks | user + OpenSSH | static read；只透過 plain `ssh -G` evaluate alias；絕不 rewrite |
+| `~/.ssh/config`、其中的 foreign Includes 與 foreign `Host`/`Match` blocks | user + OpenSSH | static read；透過 plain `ssh -G` evaluate；明確 format/organize 可整理選定的使用者檔案 |
 | root config 中的 `Include ~/.ssh/dev.d/*.conf` | dev，且必須明確執行 `ssh init --apply` | 在第一個 `Host`、`Match` 或更早的 Include 前安裝一次；絕不自動移除 |
 | `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | 只 create、reconcile 或 remove canonical v1 file，其內容是 allowlisted single `Host` block |
 | local key files | user + native `ssh-keygen` | 驗證 explicit key、經確認後 derive 缺少的 `.pub`，或以 no-replace 方式產生 Ed25519 pair；絕不複製 private bytes |
@@ -225,3 +225,84 @@ Server policy 若超出 verified POSIX/Windows installer contract，dev 會回�
 - [`internal/sshhost`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/sshhost)
 - [`internal/fleet/managed.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/managed.go)
 - [`internal/help/topics/ssh.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/ssh.md)
+
+## 主機管理與設定整理
+
+在終端執行 `dev ssh` 會開啟選單；管線仍顯示 help。設定整理預設只做
+formatting，群組重整必須另外選擇。
+
+```bash
+dev ssh manage                          # 聯合清單與多選 wizard
+dev ssh manage --json                   # 本機 inventory，不做 SSH 登入
+dev ssh manage --action register --alias lab --alias build --to both --target-os posix
+dev ssh manage --action register --alias lab --to herdr --herdr-session agents --apply --yes
+dev ssh manage --action rename --fleet-host lab --name workstation --apply
+dev ssh manage --action disable --herdr-profile <profile-id> --apply
+dev ssh manage --action remove --fleet-host lab --fleet-host build --apply
+
+dev ssh format                          # 預覽四格縮排
+dev ssh format --indent 2 --file ~/.ssh/config.d/work/lab.conf
+dev ssh format --apply                  # 確認並保存復原紀錄
+dev ssh organize                        # 多選完整 Host 區塊並指定群組
+dev ssh organize --group lab=work --group nas=personal --numbered --json
+dev ssh restore <receipt>               # 預覽還原；--apply 才套用
+```
+
+明確 action 與檔案操作預設只產生計畫，`--apply` 才執行；非互動套用須加
+`--yes`。wizard 先顯示所有勾選動作再確認。`manage --json` 輸出版本化聯合
+inventory，有 `--action` 時輸出計畫或結果。註冊計畫的 `fleet_registration`
+會列出要寫入的名稱、SSH alias 與 target OS。既有 `ssh list` JSON／TSV
+不變，也不執行 subprocess；`manage` 另外呼叫本機的
+`herdr machine list --json`，但列出及規劃都不做 SSH 登入或執行 Match exec。
+無法讀取的 provider 維持 unavailable，不當成可信的空清單。
+
+SSH alias、fleet profile 名稱及 Herdr label 分開保存。新項目預設使用 alias，
+既有自訂名稱保留；單一 alias 可指定 `--fleet-name`、`--herdr-label`。
+`Host a b` 仍是同一設定區塊的兩個可選入口，選其中一個不會移除另一個。
+不按 IP 合併 alias，因為不同入口可能選用不同 SSH 選項。Herdr 依精確 target
+加 session 比對，修改時使用原生 profile ID；註冊時不會順便啟用既有停用項目。
+
+Herdr 0.9.0 或相容的 machine CLI 是選用整合。原生 `machine add` 會準備遠端
+安裝、啟動指定 server 再儲存，開啟中的 client 隨後會自動連線；計畫會列出
+這些影響。原生安裝／server replacement 確認仍交由 Herdr，即使 dev 使用
+`--yes` 也不代答。非互動缺少必要確認會失敗，不假裝已新增 profile。
+remove／disable 只影響註冊及 client 連線，遠端 session 繼續運行。遠端
+server 必須符合 Herdr 的 Linux／macOS 支援範圍。fleet 仍負責 repo／task
+inventory，原有 remote-open 行為保持相容。
+
+已能登入的 alias 通過新的普通登入驗證即可加入 fleet，不必重新安裝 key。
+各 provider 動作分別記錄結果，失敗保留先前完成的動作；重跑先比對現況。
+fleet 改名／移除支援 canonical generated fragments 與主檔正常的
+`[[hosts]]` 表格，保留註解、子表及其他內容；同一來源的批次移除會合併成
+一筆檔案交易。無法安全定位的 inline hosts 需原生編輯。移除註冊不會刪除
+SSH 定義或遠端 repository。
+
+formatting 僅修改行首縮排，預設四格，可改 `2` 或 `tab`；選項值、引號、
+順序及換行格式保留。可選主檔或 `config.d` 中明確的使用者檔案；dev／其他
+provider 管理的片段仍由原 owner 處理。預覽遮蔽命令型及敏感內容。
+
+群組重整把完整 Host 區塊及相鄰前置註解搬到
+`~/.ssh/config.d/<group>/<host>.conf`，多 alias 留在同檔。主檔使用明列的
+Include 保持原始順序，即使 work／personal 交錯也不重新排序。預設不加檔名
+編號；`--numbered` 可加上原始序號方便閱讀。`--group alias=group` 或
+`--group @block-id=group` 指定區塊；未指定者保留既有群組或使用 `ungrouped`。
+之後可再次用 wizard 移動群組，不必手動開多個檔案複製貼上；未選編號時，
+單一區塊片段保留原檔名。
+
+首版處理主檔內 Host 區塊及直接引用的群組片段；其他 Include 保留位置。
+Match、動態／不完整 Include、重複引用的選定片段需手動整理，仍可先做
+formatting。不加入廣泛 wildcard 啟用原本休眠的檔案。若新的檔案或目錄已被既有
+Include glob 涵蓋，會拒絕搬移，避免入口切換前就生效；目的地碰撞也不覆蓋。
+
+計畫綁定原始內容及檔案身分，套用時使用合作式 owner lock 並重新驗證。
+先建立新片段、切換主檔，再移除退役來源。中斷時保留私有 receipt，位於
+Git 與 cache 外的 `$XDG_DATA_HOME/dev/ssh-recovery/`（未設定時使用 XDG
+預設）。`restore` 反向還原已驗證的完成步驟，若後來被修改或替換則拒絕覆蓋。
+若程序在記錄 after-state 前被強制終止，須使用保留的私有原始內容手動復原。
+可還原的 metadata 會保留；security attributes、不支援的 inode flags、
+不安全的連結或其他使用者可寫的祖先目錄需原生處理。新的本機寫入僅支援
+macOS／Linux backend；Herdr 原生 CLI 與一般 editor 不受 dev 合作式鎖控制。
+
+只有明確的 format／organize／manage 操作擴充使用者選定內容的修改範圍；
+一般 setup／remove 維持原本 ownership 規則。key vault 匯入與硬體 key
+provisioning 留待獨立後續工作，主機註冊不傳遞私鑰內容。

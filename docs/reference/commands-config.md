@@ -753,3 +753,12 @@ Skill JSON rows and MCP JSON envelopes may add `interop` and `interop_coverage`;
 ## Dashboard lifecycle additions
 
 New commands: `dev browse` / `dev repo browse [repo-or-path] --remote <name> --print`; `dev sweep --task <id>`; `dev tries delete <ref>` (`rm` alias) with `--dry-run`, `--json`, `--yes`, `--permanent`, `--confirm-delete <id>` and `--assume-no-runtime`; `dev tries restore <ref> --from <restored-path>`. [Behavior and confirmation rules](../guides/dashboard-actions.md).
+
+## Explicit SSH machine management
+
+`dev ssh manage` compares SSH aliases, fleet profiles and optional Herdr 0.9.0 saved
+machines. Existing names stay independent; registration, rename/remove and Herdr
+enable/disable are selected actions with a preview. `dev ssh format`, `organize`
+and `restore` provide optional guarded local edits and private recovery. Existing
+`ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
+[SSH host management](../guides/ssh-hosts.md#machine-management-and-configuration-organization).

@@ -29,11 +29,13 @@ var ErrCanceled = errors.New("picker canceled")
 type Request struct {
 	Prompt string
 	Items  []Item
+	Multi  bool
 }
 
 // Result contains the selected original item.
 type Result struct {
-	Item Item
+	Item  Item
+	Items []Item
 }
 
 // Selector owns the streams and optional external command for one application.
@@ -63,7 +65,7 @@ func (s *Selector) Select(ctx context.Context, request Request) (Result, error) 
 	if len(request.Items) == 0 {
 		return Result{}, nil
 	}
-	if len(s.command) == 0 {
+	if len(s.command) == 0 || request.Multi {
 		return s.selectBuiltin(ctx, request)
 	}
 	path, err := s.lookPath(s.command[0])

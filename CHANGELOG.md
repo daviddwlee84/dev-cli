@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Explicit SSH/fleet/Herdr machine management with a multi-select wizard, native
+  Herdr 0.9.0 profile actions, fresh-login fleet registration without key
+  reinstallation, and comment-preserving fleet profile rename/removal.
+- Four-space SSH formatting, optional Host-block/comment organization into group
+  directories with preserved Include order, and guarded private recovery receipts
+  through `dev ssh restore` on macOS/Linux.
+
+### Fixed
+
+- SSH discovery restores the parent Host/Match context after each included file,
+  matching OpenSSH instead of leaking child conditions into sibling Includes.
+
 ## [0.2.20] - 2026-09-09
 
 ### Added

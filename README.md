@@ -250,13 +250,26 @@ removal until it is changed with `dev fleet config edit`.
 
 | Data | Authority / owner | Durability |
 |---|---|---|
-| root SSH config and foreign Includes/`Host` blocks | user + OpenSSH | durable; read-only to dev except the exact managed Include |
+| root SSH config and foreign Includes/`Host` blocks | user + OpenSSH | durable; setup is read-only; explicit format/organize can edit selected user files |
 | `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | durable managed connection fragment |
 | private/public key pair | user + native `ssh-keygen` | durable; generated assets are retained, never removed by `ssh remove` |
-| primary `$XDG_CONFIG_HOME/dev/remotes.toml` | user via `dev fleet config init/edit` | durable, byte-for-byte user-authored |
+| primary `$XDG_CONFIG_HOME/dev/remotes.toml` | user via `dev fleet config init/edit` | durable; explicit manage rename/remove preserves unrelated bytes |
 | sibling `remotes.d/ssh-<alias>.toml` | `dev ssh setup/remove --fleet` | durable generated fleet registration |
 | remote paths/tasks/runtime | that remote machine's `dev` | host-local authority, never copied into controller config |
 | `$XDG_CACHE_HOME/dev/fleet/` | controller cache | disposable snapshot |
+
+`dev ssh manage` joins SSH aliases, fleet names and Herdr 0.9.0 saved machines
+in an explicit multi-select wizard. Already-working aliases can join fleet
+without reinstalling keys. Profiles keep their own display names; Herdr actions
+use native IDs and preserve remote sessions on remove/disable. Native add may
+prepare/start a remote server and retains its own installation approvals.
+
+`dev ssh format` previews four-space indentation; `dev ssh organize` optionally
+moves complete Host blocks and their comments into group directories, preserving
+explicit Include order. Both require `--apply`, retain private recovery receipts,
+and support `dev ssh restore <receipt>`. New local edits use the macOS/Linux
+backend. Existing foreign Includes and dormant files are not automatically
+activated or migrated. `ssh list` remains static and its JSON/TSV stays compatible.
 
 See [SSH host onboarding](docs/guides/ssh-hosts.md) and
 [Remote repository fleet](docs/guides/remote-fleet.md) for full contracts.

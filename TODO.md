@@ -4,6 +4,12 @@ Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
 
 ## Active
 
+### P3 · L — SSH key provider helpers
+Evaluate an explicit handoff to the existing Bitwarden SSH agent/import helper,
+and separate YubiKey FIDO2, PIV and OpenPGP workflows. Keep private key material
+out of machine registration and configuration plans.
+See [SSH key provider research](backlog/ssh-key-provider-helpers.md).
+
 ### P3 · L — Dashboard-native task lifecycle forms
 Keep complete taskflow preview/input/approval/result forms in the inventory
 Dashboard. The current implementation suspends into shared CLI workflows.

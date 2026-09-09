@@ -41,6 +41,7 @@ func CreateNoClobber(ctx context.Context, root *os.Root, name string, data []byt
 type createNoClobberHooks struct {
 	removeStage func(*os.Root, string) error
 	syncRoot    func(*os.Root) error
+	prepare     func(*os.File) error
 }
 
 func createNoClobberWithHooks(ctx context.Context, root *os.Root, name string, data []byte, finalMode fs.FileMode, hooks createNoClobberHooks) (fs.FileInfo, error) {
@@ -58,7 +59,7 @@ func createNoClobberWithHooks(ctx context.Context, root *os.Root, name string, d
 	if syncDirectory == nil {
 		syncDirectory = syncRoot
 	}
-	stagedName, staged, err := stageRegular(ctx, root, data, finalMode)
+	stagedName, staged, err := stageRegular(ctx, root, data, finalMode, hooks.prepare)
 	if err != nil {
 		return nil, err
 	}
@@ -124,6 +125,12 @@ func CreatePrivateNoClobber(ctx context.Context, root *os.Root, name string, dat
 // fresh stable read/hash, and retain any rollback copy before invoking this
 // primitive. It never follows a symlink or reparse point.
 func AtomicReplace(ctx context.Context, root *os.Root, name string, observed fs.FileInfo, data []byte, finalMode fs.FileMode) (fs.FileInfo, error) {
+	return AtomicReplacePrepared(ctx, root, name, observed, data, finalMode, nil)
+}
+
+// AtomicReplacePrepared restores caller-validated metadata on the private stage
+// before syncing and publishing it. prepare must not close or rename the file.
+func AtomicReplacePrepared(ctx context.Context, root *os.Root, name string, observed fs.FileInfo, data []byte, finalMode fs.FileMode, prepare func(*os.File) error) (fs.FileInfo, error) {
 	if root == nil {
 		return nil, errors.New("atomic replace: nil root")
 	}
@@ -136,7 +143,7 @@ func AtomicReplace(ctx context.Context, root *os.Root, name string, observed fs.
 	if err := verifyReplaceTarget(root, name, observed); err != nil {
 		return nil, err
 	}
-	stagedName, staged, err := stageRegular(ctx, root, data, finalMode)
+	stagedName, staged, err := stageRegular(ctx, root, data, finalMode, prepare)
 	if err != nil {
 		return nil, err
 	}
@@ -184,7 +191,7 @@ func verifyReplaceTarget(root *os.Root, name string, observed fs.FileInfo) error
 	return nil
 }
 
-func stageRegular(ctx context.Context, root *os.Root, data []byte, finalMode fs.FileMode) (string, fs.FileInfo, error) {
+func stageRegular(ctx context.Context, root *os.Root, data []byte, finalMode fs.FileMode, prepare func(*os.File) error) (string, fs.FileInfo, error) {
 	if finalMode&^fs.ModePerm != 0 {
 		return "", nil, fmt.Errorf("unsupported final file mode %s", finalMode)
 	}
@@ -214,11 +221,16 @@ func stageRegular(ctx context.Context, root *os.Root, data []byte, finalMode fs.
 			_ = root.Remove(name)
 		}
 	}()
-	if err := writeAllContext(ctx, writer, data); err != nil {
-		return "", nil, err
-	}
 	if err := writer.Chmod(finalMode.Perm()); err != nil {
 		return "", nil, fmt.Errorf("set staged file mode: %w", err)
+	}
+	if prepare != nil {
+		if err := prepare(writer); err != nil {
+			return "", nil, fmt.Errorf("prepare staged metadata: %w", err)
+		}
+	}
+	if err := writeAllContext(ctx, writer, data); err != nil {
+		return "", nil, err
 	}
 	if err := writer.Sync(); err != nil {
 		return "", nil, fmt.Errorf("sync staged file: %w", err)
@@ -273,4 +285,10 @@ func randomStageName() (string, error) {
 		return "", fmt.Errorf("generate staging file name: %w", err)
 	}
 	return ".dev-safefile-" + hex.EncodeToString(random[:]) + ".tmp", nil
+}
+
+// CreateNoClobberPrepared is CreateNoClobber with metadata restoration before
+// publication. It retains the same absent-destination and held-root checks.
+func CreateNoClobberPrepared(ctx context.Context, root *os.Root, name string, data []byte, mode fs.FileMode, prepare func(*os.File) error) (fs.FileInfo, error) {
+	return createNoClobberWithHooks(ctx, root, name, data, mode, createNoClobberHooks{prepare: prepare})
 }

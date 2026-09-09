@@ -677,3 +677,11 @@ envelope 可新增 `interop`、`interop_coverage`；`receipts-only` 不代表原
 ## Dashboard 生命週期新增功能
 
 新增命令：`dev browse`／`dev repo browse [repo-or-path] --remote <name> --print`；`dev sweep --task <id>`；`dev tries delete <ref>`（alias `rm`）支援 `--dry-run`、`--json`、`--yes`、`--permanent`、`--confirm-delete <id>`、`--assume-no-runtime`；`dev tries restore <ref> --from <restored-path>`。[行為與確認規則](../guides/dashboard-actions.md)。
+
+## 明確的 SSH 主機管理
+
+`dev ssh manage` 比對 SSH alias、fleet profile 及選用的 Herdr 0.9.0 saved
+machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停用都先選擇再預覽。
+`dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
+既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
+[SSH 主機管理](../guides/ssh-hosts.md)。

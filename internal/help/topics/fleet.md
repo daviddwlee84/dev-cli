@@ -125,3 +125,12 @@ keeps file content and hashes out of public output/cache, writes owner-only
 files through held roots, and journals rollback before publication. It does not
 clone, switch branches, transfer tasks/catalog/notes, provision dependencies,
 delete source files, or evict a repository. Native Windows payloads are blocked.
+
+## Saved SSH machines
+
+`dev ssh manage` integrates Herdr 0.9.0's native machine CLI. It keeps SSH target,
+label, opaque profile ID and explicit session separate. Native add can prepare
+and start the remote server; native approvals remain required. Disabling or
+removing a profile leaves remote sessions running. This registration workflow
+does not replace fleet's host-local repo snapshots or change fleet open's runtime
+selection. See `dev help ssh` for plans and multi-select management.

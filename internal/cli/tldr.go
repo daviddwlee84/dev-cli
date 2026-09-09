@@ -97,7 +97,13 @@ var familyTLDR = map[string]string{
           +-- dev ssh list/show   +-- dev ssh probe
           +-- dev ssh remove      removes owned fragments, never keys
 
-  Listing is static. Setup and probe may run OpenSSH; --dry-run never does.`,
+  dev ssh manage       select fleet / Herdr registration and profile actions
+  dev ssh format       preview four-space indentation
+  dev ssh organize     opt into Host-block/comment groups, preserving order
+  dev ssh restore      preview recovery from a private receipt
+
+  Listing is static. Explicit management/file actions are plans until --apply.
+  Setup and probe may run OpenSSH; setup --dry-run never does.`,
 
 	"dev skill": `TL;DR: what the agents on this machine already know
 

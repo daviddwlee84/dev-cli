@@ -127,3 +127,12 @@ A worktree task scopes completion to its own checkout and eligible runtime. Pare
 ## Dashboard lifecycle additions
 
 Explicit Try disposal retains catalog identity while the host location becomes `evicted`. Trash and archive both retain bytes; neither is proof of backup or reclaimed space. Task DONE still means integrated work, with retirement separate. See [dashboard actions](../guides/dashboard-actions.md).
+
+## Explicit SSH machine management
+
+`dev ssh manage` compares SSH aliases, fleet profiles and optional Herdr 0.9.0 saved
+machines. Existing names stay independent; registration, rename/remove and Herdr
+enable/disable are selected actions with a preview. `dev ssh format`, `organize`
+and `restore` provide optional guarded local edits and private recovery. Existing
+`ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
+[SSH host management](../guides/ssh-hosts.md#machine-management-and-configuration-organization).

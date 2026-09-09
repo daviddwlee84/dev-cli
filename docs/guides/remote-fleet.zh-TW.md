@@ -283,3 +283,11 @@ Per-host states 是 `ok`、`stale`、`no-dev`、`unreachable`、`timeout`、`inc
 - [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
 - [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
 - [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)
+
+## 明確的 SSH 主機管理
+
+`dev ssh manage` 比對 SSH alias、fleet profile 及選用的 Herdr 0.9.0 saved
+machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停用都先選擇再預覽。
+`dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
+既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
+[SSH 主機管理](ssh-hosts.md)。

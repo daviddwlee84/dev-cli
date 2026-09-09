@@ -1544,11 +1544,25 @@ dev skill update <skill> [flags]
 
 ### `dev ssh`
 
-Discover, configure, and bootstrap OpenSSH host aliases
+Manage SSH hosts, fleet registrations, and Herdr machines
 
 ```
 dev ssh
 ```
+
+### `dev ssh format`
+
+Preview or apply SSH indentation changes with recovery
+
+```
+dev ssh format [flags]
+```
+
+- `--apply` — apply after reviewing the plan
+- `--file` — SSH root or user config.d file (repeatable; default: ~/.ssh/config)
+- `--indent` — indentation: 2, 4 or tab
+- `--json` — emit one versioned plan or result
+- `--yes` — confirm local file changes without prompting
 
 ### `dev ssh init`
 
@@ -1573,6 +1587,42 @@ dev ssh list [flags]
 - `--format` — machine format: tsv
 - `--json` — emit one versioned JSON object
 
+### `dev ssh manage`
+
+Compare SSH, fleet and Herdr machines and plan selected operations
+
+```
+dev ssh manage [flags]
+```
+
+- `--action` — register, probe, rename, remove, enable or disable
+- `--alias` — exact SSH alias (repeatable)
+- `--apply` — apply the displayed plan
+- `--fleet-host` — exact fleet profile name (repeatable)
+- `--fleet-name` — fleet name for one new alias (default: SSH alias)
+- `--herdr-label` — Herdr label for one new alias (default: SSH alias)
+- `--herdr-profile` — exact Herdr profile ID (repeatable)
+- `--herdr-session` — Herdr session for registration
+- `--json` — emit one versioned inventory, plan or result
+- `--name` — new display name for one selected record
+- `--target-os` — fleet target OS: posix or windows
+- `--to` — registration destination: fleet, herdr or both
+- `--yes` — confirm the dev plan; never answer native Herdr approvals
+
+### `dev ssh organize`
+
+Move complete Host blocks into group directories without reordering
+
+```
+dev ssh organize [flags]
+```
+
+- `--apply` — apply after reviewing the plan
+- `--group` — assign a complete block: alias=group or @block-id=group (repeatable)
+- `--json` — emit one versioned plan or result
+- `--numbered` — prefix fragment names with original ordinal numbers; Include order remains authoritative
+- `--yes` — confirm local file changes without prompting
+
 ### `dev ssh probe`
 
 Perform one fresh noninteractive ordinary SSH login
@@ -1595,6 +1645,18 @@ dev ssh remove <alias> [flags]
 - `--fleet` — remove the owned fleet fragment first
 - `--json` — emit one versioned JSON plan or result
 - `--yes` — confirm removals without prompting
+
+### `dev ssh restore`
+
+Preview or restore an unchanged local configuration transaction
+
+```
+dev ssh restore <receipt> [flags]
+```
+
+- `--apply` — apply after reviewing the plan
+- `--json` — emit one versioned plan or result
+- `--yes` — confirm local file changes without prompting
 
 ### `dev ssh setup`
 

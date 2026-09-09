@@ -155,3 +155,12 @@ only the exact dev caller returning to its original foreground shell. See
 `agent-retirement.md` for the full scope and cancellation rules.
 
 Dashboard start wizards offer open/stay, defaulting to open. Runtime and external retirement handoffs execute only after the dashboard exits. See [dashboard actions](dashboard-actions.md).
+
+## Saved SSH machines
+
+`dev ssh manage` integrates Herdr 0.9.0's native machine CLI. It keeps SSH target,
+label, opaque profile ID and explicit session separate. Native add can prepare
+and start the remote server; native approvals remain required. Disabling or
+removing a profile leaves remote sessions running. This registration workflow
+does not replace fleet's host-local repo snapshots or change fleet open's runtime
+selection. See `dev help ssh` for plans and multi-select management.

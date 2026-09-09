@@ -799,3 +799,15 @@ reuse the CLI workflows. `a` shows DONE records, not a completion toggle. REPOS
 `dev browse` / `dev repo browse [repo-or-path]` opens a repository homepage;
 `--print` is local URL-only output, and `--remote` selects an explicit remote.
 `dev repo context` remains the information report.
+
+### SSH machine management and organization
+
+Use `dev ssh manage` for the explicit SSH/fleet/Herdr multi-select workflow;
+`--json` inventories locally, and actions require `--apply`. Preserve separate
+SSH aliases, fleet names and Herdr labels/IDs/sessions. A native Herdr add can
+prepare/start a remote server; dev `--yes` never answers its native approvals.
+Use `dev ssh format` for the default four-space cleanup and opt into
+`dev ssh organize` for complete Host-block/comment moves into groups. Preserve
+Include order, review the redacted preview, and retain recovery receipts outside
+Git. `dev ssh restore <receipt>` previews a guarded undo. See
+[SSH hosts](references/ssh-hosts.md) for command and ownership details.

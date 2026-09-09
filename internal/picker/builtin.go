@@ -25,6 +25,8 @@ type builtinModel struct {
 	done     bool
 	canceled bool
 	selected Item
+	multi    bool
+	checked  map[int]bool
 }
 
 func newBuiltinModel(request Request) builtinModel {
@@ -37,10 +39,12 @@ func newBuiltinModel(request Request) builtinModel {
 		search[index] = strings.ToLower(item.Label + " " + item.Description)
 	}
 	model := builtinModel{
-		input:  input,
-		items:  items,
-		search: search,
-		rows:   defaultVisibleRows,
+		input:   input,
+		items:   items,
+		search:  search,
+		rows:    defaultVisibleRows,
+		multi:   request.Multi,
+		checked: map[int]bool{},
 	}
 	model.refilter()
 	return model
@@ -73,6 +77,11 @@ func (m builtinModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.input.Blur()
 			return m, tea.Quit
 		case tea.KeyEnter:
+			if m.multi {
+				m.done = true
+				m.input.Blur()
+				return m, tea.Quit
+			}
 			if len(m.visible) == 0 {
 				return m, nil
 			}
@@ -85,6 +94,11 @@ func (m builtinModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		case tea.KeyDown, tea.KeyCtrlN:
 			m.move(1)
+			return m, nil
+		}
+		if m.multi && msg.String() == " " && len(m.visible) > 0 {
+			index := m.visible[m.cursor]
+			m.checked[index] = !m.checked[index]
 			return m, nil
 		}
 	}
@@ -105,6 +119,9 @@ func (m builtinModel) View() string {
 	var out strings.Builder
 	out.WriteString(m.input.View())
 	out.WriteByte('\n')
+	if m.multi {
+		out.WriteString("Space: toggle · Enter: continue · Esc: cancel\n")
+	}
 	if len(m.visible) == 0 {
 		out.WriteString("  No matches\n")
 		return out.String()
@@ -124,6 +141,13 @@ func (m builtinModel) View() string {
 			label = "(unnamed)"
 		}
 		line := marker + label
+		if m.multi {
+			check := "[ ] "
+			if m.checked[m.visible[position]] {
+				check = "[x] "
+			}
+			line = marker + check + label
+		}
 		if description := cleanDisplay(item.Description); description != "" {
 			line += "  " + description
 		}
@@ -208,6 +232,15 @@ func (s *Selector) selectBuiltin(ctx context.Context, request Request) (Result, 
 	model, ok := final.(builtinModel)
 	if !ok {
 		return Result{}, fmt.Errorf("built-in picker returned an unexpected model")
+	}
+	if model.multi && !model.canceled {
+		result := Result{Items: []Item{}}
+		for index, item := range model.items {
+			if model.checked[index] {
+				result.Items = append(result.Items, item)
+			}
+		}
+		return result, nil
 	}
 	if model.canceled {
 		return Result{}, ErrCanceled

@@ -178,3 +178,24 @@ func TestPickerHelperProcess(t *testing.T) {
 		os.Exit(2)
 	}
 }
+
+func TestMultiPickerRetainsChecksAcrossFiltering(t *testing.T) {
+	m := newBuiltinModel(Request{Prompt: "Hosts", Multi: true, Items: []Item{{Value: "one", Label: "one"}, {Value: "two", Label: "two"}}})
+	model, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	m = model.(builtinModel)
+	if !m.checked[0] {
+		t.Fatal("space did not select")
+	}
+	m.input.SetValue("two")
+	m.refilter()
+	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	m = model.(builtinModel)
+	if !m.checked[0] || !m.checked[1] {
+		t.Fatal("filter lost selection")
+	}
+	model, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = model.(builtinModel)
+	if !m.done || m.canceled {
+		t.Fatal("enter did not accept")
+	}
+}

@@ -293,3 +293,12 @@ Per-host states are `ok`, `stale`, `no-dev`, `unreachable`, `timeout`, `incompat
 - [`internal/fleet/cache.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/fleet/cache.go)
 - [`internal/cli/ssh.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/ssh.go)
 - [`internal/help/topics/fleet.md`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/help/topics/fleet.md)
+
+## Explicit SSH machine management
+
+`dev ssh manage` compares SSH aliases, fleet profiles and optional Herdr 0.9.0 saved
+machines. Existing names stay independent; registration, rename/remove and Herdr
+enable/disable are selected actions with a preview. `dev ssh format`, `organize`
+and `restore` provide optional guarded local edits and private recovery. Existing
+`ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
+[SSH host management](ssh-hosts.md#machine-management-and-configuration-organization).

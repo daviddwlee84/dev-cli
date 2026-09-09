@@ -119,7 +119,7 @@ func TestDiscoverRelativeIncludesUseSSHDirectory(t *testing.T) {
 	}
 }
 
-func TestDiscoverCarriesGuardStateAcrossGlobMatches(t *testing.T) {
+func TestDiscoverRestoresGuardStateAcrossGlobMatches(t *testing.T) {
 	paths := fixturePaths(t)
 	writeFixture(t, paths.RootConfig, "Include parts/*.conf\n")
 	writeFixture(t, filepath.Join(paths.SSHDir, "parts", "01-guard.conf"), "Host prod-*\n")
@@ -133,8 +133,8 @@ func TestDiscoverCarriesGuardStateAcrossGlobMatches(t *testing.T) {
 	if _, ok := inventory.Find("prod-one"); !ok {
 		t.Fatal("guard-compatible alias from later glob match is missing")
 	}
-	if _, ok := inventory.Find("dev-one"); ok {
-		t.Fatal("later glob match lost guard state from the earlier file")
+	if _, ok := inventory.Find("dev-one"); !ok {
+		t.Fatal("later glob match inherited guard state from the earlier file")
 	}
 }
 
@@ -343,5 +343,26 @@ func TestDiscoverHonorsCancellation(t *testing.T) {
 	_, err := newFixtureService(t, paths, DiscoverOptions{}).Discover(ctx)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("Discover error = %v, want cancellation", err)
+	}
+}
+
+func TestDiscoverIncludeRestoresParentScope(t *testing.T) {
+	paths := fixturePaths(t)
+	writeFixture(t, paths.RootConfig, "Include first.conf\nInclude second.conf third.conf\nInclude glob/*.conf\n")
+	writeFixture(t, filepath.Join(paths.SSHDir, "first.conf"), "Host first\n")
+	writeFixture(t, filepath.Join(paths.SSHDir, "second.conf"), "Host second\n")
+	writeFixture(t, filepath.Join(paths.SSHDir, "third.conf"), "Host third\n")
+	writeFixture(t, filepath.Join(paths.SSHDir, "glob", "a.conf"), "Match user nobody\n")
+	writeFixture(t, filepath.Join(paths.SSHDir, "glob", "b.conf"), "Include nested.conf\n")
+	writeFixture(t, filepath.Join(paths.SSHDir, "nested.conf"), "Host nested\n")
+	inv, err := newFixtureService(t, paths, DiscoverOptions{}).Discover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"first", "second", "third", "nested"} {
+		alias, ok := inv.Find(name)
+		if !ok || len(alias.Definitions) != 1 || alias.Definitions[0].Reachability != Reachable {
+			t.Errorf("%s inherited an included file's condition: %#v", name, alias)
+		}
 	}
 }

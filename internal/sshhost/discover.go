@@ -339,15 +339,14 @@ func (s *scanner) scanFile(ctx context.Context, path string, depth int, provenan
 					})
 				}
 			}
-			// Include matches are scanned in OpenSSH's inline lexical order. The
-			// final Host/Match state from one included source is the initial state
-			// for the next source and for the line following Include.
+			// OpenSSH reads matches in lexical order, but restores the caller's
+			// active state after EACH included file. A child Host/Match must not
+			// condition a sibling Include or the following parent directives.
 			for _, argument := range arguments {
-				next, scanErr := s.scanInclude(ctx, argument, location, depth, provenance, includeConstraints, current)
+				_, scanErr := s.scanInclude(ctx, argument, location, depth, provenance, includeConstraints, current)
 				if scanErr != nil {
 					return current, scanErr
 				}
-				current = next
 			}
 		}
 	}
@@ -396,7 +395,6 @@ func (s *scanner) scanInclude(ctx context.Context, argument string, source Locat
 		matches = matches[:s.options.MaxGlobMatches]
 	}
 
-	flow := initial
 	for _, match := range matches {
 		clean, absErr := filepath.Abs(match)
 		if absErr != nil {
@@ -433,13 +431,12 @@ func (s *scanner) scanInclude(ctx context.Context, argument string, source Locat
 			Source: source, Argument: argument, Resolved: clean, Guards: cloneGuards(constraints),
 		}
 		childProvenance := append(cloneProvenance(provenance), frame)
-		next, scanErr := s.scanFile(ctx, clean, depth+1, childProvenance, constraints, flow)
+		_, scanErr := s.scanFile(ctx, clean, depth+1, childProvenance, constraints, initial)
 		if scanErr != nil {
-			return flow, scanErr
+			return initial, scanErr
 		}
-		flow = next
 	}
-	return flow, nil
+	return initial, nil
 }
 
 func (s *scanner) recordHost(patterns []string, source Location, provenance []IncludeFrame, constraints []Guard) {

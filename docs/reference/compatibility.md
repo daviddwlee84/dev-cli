@@ -352,3 +352,12 @@ Update the owning guide, both languages, this matrix, and [Sources and freshness
 ## Dashboard lifecycle additions
 
 Dashboard workflows reuse CLI/taskflow policy and defer terminal handoffs until exit. Try removal is explicit disposal, not verified backup-based eviction. Trash uses native macOS/Windows facilities or Linux GIO, fails without supported recycling, and never authorizes permanent fallback. Local Try JSON adds removal identity/method without removing existing fields. See [dashboard actions](../guides/dashboard-actions.md).
+
+## Explicit SSH machine management
+
+`dev ssh manage` compares SSH aliases, fleet profiles and optional Herdr 0.9.0 saved
+machines. Existing names stay independent; registration, rename/remove and Herdr
+enable/disable are selected actions with a preview. `dev ssh format`, `organize`
+and `restore` provide optional guarded local edits and private recovery. Existing
+`ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
+[SSH host management](../guides/ssh-hosts.md#machine-management-and-configuration-organization).
