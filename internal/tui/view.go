@@ -163,28 +163,53 @@ func (m Model) window(n int) (from, to int) {
 	return from, from + h
 }
 
+const (
+	taskRepoBreakpoint = 97
+	taskRepoWidth      = 16
+)
+
 func (m Model) renderTasks() string {
 	rows := m.visibleTasks()
 	if len(rows) == 0 {
 		return m.emptyTasks()
 	}
 	nameW, branchW, nextW := m.columnWidths()
+	showRepo := m.width >= taskRepoBreakpoint
+
+	headers := []string{
+		fitCell("TASK", nameW),
+		fitCell("STATE", 6),
+	}
+	if showRepo {
+		headers = append(headers, fitCell("REPO", taskRepoWidth))
+	}
+	headers = append(headers,
+		fitCell("BRANCH", branchW),
+		fitCell("GIT", 16),
+		fitCell("AGE", 5),
+		fitCell("NEXT", nextW),
+	)
 
 	var b strings.Builder
-	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-*s  %-6s  %-*s  %-16s  %-5s  %s",
-		nameW, "TASK", "STATE", branchW, "BRANCH", "GIT", "AGE", "NEXT")) + "\n")
+	b.WriteString(styleHeader.Render("  "+strings.Join(headers, "  ")) + "\n")
 
 	from, to := m.window(len(rows))
 	for i := from; i < to; i++ {
 		r := rows[i]
-		line := fmt.Sprintf("%-*s  %-6s  %-*s  %-16s  %-5s  %s",
-			nameW, pad(r.Task.Title(), nameW),
-			r.Task.State.Label(),
-			branchW, pad(r.Task.Branch, branchW),
-			pad(gitColumn(r), 16),
-			pad(shortAge(r), 5),
-			pad(nextColumn(r), nextW),
+		cells := []string{
+			fitCell(r.Task.Title(), nameW),
+			fitCell(r.Task.State.Label(), 6),
+		}
+		if showRepo {
+			cells = append(cells, fitCell(r.Task.Repo, taskRepoWidth))
+		}
+		cells = append(cells,
+			fitCell(r.Task.Branch, branchW),
+			fitCell(gitColumn(r), 16),
+			fitCell(shortAge(r), 5),
+			fitCell(nextColumn(r), nextW),
 		)
+		line := strings.Join(cells, "  ")
 		b.WriteString(m.renderLine(i, line, colourState(r.Task.State, line)))
 	}
 	b.WriteString(m.scrollNote(len(rows), from, to))
@@ -757,7 +782,10 @@ func (m Model) emptyTasks() string {
 }
 
 func (m Model) columnWidths() (name, branch, next int) {
-	const fixed = 2 + 6 + 16 + 5 + 10
+	fixed := 2 + 6 + 16 + 5 + 10
+	if m.width >= taskRepoBreakpoint {
+		fixed += taskRepoWidth + 2
+	}
 	avail := m.width - fixed
 	if avail < 40 {
 		avail = 40

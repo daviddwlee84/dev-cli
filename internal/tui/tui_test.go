@@ -227,6 +227,95 @@ func TestViewRendersTasksAndHelp(t *testing.T) {
 	}
 }
 
+func TestTasksTableResponsiveRepositoryColumn(t *testing.T) {
+	r := row("wide", "同步資料任務", task.Hot, "")
+	r.Task.Repo = "資料平台"
+
+	tests := []struct {
+		name      string
+		width     int
+		wantWidth int
+		wantRepo  bool
+	}{
+		{name: "below minimum", width: 78, wantWidth: 79},
+		{name: "minimum", width: 79, wantWidth: 79},
+		{name: "compact boundary", width: 96, wantWidth: 96},
+		{name: "repository boundary", width: 97, wantWidth: 97, wantRepo: true},
+		{name: "wide", width: 120, wantWidth: 120, wantRepo: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := tui.New(newActions(&recorder{}, []inventory.Row{r}), []inventory.Row{r}, nil)
+			m = send(m, tea.WindowSizeMsg{Width: tt.width, Height: 24})
+			lines := strings.Split(m.View(), "\n")
+			headerAt := -1
+			for i, line := range lines {
+				if strings.Contains(line, "TASK") && strings.Contains(line, "STATE") && strings.Contains(line, "BRANCH") {
+					headerAt = i
+					break
+				}
+			}
+			if headerAt < 0 || headerAt+1 >= len(lines) {
+				t.Fatalf("TASKS table not found:\n%s", m.View())
+			}
+			header, taskRow := lines[headerAt], lines[headerAt+1]
+			if got := lipgloss.Width(header); got != tt.wantWidth {
+				t.Errorf("header width = %d, want %d:\n%s", got, tt.wantWidth, header)
+			}
+			if got := lipgloss.Width(taskRow); got != tt.wantWidth {
+				t.Errorf("row width = %d, want %d:\n%s", got, tt.wantWidth, taskRow)
+			}
+			if got := strings.Contains(header, "REPO"); got != tt.wantRepo {
+				t.Errorf("REPO header present = %t, want %t:\n%s", got, tt.wantRepo, header)
+			}
+			if got := strings.Contains(taskRow, r.Task.Repo); got != tt.wantRepo {
+				t.Errorf("repository value present = %t, want %t:\n%s", got, tt.wantRepo, taskRow)
+			}
+			if !strings.Contains(taskRow, r.Task.Title()) {
+				t.Errorf("CJK task title missing:\n%s", taskRow)
+			}
+
+			columns := []string{"TASK", "STATE"}
+			if tt.wantRepo {
+				columns = append(columns, "REPO")
+			}
+			columns = append(columns, "BRANCH", "GIT", "AGE", "NEXT")
+			previous := -1
+			for _, column := range columns {
+				at := strings.Index(header, column)
+				if at <= previous {
+					t.Fatalf("column %s is missing or out of order:\n%s", column, header)
+				}
+				previous = at
+			}
+		})
+	}
+}
+
+func TestTaskRepoFilterPreservesDuplicateTitleSelection(t *testing.T) {
+	first := row("alpha", "shared title", task.Hot, "")
+	first.Task.Repo, first.Task.RepoPath = "alpha-repo", "/src/alpha-repo"
+	second := row("beta", "shared title", task.Hot, "")
+	second.Task.Repo, second.Task.RepoPath = "beta-repo", "/src/beta-repo"
+	rows := []inventory.Row{first, second}
+	rec := &recorder{}
+	m := tui.New(newActions(rec, rows), rows, nil)
+	m = send(m, tea.WindowSizeMsg{Width: 120, Height: 24}, key("/"))
+	for _, msg := range typeText("beta-repo") {
+		m = send(m, msg)
+	}
+	m = send(m, key("enter"))
+
+	out := m.View()
+	if !strings.Contains(out, "beta-repo") || strings.Contains(out, "alpha-repo") {
+		t.Fatalf("repository filter did not isolate the duplicate title:\n%s", out)
+	}
+	send(m, key("enter"))
+	if len(rec.opened) != 1 || rec.opened[0] != "beta" {
+		t.Fatalf("repository-filtered task opened %v, want beta", rec.opened)
+	}
+}
+
 func TestSkillsCheckWaitsForInitialLocalSnapshot(t *testing.T) {
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -1419,7 +1508,7 @@ func TestFilterNarrowsAsYouType(t *testing.T) {
 	}
 	m := tui.New(newActions(&recorder{}, rows), rows, nil)
 
-	m = send(m, key("/"))
+	m = send(m, tea.WindowSizeMsg{Width: 120, Height: 24}, key("/"))
 	for _, k := range typeText("token") {
 		m = send(m, k)
 	}
@@ -1441,7 +1530,7 @@ func TestFilterMatchesTermsOutOfOrder(t *testing.T) {
 	rows := []inventory.Row{row("a", "api token auth", task.Hot, "")}
 	m := tui.New(newActions(&recorder{}, rows), rows, nil)
 
-	m = send(m, key("/"))
+	m = send(m, tea.WindowSizeMsg{Width: 120, Height: 24}, key("/"))
 	for _, k := range typeText("auth api") {
 		m = send(m, k)
 	}
