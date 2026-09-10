@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.18] - 2026-09-07
+
 ### Added
 
 - `dev submodule add [source] [path]` (also `dev repo add-as-submodule`)
@@ -742,7 +744,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.17...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.18...HEAD
+[0.2.18]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.17...v0.2.18
 [0.2.17]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.16...v0.2.17
 [0.2.16]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.14...v0.2.15
