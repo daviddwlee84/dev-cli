@@ -2024,6 +2024,47 @@ provider and verified-payload contract.
 
 Provider source contracts: [update](https://github.com/vercel-labs/skills/blob/v1.5.25/src/update.ts), [restore](https://github.com/vercel-labs/skills/blob/v1.5.25/src/install.ts), [dependency sync](https://github.com/vercel-labs/skills/blob/v1.5.25/src/sync.ts).
 
+## Bundled dev-cli skill lifecycle
+
+The bundled `dev-cli` skill follows the installed binary separately from skills
+managed by the external `skills` provider:
+
+```bash
+dev skill install                 # install or explicitly replace bundled files
+dev skill install --check         # local content comparison; nonzero on drift/absence
+dev skill install --if-installed  # refresh only an existing installation
+dev skill uninstall --dry-run     # preview exact owned files and matching links
+dev skill uninstall              # confirm and remove those files and links
+```
+
+`dev doctor` and `dev upgrade --check` report whether the default installation
+matches the running binary, without changing it. After a successful `dev upgrade`,
+the **new executable** refreshes an already installed
+`~/.agents/skills/dev-cli`. Homebrew and Scoop use their stable installation paths;
+other `dev` copies on PATH are not selected. An absent skill stays absent. A
+normal upgrade also repairs an existing skill when the binary is already current.
+Skill refresh failure is reported separately after the binary update succeeds.
+
+Installation records content hashes in `.dev-cli-install.json`. Automatic refresh
+refuses recorded local edits, restores missing files, and removes unchanged
+obsolete files recorded by earlier installs. Explicit `skill install` replaces
+bundled files; unrelated files remain. It preserves existing foreign agent links
+and directories. Legacy installs without a manifest are recognized by their
+`dev-cli` frontmatter; their first refresh replaces known bundled files and records
+ownership. Preserve personal edits before that first migration.
+
+Uninstall previews and revalidates the recorded files plus agent symlinks still
+pointing to the exact installation. Modified managed files block removal;
+unrelated files and foreign links remain. It never recursively deletes the
+skills directory or changes native skills locks. `--yes` confirms the displayed
+removal for automation. Legacy installs need one explicit `skill install` before
+uninstall can verify ownership.
+
+Custom `--dir` installations require `skill install --dir PATH` to refresh and
+`skill uninstall --dir PATH` to remove. Direct package-manager upgrades and
+upgrades initiated by binaries older than v0.2.23 do not run the new refresh hook;
+run `dev skill install` once with the updated binary in those cases.
+
 ---
 
 ### SSH host onboarding
@@ -4935,7 +4976,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
-| agent skills | `skill list`, `skill manage`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
+| agent skills | `skill list`, `skill manage`, `skill add`, `skill update`, `skill install`, `skill uninstall`, `skill sync`, `skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
 | activity/data | `summary`, `journal`, `stats …`, `cache …` |
@@ -6997,7 +7038,9 @@ Install the skill into the agent skills directory
 dev skill install [flags]
 ```
 
+- `--check` — compare installed content with this binary without writing
 - `--dir` — install directory (default: ~/.agents/skills/dev-cli)
+- `--if-installed` — refresh only an existing install, preserving links and recorded local edits
 - `--no-link` — do not symlink into per-tool skill directories
 
 ### `dev skill list`
@@ -7157,6 +7200,18 @@ dev skill transfer undo <id> [flags]
 ```
 
 - `--json` — emit the sanitized plan
+
+### `dev skill uninstall`
+
+Remove dev's installed bundled skill and its matching agent links
+
+```
+dev skill uninstall [flags]
+```
+
+- `--dir` — installation directory (default: ~/.agents/skills/dev-cli)
+- `--dry-run` — show the removal preview without changing files
+- `-y, --yes` — confirm the displayed file and link removal
 
 ### `dev skill update`
 
@@ -8204,6 +8259,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - A release publishes platform archives and `SHA256SUMS` and takes its notes from `CHANGELOG.md`. Earlier releases published a GitHub release object and nothing else, so their assets are absent by construction.
 - A release publishes Windows `.zip` archives alongside the Unix `.tar.gz` set, refreshes an in-repo Scoop manifest attached to the release (and pushed to the bucket when a token is configured), and publishes the matching source formula to `daviddwlee84/homebrew-tap`. Homebrew publication is a required release step and fails visibly when its repository token is missing or rejected. A manual workflow can retry or backfill the formula for an existing stable release without creating or moving a tag.
 - `dev upgrade` downloads the current release for this platform, verifies it against the release `SHA256SUMS`, and replaces the running binary with an atomic rename (Windows moves the live `.exe` aside and sweeps it on the next run). It detects and runs Homebrew, Scoop or `go install` when one of them owns the file; Homebrew users receive releases through the automatically advanced tap instead of an in-place Cellar overwrite.
+- Since v0.2.23, `dev upgrade` refreshes an existing default bundled skill through the updated executable. `dev doctor` and `skill install --check` expose drift; `skill uninstall` removes only unchanged manifest-owned files and matching agent links. Legacy and direct package-manager upgrades need an explicit `skill install` once; custom directories remain explicit. See [skills management](https://daviddwlee84.github.io/dev-cli/guides/skills-management/#bundled-dev-cli-skill-lifecycle).
 - An interactive `dev` command prints one dim "newer release available" line at most once a day, read from the day-old release cache; it never blocks on the network. For the TUI, a stale-cache background refresh starts only after the initial view returns. `[update] check = false` or `DEV_NO_UPDATE_CHECK` disables it.
 
 ## Claude Code status matrix
@@ -8391,6 +8447,7 @@ tested_with: optional
 | declaration-only MCP inventory, Claude approval annotation, and secret-redaction boundary | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | current official agent config docs; `internal/agentmcp`, `internal/cli/mcp.go`, fixture/security tests | implemented for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; checked 2026-09-02 |
 | dashboard startup/readiness stages, generation handling, cache/live provenance, and private trace semantics | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/perftrace`, `internal/tui/{readiness,local}.go`, `internal/cli/tui*.go`, focused race tests | implemented |
 | quick-note storage, catalog identity, search, JSON, and TUI workflow | [TUI, repositories, quick notes, and bootstrap](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/) | `internal/note`, `internal/cli/note.go`, focused CLI/TUI tests | implemented |
+| Bundled skill drift, post-upgrade refresh and guarded uninstall | [Skills management](https://daviddwlee84.github.io/dev-cli/guides/skills-management/#bundled-dev-cli-skill-lifecycle) | `internal/skill`, CLI upgrade and isolated lifecycle tests | v0.2.23 |
 | release archives, package-manager ownership, and Homebrew tap publication | [Compatibility](https://daviddwlee84.github.io/dev-cli/reference/compatibility/) | `internal/cli/upgrade.go`, `.github/workflows/release.yml`, `scripts/update-homebrew-formula.sh`, packaging helper test | implemented |
 | current GitHub Flow has six branch/PR steps and no deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official, checked 2026-08-28 |
 | linked worktrees share repository data but own files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official, checked 2026-08-28 |
@@ -10585,6 +10642,42 @@ Transfer preparation 仍使用其獨立的 pinned provider 與 verified payload 
 
 
 Provider source contracts: [update](https://github.com/vercel-labs/skills/blob/v1.5.25/src/update.ts), [restore](https://github.com/vercel-labs/skills/blob/v1.5.25/src/install.ts), [dependency sync](https://github.com/vercel-labs/skills/blob/v1.5.25/src/sync.ts).
+
+## Bundled dev-cli skill 的生命週期
+
+內嵌的 `dev-cli` skill 跟隨 binary 更新，與外部 `skills` provider 管理的
+其他 skills 分開處理：
+
+```bash
+dev skill install                 # 安裝或明確覆寫內嵌檔案
+dev skill install --check         # 本機內容比較；不同或未安裝時回傳非零
+dev skill install --if-installed  # 只刷新已存在的安裝
+dev skill uninstall --dry-run     # 預覽確切的受管理檔案與相符連結
+dev skill uninstall              # 確認後移除這些檔案與連結
+```
+
+`dev doctor` 與 `dev upgrade --check` 會回報預設安裝是否符合目前 binary，
+不會更改內容。`dev upgrade` 成功後，由**新版執行檔**刷新已安裝的
+`~/.agents/skills/dev-cli`。Homebrew 與 Scoop 使用各自的穩定安裝路徑，
+不會選到 PATH 上其他 `dev`。未安裝 skill 時不會新增；binary 已是最新版時，
+一般的 upgrade 也會修復既有 skill。Binary 更新成功後若 skill 刷新失敗，
+會另外回報這個部分完成的結果。
+
+安裝時以 `.dev-cli-install.json` 記錄內容 hash。自動刷新會拒絕覆寫已記錄的
+本機修改、補回遺失檔案，並移除先前安裝記錄中未修改的過時檔案。明確執行
+`skill install` 會覆寫內嵌檔案，保留其他檔案與既有的外部 agent 連結／目錄。
+沒有 manifest 的舊安裝以 `dev-cli` frontmatter 辨識；第一次刷新會覆寫已知的
+內嵌檔案並記錄 ownership。若有個人修改，請先保存再進行第一次遷移。
+
+Uninstall 會預覽並重新驗證已記錄的檔案，以及仍指向該安裝的 agent symlink。
+已修改的受管理檔案會阻止移除，其他檔案與外部連結則保留。不會遞迴刪除 skills
+目錄，也不會修改原生 skills lock。自動化可用 `--yes` 確認顯示的移除範圍。
+舊安裝需要先明確執行一次 `skill install`，讓 uninstall 能驗證檔案 ownership。
+
+自訂 `--dir` 安裝需用 `skill install --dir PATH` 刷新、
+`skill uninstall --dir PATH` 移除。直接透過套件管理器升級，或由 v0.2.23
+以前的 binary 發起升級，都不會執行新的刷新 hook；這兩種情況請在更新後
+用新版執行檔執行一次 `dev skill install`。
 
 ---
 
@@ -13369,7 +13462,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
-| agent skills | `skill list`、`skill manage`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
+| agent skills | `skill list`、`skill manage`、`skill add`、`skill update`、`skill install`、`skill uninstall`、`skill sync`、`skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
 | activity/data | `summary`、`journal`、`stats …`、`cache …` |
@@ -15356,7 +15449,9 @@ Install the skill into the agent skills directory
 dev skill install [flags]
 ```
 
+- `--check` — compare installed content with this binary without writing
 - `--dir` — install directory (default: ~/.agents/skills/dev-cli)
+- `--if-installed` — refresh only an existing install, preserving links and recorded local edits
 - `--no-link` — do not symlink into per-tool skill directories
 
 ### `dev skill list`
@@ -15516,6 +15611,18 @@ dev skill transfer undo <id> [flags]
 ```
 
 - `--json` — emit the sanitized plan
+
+### `dev skill uninstall`
+
+Remove dev's installed bundled skill and its matching agent links
+
+```
+dev skill uninstall [flags]
+```
+
+- `--dir` — installation directory (default: ~/.agents/skills/dev-cli)
+- `--dry-run` — show the removal preview without changing files
+- `-y, --yes` — confirm the displayed file and link removal
 
 ### `dev skill update`
 
@@ -16503,6 +16610,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - Release 會發布各平台 archive 與 `SHA256SUMS`，並以 `CHANGELOG.md` 對應段落作為 release notes。先前的 release 只產生 GitHub release 物件，因此那些版本本來就沒有附加檔案。
 - Release 會在 Unix `.tar.gz` 之外一併發布 Windows `.zip`、更新附在 release 上的 in-repo Scoop manifest（設定 token 時也會 push 到 bucket），並把對應的 source formula 發布到 `daviddwlee84/homebrew-tap`。Homebrew 發布是必要的 release step；repository token 缺失或被拒絕時會明確讓 job 失敗。Manual workflow 可為既有 stable release retry 或 backfill formula，不會建立或移動 tag。
 - `dev upgrade` 會下載此平台目前的 release、以 release `SHA256SUMS` 驗證，再以 atomic rename 取代執行中的 binary（Windows 會把 live `.exe` 移到旁邊，下次執行時清除）。若 Homebrew、Scoop 或 `go install` 擁有該檔案，則偵測並執行對應指令；Homebrew 使用者透過自動推進的 tap 收到 release，不會就地覆寫 Cellar binary。
+- 自 v0.2.23 起，`dev upgrade` 會透過新版執行檔刷新已安裝的預設 bundled skill。`dev doctor` 與 `skill install --check` 會顯示差異；`skill uninstall` 只移除未修改的 manifest-owned 檔案與相符連結。舊版發起或直接透過套件管理器升級時，需明確執行一次 `skill install`；自訂目錄仍需明確指定。詳見 [skills management](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/#bundled-dev-cli-skill)。
 - Interactive `dev` command 每天最多印一行 dim 的「有新版」提示，來源是一天內的 release cache，永不因網路而 block。TUI 的 stale-cache background refresh 只會在 initial view return 後啟動。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK` 可停用。
 
 ## Claude Code status matrix
@@ -16686,6 +16794,7 @@ tested_with: optional
 | declaration-only MCP inventory、Claude approval annotation 與 secret-redaction boundary | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | 現行官方 agent config docs；`internal/agentmcp`、`internal/cli/mcp.go`、fixture/security tests | Claude Code、Codex、Cursor、Gemini CLI、OpenCode 已 implemented；2026-09-02 查核 |
 | Main dashboard 的 startup/readiness stages、generation handling、cache/live provenance 與 private trace semantics | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/perftrace`、`internal/tui/{readiness,local}.go`、`internal/cli/tui*.go`、focused race tests | implemented |
 | quick-note storage、catalog identity、search、JSON 與 TUI workflow | [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/) | `internal/note`、`internal/cli/note.go`、focused CLI/TUI tests | implemented |
+| Bundled skill 差異、升級後刷新與 guarded uninstall | [Skills management](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/#bundled-dev-cli-skill) | `internal/skill`、CLI upgrade 與隔離生命週期測試 | v0.2.23 |
 | release archives、package-manager ownership 與 Homebrew tap publication | [相容性](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/) | `internal/cli/upgrade.go`、`.github/workflows/release.yml`、`scripts/update-homebrew-formula.sh`、packaging helper test | implemented |
 | 現行 GitHub Flow 有六個 branch/PR steps 且沒有 deployment step | [GitHub Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/git/github-flow/) | [GitHub Docs](https://docs.github.com/en/get-started/using-github/github-flow) | official，2026-08-28 查核 |
 | linked worktree 共享 repository data，但有自己的 files/index/HEAD | [Worktree semantics](https://daviddwlee84.github.io/dev-cli/zh-TW/git/worktree-semantics-recovery/) | [`git-worktree`](https://git-scm.com/docs/git-worktree) | official，2026-08-28 查核 |

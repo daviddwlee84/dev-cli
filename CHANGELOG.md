@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Bundled skill content checks through `dev doctor`, `dev upgrade --check` and
+  `dev skill install --check`; successful upgrades refresh an existing default
+  installation using the new executable, including package-manager installs.
+- `dev skill uninstall` previews and confirms removal of recorded bundle files
+  and matching agent links, preserving unrelated files and rejecting local edits.
+  Installs record content ownership; automatic refresh restores missing files,
+  removes unchanged obsolete files and never installs an absent skill.
+
 ## [0.2.23] - 2026-09-11
 
 ### Added

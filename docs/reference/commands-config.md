@@ -35,7 +35,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
-| agent skills | `skill list`, `skill manage`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
+| agent skills | `skill list`, `skill manage`, `skill add`, `skill update`, `skill install`, `skill uninstall`, `skill sync`, `skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
 | activity/data | `summary`, `journal`, `stats …`, `cache …` |

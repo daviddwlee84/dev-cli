@@ -3,7 +3,7 @@ description: Manage project and global skills with scoped checks, reviewed updat
 authority: project
 status: evolving
 lang: zh-TW
-verified_on: 2026-09-09
+verified_on: 2026-09-10
 tested_with: skills 1.5.23 and 1.5.25 source contracts; isolated provider fixtures
 ---
 
@@ -62,3 +62,39 @@ Transfer preparation 仍使用其獨立的 pinned provider 與 verified payload 
 
 
 Provider source contracts: [update](https://github.com/vercel-labs/skills/blob/v1.5.25/src/update.ts), [restore](https://github.com/vercel-labs/skills/blob/v1.5.25/src/install.ts), [dependency sync](https://github.com/vercel-labs/skills/blob/v1.5.25/src/sync.ts).
+
+## Bundled dev-cli skill 的生命週期
+
+內嵌的 `dev-cli` skill 跟隨 binary 更新，與外部 `skills` provider 管理的
+其他 skills 分開處理：
+
+```bash
+dev skill install                 # 安裝或明確覆寫內嵌檔案
+dev skill install --check         # 本機內容比較；不同或未安裝時回傳非零
+dev skill install --if-installed  # 只刷新已存在的安裝
+dev skill uninstall --dry-run     # 預覽確切的受管理檔案與相符連結
+dev skill uninstall              # 確認後移除這些檔案與連結
+```
+
+`dev doctor` 與 `dev upgrade --check` 會回報預設安裝是否符合目前 binary，
+不會更改內容。`dev upgrade` 成功後，由**新版執行檔**刷新已安裝的
+`~/.agents/skills/dev-cli`。Homebrew 與 Scoop 使用各自的穩定安裝路徑，
+不會選到 PATH 上其他 `dev`。未安裝 skill 時不會新增；binary 已是最新版時，
+一般的 upgrade 也會修復既有 skill。Binary 更新成功後若 skill 刷新失敗，
+會另外回報這個部分完成的結果。
+
+安裝時以 `.dev-cli-install.json` 記錄內容 hash。自動刷新會拒絕覆寫已記錄的
+本機修改、補回遺失檔案，並移除先前安裝記錄中未修改的過時檔案。明確執行
+`skill install` 會覆寫內嵌檔案，保留其他檔案與既有的外部 agent 連結／目錄。
+沒有 manifest 的舊安裝以 `dev-cli` frontmatter 辨識；第一次刷新會覆寫已知的
+內嵌檔案並記錄 ownership。若有個人修改，請先保存再進行第一次遷移。
+
+Uninstall 會預覽並重新驗證已記錄的檔案，以及仍指向該安裝的 agent symlink。
+已修改的受管理檔案會阻止移除，其他檔案與外部連結則保留。不會遞迴刪除 skills
+目錄，也不會修改原生 skills lock。自動化可用 `--yes` 確認顯示的移除範圍。
+舊安裝需要先明確執行一次 `skill install`，讓 uninstall 能驗證檔案 ownership。
+
+自訂 `--dir` 安裝需用 `skill install --dir PATH` 刷新、
+`skill uninstall --dir PATH` 移除。直接透過套件管理器升級，或由 v0.2.23
+以前的 binary 發起升級，都不會執行新的刷新 hook；這兩種情況請在更新後
+用新版執行檔執行一次 `dev skill install`。

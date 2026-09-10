@@ -1399,7 +1399,9 @@ Install the skill into the agent skills directory
 dev skill install [flags]
 ```
 
+- `--check` — compare installed content with this binary without writing
 - `--dir` — install directory (default: ~/.agents/skills/dev-cli)
+- `--if-installed` — refresh only an existing install, preserving links and recorded local edits
 - `--no-link` — do not symlink into per-tool skill directories
 
 ### `dev skill list`
@@ -1559,6 +1561,18 @@ dev skill transfer undo <id> [flags]
 ```
 
 - `--json` — emit the sanitized plan
+
+### `dev skill uninstall`
+
+Remove dev's installed bundled skill and its matching agent links
+
+```
+dev skill uninstall [flags]
+```
+
+- `--dir` — installation directory (default: ~/.agents/skills/dev-cli)
+- `--dry-run` — show the removal preview without changing files
+- `-y, --yes` — confirm the displayed file and link removal
 
 ### `dev skill update`
 

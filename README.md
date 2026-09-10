@@ -1588,11 +1588,23 @@ dev skill transfer apply --plan <id> # apply the exact reviewed file/link change
 dev skill add                  # interactive wizard for daviddwlee84/agent-skills/skills
 dev skill update project-knowledge-harness --global --yes
 dev skill install              # → ~/.agents/skills/dev-cli, symlinked into ~/.claude/skills
+dev skill install --check      # compare the installed bundle with this binary
+dev skill uninstall --dry-run  # preview removal of dev-owned files and matching links
+dev skill uninstall            # confirm and remove the bundled skill
 dev mcp list --all --json      # sanitized static declarations; never health probes
 dev --skill                    # print it, for a dotfiles installer to sync
 dev skill sync                 # regenerate the command reference from the command tree
 dev skill sync --check         # fail if it has drifted — wire into CI
 ```
+
+After `dev upgrade`, the new executable refreshes the default bundled skill only
+if it is already installed. `dev doctor` reports content drift. Recorded local
+edits block automatic refresh and uninstall; unrelated skills, files and foreign
+links remain. Custom `--dir` installs need an explicit refresh with that directory.
+When upgrading directly through a package manager or from a binary older than
+v0.2.23, run `dev skill install` once after upgrading. Legacy installs need that
+first refresh to record ownership before uninstall. See the
+[skills lifecycle guide](docs/guides/skills-management.md#bundled-dev-cli-skill-lifecycle).
 
 `dev skill add [package]` is only a shortcut into the upstream interactive
 wizard. It never selects all skills or agents. Listing is native and never runs

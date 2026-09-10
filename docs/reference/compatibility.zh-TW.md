@@ -258,6 +258,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - Release 會發布各平台 archive 與 `SHA256SUMS`，並以 `CHANGELOG.md` 對應段落作為 release notes。先前的 release 只產生 GitHub release 物件，因此那些版本本來就沒有附加檔案。
 - Release 會在 Unix `.tar.gz` 之外一併發布 Windows `.zip`、更新附在 release 上的 in-repo Scoop manifest（設定 token 時也會 push 到 bucket），並把對應的 source formula 發布到 `daviddwlee84/homebrew-tap`。Homebrew 發布是必要的 release step；repository token 缺失或被拒絕時會明確讓 job 失敗。Manual workflow 可為既有 stable release retry 或 backfill formula，不會建立或移動 tag。
 - `dev upgrade` 會下載此平台目前的 release、以 release `SHA256SUMS` 驗證，再以 atomic rename 取代執行中的 binary（Windows 會把 live `.exe` 移到旁邊，下次執行時清除）。若 Homebrew、Scoop 或 `go install` 擁有該檔案，則偵測並執行對應指令；Homebrew 使用者透過自動推進的 tap 收到 release，不會就地覆寫 Cellar binary。
+- 自 v0.2.23 起，`dev upgrade` 會透過新版執行檔刷新已安裝的預設 bundled skill。`dev doctor` 與 `skill install --check` 會顯示差異；`skill uninstall` 只移除未修改的 manifest-owned 檔案與相符連結。舊版發起或直接透過套件管理器升級時，需明確執行一次 `skill install`；自訂目錄仍需明確指定。詳見 [skills management](../guides/skills-management.zh-TW.md#bundled-dev-cli-skill)。
 - Interactive `dev` command 每天最多印一行 dim 的「有新版」提示，來源是一天內的 release cache，永不因網路而 block。TUI 的 stale-cache background refresh 只會在 initial view return 後啟動。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK` 可停用。
 
 ## Claude Code status matrix

@@ -166,6 +166,7 @@ func runDoctor(app *App) error {
 	}
 	checks = append(checks, check{"agent skill inventory", checkOK,
 		"native local scan — " + agentskill.RegistrySource + " " + agentskill.RegistryVersion + " paths"})
+	checks = append(checks, bundledSkillDoctorCheck())
 	providerCWD, _ := os.Getwd()
 	if providerCWD != "" {
 		providerCWD = agentskill.ProjectRoot(ctx, providerCWD)

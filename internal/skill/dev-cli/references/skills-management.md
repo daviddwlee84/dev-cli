@@ -63,3 +63,44 @@ provider and verified-payload contract.
 
 
 Provider source contracts: [update](https://github.com/vercel-labs/skills/blob/v1.5.25/src/update.ts), [restore](https://github.com/vercel-labs/skills/blob/v1.5.25/src/install.ts), [dependency sync](https://github.com/vercel-labs/skills/blob/v1.5.25/src/sync.ts).
+
+## Bundled dev-cli skill lifecycle
+
+The bundled `dev-cli` skill follows the installed binary separately from skills
+managed by the external `skills` provider:
+
+```bash
+dev skill install                 # install or explicitly replace bundled files
+dev skill install --check         # local content comparison; nonzero on drift/absence
+dev skill install --if-installed  # refresh only an existing installation
+dev skill uninstall --dry-run     # preview exact owned files and matching links
+dev skill uninstall              # confirm and remove those files and links
+```
+
+`dev doctor` and `dev upgrade --check` report whether the default installation
+matches the running binary, without changing it. After a successful `dev upgrade`,
+the **new executable** refreshes an already installed
+`~/.agents/skills/dev-cli`. Homebrew and Scoop use their stable installation paths;
+other `dev` copies on PATH are not selected. An absent skill stays absent. A
+normal upgrade also repairs an existing skill when the binary is already current.
+Skill refresh failure is reported separately after the binary update succeeds.
+
+Installation records content hashes in `.dev-cli-install.json`. Automatic refresh
+refuses recorded local edits, restores missing files, and removes unchanged
+obsolete files recorded by earlier installs. Explicit `skill install` replaces
+bundled files; unrelated files remain. It preserves existing foreign agent links
+and directories. Legacy installs without a manifest are recognized by their
+`dev-cli` frontmatter; their first refresh replaces known bundled files and records
+ownership. Preserve personal edits before that first migration.
+
+Uninstall previews and revalidates the recorded files plus agent symlinks still
+pointing to the exact installation. Modified managed files block removal;
+unrelated files and foreign links remain. It never recursively deletes the
+skills directory or changes native skills locks. `--yes` confirms the displayed
+removal for automation. Legacy installs need one explicit `skill install` before
+uninstall can verify ownership.
+
+Custom `--dir` installations require `skill install --dir PATH` to refresh and
+`skill uninstall --dir PATH` to remove. Direct package-manager upgrades and
+upgrades initiated by binaries older than v0.2.23 do not run the new refresh hook;
+run `dev skill install` once with the updated binary in those cases.

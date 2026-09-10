@@ -20,6 +20,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/skill"
 	"github.com/spf13/cobra"
 )
 
@@ -196,7 +197,10 @@ dev asks GitHub for the latest release tag, compares it to this build, verifies
 the downloaded archive against the release's SHA256SUMS, and swaps the binary
 atomically. If a package manager owns the install (Homebrew, Scoop, or
 go install), dev runs that manager's upgrade command instead of touching the
-file itself.
+file itself. After a successful update, the new executable refreshes an already
+installed bundled skill at ~/.agents/skills/dev-cli. It does not install absent
+skills or change other global skills. Custom --dir installs require an explicit
+skill install with that directory. --check reports skill drift without writing.
 
   dev upgrade            # update through the detected owner after confirmation
   dev upgrade --check    # only report whether a newer release exists
@@ -227,6 +231,8 @@ func runUpgrade(app *App, checkOnly, force, assumeYes bool) error {
 
 	fmt.Fprintf(app.Out, "current: %s\n", versionSummary())
 	fmt.Fprintf(app.Out, "latest:  %s\n", latest)
+	installedSkill := bundledSkillDoctorCheck()
+	fmt.Fprintf(app.Out, "skill:   %s\n", installedSkill.detail)
 
 	upToDate := release == latest && ahead == 0
 	behind := semverLess(release, latest)
@@ -234,6 +240,11 @@ func runUpgrade(app *App, checkOnly, force, assumeYes bool) error {
 	switch {
 	case upToDate && !force:
 		fmt.Fprintln(app.Out, style.success("already on the latest release"))
+		if !checkOnly {
+			if _, err := skill.Refresh(skill.DefaultDir()); err != nil {
+				return fmt.Errorf("binary is current, but bundled skill refresh failed: %w", err)
+			}
+		}
 		return nil
 	case !behind && !force:
 		fmt.Fprintln(app.Out, style.dim("this build is not behind "+latest+"; pass --force to reinstall"))
@@ -257,7 +268,10 @@ func runUpgrade(app *App, checkOnly, force, assumeYes bool) error {
 				return errors.New("upgrade cancelled")
 			}
 		}
-		return runManagedUpgrade(ctxOf(), app, method)
+		if err := runManagedUpgrade(ctxOf(), app, method); err != nil {
+			return err
+		}
+		return refreshSkillAfterUpgrade(ctxOf(), app, install)
 	}
 
 	if !assumeYes {
@@ -280,7 +294,7 @@ func runUpgrade(app *App, checkOnly, force, assumeYes bool) error {
 	if goruntime.GOOS == "windows" {
 		fmt.Fprintln(app.Out, style.dim("the previous "+filepath.Base(self)+" is cleaned up on the next run"))
 	}
-	return nil
+	return refreshSkillAfterUpgrade(ctxOf(), app, install)
 }
 
 func runManagedUpgrade(ctx context.Context, app *App, method installMethod) error {

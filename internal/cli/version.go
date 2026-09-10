@@ -238,6 +238,9 @@ func latestRelease(ctx context.Context, refresh bool) (string, error) {
 // passiveCommandSkipsNudge names commands that must stay quiet: the ones that
 // report versions themselves, and machine-facing paths.
 func passiveCommandSkipsNudge(cmd *cobra.Command) bool {
+	if cmd.Parent() != nil && cmd.Parent().Name() == "skill" && (cmd.Name() == "install" || cmd.Name() == "uninstall") {
+		return true // Bundled skill lifecycle is strictly local, including --check.
+	}
 	if cmd.Name() == "forget" && cmd.Parent() != nil && cmd.Parent().Name() == "tries" {
 		return true
 	}

@@ -864,3 +864,12 @@ closing. REPOS shows dated cached presentation, then incremental local reads.
 Pending/cache rows do not grant action authority. `dev cache clear repos` and
 `dev cache clear skills` remove presentation and dated check caches respectively;
 `stats.db` and management receipts remain durable.
+
+`dev upgrade` refreshes an already installed default bundled skill using the new
+executable; it never installs an absent bundle. `dev doctor` and
+`dev skill install --check` compare local content. `dev skill uninstall` previews
+and confirms exact manifest-owned files and matching agent links; modified files
+block removal, and unrelated files/links remain. Legacy installs require one
+explicit `dev skill install` before uninstall. Custom `--dir` installs are manual.
+See [skills-management.md](references/skills-management.md) for migration and
+package-manager upgrade boundaries.

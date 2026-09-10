@@ -7,12 +7,16 @@
 package skill
 
 import (
+	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/daviddwlee84/dev-cli/internal/lockx"
 )
 
 //go:embed all:dev-cli
@@ -54,10 +58,12 @@ func Files() (map[string][]byte, error) {
 
 // InstallResult reports what an install changed.
 type InstallResult struct {
-	Dir     string
-	Written []string
-	Skipped []string
-	Links   []string
+	Dir       string
+	Written   []string
+	Skipped   []string
+	Links     []string
+	Removed   []string
+	Preserved []string
 }
 
 // DefaultDir is where the skill is installed: the shared agent skills
@@ -78,53 +84,134 @@ func LinkDirs() []string {
 // skill directories. Writes are content-compared first, so re-running is a
 // no-op and does not churn mtimes that other tools watch.
 func Install(dir string, link bool) (InstallResult, error) {
+	return install(dir, link, false)
+}
+
+// Refresh updates an existing install only. It never installs an absent skill or
+// adds agent links, and refuses locally modified files recorded by our manifest.
+func Refresh(dir string) (InstallResult, error) {
+	return install(dir, false, true)
+}
+
+func install(dir string, link, existingOnly bool) (InstallResult, error) {
+	dir, err := filepath.Abs(dir)
 	res := InstallResult{Dir: dir}
-	all, err := Files()
 	if err != nil {
 		return res, err
 	}
-	if len(all) == 0 {
-		return res, fmt.Errorf("no skill files are embedded in this build")
-	}
-
-	for rel, content := range all {
-		dst := filepath.Join(dir, rel)
-		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+	if existingOnly {
+		status, err := Check(dir)
+		if err != nil || !status.Installed {
 			return res, err
 		}
-		if existing, err := os.ReadFile(dst); err == nil && string(existing) == string(content) {
-			res.Skipped = append(res.Skipped, rel)
-			continue
-		}
-		if err := os.WriteFile(dst, content, 0o644); err != nil {
-			return res, fmt.Errorf("write %s: %w", dst, err)
-		}
-		res.Written = append(res.Written, rel)
 	}
-
-	if !link {
-		return res, nil
+	if info, err := os.Lstat(dir); err == nil && !info.IsDir() {
+		return res, fmt.Errorf("skill directory must be a real directory: %s", dir)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return res, err
 	}
-	for _, base := range LinkDirs() {
-		if _, err := os.Stat(base); err != nil {
-			continue // that tool is not installed here
-		}
-		target := filepath.Join(base, Name)
-		if existing, err := os.Readlink(target); err == nil {
-			if resolveLink(base, existing) == dir {
-				continue // already correct
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		return res, err
+	}
+	err = lockx.WithFile(context.Background(), filepath.Join(filepath.Dir(dir), "."+filepath.Base(dir)+".install.lock"), "bundled skill", func() error {
+		if existingOnly {
+			status, err := Check(dir)
+			if err != nil || !status.Installed {
+				return err
 			}
-			os.Remove(target)
-		} else if _, err := os.Stat(target); err == nil {
-			// A real directory, not our symlink: never clobber it.
-			continue
+			if len(status.Modified) > 0 {
+				return fmt.Errorf("installed skill has local changes (%s); preserve them before running dev skill install", strings.Join(status.Modified, ", "))
+			}
 		}
-		if err := os.Symlink(dir, target); err != nil {
-			return res, fmt.Errorf("link %s: %w", target, err)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return err
 		}
-		res.Links = append(res.Links, target)
-	}
-	return res, nil
+		root, err := openSkillRoot(dir)
+		if err != nil {
+			return err
+		}
+		defer root.Close()
+		previous, err := readManifest(root)
+		if err != nil {
+			return err
+		}
+		all, err := Files()
+		if err != nil {
+			return err
+		}
+		// Validate the complete destination set before writing any file.
+		for _, rel := range sortedPaths(all) {
+			if err := validateFilePath(root, rel); err != nil {
+				return err
+			}
+		}
+		if err := validateFilePath(root, manifestName); err != nil {
+			return err
+		}
+		if previous != nil {
+			for path := range previous.Files {
+				if err := validateFilePath(root, path); err != nil {
+					return err
+				}
+			}
+		}
+		for _, rel := range sortedPaths(all) {
+			content := all[rel]
+			if existing, err := root.ReadFile(rel); err == nil && string(existing) == string(content) {
+				res.Skipped = append(res.Skipped, rel)
+				continue
+			}
+			if err := writeSkillFile(root, rel, content); err != nil {
+				return err
+			}
+			res.Written = append(res.Written, rel)
+		}
+		if previous != nil {
+			for _, path := range sortedPaths(previous.Files) {
+				if _, retained := all[path]; retained {
+					continue
+				}
+				body, err := root.ReadFile(path)
+				if errors.Is(err, os.ErrNotExist) {
+					continue
+				}
+				if err != nil {
+					return err
+				}
+				if digest(body) != previous.Files[path] {
+					res.Preserved = append(res.Preserved, path)
+					continue
+				}
+				if err := root.Remove(path); err != nil {
+					return err
+				}
+				res.Removed = append(res.Removed, path)
+			}
+		}
+		if err := writeManifest(root, all); err != nil {
+			return err
+		}
+		if !link {
+			return nil
+		}
+		for _, base := range LinkDirs() {
+			if _, err := os.Stat(base); err != nil {
+				continue
+			}
+			target := filepath.Join(base, Name)
+			if _, err := os.Lstat(target); err == nil {
+				continue // Preserve existing links and directories, including foreign links.
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			if err := os.Symlink(dir, target); err != nil {
+				return fmt.Errorf("link %s: %w", target, err)
+			}
+			res.Links = append(res.Links, target)
+		}
+		return nil
+	})
+	return res, err
 }
 
 func resolveLink(base, link string) string {

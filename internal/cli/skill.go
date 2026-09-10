@@ -39,6 +39,7 @@ vendoring a copy.`,
 		newSkillUpdateCmd(app),
 		newSkillPrintCmd(app),
 		newSkillInstallCmd(app),
+		newSkillUninstallCmd(app),
 		newSkillSyncCmd(app),
 		newAgentTransferCmd(app, "skill"),
 	)
@@ -426,8 +427,10 @@ func newSkillPrintCmd(app *App) *cobra.Command {
 
 func newSkillInstallCmd(app *App) *cobra.Command {
 	var (
-		dir    string
-		noLink bool
+		dir          string
+		noLink       bool
+		checkOnly    bool
+		existingOnly bool
 	)
 	cmd := &cobra.Command{
 		Use:   "install",
@@ -436,14 +439,36 @@ func newSkillInstallCmd(app *App) *cobra.Command {
 per-tool skill directories that exist on this machine (~/.claude/skills).
 
 Re-running is a no-op when nothing changed, so this is safe to call from a
-dotfiles bootstrap on every apply.`,
+dotfiles bootstrap on every apply. Explicit installation replaces bundled files.
+--check compares installed content with this binary without writing or networking.
+--if-installed refreshes an existing install only, preserving agent links and
+refusing local edits recorded by the installation manifest. Legacy installations
+are recognized by their dev-cli frontmatter and enrolled on their first refresh.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			target := dir
 			if target == "" {
 				target = skill.DefaultDir()
 			}
-			res, err := skill.Install(config.Expand(target), !noLink)
+			target = config.Expand(target)
+			if checkOnly {
+				return checkBundledSkill(app, target)
+			}
+			var res skill.InstallResult
+			var err error
+			if existingOnly {
+				status, checkErr := skill.Check(target)
+				if checkErr != nil {
+					return checkErr
+				}
+				if !status.Installed {
+					fmt.Fprintln(app.Out, "bundled skill is not installed; nothing to refresh")
+					return nil
+				}
+				res, err = skill.Refresh(target)
+			} else {
+				res, err = skill.Install(target, !noLink)
+			}
 			if err != nil {
 				return err
 			}
@@ -459,12 +484,86 @@ dotfiles bootstrap on every apply.`,
 			for _, l := range res.Links {
 				fmt.Fprintf(app.Out, "   linked %s\n", config.Contract(l))
 			}
+			for _, path := range res.Removed {
+				fmt.Fprintf(app.Out, "   removed obsolete %s\n", path)
+			}
+			for _, path := range res.Preserved {
+				fmt.Fprintf(app.Out, "   preserved modified obsolete file %s\n", path)
+			}
 			return nil
 		},
 	}
 	f := cmd.Flags()
 	f.StringVar(&dir, "dir", "", "install directory (default: ~/.agents/skills/dev-cli)")
 	f.BoolVar(&noLink, "no-link", false, "do not symlink into per-tool skill directories")
+	f.BoolVar(&checkOnly, "check", false, "compare installed content with this binary without writing")
+	f.BoolVar(&existingOnly, "if-installed", false, "refresh only an existing install, preserving links and recorded local edits")
+	cmd.MarkFlagsMutuallyExclusive("check", "if-installed")
+	return cmd
+}
+
+func checkBundledSkill(app *App, dir string) error {
+	status, err := skill.Check(dir)
+	if err != nil {
+		return err
+	}
+	if !status.Installed {
+		return fmt.Errorf("bundled skill is not installed at %s", config.Contract(dir))
+	}
+	if !status.Current || len(status.Modified) > 0 {
+		return fmt.Errorf("bundled skill differs from this binary at %s; preserve local edits, then run dev skill install", config.Contract(dir))
+	}
+	fmt.Fprintf(app.Out, "bundled skill matches this binary at %s\n", config.Contract(dir))
+	return nil
+}
+
+func newSkillUninstallCmd(app *App) *cobra.Command {
+	var dir string
+	var yes, dryRun bool
+	cmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Remove dev's installed bundled skill and its matching agent links",
+		Long: `Preview and remove only the files recorded by dev skill install, plus agent
+symlinks that still point to that exact installation. Locally modified managed
+files block removal; unrelated files and foreign links are retained.
+Legacy installs need one explicit skill install before ownership can be checked.
+This command does not remove other global skills or change native skills locks.`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if dir == "" {
+				dir = skill.DefaultDir()
+			}
+			plan, err := skill.PlanUninstall(config.Expand(dir))
+			if err != nil {
+				return err
+			}
+			if len(plan.Files) == 0 {
+				fmt.Fprintln(app.Out, "bundled skill is not installed; nothing to remove")
+				return nil
+			}
+			fmt.Fprintf(app.Out, "remove bundled skill files from %s:\n", config.Contract(plan.Dir))
+			for _, path := range plan.Files {
+				fmt.Fprintf(app.Out, "   %s\n", path)
+			}
+			for _, path := range plan.Links {
+				fmt.Fprintf(app.Out, "   unlink %s\n", config.Contract(path))
+			}
+			if dryRun {
+				return nil
+			}
+			if !yes && !confirm(app, bufio.NewReader(app.In), "remove these bundled skill files and links") {
+				return fmt.Errorf("skill uninstall cancelled")
+			}
+			if err := skill.ApplyUninstall(plan); err != nil {
+				return err
+			}
+			fmt.Fprintln(app.Out, "bundled skill uninstalled; unrelated files retained")
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&dir, "dir", "", "installation directory (default: ~/.agents/skills/dev-cli)")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "confirm the displayed file and link removal")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show the removal preview without changing files")
 	return cmd
 }
 
