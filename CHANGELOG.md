@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.23] - 2026-09-11
+
+### Added
+
+- Calendar-year repository heatmaps with automatic full local Git backfill,
+  ref-bound checkpoints, scrolling and narrow-terminal week wrapping.
+- Searchable, scrollable Ctrl+O action menus and select-all/clear in wizard pickers.
+- Cached REPOS presentation followed by incremental local discovery/enrichment,
+  bounded parallel identity probes and shared per-cycle Git observations.
+- `dev skill manage` wizard for project/global and multi-repository checks and
+  reviewed updates, plus single-project native lock restore and dependency sync.
+  Dated skill checks are cached and management runs retain private result receipts.
+
+- Independent triage organizer with grouped repo/Try selection, mouse checkboxes,
+  visible-scope select-all/clear, explicit action previews and concise results.
+- Dashboard column-header sorting and numeric tab navigation, with compact footer
+  hints and task filters/tools in action menus.
+
+- REPOS/TRY scoped triage handoff with reuse of dashboard
+  metadata, and affected-only row/SIZE refresh after actions.
+- Reviewed Try Trash batches, selected-only enrollment for uncataloged Tries,
+  and `dev tries forget` for confirmed missing entries without durable references.
+
+- `dev triage` finds forgotten work across ordinary repos, Tries, every local
+  branch and registered checkout, with separate forgotten-work and quick-batch
+  views, read-only text/JSON reports, local-only intent and expiring snoozes.
+- Reviewed fetch, exact-branch push, fast-forward and task/worktree cleanup
+  batches, with fresh authority checks, per-clone ignored-directory policy,
+  branch-preserving removal and durable partial-result receipts.
+
+### Fixed
+
+- Dashboard Enter always opens its row; REPOS/TRY offer explicit triage scopes
+  without retained organizer selections.
+- Git synchronization failures retain redacted diagnostics and next steps;
+  returning to the dashboard preserves failed/partial batch summaries.
+
+- TRY dashboard reads no longer enroll directories or reconcile moves; missing
+  locations remain actionable, while unavailable observations fail closed.
+
 ## [0.2.22] - 2026-09-10
 
 ### Added
@@ -48,32 +88,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
-- Calendar-year repository heatmaps with automatic full local Git backfill,
-  ref-bound checkpoints, scrolling and narrow-terminal week wrapping.
-- Searchable, scrollable Ctrl+O action menus and select-all/clear in wizard pickers.
-- Cached REPOS presentation followed by incremental local discovery/enrichment,
-  bounded parallel identity probes and shared per-cycle Git observations.
-- `dev skill manage` wizard for project/global and multi-repository checks and
-  reviewed updates, plus single-project native lock restore and dependency sync.
-  Dated skill checks are cached and management runs retain private result receipts.
-
-- Independent triage organizer with grouped repo/Try selection, mouse checkboxes,
-  visible-scope select-all/clear, explicit action previews and concise results.
-- Dashboard column-header sorting and numeric tab navigation, with compact footer
-  hints and task filters/tools in action menus.
-
-- REPOS/TRY scoped triage handoff with reuse of dashboard
-  metadata, and affected-only row/SIZE refresh after actions.
-- Reviewed Try Trash batches, selected-only enrollment for uncataloged Tries,
-  and `dev tries forget` for confirmed missing entries without durable references.
-
-- `dev triage` finds forgotten work across ordinary repos, Tries, every local
-  branch and registered checkout, with separate forgotten-work and quick-batch
-  views, read-only text/JSON reports, local-only intent and expiring snoozes.
-- Reviewed fetch, exact-branch push, fast-forward and task/worktree cleanup
-  batches, with fresh authority checks, per-clone ignored-directory policy,
-  branch-preserving removal and durable partial-result receipts.
-
 - Explicit SSH/fleet/Herdr machine management with a multi-select wizard, native
   Herdr 0.9.0 profile actions, fresh-login fleet registration without key
   reinstallation, and comment-preserving fleet profile rename/removal.
@@ -82,14 +96,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   through `dev ssh restore` on macOS/Linux.
 
 ### Fixed
-
-- Dashboard Enter always opens its row; REPOS/TRY offer explicit triage scopes
-  without retained organizer selections.
-- Git synchronization failures retain redacted diagnostics and next steps;
-  returning to the dashboard preserves failed/partial batch summaries.
-
-- TRY dashboard reads no longer enroll directories or reconcile moves; missing
-  locations remain actionable, while unavailable observations fail closed.
 
 - SSH discovery restores the parent Host/Match context after each included file,
   matching OpenSSH instead of leaking child conditions into sibling Includes.
@@ -857,7 +863,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.22...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.23...HEAD
+[0.2.23]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.22...v0.2.23
 [0.2.22]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.21...v0.2.22
 [0.2.21]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.20...v0.2.21
 [0.2.20]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.19...v0.2.20
