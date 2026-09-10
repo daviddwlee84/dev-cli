@@ -46,6 +46,15 @@ func run(ctx context.Context, dir string, args ...string) (string, error) {
 // runEnv executes git with task-scoped environment overrides. It is used for
 // alternate-index analysis that must never touch the user's real index.
 func runEnv(ctx context.Context, dir string, overrides []string, args ...string) (string, error) {
+	if observations, ok := ctx.Value(observationKey{}).(*observations); ok && observations.slots != nil {
+		select {
+		case observations.slots <- struct{}{}:
+			defer func() { <-observations.slots }()
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+
 	// -c core.quotepath=false keeps non-ASCII paths readable rather than
 	// octal-escaped, which matters for the Chinese-named files in these repos.
 	full := append([]string{"-c", "core.quotepath=false"}, args...)

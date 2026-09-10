@@ -47,6 +47,9 @@ func formatSkillSummary(row agentskill.Skill) string {
 	lines = appendSummaryLine(lines, "source", row.Source)
 	lines = appendSummaryLine(lines, "source_url", row.SourceURL)
 	lines = appendSummaryLine(lines, "update", string(row.UpdateStatus))
+	if !row.UpdateCheckedAt.IsZero() {
+		lines = appendSummaryLine(lines, "update_checked_at", row.UpdateCheckedAt.Format("2006-01-02T15:04:05Z07:00"))
+	}
 	return strings.Join(lines, "\n")
 }
 

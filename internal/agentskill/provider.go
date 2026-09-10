@@ -99,10 +99,10 @@ func MutationProviderStatusFor(projectRoot string) MutationProvider {
 	if path, err := exec.LookPath("npx"); err == nil {
 		return MutationProvider{
 			Path:   path,
-			Detail: "npx found but not invoked from repository checkouts; install the `skills` executable for add/update",
+			Detail: "npx found but not invoked from repository checkouts; install it with `npm install -g skills`; listing/checking remain available",
 		}
 	}
-	return MutationProvider{Detail: "skills executable is not installed"}
+	return MutationProvider{Detail: "skills executable is not installed; run `npm install -g skills`"}
 }
 
 func skillsExecutableCandidates() []string {

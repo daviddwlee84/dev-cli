@@ -32,6 +32,14 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m.updateActionMenuMouse(event)
 	}
+	if m.mode == modeStats && verticalWheel {
+		delta := mouseWheelRows
+		if event.Button == tea.MouseButtonWheelUp {
+			delta = -delta
+		}
+		m.statsScroll = max(0, m.statsScroll+delta)
+		return m, nil
+	}
 	if m.noteMode() || m.overlay.kind != overlayNone || m.mode != modeList {
 		return m, nil
 	}

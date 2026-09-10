@@ -85,6 +85,12 @@ func (m *Model) prepareRepoDependentForReload(view View, enabled bool) {
 
 func (m *Model) beginViewLoad(view View, cause loadCause) uint64 {
 	if view == ViewRepos {
+		m.repoProgressPhase = 0
+		m.topologyRequested = nil
+		m.repos = append([]RepoRow(nil), m.repos...)
+		for i := range m.repos {
+			m.repos[i].Pending = "refreshing"
+		}
 		m.prepareRepoDependentsForReload()
 	}
 	index := int(view)

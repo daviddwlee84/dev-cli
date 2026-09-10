@@ -298,7 +298,7 @@ dev tries archive redis-streams               # reversible; does not delete
 dev graduate redis-streams --category Infra   # promote it into a real project
 
 dev stats --heatmap        # where the time actually went
-dev stats backfill --repo api  # seed one repo; TUI H then b does this in place
+dev stats backfill --repo api  # seed one repo; TUI H automatically loads full local history
 dev stats path             # durable XDG data, not cache
 dev summary                # current machine-wide agent context
 dev journal                # today's agent-ready development journal
@@ -534,8 +534,9 @@ Multiple local fetch URLs require selection; copying does not fetch.
 `[tui.repos]` chooses columns and default sort; `O` cycles sort and `R` reverses
 it.
 
-`H` opens the selected repo's heatmap. On an empty panel, `b` backfills only
-that repo and redraws; `r` rereads existing stats. Stats live in
+`H` opens calendar-year heatmaps, reads saved stats and automatically backfills
+all available local Git history. Unchanged refs reuse a checkpoint. `b` forces
+backfill, `r` refreshes, and arrows/wheel/Home/End scroll oldest-to-newest years. Stats live in
 `$XDG_DATA_HOME/dev/stats.db` and are durable observations, not cache — use
 `dev stats clear` with an explicit scope. `dev cache clear` only removes
 regenerable forge/size/gitignore/note-FTS data under `$XDG_CACHE_HOME/dev`.
@@ -846,3 +847,20 @@ Use `dev ssh format` for the default four-space cleanup and opt into
 Include order, review the redacted preview, and retain recovery receipts outside
 Git. `dev ssh restore <receipt>` previews a guarded undo. See
 [SSH hosts](references/ssh-hosts.md) for command and ownership details.
+
+
+## Scoped skills maintenance and dashboard loading
+
+`dev skill manage [--repo api | --all]` is the shared REPOS/SKILLS wizard for
+project/global checks, reviewed updates across selected repositories, and
+single-project native lock restore or node_modules sync. It uses the global
+`skills` dependency; missing providers never trigger npx or automatic installation.
+Keep lock-only rows visible. See `references/skills-management.md` for native
+semantics, local-drift checks and result receipts. Transfer preparation retains
+its separate pinned-provider contract.
+
+Ctrl+O menus use `/` to filter their current options; Escape clears before
+closing. REPOS shows dated cached presentation, then incremental local reads.
+Pending/cache rows do not grant action authority. `dev cache clear repos` and
+`dev cache clear skills` remove presentation and dated check caches respectively;
+`stats.db` and management receipts remain durable.

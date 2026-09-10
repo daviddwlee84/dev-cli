@@ -65,6 +65,11 @@ const (
 	listActionSortColumn
 	listActionSettings
 	listActionStatusDetails
+	listActionSkillManage
+	listActionSkillRepo
+	listActionSkillVisible
+	listActionSkillGlobal
+	listActionSkillFiltered
 )
 
 type selectionToken struct {
@@ -393,6 +398,14 @@ func (m Model) openActionMenu() Model {
 				overlay.addOption(listActionCopyCapabilityRaw, "copy raw primary skill file")
 			}
 		}
+		if m.actions.Workflow != nil {
+			overlay.addOption(listActionSkillManage, "manage selected skill…")
+			if row.Scope == agentskill.ScopeProject {
+				overlay.addOption(listActionSkillRepo, "manage this project's skills…")
+				overlay.addOption(listActionSkillVisible, "manage project + global skills…")
+			}
+			overlay.addOption(listActionSkillGlobal, "manage global skills…")
+		}
 		if m.actions.UpdateSkill != nil && agentskill.CanUpdate(row) {
 			overlay.addOption(listActionSkillUpdate, "update selected skill…")
 		}
@@ -421,6 +434,10 @@ func (m Model) openActionMenu() Model {
 			}
 			overlay.addOption(listActionTriage, label)
 			overlay.addOption(listActionTriageFiltered, "organize current filtered results…")
+			if m.view == ViewRepos {
+				overlay.addOption(listActionSkillRepo, "manage repository skills…")
+				overlay.addOption(listActionSkillFiltered, "manage skills across filtered repositories…")
+			}
 			overlay.addOption(listActionTriageAll, "organize all local work…")
 		}
 		switch m.view {
@@ -488,7 +505,7 @@ func (m Model) addNoteOptions(overlay *overlayState) {
 }
 
 func (m Model) addStatsOption(overlay *overlayState) {
-	if m.selectedRepoName() != "" && m.actions.LoadStats != nil {
+	if m.selectedRepoName() != "" && (m.actions.LoadStats != nil || m.actions.Stats.Read != nil) {
 		overlay.addOption(listActionStats, "open activity heatmap")
 	}
 }
@@ -517,6 +534,15 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
+	if item, ok := m.currentRepoItem(); ok && item.Repo.Pending != "" {
+		switch action {
+		case listActionSortMenu, listActionSettings, listActionStatusDetails:
+		default:
+			m.status = "Waiting for fresh repository observations…"
+			return m, nil
+		}
+	}
+
 	switch action {
 	case listActionSettings:
 		return m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
@@ -677,14 +703,24 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 	case listActionCopyCloneURL:
 		return m.copyCloneURL()
 	case listActionStats:
+		if m.actions.Stats.Read != nil {
+			if target, ok := m.selectedNoteTarget(); ok {
+				return m.startStatsHistory(target.Repo, false, true)
+			}
+		}
 		repo := m.selectedRepoName()
-		if repo != "" && m.actions.LoadStats != nil {
+		if repo != "" && (m.actions.LoadStats != nil || m.actions.Stats.Read != nil) {
 			m.mode, m.stats, m.status = modeStats, nil, "loading activity…"
 			return m, m.loadStats(repo)
 		}
 	case listActionRemoteClone:
 		return m.promptSelectedRemoteClone()
+	case listActionSkillManage, listActionSkillRepo, listActionSkillVisible, listActionSkillGlobal, listActionSkillFiltered:
+		return m.openSkillManagement(action, "")
 	case listActionSkillUpdate:
+		if m.actions.Workflow != nil {
+			return m.openSkillManagement(listActionSkillManage, "update")
+		}
 		return m.promptSelectedSkillUpdate()
 	case listActionOpenCapabilityFile:
 		return m.openSelectedCapabilityFile()

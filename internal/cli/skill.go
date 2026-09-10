@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/agentinterop"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
@@ -33,6 +34,7 @@ vendoring a copy.`,
 	}
 	cmd.AddCommand(
 		newSkillListCmd(app),
+		newSkillManageCmd(app),
 		newSkillAddCmd(app),
 		newSkillUpdateCmd(app),
 		newSkillPrintCmd(app),
@@ -151,6 +153,7 @@ type skillJSON struct {
 	SourceType      string                      `json:"source_type,omitempty"`
 	ManagedBy       string                      `json:"managed_by"`
 	UpdateStatus    string                      `json:"update_status"`
+	UpdateCheckedAt *time.Time                  `json:"update_checked_at,omitempty"`
 	UpdateDetail    string                      `json:"update_detail,omitempty"`
 	Repo            string                      `json:"repo,omitempty"`
 	RepoPath        string                      `json:"repo_path,omitempty"`
@@ -190,7 +193,7 @@ func renderSkillJSON(app *App, rows []agentskill.Skill) error {
 			Path: row.Path, Agents: row.Agents, Source: row.Source,
 			SourceURL: row.SourceURL, SourceType: row.SourceType,
 			ManagedBy: string(row.ManagedBy), UpdateStatus: string(row.UpdateStatus),
-			UpdateDetail: row.UpdateDetail, Repo: row.Repository, RepoPath: row.RepositoryPath,
+			UpdateDetail: row.UpdateDetail, UpdateCheckedAt: skillCheckedTime(row.UpdateCheckedAt), Repo: row.Repository, RepoPath: row.RepositoryPath,
 			Checkout: row.Checkout, Installations: installations, Presence: string(row.Presence),
 			Integrity: string(row.Integrity), IntegrityDetail: row.IntegrityDetail,
 			AgentIDs: row.Attribution.AgentIDs, RegistrySource: row.Attribution.Registry,
@@ -242,7 +245,7 @@ func renderSkillTable(app *App, rows []agentskill.Skill, targets []agenttarget.T
 		return nil
 	}
 	style := app.outStyle()
-	t := app.newTable("REPO", "SCOPE", "SKILL", "INSTALL", "UPDATE", "AGENTS", "SOURCE", "PATH")
+	t := app.newTable("REPO", "SCOPE", "SKILL", "INSTALL", "UPDATE", "CHECKED", "AGENTS", "SOURCE", "PATH")
 	for _, row := range rows {
 		path := "—"
 		if row.Path != "" {
@@ -250,7 +253,7 @@ func renderSkillTable(app *App, rows []agentskill.Skill, targets []agenttarget.T
 		}
 		t.Add(dash(row.Repository), style.dim(string(row.Scope)), row.Name,
 			style.updateState(skillInstallLabel(row)), style.updateState(shortUpdate(row.UpdateStatus)),
-			compactAgents(row.Agents), dash(row.Source), path)
+			checkedSkillAge(row.UpdateCheckedAt), compactAgents(row.Agents), dash(row.Source), path)
 	}
 	t.Render(app.Out)
 	return nil
@@ -543,4 +546,18 @@ func firstLine(s string) string {
 		return s[:i]
 	}
 	return s
+}
+
+func checkedSkillAge(at time.Time) string {
+	if at.IsZero() {
+		return "—"
+	}
+	return humanAge(time.Since(at))
+}
+
+func skillCheckedTime(at time.Time) *time.Time {
+	if at.IsZero() {
+		return nil
+	}
+	return &at
 }

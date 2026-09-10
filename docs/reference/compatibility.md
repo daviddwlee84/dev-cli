@@ -394,3 +394,13 @@ dashboard. Git synchronization diagnostics retain a category, exit code, bounded
 redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](../guides/local-triage.md).
+
+
+The skills management wizard uses the directly installed `skills` dependency
+(compatible 1.x from 1.5.23) and never falls back to npx. Native inventory and Go
+update checks do not need that provider. Experimental install re-resolves native
+sources/ref and may change the lock; it does not promise the old hash.
+Experimental sync reads existing node_modules for selected project agents.
+This is separate from transfer preparation's pinned-provider/verified-payload
+contract. REPOS caches supply presentation only; Git/runtime/task authority still
+requires fresh observations and operation-time validation.

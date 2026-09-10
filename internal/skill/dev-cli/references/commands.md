@@ -118,7 +118,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|notes|fleet|size|gitignore|licenses|all>
+dev cache clear <skills|repos|remote|notes|fleet|size|gitignore|licenses|all>
 ```
 
 ### `dev cache list`
@@ -1416,6 +1416,17 @@ dev skill list [flags]
 - `--json` — emit a stable machine-readable JSON array
 - `-p, --project` — list project skills
 - `-r, --repo` — scan one repository or explicit checkout path
+
+### `dev skill manage`
+
+Check, update or restore skills with a scoped wizard
+
+```
+dev skill manage [flags]
+```
+
+- `--all` — choose among configured repositories with skills-lock.json
+- `-r, --repo` — start with one repository or exact checkout
 
 ### `dev skill print`
 

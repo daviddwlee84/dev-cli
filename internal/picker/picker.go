@@ -27,9 +27,10 @@ var ErrCanceled = errors.New("picker canceled")
 
 // Request describes one selection interaction.
 type Request struct {
-	Prompt string
-	Items  []Item
-	Multi  bool
+	Prompt   string
+	Items    []Item
+	Multi    bool
+	Selected []string
 }
 
 // Result contains the selected original item.

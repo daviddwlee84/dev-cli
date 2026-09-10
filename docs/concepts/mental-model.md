@@ -162,3 +162,11 @@ dashboard. Git synchronization diagnostics retain a category, exit code, bounded
 redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](../guides/local-triage.md).
+
+
+REPOS presentation snapshots and dated skill-source comparisons are regenerable
+caches. Native skill locks and installed files remain owned by their existing
+management tools. Heatmap Git checkpoints live with activity in stats.db;
+clearing caches never clears activity. Cross-repository skills maintenance uses
+`dev skill manage`; cached evidence or an available update is not permission to
+change files automatically.

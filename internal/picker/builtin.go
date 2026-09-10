@@ -3,6 +3,7 @@ package picker
 import (
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -45,6 +46,13 @@ func newBuiltinModel(request Request) builtinModel {
 		rows:    defaultVisibleRows,
 		multi:   request.Multi,
 		checked: map[int]bool{},
+	}
+	for _, value := range request.Selected {
+		for i, item := range items {
+			if item.Value == value {
+				model.checked[i] = true
+			}
+		}
 	}
 	model.refilter()
 	return model
@@ -96,8 +104,20 @@ func (m builtinModel) Update(message tea.Msg) (tea.Model, tea.Cmd) {
 			m.move(1)
 			return m, nil
 		}
+		if m.multi && msg.Type == tea.KeyCtrlA {
+			m.checked = maps.Clone(m.checked)
+			all := len(m.visible) > 0
+			for _, index := range m.visible {
+				all = all && m.checked[index]
+			}
+			for _, index := range m.visible {
+				m.checked[index] = !all
+			}
+			return m, nil
+		}
 		if m.multi && msg.String() == " " && len(m.visible) > 0 {
 			index := m.visible[m.cursor]
+			m.checked = maps.Clone(m.checked)
 			m.checked[index] = !m.checked[index]
 			return m, nil
 		}
@@ -120,7 +140,7 @@ func (m builtinModel) View() string {
 	out.WriteString(m.input.View())
 	out.WriteByte('\n')
 	if m.multi {
-		out.WriteString("Space: toggle · Enter: continue · Esc: cancel\n")
+		out.WriteString("Space: toggle · Ctrl+A: all/none · Enter: continue · Esc: cancel\n")
 	}
 	if len(m.visible) == 0 {
 		out.WriteString("  No matches\n")
@@ -158,7 +178,7 @@ func (m builtinModel) View() string {
 }
 
 func (m *builtinModel) refilter() {
-	m.visible = m.visible[:0]
+	m.visible = nil
 	query := strings.ToLower(m.input.Value())
 	for index, haystack := range m.search {
 		if textmatch.TermsFolded(haystack, query) {

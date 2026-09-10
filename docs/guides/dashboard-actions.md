@@ -129,3 +129,10 @@ dashboard. Git synchronization diagnostics retain a category, exit code, bounded
 redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](local-triage.md).
+
+
+In Ctrl+O, `/` filters the current menu; arrows move and Enter continues. Escape
+clears search before closing. REPOS offers current/filtered repository skills,
+and SKILLS offers selected skill, project and global scopes. These launch the
+[dev skill manage](skills-management.md) wizard. Updates check and preview first;
+experimental restore/sync remain single-project actions.

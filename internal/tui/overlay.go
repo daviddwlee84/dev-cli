@@ -49,7 +49,9 @@ type overlayState struct {
 	repoTarget RepoRow
 	action     TryAction
 
-	options     [24]actionOption
+	searching   bool
+	search      textinput.Model
+	options     [48]actionOption
 	optionCount int
 	optionIndex int
 
@@ -155,11 +157,55 @@ func (m Model) focusOverlayField(index int) (Model, tea.Cmd) {
 	return m, m.overlay.fields[index].input.Focus()
 }
 
+func (m Model) visibleActions() []int {
+	var out []int
+	for i := 0; i < m.overlay.optionCount; i++ {
+		option := m.overlay.options[i]
+		haystack := strings.ToLower(option.label)
+		if option.action == listActionStats {
+			haystack += " stats heatmap activity"
+		}
+		match := true
+		for _, term := range strings.Fields(strings.ToLower(m.overlay.search.Value())) {
+			if !strings.Contains(haystack, term) {
+				match = false
+				break
+			}
+		}
+		if match {
+			out = append(out, i)
+		}
+	}
+	return out
+}
+
 func (m *Model) moveActionMenu(delta int) {
-	if m.overlay.optionCount == 0 {
+	visible := m.visibleActions()
+	if len(visible) == 0 {
 		return
 	}
-	m.overlay.optionIndex = (m.overlay.optionIndex + delta + m.overlay.optionCount) % m.overlay.optionCount
+	pos := 0
+	for i, index := range visible {
+		if index == m.overlay.optionIndex {
+			pos = i
+			break
+		}
+	}
+	m.overlay.optionIndex = visible[(pos+delta+len(visible))%len(visible)]
+}
+
+func (m Model) actionMenuWindow() ([]int, int, int) {
+	visible := m.visibleActions()
+	rows := max(1, m.height-m.buildActionMenuLayout().firstOptionY-3)
+	position := 0
+	for i, index := range visible {
+		if index == m.overlay.optionIndex {
+			position = i
+			break
+		}
+	}
+	from := max(0, position-rows+1)
+	return visible, from, min(len(visible), from+rows)
 }
 
 func (m Model) updateOverlay(message tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -183,18 +229,61 @@ func (m Model) updateOverlay(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case overlayActionMenu:
+		if !m.overlay.searching && message.Type == tea.KeyRunes && strings.HasPrefix(message.String(), "/") {
+			m.overlay.search = textinput.New()
+			m.overlay.search.Prompt = "/ "
+			m.overlay.search.CharLimit = 200
+			m.overlay.search.Width = max(10, m.width-5)
+			m.overlay.search.SetValue(strings.TrimPrefix(message.String(), "/"))
+			m.overlay.searching = true
+			if visible := m.visibleActions(); len(visible) > 0 {
+				m.overlay.optionIndex = visible[0]
+			}
+			return m, m.overlay.search.Focus()
+		}
+
+		if m.overlay.searching {
+			switch message.String() {
+			case "esc":
+				m.overlay.searching = false
+				m.overlay.search.SetValue("")
+				m.overlay.search.Blur()
+				return m, nil
+			case "up", "down", "enter":
+			default:
+				var cmd tea.Cmd
+				m.overlay.search, cmd = m.overlay.search.Update(message)
+				visible := m.visibleActions()
+				found := false
+				for _, i := range visible {
+					if i == m.overlay.optionIndex {
+						found = true
+					}
+				}
+				if !found && len(visible) > 0 {
+					m.overlay.optionIndex = visible[0]
+				}
+				return m, cmd
+			}
+		}
 		switch message.String() {
+		case "/":
+			m.overlay.search = textinput.New()
+			m.overlay.search.Prompt = "/ "
+			m.overlay.search.CharLimit = 200
+			m.overlay.search.Width = max(10, m.width-5)
+			m.overlay.searching = true
+			return m, m.overlay.search.Focus()
 		case "esc", "q":
 			m.overlay = overlayState{}
-			return m, nil
 		case "j", "down":
 			m.moveActionMenu(1)
-			return m, nil
 		case "k", "up":
 			m.moveActionMenu(-1)
-			return m, nil
 		case "enter":
-			return m.runOverlayAction()
+			if len(m.visibleActions()) > 0 {
+				return m.runOverlayAction()
+			}
 		}
 		return m, nil
 
@@ -281,22 +370,28 @@ type actionMenuLayout struct {
 
 func (m Model) buildActionMenuLayout() actionMenuLayout {
 	var builder strings.Builder
-	builder.WriteString("  " + m.overlay.subject + "\n")
+	builder.WriteString("  " + fitCell(m.overlay.subject, max(1, m.width-2)) + "\n")
 	first := 4 // title, blank, subject, blank
 	if m.overlay.detail != "" {
-		builder.WriteString("  " + m.overlay.detail + "\n")
+		builder.WriteString("  " + fitCell(m.overlay.detail, max(1, m.width-2)) + "\n")
 		first++
 	}
 	builder.WriteString("\n")
+	if m.overlay.searching {
+		builder.WriteString("  " + m.overlay.search.View() + "\n")
+		first++
+	}
 	return actionMenuLayout{heading: builder.String(), firstOptionY: first}
 }
 
 func (m Model) actionMenuOptionAt(x, y int) (int, bool) {
 	layout := m.buildActionMenuLayout()
-	index := y - layout.firstOptionY
-	if index < 0 || index >= m.overlay.optionCount {
+	visible, from, to := m.actionMenuWindow()
+	position := y - layout.firstOptionY + from
+	if position < from || position >= to {
 		return 0, false
 	}
+	index := visible[position]
 	if x < 0 || x >= 2+lipgloss.Width(m.overlay.options[index].label) {
 		return 0, false
 	}
@@ -319,7 +414,7 @@ func (m Model) renderOverlay() string {
 		builder.WriteString("    j/k, arrows move · ctrl+d/u page · g/G first/last · tab/h/l switch view\n")
 		builder.WriteString("    left click row/tab · wheel 3 rows · right click / ctrl+o row actions · click never opens\n")
 		builder.WriteString("    / filter · 0 clear · r reload · esc close/clear/quit · q quit\n\n")
-		builder.WriteString("  REPOS/TRY selection: x toggle · ctrl+a select visible · enter triage selected · o open current · ctrl+o clear selection\n")
+		builder.WriteString("  1–7 switch views · Ctrl+O actions · / filter actions · Enter opens the current item\n")
 		builder.WriteString("  TASKS   enter open · n add note · N notes · p park · c next · ctrl+o state filter · a show done · space actions\n")
 		builder.WriteString("  REPOS   enter open · n new repo · a add note · N notes · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
 		builder.WriteString("  FLEET   enter Herdr/SSH open · e edit remotes.toml · r refresh · read-only Git overview\n")
@@ -332,16 +427,20 @@ func (m Model) renderOverlay() string {
 	case overlayActionMenu:
 		layout := m.buildActionMenuLayout()
 		builder.WriteString(layout.heading)
-		for index := 0; index < m.overlay.optionCount; index++ {
+		visible, from, to := m.actionMenuWindow()
+		for _, index := range visible[from:to] {
 			prefix := "  "
 			line := m.overlay.options[index].label
 			if index == m.overlay.optionIndex {
 				prefix = "▸ "
 				line = styleSelected.Render(line)
 			}
-			builder.WriteString(prefix + line + "\n")
+			builder.WriteString(prefix + fitCell(line, max(1, m.width-2)) + "\n")
 		}
-		builder.WriteString("\n  " + styleHelp.Render("j/k choose · enter continue · esc cancel"))
+		if len(visible) == 0 {
+			builder.WriteString("  No matching actions\n")
+		}
+		builder.WriteString("\n  " + fitCell(fmt.Sprintf("%d/%d · ", len(visible), m.overlay.optionCount)+styleHelp.Render("↑/↓ choose · / filter · Enter · Esc back"), max(1, m.width-2)))
 
 	case overlayRepoForm, overlayTryForm, overlayTryConfirm:
 		if m.overlay.target.Item.ID != "" {

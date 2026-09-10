@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
@@ -67,9 +68,19 @@ type updateGroupResult struct {
 // URL and ref pairs are fetched once, execution is bounded, installed files are
 // never written, and output row order is unchanged.
 func CheckUpdates(ctx context.Context, rows []Skill) []Skill {
-	return checkUpdatesWith(ctx, rows, updateCheckDeps{
+	checked := checkUpdatesWith(ctx, rows, updateCheckDeps{
 		clone: cloneSourceCheckout, check: checkOneResult, workers: defaultUpdateWorkers,
 	})
+	if ctx.Err() == nil {
+		now := time.Now().UTC()
+		for i := range checked {
+			if checked[i].Lock != nil && checked[i].ManagedBy == ManagedBySkills {
+				checked[i].UpdateCheckedAt = now
+			}
+		}
+		saveChecks(ctx, checked)
+	}
+	return checked
 }
 
 func checkUpdatesWith(ctx context.Context, rows []Skill, deps updateCheckDeps) []Skill {

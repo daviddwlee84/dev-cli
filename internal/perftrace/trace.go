@@ -32,6 +32,8 @@ const (
 	TUIRuntimeResolve       Name = "tui.runtime_resolve"
 	TUIRuntimeList          Name = "tui.runtime_list"
 	TUIProjectRootResolve   Name = "tui.project_root_resolve"
+	TUICacheReposRead       Name = "tui.cache.repos_read"
+	TUIReposDiscovery       Name = "tui.repos.discovery"
 	TUICacheRemoteRead      Name = "tui.cache.remote_read"
 	TUICacheFleetRead       Name = "tui.cache.fleet_read"
 	TUIProgramRunBegin      Name = "tui.program_run_begin"

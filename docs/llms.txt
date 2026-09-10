@@ -24,6 +24,7 @@
 - [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/): Initialize complete submodule workspaces, select task branches, and retire child repositories before their parent.
 - [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/): Coordinate several coding agents around change-stream ownership, explicit mutation boundaries, and replaceable runtimes.
 - [Agent configuration interoperability](https://daviddwlee84.github.io/dev-cli/guides/agent-interop/): Copy, move, mirror, and reconstruct selected agent configuration while keeping credentials and ownership separate.
+- [Skills management](https://daviddwlee84.github.io/dev-cli/guides/skills-management/): Manage project and global skills with scoped checks, reviewed updates, and native lock restoration.
 - [SSH host onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/): Discover OpenSSH aliases, manage only dev-owned host fragments, bootstrap public-key access, and explicitly register verified hosts in dev fleet.
 - [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/): Inventory repositories over POSIX or Windows SSH hosts using merged fleet configuration, pin remote identity, safely fast-forward branches, and explicitly transfer bounded ignored files.
 - [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/): Retire an integrated dev-cli worktree and runtime safely, from outside the workspace being removed.
@@ -77,6 +78,7 @@
 - [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/): 初始化完整的 submodule 工作區、選擇任務分支，並由內往外回收子 repository。
 - [平行 Agent 與 Runtime](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/): 以變更流 ownership、明確 mutation boundary 與可替換 runtime 協調多個 coding agents。
 - [Agent 設定互通](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-interop/): 複製、遷移、鏡像與重建選定的 agent 設定，同時分開處理憑證與所有權。
+- [Skills 管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/): Manage project and global skills with scoped checks, reviewed updates, and native lock restoration.
 - [SSH Host 設定與佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/): 探索 OpenSSH alias、只管理 dev-owned host fragment、佈建 public-key access，並將驗證成功的 host 明確登記到 dev fleet。
 - [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/): 透過 merged fleet configuration 盤點 POSIX 或 Windows SSH host、pin remote identity、安全 fast-forward branch，並明確傳送 bounded ignored files。
 - [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/): 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。

@@ -16,6 +16,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/note"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/stats"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	"github.com/daviddwlee84/dev-cli/internal/textmatch"
 )
@@ -34,14 +35,17 @@ type RepoActions struct {
 }
 
 type RepoRow struct {
-	ObservedAt  time.Time
-	Repo        repo.Repo
-	Status      gitx.Status
-	Topology    gitx.RecoveryTopology
-	TopologyErr error
-	SizeTarget  diskusage.Target
-	Usage       *diskusage.Usage
-	SizeError   error
+	TopologyPending bool
+	Pending         string
+	GitKnown        bool
+	ObservedAt      time.Time
+	Repo            repo.Repo
+	Status          gitx.Status
+	Topology        gitx.RecoveryTopology
+	TopologyErr     error
+	SizeTarget      diskusage.Target
+	Usage           *diskusage.Usage
+	SizeError       error
 	// Asset is catalog metadata joined without persisting an otherwise
 	// unobserved repository. A Try asset lets callers suppress or label it.
 	Asset *catalog.Entry
@@ -274,6 +278,7 @@ func (r RemoteRow) matches(query string) bool {
 
 // StatsPanel is the repo activity overlay opened by H.
 type StatsPanel struct {
+	Years      []stats.Year
 	Repo       string
 	Heatmap    string
 	Seconds    int

@@ -313,16 +313,16 @@ atomic replacement, and preserves the working copy when a conflict is detected.
 ## Heatmap and editors
 
 ```
-H   open the selected repository's one-year activity heatmap
-    b backfills only that repo; r rereads stats; H / esc returns
+H   open the selected repository's calendar-year activity heatmaps
+    automatic local-history backfill; b forces it; r refreshes; H / esc returns
 
 e   edit effective dev config on ordinary views; edit the selected capability file on SKILLS/MCP
 r   reparse config and reload local/remote data and tool bindings
 ```
 
-An empty heatmap is actionable: press `b` to derive only the selected repo's
-history into stats.db and automatically redraw. `r` does not manufacture data;
-it rereads what collectors/backfill have stored.
+Opening the heatmap reads saved stats, then automatically backfills all local Git history.
+Unchanged refs reuse a checkpoint. Years run oldest first; arrows/wheel, PgUp/PgDn
+and Home/End scroll. Git activity is a 20-minute estimate per non-merge commit.
 
 Returning from an ordinary-view `e` live-reloads dev config; returning from a
 SKILLS/MCP editor reloads only that capability inventory. Changes to scan roots, worktree
@@ -419,3 +419,15 @@ dashboard. Git synchronization diagnostics retain a category, exit code, bounded
 redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. Use `dev triage` to open the organizer.
+
+
+Ctrl+O menus: `/` filters the current menu; arrows move and Enter continues.
+Escape clears the query before closing. REPOS shows a dated cache first, then
+incremental local observations. Pending rows are display-only; operations wait
+for fresh observations. Clear it with `dev cache clear repos`.
+
+REPOS/SKILLS Ctrl+O opens `dev skill manage`: project/global selection, source
+checks, reviewed multi-repo updates, and single-repo lock restore/dependency sync.
+Wizard multi-selection supports Space and Ctrl+A. Global `skills` is an optional
+external dependency, never automatically replaced with npx. Use `dev help skills`
+for scope, verification and native-operation details.

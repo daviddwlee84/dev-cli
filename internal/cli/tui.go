@@ -32,7 +32,6 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
-	"github.com/daviddwlee84/dev-cli/internal/stats"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	flow "github.com/daviddwlee84/dev-cli/internal/taskflow"
 	"github.com/daviddwlee84/dev-cli/internal/tui"
@@ -80,10 +79,10 @@ Actions depend on the list:
   MCP     e open config · y copy · A context/all · r reload static declarations
 
   y       REPOS yy/yp/yb/ys/yw; SKILLS/MCP yp path · ys summary · yf raw file
-  H       selected repo heatmap; b backfills it when empty
+  H       calendar-year heatmaps; automatic local Git backfill
   e       edit the current view's config/file; returning reloads that source
   O / R   cycle / reverse REPOS or TRY sort
-  r       reload config + data     1 / 2 / 3  hot / warm / cold
+  r       reload config + data     1–7 switch views
   0       clear filters            a include history  ? help  q quit
 
 External tools are configured, not fixed — see [[tui.tools]] in the config,
@@ -393,6 +392,9 @@ func runTUI(app *App) error {
 
 	actions := tui.Actions{
 		Workflow: func(ctx context.Context, request tui.WorkflowRequest) (tui.Workflow, error) {
+			if request.Action == "skills-manage" {
+				return newTUIWorkflow(ctx, appState.Current(), request), nil
+			}
 			rt, err := runtimeResolver.Resolve(ctx)
 			if err != nil {
 				return nil, err
@@ -400,6 +402,9 @@ func runTUI(app *App) error {
 			active := *appState.Current()
 			active.runtimeInstance = rt
 			return newTUIWorkflow(ctx, &active, request), nil
+		},
+		LoadRepoTopology: func(ctx context.Context, r repo.Repo) (gitx.RecoveryTopology, error) {
+			return gitx.RecoveryTopologyOf(ctx, r.Path)
 		},
 		Reload:                reload,
 		ReloadRepos:           reloadRepos,
@@ -655,50 +660,13 @@ func runTUI(app *App) error {
 			return startDirectFromTUI(ctx, active, rt, r, name)
 		},
 
-		LoadStats: func(ctx context.Context, repoName string) (tui.StatsPanel, error) {
-			active := appState.Current()
-			store, err := stats.Open(stats.Path(active.Cfg.StateDir()))
-			if err != nil {
-				return tui.StatsPanel{}, err
-			}
-			defer store.Close()
-			until := time.Now()
-			since := until.AddDate(-1, 0, 0)
-			totals, err := store.DayTotals(stats.Query{
-				Since: since, Until: until, Repo: repoName, ExactRepo: true,
-			})
-			if err != nil {
-				return tui.StatsPanel{}, err
-			}
-			seconds, days := 0, 0
-			for _, value := range totals {
-				seconds += value
-				if value > 0 {
-					days++
-				}
-			}
-			return tui.StatsPanel{
-				Repo: repoName, Seconds: seconds, ActiveDays: days,
-				Since: since, Until: until,
-				Heatmap: stats.Heatmap(totals, stats.HeatmapOptions{
-					Since: since, Until: until, Legend: true, WeekdayLabels: true,
-				}),
-			}, nil
-		},
-
-		BackfillStats: func(ctx context.Context, repoName string) error {
-			active := appState.Current()
-			r, _, err := repo.Resolve(ctx, active.Cfg.DiscoveryRoots(), repoName)
-			if err != nil {
-				return err
-			}
-			store, err := stats.Open(stats.Path(active.Cfg.StateDir()))
-			if err != nil {
-				return err
-			}
-			defer store.Close()
-			_, err = stats.BackfillGit(ctx, store, []repo.Repo{r}, time.Now().AddDate(-1, 0, 0), "")
-			return err
+		Stats: tui.StatsActions{
+			Read: func(ctx context.Context, target repo.Repo) (tui.StatsPanel, error) {
+				return statsPanel(ctx, appState.Current(), target, false, false)
+			},
+			Refresh: func(ctx context.Context, target repo.Repo, force bool) (tui.StatsPanel, error) {
+				return statsPanel(ctx, appState.Current(), target, true, force)
+			},
 		},
 
 		EditConfig: func() (*exec.Cmd, error) {
@@ -1014,15 +982,17 @@ func applyTryAction(ctx context.Context, app *App, rt runtime.Runtime, request t
 // repoCollectOptions leaves an opt-in path for the future TRY view while the
 // ordinary repository inventory suppresses active and deprecated Tries.
 type repoCollectOptions struct {
-	IncludeTries bool
-	Sessions     []runtime.Session
-	SessionsErr  error
-	SessionsSet  bool
-	Tasks        []*task.Task
-	TasksSet     bool
-	Repos        []repo.Repo
-	ReposSet     bool
-	Limiter      *inventory.Limiter
+	OnRow         func(tui.RepoRow)
+	DeferTopology bool
+	IncludeTries  bool
+	Sessions      []runtime.Session
+	SessionsErr   error
+	SessionsSet   bool
+	Tasks         []*task.Task
+	TasksSet      bool
+	Repos         []repo.Repo
+	ReposSet      bool
+	Limiter       *inventory.Limiter
 }
 
 // collectRepos builds the default repository view: what exists, plus how much
@@ -1117,7 +1087,12 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 				}
 			}
 			if r.HasGit {
-				row.Topology, row.TopologyErr = gitx.RecoveryTopologyOf(ctx, r.Path)
+				if options.DeferTopology {
+					row.TopologyPending = true
+					row.TopologyErr = errors.New("recovery details not loaded")
+				} else {
+					row.Topology, row.TopologyErr = gitx.RecoveryTopologyOf(ctx, r.Path)
+				}
 			}
 			row.Tasks = append(row.Tasks, byRepo[r.Path]...)
 			if r.RealPath != "" && r.RealPath != r.Path {
@@ -1130,6 +1105,7 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 			row.Worktrees = row.Context.WorktreeCount
 			if main, ok := row.Context.Main(); ok {
 				row.Status = main.Status
+				row.GitKnown = main.StatusErr == nil
 			}
 			if !r.Bare {
 				row.RemoteForge, row.RemoteName = forge.IdentityFromURL(gitx.RemoteFromConfig(r.CommonDir, "origin"))
@@ -1147,6 +1123,9 @@ func collectReposWithOptions(ctx context.Context, app *App, rt runtime.Runtime, 
 				row.SizeTarget = diskusage.Plain(r.Path)
 			}
 			out[i] = row
+			if options.OnRow != nil {
+				options.OnRow(row)
+			}
 		}(i, r)
 	}
 	wg.Wait()

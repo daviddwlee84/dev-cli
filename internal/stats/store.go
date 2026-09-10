@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -88,6 +89,12 @@ CREATE TABLE IF NOT EXISTS activity (
 );
 CREATE INDEX IF NOT EXISTS activity_day  ON activity(day);
 CREATE INDEX IF NOT EXISTS activity_repo ON activity(repo);
+
+CREATE TABLE IF NOT EXISTS git_history (
+  identity TEXT PRIMARY KEY,
+  repo TEXT NOT NULL,
+  fingerprint TEXT NOT NULL
+);
 
 -- Records the last successful run of each collector, so a backfill can pick up
 -- where it left off instead of rescanning every repo's whole history.
@@ -371,6 +378,17 @@ func (s *Store) Clear(q ClearQuery) (int64, error) {
 	}
 	if q.Repo == "" && len(q.Sources) == 0 {
 		if _, err := s.db.Exec("DELETE FROM collector"); err != nil {
+			return 0, err
+		}
+	}
+	if len(q.Sources) == 0 || slices.Contains(q.Sources, SourceGit) {
+		sql := "DELETE FROM git_history"
+		var args []any
+		if q.Repo != "" {
+			sql += " WHERE repo = ?"
+			args = append(args, q.Repo)
+		}
+		if _, err := s.db.Exec(sql, args...); err != nil {
 			return 0, err
 		}
 	}

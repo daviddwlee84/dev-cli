@@ -1277,3 +1277,20 @@ func LinkedWorktreePaths(c RepoContext) string {
 	}
 	return strings.Join(paths, "\n")
 }
+
+// WithRuntime joins a completed runtime observation without repeating Git reads.
+func WithRuntime(input RepoContext, name string, sessions []runtime.Session, err error) RepoContext {
+	out := input
+	out.Runtime, out.RuntimeErr = name, err
+	out.RuntimeObservation = runtimeObservation(RepoContextOptions{Runtime: name, Sessions: sessions, RuntimeObserved: err == nil, RuntimeErr: err})
+	out.Checkouts = append([]RepoCheckout(nil), input.Checkouts...)
+	for i := range out.Checkouts {
+		out.Checkouts[i].Sessions = nil
+		out.Checkouts[i].RuntimeObservation = out.RuntimeObservation
+	}
+	if out.RuntimeObservation.Available() {
+		assignSessions(&out, sessions)
+	}
+	finishRepoContext(&out)
+	return out
+}

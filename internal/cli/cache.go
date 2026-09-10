@@ -70,6 +70,8 @@ type cacheItem struct{ name, path string }
 
 func cacheItems() []cacheItem {
 	return []cacheItem{
+		{"skills", filepath.Join(cacheRoot(), "skill-checks-v1.json")},
+		{"repos", filepath.Join(cacheRoot(), "repos-v1.json")},
 		{"remote", filepath.Join(cacheRoot(), "remotes.json")},
 		{"notes", filepath.Join(cacheRoot(), "notes.db")},
 		{"fleet", fleet.CacheRoot()},
@@ -81,10 +83,10 @@ func cacheItems() []cacheItem {
 
 func newCacheClearCmd(app *App) *cobra.Command {
 	return &cobra.Command{
-		Use:       "clear <remote|notes|fleet|size|gitignore|licenses|all>",
+		Use:       "clear <skills|repos|remote|notes|fleet|size|gitignore|licenses|all>",
 		Short:     "Remove a regenerable cache",
 		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"remote", "notes", "fleet", "size", "gitignore", "licenses", "all"},
+		ValidArgs: []string{"skills", "repos", "remote", "notes", "fleet", "size", "gitignore", "licenses", "all"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if name == "remotes" {
@@ -100,7 +102,7 @@ func newCacheClearCmd(app *App) *cobra.Command {
 				}
 			}
 			if len(targets) == 0 {
-				return fmt.Errorf("unknown cache %q: want remote, notes, fleet, size, gitignore, licenses or all", args[0])
+				return fmt.Errorf("unknown cache %q: want skills, repos, remote, notes, fleet, size, gitignore, licenses or all", args[0])
 			}
 			removed := 0
 			for _, item := range targets {

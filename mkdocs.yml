@@ -138,6 +138,7 @@ nav:
       - Submodule Workspaces: guides/submodule-workspaces.md
       - Parallel Agents and Runtimes: guides/parallel-agents-runtimes.md
       - Agent Configuration Interoperability: guides/agent-interop.md
+      - Skills Management: guides/skills-management.md
       - SSH Host Onboarding: guides/ssh-hosts.md
       - Remote Repository Fleet: guides/remote-fleet.md
       - Agent-Safe Retirement: guides/agent-safe-retirement.md

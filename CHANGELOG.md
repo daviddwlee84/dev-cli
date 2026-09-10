@@ -48,12 +48,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Calendar-year repository heatmaps with automatic full local Git backfill,
+  ref-bound checkpoints, scrolling and narrow-terminal week wrapping.
+- Searchable, scrollable Ctrl+O action menus and select-all/clear in wizard pickers.
+- Cached REPOS presentation followed by incremental local discovery/enrichment,
+  bounded parallel identity probes and shared per-cycle Git observations.
+- `dev skill manage` wizard for project/global and multi-repository checks and
+  reviewed updates, plus single-project native lock restore and dependency sync.
+  Dated skill checks are cached and management runs retain private result receipts.
+
 - Independent triage organizer with grouped repo/Try selection, mouse checkboxes,
   visible-scope select-all/clear, explicit action previews and concise results.
 - Dashboard column-header sorting and numeric tab navigation, with compact footer
   hints and task filters/tools in action menus.
 
-- REPOS/TRY multi-selection with scoped triage handoff, reuse of dashboard
+- REPOS/TRY scoped triage handoff with reuse of dashboard
   metadata, and affected-only row/SIZE refresh after actions.
 - Reviewed Try Trash batches, selected-only enrollment for uncataloged Tries,
   and `dev tries forget` for confirmed missing entries without durable references.

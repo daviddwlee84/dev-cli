@@ -886,7 +886,7 @@ repo sessions collapse to `herdr:N live`; expanding the repo reveals each
 checkout and whether its session is live or closed. External and turn-scoped
 agent worktrees remain visible with `(external)` / `(ephemeral)` labels, so the
 tree always reconciles with WT. `H` opens the selected repo's
-one-year activity heatmap and `e` edits config. Returning from the editor, or
+calendar-year activity heatmaps and `e` edits config. Returning from the editor, or
 pressing `r`, reparses config and reloads data/tool bindings without restarting
 the TUI; a runtime-backend change is reported as requiring restart.
 
@@ -1298,8 +1298,11 @@ dev stats path                              # durable SQLite location
 dev stats clear --repo api                  # guarded selective deletion
 ```
 
-In the TUI, select a repo and press `H`. If it has no data, `b` backfills only
-that repo and refreshes the panel; `r` merely rereads existing stats data.
+In the TUI, `H` displays stored activity immediately and automatically backfills
+all available local Git history for that repository. Unchanged refs reuse a
+checkpoint. Calendar years run oldest first; use the wheel, arrows, PgUp/PgDn or
+Home/End to scroll. `r` refreshes and `b` forces backfill. Git activity remains an
+estimate of 20 minutes per non-merge commit; no remote fetch runs.
 
 Stats are **data**, not cache: session samples and WakaTime imports may not be
 reconstructible. They live at `$XDG_DATA_HOME/dev/stats.db` and clearing them
@@ -1312,6 +1315,8 @@ dev cache path
 dev cache clear remote
 dev cache clear notes          # FTS only; Markdown remains
 dev cache clear fleet
+dev cache clear repos
+dev cache clear skills
 dev cache clear size
 dev cache clear gitignore
 dev cache clear licenses
@@ -1635,3 +1640,19 @@ skips backends not installed on the machine — so the suite is meaningful in CI
 
 The opt-in macOS desktop smoke test moves and restores only unique temporary
 folders: `DEV_TEST_NATIVE_TRASH=1 go test ./internal/desktop -run TestNativeTrashRoundTrip`.
+
+
+`Ctrl+O` action menus support `/` filtering, arrow navigation and Enter. Escape
+clears search before closing the menu. REPOS first shows dated cached rows,
+then streams local discovery and Git enrichment; pending rows cannot authorize
+actions. `dev cache clear repos` removes this disposable presentation cache.
+
+For skills maintenance, use `dev skill manage [--repo api | --all]` or the
+REPOS/SKILLS action menus. The wizard checks sources, selects project/global
+skills, previews updates and retains individual results. It requires a global
+`skills` executable only for mutations (`npm install -g skills`), with no npx
+fallback. Single-project advanced actions restore from `skills-lock.json` or sync
+from installed `node_modules`. Lock-only/gitignored skill trees remain visible.
+See [Skills management](docs/guides/skills-management.md) for exact scope and
+native restoration semantics. `dev skill install`/`sync` still manage the bundled
+skill. Check evidence is dated and invalidated by lock changes.

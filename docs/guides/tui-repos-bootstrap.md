@@ -365,3 +365,42 @@ dashboard. Git synchronization diagnostics retain a category, exit code, bounded
 redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](local-triage.md).
+
+
+## Progressive loading, searchable actions and yearly activity
+
+REPOS first reads a dated presentation cache, then publishes discovery and Git
+observations incrementally. A slow runtime does not hold back repository rows.
+Pending/cached rows grant no action authority. Only complete discovery removes
+missing rows; failures retain stale/unknown evidence. `r` remains local refresh;
+`dev cache clear repos` removes the snapshot. SIZE retains its separate cache.
+
+Ctrl+O menus and submenus support `/` filtering, arrows and Enter; Escape clears
+search before closing. `H` displays saved stats, then automatically backfills the
+selected repository's full local Git history. Unchanged refs reuse a checkpoint.
+Calendar years run oldest first, with wheel/arrows, PgUp/PgDn and Home/End
+scrolling; narrow screens split into week segments. `r` refreshes and `b` forces
+backfill without fetching. Git activity is still a 20-minute estimate per
+non-merge commit.
+
+The REPOS/SKILLS action menu opens the independent
+[Skills management wizard](skills-management.md) for scopes, selection, checks
+and reviewed mutations; it is not another dashboard tab.
+
+
+### Local loading measurement
+
+A 60-repository isolated fixture, three runs per case on macOS with Go 1.26.4,
+measured the following medians. These are trace acceptance times, not terminal
+rasterization; all live Git reads still finish in the background.
+
+| Case | First repository data | Complete local snapshot |
+|---|---:|---:|
+| Previous dashboard | 3,896 ms | 3,896 ms |
+| New, no presentation cache | 14 ms | 3,911 ms |
+| New, presentation cache | 15 ms | 2,819 ms |
+
+The first display no longer waits for a full scan. Full-scan duration remains
+sensitive to filesystem/process load; this change does not claim cached Git
+facts are current. Recovery details are loaded for the focused repository, and
+completed rows become available while other repositories are still loading.

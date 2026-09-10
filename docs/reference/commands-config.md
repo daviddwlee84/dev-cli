@@ -35,7 +35,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
-| agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
+| agent skills | `skill list`, `skill manage`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
 | activity/data | `summary`, `journal`, `stats …`, `cache …` |
@@ -794,3 +794,15 @@ dashboard. Git synchronization diagnostics retain a category, exit code, bounded
 redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](../guides/local-triage.md).
+
+
+### Skills maintenance and local presentation caches
+
+`dev skill manage [--repo <ref> | --all]` is an interactive wizard, without a
+non-interactive apply shortcut. Existing
+`skill update <skill> --project|--global --yes` remains compatible.
+`skill list --json` adds optional RFC3339 `update_checked_at`.
+`dev cache clear repos` clears repository presentation snapshots;
+`dev cache clear skills` clears dated source comparisons; `all` includes both.
+Neither removes `stats.db` or skills run receipts.
+See [Skills management](../guides/skills-management.md).

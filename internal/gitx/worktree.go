@@ -135,6 +135,10 @@ func sameCanonicalPath(left, right string) bool {
 // Worktrees lists every worktree of the repository containing dir, in git's
 // own order: the main checkout first, then linked worktrees.
 func Worktrees(ctx context.Context, dir string) ([]Worktree, error) {
+	rows, err := observe(ctx, "worktrees", dir, func() ([]Worktree, error) { return worktrees(ctx, dir) })
+	return append([]Worktree(nil), rows...), err
+}
+func worktrees(ctx context.Context, dir string) ([]Worktree, error) {
 	out, err := run(ctx, dir, "worktree", "list", "--porcelain")
 	if err != nil {
 		return nil, err

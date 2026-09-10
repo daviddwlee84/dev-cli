@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
@@ -58,6 +59,12 @@ func (r Repo) Display() string {
 
 // Options tunes discovery.
 type Options struct {
+	// Workers bounds Git identity probes; zero retains serial CLI behavior.
+	Workers int
+	// OnCandidate reports a filesystem candidate before Git identity is known.
+	// It must never be used as authority for a mutation.
+	OnCandidate func(Repo)
+
 	// OnError optionally reports skipped filesystem observations to auditing callers.
 	OnError func(string, error)
 
@@ -268,17 +275,7 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 					// repository because discovery never descends into one.
 					return filepath.SkipDir
 				}
-				if !bare && !opts.Fast {
-					if g, err := gitx.Discover(ctx, path); err == nil {
-						// A linked worktree is execution state, not another
-						// project in the repo inventory.
-						if g.IsLinkedWorktree {
-							return filepath.SkipDir
-						}
-						identity, gitDir, commonDir, mainRoot = g.GitCommonDir, g.GitDir, g.GitCommonDir, g.MainRoot
-						real = g.MainRoot
-					}
-				}
+
 				if !seen[path] && !identities[identity] {
 					seen[path], identities[identity] = true, true
 					out = append(out, Repo{
@@ -294,6 +291,13 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 						Bare:      bare,
 						HasGit:    true,
 					})
+				}
+				if opts.OnCandidate != nil && !gitEntryIsFile(path) {
+					category := filepath.ToSlash(filepath.Dir(rel))
+					if category == "." {
+						category = ""
+					}
+					opts.OnCandidate(Repo{Name: name, Path: path, RealPath: real, Root: rootClean, Category: category, HasGit: true, Bare: bare})
 				}
 				// Never descend into a repo: its subdirectories are source
 				// code, and any nested .git is a submodule or a worktree that
@@ -314,6 +318,49 @@ func Discover(ctx context.Context, roots []string, opts Options) ([]Repo, error)
 		if err != nil && ctx.Err() != nil {
 			return out, ctx.Err()
 		}
+	}
+
+	if !opts.Fast {
+		workers := min(max(1, opts.Workers), 8)
+		jobs := make(chan int)
+		linked := make([]bool, len(out))
+		var wg sync.WaitGroup
+		for n := 0; n < workers; n++ {
+			wg.Go(func() {
+				for i := range jobs {
+					r := &out[i]
+					if !r.HasGit || r.Bare {
+						continue
+					}
+					if g, err := gitx.Discover(ctx, r.Path); err == nil {
+						linked[i] = g.IsLinkedWorktree
+						r.GitDir, r.CommonDir, r.MainRoot, r.RealPath = g.GitDir, g.GitCommonDir, g.MainRoot, g.MainRoot
+					}
+				}
+			})
+		}
+		for i := range out {
+			jobs <- i
+		}
+		close(jobs)
+		wg.Wait()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		accepted := make([]Repo, 0, len(out))
+		ids := map[string]bool{}
+		for i, r := range out {
+			key := r.CommonDir
+			if key == "" {
+				key = r.Path
+			}
+			if linked[i] || ids[key] {
+				continue
+			}
+			ids[key] = true
+			accepted = append(accepted, r)
+		}
+		out = accepted
 	}
 
 	for i := range out {

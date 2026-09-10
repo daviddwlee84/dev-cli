@@ -65,3 +65,11 @@ hosts. `notes.db` contains full note bodies for search. Note files and the index
 use mode 0600 on Unix; Windows privacy follows the containing directory's ACL.
 The index is still disposable: `dev cache clear notes` followed by
 `dev note search ...` rebuilds it from Markdown.
+
+
+REPOS display snapshots (`repos-v1.json`) and dated skill-source comparisons
+(`skill-checks-v1.json`) are disposable: `dev cache clear repos|skills` clears
+one, and `all` includes both. Management receipts under `<state_dir>/skills/runs`
+are operation records. Heatmap backfill checkpoints live with durable stats;
+clearing Git stats resets the matching checkpoints, while cache clearing does
+not touch activity or receipts.

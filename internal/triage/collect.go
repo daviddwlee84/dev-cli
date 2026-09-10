@@ -378,7 +378,7 @@ func (s *Service) collectRepo(ctx context.Context, g gitx.Repo, tasks []*task.Ta
 	}
 	var top gitx.RecoveryTopology
 	var topErr error
-	if seed != nil {
+	if seed != nil && seed.TopologyErr == nil {
 		top, topErr = seed.Topology, seed.TopologyErr
 	} else {
 		top, topErr = gitx.RecoveryTopologyOf(ctx, base.RepositoryPath)

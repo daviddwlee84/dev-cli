@@ -4,6 +4,7 @@ import (
 	"context"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/task"
@@ -13,6 +14,10 @@ import (
 // WorkflowRequest pins the row selected before the terminal is suspended.
 // Policy and all prompts belong to the CLI's shared workflow runners.
 type WorkflowRequest struct {
+	SkillSelected   *agentskill.Skill
+	SkillScope      string
+	SkillAction     string
+	RepoRefs        []string
 	AllLocal        bool
 	ScopeLabel      string
 	Selection       []triage.Target
@@ -28,12 +33,13 @@ type WorkflowRequest struct {
 }
 
 type WorkflowResult struct {
-	Severity  string
-	Ledger    *triage.Ledger
-	Scoped    bool
-	Local     *TriageDelta
-	Status    string
-	AfterExit func() error
+	RefreshSkills bool
+	Severity      string
+	Ledger        *triage.Ledger
+	Scoped        bool
+	Local         *TriageDelta
+	Status        string
+	AfterExit     func() error
 }
 
 type Workflow interface {

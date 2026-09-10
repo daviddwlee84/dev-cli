@@ -37,6 +37,10 @@ func (m Model) openTriage(scope string) (tea.Model, tea.Cmd) {
 			rows = m.visibleRepos()
 		}
 		for _, r := range rows {
+			if r.Pending != "" {
+				m.status = "Wait for repository refresh before organizing this scope"
+				return m, nil
+			}
 			t := triage.Target{Path: r.Repo.Path, RepositoryID: r.Repo.CommonDir, Kind: "repo"}
 			if r.Asset != nil {
 				t.CatalogID = r.Asset.ID

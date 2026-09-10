@@ -132,6 +132,9 @@ func (s Status) TypeBreakdown() string {
 // ahead/behind in the same pass as the file states, so one process gives dev
 // everything it needs.
 func StatusOf(ctx context.Context, dir string) (Status, error) {
+	return observe(ctx, "status", dir, func() (Status, error) { return statusOf(ctx, dir) })
+}
+func statusOf(ctx context.Context, dir string) (Status, error) {
 	out, err := run(ctx, dir, "status", "--porcelain=v2", "--branch", "--untracked-files=normal", "-z")
 	if err != nil {
 		return Status{}, err
@@ -255,6 +258,14 @@ func parseBranchHeader(rec string, s *Status) {
 // LastCommit reports the author timestamp of HEAD as a Unix epoch, and the
 // subject line. Used to age a task in `dev sweep`.
 func LastCommit(ctx context.Context, dir string) (unix int64, subject string, err error) {
+	type result struct {
+		unix    int64
+		subject string
+	}
+	r, err := observe(ctx, "last-commit", dir, func() (result, error) { u, s, e := lastCommit(ctx, dir); return result{u, s}, e })
+	return r.unix, r.subject, err
+}
+func lastCommit(ctx context.Context, dir string) (unix int64, subject string, err error) {
 	out, err := run(ctx, dir, "log", "-1", "--format=%at%x00%s")
 	if err != nil || out == "" {
 		return 0, "", err

@@ -166,7 +166,9 @@ type Actions struct {
 	Start func(ctx context.Context, r RepoRow, name string) (string, error)
 	// StartDirect tracks the repository's currently checked-out branch without
 	// creating a branch or worktree.
-	StartDirect func(ctx context.Context, r RepoRow, name string) (string, error)
+	StartDirect      func(ctx context.Context, r RepoRow, name string) (string, error)
+	LoadRepoTopology func(context.Context, repo.Repo) (gitx.RecoveryTopology, error)
+	Stats            StatsActions
 	// LoadStats builds the selected repository's activity heatmap.
 	LoadStats func(ctx context.Context, repo string) (StatsPanel, error)
 	// BackfillStats derives this repository's history into the activity store.
@@ -421,6 +423,13 @@ type Model struct {
 	cloneURLGeneration uint64
 	skillUpdateTarget  agentskill.Skill
 	stats              *StatsPanel
+	statsTarget        repo.Repo
+	statsGeneration    uint64
+	statsCancel        context.CancelFunc
+	statsScroll        int
+	statsRefreshing    bool
+	repoProgressPhase  int
+	topologyRequested  []string
 	overlay            overlayState
 
 	notes              []*note.Note
@@ -2263,7 +2272,7 @@ func (m Model) currentDir() string {
 }
 
 // Update implements tea.Model.
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case spinner.TickMsg:
 		if !m.remoteClone.active() {
@@ -2382,7 +2391,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var accepted bool
 		m, accepted = m.applyLocalResult(msg.result)
 		next := waitForLocal(msg.load)
-		if accepted && msg.result.View == ViewRepos {
+		if accepted && msg.result.View == ViewRepos && msg.result.Phase == "" {
 			clone := m.finishRemoteCloneRefresh(msg.result.Generation, msg.result.Valid, msg.result.Err)
 			fleet := m.afterReposResult(msg.result.Valid, msg.result.Err)
 			return m, batchCommands(next, clone, fleet)
@@ -2671,6 +2680,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(reload, m.probeTools())
 
+	case statsHistoryMsg:
+		return m.acceptStatsHistory(msg)
+
 	case statsMsg:
 		if msg.err != nil {
 			m.err = msg.err
@@ -2803,6 +2815,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.afterExit, m.quitting = msg.result.AfterExit, true
 			return m, tea.Quit
 		}
+		if msg.result.RefreshSkills {
+			m.beginViewLoad(ViewSkills, loadAction)
+			refresh := m.reloadSkills()
+			if msg.result.Local != nil {
+				next, cmd := m.applyTriageDelta(*msg.result.Local)
+				return next, tea.Batch(cmd, refresh)
+			}
+			return m, refresh
+		}
 		if msg.result.Scoped {
 			if msg.result.Local != nil {
 				return m.applyTriageDelta(*msg.result.Local)
@@ -2898,6 +2919,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if item, ok := m.currentRepoItem(); ok && item.Repo.Pending != "" {
+		switch msg.String() {
+		case "enter", "o", "s", "d", "m", "a", "y", " ":
+			m.status = "Waiting for fresh repository observations…"
+			return m, nil
+		}
+	}
 	n := m.count()
 	page := m.listHeight() / 2
 	if page < 1 {
@@ -3642,11 +3670,39 @@ func (m Model) loadStats(repo string) tea.Cmd {
 }
 
 func (m Model) updateStats(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if m.actions.Stats.Read != nil {
+		switch msg.String() {
+		case "r", "b":
+			return m.startStatsHistory(m.statsTarget, msg.String() == "b", false)
+		case "j", "down":
+			m.statsScroll++
+			return m, nil
+		case "k", "up":
+			m.statsScroll = max(0, m.statsScroll-1)
+			return m, nil
+		case "pgdown":
+			m.statsScroll += max(1, m.height-7)
+			return m, nil
+		case "pgup":
+			m.statsScroll = max(0, m.statsScroll-max(1, m.height-7))
+			return m, nil
+		case "home":
+			m.statsScroll = 0
+			return m, nil
+		case "end":
+			m.statsScroll = 1 << 30
+			return m, nil
+		}
+	}
 	switch msg.String() {
 	case "q", "ctrl+c":
 		m.quitting = true
 		return m, tea.Quit
 	case "esc", "H":
+		if m.statsCancel != nil {
+			m.statsCancel()
+		}
+		m.statsGeneration++
 		m.mode, m.stats, m.err, m.status = modeList, nil, nil, ""
 		return m, nil
 	case "r":
@@ -4088,6 +4144,12 @@ func (m Model) openSelected() tea.Cmd {
 // row's checkout, then reloads — the tool may well have changed the git state
 // the dashboard is displaying.
 func (m Model) launchTool(key string) tea.Cmd {
+	if item, ok := m.currentRepoItem(); ok && item.Repo.Pending != "" {
+		return func() tea.Msg {
+			return actionMsg{err: errors.New("wait for fresh repository observations before opening a tool")}
+		}
+	}
+
 	for _, t := range m.actions.Tools {
 		if t.Key != key {
 			continue

@@ -162,3 +162,11 @@ dashboard. Git synchronization diagnostics retain a category, exit code, bounded
 redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](../guides/local-triage.md).
+
+
+Calendar heatmaps/automatic Git backfill, searchable action menus and progressive
+REPOS loading are verified through stats/tui/repo/cli tests and isolated PTY
+traces. [Skills management](../guides/skills-management.md) provider semantics
+are checked against upstream skills v1.5.23/v1.5.25 source contracts and isolated
+fixtures. Listing/checking do not execute the provider; native mutation does not
+claim frozen-content reproduction.

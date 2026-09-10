@@ -324,3 +324,37 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](local-triage.md)。
+
+
+## 載入、選單搜尋與多年活動
+
+REPOS 先讀取附時間的顯示 cache，再逐批加入 discovery 與 Git observations。
+Runtime 較慢時，其他 repo 資料仍會出現；pending／cached rows 不提供操作授權。
+完整 discovery 才移除消失項目，失敗保留 stale／unknown。`r` 保持本地 refresh；
+`dev cache clear repos` 可清除快照，SIZE 沿用其獨立 cache。
+
+Ctrl+O 選單與子選單支援 `/` 篩選、方向鍵及 Enter；Esc 先清除搜尋，再關閉。
+`H` 先顯示 stats，再自動補齊所選 repo 的完整本地 Git 歷史，refs 未變時使用
+checkpoint。每年一張圖，由最早年份往下排列，支援滾輪、上下鍵、PgUp/PgDn、
+Home/End；窄畫面按週分段。`r` 更新，`b` 強制 backfill，不 fetch。
+Git 活動仍是每個非 merge commit 估算 20 分鐘。
+
+REPOS／SKILLS 的 action menu 可開啟獨立
+[Skills 管理 wizard](skills-management.zh-TW.md)，提供 scopes、多選、檢查與預覽，
+不增加大頁籤。
+
+
+### 本地載入測量
+
+macOS、Go 1.26.4、60-repository 隔離 fixture，各情境跑三次的中位數如下。
+時間取自 trace 接受資料的時刻，不是 terminal 完成繪製的時刻；Git 仍在背景更新。
+
+| 情境 | 首批 repository 資料 | 完整本地 snapshot |
+|---|---:|---:|
+| 原 dashboard | 3,896 ms | 3,896 ms |
+| 新版，無顯示 cache | 14 ms | 3,911 ms |
+| 新版，有顯示 cache | 15 ms | 2,819 ms |
+
+首批顯示不再等待完整掃描；完整掃描仍受檔案系統與程序負載影響，不把 cached Git
+事實視為即時狀態。Recovery 詳情在選到 repo 時讀取；已完成觀察的 rows 可先操作，
+其他 repo 繼續載入。

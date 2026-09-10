@@ -316,6 +316,7 @@ func isolateAgentEnvironment(t *testing.T) string {
 	mustMkdir(t, home)
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".state"))
 	for name, directory := range map[string]string{
 		"CODEX_HOME": ".codex", "CLAUDE_CONFIG_DIR": ".claude", "VIBE_HOME": ".vibe",

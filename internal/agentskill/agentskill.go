@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -125,17 +126,18 @@ type LockMetadata struct {
 // several agent paths and physical copies. Lock-only rows have PresenceMissing;
 // unlocked filesystem rows remain visible as ManagedByExternal.
 type Skill struct {
-	Name         string
-	Scope        Scope
-	ScopeRoot    string
-	Path         string
-	Agents       []string
-	Source       string
-	SourceURL    string
-	SourceType   string
-	ManagedBy    ManagedBy
-	UpdateStatus UpdateStatus
-	UpdateDetail string
+	Name            string
+	Scope           Scope
+	ScopeRoot       string
+	Path            string
+	Agents          []string
+	Source          string
+	SourceURL       string
+	SourceType      string
+	ManagedBy       ManagedBy
+	UpdateStatus    UpdateStatus
+	UpdateDetail    string
+	UpdateCheckedAt time.Time
 
 	Repository      string
 	RepositoryPath  string
@@ -249,6 +251,7 @@ func Scan(ctx context.Context, targets []agenttarget.Target, options ListOptions
 		}
 	}
 
+	result.Skills = CachedChecks(ctx, result.Skills)
 	sortSkills(result.Skills)
 	sortDiagnostics(result.Diagnostics)
 	if options.Check {

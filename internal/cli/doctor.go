@@ -181,7 +181,7 @@ func runDoctor(app *App) error {
 			mutationState = checkWarn
 			mutationDetail = "skills executable found but current directory is unavailable"
 		} else if version, err := agentskill.ProviderVersion(ctx, providerCWD); err == nil {
-			mutationDetail = version + " — explicit add/update only"
+			mutationDetail = version + " — explicit skills mutations only"
 		} else {
 			mutationState = checkWarn
 			mutationDetail = "skills executable found but its version probe failed"

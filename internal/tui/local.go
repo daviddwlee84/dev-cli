@@ -20,6 +20,7 @@ type LocalLoadRequest struct {
 
 // LocalResult is one terminal TASKS, REPOS, or TRY snapshot.
 type LocalResult struct {
+	Phase      string
 	View       View
 	Generation uint64
 	Tasks      []inventory.Row
@@ -79,6 +80,11 @@ func waitForLocal(load LocalLoad) tea.Cmd {
 
 func (m Model) applyLocalResult(result LocalResult) (Model, bool) {
 	accepted := false
+	if result.View == ViewRepos && result.Phase != "" {
+		return m.applyRepoProgress(result)
+	}
+	token := m.currentToken()
+	path := m.repoFocusPath()
 	switch result.View {
 	case ViewTasks:
 		accepted = m.applyViewResult(
@@ -94,8 +100,14 @@ func (m Model) applyLocalResult(result LocalResult) (Model, bool) {
 			len(result.Repos), result.Err, result.Valid,
 		)
 		if accepted && result.Valid {
+			m.setViewStatus(ViewRepos, "")
 			m.acceptCompleteRepoSnapshot(result.Err)
-			m.repos = append([]RepoRow(nil), result.Repos...)
+			if result.Err != nil {
+				m.repos = mergeRepoProgress(m.repos, result.Repos)
+			} else {
+				m.repos = completeRepoRows(m.repos, result.Repos)
+			}
+			m.repoProgressPhase = 3
 			m.matchRemoteLocals()
 		}
 	case ViewTries:
@@ -108,6 +120,7 @@ func (m Model) applyLocalResult(result LocalResult) (Model, bool) {
 			m.matchRemoteLocals()
 		}
 	}
+	m.restoreRepoFocus(token, path)
 	m.setAt(m.at())
 	return m, accepted
 }

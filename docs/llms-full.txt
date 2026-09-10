@@ -520,6 +520,14 @@ redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
 
+
+REPOS presentation snapshots and dated skill-source comparisons are regenerable
+caches. Native skill locks and installed files remain owned by their existing
+management tools. Heatmap Git checkpoints live with activity in stats.db;
+clearing caches never clears activity. Cross-repository skills maintenance uses
+`dev skill manage`; cached evidence or an available update is not permission to
+change files automatically.
+
 ---
 
 ### Isolation boundaries and glossary
@@ -1943,6 +1951,78 @@ writes pending a verified protected-DACL/recovery adapter; inventory and existin
 native provider commands remain available. Symlink failure never silently becomes
 a copy, junction or elevation request. External editors, raw Git and native
 provider commands remain outside dev's cooperative transaction guarantees.
+
+---
+
+### Skills management
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/skills-management/
+
+> Manage project and global skills with scoped checks, reviewed updates, and native lock restoration.
+
+`dev skill manage` opens an independent wizard. REPOS and SKILLS offer the same
+workflow through Ctrl+O; it does not add another dashboard tab.
+
+```bash
+dev skill manage
+dev skill manage --repo api
+dev skill manage --all
+dev skill list --all --check --json
+```
+
+Choose project, global, project plus global, or multiple repositories. The
+repository picker includes checkouts with `skills-lock.json`, even when installed
+skill folders are missing or ignored by Git. Global skills are processed once.
+Use Space to select, Ctrl+A to select/clear visible items, and type to filter.
+
+## Check and update
+
+Checking explicitly contacts Git sources, groups identical source/ref pairs,
+and compares upstream content with the lock. It does not run `skills`, npm, Node
+or project code. Dated results are cached in `skill-checks-v1.json`; changing the
+lock invalidates them. `update_checked_at` in skill-list JSON identifies the last
+comparison. A cached result is evidence from that time, not a live remote query.
+
+Update checks first, then preselects confirmed updates for review. Missing
+installations, unsupported locks, failed checks and locally modified skill
+contents are reported separately. The preview names each checkout, scope,
+selected skill and command. Confirmation is required before execution.
+
+Management mutations require a globally installed `skills` executable compatible
+with the tested 1.5.23–1.5.25 contracts (supported 1.x versions from 1.5.23).
+`dev doctor` reports the dependency; install or upgrade it with
+`npm install -g skills`. dev does not install dependencies automatically or fall
+back to npx. Listing and checking continue to work when the dependency is absent.
+
+Commands run serially under dev's existing provider mutation lease. Lock,
+installation and provider changes since preview reject the affected operation.
+Results distinguish completed, failed, skipped, stale, canceled and unverified
+items. A zero provider exit code alone is insufficient: dev rereads installations
+and the resulting lock. Private JSON receipts live under
+`<state_dir>/skills/runs/`. Raw Git and external installers remain outside dev's
+coordination; native updates are not frozen artifact-transfer plans.
+
+## Single-project native operations
+
+The advanced choices appear for one project without global scope:
+
+| Choice | Native command | Behavior |
+|---|---|---|
+| Restore from lock | `skills experimental_install` | Re-resolves recorded sources/ref into `.agents/skills`; may update the lock. Useful when `.agents` is gitignored or absent. It does not guarantee the old content hash. |
+| Sync dependency skills | `skills experimental_sync --yes --agent …` | Reads skills from existing `node_modules` and installs for explicitly selected project agents. It does not install npm dependencies. |
+
+The wizard checks native command support, project destination changes and local
+content conflicts. Dependency skills with colliding names require individual
+attention. Both operations retain native output and verify installed results;
+neither is included in cross-repository batches in this version.
+
+`dev skill install` and `dev skill sync` still manage dev's bundled skill. The
+existing single-skill `dev skill update <skill> --project|--global` command remains
+available for automation. Explicit transfer preparation keeps its separate pinned
+provider and verified-payload contract.
+
+
+Provider source contracts: [update](https://github.com/vercel-labs/skills/blob/v1.5.25/src/update.ts), [restore](https://github.com/vercel-labs/skills/blob/v1.5.25/src/install.ts), [dependency sync](https://github.com/vercel-labs/skills/blob/v1.5.25/src/sync.ts).
 
 ---
 
@@ -3719,6 +3799,45 @@ redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
 
+
+## Progressive loading, searchable actions and yearly activity
+
+REPOS first reads a dated presentation cache, then publishes discovery and Git
+observations incrementally. A slow runtime does not hold back repository rows.
+Pending/cached rows grant no action authority. Only complete discovery removes
+missing rows; failures retain stale/unknown evidence. `r` remains local refresh;
+`dev cache clear repos` removes the snapshot. SIZE retains its separate cache.
+
+Ctrl+O menus and submenus support `/` filtering, arrows and Enter; Escape clears
+search before closing. `H` displays saved stats, then automatically backfills the
+selected repository's full local Git history. Unchanged refs reuse a checkpoint.
+Calendar years run oldest first, with wheel/arrows, PgUp/PgDn and Home/End
+scrolling; narrow screens split into week segments. `r` refreshes and `b` forces
+backfill without fetching. Git activity is still a 20-minute estimate per
+non-merge commit.
+
+The REPOS/SKILLS action menu opens the independent
+[Skills management wizard](https://daviddwlee84.github.io/dev-cli/guides/skills-management/) for scopes, selection, checks
+and reviewed mutations; it is not another dashboard tab.
+
+
+### Local loading measurement
+
+A 60-repository isolated fixture, three runs per case on macOS with Go 1.26.4,
+measured the following medians. These are trace acceptance times, not terminal
+rasterization; all live Git reads still finish in the background.
+
+| Case | First repository data | Complete local snapshot |
+|---|---:|---:|
+| Previous dashboard | 3,896 ms | 3,896 ms |
+| New, no presentation cache | 14 ms | 3,911 ms |
+| New, presentation cache | 15 ms | 2,819 ms |
+
+The first display no longer waits for a full scan. Full-scan duration remains
+sensitive to filesystem/process load; this change does not claim cached Git
+facts are current. Recovery details are loaded for the focused repository, and
+completed rows become available while other repositories are still loading.
+
 ---
 
 ### Dashboard lifecycle actions
@@ -3849,6 +3968,13 @@ dashboard. Git synchronization diagnostics retain a category, exit code, bounded
 redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
+
+
+In Ctrl+O, `/` filters the current menu; arrows move and Enter continues. Escape
+clears search before closing. REPOS offers current/filtered repository skills,
+and SKILLS offers selected skill, project and global scopes. These launch the
+[dev skill manage](https://daviddwlee84.github.io/dev-cli/guides/skills-management/) wizard. Updates check and preview first;
+experimental restore/sync remain single-project actions.
 
 ---
 
@@ -4809,7 +4935,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
-| agent skills | `skill list`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
+| agent skills | `skill list`, `skill manage`, `skill add`, `skill update`, `skill install`, `skill sync`, `skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`, `skill install/sync` |
 | activity/data | `summary`, `journal`, `stats …`, `cache …` |
@@ -5590,7 +5716,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|notes|fleet|size|gitignore|licenses|all>
+dev cache clear <skills|repos|remote|notes|fleet|size|gitignore|licenses|all>
 ```
 
 ### `dev cache list`
@@ -6889,6 +7015,17 @@ dev skill list [flags]
 - `-p, --project` — list project skills
 - `-r, --repo` — scan one repository or explicit checkout path
 
+### `dev skill manage`
+
+Check, update or restore skills with a scoped wizard
+
+```
+dev skill manage [flags]
+```
+
+- `--all` — choose among configured repositories with skills-lock.json
+- `-r, --repo` — start with one repository or exact checkout
+
 ### `dev skill print`
 
 Print SKILL.md to stdout
@@ -7760,6 +7897,18 @@ redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
 
+
+### Skills maintenance and local presentation caches
+
+`dev skill manage [--repo <ref> | --all]` is an interactive wizard, without a
+non-interactive apply shortcut. Existing
+`skill update <skill> --project|--global --yes` remains compatible.
+`skill list --json` adds optional RFC3339 `update_checked_at`.
+`dev cache clear repos` clears repository presentation snapshots;
+`dev cache clear skills` clears dated source comparisons; `all` includes both.
+Neither removes `stats.db` or skills run receipts.
+See [Skills management](https://daviddwlee84.github.io/dev-cli/guides/skills-management/).
+
 ---
 
 ### Compatibility and known limitations
@@ -8155,6 +8304,16 @@ redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
 
+
+The skills management wizard uses the directly installed `skills` dependency
+(compatible 1.x from 1.5.23) and never falls back to npx. Native inventory and Go
+update checks do not need that provider. Experimental install re-resolves native
+sources/ref and may change the lock; it does not promise the old hash.
+Experimental sync reads existing node_modules for selected project agents.
+This is separate from transfer preparation's pinned-provider/verified-payload
+contract. REPOS caches supply presentation only; Git/runtime/task authority still
+requires fresh observations and operation-time validation.
+
 ---
 
 ### Sources and freshness
@@ -8318,6 +8477,14 @@ dashboard. Git synchronization diagnostics retain a category, exit code, bounded
 redacted output and a next step; old receipts cannot recover discarded reasons.
 Retries require a new preview. Authentication, fetch and rebase are never
 silently performed as error recovery. See [local triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/).
+
+
+Calendar heatmaps/automatic Git backfill, searchable action menus and progressive
+REPOS loading are verified through stats/tui/repo/cli tests and isolated PTY
+traces. [Skills management](https://daviddwlee84.github.io/dev-cli/guides/skills-management/) provider semantics
+are checked against upstream skills v1.5.23/v1.5.25 source contracts and isolated
+fixtures. Listing/checking do not execute the provider; native mutation does not
+claim frozen-content reproduction.
 
 ---
 
@@ -9109,6 +9276,12 @@ Triage 彙整觀察到的工作與個人整理意圖。刻意保留本地、暫�
 Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
+
+
+REPOS 顯示快照及 Skills 的附時間來源比較屬可重建 cache；skill lock 與安裝檔案
+仍是原生管理工具的資料。Heatmap 的 Git checkpoint 放在 stats.db，與活動觀察一起
+保留；清除 cache 不清除活動。跨 repo skills 維護使用獨立 `dev skill manage`
+wizard，不把 cache 或「有更新」狀態當成自動修改授權。
 
 ---
 
@@ -10350,6 +10523,68 @@ Stale plan 不產生新效果；後續失敗分開回報已確認步驟與尚未
 recovery adapter 前，會於寫入 agent 檔案前停止；inventory 和既有原生 provider
 命令仍可使用。Symlink 失敗不會默默變成 copy、junction 或要求提權。
 外部 editor、raw Git 與原生 provider 命令仍在 dev 的協作式 transaction 保證之外。
+
+---
+
+### Skills 管理
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/
+
+> Manage project and global skills with scoped checks, reviewed updates, and native lock restoration.
+
+`dev skill manage` 開啟獨立 wizard；REPOS 與 SKILLS 的 Ctrl+O 也能進入相同流程，
+不新增 dashboard 大頁籤。
+
+```bash
+dev skill manage
+dev skill manage --repo api
+dev skill manage --all
+dev skill list --all --check --json
+```
+
+可選 project、global、project 加 global，或多個 repository。Repository picker
+列出有 `skills-lock.json` 的 checkout，即使 `.agents` 被 Git 忽略或尚未安裝也保留。
+Global 只處理一次。Space 勾選，Ctrl+A 全選／取消可見項目，直接輸入文字篩選。
+
+## 檢查與更新
+
+檢查是明確的連線操作：合併相同 source/ref 查詢，比較來源內容與 lock，
+不執行 `skills`、npm、Node 或專案程式。結果附時間，存於 `skill-checks-v1.json`；
+lock 改變即失效。Skill list JSON 的 `update_checked_at` 是上次比較時間，
+cache 不代表正在進行即時來源查詢。
+
+更新先檢查，再預選確認有更新的 skills。缺失安裝、不支援的 lock、檢查失敗及
+本地修改會分開呈現。預覽列出 checkout、scope、skill 與命令，確認後才執行。
+
+管理操作需要全域安裝的 `skills` executable，支援依 1.5.23–1.5.25 已驗證契約
+相容的 1.x 版本，最低 1.5.23。`dev doctor` 回報依賴狀態；可使用
+`npm install -g skills` 安裝或更新。dev 不自動安裝依賴，也不 fallback 至 npx；
+缺少 provider 時仍可列出及檢查 skills。
+
+命令使用既有 provider mutation lease 依序執行。預覽後若 lock、安裝內容或
+provider 改變，該操作會被拒絕。結果區分 completed、failed、skipped、stale、
+canceled 與 unverified；exit 0 本身不足以證明成功，會重新讀取安裝與 lock。
+私有 JSON receipt 存於 `<state_dir>/skills/runs/`。外部 installer 與原生 Git
+不受 dev 的協調鎖約束；native update 也不是固定內容的 artifact transfer plan。
+
+## 單 project 的 native 操作
+
+選擇單一 project、未包含 global 時，提供以下進階選項：
+
+| 選項 | Native command | 行為 |
+|---|---|---|
+| 依 lock 重裝 | `skills experimental_install` | 重新解析來源／ref，安裝到 `.agents/skills`，可能更新 lock；適合忽略或缺少 `.agents` 的下游，不保證等於舊 hash。 |
+| 同步 dependency skills | `skills experimental_sync --yes --agent …` | 從現有 `node_modules` 讀取 skills，安裝至明確選取的 project agents；不代為安裝 npm dependencies。 |
+
+Wizard 會檢查命令支援、project 目的地變動及本地內容衝突。同名 dependency skill
+衝突需個別處理。兩項操作保留 native output 並檢查結果，本輪不提供跨 repo 批次。
+
+`dev skill install` 與 `dev skill sync` 仍管理 bundled dev skill；原有
+`dev skill update <skill> --project|--global` 保留作為自動化介面。
+Transfer preparation 仍使用其獨立的 pinned provider 與 verified payload 契約。
+
+
+Provider source contracts: [update](https://github.com/vercel-labs/skills/blob/v1.5.25/src/update.ts), [restore](https://github.com/vercel-labs/skills/blob/v1.5.25/src/install.ts), [dependency sync](https://github.com/vercel-labs/skills/blob/v1.5.25/src/sync.ts).
 
 ---
 
@@ -12002,6 +12237,40 @@ Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
+
+## 載入、選單搜尋與多年活動
+
+REPOS 先讀取附時間的顯示 cache，再逐批加入 discovery 與 Git observations。
+Runtime 較慢時，其他 repo 資料仍會出現；pending／cached rows 不提供操作授權。
+完整 discovery 才移除消失項目，失敗保留 stale／unknown。`r` 保持本地 refresh；
+`dev cache clear repos` 可清除快照，SIZE 沿用其獨立 cache。
+
+Ctrl+O 選單與子選單支援 `/` 篩選、方向鍵及 Enter；Esc 先清除搜尋，再關閉。
+`H` 先顯示 stats，再自動補齊所選 repo 的完整本地 Git 歷史，refs 未變時使用
+checkpoint。每年一張圖，由最早年份往下排列，支援滾輪、上下鍵、PgUp/PgDn、
+Home/End；窄畫面按週分段。`r` 更新，`b` 強制 backfill，不 fetch。
+Git 活動仍是每個非 merge commit 估算 20 分鐘。
+
+REPOS／SKILLS 的 action menu 可開啟獨立
+[Skills 管理 wizard](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/)，提供 scopes、多選、檢查與預覽，
+不增加大頁籤。
+
+
+### 本地載入測量
+
+macOS、Go 1.26.4、60-repository 隔離 fixture，各情境跑三次的中位數如下。
+時間取自 trace 接受資料的時刻，不是 terminal 完成繪製的時刻；Git 仍在背景更新。
+
+| 情境 | 首批 repository 資料 | 完整本地 snapshot |
+|---|---:|---:|
+| 原 dashboard | 3,896 ms | 3,896 ms |
+| 新版，無顯示 cache | 14 ms | 3,911 ms |
+| 新版，有顯示 cache | 15 ms | 2,819 ms |
+
+首批顯示不再等待完整掃描；完整掃描仍受檔案系統與程序負載影響，不把 cached Git
+事實視為即時狀態。Recovery 詳情在選到 repo 時讀取；已完成觀察的 rows 可先操作，
+其他 repo 繼續載入。
+
 ---
 
 ### Dashboard 生命週期操作
@@ -12105,6 +12374,12 @@ archived；之後再用一般 `tries restore` 回到可見位置。
 Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
+
+
+Ctrl+O 的 `/` 只篩選目前選單，方向鍵移動，Enter 執行；Esc 先清除搜尋。
+REPOS 可管理目前或篩選範圍的 skills，SKILLS 可選單一 skill、project 或 global。
+這些入口使用 [dev skill manage](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/) wizard；更新先檢查
+並預覽，experimental restore／sync 僅限單 project。
 
 ---
 
@@ -13094,7 +13369,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
-| agent skills | `skill list`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
+| agent skills | `skill list`、`skill manage`、`skill add`、`skill update`、`skill install`、`skill sync`、`skill print` |
 | static MCP declarations | `mcp list` |
 | generated policy/assets | `gitignore`、`skill install/sync` |
 | activity/data | `summary`、`journal`、`stats …`、`cache …` |
@@ -13800,7 +14075,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <remote|notes|fleet|size|gitignore|licenses|all>
+dev cache clear <skills|repos|remote|notes|fleet|size|gitignore|licenses|all>
 ```
 
 ### `dev cache list`
@@ -15099,6 +15374,17 @@ dev skill list [flags]
 - `-p, --project` — list project skills
 - `-r, --repo` — scan one repository or explicit checkout path
 
+### `dev skill manage`
+
+Check, update or restore skills with a scoped wizard
+
+```
+dev skill manage [flags]
+```
+
+- `--all` — choose among configured repositories with skills-lock.json
+- `-r, --repo` — start with one repository or exact checkout
+
 ### `dev skill print`
 
 Print SKILL.md to stdout
@@ -15950,6 +16236,16 @@ Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
+
+### Skills maintenance and local presentation caches
+
+`dev skill manage [--repo <ref> | --all]` 是互動 wizard；不提供非互動套用捷徑。
+原有 `skill update <skill> --project|--global --yes` 保持相容。
+`skill list --json` 新增可選的 `update_checked_at`（RFC3339 時間）。
+`dev cache clear repos` 清除 repository 顯示快照；`dev cache clear skills`
+清除附時間的來源比較 cache，`all` 包含兩者。`stats.db` 與 skills run receipts 不受影響。
+詳見 [Skills 管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/)。
+
 ---
 
 ### 相容性與已知限制
@@ -16302,6 +16598,14 @@ Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
+
+Skills management wizard 使用直接安裝的 `skills`（支援相容的 1.x，最低 1.5.23），
+缺少時不執行 npx。一般 inventory 與 Go 更新檢查不依賴 provider。
+Experimental install 是上游依來源／ref 重裝，可能更新 lock，不保證舊 hash。
+Experimental sync 讀取現有 node_modules，僅作用於所選 project agents。
+此契約不同於 transfer preparation 的 pinned provider／verified payload。
+REPOS cache 只提供顯示，Git／runtime／task authority 仍需新觀察與操作前驗證。
+
 ---
 
 ### 來源與時效
@@ -16452,6 +16756,13 @@ Repository 首頁解析只讀 local Git。Assets 旁的 Try removal journals 是
 Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
+
+
+Dashboard 年度 heatmap／自動 Git backfill、action menu 搜尋與 REPOS 漸進載入，
+以 stats、tui、repo 與 cli 的測試及隔離 PTY traces 驗證。
+[Skills 管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/) 的 provider semantics 依
+上游 skills v1.5.23／v1.5.25 source contracts 與隔離 fixtures 驗證；列表與 check
+不執行 provider，native mutation 不宣稱固定內容重現。
 
 ---
 

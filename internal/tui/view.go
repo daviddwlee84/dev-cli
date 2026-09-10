@@ -13,6 +13,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/repocontext"
+	"github.com/daviddwlee84/dev-cli/internal/stats"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -126,18 +127,32 @@ func (m Model) renderStats() string {
 	b.WriteString(styleTitle.Render("dev  HEATMAP  "+title) + "\n\n")
 	if m.err != nil {
 		b.WriteString("  " + styleErr.Render("✗ "+m.err.Error()) + "\n")
-	} else if m.stats == nil {
+	}
+	if m.stats == nil {
 		b.WriteString("  " + styleDim.Render("Loading activity…") + "\n")
 	} else if m.stats.Seconds == 0 {
 		b.WriteString("  " + styleDim.Render("No activity recorded for this repository.\n"))
 		b.WriteString("  " + styleDim.Render("Press b to backfill only this repo from Git history.\n"))
+	} else if len(m.stats.Years) > 0 {
+		lines := strings.Split(strings.TrimRight(stats.YearHeatmaps(m.stats.Years, max(10, m.width)), "\n"), "\n")
+		height := max(1, m.height-8)
+		start := min(m.statsScroll, max(0, len(lines)-height))
+		b.WriteString(strings.Join(lines[start:min(len(lines), start+height)], "\n") + "\n")
+		fmt.Fprintf(&b, "\n  %s · %d active days · Git: 20m/commit estimate\n", humanSeconds(m.stats.Seconds), m.stats.ActiveDays)
 	} else {
 		b.WriteString(m.stats.Heatmap)
 		fmt.Fprintf(&b, "\n  %s   %d active days   %s → %s\n",
 			styleOK.Render(humanSeconds(m.stats.Seconds)), m.stats.ActiveDays,
 			m.stats.Since.Format("2006-01-02"), m.stats.Until.Format("2006-01-02"))
 	}
-	b.WriteString("\n  " + styleHelp.Render("b backfill this repo · r reread stats · H / esc back · q quit"))
+	if m.statsRefreshing {
+		b.WriteString("  " + styleDim.Render("Checking local history…") + "\n")
+	}
+	if m.actions.Stats.Read != nil {
+		b.WriteString("\n  " + fitCell(styleHelp.Render("↑/↓ scroll · Home/End · r refresh · b rebuild · Esc back"), max(1, m.width-2)))
+	} else {
+		b.WriteString("\n  " + styleHelp.Render("b backfill this repo · r reread stats · H / esc back · q quit"))
+	}
 	return b.String()
 }
 
@@ -357,6 +372,17 @@ func (m Model) renderRepos() string {
 func (m Model) repoItemColumnValue(item repoItem, name string) string {
 	r := item.Repo
 	checkout, child := item.checkout()
+	if child && r.Pending != "" {
+		switch name {
+		case "git":
+			if checkout.StatusErr != nil {
+				return "?"
+			}
+			return "~" + checkout.Status.Summary()
+		case "live", "tasks", "worktrees", "remote":
+			return "…"
+		}
+	}
 	if !child {
 		if name == "repo" && r.Worktrees > 0 {
 			marker := "▸ "
@@ -426,6 +452,9 @@ func (m Model) repoItemColumnValue(item repoItem, name string) string {
 }
 
 func parentLiveColumn(r RepoRow) string {
+	if r.Pending != "" {
+		return "…"
+	}
 	if r.Context.RuntimeErr != nil {
 		return "?"
 	}
@@ -533,6 +562,18 @@ func (m Model) repoColumns() []repoColumnSpec {
 }
 
 func repoColumnValue(r RepoRow, name string) string {
+	if r.Pending != "" {
+		switch name {
+		case "git":
+			if r.GitKnown {
+				return "~" + r.Status.Summary()
+			}
+			return "…"
+		case "live", "wt", "worktrees", "tasks", "remote":
+			return "…"
+		}
+	}
+
 	switch name {
 	case "repo":
 		return r.Repo.Display()
@@ -542,6 +583,12 @@ func repoColumnValue(r RepoRow, name string) string {
 		}
 		return r.Status.Branch
 	case "git":
+		if main, ok := r.Context.Main(); ok && main.StatusErr != nil {
+			return "?"
+		}
+		if r.Context.WorktreeErr != nil {
+			return "?"
+		}
 		if r.Repo.Bare {
 			return "—"
 		}
@@ -1072,6 +1119,10 @@ func (m Model) columnWidths() (name, branch, next int) {
 // renderDetail shows what does not fit in the table — the reason to have a
 // dashboard rather than a listing.
 func (m Model) renderDetail() string {
+	if item, ok := m.currentRepoItem(); ok && item.Repo.Pending != "" {
+		return "  path " + contract(item.Repo.Repo.Path) + "\n  " + item.Repo.Pending + " · waiting for fresh repository observations"
+	}
+
 	switch m.mode {
 	case modeFilter:
 		return "  " + styleTitle.Render("filter ") + m.input.View() +
@@ -1217,6 +1268,9 @@ func (m Model) renderDetail() string {
 		}
 		if row.SourceURL != "" {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("url    "), row.SourceURL))
+		}
+		if !row.UpdateCheckedAt.IsZero() {
+			lines = append(lines, "  checked "+row.UpdateCheckedAt.Local().Format("2006-01-02 15:04")+" · last source comparison")
 		}
 		if row.UpdateDetail != "" {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("detail "), row.UpdateDetail))
@@ -1368,6 +1422,9 @@ func (m Model) renderDetail() string {
 	}
 
 	if r, ok := m.currentRepo(); ok {
+		if r.Pending != "" {
+			return "  path " + contract(r.Repo.Path) + "\n  " + r.Pending + " · waiting for fresh repository observations"
+		}
 		lines := []string{
 			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(r.Repo.Path)),
 			fmt.Sprintf("  %s %s", styleDim.Render("ready"), repocontext.AssessLocal(r.Context, 0, config.Hostname()).Summary()),

@@ -98,3 +98,11 @@ install plan with `--prepared <id>`. Only prepare invokes the pinned 1.5.23
 provider and may fetch; it verifies staged content/provenance against the source
 lock. Plan/apply consume private verified payloads. This does not make the
 legacy interactive `skill add` wizard or native provider update a frozen install.
+
+
+For scope selection, multi-repository updates and single-project native
+restore/sync, use `dev skill manage`; see `references/skills-management.md`.
+Check results retain `update_checked_at` and are loaded from a disposable cache
+only while the lock fingerprint matches. Unknown and failed checks remain distinct
+from current content. Management uses the directly installed provider and does
+not replace the pinned provider used by artifact transfer preparation.
