@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -42,6 +43,215 @@ type Service struct {
 	Store      *Store
 	ScanStaged Scanner
 	LargeLimit int64
+}
+
+// ReadinessState classifies one intent without changing its durable record.
+type ReadinessState string
+
+const (
+	ReadinessPending              ReadinessState = "pending"
+	ReadinessFailed               ReadinessState = "failed"
+	ReadinessDiscarded            ReadinessState = "discarded"
+	ReadinessFinalizedReachable   ReadinessState = "finalized-reachable"
+	ReadinessFinalizedUnreachable ReadinessState = "finalized-unreachable"
+	ReadinessObservationError     ReadinessState = "observation-error"
+)
+
+// IntentReadiness is the read-only finalization evidence for one intent whose
+// recorded worktree is the exact checkout being inspected.
+type IntentReadiness struct {
+	Intent           Intent
+	State            ReadinessState
+	Finalized        bool
+	ReceiptReachable bool
+	ObservationError error
+}
+
+// ReadinessInspection is a complete read-only observation for one exact
+// checkout. KnownEmpty is true only when the store was read successfully and no
+// intent matched the checkout; it distinguishes absence from failed observation.
+type ReadinessInspection struct {
+	Checkout         string
+	KnownEmpty       bool
+	Intents          []IntentReadiness
+	ObservationError error
+}
+
+// Ready applies only the existing artifact finalization contract: an exact
+// checkout is ready when it has no intents, or every intent was explicitly
+// discarded or has a finalized receipt that is still reachable. Missing or
+// incomplete evidence fails closed.
+func (i ReadinessInspection) Ready() bool {
+	if i.ObservationError != nil {
+		return false
+	}
+	if len(i.Intents) == 0 {
+		return i.KnownEmpty
+	}
+	if i.KnownEmpty {
+		return false
+	}
+	for _, intent := range i.Intents {
+		if intent.ObservationError != nil {
+			return false
+		}
+		switch intent.State {
+		case ReadinessDiscarded:
+			// Discard is the existing explicit operator escape hatch.
+		case ReadinessFinalizedReachable:
+			if !intent.Finalized || !intent.ReceiptReachable {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+// InspectReadiness gathers artifact finalization evidence for one exact
+// checkout. It never reconciles receipts, finalizes intents, or writes either
+// source files or intent records. The returned inspection retains partial
+// evidence and the same wrapped error returned separately to ordinary callers.
+func InspectReadiness(ctx context.Context, store *Store, checkout string) (ReadinessInspection, error) {
+	inspection := ReadinessInspection{}
+	if ctx == nil {
+		err := errors.New("artifact readiness inspection needs a context")
+		inspection.ObservationError = err
+		return inspection, err
+	}
+	if err := ctx.Err(); err != nil {
+		inspection.ObservationError = err
+		return inspection, err
+	}
+	if store == nil {
+		err := errors.New("artifact readiness inspection needs a store")
+		inspection.ObservationError = err
+		return inspection, err
+	}
+
+	canonical, err := pathx.Canonical(checkout)
+	if err != nil {
+		err = fmt.Errorf("canonicalize artifact readiness checkout: %w", err)
+		inspection.ObservationError = err
+		return inspection, err
+	}
+	inspection.Checkout = canonical
+
+	intents, err := store.List()
+	if err != nil {
+		err = fmt.Errorf("list artifact intents: %w", err)
+		inspection.ObservationError = err
+		return inspection, err
+	}
+	if err := ctx.Err(); err != nil {
+		inspection.ObservationError = err
+		return inspection, err
+	}
+
+	for _, intent := range intents {
+		if err := ctx.Err(); err != nil {
+			inspection.ObservationError = joinReadinessError(inspection.ObservationError, err)
+			break
+		}
+		intentCheckout, err := pathx.Canonical(intent.WorktreePath)
+		if err != nil {
+			err = fmt.Errorf("canonicalize artifact intent %s checkout: %w", intent.ID, err)
+			inspection.ObservationError = joinReadinessError(inspection.ObservationError, err)
+			continue
+		}
+		if intentCheckout != canonical {
+			continue
+		}
+
+		evidence := IntentReadiness{Intent: intent, Finalized: intent.Status == Finalized}
+		switch intent.Status {
+		case Armed, Finalizing:
+			evidence.State = ReadinessPending
+		case Failed:
+			evidence.State = ReadinessFailed
+		case Discarded:
+			evidence.State = ReadinessDiscarded
+		case Finalized:
+			evidence.ReceiptReachable, err = receiptRemainsReachable(ctx, canonical, intent)
+			switch {
+			case err != nil:
+				err = fmt.Errorf("inspect artifact intent %s receipt: %w", intent.ID, err)
+				evidence.State = ReadinessObservationError
+				evidence.ObservationError = err
+				inspection.ObservationError = joinReadinessError(inspection.ObservationError, err)
+			case evidence.ReceiptReachable:
+				evidence.State = ReadinessFinalizedReachable
+			default:
+				evidence.State = ReadinessFinalizedUnreachable
+			}
+		default:
+			// Store.List validates statuses, but fail closed if another Store
+			// implementation is introduced without preserving that contract.
+			err = fmt.Errorf("artifact intent %s has unrecognized status %q", intent.ID, intent.Status)
+			evidence.State = ReadinessObservationError
+			evidence.ObservationError = err
+			inspection.ObservationError = joinReadinessError(inspection.ObservationError, err)
+		}
+		inspection.Intents = append(inspection.Intents, evidence)
+	}
+
+	inspection.KnownEmpty = len(inspection.Intents) == 0 && inspection.ObservationError == nil
+	return inspection, inspection.ObservationError
+}
+
+func receiptRemainsReachable(ctx context.Context, checkout string, intent Intent) (bool, error) {
+	if intent.ArtifactCommit == "" {
+		return false, nil
+	}
+	candidates := []struct {
+		dir string
+		ref string
+	}{
+		{checkout, "HEAD"},
+		{intent.RepoPath, intent.Branch},
+		{intent.RepoPath, intent.Base},
+	}
+	seen := make(map[string]bool, len(candidates))
+	var observationErr error
+	for _, candidate := range candidates {
+		if candidate.dir == "" || candidate.ref == "" {
+			continue
+		}
+		key := candidate.dir + "\x00" + candidate.ref
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		if err := ctx.Err(); err != nil {
+			return false, joinReadinessError(observationErr, err)
+		}
+		if _, err := gitx.Run(ctx, candidate.dir, "merge-base", "--is-ancestor", intent.ArtifactCommit, candidate.ref); err == nil {
+			return true, nil
+		} else if !gitNotAncestor(err) {
+			observationErr = joinReadinessError(observationErr,
+				fmt.Errorf("check %s against %s in %s: %w", intent.ArtifactCommit, candidate.ref, candidate.dir, err))
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		observationErr = joinReadinessError(observationErr, err)
+	}
+	return false, observationErr
+}
+
+func gitNotAncestor(err error) bool {
+	var exitErr *exec.ExitError
+	return errors.As(err, &exitErr) && exitErr.ExitCode() == 1
+}
+
+func joinReadinessError(current, next error) error {
+	if current == nil {
+		return next
+	}
+	if next == nil {
+		return current
+	}
+	return errors.Join(current, next)
 }
 
 func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (*Intent, error) {

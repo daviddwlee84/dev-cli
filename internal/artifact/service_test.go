@@ -1,7 +1,9 @@
 package artifact
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
 )
 
@@ -307,4 +310,270 @@ func TestConcurrentFinalizersShareCommonDirLock(t *testing.T) {
 	if count := r.Git("rev-list", "--count", "HEAD"); count != "2" {
 		t.Fatalf("concurrent finalizers created duplicate commits: %s", count)
 	}
+}
+
+func TestInspectReadinessClassifiesExactCheckoutIntents(t *testing.T) {
+	isolateGitConfig(t)
+	r := gittest.New(t)
+	reachable := r.Git("rev-parse", "HEAD")
+	r.Commit("orphan.txt", "orphaned receipt\n", "chore: orphan receipt")
+	unreachable := r.Git("rev-parse", "HEAD")
+	r.Git("reset", "--hard", "HEAD^")
+
+	store := NewStore(t.TempDir())
+	createReadinessIntent(t, store, "intent-armed", r.Root, Armed, "")
+	createReadinessIntent(t, store, "intent-finalizing", r.Root, Finalizing, "")
+	createReadinessIntent(t, store, "intent-failed", r.Root, Failed, "")
+	createReadinessIntent(t, store, "intent-discarded", r.Root, Discarded, "")
+	createReadinessIntent(t, store, "intent-reachable", r.Root, Finalized, reachable)
+	createReadinessIntent(t, store, "intent-unreachable", r.Root, Finalized, unreachable)
+	createReadinessIntent(t, store, "intent-other", t.TempDir(), Armed, "")
+
+	inspection, err := InspectReadiness(context.Background(), store, r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inspection.Checkout != r.Root || inspection.KnownEmpty {
+		t.Fatalf("inspection identity = %+v", inspection)
+	}
+	if len(inspection.Intents) != 6 {
+		t.Fatalf("exact-checkout intents = %d, want 6: %+v", len(inspection.Intents), inspection.Intents)
+	}
+	type wantEvidence struct {
+		state     ReadinessState
+		finalized bool
+		reachable bool
+	}
+	want := map[string]wantEvidence{
+		"intent-armed":       {state: ReadinessPending},
+		"intent-finalizing":  {state: ReadinessPending},
+		"intent-failed":      {state: ReadinessFailed},
+		"intent-discarded":   {state: ReadinessDiscarded},
+		"intent-reachable":   {state: ReadinessFinalizedReachable, finalized: true, reachable: true},
+		"intent-unreachable": {state: ReadinessFinalizedUnreachable, finalized: true},
+	}
+	for _, evidence := range inspection.Intents {
+		expected, ok := want[evidence.Intent.ID]
+		if !ok {
+			t.Errorf("unexpected intent evidence: %+v", evidence)
+			continue
+		}
+		delete(want, evidence.Intent.ID)
+		if evidence.State != expected.state || evidence.Finalized != expected.finalized ||
+			evidence.ReceiptReachable != expected.reachable || evidence.ObservationError != nil {
+			t.Errorf("%s evidence = %+v, want %+v", evidence.Intent.ID, evidence, expected)
+		}
+	}
+	if len(want) != 0 {
+		t.Errorf("missing classifications: %v", want)
+	}
+	if inspection.Ready() {
+		t.Fatal("pending, failed, and unreachable intents must block readiness")
+	}
+
+	empty, err := InspectReadiness(context.Background(), store, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !empty.KnownEmpty || len(empty.Intents) != 0 || !empty.Ready() {
+		t.Fatalf("successful empty observation = %+v", empty)
+	}
+}
+
+func TestReadinessInspectionReadyUsesFinalizationContract(t *testing.T) {
+	observationErr := errors.New("observation failed")
+	discarded := IntentReadiness{State: ReadinessDiscarded}
+	reachable := IntentReadiness{
+		State: ReadinessFinalizedReachable, Finalized: true, ReceiptReachable: true,
+	}
+	tests := []struct {
+		name       string
+		inspection ReadinessInspection
+		want       bool
+	}{
+		{name: "known empty", inspection: ReadinessInspection{KnownEmpty: true}, want: true},
+		{name: "unknown empty", inspection: ReadinessInspection{}},
+		{name: "discarded", inspection: ReadinessInspection{Intents: []IntentReadiness{discarded}}, want: true},
+		{name: "finalized reachable", inspection: ReadinessInspection{Intents: []IntentReadiness{reachable}}, want: true},
+		{name: "ready mixture", inspection: ReadinessInspection{Intents: []IntentReadiness{discarded, reachable}}, want: true},
+		{name: "pending", inspection: ReadinessInspection{Intents: []IntentReadiness{{State: ReadinessPending}}}},
+		{name: "failed", inspection: ReadinessInspection{Intents: []IntentReadiness{{State: ReadinessFailed}}}},
+		{name: "finalized unreachable", inspection: ReadinessInspection{Intents: []IntentReadiness{{State: ReadinessFinalizedUnreachable, Finalized: true}}}},
+		{name: "incomplete finalized evidence", inspection: ReadinessInspection{Intents: []IntentReadiness{{State: ReadinessFinalizedReachable}}}},
+		{name: "intent observation error", inspection: ReadinessInspection{Intents: []IntentReadiness{{State: ReadinessObservationError, ObservationError: observationErr}}}},
+		{name: "global observation error", inspection: ReadinessInspection{ObservationError: observationErr}},
+		{name: "contradictory empty", inspection: ReadinessInspection{KnownEmpty: true, Intents: []IntentReadiness{discarded}}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := test.inspection.Ready(); got != test.want {
+				t.Errorf("Ready() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestInspectReadinessIsByteForByteReadOnly(t *testing.T) {
+	isolateGitConfig(t)
+	r := gittest.New(t)
+	const intentID = "intent-read-only"
+	transcript := r.Write(".specstory/history/session.md", "final transcript bytes\n")
+	plan := r.Write(".claude/plans/finish.md", "# exact plan bytes\n")
+	r.Git("add", ".specstory/history/session.md", ".claude/plans/finish.md")
+	r.Git("commit", "-m", "chore: artifact receipt", "-m", "Dev-Artifact-Intent: "+intentID)
+	recordedReceipt := r.Git("rev-parse", "HEAD")
+
+	store := NewStore(t.TempDir())
+	createReadinessIntent(t, store, intentID, r.Root, Finalized, recordedReceipt)
+	if err := store.Update(context.Background(), intentID, func(intent *Intent) error {
+		intent.TranscriptPath = transcript
+		intent.PlanPaths = []string{plan}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	marker := r.Write("rewrite-marker.txt", "rewritten receipt\n")
+	r.Git("add", "rewrite-marker.txt")
+	r.Git("commit", "--amend", "--no-edit")
+	currentReceipt := r.Git("rev-parse", "HEAD")
+	if currentReceipt == recordedReceipt {
+		t.Fatal("test setup did not rewrite the receipt")
+	}
+	if message := r.Git("log", "-1", "--format=%B"); !strings.Contains(message, "Dev-Artifact-Intent: "+intentID) {
+		t.Fatalf("rewritten receipt lost intent trailer:\n%s", message)
+	}
+
+	readBytes := func(path string) []byte {
+		t.Helper()
+		body, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return body
+	}
+	sources := []string{transcript, plan, marker}
+	beforeSources := make(map[string][]byte, len(sources))
+	for _, path := range sources {
+		beforeSources[path] = readBytes(path)
+	}
+	intentPath := store.path(intentID)
+	beforeIntent := readBytes(intentPath)
+	beforeStatus := r.Git("status", "--porcelain=v1", "--untracked-files=all")
+
+	inspection, err := InspectReadiness(context.Background(), store, r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inspection.Intents) != 1 || inspection.Intents[0].State != ReadinessFinalizedUnreachable || inspection.Ready() {
+		t.Fatalf("stale receipt inspection = %+v", inspection)
+	}
+	if inspection.Intents[0].Intent.ArtifactCommit != recordedReceipt {
+		t.Fatalf("inspection reconciled receipt in memory: %s", inspection.Intents[0].Intent.ArtifactCommit)
+	}
+	for path, before := range beforeSources {
+		if after := readBytes(path); !bytes.Equal(after, before) {
+			t.Errorf("source file %s changed during inspection", path)
+		}
+	}
+	if after := readBytes(intentPath); !bytes.Equal(after, beforeIntent) {
+		t.Fatal("intent record changed during inspection")
+	}
+	if after := r.Git("rev-parse", "HEAD"); after != currentReceipt {
+		t.Fatalf("inspection changed HEAD: got %s want %s", after, currentReceipt)
+	}
+	if after := r.Git("status", "--porcelain=v1", "--untracked-files=all"); after != beforeStatus {
+		t.Fatalf("inspection changed index or working tree: before=%q after=%q", beforeStatus, after)
+	}
+	stored, err := store.Get(intentID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.ArtifactCommit != recordedReceipt {
+		t.Fatalf("inspection reconciled durable receipt: got %s want %s", stored.ArtifactCommit, recordedReceipt)
+	}
+}
+
+func TestInspectReadinessRetainsObservationErrors(t *testing.T) {
+	t.Run("list decode", func(t *testing.T) {
+		dir := t.TempDir()
+		path := filepath.Join(dir, "broken.json")
+		body := []byte(`{"schema_version": nope}`)
+		if err := os.WriteFile(path, body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		inspection, err := InspectReadiness(context.Background(), NewStore(dir), t.TempDir())
+		var syntaxErr *json.SyntaxError
+		if err == nil || !errors.As(err, &syntaxErr) {
+			t.Fatalf("list error was not retained: %v", err)
+		}
+		syntaxErr = nil
+		if !errors.As(inspection.ObservationError, &syntaxErr) || inspection.KnownEmpty || inspection.Ready() {
+			t.Fatalf("list observation = %+v", inspection)
+		}
+		if after, readErr := os.ReadFile(path); readErr != nil || !bytes.Equal(after, body) {
+			t.Fatalf("failed list changed record: bytes=%q err=%v", after, readErr)
+		}
+	})
+
+	t.Run("receipt", func(t *testing.T) {
+		isolateGitConfig(t)
+		r := gittest.New(t)
+		store := NewStore(t.TempDir())
+		createReadinessIntent(t, store, "intent-bad-receipt", r.Root, Finalized, "not-a-commit")
+		inspection, err := InspectReadiness(context.Background(), store, r.Root)
+		var gitErr *gitx.Error
+		if err == nil || !errors.As(err, &gitErr) {
+			t.Fatalf("receipt error was not retained: %v", err)
+		}
+		if len(inspection.Intents) != 1 {
+			t.Fatalf("receipt evidence = %+v", inspection)
+		}
+		evidence := inspection.Intents[0]
+		gitErr = nil
+		if evidence.State != ReadinessObservationError || !evidence.Finalized || evidence.ReceiptReachable ||
+			!errors.As(evidence.ObservationError, &gitErr) || inspection.Ready() {
+			t.Fatalf("receipt observation = %+v", inspection)
+		}
+	})
+
+	t.Run("canceled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		inspection, err := InspectReadiness(ctx, NewStore(t.TempDir()), t.TempDir())
+		if !errors.Is(err, context.Canceled) || !errors.Is(inspection.ObservationError, context.Canceled) ||
+			inspection.KnownEmpty || inspection.Ready() {
+			t.Fatalf("canceled observation = %+v, %v", inspection, err)
+		}
+	})
+}
+
+func createReadinessIntent(t *testing.T, store *Store, id, checkout string, status Status, artifactCommit string) Intent {
+	t.Helper()
+	store.newID = func() string { return id }
+	intent := &Intent{
+		RunID: "run-" + id, Provider: "claude", SessionID: "72b5c55e-d964-45cd-b040-cb29d0d7af05",
+		RepoPath: checkout, GitCommonDir: filepath.Join(checkout, ".git"), WorktreePath: checkout,
+		Branch: "main", Base: "main", Head: "0123456789abcdef0123456789abcdef01234567",
+	}
+	if err := store.Create(context.Background(), intent); err != nil {
+		t.Fatal(err)
+	}
+	if status != Armed || artifactCommit != "" {
+		if err := store.Update(context.Background(), intent.ID, func(candidate *Intent) error {
+			candidate.Status = status
+			candidate.ArtifactCommit = artifactCommit
+			if status == Failed {
+				candidate.FailureCode = "test-failure"
+			}
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stored, err := store.Get(intent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return *stored
 }
