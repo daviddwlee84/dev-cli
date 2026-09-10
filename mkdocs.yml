@@ -55,6 +55,7 @@ plugins:
             Using dev-cli: 使用 dev-cli
             Change-Stream Workflow: 變更流工作流程
             Worktrees and Provisioning: Worktree 與環境佈建
+            Submodule Workspaces: Submodule 工作區
             Parallel Agents and Runtimes: 平行 Agent 與 Runtime
             Agent Configuration Interoperability: Agent 設定互通
             SSH Host Onboarding: SSH Host 設定與佈建
@@ -132,6 +133,7 @@ nav:
       - Machine Summary: guides/machine-summary.md
       - Development Journal: guides/dev-journal.md
       - Worktrees and Provisioning: guides/worktrees-provisioning.md
+      - Submodule Workspaces: guides/submodule-workspaces.md
       - Parallel Agents and Runtimes: guides/parallel-agents-runtimes.md
       - Agent Configuration Interoperability: guides/agent-interop.md
       - SSH Host Onboarding: guides/ssh-hosts.md

@@ -1100,6 +1100,8 @@ func (m Model) renderDetail() string {
 	case modeCopy:
 		return "  " + styleTitle.Render("copy ") + m.copyBindingHelp() +
 			"\n  " + styleHelp.Render("press a second key · esc to cancel")
+	case modeCloneURL:
+		return m.renderCloneURLs()
 	}
 
 	if row, ok := m.currentFleet(); ok {
@@ -1310,6 +1312,12 @@ func (m Model) renderDetail() string {
 				lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("types"), types))
 			}
 		}
+		for _, n := range checkout.Submodules {
+			lines = append(lines, fmt.Sprintf("  submodule %s · %s · %s", n.Path, n.State, strings.Join(n.Blockers, "; ")))
+		}
+		if checkout.SubmoduleErr != nil {
+			lines = append(lines, "  submodules: "+checkout.SubmoduleErr.Error())
+		}
 		if checkout.Worktree.Locked {
 			lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("state"), styleDrift.Render("locked")))
 		}
@@ -1385,6 +1393,14 @@ func (m Model) renderDetail() string {
 		}
 		if r.Repo.Category != "" {
 			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("group"), r.Repo.Category))
+		}
+		if len(r.Context.Checkouts) > 0 {
+			for _, n := range r.Context.Checkouts[0].Submodules {
+				lines = append(lines, fmt.Sprintf("  submodule %s · %s · %s", n.Path, n.State, strings.Join(n.Blockers, "; ")))
+			}
+			if err := r.Context.Checkouts[0].SubmoduleErr; err != nil {
+				lines = append(lines, "  submodules: "+err.Error())
+			}
 		}
 		if r.Context.RuntimeErr != nil {
 			lines = append(lines, fmt.Sprintf("  %s  %s", styleDim.Render("live"), styleErr.Render("unavailable")))
@@ -1560,7 +1576,7 @@ func (m Model) renderFooter() string {
 			bindings = append(bindings, "c next")
 		}
 	}
-	if m.view == ViewRepos || m.view == ViewSkills || m.view == ViewMCP {
+	if m.view == ViewRepos || m.view == ViewRemote || m.view == ViewSkills || m.view == ViewMCP {
 		bindings = append(bindings, "y copy")
 	}
 	bindings = append(bindings, "tab view", "/ filter", "? help")

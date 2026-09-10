@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
@@ -185,6 +186,15 @@ func Worktrees(ctx context.Context, dir string) ([]Worktree, error) {
 		}
 	}
 	flush()
+	// Git lists an absorbed submodule's common directory as its main
+	// worktree. Normalize that record using the verified physical checkout.
+	if len(list) > 0 && !list[0].Bare {
+		repository, discoverErr := Discover(ctx, dir)
+		if discoverErr != nil {
+			return nil, discoverErr
+		}
+		list[0].Path = repository.MainRoot
+	}
 	return list, nil
 }
 
@@ -236,6 +246,24 @@ func MoveWorktree(ctx context.Context, dir, source, destination string) error {
 // RemoveWorktree removes a linked worktree checkout. It never deletes the
 // branch — that is a separate, explicit decision.
 func RemoveWorktree(ctx context.Context, dir, path string, force bool) error {
+	// A generic force flag never authorizes deleting a child repository's
+	// refs/objects. The recursive lifecycle stages those only after proof.
+	if _, err := os.Stat(path); err == nil {
+		g, err := SubmodulesOf(ctx, path)
+		if err != nil {
+			return err
+		}
+		for _, n := range g.Nodes {
+			if n.Initialized || n.State != "uninitialized" {
+				return fmt.Errorf("submodule %s requires guarded --recursive cleanup", n.Path)
+			}
+		}
+		if r, err := Discover(ctx, path); err == nil {
+			if _, err := os.Lstat(filepath.Join(r.GitDir, "modules")); err == nil {
+				return errors.New("private submodule Git data requires guarded --recursive cleanup")
+			}
+		}
+	}
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("resolve current directory before removing worktree: %w", err)

@@ -125,6 +125,8 @@ type LocalFacts struct {
 }
 
 type CheckoutFacts struct {
+	Submodules     []gitx.SubmoduleNode        `json:"submodules,omitempty"`
+	SubmoduleError *string                     `json:"submodule_error,omitempty"`
 	Index          int                         `json:"index"`
 	Path           string                      `json:"path"`
 	Canonical      bool                        `json:"canonical"`
@@ -402,6 +404,7 @@ func buildLocalFacts(input BuildInput, reportErrors *[]CollectionError) LocalFac
 	for index, checkout := range context.Checkouts {
 		facts := CheckoutFacts{
 			Index: index, Path: checkout.Worktree.Path, Canonical: index == 0,
+			Submodules: checkout.Submodules, SubmoduleError: optionalString(cleanError(checkout.SubmoduleErr)),
 			Ownership: checkout.Ownership, Locked: checkout.Worktree.Locked,
 			LockedReason:   optionalString(strings.TrimSpace(checkout.Worktree.LockedReason)),
 			Prunable:       checkout.Worktree.Prunable,

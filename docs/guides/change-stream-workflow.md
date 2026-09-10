@@ -7,6 +7,8 @@ verified_on: 2026-09-08
 
 # Change-stream workflow
 
+For submodule workspaces, commit/integrate/push affected children before updating and publishing the outer gitlinks. Outer `--push` does not push children. Explicit recursive cleanup has separate recovery and integration gates; see [Submodule workspaces](submodule-workspaces.md).
+
 A `dev` task is a durable record of one line of work. Select the checkout mode, make the branch recoverable, and treat runtime sessions as disposable.
 
 ## Lifecycle at a glance

@@ -2,6 +2,7 @@ package gitx
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,6 +75,20 @@ func Discover(ctx context.Context, dir string) (Repo, error) {
 		r.MainRoot = r.Root
 	} else {
 		r.MainRoot = filepath.Dir(r.GitCommonDir)
+		// Absorbed submodules keep their repository below the superproject's
+		// modules directory. Its parent is metadata, not a checkout.
+		if configured, configErr := run(ctx, dir, "config", "--file", filepath.Join(r.GitCommonDir, "config"), "--get", "core.worktree"); configErr == nil && configured != "" {
+			if !filepath.IsAbs(configured) {
+				configured = filepath.Join(r.GitCommonDir, configured)
+			}
+			r.MainRoot = filepath.Clean(configured)
+		}
+		probe, probeErr := run(ctx, r.MainRoot, "rev-parse", "--path-format=absolute", "--show-toplevel", "--git-common-dir")
+		fields := lines(probe)
+		if probeErr != nil || len(fields) != 2 || !sameCanonicalPath(fields[1], r.GitCommonDir) {
+			return Repo{}, fmt.Errorf("cannot verify main checkout for Git common directory %s", r.GitCommonDir)
+		}
+		r.MainRoot = fields[0]
 	}
 	r.IsLinkedWorktree = r.Root != "" && r.GitDir != r.GitCommonDir
 	r.Name = filepath.Base(r.MainRoot)

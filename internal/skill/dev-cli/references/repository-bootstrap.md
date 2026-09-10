@@ -1,5 +1,7 @@
 # Repository bootstrap
 
+Clones initialize submodules recursively at gitlinks by default. `--submodules=none` and global/project `[submodules].init` control acquisition independently of setup presets. Initialization failure retains the clone and prevents runtime handoff. See `submodules.md`.
+
 `dev repo new`, `repo clone`, and `repo setup` share one scaffold pipeline. A
 plain name creates a new repository. A clear Git URL, local Git path, or
 `owner/name` passed to either `repo new` or its `create` alias routes to clone

@@ -92,6 +92,7 @@ func (ParkWarmOptions) isActionOptions() {}
 
 // ParkColdOptions controls reconstructible parking and checkout cleanup.
 type ParkColdOptions struct {
+	Recursive       bool
 	Next            string
 	Note            string
 	CommitWIP       bool
@@ -171,6 +172,7 @@ func (VerifyMergedOptions) isActionOptions() {}
 // separate from worktree removal and must be proven safe by the injected
 // executor.
 type RetireOptions struct {
+	Recursive          bool
 	ProcessClosures    Fields
 	RuntimeFingerprint string
 	PreviewAuthority   Fields
@@ -203,6 +205,7 @@ func (AdoptOptions) isActionOptions() {}
 // action preserves the checkout's branch; contained branch deletion is a
 // separate CLI-only compatibility intent that the flow TUI never supplies.
 type RemoveCheckoutOptions struct {
+	Recursive          bool
 	ProcessClosures    Fields
 	RuntimeFingerprint string
 	PreviewAuthority   Fields

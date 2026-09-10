@@ -9,6 +9,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/retire"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/submodule"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -85,6 +86,7 @@ func (s *lifecycleService) observeRetire(ctx context.Context, request Request, r
 		return PlanSpec{}, observed, err
 	}
 	spec := s.retireSpec(request, record, observed)
+	spec = s.decorateSubmodules(ctx, request, spec, observed.checkout)
 	spec.Conditions = append(spec.Conditions, retirementPreviewCondition(options.RuntimeFingerprint, observed.cleanup))
 	spec.Conditions = append(spec.Conditions, retirementIdentityPreviewCondition(options.PreviewAuthority, spec.Authority))
 	return spec, observed, nil
@@ -623,6 +625,10 @@ func (s *lifecycleService) applyRetire(ctx context.Context, approved Plan) (Resu
 			}
 
 			execution := &executionState{service: s, plan: fresh, tx: tx, revision: record.Revision}
+			if err := execution.prepareSubmodules(ctx); err != nil {
+				result, _ = execution.fail(err, "preserve all child repositories and retry the recursive plan")
+				return err
+			}
 			result, observeErr = execution.executeRetire(ctx, *record, observed)
 			return observeErr
 		})
@@ -639,7 +645,7 @@ func (e *executionState) executeRetire(ctx context.Context, record task.Record, 
 	removedWorktree := false
 	deletedBranch := false
 
-	for _, effect := range e.plan.Effects() {
+	for _, effect := range e.executionEffects() {
 		switch effect.Code {
 		case EffectCloseRuntime:
 			fresh, err := e.reinspectRetire(ctx, record, baseline, false)
@@ -676,7 +682,7 @@ func (e *executionState) executeRetire(ctx context.Context, record task.Record, 
 			}
 			baseline = fresh
 			err = e.run(effect, func() (string, error) {
-				if removeErr := e.service.removeWorktree(ctx, baseline.repoPath, baseline.checkout, false); removeErr != nil {
+				if removeErr := e.removeWithSubmodules(ctx, baseline.repoPath, baseline.checkout); removeErr != nil {
 					return "worktree removal may be partial", fmt.Errorf("remove exact worktree %s: %w", baseline.checkout, removeErr)
 				}
 				return "removed exact linked worktree without force; branch retained", nil
@@ -743,6 +749,9 @@ func (e *executionState) executeRetire(ctx context.Context, record task.Record, 
 						verifyErr = errors.New("task record still exists")
 					}
 					return "DONE task reap was not verified", fmt.Errorf("verify retired task %s deletion: %w", candidate.ID, verifyErr)
+				}
+				if err := submodule.Forget(e.service.cfg, baseline.gitCommonDir, candidate.Branch); err != nil {
+					return "task reaped; workspace intent cleanup failed", err
 				}
 				return "reaped DONE task at revision " + record.Revision, nil
 			})

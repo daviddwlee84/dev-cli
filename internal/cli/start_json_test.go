@@ -29,13 +29,16 @@ func newStartFixture(t *testing.T, rt runtime.Runtime) *startFixture {
 	t.Helper()
 	r := gittest.New(t)
 	cfg := config.Default()
+	// Lifecycle helpers share this fixture and also persist artifact and
+	// coordinator state. Keep every such write outside the developer's XDG data.
+	cfg.Paths.StateDir = t.TempDir()
 	cfg.Paths.WorktreeRoot = filepath.Join(t.TempDir(), "Worktrees")
 	cfg.Paths.WorktreePath = "{{worktree_root}}/{{repo}}/{{branch|slug}}"
 	cfg.Worktree.Include = nil
 	cfg.Worktree.PostCreate = config.PostCreate{}
 	f := &startFixture{t: t, repo: r}
 	f.app = &App{
-		Cfg: cfg, Tasks: task.NewStore(filepath.Join(t.TempDir(), "tasks")),
+		Cfg: cfg, Tasks: task.NewStore(cfg.TasksDir()),
 		Out: &f.stdout, Err: &f.stderr, runtimeInstance: rt,
 	}
 	cwd, err := os.Getwd()

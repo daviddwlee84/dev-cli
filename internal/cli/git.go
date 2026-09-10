@@ -23,6 +23,19 @@ wrong. Simple aliases such as git status or git add remain shell/plugin concerns
 		newGitUncommitCmd(app), newGitRecommitCmd(app), newGitPullRebaseCmd(app),
 		newGitAmendAllCmd(app), newGitSetupCmd(app),
 	)
+	for _, child := range cmd.Commands() {
+		if child.Name() == "setup" || child.RunE == nil {
+			continue
+		}
+		run := child.RunE
+		child.RunE = func(command *cobra.Command, args []string) error {
+			r, err := gitx.Discover(ctxOf(), mustGetwd())
+			if err != nil {
+				return err
+			}
+			return gitx.WithLifecycleLock(ctxOf(), r.GitCommonDir, func() error { return run(command, args) })
+		}
+	}
 	return cmd
 }
 

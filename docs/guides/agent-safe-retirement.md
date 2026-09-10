@@ -7,6 +7,10 @@ verified_on: 2026-09-08
 
 # Agent-safe retirement
 
+Submodule workspaces require explicit `--recursive` approval to dispose their independent child clones after fresh remote proof. Children leave before the outer worktree; canonical/shared Git and the outer branch remain. Interrupted cleanup retains a recovery journal. See [Submodule workspaces](submodule-workspaces.md).
+
+Recursive cleanup preserves the version-2 coordinator's caller and foreground-program consent checks. Child graph, workspace intent and artifact ownership remain bound to the approved preview; changed child refs or state require a new preview before runtime closure or removal.
+
 A `dev` change stream reaches full retirement only after an external caller closes its runtime and removes its worktree — a feature agent must never destroy the checkout or runtime containing its own process.
 
 ## Three milestones, not one

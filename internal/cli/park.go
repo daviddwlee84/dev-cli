@@ -12,6 +12,7 @@ import (
 )
 
 func newParkCmd(app *App) *cobra.Command {
+	var recursive bool
 	var (
 		next            string
 		note            string
@@ -53,7 +54,8 @@ machine, which is exactly what parking needs to support.`,
 			var options taskflow.ActionOptions
 			if cold {
 				options = taskflow.ParkColdOptions{
-					Next: next, Note: note, CommitWIP: wip, Push: push,
+					Recursive: recursive,
+					Next:      next, Note: note, CommitWIP: wip, Push: push,
 					CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, Timeout: timeout,
 				}
 			} else {
@@ -81,6 +83,7 @@ machine, which is exactly what parking needs to support.`,
 		},
 	}
 	f := cmd.Flags()
+	f.BoolVar(&recursive, "recursive", false, "verify and dispose workspace-owned submodule clones from the inside out")
 	f.StringVarP(&next, "next", "n", "", "what to do when you come back")
 	f.StringVar(&note, "note", "", "free-form note")
 	f.BoolVar(&wip, "wip", false, "checkpoint uncommitted work as a wip: commit")

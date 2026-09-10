@@ -70,6 +70,10 @@ func (s *lifecycleService) applyGuarded(ctx context.Context, action Action, appr
 				service: s, plan: fresh, observed: observed, tx: tx, revision: record.Revision,
 			}
 			var applyErr error
+			if err := execution.prepareSubmodules(ctx); err != nil {
+				result, _ = execution.fail(err, "preserve every child repository and retry")
+				return err
+			}
 			switch action {
 			case ParkWarm:
 				result, applyErr = execution.applyParkWarm(ctx)
@@ -108,7 +112,7 @@ func (e *executionState) applyParkWarm(ctx context.Context) (Result, error) {
 	}
 
 	closedRuntime := false
-	for _, effect := range e.plan.Effects() {
+	for _, effect := range e.executionEffects() {
 		switch effect.Code {
 		case EffectCommitWIP:
 			if err := e.service.revalidateGitBaseline(ctx, *observed); err != nil {
@@ -230,7 +234,7 @@ func (e *executionState) applyParkCold(ctx context.Context) (Result, error) {
 	checkoutRemoved := false
 	baseSwitched := false
 
-	for _, effect := range e.plan.Effects() {
+	for _, effect := range e.executionEffects() {
 		switch effect.Code {
 		case EffectCommitWIP:
 			if err := e.service.revalidateGitBaseline(ctx, *observed); err != nil {
@@ -304,7 +308,7 @@ func (e *executionState) applyParkCold(ctx context.Context) (Result, error) {
 				return e.fail(err, "the worktree was preserved; refresh every safety condition before retrying")
 			}
 			err := e.run(effect, func() (string, error) {
-				if removeErr := e.service.removeWorktree(ctx, observed.repoPath, observed.checkout, false); removeErr != nil {
+				if removeErr := e.removeWithSubmodules(ctx, observed.repoPath, observed.checkout); removeErr != nil {
 					return "", fmt.Errorf("remove exact worktree %s: %w", observed.checkout, removeErr)
 				}
 				return "removed exact linked worktree; branch retained", nil
@@ -405,7 +409,7 @@ func (e *executionState) applyResume(ctx context.Context) (Result, error) {
 	runtimeMutated := false
 	checkoutMutated := false
 
-	for _, effect := range e.plan.Effects() {
+	for _, effect := range e.executionEffects() {
 		switch effect.Code {
 		case EffectFetchRefs:
 			if err := e.service.revalidateRepository(ctx, *observed); err != nil {
@@ -459,6 +463,7 @@ func (e *executionState) applyResume(ctx context.Context) (Result, error) {
 			}
 			err := e.run(effect, func() (string, error) {
 				created, createErr := e.service.createWorktree(ctx, wt.CreateRequest{
+					LockHeld: true,
 					RepoPath: observed.repoPath, RepoName: observed.task.Repo,
 					Branch: observed.task.Branch, Base: base,
 					Path: effect.Target, Label: resumeRuntimeLabel(observed.task),

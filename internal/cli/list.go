@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	"github.com/spf13/cobra"
@@ -143,24 +144,26 @@ func runList(app *App, o listOptions) error {
 // tools (and for the multi-host aggregation `ssh host dev ls --json` enables),
 // so fields are added but never renamed.
 type jsonRow struct {
-	ID             string   `json:"id"`
-	Name           string   `json:"name"`
-	Repo           string   `json:"repo"`
-	RepoPath       string   `json:"repo_path"`
-	Branch         string   `json:"branch"`
-	Base           string   `json:"base,omitempty"`
-	WorktreePath   string   `json:"worktree_path,omitempty"`
-	Checkout       string   `json:"checkout,omitempty"`
-	State          string   `json:"state"`
-	Milestone      string   `json:"milestone"`
-	CleanupPending bool     `json:"cleanup_pending"`
-	ArtifactStatus string   `json:"artifact_status,omitempty"`
-	RetireBlockers []string `json:"retirement_blockers,omitempty"`
-	Mode           string   `json:"mode"`
-	Owner          string   `json:"owner,omitempty"`
-	Next           string   `json:"next,omitempty"`
-	Note           string   `json:"note,omitempty"`
-	Tags           []string `json:"tags,omitempty"`
+	Submodules     []gitx.SubmoduleNode `json:"submodules,omitempty"`
+	SubmoduleError string               `json:"submodule_error,omitempty"`
+	ID             string               `json:"id"`
+	Name           string               `json:"name"`
+	Repo           string               `json:"repo"`
+	RepoPath       string               `json:"repo_path"`
+	Branch         string               `json:"branch"`
+	Base           string               `json:"base,omitempty"`
+	WorktreePath   string               `json:"worktree_path,omitempty"`
+	Checkout       string               `json:"checkout,omitempty"`
+	State          string               `json:"state"`
+	Milestone      string               `json:"milestone"`
+	CleanupPending bool                 `json:"cleanup_pending"`
+	ArtifactStatus string               `json:"artifact_status,omitempty"`
+	RetireBlockers []string             `json:"retirement_blockers,omitempty"`
+	Mode           string               `json:"mode"`
+	Owner          string               `json:"owner,omitempty"`
+	Next           string               `json:"next,omitempty"`
+	Note           string               `json:"note,omitempty"`
+	Tags           []string             `json:"tags,omitempty"`
 
 	CheckoutExists bool   `json:"checkout_exists"`
 	Dirty          bool   `json:"dirty"`
@@ -276,6 +279,13 @@ func emitJSON(app *App, rows []inventory.Row, runtimeName string) error {
 		}
 		if r.Task.WorktreePath == "" {
 			j.WorktreePath = ""
+		}
+		if r.CheckoutExists {
+			g, err := gitx.SubmodulesOf(ctxOf(), r.Checkout)
+			j.Submodules = g.Nodes
+			if err != nil {
+				j.SubmoduleError = err.Error()
+			}
 		}
 		out = append(out, j)
 	}

@@ -105,7 +105,7 @@ func readAttributes(file *os.File) (map[string][]byte, error) {
 	fd := int(file.Fd())
 	size, err := unix.Flistxattr(fd, nil)
 	if err == unix.ENOTSUP {
-		return map[string][]byte{}, nil
+		return nil, nil
 	}
 	if err != nil {
 		return nil, err
@@ -120,7 +120,10 @@ func readAttributes(file *os.File) (map[string][]byte, error) {
 			return nil, err
 		}
 	}
-	attrs := map[string][]byte{}
+	// Empty attributes are omitted from recovery JSON and decode as nil.
+	// Keep live observations in that same canonical form so a receipt does
+	// not mistake an unchanged file for an external metadata replacement.
+	var attrs map[string][]byte
 	total := 0
 	for _, name := range strings.Split(string(names[:size]), "\x00") {
 		if name == "" {
@@ -141,6 +144,9 @@ func readAttributes(file *os.File) (map[string][]byte, error) {
 				return nil, err
 			}
 			value = value[:n]
+		}
+		if attrs == nil {
+			attrs = make(map[string][]byte)
 		}
 		attrs[name] = value
 	}

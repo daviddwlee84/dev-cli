@@ -13,6 +13,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
+	"github.com/daviddwlee84/dev-cli/internal/submodule"
 )
 
 // AcquireKind identifies how a canonical repository checkout is obtained.
@@ -28,6 +29,8 @@ const (
 // deliberately owned by callers so the same acquisition path can serve the
 // interactive wizard and non-interactive commands.
 type AcquireRequest struct {
+	Submodules    string
+	Config        config.Config
 	Kind          AcquireKind
 	Name          string
 	CloneRef      string
@@ -52,6 +55,9 @@ type AcquireResult struct {
 // where ownership and checkout semantics are explicit.
 func Acquire(ctx context.Context, request AcquireRequest) (AcquireResult, error) {
 	var result AcquireResult
+	if err := (config.Submodules{Init: request.Submodules}).Validate(); err != nil {
+		return result, err
+	}
 	request.Name = strings.TrimSpace(request.Name)
 	request.CloneRef = strings.TrimSpace(request.CloneRef)
 	request.Destination = strings.TrimSpace(request.Destination)
@@ -106,6 +112,15 @@ func Acquire(ctx context.Context, request AcquireRequest) (AcquireResult, error)
 			return result, fmt.Errorf("clone repository: %w", RedactCloneError(err, cloneRef, request.CloneRef))
 		}
 		result.Created, result.Cloned, result.GitInited = true, true, true
+		settings, settingsErr := submodule.Settings(request.Config, destination, request.Submodules)
+		if settingsErr != nil {
+			return result, fmt.Errorf("clone retained at %s: %w", destination, settingsErr)
+		}
+		if settings.Init == "recursive" {
+			if _, initErr := gitx.InitSubmodules(ctx, destination); initErr != nil {
+				return result, fmt.Errorf("clone retained at %s; submodules not ready: %w", destination, initErr)
+			}
+		}
 		if result.Name == "" {
 			result.Name = NameFromRef(RedactCloneRef(request.CloneRef))
 		}

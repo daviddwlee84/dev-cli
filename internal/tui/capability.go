@@ -98,7 +98,10 @@ func formatMCPSummary(row agentmcp.Declaration) string {
 
 func (m Model) copyBindingHelp() string {
 	if m.view == ViewRepos {
-		return "y context · p path · b branch · s sessions · w worktree paths"
+		return "y context · p path · b branch · s sessions · w worktree paths · u clone URL"
+	}
+	if m.view == ViewRemote {
+		return "u clone URL"
 	}
 	parts := make([]string, 0, 4)
 	if _, err := m.capabilityFilePath(); err == nil {

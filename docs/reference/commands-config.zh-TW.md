@@ -8,6 +8,13 @@ lang: zh-TW
 
 # 命令與設定
 
+`dev submodule add [source] [path]` 與 `dev repo add-as-submodule` 共用
+`--parent`、`--checkout=pinned|default-branch`、pinned 專用的 `--ref`、
+`--submodules=recursive|none`、`--dry-run`、`--yes`、`--json`。只 stage 新增的
+metadata／gitlink，失敗回報部分結果 phase；見 [Submodule 工作區](../guides/submodule-workspaces.zh-TW.md)。
+
+Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"none"`）與 `develop = ["path"]`，`.dev-cli/config.toml` 可覆寫。CLI 提供 `--submodules`、可重複的 `start --submodule`／`--submodule-base`，以及明確清理旗標 `--recursive`。見 [Submodule 工作區](../guides/submodule-workspaces.md)。
+
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 

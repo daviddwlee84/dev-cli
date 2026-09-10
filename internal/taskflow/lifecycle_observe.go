@@ -73,7 +73,7 @@ func (s *lifecycleService) observeAndSpecify(ctx context.Context, request Reques
 	default:
 		return PlanSpec{}, observed, &HandlerUnavailableError{Action: request.Action, Stage: "plan"}
 	}
-	return spec, observed, nil
+	return s.decorateSubmodules(ctx, request, spec, observed.checkout), observed, nil
 }
 
 func (s *lifecycleService) freshPlan(ctx context.Context, request Request, record task.Record) (Plan, lifecycleObservation, error) {

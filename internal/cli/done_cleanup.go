@@ -27,6 +27,8 @@ const retireHandoffTTL = 2 * time.Minute
 const retireHandoffVersion = 2
 
 type retireHandoffIntent struct {
+	Recursive                bool              `json:"recursive,omitempty"`
+	SubmoduleFingerprint     string            `json:"submodule_fingerprint,omitempty"`
 	PreviewAuthority         map[string]string `json:"preview_authority,omitempty"`
 	ProcessClosures          map[string]string `json:"process_closures,omitempty"`
 	CallerPaneID             string            `json:"caller_pane_id,omitempty"`
@@ -94,7 +96,26 @@ func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task
 		return promptErr
 	}
 	deleteBranch := choice == "delete"
-	options, fresh, canceled, err := confirmRetirement(ctx, app, p, rt, preview, flow.RetireOptions{DeleteBranch: deleteBranch, Timeout: 5 * time.Second, PreviewAuthority: authority})
+	recursive := false
+	graph, graphErr := gitx.SubmodulesOf(ctx, final.WorktreePath)
+	if graphErr != nil {
+		return graphErr
+	}
+	if len(graph.Nodes) > 0 {
+		if graph.Fingerprint != authority.Map()["submodules"] {
+			return errors.New("retirement preview is stale: submodule graph changed")
+		}
+		renderSubmodules(app, graph.Nodes)
+		recursive, err = p.confirm("Verify remote recovery and dispose these workspace-owned submodule repositories too?", false)
+		if errors.Is(err, errPromptCanceled) || err == nil && !recursive {
+			fmt.Fprintln(app.Out, "   cleanup kept · submodule disposal was not authorized")
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+	}
+	options, fresh, canceled, err := confirmRetirement(ctx, app, p, rt, preview, flow.RetireOptions{Recursive: recursive, DeleteBranch: deleteBranch, Timeout: 5 * time.Second, PreviewAuthority: authority})
 	if err != nil {
 		app.warnf("retirement was not attempted: %v", err)
 		printRetireFallback(app, final, deleteBranch, options.CloseUnknown)
@@ -106,13 +127,13 @@ func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task
 	preview = fresh
 	closeUnknown := options.CloseUnknown
 	if rt.Name() == "herdr" && preview.CallerContained && len(preview.Sessions) > 0 {
-		return launchExternalRetireCoordinator(ctx, app, rt, final, preview, deleteBranch, closeUnknown, options.ProcessClosures.Map(), options.PreviewAuthority)
+		return launchExternalRetireCoordinator(ctx, app, rt, final, preview, deleteBranch, closeUnknown, options.ProcessClosures.Map(), options.PreviewAuthority, recursive)
 	}
 	if rt.Name() == "herdr" && !preview.CallerContained {
 		return retireTaskWithTaskflow(ctx, app, &final, options, deleteBranch)
 	}
 
-	if err := app.retireDirective(final.RepoPath, final.ID, deleteBranch, closeUnknown); err != nil {
+	if err := app.retireDirective(final.RepoPath, final.ID, deleteBranch, closeUnknown, recursive); err != nil {
 		app.warnf("integration is complete, but automatic retirement needs a refreshed dev shell wrapper: %v", err)
 		printRetireFallback(app, final, deleteBranch, closeUnknown)
 		return err
@@ -184,12 +205,13 @@ func launchExternalRetireCoordinator(
 	deleteBranch, closeUnknown bool,
 	processClosures map[string]string,
 	previewAuthority flow.Fields,
+	recursive ...bool,
 ) (err error) {
 	if app.workflowHandoff != nil {
 		copy := *app
 		copy.workflowHandoff = nil
 		return app.workflowHandoff(func() error {
-			return launchExternalRetireCoordinator(ctx, &copy, rt, final, preview, deleteBranch, closeUnknown, processClosures, previewAuthority)
+			return launchExternalRetireCoordinator(ctx, &copy, rt, final, preview, deleteBranch, closeUnknown, processClosures, previewAuthority, recursive...)
 		})
 	}
 	if err := validateRetirementAuthority(ctx, app, final, previewAuthority); err != nil {
@@ -231,13 +253,25 @@ func launchExternalRetireCoordinator(
 		}
 	}()
 	intent := retireHandoffIntent{
-		Version: retireHandoffVersion, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(retireHandoffTTL),
+		Recursive: len(recursive) > 0 && recursive[0],
+		Version:   retireHandoffVersion, CreatedAt: time.Now().UTC(), ExpiresAt: time.Now().UTC().Add(retireHandoffTTL),
 		TaskID: final.ID, TaskRevision: record.Revision, CheckoutPath: final.WorktreePath,
 		HeadOID: strings.TrimSpace(head), PreviewFingerprint: preview.Fingerprint(),
 		DeleteBranch: deleteBranch, CloseUnknown: closeUnknown, ProcessClosures: processClosures, PreviewAuthority: previewAuthority.Map(),
 	}
 	bindRetireCaller(&intent, preview)
 	intent.PreviewFingerprint = retireHandoffFingerprint(preview, intent.CallerPaneID)
+	if intent.Recursive {
+		graph, err := gitx.SubmodulesOf(ctx, final.WorktreePath)
+		if err != nil {
+			return err
+		}
+		expectedGraph := previewAuthority.Map()["submodules"]
+		if (len(graph.Nodes) > 0 || expectedGraph != "") && graph.Fingerprint != expectedGraph {
+			return errors.New("retirement preview is stale: submodule graph changed; no coordinator was launched")
+		}
+		intent.SubmoduleFingerprint = graph.Fingerprint
+	}
 	if err := writeRetireHandoffIntent(dir, intent); err != nil {
 		return err
 	}
@@ -372,11 +406,21 @@ func runRetireCoordinator(ctx context.Context, app *App, id string) (err error) 
 	if retireHandoffFingerprint(preview, intent.CallerPaneID) != intent.PreviewFingerprint {
 		return errors.New("retirement handoff is stale: runtime workspace or foreground state changed")
 	}
+	if intent.Recursive {
+		graph, err := gitx.SubmodulesOf(ctx, selected.WorktreePath)
+		if err != nil {
+			return err
+		}
+		if intent.SubmoduleFingerprint == "" || graph.Fingerprint != intent.SubmoduleFingerprint {
+			return errors.New("retirement handoff is stale: submodule graph changed")
+		}
+	}
 
 	if !preview.Ready() {
 		return fmt.Errorf("retirement blocked: %s", strings.Join(preview.Blockers, "; "))
 	}
 	return retireTaskWithTaskflow(ctx, app, &selected, flow.RetireOptions{
+		Recursive:    intent.Recursive,
 		CloseUnknown: intent.CloseUnknown, DeleteBranch: intent.DeleteBranch, Timeout: 5 * time.Second,
 		ProcessClosures: flow.NewFields(intent.ProcessClosures), RuntimeFingerprint: preview.Fingerprint(), PreviewAuthority: flow.NewFields(intent.PreviewAuthority),
 	}, intent.DeleteBranch)

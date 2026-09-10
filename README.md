@@ -2,6 +2,18 @@
 
 A thin glue layer over git, worktrees, forges and agent runtimes.
 
+Submodule superprojects can use a complete worktree with independently
+initialized child repositories. Clone/worktree creation defaults to recursive
+initialization at committed gitlinks; `start --submodule PATH` selects which
+children get task branches. Explicit `--recursive` cleanup proves child recovery
+before removing the parent. See [Submodule workspaces](docs/guides/submodule-workspaces.md)
+for configuration, inside-out integration and recovery limits.
+
+Use `dev submodule add` (or `dev repo add-as-submodule`) to select a known
+repository and add it to this checkout. Choose pinned/default-branch checkout;
+only the new gitlink and `.gitmodules` are staged, with no commit or push.
+In REPOS/REMOTE, `y u` copies a clone URL without fetching.
+
 It exists to stop four things collapsing into one:
 
 ```
@@ -73,7 +85,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.20 instead when you need a reproducible install.
+# Pin @v0.2.22 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 

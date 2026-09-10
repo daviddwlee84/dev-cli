@@ -27,6 +27,7 @@ const (
 	listActionStartWorktree
 	listActionStartDirect
 	listActionCopy
+	listActionCopyCloneURL
 	listActionStats
 	listActionRemoteClone
 	listActionSkillUpdate
@@ -294,6 +295,9 @@ func (m Model) openActionMenu() Model {
 		m.addNoteOptions(&overlay)
 		if m.actions.Copy != nil {
 			overlay.addOption(listActionCopy, "copy repository data…")
+			if m.actions.CloneSources != nil {
+				overlay.addOption(listActionCopyCloneURL, "copy clone URL")
+			}
 		}
 		m.addStatsOption(&overlay)
 
@@ -329,6 +333,10 @@ func (m Model) openActionMenu() Model {
 
 	case ViewRemote:
 		row, _ := m.currentRemote()
+		if m.actions.Copy != nil {
+			overlay.addOption(listActionCopy, "copy repository URL…")
+			overlay.addOption(listActionCopyCloneURL, "copy clone URL")
+		}
 		if row.Cloned() && m.actions.OpenRemote != nil {
 			overlay.addOption(listActionOpen, "open local checkout")
 			m.addNoteOptions(&overlay)
@@ -540,6 +548,8 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 		m.copySelection = token
 		m.mode, m.err, m.status = modeCopy, nil, ""
 		return m, nil
+	case listActionCopyCloneURL:
+		return m.copyCloneURL()
 	case listActionStats:
 		repo := m.selectedRepoName()
 		if repo != "" && m.actions.LoadStats != nil {

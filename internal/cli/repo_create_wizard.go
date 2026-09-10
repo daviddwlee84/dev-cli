@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -229,6 +230,14 @@ func promptRepoCloneWizard(app *App, p *prompter, flags repoBootstrapFlags, ref 
 	}
 	flags.path = config.Expand(destination)
 	setup := flags.preset != ""
+	if flags.submodules == "" {
+		if _, statErr := os.Stat(filepath.Join(config.Expand(ref), ".gitmodules")); statErr == nil {
+			flags.submodules, err = p.choice("Submodules", "configured", "configured, recursive or none", map[string]string{"configured": "", "recursive": "recursive", "none": "none"})
+			if err != nil {
+				return repoWorkflowRequest{}, false, false, err
+			}
+		}
+	}
 	if offerSetup && !setup {
 		setup, err = p.confirm("Apply a repository setup preset after cloning?", false)
 		if err != nil {
@@ -245,6 +254,7 @@ func promptRepoCloneWizard(app *App, p *prompter, flags repoBootstrapFlags, ref 
 	}
 	fmt.Fprintln(p.out, "\n"+p.style.title("Summary"))
 	fmt.Fprintf(p.out, "  source       %s\n", repo.RedactCloneRef(ref))
+	fmt.Fprintf(p.out, "  submodules   %s (gitlink commits)\n", defaultString(request.Submodules, "configured"))
 	fmt.Fprintf(p.out, "  destination  %s\n", config.Contract(request.Destination))
 	if request.Scaffold.Preset != "" {
 		fmt.Fprintf(p.out, "  setup        %s\n", request.Scaffold.Preset)

@@ -10,6 +10,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
+	"github.com/daviddwlee84/dev-cli/internal/submodule"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -256,6 +257,45 @@ func runStartWizard(ctx context.Context, app *App, req startRequest) (*startSpec
 			}
 		}
 		rt := app.Runtime()
+		if spec.Mode == task.ModeWorktree {
+			graph, graphErr := gitx.SubmodulesOf(ctx, spec.RepoPath)
+			if graphErr != nil {
+				return nil, false, graphErr
+			}
+			if len(graph.Nodes) > 0 {
+				settings, err := submodule.Settings(app.Cfg, spec.RepoPath, spec.Submodules)
+				if err != nil {
+					return nil, false, err
+				}
+				if req.Submodules == "" {
+					spec.Submodules, err = p.choice("Initialize submodules", settings.Init, "recursive or none", map[string]string{"recursive": "recursive", "none": "none"})
+					if err != nil {
+						return nil, false, err
+					}
+				}
+				if req.DevelopSubmodules == nil && spec.Submodules != "none" {
+					spec.DevelopSubmodules = []string{}
+					for _, n := range graph.Nodes {
+						selected := false
+						for _, path := range settings.Develop {
+							if path == n.Path {
+								selected = true
+							}
+						}
+						yes, err := p.confirm("Develop submodule "+n.Path+" on the task branch?", selected)
+						if err != nil {
+							return nil, false, err
+						}
+						if yes {
+							spec.DevelopSubmodules = append(spec.DevelopSubmodules, n.Path)
+						}
+					}
+				}
+			}
+		}
+		if spec.Submodules == "none" && len(spec.DevelopSubmodules) > 0 {
+			return nil, false, errors.New("selected development members require recursive initialization")
+		}
 		checkout := spec.RepoPath
 		if spec.WorktreePath != "" {
 			checkout = spec.WorktreePath

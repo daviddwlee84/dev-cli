@@ -205,7 +205,7 @@ m          edit repository tags and note
 d          track direct work on the current branch (usually main)
 s          isolated task: branch + worktree + provisioning + runtime + entry
 O / R      cycle / reverse activity/latest/name/git/size/tasks sort
-y          copy menu; follow with y/p/b/s/w
+y          copy menu; follow with y/p/b/s/w/u
 ```
 
 FLEET:
@@ -237,11 +237,16 @@ yp  selected checkout's absolute path
 yb  selected branch
 ys  runtime handles and agent session IDs (parent or child scope)
 yw  every linked-worktree path in the repo, one per line
+yu  clone URL; prefer origin, ask among multiple remaining fetch URLs
 ```
 
 The same full Markdown is available without a clipboard or TUI through
 `dev repo context [repo]`. With no argument it resolves the current repository;
 inside a linked worktree it still reports the whole repo.
+
+Clone URL copy is local-only, including on REMOTE (`CloneURL`, then `SSHURL`).
+It never substitutes a browser URL or copies an empty/unsafe source. Selection
+changes and clipboard failures are reported; no clone or submodule is created.
 
 TRY:
 
@@ -261,6 +266,7 @@ history; Git and size facts remain live/derived.
 REMOTE:
 
 ```
+yu         copy clone URL without fetching (also in the row action menu)
 n / N      notes, only when a local clone exists
 enter / o  open an existing local clone
 c          confirm an absent repo; then enter stays or o opens after clone

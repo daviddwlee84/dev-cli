@@ -7,6 +7,8 @@ verified_on: 2026-08-29
 
 # Worktrees and provisioning
 
+Submodule Git initialization precedes environment provisioning and defaults to recursive pinned checkouts. `--no-provision` does not disable it; use `--submodules=none`. Initialization failure retains the worktree without opening its runtime. See [Submodule workspaces](submodule-workspaces.md).
+
 A Git worktree begins as a clean checkout. `dev` owns durable change-stream worktrees and builds an inspectable plan for the ignored files and dependencies needed to make them usable.
 
 ## Choose one lifecycle owner

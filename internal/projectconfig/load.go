@@ -20,6 +20,7 @@ import (
 const projectConfigVersion = 1
 
 type projectFile struct {
+	Submodules SubmodulesOverride `toml:"submodules"`
 	Version    *int               `toml:"version"`
 	Worktree   WorktreeOverride   `toml:"worktree"`
 	LocalFiles LocalFilesOverride `toml:"local_files"`
@@ -75,7 +76,7 @@ func Load(repoRoot string, legacy *Layer) (Result, error) {
 		if project.Version != nil && *project.Version != projectConfigVersion {
 			return Result{}, fmt.Errorf("parse %s: version %d is unsupported (want %d)", paths.Config, *project.Version, projectConfigVersion)
 		}
-		result.Project = Override{Worktree: project.Worktree, LocalFiles: project.LocalFiles, Repo: project.Repo}
+		result.Project = Override{Worktree: project.Worktree, LocalFiles: project.LocalFiles, Repo: project.Repo, Submodules: project.Submodules}
 		if err := result.Project.validate(); err != nil {
 			return Result{}, fmt.Errorf("validate %s: %w", paths.Config, err)
 		}
@@ -188,6 +189,16 @@ func validateScaffoldVersion(document map[string]any) error {
 }
 
 func overlay(base, next Override, source string, sources map[string]string) Override {
+	if next.Submodules.Init != nil {
+		v := *next.Submodules.Init
+		base.Submodules.Init = &v
+		sources["submodules.init"] = source
+	}
+	if next.Submodules.Develop != nil {
+		v := append([]string(nil), (*next.Submodules.Develop)...)
+		base.Submodules.Develop = &v
+		sources["submodules.develop"] = source
+	}
 	if next.Worktree.Include != nil {
 		value := append([]string(nil), (*next.Worktree.Include)...)
 		base.Worktree.Include = &value

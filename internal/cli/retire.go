@@ -22,6 +22,7 @@ type retireCommandTarget struct {
 }
 
 func newRetireCmd(app *App) *cobra.Command {
+	var recursive bool
 	var (
 		closeUnknown    bool
 		assumeNoRuntime bool
@@ -59,7 +60,7 @@ external coordinator that waits for this command to exit into its shell.`,
 			if err := app.checkWorkflowTask(target.Task); err != nil {
 				return err
 			}
-			options := flow.RetireOptions{CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, DeleteBranch: deleteBranch, Timeout: timeout}
+			options := flow.RetireOptions{Recursive: recursive, CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, DeleteBranch: deleteBranch, Timeout: timeout}
 			if app.interactive() && (target.Task == nil || target.Task.State == task.Done && target.Task.EffectiveMode() == task.ModeWorktree && target.Task.WorktreePath != "") {
 				path := target.Path
 				var rt runtime.Runtime
@@ -87,7 +88,7 @@ external coordinator that waits for this command to exit into its shell.`,
 					return err
 				}
 				if target.Task != nil && rt.Name() == "herdr" && preview.CallerContained && len(preview.Sessions) > 0 {
-					return launchExternalRetireCoordinator(ctx, app, rt, *target.Task, preview, deleteBranch, options.CloseUnknown, options.ProcessClosures.Map(), options.PreviewAuthority)
+					return launchExternalRetireCoordinator(ctx, app, rt, *target.Task, preview, deleteBranch, options.CloseUnknown, options.ProcessClosures.Map(), options.PreviewAuthority, recursive)
 				}
 			}
 			if target.Task != nil {
@@ -97,6 +98,7 @@ external coordinator that waits for this command to exit into its shell.`,
 		},
 	}
 	f := cmd.Flags()
+	f.BoolVar(&recursive, "recursive", false, "verify and dispose workspace-owned submodule clones from the inside out")
 	f.BoolVar(&closeUnknown, "close-unknown", false, "allow an external caller to close unknown/empty runtime status")
 	f.BoolVar(&assumeNoRuntime, "assume-no-runtime", false, "continue when runtime enumeration fails (external callers only)")
 	f.BoolVar(&deleteBranch, "delete-branch", false, "delete the contained local branch after worktree removal")
@@ -215,8 +217,9 @@ func retireUnmanagedPathCompatibility(
 	path string,
 	closeUnknown, assumeNoRuntime, deleteBranch bool,
 	timeout time.Duration,
+	recursive ...bool,
 ) error {
-	return retireUnmanagedPathWithOptions(ctx, app, path, flow.RetireOptions{CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, DeleteBranch: deleteBranch, Timeout: timeout})
+	return retireUnmanagedPathWithOptions(ctx, app, path, flow.RetireOptions{Recursive: len(recursive) > 0 && recursive[0], CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, DeleteBranch: deleteBranch, Timeout: timeout})
 }
 
 func retireUnmanagedPathWithOptions(ctx context.Context, app *App, path string, options flow.RetireOptions) error {
@@ -236,6 +239,7 @@ func retireUnmanagedPathWithOptions(ctx context.Context, app *App, path string, 
 		return fmt.Errorf("cannot prove unmanaged retirement without an explicit repository default branch")
 	}
 	execution, err := executeNonTaskLifecycle(ctx, app, locator, flow.RemoveCheckoutOptions{
+		Recursive:        options.Recursive,
 		RequireContained: true, ContainmentBase: base, DeleteContainedBranch: options.DeleteBranch,
 		CloseUnknown: options.CloseUnknown, AssumeNoRuntime: options.AssumeNoRuntime, Timeout: options.Timeout,
 		ProcessClosures: options.ProcessClosures, RuntimeFingerprint: options.RuntimeFingerprint, PreviewAuthority: options.PreviewAuthority,

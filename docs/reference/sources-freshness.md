@@ -2,10 +2,12 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-09-08
+verified_on: 2026-09-10
 ---
 
 # Sources and freshness
+
+Submodule graph/initialization, selective task branches, recursive remote proof and quarantine recovery are defined by `internal/gitx/submodule*`, `internal/submodule`, taskflow/CLI tests and [Submodule workspaces](../guides/submodule-workspaces.md), checked against Git 2.55.0 on 2026-09-06.
 
 This site mixes product documentation, external specifications, fast-moving harness behavior, project policy, and history. Every page identifies which kind of statement it contains and when it was checked.
 

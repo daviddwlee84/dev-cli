@@ -6,6 +6,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.22] - 2026-09-10
+
+### Added
+
+- `dev submodule add [source] [path]` (also `dev repo add-as-submodule`)
+  selects known local remotes/cached forge repositories or network URLs, with
+  pinned or remote-default-branch checkouts. Local previews, explicit approval,
+  private child Git stores and partial-result reporting preserve unrelated
+  staged work and other checkouts; only `.gitmodules` and the new gitlink are staged.
+- REPOS and REMOTE `y u` and row actions copy clone URLs without fetching.
+  Local rows prefer origin and ask when multiple fetch URLs remain; missing,
+  unsafe and stale selections never silently copy an empty or browser URL.
+- Submodule-aware workspaces: clone and linked-worktree creation initialize
+  submodules recursively at their gitlinks by default, with global/project
+  `[submodules]` settings and `--submodules=none` for an explicit opt-out.
+  Initialization failure retains the checkout without opening a runtime.
+- Select task members with repeatable `start --submodule PATH` and optional
+  `--submodule-base PATH=REF`; `dev submodule develop` adds members later.
+  Versioned workspace intent survives cold parking separately from task TOML.
+- Local submodule graphs in status/context/JSON and repository UI evidence,
+  plus `dev submodule status`, repeat-safe `init`, and journal-based `recover`.
+- Explicit `--recursive` cold parking, retirement, checkout removal and sweep
+  verify child repository recovery against fresh remote refs before inside-out
+  cleanup. Dirty/ignored content, stashes, local-only refs, unknown private Git
+  data, external/shared storage and other child worktrees block disposal.
+  Interrupted removal retains a synced recovery journal and quarantined data.
+
+### Fixed
+
+- Resolve absorbed submodule main checkouts and their linked worktrees using
+  the physical checkout, rather than displaying `.git/modules` as a worktree.
+- Recursive retirement preserves version-2 caller and foreground-program
+  consent, and binds child graph, workspace intent and artifact ownership to
+  the approved preview before any runtime closure or checkout removal.
+- Configuration recovery treats absent extended attributes consistently before
+  and after receipt serialization, fixing false stale-file errors in SSH and
+  fleet restores that blocked the previous release workflow.
+
+## [0.2.21] - 2026-09-09
+
 ### Added
 
 - Explicit SSH/fleet/Herdr machine management with a multi-select wizard, native
@@ -783,7 +823,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.20...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.22...HEAD
+[0.2.22]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.21...v0.2.22
+[0.2.21]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.20...v0.2.21
 [0.2.20]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.19...v0.2.20
 [0.2.19]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.18...v0.2.19
 [0.2.18]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.17...v0.2.18

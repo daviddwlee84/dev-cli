@@ -88,6 +88,11 @@ rows = [
 
 ## Cleanup semantics
 
+Recursive submodule retirement retains the version-2 coordinator's exact caller,
+foreground-program consent, and task/Git/artifact preview checks. Child graph,
+workspace intent and artifact ownership are bound to that same preview; changed
+child refs or state require a new preview before runtime closure or removal.
+
 Herdr agent `done` means the latest turn settled. It does not establish that
 history is synced, review is complete, code is committed, or cleanup is safe.
 Never auto-close based on agent state.

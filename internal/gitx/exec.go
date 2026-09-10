@@ -85,6 +85,11 @@ func Run(ctx context.Context, dir string, args ...string) (string, error) {
 	return run(ctx, dir, args...)
 }
 
+// RunReadOnly disables optional index refresh writes during observations.
+func RunReadOnly(ctx context.Context, dir string, args ...string) (string, error) {
+	return runEnv(ctx, dir, []string{"GIT_OPTIONAL_LOCKS=0"}, args...)
+}
+
 // lines splits git output into non-empty lines.
 func lines(s string) []string {
 	if s == "" {

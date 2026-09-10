@@ -23,6 +23,18 @@ func FormatMarkdown(report Report, legacy string) string {
 	}
 
 	b.WriteString("\n## Readiness\n")
+	for _, checkout := range report.Local.Checkouts {
+		for _, n := range checkout.Submodules {
+			fmt.Fprintf(&b, "\n- Submodule `%s`: %s, HEAD `%s`, gitlink `%s`", n.Path, n.State, n.HEAD, n.Gitlink)
+			if len(n.Blockers) > 0 {
+				fmt.Fprintf(&b, " — %s", strings.Join(n.Blockers, "; "))
+			}
+			b.WriteString("\n")
+		}
+		if checkout.SubmoduleError != nil {
+			fmt.Fprintf(&b, "\n- Submodule observation unavailable: %s\n", *checkout.SubmoduleError)
+		}
+	}
 	for _, gate := range report.Assessment.Gates {
 		fmt.Fprintf(&b, "\n- `%s`: **%s**", gate.Code, gate.Outcome)
 		if len(gate.Reasons) > 0 {

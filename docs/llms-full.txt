@@ -364,6 +364,8 @@ Source: https://daviddwlee84.github.io/dev-cli/concepts/mental-model/
 
 > Understand dev-cli as durable Git history, scoped intent and catalog state, repository quick-note sidecars, disposable worktrees, and replaceable runtimes.
 
+A submodule superproject has several independent Git histories. Workspace member intent links selected child branches to one outer task without adding lifecycle states. See [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/): initialization stays at gitlinks, Cold requires recovery, and Retire also requires child integration.
+
 `dev` treats a unit of work as a **change stream** whose durable identity is its Git branch. The checkout and runtime are replaceable projections of that stream.
 
 ## Four responsibilities
@@ -592,6 +594,8 @@ If two workers can mutate one of these, a second worktree alone is not enough.
 Source: https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/
 
 > Run a dev-cli change stream through start, park, resume, review or integration, and conservative cleanup.
+
+For submodule workspaces, commit/integrate/push affected children before updating and publishing the outer gitlinks. Outer `--push` does not push children. Explicit recursive cleanup has separate recovery and integration gates; see [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
 
 A `dev` task is a durable record of one line of work. Select the checkout mode, make the branch recoverable, and treat runtime sessions as disposable.
 
@@ -1110,6 +1114,8 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/
 
 > Choose the owner and location of each worktree, then provision ignored files and dependencies safely.
 
+Submodule Git initialization precedes environment provisioning and defaults to recursive pinned checkouts. `--no-provision` does not disable it; use `--submodules=none`. Initialization failure retains the worktree without opening its runtime. See [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
+
 A Git worktree begins as a clean checkout. `dev` owns durable change-stream worktrees and builds an inspectable plan for the ignored files and dependencies needed to make them usable.
 
 ## Choose one lifecycle owner
@@ -1225,11 +1231,192 @@ Removing a worktree and deleting a branch are separate decisions. `dev wt rm` pr
 
 ---
 
+### Submodule workspaces
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/
+
+> Initialize complete submodule workspaces, select task branches, and retire child repositories before their parent.
+
+A superproject records commit IDs for its submodules. A complete workspace
+contains the outer worktree and an independent checkout of each child repository.
+It does not copy uncommitted work from the original checkout.
+
+## Add a repository as a submodule
+
+```bash
+dev submodule add                           # source/path/mode wizard
+dev submodule add owner/library libs/library --dry-run --json
+dev submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes
+dev repo add-as-submodule owner/library libs/library --checkout=default-branch --yes
+```
+
+`source` may be an exact known name, `owner/name`, or a network Git URL.
+The picker merges known local remotes and the existing private forge cache;
+it never refreshes providers implicitly. Ambiguous names need selection or an
+exact URL. Local repositories supply a remote URL, not their working files or
+local object store. Local-only sources, credential-bearing URLs and adoption of
+existing directories are not supported. Use `dev repo remote --refresh` explicitly
+when the cached inventory needs updating.
+
+The parent is the nearest checkout containing cwd, including a linked worktree
+or a submodule; `--parent PATH` selects another exact checkout. Paths are relative
+to that checkout's root, defaulting to the source name. A path crossing an existing
+child repo is rejected: select that child as the parent instead. The parent must
+have a commit and be on a branch. Existing targets/stores, symlinks, conflicts,
+in-progress Git operations and modified `.gitmodules` block addition; unrelated
+staged/dirty work is preserved. Filters/encodings on `.gitmodules` are unsupported.
+
+The wizard offers `pinned` and `default-branch`; non-interactive default is
+`pinned`. `--ref` selects a fetched commit/tag/branch only in pinned mode;
+otherwise the new clone's actual default branch determines the commit. Default-
+branch mode creates a tracking branch without assuming its name is `main`.
+Both modes stage a fixed gitlink. This is not an `update --remote` policy and
+does not change future clone/worktree initialization or create task-member intent.
+Use `dev submodule develop` separately when the child belongs to a managed task.
+
+`--submodules=recursive|none` overrides the parent's effective initialization
+policy for the new child's descendants only. Addition stages `.gitmodules` and
+the new gitlink, never commits, pushes, creates a runtime, or changes other
+checkouts' shared submodule configuration. Non-interactive mutation needs a source
+and `--yes`; `--json` never prompts. `--dry-run` neither writes nor connects and
+marks unresolved refs as pending rather than claiming a verified commit.
+
+JSON includes `operation`, `parent`, `source`, relative `path`, `checkout`,
+optional `ref`, `submodules`, `phase`, `git_dir`, optional `head`/`branch`,
+`staged`, and optional `warnings`. Phases distinguish `planned`, `not-added`,
+`clone-incomplete`, `cloned`, `added-unstaged`, `added`,
+`initialization-incomplete`, and `complete`; failures exit nonzero while still
+reporting any partial result. A failed clone/ref/staging step may retain files
+and metadata. Inspect the exact paths, finish metadata/staging manually where
+needed, and use `dev submodule init` inside the new child to retry missing
+descendants. Do not rerun add over existing paths, force-delete partial clones,
+or use the retirement-only `recover` command for an interrupted addition.
+
+REPOS/REMOTE `y u` copies a network clone URL; REPOS uses the selected checkout's
+origin (or asks among remaining remotes), REMOTE uses CloneURL then SSHURL.
+It never copies the browser URL as a substitute or fetches to resolve one.
+
+## Initialize and develop
+
+```bash
+dev repo clone owner/dotfiles-all
+dev start dotfiles-all --task platform-change --base main \
+  --submodule dotfiles --submodule dotfiles-windows
+# In the new managed worktree:
+dev submodule status
+dev submodule develop another/module --submodule-base another/module=origin/main
+```
+
+Clone and worktree creation initialize recursively by default. Each child starts
+at the parent's gitlink in detached HEAD; that is the reproducible starting
+point, not an error. Selected children get the outer task's branch name at that
+same commit. Existing branches are not overwritten or silently adopted. Direct
+and branch-only task modes do not automatically switch child branches.
+
+```toml
+[submodules]
+init = "recursive" # or "none"
+develop = ["dotfiles", "dotfiles-windows"]
+```
+
+The global config and `.dev-cli/config.toml` support these settings. Explicit
+flags/wizard choices override project settings, which override global settings.
+The clone's project settings are read after acquiring the outer repository.
+`--submodules=none` skips initialization. `--no-provision` skips dependency setup,
+not Git initialization. No child is automatically advanced to the latest main.
+
+`dev submodule init --dry-run` inspects locally. Without `--dry-run`, it fills
+missing checkouts and may contact their configured sources. It preserves existing
+checkout HEADs and dirty content; a nonempty uninitialized directory is blocked.
+Initialization failure retains partial results, reports a failure, and prevents
+runtime handoff/agent dispatch. Retry initialization before continuing setup.
+
+## Integrate from the inside out
+
+For a cross-platform change, commit, integrate and push each affected child
+first. Then stage the matching gitlinks together and commit the outer change.
+For `dotfiles-all`, a change affecting both platforms gets one outer pointer
+commit containing both gitlinks and matching cross-repository documentation.
+
+The manager verifies prerequisites; it does not automatically commit, push or
+merge child work. Outer `--push` is not a recursive child push. Gitlink updates
+and conflict resolution remain explicit.
+
+`dev status`, `dev repo context`, `dev ls --json`, and repository UI evidence
+include submodule state. `dev submodule status --json` exposes the complete local
+graph. Uninitialized, unavailable and failed observations never mean clean.
+These reads do not fetch or query remotes.
+
+## Park and retire
+
+Run cleanup outside the target checkout and its runtime:
+
+```bash
+dev park platform-change --cold --push --recursive
+dev resume platform-change --fetch
+# After the outer task has been integrated:
+dev retire platform-change --recursive
+dev sweep --merged-worktrees --recursive # report first
+```
+
+Cold requires committed, pushed, reconstructible work, but not integration.
+Retire additionally proves selected children are integrated into their recorded
+base. Workspace-member intent is versioned separately from task TOML and is
+used to reconstruct selected branches at the gitlinks when resuming.
+
+`--recursive` authorizes disposal of the workspace's independent child clones,
+including private refs and objects. The outer branch stays unless separately
+requested; canonical and shared repositories are never disposed. Omitting the
+flag blocks parent removal when child repositories remain. `--force` cannot
+bypass child recovery checks. `dev flow` offers explicit recursive managed and
+unmanaged checkout actions; the done cleanup wizard asks about child disposal.
+
+Before mutation, each child is compared with fresh refs from its declared
+recovery origin using an isolated fetch. A configured origin or ahead=0 alone
+is not proof. Unpublished refs, local-only reflog/unreachable objects, stash,
+dirty/untracked/ignored content, unfinished artifacts, other task claims,
+runtime activity, and additional child worktrees block cleanup. Filtered/LFS
+data, sparse/partial layouts and private Git configuration or files without a
+complete preservation proof also block. Initialize missing children before
+requesting a complete recursive recovery proof.
+
+The child origin must match its declared source. Remote failure or changing refs
+halts cleanup. Raw Git/external writers and later remote history deletion remain
+outside dev's cooperative locking and run-local proof guarantees.
+
+## Interrupted cleanup
+
+Children are staged from deepest to shallowest into a private temporary area on
+the same filesystem. Empty gitlink directories remain until ordinary non-force
+outer removal succeeds. The workflow does not use `submodule deinit` to rewrite
+shared superproject settings.
+
+Each move has a synced journal. A failed outer removal restores original child
+paths when they remain unclaimed. An interruption or reused path retains the
+quarantine and reports its exact `journal.json`:
+
+```bash
+dev submodule recover /exact/.dev-submodule-retirement-ID/journal.json --dry-run
+dev submodule recover /exact/.dev-submodule-retirement-ID/journal.json
+```
+
+Recovery restores rather than reusing an old proof to delete data. A removed
+outer checkout can be reconstructed only when its retained branch still matches
+the recorded commit. Reused or nonempty restore paths block restoration. Rerun
+the ordinary recursive cleanup after recovery for a fresh plan and remote proof.
+
+Refresh shell integration after upgrading to use recursive post-done handoff.
+Older wrappers reject the new recursive action instead of guessing its meaning.
+
+---
+
 ### Parallel agents and runtimes
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/
 
 > Coordinate several coding agents around change-stream ownership, explicit mutation boundaries, and replaceable runtimes.
+
+A submodule task uses one complete outer worktree with independent child checkouts. Only explicitly selected children receive task branches; initialization failure prevents runtime/agent handoff. Child task, artifact and runtime claims participate in recursive retirement. See [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
 
 > **Worktree per change stream. Pane per cooperating agent.**
 
@@ -2177,6 +2364,10 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/
 
 > Retire an integrated dev-cli worktree and runtime safely, from outside the workspace being removed.
 
+Submodule workspaces require explicit `--recursive` approval to dispose their independent child clones after fresh remote proof. Children leave before the outer worktree; canonical/shared Git and the outer branch remain. Interrupted cleanup retains a recovery journal. See [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
+
+Recursive cleanup preserves the version-2 coordinator's caller and foreground-program consent checks. Child graph, workspace intent and artifact ownership remain bound to the approved preview; changed child refs or state require a new preview before runtime closure or removal.
+
 A `dev` change stream reaches full retirement only after an external caller closes its runtime and removes its worktree — a feature agent must never destroy the checkout or runtime containing its own process.
 
 ## Three milestones, not one
@@ -2964,6 +3155,14 @@ TTY-only, plan-first lifecycle view for one canonical repository; it is not a
 dashboard tab or mode.
 
 ## Seven views
+
+REPOS and REMOTE support `y u` (also row action **copy clone URL**). REPOS reads
+the selected checkout's fetch URLs locally, preferring origin and asking when
+multiple choices remain. REMOTE copies CloneURL, falling back only to SSHURL,
+not the browser URL. Missing/unsafe URLs, stale selections and clipboard errors
+do not trigger clone/fetch or an empty copy. To add the selected repository as a
+dependency, use the CLI [submodule addition wizard](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/#add-a-repository-as-a-submodule);
+the dashboard does not add submodules itself.
 
 | View | Question | Source |
 |---|---|---|
@@ -4327,6 +4526,14 @@ For production agents:
 Source: https://daviddwlee84.github.io/dev-cli/reference/commands-config/
 
 > Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
+
+`dev submodule add [source] [path]` and `dev repo add-as-submodule` share
+`--parent`, `--checkout=pinned|default-branch`, pinned-only `--ref`,
+`--submodules=recursive|none`, `--dry-run`, `--yes` and `--json`. Addition stages
+only its metadata/gitlink and emits partial-result phases on failure; see
+[Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
+
+Submodule configuration is shared by clone and worktree acquisition: `[submodules] init = "recursive"` (or `"none"`) and `develop = ["path"]`, with project overrides in `.dev-cli/config.toml`. CLI uses `--submodules`, repeatable `start --submodule` / `--submodule-base`, and explicit cleanup `--recursive`. See [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
 
 Use the authored map for intent and the embedded generated reference for exact flags. The generated block comes from the binary's Cobra command tree and is checked by `dev skill sync --check`.
 
@@ -5942,6 +6149,7 @@ dev park [task] [flags]
 - `-n, --next` — what to do when you come back
 - `--note` — free-form note
 - `--push` — push the branch so another machine can pick it up
+- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
 - `--timeout` — maximum time to wait for runtime closure
 - `--wip` — checkpoint uncommitted work as a wip: commit
 
@@ -6146,6 +6354,22 @@ List, clone, create and sync repositories
 dev repo
 ```
 
+### `dev repo add-as-submodule`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev repo add-as-submodule [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
 ### `dev repo browse`
 
 Open the repository homepage, or print its URL without opening
@@ -6184,6 +6408,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--path` — exact destination path
 - `--preset` — scaffold preset
 - `--set` — preset input as key=value (repeatable)
+- `--submodules` — initialize cloned submodules: recursive or none (default: configured, otherwise recursive)
 - `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo context`
@@ -6261,6 +6486,7 @@ dev repo new [name|clone-ref] [flags]
 - `--push` — push the current branch after publishing
 - `--remote` — also create a GitHub or GitLab upstream
 - `--set` — preset input as key=value (repeatable)
+- `--submodules` — initialize cloned submodules: recursive or none (default: configured, otherwise recursive)
 - `--template` — local directory, Git URL, or owner/repo used as a snapshot template
 - `--template-ref` — Git branch, tag, or commit to snapshot from --template
 - `--template-subdir` — relative directory within --template to use as the repository root
@@ -6356,6 +6582,7 @@ dev retire [task-or-worktree] [flags]
 - `--assume-no-runtime` — continue when runtime enumeration fails (external callers only)
 - `--close-unknown` — allow an external caller to close unknown/empty runtime status
 - `--delete-branch` — delete the contained local branch after worktree removal
+- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
 - `--timeout` — maximum time to wait for runtime sessions to close
 
 ### `dev shell-init`
@@ -6726,6 +6953,9 @@ dev start [repo] [flags]
 - `--next` — the first next action to record
 - `--no-provision` — skip dependency install and ignored-file copying
 - `--run` — send a shell command to the newly created Herdr worktree pane
+- `--submodule` — submodule path to develop on the task branch (repeatable)
+- `--submodule-base` — submodule integration target PATH=REF (repeatable)
+- `--submodules` — initialize submodules: recursive or none (default: configured, otherwise recursive)
 - `-t, --task` — human name for this change stream
 
 ### `dev stats`
@@ -6805,6 +7035,70 @@ Show the full context of the current directory
 dev status
 ```
 
+### `dev submodule`
+
+Inspect, initialize and develop the submodules of a workspace
+
+```
+dev submodule
+```
+
+### `dev submodule add`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev submodule add [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
+### `dev submodule develop`
+
+Add selected submodules to the current managed task branch
+
+```
+dev submodule develop <path>... [flags]
+```
+
+- `--submodule-base` — submodule integration target PATH=REF (repeatable)
+
+### `dev submodule init`
+
+Initialize missing submodules at their gitlinks; preserve existing checkouts
+
+```
+dev submodule init [flags]
+```
+
+- `--dry-run` — inspect without initializing or contacting remotes
+
+### `dev submodule recover`
+
+Restore child repositories retained after interrupted recursive cleanup
+
+```
+dev submodule recover <journal.json> [flags]
+```
+
+- `--dry-run` — validate the recovery journal without changing files
+
+### `dev submodule status`
+
+Read the recursive gitlink and checkout graph without network access
+
+```
+dev submodule status [flags]
+```
+
+- `--json` — emit the submodule graph as JSON
+
 ### `dev summary`
 
 Generate an agent-ready snapshot of this machine's projects
@@ -6836,6 +7130,7 @@ dev sweep [flags]
 - `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees
 - `--json` — print the versioned ephemeral-worktree report as JSON
 - `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
+- `--recursive` — include guarded disposal of workspace-owned submodule clones
 - `--stale-days` — days without relevant activity before an item counts as stale
 - `--task` — limit ordinary recovery suggestions to one exact task ID
 - `--yes` — with --apply, do not confirm each change
@@ -7035,6 +7330,7 @@ dev wt create <branch> [flags]
 - `--no-session` — do not open a runtime session
 - `--path` — override the templated location
 - `-r, --repo` — repository (default: the current one)
+- `--submodules` — initialize submodules: recursive or none (default: configured, otherwise recursive)
 
 ### `dev wt list`
 
@@ -7088,6 +7384,7 @@ dev wt rm <branch> [flags]
 - `--assume-no-runtime` — continue when runtime enumeration fails
 - `--close-unknown` — allow external closure of unknown runtime status
 - `-f, --force` — remove even with uncommitted changes (never bypasses caller/runtime safety)
+- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
 - `-r, --repo` — repository (default: the current one)
 - `--timeout` — maximum time to wait for runtime closure
 
@@ -7165,6 +7462,15 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 Source: https://daviddwlee84.github.io/dev-cli/reference/compatibility/
 
 > Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
+
+Submodule addition and REPOS/REMOTE clone-URL copy are additive commands/actions.
+Addition supports network sources and new destinations only, defaults to pinned,
+and preserves unrelated staged work. It does not adopt local clones or change
+future initialization policy. Failed additions retain data with explicit phases;
+retirement recovery journals cannot recover additions. Existing JSON fields and
+copy bindings are unchanged; `y u` is the new URL binding.
+
+Submodule workspace support is additive: legacy tasks and existing JSON fields remain readable; member intent has its own versioned record. Full child-clone disposal requires remote proofs and rejects shared/external storage, local-only data and unsupported filtered/private metadata. Reload shell integration for recursive post-done handoff. See [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
 
 This page separates graceful degradation from real limitations. Reverify it whenever command/runtime code or version-sensitive Claude Code documentation changes.
 
@@ -7527,6 +7833,8 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 Source: https://daviddwlee84.github.io/dev-cli/reference/sources-freshness/
 
 > Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
+
+Submodule graph/initialization, selective task branches, recursive remote proof and quarantine recovery are defined by `internal/gitx/submodule*`, `internal/submodule`, taskflow/CLI tests and [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/), checked against Git 2.55.0 on 2026-09-06.
 
 This site mixes product documentation, external specifications, fast-moving harness behavior, project policy, and history. Every page identifies which kind of statement it contains and when it was checked.
 
@@ -8307,6 +8615,8 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/
 
 > 以持久 Git history、分層 intent/catalog state、repository quick-note sidecar、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
 
+Submodule superproject 有多份獨立 Git history。Workspace 成員意圖把選中的子分支連到外層 task，不新增 lifecycle state。見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)：初始化停在 gitlink，Cold 要求可重建，Retire 另要求內層已整合。
+
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
@@ -8538,6 +8848,8 @@ Working directory 之外的資源需要不同值或明確 ownership：
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/
 
 > 使用 dev-cli 讓變更流依序經過 start、park、resume、review/integration 與保守 cleanup。
+
+Submodule 工作區先完成受影響內層的 commit／整合／push，再更新並發布外層 gitlinks。外層 `--push` 不會推送子 repo。明確的遞迴清理另有重建與整合檢查，見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -9001,6 +9313,8 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioni
 
 > 選擇每個 worktree 的 owner 與位置，再安全佈建 ignored files 與 dependencies。
 
+Submodule Git 初始化先於環境 provisioning，預設遞迴建立固定在 gitlink 的 checkout。`--no-provision` 不略過它，需使用 `--submodules=none`。初始化失敗保留 worktree，但不開 runtime。見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
+
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
@@ -9118,11 +9432,168 @@ dev wt rm feat/auth
 
 ---
 
+### Submodule 工作區
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/
+
+> 初始化完整的 submodule 工作區、選擇任務分支，並由內往外回收子 repository。
+
+Superproject 以 gitlink 記錄各 submodule 的 commit ID。完整工作區包含外層
+worktree 與各自獨立的子 repository checkout，不會帶入原 checkout 的未提交內容。
+
+## 把已知 repository 加為 submodule
+
+```bash
+dev submodule add                           # 選來源、路徑、checkout 模式
+dev submodule add owner/library libs/library --dry-run --json
+dev submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes
+dev repo add-as-submodule owner/library libs/library --checkout=default-branch --yes
+```
+
+來源可以是精確的已知名稱、`owner/name` 或網路 Git URL。Picker 合併本機已知 repo
+的 remote 與既有 forge 快取，不隱含更新遠端清單；同名歧義須選擇或提供精確 URL。
+選本機 repo 是使用其 remote URL，不搬移工作目錄、不重用其 objects。第一版不支援
+local-only 來源、含憑證的 URL 或收編既有目錄；清單過時時明確執行
+`dev repo remote --refresh`。
+
+Parent 是 cwd 最近一層 checkout，包含 linked worktree 或 submodule；可用
+`--parent PATH` 指定另一個 checkout。目標路徑相對於該 checkout 根目錄，預設為
+來源名稱。跨越既有子 repo 的路徑會被阻擋，應明確以該子 repo 為 parent。Parent
+須已有 commit 並位於 branch；既有目標／Git store、symlink、conflict、進行中的
+Git operation 或修改過的 `.gitmodules` 都會阻擋。其他 staged／dirty 工作保留；
+不支援 `.gitmodules` 的 filter／working-tree encoding。
+
+Wizard 提供 `pinned`／`default-branch`，非互動預設 pinned。`--ref` 僅在 pinned
+模式選擇已取得的 commit／tag／branch；省略時使用新增當次 default branch 的
+commit。Default-branch 模式建立 tracking branch，不假設名稱為 `main`。兩種模式
+都 stage 固定 gitlink，不設定 `update --remote` 政策、不改變日後 clone／worktree
+的初始化方式，也不自動建立 task-member intent。需要任務分支時另用
+`dev submodule develop`。
+
+`--submodules=recursive|none` 覆蓋 parent 的有效初始化設定，只處理新子 repo 的
+後代。只 stage `.gitmodules` 與新 gitlink，不 commit／push／建立 runtime，也不
+修改其他 checkout 共用的 submodule 設定。非互動變更須有來源與 `--yes`；`--json`
+不開提示。`--dry-run` 不連線、不寫入，尚未解析的 ref 明確顯示為待解析。
+
+JSON 包含 `operation`、`parent`、`source`、相對 `path`、`checkout`、選用 `ref`、
+`submodules`、`phase`、`git_dir`、選用 `head`／`branch`、`staged` 與選用 `warnings`。
+Phase 區分 `planned`、`not-added`、`clone-incomplete`、`cloned`、`added-unstaged`、
+`added`、`initialization-incomplete`、`complete`；失敗回傳非零並保留部分結果。
+Clone／ref／staging 失敗可能留下檔案或 metadata：先檢查回報的精確路徑，必要時
+手動完成 metadata／staging，再於新子 repo 內用 `dev submodule init` 重試缺少的
+後代。不覆蓋重跑 add、不強制刪除殘留 clone；retirement 專用的 `recover` 不是
+新增流程的復原指令。
+
+REPOS／REMOTE 的 `y u` 可複製網路 clone URL：REPOS 使用選中 checkout 的 origin，
+或要求選擇其餘 remote；REMOTE 使用 CloneURL，其次 SSHURL。不拿瀏覽器網頁 URL
+代替，也不為了複製而 fetch。
+
+## 初始化與開發
+
+```bash
+dev repo clone owner/dotfiles-all
+dev start dotfiles-all --task platform-change --base main \
+  --submodule dotfiles --submodule dotfiles-windows
+# 在新的 managed worktree 中：
+dev submodule status
+dev submodule develop another/module --submodule-base another/module=origin/main
+```
+
+Clone 與建立 worktree 預設遞迴初始化。子 repo 停在外層 gitlink 指定的 commit，
+呈現 detached HEAD，這是可重現的起點。選中的子 repo 才從同一個 commit 建立
+與外層同名的 task branch；不覆寫或默默接管既有分支。Direct／branch-only
+模式不自動切換子 repo 分支。
+
+```toml
+[submodules]
+init = "recursive" # 或 "none"
+develop = ["dotfiles", "dotfiles-windows"]
+```
+
+全域設定與 `.dev-cli/config.toml` 都支援這些欄位。明確旗標／wizard 選擇優先於
+repo 設定，再優先於全域設定；clone 取得外層後才讀取其 repo 設定。
+`--submodules=none` 略過初始化；`--no-provision` 只略過環境設定，不略過 Git
+初始化。工具不會自動把子 repo 推進到最新 main。
+
+`dev submodule init --dry-run` 僅做本地檢查。實際 init 可連線取得缺少的
+checkout，但保留既有 HEAD 與 dirty 內容；未初始化卻非空的目錄會被阻擋。
+初始化失敗會保留部分成果、回傳失敗，並停止 runtime handoff／agent dispatch。
+先重試初始化，再繼續環境設定。
+
+## 由內而外整合
+
+跨平台修改先完成各子 repo 的 commit、整合與 push，再一起 stage 對應 gitlinks
+並提交外層。依 `dotfiles-all` 的規則，同時修改兩個平台時，用一個外層 pointer
+commit 記錄兩個 gitlinks 與相關跨 repo 文件。
+
+Manager 負責驗證前提，不自動替內層 commit／push／merge。外層 `--push` 不代表
+遞迴推送子 repo；gitlink 更新與衝突解決仍是明確操作。
+
+`dev status`、`dev repo context`、`dev ls --json` 與 repository UI evidence
+會顯示子 repo 狀態；`dev submodule status --json` 提供完整本地 graph。
+未初始化、無法確認或讀取失敗都不等於 clean，這些讀取不會 fetch／查詢遠端。
+
+## 暫停與回收
+
+從目標 checkout 及 runtime 外執行：
+
+```bash
+dev park platform-change --cold --push --recursive
+dev resume platform-change --fetch
+# 外層 task 已整合後：
+dev retire platform-change --recursive
+dev sweep --merged-worktrees --recursive # 先看報告
+```
+
+Cold 要求工作已提交、推送且可重建，但不要求已合併。Retire 另要求選中的子 repo
+已整合至紀錄的 base。Workspace 成員意圖以獨立版本化紀錄保存，避免舊 task TOML
+寫入者抹掉新欄位；resume 依 gitlink 重建選中的任務分支。
+
+`--recursive` 明確授權刪除工作區專屬的子 clone，包含其私有 refs／objects。
+外層分支預設保留；canonical 與共享 repository 不會被連帶刪除。不提供此旗標時，
+若仍有子 repo，會阻擋外層移除；`--force` 不略過內層保存證明。`dev flow` 有明確
+的 managed／unmanaged checkout 遞迴動作，done 清理流程也會詢問是否包含子 repo。
+
+變更前會以當次遠端 refs 與隔離 fetch 證明各子 repo 可由指定 origin 重建，不能
+只看 origin 存在或 ahead=0。未發布 refs、reflog／unreachable 的本地獨有物件、
+stash、dirty／untracked／ignored 內容、未完成 artifacts、其他 task、runtime
+活動與額外子 worktree 都會阻擋。Filtered／LFS 資料、sparse／partial 布局，或
+無完整保存證明的私有 Git 設定／檔案也會阻擋。要求完整遞迴證明前，先初始化缺少
+的子 repo。
+
+子 repo origin 必須符合其宣告來源；遠端失敗或 refs 在證明期間變動就停止。
+Raw Git／外部 writer，以及之後發生的遠端歷史刪除，仍在 dev 合作式鎖與當次
+證明的保證範圍之外。
+
+## 中斷恢復
+
+子 checkout 由深至淺移到同檔案系統的私有暫存區，原處保留空 gitlink 目錄，再以
+不帶 force 的 Git 操作移除外層。不使用 `submodule deinit` 改寫共享設定。
+
+每次移動都有同步保存的 journal。外層移除失敗時，只在原位置未被占用的情況下
+恢復；程序中斷或路徑被重用則保留暫存資料，並回報精確的 `journal.json`：
+
+```bash
+dev submodule recover /exact/.dev-submodule-retirement-ID/journal.json --dry-run
+dev submodule recover /exact/.dev-submodule-retirement-ID/journal.json
+```
+
+Recover 用於恢復，不沿用舊證明刪除資料。外層 checkout 已移除時，只有保留的分支
+仍指向紀錄的 commit 才能重建；被重用或非空的恢復位置會阻擋。恢復後重新執行一般
+遞迴清理，取得新的計畫與遠端證明。
+
+升級後重新載入 shell integration，才能使用 done 後的遞迴 handoff；舊 wrapper
+會拒絕新動作，不會猜測如何執行。
+
+---
+
 ### 平行 Agent 與 Runtime
 
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/
 
 > 以變更流 ownership、明確 mutation boundary 與可替換 runtime 協調多個 coding agents。
+
+Submodule task 使用一個完整外層 worktree 與獨立子 checkout；只有明確選中的子 repo 建立 task branch。初始化失敗不進行 runtime／agent handoff，內層 task、artifact 與 runtime claim 都會影響遞迴回收。見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -10023,6 +10494,10 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retiremen
 
 > 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。
 
+Submodule 工作區需明確 `--recursive` 核准，取得當次遠端證明後才能刪除其獨立子 clone。先處理內層，再移除外層；canonical／共享 Git 與外層分支保留。中斷時保留 recovery journal，見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
+
+遞迴清理保留 version-2 coordinator 對 caller 與前景程序關閉授權的檢查。子模組結構、工作區意圖與 artifact 歸屬都綁定核准時的預覽；子模組 refs 或狀態改變後，必須重新預覽，才能關閉 runtime 或移除 checkout。
+
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
@@ -10755,6 +11230,13 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 `dev flow [repo]` 是另一個獨立、僅限 TTY 且標示為 preview 的全螢幕介面，不是 dashboard 的 tab 或 view。它聚焦單一 canonical repository 的所有 registered worktrees 與 task-only rows，並把 lifecycle intent、live evidence 與 plan-first actions 並列；完整說明見 [Repository Flow 預覽](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/)。
 
 ## 七個 view
+
+REPOS／REMOTE 支援 `y u`，row action menu 也有 **copy clone URL**。REPOS 只在
+本機讀取選中 checkout 的 fetch URL，優先 origin，多個候選時要求選擇。REMOTE
+複製 CloneURL，其次 SSHURL，不拿瀏覽器 URL 代替。缺少／不安全的 URL、stale
+selection 與 clipboard 錯誤不會觸發 clone／fetch 或複製空字串。要加入 dependency，
+請用 CLI 的 [submodule 新增 wizard](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)；dashboard
+本身不新增 submodule。
 
 | View | 回答問題 | 來源 |
 |---|---|---|
@@ -12105,6 +12587,13 @@ Production agent 應：
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/
 
 > 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
+
+`dev submodule add [source] [path]` 與 `dev repo add-as-submodule` 共用
+`--parent`、`--checkout=pinned|default-branch`、pinned 專用的 `--ref`、
+`--submodules=recursive|none`、`--dry-run`、`--yes`、`--json`。只 stage 新增的
+metadata／gitlink，失敗回報部分結果 phase；見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
+
+Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"none"`）與 `develop = ["path"]`，`.dev-cli/config.toml` 可覆寫。CLI 提供 `--submodules`、可重複的 `start --submodule`／`--submodule-base`，以及明確清理旗標 `--recursive`。見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -13648,6 +14137,7 @@ dev park [task] [flags]
 - `-n, --next` — what to do when you come back
 - `--note` — free-form note
 - `--push` — push the branch so another machine can pick it up
+- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
 - `--timeout` — maximum time to wait for runtime closure
 - `--wip` — checkpoint uncommitted work as a wip: commit
 
@@ -13852,6 +14342,22 @@ List, clone, create and sync repositories
 dev repo
 ```
 
+### `dev repo add-as-submodule`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev repo add-as-submodule [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
 ### `dev repo browse`
 
 Open the repository homepage, or print its URL without opening
@@ -13890,6 +14396,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--path` — exact destination path
 - `--preset` — scaffold preset
 - `--set` — preset input as key=value (repeatable)
+- `--submodules` — initialize cloned submodules: recursive or none (default: configured, otherwise recursive)
 - `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo context`
@@ -13967,6 +14474,7 @@ dev repo new [name|clone-ref] [flags]
 - `--push` — push the current branch after publishing
 - `--remote` — also create a GitHub or GitLab upstream
 - `--set` — preset input as key=value (repeatable)
+- `--submodules` — initialize cloned submodules: recursive or none (default: configured, otherwise recursive)
 - `--template` — local directory, Git URL, or owner/repo used as a snapshot template
 - `--template-ref` — Git branch, tag, or commit to snapshot from --template
 - `--template-subdir` — relative directory within --template to use as the repository root
@@ -14062,6 +14570,7 @@ dev retire [task-or-worktree] [flags]
 - `--assume-no-runtime` — continue when runtime enumeration fails (external callers only)
 - `--close-unknown` — allow an external caller to close unknown/empty runtime status
 - `--delete-branch` — delete the contained local branch after worktree removal
+- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
 - `--timeout` — maximum time to wait for runtime sessions to close
 
 ### `dev shell-init`
@@ -14432,6 +14941,9 @@ dev start [repo] [flags]
 - `--next` — the first next action to record
 - `--no-provision` — skip dependency install and ignored-file copying
 - `--run` — send a shell command to the newly created Herdr worktree pane
+- `--submodule` — submodule path to develop on the task branch (repeatable)
+- `--submodule-base` — submodule integration target PATH=REF (repeatable)
+- `--submodules` — initialize submodules: recursive or none (default: configured, otherwise recursive)
 - `-t, --task` — human name for this change stream
 
 ### `dev stats`
@@ -14511,6 +15023,70 @@ Show the full context of the current directory
 dev status
 ```
 
+### `dev submodule`
+
+Inspect, initialize and develop the submodules of a workspace
+
+```
+dev submodule
+```
+
+### `dev submodule add`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev submodule add [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
+### `dev submodule develop`
+
+Add selected submodules to the current managed task branch
+
+```
+dev submodule develop <path>... [flags]
+```
+
+- `--submodule-base` — submodule integration target PATH=REF (repeatable)
+
+### `dev submodule init`
+
+Initialize missing submodules at their gitlinks; preserve existing checkouts
+
+```
+dev submodule init [flags]
+```
+
+- `--dry-run` — inspect without initializing or contacting remotes
+
+### `dev submodule recover`
+
+Restore child repositories retained after interrupted recursive cleanup
+
+```
+dev submodule recover <journal.json> [flags]
+```
+
+- `--dry-run` — validate the recovery journal without changing files
+
+### `dev submodule status`
+
+Read the recursive gitlink and checkout graph without network access
+
+```
+dev submodule status [flags]
+```
+
+- `--json` — emit the submodule graph as JSON
+
 ### `dev summary`
 
 Generate an agent-ready snapshot of this machine's projects
@@ -14542,6 +15118,7 @@ dev sweep [flags]
 - `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees
 - `--json` — print the versioned ephemeral-worktree report as JSON
 - `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
+- `--recursive` — include guarded disposal of workspace-owned submodule clones
 - `--stale-days` — days without relevant activity before an item counts as stale
 - `--task` — limit ordinary recovery suggestions to one exact task ID
 - `--yes` — with --apply, do not confirm each change
@@ -14741,6 +15318,7 @@ dev wt create <branch> [flags]
 - `--no-session` — do not open a runtime session
 - `--path` — override the templated location
 - `-r, --repo` — repository (default: the current one)
+- `--submodules` — initialize submodules: recursive or none (default: configured, otherwise recursive)
 
 ### `dev wt list`
 
@@ -14794,6 +15372,7 @@ dev wt rm <branch> [flags]
 - `--assume-no-runtime` — continue when runtime enumeration fails
 - `--close-unknown` — allow external closure of unknown runtime status
 - `-f, --force` — remove even with uncommitted changes (never bypasses caller/runtime safety)
+- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
 - `-r, --repo` — repository (default: the current one)
 - `--timeout` — maximum time to wait for runtime closure
 
@@ -14865,6 +15444,13 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/
 
 > 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
+
+Submodule 新增與 REPOS／REMOTE clone-URL 複製是擴充指令／動作。新增只支援網路
+來源及全新目標，預設 pinned，保留其他 staged 工作；不收編 local clone，也不改變
+日後初始化政策。新增失敗以明確 phase 回報並保留資料，retirement recovery journal
+不適用於新增。既有 JSON 欄位與複製快捷鍵不變；`y u` 是新增的 URL 快捷鍵。
+
+Submodule 工作區採擴充方式：舊 task 與既有 JSON 欄位維持可讀，成員意圖另有版本化紀錄。完整子 clone 回收要求遠端證明；共享／外部 storage、本地獨有資料與不支援的 filtered／私有 metadata 會阻擋。Done 後遞迴 handoff 需重新載入 shell integration。見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -15200,6 +15786,8 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/sources-freshness/
 
 > 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
+
+Submodule graph／初始化、選擇性 task branch、遞迴遠端證明與暫存恢復，以 `internal/gitx/submodule*`、`internal/submodule`、taskflow／CLI tests 及 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/) 為準；2026-09-06 以 Git 2.55.0 核對。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。

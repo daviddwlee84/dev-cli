@@ -1,5 +1,7 @@
 # Agent-safe worktree retirement
 
+Recursive submodule disposal is an explicit extension: verify child tasks/artifacts/runtime, local data and fresh remote recovery first, then stage children inside-out and remove the outer checkout without force. Preserve canonical/shared Git and the outer branch. A retained journal is recovered with `dev submodule recover`, not deleted using an old remote proof. See `submodules.md`.
+
 ## The rule
 
 A feature agent may prepare and integrate work, but it must not destroy the

@@ -17,12 +17,15 @@ func retirementPreviewCondition(expected string, inspection retire.Inspection) C
 	return condition("runtime-preview-current", VerdictMet, RequirementRequired, "retirement runtime matches its approved preview", "")
 }
 
-// RetirementPreviewAuthority keeps task/Git/artifact ownership bound across
+// RetirementPreviewAuthority keeps task/Git/artifact and child ownership bound across
 // interactive permissions and caller handoff, independently of runtime consent.
 func RetirementPreviewAuthority(plan Plan) Fields {
 	fields := make(map[string]string)
 	for key, value := range plan.AuthorityFields() {
-		if strings.HasPrefix(key, "task.") || strings.HasPrefix(key, "destructive.") && !strings.HasPrefix(key, "destructive.runtime") {
+		// Submodule facts survive the handoff; recursive disposal is a separate
+		// approval selected by the wizard, not an observed identity.
+		if strings.HasPrefix(key, "task.") || strings.HasPrefix(key, "destructive.") && !strings.HasPrefix(key, "destructive.runtime") ||
+			key == "submodules" || key == "submodule-intent" || key == "submodule-claims" {
 			fields[key] = value
 		}
 	}

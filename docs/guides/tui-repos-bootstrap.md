@@ -17,6 +17,14 @@ dashboard tab or mode.
 
 ## Seven views
 
+REPOS and REMOTE support `y u` (also row action **copy clone URL**). REPOS reads
+the selected checkout's fetch URLs locally, preferring origin and asking when
+multiple choices remain. REMOTE copies CloneURL, falling back only to SSHURL,
+not the browser URL. Missing/unsafe URLs, stale selections and clipboard errors
+do not trigger clone/fetch or an empty copy. To add the selected repository as a
+dependency, use the CLI [submodule addition wizard](submodule-workspaces.md#add-a-repository-as-a-submodule);
+the dashboard does not add submodules itself.
+
 | View | Question | Source |
 |---|---|---|
 | TASKS | What am I working on? | task registry plus live Git/runtime facts |

@@ -23,6 +23,7 @@ import (
 )
 
 type repoBootstrapFlags struct {
+	submodules     string
 	category       string
 	path           string
 	preset         string
@@ -59,6 +60,7 @@ type repoBootstrapFlags struct {
 }
 
 type repoWorkflowRequest struct {
+	Submodules    string
 	Kind          repo.AcquireKind
 	Name          string
 	Ref           string
@@ -274,6 +276,7 @@ func newRepoSetupCmd(app *App) *cobra.Command {
 func bindRepoBootstrapFlags(cmd *cobra.Command, flags *repoBootstrapFlags, acquisition, remote, setup bool) {
 	f := cmd.Flags()
 	if acquisition {
+		f.StringVar(&flags.submodules, "submodules", "", "initialize cloned submodules: recursive or none (default: configured, otherwise recursive)")
 		f.StringVarP(&flags.category, "category", "c", "", "category subdirectory under project_root")
 		f.StringVar(&flags.path, "path", "", "exact destination path")
 	}
@@ -415,7 +418,8 @@ func buildCloneRepoRequest(app *App, ref string, flags repoBootstrapFlags) (repo
 	}
 	request := repoWorkflowRequest{
 		Kind: repo.AcquireClone, Name: name, Ref: ref, Destination: destination,
-		Handoff: handoff, BrowseSkills: flags.browseSkills, CheckIn: checkIn,
+		Submodules: flags.submodules,
+		Handoff:    handoff, BrowseSkills: flags.browseSkills, CheckIn: checkIn,
 		CommitMessage: flags.message, DryRun: flags.dryRun, JSON: flags.json,
 	}
 	if flags.preset == "" && cloneSetupOptionsSelected(flags) {
@@ -613,11 +617,15 @@ func executeRepoWorkflow(app *App, request repoWorkflowRequest) error {
 }
 
 func executeRepoCloneAcquire(app *App, request *repoWorkflowRequest) error {
+	if err := (config.Submodules{Init: request.Submodules}).Validate(); err != nil {
+		return err
+	}
 	if request.DryRun {
 		return renderCloneDryRun(app, *request)
 	}
 	acquired, err := repo.Acquire(ctxOf(), repo.AcquireRequest{
 		Kind: repo.AcquireClone, Name: request.Name, CloneRef: request.Ref, Destination: request.Destination,
+		Submodules: request.Submodules, Config: app.Cfg,
 	})
 	if err != nil {
 		return err

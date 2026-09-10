@@ -95,6 +95,11 @@ agents occupy this canonical Git worktree.`,
 				}
 			}
 			field("readiness", repocontext.AssessLocal(local.Context, local.SelectedCheckout, config.Hostname()).Summary())
+			if graph, graphErr := gitx.SubmodulesOf(ctx, selectedPath); graphErr != nil {
+				app.warnf("submodule observation unavailable: %v", graphErr)
+			} else {
+				renderSubmodules(app, graph.Nodes)
+			}
 			if base := gitx.DefaultBranch(ctx, g.MainRoot); base != "" {
 				field("default", base)
 			}

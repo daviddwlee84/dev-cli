@@ -8,6 +8,8 @@ lang: zh-TW
 
 # 平行 Agent 與 Runtime
 
+Submodule task 使用一個完整外層 worktree 與獨立子 checkout；只有明確選中的子 repo 建立 task branch。初始化失敗不進行 runtime／agent handoff，內層 task、artifact 與 runtime claim 都會影響遞迴回收。見 [Submodule 工作區](submodule-workspaces.md)。
+
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 

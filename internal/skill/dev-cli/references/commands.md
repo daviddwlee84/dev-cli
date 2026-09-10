@@ -931,6 +931,7 @@ dev park [task] [flags]
 - `-n, --next` — what to do when you come back
 - `--note` — free-form note
 - `--push` — push the branch so another machine can pick it up
+- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
 - `--timeout` — maximum time to wait for runtime closure
 - `--wip` — checkpoint uncommitted work as a wip: commit
 
@@ -1135,6 +1136,22 @@ List, clone, create and sync repositories
 dev repo
 ```
 
+### `dev repo add-as-submodule`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev repo add-as-submodule [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
 ### `dev repo browse`
 
 Open the repository homepage, or print its URL without opening
@@ -1173,6 +1190,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--path` — exact destination path
 - `--preset` — scaffold preset
 - `--set` — preset input as key=value (repeatable)
+- `--submodules` — initialize cloned submodules: recursive or none (default: configured, otherwise recursive)
 - `-y, --yes` — confirm the non-interactive scaffold plan
 
 ### `dev repo context`
@@ -1250,6 +1268,7 @@ dev repo new [name|clone-ref] [flags]
 - `--push` — push the current branch after publishing
 - `--remote` — also create a GitHub or GitLab upstream
 - `--set` — preset input as key=value (repeatable)
+- `--submodules` — initialize cloned submodules: recursive or none (default: configured, otherwise recursive)
 - `--template` — local directory, Git URL, or owner/repo used as a snapshot template
 - `--template-ref` — Git branch, tag, or commit to snapshot from --template
 - `--template-subdir` — relative directory within --template to use as the repository root
@@ -1345,6 +1364,7 @@ dev retire [task-or-worktree] [flags]
 - `--assume-no-runtime` — continue when runtime enumeration fails (external callers only)
 - `--close-unknown` — allow an external caller to close unknown/empty runtime status
 - `--delete-branch` — delete the contained local branch after worktree removal
+- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
 - `--timeout` — maximum time to wait for runtime sessions to close
 
 ### `dev shell-init`
@@ -1715,6 +1735,9 @@ dev start [repo] [flags]
 - `--next` — the first next action to record
 - `--no-provision` — skip dependency install and ignored-file copying
 - `--run` — send a shell command to the newly created Herdr worktree pane
+- `--submodule` — submodule path to develop on the task branch (repeatable)
+- `--submodule-base` — submodule integration target PATH=REF (repeatable)
+- `--submodules` — initialize submodules: recursive or none (default: configured, otherwise recursive)
 - `-t, --task` — human name for this change stream
 
 ### `dev stats`
@@ -1794,6 +1817,70 @@ Show the full context of the current directory
 dev status
 ```
 
+### `dev submodule`
+
+Inspect, initialize and develop the submodules of a workspace
+
+```
+dev submodule
+```
+
+### `dev submodule add`
+
+Add a known repository or network URL as a submodule of this checkout
+
+```
+dev submodule add [source] [path] [flags]
+```
+
+- `--checkout` — new child checkout mode: pinned or default-branch
+- `--dry-run` — report a local plan without fetching or writing
+- `--json` — emit a structured plan or partial result without prompts
+- `--parent` — exact parent checkout (default: nearest repository containing cwd)
+- `--ref` — commit, tag or branch to pin; requires --checkout=pinned
+- `--submodules` — initialize descendants: recursive or none (default: parent policy)
+- `--yes` — approve cloning and staging without confirmation
+
+### `dev submodule develop`
+
+Add selected submodules to the current managed task branch
+
+```
+dev submodule develop <path>... [flags]
+```
+
+- `--submodule-base` — submodule integration target PATH=REF (repeatable)
+
+### `dev submodule init`
+
+Initialize missing submodules at their gitlinks; preserve existing checkouts
+
+```
+dev submodule init [flags]
+```
+
+- `--dry-run` — inspect without initializing or contacting remotes
+
+### `dev submodule recover`
+
+Restore child repositories retained after interrupted recursive cleanup
+
+```
+dev submodule recover <journal.json> [flags]
+```
+
+- `--dry-run` — validate the recovery journal without changing files
+
+### `dev submodule status`
+
+Read the recursive gitlink and checkout graph without network access
+
+```
+dev submodule status [flags]
+```
+
+- `--json` — emit the submodule graph as JSON
+
 ### `dev summary`
 
 Generate an agent-ready snapshot of this machine's projects
@@ -1825,6 +1912,7 @@ dev sweep [flags]
 - `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees
 - `--json` — print the versioned ephemeral-worktree report as JSON
 - `--merged-worktrees` — focus on linked worktrees whose branches are contained in the main branch
+- `--recursive` — include guarded disposal of workspace-owned submodule clones
 - `--stale-days` — days without relevant activity before an item counts as stale
 - `--task` — limit ordinary recovery suggestions to one exact task ID
 - `--yes` — with --apply, do not confirm each change
@@ -2024,6 +2112,7 @@ dev wt create <branch> [flags]
 - `--no-session` — do not open a runtime session
 - `--path` — override the templated location
 - `-r, --repo` — repository (default: the current one)
+- `--submodules` — initialize submodules: recursive or none (default: configured, otherwise recursive)
 
 ### `dev wt list`
 
@@ -2077,6 +2166,7 @@ dev wt rm <branch> [flags]
 - `--assume-no-runtime` — continue when runtime enumeration fails
 - `--close-unknown` — allow external closure of unknown runtime status
 - `-f, --force` — remove even with uncommitted changes (never bypasses caller/runtime safety)
+- `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
 - `-r, --repo` — repository (default: the current one)
 - `--timeout` — maximum time to wait for runtime closure
 

@@ -12,6 +12,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/submodule"
 )
 
 // Manager creates and removes worktrees according to the configured policy.
@@ -24,6 +25,12 @@ type Manager struct {
 
 // CreateRequest describes one worktree to create.
 type CreateRequest struct {
+	// LockHeld is for taskflow, which already holds the repository gate.
+	LockHeld          bool
+	Submodules        string
+	DevelopSubmodules []string
+	SubmoduleBases    map[string]string
+	TaskStart         bool
 	// RepoPath is the main checkout that owns the worktree.
 	RepoPath string
 	// RepoName is used in the path template and as the session label.
@@ -52,6 +59,7 @@ type CreateRequest struct {
 
 // CreateResult reports what was created.
 type CreateResult struct {
+	Submodules    []gitx.SubmoduleNode
 	Path          string
 	Branch        string
 	BranchCreated bool
@@ -78,6 +86,38 @@ func (m *Manager) logf(format string, args ...any) {
 
 // Create adds a linked worktree, provisions it and surfaces it in the runtime.
 func (m *Manager) Create(ctx context.Context, req CreateRequest) (*CreateResult, error) {
+	if req.LockHeld {
+		return m.create(ctx, req)
+	}
+	repository, err := gitx.Discover(ctx, req.RepoPath)
+	if err != nil {
+		return nil, err
+	}
+	var result *CreateResult
+	err = gitx.WithLifecycleLock(ctx, repository.GitCommonDir, func() error { var err error; result, err = m.create(ctx, req); return err })
+	// Preserve the documented typed reuse result when lock release added no
+	// independent error. Do not hide a real release failure in a multi-error.
+	cause := err
+	for cause != nil {
+		joined, ok := cause.(interface{ Unwrap() []error })
+		if !ok || len(joined.Unwrap()) != 1 {
+			break
+		}
+		cause = joined.Unwrap()[0]
+	}
+	if existing, ok := cause.(*ErrExists); ok {
+		return result, existing
+	}
+	return result, err
+}
+
+func (m *Manager) create(ctx context.Context, req CreateRequest) (*CreateResult, error) {
+	if req.Submodules == "none" && len(req.DevelopSubmodules) > 0 {
+		return nil, errors.New("developing submodules requires recursive initialization")
+	}
+	if err := (config.Submodules{Init: req.Submodules, Develop: req.DevelopSubmodules}).Validate(); err != nil {
+		return nil, err
+	}
 	if req.Branch == "" {
 		return nil, errors.New("branch is required")
 	}
@@ -139,6 +179,16 @@ func (m *Manager) Create(ctx context.Context, req CreateRequest) (*CreateResult,
 	m.logf("worktree %s -> %s", req.Branch, config.Contract(path))
 
 	res := &CreateResult{Path: path, Branch: req.Branch, BranchCreated: !branchExisted}
+	graph, initErr := submodule.Prepare(ctx, m.Cfg, path, req.Submodules, req.DevelopSubmodules, req.SubmoduleBases, req.TaskStart)
+	if initErr != nil {
+		return res, fmt.Errorf("worktree retained at %s; submodules not ready: %w", path, initErr)
+	}
+	res.Submodules = graph.Nodes
+	effectiveSubmodules, settingsErr := submodule.Settings(m.Cfg, path, req.Submodules)
+	if settingsErr != nil {
+		return res, settingsErr
+	}
+	provisionSettings.Submodules = effectiveSubmodules
 
 	if !req.NoProvision {
 		// Trusted settings fold in the repository's portable project config.

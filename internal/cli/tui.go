@@ -221,7 +221,8 @@ func cloneRemoteFromTUI(ctx context.Context, app *App, row tui.RemoteRow) (strin
 		return "", fmt.Errorf("inspect clone destination %s: %w", config.Contract(destination), err)
 	}
 	acquired, err := repo.Acquire(ctx, repo.AcquireRequest{
-		Kind: repo.AcquireClone, Name: row.Repo.Name,
+		Config: app.Cfg,
+		Kind:   repo.AcquireClone, Name: row.Repo.Name,
 		CloneRef: row.Repo.CloneURL, Destination: destination,
 	})
 	if err != nil {
@@ -516,14 +517,15 @@ func runTUI(app *App) error {
 			},
 			Cancel: func(loadID uint64) { appState.Current().Sizes.Cancel(loadID) },
 		},
-		Local:       tui.LocalActions{Start: localLoader.Start},
-		Tools:       externalTools(app),
-		RepoColumns: app.Cfg.EffectiveRepoColumns(),
-		RepoSort:    app.Cfg.EffectiveRepoSort(),
-		RepoReverse: app.Cfg.TUI.Repos.Reverse,
-		Copy:        clipboard.WriteAll,
-		ReadFile:    readTUICapabilityFile,
-		EditFile:    prepareTUICapabilityEdit,
+		Local:        tui.LocalActions{Start: localLoader.Start},
+		Tools:        externalTools(app),
+		RepoColumns:  app.Cfg.EffectiveRepoColumns(),
+		RepoSort:     app.Cfg.EffectiveRepoSort(),
+		RepoReverse:  app.Cfg.TUI.Repos.Reverse,
+		Copy:         clipboard.WriteAll,
+		CloneSources: gitx.FetchCloneSources,
+		ReadFile:     readTUICapabilityFile,
+		EditFile:     prepareTUICapabilityEdit,
 
 		// Open is navigation-only. The model rejects missing/unregistered and
 		// cold worktree tasks before this callback so reconciliation and writer

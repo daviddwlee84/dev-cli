@@ -8,6 +8,8 @@ lang: zh-TW
 
 # 變更流工作流程
 
+Submodule 工作區先完成受影響內層的 commit／整合／push，再更新並發布外層 gitlinks。外層 `--push` 不會推送子 repo。明確的遞迴清理另有重建與整合檢查，見 [Submodule 工作區](submodule-workspaces.md)。
+
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 

@@ -36,7 +36,7 @@ func captureRetirementAuthority(ctx context.Context, app *App, target retireComm
 	if err != nil {
 		return flow.Fields{}, err
 	}
-	request, err := flow.NewRequest(locator, flow.RemoveCheckoutOptions{RequireContained: true, ContainmentBase: gitx.DefaultBranch(ctx, repo.MainRoot), DeleteContainedBranch: options.DeleteBranch, CloseUnknown: options.CloseUnknown, AssumeNoRuntime: options.AssumeNoRuntime, Timeout: options.Timeout})
+	request, err := flow.NewRequest(locator, flow.RemoveCheckoutOptions{Recursive: options.Recursive, RequireContained: true, ContainmentBase: gitx.DefaultBranch(ctx, repo.MainRoot), DeleteContainedBranch: options.DeleteBranch, CloseUnknown: options.CloseUnknown, AssumeNoRuntime: options.AssumeNoRuntime, Timeout: options.Timeout})
 	if err != nil {
 		return flow.Fields{}, err
 	}

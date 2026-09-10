@@ -38,6 +38,7 @@ This is the "what projects do I have?" half of dev, kept separate from the
 		newRepoContextCmd(app),
 		newRepoBrowseCmd(app),
 		newRepoCloneCmd(app),
+		newSubmoduleAddCmd(app, true),
 		newRepoOpenCmd(app),
 		newRepoNewCmd(app),
 		newRepoSetupCmd(app),
