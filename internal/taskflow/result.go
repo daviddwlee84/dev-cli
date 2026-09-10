@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/forge"
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
 )
 
 // ConfirmationKind is the second, action-specific confirmation required after
@@ -104,6 +105,7 @@ const (
 // StepResult is one entry in the ordered execution ledger. Failure is text
 // because the typed operation error is returned separately from Result.
 type StepResult struct {
+	Diagnostic *gitx.Diagnostic `json:",omitempty"`
 	Effect     Effect
 	Status     StepStatus
 	Detail     string
@@ -115,6 +117,10 @@ type StepResult struct {
 // Clone returns a step with independent effect detail storage.
 func (s StepResult) Clone() StepResult {
 	s.Effect = s.Effect.Clone()
+	if s.Diagnostic != nil {
+		d := *s.Diagnostic
+		s.Diagnostic = &d
+	}
 	return s
 }
 

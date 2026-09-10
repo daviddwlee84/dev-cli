@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"errors"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 )
 
 func runTriageUI(ctx context.Context, app *App, s *triage.Service, opts triage.Options) (triagetui.Model, error) {
+	tui.SetColorEnabled(app.outStyle().enabled)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	var loaded atomic.Bool
@@ -46,7 +48,8 @@ func runTriageUI(ctx context.Context, app *App, s *triage.Service, opts triage.O
 	if opts.Selection != nil {
 		m = triagetui.NewScoped(a)
 	}
-	result, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithInput(app.In), tea.WithOutput(app.Out)).Run()
+	m = m.WithScope(opts.ScopeLabel).WithASCII(os.Getenv("TERM") == "dumb")
+	result, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithMouseCellMotion(), tea.WithInput(app.In), tea.WithOutput(app.Out)).Run()
 	if final, ok := result.(triagetui.Model); ok {
 		return final, err
 	}
@@ -55,20 +58,31 @@ func runTriageUI(ctx context.Context, app *App, s *triage.Service, opts triage.O
 
 func (w *tuiWorkflow) runTriage() error {
 	w.result.Scoped = true
-	if len(w.request.Selection) == 0 {
+	if len(w.request.Selection) == 0 && !w.request.AllLocal {
 		return errors.New("dashboard triage requires an explicit local selection")
 	}
 	s, err := newTriageServiceWithCoverage(&w.app, true)
 	if err != nil {
 		return err
 	}
-	m, err := runTriageUI(w.ctx, &w.app, s, triage.Options{Selection: w.request.Selection, Snapshots: w.request.Snapshots, All: w.request.ShowAllTries})
+	opts := triage.Options{Selection: w.request.Selection, Snapshots: w.request.Snapshots, All: w.request.ShowAllTries, ScopeLabel: w.request.ScopeLabel}
+	if w.request.AllLocal {
+		opts.Selection = nil
+	}
+	m, err := runTriageUI(w.ctx, &w.app, s, opts)
+	if ledger := m.LastLedger(); ledger != nil {
+		w.result.Ledger = ledger
+		w.result.Status, w.result.Severity = triage.SummarizeLedger(*ledger)
+	}
 	if len(m.Touched()) == 0 {
 		return err
 	}
 	delta, refreshErr := refreshTriageScope(w.ctx, &w.app, w.request, m.Touched())
 	w.result.Local = &delta
-	w.result.Status = "returned from triage; refreshed affected local items"
+	if w.result.Status == "" {
+		w.result.Status = "Returned from triage; affected items refreshed"
+		w.result.Severity = "info"
+	}
 	return errors.Join(err, refreshErr)
 }
 

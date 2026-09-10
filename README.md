@@ -560,18 +560,20 @@ external `--close-unknown`. `dev done` never closes or removes anything.
 
 ### Find forgotten local work
 
-REPOS and TRY support `x` selection and `Ctrl+A` select-visible. With selections,
-Enter opens scoped triage; `o` keeps normal opening, and Space keeps its existing
-behavior. `Ctrl+O` offers single-item triage and clearing selection. The handoff
-reuses dashboard metadata and inspects only selected repositories; returning
-updates affected rows/SIZE caches. No new persistent repo snapshot cache is added.
+REPOS/TRY `Ctrl+O` opens triage for the current item, filtered results, or all
+local work. Enter remains ordinary navigation. Multi-selection lives in triage:
+grouped repo/Try checkboxes, mouse support, Ctrl+A all/none, and explicit
+Select → Action → Preview → Results steps. Scoped inspection reuses metadata
+and refreshes affected rows/SIZE only; no new persistent inventory cache is added.
+Dashboard `1–7` switches views. Click column headers for ascending/descending/default
+sorting; tools and state filters are in Ctrl+O, keeping the footer short.
 
 `dev triage` finds uncommitted work, unpushed commits, missing upstreams, diverged
 branches, ignored data and runtime/task drift across ordinary repos and Tries.
 It includes branches that are not checked out and every registered worktree.
 
 ```bash
-dev triage                         # forgotten work; Tab for quick batches
+dev triage                         # grouped work; choose actions explicitly
 dev triage --report                 # read-only text, also the non-TTY default
 dev triage --json                   # schema-v1 report with completeness
 dev triage --kind try --stale-days 30
@@ -934,7 +936,7 @@ dev tries graduate redis -c Infra     # same service as dev graduate
 
 Archive is organization, **not disk reclamation**: it moves the directory to a
 hidden location on the same filesystem and preserves its stable catalog ID.
-TRY multi-selection supports reviewed whole-directory Trash, including ignored
+Triage Try multi-selection supports reviewed whole-directory Trash, including ignored
 and untracked files; an uncataloged Try is registered only during approved Apply.
 Confirmed missing accidental Tries offer `forget-try`, also available as
 `dev tries forget <ref> --dry-run` and exact-ID `--confirm-forget <id>` approval.

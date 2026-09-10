@@ -8,7 +8,7 @@ verified_on: 2026-09-09
 # Local work triage
 
 `dev triage` opens an independent cross-repository interface. Its default view
-finds forgotten work; Tab switches to batches grouped by the selected action.
+groups forgotten work by repository/Try before action selection.
 
 ```bash
 dev triage
@@ -50,35 +50,34 @@ locally cached tracking refs. An explicit fetch is a separate approved action.
 
 ## Views and keys
 
-Forgotten work sorts uncommitted work before unsynchronized branches and other
-remediation, followed by idle candidates. Older observed activity sorts first
-within a class. The default idle threshold is 14 days. Age is a sorting signal,
-not backup proof or removal permission. The four-cell summary separates work
-needing preservation/synchronization from other work, and batch candidates from
-items requiring individual review; it does not infer personal importance.
+The independent organizer starts at **Select items**. It shows one summary row
+per repository/Try, with short badges for unsaved work, synchronization, occupancy
+and incomplete observations. Expand a row to inspect branches and checkouts.
+Selecting its checkbox includes all underlying local work; child checkboxes can
+refine the selection. A partial parent uses `[-]`. Color supplements symbols and
+labels; `--color never` and `TERM=dumb` retain understandable output.
 
-| Key | Action |
+| Input | Action |
 |---|---|
-| Tab | Forgotten work / quick batches |
-| g, / | Filter ordinary repositories/Tries; text filter |
-| j/k, arrows | Select a row |
-| Space, a, n | Toggle selection; select visible candidates; clear selection |
-| f, p, u | Select fetch, push, or fast-forward batches |
-| w, c, t | Select Park Warm, Park Cold, or Retire |
-| A, x | Available action chooser; Remove Checkout / Trash or forget Try |
-| Enter | Build exact plans and show effects and blockers |
-| y | Approve a non-removal batch after preview |
-| PgUp/PgDn | Scroll the full preview |
-| ?, b | Full row details; last batch results |
-| o, e, v | Individual flow/Try actions; shell; exact runtime activation |
-| L, s, U | Keep local; snooze seven days; clear row intent |
-| R | Replace this clone's disposable-directory list; blank clears it |
-| d, r, q | Show deferred rows; refresh local facts; quit |
+| Space / checkbox click | Toggle the focused item or group |
+| Ctrl+A (or a) | Select all filtered targets; when all are selected, cancel them; hidden selection stays |
+| Left/right / disclosure click | Collapse or expand a repository |
+| Enter / row click | Enter shows details; a row click only focuses |
+| Ctrl+O / A / Choose action button | Choose an action for the explicitly labelled current item or selection |
+| Tab | Focus the primary action button |
+| /, g, d | Text filter; repo/Try filter; show deferred work |
+| n | Clear selection |
+| o, e, v | Individual flow; shell; runtime |
+| L, s, U, R | Keep local; snooze; clear intent; disposable-directory policy |
+| r, b, ?, q | Local refresh; last results; complete help; return |
 
-The individual shell starts at the selected path and does not switch branches.
-Use existing Git/editor tools there, then exit to refresh the triage view.
-Trash can enroll an uncataloged Try during its reviewed Apply. Other catalog
-lifecycle operations can use explicit `dev tries list` reconciliation.
+Right-click a row opens its action scope. The wheel scrolls the active list or
+details. Action selection leads to an exact preview; only explicit approval
+executes it. The four stages are **Select → Action → Preview → Results**.
+Results show counts and short per-target reasons. Enter expands diagnostic,
+remediation, exact effect and receipt information. `e` opens a shell for the
+result's target; `Ctrl+O` chooses a new action and always builds a fresh plan.
+Old receipts without diagnostics explicitly say that the reason was not captured.
 
 ## Approved batches
 
@@ -137,33 +136,25 @@ Verified whole-repository backup/restore, external-reference analysis, permanent
 repo deletion, and automatic commit/rebase remain separate work. Being synced
 on the current branch is insufficient evidence to remove a whole clone.
 
-## Select from REPOS or TRY
+## Enter from REPOS or TRY
 
-In the dashboard, `x` toggles a repository/Try selection and `Ctrl+A` selects
-visible items. Filtering keeps hidden selections, with their count shown in the
-footer. `Ctrl+O` offers clear selection and a single-item triage entry. With a
-selection, Enter opens this independent interface for that scope; without one,
-Enter keeps its normal open behavior. `o` always opens the current row and REPOS
-Space still expands worktrees. Selecting a repository includes all its local
-branches and registered worktrees. `A` lists available actions and candidate
-counts; choose an action, adjust the preselected candidates, then Enter to preview.
+The dashboard remains navigation-only: Enter/`o` opens the current item and
+Space retains its existing worktree/action behavior. There are no organizer
+checkboxes or hidden selections on these pages. `Ctrl+O` offers **organize this
+item**, **organize current filtered results**, and **organize all local work**.
+The triage header names the chosen scope; scoped entry starts with items, not
+an action chooser.
 
-The handoff reuses accepted dashboard metadata and task/worktree observations.
-Only selected repositories receive deeper Git/content inspection; no other roots
-are discovered. The first round can reuse the in-memory metadata snapshot; later
-refreshes inspect the selected scope again. Returning after an action updates
-only affected rows and invalidates their SIZE entries. SIZE retains its existing
-10-minute cache. There is no new persistent repository snapshot or watcher:
-standalone `dev triage` still collects the full inventory on startup/refresh.
-Cached observations never authorize Apply. Local refresh does not fetch.
-The dashboard TRY read path observes directories without enrolling them or
-reconciling moves; explicit CLI lifecycle commands retain their reconciliation.
+The handoff still reuses dashboard metadata and task/worktree observations.
+Only scoped repositories receive deeper inspection, and returning refreshes only
+affected rows/SIZE entries. The existing 10-minute SIZE cache remains; no new
+persistent inventory cache or watcher is added. Standalone `dev triage` still
+collects the full inventory. Refresh never fetches or enrolls Tries.
 
 ## Trash or forget a Try
 
 `A` offers `trash-try` for existing independent Tries and `forget-try` for a
-confirmed missing directory. `x` chooses the corresponding Try action, or
-Remove Checkout for an ordinary checkout. Unknown activity displays as `—`;
+confirmed missing directory. The action chooser labels each operation explicitly. Unknown activity displays as `—`;
 `missing` and `unavailable` describe separate presence observations. An access
 failure or an unavailable root cannot authorize forgetting.
 

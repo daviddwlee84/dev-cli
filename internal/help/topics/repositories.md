@@ -184,7 +184,7 @@ never fetches or queries a forge. Unsupported SSH aliases are not guessed.
 Use `dev triage` to find forgotten work across ordinary repositories and Tries,
 including uncommitted files, all local branches, missing upstreams and linked
 worktrees. `--report` and `--json` are read-only; local refresh never fetches or
-reconciles the catalog. Tab switches between forgotten work and quick batches.
+reconciles the catalog. The organizer groups work by repo/Try before choosing actions.
 Select rows and an action, Enter to preview, then approve. Fetch is a separate
 round before push or fast-forward. Ignored paths block cleanup unless you have
 explicitly declared their exact relative directory disposable for this clone.

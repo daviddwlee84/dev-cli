@@ -51,8 +51,20 @@ const (
 	listActionTryDeletePermanent
 	listActionTryRecover
 	listActionTriage
-	listActionClearSelection
-	listActionTriageSelection
+	listActionTriageFiltered
+	listActionTriageAll
+	listActionTools
+	listActionStateFilter
+	listActionStateAll
+	listActionStateHot
+	listActionStateWarm
+	listActionStateCold
+	listActionStateDone
+	listActionLastTriage
+	listActionSortMenu
+	listActionSortColumn
+	listActionSettings
+	listActionStatusDetails
 )
 
 type selectionToken struct {
@@ -231,10 +243,21 @@ func (m Model) selectionHeading() (string, string) {
 func (m Model) openActionMenu() Model {
 	token, ok := m.currentSelectionToken()
 	if !ok {
-		if m.triageSelectionCount() > 0 {
-			m.overlay = overlayState{kind: overlayActionMenu, title: "Selected items"}
-			m.overlay.addOption(listActionTriageSelection, "triage selected items…")
-			m.overlay.addOption(listActionClearSelection, "clear selection")
+		m.overlay = overlayState{kind: overlayActionMenu, title: strings.ToUpper(m.view.String()) + " actions"}
+		if m.view == ViewTasks {
+			m.overlay = overlayState{kind: overlayActionMenu, title: "TASKS actions"}
+			m.overlay.addOption(listActionStateFilter, "filter task state…")
+		}
+		if m.view == ViewRepos || m.view == ViewTries {
+			m.overlay = overlayState{kind: overlayActionMenu, title: "Organize local work"}
+			m.overlay.addOption(listActionTriageAll, "organize all local work…")
+		}
+		m.overlay.addOption(listActionSettings, "settings / configuration…")
+		if m.currentStatusText() != "" {
+			m.overlay.addOption(listActionStatusDetails, "full status / error…")
+		}
+		if m.lastTriageLedger != nil {
+			m.overlay.addOption(listActionLastTriage, "last triage results…")
 		}
 		return m
 	}
@@ -397,10 +420,8 @@ func (m Model) openActionMenu() Model {
 				label = "forget missing Try entry…"
 			}
 			overlay.addOption(listActionTriage, label)
-			if m.triageSelectionCount() > 0 {
-				overlay.addOption(listActionTriageSelection, "triage selected items…")
-				overlay.addOption(listActionClearSelection, "clear selection")
-			}
+			overlay.addOption(listActionTriageFiltered, "organize current filtered results…")
+			overlay.addOption(listActionTriageAll, "organize all local work…")
 		}
 		switch m.view {
 		case ViewTasks, ViewRepos, ViewRemote:
@@ -426,6 +447,29 @@ func (m Model) openActionMenu() Model {
 	if overlay.optionCount == 0 {
 		return m
 	}
+	if len(m.Tools()) > 0 && m.view != ViewSkills && m.view != ViewMCP {
+		overlay.addOption(listActionTools, "tools…")
+	}
+	if m.view == ViewTasks {
+		overlay.addOption(listActionStateFilter, "filter task state…")
+	}
+	if m.count() > 0 {
+		overlay.addOption(listActionSortMenu, "sort columns…")
+	}
+	if m.lastTriageLedger != nil {
+		overlay.addOption(listActionLastTriage, "last triage results…")
+	}
+	if m.currentStatusText() != "" {
+		overlay.addOption(listActionStatusDetails, "full status / error…")
+	}
+	label := "settings / configuration…"
+	if m.view == ViewFleet {
+		label = "edit hosts (remotes.toml)…"
+	}
+	if m.view == ViewSkills || m.view == ViewMCP {
+		label = "edit selected source file…"
+	}
+	overlay.addOption(listActionSettings, label)
 	m.overlay = overlay
 	m.err = nil
 	return m
@@ -454,30 +498,76 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	action := m.overlay.options[m.overlay.optionIndex].action
+	option := m.overlay.options[m.overlay.optionIndex]
 	token := m.overlay.selection
-	if action != listActionClearSelection && action != listActionTriageSelection && !m.selectToken(token) {
+	rowIndependent := action == listActionTriageAll || action == listActionTriageFiltered || action == listActionStateFilter || (action >= listActionStateAll && action <= listActionStateDone) || action == listActionLastTriage || action == listActionSettings || action == listActionStatusDetails
+	if !rowIndependent && !m.selectToken(token) {
 		m.overlay = overlayState{}
 		m.err = fmt.Errorf("selected row changed while its action menu was open")
 		return m, nil
 	}
 	m.overlay = overlayState{}
+	if option.tool != "" {
+		return m, m.launchTool(option.tool)
+	}
+	if option.column != "" {
+		return m.cycleTableSort(option.column)
+	}
 	return m.runListAction(action)
 }
 
 func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 	switch action {
-	case listActionTriageSelection:
-		return m.openTriageSelection(false)
-	case listActionTriage:
-		return m.openTriageSelection(true)
-	case listActionClearSelection:
-		if m.view == ViewRepos {
-			m.repoSelections = nil
+	case listActionSettings:
+		return m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+	case listActionStatusDetails:
+		m.overlay = overlayState{kind: overlayTriageReceipt, title: "Status / error", body: m.currentStatusText()}
+		return m, nil
+	case listActionTools:
+		menu := overlayState{kind: overlayActionMenu, title: "Tools", selection: m.currentToken()}
+		for _, tool := range m.Tools() {
+			if menu.optionCount == len(menu.options) {
+				break
+			}
+			menu.addOption(listActionTools, tool.Name+"  ["+tool.Key+"]")
+			menu.options[menu.optionCount-1].tool = tool.Key
 		}
-		if m.view == ViewTries {
-			m.trySelections = nil
+		m.overlay = menu
+		return m, nil
+	case listActionStateFilter:
+		menu := overlayState{kind: overlayActionMenu, title: "Task state", selection: m.currentToken()}
+		for n, label := range []string{"all tasks", "hot", "warm", "cold", "done"} {
+			menu.addOption(listActionStateAll+listAction(n), label)
+		}
+		m.overlay = menu
+		return m, nil
+	case listActionStateAll, listActionStateHot, listActionStateWarm, listActionStateCold, listActionStateDone:
+		m.states = nil
+		m.showDone = true
+		if action != listActionStateAll {
+			m.states = []task.State{[]task.State{task.Hot, task.Warm, task.Cold, task.Done}[action-listActionStateHot]}
+		}
+		m.setAt(0)
+		return m, nil
+	case listActionSortMenu:
+		menu := overlayState{kind: overlayActionMenu, title: "Sort: ascending → descending → default", selection: m.currentToken()}
+		for _, column := range m.tableHeader().columns {
+			menu.addOption(listActionSortColumn, column.key)
+			menu.options[menu.optionCount-1].column = column.key
+		}
+		m.overlay = menu
+		return m, nil
+	case listActionLastTriage:
+		if m.lastTriageLedger != nil {
+			m.overlay = overlayState{kind: overlayTriageReceipt, title: "Last triage results", body: triageReceipt(*m.lastTriageLedger)}
 		}
 		return m, nil
+	case listActionTriageAll:
+		return m.openTriage("all")
+	case listActionTriageFiltered:
+		return m.openTriage("filtered")
+	case listActionTriage:
+		return m.openTriage("current")
 	case listActionDone, listActionResume, listActionRetire, listActionSweep:
 		if row, ok := m.currentTask(); ok {
 			name := map[listAction]string{listActionDone: "done", listActionResume: "resume", listActionRetire: "retire", listActionSweep: "sweep"}[action]
@@ -513,7 +603,7 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 	case listActionTryDelete, listActionTryDeletePermanent, listActionTryRecover:
 		if row, ok := m.currentTry(); ok {
 			if action == listActionTryDelete && row.Item.ID == "" {
-				return m.openTriageSelection(true)
+				return m.openTriage("current")
 			}
 			name := map[listAction]string{listActionTryDelete: "delete-try", listActionTryDeletePermanent: "delete-try-permanently", listActionTryRecover: "restore-removed-try"}[action]
 			return m.runWorkflow(WorkflowRequest{Action: name, Try: row})

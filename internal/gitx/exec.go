@@ -24,6 +24,7 @@ type Error struct {
 	Args   []string
 	Dir    string
 	Stderr string
+	Stdout string
 	Err    error
 }
 
@@ -70,7 +71,7 @@ func runEnv(ctx context.Context, dir string, overrides []string, args ...string)
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		gerr := &Error{Args: args, Dir: dir, Stderr: stderr.String(), Err: err}
+		gerr := &Error{Args: args, Dir: dir, Stderr: stderr.String(), Stdout: stdout.String(), Err: err}
 		if strings.Contains(gerr.Stderr, "not a git repository") {
 			return "", fmt.Errorf("%s: %w", dir, ErrNotARepo)
 		}

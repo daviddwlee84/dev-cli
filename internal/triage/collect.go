@@ -23,6 +23,7 @@ import (
 )
 
 type Options struct {
+	ScopeLabel string
 	// A non-nil Selection disables root discovery, including an empty selection.
 	Selection []Target
 	Snapshots []RepositorySnapshot

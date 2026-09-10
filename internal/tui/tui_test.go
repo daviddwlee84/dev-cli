@@ -446,7 +446,7 @@ func TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions(t *testing.T) {
 		t.Fatalf("skills load/view = %d/%s", loaded, m.CurrentView())
 	}
 	view := m.View()
-	for _, want := range []string{"SKILLS", "project-skill", "global-skill", "project", "global", "checkout", "presence", "verified", "skills-lock.json", "a add", "c check", "u update selected", "A scope:context", "e file", "y copy"} {
+	for _, want := range []string{"SKILLS", "project-skill", "global-skill", "project", "global", "checkout", "presence", "verified", "skills-lock.json", "a add", "c check", "Ctrl+O actions"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("skills view missing %q:\n%s", want, view)
 		}
@@ -540,7 +540,7 @@ func TestMCPViewLoadsLazilyFiltersAndRendersSanitizedDetail(t *testing.T) {
 		t.Fatalf("MCP load/view = %d/%s", loads, m.CurrentView())
 	}
 	view := m.View()
-	for _, want := range []string{"MCP", "project-api", "demo", "http", "authorization", "required", "trusted", "include-tools:2", "r reload declarations"} {
+	for _, want := range []string{"MCP", "project-api", "demo", "http", "authorization", "required", "trusted", "include-tools:2", "r refresh"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("MCP view missing %q:\n%s", want, view)
 		}
@@ -909,12 +909,8 @@ func TestFilterByState(t *testing.T) {
 	}
 
 	got := send(m, key("1")).View()
-	if !strings.Contains(got, "hot task") || strings.Contains(got, "warm task") {
-		t.Errorf("filter 1 should show only hot:\n%s", got)
-	}
-	got = send(m, key("2")).View()
-	if !strings.Contains(got, "warm task") || strings.Contains(got, "hot task") {
-		t.Errorf("filter 2 should show only warm:\n%s", got)
+	if !strings.Contains(got, "hot task") || !strings.Contains(got, "warm task") {
+		t.Error("1 should navigate to TASKS without changing state filters")
 	}
 	got = send(m, key("a")).View()
 	if !strings.Contains(got, "done task") {
@@ -1300,13 +1296,13 @@ func TestFleetHidesLocalRowsByDefaultAndTogglesThemWithA(t *testing.T) {
 	m := tui.New(actions, nil, nil)
 	m = send(m, key("tab"), key("tab"))
 	if out := m.View(); strings.Contains(out, "local-api") || !strings.Contains(out, "remote-api") ||
-		!strings.Contains(out, "1 fleet") || !strings.Contains(out, "a local:hidden") {
+		!strings.Contains(out, "1 fleet") {
 		t.Fatalf("FLEET did not default to remote-only rows:\n%s", out)
 	}
 
 	m = send(m, key("a"))
 	if out := m.View(); !strings.Contains(out, "local-api") || !strings.Contains(out, "remote-api") ||
-		!strings.Contains(out, "2 fleet") || !strings.Contains(out, "a local:shown") {
+		!strings.Contains(out, "2 fleet") {
 		t.Fatalf("a did not reveal local fleet rows:\n%s", out)
 	}
 }
@@ -1809,7 +1805,7 @@ func TestTrySortCyclesIndependently(t *testing.T) {
 		t.Fatalf("activity sort did not put newest first:\n%s", out)
 	}
 	m = send(m, key("O"))
-	if out := m.View(); strings.Index(out, "aaa-old") > strings.Index(out, "zzz-new") || !strings.Contains(out, "O sort:name") {
+	if out := m.View(); strings.Index(out, "aaa-old") > strings.Index(out, "zzz-new") || !strings.Contains(out, "sort: name") {
 		t.Fatalf("name sort did not apply:\n%s", out)
 	}
 }
@@ -1883,7 +1879,7 @@ func TestTrySizeFilterSortAndSharedDetail(t *testing.T) {
 		t.Fatalf("shared size detail failed:\n%s", out)
 	}
 	m = send(m, key("O"), key("O"), key("O"))
-	if out := m.View(); !strings.Contains(out, "O sort:size") {
+	if out := m.View(); !strings.Contains(out, "sort: size") {
 		t.Fatalf("Try size sort did not cycle:\n%s", out)
 	}
 }
@@ -1899,7 +1895,7 @@ func TestTryTableAdaptsWithoutScrollingTabsOffNarrowTerminals(t *testing.T) {
 		m = send(m, tea.WindowSizeMsg{Width: width, Height: 24}, key("tab"), key("tab"), key("tab"))
 		output := m.View()
 		lines := strings.Split(strings.TrimRight(output, "\n"), "\n")
-		if len(lines) > 24 || !strings.Contains(lines[0], "TASKS") || !strings.Contains(lines[0], "TRY") {
+		if len(lines) > 24 || (!strings.Contains(lines[0], "TASKS") && !strings.Contains(lines[0], "TSK")) || !strings.Contains(lines[0], "TRY") {
 			t.Fatalf("width %d lost top tabs or overflowed height (%d lines):\n%s", width, len(lines), output)
 		}
 		for _, line := range lines {
@@ -2123,7 +2119,7 @@ func TestViewNeverRunsToolProbe(t *testing.T) {
 			m = send(m, msg)
 		}
 	}
-	if out := m.View(); calls.Load() != 1 || !strings.Contains(out, "L lazygit") {
+	if out := m.ToolsMenuForTest().View(); calls.Load() != 1 || !strings.Contains(out, "lazygit") {
 		t.Fatalf("background probe was not applied once (calls=%d):\n%s", calls.Load(), out)
 	}
 }
@@ -2137,11 +2133,11 @@ func TestToolsOnlyListedWhenAvailable(t *testing.T) {
 	}
 	m := tui.New(actions, rows, nil)
 
-	out := m.View()
-	if !strings.Contains(out, "L lazygit") {
+	out := m.ToolsMenuForTest().View()
+	if !strings.Contains(out, "lazygit") {
 		t.Errorf("an available tool should be advertised:\n%s", out)
 	}
-	if strings.Contains(out, "Z absent") {
+	if strings.Contains(out, "absent") {
 		t.Error("a tool that is not installed should not be offered")
 	}
 	if len(m.Tools()) != 1 {
@@ -2529,7 +2525,7 @@ func TestRemoteCloneFailureAndMissingDiscoveryKeepTruthfulRows(t *testing.T) {
 		m, _ = applyQuickCommand(t, m, reload)
 		out := m.View()
 		if strings.Contains(out, "not cloned") || !strings.Contains(out, clonePath) ||
-			!strings.Contains(out, "local discovery did not find it") {
+			!strings.Contains(m.StatusDetailsForTest().View(), "local discovery did not find it") {
 			t.Fatalf("missing discovery erased a successful clone:\n%s", out)
 		}
 	})
@@ -2648,7 +2644,7 @@ func TestRemoteCloneRejectsPartialRefreshIdentityConflict(t *testing.T) {
 	var reload tea.Cmd
 	m, reload = applyQuickCommand(t, m, batch[0])
 	m, _ = applyQuickCommand(t, m, reload)
-	if out := m.View(); !strings.Contains(out, "could not match") || !strings.Contains(out, "inspect") || strings.Contains(out, "not cloned") {
+	if out := m.View(); !strings.Contains(m.StatusDetailsForTest().View(), "could not match") || !strings.Contains(out, "inspect") || strings.Contains(out, "not cloned") {
 		t.Fatalf("conflicting partial identity was accepted:\n%s", out)
 	}
 }
@@ -2692,7 +2688,7 @@ func TestRemoteCloneFailsClosedOnAmbiguousLocalMatch(t *testing.T) {
 	var reload tea.Cmd
 	m, reload = applyQuickCommand(t, m, batch[0])
 	m, _ = applyQuickCommand(t, m, reload)
-	if out := m.View(); !strings.Contains(out, "could not match") || !strings.Contains(out, "inspect") || strings.Contains(out, "not cloned") {
+	if out := m.View(); !strings.Contains(m.StatusDetailsForTest().View(), "could not match") || !strings.Contains(out, "inspect") || strings.Contains(out, "not cloned") {
 		t.Fatalf("ambiguous local clones selected remembered path:\n%s", out)
 	}
 }
@@ -3176,8 +3172,8 @@ func TestHeatmapShortcutAndRefresh(t *testing.T) {
 		}, nil
 	}
 	m := tui.New(actions, rows, nil)
-	if !strings.Contains(m.View(), "H stats") {
-		t.Errorf("footer should expose the shortcut:\n%s", m.View())
+	if !strings.Contains(m.View(), "Ctrl+O actions") {
+		t.Errorf("footer should expose the action menu:\n%s", m.View())
 	}
 	m = send(m, key("H"))
 	out := m.View()
@@ -3298,7 +3294,7 @@ func TestOCyclesRepoSort(t *testing.T) {
 	actions.RepoSort = "activity"
 	m := tui.New(actions, nil, []tui.RepoRow{repoRow("api")})
 	m = send(m, key("tab"), key("O"))
-	if !strings.Contains(m.View(), "O sort:latest") {
+	if !strings.Contains(m.View(), "sort: latest") {
 		t.Errorf("O should cycle activity → latest:\n%s", m.View())
 	}
 }
@@ -3691,7 +3687,7 @@ func TestFleetViewEditsRemotesNotTheMainConfig(t *testing.T) {
 	if !reloaded {
 		t.Error("the fleet was not refreshed after its configuration changed")
 	}
-	if out := m.View(); !strings.Contains(out, "e hosts") {
+	if out := m.View(); !strings.Contains(out, "remotes.toml") {
 		t.Errorf("the FLEET footer still advertises the wrong file:\n%s", out)
 	}
 }

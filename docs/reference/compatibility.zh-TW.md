@@ -347,4 +347,8 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 `dev triage` 是新增介面，使用獨立 schema-v1 JSON。Guarded 同步不改 task state，清理另加 clone-bound ignored-directory guard。既有 sweep、flow、expert CLI flags 與 `dev ls --json` 維持原有契約。參見[本地工作整理](../guides/local-triage.md)。
 
-REPOS／TRY 多選將既有 metadata 交給限定範圍 triage，返回只刷新受影響項目，沒有新增跨啟動本地 repo 快照快取。`x`、`Ctrl+A` 成為 dashboard 保留鍵，既有同鍵自訂工具需改綁。`dev tries forget <ref> --dry-run --json` 預覽遺失條目的 metadata 移除，`--confirm-forget <id>` 提供精確核准。唯讀 TRY 盤點區分確認遺失與無法檢查；垃圾桶與忘記使用不同 guarded plan。Triage JSON 增補 `presence`、catalog `note`／`tags` 與來源觀察時間。詳見[本地整理](../guides/local-triage.md)。
+## Dashboard 導覽與整理入口
+
+Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+
+Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](../guides/local-triage.md)。

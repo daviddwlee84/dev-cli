@@ -48,6 +48,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Independent triage organizer with grouped repo/Try selection, mouse checkboxes,
+  visible-scope select-all/clear, explicit action previews and concise results.
+- Dashboard column-header sorting and numeric tab navigation, with compact footer
+  hints and task filters/tools in action menus.
+
 - REPOS/TRY multi-selection with scoped triage handoff, reuse of dashboard
   metadata, and affected-only row/SIZE refresh after actions.
 - Reviewed Try Trash batches, selected-only enrollment for uncataloged Tries,
@@ -68,6 +73,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   through `dev ssh restore` on macOS/Linux.
 
 ### Fixed
+
+- Dashboard Enter always opens its row; REPOS/TRY offer explicit triage scopes
+  without retained organizer selections.
+- Git synchronization failures retain redacted diagnostics and next steps;
+  returning to the dashboard preserves failed/partial batch summaries.
 
 - TRY dashboard reads no longer enroll directories or reconcile moves; missing
   locations remain actionable, while unavailable observations fail closed.

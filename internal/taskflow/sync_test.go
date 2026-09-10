@@ -5,6 +5,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
+	"strings"
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
@@ -84,6 +86,46 @@ func TestTriageSyncPushExactRefAndRejectStale(t *testing.T) {
 	_, e := s.Apply(t.Context(), p, taskflow.Approve(p.PlanID))
 	if !errors.Is(e, taskflow.ErrStalePlan) {
 		t.Fatalf("stale error=%v", e)
+	}
+}
+
+func TestSyncFailureKeepsSafeDiagnosticAndRemoteRef(t *testing.T) {
+	if goruntime.GOOS == "windows" {
+		t.Skip("POSIX fixture hook")
+	}
+	r := gittest.New(t)
+	remote := r.WithRemote()
+	before := r.GitIn(remote, "rev-parse", "refs/heads/main")
+	hooks := filepath.Join(t.TempDir(), "hooks")
+	if err := os.MkdirAll(hooks, 0700); err != nil {
+		t.Fatal(err)
+	}
+	r.GitIn(remote, "config", "core.hooksPath", hooks)
+	if err := os.WriteFile(filepath.Join(hooks, "pre-receive"), []byte("#!/bin/sh\necho 'remote policy: token=LOCAL_TEST_SECRET' >&2\nexit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	r.Commit("change", "new", "commit")
+	s, p := syncPlan(t, r, taskflow.PushBranch)
+	result, err := s.Apply(t.Context(), p, taskflow.Approve(p.PlanID))
+	if err == nil {
+		t.Fatal("rejection reported success")
+	}
+	steps := result.AttemptedSteps()
+	if len(steps) != 1 || steps[0].Diagnostic == nil || steps[0].Diagnostic.Code != "remote-policy" {
+		t.Fatalf("%+v", steps)
+	}
+	if strings.Contains(steps[0].Diagnostic.Details, "LOCAL_TEST_SECRET") {
+		t.Fatal("credential leaked")
+	}
+	if !strings.Contains(steps[0].Diagnostic.Details, "hook declined") {
+		t.Fatal("porcelain rejection lost")
+	}
+	steps[0].Diagnostic.Summary = "modified by caller"
+	if result.AttemptedSteps()[0].Diagnostic.Summary == "modified by caller" {
+		t.Fatal("mutable diagnostic escaped result")
+	}
+	if r.GitIn(remote, "rev-parse", "refs/heads/main") != before {
+		t.Fatal("rejected push changed remote")
 	}
 }
 

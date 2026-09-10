@@ -69,6 +69,17 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	if event.Button == tea.MouseButtonLeft {
+		h := m.tableHeader()
+		if event.Y == 2+h.line {
+			for _, column := range h.columns {
+				if event.X >= column.from && event.X < column.to {
+					return m.cycleTableSort(column.key)
+				}
+			}
+			return m, nil
+		}
+	}
 
 	row, ok := m.mouseRow(event.X, event.Y)
 	if !ok {

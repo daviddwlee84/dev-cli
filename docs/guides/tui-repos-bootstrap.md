@@ -10,10 +10,10 @@ tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCod
 
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
 
-There are two independent full-screen models. Bare `dev` / `dev tui` is the
+There are three independent full-screen models. Bare `dev` / `dev tui` is the
 seven-view inventory dashboard below. Preview-labelled `dev flow [repo]` is a
 TTY-only, plan-first lifecycle view for one canonical repository; it is not a
-dashboard tab or mode.
+dashboard tab or mode. `dev triage` is the cross-repository organizer.
 
 ## Seven views
 
@@ -75,7 +75,7 @@ enter/o   open the selected task
 p         park warm and enter the next action
 c         edit the next action
 n/N       quick-add / browse repository notes
-1/2/3     HOT/WARM/COLD filters
+ctrl+o    task state filters
 ```
 
 A COLD worktree task must be rebuilt with `dev resume`; the dashboard does not silently recreate it through a generic open action. A missing or unregistered worktree points to `dev sweep` first, so unique agent artifacts are reported for salvage before the task is resumed or reaped. Enter never opens an abandoned artifact-only directory. At 97 or more terminal cells the TASKS table includes a display-width-aware `REPO` column; narrower layouts retain the previous columns and show repo/path in detail.
@@ -346,14 +346,22 @@ Adopt reports by default and only writes task entries after `--apply` plus confi
 
 Use [dashboard lifecycle actions](dashboard-actions.md) for task finish/resume/retire/recovery, full start wizards, Trash disposal and repository browser actions. `Ctrl+O` opens the selected row menu; TASKS `a` shows completed tasks.
 
-## Dashboard selection and missing Tries
+## Dashboard navigation and organizer entry
 
-REPOS/TRY `x` toggles selection and `Ctrl+A` selects visible rows. Enter with
-selections opens scoped triage; `o` keeps normal opening and Space is unchanged.
-`Ctrl+O` includes a single-item triage entry and clear selection. Try batches
-support whole-directory Trash, with registration during approved Apply when
-needed, or metadata-only forgetting of a confirmed missing unreferenced entry.
-Use `dev tries forget <ref> --dry-run --json` to inspect and
-`--confirm-forget <id>` for exact noninteractive approval. Multi-host, task,
-runtime, artifact, note/tag and recovery references block forgetting. See
-[local triage](local-triage.md) for the full guard and cache behavior.
+Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+current item, filtered results, or all local work; multi-selection belongs to the
+independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
+and MCP respectively. TASKS state filters live in its action menu (`a` still
+shows done tasks). Click a data column for ascending → descending → default
+ordering; FLEET HOST groups machines. Sorting is local to each view/session and
+uses the current snapshot, with unknown values last. The footer keeps two lines
+of primary actions and navigation; tools, state filters and sorting are in
+`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
+
+Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
+within the filtered scope. Results preserve failures when returning to the
+dashboard. Git synchronization diagnostics retain a category, exit code, bounded
+redacted output and a next step; old receipts cannot recover discarded reasons.
+Retries require a new preview. Authentication, fetch and rebase are never
+silently performed as error recovery. See [local triage](local-triage.md).

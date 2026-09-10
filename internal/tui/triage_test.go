@@ -22,35 +22,27 @@ func (*triageWorkflowStub) SetStdout(io.Writer)    {}
 func (*triageWorkflowStub) SetStderr(io.Writer)    {}
 func (*triageWorkflowStub) Result() WorkflowResult { return WorkflowResult{Scoped: true} }
 
-func TestDashboardTriageSelectionSurvivesFilteringAndUsesIdentity(t *testing.T) {
+func TestDashboardScopedEntryUsesFilteredIdentity(t *testing.T) {
 	var received WorkflowRequest
-	a := Actions{Workflow: func(_ context.Context, r WorkflowRequest) (Workflow, error) {
+	m := New(Actions{Workflow: func(_ context.Context, r WorkflowRequest) (Workflow, error) {
 		received = r
 		return &triageWorkflowStub{}, nil
-	}}
-	rows := []RepoRow{{Repo: repo.Repo{Path: "/one", Name: "alpha", CommonDir: "/one/.git"}}, {Repo: repo.Repo{Path: "/two", Name: "two", CommonDir: "/two/.git"}}}
-	m := New(a, nil, rows)
+	}}, nil, []RepoRow{{Repo: repo.Repo{Path: "/one", Name: "alpha", CommonDir: "/one/.git"}}, {Repo: repo.Repo{Path: "/two", Name: "beta", CommonDir: "/two/.git"}}})
 	m.view = ViewRepos
-	m = m.selectVisibleTriage()
-	before := m
 	m.filter = "alpha"
-	if !strings.Contains(m.selectionSummary(), "2 selected (1 hidden)") {
-		t.Fatal(m.selectionSummary())
-	}
-	m = m.toggleTriageSelection()
-	if len(before.repoSelections) != 2 || len(m.repoSelections) != 1 {
-		t.Fatal("selection mutates copied model")
-	}
-	_, cmd := m.openTriageSelection(false)
-	if cmd == nil || len(received.Selection) != 1 || received.Selection[0].Path != "/two" || len(received.Snapshots) != 1 {
+	_, cmd := m.openTriage("filtered")
+	if cmd == nil || len(received.Selection) != 1 || received.Selection[0].RepositoryID != "/one/.git" || len(received.Snapshots) != 1 {
 		t.Fatalf("%+v", received)
 	}
-	if received.Selection[0].RepositoryID != "/two/.git" {
-		t.Fatal("identity lost")
+	if strings.Contains(m.renderRepos(), "[ ]") {
+		t.Fatal("dashboard retained organizer selection UI")
+	}
+	_, _ = m.openTriage("all")
+	if !received.AllLocal {
+		t.Fatal("all-local entry lost its scope")
 	}
 }
-
-func TestDashboardTrySelectionIncludesMissingAndUnregistered(t *testing.T) {
+func TestDashboardTryEntryIncludesMissingAndUnregistered(t *testing.T) {
 	var received WorkflowRequest
 	m := New(Actions{Workflow: func(_ context.Context, r WorkflowRequest) (Workflow, error) {
 		received = r
@@ -58,18 +50,9 @@ func TestDashboardTrySelectionIncludesMissingAndUnregistered(t *testing.T) {
 	}}, nil, nil)
 	m.view = ViewTries
 	m.tries = []TryRow{{Item: experiment.Item{ID: "missing", Kind: catalog.KindTry, Phase: catalog.PhaseActive, Live: experiment.LiveFacts{CurrentPath: "/tries/missing", Presence: "missing"}}, Location: &catalog.Location{State: catalog.LocationPresent}}, {Item: experiment.Item{Phase: catalog.PhaseActive, Live: experiment.LiveFacts{CurrentPath: "/tries/new", Present: true, Presence: "present"}}}}
-	m = m.selectVisibleTriage()
-	if len(m.trySelections) != 2 {
-		t.Fatal(m.trySelections)
-	}
-	_, cmd := m.openTriageSelection(false)
+	_, cmd := m.openTriage("filtered")
 	if cmd == nil || len(received.Selection) != 2 {
 		t.Fatalf("%+v", received)
-	}
-	for _, target := range received.Selection {
-		if target.Kind != "try" {
-			t.Fatal(target)
-		}
 	}
 }
 
@@ -115,22 +98,6 @@ func TestEnterWithoutSelectionKeepsNormalOpen(t *testing.T) {
 	cmd()
 	if !called {
 		t.Fatal("normal open changed")
-	}
-}
-
-func TestHiddenSelectionCanBeClearedWithoutVisibleRow(t *testing.T) {
-	m := New(Actions{Workflow: func(context.Context, WorkflowRequest) (Workflow, error) { return &triageWorkflowStub{}, nil }}, nil, []RepoRow{{Repo: repo.Repo{Path: "/one", Name: "alpha"}}})
-	m.view = ViewRepos
-	m = m.selectVisibleTriage()
-	m.filter = "unmatched"
-	m = m.openActionMenu()
-	if m.overlay.optionCount != 2 {
-		t.Fatal("hidden selection has no actions")
-	}
-	m.overlay.optionIndex = 1
-	n, _ := m.runOverlayAction()
-	if n.(Model).triageSelectionCount() != 0 {
-		t.Fatal("could not clear hidden selection")
 	}
 }
 

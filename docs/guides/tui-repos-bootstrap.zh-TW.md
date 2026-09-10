@@ -71,7 +71,7 @@ enter/o   開啟選取的 task
 p         park warm 並輸入 next action
 c         編輯 next action
 n/N       quick-add／瀏覽 repository notes
-1/2/3     HOT/WARM/COLD filters
+ctrl+o    task state filters
 ```
 
 COLD worktree task 必須透過 `dev resume` 重建；TUI 不會用 generic open action 靜默重建。若 worktree 已遺失或不再由 Git 註冊，必須先執行 `dev sweep`，讓它在 resume 或 reap 前回報需要 salvage 的 agent artifacts。Enter 不會開啟只剩 artifacts 的 abandoned directory。Terminal 寬度至少 97 cells 時，TASKS table 會顯示 display-width-aware `REPO` column；更窄時保留原 columns，並在 detail 顯示 repo/path。
@@ -319,6 +319,8 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 
 [Dashboard 生命週期操作](dashboard-actions.md) 說明 task 完成／恢復／retire／recovery、完整 start wizard、Trash 與 repository browser actions。`Ctrl+O` 開啟所選 row 的選單；TASKS 的 `a` 只顯示已完成 tasks。
 
-## Dashboard 多選與遺失 Try
+## Dashboard 導覽與整理入口
 
-REPOS／TRY 的 `x` 切換選取，`Ctrl+A` 選取可見列，有選取時 Enter 開啟限定範圍 triage；`o` 保持開啟目前列，Space 不變。`Ctrl+O` 提供單項整理與清除選取。Try 批次可移動完整目錄到垃圾桶，必要時在核准 Apply 才登錄所選目錄；確認遺失且無引用的條目可只忘記 metadata。使用 `dev tries forget <ref> --dry-run --json` 預覽，`--confirm-forget <id>` 提供非互動式精確核准。多主機、task、runtime、artifact、筆記／tags 或 recovery 引用都會阻擋忘記。完整限制與 cache 行為見[本地整理](local-triage.md)。
+Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+
+Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](local-triage.md)。

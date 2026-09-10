@@ -1,18 +1,15 @@
-// Package triagetui is the independent cross-repository triage interface.
+// Package triagetui is the independent local-work organizer.
 package triagetui
 
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/daviddwlee84/dev-cli/internal/triage"
-	"github.com/mattn/go-runewidth"
 )
 
 type Actions struct {
@@ -41,124 +38,74 @@ type changed struct{ Err error }
 type HandoffDone struct{ Err error }
 
 type Model struct {
-	chooser               bool
-	chooseAll             bool
-	choiceCursor          int
-	touched               []triage.Item
-	generation            int
-	actions               Actions
-	report                triage.Report
-	visible               []triage.Item
-	selected              map[string]bool
-	cursor, width, height int
-	quick, deferred       bool
-	kind, filter, action  string
-	busy                  string
-	message               string
-	batch                 *triage.Batch
-	input                 textinput.Model
-	inputMode             string
-	inputItem             triage.Item
-	scroll                int
-	stop                  context.CancelFunc
-	lastLedger            *triage.Ledger
-	overlay               []string
-	quit                  bool
-}
-
-// NewScoped starts with an action chooser for the dashboard's selected scope.
-func NewScoped(a Actions) Model        { m := New(a); m.chooser, m.chooseAll = true, true; return m }
-func (m Model) Touched() []triage.Item { return append([]triage.Item{}, m.touched...) }
-
-type actionChoice struct {
-	name                string
-	candidates, blocked int
-}
-
-func (m Model) choiceItems() []triage.Item {
-	if !m.chooseAll {
-		return m.chosen()
-	}
-	m.quick = false
-	m.filterRows()
-	return m.visible
-}
-func (m Model) choices() []actionChoice {
-	counts := map[string]actionChoice{}
-	for _, item := range m.choiceItems() {
-		seen := map[string]bool{}
-		for _, a := range item.Actions {
-			if seen[a.Name] {
-				continue
-			}
-			seen[a.Name] = true
-			c := counts[a.Name]
-			c.name = a.Name
-			if a.Availability == "candidate" {
-				c.candidates++
-			} else {
-				c.blocked++
-			}
-			counts[a.Name] = c
-		}
-	}
-	choices := []actionChoice{}
-	for _, c := range counts {
-		choices = append(choices, c)
-	}
-	sort.Slice(choices, func(i, j int) bool { return choices[i].name < choices[j].name })
-	return choices
+	actions                     Actions
+	generation                  int
+	report                      triage.Report
+	visible                     []triage.Item
+	rows                        []treeRow
+	selected                    map[string]bool
+	expanded                    map[string]bool
+	cursor, width, height       int
+	kind, filter, action, scope string
+	deferred                    bool
+	busy, message               string
+	chooser                     bool
+	choiceCursor                int
+	menuItems                   []triage.Item
+	buttonFocus                 bool
+	batch                       *triage.Batch
+	input                       textinput.Model
+	inputMode                   string
+	inputItem                   triage.Item
+	scroll                      int
+	stop                        context.CancelFunc
+	quit                        bool
+	touched                     []triage.Item
+	lastLedger                  *triage.Ledger
+	results                     bool
+	resultCursor                int
+	overlay                     []string
+	ascii                       bool
 }
 
 func New(a Actions) Model {
 	input := textinput.New()
 	input.CharLimit = 4096
-	input.Width = 65
-	return Model{generation: 1, actions: a, selected: map[string]bool{}, action: "fetch", kind: "all", width: 100, height: 30, input: input, busy: "Scanning local repositories…"}
+	input.Width = 60
+	return Model{actions: a, generation: 1, selected: map[string]bool{}, expanded: map[string]bool{}, kind: "all", scope: "All local repositories and Tries", width: 100, height: 32, input: input, busy: "Reading local work…"}
+}
+func NewScoped(a Actions) Model { return New(a) }
+func (m Model) WithScope(scope string) Model {
+	if scope != "" {
+		m.scope = scope
+	}
+	return m
+}
+func (m Model) WithASCII(ascii bool) Model { m.ascii = ascii; return m }
+func (m Model) Touched() []triage.Item     { return append([]triage.Item{}, m.touched...) }
+func (m Model) LastLedger() *triage.Ledger {
+	if m.lastLedger == nil {
+		return nil
+	}
+	copy := *m.lastLedger
+	copy.Outcomes = append([]triage.Outcome{}, copy.Outcomes...)
+	return &copy
 }
 func (m Model) Init() tea.Cmd { return m.load() }
 func (m Model) load() tea.Cmd {
-	return func() tea.Msg {
-		r, e := m.actions.Load(context.Background())
-		return Loaded{Generation: m.generation, Report: r, Err: e}
-	}
-}
-func (m *Model) filterRows() {
-	m.visible = nil
-	for _, i := range m.report.Items {
-		if !m.deferred && i.Deferred != "" {
-			continue
-		}
-		if m.kind != "all" && i.Kind != m.kind {
-			continue
-		}
-		text := i.Name + " " + i.Path + " " + i.Note + " " + strings.Join(i.Tags, " ")
-		for _, f := range i.Findings {
-			text += " " + f.Code + " " + f.Detail
-		}
-		if i.Branch != nil {
-			text += " " + i.Branch.Ref
-		}
-		if !strings.Contains(strings.ToLower(text), strings.ToLower(m.filter)) {
-			continue
-		}
-		if m.quick {
-			if _, ok := i.Action(m.action); !ok {
-				continue
-			}
-		}
-		m.visible = append(m.visible, i)
-	}
-	triage.SortItems(m.visible, m.quick)
-	if m.cursor >= len(m.visible) {
-		m.cursor = max(0, len(m.visible)-1)
-	}
+	return func() tea.Msg { r, e := m.actions.Load(context.Background()); return Loaded{m.generation, r, e} }
 }
 func (m Model) current() (triage.Item, bool) {
-	if m.cursor < 0 || m.cursor >= len(m.visible) {
+	if m.cursor < 0 || m.cursor >= len(m.rows) {
 		return triage.Item{}, false
 	}
-	return m.visible[m.cursor], true
+	return m.rows[m.cursor].item, true
+}
+func (m Model) currentMembers() []triage.Item {
+	if m.cursor < 0 || m.cursor >= len(m.rows) {
+		return nil
+	}
+	return m.rows[m.cursor].members
 }
 func (m Model) chosen() []triage.Item {
 	items := []triage.Item{}
@@ -167,43 +114,82 @@ func (m Model) chosen() []triage.Item {
 			items = append(items, i)
 		}
 	}
-	if len(items) == 0 {
-		if i, ok := m.current(); ok {
-			items = append(items, i)
-		}
-	}
 	return items
 }
-
+func (m Model) reload() (tea.Model, tea.Cmd) {
+	m.generation++
+	m.batch = nil
+	m.busy = "Refreshing this scope…"
+	return m, m.load()
+}
+func (m Model) openChooser() (tea.Model, tea.Cmd) {
+	m.menuItems = m.chosen()
+	if len(m.menuItems) == 0 {
+		m.menuItems = append([]triage.Item{}, m.currentMembers()...)
+	}
+	m.chooser = true
+	m.choiceCursor = 0
+	m.message = ""
+	return m, nil
+}
+func (m Model) prepareAction(action string) (tea.Model, tea.Cmd) {
+	items := append([]triage.Item{}, m.menuItems...)
+	m.action = action
+	m.chooser = false
+	m.busy = "Checking exact targets and effects…"
+	return m, func() tea.Msg {
+		b, e := m.actions.Prepare(context.Background(), items, action)
+		return prepared{m.generation, b, e}
+	}
+}
+func (m Model) apply() (tea.Model, tea.Cmd) {
+	if m.batch == nil || m.batch.ReadyCount() == 0 {
+		m.message = "No ready targets. Review blockers or go back."
+		return m, nil
+	}
+	b := *m.batch
+	ctx, cancel := context.WithCancel(context.Background())
+	m.stop = cancel
+	m.busy = fmt.Sprintf("Applying %d targets; Esc stops the remaining queue…", b.ReadyCount())
+	return m, func() tea.Msg { defer cancel(); l, e := m.actions.Apply(ctx, b, b.Token); return applied{l, e} }
+}
+func (m Model) openItem(item triage.Item, kind string) (tea.Model, tea.Cmd) {
+	if m.actions.Open == nil {
+		return m, nil
+	}
+	m.touched = append(m.touched, item)
+	return m, m.actions.Open(item, kind)
+}
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = v.Width
-		m.height = v.Height
-		m.input.Width = max(10, min(80, v.Width-8))
+		m.width, m.height = v.Width, v.Height
+		m.input.Width = max(10, min(65, v.Width-10))
 		return m, nil
 	case Loaded:
 		if v.Generation != 0 && v.Generation != m.generation {
 			return m, nil
 		}
-		old, _ := m.current()
+		key := m.rowKey()
 		m.busy = ""
 		m.report = v.Report
 		m.batch = nil
-		m.selected = map[string]bool{}
-		m.filterRows()
-		for n, i := range m.visible {
-			if i.ID == old.ID {
-				m.cursor = n
+		kept := map[string]bool{}
+		for _, i := range v.Report.Items {
+			if m.selected[i.ID] {
+				kept[i.ID] = true
 			}
 		}
+		m.selected = kept
+		m.filterRows()
+		m.focusRow(key)
 		if v.Err != nil {
 			m.message = triage.SafeText(v.Err.Error())
 		}
 		if len(v.Report.Items) == 0 {
-			for _, source := range v.Report.Sources {
-				if !source.Complete {
-					m.message = source.Detail
+			for _, s := range v.Report.Sources {
+				if !s.Complete {
+					m.message = s.Detail
 					break
 				}
 			}
@@ -214,74 +200,65 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.busy = ""
+		m.scroll = 0
 		if v.Err != nil {
 			m.message = triage.SafeText(v.Err.Error())
-		} else {
-			m.batch = &v.Batch
-			m.scroll = 0
-			if v.Batch.Token != "" {
-				m.inputMode = "confirm"
-				m.input.SetValue("")
-				m.input.Focus()
-			}
+			return m, nil
+		}
+		m.batch = &v.Batch
+		m.inputMode = ""
+		if v.Batch.Token != "" {
+			m.inputMode = "confirm"
+			m.input.SetValue("")
+			m.input.Focus()
+			return m, textinput.Blink
 		}
 		return m, nil
 	case applied:
-		for _, outcome := range v.Ledger.Outcomes {
-			if outcome.Status == "skipped" || outcome.Status == "canceled" {
+		for _, o := range v.Ledger.Outcomes {
+			if o.Status == "skipped" || o.Status == "canceled" {
 				continue
 			}
-			for _, item := range m.report.Items {
-				if item.ID == outcome.ItemID {
-					m.touched = append(m.touched, item)
+			for _, i := range m.report.Items {
+				if i.ID == o.ItemID {
+					m.touched = append(m.touched, i)
 				}
 			}
 		}
-		m.busy = ""
 		m.stop = nil
 		m.batch = nil
 		m.inputMode = ""
 		m.lastLedger = &v.Ledger
-		m.overlay = ledgerLines(v.Ledger)
+		m.results = true
+		m.resultCursor = 0
 		m.scroll = 0
-		m.message = fmt.Sprintf("Results saved: %s", v.Ledger.Path)
-		for _, o := range v.Ledger.Outcomes {
-			if o.Status != "completed" {
-				m.message += " · " + o.Status + ": " + o.Error
-			}
-		}
+		m.message = ""
 		if v.Err != nil {
-			m.message += " · " + v.Err.Error()
+			m.message = triage.SafeText(v.Err.Error())
 		}
 		if m.quit {
 			return m, tea.Quit
 		}
-		m.busy = "Refreshing local facts…"
-		m.generation++
-		return m, m.load()
+		return m.reload()
 	case changed:
-		m.busy = ""
 		if v.Err != nil {
 			m.message = triage.SafeText(v.Err.Error())
 		}
-		m.busy = "Refreshing local facts…"
-		m.generation++
-		return m, m.load()
+		return m.reload()
 	case HandoffDone:
 		if v.Err != nil {
 			m.message = triage.SafeText(v.Err.Error())
 		}
-		m.busy = "Refreshing local facts…"
-		m.generation++
-		return m, m.load()
+		return m.reload()
+	case tea.MouseMsg:
+		return m.updateMouse(tea.MouseEvent(v))
 	case tea.KeyMsg:
 		key := v.String()
-		if m.busy != "" {
+		if m.busy != "" && !m.results {
 			if key == "q" || key == "ctrl+c" {
 				if m.stop != nil {
 					m.quit = true
 					m.stop()
-					m.message = "Will exit after the current operation returns"
 				} else {
 					return m, tea.Quit
 				}
@@ -296,33 +273,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch key {
 			case "esc", "enter":
 				m.overlay = nil
-			case "pgdown", "down", "j":
-				m.scroll += max(1, m.height/2)
-			case "pgup", "up", "k":
-				m.scroll = max(0, m.scroll-max(1, m.height/2))
+				m.scroll = 0
 			case "q", "ctrl+c":
 				return m, tea.Quit
+			case "j", "down":
+				m.scroll++
+			case "k", "up":
+				m.scroll = max(0, m.scroll-1)
+			case "pgdown":
+				m.scroll += max(1, m.height/2)
+			case "pgup":
+				m.scroll = max(0, m.scroll-m.height/2)
 			}
 			return m, nil
 		}
 		if m.batch != nil {
-			if key == "esc" {
+			switch key {
+			case "esc":
 				m.batch = nil
 				m.inputMode = ""
+				m.scroll = 0
 				return m, nil
-			}
-			if key == "pgdown" {
-				m.scroll += max(1, m.height-10)
+			case "pgdown":
+				m.scroll += max(1, m.height/2)
 				return m, nil
-			}
-			if key == "pgup" {
-				m.scroll = max(0, m.scroll-max(1, m.height-10))
+			case "pgup":
+				m.scroll = max(0, m.scroll-m.height/2)
 				return m, nil
 			}
 			if m.inputMode == "confirm" {
 				if key == "enter" {
 					if m.input.Value() != m.batch.Token {
-						m.message = "Confirmation does not match"
+						m.message = "Type the displayed confirmation exactly"
 						return m, nil
 					}
 					return m.apply()
@@ -331,10 +313,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.input, cmd = m.input.Update(v)
 				return m, cmd
 			}
-			if key == "y" {
+			if key == "y" || (key == "enter" && m.buttonFocus) {
 				return m.apply()
 			}
+			if key == "tab" {
+				m.buttonFocus = !m.buttonFocus
+			}
 			return m, nil
+		}
+		if m.results {
+			return m.updateResults(key)
 		}
 		if m.inputMode != "" {
 			if key == "esc" {
@@ -351,13 +339,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if mode == "directories" {
-					m.busy = "Saving explicitly disposable directories…"
 					dirs := []string{}
 					for _, d := range strings.Split(value, ",") {
 						if strings.TrimSpace(d) != "" {
 							dirs = append(dirs, strings.TrimSpace(d))
 						}
 					}
+					m.busy = "Saving disposable-directory intent…"
+					m.touched = append(m.touched, item)
 					return m, func() tea.Msg { return changed{m.actions.Directories(context.Background(), item, dirs)} }
 				}
 			}
@@ -368,61 +357,56 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.chooser {
 			choices := m.choices()
 			switch key {
+			case "esc":
+				m.chooser = false
 			case "q", "ctrl+c":
 				return m, tea.Quit
-			case "esc", "A":
-				m.chooser = false
 			case "j", "down":
 				m.choiceCursor = min(max(0, len(choices)-1), m.choiceCursor+1)
 			case "k", "up":
 				m.choiceCursor = max(0, m.choiceCursor-1)
 			case "enter":
-				if len(choices) == 0 {
-					m.message = "No batch actions here; inspect details (?) or open the individual flow (o)"
-					m.chooser = false
-					return m, nil
+				if len(choices) > 0 {
+					return m.prepareAction(choices[m.choiceCursor].name)
 				}
-				m.action = choices[min(m.choiceCursor, len(choices)-1)].name
-				items := m.choiceItems()
-				m.selected = map[string]bool{}
-				for _, item := range items {
-					if a, ok := item.Action(m.action); ok && a.Availability == "candidate" {
-						m.selected[item.ID] = true
-					}
-				}
-				m.chooser = false
-				m.quick = true
-				m.filterRows()
-				m.message = "Review selected candidates; Enter builds exact plans, Space deselects, A changes action"
 			}
 			return m, nil
 		}
 		switch key {
-		case "A":
-			m.chooser, m.choiceCursor = true, 0
 		case "q", "ctrl+c":
 			return m, tea.Quit
 		case "j", "down":
-			m.cursor = min(max(0, len(m.visible)-1), m.cursor+1)
+			m.cursor = min(max(0, len(m.rows)-1), m.cursor+1)
+			m.buttonFocus = false
 		case "k", "up":
 			m.cursor = max(0, m.cursor-1)
+			m.buttonFocus = false
+		case "pgdown":
+			m.cursor = min(max(0, len(m.rows)-1), m.cursor+max(1, m.height/2))
+		case "pgup":
+			m.cursor = max(0, m.cursor-m.height/2)
 		case " ":
-			if i, ok := m.current(); ok {
-				m.selected[i.ID] = !m.selected[i.ID]
-			}
-		case "a":
-			for _, i := range m.visible {
-				if a, ok := i.Action(m.action); ok && a.Availability == "candidate" {
-					m.selected[i.ID] = true
-				}
-			}
+			m.toggleRow(m.cursor)
+		case "ctrl+a", "a":
+			m.toggleVisible()
 		case "n":
 			m.selected = map[string]bool{}
+		case "right", "l":
+			m.expandCurrent(true)
+		case "left", "h":
+			m.expandCurrent(false)
 		case "tab":
-			m.quick = !m.quick
-			m.cursor = 0
-			m.selected = map[string]bool{}
-			m.filterRows()
+			m.buttonFocus = !m.buttonFocus
+		case "enter":
+			if m.buttonFocus {
+				return m.openChooser()
+			}
+			m.showDetails()
+		case "?":
+			m.overlay = helpLines()
+			m.scroll = 0
+		case "A", "ctrl+o":
+			return m.openChooser()
 		case "g":
 			switch m.kind {
 			case "all":
@@ -432,55 +416,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			default:
 				m.kind = "all"
 			}
-			m.cursor = 0
 			m.filterRows()
 		case "d":
 			m.deferred = !m.deferred
 			m.filterRows()
-		case "r":
-			m.busy = "Refreshing local facts…"
-			m.busy = "Refreshing local facts…"
-			m.generation++
-			return m, m.load()
 		case "/":
 			m.inputMode = "filter"
 			m.input.SetValue(m.filter)
 			m.input.Focus()
 			return m, textinput.Blink
-		case "?":
-			if i, ok := m.current(); ok {
-				m.overlay = []string{i.Kind + " / " + i.Scope + " · " + i.Path}
-				if i.Note != "" {
-					m.overlay = append(m.overlay, "note: "+i.Note)
-				}
-				if len(i.Tags) > 0 {
-					m.overlay = append(m.overlay, "tags: "+strings.Join(i.Tags, ", "))
-				}
-				if i.Branch != nil {
-					m.overlay = append(m.overlay, fmt.Sprintf("%s @ %s; upstream %s @ %s", i.Branch.Ref, i.Branch.OID, i.Branch.Upstream, i.Branch.UpstreamOID))
-				}
-				for _, f := range i.Findings {
-					m.overlay = append(m.overlay, f.Code+": "+f.Detail)
-				}
-				for _, rt := range i.Runtimes {
-					m.overlay = append(m.overlay, "runtime: "+rt.Backend+":"+rt.Handle+" "+rt.Label)
-				}
-				for _, a := range i.Actions {
-					m.overlay = append(m.overlay, fmt.Sprintf("%s %s [%s] %s", a.Name, a.Remote, a.Availability, a.Reason))
-				}
-				for _, p := range i.Ignored {
-					m.overlay = append(m.overlay, fmt.Sprintf("ignored: %s (%d bytes, disposable=%t)", p.Path, p.Bytes, p.Disposable))
-				}
-				m.scroll = 0
-			}
+		case "r":
+			return m.reload()
 		case "b":
 			if m.lastLedger != nil {
-				m.overlay = ledgerLines(*m.lastLedger)
-				m.scroll = 0
+				m.results = true
+				m.resultCursor = 0
 			}
 		case "R":
 			if i, ok := m.current(); ok {
-				m.touched = append(m.touched, i)
 				m.inputMode = "directories"
 				m.inputItem = i
 				m.input.SetValue(strings.Join(i.DisposableDirs, ", "))
@@ -489,7 +442,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "L", "s", "U":
 			if i, ok := m.current(); ok {
-				m.touched = append(m.touched, i)
 				kind := "local"
 				until := time.Time{}
 				if key == "s" {
@@ -499,12 +451,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if key == "U" {
 					kind = ""
 				}
-				m.busy = "Saving triage intent…"
+				m.touched = append(m.touched, i)
+				m.busy = "Saving review intent…"
 				return m, func() tea.Msg { return changed{m.actions.Intent(context.Background(), i, kind, until)} }
 			}
 		case "o", "e", "v":
-			if i, ok := m.current(); ok && m.actions.Open != nil {
-				m.touched = append(m.touched, i)
+			if i, ok := m.current(); ok {
 				kind := "flow"
 				if key == "e" {
 					kind = "shell"
@@ -512,229 +464,63 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if key == "v" {
 					kind = "runtime"
 				}
-				return m, m.actions.Open(i, kind)
-			}
-		case "f", "p", "u", "w", "c", "t", "x":
-			names := map[string]string{"f": "fetch", "p": "push", "u": "fast-forward", "w": "park-warm", "c": "park-cold", "t": "retire", "x": "remove-checkout"}
-			m.action = names[key]
-			if key == "x" {
-				if i, ok := m.current(); ok && i.Kind == "try" {
-					if i.Presence == "missing" {
-						m.action = "forget-try"
-					} else {
-						m.action = "trash-try"
-					}
-				}
-			}
-			m.selected = map[string]bool{}
-			m.filterRows()
-		case "enter":
-			items := m.chosen()
-			matching := false
-			for _, item := range items {
-				_, ok := item.Action(m.action)
-				matching = matching || ok
-			}
-			if !matching {
-				m.chooser, m.chooseAll, m.choiceCursor = true, false, 0
-				return m, nil
-			}
-			action := m.action
-			m.busy = "Building exact plans…"
-			return m, func() tea.Msg {
-				b, e := m.actions.Prepare(context.Background(), items, action)
-				return prepared{Generation: m.generation, Batch: b, Err: e}
+				return m.openItem(i, kind)
 			}
 		}
 	}
 	return m, nil
 }
-func (m Model) apply() (tea.Model, tea.Cmd) {
-	if m.batch == nil || m.batch.ReadyCount() == 0 {
-		m.message = "No ready plans in this selection"
-		return m, nil
+func (m Model) updateResults(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "esc":
+		m.results = false
+		m.message = ""
+		m.scroll = 0
+	case "q", "ctrl+c":
+		return m, tea.Quit
+	case "j", "down":
+		m.resultCursor = min(max(0, len(m.lastLedger.Outcomes)-1), m.resultCursor+1)
+	case "k", "up":
+		m.resultCursor = max(0, m.resultCursor-1)
+	case "enter", "?":
+		m.showResultDetails()
+	case "r":
+		m.results = false
+		return m.reload()
+	case "e":
+		if m.busy != "" {
+			return m, nil
+		}
+		if i, ok := m.resultItem(); ok {
+			return m.openItem(i, "shell")
+		}
+	case "A", "ctrl+o":
+		if m.busy != "" {
+			return m, nil
+		}
+		if i, ok := m.resultItem(); ok {
+			m.results = false
+			m.menuItems = []triage.Item{i}
+			m.chooser = true
+			m.choiceCursor = 0
+		}
 	}
-	b := *m.batch
-	ctx, cancel := context.WithCancel(context.Background())
-	m.stop = cancel
-	m.busy = fmt.Sprintf("Applying %d plans; Esc stops the remaining queue…", b.ReadyCount())
-	token := b.Token
-	return m, func() tea.Msg { defer cancel(); l, e := m.actions.Apply(ctx, b, token); return applied{l, e} }
+	return m, nil
 }
-
-var title = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("81"))
-var muted = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-var highlight = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("229"))
-
-func (m Model) View() string {
-	var b strings.Builder
-	view := "Find forgotten work"
-	if m.quick {
-		view = "Quick batch"
+func (m Model) resultItem() (triage.Item, bool) {
+	if m.lastLedger == nil || m.resultCursor >= len(m.lastLedger.Outcomes) {
+		return triage.Item{}, false
 	}
-	fmt.Fprintln(&b, title.Render("dev triage  /  "+view))
-	fmt.Fprintf(&b, "%s · action: %s · %d selected · %d visible\n", m.kind, m.action, lenSelected(m.selected), len(m.visible))
-	if m.busy != "" {
-		fmt.Fprintln(&b, highlight.Render(m.busy))
-	}
-	if m.chooser && m.busy == "" {
-		fmt.Fprintln(&b, "\nAvailable actions · candidates still require an exact preview")
-		for n, c := range m.choices() {
-			mark := "  "
-			if n == m.choiceCursor {
-				mark = "› "
-			}
-			fmt.Fprintf(&b, "%s%-18s %d candidates · %d blocked\n", mark, c.name, c.candidates, c.blocked)
-		}
-		if len(m.choices()) == 0 {
-			fmt.Fprintln(&b, "No batch action; return to inspect details or use the individual flow.")
-		}
-		fmt.Fprintln(&b, "\n↑/↓ choose · Enter select candidates · Esc return · q back to dashboard")
-		return b.String()
-	}
-	if m.overlay != nil {
-		start := min(m.scroll, max(0, len(m.overlay)-1))
-		end := min(len(m.overlay), start+max(2, m.height-8))
-		for _, line := range m.overlay[start:end] {
-			fmt.Fprintln(&b, fit(triage.SafeText(line), m.width-2))
-		}
-		fmt.Fprintln(&b, "\nPgUp/PgDn scroll · Enter/Esc return")
-		return b.String()
-	}
-	if m.batch != nil {
-		fmt.Fprintf(&b, "\nPreview · %d ready · batch %s\n", m.batch.ReadyCount(), m.batch.ID)
-		lines := []string{}
-		for _, p := range m.batch.Previews() {
-			state := "BLOCKED"
-			if p.Ready {
-				state = "READY"
-			}
-			lines = append(lines, fmt.Sprintf("[%s] %s · %s", state, p.Action, triage.SafeText(p.Path)))
-			for _, e := range p.Effects {
-				lines = append(lines, "  → "+triage.SafeText(e))
-			}
-			for _, r := range p.Reasons {
-				lines = append(lines, "  ! "+triage.SafeText(r))
-			}
-			for _, d := range p.Discard {
-				lines = append(lines, fmt.Sprintf("  discard ignored: %s (%d bytes)", triage.SafeText(d.Path), d.Bytes))
-			}
-		}
-		start := min(m.scroll, max(0, len(lines)-1))
-		end := min(len(lines), start+max(2, m.height-12))
-		for _, line := range lines[start:end] {
-			fmt.Fprintln(&b, fit(line, m.width-2))
-		}
-		if m.batch.Token != "" {
-			fmt.Fprintf(&b, "\nType %s to approve the listed removals: %s\n", m.batch.Token, m.input.View())
-		} else {
-			fmt.Fprintln(&b, "\ny approve these exact plans · Esc return")
-		}
-		fmt.Fprintln(&b, muted.Render("PgUp/PgDn scroll · newly eligible actions require a new round"))
-	} else {
-		quadrants := [4]int{}
-		for _, i := range m.report.Items {
-			n := 0
-			if !i.HasWork() {
-				n += 2
-			}
-			if !i.Quick() {
-				n++
-			}
-			quadrants[n]++
-		}
-		fmt.Fprintf(&b, "Work to save: %d batch / %d individual   Other: %d batch / %d individual\n", quadrants[0], quadrants[1], quadrants[2], quadrants[3])
-		fmt.Fprintln(&b, muted.Render("Remote comparisons use cached refs. Fetch is an explicit separate round."))
-		fmt.Fprintln(&b, muted.Render("      KIND ACTIVITY   ITEM                           FINDINGS"))
-		available := max(2, m.height-17)
-		start := max(0, m.cursor-available+1)
-		end := min(len(m.visible), start+available)
-		for n := start; n < end; n++ {
-			i := m.visible[n]
-			mark := "[ ]"
-			if m.selected[i.ID] {
-				mark = "[x]"
-			}
-			name := i.Name
-			if i.Branch != nil {
-				name += " / " + strings.TrimPrefix(i.Branch.Ref, "refs/heads/")
-			}
-			codes := []string{}
-			for _, f := range i.Findings {
-				codes = append(codes, f.Code)
-			}
-			age := "—"
-			if !i.LastActivity.IsZero() {
-				age = i.LastActivity.Format("2006-01-02")
-			}
-			line := fmt.Sprintf("%s %-4s %-10s %-30s %s", mark, i.Kind, age, name, strings.Join(codes, ", "))
-			line = fit(triage.SafeText(line), m.width-3)
-			if n == m.cursor {
-				fmt.Fprintln(&b, highlight.Render("› "+line))
-			} else {
-				fmt.Fprintln(&b, "  "+line)
-			}
-		}
-		if i, ok := m.current(); ok {
-			fmt.Fprintln(&b, "\n"+fit(triage.SafeText(i.Path), m.width-1))
-			details := []string{}
-			for _, f := range i.Findings {
-				details = append(details, f.Detail)
-			}
-			fmt.Fprintln(&b, fit(triage.SafeText(strings.Join(details, " · ")), m.width-1))
-			if len(i.Runtimes) > 0 {
-				fmt.Fprintf(&b, "Runtime: %s / %s\n", i.Runtimes[0].Backend, triage.SafeText(i.Runtimes[0].Label))
-			}
-		}
-		if m.inputMode != "" {
-			prompt := "Filter: "
-			if m.inputMode == "directories" {
-				prompt = "Replace disposable directories (comma-separated; blank clears): "
-			}
-			fmt.Fprintln(&b, prompt+m.input.View())
-		}
-		fmt.Fprintln(&b, muted.Render("A actions · Tab views · g repo/Try · / filter · space select · a candidates · n clear · Enter preview"))
-		fmt.Fprintln(&b, muted.Render("f fetch · p push · u fast-forward · w warm · c cold · t retire · x remove checkout / Trash or forget Try"))
-		fmt.Fprintln(&b, muted.Render("o individual flow · e shell · v runtime · L keep local · s snooze 7d · U clear intent"))
-		fmt.Fprintln(&b, muted.Render("? details · b results · R disposable directories · d deferred · r refresh · q quit"))
-	}
-	if m.message != "" {
-		fmt.Fprintln(&b, fit(triage.SafeText(m.message), m.width-1))
-	}
-	return b.String()
-}
-func lenSelected(s map[string]bool) int {
-	n := 0
-	for _, v := range s {
-		if v {
-			n++
+	id := m.lastLedger.Outcomes[m.resultCursor].ItemID
+	for _, i := range m.report.Items {
+		if i.ID == id {
+			return i, true
 		}
 	}
-	return n
-}
-func fit(s string, width int) string {
-	if width < 1 {
-		return ""
-	}
-	return runewidth.Truncate(s, width, "…")
-}
-
-func ledgerLines(l triage.Ledger) []string {
-	lines := []string{"Batch results · " + l.BatchID, "Receipt: " + l.Path}
-	for _, o := range l.Outcomes {
-		lines = append(lines, fmt.Sprintf("[%s] %s · %s", o.Status, o.Action, o.Path))
-		if o.CatalogID != "" {
-			lines = append(lines, "  catalog: "+o.CatalogID)
-		}
-		if o.OperationRecord != "" {
-			lines = append(lines, "  operation: "+o.OperationRecord)
-		}
-		if o.Error != "" {
-			lines = append(lines, "  "+o.Error)
-		}
-		for _, step := range o.Steps {
-			lines = append(lines, fmt.Sprintf("  %s: %s %s", step.Status, step.Effect.Description, step.Failure))
+	for _, i := range m.touched {
+		if i.ID == id {
+			return i, true
 		}
 	}
-	return lines
+	return triage.Item{}, false
 }

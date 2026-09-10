@@ -109,6 +109,5 @@ func (m Model) applyLocalResult(result LocalResult) (Model, bool) {
 		}
 	}
 	m.setAt(m.at())
-	m.pruneTriageSelections()
 	return m, accepted
 }

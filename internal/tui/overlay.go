@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type overlayKind int
@@ -18,6 +19,7 @@ const (
 	overlayActionMenu
 	overlayTryForm
 	overlayTryConfirm
+	overlayTriageReceipt
 )
 
 type formField struct {
@@ -27,6 +29,8 @@ type formField struct {
 }
 
 type actionOption struct {
+	tool   string
+	column string
 	action listAction
 	label  string
 }
@@ -34,6 +38,8 @@ type actionOption struct {
 // overlayState uses fixed arrays so copying Model also copies the mutable form
 // and menu state. A slice or pointer would violate Bubble Tea's value semantics.
 type overlayState struct {
+	scroll     int
+	body       string
 	kind       overlayKind
 	title      string
 	subject    string
@@ -158,6 +164,17 @@ func (m *Model) moveActionMenu(delta int) {
 
 func (m Model) updateOverlay(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.overlay.kind {
+	case overlayTriageReceipt:
+		if message.String() == "esc" || message.String() == "enter" || message.String() == "q" {
+			m.overlay = overlayState{}
+		}
+		if message.String() == "j" || message.String() == "down" {
+			m.overlay.scroll++
+		}
+		if message.String() == "k" || message.String() == "up" {
+			m.overlay.scroll = max(0, m.overlay.scroll-1)
+		}
+		return m, nil
 	case overlayHelp:
 		switch message.String() {
 		case "esc", "?", "q":
@@ -290,13 +307,20 @@ func (m Model) renderOverlay() string {
 	var builder strings.Builder
 	builder.WriteString(styleTitle.Render("dev  "+strings.ToUpper(m.overlay.title)) + "\n\n")
 	switch m.overlay.kind {
+	case overlayTriageReceipt:
+		lines := strings.Split(ansi.Hardwrap(m.overlay.body, max(1, m.width-2), true), "\n")
+		start := min(m.overlay.scroll, max(0, len(lines)-1))
+		for _, line := range lines[start:min(len(lines), start+max(1, m.height-6))] {
+			builder.WriteString(fitCell(line, max(1, m.width-2)) + "\n")
+		}
+		builder.WriteString("\n↑/↓ scroll · Esc / Enter return")
 	case overlayHelp:
 		builder.WriteString("  navigation\n")
 		builder.WriteString("    j/k, arrows move · ctrl+d/u page · g/G first/last · tab/h/l switch view\n")
 		builder.WriteString("    left click row/tab · wheel 3 rows · right click / ctrl+o row actions · click never opens\n")
 		builder.WriteString("    / filter · 0 clear · r reload · esc close/clear/quit · q quit\n\n")
 		builder.WriteString("  REPOS/TRY selection: x toggle · ctrl+a select visible · enter triage selected · o open current · ctrl+o clear selection\n")
-		builder.WriteString("  TASKS   enter open · n add note · N notes · p park · c next · 1/2/3 state · a show done · space actions\n")
+		builder.WriteString("  TASKS   enter open · n add note · N notes · p park · c next · ctrl+o state filter · a show done · space actions\n")
 		builder.WriteString("  REPOS   enter open · n new repo · a add note · N notes · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
 		builder.WriteString("  FLEET   enter Herdr/SSH open · e edit remotes.toml · r refresh · read-only Git overview\n")
 		builder.WriteString("  TRY     enter open · n create · space actions · a history · O/R sort\n")

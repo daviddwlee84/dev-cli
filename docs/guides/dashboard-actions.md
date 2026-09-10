@@ -110,14 +110,22 @@ an unchanged original/restored folder; it never retries deletion. A folder put
 back into its original archive path remains archived and can then use ordinary
 `tries restore` to become visible again.
 
-## Dashboard selection and missing Tries
+## Dashboard navigation and organizer entry
 
-REPOS/TRY `x` toggles selection and `Ctrl+A` selects visible rows. Enter with
-selections opens scoped triage; `o` keeps normal opening and Space is unchanged.
-`Ctrl+O` includes a single-item triage entry and clear selection. Try batches
-support whole-directory Trash, with registration during approved Apply when
-needed, or metadata-only forgetting of a confirmed missing unreferenced entry.
-Use `dev tries forget <ref> --dry-run --json` to inspect and
-`--confirm-forget <id>` for exact noninteractive approval. Multi-host, task,
-runtime, artifact, note/tag and recovery references block forgetting. See
-[local triage](local-triage.md) for the full guard and cache behavior.
+Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+current item, filtered results, or all local work; multi-selection belongs to the
+independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
+and MCP respectively. TASKS state filters live in its action menu (`a` still
+shows done tasks). Click a data column for ascending → descending → default
+ordering; FLEET HOST groups machines. Sorting is local to each view/session and
+uses the current snapshot, with unknown values last. The footer keeps two lines
+of primary actions and navigation; tools, state filters and sorting are in
+`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
+
+Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
+within the filtered scope. Results preserve failures when returning to the
+dashboard. Git synchronization diagnostics retain a category, exit code, bounded
+redacted output and a next step; old receipts cannot recover discarded reasons.
+Retries require a new preview. Authentication, fetch and rebase are never
+silently performed as error recovery. See [local triage](local-triage.md).

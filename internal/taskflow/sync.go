@@ -266,7 +266,10 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 				step.Status = StepCompleted
 				if e != nil {
 					step.Status = StepFailed
-					step.Failure = "Git operation failed; refresh and inspect authentication, rejection, or checkout blockers"
+					diagnostic := gitx.Diagnose(e)
+					step.Diagnostic = &diagnostic
+					step.Failure = diagnostic.Summary
+					step.Detail = diagnostic.Next
 					e = errors.New(step.Failure)
 				}
 				result = NewResult(ResultSpec{Steps: []StepResult{step}})

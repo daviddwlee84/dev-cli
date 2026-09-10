@@ -13,6 +13,8 @@ import (
 // WorkflowRequest pins the row selected before the terminal is suspended.
 // Policy and all prompts belong to the CLI's shared workflow runners.
 type WorkflowRequest struct {
+	AllLocal        bool
+	ScopeLabel      string
 	Selection       []triage.Target
 	Snapshots       []triage.RepositorySnapshot
 	LocalGeneration uint64
@@ -26,6 +28,8 @@ type WorkflowRequest struct {
 }
 
 type WorkflowResult struct {
+	Severity  string
+	Ledger    *triage.Ledger
 	Scoped    bool
 	Local     *TriageDelta
 	Status    string

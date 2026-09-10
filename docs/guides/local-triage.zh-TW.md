@@ -8,7 +8,7 @@ lang: zh-TW
 
 # 本地工作整理
 
-`dev triage` 是獨立的跨 repository 介面。首頁先找回可能遺漏的工作，Tab 切換成依所選操作分組的快速批次檢視。
+`dev triage` 是獨立的跨 repository 介面。首頁按 repo／Try 摘要找回遺漏工作，再選動作。
 
 ```bash
 dev triage
@@ -33,27 +33,23 @@ dev triage --all                 # 包含 catalog 保留的歷史位置
 
 ## 檢視與按鍵
 
-首頁優先排列未提交工作，其次是未同步分支與其他待處理問題，最後是閒置候選。同類內較舊的活動排前。預設閒置門檻為 14 天；年齡只影響排序，不證明備份或授權刪除。四格摘要以「待保存／同步工作或其他工作」及「批次候選或需個別處理」分類，不推斷個人重要性。
+獨立 triage 從「選項目」開始，每個 repo／Try 一列，顯示未保存、待同步、佔用與待確認徽章，展開才列出分支／checkout。勾選父列涵蓋所有底下工作；子列可個別取消，部分選取顯示 `[-]`。顏色搭配符號與短文字，`--color never`／`TERM=dumb` 仍能辨識狀態。
 
-| 按鍵 | 操作 |
+| 輸入 | 操作 |
 |---|---|
-| Tab | 遺漏工作／快速批次 |
-| g、/ | 篩選普通 repo／Try；文字搜尋 |
-| j/k、方向鍵 | 選擇項目 |
-| Space、a、n | 多選切換；選取可見候選；清除選取 |
-| f、p、u | 選擇 fetch、push、fast-forward |
-| w、c、t | 選擇 Park Warm、Park Cold、Retire |
-| A、x | 可用動作選單；Remove Checkout／Try 垃圾桶或忘記 |
-| Enter | 建立精確 plan，檢查 effects 與 blockers |
-| y | 預覽後核准非移除批次 |
-| PgUp/PgDn | 捲動完整預覽 |
-| ?、b | 完整項目資訊；上一批結果 |
-| o、e、v | 個別 flow／Try 操作；shell；精確 runtime activation |
-| L、s、U | 刻意保留本地；暫緩七天；清除意圖 |
-| R | 取代此 clone 的可重建目錄清單；空白表示清除 |
-| d、r、q | 顯示暫緩項目；重新讀取本地狀態；離開 |
+| Space／點 checkbox | 切換目前項目或群組選取 |
+| Ctrl+A（或 a） | 全選篩選結果；已全選則取消，保留篩選外選取 |
+| 左右方向鍵／展開符號 | 收合／展開 repo |
+| Enter／點列 | Enter 看詳細資訊，點列只聚焦 |
+| Ctrl+O／A／Choose action 按鈕 | 對明示的目前項目或所選範圍挑選動作 |
+| Tab | 聚焦主要操作按鈕 |
+| /、g、d | 文字篩選、repo／Try 篩選、暫緩項目 |
+| n | 清除選取 |
+| o、e、v | 個別 flow、shell、runtime |
+| L、s、U、R | 保留本地、暫緩、清除意圖、disposable 目錄 |
+| r、b、?、q | 本地 refresh、上次結果、完整說明、返回 |
 
-個別 shell 從所選路徑啟動，不切換分支。可使用既有 Git/editor 工具，exit 後重新整理 triage。尚未登錄的 Try 可在核准 Trash 的 Apply 中登錄；其他 catalog lifecycle 操作仍可明確執行 `dev tries list` reconcile。
+右鍵開啟該列動作，滾輪捲動列表／詳細資訊。流程固定「選項目 → 選動作 → 預覽 → 結果」，挑選動作只建立 plan；精確核准後才執行。結果頁先顯示完成／失敗／略過數量及短原因，Enter 才展開診斷、下一步、exact effect 和 receipt。`e` 開啟該結果目標的 shell；`Ctrl+O` 選新動作時一定重新 plan。舊 receipt 沒有診斷時會明示無法還原原因。
 
 ## 批次核准與執行
 
@@ -80,15 +76,15 @@ Plan 在 effects 前鎖定並重新驗證 repository、refs、checkout、task re
 
 完整 repo 的可驗證備份／restore、外部引用分析、永久 repo 刪除與自動 commit/rebase 留待另外處理。目前分支已同步不足以證明整個 clone 可刪。
 
-## 從 REPOS 或 TRY 多選
+## 從 REPOS 或 TRY 進入
 
-Dashboard 的 `x` 切換 repo／Try 選取，`Ctrl+A` 選取目前可見項目。篩選保留隱藏的選取，footer 會顯示數量。`Ctrl+O` 提供清除選取與單項整理入口。有選取時 Enter 開啟限定範圍的獨立 triage；沒有選取時保持原本的開啟行為。`o` 永遠開啟目前列，REPOS Space 仍展開 worktrees。選 repo 包含其所有本地分支與 registered worktrees；`A` 顯示可用動作及候選數量，選擇後可取消預選，再按 Enter 預覽。
+Dashboard 維持瀏覽：Enter／`o` 永遠開啟目前項目，Space 保留原功能，不再常駐勾選框或保留整理選取。`Ctrl+O` 可選「整理目前項目」「整理目前篩選結果」「整理全部本地工作」。Triage header 明示範圍，先顯示項目供選取。
 
-交接復用 dashboard 已接受的 metadata 與 task／worktree 觀察，只深入檢查選中 repo 的 Git／contents，不重新探索其他 roots。第一輪可復用記憶體 metadata 快照，之後 refresh 重新檢查選中範圍。操作返回後只更新受影響列並失效其 SIZE cache；SIZE 延用既有 10 分鐘快取。本次沒有新增跨啟動的 repo 快照或 watcher，獨立 `dev triage` 啟動／refresh 仍盤點全域。快取不授權 Apply，本地 refresh 不 fetch。Dashboard TRY 的讀取不會登錄目錄或 reconcile move；明確的 CLI lifecycle 操作維持既有 reconciliation。
+交接繼續復用 dashboard metadata 與 task／worktree 觀察，只深入檢查限定範圍，返回只刷新受影響列／SIZE。既有 SIZE 10 分鐘 cache 不變，沒有新增跨啟動 inventory cache 或 watcher。獨立 `dev triage` 仍盤點全域，本地 refresh 不 fetch，也不登錄 Try。
 
 ## Try：垃圾桶或忘記條目
 
-`A` 對存在且獨立的 Try 提供 `trash-try`，對確認遺失的目錄提供 `forget-try`。`x` 選擇對應 Try 動作，普通 checkout 則選 Remove Checkout。活動時間不明顯示 `—`；presence 另外區分 `missing` 與 `unavailable`。存取失敗或 root 不可用，不能授權忘記。
+`A` 對存在且獨立的 Try 提供 `trash-try`，對確認遺失的目錄提供 `forget-try`。動作選單明確標示各操作。活動時間不明顯示 `—`；presence 另外區分 `missing` 與 `unavailable`。存取失敗或 root 不可用，不能授權忘記。
 
 垃圾桶批次要求輸入 `TRASH N`，保留**完整目錄**，包含 ignored／untracked 內容。垃圾桶在清空前仍佔用空間。Task／runtime 佔用、shared／external Git、安全路徑或來源身分／內容變動都會阻擋。垃圾桶不可用時不會改成永久刪除。尚未登錄的 Try 會在預覽明列 Apply 時只登錄所選目錄；取消不寫入，登錄成功而 Trash 失敗時保留 catalog 與剩餘內容，回報部分完成。其他主機位置及既有 Trash recovery 歷史維持保留。
 

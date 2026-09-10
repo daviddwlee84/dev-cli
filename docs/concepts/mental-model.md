@@ -141,13 +141,24 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 ## Triage intent
 
-Triage is a view of observed work plus personal review intent. Keep-local, snooze and disposable-directory declarations live outside task lifecycle state. They never turn cached refs into backup proof. [Local triage](../guides/local-triage.md) separates forgotten work from quick batches.
+Triage is a view of observed work plus personal review intent. Keep-local, snooze and disposable-directory declarations live outside task lifecycle state. They never turn cached refs into backup proof. [Local triage](../guides/local-triage.md) groups local work before explicit action selection.
 
-REPOS/TRY selections hand off existing metadata to scoped triage, with affected-only
-refresh on return. There is no new persistent local repo snapshot cache. `x` and
-`Ctrl+A` are reserved dashboard keys; move any custom tool binding using them.
-`dev tries forget <ref> --dry-run --json` previews missing-entry metadata removal;
-`--confirm-forget <id>` supplies exact approval. Read-only TRY dashboard inventory
-keeps confirmed missing separate from unavailable; Trash and forget use distinct
-guarded plans. The triage JSON adds `presence`, catalog `note`/`tags`, and optional
-source observation times. See [local triage](../guides/local-triage.md).
+## Dashboard navigation and organizer entry
+
+Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+current item, filtered results, or all local work; multi-selection belongs to the
+independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
+and MCP respectively. TASKS state filters live in its action menu (`a` still
+shows done tasks). Click a data column for ascending → descending → default
+ordering; FLEET HOST groups machines. Sorting is local to each view/session and
+uses the current snapshot, with unknown values last. The footer keeps two lines
+of primary actions and navigation; tools, state filters and sorting are in
+`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
+
+Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
+within the filtered scope. Results preserve failures when returning to the
+dashboard. Git synchronization diagnostics retain a category, exit code, bounded
+redacted output and a next step; old receipts cannot recover discarded reasons.
+Retries require a new preview. Authentication, fetch and rebase are never
+silently performed as error recovery. See [local triage](../guides/local-triage.md).

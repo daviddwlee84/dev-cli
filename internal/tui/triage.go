@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -18,147 +17,58 @@ func trySelectionKey(r TryRow) string {
 	}
 	return "path:" + r.Item.Live.CurrentPath
 }
-func (m Model) triageSelectionCount() int {
-	switch m.view {
-	case ViewRepos:
-		return len(m.repoSelections)
-	case ViewTries:
-		return len(m.trySelections)
-	}
-	return 0
-}
-func toggled(keys []string, key string) []string {
-	result := slices.Clone(keys)
-	if n := slices.Index(result, key); n >= 0 {
-		return slices.Delete(result, n, n+1)
-	}
-	return append(result, key)
-}
-func (m Model) toggleTriageSelection() Model {
-	if m.actions.Workflow == nil {
-		return m
-	}
-	switch m.view {
-	case ViewRepos:
-		if row, ok := m.currentRepoItem(); ok {
-			m.repoSelections = toggled(m.repoSelections, repoKey(row.Repo))
-		}
-	case ViewTries:
-		if row, ok := m.currentTry(); ok {
-			m.trySelections = toggled(m.trySelections, trySelectionKey(row))
-		}
-	}
-	return m
-}
-func (m Model) selectVisibleTriage() Model {
-	if m.actions.Workflow == nil {
-		return m
-	}
-	switch m.view {
-	case ViewRepos:
-		m.repoSelections = slices.Clone(m.repoSelections)
-		for _, row := range m.visibleRepoItems() {
-			key := repoKey(row.Repo)
-			if !slices.Contains(m.repoSelections, key) {
-				m.repoSelections = append(m.repoSelections, key)
-			}
-		}
-	case ViewTries:
-		m.trySelections = slices.Clone(m.trySelections)
-		for _, row := range m.visibleTries() {
-			key := trySelectionKey(row)
-			if !slices.Contains(m.trySelections, key) {
-				m.trySelections = append(m.trySelections, key)
-			}
-		}
-	}
-	return m
-}
-func (m Model) selectionSummary() string {
-	n := m.triageSelectionCount()
-	if n == 0 {
-		return ""
-	}
-	visible := map[string]bool{}
-	if m.view == ViewRepos {
-		for _, row := range m.visibleRepoItems() {
-			if slices.Contains(m.repoSelections, repoKey(row.Repo)) {
-				visible[repoKey(row.Repo)] = true
-			}
-		}
-	}
-	if m.view == ViewTries {
-		for _, row := range m.visibleTries() {
-			if slices.Contains(m.trySelections, trySelectionKey(row)) {
-				visible[trySelectionKey(row)] = true
-			}
-		}
-	}
-	return fmt.Sprintf("%d selected (%d hidden) · Enter triage · Ctrl+O clear selection", n, n-len(visible))
-}
-func (m Model) repoSelectionMark(r RepoRow) string {
-	if slices.Contains(m.repoSelections, repoKey(r)) {
-		return "[x] "
-	}
-	return "[ ] "
-}
-func (m Model) trySelectionMark(r TryRow) string {
-	if slices.Contains(m.trySelections, trySelectionKey(r)) {
-		return "[x] "
-	}
-	return "[ ] "
-}
 
-func (m Model) openTriageSelection(single bool) (tea.Model, tea.Cmd) {
-	request := WorkflowRequest{Action: "triage", Selection: []triage.Target{}, ShowAllTries: m.showAllTries, LocalGeneration: m.localGeneration}
+// openTriage hands an explicit scope to the independent organizer. Dashboard
+// navigation and row opening never depend on selections made in another UI.
+func (m Model) openTriage(scope string) (tea.Model, tea.Cmd) {
+	request := WorkflowRequest{Action: "triage", ScopeLabel: scope, Selection: []triage.Target{}, ShowAllTries: m.showAllTries, LocalGeneration: m.localGeneration}
+	if scope == "all" {
+		request.AllLocal = true
+		request.ScopeLabel = "All local repositories and Tries"
+		return m.runWorkflow(request)
+	}
 	if m.view == ViewRepos {
-		rows := []RepoRow{}
-		if single {
-			if row, ok := m.currentRepoItem(); ok {
-				rows = append(rows, row.Repo)
+		var rows []RepoRow
+		if scope == "current" {
+			if r, ok := m.currentRepoItem(); ok {
+				rows = append(rows, r.Repo)
 			}
 		} else {
-			for _, row := range m.repos {
-				if slices.Contains(m.repoSelections, repoKey(row)) {
-					rows = append(rows, row)
-				}
-			}
+			rows = m.visibleRepos()
 		}
-		for _, row := range rows {
-			target := triage.Target{Path: row.Repo.Path, RepositoryID: row.Repo.CommonDir, Kind: "repo"}
-			if row.Asset != nil {
-				target.CatalogID = row.Asset.ID
+		for _, r := range rows {
+			t := triage.Target{Path: r.Repo.Path, RepositoryID: r.Repo.CommonDir, Kind: "repo"}
+			if r.Asset != nil {
+				t.CatalogID = r.Asset.ID
 			}
-			request.Selection = append(request.Selection, target)
-			request.Snapshots = append(request.Snapshots, triage.RepositorySnapshot{Repo: row.Repo, Context: row.Context, Topology: row.Topology, TopologyErr: row.TopologyErr, Asset: row.Asset, ObservedAt: row.ObservedAt})
+			request.Selection = append(request.Selection, t)
+			request.Snapshots = append(request.Snapshots, triage.RepositorySnapshot{Repo: r.Repo, Context: r.Context, Topology: r.Topology, TopologyErr: r.TopologyErr, Asset: r.Asset, ObservedAt: r.ObservedAt})
 		}
 	} else if m.view == ViewTries {
-		rows := []TryRow{}
-		if single {
-			if row, ok := m.currentTry(); ok {
-				rows = append(rows, row)
+		var rows []TryRow
+		if scope == "current" {
+			if r, ok := m.currentTry(); ok {
+				rows = append(rows, r)
 			}
 		} else {
-			for _, row := range m.tries {
-				if slices.Contains(m.trySelections, trySelectionKey(row)) {
-					rows = append(rows, row)
-				}
-			}
+			rows = m.visibleTries()
 		}
-		for _, row := range rows {
-			target := triage.Target{Path: row.Item.Live.CurrentPath, CatalogID: row.Item.ID, Kind: "try"}
-			if row.Item.Live.Repo != nil {
-				target.RepositoryID = row.Item.Live.Repo.GitCommonDir
+		for _, r := range rows {
+			if r.Item.Live.CurrentPath == "" {
+				continue
 			}
-			if target.Path != "" {
-				request.Selection = append(request.Selection, target)
+			t := triage.Target{Path: r.Item.Live.CurrentPath, CatalogID: r.Item.ID, Kind: "try"}
+			if r.Item.Live.Repo != nil {
+				t.RepositoryID = r.Item.Live.Repo.GitCommonDir
 			}
+			request.Selection = append(request.Selection, t)
 		}
 	}
 	if len(request.Selection) == 0 {
-		m.status = "No local targets in this selection; refresh or inspect its history"
+		m.status = "No local items in this scope"
 		return m, nil
 	}
+	request.ScopeLabel = fmt.Sprintf("%s · %s · %d items", strings.ToUpper(m.view.String()), scope, len(request.Selection))
 	return m.runWorkflow(request)
 }
 
@@ -241,7 +151,6 @@ func (m Model) applyTriageDelta(d TriageDelta) (tea.Model, tea.Cmd) {
 		}
 		m.rows = append(rows, d.Tasks...)
 	}
-	m.pruneTriageSelections()
 	m.matchRemoteLocals()
 	if focused {
 		m.selectToken(focus)
@@ -264,34 +173,4 @@ func (m Model) applyTriageDelta(d TriageDelta) (tea.Model, tea.Cmd) {
 		}
 	}
 	return m.beginScopedSizes(targets, oldSizes)
-}
-
-func (m *Model) pruneTriageSelections() {
-	repos, tries := []string{}, []string{}
-	for _, r := range m.repos {
-		if slices.Contains(m.repoSelections, repoKey(r)) && !slices.Contains(repos, repoKey(r)) {
-			repos = append(repos, repoKey(r))
-		}
-	}
-	for _, r := range m.tries {
-		if slices.Contains(m.trySelections, trySelectionKey(r)) && r.Where() != "evicted" {
-			tries = append(tries, trySelectionKey(r))
-		}
-	}
-	m.repoSelections, m.trySelections = repos, tries
-}
-
-func triageSummary(r RepoRow) string {
-	parts := []string{}
-	if r.Status.Dirty() {
-		parts = append(parts, "unsaved")
-	}
-	if r.Status.Ahead > 0 || r.Status.Behind > 0 {
-		parts = append(parts, "sync pending")
-	}
-	if r.Live || len(r.Sessions()) > 0 {
-		parts = append(parts, "in use")
-	}
-	parts = append(parts, "all branches / ignored contents: inspect in triage")
-	return strings.Join(parts, " · ")
 }

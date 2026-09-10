@@ -15,3 +15,9 @@ func (m Model) WithReposForTest(rows []RepoRow) Model {
 	m.matchRemoteLocals()
 	return m
 }
+
+func (m Model) ToolsMenuForTest() Model { n, _ := m.runListAction(listActionTools); return n.(Model) }
+func (m Model) StatusDetailsForTest() Model {
+	n, _ := m.runListAction(listActionStatusDetails)
+	return n.(Model)
+}

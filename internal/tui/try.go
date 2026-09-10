@@ -176,7 +176,7 @@ func (m Model) renderTries() string {
 		}
 		return "  " + styleDim.Render("No active Tries. Press n to create one, or a to include history.") + "\n"
 	}
-	contentWidth := m.width - 6
+	contentWidth := m.width - 2
 	if contentWidth < 40 {
 		contentWidth = 40
 	}
@@ -218,11 +218,11 @@ func (m Model) renderTries() string {
 	}
 
 	var builder strings.Builder
-	builder.WriteString(styleHeader.Render("    "+header) + "\n")
+	builder.WriteString(styleHeader.Render(header) + "\n")
 	from, to := m.window(len(rows))
 	for index := from; index < to; index++ {
 		row := rows[index]
-		line := m.trySelectionMark(row) + formatRow(row)
+		line := formatRow(row)
 		styled := line
 		switch {
 		case row.Where() != string(catalog.LocationPresent) || row.Item.Phase != catalog.PhaseActive:

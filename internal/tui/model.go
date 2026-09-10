@@ -28,6 +28,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	"github.com/daviddwlee84/dev-cli/internal/triage"
 )
 
 // View is which list the dashboard is showing.
@@ -324,10 +325,11 @@ type remoteCloneOpenMsg struct {
 
 // Model is the dashboard state.
 type Model struct {
-	repoSelections []string
-	trySelections  []string
-	afterExit      func() error
-	actions        Actions
+	tableSorts       [viewCount]tableSort
+	statusSeverity   string
+	lastTriageLedger *triage.Ledger
+	afterExit        func() error
+	actions          Actions
 	// trace is the one intentional shared pointer in the value-copied model. The
 	// recorder is append-only, bounded and concurrency-safe; it never controls UI
 	// behavior.
@@ -1186,7 +1188,7 @@ func (m Model) visibleTasks() []inventory.Row {
 		}
 		out = append(out, r)
 	}
-	return out
+	return applyColumnSort(m, out, taskCell)
 }
 
 // visibleRepos applies the text query, and sorts repositories with work in
@@ -1211,7 +1213,7 @@ func (m Model) visibleRepos() []RepoRow {
 		}
 		return cmp < 0
 	})
-	return out
+	return applyColumnSort(m, out, repoCell)
 }
 
 // visibleTries applies structured experiment filters and keeps sorting local to
@@ -1228,7 +1230,7 @@ func (m Model) visibleTries() []TryRow {
 		sortBy = "activity"
 	}
 	sortTryRows(out, sortBy, m.tryReverse)
-	return out
+	return applyColumnSort(m, out, tryCell)
 }
 
 type repoItem struct {
@@ -1309,7 +1311,7 @@ func (m Model) visibleRemotes() []RemoteRow {
 		}
 		return out[i].Repo.Label() < out[j].Repo.Label()
 	})
-	return out
+	return applyColumnSort(m, out, remoteCell)
 }
 
 func (m Model) visibleFleet() []FleetRow {
@@ -1335,7 +1337,7 @@ func (m Model) visibleFleet() []FleetRow {
 		}
 		return out[i].Host < out[j].Host
 	})
-	return out
+	return applyColumnSort(m, out, fleetCell)
 }
 
 func (m Model) fleetCount() int {
@@ -1387,7 +1389,7 @@ func (m Model) visibleSkills() []agentskill.Skill {
 			out = append(out, row)
 		}
 	}
-	return out
+	return applyColumnSort(m, out, skillCell)
 }
 
 func skillMatches(row agentskill.Skill, query string) bool {
@@ -1449,7 +1451,7 @@ func (m Model) visibleMCP() []agentmcp.Declaration {
 			out = append(out, row)
 		}
 	}
-	return out
+	return applyColumnSort(m, out, mcpCell)
 }
 
 func mcpMatches(row agentmcp.Declaration, query string) bool {
@@ -2793,6 +2795,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case workflowMsg:
 		m.err, m.status = msg.err, msg.result.Status
+		m.statusSeverity = msg.result.Severity
+		if msg.result.Ledger != nil {
+			m.lastTriageLedger = msg.result.Ledger
+		}
 		if msg.result.AfterExit != nil {
 			m.afterExit, m.quitting = msg.result.AfterExit, true
 			return m, tea.Quit
@@ -2808,6 +2814,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.reload()
 
 	case actionMsg:
+		m.statusSeverity = ""
 		if m.remoteClone.active() && (msg.cd != "" || msg.activate != "") {
 			// A command launched before cloning must not tear down the TUI while
 			// the clone mutation is in flight. Preserve its completed handoff and
@@ -2910,7 +2917,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "j", "down", "ctrl+n", "k", "up", "ctrl+p",
 			"ctrl+d", "pgdown", "ctrl+u", "pgup", "g", "home", "G", "end",
-			"tab", "l", "right", "shift+tab", "h", "left", "/", "0":
+			"tab", "l", "right", "shift+tab", "h", "left", "/", "0", "1", "2", "3", "4", "5", "6", "7":
 			// Navigation and filtering remain available while the mutation runs.
 		case "esc":
 			if m.filter == "" && len(m.states) == 0 {
@@ -3018,18 +3025,9 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.forceSizeReload = true
 		return m, m.reloadConfig(m.view == ViewRemote)
 
-	case "1":
-		m.states, m.showDone = []task.State{task.Hot}, false
-		m.view = ViewTasks
-		m.setAt(0)
-	case "2":
-		m.states, m.showDone = []task.State{task.Warm}, false
-		m.view = ViewTasks
-		m.setAt(0)
-	case "3":
-		m.states, m.showDone = []task.State{task.Cold}, false
-		m.view = ViewTasks
-		m.setAt(0)
+	case "1", "2", "3", "4", "5", "6", "7":
+		m.view = Views[int(msg.String()[0]-'1')]
+		return m.afterViewSwitch()
 	case "0":
 		m.states, m.filter = nil, ""
 		m.setAt(0)
@@ -3081,14 +3079,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.setAt(0)
 		}
 
-	case "x":
-		return m.toggleTriageSelection(), nil
-	case "ctrl+a":
-		return m.selectVisibleTriage(), nil
 	case "enter":
-		if m.triageSelectionCount() > 0 {
-			return m.openTriageSelection(false)
-		}
 		return m.runListAction(listActionOpen)
 	case "o":
 		return m.runListAction(listActionOpen)

@@ -95,6 +95,10 @@ func (m Model) View() (output string) {
 }
 
 func (m Model) renderCurrentList() string {
+	return m.decorateTable(m.renderRawList())
+}
+
+func (m Model) renderRawList() string {
 	switch m.view {
 	case ViewRepos:
 		return m.renderRepos()
@@ -178,9 +182,12 @@ func (m Model) buildHeaderLayout() headerLayout {
 			if compact {
 				name = short[view]
 			}
-			label := name
+			label := fmt.Sprintf("%d %s", index+1, name)
+			if compact {
+				label = fmt.Sprintf("%d%s", index+1, name)
+			}
 			if !compact {
-				label = " " + name + " "
+				label = fmt.Sprintf(" %d %s ", index+1, name)
 			}
 			rendered := styleDim.Render(label)
 			if view == m.view {
@@ -317,7 +324,7 @@ func (m Model) renderRepos() string {
 	for _, c := range columns {
 		headers = append(headers, fitCell(c.header, c.width))
 	}
-	b.WriteString(styleHeader.Render("      "+strings.Join(headers, "  ")) + "\n")
+	b.WriteString(styleHeader.Render("  "+strings.Join(headers, "  ")) + "\n")
 
 	from, to := m.window(len(items))
 	for i := from; i < to; i++ {
@@ -327,7 +334,7 @@ func (m Model) renderRepos() string {
 		for _, c := range columns {
 			cells = append(cells, fitCell(m.repoItemColumnValue(item, c.name), c.width))
 		}
-		line := m.repoSelectionMark(r) + strings.Join(cells, "  ")
+		line := strings.Join(cells, "  ")
 		styled := line
 		if checkout, child := item.checkout(); child {
 			if checkout.Status.Dirty() {
@@ -501,7 +508,7 @@ func (m Model) repoColumns() []repoColumnSpec {
 	}
 	// Shrink flexible columns to fit. Configuration controls what exists and in
 	// what order; width adapts to the current pane.
-	total := 6 + 2*(len(columns)-1)
+	total := 2 + 2*(len(columns)-1)
 	for _, c := range columns {
 		total += c.width
 	}
@@ -1362,7 +1369,6 @@ func (m Model) renderDetail() string {
 
 	if r, ok := m.currentRepo(); ok {
 		lines := []string{
-			fmt.Sprintf("  %s %s", styleDim.Render("triage"), triageSummary(r)),
 			fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(r.Repo.Path)),
 			fmt.Sprintf("  %s %s", styleDim.Render("ready"), repocontext.AssessLocal(r.Context, 0, config.Hostname()).Summary()),
 		}
@@ -1492,140 +1498,49 @@ func (m Model) renderDetail() string {
 }
 
 func (m Model) renderFooter() string {
-	viewErr, viewStatus := m.viewError(m.view), m.viewStatus(m.view)
-	var status string
+	status := ""
 	switch {
 	case m.err != nil:
-		status = styleErr.Render("✗ " + m.err.Error())
+		status = styleErr.Render("! " + m.err.Error())
 	case m.remoteClone.active():
 		status = styleLive.Render(m.remoteCloneSpinner.View() + " " + m.remoteCloneStatus())
-	case viewErr != nil:
-		status = styleErr.Render("✗ " + viewErr.Error())
+	case m.viewError(m.view) != nil:
+		status = styleErr.Render("! " + m.viewError(m.view).Error())
 	case m.status != "":
-		status = styleOK.Render("✓ " + m.status)
-	case viewStatus != "":
-		status = styleOK.Render("✓ " + viewStatus)
-	}
-
-	bindings := []string{"ctrl+o actions"}
-	if m.view == ViewRepos || m.view == ViewTries {
-		bindings = append(bindings, "x select", "ctrl+a select visible")
-		if summary := m.selectionSummary(); summary != "" {
-			if status != "" {
-				status += " · "
-			}
-			status += summary
+		switch m.statusSeverity {
+		case "error":
+			status = styleErr.Render("! " + m.status)
+		case "warning":
+			status = styleWarm.Render("! " + m.status)
+		case "info":
+			status = styleDim.Render(m.status)
+		default:
+			status = styleOK.Render(m.status)
 		}
+	case m.viewStatus(m.view) != "":
+		status = styleDim.Render(m.viewStatus(m.view))
 	}
+	primary := "Enter open · Ctrl+O actions"
 	if m.remoteClone.active() {
-		bindings = []string{"q cancel clone", "tab view", "/ filter", "j/k move"}
-		var b strings.Builder
-		if status != "" {
-			b.WriteString("  " + status + "\n")
-		}
-		b.WriteString("  " + styleHelp.Render(wrapBindings(bindings, m.width-4)))
-		return b.String()
+		primary = "q cancel clone"
 	}
-	switch m.view {
-	case ViewRepos:
-		sortBy := m.actions.RepoSort
-		if sortBy == "" {
-			sortBy = "activity"
-		}
-		if m.actions.RepoReverse {
-			sortBy += "↑"
-		}
-		if item, ok := m.currentRepoItem(); ok && item.child() {
-			bindings = append(bindings, "enter open worktree", "space collapse", "n new repo", "a add note", "N notes")
-		} else {
-			bindings = append(bindings, "enter ad hoc", "n new repo", "a add note", "N notes", "space worktrees", "m metadata", "s worktree task", "d direct task")
-		}
-		bindings = append(bindings, "O sort:"+sortBy, "R reverse")
-	case ViewFleet:
-		if row, ok := m.currentFleet(); ok && row.Repository != nil {
-			bindings = append(bindings, "enter remote open")
-		}
-		local := "hidden"
-		if m.showLocalFleet {
-			local = "shown"
-		}
-		bindings = append(bindings, "a local:"+local, "r refresh")
-	case ViewTries:
-		sortBy := m.trySort
-		if sortBy == "" {
-			sortBy = "activity"
-		}
-		if m.tryReverse {
-			sortBy += "↑"
-		}
-		bindings = append(bindings, "enter open", "n new", "space actions", "a history",
-			"O sort:"+sortBy, "R reverse")
-	case ViewRemote:
-		if m.remoteClone.active() {
-			bindings = append(bindings, "q cancel clone")
-		} else if r, ok := m.currentRemote(); ok && r.Cloned() {
-			bindings = append(bindings, "enter open local", "n add note", "N notes")
-		} else if r, ok := m.currentRemote(); ok && r.CloneProblemPath != "" {
-			bindings = append(bindings, "inspect local destination")
-		} else {
-			bindings = append(bindings, "c clone")
-		}
-	case ViewSkills:
-		bindings = append(bindings, "a add", "c check")
-		if row, ok := m.currentSkill(); ok && agentskill.CanUpdate(row) {
-			bindings = append(bindings, "u update selected")
-		}
-		bindings = append(bindings, "A scope:"+m.capabilityScope.String())
-	case ViewMCP:
-		bindings = append(bindings, "A scope:"+m.capabilityScope.String(), "r reload declarations")
-	default:
-		if row, ok := m.currentTask(); ok {
-			if command := taskRecoveryCommand(row); command != "" {
-				bindings = append(bindings, "recovery "+command)
-			} else {
-				bindings = append(bindings, "enter open")
-			}
-			bindings = append(bindings, "n add note", "N notes")
-			if row.Task.State == task.Hot || row.Task.State == task.Warm {
-				bindings = append(bindings, "p park")
-			}
-			bindings = append(bindings, "c next")
-		}
+	if m.view == ViewSkills {
+		primary = "Ctrl+O actions · a add · c check"
+	}
+	if m.view == ViewMCP {
+		primary = "Ctrl+O actions · e file"
 	}
 	if m.view == ViewRepos || m.view == ViewRemote || m.view == ViewSkills || m.view == ViewMCP {
-		bindings = append(bindings, "y copy")
+		primary += " · y copy"
 	}
-	bindings = append(bindings, "tab view", "/ filter", "? help")
-	if m.view != ViewSkills && m.view != ViewMCP {
-		bindings = append(bindings, "H stats")
-	}
-	// `e` edits whichever configuration the current view is about.
-	switch m.view {
-	case ViewFleet:
-		bindings = append(bindings, "e hosts")
-	case ViewSkills, ViewMCP:
-		if _, err := m.capabilityFilePath(); err == nil && m.actions.EditFile != nil {
-			bindings = append(bindings, "e file")
-		}
-	default:
-		bindings = append(bindings, "e config")
-	}
-	if m.view != ViewSkills && m.view != ViewMCP {
-		for _, t := range m.Tools() {
-			bindings = append(bindings, t.Key+" "+t.Name)
-		}
-	}
-	if m.view != ViewSkills && m.view != ViewMCP {
-		bindings = append(bindings, "1/2/3 state")
-	}
-	bindings = append(bindings, "0 clear", "r reload", "q quit")
-
-	var b strings.Builder
 	if status != "" {
-		b.WriteString("  " + status + "\n")
+		primary = status + "  |  Ctrl+O actions"
 	}
-	b.WriteString("  " + styleHelp.Render(wrapBindings(bindings, m.width-4)))
-	return b.String()
+	navigation := "Navigate  1–7 views · / filter · r refresh · ? help · q quit"
+	if m.width < 85 {
+		navigation = "1–7 views · / filter · ? help · q quit"
+	}
+	return "  " + fitCell("Actions  "+primary, max(1, m.width-4)) + "\n  " + fitCell(styleHelp.Render(navigation), max(1, m.width-4))
 }
 
 // wrapBindings lays the key hints out over as many lines as the width needs,

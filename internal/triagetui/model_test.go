@@ -25,8 +25,8 @@ func TestTriageSelectionAndRefreshInvalidateApproval(t *testing.T) {
 	}
 	n, _ = m.Update(Loaded{Report: report})
 	m = n.(Model)
-	if len(m.selected) != 0 || m.batch != nil {
-		t.Fatal("refresh retained authority")
+	if !m.selected["one"] || m.batch != nil {
+		t.Fatal("refresh lost selection or retained a plan")
 	}
 	n, _ = m.Update(key("d"))
 	m = n.(Model)
@@ -47,12 +47,21 @@ func TestTriageEnterOnlyPreparesAndQuitWaitsForApply(t *testing.T) {
 	m = n.(Model)
 	n, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = n.(Model)
+	if cmd != nil || m.overlay == nil || preparedCalls != 0 {
+		t.Fatal("Enter did not open details")
+	}
+	n, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = n.(Model)
+	n, _ = m.Update(key("A"))
+	m = n.(Model)
+	n, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = n.(Model)
 	if cmd == nil {
-		t.Fatal("no preview command")
+		t.Fatal("explicit action did not prepare")
 	}
 	cmd()
 	if preparedCalls != 1 || applyCalls != 0 {
-		t.Fatal("Enter applied")
+		t.Fatal("preview performed mutation")
 	}
 	stopped := false
 	m.busy = "applying"
@@ -80,39 +89,18 @@ func TestTriageStaleLoadCannotReplaceNewGeneration(t *testing.T) {
 	}
 }
 
-func TestScopedChooserOffersTryActionsAndPreselectsCandidates(t *testing.T) {
+func TestScopedEntryStartsWithGroupedItems(t *testing.T) {
 	m := NewScoped(Actions{})
-	report := triage.Report{Items: []triage.Item{
-		{ID: "missing", Kind: "try", Presence: "missing", Actions: []triage.Action{{Name: "forget-try", Availability: "candidate"}}},
-		{ID: "present", Kind: "try", Presence: "present", Actions: []triage.Action{{Name: "trash-try", Availability: "candidate"}}},
-	}}
+	report := triage.Report{Items: []triage.Item{{ID: "missing", Name: "lost", RepositoryPath: "/lost", Kind: "try", Presence: "missing", Actions: []triage.Action{{Name: "forget-try", Availability: "candidate"}}}, {ID: "present", Name: "live", RepositoryPath: "/live", Kind: "try", Presence: "present", Actions: []triage.Action{{Name: "trash-try", Availability: "candidate"}}}}}
 	n, _ := m.Update(Loaded{Report: report})
 	m = n.(Model)
-	if out := m.View(); !strings.Contains(out, "forget-try") || !strings.Contains(out, "trash-try") {
-		t.Fatal(out)
+	if m.chooser || len(m.rows) != 2 {
+		t.Fatal("scoped entry skipped selection")
 	}
-	n, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = n.(Model)
-	if m.action != "forget-try" || !m.selected["missing"] || m.selected["present"] || m.batch != nil {
-		t.Fatalf("chooser: %+v", m)
-	}
+	m.toggleVisible()
 	n, _ = m.Update(key("A"))
 	m = n.(Model)
-	if out := m.View(); !strings.Contains(out, "trash-try") {
-		t.Fatal("other scope actions disappeared", out)
-	}
-}
-
-func TestMissingTryEnterOpensContextualActions(t *testing.T) {
-	m := New(Actions{})
-	n, _ := m.Update(Loaded{Report: triage.Report{Items: []triage.Item{{ID: "missing", Kind: "try", Presence: "missing", Actions: []triage.Action{{Name: "forget-try", Availability: "candidate"}}}}}})
-	m = n.(Model)
-	if strings.Contains(m.View(), "unknown") {
-		t.Fatal("unknown activity looks like state")
-	}
-	n, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = n.(Model)
-	if cmd != nil || !m.chooser || !strings.Contains(m.View(), "forget-try") {
-		t.Fatal("missing Try has no useful next action")
+	if out := m.View(); !strings.Contains(out, "Forget missing Try") || !strings.Contains(out, "Move Try to Trash") {
+		t.Fatal(out)
 	}
 }

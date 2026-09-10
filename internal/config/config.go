@@ -261,13 +261,13 @@ type Tool struct {
 // reservedKeys are the dashboard's own bindings. A tool cannot take one,
 // because losing the ability to quit or move is not a trade anyone wants.
 var reservedKeys = map[string]string{
-	"x": "select repository or Try", "ctrl+a": "select visible repositories or Tries",
+
 	"ctrl+o": "row actions", "q": "quit", "j": "down", "k": "up", "g": "top", "G": "bottom",
 	"h": "previous view", "l": "next view", "tab": "next view",
 	"/": "filter", "r": "refresh", "o": "open", "p": "park",
 	"c": "edit next action", "s": "start a worktree task", "d": "start a direct task",
 	"a": "include hidden history", "n": "new Try / add repo note", "N": "browse repo notes", " ": "context actions",
-	"0": "clear filters", "1": "hot", "2": "warm", "3": "cold",
+	"0": "clear filters", "1": "TASKS view", "2": "REPOS view", "3": "FLEET view", "4": "TRY view", "5": "REMOTE view", "6": "SKILLS view", "7": "MCP view",
 	"?": "help", "H": "repo activity heatmap", "e": "edit config",
 	"O": "cycle repo sort", "R": "reverse repo sort",
 	"m": "edit repo metadata", "y": "copy repo metadata",
