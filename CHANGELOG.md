@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.23] - 2026-09-11
+
 ### Added
 
 - Bundled skill content checks through `dev doctor`, `dev upgrade --check` and
@@ -15,10 +17,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   and matching agent links, preserving unrelated files and rejecting local edits.
   Installs record content ownership; automatic refresh restores missing files,
   removes unchanged obsolete files and never installs an absent skill.
-
-## [0.2.23] - 2026-09-11
-
-### Added
 
 - Calendar-year repository heatmaps with automatic full local Git backfill,
   ref-bound checkpoints, scrolling and narrow-terminal week wrapping.
