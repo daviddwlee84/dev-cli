@@ -4,11 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
-	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 )
 
@@ -16,20 +14,41 @@ func guardSharedCheckout(ctx context.Context, app *App, rt runtime.Runtime, chec
 	if app.allowSharedCheckout {
 		return nil
 	}
-	excludePane, err := callerPaneID(ctx, rt)
-	if err != nil {
-		return fmt.Errorf("resolve the current runtime pane before claiming %s: %w", config.Contract(checkout), err)
+	reportedPane := ""
+	if rt != nil {
+		switch rt.Name() {
+		case "herdr":
+			reportedPane = os.Getenv("HERDR_PANE_ID")
+		case "tmux":
+			reportedPane = os.Getenv("TMUX_PANE")
+		}
 	}
-	activities, err := checkoutAgentActivities(ctx, rt, checkout, excludePane)
+	evidence, err := runtime.InspectOccupancy(ctx, rt, checkout, runtime.OccupancyOptions{
+		Profile:      runtime.OccupancyStrict,
+		CallerPaneID: reportedPane,
+	})
 	if err != nil {
-		return fmt.Errorf("check live agents before claiming %s: %w", config.Contract(checkout), err)
+		return fmt.Errorf("check live occupancy before claiming %s: %w", config.Contract(checkout), err)
 	}
-	if len(activities) == 0 {
-		return nil
+	if evidence.CurrentPane.Err != nil {
+		return fmt.Errorf("resolve the current runtime pane before claiming %s: %w", config.Contract(checkout), evidence.CurrentPane.Err)
+	}
+	if evidence.SessionCoverageErr != nil {
+		return fmt.Errorf("classify live runtime coverage before claiming %s: %w", config.Contract(checkout), evidence.SessionCoverageErr)
+	}
+	if evidence.SessionList.Err != nil {
+		return fmt.Errorf("list live runtime sessions before claiming %s: %w", config.Contract(checkout), evidence.SessionList.Err)
+	}
+	if evidence.AgentActivityList.Err != nil {
+		return fmt.Errorf("check live agents before claiming %s: %w", config.Contract(checkout), evidence.AgentActivityList.Err)
 	}
 
 	var occupied []string
-	for _, activity := range activities {
+	for _, agent := range evidence.Agents {
+		if !agent.Blocking {
+			continue
+		}
+		activity := agent.Activity
 		label := activity.Agent
 		if activity.Name != "" {
 			label = activity.Name
@@ -37,67 +56,31 @@ func guardSharedCheckout(ctx context.Context, app *App, rt runtime.Runtime, chec
 		if label == "" {
 			label = "agent"
 		}
-		state := activity.Status
-		if state == "" {
-			state = "unknown"
-		}
-		occupied = append(occupied, fmt.Sprintf("%s (%s, pane %s)", label, state, activity.PaneID))
+		occupied = append(occupied, fmt.Sprintf("%s (%s, pane %s)", label, agent.Status, activity.PaneID))
+	}
+	if len(occupied) == 0 {
+		return nil
 	}
 	return fmt.Errorf("%s is already occupied by %s; use a separate worktree, or pass --allow-shared-checkout only after coordinating disjoint file ownership",
 		config.Contract(checkout), strings.Join(occupied, ", "))
-}
-
-func callerPaneID(ctx context.Context, rt runtime.Runtime) (string, error) {
-	inherited := os.Getenv("HERDR_PANE_ID")
-	if inherited == "" {
-		return "", nil
-	}
-	if resolver, ok := rt.(runtime.CurrentPaneResolver); ok {
-		return resolver.CurrentPaneID(ctx)
-	}
-	return inherited, nil
 }
 
 // checkoutAgentActivities returns recognized agents whose reported cwd resolves
 // to the same canonical Git worktree root as checkout. A pane is excluded only
 // when its exact ID matches excludePane; lifecycle state never makes it free.
 func checkoutAgentActivities(ctx context.Context, rt runtime.Runtime, checkout, excludePane string) ([]runtime.AgentActivity, error) {
-	lister, ok := rt.(runtime.AgentActivityLister)
-	if !ok {
-		return nil, nil
-	}
-	target, ok := canonicalWorktreeRoot(ctx, checkout)
-	if !ok {
-		return nil, nil
-	}
-	activities, err := lister.AgentActivities(ctx)
+	evidence, err := runtime.InspectOccupancy(ctx, rt, checkout, runtime.OccupancyOptions{Profile: runtime.OccupancyStrict})
 	if err != nil {
 		return nil, err
 	}
-	out := make([]runtime.AgentActivity, 0, len(activities))
-	for _, activity := range activities {
-		if excludePane != "" && activity.PaneID == excludePane {
-			continue
-		}
-		root, ok := canonicalWorktreeRoot(ctx, activity.CWD)
-		if ok && root == target {
-			out = append(out, activity)
+	if evidence.AgentActivityList.Err != nil {
+		return nil, evidence.AgentActivityList.Err
+	}
+	out := make([]runtime.AgentActivity, 0, len(evidence.Agents))
+	for _, agent := range evidence.Agents {
+		if excludePane == "" || agent.Activity.PaneID != excludePane {
+			out = append(out, agent.Activity)
 		}
 	}
 	return out, nil
-}
-
-func canonicalWorktreeRoot(ctx context.Context, dir string) (string, bool) {
-	if dir == "" {
-		return "", false
-	}
-	repo, err := gitx.Discover(ctx, dir)
-	if err != nil || repo.Root == "" {
-		return "", false
-	}
-	root := filepath.Clean(repo.Root)
-	if resolved, err := filepath.EvalSymlinks(root); err == nil {
-		root = filepath.Clean(resolved)
-	}
-	return root, true
 }

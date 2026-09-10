@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Runtime occupancy inspection now preserves live session, recognized-agent, and
+  current-pane evidence separately. Its strict writer/adoption profile treats
+  every other recognized agent as occupied, while retirement retains its
+  closeable idle/done and explicitly acknowledged unknown-state policy.
+
 ## [0.2.3] - 2026-09-01
 
 ### Added

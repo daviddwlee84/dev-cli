@@ -157,6 +157,13 @@ func TestGuardSharedCheckoutFailsClosedAndOverrideBypasses(t *testing.T) {
 		!strings.Contains(err.Error(), "agent inventory unavailable") {
 		t.Fatalf("activity lookup must fail closed: %v", err)
 	}
+
+	rt.activityErr = nil
+	rt.listErr = errors.New("runtime inventory unavailable")
+	if err := guardSharedCheckout(context.Background(), app, rt, r.Root); err == nil ||
+		!strings.Contains(err.Error(), "runtime inventory unavailable") {
+		t.Fatalf("runtime lookup must fail closed: %v", err)
+	}
 }
 
 func TestGuardResolvesMovedCallerPaneBeforeExclusion(t *testing.T) {
@@ -178,6 +185,22 @@ func TestGuardResolvesMovedCallerPaneBeforeExclusion(t *testing.T) {
 	rt.currentErr = errors.New("current pane unavailable")
 	if err := guardSharedCheckout(context.Background(), &App{}, rt, r.Root); err == nil || !strings.Contains(err.Error(), "current pane unavailable") {
 		t.Fatalf("current-pane lookup must fail closed: %v", err)
+	}
+}
+
+func TestGuardDoesNotResolveForeignBackendPaneID(t *testing.T) {
+	t.Setenv("HERDR_PANE_ID", "")
+	t.Setenv("TMUX_PANE", "%1")
+	r := gittest.New(t)
+	rt := &currentPaneRuntime{
+		activityRuntime: &activityRuntime{name: "herdr"},
+		currentErr:      errors.New("tmux pane is not herdr context"),
+	}
+	if err := guardSharedCheckout(context.Background(), &App{}, rt, r.Root); err != nil {
+		t.Fatalf("foreign backend pane id triggered Herdr resolution: %v", err)
+	}
+	if rt.currentCalls != 0 {
+		t.Fatalf("Herdr resolver called %d time(s) for TMUX_PANE", rt.currentCalls)
 	}
 }
 
