@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	goruntime "runtime"
 	"unicode/utf16"
 	"unsafe"
 
@@ -146,6 +147,9 @@ func (m Metadata) prepare(file *os.File) error {
 	if err = validateDescriptor(sd, true); err != nil {
 		return err
 	}
+	if sacl, _, e := sd.SACL(); e != nil && !errors.Is(e, windows.ERROR_OBJECT_NOT_FOUND) || sacl != nil && sacl.AceCount > 0 {
+		return errors.New("Windows integrity metadata requires manual preservation")
+	}
 	acl, _, err := sd.DACL()
 	if err != nil {
 		return err
@@ -189,9 +193,18 @@ func (m Metadata) prepare(file *os.File) error {
 	if windows.GetFileInformationByHandle(h, &stageInfo) != nil || stageInfo.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || stageInfo.NumberOfLinks != 1 || stageInfo.VolumeSerialNumber != originalInfo.VolumeSerialNumber || stageInfo.FileIndexHigh != originalInfo.FileIndexHigh || stageInfo.FileIndexLow != originalInfo.FileIndexLow {
 		return ErrStale
 	}
-	if err = windows.SetSecurityInfo(h, windows.SE_FILE_OBJECT, flags, owner, group, acl, nil); err != nil {
+	stageACL := acl
+	var aclBuffer []byte
+	if control&windows.SE_DACL_PROTECTED == 0 {
+		stageACL, aclBuffer, err = explicitACL(acl)
+		if err != nil {
+			return err
+		}
+	}
+	if err = windows.SetSecurityInfo(h, windows.SE_FILE_OBJECT, flags, owner, group, stageACL, nil); err != nil {
 		return err
 	}
+	goruntime.KeepAlive(aclBuffer)
 	actual, err := windows.GetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.LABEL_SECURITY_INFORMATION)
 	if err != nil {
 		return err
@@ -265,7 +278,7 @@ func sameDescriptor(a, b *windows.SECURITY_DESCRIPTOR) bool {
 	if ae != nil || be != nil {
 		return false
 	}
-	bookkeeping := windows.SECURITY_DESCRIPTOR_CONTROL(windows.SE_DACL_AUTO_INHERITED | windows.SE_DACL_AUTO_INHERIT_REQ)
+	bookkeeping := windows.SECURITY_DESCRIPTOR_CONTROL(windows.SE_DACL_AUTO_INHERITED | windows.SE_DACL_AUTO_INHERIT_REQ | windows.SE_SACL_AUTO_INHERITED | windows.SE_SACL_AUTO_INHERIT_REQ)
 	if ac & ^bookkeeping != bc & ^bookkeeping {
 		return false
 	}
@@ -341,4 +354,33 @@ func descriptorDelta(a, b *windows.SECURITY_DESCRIPTOR) string {
 		countB = int(ba.AceCount)
 	}
 	return fmt.Sprintf("control=%04x/%04x owner_equal=%t group_equal=%t ACE_count=%d/%d", uint16(ac), uint16(bc), owner, group, countA, countB)
+}
+
+// Supplying inherited ACEs to an unprotected descriptor duplicates the parent
+// inheritance. Copy only explicit entries; compare the regenerated full ACL.
+func explicitACL(source *windows.ACL) (*windows.ACL, []byte, error) {
+	if source == nil {
+		return nil, nil, errors.New("missing source DACL")
+	}
+	header := unsafe.Slice((*byte)(unsafe.Pointer(source)), 8)
+	data := append([]byte(nil), header...)
+	count := uint16(0)
+	for i := uint16(0); i < source.AceCount; i++ {
+		var ace *windows.ACCESS_ALLOWED_ACE
+		if e := windows.GetAce(source, uint32(i), &ace); e != nil {
+			return nil, nil, e
+		}
+		if ace.Header.AceFlags&windows.INHERITED_ACE != 0 {
+			continue
+		}
+		size := int(ace.Header.AceSize)
+		if size < 8 || len(data)+size > 65535 {
+			return nil, nil, errors.New("unsupported DACL size")
+		}
+		data = append(data, unsafe.Slice((*byte)(unsafe.Pointer(ace)), size)...)
+		count++
+	}
+	binary.LittleEndian.PutUint16(data[2:4], uint16(len(data)))
+	binary.LittleEndian.PutUint16(data[4:6], count)
+	return (*windows.ACL)(unsafe.Pointer(&data[0])), data, nil
 }
