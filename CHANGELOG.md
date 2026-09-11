@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.25] - 2026-09-11
+
 ### Fixed
 
 - Interactive `dev ssh` dispatch preserves the command context when opening
@@ -905,7 +907,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.24...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.25...HEAD
+[0.2.25]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.24...v0.2.25
 [0.2.24]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.23...v0.2.24
 [0.2.23]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.22...v0.2.23
 [0.2.22]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.21...v0.2.22
