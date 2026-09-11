@@ -13,7 +13,14 @@ def main():
     parser.add_argument('--dev', required=True, type=Path)
     args = parser.parse_args()
     binary = args.dev.resolve()
-    with tempfile.TemporaryDirectory(prefix='dev-hygiene-hooks-') as tmp:
+    # Python and GetTempPath can prefer different runner temp variables.
+    # Private-state tests must not inherit a shared, foreign-writable workspace.
+    private_temp = None
+    if os.name == 'nt' and os.environ.get('LOCALAPPDATA'):
+        candidate = Path(os.environ['LOCALAPPDATA']) / 'Temp'
+        if candidate.is_dir():
+            private_temp = candidate
+    with tempfile.TemporaryDirectory(prefix='dev-hygiene-hooks-', dir=private_temp) as tmp:
         base = Path(tmp).resolve()
         home, repo = base / 'home', base / 'repo'
         home.mkdir(); repo.mkdir()
