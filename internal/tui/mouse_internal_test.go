@@ -234,4 +234,30 @@ func TestMouseIgnoresModifiedClicksAndCloneContextActions(t *testing.T) {
 	if model.at() != 1 || model.overlay.kind != overlayNone {
 		t.Fatalf("clone-time right click selected=%d overlay=%v", model.at(), model.overlay.kind)
 	}
+	model, command := applyMouse(model, mouseMessage(2, firstY+1, tea.MouseButtonLeft, tea.MouseActionPress))
+	if command != nil || model.overlay.kind != overlayNone {
+		t.Fatal("clone-time selected-row tap opened actions")
+	}
+}
+
+func TestMouseSelectThenTapOpensMenuWithoutExecuting(t *testing.T) {
+	opened := 0
+	m := New(Actions{Open: func(context.Context, *task.Task) (OpenResult, error) { opened++; return OpenResult{}, nil }}, mouseTaskRows(2), nil)
+	y := 3 + m.listPreambleLines()
+	m, cmd := applyMouse(m, mouseMessage(3, y, tea.MouseButtonLeft, tea.MouseActionPress))
+	if m.at() != 1 || cmd != nil || m.overlay.kind != overlayNone {
+		t.Fatal("first tap did more than select")
+	}
+	m, cmd = applyMouse(m, mouseMessage(3, y, tea.MouseButtonLeft, tea.MouseActionPress))
+	if m.overlay.kind != overlayActionMenu || cmd != nil || opened != 0 {
+		t.Fatal("second tap executed instead of opening menu")
+	}
+	m, cmd = applyMouse(m, mouseMessage(3, m.buildActionMenuLayout().firstOptionY, tea.MouseButtonLeft, tea.MouseActionPress))
+	if cmd == nil {
+		t.Fatal("option was not clickable")
+	}
+	cmd()
+	if opened != 1 {
+		t.Fatal(opened)
+	}
 }

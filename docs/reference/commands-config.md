@@ -2,7 +2,7 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-08
+verified_on: 2026-09-10
 ---
 
 # Commands and configuration
@@ -806,3 +806,17 @@ non-interactive apply shortcut. Existing
 `dev cache clear skills` clears dated source comparisons; `all` includes both.
 Neither removes `stats.db` or skills run receipts.
 See [Skills management](../guides/skills-management.md).
+
+## Dashboard discovery registration (Unreleased)
+
+The first REPOS visit selects the startup repository without reordering; clicking
+the selected row opens its actions. An outside startup Git repo offers clickable
+previews to append its main root to `paths.repo_paths` or its parent to
+`paths.scan_roots`. The active file, including `--config`, remains the only config
+source. Comments, existing order and inherited defaults are preserved. Prefer exact
+entries for isolated repos; parent scans also cover sibling projects and require
+explicit confirmation. Guarded writes support macOS/Linux with private recovery
+under `$XDG_DATA_HOME/dev/config-recovery`; symlink configs, unsupported TOML layouts
+and other platforms offer manual edits and the config editor. Failed scans remain
+unknown. Successful saves refresh local inventory; reload failures are reported
+separately. CLI flags and existing JSON contracts are unchanged.

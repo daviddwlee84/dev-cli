@@ -40,6 +40,8 @@ func (m Model) listHeight() int {
 func (m Model) listPreambleLines() int {
 	lines := 1 // the table header, or the one-line empty/loading state
 	switch m.view {
+	case ViewRepos:
+		lines += m.discoveryBanner().lines
 	case ViewRemote:
 		if m.viewLoad(ViewRemote).loading && len(m.visibleRemotes()) > 0 {
 			lines++
@@ -102,7 +104,7 @@ func (m Model) renderCurrentList() string {
 func (m Model) renderRawList() string {
 	switch m.view {
 	case ViewRepos:
-		return m.renderRepos()
+		return m.discoveryBanner().text + m.renderRepos()
 	case ViewFleet:
 		return m.renderFleet()
 	case ViewTries:
@@ -326,6 +328,9 @@ func (m Model) renderTasks() string {
 func (m Model) renderRepos() string {
 	items := m.visibleRepoItems()
 	if len(items) == 0 {
+		if m.startupOutside() {
+			return "  " + fitCell("No configured repositories yet.", max(1, m.width-2)) + "\n"
+		}
 		if m.viewLoad(ViewRepos).loading {
 			return "  " + styleDim.Render("Loading local repositories…") + "\n"
 		}

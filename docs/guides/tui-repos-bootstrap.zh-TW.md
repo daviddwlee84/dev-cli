@@ -2,7 +2,7 @@
 description: 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
 authority: project
 status: evolving
-verified_on: 2026-09-08
+verified_on: 2026-09-10
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 lang: zh-TW
 ---
@@ -56,11 +56,36 @@ aggregate row counts 與 categorical view/generation/outcome fields，不包含 
 string 已建立，不代表 terminal 已 rasterize。
 
 用 `tab`、`h`/`l`、左右鍵，或 left-click visible tab 切換。Left-button
-press 只選取 visible row，不會直接 open；wheel 每次移動三列；right-button press
-會先選取 row，再開啟該 row 可用的 actions。Modified click、motion、release 與
-repeated-click activation 都會被忽略，Enter/`o` 仍是 explicit open。Mouse tracking
+press 選取 visible row；點目前反白列就開啟 actions，包含鍵盤或啟動時預選的列，
+不限兩次點擊間隔。Wheel 每次移動三列；right-button press 先選取 row，再開啟
+該 row 的 actions。Modified click、motion 與 release 會被忽略；開啟選單的點擊
+只開選單，另行點選項目才執行。Enter/`o` 開啟目標。Mouse tracking
 啟用時，部分 terminal 的原生文字選取需要按住 Shift/Option。原有鍵盤移動、filter、
 help 與 mode exit 都不變。
+
+## 啟動 repo 與掃描設定（Unreleased）
+
+啟動時仍顯示 TASKS。首次切到 REPOS 時，預選啟動目錄所屬的 repository，
+保留原排序並讓該列出現在可視範圍。子目錄、alias 與 linked worktree 透過
+Git common directory 對應；linked worktree 選取 repo 主列。使用者手動選取、
+篩選或排序後，晚到的資料不會再把游標拉回啟動 repo。
+
+啟動所在 Git repo 未被掃描設定涵蓋時，REPOS 顯示可點擊的 **Add this repo…**
+與 **Scan parent directory…**，Ctrl+O 也提供相同入口。前者把主 repo 根目錄加入
+`paths.repo_paths`，後者把該根目錄的父目錄加入 `paths.scan_roots`，依原有最大
+深度 3 的規則掃描同層專案，不使用目前子目錄當候選根目錄。零散位置優先用
+repo_paths；專門集中存放專案的目錄適合用 scan_roots。
+
+兩種操作都先預覽實際設定檔（尊重 `--config`）、路徑、範圍與欄位變更，並提供
+可點擊的確認／取消。較長的預覽可在文字上使用滾輪或 PgUp/PgDn 捲動。
+只追加所選欄位，保留註解、項目順序與省略欄位繼承的預設值；避免重複加入，
+不自動合併或刪除既有項目。儲存後重新載入本機清單並選取新加入的 repo。
+掃描失敗或不完整維持未知，不會直接當成未納管提示加入。
+
+自動寫入使用 macOS/Linux 的 guarded file backend，保留 metadata，並在
+`$XDG_DATA_HOME/dev/config-recovery` 保存私有復原紀錄。設定檔被同時編輯或
+repo 身分改變時拒絕套用舊預覽。Symlink 設定檔、不支援的 TOML 格式或平台
+會提供手動修改內容與設定編輯器入口。若儲存成功但重載失敗，會分別回報。
 
 ## 常用 actions
 

@@ -135,6 +135,10 @@ func TestTUIBlockedLoadHelper(t *testing.T) {
 	ctx := t.Context()
 	results := make(chan LocalResult)
 	actions := Actions{
+		Discovery: DiscoveryActions{Read: func(ctx context.Context) (StartupRepository, error) {
+			<-ctx.Done()
+			return StartupRepository{}, ctx.Err()
+		}},
 		Local: LocalActions{Start: func(context.Context, LocalLoadRequest) LocalLoad {
 			return LocalLoad{ID: 1, Results: results}
 		}},

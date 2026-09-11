@@ -59,6 +59,12 @@ func TestEveryDashboardViewBuildsRowActionMenu(t *testing.T) {
 		if candidate.overlay.selection.view != view || candidate.overlay.selection.key == "" {
 			t.Errorf("%s action menu token = %+v", view, candidate.overlay.selection)
 		}
+		touch := model
+		touch.view = view
+		touch, command := applyMouse(touch, mouseMessage(3, 2+touch.listPreambleLines(), tea.MouseButtonLeft, tea.MouseActionPress))
+		if command != nil || touch.overlay.kind != overlayActionMenu || touch.overlay.selection != candidate.overlay.selection {
+			t.Errorf("%s selected-row tap differs from keyboard actions", view)
+		}
 	}
 }
 

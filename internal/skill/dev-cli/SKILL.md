@@ -418,9 +418,22 @@ from the plan-first `dev flow [repo]` repository lifecycle preview above.
 
 The dashboard has TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS and MCP views, switched
 with tab, vim-style h/l, or a left click on a visible tab. Left-click selects a
-row without opening it, the wheel moves three rows, and right-click selects a row
-and opens the same legal actions used by keyboard shortcuts. Repeated clicks do
-not imply open. Wide TASKS tables show `REPO`; compact layouts keep it in detail.
+row; clicking the selected row opens its actions without double-click timing.
+Keyboard/default selections also qualify. The wheel moves three rows; right-click
+selects a row and opens the same legal actions. A menu-opening click never executes
+an option. Wide TASKS tables show `REPO`; compact layouts keep it in detail.
+
+TASKS remains the initial view. The first REPOS visit selects the startup repo by
+Git common-directory identity, including subdirectories and linked worktrees,
+without changing sort order. Manual navigation takes precedence over late results.
+An outside startup Git repo has clickable Add this repo / Scan parent directory
+entries and matching Ctrl+O options. They preview the active config file and append
+to `paths.repo_paths` or `paths.scan_roots` only after confirmation. Prefer exact
+repo entries for isolated locations; parent roots include sibling projects. Retain
+comments, defaults and ordering, deduplicate and revalidate the source before
+writing. macOS/Linux edits use private `dev/config-recovery` data; unsupported
+layouts, symlink configs and platforms offer a manual edit. Reload and select after
+saving; incomplete scans never prove that a repository is outside discovery.
 REPOS `n` suspends into the existing clone-aware `repo new --handoff stay`
 wizard and refreshes local inventory when it returns; `a` quick-adds a note and
 `N` browses notes. TRY `n` creates an experiment; `space` opens metadata/lifecycle actions; `a`
@@ -827,7 +840,7 @@ when absent, and resolves `--editor` → `$VISUAL` → `$EDITOR` → nvim/vim/vi
 
 ## Dashboard actions, disposal and browser navigation
 
-See [dashboard-actions.md](references/dashboard-actions.md). `Ctrl+O` / right-click
+See [dashboard-actions.md](references/dashboard-actions.md). `Ctrl+O` / right-click / click the selected row
 open row actions; TASKS and TRY also use Space. TASKS finish/resume/retire/recovery
 reuse the CLI workflows. `a` shows DONE records, not a completion toggle. REPOS
 `s`/`d` use full start wizards with open/stay choice (open by default).

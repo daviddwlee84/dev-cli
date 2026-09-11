@@ -2,16 +2,23 @@
 description: Finish and recover tasks from the dashboard, dispose of Tries through system Trash, and open repository homepages.
 authority: project
 status: evolving
-verified_on: 2026-09-08
+verified_on: 2026-09-10
 ---
 
 # Dashboard lifecycle actions
 
 ## Select an action
 
-Press `Ctrl+O` or right-click a row. TASKS and TRY also accept Space; REPOS Space
+Press `Ctrl+O`, right-click a row, or click the selected row. TASKS and TRY also accept Space; REPOS Space
 still expands linked worktrees. TASKS `a` shows completed tasks and does not mark
 a task done. A missing checkout offers recovery instead of completion.
+
+Clicking another row first selects it; clicking the selected row opens the menu
+without double-click timing or executing an option. Keyboard/startup selections
+also qualify. The first REPOS visit selects the startup repository without
+reordering. An outside startup repo has clickable, reviewed additions to
+`repo_paths` or its parent's `scan_roots`, followed by local refresh and selection.
+See [startup repository and discovery](tui-repos-bootstrap.md#startup-repository-and-discovery-unreleased).
 
 TASKS finish, resume, retirement and recovery use the existing CLI workflows.
 The dashboard suspends during their prompts and refreshes when they finish,

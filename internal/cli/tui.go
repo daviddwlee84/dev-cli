@@ -66,7 +66,15 @@ Navigation is vim-style, with arrows and mouse alongside:
   g G        top / bottom         h l / tab       previous / next view
   /          filter as you type   esc             clear, then quit
   left click select row/tab       wheel            move three rows
-  right click selected row actions; click never opens a row directly
+  click selected row / right click / Ctrl+O opens actions
+
+TASKS remains the initial view. The first visit to REPOS selects the repository
+containing the startup directory without changing the list's ordering. Subdirectories
+and linked worktrees resolve to their main repository; manual navigation takes over.
+An unlisted Git repository outside discovery has clickable Add this repo / Scan
+parent directory entries in REPOS and its action menu. Review the config file,
+path and scope before saving to repo_paths or scan_roots. Comments and existing
+entries are preserved; unsupported automatic edits offer the config editor.
 
 Actions depend on the list:
 
@@ -391,6 +399,7 @@ func runTUI(app *App) error {
 	}
 
 	actions := tui.Actions{
+		Discovery: tuiDiscoveryActions(appState, projectRootResolver),
 		Workflow: func(ctx context.Context, request tui.WorkflowRequest) (tui.Workflow, error) {
 			if request.Action == "skills-manage" {
 				return newTUIWorkflow(ctx, appState.Current(), request), nil

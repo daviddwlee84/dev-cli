@@ -78,6 +78,7 @@ func (m Model) decorateTable(raw string) string {
 }
 func (m Model) currentToken() selectionToken { t, _ := m.currentSelectionToken(); return t }
 func (m Model) cycleTableSort(column string) (tea.Model, tea.Cmd) {
+	m.stopStartupFocus()
 	focus, ok := m.currentSelectionToken()
 	s := m.tableSorts[int(m.view)]
 	switch {

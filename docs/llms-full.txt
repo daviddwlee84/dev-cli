@@ -3533,12 +3533,42 @@ raw errors. It is not `stats.db` and is never sent anywhere.
 the terminal rasterized it.
 
 Switch with `tab`, `h`/`l`, arrows, or left-click a visible tab. A left-button
-press selects a visible row without opening it, the wheel moves three rows, and a
-right-button press selects a row then opens its available actions. Modified
-clicks, motion, releases, and repeated-click activation are ignored; Enter/`o`
-remains the explicit open action. Some terminals require Shift/Option for native
+press selects a visible row; clicking the selected row opens its actions, even
+when selection came from the keyboard or startup. No double-click timing is needed.
+The wheel moves three rows, and a right-button press selects a row then opens its
+actions. Modified clicks, motion and releases are ignored. Opening the menu does
+not execute an option. Enter/`o` opens the row. Some terminals require Shift/Option for native
 text selection while mouse tracking is enabled. Keyboard movement, filtering,
 help, and mode exit remain unchanged.
+
+## Startup repository and discovery (Unreleased)
+
+TASKS remains the startup view. The first REPOS visit selects the repository
+containing the startup directory without changing ordering, scrolling it into
+view when needed. Subdirectories, aliases and linked worktrees resolve through
+Git common-directory identity; linked worktrees select the repo parent row.
+Manual selection, filtering and sorting take precedence over delayed results.
+
+An outside startup Git repo gets clickable **Add this repo…** and **Scan parent
+directory…** entries, also in Ctrl+O. The first appends the main repo root to
+`paths.repo_paths`; the second appends that root's parent to `paths.scan_roots`
+and includes sibling projects under the normal depth-3 discovery rules. Neither
+uses a nested working directory as the candidate root. Prefer exact repo entries
+for isolated locations and scan roots for directories dedicated to projects.
+
+Both actions preview the actual configuration file (including `--config`), path,
+scope and field change, with clickable confirm/cancel. Scroll long preview details
+with the wheel over the text or PgUp/PgDn. Only the selected field is extended;
+existing comments, entry order and inherited defaults are retained. Already covered
+repos are not added again, and old entries are not automatically consolidated.
+Saving reloads local discovery and selects the added repo. Failed/incomplete scans
+remain unknown rather than becoming an enrollment suggestion.
+
+Automatic writes use the guarded macOS/Linux file backend, retaining metadata and
+private recovery in `$XDG_DATA_HOME/dev/config-recovery`. A concurrent edit or
+changed repository identity rejects the preview. Symlink configurations, unsupported
+TOML layouts or platforms offer a manual change and config editor instead.
+If saving succeeds but reload fails, the dashboard reports both outcomes.
 
 ## Common actions
 
@@ -3889,9 +3919,16 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/
 
 ## Select an action
 
-Press `Ctrl+O` or right-click a row. TASKS and TRY also accept Space; REPOS Space
+Press `Ctrl+O`, right-click a row, or click the selected row. TASKS and TRY also accept Space; REPOS Space
 still expands linked worktrees. TASKS `a` shows completed tasks and does not mark
 a task done. A missing checkout offers recovery instead of completion.
+
+Clicking another row first selects it; clicking the selected row opens the menu
+without double-click timing or executing an option. Keyboard/startup selections
+also qualify. The first REPOS visit selects the startup repository without
+reordering. An outside startup repo has clickable, reviewed additions to
+`repo_paths` or its parent's `scan_roots`, followed by local refresh and selection.
+See [startup repository and discovery](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/#startup-repository-and-discovery-unreleased).
 
 TASKS finish, resume, retirement and recovery use the existing CLI workflows.
 The dashboard suspends during their prompts and refreshes when they finish,
@@ -7964,6 +8001,20 @@ non-interactive apply shortcut. Existing
 Neither removes `stats.db` or skills run receipts.
 See [Skills management](https://daviddwlee84.github.io/dev-cli/guides/skills-management/).
 
+## Dashboard discovery registration (Unreleased)
+
+The first REPOS visit selects the startup repository without reordering; clicking
+the selected row opens its actions. An outside startup Git repo offers clickable
+previews to append its main root to `paths.repo_paths` or its parent to
+`paths.scan_roots`. The active file, including `--config`, remains the only config
+source. Comments, existing order and inherited defaults are preserved. Prefer exact
+entries for isolated repos; parent scans also cover sibling projects and require
+explicit confirmation. Guarded writes support macOS/Linux with private recovery
+under `$XDG_DATA_HOME/dev/config-recovery`; symlink configs, unsupported TOML layouts
+and other platforms offer manual edits and the config editor. Failed scans remain
+unknown. Successful saves refresh local inventory; reload failures are reported
+separately. CLI flags and existing JSON contracts are unchanged.
+
 ---
 
 ### Compatibility and known limitations
@@ -8369,6 +8420,20 @@ Experimental sync reads existing node_modules for selected project agents.
 This is separate from transfer preparation's pinned-provider/verified-payload
 contract. REPOS caches supply presentation only; Git/runtime/task authority still
 requires fresh observations and operation-time validation.
+
+## Dashboard discovery registration (Unreleased)
+
+The first REPOS visit selects the startup repository without reordering; clicking
+the selected row opens its actions. An outside startup Git repo offers clickable
+previews to append its main root to `paths.repo_paths` or its parent to
+`paths.scan_roots`. The active file, including `--config`, remains the only config
+source. Comments, existing order and inherited defaults are preserved. Prefer exact
+entries for isolated repos; parent scans also cover sibling projects and require
+explicit confirmation. Guarded writes support macOS/Linux with private recovery
+under `$XDG_DATA_HOME/dev/config-recovery`; symlink configs, unsupported TOML layouts
+and other platforms offer manual edits and the config editor. Failed scans remain
+unknown. Successful saves refresh local inventory; reload failures are reported
+separately. CLI flags and existing JSON contracts are unchanged.
 
 ---
 
@@ -12061,11 +12126,36 @@ aggregate row counts 與 categorical view/generation/outcome fields，不包含 
 string 已建立，不代表 terminal 已 rasterize。
 
 用 `tab`、`h`/`l`、左右鍵，或 left-click visible tab 切換。Left-button
-press 只選取 visible row，不會直接 open；wheel 每次移動三列；right-button press
-會先選取 row，再開啟該 row 可用的 actions。Modified click、motion、release 與
-repeated-click activation 都會被忽略，Enter/`o` 仍是 explicit open。Mouse tracking
+press 選取 visible row；點目前反白列就開啟 actions，包含鍵盤或啟動時預選的列，
+不限兩次點擊間隔。Wheel 每次移動三列；right-button press 先選取 row，再開啟
+該 row 的 actions。Modified click、motion 與 release 會被忽略；開啟選單的點擊
+只開選單，另行點選項目才執行。Enter/`o` 開啟目標。Mouse tracking
 啟用時，部分 terminal 的原生文字選取需要按住 Shift/Option。原有鍵盤移動、filter、
 help 與 mode exit 都不變。
+
+## 啟動 repo 與掃描設定（Unreleased）
+
+啟動時仍顯示 TASKS。首次切到 REPOS 時，預選啟動目錄所屬的 repository，
+保留原排序並讓該列出現在可視範圍。子目錄、alias 與 linked worktree 透過
+Git common directory 對應；linked worktree 選取 repo 主列。使用者手動選取、
+篩選或排序後，晚到的資料不會再把游標拉回啟動 repo。
+
+啟動所在 Git repo 未被掃描設定涵蓋時，REPOS 顯示可點擊的 **Add this repo…**
+與 **Scan parent directory…**，Ctrl+O 也提供相同入口。前者把主 repo 根目錄加入
+`paths.repo_paths`，後者把該根目錄的父目錄加入 `paths.scan_roots`，依原有最大
+深度 3 的規則掃描同層專案，不使用目前子目錄當候選根目錄。零散位置優先用
+repo_paths；專門集中存放專案的目錄適合用 scan_roots。
+
+兩種操作都先預覽實際設定檔（尊重 `--config`）、路徑、範圍與欄位變更，並提供
+可點擊的確認／取消。較長的預覽可在文字上使用滾輪或 PgUp/PgDn 捲動。
+只追加所選欄位，保留註解、項目順序與省略欄位繼承的預設值；避免重複加入，
+不自動合併或刪除既有項目。儲存後重新載入本機清單並選取新加入的 repo。
+掃描失敗或不完整維持未知，不會直接當成未納管提示加入。
+
+自動寫入使用 macOS/Linux 的 guarded file backend，保留 metadata，並在
+`$XDG_DATA_HOME/dev/config-recovery` 保存私有復原紀錄。設定檔被同時編輯或
+repo 身分改變時拒絕套用舊預覽。Symlink 設定檔、不支援的 TOML 格式或平台
+會提供手動修改內容與設定編輯器入口。若儲存成功但重載失敗，會分別回報。
 
 ## 常用 actions
 
@@ -12374,9 +12464,15 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/
 
 ## 選擇操作
 
-按 `Ctrl+O` 或右鍵開啟 row actions。TASKS 與 TRY 也可按 Space；REPOS 的
+按 `Ctrl+O`、右鍵或點目前反白列開啟 row actions。TASKS 與 TRY 也可按 Space；REPOS 的
 Space 仍用來展開 linked worktrees。TASKS 的 `a` 是顯示已完成 tasks，並不會
 把 task 標成 done。Checkout 遺失時提供 recovery，不能直接當成完成。
+
+點其他列先選取，再點反白列開選單，不限間隔，也不會直接執行選單項目。
+鍵盤或啟動時預選的列也適用。首次切到 REPOS 會預選啟動目錄所屬 repo，
+保持原排序。未被掃描涵蓋的啟動 repo 提供可點擊的預覽入口，確認加入
+`repo_paths` 或把父目錄加入 `scan_roots` 後，重新載入本機清單並定位。
+詳見 [TUI 啟動 repo 與掃描設定](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/)。
 
 TASKS 的完成、恢復、退休與 recovery 沿用既有 CLI workflows。Dashboard 在
 提示期間暫停，完成或失敗後重新載入。Task ID／revision 檢查會拒絕過期選取。
@@ -16353,6 +16449,18 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 清除附時間的來源比較 cache，`all` 包含兩者。`stats.db` 與 skills run receipts 不受影響。
 詳見 [Skills 管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/)。
 
+## Dashboard 掃描設定加入（Unreleased）
+
+首次進入 REPOS 會預選啟動 repo 並保留排序；點反白列開啟 actions menu。
+啟動 Git repo 未被掃描涵蓋時，可點提示列預覽把主 repo 根目錄加入
+`paths.repo_paths`，或把其父目錄加入 `paths.scan_roots`。使用本次實際設定檔
+（包含 `--config`），保留註解、項目順序與省略欄位的預設值，不新增設定來源。
+精確路徑適合零散 repo；父目錄會涵蓋同層專案，需另行確認。
+自動寫入沿用 macOS/Linux 的安全檔案交易，私有復原紀錄位於
+`$XDG_DATA_HOME/dev/config-recovery`；symlink 設定檔、不支援的 TOML 格式
+或平台提供手動修改與編輯器入口。載入失敗不代表未納管；成功儲存後重新掃描，
+重載失敗會另外回報。CLI flags 與既有 JSON 契約不變。
+
 ---
 
 ### 相容性與已知限制
@@ -16713,6 +16821,18 @@ Experimental install 是上游依來源／ref 重裝，可能更新 lock，不�
 Experimental sync 讀取現有 node_modules，僅作用於所選 project agents。
 此契約不同於 transfer preparation 的 pinned provider／verified payload。
 REPOS cache 只提供顯示，Git／runtime／task authority 仍需新觀察與操作前驗證。
+
+## Dashboard 掃描設定加入（Unreleased）
+
+首次進入 REPOS 會預選啟動 repo 並保留排序；點反白列開啟 actions menu。
+啟動 Git repo 未被掃描涵蓋時，可點提示列預覽把主 repo 根目錄加入
+`paths.repo_paths`，或把其父目錄加入 `paths.scan_roots`。使用本次實際設定檔
+（包含 `--config`），保留註解、項目順序與省略欄位的預設值，不新增設定來源。
+精確路徑適合零散 repo；父目錄會涵蓋同層專案，需另行確認。
+自動寫入沿用 macOS/Linux 的安全檔案交易，私有復原紀錄位於
+`$XDG_DATA_HOME/dev/config-recovery`；symlink 設定檔、不支援的 TOML 格式
+或平台提供手動修改與編輯器入口。載入失敗不代表未納管；成功儲存後重新掃描，
+重載失敗會另外回報。CLI flags 與既有 JSON 契約不變。
 
 ---
 

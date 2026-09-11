@@ -108,7 +108,8 @@ func splitLoadWarning(err error) (string, error) {
 }
 
 type Actions struct {
-	Workflow func(context.Context, WorkflowRequest) (Workflow, error)
+	Discovery DiscoveryActions
+	Workflow  func(context.Context, WorkflowRequest) (Workflow, error)
 	// Reload re-reads the task inventory.
 	Reload func(ctx context.Context) ([]inventory.Row, error)
 	// ReloadRepos re-reads the repository list.
@@ -327,6 +328,7 @@ type remoteCloneOpenMsg struct {
 
 // Model is the dashboard state.
 type Model struct {
+	startupRepo      startupRepoState
 	tableSorts       [viewCount]tableSort
 	statusSeverity   string
 	lastTriageLedger *triage.Ledger
@@ -551,6 +553,9 @@ func (m Model) CapabilityScope() CapabilityScope { return m.capabilityScope }
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
 	commands := []tea.Cmd{textinput.Blink}
+	if command := m.readStartupRepo(); command != nil {
+		commands = append(commands, command)
+	}
 	if m.initialLoad {
 		commands = append(commands, m.reload())
 	}
@@ -2273,7 +2278,26 @@ func (m Model) currentDir() string {
 
 // Update implements tea.Model.
 func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.startupRepo.applying {
+		switch msg.(type) {
+		case tea.KeyMsg, tea.MouseMsg:
+			return m, nil
+		}
+	}
 	switch msg := msg.(type) {
+	case startupRepoMsg:
+		if msg.generation != m.configGeneration {
+			return m, nil
+		}
+		m.startupRepo.repository, m.startupRepo.err, m.startupRepo.loaded = msg.repository, msg.err, true
+		if msg.err != nil || msg.repository.CoverageErr != nil {
+			m.setViewStatus(ViewRepos, fmt.Sprintf("Startup repository lookup unavailable: %v", errors.Join(msg.err, msg.repository.CoverageErr)))
+		}
+		return m, nil
+	case registrationPlanMsg:
+		return m.acceptRegistrationPlan(msg)
+	case registrationAppliedMsg:
+		return m.registrationApplied(msg)
 	case spinner.TickMsg:
 		if !m.remoteClone.active() {
 			return m, nil
@@ -2656,6 +2680,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err != nil {
 			m.err, m.status = msg.err, ""
+			if m.startupRepo.saved {
+				m.status = "Configuration saved; reload failed. Press r to retry."
+				m.err = fmt.Errorf("configuration saved, but reload failed (press r to retry): %w", msg.err)
+			}
 			m.forceSizeReload = false
 			return m, nil
 		}
@@ -2663,6 +2691,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.update.Apply()
 		}
 		m.beginLocalLoads(loadConfig)
+		if m.startupRepo.saved {
+			m.startupRepo.savedReposGeneration = m.viewLoad(ViewRepos).generation
+		}
+		if m.startupRepo.refocusAfterSave {
+			m.startupRepo.focusDone = false
+			m.startupRepo.refocusAfterSave = false
+		}
 		if msg.refreshRemote {
 			m.beginViewLoad(ViewRemote, loadConfig)
 		} else {
@@ -2674,7 +2709,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.actions.RepoSort = msg.update.RepoSort
 		m.actions.RepoReverse = msg.update.RepoReverse
 		m.err, m.status = nil, msg.status
-		reload := m.reloadAfterConfig(msg.refreshRemote)
+		reload := batchCommands(m.reloadAfterConfig(msg.refreshRemote), m.readStartupRepo())
 		if len(m.actions.Tools) == 0 {
 			return m, reload
 		}
@@ -2919,6 +2954,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "tab", "l", "right", "shift+tab", "h", "left", "1", "2", "3", "4", "5", "6", "7":
+	default:
+		m.stopStartupFocus()
+	}
 	if item, ok := m.currentRepoItem(); ok && item.Repo.Pending != "" {
 		switch msg.String() {
 		case "enter", "o", "s", "d", "m", "a", "y", " ":

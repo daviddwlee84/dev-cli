@@ -38,16 +38,17 @@ type actionOption struct {
 // overlayState uses fixed arrays so copying Model also copies the mutable form
 // and menu state. A slice or pointer would violate Bubble Tea's value semantics.
 type overlayState struct {
-	scroll     int
-	body       string
-	kind       overlayKind
-	title      string
-	subject    string
-	detail     string
-	selection  selectionToken
-	target     TryRow
-	repoTarget RepoRow
-	action     TryAction
+	registration uint64
+	scroll       int
+	body         string
+	kind         overlayKind
+	title        string
+	subject      string
+	detail       string
+	selection    selectionToken
+	target       TryRow
+	repoTarget   RepoRow
+	action       TryAction
 
 	searching   bool
 	search      textinput.Model
@@ -276,6 +277,10 @@ func (m Model) updateOverlay(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.overlay.search.Focus()
 		case "esc", "q":
 			m.overlay = overlayState{}
+		case "pgdown", "ctrl+d":
+			m.scrollActionBody(max(1, m.height/2))
+		case "pgup", "ctrl+u":
+			m.scrollActionBody(-max(1, m.height/2))
 		case "j", "down":
 			m.moveActionMenu(1)
 		case "k", "up":
@@ -376,6 +381,17 @@ func (m Model) buildActionMenuLayout() actionMenuLayout {
 		builder.WriteString("  " + fitCell(m.overlay.detail, max(1, m.width-2)) + "\n")
 		first++
 	}
+	if m.overlay.body != "" {
+		lines, start, end := m.actionBodyWindow()
+		for _, line := range lines[start:end] {
+			builder.WriteString("  " + line + "\n")
+			first++
+		}
+		if len(lines) > end || start > 0 {
+			builder.WriteString("  " + fitCell(fmt.Sprintf("Details %d–%d/%d · wheel here / PgUp/PgDn", start+1, end, len(lines)), max(1, m.width-2)) + "\n")
+			first++
+		}
+	}
 	builder.WriteString("\n")
 	if m.overlay.searching {
 		builder.WriteString("  " + m.overlay.search.View() + "\n")
@@ -384,7 +400,25 @@ func (m Model) buildActionMenuLayout() actionMenuLayout {
 	return actionMenuLayout{heading: builder.String(), firstOptionY: first}
 }
 
+func (m Model) actionBodyWindow() ([]string, int, int) {
+	lines := strings.Split(ansi.Hardwrap(m.overlay.body, max(1, m.width-2), true), "\n")
+	capacity := max(1, m.height-10)
+	start := min(max(0, m.overlay.scroll), max(0, len(lines)-capacity))
+	return lines, start, min(len(lines), start+capacity)
+}
+
+func (m *Model) scrollActionBody(delta int) {
+	if m.overlay.body == "" {
+		return
+	}
+	lines, start, end := m.actionBodyWindow()
+	m.overlay.scroll = min(max(0, start+delta), max(0, len(lines)-(end-start)))
+}
+
 func (m Model) actionMenuOptionAt(x, y int) (int, bool) {
+	if x < 0 || x >= m.width {
+		return 0, false
+	}
 	layout := m.buildActionMenuLayout()
 	visible, from, to := m.actionMenuWindow()
 	position := y - layout.firstOptionY + from
@@ -412,7 +446,7 @@ func (m Model) renderOverlay() string {
 	case overlayHelp:
 		builder.WriteString("  navigation\n")
 		builder.WriteString("    j/k, arrows move · ctrl+d/u page · g/G first/last · tab/h/l switch view\n")
-		builder.WriteString("    left click row/tab · wheel 3 rows · right click / ctrl+o row actions · click never opens\n")
+		builder.WriteString("    click row/tab selects · click selected row / right click / ctrl+o actions · wheel 3 rows\n")
 		builder.WriteString("    / filter · 0 clear · r reload · esc close/clear/quit · q quit\n\n")
 		builder.WriteString("  1–7 switch views · Ctrl+O actions · / filter actions · Enter opens the current item\n")
 		builder.WriteString("  TASKS   enter open · n add note · N notes · p park · c next · ctrl+o state filter · a show done · space actions\n")

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard touch navigation: tapping the selected row opens its existing action
+  menu; the first REPOS visit selects the startup repository without reordering
+  rows, including launches from subdirectories and linked worktrees.
+- REPOS offers clickable, reviewed additions of an outside startup repository to
+  `paths.repo_paths` or its parent to `paths.scan_roots`. Source-bound edits retain
+  comments, existing entries and metadata, with private recovery and a manual-edit
+  fallback. Successful additions reload local inventory and select the repository.
+
 ## [0.2.23] - 2026-09-11
 
 ### Added

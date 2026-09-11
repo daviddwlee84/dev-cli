@@ -2,7 +2,7 @@
 description: Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
-verified_on: 2026-09-08
+verified_on: 2026-09-10
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 ---
 
@@ -59,12 +59,42 @@ raw errors. It is not `stats.db` and is never sent anywhere.
 the terminal rasterized it.
 
 Switch with `tab`, `h`/`l`, arrows, or left-click a visible tab. A left-button
-press selects a visible row without opening it, the wheel moves three rows, and a
-right-button press selects a row then opens its available actions. Modified
-clicks, motion, releases, and repeated-click activation are ignored; Enter/`o`
-remains the explicit open action. Some terminals require Shift/Option for native
+press selects a visible row; clicking the selected row opens its actions, even
+when selection came from the keyboard or startup. No double-click timing is needed.
+The wheel moves three rows, and a right-button press selects a row then opens its
+actions. Modified clicks, motion and releases are ignored. Opening the menu does
+not execute an option. Enter/`o` opens the row. Some terminals require Shift/Option for native
 text selection while mouse tracking is enabled. Keyboard movement, filtering,
 help, and mode exit remain unchanged.
+
+## Startup repository and discovery (Unreleased)
+
+TASKS remains the startup view. The first REPOS visit selects the repository
+containing the startup directory without changing ordering, scrolling it into
+view when needed. Subdirectories, aliases and linked worktrees resolve through
+Git common-directory identity; linked worktrees select the repo parent row.
+Manual selection, filtering and sorting take precedence over delayed results.
+
+An outside startup Git repo gets clickable **Add this repo…** and **Scan parent
+directory…** entries, also in Ctrl+O. The first appends the main repo root to
+`paths.repo_paths`; the second appends that root's parent to `paths.scan_roots`
+and includes sibling projects under the normal depth-3 discovery rules. Neither
+uses a nested working directory as the candidate root. Prefer exact repo entries
+for isolated locations and scan roots for directories dedicated to projects.
+
+Both actions preview the actual configuration file (including `--config`), path,
+scope and field change, with clickable confirm/cancel. Scroll long preview details
+with the wheel over the text or PgUp/PgDn. Only the selected field is extended;
+existing comments, entry order and inherited defaults are retained. Already covered
+repos are not added again, and old entries are not automatically consolidated.
+Saving reloads local discovery and selects the added repo. Failed/incomplete scans
+remain unknown rather than becoming an enrollment suggestion.
+
+Automatic writes use the guarded macOS/Linux file backend, retaining metadata and
+private recovery in `$XDG_DATA_HOME/dev/config-recovery`. A concurrent edit or
+changed repository identity rejects the preview. Symlink configurations, unsupported
+TOML layouts or platforms offer a manual change and config editor instead.
+If saving succeeds but reload fails, the dashboard reports both outcomes.
 
 ## Common actions
 

@@ -2,9 +2,27 @@
 
 ## Select an action
 
-Press `Ctrl+O` or right-click a row. TASKS and TRY also accept Space; REPOS Space
+Press `Ctrl+O`, right-click a row, or click the selected row. TASKS and TRY also accept Space; REPOS Space
 still expands linked worktrees. TASKS `a` shows completed tasks and does not mark
 a task done. A missing checkout offers recovery instead of completion.
+
+Click another row to select it, then click it again to open the same menu. A row
+selected by the keyboard or startup also qualifies; timing is unrestricted and
+the menu-opening click executes no option. TASKS stays the initial view; the first
+REPOS visit selects the startup repository by common-directory identity without
+changing sort order. Subdirectories and linked worktrees select the main repo row.
+Manual navigation wins over delayed inventory results.
+
+An outside startup Git repo has clickable Add this repo / Scan parent directory
+entries and matching Ctrl+O actions, including when REPOS is empty. Preview the
+active config file, field, root and scope before confirming. Exact repo_paths are
+preferred for isolated repos; scan_roots uses the main repo's parent and includes
+sibling projects. Append only necessary entries, preserve comments/defaults/order,
+respect --config, and never consolidate existing entries automatically. Apply
+revalidates source bytes and repo identity with private config-recovery data.
+Unsupported TOML, symlink configs and non-macOS/Linux platforms offer manual edits.
+Successful saves reload local inventory and select the added repo; failed scans
+remain unknown, and saved configuration is distinguished from failed reloads.
 
 TASKS finish, resume, retirement and recovery use the existing CLI workflows.
 The dashboard suspends during their prompts and refreshes when they finish,

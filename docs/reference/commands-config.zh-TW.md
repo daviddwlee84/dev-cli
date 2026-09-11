@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-08
+verified_on: 2026-09-10
 lang: zh-TW
 ---
 
@@ -712,3 +712,15 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 `dev cache clear repos` 清除 repository 顯示快照；`dev cache clear skills`
 清除附時間的來源比較 cache，`all` 包含兩者。`stats.db` 與 skills run receipts 不受影響。
 詳見 [Skills 管理](../guides/skills-management.zh-TW.md)。
+
+## Dashboard 掃描設定加入（Unreleased）
+
+首次進入 REPOS 會預選啟動 repo 並保留排序；點反白列開啟 actions menu。
+啟動 Git repo 未被掃描涵蓋時，可點提示列預覽把主 repo 根目錄加入
+`paths.repo_paths`，或把其父目錄加入 `paths.scan_roots`。使用本次實際設定檔
+（包含 `--config`），保留註解、項目順序與省略欄位的預設值，不新增設定來源。
+精確路徑適合零散 repo；父目錄會涵蓋同層專案，需另行確認。
+自動寫入沿用 macOS/Linux 的安全檔案交易，私有復原紀錄位於
+`$XDG_DATA_HOME/dev/config-recovery`；symlink 設定檔、不支援的 TOML 格式
+或平台提供手動修改與編輯器入口。載入失敗不代表未納管；成功儲存後重新掃描，
+重載失敗會另外回報。CLI flags 與既有 JSON 契約不變。

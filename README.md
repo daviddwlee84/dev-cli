@@ -694,11 +694,28 @@ g G        top / bottom         h l / tab       previous / next view
 ```
 
 Mouse cell tracking is enabled alongside the keyboard model. Left-click selects a
-visible row or tab, the wheel moves three rows, and right-click selects a row then
-opens the same available actions used by keyboard shortcuts. Clicks act on press;
-release/motion and modified clicks are ignored, and repeated clicks never imply
-open. Terminals that reserve tracked mouse input may require Shift/Option while
-selecting text.
+visible row or tab. Clicking the selected row opens its actions, including a row
+selected by the keyboard or at startup; no double-click timing is required. The
+wheel moves three rows, and right-click selects a row then opens the same actions.
+Clicks act on press; release/motion and modified clicks are ignored. Opening a
+menu does not execute its options. Terminals that reserve tracked mouse input may
+require Shift/Option while selecting text.
+
+The dashboard still starts on TASKS. On the first REPOS visit it selects the repo
+containing the startup directory, keeping the configured ordering and scrolling
+the row into view. Subdirectories and linked worktrees identify the same main
+repository. Manual selection, filtering or sorting takes precedence over late loads.
+
+When the startup Git repository is outside discovery, REPOS shows clickable
+**Add this repo…** and **Scan parent directory…** entries, also available in
+Ctrl+O. Review and confirm the actual config file, path and scope before saving.
+Prefer `paths.repo_paths` for isolated repos and `paths.scan_roots` for a parent
+that holds related projects. Additions preserve comments and existing entry order,
+respect `--config`, avoid duplicates and retain defaults for omitted settings.
+They reload local inventory and select the added repo. Automatic edits use the
+macOS/Linux guarded file backend and retain private recovery under
+`$XDG_DATA_HOME/dev/config-recovery`; symlink configs and unsupported TOML layouts
+offer a manual edit. Scan failures remain unknown and do not trigger enrollment.
 
 `enter` opens a selected row only when its checkout is currently valid. Inside Herdr/tmux/Zellij it
 switches the current client; outside it exits the dashboard and attaches to
@@ -737,7 +754,7 @@ them to every directory.
 
 ### Dashboard lifecycle actions
 
-Press `Ctrl+O` or right-click a row for actions; TASKS and TRY also accept Space.
+Press `Ctrl+O`, right-click a row, or click the selected row for actions; TASKS and TRY also accept Space.
 REPOS Space continues to expand worktrees. TASKS offers the existing finish,
 resume, retirement and selected-task recovery workflows. `a` shows completed
 tasks; it does not mark a task done. Missing checkout rows go through recovery.

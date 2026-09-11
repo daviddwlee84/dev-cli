@@ -29,12 +29,31 @@ of causing revisit loops; a visible dependent view automatically resumes after
 REPOS recovers. Cached rows and current live results are separate readiness
 stages; there is no all-tabs-ready state for views that may never be opened.
 
-Mouse tracking supplements rather than replaces the keyboard model. A left-button
-press selects a visible row or tab, the wheel moves three rows, and a right-button
-press selects a row then opens its available action menu. Releases, motion,
-modified clicks, and repeated-click activation are ignored; Enter/`o` remains the
-explicit open action. Depending on the terminal, hold Shift/Option for native text
-selection while tracking is enabled.
+Mouse tracking works alongside the keyboard model. A left-button press selects a
+visible row or tab; clicking the selected row opens its action menu, including
+keyboard/startup selections and without double-click timing. The wheel moves three
+rows, and right-click selects a row then opens its menu. Releases, motion and
+modified clicks are ignored. Opening a menu executes no option; Enter/`o` opens
+the row. Depending on the terminal, hold Shift/Option for native text selection.
+
+TASKS remains the initial view. The first REPOS visit selects the startup repo,
+keeping the configured order and scrolling it into view. Subdirectories, aliases
+and linked worktrees identify the main repository through Git's common directory.
+Manual selection, filtering and sorting take precedence over delayed results.
+
+An outside startup Git repo gets clickable Add this repo / Scan parent directory
+entries in REPOS and Ctrl+O. Preview the actual config file (including --config),
+field, path and scope, then click confirm or cancel. Exact repo_paths suit isolated
+repos; scan_roots uses the main repo's parent and includes sibling projects under
+normal depth-3 rules. Preserve comments, defaults and existing order; duplicate
+coverage is rejected and old entries are not consolidated automatically. Saving
+refreshes local inventory and selects the added repo; reload failures are reported
+separately. Incomplete scans never prove a repo is outside discovery.
+
+Automatic edits use the guarded macOS/Linux file backend with private recovery
+under $XDG_DATA_HOME/dev/config-recovery. Changed source bytes or repository
+identity reject the preview. Symlink configs, unsupported TOML layouts and other
+platforms offer a manual change and the configuration editor.
 
 ## Repository lifecycle preview
 
@@ -165,6 +184,7 @@ h / l, shift-tab/tab previous / next view
 esc                  close prompt/filter/overlay; when clear, quit
 q                    quit (or close help/action menu)
 left click           select a visible row or switch a visible tab
+click selected row   open its action menu (no double-click timing)
 wheel                 move three rows up/down
 right click          select a row and open its available actions
 ```
@@ -386,7 +406,7 @@ on those two views.
 
 ## Lifecycle action menus
 
-`Ctrl+O` and right-click open row actions. Space does the same on TASKS and TRY;
+`Ctrl+O`, right-click and clicking the selected row open row actions. Space does the same on TASKS and TRY;
 REPOS Space still expands worktrees. TASKS offers finish, resume, retire and
 selected-task recovery via the existing CLI workflows, with fresh task revision
 checks. `a` means show completed tasks. Missing checkouts require recovery.

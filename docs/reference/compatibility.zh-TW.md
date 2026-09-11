@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-08
+verified_on: 2026-09-10
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
@@ -361,3 +361,15 @@ Experimental install 是上游依來源／ref 重裝，可能更新 lock，不�
 Experimental sync 讀取現有 node_modules，僅作用於所選 project agents。
 此契約不同於 transfer preparation 的 pinned provider／verified payload。
 REPOS cache 只提供顯示，Git／runtime／task authority 仍需新觀察與操作前驗證。
+
+## Dashboard 掃描設定加入（Unreleased）
+
+首次進入 REPOS 會預選啟動 repo 並保留排序；點反白列開啟 actions menu。
+啟動 Git repo 未被掃描涵蓋時，可點提示列預覽把主 repo 根目錄加入
+`paths.repo_paths`，或把其父目錄加入 `paths.scan_roots`。使用本次實際設定檔
+（包含 `--config`），保留註解、項目順序與省略欄位的預設值，不新增設定來源。
+精確路徑適合零散 repo；父目錄會涵蓋同層專案，需另行確認。
+自動寫入沿用 macOS/Linux 的安全檔案交易，私有復原紀錄位於
+`$XDG_DATA_HOME/dev/config-recovery`；symlink 設定檔、不支援的 TOML 格式
+或平台提供手動修改與編輯器入口。載入失敗不代表未納管；成功儲存後重新掃描，
+重載失敗會另外回報。CLI flags 與既有 JSON 契約不變。

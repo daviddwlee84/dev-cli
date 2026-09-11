@@ -71,8 +71,9 @@ func newTUIProjectRootResolver(trace *perftrace.Recorder, ctx context.Context) *
 	if ctx == nil {
 		ctx = context.Background()
 	}
+	cwd, cwdErr := os.Getwd()
 	return &tuiProjectRootResolver{
-		trace: trace, ctx: ctx, getwd: os.Getwd, resolve: agenttarget.Current,
+		trace: trace, ctx: ctx, getwd: func() (string, error) { return cwd, cwdErr }, resolve: agenttarget.Current,
 		ready: make(chan struct{}),
 	}
 }

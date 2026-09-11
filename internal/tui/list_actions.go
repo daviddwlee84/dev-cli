@@ -10,6 +10,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -70,6 +71,11 @@ const (
 	listActionSkillVisible
 	listActionSkillGlobal
 	listActionSkillFiltered
+	listActionRegisterRepo
+	listActionRegisterParent
+	listActionRegistrationConfirm
+	listActionRegistrationCancel
+	listActionRegistrationEdit
 )
 
 type selectionToken struct {
@@ -246,6 +252,7 @@ func (m Model) selectionHeading() (string, string) {
 }
 
 func (m Model) openActionMenu() Model {
+	m.stopStartupFocus()
 	token, ok := m.currentSelectionToken()
 	if !ok {
 		m.overlay = overlayState{kind: overlayActionMenu, title: strings.ToUpper(m.view.String()) + " actions"}
@@ -264,6 +271,7 @@ func (m Model) openActionMenu() Model {
 		if m.lastTriageLedger != nil {
 			m.overlay.addOption(listActionLastTriage, "last triage results…")
 		}
+		m.addDiscoveryOptions(&m.overlay)
 		return m
 	}
 	subject, detail := m.selectionHeading()
@@ -461,6 +469,7 @@ func (m Model) openActionMenu() Model {
 			}
 		}
 	}
+	m.addDiscoveryOptions(&overlay)
 	if overlay.optionCount == 0 {
 		return m
 	}
@@ -518,7 +527,7 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 	option := m.overlay.options[m.overlay.optionIndex]
 	token := m.overlay.selection
 	rowIndependent := action == listActionTriageAll || action == listActionTriageFiltered || action == listActionStateFilter || (action >= listActionStateAll && action <= listActionStateDone) || action == listActionLastTriage || action == listActionSettings || action == listActionStatusDetails
-	if !rowIndependent && !m.selectToken(token) {
+	if !rowIndependent && !discoveryAction(action) && !m.selectToken(token) {
 		m.overlay = overlayState{}
 		m.err = fmt.Errorf("selected row changed while its action menu was open")
 		return m, nil
@@ -534,6 +543,21 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
+	if discoveryAction(action) {
+		switch action {
+		case listActionRegisterRepo:
+			return m.beginRegistration(repo.DiscoveryExact)
+		case listActionRegisterParent:
+			return m.beginRegistration(repo.DiscoveryParent)
+		case listActionRegistrationConfirm:
+			return m.confirmRegistration()
+		case listActionRegistrationCancel:
+			m.overlay = overlayState{}
+			return m, nil
+		case listActionRegistrationEdit:
+			return m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+		}
+	}
 	if item, ok := m.currentRepoItem(); ok && item.Repo.Pending != "" {
 		switch action {
 		case listActionSortMenu, listActionSettings, listActionStatusDetails:

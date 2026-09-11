@@ -53,6 +53,7 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		if !m.mouseOverList(event.X, event.Y) {
 			return m, nil
 		}
+		m.stopStartupFocus()
 		delta := mouseWheelRows
 		if event.Button == tea.MouseButtonWheelUp {
 			delta = -delta
@@ -78,6 +79,11 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if event.Button == tea.MouseButtonLeft {
+		for _, button := range m.discoveryBanner().buttons {
+			if event.Y == 2+button.line && event.X >= button.from && event.X < button.to {
+				return m.runListAction(button.action)
+			}
+		}
 		h := m.tableHeader()
 		if event.Y == 2+h.line {
 			for _, column := range h.columns {
@@ -93,9 +99,14 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return m, nil
 	}
+	m.stopStartupFocus()
 	switch event.Button {
 	case tea.MouseButtonLeft:
+		selected := row == m.at()
 		m.setAt(row)
+		if selected && !m.remoteClone.active() {
+			m = m.openActionMenu()
+		}
 	case tea.MouseButtonRight:
 		m.setAt(row)
 		if !m.remoteClone.active() {
@@ -129,6 +140,14 @@ func (m Model) mouseOverList(x, y int) bool {
 
 func (m Model) updateActionMenuMouse(event tea.MouseEvent) (tea.Model, tea.Cmd) {
 	if event.Button == tea.MouseButtonWheelUp || event.Button == tea.MouseButtonWheelDown {
+		if m.overlay.body != "" && event.Y < m.buildActionMenuLayout().firstOptionY {
+			delta := mouseWheelRows
+			if event.Button == tea.MouseButtonWheelUp {
+				delta = -delta
+			}
+			m.scrollActionBody(delta)
+			return m, nil
+		}
 		if m.overlay.optionCount == 0 {
 			return m, nil
 		}

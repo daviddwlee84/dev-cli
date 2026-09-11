@@ -27,10 +27,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	var focus selectionToken
+	var path string
+	preserveFocus := false
+	switch msg.(type) {
+	case localMsg, reposMsg, reloadMsg, sizeMsg, configMsg, triesMsg, noteListMsg:
+		preserveFocus = true
+		focusModel := m
+		focusModel.view = ViewRepos
+		focus, path = focusModel.currentToken(), focusModel.repoFocusPath()
+	}
 	next, command := m.update(msg)
 	model, ok := next.(Model)
-	if !ok || model.quitting || model.actions.LoadRepoTopology == nil {
+	if !ok || model.quitting {
 		return next, command
+	}
+	if preserveFocus {
+		focusModel := model
+		focusModel.view = ViewRepos
+		focusModel.restoreRepoFocus(focus, path)
+		model.repoCursor = focusModel.repoCursor
+	}
+	model.finishRegistrationReload()
+	model.focusStartupRepo()
+	if model.actions.LoadRepoTopology == nil {
+		return model, command
 	}
 	row, ok := model.currentRepo()
 	if !ok || row.Pending != "" || !row.TopologyPending {

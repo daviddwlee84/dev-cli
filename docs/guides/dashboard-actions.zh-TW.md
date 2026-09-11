@@ -2,7 +2,7 @@
 description: 從 Dashboard 完成與恢復 task、透過系統垃圾桶處理 Try，並開啟 repository 首頁。
 authority: project
 status: evolving
-verified_on: 2026-09-08
+verified_on: 2026-09-10
 lang: zh-TW
 ---
 
@@ -10,9 +10,15 @@ lang: zh-TW
 
 ## 選擇操作
 
-按 `Ctrl+O` 或右鍵開啟 row actions。TASKS 與 TRY 也可按 Space；REPOS 的
+按 `Ctrl+O`、右鍵或點目前反白列開啟 row actions。TASKS 與 TRY 也可按 Space；REPOS 的
 Space 仍用來展開 linked worktrees。TASKS 的 `a` 是顯示已完成 tasks，並不會
 把 task 標成 done。Checkout 遺失時提供 recovery，不能直接當成完成。
+
+點其他列先選取，再點反白列開選單，不限間隔，也不會直接執行選單項目。
+鍵盤或啟動時預選的列也適用。首次切到 REPOS 會預選啟動目錄所屬 repo，
+保持原排序。未被掃描涵蓋的啟動 repo 提供可點擊的預覽入口，確認加入
+`repo_paths` 或把父目錄加入 `scan_roots` 後，重新載入本機清單並定位。
+詳見 [TUI 啟動 repo 與掃描設定](tui-repos-bootstrap.zh-TW.md)。
 
 TASKS 的完成、恢復、退休與 recovery 沿用既有 CLI workflows。Dashboard 在
 提示期間暫停，完成或失敗後重新載入。Task ID／revision 檢查會拒絕過期選取。
