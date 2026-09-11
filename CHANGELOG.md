@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Interactive `dev ssh` dispatch preserves the command context when opening
+  machine management or organization, preventing the nil-parent context panic
+  and retaining cancellation and deadlines through the selected workflow.
+
 ## [0.2.24] - 2026-09-11
 
 ### Added
