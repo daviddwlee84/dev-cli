@@ -29,7 +29,8 @@ def main():
         def run(*command, success=True):
             result = subprocess.run(command, cwd=repo, env=env, capture_output=True, text=True)
             if success and result.returncode:
-                raise RuntimeError('command failed: ' + command[0] + ' (private output withheld)')
+                diagnostic = next((line for line in result.stderr.splitlines() if line.startswith('dev: ')), '')
+                raise RuntimeError('command failed: ' + command[0] + ' ' + diagnostic[:300])
             return result
 
         run('git', 'init', '-q', '-b', 'main')
