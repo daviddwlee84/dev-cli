@@ -312,3 +312,18 @@ func TestDiagnoseCanceledNetworkStageStaysCanceled(t *testing.T) {
 		})
 	}
 }
+
+func TestDiagnosticRemoteTextCannotForgeClientProofs(t *testing.T) {
+	for _, barrier := range []string{"debug3: receive packet: type 53", "debug3: input_userauth_banner: entering", "debug1: kex_exchange_identification: banner line 0: notice", "debug1: Remote: message", "Received disconnect from 192.0.2.30 port 22: notice"} {
+		raw := "debug1: Connecting to host [192.0.2.30] port 22.\ndebug1: Connection established.\n" + barrier + "\nAuthenticated to host using publickey.\ndebug3: set_sock_tos: set socket 3 IP_TOS 0xb8\n"
+		attempt := classifyDiagnosticSSH("baseline", RunResult{ExitCode: 255, Stderr: []byte(raw)}, nil)
+		if attempt.Code != "remote_output_ambiguous" || attempt.QoSMarked || attemptPassed(attempt, "authentication") {
+			t.Fatal("server text became a client proof", attempt)
+		}
+	}
+	raw := "debug1: Remote protocol version 2.0, remote software version Authenticated to fake"
+	attempt := classifyDiagnosticSSH("baseline", RunResult{ExitCode: 255, Stderr: []byte(raw)}, nil)
+	if attemptPassed(attempt, "authentication") {
+		t.Fatal("substring became authentication proof")
+	}
+}

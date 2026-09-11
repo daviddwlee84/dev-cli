@@ -198,7 +198,7 @@ func (s *Service) Diagnose(ctx context.Context, request DiagnoseRequest) (Diagno
 			code = "qos_no_progress"
 			if compared.Endpoint != baseline.Endpoint || compared.Port != baseline.Port {
 				code = "path_not_comparable"
-			} else if compared.Ready || attemptPassed(compared, "handshake") || strings.HasPrefix(compared.Code, "host_key_") {
+			} else if compared.Ready || !attemptPassed(baseline, "transport") && attemptPassed(compared, "transport") {
 				code = "qos_correlated_progress"
 				d.Findings = append(d.Findings, code)
 				d.SuggestedActions = append(d.SuggestedActions, "review_per_host_ipqos")

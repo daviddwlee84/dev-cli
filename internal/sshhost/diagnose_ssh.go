@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-var diagnosticEndpoint = regexp.MustCompile(`Connecting to .* \[([^\]]+)\] port ([0-9]+)\.`)
+var diagnosticEndpoint = regexp.MustCompile(`(?m)^Connecting to [^\r\n]* \[([^\]\r\n]+)\] port ([0-9]+)\.$`)
 
 func (s *Service) diagnosticSSHAttempt(ctx context.Context, target string, none bool) DiagnosticAttempt {
 	started := time.Now()
@@ -32,14 +32,21 @@ func classifyDiagnosticSSH(name string, run RunResult, runErr error) DiagnosticA
 	for _, stage := range []string{"transport", "handshake", "host_key", "authentication", "session"} {
 		a.Stages = append(a.Stages, DiagnosticStage{Name: stage, State: "unknown", Code: "not_observed"})
 	}
-	stderr := string(run.Stderr)
-	if matches := diagnosticEndpoint.FindAllStringSubmatch(stderr, -1); len(matches) > 0 {
+	stderr, remoteOutput := diagnosticClientPrefix(string(run.Stderr))
+	networkLog := diagnosticNetworkPrefix(stderr)
+	connected := diagnosticHasLine(networkLog, "Connection established.", true)
+	if matches := diagnosticEndpoint.FindAllStringSubmatch(networkLog, -1); len(matches) > 0 {
 		final := matches[len(matches)-1]
 		a.Endpoint = diagnosticText(final[1])
 		a.Port, _ = strconv.Atoi(final[2])
 	}
 	lower := strings.ToLower(stderr)
-	a.QoSMarked = strings.Contains(lower, "set_sock_tos:") && (strings.Contains(lower, "ip_tos") || strings.Contains(lower, "ipv6_tclass")) && !strings.Contains(lower, "setsockopt")
+	for _, line := range strings.Split(strings.ToLower(networkLog), "\n") {
+		if strings.HasPrefix(line, "set_sock_tos:") && (strings.Contains(line, "ip_tos") || strings.Contains(line, "ipv6_tclass")) {
+			a.QoSMarked = true
+		}
+	}
+	a.QoSMarked = a.QoSMarked && !strings.Contains(strings.ToLower(networkLog), "setsockopt")
 	mark := func(name, state, code string) {
 		for i := range a.Stages {
 			if a.Stages[i].Name == name {
@@ -48,17 +55,17 @@ func classifyDiagnosticSSH(name string, run RunResult, runErr error) DiagnosticA
 			}
 		}
 	}
-	if strings.Contains(stderr, "Connection established.") {
+	if connected {
 		mark("transport", "passed", "tcp_connected")
 	}
-	if strings.Contains(stderr, "SSH2_MSG_NEWKEYS received") {
+	if diagnosticHasLine(stderr, "SSH2_MSG_NEWKEYS received", true) {
 		mark("transport", "passed", "tcp_connected")
 		mark("handshake", "passed", "handshake_complete")
 	}
-	if strings.Contains(lower, "is known and matches the") || strings.Contains(stderr, "Found CA key") {
+	if diagnosticHasHostProof(stderr) {
 		mark("host_key", "passed", "host_key_verified")
 	}
-	authenticated := strings.Contains(stderr, "Authenticated to ")
+	authenticated := diagnosticHasLine(stderr, "Authenticated to ", false)
 	if authenticated {
 		for _, stage := range []string{"transport", "handshake", "host_key", "authentication"} {
 			mark(stage, "passed", map[string]string{"transport": "tcp_connected", "handshake": "handshake_complete", "host_key": "host_key_verified", "authentication": "authenticated"}[stage])
@@ -79,6 +86,8 @@ func classifyDiagnosticSSH(name string, run RunResult, runErr error) DiagnosticA
 	case authenticated:
 		a.Code = "session_failed"
 		mark("session", "failed", a.Code)
+	case remoteOutput:
+		a.Code = "remote_output_ambiguous"
 	case strings.Contains(stderr, "REMOTE HOST IDENTIFICATION HAS CHANGED"):
 		a.Code = "host_key_changed"
 		mark("host_key", "failed", a.Code)
@@ -100,7 +109,10 @@ func classifyDiagnosticSSH(name string, run RunResult, runErr error) DiagnosticA
 	case errors.Is(runErr, context.DeadlineExceeded) || strings.Contains(lower, "timed out"):
 		stage := "transport"
 		a.Code = "connect_timeout"
-		if attemptPassed(a, "transport") {
+		if attemptPassed(a, "handshake") {
+			stage = "authentication"
+			a.Code = "authentication_timeout"
+		} else if attemptPassed(a, "transport") {
 			stage = "handshake"
 			a.Code = "handshake_timeout"
 		}
@@ -114,8 +126,26 @@ func classifyDiagnosticSSH(name string, run RunResult, runErr error) DiagnosticA
 		mark("transport", "passed", "tcp_connected")
 		mark("handshake", "unknown", "host_identity_reached")
 	}
+	// A failed client command cannot establish completed authentication from
+	// human log text. Preserve phase hints without converting them into success.
+	for i := range a.Stages {
+		stage := &a.Stages[i]
+		if stage.State != "passed" {
+			continue
+		}
+		if stage.Name == "transport" && connected {
+			continue
+		}
+		stage.State = "unknown"
+		stage.Code = stage.Name + "_reported"
+	}
 	if a.Truncated && !a.Ready {
 		a.Code = "evidence_truncated"
+		a.QoSMarked = false
+		for i := range a.Stages {
+			a.Stages[i].State = "unknown"
+			a.Stages[i].Code = "evidence_truncated"
+		}
 	}
 	return a
 }
@@ -126,4 +156,52 @@ func attemptPassed(a DiagnosticAttempt, name string) bool {
 		}
 	}
 	return false
+}
+
+// Server banners/debug/disconnect text may contain arbitrary log-looking lines.
+// Only the client-generated prefix before such text can supply partial proofs;
+// exit zero still proves a completed fresh login independently of log wording.
+func diagnosticClientPrefix(raw string) (string, bool) {
+	var trusted []string
+	for _, line := range strings.Split(raw, "\n") {
+		line = strings.TrimSuffix(line, "\r")
+		for _, prefix := range []string{"debug1: ", "debug2: ", "debug3: "} {
+			if strings.HasPrefix(line, prefix) {
+				line = strings.TrimPrefix(line, prefix)
+				break
+			}
+		}
+		if strings.HasPrefix(line, "receive packet: type 53") || strings.HasPrefix(line, "input_userauth_banner:") || strings.HasPrefix(line, "kex_exchange_identification: banner line ") || strings.HasPrefix(line, "Remote: ") || strings.HasPrefix(line, "Received disconnect from ") || strings.HasPrefix(line, "Unable to negotiate with ") {
+			return strings.Join(trusted, "\n"), true
+		}
+		trusted = append(trusted, line)
+	}
+	return strings.Join(trusted, "\n"), false
+}
+func diagnosticHasLine(log, wanted string, exact bool) bool {
+	for _, line := range strings.Split(log, "\n") {
+		if exact && line == wanted || !exact && strings.HasPrefix(line, wanted) {
+			return true
+		}
+	}
+	return false
+}
+func diagnosticHasHostProof(log string) bool {
+	for _, line := range strings.Split(log, "\n") {
+		if strings.HasPrefix(line, "Host ") && strings.Contains(line, " is known and matches the ") || strings.HasPrefix(line, "Found CA key") {
+			return true
+		}
+	}
+	return false
+}
+
+func diagnosticNetworkPrefix(log string) string {
+	var prefix []string
+	for _, line := range strings.Split(log, "\n") {
+		prefix = append(prefix, line)
+		if line == "Connection established." {
+			break
+		}
+	}
+	return strings.Join(prefix, "\n")
 }

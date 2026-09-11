@@ -92,7 +92,7 @@ func sshDiagnosticActionText(action string) string {
 	case "check_authentication":
 		return "Check the effective user, selected identities and agent availability; this probe does not prompt for credentials."
 	case "check_remote_session":
-		return "Authentication succeeded; inspect the remote shell or session policy."
+		return "Client logs report authentication; inspect the remote shell or session policy. A failed command does not prove a completed login."
 	case "inspect_ssh_config":
 		return "Inspect the target with ssh -G and correct its local configuration."
 	case "review_per_host_ipqos":

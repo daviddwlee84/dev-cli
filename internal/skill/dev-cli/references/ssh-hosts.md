@@ -420,3 +420,9 @@ Operational failure still emits one JSON document and a nonzero exit status.
 
 Failed proxy connections keep final-target stages unknown: a helper may print
 its own successful jump-host authentication, which is not final-target proof.
+
+On a failed SSH command, successful handshake/host-key/authentication log markers
+remain reported hints with unknown state. Only a zero-exit fresh login establishes
+completed authentication. Server-supplied banners/debug messages cannot provide
+positive client evidence; QoS comparisons use pre-connection marking and actual
+connection progress or a verified successful login.

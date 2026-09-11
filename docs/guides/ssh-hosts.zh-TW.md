@@ -352,3 +352,8 @@ next-action codes。原始 debug log、server banner、config comments、proxy c
 
 Proxy 連線失敗時，最終目標的階段保持 unknown：helper 可能輸出自己的 jump-host
 認證成功日誌，這不能證明最終目標也已通過認證。
+
+SSH 指令失敗時，handshake／host-key／authentication 的成功日誌只保留為 reported
+提示，狀態維持 unknown；只有 fresh login 以零 exit code 完成才確認整體登入。
+Server banner／debug 訊息不能提供正向 client 證據。QoS 對照使用連線前的 marking、
+實際連線進展或已確認成功的登入。
