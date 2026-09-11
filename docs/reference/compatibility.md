@@ -487,3 +487,19 @@ stale/unresolved. Discovery caches are safe to clear; the registry is not cache.
 Source-aware setup retains native host-key policy, uses `--auth existing` for
 Tailscale policy authentication, and does not enable Tailscale SSH or manage its
 ACLs. See [SSH onboarding](../guides/ssh-hosts.md#discovery-and-canonical-machines).
+
+## SSH key inventory and permission preflight
+
+`ssh key list` needs no alias/OpenSSH evaluation by default; agent enumeration is
+optional (`--no-agent`). Explicit `--alias` can execute configured Match exec or
+resolver behavior through `ssh -G`. Public-only candidates, unavailable agents,
+unsafe paths and incomplete scans remain visible as limitations. No private key
+contents are listed and neither catalog mode repairs or installs anything.
+
+The setup wizard offers only exact, reviewed tightening for canonical SSH setup
+paths and a selected key/companions. Unrelated files, ownership changes and unsafe
+links/metadata remain manual. Automatic mode tightening is macOS/Linux only;
+Windows validates its existing ACLs and leaves repairs manual. Completed repairs are retained after later cancel;
+this permission stage is separately confirmed before the main onboarding plan.
+Optional registration accepts zero checkboxes without treating it as cancellation;
+required host/source multi-selection keeps its existing cancellation behavior.

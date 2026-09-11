@@ -487,3 +487,58 @@ merge keeps the survivor and old-ID redirect. These actions do not edit provider
 configuration or stop sessions. cache clear ssh-discovery/all cannot delete the
 registry. Registry snapshots/transactions carry schema_version; discovery and
 source-aware setup use ssh_discovery and ssh_onboarding_plan/result documents.
+
+## Key selection and optional registration
+
+```bash
+dev ssh key list
+dev ssh key list --json
+dev ssh key list --no-agent
+dev ssh key list --alias lab --json
+```
+
+The default key listing scans bounded public-key files under `~/.ssh` and the
+current SSH agent without evaluating an alias. It deduplicates by fingerprint
+and reports algorithm, comment, source paths, source provenance and signer-availability
+hints. `--no-agent` skips agent enumeration. Only explicit `--alias`
+uses plain `ssh -G` and the alias's configured identity/agent settings; configured
+Match exec or resolver behavior may run. Listing never reads private-key contents,
+derives/generates a key, repairs permissions or authenticates remotely.
+`--json` emits one `ssh_key_list` document with candidates, completeness and source
+diagnostics; a missing or unusable source does not become an empty success claim.
+
+Choosing an existing key in the setup wizard opens this catalog, with an
+**Enter a key path…** fallback. A public file without an available signer remains
+visible but cannot silently satisfy bootstrap. Select another identity, load its
+signer into the agent or provide the matching private-key path. The selected key
+is validated before continuing to later registration prompts; generation and
+remote installation retain their own explicit choices and native prompts.
+
+Before the no-argument setup wizard's host picker, dev checks only existing
+`~/.ssh`, its root config and `dev.d` permissions. Choosing a key adds its selected
+private/public companion and required parents to the check. On macOS/Linux,
+straightforward tightening uses 0700 for directories and 0600 for config/private
+files; public companions only lose group/world write bits. Repairs never add
+permissions or create missing files. ACLs and unsupported security metadata need
+manual handling; Windows validates existing ACLs without rewriting them. A repair
+preview shows exact paths and mode changes and asks separately before tightening them.
+Completed tightening remains if the later wizard is canceled. This is not a
+recursive chmod: unrelated Include files, other keys, ownership changes,
+links/hardlinks and unsupported metadata require manual remediation. Declining
+repair stops before configuration or authentication; normal listing/dry runs do
+not perform repairs. The main onboarding preview still precedes aliases,
+registry bindings, generated keys and remote changes.
+
+Registration uses independent **Fleet** and **Herdr** checkboxes, both initially
+unchecked. Space toggles an item, Ctrl+A selects/clears, Enter accepts and Esc
+cancels. No checked item means no registration; one selects that provider and two
+select both. The setup wizard continues without provider-specific prompts when
+none are selected. Standalone manage/dashboard registration returns a no-op
+without authentication or provider changes. CLI `--to fleet|herdr|both` remains
+unchanged.
+
+The external picker is configured by `[picker].command` and defaults to fzf for
+single selections, including key selection. A missing executable or an empty
+command uses the built-in picker. Multi-selection always uses the built-in
+Bubble Tea picker, even when fzf is installed. Required host/source selectors
+still reject an empty selection; registration alone treats it as an accepted skip.

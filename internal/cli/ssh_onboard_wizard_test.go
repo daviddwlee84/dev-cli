@@ -57,7 +57,10 @@ func runSSHOnboardWizardCLI(t *testing.T, f *sshCLIFixture, runner sshhost.Runne
 				t.Fatalf("unexpected authentication alias %q", alias)
 			}
 		case request.Prompt == "Optional registration":
-			value = "none"
+			if !request.Multi || len(request.Items) != 2 || len(request.Selected) != 0 {
+				t.Fatalf("expected unchecked registration destinations, got %+v", request)
+			}
+			return picker.Result{Items: []picker.Item{}}, nil
 		default:
 			t.Fatalf("unexpected picker: %+v", request)
 		}

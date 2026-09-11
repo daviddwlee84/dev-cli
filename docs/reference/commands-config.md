@@ -31,7 +31,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
-| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh probe`, `ssh remove` |
+| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh probe`, `ssh remove` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
@@ -514,6 +514,7 @@ The executable must implement a line-selector contract: candidates arrive on
 stdin and the selected original line is returned on stdout. The default is
 `fzf`; compatible selectors can replace the entire array. A missing executable
 falls back to dev's Bubble Tea picker, and `command = []` forces that fallback.
+Multi-selection always uses the built-in picker, regardless of the external command.
 This is global host policy and cannot be overridden by a repository. Non-TTY
 callers retain deterministic line prompts.
 
@@ -877,3 +878,17 @@ Tailscale status, but writes no config, registry, key or cache and does not log 
 are rejected. Actions preview by default. Snapshot/transaction documents contain
 `schema_version`, machine revisions and scoped bindings; the registry UUID never
 replaces remote fleet's `machine_id` pin. See [SSH onboarding](../guides/ssh-hosts.md#discovery-and-canonical-machines).
+
+## SSH key catalog and picker behavior
+
+`ssh key list` accepts `--json`, `--no-agent` and `--alias <alias>`. Its default
+local catalog skips `ssh -G`; explicit alias mode evaluates configured identities
+and agent settings. JSON uses `schema_version: 1`, `kind: ssh_key_list`, candidates,
+completeness and diagnostics. The command never repairs permissions or logs in.
+
+Interactive setup selects an existing key from this catalog or a manual path.
+Its narrowly scoped permission preflight is a separate confirmed repair before
+later wizard steps; completed tightening remains after cancellation. Fleet/Herdr
+registration uses two optional checkboxes: none, either or both map to the existing
+registration behavior. Multi-selection uses built-in Bubble Tea; fzf remains the
+configured default for single selection. See [SSH key selection](../guides/ssh-hosts.md#key-selection-and-optional-registration).

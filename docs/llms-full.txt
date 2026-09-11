@@ -2589,6 +2589,61 @@ redirect. Neither operation edits provider configuration or stops remote session
 The private registry is durable; `dev cache clear ssh-discovery` and `cache clear all`
 remove only observations, never canonical identities or manual bindings.
 
+## Key selection and optional registration
+
+```bash
+dev ssh key list
+dev ssh key list --json
+dev ssh key list --no-agent
+dev ssh key list --alias lab --json
+```
+
+The default key listing scans bounded public-key files under `~/.ssh` and the
+current SSH agent without evaluating an alias. It deduplicates by fingerprint
+and reports algorithm, comment, source paths, source provenance and signer-availability
+hints. `--no-agent` skips agent enumeration. Only explicit `--alias`
+uses plain `ssh -G` and the alias's configured identity/agent settings; configured
+Match exec or resolver behavior may run. Listing never reads private-key contents,
+derives/generates a key, repairs permissions or authenticates remotely.
+`--json` emits one `ssh_key_list` document with candidates, completeness and source
+diagnostics; a missing or unusable source does not become an empty success claim.
+
+Choosing an existing key in the setup wizard opens this catalog, with an
+**Enter a key path…** fallback. A public file without an available signer remains
+visible but cannot silently satisfy bootstrap. Select another identity, load its
+signer into the agent or provide the matching private-key path. The selected key
+is validated before continuing to later registration prompts; generation and
+remote installation retain their own explicit choices and native prompts.
+
+Before the no-argument setup wizard's host picker, dev checks only existing
+`~/.ssh`, its root config and `dev.d` permissions. Choosing a key adds its selected
+private/public companion and required parents to the check. On macOS/Linux,
+straightforward tightening uses 0700 for directories and 0600 for config/private
+files; public companions only lose group/world write bits. Repairs never add
+permissions or create missing files. ACLs and unsupported security metadata need
+manual handling; Windows validates existing ACLs without rewriting them. A repair
+preview shows exact paths and mode changes and asks separately before tightening them.
+Completed tightening remains if the later wizard is canceled. This is not a
+recursive chmod: unrelated Include files, other keys, ownership changes,
+links/hardlinks and unsupported metadata require manual remediation. Declining
+repair stops before configuration or authentication; normal listing/dry runs do
+not perform repairs. The main onboarding preview still precedes aliases,
+registry bindings, generated keys and remote changes.
+
+Registration uses independent **Fleet** and **Herdr** checkboxes, both initially
+unchecked. Space toggles an item, Ctrl+A selects/clears, Enter accepts and Esc
+cancels. No checked item means no registration; one selects that provider and two
+select both. The setup wizard continues without provider-specific prompts when
+none are selected. Standalone manage/dashboard registration returns a no-op
+without authentication or provider changes. CLI `--to fleet|herdr|both` remains
+unchanged.
+
+The external picker is configured by `[picker].command` and defaults to fzf for
+single selections, including key selection. A missing executable or an empty
+command uses the built-in picker. Multi-selection always uses the built-in
+Bubble Tea picker, even when fzf is installed. Required host/source selectors
+still reject an empty selection; registration alone treats it as an accepted skip.
+
 ---
 
 ### Feedback and isolated repair
@@ -5444,7 +5499,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
-| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh probe`, `ssh remove` |
+| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh probe`, `ssh remove` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
@@ -5927,6 +5982,7 @@ The executable must implement a line-selector contract: candidates arrive on
 stdin and the selected original line is returned on stdout. The default is
 `fzf`; compatible selectors can replace the entire array. A missing executable
 falls back to dev's Bubble Tea picker, and `command = []` forces that fallback.
+Multi-selection always uses the built-in picker, regardless of the external command.
 This is global host policy and cannot be overridden by a repository. Non-TTY
 callers retain deterministic line prompts.
 
@@ -7855,6 +7911,26 @@ dev ssh init [flags]
 - `--json` — emit one versioned JSON plan or result
 - `--yes` — confirm the local plan without prompting
 
+### `dev ssh key`
+
+Inspect local SSH keys and agent identities
+
+```
+dev ssh key
+```
+
+### `dev ssh key list`
+
+List local public keys and SSH agent identities
+
+```
+dev ssh key list [flags]
+```
+
+- `--alias` — Evaluate this alias's OpenSSH identity and agent settings
+- `--json` — Print key metadata and source diagnostics as JSON
+- `--no-agent` — Skip SSH agent enumeration
+
 ### `dev ssh list`
 
 Statically list exact SSH aliases and their definitions
@@ -8035,7 +8111,7 @@ dev ssh setup [alias] [flags]
 - `--dry-run` — render static local plans without running OpenSSH or writing
 - `--fleet` — register the verified alias in dev fleet
 - `--fleet-name` — fleet profile name (default: alias)
-- `--from` — discovery target: tailscale:<peer> or lan:<ip:port>
+- `--from` — tailscale:<peer>, lan:<ip:port>, or an exact discovery ID
 - `--generate-key` — generate a new Ed25519 key pair
 - `--herdr-label` — Herdr machine label (default: alias)
 - `--herdr-session` — Herdr remote session
@@ -8700,6 +8776,20 @@ are rejected. Actions preview by default. Snapshot/transaction documents contain
 `schema_version`, machine revisions and scoped bindings; the registry UUID never
 replaces remote fleet's `machine_id` pin. See [SSH onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#discovery-and-canonical-machines).
 
+## SSH key catalog and picker behavior
+
+`ssh key list` accepts `--json`, `--no-agent` and `--alias <alias>`. Its default
+local catalog skips `ssh -G`; explicit alias mode evaluates configured identities
+and agent settings. JSON uses `schema_version: 1`, `kind: ssh_key_list`, candidates,
+completeness and diagnostics. The command never repairs permissions or logs in.
+
+Interactive setup selects an existing key from this catalog or a manual path.
+Its narrowly scoped permission preflight is a separate confirmed repair before
+later wizard steps; completed tightening remains after cancellation. Fleet/Herdr
+registration uses two optional checkboxes: none, either or both map to the existing
+registration behavior. Multi-selection uses built-in Bubble Tea; fzf remains the
+configured default for single selection. See [SSH key selection](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#key-selection-and-optional-registration).
+
 ---
 
 ### Compatibility and known limitations
@@ -9188,6 +9278,22 @@ Source-aware setup retains native host-key policy, uses `--auth existing` for
 Tailscale policy authentication, and does not enable Tailscale SSH or manage its
 ACLs. See [SSH onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#discovery-and-canonical-machines).
 
+## SSH key inventory and permission preflight
+
+`ssh key list` needs no alias/OpenSSH evaluation by default; agent enumeration is
+optional (`--no-agent`). Explicit `--alias` can execute configured Match exec or
+resolver behavior through `ssh -G`. Public-only candidates, unavailable agents,
+unsafe paths and incomplete scans remain visible as limitations. No private key
+contents are listed and neither catalog mode repairs or installs anything.
+
+The setup wizard offers only exact, reviewed tightening for canonical SSH setup
+paths and a selected key/companions. Unrelated files, ownership changes and unsafe
+links/metadata remain manual. Automatic mode tightening is macOS/Linux only;
+Windows validates its existing ACLs and leaves repairs manual. Completed repairs are retained after later cancel;
+this permission stage is separately confirmed before the main onboarding plan.
+Optional registration accepts zero checkboxes without treating it as cancellation;
+required host/source multi-selection keeps its existing cancellation behavior.
+
 ---
 
 ### Sources and freshness
@@ -9374,6 +9480,16 @@ Upstream distinctions were checked against [Tailscale SSH](https://tailscale.com
 and the [Tailscale CLI](https://tailscale.com/kb/1080/cli#ssh). Native status JSON
 is version-sensitive; dev consumes a bounded subset and reports unsupported or
 unusable observations rather than enabling/configuring the provider.
+
+## SSH picker and permission review (2026-09-11)
+
+Key-list and wizard behavior is grounded in `internal/sshhost` key catalogs and
+permission plans, `internal/cli/ssh_keys.go`, `ssh_permissions.go`,
+`ssh_registration.go` and their fixture tests. `internal/picker` owns the backend
+choice: single selections can use fzf, all multi-selections use Bubble Tea.
+Key metadata/agent presence is not remote authentication proof. Permission repair
+is a separately approved, retained local operation; default catalog listing does
+not run `ssh -G`, chmod or remote login.
 
 ---
 
@@ -11997,6 +12113,51 @@ Unlink 保留 suppression，防止下次 discovery 自動連回。Merge 保留 s
 label／preferred profile，舊 ID 留作 redirect。兩者不修改 provider config 或停止
 remote session。Private registry 是 durable data；`dev cache clear ssh-discovery`
 與 `cache clear all` 只清 observations，不刪 canonical identities 或 manual bindings。
+
+## Key selection 與 optional registration
+
+```bash
+dev ssh key list
+dev ssh key list --json
+dev ssh key list --no-agent
+dev ssh key list --alias lab --json
+```
+
+預設 key listing 有界地掃描 `~/.ssh` 下的 public-key files 與目前 SSH agent，不評估
+alias。以 fingerprint 去重，顯示 algorithm、comment、source paths、source provenance
+與可用 signer。`--no-agent` 跳過 agent enumeration。只有明確 `--alias` 才執行 plain
+`ssh -G` 並使用該 alias 的 identity／agent settings；configured Match exec 或 resolver
+可能執行。Listing 不讀 private-key contents、不 derive／generate key、不修權限，
+也不嘗試 remote authentication。`--json` 輸出一個 `ssh_key_list` document，包含
+candidates、completeness 與 source diagnostics；來源缺失或不可用不會冒充空的成功結果。
+
+Setup wizard 選 existing key 時會開 catalog picker，另保留 **Enter a key path…**。
+只有 public file 而找不到 signer 的候選仍可見，但不能直接滿足 bootstrap。可改選
+其他 identity、把 signer 載入 agent，或提供對應 private-key path。Selected key 會先
+驗證，再進入後續 registration prompts；generation 與 remote installation 保留明確
+選擇及 native prompts。
+
+不帶參數的 setup wizard 會在 host picker 之前檢查已存在的 `~/.ssh`、root config
+與 `dev.d` 權限。選擇 key 後，再加入該 private/public companion 與必要 parent。
+macOS/Linux 的簡單 tightening 使用 directory 0700、config/private file 0600；public
+companion 只移除 group/world write bits，不新增權限或建立缺失檔案。ACL 或不支援的
+security metadata 需手動處理；Windows 只驗證既有 ACL，不重寫。Repair preview
+列出 exact paths／mode changes，另外確認後才收緊權限；即使後續
+取消 wizard，已完成 tightening 也保留。它不是 recursive chmod：無關 Include files、
+其他 keys、ownership changes、links/hardlinks 或不支援的 metadata 都需手動處理。
+拒絕 repair 會在 config／authentication 前停止；一般 listing／dry run 不修權限。
+主要 onboarding preview 仍先於 alias、registry binding、generated key 與 remote change。
+
+Registration 改用獨立的 **Fleet**／**Herdr** checkboxes，預設皆不勾選。Space 切換，
+Ctrl+A 全選／清除，Enter 確認，Esc 取消。零選擇代表不註冊；一項選對應 provider，
+兩項則都註冊。Setup 零選擇會繼續且略過 provider-specific prompts；獨立 manage／
+dashboard registration 則直接 no-op，不 authentication 或修改 provider。
+CLI `--to fleet|herdr|both` 保持不變。
+
+`[picker].command` 設定 external picker，單選（包含 key selection）預設使用 fzf；
+executable 缺失或 command 為空時使用 built-in picker。多選一律使用 built-in
+Bubble Tea picker，即使已安裝 fzf 也一樣。必要的 host／source selectors 仍不接受
+空選擇；只有 optional registration 把零選擇視為確認略過。
 
 ---
 
@@ -14703,7 +14864,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
-| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
+| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
@@ -15116,7 +15277,7 @@ command = ["fzf", "--height=60%", "--layout=reverse", "--border", "--prompt", "{
 ```
 
 Executable 必須遵守 line-selector contract：從 stdin 讀候選項，並把選取的原始整行
-寫到 stdout。預設使用 `fzf`；相容 selector 可替換整個 array。Executable 缺少時會
+寫到 stdout。預設使用 `fzf`；相容 selector 可替換整個 array。多選一律使用 built-in picker，不受 external command 設定影響。Executable 缺少時會
 fallback 到 dev 的 Bubble Tea picker，`command = []` 則強制使用該 fallback。
 這是 global host policy，repository 不能 override。Non-TTY caller 維持 deterministic
 line prompt。
@@ -17037,6 +17198,26 @@ dev ssh init [flags]
 - `--json` — emit one versioned JSON plan or result
 - `--yes` — confirm the local plan without prompting
 
+### `dev ssh key`
+
+Inspect local SSH keys and agent identities
+
+```
+dev ssh key
+```
+
+### `dev ssh key list`
+
+List local public keys and SSH agent identities
+
+```
+dev ssh key list [flags]
+```
+
+- `--alias` — Evaluate this alias's OpenSSH identity and agent settings
+- `--json` — Print key metadata and source diagnostics as JSON
+- `--no-agent` — Skip SSH agent enumeration
+
 ### `dev ssh list`
 
 Statically list exact SSH aliases and their definitions
@@ -17217,7 +17398,7 @@ dev ssh setup [alias] [flags]
 - `--dry-run` — render static local plans without running OpenSSH or writing
 - `--fleet` — register the verified alias in dev fleet
 - `--fleet-name` — fleet profile name (default: alias)
-- `--from` — discovery target: tailscale:<peer> or lan:<ip:port>
+- `--from` — tailscale:<peer>, lan:<ip:port>, or an exact discovery ID
 - `--generate-key` — generate a new Ed25519 key pair
 - `--herdr-label` — Herdr machine label (default: alias)
 - `--herdr-session` — Herdr remote session
@@ -17856,6 +18037,19 @@ Snapshot/transaction documents 包含 `schema_version`、machine revisions 與 s
 bindings；registry UUID 不取代 remote fleet 的 `machine_id` pin。詳見
 [SSH onboarding](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
 
+## SSH key catalog 與 picker behavior
+
+`ssh key list` 接受 `--json`、`--no-agent`、`--alias <alias>`。預設 local catalog
+不執行 `ssh -G`；明確 alias mode 才評估 configured identities／agent settings。
+JSON 使用 `schema_version: 1`、`kind: ssh_key_list`，包含 candidates、completeness
+及 diagnostics。指令不修權限，也不登入。
+
+Interactive setup 可由 catalog 或 manual path 選 existing key。窄範圍 permission
+preflight 是另外確認的 repair，先於後續 wizard steps；取消後仍保留已完成 tightening。
+Fleet／Herdr registration 改成兩個 optional checkbox，零項、單項、兩項分別對應
+既有 registration 行為。多選使用 built-in Bubble Tea；單選仍預設 configured fzf。
+詳見 [SSH key selection](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
+
 ---
 
 ### 相容性與已知限制
@@ -18291,6 +18485,20 @@ Source-aware setup 保留 native host-key policy，Tailscale policy authenticati
 使用 `--auth existing`；不會 enable Tailscale SSH 或管理它的 ACL。詳見
 [SSH onboarding](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
 
+## SSH key inventory 與 permission preflight
+
+`ssh key list` 預設不需要 alias／OpenSSH evaluation；agent enumeration 可用
+`--no-agent` 略過。明確 `--alias` 才透過 `ssh -G` 執行 configured Match exec／resolver。
+Public-only candidates、unavailable agent、unsafe path、incomplete scan 都保留限制
+資訊；不列出 private-key contents，兩種 catalog mode 都不 repair 或 install。
+
+Setup wizard 只對 canonical SSH setup paths 及選定 key／companions 提供 exact、
+reviewed tightening。無關檔案、ownership change、不安全 link／metadata 仍需手動。
+自動 mode tightening 限 macOS/Linux；Windows 驗證既有 ACL，repair 仍手動。
+後續取消也保留 completed repairs；permission stage 在主要 onboarding plan 前另外
+確認。Optional registration 可確認零個 checkbox，與取消不同；必要 host／source
+多選維持原本 cancellation 行為。
+
 ---
 
 ### 來源與時效
@@ -18463,6 +18671,15 @@ Upstream 差異已對照 [Tailscale SSH](https://tailscale.com/kb/1193/tailscale
 [Tailscale CLI](https://tailscale.com/kb/1080/cli#ssh)。Native status JSON 會隨版本
 改變；dev 只讀取 bounded subset，資料不支援或不可用時回報 observation 狀態，不會
 自行 enable／configure provider。
+
+## SSH picker 與 permission review（2026-09-11）
+
+Key-list／wizard behavior 以 `internal/sshhost` key catalog／permission plans、
+`internal/cli/ssh_keys.go`、`ssh_permissions.go`、`ssh_registration.go` 及 fixture tests
+為準。Backend 由 `internal/picker` 決定：單選可使用 fzf，多選一律 Bubble Tea。
+Key metadata／agent presence 不代表 remote authentication proof。Permission repair
+是另外批准且保留結果的 local operation；預設 catalog listing 不執行 `ssh -G`、
+chmod 或 remote login。
 
 ---
 

@@ -232,6 +232,25 @@ prompts. A private/security-key identity passed to `--key` must have a validated
 `.pub` companion; dev may derive a missing public companion with confirmed
 `ssh-keygen -y`, but never reads or transfers private bytes.
 
+Inspect available identities before choosing one:
+
+```bash
+dev ssh key list                    # local public-key metadata plus the current agent
+dev ssh key list --no-agent --json  # file metadata only; no OpenSSH evaluation
+dev ssh key list --alias lab        # explicitly evaluate lab's identity/agent settings
+```
+
+The setup wizard offers a key picker with paths, comments, fingerprints and signer
+availability, plus manual path entry. It checks basic SSH directory/configuration
+permissions early and offers separately confirmed, narrowly scoped tightening.
+Completed permission repairs remain if setup is canceled later; aliases, registry
+bindings, key generation and remote actions still wait for the main preview.
+
+Optional registration uses two initially unchecked boxes: Fleet and Herdr. Select
+either or both; Enter with neither selected skips registration, while Esc cancels.
+Single-choice pickers use configured `fzf` when available; multi-select uses the
+built-in picker (Space toggles, Ctrl+A selects/clears, Enter confirms).
+
 ProxyJump routes are resolved outermost-first. Use repeatable
 `--hop-os alias=posix|windows` when a hop's OS cannot be determined; already
 working jumps are not modified unless `--install-on-working-jump` is explicit.
@@ -341,7 +360,8 @@ network refresh, while still offering manual URL/path/`owner/name` entry. When r
 `dev start` similarly selects a local repository with fast live discovery; inside
 a repository it keeps the immediate current-repository default.
 The external selector defaults to `fzf`; if it is missing (or `[picker] command = []`),
-dev uses its built-in Bubble Tea picker. Pipes remain line-oriented.
+dev uses its built-in Bubble Tea picker. Multi-selection always uses the built-in
+picker. Pipes remain line-oriented.
 Clone can optionally apply a preset after the checkout exists, while `repo setup` repeat-safely merges native
 initializers and preset files into a repository you already have. Custom hooks
 and skill setup remain responsible for their own idempotency. Use `--dry-run`

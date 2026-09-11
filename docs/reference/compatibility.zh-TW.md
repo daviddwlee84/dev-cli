@@ -435,3 +435,17 @@ ID，不能取代 remote `machine_id` pin。Explicit unlink／merge 只改 regis
 Source-aware setup 保留 native host-key policy，Tailscale policy authentication
 使用 `--auth existing`；不會 enable Tailscale SSH 或管理它的 ACL。詳見
 [SSH onboarding](../guides/ssh-hosts.zh-TW.md)。
+
+## SSH key inventory 與 permission preflight
+
+`ssh key list` 預設不需要 alias／OpenSSH evaluation；agent enumeration 可用
+`--no-agent` 略過。明確 `--alias` 才透過 `ssh -G` 執行 configured Match exec／resolver。
+Public-only candidates、unavailable agent、unsafe path、incomplete scan 都保留限制
+資訊；不列出 private-key contents，兩種 catalog mode 都不 repair 或 install。
+
+Setup wizard 只對 canonical SSH setup paths 及選定 key／companions 提供 exact、
+reviewed tightening。無關檔案、ownership change、不安全 link／metadata 仍需手動。
+自動 mode tightening 限 macOS/Linux；Windows 驗證既有 ACL，repair 仍手動。
+後續取消也保留 completed repairs；permission stage 在主要 onboarding plan 前另外
+確認。Optional registration 可確認零個 checkbox，與取消不同；必要 host／source
+多選維持原本 cancellation 行為。

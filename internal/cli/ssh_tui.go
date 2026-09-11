@@ -122,6 +122,11 @@ func (w *sshTUIWorkflow) run() error {
 		if err != nil {
 			return err
 		}
+		if options.to == "" {
+			w.result.Status = "No registration selected."
+			w.result.MembershipChanged = false
+			return nil
+		}
 		if err := revalidateSSHTUIProfile(ctx, app, profile); err != nil {
 			return err
 		}
@@ -213,33 +218,37 @@ func revalidateSSHTUIProfile(ctx context.Context, app *App, expected sshflow.Con
 
 func sshTUIRegistrationOptions(ctx context.Context, app *App, row sshflow.MachineRow, alias string) (sshSetupOptions, error) {
 	options := sshSetupOptions{auth: "existing"}
-	to, err := sshPick(ctx, app, "Register this SSH profile with", []picker.Item{{Value: "fleet", Label: "Fleet"}, {Value: "herdr", Label: "Herdr"}, {Value: "both", Label: "Fleet and Herdr"}}, false)
+	to, err := sshRegistrationDestinations(ctx, app, "Register this SSH profile with")
 	if err != nil {
 		return options, err
 	}
-	options.to = to[0].Value
+	options.to = to
+	if options.to == "" {
+		return options, nil
+	}
+	prompt := newPrompter(app)
 	defaultOS := "posix"
 	for _, candidate := range append(append([]sshdiscovery.Candidate{}, row.Tailscale...), row.LAN...) {
 		if strings.EqualFold(candidate.OS, "windows") {
 			defaultOS = "windows"
 		}
 	}
-	options.targetOS, err = newPrompter(app).choice("Target OS", defaultOS, "posix, windows", map[string]string{"posix": "posix", "windows": "windows"})
+	options.targetOS, err = prompt.choice("Target OS", defaultOS, "posix, windows", map[string]string{"posix": "posix", "windows": "windows"})
 	if err != nil {
 		return options, err
 	}
 	if options.to != "herdr" {
-		options.fleetName, err = newPrompter(app).line("Fleet profile name", alias)
+		options.fleetName, err = prompt.line("Fleet profile name", alias)
 		if err != nil {
 			return options, err
 		}
 	}
 	if options.to != "fleet" {
-		options.herdrLabel, err = newPrompter(app).line("Herdr label", alias)
+		options.herdrLabel, err = prompt.line("Herdr label", alias)
 		if err != nil {
 			return options, err
 		}
-		options.herdrSession, err = newPrompter(app).line("Herdr session", "default")
+		options.herdrSession, err = prompt.line("Herdr session", "default")
 		if err != nil {
 			return options, err
 		}

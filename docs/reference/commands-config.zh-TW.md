@@ -34,7 +34,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
-| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
+| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
@@ -447,7 +447,7 @@ command = ["fzf", "--height=60%", "--layout=reverse", "--border", "--prompt", "{
 ```
 
 Executable 必須遵守 line-selector contract：從 stdin 讀候選項，並把選取的原始整行
-寫到 stdout。預設使用 `fzf`；相容 selector 可替換整個 array。Executable 缺少時會
+寫到 stdout。預設使用 `fzf`；相容 selector 可替換整個 array。多選一律使用 built-in picker，不受 external command 設定影響。Executable 缺少時會
 fallback 到 dev 的 Bubble Tea picker，`command = []` 則強制使用該 fallback。
 這是 global host policy，repository 不能 override。Non-TTY caller 維持 deterministic
 line prompt。
@@ -777,3 +777,16 @@ status，但不寫 config、registry、key、cache，也不登入。
 Snapshot/transaction documents 包含 `schema_version`、machine revisions 與 scoped
 bindings；registry UUID 不取代 remote fleet 的 `machine_id` pin。詳見
 [SSH onboarding](../guides/ssh-hosts.zh-TW.md)。
+
+## SSH key catalog 與 picker behavior
+
+`ssh key list` 接受 `--json`、`--no-agent`、`--alias <alias>`。預設 local catalog
+不執行 `ssh -G`；明確 alias mode 才評估 configured identities／agent settings。
+JSON 使用 `schema_version: 1`、`kind: ssh_key_list`，包含 candidates、completeness
+及 diagnostics。指令不修權限，也不登入。
+
+Interactive setup 可由 catalog 或 manual path 選 existing key。窄範圍 permission
+preflight 是另外確認的 repair，先於後續 wizard steps；取消後仍保留已完成 tightening。
+Fleet／Herdr registration 改成兩個 optional checkbox，零項、單項、兩項分別對應
+既有 registration 行為。多選使用 built-in Bubble Tea；單選仍預設 configured fzf。
+詳見 [SSH key selection](../guides/ssh-hosts.zh-TW.md)。

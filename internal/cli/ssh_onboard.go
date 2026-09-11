@@ -58,10 +58,10 @@ func runSSHOnboardingOperation(ctx context.Context, app *App, args []string, opt
 	if options.auth != "" && options.auth != "existing" {
 		return asUsageError(errors.New("--auth must be existing; use --key or --generate-key for public-key bootstrap"))
 	}
-	if options.key != "" && options.generateKey || options.auth != "" && (options.key != "" || options.generateKey) {
+	if options.hasExistingKey() && options.generateKey || options.auth != "" && (options.hasExistingKey() || options.generateKey) {
 		return asUsageError(errors.New("choose one authentication mode"))
 	}
-	if options.configOnly && (options.auth != "" || options.key != "" || options.generateKey || options.to != "" || options.fleet) {
+	if options.configOnly && (options.auth != "" || options.hasExistingKey() || options.generateKey || options.to != "" || options.fleet) {
 		return asUsageError(errors.New("--config-only cannot install keys, authenticate or register providers"))
 	}
 	if options.fleet {
@@ -217,7 +217,7 @@ func prepareSSHOnboardItem(ctx context.Context, app *App, alias string, c *sshdi
 	if _, err := parseSSHOSOverrides(o.hopOS); err != nil {
 		return item, err
 	}
-	if o.key == "" && !o.generateKey && (len(o.hopOS) > 0 || o.installOnWorkingJump || o.windowsAdminAuthorizedKeys) {
+	if !o.hasExistingKey() && !o.generateKey && (len(o.hopOS) > 0 || o.installOnWorkingJump || o.windowsAdminAuthorizedKeys) {
 		return item, errors.New("bootstrap route options require --key or --generate-key")
 	}
 	s, err := app.sshHosts()
@@ -329,7 +329,7 @@ func prepareSSHOnboardItem(ctx context.Context, app *App, alias string, c *sshdi
 	if o.auth == "existing" || o.to != "" {
 		auth = "existing"
 	}
-	if o.key != "" || o.generateKey {
+	if o.hasExistingKey() || o.generateKey {
 		auth = "key"
 	}
 	if o.targetOS == "" && (auth == "key" || o.to != "") && app.interactive() && !o.json {
@@ -355,9 +355,14 @@ func prepareSSHOnboardItem(ctx context.Context, app *App, alias string, c *sshdi
 		if o.targetOS == "" {
 			return item, errors.New("key bootstrap requires --target-os")
 		}
-		plan, err := planSSHSetupKey(ctx, app, s, o, !o.json && app.interactive())
-		if err != nil {
-			return item, err
+		var plan sshhost.KeyPlan
+		if o.keyPlan != nil {
+			plan = *o.keyPlan
+		} else {
+			plan, err = planSSHSetupKey(ctx, app, s, o, !o.json && app.interactive())
+			if err != nil {
+				return item, err
+			}
 		}
 		if !plan.Ready() {
 			return item, errors.New("selected key plan is blocked")
@@ -429,6 +434,13 @@ func suggestSSHAlias(c sshdiscovery.Candidate) string {
 }
 
 func sshOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, error) {
+	s, err := app.sshHosts()
+	if err != nil {
+		return nil, err
+	}
+	if err := preflightSSHWizardPermissions(ctx, app, s, ""); err != nil {
+		return nil, err
+	}
 	sources, err := sshPick(ctx, app, "Choose hosts to set up", []picker.Item{{Value: "tailscale", Label: "Tailscale peers"}, {Value: "lan", Label: "Discover LAN SSH hosts"}, {Value: "existing", Label: "Existing SSH aliases"}, {Value: "cached", Label: "Cached discovery"}}, false)
 	if err != nil {
 		return nil, err
@@ -558,7 +570,7 @@ func sshOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, error
 			case "existing":
 				o.auth = "existing"
 			case "key":
-				o.key, e = newPrompter(app).line("Key or public key path", filepath.Join(s.Paths().Home, ".ssh", "id_ed25519"))
+				o, e = selectSSHWizardKey(ctx, app, s, alias, o)
 			case "generate":
 				o.generateKey = true
 				home, _ := os.UserHomeDir()
@@ -567,14 +579,15 @@ func sshOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, error
 			if e != nil {
 				return nil, e
 			}
-			if !o.configOnly {
-				dest, e := sshPick(ctx, app, "Optional registration", []picker.Item{{Value: "none", Label: "No registration"}, {Value: "fleet", Label: "dev fleet"}, {Value: "herdr", Label: "Herdr"}, {Value: "both", Label: "Fleet and Herdr"}}, false)
-				if e != nil {
+			if o.hasExistingKey() || o.generateKey {
+				if e = prepareSSHWizardKey(ctx, app, s, &o); e != nil {
 					return nil, e
 				}
-				o.to = dest[0].Value
-				if o.to == "none" {
-					o.to = ""
+			}
+			if !o.configOnly {
+				o.to, e = sshRegistrationDestinations(ctx, app, "Optional registration")
+				if e != nil {
+					return nil, e
 				}
 				if o.to == "herdr" || o.to == "both" {
 					o.herdrSession, e = newPrompter(app).line("Herdr session", "default")
@@ -699,6 +712,13 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 				}
 			}
 		}
+		for _, item := range items {
+			if item.KeyPlan != nil {
+				if e := s.RevalidateKeySelection(ctx, *item.KeyPlan); e != nil {
+					return fmt.Errorf("revalidate selected key for %s: %w", item.Target.Alias, e)
+				}
+			}
+		}
 		if initPlan.Action != sshhost.ActionNoop {
 			if _, e := s.ApplyInit(ctx, initPlan); e != nil {
 				return e
@@ -749,6 +769,8 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 				o.json = jsonOut
 				o.configOnly = true
 				o.key = ""
+				o.keyCandidate = nil
+				o.keyPlan = nil
 				o.generateKey = false
 				o.targetOS = ""
 				o.hopOS = nil

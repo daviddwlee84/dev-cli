@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -33,7 +34,7 @@ type publicKeyRecord struct {
 }
 
 type keyPairVerification struct {
-	identity    secureFileIdentity
+	identity    selectedKeyIdentity
 	publicPath  string
 	fingerprint string
 }
@@ -43,6 +44,18 @@ type keyMaterialState struct {
 	safe             KeyCandidate
 	publicLine       []byte
 	pairVerification *keyPairVerification
+	publicSource     *secureFileIdentity
+	identitySource   *selectedKeyIdentity
+	agent            *keyAgentContext
+}
+
+// The selected agent is an execution reference, never serialized key metadata.
+// Capturing even an inherited socket prevents a later environment change from
+// silently substituting a different agent.
+type keyAgentContext struct{ socket string }
+
+func (a *keyAgentContext) environment() []string {
+	return []string{"LC_ALL=C", "SSH_AUTH_SOCK=" + a.socket}
 }
 
 type keyPlanState struct {
@@ -50,7 +63,7 @@ type keyPlanState struct {
 	public          KeyPlan
 	request         KeyRequest
 	material        *keyMaterialState
-	identity        secureFileIdentity
+	identity        selectedKeyIdentity
 	expectedPublic  fileSnapshot
 	expectedPrivate fileSnapshot
 }
@@ -390,7 +403,11 @@ func (s *Service) Catalog(ctx context.Context, request KeyCatalogRequest) (KeyCa
 		return KeyCatalog{}, err
 	}
 	var effective EffectiveConfig
-	if request.Effective == nil {
+	if request.LocalOnly {
+		if request.Alias != "" || request.Effective != nil {
+			return KeyCatalog{}, errors.New("local-only key catalog cannot use an alias or effective configuration")
+		}
+	} else if request.Effective == nil {
 		if err := ValidateLookupAlias(request.Alias); err != nil {
 			return KeyCatalog{}, err
 		}
@@ -420,7 +437,12 @@ func (s *Service) Catalog(ctx context.Context, request KeyCatalogRequest) (KeyCa
 			candidate.Sources = []KeySource{candidate.Source}
 		}
 		if index, ok := byFingerprint[candidate.Fingerprint]; ok {
+			previousPath := entries[index].safe.PublicPath
 			mergeCatalogEntry(&entries[index], candidate)
+			if entries[index].safe.PublicPath != previousPath {
+				entries[index].publicLine = append([]byte(nil), record.normalized...)
+				entries[index].safe.Comment = record.metadata.Comment
+			}
 			return
 		}
 		byFingerprint[candidate.Fingerprint] = len(entries)
@@ -447,14 +469,19 @@ func (s *Service) Catalog(ctx context.Context, request KeyCatalogRequest) (KeyCa
 		}
 		identity := strings.TrimSuffix(path, ".pub")
 		if effectiveIdentity != "" {
-			identity = effectiveIdentity
+			identity = strings.TrimSuffix(effectiveIdentity, ".pub")
 		}
 		private, stub := s.inspectIdentityProvenance(identity, record.metadata.Algorithm)
-		if !private && !stub && effectiveIdentity == "" {
+		repair := !private && !stub && s.unprotectedPrivateCompanion(identity, path)
+		if repair {
+			addDiagnostic("private_key_permissions", identity, false)
+		}
+		if !private && !stub && !repair {
 			identity = path
 		}
 		candidate := KeyCandidate{
 			Source: source, PublicPath: path, IdentityFile: identity,
+			NeedsPermissionRepair: repair,
 			Provenance: KeyProvenance{
 				Effective: source == KeySourceEffectiveIdentity,
 				Private:   private, SecurityKeyStub: stub,
@@ -482,6 +509,7 @@ func (s *Service) Catalog(ctx context.Context, request KeyCatalogRequest) (KeyCa
 
 	if info, err := os.Lstat(s.paths.SSHDir); err == nil && info.IsDir() {
 		files := 0
+		visited := 0
 		walkErr := filepath.WalkDir(s.paths.SSHDir, func(path string, entry fs.DirEntry, walkErr error) error {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -489,6 +517,11 @@ func (s *Service) Catalog(ctx context.Context, request KeyCatalogRequest) (KeyCa
 			if walkErr != nil {
 				addDiagnostic("public_key_tree_unreadable", path, true)
 				return nil
+			}
+			visited++
+			if visited > maxCatalogFiles*8 {
+				addDiagnostic("public_key_tree_limit_exceeded", "", true)
+				return fs.SkipAll
 			}
 			relative, err := filepath.Rel(s.paths.SSHDir, path)
 			if err != nil {
@@ -522,12 +555,12 @@ func (s *Service) Catalog(ctx context.Context, request KeyCatalogRequest) (KeyCa
 			}
 			addDiagnostic("public_key_tree_unreadable", s.paths.SSHDir, true)
 		}
-	} else if err != nil && !errors.Is(err, fs.ErrNotExist) {
+	} else if err == nil || !errors.Is(err, fs.ErrNotExist) {
 		addDiagnostic("public_key_tree_unreadable", s.paths.SSHDir, true)
 	}
 
 	agentEnabled := !request.NoAgent
-	agentEnv := []string{"LC_ALL=C"}
+	agentSocket := os.Getenv("SSH_AUTH_SOCK")
 	if values := effective.Values["identityagent"]; agentEnabled && len(values) > 0 {
 		configured, enabled, resolveErr := s.resolveIdentityAgent(values[0])
 		if resolveErr != nil {
@@ -536,49 +569,196 @@ func (s *Service) Catalog(ctx context.Context, request KeyCatalogRequest) (KeyCa
 		} else {
 			agentEnabled = enabled
 			if configured != "" {
-				agentEnv = append(agentEnv, "SSH_AUTH_SOCK="+configured)
+				agentSocket = configured
 			}
+		}
+	}
+	var agent *keyAgentContext
+	if agentEnabled && agentSocket != "" && !filepath.IsAbs(agentSocket) {
+		absolute, err := filepath.Abs(agentSocket)
+		if err != nil {
+			addDiagnostic("identity_agent_unsupported", "", true)
+			agentEnabled = false
+		} else {
+			agentSocket = absolute
 		}
 	}
 	if agentEnabled {
-		result, err := s.runner.Run(ctx, RunRequest{
-			Name: "ssh-add", Args: []string{"-L"}, Env: agentEnv, Display: "ssh-add -L",
-		})
-		if err != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return KeyCatalog{}, ctxErr
+		if !validUTF8NoControl(agentSocket) {
+			addDiagnostic("identity_agent_unsupported", "", true)
+		} else {
+			agent = &keyAgentContext{socket: agentSocket}
+			records, diagnostics, err := s.readAgentKeys(ctx, agent, "ssh-add -L")
+			if err != nil {
+				return KeyCatalog{}, err
 			}
-			addDiagnostic("agent_unavailable", "", true)
-		} else if result.ExitCode == 0 {
-			if result.StdoutTruncated || len(result.Stdout) > maxAgentCatalogBytes {
-				addDiagnostic("agent_output_limit_exceeded", "", true)
-			} else {
-				lines := bytes.Split(result.Stdout, []byte{'\n'})
-				if len(lines) > maxCatalogFiles+1 {
-					addDiagnostic("agent_key_limit_exceeded", "", true)
-					lines = lines[:maxCatalogFiles]
-				}
-				for _, line := range lines {
-					if len(bytes.TrimSpace(line)) == 0 {
-						continue
-					}
-					record, parseErr := parsePublicKeyRecord(line)
-					if parseErr != nil {
-						addDiagnostic("agent_key_invalid", "", true)
-						continue
-					}
-					add(record, KeyCandidate{Source: KeySourceAgent, Provenance: KeyProvenance{Agent: true}})
-				}
+			for _, code := range diagnostics {
+				addDiagnostic(code, "", true)
 			}
-		} else if result.ExitCode != 1 {
-			addDiagnostic("agent_unavailable", "", true)
+			for _, record := range records {
+				add(record, KeyCandidate{Source: KeySourceAgent, Provenance: KeyProvenance{Agent: true}})
+			}
 		}
 	}
 
+	sort.SliceStable(entries, func(i, j int) bool { return entries[i].safe.Fingerprint < entries[j].safe.Fingerprint })
 	for _, entry := range entries {
-		catalog.Candidates = append(catalog.Candidates, s.bindKeyMaterial(entry.safe, entry.publicLine))
+		candidate := s.bindKeyMaterial(entry.safe, entry.publicLine)
+		if entry.safe.Provenance.Agent && agent != nil {
+			copy := *agent
+			candidate.state.agent = &copy
+		}
+		catalog.Candidates = append(catalog.Candidates, candidate)
 	}
 	return catalog, nil
+}
+
+func (s *Service) readAgentKeys(ctx context.Context, agent *keyAgentContext, display string) ([]publicKeyRecord, []string, error) {
+	result, err := s.runner.Run(ctx, RunRequest{Name: "ssh-add", Args: []string{"-L"}, Env: agent.environment(), Display: display})
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, nil, ctx.Err()
+		}
+		return nil, []string{"agent_unavailable"}, nil
+	}
+	if result.ExitCode == 1 {
+		return nil, nil, nil
+	}
+	if result.ExitCode != 0 {
+		return nil, []string{"agent_unavailable"}, nil
+	}
+	if result.StdoutTruncated || len(result.Stdout) > maxAgentCatalogBytes {
+		return nil, []string{"agent_output_limit_exceeded"}, nil
+	}
+	lines := bytes.Split(result.Stdout, []byte{'\n'})
+	var diagnostics []string
+	if len(lines) > maxCatalogFiles+1 {
+		diagnostics = append(diagnostics, "agent_key_limit_exceeded")
+		lines = lines[:maxCatalogFiles]
+	}
+	var records []publicKeyRecord
+	invalid := false
+	for _, line := range lines {
+		if len(bytes.TrimSpace(line)) == 0 {
+			continue
+		}
+		record, err := parsePublicKeyRecord(line)
+		if err != nil {
+			invalid = true
+			continue
+		}
+		records = append(records, record)
+	}
+	if invalid {
+		diagnostics = append(diagnostics, "agent_key_invalid")
+	}
+	sort.SliceStable(records, func(i, j int) bool {
+		if records[i].metadata.Fingerprint == records[j].metadata.Fingerprint {
+			return records[i].metadata.Comment < records[j].metadata.Comment
+		}
+		return records[i].metadata.Fingerprint < records[j].metadata.Fingerprint
+	})
+	return records, diagnostics, nil
+}
+
+// A direct regular companion that could not pass the private-file checks is
+// retained for explicit permission review. The permission service independently
+// proves ownership/link safety before repair; this observation grants no write.
+func (s *Service) unprotectedPrivateCompanion(identity, publicPath string) bool {
+	if identity == "" || identity == publicPath || !s.pathWithinSSH(identity) || s.validateSSHPath(identity, false) != nil {
+		return false
+	}
+	info, err := os.Lstat(identity)
+	return err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0
+}
+
+func (s *Service) readPublicKeySource(path string) (publicKeyRecord, *secureFileIdentity, error) {
+	before, err := os.Lstat(path)
+	if err != nil {
+		return publicKeyRecord{}, nil, err
+	}
+	record, err := s.readPublicKeyFile(path)
+	if err != nil {
+		return publicKeyRecord{}, nil, err
+	}
+	after, err := os.Lstat(path)
+	if err != nil || !sameSelectedKeyFileInfo(before, after) {
+		return publicKeyRecord{}, nil, ErrSourceChanged
+	}
+	return record, &secureFileIdentity{path: path, info: after}, nil
+}
+
+func (s *Service) revalidateSelectedKeySources(ctx context.Context, material *keyMaterialState) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := s.revalidateSelectedLocalSources(material); err != nil {
+		return err
+	}
+	if material.agent != nil && !material.safe.Provenance.Private && !material.safe.Provenance.SecurityKeyStub {
+		return s.revalidateAgentKey(ctx, material.agent, material.safe.Fingerprint)
+	}
+	return nil
+}
+
+func (s *Service) revalidateSelectedLocalSources(material *keyMaterialState) error {
+	if err := s.revalidateSelectedPublicSource(material); err != nil {
+		return err
+	}
+	if material.safe.Provenance.Private || material.safe.Provenance.SecurityKeyStub {
+		if material.identitySource == nil {
+			return fmt.Errorf("selected private identity metadata was not captured: %w", ErrSourceChanged)
+		}
+		if err := s.revalidateSelectedKeyIdentity(*material.identitySource); err != nil {
+			return fmt.Errorf("selected private identity changed: %w", ErrSourceChanged)
+		}
+	}
+	return nil
+}
+
+func (s *Service) revalidateSelectedPublicSource(material *keyMaterialState) error {
+	if material.safe.NeedsPermissionRepair {
+		return fmt.Errorf("selected identity needs permission review and a fresh key selection: %w", ErrBlocked)
+	}
+	if material.safe.PublicPath != "" {
+		if material.publicSource == nil {
+			return fmt.Errorf("selected public source was not captured: %w", ErrSourceChanged)
+		}
+		current, identity, err := s.readPublicKeySource(material.safe.PublicPath)
+		if err != nil || !sameSelectedKeyFileInfo(material.publicSource.info, identityInfo(identity)) || current.metadata.Fingerprint != material.safe.Fingerprint || !publicLinesEqual(current.normalized, material.publicLine) {
+			return fmt.Errorf("selected public key source changed: %w", ErrSourceChanged)
+		}
+	}
+	return nil
+}
+
+func (s *Service) revalidateAgentKey(ctx context.Context, agent *keyAgentContext, fingerprint string) error {
+	// An empty socket selects the platform's native default agent. There is no
+	// portable target-only directive for that context once an ambient socket has
+	// appeared; clearing the process environment would also alter ProxyJump.
+	if agent.socket == "" && os.Getenv("SSH_AUTH_SOCK") != "" {
+		return fmt.Errorf("default SSH agent context changed; select the key again: %w", ErrSourceChanged)
+	}
+	records, diagnostics, err := s.readAgentKeys(ctx, agent, "ssh-add selected-key availability")
+	if err != nil {
+		return err
+	}
+	if len(diagnostics) > 0 {
+		return fmt.Errorf("selected SSH agent is unavailable or incompletely observed: %w", ErrSourceChanged)
+	}
+	for _, record := range records {
+		if record.metadata.Fingerprint == fingerprint {
+			return nil
+		}
+	}
+	return fmt.Errorf("selected key is no longer present in its SSH agent: %w", ErrSourceChanged)
+}
+
+func identityInfo(identity *secureFileIdentity) fs.FileInfo {
+	if identity == nil {
+		return nil
+	}
+	return identity.info
 }
 
 func (s *Service) resolveIdentityAgent(value string) (path string, enabled bool, err error) {
@@ -622,6 +802,14 @@ func cloneEffective(effective EffectiveConfig) EffectiveConfig {
 
 func mergeCatalogEntry(entry *catalogEntry, candidate KeyCandidate) {
 	wasEffective := entry.safe.Provenance.Effective
+	hadPrivate := entry.safe.Provenance.Private || entry.safe.Provenance.SecurityKeyStub
+	newPrivate := candidate.Provenance.Private || candidate.Provenance.SecurityKeyStub
+	if !hadPrivate && (newPrivate || candidate.NeedsPermissionRepair && !entry.safe.NeedsPermissionRepair) {
+		entry.safe.PublicPath = candidate.PublicPath
+		entry.safe.IdentityFile = candidate.IdentityFile
+		entry.safe.NeedsPermissionRepair = candidate.NeedsPermissionRepair
+		entry.safe.Source = candidate.Source
+	}
 	for _, source := range candidate.Sources {
 		if !containsKeySource(entry.safe.Sources, source) {
 			entry.safe.Sources = append(entry.safe.Sources, source)
@@ -664,6 +852,17 @@ func (s *Service) bindVerifiedKeyMaterial(safe KeyCandidate, publicLine []byte, 
 	state := &keyMaterialState{
 		serviceID: s.id, safe: safe, publicLine: append([]byte(nil), publicLine...),
 		pairVerification: cloneKeyPairVerification(verification),
+	}
+	if safe.PublicPath != "" {
+		current, identity, err := s.readPublicKeySource(safe.PublicPath)
+		if err == nil && current.metadata.Fingerprint == safe.Fingerprint && publicLinesEqual(current.normalized, publicLine) {
+			state.publicSource = identity
+		}
+	}
+	if safe.Provenance.Private || safe.Provenance.SecurityKeyStub {
+		if identity, err := s.inspectSelectedKeyIdentity(safe.IdentityFile); err == nil {
+			state.identitySource = &identity
+		}
 	}
 	bound := safe
 	bound.state = state
@@ -721,6 +920,12 @@ func (s *Service) PlanKey(ctx context.Context, request KeyRequest) (KeyPlan, err
 		if err != nil {
 			return KeyPlan{}, err
 		}
+		if material.safe.NeedsPermissionRepair {
+			return KeyPlan{Action: ActionBlocked, Operation: KeyUse, IdentityFile: material.safe.IdentityFile, Fingerprint: material.safe.Fingerprint, Diagnostics: []Diagnostic{{Code: "private_key_permissions", Path: material.safe.IdentityFile, BlocksMutation: true}}}, nil
+		}
+		if err := s.revalidateSelectedLocalSources(material); err != nil {
+			return KeyPlan{}, err
+		}
 		plan := keyPlanForMaterial(ActionNoop, KeyUse, material.safe)
 		state := &keyPlanState{serviceID: s.id, request: request, material: material}
 		state.public = plan
@@ -741,14 +946,16 @@ func (s *Service) PlanKey(ctx context.Context, request KeyRequest) (KeyPlan, err
 		}
 		identity := strings.TrimSuffix(selected, ".pub")
 		private, stub := s.inspectIdentityProvenance(identity, record.metadata.Algorithm)
-		if !private && !stub {
+		repair := !private && !stub && s.unprotectedPrivateCompanion(identity, selected)
+		if !private && !stub && !repair {
 			identity = selected
 		}
 		candidate := KeyCandidate{
 			Source: KeySourceExplicit, Sources: []KeySource{KeySourceExplicit},
 			Algorithm: record.metadata.Algorithm, Comment: record.metadata.Comment,
 			Fingerprint: record.metadata.Fingerprint, PublicPath: selected, IdentityFile: identity,
-			Provenance: KeyProvenance{Private: private, SecurityKeyStub: stub},
+			Provenance:            KeyProvenance{Private: private, SecurityKeyStub: stub},
+			NeedsPermissionRepair: repair,
 		}
 		bound := s.bindKeyMaterial(candidate, record.normalized)
 		material, _ := s.validateKeyCandidate(bound)
@@ -759,7 +966,7 @@ func (s *Service) PlanKey(ctx context.Context, request KeyRequest) (KeyPlan, err
 		return plan, nil
 	}
 
-	identity, err := s.inspectSecureIdentity(selected)
+	identity, err := s.inspectSelectedKeyIdentity(selected)
 	if err != nil {
 		return KeyPlan{}, fmt.Errorf("inspect selected identity: %w", err)
 	}
@@ -807,11 +1014,16 @@ func (s *Service) PlanKey(ctx context.Context, request KeyRequest) (KeyPlan, err
 }
 
 func keyPlanForMaterial(action PlanAction, operation KeyOperation, candidate KeyCandidate) KeyPlan {
-	return KeyPlan{
+	plan := KeyPlan{
 		Action: action, Operation: operation, Source: candidate.Source,
 		Algorithm: candidate.Algorithm, Comment: candidate.Comment, Fingerprint: candidate.Fingerprint,
 		PublicPath: candidate.PublicPath, IdentityFile: candidate.IdentityFile,
 	}
+	if candidate.NeedsPermissionRepair {
+		plan.Action = ActionBlocked
+		plan.Diagnostics = []Diagnostic{{Code: "private_key_permissions", Path: candidate.IdentityFile, BlocksMutation: true}}
+	}
+	return plan
 }
 
 func (s *Service) planGeneratedKey(request KeyRequest) (KeyPlan, error) {
@@ -906,6 +1118,10 @@ func (s *Service) ApplyKey(ctx context.Context, plan KeyPlan) (KeyResult, error)
 			return KeyResult{}, err
 		}
 		candidate := s.bindVerifiedKeyMaterial(state.material.safe, state.material.publicLine, verification)
+		if state.material.agent != nil {
+			copy := *state.material.agent
+			candidate.state.agent = &copy
+		}
 		return KeyResult{Action: ActionNoop, Operation: KeyUse, Candidate: candidate}, nil
 	case KeyDerive:
 		return s.applyDerivedKey(ctx, plan)
@@ -913,6 +1129,65 @@ func (s *Service) ApplyKey(ctx context.Context, plan KeyPlan) (KeyResult, error)
 		return s.applyGeneratedKey(ctx, plan)
 	default:
 		return KeyResult{}, fmt.Errorf("unsupported key plan operation %q", plan.Operation)
+	}
+}
+
+// RevalidateKeySelection checks a reviewed selection before any configuration
+// effect. It does not decrypt, derive, generate, write, or repair key material.
+// Agent selections query only their captured agent's public inventory.
+func (s *Service) RevalidateKeySelection(ctx context.Context, plan KeyPlan) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if plan.Action == ActionBlocked || plan.state == nil {
+		return ErrBlocked
+	}
+	state := plan.state
+	if state.serviceID != s.id || !equalKeyPlans(plan, state.public) {
+		return errors.New("key plan was not produced by this service or its public fields were modified")
+	}
+	switch plan.Operation {
+	case KeyUse:
+		if state.material == nil {
+			return errors.New("selected key plan has no material state")
+		}
+		return s.revalidateSelectedKeySources(ctx, state.material)
+	case KeyDerive:
+		if err := s.revalidateSelectedKeyIdentity(state.identity); err != nil {
+			return err
+		}
+		current, err := s.inspectPublicDestination(plan.PublicPath)
+		if err != nil {
+			return err
+		}
+		if current.exists != state.expectedPublic.exists {
+			return ErrKeyCollision
+		}
+		return nil
+	case KeyGenerate:
+		parent := filepath.Dir(plan.IdentityFile)
+		if err := s.validateKeyParent(parent); err != nil {
+			_, statErr := os.Lstat(parent)
+			if !samePath(parent, s.paths.SSHDir) || !errors.Is(statErr, fs.ErrNotExist) {
+				return err
+			}
+			if err := validateHomeDirectory(s.paths.Home); err != nil {
+				return err
+			}
+		}
+		for _, path := range []string{plan.IdentityFile, plan.PublicPath} {
+			if _, err := os.Lstat(path); err == nil {
+				return ErrKeyCollision
+			} else if !errors.Is(err, fs.ErrNotExist) {
+				return err
+			}
+		}
+		return nil
+	default:
+		return errors.New("unsupported key selection operation")
 	}
 }
 
@@ -933,6 +1208,9 @@ func (s *Service) verifyKeyPair(ctx context.Context, material *keyMaterialState,
 	if material == nil {
 		return nil, errors.New("selected key has no material state")
 	}
+	if err := s.revalidateSelectedKeySources(ctx, material); err != nil {
+		return nil, err
+	}
 	safe := material.safe
 	if !safe.Provenance.Private && !safe.Provenance.SecurityKeyStub {
 		return nil, nil
@@ -940,7 +1218,7 @@ func (s *Service) verifyKeyPair(ctx context.Context, material *keyMaterialState,
 	if safe.IdentityFile == "" || safe.PublicPath == "" {
 		return nil, errors.New("private-backed selected key has no public companion")
 	}
-	identity, err := s.inspectSecureIdentity(safe.IdentityFile)
+	identity, err := s.inspectSelectedKeyIdentity(safe.IdentityFile)
 	if err != nil {
 		return nil, fmt.Errorf("validate selected identity: %w", err)
 	}
@@ -953,7 +1231,7 @@ func (s *Service) verifyKeyPair(ctx context.Context, material *keyMaterialState,
 	}
 	if previous := material.pairVerification; previous != nil {
 		if previous.publicPath != safe.PublicPath || previous.fingerprint != companion.metadata.Fingerprint ||
-			previous.identity.path != identity.path || !stableFileInfo(previous.identity.info, identity.info) {
+			previous.identity.path != identity.path || !sameSelectedKeyIdentity(previous.identity, identity) {
 			return nil, fmt.Errorf("selected key pair changed after verification: %w", ErrSourceChanged)
 		}
 		return cloneKeyPairVerification(previous), nil
@@ -990,7 +1268,7 @@ func (s *Service) verifyKeyPair(ctx context.Context, material *keyMaterialState,
 	if derived.metadata.Fingerprint != comparison.metadata.Fingerprint {
 		return nil, errors.New("selected SSH private key and public companion do not match")
 	}
-	if err := s.revalidateSecureIdentity(identity); err != nil {
+	if err := s.revalidateSelectedKeyIdentity(identity); err != nil {
 		return nil, fmt.Errorf("selected identity changed during verification: %w", ErrSourceChanged)
 	}
 	current, err := s.readPublicKeyFile(safe.PublicPath)
@@ -1004,7 +1282,7 @@ func (s *Service) verifyKeyPair(ctx context.Context, material *keyMaterialState,
 
 func (s *Service) applyDerivedKey(ctx context.Context, plan KeyPlan) (KeyResult, error) {
 	state := plan.state
-	if err := s.revalidateSecureIdentity(state.identity); err != nil {
+	if err := s.revalidateSelectedKeyIdentity(state.identity); err != nil {
 		return KeyResult{}, fmt.Errorf("selected identity changed before derivation: %w", ErrSourceChanged)
 	}
 	request := RunRequest{
@@ -1034,7 +1312,7 @@ func (s *Service) applyDerivedKey(ctx context.Context, plan KeyPlan) (KeyResult,
 	if err != nil {
 		return KeyResult{}, fmt.Errorf("derive SSH public key: invalid ssh-keygen output")
 	}
-	if err := s.revalidateSecureIdentity(state.identity); err != nil {
+	if err := s.revalidateSelectedKeyIdentity(state.identity); err != nil {
 		return KeyResult{}, fmt.Errorf("selected identity changed during derivation: %w", ErrSourceChanged)
 	}
 	staged, err := createStagedFile(filepath.Dir(plan.PublicPath), append(append([]byte(nil), record.normalized...), '\n'), nil)
@@ -1045,7 +1323,7 @@ func (s *Service) applyDerivedKey(ctx context.Context, plan KeyPlan) (KeyResult,
 	if s.beforeKeyCommit != nil {
 		s.beforeKeyCommit()
 	}
-	if err := s.revalidateSecureIdentity(state.identity); err != nil {
+	if err := s.revalidateSelectedKeyIdentity(state.identity); err != nil {
 		return KeyResult{}, fmt.Errorf("selected identity changed before publication: %w", ErrSourceChanged)
 	}
 	if err := commitNoReplace(staged, plan.PublicPath, state.expectedPublic); err != nil {
@@ -1187,7 +1465,7 @@ func (s *Service) applyGeneratedKey(ctx context.Context, plan KeyPlan) (KeyResul
 		Fingerprint: record.metadata.Fingerprint, PublicPath: plan.PublicPath, IdentityFile: plan.IdentityFile,
 		Provenance: KeyProvenance{Private: true},
 	}
-	publishedIdentity, err := s.inspectSecureIdentity(plan.IdentityFile)
+	publishedIdentity, err := s.inspectSelectedKeyIdentity(plan.IdentityFile)
 	if err != nil {
 		return KeyResult{}, fmt.Errorf("verify generated identity publication: %w", err)
 	}
@@ -1251,7 +1529,7 @@ func (s *Service) inspectIdentityProvenance(identity, algorithm string) (private
 	if identity == "" || !s.pathWithinSSH(identity) {
 		return false, false
 	}
-	if _, err := s.inspectSecureIdentity(identity); err != nil {
+	if _, err := s.inspectSelectedKeyIdentity(identity); err != nil {
 		return false, false
 	}
 	if strings.HasPrefix(algorithm, "sk-") {

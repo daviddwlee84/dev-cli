@@ -26,7 +26,7 @@ func newSSHManageCmd(app *App) *cobra.Command {
 	var r sshflow.Request
 	var apply, yes, jsonOut bool
 	cmd := &cobra.Command{Use: "manage", Short: "Compare SSH, fleet and Herdr machines and plan selected operations", Args: cobra.NoArgs,
-		Long: "Without an action, show the local joint inventory or open a multi-select wizard in a TTY.\nExplicit actions are plan-only until --apply. Herdr installation approvals remain native.",
+		Long: "Without an action, show the local joint inventory or open a multi-select wizard in a TTY.\nRegistration destinations use checkboxes; leave both unchecked to skip registration.\nExplicit actions are plan-only until --apply. Herdr installation approvals remain native.",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if yes && !apply {
 				return asUsageError(errors.New("--yes requires --apply"))
@@ -53,6 +53,10 @@ func newSSHManageCmd(app *App) *cobra.Command {
 				r, err = sshManagementWizard(cmd.Context(), app, inv)
 				if err != nil {
 					return err
+				}
+				if r.Action == "register" && r.To == "" {
+					fmt.Fprintln(app.Out, "No registration selected.")
+					return nil
 				}
 				apply = true
 			}
@@ -175,6 +179,9 @@ func renderSSHManagementPlan(app *App, p sshflow.Plan) {
 }
 func sshPick(ctx context.Context, app *App, prompt string, items []picker.Item, multi bool) ([]picker.Item, error) {
 	result, attempted, err := app.pick(ctx, picker.Request{Prompt: prompt, Items: items, Multi: multi})
+	if errors.Is(err, picker.ErrCanceled) {
+		return nil, errPromptCanceled
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -249,11 +256,14 @@ func sshManagementWizard(ctx context.Context, app *App, inv sshflow.Inventory) (
 		return r, err
 	}
 	if r.Action == "register" {
-		target, e := sshPick(ctx, app, "Register with", []picker.Item{{Value: "both", Label: "Fleet and Herdr"}, {Value: "fleet", Label: "Fleet"}, {Value: "herdr", Label: "Herdr"}}, false)
+		target, e := sshRegistrationDestinations(ctx, app, "Register with")
 		if e != nil {
 			return r, e
 		}
-		r.To = target[0].Value
+		r.To = target
+		if r.To == "" {
+			return r, nil
+		}
 		r.RemoteOS, e = prompt.choice("Target OS for selected aliases", "posix", "posix, windows", map[string]string{"posix": "posix", "windows": "windows"})
 		if e != nil {
 			return r, e

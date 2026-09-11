@@ -172,3 +172,12 @@ Upstream 差異已對照 [Tailscale SSH](https://tailscale.com/kb/1193/tailscale
 [Tailscale CLI](https://tailscale.com/kb/1080/cli#ssh)。Native status JSON 會隨版本
 改變；dev 只讀取 bounded subset，資料不支援或不可用時回報 observation 狀態，不會
 自行 enable／configure provider。
+
+## SSH picker 與 permission review（2026-09-11）
+
+Key-list／wizard behavior 以 `internal/sshhost` key catalog／permission plans、
+`internal/cli/ssh_keys.go`、`ssh_permissions.go`、`ssh_registration.go` 及 fixture tests
+為準。Backend 由 `internal/picker` 決定：單選可使用 fzf，多選一律 Bubble Tea。
+Key metadata／agent presence 不代表 remote authentication proof。Permission repair
+是另外批准且保留結果的 local operation；預設 catalog listing 不執行 `ssh -G`、
+chmod 或 remote login。

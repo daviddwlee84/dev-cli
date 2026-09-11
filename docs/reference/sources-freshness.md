@@ -185,3 +185,13 @@ Upstream distinctions were checked against [Tailscale SSH](https://tailscale.com
 and the [Tailscale CLI](https://tailscale.com/kb/1080/cli#ssh). Native status JSON
 is version-sensitive; dev consumes a bounded subset and reports unsupported or
 unusable observations rather than enabling/configuring the provider.
+
+## SSH picker and permission review (2026-09-11)
+
+Key-list and wizard behavior is grounded in `internal/sshhost` key catalogs and
+permission plans, `internal/cli/ssh_keys.go`, `ssh_permissions.go`,
+`ssh_registration.go` and their fixture tests. `internal/picker` owns the backend
+choice: single selections can use fzf, all multi-selections use Bubble Tea.
+Key metadata/agent presence is not remote authentication proof. Permission repair
+is a separately approved, retained local operation; default catalog listing does
+not run `ssh -G`, chmod or remote login.

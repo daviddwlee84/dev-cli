@@ -107,6 +107,9 @@ func (s *Service) Bootstrap(ctx context.Context, request BootstrapRequest) (Boot
 				}
 				hop.Status = HopManual
 				hop.Code = "selected_key_authentication_unproven"
+				if errors.Is(exactErr, ErrAgentPolicyMismatch) {
+					hop.Code = "selected_agent_policy_incompatible"
+				}
 				return finalizeBootstrap(result), nil
 			}
 			hop.Status = HopFailed
@@ -173,6 +176,12 @@ func (s *Service) Bootstrap(ctx context.Context, request BootstrapRequest) (Boot
 		program := posixInstallerProgram()
 		if hop.RemoteOS == RemoteOSWindows {
 			program = windowsInstallerProgram(administrator)
+		}
+		if selector.agent != nil {
+			if e := s.revalidateAgentKey(ctx, selector.agent, selector.fingerprint); e != nil {
+				hop.Status, hop.Code = HopManual, "selected_agent_key_unavailable"
+				return finalizeBootstrap(result), ctx.Err()
+			}
 		}
 		installResult, installErr := s.runHopSSH(
 			ctx, hopState, !request.Interactive, program,
@@ -315,6 +324,8 @@ func (s *Service) bootstrapRoute(ctx context.Context, request BootstrapRequest) 
 type keySelector struct {
 	identity    string
 	certificate string
+	agent       *keyAgentContext
+	fingerprint string
 }
 
 func (s *Service) prepareKeySelector(material *keyMaterialState) (keySelector, func(), error) {
@@ -330,12 +341,12 @@ func (s *Service) prepareKeySelector(material *keyMaterialState) (keySelector, f
 	certificate := strings.HasSuffix(record.metadata.Algorithm, "-cert-v01@openssh.com")
 	backedByIdentity := (safe.Provenance.Private || safe.Provenance.SecurityKeyStub) && safe.IdentityFile != ""
 	if backedByIdentity {
-		identity, inspectErr := s.inspectSecureIdentity(safe.IdentityFile)
+		identity, inspectErr := s.inspectSelectedKeyIdentity(safe.IdentityFile)
 		if inspectErr != nil {
 			return keySelector{}, emptyCleanup, fmt.Errorf("validate selected identity: %w", inspectErr)
 		}
 		if material.pairVerification == nil || material.pairVerification.identity.path != identity.path ||
-			!stableFileInfo(material.pairVerification.identity.info, identity.info) {
+			!sameSelectedKeyIdentity(material.pairVerification.identity, identity) {
 			return keySelector{}, emptyCleanup, fmt.Errorf("selected identity changed after key-pair proof: %w", ErrSourceChanged)
 		}
 		if safe.PublicPath != "" {
@@ -396,7 +407,7 @@ func (s *Service) prepareKeySelector(material *keyMaterialState) (keySelector, f
 				return keySelector{}, emptyCleanup, stageErr
 			}
 		}
-		return keySelector{identity: identity, certificate: certificatePath}, cleanup, nil
+		return keySelector{identity: identity, certificate: certificatePath, agent: material.agent, fingerprint: safe.Fingerprint}, cleanup, nil
 	}
 
 	if safe.PublicPath != "" {
@@ -404,14 +415,14 @@ func (s *Service) prepareKeySelector(material *keyMaterialState) (keySelector, f
 		if readErr != nil || current.metadata.Fingerprint != safe.Fingerprint || !publicLinesEqual(current.normalized, material.publicLine) {
 			return keySelector{}, emptyCleanup, errors.New("selected public key changed")
 		}
-		return keySelector{identity: safe.PublicPath}, emptyCleanup, nil
+		return keySelector{identity: safe.PublicPath, agent: material.agent, fingerprint: safe.Fingerprint}, emptyCleanup, nil
 	}
 	identity, err := stage(record.normalized)
 	if err != nil {
 		cleanup()
 		return keySelector{}, emptyCleanup, err
 	}
-	return keySelector{identity: identity}, cleanup, nil
+	return keySelector{identity: identity, agent: material.agent, fingerprint: safe.Fingerprint}, cleanup, nil
 }
 
 const (
@@ -445,6 +456,16 @@ func (s *Service) runSSHProof(ctx context.Context, hop routeHopState, selector k
 	if selector.identity == "" {
 		return false, errors.New("exact SSH proof requires an identity selector")
 	}
+	if selector.agent != nil {
+		value := firstEffectiveValue(hop.effective, "identityagent")
+		configured, enabled, err := s.resolveIdentityAgent(value)
+		if err != nil || !enabled || configured != "" && configured != selector.agent.socket {
+			return false, errors.Join(ErrUnprovenAuthentication, ErrAgentPolicyMismatch)
+		}
+		if err := s.revalidateAgentKey(ctx, selector.agent, selector.fingerprint); err != nil {
+			return false, err
+		}
+	}
 	configPath, destination, cleanup, err := s.prepareExactProofConfig(hop, selector)
 	if err != nil {
 		return false, err
@@ -460,6 +481,8 @@ func (s *Service) runSSHProof(ctx context.Context, hop routeHopState, selector k
 	// -v, LogLevel does not propagate verbosity into implicit ProxyJump clients.
 	args := appendFreshSSHOptions([]string{"-F", configPath, "-E", logPath, "-o", "LogLevel=DEBUG1"}, true)
 	args = append(args, destination, "exit 0")
+	// A captured socket is scoped to the target stanza. ProxyJump children must
+	// retain the ambient agent selected by their own ordinary configuration.
 	result, err := s.runner.Run(ctx, RunRequest{
 		Name: "ssh", Args: args, Env: []string{"LC_ALL=C"}, Display: "ssh selected-key-only authentication proof",
 	})
@@ -686,6 +709,9 @@ func writeSelectedAuthentication(body *strings.Builder, effective EffectiveConfi
 	writeConfigDirective(body, "GSSAPIAuthentication", "no")
 	writeConfigDirective(body, "HostbasedAuthentication", "no")
 	writeConfigDirective(body, "NumberOfPasswordPrompts", "0")
+	if selector.agent != nil && selector.agent.socket != "" {
+		writeConfigDirective(body, "IdentityAgent", selector.agent.socket)
+	}
 	for _, option := range []struct {
 		key       string
 		directive string
@@ -696,6 +722,9 @@ func writeSelectedAuthentication(body *strings.Builder, effective EffectiveConfi
 		{key: "pubkeyacceptedalgorithms", directive: "PubkeyAcceptedAlgorithms"},
 		{key: "pubkeyacceptedkeytypes", directive: "PubkeyAcceptedKeyTypes"},
 	} {
+		if option.key == "identityagent" && selector.agent != nil {
+			continue
+		}
 		if value := firstEffectiveValue(effective, option.key); value != "" {
 			connectionPath := option.key == "identityagent" || option.key == "securitykeyprovider" || option.key == "pkcs11provider"
 			if !validUTF8NoControl(value) || connectionPath && strings.Contains(value, "%") {

@@ -469,3 +469,48 @@ Unlink 保留 suppression，防止下次 discovery 自動連回。Merge 保留 s
 label／preferred profile，舊 ID 留作 redirect。兩者不修改 provider config 或停止
 remote session。Private registry 是 durable data；`dev cache clear ssh-discovery`
 與 `cache clear all` 只清 observations，不刪 canonical identities 或 manual bindings。
+
+## Key selection 與 optional registration
+
+```bash
+dev ssh key list
+dev ssh key list --json
+dev ssh key list --no-agent
+dev ssh key list --alias lab --json
+```
+
+預設 key listing 有界地掃描 `~/.ssh` 下的 public-key files 與目前 SSH agent，不評估
+alias。以 fingerprint 去重，顯示 algorithm、comment、source paths、source provenance
+與可用 signer。`--no-agent` 跳過 agent enumeration。只有明確 `--alias` 才執行 plain
+`ssh -G` 並使用該 alias 的 identity／agent settings；configured Match exec 或 resolver
+可能執行。Listing 不讀 private-key contents、不 derive／generate key、不修權限，
+也不嘗試 remote authentication。`--json` 輸出一個 `ssh_key_list` document，包含
+candidates、completeness 與 source diagnostics；來源缺失或不可用不會冒充空的成功結果。
+
+Setup wizard 選 existing key 時會開 catalog picker，另保留 **Enter a key path…**。
+只有 public file 而找不到 signer 的候選仍可見，但不能直接滿足 bootstrap。可改選
+其他 identity、把 signer 載入 agent，或提供對應 private-key path。Selected key 會先
+驗證，再進入後續 registration prompts；generation 與 remote installation 保留明確
+選擇及 native prompts。
+
+不帶參數的 setup wizard 會在 host picker 之前檢查已存在的 `~/.ssh`、root config
+與 `dev.d` 權限。選擇 key 後，再加入該 private/public companion 與必要 parent。
+macOS/Linux 的簡單 tightening 使用 directory 0700、config/private file 0600；public
+companion 只移除 group/world write bits，不新增權限或建立缺失檔案。ACL 或不支援的
+security metadata 需手動處理；Windows 只驗證既有 ACL，不重寫。Repair preview
+列出 exact paths／mode changes，另外確認後才收緊權限；即使後續
+取消 wizard，已完成 tightening 也保留。它不是 recursive chmod：無關 Include files、
+其他 keys、ownership changes、links/hardlinks 或不支援的 metadata 都需手動處理。
+拒絕 repair 會在 config／authentication 前停止；一般 listing／dry run 不修權限。
+主要 onboarding preview 仍先於 alias、registry binding、generated key 與 remote change。
+
+Registration 改用獨立的 **Fleet**／**Herdr** checkboxes，預設皆不勾選。Space 切換，
+Ctrl+A 全選／清除，Enter 確認，Esc 取消。零選擇代表不註冊；一項選對應 provider，
+兩項則都註冊。Setup 零選擇會繼續且略過 provider-specific prompts；獨立 manage／
+dashboard registration 則直接 no-op，不 authentication 或修改 provider。
+CLI `--to fleet|herdr|both` 保持不變。
+
+`[picker].command` 設定 external picker，單選（包含 key selection）預設使用 fzf；
+executable 缺失或 command 為空時使用 built-in picker。多選一律使用 built-in
+Bubble Tea picker，即使已安裝 fzf 也一樣。必要的 host／source selectors 仍不接受
+空選擇；只有 optional registration 把零選擇視為確認略過。

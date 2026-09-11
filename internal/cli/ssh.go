@@ -189,6 +189,7 @@ OpenSSH or log in. Herdr machine add keeps its native installation approvals.`,
 		newSSHRestoreCmd(app),
 		newSSHDiscoverCmd(app),
 		newSSHMachineCmd(app),
+		newSSHKeyCmd(app),
 	)
 	return cmd
 }
@@ -588,6 +589,8 @@ type sshSetupOptions struct {
 	identitiesOnly             bool
 	configOnly                 bool
 	key                        string
+	keyCandidate               *sshhost.KeyCandidate
+	keyPlan                    *sshhost.KeyPlan
 	generateKey                bool
 	keyPath                    string
 	comment                    string
@@ -683,7 +686,7 @@ read local Tailscale status but never configures or authenticates a host.`,
 }
 
 func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions) error {
-	if options.key != "" && options.generateKey {
+	if options.hasExistingKey() && options.generateKey {
 		return errors.New("--key and --generate-key are mutually exclusive")
 	}
 	if !options.generateKey && (cmd.Flags().Changed("key-path") || cmd.Flags().Changed("comment") || options.noPassphrase) {
@@ -695,7 +698,7 @@ func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions) error {
 	if options.fleetName != "" && !options.fleet {
 		return errors.New("--fleet-name requires --fleet")
 	}
-	if options.configOnly && (options.key != "" || options.generateKey || options.fleet || options.targetOS != "" || len(options.hopOS) > 0 || options.installOnWorkingJump || options.windowsAdminAuthorizedKeys) {
+	if options.configOnly && (options.hasExistingKey() || options.generateKey || options.fleet || options.targetOS != "" || len(options.hopOS) > 0 || options.installOnWorkingJump || options.windowsAdminAuthorizedKeys) {
 		return errors.New("--config-only cannot be combined with key, route, bootstrap, or fleet flags")
 	}
 	if options.targetOS != "" {
@@ -706,7 +709,7 @@ func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions) error {
 	if _, err := parseSSHOSOverrides(options.hopOS); err != nil {
 		return err
 	}
-	if !options.configOnly && !options.dryRun && options.key == "" && !options.generateKey && options.auth != "existing" {
+	if !options.configOnly && !options.dryRun && !options.hasExistingKey() && !options.generateKey && options.auth != "existing" {
 		return errors.New("full setup requires explicit --key or --generate-key")
 	}
 	return nil
@@ -791,7 +794,7 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 	}
 
 	var keyPlan *sshhost.KeyPlan
-	if !options.configOnly && (options.key != "" || options.generateKey) {
+	if !options.configOnly && (options.hasExistingKey() || options.generateKey) {
 		planned, planErr := planSSHSetupKey(ctx, app, service, options, interactiveMode)
 		keyPlan = &planned
 		document.KeyPlan = keyPlan
@@ -1054,6 +1057,9 @@ func mergeManagedDefinition(app *App, definition *sshhost.ManagedDefinition, opt
 }
 
 func planSSHSetupKey(ctx context.Context, app *App, service *sshhost.Service, options sshSetupOptions, interactiveMode bool) (sshhost.KeyPlan, error) {
+	if options.keyCandidate != nil && (options.key != "" || options.generateKey) {
+		return sshhost.KeyPlan{}, errors.New("choose one existing key or key generation")
+	}
 	request := sshhost.KeyRequest{
 		Interactive:  interactiveMode && !options.noPassphrase,
 		AllowDerive:  options.yes,
@@ -1065,7 +1071,11 @@ func planSSHSetupKey(ctx context.Context, app *App, service *sshhost.Service, op
 		request.Comment = options.comment
 	} else {
 		request.Operation = sshhost.KeyUse
-		request.Path = options.key
+		if options.keyCandidate != nil {
+			request.Candidate = *options.keyCandidate
+		} else {
+			request.Path = options.key
+		}
 	}
 	plan, err := service.PlanKey(ctx, request)
 	if err != nil {

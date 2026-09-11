@@ -16,6 +16,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   transactions, source fingerprints, unlink suppression and merge redirects.
 - Dashboard SSH view for machine connections, distinct aliases and provider
   membership; local refresh keeps discovery and remote actions explicit.
+- `dev ssh key list` for fingerprint-deduplicated local/agent key metadata, with
+  optional alias evaluation and a setup key picker with manual-path fallback.
+- Early, separately reviewed macOS/Linux SSH permission tightening for canonical setup paths
+  and the selected key; completed repairs survive later wizard cancellation.
+
+### Changed
+
+- SSH setup, machine management and dashboard registration use independent Fleet
+  and Herdr checkboxes. Accepting an empty selection skips registration.
 
 ## [0.2.27] - 2026-09-11
 

@@ -1724,6 +1724,26 @@ dev ssh init [flags]
 - `--json` — emit one versioned JSON plan or result
 - `--yes` — confirm the local plan without prompting
 
+### `dev ssh key`
+
+Inspect local SSH keys and agent identities
+
+```
+dev ssh key
+```
+
+### `dev ssh key list`
+
+List local public keys and SSH agent identities
+
+```
+dev ssh key list [flags]
+```
+
+- `--alias` — Evaluate this alias's OpenSSH identity and agent settings
+- `--json` — Print key metadata and source diagnostics as JSON
+- `--no-agent` — Skip SSH agent enumeration
+
 ### `dev ssh list`
 
 Statically list exact SSH aliases and their definitions
