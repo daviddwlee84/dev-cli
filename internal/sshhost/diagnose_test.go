@@ -247,3 +247,21 @@ func TestDiagnoseTotalDeadline(t *testing.T) {
 		t.Fatalf("%+v %v", result, err)
 	}
 }
+
+func TestDiagnoseProxyLogsCannotProveFinalAuthentication(t *testing.T) {
+	service := diagnosticTestService(t, diagnosticRunnerFunc(func(_ context.Context, r RunRequest) (RunResult, error) {
+		if r.Args[0] == "-G" {
+			return RunResult{Stdout: append(diagnosticConfig(), []byte("proxyjump jump\n")...)}, nil
+		}
+		return RunResult{ExitCode: 255, Stderr: []byte("Authenticated to jump using publickey.\nPermission denied (publickey).")}, nil
+	}), DiagnosticHooks{})
+	result, err := service.Diagnose(context.Background(), DiagnoseRequest{Target: "target"})
+	if err == nil || result.Status != "not_ready" || len(result.Attempts) != 1 || result.Attempts[0].Code != "proxy_path_failed" {
+		t.Fatal(result, err)
+	}
+	for _, stage := range result.Attempts[0].Stages {
+		if stage.State == "passed" {
+			t.Fatal("jump authentication became final-target proof", stage)
+		}
+	}
+}

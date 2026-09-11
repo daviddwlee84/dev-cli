@@ -143,6 +143,19 @@ func (s *Service) Diagnose(ctx context.Context, request DiagnoseRequest) (Diagno
 		return finishDiagnosis(ctx, d, ctx.Err())
 	}
 	baseline := s.diagnosticSSHAttempt(ctx, request.Target, false)
+	if d.Target.Proxy != "none" && !baseline.Ready && baseline.Code != "canceled" && baseline.Code != "ssh_unavailable" {
+		// Proxy helpers may emit their own verbose authentication/handshake
+		// markers. They cannot prove the final target passed those stages.
+		baseline.Code = "proxy_path_failed"
+		for i := range baseline.Stages {
+			baseline.Stages[i].State = "unknown"
+			baseline.Stages[i].Code = "proxy_stage_unresolved"
+		}
+	}
+	if socketHost, socketPort, splitErr := net.SplitHostPort(d.SocketRemote); splitErr == nil && baseline.Endpoint != "" && (socketHost != baseline.Endpoint || socketPort != strconv.Itoa(baseline.Port)) {
+		d.Findings = append(d.Findings, "tcp_ssh_endpoints_differ")
+	}
+
 	d.Attempts = append(d.Attempts, baseline)
 	if baseline.Ready {
 		d.Status = "ready"
@@ -152,6 +165,7 @@ func (s *Service) Diagnose(ctx context.Context, request DiagnoseRequest) (Diagno
 	}
 	d.stage("qos", "skipped", "not_requested", time.Now())
 	if request.CompareQoS {
+		qosStart := time.Now()
 		code := "qos_comparison_unavailable"
 		classes := strings.Fields(d.Target.IPQoS)
 		switch {
@@ -189,7 +203,7 @@ func (s *Service) Diagnose(ctx context.Context, request DiagnoseRequest) (Diagno
 		if code == "qos_marking_unproven" {
 			state = "unsupported"
 		}
-		d.stage("qos", state, code, time.Now())
+		d.stage("qos", state, code, qosStart)
 	}
 	if ctx.Err() != nil {
 		return finishDiagnosis(ctx, d, ctx.Err())

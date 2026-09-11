@@ -36,7 +36,7 @@ func TestSSHDiagnoseCLIJSONAndLiteralTarget(t *testing.T) {
 	if strings.Contains(out.String()+errOut.String(), "secret-sentinel") {
 		t.Fatal("raw error leaked")
 	}
-	if len(result.Attempts) != 1 || result.Attempts[0].Code != "authentication_denied" {
+	if len(result.Attempts) != 1 || result.Attempts[0].Code != "proxy_path_failed" {
 		t.Fatal(result)
 	}
 }

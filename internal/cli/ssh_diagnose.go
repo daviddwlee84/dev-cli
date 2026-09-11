@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 	"github.com/spf13/cobra"
@@ -51,6 +52,15 @@ func runSSHDiagnose(ctx context.Context, app *App, request sshhost.DiagnoseReque
 		if result.Target.Hostname != "" {
 			fmt.Fprintf(app.Out, "Target: %s:%d  user: %s  proxy: %s\n", result.Target.Hostname, result.Target.Port, result.Target.User, result.Target.Proxy)
 		}
+		if result.Target.IPQoS != "" {
+			fmt.Fprintf(app.Out, "IPQoS: %s  address family: %s\n", result.Target.IPQoS, result.Target.AddressFamily)
+		}
+		if len(result.Target.IdentityFiles) > 0 {
+			fmt.Fprintln(app.Out, "Identity files: "+strings.Join(result.Target.IdentityFiles, ", "))
+		}
+		for _, route := range result.Routes {
+			fmt.Fprintf(app.Out, "Route %s: interface=%s source=%s gateway=%s (%s)\n", route.Address, route.Interface, route.Source, route.Gateway, route.Code)
+		}
 		for _, stage := range result.Stages {
 			fmt.Fprintf(app.Out, "%-15s %-12s %s\n", stage.Name, stage.State, stage.Code)
 		}
@@ -61,11 +71,33 @@ func runSSHDiagnose(ctx context.Context, app *App, request sshhost.DiagnoseReque
 			}
 		}
 		for _, action := range result.SuggestedActions {
-			fmt.Fprintln(app.Out, "Next: "+action)
+			fmt.Fprintln(app.Out, "Next: "+sshDiagnosticActionText(action))
 		}
-		if len(result.Findings) > 0 {
-			fmt.Fprintln(app.Out, "QoS comparison shows correlation only; it does not locate a faulty network component.")
+		for _, finding := range result.Findings {
+			if finding == "qos_correlated_progress" {
+				fmt.Fprintln(app.Out, "QoS comparison shows correlation only; it does not locate a faulty network component.")
+			}
+			if finding == "tcp_ssh_endpoints_differ" {
+				fmt.Fprintln(app.Out, "The TCP socket and SSH attempt selected different endpoints; their results are not a controlled comparison.")
+			}
 		}
 	}
 	return err
+}
+
+func sshDiagnosticActionText(action string) string {
+	switch action {
+	case "verify_host_identity":
+		return "Verify the host identity through a trusted channel; keep strict host-key checking enabled."
+	case "check_authentication":
+		return "Check the effective user, selected identities and agent availability; this probe does not prompt for credentials."
+	case "check_remote_session":
+		return "Authentication succeeded; inspect the remote shell or session policy."
+	case "inspect_ssh_config":
+		return "Inspect the target with ssh -G and correct its local configuration."
+	case "review_per_host_ipqos":
+		return "Review a per-host IPQoS workaround using the comparison evidence; no configuration was changed."
+	default:
+		return "Inspect the route, proxy and service port; --compare-qos explicitly permits an eligible QoS comparison."
+	}
 }

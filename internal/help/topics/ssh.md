@@ -308,3 +308,6 @@ bounded route observations, attempts and next-action codes, but never raw debug
 logs, server banners, config comments or proxy command strings. Do not publish
 this local JSON directly. Feedback uses a separate allowlisted public projection.
 Operational failure still emits one JSON document and a nonzero exit status.
+
+Failed proxy connections keep final-target stages unknown: a helper may print
+its own successful jump-host authentication, which is not final-target proof.

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-var diagnosticPublicCodes = wordSet(`prerequisite_unavailable config_unavailable config_invalid config_ready addresses_resolved dns_unavailable route_unavailable route_observed route_source_unproven route_unsupported proxy_path bind_interface_unavailable bind_address_unavailable scope_required tcp_failed tcp_connected connection_refused connect_timeout canceled non_ssh_banner banner_failed banner_timeout ssh_banner not_requested qos_comparison_unavailable path_not_comparable qos_already_disabled baseline_ready qos_marking_unproven no_transport_timeout qos_no_progress qos_correlated_progress not_observed handshake_complete host_key_verified authenticated remote_exit_zero host_key_unknown host_key_changed host_key_rejected host_identity_reached authentication_denied agent_refused handshake_timeout session_failed ssh_unavailable ssh_failed evidence_truncated ready`)
+var diagnosticPublicCodes = wordSet(`prerequisite_unavailable config_unavailable config_invalid config_ready addresses_resolved dns_unavailable route_unavailable route_observed route_source_unproven route_unsupported proxy_path bind_interface_unavailable bind_address_unavailable scope_required tcp_failed tcp_connected connection_refused connect_timeout canceled non_ssh_banner banner_failed banner_timeout ssh_banner not_requested qos_comparison_unavailable path_not_comparable qos_already_disabled baseline_ready qos_marking_unproven no_transport_timeout qos_no_progress qos_correlated_progress not_observed handshake_complete host_key_verified authenticated remote_exit_zero host_key_unknown host_key_changed host_key_rejected host_identity_reached authentication_denied agent_refused handshake_timeout session_failed ssh_unavailable ssh_failed evidence_truncated proxy_path_failed proxy_stage_unresolved ready`)
 
 func wordSet(words string) map[string]bool {
 	m := map[string]bool{}
@@ -62,10 +62,11 @@ func (d Diagnosis) PublicEvidence() PublicDiagnosis {
 		}
 		p.AttemptCodes = append(p.AttemptCodes, code)
 	}
+	seenFindings := map[string]bool{}
 	for _, code := range d.Findings {
-		if code == "qos_correlated_progress" {
-			p.Findings = []string{code}
-			break
+		if (code == "qos_correlated_progress" || code == "tcp_ssh_endpoints_differ") && !seenFindings[code] {
+			p.Findings = append(p.Findings, code)
+			seenFindings[code] = true
 		}
 	}
 	return p

@@ -349,3 +349,6 @@ JSON 使用 `schema_version: 1`、`kind: ssh_diagnosis`、`privacy: local`，包
 next-action codes。原始 debug log、server banner、config comments、proxy command
 不輸出。不要直接公開此 JSON；feedback 使用獨立的白名單公開投影。操作失敗仍
 輸出一份完整 JSON，並傳回非零 exit status。
+
+Proxy 連線失敗時，最終目標的階段保持 unknown：helper 可能輸出自己的 jump-host
+認證成功日誌，這不能證明最終目標也已通過認證。
