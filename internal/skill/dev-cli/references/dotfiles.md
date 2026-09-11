@@ -28,11 +28,15 @@ passive dev helper. Do not send controller config paths, source contents,
 credentials or rendered diffs. Missing/old remote dev needs capability guidance,
 not a fallback to executing chezmoi remotely. There is no remote apply in v1.
 
-FLEET displays local and configured host headers independently of repo scans.
-Local starts expanded; remote hosts start collapsed. Enter toggles a host or
-opens a repository, Space/Ctrl+O/right-click opens actions, and r refreshes the
-selected host. Search includes collapsed cached repos and reports coverage;
-typing a query never schedules new connections.
+FLEET displays configured remote hosts independently of repo scans. Local is
+hidden by default; a or the menu reveals it collapsed at the end for this
+session, reusing REPOS. Hidden local data is excluded from search and coverage.
+Enter toggles a host or opens a repository; Space/Ctrl+O/right-click opens actions.
+The HERDR column observes the local saved catalog separately from SSH snapshots:
+not added, enabled, disabled, mixed counts or unknown. Enabled is intent, not
+proof of a live connection. r updates the selected host and Herdr metadata.
+Search includes known Herdr state/profile labels/sessions and collapsed cached
+repos; typing a query never schedules new connections.
 
 Background warming starts about five seconds after startup or on entering FLEET,
 once per eligible host, without password prompts/retries. Disable it with
@@ -41,9 +45,13 @@ only a fresh successful empty observation means zero repositories.
 
 Host actions can SSH, observe dotfiles, or delegate Herdr integration without a
 repo snapshot. Outside Herdr, native attachment names the remote session
-explicitly. Inside Herdr, add/enable uses guarded native machine operations;
-registration may install/start a remote server and preserves native approvals.
-Herdr 0.9.0 add does not switch the selected machine. Never edit its private
+explicitly. Add/enable/disable/remove use guarded exact-profile operations
+inside or outside Herdr; multiple matching profiles use a picker rather than
+implicit bulk actions. Disable preserves registration, Remove deletes it, and
+both retain remote sessions. Catalog actions refresh only shared local metadata.
+Connection capability restrictions must not hide disable/remove of an existing
+exact saved profile. Registration may install/start a remote server and preserves
+native approvals. Herdr 0.9.0 add does not switch the selected machine. Never edit its private
 catalog or claim registration updated a different machine's desktop client.
 
 Keep the author's fleet chezmoi, dotcfg and appsrc independent. Dotfiles can

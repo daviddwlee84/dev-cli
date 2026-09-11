@@ -12,8 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   with an optional author-maintained preset, and native diff/apply/update entry
   points. `dev fleet dotfile status` observes explicitly selected hosts without
   rendering templates, running hooks, or transferring configuration.
-- FLEET host action menus offer SSH, capability-aware Herdr machine registration
-  or remote attachment, and dotfile status independently of repository loading.
+- FLEET shows local Herdr registration/enabled state independently of repository
+  loading. Host menus offer SSH, exact-profile Herdr add/enable/disable/remove
+  and remote attachment, plus dotfile status. Catalog management retains remote
+  sessions and refreshes local metadata without querying remote repositories.
 
 ### Changed
 
@@ -21,6 +23,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   searchable cached repositories, and refreshes hosts independently. Optional
   delayed background refresh is bounded and never prompts for authentication;
   filtering shows coverage without initiating extra connections.
+- FLEET hides this machine by default; `a` or the host action menu reveals it
+  collapsed at the end of the list. Search and coverage follow that session's
+  visible host scope, while REPOS remains the primary local inventory.
 
 ### Fixed
 

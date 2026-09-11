@@ -246,10 +246,12 @@ Cache 讓 unavailable host 可以 `stale` 保留 last-known state；`--cached` �
 
 ## FLEET 主機樹 {#dashboard-host-tree}
 
-FLEET 立即列出本機與所有已設定的遠端主機，不等待 repository scan 或 SSH。
-本機置頂、預設展開並重用已接受的 REPOS snapshot；遠端預設收合。
+FLEET 立即列出已設定的遠端主機，不等待 repository scan 或 SSH，主機預設收合。
+本機預設隱藏，因為 REPOS 已有更完整的本機 inventory。按 `a` 或使用動作選單
+可將本機顯示在最後，首次顯示時收合；開關只保留於本次 dashboard session。
+本機 repositories 重用已接受的 REPOS snapshot，升序或降序時都固定排最後。
 Enter 展開主機或開啟 repository；Space、Ctrl+O、右鍵開啟動作選單，r 更新
-選取主機。全域 h/l／方向鍵／Tab 仍用來切換分頁。
+選取主機及 Herdr metadata。全域 h/l／方向鍵／Tab 仍用來切換分頁。
 
 初始畫面後五秒，或提早進入 FLEET 時，單一背景 worker 開始更新缺少或過期的
 host snapshot。每台符合條件的主機自動嘗試一次，結果逐台出現。背景讀取採用
@@ -265,17 +267,46 @@ background_refresh = false
 失敗保留舊資料，只有成功的空 snapshot 才代表零個 repositories。
 主機載入與動作不依賴本機 REPOS 成功；收合只隱藏 children，保留資料及已要求的讀取。
 
-/ 搜尋已知的主機名稱、SSH alias 與所有已載入／快取 repos，包含收合主機。
+/ 搜尋已知的主機名稱、SSH alias、Herdr profile label／session／登錄狀態，以及
+已載入／快取 repos，包含收合主機。隱藏本機時，搜尋與 coverage 都排除本機。
 命中的 repo 保留 parent header，暫時展開；清除搜尋後恢復原展開狀態。
 輸入或篩選不增加連線工作。Footer 分開顯示最新、快取與尚未載入的主機；
 需要完整最新結果時，從 action menu 更新全部主機，零命中時也能使用。
+沒有遠端主機或沒有搜尋結果時，仍可從選單切換本機顯示。
 
 主機動作包含 SSH、[dotfile status](dotfiles.zh-TW.md) 與選用的 Herdr，不必先取得
-repo snapshot，也不要求遠端已有 dev。Herdr 外的連線明確指定 session，預設
-為 default；Herdr 內的加入／啟用重用既有受保護流程。原生安裝確認交給 Herdr；
-0.9.0 add 會讓開啟中的本機 clients 連上新機器，但不切換選取。
-登錄只影響執行 dev 這台機器的 client catalog，不影響另一台桌面 client。
-原生 Windows target 保留 SSH，不提供 Herdr server 動作。
+repo snapshot，也不要求遠端已有 dev。`HERDR` 欄顯示本機 saved-profile 狀態，
+與 repository `STATE`、runtime `LIVE` 分開：
+
+| HERDR | 意義 | 管理動作 |
+|---|---|---|
+| `not added` | 成功讀取 catalog，沒有匹配的 profile | Add to Herdr |
+| `enabled` | 匹配的 saved profile 已啟用 | Disable 或 Remove |
+| `disabled` | 匹配的 saved profile 已停用 | Enable 或 Remove |
+| `1/2 enabled` | 多個匹配 profiles | 先選取精確 profile |
+| `loading`／`unknown` | 載入中或尚無可靠觀察 | 刷新或檢查原因 |
+| `unmapped`／`not checked` | 缺少精確 SSH alias，或未啟用 Herdr 檢查 | 檢查連線設定或啟動選項 |
+
+所有主機共用一次有 timeout 的本機 `herdr machine list --json` 查詢，不連 SSH，
+也不要求本機 server 已執行。進入 FLEET、明確刷新、開選單，以及 Herdr 操作完成
+後更新；不持續輪詢。失敗時保留舊值並標 stale，不改成 `not added`。
+`--no-runtime` 跳過 Herdr 檢查；repository 的 `background_refresh` 不控制這份本機資料。
+
+Enabled 代表保存的連線意圖，不代表目前已連線。Profile 按精確 SSH alias 關聯，
+不解析 IP 或推測其他 alias 等價。Detail 顯示 label、session，以及 fleet 連線覆寫
+與 saved target 的差異。OS 保留在主機 detail，不再填入 host header 的 BRANCH。
+
+Enable、Disable、Remove 在 Herdr 內外都使用既有受保護計畫與精確 profile
+fingerprint。多個 profiles 先透過 picker 選擇，不攤開成過長的 action menu。
+Disable 保留登錄方便再啟用；Remove 刪除該筆登錄。兩者讓本機 clients detach，
+遠端 server、panes、sessions 繼續執行。完成後只更新 Herdr metadata，不額外
+查詢遠端 repository snapshot。本次不提供批次開關，也不自動操作所有匹配項目。
+
+Herdr 外另外可 Connect，並明確指定 session，預設 default。Add 可能準備／啟動
+遠端 server，原生安裝確認仍交給 Herdr。0.9.0 add 會讓開啟中的本機 clients 連上
+新機器，但不切換選取；登錄只影響執行 dev 這台機器的 catalog。即使連線 target
+不支援（例如原生 Windows），仍可停用／移除已明確匹配的 saved profile；
+連線能力與本機 catalog 管理分開。
 
 e 編輯 primary remotes.toml 並重新驗證合併設定。Endpoint 改變會讓舊結果失效；
 設定錯誤則保留可用資料。CLI dev fleet list 的本機加遠端 inventory 契約維持不變。

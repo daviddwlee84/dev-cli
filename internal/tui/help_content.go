@@ -96,7 +96,8 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 	case ViewFleet:
 		if m.hostFleetEnabled() {
 			add("open", "Enter / o", "Expand a host or open a repository", "Host headers expand or collapse their repositories. The local host reuses REPOS; a remote expansion loads only that host if no current observation is available.", "fleet", true)
-			add("actions", "Space / Ctrl+O", "Show host actions", "Load this host's available SSH, Herdr and dotfiles actions. The menu also offers update all configured hosts, even when the filter matches no rows.", "fleet", true)
+			add("actions", "Space / Ctrl+O", "Show host actions", "Read the shared local Herdr catalog and derive this host's SSH, Herdr and dotfiles actions. Multiple saved profiles have a profile picker before exact enable, disable or remove actions. The menu remains available when no rows match.", "fleet", true)
+			add("local", "a", "Show or hide the local host", "Local is hidden initially. Showing it adds a collapsed host last, independent of sorting. Search and coverage include local repositories only while the host is shown; local rows reuse REPOS without another scan.", "fleet", true)
 		} else {
 			add("open", "Enter / o", "Open repository on its host", "Requires a repository row and the configured host connection. A host error/status row has no checkout to open.", "fleet", m.actions.OpenFleet != nil)
 			add("local", "a", "Include or hide this machine", "Local fleet rows are hidden by default because REPOS has the richer local inventory.", "fleet", true)
@@ -133,7 +134,7 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 	refresh := "Reload configuration and local observations. Local repository refresh does not fetch Git remotes."
 	switch view {
 	case ViewFleet:
-		refresh = "Refresh the selected host (a repository child selects its parent). Cached observations remain visible on failure. Update all configured hosts is a separate action-menu entry; authentication has an explicit terminal handoff."
+		refresh = "Refresh the shared local Herdr catalog and the selected host's repositories (a child selects its parent). These observations are independent; old data remains explicitly stale on failure. Update all configured hosts is a separate menu entry; authentication has an explicit terminal handoff."
 	case ViewRemote:
 		refresh = "Reload configuration and explicitly refresh repositories through configured forge CLIs; this may contact the network."
 	case ViewSkills:
@@ -226,7 +227,8 @@ func helpGuideEntries(view View) []helpEntry {
 		add("filter", "Using this view", "Filter and order local repositories", "Filter by repository, branch, task, checkout or catalog text; structured terms include tag:, remote: and size:. Click a column heading for ascending, descending and default order. Startup-repository selection changes focus without changing the configured order.", "tui")
 		add("discovery", "Using this view", "Add a startup repository to discovery", "When a fully observed startup Git repository is outside configured discovery, REPOS offers Add this repo (repo_paths) or Scan parent directory (scan_roots). Exact paths suit isolated repositories; a parent scan includes eligible siblings. Preview the actual config and scope, then confirm; existing comments/order are preserved.", "repositories")
 	case ViewFleet:
-		add("columns", "Columns", "Hosts with repository children", "Local starts expanded; remote hosts start collapsed. HOST, REPO, STATE and PATH remain visible on narrower terminals; wider terminals add BRANCH, GIT, LIVE and TASKS. Not loaded is unknown, not an empty or unreachable machine. Paths belong to the named host.", "fleet")
+		add("columns", "Columns", "Hosts with repository children", "Remote hosts start collapsed; local is hidden until a and stays last when shown. HERDR remains visible on narrow terminals and reports this client's saved registration/enabled state, not connectivity. Repository children leave HERDR blank. OS is in host details; wider tables add BRANCH, GIT, LIVE and TASKS. Not loaded remains unknown.", "fleet")
+		add("herdr", "Observations", "Herdr catalog is independent of SSH", "A shared local machine list is read on each FLEET visit, explicit refresh, host menu and completed Herdr action. There is no polling. Only a successful catalog without a matching alias means not added. Failed reads preserve previous states with a stale marker; --no-runtime is not checked. Profile labels and sessions are searchable without IO.", "fleet")
 		add("colors", "Colors and symbols", "Cached observations are dimmed", "Green marks an observed live runtime only for a current snapshot. Cached rows are dimmed and retain their observation time; an old clean Git status is not fresh proof. Errors stay attached to their host without hiding usable cached repositories.", "fleet")
 		add("network", "Using this view", "Local first, bounded background updates", "Descriptors and caches load without SSH. When background_refresh is enabled, after five seconds or an earlier visit to FLEET, stale or missing host snapshots update one at a time. Explicit host loads take priority. Filtering searches only known host metadata and cached or loaded repositories; matching children appear without changing saved expansion or making network requests.", "fleet")
 	case ViewTries:

@@ -80,6 +80,9 @@ const (
 	listActionFleetRefresh
 	listActionFleetRefreshAll
 	listActionFleetHost
+	listActionFleetLocal
+	listActionFleetProfiles
+	listActionFleetProfile
 )
 
 type selectionToken struct {
@@ -283,6 +286,7 @@ func (m Model) openActionMenu() Model {
 		m.overlay.addOption(listActionSettings, "settings / configuration…")
 		if m.view == ViewFleet && m.hostFleetEnabled() {
 			m.overlay.addOption(listActionFleetRefreshAll, "update all configured hosts over SSH")
+			m.overlay.addOption(listActionFleetLocal, m.fleetLocalToggleLabel())
 		}
 		if m.currentStatusText() != "" {
 			m.overlay.addOption(listActionStatusDetails, "full status / error…")
@@ -373,6 +377,7 @@ func (m Model) openActionMenu() Model {
 				overlay.addOption(listActionFleetRefresh, "refresh this host")
 			}
 			overlay.addOption(listActionFleetRefreshAll, "update all configured hosts over SSH")
+			overlay.addOption(listActionFleetLocal, m.fleetLocalToggleLabel())
 		}
 		if row, ok := m.currentFleet(); ok && row.Repository != nil && m.actions.OpenFleet != nil {
 			overlay.addOption(listActionOpen, "open repository on host")
@@ -553,13 +558,16 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 	}
 	action := m.overlay.options[m.overlay.optionIndex].action
 	option := m.overlay.options[m.overlay.optionIndex]
+	if option.fleetProfile != "" {
+		return m.openFleetProfile(m.overlay.fleetHost, option.fleetProfile)
+	}
 	if option.fleetID != "" {
 		host := m.overlay.fleetHost
 		m.overlay = overlayState{}
 		return m.runFleetHostActionFor(host, option.fleetID)
 	}
 	token := m.overlay.selection
-	rowIndependent := action == listActionFleetRefreshAll || action == listActionTriageAll || action == listActionTriageFiltered || action == listActionStateFilter || (action >= listActionStateAll && action <= listActionStateDone) || action == listActionLastTriage || action == listActionSettings || action == listActionStatusDetails
+	rowIndependent := action == listActionFleetLocal || action == listActionFleetRefreshAll || action == listActionTriageAll || action == listActionTriageFiltered || action == listActionStateFilter || (action >= listActionStateAll && action <= listActionStateDone) || action == listActionLastTriage || action == listActionSettings || action == listActionStatusDetails
 	if !rowIndependent && !discoveryAction(action) && !m.selectToken(token) {
 		m.overlay = overlayState{}
 		m.err = fmt.Errorf("selected row changed while its action menu was open")
@@ -603,6 +611,10 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case listActionFleetToggle:
 		return m.toggleFleetHost()
+	case listActionFleetLocal:
+		return m.toggleFleetLocal()
+	case listActionFleetProfiles:
+		return m.openFleetProfiles()
 	case listActionFleetRefresh:
 		return m.refreshSelectedFleetHost()
 	case listActionFleetRefreshAll:

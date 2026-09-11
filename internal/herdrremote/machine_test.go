@@ -12,9 +12,10 @@ import (
 const id = "0123456789abcdef0123456789abcdef"
 
 type fakeRunner struct {
-	rows  []Profile
-	calls []sshhost.RunRequest
-	fail  bool
+	rows        []Profile
+	calls       []sshhost.RunRequest
+	fail        bool
+	afterAction func()
 }
 
 func (f *fakeRunner) Run(_ context.Context, r sshhost.RunRequest) (sshhost.RunResult, error) {
@@ -43,6 +44,9 @@ func (f *fakeRunner) Run(_ context.Context, r sshhost.RunRequest) (sshhost.RunRe
 		f.rows = nil
 	default:
 		return sshhost.RunResult{}, errors.New("unexpected native action")
+	}
+	if f.afterAction != nil {
+		f.afterAction()
 	}
 	return sshhost.RunResult{}, nil
 }
@@ -117,5 +121,86 @@ func TestInvalidInventoryDoesNotExposeCredentialTargets(t *testing.T) {
 	inv, err := (Service{Runner: f}).List(context.Background())
 	if err == nil || len(inv.Profiles) != 0 {
 		t.Fatal("invalid credential target leaked")
+	}
+}
+
+func TestNativeProfileMutationVerifiesUnchangedIdentityAfterApply(t *testing.T) {
+	for _, action := range []string{"enable", "disable", "rename"} {
+		for _, field := range []string{"target", "session", "id", "other-field"} {
+			t.Run(action+"/"+field, func(t *testing.T) {
+				before := Profile{ID: id, Label: "Reviewed", Target: "reviewed-host", Session: "agents", Enabled: action != "enable"}
+				f := &fakeRunner{rows: []Profile{before}}
+				s := Service{Runner: f}
+				inv, err := s.List(t.Context())
+				if err != nil {
+					t.Fatal(err)
+				}
+				request := Request{Action: action, ProfileID: id}
+				if action == "rename" {
+					request.Label = "New label"
+				}
+				plan, err := s.Plan(inv, request)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var concurrent Profile
+				f.afterAction = func() {
+					switch field {
+					case "target":
+						f.rows[0].Target = "concurrent-host"
+					case "session":
+						f.rows[0].Session = "concurrent-session"
+					case "id":
+						f.rows[0].ID = "1123456789abcdef0123456789abcdef"
+					case "other-field":
+						if action == "rename" {
+							f.rows[0].Enabled = !before.Enabled
+						} else {
+							f.rows[0].Label = "Concurrent label"
+						}
+					}
+					concurrent = f.rows[0]
+				}
+				result, err := s.Apply(t.Context(), plan, false)
+				if err == nil || result.Status != "unknown" {
+					t.Fatalf("concurrent change verified: %+v / %v", result, err)
+				}
+				mutations := 0
+				for _, call := range f.calls {
+					if len(call.Args) > 1 && call.Args[1] != "list" {
+						mutations++
+					}
+				}
+				if mutations != 1 || !reflect.DeepEqual(f.rows[0], concurrent) {
+					t.Fatal("verification attempted to roll back external state")
+				}
+			})
+		}
+	}
+}
+
+func TestNativeProfileMutationIgnoresOnlySelectedAfterApply(t *testing.T) {
+	for _, action := range []string{"enable", "disable", "rename"} {
+		t.Run(action, func(t *testing.T) {
+			f := &fakeRunner{rows: []Profile{{ID: id, Label: "Reviewed", Target: "host", Session: "agents", Enabled: action != "enable"}}}
+			s := Service{Runner: f}
+			inv, err := s.List(t.Context())
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := Request{Action: action, ProfileID: id}
+			if action == "rename" {
+				request.Label = "New label"
+			}
+			plan, err := s.Plan(inv, request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			f.afterAction = func() { f.rows[0].Selected = true }
+			result, err := s.Apply(t.Context(), plan, false)
+			if err != nil || result.Status != "applied" || !f.rows[0].Selected {
+				t.Fatalf("client selection invalidated mutation: %+v / %v", result, err)
+			}
+		})
 	}
 }

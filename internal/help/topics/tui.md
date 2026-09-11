@@ -207,9 +207,14 @@ Repeat the table for additional projects. Azure CLI and its `azure-devops`
 extension must already be installed and authenticated; dev does not install the
 extension, change Azure defaults, or store credentials.
 
-FLEET is an expandable host tree. The local host reuses REPOS and starts
-expanded; remote hosts start collapsed. Configured hosts and their actions do
-not wait for repo scans. Cached data remains searchable with age and coverage.
+FLEET is an expandable remote host tree. Local is hidden by default; a or the
+menu reveals it collapsed at the end, reusing REPOS. Hidden local is excluded
+from search and coverage. Configured hosts and actions do not wait for repo
+scans. HERDR shows independently observed saved-profile state, not connection
+health. The menu can enable/disable/remove an exact profile, inside or outside
+Herdr, while preserving remote sessions. Multiple profiles use a picker.
+Catalog actions refresh local metadata without refreshing remote repos.
+Cached data remains searchable with age and coverage.
 Background refresh warms missing/expired snapshots once, starting after five
 seconds or an earlier visit; it never prompts for a password. Set
 [tui.fleet] background_refresh = false to disable it. Search itself initiates
@@ -276,7 +281,8 @@ FLEET:
 ```
 enter / o  expand/collapse host or open checkout
 space      host/repository action menu (also Ctrl+O or right-click)
-r          refresh the selected host
+a          show/hide local at the end (this session only)
+r          refresh the selected host and Herdr metadata
 /          filter known hosts and cached/loaded repositories
 ```
 

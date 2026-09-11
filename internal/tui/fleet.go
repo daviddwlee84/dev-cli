@@ -18,10 +18,11 @@ import (
 // FleetHostDescriptor contains local configuration and optional cached facts.
 // Cached snapshots are immutable. The backend revalidates EndpointID before IO.
 type FleetHostDescriptor struct {
-	Key, Name, EndpointID, Target, OS string
-	Local                             bool
-	Cached                            *fleet.HostResult
-	CacheFresh                        bool
+	Key, Name, EndpointID, Target, OS, SSHAlias string
+	ConnectionNote                              string
+	Local                                       bool
+	Cached                                      *fleet.HostResult
+	CacheFresh                                  bool
 }
 
 type FleetHostsResult struct {
@@ -30,8 +31,9 @@ type FleetHostsResult struct {
 }
 
 type FleetHostAction struct {
-	ID, Label, Description string
-	Disabled               bool
+	ID, Label, Description                  string
+	ProfileID, ProfileLabel, ProfileSession string
+	Disabled                                bool
 }
 
 type fleetHostState struct {
@@ -61,6 +63,9 @@ type fleetTreeState struct {
 	loading                                 bool
 	cancel                                  context.CancelFunc
 	afterAction                             string
+	herdr                                   fleetHerdrState
+	menuActions                             []FleetHostAction
+	menuWaiting                             bool
 }
 
 type fleetHostsMsg struct {
@@ -83,10 +88,11 @@ type fleetHostMsg struct {
 	err           error
 }
 type fleetMenuMsg struct {
-	key, endpoint string
-	generation    uint64
-	actions       []FleetHostAction
-	err           error
+	key, endpoint   string
+	generation      uint64
+	herdrGeneration uint64
+	actions         []FleetHostAction
+	err             error
 }
 type fleetProcessMsg struct {
 	host    FleetHostDescriptor
@@ -152,6 +158,7 @@ func (m Model) loadFleetHosts() tea.Cmd {
 }
 
 func (m *Model) beginFleetHostsLoad() tea.Cmd {
+	m.invalidateFleetHerdr()
 	if m.fleetTree.cancel != nil {
 		m.fleetTree.cancel()
 	}
@@ -195,7 +202,7 @@ func (m *Model) acceptFleetHosts(result FleetHostsResult) {
 		if d.Key == "" {
 			d.Key = d.Name
 		}
-		h := fleetHostState{descriptor: d, expanded: d.Local}
+		h := fleetHostState{descriptor: d}
 		for _, previous := range old {
 			if previous.descriptor.Key == d.Key && previous.descriptor.EndpointID == d.EndpointID {
 				h = previous
@@ -382,6 +389,9 @@ func (m Model) updateFleetTree(message tea.Msg) (Model, tea.Cmd, bool) {
 		return m, nil, false
 	}
 	switch msg := message.(type) {
+	case fleetHerdrMsg:
+		next, cmd := m.acceptFleetHerdr(msg)
+		return next, cmd, true
 	case fleetWarmupMsg:
 		if !m.fleetTree.background {
 			return m, nil, true
@@ -407,7 +417,11 @@ func (m Model) updateFleetTree(message tea.Msg) (Model, tea.Cmd, bool) {
 			m.fleetTree.afterAction = ""
 		}
 		m.enqueueFleetWarmup()
-		return m, batchCommands(m.pumpFleetCaches(), m.pumpFleetReads()), true
+		var herdr tea.Cmd
+		if m.fleetTree.herdr.requested && m.fleetTree.herdr.hostGeneration != m.fleetTree.generation {
+			herdr = m.requestFleetHerdr(false)
+		}
+		return m, batchCommands(m.pumpFleetCaches(), m.pumpFleetReads(), herdr), true
 	case fleetHostCacheMsg:
 		i := m.fleetHostIndex(msg.key)
 		if i < 0 || msg.generation != m.fleetTree.generation || m.fleetTree.hosts[i].descriptor.EndpointID != msg.endpoint {
@@ -467,22 +481,19 @@ func (m Model) updateFleetTree(message tea.Msg) (Model, tea.Cmd, bool) {
 		if m.overlay.fleetHost.Key != msg.key || m.overlay.fleetHost.EndpointID != msg.endpoint {
 			return m, nil, true
 		}
+		if msg.herdrGeneration != m.fleetTree.herdr.generation {
+			m.fleetTree.menuWaiting = true
+			if m.fleetTree.herdr.loading {
+				return m, nil, true
+			}
+			return m, m.loadFleetMenuActions(), true
+		}
 		m.overlay.detail = m.fleetTree.hosts[i].descriptor.Target
 		if msg.err != nil {
 			m.overlay.body = msg.err.Error()
 			return m, nil, true
 		}
-		for _, action := range msg.actions {
-			if m.overlay.optionCount >= len(m.overlay.options) {
-				break
-			}
-			if action.Disabled {
-				m.overlay.body += action.Label + ": " + action.Description + "\n"
-				continue
-			}
-			m.overlay.addOption(listActionFleetHost, action.Label)
-			m.overlay.options[m.overlay.optionCount-1].fleetID = action.ID
-		}
+		m.addFleetMenuActions(msg.actions)
 		return m, nil, true
 	case fleetProcessMsg:
 		i := m.fleetHostIndex(msg.host.Key)
@@ -509,6 +520,9 @@ func (m Model) updateFleetTree(message tea.Msg) (Model, tea.Cmd, bool) {
 		}
 		m.err = msg.err
 		m.status = "returned from " + msg.host.Name
+		if strings.HasPrefix(msg.action, "herdr-") {
+			return m, m.requestFleetHerdr(true), true
+		}
 		if msg.action != "authenticated-refresh" {
 			m.fleetTree.afterAction = msg.host.Key
 		}
@@ -583,6 +597,7 @@ func (m *Model) syncFleetLocal() {
 func (m Model) fleetHeader(h fleetHostState) FleetRow {
 	d, result := h.descriptor, h.result
 	r := FleetRow{HostKey: d.Key, EndpointID: d.EndpointID, Host: d.Name, Local: d.Local, Target: d.Target, OS: d.OS, Expanded: h.expanded, Loading: h.loading, State: result.State, Error: result.Error, FromCache: result.FromCache, Known: result.Snapshot != nil}
+	r.Herdr, r.HerdrDetail, r.HerdrSearch = m.fleetHerdrSummary(d)
 	if d.Local {
 		r.Loading = m.viewLoad(ViewRepos).loading
 		r.FromCache = r.Known && (r.FromCache || r.Loading || m.viewLoad(ViewRepos).freshness != perftrace.FreshnessFresh)
@@ -605,22 +620,34 @@ func (m Model) visibleFleetTree() []FleetRow {
 	order := m.tableSorts[int(ViewFleet)]
 	sort.SliceStable(hosts, func(i, j int) bool {
 		if hosts[i].descriptor.Local != hosts[j].descriptor.Local {
-			return hosts[i].descriptor.Local
+			return !hosts[i].descriptor.Local
 		}
 		a, b := strings.ToLower(hosts[i].descriptor.Name), strings.ToLower(hosts[j].descriptor.Name)
 		if order.column == "state" {
 			a, b = string(m.fleetHeader(hosts[i]).State), string(m.fleetHeader(hosts[j]).State)
 		}
-		if order.descending && (order.column == "host" || order.column == "state") {
+		if order.column == "herdr" {
+			a, b = strings.TrimPrefix(m.fleetHeader(hosts[i]).Herdr, "~"), strings.TrimPrefix(m.fleetHeader(hosts[j]).Herdr, "~")
+			known := func(value string) bool {
+				return value != "unknown" && value != "loading" && value != "not checked" && value != "unmapped"
+			}
+			if known(a) != known(b) {
+				return known(a)
+			}
+		}
+		if order.descending && (order.column == "host" || order.column == "state" || order.column == "herdr") {
 			return a > b
 		}
 		return a < b
 	})
 	var out []FleetRow
 	for _, h := range hosts {
+		if h.descriptor.Local && !m.showLocalFleet {
+			continue
+		}
 		header := m.fleetHeader(h)
 		result := h.result
-		hostMatch := matches(strings.ToLower(strings.Join([]string{header.Host, header.Target, header.OS, string(header.State), header.Error}, " ")), m.filter)
+		hostMatch := matches(strings.ToLower(strings.Join([]string{header.Host, header.Target, header.OS, string(header.State), header.Error, header.HerdrSearch}, " ")), m.filter)
 		var children []FleetRow
 		if result.Snapshot != nil {
 			for i := range result.Snapshot.Repositories {
@@ -638,7 +665,7 @@ func (m Model) visibleFleetTree() []FleetRow {
 		sort.SliceStable(children, func(i, j int) bool {
 			return strings.ToLower(children[i].Repository.Display) < strings.ToLower(children[j].Repository.Display)
 		})
-		if order.column != "host" && order.column != "state" {
+		if order.column != "host" && order.column != "state" && order.column != "herdr" {
 			children = applyColumnSort(m, children, fleetCell)
 		}
 		projectExpanded := h.expanded || (m.filter != "" && len(children) > 0)
@@ -695,32 +722,37 @@ func (m Model) toggleFleetHost() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) refreshSelectedFleetHost() (tea.Model, tea.Cmd) {
+	metadata := m.requestFleetHerdr(false)
 	row, ok := m.currentFleet()
 	if !ok {
 		m.status = "No host matches; use the action menu to update all hosts"
-		return m, nil
+		return m, metadata
 	}
 	if row.Local {
 		m.beginLocalLoads(loadRefresh)
-		return m, m.reload()
+		return m, batchCommands(metadata, m.reload())
 	}
 	m.enqueueFleetRead(row.HostKey, true, true)
-	return m, m.pumpFleetReads()
+	return m, batchCommands(metadata, m.pumpFleetReads())
 }
 
 func (m Model) refreshAllFleetHosts() (tea.Model, tea.Cmd) {
+	metadata := m.requestFleetHerdr(false)
 	for _, h := range m.fleetTree.hosts {
 		if !h.descriptor.Local {
 			m.enqueueFleetRead(h.descriptor.Key, true, true)
 		}
 	}
 	m.status = "Updating all configured hosts…"
-	return m, m.pumpFleetReads()
+	return m, batchCommands(metadata, m.pumpFleetReads())
 }
 
 func (m Model) fleetCoverage() string {
 	cached, live, unloaded, loading := 0, 0, 0, 0
 	for _, h := range m.fleetTree.hosts {
+		if h.descriptor.Local && !m.showLocalFleet {
+			continue
+		}
 		r := m.fleetHeader(h)
 		if !r.Known {
 			unloaded++
@@ -733,7 +765,11 @@ func (m Model) fleetCoverage() string {
 			loading++
 		}
 	}
-	return fmt.Sprintf("%d hosts · %d current · %d cached · %d unloaded · %d loading · search: known", len(m.fleetTree.hosts), live, cached, unloaded, loading)
+	local := "local hidden (a)"
+	if m.showLocalFleet {
+		local = "local shown (a)"
+	}
+	return fmt.Sprintf("%d hosts · %d current · %d cached · %d unloaded · %d loading · %s", m.fleetCount(), live, cached, unloaded, loading, local)
 }
 
 func (m Model) openActionMenuCommand() (tea.Model, tea.Cmd) {
@@ -754,12 +790,10 @@ func (m Model) openActionMenuCommand() (tea.Model, tea.Cmd) {
 	// the selected child and its existing open behavior.
 	m.overlay.fleetHost = d
 	m.fleetTree.menuGeneration++
-	generation := m.fleetTree.menuGeneration
+	m.fleetTree.menuActions = nil
+	m.fleetTree.menuWaiting = true
 	m.overlay.detail = "Loading host actions…"
-	return m, func() tea.Msg {
-		actions, err := m.actions.ListFleetHostActions(m.baseContext(), d)
-		return fleetMenuMsg{d.Key, d.EndpointID, generation, actions, err}
-	}
+	return m, m.requestFleetHerdr(false)
 }
 
 func (m Model) runFleetHostActionFor(d FleetHostDescriptor, id string) (tea.Model, tea.Cmd) {
@@ -778,12 +812,14 @@ func (m Model) runFleetHostActionFor(d FleetHostDescriptor, id string) (tea.Mode
 	m.copyFleetHosts()
 	h := &m.fleetTree.hosts[i]
 	h.acting = true
-	if h.cancel != nil {
-		h.cancel()
+	if !strings.HasPrefix(id, "herdr-") {
+		if h.cancel != nil {
+			h.cancel()
+		}
+		h.cancel, h.loading = nil, false
+		m.fleetTree.nextRequest++
+		h.request = m.fleetTree.nextRequest
 	}
-	h.cancel, h.loading = nil, false
-	m.fleetTree.nextRequest++
-	h.request = m.fleetTree.nextRequest
 	return m, func() tea.Msg {
 		process, err := m.actions.RunFleetHostAction(m.baseContext(), d, id)
 		return fleetProcessMsg{d, id, process, err}
@@ -815,24 +851,36 @@ func (m Model) renderFleetTree() string {
 		if len(m.fleetTree.hosts) == 0 {
 			return "  " + styleDim.Render("Loading configured hosts…") + "\n"
 		}
-		return "  " + styleDim.Render("No known host or repository matches. Space: update all hosts.") + "\n"
+		if m.fleetCount() == 0 {
+			return "  " + styleDim.Render("No remote hosts configured. Press a to show this machine.") + "\n"
+		}
+		return "  " + styleDim.Render("No known host or repository matches. Space: actions; a: local.") + "\n"
 	}
+	compact, wide := m.width < 90, m.width >= 160
 	hostW, repoW := clamp(m.width*18/100, 14, 26), clamp(m.width*22/100, 16, 32)
-	wide := m.width >= 140
-	pathW := max(4, m.width-hostW-repoW-20)
+	herdrW, stateW := 14, 12
+	if compact {
+		hostW = clamp(m.width/4, 8, 18)
+		herdrW = clamp(m.width/5, 9, 14)
+		stateW = clamp(m.width/6, 7, 12)
+		repoW = max(6, m.width-hostW-herdrW-stateW-8)
+	}
+	pathW := max(4, m.width-hostW-repoW-herdrW-stateW-10)
 	if wide {
-		pathW = max(4, m.width-hostW-repoW-74)
+		pathW = max(4, pathW-54)
+	}
+	heading := fmt.Sprintf("  %-*s  %-*s  %-*s  %-*s", hostW, "HOST", repoW, "REPO", herdrW, "HERDR", stateW, "STATE")
+	if wide {
+		heading += fmt.Sprintf("  %-14s  %-12s  %-10s  %-8s  %s", "BRANCH", "GIT", "LIVE", "TASKS", "PATH")
+	} else if !compact {
+		heading += "  PATH"
 	}
 	var b strings.Builder
-	heading := fmt.Sprintf("  %-*s  %-*s  %-12s  %s", hostW, "HOST", repoW, "REPO", "STATE", "PATH")
-	if wide {
-		heading = fmt.Sprintf("  %-*s  %-*s  %-12s  %-14s  %-12s  %-10s  %-8s  %s", hostW, "HOST", repoW, "REPO", "STATE", "BRANCH", "GIT", "LIVE", "TASKS", "PATH")
-	}
 	b.WriteString(styleHeader.Render(heading) + "\n")
 	from, to := m.window(len(rows))
 	for i := from; i < to; i++ {
 		r := rows[i]
-		host, name, branch, git, live, tasks, path := r.Host, "—", "—", "—", "—", "—", r.Target
+		host, name, herdr, branch, git, live, tasks, path := r.Host, "—", r.Herdr, "—", "—", "—", "—", r.Target
 		if r.Repository == nil {
 			prefix := "▸ "
 			if r.Expanded {
@@ -845,9 +893,9 @@ func (m Model) renderFleetTree() string {
 			if r.Known {
 				name = fmt.Sprintf("%d repositories", r.RepoCount)
 			}
-			branch = r.OS
 		} else {
 			host = ""
+			herdr = ""
 			name = "  " + r.Repository.Display
 			branch, git, path = r.Repository.Branch, r.Repository.Status.Summary(), r.Repository.Path
 			if !r.GitKnown {
@@ -861,9 +909,11 @@ func (m Model) renderFleetTree() string {
 				}
 			}
 		}
-		line := fmt.Sprintf("%-*s  %-*s  %-12s  %s", hostW, pad(host, hostW), repoW, pad(name, repoW), pad(fleetTreeStateLabel(r), 12), pad(path, pathW))
+		line := fmt.Sprintf("%-*s  %-*s  %-*s  %-*s", hostW, pad(host, hostW), repoW, pad(name, repoW), herdrW, pad(herdr, herdrW), stateW, pad(fleetTreeStateLabel(r), stateW))
 		if wide {
-			line = fmt.Sprintf("%-*s  %-*s  %-12s  %-14s  %-12s  %-10s  %-8s  %s", hostW, pad(host, hostW), repoW, pad(name, repoW), pad(fleetTreeStateLabel(r), 12), pad(branch, 14), pad(git, 12), pad(live, 10), pad(tasks, 8), pad(path, pathW))
+			line += fmt.Sprintf("  %-14s  %-12s  %-10s  %-8s  %s", pad(branch, 14), pad(git, 12), pad(live, 10), pad(tasks, 8), pad(path, pathW))
+		} else if !compact {
+			line += "  " + pad(path, pathW)
 		}
 		styled := line
 		if r.FromCache {

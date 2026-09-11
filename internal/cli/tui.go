@@ -413,6 +413,7 @@ func runTUI(app *App) error {
 		LoadFleetHosts:        fleetBackend.LoadHosts,
 		LoadFleetHost:         fleetBackend.LoadHost,
 		LoadFleetHostCache:    fleetBackend.LoadHostCache,
+		LoadFleetHerdr:        fleetBackend.LoadHerdr,
 		ListFleetHostActions:  fleetBackend.ListActions,
 		RunFleetHostAction:    fleetBackend.RunAction,
 		ReloadSkillsWithRepos: reloadSkills,

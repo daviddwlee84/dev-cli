@@ -234,9 +234,12 @@ dev 不會修改 Television、shell 或 chezmoi config。
 
 ### FLEET
 
-FLEET 採主機樹：本機預設展開並重用 REPOS，遠端預設收合。本機或遠端 repos
-尚在載入時，主機列與動作仍可用。Enter 展開主機或開啟 repo；Space／Ctrl+O／
-右鍵提供主機動作，r 更新選取主機。有效快取持續可搜尋，並標示時間與涵蓋範圍。
+FLEET 採遠端主機樹。本機預設隱藏；按 `a` 或使用選單，才在最後以收合狀態
+顯示並重用 REPOS。隱藏時搜尋與 coverage 都排除本機。Repos 尚在載入時，
+主機列與動作仍可用。Enter 展開主機或開啟 repo；Space／Ctrl+O／右鍵開啟選單。
+HERDR 欄由共享的本機 catalog 查詢呈現登錄／啟用狀態，與 SSH snapshot 分開。
+Enable／disable／remove 操作精確 profile，遠端 sessions 保留；多筆先用 picker
+選取。r 更新選取主機及 catalog metadata。有效快取持續可搜尋並標示時間與範圍。
 
 初始畫面後五秒或提早進入 FLEET 時，開始一次性的缺少／過期快取預熱，不跳出
 密碼提示。設定 [tui.fleet] background_refresh = false 可保留純手動更新。

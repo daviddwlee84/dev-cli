@@ -165,3 +165,13 @@ Dashboard 年度 heatmap／自動 Git backfill、action menu 搜尋與 REPOS 漸
 測試與 Herdr 0.9.0 machine help／原始碼查核。Chezmoi 設定格式、.chezmoiroot
 與 dry-run hooks 依官方 reference。詳見 [Dotfiles](../guides/dotfiles.zh-TW.md)
 與 [FLEET](../guides/remote-fleet.zh-TW.md#dashboard-host-tree)。
+
+## FLEET Herdr catalog 狀態
+
+FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀態顯示於最後。
+隱藏本機時，搜尋與 coverage 同樣排除本機。HERDR 由共享的本機 catalog 查詢
+呈現未加入／啟用／停用／混合／unknown，與 repository STATE、runtime LIVE
+分開。Herdr 內外皆可逐 profile 啟用／停用／移除，遠端 sessions 保留，完成後
+只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
+background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
+fleet snapshot JSON。詳見[主機控制](../guides/remote-fleet.zh-TW.md#dashboard-host-tree)。

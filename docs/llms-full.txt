@@ -2642,11 +2642,14 @@ The cache lets an unavailable host retain last-known state as `stale`; `--cached
 
 ## Dashboard host tree {#dashboard-host-tree}
 
-FLEET lists the local host first and every configured remote host immediately,
-without waiting for a repository scan or SSH. Local repositories reuse the
-accepted REPOS snapshot and start expanded; remote hosts start collapsed. Enter
-expands a host or opens a repository. Space, Ctrl+O and right-click open actions;
-r refreshes the selected host. Global h/l/arrow/Tab navigation still changes views.
+FLEET lists configured remote hosts immediately without waiting for a repository
+scan or SSH. Hosts start collapsed. This machine is hidden by default because
+REPOS provides its richer local inventory. Press `a` or use the action menu to
+show it collapsed at the end of the list; the choice lasts for this dashboard
+session, and local repositories reuse the accepted REPOS snapshot. Local stays
+last in either sort direction. Enter expands a host or opens a repository.
+Space, Ctrl+O and right-click open actions; r refreshes the selected host and
+Herdr metadata. Global h/l/arrow/Tab navigation still changes views.
 
 After five seconds, or on entering FLEET sooner, one background worker warms
 missing or expired host snapshots. Each eligible host is tried once; results
@@ -2666,20 +2669,56 @@ successful empty snapshot means zero repositories. Host loading and actions do
 not depend on local REPOS being ready. Collapsing a host retains its data and
 does not cancel a requested read.
 
-The / filter searches known host names, SSH aliases and all loaded/cached repos,
-including collapsed hosts. Matching children retain their parent header and
+The / filter searches known host names, SSH aliases, Herdr profile labels/session
+and registration state, and loaded/cached repos, including collapsed hosts.
+Hidden local data stays outside search and coverage. Matching children retain their parent header and
 appear temporarily expanded. Clearing the filter restores expansion choices.
 Typing or filtering never schedules extra connections. The coverage footer
 separates fresh, cached and unloaded hosts; update all hosts from the action
 menu when a complete current search is needed, including when no rows match.
+The local toggle also remains available with no remote hosts or no matches.
 
 Host actions offer SSH, [dotfile status](https://daviddwlee84.github.io/dev-cli/guides/dotfiles/), and optional Herdr without
-requiring a repo snapshot or remote dev. Outside Herdr, attachment explicitly
-selects a session (default: default). Inside Herdr, add/enable uses the existing
-guarded machine workflow. Herdr's native installation approvals remain native;
-0.9.0 add connects open local clients but does not select the new machine.
-Registration affects this host's client catalog, not another desktop client.
-Native Windows targets retain SSH without a Herdr server action.
+requiring a repo snapshot or remote dev. The `HERDR` column shows this machine's
+saved-profile state, independently of repository `STATE` and runtime `LIVE`:
+
+| HERDR | Meaning | Management |
+|---|---|---|
+| `not added` | A successful catalog read found no matching profile | Add to Herdr |
+| `enabled` | The matching saved profile is enabled | Disable or Remove |
+| `disabled` | The matching saved profile is disabled | Enable or Remove |
+| `1/2 enabled` | Several matching profiles | Choose an exact profile first |
+| `loading` / `unknown` | Loading or no reliable observation | Refresh or inspect the reason |
+| `unmapped` / `not checked` | No exact SSH alias, or Herdr inspection disabled | Inspect the connection settings or invocation |
+
+One bounded local `herdr machine list --json` read supplies all host rows. It
+does not contact SSH or require a running local server. The catalog is read on
+FLEET entry, explicit refresh, menu inspection and after a Herdr action; there
+is no continuous polling. Failed refreshes retain prior values as stale rather
+than turning them into `not added`. `--no-runtime` skips Herdr inspection.
+Repository `background_refresh` does not control this separate local read.
+
+Enabled means saved connection intent, not currently connected. Profile matching
+uses the exact configured SSH alias; aliases are not resolved to IPs or assumed
+equivalent. Detail shows profile labels, sessions and any differences between
+fleet connection overrides and the saved target. OS stays in host detail rather
+than appearing as a branch on host headers.
+
+Enable, Disable and Remove work inside and outside Herdr using existing guarded
+plans and exact profile fingerprints. Multiple profiles use a picker instead
+of expanding an unbounded action list. Disable preserves the saved profile for
+later enable; Remove deletes that profile. Both detach local clients while the
+remote server, panes and sessions keep running. These catalog operations refresh
+Herdr metadata without fetching a remote repository snapshot. There is no batch
+toggle or implicit operation on every matching profile.
+
+Outside Herdr, Connect additionally attaches to an explicit session (default:
+default). Add can prepare/start a remote server and retains native installation
+approvals. Herdr 0.9.0 add connects open local clients but does not select the new
+machine. Registration affects this host's client catalog, not another desktop
+client. Unsupported connection targets, including native Windows, may still
+disable/remove an existing exact saved profile; connection capability and local
+catalog management are separate.
 
 The e key edits primary remotes.toml and revalidates the merged configuration.
 Changed endpoints invalidate old results; invalid edits retain usable rows.
@@ -3888,11 +3927,15 @@ symlink; dev does not modify Television, shell, or chezmoi configuration.
 
 ### FLEET
 
-FLEET is a host tree: local starts expanded and reuses REPOS; remote hosts start
-collapsed. Host rows and actions are available while local or remote repositories
-are loading. Enter toggles a host or opens a repo; Space/Ctrl+O/right-click offers
-host actions, and r refreshes the selected host. Cached repositories are retained
-and searchable with explicit age and coverage.
+FLEET is a remote host tree. Local is hidden by default; `a` or the action menu
+reveals it collapsed at the end, reusing REPOS. Search and coverage exclude local
+while hidden. Host rows and actions are available while repositories load.
+Enter toggles a host or opens a repo; Space/Ctrl+O/right-click offers host actions.
+The HERDR column shows saved registration/enabled state from one shared local
+catalog read, independently of SSH snapshots. Enable/disable/remove act on an
+exact profile and keep remote sessions running; multiple profiles use a picker.
+r refreshes the selected host and catalog metadata. Cached repositories remain
+searchable with explicit age and coverage.
 
 Background warming starts after five seconds or an earlier FLEET visit, once per
 missing/expired host without password prompts. Set [tui.fleet]
@@ -8345,6 +8388,18 @@ This default warms missing/expired snapshots once after five seconds or an
 earlier FLEET visit. It never prompts for credentials. Set false for explicit
 updates only. Host rows, cached search, and per-host actions remain available.
 
+## FLEET Herdr catalog state
+
+FLEET hides local by default; a or the menu reveals it collapsed at the end
+for this session. Hidden local data is excluded from search and coverage. HERDR
+reports a shared local catalog observation (not added/enabled/disabled/mixed or
+unknown), separately from repository STATE and runtime LIVE. Per-profile
+enable/disable/remove work inside or outside Herdr, retain remote sessions and
+refresh only catalog metadata. Connection eligibility and catalog cleanup are
+separate. --no-runtime skips Herdr; background_refresh controls only automatic
+repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
+metadata. See [host controls](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
+
 ---
 
 ### Compatibility and known limitations
@@ -8808,6 +8863,18 @@ evidence until refreshed. Herdr host registration requires a compatible machine
 CLI; attachment does not require a running local Herdr server.
 See [Dotfiles](https://daviddwlee84.github.io/dev-cli/guides/dotfiles/) and [host actions](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
 
+## FLEET Herdr catalog state
+
+FLEET hides local by default; a or the menu reveals it collapsed at the end
+for this session. Hidden local data is excluded from search and coverage. HERDR
+reports a shared local catalog observation (not added/enabled/disabled/mixed or
+unknown), separately from repository STATE and runtime LIVE. Per-profile
+enable/disable/remove work inside or outside Herdr, retain remote sessions and
+refresh only catalog metadata. Connection eligibility and catalog cleanup are
+separate. --no-runtime skips Herdr; background_refresh controls only automatic
+repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
+metadata. See [host controls](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
+
 ---
 
 ### Sources and freshness
@@ -8987,6 +9054,18 @@ Verified 2026-09-11 against `internal/dotfile`, CLI dotfile/fleet adapters,
 TUI host-tree tests, and Herdr 0.9.0 machine help/source. Chezmoi configuration
 formats, .chezmoiroot and dry-run hooks follow its official reference.
 See [Dotfiles](https://daviddwlee84.github.io/dev-cli/guides/dotfiles/) and [FLEET](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
+
+## FLEET Herdr catalog state
+
+FLEET hides local by default; a or the menu reveals it collapsed at the end
+for this session. Hidden local data is excluded from search and coverage. HERDR
+reports a shared local catalog observation (not added/enabled/disabled/mixed or
+unknown), separately from repository STATE and runtime LIVE. Per-profile
+enable/disable/remove work inside or outside Herdr, retain remote sessions and
+refresh only catalog metadata. Connection eligibility and catalog cleanup are
+separate. --no-runtime skips Herdr; background_refresh controls only automatic
+repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
+metadata. See [host controls](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
 
 ---
 
@@ -11677,10 +11756,12 @@ Cache 讓 unavailable host 可以 `stale` 保留 last-known state；`--cached` �
 
 ## FLEET 主機樹 {#dashboard-host-tree}
 
-FLEET 立即列出本機與所有已設定的遠端主機，不等待 repository scan 或 SSH。
-本機置頂、預設展開並重用已接受的 REPOS snapshot；遠端預設收合。
+FLEET 立即列出已設定的遠端主機，不等待 repository scan 或 SSH，主機預設收合。
+本機預設隱藏，因為 REPOS 已有更完整的本機 inventory。按 `a` 或使用動作選單
+可將本機顯示在最後，首次顯示時收合；開關只保留於本次 dashboard session。
+本機 repositories 重用已接受的 REPOS snapshot，升序或降序時都固定排最後。
 Enter 展開主機或開啟 repository；Space、Ctrl+O、右鍵開啟動作選單，r 更新
-選取主機。全域 h/l／方向鍵／Tab 仍用來切換分頁。
+選取主機及 Herdr metadata。全域 h/l／方向鍵／Tab 仍用來切換分頁。
 
 初始畫面後五秒，或提早進入 FLEET 時，單一背景 worker 開始更新缺少或過期的
 host snapshot。每台符合條件的主機自動嘗試一次，結果逐台出現。背景讀取採用
@@ -11696,17 +11777,46 @@ background_refresh = false
 失敗保留舊資料，只有成功的空 snapshot 才代表零個 repositories。
 主機載入與動作不依賴本機 REPOS 成功；收合只隱藏 children，保留資料及已要求的讀取。
 
-/ 搜尋已知的主機名稱、SSH alias 與所有已載入／快取 repos，包含收合主機。
+/ 搜尋已知的主機名稱、SSH alias、Herdr profile label／session／登錄狀態，以及
+已載入／快取 repos，包含收合主機。隱藏本機時，搜尋與 coverage 都排除本機。
 命中的 repo 保留 parent header，暫時展開；清除搜尋後恢復原展開狀態。
 輸入或篩選不增加連線工作。Footer 分開顯示最新、快取與尚未載入的主機；
 需要完整最新結果時，從 action menu 更新全部主機，零命中時也能使用。
+沒有遠端主機或沒有搜尋結果時，仍可從選單切換本機顯示。
 
 主機動作包含 SSH、[dotfile status](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dotfiles/) 與選用的 Herdr，不必先取得
-repo snapshot，也不要求遠端已有 dev。Herdr 外的連線明確指定 session，預設
-為 default；Herdr 內的加入／啟用重用既有受保護流程。原生安裝確認交給 Herdr；
-0.9.0 add 會讓開啟中的本機 clients 連上新機器，但不切換選取。
-登錄只影響執行 dev 這台機器的 client catalog，不影響另一台桌面 client。
-原生 Windows target 保留 SSH，不提供 Herdr server 動作。
+repo snapshot，也不要求遠端已有 dev。`HERDR` 欄顯示本機 saved-profile 狀態，
+與 repository `STATE`、runtime `LIVE` 分開：
+
+| HERDR | 意義 | 管理動作 |
+|---|---|---|
+| `not added` | 成功讀取 catalog，沒有匹配的 profile | Add to Herdr |
+| `enabled` | 匹配的 saved profile 已啟用 | Disable 或 Remove |
+| `disabled` | 匹配的 saved profile 已停用 | Enable 或 Remove |
+| `1/2 enabled` | 多個匹配 profiles | 先選取精確 profile |
+| `loading`／`unknown` | 載入中或尚無可靠觀察 | 刷新或檢查原因 |
+| `unmapped`／`not checked` | 缺少精確 SSH alias，或未啟用 Herdr 檢查 | 檢查連線設定或啟動選項 |
+
+所有主機共用一次有 timeout 的本機 `herdr machine list --json` 查詢，不連 SSH，
+也不要求本機 server 已執行。進入 FLEET、明確刷新、開選單，以及 Herdr 操作完成
+後更新；不持續輪詢。失敗時保留舊值並標 stale，不改成 `not added`。
+`--no-runtime` 跳過 Herdr 檢查；repository 的 `background_refresh` 不控制這份本機資料。
+
+Enabled 代表保存的連線意圖，不代表目前已連線。Profile 按精確 SSH alias 關聯，
+不解析 IP 或推測其他 alias 等價。Detail 顯示 label、session，以及 fleet 連線覆寫
+與 saved target 的差異。OS 保留在主機 detail，不再填入 host header 的 BRANCH。
+
+Enable、Disable、Remove 在 Herdr 內外都使用既有受保護計畫與精確 profile
+fingerprint。多個 profiles 先透過 picker 選擇，不攤開成過長的 action menu。
+Disable 保留登錄方便再啟用；Remove 刪除該筆登錄。兩者讓本機 clients detach，
+遠端 server、panes、sessions 繼續執行。完成後只更新 Herdr metadata，不額外
+查詢遠端 repository snapshot。本次不提供批次開關，也不自動操作所有匹配項目。
+
+Herdr 外另外可 Connect，並明確指定 session，預設 default。Add 可能準備／啟動
+遠端 server，原生安裝確認仍交給 Herdr。0.9.0 add 會讓開啟中的本機 clients 連上
+新機器，但不切換選取；登錄只影響執行 dev 這台機器的 catalog。即使連線 target
+不支援（例如原生 Windows），仍可停用／移除已明確匹配的 saved profile；
+連線能力與本機 catalog 管理分開。
 
 e 編輯 primary remotes.toml 並重新驗證合併設定。Endpoint 改變會讓舊結果失效；
 設定錯誤則保留可用資料。CLI dev fleet list 的本機加遠端 inventory 契約維持不變。
@@ -12811,9 +12921,12 @@ dev 不會修改 Television、shell 或 chezmoi config。
 
 ### FLEET
 
-FLEET 採主機樹：本機預設展開並重用 REPOS，遠端預設收合。本機或遠端 repos
-尚在載入時，主機列與動作仍可用。Enter 展開主機或開啟 repo；Space／Ctrl+O／
-右鍵提供主機動作，r 更新選取主機。有效快取持續可搜尋，並標示時間與涵蓋範圍。
+FLEET 採遠端主機樹。本機預設隱藏；按 `a` 或使用選單，才在最後以收合狀態
+顯示並重用 REPOS。隱藏時搜尋與 coverage 都排除本機。Repos 尚在載入時，
+主機列與動作仍可用。Enter 展開主機或開啟 repo；Space／Ctrl+O／右鍵開啟選單。
+HERDR 欄由共享的本機 catalog 查詢呈現登錄／啟用狀態，與 SSH snapshot 分開。
+Enable／disable／remove 操作精確 profile，遠端 sessions 保留；多筆先用 picker
+選取。r 更新選取主機及 catalog metadata。有效快取持續可搜尋並標示時間與範圍。
 
 初始畫面後五秒或提早進入 FLEET 時，開始一次性的缺少／過期快取預熱，不跳出
 密碼提示。設定 [tui.fleet] background_refresh = false 可保留純手動更新。
@@ -17136,6 +17249,16 @@ background_refresh = true
 預設在初始畫面後五秒或提早進入 FLEET 時，對缺少／過期快取預熱一次，
 不跳出認證提示。設為 false 可只保留明確更新；主機列、快取搜尋與主機動作仍可用。
 
+## FLEET Herdr catalog 狀態
+
+FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀態顯示於最後。
+隱藏本機時，搜尋與 coverage 同樣排除本機。HERDR 由共享的本機 catalog 查詢
+呈現未加入／啟用／停用／混合／unknown，與 repository STATE、runtime LIVE
+分開。Herdr 內外皆可逐 profile 啟用／停用／移除，遠端 sessions 保留，完成後
+只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
+background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
+fleet snapshot JSON。詳見[主機控制](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
+
 ---
 
 ### 相容性與已知限制
@@ -17546,6 +17669,16 @@ password fallback，快取 repo 命中在更新前仍是歷史資訊。Herdr 主
 相容的 machine CLI；原生連線不要求本機 Herdr server 已執行。詳見
 [Dotfiles](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dotfiles/) 與[主機動作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
 
+## FLEET Herdr catalog 狀態
+
+FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀態顯示於最後。
+隱藏本機時，搜尋與 coverage 同樣排除本機。HERDR 由共享的本機 catalog 查詢
+呈現未加入／啟用／停用／混合／unknown，與 repository STATE、runtime LIVE
+分開。Herdr 內外皆可逐 profile 啟用／停用／移除，遠端 sessions 保留，完成後
+只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
+background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
+fleet snapshot JSON。詳見[主機控制](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
+
 ---
 
 ### 來源與時效
@@ -17711,6 +17844,16 @@ Dashboard 年度 heatmap／自動 Git backfill、action menu 搜尋與 REPOS 漸
 測試與 Herdr 0.9.0 machine help／原始碼查核。Chezmoi 設定格式、.chezmoiroot
 與 dry-run hooks 依官方 reference。詳見 [Dotfiles](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dotfiles/)
 與 [FLEET](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
+
+## FLEET Herdr catalog 狀態
+
+FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀態顯示於最後。
+隱藏本機時，搜尋與 coverage 同樣排除本機。HERDR 由共享的本機 catalog 查詢
+呈現未加入／啟用／停用／混合／unknown，與 repository STATE、runtime LIVE
+分開。Herdr 內外皆可逐 profile 啟用／停用／移除，遠端 sessions 保留，完成後
+只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
+background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
+fleet snapshot JSON。詳見[主機控制](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
 
 ---
 

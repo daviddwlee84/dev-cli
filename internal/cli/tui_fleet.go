@@ -38,7 +38,7 @@ func localFleetDescriptor() tui.FleetHostDescriptor {
 
 func fleetDescriptor(host fleet.Host) tui.FleetHostDescriptor {
 	id := fleet.EndpointID(host)
-	return tui.FleetHostDescriptor{Key: "remote:" + id, Name: host.Name, EndpointID: id, Target: host.Destination(), OS: host.EffectiveRemoteOS()}
+	return tui.FleetHostDescriptor{Key: "remote:" + id, Name: host.Name, EndpointID: id, Target: host.Destination(), SSHAlias: host.SSHAlias, OS: host.EffectiveRemoteOS()}
 }
 
 func (b *tuiFleetBackend) LoadHosts(ctx context.Context) (tui.FleetHostsResult, error) {

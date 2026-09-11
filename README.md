@@ -648,10 +648,10 @@ Bare `dev` (or `dev tui`) opens seven lists, switched with `tab`:
 - **TASKS** — the change streams dev is tracking. What am I working on.
 - **REPOS** — durable repositories under the scan roots, with branch, dirty
   state, owned size, runtime, worktrees and task tally. What do I have here.
-- **FLEET** — an expandable host tree with local repositories and configured
-  remote machines. Cached data appears before independent remote refreshes;
-  Enter expands a host or opens a repo. Host actions provide SSH, Herdr and
-  dotfile status without waiting for repository loading.
+- **FLEET** — an expandable remote host tree with cached repositories and a
+  separate HERDR registration/enabled column. Local is hidden by default; `a`
+  reveals it at the end. Host actions provide SSH, dotfile status, and exact
+  Herdr profile enable/disable/remove without waiting for repository loading.
 - **TRY** — dated scratch experiments, including non-Git folders, with durable
   tags/notes and explicit active/deprecated/archived/graduated state.
 - **REMOTE** — repositories visible through authenticated forge CLIs, including
@@ -1586,10 +1586,14 @@ PowerShell launcher and Windows target-path semantics; POSIX is the compatible
 default and uses the existing shell launcher. Missing `dev` installations are
 reported as `no-dev`; unreachable hosts can fall back to the last private XDG
 snapshot. Cache identity includes the complete SSH endpoint, including port and
-remote OS. FLEET reuses the accepted REPOS snapshot for its expanded local host;
-remote hosts start collapsed. Search includes known cached repos with visible
-coverage and never starts extra connections. Each host refreshes independently;
-Space/Ctrl+O opens SSH, Herdr and dotfile actions. Set
+remote OS. FLEET hides local by default; `a` or the menu reveals it collapsed at
+the end, reusing REPOS. Search and coverage exclude hidden local data and include
+known Herdr profile state, labels and sessions. A separate local catalog read
+supplies the HERDR column: not added, enabled, disabled, mixed counts or unknown.
+Space/Ctrl+O offers SSH, dotfile status and per-profile Herdr control inside or
+outside Herdr. Disable keeps the profile; Remove deletes its registration;
+remote sessions continue running. Herdr actions refresh catalog metadata only.
+Each remote repository snapshot refreshes independently. Set
 `[tui.fleet] background_refresh = false` to disable delayed automatic refresh.
 See [FLEET host actions](docs/guides/remote-fleet.md#dashboard-host-tree).
 The CLI output remains the full local-plus-remote inventory.

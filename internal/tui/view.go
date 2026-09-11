@@ -1149,12 +1149,22 @@ func (m Model) renderDetail() string {
 	}
 
 	if row, ok := m.currentFleet(); ok {
+		state := string(row.State)
+		if row.HostKey != "" {
+			state = fleetTreeStateLabel(row)
+		}
 		lines := []string{
 			fmt.Sprintf("  %s  %s", styleDim.Render("host"), row.Host),
-			fmt.Sprintf("  %s %s", styleDim.Render("state"), row.State),
+			fmt.Sprintf("  %s %s", styleDim.Render("state"), state),
 		}
 		if row.HostKey != "" && row.Repository == nil {
 			lines = append(lines, fmt.Sprintf("  target %s · %s", row.Target, row.OS))
+			lines = append(lines, "  Herdr "+row.Herdr)
+			if row.HerdrDetail != "" {
+				for _, detail := range strings.Split(row.HerdrDetail, "\n") {
+					lines = append(lines, "  "+fitCell(detail, max(1, m.width-4)))
+				}
+			}
 			if !row.ObservedAt.IsZero() {
 				lines = append(lines, "  observed "+row.ObservedAt.Local().Format("2006-01-02 15:04:05"))
 			}

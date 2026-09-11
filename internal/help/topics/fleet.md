@@ -66,13 +66,22 @@ task registry, and runtime remain authoritative. An unreachable host can reuse
 the last successful private XDG snapshot. Cache identity includes the full SSH
 endpoint, port, timeouts, dev path, remote OS, and optional machine-ID pin.
 
-The dashboard FLEET view starts with an expanded local host and collapsed remote
-hosts. It displays cached repositories and warms missing/expired snapshots after
+The dashboard FLEET view starts with collapsed remote hosts and hides local.
+Use a or the action menu to reveal local collapsed at the end for this session. It displays cached repositories and warms missing/expired snapshots after
 five seconds or an earlier visit. Background reads never prompt for credentials;
 [tui.fleet] background_refresh = false disables them. Enter toggles a host or
 opens a repo, r refreshes its host, and Space/Ctrl+O/right-click offers SSH,
-Herdr and dotfile status. Search includes collapsed known repos and reports
-coverage without scheduling new connections. CLI dev fleet list retains its
+Herdr and dotfile status. Search includes collapsed known repos and Herdr
+profile labels/session/state, excluding hidden local data from coverage. The
+HERDR column is an independent local catalog observation: not added, enabled,
+disabled, mixed enabled counts or unknown. It is not connection status.
+Catalog reads run on view entry, refresh, menu inspection and Herdr action
+completion; --no-runtime skips them. No continuous polling or extra SSH occurs.
+Enabled profiles offer Disable and Remove; disabled profiles offer Enable and
+Remove, inside or outside Herdr. Multiple profiles use an exact-ID picker.
+Disable keeps registration; Remove deletes registration; remote sessions stay
+running. Catalog management refreshes only Herdr metadata. Connection capability
+limits do not prevent disabling/removing an existing exact local saved profile. CLI dev fleet list retains its
 local-plus-remote contract. FLEET e edits only primary remotes.toml and reparses
 the complete primary-plus-generated merge on return.
 

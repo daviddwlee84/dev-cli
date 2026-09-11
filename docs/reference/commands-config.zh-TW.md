@@ -760,3 +760,13 @@ background_refresh = true
 
 預設在初始畫面後五秒或提早進入 FLEET 時，對缺少／過期快取預熱一次，
 不跳出認證提示。設為 false 可只保留明確更新；主機列、快取搜尋與主機動作仍可用。
+
+## FLEET Herdr catalog 狀態
+
+FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀態顯示於最後。
+隱藏本機時，搜尋與 coverage 同樣排除本機。HERDR 由共享的本機 catalog 查詢
+呈現未加入／啟用／停用／混合／unknown，與 repository STATE、runtime LIVE
+分開。Herdr 內外皆可逐 profile 啟用／停用／移除，遠端 sessions 保留，完成後
+只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
+background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
+fleet snapshot JSON。詳見[主機控制](../guides/remote-fleet.zh-TW.md#dashboard-host-tree)。

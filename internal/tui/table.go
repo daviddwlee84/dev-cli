@@ -249,6 +249,12 @@ func tryCell(r TryRow, key string) sortCell {
 	return sortCell{}
 }
 func fleetCell(r FleetRow, key string) sortCell {
+	if key == "herdr" {
+		if r.Repository == nil {
+			return textCell(r.Herdr)
+		}
+		return sortCell{}
+	}
 	if key == "host" {
 		return textCell(r.Host)
 	}

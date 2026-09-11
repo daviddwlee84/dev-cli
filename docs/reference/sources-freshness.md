@@ -178,3 +178,15 @@ Verified 2026-09-11 against `internal/dotfile`, CLI dotfile/fleet adapters,
 TUI host-tree tests, and Herdr 0.9.0 machine help/source. Chezmoi configuration
 formats, .chezmoiroot and dry-run hooks follow its official reference.
 See [Dotfiles](../guides/dotfiles.md) and [FLEET](../guides/remote-fleet.md#dashboard-host-tree).
+
+## FLEET Herdr catalog state
+
+FLEET hides local by default; a or the menu reveals it collapsed at the end
+for this session. Hidden local data is excluded from search and coverage. HERDR
+reports a shared local catalog observation (not added/enabled/disabled/mixed or
+unknown), separately from repository STATE and runtime LIVE. Per-profile
+enable/disable/remove work inside or outside Herdr, retain remote sessions and
+refresh only catalog metadata. Connection eligibility and catalog cleanup are
+separate. --no-runtime skips Herdr; background_refresh controls only automatic
+repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
+metadata. See [host controls](../guides/remote-fleet.md#dashboard-host-tree).

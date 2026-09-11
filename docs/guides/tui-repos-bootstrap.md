@@ -266,11 +266,15 @@ symlink; dev does not modify Television, shell, or chezmoi configuration.
 
 ### FLEET
 
-FLEET is a host tree: local starts expanded and reuses REPOS; remote hosts start
-collapsed. Host rows and actions are available while local or remote repositories
-are loading. Enter toggles a host or opens a repo; Space/Ctrl+O/right-click offers
-host actions, and r refreshes the selected host. Cached repositories are retained
-and searchable with explicit age and coverage.
+FLEET is a remote host tree. Local is hidden by default; `a` or the action menu
+reveals it collapsed at the end, reusing REPOS. Search and coverage exclude local
+while hidden. Host rows and actions are available while repositories load.
+Enter toggles a host or opens a repo; Space/Ctrl+O/right-click offers host actions.
+The HERDR column shows saved registration/enabled state from one shared local
+catalog read, independently of SSH snapshots. Enable/disable/remove act on an
+exact profile and keep remote sessions running; multiple profiles use a picker.
+r refreshes the selected host and catalog metadata. Cached repositories remain
+searchable with explicit age and coverage.
 
 Background warming starts after five seconds or an earlier FLEET visit, once per
 missing/expired host without password prompts. Set [tui.fleet]

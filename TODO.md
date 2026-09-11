@@ -1,8 +1,15 @@
 # TODO
 
-Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
+Priority `P1` (next) … `P4` (someday), or `P?` (needs evaluation); effort `S` / `M` / `L`.
 
 ## Active
+
+### P? · M — Evaluate unified local and remote repository browsing
+Evaluate whether REPOS and FLEET should share a browsing model without losing
+the richer local workflow, fast startup, explicit host identity or independent
+remote loading. FLEET currently hides local by default and offers a session-only
+toggle; this is not a commitment to merge the views.
+See [REPOS/FLEET unification research](backlog/repos-fleet-unification.md).
 
 ### P2 · L — Layered SSH connection diagnostics
 Extend ordinary SSH probing with explicit, bounded diagnosis of effective

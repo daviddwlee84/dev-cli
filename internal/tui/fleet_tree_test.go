@@ -28,8 +28,8 @@ func treeSnapshot(host string, names ...string) fleet.HostResult {
 func treeHosts() FleetHostsResult {
 	return FleetHostsResult{MaxParallel: 2, Hosts: []FleetHostDescriptor{
 		{Key: "local", Name: "laptop", Local: true, EndpointID: "local", OS: "darwin", Target: "this machine"},
-		{Key: "a", Name: "alpha", EndpointID: "a1", Target: "ssh-alpha", OS: "posix"},
-		{Key: "b", Name: "beta", EndpointID: "b1", Target: "ssh-beta", OS: "windows"},
+		{Key: "a", Name: "alpha", EndpointID: "a1", Target: "ssh-alpha", SSHAlias: "ssh-alpha", OS: "posix"},
+		{Key: "b", Name: "beta", EndpointID: "b1", Target: "ssh-beta", SSHAlias: "ssh-beta", OS: "windows"},
 	}}
 }
 
@@ -90,7 +90,7 @@ func TestFleetTreeDescriptorsDoNotWaitForLocalRepositories(t *testing.T) {
 		t.Fatal("descriptor load contacted remote")
 	}
 	rows := m.visibleFleet()
-	if len(rows) != 4 || !rows[0].Local || !rows[0].Expanded || rows[1].Repository == nil || rows[2].Expanded || rows[3].Expanded {
+	if len(rows) != 2 || rows[0].Local || rows[0].Expanded || rows[1].Expanded {
 		t.Fatalf("tree rows=%+v", rows)
 	}
 	if !strings.Contains(m.View(), "alpha") || strings.Contains(m.View(), "waiting for local repositories") {
@@ -112,7 +112,7 @@ func TestFleetTreeInitialConfigErrorKeepsLocalDescriptor(t *testing.T) {
 	hosts := treeHosts()
 	hosts.Hosts = hosts.Hosts[:1]
 	m, _ = treeSend(m, fleetHostsMsg{generation: 1, result: hosts, err: errors.New("invalid remotes")})
-	if len(m.fleetTree.hosts) != 1 || !strings.Contains(m.View(), "local-repo") || !strings.Contains(m.View(), "invalid remotes") {
+	if len(m.fleetTree.hosts) != 1 || !strings.Contains(m.View(), "Press a") || !strings.Contains(m.View(), "invalid remotes") {
 		t.Fatal(m.View())
 	}
 	m, _ = treeSend(m, fleetHostsMsg{generation: 1, err: errors.New("still invalid")})
@@ -134,7 +134,7 @@ func TestFleetTreeCacheIsIncrementalAndWarmupWaitsForIt(t *testing.T) {
 	}}
 	m := treeModel(a)
 	m, cacheCmd := treeAccept(m, treeHosts())
-	if len(m.visibleFleet()) != 4 || m.fleetTree.hosts[1].result.Snapshot != nil {
+	if len(m.visibleFleet()) != 2 || m.fleetTree.hosts[1].result.Snapshot != nil {
 		t.Fatal("descriptors waited on cache")
 	}
 	m, warmCmd := treeSend(m, fleetWarmupMsg{})
@@ -287,7 +287,7 @@ func TestFleetTreeFailureRetainsCacheIncludingNoDev(t *testing.T) {
 		t.Fatal("search changed saved expansion")
 	}
 	m.filter = ""
-	if len(m.visibleFleet()) != 4 {
+	if len(m.visibleFleet()) != 2 {
 		t.Fatal("clearing filter did not restore collapsed host")
 	}
 }
@@ -370,7 +370,7 @@ func TestFleetTreeFilterAndEmptyMenuNeverFetch(t *testing.T) {
 
 func TestFleetTreeHostMenuIsLazyAndEndpointBound(t *testing.T) {
 	lists, runs := 0, 0
-	m := treeModel(Actions{ListFleetHostActions: func(context.Context, FleetHostDescriptor) ([]FleetHostAction, error) {
+	m := treeModel(Actions{ListFleetHostActions: func(context.Context, FleetHostDescriptor, FleetHerdrCatalog) ([]FleetHostAction, error) {
 		lists++
 		return []FleetHostAction{{ID: "ssh", Label: "SSH"}}, nil
 	}, RunFleetHostAction: func(context.Context, FleetHostDescriptor, string) (*exec.Cmd, error) { runs++; return nil, nil }})
@@ -411,11 +411,14 @@ func TestFleetTreeLocalProjectionKeepsIdentityAndUnknownGit(t *testing.T) {
 	m.repos[0].LastActivity = time.Now().Add(-time.Hour)
 	m.repos[0].Topology.Remotes = []gitx.RemoteInfo{{Name: "origin", FetchURLs: []string{"https://github.com/acme/local-repo.git"}}}
 	m, _ = treeAccept(m, treeHosts())
-	row := m.visibleFleet()[1]
+	m.showLocalFleet = true
+	m.copyFleetHosts()
+	m.fleetTree.hosts[0].expanded = true
+	treeSelect(t, &m, "local", "/src/local-repo")
+	row, _ := m.currentFleet()
 	if row.GitKnown || row.Repository.LastActivity.IsZero() || len(row.Repository.RemoteIdentities) != 1 {
 		t.Fatalf("local projection=%+v", row)
 	}
-	m.fleetCursor = 1
 	if !strings.Contains(m.renderDetail(), "unknown") {
 		t.Fatal(m.renderDetail())
 	}
@@ -495,8 +498,8 @@ func TestFleetTreeModelCopiesDoNotShareExpansionOrRequests(t *testing.T) {
 }
 
 func TestFleetTreeOversizedActionListPreservesDisplayedIdentity(t *testing.T) {
-	m := treeModel(Actions{ListFleetHostActions: func(context.Context, FleetHostDescriptor) ([]FleetHostAction, error) {
-		items := make([]FleetHostAction, 64)
+	m := treeModel(Actions{ListFleetHostActions: func(context.Context, FleetHostDescriptor, FleetHerdrCatalog) ([]FleetHostAction, error) {
+		items := make([]FleetHostAction, 128)
 		for i := range items {
 			items[i] = FleetHostAction{ID: fmt.Sprintf("action-%d", i), Label: fmt.Sprintf("label-%d", i)}
 		}

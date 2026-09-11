@@ -234,22 +234,23 @@ type RemoteRow struct {
 type FleetRow struct {
 	// HostKey and EndpointID identify a configured host independently of a
 	// repository path. Empty HostKey retains the legacy flat-row interface.
-	HostKey    string
-	EndpointID string
-	Target     string
-	OS         string
-	Expanded   bool
-	Loading    bool
-	Known      bool
-	GitKnown   bool
-	RepoCount  int
-	ObservedAt time.Time
-	Host       string
-	Local      bool
-	State      fleet.HostState
-	Repository *fleet.RepoSnapshot
-	Error      string
-	FromCache  bool
+	HostKey                         string
+	EndpointID                      string
+	Target                          string
+	OS                              string
+	Expanded                        bool
+	Loading                         bool
+	Known                           bool
+	GitKnown                        bool
+	RepoCount                       int
+	ObservedAt                      time.Time
+	Herdr, HerdrDetail, HerdrSearch string
+	Host                            string
+	Local                           bool
+	State                           fleet.HostState
+	Repository                      *fleet.RepoSnapshot
+	Error                           string
+	FromCache                       bool
 }
 
 func (r FleetRow) searchText() string {

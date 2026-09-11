@@ -30,7 +30,7 @@ func tuiFleetFixture(t *testing.T, hosts string) (*App, *tuiFleetBackend, []flee
 	if err := os.WriteFile(path, []byte("schema_version = 1\n"+hosts), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	app := &App{Cfg: config.Default(), In: strings.NewReader(""), Out: &bytes.Buffer{}, Err: &bytes.Buffer{}, remotesPath: path}
+	app := &App{Cfg: config.Default(), In: strings.NewReader(""), Out: &bytes.Buffer{}, Err: &bytes.Buffer{}, remotesPath: path, sshHostRunner: &tuiFleetHerdrRunner{}}
 	backend := newTUIFleetBackend(func() *App { return app })
 	cfg, err := loadFleetConfig(app)
 	if err != nil {
@@ -208,19 +208,19 @@ func TestTUIFleetHerdrActionsRespectContextAndExactProfiles(t *testing.T) {
 	app.sshHostRunner = fake
 	descriptor := fleetDescriptor(hosts[0])
 	t.Setenv("HERDR_ENV", "1")
-	actions, err := backend.ListActions(t.Context(), descriptor)
+	actions, err := tuiFleetTestActions(t, backend, descriptor)
 	if err != nil || !hasTUIFleetAction(actions, "herdr-add", false) {
 		t.Fatalf("inside add = %+v %v", actions, err)
 	}
 	const enabled = "0123456789abcdef0123456789abcdef"
 	const disabled = "1123456789abcdef0123456789abcdef"
 	fake.profiles = []herdrremote.Profile{{ID: enabled, Target: "lab", Label: "One", Session: "agents", Enabled: true}, {ID: disabled, Target: "lab", Label: "Two", Session: "default", Enabled: false}}
-	actions, err = backend.ListActions(t.Context(), descriptor)
-	if err != nil || !hasTUIFleetAction(actions, tuiFleetProfileAction("herdr-enable", fake.profiles[0]), true) || !hasTUIFleetAction(actions, tuiFleetProfileAction("herdr-enable", fake.profiles[1]), false) {
+	actions, err = tuiFleetTestActions(t, backend, descriptor)
+	if err != nil || !hasTUIFleetAction(actions, tuiFleetProfileAction("herdr-disable", fake.profiles[0]), false) || !hasTUIFleetAction(actions, tuiFleetProfileAction("herdr-enable", fake.profiles[1]), false) {
 		t.Fatalf("exact profiles = %+v %v", actions, err)
 	}
 	t.Setenv("HERDR_ENV", "")
-	actions, err = backend.ListActions(t.Context(), descriptor)
+	actions, err = tuiFleetTestActions(t, backend, descriptor)
 	if err != nil || !hasTUIFleetAction(actions, tuiFleetProfileAction("herdr-connect", fake.profiles[0]), false) || !hasTUIFleetAction(actions, tuiFleetProfileAction("herdr-connect", fake.profiles[1]), false) {
 		t.Fatalf("outside profiles = %+v %v", actions, err)
 	}
@@ -229,6 +229,12 @@ func TestTUIFleetHerdrActionsRespectContextAndExactProfiles(t *testing.T) {
 			t.Fatalf("menu performed a native mutation: %v", args)
 		}
 	}
+}
+
+func tuiFleetTestActions(t *testing.T, backend *tuiFleetBackend, descriptor tui.FleetHostDescriptor) ([]tui.FleetHostAction, error) {
+	t.Helper()
+	catalog, _ := backend.LoadHerdr(t.Context())
+	return backend.ListActions(t.Context(), descriptor, catalog)
 }
 
 func hasTUIFleetAction(actions []tui.FleetHostAction, id string, disabled bool) bool {
@@ -243,7 +249,7 @@ func hasTUIFleetAction(actions []tui.FleetHostAction, id string, disabled bool) 
 func TestTUIFleetHostActionsDoNotRequireRemoteDev(t *testing.T) {
 	app, backend, hosts := tuiFleetFixture(t, "[[hosts]]\nname='lab'\nssh_alias='lab'\nremote_os='windows'\n")
 	descriptor := fleetDescriptor(hosts[0])
-	actions, err := backend.ListActions(t.Context(), descriptor)
+	actions, err := tuiFleetTestActions(t, backend, descriptor)
 	if err != nil || !hasTUIFleetAction(actions, "ssh", false) || !hasTUIFleetAction(actions, "dotfile-status", false) || !hasTUIFleetAction(actions, "herdr-unavailable", true) {
 		t.Fatalf("no-dev host actions = %+v %v", actions, err)
 	}
@@ -323,7 +329,7 @@ func TestTUIFleetNoRuntimeDoesNotProbeHerdr(t *testing.T) {
 	app.noRuntime = true
 	fake := &tuiFleetHerdrRunner{}
 	app.sshHostRunner = fake
-	actions, err := backend.ListActions(t.Context(), fleetDescriptor(hosts[0]))
+	actions, err := tuiFleetTestActions(t, backend, fleetDescriptor(hosts[0]))
 	if err != nil || len(fake.calls) != 0 || !hasTUIFleetAction(actions, "herdr-unavailable", true) {
 		t.Fatalf("--no-runtime probed Herdr: calls=%v actions=%+v err=%v", fake.calls, actions, err)
 	}
@@ -334,17 +340,17 @@ func TestTUIFleetHerdrCapabilityDetectionDoesNotRequireMachineCLIForAttach(t *te
 	fake := &tuiFleetHerdrRunner{unsupportedMachines: true}
 	app.sshHostRunner = fake
 	t.Setenv("HERDR_ENV", "")
-	actions, err := backend.ListActions(t.Context(), fleetDescriptor(hosts[0]))
+	actions, err := tuiFleetTestActions(t, backend, fleetDescriptor(hosts[0]))
 	if err != nil || !hasTUIFleetAction(actions, "herdr-connect", false) {
 		t.Fatalf("native attach incorrectly required saved machines: %+v %v", actions, err)
 	}
 	t.Setenv("HERDR_ENV", "1")
-	actions, err = backend.ListActions(t.Context(), fleetDescriptor(hosts[0]))
+	actions, err = tuiFleetTestActions(t, backend, fleetDescriptor(hosts[0]))
 	if err != nil || !hasTUIFleetAction(actions, "herdr-unavailable", true) {
 		t.Fatalf("unsupported machine CLI was offered: %+v %v", actions, err)
 	}
 	fake.missing = true
-	actions, err = backend.ListActions(t.Context(), fleetDescriptor(hosts[0]))
+	actions, err = tuiFleetTestActions(t, backend, fleetDescriptor(hosts[0]))
 	if err != nil || !hasTUIFleetAction(actions, "herdr-unavailable", true) {
 		t.Fatalf("missing binary was offered: %+v %v", actions, err)
 	}
@@ -358,8 +364,8 @@ func TestTUIFleetHerdrSessionChangesInvalidateAction(t *testing.T) {
 	t.Setenv("HERDR_ENV", "")
 	action := tuiFleetProfileAction("herdr-connect", profile)
 	fake.profiles[0].Session = "unreviewed-session"
-	if _, err := backend.RunAction(t.Context(), fleetDescriptor(hosts[0]), action); err == nil {
-		t.Fatal("stale menu silently switched to a different remote session")
+	if _, err := backend.RunAction(t.Context(), fleetDescriptor(hosts[0]), action); err != nil {
+		t.Fatal("preparing the fingerprint-bound handoff should not reread the native catalog", err)
 	}
 	if err := runTUIFleetHostAction(t.Context(), app, backend, fleetDescriptor(hosts[0]), hosts[0], action); err == nil {
 		t.Fatal("stale process handoff silently switched to a different remote session")

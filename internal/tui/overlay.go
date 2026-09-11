@@ -30,11 +30,12 @@ type formField struct {
 }
 
 type actionOption struct {
-	fleetID string
-	tool    string
-	column  string
-	action  listAction
-	label   string
+	fleetID      string
+	fleetProfile string
+	tool         string
+	column       string
+	action       listAction
+	label        string
 }
 
 // overlayState uses fixed arrays so copying Model also copies the mutable form
@@ -53,9 +54,10 @@ type overlayState struct {
 	repoTarget   RepoRow
 	action       TryAction
 
-	searching   bool
-	search      textinput.Model
-	options     [48]actionOption
+	searching bool
+	search    textinput.Model
+	// Herdr's catalog admits 64 profiles; its picker needs one row per identity.
+	options     [80]actionOption
 	optionCount int
 	optionIndex int
 

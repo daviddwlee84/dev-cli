@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +24,47 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func (b *tuiFleetBackend) ListActions(ctx context.Context, descriptor tui.FleetHostDescriptor) ([]tui.FleetHostAction, error) {
+// LoadHerdr observes the controller's native client catalog once for the whole
+// table. It never starts a server, resolves SSH options, or contacts a target.
+func (b *tuiFleetBackend) LoadHerdr(ctx context.Context) (tui.FleetHerdrCatalog, error) {
+	catalog := tui.FleetHerdrCatalog{Status: "unavailable", Profiles: []tui.FleetHerdrProfile{}, InHerdr: os.Getenv("HERDR_ENV") == "1"}
+	if err := ctx.Err(); err != nil {
+		return catalog, err
+	}
+	if b.current().noRuntime {
+		catalog.Status, catalog.Detail = "disabled", "The dashboard was started with --no-runtime"
+		catalog.ObservedAt = time.Now().UTC()
+		return catalog, nil
+	}
+	runner := b.current().sshHostRunner
+	if runner == nil {
+		runner = sshhost.ExecRunner{}
+	}
+	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	help, helpErr := runner.Run(probeCtx, sshhost.RunRequest{Name: "herdr", Args: []string{"--help"}, Display: "Herdr command capabilities"})
+	cancel()
+	catalog.RemoteAvailable = helpErr == nil && help.ExitCode == 0 && !help.StdoutTruncated && strings.Contains(string(help.Stdout), "--remote") && strings.Contains(string(help.Stdout), "--session")
+	if err := ctx.Err(); err != nil {
+		return catalog, err
+	}
+	inventory, err := (herdrremote.Service{Runner: runner}).List(ctx)
+	catalog.Status, catalog.ObservedAt = inventory.Status, time.Now().UTC()
+	if err != nil {
+		catalog.Detail = err.Error()
+		return catalog, err
+	}
+	for _, profile := range inventory.Profiles {
+		catalog.Profiles = append(catalog.Profiles, tui.FleetHerdrProfile{ID: profile.ID, Label: profile.Label, Target: profile.Target, Session: profile.Session, Enabled: profile.Enabled})
+	}
+	return catalog, nil
+}
+
+// ListActions joins a shared, fresh catalog without another native read. The UI
+// groups profile actions by ProfileID before offering one profile's operations.
+func (b *tuiFleetBackend) ListActions(ctx context.Context, descriptor tui.FleetHostDescriptor, catalog tui.FleetHerdrCatalog) ([]tui.FleetHostAction, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	actions := []tui.FleetHostAction{{ID: "dotfile-status", Label: "Dotfile status", Description: "Read this host's native configuration and source revision"}}
 	if descriptor.Local {
 		if descriptor.Key != localFleetDescriptor().Key {
@@ -40,61 +81,62 @@ func (b *tuiFleetBackend) ListActions(ctx context.Context, descriptor tui.FleetH
 		{ID: "authenticated-refresh", Label: "Refresh with authentication", Description: "Refresh only this host in a terminal; configured credentials may be requested"},
 	}, actions...)
 	if _, err := exec.LookPath("ssh"); err != nil {
-		actions[0].Disabled = true
-		actions[0].Description = "ssh is not installed"
+		actions[0].Disabled, actions[0].Description = true, "ssh is not installed"
 	}
-	if b.current().noRuntime {
+	if b.current().noRuntime || catalog.Status == "disabled" {
 		return append(actions, tui.FleetHostAction{ID: "herdr-unavailable", Label: "Herdr disabled", Description: "The dashboard was started with --no-runtime", Disabled: true}), nil
 	}
-	if reason := fleetHerdrTargetReason(host); reason != "" {
-		return append(actions, tui.FleetHostAction{ID: "herdr-unavailable", Label: "Herdr unavailable", Description: reason, Disabled: true}), nil
-	}
-	runner := b.current().sshHostRunner
-	if runner == nil {
-		runner = sshhost.ExecRunner{}
-	}
-	probeCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	help, helpErr := runner.Run(probeCtx, sshhost.RunRequest{Name: "herdr", Args: []string{"--help"}, Display: "Herdr command capabilities"})
-	cancel()
-	remoteAvailable := helpErr == nil && help.ExitCode == 0 && !help.StdoutTruncated && strings.Contains(string(help.Stdout), "--remote") && strings.Contains(string(help.Stdout), "--session")
-	if !remoteAvailable {
-		return append(actions, tui.FleetHostAction{ID: "herdr-unavailable", Label: "Herdr unavailable", Description: "Install a Herdr binary with native --remote support", Disabled: true}), nil
-	}
-	inv, listErr := (herdrremote.Service{Runner: runner}).List(ctx)
 	var profiles []herdrremote.Profile
-	if listErr == nil {
-		for _, profile := range inv.Profiles {
-			if profile.Target == host.SSHAlias {
-				profiles = append(profiles, profile)
+	if catalog.Status == "ready" && host.SSHAlias != "" {
+		for _, p := range catalog.Profiles {
+			if p.Target == host.SSHAlias {
+				profiles = append(profiles, herdrremote.Profile{ID: p.ID, Label: p.Label, Target: p.Target, Session: p.Session, Enabled: p.Enabled})
 			}
 		}
 	}
-	if os.Getenv("HERDR_ENV") != "1" {
+	reason := fleetHerdrTargetReason(host)
+	if catalog.Status == "ready" {
+		if len(profiles) == 0 && reason == "" {
+			actions = append(actions, tui.FleetHostAction{ID: "herdr-add", Label: "Add to Herdr", Description: "Prepare session default and save on this machine; remote setup approvals remain native"})
+		}
+		for _, profile := range profiles {
+			if profile.Enabled {
+				actions = append(actions, fleetHerdrProfileOption("herdr-disable", "Disable in Herdr", profile, "Detach this machine from local clients; remote sessions keep running"))
+			} else {
+				enable := fleetHerdrProfileOption("herdr-enable", "Enable in Herdr", profile, "Open local clients reconnect through SSH")
+				if reason != "" {
+					enable.Disabled, enable.Description = true, reason
+				}
+				actions = append(actions, enable)
+			}
+			actions = append(actions, fleetHerdrProfileOption("herdr-remove", "Remove from Herdr", profile, "Remove this saved profile and detach local clients; remote sessions keep running"))
+		}
+	} else {
+		detail := catalog.Detail
+		if detail == "" {
+			detail = "Requires a compatible native machine CLI; no authoritative catalog is available"
+		}
+		actions = append(actions, tui.FleetHostAction{ID: "herdr-unavailable", Label: "Herdr saved machines unavailable", Description: detail, Disabled: true})
+	}
+	if !catalog.InHerdr && catalog.RemoteAvailable && reason == "" {
 		if len(profiles) == 0 {
 			actions = append(actions, tui.FleetHostAction{ID: "herdr-connect", Label: "Connect with Herdr", Description: "Attach through SSH to session default; native setup approvals remain interactive"})
 		} else {
 			for _, profile := range profiles {
-				actions = append(actions, tui.FleetHostAction{ID: tuiFleetProfileAction("herdr-connect", profile), Label: "Connect with Herdr · " + profile.Label, Description: "Session " + profile.Session + " · profile " + profile.ID})
+				actions = append(actions, fleetHerdrProfileOption("herdr-connect", "Connect with Herdr", profile, "Attach through SSH to this explicit session"))
 			}
 		}
-		return actions, nil
 	}
-	if listErr != nil {
-		return append(actions, tui.FleetHostAction{ID: "herdr-unavailable", Label: "Herdr saved machines unavailable", Description: "Requires a compatible machine CLI; use SSH or upgrade Herdr", Disabled: true}), nil
-	}
-	if len(profiles) == 0 {
-		return append(actions, tui.FleetHostAction{ID: "herdr-add", Label: "Add to Herdr", Description: "Prepare session default and save on this machine; select it in Herdr's sidebar afterwards"}), nil
-	}
-	for _, profile := range profiles {
-		action := tui.FleetHostAction{ID: tuiFleetProfileAction("herdr-enable", profile), Label: "Enable in Herdr · " + profile.Label, Description: "Session " + profile.Session + " · profile " + profile.ID}
-		if profile.Enabled {
-			action.Disabled = true
-			action.Label = "Already in Herdr · " + profile.Label
-			action.Description += "; select the machine in Herdr's native sidebar"
-		}
-		actions = append(actions, action)
+	if reason != "" {
+		actions = append(actions, tui.FleetHostAction{ID: "herdr-unavailable", Label: "Herdr connection unavailable", Description: reason, Disabled: true})
+	} else if !catalog.InHerdr && !catalog.RemoteAvailable {
+		actions = append(actions, tui.FleetHostAction{ID: "herdr-connect-unavailable", Label: "Herdr connection unavailable", Description: "Install a Herdr binary with native --remote support", Disabled: true})
 	}
 	return actions, nil
+}
+
+func fleetHerdrProfileOption(verb, label string, profile herdrremote.Profile, description string) tui.FleetHostAction {
+	return tui.FleetHostAction{ID: tuiFleetProfileAction(verb, profile), Label: label, Description: description, ProfileID: profile.ID, ProfileLabel: profile.Label, ProfileSession: profile.Session}
 }
 
 func tuiFleetProfileAction(verb string, profile herdrremote.Profile) string {
@@ -128,24 +170,70 @@ type tuiFleetHostRequest struct {
 
 func tuiFleetHostActionProcess(ctx context.Context, app *App, descriptor tui.FleetHostDescriptor, action string) (*exec.Cmd, error) {
 	b := newTUIFleetBackend(func() *App { return app })
-	actions, err := b.ListActions(ctx, descriptor)
-	if err != nil {
-		return nil, err
-	}
-	allowed := false
-	for _, candidate := range actions {
-		if candidate.ID == action && !candidate.Disabled {
-			allowed = true
+	if descriptor.Local {
+		if descriptor.Key != localFleetDescriptor().Key || action != "dotfile-status" {
+			return nil, errors.New("invalid local host action")
 		}
-	}
-	if !allowed {
-		return nil, errors.New("this host action is no longer available")
+	} else {
+		host, err := b.host(descriptor)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateTUIFleetHostAction(app, host, action); err != nil {
+			return nil, err
+		}
 	}
 	payload, err := json.Marshal(tuiFleetHostRequest{Host: descriptor.Name, EndpointID: descriptor.EndpointID, Local: descriptor.Local, Action: action})
 	if err != nil {
 		return nil, err
 	}
 	return tuiFleetProcess(ctx, app, "tui", "_fleet-host", "--request", base64.RawURLEncoding.EncodeToString(payload))
+}
+
+func validateTUIFleetHostAction(app *App, host fleet.Host, action string) error {
+	switch action {
+	case "ssh", "authenticated-refresh", "dotfile-status":
+		return nil
+	}
+	if app.noRuntime {
+		return errors.New("Herdr is disabled by --no-runtime")
+	}
+	verb := action
+	if action != "herdr-add" && action != "herdr-connect" {
+		var err error
+		verb, _, err = parseTUIFleetProfileAction(action)
+		if err != nil {
+			return err
+		}
+	}
+	if host.SSHAlias == "" {
+		return errors.New("Herdr profile matching requires an exact SSH alias")
+	}
+	if verb != "herdr-disable" && verb != "herdr-remove" {
+		if reason := fleetHerdrTargetReason(host); reason != "" {
+			return errors.New(reason)
+		}
+	}
+	if verb == "herdr-connect" && os.Getenv("HERDR_ENV") == "1" {
+		return errors.New("select the saved machine in Herdr's sidebar; an embedded client is not opened")
+	}
+	return nil
+}
+
+func parseTUIFleetProfileAction(action string) (string, string, error) {
+	parts := strings.Split(action, ":")
+	if len(parts) != 3 || len(parts[1]) != 32 || len(parts[2]) != 64 {
+		return "", "", errors.New("invalid Herdr profile action")
+	}
+	switch parts[0] {
+	case "herdr-connect", "herdr-enable", "herdr-disable", "herdr-remove":
+	default:
+		return "", "", errors.New("unknown Herdr profile action")
+	}
+	if _, err := hex.DecodeString(parts[1] + parts[2]); err != nil {
+		return "", "", errors.New("invalid Herdr profile identity")
+	}
+	return parts[0], parts[1], nil
 }
 
 func tuiFleetProcess(ctx context.Context, app *App, args ...string) (*exec.Cmd, error) {
@@ -244,11 +332,8 @@ func runTUIFleetHostAction(ctx context.Context, app *App, b *tuiFleetBackend, de
 		result := collectFleetDotfileHost(ctx, host, dotfileFleetRunFunc(run))
 		return renderFleetDotfileResults(app, []fleetDotfileResult{result}, false)
 	}
-	if reason := fleetHerdrTargetReason(host); reason != "" {
-		return errors.New(reason)
-	}
-	if app.noRuntime {
-		return errors.New("Herdr is disabled by --no-runtime")
+	if err := validateTUIFleetHostAction(app, host, action); err != nil {
+		return err
 	}
 	if action == "herdr-add" {
 		manage := newSSHManageCmd(app)
@@ -258,29 +343,32 @@ func runTUIFleetHostAction(ctx context.Context, app *App, b *tuiFleetBackend, de
 	}
 	session := "default"
 	if action != "herdr-connect" {
-		parts := strings.Split(action, ":")
-		if len(parts) != 3 || (parts[0] != "herdr-connect" && parts[0] != "herdr-enable") {
-			return errors.New("unknown fleet host action")
+		verb, id, err := parseTUIFleetProfileAction(action)
+		if err != nil {
+			return err
 		}
-		verb, id := parts[0], parts[1]
-		inv, err := (herdrremote.Service{Runner: app.sshHostRunner}).List(ctx)
+		service := herdrremote.Service{Runner: app.sshHostRunner}
+		inv, err := service.List(ctx)
 		if err != nil {
 			return err
 		}
 		found := false
+		var selected herdrremote.Profile
 		for _, profile := range inv.Profiles {
 			if profile.ID == id && profile.Target == host.SSHAlias && action == tuiFleetProfileAction(verb, profile) {
 				session, found = profile.Session, true
+				selected = profile
 			}
 		}
 		if !found {
 			return errors.New("selected Herdr profile changed; reopen host actions")
 		}
-		if verb == "herdr-enable" {
-			manage := newSSHManageCmd(app)
-			manage.SetContext(ctx)
-			manage.SetArgs([]string{"--action", "enable", "--herdr-profile", id, "--apply"})
-			return manage.Execute()
+		if verb != "herdr-connect" {
+			plan, err := service.Plan(inv, herdrremote.Request{Action: strings.TrimPrefix(verb, "herdr-"), ProfileID: id})
+			if err != nil {
+				return err
+			}
+			return applyTUIFleetHerdrPlan(ctx, app, b, descriptor, selected, service, plan)
 		}
 	}
 	if os.Getenv("HERDR_ENV") == "1" {
@@ -289,6 +377,29 @@ func runTUIFleetHostAction(ctx context.Context, app *App, b *tuiFleetBackend, de
 	process := exec.CommandContext(ctx, "herdr", "--remote", host.SSHAlias, "--session", session)
 	process.Stdin, process.Stdout, process.Stderr = app.In, app.Out, app.Err
 	return process.Run()
+}
+
+func applyTUIFleetHerdrPlan(ctx context.Context, app *App, backend *tuiFleetBackend, descriptor tui.FleetHostDescriptor, profile herdrremote.Profile, service herdrremote.Service, plan herdrremote.Plan) error {
+	fmt.Fprintf(app.Out, "Herdr profile: %s\nSSH target: %s\nSession: %s\nProfile ID: %s\nAction: %s\n", profile.Label, profile.Target, profile.Session, profile.ID, plan.Request.Action)
+	for _, effect := range plan.Effects {
+		fmt.Fprintln(app.Out, "  "+effect)
+	}
+	if !app.interactive() {
+		return errors.New("Herdr profile changes require confirmation in an interactive terminal")
+	}
+	confirmed, err := newPrompter(app).confirm("Apply this Herdr profile change?", false)
+	if err != nil {
+		return err
+	}
+	if !confirmed {
+		return errPromptCanceled
+	}
+	if _, err := backend.host(descriptor); err != nil {
+		return err
+	}
+	result, err := service.Apply(ctx, plan, true)
+	fmt.Fprintf(app.Out, "Herdr %s: %s\n", plan.Request.Action, result.Status)
+	return err
 }
 
 func runTUIFleetSSH(ctx context.Context, app *App, host fleet.Host) error {

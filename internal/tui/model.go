@@ -114,7 +114,8 @@ type Actions struct {
 	LoadFleetHosts       func(context.Context) (FleetHostsResult, error)
 	LoadFleetHostCache   func(context.Context, FleetHostDescriptor) (*fleet.HostResult, bool, error)
 	LoadFleetHost        func(context.Context, FleetHostDescriptor) (fleet.HostResult, error)
-	ListFleetHostActions func(context.Context, FleetHostDescriptor) ([]FleetHostAction, error)
+	LoadFleetHerdr       func(context.Context) (FleetHerdrCatalog, error)
+	ListFleetHostActions func(context.Context, FleetHostDescriptor, FleetHerdrCatalog) ([]FleetHostAction, error)
 	RunFleetHostAction   func(context.Context, FleetHostDescriptor, string) (*exec.Cmd, error)
 	Discovery            DiscoveryActions
 	Workflow             func(context.Context, WorkflowRequest) (Workflow, error)
@@ -1377,7 +1378,13 @@ func (m Model) visibleFleet() []FleetRow {
 
 func (m Model) fleetCount() int {
 	if m.hostFleetEnabled() {
-		return len(m.fleetTree.hosts)
+		count := 0
+		for _, h := range m.fleetTree.hosts {
+			if !h.descriptor.Local || m.showLocalFleet {
+				count++
+			}
+		}
+		return count
 	}
 	count := 0
 	for _, row := range m.fleet {
@@ -3177,7 +3184,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		if m.view == ViewFleet {
 			if m.hostFleetEnabled() {
-				return m, nil
+				return m.toggleFleetLocal()
 			}
 			m.showLocalFleet = !m.showLocalFleet
 			m.status = fmt.Sprintf("local fleet rows visible: %v", m.showLocalFleet)
@@ -3959,10 +3966,11 @@ func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 	switch m.view {
 	case ViewFleet:
 		if m.hostFleetEnabled() {
+			metadata := m.requestFleetHerdr(false)
 			if m.fleetTree.background && !m.fleetTree.warmReady {
-				return m, m.fleetWarmupAfterFrame()
+				return m, batchCommands(metadata, m.fleetWarmupAfterFrame())
 			}
-			return m, nil
+			return m, metadata
 		}
 		if m.viewNeedsLoad(ViewFleet) {
 			m.beginViewLoad(ViewFleet, loadVisit)
