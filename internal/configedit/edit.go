@@ -33,18 +33,19 @@ const maxTransactionBytes = 8 << 20
 var ErrStale = errors.New("configuration changed since planning")
 
 type Change struct {
-	Path         string `json:"path"`
-	BeforeDigest string `json:"before_digest"`
-	AfterDigest  string `json:"after_digest"`
-	Action       string `json:"action"`
-	before       []byte
-	after        []byte
-	info         fs.FileInfo
-	mode         fs.FileMode
-	metadata     Metadata
-	limit        int64
-	anchor       string
-	anchorInfo   fs.FileInfo
+	Path             string `json:"path"`
+	BeforeDigest     string `json:"before_digest"`
+	AfterDigest      string `json:"after_digest"`
+	Action           string `json:"action"`
+	before           []byte
+	after            []byte
+	info             fs.FileInfo
+	mode             fs.FileMode
+	metadata         Metadata
+	observedMetadata *Metadata
+	limit            int64
+	anchor           string
+	anchorInfo       fs.FileInfo
 }
 
 type Plan struct {
@@ -223,7 +224,7 @@ func current(ctx context.Context, c Change) (Change, error) {
 	if err != nil {
 		return n, err
 	}
-	if (c.info == nil) != (n.info == nil) || c.BeforeDigest != n.BeforeDigest || c.info != nil && (!safefile.SameFileState(c.info, n.info) || !reflect.DeepEqual(c.metadata, n.metadata)) {
+	if (c.info == nil) != (n.info == nil) || c.BeforeDigest != n.BeforeDigest || c.info != nil && (!safefile.SameFileState(c.info, n.info) || !reflect.DeepEqual(sourceMetadata(c), n.metadata)) {
 		return n, ErrStale
 	}
 	return n, nil
@@ -325,7 +326,7 @@ func ApplyChecked(ctx context.Context, p Plan, recovery string, check func(conte
 		result.Status = "partial"
 		record := receipt{Version: 1, Created: time.Now().UTC(), Status: "pending", Locks: p.locks, Portable: p.portable}
 		for _, c := range p.changes {
-			record.Images = append(record.Images, image{Path: c.Path, Before: c.before, BeforeExists: c.info != nil, After: c.after, AfterExists: c.Action != "remove", Mode: uint32(c.mode), Metadata: c.metadata})
+			record.Images = append(record.Images, image{Path: c.Path, Before: c.before, BeforeExists: c.info != nil, After: c.after, AfterExists: c.Action != "remove", Mode: uint32(c.mode), Metadata: sourceMetadata(c)})
 		}
 		recordPath := filepath.Join(recovery, result.Receipt+".json")
 		if err := writeReceipt(ctx, recordPath, record); err != nil {
@@ -507,6 +508,8 @@ func RestorePlan(ctx context.Context, recovery, id string) (Plan, error) {
 					return p, errors.New("unsafe recovery file mode")
 				}
 				p.changes[i].mode = fs.FileMode(x.Mode)
+				observed := p.changes[i].metadata
+				p.changes[i].observedMetadata = &observed
 				p.changes[i].metadata = x.Metadata
 				break
 			}
@@ -657,7 +660,7 @@ func stateOf(c Change) *fileState {
 	if c.info == nil {
 		return nil
 	}
-	return &fileState{fileIdentity(c.Path, c.info), uint32(c.info.Mode()), c.info.ModTime().UnixNano(), c.BeforeDigest, c.metadata}
+	return &fileState{fileIdentity(c.Path, c.info), uint32(c.info.Mode()), c.info.ModTime().UnixNano(), c.BeforeDigest, sourceMetadata(c)}
 }
 
 // SourceToken binds private saved plans without exposing metadata or content.
@@ -732,4 +735,11 @@ func WritePrivate(ctx context.Context, path string, data []byte, overwrite bool)
 		return ErrStale
 	}
 	return nil
+}
+
+func sourceMetadata(c Change) Metadata {
+	if c.observedMetadata != nil {
+		return *c.observedMetadata
+	}
+	return c.metadata
 }

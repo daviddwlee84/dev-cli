@@ -209,7 +209,7 @@ func (m Metadata) prepare(file *os.File) error {
 	if err != nil {
 		return err
 	}
-	if m.Present && !sameDescriptor(actual, sd) {
+	if m.Present && !preservesDescriptor(actual, sd) {
 		return fmt.Errorf("Windows security descriptor did not round-trip (%s)", descriptorDelta(actual, sd))
 	}
 	if !m.Present {
@@ -262,7 +262,7 @@ func privateRecoveryMode(path string, info fs.FileInfo) bool {
 
 // SetSecurityInfo may normalize automatic-inheritance bookkeeping. Compare
 // owner/group, protection and every ordered ACE rather than SDDL formatting.
-func sameDescriptor(a, b *windows.SECURITY_DESCRIPTOR) bool {
+func preservesDescriptor(a, b *windows.SECURITY_DESCRIPTOR) bool {
 	ao, _, ae := a.Owner()
 	bo, _, be := b.Owner()
 	if ae != nil || be != nil || ao == nil || bo == nil || !ao.Equals(bo) {

@@ -39,7 +39,7 @@ func TestPortableTextWindowsPreservesDescriptorAndRestores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !sameDescriptor(before, after) {
+	if !preservesDescriptor(after, before) {
 		t.Fatal("source descriptor changed")
 	}
 	restore, err := RestorePlan(t.Context(), recovery, result.Receipt)
@@ -151,7 +151,7 @@ func TestWindowsDescriptorEquivalenceRejectsNewGrants(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		if got := sameDescriptor(actual, base); got != tc.equal {
+		if got := preservesDescriptor(actual, base); got != tc.equal {
 			t.Fatalf("equivalence=%v want=%v", got, tc.equal)
 		}
 	}
