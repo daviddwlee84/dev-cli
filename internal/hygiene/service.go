@@ -13,7 +13,6 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/configedit"
 	"github.com/daviddwlee84/dev-cli/internal/feedback"
-	"github.com/daviddwlee84/dev-cli/internal/fleet"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/lockx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
@@ -144,7 +143,7 @@ func (s *Service) prepare(ctx context.Context) error {
 			if _, err = rand.Read(b); err != nil {
 				return err
 			}
-			if err = fleet.WritePrivateConfigFile(p, b, false); err != nil {
+			if err = configedit.WritePrivate(ctx, p, b, false); err != nil {
 				return errors.New("cannot create private hygiene key")
 			}
 		} else if err != nil {
@@ -177,7 +176,7 @@ func (s *Service) save(ctx context.Context, id string, v any) error {
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	return fleet.WritePrivateConfigFile(filepath.Join(s.Dir, id+".json"), b, true)
+	return configedit.WritePrivate(ctx, filepath.Join(s.Dir, id+".json"), b, true)
 }
 func (s *Service) load(ctx context.Context, id string, v any) error {
 	if !safeRecordID(id) {

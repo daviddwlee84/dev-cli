@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/daviddwlee84/dev-cli/internal/fleet"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -489,7 +488,7 @@ func (s *Service) savePlan(ctx context.Context, p *planRecord) error {
 	}
 	p.Plan.ReviewFile = p.Plan.ID + ".review.txt"
 	p.ReviewDigest = keyedID(s.key, review.String())
-	if err := fleet.WritePrivateConfigFile(filepath.Join(s.Dir, p.Plan.ReviewFile), review.Bytes(), false); err != nil {
+	if err := configedit.WritePrivate(ctx, filepath.Join(s.Dir, p.Plan.ReviewFile), review.Bytes(), false); err != nil {
 		return err
 	}
 	p.Plan.Revision = s.planRevision(*p)

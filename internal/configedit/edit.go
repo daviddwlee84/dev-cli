@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/lockx"
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 )
 
@@ -502,7 +503,7 @@ func RestorePlan(ctx context.Context, recovery, id string) (Plan, error) {
 	for i := range p.changes {
 		for _, x := range r.Images {
 			if x.Path == p.changes[i].Path && x.BeforeExists {
-				if x.Mode & ^uint32(0o777) != 0 || x.Mode&0o022 != 0 {
+				if !restorableMode(x.Mode) {
 					return p, errors.New("unsafe recovery file mode")
 				}
 				p.changes[i].mode = fs.FileMode(x.Mode)
@@ -688,4 +689,47 @@ func InspectToken(ctx context.Context, path string) (string, error) {
 		return "", err
 	}
 	return (Plan{changes: []Change{c}}).SourceToken(path)
+}
+
+// WritePrivate writes a bounded opaque state record using the same native
+// metadata and identity guards, without treating it as a fleet fragment.
+func WritePrivate(ctx context.Context, path string, data []byte, overwrite bool) error {
+	if len(data) > maxReceiptBytes {
+		return errors.New("private record exceeds byte limit")
+	}
+	parent := filepath.Dir(path)
+	info, err := os.Lstat(parent)
+	if err != nil {
+		return err
+	}
+	if err = privatefile.Check(parent, info, true); err != nil {
+		return err
+	}
+	c, err := observeLimit(ctx, path, maxReceiptBytes)
+	if err != nil {
+		return err
+	}
+	if c.info != nil {
+		if !overwrite {
+			return fs.ErrExist
+		}
+		if err = privatefile.Check(path, c.info, false); err != nil {
+			return err
+		}
+	}
+	c.mode = 0o600
+	c.after = data
+	c.AfterDigest = Digest(data)
+	c.Action = "create"
+	if c.info != nil {
+		c.Action = "update"
+	}
+	if err = publish(ctx, c); err != nil {
+		return err
+	}
+	current, err := observeLimit(ctx, path, maxReceiptBytes)
+	if err != nil || current.BeforeDigest != c.AfterDigest {
+		return ErrStale
+	}
+	return nil
 }

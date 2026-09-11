@@ -206,3 +206,5 @@ func fileIdentity(_ string, info fs.FileInfo) string {
 
 func makeDirectory(path string) error                     { return os.Mkdir(path, 0o700) }
 func privateRecoveryMode(_ string, info fs.FileInfo) bool { return info.Mode().Perm() == 0o700 }
+
+func restorableMode(mode uint32) bool { return mode & ^uint32(0o777) == 0 && mode&0o022 == 0 }

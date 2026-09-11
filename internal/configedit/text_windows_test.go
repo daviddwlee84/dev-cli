@@ -110,3 +110,24 @@ func TestPortableTextWindowsRejectsHardlinkAndStaleDescriptor(t *testing.T) {
 		t.Fatal("changed unsafe descriptor accepted")
 	}
 }
+
+func TestPortableTextWindowsRefusesAlternateStreams(t *testing.T) {
+	root := t.TempDir()
+	if p, e := filepath.EvalSymlinks(root); e == nil {
+		root = p
+	}
+	path := filepath.Join(root, "data.txt")
+	if e := os.WriteFile(path, []byte("before"), 0o600); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(path+":private-metadata", []byte("must survive"), 0o600); e != nil {
+		t.Skip("filesystem does not support named streams")
+	}
+	if _, e := NewTextFile(t.Context(), path, []byte("after")); e == nil {
+		t.Fatal("named streams were silently discarded")
+	}
+	b, e := os.ReadFile(path + ":private-metadata")
+	if e != nil || string(b) != "must survive" {
+		t.Fatal("named stream changed")
+	}
+}

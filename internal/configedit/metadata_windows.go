@@ -3,10 +3,12 @@
 package configedit
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io/fs"
 	"os"
+	"unicode/utf16"
 	"unsafe"
 
 	"github.com/daviddwlee84/dev-cli/internal/privatefile"
@@ -81,7 +83,7 @@ func securityAt(path string) (*windows.SECURITY_DESCRIPTOR, windows.ByHandleFile
 		return nil, info, err
 	}
 	defer windows.CloseHandle(h)
-	sd, err := windows.GetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	sd, err := windows.GetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.LABEL_SECURITY_INFORMATION)
 	return sd, info, err
 }
 func checkAncestor(path string, _ fs.FileInfo) error {
@@ -110,6 +112,24 @@ func captureMetadata(path string, expected fs.FileInfo) (Metadata, error) {
 	if err = validateDescriptor(sd, true); err != nil {
 		return Metadata{}, err
 	}
+	if info.FileAttributes & ^uint32(windows.FILE_ATTRIBUTE_NORMAL|windows.FILE_ATTRIBUTE_ARCHIVE) != 0 {
+		return Metadata{}, errors.New("Windows file attributes require manual preservation")
+	}
+	if sacl, _, e := sd.SACL(); e != nil && !errors.Is(e, windows.ERROR_OBJECT_NOT_FOUND) || sacl != nil && sacl.AceCount > 0 {
+		return Metadata{}, errors.New("Windows integrity metadata requires manual preservation")
+	}
+	h, opened, e := metadataHandle(path)
+	if e != nil {
+		return Metadata{}, e
+	}
+	defer windows.CloseHandle(h)
+	if opened.VolumeSerialNumber != info.VolumeSerialNumber || opened.FileIndexHigh != info.FileIndexHigh || opened.FileIndexLow != info.FileIndexLow {
+		return Metadata{}, ErrStale
+	}
+	if e = onlyDefaultStream(h); e != nil {
+		return Metadata{}, e
+	}
+
 	return Metadata{Present: true, Descriptor: sd.String()}, nil
 }
 func (m Metadata) prepare(file *os.File) error {
@@ -172,7 +192,7 @@ func (m Metadata) prepare(file *os.File) error {
 	if err = windows.SetSecurityInfo(h, windows.SE_FILE_OBJECT, flags, owner, group, acl, nil); err != nil {
 		return err
 	}
-	actual, err := windows.GetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
+	actual, err := windows.GetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.GROUP_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.LABEL_SECURITY_INFORMATION)
 	if err != nil {
 		return err
 	}
@@ -265,3 +285,39 @@ func sameDescriptor(a, b *windows.SECURITY_DESCRIPTOR) bool {
 	}
 	return true
 }
+
+// Reject alternate streams instead of losing data when replacing the main text.
+func onlyDefaultStream(h windows.Handle) error {
+	data := make([]byte, 64<<10)
+	if err := windows.GetFileInformationByHandleEx(h, windows.FileStreamInfo, &data[0], uint32(len(data))); err != nil {
+		return errors.New("Windows stream metadata cannot be verified")
+	}
+	offset := 0
+	for count := 0; count < 1024; count++ {
+		if offset+24 > len(data) {
+			return errors.New("invalid Windows stream metadata")
+		}
+		next := int(binary.LittleEndian.Uint32(data[offset:]))
+		size := int(binary.LittleEndian.Uint32(data[offset+4:]))
+		if size%2 != 0 || size <= 0 || offset+24+size > len(data) {
+			return errors.New("invalid Windows stream metadata")
+		}
+		units := make([]uint16, size/2)
+		for i := range units {
+			units[i] = binary.LittleEndian.Uint16(data[offset+24+i*2:])
+		}
+		if string(utf16.Decode(units)) != "::$DATA" {
+			return errors.New("alternate Windows streams require manual preservation")
+		}
+		if next == 0 {
+			return nil
+		}
+		if next < 24 || next%8 != 0 {
+			return errors.New("invalid Windows stream metadata")
+		}
+		offset += next
+	}
+	return errors.New("Windows stream metadata exceeds limit")
+}
+
+func restorableMode(mode uint32) bool { return mode == 0o666 || mode == 0o444 }

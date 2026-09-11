@@ -139,7 +139,8 @@ opaque 摘要與替換數，不重新輸出原 secret。`review-path <id>` 可�
 
 Apply 先驗證整批，再逐檔交易，保留 metadata 與私人恢復紀錄。中斷保留 partial
 ledger，不能盲目重跑。Index、Git 歷史與安裝的 binary 均不由這個流程修改。
-Windows 保護僅適用明確 opt-in 的文字交易，其他 configedit 功能維持原平台契約。
+Windows 保護僅適用明確 opt-in 的文字交易，其他 configedit 功能維持原平台契約。Windows 保留 owner／group／DACL 語意；
+alternate streams、明確 integrity label 或特殊 attributes 需人工保存。
 
 Restore 拒絕操作後又被修改／替換的檔案；artifact 恢復也需要 `--writer-stopped`。
 Runtime 觀察會阻擋可辨識 writer，但停用或不可用的 runtime 無法證明程序不存在。

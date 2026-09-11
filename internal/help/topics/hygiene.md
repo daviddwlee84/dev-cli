@@ -166,7 +166,9 @@ with original metadata and private recovery. It retains a partial ledger on
 failure; never repeat an interrupted operation blindly. Index contents, Git
 history and installed binaries are not changed. Native Windows protections are
 specific to these opted-in text transactions; other configedit workflows retain
-their own platform support contracts.
+their own platform support contracts. Windows preserves owner/group/DACL
+semantics; files with alternate streams, explicit integrity labels or special
+attributes require manual preservation.
 
 ```bash
 dev hygiene restore --receipt <receipt-id> --json
