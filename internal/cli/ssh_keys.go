@@ -27,15 +27,19 @@ type sshKeyListDocument struct {
 func newSSHKeyCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{Use: "key", Short: "Inspect local SSH keys and agent identities", Args: cobra.NoArgs}
 	var jsonOut, noAgent bool
-	var alias string
+	var alias, on string
 	list := &cobra.Command{
 		Use: "list", Short: "List local public keys and SSH agent identities",
 		Long: `List public-key metadata under ~/.ssh and identities from the current SSH agent.
 Keys are deduplicated by fingerprint. No private key contents are read or printed.
-Only --alias evaluates OpenSSH configuration (ssh -G) and its configured agent.
-Listing never repairs permissions, generates keys, or authenticates remotely.`,
+For local listings, only --alias evaluates ssh -G and the alias's configured agent.
+Local listing never repairs permissions, generates keys, or authenticates remotely.
+--on fleet:HOST explicitly contacts that source for metadata from its own keys and agent.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if on != "" {
+				return runSSHRemoteKeys(cmd.Context(), app, on, alias, noAgent, jsonOut)
+			}
 			ctx, cancel := context.WithTimeout(cmd.Context(), sshShowTimeout)
 			defer cancel()
 			service, err := app.sshHosts()
@@ -62,8 +66,10 @@ Listing never repairs permissions, generates keys, or authenticates remotely.`,
 	list.Flags().BoolVar(&jsonOut, "json", false, "Print key metadata and source diagnostics as JSON")
 	list.Flags().BoolVar(&noAgent, "no-agent", false, "Skip SSH agent enumeration")
 	list.Flags().StringVar(&alias, "alias", "", "Evaluate this alias's OpenSSH identity and agent settings")
+	list.Flags().StringVar(&on, "on", "", "Run key inventory on the selected fleet:HOST using its local key context")
 	cmd.AddCommand(list)
 	cmd.AddCommand(newSSHKeyDoctorCmd(app))
+	cmd.AddCommand(newSSHKeyDeriveCmd(app))
 	return cmd
 }
 

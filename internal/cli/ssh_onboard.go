@@ -23,12 +23,16 @@ import (
 )
 
 type sshOnboardItem struct {
-	Target     sshflow.OnboardTarget      `json:"target"`
-	Candidate  *sshdiscovery.Candidate    `json:"candidate,omitempty"`
-	KeyPlan    *sshhost.KeyPlan           `json:"key_plan,omitempty"`
-	Options    sshSetupOptions            `json:"-"`
-	Group      string                     `json:"group,omitempty"`
-	Definition *sshhost.ManagedDefinition `json:"definition,omitempty"`
+	Target       sshflow.OnboardTarget      `json:"target"`
+	Candidate    *sshdiscovery.Candidate    `json:"candidate,omitempty"`
+	KeyPlan      *sshhost.KeyPlan           `json:"key_plan,omitempty"`
+	Options      sshSetupOptions            `json:"-"`
+	Group        string                     `json:"group,omitempty"`
+	Definition   *sshhost.ManagedDefinition `json:"definition,omitempty"`
+	Import       *sshflow.FleetImportPlan   `json:"import,omitempty"`
+	ImportSource *sshFleetImportSource      `json:"-"`
+	PlannedRoute *sshhost.Route             `json:"planned_route,omitempty"`
+	HopKeyPlans  map[string]sshhost.KeyPlan `json:"hop_key_plans,omitempty"`
 }
 
 func runSSHOnboarding(ctx context.Context, app *App, args []string, options sshSetupOptions) error {
@@ -49,6 +53,15 @@ func runSSHOnboarding(ctx context.Context, app *App, args []string, options sshS
 }
 
 func runSSHOnboardingOperation(ctx context.Context, app *App, args []string, options sshSetupOptions) error {
+	if e := validateSSHPasswordStore(options.passwordStore); e != nil {
+		return asUsageError(e)
+	}
+	if len(options.hopKeys) > 0 && !strings.HasPrefix(options.from, "fleet:") && !strings.HasPrefix(options.from, "fleet-ssh:") {
+		return asUsageError(errors.New("--hop-key requires a fleet import"))
+	}
+	if len(options.hopKeys) > 0 && !options.hasExistingKey() && !options.generateKey {
+		return asUsageError(errors.New("--hop-key requires --key or --generate-key"))
+	}
 	if options.dryRun {
 		ctx = context.WithValue(ctx, sshDiscoveryReadOnlyKey{}, true)
 		if len(args) == 0 && options.from == "" {
@@ -86,6 +99,25 @@ func runSSHOnboardingOperation(ctx context.Context, app *App, args []string, opt
 			return asUsageError(errors.New("specify an alias outside an interactive terminal"))
 		}
 		items, err = sshOnboardingWizard(ctx, app)
+	} else if strings.HasPrefix(options.from, "fleet:") || strings.HasPrefix(options.from, "fleet-ssh:") {
+		host, source, e := resolveSSHFleetSelection(ctx, app, options.from, options.dryRun)
+		if e != nil {
+			return e
+		}
+		alias := ""
+		if len(args) > 0 {
+			alias = args[0]
+		} else if app.interactive() && !options.json {
+			alias, err = newPrompter(app).line("Local SSH alias", suggestSSHAliasForFleet(host.Name, source.Profile.Alias))
+		} else {
+			return asUsageError(errors.New("specify a local alias outside an interactive terminal"))
+		}
+		if err != nil {
+			return err
+		}
+		item, e := prepareSSHFleetImportItem(ctx, app, alias, host, source, options)
+		err = e
+		items = []sshOnboardItem{item}
 	} else {
 		var c *sshdiscovery.Candidate
 		if options.from != "" {
@@ -441,9 +473,12 @@ func sshOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, error
 	if err := preflightSSHWizardPermissions(ctx, app, s, ""); err != nil {
 		return nil, err
 	}
-	sources, err := sshPick(ctx, app, "Choose hosts to set up", []picker.Item{{Value: "tailscale", Label: "Tailscale peers"}, {Value: "lan", Label: "Discover LAN SSH hosts"}, {Value: "existing", Label: "Existing SSH aliases"}, {Value: "cached", Label: "Cached discovery"}}, false)
+	sources, err := sshPick(ctx, app, "Choose hosts to set up", []picker.Item{{Value: "tailscale", Label: "Tailscale peers"}, {Value: "lan", Label: "Discover LAN SSH hosts"}, {Value: "existing", Label: "Existing SSH aliases"}, {Value: "cached", Label: "Cached discovery"}, {Value: "fleet", Label: "SSH profiles on selected fleet hosts"}}, false)
 	if err != nil {
 		return nil, err
+	}
+	if sources[0].Value == "fleet" {
+		return sshFleetOnboardingWizard(ctx, app)
 	}
 	var candidates []sshdiscovery.Candidate
 	if sources[0].Value == "tailscale" || sources[0].Value == "lan" {
@@ -620,6 +655,23 @@ func sshOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, error
 }
 
 func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem, dryRun, yes, jsonOut bool) error {
+	for _, item := range items {
+		if source := item.ImportSource; source != nil {
+			if source.Guard == nil {
+				return sshhost.ErrSourceChanged
+			}
+			if e := source.Guard.Check(ctx); e != nil {
+				return e
+			}
+			registry, e := app.machineStore().Read(ctx)
+			if e != nil {
+				return e
+			}
+			if !reflect.DeepEqual(source.Registry, registry) {
+				return errors.New("import ownership changed during selection")
+			}
+		}
+	}
 	targets := []sshflow.OnboardTarget{}
 	byAlias := map[string]sshOnboardItem{}
 	for _, item := range items {
@@ -638,9 +690,41 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 	if err != nil {
 		return err
 	}
+	var imports []sshflow.FleetImportPlan
+	for _, item := range items {
+		if item.Import != nil {
+			imports = append(imports, *item.Import)
+		}
+	}
+	if e := sshflow.ValidateFleetImportBatch(imports); e != nil {
+		return e
+	}
+	definitions := onboardDefinitions(items)
+	for i := range items {
+		item := &items[i]
+		if item.Definition != nil && (item.Definition.ProxyJump != "" || item.Import != nil) {
+			route, e := planSSHLocalRoute(ctx, s, item.Target.Alias, definitions, dryRun)
+			if e != nil {
+				return e
+			}
+			if item.Import != nil && !sameSSHRouteInvocations(route.Hops, item.Import.Route) {
+				return errors.New("imported gateway does not match the native local route; configure an explicit local profile")
+			}
+			item.PlannedRoute = &route
+			byAlias[item.Target.Alias] = *item
+		}
+	}
 	initialRegistry, err := app.machineStore().Read(ctx)
 	if err != nil {
 		return err
+	}
+	for _, item := range items {
+		if id := item.Target.MachineID; id != "" {
+			machine, found := initialRegistry.Find(id)
+			if !found || machine.ID != id {
+				return errors.New("selected machine identity changed before configuration")
+			}
+		}
 	}
 	initPlan := sshhost.InitPlan{Action: sshhost.ActionNoop, Path: s.Paths().RootConfig}
 	for _, item := range items {
@@ -691,6 +775,25 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 		if !reflect.DeepEqual(initialRegistry, current) {
 			return errors.New("machine registry changed since preview")
 		}
+		for _, item := range items {
+			if e := revalidateSSHFleetImport(ctx, app, item); e != nil {
+				return e
+			}
+			if item.Definition != nil && (item.Definition.ProxyJump != "" || item.Import != nil) {
+				fresh, e := planSSHLocalRoute(ctx, s, item.Target.Alias, definitions, false)
+				if e != nil {
+					return e
+				}
+				if item.PlannedRoute == nil || !reflect.DeepEqual(item.PlannedRoute.Hops, fresh.Hops) {
+					return errors.New("SSH route changed since preview")
+				}
+			}
+			for name, kp := range item.HopKeyPlans {
+				if e := s.RevalidateKeySelection(ctx, kp); e != nil {
+					return fmt.Errorf("revalidate hop %s: %w", name, e)
+				}
+			}
+		}
 		var freshPeers *sshdiscovery.Report
 		for _, item := range items {
 			if item.Candidate != nil && item.Candidate.Source == "tailscale" {
@@ -719,6 +822,16 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 				}
 			}
 		}
+		if e := guard.Check(ctx); e != nil {
+			return e
+		}
+		latest, e := app.machineStore().Read(ctx)
+		if e != nil {
+			return e
+		}
+		if !reflect.DeepEqual(initialRegistry, latest) {
+			return errors.New("machine registry changed during source revalidation")
+		}
 		if initPlan.Action != sshhost.ActionNoop {
 			if _, e := s.ApplyInit(ctx, initPlan); e != nil {
 				return e
@@ -736,6 +849,7 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 		}
 	}
 	keyResults := map[string]sshhost.KeyResult{}
+	hopKeyResults := map[string]map[string]sshhost.KeyResult{}
 	bootstraps := map[string]sshhost.BootstrapResult{}
 	registrations := map[string]sshflow.Result{}
 	result, applyErr := sshflow.ApplyOnboarding(ctx, plan, func(ctx context.Context, target sshflow.OnboardTarget, stage string) error {
@@ -747,6 +861,15 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 					return e
 				}
 				o := item.Options
+				if item.Import != nil {
+					keys, e := applySSHFleetImportConfiguration(ctx, app, s, item, &guard)
+					if e != nil {
+						return e
+					}
+					keyResults[target.Alias] = keys[target.Alias]
+					hopKeyResults[target.Alias] = keys
+					return nil
+				}
 				if item.KeyPlan != nil {
 					key, e := s.ApplyKey(ctx, *item.KeyPlan)
 					keyResults[target.Alias] = key
@@ -757,6 +880,9 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 						o.identityFile = item.KeyPlan.IdentityFile
 						o.identityFileChanged = true
 					}
+				}
+				if e := guard.Check(ctx); e != nil {
+					return e
 				}
 				o.yes = true
 				o.fleet = false
@@ -804,6 +930,38 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 					if e != nil {
 						return e
 					}
+					if probe.Ready {
+						return guard.Check(ctx)
+					}
+				}
+				var authentication *sshhost.AuthenticationOperation
+				if !jsonOut && app.interactive() {
+					var e error
+					authentication, e = prepareSSHAuthentication(ctx, app, s, target.Alias, item.Options.passwordStore, false)
+					if e != nil {
+						return e
+					}
+					defer authentication.Close()
+					if target.Auth == "key" && !authentication.UsesPassword() {
+						_ = authentication.Close()
+						authentication = nil
+					}
+				}
+				if target.Auth == "existing" {
+					if authentication != nil {
+						run, e := authentication.Run(ctx, sshhost.ConnectionOptions{Args: []string{"exit 0"}, Interactive: true, SuppressForwarding: true})
+						if e != nil {
+							return e
+						}
+						if run.ExitCode != 0 {
+							return errors.New("ordinary SSH login was not verified")
+						}
+						return guard.Check(ctx)
+					}
+					probe, e := s.Probe(ctx, target.Alias)
+					if e != nil {
+						return e
+					}
 					if !probe.Ready {
 						return errors.New("ordinary SSH login was not verified; run ssh " + target.Alias + " to complete native interaction")
 					}
@@ -828,7 +986,7 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 				if e := guard.Check(ctx); e != nil {
 					return e
 				}
-				bootstrap, e := s.Bootstrap(ctx, sshhost.BootstrapRequest{Alias: target.Alias, Route: route, Key: keyResults[target.Alias], TargetRemoteOS: osType, OSOverrides: overrides, Interactive: !jsonOut && app.interactive(), InstallOnWorkingJump: item.Options.installOnWorkingJump, AllowWindowsAdminAuthorizedKeys: item.Options.windowsAdminAuthorizedKeys})
+				bootstrap, e := s.Bootstrap(ctx, sshhost.BootstrapRequest{Alias: target.Alias, Route: route, Key: keyResults[target.Alias], HopKeys: hopKeyResults[target.Alias], Authentication: authentication, TargetRemoteOS: osType, OSOverrides: overrides, Interactive: !jsonOut && app.interactive(), InstallOnWorkingJump: item.Options.installOnWorkingJump, AllowWindowsAdminAuthorizedKeys: item.Options.windowsAdminAuthorizedKeys})
 				bootstraps[target.Alias] = bootstrap
 				for _, hop := range bootstrap.Hops {
 					if hop.Unknown {
@@ -959,6 +1117,9 @@ func renderSSHOnboardPreview(app *App, items []sshOnboardItem, init sshhost.Init
 		machine := t.MachineID
 		if machine == "" {
 			machine = "new / same selected peer"
+			if item.Import != nil {
+				machine = "source-scoped profile"
+			}
 		}
 		port := strconv.Itoa(t.Port)
 		if t.Port == 0 {
@@ -968,6 +1129,12 @@ func renderSSHOnboardPreview(app *App, items []sshOnboardItem, init sshhost.Init
 	}
 	table.Render(app.Out)
 	for _, item := range items {
+		if item.Import != nil {
+			fmt.Fprintf(app.Out, "  Import from %s / %s (%s)\n", item.Import.FleetHost, item.ImportSource.Resolved.Profile.Alias, item.Import.OriginID)
+			for _, d := range item.Import.Definitions {
+				fmt.Fprintf(app.Out, "    %s → %s@%s:%d via %s\n", d.Alias, d.User, d.HostName, d.Port, d.ProxyJump)
+			}
+		}
 		if definition := item.Definition; definition != nil {
 			if definition.ProxyJump != "" {
 				fmt.Fprintf(app.Out, "  %s ProxyJump: %s\n", item.Target.Alias, definition.ProxyJump)

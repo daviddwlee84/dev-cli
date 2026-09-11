@@ -4,30 +4,31 @@ package fleet
 
 import (
 	"bytes"
+	"github.com/daviddwlee84/dev-cli/internal/sshcredential"
 	"os"
 	"os/exec"
 	"strings"
 	"testing"
 )
 
-func TestWindowsAskpassUsesAdditionalInheritedHandle(t *testing.T) {
+func TestWindowsAskpassUsesPrivatePipeWithoutInheritedHandles(t *testing.T) {
 	const password = "windows fleet secret 4c71"
 	executable, err := os.Executable()
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.Command(executable, "askpass-child")
+	cmd := exec.Command(executable, "tester@host.example's password: ")
 	cmd.Env = os.Environ()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	if err := runCommandWithAskpass(cmd, password); err != nil {
+	if err := runCommandWithAskpass(cmd, password, sshcredential.PasswordContext{ID: "test", User: "tester", HostNames: []string{"host.example"}, Port: 22}); err != nil {
 		t.Fatalf("run askpass child: %v; stderr=%s", err, stderr.Bytes())
 	}
 	if stdout.String() != password+"\n" {
 		t.Fatalf("askpass output = %q", stdout.String())
 	}
-	if cmd.SysProcAttr == nil || len(cmd.SysProcAttr.AdditionalInheritedHandles) != 1 {
+	if cmd.SysProcAttr != nil && len(cmd.SysProcAttr.AdditionalInheritedHandles) != 0 {
 		t.Fatalf("additional inherited handles = %+v", cmd.SysProcAttr)
 	}
 	if len(cmd.ExtraFiles) != 0 {

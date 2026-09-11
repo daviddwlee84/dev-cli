@@ -199,14 +199,21 @@ func renderSSHMachineInventory(app *App, inv sshflow.MachineInventory) {
 func newSSHDiscoverCmd(app *App) *cobra.Command {
 	var source, iface string
 	var cidrs []string
+	var hosts []string
 	var ports []int
 	var refresh, jsonOut bool
-	cmd := &cobra.Command{Use: "discover", Short: "Explicitly discover Tailscale peers or bounded LAN SSH endpoints", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		if source != "tailscale" && source != "lan" {
-			return asUsageError(errors.New("--source must be tailscale or lan"))
+	cmd := &cobra.Command{Use: "discover", Short: "Explicitly discover Tailscale, LAN or selected fleet SSH profiles", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		if source != "tailscale" && source != "lan" && source != "fleet" {
+			return asUsageError(errors.New("--source must be tailscale, lan or fleet"))
 		}
-		if source == "tailscale" && (len(cidrs) > 0 || iface != "" || cmd.Flags().Changed("ports")) {
+		if source != "lan" && (len(cidrs) > 0 || iface != "" || cmd.Flags().Changed("ports")) {
 			return asUsageError(errors.New("LAN scope flags require --source lan"))
+		}
+		if len(hosts) > 0 && source != "fleet" {
+			return asUsageError(errors.New("--host requires --source fleet"))
+		}
+		if source == "fleet" {
+			return runSSHFleetDiscover(cmd.Context(), app, hosts, refresh, jsonOut)
 		}
 		report, err := runSSHDiscovery(cmd.Context(), app, source, sshdiscovery.LANRequest{Interface: iface, Ranges: cidrs, Ports: ports}, refresh, jsonOut)
 		if jsonOut {
@@ -223,13 +230,14 @@ func newSSHDiscoverCmd(app *App) *cobra.Command {
 		return err
 	}}
 	f := cmd.Flags()
-	f.StringVar(&source, "source", "", "discovery source: tailscale or lan")
+	f.StringVar(&source, "source", "", "discovery source: tailscale, lan or fleet")
+	f.StringArrayVar(&hosts, "host", nil, "explicit fleet source name (repeatable; never recursively explores fleets)")
 	f.StringVar(&iface, "interface", "", "selected local LAN interface")
 	f.StringArrayVar(&cidrs, "cidr", nil, "on-link IPv4 range (repeatable, at most 256 addresses total)")
 	f.IntSliceVar(&ports, "ports", []int{22}, "SSH ports to inspect (at most 16)")
-	f.BoolVar(&refresh, "refresh", false, "ignore a fresh matching LAN cache")
+	f.BoolVar(&refresh, "refresh", false, "ignore a fresh matching LAN or fleet cache")
 	f.BoolVar(&jsonOut, "json", false, "emit one versioned discovery report")
-	registerFlagCompletion(cmd, "source", fixedCompletions("tailscale", "lan"))
+	registerFlagCompletion(cmd, "source", fixedCompletions("tailscale", "lan", "fleet"))
 	return cmd
 }
 
@@ -334,6 +342,19 @@ func newSSHMachineCmd(app *App) *cobra.Command {
 			}
 			snapshot.Machines = selected
 			snapshot.Bindings = bindings
+			aliases := map[string]bool{}
+			for _, binding := range bindings {
+				if binding.Provider == "ssh" {
+					aliases[strings.ToLower(binding.NativeID)] = true
+				}
+			}
+			imports := []machineregistry.SSHImport{}
+			for _, record := range snapshot.Imports {
+				if aliases[strings.ToLower(record.LocalAlias)] {
+					imports = append(imports, record)
+				}
+			}
+			snapshot.Imports = imports
 		}
 		if showJSON {
 			return writeSSHJSON(app, struct {

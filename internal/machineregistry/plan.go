@@ -2,6 +2,7 @@ package machineregistry
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -18,6 +19,7 @@ func (s *Store) Plan(ctx context.Context, request Request) (Plan, error) {
 		return Plan{}, err
 	}
 	request.Bindings = append([]Binding{}, request.Bindings...)
+	request.Imports = append([]SSHImport(nil), request.Imports...)
 	if request.Action == "adopt" && request.MachineID == "" {
 		request.MachineID = uuid.NewString()
 	}
@@ -39,6 +41,12 @@ func (s *Store) Plan(ctx context.Context, request Request) (Plan, error) {
 }
 
 func transition(before Snapshot, request Request) (Snapshot, []string, error) {
+	if request.Action == "record-imports" {
+		return transitionImports(before, request)
+	}
+	if len(request.Imports) > 0 {
+		return before, nil, fmt.Errorf("import provenance requires record-imports")
+	}
 	after := cloneSnapshot(before)
 	effects := []string{}
 	if !validID(request.MachineID) {
@@ -210,10 +218,11 @@ func validateBindingIdentity(binding Binding) error {
 func sortSnapshot(s *Snapshot) {
 	sort.Slice(s.Machines, func(i, j int) bool { return s.Machines[i].ID < s.Machines[j].ID })
 	sort.Slice(s.Bindings, func(i, j int) bool { return bindingKey(s.Bindings[i]) < bindingKey(s.Bindings[j]) })
+	sort.Slice(s.Imports, func(i, j int) bool { return s.Imports[i].LocalAlias < s.Imports[j].LocalAlias })
 }
 
 func validateSnapshot(s Snapshot) error {
-	if s.SchemaVersion != SchemaVersion || s.Revision > math.MaxInt64 || len(s.Machines) > maxMachines || len(s.Bindings) > maxBindings {
+	if s.SchemaVersion != SchemaVersion || s.Revision > math.MaxInt64 || len(s.Machines) > maxMachines || len(s.Bindings) > maxBindings || len(s.Imports) > maxBindings {
 		return ErrSchema
 	}
 	machines := map[string]Machine{}
@@ -255,6 +264,13 @@ func validateSnapshot(s Snapshot) error {
 		} else if !found || machine.MergedInto != "" {
 			return fmt.Errorf("binding has no active machine: %w", ErrSchema)
 		}
+	}
+	imports := map[string]bool{}
+	for _, imported := range s.Imports {
+		if err := validateImport(imported); err != nil || imports[imported.LocalAlias] {
+			return errors.Join(ErrSchema, err)
+		}
+		imports[imported.LocalAlias] = true
 	}
 	return nil
 }

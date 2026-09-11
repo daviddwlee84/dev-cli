@@ -53,6 +53,7 @@ do not make the rest of the fleet unusable.`,
 		newFleetOpenHelperCmd(app, "_open-herdr", true),
 		newFleetOpenHelperCmd(app, "_shell", false),
 	)
+	cmd.AddCommand(newSSHRemoteHelperCmds(app)...)
 	return cmd
 }
 

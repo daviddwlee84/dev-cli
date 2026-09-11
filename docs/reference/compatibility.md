@@ -513,3 +513,36 @@ confirmed action using the same narrow permission core as setup. Incomplete or
 blocked scans prevent the whole fix, and post-repair verification preserves
 partial/unknown outcomes. This adds no ownership repair, ACL rewriting, key-file
 content repair, recursive chmod or remote credential management.
+
+
+## Remote SSH profiles and credential providers
+
+The SSH remote v1 helpers are separate from the local-files protocol. Capability
+may initialize the remote user's dev UUID; it never updates a configured trust
+pin or the controller's canonical machine registry. Static export needs no agent
+or SSH evaluation; selected resolve/key operations are explicit. Old or absent
+remote dev affects only that source, and passive listings can retain stale cache.
+
+Local imported aliases use controller keys and host-key policy. Remote-native
+connect uses source-local keys and revalidates the selected fingerprint there.
+Neither path transfers private keys, forwards agents, or retries an executed
+session. Native Windows helper arguments remain allowlisted and encoded as data.
+Derived public companions are local, no-replace writes under the existing SSH
+operation lock; native ssh-keygen retains passphrase interaction.
+
+Password saving is optional and requires matching controller-side authentication
+evidence. macOS Security framework, Windows Credential Manager and an available
+Linux Secret Service provide the default system backend; optional Bitwarden uses
+its installed unlocked CLI. Missing/locked providers do not disable key-based SSH
+or permit plaintext fallback. Credential TOML stores only scoped policy/references;
+unknown writes do not authorize blind retries. Explicit fleet password sources
+keep priority. Credential/SSH-key vault migration, YubiKey provisioning and Apple
+Passwords export are not included in this feature.
+
+Ordinary native sessions retain remaining user SSH behavior. Private temporary
+password/exact-key configurations preserve supported settings and reject
+LocalCommand, port forwarding, SetEnv and `%`-expanded RemoteCommand.
+
+An unselected native-only ProxyCommand session may connect after fresh static and
+effective-source checks. It does not expose reconstructed route/proof authority;
+opaque route import, cycles and unsupported selected-key flows stay rejected.

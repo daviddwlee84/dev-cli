@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/fleet"
+	"github.com/daviddwlee84/dev-cli/internal/sshflow"
 	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 	"github.com/spf13/cobra"
 )
@@ -190,6 +192,7 @@ OpenSSH or log in. Herdr machine add keeps its native installation approvals.`,
 		newSSHDiscoverCmd(app),
 		newSSHMachineCmd(app),
 		newSSHKeyCmd(app),
+		newSSHConnectCmd(app),
 	)
 	return cmd
 }
@@ -290,6 +293,7 @@ func renderSSHInitPlan(app *App, plan sshhost.InitPlan) {
 }
 
 func newSSHListCmd(app *App) *cobra.Command {
+	var includeFleet bool
 	var jsonOut, tailscale, lan bool
 	var format string
 	cmd := &cobra.Command{
@@ -306,6 +310,12 @@ alias, status, ownership, source, line, comma-separated fleet names.`,
 			if format != "" && format != "tsv" {
 				return asUsageError(fmt.Errorf("unsupported --format %q (want tsv)", format))
 			}
+			if includeFleet {
+				if format != "" {
+					return asUsageError(errors.New("--fleet supports table or --json output"))
+				}
+				return runSSHListWithFleet(cmd.Context(), app, tailscale, lan, jsonOut)
+			}
 			if tailscale || lan {
 				return runSSHCombinedList(cmd.Context(), app, tailscale, lan, jsonOut, format)
 			}
@@ -316,6 +326,7 @@ alias, status, ownership, source, line, comma-separated fleet names.`,
 	cmd.Flags().StringVar(&format, "format", "", "machine format: tsv")
 	cmd.Flags().BoolVar(&tailscale, "tailscale", false, "explicitly read Tailscale and show canonical machines with all connection sources")
 	cmd.Flags().BoolVar(&lan, "lan", false, "include cached LAN observations in the canonical machine list; never scan")
+	cmd.Flags().BoolVar(&includeFleet, "fleet", false, "include cached fleet SSH profiles; never connect or refresh")
 	registerFlagCompletion(cmd, "format", fixedCompletions("tsv"))
 	return cmd
 }
@@ -597,6 +608,8 @@ type sshSetupOptions struct {
 	noPassphrase               bool
 	targetOS                   string
 	hopOS                      []string
+	hopKeys                    []string
+	passwordStore              string
 	installOnWorkingJump       bool
 	windowsAdminAuthorizedKeys bool
 	fleet                      bool
@@ -620,7 +633,9 @@ func newSSHSetupCmd(app *App) *cobra.Command {
 		Short: "Create or reconcile an alias, install a public key, and optionally register fleet",
 		Long: `Without an alias, open the multi-host discovery and setup wizard. Explicit
 --from tailscale:<peer> or lan:<ip:port> selects a discovered connection and records
-a canonical machine mapping. Foreign connection definitions are never rewritten.
+a canonical machine mapping. --from fleet:<host>/<alias> imports a selected
+remote SSH profile as local ProxyJump configuration; fleet dry-runs use cached
+metadata only. Foreign connection definitions are never rewritten.
 Use --auth existing for ordinary login without key installation, or select --key
 or --generate-key for public-key bootstrap. --to explicitly registers fleet,
 Herdr, or both. Source-aware setup defaults to configuration only; --dry-run may
@@ -635,7 +650,7 @@ read local Tailscale status but never configures or authenticates a host.`,
 			options.identitiesOnlyChanged = cmd.Flags().Changed("identities-only")
 			options.connectionChanged = options.hostNameChanged || options.userChanged || options.portChanged ||
 				options.proxyJumpChanged || options.identityFileChanged || options.identitiesOnlyChanged
-			if len(args) == 0 || options.from != "" || options.auth != "" || options.to != "" || options.machineID != "" {
+			if len(args) == 0 || options.from != "" || options.auth != "" || options.to != "" || options.machineID != "" || len(options.hopKeys) > 0 {
 				return runSSHOnboarding(cmd.Context(), app, args, options)
 			}
 			if err := validateSSHSetupFlags(cmd, options); err != nil {
@@ -651,7 +666,7 @@ read local Tailscale status but never configures or authenticates a host.`,
 		},
 	}
 	flags := cmd.Flags()
-	flags.StringVar(&options.from, "from", "", "tailscale:<peer>, lan:<ip:port>, or an exact discovery ID")
+	flags.StringVar(&options.from, "from", "", "tailscale:<peer>, lan:<ip:port>, fleet:<host>/<alias>, or an exact discovery ID")
 	flags.StringVar(&options.auth, "auth", "", "existing to verify ordinary SSH without installing a key")
 	flags.StringVar(&options.to, "to", "", "explicit registration destination: fleet, herdr or both")
 	flags.StringVar(&options.machineID, "machine", "", "bind this connection to an existing canonical machine UUID")
@@ -670,6 +685,8 @@ read local Tailscale status but never configures or authenticates a host.`,
 	flags.StringVar(&options.comment, "comment", "", "public key comment for --generate-key")
 	flags.BoolVar(&options.noPassphrase, "no-passphrase", false, "generate without a passphrase (required outside a TTY)")
 	flags.StringVar(&options.targetOS, "target-os", "", "target operating system: posix or windows")
+	flags.StringArrayVar(&options.hopKeys, "hop-key", nil, "per-hop local key override local-alias=path (repeatable; fleet imports)")
+	flags.StringVar(&options.passwordStore, "password-store", "system", "provider offered after verified reusable password login: system or bitwarden")
 	flags.StringArrayVar(&options.hopOS, "hop-os", nil, "route OS override alias=posix|windows (repeatable)")
 	flags.BoolVar(&options.installOnWorkingJump, "install-on-working-jump", false, "install the selected key on already-working jump hosts")
 	flags.BoolVar(&options.windowsAdminAuthorizedKeys, "windows-admin-authorized-keys", false, "allow the Windows administrators_authorized_keys path")
@@ -719,6 +736,9 @@ func runSSHSetup(ctx context.Context, app *App, alias string, options sshSetupOp
 	if err := sshhost.ValidateLookupAlias(alias); err != nil {
 		return asUsageError(err)
 	}
+	if e := validateSSHPasswordStore(options.passwordStore); e != nil {
+		return asUsageError(e)
+	}
 	interactiveMode := !options.json && app.interactive()
 	if !options.configOnly && !options.dryRun && !interactiveMode && options.targetOS == "" {
 		return asUsageError(errors.New("non-interactive full setup requires --target-os"))
@@ -767,6 +787,10 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 	if err != nil {
 		return finishSSHSetup(app, options.json, document, err)
 	}
+	sourceGuard, guardErr := sshflow.GuardSources(ctx, service)
+	if guardErr != nil {
+		return finishSSHSetup(app, options.json, document, guardErr)
+	}
 	aliasClass, definition, classifyErr := classifySetupAlias(service, alias, inventory)
 	document.AliasClass = aliasClass
 	if classifyErr != nil {
@@ -808,6 +832,14 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		}
 	}
 
+	var plannedRoute *sshhost.Route
+	if ownsDefinition && (definition.ProxyJump != "" || options.proxyJumpChanged) {
+		route, e := planSSHLocalRoute(ctx, service, alias, []sshhost.ManagedDefinition{definition}, options.dryRun)
+		if e != nil {
+			return finishSSHSetup(app, options.json, document, e)
+		}
+		plannedRoute = &route
+	}
 	if ownsDefinition {
 		document.Definition = cloneSSHManagedDefinition(definition)
 		managedPlan, planErr := service.PlanUpsert(ctx, definition)
@@ -891,6 +923,18 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		}
 	}
 
+	if plannedRoute != nil {
+		fresh, e := planSSHLocalRoute(ctx, service, alias, []sshhost.ManagedDefinition{definition}, false)
+		if e != nil {
+			return finishSSHSetup(app, options.json, document, e)
+		}
+		if !reflect.DeepEqual(plannedRoute.Hops, fresh.Hops) {
+			return finishSSHSetup(app, options.json, document, sshhost.ErrSourceChanged)
+		}
+	}
+	if e := sourceGuard.Check(ctx); e != nil {
+		return finishSSHSetup(app, options.json, document, e)
+	}
 	var keyResult sshhost.KeyResult
 	if keyPlan != nil {
 		app.warnf("applying SSH key plan for %s", alias)
@@ -904,6 +948,9 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		keyResult = applied
 	}
 	if document.ManagedPlan != nil {
+		if e := sourceGuard.Check(ctx); e != nil {
+			return finishSSHSetup(app, options.json, document, e)
+		}
 		app.warnf("applying managed SSH config for %s", alias)
 		applied, applyErr := service.ApplyManaged(ctx, *document.ManagedPlan)
 		document.ManagedResult = &applied
@@ -942,11 +989,24 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		return finishSSHSetup(app, options.json, document, routeErr)
 	}
 
+	var authentication *sshhost.AuthenticationOperation
+	if interactiveMode {
+		authentication, err = prepareSSHAuthentication(ctx, app, service, alias, options.passwordStore, false)
+		if err != nil {
+			return finishSSHSetup(app, options.json, document, err)
+		}
+		defer authentication.Close()
+		if !authentication.UsesPassword() {
+			_ = authentication.Close()
+			authentication = nil
+		}
+	}
 	app.warnf("bootstrapping public-key authentication for %s", alias)
 	bootstrap, bootstrapErr := service.Bootstrap(ctx, sshhost.BootstrapRequest{
 		Alias:                           alias,
 		Route:                           route,
 		Key:                             keyResult,
+		Authentication:                  authentication,
 		TargetRemoteOS:                  targetOS,
 		OSOverrides:                     overrides,
 		Interactive:                     interactiveMode,

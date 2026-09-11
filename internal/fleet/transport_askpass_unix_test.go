@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func TestUnixAskpassRetryUsesSeparateInheritedFDAndPreservesStdin(t *testing.T) {
+func TestUnixAskpassRetryUsesPrivateIPCAndPreservesStdin(t *testing.T) {
 	root := t.TempDir()
 	bin := filepath.Join(root, "bin")
 	if err := os.MkdirAll(bin, 0o755); err != nil {
@@ -25,6 +25,10 @@ func TestUnixAskpassRetryUsesSeparateInheritedFDAndPreservesStdin(t *testing.T) 
 	ssh := filepath.Join(bin, "ssh")
 	script := `#!/bin/sh
 case " $* " in
+  *" -G "*)
+    printf '%s\n' 'hostname lab.example' 'user tester' 'port 22'
+    exit 0
+    ;;
   *BatchMode=yes*)
     printf '%s\n' 'Permission denied (publickey).' >&2
     exit 255
@@ -35,7 +39,8 @@ for argument do
     printf '%s\n' "$argument" >> "$CAPTURE_ARGUMENTS"
 done
 set > "$CAPTURE_ENVIRONMENT"
-"$SSH_ASKPASS" 'SSH password:' > "$CAPTURE_PASSWORD"
+exec 3<&- 4<&- 5<&- 6<&- 7<&- 8<&- 9<&-
+"$SSH_ASKPASS" "tester@lab.example's password: " > "$CAPTURE_PASSWORD" || exit 42
 input=''
 IFS= read -r input || true
 printf '%s' "$input" > "$CAPTURE_STDIN"

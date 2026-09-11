@@ -256,6 +256,29 @@ without a `.pub`. A normal report never writes; `--fix` applies one reviewed pla
 and verifies the result. Blocked or incomplete scans authorize no repairs. Setup
 continues to check only its baseline paths and chosen key, not every unselected key.
 
+Use selected fleet machines as SSH profile sources, or run their native SSH:
+
+```bash
+dev ssh discover --source fleet --host gateway --refresh
+dev ssh list --fleet                         # cached profiles; no remote refresh
+dev ssh setup internal-api --from fleet:gateway/api --config-only
+dev ssh key list --on fleet:gateway --alias api
+dev ssh connect api --on fleet:gateway       # keys stay on gateway
+dev ssh key derive ~/.ssh/custom-key --apply
+```
+
+Fleet import previews a complete local ProxyJump route while retaining distinct
+hop users, ports and keys. Remote profile identities and fingerprints are checked
+before changes; remote identity/agent paths are never copied locally. The first
+explicit capability may initialize the source user's dev UUID, but never sets a
+fleet pin or merges machines. Source dry runs consume cached resolution only.
+
+A successful controller-driven password login can offer Yes / No / Never (default
+No). `--password-store system|bitwarden` on setup/connect selects the save provider.
+Passwords stay in the OS credential store or Bitwarden; local TOML stores only
+context, policy and references. Remote source-to-target passwords remain outside
+this save flow. Private-key vault imports and hardware provisioning are deferred.
+
 Optional registration uses two initially unchecked boxes: Fleet and Herdr. Select
 either or both; Enter with neither selected skips registration, while Esc cancels.
 Single-choice pickers use configured `fzf` when available; multi-select uses the

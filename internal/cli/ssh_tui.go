@@ -101,18 +101,7 @@ func (w *sshTUIWorkflow) run() error {
 	}
 	switch w.request.Action {
 	case "connect":
-		runner := app.sshHostRunner
-		if runner == nil {
-			runner = sshhost.ExecRunner{}
-		}
-		result, err := runner.Run(ctx, sshhost.RunRequest{Name: "ssh", Args: []string{profile.Alias}, Interactive: true, Display: "SSH interactive connection"})
-		if err != nil {
-			return err
-		}
-		if result.ExitCode != 0 {
-			return fmt.Errorf("SSH connection exited %d", result.ExitCode)
-		}
-		return nil
+		return runSSHConnect(ctx, app, profile.Alias, "", "")
 	case "probe":
 		return runSSHProbe(ctx, app, profile.Alias, false)
 	case "diagnose":

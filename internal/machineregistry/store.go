@@ -244,10 +244,10 @@ func readSnapshot(ctx context.Context, db queryer) (Snapshot, error) {
 		}
 		return snapshot, nil
 	}
-	if version != SchemaVersion {
+	if version != 1 && version != SchemaVersion {
 		return snapshot, fmt.Errorf("database version %d: %w", version, ErrSchema)
 	}
-	if err := validateTables(ctx, db); err != nil {
+	if err := validateTables(ctx, db, version); err != nil {
 		return snapshot, err
 	}
 	var revision int64
@@ -295,15 +295,35 @@ func readSnapshot(ctx context.Context, db queryer) (Snapshot, error) {
 	if err := errors.Join(rowErr, rows.Close()); err != nil {
 		return snapshot, err
 	}
+	if version >= 2 {
+		rows, err = db.QueryContext(ctx, "SELECT local_alias,origin_id,profile_id,fleet_host,remote_alias,source_fingerprint,route_fingerprint,definition_fingerprint FROM ssh_imports ORDER BY local_alias LIMIT ?", maxBindings+1)
+		if err != nil {
+			return snapshot, err
+		}
+		for rows.Next() {
+			var value SSHImport
+			if err := rows.Scan(&value.LocalAlias, &value.OriginID, &value.ProfileID, &value.FleetHost, &value.RemoteAlias, &value.SourceFingerprint, &value.RouteFingerprint, &value.DefinitionFingerprint); err != nil {
+				rows.Close()
+				return snapshot, err
+			}
+			snapshot.Imports = append(snapshot.Imports, value)
+		}
+		if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+			return snapshot, err
+		}
+	}
 	sortSnapshot(&snapshot)
 	return snapshot, validateSnapshot(snapshot)
 }
 
-func validateTables(ctx context.Context, db queryer) error {
+func validateTables(ctx context.Context, db queryer, version int) error {
 	expected := map[string]string{
 		"registry_meta": "singleton,revision",
 		"machines":      "id,label,revision,merged_into,preferred_profile",
 		"bindings":      "provider,scope,native_id,fingerprint,machine_id,suppressed",
+	}
+	if version >= 2 {
+		expected["ssh_imports"] = "local_alias,origin_id,profile_id,fleet_host,remote_alias,source_fingerprint,route_fingerprint,definition_fingerprint"
 	}
 	rows, err := db.QueryContext(ctx, "SELECT name,type FROM sqlite_schema WHERE name NOT LIKE 'sqlite_%' AND type!='index'")
 	if err != nil {
@@ -364,10 +384,11 @@ func migrate(ctx context.Context, db *sql.Conn) error {
 	if version == SchemaVersion {
 		return nil
 	}
-	if version != 0 {
+	if version != 0 && version != 1 {
 		return ErrSchema
 	}
-	_, err := db.ExecContext(ctx, `
+	if version == 0 {
+		_, err := db.ExecContext(ctx, `
 CREATE TABLE registry_meta(singleton INTEGER PRIMARY KEY CHECK(singleton=1), revision INTEGER NOT NULL CHECK(revision>=0));
 INSERT INTO registry_meta VALUES(1,0);
 CREATE TABLE machines(
@@ -388,6 +409,15 @@ CREATE TABLE bindings(
   CHECK((suppressed=1 AND machine_id IS NULL) OR (suppressed=0 AND machine_id IS NOT NULL))
 );
 PRAGMA user_version=1;`)
+		if err != nil {
+			return err
+		}
+	}
+	_, err := db.ExecContext(ctx, `CREATE TABLE ssh_imports(
+local_alias TEXT PRIMARY KEY, origin_id TEXT NOT NULL, profile_id TEXT NOT NULL,
+fleet_host TEXT NOT NULL, remote_alias TEXT NOT NULL, source_fingerprint TEXT NOT NULL,
+route_fingerprint TEXT NOT NULL, definition_fingerprint TEXT NOT NULL);
+PRAGMA user_version=2;`)
 	return err
 }
 
@@ -395,7 +425,7 @@ func writeSnapshot(ctx context.Context, db *sql.Conn, snapshot Snapshot) error {
 	if err := validateSnapshot(snapshot); err != nil {
 		return err
 	}
-	if _, err := db.ExecContext(ctx, "DELETE FROM bindings; DELETE FROM machines;"); err != nil {
+	if _, err := db.ExecContext(ctx, "DELETE FROM bindings; DELETE FROM machines; DELETE FROM ssh_imports;"); err != nil {
 		return err
 	}
 	for _, machine := range snapshot.Machines {
@@ -405,6 +435,11 @@ func writeSnapshot(ctx context.Context, db *sql.Conn, snapshot Snapshot) error {
 	}
 	for _, binding := range snapshot.Bindings {
 		if _, err := db.ExecContext(ctx, "INSERT INTO bindings(provider,scope,native_id,fingerprint,machine_id,suppressed) VALUES(?,?,?,?,?,?)", binding.Provider, binding.Scope, binding.NativeID, binding.Fingerprint, nullable(binding.MachineID), binding.Suppressed); err != nil {
+			return err
+		}
+	}
+	for _, value := range snapshot.Imports {
+		if _, err := db.ExecContext(ctx, "INSERT INTO ssh_imports(local_alias,origin_id,profile_id,fleet_host,remote_alias,source_fingerprint,route_fingerprint,definition_fingerprint) VALUES(?,?,?,?,?,?,?,?)", value.LocalAlias, value.OriginID, value.ProfileID, value.FleetHost, value.RemoteAlias, value.SourceFingerprint, value.RouteFingerprint, value.DefinitionFingerprint); err != nil {
 			return err
 		}
 	}

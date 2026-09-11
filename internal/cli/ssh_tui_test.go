@@ -91,9 +91,9 @@ func TestSSHTUIProfileChoiceAndNativeKeylessConnection(t *testing.T) {
 	}
 	connections := 0
 	for _, call := range fixture.runner.callSnapshot() {
-		if call.Name == "ssh" {
+		if call.Name == "ssh" && call.Interactive && !hasSSHArg(call.Args, "-E") {
 			connections++
-			if !call.Interactive || len(call.Args) != 1 || call.Args[0] != "second" || len(call.Stdin) != 0 {
+			if call.Args[len(call.Args)-1] != "second" || !hasSSHArg(call.Args, "ForwardAgent=no") || len(call.Stdin) != 0 {
 				t.Fatalf("non-native connection %+v", call)
 			}
 		}

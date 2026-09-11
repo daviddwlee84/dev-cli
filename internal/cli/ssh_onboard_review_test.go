@@ -183,6 +183,17 @@ func TestSSHReviewMachineShowJSONHonorsMachineSelector(t *testing.T) {
 			selectedID = plan.MachineID
 		}
 	}
+	imports := []machineregistry.SSHImport{}
+	for _, alias := range []string{"selected", "unrelated"} {
+		imports = append(imports, machineregistry.SSHImport{LocalAlias: alias, OriginID: "source-origin", ProfileID: alias, FleetHost: "gateway", RemoteAlias: alias, SourceFingerprint: "source", RouteFingerprint: "route", DefinitionFingerprint: "definition"})
+	}
+	importPlan, e := store.Plan(context.Background(), machineregistry.Request{Action: "record-imports", Imports: imports})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = store.Apply(context.Background(), importPlan); e != nil {
+		t.Fatal(e)
+	}
 	out, err := runMachineCLI(t, f, f.runner, "ssh", "machine", "show", selectedID, "--json")
 	if err != nil {
 		t.Fatal(err)
@@ -193,6 +204,9 @@ func TestSSHReviewMachineShowJSONHonorsMachineSelector(t *testing.T) {
 	}
 	if len(snapshot.Machines) != 1 || snapshot.Machines[0].ID != selectedID {
 		t.Fatalf("JSON ignored machine selector: %s", out)
+	}
+	if len(snapshot.Imports) != 1 || snapshot.Imports[0].LocalAlias != "selected" {
+		t.Fatalf("JSON included unrelated import: %s", out)
 	}
 	if len(snapshot.Bindings) != 1 || snapshot.Bindings[0].MachineID != selectedID {
 		t.Fatalf("JSON included unrelated bindings: %s", out)

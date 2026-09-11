@@ -2696,6 +2696,127 @@ kinds. It includes `scope` (`discovered` or `selected`), `complete`, `key_paths`
 and the exact permission `plan`; applied results retain per-path outcomes and a
 `recheck` when completed repairs are verified.
 
+
+## Fleet source profiles and local routes
+
+```bash
+dev ssh discover --source fleet --host gateway --host lab --refresh
+dev ssh list --fleet --json
+dev ssh setup internal-api --from fleet:gateway/api --config-only
+dev ssh setup internal-api --from fleet:gateway/api --auth existing
+dev ssh setup internal-api --from fleet:gateway/api --dry-run --json
+```
+
+Fleet discovery reads only the explicitly selected sources (at most 16). Without
+`--host`, an interactive picker selects them; noninteractive use requires host
+names. It never explores a source's own fleet. Metadata uses BatchMode first;
+only an already configured fleet password source may authorize a password retry,
+and a configured prompt needs an interactive controller. `--refresh` bypasses a
+fresh cache. `ssh list --fleet` only displays cached source profiles and does not
+contact them. Existing default `ssh list` JSON/TSV remains static.
+
+A compatible remote `dev` exports a bounded static alias inventory without
+running remote `ssh -G`, a resolver, or an agent. The first explicit capability
+exchange may create that remote user's dev UUID. The observed UUID is reported,
+never copied into a fleet `machine_id` pin or used to merge machines automatically.
+Missing/older dev, failed authentication, timeouts, changed source identity and
+incomplete responses retain distinct states; independently cached metadata may
+remain visible as stale.
+
+Each remote profile has a stable ID scoped to its source UUID, login user, SSH
+root and alias. Fingerprints describe the observed configuration revision. The
+human selector is `fleet:HOST/ALIAS`; names containing delimiters use percent
+encoding, or automation can use an exact `fleet-ssh:` ID from discovery. Identical
+names on different sources do not identify the same connection.
+
+Setup resolves only the selected remote route through native `ssh -G`, then
+previews local managed aliases and the complete ProxyJump route. Configured
+Match exec/resolver behavior may run during this explicit resolution. The local
+gateway and each hop keep their own user, port and credential context. Compatible
+local aliases may be reused; foreign definitions are not rewritten. Unsupported
+routing or source-local command policy requires explicit local configuration.
+Remote IdentityFile/IdentityAgent paths and trust files are not copied: local SSH
+configuration and selected controller keys govern the imported route.
+
+The default remains configuration only. Key installation, per-hop key choices
+(`--hop-key local-alias=key-path`) and provider registration are explicit. A
+selected target key does not authorize its installation on every working jump.
+Before changes, setup rechecks source identity, fingerprints and route facts.
+`--dry-run` uses cached remote inventory/resolution and static local facts only;
+missing resolution is reported rather than causing an SSH connection or write.
+
+## Choose where SSH runs
+
+```bash
+dev ssh connect internal-api
+dev ssh key list --on fleet:gateway --alias api --json
+dev ssh connect api --on fleet:gateway
+dev ssh connect api --on fleet:gateway --key-id SHA256:FINGERPRINT
+```
+
+A normal connection runs SSH on the controller. `--on fleet:HOST` starts that
+source host's native SSH client using its own alias, agent and key files. Remote
+key listings are display metadata; their paths are never interpreted locally.
+`--key-id` is reselected and checked in the executing host's catalog, including
+its agent policy. Private keys are never transferred. This command opens an
+interactive session only, disables agent forwarding and preserves child exit status;
+it never retries a started session or accepts extra remote-command arguments.
+
+Ordinary native connections retain the user's remaining SSH behavior. When a
+password or exact-key workflow needs a private temporary configuration, supported
+settings are preserved and unsupported LocalCommand, port forwarding, SetEnv or
+RemoteCommand values using `%` expansion are rejected rather than silently lost.
+
+With no selected key or managed password context, an opaque ProxyCommand alias
+can use a guarded native-only connection: its complete user Include closure and
+native effective settings are rechecked, without inventing route hops or an
+exact-key proof. ProxyJump cycles and unsupported exact-key operations remain
+rejected; opaque routes still cannot be imported as local ProxyJump profiles.
+
+## Derive a missing public companion
+
+```bash
+dev ssh key derive ~/.ssh/custom-key
+dev ssh key derive ~/.ssh/custom-key --apply
+dev ssh key derive ~/.ssh/custom-key --apply --yes --json
+```
+
+Derive accepts a private identity inside `~/.ssh` and previews its missing `.pub`
+without running ssh-keygen or reading private contents. `--apply` confirms and
+invokes native `ssh-keygen -y`; noninteractive/JSON apply needs `--yes`. Native
+ssh-keygen owns encrypted-key prompts. Existing companions are never overwritten.
+The operation revalidates the selected path under the SSH operation lock and
+publishes only the public companion. It does not install a key or repair modes;
+use `ssh key doctor` first when permissions need attention.
+
+## Remember a successful SSH password
+
+After a controller-driven password login has matching authentication evidence,
+dev offers **Yes / No / Never**, with **No** selected by default. Yes saves that
+password in the chosen provider. No keeps it only for the current operation.
+Never persists suppression for that exact origin/profile/route/host/user/port
+context; it is not a global preference. Unknown, MFA, passphrase and host-key
+prompts are not treated as a reusable account password.
+
+`--password-store system|bitwarden` on setup/connect chooses the save provider;
+system is the default. macOS uses Security framework, Windows uses Credential
+Manager, and Linux uses an available Secret Service. Bitwarden requires an
+installed, unlocked CLI and uses stdin for create/edit payloads. The feature
+never places passwords in argv, environment, ordinary files, logs or JSON.
+Unavailable or denied providers do not become a plaintext fallback. Uncertain
+writes remain pending/unknown and are not automatically retried.
+
+`$XDG_CONFIG_HOME/dev/ssh-credentials.toml` stores only context, ask/never policy,
+provider references and write-state metadata. Edit that policy to re-enable a
+Never context. Removing a reference stops dev reuse but does not delete its
+vault item or change the remote password; use the provider's native interface
+for vault cleanup. Existing explicit fleet password sources retain priority.
+Discovery does not opt into saved-reference lookup. Remote source-to-target
+passwords in `connect --on` remain outside this controller save workflow.
+
+These features do not import SSH private keys into a vault, provision YubiKeys,
+or export Apple Passwords. Those are separate future migration workflows.
+
 ---
 
 ### Feedback and isolated repair
@@ -5551,7 +5672,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
-| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list/doctor`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh probe`, `ssh remove` |
+| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list/doctor/derive`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh connect`, `ssh probe`, `ssh remove` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
@@ -7910,6 +8031,18 @@ Manage SSH hosts, fleet registrations, and Herdr machines
 dev ssh
 ```
 
+### `dev ssh connect`
+
+Open a local or explicitly remote-native SSH session
+
+```
+dev ssh connect ALIAS [flags]
+```
+
+- `--key-id` — Exact SHA256 fingerprint from the executing host's key list
+- `--on` — Execute using the selected fleet:HOST's own SSH client and keys
+- `--password-store` — provider offered after verified reusable password login: system or bitwarden
+
 ### `dev ssh diagnose`
 
 Diagnose SSH configuration, routing, transport and authentication
@@ -7924,18 +8057,19 @@ dev ssh diagnose <target> [flags]
 
 ### `dev ssh discover`
 
-Explicitly discover Tailscale peers or bounded LAN SSH endpoints
+Explicitly discover Tailscale, LAN or selected fleet SSH profiles
 
 ```
 dev ssh discover [flags]
 ```
 
 - `--cidr` — on-link IPv4 range (repeatable, at most 256 addresses total)
+- `--host` — explicit fleet source name (repeatable; never recursively explores fleets)
 - `--interface` — selected local LAN interface
 - `--json` — emit one versioned discovery report
 - `--ports` — SSH ports to inspect (at most 16)
-- `--refresh` — ignore a fresh matching LAN cache
-- `--source` — discovery source: tailscale or lan
+- `--refresh` — ignore a fresh matching LAN or fleet cache
+- `--source` — discovery source: tailscale, lan or fleet
 
 ### `dev ssh format`
 
@@ -7971,6 +8105,18 @@ Inspect local SSH keys and agent identities
 dev ssh key
 ```
 
+### `dev ssh key derive`
+
+Preview or derive a missing SSH public-key companion
+
+```
+dev ssh key derive PRIVATE_KEY [flags]
+```
+
+- `--apply` — Derive and save the missing public companion after confirmation
+- `--json` — Print one versioned plan or result without key material
+- `--yes` — Confirm public companion creation without prompting
+
 ### `dev ssh key doctor`
 
 Check SSH key permissions and preview repairs
@@ -7995,6 +8141,7 @@ dev ssh key list [flags]
 - `--alias` — Evaluate this alias's OpenSSH identity and agent settings
 - `--json` — Print key metadata and source diagnostics as JSON
 - `--no-agent` — Skip SSH agent enumeration
+- `--on` — Run key inventory on the selected fleet:HOST using its local key context
 
 ### `dev ssh list`
 
@@ -8004,6 +8151,7 @@ Statically list exact SSH aliases and their definitions
 dev ssh list [flags]
 ```
 
+- `--fleet` — include cached fleet SSH profiles; never connect or refresh
 - `--format` — machine format: tsv
 - `--json` — emit one versioned JSON object
 - `--lan` — include cached LAN observations in the canonical machine list; never scan
@@ -8176,10 +8324,11 @@ dev ssh setup [alias] [flags]
 - `--dry-run` — render static local plans without running OpenSSH or writing
 - `--fleet` — register the verified alias in dev fleet
 - `--fleet-name` — fleet profile name (default: alias)
-- `--from` — tailscale:<peer>, lan:<ip:port>, or an exact discovery ID
+- `--from` — tailscale:<peer>, lan:<ip:port>, fleet:<host>/<alias>, or an exact discovery ID
 - `--generate-key` — generate a new Ed25519 key pair
 - `--herdr-label` — Herdr machine label (default: alias)
 - `--herdr-session` — Herdr remote session
+- `--hop-key` — per-hop local key override local-alias=path (repeatable; fleet imports)
 - `--hop-os` — route OS override alias=posix|windows (repeatable)
 - `--hostname` — managed HostName value
 - `--identities-only` — set managed IdentitiesOnly=yes (explicit false writes no)
@@ -8190,6 +8339,7 @@ dev ssh setup [alias] [flags]
 - `--key-path` — destination identity path for --generate-key
 - `--machine` — bind this connection to an existing canonical machine UUID
 - `--no-passphrase` — generate without a passphrase (required outside a TTY)
+- `--password-store` — provider offered after verified reusable password login: system or bitwarden
 - `--port` — managed SSH port
 - `--proxy-jump` — managed ProxyJump value
 - `--target-os` — target operating system: posix or windows
@@ -8843,10 +8993,12 @@ replaces remote fleet's `machine_id` pin. See [SSH onboarding](https://daviddwle
 
 ## SSH key catalog and picker behavior
 
-`ssh key list` accepts `--json`, `--no-agent` and `--alias <alias>`. Its default
+`ssh key list` accepts `--json`, `--no-agent`, `--alias <alias>` and explicit
+`--on fleet:HOST`. Its default
 local catalog skips `ssh -G`; explicit alias mode evaluates configured identities
 and agent settings. JSON uses `schema_version: 1`, `kind: ssh_key_list`, candidates,
-completeness and diagnostics. The command never repairs permissions or logs in.
+completeness and diagnostics. Local listing never repairs permissions or logs in; `--on` explicitly contacts
+the selected source.
 
 Interactive setup selects an existing key from this catalog or a manual path.
 Its narrowly scoped permission preflight is a separate confirmed repair before
@@ -8872,6 +9024,40 @@ safety diagnostics point here; malformed key data still needs manual correction.
 JSON kinds are `ssh_key_doctor_plan`/`ssh_key_doctor_result`, with scope, completeness,
 key paths, the permission plan and optional result/recheck. See
 [SSH key doctor](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#ssh-key-doctor).
+
+
+## Fleet SSH sources, connection and password contexts
+
+`ssh discover --source fleet --host NAME` accepts repeated source names and
+`--refresh`; it does not recursively traverse fleets. JSON kind is
+`ssh_fleet_discovery`, with one status/optional inventory per source. `ssh list
+--fleet` adds cached `fleet_ssh_sources` to its existing JSON document and performs
+no remote refresh. Host/alias selectors use `fleet:HOST/ALIAS` with percent-encoded
+segments, or a cached exact `fleet-ssh:` profile ID.
+Unreadable cache entries preserve local aliases and valid source rows, with
+`complete: false` and a `fleet_ssh_diagnostics` entry rather than an empty success.
+
+`ssh setup LOCAL_ALIAS --from fleet:HOST/ALIAS` imports a reviewed local ProxyJump
+route. Configuration-only remains the default; `--auth existing`, local key
+selection, `--hop-key local-alias=key-path` and provider registration stay explicit.
+A dry run requires cached source/route metadata and does not invoke OpenSSH.
+`ssh connect ALIAS [--on fleet:HOST] [--key-id SHA256:...]` opens one interactive
+session on the selected executing host. It accepts no remote command arguments.
+`ssh key list --on fleet:HOST [--alias ALIAS] [--no-agent] [--json]` returns scoped
+remote metadata (`ssh_remote_keys`); remote paths never become local identities.
+
+`ssh key derive PRIVATE_KEY [--apply] [--yes] [--json]` previews or creates only a
+missing `.pub` inside `~/.ssh`. JSON kinds are `ssh_key_derive_plan` and
+`ssh_key_derive_result`; existing companions are retained, and apply is separate
+from permission repair or key installation.
+
+Setup/connect accept `--password-store system|bitwarden` (default system). The
+post-authentication save choice defaults to No; Never persists only for that
+credential context. `$XDG_CONFIG_HOME/dev/ssh-credentials.toml` stores ask/never
+policy, provider references and pending/unknown metadata, not secret values.
+Explicit fleet password sources retain priority; discovery does not use the
+saved-reference resolver. Remote source-to-target credentials are outside the
+controller save flow. See [SSH workflows](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#fleet-source-profiles-and-local-routes).
 
 ---
 
@@ -9387,6 +9573,39 @@ blocked scans prevent the whole fix, and post-repair verification preserves
 partial/unknown outcomes. This adds no ownership repair, ACL rewriting, key-file
 content repair, recursive chmod or remote credential management.
 
+
+## Remote SSH profiles and credential providers
+
+The SSH remote v1 helpers are separate from the local-files protocol. Capability
+may initialize the remote user's dev UUID; it never updates a configured trust
+pin or the controller's canonical machine registry. Static export needs no agent
+or SSH evaluation; selected resolve/key operations are explicit. Old or absent
+remote dev affects only that source, and passive listings can retain stale cache.
+
+Local imported aliases use controller keys and host-key policy. Remote-native
+connect uses source-local keys and revalidates the selected fingerprint there.
+Neither path transfers private keys, forwards agents, or retries an executed
+session. Native Windows helper arguments remain allowlisted and encoded as data.
+Derived public companions are local, no-replace writes under the existing SSH
+operation lock; native ssh-keygen retains passphrase interaction.
+
+Password saving is optional and requires matching controller-side authentication
+evidence. macOS Security framework, Windows Credential Manager and an available
+Linux Secret Service provide the default system backend; optional Bitwarden uses
+its installed unlocked CLI. Missing/locked providers do not disable key-based SSH
+or permit plaintext fallback. Credential TOML stores only scoped policy/references;
+unknown writes do not authorize blind retries. Explicit fleet password sources
+keep priority. Credential/SSH-key vault migration, YubiKey provisioning and Apple
+Passwords export are not included in this feature.
+
+Ordinary native sessions retain remaining user SSH behavior. Private temporary
+password/exact-key configurations preserve supported settings and reject
+LocalCommand, port forwarding, SetEnv and `%`-expanded RemoteCommand.
+
+An unselected native-only ProxyCommand session may connect after fresh static and
+effective-source checks. It does not expose reconstructed route/proof authority;
+opaque route import, cycles and unsupported selected-key flows stay rejected.
+
 ---
 
 ### Sources and freshness
@@ -9593,6 +9812,22 @@ retained partial repairs and post-repair checks. Default scan scope differs from
 setup's baseline-plus-selected-key preflight. Key inventory diagnostics preserve
 stable codes and include specific safe reasons and appropriate remediation hints; they do not
 convert missing public companions or unsafe paths into proof of key availability.
+
+
+## Fleet SSH and credential scope (2026-09-12)
+
+`internal/sshremote` defines bounded v1 static inventory, explicit resolution/key
+metadata and one-session connection helpers. Source profile IDs include remote
+UUID/user/root/alias; fingerprints and cached routes are observations, not trust
+pins. The CLI's fleet source/import adapters and `sshhost` route/connection core
+own execution. Default SSH listing and cached `--fleet` listing stay passive.
+
+`internal/sshcredential` defines exact password contexts, optional native system
+and Bitwarden providers, private askpass transport and guarded policy/reference
+TOML. Native vault availability and interactive authorization vary by host; no
+vault was read or written by the automated unit-test fixtures. Private-key vault
+migration, hardware provisioning and Apple Passwords migration remain deferred.
+The public SSH guide distinguishes controller routes from remote-native sessions.
 
 ---
 
@@ -12306,6 +12541,110 @@ JSON 使用 `schema_version: 1`，kind 為 `ssh_key_doctor_plan`／`ssh_key_doct
 內容包含 `scope`（`discovered`／`selected`）、`complete`、`key_paths`、exact permission
 `plan`；apply result 保留 per-path outcomes，完成 repair 後驗證時另有 `recheck`。
 
+
+## Fleet source profiles 與本機 routes
+
+```bash
+dev ssh discover --source fleet --host gateway --host lab --refresh
+dev ssh list --fleet --json
+dev ssh setup internal-api --from fleet:gateway/api --config-only
+dev ssh setup internal-api --from fleet:gateway/api --auth existing
+dev ssh setup internal-api --from fleet:gateway/api --dry-run --json
+```
+
+Fleet discovery 只讀明確選定的 sources（最多 16 個）。沒有 `--host` 時由互動
+picker 選取；非互動模式必須提供 host names。不會遞迴探索 source 自己的 fleet。
+Metadata 先使用 BatchMode；只有既有 fleet password source 可授權 password retry，
+configured prompt 也需要互動 controller。`--refresh` 略過 fresh cache。
+`ssh list --fleet` 只顯示 cached source profiles、不連線；預設 `ssh list` JSON／TSV
+仍維持 static contract。
+
+相容的 remote `dev` 匯出 bounded static alias inventory，不執行遠端 `ssh -G`、
+resolver 或 agent。第一次明確 capability exchange 可建立該 remote user 的 dev UUID；
+observed UUID 只作回報，不會自動寫入 fleet `machine_id` pin 或合併 machines。
+沒有／版本較舊的 dev、驗證失敗、timeout、source identity 變更與 incomplete response
+保持不同狀態；既有 metadata cache 可以保留顯示，但會標示 stale。
+
+Remote profile ID 由 source UUID、login user、SSH root、alias 決定；fingerprint
+表示觀察到的 configuration revision。可讀 selector 是 `fleet:HOST/ALIAS`，名稱含
+分隔符時使用 percent encoding；automation 也可使用 discovery 回傳的精確
+`fleet-ssh:` ID。不同 source 的同名 alias 不代表同一條連線。
+
+Setup 只對選定 remote route 執行原生 `ssh -G`，再預覽本機 managed aliases 與完整
+ProxyJump route；這個明確 resolution 可能執行既有 Match exec／resolver。Local
+gateway 與每個 hop 保留自己的 user、port、credential context。相容 local alias
+可重用，foreign definitions 不會改寫。無法移植的 routing／source-local command
+policy 必須明確設定本機 profile。Remote IdentityFile／IdentityAgent 與 trust-file
+paths 不會複製；imported route 由本機 SSH configuration 與選定 controller keys 控制。
+
+預設仍只設定 configuration。Key installation、per-hop key choices
+（`--hop-key local-alias=key-path`）與 provider registration 需明確選取；選 target key
+不代表授權把它安裝到每個已可登入的 jump。套用前會重新確認 source identity、
+fingerprint 與 route facts。`--dry-run` 只使用 cached remote inventory／resolution
+及 static local facts；缺少 resolution 就回報，不會因此執行 SSH 或寫入。
+
+## 選擇 SSH 在哪台機器執行
+
+```bash
+dev ssh connect internal-api
+dev ssh key list --on fleet:gateway --alias api --json
+dev ssh connect api --on fleet:gateway
+dev ssh connect api --on fleet:gateway --key-id SHA256:FINGERPRINT
+```
+
+一般 connect 在 controller 執行 SSH。`--on fleet:HOST` 使用 source host 自己的
+native SSH、alias、agent 與 key files。Remote key listing 只是 display metadata，
+其中 paths 不會當成本機 paths。`--key-id` 會在真正執行 SSH 的 host 重新選取並驗證，
+包含 agent policy。Private keys 不會轉移。此命令只開互動 session、關閉 agent forwarding、
+保留 child exit status；不重試已啟動的 session，也不接受額外 remote command args。
+
+一般 native connection 保留其餘 user-authored SSH behavior。Password／exact-key workflow
+若需要 private temporary configuration，會保留 supported settings；不支援的 LocalCommand、
+port forwarding、SetEnv 或含 `%` expansion 的 RemoteCommand 會拒絕，不會靜默省略。
+
+沒有 selected key 或 managed password context 時，opaque ProxyCommand alias 可使用
+guarded native-only connection：重新檢查完整 user Include closure 與 native effective
+settings，不虛構 route hops 或 exact-key proof。ProxyJump cycles 與不支援的 exact-key
+操作仍拒絕；opaque route 也不能匯入為本機 ProxyJump profile。
+
+## 衍生缺少的 public companion
+
+```bash
+dev ssh key derive ~/.ssh/custom-key
+dev ssh key derive ~/.ssh/custom-key --apply
+dev ssh key derive ~/.ssh/custom-key --apply --yes --json
+```
+
+Derive 接受 `~/.ssh` 內的 private identity，預設只預覽缺少的 `.pub`，不執行
+ssh-keygen 或讀 private contents。`--apply` 確認後才執行 native `ssh-keygen -y`；
+非互動／JSON apply 需要 `--yes`。Encrypted-key prompt 由 native ssh-keygen 處理。
+已有 companion 不覆寫。操作會在 SSH operation lock 內重驗 source path，只發布
+public companion，不安裝 key 或修復 mode；permissions 問題先用 `ssh key doctor`。
+
+## 記住成功登入的 SSH password
+
+Controller-driven password login 有相符的 authentication evidence 後，dev 提供
+**Yes / No / Never**，預設選 **No**。Yes 將 password 存入選定 provider；No 只保留在
+本次 operation memory；Never 只針對該 origin/profile/route/host/user/port context
+持久停止詢問，不是全域偏好。Unknown、MFA、passphrase、host-key prompts 不會
+被當成可重用的 account password。
+
+Setup／connect 的 `--password-store system|bitwarden` 選擇保存 provider，預設 system。
+macOS 使用 Security framework、Windows 使用 Credential Manager，Linux 使用可用的
+Secret Service。Bitwarden 需要已安裝且解鎖的 CLI，create/edit payload 只走 stdin。
+Password 不進 argv、environment、一般檔案、logs 或 JSON。Provider unavailable／
+denied 不會退回明文檔；不確定的 write 保留 pending／unknown，不自動重試。
+
+`$XDG_CONFIG_HOME/dev/ssh-credentials.toml` 只存 context、ask/never policy、provider
+reference 與 write-state metadata。可編輯 policy 重新啟用 Never context。移除
+reference 會停止 dev 重用，但不刪除 vault item 或修改 remote password；vault
+清理由 provider 原生介面處理。既有 explicit fleet password source 保有優先權。
+Discovery 不啟用 saved-reference lookup。`connect --on` 的 remote source-to-target
+password 不屬於 controller save workflow。
+
+這些功能不包含將 SSH private key 匯入 vault、YubiKey provisioning，或匯出 Apple
+Passwords；它們是獨立的未來 migration workflows。
+
 ---
 
 ### Feedback 與隔離修復
@@ -15011,7 +15350,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
-| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list/doctor`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
+| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list/doctor/derive`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
@@ -17292,6 +17631,18 @@ Manage SSH hosts, fleet registrations, and Herdr machines
 dev ssh
 ```
 
+### `dev ssh connect`
+
+Open a local or explicitly remote-native SSH session
+
+```
+dev ssh connect ALIAS [flags]
+```
+
+- `--key-id` — Exact SHA256 fingerprint from the executing host's key list
+- `--on` — Execute using the selected fleet:HOST's own SSH client and keys
+- `--password-store` — provider offered after verified reusable password login: system or bitwarden
+
 ### `dev ssh diagnose`
 
 Diagnose SSH configuration, routing, transport and authentication
@@ -17306,18 +17657,19 @@ dev ssh diagnose <target> [flags]
 
 ### `dev ssh discover`
 
-Explicitly discover Tailscale peers or bounded LAN SSH endpoints
+Explicitly discover Tailscale, LAN or selected fleet SSH profiles
 
 ```
 dev ssh discover [flags]
 ```
 
 - `--cidr` — on-link IPv4 range (repeatable, at most 256 addresses total)
+- `--host` — explicit fleet source name (repeatable; never recursively explores fleets)
 - `--interface` — selected local LAN interface
 - `--json` — emit one versioned discovery report
 - `--ports` — SSH ports to inspect (at most 16)
-- `--refresh` — ignore a fresh matching LAN cache
-- `--source` — discovery source: tailscale or lan
+- `--refresh` — ignore a fresh matching LAN or fleet cache
+- `--source` — discovery source: tailscale, lan or fleet
 
 ### `dev ssh format`
 
@@ -17353,6 +17705,18 @@ Inspect local SSH keys and agent identities
 dev ssh key
 ```
 
+### `dev ssh key derive`
+
+Preview or derive a missing SSH public-key companion
+
+```
+dev ssh key derive PRIVATE_KEY [flags]
+```
+
+- `--apply` — Derive and save the missing public companion after confirmation
+- `--json` — Print one versioned plan or result without key material
+- `--yes` — Confirm public companion creation without prompting
+
 ### `dev ssh key doctor`
 
 Check SSH key permissions and preview repairs
@@ -17377,6 +17741,7 @@ dev ssh key list [flags]
 - `--alias` — Evaluate this alias's OpenSSH identity and agent settings
 - `--json` — Print key metadata and source diagnostics as JSON
 - `--no-agent` — Skip SSH agent enumeration
+- `--on` — Run key inventory on the selected fleet:HOST using its local key context
 
 ### `dev ssh list`
 
@@ -17386,6 +17751,7 @@ Statically list exact SSH aliases and their definitions
 dev ssh list [flags]
 ```
 
+- `--fleet` — include cached fleet SSH profiles; never connect or refresh
 - `--format` — machine format: tsv
 - `--json` — emit one versioned JSON object
 - `--lan` — include cached LAN observations in the canonical machine list; never scan
@@ -17558,10 +17924,11 @@ dev ssh setup [alias] [flags]
 - `--dry-run` — render static local plans without running OpenSSH or writing
 - `--fleet` — register the verified alias in dev fleet
 - `--fleet-name` — fleet profile name (default: alias)
-- `--from` — tailscale:<peer>, lan:<ip:port>, or an exact discovery ID
+- `--from` — tailscale:<peer>, lan:<ip:port>, fleet:<host>/<alias>, or an exact discovery ID
 - `--generate-key` — generate a new Ed25519 key pair
 - `--herdr-label` — Herdr machine label (default: alias)
 - `--herdr-session` — Herdr remote session
+- `--hop-key` — per-hop local key override local-alias=path (repeatable; fleet imports)
 - `--hop-os` — route OS override alias=posix|windows (repeatable)
 - `--hostname` — managed HostName value
 - `--identities-only` — set managed IdentitiesOnly=yes (explicit false writes no)
@@ -17572,6 +17939,7 @@ dev ssh setup [alias] [flags]
 - `--key-path` — destination identity path for --generate-key
 - `--machine` — bind this connection to an existing canonical machine UUID
 - `--no-passphrase` — generate without a passphrase (required outside a TTY)
+- `--password-store` — provider offered after verified reusable password login: system or bitwarden
 - `--port` — managed SSH port
 - `--proxy-jump` — managed ProxyJump value
 - `--target-os` — target operating system: posix or windows
@@ -18199,10 +18567,10 @@ bindings；registry UUID 不取代 remote fleet 的 `machine_id` pin。詳見
 
 ## SSH key catalog 與 picker behavior
 
-`ssh key list` 接受 `--json`、`--no-agent`、`--alias <alias>`。預設 local catalog
+`ssh key list` 接受 `--json`、`--no-agent`、`--alias <alias>` 與明確的 `--on fleet:HOST`。預設 local catalog
 不執行 `ssh -G`；明確 alias mode 才評估 configured identities／agent settings。
 JSON 使用 `schema_version: 1`、`kind: ssh_key_list`，包含 candidates、completeness
-及 diagnostics。指令不修權限，也不登入。
+及 diagnostics。Local listing 不修權限或登入；`--on` 會明確連線至選定 source。
 
 Interactive setup 可由 catalog 或 manual path 選 existing key。窄範圍 permission
 preflight 是另外確認的 repair，先於後續 wizard steps；取消後仍保留已完成 tightening。
@@ -18226,6 +18594,36 @@ specific safety diagnostics 指向這個 command；malformed key data 仍需手�
 JSON kind 為 `ssh_key_doctor_plan`／`ssh_key_doctor_result`，包含 scope、completeness、
 key paths、permission plan 及 optional result／recheck。詳見
 [SSH key doctor](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/#ssh-key-doctor)。
+
+
+## Fleet SSH sources、connection 與 password contexts
+
+`ssh discover --source fleet --host NAME` 接受 repeatable source names 與
+`--refresh`，不遞迴探索 fleets。JSON kind 是 `ssh_fleet_discovery`，每個 source 有
+自己的 status／optional inventory。`ssh list --fleet` 在既有 JSON document 加入
+cached `fleet_ssh_sources`，不做 remote refresh。Selector 是 percent-encoded
+`fleet:HOST/ALIAS`，或已快取的精確 `fleet-ssh:` profile ID。
+Cache entry 無法讀取時保留 local aliases 與 valid source rows，並以 `complete: false`
+及 `fleet_ssh_diagnostics` 回報，不會變成 empty success。
+
+`ssh setup LOCAL_ALIAS --from fleet:HOST/ALIAS` 匯入經預覽的本機 ProxyJump route。
+預設只設定 configuration；`--auth existing`、本機 key selection、
+`--hop-key local-alias=key-path` 與 registration 保持明確選取。Dry run 需要 cached
+source／route metadata，不執行 OpenSSH。`ssh connect ALIAS [--on fleet:HOST]
+[--key-id SHA256:...]` 在選定 host 開一個互動 session，不接受額外 remote command。
+`ssh key list --on fleet:HOST [--alias ALIAS] [--no-agent] [--json]` 回傳帶 source scope
+的 metadata（`ssh_remote_keys`），remote paths 不會變成本機 identities。
+
+`ssh key derive PRIVATE_KEY [--apply] [--yes] [--json]` 只預覽／建立 `~/.ssh` 內缺少
+的 `.pub`。JSON kind 是 `ssh_key_derive_plan`／`ssh_key_derive_result`；已有 companion
+保留，apply 與 permissions repair／key installation 分開。
+
+Setup／connect 接受 `--password-store system|bitwarden`（預設 system）。成功驗證後
+的保存選項預設 No，Never 只持久套用在該 credential context。
+`$XDG_CONFIG_HOME/dev/ssh-credentials.toml` 只存 ask/never policy、provider reference、
+pending／unknown metadata，不存 secret。Explicit fleet password sources 保有優先權；
+discovery 不使用 saved-reference resolver，remote source-to-target credentials 也不屬於
+controller save flow。見 [SSH workflows](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/#fleet-source-profiles-routes)。
 
 ---
 
@@ -18685,6 +19083,36 @@ blocked scan 阻止整個 fix；post-repair verification 保留 partial／unknow
 不新增 ownership repair、ACL rewrite、key-file content repair、recursive chmod 或
 remote credential management。
 
+
+## Remote SSH profiles 與 credential providers
+
+SSH remote v1 helpers 與 local-files protocol 分開。Capability 可初始化 remote user
+的 dev UUID，但不更新 configured trust pin 或 controller canonical registry。
+Static export 不需 agent／SSH evaluation；selected resolve／key operations 為明確操作。
+Remote dev 缺少／過舊只影響該 source，passive listing 可保留 stale cache。
+
+Imported local aliases 使用 controller keys 與 host-key policy；remote-native connect
+在 source 使用並重驗自己的 key fingerprint。兩者都不轉移 private key、forward agent，
+或重試已執行 session。Windows helper arguments 仍限制在 allowlist 並以資料編碼。
+Public companion derivation 是 SSH operation lock 內的本機 no-replace write，passphrase
+仍由 native ssh-keygen 處理。
+
+Password saving 為 optional，需相符的 controller authentication evidence。預設
+system backend 使用 macOS Security framework、Windows Credential Manager 或可用的
+Linux Secret Service；Bitwarden 使用已安裝且解鎖的 CLI。Provider missing／locked
+不妨礙 key-based SSH，也不允許 plaintext fallback。Credential TOML 只含 scoped
+policy／references；unknown write 不允許盲目重試。Explicit fleet password sources
+保有優先權。Credential／SSH-key vault migration、YubiKey provisioning、Apple Passwords
+export 不包含在這次功能中。
+
+一般 native session 保留其餘 user SSH behavior。Private temporary password／exact-key
+configuration 保留 supported settings，並拒絕 LocalCommand、port forwarding、SetEnv 與
+含 `%` expansion 的 RemoteCommand。
+
+未選 key 的 native-only ProxyCommand session 可在 fresh static／effective source 檢查後
+連線，不產生 reconstructed route／proof authority；opaque route import、cycles 與
+不支援的 selected-key flows 仍拒絕。
+
 ---
 
 ### 來源與時效
@@ -18875,6 +19303,21 @@ discovery、blocked／incomplete 不寫入、保留 partial repairs 及 post-rep
 Default scan scope 與 setup 的 baseline-plus-selected-key preflight 不同。Key inventory
 diagnostics 保留 stable codes，加入 safe specific reasons 與適用的 remediation hint，不把 missing
 public companions 或 unsafe paths 轉成 key availability proof。
+
+
+## Fleet SSH 與 credential scope（2026-09-12）
+
+`internal/sshremote` 定義 bounded v1 static inventory、明確 resolution／key metadata
+與單次 session helpers。Source profile ID 包含 remote UUID/user/root/alias；fingerprint
+與 cached route 是 observation，不是 trust pin。CLI fleet source/import adapters 與
+`sshhost` route/connection core 負責 execution。預設 SSH list 與 cached `--fleet` list
+維持 passive。
+
+`internal/sshcredential` 定義 exact password context、optional system／Bitwarden
+providers、private askpass transport、guarded policy/reference TOML。Native vault
+availability 與互動授權依 host 而異；automated unit fixtures 沒有讀寫實際 vault。
+Private-key vault migration、hardware provisioning、Apple Passwords migration 仍 deferred；
+公開 SSH guide 分別說明 controller route 與 remote-native session。
 
 ---
 

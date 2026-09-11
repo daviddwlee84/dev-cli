@@ -8,7 +8,7 @@ import (
 	"io/fs"
 )
 
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 var (
 	ErrStale       = errors.New("machine registry changed since planning")
@@ -41,18 +41,33 @@ type Binding struct {
 }
 
 type Snapshot struct {
-	SchemaVersion int       `json:"schema_version"`
-	Revision      uint64    `json:"revision"`
-	Machines      []Machine `json:"machines"`
-	Bindings      []Binding `json:"bindings"`
+	SchemaVersion int         `json:"schema_version"`
+	Revision      uint64      `json:"revision"`
+	Machines      []Machine   `json:"machines"`
+	Bindings      []Binding   `json:"bindings"`
+	Imports       []SSHImport `json:"ssh_imports,omitempty"`
+}
+
+// SSHImport retains explicit source-to-local profile intent; OpenSSH owns the
+// actual connection settings and observations never authorize machine merging.
+type SSHImport struct {
+	LocalAlias            string `json:"local_alias"`
+	OriginID              string `json:"origin_id"`
+	ProfileID             string `json:"profile_id"`
+	FleetHost             string `json:"fleet_host"`
+	RemoteAlias           string `json:"remote_alias"`
+	SourceFingerprint     string `json:"source_fingerprint"`
+	RouteFingerprint      string `json:"route_fingerprint"`
+	DefinitionFingerprint string `json:"definition_fingerprint"`
 }
 
 type Request struct {
-	Action    string    `json:"action"` // adopt, link, unlink, merge
-	MachineID string    `json:"machine_id,omitempty"`
-	Into      string    `json:"into,omitempty"`
-	Label     string    `json:"label,omitempty"`
-	Bindings  []Binding `json:"bindings,omitempty"`
+	Action    string      `json:"action"` // adopt, link, unlink, merge
+	MachineID string      `json:"machine_id,omitempty"`
+	Into      string      `json:"into,omitempty"`
+	Label     string      `json:"label,omitempty"`
+	Bindings  []Binding   `json:"bindings,omitempty"`
+	Imports   []SSHImport `json:"ssh_imports,omitempty"`
 }
 
 // Plan is an in-process guarded plan. Its public preview cannot be modified to
@@ -99,7 +114,17 @@ func emptySnapshot() Snapshot {
 func cloneSnapshot(s Snapshot) Snapshot {
 	s.Machines = append([]Machine{}, s.Machines...)
 	s.Bindings = append([]Binding{}, s.Bindings...)
+	s.Imports = append([]SSHImport(nil), s.Imports...)
 	return s
+}
+
+func (s Snapshot) LookupImport(alias string) (SSHImport, bool) {
+	for _, imported := range s.Imports {
+		if imported.LocalAlias == alias {
+			return imported, true
+		}
+	}
+	return SSHImport{}, false
 }
 
 // Find resolves retained merge redirects and returns the active machine.

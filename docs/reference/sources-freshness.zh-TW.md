@@ -190,3 +190,18 @@ discovery、blocked／incomplete 不寫入、保留 partial repairs 及 post-rep
 Default scan scope 與 setup 的 baseline-plus-selected-key preflight 不同。Key inventory
 diagnostics 保留 stable codes，加入 safe specific reasons 與適用的 remediation hint，不把 missing
 public companions 或 unsafe paths 轉成 key availability proof。
+
+
+## Fleet SSH 與 credential scope（2026-09-12）
+
+`internal/sshremote` 定義 bounded v1 static inventory、明確 resolution／key metadata
+與單次 session helpers。Source profile ID 包含 remote UUID/user/root/alias；fingerprint
+與 cached route 是 observation，不是 trust pin。CLI fleet source/import adapters 與
+`sshhost` route/connection core 負責 execution。預設 SSH list 與 cached `--fleet` list
+維持 passive。
+
+`internal/sshcredential` 定義 exact password context、optional system／Bitwarden
+providers、private askpass transport、guarded policy/reference TOML。Native vault
+availability 與互動授權依 host 而異；automated unit fixtures 沒有讀寫實際 vault。
+Private-key vault migration、hardware provisioning、Apple Passwords migration 仍 deferred；
+公開 SSH guide 分別說明 controller route 與 remote-native session。

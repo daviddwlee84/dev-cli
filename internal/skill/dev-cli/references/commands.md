@@ -1671,6 +1671,18 @@ Manage SSH hosts, fleet registrations, and Herdr machines
 dev ssh
 ```
 
+### `dev ssh connect`
+
+Open a local or explicitly remote-native SSH session
+
+```
+dev ssh connect ALIAS [flags]
+```
+
+- `--key-id` — Exact SHA256 fingerprint from the executing host's key list
+- `--on` — Execute using the selected fleet:HOST's own SSH client and keys
+- `--password-store` — provider offered after verified reusable password login: system or bitwarden
+
 ### `dev ssh diagnose`
 
 Diagnose SSH configuration, routing, transport and authentication
@@ -1685,18 +1697,19 @@ dev ssh diagnose <target> [flags]
 
 ### `dev ssh discover`
 
-Explicitly discover Tailscale peers or bounded LAN SSH endpoints
+Explicitly discover Tailscale, LAN or selected fleet SSH profiles
 
 ```
 dev ssh discover [flags]
 ```
 
 - `--cidr` — on-link IPv4 range (repeatable, at most 256 addresses total)
+- `--host` — explicit fleet source name (repeatable; never recursively explores fleets)
 - `--interface` — selected local LAN interface
 - `--json` — emit one versioned discovery report
 - `--ports` — SSH ports to inspect (at most 16)
-- `--refresh` — ignore a fresh matching LAN cache
-- `--source` — discovery source: tailscale or lan
+- `--refresh` — ignore a fresh matching LAN or fleet cache
+- `--source` — discovery source: tailscale, lan or fleet
 
 ### `dev ssh format`
 
@@ -1732,6 +1745,18 @@ Inspect local SSH keys and agent identities
 dev ssh key
 ```
 
+### `dev ssh key derive`
+
+Preview or derive a missing SSH public-key companion
+
+```
+dev ssh key derive PRIVATE_KEY [flags]
+```
+
+- `--apply` — Derive and save the missing public companion after confirmation
+- `--json` — Print one versioned plan or result without key material
+- `--yes` — Confirm public companion creation without prompting
+
 ### `dev ssh key doctor`
 
 Check SSH key permissions and preview repairs
@@ -1756,6 +1781,7 @@ dev ssh key list [flags]
 - `--alias` — Evaluate this alias's OpenSSH identity and agent settings
 - `--json` — Print key metadata and source diagnostics as JSON
 - `--no-agent` — Skip SSH agent enumeration
+- `--on` — Run key inventory on the selected fleet:HOST using its local key context
 
 ### `dev ssh list`
 
@@ -1765,6 +1791,7 @@ Statically list exact SSH aliases and their definitions
 dev ssh list [flags]
 ```
 
+- `--fleet` — include cached fleet SSH profiles; never connect or refresh
 - `--format` — machine format: tsv
 - `--json` — emit one versioned JSON object
 - `--lan` — include cached LAN observations in the canonical machine list; never scan
@@ -1937,10 +1964,11 @@ dev ssh setup [alias] [flags]
 - `--dry-run` — render static local plans without running OpenSSH or writing
 - `--fleet` — register the verified alias in dev fleet
 - `--fleet-name` — fleet profile name (default: alias)
-- `--from` — tailscale:<peer>, lan:<ip:port>, or an exact discovery ID
+- `--from` — tailscale:<peer>, lan:<ip:port>, fleet:<host>/<alias>, or an exact discovery ID
 - `--generate-key` — generate a new Ed25519 key pair
 - `--herdr-label` — Herdr machine label (default: alias)
 - `--herdr-session` — Herdr remote session
+- `--hop-key` — per-hop local key override local-alias=path (repeatable; fleet imports)
 - `--hop-os` — route OS override alias=posix|windows (repeatable)
 - `--hostname` — managed HostName value
 - `--identities-only` — set managed IdentitiesOnly=yes (explicit false writes no)
@@ -1951,6 +1979,7 @@ dev ssh setup [alias] [flags]
 - `--key-path` — destination identity path for --generate-key
 - `--machine` — bind this connection to an existing canonical machine UUID
 - `--no-passphrase` — generate without a passphrase (required outside a TTY)
+- `--password-store` — provider offered after verified reusable password login: system or bitwarden
 - `--port` — managed SSH port
 - `--proxy-jump` — managed ProxyJump value
 - `--target-os` — target operating system: posix or windows

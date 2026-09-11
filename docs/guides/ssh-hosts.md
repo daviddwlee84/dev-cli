@@ -612,3 +612,124 @@ JSON uses `schema_version: 1` and `ssh_key_doctor_plan`/`ssh_key_doctor_result`
 kinds. It includes `scope` (`discovered` or `selected`), `complete`, `key_paths`
 and the exact permission `plan`; applied results retain per-path outcomes and a
 `recheck` when completed repairs are verified.
+
+
+## Fleet source profiles and local routes
+
+```bash
+dev ssh discover --source fleet --host gateway --host lab --refresh
+dev ssh list --fleet --json
+dev ssh setup internal-api --from fleet:gateway/api --config-only
+dev ssh setup internal-api --from fleet:gateway/api --auth existing
+dev ssh setup internal-api --from fleet:gateway/api --dry-run --json
+```
+
+Fleet discovery reads only the explicitly selected sources (at most 16). Without
+`--host`, an interactive picker selects them; noninteractive use requires host
+names. It never explores a source's own fleet. Metadata uses BatchMode first;
+only an already configured fleet password source may authorize a password retry,
+and a configured prompt needs an interactive controller. `--refresh` bypasses a
+fresh cache. `ssh list --fleet` only displays cached source profiles and does not
+contact them. Existing default `ssh list` JSON/TSV remains static.
+
+A compatible remote `dev` exports a bounded static alias inventory without
+running remote `ssh -G`, a resolver, or an agent. The first explicit capability
+exchange may create that remote user's dev UUID. The observed UUID is reported,
+never copied into a fleet `machine_id` pin or used to merge machines automatically.
+Missing/older dev, failed authentication, timeouts, changed source identity and
+incomplete responses retain distinct states; independently cached metadata may
+remain visible as stale.
+
+Each remote profile has a stable ID scoped to its source UUID, login user, SSH
+root and alias. Fingerprints describe the observed configuration revision. The
+human selector is `fleet:HOST/ALIAS`; names containing delimiters use percent
+encoding, or automation can use an exact `fleet-ssh:` ID from discovery. Identical
+names on different sources do not identify the same connection.
+
+Setup resolves only the selected remote route through native `ssh -G`, then
+previews local managed aliases and the complete ProxyJump route. Configured
+Match exec/resolver behavior may run during this explicit resolution. The local
+gateway and each hop keep their own user, port and credential context. Compatible
+local aliases may be reused; foreign definitions are not rewritten. Unsupported
+routing or source-local command policy requires explicit local configuration.
+Remote IdentityFile/IdentityAgent paths and trust files are not copied: local SSH
+configuration and selected controller keys govern the imported route.
+
+The default remains configuration only. Key installation, per-hop key choices
+(`--hop-key local-alias=key-path`) and provider registration are explicit. A
+selected target key does not authorize its installation on every working jump.
+Before changes, setup rechecks source identity, fingerprints and route facts.
+`--dry-run` uses cached remote inventory/resolution and static local facts only;
+missing resolution is reported rather than causing an SSH connection or write.
+
+## Choose where SSH runs
+
+```bash
+dev ssh connect internal-api
+dev ssh key list --on fleet:gateway --alias api --json
+dev ssh connect api --on fleet:gateway
+dev ssh connect api --on fleet:gateway --key-id SHA256:FINGERPRINT
+```
+
+A normal connection runs SSH on the controller. `--on fleet:HOST` starts that
+source host's native SSH client using its own alias, agent and key files. Remote
+key listings are display metadata; their paths are never interpreted locally.
+`--key-id` is reselected and checked in the executing host's catalog, including
+its agent policy. Private keys are never transferred. This command opens an
+interactive session only, disables agent forwarding and preserves child exit status;
+it never retries a started session or accepts extra remote-command arguments.
+
+Ordinary native connections retain the user's remaining SSH behavior. When a
+password or exact-key workflow needs a private temporary configuration, supported
+settings are preserved and unsupported LocalCommand, port forwarding, SetEnv or
+RemoteCommand values using `%` expansion are rejected rather than silently lost.
+
+With no selected key or managed password context, an opaque ProxyCommand alias
+can use a guarded native-only connection: its complete user Include closure and
+native effective settings are rechecked, without inventing route hops or an
+exact-key proof. ProxyJump cycles and unsupported exact-key operations remain
+rejected; opaque routes still cannot be imported as local ProxyJump profiles.
+
+## Derive a missing public companion
+
+```bash
+dev ssh key derive ~/.ssh/custom-key
+dev ssh key derive ~/.ssh/custom-key --apply
+dev ssh key derive ~/.ssh/custom-key --apply --yes --json
+```
+
+Derive accepts a private identity inside `~/.ssh` and previews its missing `.pub`
+without running ssh-keygen or reading private contents. `--apply` confirms and
+invokes native `ssh-keygen -y`; noninteractive/JSON apply needs `--yes`. Native
+ssh-keygen owns encrypted-key prompts. Existing companions are never overwritten.
+The operation revalidates the selected path under the SSH operation lock and
+publishes only the public companion. It does not install a key or repair modes;
+use `ssh key doctor` first when permissions need attention.
+
+## Remember a successful SSH password
+
+After a controller-driven password login has matching authentication evidence,
+dev offers **Yes / No / Never**, with **No** selected by default. Yes saves that
+password in the chosen provider. No keeps it only for the current operation.
+Never persists suppression for that exact origin/profile/route/host/user/port
+context; it is not a global preference. Unknown, MFA, passphrase and host-key
+prompts are not treated as a reusable account password.
+
+`--password-store system|bitwarden` on setup/connect chooses the save provider;
+system is the default. macOS uses Security framework, Windows uses Credential
+Manager, and Linux uses an available Secret Service. Bitwarden requires an
+installed, unlocked CLI and uses stdin for create/edit payloads. The feature
+never places passwords in argv, environment, ordinary files, logs or JSON.
+Unavailable or denied providers do not become a plaintext fallback. Uncertain
+writes remain pending/unknown and are not automatically retried.
+
+`$XDG_CONFIG_HOME/dev/ssh-credentials.toml` stores only context, ask/never policy,
+provider references and write-state metadata. Edit that policy to re-enable a
+Never context. Removing a reference stops dev reuse but does not delete its
+vault item or change the remote password; use the provider's native interface
+for vault cleanup. Existing explicit fleet password sources retain priority.
+Discovery does not opt into saved-reference lookup. Remote source-to-target
+passwords in `connect --on` remain outside this controller save workflow.
+
+These features do not import SSH private keys into a vault, provision YubiKeys,
+or export Apple Passwords. Those are separate future migration workflows.

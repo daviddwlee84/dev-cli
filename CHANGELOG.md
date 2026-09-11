@@ -23,6 +23,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - `dev ssh key doctor` provides a bounded, metadata-only permission report and
   explicit verified `--fix`, with repeatable `--key` for a restricted repair scope.
 
+- Explicit fleet SSH profile discovery, cached listings and source-aware local
+  ProxyJump import with scoped profile identities and reviewed route changes.
+- `dev ssh connect` and remote `ssh key list --on` use the selected executing host's
+  native SSH/key context; selected fingerprints never transfer private keys.
+- `dev ssh key derive` previews and explicitly creates missing public companions
+  without replacing existing files.
+- Optional Yes/No/Never password saving after matching controller-side login
+  evidence, backed by system credential stores or Bitwarden and scoped references.
+
 ### Changed
 
 - SSH setup, machine management and dashboard registration use independent Fleet

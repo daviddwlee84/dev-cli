@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -235,6 +236,12 @@ func Execute() int {
 	cmd, err := root.ExecuteC()
 	if err == nil {
 		return 0
+	}
+	var childExit interface{ ExitCode() int }
+	if errors.As(err, &childExit) {
+		if code := childExit.ExitCode(); code >= 0 && code <= 255 {
+			return code
+		}
 	}
 	style := styleForWriter(os.Stderr, colorModeFromArgs(os.Args[1:]))
 	fmt.Fprintln(os.Stderr, style.danger("dev:")+" "+err.Error())

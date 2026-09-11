@@ -458,3 +458,33 @@ reviewed tightening。無關檔案、ownership change、不安全 link／metadat
 blocked scan 阻止整個 fix；post-repair verification 保留 partial／unknown outcomes。
 不新增 ownership repair、ACL rewrite、key-file content repair、recursive chmod 或
 remote credential management。
+
+
+## Remote SSH profiles 與 credential providers
+
+SSH remote v1 helpers 與 local-files protocol 分開。Capability 可初始化 remote user
+的 dev UUID，但不更新 configured trust pin 或 controller canonical registry。
+Static export 不需 agent／SSH evaluation；selected resolve／key operations 為明確操作。
+Remote dev 缺少／過舊只影響該 source，passive listing 可保留 stale cache。
+
+Imported local aliases 使用 controller keys 與 host-key policy；remote-native connect
+在 source 使用並重驗自己的 key fingerprint。兩者都不轉移 private key、forward agent，
+或重試已執行 session。Windows helper arguments 仍限制在 allowlist 並以資料編碼。
+Public companion derivation 是 SSH operation lock 內的本機 no-replace write，passphrase
+仍由 native ssh-keygen 處理。
+
+Password saving 為 optional，需相符的 controller authentication evidence。預設
+system backend 使用 macOS Security framework、Windows Credential Manager 或可用的
+Linux Secret Service；Bitwarden 使用已安裝且解鎖的 CLI。Provider missing／locked
+不妨礙 key-based SSH，也不允許 plaintext fallback。Credential TOML 只含 scoped
+policy／references；unknown write 不允許盲目重試。Explicit fleet password sources
+保有優先權。Credential／SSH-key vault migration、YubiKey provisioning、Apple Passwords
+export 不包含在這次功能中。
+
+一般 native session 保留其餘 user SSH behavior。Private temporary password／exact-key
+configuration 保留 supported settings，並拒絕 LocalCommand、port forwarding、SetEnv 與
+含 `%` expansion 的 RemoteCommand。
+
+未選 key 的 native-only ProxyCommand session 可在 fresh static／effective source 檢查後
+連線，不產生 reconstructed route／proof authority；opaque route import、cycles 與
+不支援的 selected-key flows 仍拒絕。

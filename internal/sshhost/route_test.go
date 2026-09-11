@@ -37,6 +37,9 @@ func (r *routeRunner) Run(_ context.Context, request RunRequest) (RunResult, err
 		switch request.Args[index] {
 		case "-l":
 			value.user = request.Args[index+1]
+		case "-J":
+			value.proxyJump = request.Args[index+1]
+			value.proxyCommand = "none"
 		case "-p":
 			port, err := strconv.Atoi(request.Args[index+1])
 			if err != nil {

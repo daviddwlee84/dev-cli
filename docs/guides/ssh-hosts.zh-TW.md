@@ -558,3 +558,107 @@ login 可用。
 JSON 使用 `schema_version: 1`，kind 為 `ssh_key_doctor_plan`／`ssh_key_doctor_result`。
 內容包含 `scope`（`discovered`／`selected`）、`complete`、`key_paths`、exact permission
 `plan`；apply result 保留 per-path outcomes，完成 repair 後驗證時另有 `recheck`。
+
+
+## Fleet source profiles 與本機 routes
+
+```bash
+dev ssh discover --source fleet --host gateway --host lab --refresh
+dev ssh list --fleet --json
+dev ssh setup internal-api --from fleet:gateway/api --config-only
+dev ssh setup internal-api --from fleet:gateway/api --auth existing
+dev ssh setup internal-api --from fleet:gateway/api --dry-run --json
+```
+
+Fleet discovery 只讀明確選定的 sources（最多 16 個）。沒有 `--host` 時由互動
+picker 選取；非互動模式必須提供 host names。不會遞迴探索 source 自己的 fleet。
+Metadata 先使用 BatchMode；只有既有 fleet password source 可授權 password retry，
+configured prompt 也需要互動 controller。`--refresh` 略過 fresh cache。
+`ssh list --fleet` 只顯示 cached source profiles、不連線；預設 `ssh list` JSON／TSV
+仍維持 static contract。
+
+相容的 remote `dev` 匯出 bounded static alias inventory，不執行遠端 `ssh -G`、
+resolver 或 agent。第一次明確 capability exchange 可建立該 remote user 的 dev UUID；
+observed UUID 只作回報，不會自動寫入 fleet `machine_id` pin 或合併 machines。
+沒有／版本較舊的 dev、驗證失敗、timeout、source identity 變更與 incomplete response
+保持不同狀態；既有 metadata cache 可以保留顯示，但會標示 stale。
+
+Remote profile ID 由 source UUID、login user、SSH root、alias 決定；fingerprint
+表示觀察到的 configuration revision。可讀 selector 是 `fleet:HOST/ALIAS`，名稱含
+分隔符時使用 percent encoding；automation 也可使用 discovery 回傳的精確
+`fleet-ssh:` ID。不同 source 的同名 alias 不代表同一條連線。
+
+Setup 只對選定 remote route 執行原生 `ssh -G`，再預覽本機 managed aliases 與完整
+ProxyJump route；這個明確 resolution 可能執行既有 Match exec／resolver。Local
+gateway 與每個 hop 保留自己的 user、port、credential context。相容 local alias
+可重用，foreign definitions 不會改寫。無法移植的 routing／source-local command
+policy 必須明確設定本機 profile。Remote IdentityFile／IdentityAgent 與 trust-file
+paths 不會複製；imported route 由本機 SSH configuration 與選定 controller keys 控制。
+
+預設仍只設定 configuration。Key installation、per-hop key choices
+（`--hop-key local-alias=key-path`）與 provider registration 需明確選取；選 target key
+不代表授權把它安裝到每個已可登入的 jump。套用前會重新確認 source identity、
+fingerprint 與 route facts。`--dry-run` 只使用 cached remote inventory／resolution
+及 static local facts；缺少 resolution 就回報，不會因此執行 SSH 或寫入。
+
+## 選擇 SSH 在哪台機器執行
+
+```bash
+dev ssh connect internal-api
+dev ssh key list --on fleet:gateway --alias api --json
+dev ssh connect api --on fleet:gateway
+dev ssh connect api --on fleet:gateway --key-id SHA256:FINGERPRINT
+```
+
+一般 connect 在 controller 執行 SSH。`--on fleet:HOST` 使用 source host 自己的
+native SSH、alias、agent 與 key files。Remote key listing 只是 display metadata，
+其中 paths 不會當成本機 paths。`--key-id` 會在真正執行 SSH 的 host 重新選取並驗證，
+包含 agent policy。Private keys 不會轉移。此命令只開互動 session、關閉 agent forwarding、
+保留 child exit status；不重試已啟動的 session，也不接受額外 remote command args。
+
+一般 native connection 保留其餘 user-authored SSH behavior。Password／exact-key workflow
+若需要 private temporary configuration，會保留 supported settings；不支援的 LocalCommand、
+port forwarding、SetEnv 或含 `%` expansion 的 RemoteCommand 會拒絕，不會靜默省略。
+
+沒有 selected key 或 managed password context 時，opaque ProxyCommand alias 可使用
+guarded native-only connection：重新檢查完整 user Include closure 與 native effective
+settings，不虛構 route hops 或 exact-key proof。ProxyJump cycles 與不支援的 exact-key
+操作仍拒絕；opaque route 也不能匯入為本機 ProxyJump profile。
+
+## 衍生缺少的 public companion
+
+```bash
+dev ssh key derive ~/.ssh/custom-key
+dev ssh key derive ~/.ssh/custom-key --apply
+dev ssh key derive ~/.ssh/custom-key --apply --yes --json
+```
+
+Derive 接受 `~/.ssh` 內的 private identity，預設只預覽缺少的 `.pub`，不執行
+ssh-keygen 或讀 private contents。`--apply` 確認後才執行 native `ssh-keygen -y`；
+非互動／JSON apply 需要 `--yes`。Encrypted-key prompt 由 native ssh-keygen 處理。
+已有 companion 不覆寫。操作會在 SSH operation lock 內重驗 source path，只發布
+public companion，不安裝 key 或修復 mode；permissions 問題先用 `ssh key doctor`。
+
+## 記住成功登入的 SSH password
+
+Controller-driven password login 有相符的 authentication evidence 後，dev 提供
+**Yes / No / Never**，預設選 **No**。Yes 將 password 存入選定 provider；No 只保留在
+本次 operation memory；Never 只針對該 origin/profile/route/host/user/port context
+持久停止詢問，不是全域偏好。Unknown、MFA、passphrase、host-key prompts 不會
+被當成可重用的 account password。
+
+Setup／connect 的 `--password-store system|bitwarden` 選擇保存 provider，預設 system。
+macOS 使用 Security framework、Windows 使用 Credential Manager，Linux 使用可用的
+Secret Service。Bitwarden 需要已安裝且解鎖的 CLI，create/edit payload 只走 stdin。
+Password 不進 argv、environment、一般檔案、logs 或 JSON。Provider unavailable／
+denied 不會退回明文檔；不確定的 write 保留 pending／unknown，不自動重試。
+
+`$XDG_CONFIG_HOME/dev/ssh-credentials.toml` 只存 context、ask/never policy、provider
+reference 與 write-state metadata。可編輯 policy 重新啟用 Never context。移除
+reference 會停止 dev 重用，但不刪除 vault item 或修改 remote password；vault
+清理由 provider 原生介面處理。既有 explicit fleet password source 保有優先權。
+Discovery 不啟用 saved-reference lookup。`connect --on` 的 remote source-to-target
+password 不屬於 controller save workflow。
+
+這些功能不包含將 SSH private key 匯入 vault、YubiKey provisioning，或匯出 Apple
+Passwords；它們是獨立的未來 migration workflows。

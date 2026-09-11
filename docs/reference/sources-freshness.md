@@ -205,3 +205,19 @@ retained partial repairs and post-repair checks. Default scan scope differs from
 setup's baseline-plus-selected-key preflight. Key inventory diagnostics preserve
 stable codes and include specific safe reasons and appropriate remediation hints; they do not
 convert missing public companions or unsafe paths into proof of key availability.
+
+
+## Fleet SSH and credential scope (2026-09-12)
+
+`internal/sshremote` defines bounded v1 static inventory, explicit resolution/key
+metadata and one-session connection helpers. Source profile IDs include remote
+UUID/user/root/alias; fingerprints and cached routes are observations, not trust
+pins. The CLI's fleet source/import adapters and `sshhost` route/connection core
+own execution. Default SSH listing and cached `--fleet` listing stay passive.
+
+`internal/sshcredential` defines exact password contexts, optional native system
+and Bitwarden providers, private askpass transport and guarded policy/reference
+TOML. Native vault availability and interactive authorization vary by host; no
+vault was read or written by the automated unit-test fixtures. Private-key vault
+migration, hardware provisioning and Apple Passwords migration remain deferred.
+The public SSH guide distinguishes controller routes from remote-native sessions.
