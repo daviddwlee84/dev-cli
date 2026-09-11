@@ -62,6 +62,17 @@ git diff --check
 詳細報告只留本機私人儲存。Raw report、私人字典、recovery images 與 credential
 原文都不進 Git／CI logs。
 
+## 實作 dogfood 結果
+
+新 setup 已加入三個 repo 設定檔並保留原本的全域 hook。本功能真正提交時的 gate
+完成 70 個 staged 檔案掃描，0 個阻擋、36 個通用隱私警告。合成 hook 測試也驗證
+阻擋時不會改 caller 的 Git config、index entries 或 executable modes。
+
+新 CLI 對本機全部可達歷史的稽核達到明確的 40 分鐘上限，保存 `partial` receipt，
+沒有證明歷史乾淨。CI range 驗證亦發現舊 transcript 含無效 UTF-8 或 NUL bytes；
+這些是明確缺口，不是成功略過。Range 已限縮為變更版本，全量稽核仍會保留歷史缺口。
+最後人工階段須分類候選，並處理或明確界定不支援的 artifacts，才能宣稱已涵蓋真實歷史。
+
 ## 已發布歷史的獨立評估
 
 任何歷史變更前，先建立私人表格：每個確認項目的類型、HEAD 是否仍有、引入／包含

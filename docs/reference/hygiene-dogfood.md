@@ -72,6 +72,23 @@ tests merge-only content and reports unsupported/excluded data explicitly.
 Detailed audit files stay in private local storage. Do not add raw reports,
 private dictionaries, recovery images or credential excerpts to Git or CI logs.
 
+## Implementation dogfood result
+
+The new setup applied the three repository configuration files while retaining
+this machine's existing global hook. The feature's real commit gate completed
+with 70 staged files, zero blocking findings and 36 generic privacy warnings.
+Synthetic hook tests also proved rejection without changing caller Git config,
+index entries or executable modes.
+
+A new-CLI full reachable-history audit on this host hit its explicit 40-minute
+limit and saved a `partial` receipt; it did not establish a clean history. Earlier
+CI range validation also identified existing transcripts containing invalid UTF-8
+or embedded NUL bytes. Those are explicit coverage gaps, not ignored successes.
+Commit-range scans now restrict themselves to changed versions; the full audit
+retains the historical gaps. The final manual phase must classify the retained
+candidates and resolve or explicitly scope unsupported artifacts before claiming
+that real history has been covered.
+
 ## Separate published-history assessment
 
 Before considering any history change, produce a private table mapping each
