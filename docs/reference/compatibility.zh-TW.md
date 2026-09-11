@@ -429,3 +429,17 @@ session-wide focus。舊 helper 在 workspace 副作用前失敗；取消或部�
 自動改開 SSH，`--no-runtime` 直接選 SSH。主機 Enter 不要求遠端 dev，可透過
 原生 attach 完成 bootstrap。Herdr 外的 repository 準備需要遠端 server 已就緒；
 若尚未就緒，先用主機導覽，再重試 repository。
+
+## SSH 診斷契約
+
+`ssh_diagnosis` 是新的 schema-v1 本機報告；既有 probe／show／list JSON 不變。
+macOS、Linux、Windows 均提供原生路由 collector。不支援的 QoS marking 或無法
+比較的 proxy／bind 路徑保持明確的 unknown／unsupported 狀態。
+
+## Feedback 與修復契約
+
+Feedback 新增 schema-v1 draft、issue preview/result、repair plan/result JSON。
+報告與 issue receipts 是 durable private state；SSH 證據另有公開投影。
+寫入前檢查 issue target/content revision 與 repair plan；發布結果 unknown 必須
+先查核。`feedback-fix` 要求已驗證的 HOT task/checkout，啟動時必須明確指定 agent
+profile。既有 start 預設與 JSON 不變。

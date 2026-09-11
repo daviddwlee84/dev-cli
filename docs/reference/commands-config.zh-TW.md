@@ -770,3 +770,16 @@ FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀
 只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
 background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
 fleet snapshot JSON。詳見[主機控制](../guides/remote-fleet.zh-TW.md#dashboard-host-tree)。
+
+## SSH 診斷
+
+`dev ssh diagnose <target> [--compare-qos] [--timeout 60s] [--json]` 執行明確且
+有期限的網路觀察。階段、平台與本機輸出隱私請見 [SSH 診斷](../guides/ssh-hosts.zh-TW.md#ssh-diagnosis)。
+
+## Feedback 報告與修復來源
+
+`dev feedback draft` 保存本機報告；`issue <id>` 預覽公開內容，`--search` 查詢相關
+issue，`--publish --yes --revision <revision>` 表達對該確切內容／目標的既有授權。
+`repair <id> --base <ref>` 保存 guarded plan；`--apply --plan <id> --yes` 準備隔離
+checkout/task。Optional `[feedback].source_repo` 指定絕對或 home-relative 的本機
+dev-cli 路徑。詳見 [feedback 與修復](../guides/feedback.zh-TW.md)。

@@ -485,3 +485,18 @@ not open SSH automatically; `--no-runtime` selects SSH directly. Host Enter work
 without remote dev and may bootstrap through native attachment. Outside Herdr,
 repository preparation needs a ready remote server; use host navigation first
 if it is missing, then retry the repository.
+
+## SSH diagnostic contract
+
+`ssh_diagnosis` is a new schema-v1 local report; existing probe/show/list JSON is
+unchanged. Native route collectors ship for macOS, Linux and Windows. Unsupported
+QoS marking or opaque proxy/bind paths remain explicit unknown/unsupported states.
+
+## Feedback and repair contracts
+
+Feedback adds schema-v1 draft, issue-preview/result and repair-plan/result JSON.
+Reports and issue receipts are durable private state, with a separate public
+projection for SSH evidence. Issue target/content revisions and repair plans
+are checked before mutation; unknown publication outcomes require reconciliation.
+The `feedback-fix` recipe requires a verified HOT task/checkout and an explicit
+agent profile for launch. Existing start defaults and JSON are unchanged.

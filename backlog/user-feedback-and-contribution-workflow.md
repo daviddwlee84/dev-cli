@@ -1,6 +1,6 @@
 # User feedback and contribution workflow
 
-**Status**: P3; research captured, not implemented.
+**Status**: shipped in v0.2.27.
 **Effort**: L
 **Related**: [TODO](../TODO.md), [SSH diagnostics](ssh-connection-diagnostics.md),
 [forge integration](../internal/forge/forge.go),
@@ -124,3 +124,9 @@ checkout, and must not turn every routine error into an automatic upstream issue
 - [gh issue create](https://cli.github.com/manual/gh_issue_create)
 - [gh pr create](https://cli.github.com/manual/gh_pr_create)
 - [Repository ownership and lifecycle](../AGENTS.md)
+
+## Implemented interface
+
+See [feedback and repair](../docs/guides/feedback.md) for draft, issue/comment,
+revision-bound publication, exact repair plan/apply, and the `feedback-fix` recipe.
+PR submission remains an explicitly authorized skill/Git/gh workflow.

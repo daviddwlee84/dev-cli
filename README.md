@@ -85,7 +85,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.24 instead when you need a reproducible install.
+# Pin @v0.2.27 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -1752,3 +1752,19 @@ from installed `node_modules`. Lock-only/gitignored skill trees remain visible.
 See [Skills management](docs/guides/skills-management.md) for exact scope and
 native restoration semantics. `dev skill install`/`sync` still manage the bundled
 skill. Check evidence is dated and invalidated by lock changes.
+
+### SSH connection diagnosis
+
+Use `dev ssh diagnose <alias-or-host>` for bounded configuration, DNS, native
+route, TCP, banner, host-key and authentication stages. `--compare-qos` opts into
+a comparable fresh QoS test; `--json` is a local report containing endpoint data.
+See [SSH diagnosis](docs/guides/ssh-hosts.md#ssh-diagnosis).
+
+### Feedback and isolated repair
+
+`dev feedback` collects a local report; agents can use `feedback draft`,
+`feedback issue` and plan-first `feedback repair --base <ref>`. Reviewed GitHub
+publication is optional. Repair prepares a retained isolated worktree/task and
+can render `dev prompt render feedback-fix <id>` for the current agent; another
+agent requires an explicit profile and user consent. See the
+[feedback guide](docs/guides/feedback.md).

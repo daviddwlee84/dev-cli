@@ -181,6 +181,7 @@ OpenSSH or log in. Herdr machine add keeps its native installation approvals.`,
 		newSSHShowCmd(app),
 		newSSHSetupCmd(app),
 		newSSHProbeCmd(app),
+		newSSHDiagnoseCmd(app),
 		newSSHRemoveCmd(app),
 		newSSHManageCmd(app),
 		newSSHFormatCmd(app),
@@ -1317,6 +1318,9 @@ func finishSSHProbe(app *App, jsonOut bool, document sshProbeDocument, err error
 		}
 	} else {
 		fmt.Fprintf(app.Out, "%s\t%s\t%s\n", document.Result.Alias, document.Result.Status, document.Result.Code)
+		if err != nil {
+			fmt.Fprintln(app.Err, "For stage details: dev ssh diagnose <alias>")
+		}
 	}
 	return err
 }

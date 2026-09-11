@@ -187,6 +187,7 @@ func newPromptModeCmd(app *App, mode promptMode) *cobra.Command {
 		newPromptPRTriageCmd(app, mode, &agentName, &dryRun),
 		newPromptSessionCloseCmd(app, mode, &agentName, &dryRun),
 		newPromptWorkspaceCloseoutCmd(app, mode, &agentName, &dryRun),
+		newPromptFeedbackFixCmd(app, mode, &agentName, &dryRun),
 	)
 	return cmd
 }

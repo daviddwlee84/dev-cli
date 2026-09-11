@@ -41,6 +41,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Fleet snapshots carry optional Git observation presence; failed reads and
   older snapshots without this evidence display unknown instead of clean.
 
+## [0.2.27] - 2026-09-11
+
+### Added
+
+- Durable local feedback drafts, reviewed optional GitHub issue/comment publication
+  with unknown-outcome reconciliation, and guarded isolated repair workspaces.
+- Agent-first feedback guidance and a verified `feedback-fix` prompt recipe;
+  additional agents require explicit profiles and consent, while report preparation
+  remains useful without GitHub access or a working dev configuration.
+
+## [0.2.26] - 2026-09-11
+
+### Added
+
+- Explicit `dev ssh diagnose` with bounded configuration, DNS, native macOS/Linux/Windows
+  route, TCP/banner and fresh strict SSH stages; optional evidenced QoS comparison,
+  partial JSON results and a separate allowlisted public evidence projection.
+
+## [0.2.25] - 2026-09-11
+
+### Fixed
+
+- Interactive `dev ssh` dispatch preserves the command context when opening
+  machine management or organization, preventing the nil-parent context panic
+  and retaining cancellation and deadlines through the selected workflow.
+
 ## [0.2.24] - 2026-09-11
 
 ### Added
@@ -934,7 +960,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.24...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.27...HEAD
+[0.2.27]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.26...v0.2.27
+[0.2.26]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.25...v0.2.26
+[0.2.25]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.24...v0.2.25
 [0.2.24]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.23...v0.2.24
 [0.2.23]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.22...v0.2.23
 [0.2.22]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.21...v0.2.22

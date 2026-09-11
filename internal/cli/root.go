@@ -9,6 +9,7 @@ import (
 	"runtime/debug"
 	"sync"
 
+	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/dotfile"
 	"github.com/daviddwlee84/dev-cli/internal/help"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
@@ -108,6 +109,15 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 			if completionInvocation(cmd) || staticContentInvocation(cmd) {
 				return nil
 			}
+			if feedbackInvocation(cmd) {
+				err := app.Load()
+				if err != nil && feedbackDraftInvocation(cmd) {
+					app.Cfg = config.Default()
+					fmt.Fprintln(app.Err, "dev: configuration unavailable; saving the draft under default feedback storage")
+					return nil
+				}
+				return feedbackError(err)
+			}
 			cleanup()
 			finish := app.trace.Start(perftrace.AppLoad, perftrace.Fields{})
 			if err := app.Load(); err != nil {
@@ -162,6 +172,7 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 		newFleetCmd(app),
 		newDotfileCmd(app),
 		newSSHCmd(app),
+		newFeedbackCmd(app),
 		newGitCmd(app),
 		newGitignoreCmd(app),
 		newTryCmd(app),

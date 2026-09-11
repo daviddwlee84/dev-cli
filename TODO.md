@@ -18,19 +18,6 @@ remote loading. FLEET currently hides local by default and offers a session-only
 toggle; this is not a commitment to merge the views.
 See [REPOS/FLEET unification research](backlog/repos-fleet-unification.md).
 
-### P2 · L — Layered SSH connection diagnostics
-Extend ordinary SSH probing with explicit, bounded diagnosis of effective
-configuration, DNS, routing, TCP, SSH handshake, host identity and authentication.
-Keep observations separate from inferred causes, including VPN/DSCP failures
-where TCP connects but default SSH times out.
-See [SSH diagnostic research](backlog/ssh-connection-diagnostics.md).
-
-### P3 · L — User feedback and contribution workflow
-Add CLI and bundled-skill workflows for preparing sanitized issue reports and
-tested fixes, with optional gh publication and verified local-repo reuse or a
-retained Try clone. Preserve existing work and require scoped publication intent.
-See [feedback and contribution research](backlog/user-feedback-and-contribution-workflow.md).
-
 ### P3 · L — SSH key provider helpers
 Evaluate an explicit handoff to the existing Bitwarden SSH agent/import helper,
 and separate YubiKey FIDO2, PIV and OpenPGP workflows. Keep private key material
@@ -233,6 +220,15 @@ where herdr is not installed. dev creates the checkout with git and asks herdr
 only to open it. See `internal/skill/dev-cli/references/worktree-ownership.md`.
 
 ## Done
+
+- Layered SSH connection diagnostics (v0.2.26): explicit bounded configuration,
+  native macOS/Linux/Windows route, TCP/banner and fresh strict SSH stages,
+  optional evidenced QoS comparison and a public evidence projection.
+  See [research](backlog/ssh-connection-diagnostics.md).
+- User feedback and isolated repair (v0.2.27): durable local drafts, reviewed
+  optional GitHub issue/comment publication with unknown-outcome reconciliation,
+  guarded repair worktrees/tasks and explicit agent handoff.
+  See [research](backlog/user-feedback-and-contribution-workflow.md).
 
 - Agent configuration interoperability: guarded five-format MCP transfers,
   per-stanza ownership/undo, deferred env launchers, explicit initialization

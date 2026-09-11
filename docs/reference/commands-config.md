@@ -871,3 +871,18 @@ refresh only catalog metadata. Connection eligibility and catalog cleanup are
 separate. --no-runtime skips Herdr; background_refresh controls only automatic
 repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
 metadata. See [host controls](../guides/remote-fleet.md#dashboard-host-tree).
+
+## SSH diagnosis
+
+`dev ssh diagnose <target> [--compare-qos] [--timeout 60s] [--json]` performs
+explicit bounded network observations. See [SSH diagnosis](../guides/ssh-hosts.md#ssh-diagnosis)
+for stage meanings, platform collectors and local-output privacy.
+
+## Feedback reports and repair sources
+
+`dev feedback draft` saves a local report; `issue <id>` previews its public body,
+`--search` queries related issues and `--publish --yes --revision <revision>`
+expresses prior authorization for the exact content/target. `repair <id> --base
+<ref>` saves a guarded plan; `--apply --plan <id> --yes` prepares its isolated
+checkout/task. Optional `[feedback].source_repo` is an absolute or home-relative
+local dev-cli path. See [feedback and repair](../guides/feedback.md).

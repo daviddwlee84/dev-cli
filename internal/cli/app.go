@@ -18,6 +18,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
+	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/note"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/picker"
@@ -28,6 +29,7 @@ import (
 
 // App is the state shared by every command.
 type App struct {
+	feedbackReporter forge.IssueReporter
 	// workflowHandoff defers navigation until the dashboard releases the terminal.
 	workflowHandoff        func(func() error) error
 	startHandoffPrompt     bool

@@ -2387,6 +2387,204 @@ setup/remove's narrow ownership rules. Normal setup never rewrites foreign SSH
 connection definitions. Key vault import and hardware-key provisioning are
 separate future work; private key bytes are not part of machine registration.
 
+## Layered connection diagnosis {#ssh-diagnosis}
+
+```bash
+dev ssh diagnose lab
+dev ssh diagnose 192.0.2.30 --json
+dev ssh diagnose lab --compare-qos --timeout 60s
+```
+
+Use explicit diagnosis when TCP connectivity and SSH behavior disagree, or when
+an ordinary probe cannot explain a failure. Unlike `probe`, this accepts an alias,
+hostname or IPv4/IPv6 literal without requiring a uniquely discovered Host block.
+The menu also offers diagnosis. Existing `probe` behavior and JSON are unchanged.
+
+The report separates effective config, DNS, route/interface, TCP, SSH banner,
+handshake, host identity, authentication and remote exit. Native route collectors
+use macOS `route -n get`, Linux `ip -j route get`, and Windows `Find-NetRoute` through
+a fixed noninteractive PowerShell program. No elevation, tool installation,
+network/configuration repair, known_hosts update or host-key import is performed.
+`ssh -G` and the configured connection can still execute user-authored Match exec,
+proxy and key helpers. A route observation is not proof of a working VPN.
+
+The total deadline defaults to 60 seconds. Configuration and DNS have 5-second
+caps, route observations share 10 seconds, TCP shares 5 seconds, banner reading
+has 3 seconds, and each SSH attempt has 15 seconds. Up to four resolved addresses
+are observed. The total deadline always wins; cancellation preserves completed
+stages. Missing tools, unavailable scope/binding support, and unrecognized or
+truncated evidence stay unknown/unsupported. Proxied targets skip direct local
+DNS/route/TCP/banner tests rather than bypassing the configured proxy.
+
+Diagnostic SSH uses a fresh connection, BatchMode, strict host-key checking,
+no host-key updates, no forwarding or local command, and a fixed remote `exit 0`.
+A host-key rejection is distinct from authentication denial; successful
+TCP/banner checks alone do not prove login. An authenticated connection with a
+failed remote exit is a session failure. The diagnosis may therefore stop at a
+stricter host-key boundary than an ordinary login configured to accept new keys.
+
+`--compare-qos` allows one fresh `IPQoS=none` comparison after a transport timeout.
+It requires positive client marking evidence, unchanged effective configuration
+and observed route, and matching endpoints. Stock Windows OpenSSH may accept the
+option while providing no marking capability; the report marks that comparison
+unavailable. A changed result is correlation, not attribution to a VPN vendor or
+proof of zero DSCP on the wire. No global QoS change or raw DSCP socket probe occurs.
+
+JSON uses `schema_version: 1`, `kind: ssh_diagnosis`, and `privacy: local`.
+It contains the selected endpoint/user/identity paths, ordered stage codes,
+bounded route observations, attempts and next-action codes, but never raw debug
+logs, server banners, config comments or proxy command strings. Do not publish
+this local JSON directly. Feedback uses a separate allowlisted public projection.
+Operational failure still emits one JSON document and a nonzero exit status.
+
+Failed proxy connections keep final-target stages unknown: a helper may print
+its own successful jump-host authentication, which is not final-target proof.
+
+On a failed SSH command, successful handshake/host-key/authentication log markers
+remain reported hints with unknown state. Only a zero-exit fresh login establishes
+completed authentication. Server-supplied banners/debug messages cannot provide
+positive client evidence; QoS comparisons use pre-connection marking and actual
+connection progress or a verified successful login.
+
+---
+
+### Feedback and isolated repair
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/feedback/
+
+> Prepare private local feedback, publish reviewed GitHub issues, and hand a verified isolated repair checkout to an explicitly selected agent.
+
+When dev fails, preserve enough evidence to explain the problem before deciding
+whether to report it or repair it. `dev feedback` provides a small terminal form;
+its explicit subcommands are intended for agents and scripts. Nothing publishes
+an issue, creates a repair checkout or starts an agent merely because a command
+failed.
+
+## Keep the original task moving
+
+An agent should distinguish a usage or environment failure from a suspected dev
+bug. For SSH transport trouble, use [connection diagnosis](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#ssh-diagnosis)
+when authorized. A timeout, missing gh login or safety refusal is not by itself an
+upstream defect.
+
+For a panic, unexpected internal error or behavior/documentation mismatch, first
+prepare a minimal local draft and identify a possible source checkout. Offer
+reporting, repair, both or skipping the detour. Continue a safe alternative for
+the original task when available. Deep investigation, repair and an additional
+subagent require explicit consent covering the added scope and cost. An approved
+subagent uses an independent context/checkout and returns a short result. Existing
+scoped consent persists; there is no need to ask repeatedly for the same action.
+
+## Prepare and review a local draft
+
+```bash
+dev feedback
+dev feedback draft --title 'SSH menu panic' --body-file report.md --json
+dev feedback draft --title 'SSH transport diagnosis' --body-file report.md \
+  --diagnostic diagnosis.json --json
+dev feedback issue <id> --json
+```
+
+`--body-file -` reads a bounded Markdown body from stdin. Include the minimal
+reproduction and expected/actual behavior. The CLI adds only version, OS/arch and
+installation-method facts. It does not collect doctor output, environment,
+configuration or session history automatically. A supplied SSH diagnostic is
+projected to finite public stage codes; its endpoint/user/key paths never enter
+the attachment.
+
+Reports live under configured `paths.state_dir/feedback/<id>/` (by default the
+XDG dev data directory). `public.md` is the editable public draft; `context.json`
+retains the explicitly supplied private evidence. Report and operation records
+are durable state, not cache. POSIX permissions are owner-only; Windows uses
+verified protected current-user-and-SYSTEM ACLs. No automatic cleanup occurs.
+
+Known credential, URL, endpoint, path and SSH-option forms are sanitized again
+at preview/publication. Review free text for arbitrary identifying names: automatic
+redaction cannot recognize every private name. The preview prints the exact
+operation, repository, body and content/target revision. Edits change that revision.
+A broken dev config still permits drafting under default storage, with a warning.
+
+## Explicit GitHub publication
+
+```bash
+dev feedback issue <id> --search --json
+dev feedback issue <id> --publish
+# For an already reviewed and authorized exact revision:
+dev feedback issue <id> --publish --yes --revision <revision> --json
+# Preview a comment on an existing thread:
+dev feedback issue <id> --existing 123 --json
+```
+
+The default issue target is `github.com/daviddwlee84/dev-cli`. `--repo
+[host/]owner/name` explicitly changes it; cwd and GH_HOST do not choose the target.
+`--search` is a separate network action and only lists candidates. `--existing`
+selects a positive issue number for a comment; it never silently chooses a thread.
+Review that preview's revision before using `--publish --yes`.
+
+Publication uses optional gh authentication and an argv-only API request with
+exact JSON stdin. Bodies never enter shell source or error argv. Missing gh,
+missing login, rejected permissions and unknown remote outcomes remain separate
+results. Drafts remain usable offline.
+
+An operation receipt is saved as unknown before a POST. If the response is lost,
+a repeat invocation searches for its exact report/revision marker before doing
+anything else. An incomplete or empty reconciliation remains unknown and never
+authorizes another POST. Confirmed issue creation returns the existing URL on
+retry; a changed draft can be submitted as an explicitly reviewed comment.
+
+## Plan a repair checkout
+
+```bash
+dev feedback repair <id> --base main --json
+dev feedback repair <id> --repo ~/Projects/dev-cli --base main --json
+dev feedback repair <id> --apply --plan <plan-id> --yes --json
+```
+
+Source precedence is explicit `--repo`, `[feedback].source_repo`, then the same
+local discovery used by REPOS. A configured source must expand to an absolute
+path. Invalid explicit/configured paths are errors, multiple matches are returned
+for selection, and a directory name is never identity proof. A local fork needs
+an exact dev-cli upstream remote; a fork origin alone is insufficient.
+
+```toml
+[feedback]
+source_repo = "~/Projects/dev-cli"
+```
+
+Without a source, the preview suggests explicitly acquiring a retained Try clone
+with the existing `dev try --clone` workflow, then repeating the preview with that
+checkout. Inspect a reused Try's identity and existing work. Never use an
+automatically deleted temporary clone for unique fixes.
+
+A base ref is required explicitly. The saved plan pins its commit, canonical
+repository identities, target branch/path, relevant configuration and report
+revision. Apply re-observes under the Git lifecycle lock and refuses stale plans.
+It uses the shared start service to create a HOT worktree task. Source edits are
+kept in place; runtime opening, provisioning, submodule downloads and agent launch
+are disabled for this preparation. A partial failure retains its checkout and
+reports the task/store recovery problem instead of deleting work.
+
+## Continue with an agent
+
+```bash
+dev prompt render feedback-fix <id>
+# Only after approving this additional agent/profile:
+dev prompt open feedback-fix <id> --agent <profile>
+```
+
+The current agent can read the rendered prompt and work in the returned checkout.
+A new process requires an explicit profile even when a default profile exists.
+The prompt binds to the report's prepared checkout/task and rejects a changed,
+locked, missing or partial binding. It is private context and is never an issue
+body.
+
+Read the source AGENTS.md, reproduce the problem, make a focused change, run the
+relevant tests and synchronize changelog/help/docs/skill. Deliver the diff summary,
+test results, retained workspace and next action for the original task. Fork,
+push and draft-PR publication require their own applicable consent; use existing
+Git/gh tools with exact body files. This workflow does not auto-merge, replace the
+installed binary or retire its workspace.
+
 ---
 
 ### Remote repository fleet
@@ -6386,6 +6584,58 @@ dev edit [flags]
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
 - `--project` — edit .dev-cli/config.toml in the current repository
 
+### `dev feedback`
+
+Prepare a local report, publish reviewed feedback, or plan an isolated fix
+
+```
+dev feedback
+```
+
+### `dev feedback draft`
+
+Save a private local report and a sanitized public issue draft
+
+```
+dev feedback draft [flags]
+```
+
+- `--body-file` — Markdown reproduction/expected/actual body file; - reads stdin
+- `--diagnostic` — local schema-v1 ssh diagnose JSON to project into public evidence
+- `--json` — emit the saved report ID, paths and next commands
+- `--title` — short report title
+
+### `dev feedback issue`
+
+Preview, search for, or explicitly publish reviewed GitHub feedback
+
+```
+dev feedback issue <id> [flags]
+```
+
+- `--existing` — comment on this exact existing issue instead of creating a new issue
+- `--json` — emit one versioned preview or publication result
+- `--publish` — publish the reviewed issue or comment
+- `--repo` — explicit [host/]owner/name issue target
+- `--revision` — exact content/target revision from preview
+- `--search` — explicitly query related GitHub issues
+- `--yes` — confirm publication of the supplied revision without prompting
+
+### `dev feedback repair`
+
+Plan or prepare an isolated repair checkout without starting an agent
+
+```
+dev feedback repair <id> [flags]
+```
+
+- `--apply` — create only the checkout/task described by the saved plan
+- `--base` — explicit local base ref for the repair branch
+- `--json` — emit one versioned repair plan or result
+- `--plan` — exact saved repair plan ID to apply
+- `--repo` — exact local dev-cli source checkout
+- `--yes` — confirm the saved repair plan without prompting
+
 ### `dev fleet`
 
 Inspect and safely synchronize dev repositories across machines
@@ -7084,6 +7334,14 @@ Open an interactive foreground agent in the current terminal
 dev prompt open
 ```
 
+### `dev prompt open feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev prompt open feedback-fix <report-id>
+```
+
 ### `dev prompt open pr-triage`
 
 Prioritize pull requests you opened or were asked to review
@@ -7126,6 +7384,14 @@ Render a built-in prompt to stdout
 dev prompt render
 ```
 
+### `dev prompt render feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev prompt render feedback-fix <report-id>
+```
+
 ### `dev prompt render pr-triage`
 
 Prioritize pull requests you opened or were asked to review
@@ -7166,6 +7432,14 @@ Run a one-shot agent with a built-in prompt
 
 ```
 dev prompt run
+```
+
+### `dev prompt run feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev prompt run feedback-fix <report-id>
 ```
 
 ### `dev prompt run pr-triage`
@@ -7668,6 +7942,18 @@ Manage SSH hosts, fleet registrations, and Herdr machines
 ```
 dev ssh
 ```
+
+### `dev ssh diagnose`
+
+Diagnose SSH configuration, routing, transport and authentication
+
+```
+dev ssh diagnose <target> [flags]
+```
+
+- `--compare-qos` — allow one comparable fresh SSH attempt with IPQoS=none
+- `--json` — emit one versioned local diagnosis, including partial failures
+- `--timeout` — total diagnostic deadline
 
 ### `dev ssh format`
 
@@ -8443,6 +8729,21 @@ separate. --no-runtime skips Herdr; background_refresh controls only automatic
 repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
 metadata. See [host controls](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
 
+## SSH diagnosis
+
+`dev ssh diagnose <target> [--compare-qos] [--timeout 60s] [--json]` performs
+explicit bounded network observations. See [SSH diagnosis](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#ssh-diagnosis)
+for stage meanings, platform collectors and local-output privacy.
+
+## Feedback reports and repair sources
+
+`dev feedback draft` saves a local report; `issue <id>` previews its public body,
+`--search` queries related issues and `--publish --yes --revision <revision>`
+expresses prior authorization for the exact content/target. `repair <id> --base
+<ref>` saves a guarded plan; `--apply --plan <id> --yes` prepares its isolated
+checkout/task. Optional `[feedback].source_repo` is an absolute or home-relative
+local dev-cli path. See [feedback and repair](https://daviddwlee84.github.io/dev-cli/guides/feedback/).
+
 ---
 
 ### Compatibility and known limitations
@@ -8928,6 +9229,21 @@ not open SSH automatically; `--no-runtime` selects SSH directly. Host Enter work
 without remote dev and may bootstrap through native attachment. Outside Herdr,
 repository preparation needs a ready remote server; use host navigation first
 if it is missing, then retry the repository.
+
+## SSH diagnostic contract
+
+`ssh_diagnosis` is a new schema-v1 local report; existing probe/show/list JSON is
+unchanged. Native route collectors ship for macOS, Linux and Windows. Unsupported
+QoS marking or opaque proxy/bind paths remain explicit unknown/unsupported states.
+
+## Feedback and repair contracts
+
+Feedback adds schema-v1 draft, issue-preview/result and repair-plan/result JSON.
+Reports and issue receipts are durable private state, with a separate public
+projection for SSH evidence. Issue target/content revisions and repair plans
+are checked before mutation; unknown publication outcomes require reconciliation.
+The `feedback-fix` recipe requires a verified HOT task/checkout and an explicit
+agent profile for launch. Existing start defaults and JSON are unchanged.
 
 ---
 
@@ -11563,6 +11879,176 @@ macOS／Linux backend；Herdr 原生 CLI 與一般 editor 不受 dev 合作式�
 只有明確的 format／organize／manage 操作擴充使用者選定內容的修改範圍；
 一般 setup／remove 維持原本 ownership 規則。key vault 匯入與硬體 key
 provisioning 留待獨立後續工作，主機註冊不傳遞私鑰內容。
+
+## 分層連線診斷 {#ssh-diagnosis}
+
+```bash
+dev ssh diagnose lab
+dev ssh diagnose 192.0.2.30 --json
+dev ssh diagnose lab --compare-qos --timeout 60s
+```
+
+TCP 能連線但 SSH 失敗，或普通 probe 無法解釋問題時，使用明確的診斷指令。
+診斷接受 alias、hostname、IPv4／IPv6 literal，不要求有唯一可選的 Host 宣告；
+裸 `dev ssh` 選單也提供入口。既有 `probe` 行為及 JSON 不變。
+
+報告區分 effective config、DNS、route/interface、TCP、SSH banner、handshake、
+host identity、authentication 與 remote exit。原生路由 collector 使用 macOS
+`route -n get`、Linux `ip -j route get`，以及固定非互動 PowerShell 程式中的
+Windows `Find-NetRoute`。不提升權限、安裝工具、修理網路／設定、更新 known_hosts
+或匯入 host key。OpenSSH 評估設定及連線時仍可能執行使用者設定的 Match exec、
+proxy 與 key helper。找到路由不等於 VPN 正常。
+
+總期限預設 60 秒。設定與 DNS 各最多 5 秒，路由共 10 秒，TCP 共 5 秒，banner
+最多 3 秒，每次 SSH 最多 15 秒；最多觀察四個解析位址。總期限優先，取消時保留
+已完成階段。缺少工具、不支援的 scope／bind、無法辨識或截斷的證據保持
+unknown／unsupported。Proxy 路徑跳過直接的本機 DNS／route／TCP／banner，避免
+繞過設定的代理後作出錯誤比較。
+
+診斷使用 fresh connection、BatchMode、strict host-key checking，不更新 host key、
+不 forwarding、不執行 LocalCommand，遠端命令固定為 `exit 0`。Host key 拒絕與
+認證失敗分開；TCP 或 banner 成功不代表登入成功。已認證但遠端命令失敗，列為
+session failure。因此相較於設定成接受新 key 的普通 SSH，診斷可能在較嚴格的
+host-key 邊界停止。
+
+`--compare-qos` 明確允許 transport timeout 後的一次 `IPQoS=none` fresh 對照。
+必須有 client marking 證據、未變的有效設定與路由觀察、相同 endpoint。Windows
+stock OpenSSH 可能接受選項卻沒有 marking 能力，此時顯示無法比較。結果改善只能
+說明相關性，不能歸因於某個 VPN 供應商，也不能證明線上 DSCP 為零。不修改全域
+QoS，也不執行 raw DSCP socket probe。
+
+JSON 使用 `schema_version: 1`、`kind: ssh_diagnosis`、`privacy: local`，包含本機
+選定的 endpoint／user／identity path、階段原因碼、有限路由觀察、attempts 與
+next-action codes。原始 debug log、server banner、config comments、proxy command
+不輸出。不要直接公開此 JSON；feedback 使用獨立的白名單公開投影。操作失敗仍
+輸出一份完整 JSON，並傳回非零 exit status。
+
+Proxy 連線失敗時，最終目標的階段保持 unknown：helper 可能輸出自己的 jump-host
+認證成功日誌，這不能證明最終目標也已通過認證。
+
+SSH 指令失敗時，handshake／host-key／authentication 的成功日誌只保留為 reported
+提示，狀態維持 unknown；只有 fresh login 以零 exit code 完成才確認整體登入。
+Server banner／debug 訊息不能提供正向 client 證據。QoS 對照使用連線前的 marking、
+實際連線進展或已確認成功的登入。
+
+---
+
+### Feedback 與隔離修復
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/feedback/
+
+> 建立私有本機 feedback、發布已檢視的 GitHub issue，並將已驗證的隔離修復工作區交接給明確選定的 agent。
+
+Dev 出錯時，先保留足以解釋問題的證據，再決定回報或修復。`dev feedback` 提供
+簡單終端表單，明確的子命令供 agent 與腳本使用。指令失敗本身不會自動發布 issue、
+建立修復工作區或啟動 agent。
+
+## 盡量維持原任務
+
+Agent 應先區分使用方式、環境問題與疑似 dev bug。SSH transport 問題可在授權
+範圍內使用 [連線診斷](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/#ssh-diagnosis)。Timeout、gh 未登入或
+安全檢查拒絕，不直接代表 upstream 有缺陷。
+
+遇到 panic、非預期內部錯誤或文件與行為不符，先準備最小本機草稿與可能的來源
+checkout，再提供回報、修復、兩者或略過的選擇。原任務有安全替代方式時可繼續。
+深入調查、修復及額外 subagent 都需要涵蓋新增範圍與成本的明確同意；同意後的
+subagent 使用獨立 context／checkout，只帶回精簡結果。既有明確授權沿用，不重複
+詢問同一件事。
+
+## 準備與檢視本機草稿
+
+```bash
+dev feedback
+dev feedback draft --title 'SSH menu panic' --body-file report.md --json
+dev feedback draft --title 'SSH transport diagnosis' --body-file report.md \
+  --diagnostic diagnosis.json --json
+dev feedback issue <id> --json
+```
+
+`--body-file -` 從 stdin 讀取有大小上限的 Markdown。內容包含最小重現、預期與
+實際行為。CLI 僅自動加入版本、OS／arch 與安裝方式，不自動收集 doctor stdout、
+環境、設定或 session history。SSH 診斷會轉成有限的公開階段原因碼；endpoint、
+user、key path 不進入附件。
+
+報告位於 configured `paths.state_dir/feedback/<id>/`，預設為 XDG dev data
+目錄。`public.md` 是可編輯公開草稿；`context.json` 保留明確提供的私有證據。
+報告與操作紀錄是 durable state，不是 cache，也不自動清除。POSIX 使用 owner-only
+權限，Windows 驗證受保護且只授予目前 user 與 SYSTEM 的 ACL。
+
+已知的 credential、URL、endpoint、path 與 SSH option 格式會在 preview／publish
+再次遮罩。任意私有人名或代號仍須檢視，不能假設自動遮罩辨識了所有名稱。Preview
+顯示確切 operation、repository、body 與 content/target revision；編輯會改變
+revision。Dev config 損壞時仍可建立草稿，會告知使用預設儲存位置。
+
+## 明確發布至 GitHub
+
+```bash
+dev feedback issue <id> --search --json
+dev feedback issue <id> --publish
+# 已檢視並授權該確切 revision 後：
+dev feedback issue <id> --publish --yes --revision <revision> --json
+# 預覽要加入現有 thread 的 comment：
+dev feedback issue <id> --existing 123 --json
+```
+
+預設 issue target 是 `github.com/daviddwlee84/dev-cli`；`--repo
+[host/]owner/name` 才明確改變目的地，cwd 與 GH_HOST 不會暗中選擇目標。
+`--search` 是獨立網路動作，只列出候選。`--existing` 必須指定正的 issue number，
+不會自行選 thread。使用 `--publish --yes` 前，先檢視該目標與操作的 revision。
+
+發布沿用 optional gh 的認證，以 argv-only API 與確切 JSON stdin 傳送；body
+不插入 shell source 或錯誤 argv。缺少 gh、未登入、權限拒絕及未知遠端結果分開
+回報，離線仍能使用本機草稿。
+
+POST 前先保存 unknown 操作紀錄。回應遺失後重跑，會先查詢確切 report/revision
+marker。查核不完整或未找到結果時維持 unknown，不自動重送 POST。已確認建立的
+issue 重跑會回傳原 URL；修改過的草稿可經明確檢視後作為 comment 發布。
+
+## 規劃修復工作區
+
+```bash
+dev feedback repair <id> --base main --json
+dev feedback repair <id> --repo ~/Projects/dev-cli --base main --json
+dev feedback repair <id> --apply --plan <plan-id> --yes --json
+```
+
+來源順序為明確 `--repo`、`[feedback].source_repo`，再使用 REPOS 的本機 discovery。
+設定值須展開為絕對路徑。無效的 explicit／configured path 直接報錯，多個候選
+回傳供選擇；資料夾名稱不是身份證明。本機 fork 需要確切的 dev-cli upstream
+remote，只有 fork origin 不足以確認。
+
+```toml
+[feedback]
+source_repo = "~/Projects/dev-cli"
+```
+
+沒有來源時，preview 建議使用既有 `dev try --clone`，明確取得會保留的 Try clone
+後再指定該 checkout 重新預覽。重用 Try 前先確認身份與既有工作，不將獨有修復
+放在會自動刪除的暫存 clone。
+
+必須明確給 base ref。計畫固定其 commit、canonical repository identities、
+目標 branch/path、相關設定與 report revision；Apply 在 Git lifecycle lock 內
+重新觀察，拒絕 stale plan，再共用 start service 建立 HOT worktree task。
+來源修改保留原處；準備時不開 runtime、不 provision、不下載 submodule、不啟動
+agent。部分失敗保留 checkout，指出 task／store 恢復問題，不刪除工作。
+
+## 交接給 agent
+
+```bash
+dev prompt render feedback-fix <id>
+# 明確同意額外 agent 與 profile 後：
+dev prompt open feedback-fix <id> --agent <profile>
+```
+
+目前 agent 可讀取 prompt 並在回傳的 checkout 工作。新 process 必須明確指定
+profile，即使已設定 default profile 也不自動選擇。Prompt 綁定報告已準備的
+checkout/task，拒絕變更、locked、missing 或 partial binding。此內容是私有
+context，不是 issue body。
+
+先讀來源 AGENTS.md、重現問題、做 focused change、跑相關測試並同步
+changelog/help/docs/skill。交付 diff 摘要、測試結果、保留位置與原任務的下一步。
+Fork、push 與 draft PR 另看既有明確授權，使用現有 Git／gh 與確切 body file。
+不自動 merge、不替換 installed binary，也不自動 retire 工作區。
 
 ---
 
@@ -15320,6 +15806,58 @@ dev edit [flags]
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
 - `--project` — edit .dev-cli/config.toml in the current repository
 
+### `dev feedback`
+
+Prepare a local report, publish reviewed feedback, or plan an isolated fix
+
+```
+dev feedback
+```
+
+### `dev feedback draft`
+
+Save a private local report and a sanitized public issue draft
+
+```
+dev feedback draft [flags]
+```
+
+- `--body-file` — Markdown reproduction/expected/actual body file; - reads stdin
+- `--diagnostic` — local schema-v1 ssh diagnose JSON to project into public evidence
+- `--json` — emit the saved report ID, paths and next commands
+- `--title` — short report title
+
+### `dev feedback issue`
+
+Preview, search for, or explicitly publish reviewed GitHub feedback
+
+```
+dev feedback issue <id> [flags]
+```
+
+- `--existing` — comment on this exact existing issue instead of creating a new issue
+- `--json` — emit one versioned preview or publication result
+- `--publish` — publish the reviewed issue or comment
+- `--repo` — explicit [host/]owner/name issue target
+- `--revision` — exact content/target revision from preview
+- `--search` — explicitly query related GitHub issues
+- `--yes` — confirm publication of the supplied revision without prompting
+
+### `dev feedback repair`
+
+Plan or prepare an isolated repair checkout without starting an agent
+
+```
+dev feedback repair <id> [flags]
+```
+
+- `--apply` — create only the checkout/task described by the saved plan
+- `--base` — explicit local base ref for the repair branch
+- `--json` — emit one versioned repair plan or result
+- `--plan` — exact saved repair plan ID to apply
+- `--repo` — exact local dev-cli source checkout
+- `--yes` — confirm the saved repair plan without prompting
+
 ### `dev fleet`
 
 Inspect and safely synchronize dev repositories across machines
@@ -16018,6 +16556,14 @@ Open an interactive foreground agent in the current terminal
 dev prompt open
 ```
 
+### `dev prompt open feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev prompt open feedback-fix <report-id>
+```
+
 ### `dev prompt open pr-triage`
 
 Prioritize pull requests you opened or were asked to review
@@ -16060,6 +16606,14 @@ Render a built-in prompt to stdout
 dev prompt render
 ```
 
+### `dev prompt render feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev prompt render feedback-fix <report-id>
+```
+
 ### `dev prompt render pr-triage`
 
 Prioritize pull requests you opened or were asked to review
@@ -16100,6 +16654,14 @@ Run a one-shot agent with a built-in prompt
 
 ```
 dev prompt run
+```
+
+### `dev prompt run feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev prompt run feedback-fix <report-id>
 ```
 
 ### `dev prompt run pr-triage`
@@ -16602,6 +17164,18 @@ Manage SSH hosts, fleet registrations, and Herdr machines
 ```
 dev ssh
 ```
+
+### `dev ssh diagnose`
+
+Diagnose SSH configuration, routing, transport and authentication
+
+```
+dev ssh diagnose <target> [flags]
+```
+
+- `--compare-qos` — allow one comparable fresh SSH attempt with IPQoS=none
+- `--json` — emit one versioned local diagnosis, including partial failures
+- `--timeout` — total diagnostic deadline
 
 ### `dev ssh format`
 
@@ -17350,6 +17924,19 @@ FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀
 background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
 fleet snapshot JSON。詳見[主機控制](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
 
+## SSH 診斷
+
+`dev ssh diagnose <target> [--compare-qos] [--timeout 60s] [--json]` 執行明確且
+有期限的網路觀察。階段、平台與本機輸出隱私請見 [SSH 診斷](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/#ssh-diagnosis)。
+
+## Feedback 報告與修復來源
+
+`dev feedback draft` 保存本機報告；`issue <id>` 預覽公開內容，`--search` 查詢相關
+issue，`--publish --yes --revision <revision>` 表達對該確切內容／目標的既有授權。
+`repair <id> --base <ref>` 保存 guarded plan；`--apply --plan <id> --yes` 準備隔離
+checkout/task。Optional `[feedback].source_repo` 指定絕對或 home-relative 的本機
+dev-cli 路徑。詳見 [feedback 與修復](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/feedback/)。
+
 ---
 
 ### 相容性與已知限制
@@ -17778,6 +18365,20 @@ session-wide focus。舊 helper 在 workspace 副作用前失敗；取消或部�
 自動改開 SSH，`--no-runtime` 直接選 SSH。主機 Enter 不要求遠端 dev，可透過
 原生 attach 完成 bootstrap。Herdr 外的 repository 準備需要遠端 server 已就緒；
 若尚未就緒，先用主機導覽，再重試 repository。
+
+## SSH 診斷契約
+
+`ssh_diagnosis` 是新的 schema-v1 本機報告；既有 probe／show／list JSON 不變。
+macOS、Linux、Windows 均提供原生路由 collector。不支援的 QoS marking 或無法
+比較的 proxy／bind 路徑保持明確的 unknown／unsupported 狀態。
+
+## Feedback 與修復契約
+
+Feedback 新增 schema-v1 draft、issue preview/result、repair plan/result JSON。
+報告與 issue receipts 是 durable private state；SSH 證據另有公開投影。
+寫入前檢查 issue target/content revision 與 repair plan；發布結果 unknown 必須
+先查核。`feedback-fix` 要求已驗證的 HOT task/checkout，啟動時必須明確指定 agent
+profile。既有 start 預設與 JSON 不變。
 
 ---
 
