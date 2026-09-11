@@ -2587,6 +2587,197 @@ installed binary or retire its workspace.
 
 ---
 
+### Repository hygiene
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/hygiene/
+
+> Inspect repository hooks, scan secrets and personal data, and apply reviewed text replacements with private recovery.
+
+`dev hygiene` joins optional gitleaks and pre-commit with repository policy,
+private local identity rules and guarded text changes. It does not equate a
+scanner finding with a confirmed credential leak.
+
+## Inspect and configure
+
+Install `gitleaks` and `pre-commit` first. Setup reports missing dependencies;
+it does not install packages or replace a global hook silently.
+
+```bash
+dev hygiene status
+dev hygiene status --check-remote              # explicit GitHub visibility query
+dev hygiene setup --json
+dev hygiene setup --apply --plan <id> --yes
+```
+
+Status reads the effective `core.hooksPath`, existing hook and project config.
+A recognized hook chain is configuration evidence, not proof that every commit
+was scanned. Hooks can be bypassed by raw Git or external tools.
+
+Setup adds the blocking `dev-hygiene` pre-commit hook, safe gitleaks rules and
+`.dev-cli/hygiene.toml`. It preserves other hooks and YAML comments. Unknown
+hook chains and conflicting same-name hooks require manual integration. An
+existing gitleaks config is retained unless `--migrate-rules` was included in
+the reviewed setup plan. Review that replacement against custom rules first.
+`dev repo setup --enable agent-history-hygiene` uses this same service.
+
+The hook checks index content. It never rewrites files or stages user changes.
+A missing dev/gitleaks executable, invalid report or failed scan blocks it.
+The hook runner must find a dev version that supports `hygiene` on PATH.
+
+## Choose policy
+
+Precedence is built-in defaults, user defaults (`$XDG_CONFIG_HOME/dev/hygiene.toml`),
+repo policy, private local repo overrides, then explicit scan/status flags.
+The recommended defaults are `secrets = "block"`, `known = "block"` and
+`generic = "warn"`. Each category supports `block`, `warn` and `off`. A rule
+may override its enabled category's disposition; category `off` disables it.
+
+```toml
+version = 1
+secrets = "block"
+known = "block"
+generic = "warn"
+```
+
+Setting all three categories to `off` returns an explicit `skipped` result without
+reading repository file contents or running the engine; it is not a clean scan.
+
+Private visibility supplies advice only. It does not silently weaken policy;
+unknown or unsupported visibility is never treated as private. GitHub lookup
+requires `status --check-remote`; `--remote` selects its remote (default origin).
+
+```bash
+dev hygiene rules policy --known warn --generic off --json
+dev hygiene rules apply --plan <id> --yes
+```
+
+Policy/rule changes are separate reviewed plans. One invocation's scan overrides
+are not persisted. Obtain a fresh scan using the persistent policy before
+creating a redaction plan.
+
+## Local identity rules and exceptions
+
+```bash
+dev hygiene rules import --from ssh --json
+dev hygiene rules import --from ssh --select <candidate-id> --json
+dev hygiene rules import --from local --json
+dev hygiene rules add --id private-network --kind cidr --value-file network.txt \
+  --replacement 192.0.2.1 --json
+dev hygiene rules apply --plan <id> --yes
+```
+
+Imports require explicit candidate selection. SSH uses the bounded static
+OpenSSH Include closure, including literal aliases, HostName, User and key-path
+references. It never executes `ssh -G`, `Match exec`, DNS or a remote command,
+and never reads key material. An incomplete Include closure blocks import.
+Common public names and generic accounts are recommendations for warnings.
+Local import supplies home path, account, Git name and Git email candidates.
+
+Literal, CIDR and Go RE2 rules accept optional relative path globs. `directory/**`
+selects descendants. Rule values come from a file or `--value-file -`; do not
+put sensitive values in command arguments. Edit or disable existing private
+rules through a reviewed same-ID rule plan or the private policy file.
+
+Private rules, HMAC identifiers, scan records and recovery are stored outside
+Git under `paths.state_dir/hygiene/repos/<native-repo-id>/`. Linked worktrees
+share local policy but plans remain bound to an exact checkout. Windows uses
+protected current-user/SYSTEM ACLs; Unix uses private ownership and permissions.
+There is no automatic deletion or export of this state.
+
+```bash
+dev hygiene rules allow --report <report-id> --finding <finding-id> \
+  --reason 'Reviewed synthetic test fixture' --json
+```
+
+Local exceptions bind an exact value/rule/path finding. Shareable TOML exceptions
+require `rule`, `path`, an anchored `pattern` and a reason. Keep private values
+out of shareable rules. `.gitleaksignore` contains finding fingerprints, not path
+globs. `scan --audit` ignores local finding exceptions, that file and inline
+`gitleaks:allow`; scanner-config allowlists still apply and must be reviewed.
+Placeholders never automatically allow an unrelated key on the same line.
+
+## Scan with an honest scope
+
+```bash
+dev hygiene scan --scope worktree --json
+dev hygiene scan --scope staged --json
+dev hygiene scan --scope history --audit --timeout 40m --json
+dev hygiene --public-only --known off --generic off scan --scope history \
+  --range <full-from-oid>..<full-to-oid> --json
+```
+
+Working-file scans include tracked files and nonignored untracked files. Already
+tracked files remain in scope after a later `.gitignore` addition. Staged scans
+use actual index bytes, including hidden files and partial staging. Selected
+`--file` arguments must already belong to that scope.
+
+An explicit range checks versions changed in its selected commits, leaving
+untouched older files for the full audit. History freezes locally available refs
+(or an explicit full-OID range), includes
+merge-only content and removed files, and never fetches implicitly. It does not
+scan reflogs, unreachable objects, uncommitted work in other checkouts or remote
+submodule repositories. Nonregular entries and recognized binary formats are
+listed as exclusions from text scanning. Unsupported text encodings, unreadable
+or oversized files, changing sources/refs, shallow history, cancellation and
+scanner failures produce incomplete results. The per-file text limit is 128 MiB;
+large files are never silently called clean.
+
+Public JSON schema 1 records status, scope, frozen refs, counts, safe finding
+locations, dispositions, exclusions and coverage gaps. It omits source snippets
+and credential values. Finding IDs and public file/plan digests use private HMAC
+keys. `complete` describes the declared text scope; a blocking finding or
+incomplete scan exits unsuccessfully. No findings is not a credential-validity
+check. Reports may contain identifying filenames not covered by selected rules;
+review them before sharing.
+
+CI uses public repository rules, without global/personal values. It cannot
+claim to have checked private SSH identities. PR/push scans select the changed
+commit range; manual workflow dispatch audits all locally fetched history.
+
+## Review and apply replacements
+
+```bash
+dev hygiene redact --report <report-id> --file notes.md --json
+dev hygiene redact --report <report-id> --finding <finding-id> --json
+dev hygiene review-path <id>                 # open privately; never paste contents
+dev hygiene redact --apply --plan <id> --yes
+# Only after the exact artifact writer exited:
+dev hygiene redact --apply --plan <id> --yes --writer-stopped
+```
+
+All supported regular text files may be selected. Plans bind the checkout,
+HEAD/branch, effective policy, scanner inputs, native file identity and content.
+They are signed private records. An edited plan or stale input requires a new
+preview. Overlapping matches prefer secret, then known, then generic rules;
+within a category the longer span wins. The terminal output shows paths, opaque before/after digests and replacement
+counts. `review-path <id>` locates a private full-content proposal for human
+inspection. Its integrity is bound to the plan; never paste that file into chat,
+Git or CI logs. The default output does not echo the original secret.
+
+Apply checks the whole selection, then publishes individual guarded transactions
+with original metadata and private recovery. It retains a partial ledger on
+failure; never repeat an interrupted operation blindly. Index contents, Git
+history and installed binaries are not changed. Native Windows protections are
+specific to these opted-in text transactions; other configedit workflows retain
+their own platform support contracts. Windows preserves owner/group/DACL
+semantics; files with alternate streams, explicit integrity labels or special
+attributes require manual preservation.
+
+```bash
+dev hygiene restore --receipt <receipt-id> --json
+dev hygiene restore --receipt <receipt-id> --apply --yes
+```
+
+Restore refuses files replaced or edited since the recorded transaction. Artifact
+recovery also needs `--writer-stopped`. Runtime observations reject recognized
+writers; a disabled/unavailable runtime cannot prove process absence. The
+post-writer attestation and source revalidation remain necessary, and raw external
+writers remain outside dev-mediated locks.
+
+Use the [manual dogfood checklist](https://daviddwlee84.github.io/dev-cli/reference/hygiene-dogfood/) for this repo.
+
+---
+
 ### Remote repository fleet
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/
@@ -6882,6 +7073,154 @@ Quick-reference pages for the git workflow dev assumes
 dev help [topic]
 ```
 
+### `dev hygiene`
+
+Inspect hooks, scan secrets and privacy, and apply reviewed text changes
+
+```
+dev hygiene
+```
+
+### `dev hygiene redact`
+
+Preview selected text replacements or apply a saved plan
+
+```
+dev hygiene redact [flags]
+```
+
+- `--apply` — apply a reviewed replacement plan
+- `--file` — relative file to redact (repeatable)
+- `--finding` — specific finding ID to redact (repeatable)
+- `--plan` — reviewed plan ID
+- `--report` — worktree scan report ID
+- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `-y, --yes` — confirm the reviewed replacements
+
+### `dev hygiene restore`
+
+Preview or restore one private recovery receipt
+
+```
+dev hygiene restore [flags]
+```
+
+- `--apply` — restore unchanged post-apply files
+- `--receipt` — private recovery receipt ID
+- `--writer-stopped` — attest artifact writers have exited before recovery
+- `-y, --yes` — confirm the reviewed recovery
+
+### `dev hygiene review-path`
+
+Print the private review file location without printing its contents
+
+```
+dev hygiene review-path <plan-id>
+```
+
+### `dev hygiene rules`
+
+Manage private rules, policy overrides and precise exceptions
+
+```
+dev hygiene rules
+```
+
+### `dev hygiene rules add`
+
+Plan a private literal, CIDR or RE2 rule from a local value file
+
+```
+dev hygiene rules add [flags]
+```
+
+- `--action` — rule policy: block, warn or off
+- `--id` — non-sensitive rule label
+- `--kind` — literal, cidr or regex
+- `--path` — relative path glob (repeatable)
+- `--replacement` — replacement text (default: redaction sentinel)
+- `--value-file` — private rule value file; - reads stdin
+
+### `dev hygiene rules allow`
+
+Plan a local exception for one exact finding with a reason
+
+```
+dev hygiene rules allow [flags]
+```
+
+- `--finding` — exact finding ID
+- `--reason` — non-sensitive justification
+- `--report` — scan report ID
+
+### `dev hygiene rules apply`
+
+Apply one reviewed private rule or policy plan
+
+```
+dev hygiene rules apply [flags]
+```
+
+- `--plan` — reviewed rule plan ID
+- `-y, --yes` — confirm the reviewed rule changes
+
+### `dev hygiene rules import`
+
+Preview local identity candidates or plan selected private rules
+
+```
+dev hygiene rules import [flags]
+```
+
+- `--from` — static source: ssh or local
+- `--select` — candidate ID to import (repeatable)
+
+### `dev hygiene rules policy`
+
+Plan local overrides selected with --secrets, --known and --generic
+
+```
+dev hygiene rules policy
+```
+
+### `dev hygiene scan`
+
+Scan index, working files or frozen local Git history
+
+```
+dev hygiene scan [flags]
+```
+
+- `--audit` — include findings suppressed by local exceptions, gitleaksignore and inline pragmas
+- `--file` — select an in-scope relative file (repeatable; not history)
+- `--range` — history only: full FROM..TO commit OIDs (no implicit fetch)
+- `--scope` — scan scope: staged, worktree or history
+- `--timeout` — maximum scan duration; incomplete scans fail
+
+### `dev hygiene setup`
+
+Preview or apply repository hygiene configuration and hook integration
+
+```
+dev hygiene setup [flags]
+```
+
+- `--apply` — apply the exact saved setup plan
+- `--migrate-rules` — preview replacement of existing gitleaks config with bundled safe rules
+- `--plan` — reviewed plan ID
+- `-y, --yes` — confirm the reviewed plan
+
+### `dev hygiene status`
+
+Inspect effective hooks and policy without executing them
+
+```
+dev hygiene status [flags]
+```
+
+- `--check-remote` — explicitly query GitHub visibility; never change policy automatically
+- `--remote` — remote to query with --check-remote
+
 ### `dev instructions`
 
 Share AGENTS.md and CLAUDE.md with guarded transfers
@@ -8744,6 +9083,13 @@ expresses prior authorization for the exact content/target. `repair <id> --base
 checkout/task. Optional `[feedback].source_repo` is an absolute or home-relative
 local dev-cli path. See [feedback and repair](https://daviddwlee84.github.io/dev-cli/guides/feedback/).
 
+## Repository hygiene
+
+`dev hygiene` provides staged/worktree/history scopes, per-repo block/warn/off
+policies, private local identity imports and reviewed text replacement/recovery on
+macOS, Linux and Windows. CI uses public rules only. See the
+[hygiene workflow](https://daviddwlee84.github.io/dev-cli/guides/hygiene/) for schema-v1 coverage and hook contracts.
+
 ---
 
 ### Compatibility and known limitations
@@ -9244,6 +9590,128 @@ projection for SSH evidence. Issue target/content revisions and repair plans
 are checked before mutation; unknown publication outcomes require reconciliation.
 The `feedback-fix` recipe requires a verified HOT task/checkout and an explicit
 agent profile for launch. Existing start defaults and JSON are unchanged.
+
+## Repository hygiene
+
+`dev hygiene` provides staged/worktree/history scopes, per-repo block/warn/off
+policies, private local identity imports and reviewed text replacement/recovery on
+macOS, Linux and Windows. CI uses public rules only. See the
+[hygiene workflow](https://daviddwlee84.github.io/dev-cli/guides/hygiene/) for schema-v1 coverage and hook contracts.
+
+---
+
+### Manual hygiene dogfood
+
+Source: https://daviddwlee84.github.io/dev-cli/reference/hygiene-dogfood/
+
+> Manual post-writer dogfood and the separate impact assessment for already-published repository history.
+
+This checklist keeps live agent writers separate from the final cleanup. A new
+agent without SpecStory does not stop an older SpecStory writer. Do not terminate
+unrelated sessions to make a scan or redaction pass.
+
+## Before changing real artifacts
+
+1. Build the feature binary and run the native hygiene tests and
+   `python scripts/test-hygiene-hooks.py --dev <absolute-binary>` in its isolated
+   temporary HOME. That checks real pre-commit blocking with a synthetic key,
+   hidden paths, same-line placeholders, an alternate index, executable modes,
+   unchanged Git config and a clean follow-up commit.
+2. Run `dev hygiene status`, preview setup, and verify the effective hook chain.
+   Put the new binary on PATH for the test session; never overwrite a
+   package-managed installed binary manually.
+3. Preview `rules import --from ssh` and `--from local`. Review which candidates
+   are private and which are public/common names before selecting IDs. Keep the
+   resulting private policy outside Git.
+4. Run working-file and history scans. Preserve scope, exclusions and gaps.
+   Classify candidates before adding narrow, reasoned exceptions. A finding
+   count is not a count of confirmed live credentials.
+
+## Final manual trigger
+
+After the exact provider/wrapper exits and finishes the transcript, use an
+external terminal. A separately authorized agent may use a terminal without a
+SpecStory writer, but it still needs fresh proof about the original writer.
+
+```bash
+dev hygiene scan --scope worktree --json
+dev hygiene redact --report <fresh-report-id> --file <reviewed-file> --json
+dev hygiene redact --apply --plan <plan-id> --yes --writer-stopped
+dev hygiene scan --scope worktree --json
+git diff --check
+# Review and stage exact files; normal hooks remain enabled.
+```
+
+Only select reviewed findings/files. Known live agents, changed source bytes,
+metadata or plan signatures remain blockers. Keep partial results and recovery
+receipts for manual inspection; restore only after reviewing the affected paths.
+Never set writer-stopped merely because bytes happened to be stable briefly.
+
+Run focused tests for any changed source/config files, then skill/doc checks.
+Commit the verified HEAD corrections forward. A transcript still being written
+stays explicitly pending rather than being repeatedly rewritten.
+
+## Initial audit evidence
+
+The planning audit found installed pre-commit/gitleaks and an executable global
+hook, but no repository pre-commit/gitleaks configs. Thus ordinary commits skipped
+those gates; manual artifact finalization was a separate path.
+
+The local reachable-history gitleaks audit produced 416 candidates, including
+384 broad password-rule matches and 21 findings in test files. These remain
+candidate classifications, not a declaration of 416 live leaks. A lexical local
+SSH comparison found six configured IP values at 163 occurrences in current
+files. Common account/host tokens also produced many non-private matches.
+
+The history contained about 717 MB of unique blob data, including a roughly
+70 MB transcript. An initial three-minute run timed out. The completed audit
+covered the selected gitleaks patch scope; the new implementation additionally
+tests merge-only content and reports unsupported/excluded data explicitly.
+
+Detailed audit files stay in private local storage. Do not add raw reports,
+private dictionaries, recovery images or credential excerpts to Git or CI logs.
+
+## Implementation dogfood result
+
+The new setup applied the three repository configuration files while retaining
+this machine's existing global hook. The feature's real commit gate completed
+with 70 staged files, zero blocking findings and 36 generic privacy warnings.
+Synthetic hook tests also proved rejection without changing caller Git config,
+index entries or executable modes.
+
+A new-CLI full reachable-history audit on this host hit its explicit 40-minute
+limit and saved a `partial` receipt; it did not establish a clean history. Earlier
+CI range validation also identified existing transcripts containing invalid UTF-8
+or embedded NUL bytes. Those are explicit coverage gaps, not ignored successes.
+Commit-range scans now restrict themselves to changed versions; the full audit
+retains the historical gaps. The final manual phase must classify the retained
+candidates and resolve or explicitly scope unsupported artifacts before claiming
+that real history has been covered.
+
+## Separate published-history assessment
+
+Before considering any history change, produce a private table mapping each
+confirmed item to its kind, current-HEAD presence, introducing/containing commit,
+reachable local branches/tags and known remote copies. Fetch/query remote facts
+explicitly; local refs alone cannot prove a complete list of public copies.
+
+| Option | Effect and remaining exposure |
+| --- | --- |
+| Forward HEAD correction and prevention | Preserves commit/tag identities; older objects, PR views, clones and caches may still contain the data. |
+| Credential revocation/rotation | Invalidates an exposed credential at its provider; does not erase its old bytes. Document completion without publishing the value. |
+| Coordinated history cleanup assessment | Would change commit identities and signatures, affect PRs/clones and require a separate release/distribution migration plan. No rewrite is authorized by ordinary redact/setup. |
+| Provider-assisted removal | Availability depends on the provider and type of sensitive data; cannot be claimed complete from a force push. |
+
+For dev-cli, immutable release tags are CLI version authority, and releases are
+also consumed through the Go module ecosystem, Homebrew/Scoop and downloaded
+archives. Existing published tags must not be moved or reused. Inventory affected
+releases and downstream artifacts before proposing a migration; a new version
+cannot remove previously downloaded copies.
+
+Git author names/emails and identifying filenames are assessment items; text
+redaction does not rewrite commit metadata or rename files. GitHub describes
+rotation-first handling and the limits of force pushes, forks, PR references and
+caches in its [sensitive-data removal guidance](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository).
 
 ---
 
@@ -12049,6 +12517,154 @@ context，不是 issue body。
 changelog/help/docs/skill。交付 diff 摘要、測試結果、保留位置與原任務的下一步。
 Fork、push 與 draft PR 另看既有明確授權，使用現有 Git／gh 與確切 body file。
 不自動 merge、不替換 installed binary，也不自動 retire 工作區。
+
+---
+
+### Repository hygiene
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/
+
+> 檢查 repository hooks、掃描 secret 與個人資訊，並以私人恢復紀錄套用已檢視的文字替換。
+
+`dev hygiene` 將可選的 gitleaks、pre-commit、repo 政策、本機私密規則與安全文字
+交易整合。Scanner 命中是候選，並不直接代表已確認的 credential 洩漏。
+
+## 檢查與設定
+
+先安裝 `gitleaks`、`pre-commit`。Setup 會回報缺少的工具，不暗中安裝套件或覆寫
+全域 hook。
+
+```bash
+dev hygiene status
+dev hygiene status --check-remote
+dev hygiene setup --json
+dev hygiene setup --apply --plan <id> --yes
+```
+
+Status 讀取有效的 `core.hooksPath`、hook 與設定；辨識到 hook 只證明設定存在，
+不保證過去每次 commit 都執行過。Raw Git 或外部工具仍可繞過 hooks。
+
+Setup 加入阻擋式 `dev-hygiene` hook、安全 gitleaks 規則與 `.dev-cli/hygiene.toml`，
+保留其他 hooks 及 YAML 註解。同名但命令不同的 hook、未知的 hook 鏈需人工整合。
+已有的 gitleaks 設定預設保留；只有在 setup 預覽加入 `--migrate-rules` 才會提議
+替換，須先比對自訂規則。`dev repo setup --enable agent-history-hygiene` 共用此服務。
+
+Hook 只檢查 index，不改檔、不自動 stage。缺少支援 hygiene 的 dev／gitleaks、
+scanner 失敗或輸出損壞都會阻擋。
+
+## 政策與私密規則
+
+優先序：內建預設 → `$XDG_CONFIG_HOME/dev/hygiene.toml` → repo 政策 → 本機 repo
+覆寫 → 明確 scan/status flags。建議值是 secret 阻擋、已確認的私密值阻擋、通用
+隱私候選警告；各類皆可設為 `block`、`warn` 或 `off`。規則可調整已啟用類別的
+處置，但類別 `off` 會停用該類所有規則。
+
+```toml
+version = 1
+secrets = "block"
+known = "block"
+generic = "warn"
+```
+
+三類全部設為 `off` 會回傳明確的 `skipped`，不讀 repo 檔案內容、不執行 scanner；
+這是停用，不是 clean scan。
+
+Private 可見性只提供建議，不會自動弱化政策；未知也不當成 private。GitHub
+查詢僅在 `status --check-remote` 發生，`--remote` 預設選 origin。
+
+```bash
+dev hygiene rules policy --known warn --generic off --json
+dev hygiene rules apply --plan <id> --yes
+dev hygiene rules import --from ssh --json
+dev hygiene rules import --from ssh --select <candidate-id> --json
+dev hygiene rules import --from local --json
+dev hygiene rules add --id private-network --kind cidr --value-file network.txt \
+  --replacement 192.0.2.1 --json
+```
+
+先明確選候選才匯入。SSH 只讀取 bounded static Include closure 中的 literal
+alias、HostName、User 與 key-path reference，不執行 `ssh -G`、`Match exec`、DNS
+或連線，也不讀 key material。Include 不完整會阻擋匯入。常見公開名稱與通用帳號
+建議警告；local 來源提供 home path、帳號、Git 姓名與 email。
+
+支援 literal、CIDR、Go RE2 及相對路徑 glob；`directory/**` 選取其下內容。
+私密值用 `--value-file` 或 stdin 輸入，不放在命令參數。可用同 ID 的規則 plan
+調整／停用規則，或編輯本機私人政策。Scan override 不會持久化；建立 redact plan
+前需以相同的持久政策重新掃描。
+
+本機規則、HMAC key、報告、plan 與恢復資料放在 Git 外的
+`paths.state_dir/hygiene/repos/<native-repo-id>/`。Linked worktrees 共用本機政策，
+但 plan 綁定特定 checkout。Unix 使用私人權限與 ownership；Windows 使用受保護的
+目前 user／SYSTEM ACL。不會自動刪除或匯出。
+
+```bash
+dev hygiene rules allow --report <report-id> --finding <finding-id> \
+  --reason 'Reviewed synthetic test fixture' --json
+```
+
+本機例外綁定精確 value／rule／path。可分享的 TOML 例外需指定 `rule`、`path`、
+有頭尾錨點的 `pattern` 與原因。`.gitleaksignore` 是 fingerprint 清單，不是 path
+移除規則。`--audit` 忽略本機 finding 例外、該檔及 inline `gitleaks:allow`；scanner
+設定中的 allowlist 仍有效，必須另行檢視。Placeholder 不會自動放行同一行的其他 key。
+
+## 掃描範圍
+
+```bash
+dev hygiene scan --scope worktree --json
+dev hygiene scan --scope staged --json
+dev hygiene scan --scope history --audit --timeout 40m --json
+dev hygiene --public-only --known off --generic off scan --scope history \
+  --range <full-from-oid>..<full-to-oid> --json
+```
+
+Worktree 掃已追蹤檔與未被 ignore 的未追蹤檔；後來加入 `.gitignore` 的已追蹤檔仍
+會掃。Staged 使用真正的 index bytes，包含 hidden files 與 partial staging。
+`--file` 只能選該範圍內的檔案。
+
+明確的 range 只檢查選定 commits 所變更的檔案版本，未變更的舊檔留給全量稽核。
+History 固定本機 refs 或明確的完整 OID range，涵蓋 merge-only、已刪除與後來
+被 ignore 的內容，不暗中 fetch。不掃 reflog、unreachable objects、其他 checkout
+未提交內容或遠端 submodule repo。非一般檔與已知 binary 格式列為文字掃描的排除項；
+不支援的文字編碼、讀取失敗、超過每檔 128 MiB、來源／ref 變動、shallow history、
+取消或 scanner 失敗則回報 incomplete，不能當成 clean。
+
+JSON schema 1 包含狀態、範圍、固定 refs、數量、遮罩後的位置、處置、排除項與缺口，
+不含原始 snippet／credential。Finding ID 與公開檔案摘要使用私人 HMAC。
+`complete` 只描述宣告的文字範圍；阻擋命中或不完整皆以失敗狀態退出。不代表驗證過
+credential 有效性。未被選取規則涵蓋的檔名仍可能辨識個人，分享前須檢視。
+
+CI 僅使用公開 repo 規則，不具本機 SSH 字典。PR／push 掃變更的 commit range，
+人工 workflow dispatch 掃本機已取得的全部歷史。
+
+## 預覽、套用與恢復
+
+```bash
+dev hygiene redact --report <report-id> --file notes.md --json
+dev hygiene redact --report <report-id> --finding <finding-id> --json
+dev hygiene review-path <id>  # 私下開啟提案，勿貼回聊天
+dev hygiene redact --apply --plan <id> --yes
+# 只有在確切 artifact writer 已退出後：
+dev hygiene redact --apply --plan <id> --yes --writer-stopped
+dev hygiene restore --receipt <receipt-id> --json
+dev hygiene restore --receipt <receipt-id> --apply --yes
+```
+
+所有支援的一般文字檔皆可選。Plan 綁定 checkout、HEAD／branch、政策、scanner
+輸入、native identity 與內容，並附私人簽章。來源或 plan 變動需重做預覽。
+重疊命中依 secret → known → generic 優先，同類優先較長 span；預覽只顯示位置、
+opaque 摘要與替換數，不重新輸出原 secret。`review-path <id>` 可取得私人完整提案
+的位置，完整性也綁定 plan；勿將其內容貼回聊天、Git 或 CI logs。
+
+Apply 先驗證整批，再逐檔交易，保留 metadata 與私人恢復紀錄。中斷保留 partial
+ledger，不能盲目重跑。Index、Git 歷史與安裝的 binary 均不由這個流程修改。
+Windows 保護僅適用明確 opt-in 的文字交易，其他 configedit 功能維持原平台契約。Windows 保留 owner／group／DACL 語意；
+alternate streams、明確 integrity label 或特殊 attributes 需人工保存。
+
+Restore 拒絕操作後又被修改／替換的檔案；artifact 恢復也需要 `--writer-stopped`。
+Runtime 觀察會阻擋可辨識 writer，但停用或不可用的 runtime 無法證明程序不存在。
+Post-writer 聲明與 source revalidation 仍不可省略，raw 外部 writer 不受 dev 鎖保護。
+
+此 repo 的最後清理步驟見[人工 dogfood 檢查表](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/hygiene-dogfood/)。
 
 ---
 
@@ -16104,6 +16720,154 @@ Quick-reference pages for the git workflow dev assumes
 dev help [topic]
 ```
 
+### `dev hygiene`
+
+Inspect hooks, scan secrets and privacy, and apply reviewed text changes
+
+```
+dev hygiene
+```
+
+### `dev hygiene redact`
+
+Preview selected text replacements or apply a saved plan
+
+```
+dev hygiene redact [flags]
+```
+
+- `--apply` — apply a reviewed replacement plan
+- `--file` — relative file to redact (repeatable)
+- `--finding` — specific finding ID to redact (repeatable)
+- `--plan` — reviewed plan ID
+- `--report` — worktree scan report ID
+- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `-y, --yes` — confirm the reviewed replacements
+
+### `dev hygiene restore`
+
+Preview or restore one private recovery receipt
+
+```
+dev hygiene restore [flags]
+```
+
+- `--apply` — restore unchanged post-apply files
+- `--receipt` — private recovery receipt ID
+- `--writer-stopped` — attest artifact writers have exited before recovery
+- `-y, --yes` — confirm the reviewed recovery
+
+### `dev hygiene review-path`
+
+Print the private review file location without printing its contents
+
+```
+dev hygiene review-path <plan-id>
+```
+
+### `dev hygiene rules`
+
+Manage private rules, policy overrides and precise exceptions
+
+```
+dev hygiene rules
+```
+
+### `dev hygiene rules add`
+
+Plan a private literal, CIDR or RE2 rule from a local value file
+
+```
+dev hygiene rules add [flags]
+```
+
+- `--action` — rule policy: block, warn or off
+- `--id` — non-sensitive rule label
+- `--kind` — literal, cidr or regex
+- `--path` — relative path glob (repeatable)
+- `--replacement` — replacement text (default: redaction sentinel)
+- `--value-file` — private rule value file; - reads stdin
+
+### `dev hygiene rules allow`
+
+Plan a local exception for one exact finding with a reason
+
+```
+dev hygiene rules allow [flags]
+```
+
+- `--finding` — exact finding ID
+- `--reason` — non-sensitive justification
+- `--report` — scan report ID
+
+### `dev hygiene rules apply`
+
+Apply one reviewed private rule or policy plan
+
+```
+dev hygiene rules apply [flags]
+```
+
+- `--plan` — reviewed rule plan ID
+- `-y, --yes` — confirm the reviewed rule changes
+
+### `dev hygiene rules import`
+
+Preview local identity candidates or plan selected private rules
+
+```
+dev hygiene rules import [flags]
+```
+
+- `--from` — static source: ssh or local
+- `--select` — candidate ID to import (repeatable)
+
+### `dev hygiene rules policy`
+
+Plan local overrides selected with --secrets, --known and --generic
+
+```
+dev hygiene rules policy
+```
+
+### `dev hygiene scan`
+
+Scan index, working files or frozen local Git history
+
+```
+dev hygiene scan [flags]
+```
+
+- `--audit` — include findings suppressed by local exceptions, gitleaksignore and inline pragmas
+- `--file` — select an in-scope relative file (repeatable; not history)
+- `--range` — history only: full FROM..TO commit OIDs (no implicit fetch)
+- `--scope` — scan scope: staged, worktree or history
+- `--timeout` — maximum scan duration; incomplete scans fail
+
+### `dev hygiene setup`
+
+Preview or apply repository hygiene configuration and hook integration
+
+```
+dev hygiene setup [flags]
+```
+
+- `--apply` — apply the exact saved setup plan
+- `--migrate-rules` — preview replacement of existing gitleaks config with bundled safe rules
+- `--plan` — reviewed plan ID
+- `-y, --yes` — confirm the reviewed plan
+
+### `dev hygiene status`
+
+Inspect effective hooks and policy without executing them
+
+```
+dev hygiene status [flags]
+```
+
+- `--check-remote` — explicitly query GitHub visibility; never change policy automatically
+- `--remote` — remote to query with --check-remote
+
 ### `dev instructions`
 
 Share AGENTS.md and CLAUDE.md with guarded transfers
@@ -17937,6 +18701,12 @@ issue，`--publish --yes --revision <revision>` 表達對該確切內容／目�
 checkout/task。Optional `[feedback].source_repo` 指定絕對或 home-relative 的本機
 dev-cli 路徑。詳見 [feedback 與修復](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/feedback/)。
 
+## Repository hygiene
+
+`dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
+規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
+Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/)。
+
 ---
 
 ### 相容性與已知限制
@@ -18379,6 +19149,106 @@ Feedback 新增 schema-v1 draft、issue preview/result、repair plan/result JSON
 寫入前檢查 issue target/content revision 與 repair plan；發布結果 unknown 必須
 先查核。`feedback-fix` 要求已驗證的 HOT task/checkout，啟動時必須明確指定 agent
 profile。既有 start 預設與 JSON 不變。
+
+## Repository hygiene
+
+`dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
+規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
+Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/)。
+
+---
+
+### 人工 hygiene dogfood
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/hygiene-dogfood/
+
+> 人工 post-writer dogfood 與已發布 Git 歷史的獨立清理影響評估。
+
+先讓實作與活躍 writer 分開，最後再處理紀錄。另開沒有 SpecStory 的 agent，並不會
+停止原本的 SpecStory writer；不得為了讓清理通過而關閉其他 session。
+
+## 修改真實紀錄之前
+
+1. 建置 feature binary、執行 native hygiene 測試，以及
+   `python scripts/test-hygiene-hooks.py --dev <absolute-binary>`。後者使用隔離 HOME，
+   驗證真正的 pre-commit：假 key、hidden 檔案、同一行 placeholder、alternate index、
+   executable modes、Git config 不變，以及乾淨提交。
+2. 執行 `dev hygiene status`、preview setup 並確認有效 hook 鏈。測試 session 的
+   PATH 指向新 binary；不要手動覆寫套件管理器安裝的 binary。
+3. 預覽 `rules import --from ssh` 與 `--from local`，分清楚私密值、公開／常見名稱
+   後才選 ID。私人政策保留在 Git 外。
+4. 執行 worktree 與 history scan，保留範圍、排除項與缺口。候選須分類後才建立
+   有理由的精確例外；命中數量不是有效 credential 的數量。
+
+## 最後人工觸發
+
+確切 provider／wrapper 已退出並寫完 transcript 後，從外部終端執行。另開不記錄
+SpecStory 的 agent 需要另外的適用授權，也仍需確認原本的 writer 已停止。
+
+```bash
+dev hygiene scan --scope worktree --json
+dev hygiene redact --report <fresh-report-id> --file <reviewed-file> --json
+dev hygiene redact --apply --plan <plan-id> --yes --writer-stopped
+dev hygiene scan --scope worktree --json
+git diff --check
+# 檢視後只 stage 指定檔案，正常 hooks 保持啟用。
+```
+
+只選已檢視的 finding／檔案。可辨識的 live agent、來源／metadata 變動、plan 簽章
+不符仍會阻擋。中斷後保留 ledger 與 recovery receipts，不盲目重跑；恢復前也要
+檢視路徑。短暫 byte stability 不能替代 writer 已退出的證據。
+
+若變更 source/config，執行對應測試及 skill/docs checks。HEAD 修正以新 commit
+向前提交。還在寫入的 transcript 明確留為待處理，不反覆覆寫。
+
+## 規劃時的稽核證據
+
+機器已安裝 pre-commit、gitleaks 與 executable global hook，但 repo 缺少兩者設定，
+所以一般 commit 會跳過該 gate；artifact finalize 的手動掃描是另一條路徑。
+
+本機可達歷史的 gitleaks audit 有 416 個候選，其中 384 個來自較寬鬆的 password
+規則，21 個位於測試檔。不能解讀為 416 個已確認 live secrets。以本機 SSH literal
+比對目前檔案，找到六個已設定 IP、共 163 次出現；通用帳號／主機名則有大量非私密
+命中，需要選擇與分類。
+
+歷史約有 717 MB unique blob data，最大 transcript 約 70 MB。第一次三分鐘掃描
+超時；後續完成的是該 gitleaks 指令的 patch scope。新實作另測 merge-only 內容，
+並明確列出 unsupported／excluded 資料。
+
+詳細報告只留本機私人儲存。Raw report、私人字典、recovery images 與 credential
+原文都不進 Git／CI logs。
+
+## 實作 dogfood 結果
+
+新 setup 已加入三個 repo 設定檔並保留原本的全域 hook。本功能真正提交時的 gate
+完成 70 個 staged 檔案掃描，0 個阻擋、36 個通用隱私警告。合成 hook 測試也驗證
+阻擋時不會改 caller 的 Git config、index entries 或 executable modes。
+
+新 CLI 對本機全部可達歷史的稽核達到明確的 40 分鐘上限，保存 `partial` receipt，
+沒有證明歷史乾淨。CI range 驗證亦發現舊 transcript 含無效 UTF-8 或 NUL bytes；
+這些是明確缺口，不是成功略過。Range 已限縮為變更版本，全量稽核仍會保留歷史缺口。
+最後人工階段須分類候選，並處理或明確界定不支援的 artifacts，才能宣稱已涵蓋真實歷史。
+
+## 已發布歷史的獨立評估
+
+任何歷史變更前，先建立私人表格：每個確認項目的類型、HEAD 是否仍有、引入／包含
+的 commit、本機可達 branches/tags 及已知遠端副本。遠端資料需明確 fetch/query；
+不能僅靠本機 refs 宣称列完所有公開副本。
+
+| 選項 | 效果與殘留 |
+| --- | --- |
+| 向前修正 HEAD、加強預防 | 保留 commit/tag 身分；舊 objects、PR、clone、cache 仍可能有資料。 |
+| 撤銷／輪換 credential | 在 provider 使 credential 失效，不抹除舊 bytes；只記錄完成狀態，不公開值。 |
+| 協調式歷史清理評估 | 會改 commit 身分／簽章，影響 PR、clone，需要另外的發版及分發遷移方案。一般 redact/setup 不授權 rewrite。 |
+| Provider 協助移除 | 是否可行取決於 provider 與資料類型；不能從一次 force push 推定完成。 |
+
+Dev-cli 的 immutable release tags 是版本 authority，且下游還有 Go module、
+Homebrew/Scoop、已下載 archives。已發布 tag 不得移動或重用。提案前需盤點受影響
+版本與產物；新版本無法移除已被下載的副本。
+
+Git author 姓名／email、帶個資的檔名也列入評估；文字 redaction 不改 commit metadata
+或 rename 檔案。GitHub 的[敏感資料移除說明](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)
+說明 rotation-first，以及 force push、fork、PR reference、cache 的限制。
 
 ---
 

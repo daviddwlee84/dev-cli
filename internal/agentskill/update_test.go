@@ -143,7 +143,7 @@ func TestCheckUpdatesUsesRecordedHashWithoutMutatingInstall(t *testing.T) {
 	}
 }
 
-func TestFolderHashMatchesCheckedInUpstreamLocks(t *testing.T) {
+func TestFolderHashMatchesCheckedInLocks(t *testing.T) {
 	root := filepath.Join("..", "..")
 	document := readProjectLock(filepath.Join(root, "skills-lock.json"))
 	if len(document.Diagnostics) != 0 || len(document.Entries) == 0 {
@@ -155,7 +155,7 @@ func TestFolderHashMatchesCheckedInUpstreamLocks(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got != entry.ComputedHash {
-			t.Errorf("%s hash = %s, want upstream %s", name, got, entry.ComputedHash)
+			t.Errorf("%s hash = %s, want recorded %s", name, got, entry.ComputedHash)
 		}
 	}
 }

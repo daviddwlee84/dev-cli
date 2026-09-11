@@ -109,6 +109,23 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 			if completionInvocation(cmd) || staticContentInvocation(cmd) {
 				return nil
 			}
+			if hygieneInvocation(cmd) {
+				cfg, err := config.Load(app.configPath)
+				if err != nil {
+					return fmt.Errorf("dev configuration unavailable; repair it before loading hygiene policy")
+				}
+				app.Cfg = cfg
+				if app.In == nil {
+					app.In = os.Stdin
+				}
+				if app.Out == nil {
+					app.Out = os.Stdout
+				}
+				if app.Err == nil {
+					app.Err = os.Stderr
+				}
+				return nil
+			}
 			if feedbackInvocation(cmd) {
 				err := app.Load()
 				if err != nil && feedbackDraftInvocation(cmd) {
@@ -147,6 +164,7 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 	root.Flags().Bool("skill", false, "print the bundled agent skill and exit")
 
 	root.AddCommand(
+		newHygieneCmd(app),
 		newSubmoduleCmd(app),
 		newListCmd(app),
 		newTUICmd(app),

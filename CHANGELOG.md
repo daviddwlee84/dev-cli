@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.29] - 2026-09-12
+
+### Added
+
+- Repository hygiene status/setup, staged/worktree/frozen-history secret and
+  privacy scans, reviewed local SSH identity rules, precise exceptions and
+  signed text-redaction plans with private recovery on macOS/Linux/Windows.
+- A blocking pre-commit integration shared by repository bootstrap, public-rule
+  CI checks and a manual post-writer dogfood/history-impact workflow.
+
+### Fixed
+
+- Secret scan wrappers mask output and fail closed on scanner/report errors;
+  placeholders no longer allow an unrelated credential on the same line.
+
 ## [0.2.28] - 2026-09-11
 
 ### Added
@@ -962,7 +977,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.28...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.29...HEAD
+[0.2.29]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.28...v0.2.29
 [0.2.28]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.27...v0.2.28
 [0.2.27]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.26...v0.2.27
 [0.2.26]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.25...v0.2.26

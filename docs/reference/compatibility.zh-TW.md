@@ -443,3 +443,9 @@ Feedback 新增 schema-v1 draft、issue preview/result、repair plan/result JSON
 寫入前檢查 issue target/content revision 與 repair plan；發布結果 unknown 必須
 先查核。`feedback-fix` 要求已驗證的 HOT task/checkout，啟動時必須明確指定 agent
 profile。既有 start 預設與 JSON 不變。
+
+## Repository hygiene
+
+`dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
+規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
+Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](../guides/hygiene.zh-TW.md)。

@@ -15,9 +15,9 @@ as the "last line of defense" wrapper agents call before `git commit` so
 they can branch on structured exit codes.
 
 Options:
-  --redact           Pass --redact to gitleaks (default: off; findings
-                     print the literal secret for debugging).
-  --no-redact        Explicit opt-out of --redact (overrides --redact).
+  --redact           Use the legacy exit-10 result for masked findings.
+                     Output is always redacted; files are never changed.
+  --no-redact        Use the legacy exit-20 result; output remains redacted.
   --config PATH      Path to .gitleaks.toml (default: repo root if present).
   --verbose          Print gitleaks' own output to stderr.
   --help, -h         Show this help and exit.
@@ -83,9 +83,9 @@ trap 'rm -f "$report_path"' EXIT
 cmd=(gitleaks git --staged
      --report-format json
      --report-path "$report_path"
-     --exit-code 0)
+     --exit-code 0 --redact=100)
 [ -n "$CONFIG" ] && cmd+=(--config "$CONFIG")
-[ "$REDACT" = "1" ] && cmd+=(--redact)
+
 
 # Capture gitleaks' own exit code — with `--exit-code 0` it returns 0
 # whether leaks are found or not, so a non-zero exit means the tool itself
@@ -95,14 +95,14 @@ trap 'rm -f "$report_path" "$stderr_capture"' EXIT
 
 gl_rc=0
 if [ "$VERBOSE" = "1" ]; then
-  "${cmd[@]}" >&2 2>>"$stderr_capture" || gl_rc=$?
+  "${cmd[@]}" >/dev/null 2>"$stderr_capture" || gl_rc=$?
 else
   "${cmd[@]}" >/dev/null 2>"$stderr_capture" || gl_rc=$?
 fi
 
 if [ "$gl_rc" -ne 0 ]; then
   log "gitleaks failed to run (exit $gl_rc). Tail of its stderr:"
-  tail -n 20 "$stderr_capture" >&2 || true
+  log "Scanner diagnostics are withheld because they may contain private input."
   exit 40
 fi
 
@@ -120,17 +120,15 @@ try:
     with open(sys.argv[1], encoding="utf-8") as f:
         data = json.load(f)
 except (json.JSONDecodeError, OSError):
-    print(0)
-    sys.exit(0)
-print(len(data) if isinstance(data, list) else 0)
+    sys.exit(40)
+if not isinstance(data, list):
+    sys.exit(40)
+print(len(data))
 PY
 )
 else
-  # Fallback: grep for a non-empty array. `[]` → 0, anything else → non-zero.
-  case "$(tr -d '[:space:]' < "$report_path")" in
-    ""|"[]") finding_count=0 ;;
-    *)        finding_count=1 ;;
-  esac
+  log "python3 is required to validate and sanitize scanner output"
+  exit 40
 fi
 
 if [ "$finding_count" -eq 0 ]; then
@@ -152,17 +150,17 @@ for finding in data:
         "file": finding.get("File"),
         "line": finding.get("StartLine"),
         "commit": finding.get("Commit") or "STAGED",
-        "match": finding.get("Match"),
+        "fingerprint": finding.get("Fingerprint"),
     }
     print(json.dumps(slim, ensure_ascii=False))
 PY
 else
-  # Fallback: dump the raw array.
-  cat "$report_path"
+  log "python3 is required for safe scanner output"
+  exit 40
 fi
 
 if [ "$REDACT" = "1" ]; then
-  log "gitleaks found leaks AND --redact was passed."
+  log "gitleaks found candidate leaks; output is masked."
   log "  NOTE: gitleaks --redact only masks the CLI output, it does NOT"
   log "        rewrite files. Use redact_secrets.py --fix (or the pre-commit"
   log "        redact-agent-secrets hook) to actually scrub the artifacts."

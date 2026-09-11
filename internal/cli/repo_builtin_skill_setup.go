@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/hygiene"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/scaffold"
 )
@@ -35,37 +35,22 @@ func runBuiltinRepoSkillSetup(ctx context.Context, app *App, root, setup string,
 }
 
 func bootstrapAgentHistoryHygiene(ctx context.Context, app *App, root string) error {
-	if err := writeBuiltinSetupFiles(root, map[string]string{
-		".pre-commit-config.yaml": agentHistoryPreCommit,
-		".gitleaks.toml":          agentHistoryGitleaks,
-	}); err != nil {
+	service, err := hygiene.Open(ctx, hygiene.Options{Root: root, StateDir: app.Cfg.StateDir(), GlobalPolicy: filepath.Join(config.ConfigHome(), "dev", "hygiene.toml")})
+	if err != nil {
 		return err
 	}
-	if err := ensureSpecStoryLocalGitignore(root); err != nil {
+	plan, err := service.PreviewSetup(ctx, false)
+	if err != nil {
 		return err
 	}
-	if hooksPath, err := gitx.Run(ctx, root, "config", "--get", "core.hooksPath"); err == nil && strings.TrimSpace(hooksPath) != "" {
-		fmt.Fprintf(app.Out, "core.hooksPath is set to %s; skipped per-repository pre-commit install\n", hooksPath)
-		return nil
+	result, err := service.Apply(ctx, plan.ID, hygiene.ApplyOptions{})
+	if err != nil {
+		return err
 	}
-	command := "pre-commit"
-	args := []string{"install"}
-	if _, err := exec.LookPath(command); err != nil {
-		command = "uvx"
-		args = []string{"pre-commit@4", "install"}
-		if _, uvxErr := exec.LookPath(command); uvxErr != nil {
-			return errors.New("agent-history-hygiene requires pre-commit or uvx to install the Git hook")
-		}
+	if err = ensureSpecStoryLocalGitignore(root); err != nil {
+		return err
 	}
-	process := exec.CommandContext(ctx, command, args...)
-	process.Dir = root
-	process.Stdin, process.Stdout, process.Stderr = app.In, app.Out, app.Err
-	if err := process.Run(); err != nil {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		return fmt.Errorf("install pre-commit hook: %w", err)
-	}
+	fmt.Fprintf(app.Out, "Repository hygiene %s; hook action %s. Run dev hygiene status to inspect coverage.\n", result.Status, result.HookAction)
 	return nil
 }
 

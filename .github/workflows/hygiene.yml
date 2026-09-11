@@ -1,0 +1,69 @@
+name: Repository hygiene
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pinned scanner and hook runner
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@v8.30.0
+          python -m pip install pre-commit==4.6.0
+      - name: Verify native privacy storage and text transactions
+        run: go test ./internal/hygiene ./internal/configedit ./internal/privatefile ./internal/safefile
+      - name: Build CLI for real hook verification
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/hygiene-bin"
+          go build -o "$RUNNER_TEMP/hygiene-bin/dev${{ runner.os == 'Windows' && '.exe' || '' }}" ./cmd/dev
+      - name: Verify real commit hook
+        shell: bash
+        run: python scripts/test-hygiene-hooks.py --dev "$RUNNER_TEMP/hygiene-bin/dev${{ runner.os == 'Windows' && '.exe' || '' }}"
+      - name: Verify CLI contracts
+        run: go test ./internal/cli -run '^TestHygiene'
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Build scanner
+        run: |
+          go install github.com/zricethezav/gitleaks/v8@v8.30.0
+          go build -o /tmp/dev-hygiene ./cmd/dev
+      - name: Scan public rules over the selected history
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          python3 - <<'PY'
+          import os, re, subprocess
+          args = ['/tmp/dev-hygiene', 'hygiene', '--public-only', '--known', 'off', '--generic', 'off', 'scan', '--scope', 'history', '--timeout', '40m']
+          base = os.environ.get('BASE_SHA', '')
+          if os.environ.get('EVENT_NAME') != 'workflow_dispatch' and re.fullmatch(r'[0-9a-f]{40}', base) and set(base) != {'0'}:
+              head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()
+              args += ['--range', base + '..' + head]
+          print('CI checks public secret rules; personal SSH rules are not available.')
+          raise SystemExit(subprocess.run(args).returncode)
+          PY
