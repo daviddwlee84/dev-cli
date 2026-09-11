@@ -13,6 +13,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/feedback"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/promptkit"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
 
@@ -84,8 +85,14 @@ func TestFeedbackCLIRepairPreservesDirtySourceAndPinsBase(t *testing.T) {
 		t.Fatal("repair ran an SSH/provider command")
 	}
 	out, _, err = f.run("prompt", "render", "feedback-fix", id)
-	if err != nil || !strings.Contains(out, result.Binding.Snapshot.Checkout) || !strings.Contains(out, "private local context") {
+	if err != nil || !strings.Contains(out, "private local context") {
 		t.Fatal(err, out)
+	}
+	_, contextJSON, found := strings.Cut(out, "```json\n")
+	contextJSON, _, _ = strings.Cut(contextJSON, "\n```")
+	var envelope promptkit.Envelope
+	if !found || json.Unmarshal([]byte(contextJSON), &envelope) != nil || envelope.Target == nil || envelope.Target.WorkingDirectory != result.Binding.Snapshot.Checkout {
+		t.Fatal("rendered prompt lost the exact checkout binding")
 	}
 	if _, _, err = f.run("prompt", "open", "feedback-fix", id, "--dry-run"); err == nil || !strings.Contains(err.Error(), "explicit --agent") {
 		t.Fatal("agent profile was selected implicitly", err)
