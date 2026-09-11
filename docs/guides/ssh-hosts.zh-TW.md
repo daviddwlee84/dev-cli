@@ -2,7 +2,7 @@
 description: 探索 OpenSSH alias、只管理 dev-owned host fragment、佈建 public-key access，並將驗證成功的 host 明確登記到 dev fleet。
 authority: project
 status: stable
-verified_on: 2026-09-09
+verified_on: 2026-09-11
 lang: zh-TW
 ---
 
@@ -306,3 +306,46 @@ macOS／Linux backend；Herdr 原生 CLI 與一般 editor 不受 dev 合作式�
 只有明確的 format／organize／manage 操作擴充使用者選定內容的修改範圍；
 一般 setup／remove 維持原本 ownership 規則。key vault 匯入與硬體 key
 provisioning 留待獨立後續工作，主機註冊不傳遞私鑰內容。
+
+## 分層連線診斷 {#ssh-diagnosis}
+
+```bash
+dev ssh diagnose lab
+dev ssh diagnose 192.0.2.30 --json
+dev ssh diagnose lab --compare-qos --timeout 60s
+```
+
+TCP 能連線但 SSH 失敗，或普通 probe 無法解釋問題時，使用明確的診斷指令。
+診斷接受 alias、hostname、IPv4／IPv6 literal，不要求有唯一可選的 Host 宣告；
+裸 `dev ssh` 選單也提供入口。既有 `probe` 行為及 JSON 不變。
+
+報告區分 effective config、DNS、route/interface、TCP、SSH banner、handshake、
+host identity、authentication 與 remote exit。原生路由 collector 使用 macOS
+`route -n get`、Linux `ip -j route get`，以及固定非互動 PowerShell 程式中的
+Windows `Find-NetRoute`。不提升權限、安裝工具、修理網路／設定、更新 known_hosts
+或匯入 host key。OpenSSH 評估設定及連線時仍可能執行使用者設定的 Match exec、
+proxy 與 key helper。找到路由不等於 VPN 正常。
+
+總期限預設 60 秒。設定與 DNS 各最多 5 秒，路由共 10 秒，TCP 共 5 秒，banner
+最多 3 秒，每次 SSH 最多 15 秒；最多觀察四個解析位址。總期限優先，取消時保留
+已完成階段。缺少工具、不支援的 scope／bind、無法辨識或截斷的證據保持
+unknown／unsupported。Proxy 路徑跳過直接的本機 DNS／route／TCP／banner，避免
+繞過設定的代理後作出錯誤比較。
+
+診斷使用 fresh connection、BatchMode、strict host-key checking，不更新 host key、
+不 forwarding、不執行 LocalCommand，遠端命令固定為 `exit 0`。Host key 拒絕與
+認證失敗分開；TCP 或 banner 成功不代表登入成功。已認證但遠端命令失敗，列為
+session failure。因此相較於設定成接受新 key 的普通 SSH，診斷可能在較嚴格的
+host-key 邊界停止。
+
+`--compare-qos` 明確允許 transport timeout 後的一次 `IPQoS=none` fresh 對照。
+必須有 client marking 證據、未變的有效設定與路由觀察、相同 endpoint。Windows
+stock OpenSSH 可能接受選項卻沒有 marking 能力，此時顯示無法比較。結果改善只能
+說明相關性，不能歸因於某個 VPN 供應商，也不能證明線上 DSCP 為零。不修改全域
+QoS，也不執行 raw DSCP socket probe。
+
+JSON 使用 `schema_version: 1`、`kind: ssh_diagnosis`、`privacy: local`，包含本機
+選定的 endpoint／user／identity path、階段原因碼、有限路由觀察、attempts 與
+next-action codes。原始 debug log、server banner、config comments、proxy command
+不輸出。不要直接公開此 JSON；feedback 使用獨立的白名單公開投影。操作失敗仍
+輸出一份完整 JSON，並傳回非零 exit status。

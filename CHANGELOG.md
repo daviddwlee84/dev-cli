@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Explicit `dev ssh diagnose` with bounded configuration, DNS, native macOS/Linux/Windows
+  route, TCP/banner and fresh strict SSH stages; optional evidenced QoS comparison,
+  partial JSON results and a separate allowlisted public evidence projection.
+
 ## [0.2.25] - 2026-09-11
 
 ### Fixed

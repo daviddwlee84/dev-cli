@@ -4,7 +4,7 @@ Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
 
 ## Active
 
-### P2 · L — Layered SSH connection diagnostics
+### P2 · L — Layered SSH connection diagnostics (release validation)
 Extend ordinary SSH probing with explicit, bounded diagnosis of effective
 configuration, DNS, routing, TCP, SSH handshake, host identity and authentication.
 Keep observations separate from inferred causes, including VPN/DSCP failures

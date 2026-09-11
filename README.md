@@ -1711,3 +1711,10 @@ from installed `node_modules`. Lock-only/gitignored skill trees remain visible.
 See [Skills management](docs/guides/skills-management.md) for exact scope and
 native restoration semantics. `dev skill install`/`sync` still manage the bundled
 skill. Check evidence is dated and invalidated by lock changes.
+
+### SSH connection diagnosis
+
+Use `dev ssh diagnose <alias-or-host>` for bounded configuration, DNS, native
+route, TCP, banner, host-key and authentication stages. `--compare-qos` opts into
+a comparable fresh QoS test; `--json` is a local report containing endpoint data.
+See [SSH diagnosis](docs/guides/ssh-hosts.md#ssh-diagnosis).

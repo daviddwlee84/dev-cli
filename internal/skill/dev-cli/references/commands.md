@@ -1595,6 +1595,18 @@ Manage SSH hosts, fleet registrations, and Herdr machines
 dev ssh
 ```
 
+### `dev ssh diagnose`
+
+Diagnose SSH configuration, routing, transport and authentication
+
+```
+dev ssh diagnose <target> [flags]
+```
+
+- `--compare-qos` — allow one comparable fresh SSH attempt with IPQoS=none
+- `--json` — emit one versioned local diagnosis, including partial failures
+- `--timeout` — total diagnostic deadline
+
 ### `dev ssh format`
 
 Preview or apply SSH indentation changes with recovery

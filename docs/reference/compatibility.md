@@ -447,3 +447,9 @@ release nudges/checks and stale Windows upgrade-binary cleanup. Cobra `--help`
 and `--version` also remain static. Ordinary commands, including `--skill=false`,
 retain startup maintenance; invalid arguments, flags and color values retain
 their errors on the document commands.
+
+## SSH diagnostic contract
+
+`ssh_diagnosis` is a new schema-v1 local report; existing probe/show/list JSON is
+unchanged. Native route collectors ship for macOS, Linux and Windows. Unsupported
+QoS marking or opaque proxy/bind paths remain explicit unknown/unsupported states.

@@ -258,3 +258,53 @@ These explicit format/organize/management operations are the only exceptions to
 setup/remove's narrow ownership rules. Normal setup never rewrites foreign SSH
 connection definitions. Key vault import and hardware-key provisioning are
 separate future work; private key bytes are not part of machine registration.
+
+## Layered connection diagnosis
+
+```bash
+dev ssh diagnose lab
+dev ssh diagnose 192.0.2.30 --json
+dev ssh diagnose lab --compare-qos --timeout 60s
+```
+
+Use explicit diagnosis when TCP connectivity and SSH behavior disagree, or when
+an ordinary probe cannot explain a failure. Unlike `probe`, this accepts an alias,
+hostname or IPv4/IPv6 literal without requiring a uniquely discovered Host block.
+The menu also offers diagnosis. Existing `probe` behavior and JSON are unchanged.
+
+The report separates effective config, DNS, route/interface, TCP, SSH banner,
+handshake, host identity, authentication and remote exit. Native route collectors
+use macOS `route -n get`, Linux `ip -j route get`, and Windows `Find-NetRoute` through
+a fixed noninteractive PowerShell program. No elevation, tool installation,
+network/configuration repair, known_hosts update or host-key import is performed.
+`ssh -G` and the configured connection can still execute user-authored Match exec,
+proxy and key helpers. A route observation is not proof of a working VPN.
+
+The total deadline defaults to 60 seconds. Configuration and DNS have 5-second
+caps, route observations share 10 seconds, TCP shares 5 seconds, banner reading
+has 3 seconds, and each SSH attempt has 15 seconds. Up to four resolved addresses
+are observed. The total deadline always wins; cancellation preserves completed
+stages. Missing tools, unavailable scope/binding support, and unrecognized or
+truncated evidence stay unknown/unsupported. Proxied targets skip direct local
+DNS/route/TCP/banner tests rather than bypassing the configured proxy.
+
+Diagnostic SSH uses a fresh connection, BatchMode, strict host-key checking,
+no host-key updates, no forwarding or local command, and a fixed remote `exit 0`.
+A host-key rejection is distinct from authentication denial; successful
+TCP/banner checks alone do not prove login. An authenticated connection with a
+failed remote exit is a session failure. The diagnosis may therefore stop at a
+stricter host-key boundary than an ordinary login configured to accept new keys.
+
+`--compare-qos` allows one fresh `IPQoS=none` comparison after a transport timeout.
+It requires positive client marking evidence, unchanged effective configuration
+and observed route, and matching endpoints. Stock Windows OpenSSH may accept the
+option while providing no marking capability; the report marks that comparison
+unavailable. A changed result is correlation, not attribution to a VPN vendor or
+proof of zero DSCP on the wire. No global QoS change or raw DSCP socket probe occurs.
+
+JSON uses `schema_version: 1`, `kind: ssh_diagnosis`, and `privacy: local`.
+It contains the selected endpoint/user/identity paths, ordered stage codes,
+bounded route observations, attempts and next-action codes, but never raw debug
+logs, server banners, config comments or proxy command strings. Do not publish
+this local JSON directly. Feedback uses a separate allowlisted public projection.
+Operational failure still emits one JSON document and a nonzero exit status.

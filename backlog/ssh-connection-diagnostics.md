@@ -1,6 +1,6 @@
 # Layered SSH connection diagnostics
 
-**Status**: P2; research captured, not implemented.
+**Status**: implemented; release validation in progress.
 **Effort**: L
 **Related**: [TODO](../TODO.md), [SSH key providers](ssh-key-provider-helpers.md),
 [TCP succeeds while SSH times out](../pitfalls/ssh-times-out-but-tcp-connects.md).
