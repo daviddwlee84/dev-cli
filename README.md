@@ -1718,3 +1718,12 @@ Use `dev ssh diagnose <alias-or-host>` for bounded configuration, DNS, native
 route, TCP, banner, host-key and authentication stages. `--compare-qos` opts into
 a comparable fresh QoS test; `--json` is a local report containing endpoint data.
 See [SSH diagnosis](docs/guides/ssh-hosts.md#ssh-diagnosis).
+
+### Feedback and isolated repair
+
+`dev feedback` collects a local report; agents can use `feedback draft`,
+`feedback issue` and plan-first `feedback repair --base <ref>`. Reviewed GitHub
+publication is optional. Repair prepares a retained isolated worktree/task and
+can render `dev prompt render feedback-fix <id>` for the current agent; another
+agent requires an explicit profile and user consent. See the
+[feedback guide](docs/guides/feedback.md).

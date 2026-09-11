@@ -18,6 +18,7 @@ import (
 const SchemaVersion = 1
 
 const (
+	RecipeFeedbackFix       = "feedback-fix"
 	RecipePRTriage          = "pr-triage"
 	RecipeSessionClose      = "session-close"
 	RecipeWorkspaceCloseout = "workspace-closeout"
@@ -37,6 +38,7 @@ type Recipe struct {
 }
 
 var builtins = []Recipe{
+	{Name: RecipeFeedbackFix, Summary: "Repair a reported dev issue in its verified isolated checkout", Scope: "feedback", TargetUsage: "<report-id>", ContextVersion: 1, TemplatePath: "templates/feedback-fix.md"},
 	{
 		Name: RecipePRTriage, Summary: "Prioritize pull requests you opened or were asked to review",
 		Scope: "account", ContextVersion: 1, TemplatePath: "templates/pr-triage.md",

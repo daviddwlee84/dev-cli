@@ -423,7 +423,7 @@ separately. CLI flags and existing JSON contracts are unchanged.
 ## Contextual Help and compact skill entry (v0.2.24)
 
 Dashboard Help starts with Keys for the current view, followed by Guide and
-Manual. View scope applies to TUI search; Manual searches all 23 embedded CLI
+Manual. View scope applies to TUI search; Manual searches all embedded CLI
 topics. Selected-row explanations are frozen at Help opening and cannot refresh
 or authorize an action. Help starts no external loads or probes. The dashboard,
 flow and triage remain independent interfaces.
@@ -453,3 +453,12 @@ their errors on the document commands.
 `ssh_diagnosis` is a new schema-v1 local report; existing probe/show/list JSON is
 unchanged. Native route collectors ship for macOS, Linux and Windows. Unsupported
 QoS marking or opaque proxy/bind paths remain explicit unknown/unsupported states.
+
+## Feedback and repair contracts
+
+Feedback adds schema-v1 draft, issue-preview/result and repair-plan/result JSON.
+Reports and issue receipts are durable private state, with a separate public
+projection for SSH evidence. Issue target/content revisions and repair plans
+are checked before mutation; unknown publication outcomes require reconciliation.
+The `feedback-fix` recipe requires a verified HOT task/checkout and an explicit
+agent profile for launch. Existing start defaults and JSON are unchanged.

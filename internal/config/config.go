@@ -15,10 +15,15 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 )
 
-// Config is the whole of dev's configuration. Zero values are never used
-// directly — Default() supplies the baseline and Load() overlays the user's
-// config.toml on top of it.
+// Feedback configures an optional verified local source for repair workflows.
+type Feedback struct {
+	SourceRepo string `toml:"source_repo"`
+}
+
+// Config is the whole dev configuration. Default supplies the baseline; Load
+// overlays the user configuration.
 type Config struct {
+	Feedback   Feedback   `toml:"feedback"`
 	Paths      Paths      `toml:"paths"`
 	Runtime    Runtime    `toml:"runtime"`
 	Worktree   Worktree   `toml:"worktree"`
@@ -444,6 +449,18 @@ func Load(path string) (Config, error) {
 // Validate catches the settings that would otherwise fail deep inside a
 // worktree create, when a directory has already been made.
 func (c Config) Validate() error {
+	if c.Feedback.SourceRepo != "" {
+		source := os.ExpandEnv(c.Feedback.SourceRepo)
+		switch {
+		case source == "~":
+			source = home()
+		case strings.HasPrefix(source, "~/"):
+			source = filepath.Join(home(), source[2:])
+		}
+		if !filepath.IsAbs(source) || strings.ContainsAny(source, "\x00\r\n") {
+			return errors.New("feedback.source_repo must expand to an absolute local path")
+		}
+	}
 	if err := c.Submodules.Validate(); err != nil {
 		return err
 	}

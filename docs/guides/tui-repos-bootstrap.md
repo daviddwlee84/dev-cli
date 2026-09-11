@@ -75,7 +75,7 @@ dashboard view, keeping that view's TL;DR at the top. It has three tabs:
 |---|---|
 | Keys | This view's actions, common navigation and configured tools, including availability and conditions |
 | Guide | Workflow, columns, colors and symbols; a read-only selected-row snapshot captured when Help opened |
-| Manual | All 23 embedded `dev help` topics, with related topics first, plus the shared workflow TL;DR |
+| Manual | All embedded `dev help` topics, with related topics first, plus the shared workflow TL;DR |
 
 Keys and Guide share a search over their entries, with shortcut matches before
 guide matches. Search is limited to the selected help view; choose **All views**

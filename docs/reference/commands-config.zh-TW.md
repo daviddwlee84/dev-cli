@@ -51,7 +51,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 `dev --help` 列出指令；精確語法與 flags 查相關 leaf command 的 `--help`，
 使用流程查 `dev help <topic>`。Dashboard 按 `?` 或點 footer 的 **Help**
 開啟目前分頁的 **Keys**、**Guide**、**Manual**；Manual 與 CLI help 共用
-23 個內嵌主題及 workflow TL;DR。詳見
+內嵌主題及 workflow TL;DR。詳見
 [目前分頁的 Help](../guides/tui-repos-bootstrap.zh-TW.md)。
 
 Bundled skill 的短入口只放核心用途、必要邊界與進階 reference 的條件連結。
@@ -747,3 +747,11 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 
 `dev ssh diagnose <target> [--compare-qos] [--timeout 60s] [--json]` 執行明確且
 有期限的網路觀察。階段、平台與本機輸出隱私請見 [SSH 診斷](../guides/ssh-hosts.zh-TW.md#ssh-diagnosis)。
+
+## Feedback 報告與修復來源
+
+`dev feedback draft` 保存本機報告；`issue <id>` 預覽公開內容，`--search` 查詢相關
+issue，`--publish --yes --revision <revision>` 表達對該確切內容／目標的既有授權。
+`repair <id> --base <ref>` 保存 guarded plan；`--apply --plan <id> --yes` 準備隔離
+checkout/task。Optional `[feedback].source_repo` 指定絕對或 home-relative 的本機
+dev-cli 路徑。詳見 [feedback 與修復](../guides/feedback.zh-TW.md)。

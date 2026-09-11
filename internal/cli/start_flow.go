@@ -36,6 +36,7 @@ type startRequest struct {
 	NextExplicit   bool
 
 	NoProvision bool
+	NoRuntime   bool
 	Focus       bool
 }
 
@@ -53,16 +54,20 @@ type startSpec struct {
 	Run               string
 	Mode              task.CheckoutMode
 
-	WorktreePath string
-	NoProvision  bool
-	Focus        bool
+	WorktreePath   string
+	BaseOID        string
+	RequireNewTask bool
+	NoRuntime      bool
+	NoProvision    bool
+	Focus          bool
 }
 
 type startResult struct {
-	Task     *task.Task
-	Runtime  runtime.Runtime
-	Opened   runtime.OpenResult
-	Worktree *wt.CreateResult
+	TaskSaved bool
+	Task      *task.Task
+	Runtime   runtime.Runtime
+	Opened    runtime.OpenResult
+	Worktree  *wt.CreateResult
 }
 
 func resolveStartRepository(ctx context.Context, app *App, ref string) (repo.Repo, error) {
@@ -165,7 +170,7 @@ func buildStartSpecForRepository(ctx context.Context, app *App, r repo.Repo, req
 		Submodules: req.Submodules, DevelopSubmodules: req.DevelopSubmodules, SubmoduleBases: req.SubmoduleBases,
 		RepoPath: r.Path, RepoName: r.Name, Category: r.Category,
 		Name: name, Branch: branch, Base: base, Next: req.Next, Run: req.Run, Mode: mode,
-		NoProvision: req.NoProvision, Focus: req.Focus,
+		NoProvision: req.NoProvision, NoRuntime: req.NoRuntime, Focus: req.Focus,
 	}
 	if mode != task.ModeWorktree && len(req.DevelopSubmodules) > 0 {
 		return nil, errors.New("--submodule requires worktree mode")
@@ -244,6 +249,9 @@ func executeStartSpecLocked(ctx context.Context, app *App, spec *startSpec, log 
 	if err != nil {
 		return nil, err
 	}
+	if spec.RequireNewTask && existing != nil {
+		return nil, errors.New("new task identity is already occupied")
+	}
 	switch {
 	case existing != nil && existing.State != task.Done:
 		return nil, fmt.Errorf("task %s already exists (state %s) — use `dev resume %s`",
@@ -257,7 +265,10 @@ func executeStartSpecLocked(ctx context.Context, app *App, spec *startSpec, log 
 		Branch: spec.Branch, Base: spec.Base, Mode: spec.Mode,
 		State: task.Hot, Owner: config.Hostname(), Next: spec.Next,
 	}
-	rt := app.Runtime()
+	var rt runtime.Runtime = runtime.None{}
+	if !spec.NoRuntime {
+		rt = app.Runtime()
+	}
 	label := worktreeRuntimeLabel(spec.RepoName, spec.Branch)
 	if spec.Mode == task.ModeDirect {
 		label = spec.RepoName + "/" + spec.Name
@@ -295,30 +306,41 @@ func executeStartSpecLocked(ctx context.Context, app *App, spec *startSpec, log 
 		}
 
 	case task.ModeWorktree:
+		base := spec.Base
+		if spec.BaseOID != "" {
+			base = spec.BaseOID
+		}
 		m := &wt.Manager{Cfg: app.Cfg, Runtime: rt, Log: log}
 		created, err := m.Create(ctx, wt.CreateRequest{
 			LockHeld:   true,
 			Submodules: spec.Submodules, DevelopSubmodules: spec.DevelopSubmodules, SubmoduleBases: spec.SubmoduleBases, TaskStart: true,
 			RepoPath: spec.RepoPath, RepoName: spec.RepoName,
-			Branch: spec.Branch, Base: spec.Base, Category: spec.Category,
+			Branch: spec.Branch, Base: base, Category: spec.Category,
 			Path: spec.WorktreePath, Label: label,
-			NoProvision: spec.NoProvision, Focus: spec.Focus,
+			NoProvision: spec.NoProvision, NoRuntime: spec.NoRuntime, Focus: spec.Focus,
 		})
-		if err != nil {
-			return nil, err
+		if created != nil {
+			t.WorktreePath, result.Opened, result.Worktree = created.Path, created.Runtime, created
 		}
-		t.WorktreePath, result.Opened, result.Worktree = created.Path, created.Runtime, created
+		if err != nil {
+			return result, err
+		}
 	}
 
 	setTaskRuntime(t, rt, result.Opened)
-	if replaceDoneRevision != "" {
+	if spec.RequireNewTask {
+		_, err = app.Tasks.Create(ctx, t)
+	} else if replaceDoneRevision != "" {
 		err = app.Tasks.ReplaceDone(t, replaceDoneRevision)
 	} else {
 		err = app.Tasks.Save(t)
 	}
 	if err != nil {
-		return nil, err
+		return result, err
 	}
-	annotate(app, rt, t)
+	result.TaskSaved = true
+	if !spec.NoRuntime {
+		annotate(app, rt, t)
+	}
 	return result, nil
 }

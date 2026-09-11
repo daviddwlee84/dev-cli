@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: Use dev for repository discovery and setup, task and worktree lifecycle, agent handoffs, SSH hosts, fleet operations, repository notes, and skills or MCP inventory. Consult it when choosing or coordinating these workflows.
+description: Use when coordinating repository setup, task and worktree lifecycle, agent handoffs, SSH hosts, fleet operations, notes, skill or MCP inventory, or feedback for unexpected dev failures.
 ---
 
 # dev-cli
@@ -44,3 +44,9 @@ Load only the guide needed for the requested operation:
 
 For ordinary listing, opening, notes, dashboard navigation, and configuration,
 use command help and its suggested workflow topic.
+
+## Unexpected dev failures
+
+Read [feedback and repair](references/feedback-and-repair.md). Preserve the
+original task; extra investigation, repair, subagents and publication need
+explicit consent covering scope and cost.

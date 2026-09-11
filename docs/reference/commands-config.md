@@ -48,7 +48,7 @@ Run `dev <command> --help` for the installed binary; this site describes the rep
 `dev --help` lists commands. Use the relevant leaf command's `--help` for syntax
 and flags, and `dev help <topic>` for workflow explanations. Dashboard `?` or the
 clickable **Help** footer opens contextual **Keys**, **Guide** and **Manual**;
-Manual uses the same 23 embedded topics and workflow TL;DR as CLI help.
+Manual uses the same embedded topics and workflow TL;DR as CLI help.
 See [contextual Help](../guides/tui-repos-bootstrap.md#contextual-help-v0224).
 
 The bundled skill has a small entry covering core purpose, essential boundaries
@@ -846,3 +846,12 @@ separately. CLI flags and existing JSON contracts are unchanged.
 `dev ssh diagnose <target> [--compare-qos] [--timeout 60s] [--json]` performs
 explicit bounded network observations. See [SSH diagnosis](../guides/ssh-hosts.md#ssh-diagnosis)
 for stage meanings, platform collectors and local-output privacy.
+
+## Feedback reports and repair sources
+
+`dev feedback draft` saves a local report; `issue <id>` previews its public body,
+`--search` queries related issues and `--publish --yes --revision <revision>`
+expresses prior authorization for the exact content/target. `repair <id> --base
+<ref>` saves a guarded plan; `--apply --plan <id> --yes` prepares its isolated
+checkout/task. Optional `[feedback].source_repo` is an absolute or home-relative
+local dev-cli path. See [feedback and repair](../guides/feedback.md).

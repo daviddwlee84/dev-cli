@@ -10,6 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- Durable local feedback drafts, reviewed optional GitHub issue/comment publication
+  with unknown-outcome reconciliation, and guarded isolated repair workspaces.
+- Agent-first feedback guidance and a verified `feedback-fix` prompt recipe;
+  additional agents require explicit profiles and consent, while report preparation
+  remains useful without GitHub access or a working dev configuration.
+
 - Explicit `dev ssh diagnose` with bounded configuration, DNS, native macOS/Linux/Windows
   route, TCP/banner and fresh strict SSH stages; optional evidenced QoS comparison,
   partial JSON results and a separate allowlisted public evidence projection.

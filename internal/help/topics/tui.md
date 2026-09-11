@@ -63,7 +63,7 @@ tools. Guide explains that view's workflow, columns, colors and symbols. Its
 selected-row section is captured when Help opens, retaining source and unknown,
 loading or cached state; it is not a new observation or permission to act.
 
-Manual contains all 23 embedded dev help topics, related topics first, and the
+Manual contains all embedded dev help topics, related topics first, and the
 shared workflow TL;DR. Search covers names, titles, headings and body text; open
 a result at its matching passage. Paragraphs wrap, while code, ASCII diagrams
 and tables preserve structure and support horizontal scrolling.
