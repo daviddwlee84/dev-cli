@@ -4,6 +4,19 @@ Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
 
 ## Active
 
+### P2 · L — Layered SSH connection diagnostics
+Extend ordinary SSH probing with explicit, bounded diagnosis of effective
+configuration, DNS, routing, TCP, SSH handshake, host identity and authentication.
+Keep observations separate from inferred causes, including VPN/DSCP failures
+where TCP connects but default SSH times out.
+See [SSH diagnostic research](backlog/ssh-connection-diagnostics.md).
+
+### P3 · L — User feedback and contribution workflow
+Add CLI and bundled-skill workflows for preparing sanitized issue reports and
+tested fixes, with optional gh publication and verified local-repo reuse or a
+retained Try clone. Preserve existing work and require scoped publication intent.
+See [feedback and contribution research](backlog/user-feedback-and-contribution-workflow.md).
+
 ### P3 · L — SSH key provider helpers
 Evaluate an explicit handoff to the existing Bitwarden SSH agent/import helper,
 and separate YubiKey FIDO2, PIV and OpenPGP workflows. Keep private key material
