@@ -284,18 +284,45 @@ func sameDescriptor(a, b *windows.SECURITY_DESCRIPTOR) bool {
 	}
 	aa, _, ae := a.DACL()
 	ba, _, be := b.DACL()
-	if ae != nil || be != nil || aa == nil || ba == nil || aa.AceCount != ba.AceCount {
+	if ae != nil || be != nil || aa == nil || ba == nil {
 		return false
 	}
-	for i := uint16(0); i < aa.AceCount; i++ {
-		var x, y *windows.ACCESS_ALLOWED_ACE
-		if windows.GetAce(aa, uint32(i), &x) != nil || windows.GetAce(ba, uint32(i), &y) != nil {
-			return false
-		}
-		if x.Header != y.Header || x.Mask != y.Mask || !(*windows.SID)(unsafe.Pointer(&x.SidStart)).Equals((*windows.SID)(unsafe.Pointer(&y.SidStart))) {
+	expected := make([]*windows.ACCESS_ALLOWED_ACE, ba.AceCount)
+	for i := range expected {
+		if windows.GetAce(ba, uint32(i), &expected[i]) != nil {
 			return false
 		}
 	}
+	cursor := 0
+	for i := uint16(0); i < aa.AceCount; i++ {
+		var actual *windows.ACCESS_ALLOWED_ACE
+		if windows.GetAce(aa, uint32(i), &actual) != nil {
+			return false
+		}
+		if cursor < len(expected) && sameACE(actual, expected[cursor], false) {
+			cursor++
+			continue
+		}
+		// Modern SetSecurityInfo may materialize redundant parent inheritance on
+		// legacy unprotected descriptors. Accept only an exact permission duplicate
+		// of an already-preserved explicit ACE; never new SIDs, masks or ordering.
+		redundant := false
+		if actual.Header.AceFlags&windows.INHERITED_ACE != 0 {
+			for _, prior := range expected[:cursor] {
+				if prior.Header.AceFlags&windows.INHERITED_ACE == 0 && sameACE(actual, prior, true) {
+					redundant = true
+					break
+				}
+			}
+		}
+		if !redundant {
+			return false
+		}
+	}
+	if cursor != len(expected) {
+		return false
+	}
+
 	return true
 }
 
@@ -383,4 +410,13 @@ func explicitACL(source *windows.ACL) (*windows.ACL, []byte, error) {
 	binary.LittleEndian.PutUint16(data[2:4], uint16(len(data)))
 	binary.LittleEndian.PutUint16(data[4:6], count)
 	return (*windows.ACL)(unsafe.Pointer(&data[0])), data, nil
+}
+
+func sameACE(a, b *windows.ACCESS_ALLOWED_ACE, ignoreInherited bool) bool {
+	af, bf := a.Header.AceFlags, b.Header.AceFlags
+	if ignoreInherited {
+		af &^= windows.INHERITED_ACE
+		bf &^= windows.INHERITED_ACE
+	}
+	return a.Header.AceType == b.Header.AceType && a.Header.AceSize == b.Header.AceSize && af == bf && a.Mask == b.Mask && (*windows.SID)(unsafe.Pointer(&a.SidStart)).Equals((*windows.SID)(unsafe.Pointer(&b.SidStart)))
 }

@@ -131,3 +131,28 @@ func TestPortableTextWindowsRefusesAlternateStreams(t *testing.T) {
 		t.Fatal("named stream changed")
 	}
 }
+
+func TestWindowsDescriptorEquivalenceRejectsNewGrants(t *testing.T) {
+	base, e := windows.SecurityDescriptorFromString("O:SYG:SYD:(A;;FA;;;SY)")
+	if e != nil {
+		t.Fatal(e)
+	}
+	for _, tc := range []struct {
+		sddl  string
+		equal bool
+	}{
+		{"O:SYG:SYD:AI(A;;FA;;;SY)(A;ID;FA;;;SY)", true},
+		{"O:SYG:SYD:AI(A;;FA;;;SY)(A;ID;FR;;;WD)", false},
+		{"O:SYG:SYD:(A;;FR;;;SY)", false},
+		{"O:SYG:SYD:P(A;;FA;;;SY)", false},
+		{"O:SYG:SYD:(A;ID;FA;;;SY)(A;;FA;;;SY)", false},
+	} {
+		actual, e := windows.SecurityDescriptorFromString(tc.sddl)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if got := sameDescriptor(actual, base); got != tc.equal {
+			t.Fatalf("equivalence=%v want=%v", got, tc.equal)
+		}
+	}
+}
