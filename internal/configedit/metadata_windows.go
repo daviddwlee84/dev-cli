@@ -73,7 +73,8 @@ func validateDescriptor(sd *windows.SECURITY_DESCRIPTOR, parent bool) error {
 			return errors.New("unsupported Windows access-control entry")
 		}
 		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart)).String()
-		if !trustedSID(sid) && ace.Mask&(mask|windows.GENERIC_ALL|windows.GENERIC_WRITE) != 0 {
+		// OWNER RIGHTS applies only to the already-validated object owner.
+		if !trustedSID(sid) && sid != "S-1-3-4" && ace.Mask&(mask|windows.GENERIC_ALL|windows.GENERIC_WRITE) != 0 {
 			label := "other"
 			switch sid {
 			case "S-1-1-0":

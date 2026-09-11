@@ -156,3 +156,27 @@ func TestWindowsDescriptorEquivalenceRejectsNewGrants(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowsOwnerRightsBelongsOnlyToValidatedOwner(t *testing.T) {
+	sd, e := windows.SecurityDescriptorFromString("O:SYG:SYD:P(A;;FA;;;OW)")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = validateDescriptor(sd, true); e != nil {
+		t.Fatal("owner-specific ACE rejected", e)
+	}
+	sd, e = windows.SecurityDescriptorFromString("O:WDG:SYD:P(A;;FA;;;OW)")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = validateDescriptor(sd, true); e == nil {
+		t.Fatal("untrusted owner was accepted")
+	}
+	sd, e = windows.SecurityDescriptorFromString("O:SYG:SYD:P(A;;FA;;;WD)")
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = validateDescriptor(sd, true); e == nil {
+		t.Fatal("foreign write rights were accepted")
+	}
+}
