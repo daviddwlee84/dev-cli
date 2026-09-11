@@ -502,7 +502,7 @@ Triage is a view of observed work plus personal review intent. Keep-local, snooz
 
 ## Dashboard navigation and organizer entry
 
-Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -1173,7 +1173,7 @@ on the current branch is insufficient evidence to remove a whole clone.
 ## Enter from REPOS or TRY
 
 The dashboard remains navigation-only: Enter/`o` opens the current item and
-Space retains its existing worktree/action behavior. There are no organizer
+Space expands/collapses REPOS worktrees and is unused in TRY. There are no organizer
 checkboxes or hidden selections on these pages. `Ctrl+O` offers **organize this
 item**, **organize current filtered results**, and **organize all local work**.
 The triage header names the chosen scope; scoped entry starts with items, not
@@ -2647,9 +2647,11 @@ scan or SSH. Hosts start collapsed. This machine is hidden by default because
 REPOS provides its richer local inventory. Press `a` or use the action menu to
 show it collapsed at the end of the list; the choice lasts for this dashboard
 session, and local repositories reuse the accepted REPOS snapshot. Local stays
-last in either sort direction. Enter expands a host or opens a repository.
-Space, Ctrl+O and right-click open actions; r refreshes the selected host and
-Herdr metadata. Global h/l/arrow/Tab navigation still changes views.
+last in either sort direction. Space expands or collapses a host; on a child it
+collapses the host and selects its header. Enter/`o` navigates to the host or
+repository; Enter on the local host switches to REPOS. Ctrl+O and right-click
+open actions; r refreshes the selected host and Herdr metadata. Global
+h/l/arrow/Tab navigation still changes views. Space is unused in flat lists.
 
 After five seconds, or on entering FLEET sooner, one background worker warms
 missing or expired host snapshots. Each eligible host is tried once; results
@@ -2672,7 +2674,8 @@ does not cancel a requested read.
 The / filter searches known host names, SSH aliases, Herdr profile labels/session
 and registration state, and loaded/cached repos, including collapsed hosts.
 Hidden local data stays outside search and coverage. Matching children retain their parent header and
-appear temporarily expanded. Clearing the filter restores expansion choices.
+appear temporarily expanded. Space can collapse a match while searching;
+clearing the filter restores the original expansion choices.
 Typing or filtering never schedules extra connections. The coverage footer
 separates fresh, cached and unloaded hosts; update all hosts from the action
 menu when a complete current search is needed, including when no rows match.
@@ -2719,6 +2722,45 @@ machine. Registration affects this host's client catalog, not another desktop
 client. Unsupported connection targets, including native Windows, may still
 disable/remove an existing exact saved profile; connection capability and local
 catalog management are separate.
+
+### Enter and remote sessions
+
+Host navigation needs an SSH alias, but does not require remote `dev` or a
+repository snapshot. Repository navigation, including `dev fleet open <host>
+<repo>`, first checks the exact remote path and Git identity through a compatible
+remote `dev`. It then prepares or reuses a workspace without changing focus.
+Preparation and attachment always name the same explicit Herdr session.
+
+| Where dev runs | Enter on a host | Enter on a repository |
+|---|---|---|
+| Inside Herdr (`HERDR_ENV=1`) | Reuse an enabled saved profile; ask before Add or Enable | Check the repository/helper, ensure the chosen profile, then prepare the workspace |
+| Outside Herdr | Attach to the chosen saved session, or explicit `default` when none is saved | Prepare the workspace, then attach to that session |
+
+Several matching profiles require a choice by exact ID, label and session;
+non-interactive invocations refuse to guess. Removing a profile means it must
+be added again. A failed catalog read is unknown and blocks profile selection.
+Outside Herdr, Enter does not implicitly add or enable saved profiles.
+Repository preparation outside Herdr requires a ready remote server. If it is
+missing, use host Enter/Connect to prepare it natively, then retry the repository.
+
+Herdr 0.9.0 cannot publicly select a machine/workspace for only the calling
+client. After preparation, select the reported machine and workspace in the
+native sidebar. Inside Herdr, dev returns to the same dashboard without starting
+a nested client. Outside, it runs `herdr --remote <alias> --session <session>`.
+Neither route calls session-wide `workspace focus`, which could move other
+clients. Native installation approvals remain native.
+
+Unavailable or unsupported Herdr targets offer an explicit SSH action;
+`--no-runtime` uses SSH directly. Once a Herdr operation begins, cancellation or
+failure returns its result without automatically opening SSH. Completed Add,
+Enable and workspace preparation remain visible if a later step fails. Older
+remote dev versions reject the new preparation helper before modifying a
+workspace; update the remote dev before retrying repository navigation.
+
+Navigation and Herdr profile changes return their result directly to the
+dashboard. There is no final “Press Enter” prompt. Ctrl+O → full status / error
+shows the complete result, including any completed steps when a later step
+fails. Returning does not automatically open another host or repository.
 
 The e key edits primary remotes.toml and revalidates the merged configuration.
 Changed endpoints invalidate old results; invalid edits retain usable rows.
@@ -3930,7 +3972,8 @@ symlink; dev does not modify Television, shell, or chezmoi configuration.
 FLEET is a remote host tree. Local is hidden by default; `a` or the action menu
 reveals it collapsed at the end, reusing REPOS. Search and coverage exclude local
 while hidden. Host rows and actions are available while repositories load.
-Enter toggles a host or opens a repo; Space/Ctrl+O/right-click offers host actions.
+Space expands/collapses hosts; Enter/`o` navigates to a host or repo.
+Ctrl+O/right-click offers host actions.
 The HERDR column shows saved registration/enabled state from one shared local
 catalog read, independently of SSH snapshots. Enable/disable/remove act on an
 exact profile and keep remote sessions running; multiple profiles use a picker.
@@ -4095,7 +4138,7 @@ Use [dashboard lifecycle actions](https://daviddwlee84.github.io/dev-cli/guides/
 
 ## Dashboard navigation and organizer entry
 
-Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -4162,8 +4205,8 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/
 
 ## Select an action
 
-Press `Ctrl+O`, right-click a row, or click the selected row. TASKS and TRY also accept Space; REPOS Space
-still expands linked worktrees. TASKS `a` shows completed tasks and does not mark
+Press `Ctrl+O`, right-click a row, or click the selected row. Space expands/collapses REPOS
+worktrees and FLEET hosts; it is unused in flat lists. TASKS `a` shows completed tasks and does not mark
 a task done. A missing checkout offers recovery instead of completion.
 
 Clicking another row first selects it; clicking the selected row opens the menu
@@ -4287,7 +4330,7 @@ back into its original archive path remains archived and can then use ordinary
 
 ## Dashboard navigation and organizer entry
 
-Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -6456,7 +6499,7 @@ dev fleet machine-id <host> [flags]
 
 ### `dev fleet open`
 
-Open a remote repository through Herdr or an SSH login shell
+Prepare a remote repository for native Herdr navigation or an explicit SSH shell
 
 ```
 dev fleet open <host> <repo>
@@ -8326,7 +8369,7 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 ## Dashboard navigation and organizer entry
 
-Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -8778,7 +8821,7 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 ## Dashboard navigation and organizer entry
 
-Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -8874,6 +8917,17 @@ refresh only catalog metadata. Connection eligibility and catalog cleanup are
 separate. --no-runtime skips Herdr; background_refresh controls only automatic
 repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
 metadata. See [host controls](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
+
+Fleet Enter and `dev fleet open` detect `HERDR_ENV=1` and use an explicit remote
+session. Repository preparation requires the new compatible remote helper and
+verifies path/Git identity before Add/Enable. Inside Herdr, dev returns a native
+sidebar target; outside, it attaches to the selected session. Herdr 0.9.0 has no
+public caller-client activation API, so neither route uses session-wide focus.
+Old helpers fail before workspace effects. Cancellation and partial failure do
+not open SSH automatically; `--no-runtime` selects SSH directly. Host Enter works
+without remote dev and may bootstrap through native attachment. Outside Herdr,
+repository preparation needs a ready remote server; use host navigation first
+if it is missing, then retry the repository.
 
 ---
 
@@ -9022,7 +9076,7 @@ Repository homepage resolution reads local Git only. Try removal journals beside
 
 ## Dashboard navigation and organizer entry
 
-Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -9854,7 +9908,7 @@ Triage 彙整觀察到的工作與個人整理意圖。刻意保留本地、暫�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 開啟 repository／task 列，或展開／收合 FLEET 主機，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -10397,7 +10451,7 @@ Plan 在 effects 前鎖定並重新驗證 repository、refs、checkout、task re
 
 ## 從 REPOS 或 TRY 進入
 
-Dashboard 維持瀏覽：Enter／`o` 永遠開啟目前項目，Space 保留原功能，不再常駐勾選框或保留整理選取。`Ctrl+O` 可選「整理目前項目」「整理目前篩選結果」「整理全部本地工作」。Triage header 明示範圍，先顯示項目供選取。
+Dashboard 維持瀏覽：Enter／`o` 開啟目前項目，Space 展開／收合 REPOS worktrees，在 TRY 不使用。不再常駐勾選框或保留整理選取。`Ctrl+O` 可選「整理目前項目」「整理目前篩選結果」「整理全部本地工作」。Triage header 明示範圍，先顯示項目供選取。
 
 交接繼續復用 dashboard metadata 與 task／worktree 觀察，只深入檢查限定範圍，返回只刷新受影響列／SIZE。既有 SIZE 10 分鐘 cache 不變，沒有新增跨啟動 inventory cache 或 watcher。獨立 `dev triage` 仍盤點全域，本地 refresh 不 fetch，也不登錄 Try。
 
@@ -11760,8 +11814,10 @@ FLEET 立即列出已設定的遠端主機，不等待 repository scan 或 SSH�
 本機預設隱藏，因為 REPOS 已有更完整的本機 inventory。按 `a` 或使用動作選單
 可將本機顯示在最後，首次顯示時收合；開關只保留於本次 dashboard session。
 本機 repositories 重用已接受的 REPOS snapshot，升序或降序時都固定排最後。
-Enter 展開主機或開啟 repository；Space、Ctrl+O、右鍵開啟動作選單，r 更新
-選取主機及 Herdr metadata。全域 h/l／方向鍵／Tab 仍用來切換分頁。
+Space 展開／收合主機；在 child 按 Space 會收合並選回主機。Enter／`o` 導覽至
+主機或 repository，本機主機列則切到 REPOS。Ctrl+O／右鍵開啟動作選單，r 更新
+選取主機及 Herdr metadata。全域 h/l／方向鍵／Tab 仍用來切換分頁；平面列表
+不使用 Space。
 
 初始畫面後五秒，或提早進入 FLEET 時，單一背景 worker 開始更新缺少或過期的
 host snapshot。每台符合條件的主機自動嘗試一次，結果逐台出現。背景讀取採用
@@ -11779,7 +11835,8 @@ background_refresh = false
 
 / 搜尋已知的主機名稱、SSH alias、Herdr profile label／session／登錄狀態，以及
 已載入／快取 repos，包含收合主機。隱藏本機時，搜尋與 coverage 都排除本機。
-命中的 repo 保留 parent header，暫時展開；清除搜尋後恢復原展開狀態。
+命中的 repo 保留 parent header，暫時展開；搜尋時仍可按 Space 收合，清除搜尋後
+恢復原展開狀態。
 輸入或篩選不增加連線工作。Footer 分開顯示最新、快取與尚未載入的主機；
 需要完整最新結果時，從 action menu 更新全部主機，零命中時也能使用。
 沒有遠端主機或沒有搜尋結果時，仍可從選單切換本機顯示。
@@ -11817,6 +11874,39 @@ Herdr 外另外可 Connect，並明確指定 session，預設 default。Add 可�
 新機器，但不切換選取；登錄只影響執行 dev 這台機器的 catalog。即使連線 target
 不支援（例如原生 Windows），仍可停用／移除已明確匹配的 saved profile；
 連線能力與本機 catalog 管理分開。
+
+### Enter 與遠端 session
+
+主機導覽需要 SSH alias，但不要求遠端已有 `dev` 或 repository snapshot。
+Repository 導覽（包含 `dev fleet open <host> <repo>`）先透過相容的遠端 `dev`
+檢查精確路徑與 Git identity，再準備或重用 workspace，不改變焦點。
+準備及 attach 始終明確指定同一個 Herdr session。
+
+| dev 執行位置 | 主機列 Enter | Repository 列 Enter |
+|---|---|---|
+| Herdr 內（`HERDR_ENV=1`） | 重用已啟用的 profile；Add 或 Enable 前先詢問 | 檢查 repo/helper，確認所選 profile，再準備 workspace |
+| Herdr 外 | 連接所選 saved session；沒有 profile 時明確使用 `default` | 準備 workspace，再 attach 該 session |
+
+多個 profiles 必須按精確 ID、label、session 選取；非互動呼叫不猜測。
+已移除的 profile 必須重新 Add。Catalog 讀取失敗代表 unknown，會停止 profile
+選取。Herdr 外的 Enter 不會自動新增或啟用 saved profile。
+Herdr 外準備 repository 時需要遠端 server 已就緒；若尚未就緒，先透過主機
+Enter／Connect 讓原生流程準備 server，再重試 repository。
+
+Herdr 0.9.0 沒有只切換呼叫者 client 的公開 machine/workspace 選取介面。
+準備完成後，請在原生 sidebar 選擇回報的機器與 workspace。Herdr 內會回到同一個
+dashboard，不啟動 nested client；Herdr 外執行
+`herdr --remote <alias> --session <session>`。兩條路徑都不呼叫會影響其他 clients
+的 session-wide `workspace focus`。原生安裝確認仍交給 Herdr。
+
+Herdr 不可用或 target 不支援時提供明確的 SSH 選項；`--no-runtime` 直接使用 SSH。
+開始 Herdr 操作後，取消或失敗只回報結果，不會自動改開 SSH。若後續步驟失敗，
+已完成的 Add、Enable 或 workspace 準備仍保留並回報。舊版遠端 dev 會在修改
+workspace 前拒絕新的 preparation helper；更新遠端 dev 後再試 repository 導覽。
+
+導覽與 Herdr profile 變更會直接將結果帶回 dashboard，不再要求最後按 Enter。
+Ctrl+O → full status / error 可閱讀完整結果，包含後續失敗時已完成的步驟。
+返回本身不會自動開啟另一台主機或 repository。
 
 e 編輯 primary remotes.toml 並重新驗證合併設定。Endpoint 改變會讓舊結果失效；
 設定錯誤則保留可用資料。CLI dev fleet list 的本機加遠端 inventory 契約維持不變。
@@ -12923,7 +13013,8 @@ dev 不會修改 Television、shell 或 chezmoi config。
 
 FLEET 採遠端主機樹。本機預設隱藏；按 `a` 或使用選單，才在最後以收合狀態
 顯示並重用 REPOS。隱藏時搜尋與 coverage 都排除本機。Repos 尚在載入時，
-主機列與動作仍可用。Enter 展開主機或開啟 repo；Space／Ctrl+O／右鍵開啟選單。
+主機列與動作仍可用。Space 展開／收合主機，Enter／`o` 導覽至主機或 repo；
+Ctrl+O／右鍵開啟選單。
 HERDR 欄由共享的本機 catalog 查詢呈現登錄／啟用狀態，與 SSH snapshot 分開。
 Enable／disable／remove 操作精確 profile，遠端 sessions 保留；多筆先用 picker
 選取。r 更新選取主機及 catalog metadata。有效快取持續可搜尋並標示時間與範圍。
@@ -13079,7 +13170,7 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 開啟 repository／task 列，或展開／收合 FLEET 主機，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -13127,8 +13218,8 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/
 
 ## 選擇操作
 
-按 `Ctrl+O`、右鍵或點目前反白列開啟 row actions。TASKS 與 TRY 也可按 Space；REPOS 的
-Space 仍用來展開 linked worktrees。TASKS 的 `a` 是顯示已完成 tasks，並不會
+按 `Ctrl+O`、右鍵或點目前反白列開啟 row actions。Space 只展開／收合 REPOS
+worktrees 與 FLEET 主機；平面列表不使用 Space。TASKS 的 `a` 是顯示已完成 tasks，並不會
 把 task 標成 done。Checkout 遺失時提供 recovery，不能直接當成完成。
 
 點其他列先選取，再點反白列開選單，不限間隔，也不會直接執行選單項目。
@@ -13236,7 +13327,7 @@ archived；之後再用一般 `tries restore` 回到可見位置。
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 開啟 repository／task 列，或展開／收合 FLEET 主機，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -15342,7 +15433,7 @@ dev fleet machine-id <host> [flags]
 
 ### `dev fleet open`
 
-Open a remote repository through Herdr or an SSH login shell
+Prepare a remote repository for native Herdr navigation or an explicit SSH shell
 
 ```
 dev fleet open <host> <repo>
@@ -17206,7 +17297,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 開啟 repository／task 列，或展開／收合 FLEET 主機，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -17608,7 +17699,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 開啟 repository／task 列，或展開／收合 FLEET 主機，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -17678,6 +17769,15 @@ FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀
 只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
 background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
 fleet snapshot JSON。詳見[主機控制](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
+
+Fleet Enter 與 `dev fleet open` 偵測 `HERDR_ENV=1`，並明確指定遠端 session。
+Repository 準備需要相容的新 remote helper，在 Add／Enable 前驗證 path／Git
+identity。Herdr 內回報原生 sidebar 目標，Herdr 外 attach 所選 session。
+Herdr 0.9.0 沒有只操作呼叫者 client 的公開 activation API，因此兩條路徑都不使用
+session-wide focus。舊 helper 在 workspace 副作用前失敗；取消或部分失敗不會
+自動改開 SSH，`--no-runtime` 直接選 SSH。主機 Enter 不要求遠端 dev，可透過
+原生 attach 完成 bootstrap。Herdr 外的 repository 準備需要遠端 server 已就緒；
+若尚未就緒，先用主機導覽，再重試 repository。
 
 ---
 
@@ -17827,7 +17927,7 @@ Repository 首頁解析只讀 local Git。Assets 旁的 Try removal journals 是
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 開啟 repository／task 列，或展開／收合 FLEET 主機，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 

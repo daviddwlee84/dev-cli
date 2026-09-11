@@ -23,6 +23,9 @@ import (
 // where herdr is not installed at all.
 type Herdr struct {
 	bin string
+	// session is set only for an explicitly scoped remote preparation. Default
+	// local runtime behavior continues to use native caller context.
+	session string
 	// metadataSource namespaces the workspace metadata tokens dev reports.
 	metadataSource string
 	// runCommand and worktreeSource are test seams for Herdr's JSON protocol
@@ -67,10 +70,16 @@ func (h *Herdr) run(ctx context.Context, args ...string) ([]byte, error) {
 // runDisplayed allows callers carrying sensitive argv to provide a redacted
 // description for diagnostics. The real argv still goes to Herdr unchanged.
 func (h *Herdr) runDisplayed(ctx context.Context, display string, args ...string) ([]byte, error) {
+	if h.session != "" {
+		args = append([]string{"--session", h.session}, args...)
+	}
 	if h.runCommand != nil {
 		return h.runCommand(ctx, args...)
 	}
 	cmd := exec.CommandContext(ctx, h.bin, args...)
+	if h.session != "" {
+		cmd.Env = scopedHerdrEnvironment(os.Environ())
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -355,9 +364,13 @@ func (h *Herdr) Activate(ctx context.Context, handle string) error {
 	return runInteractive(ctx, h.bin)
 }
 
-// Focus selects a workspace without attaching a client. Remote fleet
-// navigation uses it before launching a local `herdr --remote` thin client.
+// Focus selects a workspace on the ordinary local adapter. Session-scoped
+// remote preparation forbids this server-wide operation; its caller must use
+// an explicit native client activation capability separately.
 func (h *Herdr) Focus(ctx context.Context, handle string) error {
+	if h.session != "" {
+		return errors.New("scoped remote preparation cannot change server-wide client focus")
+	}
 	if handle == "" {
 		return nil
 	}
@@ -375,6 +388,8 @@ func (h *Herdr) OpenWorktree(ctx context.Context, path, label string) (OpenResul
 		// pane. This preserves native nested grouping even when dev is invoked
 		// from a different Herdr workspace.
 		args = append(args, "--cwd", source)
+	} else if h.session != "" {
+		return OpenResult{}, errors.New("cannot resolve an explicit parent checkout for scoped Herdr preparation")
 	}
 	args = append(args, "--path", path, "--no-focus")
 	if label != "" {
@@ -387,6 +402,9 @@ func (h *Herdr) OpenWorktree(ctx context.Context, path, label string) (OpenResul
 		AlreadyOpen *bool          `json:"already_open"`
 	}
 	if err := h.call(ctx, &res, args...); err != nil {
+		if h.session != "" {
+			return OpenResult{}, fmt.Errorf("scoped Herdr worktree open failed; any partial workspace is retained for inspection: %w", err)
+		}
 		// Fall back to a plain workspace: the checkout being visible matters
 		// more than it being tagged with git provenance. A fallback root pane is
 		// withheld so callers cannot mistake it for a first-class worktree target.
@@ -423,6 +441,9 @@ func (h *Herdr) OpenWorktree(ctx context.Context, path, label string) (OpenResul
 }
 
 func (h *Herdr) rejectCreatedWorkspace(ctx context.Context, handle, reason string) error {
+	if h.session != "" {
+		return fmt.Errorf("%s; retained incomplete workspace %s in Herdr session %s for inspection", reason, handle, h.session)
+	}
 	if err := h.Close(ctx, handle); err != nil {
 		return fmt.Errorf("%s; could not close incomplete workspace %s: %w", reason, handle, err)
 	}

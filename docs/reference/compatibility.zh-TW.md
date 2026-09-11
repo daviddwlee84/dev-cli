@@ -350,7 +350,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 開啟 repository／task 列，或展開／收合 FLEET 主機，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](../guides/local-triage.md)。
 
@@ -420,3 +420,12 @@ FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀
 只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
 background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
 fleet snapshot JSON。詳見[主機控制](../guides/remote-fleet.zh-TW.md#dashboard-host-tree)。
+
+Fleet Enter 與 `dev fleet open` 偵測 `HERDR_ENV=1`，並明確指定遠端 session。
+Repository 準備需要相容的新 remote helper，在 Add／Enable 前驗證 path／Git
+identity。Herdr 內回報原生 sidebar 目標，Herdr 外 attach 所選 session。
+Herdr 0.9.0 沒有只操作呼叫者 client 的公開 activation API，因此兩條路徑都不使用
+session-wide focus。舊 helper 在 workspace 副作用前失敗；取消或部分失敗不會
+自動改開 SSH，`--no-runtime` 直接選 SSH。主機 Enter 不要求遠端 dev，可透過
+原生 attach 完成 bootstrap。Herdr 外的 repository 準備需要遠端 server 已就緒；
+若尚未就緒，先用主機導覽，再重試 repository。

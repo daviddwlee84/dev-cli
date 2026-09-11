@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
@@ -257,19 +256,17 @@ func TestTUIFleetHostActionsDoNotRequireRemoteDev(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var request tuiFleetHostRequest
-	data, err := base64.RawURLEncoding.DecodeString(process.Args[len(process.Args)-1])
-	if err != nil || json.Unmarshal(data, &request) != nil || request.Host != "lab" || request.EndpointID != descriptor.EndpointID || request.Action != "dotfile-status" {
-		t.Fatalf("host handoff = %+v %v", request, err)
-	}
-	if !strings.Contains(strings.Join(process.Args, " "), app.remotesPath) {
-		t.Fatal("host action lost selected remotes config")
+	if process == nil || process.Run == nil {
+		t.Fatal("host action did not retain a typed terminal execution")
 	}
 	if err := os.WriteFile(app.remotesPath, []byte("schema_version=1\n[[hosts]]\nname='lab'\nssh_alias='retargeted'\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := backend.RunAction(t.Context(), descriptor, "ssh"); err == nil {
 		t.Fatal("stale host selection retargeted an action")
+	}
+	if _, err := process.Run(t.Context(), app.In, app.Out, app.Err); err == nil {
+		t.Fatal("typed terminal boundary accepted a retargeted host")
 	}
 }
 

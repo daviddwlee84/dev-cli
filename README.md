@@ -735,8 +735,8 @@ macOS/Linux guarded file backend and retain private recovery under
 `$XDG_DATA_HOME/dev/config-recovery`; symlink configs and unsupported TOML layouts
 offer a manual edit. Scan failures remain unknown and do not trigger enrollment.
 
-`enter` opens a selected row only when its checkout is currently valid. Inside Herdr/tmux/Zellij it
-switches the current client; outside it exits the dashboard and attaches to
+`enter` opens a selected local row only when its checkout is currently valid. Inside Herdr/tmux/Zellij it
+asks the runtime to focus the target; outside it exits the dashboard and attaches to
 the target session. A COLD worktree task requires `dev resume`; a missing or
 unregistered worktree requires `dev sweep` first so artifacts can be salvaged
 before the task is resumed or reaped. A wide TASKS table includes `REPO`; its
@@ -749,7 +749,7 @@ the CLI and returns with refreshed local inventory; it also works when the list
 is empty. `a` quick-adds a repository thought and `N` opens its notes overlay.
 TASKS retains `n` for quick notes. Expanded children carry their own
 Git/session/task state and can be opened directly. In TRY, `n` creates or clones an experiment;
-`space` opens mark/deprecate/archive/restore/graduate/Trash/delete actions; `a` includes
+`Ctrl+O` opens mark/deprecate/archive/restore/graduate/Trash/delete actions; `a` includes
 retained history. Inside Git, SKILLS and MCP use only the exact startup worktree
 plus global/user sources; outside Git they reuse every accepted REPOS target and
 the ordinary startup directory. Uppercase `A` switches both views between that
@@ -772,8 +772,8 @@ them to every directory.
 
 ### Dashboard lifecycle actions
 
-Press `Ctrl+O`, right-click a row, or click the selected row for actions; TASKS and TRY also accept Space.
-REPOS Space continues to expand worktrees. TASKS offers the existing finish,
+Press `Ctrl+O`, right-click a row, or click the selected row for actions.
+Space expands/collapses REPOS worktrees and FLEET hosts; it is unused in flat lists. TASKS offers the existing finish,
 resume, retirement and selected-task recovery workflows. `a` shows completed
 tasks; it does not mark a task done. Missing checkout rows go through recovery.
 The dashboard suspends for the shared CLI wizard and refreshes on return.
@@ -1590,7 +1590,15 @@ remote OS. FLEET hides local by default; `a` or the menu reveals it collapsed at
 the end, reusing REPOS. Search and coverage exclude hidden local data and include
 known Herdr profile state, labels and sessions. A separate local catalog read
 supplies the HERDR column: not added, enabled, disabled, mixed counts or unknown.
-Space/Ctrl+O offers SSH, dotfile status and per-profile Herdr control inside or
+Space expands/collapses the host tree; on a child it collapses and selects its
+host. Enter/`o` navigates. Inside Herdr, it offers Add or Enable when required;
+outside, it attaches to the selected explicit session. Several profiles require
+a choice. Repository navigation checks a compatible remote dev and the exact repo
+before profile changes, then prepares its workspace without changing focus.
+Select the reported machine/workspace in the native Herdr sidebar. Navigation
+never starts a nested Herdr client or silently falls back to SSH after an error;
+`--no-runtime` uses SSH directly. Enter on the local host switches to REPOS.
+Ctrl+O offers SSH, dotfile status and per-profile Herdr control inside or
 outside Herdr. Disable keeps the profile; Remove deletes its registration;
 remote sessions continue running. Herdr actions refresh catalog metadata only.
 Each remote repository snapshot refreshes independently. Set

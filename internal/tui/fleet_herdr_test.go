@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
@@ -126,8 +125,10 @@ func TestFleetHerdrMutationCompletionRefreshesOnlyCatalog(t *testing.T) {
 	}})
 	m, _ = treeAccept(m, treeHosts())
 	d := m.fleetTree.hosts[1].descriptor
-	m, command := treeSend(m, fleetProcessDoneMsg{host: d, action: "herdr-remove:one:fingerprint"})
-	m = treeRun(t, m, command)
+	m.fleetTree.background = false
+	m.pendingFleetHandoff = &FleetHandoff{host: d, action: "herdr-remove:one:fingerprint"}
+	m = m.ResumeFleetHandoff(t.Context(), FleetExecutionResult{RefreshHerdr: true}, nil)
+	m = treeRun(t, m, m.Init())
 	if catalogs != 1 || descriptors != 0 || snapshots != 0 || m.fleetTree.afterAction != "" {
 		t.Fatalf("catalog=%d descriptors=%d snapshots=%d", catalogs, descriptors, snapshots)
 	}
@@ -260,7 +261,7 @@ func TestFleetHerdrProfilePickerReachesAll64ExactIdentities(t *testing.T) {
 	native := 0
 	m := treeModel(Actions{LoadFleetHerdr: func(context.Context) (FleetHerdrCatalog, error) { native++; return catalog, nil }, ListFleetHostActions: func(context.Context, FleetHostDescriptor, FleetHerdrCatalog) ([]FleetHostAction, error) {
 		return actions, nil
-	}, RunFleetHostAction: func(_ context.Context, _ FleetHostDescriptor, id string) (*exec.Cmd, error) {
+	}, RunFleetHostAction: func(_ context.Context, _ FleetHostDescriptor, id string) (*FleetExecution, error) {
 		runID = id
 		return nil, nil
 	}})
@@ -299,7 +300,7 @@ func TestFleetHerdrProfilePickerReachesAll64ExactIdentities(t *testing.T) {
 
 func TestFleetHerdrProfilePickerCancelHasNoMutation(t *testing.T) {
 	runs := 0
-	m := treeModel(Actions{RunFleetHostAction: func(context.Context, FleetHostDescriptor, string) (*exec.Cmd, error) { runs++; return nil, nil }})
+	m := treeModel(Actions{RunFleetHostAction: func(context.Context, FleetHostDescriptor, string) (*FleetExecution, error) { runs++; return nil, nil }})
 	m, _ = treeAccept(m, treeHosts())
 	treeSelect(t, &m, "a", "")
 	m.overlay = overlayState{kind: overlayActionMenu, fleetHost: m.fleetTree.hosts[1].descriptor}

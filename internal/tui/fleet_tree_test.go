@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"reflect"
 	"strings"
 	"testing"
@@ -373,7 +372,7 @@ func TestFleetTreeHostMenuIsLazyAndEndpointBound(t *testing.T) {
 	m := treeModel(Actions{ListFleetHostActions: func(context.Context, FleetHostDescriptor, FleetHerdrCatalog) ([]FleetHostAction, error) {
 		lists++
 		return []FleetHostAction{{ID: "ssh", Label: "SSH"}}, nil
-	}, RunFleetHostAction: func(context.Context, FleetHostDescriptor, string) (*exec.Cmd, error) { runs++; return nil, nil }})
+	}, RunFleetHostAction: func(context.Context, FleetHostDescriptor, string) (*FleetExecution, error) { runs++; return nil, nil }})
 	m, _ = treeAccept(m, treeHosts())
 	if lists != 0 {
 		t.Fatal("descriptor read fetched action metadata")
@@ -477,8 +476,9 @@ func TestFleetTreeAuthenticatedRefreshAcceptsCacheWithoutNewProbe(t *testing.T) 
 	m, _ = treeAccept(m, hosts)
 	m.actions.LoadFleetHosts = func(context.Context) (FleetHostsResult, error) { return treeHosts(), nil }
 	host := m.fleetTree.hosts[1].descriptor
-	m, cmd := treeSend(m, fleetProcessDoneMsg{host: host, action: "authenticated-refresh"})
-	m = treeRun(t, m, cmd)
+	m.pendingFleetHandoff = &FleetHandoff{host: host, action: "authenticated-refresh"}
+	m = m.ResumeFleetHandoff(t.Context(), FleetExecutionResult{RefreshHost: true}, nil)
+	m = treeRun(t, m, m.Init())
 	if probes != 0 || m.fleetTree.hosts[1].result.Snapshot.Repositories[0].Name != "authenticated" {
 		t.Fatal("authenticated cache was lost or reprobed")
 	}

@@ -18,6 +18,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/fleet"
+	"github.com/daviddwlee84/dev-cli/internal/fleetnav"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
@@ -53,6 +54,7 @@ do not make the rest of the fleet unusable.`,
 		newFleetFilesPlanProtocolCmd(app),
 		newFleetFilesApplyProtocolCmd(app),
 		newFleetOpenHelperCmd(app, "_open-herdr", true),
+		newFleetHerdrRepoCmd(app),
 		newFleetOpenHelperCmd(app, "_shell", false),
 	)
 	return cmd
@@ -122,11 +124,18 @@ func resolveFleetOpenRepository(ctx context.Context, app *App, request fleet.Ope
 	}
 	var matches []repo.Repo
 	wantedIdentity := catalog.NormalizeRemoteIdentity(request.RemoteIdentity)
+	if request.RemoteIdentity != "" && wantedIdentity == "" {
+		return repo.Repo{}, errors.New("invalid selected repository remote identity")
+	}
 	for _, repository := range repositories {
-		if request.Path != "" && (sameCleanPath(request.Path, repository.Path) || sameCleanPath(request.Path, repository.RealPath)) {
-			return repository, nil
+		pathMatch := request.Path != "" && (sameCleanPath(request.Path, repository.Path) || sameCleanPath(request.Path, repository.RealPath))
+		if request.Path != "" && !pathMatch {
+			continue
 		}
 		if wantedIdentity == "" {
+			if pathMatch {
+				return repository, nil
+			}
 			continue
 		}
 		topology, topologyErr := gitx.RecoveryTopologyOf(ctx, repository.Path)
@@ -157,54 +166,14 @@ func matchingSnapshotIdentity(topology gitx.RecoveryTopology, identity string) b
 func newFleetOpenCmd(app *App) *cobra.Command {
 	var expectedEndpoint string
 	cmd := &cobra.Command{
-		Use:   "open <host> <repo>",
-		Short: "Open a remote repository through Herdr or an SSH login shell",
-		Args:  cobra.ExactArgs(2),
+		Use: "open <host> <repo>", Short: "Prepare a remote repository for native Herdr navigation or an explicit SSH shell", Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadFleetConfig(app)
-			if err != nil {
-				return err
+			backend := newTUIFleetBackend(func() *App { return app })
+			result, err := newFleetNavigation(app, backend).Navigate(cmd.Context(), fleetnav.Request{Host: args[0], ExpectedEndpoint: expectedEndpoint, RepositoryQuery: args[1], InsideHerdr: os.Getenv("HERDR_ENV") == "1", NoRuntime: app.noRuntime})
+			if result.Summary != "" {
+				fmt.Fprintln(app.Out, result.Summary)
 			}
-			var host *fleet.Host
-			for index := range cfg.Hosts {
-				if cfg.Hosts[index].Name == args[0] {
-					host = &cfg.Hosts[index]
-					break
-				}
-			}
-			if host == nil {
-				return fmt.Errorf("unknown fleet host %q", args[0])
-			}
-			if expectedEndpoint != "" && fleet.EndpointID(*host) != expectedEndpoint {
-				return errors.New("fleet host connection changed; refresh the selected host before opening its repository")
-			}
-			live := collectFleetHost(ctxOf(), *host, false)
-			if live.State != fleet.HostOK || live.Snapshot == nil {
-				return fmt.Errorf("host %s is not live: %s %s", host.Name, live.State, live.Error)
-			}
-			repository, err := selectFleetRepository(live.Snapshot.Repositories, args[1])
-			if err != nil {
-				return err
-			}
-			request := fleet.OpenRequest{Name: repository.Display, Path: repository.Path}
-			if len(repository.RemoteIdentities) > 0 {
-				request.RemoteIdentity = repository.RemoteIdentities[0]
-			}
-			encoded := encodeOpenRequest(request)
-			transport := fleet.Transport{Err: app.Err}
-			if live.Snapshot.Runtime == "herdr" && host.SSHAlias != "" && host.PasswordKind() == "none" {
-				prepared := transport.Run(ctxOf(), *host, []string{"fleet", "_open-herdr", "--request", encoded}, nil, false)
-				if prepared.ExitCode == 0 {
-					process := exec.CommandContext(ctxOf(), "herdr", "--remote", host.SSHAlias)
-					process.Stdin, process.Stdout, process.Stderr = os.Stdin, os.Stdout, os.Stderr
-					if err := process.Run(); err == nil {
-						return nil
-					} else {
-						app.warnf("Herdr remote attach failed; falling back to SSH: %v", err)
-					}
-				}
-			}
-			return transport.Interactive(ctxOf(), *host, []string{"fleet", "_shell", "--request", encoded}, live.PasswordAuth)
+			return err
 		},
 	}
 	cmd.Flags().StringVar(&expectedEndpoint, "expected-endpoint", "", "expected fleet endpoint for an internal selected-row handoff")

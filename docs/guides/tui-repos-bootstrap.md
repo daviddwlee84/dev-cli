@@ -269,7 +269,8 @@ symlink; dev does not modify Television, shell, or chezmoi configuration.
 FLEET is a remote host tree. Local is hidden by default; `a` or the action menu
 reveals it collapsed at the end, reusing REPOS. Search and coverage exclude local
 while hidden. Host rows and actions are available while repositories load.
-Enter toggles a host or opens a repo; Space/Ctrl+O/right-click offers host actions.
+Space expands/collapses hosts; Enter/`o` navigates to a host or repo.
+Ctrl+O/right-click offers host actions.
 The HERDR column shows saved registration/enabled state from one shared local
 catalog read, independently of SSH snapshots. Enable/disable/remove act on an
 exact profile and keep remote sessions running; multiple profiles use a picker.
@@ -434,7 +435,7 @@ Use [dashboard lifecycle actions](dashboard-actions.md) for task finish/resume/r
 
 ## Dashboard navigation and organizer entry
 
-Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still

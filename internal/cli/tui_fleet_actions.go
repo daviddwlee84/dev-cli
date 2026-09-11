@@ -18,7 +18,9 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/dotfile"
 	"github.com/daviddwlee84/dev-cli/internal/fleet"
+	"github.com/daviddwlee84/dev-cli/internal/fleetnav"
 	"github.com/daviddwlee84/dev-cli/internal/herdrremote"
+	devruntime "github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 	"github.com/daviddwlee84/dev-cli/internal/tui"
 	"github.com/spf13/cobra"
@@ -146,16 +148,7 @@ func tuiFleetProfileAction(verb string, profile herdrremote.Profile) string {
 }
 
 func fleetHerdrTargetReason(host fleet.Host) string {
-	if host.EffectiveRemoteOS() == fleet.RemoteOSWindows {
-		return "Herdr remote servers require Linux or macOS"
-	}
-	if host.SSHAlias == "" || host.User != "" || host.Port != 0 || host.IdentityFile != "" {
-		return "Use an SSH alias containing all connection settings for Herdr"
-	}
-	if host.PasswordKind() != "none" {
-		return "Herdr uses OpenSSH authentication; fleet password sources are not forwarded"
-	}
-	return ""
+	return fleetnav.HerdrTargetReason(host)
 }
 
 // The process payload contains only identities and selected intent. The child
@@ -284,7 +277,7 @@ func newTUIFleetHostCmd(app *App) *cobra.Command {
 			err = runTUIFleetHostAction(cmd.Context(), app, b, descriptor, host, request.Action)
 			// Read-only reports and native registration messages must stay visible
 			// before Bubble Tea re-enters its alternate screen.
-			if request.Action != "ssh" && !strings.HasPrefix(request.Action, "herdr-connect") && app.interactive() {
+			if (request.Action == "authenticated-refresh" || request.Action == "dotfile-status") && app.interactive() {
 				if err != nil {
 					fmt.Fprintln(app.Err, err)
 				}
@@ -336,10 +329,11 @@ func runTUIFleetHostAction(ctx context.Context, app *App, b *tuiFleetBackend, de
 		return err
 	}
 	if action == "herdr-add" {
-		manage := newSSHManageCmd(app)
-		manage.SetContext(ctx)
-		manage.SetArgs([]string{"--action", "register", "--to", "herdr", "--alias", host.SSHAlias, "--herdr-label", host.Name, "--herdr-session", "default", "--apply"})
-		return manage.Execute()
+		result, err := ensureFleetNavigationProfile(ctx, app, b, fleetnav.Target{Host: host, EndpointID: descriptor.EndpointID}, fleetnav.Selection{Session: "default"})
+		if err != nil && result.Status != "unchanged" {
+			return fmt.Errorf("Herdr add %s; later verification did not complete: %w", result.Status, err)
+		}
+		return err
 	}
 	session := "default"
 	if action != "herdr-connect" {
@@ -375,6 +369,7 @@ func runTUIFleetHostAction(ctx context.Context, app *App, b *tuiFleetBackend, de
 		return errors.New("select the saved machine in Herdr's sidebar; an embedded client is not opened")
 	}
 	process := exec.CommandContext(ctx, "herdr", "--remote", host.SSHAlias, "--session", session)
+	process.Env = devruntime.HerdrSessionEnvironment(os.Environ())
 	process.Stdin, process.Stdout, process.Stderr = app.In, app.Out, app.Err
 	return process.Run()
 }

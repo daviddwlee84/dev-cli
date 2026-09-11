@@ -250,8 +250,10 @@ FLEET 立即列出已設定的遠端主機，不等待 repository scan 或 SSH�
 本機預設隱藏，因為 REPOS 已有更完整的本機 inventory。按 `a` 或使用動作選單
 可將本機顯示在最後，首次顯示時收合；開關只保留於本次 dashboard session。
 本機 repositories 重用已接受的 REPOS snapshot，升序或降序時都固定排最後。
-Enter 展開主機或開啟 repository；Space、Ctrl+O、右鍵開啟動作選單，r 更新
-選取主機及 Herdr metadata。全域 h/l／方向鍵／Tab 仍用來切換分頁。
+Space 展開／收合主機；在 child 按 Space 會收合並選回主機。Enter／`o` 導覽至
+主機或 repository，本機主機列則切到 REPOS。Ctrl+O／右鍵開啟動作選單，r 更新
+選取主機及 Herdr metadata。全域 h/l／方向鍵／Tab 仍用來切換分頁；平面列表
+不使用 Space。
 
 初始畫面後五秒，或提早進入 FLEET 時，單一背景 worker 開始更新缺少或過期的
 host snapshot。每台符合條件的主機自動嘗試一次，結果逐台出現。背景讀取採用
@@ -269,7 +271,8 @@ background_refresh = false
 
 / 搜尋已知的主機名稱、SSH alias、Herdr profile label／session／登錄狀態，以及
 已載入／快取 repos，包含收合主機。隱藏本機時，搜尋與 coverage 都排除本機。
-命中的 repo 保留 parent header，暫時展開；清除搜尋後恢復原展開狀態。
+命中的 repo 保留 parent header，暫時展開；搜尋時仍可按 Space 收合，清除搜尋後
+恢復原展開狀態。
 輸入或篩選不增加連線工作。Footer 分開顯示最新、快取與尚未載入的主機；
 需要完整最新結果時，從 action menu 更新全部主機，零命中時也能使用。
 沒有遠端主機或沒有搜尋結果時，仍可從選單切換本機顯示。
@@ -307,6 +310,39 @@ Herdr 外另外可 Connect，並明確指定 session，預設 default。Add 可�
 新機器，但不切換選取；登錄只影響執行 dev 這台機器的 catalog。即使連線 target
 不支援（例如原生 Windows），仍可停用／移除已明確匹配的 saved profile；
 連線能力與本機 catalog 管理分開。
+
+### Enter 與遠端 session
+
+主機導覽需要 SSH alias，但不要求遠端已有 `dev` 或 repository snapshot。
+Repository 導覽（包含 `dev fleet open <host> <repo>`）先透過相容的遠端 `dev`
+檢查精確路徑與 Git identity，再準備或重用 workspace，不改變焦點。
+準備及 attach 始終明確指定同一個 Herdr session。
+
+| dev 執行位置 | 主機列 Enter | Repository 列 Enter |
+|---|---|---|
+| Herdr 內（`HERDR_ENV=1`） | 重用已啟用的 profile；Add 或 Enable 前先詢問 | 檢查 repo/helper，確認所選 profile，再準備 workspace |
+| Herdr 外 | 連接所選 saved session；沒有 profile 時明確使用 `default` | 準備 workspace，再 attach 該 session |
+
+多個 profiles 必須按精確 ID、label、session 選取；非互動呼叫不猜測。
+已移除的 profile 必須重新 Add。Catalog 讀取失敗代表 unknown，會停止 profile
+選取。Herdr 外的 Enter 不會自動新增或啟用 saved profile。
+Herdr 外準備 repository 時需要遠端 server 已就緒；若尚未就緒，先透過主機
+Enter／Connect 讓原生流程準備 server，再重試 repository。
+
+Herdr 0.9.0 沒有只切換呼叫者 client 的公開 machine/workspace 選取介面。
+準備完成後，請在原生 sidebar 選擇回報的機器與 workspace。Herdr 內會回到同一個
+dashboard，不啟動 nested client；Herdr 外執行
+`herdr --remote <alias> --session <session>`。兩條路徑都不呼叫會影響其他 clients
+的 session-wide `workspace focus`。原生安裝確認仍交給 Herdr。
+
+Herdr 不可用或 target 不支援時提供明確的 SSH 選項；`--no-runtime` 直接使用 SSH。
+開始 Herdr 操作後，取消或失敗只回報結果，不會自動改開 SSH。若後續步驟失敗，
+已完成的 Add、Enable 或 workspace 準備仍保留並回報。舊版遠端 dev 會在修改
+workspace 前拒絕新的 preparation helper；更新遠端 dev 後再試 repository 導覽。
+
+導覽與 Herdr profile 變更會直接將結果帶回 dashboard，不再要求最後按 Enter。
+Ctrl+O → full status / error 可閱讀完整結果，包含後續失敗時已完成的步驟。
+返回本身不會自動開啟另一台主機或 repository。
 
 e 編輯 primary remotes.toml 並重新驗證合併設定。Endpoint 改變會讓舊結果失效；
 設定錯誤則保留可用資料。CLI dev fleet list 的本機加遠端 inventory 契約維持不變。

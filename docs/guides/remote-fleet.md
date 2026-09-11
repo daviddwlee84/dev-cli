@@ -259,9 +259,11 @@ scan or SSH. Hosts start collapsed. This machine is hidden by default because
 REPOS provides its richer local inventory. Press `a` or use the action menu to
 show it collapsed at the end of the list; the choice lasts for this dashboard
 session, and local repositories reuse the accepted REPOS snapshot. Local stays
-last in either sort direction. Enter expands a host or opens a repository.
-Space, Ctrl+O and right-click open actions; r refreshes the selected host and
-Herdr metadata. Global h/l/arrow/Tab navigation still changes views.
+last in either sort direction. Space expands or collapses a host; on a child it
+collapses the host and selects its header. Enter/`o` navigates to the host or
+repository; Enter on the local host switches to REPOS. Ctrl+O and right-click
+open actions; r refreshes the selected host and Herdr metadata. Global
+h/l/arrow/Tab navigation still changes views. Space is unused in flat lists.
 
 After five seconds, or on entering FLEET sooner, one background worker warms
 missing or expired host snapshots. Each eligible host is tried once; results
@@ -284,7 +286,8 @@ does not cancel a requested read.
 The / filter searches known host names, SSH aliases, Herdr profile labels/session
 and registration state, and loaded/cached repos, including collapsed hosts.
 Hidden local data stays outside search and coverage. Matching children retain their parent header and
-appear temporarily expanded. Clearing the filter restores expansion choices.
+appear temporarily expanded. Space can collapse a match while searching;
+clearing the filter restores the original expansion choices.
 Typing or filtering never schedules extra connections. The coverage footer
 separates fresh, cached and unloaded hosts; update all hosts from the action
 menu when a complete current search is needed, including when no rows match.
@@ -331,6 +334,45 @@ machine. Registration affects this host's client catalog, not another desktop
 client. Unsupported connection targets, including native Windows, may still
 disable/remove an existing exact saved profile; connection capability and local
 catalog management are separate.
+
+### Enter and remote sessions
+
+Host navigation needs an SSH alias, but does not require remote `dev` or a
+repository snapshot. Repository navigation, including `dev fleet open <host>
+<repo>`, first checks the exact remote path and Git identity through a compatible
+remote `dev`. It then prepares or reuses a workspace without changing focus.
+Preparation and attachment always name the same explicit Herdr session.
+
+| Where dev runs | Enter on a host | Enter on a repository |
+|---|---|---|
+| Inside Herdr (`HERDR_ENV=1`) | Reuse an enabled saved profile; ask before Add or Enable | Check the repository/helper, ensure the chosen profile, then prepare the workspace |
+| Outside Herdr | Attach to the chosen saved session, or explicit `default` when none is saved | Prepare the workspace, then attach to that session |
+
+Several matching profiles require a choice by exact ID, label and session;
+non-interactive invocations refuse to guess. Removing a profile means it must
+be added again. A failed catalog read is unknown and blocks profile selection.
+Outside Herdr, Enter does not implicitly add or enable saved profiles.
+Repository preparation outside Herdr requires a ready remote server. If it is
+missing, use host Enter/Connect to prepare it natively, then retry the repository.
+
+Herdr 0.9.0 cannot publicly select a machine/workspace for only the calling
+client. After preparation, select the reported machine and workspace in the
+native sidebar. Inside Herdr, dev returns to the same dashboard without starting
+a nested client. Outside, it runs `herdr --remote <alias> --session <session>`.
+Neither route calls session-wide `workspace focus`, which could move other
+clients. Native installation approvals remain native.
+
+Unavailable or unsupported Herdr targets offer an explicit SSH action;
+`--no-runtime` uses SSH directly. Once a Herdr operation begins, cancellation or
+failure returns its result without automatically opening SSH. Completed Add,
+Enable and workspace preparation remain visible if a later step fails. Older
+remote dev versions reject the new preparation helper before modifying a
+workspace; update the remote dev before retrying repository navigation.
+
+Navigation and Herdr profile changes return their result directly to the
+dashboard. There is no final “Press Enter” prompt. Ctrl+O → full status / error
+shows the complete result, including any completed steps when a later step
+fails. Returning does not automatically open another host or repository.
 
 The e key edits primary remotes.toml and revalidates the merged configuration.
 Changed endpoints invalidate old results; invalid edits retain usable rows.

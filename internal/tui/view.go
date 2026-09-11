@@ -1589,7 +1589,7 @@ func (m Model) renderFooter() string {
 	}
 	primary := "Enter open · Ctrl+O actions"
 	if m.view == ViewFleet && m.hostFleetEnabled() {
-		primary = "Enter expand/open · Space actions · r refresh host"
+		primary = "Enter navigate · Space expand · Ctrl+O actions"
 	}
 	if m.remoteClone.active() {
 		primary = "q cancel clone"

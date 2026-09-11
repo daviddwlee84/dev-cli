@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os/exec"
 	goruntime "runtime"
 	"strings"
 	"sync"
@@ -21,10 +20,11 @@ import (
 // authentication-capable fleet list. Neither descriptors nor background reads
 // resolve a local runtime, discover local repositories, or ask for credentials.
 type tuiFleetBackend struct {
-	current func() *App
-	run     func(context.Context, fleet.Host, []string, fleet.RunOptions) fleet.Result
-	mu      sync.Mutex
-	next    map[string]uint64
+	current     func() *App
+	run         func(context.Context, fleet.Host, []string, fleet.RunOptions) fleet.Result
+	protocolRun func(context.Context, fleet.Host, []string, []byte, fleet.RunOptions) fleet.Result
+	mu          sync.Mutex
+	next        map[string]uint64
 }
 
 func newTUIFleetBackend(current func() *App) *tuiFleetBackend {
@@ -190,6 +190,40 @@ func (b *tuiFleetBackend) loadHost(ctx context.Context, descriptor tui.FleetHost
 	return cachedFleetFailure(host, state, detail, cached, cachedAt, haveCache), nil
 }
 
-func (b *tuiFleetBackend) RunAction(ctx context.Context, descriptor tui.FleetHostDescriptor, action string) (*exec.Cmd, error) {
-	return tuiFleetHostActionProcess(ctx, b.current(), descriptor, action)
+func (b *tuiFleetBackend) RunAction(ctx context.Context, descriptor tui.FleetHostDescriptor, action string) (*tui.FleetExecution, error) {
+	if descriptor.Local {
+		if descriptor.Key != localFleetDescriptor().Key || action != "dotfile-status" {
+			return nil, errors.New("invalid local host action")
+		}
+	} else {
+		host, err := b.host(descriptor)
+		if err != nil {
+			return nil, err
+		}
+		if err := validateTUIFleetHostAction(b.current(), host, action); err != nil {
+			return nil, err
+		}
+	}
+	return &tui.FleetExecution{Run: func(runCtx context.Context, in io.Reader, out, errOut io.Writer) (tui.FleetExecutionResult, error) {
+		app := *b.current()
+		app.In, app.Out, app.Err = in, out, errOut
+		backend := newTUIFleetBackend(func() *App { return &app })
+		backend.run, backend.protocolRun = b.run, b.protocolRun
+		var host fleet.Host
+		var err error
+		if !descriptor.Local {
+			host, err = backend.host(descriptor)
+			if err != nil {
+				return tui.FleetExecutionResult{}, err
+			}
+		}
+		err = runTUIFleetHostAction(runCtx, &app, backend, descriptor, host, action)
+		if (action == "authenticated-refresh" || action == "dotfile-status") && app.interactive() {
+			if err != nil {
+				fmt.Fprintln(app.Err, err)
+			}
+			_, _ = newPrompter(&app).readLine("Press Enter to return to FLEET: ")
+		}
+		return tui.FleetExecutionResult{Summary: fleetActionSummary(action, descriptor.Name, err), RefreshHerdr: strings.HasPrefix(action, "herdr-"), RefreshHost: action == "authenticated-refresh"}, err
+	}}, nil
 }

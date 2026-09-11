@@ -12,6 +12,9 @@ or when launching an agent into a worktree created by `dev start --json`.
 
 - `dev` owns the durable task, branch and checkout.
 - Herdr owns workspace/pane layout and live process detection.
+- Fleet navigation prepares workspaces without focus in an explicit remote
+  session. Select the reported machine/workspace in Herdr's native sidebar;
+  it never uses session-wide focus to navigate one client. See `runtime-herdr.md`.
 - SpecStory owns rendered history rooted at the process launch checkout.
 - Git owns the code, transcript and plan that survive cleanup.
 

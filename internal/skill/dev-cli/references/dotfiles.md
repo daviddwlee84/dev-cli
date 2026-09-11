@@ -31,7 +31,10 @@ not a fallback to executing chezmoi remotely. There is no remote apply in v1.
 FLEET displays configured remote hosts independently of repo scans. Local is
 hidden by default; a or the menu reveals it collapsed at the end for this
 session, reusing REPOS. Hidden local data is excluded from search and coverage.
-Enter toggles a host or opens a repository; Space/Ctrl+O/right-click opens actions.
+Space expands/collapses hosts; Enter/`o` navigates to a host or repository.
+Ctrl+O/right-click opens actions.
+Space on a child collapses and selects its host; search-only expansion changes
+are discarded when the query clears. Flat lists leave Space unused.
 The HERDR column observes the local saved catalog separately from SSH snapshots:
 not added, enabled, disabled, mixed counts or unknown. Enabled is intent, not
 proof of a live connection. r updates the selected host and Herdr metadata.
@@ -53,6 +56,15 @@ Connection capability restrictions must not hide disable/remove of an existing
 exact saved profile. Registration may install/start a remote server and preserves
 native approvals. Herdr 0.9.0 add does not switch the selected machine. Never edit its private
 catalog or claim registration updated a different machine's desktop client.
+
+Inside Herdr (`HERDR_ENV=1`), Enter offers Add/Enable as needed and reports the
+native sidebar target. Outside it attaches to the chosen explicit session
+without changing catalog enabled intent. Multiple profiles require a choice;
+unknown observations are errors. Repo navigation verifies a compatible remote
+helper and exact identity before profile changes, then prepares a workspace
+without focus. It never starts a nested Herdr client or invokes session-wide
+focus. A Herdr failure returns its partial result without falling back to SSH;
+`--no-runtime` uses SSH directly. See [session behavior](runtime-herdr.md).
 
 Keep the author's fleet chezmoi, dotcfg and appsrc independent. Dotfiles can
 optionally install dev; their bootstrap must remain usable without it.

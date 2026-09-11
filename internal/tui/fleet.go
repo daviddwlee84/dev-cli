@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os/exec"
 	"sort"
 	"strings"
 
@@ -66,6 +65,13 @@ type fleetTreeState struct {
 	herdr                                   fleetHerdrState
 	menuActions                             []FleetHostAction
 	menuWaiting                             bool
+	searchQuery                             string
+	searchExpansions                        []fleetSearchExpansion
+}
+
+type fleetSearchExpansion struct {
+	key      string
+	expanded bool
 }
 
 type fleetHostsMsg struct {
@@ -93,17 +99,6 @@ type fleetMenuMsg struct {
 	herdrGeneration uint64
 	actions         []FleetHostAction
 	err             error
-}
-type fleetProcessMsg struct {
-	host    FleetHostDescriptor
-	action  string
-	process *exec.Cmd
-	err     error
-}
-type fleetProcessDoneMsg struct {
-	host   FleetHostDescriptor
-	action string
-	err    error
 }
 
 func (m Model) hostFleetEnabled() bool { return m.actions.LoadFleetHosts != nil }
@@ -389,6 +384,23 @@ func (m Model) updateFleetTree(message tea.Msg) (Model, tea.Cmd, bool) {
 		return m, nil, false
 	}
 	switch msg := message.(type) {
+	case fleetExecutionReadyMsg:
+		i := m.fleetHostIndex(msg.host.Key)
+		if i < 0 || m.fleetTree.hosts[i].descriptor.EndpointID != msg.host.EndpointID {
+			m.fleetTerminalActive = false
+			m.err = errors.New("host changed before terminal handoff")
+			return m, nil, true
+		}
+		if msg.err != nil || msg.execution == nil || msg.execution.Run == nil {
+			m.copyFleetHosts()
+			m.fleetTree.hosts[i].acting = false
+			m.fleetTerminalActive = false
+			m.err = msg.err
+			return m, nil, true
+		}
+		m.pendingFleetHandoff = &FleetHandoff{host: msg.host, action: msg.action, execution: msg.execution}
+		m.quitting = true
+		return m, tea.Quit, true
 	case fleetHerdrMsg:
 		next, cmd := m.acceptFleetHerdr(msg)
 		return next, cmd, true
@@ -495,38 +507,7 @@ func (m Model) updateFleetTree(message tea.Msg) (Model, tea.Cmd, bool) {
 		}
 		m.addFleetMenuActions(msg.actions)
 		return m, nil, true
-	case fleetProcessMsg:
-		i := m.fleetHostIndex(msg.host.Key)
-		if i < 0 || m.fleetTree.hosts[i].descriptor.EndpointID != msg.host.EndpointID {
-			return m, nil, true
-		}
-		if msg.err != nil {
-			m.copyFleetHosts()
-			m.fleetTree.hosts[i].acting = false
-			m.err = msg.err
-			return m, nil, true
-		}
-		if msg.process == nil {
-			m.copyFleetHosts()
-			m.fleetTree.hosts[i].acting = false
-			return m, nil, true
-		}
-		return m, runExecProcess(msg.process, func(err error) tea.Msg { return fleetProcessDoneMsg{msg.host, msg.action, err} }), true
-	case fleetProcessDoneMsg:
-		if i := m.fleetHostIndex(msg.host.Key); i >= 0 {
-			m.copyFleetHosts()
-			m.fleetTree.hosts[i].acting = false
-			m.fleetTree.hosts[i].authenticatedCache = msg.action == "authenticated-refresh" && msg.err == nil
-		}
-		m.err = msg.err
-		m.status = "returned from " + msg.host.Name
-		if strings.HasPrefix(msg.action, "herdr-") {
-			return m, m.requestFleetHerdr(true), true
-		}
-		if msg.action != "authenticated-refresh" {
-			m.fleetTree.afterAction = msg.host.Key
-		}
-		return m, m.beginFleetHostsLoad(), true
+
 	}
 	return m, nil, false
 }
@@ -669,6 +650,14 @@ func (m Model) visibleFleetTree() []FleetRow {
 			children = applyColumnSort(m, children, fleetCell)
 		}
 		projectExpanded := h.expanded || (m.filter != "" && len(children) > 0)
+		if m.filter != "" && m.fleetTree.searchQuery == m.filter {
+			for _, override := range m.fleetTree.searchExpansions {
+				if override.key == header.HostKey {
+					projectExpanded = override.expanded
+					break
+				}
+			}
+		}
 		header.Expanded = projectExpanded
 		out = append(out, header)
 		if projectExpanded {
@@ -711,8 +700,32 @@ func (m Model) toggleFleetHost() (tea.Model, tea.Cmd) {
 	}
 	m.copyFleetHosts()
 	h := &m.fleetTree.hosts[i]
-	h.expanded = !h.expanded
-	if !h.expanded || h.descriptor.Local {
+	expanded := h.expanded
+	if m.filter != "" {
+		if m.fleetTree.searchQuery != m.filter {
+			m.fleetTree.searchExpansions = nil
+			m.fleetTree.searchQuery = m.filter
+		}
+		expanded = row.Expanded
+		m.fleetTree.searchExpansions = append([]fleetSearchExpansion(nil), m.fleetTree.searchExpansions...)
+		found := false
+		for j := range m.fleetTree.searchExpansions {
+			if m.fleetTree.searchExpansions[j].key == row.HostKey {
+				m.fleetTree.searchExpansions[j].expanded = !expanded
+				found = true
+				break
+			}
+		}
+		if !found {
+			m.fleetTree.searchExpansions = append(m.fleetTree.searchExpansions, fleetSearchExpansion{row.HostKey, !expanded})
+		}
+	} else {
+		h.expanded = !expanded
+	}
+	if row.Repository != nil {
+		m.restoreFleetFocus(selectionToken{view: ViewFleet, key: fleetRowKey(FleetRow{HostKey: row.HostKey, EndpointID: row.EndpointID})})
+	}
+	if expanded || h.descriptor.Local {
 		return m, nil
 	}
 	if !h.attempted && !h.descriptor.CacheFresh {
@@ -812,6 +825,8 @@ func (m Model) runFleetHostActionFor(d FleetHostDescriptor, id string) (tea.Mode
 	m.copyFleetHosts()
 	h := &m.fleetTree.hosts[i]
 	h.acting = true
+	m.fleetTerminalActive = true
+	m.err = nil
 	if !strings.HasPrefix(id, "herdr-") {
 		if h.cancel != nil {
 			h.cancel()
@@ -821,8 +836,43 @@ func (m Model) runFleetHostActionFor(d FleetHostDescriptor, id string) (tea.Mode
 		h.request = m.fleetTree.nextRequest
 	}
 	return m, func() tea.Msg {
-		process, err := m.actions.RunFleetHostAction(m.baseContext(), d, id)
-		return fleetProcessMsg{d, id, process, err}
+		execution, err := m.actions.RunFleetHostAction(m.baseContext(), d, id)
+		return fleetExecutionReadyMsg{host: d, action: id, execution: execution, err: err}
+	}
+}
+
+func (m Model) navigateFleetSelected() (tea.Model, tea.Cmd) {
+	row, ok := m.currentFleet()
+	if !ok {
+		return m, nil
+	}
+	if row.Local && row.Repository == nil {
+		m.view = ViewRepos
+		return m.afterViewSwitch()
+	}
+	if m.actions.NavigateFleet == nil {
+		if row.Repository != nil {
+			return m, m.openSelected()
+		}
+		m.status = "Host navigation is unavailable"
+		return m, nil
+	}
+	i := m.fleetHostIndex(row.HostKey)
+	if i < 0 {
+		return m, nil
+	}
+	if m.fleetTree.hosts[i].acting {
+		return m, nil
+	}
+	m.copyFleetHosts()
+	m.fleetTree.hosts[i].acting = true
+	m.fleetTerminalActive = true
+	d := m.fleetTree.hosts[i].descriptor
+	m.status = "opening " + row.Host + "…"
+	m.err = nil
+	return m, func() tea.Msg {
+		execution, err := m.actions.NavigateFleet(m.baseContext(), row)
+		return fleetExecutionReadyMsg{host: d, action: "navigate", execution: execution, err: err}
 	}
 }
 
@@ -854,7 +904,7 @@ func (m Model) renderFleetTree() string {
 		if m.fleetCount() == 0 {
 			return "  " + styleDim.Render("No remote hosts configured. Press a to show this machine.") + "\n"
 		}
-		return "  " + styleDim.Render("No known host or repository matches. Space: actions; a: local.") + "\n"
+		return "  " + styleDim.Render("No known host or repository matches. Ctrl+O: actions; a: local.") + "\n"
 	}
 	compact, wide := m.width < 90, m.width >= 160
 	hostW, repoW := clamp(m.width*18/100, 14, 26), clamp(m.width*22/100, 16, 32)

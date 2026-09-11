@@ -416,6 +416,7 @@ func runTUI(app *App) error {
 		LoadFleetHerdr:        fleetBackend.LoadHerdr,
 		ListFleetHostActions:  fleetBackend.ListActions,
 		RunFleetHostAction:    fleetBackend.RunAction,
+		NavigateFleet:         fleetBackend.Navigate,
 		ReloadSkillsWithRepos: reloadSkills,
 		ReloadMCPWithRepos:    reloadMCP,
 		LoadRemoteCache: func(context.Context) tui.RemoteCacheResult {
@@ -719,10 +720,42 @@ func runTUI(app *App) error {
 	// Enter the alternate screen immediately. Local inventory is loaded by
 	// Init in the background rather than making the terminal appear frozen
 	// while dozens of repos are probed.
-	model := tui.New(actions, nil, nil).WithTrace(app.trace).WithContext(runCtx).WithFleetBackgroundRefresh(app.Cfg.TUI.Fleet.BackgroundRefresh).BeginLoading()
+	uiCtx, cancelUI := context.WithCancel(runCtx)
+	model := tui.New(actions, nil, nil).WithTrace(app.trace).WithContext(uiCtx).WithFleetBackgroundRefresh(app.Cfg.TUI.Fleet.BackgroundRefresh).BeginLoading()
 	finishSetup(perftrace.OutcomeSuccess)
 	app.trace.Mark(perftrace.TUIProgramRunBegin, perftrace.Fields{})
-	final, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
+	var final tea.Model
+	var err error
+	for {
+		final, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
+		cancelUI()
+		if err != nil {
+			break
+		}
+		finished, ok := final.(tui.Model)
+		if !ok {
+			err = errors.New("dashboard returned an invalid model")
+			break
+		}
+		if handoffErr := finished.TerminalHandoffError(); handoffErr != nil {
+			err = handoffErr
+			break
+		}
+		handoff := finished.FleetHandoff()
+		if handoff == nil {
+			break
+		}
+		// A fresh Program owns a fresh input decoder. Merely suspending an old
+		// Program can replay already-decoded Enter keys after native completion.
+		result, runErr := handoff.Run(runCtx, app.In, app.Out, app.Err)
+		uiCtx, cancelUI = context.WithCancel(runCtx)
+		model = finished.ResumeFleetHandoff(uiCtx, result, runErr)
+		if handoffErr := model.TerminalHandoffError(); handoffErr != nil {
+			cancelUI()
+			err = handoffErr
+			break
+		}
+	}
 	cancelRun()
 	app.finishTrace()
 	if err != nil {

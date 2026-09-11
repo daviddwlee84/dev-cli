@@ -74,7 +74,7 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 	switch view {
 	case ViewTasks:
 		add("open", "Enter / o", "Open the selected task", "Requires a task with an eligible checkout. Cold or missing work needs the explicit resume/recovery action.", "parking", m.actions.Open != nil)
-		add("space", "Space", "Show task actions", "Finish, resume, retire, inspect or filter task state through the selected task's action menu. The menu shows legal actions only.", "retirement", true)
+		add("task-actions", "Ctrl+O", "Show task actions", "Finish, resume, retire, inspect or filter task state through the selected task's action menu. Space has no action on this flat list.", "retirement", true)
 		add("park", "p", "Park warm", "For a selected HOT or WARM task, enter its next action; parking closes its runtime and retains its checkout.", "parking", m.actions.Park != nil)
 		add("next", "c", "Edit next action", "Edit the selected task's next-action reminder.", "parking", m.actions.SetNext != nil)
 		add("note", "n", "Add a repository thought", "Attach a durable quick note to the selected task's canonical repository.", "notes", m.actions.Notes.Add != nil)
@@ -95,8 +95,9 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 		add("stats", "H", "Show repository activity", "Read the selected repository's activity heatmap.", "journal", stats)
 	case ViewFleet:
 		if m.hostFleetEnabled() {
-			add("open", "Enter / o", "Expand a host or open a repository", "Host headers expand or collapse their repositories. The local host reuses REPOS; a remote expansion loads only that host if no current observation is available.", "fleet", true)
-			add("actions", "Space / Ctrl+O", "Show host actions", "Read the shared local Herdr catalog and derive this host's SSH, Herdr and dotfiles actions. Multiple saved profiles have a profile picker before exact enable, disable or remove actions. The menu remains available when no rows match.", "fleet", true)
+			add("open", "Enter / o", "Navigate to the host or repository", "The local host opens REPOS. Remote navigation uses its exact host/session and preserves the current-client boundary; no extra client is opened inside Herdr. Enter never expands the tree.", "fleet", true)
+			add("expand", "Space", "Expand or collapse host repositories", "Space changes only the tree. On a repository child it collapses and selects the parent host. Search expansion overrides are temporary; clearing the query restores saved expansion.", "fleet", true)
+			add("host-actions", "Ctrl+O", "Show host actions", "Read the shared local Herdr catalog and derive this host's SSH, Herdr and dotfiles actions. Multiple saved profiles have a profile picker before exact enable, disable or remove actions. The menu remains available when no rows match.", "fleet", true)
 			add("local", "a", "Show or hide the local host", "Local is hidden initially. Showing it adds a collapsed host last, independent of sorting. Search and coverage include local repositories only while the host is shown; local rows reuse REPOS without another scan.", "fleet", true)
 		} else {
 			add("open", "Enter / o", "Open repository on its host", "Requires a repository row and the configured host connection. A host error/status row has no checkout to open.", "fleet", m.actions.OpenFleet != nil)
@@ -106,7 +107,7 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 	case ViewTries:
 		add("new", "n", "Create a Try", "Open the scratch experiment form, including when the list is empty. A Try can be a non-Git directory.", "tries", m.actions.Tries.Apply != nil)
 		add("open", "Enter / o", "Open the selected Try", "Requires a Try present on this host with no incomplete move. Archived or missing Tries need their own restore or recovery action.", "tries", m.actions.Tries.Apply != nil)
-		add("space", "Space", "Show experiment actions", "Edit metadata, deprecate, archive, restore or graduate through the menu. The available transitions depend on phase and host-local location.", "tries", true)
+		add("try-actions", "Ctrl+O", "Show experiment actions", "Edit metadata, deprecate, archive, restore or graduate through the menu. Space has no action on this flat list.", "tries", true)
 		add("history", "a", "Include or hide Try history", "Toggle deprecated, archived, evicted and graduated entries.", "tries", true)
 		add("sort", "O / R", "Cycle or reverse ordering", "Uppercase O cycles activity, name, phase and size ordering. Uppercase R reverses it.", "tui", true)
 	case ViewRemote:

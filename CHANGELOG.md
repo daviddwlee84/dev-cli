@@ -19,6 +19,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Changed
 
+- Dashboard Space expands/collapses REPOS and FLEET trees, including returning
+  from a child to its parent; flat lists leave Space unused. Ctrl+O opens actions,
+  and Enter navigates to a FLEET host or repository with explicit Herdr profile
+  and session selection. Inside Herdr, Enter offers Add/Enable when needed.
 - FLEET displays a host tree immediately, reuses local REPOS data, retains
   searchable cached repositories, and refreshes hosts independently. Optional
   delayed background refresh is bounded and never prompts for authentication;
@@ -29,6 +33,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Fleet navigation detects the Herdr environment, never starts a nested client,
+  and prepares remote workspaces without session-wide focus. Repository/helper
+  checks precede profile changes; partial results are retained, and Herdr errors
+  never silently fall back to SSH. Terminal return cannot activate another row
+  through a child acknowledgement.
 - Fleet snapshots carry optional Git observation presence; failed reads and
   older snapshots without this evidence display unknown instead of clean.
 

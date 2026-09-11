@@ -530,7 +530,9 @@ func (m Model) openActionMenu() Model {
 	}
 	overlay.addOption(listActionSettings, label)
 	m.overlay = overlay
-	m.err = nil
+	if m.view != ViewFleet {
+		m.err = nil
+	}
 	return m
 }
 
@@ -711,8 +713,8 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 		}
 	case listActionOpen:
 		if m.hostFleetEnabled() {
-			if row, ok := m.currentFleet(); ok && row.Repository == nil {
-				return m.toggleFleetHost()
+			if _, ok := m.currentFleet(); ok {
+				return m.navigateFleetSelected()
 			}
 		}
 		return m, m.openSelected()

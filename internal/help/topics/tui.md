@@ -219,6 +219,13 @@ Background refresh warms missing/expired snapshots once, starting after five
 seconds or an earlier visit; it never prompts for a password. Set
 [tui.fleet] background_refresh = false to disable it. Search itself initiates
 no extra connections. See dev help fleet and dev help dotfile for host actions.
+Space expands/collapses the host tree; on a child it selects the collapsed
+parent. Enter/o navigates; local host Enter switches to REPOS. Inside Herdr it
+offers Add/Enable if needed, prepares remote workspaces without focus and reports
+the native sidebar target. Outside it attaches to an explicit session. Multiple
+profiles require a choice; remote repos require the new helper and exact identity
+checks. It never launches a nested Herdr client or falls back to SSH after a
+Herdr error. --no-runtime uses SSH directly.
 CLI dev fleet list continues to include local and remote repositories.
 
 ## Vim-style movement
@@ -279,8 +286,9 @@ y          copy menu; follow with y/p/b/s/w/u
 FLEET:
 
 ```
-enter / o  expand/collapse host or open checkout
-space      host/repository action menu (also Ctrl+O or right-click)
+enter / o  navigate to host or repository; local host switches to REPOS
+space      expand/collapse a host; on a repo, collapse and select its host
+Ctrl+O     host/repository action menu (also right-click)
 a          show/hide local at the end (this session only)
 r          refresh the selected host and Herdr metadata
 /          filter known hosts and cached/loaded repositories
@@ -323,7 +331,7 @@ TRY:
 ```
 enter / o  open a present Try
 n          create/clone a Try (name, optional clone ref, git yes/no)
-space      metadata/lifecycle actions, Trash or permanent disposal
+Ctrl+O     metadata/lifecycle actions, Trash or permanent disposal
 a          include deprecated, archived, evicted and graduated history
 O / R      cycle / reverse activity/name/phase/size sort
 ```
@@ -456,8 +464,8 @@ on those two views.
 
 ## Lifecycle action menus
 
-`Ctrl+O`, right-click and clicking the selected row open row actions. Space does the same on TASKS and TRY;
-REPOS Space still expands worktrees. TASKS offers finish, resume, retire and
+`Ctrl+O`, right-click and clicking the selected row open row actions. Space
+expands/collapses REPOS worktrees and FLEET hosts; it is unused in flat lists. TASKS offers finish, resume, retire and
 selected-task recovery via the existing CLI workflows, with fresh task revision
 checks. `a` means show completed tasks. Missing checkouts require recovery.
 
@@ -472,7 +480,7 @@ release disk space until emptied. See `dev help tries` for guards and recovery.
 
 ## Dashboard navigation and organizer entry
 
-Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still

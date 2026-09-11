@@ -116,7 +116,8 @@ type Actions struct {
 	LoadFleetHost        func(context.Context, FleetHostDescriptor) (fleet.HostResult, error)
 	LoadFleetHerdr       func(context.Context) (FleetHerdrCatalog, error)
 	ListFleetHostActions func(context.Context, FleetHostDescriptor, FleetHerdrCatalog) ([]FleetHostAction, error)
-	RunFleetHostAction   func(context.Context, FleetHostDescriptor, string) (*exec.Cmd, error)
+	RunFleetHostAction   func(context.Context, FleetHostDescriptor, string) (*FleetExecution, error)
+	NavigateFleet        func(context.Context, FleetRow) (*FleetExecution, error)
 	Discovery            DiscoveryActions
 	Workflow             func(context.Context, WorkflowRequest) (Workflow, error)
 	// Reload re-reads the task inventory.
@@ -362,15 +363,21 @@ type Model struct {
 	firstViewReady chan struct{}
 	firstViewOnce  *sync.Once
 
-	view      View
-	rows      []inventory.Row
-	repos     []RepoRow
-	tries     []TryRow
-	remotes   []RemoteRow
-	fleet     []FleetRow
-	fleetTree fleetTreeState
-	skills    []agentskill.Skill
-	mcp       []agentmcp.Declaration
+	view                View
+	rows                []inventory.Row
+	repos               []RepoRow
+	tries               []TryRow
+	remotes             []RemoteRow
+	fleet               []FleetRow
+	fleetTree           fleetTreeState
+	fleetTerminalActive bool
+	terminalHandoffErr  error
+	pendingFleetHandoff *FleetHandoff
+	resumeInitial       bool
+	resumeCommands      []tea.Cmd
+	fleetWarmupAt       time.Time
+	skills              []agentskill.Skill
+	mcp                 []agentmcp.Declaration
 	// Each fixed view owns value-copied request/readiness state. Optional views
 	// stay lazy; no synthetic all-tabs-ready state exists.
 	loads        [viewCount]viewLoadState
@@ -483,6 +490,7 @@ func New(actions Actions, rows []inventory.Row, repos []RepoRow) Model {
 		firstViewReady:     make(chan struct{}),
 		firstViewOnce:      &sync.Once{},
 		fleetTree:          fleetTreeState{background: true, generation: 1, maxParallel: 4},
+		fleetWarmupAt:      time.Now().Add(5 * time.Second),
 	}
 	if len(actions.Tools) > 0 {
 		m.toolGeneration = 1
@@ -566,6 +574,9 @@ func (m Model) CapabilityScope() CapabilityScope { return m.capabilityScope }
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
+	if m.resumeInitial {
+		return batchCommands(m.resumeCommands...)
+	}
 	commands := []tea.Cmd{textinput.Blink}
 	if command := m.readStartupRepo(); command != nil {
 		commands = append(commands, command)
@@ -582,7 +593,7 @@ func (m Model) Init() tea.Cmd {
 	if m.hostFleetEnabled() {
 		commands = append(commands, m.loadFleetHosts())
 		if m.fleetTree.background {
-			commands = append(commands, tea.Tick(5*time.Second, func(time.Time) tea.Msg { return fleetWarmupMsg{} }))
+			commands = append(commands, tea.Tick(max(0, time.Until(m.fleetWarmupAt)), func(time.Time) tea.Msg { return fleetWarmupMsg{} }))
 		}
 	} else if m.actions.LoadFleetCache != nil {
 		commands = append(commands, m.loadFleetCache())
@@ -2309,6 +2320,12 @@ func (m Model) currentDir() string {
 
 // Update implements tea.Model.
 func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.fleetTerminalActive {
+		switch msg.(type) {
+		case tea.KeyMsg, tea.MouseMsg:
+			return m, nil
+		}
+	}
 	if next, command, handled := m.updateFleetTree(msg); handled {
 		return next, command
 	}
@@ -3206,13 +3223,10 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case " ":
 		if m.view == ViewFleet && m.hostFleetEnabled() {
-			return m.openActionMenuCommand()
+			return m.toggleFleetHost()
 		}
 		if m.view == ViewRepos {
 			return m.runListAction(listActionToggleWorktrees)
-		}
-		if m.view == ViewTries || m.view == ViewTasks {
-			return m.openActionMenu(), nil
 		}
 		return m, nil
 

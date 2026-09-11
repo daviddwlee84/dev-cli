@@ -378,7 +378,7 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 ## Dashboard navigation and organizer entry
 
-Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -474,3 +474,14 @@ refresh only catalog metadata. Connection eligibility and catalog cleanup are
 separate. --no-runtime skips Herdr; background_refresh controls only automatic
 repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
 metadata. See [host controls](../guides/remote-fleet.md#dashboard-host-tree).
+
+Fleet Enter and `dev fleet open` detect `HERDR_ENV=1` and use an explicit remote
+session. Repository preparation requires the new compatible remote helper and
+verifies path/Git identity before Add/Enable. Inside Herdr, dev returns a native
+sidebar target; outside, it attaches to the selected session. Herdr 0.9.0 has no
+public caller-client activation API, so neither route uses session-wide focus.
+Old helpers fail before workspace effects. Cancellation and partial failure do
+not open SSH automatically; `--no-runtime` selects SSH directly. Host Enter works
+without remote dev and may bootstrap through native attachment. Outside Herdr,
+repository preparation needs a ready remote server; use host navigation first
+if it is missing, then retry the repository.

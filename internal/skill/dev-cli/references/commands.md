@@ -501,7 +501,7 @@ dev fleet machine-id <host> [flags]
 
 ### `dev fleet open`
 
-Open a remote repository through Herdr or an SSH login shell
+Prepare a remote repository for native Herdr navigation or an explicit SSH shell
 
 ```
 dev fleet open <host> <repo>
