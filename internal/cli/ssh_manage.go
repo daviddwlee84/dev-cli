@@ -11,6 +11,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/herdrremote"
 	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/sshflow"
+	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 	"github.com/spf13/cobra"
 )
 
@@ -284,9 +285,16 @@ func runSSHEntry(cmd *cobra.Command, app *App) error {
 	if !app.interactive() {
 		return cmd.Help()
 	}
-	selected, err := sshPick(cmd.Context(), app, "SSH", []picker.Item{{Value: "manage", Label: "Manage SSH / fleet / Herdr machines"}, {Value: "format", Label: "Format SSH configuration", Description: "Four spaces; preview first"}, {Value: "organize", Label: "Organize Host blocks into groups", Description: "Optional; preserve Include order"}}, false)
+	selected, err := sshPick(cmd.Context(), app, "SSH", []picker.Item{{Value: "diagnose", Label: "Diagnose an SSH connection"}, {Value: "manage", Label: "Manage SSH / fleet / Herdr machines"}, {Value: "format", Label: "Format SSH configuration", Description: "Four spaces; preview first"}, {Value: "organize", Label: "Organize Host blocks into groups", Description: "Optional; preserve Include order"}}, false)
 	if err != nil {
 		return err
+	}
+	if selected[0].Value == "diagnose" {
+		target, err := newPrompter(app).line("SSH alias, hostname or IP", "")
+		if err != nil {
+			return err
+		}
+		return runSSHDiagnose(cmd.Context(), app, sshhost.DiagnoseRequest{Target: target}, false)
 	}
 	sub, _, err := cmd.Find([]string{selected[0].Value})
 	if err != nil {

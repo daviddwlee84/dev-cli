@@ -398,3 +398,9 @@ config 載入、release 提示／檢查及 Windows 升級遺留 binary 清理。
 Cobra `--help` 與 `--version` 同樣保持靜態。一般指令（包含
 `--skill=false`）仍執行啟動維護；文件指令仍回報錯誤 arguments、flags
 與 color 值。
+
+## SSH 診斷契約
+
+`ssh_diagnosis` 是新的 schema-v1 本機報告；既有 probe／show／list JSON 不變。
+macOS、Linux、Windows 均提供原生路由 collector。不支援的 QoS marking 或無法
+比較的 proxy／bind 路徑保持明確的 unknown／unsupported 狀態。

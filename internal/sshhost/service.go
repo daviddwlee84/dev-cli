@@ -8,7 +8,8 @@ import (
 // ServiceOptions carries scanner bounds and expansion seams. Zero values use
 // conservative defaults.
 type ServiceOptions struct {
-	Discovery DiscoverOptions
+	Discovery   DiscoverOptions
+	Diagnostics DiagnosticHooks
 }
 
 // Service coordinates static discovery, semantic ssh -G queries, and local

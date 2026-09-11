@@ -742,3 +742,8 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 `$XDG_DATA_HOME/dev/config-recovery`；symlink 設定檔、不支援的 TOML 格式
 或平台提供手動修改與編輯器入口。載入失敗不代表未納管；成功儲存後重新掃描，
 重載失敗會另外回報。CLI flags 與既有 JSON 契約不變。
+
+## SSH 診斷
+
+`dev ssh diagnose <target> [--compare-qos] [--timeout 60s] [--json]` 執行明確且
+有期限的網路觀察。階段、平台與本機輸出隱私請見 [SSH 診斷](../guides/ssh-hosts.zh-TW.md#ssh-diagnosis)。

@@ -840,3 +840,9 @@ under `$XDG_DATA_HOME/dev/config-recovery`; symlink configs, unsupported TOML la
 and other platforms offer manual edits and the config editor. Failed scans remain
 unknown. Successful saves refresh local inventory; reload failures are reported
 separately. CLI flags and existing JSON contracts are unchanged.
+
+## SSH diagnosis
+
+`dev ssh diagnose <target> [--compare-qos] [--timeout 60s] [--json]` performs
+explicit bounded network observations. See [SSH diagnosis](../guides/ssh-hosts.md#ssh-diagnosis)
+for stage meanings, platform collectors and local-output privacy.
