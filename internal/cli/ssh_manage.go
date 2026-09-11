@@ -295,6 +295,8 @@ func runSSHEntry(cmd *cobra.Command, app *App) error {
 	if selected[0].Value == "format" {
 		return runSSHFormat(cmd.Context(), app, nil, "4", true, false, false)
 	}
+	// Find does not inherit the execution context when dispatching RunE directly.
+	sub.SetContext(cmd.Context())
 	return sub.RunE(sub, nil)
 }
 func expandSSHFile(path string) string { return filepath.Clean(config.Expand(path)) }
