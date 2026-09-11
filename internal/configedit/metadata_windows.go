@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	goruntime "runtime"
+	"strings"
 	"unicode/utf16"
 	"unsafe"
 
@@ -73,7 +74,20 @@ func validateDescriptor(sd *windows.SECURITY_DESCRIPTOR, parent bool) error {
 		}
 		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart)).String()
 		if !trustedSID(sid) && ace.Mask&(mask|windows.GENERIC_ALL|windows.GENERIC_WRITE) != 0 {
-			return errors.New("Windows file permits foreign writes")
+			label := "other"
+			switch sid {
+			case "S-1-1-0":
+				label = "Everyone"
+			case "S-1-5-11":
+				label = "AuthenticatedUsers"
+			case "S-1-5-32-545":
+				label = "Users"
+			case "S-1-3-0":
+				label = "CreatorOwner"
+			case "S-1-3-4":
+				label = "OwnerRights"
+			}
+			return fmt.Errorf("Windows file permits foreign writes (principal=%s mask=%08x parent=%t)", label, uint32(ace.Mask), parent)
 		}
 	}
 	return nil
@@ -92,7 +106,10 @@ func checkAncestor(path string, _ fs.FileInfo) error {
 	if err != nil {
 		return err
 	}
-	return validateDescriptor(sd, false)
+	if err = validateDescriptor(sd, false); err != nil {
+		return fmt.Errorf("ancestor level %d: %w", len(strings.FieldsFunc(path, func(r rune) bool { return r == '\\' || r == '/' })), err)
+	}
+	return nil
 }
 func checkDirectory(path string, _ fs.FileInfo) error {
 	sd, _, err := securityAt(path)
