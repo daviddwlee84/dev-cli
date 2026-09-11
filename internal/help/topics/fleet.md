@@ -57,6 +57,7 @@ dev fleet list
 dev fleet list --host lab --repo api
 dev fleet list --cached
 dev fleet list --json
+dev fleet dotfile status --host lab --json
 dev fleet open lab api
 ```
 
@@ -65,10 +66,15 @@ task registry, and runtime remain authoritative. An unreachable host can reuse
 the last successful private XDG snapshot. Cache identity includes the full SSH
 endpoint, port, timeouts, dev path, remote OS, and optional machine-ID pin.
 
-The dashboard FLEET view hides this machine by default because REPOS already
-shows richer local state; `a` includes local rows. `dev fleet list` always keeps
-local plus configured remote hosts. FLEET `e` edits only primary `remotes.toml`
-and reparses the complete primary-plus-generated merge on return.
+The dashboard FLEET view starts with an expanded local host and collapsed remote
+hosts. It displays cached repositories and warms missing/expired snapshots after
+five seconds or an earlier visit. Background reads never prompt for credentials;
+[tui.fleet] background_refresh = false disables them. Enter toggles a host or
+opens a repo, r refreshes its host, and Space/Ctrl+O/right-click offers SSH,
+Herdr and dotfile status. Search includes collapsed known repos and reports
+coverage without scheduling new connections. CLI dev fleet list retains its
+local-plus-remote contract. FLEET e edits only primary remotes.toml and reparses
+the complete primary-plus-generated merge on return.
 
 Opening a remote repo prefers native Herdr remoting for an eligible host. It
 otherwise opens through SSH, validates the repository path through remote dev,
@@ -78,7 +84,7 @@ changes directory, and starts a login shell.
 
 POSIX hosts use an injection-safe shell launcher. Windows hosts use an encoded
 PowerShell wrapper that accepts only `_snapshot`, `_sync`, content-free
-`_capability`, `_open-herdr`, and `_shell` helper shapes, locates `dev.exe` when
+`_capability`, `_dotfile-status`, `_open-herdr`, and `_shell` helper shapes, locates `dev.exe` when
 `dev_path = "auto"`, preserves protocol stdin, returns 127 when dev is absent,
 and propagates its status. Native Windows `_files-plan`/`_files-apply` payloads
 remain denied before content is sent. Explicit paths

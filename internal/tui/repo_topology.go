@@ -16,6 +16,16 @@ type repoTopologyMsg struct {
 
 // Update schedules selected-row recovery details separately from bulk Git status.
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	fleetFocus := selectionToken{}
+	if m.hostFleetEnabled() {
+		switch msg.(type) {
+		case tea.KeyMsg, tea.MouseMsg:
+		default:
+			focusModel := m
+			focusModel.view = ViewFleet
+			fleetFocus = focusModel.currentToken()
+		}
+	}
 	if result, ok := msg.(repoTopologyMsg); ok {
 		if result.generation == m.viewLoad(ViewRepos).generation {
 			m.repos = append([]RepoRow(nil), m.repos...)
@@ -24,6 +34,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.repos[i].Topology, m.repos[i].TopologyErr, m.repos[i].TopologyPending = result.topology, result.err, false
 				}
 			}
+		}
+		if m.hostFleetEnabled() {
+			m.syncFleetLocal()
+			m.restoreFleetFocus(fleetFocus)
 		}
 		return m, nil
 	}
@@ -47,10 +61,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		model.popupDragging = false
 	}
 	if preserveFocus {
+		if model.hostFleetEnabled() {
+			model.syncFleetLocal()
+		}
 		focusModel := model
 		focusModel.view = ViewRepos
 		focusModel.restoreRepoFocus(focus, path)
 		model.repoCursor = focusModel.repoCursor
+	}
+	if model.hostFleetEnabled() && fleetFocus.key != "" {
+		model.restoreFleetFocus(fleetFocus)
 	}
 	model.finishRegistrationReload()
 	model.focusStartupRepo()

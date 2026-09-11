@@ -232,6 +232,18 @@ type RemoteRow struct {
 // FleetRow is one host/repository observation. Repository is nil for a host
 // health row such as unreachable or no-dev.
 type FleetRow struct {
+	// HostKey and EndpointID identify a configured host independently of a
+	// repository path. Empty HostKey retains the legacy flat-row interface.
+	HostKey    string
+	EndpointID string
+	Target     string
+	OS         string
+	Expanded   bool
+	Loading    bool
+	Known      bool
+	GitKnown   bool
+	RepoCount  int
+	ObservedAt time.Time
 	Host       string
 	Local      bool
 	State      fleet.HostState
@@ -243,8 +255,12 @@ type FleetRow struct {
 func (r FleetRow) searchText() string {
 	parts := []string{r.Host, string(r.State), r.Error}
 	if r.Repository != nil {
+		gitSummary := r.Repository.Status.Summary()
+		if r.HostKey != "" && !r.GitKnown {
+			gitSummary = "unknown"
+		}
 		parts = append(parts, r.Repository.Name, r.Repository.Display, r.Repository.Path,
-			r.Repository.Branch, r.Repository.Status.Summary(), strings.Join(r.Repository.RemoteIdentities, " "))
+			r.Repository.Branch, gitSummary, strings.Join(r.Repository.RemoteIdentities, " "))
 	}
 	return strings.ToLower(strings.Join(parts, " "))
 }

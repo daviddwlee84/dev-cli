@@ -76,6 +76,10 @@ const (
 	listActionRegistrationConfirm
 	listActionRegistrationCancel
 	listActionRegistrationEdit
+	listActionFleetToggle
+	listActionFleetRefresh
+	listActionFleetRefreshAll
+	listActionFleetHost
 )
 
 type selectionToken struct {
@@ -93,6 +97,13 @@ func repoItemKey(item repoItem) string {
 }
 
 func fleetRowKey(row FleetRow) string {
+	if row.HostKey != "" {
+		key := row.HostKey + "\x00" + row.EndpointID
+		if row.Repository != nil {
+			key += "\x00" + row.Repository.Path
+		}
+		return key
+	}
 	path := ""
 	if row.Repository != nil {
 		path = row.Repository.Path
@@ -227,7 +238,11 @@ func (m Model) selectionHeading() (string, string) {
 	}
 	if row, ok := m.currentFleet(); ok {
 		if row.Repository != nil {
-			return row.Host + "/" + row.Repository.Display, contract(row.Repository.Path)
+			path := row.Repository.Path
+			if row.Local || row.HostKey == "" {
+				path = contract(path)
+			}
+			return row.Host + "/" + row.Repository.Display, path
 		}
 		return row.Host, string(row.State)
 	}
@@ -266,6 +281,9 @@ func (m Model) openActionMenu() Model {
 			m.overlay.addOption(listActionTriageAll, "organize all local work…")
 		}
 		m.overlay.addOption(listActionSettings, "settings / configuration…")
+		if m.view == ViewFleet && m.hostFleetEnabled() {
+			m.overlay.addOption(listActionFleetRefreshAll, "update all configured hosts over SSH")
+		}
 		if m.currentStatusText() != "" {
 			m.overlay.addOption(listActionStatusDetails, "full status / error…")
 		}
@@ -347,6 +365,15 @@ func (m Model) openActionMenu() Model {
 		m.addStatsOption(&overlay)
 
 	case ViewFleet:
+		if m.hostFleetEnabled() {
+			if row, ok := m.currentFleet(); ok {
+				if row.Repository == nil {
+					overlay.addOption(listActionFleetToggle, "expand or collapse repositories")
+				}
+				overlay.addOption(listActionFleetRefresh, "refresh this host")
+			}
+			overlay.addOption(listActionFleetRefreshAll, "update all configured hosts over SSH")
+		}
 		if row, ok := m.currentFleet(); ok && row.Repository != nil && m.actions.OpenFleet != nil {
 			overlay.addOption(listActionOpen, "open repository on host")
 		}
@@ -526,8 +553,13 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 	}
 	action := m.overlay.options[m.overlay.optionIndex].action
 	option := m.overlay.options[m.overlay.optionIndex]
+	if option.fleetID != "" {
+		host := m.overlay.fleetHost
+		m.overlay = overlayState{}
+		return m.runFleetHostActionFor(host, option.fleetID)
+	}
 	token := m.overlay.selection
-	rowIndependent := action == listActionTriageAll || action == listActionTriageFiltered || action == listActionStateFilter || (action >= listActionStateAll && action <= listActionStateDone) || action == listActionLastTriage || action == listActionSettings || action == listActionStatusDetails
+	rowIndependent := action == listActionFleetRefreshAll || action == listActionTriageAll || action == listActionTriageFiltered || action == listActionStateFilter || (action >= listActionStateAll && action <= listActionStateDone) || action == listActionLastTriage || action == listActionSettings || action == listActionStatusDetails
 	if !rowIndependent && !discoveryAction(action) && !m.selectToken(token) {
 		m.overlay = overlayState{}
 		m.err = fmt.Errorf("selected row changed while its action menu was open")
@@ -569,6 +601,12 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 	}
 
 	switch action {
+	case listActionFleetToggle:
+		return m.toggleFleetHost()
+	case listActionFleetRefresh:
+		return m.refreshSelectedFleetHost()
+	case listActionFleetRefreshAll:
+		return m.refreshAllFleetHosts()
 	case listActionSettings:
 		return m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
 	case listActionStatusDetails:
@@ -660,6 +698,11 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 			return m.runWorkflow(WorkflowRequest{Action: name, Try: row})
 		}
 	case listActionOpen:
+		if m.hostFleetEnabled() {
+			if row, ok := m.currentFleet(); ok && row.Repository == nil {
+				return m.toggleFleetHost()
+			}
+		}
 		return m, m.openSelected()
 	case listActionAddNote:
 		if target, ok := m.selectedNoteTarget(); ok {

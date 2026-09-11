@@ -39,6 +39,8 @@ do not make the rest of the fleet unusable.`,
 	cmd.AddCommand(
 		newFleetListCmd(app),
 		newFleetStatusCmd(app),
+		newFleetDotfileCmd(app),
+		newFleetDotfileStatusHelperCmd(app),
 		newFleetSyncCmd(app),
 		newFleetMachineIDCmd(app),
 		newFleetFilesCmd(app),
@@ -153,7 +155,8 @@ func matchingSnapshotIdentity(topology gitx.RecoveryTopology, identity string) b
 }
 
 func newFleetOpenCmd(app *App) *cobra.Command {
-	return &cobra.Command{
+	var expectedEndpoint string
+	cmd := &cobra.Command{
 		Use:   "open <host> <repo>",
 		Short: "Open a remote repository through Herdr or an SSH login shell",
 		Args:  cobra.ExactArgs(2),
@@ -171,6 +174,9 @@ func newFleetOpenCmd(app *App) *cobra.Command {
 			}
 			if host == nil {
 				return fmt.Errorf("unknown fleet host %q", args[0])
+			}
+			if expectedEndpoint != "" && fleet.EndpointID(*host) != expectedEndpoint {
+				return errors.New("fleet host connection changed; refresh the selected host before opening its repository")
 			}
 			live := collectFleetHost(ctxOf(), *host, false)
 			if live.State != fleet.HostOK || live.Snapshot == nil {
@@ -201,6 +207,9 @@ func newFleetOpenCmd(app *App) *cobra.Command {
 			return transport.Interactive(ctxOf(), *host, []string{"fleet", "_shell", "--request", encoded}, live.PasswordAuth)
 		},
 	}
+	cmd.Flags().StringVar(&expectedEndpoint, "expected-endpoint", "", "expected fleet endpoint for an internal selected-row handoff")
+	_ = cmd.Flags().MarkHidden("expected-endpoint")
+	return cmd
 }
 
 func selectFleetRepository(repositories []fleet.RepoSnapshot, query string) (fleet.RepoSnapshot, error) {
@@ -473,10 +482,11 @@ func fleetSnapshotFromRepoRows(rows []tui.RepoRow, runtimeName string) fleet.Sna
 				counts.Done++
 			}
 		}
+		gitKnown := row.GitKnown && row.Pending == ""
 		repositories = append(repositories, fleet.RepoSnapshot{
 			Name: row.Repo.Name, Display: row.Repo.Display(), Category: row.Repo.Category,
 			Path: row.Repo.Path, RealPath: row.Repo.RealPath, RemoteIdentities: remoteIdentities(row),
-			Branch: row.Status.Branch, Status: row.Status, LastActivity: row.LastActivity,
+			Branch: row.Status.Branch, Status: row.Status, GitKnown: &gitKnown, LastActivity: row.LastActivity,
 			Worktrees: row.Worktrees, Tasks: counts, Live: row.Live, Runtime: row.Runtime,
 			RuntimeHandle: row.RuntimeHandle, AgentStatus: row.RuntimeStatus, Topology: row.Topology,
 		})
@@ -697,8 +707,12 @@ func renderFleetList(app *App, results []fleet.HostResult, query string) {
 			if !repository.LastActivity.IsZero() {
 				latest = humanAge(time.Since(repository.LastActivity))
 			}
+			gitSummary := style.dim("unknown")
+			if repository.GitKnown != nil && *repository.GitKnown {
+				gitSummary = style.git(repository.Status.Summary())
+			}
 			table.Add(result.Name, style.hostState(string(result.State)), truncate(repository.Display, 28), truncate(repository.Branch, 22),
-				style.git(repository.Status.Summary()), fleetLive(style, live), fleetTaskSummary(repository.Tasks),
+				gitSummary, fleetLive(style, live), fleetTaskSummary(repository.Tasks),
 				style.dim(latest), config.Contract(repository.Path))
 		}
 	}

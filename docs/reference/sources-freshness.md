@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 ---
 
 # Sources and freshness
@@ -146,7 +146,7 @@ Repository homepage resolution reads local Git only. Try removal journals beside
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -171,3 +171,10 @@ traces. [Skills management](../guides/skills-management.md) provider semantics
 are checked against upstream skills v1.5.23/v1.5.25 source contracts and isolated
 fixtures. Listing/checking do not execute the provider; native mutation does not
 claim frozen-content reproduction.
+
+## Dotfiles and FLEET host tree
+
+Verified 2026-09-11 against `internal/dotfile`, CLI dotfile/fleet adapters,
+TUI host-tree tests, and Herdr 0.9.0 machine help/source. Chezmoi configuration
+formats, .chezmoiroot and dry-run hooks follow its official reference.
+See [Dotfiles](../guides/dotfiles.md) and [FLEET](../guides/remote-fleet.md#dashboard-host-tree).

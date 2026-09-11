@@ -648,10 +648,10 @@ Bare `dev` (or `dev tui`) opens seven lists, switched with `tab`:
 - **TASKS** — the change streams dev is tracking. What am I working on.
 - **REPOS** — durable repositories under the scan roots, with branch, dirty
   state, owned size, runtime, worktrees and task tally. What do I have here.
-- **FLEET** — repository and activity facts from configured remote machines.
-  The TUI hides this machine by default because REPOS already shows it; `a`
-  includes local rows. Enter opens the remote checkout through Herdr when
-  possible, then SSH. `dev fleet list` continues to include this machine.
+- **FLEET** — an expandable host tree with local repositories and configured
+  remote machines. Cached data appears before independent remote refreshes;
+  Enter expands a host or opens a repo. Host actions provide SSH, Herdr and
+  dotfile status without waiting for repository loading.
 - **TRY** — dated scratch experiments, including non-Git folders, with durable
   tags/notes and explicit active/deprecated/archived/graduated state.
 - **REMOTE** — repositories visible through authenticated forge CLIs, including
@@ -671,7 +671,9 @@ Bare `dev` (or `dev tui`) opens seven lists, switched with `tab`:
 The first view is constructed before runtime auto-detection, project-root lookup,
 cache decoding, shell-based tool checks, or the optional release refresh can
 finish. TASKS, REPOS, and TRY then publish independently from one shared local
-load cycle; REMOTE, FLEET, SKILLS, and MCP remain lazy. A cached REMOTE/FLEET snapshot
+load cycle; REMOTE, SKILLS, and MCP remain lazy. FLEET warms missing/expired
+host snapshots after five seconds or an earlier visit, without blocking startup
+or prompting for authentication. A cached REMOTE/FLEET snapshot
 is immediately usable but is tracked separately from a current live result.
 Every requested view has its own generation, so `r` cancels the old read, a late
 result cannot replace a newer one, a failed refresh keeps usable rows visible,
@@ -695,7 +697,7 @@ g G        top / bottom         h l / tab       previous / next view
 
 Press `?` or click **Help** in the footer to open the current view's **Keys**.
 **Guide** explains that view's workflow, columns, colors and Git marks, including
-a read-only snapshot of the selected row. **Manual** searches and reads all 23
+a read-only snapshot of the selected row. **Manual** searches and reads all
 embedded `dev help` topics and the shared workflow TL;DR without leaving the TUI.
 Keys/Guide search stays within the selected help view unless you choose **All
 views**; changing help scope leaves the dashboard selection and sorting alone.
@@ -1498,6 +1500,31 @@ worktree_path = "{{worktree_root}}/{{repo|lower}}--{{branch|slug}}"
 Omit `--category` and canonical repos stay flat. Categories are metadata the
 user may choose, never a directory structure dev imposes.
 
+## Dotfiles
+
+`dev dotfile` locates chezmoi configuration and guides setup without requiring a
+particular dotfiles repository. Existing sources are retained. If you have no
+repository in mind, the optional author-maintained `david` preset recommends
+the standalone Unix, Windows, Termux, iSH or OpenWrt repository for this machine.
+
+```bash
+dev dotfile status --json           # passive paths/revision; no hooks or fetch
+dev dotfile setup                   # keep existing source or review a new one
+dev dotfile setup --preset david    # optional platform-specific recommendation
+dev dotfile setup --repo https://github.com/you/dotfiles.git
+dev dotfile diff
+dev dotfile apply                   # current source; may execute repo scripts
+dev dotfile update                  # native update and deployment
+dev fleet dotfile status --host lab
+```
+
+Without chezmoi, setup gives native installation/bootstrap guidance. Outside a
+terminal, `--yes` executes initialization and `--apply` separately requests
+deployment; native prompts remain native. Static status does not prove that
+the source revision has been applied. Diff/apply/update delegate to chezmoi and
+can execute its hooks. Dev does not synchronize HOME, migrate the author's
+legacy fleet inventory, or bundle appsrc/dotcfg. See [Dotfiles](docs/guides/dotfiles.md).
+
 ## Multiple machines
 
 Do not sync worktrees or runtime state. Sync branches, and let the remote be
@@ -1559,11 +1586,13 @@ PowerShell launcher and Windows target-path semantics; POSIX is the compatible
 default and uses the existing shell launcher. Missing `dev` installations are
 reported as `no-dev`; unreachable hosts can fall back to the last private XDG
 snapshot. Cache identity includes the complete SSH endpoint, including port and
-remote OS. The FLEET TUI view reuses the accepted REPOS snapshot for its local
-host instead of scanning twice, but exposes configured remote hosts by default;
-press `a` to include this machine. Enter opens a selected path through remote
-Herdr when available, otherwise through an SSH login shell. The CLI output
-remains the full local-plus-remote inventory.
+remote OS. FLEET reuses the accepted REPOS snapshot for its expanded local host;
+remote hosts start collapsed. Search includes known cached repos with visible
+coverage and never starts extra connections. Each host refreshes independently;
+Space/Ctrl+O opens SSH, Herdr and dotfile actions. Set
+`[tui.fleet] background_refresh = false` to disable delayed automatic refresh.
+See [FLEET host actions](docs/guides/remote-fleet.md#dashboard-host-tree).
+The CLI output remains the full local-plus-remote inventory.
 
 `dev fleet sync <repo> --push` publishes the clean source branch, then fetches
 matching clones by normalized Git remote identity. Only a clean checkout of the

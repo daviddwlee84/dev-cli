@@ -2,7 +2,7 @@
 description: Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 ---
 
@@ -38,7 +38,7 @@ the dashboard does not add submodules itself.
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes, or the optional release refresh can
 finish. TASKS, REPOS, and TRY then publish independently from one shared local
-cycle. REMOTE, FLEET, SKILLS, and MCP stay lazy. Each requested view has a generation:
+cycle. REMOTE, SKILLS, and MCP stay lazy; FLEET uses delayed host-by-host warming. Each requested view has a generation:
 `r` supersedes the previous read, late results are ignored, failed refreshes keep
 usable rows visible, and a successful empty result removes obsolete rows. Cache
 acceptance and current live completion are distinct; there is no all-tabs-ready
@@ -75,7 +75,7 @@ dashboard view, keeping that view's TL;DR at the top. It has three tabs:
 |---|---|
 | Keys | This view's actions, common navigation and configured tools, including availability and conditions |
 | Guide | Workflow, columns, colors and symbols; a read-only selected-row snapshot captured when Help opened |
-| Manual | All 23 embedded `dev help` topics, with related topics first, plus the shared workflow TL;DR |
+| Manual | All embedded `dev help` topics, with related topics first, plus the shared workflow TL;DR |
 
 Keys and Guide share a search over their entries, with shortcut matches before
 guide matches. Search is limited to the selected help view; choose **All views**
@@ -266,14 +266,17 @@ symlink; dev does not modify Television, shell, or chezmoi configuration.
 
 ### FLEET
 
-FLEET also loads lazily. It keeps valid cached rows usable while waiting for the
-current REPOS generation to be accepted, reuses that snapshot for the local host
-instead of scanning repositories again, and then fans out to configured SSH
-hosts. This machine is hidden by default because REPOS already provides the
-richer local inventory; press `a` to include/hide local rows. Press `r` to
-supersede an older request and force a live reload. Changing any endpoint field,
-including SSH port, invalidates that host's cache. None of this changes
-`dev fleet list`, whose non-interactive output continues to include this machine.
+FLEET is a host tree: local starts expanded and reuses REPOS; remote hosts start
+collapsed. Host rows and actions are available while local or remote repositories
+are loading. Enter toggles a host or opens a repo; Space/Ctrl+O/right-click offers
+host actions, and r refreshes the selected host. Cached repositories are retained
+and searchable with explicit age and coverage.
+
+Background warming starts after five seconds or an earlier FLEET visit, once per
+missing/expired host without password prompts. Set [tui.fleet]
+background_refresh = false to keep updates explicit. Search includes collapsed
+known repos, temporarily shows matching children, and never triggers extra SSH.
+See [the host tree and Herdr actions](remote-fleet.md#dashboard-host-tree).
 
 ## Repository quick notes
 
@@ -427,7 +430,7 @@ Use [dashboard lifecycle actions](dashboard-actions.md) for task finish/resume/r
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still

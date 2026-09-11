@@ -141,6 +141,7 @@ nav:
       - Skills Management: guides/skills-management.md
       - SSH Host Onboarding: guides/ssh-hosts.md
       - Remote Repository Fleet: guides/remote-fleet.md
+      - Dotfiles: guides/dotfiles.md
       - Agent-Safe Retirement: guides/agent-safe-retirement.md
       - Prompt Handoffs: guides/prompt-handoffs.md
       - Pull Request Inbox: guides/pull-request-inbox.md

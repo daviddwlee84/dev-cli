@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `dev dotfile` provides passive chezmoi discovery, platform-aware setup guidance
+  with an optional author-maintained preset, and native diff/apply/update entry
+  points. `dev fleet dotfile status` observes explicitly selected hosts without
+  rendering templates, running hooks, or transferring configuration.
+- FLEET host action menus offer SSH, capability-aware Herdr machine registration
+  or remote attachment, and dotfile status independently of repository loading.
+
+### Changed
+
+- FLEET displays a host tree immediately, reuses local REPOS data, retains
+  searchable cached repositories, and refreshes hosts independently. Optional
+  delayed background refresh is bounded and never prompts for authentication;
+  filtering shows coverage without initiating extra connections.
+
+### Fixed
+
+- Fleet snapshots carry optional Git observation presence; failed reads and
+  older snapshots without this evidence display unknown instead of clean.
+
 ## [0.2.24] - 2026-09-11
 
 ### Added

@@ -2,7 +2,7 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 ---
 
 # Commands and configuration
@@ -32,6 +32,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
 | SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh probe`, `ssh remove` |
+| dotfiles | `dotfile status`, `dotfile setup`, `dotfile diff`, `dotfile apply`, `dotfile update`, `fleet dotfile status` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
@@ -48,7 +49,7 @@ Run `dev <command> --help` for the installed binary; this site describes the rep
 `dev --help` lists commands. Use the relevant leaf command's `--help` for syntax
 and flags, and `dev help <topic>` for workflow explanations. Dashboard `?` or the
 clickable **Help** footer opens contextual **Keys**, **Guide** and **Manual**;
-Manual uses the same 23 embedded topics and workflow TL;DR as CLI help.
+Manual uses the same embedded topics and workflow TL;DR as CLI help.
 See [contextual Help](../guides/tui-repos-bootstrap.md#contextual-help-v0224).
 
 The bundled skill has a small entry covering core purpose, essential boundaries
@@ -797,7 +798,7 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -840,3 +841,21 @@ under `$XDG_DATA_HOME/dev/config-recovery`; symlink configs, unsupported TOML la
 and other platforms offer manual edits and the config editor. Failed scans remain
 unknown. Successful saves refresh local inventory; reload failures are reported
 separately. CLI flags and existing JSON contracts are unchanged.
+
+## Dotfiles and dashboard fleet
+
+`dev dotfile status --json` is a versioned passive configuration/source/revision report.
+`dev fleet dotfile status --host NAME` accepts repeatable exact host selectors.
+Local `--chezmoi-config PATH` is distinct from dev `--config` and is not sent to
+remote hosts. Setup supports `--repo URL` or optional `--preset david`; outside
+a terminal it reports unless `--yes`, with separate `--apply`. Diff/apply/update
+are explicit native operations. See [Dotfiles](../guides/dotfiles.md).
+
+```toml
+[tui.fleet]
+background_refresh = true
+```
+
+This default warms missing/expired snapshots once after five seconds or an
+earlier FLEET visit. It never prompts for credentials. Set false for explicit
+updates only. Host rows, cached search, and per-host actions remain available.

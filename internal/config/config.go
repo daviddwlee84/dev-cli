@@ -200,6 +200,8 @@ type Bootstrap struct {
 type TUI struct {
 	// Repos configures the local repository table.
 	Repos RepoTable `toml:"repos"`
+	// Fleet controls optional background observation of configured hosts.
+	Fleet FleetTable `toml:"fleet"`
 	// Tools are the external programs the dashboard can hand the terminal to,
 	// each on its own key. When empty, DefaultTools applies.
 	//
@@ -207,6 +209,12 @@ type TUI struct {
 	// personal — nvim or helix, lazygit or gitui, and whatever aliases and
 	// scripts you have built up around your own workflow.
 	Tools []Tool `toml:"tools"`
+}
+
+// FleetTable configures the dashboard's host tree. It does not change the
+// explicit network behavior of non-interactive fleet commands.
+type FleetTable struct {
+	BackgroundRefresh bool `toml:"background_refresh"`
 }
 
 // RepoTable configures columns and ordering in the TUI REPOS view.
@@ -400,6 +408,7 @@ func Default() Config {
 			ProvisionTimeout: Duration{10 * time.Minute},
 		},
 		LocalFiles: localFilesFromLimits(safefile.DefaultLimits()),
+		TUI:        TUI{Fleet: FleetTable{BackgroundRefresh: true}},
 		Bootstrap: Bootstrap{
 			MaxDepth:       8,
 			FollowSymlinks: true,

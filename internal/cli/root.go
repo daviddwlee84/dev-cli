@@ -2,12 +2,14 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"runtime/debug"
 	"sync"
 
+	"github.com/daviddwlee84/dev-cli/internal/dotfile"
 	"github.com/daviddwlee84/dev-cli/internal/help"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/skill"
@@ -158,6 +160,7 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 		newRepoCmd(app),
 		newRepoBrowseCmd(app),
 		newFleetCmd(app),
+		newDotfileCmd(app),
 		newSSHCmd(app),
 		newGitCmd(app),
 		newGitignoreCmd(app),
@@ -229,6 +232,10 @@ func Execute() int {
 	fmt.Fprintln(os.Stderr, style.danger("dev:")+" "+err.Error())
 	if cmd != nil && wantsUsage(err) {
 		fmt.Fprint(os.Stderr, renderCobraHelp(cmd.UsageString(), style))
+	}
+	var nativeError *dotfile.NativeError
+	if errors.As(err, &nativeError) {
+		return nativeError.ExitCode()
 	}
 	return 1
 }

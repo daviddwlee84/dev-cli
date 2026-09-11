@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 tested_with: Claude Code 2.1.259
 ---
 
@@ -378,7 +378,7 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -423,7 +423,7 @@ separately. CLI flags and existing JSON contracts are unchanged.
 ## Contextual Help and compact skill entry (v0.2.24)
 
 Dashboard Help starts with Keys for the current view, followed by Guide and
-Manual. View scope applies to TUI search; Manual searches all 23 embedded CLI
+Manual. View scope applies to TUI search; Manual searches all embedded CLI
 topics. Selected-row explanations are frozen at Help opening and cannot refresh
 or authorize an action. Help starts no external loads or probes. The dashboard,
 flow and triage remain independent interfaces.
@@ -447,3 +447,18 @@ release nudges/checks and stale Windows upgrade-binary cleanup. Cobra `--help`
 and `--version` also remain static. Ordinary commands, including `--skill=false`,
 retain startup maintenance; invalid arguments, flags and color values retain
 their errors on the document commands.
+
+## Dotfiles and fleet host observations
+
+Chezmoi is optional. Passive dotfile status works without executing it; native
+operations require it. Missing, ambiguous or unsupported configuration stays
+unknown. Source revisions are not deployment receipts. The author preset is
+optional; experimental platform recommendations do not imply packaged dev support.
+Remote status needs a compatible remote dev and uses a fixed content-free helper
+on POSIX or native Windows; older versions remain explicitly incompatible.
+Existing fleet list/snapshot fields are retained. Repository snapshots add
+optional `git_known`; older snapshots without it remain unknown in the TUI. TUI background
+reads do not attempt password fallback, and cached repo matches are historical
+evidence until refreshed. Herdr host registration requires a compatible machine
+CLI; attachment does not require a running local Herdr server.
+See [Dotfiles](../guides/dotfiles.md) and [host actions](../guides/remote-fleet.md#dashboard-host-tree).

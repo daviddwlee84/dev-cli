@@ -1,6 +1,6 @@
 ---
 name: dev-cli
-description: Use dev for repository discovery and setup, task and worktree lifecycle, agent handoffs, SSH hosts, fleet operations, repository notes, and skills or MCP inventory. Consult it when choosing or coordinating these workflows.
+description: Use dev for repository discovery and setup, task and worktree lifecycle, agent handoffs, SSH hosts, fleet operations, dotfile setup, repository notes, and skills or MCP inventory. Consult it when choosing or coordinating these workflows.
 ---
 
 # dev-cli
@@ -39,6 +39,7 @@ Load only the guide needed for the requested operation:
 - Agent completion or cleanup batches: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
 - Repository hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
 - SSH configuration, fleet registration, or file export: [SSH](references/ssh-hosts.md).
+- Dotfile setup, native chezmoi operations, or FLEET host actions: [dotfiles](references/dotfiles.md).
 - Skill/MCP/instruction transfers or managed updates: [transfers](references/agent-interop.md), [maintenance](references/skills-management.md).
 - Recursive Git children: [submodules](references/submodules.md).
 

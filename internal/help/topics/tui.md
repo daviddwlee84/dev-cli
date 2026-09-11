@@ -21,7 +21,7 @@ Switch with `tab`, `l`/`h`, right/left, or by left-clicking a visible tab:
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes or the optional release refresh can
 finish. TASKS, REPOS and TRY then publish independently from one shared local
-load cycle; optional REMOTE, FLEET, SKILLS and MCP work remains lazy. Each view
+load cycle; REMOTE, SKILLS and MCP remain lazy; FLEET warms hosts after a delay. Each view
 has its own generation: `r` supersedes the old read, late results are ignored,
 failed refreshes keep usable rows, and a successful empty result clears old
 rows. Warning-only SKILLS/MCP diagnostics remain fresh partial snapshots instead
@@ -63,7 +63,7 @@ tools. Guide explains that view's workflow, columns, colors and symbols. Its
 selected-row section is captured when Help opens, retaining source and unknown,
 loading or cached state; it is not a new observation or permission to act.
 
-Manual contains all 23 embedded dev help topics, related topics first, and the
+Manual contains all embedded dev help topics, related topics first, and the
 shared workflow TL;DR. Search covers names, titles, headings and body text; open
 a result at its matching passage. Paragraphs wrap, while code, ASCII diagrams
 and tables preserve structure and support horizontal scrolling.
@@ -207,16 +207,14 @@ Repeat the table for additional projects. Azure CLI and its `azure-devops`
 extension must already be installed and authenticated; dev does not install the
 extension, change Azure defaults, or store credentials.
 
-FLEET is also lazy. It shows cached rows immediately when fresh, waits for and
-reuses the accepted REPOS snapshot for this machine, then queries the machines
-in `$XDG_CONFIG_HOME/dev/remotes.toml`. It hides this machine by default because
-REPOS already provides the richer local view; press `a` to include local rows.
-Cache endpoint identity includes the SSH port. Enter opens an explicitly
-revealed local row in the normal runtime; a remote row prefers native
-`herdr --remote` after focusing the checkout's workspace and falls back to
-`ssh -t` at that repository. Git synchronization is deliberately CLI-only
-through `dev fleet sync`; the CLI `dev fleet list` continues to include this
-machine.
+FLEET is an expandable host tree. The local host reuses REPOS and starts
+expanded; remote hosts start collapsed. Configured hosts and their actions do
+not wait for repo scans. Cached data remains searchable with age and coverage.
+Background refresh warms missing/expired snapshots once, starting after five
+seconds or an earlier visit; it never prompts for a password. Set
+[tui.fleet] background_refresh = false to disable it. Search itself initiates
+no extra connections. See dev help fleet and dev help dotfile for host actions.
+CLI dev fleet list continues to include local and remote repositories.
 
 ## Vim-style movement
 
@@ -276,9 +274,10 @@ y          copy menu; follow with y/p/b/s/w/u
 FLEET:
 
 ```
-enter / o  open the selected checkout
-a          include/hide this machine
-r          refresh configured hosts
+enter / o  expand/collapse host or open checkout
+space      host/repository action menu (also Ctrl+O or right-click)
+r          refresh the selected host
+/          filter known hosts and cached/loaded repositories
 ```
 
 In TRY, `n` remains “new Try”; quick notes intentionally do not attach to Try
@@ -467,7 +466,7 @@ release disk space until emptied. See `dev help tries` for guards and recovery.
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or toggles a FLEET host. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still

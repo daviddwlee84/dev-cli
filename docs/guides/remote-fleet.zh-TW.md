@@ -2,7 +2,7 @@
 description: 透過 merged fleet configuration 盤點 POSIX 或 Windows SSH host、pin remote identity、安全 fast-forward branch，並明確傳送 bounded ignored files。
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-11
 lang: zh-TW
 ---
 
@@ -135,6 +135,7 @@ Partial/unknown bootstrap、failed ordinary gate 或 fleet-fragment collision �
 |---|---|---|
 | `dev fleet list` | `--host <name>`（repeatable）、`--repo <query>`、`--json`、`--cached`、`--strict` | 列出本機與 merged configured hosts 的 repository/activity |
 | `dev fleet status` | `--json`、`--strict` | probe configured hosts 並回報 snapshot health |
+| `dev fleet dotfile status` | `--host <name>`（必填、可重複）、`--json` | 唯讀檢查主機的 chezmoi 設定與來源 revision |
 | `dev fleet machine-id <host>` | `--json` | 顯示 observed durable UUID 並比較 primary configured pin |
 | `dev fleet sync <repo>` | `--push`、`--remote <name>`、`--host <name>`（repeatable）、`--json` | optional publish，然後安全 fast-forward clean matching checkout |
 | `dev fleet files [repo-or-path]` | `--to <host>`、`--file <pattern>`（repeatable）、`--apply`、`--replace`、`--yes`、`--json` | plan 或 apply explicit ignored files 的 one-way transfer |
@@ -243,19 +244,42 @@ backend——interactive setup 將 native prompt 留給 OpenSSH，noninteractive
 
 Cache 讓 unavailable host 可以 `stale` 保留 last-known state；`--cached` 只讀 cache。它永遠不會成為 remote path 或 task authority。
 
-## TUI 中的 FLEET
+## FLEET 主機樹 {#dashboard-host-tree}
 
-FLEET 是 TUI 七個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、
-`SKILLS`、`MCP`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣 lazy-load；view 第一次
-開啟前不會開始 live probe，但 valid cache 會在初始 TASKS view 後 decode。TUI 預設
-隱藏本機，因為 REPOS 有較完整 local inventory；`a` toggle local rows。Local snapshot
-重用 accepted REPOS generation，不重跑 discovery；generation 尚在 loading 時仍保留
-cached rows。`r` supersede prior work，並 reload merged primary-plus-generated config 的
-所有 hosts。Non-interactive `dev fleet list` 仍包含 local 加 remote。
+FLEET 立即列出本機與所有已設定的遠端主機，不等待 repository scan 或 SSH。
+本機置頂、預設展開並重用已接受的 REPOS snapshot；遠端預設收合。
+Enter 展開主機或開啟 repository；Space、Ctrl+O、右鍵開啟動作選單，r 更新
+選取主機。全域 h/l／方向鍵／Tab 仍用來切換分頁。
 
-Table 顯示 host/state/repository/branch/Git/runtime/task/path facts。Enter 在符合資格的 POSIX-style profile 回報 Herdr 且不需 password step 時使用 native Herdr remoting；否則透過 SSH 與 remote login shell 開啟。Windows controller 的 local fallback 會啟動 child `%COMSPEC%` shell，因為 Windows 沒有 `exec(2)`。
+初始畫面後五秒，或提早進入 FLEET 時，單一背景 worker 開始更新缺少或過期的
+host snapshot。每台符合條件的主機自動嘗試一次，結果逐台出現。背景讀取採用
+非互動認證，不解析 password fallback，單台 timeout 為 30 秒或較短的原設定。
+明確要求的讀取優先執行，並共用既有並行上限。可在 dev config 關閉預熱：
 
-`e` key 只開 primary `remotes.toml`。返回後，dev reparse 完整 primary-plus-generated merge。Invalid primary 或 generated fragment 會回報 error 並保留之前 usable rows；valid merge 觸發 live reload。
+```toml
+[tui.fleet]
+background_refresh = false
+```
+
+超過 cache_ttl 的有效快取仍可使用與搜尋，並標示時間及 stale／error 狀態。
+失敗保留舊資料，只有成功的空 snapshot 才代表零個 repositories。
+主機載入與動作不依賴本機 REPOS 成功；收合只隱藏 children，保留資料及已要求的讀取。
+
+/ 搜尋已知的主機名稱、SSH alias 與所有已載入／快取 repos，包含收合主機。
+命中的 repo 保留 parent header，暫時展開；清除搜尋後恢復原展開狀態。
+輸入或篩選不增加連線工作。Footer 分開顯示最新、快取與尚未載入的主機；
+需要完整最新結果時，從 action menu 更新全部主機，零命中時也能使用。
+
+主機動作包含 SSH、[dotfile status](dotfiles.zh-TW.md) 與選用的 Herdr，不必先取得
+repo snapshot，也不要求遠端已有 dev。Herdr 外的連線明確指定 session，預設
+為 default；Herdr 內的加入／啟用重用既有受保護流程。原生安裝確認交給 Herdr；
+0.9.0 add 會讓開啟中的本機 clients 連上新機器，但不切換選取。
+登錄只影響執行 dev 這台機器的 client catalog，不影響另一台桌面 client。
+原生 Windows target 保留 SSH，不提供 Herdr server 動作。
+
+e 編輯 primary remotes.toml 並重新驗證合併設定。Endpoint 改變會讓舊結果失效；
+設定錯誤則保留可用資料。CLI dev fleet list 的本機加遠端 inventory 契約維持不變。
+
 
 ## 安全 branch propagation 與 degradation
 

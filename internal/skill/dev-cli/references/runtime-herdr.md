@@ -175,6 +175,15 @@ removing a profile leaves remote sessions running. This registration workflow
 does not replace fleet's host-local repo snapshots or change fleet open's runtime
 selection. See `dev help ssh` for plans and multi-select management.
 
+FLEET host actions reuse this workflow without loading repositories. Outside
+Herdr, attachment runs `herdr --remote <alias> --session <name>` with an explicit
+session (default `default`). Inside Herdr, add/enable updates only this host's
+client catalog; Herdr 0.9.0 connects enabled machines but does not switch the
+selected machine. Use the native sidebar afterward. The menu queries machine
+capability lazily and keeps native installation approvals. SSH remains a
+separate action, including when remote dev is missing. See [dotfiles and host
+actions](dotfiles.md).
+
 ## Cross-repository triage
 
 `dev triage` joins supported available backend observations without starting

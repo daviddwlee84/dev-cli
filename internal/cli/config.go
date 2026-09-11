@@ -254,6 +254,11 @@ relative_links = false
 
 [tui]
 
+[tui.fleet]
+# Warm missing/expired host snapshots once, starting five seconds after startup
+# or on entering FLEET. Background reads never prompt for authentication.
+background_refresh = true
+
 [tui.repos]
 # Exact columns and order for the local repository view:
 # repo | branch | git | remote | size | live | latest | worktrees | tasks | notes | category | path

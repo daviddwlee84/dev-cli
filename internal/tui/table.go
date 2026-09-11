@@ -268,6 +268,9 @@ func fleetCell(r FleetRow, key string) sortCell {
 	case "branch":
 		return textCell(v.Branch)
 	case "git":
+		if r.HostKey != "" && !r.GitKnown {
+			return sortCell{}
+		}
 		return gitSortCell(v.Status)
 	case "live":
 		return textCell(v.Runtime + " " + v.AgentStatus)

@@ -320,6 +320,63 @@ dev done [task] [flags]
 - `--push` — push the resulting base (direct mode pushes its current branch)
 - `-y, --yes` — confirm the selected finish plan (required for non-interactive discard)
 
+### `dev dotfile`
+
+Inspect and manage local dotfiles through native chezmoi
+
+```
+dev dotfile [flags]
+```
+
+- `--json` — emit static status as JSON
+
+### `dev dotfile apply`
+
+Run native chezmoi apply
+
+```
+dev dotfile apply [targets...]
+```
+
+### `dev dotfile diff`
+
+Run native chezmoi diff
+
+```
+dev dotfile diff [targets...]
+```
+
+### `dev dotfile setup`
+
+Review or initialize a native chezmoi source
+
+```
+dev dotfile setup [flags]
+```
+
+- `--apply` — also run native apply after initialization
+- `--preset` — optional platform preset (david)
+- `--repo` — explicit dotfiles repository URL
+- `--yes` — run the reviewed native initialization without a dev confirmation
+
+### `dev dotfile status`
+
+Read configuration and source revision without running chezmoi
+
+```
+dev dotfile status [flags]
+```
+
+- `--json` — emit static status as JSON
+
+### `dev dotfile update`
+
+Run native chezmoi update
+
+```
+dev dotfile update
+```
+
 ### `dev edit`
 
 Open dev's config in $VISUAL or $EDITOR
@@ -383,6 +440,25 @@ Print the effective remotes configuration
 ```
 dev fleet config show
 ```
+
+### `dev fleet dotfile`
+
+Inspect host-local dotfiles across configured fleet hosts
+
+```
+dev fleet dotfile
+```
+
+### `dev fleet dotfile status`
+
+Read static chezmoi configuration and revision from fleet hosts
+
+```
+dev fleet dotfile status [flags]
+```
+
+- `--host` — only these configured host names (repeatable)
+- `--json` — emit content-free status JSON
 
 ### `dev fleet files`
 
