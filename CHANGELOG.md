@@ -20,11 +20,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   optional alias evaluation and a setup key picker with manual-path fallback.
 - Early, separately reviewed macOS/Linux SSH permission tightening for canonical setup paths
   and the selected key; completed repairs survive later wizard cancellation.
+- `dev ssh key doctor` provides a bounded, metadata-only permission report and
+  explicit verified `--fix`, with repeatable `--key` for a restricted repair scope.
 
 ### Changed
 
 - SSH setup, machine management and dashboard registration use independent Fleet
   and Herdr checkboxes. Accepting an empty selection skips registration.
+- Key inventory diagnostics explain public-file and private-identity failures with
+  specific causes and next steps, including `dev ssh key doctor` for permission issues.
 
 ## [0.2.27] - 2026-09-11
 

@@ -448,21 +448,47 @@ func (s *Service) Catalog(ctx context.Context, request KeyCatalogRequest) (KeyCa
 		byFingerprint[candidate.Fingerprint] = len(entries)
 		entries = append(entries, catalogEntry{safe: candidate, publicLine: append([]byte(nil), record.normalized...)})
 	}
-	addDiagnostic := func(code, path string, incomplete bool) {
-		catalog.Diagnostics = append(catalog.Diagnostics, Diagnostic{Code: code, Path: path, Incomplete: incomplete})
+	diagnosed := make(map[string]bool)
+	addDiagnostic := func(code, path string, incomplete bool, message ...string) {
+		key := code + "\x00" + path
+		if diagnosed[key] {
+			return
+		}
+		diagnosed[key] = true
+		diagnostic := Diagnostic{Code: code, Path: path, Incomplete: incomplete}
+		if len(message) > 0 {
+			diagnostic.Message = message[0]
+		}
+		catalog.Diagnostics = append(catalog.Diagnostics, diagnostic)
 		if incomplete {
 			catalog.Complete = false
 		}
 	}
 	publicRecords := make(map[string]publicKeyRecord)
+	publicFailures := make(map[string]bool)
 	addPath := func(path string, source KeySource, effectiveIdentity string) {
 		path = filepath.Clean(path)
+		if publicFailures[path] {
+			return
+		}
 		record, cached := publicRecords[path]
 		if !cached {
 			var err error
 			record, err = s.readPublicKeyFile(path)
 			if err != nil {
-				addDiagnostic("public_key_unreadable", path, true)
+				publicFailures[path] = true
+				inferredCompanion := effectiveIdentity != "" && !strings.HasSuffix(strings.ToLower(effectiveIdentity), ".pub")
+				if inferredCompanion && errors.Is(err, fs.ErrNotExist) && s.validateSSHPath(path, true) == nil {
+					// ssh -G includes unused default identities. Absence of their
+					// inferred public file is known, not an unreadable source or
+					// evidence that a private companion exists.
+					if _, statErr := os.Lstat(path); errors.Is(statErr, fs.ErrNotExist) {
+						addDiagnostic("public_key_companion_missing", path, false,
+							"No .pub companion found for this configured identity; it may be an unused OpenSSH default. Private-key availability has not been checked. If this identity is needed, manually provide or recreate its public companion.")
+						return
+					}
+				}
+				addDiagnostic("public_key_unreadable", path, true, publicKeyReadDiagnosticMessage(err))
 				return
 			}
 			publicRecords[path] = record
@@ -471,10 +497,10 @@ func (s *Service) Catalog(ctx context.Context, request KeyCatalogRequest) (KeyCa
 		if effectiveIdentity != "" {
 			identity = strings.TrimSuffix(effectiveIdentity, ".pub")
 		}
-		private, stub := s.inspectIdentityProvenance(identity, record.metadata.Algorithm)
+		private, stub, identityErr := s.inspectIdentityProvenanceWithError(identity, record.metadata.Algorithm)
 		repair := !private && !stub && s.unprotectedPrivateCompanion(identity, path)
 		if repair {
-			addDiagnostic("private_key_permissions", identity, false)
+			addDiagnostic("private_key_permissions", identity, false, privateKeyPermissionDiagnosticMessage(identityErr))
 		}
 		if !private && !stub && !repair {
 			identity = path
@@ -659,6 +685,45 @@ func (s *Service) readAgentKeys(ctx context.Context, agent *keyAgentContext, dis
 		return records[i].metadata.Fingerprint < records[j].metadata.Fingerprint
 	})
 	return records, diagnostics, nil
+}
+
+// These messages accept only errors from bounded local key/metadata readers,
+// never subprocess output. The parser's unsupported-algorithm errors are the
+// only ones that interpolate a field from the public record; redact that field.
+func publicKeyReadDiagnosticMessage(err error) string {
+	reason := safeKeyDiagnosticReason(err)
+	switch {
+	case errors.Is(err, ErrSourceChanged):
+		return "Public-key source changed during inspection. Retry the key listing."
+	case errors.Is(err, fs.ErrNotExist):
+		return "Public-key path was not found: " + reason + ". Check the configured path or select another key."
+	case errors.Is(err, fs.ErrPermission):
+		return "Access denied while inspecting public key: " + reason + ". Run dev ssh key doctor to inspect permissions."
+	case errors.Is(err, ErrUnsafePath):
+		return "Public-key source failed safety checks: " + reason + ". Run dev ssh key doctor to inspect permissions and paths."
+	case strings.HasPrefix(reason, "OpenSSH public "), strings.HasPrefix(reason, "validate OpenSSH public blob:"), strings.HasPrefix(reason, "unsupported public-key "):
+		return "Invalid OpenSSH public key: " + reason + ". Check the .pub file format or manually recreate its public companion from the matching private key."
+	default:
+		return "Cannot inspect public key: " + reason + ". Check file availability and retry the key listing."
+	}
+}
+
+func privateKeyPermissionDiagnosticMessage(err error) string {
+	if err == nil {
+		return "Private identity needs a fresh permission check and key selection. Run dev ssh key doctor."
+	}
+	return "Private identity failed safety checks: " + safeKeyDiagnosticReason(err) + ". Run dev ssh key doctor to inspect permissions, then select the key again."
+}
+
+func safeKeyDiagnosticReason(err error) string {
+	if err == nil {
+		return "inspection failed"
+	}
+	reason := err.Error()
+	if strings.Contains(reason, "unsupported public-key algorithm ") || strings.Contains(reason, "unsupported certificate algorithm ") {
+		return "unsupported public-key or certificate algorithm"
+	}
+	return reason
 }
 
 // A direct regular companion that could not pass the private-file checks is
@@ -921,7 +986,7 @@ func (s *Service) PlanKey(ctx context.Context, request KeyRequest) (KeyPlan, err
 			return KeyPlan{}, err
 		}
 		if material.safe.NeedsPermissionRepair {
-			return KeyPlan{Action: ActionBlocked, Operation: KeyUse, IdentityFile: material.safe.IdentityFile, Fingerprint: material.safe.Fingerprint, Diagnostics: []Diagnostic{{Code: "private_key_permissions", Path: material.safe.IdentityFile, BlocksMutation: true}}}, nil
+			return KeyPlan{Action: ActionBlocked, Operation: KeyUse, IdentityFile: material.safe.IdentityFile, Fingerprint: material.safe.Fingerprint, Diagnostics: []Diagnostic{{Code: "private_key_permissions", Message: privateKeyPermissionDiagnosticMessage(nil), Path: material.safe.IdentityFile, BlocksMutation: true}}}, nil
 		}
 		if err := s.revalidateSelectedLocalSources(material); err != nil {
 			return KeyPlan{}, err
@@ -1021,7 +1086,7 @@ func keyPlanForMaterial(action PlanAction, operation KeyOperation, candidate Key
 	}
 	if candidate.NeedsPermissionRepair {
 		plan.Action = ActionBlocked
-		plan.Diagnostics = []Diagnostic{{Code: "private_key_permissions", Path: candidate.IdentityFile, BlocksMutation: true}}
+		plan.Diagnostics = []Diagnostic{{Code: "private_key_permissions", Message: privateKeyPermissionDiagnosticMessage(nil), Path: candidate.IdentityFile, BlocksMutation: true}}
 	}
 	return plan
 }
@@ -1526,14 +1591,19 @@ func adoptGeneratedStagedFile(path string) (*stagedFile, error) {
 }
 
 func (s *Service) inspectIdentityProvenance(identity, algorithm string) (private, stub bool) {
+	private, stub, _ = s.inspectIdentityProvenanceWithError(identity, algorithm)
+	return private, stub
+}
+
+func (s *Service) inspectIdentityProvenanceWithError(identity, algorithm string) (private, stub bool, err error) {
 	if identity == "" || !s.pathWithinSSH(identity) {
-		return false, false
+		return false, false, ErrUnsafePath
 	}
 	if _, err := s.inspectSelectedKeyIdentity(identity); err != nil {
-		return false, false
+		return false, false, err
 	}
 	if strings.HasPrefix(algorithm, "sk-") {
-		return false, true
+		return false, true, nil
 	}
-	return true, false
+	return true, false, nil
 }

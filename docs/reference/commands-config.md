@@ -31,7 +31,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
-| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh probe`, `ssh remove` |
+| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list/doctor`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh probe`, `ssh remove` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
@@ -892,3 +892,21 @@ later wizard steps; completed tightening remains after cancellation. Fleet/Herdr
 registration uses two optional checkboxes: none, either or both map to the existing
 registration behavior. Multi-selection uses built-in Bubble Tea; fzf remains the
 configured default for single selection. See [SSH key selection](../guides/ssh-hosts.md#key-selection-and-optional-registration).
+
+## SSH key permission reports and fixes
+
+`ssh key doctor` accepts `--fix`, `--yes`, `--json` and repeatable `--key PATH`.
+Without `--key`, its bounded metadata scan includes public companions and exact
+standard private-only key names. Explicit paths restrict the scan/repair scope,
+alongside canonical SSH setup paths. It never reads key contents or runs an agent,
+OpenSSH, key generation or remote authentication.
+
+The default is a read-only report; repairable findings exit successfully while
+blocked/incomplete scans fail without writes. `--fix` previews exact changes and
+confirms; noninteractive/JSON apply requires `--fix --yes`. One guarded permission
+plan retains completed changes on partial failure and verifies state afterwards.
+Setup continues to use only its baseline/selected-key scope. Specific key-list
+safety diagnostics point here; malformed key data still needs manual correction.
+JSON kinds are `ssh_key_doctor_plan`/`ssh_key_doctor_result`, with scope, completeness,
+key paths, the permission plan and optional result/recheck. See
+[SSH key doctor](../guides/ssh-hosts.md#ssh-key-doctor).

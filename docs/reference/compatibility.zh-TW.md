@@ -449,3 +449,12 @@ reviewed tightening。無關檔案、ownership change、不安全 link／metadat
 後續取消也保留 completed repairs；permission stage 在主要 onboarding plan 前另外
 確認。Optional registration 可確認零個 checkbox，與取消不同；必要 host／source
 多選維持原本 cancellation 行為。
+
+## 獨立 SSH key doctor
+
+`ssh key doctor` 只做 bounded local metadata reads，不依賴 ssh、ssh-keygen、agent
+或 alias。即使可以修復，預設 report 也不 mutation。`--key` 明確限制 scope；
+`--fix` 是另外確認的 action，使用 setup 相同的窄範圍 permission core。Incomplete／
+blocked scan 阻止整個 fix；post-repair verification 保留 partial／unknown outcomes。
+不新增 ownership repair、ACL rewrite、key-file content repair、recursive chmod 或
+remote credential management。

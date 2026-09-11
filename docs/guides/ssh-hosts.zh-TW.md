@@ -514,3 +514,47 @@ CLI `--to fleet|herdr|both` 保持不變。
 executable 缺失或 command 為空時使用 built-in picker。多選一律使用 built-in
 Bubble Tea picker，即使已安裝 fzf 也一樣。必要的 host／source selectors 仍不接受
 空選擇；只有 optional registration 把零選擇視為確認略過。
+
+## SSH key doctor
+
+```bash
+dev ssh key doctor
+dev ssh key doctor --json
+dev ssh key doctor --fix
+dev ssh key doctor --key ~/.ssh/custom-key --key ~/.ssh/other-key.pub
+dev ssh key doctor --key ~/.ssh/custom-key --fix --yes --json
+```
+
+預設 report 在 `~/.ssh` 下進行 bounded metadata-only scan，檢查 public-key paths
+及已存在的 private companions，也檢查沒有 `.pub` 的 exact standard private-key
+filenames（直接位於 `~/.ssh`）；不會把每個無副檔名檔案都猜成 private key。只走訪
+直接、自己擁有的 directories；非 candidate 的 symlink 略過且不跟隨，recognized
+key-file symlink 則使 scan incomplete。Canonical SSH setup paths 另由 permission
+plan 驗證。Repeat `--key PATH` 可把
+scope 限定為選定 path／companions，加上 canonical `~/.ssh`、root config、`dev.d`；
+也適用於沒有 public companion 的 custom private key。兩種模式都不讀 key contents、
+不查詢 agent、不執行 `ssh`／`ssh-keygen`、不評估 alias，也不登入遠端。
+
+沒有 `--fix` 時只報告 observations 與 proposed permission changes。Repairable
+findings 回傳成功，可先看 report 再明確修復。Blocked 或 incomplete scan 回傳錯誤，
+即使有 `--fix` 也不授權任何 write。不建立 missing paths；unsupported ownership、
+links/hardlinks、ACLs 或 security metadata 保留 manual remediation。
+
+`--fix` 先顯示具體 path／mode preview，再要求 confirmation。`--yes` 只能搭配
+`--fix`，noninteractive 或 JSON repair 必須提供。選定 repairs 形成一個 source-bound
+plan，在既有 SSH operation lock 下套用，改變前重新驗證，完成後再檢查。macOS/Linux
+只可收緊支援的 modes；Windows 只驗證既有 ACL，不重寫。中斷或部分完成時保留已
+完成 tightening 並回報 outcomes，不放寬權限來模擬 rollback。Setup wizard 使用
+相同 permission core，但仍只檢查 baseline paths 與選定 key，不自動修全部其他 keys。
+
+`ssh key list` 保留 `public_key_unreadable`／`private_key_permissions` 等 stable
+codes，另提供實際原因及適用的下一步。Permission／path failure 提示執行
+`dev ssh key doctor`；missing／malformed public file 則有具體 path／format guidance。
+Configured `.pub` 缺少
+可能只是未使用的 OpenSSH default，不能推定 private key 存在。Doctor 檢查 path／
+permission safety，不修復格式錯誤的 public-key contents，也不證明 signer 或 remote
+login 可用。
+
+JSON 使用 `schema_version: 1`，kind 為 `ssh_key_doctor_plan`／`ssh_key_doctor_result`。
+內容包含 `scope`（`discovered`／`selected`）、`complete`、`key_paths`、exact permission
+`plan`；apply result 保留 per-path outcomes，完成 repair 後驗證時另有 `recheck`。

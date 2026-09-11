@@ -38,7 +38,7 @@ Load only the guide needed for the requested operation:
 - Parallel agent launches or prompt transports: [agents](references/parallel-agents.md), [handoffs](references/prompt-handoffs.md).
 - Agent completion or cleanup batches: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
 - Repository hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
-- SSH connection failures, Tailscale/LAN discovery, canonical machines, key selection, permission repair, configuration, fleet registration, or file export: [SSH](references/ssh-hosts.md).
+- SSH connection failures, Tailscale/LAN discovery, canonical machines, key inventory/diagnostics, permission repair, configuration, fleet registration, or file export: [SSH](references/ssh-hosts.md).
 - Skill/MCP/instruction transfers or managed updates: [transfers](references/agent-interop.md), [maintenance](references/skills-management.md).
 - Recursive Git children: [submodules](references/submodules.md).
 

@@ -34,7 +34,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
-| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
+| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list/doctor`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
@@ -790,3 +790,20 @@ preflight 是另外確認的 repair，先於後續 wizard steps；取消後仍�
 Fleet／Herdr registration 改成兩個 optional checkbox，零項、單項、兩項分別對應
 既有 registration 行為。多選使用 built-in Bubble Tea；單選仍預設 configured fzf。
 詳見 [SSH key selection](../guides/ssh-hosts.zh-TW.md)。
+
+## SSH key permission reports 與 fixes
+
+`ssh key doctor` 接受 `--fix`、`--yes`、`--json`、repeatable `--key PATH`。沒有
+`--key` 時，bounded metadata scan 包含 public companions 與 exact standard
+private-only key names；明確 paths 則限制 scan／repair scope，仍包含 canonical SSH
+setup paths。不讀 key contents、不呼叫 agent、OpenSSH、key generation 或 remote
+authentication。
+
+預設為 read-only report；repairable findings 成功退出，blocked／incomplete scan
+則失敗且不寫入。`--fix` 預覽 exact changes 並確認；noninteractive／JSON apply
+需要 `--fix --yes`。單一 guarded permission plan 在 partial failure 保留 completed
+changes，之後再驗證 state。Setup 仍只用 baseline／selected-key scope。Key-list
+specific safety diagnostics 指向這個 command；malformed key data 仍需手動修正。
+JSON kind 為 `ssh_key_doctor_plan`／`ssh_key_doctor_result`，包含 scope、completeness、
+key paths、permission plan 及 optional result／recheck。詳見
+[SSH key doctor](../guides/ssh-hosts.zh-TW.md#ssh-key-doctor)。

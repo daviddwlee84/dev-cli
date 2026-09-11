@@ -195,3 +195,13 @@ choice: single selections can use fzf, all multi-selections use Bubble Tea.
 Key metadata/agent presence is not remote authentication proof. Permission repair
 is a separately approved, retained local operation; default catalog listing does
 not run `ssh -G`, chmod or remote login.
+
+## SSH key doctor scope (2026-09-11)
+
+The standalone `ssh key doctor` scan and selected-path mode are defined by
+`internal/sshhost` permission scanning/planning and the key-doctor CLI adapter.
+Fixtures verify metadata-only discovery, blocked/incomplete no-write behavior,
+retained partial repairs and post-repair checks. Default scan scope differs from
+setup's baseline-plus-selected-key preflight. Key inventory diagnostics preserve
+stable codes and include specific safe reasons and appropriate remediation hints; they do not
+convert missing public companions or unsafe paths into proof of key availability.

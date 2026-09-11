@@ -63,6 +63,7 @@ Listing never repairs permissions, generates keys, or authenticates remotely.`,
 	list.Flags().BoolVar(&noAgent, "no-agent", false, "Skip SSH agent enumeration")
 	list.Flags().StringVar(&alias, "alias", "", "Evaluate this alias's OpenSSH identity and agent settings")
 	cmd.AddCommand(list)
+	cmd.AddCommand(newSSHKeyDoctorCmd(app))
 	return cmd
 }
 
@@ -90,7 +91,7 @@ func renderSSHKeyDiagnostics(app *App, diagnostics []sshhost.Diagnostic) {
 		if message == "" {
 			message = strings.ReplaceAll(diagnostic.Code, "_", " ")
 		}
-		if diagnostic.Path != "" {
+		if diagnostic.Path != "" && !strings.Contains(message, diagnostic.Path) {
 			message += " (" + diagnostic.Path + ")"
 		}
 		fmt.Fprintf(app.Err, "dev: SSH keys: %s\n", message)

@@ -238,6 +238,9 @@ Inspect available identities before choosing one:
 dev ssh key list                    # local public-key metadata plus the current agent
 dev ssh key list --no-agent --json  # file metadata only; no OpenSSH evaluation
 dev ssh key list --alias lab        # explicitly evaluate lab's identity/agent settings
+dev ssh key doctor                 # metadata-only permission report; no agents or ssh
+dev ssh key doctor --fix            # preview exact repairs, then confirm
+dev ssh key doctor --key ~/.ssh/custom-key --fix --yes --json
 ```
 
 The setup wizard offers a key picker with paths, comments, fingerprints and signer
@@ -245,6 +248,13 @@ availability, plus manual path entry. It checks basic SSH directory/configuratio
 permissions early and offers separately confirmed, narrowly scoped tightening.
 Completed permission repairs remain if setup is canceled later; aliases, registry
 bindings, key generation and remote actions still wait for the main preview.
+
+`key doctor` scans public-key companions and exact standard private-key names
+under `~/.ssh`, without reading private contents. Repeat `--key` to restrict it to
+selected paths plus canonical SSH setup paths, including a custom private key
+without a `.pub`. A normal report never writes; `--fix` applies one reviewed plan
+and verifies the result. Blocked or incomplete scans authorize no repairs. Setup
+continues to check only its baseline paths and chosen key, not every unselected key.
 
 Optional registration uses two initially unchecked boxes: Fleet and Herdr. Select
 either or both; Enter with neither selected skips registration, while Esc cancels.

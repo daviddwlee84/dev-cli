@@ -15,10 +15,12 @@ import (
 )
 
 // PermissionRequest selects the bounded local metadata inspected before setup.
-// KeyPath is optional and stays within ~/.ssh. Its existing public/private
-// companion and required parent directories are inspected, never their bytes.
+// KeyPath and KeyPaths are optional, unioned and deduplicated within ~/.ssh.
+// Their existing public/private companions and required parent directories are
+// inspected, never their bytes.
 type PermissionRequest struct {
-	KeyPath string `json:"key_path,omitempty"`
+	KeyPath  string   `json:"key_path,omitempty"`
+	KeyPaths []string `json:"key_paths,omitempty"`
 }
 
 type PermissionChange struct {
@@ -159,13 +161,25 @@ func (s *Service) permissionTargets(request PermissionRequest) ([]permissionTarg
 		{path: s.paths.RootConfig, kind: "root_config", optional: true},
 		{path: s.paths.ManagedDir, kind: "managed_directory", directory: true, optional: true},
 	}
+	selected := append([]string(nil), request.KeyPaths...)
 	if request.KeyPath != "" {
-		if !validUTF8NoControl(request.KeyPath) {
+		selected = append(selected, request.KeyPath)
+	}
+	seenKeys := map[string]bool{}
+	for _, selectedPath := range selected {
+		if selectedPath == "" || !validUTF8NoControl(selectedPath) {
 			return nil, fmt.Errorf("selected key path contains unsupported characters: %w", ErrUnsafePath)
 		}
-		path, err := s.resolveSSHKeyPath(request.KeyPath)
+		path, err := s.resolveSSHKeyPath(selectedPath)
 		if err != nil {
 			return nil, err
+		}
+		if seenKeys[path] {
+			continue
+		}
+		seenKeys[path] = true
+		if len(seenKeys) > maxCatalogFiles {
+			return nil, fmt.Errorf("select at most %d distinct key paths per permission review", maxCatalogFiles)
 		}
 		for parent, count := filepath.Dir(path), 0; parent != s.paths.SSHDir; parent, count = filepath.Dir(parent), count+1 {
 			if count >= maxCatalogDepth || !s.pathWithinSSH(parent) {
@@ -312,8 +326,11 @@ func samePermissionSnapshot(expected, current permissionSnapshot) bool {
 	return stableFileInfo(expected.info, current.info) && permissionSameChangeTime(expected.info, current.info) && reflect.DeepEqual(expected.metadata, current.metadata)
 }
 
-func (s *Service) checkPermissionSnapshots(expected []permissionSnapshot) error {
+func (s *Service) checkPermissionSnapshots(ctx context.Context, expected []permissionSnapshot) error {
 	for _, prior := range expected {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := verifyPermissionAnchors(prior.anchors); err != nil {
 			return err
 		}
@@ -325,7 +342,7 @@ func (s *Service) checkPermissionSnapshots(expected []permissionSnapshot) error 
 			return fmt.Errorf("permission source changed at %s: %w", prior.target.path, errors.Join(ErrSourceChanged, err))
 		}
 	}
-	return nil
+	return ctx.Err()
 }
 
 // ApplyPermissions applies only the reviewed exact mode changes. It owns the
@@ -346,7 +363,7 @@ func (s *Service) ApplyPermissions(ctx context.Context, plan PermissionPlan) (Pe
 		return result, err
 	}
 	if len(plan.Changes) == 0 {
-		if err := s.checkPermissionSnapshots(plan.state.snapshots); err != nil {
+		if err := s.checkPermissionSnapshots(ctx, plan.state.snapshots); err != nil {
 			return result, err
 		}
 		result.Status = "ready"
@@ -354,7 +371,7 @@ func (s *Service) ApplyPermissions(ctx context.Context, plan PermissionPlan) (Pe
 	}
 	expected := append([]permissionSnapshot(nil), plan.state.snapshots...)
 	err := WithOperationLock(ctx, s.paths, func() error {
-		if err := s.checkPermissionSnapshots(expected); err != nil {
+		if err := s.checkPermissionSnapshots(ctx, expected); err != nil {
 			return err
 		}
 		for index, change := range plan.Changes {
@@ -364,7 +381,7 @@ func (s *Service) ApplyPermissions(ctx context.Context, plan PermissionPlan) (Pe
 			if err := ctx.Err(); err != nil {
 				return err
 			}
-			if err := s.checkPermissionSnapshots(expected); err != nil {
+			if err := s.checkPermissionSnapshots(ctx, expected); err != nil {
 				return err
 			}
 			var snapshotIndex int
@@ -409,7 +426,7 @@ func (s *Service) ApplyPermissions(ctx context.Context, plan PermissionPlan) (Pe
 			expected[snapshotIndex] = after
 			result.Outcomes[index].Status = "applied"
 		}
-		if err := s.checkPermissionSnapshots(expected); err != nil {
+		if err := s.checkPermissionSnapshots(ctx, expected); err != nil {
 			return err
 		}
 		if err := ctx.Err(); err != nil {

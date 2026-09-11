@@ -181,3 +181,12 @@ Key-list／wizard behavior 以 `internal/sshhost` key catalog／permission plans
 Key metadata／agent presence 不代表 remote authentication proof。Permission repair
 是另外批准且保留結果的 local operation；預設 catalog listing 不執行 `ssh -G`、
 chmod 或 remote login。
+
+## SSH key doctor scope（2026-09-11）
+
+獨立 `ssh key doctor` scan 與 selected-path mode 由 `internal/sshhost` permission
+scanning／planning 及 key-doctor CLI adapter 定義。Fixtures 驗證 metadata-only
+discovery、blocked／incomplete 不寫入、保留 partial repairs 及 post-repair checks。
+Default scan scope 與 setup 的 baseline-plus-selected-key preflight 不同。Key inventory
+diagnostics 保留 stable codes，加入 safe specific reasons 與適用的 remediation hint，不把 missing
+public companions 或 unsafe paths 轉成 key availability proof。

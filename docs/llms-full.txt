@@ -2644,6 +2644,58 @@ command uses the built-in picker. Multi-selection always uses the built-in
 Bubble Tea picker, even when fzf is installed. Required host/source selectors
 still reject an empty selection; registration alone treats it as an accepted skip.
 
+## SSH key doctor
+
+```bash
+dev ssh key doctor
+dev ssh key doctor --json
+dev ssh key doctor --fix
+dev ssh key doctor --key ~/.ssh/custom-key --key ~/.ssh/other-key.pub
+dev ssh key doctor --key ~/.ssh/custom-key --fix --yes --json
+```
+
+The default report performs a bounded metadata-only scan under `~/.ssh`. It
+inspects public-key paths and their existing private companions, plus exact
+standard private-key filenames directly under `~/.ssh`, even when no `.pub` exists. It does not guess
+that every extensionless file is a private key. Traversal stays in direct,
+owned directories. Noncandidate symlinks are skipped without following them;
+symlinks that look like recognized key files make the scan incomplete. Canonical
+SSH setup paths are independently guarded by the permission plan. Repeat `--key PATH` to restrict
+the scope to selected paths/companions and canonical `~/.ssh`, root config and
+`dev.d` paths; this also covers a custom private key without a public companion.
+Neither mode reads key contents, queries an agent, runs `ssh`/`ssh-keygen`,
+resolves an alias or authenticates remotely.
+
+Without `--fix`, the command only reports observations and proposed permission
+changes. Repairable findings return success so the report can be used before a
+later explicit repair. A blocked or incomplete scan returns an error and cannot
+authorize any write, including when `--fix` is present. Missing paths are not
+created, and unsupported ownership, links/hardlinks, ACLs or security metadata
+remain manual remediation.
+
+`--fix` shows a concrete path/mode preview and asks for confirmation. `--yes` is
+valid only with `--fix` and is required for noninteractive or JSON repair. The
+selected repairs form one source-bound plan applied under the existing SSH
+operation lock, with revalidation before changes and a fresh post-repair check.
+On macOS/Linux it can only tighten supported modes; Windows verifies existing
+ACLs and does not rewrite them. An interrupted or partly completed repair keeps
+completed tightening and reports its outcomes; it never broadens permissions to
+simulate rollback. The setup wizard uses the same permission core but still
+checks only baseline paths and the chosen key, not all unselected keys.
+
+`ssh key list` diagnostics retain stable codes such as `public_key_unreadable`
+and `private_key_permissions`, now accompanied by the specific observed cause
+and an applicable next action. Permission/path failures point to `dev ssh key doctor`;
+missing or malformed public files get specific path/format guidance. A missing configured `.pub` can be an unused
+OpenSSH default, not proof that a private key exists. Doctor inspects path and
+permission safety; it does not repair malformed public-key contents or prove
+that a signer or remote login works.
+
+JSON uses `schema_version: 1` and `ssh_key_doctor_plan`/`ssh_key_doctor_result`
+kinds. It includes `scope` (`discovered` or `selected`), `complete`, `key_paths`
+and the exact permission `plan`; applied results retain per-path outcomes and a
+`recheck` when completed repairs are verified.
+
 ---
 
 ### Feedback and isolated repair
@@ -5499,7 +5551,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
-| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh probe`, `ssh remove` |
+| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list/doctor`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh probe`, `ssh remove` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
@@ -7919,6 +7971,19 @@ Inspect local SSH keys and agent identities
 dev ssh key
 ```
 
+### `dev ssh key doctor`
+
+Check SSH key permissions and preview repairs
+
+```
+dev ssh key doctor [flags]
+```
+
+- `--fix` — Review and apply safe permission tightening
+- `--json` — Print one versioned diagnosis or repair result
+- `--key` — Inspect only this key path and canonical SSH paths (repeatable)
+- `--yes` — Confirm the permission repair plan without prompting
+
 ### `dev ssh key list`
 
 List local public keys and SSH agent identities
@@ -8790,6 +8855,24 @@ registration uses two optional checkboxes: none, either or both map to the exist
 registration behavior. Multi-selection uses built-in Bubble Tea; fzf remains the
 configured default for single selection. See [SSH key selection](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#key-selection-and-optional-registration).
 
+## SSH key permission reports and fixes
+
+`ssh key doctor` accepts `--fix`, `--yes`, `--json` and repeatable `--key PATH`.
+Without `--key`, its bounded metadata scan includes public companions and exact
+standard private-only key names. Explicit paths restrict the scan/repair scope,
+alongside canonical SSH setup paths. It never reads key contents or runs an agent,
+OpenSSH, key generation or remote authentication.
+
+The default is a read-only report; repairable findings exit successfully while
+blocked/incomplete scans fail without writes. `--fix` previews exact changes and
+confirms; noninteractive/JSON apply requires `--fix --yes`. One guarded permission
+plan retains completed changes on partial failure and verifies state afterwards.
+Setup continues to use only its baseline/selected-key scope. Specific key-list
+safety diagnostics point here; malformed key data still needs manual correction.
+JSON kinds are `ssh_key_doctor_plan`/`ssh_key_doctor_result`, with scope, completeness,
+key paths, the permission plan and optional result/recheck. See
+[SSH key doctor](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#ssh-key-doctor).
+
 ---
 
 ### Compatibility and known limitations
@@ -9294,6 +9377,16 @@ this permission stage is separately confirmed before the main onboarding plan.
 Optional registration accepts zero checkboxes without treating it as cancellation;
 required host/source multi-selection keeps its existing cancellation behavior.
 
+## Standalone SSH key doctor
+
+`ssh key doctor` needs only bounded local metadata reads: it does not depend on
+ssh, ssh-keygen, an agent or an alias. Its default report is non-mutating even
+when repair is possible. `--key` explicitly restricts scope; `--fix` is a separate
+confirmed action using the same narrow permission core as setup. Incomplete or
+blocked scans prevent the whole fix, and post-repair verification preserves
+partial/unknown outcomes. This adds no ownership repair, ACL rewriting, key-file
+content repair, recursive chmod or remote credential management.
+
 ---
 
 ### Sources and freshness
@@ -9490,6 +9583,16 @@ choice: single selections can use fzf, all multi-selections use Bubble Tea.
 Key metadata/agent presence is not remote authentication proof. Permission repair
 is a separately approved, retained local operation; default catalog listing does
 not run `ssh -G`, chmod or remote login.
+
+## SSH key doctor scope (2026-09-11)
+
+The standalone `ssh key doctor` scan and selected-path mode are defined by
+`internal/sshhost` permission scanning/planning and the key-doctor CLI adapter.
+Fixtures verify metadata-only discovery, blocked/incomplete no-write behavior,
+retained partial repairs and post-repair checks. Default scan scope differs from
+setup's baseline-plus-selected-key preflight. Key inventory diagnostics preserve
+stable codes and include specific safe reasons and appropriate remediation hints; they do not
+convert missing public companions or unsafe paths into proof of key availability.
 
 ---
 
@@ -12158,6 +12261,50 @@ CLI `--to fleet|herdr|both` 保持不變。
 executable 缺失或 command 為空時使用 built-in picker。多選一律使用 built-in
 Bubble Tea picker，即使已安裝 fzf 也一樣。必要的 host／source selectors 仍不接受
 空選擇；只有 optional registration 把零選擇視為確認略過。
+
+## SSH key doctor
+
+```bash
+dev ssh key doctor
+dev ssh key doctor --json
+dev ssh key doctor --fix
+dev ssh key doctor --key ~/.ssh/custom-key --key ~/.ssh/other-key.pub
+dev ssh key doctor --key ~/.ssh/custom-key --fix --yes --json
+```
+
+預設 report 在 `~/.ssh` 下進行 bounded metadata-only scan，檢查 public-key paths
+及已存在的 private companions，也檢查沒有 `.pub` 的 exact standard private-key
+filenames（直接位於 `~/.ssh`）；不會把每個無副檔名檔案都猜成 private key。只走訪
+直接、自己擁有的 directories；非 candidate 的 symlink 略過且不跟隨，recognized
+key-file symlink 則使 scan incomplete。Canonical SSH setup paths 另由 permission
+plan 驗證。Repeat `--key PATH` 可把
+scope 限定為選定 path／companions，加上 canonical `~/.ssh`、root config、`dev.d`；
+也適用於沒有 public companion 的 custom private key。兩種模式都不讀 key contents、
+不查詢 agent、不執行 `ssh`／`ssh-keygen`、不評估 alias，也不登入遠端。
+
+沒有 `--fix` 時只報告 observations 與 proposed permission changes。Repairable
+findings 回傳成功，可先看 report 再明確修復。Blocked 或 incomplete scan 回傳錯誤，
+即使有 `--fix` 也不授權任何 write。不建立 missing paths；unsupported ownership、
+links/hardlinks、ACLs 或 security metadata 保留 manual remediation。
+
+`--fix` 先顯示具體 path／mode preview，再要求 confirmation。`--yes` 只能搭配
+`--fix`，noninteractive 或 JSON repair 必須提供。選定 repairs 形成一個 source-bound
+plan，在既有 SSH operation lock 下套用，改變前重新驗證，完成後再檢查。macOS/Linux
+只可收緊支援的 modes；Windows 只驗證既有 ACL，不重寫。中斷或部分完成時保留已
+完成 tightening 並回報 outcomes，不放寬權限來模擬 rollback。Setup wizard 使用
+相同 permission core，但仍只檢查 baseline paths 與選定 key，不自動修全部其他 keys。
+
+`ssh key list` 保留 `public_key_unreadable`／`private_key_permissions` 等 stable
+codes，另提供實際原因及適用的下一步。Permission／path failure 提示執行
+`dev ssh key doctor`；missing／malformed public file 則有具體 path／format guidance。
+Configured `.pub` 缺少
+可能只是未使用的 OpenSSH default，不能推定 private key 存在。Doctor 檢查 path／
+permission safety，不修復格式錯誤的 public-key contents，也不證明 signer 或 remote
+login 可用。
+
+JSON 使用 `schema_version: 1`，kind 為 `ssh_key_doctor_plan`／`ssh_key_doctor_result`。
+內容包含 `scope`（`discovered`／`selected`）、`complete`、`key_paths`、exact permission
+`plan`；apply result 保留 per-path outcomes，完成 repair 後驗證時另有 `recheck`。
 
 ---
 
@@ -14864,7 +15011,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
-| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
+| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list/doctor`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
@@ -17206,6 +17353,19 @@ Inspect local SSH keys and agent identities
 dev ssh key
 ```
 
+### `dev ssh key doctor`
+
+Check SSH key permissions and preview repairs
+
+```
+dev ssh key doctor [flags]
+```
+
+- `--fix` — Review and apply safe permission tightening
+- `--json` — Print one versioned diagnosis or repair result
+- `--key` — Inspect only this key path and canonical SSH paths (repeatable)
+- `--yes` — Confirm the permission repair plan without prompting
+
 ### `dev ssh key list`
 
 List local public keys and SSH agent identities
@@ -18050,6 +18210,23 @@ Fleet／Herdr registration 改成兩個 optional checkbox，零項、單項、�
 既有 registration 行為。多選使用 built-in Bubble Tea；單選仍預設 configured fzf。
 詳見 [SSH key selection](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
 
+## SSH key permission reports 與 fixes
+
+`ssh key doctor` 接受 `--fix`、`--yes`、`--json`、repeatable `--key PATH`。沒有
+`--key` 時，bounded metadata scan 包含 public companions 與 exact standard
+private-only key names；明確 paths 則限制 scan／repair scope，仍包含 canonical SSH
+setup paths。不讀 key contents、不呼叫 agent、OpenSSH、key generation 或 remote
+authentication。
+
+預設為 read-only report；repairable findings 成功退出，blocked／incomplete scan
+則失敗且不寫入。`--fix` 預覽 exact changes 並確認；noninteractive／JSON apply
+需要 `--fix --yes`。單一 guarded permission plan 在 partial failure 保留 completed
+changes，之後再驗證 state。Setup 仍只用 baseline／selected-key scope。Key-list
+specific safety diagnostics 指向這個 command；malformed key data 仍需手動修正。
+JSON kind 為 `ssh_key_doctor_plan`／`ssh_key_doctor_result`，包含 scope、completeness、
+key paths、permission plan 及 optional result／recheck。詳見
+[SSH key doctor](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/#ssh-key-doctor)。
+
 ---
 
 ### 相容性與已知限制
@@ -18499,6 +18676,15 @@ reviewed tightening。無關檔案、ownership change、不安全 link／metadat
 確認。Optional registration 可確認零個 checkbox，與取消不同；必要 host／source
 多選維持原本 cancellation 行為。
 
+## 獨立 SSH key doctor
+
+`ssh key doctor` 只做 bounded local metadata reads，不依賴 ssh、ssh-keygen、agent
+或 alias。即使可以修復，預設 report 也不 mutation。`--key` 明確限制 scope；
+`--fix` 是另外確認的 action，使用 setup 相同的窄範圍 permission core。Incomplete／
+blocked scan 阻止整個 fix；post-repair verification 保留 partial／unknown outcomes。
+不新增 ownership repair、ACL rewrite、key-file content repair、recursive chmod 或
+remote credential management。
+
 ---
 
 ### 來源與時效
@@ -18680,6 +18866,15 @@ Key-list／wizard behavior 以 `internal/sshhost` key catalog／permission plans
 Key metadata／agent presence 不代表 remote authentication proof。Permission repair
 是另外批准且保留結果的 local operation；預設 catalog listing 不執行 `ssh -G`、
 chmod 或 remote login。
+
+## SSH key doctor scope（2026-09-11）
+
+獨立 `ssh key doctor` scan 與 selected-path mode 由 `internal/sshhost` permission
+scanning／planning 及 key-doctor CLI adapter 定義。Fixtures 驗證 metadata-only
+discovery、blocked／incomplete 不寫入、保留 partial repairs 及 post-repair checks。
+Default scan scope 與 setup 的 baseline-plus-selected-key preflight 不同。Key inventory
+diagnostics 保留 stable codes，加入 safe specific reasons 與適用的 remediation hint，不把 missing
+public companions 或 unsafe paths 轉成 key availability proof。
 
 ---
 

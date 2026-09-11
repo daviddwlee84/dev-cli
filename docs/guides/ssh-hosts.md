@@ -560,3 +560,55 @@ single selections, including key selection. A missing executable or an empty
 command uses the built-in picker. Multi-selection always uses the built-in
 Bubble Tea picker, even when fzf is installed. Required host/source selectors
 still reject an empty selection; registration alone treats it as an accepted skip.
+
+## SSH key doctor
+
+```bash
+dev ssh key doctor
+dev ssh key doctor --json
+dev ssh key doctor --fix
+dev ssh key doctor --key ~/.ssh/custom-key --key ~/.ssh/other-key.pub
+dev ssh key doctor --key ~/.ssh/custom-key --fix --yes --json
+```
+
+The default report performs a bounded metadata-only scan under `~/.ssh`. It
+inspects public-key paths and their existing private companions, plus exact
+standard private-key filenames directly under `~/.ssh`, even when no `.pub` exists. It does not guess
+that every extensionless file is a private key. Traversal stays in direct,
+owned directories. Noncandidate symlinks are skipped without following them;
+symlinks that look like recognized key files make the scan incomplete. Canonical
+SSH setup paths are independently guarded by the permission plan. Repeat `--key PATH` to restrict
+the scope to selected paths/companions and canonical `~/.ssh`, root config and
+`dev.d` paths; this also covers a custom private key without a public companion.
+Neither mode reads key contents, queries an agent, runs `ssh`/`ssh-keygen`,
+resolves an alias or authenticates remotely.
+
+Without `--fix`, the command only reports observations and proposed permission
+changes. Repairable findings return success so the report can be used before a
+later explicit repair. A blocked or incomplete scan returns an error and cannot
+authorize any write, including when `--fix` is present. Missing paths are not
+created, and unsupported ownership, links/hardlinks, ACLs or security metadata
+remain manual remediation.
+
+`--fix` shows a concrete path/mode preview and asks for confirmation. `--yes` is
+valid only with `--fix` and is required for noninteractive or JSON repair. The
+selected repairs form one source-bound plan applied under the existing SSH
+operation lock, with revalidation before changes and a fresh post-repair check.
+On macOS/Linux it can only tighten supported modes; Windows verifies existing
+ACLs and does not rewrite them. An interrupted or partly completed repair keeps
+completed tightening and reports its outcomes; it never broadens permissions to
+simulate rollback. The setup wizard uses the same permission core but still
+checks only baseline paths and the chosen key, not all unselected keys.
+
+`ssh key list` diagnostics retain stable codes such as `public_key_unreadable`
+and `private_key_permissions`, now accompanied by the specific observed cause
+and an applicable next action. Permission/path failures point to `dev ssh key doctor`;
+missing or malformed public files get specific path/format guidance. A missing configured `.pub` can be an unused
+OpenSSH default, not proof that a private key exists. Doctor inspects path and
+permission safety; it does not repair malformed public-key contents or prove
+that a signer or remote login works.
+
+JSON uses `schema_version: 1` and `ssh_key_doctor_plan`/`ssh_key_doctor_result`
+kinds. It includes `scope` (`discovered` or `selected`), `complete`, `key_paths`
+and the exact permission `plan`; applied results retain per-path outcomes and a
+`recheck` when completed repairs are verified.

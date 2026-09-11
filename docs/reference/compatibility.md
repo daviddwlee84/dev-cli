@@ -503,3 +503,13 @@ Windows validates its existing ACLs and leaves repairs manual. Completed repairs
 this permission stage is separately confirmed before the main onboarding plan.
 Optional registration accepts zero checkboxes without treating it as cancellation;
 required host/source multi-selection keeps its existing cancellation behavior.
+
+## Standalone SSH key doctor
+
+`ssh key doctor` needs only bounded local metadata reads: it does not depend on
+ssh, ssh-keygen, an agent or an alias. Its default report is non-mutating even
+when repair is possible. `--key` explicitly restricts scope; `--fix` is a separate
+confirmed action using the same narrow permission core as setup. Incomplete or
+blocked scans prevent the whole fix, and post-repair verification preserves
+partial/unknown outcomes. This adds no ownership repair, ACL rewriting, key-file
+content repair, recursive chmod or remote credential management.

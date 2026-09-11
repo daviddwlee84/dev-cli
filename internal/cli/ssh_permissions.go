@@ -24,9 +24,7 @@ func preflightSSHWizardPermissions(ctx context.Context, app *App, service *sshho
 		return nil
 	}
 	fmt.Fprintln(app.Out, "SSH permission repairs:")
-	for _, change := range plan.Changes {
-		fmt.Fprintf(app.Out, "  %s: %04o → %04o\n", change.Path, change.BeforeMode.Perm(), change.AfterMode.Perm())
-	}
+	renderSSHPermissionChanges(app, plan)
 	fmt.Fprintln(app.Out, "Completed repairs remain in place if you cancel setup later.")
 	confirmed, err := newPrompter(app).confirm(sshPermissionsConfirmation, false)
 	if err != nil {
@@ -36,11 +34,21 @@ func preflightSSHWizardPermissions(ctx context.Context, app *App, service *sshho
 		return errPromptCanceled
 	}
 	result, err := service.ApplyPermissions(ctx, plan)
-	for _, outcome := range result.Outcomes {
-		fmt.Fprintf(app.Out, "  %s: %s (%04o → %04o)\n", outcome.Path, outcome.Status, outcome.BeforeMode.Perm(), outcome.AfterMode.Perm())
-	}
+	renderSSHPermissionOutcomes(app, result)
 	if err != nil {
 		return fmt.Errorf("SSH permission repair %s: %w", result.Status, err)
 	}
 	return nil
+}
+
+func renderSSHPermissionChanges(app *App, plan sshhost.PermissionPlan) {
+	for _, change := range plan.Changes {
+		fmt.Fprintf(app.Out, "  %s: %04o → %04o\n", change.Path, change.BeforeMode.Perm(), change.AfterMode.Perm())
+	}
+}
+
+func renderSSHPermissionOutcomes(app *App, result sshhost.PermissionResult) {
+	for _, outcome := range result.Outcomes {
+		fmt.Fprintf(app.Out, "  %s: %s (%04o → %04o)\n", outcome.Path, outcome.Status, outcome.BeforeMode.Perm(), outcome.AfterMode.Perm())
+	}
 }

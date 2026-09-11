@@ -1732,6 +1732,19 @@ Inspect local SSH keys and agent identities
 dev ssh key
 ```
 
+### `dev ssh key doctor`
+
+Check SSH key permissions and preview repairs
+
+```
+dev ssh key doctor [flags]
+```
+
+- `--fix` — Review and apply safe permission tightening
+- `--json` — Print one versioned diagnosis or repair result
+- `--key` — Inspect only this key path and canonical SSH paths (repeatable)
+- `--yes` — Confirm the permission repair plan without prompting
+
 ### `dev ssh key list`
 
 List local public keys and SSH agent identities
