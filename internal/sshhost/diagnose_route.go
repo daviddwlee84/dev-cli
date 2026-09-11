@@ -18,6 +18,8 @@ import (
 )
 
 const diagnosticWindowsRouteScript = `$ErrorActionPreference = 'Stop'
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $q = [Console]::In.ReadToEnd() | ConvertFrom-Json
 $p = @{RemoteIPAddress = [string]$q.address}
 if ($q.source) { $p.LocalIPAddress = [string]$q.source }
