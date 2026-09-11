@@ -8,8 +8,10 @@ import (
 	"net"
 	"net/netip"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 )
@@ -94,9 +96,15 @@ func (s *Service) Diagnose(ctx context.Context, request DiagnoseRequest) (Diagno
 	start := time.Now()
 	configCtx, configCancel := context.WithTimeout(ctx, 5*time.Second)
 	run, err := s.runner.Run(configCtx, RunRequest{Name: "ssh", Args: []string{"-G", request.Target}, Env: []string{"LC_ALL=C"}, Display: "SSH diagnostic effective configuration"})
+	configContextErr := configCtx.Err()
 	configCancel()
 	if err != nil || run.ExitCode != 0 || run.StdoutTruncated {
 		d.stage("config", "failed", "config_unavailable", start)
+		if ctx.Err() != nil {
+			d.stage("config", "canceled", "canceled", start)
+		} else if configContextErr != nil {
+			d.stage("config", "unknown", "config_timeout", start)
+		}
 		d.SuggestedActions = append(d.SuggestedActions, "inspect_ssh_config")
 		return finishDiagnosis(ctx, d, errors.New("SSH effective configuration unavailable"))
 	}
@@ -230,12 +238,23 @@ func (s *Service) diagnoseNetwork(ctx context.Context, d *Diagnosis, hooks Diagn
 	start := time.Now()
 	dnsCtx, dnsCancel := context.WithTimeout(ctx, 5*time.Second)
 	var ips []net.IPAddr
+	literal := false
 	if ip, err := netip.ParseAddr(d.Target.Hostname); err == nil {
+		literal = true
 		ips = []net.IPAddr{{IP: net.IP(ip.AsSlice()), Zone: ip.Zone()}}
 	} else {
 		ips, _ = hooks.LookupIP(dnsCtx, d.Target.Hostname)
 	}
+	dnsContextErr := dnsCtx.Err()
 	dnsCancel()
+	if ctx.Err() != nil {
+		d.stage("dns", "canceled", "canceled", start)
+		return
+	}
+	if dnsContextErr != nil {
+		d.stage("dns", "unknown", "dns_timeout", start)
+		return
+	}
 	seen := map[string]bool{}
 	for _, ip := range ips {
 		addr, ok := netip.AddrFromSlice(ip.IP)
@@ -264,7 +283,11 @@ func (s *Service) diagnoseNetwork(ctx context.Context, d *Diagnosis, hooks Diagn
 		d.stage("dns", "failed", "dns_unavailable", start)
 		return
 	}
-	d.stage("dns", "passed", "addresses_resolved", start)
+	if literal {
+		d.stage("dns", "skipped", "literal_address", start)
+	} else {
+		d.stage("dns", "passed", "addresses_resolved", start)
+	}
 	start = time.Now()
 	routeCtx, routeCancel := context.WithTimeout(ctx, 10*time.Second)
 	routeOK := true
@@ -279,6 +302,10 @@ func (s *Service) diagnoseNetwork(ctx context.Context, d *Diagnosis, hooks Diagn
 		d.Routes = append(d.Routes, observation)
 	}
 	routeCancel()
+	if ctx.Err() != nil {
+		d.stage("route", "canceled", "canceled", start)
+		return
+	}
 	if routeOK {
 		d.stage("route", "passed", "route_observed", start)
 	} else {
@@ -313,6 +340,10 @@ func (s *Service) diagnoseNetwork(ctx context.Context, d *Diagnosis, hooks Diagn
 		code = diagnosticNetworkError(err)
 	}
 	if conn == nil {
+		if ctx.Err() != nil {
+			d.stage("tcp", "canceled", "canceled", start)
+			return
+		}
 		d.stage("tcp", "failed", code, start)
 		return
 	}
@@ -337,6 +368,10 @@ func (s *Service) diagnoseNetwork(ctx context.Context, d *Diagnosis, hooks Diagn
 			return
 		}
 	}
+	if ctx.Err() != nil {
+		d.stage("banner", "canceled", "canceled", start)
+		return
+	}
 	code = "non_ssh_banner"
 	if err := scanner.Err(); err != nil {
 		code = "banner_failed"
@@ -354,6 +389,11 @@ func diagnosticNetworkError(err error) string {
 	}
 	if errors.Is(err, context.Canceled) {
 		return "canceled"
+	}
+	// Winsock reports WSAECONNREFUSED (10061), distinct from Go's synthetic
+	// Windows ECONNREFUSED value. Avoid depending on localized Windows text.
+	if errors.Is(err, syscall.ECONNREFUSED) || runtime.GOOS == "windows" && errors.Is(err, syscall.Errno(10061)) {
+		return "connection_refused"
 	}
 	// OS errno text is consumed only for classification, never published.
 	lower := strings.ToLower(err.Error())

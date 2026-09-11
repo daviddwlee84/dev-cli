@@ -265,3 +265,50 @@ func TestDiagnoseProxyLogsCannotProveFinalAuthentication(t *testing.T) {
 		}
 	}
 }
+
+func TestDiagnoseCanceledNetworkStageStaysCanceled(t *testing.T) {
+	for _, stage := range []string{"dns", "route", "tcp", "banner"} {
+		t.Run(stage, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			hooks := diagnosticTestNetwork()
+			switch stage {
+			case "dns":
+				hooks.LookupIP = func(context.Context, string) ([]net.IPAddr, error) { cancel(); return nil, context.Canceled }
+			case "route":
+				hooks.Route = func(context.Context, DiagnosticRouteQuery) (DiagnosticRoute, error) {
+					cancel()
+					return DiagnosticRoute{}, context.Canceled
+				}
+			case "tcp":
+				hooks.Dial = func(context.Context, string, string) (net.Conn, error) { cancel(); return nil, context.Canceled }
+			case "banner":
+				hooks.Dial = func(context.Context, string, string) (net.Conn, error) {
+					a, b := net.Pipe()
+					cancel()
+					_ = b.Close()
+					return a, nil
+				}
+			}
+			service := diagnosticTestService(t, diagnosticRunnerFunc(func(_ context.Context, r RunRequest) (RunResult, error) {
+				if r.Args[0] != "-G" {
+					t.Fatal("SSH started after cancellation")
+				}
+				cfg := diagnosticConfig()
+				if stage == "dns" {
+					cfg = []byte(strings.ReplaceAll(string(cfg), "192.0.2.30", "target.test"))
+				}
+				return RunResult{Stdout: cfg}, nil
+			}), hooks)
+			result, err := service.Diagnose(ctx, DiagnoseRequest{Target: "target"})
+			if !errors.Is(err, context.Canceled) || result.Status != "incomplete" {
+				t.Fatal(result, err)
+			}
+			for _, got := range result.Stages {
+				if got.Name == stage && got.State != "canceled" {
+					t.Fatal(got)
+				}
+			}
+		})
+	}
+}
