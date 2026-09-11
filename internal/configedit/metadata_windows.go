@@ -197,7 +197,7 @@ func (m Metadata) prepare(file *os.File) error {
 		return err
 	}
 	if m.Present && !sameDescriptor(actual, sd) {
-		return errors.New("Windows security descriptor did not round-trip")
+		return fmt.Errorf("Windows security descriptor did not round-trip (%s)", descriptorDelta(actual, sd))
 	}
 	if !m.Present {
 		ao, _, e := actual.Owner()
@@ -321,3 +321,24 @@ func onlyDefaultStream(h windows.Handle) error {
 }
 
 func restorableMode(mode uint32) bool { return mode == 0o666 || mode == 0o444 }
+
+func descriptorDelta(a, b *windows.SECURITY_DESCRIPTOR) string {
+	ac, _, _ := a.Control()
+	bc, _, _ := b.Control()
+	ao, _, _ := a.Owner()
+	bo, _, _ := b.Owner()
+	ag, _, _ := a.Group()
+	bg, _, _ := b.Group()
+	aa, _, _ := a.DACL()
+	ba, _, _ := b.DACL()
+	owner := ao != nil && bo != nil && ao.Equals(bo)
+	group := ag == nil && bg == nil || ag != nil && bg != nil && ag.Equals(bg)
+	countA, countB := -1, -1
+	if aa != nil {
+		countA = int(aa.AceCount)
+	}
+	if ba != nil {
+		countB = int(ba.AceCount)
+	}
+	return fmt.Sprintf("control=%04x/%04x owner_equal=%t group_equal=%t ACE_count=%d/%d", uint16(ac), uint16(bc), owner, group, countA, countB)
+}
