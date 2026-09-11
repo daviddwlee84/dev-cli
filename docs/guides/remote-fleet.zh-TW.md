@@ -2,7 +2,7 @@
 description: 透過 merged fleet configuration 盤點 POSIX 或 Windows SSH host、pin remote identity、安全 fast-forward branch，並明確傳送 bounded ignored files。
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-11
 lang: zh-TW
 ---
 
@@ -125,7 +125,7 @@ dev ssh setup winlab --key ~/.ssh/id_winlab --target-os windows \
   --fleet --fleet-name windows-builder
 ```
 
-Alias discovery 或成功 SSH bootstrap 都不會 imply `--fleet`。Setup 最後才寫 fleet fragment，且必須先通過 exact-key verification 與第二次 fresh ordinary alias login。Registered platform 是已驗證的 `--target-os`；managed Windows entry 使用 `dev_path = "auto"`。Remote 缺少 `dev` 仍是 valid SSH onboarding result，安裝前 fleet 顯示 `no-dev`。
+Alias discovery 或成功 SSH bootstrap 都不會 imply `--fleet`。Key bootstrap 必須先通過 exact-key verification 與第二次 fresh ordinary alias login 才寫 fleet fragment；`--auth existing --to fleet` 則在 fresh ordinary login 後註冊，不安裝 key。Registered platform 是已驗證的 `--target-os`；managed Windows entry 使用 `dev_path = "auto"`。Remote 缺少 `dev` 仍是 valid SSH onboarding result，安裝前 fleet 顯示 `no-dev`。
 
 Partial/unknown bootstrap、failed ordinary gate 或 fleet-fragment collision 都會保留 valid local SSH config/generated keys，但 skip registration；remediation 後重新執行 setup。
 
@@ -245,8 +245,8 @@ Cache 讓 unavailable host 可以 `stale` 保留 last-known state；`--cached` �
 
 ## TUI 中的 FLEET
 
-FLEET 是 TUI 七個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、
-`SKILLS`、`MCP`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣 lazy-load；view 第一次
+FLEET 是 TUI 八個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、
+`SKILLS`、`MCP`、`SSH`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣 lazy-load；view 第一次
 開啟前不會開始 live probe，但 valid cache 會在初始 TASKS view 後 decode。TUI 預設
 隱藏本機，因為 REPOS 有較完整 local inventory；`a` toggle local rows。Local snapshot
 重用 accepted REPOS generation，不重跑 discovery；generation 尚在 loading 時仍保留
@@ -291,3 +291,16 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 `dev ssh format`、`organize`、`restore` 提供可選的本機設定交易與私有復原。
 既有 `ssh list` JSON／TSV 與 fleet snapshot 契約保持相容。詳見
 [SSH 主機管理](ssh-hosts.md)。
+
+## Connection identity 與 remote pin 分開
+
+SSH dashboard 與 `dev ssh list --tailscale --lan` 可把多個 fleet、Herdr、SSH profiles
+放在同一個 controller-local canonical machine 下。Private
+`paths.state_dir/machines/registry.db` 只擁有 reviewed associations。
+`ssh machine link/unlink/merge` 不修改 fleet config，也不驗證或寫入 `remotes.toml`
+的 remote `machine_id` pin。Portable-file apply 仍要求獨立驗證的 pin 與 fresh
+remote comparison。
+
+已可登入時用 `dev ssh setup <alias> --auth existing --to fleet|herdr|both`；普通 sshd
+bootstrap 才選 explicit key。Tailscale policy login 不需要安裝 authorized_keys entry。
+Provider registration 仍須明確要求，Herdr 保留原生 installation approvals。

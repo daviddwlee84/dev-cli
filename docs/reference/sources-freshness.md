@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 ---
 
 # Sources and freshness
@@ -30,7 +30,7 @@ A lower item may explain motivation but cannot override a higher authority's imp
 description: One sentence used by navigation and llms.txt.
 authority: one value from the authority table below
 status: one value from the status table below
-verified_on: YYYY-MM-DD
+verified_on: 2026-09-11
 minimum_version: optional
 tested_with: optional
 ---
@@ -171,3 +171,17 @@ traces. [Skills management](../guides/skills-management.md) provider semantics
 are checked against upstream skills v1.5.23/v1.5.25 source contracts and isolated
 fixtures. Listing/checking do not execute the provider; native mutation does not
 claim frozen-content reproduction.
+
+## Machine connections and discovery (2026-09-11)
+
+[SSH onboarding](../guides/ssh-hosts.md#discovery-and-canonical-machines) is defined
+by `internal/machineregistry`, `internal/sshdiscovery`, `internal/sshflow`, the SSH
+CLI/dashboard adapters and their hermetic tests. Registry SQLite is durable;
+discovery reports have a five-minute cache window and are never authentication
+proof. Canonical IDs do not replace remote dev UUID pins. Tailscale CLI absence,
+provider failures, source changes and partial scans retain explicit uncertainty.
+
+Upstream distinctions were checked against [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)
+and the [Tailscale CLI](https://tailscale.com/kb/1080/cli#ssh). Native status JSON
+is version-sensitive; dev consumes a bounded subset and reports unsupported or
+unusable observations rather than enabling/configuring the provider.

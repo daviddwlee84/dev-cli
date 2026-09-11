@@ -89,6 +89,8 @@ jobs:
 
       - name: Test SSH host domain natively
         run: go test ./internal/sshhost
+      - name: Test machine registry and SSH discovery natively
+        run: go test ./internal/machineregistry ./internal/sshdiscovery ./internal/sshflow
       - name: Test fleet transport and managed config natively
         run: go test ./internal/fleet
       - name: Test SSH and fleet CLI contracts natively
@@ -105,6 +107,8 @@ jobs:
           $env:GOOS = "windows"
           $env:GOARCH = "arm64"
           go test -c -o "$env:RUNNER_TEMP\sshhost-arm64.test.exe" ./internal/sshhost
+          go test -c -o "$env:RUNNER_TEMP\machines-arm64.test.exe" ./internal/machineregistry
+          go test -c -o "$env:RUNNER_TEMP\discovery-arm64.test.exe" ./internal/sshdiscovery
           go test -c -o "$env:RUNNER_TEMP\fleet-arm64.test.exe" ./internal/fleet
           go test -c -o "$env:RUNNER_TEMP\feedback-arm64.test.exe" ./internal/feedback
           go test -c -o "$env:RUNNER_TEMP\cli-arm64.test.exe" ./internal/cli

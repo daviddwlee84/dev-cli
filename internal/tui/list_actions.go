@@ -76,6 +76,18 @@ const (
 	listActionRegistrationConfirm
 	listActionRegistrationCancel
 	listActionRegistrationEdit
+	listActionSSHConnect
+	listActionSSHSetup
+	listActionSSHDiscover
+	listActionSSHProbe
+	listActionSSHDiagnose
+	listActionSSHMappings
+	listActionSSHRegister
+	listActionSSHDetails
+	listActionSSHCopy
+	listActionSSHCopyID
+	listActionSSHCopyAliases
+	listActionSSHCopySummary
 )
 
 type selectionToken struct {
@@ -109,6 +121,9 @@ func skillRowKey(row agentskill.Skill) string {
 }
 
 func (m Model) currentSelectionToken() (selectionToken, bool) {
+	if row, ok := m.currentSSH(); ok {
+		return selectionToken{view: ViewSSH, key: row.ID}, true
+	}
 	switch m.view {
 	case ViewTasks:
 		row, ok := m.currentTask()
@@ -159,6 +174,15 @@ func (m Model) currentSelectionToken() (selectionToken, bool) {
 
 func (m *Model) selectToken(token selectionToken) bool {
 	if m.view != token.view {
+		return false
+	}
+	if token.view == ViewSSH {
+		for i, row := range m.visibleSSH() {
+			if row.ID == token.key {
+				m.setAt(i)
+				return true
+			}
+		}
 		return false
 	}
 	switch token.view {
@@ -216,6 +240,9 @@ func (m *Model) selectToken(token selectionToken) bool {
 }
 
 func (m Model) selectionHeading() (string, string) {
+	if row, ok := m.currentSSH(); ok {
+		return row.Label, row.ID
+	}
 	if row, ok := m.currentTask(); ok {
 		return row.Task.Title(), contract(row.Checkout)
 	}
@@ -252,6 +279,9 @@ func (m Model) selectionHeading() (string, string) {
 }
 
 func (m Model) openActionMenu() Model {
+	if m.view == ViewSSH {
+		return m.openSSHMenu()
+	}
 	m.popupExpanded = false
 	m.stopStartupFocus()
 	token, ok := m.currentSelectionToken()
@@ -527,7 +557,7 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 	action := m.overlay.options[m.overlay.optionIndex].action
 	option := m.overlay.options[m.overlay.optionIndex]
 	token := m.overlay.selection
-	rowIndependent := action == listActionTriageAll || action == listActionTriageFiltered || action == listActionStateFilter || (action >= listActionStateAll && action <= listActionStateDone) || action == listActionLastTriage || action == listActionSettings || action == listActionStatusDetails
+	rowIndependent := sshRowIndependent(action) || action == listActionTriageAll || action == listActionTriageFiltered || action == listActionStateFilter || (action >= listActionStateAll && action <= listActionStateDone) || action == listActionLastTriage || action == listActionSettings || action == listActionStatusDetails
 	if !rowIndependent && !discoveryAction(action) && !m.selectToken(token) {
 		m.overlay = overlayState{}
 		m.err = fmt.Errorf("selected row changed while its action menu was open")
@@ -544,6 +574,12 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
+	if action >= listActionSSHConnect && action <= listActionSSHCopySummary {
+		return m.runSSHAction(action)
+	}
+	if m.view == ViewSSH && action == listActionOpen {
+		return m.runSSHAction(listActionSSHConnect)
+	}
 	if discoveryAction(action) {
 		switch action {
 		case listActionRegisterRepo:

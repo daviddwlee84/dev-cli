@@ -32,13 +32,13 @@ Foreign alias 仍可供 `list`、`show`、`probe`、key bootstrap 與 fleet regi
 | Command | 精確 local flags | 邊界 |
 |---|---|---|
 | `dev ssh init` | `--apply`、`--yes`、`--json` | 預設只 plan；只有 `--apply` 可安裝 dedicated Include |
-| `dev ssh list` | `--json` 或 `--format tsv` | bounded static user-config scan；沒有 subprocess 或 network |
+| `dev ssh list` | `--json`、`--format tsv`；明確選用 `--tailscale`、`--lan` | 預設 static；可加入 machine observations |
 | `dev ssh show <alias>` | `--json` | static definitions，加上 plain `ssh -G <alias>` 的 effective values |
 | `dev ssh setup <alias>` | 下方列出的 connection、key、route、fleet、plan、confirmation、JSON flags | owned local config、public-key bootstrap、optional fleet registration |
 | `dev ssh probe <alias>` | `--json` | sharing disabled 的單次 fresh ordinary BatchMode login |
 | `dev ssh remove <alias>` | `--fleet`、`--dry-run`、`--yes`、`--json` | 只移除 canonical dev-owned SSH/fleet fragments |
 
-`dev doctor` 也會回報 local `ssh`/`ssh-keygen` capability、static Include reachability、managed namespace permission/ACL，以及 generated fleet-fragment health。它不會執行 `ssh -G`、聯絡 host 或進行 repair。
+`dev doctor` 也會回報 local `ssh`/`ssh-keygen` 與 optional `tailscale` capability、static Include reachability、managed namespace permission/ACL，以及 generated fleet-fragment health。它不會執行 `ssh -G`、聯絡 host 或進行 repair。
 
 ## 一次性 initialization 採 report-before-apply
 
@@ -116,7 +116,7 @@ Operational flags 是：
 
 `--dry-run` 沒有 side effect：不 generate key、不寫 file、不執行 `ssh -G`、不碰 `known_hosts`、不 probe network，也不啟動 remote installer。Remote 與 route action 會誠實保留為 `unknown`。它可進行驗證 explicit named key 或 existing config 所需的 bounded local reads。Dry run 使用 `--fleet` 時仍須提供 `--target-os`，讓 proposed fragment 可確定。
 
-非 dry-run 的 full setup 必須明確且二選一使用 `--key` 或 `--generate-key`。JSON mode 即使在 terminal 上也不互動；任何 noninteractive full setup 還需要 `--target-os`，local mutation 則需要 `--yes`。`--yes` 只批准 local plan。Password/passphrase 與 host-key interaction 仍由 native OpenSSH 負責；batch mode 會回傳 `interaction_required`，不會自行發明 credential path。
+Public-key bootstrap 必須明確且二選一使用 `--key` 或 `--generate-key`。JSON mode 即使在 terminal 上也不互動；任何 noninteractive full setup 還需要 `--target-os`，local mutation 則需要 `--yes`。`--yes` 只批准 local plan。Password/passphrase 與 host-key interaction 仍由 native OpenSSH 負責；batch mode 會回傳 `interaction_required`，不會自行發明 credential path。
 
 ## Existing key 與 generation
 
@@ -189,6 +189,9 @@ dev ssh setup winlab --key ~/.ssh/id_winlab --target-os windows \
 | `ssh setup --json` | `ssh_setup_plan`、`ssh_setup_result` | alias class、local/key/bootstrap plans/results、per-hop state、fleet action、partial/error code |
 | `ssh probe --json` | `ssh_probe` | safe `ready`/`not_ready` status、code、exit code |
 | `ssh remove --json` | `ssh_remove_plan`、`ssh_remove_result` | owned plan/result、explicit fleet action、status/error code |
+| `ssh discover --json` | `ssh_discovery` | source 狀態、scope、candidates、觀察時間與完整性 |
+| source-aware `ssh setup --json` | `ssh_onboarding_plan`、`ssh_onboarding_result` | connection plans、stage outcomes、保留的 keys 與逐 hop bootstrap 結果 |
+| `ssh machine … --json` | `ssh_machine_snapshot`、`ssh_machine_plan`、`ssh_machine_result` | canonical UUID、來源 bindings 與 revision-bound 變更 |
 
 Consumer 應依 `schema_version`、`kind`、machine-readable `status`/`action`/`code` 與誠實的 `partial`/`unknown` state 分支，不應解析 human table 或 stderr。
 
@@ -215,7 +218,7 @@ Removal 絕不刪除 shared Include、local private/public key file、`known_hos
 - alias rename/adoption、managed wildcard/`Match`、arbitrary SSH directive 或 SSH config editor；
 - 自動化 `ProxyCommand`、certificate/CA、forwarding、custom `AuthorizedKeysFile` 或 forced-shell policy；
 - password/vault storage、automatic password fallback、private-key copying、direct Bitwarden integration 或 weakened host-key check；
-- bulk/cloud/Tailscale/chezmoi fleet import、dedicated SSH TUI 或 background probing。
+- cloud/chezmoi fleet import、mDNS、IPv6 range scanning 或 background probing。
 
 Server policy 若超出 verified POSIX/Windows installer contract，dev 會回報 manual remediation，不會靜默削弱 protection。
 
@@ -357,3 +360,112 @@ SSH 指令失敗時，handshake／host-key／authentication 的成功日誌只�
 提示，狀態維持 unknown；只有 fresh login 以零 exit code 完成才確認整體登入。
 Server banner／debug 訊息不能提供正向 client 證據。QoS 對照使用連線前的 marking、
 實際連線進展或已確認成功的登入。
+
+## 探索與 canonical machines
+
+不帶 alias 執行 `dev ssh setup` 會開啟 host picker。可一次選多台 Tailscale peer、
+LAN candidate 或既有 alias，再逐一設定 alias、remote user、port、authentication
+及 optional registration。同一台 machine 可保留不同 user、key、route 的多個
+alias。最後先預覽，再套用本機設定、registry 綁定及選定的 remote actions。
+
+```bash
+dev ssh list --tailscale --lan
+dev ssh list --tailscale --lan --json
+dev ssh discover --source tailscale --json
+dev ssh discover --source lan --interface en0 --cidr 192.168.1.0/24
+dev ssh discover --source lan --interface en0 --cidr 192.168.1.0/24 --ports 22,2222 --refresh
+
+dev ssh setup lab --from tailscale:lab --user dev --config-only
+dev ssh setup lab --from tailscale:lab --user dev --auth existing --to both
+dev ssh setup lab --from lan:192.168.1.20:22 --user dev \
+  --key ~/.ssh/id_ed25519 --target-os posix --to fleet
+```
+
+普通 `ssh list`、原有六欄 TSV 及 alias completion 仍只讀取靜態設定。
+`--tailscale` 明確讀取 optional local `tailscale status --json`；`--lan` 加入
+LAN cache，絕不掃描。Combined table 顯示 MACHINE、SSH ALIASES、TAILSCALE、
+LAN、FLEET、HERDR、STATE。JSON 保留既有 alias document，新增 `machines`、
+`sources`、`observed_at`；references 提供綁定指令使用的 exact selector。
+搭配 discovery flags 的 TSV 是另一個四欄 machine projection：row ID、label、
+state、comma-separated aliases。來源失敗、stale cache、disabled Herdr profile
+都保持可見。
+
+Tailscale 探索上限五秒、排除本機，保留 offline／unknown 狀態。CLI 缺少、daemon
+不可用或 status 資料不完整只影響該來源；`doctor` 只檢查 executable 是否存在，
+不查詢 daemon。Dev 不會 install、login、enable Tailscale SSH、修改 DNS 或 tailnet
+access policy。
+
+LAN discovery 只接受選定且直接連接的 IPv4 ranges；若無法唯一對應 eligible
+interface，就必須指定 `--interface`。互動 wizard 可選介面及較小範圍。上限為
+256 addresses、16 ports、4,096 endpoints、32 workers，整次最多 30 秒；預設 port
+22。探索只做 bounded TCP/banner check 與 reverse-DNS lookup，不嘗試 SSH 登入。
+Port open 與 SSH identification banner 是不同 observation。名稱只供編輯建議；
+raw banner 不能成為 hostname、OS proof、host key 或設定。目前沒有 IPv6 range
+scan、mDNS 或 background scan。
+
+`$XDG_CACHE_HOME/dev/ssh-discovery/` 的 cache 五分鐘內視為 fresh，過期後仍保留
+observation time。`--refresh` 跳過符合條件的 fresh LAN cache。讀取 cache 不會
+重新掃描，也不能證明 endpoint 仍指向同一台 machine。
+
+### Tailnet 上的 authentication
+
+Dev 都使用 system OpenSSH：可以連到經 Tailscale 網路存取的普通 sshd，也可以
+連到 Tailscale SSH server。普通 sshd 可接現有 public-key bootstrap；Tailscale SSH
+使用 tailnet identity 與 policy，請用 `--auth existing` 做 fresh ordinary alias
+login，不安裝 key。Host-key advertisement 只是提示，不是登入成功或 authentication
+mode 的保證。已探索到且 advertised 的 Tailscale SSH port-22 endpoint 不接受 key
+安裝；明確選定其他 port 的普通 sshd 才可走 key bootstrap。未使用選定 public key
+的登入不能滿足 exact-key proof。
+
+Optional `tailscale ssh` wrapper 額外提供 MagicDNS resolution、透過 `tailscaled`
+的 userspace networking，以及 advertised SSH host-key 驗證。Dev 產生普通 OpenSSH
+alias，不產生該 wrapper 的 ProxyCommand。Source setup 預設使用可用 IP，IPv4
+優先；system DNS 可解析時，可用 `--hostname` 指定 MagicDNS FQDN。詳見
+[Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) 與
+[CLI wrapper reference](https://tailscale.com/kb/1080/cli#ssh)。
+
+Source-aware setup 接受 `--from tailscale:<peer>`、`--from lan:<ip:port>`，或
+`discover` 顯示的完整 candidate ID。LAN 地址若對應多個快取網路 scope，必須指定
+精確 ID。過期或網路已變更的快取不會自動成為目前 endpoint 的身分；明確選取舊 ID
+會保留 stale 標示。Foreign alias 必須有已知且匹配的 endpoint；不同 LAN／Tailscale
+路徑的同機關係請使用 `machine link` 明確綁定。
+Tailscale selector 可用 peer ID、唯一名稱或地址；同名時必須提供更精確 selector。
+Noninteractive 新 discovery alias 必須明確指定 remote `--user`。沒有選 authentication
+時只建立 connection 與 machine mapping；remote work 請選 `--auth existing`、
+`--key` 或 `--generate-key`。`--to fleet|herdr|both` 必須明確要求；既有 `--fleet`
+仍相容。`--herdr-label`／`--herdr-session` 設定 native profile。Herdr 安裝確認仍由
+原生程式處理，remote server 仍需 Linux/macOS。Key generation 保留原本 passphrase
+規則。
+
+`--dry-run` 不寫入 config、registry、key 或 cache，也不做 SSH login；明確指定
+Tailscale source 時仍可讀取 local daemon status。後續失敗會保留已完成 stage 的
+結果；remote key installation 中斷仍是 unknown，應檢查目前來源後再重跑。
+
+### 持久 machine identity
+
+`paths.state_dir/machines/registry.db`，預設
+`$XDG_DATA_HOME/dev/machines/registry.db`，保存 controller-local UUID 及明確
+provider bindings。Discovery／listing 不會建立它。Canonical ID 與 `remotes.toml`
+中的 remote `machine_id` pin 完全獨立；合併本機列不會寫入或驗證該 pin。
+Connection settings 的 authority 仍是原來的 source config／provider catalog。
+
+```bash
+dev ssh machine show --json
+dev ssh machine adopt --label lab --source <reference-id> --json
+dev ssh machine adopt --label lab --source <reference-id> --apply --yes
+dev ssh machine link --machine <uuid> --source <reference-id> --apply
+dev ssh machine unlink --machine <uuid> --source <reference-id> --apply
+dev ssh machine merge --machine <source-uuid> --into <survivor-uuid> --apply
+```
+
+TTY 的 `adopt` 也有 multi-select wizard。Registry actions 預設只有 preview，
+`--apply` 加 confirmation 才提交 revision-bound transaction。`setup --machine
+<uuid>` 可把 connection 接到既有 canonical machine。Native IDs 各自有 provider
+scope；SSH alias 保存 declaration/source fingerprint。來源改變或缺失時保留
+stale／unresolved，不會靜默重配 machine。Exact static IP/FQDN association 會標示
+來源，短 hostname 相同不會授權 merge。
+
+Unlink 保留 suppression，防止下次 discovery 自動連回。Merge 保留 survivor 的
+label／preferred profile，舊 ID 留作 redirect。兩者不修改 provider config 或停止
+remote session。Private registry 是 durable data；`dev cache clear ssh-discovery`
+與 `cache clear all` 只清 observations，不刪 canonical identities 或 manual bindings。

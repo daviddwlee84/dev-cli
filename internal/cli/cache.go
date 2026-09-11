@@ -75,6 +75,7 @@ func cacheItems() []cacheItem {
 		{"remote", filepath.Join(cacheRoot(), "remotes.json")},
 		{"notes", filepath.Join(cacheRoot(), "notes.db")},
 		{"fleet", fleet.CacheRoot()},
+		{"ssh-discovery", sshDiscoveryCacheDir()},
 		{"size", filepath.Join(cacheRoot(), "sizes-v1.json")},
 		{"gitignore", filepath.Join(cacheRoot(), "gitignore")},
 		{"licenses", filepath.Join(cacheRoot(), "licenses")},
@@ -83,10 +84,10 @@ func cacheItems() []cacheItem {
 
 func newCacheClearCmd(app *App) *cobra.Command {
 	return &cobra.Command{
-		Use:       "clear <skills|repos|remote|notes|fleet|size|gitignore|licenses|all>",
+		Use:       "clear <skills|repos|remote|notes|fleet|ssh-discovery|size|gitignore|licenses|all>",
 		Short:     "Remove a regenerable cache",
 		Args:      cobra.ExactArgs(1),
-		ValidArgs: []string{"skills", "repos", "remote", "notes", "fleet", "size", "gitignore", "licenses", "all"},
+		ValidArgs: []string{"skills", "repos", "remote", "notes", "fleet", "ssh-discovery", "size", "gitignore", "licenses", "all"},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
 			if name == "remotes" {

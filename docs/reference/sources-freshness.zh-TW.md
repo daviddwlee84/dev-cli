@@ -2,7 +2,7 @@
 description: 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
 authority: project-policy
 status: maintained
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 lang: zh-TW
 ---
 
@@ -34,7 +34,7 @@ Submodule graph／初始化、選擇性 task branch、遞迴遠端證明與暫�
 description: 能在 search 與 llms.txt 獨立成立的一句話。
 authority: 使用下方 authority table 的單一值
 status: 使用下方 status table 的單一值
-verified_on: YYYY-MM-DD
+verified_on: 2026-09-11
 minimum_version: optional
 tested_with: optional
 ---
@@ -158,3 +158,17 @@ Dashboard 年度 heatmap／自動 Git backfill、action menu 搜尋與 REPOS 漸
 [Skills 管理](../guides/skills-management.zh-TW.md) 的 provider semantics 依
 上游 skills v1.5.23／v1.5.25 source contracts 與隔離 fixtures 驗證；列表與 check
 不執行 provider，native mutation 不宣稱固定內容重現。
+
+## Machine connections 與 discovery（2026-09-11）
+
+[SSH onboarding](../guides/ssh-hosts.zh-TW.md) 的 authority 是
+`internal/machineregistry`、`internal/sshdiscovery`、`internal/sshflow`、SSH CLI／
+dashboard adapters 及 hermetic tests。Registry SQLite 是 durable data；discovery
+report 的 cache window 為五分鐘，從不代表 authentication proof。Canonical ID 不取代
+remote dev UUID pin。Tailscale CLI 缺少、provider failure、source change、partial scan
+都保留明確 uncertainty。
+
+Upstream 差異已對照 [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) 與
+[Tailscale CLI](https://tailscale.com/kb/1080/cli#ssh)。Native status JSON 會隨版本
+改變；dev 只讀取 bounded subset，資料不支援或不可用時回報 observation 狀態，不會
+自行 enable／configure provider。

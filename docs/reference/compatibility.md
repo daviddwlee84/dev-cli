@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 tested_with: Claude Code 2.1.259
 ---
 
@@ -42,6 +42,8 @@ This page separates graceful degradation from real limitations. Reverify it when
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
 | static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe files are diagnosed; no `ssh` process or network is needed |
 | SSH effective values, fresh probes, bootstrap, and fleet transport | system `ssh` client | static `ssh list`, dry-run, and local config plans remain available; effectful SSH operations fail with capability guidance |
+| explicit Tailscale peer discovery | optional local `tailscale` CLI and available daemon | source is unavailable; ordinary SSH, cached inventory and explicit LAN discovery remain available |
+| canonical machine registry | linked `modernc.org/sqlite` | no external database executable; missing registry is an empty read-only view until explicit enrollment |
 | public companion derivation and Ed25519 generation | system `ssh-keygen` | an existing validated `.pub` can still be used; derivation/generation is unavailable |
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX targets remain available; Windows-specific installer/launcher fails without PowerShell rather than using a shell fallback |
 | terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
@@ -462,3 +464,26 @@ projection for SSH evidence. Issue target/content revisions and repair plans
 are checked before mutation; unknown publication outcomes require reconciliation.
 The `feedback-fix` recipe requires a verified HOT task/checkout and an explicit
 agent profile for launch. Existing start defaults and JSON are unchanged.
+
+## Machine registry and optional discovery
+
+The SSH dashboard and explicitly expanded `ssh list` join local connection
+profiles with canonical machine bindings and dated source observations. Tailscale
+is an optional executable; `doctor` checks presence only. Missing CLI/daemon data
+never disables ordinary SSH or LAN discovery. `ssh list` without discovery flags
+and alias completion retain their static contract; `--tailscale` explicitly reads
+local daemon status, and `--lan` reads cache rather than scanning.
+
+LAN discovery is native, needs no scanner dependency, and requires bounded
+on-link IPv4 ranges/ports. mDNS, IPv6 range scanning, automatic scans and automatic
+host-name-based identity merges are not implemented. Open port, SSH banner,
+Tailscale online state and reverse-DNS name do not prove authentication.
+
+`paths.state_dir/machines/registry.db` is a private durable SQLite store. The
+already-linked Go driver needs no external sqlite executable. Registry UUIDs are
+controller-local grouping IDs and cannot substitute for remote `machine_id` pins.
+Explicit unlink/merge affects only registry associations; source changes remain
+stale/unresolved. Discovery caches are safe to clear; the registry is not cache.
+Source-aware setup retains native host-key policy, uses `--auth existing` for
+Tailscale policy authentication, and does not enable Tailscale SSH or manage its
+ACLs. See [SSH onboarding](../guides/ssh-hosts.md#discovery-and-canonical-machines).

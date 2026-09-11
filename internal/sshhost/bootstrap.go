@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -94,6 +95,20 @@ func (s *Service) Bootstrap(ctx context.Context, request BootstrapRequest) (Boot
 
 		exact, exactErr := s.runSSHProof(ctx, hopState, selector, true)
 		if exactErr != nil {
+			if errors.Is(exactErr, ErrUnprovenAuthentication) {
+				if ordinary && !hop.Target && !request.InstallOnWorkingJump {
+					hop.Skipped = true
+					hop.Status = HopWorkingSkipped
+					hop.Code = "working_jump_skipped"
+					if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopFailed); !ready {
+						return finalizeBootstrap(result), gateErr
+					}
+					continue
+				}
+				hop.Status = HopManual
+				hop.Code = "selected_key_authentication_unproven"
+				return finalizeBootstrap(result), nil
+			}
 			hop.Status = HopFailed
 			hop.Code = "exact_probe_error"
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -184,6 +199,11 @@ func (s *Service) Bootstrap(ctx context.Context, request BootstrapRequest) (Boot
 
 		verified, verifyErr := s.runSSHProof(ctx, hopState, selector, true)
 		if verifyErr != nil {
+			if errors.Is(verifyErr, ErrUnprovenAuthentication) {
+				hop.Status = HopManual
+				hop.Code = "selected_key_authentication_unproven"
+				return finalizeBootstrap(result), nil
+			}
 			hop.Status = HopFailed
 			hop.Code = "exact_verification_error"
 			if ctxErr := ctx.Err(); ctxErr != nil {
@@ -430,15 +450,27 @@ func (s *Service) runSSHProof(ctx context.Context, hop routeHopState, selector k
 		return false, err
 	}
 	defer cleanup()
-	args := appendFreshSSHOptions([]string{"-F", configPath}, true)
+	log, err := createStagedFile(s.paths.SSHDir, nil, nil)
+	if err != nil {
+		return false, fmt.Errorf("prepare private authentication proof: %w", err)
+	}
+	defer log.discard()
+	logPath := filepath.Join(log.dir, log.name)
+	// -E confines the client authentication evidence to this process. Unlike
+	// -v, LogLevel does not propagate verbosity into implicit ProxyJump clients.
+	args := appendFreshSSHOptions([]string{"-F", configPath, "-E", logPath, "-o", "LogLevel=DEBUG1"}, true)
 	args = append(args, destination, "exit 0")
 	result, err := s.runner.Run(ctx, RunRequest{
-		Name: "ssh", Args: args, Display: "ssh selected-key-only authentication proof",
+		Name: "ssh", Args: args, Env: []string{"LC_ALL=C"}, Display: "ssh selected-key-only authentication proof",
 	})
 	if err != nil {
 		return false, err
 	}
-	return result.ExitCode == 0, nil
+	snapshot, err := readSecureFileAt(log.root, log.name, logPath, false)
+	if err != nil || !snapshot.exists || !os.SameFile(log.snapshot.info, snapshot.info) {
+		return false, ErrUnprovenAuthentication
+	}
+	return selectedKeyAuthentication(snapshot.data, result.ExitCode)
 }
 
 func (s *Service) prepareExactProofConfig(hop routeHopState, selector keySelector) (string, string, func(), error) {

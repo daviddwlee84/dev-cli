@@ -84,6 +84,8 @@ type scanner struct {
 	aliasGroups     map[string]*Alias
 	declarationSeen map[string]struct{}
 	definitionSeen  map[string]struct{}
+	connectionLines []connectionLine
+	sourceDigests   []string
 }
 
 type openSource struct {
@@ -251,6 +253,7 @@ func (s *scanner) scanFile(ctx context.Context, path string, depth int, provenan
 	s.inventory.Files = append(s.inventory.Files, ScannedFile{
 		Path: cleanPath, Visit: s.visits[identityPath], Bytes: int64(len(data)), Provenance: cloneProvenance(provenance),
 	})
+	s.sourceDigests = append(s.sourceDigests, cleanPath+"\x00"+digestBytes(data))
 	s.stack = append(s.stack, openSource{path: cleanPath, info: info})
 	defer func() { s.stack = s.stack[:len(s.stack)-1] }()
 
@@ -287,6 +290,7 @@ func (s *scanner) scanFile(ctx context.Context, path string, depth int, provenan
 		if empty {
 			continue
 		}
+		s.recordConnectionLine(directive, arguments, location, current, constraints)
 		switch {
 		case strings.EqualFold(directive, "host"):
 			if len(arguments) == 0 {
@@ -514,6 +518,7 @@ func (s *scanner) finish() {
 		}
 		return left < right
 	})
+	s.finishConnectionHints()
 }
 
 func (s *scanner) addDiagnostic(diagnostic Diagnostic) {

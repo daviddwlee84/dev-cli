@@ -289,6 +289,7 @@ func sshDoctorChecks(app *App) []check {
 	}{
 		{name: "ssh", purpose: "SSH host evaluation and login unavailable"},
 		{name: "ssh-keygen", purpose: "SSH key generation and derivation unavailable"},
+		{name: "tailscale", purpose: "optional Tailscale peer discovery unavailable; ordinary SSH and LAN discovery remain available"},
 	} {
 		if path, err := exec.LookPath(binary.name); err == nil {
 			checks = append(checks, check{binary.name, checkOK, path})

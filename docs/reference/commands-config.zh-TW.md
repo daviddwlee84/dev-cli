@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 lang: zh-TW
 ---
 
@@ -34,7 +34,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
-| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh probe`、`ssh remove` |
+| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
@@ -113,7 +113,7 @@ sharing disabled 的 fresh BatchMode login。
 `ssh setup` 用一個 command 處理 new/managed/foreign alias。Connection flags
 （`--hostname`、`--user`、`--port`、`--proxy-jump`、`--identity-file`、
 `--identities-only`）只適用 new 或 managed alias。`--config-only` 在 local
-verification 後停止。Full setup 必須 explicit `--key` 或 `--generate-key`；
+verification 後停止。Public-key bootstrap 必須 explicit `--key` 或 `--generate-key`；
 noninteractive full setup 還需要 `--target-os`，noninteractive generation 需要
 `--no-passphrase`。Route/platform controls 是 `--hop-os`、
 `--install-on-working-jump` 與 `--windows-admin-authorized-keys`。`--dry-run`
@@ -755,3 +755,25 @@ issue，`--publish --yes --revision <revision>` 表達對該確切內容／目�
 `repair <id> --base <ref>` 保存 guarded plan；`--apply --plan <id> --yes` 準備隔離
 checkout/task。Optional `[feedback].source_repo` 指定絕對或 home-relative 的本機
 dev-cli 路徑。詳見 [feedback 與修復](../guides/feedback.zh-TW.md)。
+
+## Discovery 與 machine registry interfaces
+
+`ssh list --tailscale` 明確查詢 optional Tailscale status；`--lan` 讀取 LAN cache。
+預設 alias JSON 與六欄 TSV 不變。Combined JSON 新增 `machines`、`sources`、
+`observed_at`；combined TSV 為 row ID、label、state、comma-separated aliases。
+`ssh discover --source tailscale|lan` 輸出 `ssh_discovery` document。LAN 接受
+`--interface`、repeatable `--cidr`、`--ports`（預設 22）、`--refresh`，範圍受限且
+只掃描直接連接的 network。
+
+`ssh setup [alias]` 新增 interactive multi-select、`--from tailscale:<peer>|lan:<ip:port>`、`--auth existing`、`--to fleet|herdr|both`、
+`--machine`、`--herdr-label`、`--herdr-session`。Source-aware setup 預設只處理
+local config／mapping，key 安裝必須明確選擇。Preview/result 使用
+`ssh_onboarding_plan`／`ssh_onboarding_result`。Source dry run 可讀取 local Tailscale
+status，但不寫 config、registry、key、cache，也不登入。
+
+`ssh machine show [machine-id]` 讀取 durable registry。`adopt`、`link`、`unlink`、
+`merge` 依操作接受 `--machine`、repeatable `--source`、`--label`、`--into`、
+`--apply`、`--yes`、`--json`，不支援的組合會被拒絕。Actions 預設 preview。
+Snapshot/transaction documents 包含 `schema_version`、machine revisions 與 scoped
+bindings；registry UUID 不取代 remote fleet 的 `machine_id` pin。詳見
+[SSH onboarding](../guides/ssh-hosts.zh-TW.md)。

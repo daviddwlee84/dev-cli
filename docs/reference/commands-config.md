@@ -2,7 +2,7 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 ---
 
 # Commands and configuration
@@ -31,7 +31,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
-| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh probe`, `ssh remove` |
+| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh probe`, `ssh remove` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
@@ -113,8 +113,8 @@ sharing disabled.
 `ssh setup` handles new/managed/foreign aliases in one command. Connection flags
 (`--hostname`, `--user`, `--port`, `--proxy-jump`, `--identity-file`,
 `--identities-only`) apply only to new or managed aliases. `--config-only` stops
-after local verification. Full setup requires an explicit `--key` or
-`--generate-key`; noninteractive full setup also requires `--target-os`, and
+after local verification. Public-key bootstrap requires an explicit `--key` or
+`--generate-key`; noninteractive key bootstrap also requires `--target-os`, and
 noninteractive generation requires `--no-passphrase`. Route/platform controls
 are `--hop-os`, `--install-on-working-jump`, and
 `--windows-admin-authorized-keys`. `--dry-run` does no OpenSSH evaluation,
@@ -855,3 +855,25 @@ expresses prior authorization for the exact content/target. `repair <id> --base
 <ref>` saves a guarded plan; `--apply --plan <id> --yes` prepares its isolated
 checkout/task. Optional `[feedback].source_repo` is an absolute or home-relative
 local dev-cli path. See [feedback and repair](../guides/feedback.md).
+
+## Discovery and machine registry interfaces
+
+`ssh list --tailscale` explicitly queries optional Tailscale status; `--lan` reads
+cached LAN results. The default alias JSON and six-column TSV are unchanged.
+Combined JSON adds `machines`, `sources` and `observed_at`; combined TSV has row ID,
+label, state and comma-separated aliases. `ssh discover --source tailscale|lan`
+emits a `ssh_discovery` document. LAN accepts `--interface`, repeatable `--cidr`,
+`--ports` (default 22) and `--refresh`; it is bounded and on-link only.
+
+`ssh setup [alias]` has an interactive multi-select flow plus `--from tailscale:<peer>|lan:<ip:port>`, `--auth existing`, `--to fleet|herdr|both`,
+`--machine`, `--herdr-label` and `--herdr-session`. Source-aware setup defaults to
+local configuration/mapping; key installation stays explicit. Its preview/results
+use `ssh_onboarding_plan`/`ssh_onboarding_result`. A source dry run may read local
+Tailscale status, but writes no config, registry, key or cache and does not log in.
+
+`ssh machine show [machine-id]` reads the durable registry. `adopt`, `link`,
+`unlink` and `merge` accept `--machine`, `--source` (repeatable), `--label`,
+`--into`, `--apply`, `--yes` and `--json` as applicable; unsupported combinations
+are rejected. Actions preview by default. Snapshot/transaction documents contain
+`schema_version`, machine revisions and scoped bindings; the registry UUID never
+replaces remote fleet's `machine_id` pin. See [SSH onboarding](../guides/ssh-hosts.md#discovery-and-canonical-machines).

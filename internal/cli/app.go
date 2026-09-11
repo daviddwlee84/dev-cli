@@ -23,6 +23,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/sshdiscovery"
 	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
@@ -71,8 +72,9 @@ type App struct {
 	pickerSelect    func(context.Context, picker.Request) (picker.Result, error)
 	// sshHostRunner keeps SSH config/network behavior injectable. The concrete
 	// service owns policy; commands only orchestrate and render.
-	sshHostService *sshhost.Service
-	sshHostRunner  sshhost.Runner
+	sshHostService      *sshhost.Service
+	sshHostRunner       sshhost.Runner
+	sshDiscoveryService *sshdiscovery.Service
 	// trace is an opt-in, process-local performance recorder. It is deliberately
 	// separate from durable activity stats and ordinary command output.
 	trace                  *perftrace.Recorder

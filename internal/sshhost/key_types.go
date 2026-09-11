@@ -23,6 +23,9 @@ var (
 	// ErrManualRemediation means policy was preserved and a user must complete or
 	// inspect a step rather than dev weakening SSH or filesystem protections.
 	ErrManualRemediation = errors.New("manual SSH remediation required")
+	// ErrUnprovenAuthentication means a connection cannot prove that the selected
+	// public key authenticated it. It must never authorize key installation.
+	ErrUnprovenAuthentication = errors.New("selected SSH key authentication is unproven")
 )
 
 // KeyMetadata is the content-free result of parsing one OpenSSH public record.

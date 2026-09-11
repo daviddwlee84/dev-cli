@@ -13,9 +13,10 @@ import (
 )
 
 type scriptedRun struct {
-	result RunResult
-	err    error
-	call   func(context.Context, RunRequest) (RunResult, error)
+	result   RunResult
+	err      error
+	call     func(context.Context, RunRequest) (RunResult, error)
+	proofLog *string
 }
 
 type scriptedBootstrapRunner struct {
@@ -31,10 +32,27 @@ func (r *scriptedBootstrapRunner) Run(ctx context.Context, request RunRequest) (
 	}
 	response := r.responses[0]
 	r.responses = r.responses[1:]
+	result, err := response.result, response.err
 	if response.call != nil {
-		return response.call(ctx, request)
+		result, err = response.call(ctx, request)
 	}
-	return response.result, response.err
+	if err == nil {
+		for index := 0; index+1 < len(request.Args); index++ {
+			if request.Args[index] == "-E" {
+				log := ""
+				if result.ExitCode == 0 {
+					log = "Authenticated to target using \"publickey\".\n"
+				}
+				if response.proofLog != nil {
+					log = *response.proofLog
+				}
+				if err := os.WriteFile(request.Args[index+1], []byte(log), 0o600); err != nil {
+					r.t.Fatal(err)
+				}
+			}
+		}
+	}
+	return result, err
 }
 
 func bootstrapService(t *testing.T, runner Runner) (*Service, Paths) {

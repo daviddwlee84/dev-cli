@@ -105,7 +105,7 @@ of named files. A dry-run fleet plan still requires `--target-os`.
 
 ## Explicit key selection or generation
 
-Full non-dry-run setup requires exactly one of:
+Public-key bootstrap requires exactly one of:
 
 ```bash
 dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix
@@ -125,7 +125,7 @@ prompt to ssh-keygen. Noninteractive generation requires `--no-passphrase`.
 Destinations are no-replace; do not delete a colliding file to make the command
 pass. Generated pairs remain after later partial failures and after `ssh remove`.
 
-JSON mode is batch-only even on a terminal. Noninteractive full setup requires
+JSON mode is batch-only even on a terminal. Noninteractive public-key bootstrap requires
 `--target-os`; local mutation requires `--yes`. Native OpenSSH may prompt only in
 interactive human mode.
 
@@ -248,7 +248,7 @@ are deferred.
 
 ## Machine output
 
-Every SSH JSON command emits exactly one object with `schema_version`, `kind`,
+Existing alias commands emit one JSON object with `schema_version`, `kind`,
 and stable status/action/error codes. Operational failures still emit one safe
 object; syntax errors do not emit partial JSON. Diagnostics/progress remain on
 stderr. Plans/results may expose paths, modes, digests, fingerprints, and
@@ -426,3 +426,64 @@ remain reported hints with unknown state. Only a zero-exit fresh login establish
 completed authentication. Server-supplied banners/debug messages cannot provide
 positive client evidence; QoS comparisons use pre-connection marking and actual
 connection progress or a verified successful login.
+
+## Discover and organize machine connections
+
+```bash
+dev ssh setup                    # multi-select hosts, configure each connection
+dev ssh list --tailscale --lan    # explicit Tailscale status + cached LAN
+dev ssh discover --source tailscale --json
+dev ssh discover --source lan --interface en0 --cidr 192.168.1.0/24
+dev ssh setup lab --from tailscale:lab --user dev --config-only
+dev ssh setup lab --from tailscale:lab --user dev --auth existing --to both
+dev ssh machine show --json
+```
+
+Plain list/completion remain static. The discovery flags add a machine view with
+SSH aliases, Tailscale, LAN, fleet and Herdr columns. JSON retains the alias fields
+and adds machines, sources and observed_at. Each connection keeps its own user,
+port, key and route. Names alone do not prove that sources are the same machine.
+
+Tailscale is optional and is queried only when explicitly selected. Dev uses
+system ssh, preserves host-key policy and does not enable/login/configure
+Tailscale. Use --auth existing for Tailscale SSH or already-working ordinary
+SSH; this path performs a fresh login without installing a public key. Choose
+--key or --generate-key for ordinary sshd public-key bootstrap. An advertised
+Tailscale SSH port-22 endpoint blocks key installation, and a login without the
+selected key cannot count as its exact-key proof. The optional tailscale ssh
+wrapper's MagicDNS/userspace transport is not written into managed aliases.
+
+--from tailscale:<peer> accepts an exact or unambiguous peer selector;
+--from lan:<ip:port> selects a literal endpoint. Available IPv4 is the default
+HostName; --hostname can choose an explicit MagicDNS FQDN. New discovery aliases
+require --user outside a terminal. Source-aware setup defaults to local config
+and machine mapping. --to fleet|herdr|both explicitly registers after fresh SSH
+proof; --fleet remains compatible. Herdr approvals stay native.
+
+LAN scans use selected on-link IPv4 ranges, port 22 by default, at most 256
+addresses/16 ports/4,096 endpoints/32 workers and 30 seconds. TCP/banner state
+and reverse-DNS names are observations and suggestions. --ports selects other
+ports; --refresh bypasses a fresh matching cache. The five-minute cache under
+$XDG_CACHE_HOME/dev/ssh-discovery is disposable; list --lan and dashboard refresh
+never scan. IPv6 range scans and mDNS are not implemented.
+
+The durable private registry is paths.state_dir/machines/registry.db. It owns
+controller-local machine UUIDs, not remote fleet machine_id pins. Discovery/list
+never create IDs. Setup enrolls connections; --machine <uuid> reuses an existing
+machine. Each provider binding retains its namespace and reviewed fingerprint.
+Changed/missing sources remain stale/unresolved instead of being silently rebound.
+
+```bash
+dev ssh machine adopt --label lab --source <reference-id> --json
+dev ssh machine adopt --label lab --source <reference-id> --apply --yes
+dev ssh machine link --machine <uuid> --source <reference-id> --apply
+dev ssh machine unlink --machine <uuid> --source <reference-id> --apply
+dev ssh machine merge --machine <source-uuid> --into <survivor-uuid> --apply
+```
+
+Get reference IDs from list --tailscale --lan --json. Registry actions preview
+before --apply; noninteractive apply requires --yes. Unlink retains suppression;
+merge keeps the survivor and old-ID redirect. These actions do not edit provider
+configuration or stop sessions. cache clear ssh-discovery/all cannot delete the
+registry. Registry snapshots/transactions carry schema_version; discovery and
+source-aware setup use ssh_discovery and ssh_onboarding_plan/result documents.

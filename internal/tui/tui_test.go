@@ -711,7 +711,7 @@ func TestCapabilityWarningsRemainFreshAcrossTabRevisits(t *testing.T) {
 		if loads != 1 || !strings.Contains(model.View(), "1 skill diagnostic") {
 			t.Fatalf("initial skill warning loads=%d:\n%s", loads, model.View())
 		}
-		for range 7 {
+		for range len(tui.Views) {
 			model = send(model, key("tab"))
 		}
 		if loads != 1 {
@@ -731,7 +731,7 @@ func TestCapabilityWarningsRemainFreshAcrossTabRevisits(t *testing.T) {
 		if loads != 1 || !strings.Contains(model.View(), "1 MCP diagnostic") {
 			t.Fatalf("initial MCP warning loads=%d:\n%s", loads, model.View())
 		}
-		for range 7 {
+		for range len(tui.Views) {
 			model = send(model, key("tab"))
 		}
 		if loads != 1 {
@@ -1241,6 +1241,10 @@ func TestTabSwitchesViews(t *testing.T) {
 	m = send(m, key("tab"))
 	if m.CurrentView() != tui.ViewMCP {
 		t.Error("the seventh view should be MCP")
+	}
+	m = send(m, key("tab"))
+	if m.CurrentView() != tui.ViewSSH {
+		t.Error("the eighth view should be SSH")
 	}
 	if send(m, key("tab")).CurrentView() != tui.ViewTasks {
 		t.Error("tab should cycle back after every registered view")
@@ -1957,7 +1961,7 @@ func TestRepoViewHidesTriesButRemoteMatchingUsesAndClearsThem(t *testing.T) {
 	// Once the Try disappears from the fresh local snapshot, an ordinary local
 	// reload must clear the cached marker rather than preserving stale state.
 	repos = []tui.RepoRow{ordinary}
-	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("r"), key("tab"), key("tab"), key("tab"))
+	m = send(m, key("2"), key("r"), key("5"))
 	if out := m.View(); !strings.Contains(out, "not cloned") {
 		t.Fatalf("stale remote Try marker survived local reload:\n%s", out)
 	}
@@ -2782,8 +2786,8 @@ func TestRemoteCloneCanCancelRepositoryRefresh(t *testing.T) {
 	if out := m.View(); !strings.Contains(out, "cancel post-clone repository refresh") || out == "" {
 		t.Fatalf("q did not cancel repository refresh:\n%s", out)
 	}
-	// REMOTE -> SKILLS -> MCP -> TASKS -> REPOS.
-	m = send(m, key("tab"), key("tab"), key("tab"), key("tab"))
+	// Select REPOS independently of how many optional views follow REMOTE.
+	m = send(m, key("2"))
 	if out := m.View(); !strings.Contains(out, "existing") || strings.Contains(out, "truncated") {
 		t.Fatalf("canceled partial snapshot replaced REPOS:\n%s", out)
 	}

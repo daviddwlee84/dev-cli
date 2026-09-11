@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
@@ -45,6 +45,8 @@ Submodule 工作區採擴充方式：舊 task 與既有 JSON 欄位維持可讀�
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
 | static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe file 會診斷；不需要 `ssh` process 或 network |
 | SSH effective values、fresh probe、bootstrap 與 fleet transport | system `ssh` client | static `ssh list`、dry-run 與 local config plan 仍可使用；effectful SSH operation 以 capability guidance 失敗 |
+| explicit Tailscale peer discovery | optional local `tailscale` CLI 及 available daemon | 該 source unavailable；普通 SSH、cached inventory 與 explicit LAN discovery 仍可使用 |
+| canonical machine registry | linked `modernc.org/sqlite` | 不需要 external database executable；registry 缺失時只有 empty read-only view，明確 enroll 才建立 |
 | public companion derivation 與 Ed25519 generation | system `ssh-keygen` | 仍可使用 existing validated `.pub`；derivation/generation unavailable |
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX target 仍可用；沒有 PowerShell 時 Windows-specific installer/launcher 失敗，不改用 shell fallback |
 | Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
@@ -412,3 +414,24 @@ Feedback 新增 schema-v1 draft、issue preview/result、repair plan/result JSON
 寫入前檢查 issue target/content revision 與 repair plan；發布結果 unknown 必須
 先查核。`feedback-fix` 要求已驗證的 HOT task/checkout，啟動時必須明確指定 agent
 profile。既有 start 預設與 JSON 不變。
+
+## Machine registry 與 optional discovery
+
+SSH dashboard 及明確擴展的 `ssh list` 會合併 local connection profiles、canonical
+machine bindings 與帶時間的 source observations。Tailscale executable 是 optional，
+`doctor` 只檢查是否存在。CLI／daemon 資料缺失不會停用普通 SSH 或 LAN discovery。
+沒有 discovery flags 的 `ssh list` 與 alias completion 保留 static 契約；
+`--tailscale` 明確讀取 local daemon status，`--lan` 只讀 cache，不掃描。
+
+LAN discovery 使用原生實作，沒有外部 scanner dependency，只接受 bounded on-link
+IPv4 ranges／ports。尚未提供 mDNS、IPv6 range scan、自動掃描或根據 hostname 自動
+合併 identity。Open port、SSH banner、Tailscale online state、reverse-DNS name 都
+不能證明 authentication。
+
+`paths.state_dir/machines/registry.db` 是 private durable SQLite store，使用已有的
+Go driver，不需要外部 sqlite executable。Registry UUID 是 controller-local grouping
+ID，不能取代 remote `machine_id` pin。Explicit unlink／merge 只改 registry 關聯；
+來源變更保留 stale／unresolved。Discovery cache 可清除，registry 則不是 cache。
+Source-aware setup 保留 native host-key policy，Tailscale policy authentication
+使用 `--auth existing`；不會 enable Tailscale SSH 或管理它的 ACL。詳見
+[SSH onboarding](../guides/ssh-hosts.zh-TW.md)。

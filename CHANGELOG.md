@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Optional Tailscale peer discovery and explicit bounded LAN SSH discovery, with
+  dated caches, joined connection listings and interactive multi-host setup.
+- Source-aware SSH setup with existing authentication or explicit public-key
+  bootstrap, optional fleet/Herdr registration and canonical machine bindings.
+- Durable controller-local machine UUIDs with reviewed adopt/link/unlink/merge
+  transactions, source fingerprints, unlink suppression and merge redirects.
+- Dashboard SSH view for machine connections, distinct aliases and provider
+  membership; local refresh keeps discovery and remote actions explicit.
+
 ## [0.2.27] - 2026-09-11
 
 ### Added

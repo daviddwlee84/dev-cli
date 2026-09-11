@@ -7,7 +7,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 )
 
-const viewCount = int(ViewMCP) + 1
+const viewCount = int(viewEnd)
 
 func (m Model) baseContext() context.Context {
 	if m.runContext != nil {

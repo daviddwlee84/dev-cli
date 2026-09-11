@@ -836,7 +836,24 @@ func (s *Service) planGeneratedKey(request KeyRequest) (KeyPlan, error) {
 		return KeyPlan{}, errors.New("generated identity destination must not end in .pub")
 	}
 	if err := s.validateKeyParent(filepath.Dir(resolved)); err != nil {
-		return KeyPlan{}, err
+		// Onboarding can review generation before its separate managed Include
+		// initialization creates ~/.ssh. Only that exact canonical parent may
+		// be absent; arbitrary nested key directories still require preparation.
+		if filepath.Dir(resolved) != s.paths.SSHDir || !errors.Is(err, fs.ErrNotExist) {
+			return KeyPlan{}, err
+		}
+		if err := validateHomeDirectory(s.paths.Home); err != nil {
+			return KeyPlan{}, err
+		}
+		if _, err := os.Lstat(s.paths.SSHDir); !errors.Is(err, fs.ErrNotExist) {
+			return KeyPlan{}, ErrUnsafePath
+		}
+		plan := KeyPlan{Action: ActionCreate, Operation: KeyGenerate, Source: KeySourceGenerated, Algorithm: "ssh-ed25519", Comment: request.Comment, PublicPath: resolved + ".pub", IdentityFile: resolved}
+		request.DestinationIdentity = resolved
+		state := &keyPlanState{serviceID: s.id, request: request, expectedPrivate: fileSnapshot{path: resolved}, expectedPublic: fileSnapshot{path: resolved + ".pub"}}
+		state.public = plan
+		plan.state = state
+		return plan, nil
 	}
 	expectedPrivate, err := s.inspectPrivateDestination(resolved)
 	if err != nil {
@@ -1055,6 +1072,28 @@ func (s *Service) applyDerivedKey(ctx context.Context, plan KeyPlan) (KeyResult,
 func (s *Service) applyGeneratedKey(ctx context.Context, plan KeyPlan) (KeyResult, error) {
 	state := plan.state
 	parent := filepath.Dir(plan.IdentityFile)
+	if parent == s.paths.SSHDir {
+		if err := validateHomeDirectory(s.paths.Home); err != nil {
+			return KeyResult{}, err
+		}
+		if err := ensurePrivateChild(s.paths.Home, ".ssh", false); err != nil {
+			return KeyResult{}, err
+		}
+	}
+	if err := s.validateKeyParent(parent); err != nil {
+		return KeyResult{}, err
+	}
+	privateNow, err := s.inspectPrivateDestination(plan.IdentityFile)
+	if err != nil {
+		return KeyResult{}, err
+	}
+	publicNow, err := s.inspectPublicDestination(plan.PublicPath)
+	if err != nil {
+		return KeyResult{}, err
+	}
+	if privateNow.exists || publicNow.exists {
+		return KeyResult{}, ErrKeyCollision
+	}
 	stagingBase, err := allocateKeyStagingBase(parent)
 	if err != nil {
 		return KeyResult{}, err

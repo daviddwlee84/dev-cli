@@ -2,7 +2,7 @@
 description: Understand dev-cli as durable Git history, scoped intent and catalog state, repository quick-note sidecars, disposable worktrees, and replaceable runtimes.
 authority: project
 status: stable
-verified_on: 2026-09-08
+verified_on: 2026-09-11
 ---
 
 # Mental model and lifecycle
@@ -170,3 +170,20 @@ management tools. Heatmap Git checkpoints live with activity in stats.db;
 clearing caches never clears activity. Cross-repository skills maintenance uses
 `dev skill manage`; cached evidence or an available update is not permission to
 change files automatically.
+
+## Canonical machines and connection profiles
+
+A controller-local machine UUID groups explicit provider references without
+replacing them. One machine may have several SSH aliases/users/ports/keys, a
+Tailscale peer, LAN endpoints and several Herdr sessions or fleet profiles.
+Connection settings stay with OpenSSH and the provider; dev owns only the local
+identity and reviewed binding intent in `paths.state_dir/machines/registry.db`.
+This UUID is separate from a remote dev host's `machine_id` safety pin.
+
+Discovery produces candidates and dated caches, not durable identities or login
+proof. Setup or `ssh machine adopt` enrolls a machine; `link`/`unlink` and `merge`
+require a reviewed registry transaction. Unlink preserves suppression; merged IDs
+remain redirects. Missing or changed source records remain unresolved/stale,
+keeping uncertainty separate from human intent. Cache deletion leaves identities
+and bindings intact. The eighth SSH dashboard view shows connections; FLEET still
+shows remote repositories/tasks. See [SSH onboarding](../guides/ssh-hosts.md#discovery-and-canonical-machines).

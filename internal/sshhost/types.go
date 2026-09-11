@@ -146,6 +146,22 @@ type Inventory struct {
 	Declarations         []HostDeclaration `json:"declarations,omitempty"`
 	Aliases              []Alias           `json:"aliases,omitempty"`
 	Diagnostics          []Diagnostic      `json:"diagnostics,omitempty"`
+	ConnectionHints      []ConnectionHint  `json:"connection_hints,omitempty"`
+}
+
+// ConnectionHint is a literal endpoint observed in a simple exact Host block.
+// Known hints are not effective OpenSSH configuration or authentication proof.
+// Unspecified User/Port remain empty/zero; unknown hints omit endpoint fields.
+// Fingerprint covers the bounded source closure, including Include order.
+type ConnectionHint struct {
+	Alias       string         `json:"alias"`
+	HostName    string         `json:"host_name,omitempty"`
+	User        string         `json:"user,omitempty"`
+	Port        int            `json:"port,omitempty"`
+	Fingerprint string         `json:"fingerprint"`
+	State       string         `json:"state"`
+	Source      Location       `json:"source"`
+	Provenance  []IncludeFrame `json:"provenance,omitempty"`
 }
 
 // Find returns the exact alias entry using OpenSSH's case-insensitive host-name

@@ -36,6 +36,8 @@ func helpTLDR(view View) string {
 		return "Inspect installed agent skills → check source freshness when needed → manage one skill."
 	case ViewMCP:
 		return "Inspect static MCP declarations → read their scope and settings → open the source file."
+	case ViewSSH:
+		return "Inspect machines and connection profiles → discover explicitly → set up or connect through an exact alias."
 	default:
 		return "Open a task → work and checkpoint → park with a next action, or finish through actions."
 	}
@@ -55,6 +57,8 @@ func helpRelatedTopics(view View) []string {
 		return []string{"skills", "interop", "agents", "tui"}
 	case ViewMCP:
 		return []string{"mcp", "interop", "agents", "tui"}
+	case ViewSSH:
+		return []string{"ssh", "fleet", "tui"}
 	default:
 		return []string{"parking", "retirement", "worktrees", "branching", "commits", "agents", "tui"}
 	}
@@ -97,6 +101,14 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 		add("open", "Enter / o", "Open repository on its host", "Requires a repository row and the configured host connection. A host error/status row has no checkout to open.", "fleet", m.actions.OpenFleet != nil)
 		add("local", "a", "Include or hide this machine", "Local fleet rows are hidden by default because REPOS has the richer local inventory.", "fleet", true)
 		add("config", "e", "Edit fleet configuration", "Open remotes.toml in the configured editor, then validate and reload it after the editor exits.", "fleet", m.actions.EditFleetConfig != nil)
+	case ViewSSH:
+		available := m.actions.SSH.Workflow != nil
+		add("open", "Enter / o", "Connect through SSH", "Choose an exact profile when a machine has several aliases; source fingerprints and alias identity are revalidated before native SSH starts.", "ssh", available)
+		add("setup", "n", "Set up connections", "Open the shared multi-select setup wizard, including keyless or explicit public-key bootstrap and optional fleet/Herdr registration.", "ssh", available)
+		add("discover", "c", "Discover Tailscale or LAN hosts", "Explicitly select a source. LAN discovery shows a bounded on-link range and ports; listing and refresh do not scan.", "ssh", available)
+		add("probe", "p", "Probe SSH authentication", "Choose an exact SSH profile and request a fresh ordinary authentication proof. Discovery presence is a separate observation.", "ssh", available)
+		add("mappings", "e / m", "Manage machine mappings", "Adopt candidates or preview linking, unlinking, and merging canonical machine identities. Provider configuration stays owned by its original source.", "ssh", available)
+		add("copy", "y", "Copy machine data", "Choose machine ID, aliases, or a safe source summary; copying does not contact the host.", "ssh", copyAvailable)
 	case ViewTries:
 		add("new", "n", "Create a Try", "Open the scratch experiment form, including when the list is empty. A Try can be a non-Git directory.", "tries", m.actions.Tries.Apply != nil)
 		add("open", "Enter / o", "Open the selected Try", "Requires a Try present on this host with no incomplete move. Archived or missing Tries need their own restore or recovery action.", "tries", m.actions.Tries.Apply != nil)
@@ -121,7 +133,7 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 		add("file", "e", "Open the declaration's source file", "Requires a source config path and a configured editor. The dashboard does not start an MCP server.", "mcp", m.actions.EditFile != nil)
 		add("copy", "y", "Choose declaration data to copy", "Copy a config path or sanitized declaration summary. Raw-file copy is an explicit separate choice; it is not the sanitized summary.", "mcp", copyAvailable)
 	}
-	if view != ViewSkills && view != ViewMCP && view != ViewFleet {
+	if view != ViewSkills && view != ViewMCP && view != ViewFleet && view != ViewSSH {
 		add("config", "e", "Edit dashboard configuration", "Open this session's config file in the configured editor and reload supported settings when it closes.", "tui", m.actions.EditConfig != nil)
 	}
 
@@ -135,12 +147,14 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 		refresh = "Reload local installed skills. Use c separately for the explicit upstream source check."
 	case ViewMCP:
 		refresh = "Reload local static declarations only; no server is started or health-checked."
+	case ViewSSH:
+		refresh = "Reload local SSH/fleet/Herdr records, machine mappings and discovery caches. No Tailscale refresh, LAN scan, authentication or remote repository fan-out."
 	}
 	for _, e := range []helpEntry{
 		{ID: "move", Key: "j/k / ↓/↑ / Ctrl+N/P", Title: "Move selection", Description: "Move one row down or up. The wheel moves three rows; a click selects a visible row."},
 		{ID: "page", Key: "PgDn/PgUp / Ctrl+D/U", Title: "Move one page", Description: "Move the selection down or up by the visible page size."},
 		{ID: "ends", Key: "g / G / Home / End", Title: "First or last row", Description: "Lowercase g or Home selects the first row; uppercase G or End selects the last."},
-		{ID: "views", Key: "1–7 / Tab / Shift+Tab / h/l / ←/→", Title: "Switch dashboard view", Description: "Choose TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS or MCP. Click a visible top tab for the same action."},
+		{ID: "views", Key: "1–8 / Tab / Shift+Tab / h/l / ←/→", Title: "Switch dashboard view", Description: "Choose TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS, MCP or SSH. A configured tool on 8 keeps that key; use Tab or click SSH instead."},
 		{ID: "filter", Key: "/", Title: "Filter the list", Description: "Type a query; Enter keeps it and Esc clears it. View-specific structured terms are explained in Guide."},
 		{ID: "clear", Key: "0", Title: "Clear filters", Description: "Clear the text query and explicit task-state filter, then select the first row."},
 		{ID: "column-sort", Key: "Click column heading", Title: "Sort a column", Description: "Cycle ascending, descending, then default order. The heading's ↑ or ↓ shows this ordering; it is separate from Git divergence."},
@@ -169,7 +183,7 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 			}
 		}
 		description := "Known status: " + availability + ". Requires a selected checkout on disk; returns to the dashboard after the tool exits. Help does not probe or launch tools."
-		if view == ViewFleet || view == ViewSkills || view == ViewMCP {
+		if view == ViewFleet || view == ViewSkills || view == ViewMCP || view == ViewSSH {
 			description += " This view has no local checkout target for tools."
 		}
 		entries = append(entries, helpEntry{ID: fmt.Sprintf("%s:tool:%d", view, i), Group: "Custom tools", Key: tool.Key, Title: tool.Name, Description: description, Topic: "tui", View: view})
@@ -224,6 +238,11 @@ func helpGuideEntries(view View) []helpEntry {
 		add("columns", "Columns", "HOST · STATE · REPO · BRANCH · GIT · LIVE · TASKS · PATH", "Each repository row belongs to its named host. STATE reports the host result; stale marks a cached row. An error-only host row has — repository/Git/runtime values and its diagnostic in PATH/detail. Paths belong to that host. TASKS shows H/W/C/D followed by HOT/WARM/COLD/DONE counts; — means no recorded tasks.", "fleet")
 		add("colors", "Colors and symbols", "Green live observations; coral host issues", "A repository with an observed live runtime is green; otherwise a host state other than ok is coral. Selection overrides both. Cached rows may retain their old runtime color even while STATE says stale: neither the color nor an old clean Git status is a fresh host proof.", "fleet")
 		add("network", "Using this view", "Remote observations stay host-local", "This view lazily reads configured dev hosts over SSH and can show cached data. Use r for an explicit refresh. Opening a row uses its host's checkout/runtime; it does not move its tasks or interpret a remote path as a local controller path.", "fleet")
+	case ViewSSH:
+		add("columns", "Columns", "MACHINE · SSH · TAILSCALE · LAN · FLEET · HERDR · STATE", "One machine group retains every SSH profile and provider membership. Narrow screens hide membership columns; full details preserve aliases, users, ports and Herdr sessions.", "ssh")
+		add("identity", "Identity", "Canonical ID and source references", "Machine IDs record explicit associations. Declared hostname matches group candidate observations; a device name or matching address does not prove physical identity. Changed source fingerprints become stale.", "ssh")
+		add("network", "Observations", "Passive refresh and explicit discovery", "Opening SSH and pressing r reads local records and cached discovery only. c refreshes a chosen discovery source; p authenticates a chosen alias. Fleet repository observations remain in FLEET.", "ssh")
+		add("colors", "Colors and symbols", "Stale and unresolved need inspection", "Coral identifies stale or unresolved machine mappings. Tailscale offline is control-plane presence, LAN open is port evidence, and neither means SSH login succeeded.", "ssh")
 	case ViewTries:
 		add("columns", "Columns", "TRY · PHASE · WHERE · GIT · LAST · SIZE · TAGS", "PHASE is durable active/deprecated/graduated intent. WHERE is this host's location: present, archived, evicted, missing, unavailable or other-host. Missing means an expected location was not found; unavailable means the read failed. LAST uses experiment activity; SIZE is logical owned data. Narrow screens retain fewer columns; detail provides more context.", "tries")
 		add("colors", "Colors and symbols", "Gray history; orange dirty; green live", "A non-present location or non-active phase is dimmed first. Otherwise dirty Git is orange, then an observed live runtime is green. These priorities apply before cyan selection. A gray row can still contain uncommitted work; read WHERE, Git and detail before a lifecycle action.", "tries")
@@ -322,6 +341,9 @@ func skillRowStyle(row agentskill.Skill) lipgloss.Style   { return skillRowColor
 func mcpRowStyle(row agentmcp.Declaration) lipgloss.Style { return mcpRowColor(row).style() }
 
 func (m Model) helpSelectionColor() string {
+	if row, ok := m.currentSSH(); ok && (row.State == "stale" || row.State == "unresolved") {
+		return "Coral: a machine mapping is stale or unresolved; inspect its source references before changing it."
+	}
 	if item, ok := m.currentRepoItem(); ok {
 		switch repoItemColor(item) {
 		case helpColorDirty:

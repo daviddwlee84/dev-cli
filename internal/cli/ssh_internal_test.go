@@ -198,6 +198,13 @@ func (runner *sshCLIRunner) Run(ctx context.Context, request sshhost.RunRequest)
 			return sshhost.RunResult{Stdout: runner.effective(alias)}, nil
 		}
 		switch request.Display {
+		case "ssh selected-key-only authentication proof":
+			if path := sshArgValue(request.Args, "-E"); path != "" {
+				if err := os.WriteFile(path, []byte("Authenticated to target using \"publickey\".\n"), 0o600); err != nil {
+					return sshhost.RunResult{}, err
+				}
+			}
+			return sshhost.RunResult{}, nil
 		case "ssh Windows administrator probe":
 			return sshhost.RunResult{Stdout: []byte("standard\n")}, nil
 		case "ssh public-key installer":

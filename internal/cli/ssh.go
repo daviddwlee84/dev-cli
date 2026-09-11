@@ -187,6 +187,8 @@ OpenSSH or log in. Herdr machine add keeps its native installation approvals.`,
 		newSSHFormatCmd(app),
 		newSSHOrganizeCmd(app),
 		newSSHRestoreCmd(app),
+		newSSHDiscoverCmd(app),
+		newSSHMachineCmd(app),
 	)
 	return cmd
 }
@@ -287,7 +289,7 @@ func renderSSHInitPlan(app *App, plan sshhost.InitPlan) {
 }
 
 func newSSHListCmd(app *App) *cobra.Command {
-	var jsonOut bool
+	var jsonOut, tailscale, lan bool
 	var format string
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -303,11 +305,16 @@ alias, status, ownership, source, line, comma-separated fleet names.`,
 			if format != "" && format != "tsv" {
 				return asUsageError(fmt.Errorf("unsupported --format %q (want tsv)", format))
 			}
+			if tailscale || lan {
+				return runSSHCombinedList(cmd.Context(), app, tailscale, lan, jsonOut, format)
+			}
 			return runSSHList(cmd.Context(), app, jsonOut, format)
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit one versioned JSON object")
 	cmd.Flags().StringVar(&format, "format", "", "machine format: tsv")
+	cmd.Flags().BoolVar(&tailscale, "tailscale", false, "explicitly read Tailscale and show canonical machines with all connection sources")
+	cmd.Flags().BoolVar(&lan, "lan", false, "include cached LAN observations in the canonical machine list; never scan")
 	registerFlagCompletion(cmd, "format", fixedCompletions("tsv"))
 	return cmd
 }
@@ -567,6 +574,12 @@ func finishSSHShow(app *App, jsonOut bool, document sshShowDocument, err error) 
 }
 
 type sshSetupOptions struct {
+	from                       string
+	auth                       string
+	to                         string
+	machineID                  string
+	herdrLabel                 string
+	herdrSession               string
 	hostName                   string
 	user                       string
 	port                       int
@@ -600,12 +613,16 @@ type sshSetupOptions struct {
 func newSSHSetupCmd(app *App) *cobra.Command {
 	var options sshSetupOptions
 	cmd := &cobra.Command{
-		Use:   "setup <alias>",
+		Use:   "setup [alias]",
 		Short: "Create or reconcile an alias, install a public key, and optionally register fleet",
-		Long: `Unknown aliases may become strict dev-owned fragments; existing managed aliases
-may be reconciled. Foreign definitions are never edited. Full setup requires an
-explicit --key or --generate-key in this conservative first-stage wizard.`,
-		Args: cobra.ExactArgs(1),
+		Long: `Without an alias, open the multi-host discovery and setup wizard. Explicit
+--from tailscale:<peer> or lan:<ip:port> selects a discovered connection and records
+a canonical machine mapping. Foreign connection definitions are never rewritten.
+Use --auth existing for ordinary login without key installation, or select --key
+or --generate-key for public-key bootstrap. --to explicitly registers fleet,
+Herdr, or both. Source-aware setup defaults to configuration only; --dry-run may
+read local Tailscale status but never configures or authenticates a host.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			options.hostNameChanged = cmd.Flags().Changed("hostname")
 			options.userChanged = cmd.Flags().Changed("user")
@@ -615,6 +632,9 @@ explicit --key or --generate-key in this conservative first-stage wizard.`,
 			options.identitiesOnlyChanged = cmd.Flags().Changed("identities-only")
 			options.connectionChanged = options.hostNameChanged || options.userChanged || options.portChanged ||
 				options.proxyJumpChanged || options.identityFileChanged || options.identitiesOnlyChanged
+			if len(args) == 0 || options.from != "" || options.auth != "" || options.to != "" || options.machineID != "" {
+				return runSSHOnboarding(cmd.Context(), app, args, options)
+			}
 			if err := validateSSHSetupFlags(cmd, options); err != nil {
 				return asUsageError(err)
 			}
@@ -628,6 +648,12 @@ explicit --key or --generate-key in this conservative first-stage wizard.`,
 		},
 	}
 	flags := cmd.Flags()
+	flags.StringVar(&options.from, "from", "", "tailscale:<peer>, lan:<ip:port>, or an exact discovery ID")
+	flags.StringVar(&options.auth, "auth", "", "existing to verify ordinary SSH without installing a key")
+	flags.StringVar(&options.to, "to", "", "explicit registration destination: fleet, herdr or both")
+	flags.StringVar(&options.machineID, "machine", "", "bind this connection to an existing canonical machine UUID")
+	flags.StringVar(&options.herdrLabel, "herdr-label", "", "Herdr machine label (default: alias)")
+	flags.StringVar(&options.herdrSession, "herdr-session", "default", "Herdr remote session")
 	flags.StringVar(&options.hostName, "hostname", "", "managed HostName value")
 	flags.StringVar(&options.user, "user", "", "managed User value")
 	flags.IntVar(&options.port, "port", 0, "managed SSH port")
@@ -680,7 +706,7 @@ func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions) error {
 	if _, err := parseSSHOSOverrides(options.hopOS); err != nil {
 		return err
 	}
-	if !options.configOnly && !options.dryRun && options.key == "" && !options.generateKey {
+	if !options.configOnly && !options.dryRun && options.key == "" && !options.generateKey && options.auth != "existing" {
 		return errors.New("full setup requires explicit --key or --generate-key")
 	}
 	return nil

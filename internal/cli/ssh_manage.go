@@ -285,7 +285,7 @@ func runSSHEntry(cmd *cobra.Command, app *App) error {
 	if !app.interactive() {
 		return cmd.Help()
 	}
-	selected, err := sshPick(cmd.Context(), app, "SSH", []picker.Item{{Value: "diagnose", Label: "Diagnose an SSH connection"}, {Value: "manage", Label: "Manage SSH / fleet / Herdr machines"}, {Value: "format", Label: "Format SSH configuration", Description: "Four spaces; preview first"}, {Value: "organize", Label: "Organize Host blocks into groups", Description: "Optional; preserve Include order"}}, false)
+	selected, err := sshPick(cmd.Context(), app, "SSH", []picker.Item{{Value: "setup", Label: "Discover and set up SSH machines", Description: "Tailscale, LAN, or existing aliases; preview before applying"}, {Value: "diagnose", Label: "Diagnose an SSH connection"}, {Value: "manage", Label: "Manage SSH / fleet / Herdr machines"}, {Value: "format", Label: "Format SSH configuration", Description: "Four spaces; preview first"}, {Value: "organize", Label: "Organize Host blocks into groups", Description: "Optional; preserve Include order"}}, false)
 	if err != nil {
 		return err
 	}

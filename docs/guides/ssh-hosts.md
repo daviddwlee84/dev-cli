@@ -28,13 +28,13 @@ A foreign alias remains usable for `list`, `show`, `probe`, key bootstrap, and f
 | Command | Exact local flags | Boundary |
 |---|---|---|
 | `dev ssh init` | `--apply`, `--yes`, `--json` | plan by default; only `--apply` may install the dedicated Include |
-| `dev ssh list` | `--json` or `--format tsv` | bounded static user-config scan; no subprocess or network |
+| `dev ssh list` | `--json`, `--format tsv`; explicit `--tailscale`, `--lan` | static by default; optional joined machine observations |
 | `dev ssh show <alias>` | `--json` | static definitions plus effective values from plain `ssh -G <alias>` |
 | `dev ssh setup <alias>` | connection, key, route, fleet, plan, confirmation, and JSON flags listed below | owned local config, public-key bootstrap, optional fleet registration |
 | `dev ssh probe <alias>` | `--json` | one fresh ordinary BatchMode login with sharing disabled |
 | `dev ssh remove <alias>` | `--fleet`, `--dry-run`, `--yes`, `--json` | remove only canonical dev-owned SSH/fleet fragments |
 
-`dev doctor` also reports the local `ssh`/`ssh-keygen` capabilities, static Include reachability, managed namespace permissions/ACLs, and generated fleet-fragment health. It does not run `ssh -G`, contact a host, or repair anything.
+`dev doctor` also reports local `ssh`/`ssh-keygen` and optional `tailscale` capabilities, static Include reachability, managed namespace permissions/ACLs, and generated fleet-fragment health. It does not run `ssh -G`, contact a host, or repair anything.
 
 ## One-time initialization is report-before-apply
 
@@ -112,7 +112,7 @@ Operational flags are:
 
 `--dry-run` is side-effect-free: it does not generate keys, write files, run `ssh -G`, touch `known_hosts`, probe the network, or start a remote installer. Remote and route actions remain honestly `unknown`. It may perform bounded local reads needed to validate an explicitly named key or existing config. `--fleet` in a dry run still requires `--target-os` so the proposed fragment is determinate.
 
-Full non-dry-run setup requires exactly one explicit `--key` or `--generate-key`. JSON mode is noninteractive even on a terminal; any noninteractive full setup also requires `--target-os`, and local mutation requires `--yes`. `--yes` only approves the local plan. Native OpenSSH still owns password/passphrase and host-key interaction, and batch mode returns `interaction_required` rather than inventing a credential path.
+Public-key bootstrap requires exactly one explicit `--key` or `--generate-key`. JSON mode is noninteractive even on a terminal; any noninteractive full setup also requires `--target-os`, and local mutation requires `--yes`. `--yes` only approves the local plan. Native OpenSSH still owns password/passphrase and host-key interaction, and batch mode returns `interaction_required` rather than inventing a credential path.
 
 ## Existing keys and generation
 
@@ -185,6 +185,9 @@ All public SSH JSON is exactly one schema-versioned object on stdout. Operationa
 | `ssh setup --json` | `ssh_setup_plan`, `ssh_setup_result` | alias class, local/key/bootstrap plans/results, per-hop state, fleet action, partial/error code |
 | `ssh probe --json` | `ssh_probe` | safe `ready`/`not_ready` status, code, exit code |
 | `ssh remove --json` | `ssh_remove_plan`, `ssh_remove_result` | owned plan/result, explicit fleet action, status/error code |
+| `ssh discover --json` | `ssh_discovery` | source status, scope, candidates, observation time and completeness |
+| source-aware `ssh setup --json` | `ssh_onboarding_plan`, `ssh_onboarding_result` | connection plans, stage outcomes, retained keys and per-hop bootstrap results |
+| `ssh machine … --json` | `ssh_machine_snapshot`, `ssh_machine_plan`, `ssh_machine_result` | canonical UUIDs, source bindings and revision-bound changes |
 
 Consumers should branch on `schema_version`, `kind`, machine-readable `status`/`action`/`code`, and honest `partial`/`unknown` state rather than parse human tables or stderr.
 
@@ -211,7 +214,7 @@ Deliberately deferred:
 - alias rename/adoption, managed wildcards/`Match`, arbitrary SSH directives, or an SSH config editor;
 - automated `ProxyCommand`, certificates/CAs, forwarding, custom `AuthorizedKeysFile`, or forced-shell policy;
 - password/vault storage, automatic password fallback, private-key copying, direct Bitwarden integration, or weakened host-key checks;
-- bulk/cloud/Tailscale/chezmoi fleet import, a dedicated SSH TUI, or background probing.
+- cloud/chezmoi fleet import, mDNS, IPv6 range scanning, or background probing.
 
 When a server policy falls outside the verified POSIX/Windows installer contract, dev reports manual remediation rather than silently weakening it.
 
@@ -379,3 +382,126 @@ remain reported hints with unknown state. Only a zero-exit fresh login establish
 completed authentication. Server-supplied banners/debug messages cannot provide
 positive client evidence; QoS comparisons use pre-connection marking and actual
 connection progress or a verified successful login.
+
+## Discovery and canonical machines
+
+`dev ssh setup` without an alias opens a host picker. Select several Tailscale
+peers, LAN candidates or existing aliases, then choose each connection's alias,
+remote user, port, authentication and optional registration. A machine can keep
+several aliases with different users, keys and routes. The final preview precedes
+local configuration, registry changes and selected remote actions.
+
+```bash
+dev ssh list --tailscale --lan
+dev ssh list --tailscale --lan --json
+dev ssh discover --source tailscale --json
+dev ssh discover --source lan --interface en0 --cidr 192.168.1.0/24
+dev ssh discover --source lan --interface en0 --cidr 192.168.1.0/24 --ports 22,2222 --refresh
+
+dev ssh setup lab --from tailscale:lab --user dev --config-only
+dev ssh setup lab --from tailscale:lab --user dev --auth existing --to both
+dev ssh setup lab --from lan:192.168.1.20:22 --user dev \
+  --key ~/.ssh/id_ed25519 --target-os posix --to fleet
+```
+
+Plain `ssh list`, its existing six-column TSV and alias completion remain static.
+`--tailscale` explicitly reads the optional local `tailscale status --json` CLI;
+`--lan` includes cached LAN observations and never scans. The combined human table
+shows MACHINE, SSH ALIASES, TAILSCALE, LAN, FLEET, HERDR and STATE. Combined JSON
+keeps the existing alias document and adds `machines`, `sources` and `observed_at`;
+its references include exact selectors for binding commands. With discovery flags,
+TSV is a separate four-column machine projection: row ID, label, state and
+comma-separated aliases. Source failure, stale cache and disabled Herdr profiles
+remain visible.
+
+Tailscale discovery has a five-second bound, excludes this host, and preserves
+offline/unknown peer state. Missing Tailscale, an unavailable daemon or unusable
+status data affects only that source; `doctor` checks executable presence without
+querying the daemon. Dev does not install, log in, enable Tailscale SSH, change DNS
+or edit tailnet access policies.
+
+LAN discovery requires selected on-link IPv4 ranges; `--interface` is required
+when they do not identify one eligible interface uniquely. The interactive wizard
+can choose an interface and a bounded subset. Limits are 256 addresses, 16 ports,
+4,096 endpoints, 32 workers and a 30-second total deadline. Port 22 is the default.
+Discovery performs bounded TCP/banner checks and reverse-DNS lookups, without
+SSH authentication. An open port and an SSH identification banner are distinct
+observations. Names are editable suggestions; raw banners do not become names,
+OS proofs, host keys or configuration. IPv6 range scans, mDNS and background scans
+are not implemented.
+
+Discovery caches under `$XDG_CACHE_HOME/dev/ssh-discovery/` are fresh for five
+minutes and retain their observation time after becoming stale. `--refresh`
+bypasses a matching fresh LAN cache. Reading a cache does not refresh it or prove
+that an endpoint still identifies the same machine.
+
+### Authentication over the tailnet
+
+Dev uses system OpenSSH for both ordinary sshd over Tailscale networking and the
+Tailscale SSH server. Ordinary sshd can use the existing public-key bootstrap;
+Tailscale SSH uses tailnet identity and policy, so use `--auth existing` to verify
+a fresh ordinary alias login without installing a key. Tailscale SSH's host-key
+advertisement is a hint, not proof of access or an authentication-mode guarantee.
+Key installation is blocked for a discovered advertised Tailscale SSH endpoint on
+port 22; an explicitly selected ordinary sshd on another port can use key bootstrap.
+A login that did not use the selected public key cannot satisfy its exact-key proof.
+
+The optional `tailscale ssh` wrapper additionally resolves MagicDNS, supports
+userspace networking through `tailscaled`, and verifies advertised SSH host keys.
+Dev writes ordinary OpenSSH aliases and does not generate that wrapper's
+ProxyCommand. The source setup defaults to an available IP (IPv4 first); use
+`--hostname` for a chosen MagicDNS FQDN when system resolution works. See the
+[Tailscale SSH documentation](https://tailscale.com/kb/1193/tailscale-ssh) and
+[CLI wrapper reference](https://tailscale.com/kb/1080/cli#ssh).
+
+Source-aware setup accepts `--from tailscale:<peer>`, `--from lan:<ip:port>`, or
+the full candidate ID printed by `discover`. A LAN address matching multiple
+cached network scopes requires an exact ID. A stale or changed-network cache
+does not implicitly identify the current endpoint; an explicitly selected old
+ID remains visibly stale. Foreign aliases must have a known matching endpoint;
+use `machine link` to assert a separate LAN/Tailscale relationship.
+The Tailscale selector can be a peer ID, an unambiguous name or address; ambiguous
+names require a more exact selector. A new discovery alias needs an explicit
+remote `--user` outside a terminal. Setup without an authentication choice only
+configures the connection and machine mapping. Choose `--auth existing`, `--key`
+or `--generate-key` for remote work. `--to fleet|herdr|both` is explicit; `--fleet`
+remains compatible. `--herdr-label` and `--herdr-session` select native profile
+settings. Herdr installation approvals stay native, and its remote server still
+requires Linux/macOS. Key generation retains the existing passphrase rules.
+
+`--dry-run` performs no configuration, registry, key or cache writes and no SSH
+login; an explicit Tailscale source may still read local daemon status. Completed
+onboarding stages remain reported after later failures; interrupted remote key
+installation stays unknown. Rerun after reviewing current sources.
+
+### Durable machine identity
+
+`paths.state_dir/machines/registry.db` (normally
+`$XDG_DATA_HOME/dev/machines/registry.db`) stores controller-local UUIDs and explicit
+provider associations. Discovery and listing do not create it. A canonical ID is
+independent of the remote `machine_id` pin in `remotes.toml`: merging local rows
+never writes or verifies that pin. Source configuration and provider catalogs
+remain authoritative for their own connection settings.
+
+```bash
+dev ssh machine show --json
+dev ssh machine adopt --label lab --source <reference-id> --json
+dev ssh machine adopt --label lab --source <reference-id> --apply --yes
+dev ssh machine link --machine <uuid> --source <reference-id> --apply
+dev ssh machine unlink --machine <uuid> --source <reference-id> --apply
+dev ssh machine merge --machine <source-uuid> --into <survivor-uuid> --apply
+```
+
+`adopt` also offers a multi-select wizard on a terminal. Registry actions preview
+by default; `--apply` and confirmation commit a revision-bound transaction.
+`setup --machine <uuid>` attaches a connection to an existing canonical machine.
+Native IDs are scoped to their provider; SSH aliases retain declaration/source
+fingerprints. Changed or missing sources yield stale/unresolved links rather than
+silently reassigning a machine. Exact static IP/FQDN associations are displayed as
+such; matching short names never authorizes a merge.
+
+Unlink retains suppression so discovery cannot silently reconnect the source.
+Merge keeps the survivor's label/preferred profile and retains the old ID as a
+redirect. Neither operation edits provider configuration or stops remote sessions.
+The private registry is durable; `dev cache clear ssh-discovery` and `cache clear all`
+remove only observations, never canonical identities or manual bindings.
