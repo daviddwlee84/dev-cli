@@ -85,7 +85,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.27 instead when you need a reproducible install.
+# Pin @v0.2.28 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -648,10 +648,10 @@ Bare `dev` (or `dev tui`) opens seven lists, switched with `tab`:
 - **TASKS** — the change streams dev is tracking. What am I working on.
 - **REPOS** — durable repositories under the scan roots, with branch, dirty
   state, owned size, runtime, worktrees and task tally. What do I have here.
-- **FLEET** — repository and activity facts from configured remote machines.
-  The TUI hides this machine by default because REPOS already shows it; `a`
-  includes local rows. Enter opens the remote checkout through Herdr when
-  possible, then SSH. `dev fleet list` continues to include this machine.
+- **FLEET** — an expandable remote host tree with cached repositories and a
+  separate HERDR registration/enabled column. Local is hidden by default; `a`
+  reveals it at the end. Host actions provide SSH, dotfile status, and exact
+  Herdr profile enable/disable/remove without waiting for repository loading.
 - **TRY** — dated scratch experiments, including non-Git folders, with durable
   tags/notes and explicit active/deprecated/archived/graduated state.
 - **REMOTE** — repositories visible through authenticated forge CLIs, including
@@ -671,7 +671,9 @@ Bare `dev` (or `dev tui`) opens seven lists, switched with `tab`:
 The first view is constructed before runtime auto-detection, project-root lookup,
 cache decoding, shell-based tool checks, or the optional release refresh can
 finish. TASKS, REPOS, and TRY then publish independently from one shared local
-load cycle; REMOTE, FLEET, SKILLS, and MCP remain lazy. A cached REMOTE/FLEET snapshot
+load cycle; REMOTE, SKILLS, and MCP remain lazy. FLEET warms missing/expired
+host snapshots after five seconds or an earlier visit, without blocking startup
+or prompting for authentication. A cached REMOTE/FLEET snapshot
 is immediately usable but is tracked separately from a current live result.
 Every requested view has its own generation, so `r` cancels the old read, a late
 result cannot replace a newer one, a failed refresh keeps usable rows visible,
@@ -695,7 +697,7 @@ g G        top / bottom         h l / tab       previous / next view
 
 Press `?` or click **Help** in the footer to open the current view's **Keys**.
 **Guide** explains that view's workflow, columns, colors and Git marks, including
-a read-only snapshot of the selected row. **Manual** searches and reads all 23
+a read-only snapshot of the selected row. **Manual** searches and reads all
 embedded `dev help` topics and the shared workflow TL;DR without leaving the TUI.
 Keys/Guide search stays within the selected help view unless you choose **All
 views**; changing help scope leaves the dashboard selection and sorting alone.
@@ -733,8 +735,8 @@ macOS/Linux guarded file backend and retain private recovery under
 `$XDG_DATA_HOME/dev/config-recovery`; symlink configs and unsupported TOML layouts
 offer a manual edit. Scan failures remain unknown and do not trigger enrollment.
 
-`enter` opens a selected row only when its checkout is currently valid. Inside Herdr/tmux/Zellij it
-switches the current client; outside it exits the dashboard and attaches to
+`enter` opens a selected local row only when its checkout is currently valid. Inside Herdr/tmux/Zellij it
+asks the runtime to focus the target; outside it exits the dashboard and attaches to
 the target session. A COLD worktree task requires `dev resume`; a missing or
 unregistered worktree requires `dev sweep` first so artifacts can be salvaged
 before the task is resumed or reaped. A wide TASKS table includes `REPO`; its
@@ -747,7 +749,7 @@ the CLI and returns with refreshed local inventory; it also works when the list
 is empty. `a` quick-adds a repository thought and `N` opens its notes overlay.
 TASKS retains `n` for quick notes. Expanded children carry their own
 Git/session/task state and can be opened directly. In TRY, `n` creates or clones an experiment;
-`space` opens mark/deprecate/archive/restore/graduate/Trash/delete actions; `a` includes
+`Ctrl+O` opens mark/deprecate/archive/restore/graduate/Trash/delete actions; `a` includes
 retained history. Inside Git, SKILLS and MCP use only the exact startup worktree
 plus global/user sources; outside Git they reuse every accepted REPOS target and
 the ordinary startup directory. Uppercase `A` switches both views between that
@@ -770,8 +772,8 @@ them to every directory.
 
 ### Dashboard lifecycle actions
 
-Press `Ctrl+O`, right-click a row, or click the selected row for actions; TASKS and TRY also accept Space.
-REPOS Space continues to expand worktrees. TASKS offers the existing finish,
+Press `Ctrl+O`, right-click a row, or click the selected row for actions.
+Space expands/collapses REPOS worktrees and FLEET hosts; it is unused in flat lists. TASKS offers the existing finish,
 resume, retirement and selected-task recovery workflows. `a` shows completed
 tasks; it does not mark a task done. Missing checkout rows go through recovery.
 The dashboard suspends for the shared CLI wizard and refreshes on return.
@@ -1498,6 +1500,31 @@ worktree_path = "{{worktree_root}}/{{repo|lower}}--{{branch|slug}}"
 Omit `--category` and canonical repos stay flat. Categories are metadata the
 user may choose, never a directory structure dev imposes.
 
+## Dotfiles
+
+`dev dotfile` locates chezmoi configuration and guides setup without requiring a
+particular dotfiles repository. Existing sources are retained. If you have no
+repository in mind, the optional author-maintained `david` preset recommends
+the standalone Unix, Windows, Termux, iSH or OpenWrt repository for this machine.
+
+```bash
+dev dotfile status --json           # passive paths/revision; no hooks or fetch
+dev dotfile setup                   # keep existing source or review a new one
+dev dotfile setup --preset david    # optional platform-specific recommendation
+dev dotfile setup --repo https://github.com/you/dotfiles.git
+dev dotfile diff
+dev dotfile apply                   # current source; may execute repo scripts
+dev dotfile update                  # native update and deployment
+dev fleet dotfile status --host lab
+```
+
+Without chezmoi, setup gives native installation/bootstrap guidance. Outside a
+terminal, `--yes` executes initialization and `--apply` separately requests
+deployment; native prompts remain native. Static status does not prove that
+the source revision has been applied. Diff/apply/update delegate to chezmoi and
+can execute its hooks. Dev does not synchronize HOME, migrate the author's
+legacy fleet inventory, or bundle appsrc/dotcfg. See [Dotfiles](docs/guides/dotfiles.md).
+
 ## Multiple machines
 
 Do not sync worktrees or runtime state. Sync branches, and let the remote be
@@ -1559,11 +1586,25 @@ PowerShell launcher and Windows target-path semantics; POSIX is the compatible
 default and uses the existing shell launcher. Missing `dev` installations are
 reported as `no-dev`; unreachable hosts can fall back to the last private XDG
 snapshot. Cache identity includes the complete SSH endpoint, including port and
-remote OS. The FLEET TUI view reuses the accepted REPOS snapshot for its local
-host instead of scanning twice, but exposes configured remote hosts by default;
-press `a` to include this machine. Enter opens a selected path through remote
-Herdr when available, otherwise through an SSH login shell. The CLI output
-remains the full local-plus-remote inventory.
+remote OS. FLEET hides local by default; `a` or the menu reveals it collapsed at
+the end, reusing REPOS. Search and coverage exclude hidden local data and include
+known Herdr profile state, labels and sessions. A separate local catalog read
+supplies the HERDR column: not added, enabled, disabled, mixed counts or unknown.
+Space expands/collapses the host tree; on a child it collapses and selects its
+host. Enter/`o` navigates. Inside Herdr, it offers Add or Enable when required;
+outside, it attaches to the selected explicit session. Several profiles require
+a choice. Repository navigation checks a compatible remote dev and the exact repo
+before profile changes, then prepares its workspace without changing focus.
+Select the reported machine/workspace in the native Herdr sidebar. Navigation
+never starts a nested Herdr client or silently falls back to SSH after an error;
+`--no-runtime` uses SSH directly. Enter on the local host switches to REPOS.
+Ctrl+O offers SSH, dotfile status and per-profile Herdr control inside or
+outside Herdr. Disable keeps the profile; Remove deletes its registration;
+remote sessions continue running. Herdr actions refresh catalog metadata only.
+Each remote repository snapshot refreshes independently. Set
+`[tui.fleet] background_refresh = false` to disable delayed automatic refresh.
+See [FLEET host actions](docs/guides/remote-fleet.md#dashboard-host-tree).
+The CLI output remains the full local-plus-remote inventory.
 
 `dev fleet sync <repo> --push` publishes the clean source branch, then fetches
 matching clones by normalized Git remote identity. Only a clean checkout of the

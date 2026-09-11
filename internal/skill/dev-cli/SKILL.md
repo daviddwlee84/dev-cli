@@ -1,12 +1,12 @@
 ---
 name: dev-cli
-description: Use when coordinating repository setup, task and worktree lifecycle, agent handoffs, SSH hosts, fleet operations, notes, skill or MCP inventory, or feedback for unexpected dev failures.
+description: Use dev for repository discovery and setup, task and worktree lifecycle, agent handoffs, SSH hosts, fleet operations, dotfile setup, repository notes, skill or MCP inventory, and feedback for unexpected dev failures.
 ---
 
 # dev-cli
 
 Git owns durable code; worktrees are local checkouts; runtimes are host-local
-sessions; dev records task intent. Choose the boundary the work needs.
+sessions; dev records task intent.
 
 ## Discover only what you need
 
@@ -32,13 +32,12 @@ Do not preload manuals, repeat `dev --skill`, or run diagnostics for every task.
 
 ## Read a matching reference for advanced operations
 
-Load only the guide needed for the requested operation:
-
 - Worktree provisioning or cross-host lifecycle: [ownership](references/worktree-ownership.md), [lifecycle](references/task-lifecycle.md).
 - Parallel agent launches or prompt transports: [agents](references/parallel-agents.md), [handoffs](references/prompt-handoffs.md).
 - Agent completion or cleanup batches: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
 - Repository hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
 - SSH connection failures, configuration, fleet registration, or file export: [SSH](references/ssh-hosts.md).
+- Dotfile setup, native chezmoi operations, or FLEET host actions: [dotfiles](references/dotfiles.md).
 - Skill/MCP/instruction transfers or managed updates: [transfers](references/agent-interop.md), [maintenance](references/skills-management.md).
 - Recursive Git children: [submodules](references/submodules.md).
 

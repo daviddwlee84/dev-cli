@@ -74,7 +74,7 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 	switch view {
 	case ViewTasks:
 		add("open", "Enter / o", "Open the selected task", "Requires a task with an eligible checkout. Cold or missing work needs the explicit resume/recovery action.", "parking", m.actions.Open != nil)
-		add("space", "Space", "Show task actions", "Finish, resume, retire, inspect or filter task state through the selected task's action menu. The menu shows legal actions only.", "retirement", true)
+		add("task-actions", "Ctrl+O", "Show task actions", "Finish, resume, retire, inspect or filter task state through the selected task's action menu. Space has no action on this flat list.", "retirement", true)
 		add("park", "p", "Park warm", "For a selected HOT or WARM task, enter its next action; parking closes its runtime and retains its checkout.", "parking", m.actions.Park != nil)
 		add("next", "c", "Edit next action", "Edit the selected task's next-action reminder.", "parking", m.actions.SetNext != nil)
 		add("note", "n", "Add a repository thought", "Attach a durable quick note to the selected task's canonical repository.", "notes", m.actions.Notes.Add != nil)
@@ -94,13 +94,20 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 		add("sort", "O / R", "Cycle or reverse ordering", "Uppercase O cycles activity, latest, name, Git, size and task ordering. Uppercase R reverses it. Column-header sorting is available separately.", "tui", true)
 		add("stats", "H", "Show repository activity", "Read the selected repository's activity heatmap.", "journal", stats)
 	case ViewFleet:
-		add("open", "Enter / o", "Open repository on its host", "Requires a repository row and the configured host connection. A host error/status row has no checkout to open.", "fleet", m.actions.OpenFleet != nil)
-		add("local", "a", "Include or hide this machine", "Local fleet rows are hidden by default because REPOS has the richer local inventory.", "fleet", true)
+		if m.hostFleetEnabled() {
+			add("open", "Enter / o", "Navigate to the host or repository", "The local host opens REPOS. Remote navigation uses its exact host/session and preserves the current-client boundary; no extra client is opened inside Herdr. Enter never expands the tree.", "fleet", true)
+			add("expand", "Space", "Expand or collapse host repositories", "Space changes only the tree. On a repository child it collapses and selects the parent host. Search expansion overrides are temporary; clearing the query restores saved expansion.", "fleet", true)
+			add("host-actions", "Ctrl+O", "Show host actions", "Read the shared local Herdr catalog and derive this host's SSH, Herdr and dotfiles actions. Multiple saved profiles have a profile picker before exact enable, disable or remove actions. The menu remains available when no rows match.", "fleet", true)
+			add("local", "a", "Show or hide the local host", "Local is hidden initially. Showing it adds a collapsed host last, independent of sorting. Search and coverage include local repositories only while the host is shown; local rows reuse REPOS without another scan.", "fleet", true)
+		} else {
+			add("open", "Enter / o", "Open repository on its host", "Requires a repository row and the configured host connection. A host error/status row has no checkout to open.", "fleet", m.actions.OpenFleet != nil)
+			add("local", "a", "Include or hide this machine", "Local fleet rows are hidden by default because REPOS has the richer local inventory.", "fleet", true)
+		}
 		add("config", "e", "Edit fleet configuration", "Open remotes.toml in the configured editor, then validate and reload it after the editor exits.", "fleet", m.actions.EditFleetConfig != nil)
 	case ViewTries:
 		add("new", "n", "Create a Try", "Open the scratch experiment form, including when the list is empty. A Try can be a non-Git directory.", "tries", m.actions.Tries.Apply != nil)
 		add("open", "Enter / o", "Open the selected Try", "Requires a Try present on this host with no incomplete move. Archived or missing Tries need their own restore or recovery action.", "tries", m.actions.Tries.Apply != nil)
-		add("space", "Space", "Show experiment actions", "Edit metadata, deprecate, archive, restore or graduate through the menu. The available transitions depend on phase and host-local location.", "tries", true)
+		add("try-actions", "Ctrl+O", "Show experiment actions", "Edit metadata, deprecate, archive, restore or graduate through the menu. Space has no action on this flat list.", "tries", true)
 		add("history", "a", "Include or hide Try history", "Toggle deprecated, archived, evicted and graduated entries.", "tries", true)
 		add("sort", "O / R", "Cycle or reverse ordering", "Uppercase O cycles activity, name, phase and size ordering. Uppercase R reverses it.", "tui", true)
 	case ViewRemote:
@@ -128,7 +135,7 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 	refresh := "Reload configuration and local observations. Local repository refresh does not fetch Git remotes."
 	switch view {
 	case ViewFleet:
-		refresh = "Explicitly refresh configured hosts over SSH; previous usable observations may remain while requests complete."
+		refresh = "Refresh the shared local Herdr catalog and the selected host's repositories (a child selects its parent). These observations are independent; old data remains explicitly stale on failure. Update all configured hosts is a separate menu entry; authentication has an explicit terminal handoff."
 	case ViewRemote:
 		refresh = "Reload configuration and explicitly refresh repositories through configured forge CLIs; this may contact the network."
 	case ViewSkills:
@@ -221,9 +228,10 @@ func helpGuideEntries(view View) []helpEntry {
 		add("filter", "Using this view", "Filter and order local repositories", "Filter by repository, branch, task, checkout or catalog text; structured terms include tag:, remote: and size:. Click a column heading for ascending, descending and default order. Startup-repository selection changes focus without changing the configured order.", "tui")
 		add("discovery", "Using this view", "Add a startup repository to discovery", "When a fully observed startup Git repository is outside configured discovery, REPOS offers Add this repo (repo_paths) or Scan parent directory (scan_roots). Exact paths suit isolated repositories; a parent scan includes eligible siblings. Preview the actual config and scope, then confirm; existing comments/order are preserved.", "repositories")
 	case ViewFleet:
-		add("columns", "Columns", "HOST · STATE · REPO · BRANCH · GIT · LIVE · TASKS · PATH", "Each repository row belongs to its named host. STATE reports the host result; stale marks a cached row. An error-only host row has — repository/Git/runtime values and its diagnostic in PATH/detail. Paths belong to that host. TASKS shows H/W/C/D followed by HOT/WARM/COLD/DONE counts; — means no recorded tasks.", "fleet")
-		add("colors", "Colors and symbols", "Green live observations; coral host issues", "A repository with an observed live runtime is green; otherwise a host state other than ok is coral. Selection overrides both. Cached rows may retain their old runtime color even while STATE says stale: neither the color nor an old clean Git status is a fresh host proof.", "fleet")
-		add("network", "Using this view", "Remote observations stay host-local", "This view lazily reads configured dev hosts over SSH and can show cached data. Use r for an explicit refresh. Opening a row uses its host's checkout/runtime; it does not move its tasks or interpret a remote path as a local controller path.", "fleet")
+		add("columns", "Columns", "Hosts with repository children", "Remote hosts start collapsed; local is hidden until a and stays last when shown. HERDR remains visible on narrow terminals and reports this client's saved registration/enabled state, not connectivity. Repository children leave HERDR blank. OS is in host details; wider tables add BRANCH, GIT, LIVE and TASKS. Not loaded remains unknown.", "fleet")
+		add("herdr", "Observations", "Herdr catalog is independent of SSH", "A shared local machine list is read on each FLEET visit, explicit refresh, host menu and completed Herdr action. There is no polling. Only a successful catalog without a matching alias means not added. Failed reads preserve previous states with a stale marker; --no-runtime is not checked. Profile labels and sessions are searchable without IO.", "fleet")
+		add("colors", "Colors and symbols", "Cached observations are dimmed", "Green marks an observed live runtime only for a current snapshot. Cached rows are dimmed and retain their observation time; an old clean Git status is not fresh proof. Errors stay attached to their host without hiding usable cached repositories.", "fleet")
+		add("network", "Using this view", "Local first, bounded background updates", "Descriptors and caches load without SSH. When background_refresh is enabled, after five seconds or an earlier visit to FLEET, stale or missing host snapshots update one at a time. Explicit host loads take priority. Filtering searches only known host metadata and cached or loaded repositories; matching children appear without changing saved expansion or making network requests.", "fleet")
 	case ViewTries:
 		add("columns", "Columns", "TRY · PHASE · WHERE · GIT · LAST · SIZE · TAGS", "PHASE is durable active/deprecated/graduated intent. WHERE is this host's location: present, archived, evicted, missing, unavailable or other-host. Missing means an expected location was not found; unavailable means the read failed. LAST uses experiment activity; SIZE is logical owned data. Narrow screens retain fewer columns; detail provides more context.", "tries")
 		add("colors", "Colors and symbols", "Gray history; orange dirty; green live", "A non-present location or non-active phase is dimmed first. Otherwise dirty Git is orange, then an observed live runtime is green. These priorities apply before cyan selection. A gray row can still contain uncommitted work; read WHERE, Git and detail before a lifecycle action.", "tries")

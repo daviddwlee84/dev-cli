@@ -1761,7 +1761,7 @@ func TestTryArchiveActionRequiresExactYES(t *testing.T) {
 		},
 	}
 	m := tui.New(actions, nil, nil).WithTries([]tui.TryRow{row})
-	m = send(m, key("tab"), key("tab"), key("tab"), key(" "), key("down"), key("down"), key("enter"))
+	m = send(m, key("tab"), key("tab"), key("tab"), key("ctrl+o"), key("down"), key("down"), key("enter"))
 	if !strings.Contains(m.View(), "CONFIRM ARCHIVE") || !strings.Contains(m.View(), row.Item.Live.CurrentPath) {
 		t.Fatalf("archive review did not show its target:\n%s", m.View())
 	}
@@ -1772,7 +1772,7 @@ func TestTryArchiveActionRequiresExactYES(t *testing.T) {
 	if len(requests) != 0 || !strings.Contains(m.View(), "exactly YES") {
 		t.Fatalf("lowercase confirmation applied archive: %+v\n%s", requests, m.View())
 	}
-	m = send(m, key("esc"), key(" "), key("down"), key("down"), key("enter"))
+	m = send(m, key("esc"), key("ctrl+o"), key("down"), key("down"), key("enter"))
 	for _, typed := range typeText("YES") {
 		m = send(m, typed)
 	}

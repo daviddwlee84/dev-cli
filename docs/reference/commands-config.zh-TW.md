@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 lang: zh-TW
 ---
 
@@ -35,6 +35,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
 | SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh probe`、`ssh remove` |
+| dotfiles | `dotfile status`, `dotfile setup`, `dotfile diff`, `dotfile apply`, `dotfile update`, `fleet dotfile status` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
@@ -51,7 +52,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 `dev --help` 列出指令；精確語法與 flags 查相關 leaf command 的 `--help`，
 使用流程查 `dev help <topic>`。Dashboard 按 `?` 或點 footer 的 **Help**
 開啟目前分頁的 **Keys**、**Guide**、**Manual**；Manual 與 CLI help 共用
-內嵌主題及 workflow TL;DR。詳見
+所有內嵌主題及 workflow TL;DR。詳見
 [目前分頁的 Help](../guides/tui-repos-bootstrap.zh-TW.md)。
 
 Bundled skill 的短入口只放核心用途、必要邊界與進階 reference 的條件連結。
@@ -717,7 +718,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](../guides/local-triage.md)。
 
@@ -742,6 +743,33 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 `$XDG_DATA_HOME/dev/config-recovery`；symlink 設定檔、不支援的 TOML 格式
 或平台提供手動修改與編輯器入口。載入失敗不代表未納管；成功儲存後重新掃描，
 重載失敗會另外回報。CLI flags 與既有 JSON 契約不變。
+
+## Dotfiles 與 dashboard fleet
+
+`dev dotfile status --json` 是有版本的唯讀設定／來源／revision report。
+`dev fleet dotfile status --host NAME` 接受可重複的精確主機選擇。
+本機 `--chezmoi-config PATH` 與 dev `--config` 分開，不傳給遠端。Setup 可指定
+`--repo URL` 或選用 `--preset david`；非互動預設只回報，`--yes` 才初始化，
+`--apply` 另行要求套用。Diff／apply／update 為明確原生操作。詳見
+[Dotfiles](../guides/dotfiles.zh-TW.md)。
+
+```toml
+[tui.fleet]
+background_refresh = true
+```
+
+預設在初始畫面後五秒或提早進入 FLEET 時，對缺少／過期快取預熱一次，
+不跳出認證提示。設為 false 可只保留明確更新；主機列、快取搜尋與主機動作仍可用。
+
+## FLEET Herdr catalog 狀態
+
+FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀態顯示於最後。
+隱藏本機時，搜尋與 coverage 同樣排除本機。HERDR 由共享的本機 catalog 查詢
+呈現未加入／啟用／停用／混合／unknown，與 repository STATE、runtime LIVE
+分開。Herdr 內外皆可逐 profile 啟用／停用／移除，遠端 sessions 保留，完成後
+只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
+background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
+fleet snapshot JSON。詳見[主機控制](../guides/remote-fleet.zh-TW.md#dashboard-host-tree)。
 
 ## SSH 診斷
 

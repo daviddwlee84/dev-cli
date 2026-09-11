@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 tested_with: Claude Code 2.1.259
 ---
 
@@ -378,7 +378,7 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -447,6 +447,44 @@ release nudges/checks and stale Windows upgrade-binary cleanup. Cobra `--help`
 and `--version` also remain static. Ordinary commands, including `--skill=false`,
 retain startup maintenance; invalid arguments, flags and color values retain
 their errors on the document commands.
+
+## Dotfiles and fleet host observations
+
+Chezmoi is optional. Passive dotfile status works without executing it; native
+operations require it. Missing, ambiguous or unsupported configuration stays
+unknown. Source revisions are not deployment receipts. The author preset is
+optional; experimental platform recommendations do not imply packaged dev support.
+Remote status needs a compatible remote dev and uses a fixed content-free helper
+on POSIX or native Windows; older versions remain explicitly incompatible.
+Existing fleet list/snapshot fields are retained. Repository snapshots add
+optional `git_known`; older snapshots without it remain unknown in the TUI. TUI background
+reads do not attempt password fallback, and cached repo matches are historical
+evidence until refreshed. Herdr host registration requires a compatible machine
+CLI; attachment does not require a running local Herdr server.
+See [Dotfiles](../guides/dotfiles.md) and [host actions](../guides/remote-fleet.md#dashboard-host-tree).
+
+## FLEET Herdr catalog state
+
+FLEET hides local by default; a or the menu reveals it collapsed at the end
+for this session. Hidden local data is excluded from search and coverage. HERDR
+reports a shared local catalog observation (not added/enabled/disabled/mixed or
+unknown), separately from repository STATE and runtime LIVE. Per-profile
+enable/disable/remove work inside or outside Herdr, retain remote sessions and
+refresh only catalog metadata. Connection eligibility and catalog cleanup are
+separate. --no-runtime skips Herdr; background_refresh controls only automatic
+repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
+metadata. See [host controls](../guides/remote-fleet.md#dashboard-host-tree).
+
+Fleet Enter and `dev fleet open` detect `HERDR_ENV=1` and use an explicit remote
+session. Repository preparation requires the new compatible remote helper and
+verifies path/Git identity before Add/Enable. Inside Herdr, dev returns a native
+sidebar target; outside, it attaches to the selected session. Herdr 0.9.0 has no
+public caller-client activation API, so neither route uses session-wide focus.
+Old helpers fail before workspace effects. Cancellation and partial failure do
+not open SSH automatically; `--no-runtime` selects SSH directly. Host Enter works
+without remote dev and may bootstrap through native attachment. Outside Herdr,
+repository preparation needs a ready remote server; use host navigation first
+if it is missing, then retry the repository.
 
 ## SSH diagnostic contract
 

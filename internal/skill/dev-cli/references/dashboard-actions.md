@@ -2,8 +2,8 @@
 
 ## Select an action
 
-Press `Ctrl+O`, right-click a row, or click the selected row. TASKS and TRY also accept Space; REPOS Space
-still expands linked worktrees. TASKS `a` shows completed tasks and does not mark
+Press `Ctrl+O`, right-click a row, or click the selected row. Space expands/collapses REPOS
+worktrees and FLEET hosts; it is unused in flat lists. TASKS `a` shows completed tasks and does not mark
 a task done. A missing checkout offers recovery instead of completion.
 
 Click another row to select it, then click it again to open the same menu. A row
@@ -123,7 +123,7 @@ back into its original archive path remains archived and can then use ordinary
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still

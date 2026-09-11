@@ -28,6 +28,7 @@
 - [SSH host onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/): Discover OpenSSH aliases, manage only dev-owned host fragments, bootstrap public-key access, and explicitly register verified hosts in dev fleet.
 - [Feedback and isolated repair](https://daviddwlee84.github.io/dev-cli/guides/feedback/): Prepare private local feedback, publish reviewed GitHub issues, and hand a verified isolated repair checkout to an explicitly selected agent.
 - [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/): Inventory repositories over POSIX or Windows SSH hosts using merged fleet configuration, pin remote identity, safely fast-forward branches, and explicitly transfer bounded ignored files.
+- [Dotfiles](https://daviddwlee84.github.io/dev-cli/guides/dotfiles/): Discover chezmoi configuration, choose an optional platform-specific dotfiles preset, delegate native operations, and inspect selected fleet hosts.
 - [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/): Retire an integrated dev-cli worktree and runtime safely, from outside the workspace being removed.
 - [Prompt handoffs](https://daviddwlee84.github.io/dev-cli/guides/prompt-handoffs/): Render deterministic operational context or hand it to a configured local agent without creating a second lifecycle authority.
 - [Pull request inbox](https://daviddwlee84.github.io/dev-cli/guides/pull-request-inbox/): List pull requests you opened and requests awaiting your review, understand provider cost and missing fields, and inspect local checkout health.
@@ -83,6 +84,7 @@
 - [SSH Host 設定與佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/): 探索 OpenSSH alias、只管理 dev-owned host fragment、佈建 public-key access，並將驗證成功的 host 明確登記到 dev fleet。
 - [Feedback 與隔離修復](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/feedback/): 建立私有本機 feedback、發布已檢視的 GitHub issue，並將已驗證的隔離修復工作區交接給明確選定的 agent。
 - [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/): 透過 merged fleet configuration 盤點 POSIX 或 Windows SSH host、pin remote identity、安全 fast-forward branch，並明確傳送 bounded ignored files。
+- [Dotfiles](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dotfiles/): 辨識 chezmoi 設定、選擇平台適用的 dotfiles、委派原生操作，並檢查指定 fleet 主機。
 - [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/): 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。
 - [Prompt handoff](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/prompt-handoffs/): 渲染 deterministic operational context，或交給 configured local agent，而不建立第二個 lifecycle authority。
 - [Pull request inbox](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/): 列出你開的與等你 review 的 pull request，理解 provider cost 與 missing fields，並檢查 local checkout health。

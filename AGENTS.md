@@ -69,6 +69,7 @@ cmd/dev/main.go
 - `forge` wraps optional `gh`, `glab`, and Azure CLI integrations and must degrade to local Git behavior when they are unavailable.
 - `sshhost` owns bounded static discovery of the active user OpenSSH Include closure, canonical files under `~/.ssh/dev.d`, public-key selection/generation/bootstrap, fresh authentication proofs, and the explicit handoff into dev fleet. OpenSSH and plain `ssh -G` remain semantic authority; ordinary setup/remove never rewrite foreign connection definitions, copy private keys, weaken host-key policy, or treat every alias as a fleet member. Explicit format/organize may transform selected user-owned configuration with private guarded recovery; Include restores its caller scope after each file.
 - `sshflow` owns the explicit SSH/fleet/Herdr machine inventory and Plan/Apply orchestration; `herdrremote` calls the native machine CLI without writing its catalog. `configedit` owns source-bound local file transactions and private recovery outside Git, with owner leases and macOS/Linux metadata checks.
+- `fleetnav` owns contextual host/repository navigation ordering, explicit Herdr profile/session selection and partial results. Repository checks precede profile changes; preparation uses a distinct versioned helper and session-scoped runtime with no focus or attach. Inside Herdr, navigation reports a native sidebar target; outside it attaches to the explicit session. Failures never implicitly switch to SSH.
 - `fleet` merges the user-authored primary `remotes.toml` with strict dev-owned `remotes.d/ssh-<alias>.toml` registrations. Remote `dev` state remains host-local. `remote_os` selects target semantics: POSIX uses the shell launcher, while Windows uses an encoded PowerShell launcher that accepts only hidden fleet helpers, preserves sync stdin, and never applies controller path rules to remote paths.
 
 The principal task start flow spans `internal/cli/start.go`, `start_flow.go`, `gitx`/`wt`, `runtime`, and `task`: resolve the canonical repository and explicit base, create or select the checkout, provision/open it, then persist and annotate the task. Task-backed park/resume/completion/retirement and exact unmanaged Adopt/Remove policy belong in `taskflow`; CLI commands, the dashboard, `sweep`, and `flowtui` are adapters. Preserve report-before-apply and no-data-loss ordering, including the isolated compatibility paths that have not migrated to taskflow.
@@ -107,7 +108,7 @@ State is split intentionally:
 
 ## Versioning and changelog
 
-The current published baseline is `v0.2.27` (2026-09-11). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
+The current published baseline is `v0.2.28` (2026-09-11). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
 
 - `Makefile` derives development builds with `git describe --tags --match 'v[0-9]*' --always --dirty` and injects `internal/cli.Version` through `-ldflags`. The `--match` filter is load-bearing: any other tag in the repository (a `backup/` or `rescue/` marker, say) must never become `--version`.
 - `go install ...@version` recovers the module version from Go build information.

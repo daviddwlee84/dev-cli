@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 ---
 
 # Sources and freshness
@@ -146,7 +146,7 @@ Repository homepage resolution reads local Git only. Try removal journals beside
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -171,3 +171,22 @@ traces. [Skills management](../guides/skills-management.md) provider semantics
 are checked against upstream skills v1.5.23/v1.5.25 source contracts and isolated
 fixtures. Listing/checking do not execute the provider; native mutation does not
 claim frozen-content reproduction.
+
+## Dotfiles and FLEET host tree
+
+Verified 2026-09-11 against `internal/dotfile`, CLI dotfile/fleet adapters,
+TUI host-tree tests, and Herdr 0.9.0 machine help/source. Chezmoi configuration
+formats, .chezmoiroot and dry-run hooks follow its official reference.
+See [Dotfiles](../guides/dotfiles.md) and [FLEET](../guides/remote-fleet.md#dashboard-host-tree).
+
+## FLEET Herdr catalog state
+
+FLEET hides local by default; a or the menu reveals it collapsed at the end
+for this session. Hidden local data is excluded from search and coverage. HERDR
+reports a shared local catalog observation (not added/enabled/disabled/mixed or
+unknown), separately from repository STATE and runtime LIVE. Per-profile
+enable/disable/remove work inside or outside Herdr, retain remote sessions and
+refresh only catalog metadata. Connection eligibility and catalog cleanup are
+separate. --no-runtime skips Herdr; background_refresh controls only automatic
+repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
+metadata. See [host controls](../guides/remote-fleet.md#dashboard-host-tree).

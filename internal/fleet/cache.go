@@ -153,6 +153,13 @@ func validSnapshot(snapshot Snapshot, now time.Time) bool {
 	return true
 }
 
+// ValidateSnapshot applies the same bounded shape checks to a live response as
+// LoadCache applies to saved observations. A successful command is not itself
+// evidence that its output is a complete fleet snapshot.
+func ValidateSnapshot(snapshot Snapshot) bool {
+	return validSnapshot(snapshot, time.Now().UTC())
+}
+
 func validGitStatus(status gitx.Status, now time.Time) bool {
 	if status.Ahead < 0 || status.Behind < 0 || status.Changed < 0 || status.Staged < 0 ||
 		status.Unstaged < 0 || status.Untracked < 0 || status.Added < 0 || status.Modified < 0 ||

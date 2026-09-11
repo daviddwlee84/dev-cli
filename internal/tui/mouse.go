@@ -114,12 +114,12 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		selected := row == m.at()
 		m.setAt(row)
 		if selected && !m.remoteClone.active() {
-			m = m.openActionMenu()
+			return m.openActionMenuCommand()
 		}
 	case tea.MouseButtonRight:
 		m.setAt(row)
 		if !m.remoteClone.active() {
-			m = m.openActionMenu()
+			return m.openActionMenuCommand()
 		}
 	}
 	return m, nil

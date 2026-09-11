@@ -83,6 +83,17 @@ func TestHelpContentToolsUseKnownStatusWithoutProbeOrCommandDisclosure(t *testin
 	}
 }
 
+func TestHostTreeHelpEntryIdentitiesAreUnique(t *testing.T) {
+	m := treeModel(Actions{})
+	seen := map[string]bool{}
+	for _, entry := range append(m.helpKeyEntries(ViewFleet), helpGuideEntries(ViewFleet)...) {
+		if seen[entry.ID] {
+			t.Fatalf("duplicate host tree help entry %q", entry.ID)
+		}
+		seen[entry.ID] = true
+	}
+}
+
 func TestHelpContentSnapshotKeepsCachedAndFailedObservationsExplicit(t *testing.T) {
 	m := New(Actions{ReloadRepos: func(context.Context) ([]RepoRow, error) {
 		t.Fatal("snapshot reloaded repositories")

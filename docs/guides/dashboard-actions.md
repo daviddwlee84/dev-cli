@@ -9,8 +9,8 @@ verified_on: 2026-09-10
 
 ## Select an action
 
-Press `Ctrl+O`, right-click a row, or click the selected row. TASKS and TRY also accept Space; REPOS Space
-still expands linked worktrees. TASKS `a` shows completed tasks and does not mark
+Press `Ctrl+O`, right-click a row, or click the selected row. Space expands/collapses REPOS
+worktrees and FLEET hosts; it is unused in flat lists. TASKS `a` shows completed tasks and does not mark
 a task done. A missing checkout offers recovery instead of completion.
 
 Clicking another row first selects it; clicking the selected row opens the menu
@@ -28,7 +28,7 @@ closing, and `q` closes outside input. Clicking outside closes without passing
 the click to the dashboard. Existing action eligibility and confirmations apply.
 
 Press `?` or click footer **Help** for the current view's **Keys**, then **Guide**
-for colors, symbols and captured selected-row details, or **Manual** for all 23
+for colors, symbols and captured selected-row details, or **Manual** for all
 embedded `dev help` topics. `1–3`, `v`, `/`, `j/k` and `f` navigate tabs, scope,
 search, entries and expansion. Search, scope, Back and article pan controls are
 also clickable. Help reads existing observations and embedded documents without
@@ -134,7 +134,7 @@ back into its original archive path remains archived and can then use ordinary
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still

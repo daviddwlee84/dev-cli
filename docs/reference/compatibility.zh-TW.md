@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-10
+verified_on: 2026-09-11
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
@@ -350,7 +350,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](../guides/local-triage.md)。
 
@@ -377,7 +377,7 @@ REPOS cache 只提供顯示，Git／runtime／task authority 仍需新觀察與�
 ## 目前分頁的 Help 與精簡 skill 入口（v0.2.24）
 
 Dashboard Help 預設顯示目前分頁的 Keys，另外提供 Guide 與 Manual。
-View 範圍只影響 TUI 搜尋，Manual 搜尋全部 內嵌 CLI 主題。
+View 範圍只影響 TUI 搜尋，Manual 搜尋全部內嵌 CLI 主題。
 所選列說明固定在開啟 Help 時的快照，不會刷新資料，也不能授權操作。
 Help 不另行載入外部內容或探測。Dashboard、flow 與 triage 維持獨立介面。
 
@@ -398,6 +398,37 @@ config 載入、release 提示／檢查及 Windows 升級遺留 binary 清理。
 Cobra `--help` 與 `--version` 同樣保持靜態。一般指令（包含
 `--skill=false`）仍執行啟動維護；文件指令仍回報錯誤 arguments、flags
 與 color 值。
+
+## Dotfiles 與 fleet 主機觀察
+
+Chezmoi 為選用依賴。唯讀 dotfile status 不執行它，原生操作才需要。缺失、
+衝突或不支援的設定保持 unknown；source revision 不是部署紀錄。作者 preset
+可自由選用，experimental 推薦不代表已有對應平台的 dev 發行檔。遠端 status
+需要相容的 dev，POSIX／Windows 都使用固定且不傳設定內容的 helper；舊版明確
+回報不相容。原有 fleet list／snapshot JSON 欄位保留；repository snapshot 新增選用的
+`git_known`，缺少此欄位的舊 snapshot 在 TUI 保持 unknown。TUI 背景讀取不進行
+password fallback，快取 repo 命中在更新前仍是歷史資訊。Herdr 主機登錄需要
+相容的 machine CLI；原生連線不要求本機 Herdr server 已執行。詳見
+[Dotfiles](../guides/dotfiles.zh-TW.md) 與[主機動作](../guides/remote-fleet.zh-TW.md#dashboard-host-tree)。
+
+## FLEET Herdr catalog 狀態
+
+FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀態顯示於最後。
+隱藏本機時，搜尋與 coverage 同樣排除本機。HERDR 由共享的本機 catalog 查詢
+呈現未加入／啟用／停用／混合／unknown，與 repository STATE、runtime LIVE
+分開。Herdr 內外皆可逐 profile 啟用／停用／移除，遠端 sessions 保留，完成後
+只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
+background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
+fleet snapshot JSON。詳見[主機控制](../guides/remote-fleet.zh-TW.md#dashboard-host-tree)。
+
+Fleet Enter 與 `dev fleet open` 偵測 `HERDR_ENV=1`，並明確指定遠端 session。
+Repository 準備需要相容的新 remote helper，在 Add／Enable 前驗證 path／Git
+identity。Herdr 內回報原生 sidebar 目標，Herdr 外 attach 所選 session。
+Herdr 0.9.0 沒有只操作呼叫者 client 的公開 activation API，因此兩條路徑都不使用
+session-wide focus。舊 helper 在 workspace 副作用前失敗；取消或部分失敗不會
+自動改開 SSH，`--no-runtime` 直接選 SSH。主機 Enter 不要求遠端 dev，可透過
+原生 attach 完成 bootstrap。Herdr 外的 repository 準備需要遠端 server 已就緒；
+若尚未就緒，先用主機導覽，再重試 repository。
 
 ## SSH 診斷契約
 

@@ -249,6 +249,12 @@ func tryCell(r TryRow, key string) sortCell {
 	return sortCell{}
 }
 func fleetCell(r FleetRow, key string) sortCell {
+	if key == "herdr" {
+		if r.Repository == nil {
+			return textCell(r.Herdr)
+		}
+		return sortCell{}
+	}
 	if key == "host" {
 		return textCell(r.Host)
 	}
@@ -268,6 +274,9 @@ func fleetCell(r FleetRow, key string) sortCell {
 	case "branch":
 		return textCell(v.Branch)
 	case "git":
+		if r.HostKey != "" && !r.GitKnown {
+			return sortCell{}
+		}
 		return gitSortCell(v.Status)
 	case "live":
 		return textCell(v.Runtime + " " + v.AgentStatus)

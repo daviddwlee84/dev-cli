@@ -2,7 +2,7 @@
 description: Inventory repositories over POSIX or Windows SSH hosts using merged fleet configuration, pin remote identity, safely fast-forward branches, and explicitly transfer bounded ignored files.
 authority: project
 status: stable
-verified_on: 2026-09-01
+verified_on: 2026-09-11
 ---
 
 # Remote repository fleet
@@ -136,6 +136,7 @@ A partial/unknown bootstrap, failed ordinary gate, or fleet-fragment collision l
 |---|---|---|
 | `dev fleet list` | `--host <name>` (repeatable), `--repo <query>`, `--json`, `--cached`, `--strict` | list repositories/activity across this machine and merged configured hosts |
 | `dev fleet status` | `--json`, `--strict` | probe configured hosts and report snapshot health |
+| `dev fleet dotfile status` | `--host <name>` (required, repeatable), `--json` | passive host-local chezmoi configuration and source revision |
 | `dev fleet machine-id <host>` | `--json` | show the observed durable UUID and compare the configured primary pin |
 | `dev fleet sync <repo>` | `--push`, `--remote <name>`, `--host <name>` (repeatable), `--json` | optionally publish, then safely fast-forward clean matching checkouts |
 | `dev fleet files [repo-or-path]` | `--to <host>`, `--file <pattern>` (repeatable), `--apply`, `--replace`, `--yes`, `--json` | plan or apply one-way transfer of explicit ignored files |
@@ -251,21 +252,132 @@ A successful probe writes a private per-host JSON snapshot. Its endpoint ID incl
 
 The cache lets an unavailable host retain last-known state as `stale`; `--cached` reads only it. It never becomes authoritative for remote paths or tasks.
 
-## Fleet in the TUI
+## Dashboard host tree {#dashboard-host-tree}
 
-FLEET is one of the TUI's seven views (`TASKS`, `REPOS`, `FLEET`, `TRY`,
-`REMOTE`, `SKILLS`, `MCP`, switched with `tab`/`h`/`l`). Like REMOTE, it loads
-lazily—no live probe starts until the view is first opened—but valid cache is
-decoded after the initial TASKS view. The TUI hides this machine by default
-because REPOS provides richer local inventory; `a` toggles local rows. The local
-snapshot reuses the accepted REPOS generation instead of rescanning, and cached
-rows remain visible while that generation loads. `r` supersedes older work and
-reloads every host from the merged primary-plus-generated configuration. The
-non-interactive `dev fleet list` output remains local plus remote.
+FLEET lists configured remote hosts immediately without waiting for a repository
+scan or SSH. Hosts start collapsed. This machine is hidden by default because
+REPOS provides its richer local inventory. Press `a` or use the action menu to
+show it collapsed at the end of the list; the choice lasts for this dashboard
+session, and local repositories reuse the accepted REPOS snapshot. Local stays
+last in either sort direction. Space expands or collapses a host; on a child it
+collapses the host and selects its header. Enter/`o` navigates to the host or
+repository; Enter on the local host switches to REPOS. Ctrl+O and right-click
+open actions; r refreshes the selected host and Herdr metadata. Global
+h/l/arrow/Tab navigation still changes views. Space is unused in flat lists.
 
-The table shows host/state/repository/branch/Git/runtime/task/path facts. Enter uses native Herdr remoting when an eligible POSIX-style profile reports Herdr and no password step is needed; otherwise it opens through SSH and a remote login shell. On a Windows controller, the local fallback starts a child `%COMSPEC%` shell because Windows has no `exec(2)`.
+After five seconds, or on entering FLEET sooner, one background worker warms
+missing or expired host snapshots. Each eligible host is tried once; results
+arrive independently. Background reads use non-interactive authentication,
+never resolve password fallback, and time out within 30 seconds or the shorter
+configured command timeout. Explicit requests have priority and share the
+configured concurrency limit. Disable automatic warming in dev config:
 
-The `e` key opens only primary `remotes.toml`. After return, dev reparses the full primary-plus-generated merge. An invalid primary or generated fragment reports the error and preserves previous usable rows; a valid merge triggers a live reload.
+```toml
+[tui.fleet]
+background_refresh = false
+```
+
+Cached repositories remain usable and searchable even after cache_ttl, with
+age and stale/error state visible. A failed request retains prior data; a
+successful empty snapshot means zero repositories. Host loading and actions do
+not depend on local REPOS being ready. Collapsing a host retains its data and
+does not cancel a requested read.
+
+The / filter searches known host names, SSH aliases, Herdr profile labels/session
+and registration state, and loaded/cached repos, including collapsed hosts.
+Hidden local data stays outside search and coverage. Matching children retain their parent header and
+appear temporarily expanded. Space can collapse a match while searching;
+clearing the filter restores the original expansion choices.
+Typing or filtering never schedules extra connections. The coverage footer
+separates fresh, cached and unloaded hosts; update all hosts from the action
+menu when a complete current search is needed, including when no rows match.
+The local toggle also remains available with no remote hosts or no matches.
+
+Host actions offer SSH, [dotfile status](dotfiles.md), and optional Herdr without
+requiring a repo snapshot or remote dev. The `HERDR` column shows this machine's
+saved-profile state, independently of repository `STATE` and runtime `LIVE`:
+
+| HERDR | Meaning | Management |
+|---|---|---|
+| `not added` | A successful catalog read found no matching profile | Add to Herdr |
+| `enabled` | The matching saved profile is enabled | Disable or Remove |
+| `disabled` | The matching saved profile is disabled | Enable or Remove |
+| `1/2 enabled` | Several matching profiles | Choose an exact profile first |
+| `loading` / `unknown` | Loading or no reliable observation | Refresh or inspect the reason |
+| `unmapped` / `not checked` | No exact SSH alias, or Herdr inspection disabled | Inspect the connection settings or invocation |
+
+One bounded local `herdr machine list --json` read supplies all host rows. It
+does not contact SSH or require a running local server. The catalog is read on
+FLEET entry, explicit refresh, menu inspection and after a Herdr action; there
+is no continuous polling. Failed refreshes retain prior values as stale rather
+than turning them into `not added`. `--no-runtime` skips Herdr inspection.
+Repository `background_refresh` does not control this separate local read.
+
+Enabled means saved connection intent, not currently connected. Profile matching
+uses the exact configured SSH alias; aliases are not resolved to IPs or assumed
+equivalent. Detail shows profile labels, sessions and any differences between
+fleet connection overrides and the saved target. OS stays in host detail rather
+than appearing as a branch on host headers.
+
+Enable, Disable and Remove work inside and outside Herdr using existing guarded
+plans and exact profile fingerprints. Multiple profiles use a picker instead
+of expanding an unbounded action list. Disable preserves the saved profile for
+later enable; Remove deletes that profile. Both detach local clients while the
+remote server, panes and sessions keep running. These catalog operations refresh
+Herdr metadata without fetching a remote repository snapshot. There is no batch
+toggle or implicit operation on every matching profile.
+
+Outside Herdr, Connect additionally attaches to an explicit session (default:
+default). Add can prepare/start a remote server and retains native installation
+approvals. Herdr 0.9.0 add connects open local clients but does not select the new
+machine. Registration affects this host's client catalog, not another desktop
+client. Unsupported connection targets, including native Windows, may still
+disable/remove an existing exact saved profile; connection capability and local
+catalog management are separate.
+
+### Enter and remote sessions
+
+Host navigation needs an SSH alias, but does not require remote `dev` or a
+repository snapshot. Repository navigation, including `dev fleet open <host>
+<repo>`, first checks the exact remote path and Git identity through a compatible
+remote `dev`. It then prepares or reuses a workspace without changing focus.
+Preparation and attachment always name the same explicit Herdr session.
+
+| Where dev runs | Enter on a host | Enter on a repository |
+|---|---|---|
+| Inside Herdr (`HERDR_ENV=1`) | Reuse an enabled saved profile; ask before Add or Enable | Check the repository/helper, ensure the chosen profile, then prepare the workspace |
+| Outside Herdr | Attach to the chosen saved session, or explicit `default` when none is saved | Prepare the workspace, then attach to that session |
+
+Several matching profiles require a choice by exact ID, label and session;
+non-interactive invocations refuse to guess. Removing a profile means it must
+be added again. A failed catalog read is unknown and blocks profile selection.
+Outside Herdr, Enter does not implicitly add or enable saved profiles.
+Repository preparation outside Herdr requires a ready remote server. If it is
+missing, use host Enter/Connect to prepare it natively, then retry the repository.
+
+Herdr 0.9.0 cannot publicly select a machine/workspace for only the calling
+client. After preparation, select the reported machine and workspace in the
+native sidebar. Inside Herdr, dev returns to the same dashboard without starting
+a nested client. Outside, it runs `herdr --remote <alias> --session <session>`.
+Neither route calls session-wide `workspace focus`, which could move other
+clients. Native installation approvals remain native.
+
+Unavailable or unsupported Herdr targets offer an explicit SSH action;
+`--no-runtime` uses SSH directly. Once a Herdr operation begins, cancellation or
+failure returns its result without automatically opening SSH. Completed Add,
+Enable and workspace preparation remain visible if a later step fails. Older
+remote dev versions reject the new preparation helper before modifying a
+workspace; update the remote dev before retrying repository navigation.
+
+Navigation and Herdr profile changes return their result directly to the
+dashboard. There is no final “Press Enter” prompt. Ctrl+O → full status / error
+shows the complete result, including any completed steps when a later step
+fails. Returning does not automatically open another host or repository.
+
+The e key edits primary remotes.toml and revalidates the merged configuration.
+Changed endpoints invalidate old results; invalid edits retain usable rows.
+CLI dev fleet list still returns its existing local-plus-remote inventory.
+
 
 ## Safe branch propagation and degradation
 
