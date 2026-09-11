@@ -165,6 +165,9 @@ func TestReadStableRegularRejectsLinksAndNonRegularEntries(t *testing.T) {
 	}
 }
 
+// Windows chmod bits do not establish ACL privacy; configedit/privatefile
+// native tests verify the prepared Windows descriptors. Content guards run here
+// on every platform, with POSIX mode assertions only where meaningful.
 func TestAtomicCreateNoClobberAndPrivateReplacement(t *testing.T) {
 	rootPath := t.TempDir()
 	root, _, err := safefile.OpenRoot(rootPath)
@@ -177,7 +180,7 @@ func TestAtomicCreateNoClobberAndPrivateReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if created.Mode().Perm() != 0o600 {
+	if runtime.GOOS != "windows" && created.Mode().Perm() != 0o600 {
 		t.Fatalf("created mode = %o", created.Mode().Perm())
 	}
 	if _, err := safefile.CreatePrivateNoClobber(t.Context(), root, "secret.env", []byte("clobber\n"), false); !errors.Is(err, fs.ErrExist) {
@@ -189,7 +192,7 @@ func TestAtomicCreateNoClobberAndPrivateReplacement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if replaced.Mode().Perm() != 0o700 {
+	if runtime.GOOS != "windows" && replaced.Mode().Perm() != 0o700 {
 		t.Fatalf("replacement mode = %o", replaced.Mode().Perm())
 	}
 	assertFile(t, filepath.Join(rootPath, "secret.env"), "new\n", 0o700)
@@ -283,7 +286,7 @@ func TestCreateNoClobberPreservesExplicitNonSecretMode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o751 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o751 {
 		t.Fatalf("mode = %o", info.Mode().Perm())
 	}
 }
@@ -301,7 +304,7 @@ func assertFile(t *testing.T, path, want string, mode fs.FileMode) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != mode {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != mode {
 		t.Fatalf("%s mode = %o, want %o", path, info.Mode().Perm(), mode)
 	}
 }

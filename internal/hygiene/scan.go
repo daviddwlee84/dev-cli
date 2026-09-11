@@ -41,7 +41,7 @@ func snapshotGitBytes(ctx context.Context, root string, input []byte, args ...st
 	return runGitBytes(ctx, root, input, true, args...)
 }
 func runGitBytes(ctx context.Context, root string, input []byte, isolated bool, args ...string) ([]byte, error) {
-	base := []string{"-c", "core.fsmonitor=false", "-C", root}
+	base := []string{"-c", "core.fsmonitor=false", "-c", "core.longpaths=true", "-C", root}
 	if len(args) == 0 || args[0] != "config" {
 		base = append(base, "-c", "core.hooksPath="+os.DevNull)
 	}
@@ -284,7 +284,7 @@ func (b *scanBuilder) current(ctx context.Context, o ScanOptions, privateDir str
 	if err := privatefile.MakeDir(snapshot); err != nil {
 		return err
 	}
-	init := exec.CommandContext(ctx, "git", "-c", "init.templateDir=", "init", "--quiet", snapshot)
+	init := exec.CommandContext(ctx, "git", "-c", "core.longpaths=true", "-c", "init.templateDir=", "init", "--quiet", snapshot)
 	init.Env = isolatedGitEnvironment()
 	if init.Run() != nil {
 		return errors.New("cannot prepare scanner snapshot")
@@ -475,5 +475,5 @@ func isolatedGitEnvironment() []string {
 			env = append(env, v)
 		}
 	}
-	return append(env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull, "GIT_CONFIG_COUNT=0", "GIT_PAGER=cat", "GIT_TERMINAL_PROMPT=0")
+	return append(env, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_SYSTEM="+os.DevNull, "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.longpaths", "GIT_CONFIG_VALUE_0=true", "GIT_PAGER=cat", "GIT_TERMINAL_PROMPT=0")
 }

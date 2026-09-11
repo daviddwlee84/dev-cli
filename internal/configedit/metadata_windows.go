@@ -176,7 +176,7 @@ func (m Metadata) prepare(file *os.File) error {
 	if err != nil {
 		return err
 	}
-	if m.Present && actual.String() != sd.String() {
+	if m.Present && !sameDescriptor(actual, sd) {
 		return errors.New("Windows security descriptor did not round-trip")
 	}
 	if !m.Present {
@@ -225,4 +225,43 @@ func fileIdentity(path string, _ fs.FileInfo) string {
 func makeDirectory(path string) error { return privatefile.MakeDir(path) }
 func privateRecoveryMode(path string, info fs.FileInfo) bool {
 	return privatefile.Check(path, info, true) == nil
+}
+
+// SetSecurityInfo may normalize automatic-inheritance bookkeeping. Compare
+// owner/group, protection and every ordered ACE rather than SDDL formatting.
+func sameDescriptor(a, b *windows.SECURITY_DESCRIPTOR) bool {
+	ao, _, ae := a.Owner()
+	bo, _, be := b.Owner()
+	if ae != nil || be != nil || ao == nil || bo == nil || !ao.Equals(bo) {
+		return false
+	}
+	ag, _, ae := a.Group()
+	bg, _, be := b.Group()
+	if ae != nil || be != nil || (ag == nil) != (bg == nil) || ag != nil && !ag.Equals(bg) {
+		return false
+	}
+	ac, _, ae := a.Control()
+	bc, _, be := b.Control()
+	if ae != nil || be != nil {
+		return false
+	}
+	bookkeeping := windows.SECURITY_DESCRIPTOR_CONTROL(windows.SE_DACL_AUTO_INHERITED | windows.SE_DACL_AUTO_INHERIT_REQ)
+	if ac & ^bookkeeping != bc & ^bookkeeping {
+		return false
+	}
+	aa, _, ae := a.DACL()
+	ba, _, be := b.DACL()
+	if ae != nil || be != nil || aa == nil || ba == nil || aa.AceCount != ba.AceCount {
+		return false
+	}
+	for i := uint16(0); i < aa.AceCount; i++ {
+		var x, y *windows.ACCESS_ALLOWED_ACE
+		if windows.GetAce(aa, uint32(i), &x) != nil || windows.GetAce(ba, uint32(i), &y) != nil {
+			return false
+		}
+		if x.Header != y.Header || x.Mask != y.Mask || !(*windows.SID)(unsafe.Pointer(&x.SidStart)).Equals((*windows.SID)(unsafe.Pointer(&y.SidStart))) {
+			return false
+		}
+	}
+	return true
 }

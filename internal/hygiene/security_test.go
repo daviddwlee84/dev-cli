@@ -169,3 +169,19 @@ func TestHookGitEnvironmentCannotMutateCallerIndexOrConfig(t *testing.T) {
 		}
 	}
 }
+
+func TestHistoryRangeDoesNotScanUntouchedUnsupportedFiles(t *testing.T) {
+	s, r := testService(t)
+	put(t, r.Root, "old.md", string([]byte{0xff, 0xfe, 0, 1}))
+	r.Git("add", "old.md")
+	r.Git("commit", "-m", "old encoding")
+	base := r.Git("rev-parse", "HEAD")
+	put(t, r.Root, "new.md", "private-host-unique\n")
+	r.Git("add", "new.md")
+	r.Git("commit", "-m", "new content")
+	head := r.Git("rev-parse", "HEAD")
+	report, err := s.Scan(t.Context(), ScanOptions{Scope: "history", Range: base + ".." + head})
+	if err != nil || report.Status != "complete" || report.Files != 1 || report.Blocked != 1 {
+		t.Fatalf("range leaked into old tree: %+v %v", report, err)
+	}
+}

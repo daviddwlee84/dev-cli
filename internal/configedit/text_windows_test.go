@@ -39,7 +39,7 @@ func TestPortableTextWindowsPreservesDescriptorAndRestores(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if before.String() != after.String() {
+	if !sameDescriptor(before, after) {
 		t.Fatal("source descriptor changed")
 	}
 	restore, err := RestorePlan(t.Context(), recovery, result.Receipt)

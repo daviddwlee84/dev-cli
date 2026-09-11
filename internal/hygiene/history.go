@@ -96,6 +96,18 @@ func (b *scanBuilder) history(ctx context.Context, o ScanOptions, privateDir str
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		changed := map[string]bool{}
+		if o.Range != "" {
+			paths, e := gitBytes(ctx, b.s.Root, nil, "diff-tree", "--root", "--no-commit-id", "--name-only", "--no-renames", "--diff-merges=first-parent", "-r", "-z", commit)
+			if e != nil {
+				return e
+			}
+			for _, p := range bytes.Split(paths, []byte{0}) {
+				if len(p) > 0 {
+					changed[string(p)] = true
+				}
+			}
+		}
 		tree, err := gitBytes(ctx, b.s.Root, nil, "ls-tree", "-r", "-l", "-z", commit)
 		if err != nil {
 			b.gap("", "history_tree_unreadable")
@@ -108,6 +120,9 @@ func (b *scanBuilder) history(ctx context.Context, o ScanOptions, privateDir str
 			}
 			fields := strings.Fields(string(pieces[0]))
 			file := string(pieces[1])
+			if o.Range != "" && !changed[file] {
+				continue
+			}
 			if len(fields) != 4 || !validRelative(file) {
 				b.gap("", "history_entry_invalid")
 				continue

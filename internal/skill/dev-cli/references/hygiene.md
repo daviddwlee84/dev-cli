@@ -118,7 +118,9 @@ tracked files remain in scope after a later `.gitignore` addition. Staged scans
 use actual index bytes, including hidden files and partial staging. Selected
 `--file` arguments must already belong to that scope.
 
-History freezes locally available refs (or an explicit full-OID range), includes
+An explicit range checks versions changed in its selected commits, leaving
+untouched older files for the full audit. History freezes locally available refs
+(or an explicit full-OID range), includes
 merge-only content and removed files, and never fetches implicitly. It does not
 scan reflogs, unreachable objects, uncommitted work in other checkouts or remote
 submodule repositories. Nonregular entries and recognized binary formats are

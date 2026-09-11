@@ -2711,7 +2711,9 @@ tracked files remain in scope after a later `.gitignore` addition. Staged scans
 use actual index bytes, including hidden files and partial staging. Selected
 `--file` arguments must already belong to that scope.
 
-History freezes locally available refs (or an explicit full-OID range), includes
+An explicit range checks versions changed in its selected commits, leaving
+untouched older files for the full audit. History freezes locally available refs
+(or an explicit full-OID range), includes
 merge-only content and removed files, and never fetches implicitly. It does not
 scan reflogs, unreachable objects, uncommitted work in other checkouts or remote
 submodule repositories. Nonregular entries and recognized binary formats are
@@ -12600,6 +12602,7 @@ Worktree 掃已追蹤檔與未被 ignore 的未追蹤檔；後來加入 `.gitign
 會掃。Staged 使用真正的 index bytes，包含 hidden files 與 partial staging。
 `--file` 只能選該範圍內的檔案。
 
+明確的 range 只檢查選定 commits 所變更的檔案版本，未變更的舊檔留給全量稽核。
 History 固定本機 refs 或明確的完整 OID range，涵蓋 merge-only、已刪除與後來
 被 ignore 的內容，不暗中 fetch。不掃 reflog、unreachable objects、其他 checkout
 未提交內容或遠端 submodule repo。非一般檔與已知 binary 格式列為文字掃描的排除項；

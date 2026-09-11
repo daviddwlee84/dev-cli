@@ -57,7 +57,7 @@ func (g Gitleaks) Scan(ctx context.Context, q EngineRequest) ([]Detection, error
 	if name == "" {
 		name = "gitleaks"
 	}
-	r, err := (sshhost.ExecRunner{}).Run(ctx, sshhost.RunRequest{Name: name, Args: args, UnsetEnv: gitEnvironmentNames(), Env: []string{"GIT_CONFIG_COUNT=0", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_SYSTEM=" + os.DevNull, "GIT_PAGER=cat", "GITLEAKS_CONFIG=", "GITLEAKS_CONFIG_TOML="}, Display: "hygiene scanner"})
+	r, err := (sshhost.ExecRunner{}).Run(ctx, sshhost.RunRequest{Name: name, Args: args, UnsetEnv: gitEnvironmentNames(), Env: []string{"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=core.longpaths", "GIT_CONFIG_VALUE_0=true", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL=" + os.DevNull, "GIT_CONFIG_SYSTEM=" + os.DevNull, "GIT_PAGER=cat", "GITLEAKS_CONFIG=", "GITLEAKS_CONFIG_TOML="}, Display: "hygiene scanner"})
 	if err != nil {
 		return nil, errors.New("gitleaks unavailable, canceled or failed to launch")
 	}

@@ -103,6 +103,7 @@ Worktree 掃已追蹤檔與未被 ignore 的未追蹤檔；後來加入 `.gitign
 會掃。Staged 使用真正的 index bytes，包含 hidden files 與 partial staging。
 `--file` 只能選該範圍內的檔案。
 
+明確的 range 只檢查選定 commits 所變更的檔案版本，未變更的舊檔留給全量稽核。
 History 固定本機 refs 或明確的完整 OID range，涵蓋 merge-only、已刪除與後來
 被 ignore 的內容，不暗中 fetch。不掃 reflog、unreachable objects、其他 checkout
 未提交內容或遠端 submodule repo。非一般檔與已知 binary 格式列為文字掃描的排除項；
