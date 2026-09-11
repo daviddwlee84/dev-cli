@@ -144,7 +144,7 @@ func (s *Service) prepare(ctx context.Context) error {
 				return err
 			}
 			if err = configedit.WritePrivate(ctx, p, b, false); err != nil {
-				return errors.New("cannot create private hygiene key")
+				return errors.New("cannot create private hygiene key: " + feedback.Sanitize(err.Error()))
 			}
 		} else if err != nil {
 			return err
