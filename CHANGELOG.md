@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.28] - 2026-09-11
+
 ### Added
 
 - `dev dotfile` provides passive chezmoi discovery, platform-aware setup guidance
@@ -960,7 +962,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.27...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.28...HEAD
+[0.2.28]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.27...v0.2.28
 [0.2.27]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.26...v0.2.27
 [0.2.26]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.25...v0.2.26
 [0.2.25]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.24...v0.2.25
