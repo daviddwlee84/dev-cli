@@ -3536,12 +3536,61 @@ Switch with `tab`, `h`/`l`, arrows, or left-click a visible tab. A left-button
 press selects a visible row; clicking the selected row opens its actions, even
 when selection came from the keyboard or startup. No double-click timing is needed.
 The wheel moves three rows, and a right-button press selects a row then opens its
-actions. Modified clicks, motion and releases are ignored. Opening the menu does
+actions. Modified row clicks, motion and releases do not activate rows. Opening the menu does
 not execute an option. Enter/`o` opens the row. Some terminals require Shift/Option for native
-text selection while mouse tracking is enabled. Keyboard movement, filtering,
-help, and mode exit remain unchanged.
+text selection while mouse tracking is enabled.
 
-## Startup repository and discovery (Unreleased)
+## Contextual Help (v0.2.24)
+
+Press `?` or click **Help** in the footer. Help starts on **Keys** for the current
+dashboard view, keeping that view's TL;DR at the top. It has three tabs:
+
+| Tab | Content |
+|---|---|
+| Keys | This view's actions, common navigation and configured tools, including availability and conditions |
+| Guide | Workflow, columns, colors and symbols; a read-only selected-row snapshot captured when Help opened |
+| Manual | All 23 embedded `dev help` topics, with related topics first, plus the shared workflow TL;DR |
+
+Keys and Guide share a search over their entries, with shortcut matches before
+guide matches. Search is limited to the selected help view; choose **All views**
+to search all seven. Changing help scope does not change the actual dashboard
+tab, selection, filter or order. The selected-row explanation appears only for
+the view where Help opened and retains unknown, loading or cached observations.
+It is an explanation of that captured display, never fresh action authority.
+
+In REPOS, Guide explains why cyan/blue selection overrides the row's usual
+color, orange reports dirty paths, and gray alone does not prove Git clean.
+It covers `⇡N`/`⇣N`/`⇕`, `=N`, `+N`, `!N`, `?N`, `clean`/`local`, unknown `?`,
+cached `~`, loading/truncated `…`, and each column's `—`. LIVE, WT, task counts,
+logical owned SIZE and LATEST all have separate explanations. Other views have
+their own legends: for example, green MCP means enabled configuration, not a
+running or healthy server. Color appearance follows the terminal palette and
+`--color` settings.
+
+Manual search covers topic names, titles, headings and body text, with excerpts.
+Open a result to read it at the matching passage. Paragraphs wrap; code, ASCII
+diagrams and tables preserve their structure and can pan horizontally. `/`
+finds text within an article and `n`/`N` moves between matches. Back preserves the
+previous query and reading position. Each article names its CLI counterpart.
+
+Use `1–3` or click tabs, `v` or click **View** for scope, `/` or click the search
+field, `j/k` to choose or scroll, and Enter to read an entry. PgUp/PgDn, the wheel
+and the clickable/draggable scrollbar move through long content. Article pan
+controls and left/right arrows reveal wide code or diagrams. Esc stops search
+editing, then clears the query, returns a level and finally closes Help. `q`
+closes outside text input; letters such as `q`, `v` and `f` stay text while typing.
+
+Help and Ctrl+O share a floating popup with **Expand** and **Close**. Its normal
+maximum is 104 columns × 32 rows, leaving at least two cells around it; below
+80 columns or 22 rows it fills the screen. `f` expands Help. Click outside to
+close without activating a background row. Popup scrollbar dragging is supported
+even though dashboard row activation ignores mouse motion.
+
+Opening and searching Help uses only embedded documents, existing tool
+availability and the captured dashboard state. It starts no Git, forge, runtime,
+provider or MCP probes. Flow and triage retain their independent help interfaces.
+
+## Startup repository and discovery (v0.2.24)
 
 TASKS remains the startup view. The first REPOS visit selects the repository
 containing the startup directory without changing ordering, scrolling it into
@@ -3860,7 +3909,7 @@ shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation; tools, state filters and sorting are in
-`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+`Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
@@ -3928,7 +3977,22 @@ without double-click timing or executing an option. Keyboard/startup selections
 also qualify. The first REPOS visit selects the startup repository without
 reordering. An outside startup repo has clickable, reviewed additions to
 `repo_paths` or its parent's `scan_roots`, followed by local refresh and selection.
-See [startup repository and discovery](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/#startup-repository-and-discovery-unreleased).
+See [startup repository and discovery](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/#startup-repository-and-discovery-v0224).
+
+Ctrl+O and Help share a floating popup with clickable **Expand**, **Close** and
+a draggable scrollbar. The normal maximum is 104 columns × 32 rows; below 80
+columns or 22 rows it fills the screen. `/` filters the current action menu;
+arrows choose and Enter continues. Esc stops typing or clears the query before
+closing, and `q` closes outside input. Clicking outside closes without passing
+the click to the dashboard. Existing action eligibility and confirmations apply.
+
+Press `?` or click footer **Help** for the current view's **Keys**, then **Guide**
+for colors, symbols and captured selected-row details, or **Manual** for all 23
+embedded `dev help` topics. `1–3`, `v`, `/`, `j/k` and `f` navigate tabs, scope,
+search, entries and expansion. Search, scope, Back and article pan controls are
+also clickable. Help reads existing observations and embedded documents without
+executing actions or probing tools. See [contextual Help](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/#contextual-help-v0224)
+for search scope, article navigation and the layered Esc behavior.
 
 TASKS finish, resume, retirement and recovery use the existing CLI workflows.
 The dashboard suspends during their prompts and refreshes when they finish,
@@ -4037,7 +4101,7 @@ shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation; tools, state filters and sorting are in
-`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+`Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
@@ -5020,6 +5084,26 @@ Use the authored map for intent and the embedded generated reference for exact f
 | help | `help [topic]` |
 
 Run `dev <command> --help` for the installed binary; this site describes the repository version identified in its freshness metadata.
+
+## Read help on demand (v0.2.24)
+
+`dev --help` lists commands. Use the relevant leaf command's `--help` for syntax
+and flags, and `dev help <topic>` for workflow explanations. Dashboard `?` or the
+clickable **Help** footer opens contextual **Keys**, **Guide** and **Manual**;
+Manual uses the same 23 embedded topics and workflow TL;DR as CLI help.
+See [contextual Help](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/#contextual-help-v0224).
+
+The bundled skill has a small entry covering core purpose, essential boundaries
+and conditional links to advanced references. `dev --skill`, `dev skill print`
+and the `SKILL.md` written by `dev skill install` remain byte-identical. Installing
+the bundle keeps the detailed references available without requiring an agent to
+preload them. Load only the matching reference for advanced coordination,
+retirement, provisioning, SSH or transfer work.
+
+`dev --skill` when true, `dev skill print` and `dev help` print embedded content
+without loading application config, checking releases or deleting stale Windows
+upgrade binaries. Invalid arguments, flags and color values still fail normally;
+`--skill=false` retains ordinary startup. No CLI flags or JSON fields are changed.
 
 ## High-value structured interfaces
 
@@ -7979,7 +8063,7 @@ shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation; tools, state filters and sorting are in
-`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+`Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
@@ -8001,7 +8085,7 @@ non-interactive apply shortcut. Existing
 Neither removes `stats.db` or skills run receipts.
 See [Skills management](https://daviddwlee84.github.io/dev-cli/guides/skills-management/).
 
-## Dashboard discovery registration (Unreleased)
+## Dashboard discovery registration (v0.2.24)
 
 The first REPOS visit selects the startup repository without reordering; clicking
 the selected row opens its actions. An outside startup Git repo offers clickable
@@ -8401,7 +8485,7 @@ shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation; tools, state filters and sorting are in
-`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+`Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
@@ -8421,7 +8505,7 @@ This is separate from transfer preparation's pinned-provider/verified-payload
 contract. REPOS caches supply presentation only; Git/runtime/task authority still
 requires fresh observations and operation-time validation.
 
-## Dashboard discovery registration (Unreleased)
+## Dashboard discovery registration (v0.2.24)
 
 The first REPOS visit selects the startup repository without reordering; clicking
 the selected row opens its actions. An outside startup Git repo offers clickable
@@ -8434,6 +8518,34 @@ under `$XDG_DATA_HOME/dev/config-recovery`; symlink configs, unsupported TOML la
 and other platforms offer manual edits and the config editor. Failed scans remain
 unknown. Successful saves refresh local inventory; reload failures are reported
 separately. CLI flags and existing JSON contracts are unchanged.
+
+## Contextual Help and compact skill entry (v0.2.24)
+
+Dashboard Help starts with Keys for the current view, followed by Guide and
+Manual. View scope applies to TUI search; Manual searches all 23 embedded CLI
+topics. Selected-row explanations are frozen at Help opening and cannot refresh
+or authorize an action. Help starts no external loads or probes. The dashboard,
+flow and triage remain independent interfaces.
+
+Help and Ctrl+O use the same floating popup, at most 104 columns × 32 rows;
+terminals below 80 columns or 22 rows use the full screen. Clickable controls,
+scrollbar dragging, Help expansion and article panning support touch use.
+Closing or scrolling a popup never activates the dashboard beneath it. Existing
+actions, approval requirements, color meanings, CLI flags and JSON stay intact.
+See [contextual Help](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/#contextual-help-v0224).
+
+The installed `dev-cli` entry is intentionally compact; detailed references
+remain in the bundle and are read only for matching advanced operations.
+`dev --skill` and `dev skill print` still output the exact installed `SKILL.md`,
+preserving dotfiles-installer compatibility. Use leaf `--help` for syntax,
+`dev help <topic>` for workflows and conditional references for coordination
+details. Existing installation, ownership checks and refresh rules are unchanged.
+
+Printing `--skill=true`, `skill print` or `help` skips application config loading,
+release nudges/checks and stale Windows upgrade-binary cleanup. Cobra `--help`
+and `--version` also remain static. Ordinary commands, including `--skill=false`,
+retain startup maintenance; invalid arguments, flags and color values retain
+their errors on the document commands.
 
 ---
 
@@ -12128,12 +12240,54 @@ string 已建立，不代表 terminal 已 rasterize。
 用 `tab`、`h`/`l`、左右鍵，或 left-click visible tab 切換。Left-button
 press 選取 visible row；點目前反白列就開啟 actions，包含鍵盤或啟動時預選的列，
 不限兩次點擊間隔。Wheel 每次移動三列；right-button press 先選取 row，再開啟
-該 row 的 actions。Modified click、motion 與 release 會被忽略；開啟選單的點擊
+該 row 的 actions。Modified row click、motion 與 release 不會啟動列；開啟選單的點擊
 只開選單，另行點選項目才執行。Enter/`o` 開啟目標。Mouse tracking
-啟用時，部分 terminal 的原生文字選取需要按住 Shift/Option。原有鍵盤移動、filter、
-help 與 mode exit 都不變。
+啟用時，部分 terminal 的原生文字選取需要按住 Shift/Option。
 
-## 啟動 repo 與掃描設定（Unreleased）
+## 目前分頁的 Help（v0.2.24）
+
+按 `?` 或點 footer 的 **Help**，預設開啟目前 dashboard 分頁的 **Keys**，
+頂部保留該頁的 TL;DR。Help 分成三個頁籤：
+
+| 頁籤 | 內容 |
+|---|---|
+| Keys | 本頁操作、通用導覽與已設定的工具，包含可用狀態及必要條件 |
+| Guide | 使用流程、欄位、顏色與符號；開啟 Help 時擷取的所選列唯讀快照 |
+| Manual | 全部 23 個內嵌 `dev help` 主題，相關主題優先，另有共用 workflow TL;DR |
+
+Keys 與 Guide 共用搜尋，先列快捷鍵、再列說明。預設只搜尋選定的 Help
+分頁；選 **All views** 才搜尋七頁。切換說明範圍不改變實際 dashboard
+分頁、選取、filter 或排序。所選列的解讀只出現在開啟 Help 時的那一頁，
+保留 unknown、loading 與 cached 狀態；它說明擷取時的畫面，不能當成
+執行操作的新證據。
+
+REPOS 的 Guide 解釋：青／藍色選取會覆蓋原列色，橘色表示 dirty paths，
+不能只憑灰色判定 Git clean。另包含 `⇡N`／`⇣N`／`⇕`、`=N`、`+N`、`!N`、
+`?N`、`clean`／`local`、未知 `?`、舊快照 `~`、載入或截短 `…`，以及各欄
+`—` 的不同含義。LIVE、WT、task 數量、logical owned SIZE 與 LATEST
+各有說明。其他分頁有自己的圖例，例如 MCP 綠色表示設定啟用，不能推斷
+server 正在執行或健康。實際顏色受 terminal palette 與 `--color` 影響。
+
+Manual 搜尋主題名稱、標題、小節與全文，並顯示摘錄；開啟結果會定位到
+命中段落。一般段落換行，程式碼、ASCII 圖與表格保留結構並支援橫向捲動。
+文章內 `/` 查找、`n`／`N` 切換命中；Back 保留上一層搜尋與閱讀位置。
+每篇文章都標示對應的 CLI 指令。
+
+用 `1–3` 或點頁籤切換，`v` 或點 **View** 選範圍，`/` 或點搜尋欄輸入，
+`j/k` 選取或捲動，Enter 閱讀。PgUp/PgDn、滾輪與可點擊／拖曳的捲軸
+瀏覽長內容；文章的橫向捲動按鈕或左右鍵可查看過寬的程式碼與圖。
+Esc 依序停止輸入、清除查詢、返回上一層、關閉 Help。非輸入狀態下 `q`
+直接關閉；輸入中的 `q`、`v`、`f` 等字元仍是文字。
+
+Help 與 Ctrl+O 共用有 **Expand**、**Close** 的浮窗，通常最大為
+104 欄 × 32 列、四周至少留兩格；少於 80 欄或 22 列時使用全畫面。
+Help 可按 `f` 放大。點外部只關閉，不會啟動背景列；浮窗支援拖曳捲軸，
+dashboard 列啟動仍忽略 mouse motion。
+
+開啟與搜尋 Help 只讀內嵌文章、既有工具可用狀態及畫面快照，不另行探測
+Git、forge、runtime、provider 或 MCP。Flow 與 triage 維持各自的 Help。
+
+## 啟動 repo 與掃描設定（v0.2.24）
 
 啟動時仍顯示 TASKS。首次切到 REPOS 時，預選啟動目錄所屬的 repository，
 保留原排序並讓該列出現在可視範圍。子目錄、alias 與 linked worktree 透過
@@ -12416,7 +12570,7 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -12473,6 +12627,19 @@ Space 仍用來展開 linked worktrees。TASKS 的 `a` 是顯示已完成 tasks�
 保持原排序。未被掃描涵蓋的啟動 repo 提供可點擊的預覽入口，確認加入
 `repo_paths` 或把父目錄加入 `scan_roots` 後，重新載入本機清單並定位。
 詳見 [TUI 啟動 repo 與掃描設定](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/)。
+
+Ctrl+O 與 Help 共用浮窗，提供可點擊的 **Expand**、**Close** 與可拖曳捲軸。
+通常最大 104 欄 × 32 列；少於 80 欄或 22 列時使用全畫面。`/` 篩選目前
+action menu，方向鍵選取、Enter 繼續。Esc 先停止輸入或清除查詢，再關閉；
+非輸入狀態的 `q` 直接關閉。點外部只關閉，不把點擊傳給 dashboard。
+既有操作條件與確認規則仍適用。
+
+按 `?` 或點 footer **Help**，預設看目前分頁的 **Keys**；**Guide** 解釋
+顏色、符號與擷取時的所選列，**Manual** 則包含全部 23 個內嵌 `dev help`
+主題。`1–3`、`v`、`/`、`j/k`、`f` 分別操作頁籤、範圍、搜尋、內容與放大。
+搜尋、範圍、Back 與文章橫向捲動也可點擊。Help 只讀既有觀察與內嵌文章，
+不執行操作或探測工具。搜尋範圍、文章導覽與分層 Esc 規則詳見
+[目前分頁的 Help](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/)。
 
 TASKS 的完成、恢復、退休與 recovery 沿用既有 CLI workflows。Dashboard 在
 提示期間暫停，完成或失敗後重新載入。Task ID／revision 檢查會拒絕過期選取。
@@ -12560,7 +12727,7 @@ archived；之後再用一般 `tries restore` 回到可見位置。
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -13565,6 +13732,24 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | help | `help [topic]` |
 
 已安裝 binary 的精確資訊請執行 `dev <command> --help`；本站描述的是 freshness metadata 指定的 repository version。
+
+## 按需閱讀 Help（v0.2.24）
+
+`dev --help` 列出指令；精確語法與 flags 查相關 leaf command 的 `--help`，
+使用流程查 `dev help <topic>`。Dashboard 按 `?` 或點 footer 的 **Help**
+開啟目前分頁的 **Keys**、**Guide**、**Manual**；Manual 與 CLI help 共用
+23 個內嵌主題及 workflow TL;DR。詳見
+[目前分頁的 Help](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/)。
+
+Bundled skill 的短入口只放核心用途、必要邊界與進階 reference 的條件連結。
+`dev --skill`、`dev skill print` 與 `dev skill install` 寫入的 `SKILL.md`
+仍逐 byte 相同。安裝會保留完整 references，但 agent 不必預先載入；只有
+進階協作、retirement、provisioning、SSH 或 transfer 工作才讀對應文件。
+
+值為 true 的 `dev --skill`、`dev skill print` 與 `dev help` 直接印出內嵌
+內容，不載入應用程式 config、不檢查 release、不刪除 Windows 升級遺留
+binary。錯誤的 arguments、flags 或 color 值仍會失敗；`--skill=false`
+維持一般啟動流程。本次不新增 CLI flags 或 JSON 欄位。
 
 ## 高價值 structured interfaces
 
@@ -16435,7 +16620,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -16449,7 +16634,7 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 清除附時間的來源比較 cache，`all` 包含兩者。`stats.db` 與 skills run receipts 不受影響。
 詳見 [Skills 管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/)。
 
-## Dashboard 掃描設定加入（Unreleased）
+## Dashboard 掃描設定加入（v0.2.24）
 
 首次進入 REPOS 會預選啟動 repo 並保留排序；點反白列開啟 actions menu。
 啟動 Git repo 未被掃描涵蓋時，可點提示列預覽把主 repo 根目錄加入
@@ -16810,7 +16995,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -16822,7 +17007,7 @@ Experimental sync 讀取現有 node_modules，僅作用於所選 project agents�
 此契約不同於 transfer preparation 的 pinned provider／verified payload。
 REPOS cache 只提供顯示，Git／runtime／task authority 仍需新觀察與操作前驗證。
 
-## Dashboard 掃描設定加入（Unreleased）
+## Dashboard 掃描設定加入（v0.2.24）
 
 首次進入 REPOS 會預選啟動 repo 並保留排序；點反白列開啟 actions menu。
 啟動 Git repo 未被掃描涵蓋時，可點提示列預覽把主 repo 根目錄加入
@@ -16833,6 +17018,31 @@ REPOS cache 只提供顯示，Git／runtime／task authority 仍需新觀察與�
 `$XDG_DATA_HOME/dev/config-recovery`；symlink 設定檔、不支援的 TOML 格式
 或平台提供手動修改與編輯器入口。載入失敗不代表未納管；成功儲存後重新掃描，
 重載失敗會另外回報。CLI flags 與既有 JSON 契約不變。
+
+## 目前分頁的 Help 與精簡 skill 入口（v0.2.24）
+
+Dashboard Help 預設顯示目前分頁的 Keys，另外提供 Guide 與 Manual。
+View 範圍只影響 TUI 搜尋，Manual 搜尋全部 23 個內嵌 CLI 主題。
+所選列說明固定在開啟 Help 時的快照，不會刷新資料，也不能授權操作。
+Help 不另行載入外部內容或探測。Dashboard、flow 與 triage 維持獨立介面。
+
+Help 與 Ctrl+O 共用浮窗，最大 104 欄 × 32 列；少於 80 欄或 22 列時
+使用全畫面。可點擊控制、拖曳捲軸、Help 放大與文章橫向捲動支援觸控。
+關閉或捲動浮窗不會啟動下方 dashboard。既有 actions、approval 條件、
+顏色語意、CLI flags 與 JSON 維持不變。詳見
+[目前分頁的 Help](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/)。
+
+已安裝的 `dev-cli` 入口維持精簡，完整 references 仍隨 bundle 安裝，
+只有相符的進階操作才讀取。`dev --skill` 與 `dev skill print` 仍印出
+與安裝版逐 byte 相同的 `SKILL.md`，保留 dotfiles installer 契約。
+語法查 leaf `--help`，流程查 `dev help <topic>`，協作細節則讀條件式
+reference。既有安裝、ownership 檢查與刷新規則不變。
+
+`--skill=true`、`skill print` 與 `help` 印出內容時，跳過 application
+config 載入、release 提示／檢查及 Windows 升級遺留 binary 清理。
+Cobra `--help` 與 `--version` 同樣保持靜態。一般指令（包含
+`--skill=false`）仍執行啟動維護；文件指令仍回報錯誤 arguments、flags
+與 color 值。
 
 ---
 

@@ -46,6 +46,24 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 
 已安裝 binary 的精確資訊請執行 `dev <command> --help`；本站描述的是 freshness metadata 指定的 repository version。
 
+## 按需閱讀 Help（v0.2.24）
+
+`dev --help` 列出指令；精確語法與 flags 查相關 leaf command 的 `--help`，
+使用流程查 `dev help <topic>`。Dashboard 按 `?` 或點 footer 的 **Help**
+開啟目前分頁的 **Keys**、**Guide**、**Manual**；Manual 與 CLI help 共用
+23 個內嵌主題及 workflow TL;DR。詳見
+[目前分頁的 Help](../guides/tui-repos-bootstrap.zh-TW.md)。
+
+Bundled skill 的短入口只放核心用途、必要邊界與進階 reference 的條件連結。
+`dev --skill`、`dev skill print` 與 `dev skill install` 寫入的 `SKILL.md`
+仍逐 byte 相同。安裝會保留完整 references，但 agent 不必預先載入；只有
+進階協作、retirement、provisioning、SSH 或 transfer 工作才讀對應文件。
+
+值為 true 的 `dev --skill`、`dev skill print` 與 `dev help` 直接印出內嵌
+內容，不載入應用程式 config、不檢查 release、不刪除 Windows 升級遺留
+binary。錯誤的 arguments、flags 或 color 值仍會失敗；`--skill=false`
+維持一般啟動流程。本次不新增 CLI flags 或 JSON 欄位。
+
 ## 高價值 structured interfaces
 
 ```bash
@@ -699,7 +717,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](../guides/local-triage.md)。
 
@@ -713,7 +731,7 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 清除附時間的來源比較 cache，`all` 包含兩者。`stats.db` 與 skills run receipts 不受影響。
 詳見 [Skills 管理](../guides/skills-management.zh-TW.md)。
 
-## Dashboard 掃描設定加入（Unreleased）
+## Dashboard 掃描設定加入（v0.2.24）
 
 首次進入 REPOS 會預選啟動 repo 並保留排序；點反白列開啟 actions menu。
 啟動 Git repo 未被掃描涵蓋時，可點提示列預覽把主 repo 根目錄加入

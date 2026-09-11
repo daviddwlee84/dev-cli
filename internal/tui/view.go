@@ -84,6 +84,10 @@ func (m Model) View() (output string) {
 	if m.mode == modeStats {
 		return m.renderStats()
 	}
+	return m.renderDashboard()
+}
+
+func (m Model) renderDashboard() string {
 	var b strings.Builder
 	b.WriteString(m.renderHeader())
 	b.WriteString("\n")
@@ -349,25 +353,12 @@ func (m Model) renderRepos() string {
 	from, to := m.window(len(items))
 	for i := from; i < to; i++ {
 		item := items[i]
-		r := item.Repo
 		cells := make([]string, 0, len(columns))
 		for _, c := range columns {
 			cells = append(cells, fitCell(m.repoItemColumnValue(item, c.name), c.width))
 		}
 		line := strings.Join(cells, "  ")
-		styled := line
-		if checkout, child := item.checkout(); child {
-			if checkout.Status.Dirty() {
-				styled = styleDirty.Render(line)
-			} else if checkout.Ownership == inventory.CheckoutExternal ||
-				checkout.Ownership == inventory.CheckoutEphemeral {
-				styled = styleDim.Render(line)
-			}
-		} else if r.Status.Dirty() {
-			styled = styleDirty.Render(line)
-		} else if len(r.Tasks) == 0 && !r.Live {
-			styled = styleClean.Render(line)
-		}
+		styled := repoItemStyle(item).Render(line)
 		b.WriteString(m.renderLine(i, line, styled))
 	}
 	b.WriteString(m.scrollNote(len(items), from, to))
@@ -857,15 +848,7 @@ func (m Model) renderSkills() string {
 	for i := from; i < to; i++ {
 		row := rows[i]
 		line := strings.Join(values(row), "  ")
-		styled := line
-		switch row.UpdateStatus {
-		case agentskill.UpdateAvailable, agentskill.UpdateMissing, agentskill.UpdateFailed:
-			styled = styleDrift.Render(line)
-		case agentskill.UpdateCurrent:
-			styled = styleLive.Render(line)
-		case agentskill.UpdateUnknown:
-			styled = styleDim.Render(line)
-		}
+		styled := skillRowStyle(row).Render(line)
 		b.WriteString(m.renderLine(i, line, styled))
 	}
 	b.WriteString(m.scrollNote(len(rows), from, to))
@@ -946,12 +929,7 @@ func (m Model) renderMCP() string {
 	for i := from; i < to; i++ {
 		row := rows[i]
 		line := strings.Join(values(row), "  ")
-		styled := line
-		if row.Enabled != nil && !*row.Enabled {
-			styled = styleDim.Render(line)
-		} else if row.Enabled != nil && *row.Enabled {
-			styled = styleLive.Render(line)
-		}
+		styled := mcpRowStyle(row).Render(line)
 		b.WriteString(m.renderLine(i, line, styled))
 	}
 	b.WriteString(m.scrollNote(len(rows), from, to))
@@ -1601,6 +1579,9 @@ func (m Model) renderFooter() string {
 	navigation := "Navigate  1–7 views · / filter · r refresh · ? help · q quit"
 	if m.width < 85 {
 		navigation = "1–7 views · / filter · ? help · q quit"
+	}
+	if m.width < 60 {
+		navigation = "? help · 1–7 views · / filter · q quit"
 	}
 	return "  " + fitCell("Actions  "+primary, max(1, m.width-4)) + "\n  " + fitCell(styleHelp.Render(navigation), max(1, m.width-4))
 }

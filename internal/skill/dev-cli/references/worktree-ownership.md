@@ -57,8 +57,9 @@ Configurable through `paths.worktree_root` and `paths.worktree_path`, with
 `worktree_root`, `repo`, `repo_path`, `branch`, `category`, `host`, and `date`
 variables plus `slug`, `lower`, and `base` filters.
 
-Always pass `--base` for unattended creation. A new branch otherwise inherits
-the current HEAD, which may be an unrelated feature.
+Always pass `--base` for unattended creation so the intended starting point is
+explicit. `dev start` and `dev wt create` otherwise resolve the repository's
+default branch; they do not use whichever feature happens to be checked out.
 
 ## Provisioning
 

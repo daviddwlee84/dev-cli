@@ -23,7 +23,7 @@ A task records human intent; it does not imply a worktree:
 |---|---|---|
 | `dev repo open api` | none; no task | browsing or truly ad-hoc work |
 | `dev start api -t typo --direct` | current branch, usually main | one short tracked change |
-| `dev start api -t small --branch-only` | branch in canonical checkout | lightweight isolation, no concurrency |
+| `dev start api -t small --branch-only --base main` | branch in canonical checkout | lightweight isolation, no concurrency |
 | `dev start api -t auth --base main` | branch + linked worktree | interruption, experiment, parallel writer |
 
 In an interactive terminal, bare `dev start` opens the same managed flow as a
@@ -43,7 +43,7 @@ cold after push by switching the canonical checkout back to base. The full
 state machine below describes the default worktree mode.
 
 Do not create isolation before it has a job. Equally, a new parallel worktree
-starts from committed HEAD — it does not carry dirty main changes — so
+starts from its committed base — it does not carry dirty main changes — so
 checkpoint first when the new task depends on them.
 
 ## The four states

@@ -205,6 +205,21 @@ generated origins. `dev fleet config edit` and FLEET `e` edit only the primary.
 Use `dev ssh setup/remove --fleet` for generated files. A missing remote dev is a
 valid registration and later appears as `no-dev`.
 
+### Explicit fleet file export
+
+`dev fleet files [repo-or-path] --to <host>` previews a one-shot export of
+explicitly included ignored files. `[worktree].include` is local provisioning,
+not export permission: use `[local_files].include` or explicit `--file` paths.
+Apply requires an independently verified `machine_id` pin from
+`dev fleet machine-id <host>`. `--yes` does not imply `--replace`.
+
+Both existing clones must match by fetch identity, attached branch and exact
+commit. Each path must remain untracked and ignored on both sides, and only
+bounded regular files qualify. The operation does not clone, switch branches,
+provision, transfer task/catalog/note state, delete source files, or evict a
+repository. Native Windows payload transfer is disabled. Read `dev fleet files
+--help` and `dev help fleet` for the current flags and full transaction behavior.
+
 ## Removal
 
 ```bash

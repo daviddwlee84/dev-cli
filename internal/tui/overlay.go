@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	helpdocs "github.com/daviddwlee84/dev-cli/internal/help"
 )
 
 type overlayKind int
@@ -62,8 +63,12 @@ type overlayState struct {
 }
 
 func (m Model) openHelpOverlay() Model {
+	topics, err := helpdocs.List()
+	m.help = helpBrowser{origin: m.view, view: m.view, snapshot: m.helpSelectionSnapshot(), topics: topics, err: err}
+	_, m.help.hasSelection = m.currentSelectionToken()
+	m.popupExpanded = false
 	m.overlay = overlayState{kind: overlayHelp, title: "input help"}
-	m.err = nil
+	m.selectFirstHelpTarget()
 	return m
 }
 
@@ -197,7 +202,11 @@ func (m *Model) moveActionMenu(delta int) {
 
 func (m Model) actionMenuWindow() ([]int, int, int) {
 	visible := m.visibleActions()
-	rows := max(1, m.height-m.buildActionMenuLayout().firstOptionY-3)
+	_, height := m.popupContentSize()
+	rows := max(0, height-m.buildActionMenuLayout().firstOptionY-1)
+	if rows == 0 {
+		return visible, 0, 0
+	}
 	position := 0
 	for i, index := range visible {
 		if index == m.overlay.optionIndex {
@@ -223,13 +232,13 @@ func (m Model) updateOverlay(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case overlayHelp:
-		switch message.String() {
-		case "esc", "?", "q":
-			m.overlay = overlayState{}
-		}
-		return m, nil
+		return m.updateHelp(message)
 
 	case overlayActionMenu:
+		if !m.overlay.searching && message.String() == "f" {
+			m.popupExpanded = !m.popupExpanded
+			return m, nil
+		}
 		if !m.overlay.searching && message.Type == tea.KeyRunes && strings.HasPrefix(message.String(), "/") {
 			m.overlay.search = textinput.New()
 			m.overlay.search.Prompt = "/ "
@@ -286,7 +295,7 @@ func (m Model) updateOverlay(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "k", "up":
 			m.moveActionMenu(-1)
 		case "enter":
-			if len(m.visibleActions()) > 0 {
+			if _, from, to := m.actionMenuWindow(); to > from {
 				return m.runOverlayAction()
 			}
 		}
@@ -369,40 +378,82 @@ func (m Model) submitTryOverlay() (tea.Model, tea.Cmd) {
 }
 
 type actionMenuLayout struct {
-	heading      string
-	firstOptionY int
+	heading               string
+	firstOptionY, searchY int
 }
 
 func (m Model) buildActionMenuLayout() actionMenuLayout {
-	var builder strings.Builder
-	builder.WriteString("  " + fitCell(m.overlay.subject, max(1, m.width-2)) + "\n")
-	first := 4 // title, blank, subject, blank
+	width, _ := m.popupContentSize()
+	var lines []string
+	if m.overlay.subject != "" {
+		lines = append(lines, fitCell(m.overlay.subject, width))
+	}
 	if m.overlay.detail != "" {
-		builder.WriteString("  " + fitCell(m.overlay.detail, max(1, m.width-2)) + "\n")
-		first++
+		lines = append(lines, fitCell(m.overlay.detail, width))
 	}
 	if m.overlay.body != "" {
-		lines, start, end := m.actionBodyWindow()
-		for _, line := range lines[start:end] {
-			builder.WriteString("  " + line + "\n")
-			first++
-		}
-		if len(lines) > end || start > 0 {
-			builder.WriteString("  " + fitCell(fmt.Sprintf("Details %d–%d/%d · wheel here / PgUp/PgDn", start+1, end, len(lines)), max(1, m.width-2)) + "\n")
-			first++
+		body, start, end := m.actionBodyWindow()
+		lines = append(lines, body[start:end]...)
+		if start > 0 || end < len(body) {
+			lines = append(lines, fmt.Sprintf("Details %d–%d/%d · wheel / PgUp/PgDn", start+1, end, len(body)))
 		}
 	}
-	builder.WriteString("\n")
+	searchY := len(lines)
+	search := "/ Filter actions…"
 	if m.overlay.searching {
-		builder.WriteString("  " + m.overlay.search.View() + "\n")
-		first++
+		input := m.overlay.search
+		input.Width = max(1, width-3)
+		search = input.View()
+	} else if m.overlay.search.Value() != "" {
+		search = "/ " + m.overlay.search.Value()
 	}
-	return actionMenuLayout{heading: builder.String(), firstOptionY: first}
+	lines = append(lines, search, "")
+	return actionMenuLayout{heading: strings.Join(lines, "\n") + "\n", firstOptionY: len(lines), searchY: searchY}
+}
+
+func (m Model) focusActionSearch() (tea.Model, tea.Cmd) {
+	value := m.overlay.search.Value()
+	m.overlay.search = textinput.New()
+	m.overlay.search.Prompt = "/ "
+	m.overlay.search.CharLimit = 200
+	m.overlay.search.SetValue(value)
+	m.overlay.searching = true
+	return m, m.overlay.search.Focus()
+}
+
+func (m Model) renderActionPopup() string {
+	width, height := m.popupContentSize()
+	layout := m.buildActionMenuLayout()
+	lines := strings.Split(strings.TrimSuffix(layout.heading, "\n"), "\n")
+	visible, from, to := m.actionMenuWindow()
+	for _, index := range visible[from:to] {
+		line := "  " + m.overlay.options[index].label
+		if index == m.overlay.optionIndex {
+			line = styleSelected.Render("▸ " + m.overlay.options[index].label)
+		}
+		lines = append(lines, fitCell(line, width))
+	}
+	if len(visible) == 0 {
+		lines = append(lines, "No matching actions")
+	}
+	for len(lines) < height-1 {
+		lines = append(lines, "")
+	}
+	if len(lines) >= height {
+		lines = lines[:max(0, height-1)]
+	}
+	footer := fmt.Sprintf("%d/%d · ↑/↓ choose · Enter · / search · Esc close", len(visible), m.overlay.optionCount)
+	if len(visible) > 0 && from == to {
+		footer = "Enlarge terminal to show actions · Esc close"
+	}
+	lines = append(lines, footer)
+	return m.renderPopup(strings.ToUpper(m.overlay.title), strings.Join(lines, "\n"), from, len(visible), max(0, height-layout.firstOptionY-1), layout.firstOptionY)
 }
 
 func (m Model) actionBodyWindow() ([]string, int, int) {
-	lines := strings.Split(ansi.Hardwrap(m.overlay.body, max(1, m.width-2), true), "\n")
-	capacity := max(1, m.height-10)
+	width, height := m.popupContentSize()
+	lines := strings.Split(ansi.Hardwrap(m.overlay.body, max(1, width), true), "\n")
+	capacity := max(1, height-9)
 	start := min(max(0, m.overlay.scroll), max(0, len(lines)-capacity))
 	return lines, start, min(len(lines), start+capacity)
 }
@@ -416,7 +467,8 @@ func (m *Model) scrollActionBody(delta int) {
 }
 
 func (m Model) actionMenuOptionAt(x, y int) (int, bool) {
-	if x < 0 || x >= m.width {
+	width, height := m.popupContentSize()
+	if x < 0 || x >= width || y < 0 || y >= height-1 {
 		return 0, false
 	}
 	layout := m.buildActionMenuLayout()
@@ -433,6 +485,12 @@ func (m Model) actionMenuOptionAt(x, y int) (int, bool) {
 }
 
 func (m Model) renderOverlay() string {
+	if m.overlay.kind == overlayHelp {
+		return m.renderHelpPopup()
+	}
+	if m.overlay.kind == overlayActionMenu {
+		return m.renderActionPopup()
+	}
 	var builder strings.Builder
 	builder.WriteString(styleTitle.Render("dev  "+strings.ToUpper(m.overlay.title)) + "\n\n")
 	switch m.overlay.kind {
@@ -443,39 +501,6 @@ func (m Model) renderOverlay() string {
 			builder.WriteString(fitCell(line, max(1, m.width-2)) + "\n")
 		}
 		builder.WriteString("\n↑/↓ scroll · Esc / Enter return")
-	case overlayHelp:
-		builder.WriteString("  navigation\n")
-		builder.WriteString("    j/k, arrows move · ctrl+d/u page · g/G first/last · tab/h/l switch view\n")
-		builder.WriteString("    click row/tab selects · click selected row / right click / ctrl+o actions · wheel 3 rows\n")
-		builder.WriteString("    / filter · 0 clear · r reload · esc close/clear/quit · q quit\n\n")
-		builder.WriteString("  1–7 switch views · Ctrl+O actions · / filter actions · Enter opens the current item\n")
-		builder.WriteString("  TASKS   enter open · n add note · N notes · p park · c next · ctrl+o state filter · a show done · space actions\n")
-		builder.WriteString("  REPOS   enter open · n new repo · a add note · N notes · space worktrees · m metadata · y copy · s worktree task · d direct task · O/R sort\n")
-		builder.WriteString("  FLEET   enter Herdr/SSH open · e edit remotes.toml · r refresh · read-only Git overview\n")
-		builder.WriteString("  TRY     enter open · n create · space actions · a history · O/R sort\n")
-		builder.WriteString("  REMOTE  enter open local · n/N notes when cloned · c clone (enter stay / o open) · y u copy clone URL\n")
-		builder.WriteString("  SKILLS  a add · c check · u update · e open file · y copy · A context/all scope\n")
-		builder.WriteString("  MCP     static declarations only · e open config · y copy · A context/all scope · r reload\n\n")
-		builder.WriteString("  " + styleHelp.Render("? / esc / q close help"))
-
-	case overlayActionMenu:
-		layout := m.buildActionMenuLayout()
-		builder.WriteString(layout.heading)
-		visible, from, to := m.actionMenuWindow()
-		for _, index := range visible[from:to] {
-			prefix := "  "
-			line := m.overlay.options[index].label
-			if index == m.overlay.optionIndex {
-				prefix = "▸ "
-				line = styleSelected.Render(line)
-			}
-			builder.WriteString(prefix + fitCell(line, max(1, m.width-2)) + "\n")
-		}
-		if len(visible) == 0 {
-			builder.WriteString("  No matching actions\n")
-		}
-		builder.WriteString("\n  " + fitCell(fmt.Sprintf("%d/%d · ", len(visible), m.overlay.optionCount)+styleHelp.Render("↑/↓ choose · / filter · Enter · Esc back"), max(1, m.width-2)))
-
 	case overlayRepoForm, overlayTryForm, overlayTryConfirm:
 		if m.overlay.target.Item.ID != "" {
 			builder.WriteString(fmt.Sprintf("  %s\n  %s\n\n", m.overlay.target.Item.DisplayName(), contract(m.overlay.target.Item.Live.CurrentPath)))

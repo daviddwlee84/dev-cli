@@ -1,12 +1,15 @@
 package skill_test
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/skill"
+	"go.yaml.in/yaml/v3"
 )
 
 func TestRenderHasValidFrontmatter(t *testing.T) {
@@ -17,16 +20,53 @@ func TestRenderHasValidFrontmatter(t *testing.T) {
 	if !strings.HasPrefix(body, "---\n") {
 		t.Fatal("SKILL.md must open with YAML frontmatter — a file that does not parse is silently skipped by every skill loader")
 	}
-	end := strings.Index(body[4:], "\n---")
+	end := strings.Index(body[4:], "\n---\n")
 	if end < 0 {
 		t.Fatal("frontmatter is not terminated")
 	}
 	front := body[4 : end+4]
-	if !strings.Contains(front, "name: "+skill.Name) {
-		t.Errorf("frontmatter must name the skill %q:\n%s", skill.Name, front)
+	var metadata struct {
+		Name        string `yaml:"name"`
+		Description string `yaml:"description"`
 	}
-	if !strings.Contains(front, "description:") {
+	if err := yaml.Unmarshal([]byte(front), &metadata); err != nil {
+		t.Fatalf("invalid skill frontmatter: %v", err)
+	}
+	if metadata.Name != skill.Name {
+		t.Errorf("frontmatter name = %q, want %q", metadata.Name, skill.Name)
+	}
+	if strings.TrimSpace(metadata.Description) == "" {
 		t.Error("frontmatter needs a description — it is what a loader matches on")
+	}
+	if words := len(strings.Fields(metadata.Description)); words > 40 {
+		t.Errorf("description uses %d words, want at most 40", words)
+	}
+}
+
+func TestRenderContextBudget(t *testing.T) {
+	body, err := skill.Render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if words := len(strings.Fields(body)); words < 250 || words > 350 {
+		t.Errorf("entrypoint uses %d whitespace words including frontmatter, want 250–350; keep details in command help or targeted references", words)
+	}
+	if len(body) > 4*1024 {
+		t.Errorf("entrypoint uses %d bytes, want at most 4 KiB", len(body))
+	}
+}
+
+func TestRenderMatchesEmbeddedEntrypoint(t *testing.T) {
+	body, err := skill.Render()
+	if err != nil {
+		t.Fatal(err)
+	}
+	all, err := skill.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body != string(all["SKILL.md"]) {
+		t.Fatal("printed skill must match the entrypoint shipped by skill install")
 	}
 }
 
@@ -37,7 +77,16 @@ func TestFilesIncludeReferences(t *testing.T) {
 	}
 	for _, want := range []string{
 		"SKILL.md",
+		"references/agent-capabilities.md",
+		"references/agent-interop.md",
+		"references/agent-retirement.md",
 		"references/bootstrap.md",
+		"references/dashboard-actions.md",
+		"references/local-triage.md",
+		"references/notes.md",
+		"references/skills-management.md",
+		"references/ssh-hosts.md",
+		"references/submodules.md",
 		"references/worktree-ownership.md",
 		"references/task-lifecycle.md",
 		"references/runtime-herdr.md",
@@ -56,14 +105,19 @@ func TestFilesIncludeReferences(t *testing.T) {
 // Every reference the skill links to must actually ship, or an agent following
 // the link finds nothing.
 func TestSkillReferencesResolve(t *testing.T) {
-	all, _ := skill.Files()
+	all, err := skill.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
 	body := string(all["SKILL.md"])
-	for _, name := range []string{
-		"bootstrap.md", "worktree-ownership.md", "task-lifecycle.md", "runtime-herdr.md", "parallel-agents.md", "commands.md", "repository-bootstrap.md", "pull-requests.md", "prompt-handoffs.md",
-	} {
-		reference := "references/" + name
-		if !strings.Contains(body, reference) {
-			t.Errorf("SKILL.md does not link to %s", reference)
+	links := regexp.MustCompile(`\[[^\]]+\]\(([^)\s]+)\)`).FindAllStringSubmatch(body, -1)
+	if len(links) == 0 {
+		t.Fatal("entrypoint needs targeted links to its advanced guides")
+	}
+	for _, link := range links {
+		reference, _, _ := strings.Cut(link[1], "#")
+		if !fs.ValidPath(reference) {
+			t.Errorf("SKILL.md link %q is not a relative bundled path", reference)
 			continue
 		}
 		if _, ok := all[reference]; !ok {

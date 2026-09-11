@@ -33,7 +33,7 @@ Mouse tracking works alongside the keyboard model. A left-button press selects a
 visible row or tab; clicking the selected row opens its action menu, including
 keyboard/startup selections and without double-click timing. The wheel moves three
 rows, and right-click selects a row then opens its menu. Releases, motion and
-modified clicks are ignored. Opening a menu executes no option; Enter/`o` opens
+modified row clicks do not activate rows. Opening a menu executes no option; Enter/`o` opens
 the row. Depending on the terminal, hold Shift/Option for native text selection.
 
 TASKS remains the initial view. The first REPOS visit selects the startup repo,
@@ -54,6 +54,52 @@ Automatic edits use the guarded macOS/Linux file backend with private recovery
 under $XDG_DATA_HOME/dev/config-recovery. Changed source bytes or repository
 identity reject the preview. Symlink configs, unsupported TOML layouts and other
 platforms offer a manual change and the configuration editor.
+
+## Contextual Help
+
+Press `?` or click Help in the dashboard footer. Help starts on the current
+view's Keys, with its TL;DR and grouped shortcuts, navigation and configured
+tools. Guide explains that view's workflow, columns, colors and symbols. Its
+selected-row section is captured when Help opens, retaining source and unknown,
+loading or cached state; it is not a new observation or permission to act.
+
+Manual contains all 23 embedded dev help topics, related topics first, and the
+shared workflow TL;DR. Search covers names, titles, headings and body text; open
+a result at its matching passage. Paragraphs wrap, while code, ASCII diagrams
+and tables preserve structure and support horizontal scrolling.
+
+```text
+1 / 2 / 3     Keys / Guide / Manual
+v             choose help view or All views; dashboard stays unchanged
+/             search Keys + Guide, Manual, or the current article
+j / k         choose an entry, or scroll its details/article
+enter         read the selected entry
+n / N         next / previous article match
+left / right  pan wide code or diagrams; clickable pan controls also work
+f             expand / restore Help
+esc           stop editing, clear query, return, then close
+q             close Help outside text input
+```
+
+Keys/Guide search is limited to the chosen help view unless All views is
+selected; shortcuts appear before guide matches. Back preserves the previous
+query and reading position. Letters and number keys stay text while editing.
+Tabs, scope, search, Back, Expand, Close and pan controls are clickable. Use the
+wheel, PgUp/PgDn or the clickable/draggable scrollbar for longer content.
+
+Help and Ctrl+O share a floating popup, normally at most 104 columns by 32 rows
+with a two-cell margin. Below 80 columns or 22 rows it fills the screen. Clicking
+outside closes without activating the dashboard. The help reader uses embedded
+documents, previously known tool availability and existing dashboard data; it
+starts no Git, forge, runtime, skill-provider or MCP probe. Flow and triage keep
+their independent help interfaces.
+
+REPOS Guide explains cyan/blue selection overriding normal color, orange dirty
+paths and gray quiet/external rows; gray alone cannot prove clean Git. It covers
+Git divergence, conflicts/staged/unstaged/untracked counts, clean/local, unknown
+?, cached ~, loading/truncated ... and each column's dash. LIVE, WT, task counts,
+logical owned SIZE and LATEST have separate explanations. Other views have
+their own legends: green MCP means enabled configuration, not server health.
 
 ## Repository lifecycle preview
 
@@ -180,7 +226,7 @@ ctrl+d / ctrl+u      half page down / up
 g / G                top / bottom
 h / l, shift-tab/tab previous / next view
 /                    filter as you type
-?                    full input help overlay
+?                    contextual Keys / Guide / Manual help
 esc                  close prompt/filter/overlay; when clear, quit
 q                    quit (or close help/action menu)
 left click           select a visible row or switch a visible tab
@@ -205,8 +251,7 @@ n          add a quick repository note
 N          browse/search/edit/delete repository notes
 p          park warm, prompting for the next action
 c          edit the next action
-1 / 2 / 3  show HOT / WARM / COLD
-0          clear filters
+ctrl+o     choose task-state filters and other actions
 a          include DONE
 ```
 
@@ -430,7 +475,7 @@ shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation; tools, state filters and sorting are in
-`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+`Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none

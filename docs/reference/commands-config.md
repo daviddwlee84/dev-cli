@@ -43,6 +43,26 @@ Use the authored map for intent and the embedded generated reference for exact f
 
 Run `dev <command> --help` for the installed binary; this site describes the repository version identified in its freshness metadata.
 
+## Read help on demand (v0.2.24)
+
+`dev --help` lists commands. Use the relevant leaf command's `--help` for syntax
+and flags, and `dev help <topic>` for workflow explanations. Dashboard `?` or the
+clickable **Help** footer opens contextual **Keys**, **Guide** and **Manual**;
+Manual uses the same 23 embedded topics and workflow TL;DR as CLI help.
+See [contextual Help](../guides/tui-repos-bootstrap.md#contextual-help-v0224).
+
+The bundled skill has a small entry covering core purpose, essential boundaries
+and conditional links to advanced references. `dev --skill`, `dev skill print`
+and the `SKILL.md` written by `dev skill install` remain byte-identical. Installing
+the bundle keeps the detailed references available without requiring an agent to
+preload them. Load only the matching reference for advanced coordination,
+retirement, provisioning, SSH or transfer work.
+
+`dev --skill` when true, `dev skill print` and `dev help` print embedded content
+without loading application config, checking releases or deleting stale Windows
+upgrade binaries. Invalid arguments, flags and color values still fail normally;
+`--skill=false` retains ordinary startup. No CLI flags or JSON fields are changed.
+
 ## High-value structured interfaces
 
 ```bash
@@ -785,7 +805,7 @@ shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation; tools, state filters and sorting are in
-`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+`Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
@@ -807,7 +827,7 @@ non-interactive apply shortcut. Existing
 Neither removes `stats.db` or skills run receipts.
 See [Skills management](../guides/skills-management.md).
 
-## Dashboard discovery registration (Unreleased)
+## Dashboard discovery registration (v0.2.24)
 
 The first REPOS visit selects the startup repository without reordering; clicking
 the selected row opens its actions. An outside startup Git repo offers clickable

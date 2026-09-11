@@ -171,11 +171,11 @@ func TestStartupBannerTouchPreviewCancelAndConfirm(t *testing.T) {
 		if lineCount(m.View()) > m.height {
 			t.Fatal("preview exceeds frame")
 		}
-		m = startupSend(m, mouseMessage(3, m.buildActionMenuLayout().firstOptionY, tea.MouseButtonLeft, tea.MouseActionRelease))
+		m = startupSend(m, popupMouse(m, 3, m.buildActionMenuLayout().firstOptionY, tea.MouseButtonLeft, tea.MouseActionRelease))
 		if applied != 0 {
 			t.Fatal("release applied preview")
 		}
-		next, command = m.Update(mouseMessage(3, m.buildActionMenuLayout().firstOptionY, tea.MouseButtonLeft, tea.MouseActionPress))
+		next, command = m.Update(popupMouse(m, 3, m.buildActionMenuLayout().firstOptionY, tea.MouseButtonLeft, tea.MouseActionPress))
 		m = next.(Model)
 		if command == nil {
 			t.Fatal("confirm did not apply")
@@ -212,7 +212,7 @@ func TestStartupPreviewLongPathsScrollAndEmptyMenuEntry(t *testing.T) {
 	if !m.mouseFrameFits() {
 		t.Fatal(m.View())
 	}
-	m = startupSend(m, mouseMessage(3, 4, tea.MouseButtonWheelDown, tea.MouseActionPress))
+	m = startupSend(m, popupMouse(m, 3, 1, tea.MouseButtonWheelDown, tea.MouseActionPress))
 	if m.overlay.scroll == 0 || !m.mouseFrameFits() {
 		t.Fatal("body did not scroll safely")
 	}

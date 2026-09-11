@@ -328,12 +328,14 @@ type remoteCloneOpenMsg struct {
 
 // Model is the dashboard state.
 type Model struct {
-	startupRepo      startupRepoState
-	tableSorts       [viewCount]tableSort
-	statusSeverity   string
-	lastTriageLedger *triage.Ledger
-	afterExit        func() error
-	actions          Actions
+	help                         helpBrowser
+	popupExpanded, popupDragging bool
+	startupRepo                  startupRepoState
+	tableSorts                   [viewCount]tableSort
+	statusSeverity               string
+	lastTriageLedger             *triage.Ledger
+	afterExit                    func() error
+	actions                      Actions
 	// trace is the one intentional shared pointer in the value-copied model. The
 	// recorder is append-only, bounded and concurrency-safe; it never controls UI
 	// behavior.

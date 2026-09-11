@@ -85,7 +85,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.23 instead when you need a reproducible install.
+# Pin @v0.2.24 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -693,11 +693,27 @@ g G        top / bottom         h l / tab       previous / next view
 /          filter as you type   esc             clear, then quit
 ```
 
+Press `?` or click **Help** in the footer to open the current view's **Keys**.
+**Guide** explains that view's workflow, columns, colors and Git marks, including
+a read-only snapshot of the selected row. **Manual** searches and reads all 23
+embedded `dev help` topics and the shared workflow TL;DR without leaving the TUI.
+Keys/Guide search stays within the selected help view unless you choose **All
+views**; changing help scope leaves the dashboard selection and sorting alone.
+
+Help and Ctrl+O share a floating popup, up to 104 columns × 32 rows; terminals
+below 80 columns or 22 rows use the full screen. In Help, `1–3` selects the tab,
+`v` selects its view, `/` searches, `j/k` chooses or scrolls, and `f` expands.
+Click tabs, search, scope, Back, Expand/Close, article pan controls or the scrollbar;
+the scrollbar also supports dragging. Esc stops editing, clears a query, returns,
+then closes; `q` closes when not typing. Clicks outside close without activating
+the underlying row. Help uses embedded text and existing observations; opening
+it never starts another Git, forge, runtime, skill-provider or MCP probe.
+
 Mouse cell tracking is enabled alongside the keyboard model. Left-click selects a
 visible row or tab. Clicking the selected row opens its actions, including a row
 selected by the keyboard or at startup; no double-click timing is required. The
 wheel moves three rows, and right-click selects a row then opens the same actions.
-Clicks act on press; release/motion and modified clicks are ignored. Opening a
+Row clicks act on press; release/motion and modified row clicks are ignored. Opening a
 menu does not execute its options. Terminals that reserve tracked mouse input may
 require Shift/Option while selecting text.
 
@@ -933,7 +949,7 @@ In REPOS and TRY, `O` cycles sort and `R` reverses it. Structured filters includ
 `where:archived` where applicable. Local repo probes run with bounded
 parallelism, and the alternate screen appears before they finish.
 
-See `dev help tui` for the full key map.
+Use `?` for contextual Keys/Guide/Manual, or `dev help tui` outside the dashboard.
 
 ### Experiments and local-data risk
 
@@ -1591,10 +1607,20 @@ Copy/mirror recipes are optional, and ordinary native copies have no dev runtime
 dependency. Private recovery stays outside Git; native Windows transfer writes
 are currently disabled. Static inventories remain local and do not probe tools.
 
-`dev` ships the agent skill that documents it, embedded in the binary — the
-same pattern `herdr --skill` uses. A skill vendored separately drifts from the
-tool it describes, and an agent reading a stale command list is worse than one
-reading none.
+`dev` embeds its own skill so the installed guidance matches the binary. Its
+entry is deliberately small: 323 words / 2,732 bytes, including a 32-word
+discovery description. It introduces the core purpose, essential ownership
+boundaries and where to read next. Detailed references remain installed but are
+read only for the relevant advanced operation.
+
+Agents use `dev <command> --help` for current syntax, `dev help <topic>` for
+workflows, and the skill's conditional reference links for agent coordination,
+retirement, SSH or transfer details. They need not preload the command reference,
+repeat `dev --skill`, or run diagnostics for every task. `dev --skill` and
+`dev skill print` print the same installable `SKILL.md` that `skill install`
+writes; existing dotfiles installers retain that contract. These print routes
+and `dev help` bypass unrelated config loading, release checks and stale Windows
+binary cleanup, while preserving argument and color validation.
 
 ```bash
 dev skill list                 # current checkout + global native inventory

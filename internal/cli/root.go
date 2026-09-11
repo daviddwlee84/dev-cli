@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"sync"
 
+	"github.com/daviddwlee84/dev-cli/internal/help"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/skill"
 	"github.com/spf13/cobra"
@@ -27,21 +28,7 @@ func versionFromBuild() string {
 	return Version
 }
 
-const workflowTLDR = `TL;DR: default managed-task loop
-
-  dev start --> HOT: work / commit / test
-                  ^               |
-                  |  dev resume   |  dev park --next "..."
-                  +------ WARM <--+
-                  |
-                  +-- direct:          dev done      --> DONE
-                  +-- branch/worktree: dev done --ff --> DONE
-                  +-- branch/worktree: dev done --pr --> push / review handoff
-                                                        |
-                          feedback --> resume if parked --> work
-
-  DONE --> dev sweep (report) --> dev sweep --apply (reap) --> next task
-  Remote merge detection and cleanup are not automatic; verify integration first.`
+const workflowTLDR = help.WorkflowTLDR
 
 const rootLong = `dev is a thin glue layer over git, worktrees, forges and agent runtimes.
 
@@ -79,6 +66,12 @@ func fullScreenInvocation(cmd *cobra.Command, app *App) bool {
 }
 
 func newRootCommand(app *App) *cobra.Command {
+	return newRootCommandWithCleanup(app, sweepStaleUpgradeArtifacts)
+}
+
+// newRootCommandWithCleanup keeps startup filesystem maintenance behind Cobra's
+// parsed command dispatch, so static help never deletes a stale Windows binary.
+func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 	out, errOut := app.Out, app.Err
 	root := &cobra.Command{
 		Use:           "dev",
@@ -110,9 +103,10 @@ func newRootCommand(app *App) *cobra.Command {
 			if err := validateColorMode(app.colorMode); err != nil {
 				return err
 			}
-			if completionInvocation(cmd) {
+			if completionInvocation(cmd) || staticContentInvocation(cmd) {
 				return nil
 			}
+			cleanup()
 			finish := app.trace.Start(perftrace.AppLoad, perftrace.Fields{})
 			if err := app.Load(); err != nil {
 				finish(perftrace.OutcomeFailed)
@@ -224,7 +218,6 @@ func Execute() int {
 	app.trace.Mark(perftrace.CLIExecuteBegin, perftrace.Fields{})
 	defer app.finishTrace()
 
-	sweepStaleUpgradeArtifacts()
 	finishRoot := app.trace.Start(perftrace.CLIRootBuild, perftrace.Fields{})
 	root := newRootCommand(app)
 	finishRoot(perftrace.OutcomeSuccess)

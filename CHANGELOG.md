@@ -6,8 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.24] - 2026-09-11
+
 ### Added
 
+- Contextual dashboard Help with Keys, Guide and Manual tabs, view-scoped search,
+  frozen selected-row explanations, color/Git legends and all 23 embedded
+  `dev help` topics. Help and Ctrl+O share a floating, expandable popup with
+  clickable controls and draggable scrollbars.
 - Dashboard touch navigation: tapping the selected row opens its existing action
   menu; the first REPOS visit selects the startup repository without reordering
   rows, including launches from subdirectories and linked worktrees.
@@ -15,6 +21,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `paths.repo_paths` or its parent to `paths.scan_roots`. Source-bound edits retain
   comments, existing entries and metadata, with private recovery and a manual-edit
   fallback. Successful additions reload local inventory and select the repository.
+
+### Changed
+
+- Shorten the bundled `dev-cli` skill entry to a small purpose, discovery and
+  safety guide. Detailed references load only when relevant; `dev --skill`,
+  `dev skill print` and installed `SKILL.md` retain identical content.
+
+### Fixed
+
+- Printing the bundled skill or `dev help` no longer loads unrelated application
+  configuration, checks releases or cleans up stale Windows upgrade binaries.
+  Argument and color validation remain in place.
 
 ## [0.2.23] - 2026-09-11
 
@@ -881,7 +899,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.23...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.24...HEAD
+[0.2.24]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.23...v0.2.24
 [0.2.23]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.22...v0.2.23
 [0.2.22]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.21...v0.2.22
 [0.2.21]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.20...v0.2.21

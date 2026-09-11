@@ -386,7 +386,7 @@ shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation; tools, state filters and sorting are in
-`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+`Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
@@ -406,7 +406,7 @@ This is separate from transfer preparation's pinned-provider/verified-payload
 contract. REPOS caches supply presentation only; Git/runtime/task authority still
 requires fresh observations and operation-time validation.
 
-## Dashboard discovery registration (Unreleased)
+## Dashboard discovery registration (v0.2.24)
 
 The first REPOS visit selects the startup repository without reordering; clicking
 the selected row opens its actions. An outside startup Git repo offers clickable
@@ -419,3 +419,31 @@ under `$XDG_DATA_HOME/dev/config-recovery`; symlink configs, unsupported TOML la
 and other platforms offer manual edits and the config editor. Failed scans remain
 unknown. Successful saves refresh local inventory; reload failures are reported
 separately. CLI flags and existing JSON contracts are unchanged.
+
+## Contextual Help and compact skill entry (v0.2.24)
+
+Dashboard Help starts with Keys for the current view, followed by Guide and
+Manual. View scope applies to TUI search; Manual searches all 23 embedded CLI
+topics. Selected-row explanations are frozen at Help opening and cannot refresh
+or authorize an action. Help starts no external loads or probes. The dashboard,
+flow and triage remain independent interfaces.
+
+Help and Ctrl+O use the same floating popup, at most 104 columns × 32 rows;
+terminals below 80 columns or 22 rows use the full screen. Clickable controls,
+scrollbar dragging, Help expansion and article panning support touch use.
+Closing or scrolling a popup never activates the dashboard beneath it. Existing
+actions, approval requirements, color meanings, CLI flags and JSON stay intact.
+See [contextual Help](../guides/tui-repos-bootstrap.md#contextual-help-v0224).
+
+The installed `dev-cli` entry is intentionally compact; detailed references
+remain in the bundle and are read only for matching advanced operations.
+`dev --skill` and `dev skill print` still output the exact installed `SKILL.md`,
+preserving dotfiles-installer compatibility. Use leaf `--help` for syntax,
+`dev help <topic>` for workflows and conditional references for coordination
+details. Existing installation, ownership checks and refresh rules are unchanged.
+
+Printing `--skill=true`, `skill print` or `help` skips application config loading,
+release nudges/checks and stale Windows upgrade-binary cleanup. Cobra `--help`
+and `--version` also remain static. Ordinary commands, including `--skill=false`,
+retain startup maintenance; invalid arguments, flags and color values retain
+their errors on the document commands.

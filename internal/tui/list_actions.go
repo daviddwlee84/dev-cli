@@ -252,6 +252,7 @@ func (m Model) selectionHeading() (string, string) {
 }
 
 func (m Model) openActionMenu() Model {
+	m.popupExpanded = false
 	m.stopStartupFocus()
 	token, ok := m.currentSelectionToken()
 	if !ok {

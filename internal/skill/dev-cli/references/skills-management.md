@@ -69,6 +69,12 @@ Provider source contracts: [update](https://github.com/vercel-labs/skills/blob/v
 The bundled `dev-cli` skill follows the installed binary separately from skills
 managed by the external `skills` provider:
 
+`dev --skill`, `dev skill print`, and the installed `SKILL.md` share one compact
+entrypoint. It routes ordinary tasks to command `--help` and `dev help <topic>`;
+the full reference tree remains bundled for advanced operations on demand.
+Reading the installed skill does not require printing it again or loading every
+reference. Use the checks below when investigating version or content drift.
+
 ```bash
 dev skill install                 # install or explicitly replace bundled files
 dev skill install --check         # local content comparison; nonzero on drift/absence

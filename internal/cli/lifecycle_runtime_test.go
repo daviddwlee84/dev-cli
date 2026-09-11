@@ -497,7 +497,10 @@ func TestRetireTaskflowPartialRuntimeErrorKeepsTaskAndCheckout(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err := runFocusedRetire(fixture.app, candidate.ID, "--timeout", "1s")
+	// Occupancy checks still run real Git commands with the fake runtime. Allow
+	// enough time under -race to reach the second close's injected failure;
+	// this test exercises partial failure preservation, not timeout behavior.
+	err := runFocusedRetire(fixture.app, candidate.ID, "--timeout", "10s")
 	if err == nil || !strings.Contains(err.Error(), "injected runtime close failure") {
 		t.Fatalf("partial retire error = %v", err)
 	}

@@ -598,8 +598,15 @@ func TestSkillPrintsAndSyncChecks(t *testing.T) {
 	if !strings.Contains(out, "worktree-ownership.md") {
 		t.Error("the skill should point at its reference files")
 	}
-	if !strings.Contains(out, "`--allow-shared-checkout`") {
+	all, err := skill.Files()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(all["references/commands.md"]), "`--allow-shared-checkout`") {
 		t.Error("the generated command reference should include root persistent options")
+	}
+	if out != string(all["SKILL.md"]) || out != h.mustRun("--skill") {
+		t.Error("skill print and --skill must print the installed SKILL.md verbatim")
 	}
 }
 

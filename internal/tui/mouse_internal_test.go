@@ -15,6 +15,11 @@ func mouseMessage(x, y int, button tea.MouseButton, action tea.MouseAction) tea.
 	return tea.MouseMsg(tea.MouseEvent{X: x, Y: y, Button: button, Action: action})
 }
 
+func popupMouse(model Model, x, y int, button tea.MouseButton, action tea.MouseAction) tea.MouseMsg {
+	x, y = model.popupPoint(x, y)
+	return mouseMessage(x, y, button, action)
+}
+
 func applyMouse(model Model, message tea.MouseMsg) (Model, tea.Cmd) {
 	updated, command := model.Update(message)
 	return updated.(Model), command
@@ -145,12 +150,9 @@ func TestMouseRightClickSelectsThenRunsActionMenu(t *testing.T) {
 		t.Fatalf("right click selected=%d overlay=%v", model.at(), model.overlay.kind)
 	}
 
-	firstOptionY := 4
-	if model.overlay.detail != "" {
-		firstOptionY++
-	}
+	firstOptionY := model.buildActionMenuLayout().firstOptionY
 	var command tea.Cmd
-	model, command = applyMouse(model, mouseMessage(3, firstOptionY, tea.MouseButtonLeft, tea.MouseActionPress))
+	model, command = applyMouse(model, popupMouse(model, 3, firstOptionY, tea.MouseButtonLeft, tea.MouseActionPress))
 	if command == nil {
 		t.Fatal("clicking open menu option returned no command")
 	}
@@ -170,7 +172,7 @@ func TestMouseActionMenuWheelOutsideClickAndModalIsolation(t *testing.T) {
 		SetNext: func(context.Context, *task.Task, string) error { return nil },
 		Park:    func(context.Context, *task.Task, string) (string, error) { return "", nil },
 	}, rows, nil).openActionMenu()
-	model, _ = applyMouse(model, mouseMessage(2, 2, tea.MouseButtonWheelDown, tea.MouseActionPress))
+	model, _ = applyMouse(model, popupMouse(model, 2, model.buildActionMenuLayout().firstOptionY, tea.MouseButtonWheelDown, tea.MouseActionPress))
 	if model.overlay.optionIndex != 1 {
 		t.Fatalf("menu wheel selected option %d", model.overlay.optionIndex)
 	}
@@ -183,7 +185,7 @@ func TestMouseActionMenuWheelOutsideClickAndModalIsolation(t *testing.T) {
 		return OpenResult{}, nil
 	}}, rows, nil).openActionMenu()
 	firstOptionY := model.buildActionMenuLayout().firstOptionY
-	model, command := applyMouse(model, mouseMessage(100, firstOptionY, tea.MouseButtonLeft, tea.MouseActionPress))
+	model, command := applyMouse(model, mouseMessage(99, firstOptionY, tea.MouseButtonLeft, tea.MouseActionPress))
 	if command != nil || model.overlay.kind != overlayNone {
 		t.Fatalf("blank right margin executed menu option: command=%v overlay=%v", command, model.overlay.kind)
 	}
@@ -252,7 +254,7 @@ func TestMouseSelectThenTapOpensMenuWithoutExecuting(t *testing.T) {
 	if m.overlay.kind != overlayActionMenu || cmd != nil || opened != 0 {
 		t.Fatal("second tap executed instead of opening menu")
 	}
-	m, cmd = applyMouse(m, mouseMessage(3, m.buildActionMenuLayout().firstOptionY, tea.MouseButtonLeft, tea.MouseActionPress))
+	m, cmd = applyMouse(m, popupMouse(m, 3, m.buildActionMenuLayout().firstOptionY, tea.MouseButtonLeft, tea.MouseActionPress))
 	if cmd == nil {
 		t.Fatal("option was not clickable")
 	}

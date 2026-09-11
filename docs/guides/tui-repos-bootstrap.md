@@ -62,12 +62,61 @@ Switch with `tab`, `h`/`l`, arrows, or left-click a visible tab. A left-button
 press selects a visible row; clicking the selected row opens its actions, even
 when selection came from the keyboard or startup. No double-click timing is needed.
 The wheel moves three rows, and a right-button press selects a row then opens its
-actions. Modified clicks, motion and releases are ignored. Opening the menu does
+actions. Modified row clicks, motion and releases do not activate rows. Opening the menu does
 not execute an option. Enter/`o` opens the row. Some terminals require Shift/Option for native
-text selection while mouse tracking is enabled. Keyboard movement, filtering,
-help, and mode exit remain unchanged.
+text selection while mouse tracking is enabled.
 
-## Startup repository and discovery (Unreleased)
+## Contextual Help (v0.2.24)
+
+Press `?` or click **Help** in the footer. Help starts on **Keys** for the current
+dashboard view, keeping that view's TL;DR at the top. It has three tabs:
+
+| Tab | Content |
+|---|---|
+| Keys | This view's actions, common navigation and configured tools, including availability and conditions |
+| Guide | Workflow, columns, colors and symbols; a read-only selected-row snapshot captured when Help opened |
+| Manual | All 23 embedded `dev help` topics, with related topics first, plus the shared workflow TL;DR |
+
+Keys and Guide share a search over their entries, with shortcut matches before
+guide matches. Search is limited to the selected help view; choose **All views**
+to search all seven. Changing help scope does not change the actual dashboard
+tab, selection, filter or order. The selected-row explanation appears only for
+the view where Help opened and retains unknown, loading or cached observations.
+It is an explanation of that captured display, never fresh action authority.
+
+In REPOS, Guide explains why cyan/blue selection overrides the row's usual
+color, orange reports dirty paths, and gray alone does not prove Git clean.
+It covers `⇡N`/`⇣N`/`⇕`, `=N`, `+N`, `!N`, `?N`, `clean`/`local`, unknown `?`,
+cached `~`, loading/truncated `…`, and each column's `—`. LIVE, WT, task counts,
+logical owned SIZE and LATEST all have separate explanations. Other views have
+their own legends: for example, green MCP means enabled configuration, not a
+running or healthy server. Color appearance follows the terminal palette and
+`--color` settings.
+
+Manual search covers topic names, titles, headings and body text, with excerpts.
+Open a result to read it at the matching passage. Paragraphs wrap; code, ASCII
+diagrams and tables preserve their structure and can pan horizontally. `/`
+finds text within an article and `n`/`N` moves between matches. Back preserves the
+previous query and reading position. Each article names its CLI counterpart.
+
+Use `1–3` or click tabs, `v` or click **View** for scope, `/` or click the search
+field, `j/k` to choose or scroll, and Enter to read an entry. PgUp/PgDn, the wheel
+and the clickable/draggable scrollbar move through long content. Article pan
+controls and left/right arrows reveal wide code or diagrams. Esc stops search
+editing, then clears the query, returns a level and finally closes Help. `q`
+closes outside text input; letters such as `q`, `v` and `f` stay text while typing.
+
+Help and Ctrl+O share a floating popup with **Expand** and **Close**. Its normal
+maximum is 104 columns × 32 rows, leaving at least two cells around it; below
+80 columns or 22 rows it fills the screen. `f` expands Help. Click outside to
+close without activating a background row. Popup scrollbar dragging is supported
+even though dashboard row activation ignores mouse motion.
+
+Opening and searching Help uses only embedded documents, existing tool
+availability and the captured dashboard state. It starts no Git, forge, runtime,
+provider or MCP probes. Flow and triage retain their independent help interfaces.
+
+## Startup repository and discovery (v0.2.24)
 
 TASKS remains the startup view. The first REPOS visit selects the repository
 containing the startup directory without changing ordering, scrolling it into
@@ -386,7 +435,7 @@ shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation; tools, state filters and sorting are in
-`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+`Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none

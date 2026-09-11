@@ -1785,11 +1785,11 @@ func TestTryArchiveActionRequiresExactYES(t *testing.T) {
 func TestHelpOverlayIsDiscoverableAndClosesWithoutQuitting(t *testing.T) {
 	m := tui.New(newActions(&recorder{}, nil), nil, nil)
 	m = send(m, key("?"))
-	if out := m.View(); !strings.Contains(out, "INPUT HELP") || !strings.Contains(out, "TRY") || !strings.Contains(out, "SKILLS") || !strings.Contains(out, "right click") {
+	if out := m.View(); !strings.Contains(out, "Help · TASKS") || !strings.Contains(out, "[1 Keys]") || !strings.Contains(out, "Open the selected task") || !strings.Contains(out, "right-click") {
 		t.Fatalf("help overlay missing view bindings:\n%s", out)
 	}
 	m = send(m, key("q"))
-	if out := m.View(); out == "" || strings.Contains(out, "INPUT HELP") {
+	if out := m.View(); out == "" || strings.Contains(out, "Help · TASKS") {
 		t.Fatalf("q should close help without quitting:\n%s", out)
 	}
 }

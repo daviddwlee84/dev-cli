@@ -1,6 +1,11 @@
 package tui
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
+	"strings"
+)
 
 const mouseWheelRows = 3
 
@@ -11,8 +16,9 @@ func (m Model) mouseFrameFits() bool {
 	if m.height <= 0 {
 		return false
 	}
-	if m.overlay.kind == overlayActionMenu {
-		return lineCount(m.renderOverlay()) <= m.height
+	if m.sharedPopup() {
+		r := m.popupBounds()
+		return r.width >= 8 && r.height >= 6 && r.x >= 0 && r.y >= 0 && r.x+r.width <= m.width && r.y+r.height <= m.height
 	}
 
 	total := 2 + lineCount(m.renderCurrentList()) + 1 + lineCount(m.renderDetail()) + 1 + lineCount(m.renderFooter())
@@ -25,12 +31,11 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	verticalWheel := event.Button == tea.MouseButtonWheelUp || event.Button == tea.MouseButtonWheelDown
-	if m.overlay.kind == overlayActionMenu {
-		menuPress := event.Action == tea.MouseActionPress && event.Button == tea.MouseButtonLeft
-		if (!verticalWheel && !menuPress) || !m.mouseFrameFits() {
+	if m.sharedPopup() {
+		if !m.mouseFrameFits() {
 			return m, nil
 		}
-		return m.updateActionMenuMouse(event)
+		return m.updatePopupMouse(event)
 	}
 	if m.mode == modeStats && verticalWheel {
 		delta := mouseWheelRows
@@ -63,6 +68,10 @@ func (m Model) updateMouse(message tea.MouseMsg) (tea.Model, tea.Cmd) {
 	}
 	if event.Action != tea.MouseActionPress {
 		return m, nil
+	}
+	if event.Button == tea.MouseButtonLeft && !m.remoteClone.active() && m.footerHelpAt(event.X, event.Y) {
+		m.stopStartupFocus()
+		return m.openHelpOverlay(), nil
 	}
 
 	if event.Button == tea.MouseButtonLeft && event.Y == 0 {
@@ -139,6 +148,10 @@ func (m Model) mouseOverList(x, y int) bool {
 }
 
 func (m Model) updateActionMenuMouse(event tea.MouseEvent) (tea.Model, tea.Cmd) {
+	width, height := m.popupContentSize()
+	if event.X < 0 || event.X >= width || event.Y < 0 || event.Y >= height-1 {
+		return m, nil
+	}
 	if event.Button == tea.MouseButtonWheelUp || event.Button == tea.MouseButtonWheelDown {
 		if m.overlay.body != "" && event.Y < m.buildActionMenuLayout().firstOptionY {
 			delta := mouseWheelRows
@@ -161,11 +174,27 @@ func (m Model) updateActionMenuMouse(event tea.MouseEvent) (tea.Model, tea.Cmd) 
 	if event.Action != tea.MouseActionPress || event.Button != tea.MouseButtonLeft {
 		return m, nil
 	}
+	if event.Y == m.buildActionMenuLayout().searchY {
+		return m.focusActionSearch()
+	}
 	index, ok := m.actionMenuOptionAt(event.X, event.Y)
 	if !ok {
-		m.overlay = overlayState{}
 		return m, nil
 	}
 	m.overlay.optionIndex = index
 	return m.runOverlayAction()
+}
+
+func (m Model) footerHelpAt(x, y int) bool {
+	lines := strings.Split(m.renderDashboard(), "\n")
+	if len(lines) == 0 || y != len(lines)-1 {
+		return false
+	}
+	line := ansi.Strip(lines[len(lines)-1])
+	i := strings.Index(line, "? help")
+	if i < 0 {
+		return false
+	}
+	from := lipgloss.Width(line[:i])
+	return x >= from && x < from+6
 }

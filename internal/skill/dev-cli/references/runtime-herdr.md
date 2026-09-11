@@ -146,6 +146,11 @@ On Windows there is no tmux, Zellij or Herdr, so the backend is always `none`
 regardless of configuration. `dev shell-init powershell` still consumes the `cd`
 directive (via a `DEV_SHELL_CD_FILE` temp file rather than file descriptor 3).
 
+The trusted `dev shell-init` output installs a shell wrapper. Navigation uses a
+private side channel containing one NUL-terminated path; the wrapper calls
+`builtin cd` or `Set-Location` without evaluating command output. The standalone
+binary's printable legacy directive cannot change its parent shell's directory.
+
 ## Completion and process consent
 
 Parent/canonical and other-checkout workspaces are preserved, including when

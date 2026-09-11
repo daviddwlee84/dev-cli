@@ -42,6 +42,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok || model.quitting {
 		return next, command
 	}
+	if !m.sharedPopup() || !model.sharedPopup() {
+		model.popupExpanded = false
+		model.popupDragging = false
+	}
 	if preserveFocus {
 		focusModel := model
 		focusModel.view = ViewRepos
@@ -50,7 +54,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	model.finishRegistrationReload()
 	model.focusStartupRepo()
-	if model.actions.LoadRepoTopology == nil {
+	if model.actions.LoadRepoTopology == nil || model.overlay.kind == overlayHelp {
 		return model, command
 	}
 	row, ok := model.currentRepo()

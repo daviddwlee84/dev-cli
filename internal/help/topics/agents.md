@@ -74,6 +74,15 @@ from the target worktree root instead.
 agent. The bundled `dev-cli` skill owns the fail-closed cross-tool workflow and
 supports standard Claude/Codex plus the local one-shot Copilot launchers.
 
+The skill entry is a short guide to purpose, boundaries and where to read next.
+For a parallel launch, read its `references/parallel-agents.md`; for prompt
+transport, also read `references/prompt-handoffs.md`. Ordinary command syntax
+comes from `dev <command> --help`, and workflow orientation from `dev help`.
+Load only the matching advanced reference instead of preloading the bundle or
+printing `dev --skill` again for each operation. `dev --skill`, `dev skill print`
+and installed `SKILL.md` are the same entry; `dev skill install` also writes the
+reference files.
+
 Do not infer a pane from focus or sidebar order. Missing, reused, fallback,
 non-Herdr, or unverified panes are not launch targets.
 

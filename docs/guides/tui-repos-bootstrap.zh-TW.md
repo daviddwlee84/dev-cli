@@ -58,12 +58,54 @@ string 已建立，不代表 terminal 已 rasterize。
 用 `tab`、`h`/`l`、左右鍵，或 left-click visible tab 切換。Left-button
 press 選取 visible row；點目前反白列就開啟 actions，包含鍵盤或啟動時預選的列，
 不限兩次點擊間隔。Wheel 每次移動三列；right-button press 先選取 row，再開啟
-該 row 的 actions。Modified click、motion 與 release 會被忽略；開啟選單的點擊
+該 row 的 actions。Modified row click、motion 與 release 不會啟動列；開啟選單的點擊
 只開選單，另行點選項目才執行。Enter/`o` 開啟目標。Mouse tracking
-啟用時，部分 terminal 的原生文字選取需要按住 Shift/Option。原有鍵盤移動、filter、
-help 與 mode exit 都不變。
+啟用時，部分 terminal 的原生文字選取需要按住 Shift/Option。
 
-## 啟動 repo 與掃描設定（Unreleased）
+## 目前分頁的 Help（v0.2.24）
+
+按 `?` 或點 footer 的 **Help**，預設開啟目前 dashboard 分頁的 **Keys**，
+頂部保留該頁的 TL;DR。Help 分成三個頁籤：
+
+| 頁籤 | 內容 |
+|---|---|
+| Keys | 本頁操作、通用導覽與已設定的工具，包含可用狀態及必要條件 |
+| Guide | 使用流程、欄位、顏色與符號；開啟 Help 時擷取的所選列唯讀快照 |
+| Manual | 全部 23 個內嵌 `dev help` 主題，相關主題優先，另有共用 workflow TL;DR |
+
+Keys 與 Guide 共用搜尋，先列快捷鍵、再列說明。預設只搜尋選定的 Help
+分頁；選 **All views** 才搜尋七頁。切換說明範圍不改變實際 dashboard
+分頁、選取、filter 或排序。所選列的解讀只出現在開啟 Help 時的那一頁，
+保留 unknown、loading 與 cached 狀態；它說明擷取時的畫面，不能當成
+執行操作的新證據。
+
+REPOS 的 Guide 解釋：青／藍色選取會覆蓋原列色，橘色表示 dirty paths，
+不能只憑灰色判定 Git clean。另包含 `⇡N`／`⇣N`／`⇕`、`=N`、`+N`、`!N`、
+`?N`、`clean`／`local`、未知 `?`、舊快照 `~`、載入或截短 `…`，以及各欄
+`—` 的不同含義。LIVE、WT、task 數量、logical owned SIZE 與 LATEST
+各有說明。其他分頁有自己的圖例，例如 MCP 綠色表示設定啟用，不能推斷
+server 正在執行或健康。實際顏色受 terminal palette 與 `--color` 影響。
+
+Manual 搜尋主題名稱、標題、小節與全文，並顯示摘錄；開啟結果會定位到
+命中段落。一般段落換行，程式碼、ASCII 圖與表格保留結構並支援橫向捲動。
+文章內 `/` 查找、`n`／`N` 切換命中；Back 保留上一層搜尋與閱讀位置。
+每篇文章都標示對應的 CLI 指令。
+
+用 `1–3` 或點頁籤切換，`v` 或點 **View** 選範圍，`/` 或點搜尋欄輸入，
+`j/k` 選取或捲動，Enter 閱讀。PgUp/PgDn、滾輪與可點擊／拖曳的捲軸
+瀏覽長內容；文章的橫向捲動按鈕或左右鍵可查看過寬的程式碼與圖。
+Esc 依序停止輸入、清除查詢、返回上一層、關閉 Help。非輸入狀態下 `q`
+直接關閉；輸入中的 `q`、`v`、`f` 等字元仍是文字。
+
+Help 與 Ctrl+O 共用有 **Expand**、**Close** 的浮窗，通常最大為
+104 欄 × 32 列、四周至少留兩格；少於 80 欄或 22 列時使用全畫面。
+Help 可按 `f` 放大。點外部只關閉，不會啟動背景列；浮窗支援拖曳捲軸，
+dashboard 列啟動仍忽略 mouse motion。
+
+開啟與搜尋 Help 只讀內嵌文章、既有工具可用狀態及畫面快照，不另行探測
+Git、forge、runtime、provider 或 MCP。Flow 與 triage 維持各自的 Help。
+
+## 啟動 repo 與掃描設定（v0.2.24）
 
 啟動時仍顯示 TASKS。首次切到 REPOS 時，預選啟動目錄所屬的 repository，
 保留原排序並讓該列出現在可視範圍。子目錄、alias 與 linked worktree 透過
@@ -346,7 +388,7 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](local-triage.md)。
 

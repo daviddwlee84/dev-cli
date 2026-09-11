@@ -18,7 +18,22 @@ without double-click timing or executing an option. Keyboard/startup selections
 also qualify. The first REPOS visit selects the startup repository without
 reordering. An outside startup repo has clickable, reviewed additions to
 `repo_paths` or its parent's `scan_roots`, followed by local refresh and selection.
-See [startup repository and discovery](tui-repos-bootstrap.md#startup-repository-and-discovery-unreleased).
+See [startup repository and discovery](tui-repos-bootstrap.md#startup-repository-and-discovery-v0224).
+
+Ctrl+O and Help share a floating popup with clickable **Expand**, **Close** and
+a draggable scrollbar. The normal maximum is 104 columns × 32 rows; below 80
+columns or 22 rows it fills the screen. `/` filters the current action menu;
+arrows choose and Enter continues. Esc stops typing or clears the query before
+closing, and `q` closes outside input. Clicking outside closes without passing
+the click to the dashboard. Existing action eligibility and confirmations apply.
+
+Press `?` or click footer **Help** for the current view's **Keys**, then **Guide**
+for colors, symbols and captured selected-row details, or **Manual** for all 23
+embedded `dev help` topics. `1–3`, `v`, `/`, `j/k` and `f` navigate tabs, scope,
+search, entries and expansion. Search, scope, Back and article pan controls are
+also clickable. Help reads existing observations and embedded documents without
+executing actions or probing tools. See [contextual Help](tui-repos-bootstrap.md#contextual-help-v0224)
+for search scope, article navigation and the layered Esc behavior.
 
 TASKS finish, resume, retirement and recovery use the existing CLI workflows.
 The dashboard suspends during their prompts and refreshes when they finish,
@@ -127,7 +142,7 @@ shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
 of primary actions and navigation; tools, state filters and sorting are in
-`Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
+`Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
 Triage uses grouped repo/Try checkboxes, mouse selection, and Ctrl+A all/none
