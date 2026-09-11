@@ -1,4 +1,4 @@
-//go:build !linux && !darwin
+//go:build !linux && !darwin && !windows
 
 package configedit
 
@@ -18,6 +18,9 @@ func (Metadata) prepare(*os.File) error {
 
 func checkAncestor(string, fs.FileInfo) error { return nil }
 
-func sameDevice(fs.FileInfo, fs.FileInfo) bool { return true }
+func sameDevice(string, string, fs.FileInfo, fs.FileInfo) bool { return true }
 
-func fileIdentity(fs.FileInfo) string { return "unsupported" }
+func fileIdentity(string, fs.FileInfo) string { return "unsupported" }
+
+func makeDirectory(path string) error                     { return os.Mkdir(path, 0o700) }
+func privateRecoveryMode(_ string, info fs.FileInfo) bool { return info.Mode().Perm() == 0o700 }

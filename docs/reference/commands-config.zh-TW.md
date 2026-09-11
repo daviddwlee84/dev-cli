@@ -783,3 +783,9 @@ issue，`--publish --yes --revision <revision>` 表達對該確切內容／目�
 `repair <id> --base <ref>` 保存 guarded plan；`--apply --plan <id> --yes` 準備隔離
 checkout/task。Optional `[feedback].source_repo` 指定絕對或 home-relative 的本機
 dev-cli 路徑。詳見 [feedback 與修復](../guides/feedback.zh-TW.md)。
+
+## Repository hygiene
+
+`dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
+規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
+Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](../guides/hygiene.zh-TW.md)。

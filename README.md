@@ -54,6 +54,14 @@ $ dev ls
 ❄️ settings redesign      COLD   website    feat/settings             clean 3w   —             pick up after the API lands
 ```
 
+## Repository hygiene
+
+Use `dev hygiene status` to inspect effective hooks and `dev hygiene setup` to
+preview configuration. `scan --scope staged|worktree|history` checks secret/privacy
+policy; reviewed `rules` and `redact` plans keep private values and recovery outside
+Git. Hooks block rather than auto-stage. Final transcript cleanup requires the
+writer to stop first. See the [hygiene guide](docs/guides/hygiene.md).
+
 ## Install
 
 ### Homebrew (macOS)

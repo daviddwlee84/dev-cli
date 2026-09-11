@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Repository hygiene status/setup, staged/worktree/frozen-history secret and
+  privacy scans, reviewed local SSH identity rules, precise exceptions and
+  signed text-redaction plans with private recovery on macOS/Linux/Windows.
+- A blocking pre-commit integration shared by repository bootstrap, public-rule
+  CI checks and a manual post-writer dogfood/history-impact workflow.
+
+### Fixed
+
+- Secret scan wrappers mask output and fail closed on scanner/report errors;
+  placeholders no longer allow an unrelated credential on the same line.
+
 ## [0.2.28] - 2026-09-11
 
 ### Added

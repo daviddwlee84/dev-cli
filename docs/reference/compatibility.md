@@ -500,3 +500,10 @@ projection for SSH evidence. Issue target/content revisions and repair plans
 are checked before mutation; unknown publication outcomes require reconciliation.
 The `feedback-fix` recipe requires a verified HOT task/checkout and an explicit
 agent profile for launch. Existing start defaults and JSON are unchanged.
+
+## Repository hygiene
+
+`dev hygiene` provides staged/worktree/history scopes, per-repo block/warn/off
+policies, private local identity imports and reviewed text replacement/recovery on
+macOS, Linux and Windows. CI uses public rules only. See the
+[hygiene workflow](../guides/hygiene.md) for schema-v1 coverage and hook contracts.

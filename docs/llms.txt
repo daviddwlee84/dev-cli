@@ -27,6 +27,7 @@
 - [Skills management](https://daviddwlee84.github.io/dev-cli/guides/skills-management/): Manage project and global skills with scoped checks, reviewed updates, and native lock restoration.
 - [SSH host onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/): Discover OpenSSH aliases, manage only dev-owned host fragments, bootstrap public-key access, and explicitly register verified hosts in dev fleet.
 - [Feedback and isolated repair](https://daviddwlee84.github.io/dev-cli/guides/feedback/): Prepare private local feedback, publish reviewed GitHub issues, and hand a verified isolated repair checkout to an explicitly selected agent.
+- [Repository hygiene](https://daviddwlee84.github.io/dev-cli/guides/hygiene/): Inspect repository hooks, scan secrets and personal data, and apply reviewed text replacements with private recovery.
 - [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/): Inventory repositories over POSIX or Windows SSH hosts using merged fleet configuration, pin remote identity, safely fast-forward branches, and explicitly transfer bounded ignored files.
 - [Dotfiles](https://daviddwlee84.github.io/dev-cli/guides/dotfiles/): Discover chezmoi configuration, choose an optional platform-specific dotfiles preset, delegate native operations, and inspect selected fleet hosts.
 - [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/): Retire an integrated dev-cli worktree and runtime safely, from outside the workspace being removed.
@@ -51,6 +52,7 @@
 
 - [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/): Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 - [Compatibility and known limitations](https://daviddwlee84.github.io/dev-cli/reference/compatibility/): Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
+- [Manual hygiene dogfood](https://daviddwlee84.github.io/dev-cli/reference/hygiene-dogfood/): Manual post-writer dogfood and the separate impact assessment for already-published repository history.
 - [Sources and freshness](https://daviddwlee84.github.io/dev-cli/reference/sources-freshness/): Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 ### Notes
 
@@ -83,6 +85,7 @@
 - [Skills 管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/): Manage project and global skills with scoped checks, reviewed updates, and native lock restoration.
 - [SSH Host 設定與佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/): 探索 OpenSSH alias、只管理 dev-owned host fragment、佈建 public-key access，並將驗證成功的 host 明確登記到 dev fleet。
 - [Feedback 與隔離修復](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/feedback/): 建立私有本機 feedback、發布已檢視的 GitHub issue，並將已驗證的隔離修復工作區交接給明確選定的 agent。
+- [Repository hygiene](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/): 檢查 repository hooks、掃描 secret 與個人資訊，並以私人恢復紀錄套用已檢視的文字替換。
 - [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/): 透過 merged fleet configuration 盤點 POSIX 或 Windows SSH host、pin remote identity、安全 fast-forward branch，並明確傳送 bounded ignored files。
 - [Dotfiles](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dotfiles/): 辨識 chezmoi 設定、選擇平台適用的 dotfiles、委派原生操作，並檢查指定 fleet 主機。
 - [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/): 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。
@@ -107,6 +110,7 @@
 
 - [命令與設定](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/): 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 - [相容性與已知限制](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/): 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
+- [人工 hygiene dogfood](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/hygiene-dogfood/): 人工 post-writer dogfood 與已發布 Git 歷史的獨立清理影響評估。
 - [來源與時效](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/sources-freshness/): 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
 ### 筆記
 

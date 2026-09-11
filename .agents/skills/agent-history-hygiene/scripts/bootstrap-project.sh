@@ -80,6 +80,11 @@ while [ $# -gt 0 ]; do
   esac
 done
 
+# New default templates call dev hygiene. Check before touching repository files.
+if ! command -v dev >/dev/null 2>&1 || ! dev hygiene --help >/dev/null 2>&1; then
+  die "install a dev version supporting hygiene before using these templates" 4
+fi
+
 # Must be inside a git repo (or the pre-commit install step fails anyway).
 if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
   die "not inside a git repo" 2

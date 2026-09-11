@@ -92,13 +92,15 @@ def run_gitleaks_staged() -> list[dict]:
     if Path(GITLEAKS_CONFIG).is_file():
         cmd.extend(["--config", GITLEAKS_CONFIG])
     try:
-        subprocess.run(cmd, capture_output=True, text=True)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError("gitleaks failed; scan is incomplete")
         content = read_text(Path(report_path))
         if not content.strip():
             return []
         return json.loads(content)
     except (json.JSONDecodeError, FileNotFoundError):
-        return []
+        raise RuntimeError("gitleaks unavailable or report invalid; scan is incomplete") from None
     finally:
         Path(report_path).unlink(missing_ok=True)
 
@@ -134,7 +136,9 @@ def run_gitleaks_workdir(target_path: str) -> list[dict]:
             cmd.extend(["--config", GITLEAKS_CONFIG])
         try:
             with open(md_file, "rb") as src:
-                subprocess.run(cmd, stdin=src, capture_output=True)
+                result = subprocess.run(cmd, stdin=src, capture_output=True)
+                if result.returncode != 0:
+                    raise RuntimeError("gitleaks failed; scan is incomplete")
             content = read_text(Path(report_path))
             if content.strip():
                 file_findings = json.loads(content)
@@ -144,7 +148,7 @@ def run_gitleaks_workdir(target_path: str) -> list[dict]:
                     finding["File"] = str(md_file)
                 findings.extend(file_findings)
         except (json.JSONDecodeError, FileNotFoundError):
-            pass
+            raise RuntimeError("gitleaks unavailable or report invalid; scan is incomplete") from None
         finally:
             Path(report_path).unlink(missing_ok=True)
     return findings
@@ -381,7 +385,7 @@ def main():
                 rule = finding.get("RuleID", "unknown")
                 secret = finding.get("Secret", "")
                 line = finding.get("StartLine", "?")
-                redacted = redact_secret(secret)
+                redacted = redaction_placeholder(rule)
                 print(f"    Line {line}: [{rule}] {redacted}")
             print()
     else:

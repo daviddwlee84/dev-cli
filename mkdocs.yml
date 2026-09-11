@@ -60,6 +60,8 @@ plugins:
             Parallel Agents and Runtimes: 平行 Agent 與 Runtime
             Agent Configuration Interoperability: Agent 設定互通
             SSH Host Onboarding: SSH Host 設定與佈建
+            Repository Hygiene: Repository Hygiene
+            Manual Hygiene Dogfood: 人工 Hygiene Dogfood
             Feedback and Repair: Feedback 與修復
             Remote Repository Fleet: 遠端 Repository Fleet
             Agent-Safe Retirement: Agent 安全退場
@@ -142,6 +144,7 @@ nav:
       - Skills Management: guides/skills-management.md
       - SSH Host Onboarding: guides/ssh-hosts.md
       - Feedback and Repair: guides/feedback.md
+      - Repository Hygiene: guides/hygiene.md
       - Remote Repository Fleet: guides/remote-fleet.md
       - Dotfiles: guides/dotfiles.md
       - Agent-Safe Retirement: guides/agent-safe-retirement.md
@@ -163,6 +166,7 @@ nav:
   - Reference:
       - Commands and Configuration: reference/commands-config.md
       - Compatibility and Known Limitations: reference/compatibility.md
+      - Manual Hygiene Dogfood: reference/hygiene-dogfood.md
       - Sources and Freshness: reference/sources-freshness.md
   - Notes:
       - Notes Index: notes/index.md

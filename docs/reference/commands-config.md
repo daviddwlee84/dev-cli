@@ -886,3 +886,10 @@ expresses prior authorization for the exact content/target. `repair <id> --base
 <ref>` saves a guarded plan; `--apply --plan <id> --yes` prepares its isolated
 checkout/task. Optional `[feedback].source_repo` is an absolute or home-relative
 local dev-cli path. See [feedback and repair](../guides/feedback.md).
+
+## Repository hygiene
+
+`dev hygiene` provides staged/worktree/history scopes, per-repo block/warn/off
+policies, private local identity imports and reviewed text replacement/recovery on
+macOS, Linux and Windows. CI uses public rules only. See the
+[hygiene workflow](../guides/hygiene.md) for schema-v1 coverage and hook contracts.
