@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-## [0.2.26] - 2026-09-11
+## [0.2.27] - 2026-09-11
 
 ### Added
 
@@ -15,6 +15,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Agent-first feedback guidance and a verified `feedback-fix` prompt recipe;
   additional agents require explicit profiles and consent, while report preparation
   remains useful without GitHub access or a working dev configuration.
+
+## [0.2.26] - 2026-09-11
+
+### Added
 
 - Explicit `dev ssh diagnose` with bounded configuration, DNS, native macOS/Linux/Windows
   route, TCP/banner and fresh strict SSH stages; optional evidenced QoS comparison,
@@ -921,7 +925,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.26...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.27...HEAD
+[0.2.27]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.26...v0.2.27
 [0.2.26]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.25...v0.2.26
 [0.2.25]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.24...v0.2.25
 [0.2.24]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.23...v0.2.24

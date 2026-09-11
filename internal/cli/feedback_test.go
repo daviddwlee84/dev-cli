@@ -180,3 +180,11 @@ func TestFeedbackCLIRejectsTaskClaimAfterPreview(t *testing.T) {
 		t.Fatal("existing task was replaced", err)
 	}
 }
+
+func TestFeedbackPromptSkipsUnrelatedReleaseLookup(t *testing.T) {
+	root := newRootCommand(&App{})
+	cmd, _, err := root.Find([]string{"prompt", "render", "feedback-fix"})
+	if err != nil || !passiveCommandSkipsNudge(cmd) {
+		t.Fatal("feedback render can trigger an unrelated network lookup", err)
+	}
+}
