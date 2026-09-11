@@ -331,6 +331,58 @@ dev edit [flags]
 - `--editor` — editor command, overriding $VISUAL and $EDITOR
 - `--project` — edit .dev-cli/config.toml in the current repository
 
+### `dev feedback`
+
+Prepare a local report, publish reviewed feedback, or plan an isolated fix
+
+```
+dev feedback
+```
+
+### `dev feedback draft`
+
+Save a private local report and a sanitized public issue draft
+
+```
+dev feedback draft [flags]
+```
+
+- `--body-file` — Markdown reproduction/expected/actual body file; - reads stdin
+- `--diagnostic` — local schema-v1 ssh diagnose JSON to project into public evidence
+- `--json` — emit the saved report ID, paths and next commands
+- `--title` — short report title
+
+### `dev feedback issue`
+
+Preview, search for, or explicitly publish reviewed GitHub feedback
+
+```
+dev feedback issue <id> [flags]
+```
+
+- `--existing` — comment on this exact existing issue instead of creating a new issue
+- `--json` — emit one versioned preview or publication result
+- `--publish` — publish the reviewed issue or comment
+- `--repo` — explicit [host/]owner/name issue target
+- `--revision` — exact content/target revision from preview
+- `--search` — explicitly query related GitHub issues
+- `--yes` — confirm publication of the supplied revision without prompting
+
+### `dev feedback repair`
+
+Plan or prepare an isolated repair checkout without starting an agent
+
+```
+dev feedback repair <id> [flags]
+```
+
+- `--apply` — create only the checkout/task described by the saved plan
+- `--base` — explicit local base ref for the repair branch
+- `--json` — emit one versioned repair plan or result
+- `--plan` — exact saved repair plan ID to apply
+- `--repo` — exact local dev-cli source checkout
+- `--yes` — confirm the saved repair plan without prompting
+
 ### `dev fleet`
 
 Inspect and safely synchronize dev repositories across machines
@@ -1010,6 +1062,14 @@ Open an interactive foreground agent in the current terminal
 dev prompt open
 ```
 
+### `dev prompt open feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev prompt open feedback-fix <report-id>
+```
+
 ### `dev prompt open pr-triage`
 
 Prioritize pull requests you opened or were asked to review
@@ -1052,6 +1112,14 @@ Render a built-in prompt to stdout
 dev prompt render
 ```
 
+### `dev prompt render feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev prompt render feedback-fix <report-id>
+```
+
 ### `dev prompt render pr-triage`
 
 Prioritize pull requests you opened or were asked to review
@@ -1092,6 +1160,14 @@ Run a one-shot agent with a built-in prompt
 
 ```
 dev prompt run
+```
+
+### `dev prompt run feedback-fix`
+
+Render a verified feedback repair handoff; agent launch requires --agent
+
+```
+dev prompt run feedback-fix <report-id>
 ```
 
 ### `dev prompt run pr-triage`

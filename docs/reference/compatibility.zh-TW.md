@@ -377,7 +377,7 @@ REPOS cache 只提供顯示，Git／runtime／task authority 仍需新觀察與�
 ## 目前分頁的 Help 與精簡 skill 入口（v0.2.24）
 
 Dashboard Help 預設顯示目前分頁的 Keys，另外提供 Guide 與 Manual。
-View 範圍只影響 TUI 搜尋，Manual 搜尋全部 23 個內嵌 CLI 主題。
+View 範圍只影響 TUI 搜尋，Manual 搜尋全部 內嵌 CLI 主題。
 所選列說明固定在開啟 Help 時的快照，不會刷新資料，也不能授權操作。
 Help 不另行載入外部內容或探測。Dashboard、flow 與 triage 維持獨立介面。
 
@@ -404,3 +404,11 @@ Cobra `--help` 與 `--version` 同樣保持靜態。一般指令（包含
 `ssh_diagnosis` 是新的 schema-v1 本機報告；既有 probe／show／list JSON 不變。
 macOS、Linux、Windows 均提供原生路由 collector。不支援的 QoS marking 或無法
 比較的 proxy／bind 路徑保持明確的 unknown／unsupported 狀態。
+
+## Feedback 與修復契約
+
+Feedback 新增 schema-v1 draft、issue preview/result、repair plan/result JSON。
+報告與 issue receipts 是 durable private state；SSH 證據另有公開投影。
+寫入前檢查 issue target/content revision 與 repair plan；發布結果 unknown 必須
+先查核。`feedback-fix` 要求已驗證的 HOT task/checkout，啟動時必須明確指定 agent
+profile。既有 start 預設與 JSON 不變。

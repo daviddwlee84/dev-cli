@@ -65,6 +65,7 @@ cmd/dev/main.go
 - `note` stores multiple repository thoughts as durable Markdown keyed by catalog ID and maintains a rebuildable SQLite FTS index. It is distinct from task context and the catalog's single metadata summary.
 - `tui` owns Bubble Tea state/rendering only. `internal/cli/tui.go` injects callbacks to the same services used by non-interactive commands.
 - `stats` is durable SQLite data; `diskusage`, note FTS, and forge/gitignore data are regenerable caches. Do not treat stats as cache.
+- `feedback` owns durable private reports, sanitized public drafts, revision-bound issue/comment publication receipts and exact repair plans. CLI adapts its repair backend to the shared start flow; agent launch is explicit and prompt context never becomes a public issue body.
 - `forge` wraps optional `gh`, `glab`, and Azure CLI integrations and must degrade to local Git behavior when they are unavailable.
 - `sshhost` owns bounded static discovery of the active user OpenSSH Include closure, canonical files under `~/.ssh/dev.d`, public-key selection/generation/bootstrap, fresh authentication proofs, and the explicit handoff into dev fleet. OpenSSH and plain `ssh -G` remain semantic authority; ordinary setup/remove never rewrite foreign connection definitions, copy private keys, weaken host-key policy, or treat every alias as a fleet member. Explicit format/organize may transform selected user-owned configuration with private guarded recovery; Include restores its caller scope after each file.
 - `sshflow` owns the explicit SSH/fleet/Herdr machine inventory and Plan/Apply orchestration; `herdrremote` calls the native machine CLI without writing its catalog. `configedit` owns source-bound local file transactions and private recovery outside Git, with owner leases and macOS/Linux metadata checks.
@@ -106,7 +107,7 @@ State is split intentionally:
 
 ## Versioning and changelog
 
-The current published baseline is `v0.2.26` (2026-09-11). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
+The current published baseline is `v0.2.27` (2026-09-11). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
 
 - `Makefile` derives development builds with `git describe --tags --match 'v[0-9]*' --always --dirty` and injects `internal/cli.Version` through `-ldflags`. The `--match` filter is load-bearing: any other tag in the repository (a `backup/` or `rescue/` marker, say) must never become `--version`.
 - `go install ...@version` recovers the module version from Go build information.

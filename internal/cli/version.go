@@ -246,7 +246,7 @@ func passiveCommandSkipsNudge(cmd *cobra.Command) bool {
 	}
 	for cur := cmd; cur != nil; cur = cur.Parent() {
 		switch cur.Name() {
-		case "version", "upgrade", "completion", "doctor", "ssh", "triage",
+		case "version", "upgrade", "completion", "doctor", "ssh", "triage", "feedback", "feedback-fix",
 			cobra.ShellCompRequestCmd, cobra.ShellCompNoDescRequestCmd:
 			return true
 		}

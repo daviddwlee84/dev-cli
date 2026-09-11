@@ -71,7 +71,7 @@ press 選取 visible row；點目前反白列就開啟 actions，包含鍵盤或
 |---|---|
 | Keys | 本頁操作、通用導覽與已設定的工具，包含可用狀態及必要條件 |
 | Guide | 使用流程、欄位、顏色與符號；開啟 Help 時擷取的所選列唯讀快照 |
-| Manual | 全部 23 個內嵌 `dev help` 主題，相關主題優先，另有共用 workflow TL;DR |
+| Manual | 全部 內嵌 `dev help` 主題，相關主題優先，另有共用 workflow TL;DR |
 
 Keys 與 Guide 共用搜尋，先列快捷鍵、再列說明。預設只搜尋選定的 Help
 分頁；選 **All views** 才搜尋七頁。切換說明範圍不改變實際 dashboard

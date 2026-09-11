@@ -92,7 +92,12 @@ jobs:
       - name: Test fleet transport and managed config natively
         run: go test ./internal/fleet
       - name: Test SSH and fleet CLI contracts natively
-        run: go test ./internal/cli -run 'SSH|Fleet|Doctor'
+        run: go test ./internal/cli -run 'SSH|Fleet|Doctor|Feedback'
+
+      - name: Test private feedback and issue receipts natively
+        run: go test ./internal/feedback
+      - name: Test GitHub feedback adapter natively
+        run: go test ./internal/forge -run '^TestIssue'
 
       - name: Compile affected packages and tests for windows/arm64
         shell: pwsh
@@ -101,5 +106,6 @@ jobs:
           $env:GOARCH = "arm64"
           go test -c -o "$env:RUNNER_TEMP\sshhost-arm64.test.exe" ./internal/sshhost
           go test -c -o "$env:RUNNER_TEMP\fleet-arm64.test.exe" ./internal/fleet
+          go test -c -o "$env:RUNNER_TEMP\feedback-arm64.test.exe" ./internal/feedback
           go test -c -o "$env:RUNNER_TEMP\cli-arm64.test.exe" ./internal/cli
           go build -o "$env:RUNNER_TEMP\dev-arm64.exe" ./cmd/dev

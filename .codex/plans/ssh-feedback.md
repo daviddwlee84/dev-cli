@@ -24,3 +24,12 @@ Current limitations are recorded in implementation results, not silently treated
 as successful publication or platform support. Keep workspaces and branch history
 for recovery; preserve the original canonical checkout's active transcript and
 unrelated generated statistics.
+
+## Implementation handoff
+
+The three change streams have separate retained worktrees and commits. A stable
+public snapshot (private reasoning omitted) of planning session 01a08f36-adab-7183-ad3c-b58a05162903 accompanies the
+feature; its original canonical source remains untouched. Full hotfix race
+validation passed. Diagnostics and feedback have focused race, private-state,
+source/revision guard, docs, skill and cross-compilation checks. Release PRs use
+the existing CI gates; canonical active artifacts remain in place.
