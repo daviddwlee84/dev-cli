@@ -159,7 +159,7 @@ func (b feedbackStartBackend) ValidateBinding(ctx context.Context, binding feedb
 		return feedback.ErrStale
 	}
 	r, err := gitx.Discover(ctx, snapshot.Checkout)
-	if err != nil || r.Root != snapshot.Checkout || r.GitCommonDir != source.CommonDir {
+	if err != nil || !r.IsLinkedWorktree || !feedbackDirectoryMatches(r.Root, binding.CheckoutIdentity) || !feedbackDirectoryMatches(r.GitCommonDir, snapshot.CommonIdentity) {
 		return feedback.ErrStale
 	}
 	branch, err := gitx.Run(ctx, snapshot.Checkout, "symbolic-ref", "--quiet", "--short", "HEAD")
@@ -171,8 +171,19 @@ func (b feedbackStartBackend) ValidateBinding(ctx context.Context, binding feedb
 		return err
 	}
 	record, err := app.Tasks.Get(snapshot.TaskID)
-	if err != nil || record.Mode != task.ModeWorktree || record.State != task.Hot || record.Owner != config.Hostname() || record.RepoPath != snapshot.Source.Path || record.WorktreePath != snapshot.Checkout || record.Branch != snapshot.Branch {
+	if err != nil || record.Mode != task.ModeWorktree || record.State != task.Hot || record.Owner != config.Hostname() || !feedbackDirectoryMatches(record.RepoPath, snapshot.RootIdentity) || !feedbackDirectoryMatches(record.WorktreePath, binding.CheckoutIdentity) || record.Branch != snapshot.Branch {
 		return errors.New("repair task binding changed; inspect or resume the task explicitly")
 	}
 	return nil
+}
+
+// Git reports forward-slash paths on Windows, while native worktree and task
+// paths use platform separators. Compare the already-pinned filesystem identity,
+// not path spelling; reparse points and replacement directories still fail.
+func feedbackDirectoryMatches(path, expected string) bool {
+	if path == "" || expected == "" {
+		return false
+	}
+	identity, err := gitx.DirectoryIdentity(path)
+	return err == nil && identity == expected
 }

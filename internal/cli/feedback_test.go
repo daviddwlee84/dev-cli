@@ -11,6 +11,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/feedback"
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
@@ -186,5 +187,19 @@ func TestFeedbackPromptSkipsUnrelatedReleaseLookup(t *testing.T) {
 	cmd, _, err := root.Find([]string{"prompt", "render", "feedback-fix"})
 	if err != nil || !passiveCommandSkipsNudge(cmd) {
 		t.Fatal("feedback render can trigger an unrelated network lookup", err)
+	}
+}
+
+func TestFeedbackDirectoryBindingUsesNativeIdentity(t *testing.T) {
+	path := t.TempDir()
+	identity, err := gitx.DirectoryIdentity(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !feedbackDirectoryMatches(filepath.ToSlash(path), identity) {
+		t.Fatal("Git path spelling lost the native identity")
+	}
+	if feedbackDirectoryMatches(t.TempDir(), identity) {
+		t.Fatal("different directory accepted")
 	}
 }
