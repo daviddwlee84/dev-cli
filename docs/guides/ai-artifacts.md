@@ -2,6 +2,7 @@
 description: Choose where agent history belongs, preserve useful decisions and keep transcripts out of source distributions.
 authority: project
 status: evolving
+minimum_version: v0.2.33
 verified_on: 2026-09-12
 ---
 

@@ -3,6 +3,7 @@ description: 選擇 agent 歷史的保存位置、保留有效決策，並避免
 lang: zh-TW
 authority: project
 status: evolving
+minimum_version: v0.2.33
 verified_on: 2026-09-12
 ---
 

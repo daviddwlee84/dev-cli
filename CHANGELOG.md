@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.33] - 2026-09-12
+
 ### Added
 
 - Per-repository agent history policy with explicit SpecStory/file sources,
@@ -1072,7 +1074,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.32...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.33...HEAD
+[0.2.33]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.32...v0.2.33
 [0.2.32]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.31...v0.2.32
 [0.2.31]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.30...v0.2.31
 [0.2.30]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.29...v0.2.30

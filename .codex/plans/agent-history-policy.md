@@ -43,3 +43,11 @@ paired strict documentation and relevant CI. Keep partial results honest.
   focused domain/CLI and isolated filter/restore tests pass. Complete native
   review, full checks, docs/skill synchronization and frozen-copy dogfood remain
   required before landing the follow-up. Canonical live histories stay untouched.
+
+- Follow-up implementation committed as cb59425. Full local race suite passed;
+  later focused race checks cover updated archive/snapshot/lifecycle adapters.
+  E2E, vet, generated skill check and strict paired docs pass.
+- Frozen v0.2.32 dogfood: 60 histories / 427,925,000 bytes; a 70,527,168-byte
+  raw snapshot preserved and found in 33.18s; verified original bundle restore
+  plus both filtered projections in 196.22s. Source clone HEAD/index unchanged.
+  This is structural preservation with explicit off policy, not a secret audit.
