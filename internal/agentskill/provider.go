@@ -171,7 +171,7 @@ func interactiveProvider(projectRoot string) (provider, error) {
 }
 
 func (p provider) command(ctx context.Context, cwd string, args ...string) *exec.Cmd {
-	cmd := exec.CommandContext(ctx, p.bin, args...)
+	cmd := providerCommand(ctx, p.bin, args...)
 	cmd.Dir = cwd
 	return cmd
 }

@@ -54,3 +54,26 @@ func (m Model) openSkillManagement(action listAction, operation string) (tea.Mod
 	}
 	return m.runWorkflow(request)
 }
+
+func (m Model) openHygieneManagement(filtered bool) (tea.Model, tea.Cmd) {
+	request := WorkflowRequest{Action: "hygiene-manage", LocalGeneration: m.localGeneration, ShowAllTries: m.showAllTries}
+	rows := m.visibleRepos()
+	if !filtered {
+		row, ok := m.currentRepo()
+		if !ok {
+			return m, nil
+		}
+		rows = []RepoRow{row}
+	}
+	for _, row := range rows {
+		if row.Pending != "" {
+			m.status = "Wait for repository refresh before managing hygiene"
+			return m, nil
+		}
+		request.RepoRefs = append(request.RepoRefs, row.Repo.Path)
+	}
+	if len(request.RepoRefs) == 0 {
+		return m, nil
+	}
+	return m.runWorkflow(request)
+}

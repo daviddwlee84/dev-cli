@@ -120,7 +120,7 @@ State is split intentionally:
 
 ## Versioning and changelog
 
-The current published baseline is `v0.2.30` (2026-09-12). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
+The current published baseline is `v0.2.31` (2026-09-12). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
 
 - `Makefile` derives development builds with `git describe --tags --match 'v[0-9]*' --always --dirty` and injects `internal/cli.Version` through `-ldflags`. The `--match` filter is load-bearing: any other tag in the repository (a `backup/` or `rescue/` marker, say) must never become `--version`.
 - `go install ...@version` recovers the module version from Go build information.
@@ -166,3 +166,14 @@ Stable release tags only are accepted by the current workflow; prerelease tags a
 `make skill-check` proves only that generated command syntax matches the Cobra tree. It cannot detect drift in lifecycle semantics, JSON schemas, safety claims, examples, README, embedded help, or authored skill references; review those manually. Because the skill is compiled with `go:embed`, rebuild after any skill edit before testing the bundled output.
 
 English and zh-TW MkDocs pages are maintained as a pair. Run the strict documentation checks above after changing either locale, navigation, snippets, or freshness metadata.
+
+## Hygiene and skill batch operations
+
+`internal/hygiene` owns per-repository setup plans and batch ledgers. REPOS and
+`hygiene manage` are adapters; JSON batch management previews only. Keep legacy
+artifact finalizers until their independent lifecycle is replaced. Cached machine
+privacy imports use only bounded local cache readers and revalidate their source.
+`internal/agentskill` owns selected-removal policy: exact native names/agent scopes
+or bundled manifests, source/ownership/dependency proof and postconditions under
+the provider lease. Never infer complete Windows validation from an advisory
+step's success conclusion; inspect logs and require the dedicated native gates.

@@ -39,3 +39,20 @@ Dogfood applies only to dev-cli first; other repositories receive previews.
 Ongoing canonical SpecStory files remain untouched until their exact writer exits.
 Published-history rewriting and wholesale legacy-finalizer replacement are not
 part of this rollout. All work is performed by the current agent.
+
+## Implementation checkpoint
+
+PR #22 was merged and released as v0.2.30. The SSH task's remote-tracking base
+was normalized to the identical local main under repository/task revision locks
+before retirement; w12 and its linked checkout were retired, branch retained.
+Canonical active transcripts were not edited.
+
+The follow-up implements offline cache candidates, precise password literals,
+reviewed batch setup and selected skill removal. Tests use synthetic credentials
+and isolated provider executables. Windows required gates are distinct from
+the broad advisory suite, whose success conclusion can hide failures.
+
+Remaining migration boundary: agent-history-hygiene finalization/provenance
+still owns its scripts; removing that skill remains blocked. Historical raw
+transcript cleanup stays a manual post-writer task. First real setup dogfood is
+dev-cli only; other repositories receive previews.

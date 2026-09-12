@@ -76,3 +76,20 @@ func TestHygieneCLIStatusAndMissingEngineDoNotClaimClean(t *testing.T) {
 		t.Fatalf("wrong initial status: %+v", status)
 	}
 }
+
+func TestHygieneManageJSONPreviewsWithoutRepositoryMutation(t *testing.T) {
+	h := newHarness(t)
+	out := h.mustRun("hygiene", "manage", h.repo.Root, "--json")
+	var batch hygiene.SetupBatch
+	if err := json.Unmarshal([]byte(out), &batch); err != nil {
+		t.Fatal(err)
+	}
+	if batch.Kind != "hygiene_setup_batch" || len(batch.Entries) != 1 {
+		t.Fatal(out)
+	}
+	for _, rel := range []string{".pre-commit-config.yaml", ".gitleaks.toml", ".dev-cli/hygiene.toml"} {
+		if _, err := os.Stat(filepath.Join(h.repo.Root, filepath.FromSlash(rel))); !os.IsNotExist(err) {
+			t.Fatalf("preview wrote %s", rel)
+		}
+	}
+}

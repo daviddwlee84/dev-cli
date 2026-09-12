@@ -2,7 +2,7 @@
 description: Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
-verified_on: 2026-09-11
+verified_on: 2026-09-12
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 ---
 
@@ -507,3 +507,12 @@ explicit discovery source/scope, and `p` probes a selected alias with a fresh
 ordinary login. `Ctrl+O` exposes connection and machine-mapping actions. Discovery
 and provider registration remain explicit; opening a machine row does not enroll
 it or register it in fleet/Herdr. See `dev help ssh` for trust and identity limits.
+
+## Batch hygiene and skill removal
+
+REPOS → Ctrl+O offers hygiene setup for the current or filtered repositories.
+Choose repositories and prepared plans, inspect retained hooks, then confirm.
+This configures ordinary commits, without installing an agent skill.
+SKILLS → Ctrl+O → remove skills in this scope opens the shared management wizard with
+skill and agent multi-selection. Ownership, shared consumers and finalizer
+references remain visible blockers; unrelated source repositories are retained.

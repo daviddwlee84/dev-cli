@@ -42,7 +42,7 @@ func (h *hygieneCLI) service(ctx context.Context) (*hygiene.Service, error) {
 		root = mustGetwd()
 	}
 	root = config.Expand(root)
-	return hygiene.Open(ctx, hygiene.Options{Root: root, StateDir: h.app.Cfg.StateDir(), GlobalPolicy: filepath.Join(config.ConfigHome(), "dev", "hygiene.toml"), Override: hygiene.Policy{Secrets: hygiene.Mode(h.secrets), Known: hygiene.Mode(h.known), Generic: hygiene.Mode(h.generic)}, PublicOnly: h.publicOnly})
+	return hygiene.Open(ctx, hygiene.Options{Root: root, CacheDir: sshDiscoveryCacheDir(), StateDir: h.app.Cfg.StateDir(), GlobalPolicy: filepath.Join(config.ConfigHome(), "dev", "hygiene.toml"), Override: hygiene.Policy{Secrets: hygiene.Mode(h.secrets), Known: hygiene.Mode(h.known), Generic: hygiene.Mode(h.generic)}, PublicOnly: h.publicOnly})
 }
 func (h *hygieneCLI) base(ctx context.Context) (*hygiene.Service, error) {
 	copy := *h
@@ -62,7 +62,7 @@ func (h *hygieneCLI) output(value any, err error) error {
 		if e = json.Unmarshal(data, &safe); e != nil {
 			return e
 		}
-		textFields := map[string]bool{"file": true, "rule": true, "reason": true, "replacement": true, "source": true, "visibility_source": true, "paths": true, "completed": true, "id": true}
+		textFields := map[string]bool{"detail": true, "notices": true, "file": true, "rule": true, "reason": true, "replacement": true, "source": true, "visibility_source": true, "paths": true, "completed": true, "id": true}
 		var scrub func(any, string) any
 		scrub = func(v any, key string) any {
 			switch x := v.(type) {
@@ -107,6 +107,9 @@ func (h *hygieneCLI) output(value any, err error) error {
 			}
 			for _, f := range v.Files {
 				fmt.Fprintf(h.app.Out, "  %s · %d replacements · %s → %s\n", feedback.Sanitize(f.File), f.Replacements, f.BeforeDigest, f.AfterDigest)
+			}
+			for _, notice := range v.Notices {
+				fmt.Fprintln(h.app.Out, feedback.Sanitize(notice))
 			}
 			if v.HookAction != "" {
 				fmt.Fprintf(h.app.Out, "Hook: %s\n", v.HookAction)
@@ -236,7 +239,7 @@ func newHygieneCmd(app *App) *cobra.Command {
 	scan.Flags().DurationVar(&timeout, "timeout", 20*time.Minute, "maximum scan duration; incomplete scans fail")
 	scan.Flags().StringArrayVar(&scanFiles, "file", nil, "select an in-scope relative file (repeatable; not history)")
 	scan.Flags().BoolVar(&audit, "audit", false, "include findings suppressed by local exceptions, gitleaksignore and inline pragmas")
-	var setupApply, setupYes, migrate bool
+	var setupApply, setupYes, migrate, migrateHooks bool
 	var setupPlan string
 	setup := &cobra.Command{Use: "setup", Short: "Preview or apply repository hygiene configuration and hook integration", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
 		s, e := h.base(c.Context())
@@ -246,13 +249,14 @@ func newHygieneCmd(app *App) *cobra.Command {
 		if setupApply {
 			return h.apply(c.Context(), s, setupPlan, setupYes, false, "hygiene_setup")
 		}
-		p, e := s.PreviewSetup(c.Context(), migrate)
+		p, e := s.PreviewSetupOptions(c.Context(), hygiene.SetupOptions{ReplaceRules: migrate, MigrateHooks: migrateHooks, UpdateRules: migrateHooks})
 		return h.output(p, e)
 	}}
 	setup.Flags().BoolVar(&setupApply, "apply", false, "apply the exact saved setup plan")
 	setup.Flags().StringVar(&setupPlan, "plan", "", "reviewed plan ID")
 	setup.Flags().BoolVarP(&setupYes, "yes", "y", false, "confirm the reviewed plan")
 	setup.Flags().BoolVar(&migrate, "migrate-rules", false, "preview replacement of existing gitleaks config with bundled safe rules")
+	setup.Flags().BoolVar(&migrateHooks, "migrate-hooks", false, "preview migration of known equivalent scanner hooks and rule updates; retain finalizers and custom settings")
 	var report, redactPlan string
 	var files, findings []string
 	var redactApply, redactYes, writerStopped bool
@@ -312,7 +316,7 @@ func newHygieneCmd(app *App) *cobra.Command {
 		fmt.Fprintln(h.app.Out, path)
 		return nil
 	}}
-	cmd.AddCommand(status, scan, setup, redact, restore, review, h.rulesCmd())
+	cmd.AddCommand(status, scan, setup, redact, restore, review, h.rulesCmd(), newHygieneManageCmd(h))
 	return cmd
 }
 func (h *hygieneCLI) rulesCmd() *cobra.Command {
@@ -331,7 +335,7 @@ func (h *hygieneCLI) rulesCmd() *cobra.Command {
 		p, e := s.PreviewImport(c.Context(), from, selected)
 		return h.output(p, e)
 	}}
-	imp.Flags().StringVar(&from, "from", "ssh", "static source: ssh or local")
+	imp.Flags().StringVar(&from, "from", "ssh", "static source: ssh, local or machines")
 	imp.Flags().StringArrayVar(&selected, "select", nil, "candidate ID to import (repeatable)")
 	var ruleID, kind, valueFile, replacement, action string
 	var paths []string

@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-11
+verified_on: 2026-09-12
 tested_with: Claude Code 2.1.259
 ---
 
@@ -591,3 +591,18 @@ opaque route import, cycles and unsupported selected-key flows stay rejected.
 policies, private local identity imports and reviewed text replacement/recovery on
 macOS, Linux and Windows. CI uses public rules only. See the
 [hygiene workflow](../guides/hygiene.md) for schema-v1 coverage and hook contracts.
+
+## Hygiene rollout and selected skill removal
+
+Repository hygiene is a developer commit procedure and needs no installed agent
+skill. Batch migration retains specialized legacy finalizers and custom settings;
+it does not yet replace the full agent-history-hygiene lifecycle. Gitleaks 8.30+
+compatible 8.x is required by setup/scan. Cached machine imports never query
+remote hosts or credential providers.
+
+Skill removal requires verified native ownership or a bundled install manifest,
+explicit agent scopes and dependency checks. Windows npm-shim removal uses system
+PowerShell and bounded process-tree cancellation; unsupported shell syntax or
+other shim mutation actions fail closed. The dedicated native removal tests are
+required; broad advisory Windows test conclusions are not proof that every
+legacy suite passed.

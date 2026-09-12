@@ -23,13 +23,56 @@ was scanned. Hooks can be bypassed by raw Git or external tools.
 Setup adds the blocking `dev-hygiene` pre-commit hook, safe gitleaks rules and
 `.dev-cli/hygiene.toml`. It preserves other hooks and YAML comments. Unknown
 hook chains and conflicting same-name hooks require manual integration. An
-existing gitleaks config is retained unless `--migrate-rules` was included in
-the reviewed setup plan. Review that replacement against custom rules first.
+existing gitleaks config is retained by default. `--migrate-hooks` permits narrow
+recognized rule migration; `--migrate-rules` proposes whole-config replacement.
+Review either change against custom rules first.
 `dev repo setup --enable agent-history-hygiene` uses this same service.
 
 The hook checks index content. It never rewrites files or stages user changes.
 A missing dev/gitleaks executable, invalid report or failed scan blocks it.
 The hook runner must find a dev version that supports `hygiene` on PATH.
+
+## Batch setup and gradual migration
+
+The normal commit path is `Git -> pre-commit -> dev hygiene scan -> gitleaks +
+private/public privacy policy`. Setup is a separate configuration operation;
+commits do not call setup again and do not require an agent.
+
+```bash
+dev hygiene manage --all                 # choose repositories, preview, then apply
+dev hygiene manage /path/to/a /path/to/b --json  # preview only
+dev hygiene setup --migrate-hooks --json # one repository, narrow migration
+```
+
+REPOS offers the same single/filtered-repository workflow. Repositories do not
+need a skills lock. Plans show files, retained dependencies and blockers; choose
+which prepared plans to apply. Shared Git repositories are processed once. A new
+common-directory hook requires readable sibling worktree configurations, checked
+again before installation. Unknown/custom scanner commands need manual review.
+
+Migration replaces only recognized equivalent `gitleaks-system` hooks. It keeps
+specialized artifact checkers, finalizers, provenance and unrelated hooks. The
+recognized old password expression can be updated without replacing custom rules
+or comments; scoped/custom expressions stay unchanged. `--migrate-rules` remains
+the separate explicit whole-config replacement. Re-scan after rule updates;
+changed detector IDs can require fresh fixture exceptions.
+
+Setup and scanning require gitleaks 8.30.0 or newer compatible 8.x; CI pins 8.30.1.
+Passive status checks presence without executing the scanner. Ensure the hook's
+PATH resolves a dev version with hygiene support: running `./dev` alone does not
+upgrade an older `dev` on PATH. Tools are not installed automatically.
+
+Batch results retain per-repository completed, blocked, skipped, stale, partial
+or unverified states and a private receipt. Completed setup is idempotent. An
+interruption does not roll back other repositories or authorize a blind retry.
+The JSON batch preview contains exact child plan IDs; apply one with the existing
+`hygiene setup --repo PATH --apply --plan ID --yes` interface.
+
+The staged checker itself does not mutate files. Pre-commit can temporarily stash
+unstaged work, so wait for an artifact recorder to exit before committing its
+checkout. This migration does not replace the entire agent-history-hygiene
+lifecycle: `dev artifact finalize` still requires that skill's scripts. Keep those
+installations and any active finalizer wiring until a separate replacement exists.
 
 ## Choose policy
 
@@ -79,6 +122,20 @@ references. It never executes `ssh -G`, `Match exec`, DNS or a remote command,
 and never reads key material. An incomplete Include closure blocks import.
 Common public names and generic accounts are recommendations for warnings.
 Local import supplies home path, account, Git name and Git email candidates.
+
+`rules import --from machines` reads existing Tailscale/LAN and Fleet inventory
+caches only. IPs, hostnames and remote usernames become selectable private
+candidates; credential stores, keys, discovery commands and remote connections
+are never queried. Observation timestamps and stale markers remain visible.
+Missing caches are reported without creating them; incomplete/corrupt caches
+block imports. Source changes after preview invalidate the saved import plan.
+
+Quoted password literals remain detectable in source files. Unquoted assignments
+are scoped to configuration/script/prose formats, avoiding Go boolean fields and
+variable expressions. Format-complete test/demo keys still block until a reviewed
+exact exception is added. Do not exclude tests/docs or an entire line beside a
+placeholder; prefer inert placeholders or construct detector fixtures at runtime.
+
 
 Literal, CIDR and Go RE2 rules accept optional relative path globs. `directory/**`
 selects descendants. Rule values come from a file or `--value-file -`; do not
@@ -181,4 +238,4 @@ writers; a disabled/unavailable runtime cannot prove process absence. The
 post-writer attestation and source revalidation remain necessary, and raw external
 writers remain outside dev-mediated locks.
 
-Use the [manual dogfood checklist](https://daviddwlee84.github.io/dev-cli/reference/hygiene-dogfood/) for this repo.
+Use the [manual dogfood checklist](../reference/hygiene-dogfood.md) for this repo.

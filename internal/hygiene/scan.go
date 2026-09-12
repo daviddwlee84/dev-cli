@@ -50,12 +50,40 @@ func runGitBytes(ctx context.Context, root string, input []byte, isolated bool, 
 		cmd.Env = isolatedGitEnvironment()
 	}
 	cmd.Stdin = bytes.NewReader(input)
-	cmd.Stderr = &bytes.Buffer{}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, errors.New("Git observation failed")
+		command := "read"
+		if len(args) > 0 {
+			switch args[0] {
+			case "hash-object", "update-index", "ls-files", "diff", "cat-file", "show", "ls-tree", "rev-list", "rev-parse", "symbolic-ref", "for-each-ref", "config":
+				command = args[0]
+			}
+		}
+		return nil, fmt.Errorf("Git observation failed (%s: %s)", command, gitFailureReason(stderr.String()))
 	}
 	return out, nil
+}
+
+// Emit only fixed classifications. Git diagnostics can contain private paths,
+// source values or input fragments and must never be forwarded to public output.
+func gitFailureReason(stderr string) string {
+	text := strings.ToLower(stderr)
+	switch {
+	case strings.Contains(text, "filename too long") || strings.Contains(text, "file name too long"):
+		return "path length"
+	case strings.Contains(text, "dubious ownership") || strings.Contains(text, "not owned"):
+		return "ownership"
+	case strings.Contains(text, "permission denied") || strings.Contains(text, "access is denied"):
+		return "permissions"
+	case strings.Contains(text, "index.lock"):
+		return "index lock"
+	case strings.Contains(text, "not a git repository") || strings.Contains(text, "cannot change to") || strings.Contains(text, "no such file"):
+		return "repository path unavailable"
+	default:
+		return "command failed"
+	}
 }
 func validRelative(p string) bool {
 	return p != "" && p != "." && !filepath.IsAbs(p) && filepath.ToSlash(filepath.Clean(p)) == p && !strings.HasPrefix(p, "../") && !strings.Contains(p, "\x00") && p != ".git" && !strings.HasPrefix(p, ".git/")
@@ -98,7 +126,14 @@ func (s *Service) Scan(ctx context.Context, o ScanOptions) (Report, error) {
 		}
 		b.compiled = append(b.compiled, c)
 	}
-	privateDir := filepath.Join(s.Dir, "scan-"+newID())
+	// Keep native Git's temporary path short: nesting it below the repository's
+	// 64-character identity and record ID can exceed Windows Git path limits.
+	// This sibling remains inside the already validated private state hierarchy.
+	scanRoot := filepath.Join(filepath.Dir(filepath.Dir(s.Dir)), "scans")
+	if err := privatefile.EnsureDir(scanRoot); err != nil {
+		return b.record.Report, err
+	}
+	privateDir := filepath.Join(scanRoot, newID())
 	if err := privatefile.MakeDir(privateDir); err != nil {
 		return b.record.Report, err
 	}

@@ -2,14 +2,20 @@ package hygiene
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 )
 
 func TestMain(m *testing.M) {
 	if os.Getenv("DEV_HYGIENE_SCANNER_TEST_HELPER") == "malformed" {
+		if len(os.Args) == 2 && os.Args[1] == "version" {
+			fmt.Println("8.30.0")
+			os.Exit(0)
+		}
 		for i, arg := range os.Args {
 			if arg == "--report-path" && i+1 < len(os.Args) {
 				_ = os.WriteFile(os.Args[i+1], []byte("not-json"), 0o600)
@@ -61,5 +67,69 @@ func TestPrivateReviewImageIsBoundToPlan(t *testing.T) {
 	}
 	if _, e = s.Apply(t.Context(), plan.ID, ApplyOptions{}); e == nil {
 		t.Fatal("changed review accepted")
+	}
+}
+
+func TestScannerVersionRequiresScopedAllowlistSupport(t *testing.T) {
+	for version, want := range map[string]bool{"8.30.0": true, "v8.30.1": true, "8.31.0": true, "8.22.1": false, "9.0.0": false, "8.30.0-dev": false, "unknown": false} {
+		if supportedScannerVersion(version) != want {
+			t.Errorf("unexpected compatibility for %q", version)
+		}
+	}
+}
+
+func TestScannerBuildVersionSupportsPinnedGoInstallOnly(t *testing.T) {
+	info := &debug.BuildInfo{Main: debug.Module{Path: "github.com/zricethezav/gitleaks/v8", Version: "v8.30.1"}}
+	if !supportedScannerBuild(info) {
+		t.Fatal("pinned module rejected")
+	}
+	info.Main.Version = "v8.22.1"
+	if supportedScannerBuild(info) {
+		t.Fatal("old module accepted")
+	}
+	info.Main.Version = "(devel)"
+	if supportedScannerBuild(info) {
+		t.Fatal("unknown module accepted")
+	}
+	info.Main.Version = "v8.30.1"
+	info.Main.Replace = &debug.Module{Path: "local"}
+	if supportedScannerBuild(info) {
+		t.Fatal("replaced module accepted")
+	}
+	info.Main.Replace = nil
+	info.Main.Path = "unrelated/scanner"
+	if supportedScannerBuild(info) {
+		t.Fatal("unrelated module accepted")
+	}
+}
+
+func TestGitFailureClassificationNeverIncludesInput(t *testing.T) {
+	for input, want := range map[string]string{"fatal: private-canary: Filename too long": "path length", "fatal: dubious ownership at private-canary": "ownership", "fatal: private-canary permission denied": "permissions", "unknown private-canary": "command failed"} {
+		if got := gitFailureReason(input); got != want || strings.Contains(got, "private-canary") {
+			t.Fatal("unsafe Git diagnostic")
+		}
+	}
+}
+
+func TestScannerTemporaryDirectoryIsPrivateShortAndRemoved(t *testing.T) {
+	s, r := testService(t)
+	put(t, r.Root, "input.txt", "plain text\n")
+	s.Policy.Secrets = Block
+	var temporary string
+	s.Engine = engineFunc(func(_ context.Context, q EngineRequest) ([]Detection, error) {
+		temporary = q.PrivateDir
+		return nil, nil
+	})
+	if _, err := s.Scan(t.Context(), ScanOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if temporary == "" || filepath.Dir(temporary) != filepath.Join(filepath.Dir(filepath.Dir(s.Dir)), "scans") {
+		t.Fatal("unexpected scanner directory")
+	}
+	if len(temporary) >= len(filepath.Join(s.Dir, "scan-00000000-0000-0000-0000-000000000000")) {
+		t.Fatal("scanner path was not shortened")
+	}
+	if _, err := os.Stat(temporary); !os.IsNotExist(err) {
+		t.Fatal("private scanner data remains")
 	}
 }

@@ -33,6 +33,7 @@ type Plan struct {
 	Files                 []FileChange `json:"files"`
 	RequiresWriterStopped bool         `json:"requires_writer_stopped"`
 	HookAction            string       `json:"hook_action,omitempty"`
+	Notices               []string     `json:"notices,omitempty"`
 	Policy                *Policy      `json:"policy,omitempty"`
 	Completed             []string     `json:"completed,omitempty"`
 	Recovery              []string     `json:"recovery,omitempty"`
@@ -49,6 +50,8 @@ type planRecord struct {
 	Root, RepoID, RepoToken, PolicyDigest string
 	Changes                               []change
 	HooksToken                            string
+	SharedHookToken                       string
+	ImportSource, ImportDigest            string
 	RecoveryID                            string
 	ScannerDigest                         string
 	Audit                                 bool
@@ -314,6 +317,15 @@ func (s *Service) Apply(ctx context.Context, id string, o ApplyOptions) (Plan, e
 			if err := s.checkInputs(ctx); err != nil {
 				return err
 			}
+			if err := s.checkSharedHook(ctx, p.SharedHookToken); err != nil {
+				return err
+			}
+			if p.ImportSource != "" {
+				current, err := s.candidates(ctx, p.ImportSource)
+				if err != nil || !current.Complete || current.fingerprint != p.ImportDigest {
+					return ErrStale
+				}
+			}
 			if p.ScannerDigest != "" {
 				cfg, ig, e := s.scannerInputs(ctx, p.Audit)
 				if e != nil || scannerDigest(cfg, ig) != p.ScannerDigest {
@@ -390,6 +402,9 @@ func (s *Service) Apply(ctx context.Context, id string, o ApplyOptions) (Plan, e
 				}
 			}
 			if p.Plan.HookAction == "install-local" {
+				if err = s.checkSharedHook(ctx, p.SharedHookToken); err != nil {
+					return err
+				}
 				if err = installHook(ctx, s.Root); err != nil {
 					p.Plan.Status = "partial"
 					_ = s.save(context.Background(), id, p)
@@ -469,10 +484,14 @@ func Settle(ctx context.Context) error {
 func (s *Service) planRevision(p planRecord) string {
 	b, _ := json.Marshal(struct {
 		ID, Kind, Root, RepoID, RepoToken, PolicyDigest, HookAction, HooksToken, ScannerDigest, ReviewFile, ReviewDigest string
+		ImportSource                                                                                                     string   `json:",omitempty"`
+		ImportDigest                                                                                                     string   `json:",omitempty"`
+		Notices                                                                                                          []string `json:",omitempty"`
+		SharedHookToken                                                                                                  string   `json:",omitempty"`
 		Writer, Audit                                                                                                    bool
 		Files                                                                                                            []FileChange
 		Changes                                                                                                          []change
-	}{p.Plan.ID, p.Plan.Kind, p.Root, p.RepoID, p.RepoToken, p.PolicyDigest, p.Plan.HookAction, p.HooksToken, p.ScannerDigest, p.Plan.ReviewFile, p.ReviewDigest, p.Plan.RequiresWriterStopped, p.Audit, p.Plan.Files, p.Changes})
+	}{p.Plan.ID, p.Plan.Kind, p.Root, p.RepoID, p.RepoToken, p.PolicyDigest, p.Plan.HookAction, p.HooksToken, p.ScannerDigest, p.Plan.ReviewFile, p.ReviewDigest, p.ImportSource, p.ImportDigest, p.Plan.Notices, p.SharedHookToken, p.Plan.RequiresWriterStopped, p.Audit, p.Plan.Files, p.Changes})
 	return keyedID(s.key, string(b))
 }
 func (s *Service) savePlan(ctx context.Context, p *planRecord) error {

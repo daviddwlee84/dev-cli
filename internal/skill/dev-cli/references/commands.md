@@ -694,6 +694,16 @@ Inspect hooks, scan secrets and privacy, and apply reviewed text changes
 dev hygiene
 ```
 
+### `dev hygiene manage`
+
+Preview and set up hygiene across selected repositories
+
+```
+dev hygiene manage [repo...] [flags]
+```
+
+- `--all` — choose from configured repositories, including those without skills locks
+
 ### `dev hygiene redact`
 
 Preview selected text replacements or apply a saved plan
@@ -785,7 +795,7 @@ Preview local identity candidates or plan selected private rules
 dev hygiene rules import [flags]
 ```
 
-- `--from` — static source: ssh or local
+- `--from` — static source: ssh, local or machines
 - `--select` — candidate ID to import (repeatable)
 
 ### `dev hygiene rules policy`
@@ -819,6 +829,7 @@ dev hygiene setup [flags]
 ```
 
 - `--apply` — apply the exact saved setup plan
+- `--migrate-hooks` — preview migration of known equivalent scanner hooks and rule updates; retain finalizers and custom settings
 - `--migrate-rules` — preview replacement of existing gitleaks config with bundled safe rules
 - `--plan` — reviewed plan ID
 - `-y, --yes` — confirm the reviewed plan
@@ -1721,7 +1732,7 @@ dev skill list [flags]
 
 ### `dev skill manage`
 
-Check, update or restore skills with a scoped wizard
+Check, update, remove or restore skills with a scoped wizard
 
 ```
 dev skill manage [flags]

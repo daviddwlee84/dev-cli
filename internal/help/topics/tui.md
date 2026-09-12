@@ -525,3 +525,10 @@ explicit discovery source/scope, and `p` probes a selected alias with a fresh
 ordinary login. `Ctrl+O` exposes connection and machine-mapping actions. Discovery
 and provider registration remain explicit; opening a machine row does not enroll
 it or register it in fleet/Herdr. See `dev help ssh` for trust and identity limits.
+
+## Repository protection and skill removal
+
+REPOS offers hygiene setup for the current or filtered repository pool. The
+shared wizard previews and applies normal commit checks; it installs no agent
+skill. SKILLS offers selected removal with explicit agent scopes, ownership and
+dependency checks. Use `dev hygiene manage` or `dev skill manage` outside the TUI.

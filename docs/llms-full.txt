@@ -2987,13 +2987,56 @@ was scanned. Hooks can be bypassed by raw Git or external tools.
 Setup adds the blocking `dev-hygiene` pre-commit hook, safe gitleaks rules and
 `.dev-cli/hygiene.toml`. It preserves other hooks and YAML comments. Unknown
 hook chains and conflicting same-name hooks require manual integration. An
-existing gitleaks config is retained unless `--migrate-rules` was included in
-the reviewed setup plan. Review that replacement against custom rules first.
+existing gitleaks config is retained by default. `--migrate-hooks` permits narrow
+recognized rule migration; `--migrate-rules` proposes whole-config replacement.
+Review either change against custom rules first.
 `dev repo setup --enable agent-history-hygiene` uses this same service.
 
 The hook checks index content. It never rewrites files or stages user changes.
 A missing dev/gitleaks executable, invalid report or failed scan blocks it.
 The hook runner must find a dev version that supports `hygiene` on PATH.
+
+## Batch setup and gradual migration
+
+The normal commit path is `Git -> pre-commit -> dev hygiene scan -> gitleaks +
+private/public privacy policy`. Setup is a separate configuration operation;
+commits do not call setup again and do not require an agent.
+
+```bash
+dev hygiene manage --all                 # choose repositories, preview, then apply
+dev hygiene manage /path/to/a /path/to/b --json  # preview only
+dev hygiene setup --migrate-hooks --json # one repository, narrow migration
+```
+
+REPOS offers the same single/filtered-repository workflow. Repositories do not
+need a skills lock. Plans show files, retained dependencies and blockers; choose
+which prepared plans to apply. Shared Git repositories are processed once. A new
+common-directory hook requires readable sibling worktree configurations, checked
+again before installation. Unknown/custom scanner commands need manual review.
+
+Migration replaces only recognized equivalent `gitleaks-system` hooks. It keeps
+specialized artifact checkers, finalizers, provenance and unrelated hooks. The
+recognized old password expression can be updated without replacing custom rules
+or comments; scoped/custom expressions stay unchanged. `--migrate-rules` remains
+the separate explicit whole-config replacement. Re-scan after rule updates;
+changed detector IDs can require fresh fixture exceptions.
+
+Setup and scanning require gitleaks 8.30.0 or newer compatible 8.x; CI pins 8.30.1.
+Passive status checks presence without executing the scanner. Ensure the hook's
+PATH resolves a dev version with hygiene support: running `./dev` alone does not
+upgrade an older `dev` on PATH. Tools are not installed automatically.
+
+Batch results retain per-repository completed, blocked, skipped, stale, partial
+or unverified states and a private receipt. Completed setup is idempotent. An
+interruption does not roll back other repositories or authorize a blind retry.
+The JSON batch preview contains exact child plan IDs; apply one with the existing
+`hygiene setup --repo PATH --apply --plan ID --yes` interface.
+
+The staged checker itself does not mutate files. Pre-commit can temporarily stash
+unstaged work, so wait for an artifact recorder to exit before committing its
+checkout. This migration does not replace the entire agent-history-hygiene
+lifecycle: `dev artifact finalize` still requires that skill's scripts. Keep those
+installations and any active finalizer wiring until a separate replacement exists.
 
 ## Choose policy
 
@@ -3043,6 +3086,20 @@ references. It never executes `ssh -G`, `Match exec`, DNS or a remote command,
 and never reads key material. An incomplete Include closure blocks import.
 Common public names and generic accounts are recommendations for warnings.
 Local import supplies home path, account, Git name and Git email candidates.
+
+`rules import --from machines` reads existing Tailscale/LAN and Fleet inventory
+caches only. IPs, hostnames and remote usernames become selectable private
+candidates; credential stores, keys, discovery commands and remote connections
+are never queried. Observation timestamps and stale markers remain visible.
+Missing caches are reported without creating them; incomplete/corrupt caches
+block imports. Source changes after preview invalidate the saved import plan.
+
+Quoted password literals remain detectable in source files. Unquoted assignments
+are scoped to configuration/script/prose formats, avoiding Go boolean fields and
+variable expressions. Format-complete test/demo keys still block until a reviewed
+exact exception is added. Do not exclude tests/docs or an entire line beside a
+placeholder; prefer inert placeholders or construct detector fixtures at runtime.
+
 
 Literal, CIDR and Go RE2 rules accept optional relative path globs. `directory/**`
 selects descendants. Rule values come from a file or `--value-file -`; do not
@@ -4984,6 +5041,15 @@ explicit discovery source/scope, and `p` probes a selected alias with a fresh
 ordinary login. `Ctrl+O` exposes connection and machine-mapping actions. Discovery
 and provider registration remain explicit; opening a machine row does not enroll
 it or register it in fleet/Herdr. See `dev help ssh` for trust and identity limits.
+
+## Batch hygiene and skill removal
+
+REPOS → Ctrl+O offers hygiene setup for the current or filtered repositories.
+Choose repositories and prepared plans, inspect retained hooks, then confirm.
+This configures ordinary commits, without installing an agent skill.
+SKILLS → Ctrl+O → remove skills in this scope opens the shared management wizard with
+skill and agent multi-selection. Ownership, shared consumers and finalizer
+references remain visible blockers; unrelated source repositories are retained.
 
 ---
 
@@ -7483,6 +7549,16 @@ Inspect hooks, scan secrets and privacy, and apply reviewed text changes
 dev hygiene
 ```
 
+### `dev hygiene manage`
+
+Preview and set up hygiene across selected repositories
+
+```
+dev hygiene manage [repo...] [flags]
+```
+
+- `--all` — choose from configured repositories, including those without skills locks
+
 ### `dev hygiene redact`
 
 Preview selected text replacements or apply a saved plan
@@ -7574,7 +7650,7 @@ Preview local identity candidates or plan selected private rules
 dev hygiene rules import [flags]
 ```
 
-- `--from` — static source: ssh or local
+- `--from` — static source: ssh, local or machines
 - `--select` — candidate ID to import (repeatable)
 
 ### `dev hygiene rules policy`
@@ -7608,6 +7684,7 @@ dev hygiene setup [flags]
 ```
 
 - `--apply` — apply the exact saved setup plan
+- `--migrate-hooks` — preview migration of known equivalent scanner hooks and rule updates; retain finalizers and custom settings
 - `--migrate-rules` — preview replacement of existing gitleaks config with bundled safe rules
 - `--plan` — reviewed plan ID
 - `-y, --yes` — confirm the reviewed plan
@@ -8510,7 +8587,7 @@ dev skill list [flags]
 
 ### `dev skill manage`
 
-Check, update or restore skills with a scoped wizard
+Check, update, remove or restore skills with a scoped wizard
 
 ```
 dev skill manage [flags]
@@ -9749,6 +9826,12 @@ policies, private local identity imports and reviewed text replacement/recovery 
 macOS, Linux and Windows. CI uses public rules only. See the
 [hygiene workflow](https://daviddwlee84.github.io/dev-cli/guides/hygiene/) for schema-v1 coverage and hook contracts.
 
+`hygiene manage [repo...] [--all]` opens batch repository setup; `--json` is
+preview-only. `setup --migrate-hooks` previews narrow known-hook/rule migration.
+`rules import --from machines` reads private candidates from existing local
+Tailscale/LAN/Fleet caches. `skill manage` also removes selected owned skills with
+explicit agent scopes; existing bundled `skill uninstall` keeps its meaning.
+
 ---
 
 ### Compatibility and known limitations
@@ -10341,6 +10424,21 @@ policies, private local identity imports and reviewed text replacement/recovery 
 macOS, Linux and Windows. CI uses public rules only. See the
 [hygiene workflow](https://daviddwlee84.github.io/dev-cli/guides/hygiene/) for schema-v1 coverage and hook contracts.
 
+## Hygiene rollout and selected skill removal
+
+Repository hygiene is a developer commit procedure and needs no installed agent
+skill. Batch migration retains specialized legacy finalizers and custom settings;
+it does not yet replace the full agent-history-hygiene lifecycle. Gitleaks 8.30+
+compatible 8.x is required by setup/scan. Cached machine imports never query
+remote hosts or credential providers.
+
+Skill removal requires verified native ownership or a bundled install manifest,
+explicit agent scopes and dependency checks. Windows npm-shim removal uses system
+PowerShell and bounded process-tree cancellation; unsupported shell syntax or
+other shim mutation actions fail closed. The dedicated native removal tests are
+required; broad advisory Windows test conclusions are not proof that every
+legacy suite passed.
+
 ---
 
 ### Manual hygiene dogfood
@@ -10455,6 +10553,20 @@ Git author names/emails and identifying filenames are assessment items; text
 redaction does not rewrite commit metadata or rename files. GitHub describes
 rotation-first handling and the limits of force pushes, forks, PR references and
 caches in its [sensitive-data removal guidance](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository).
+
+## Batch rollout dogfood (2026-09-12)
+
+The follow-up preview inspected 63 configured repositories: 55 prepared plans and
+8 retained legacy/custom redactor configurations. No other repository plan was
+applied. The dev-cli feature checkout's already-configured setup applied as a
+verified no-op, retaining its effective global hook. Cached machine import listed
+45 stale candidates without refreshing sources or importing private rules.
+
+The isolated real hook fixture passed hidden/same-line secret blocking, masked
+output, index/config preservation and a clean commit. Its detector fixtures are
+constructed at runtime; even a source-code concatenation can resemble a quoted
+password, so the corpus builders avoid shipping those false-positive shapes.
+Full published-history cleanup remains the separate post-writer phase above.
 
 ---
 
@@ -13661,11 +13773,46 @@ Status 讀取有效的 `core.hooksPath`、hook 與設定；辨識到 hook 只證
 
 Setup 加入阻擋式 `dev-hygiene` hook、安全 gitleaks 規則與 `.dev-cli/hygiene.toml`，
 保留其他 hooks 及 YAML 註解。同名但命令不同的 hook、未知的 hook 鏈需人工整合。
-已有的 gitleaks 設定預設保留；只有在 setup 預覽加入 `--migrate-rules` 才會提議
-替換，須先比對自訂規則。`dev repo setup --enable agent-history-hygiene` 共用此服務。
+已有的 gitleaks 設定預設保留；`--migrate-hooks` 可精準遷移已辨識規則，
+`--migrate-rules` 則提議整份替換，兩者都須先比對自訂規則。`dev repo setup --enable agent-history-hygiene` 共用此服務。
 
 Hook 只檢查 index，不改檔、不自動 stage。缺少支援 hygiene 的 dev／gitleaks、
 scanner 失敗或輸出損壞都會阻擋。
+
+## 批次設定與分階段遷移
+
+一般 commit 的呼叫鏈是 `Git -> pre-commit -> dev hygiene scan -> gitleaks +
+隱私政策檢查`。Setup 是獨立設定步驟；commit 不會再呼叫 setup，也不需要 agent。
+
+```bash
+dev hygiene manage --all
+dev hygiene manage /path/to/a /path/to/b --json
+dev hygiene setup --migrate-hooks --json
+```
+
+REPOS 提供相同的單一／篩選後多 repo 流程，repo 不必有 skills lock。預覽列出
+設定差異、保留的依賴與阻擋，再勾選要套用的 plans。共享 Git repository 只處理
+一次；新裝 common-directory hook 前，其他 worktree 必須有可讀設定，套用時
+再次確認。自訂／未知 scanner 命令保留並要求人工檢視。
+
+遷移只替換已辨識且功能等價的 `gitleaks-system` hook；artifact 專用檢查、
+finalizer、provenance 和其他 hooks 保留。只精準更新已知舊 password expression，
+不覆蓋其他自訂規則或註解；自訂 scope／expression 保留。`--migrate-rules` 仍是
+另外選擇的整份設定替換。規則更新後需重新掃描；detector ID 改變時需重新確認
+fixture 例外。
+
+Setup 與 scan 要求相容的 gitleaks 8.x，最低 8.30.0；CI 固定 8.30.1。被動 status
+只檢查工具存在，不執行 scanner。Hook 的 PATH 必須找到支援 hygiene 的 dev；
+執行 `./dev` 不會升級 PATH 上的舊版 dev。工具不會自動安裝。
+
+每個 repo 分別記錄 completed、blocked、skipped、stale、partial 或 unverified，
+結果保存在私人 receipt；完成的 setup 重跑不改檔。中斷不會回滾其他 repo，也不能
+盲目重試。JSON 只預覽，可用各子 plan 的 ID 及既有
+`hygiene setup --repo PATH --apply --plan ID --yes` 套用。
+
+Staged checker 本身不改檔，但 pre-commit 可能暫存未 stage 的變更，所以 recorder
+退出後才對其 checkout commit。目前不完整取代 agent-history-hygiene：
+`dev artifact finalize` 仍依賴其 scripts；這些安裝和 finalizer wiring 先保留。
 
 ## 政策與私密規則
 
@@ -13701,6 +13848,17 @@ dev hygiene rules add --id private-network --kind cidr --value-file network.txt 
 alias、HostName、User 與 key-path reference，不執行 `ssh -G`、`Match exec`、DNS
 或連線，也不讀 key material。Include 不完整會阻擋匯入。常見公開名稱與通用帳號
 建議警告；local 來源提供 home path、帳號、Git 姓名與 email。
+
+`rules import --from machines` 只讀已有的 Tailscale／LAN／Fleet inventory cache，
+將 IP、hostname、remote username 列為可勾選的私人候選；不讀 credential store、
+keys，不執行探索或連線。保留觀測時間及 stale 標記；缺少快取不會建立新資料，
+不完整／損壞會阻擋匯入。預覽後來源內容改變，舊 import plan 即失效。
+
+Source 中加引號的 password literal 仍會被偵測；未加引號的 assignment 限於設定、
+script 與文字格式，以避免 Go 布林欄位／變數運算誤判。格式完整的示範／測試 key
+仍先阻擋，經確認後才建立精確例外；不要略過整個 tests／docs 或同一行其他 key。
+一般示範用 inert placeholder，detector 測試可於執行時組出 fixture。
+
 
 支援 literal、CIDR、Go RE2 及相對路徑 glob；`directory/**` 選取其下內容。
 私密值用 `--value-file` 或 stdin 輸入，不放在命令參數。可用同 ID 的規則 plan
@@ -15452,6 +15610,13 @@ setup wizard，`c` 明確選擇 discovery source／scope，`p` 對選定 alias �
 login probe。`Ctrl+O` 提供 connection 與 machine-mapping actions。Discovery 和 provider
 registration 都必須明確選擇；開啟 machine row 不會自動 enroll 或加入 fleet／Herdr。
 Trust／identity 限制請參考 `dev help ssh`。
+
+## 批次 hygiene 與 skill 移除
+
+REPOS → Ctrl+O 可設定目前或篩選後多個 repo 的 hygiene。勾選 repo、檢視各 plan
+和保留的 hooks，再確認套用；這是普通 commit procedure，不安裝 agent skill。
+SKILLS → Ctrl+O → remove skills in this scope 進入共用精靈，勾選 skills 與 agents。
+Ownership、共享使用者及 finalizer references 仍可阻擋移除，來源 repo 保留。
 
 ---
 
@@ -17871,6 +18036,16 @@ Inspect hooks, scan secrets and privacy, and apply reviewed text changes
 dev hygiene
 ```
 
+### `dev hygiene manage`
+
+Preview and set up hygiene across selected repositories
+
+```
+dev hygiene manage [repo...] [flags]
+```
+
+- `--all` — choose from configured repositories, including those without skills locks
+
 ### `dev hygiene redact`
 
 Preview selected text replacements or apply a saved plan
@@ -17962,7 +18137,7 @@ Preview local identity candidates or plan selected private rules
 dev hygiene rules import [flags]
 ```
 
-- `--from` — static source: ssh or local
+- `--from` — static source: ssh, local or machines
 - `--select` — candidate ID to import (repeatable)
 
 ### `dev hygiene rules policy`
@@ -17996,6 +18171,7 @@ dev hygiene setup [flags]
 ```
 
 - `--apply` — apply the exact saved setup plan
+- `--migrate-hooks` — preview migration of known equivalent scanner hooks and rule updates; retain finalizers and custom settings
 - `--migrate-rules` — preview replacement of existing gitleaks config with bundled safe rules
 - `--plan` — reviewed plan ID
 - `-y, --yes` — confirm the reviewed plan
@@ -18898,7 +19074,7 @@ dev skill list [flags]
 
 ### `dev skill manage`
 
-Check, update or restore skills with a scoped wizard
+Check, update, remove or restore skills with a scoped wizard
 
 ```
 dev skill manage [flags]
@@ -20099,6 +20275,12 @@ controller save flow。見 [SSH workflows](https://daviddwlee84.github.io/dev-cl
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/)。
 
+`hygiene manage [repo...] [--all]` 提供批次 repo 設定，`--json` 只預覽；
+`setup --migrate-hooks` 預覽精準的已知 hook／規則遷移。
+`rules import --from machines` 讀取本機 Tailscale／LAN／Fleet 快取中的私人候選。
+`skill manage` 可依 agent scope 移除勾選的已驗證安裝；原本 bundled
+`skill uninstall` 的意義不變。
+
 ---
 
 ### 相容性與已知限制
@@ -20624,6 +20806,17 @@ configuration 保留 supported settings，並拒絕 LocalCommand、port forwardi
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/)。
 
+## Hygiene rollout 與勾選 skill 移除
+
+Repo hygiene 是普通 commit procedure，不需安裝 agent skill。批次遷移保留專用
+legacy finalizer 和自訂設定，尚未完整取代 agent-history-hygiene lifecycle。
+Setup／scan 要求相容 gitleaks 8.x、最低 8.30；機器快取匯入不查詢遠端或 vault。
+
+Skill 移除要求已驗證 native ownership 或 bundled manifest、明確 agent scope
+與依賴檢查。Windows npm shim 移除使用系統 PowerShell 與 process-tree 取消；
+不支援的 shell syntax 或其他 shim mutation 會拒絕。獨立 native removal tests
+是必要 gate；Windows 廣泛 advisory job 的成功結論不表示所有 legacy suites 通過。
+
 ---
 
 ### 人工 hygiene dogfood
@@ -20717,6 +20910,18 @@ Homebrew/Scoop、已下載 archives。已發布 tag 不得移動或重用。提�
 Git author 姓名／email、帶個資的檔名也列入評估；文字 redaction 不改 commit metadata
 或 rename 檔案。GitHub 的[敏感資料移除說明](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)
 說明 rotation-first，以及 force push、fork、PR reference、cache 的限制。
+
+## 批次 rollout dogfood（2026-09-12）
+
+後續版本預覽了 63 個已設定 repo：55 個可準備，8 個保留舊版／自訂 redactor
+設定。其他 repo 的 plan 都未套用。dev-cli feature checkout 已有設定，setup
+以已驗證的 no-op 完成，保留有效 global hook。機器快取列出 45 個 stale 候選，
+沒有刷新來源或匯入私人規則。
+
+隔離的真實 hook fixture 通過 hidden／同一行 secret 阻擋、輸出遮罩、index／config
+保留及乾淨 commit。Detector fixture 於執行時組出；程式碼字串拼接本身也可能
+看似加引號的 password，所以 corpus builder 避免把這種誤判形狀放進發佈檔案。
+已發布歷史的完整清理仍是前述 post-writer 階段。
 
 ---
 

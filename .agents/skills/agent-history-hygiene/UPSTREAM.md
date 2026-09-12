@@ -11,3 +11,8 @@ Original recorded folder hash:
 
 The upstream remote redactor hook remains independently versioned. No upstream
 release or global skill installation is changed by this repository variant.
+
+The v0.2.31 repository variant separates quoted password literals from unquoted
+configuration/script/prose assignments. Its bootstrap template stays byte-aligned
+with the dev binary; detector fixture expectations use the corresponding rule IDs.
+This does not replace or publish the upstream post-session finalizer.

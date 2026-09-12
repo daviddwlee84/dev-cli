@@ -2,13 +2,18 @@ package hygiene
 
 import (
 	"context"
+	"debug/buildinfo"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 	"github.com/daviddwlee84/dev-cli/internal/sshhost"
@@ -32,7 +37,57 @@ type Engine interface {
 }
 type Gitleaks struct{ Binary string }
 
+func supportedScannerVersion(value string) bool {
+	parts := regexp.MustCompile(`^v?(8)\.(\d+)\.(\d+)$`).FindStringSubmatch(strings.TrimSpace(value))
+	if len(parts) != 4 {
+		return false
+	}
+	minor, err := strconv.Atoi(parts[2])
+	return err == nil && minor >= 30
+}
+
+func supportedScannerBuild(info *debug.BuildInfo) bool {
+	if info == nil || info.Main.Replace != nil {
+		return false
+	}
+	if info.Main.Path != "github.com/zricethezav/gitleaks/v8" && info.Main.Path != "github.com/gitleaks/gitleaks/v8" {
+		return false
+	}
+	return supportedScannerVersion(info.Main.Version)
+}
+
+// CheckVersion rejects versions that can silently ignore scoped allowlists.
+// This explicit execution is used by setup/scan, not passive status/inventory.
+func (g Gitleaks) CheckVersion(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	name := g.Binary
+	if name == "" {
+		name = "gitleaks"
+	}
+	r, err := (sshhost.ExecRunner{}).Run(ctx, sshhost.RunRequest{Name: name, Args: []string{"version"}, UnsetEnv: gitEnvironmentNames(), Display: "hygiene scanner version"})
+	if err != nil || r.ExitCode != 0 || r.StdoutTruncated {
+		return errors.New("gitleaks 8.30.0 or newer compatible 8.x is required; check the installed scanner")
+	}
+	if supportedScannerVersion(string(r.Stdout)) {
+		return nil
+	}
+	// go install preserves the module version even when upstream's ldflag-only
+	// version string is empty/development. Do not accept unknown/replaced modules.
+	if path, err := exec.LookPath(name); err == nil {
+		if stat, err := os.Stat(path); err == nil && stat.Mode().IsRegular() && stat.Size() <= 256<<20 {
+			if info, err := buildinfo.ReadFile(path); err == nil && supportedScannerBuild(info) {
+				return nil
+			}
+		}
+	}
+	return errors.New("gitleaks 8.30.0 or newer compatible 8.x is required; check the installed scanner")
+}
+
 func (g Gitleaks) Scan(ctx context.Context, q EngineRequest) ([]Detection, error) {
+	if err := g.CheckVersion(ctx); err != nil {
+		return nil, err
+	}
 	configPath := filepath.Join(q.PrivateDir, "engine.toml")
 	reportPath := filepath.Join(q.PrivateDir, "engine.json")
 	ignorePath := filepath.Join(q.PrivateDir, "ignore")

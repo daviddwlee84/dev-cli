@@ -70,7 +70,11 @@ func TestBootstrapAgentHistoryWritesConfigAndHonorsGlobalHooksPath(t *testing.T)
 	}
 	toolsDir := t.TempDir()
 	for _, name := range []string{"pre-commit", "gitleaks"} {
-		if err := os.WriteFile(filepath.Join(toolsDir, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		body := "#!/bin/sh\nexit 0\n"
+		if name == "gitleaks" {
+			body = "#!/bin/sh\nif [ \"$1\" = version ]; then echo 8.30.1; fi\nexit 0\n"
+		}
+		if err := os.WriteFile(filepath.Join(toolsDir, name), []byte(body), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}

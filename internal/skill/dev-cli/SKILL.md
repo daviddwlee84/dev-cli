@@ -35,11 +35,11 @@ Do not preload manuals, repeat `dev --skill`, or run diagnostics for every task.
 - Worktree provisioning or cross-host lifecycle: [ownership](references/worktree-ownership.md), [lifecycle](references/task-lifecycle.md).
 - Parallel agent launches or prompt transports: [agents](references/parallel-agents.md), [handoffs](references/prompt-handoffs.md).
 - Agent completion or cleanup batches: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
-- Secret/privacy scans or redaction: [hygiene](references/hygiene.md).
+- Repository hygiene batches, scans or redaction: [hygiene](references/hygiene.md).
 - Repository hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
 - SSH diagnosis, discovery, routes, machines, keys, credentials, or registration: [SSH](references/ssh-hosts.md).
 - Dotfile setup, native chezmoi operations, or FLEET host actions: [dotfiles](references/dotfiles.md).
-- Skill/MCP/instruction transfers or managed updates: [transfers](references/agent-interop.md), [maintenance](references/skills-management.md).
+- Skill/MCP/instruction transfers, updates or removal: [transfers](references/agent-interop.md), [maintenance](references/skills-management.md).
 - Recursive Git children: [submodules](references/submodules.md).
 
 For everyday operations, use command help and its suggested workflow topic.

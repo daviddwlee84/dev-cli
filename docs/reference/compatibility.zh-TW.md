@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-11
+verified_on: 2026-09-12
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
@@ -525,3 +525,14 @@ configuration 保留 supported settings，並拒絕 LocalCommand、port forwardi
 `dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](../guides/hygiene.zh-TW.md)。
+
+## Hygiene rollout 與勾選 skill 移除
+
+Repo hygiene 是普通 commit procedure，不需安裝 agent skill。批次遷移保留專用
+legacy finalizer 和自訂設定，尚未完整取代 agent-history-hygiene lifecycle。
+Setup／scan 要求相容 gitleaks 8.x、最低 8.30；機器快取匯入不查詢遠端或 vault。
+
+Skill 移除要求已驗證 native ownership 或 bundled manifest、明確 agent scope
+與依賴檢查。Windows npm shim 移除使用系統 PowerShell 與 process-tree 取消；
+不支援的 shell syntax 或其他 shim mutation 會拒絕。獨立 native removal tests
+是必要 gate；Windows 廣泛 advisory job 的成功結論不表示所有 legacy suites 通過。

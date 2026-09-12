@@ -211,7 +211,17 @@ func mergeHook(existing []byte) ([]byte, error) {
 	}
 	return b.Bytes(), nil
 }
+
+type SetupOptions struct {
+	ReplaceRules bool
+	MigrateHooks bool
+	UpdateRules  bool
+}
+
 func (s *Service) PreviewSetup(ctx context.Context, migrate bool) (Plan, error) {
+	return s.PreviewSetupOptions(ctx, SetupOptions{ReplaceRules: migrate})
+}
+func (s *Service) PreviewSetupOptions(ctx context.Context, options SetupOptions) (Plan, error) {
 	status, err := s.Status(ctx)
 	if err != nil {
 		return Plan{}, err
@@ -220,6 +230,9 @@ func (s *Service) PreviewSetup(ctx context.Context, migrate bool) (Plan, error) 
 		if v == "missing" {
 			return Plan{}, errors.New("install pre-commit and gitleaks first; setup never silently skips a missing dependency")
 		}
+	}
+	if err := (Gitleaks{}).CheckVersion(ctx); err != nil {
+		return Plan{}, err
 	}
 	p, err := s.newPlan(ctx, "hygiene_setup")
 	if err != nil {
@@ -234,6 +247,13 @@ func (s *Service) PreviewSetup(ctx context.Context, migrate bool) (Plan, error) 
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return Plan{}, err
 	}
+	notices := []string{}
+	if options.MigrateHooks {
+		old, notices, err = migrateScannerHooks(old)
+		if err != nil {
+			return Plan{}, err
+		}
+	}
 	desired, err := mergeHook(old)
 	if err != nil {
 		return Plan{}, err
@@ -244,7 +264,7 @@ func (s *Service) PreviewSetup(ctx context.Context, migrate bool) (Plan, error) 
 	}{".pre-commit-config.yaml", desired})
 	gitleaksPath := filepath.Join(s.Root, ".gitleaks.toml")
 	current, err := safefile.ReadStablePath(ctx, gitleaksPath, 1<<20)
-	if errors.Is(err, fs.ErrNotExist) || migrate {
+	if errors.Is(err, fs.ErrNotExist) || options.ReplaceRules {
 		targets = append(targets, struct {
 			rel     string
 			desired []byte
@@ -253,6 +273,20 @@ func (s *Service) PreviewSetup(ctx context.Context, migrate bool) (Plan, error) 
 		return Plan{}, err
 	} else if len(current) == 0 {
 		return Plan{}, errors.New("empty scanner config needs review")
+	} else if options.UpdateRules {
+		updated, changed, note, e := updateKnownPasswordRule(current)
+		if e != nil {
+			return Plan{}, e
+		}
+		if note != "" {
+			notices = append(notices, note)
+		}
+		if changed {
+			targets = append(targets, struct {
+				rel     string
+				desired []byte
+			}{".gitleaks.toml", updated})
+		}
 	}
 	policyPath := filepath.Join(s.Root, ".dev-cli", "hygiene.toml")
 	if _, err := safefile.ReadStablePath(ctx, policyPath, 1<<20); errors.Is(err, fs.ErrNotExist) {
@@ -271,6 +305,10 @@ func (s *Service) PreviewSetup(ctx context.Context, migrate bool) (Plan, error) 
 	}
 	if status.HookScope == "local" && status.Hook == "missing" {
 		p.Plan.HookAction = "install-local"
+		p.SharedHookToken, err = s.sharedHookToken(ctx)
+		if err != nil {
+			return Plan{}, err
+		}
 	} else if status.Hook == "recognized" {
 		p.Plan.HookAction = "keep-existing"
 	} else {
@@ -282,6 +320,7 @@ func (s *Service) PreviewSetup(ctx context.Context, migrate bool) (Plan, error) 
 	}
 	effective := s.Policy
 	p.Plan.Policy = &effective
+	p.Plan.Notices = notices
 	if err = s.savePlan(ctx, &p); err != nil {
 		return Plan{}, err
 	}

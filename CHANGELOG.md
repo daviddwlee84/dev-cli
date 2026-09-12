@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.31] - 2026-09-12
+
+### Added
+
+- Reviewed multi-repository hygiene deployment through `dev hygiene manage` and
+  REPOS, with narrow legacy scanner migration, shared-hook checks and private
+  per-repository result ledgers.
+- Private rule candidates from existing Tailscale/LAN/Fleet caches, with source
+  revalidation and no discovery, connection or credential-store access.
+- Selected skill removal through SKILLS and the shared management wizard, with
+  explicit agent scopes, ownership/shared-consumer checks and private receipts.
+
+### Fixed
+
+- Password detection distinguishes quoted literals and unquoted configuration
+  values from program identifiers; scoped fixture exceptions remain explicit.
+- Scanner temporary Git repositories use shorter private paths and fixed safe
+  failure classifications for native Windows compatibility.
+- Scanner version checks reject configurations that older engines can silently
+  ignore. Existing artifact finalizers stay separate during migration.
+
 ## [0.2.30] - 2026-09-12
 
 ### Added
@@ -1019,7 +1040,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.30...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.31...HEAD
+[0.2.31]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.30...v0.2.31
 [0.2.30]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.29...v0.2.30
 [0.2.29]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.28...v0.2.29
 [0.2.28]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.27...v0.2.28
