@@ -237,7 +237,7 @@ class TestLocalCredentials:
 
     EXPECTED_RULE_IDS = {
         "age-secret-key",
-        "generic-password-assignment",
+        "generic-password-assignment-unquoted",
     }
 
     def test_rules_fire_outside_artifact_dirs(

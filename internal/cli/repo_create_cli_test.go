@@ -529,7 +529,7 @@ exit 0
 	if err := os.WriteFile(provider, []byte(providerScript), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(bin, "gitleaks"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+	if err := os.WriteFile(filepath.Join(bin, "gitleaks"), []byte("#!/bin/sh\nif [ \"$1\" = version ]; then echo 8.30.1; fi\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	preCommit := filepath.Join(bin, "pre-commit")

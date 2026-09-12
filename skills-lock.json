@@ -5,7 +5,7 @@
       "source": "./.agents/skills/agent-history-hygiene",
       "sourceType": "local",
       "skillPath": "SKILL.md",
-      "computedHash": "e55781ffafdf503f462ba2b4f7aab1f827a8a1efbb2ac40666485dc26725c900"
+      "computedHash": "181f43898d9b7bcb04304b9b3a6ab70ed3d1e07df7c35240bb9c2de4ec584fe1"
     },
     "mkdocs-site-bootstrap": {
       "source": "daviddwlee84/agent-skills",
