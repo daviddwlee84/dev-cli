@@ -28,6 +28,9 @@ jobs:
           python -m pip install pre-commit==4.6.0
       - name: Verify native privacy storage and text transactions
         run: go test ./internal/hygiene ./internal/configedit ./internal/privatefile ./internal/safefile
+      - name: Repeat Windows quoted-secret snapshot regression
+        if: runner.os == 'Windows'
+        run: go test ./internal/hygiene -run '^TestQuotedPasswordRedactionPreservesDelimitersAndRemovesEscapes$' -count=10
       - name: Verify selected skill removal natively
         run: go test ./internal/agentskill -run 'TestSelectedRemoval|TestRemoval|TestAliasRemoval|TestBundledRemoval|TestWindowsShim'
       - name: Build CLI for real hook verification

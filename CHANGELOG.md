@@ -22,6 +22,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 - Password detection distinguishes quoted literals and unquoted configuration
   values from program identifiers; scoped fixture exceptions remain explicit.
+- Scanner temporary Git repositories use shorter private paths and fixed safe
+  failure classifications for native Windows compatibility.
 - Scanner version checks reject configurations that older engines can silently
   ignore. Existing artifact finalizers stay separate during migration.
 

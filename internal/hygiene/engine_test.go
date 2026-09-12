@@ -102,3 +102,34 @@ func TestScannerBuildVersionSupportsPinnedGoInstallOnly(t *testing.T) {
 		t.Fatal("unrelated module accepted")
 	}
 }
+
+func TestGitFailureClassificationNeverIncludesInput(t *testing.T) {
+	for input, want := range map[string]string{"fatal: private-canary: Filename too long": "path length", "fatal: dubious ownership at private-canary": "ownership", "fatal: private-canary permission denied": "permissions", "unknown private-canary": "command failed"} {
+		if got := gitFailureReason(input); got != want || strings.Contains(got, "private-canary") {
+			t.Fatal("unsafe Git diagnostic")
+		}
+	}
+}
+
+func TestScannerTemporaryDirectoryIsPrivateShortAndRemoved(t *testing.T) {
+	s, r := testService(t)
+	put(t, r.Root, "input.txt", "plain text\n")
+	s.Policy.Secrets = Block
+	var temporary string
+	s.Engine = engineFunc(func(_ context.Context, q EngineRequest) ([]Detection, error) {
+		temporary = q.PrivateDir
+		return nil, nil
+	})
+	if _, err := s.Scan(t.Context(), ScanOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if temporary == "" || filepath.Dir(temporary) != filepath.Join(filepath.Dir(filepath.Dir(s.Dir)), "scans") {
+		t.Fatal("unexpected scanner directory")
+	}
+	if len(temporary) >= len(filepath.Join(s.Dir, "scan-00000000-0000-0000-0000-000000000000")) {
+		t.Fatal("scanner path was not shortened")
+	}
+	if _, err := os.Stat(temporary); !os.IsNotExist(err) {
+		t.Fatal("private scanner data remains")
+	}
+}
