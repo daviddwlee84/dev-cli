@@ -3,9 +3,8 @@
 package sshremote
 
 import (
-	"fmt"
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 	"io/fs"
-	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -72,37 +71,10 @@ func cachePrivateSIDs() (string, map[string]bool, error) {
 }
 
 // Windows permissions use a protected DACL, not os.FileMode's read-only bit.
-// Only the current user, SYSTEM and Administrators receive access. Applying the
+// New objects receive current-user and SYSTEM access. Applying the
 // DACL through an opened non-reparse handle avoids following a final link.
 func setCachePrivate(path string, mode fs.FileMode) error {
-	inheritance := ""
-	if mode.Perm() == 0o700 {
-		inheritance = "OICI"
-	} else if mode.Perm() != 0o600 {
-		return ErrUnsafeCache
-	}
-	current, _, err := cachePrivateSIDs()
-	if err != nil {
-		return err
-	}
-	ace := func(sid string) string { return fmt.Sprintf("(A;%s;GA;;;%s)", inheritance, sid) }
-	descriptor, err := windows.SecurityDescriptorFromString("D:P" + ace(current) + ace("S-1-5-18") + ace("S-1-5-32-544"))
-	if err != nil {
-		return err
-	}
-	dacl, _, err := descriptor.DACL()
-	if err != nil || dacl == nil {
-		return ErrUnsafeCache
-	}
-	handle, err := cacheWindowsHandle(path, windows.WRITE_DAC|windows.READ_CONTROL)
-	if err != nil {
-		return err
-	}
-	defer windows.CloseHandle(handle)
-	err = windows.SetSecurityInfo(handle, windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil)
-	runtime.KeepAlive(descriptor)
-	return err
+	return privatefile.ProtectCreated(path, mode)
 }
 
 func checkWindowsCachePrivate(path string, directory bool) error {
