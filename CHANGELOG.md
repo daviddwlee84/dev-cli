@@ -43,6 +43,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- SSH permission scans preserve Linux directory-index layout flags, allowing
+  bounded key discovery in large ext4 directories.
 - Private SSH cache, machine registry and credential-policy creation pin the
   current Windows user as owner, including elevated-token environments.
 

@@ -41,6 +41,8 @@ func writeSSHCLIKey(t *testing.T, f *sshCLIFixture, name string) string {
 	if err := os.WriteFile(path+".pub", f.runner.publicLine, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	protectSSHFixture(t, path)
+	protectSSHFixture(t, path+".pub")
 	return path
 }
 
@@ -236,6 +238,7 @@ func TestSSHKeyWizardManualCompanionDerivationIsReviewedOnce(t *testing.T) {
 			if err := os.WriteFile(path, []byte("PRIVATE-KEY-BYTES-MUST-NOT-LEAK\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
+			protectSSHFixture(t, path)
 			runner := &sshKeyInventoryRunner{base: &sshMachineRunner{base: f.runner, status: machineStatus(false)}}
 			answer := "n"
 			if apply {

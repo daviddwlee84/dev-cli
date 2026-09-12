@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -25,7 +26,7 @@ func (r *sshMachineRunner) Run(ctx context.Context, q sshhost.RunRequest) (sshho
 	r.calls = append(r.calls, q.Name+" "+q.Display)
 	if q.Name == "tailscale" {
 		if r.unavailable {
-			return sshhost.RunResult{}, errors.New("unavailable")
+			return sshhost.RunResult{}, &exec.Error{Name: "tailscale", Err: exec.ErrNotFound}
 		}
 		return sshhost.RunResult{Stdout: r.status}, nil
 	}
@@ -162,7 +163,12 @@ func TestSSHOptionalDiscoveryListCompatibilityAndCacheClear(t *testing.T) {
 	runner.unavailable = true
 	runner.calls = nil
 	out, err = runMachineCLI(t, f, runner, "ssh", "list", "--tailscale", "--json")
-	if err != nil || !strings.Contains(out, "unavailable") || !strings.Contains(out, "\"lab\"") {
+	var partial struct {
+		Complete bool
+		Sources  map[string]string
+	}
+	decodeErr := json.Unmarshal([]byte(out), &partial)
+	if err != nil || decodeErr != nil || partial.Complete || partial.Sources["tailscale"] != "unavailable" || !strings.Contains(out, "\"lab\"") {
 		t.Fatalf("partial list: %v %s", err, out)
 	}
 }

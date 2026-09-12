@@ -51,6 +51,9 @@ func TestSSHImportLocalSourceMutationDuringRecheckStopsBeforeInit(t *testing.T) 
 	if e := os.WriteFile(foreign, []byte("# original source\n"), 0o600); e != nil {
 		t.Fatal(e)
 	}
+	for _, path := range []string{sshDir, f.rootConfigPath(), foreign} {
+		protectSSHFixture(t, path)
+	}
 	mutated := false
 	runner := sshReviewMutatingRemote{base: remote, afterResolve: func(n int) {
 		if n == 2 {
