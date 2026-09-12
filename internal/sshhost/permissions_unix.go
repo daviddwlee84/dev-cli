@@ -56,7 +56,7 @@ func permissionReadMetadata(path string, file *os.File, info fs.FileInfo, target
 	if err != nil {
 		return metadata, err
 	}
-	if err := platformFlagsRoundTrip(flags); err != nil {
+	if err := permissionFlagsRoundTrip(flags, target.directory); err != nil {
 		return metadata, fmt.Errorf("permission flags require manual remediation: %w", err)
 	}
 	metadata.flags = flags

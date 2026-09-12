@@ -3,9 +3,9 @@
 package sshcredential
 
 import (
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 	"golang.org/x/sys/windows"
 	"io/fs"
-	"runtime"
 	"syscall"
 	"unsafe"
 )
@@ -18,25 +18,7 @@ func credentialAncestor(_ string, info fs.FileInfo) error {
 	return nil
 }
 func credentialSetPrivate(path string, mode fs.FileMode) error {
-	u, e := windows.GetCurrentProcessToken().GetTokenUser()
-	if e != nil {
-		return e
-	}
-	inherit := ""
-	if mode == 0o700 {
-		inherit = "OICI"
-	}
-	sd, e := windows.SecurityDescriptorFromString("D:P(A;" + inherit + ";GA;;;" + u.User.Sid.String() + ")(A;" + inherit + ";GA;;;SY)(A;" + inherit + ";GA;;;BA)")
-	if e != nil {
-		return e
-	}
-	dacl, _, e := sd.DACL()
-	if e != nil {
-		return e
-	}
-	e = windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil)
-	runtime.KeepAlive(sd)
-	return e
+	return privatefile.ProtectCreated(path, mode)
 }
 func credentialPrivate(path string, info fs.FileInfo, _ fs.FileMode) error {
 	if credentialAncestor(path, info) != nil {

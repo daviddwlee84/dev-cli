@@ -15,6 +15,7 @@ func TestSSHKeyDerivePlansWithoutSubprocessAndNeverOverwrites(t *testing.T) {
 	if err := os.WriteFile(path, []byte("PRIVATE-KEY-BYTES-MUST-NOT-LEAK\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	protectSSHFixture(t, path)
 	out, _, err := f.run("ssh", "key", "derive", path, "--json")
 	if err != nil || f.runner.callCount() != 0 {
 		t.Fatal(out, err)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -234,7 +235,18 @@ func (r *sshOnboardWizardKeyRunner) Run(ctx context.Context, q sshhost.RunReques
 		if err != nil {
 			r.t.Fatal(err)
 		}
-		if !bytes.Contains(data, []byte(r.keyPath)) {
+		found := false
+		for _, line := range strings.Split(string(data), "\n") {
+			value, ok := strings.CutPrefix(strings.TrimSpace(line), "IdentityFile ")
+			if !ok {
+				continue
+			}
+			if strings.HasPrefix(value, "\"") {
+				value, _ = strconv.Unquote(value)
+			}
+			found = found || value == r.keyPath
+		}
+		if !found {
 			r.t.Fatalf("selected identity missing from exact proof: %s", data)
 		}
 		managed, err := os.ReadFile(filepath.Join(r.base.base.home, ".ssh", "dev.d", r.alias+".conf"))

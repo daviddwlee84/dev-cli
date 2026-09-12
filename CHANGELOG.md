@@ -41,6 +41,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Key inventory diagnostics explain public-file and private-identity failures with
   specific causes and next steps, including `dev ssh key doctor` for permission issues.
 
+### Fixed
+
+- SSH permission scans preserve Linux directory-index layout flags, allowing
+  bounded key discovery in large ext4 directories.
+- Private SSH cache, machine registry and credential-policy creation pin the
+  current Windows user as owner, including elevated-token environments.
+
 ## [0.2.29] - 2026-09-12
 
 ### Added

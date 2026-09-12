@@ -47,3 +47,5 @@ func permissionCheckACL(file *os.File) error {
 	}
 	return nil
 }
+
+func permissionFlagsRoundTrip(flags uint32, _ bool) error { return platformFlagsRoundTrip(flags) }

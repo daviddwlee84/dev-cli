@@ -4,8 +4,8 @@ package machineregistry
 
 import (
 	"fmt"
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 	"io/fs"
-	"runtime"
 	"syscall"
 	"unsafe"
 
@@ -13,28 +13,7 @@ import (
 )
 
 func setPrivateMode(path string, want fs.FileMode) error {
-	inheritance := ""
-	if want.Perm() == 0o700 {
-		inheritance = "OICI"
-	} else if want.Perm() != 0o600 {
-		return ErrUnsafePath
-	}
-	current, _, err := privateSIDs()
-	if err != nil {
-		return err
-	}
-	ace := func(sid string) string { return fmt.Sprintf("(A;%s;GA;;;%s)", inheritance, sid) }
-	descriptor, err := windows.SecurityDescriptorFromString("D:P" + ace(current) + ace("S-1-5-18") + ace("S-1-5-32-544"))
-	if err != nil {
-		return err
-	}
-	dacl, _, err := descriptor.DACL()
-	if err != nil || dacl == nil {
-		return fmt.Errorf("private registry DACL unavailable: %w", ErrUnsafePath)
-	}
-	err = windows.SetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION, nil, nil, dacl, nil)
-	runtime.KeepAlive(descriptor)
-	return err
+	return privatefile.ProtectCreated(path, want)
 }
 
 func checkAncestor(_ string, info fs.FileInfo) error {
@@ -67,7 +46,14 @@ func checkWindowsPrivate(path string, info fs.FileInfo, requireProtected bool) e
 		return err
 	}
 	owner, _, err := descriptor.Owner()
-	if err != nil || owner == nil || owner.String() != current {
+	ownerMatches := err == nil && owner != nil && owner.String() == current
+	if !requireProtected && err == nil && owner != nil {
+		// SQLite creates its own journals. A verified private parent restricts the
+		// inherited DACL; the token's native creator owner may be Administrators.
+		creator, e := privatefile.CreatorOwner()
+		ownerMatches = ownerMatches || e == nil && owner.Equals(creator) && allowed[owner.String()]
+	}
+	if !ownerMatches {
 		return fmt.Errorf("registry owner is not the current user: %w", ErrUnsafePath)
 	}
 	control, _, err := descriptor.Control()
