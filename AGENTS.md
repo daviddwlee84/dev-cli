@@ -65,6 +65,7 @@ cmd/dev/main.go
 - `note` stores multiple repository thoughts as durable Markdown keyed by catalog ID and maintains a rebuildable SQLite FTS index. It is distinct from task context and the catalog's single metadata summary.
 - `tui` owns Bubble Tea state/rendering only. `internal/cli/tui.go` injects callbacks to the same services used by non-interactive commands.
 - `stats` is durable SQLite data; `diskusage`, note FTS, and forge/gitignore data are regenerable caches. Do not treat stats as cache.
+- `agenthistory` owns explicit transcript/file retention policy, immutable source-bound archive copies, Git lookup/sync and isolated history migration. Archive bindings/recovery stay in private state, ordinary status never contacts remotes, and source writers/index bytes remain untouched by archiving. `artifact` keeps old commit handoffs and adds externally verified archive receipts; taskflow includes ignored capture readiness in its guarded authority.
 - `hygiene` owns configurable secret/privacy policy, index/worktree/frozen-history scans, private identity rules and signed replacement plans. Raw findings/recovery stay outside Git; hook setup preserves foreign hooks. Large text transactions explicitly opt into configedit’s Windows backend; existing configuration flows retain their platform contracts.
 - `feedback` owns durable private reports, sanitized public drafts, revision-bound issue/comment publication receipts and exact repair plans. CLI adapts its repair backend to the shared start flow; agent launch is explicit and prompt context never becomes a public issue body.
 - `forge` wraps optional `gh`, `glab`, and Azure CLI integrations and must degrade to local Git behavior when they are unavailable.
@@ -177,3 +178,13 @@ privacy imports use only bounded local cache readers and revalidate their source
 or bundled manifests, source/ownership/dependency proof and postconditions under
 the provider lease. Never infer complete Windows validation from an advisory
 step's success conclusion; inspect logs and require the dedicated native gates.
+
+## Agent history policy
+
+`dev help ai-artifacts` separates source retention, archive location, protection
+and distribution. New configuration is opt-in. Sources are SpecStory Markdown or
+explicit files; provider IDs name the originating agent. Do not infer writer exit
+from byte stability or close agents to finalize evidence. Archive mode verifies
+ignored bytes before cleanup; existing tracked intents retain their original lane.
+`git-filter-repo` only operates on new verified copies. Ordinary migration never
+rewrites source refs or published tags, and raw backups are not secret audits.

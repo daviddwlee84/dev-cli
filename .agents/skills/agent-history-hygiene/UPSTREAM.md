@@ -16,3 +16,7 @@ The v0.2.31 repository variant separates quoted password literals from unquoted
 configuration/script/prose assignments. Its bootstrap template stays byte-aligned
 with the dev binary; detector fixture expectations use the corresponding rule IDs.
 This does not replace or publish the upstream post-session finalizer.
+
+The history-policy follow-up respects explicit track/archive/unmanaged retention.
+External archive copies use native dev snapshot checks; tracked handoffs retain
+the compatibility scripts. No global installation or upstream package is changed.

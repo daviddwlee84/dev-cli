@@ -536,3 +536,16 @@ Skill 移除要求已驗證 native ownership 或 bundled manifest、明確 agent
 與依賴檢查。Windows npm shim 移除使用系統 PowerShell 與 process-tree 取消；
 不支援的 shell syntax 或其他 shim mutation 會拒絕。獨立 native removal tests
 是必要 gate；Windows 廣泛 advisory job 的成功結論不表示所有 legacy suites 通過。
+
+## Agent history archives
+
+History policy 需透過 `artifact setup` 或 `repo setup --artifacts` 主動選用。
+Capture 來源為 SpecStory Markdown 與明確選取的檔案；archive copy 需要 writer
+結束的證據。Off 保存未掃描原稿，check/redact 使用 source 已啟用的 hygiene
+規則。Native session DB、cloud resume、自動知識提煉、加密／LFS archive
+filters 與原 remote 歷史替換不在此次整合內。
+
+目前每檔 snapshot 上限 128 MiB、盤點上限 10,000 檔、每 plan 最多 256 檔。
+Split 需要 git-filter-repo（native CI 固定 2.47.0）與完整可回復的本機 refs。
+備份範圍及 partial results 明確列出。舊 commit finalizers 維持原流程；舊版
+binary 無法讀取新增的 external-archive intent 欄位。

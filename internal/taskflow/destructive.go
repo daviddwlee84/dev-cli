@@ -406,6 +406,9 @@ func (o destructiveObservation) worktreeListAuthority() string {
 }
 
 func artifactEvidenceFromInspection(inspection artifact.ReadinessInspection) string {
+	if h := inspection.History; h != nil && !h.Ready {
+		return fmt.Sprintf("%d configured history files need a verified archive", len(h.Pending))
+	}
 	if inspection.KnownEmpty {
 		return "no artifact intents match the exact checkout"
 	}

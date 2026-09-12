@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Per-repository agent history policy with explicit SpecStory/file sources,
+  project/external capture, private archive bindings and independent off/check/
+  redact protection through `artifact setup` and `repo setup --artifacts`.
+- Reviewed immutable archive snapshots, source-commit/session lookup, bounded
+  literal search and post-writer finalization backed by verified Git receipts.
+- Guarded untrack and isolated history split migrations, original bundle restore
+  verification, commit maps, exact tree projections and optional backup publication.
+- Explicit archive Git synchronization with pinned destinations/ref leases and
+  fast-forward checks. Status and ordinary cleanup do not contact remotes.
+
+### Fixed
+
+- Redaction for external history works on copies; source transcripts and source
+  index bytes stay unchanged. Signed snapshot scan caches bind policy, paths and
+  scanner identities, while disabled/partial scans keep explicit status.
+- Archive-mode cleanup also verifies ignored capture files. Git archive filters
+  and encoding conversions cannot silently alter or expose a reviewed snapshot.
+
 ## [0.2.32] - 2026-09-12
 
 ### Added

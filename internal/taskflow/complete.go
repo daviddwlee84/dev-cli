@@ -510,7 +510,7 @@ func completionArtifactCondition(observed lifecycleObservation) Condition {
 		return condition(ConditionArtifactReady, VerdictMet, RequirementRequired, artifactEvidence(observed), "")
 	default:
 		return condition(ConditionArtifactReady, VerdictBlocked, RequirementRequired,
-			artifactEvidence(observed), "finalize or explicitly discard every artifact intent")
+			artifactEvidence(observed), "finalize/discard intents and archive pending capture files")
 	}
 }
 

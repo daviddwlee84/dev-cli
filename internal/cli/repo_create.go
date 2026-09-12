@@ -234,14 +234,18 @@ team or third-party repo.`,
 
 func newRepoSetupCmd(app *App) *cobra.Command {
 	flags := repoBootstrapFlags{private: true, push: true, forge: "auto"}
+	var artifactSetup func(string) (bool, error)
 	cmd := &cobra.Command{
 		Use:   "setup [repo-or-path]",
-		Short: "Apply a scaffold to an existing repository",
+		Short: "Apply a scaffold or preview agent-history policy for a repository",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			root, err := resolveSetupRepo(app, args)
 			if err != nil {
 				return err
+			}
+			if handled, e := artifactSetup(root); handled {
+				return e
 			}
 			if flags.preset == "" && app.interactive() && !flags.json {
 				request, confirmed, err := runRepoSetupWizard(app, root, flags)
@@ -265,6 +269,7 @@ func newRepoSetupCmd(app *App) *cobra.Command {
 		},
 	}
 	bindRepoBootstrapFlags(cmd, &flags, false, true, true)
+	artifactSetup = bindRepoArtifactSetup(app, cmd, &flags)
 	registerFlagCompletion(cmd, "handoff", fixedCompletions(repoHandoffCompletions()...))
 	registerFlagCompletion(cmd, "check-in", fixedCompletions(repoCheckInCompletions()...))
 	registerFlagCompletion(cmd, "forge", fixedCompletions("auto", "github", "gitlab", "none"))

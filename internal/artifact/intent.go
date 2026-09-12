@@ -41,6 +41,11 @@ type Intent struct {
 	PlanPaths          []string `json:"plan_paths,omitempty"`
 	UnrelatedArtifacts []string `json:"unrelated_artifacts,omitempty"`
 	AllowLarge         bool     `json:"allow_large,omitempty"`
+	Destination        string   `json:"destination,omitempty"`
+	ArchivePolicy      string   `json:"archive_policy,omitempty"`
+	ArchiveStateDir    string   `json:"archive_state_dir,omitempty"`
+	ArchivePlanID      string   `json:"archive_plan_id,omitempty"`
+	ArchiveCommit      string   `json:"archive_commit,omitempty"`
 
 	Status         Status    `json:"status"`
 	TranscriptPath string    `json:"transcript_path,omitempty"`
@@ -57,6 +62,12 @@ var (
 )
 
 func (i Intent) Validate() error {
+	if i.Destination != "" && i.Destination != "archive" {
+		return fmt.Errorf("unsupported artifact destination")
+	}
+	if i.Destination == "archive" && (i.ArchiveStateDir == "" || i.ArchivePolicy == "") {
+		return fmt.Errorf("archive intent lacks policy/state binding")
+	}
 	switch {
 	case i.SchemaVersion != SchemaVersion:
 		return fmt.Errorf("unsupported artifact intent schema %d", i.SchemaVersion)

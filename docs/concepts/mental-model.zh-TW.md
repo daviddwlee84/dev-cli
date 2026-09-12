@@ -172,3 +172,9 @@ record 缺失或改變時保留 unresolved／stale，將不確定 observation �
 分開。清 cache 不影響 identities／bindings。第八個 SSH dashboard view 顯示
 connections；FLEET 仍顯示 remote repositories／tasks。詳見
 [SSH onboarding](../guides/ssh-hosts.zh-TW.md)。
+
+Agent transcript retention 與 source Git、發行包分開選擇。明確的 archive
+policy 把副本存進另一個 Git checkout，保留 private 本機 plan／recovery，
+以及可攜的 project/session/commit metadata。Ignored capture files 仍是待
+驗證的持久證據，清理前會重新檢查。選擇策略與遷移前可讀
+[AI 產物](../guides/ai-artifacts.md)。

@@ -22,7 +22,7 @@ Submodule 工作區需明確 `--recursive` 核准，取得當次遠端證明後�
 Completion 分成三個獨立里程碑，且目前 persisted task state 的 `done` 對應的是中間那個，不是最後一個：
 
 ```text
-READY     writer 離開後，commit 了 exact final transcript
+READY     writer 離開後，exact transcript 保存到選定目的地
 MERGED    branch 已整合；runtime/worktree 可能仍存在
 RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task 已 reap
 ```
@@ -34,7 +34,7 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 | 命令 | 作用 |
 |---|---|
 | `dev prepare --session <provider:uuid> --plan <path>` | 在不關閉目前執行中 agent 的情況下，arm post-writer artifact finalization。Product changes 必須已先 commit；transcript 本身刻意尚未 stage。 |
-| `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | 在 writer 停止後，commit 唯一 exact、stable 的 transcript。`--if-pending` 在沒有對應 armed intent 時靜默 no-op；`--writer-stopped` 確認外層 wrapper 已 return。 |
+| `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | 在 writer 停止後，把 exact、stable transcript 存進 intent 選定的 source commit 或外部 archive。`--if-pending` 在沒有對應 armed intent 時靜默 no-op；`--writer-stopped` 確認外層 wrapper 已 return。 |
 | `dev done --ff` | 把 task branch rebase 到其 base 上並在本機 fast-forward。記錄為 MERGED，保留 worktree/branch；明確選定的 task pane 關閉另行記錄，parent 保留。 |
 | `dev done --pr` | Push branch，並透過可用的 forge CLI 開啟 pull/merge request。Task 保持在 review 狀態，不是 MERGED。 |
 | `dev done --merged --base-ref <ref>` | 驗證某個已在外部 merge 的 branch 是否被 `<ref>` 包含，並記錄為 MERGED。 |
@@ -269,3 +269,11 @@ terminal 可能一併停止它們。畫面不輸出完整 argv 或環境變數�
 豁免。舊 handoff 需要重建。Apply 前最後取消不產生變更；開始執行後若失敗，會
 如實列出已完成的關閉及保留資源。Raw Git／Herdr 操作仍在 dev 的鎖與再驗證
 保證之外。
+
+## 外部 history archives
+
+Archive mode 使用同一套 post-writer handoff，把精確的 SpecStory transcript
+存進另一個 Git checkout。審閱過的 plans 跟 product changes commit。Redact
+副本需提供審閱過的 `--archive-plan`；舊 intents 保留 source-commit 流程。
+清理會驗證 archive receipt 與 ignored capture bytes，拒絕已改變或缺失的
+證據。詳見 [AI 產物](ai-artifacts.md)。

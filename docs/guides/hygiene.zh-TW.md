@@ -67,7 +67,8 @@ Setup 與 scan 要求相容的 gitleaks 8.x，最低 8.30.0；CI 固定 8.30.1�
 
 Staged checker 本身不改檔，但 pre-commit 可能暫存未 stage 的變更，所以 recorder
 退出後才對其 checkout commit。目前不完整取代 agent-history-hygiene：
-`dev artifact finalize` 仍依賴其 scripts；這些安裝和 finalizer wiring 先保留。
+`dev artifact finalize` 的既有 tracked-history handoff 仍依賴其 scripts；外部 archive
+使用 native snapshot 檢查。只要仍有 tracked workflow，這些安裝和 wiring 就保留。
 
 ## 政策與私密規則
 

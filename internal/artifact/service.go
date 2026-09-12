@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/agenthistory"
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/lockx"
@@ -34,6 +35,8 @@ type FinalizeRequest struct {
 	RunID         string
 	Settle        time.Duration
 	WriterStopped bool
+	ArchivePlanID string
+	Guard         func(context.Context, string, []string) error
 }
 
 // Scanner must redact/scan the staged paths without emitting secret values.
@@ -78,6 +81,7 @@ type ReadinessInspection struct {
 	KnownEmpty       bool
 	Intents          []IntentReadiness
 	ObservationError error
+	History          *agenthistory.Readiness
 }
 
 // Ready applies only the existing artifact finalization contract: an exact
@@ -85,6 +89,9 @@ type ReadinessInspection struct {
 // discarded or has a finalized receipt that is still reachable. Missing or
 // incomplete evidence fails closed.
 func (i ReadinessInspection) Ready() bool {
+	if i.History != nil && !i.History.Ready {
+		return false
+	}
 	if i.ObservationError != nil {
 		return false
 	}
@@ -200,6 +207,12 @@ func InspectReadiness(ctx context.Context, store *Store, checkout string) (Readi
 		inspection.Intents = append(inspection.Intents, evidence)
 	}
 
+	history, historyErr := InspectHistoryReadiness(ctx, store, canonical)
+	inspection.History = history
+	if historyErr != nil {
+		inspection.ObservationError = joinReadinessError(inspection.ObservationError, historyErr)
+	}
+
 	inspection.KnownEmpty = len(inspection.Intents) == 0 && inspection.ObservationError == nil
 	return inspection, inspection.ObservationError
 }
@@ -264,6 +277,14 @@ func inspectIntentReadiness(ctx context.Context, checkout string, intent Intent)
 }
 
 func receiptRemainsReachable(ctx context.Context, checkout string, intent Intent) (bool, error) {
+	if intent.Destination == "archive" {
+		h, e := agenthistory.Open(ctx, agenthistory.Options{Root: checkout, StateDir: intent.ArchiveStateDir})
+		if e != nil {
+			return false, e
+		}
+		commit, e := h.VerifyArchiveReceipt(ctx, intent.ArchivePlanID)
+		return e == nil && commit == intent.ArchiveCommit, e
+	}
 	if intent.ArtifactCommit == "" {
 		return false, nil
 	}
@@ -359,11 +380,30 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (*Intent,
 		}
 		unrelated = append(unrelated, change.Path)
 	}
-	transcript, err := FindTranscript(repository.Root, provider, sessionID)
+	var history *agenthistory.Service
+	if _, e := os.Lstat(filepath.Join(repository.Root, ".dev-cli", "artifacts.toml")); e == nil || !errors.Is(e, os.ErrNotExist) {
+		history, err = agenthistory.Open(ctx, agenthistory.Options{Root: repository.Root, StateDir: filepath.Dir(filepath.Dir(s.Store.Dir))})
+		if err != nil {
+			return nil, err
+		}
+	}
+	archiveMode := history != nil && history.Policy.Mode == "archive"
+	var transcript Transcript
+	if archiveMode {
+		if len(request.Plans) > 0 {
+			return nil, fmt.Errorf("commit reviewed plans with product changes; archive prepared SpecStory sessions separately")
+		}
+		transcript.Path, err = history.LocateSession(ctx, request.Session)
+	} else {
+		transcript, err = FindTranscript(repository.Root, provider, sessionID)
+	}
 	if err != nil {
 		return nil, err
 	}
-	tracked, err := gitTracked(ctx, repository.Root, transcript.Path)
+	tracked := false
+	if !archiveMode {
+		tracked, err = gitTracked(ctx, repository.Root, transcript.Path)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -375,7 +415,7 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (*Intent,
 	if limit <= 0 {
 		limit = DefaultLargeLimit
 	}
-	if !tracked && info.Size() > limit && !request.AllowLarge {
+	if !archiveMode && !tracked && info.Size() > limit && !request.AllowLarge {
 		return nil, fmt.Errorf("untracked transcript is %d bytes; re-run with --allow-large after reviewing repository growth", info.Size())
 	}
 	plans, err := normalizePlans(repository.Root, request.Plans)
@@ -408,6 +448,14 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (*Intent,
 		WorktreePath: repository.Root, Branch: status.Branch, Base: request.Base,
 		Head: strings.TrimSpace(head), PlanPaths: plans, UnrelatedArtifacts: filtered, AllowLarge: request.AllowLarge,
 	}
+	if archiveMode {
+		intent.Destination = "archive"
+		intent.ArchiveStateDir = history.StateDir
+		intent.ArchivePolicy, err = history.PolicyFingerprint(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
 	commonDir, err := pathx.Canonical(repository.GitCommonDir)
 	if err != nil {
 		return nil, fmt.Errorf("canonicalize artifact repository lock identity: %w", err)
@@ -418,6 +466,12 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (*Intent,
 	if err := lockx.WithDir(ctx, filepath.Join(commonDir, "dev-taskflow"), "taskflow repository", func() error {
 		if err := revalidatePreparedIntent(ctx, intent); err != nil {
 			return err
+		}
+		if archiveMode {
+			fresh, e := history.PolicyFingerprint(ctx)
+			if e != nil || fresh != intent.ArchivePolicy {
+				return agenthistory.ErrStale
+			}
 		}
 		return s.Store.Create(ctx, intent)
 	}); err != nil {
@@ -508,6 +562,9 @@ func (s *Service) Finalize(ctx context.Context, request FinalizeRequest) (*Inten
 }
 
 func (s *Service) finalizeLocked(ctx context.Context, request FinalizeRequest, intent *Intent) (*Intent, error) {
+	if intent.Destination == "archive" {
+		return s.finalizeArchive(ctx, request, intent)
+	}
 	if intent.Status == Finalized {
 		if commit, ok := findReceipt(ctx, intent.WorktreePath, intent.ID); ok && commit != intent.ArtifactCommit {
 			if err := s.markFinalized(ctx, intent.ID, intent.TranscriptPath, commit); err != nil {

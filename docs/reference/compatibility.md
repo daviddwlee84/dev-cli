@@ -606,3 +606,18 @@ PowerShell and bounded process-tree cancellation; unsupported shell syntax or
 other shim mutation actions fail closed. The dedicated native removal tests are
 required; broad advisory Windows test conclusions are not proof that every
 legacy suite passed.
+
+## Agent history archives
+
+History policy is opt-in through `artifact setup` or `repo setup --artifacts`.
+Only SpecStory Markdown and explicitly selected files are capture sources.
+Archive copies require post-writer proof; off stores unscanned input, while
+check/redact use enabled source hygiene rules. Native session databases, cloud
+resume, automatic knowledge mining, encrypted/LFS archive filters and original
+remote history replacement are outside this integration.
+
+Current file snapshots cap at 128 MiB, inventories at 10,000 files and plans at
+256 selected files. Split migration requires git-filter-repo (native CI pins
+2.47.0) and complete locally recoverable refs. Backup coverage and partial results
+remain explicit. Existing commit finalizers and intent fields retain their lane;
+older binaries cannot consume new external-archive intent fields.

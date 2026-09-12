@@ -22,7 +22,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | Goal | Commands |
 |---|---|
 | task lifecycle | `start`, `park`, `resume`, `done`, `retire`, `sweep`, `ls`, `status` |
-| agent artifacts | `prepare`, `artifact finalize`, `artifact list`, `artifact discard` |
+| agent artifacts | `prepare`, `artifact status/setup/archive/find/migrate/sync/backup`, `artifact finalize/list/discard` |
 | guarded Git transactions | `git uncommit`, `git recommit`, `git pull-rebase`, `git amend-all`, `git setup` |
 | linked worktrees | `wt list`, `wt create`, `wt open`, `wt rm`, `wt plan`, `wt provision` |
 | repositories/remotes | `repo list`, `repo context`, `repo new`/`repo create`, `repo clone`, `repo setup`, `repo open`, `repo sync`, `repo remote`, `repo mark` |
@@ -990,3 +990,15 @@ preview-only. `setup --migrate-hooks` previews narrow known-hook/rule migration.
 `rules import --from machines` reads private candidates from existing local
 Tailscale/LAN/Fleet caches. `skill manage` also removes selected owned skills with
 explicit agent scopes; existing bundled `skill uninstall` keeps its meaning.
+
+## Agent history policy
+
+`dev artifact setup` and `dev repo setup --artifacts` share reviewed plans.
+`.dev-cli/artifacts.toml` records project ID, track/archive/unmanaged mode,
+specstory/files source, capture location policy, literal paths and export rules.
+Host-local archive/protection bindings and signed receipts stay under
+`paths.state_dir/agent-history/`. They are durable private state, not cache.
+
+Capture/provider identity, source retention, off/check/redact copy protection
+and distribution exclusions are independent. See [AI artifacts](../guides/ai-artifacts.md)
+for supported limits, exact preview/apply commands and historical migration.

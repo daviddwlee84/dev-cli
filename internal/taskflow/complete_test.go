@@ -10,9 +10,11 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/daviddwlee84/dev-cli/internal/agenthistory"
 	"github.com/daviddwlee84/dev-cli/internal/artifact"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 )
@@ -281,4 +283,59 @@ func completionCommit(t *testing.T, dir, path, content, message string) string {
 	mustGitCommand(t, dir, "add", path)
 	mustGitCommand(t, dir, "commit", "-m", message)
 	return strings.TrimSpace(mustGitCommand(t, dir, "rev-parse", "HEAD"))
+}
+
+func TestCompletionIgnoredHistoryRequiresVerifiedArchive(t *testing.T) {
+	f := newLifecycleGitFixture(t, task.ModeWorktree, task.Hot)
+	archive := gittest.New(t)
+	archive.Git("config", "core.hooksPath", t.TempDir())
+	options := agenthistory.Options{Root: f.worktree, StateDir: filepath.Dir(filepath.Dir(f.artifacts.Dir))}
+	h, e := agenthistory.Open(t.Context(), options)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p, e := h.PreviewSetup(t.Context(), agenthistory.SetupOptions{Mode: "archive", Source: "specstory", Archive: archive.Root, Protection: "off", ExportIgnore: true})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = h.ApplySetup(t.Context(), p.ID); e != nil {
+		t.Fatal(e)
+	}
+	mustGitCommand(t, f.worktree, "add", ".gitignore", ".gitattributes", ".dev-cli/artifacts.toml")
+	mustGitCommand(t, f.worktree, "commit", "-m", "history policy")
+	sid := "01a0438b-5d41-7e60-b11f-ef9f2ab4c7b2"
+	path := filepath.Join(f.worktree, ".specstory/history/chat.md")
+	if e = os.MkdirAll(filepath.Dir(path), 0o700); e != nil {
+		t.Fatal(e)
+	}
+	if e = os.WriteFile(path, []byte("# chat\n<!-- Codex CLI Session "+sid+" (2026-09-12) -->\nevidence\n"), 0o600); e != nil {
+		t.Fatal(e)
+	}
+	plan, e := f.service.Plan(t.Context(), f.request(t, CompleteFFOptions{}))
+	if e != nil {
+		t.Fatal(e)
+	}
+	condition, ok := conditionByCode(plan, ConditionArtifactReady)
+	if !ok || condition.Verdict != VerdictBlocked {
+		t.Fatal("ignored conversation did not block completion")
+	}
+	h, e = agenthistory.Open(t.Context(), options)
+	if e != nil {
+		t.Fatal(e)
+	}
+	p, e = h.PreviewArchive(t.Context(), agenthistory.ArchiveOptions{Session: "codex:" + sid})
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = h.ApplyArchive(t.Context(), p.ID, agenthistory.ApplyOptions{WriterStopped: true}); e != nil {
+		t.Fatal(e)
+	}
+	plan, e = f.service.Plan(t.Context(), f.request(t, CompleteFFOptions{}))
+	if e != nil {
+		t.Fatal(e)
+	}
+	condition, ok = conditionByCode(plan, ConditionArtifactReady)
+	if !ok || condition.Verdict != VerdictMet {
+		t.Fatal("verified archive did not satisfy completion evidence")
+	}
 }

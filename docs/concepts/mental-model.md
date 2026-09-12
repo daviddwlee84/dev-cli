@@ -187,3 +187,9 @@ remain redirects. Missing or changed source records remain unresolved/stale,
 keeping uncertainty separate from human intent. Cache deletion leaves identities
 and bindings intact. The eighth SSH dashboard view shows connections; FLEET still
 shows remote repositories/tasks. See [SSH onboarding](../guides/ssh-hosts.md#discovery-and-canonical-machines).
+
+Agent transcript retention is independent of source Git and distribution. An
+explicit archive policy keeps copies in a separate Git checkout, with private
+local plans/recovery and portable project/session/commit metadata. Ignored capture
+files remain durable evidence until verified; cleanup rechecks that proof. Read
+[AI artifacts](../guides/ai-artifacts.md) before choosing retention or migration.

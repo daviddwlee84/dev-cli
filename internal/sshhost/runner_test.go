@@ -58,6 +58,22 @@ func TestExecRunnerBoundsNoninteractiveOutputWithIndicators(t *testing.T) {
 	}
 }
 
+func TestExecRunnerLargeProtocolKeepsStderrBounded(t *testing.T) {
+	request := runnerHelperRequest(maxCapturedOutputBytes+8192, false)
+	request.StdoutLimit = 2 << 20
+	result, e := (ExecRunner{}).Run(t.Context(), request)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if result.StdoutTruncated || !result.StderrTruncated || len(result.Stdout) != maxCapturedOutputBytes+8192 {
+		t.Fatal("large protocol changed default stderr protection")
+	}
+	request.StdoutLimit = 129 << 20
+	if _, e = (ExecRunner{}).Run(t.Context(), request); e == nil {
+		t.Fatal("unbounded stdout request accepted")
+	}
+}
+
 func TestOutputTruncationMarkerCannotParseAsEffectiveConfig(t *testing.T) {
 	output := append([]byte("hostname target.example\n"), []byte(outputTruncationMarker)...)
 	if _, err := ParseEffective("target", output); err == nil {
