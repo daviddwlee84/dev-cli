@@ -148,7 +148,7 @@ Repository 首頁解析只讀 local Git。Assets 旁的 Try removal journals 是
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](../guides/local-triage.md)。
 
@@ -205,3 +205,20 @@ providers、private askpass transport、guarded policy/reference TOML。Native v
 availability 與互動授權依 host 而異；automated unit fixtures 沒有讀寫實際 vault。
 Private-key vault migration、hardware provisioning、Apple Passwords migration 仍 deferred；
 公開 SSH guide 分別說明 controller route 與 remote-native session。
+
+## Dotfiles 與 FLEET 主機樹
+
+2026-09-11 依 `internal/dotfile`、CLI dotfile／fleet adapters、TUI 主機樹
+測試與 Herdr 0.9.0 machine help／原始碼查核。Chezmoi 設定格式、.chezmoiroot
+與 dry-run hooks 依官方 reference。詳見 [Dotfiles](../guides/dotfiles.zh-TW.md)
+與 [FLEET](../guides/remote-fleet.zh-TW.md#dashboard-host-tree)。
+
+## FLEET Herdr catalog 狀態
+
+FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀態顯示於最後。
+隱藏本機時，搜尋與 coverage 同樣排除本機。HERDR 由共享的本機 catalog 查詢
+呈現未加入／啟用／停用／混合／unknown，與 repository STATE、runtime LIVE
+分開。Herdr 內外皆可逐 profile 啟用／停用／移除，遠端 sessions 保留，完成後
+只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
+background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
+fleet snapshot JSON。詳見[主機控制](../guides/remote-fleet.zh-TW.md#dashboard-host-tree)。

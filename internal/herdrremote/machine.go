@@ -238,12 +238,22 @@ func (s Service) Apply(ctx context.Context, p Plan, interactive bool) (Result, e
 		ok = len(matches) == 1 && matches[0].Label == r.Label && matches[0].Enabled
 	case "remove":
 		ok = len(matches) == 0
-	case "rename":
-		ok = len(matches) == 1 && matches[0].Label == r.Label
-	case "enable":
-		ok = len(matches) == 1 && matches[0].Enabled
-	case "disable":
-		ok = len(matches) == 1 && !matches[0].Enabled
+	case "rename", "enable", "disable":
+		if len(matches) == 1 && len(p.expected) == 1 {
+			// Only the selected field may change. A successful native command
+			// must not turn a concurrent retarget/session/label change into a
+			// verified result. matching already ignores client-only Selected.
+			expected := p.expected[0]
+			switch action {
+			case "rename":
+				expected.Label = r.Label
+			case "enable":
+				expected.Enabled = true
+			case "disable":
+				expected.Enabled = false
+			}
+			ok = reflect.DeepEqual(matches[0], expected)
+		}
 	}
 	if !ok {
 		return result, errors.New("Herdr result could not be verified")

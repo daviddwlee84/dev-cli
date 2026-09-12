@@ -143,6 +143,7 @@ var helpTopics = map[string]string{
 	"dev repo":      "repositories",
 	"dev note":      "notes",
 	"dev fleet":     "fleet",
+	"dev dotfile":   "dotfile",
 	"dev ssh":       "ssh",
 	"dev journal":   "journal",
 	"dev summary":   "summary",

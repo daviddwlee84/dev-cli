@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 )
 
@@ -67,7 +68,22 @@ func TestBootstrapAgentHistoryWritesConfigAndHonorsGlobalHooksPath(t *testing.T)
 	if _, err := gitx.Run(t.Context(), root, "config", "core.hooksPath", filepath.Join(root, "hooks")); err != nil {
 		t.Fatal(err)
 	}
-	app := &App{In: bytes.NewBuffer(nil), Out: &bytes.Buffer{}, Err: &bytes.Buffer{}}
+	toolsDir := t.TempDir()
+	for _, name := range []string{"pre-commit", "gitleaks"} {
+		if err := os.WriteFile(filepath.Join(toolsDir, name), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", toolsDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	if err := os.Mkdir(filepath.Join(root, "hooks"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "hooks", "pre-commit"), []byte("#!/bin/sh\nexec pre-commit run --config .pre-commit-config.yaml\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := config.Default()
+	cfg.Paths.StateDir = t.TempDir()
+	app := &App{Cfg: cfg, In: bytes.NewBuffer(nil), Out: &bytes.Buffer{}, Err: &bytes.Buffer{}}
 	if err := bootstrapAgentHistoryHygiene(t.Context(), app, root); err != nil {
 		t.Fatal(err)
 	}

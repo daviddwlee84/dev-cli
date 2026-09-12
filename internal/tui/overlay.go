@@ -30,15 +30,18 @@ type formField struct {
 }
 
 type actionOption struct {
-	tool   string
-	column string
-	action listAction
-	label  string
+	fleetID      string
+	fleetProfile string
+	tool         string
+	column       string
+	action       listAction
+	label        string
 }
 
 // overlayState uses fixed arrays so copying Model also copies the mutable form
 // and menu state. A slice or pointer would violate Bubble Tea's value semantics.
 type overlayState struct {
+	fleetHost    FleetHostDescriptor
 	registration uint64
 	scroll       int
 	body         string
@@ -51,9 +54,10 @@ type overlayState struct {
 	repoTarget   RepoRow
 	action       TryAction
 
-	searching   bool
-	search      textinput.Model
-	options     [48]actionOption
+	searching bool
+	search    textinput.Model
+	// Herdr's catalog admits 64 profiles; its picker needs one row per identity.
+	options     [80]actionOption
 	optionCount int
 	optionIndex int
 

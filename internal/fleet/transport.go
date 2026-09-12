@@ -409,7 +409,7 @@ func validateWindowsFleetHelperArgs(args []string) error {
 		return errors.New("Windows fleet transport permits only internal fleet helpers")
 	}
 	switch args[1] {
-	case "_snapshot", "_sync", "_capability", "_ssh-capability", "_ssh-inventory", "_ssh-resolve", "_ssh-keys":
+	case "_snapshot", "_sync", "_capability", "_ssh-capability", "_ssh-inventory", "_ssh-resolve", "_ssh-keys", "_dotfile-status":
 		if len(args) != 2 {
 			return fmt.Errorf("Windows fleet helper %s accepts no command arguments", args[1])
 		}

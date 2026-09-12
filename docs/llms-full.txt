@@ -502,7 +502,7 @@ Triage is a view of observed work plus personal review intent. Keep-local, snooz
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -1190,7 +1190,7 @@ on the current branch is insufficient evidence to remove a whole clone.
 ## Enter from REPOS or TRY
 
 The dashboard remains navigation-only: Enter/`o` opens the current item and
-Space retains its existing worktree/action behavior. There are no organizer
+Space expands/collapses REPOS worktrees and is unused in TRY. There are no organizer
 checkboxes or hidden selections on these pages. `Ctrl+O` offers **organize this
 item**, **organize current filtered results**, and **organize all local work**.
 The triage header names the chosen scope; scoped entry starts with items, not
@@ -2958,6 +2958,197 @@ installed binary or retire its workspace.
 
 ---
 
+### Repository hygiene
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/hygiene/
+
+> Inspect repository hooks, scan secrets and personal data, and apply reviewed text replacements with private recovery.
+
+`dev hygiene` joins optional gitleaks and pre-commit with repository policy,
+private local identity rules and guarded text changes. It does not equate a
+scanner finding with a confirmed credential leak.
+
+## Inspect and configure
+
+Install `gitleaks` and `pre-commit` first. Setup reports missing dependencies;
+it does not install packages or replace a global hook silently.
+
+```bash
+dev hygiene status
+dev hygiene status --check-remote              # explicit GitHub visibility query
+dev hygiene setup --json
+dev hygiene setup --apply --plan <id> --yes
+```
+
+Status reads the effective `core.hooksPath`, existing hook and project config.
+A recognized hook chain is configuration evidence, not proof that every commit
+was scanned. Hooks can be bypassed by raw Git or external tools.
+
+Setup adds the blocking `dev-hygiene` pre-commit hook, safe gitleaks rules and
+`.dev-cli/hygiene.toml`. It preserves other hooks and YAML comments. Unknown
+hook chains and conflicting same-name hooks require manual integration. An
+existing gitleaks config is retained unless `--migrate-rules` was included in
+the reviewed setup plan. Review that replacement against custom rules first.
+`dev repo setup --enable agent-history-hygiene` uses this same service.
+
+The hook checks index content. It never rewrites files or stages user changes.
+A missing dev/gitleaks executable, invalid report or failed scan blocks it.
+The hook runner must find a dev version that supports `hygiene` on PATH.
+
+## Choose policy
+
+Precedence is built-in defaults, user defaults (`$XDG_CONFIG_HOME/dev/hygiene.toml`),
+repo policy, private local repo overrides, then explicit scan/status flags.
+The recommended defaults are `secrets = "block"`, `known = "block"` and
+`generic = "warn"`. Each category supports `block`, `warn` and `off`. A rule
+may override its enabled category's disposition; category `off` disables it.
+
+```toml
+version = 1
+secrets = "block"
+known = "block"
+generic = "warn"
+```
+
+Setting all three categories to `off` returns an explicit `skipped` result without
+reading repository file contents or running the engine; it is not a clean scan.
+
+Private visibility supplies advice only. It does not silently weaken policy;
+unknown or unsupported visibility is never treated as private. GitHub lookup
+requires `status --check-remote`; `--remote` selects its remote (default origin).
+
+```bash
+dev hygiene rules policy --known warn --generic off --json
+dev hygiene rules apply --plan <id> --yes
+```
+
+Policy/rule changes are separate reviewed plans. One invocation's scan overrides
+are not persisted. Obtain a fresh scan using the persistent policy before
+creating a redaction plan.
+
+## Local identity rules and exceptions
+
+```bash
+dev hygiene rules import --from ssh --json
+dev hygiene rules import --from ssh --select <candidate-id> --json
+dev hygiene rules import --from local --json
+dev hygiene rules add --id private-network --kind cidr --value-file network.txt \
+  --replacement 192.0.2.1 --json
+dev hygiene rules apply --plan <id> --yes
+```
+
+Imports require explicit candidate selection. SSH uses the bounded static
+OpenSSH Include closure, including literal aliases, HostName, User and key-path
+references. It never executes `ssh -G`, `Match exec`, DNS or a remote command,
+and never reads key material. An incomplete Include closure blocks import.
+Common public names and generic accounts are recommendations for warnings.
+Local import supplies home path, account, Git name and Git email candidates.
+
+Literal, CIDR and Go RE2 rules accept optional relative path globs. `directory/**`
+selects descendants. Rule values come from a file or `--value-file -`; do not
+put sensitive values in command arguments. Edit or disable existing private
+rules through a reviewed same-ID rule plan or the private policy file.
+
+Private rules, HMAC identifiers, scan records and recovery are stored outside
+Git under `paths.state_dir/hygiene/repos/<native-repo-id>/`. Linked worktrees
+share local policy but plans remain bound to an exact checkout. Windows uses
+protected current-user/SYSTEM ACLs; Unix uses private ownership and permissions.
+There is no automatic deletion or export of this state.
+
+```bash
+dev hygiene rules allow --report <report-id> --finding <finding-id> \
+  --reason 'Reviewed synthetic test fixture' --json
+```
+
+Local exceptions bind an exact value/rule/path finding. Shareable TOML exceptions
+require `rule`, `path`, an anchored `pattern` and a reason. Keep private values
+out of shareable rules. `.gitleaksignore` contains finding fingerprints, not path
+globs. `scan --audit` ignores local finding exceptions, that file and inline
+`gitleaks:allow`; scanner-config allowlists still apply and must be reviewed.
+Placeholders never automatically allow an unrelated key on the same line.
+
+## Scan with an honest scope
+
+```bash
+dev hygiene scan --scope worktree --json
+dev hygiene scan --scope staged --json
+dev hygiene scan --scope history --audit --timeout 40m --json
+dev hygiene --public-only --known off --generic off scan --scope history \
+  --range <full-from-oid>..<full-to-oid> --json
+```
+
+Working-file scans include tracked files and nonignored untracked files. Already
+tracked files remain in scope after a later `.gitignore` addition. Staged scans
+use actual index bytes, including hidden files and partial staging. Selected
+`--file` arguments must already belong to that scope.
+
+An explicit range checks versions changed in its selected commits, leaving
+untouched older files for the full audit. History freezes locally available refs
+(or an explicit full-OID range), includes
+merge-only content and removed files, and never fetches implicitly. It does not
+scan reflogs, unreachable objects, uncommitted work in other checkouts or remote
+submodule repositories. Nonregular entries and recognized binary formats are
+listed as exclusions from text scanning. Unsupported text encodings, unreadable
+or oversized files, changing sources/refs, shallow history, cancellation and
+scanner failures produce incomplete results. The per-file text limit is 128 MiB;
+large files are never silently called clean.
+
+Public JSON schema 1 records status, scope, frozen refs, counts, safe finding
+locations, dispositions, exclusions and coverage gaps. It omits source snippets
+and credential values. Finding IDs and public file/plan digests use private HMAC
+keys. `complete` describes the declared text scope; a blocking finding or
+incomplete scan exits unsuccessfully. No findings is not a credential-validity
+check. Reports may contain identifying filenames not covered by selected rules;
+review them before sharing.
+
+CI uses public repository rules, without global/personal values. It cannot
+claim to have checked private SSH identities. PR/push scans select the changed
+commit range; manual workflow dispatch audits all locally fetched history.
+
+## Review and apply replacements
+
+```bash
+dev hygiene redact --report <report-id> --file notes.md --json
+dev hygiene redact --report <report-id> --finding <finding-id> --json
+dev hygiene review-path <id>                 # open privately; never paste contents
+dev hygiene redact --apply --plan <id> --yes
+# Only after the exact artifact writer exited:
+dev hygiene redact --apply --plan <id> --yes --writer-stopped
+```
+
+All supported regular text files may be selected. Plans bind the checkout,
+HEAD/branch, effective policy, scanner inputs, native file identity and content.
+They are signed private records. An edited plan or stale input requires a new
+preview. Overlapping matches prefer secret, then known, then generic rules;
+within a category the longer span wins. The terminal output shows paths, opaque before/after digests and replacement
+counts. `review-path <id>` locates a private full-content proposal for human
+inspection. Its integrity is bound to the plan; never paste that file into chat,
+Git or CI logs. The default output does not echo the original secret.
+
+Apply checks the whole selection, then publishes individual guarded transactions
+with original metadata and private recovery. It retains a partial ledger on
+failure; never repeat an interrupted operation blindly. Index contents, Git
+history and installed binaries are not changed. Native Windows protections are
+specific to these opted-in text transactions; other configedit workflows retain
+their own platform support contracts. Windows preserves owner/group/DACL
+semantics; files with alternate streams, explicit integrity labels or special
+attributes require manual preservation.
+
+```bash
+dev hygiene restore --receipt <receipt-id> --json
+dev hygiene restore --receipt <receipt-id> --apply --yes
+```
+
+Restore refuses files replaced or edited since the recorded transaction. Artifact
+recovery also needs `--writer-stopped`. Runtime observations reject recognized
+writers; a disabled/unavailable runtime cannot prove process absence. The
+post-writer attestation and source revalidation remain necessary, and raw external
+writers remain outside dev-mediated locks.
+
+Use the [manual dogfood checklist](https://daviddwlee84.github.io/dev-cli/reference/hygiene-dogfood/) for this repo.
+
+---
+
 ### Remote repository fleet
 
 Source: https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/
@@ -3093,6 +3284,7 @@ A partial/unknown bootstrap, failed ordinary gate, or fleet-fragment collision l
 |---|---|---|
 | `dev fleet list` | `--host <name>` (repeatable), `--repo <query>`, `--json`, `--cached`, `--strict` | list repositories/activity across this machine and merged configured hosts |
 | `dev fleet status` | `--json`, `--strict` | probe configured hosts and report snapshot health |
+| `dev fleet dotfile status` | `--host <name>` (required, repeatable), `--json` | passive host-local chezmoi configuration and source revision |
 | `dev fleet machine-id <host>` | `--json` | show the observed durable UUID and compare the configured primary pin |
 | `dev fleet sync <repo>` | `--push`, `--remote <name>`, `--host <name>` (repeatable), `--json` | optionally publish, then safely fast-forward clean matching checkouts |
 | `dev fleet files [repo-or-path]` | `--to <host>`, `--file <pattern>` (repeatable), `--apply`, `--replace`, `--yes`, `--json` | plan or apply one-way transfer of explicit ignored files |
@@ -3208,21 +3400,132 @@ A successful probe writes a private per-host JSON snapshot. Its endpoint ID incl
 
 The cache lets an unavailable host retain last-known state as `stale`; `--cached` reads only it. It never becomes authoritative for remote paths or tasks.
 
-## Fleet in the TUI
+## Dashboard host tree {#dashboard-host-tree}
 
-FLEET is one of the TUI's eight views (`TASKS`, `REPOS`, `FLEET`, `TRY`,
-`REMOTE`, `SKILLS`, `MCP`, `SSH`, switched with `tab`/`h`/`l`). Like REMOTE, it loads
-lazily—no live probe starts until the view is first opened—but valid cache is
-decoded after the initial TASKS view. The TUI hides this machine by default
-because REPOS provides richer local inventory; `a` toggles local rows. The local
-snapshot reuses the accepted REPOS generation instead of rescanning, and cached
-rows remain visible while that generation loads. `r` supersedes older work and
-reloads every host from the merged primary-plus-generated configuration. The
-non-interactive `dev fleet list` output remains local plus remote.
+FLEET lists configured remote hosts immediately without waiting for a repository
+scan or SSH. Hosts start collapsed. This machine is hidden by default because
+REPOS provides its richer local inventory. Press `a` or use the action menu to
+show it collapsed at the end of the list; the choice lasts for this dashboard
+session, and local repositories reuse the accepted REPOS snapshot. Local stays
+last in either sort direction. Space expands or collapses a host; on a child it
+collapses the host and selects its header. Enter/`o` navigates to the host or
+repository; Enter on the local host switches to REPOS. Ctrl+O and right-click
+open actions; r refreshes the selected host and Herdr metadata. Global
+h/l/arrow/Tab navigation still changes views. Space is unused in flat lists.
 
-The table shows host/state/repository/branch/Git/runtime/task/path facts. Enter uses native Herdr remoting when an eligible POSIX-style profile reports Herdr and no password step is needed; otherwise it opens through SSH and a remote login shell. On a Windows controller, the local fallback starts a child `%COMSPEC%` shell because Windows has no `exec(2)`.
+After five seconds, or on entering FLEET sooner, one background worker warms
+missing or expired host snapshots. Each eligible host is tried once; results
+arrive independently. Background reads use non-interactive authentication,
+never resolve password fallback, and time out within 30 seconds or the shorter
+configured command timeout. Explicit requests have priority and share the
+configured concurrency limit. Disable automatic warming in dev config:
 
-The `e` key opens only primary `remotes.toml`. After return, dev reparses the full primary-plus-generated merge. An invalid primary or generated fragment reports the error and preserves previous usable rows; a valid merge triggers a live reload.
+```toml
+[tui.fleet]
+background_refresh = false
+```
+
+Cached repositories remain usable and searchable even after cache_ttl, with
+age and stale/error state visible. A failed request retains prior data; a
+successful empty snapshot means zero repositories. Host loading and actions do
+not depend on local REPOS being ready. Collapsing a host retains its data and
+does not cancel a requested read.
+
+The / filter searches known host names, SSH aliases, Herdr profile labels/session
+and registration state, and loaded/cached repos, including collapsed hosts.
+Hidden local data stays outside search and coverage. Matching children retain their parent header and
+appear temporarily expanded. Space can collapse a match while searching;
+clearing the filter restores the original expansion choices.
+Typing or filtering never schedules extra connections. The coverage footer
+separates fresh, cached and unloaded hosts; update all hosts from the action
+menu when a complete current search is needed, including when no rows match.
+The local toggle also remains available with no remote hosts or no matches.
+
+Host actions offer SSH, [dotfile status](https://daviddwlee84.github.io/dev-cli/guides/dotfiles/), and optional Herdr without
+requiring a repo snapshot or remote dev. The `HERDR` column shows this machine's
+saved-profile state, independently of repository `STATE` and runtime `LIVE`:
+
+| HERDR | Meaning | Management |
+|---|---|---|
+| `not added` | A successful catalog read found no matching profile | Add to Herdr |
+| `enabled` | The matching saved profile is enabled | Disable or Remove |
+| `disabled` | The matching saved profile is disabled | Enable or Remove |
+| `1/2 enabled` | Several matching profiles | Choose an exact profile first |
+| `loading` / `unknown` | Loading or no reliable observation | Refresh or inspect the reason |
+| `unmapped` / `not checked` | No exact SSH alias, or Herdr inspection disabled | Inspect the connection settings or invocation |
+
+One bounded local `herdr machine list --json` read supplies all host rows. It
+does not contact SSH or require a running local server. The catalog is read on
+FLEET entry, explicit refresh, menu inspection and after a Herdr action; there
+is no continuous polling. Failed refreshes retain prior values as stale rather
+than turning them into `not added`. `--no-runtime` skips Herdr inspection.
+Repository `background_refresh` does not control this separate local read.
+
+Enabled means saved connection intent, not currently connected. Profile matching
+uses the exact configured SSH alias; aliases are not resolved to IPs or assumed
+equivalent. Detail shows profile labels, sessions and any differences between
+fleet connection overrides and the saved target. OS stays in host detail rather
+than appearing as a branch on host headers.
+
+Enable, Disable and Remove work inside and outside Herdr using existing guarded
+plans and exact profile fingerprints. Multiple profiles use a picker instead
+of expanding an unbounded action list. Disable preserves the saved profile for
+later enable; Remove deletes that profile. Both detach local clients while the
+remote server, panes and sessions keep running. These catalog operations refresh
+Herdr metadata without fetching a remote repository snapshot. There is no batch
+toggle or implicit operation on every matching profile.
+
+Outside Herdr, Connect additionally attaches to an explicit session (default:
+default). Add can prepare/start a remote server and retains native installation
+approvals. Herdr 0.9.0 add connects open local clients but does not select the new
+machine. Registration affects this host's client catalog, not another desktop
+client. Unsupported connection targets, including native Windows, may still
+disable/remove an existing exact saved profile; connection capability and local
+catalog management are separate.
+
+### Enter and remote sessions
+
+Host navigation needs an SSH alias, but does not require remote `dev` or a
+repository snapshot. Repository navigation, including `dev fleet open <host>
+<repo>`, first checks the exact remote path and Git identity through a compatible
+remote `dev`. It then prepares or reuses a workspace without changing focus.
+Preparation and attachment always name the same explicit Herdr session.
+
+| Where dev runs | Enter on a host | Enter on a repository |
+|---|---|---|
+| Inside Herdr (`HERDR_ENV=1`) | Reuse an enabled saved profile; ask before Add or Enable | Check the repository/helper, ensure the chosen profile, then prepare the workspace |
+| Outside Herdr | Attach to the chosen saved session, or explicit `default` when none is saved | Prepare the workspace, then attach to that session |
+
+Several matching profiles require a choice by exact ID, label and session;
+non-interactive invocations refuse to guess. Removing a profile means it must
+be added again. A failed catalog read is unknown and blocks profile selection.
+Outside Herdr, Enter does not implicitly add or enable saved profiles.
+Repository preparation outside Herdr requires a ready remote server. If it is
+missing, use host Enter/Connect to prepare it natively, then retry the repository.
+
+Herdr 0.9.0 cannot publicly select a machine/workspace for only the calling
+client. After preparation, select the reported machine and workspace in the
+native sidebar. Inside Herdr, dev returns to the same dashboard without starting
+a nested client. Outside, it runs `herdr --remote <alias> --session <session>`.
+Neither route calls session-wide `workspace focus`, which could move other
+clients. Native installation approvals remain native.
+
+Unavailable or unsupported Herdr targets offer an explicit SSH action;
+`--no-runtime` uses SSH directly. Once a Herdr operation begins, cancellation or
+failure returns its result without automatically opening SSH. Completed Add,
+Enable and workspace preparation remain visible if a later step fails. Older
+remote dev versions reject the new preparation helper before modifying a
+workspace; update the remote dev before retrying repository navigation.
+
+Navigation and Herdr profile changes return their result directly to the
+dashboard. There is no final “Press Enter” prompt. Ctrl+O → full status / error
+shows the complete result, including any completed steps when a later step
+fails. Returning does not automatically open another host or repository.
+
+The e key edits primary remotes.toml and revalidates the merged configuration.
+Changed endpoints invalidate old results; invalid edits retain usable rows.
+CLI dev fleet list still returns its existing local-plus-remote inventory.
+
 
 ## Safe branch propagation and degradation
 
@@ -3273,6 +3576,123 @@ Use `dev ssh setup <alias> --auth existing --to fleet|herdr|both` for an already
 working login, or select an explicit key for ordinary sshd bootstrap. Tailscale
 policy login does not require installing an authorized_keys entry. Provider
 registration remains explicit and Herdr keeps its native installation approvals.
+
+---
+
+### Dotfiles
+
+Source: https://daviddwlee84.github.io/dev-cli/guides/dotfiles/
+
+> Discover chezmoi configuration, choose an optional platform-specific dotfiles preset, delegate native operations, and inspect selected fleet hosts.
+
+`dev dotfile` is an optional entry point to chezmoi. Chezmoi owns source state,
+templates and deployment; the dotfiles repository owns prompts and package
+installation. Dev locates the configuration, guides setup and delegates explicit
+native operations. It does not require the author's dotfiles.
+
+## Inspect before setup
+
+```bash
+dev dotfile
+dev dotfile status --json
+dev dotfile status --chezmoi-config /path/to/chezmoi.toml
+```
+
+Status reads configuration and local Git identity without invoking chezmoi,
+rendering templates, running hooks or fetching refs. It distinguishes the
+configured source directory, the source-state directory selected by
+`.chezmoiroot`, and the Git working tree. A source revision does not prove that
+the revision has been applied: deployment drift is explicitly not evaluated.
+
+TOML, YAML, JSON and JSONC configurations are supported. Discovery follows
+native XDG search precedence, including secondary configuration/data directories. Ambiguous, unreadable
+or invalid configuration remains unknown; it does not fall back to another
+checkout or authorize replacing an existing setup. `--chezmoi-config` selects
+the local native configuration and is distinct from dev's global `--config`.
+Absence of a chezmoi setup says nothing about other dotfile managers.
+
+## Choose a repository
+
+```bash
+dev dotfile setup
+dev dotfile setup --repo https://github.com/you/dotfiles.git
+dev dotfile setup --preset david
+```
+
+The interactive flow reviews the repository and native initialization command.
+Outside a terminal, setup reports its plan unless `--yes` is supplied. Add
+`--apply` to request deployment after initialization. Dev's confirmation does
+not answer repository-owned prompts or suppress chezmoi conflict handling.
+Existing sources are retained rather than replaced with a recommendation.
+
+The optional `david` preset recommends an author-maintained repository for the
+environment in which dev is running:
+
+| Environment | Repository | Support |
+|---|---|---|
+| macOS, ordinary Linux, WSL inside Linux | [dotfiles](https://github.com/daviddwlee84/dotfiles) | Primary |
+| Native Windows | [dotfiles-windows](https://github.com/daviddwlee84/dotfiles-windows) | Windows |
+| Native Android Termux | [dotfiles-Termux](https://github.com/daviddwlee84/dotfiles-Termux) | Experimental |
+| iSH | [dotfiles-iSH](https://github.com/daviddwlee84/dotfiles-iSH) | Experimental |
+| OpenWrt / ImmortalWrt | [dotfiles-OpenWrt](https://github.com/daviddwlee84/dotfiles-OpenWrt) | Experimental |
+
+The `dotfiles-all` superproject is for maintaining these repositories together;
+users select the relevant standalone repository. A Windows host is not WSL,
+ordinary Alpine is not iSH, and an Android shell is not necessarily Termux.
+Ambiguous or unsupported environments receive guidance rather than an assumed
+desktop installation. Experimental recommendations do not promise dev binary
+availability on every architecture.
+
+If chezmoi is absent, dev shows installation and repository bootstrap guidance.
+Specialized platform bootstraps remain native entry points. Dev does not download
+and execute bootstrap scripts or choose a package manager on the user's behalf.
+
+## Explicit native operations
+
+```bash
+dev dotfile diff
+dev dotfile apply
+dev dotfile update
+```
+
+Diff and apply accept target paths. Apply uses the current source; update uses
+chezmoi's own update behavior, including configured commands and subsequent
+deployment. Native prompts, output and failures remain visible. Advanced
+operations such as `chezmoi edit`, `add` and `re-add` stay with chezmoi.
+
+These explicit operations can evaluate templates and hooks. Apply and update
+can run repository scripts and install packages. Even native dry-run is not a
+sandbox: [chezmoi hooks run in dry-run mode](https://www.chezmoi.io/reference/configuration-file/hooks/).
+Dev does not cache rendered diffs or promise rollback of arbitrary scripts.
+
+## Observe another machine
+
+```bash
+dev fleet dotfile status --host lab
+dev fleet dotfile status --host lab --host winlab --json
+```
+
+Each selected host reads its own user's conventional configuration through a
+bounded, versioned passive helper. This does not run chezmoi or load the host's
+repository/runtime inventory. Missing or incompatible remote dev is reported
+separately from missing chezmoi. Local configuration overrides are not sent to
+remote hosts. There is no remote apply or HOME/configuration transfer in this
+first version.
+
+The [FLEET host menu](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree) exposes the same status
+without requiring a repository to be selected.
+
+## Existing helpers and ownership
+
+The author's `fleet chezmoi` remains a separate tool with its existing inventory
+and behavior. Dev does not import its machine list or redefine its apply/update
+semantics. `dev fleet sync` still synchronizes eligible Git branches, and
+`dev fleet files` still handles explicitly exported ignored files.
+
+`dotcfg` is the author's repository-specific prompt editor; appsrc diagnoses
+application installation sources. They remain optional standalone helpers.
+Dotfiles may install dev as a package, while their bootstrap and native
+operations continue to work without dev, avoiding a required circular dependency.
 
 ---
 
@@ -4096,7 +4516,7 @@ the dashboard does not add submodules itself.
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes, or the optional release refresh can
 finish. TASKS, REPOS, and TRY then publish independently from one shared local
-cycle. REMOTE, FLEET, SKILLS, MCP, and SSH stay lazy. Each requested view has a generation:
+cycle. REMOTE, SKILLS, MCP, and SSH stay lazy; FLEET uses delayed host-by-host warming. Each requested view has a generation:
 `r` supersedes the previous read, late results are ignored, failed refreshes keep
 usable rows visible, and a successful empty result removes obsolete rows. Cache
 acceptance and current live completion are distinct; there is no all-tabs-ready
@@ -4324,14 +4744,22 @@ symlink; dev does not modify Television, shell, or chezmoi configuration.
 
 ### FLEET
 
-FLEET also loads lazily. It keeps valid cached rows usable while waiting for the
-current REPOS generation to be accepted, reuses that snapshot for the local host
-instead of scanning repositories again, and then fans out to configured SSH
-hosts. This machine is hidden by default because REPOS already provides the
-richer local inventory; press `a` to include/hide local rows. Press `r` to
-supersede an older request and force a live reload. Changing any endpoint field,
-including SSH port, invalidates that host's cache. None of this changes
-`dev fleet list`, whose non-interactive output continues to include this machine.
+FLEET is a remote host tree. Local is hidden by default; `a` or the action menu
+reveals it collapsed at the end, reusing REPOS. Search and coverage exclude local
+while hidden. Host rows and actions are available while repositories load.
+Space expands/collapses hosts; Enter/`o` navigates to a host or repo.
+Ctrl+O/right-click offers host actions.
+The HERDR column shows saved registration/enabled state from one shared local
+catalog read, independently of SSH snapshots. Enable/disable/remove act on an
+exact profile and keep remote sessions running; multiple profiles use a picker.
+r refreshes the selected host and catalog metadata. Cached repositories remain
+searchable with explicit age and coverage.
+
+Background warming starts after five seconds or an earlier FLEET visit, once per
+missing/expired host without password prompts. Set [tui.fleet]
+background_refresh = false to keep updates explicit. Search includes collapsed
+known repos, temporarily shows matching children, and never triggers extra SSH.
+See [the host tree and Herdr actions](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
 
 ## Repository quick notes
 
@@ -4485,7 +4913,7 @@ Use [dashboard lifecycle actions](https://daviddwlee84.github.io/dev-cli/guides/
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -4567,8 +4995,8 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/
 
 ## Select an action
 
-Press `Ctrl+O`, right-click a row, or click the selected row. TASKS and TRY also accept Space; REPOS Space
-still expands linked worktrees. TASKS `a` shows completed tasks and does not mark
+Press `Ctrl+O`, right-click a row, or click the selected row. Space expands/collapses REPOS
+worktrees and FLEET hosts; it is unused in flat lists. TASKS `a` shows completed tasks and does not mark
 a task done. A missing checkout offers recovery instead of completion.
 
 Clicking another row first selects it; clicking the selected row opens the menu
@@ -4586,7 +5014,7 @@ closing, and `q` closes outside input. Clicking outside closes without passing
 the click to the dashboard. Existing action eligibility and confirmations apply.
 
 Press `?` or click footer **Help** for the current view's **Keys**, then **Guide**
-for colors, symbols and captured selected-row details, or **Manual** for all 23
+for colors, symbols and captured selected-row details, or **Manual** for all
 embedded `dev help` topics. `1–3`, `v`, `/`, `j/k` and `f` navigate tabs, scope,
 search, entries and expansion. Search, scope, Back and article pan controls are
 also clickable. Help reads existing observations and embedded documents without
@@ -4692,7 +5120,7 @@ back into its original archive path remains archived and can then use ordinary
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -5673,6 +6101,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
 | SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list/doctor/derive`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh connect`, `ssh probe`, `ssh remove` |
+| dotfiles | `dotfile status`, `dotfile setup`, `dotfile diff`, `dotfile apply`, `dotfile update`, `fleet dotfile status` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
@@ -6680,6 +7109,63 @@ dev done [task] [flags]
 - `--push` — push the resulting base (direct mode pushes its current branch)
 - `-y, --yes` — confirm the selected finish plan (required for non-interactive discard)
 
+### `dev dotfile`
+
+Inspect and manage local dotfiles through native chezmoi
+
+```
+dev dotfile [flags]
+```
+
+- `--json` — emit static status as JSON
+
+### `dev dotfile apply`
+
+Run native chezmoi apply
+
+```
+dev dotfile apply [targets...]
+```
+
+### `dev dotfile diff`
+
+Run native chezmoi diff
+
+```
+dev dotfile diff [targets...]
+```
+
+### `dev dotfile setup`
+
+Review or initialize a native chezmoi source
+
+```
+dev dotfile setup [flags]
+```
+
+- `--apply` — also run native apply after initialization
+- `--preset` — optional platform preset (david)
+- `--repo` — explicit dotfiles repository URL
+- `--yes` — run the reviewed native initialization without a dev confirmation
+
+### `dev dotfile status`
+
+Read configuration and source revision without running chezmoi
+
+```
+dev dotfile status [flags]
+```
+
+- `--json` — emit static status as JSON
+
+### `dev dotfile update`
+
+Run native chezmoi update
+
+```
+dev dotfile update
+```
+
 ### `dev edit`
 
 Open dev's config in $VISUAL or $EDITOR
@@ -6796,6 +7282,25 @@ Print the effective remotes configuration
 dev fleet config show
 ```
 
+### `dev fleet dotfile`
+
+Inspect host-local dotfiles across configured fleet hosts
+
+```
+dev fleet dotfile
+```
+
+### `dev fleet dotfile status`
+
+Read static chezmoi configuration and revision from fleet hosts
+
+```
+dev fleet dotfile status [flags]
+```
+
+- `--host` — only these configured host names (repeatable)
+- `--json` — emit content-free status JSON
+
 ### `dev fleet files`
 
 Plan or apply one-way transfer of explicit ignored local files
@@ -6837,7 +7342,7 @@ dev fleet machine-id <host> [flags]
 
 ### `dev fleet open`
 
-Open a remote repository through Herdr or an SSH login shell
+Prepare a remote repository for native Herdr navigation or an explicit SSH shell
 
 ```
 dev fleet open <host> <repo>
@@ -6969,6 +7474,154 @@ Quick-reference pages for the git workflow dev assumes
 ```
 dev help [topic]
 ```
+
+### `dev hygiene`
+
+Inspect hooks, scan secrets and privacy, and apply reviewed text changes
+
+```
+dev hygiene
+```
+
+### `dev hygiene redact`
+
+Preview selected text replacements or apply a saved plan
+
+```
+dev hygiene redact [flags]
+```
+
+- `--apply` — apply a reviewed replacement plan
+- `--file` — relative file to redact (repeatable)
+- `--finding` — specific finding ID to redact (repeatable)
+- `--plan` — reviewed plan ID
+- `--report` — worktree scan report ID
+- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `-y, --yes` — confirm the reviewed replacements
+
+### `dev hygiene restore`
+
+Preview or restore one private recovery receipt
+
+```
+dev hygiene restore [flags]
+```
+
+- `--apply` — restore unchanged post-apply files
+- `--receipt` — private recovery receipt ID
+- `--writer-stopped` — attest artifact writers have exited before recovery
+- `-y, --yes` — confirm the reviewed recovery
+
+### `dev hygiene review-path`
+
+Print the private review file location without printing its contents
+
+```
+dev hygiene review-path <plan-id>
+```
+
+### `dev hygiene rules`
+
+Manage private rules, policy overrides and precise exceptions
+
+```
+dev hygiene rules
+```
+
+### `dev hygiene rules add`
+
+Plan a private literal, CIDR or RE2 rule from a local value file
+
+```
+dev hygiene rules add [flags]
+```
+
+- `--action` — rule policy: block, warn or off
+- `--id` — non-sensitive rule label
+- `--kind` — literal, cidr or regex
+- `--path` — relative path glob (repeatable)
+- `--replacement` — replacement text (default: redaction sentinel)
+- `--value-file` — private rule value file; - reads stdin
+
+### `dev hygiene rules allow`
+
+Plan a local exception for one exact finding with a reason
+
+```
+dev hygiene rules allow [flags]
+```
+
+- `--finding` — exact finding ID
+- `--reason` — non-sensitive justification
+- `--report` — scan report ID
+
+### `dev hygiene rules apply`
+
+Apply one reviewed private rule or policy plan
+
+```
+dev hygiene rules apply [flags]
+```
+
+- `--plan` — reviewed rule plan ID
+- `-y, --yes` — confirm the reviewed rule changes
+
+### `dev hygiene rules import`
+
+Preview local identity candidates or plan selected private rules
+
+```
+dev hygiene rules import [flags]
+```
+
+- `--from` — static source: ssh or local
+- `--select` — candidate ID to import (repeatable)
+
+### `dev hygiene rules policy`
+
+Plan local overrides selected with --secrets, --known and --generic
+
+```
+dev hygiene rules policy
+```
+
+### `dev hygiene scan`
+
+Scan index, working files or frozen local Git history
+
+```
+dev hygiene scan [flags]
+```
+
+- `--audit` — include findings suppressed by local exceptions, gitleaksignore and inline pragmas
+- `--file` — select an in-scope relative file (repeatable; not history)
+- `--range` — history only: full FROM..TO commit OIDs (no implicit fetch)
+- `--scope` — scan scope: staged, worktree or history
+- `--timeout` — maximum scan duration; incomplete scans fail
+
+### `dev hygiene setup`
+
+Preview or apply repository hygiene configuration and hook integration
+
+```
+dev hygiene setup [flags]
+```
+
+- `--apply` — apply the exact saved setup plan
+- `--migrate-rules` — preview replacement of existing gitleaks config with bundled safe rules
+- `--plan` — reviewed plan ID
+- `-y, --yes` — confirm the reviewed plan
+
+### `dev hygiene status`
+
+Inspect effective hooks and policy without executing them
+
+```
+dev hygiene status [flags]
+```
+
+- `--check-remote` — explicitly query GitHub visibility; never change policy automatically
+- `--remote` — remote to query with --check-remote
 
 ### `dev instructions`
 
@@ -8910,7 +9563,7 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -8953,6 +9606,36 @@ under `$XDG_DATA_HOME/dev/config-recovery`; symlink configs, unsupported TOML la
 and other platforms offer manual edits and the config editor. Failed scans remain
 unknown. Successful saves refresh local inventory; reload failures are reported
 separately. CLI flags and existing JSON contracts are unchanged.
+
+## Dotfiles and dashboard fleet
+
+`dev dotfile status --json` is a versioned passive configuration/source/revision report.
+`dev fleet dotfile status --host NAME` accepts repeatable exact host selectors.
+Local `--chezmoi-config PATH` is distinct from dev `--config` and is not sent to
+remote hosts. Setup supports `--repo URL` or optional `--preset david`; outside
+a terminal it reports unless `--yes`, with separate `--apply`. Diff/apply/update
+are explicit native operations. See [Dotfiles](https://daviddwlee84.github.io/dev-cli/guides/dotfiles/).
+
+```toml
+[tui.fleet]
+background_refresh = true
+```
+
+This default warms missing/expired snapshots once after five seconds or an
+earlier FLEET visit. It never prompts for credentials. Set false for explicit
+updates only. Host rows, cached search, and per-host actions remain available.
+
+## FLEET Herdr catalog state
+
+FLEET hides local by default; a or the menu reveals it collapsed at the end
+for this session. Hidden local data is excluded from search and coverage. HERDR
+reports a shared local catalog observation (not added/enabled/disabled/mixed or
+unknown), separately from repository STATE and runtime LIVE. Per-profile
+enable/disable/remove work inside or outside Herdr, retain remote sessions and
+refresh only catalog metadata. Connection eligibility and catalog cleanup are
+separate. --no-runtime skips Herdr; background_refresh controls only automatic
+repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
+metadata. See [host controls](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
 
 ## SSH diagnosis
 
@@ -9058,6 +9741,13 @@ policy, provider references and pending/unknown metadata, not secret values.
 Explicit fleet password sources retain priority; discovery does not use the
 saved-reference resolver. Remote source-to-target credentials are outside the
 controller save flow. See [SSH workflows](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#fleet-source-profiles-and-local-routes).
+
+## Repository hygiene
+
+`dev hygiene` provides staged/worktree/history scopes, per-repo block/warn/off
+policies, private local identity imports and reviewed text replacement/recovery on
+macOS, Linux and Windows. CI uses public rules only. See the
+[hygiene workflow](https://daviddwlee84.github.io/dev-cli/guides/hygiene/) for schema-v1 coverage and hook contracts.
 
 ---
 
@@ -9439,7 +10129,7 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -9508,6 +10198,44 @@ release nudges/checks and stale Windows upgrade-binary cleanup. Cobra `--help`
 and `--version` also remain static. Ordinary commands, including `--skill=false`,
 retain startup maintenance; invalid arguments, flags and color values retain
 their errors on the document commands.
+
+## Dotfiles and fleet host observations
+
+Chezmoi is optional. Passive dotfile status works without executing it; native
+operations require it. Missing, ambiguous or unsupported configuration stays
+unknown. Source revisions are not deployment receipts. The author preset is
+optional; experimental platform recommendations do not imply packaged dev support.
+Remote status needs a compatible remote dev and uses a fixed content-free helper
+on POSIX or native Windows; older versions remain explicitly incompatible.
+Existing fleet list/snapshot fields are retained. Repository snapshots add
+optional `git_known`; older snapshots without it remain unknown in the TUI. TUI background
+reads do not attempt password fallback, and cached repo matches are historical
+evidence until refreshed. Herdr host registration requires a compatible machine
+CLI; attachment does not require a running local Herdr server.
+See [Dotfiles](https://daviddwlee84.github.io/dev-cli/guides/dotfiles/) and [host actions](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
+
+## FLEET Herdr catalog state
+
+FLEET hides local by default; a or the menu reveals it collapsed at the end
+for this session. Hidden local data is excluded from search and coverage. HERDR
+reports a shared local catalog observation (not added/enabled/disabled/mixed or
+unknown), separately from repository STATE and runtime LIVE. Per-profile
+enable/disable/remove work inside or outside Herdr, retain remote sessions and
+refresh only catalog metadata. Connection eligibility and catalog cleanup are
+separate. --no-runtime skips Herdr; background_refresh controls only automatic
+repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
+metadata. See [host controls](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
+
+Fleet Enter and `dev fleet open` detect `HERDR_ENV=1` and use an explicit remote
+session. Repository preparation requires the new compatible remote helper and
+verifies path/Git identity before Add/Enable. Inside Herdr, dev returns a native
+sidebar target; outside, it attaches to the selected session. Herdr 0.9.0 has no
+public caller-client activation API, so neither route uses session-wide focus.
+Old helpers fail before workspace effects. Cancellation and partial failure do
+not open SSH automatically; `--no-runtime` selects SSH directly. Host Enter works
+without remote dev and may bootstrap through native attachment. Outside Herdr,
+repository preparation needs a ready remote server; use host navigation first
+if it is missing, then retry the repository.
 
 ## SSH diagnostic contract
 
@@ -9605,6 +10333,128 @@ LocalCommand, port forwarding, SetEnv and `%`-expanded RemoteCommand.
 An unselected native-only ProxyCommand session may connect after fresh static and
 effective-source checks. It does not expose reconstructed route/proof authority;
 opaque route import, cycles and unsupported selected-key flows stay rejected.
+
+## Repository hygiene
+
+`dev hygiene` provides staged/worktree/history scopes, per-repo block/warn/off
+policies, private local identity imports and reviewed text replacement/recovery on
+macOS, Linux and Windows. CI uses public rules only. See the
+[hygiene workflow](https://daviddwlee84.github.io/dev-cli/guides/hygiene/) for schema-v1 coverage and hook contracts.
+
+---
+
+### Manual hygiene dogfood
+
+Source: https://daviddwlee84.github.io/dev-cli/reference/hygiene-dogfood/
+
+> Manual post-writer dogfood and the separate impact assessment for already-published repository history.
+
+This checklist keeps live agent writers separate from the final cleanup. A new
+agent without SpecStory does not stop an older SpecStory writer. Do not terminate
+unrelated sessions to make a scan or redaction pass.
+
+## Before changing real artifacts
+
+1. Build the feature binary and run the native hygiene tests and
+   `python scripts/test-hygiene-hooks.py --dev <absolute-binary>` in its isolated
+   temporary HOME. That checks real pre-commit blocking with a synthetic key,
+   hidden paths, same-line placeholders, an alternate index, executable modes,
+   unchanged Git config and a clean follow-up commit.
+2. Run `dev hygiene status`, preview setup, and verify the effective hook chain.
+   Put the new binary on PATH for the test session; never overwrite a
+   package-managed installed binary manually.
+3. Preview `rules import --from ssh` and `--from local`. Review which candidates
+   are private and which are public/common names before selecting IDs. Keep the
+   resulting private policy outside Git.
+4. Run working-file and history scans. Preserve scope, exclusions and gaps.
+   Classify candidates before adding narrow, reasoned exceptions. A finding
+   count is not a count of confirmed live credentials.
+
+## Final manual trigger
+
+After the exact provider/wrapper exits and finishes the transcript, use an
+external terminal. A separately authorized agent may use a terminal without a
+SpecStory writer, but it still needs fresh proof about the original writer.
+
+```bash
+dev hygiene scan --scope worktree --json
+dev hygiene redact --report <fresh-report-id> --file <reviewed-file> --json
+dev hygiene redact --apply --plan <plan-id> --yes --writer-stopped
+dev hygiene scan --scope worktree --json
+git diff --check
+# Review and stage exact files; normal hooks remain enabled.
+```
+
+Only select reviewed findings/files. Known live agents, changed source bytes,
+metadata or plan signatures remain blockers. Keep partial results and recovery
+receipts for manual inspection; restore only after reviewing the affected paths.
+Never set writer-stopped merely because bytes happened to be stable briefly.
+
+Run focused tests for any changed source/config files, then skill/doc checks.
+Commit the verified HEAD corrections forward. A transcript still being written
+stays explicitly pending rather than being repeatedly rewritten.
+
+## Initial audit evidence
+
+The planning audit found installed pre-commit/gitleaks and an executable global
+hook, but no repository pre-commit/gitleaks configs. Thus ordinary commits skipped
+those gates; manual artifact finalization was a separate path.
+
+The local reachable-history gitleaks audit produced 416 candidates, including
+384 broad password-rule matches and 21 findings in test files. These remain
+candidate classifications, not a declaration of 416 live leaks. A lexical local
+SSH comparison found six configured IP values at 163 occurrences in current
+files. Common account/host tokens also produced many non-private matches.
+
+The history contained about 717 MB of unique blob data, including a roughly
+70 MB transcript. An initial three-minute run timed out. The completed audit
+covered the selected gitleaks patch scope; the new implementation additionally
+tests merge-only content and reports unsupported/excluded data explicitly.
+
+Detailed audit files stay in private local storage. Do not add raw reports,
+private dictionaries, recovery images or credential excerpts to Git or CI logs.
+
+## Implementation dogfood result
+
+The new setup applied the three repository configuration files while retaining
+this machine's existing global hook. The feature's real commit gate completed
+with 70 staged files, zero blocking findings and 36 generic privacy warnings.
+Synthetic hook tests also proved rejection without changing caller Git config,
+index entries or executable modes.
+
+A new-CLI full reachable-history audit on this host hit its explicit 40-minute
+limit and saved a `partial` receipt; it did not establish a clean history. Earlier
+CI range validation also identified existing transcripts containing invalid UTF-8
+or embedded NUL bytes. Those are explicit coverage gaps, not ignored successes.
+Commit-range scans now restrict themselves to changed versions; the full audit
+retains the historical gaps. The final manual phase must classify the retained
+candidates and resolve or explicitly scope unsupported artifacts before claiming
+that real history has been covered.
+
+## Separate published-history assessment
+
+Before considering any history change, produce a private table mapping each
+confirmed item to its kind, current-HEAD presence, introducing/containing commit,
+reachable local branches/tags and known remote copies. Fetch/query remote facts
+explicitly; local refs alone cannot prove a complete list of public copies.
+
+| Option | Effect and remaining exposure |
+| --- | --- |
+| Forward HEAD correction and prevention | Preserves commit/tag identities; older objects, PR views, clones and caches may still contain the data. |
+| Credential revocation/rotation | Invalidates an exposed credential at its provider; does not erase its old bytes. Document completion without publishing the value. |
+| Coordinated history cleanup assessment | Would change commit identities and signatures, affect PRs/clones and require a separate release/distribution migration plan. No rewrite is authorized by ordinary redact/setup. |
+| Provider-assisted removal | Availability depends on the provider and type of sensitive data; cannot be claimed complete from a force push. |
+
+For dev-cli, immutable release tags are CLI version authority, and releases are
+also consumed through the Go module ecosystem, Homebrew/Scoop and downloaded
+archives. Existing published tags must not be moved or reused. Inventory affected
+releases and downstream artifacts before proposing a migration; a new version
+cannot remove previously downloaded copies.
+
+Git author names/emails and identifying filenames are assessment items; text
+redaction does not rewrite commit metadata or rename files. GitHub describes
+rotation-first handling and the limits of force pushes, forks, PR references and
+caches in its [sensitive-data removal guidance](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository).
 
 ---
 
@@ -9753,7 +10603,7 @@ Repository homepage resolution reads local Git only. Try removal journals beside
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -9828,6 +10678,25 @@ TOML. Native vault availability and interactive authorization vary by host; no
 vault was read or written by the automated unit-test fixtures. Private-key vault
 migration, hardware provisioning and Apple Passwords migration remain deferred.
 The public SSH guide distinguishes controller routes from remote-native sessions.
+
+## Dotfiles and FLEET host tree
+
+Verified 2026-09-11 against `internal/dotfile`, CLI dotfile/fleet adapters,
+TUI host-tree tests, and Herdr 0.9.0 machine help/source. Chezmoi configuration
+formats, .chezmoiroot and dry-run hooks follow its official reference.
+See [Dotfiles](https://daviddwlee84.github.io/dev-cli/guides/dotfiles/) and [FLEET](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
+
+## FLEET Herdr catalog state
+
+FLEET hides local by default; a or the menu reveals it collapsed at the end
+for this session. Hidden local data is excluded from search and coverage. HERDR
+reports a shared local catalog observation (not added/enabled/disabled/mixed or
+unknown), separately from repository STATE and runtime LIVE. Per-profile
+enable/disable/remove work inside or outside Herdr, retain remote sessions and
+refresh only catalog metadata. Connection eligibility and catalog cleanup are
+separate. --no-runtime skips Herdr; background_refresh controls only automatic
+repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
+metadata. See [host controls](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/#dashboard-host-tree).
 
 ---
 
@@ -10616,7 +11485,7 @@ Triage 彙整觀察到的工作與個人整理意圖。刻意保留本地、暫�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -11176,7 +12045,7 @@ Plan 在 effects 前鎖定並重新驗證 repository、refs、checkout、task re
 
 ## 從 REPOS 或 TRY 進入
 
-Dashboard 維持瀏覽：Enter／`o` 永遠開啟目前項目，Space 保留原功能，不再常駐勾選框或保留整理選取。`Ctrl+O` 可選「整理目前項目」「整理目前篩選結果」「整理全部本地工作」。Triage header 明示範圍，先顯示項目供選取。
+Dashboard 維持瀏覽：Enter／`o` 開啟目前項目，Space 展開／收合 REPOS worktrees，在 TRY 不使用。不再常駐勾選框或保留整理選取。`Ctrl+O` 可選「整理目前項目」「整理目前篩選結果」「整理全部本地工作」。Triage header 明示範圍，先顯示項目供選取。
 
 交接繼續復用 dashboard metadata 與 task／worktree 觀察，只深入檢查限定範圍，返回只刷新受影響列／SIZE。既有 SIZE 10 分鐘 cache 不變，沒有新增跨啟動 inventory cache 或 watcher。獨立 `dev triage` 仍盤點全域，本地 refresh 不 fetch，也不登錄 Try。
 
@@ -12766,6 +13635,154 @@ Fork、push 與 draft PR 另看既有明確授權，使用現有 Git／gh 與確
 
 ---
 
+### Repository hygiene
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/
+
+> 檢查 repository hooks、掃描 secret 與個人資訊，並以私人恢復紀錄套用已檢視的文字替換。
+
+`dev hygiene` 將可選的 gitleaks、pre-commit、repo 政策、本機私密規則與安全文字
+交易整合。Scanner 命中是候選，並不直接代表已確認的 credential 洩漏。
+
+## 檢查與設定
+
+先安裝 `gitleaks`、`pre-commit`。Setup 會回報缺少的工具，不暗中安裝套件或覆寫
+全域 hook。
+
+```bash
+dev hygiene status
+dev hygiene status --check-remote
+dev hygiene setup --json
+dev hygiene setup --apply --plan <id> --yes
+```
+
+Status 讀取有效的 `core.hooksPath`、hook 與設定；辨識到 hook 只證明設定存在，
+不保證過去每次 commit 都執行過。Raw Git 或外部工具仍可繞過 hooks。
+
+Setup 加入阻擋式 `dev-hygiene` hook、安全 gitleaks 規則與 `.dev-cli/hygiene.toml`，
+保留其他 hooks 及 YAML 註解。同名但命令不同的 hook、未知的 hook 鏈需人工整合。
+已有的 gitleaks 設定預設保留；只有在 setup 預覽加入 `--migrate-rules` 才會提議
+替換，須先比對自訂規則。`dev repo setup --enable agent-history-hygiene` 共用此服務。
+
+Hook 只檢查 index，不改檔、不自動 stage。缺少支援 hygiene 的 dev／gitleaks、
+scanner 失敗或輸出損壞都會阻擋。
+
+## 政策與私密規則
+
+優先序：內建預設 → `$XDG_CONFIG_HOME/dev/hygiene.toml` → repo 政策 → 本機 repo
+覆寫 → 明確 scan/status flags。建議值是 secret 阻擋、已確認的私密值阻擋、通用
+隱私候選警告；各類皆可設為 `block`、`warn` 或 `off`。規則可調整已啟用類別的
+處置，但類別 `off` 會停用該類所有規則。
+
+```toml
+version = 1
+secrets = "block"
+known = "block"
+generic = "warn"
+```
+
+三類全部設為 `off` 會回傳明確的 `skipped`，不讀 repo 檔案內容、不執行 scanner；
+這是停用，不是 clean scan。
+
+Private 可見性只提供建議，不會自動弱化政策；未知也不當成 private。GitHub
+查詢僅在 `status --check-remote` 發生，`--remote` 預設選 origin。
+
+```bash
+dev hygiene rules policy --known warn --generic off --json
+dev hygiene rules apply --plan <id> --yes
+dev hygiene rules import --from ssh --json
+dev hygiene rules import --from ssh --select <candidate-id> --json
+dev hygiene rules import --from local --json
+dev hygiene rules add --id private-network --kind cidr --value-file network.txt \
+  --replacement 192.0.2.1 --json
+```
+
+先明確選候選才匯入。SSH 只讀取 bounded static Include closure 中的 literal
+alias、HostName、User 與 key-path reference，不執行 `ssh -G`、`Match exec`、DNS
+或連線，也不讀 key material。Include 不完整會阻擋匯入。常見公開名稱與通用帳號
+建議警告；local 來源提供 home path、帳號、Git 姓名與 email。
+
+支援 literal、CIDR、Go RE2 及相對路徑 glob；`directory/**` 選取其下內容。
+私密值用 `--value-file` 或 stdin 輸入，不放在命令參數。可用同 ID 的規則 plan
+調整／停用規則，或編輯本機私人政策。Scan override 不會持久化；建立 redact plan
+前需以相同的持久政策重新掃描。
+
+本機規則、HMAC key、報告、plan 與恢復資料放在 Git 外的
+`paths.state_dir/hygiene/repos/<native-repo-id>/`。Linked worktrees 共用本機政策，
+但 plan 綁定特定 checkout。Unix 使用私人權限與 ownership；Windows 使用受保護的
+目前 user／SYSTEM ACL。不會自動刪除或匯出。
+
+```bash
+dev hygiene rules allow --report <report-id> --finding <finding-id> \
+  --reason 'Reviewed synthetic test fixture' --json
+```
+
+本機例外綁定精確 value／rule／path。可分享的 TOML 例外需指定 `rule`、`path`、
+有頭尾錨點的 `pattern` 與原因。`.gitleaksignore` 是 fingerprint 清單，不是 path
+移除規則。`--audit` 忽略本機 finding 例外、該檔及 inline `gitleaks:allow`；scanner
+設定中的 allowlist 仍有效，必須另行檢視。Placeholder 不會自動放行同一行的其他 key。
+
+## 掃描範圍
+
+```bash
+dev hygiene scan --scope worktree --json
+dev hygiene scan --scope staged --json
+dev hygiene scan --scope history --audit --timeout 40m --json
+dev hygiene --public-only --known off --generic off scan --scope history \
+  --range <full-from-oid>..<full-to-oid> --json
+```
+
+Worktree 掃已追蹤檔與未被 ignore 的未追蹤檔；後來加入 `.gitignore` 的已追蹤檔仍
+會掃。Staged 使用真正的 index bytes，包含 hidden files 與 partial staging。
+`--file` 只能選該範圍內的檔案。
+
+明確的 range 只檢查選定 commits 所變更的檔案版本，未變更的舊檔留給全量稽核。
+History 固定本機 refs 或明確的完整 OID range，涵蓋 merge-only、已刪除與後來
+被 ignore 的內容，不暗中 fetch。不掃 reflog、unreachable objects、其他 checkout
+未提交內容或遠端 submodule repo。非一般檔與已知 binary 格式列為文字掃描的排除項；
+不支援的文字編碼、讀取失敗、超過每檔 128 MiB、來源／ref 變動、shallow history、
+取消或 scanner 失敗則回報 incomplete，不能當成 clean。
+
+JSON schema 1 包含狀態、範圍、固定 refs、數量、遮罩後的位置、處置、排除項與缺口，
+不含原始 snippet／credential。Finding ID 與公開檔案摘要使用私人 HMAC。
+`complete` 只描述宣告的文字範圍；阻擋命中或不完整皆以失敗狀態退出。不代表驗證過
+credential 有效性。未被選取規則涵蓋的檔名仍可能辨識個人，分享前須檢視。
+
+CI 僅使用公開 repo 規則，不具本機 SSH 字典。PR／push 掃變更的 commit range，
+人工 workflow dispatch 掃本機已取得的全部歷史。
+
+## 預覽、套用與恢復
+
+```bash
+dev hygiene redact --report <report-id> --file notes.md --json
+dev hygiene redact --report <report-id> --finding <finding-id> --json
+dev hygiene review-path <id>  # 私下開啟提案，勿貼回聊天
+dev hygiene redact --apply --plan <id> --yes
+# 只有在確切 artifact writer 已退出後：
+dev hygiene redact --apply --plan <id> --yes --writer-stopped
+dev hygiene restore --receipt <receipt-id> --json
+dev hygiene restore --receipt <receipt-id> --apply --yes
+```
+
+所有支援的一般文字檔皆可選。Plan 綁定 checkout、HEAD／branch、政策、scanner
+輸入、native identity 與內容，並附私人簽章。來源或 plan 變動需重做預覽。
+重疊命中依 secret → known → generic 優先，同類優先較長 span；預覽只顯示位置、
+opaque 摘要與替換數，不重新輸出原 secret。`review-path <id>` 可取得私人完整提案
+的位置，完整性也綁定 plan；勿將其內容貼回聊天、Git 或 CI logs。
+
+Apply 先驗證整批，再逐檔交易，保留 metadata 與私人恢復紀錄。中斷保留 partial
+ledger，不能盲目重跑。Index、Git 歷史與安裝的 binary 均不由這個流程修改。
+Windows 保護僅適用明確 opt-in 的文字交易，其他 configedit 功能維持原平台契約。Windows 保留 owner／group／DACL 語意；
+alternate streams、明確 integrity label 或特殊 attributes 需人工保存。
+
+Restore 拒絕操作後又被修改／替換的檔案；artifact 恢復也需要 `--writer-stopped`。
+Runtime 觀察會阻擋可辨識 writer，但停用或不可用的 runtime 無法證明程序不存在。
+Post-writer 聲明與 source revalidation 仍不可省略，raw 外部 writer 不受 dev 鎖保護。
+
+此 repo 的最後清理步驟見[人工 dogfood 檢查表](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/hygiene-dogfood/)。
+
+---
+
 ### 遠端 Repository Fleet
 
 Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/
@@ -12899,6 +13916,7 @@ Partial/unknown bootstrap、failed ordinary gate 或 fleet-fragment collision �
 |---|---|---|
 | `dev fleet list` | `--host <name>`（repeatable）、`--repo <query>`、`--json`、`--cached`、`--strict` | 列出本機與 merged configured hosts 的 repository/activity |
 | `dev fleet status` | `--json`、`--strict` | probe configured hosts 並回報 snapshot health |
+| `dev fleet dotfile status` | `--host <name>`（必填、可重複）、`--json` | 唯讀檢查主機的 chezmoi 設定與來源 revision |
 | `dev fleet machine-id <host>` | `--json` | 顯示 observed durable UUID 並比較 primary configured pin |
 | `dev fleet sync <repo>` | `--push`、`--remote <name>`、`--host <name>`（repeatable）、`--json` | optional publish，然後安全 fast-forward clean matching checkout |
 | `dev fleet files [repo-or-path]` | `--to <host>`、`--file <pattern>`（repeatable）、`--apply`、`--replace`、`--yes`、`--json` | plan 或 apply explicit ignored files 的 one-way transfer |
@@ -13007,19 +14025,109 @@ backend——interactive setup 將 native prompt 留給 OpenSSH，noninteractive
 
 Cache 讓 unavailable host 可以 `stale` 保留 last-known state；`--cached` 只讀 cache。它永遠不會成為 remote path 或 task authority。
 
-## TUI 中的 FLEET
+## FLEET 主機樹 {#dashboard-host-tree}
 
-FLEET 是 TUI 八個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、
-`SKILLS`、`MCP`、`SSH`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣 lazy-load；view 第一次
-開啟前不會開始 live probe，但 valid cache 會在初始 TASKS view 後 decode。TUI 預設
-隱藏本機，因為 REPOS 有較完整 local inventory；`a` toggle local rows。Local snapshot
-重用 accepted REPOS generation，不重跑 discovery；generation 尚在 loading 時仍保留
-cached rows。`r` supersede prior work，並 reload merged primary-plus-generated config 的
-所有 hosts。Non-interactive `dev fleet list` 仍包含 local 加 remote。
+FLEET 立即列出已設定的遠端主機，不等待 repository scan 或 SSH，主機預設收合。
+本機預設隱藏，因為 REPOS 已有更完整的本機 inventory。按 `a` 或使用動作選單
+可將本機顯示在最後，首次顯示時收合；開關只保留於本次 dashboard session。
+本機 repositories 重用已接受的 REPOS snapshot，升序或降序時都固定排最後。
+Space 展開／收合主機；在 child 按 Space 會收合並選回主機。Enter／`o` 導覽至
+主機或 repository，本機主機列則切到 REPOS。Ctrl+O／右鍵開啟動作選單，r 更新
+選取主機及 Herdr metadata。全域 h/l／方向鍵／Tab 仍用來切換分頁；平面列表
+不使用 Space。
 
-Table 顯示 host/state/repository/branch/Git/runtime/task/path facts。Enter 在符合資格的 POSIX-style profile 回報 Herdr 且不需 password step 時使用 native Herdr remoting；否則透過 SSH 與 remote login shell 開啟。Windows controller 的 local fallback 會啟動 child `%COMSPEC%` shell，因為 Windows 沒有 `exec(2)`。
+初始畫面後五秒，或提早進入 FLEET 時，單一背景 worker 開始更新缺少或過期的
+host snapshot。每台符合條件的主機自動嘗試一次，結果逐台出現。背景讀取採用
+非互動認證，不解析 password fallback，單台 timeout 為 30 秒或較短的原設定。
+明確要求的讀取優先執行，並共用既有並行上限。可在 dev config 關閉預熱：
 
-`e` key 只開 primary `remotes.toml`。返回後，dev reparse 完整 primary-plus-generated merge。Invalid primary 或 generated fragment 會回報 error 並保留之前 usable rows；valid merge 觸發 live reload。
+```toml
+[tui.fleet]
+background_refresh = false
+```
+
+超過 cache_ttl 的有效快取仍可使用與搜尋，並標示時間及 stale／error 狀態。
+失敗保留舊資料，只有成功的空 snapshot 才代表零個 repositories。
+主機載入與動作不依賴本機 REPOS 成功；收合只隱藏 children，保留資料及已要求的讀取。
+
+/ 搜尋已知的主機名稱、SSH alias、Herdr profile label／session／登錄狀態，以及
+已載入／快取 repos，包含收合主機。隱藏本機時，搜尋與 coverage 都排除本機。
+命中的 repo 保留 parent header，暫時展開；搜尋時仍可按 Space 收合，清除搜尋後
+恢復原展開狀態。
+輸入或篩選不增加連線工作。Footer 分開顯示最新、快取與尚未載入的主機；
+需要完整最新結果時，從 action menu 更新全部主機，零命中時也能使用。
+沒有遠端主機或沒有搜尋結果時，仍可從選單切換本機顯示。
+
+主機動作包含 SSH、[dotfile status](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dotfiles/) 與選用的 Herdr，不必先取得
+repo snapshot，也不要求遠端已有 dev。`HERDR` 欄顯示本機 saved-profile 狀態，
+與 repository `STATE`、runtime `LIVE` 分開：
+
+| HERDR | 意義 | 管理動作 |
+|---|---|---|
+| `not added` | 成功讀取 catalog，沒有匹配的 profile | Add to Herdr |
+| `enabled` | 匹配的 saved profile 已啟用 | Disable 或 Remove |
+| `disabled` | 匹配的 saved profile 已停用 | Enable 或 Remove |
+| `1/2 enabled` | 多個匹配 profiles | 先選取精確 profile |
+| `loading`／`unknown` | 載入中或尚無可靠觀察 | 刷新或檢查原因 |
+| `unmapped`／`not checked` | 缺少精確 SSH alias，或未啟用 Herdr 檢查 | 檢查連線設定或啟動選項 |
+
+所有主機共用一次有 timeout 的本機 `herdr machine list --json` 查詢，不連 SSH，
+也不要求本機 server 已執行。進入 FLEET、明確刷新、開選單，以及 Herdr 操作完成
+後更新；不持續輪詢。失敗時保留舊值並標 stale，不改成 `not added`。
+`--no-runtime` 跳過 Herdr 檢查；repository 的 `background_refresh` 不控制這份本機資料。
+
+Enabled 代表保存的連線意圖，不代表目前已連線。Profile 按精確 SSH alias 關聯，
+不解析 IP 或推測其他 alias 等價。Detail 顯示 label、session，以及 fleet 連線覆寫
+與 saved target 的差異。OS 保留在主機 detail，不再填入 host header 的 BRANCH。
+
+Enable、Disable、Remove 在 Herdr 內外都使用既有受保護計畫與精確 profile
+fingerprint。多個 profiles 先透過 picker 選擇，不攤開成過長的 action menu。
+Disable 保留登錄方便再啟用；Remove 刪除該筆登錄。兩者讓本機 clients detach，
+遠端 server、panes、sessions 繼續執行。完成後只更新 Herdr metadata，不額外
+查詢遠端 repository snapshot。本次不提供批次開關，也不自動操作所有匹配項目。
+
+Herdr 外另外可 Connect，並明確指定 session，預設 default。Add 可能準備／啟動
+遠端 server，原生安裝確認仍交給 Herdr。0.9.0 add 會讓開啟中的本機 clients 連上
+新機器，但不切換選取；登錄只影響執行 dev 這台機器的 catalog。即使連線 target
+不支援（例如原生 Windows），仍可停用／移除已明確匹配的 saved profile；
+連線能力與本機 catalog 管理分開。
+
+### Enter 與遠端 session
+
+主機導覽需要 SSH alias，但不要求遠端已有 `dev` 或 repository snapshot。
+Repository 導覽（包含 `dev fleet open <host> <repo>`）先透過相容的遠端 `dev`
+檢查精確路徑與 Git identity，再準備或重用 workspace，不改變焦點。
+準備及 attach 始終明確指定同一個 Herdr session。
+
+| dev 執行位置 | 主機列 Enter | Repository 列 Enter |
+|---|---|---|
+| Herdr 內（`HERDR_ENV=1`） | 重用已啟用的 profile；Add 或 Enable 前先詢問 | 檢查 repo/helper，確認所選 profile，再準備 workspace |
+| Herdr 外 | 連接所選 saved session；沒有 profile 時明確使用 `default` | 準備 workspace，再 attach 該 session |
+
+多個 profiles 必須按精確 ID、label、session 選取；非互動呼叫不猜測。
+已移除的 profile 必須重新 Add。Catalog 讀取失敗代表 unknown，會停止 profile
+選取。Herdr 外的 Enter 不會自動新增或啟用 saved profile。
+Herdr 外準備 repository 時需要遠端 server 已就緒；若尚未就緒，先透過主機
+Enter／Connect 讓原生流程準備 server，再重試 repository。
+
+Herdr 0.9.0 沒有只切換呼叫者 client 的公開 machine/workspace 選取介面。
+準備完成後，請在原生 sidebar 選擇回報的機器與 workspace。Herdr 內會回到同一個
+dashboard，不啟動 nested client；Herdr 外執行
+`herdr --remote <alias> --session <session>`。兩條路徑都不呼叫會影響其他 clients
+的 session-wide `workspace focus`。原生安裝確認仍交給 Herdr。
+
+Herdr 不可用或 target 不支援時提供明確的 SSH 選項；`--no-runtime` 直接使用 SSH。
+開始 Herdr 操作後，取消或失敗只回報結果，不會自動改開 SSH。若後續步驟失敗，
+已完成的 Add、Enable 或 workspace 準備仍保留並回報。舊版遠端 dev 會在修改
+workspace 前拒絕新的 preparation helper；更新遠端 dev 後再試 repository 導覽。
+
+導覽與 Herdr profile 變更會直接將結果帶回 dashboard，不再要求最後按 Enter。
+Ctrl+O → full status / error 可閱讀完整結果，包含後續失敗時已完成的步驟。
+返回本身不會自動開啟另一台主機或 repository。
+
+e 編輯 primary remotes.toml 並重新驗證合併設定。Endpoint 改變會讓舊結果失效；
+設定錯誤則保留可用資料。CLI dev fleet list 的本機加遠端 inventory 契約維持不變。
+
 
 ## 安全 branch propagation 與 degradation
 
@@ -13068,6 +14176,109 @@ remote comparison。
 已可登入時用 `dev ssh setup <alias> --auth existing --to fleet|herdr|both`；普通 sshd
 bootstrap 才選 explicit key。Tailscale policy login 不需要安裝 authorized_keys entry。
 Provider registration 仍須明確要求，Herdr 保留原生 installation approvals。
+
+---
+
+### Dotfiles
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dotfiles/
+
+> 辨識 chezmoi 設定、選擇平台適用的 dotfiles、委派原生操作，並檢查指定 fleet 主機。
+
+`dev dotfile` 是選用的 chezmoi 入口。Chezmoi 管理來源、template 與部署；
+dotfiles repository 管理 prompts 和套件安裝。Dev 負責定位設定、引導 setup，
+以及委派使用者明確要求的原生操作，不要求安裝作者的 dotfiles。
+
+## Setup 前先檢查
+
+```bash
+dev dotfile
+dev dotfile status --json
+dev dotfile status --chezmoi-config /path/to/chezmoi.toml
+```
+
+Status 只讀設定與本機 Git identity，不啟動 chezmoi、不展開 templates、不執行
+hooks，也不 fetch。輸出分開呈現設定的 source directory、`.chezmoiroot` 選出的
+source-state directory，以及 Git working tree。來源的 revision 不代表已套用到
+HOME；部署差異會明確標示為尚未檢查。
+
+支援 TOML、YAML、JSON 與 JSONC；探索依原生 XDG 搜尋順序，包含次要的設定與資料目錄。多份衝突、無法讀取或格式錯誤的設定保持
+unknown，不改用另一個 checkout，也不授權覆蓋既有 setup。
+`--chezmoi-config` 選擇本機原生設定，與 dev 的全域 `--config` 不同。
+找不到 chezmoi setup 不代表使用者沒有使用其他 dotfile manager。
+
+## 選擇 repository
+
+```bash
+dev dotfile setup
+dev dotfile setup --repo https://github.com/you/dotfiles.git
+dev dotfile setup --preset david
+```
+
+互動流程先顯示 repository 與原生初始化命令。非互動模式預設只顯示方案，
+必須加 `--yes` 才執行初始化；另外加 `--apply` 才要求初始化後部署。
+Dev 的確認不會代答 repository prompts，也不跳過 chezmoi 的衝突處理。
+已有來源時保留原來源，不替換成推薦項目。
+
+選用的 `david` preset 依 dev 實際執行環境推薦作者維護的 repository：
+
+| 執行環境 | Repository | 支援程度 |
+|---|---|---|
+| macOS、一般 Linux、WSL 內部 Linux | [dotfiles](https://github.com/daviddwlee84/dotfiles) | 主要平台 |
+| 原生 Windows | [dotfiles-windows](https://github.com/daviddwlee84/dotfiles-windows) | Windows |
+| 原生 Android Termux | [dotfiles-Termux](https://github.com/daviddwlee84/dotfiles-Termux) | Experimental |
+| iSH | [dotfiles-iSH](https://github.com/daviddwlee84/dotfiles-iSH) | Experimental |
+| OpenWrt／ImmortalWrt | [dotfiles-OpenWrt](https://github.com/daviddwlee84/dotfiles-OpenWrt) | Experimental |
+
+`dotfiles-all` 是跨 repository 維護用的 superproject，使用者選擇對應的獨立
+repository 即可。Windows host 不等於 WSL，一般 Alpine 不等於 iSH，Android
+shell 也不一定是 Termux。環境不明或不支援時提供指引，不猜測可用 desktop
+安裝流程。Experimental 推薦也不保證所有架構都有可執行的 dev binary。
+
+缺少 chezmoi 時，dev 顯示安裝與 repository bootstrap 指引。特殊平台保留原生
+bootstrap 入口；dev 不下載並執行 bootstrap script，也不替使用者選套件管理器。
+
+## 明確委派原生操作
+
+```bash
+dev dotfile diff
+dev dotfile apply
+dev dotfile update
+```
+
+Diff 與 apply 接受 target paths。Apply 套用目前來源；update 使用 chezmoi
+自己的更新行為，包含設定中的更新命令與後續部署。原生 prompts、輸出和失敗
+保持可見。`chezmoi edit`、`add`、`re-add` 等進階操作仍直接使用 chezmoi。
+
+這些明確操作可能展開 template 或執行 hooks；apply／update 也可能執行
+repository scripts 和安裝套件。原生 dry-run 不是 sandbox，因為
+[chezmoi hooks 在 dry-run 仍會執行](https://www.chezmoi.io/reference/configuration-file/hooks/)。
+Dev 不快取展開後的 diff，也不承諾回滾任意 script。
+
+## 檢查其他機器
+
+```bash
+dev fleet dotfile status --host lab
+dev fleet dotfile status --host lab --host winlab --json
+```
+
+每台指定主機透過有大小限制與版本的唯讀 helper，讀取該使用者的慣例設定。
+不啟動 chezmoi，也不載入 repository／runtime inventory。遠端缺少或不相容的
+dev，與缺少 chezmoi 分開回報。本機設定路徑不傳給遠端；第一版不提供遠端
+apply，也不傳送 HOME 或設定內容。
+
+[FLEET 主機選單](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree) 提供相同的 status 入口，
+不需要先選 repository。
+
+## 既有 helpers 與責任邊界
+
+作者原有的 `fleet chezmoi` 繼續保有自己的 inventory 與行為。Dev 不匯入其
+machine list，也不改寫其 apply／update 語意。`dev fleet sync` 仍同步符合條件的
+Git branch；`dev fleet files` 仍只處理明確匯出的 ignored files。
+
+`dotcfg` 是作者 repository 專用的 prompt 編輯器；appsrc 診斷 app 的安裝來源。
+兩者維持選用的獨立 helper。Dotfiles 可以把 dev 當套件安裝，但 bootstrap 與
+原生日常操作持續不依賴 dev，避免形成必要的循環依賴。
 
 ---
 
@@ -13834,8 +15045,8 @@ selection 與 clipboard 錯誤不會觸發 clone／fetch 或複製空字串。�
 
 初始 TASKS frame 會先建立，不等待 runtime auto-detection、project-root lookup、
 cache decode、shell tool probe 或 optional release refresh 完成。TASKS、REPOS 與
-TRY 接著由同一個 shared local cycle 獨立發布；REMOTE、FLEET、SKILLS、MCP 與 SSH 維持
-lazy。每個被請求的 view 都有自己的 generation：`r` 會 supersede 舊讀取，晚到
+TRY 接著由同一個 shared local cycle 獨立發布；REMOTE、SKILLS、MCP 與 SSH 維持
+lazy，FLEET 則延後逐台預熱。每個被請求的 view 都有自己的 generation：`r` 會 supersede 舊讀取，晚到
 結果會被忽略，refresh 失敗時保留可用 rows，而成功的空結果會移除過時 rows。
 Cache acceptance 與目前 live load completion 是不同階段；可能從未開啟的 optional
 view 不存在虛構的 all-tabs-ready 狀態。
@@ -13868,7 +15079,7 @@ press 選取 visible row；點目前反白列就開啟 actions，包含鍵盤或
 |---|---|
 | Keys | 本頁操作、通用導覽與已設定的工具，包含可用狀態及必要條件 |
 | Guide | 使用流程、欄位、顏色與符號；開啟 Help 時擷取的所選列唯讀快照 |
-| Manual | 全部 內嵌 `dev help` 主題，相關主題優先，另有共用 workflow TL;DR |
+| Manual | 全部內嵌 `dev help` 主題，相關主題優先，另有共用 workflow TL;DR |
 
 Keys 與 Guide 共用搜尋，先列快捷鍵、再列說明。預設只搜尋選定的 Help
 分頁；選 **All views** 才搜尋七頁。切換說明範圍不改變實際 dashboard
@@ -14031,13 +15242,18 @@ dev 不會修改 Television、shell 或 chezmoi config。
 
 ### FLEET
 
-FLEET 同樣延遲載入。等待目前的 REPOS generation 被接受時，仍可使用 valid
-cached rows；接受後會重用該 snapshot 作為 local host 資料，不再重掃
-repositories，接著才 fan out 到設定的 SSH hosts。它預設隱藏本機，因為 REPOS
-已提供較完整的 local inventory；按 `a` 可顯示或隱藏 local rows。按 `r` 會
-supersede 舊 request 並強制執行 live reload。任何 endpoint field（包含 SSH
-port）改變都會讓該 host cache 失效。這不會改變 `dev fleet list`：其
-non-interactive output 仍包含本機與所有已設定的 remote hosts。
+FLEET 採遠端主機樹。本機預設隱藏；按 `a` 或使用選單，才在最後以收合狀態
+顯示並重用 REPOS。隱藏時搜尋與 coverage 都排除本機。Repos 尚在載入時，
+主機列與動作仍可用。Space 展開／收合主機，Enter／`o` 導覽至主機或 repo；
+Ctrl+O／右鍵開啟選單。
+HERDR 欄由共享的本機 catalog 查詢呈現登錄／啟用狀態，與 SSH snapshot 分開。
+Enable／disable／remove 操作精確 profile，遠端 sessions 保留；多筆先用 picker
+選取。r 更新選取主機及 catalog metadata。有效快取持續可搜尋並標示時間與範圍。
+
+初始畫面後五秒或提早進入 FLEET 時，開始一次性的缺少／過期快取預熱，不跳出
+密碼提示。設定 [tui.fleet] background_refresh = false 可保留純手動更新。
+搜尋包含收合主機的已知 repos，暫時展開匹配項，不額外觸發 SSH。詳見
+[主機樹與 Herdr 動作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
 
 ## Repository quick notes
 
@@ -14185,7 +15401,7 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -14247,8 +15463,8 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/
 
 ## 選擇操作
 
-按 `Ctrl+O`、右鍵或點目前反白列開啟 row actions。TASKS 與 TRY 也可按 Space；REPOS 的
-Space 仍用來展開 linked worktrees。TASKS 的 `a` 是顯示已完成 tasks，並不會
+按 `Ctrl+O`、右鍵或點目前反白列開啟 row actions。Space 只展開／收合 REPOS
+worktrees 與 FLEET 主機；平面列表不使用 Space。TASKS 的 `a` 是顯示已完成 tasks，並不會
 把 task 標成 done。Checkout 遺失時提供 recovery，不能直接當成完成。
 
 點其他列先選取，再點反白列開選單，不限間隔，也不會直接執行選單項目。
@@ -14264,7 +15480,7 @@ action menu，方向鍵選取、Enter 繼續。Esc 先停止輸入或清除查�
 既有操作條件與確認規則仍適用。
 
 按 `?` 或點 footer **Help**，預設看目前分頁的 **Keys**；**Guide** 解釋
-顏色、符號與擷取時的所選列，**Manual** 則包含全部 內嵌 `dev help`
+顏色、符號與擷取時的所選列，**Manual** 則包含全部內嵌 `dev help`
 主題。`1–3`、`v`、`/`、`j/k`、`f` 分別操作頁籤、範圍、搜尋、內容與放大。
 搜尋、範圍、Back 與文章橫向捲動也可點擊。Help 只讀既有觀察與內嵌文章，
 不執行操作或探測工具。搜尋範圍、文章導覽與分層 Esc 規則詳見
@@ -14356,7 +15572,7 @@ archived；之後再用一般 `tries restore` 回到可見位置。
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -15350,7 +16566,8 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
-| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list/doctor/derive`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh probe`、`ssh remove` |
+| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list/doctor/derive`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh connect`、`ssh probe`、`ssh remove` |
+| dotfiles | `dotfile status`, `dotfile setup`, `dotfile diff`, `dotfile apply`, `dotfile update`, `fleet dotfile status` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`、`prompt agents`、`prompt render`、`prompt run`、`prompt open` |
@@ -15367,7 +16584,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 `dev --help` 列出指令；精確語法與 flags 查相關 leaf command 的 `--help`，
 使用流程查 `dev help <topic>`。Dashboard 按 `?` 或點 footer 的 **Help**
 開啟目前分頁的 **Keys**、**Guide**、**Manual**；Manual 與 CLI help 共用
-內嵌主題及 workflow TL;DR。詳見
+所有內嵌主題及 workflow TL;DR。詳見
 [目前分頁的 Help](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/)。
 
 Bundled skill 的短入口只放核心用途、必要邊界與進階 reference 的條件連結。
@@ -16280,6 +17497,63 @@ dev done [task] [flags]
 - `--push` — push the resulting base (direct mode pushes its current branch)
 - `-y, --yes` — confirm the selected finish plan (required for non-interactive discard)
 
+### `dev dotfile`
+
+Inspect and manage local dotfiles through native chezmoi
+
+```
+dev dotfile [flags]
+```
+
+- `--json` — emit static status as JSON
+
+### `dev dotfile apply`
+
+Run native chezmoi apply
+
+```
+dev dotfile apply [targets...]
+```
+
+### `dev dotfile diff`
+
+Run native chezmoi diff
+
+```
+dev dotfile diff [targets...]
+```
+
+### `dev dotfile setup`
+
+Review or initialize a native chezmoi source
+
+```
+dev dotfile setup [flags]
+```
+
+- `--apply` — also run native apply after initialization
+- `--preset` — optional platform preset (david)
+- `--repo` — explicit dotfiles repository URL
+- `--yes` — run the reviewed native initialization without a dev confirmation
+
+### `dev dotfile status`
+
+Read configuration and source revision without running chezmoi
+
+```
+dev dotfile status [flags]
+```
+
+- `--json` — emit static status as JSON
+
+### `dev dotfile update`
+
+Run native chezmoi update
+
+```
+dev dotfile update
+```
+
 ### `dev edit`
 
 Open dev's config in $VISUAL or $EDITOR
@@ -16396,6 +17670,25 @@ Print the effective remotes configuration
 dev fleet config show
 ```
 
+### `dev fleet dotfile`
+
+Inspect host-local dotfiles across configured fleet hosts
+
+```
+dev fleet dotfile
+```
+
+### `dev fleet dotfile status`
+
+Read static chezmoi configuration and revision from fleet hosts
+
+```
+dev fleet dotfile status [flags]
+```
+
+- `--host` — only these configured host names (repeatable)
+- `--json` — emit content-free status JSON
+
 ### `dev fleet files`
 
 Plan or apply one-way transfer of explicit ignored local files
@@ -16437,7 +17730,7 @@ dev fleet machine-id <host> [flags]
 
 ### `dev fleet open`
 
-Open a remote repository through Herdr or an SSH login shell
+Prepare a remote repository for native Herdr navigation or an explicit SSH shell
 
 ```
 dev fleet open <host> <repo>
@@ -16569,6 +17862,154 @@ Quick-reference pages for the git workflow dev assumes
 ```
 dev help [topic]
 ```
+
+### `dev hygiene`
+
+Inspect hooks, scan secrets and privacy, and apply reviewed text changes
+
+```
+dev hygiene
+```
+
+### `dev hygiene redact`
+
+Preview selected text replacements or apply a saved plan
+
+```
+dev hygiene redact [flags]
+```
+
+- `--apply` — apply a reviewed replacement plan
+- `--file` — relative file to redact (repeatable)
+- `--finding` — specific finding ID to redact (repeatable)
+- `--plan` — reviewed plan ID
+- `--report` — worktree scan report ID
+- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `-y, --yes` — confirm the reviewed replacements
+
+### `dev hygiene restore`
+
+Preview or restore one private recovery receipt
+
+```
+dev hygiene restore [flags]
+```
+
+- `--apply` — restore unchanged post-apply files
+- `--receipt` — private recovery receipt ID
+- `--writer-stopped` — attest artifact writers have exited before recovery
+- `-y, --yes` — confirm the reviewed recovery
+
+### `dev hygiene review-path`
+
+Print the private review file location without printing its contents
+
+```
+dev hygiene review-path <plan-id>
+```
+
+### `dev hygiene rules`
+
+Manage private rules, policy overrides and precise exceptions
+
+```
+dev hygiene rules
+```
+
+### `dev hygiene rules add`
+
+Plan a private literal, CIDR or RE2 rule from a local value file
+
+```
+dev hygiene rules add [flags]
+```
+
+- `--action` — rule policy: block, warn or off
+- `--id` — non-sensitive rule label
+- `--kind` — literal, cidr or regex
+- `--path` — relative path glob (repeatable)
+- `--replacement` — replacement text (default: redaction sentinel)
+- `--value-file` — private rule value file; - reads stdin
+
+### `dev hygiene rules allow`
+
+Plan a local exception for one exact finding with a reason
+
+```
+dev hygiene rules allow [flags]
+```
+
+- `--finding` — exact finding ID
+- `--reason` — non-sensitive justification
+- `--report` — scan report ID
+
+### `dev hygiene rules apply`
+
+Apply one reviewed private rule or policy plan
+
+```
+dev hygiene rules apply [flags]
+```
+
+- `--plan` — reviewed rule plan ID
+- `-y, --yes` — confirm the reviewed rule changes
+
+### `dev hygiene rules import`
+
+Preview local identity candidates or plan selected private rules
+
+```
+dev hygiene rules import [flags]
+```
+
+- `--from` — static source: ssh or local
+- `--select` — candidate ID to import (repeatable)
+
+### `dev hygiene rules policy`
+
+Plan local overrides selected with --secrets, --known and --generic
+
+```
+dev hygiene rules policy
+```
+
+### `dev hygiene scan`
+
+Scan index, working files or frozen local Git history
+
+```
+dev hygiene scan [flags]
+```
+
+- `--audit` — include findings suppressed by local exceptions, gitleaksignore and inline pragmas
+- `--file` — select an in-scope relative file (repeatable; not history)
+- `--range` — history only: full FROM..TO commit OIDs (no implicit fetch)
+- `--scope` — scan scope: staged, worktree or history
+- `--timeout` — maximum scan duration; incomplete scans fail
+
+### `dev hygiene setup`
+
+Preview or apply repository hygiene configuration and hook integration
+
+```
+dev hygiene setup [flags]
+```
+
+- `--apply` — apply the exact saved setup plan
+- `--migrate-rules` — preview replacement of existing gitleaks config with bundled safe rules
+- `--plan` — reviewed plan ID
+- `-y, --yes` — confirm the reviewed plan
+
+### `dev hygiene status`
+
+Inspect effective hooks and policy without executing them
+
+```
+dev hygiene status [flags]
+```
+
+- `--check-remote` — explicitly query GitHub visibility; never change policy automatically
+- `--remote` — remote to query with --check-remote
 
 ### `dev instructions`
 
@@ -18504,7 +19945,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -18529,6 +19970,33 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 `$XDG_DATA_HOME/dev/config-recovery`；symlink 設定檔、不支援的 TOML 格式
 或平台提供手動修改與編輯器入口。載入失敗不代表未納管；成功儲存後重新掃描，
 重載失敗會另外回報。CLI flags 與既有 JSON 契約不變。
+
+## Dotfiles 與 dashboard fleet
+
+`dev dotfile status --json` 是有版本的唯讀設定／來源／revision report。
+`dev fleet dotfile status --host NAME` 接受可重複的精確主機選擇。
+本機 `--chezmoi-config PATH` 與 dev `--config` 分開，不傳給遠端。Setup 可指定
+`--repo URL` 或選用 `--preset david`；非互動預設只回報，`--yes` 才初始化，
+`--apply` 另行要求套用。Diff／apply／update 為明確原生操作。詳見
+[Dotfiles](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dotfiles/)。
+
+```toml
+[tui.fleet]
+background_refresh = true
+```
+
+預設在初始畫面後五秒或提早進入 FLEET 時，對缺少／過期快取預熱一次，
+不跳出認證提示。設為 false 可只保留明確更新；主機列、快取搜尋與主機動作仍可用。
+
+## FLEET Herdr catalog 狀態
+
+FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀態顯示於最後。
+隱藏本機時，搜尋與 coverage 同樣排除本機。HERDR 由共享的本機 catalog 查詢
+呈現未加入／啟用／停用／混合／unknown，與 repository STATE、runtime LIVE
+分開。Herdr 內外皆可逐 profile 啟用／停用／移除，遠端 sessions 保留，完成後
+只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
+background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
+fleet snapshot JSON。詳見[主機控制](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
 
 ## SSH 診斷
 
@@ -18624,6 +20092,12 @@ Setup／connect 接受 `--password-store system|bitwarden`（預設 system）。
 pending／unknown metadata，不存 secret。Explicit fleet password sources 保有優先權；
 discovery 不使用 saved-reference resolver，remote source-to-target credentials 也不屬於
 controller save flow。見 [SSH workflows](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/#fleet-source-profiles-routes)。
+
+## Repository hygiene
+
+`dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
+規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
+Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/)。
 
 ---
 
@@ -18976,7 +20450,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -19003,7 +20477,7 @@ REPOS cache 只提供顯示，Git／runtime／task authority 仍需新觀察與�
 ## 目前分頁的 Help 與精簡 skill 入口（v0.2.24）
 
 Dashboard Help 預設顯示目前分頁的 Keys，另外提供 Guide 與 Manual。
-View 範圍只影響 TUI 搜尋，Manual 搜尋全部 內嵌 CLI 主題。
+View 範圍只影響 TUI 搜尋，Manual 搜尋全部內嵌 CLI 主題。
 所選列說明固定在開啟 Help 時的快照，不會刷新資料，也不能授權操作。
 Help 不另行載入外部內容或探測。Dashboard、flow 與 triage 維持獨立介面。
 
@@ -19024,6 +20498,37 @@ config 載入、release 提示／檢查及 Windows 升級遺留 binary 清理。
 Cobra `--help` 與 `--version` 同樣保持靜態。一般指令（包含
 `--skill=false`）仍執行啟動維護；文件指令仍回報錯誤 arguments、flags
 與 color 值。
+
+## Dotfiles 與 fleet 主機觀察
+
+Chezmoi 為選用依賴。唯讀 dotfile status 不執行它，原生操作才需要。缺失、
+衝突或不支援的設定保持 unknown；source revision 不是部署紀錄。作者 preset
+可自由選用，experimental 推薦不代表已有對應平台的 dev 發行檔。遠端 status
+需要相容的 dev，POSIX／Windows 都使用固定且不傳設定內容的 helper；舊版明確
+回報不相容。原有 fleet list／snapshot JSON 欄位保留；repository snapshot 新增選用的
+`git_known`，缺少此欄位的舊 snapshot 在 TUI 保持 unknown。TUI 背景讀取不進行
+password fallback，快取 repo 命中在更新前仍是歷史資訊。Herdr 主機登錄需要
+相容的 machine CLI；原生連線不要求本機 Herdr server 已執行。詳見
+[Dotfiles](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dotfiles/) 與[主機動作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
+
+## FLEET Herdr catalog 狀態
+
+FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀態顯示於最後。
+隱藏本機時，搜尋與 coverage 同樣排除本機。HERDR 由共享的本機 catalog 查詢
+呈現未加入／啟用／停用／混合／unknown，與 repository STATE、runtime LIVE
+分開。Herdr 內外皆可逐 profile 啟用／停用／移除，遠端 sessions 保留，完成後
+只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
+background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
+fleet snapshot JSON。詳見[主機控制](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
+
+Fleet Enter 與 `dev fleet open` 偵測 `HERDR_ENV=1`，並明確指定遠端 session。
+Repository 準備需要相容的新 remote helper，在 Add／Enable 前驗證 path／Git
+identity。Herdr 內回報原生 sidebar 目標，Herdr 外 attach 所選 session。
+Herdr 0.9.0 沒有只操作呼叫者 client 的公開 activation API，因此兩條路徑都不使用
+session-wide focus。舊 helper 在 workspace 副作用前失敗；取消或部分失敗不會
+自動改開 SSH，`--no-runtime` 直接選 SSH。主機 Enter 不要求遠端 dev，可透過
+原生 attach 完成 bootstrap。Herdr 外的 repository 準備需要遠端 server 已就緒；
+若尚未就緒，先用主機導覽，再重試 repository。
 
 ## SSH 診斷契約
 
@@ -19112,6 +20617,106 @@ configuration 保留 supported settings，並拒絕 LocalCommand、port forwardi
 未選 key 的 native-only ProxyCommand session 可在 fresh static／effective source 檢查後
 連線，不產生 reconstructed route／proof authority；opaque route import、cycles 與
 不支援的 selected-key flows 仍拒絕。
+
+## Repository hygiene
+
+`dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
+規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
+Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/)。
+
+---
+
+### 人工 hygiene dogfood
+
+Source: https://daviddwlee84.github.io/dev-cli/zh-TW/reference/hygiene-dogfood/
+
+> 人工 post-writer dogfood 與已發布 Git 歷史的獨立清理影響評估。
+
+先讓實作與活躍 writer 分開，最後再處理紀錄。另開沒有 SpecStory 的 agent，並不會
+停止原本的 SpecStory writer；不得為了讓清理通過而關閉其他 session。
+
+## 修改真實紀錄之前
+
+1. 建置 feature binary、執行 native hygiene 測試，以及
+   `python scripts/test-hygiene-hooks.py --dev <absolute-binary>`。後者使用隔離 HOME，
+   驗證真正的 pre-commit：假 key、hidden 檔案、同一行 placeholder、alternate index、
+   executable modes、Git config 不變，以及乾淨提交。
+2. 執行 `dev hygiene status`、preview setup 並確認有效 hook 鏈。測試 session 的
+   PATH 指向新 binary；不要手動覆寫套件管理器安裝的 binary。
+3. 預覽 `rules import --from ssh` 與 `--from local`，分清楚私密值、公開／常見名稱
+   後才選 ID。私人政策保留在 Git 外。
+4. 執行 worktree 與 history scan，保留範圍、排除項與缺口。候選須分類後才建立
+   有理由的精確例外；命中數量不是有效 credential 的數量。
+
+## 最後人工觸發
+
+確切 provider／wrapper 已退出並寫完 transcript 後，從外部終端執行。另開不記錄
+SpecStory 的 agent 需要另外的適用授權，也仍需確認原本的 writer 已停止。
+
+```bash
+dev hygiene scan --scope worktree --json
+dev hygiene redact --report <fresh-report-id> --file <reviewed-file> --json
+dev hygiene redact --apply --plan <plan-id> --yes --writer-stopped
+dev hygiene scan --scope worktree --json
+git diff --check
+# 檢視後只 stage 指定檔案，正常 hooks 保持啟用。
+```
+
+只選已檢視的 finding／檔案。可辨識的 live agent、來源／metadata 變動、plan 簽章
+不符仍會阻擋。中斷後保留 ledger 與 recovery receipts，不盲目重跑；恢復前也要
+檢視路徑。短暫 byte stability 不能替代 writer 已退出的證據。
+
+若變更 source/config，執行對應測試及 skill/docs checks。HEAD 修正以新 commit
+向前提交。還在寫入的 transcript 明確留為待處理，不反覆覆寫。
+
+## 規劃時的稽核證據
+
+機器已安裝 pre-commit、gitleaks 與 executable global hook，但 repo 缺少兩者設定，
+所以一般 commit 會跳過該 gate；artifact finalize 的手動掃描是另一條路徑。
+
+本機可達歷史的 gitleaks audit 有 416 個候選，其中 384 個來自較寬鬆的 password
+規則，21 個位於測試檔。不能解讀為 416 個已確認 live secrets。以本機 SSH literal
+比對目前檔案，找到六個已設定 IP、共 163 次出現；通用帳號／主機名則有大量非私密
+命中，需要選擇與分類。
+
+歷史約有 717 MB unique blob data，最大 transcript 約 70 MB。第一次三分鐘掃描
+超時；後續完成的是該 gitleaks 指令的 patch scope。新實作另測 merge-only 內容，
+並明確列出 unsupported／excluded 資料。
+
+詳細報告只留本機私人儲存。Raw report、私人字典、recovery images 與 credential
+原文都不進 Git／CI logs。
+
+## 實作 dogfood 結果
+
+新 setup 已加入三個 repo 設定檔並保留原本的全域 hook。本功能真正提交時的 gate
+完成 70 個 staged 檔案掃描，0 個阻擋、36 個通用隱私警告。合成 hook 測試也驗證
+阻擋時不會改 caller 的 Git config、index entries 或 executable modes。
+
+新 CLI 對本機全部可達歷史的稽核達到明確的 40 分鐘上限，保存 `partial` receipt，
+沒有證明歷史乾淨。CI range 驗證亦發現舊 transcript 含無效 UTF-8 或 NUL bytes；
+這些是明確缺口，不是成功略過。Range 已限縮為變更版本，全量稽核仍會保留歷史缺口。
+最後人工階段須分類候選，並處理或明確界定不支援的 artifacts，才能宣稱已涵蓋真實歷史。
+
+## 已發布歷史的獨立評估
+
+任何歷史變更前，先建立私人表格：每個確認項目的類型、HEAD 是否仍有、引入／包含
+的 commit、本機可達 branches/tags 及已知遠端副本。遠端資料需明確 fetch/query；
+不能僅靠本機 refs 宣称列完所有公開副本。
+
+| 選項 | 效果與殘留 |
+| --- | --- |
+| 向前修正 HEAD、加強預防 | 保留 commit/tag 身分；舊 objects、PR、clone、cache 仍可能有資料。 |
+| 撤銷／輪換 credential | 在 provider 使 credential 失效，不抹除舊 bytes；只記錄完成狀態，不公開值。 |
+| 協調式歷史清理評估 | 會改 commit 身分／簽章，影響 PR、clone，需要另外的發版及分發遷移方案。一般 redact/setup 不授權 rewrite。 |
+| Provider 協助移除 | 是否可行取決於 provider 與資料類型；不能從一次 force push 推定完成。 |
+
+Dev-cli 的 immutable release tags 是版本 authority，且下游還有 Go module、
+Homebrew/Scoop、已下載 archives。已發布 tag 不得移動或重用。提案前需盤點受影響
+版本與產物；新版本無法移除已被下載的副本。
+
+Git author 姓名／email、帶個資的檔名也列入評估；文字 redaction 不改 commit metadata
+或 rename 檔案。GitHub 的[敏感資料移除說明](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)
+說明 rotation-first，以及 force push、fork、PR reference、cache 的限制。
 
 ---
 
@@ -19261,7 +20866,7 @@ Repository 首頁解析只讀 local Git。Assets 旁的 Try removal journals 是
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 看完整按鍵。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/)。
 
@@ -19318,6 +20923,23 @@ providers、private askpass transport、guarded policy/reference TOML。Native v
 availability 與互動授權依 host 而異；automated unit fixtures 沒有讀寫實際 vault。
 Private-key vault migration、hardware provisioning、Apple Passwords migration 仍 deferred；
 公開 SSH guide 分別說明 controller route 與 remote-native session。
+
+## Dotfiles 與 FLEET 主機樹
+
+2026-09-11 依 `internal/dotfile`、CLI dotfile／fleet adapters、TUI 主機樹
+測試與 Herdr 0.9.0 machine help／原始碼查核。Chezmoi 設定格式、.chezmoiroot
+與 dry-run hooks 依官方 reference。詳見 [Dotfiles](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dotfiles/)
+與 [FLEET](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
+
+## FLEET Herdr catalog 狀態
+
+FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀態顯示於最後。
+隱藏本機時，搜尋與 coverage 同樣排除本機。HERDR 由共享的本機 catalog 查詢
+呈現未加入／啟用／停用／混合／unknown，與 repository STATE、runtime LIVE
+分開。Herdr 內外皆可逐 profile 啟用／停用／移除，遠端 sessions 保留，完成後
+只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
+background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
+fleet snapshot JSON。詳見[主機控制](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/#dashboard-host-tree)。
 
 ---
 

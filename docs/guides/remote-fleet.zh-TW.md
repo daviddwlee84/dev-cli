@@ -135,6 +135,7 @@ Partial/unknown bootstrap、failed ordinary gate 或 fleet-fragment collision �
 |---|---|---|
 | `dev fleet list` | `--host <name>`（repeatable）、`--repo <query>`、`--json`、`--cached`、`--strict` | 列出本機與 merged configured hosts 的 repository/activity |
 | `dev fleet status` | `--json`、`--strict` | probe configured hosts 並回報 snapshot health |
+| `dev fleet dotfile status` | `--host <name>`（必填、可重複）、`--json` | 唯讀檢查主機的 chezmoi 設定與來源 revision |
 | `dev fleet machine-id <host>` | `--json` | 顯示 observed durable UUID 並比較 primary configured pin |
 | `dev fleet sync <repo>` | `--push`、`--remote <name>`、`--host <name>`（repeatable）、`--json` | optional publish，然後安全 fast-forward clean matching checkout |
 | `dev fleet files [repo-or-path]` | `--to <host>`、`--file <pattern>`（repeatable）、`--apply`、`--replace`、`--yes`、`--json` | plan 或 apply explicit ignored files 的 one-way transfer |
@@ -243,19 +244,109 @@ backend——interactive setup 將 native prompt 留給 OpenSSH，noninteractive
 
 Cache 讓 unavailable host 可以 `stale` 保留 last-known state；`--cached` 只讀 cache。它永遠不會成為 remote path 或 task authority。
 
-## TUI 中的 FLEET
+## FLEET 主機樹 {#dashboard-host-tree}
 
-FLEET 是 TUI 八個 view 之一（`TASKS`、`REPOS`、`FLEET`、`TRY`、`REMOTE`、
-`SKILLS`、`MCP`、`SSH`，用 `tab`/`h`/`l` 切換）。與 REMOTE 一樣 lazy-load；view 第一次
-開啟前不會開始 live probe，但 valid cache 會在初始 TASKS view 後 decode。TUI 預設
-隱藏本機，因為 REPOS 有較完整 local inventory；`a` toggle local rows。Local snapshot
-重用 accepted REPOS generation，不重跑 discovery；generation 尚在 loading 時仍保留
-cached rows。`r` supersede prior work，並 reload merged primary-plus-generated config 的
-所有 hosts。Non-interactive `dev fleet list` 仍包含 local 加 remote。
+FLEET 立即列出已設定的遠端主機，不等待 repository scan 或 SSH，主機預設收合。
+本機預設隱藏，因為 REPOS 已有更完整的本機 inventory。按 `a` 或使用動作選單
+可將本機顯示在最後，首次顯示時收合；開關只保留於本次 dashboard session。
+本機 repositories 重用已接受的 REPOS snapshot，升序或降序時都固定排最後。
+Space 展開／收合主機；在 child 按 Space 會收合並選回主機。Enter／`o` 導覽至
+主機或 repository，本機主機列則切到 REPOS。Ctrl+O／右鍵開啟動作選單，r 更新
+選取主機及 Herdr metadata。全域 h/l／方向鍵／Tab 仍用來切換分頁；平面列表
+不使用 Space。
 
-Table 顯示 host/state/repository/branch/Git/runtime/task/path facts。Enter 在符合資格的 POSIX-style profile 回報 Herdr 且不需 password step 時使用 native Herdr remoting；否則透過 SSH 與 remote login shell 開啟。Windows controller 的 local fallback 會啟動 child `%COMSPEC%` shell，因為 Windows 沒有 `exec(2)`。
+初始畫面後五秒，或提早進入 FLEET 時，單一背景 worker 開始更新缺少或過期的
+host snapshot。每台符合條件的主機自動嘗試一次，結果逐台出現。背景讀取採用
+非互動認證，不解析 password fallback，單台 timeout 為 30 秒或較短的原設定。
+明確要求的讀取優先執行，並共用既有並行上限。可在 dev config 關閉預熱：
 
-`e` key 只開 primary `remotes.toml`。返回後，dev reparse 完整 primary-plus-generated merge。Invalid primary 或 generated fragment 會回報 error 並保留之前 usable rows；valid merge 觸發 live reload。
+```toml
+[tui.fleet]
+background_refresh = false
+```
+
+超過 cache_ttl 的有效快取仍可使用與搜尋，並標示時間及 stale／error 狀態。
+失敗保留舊資料，只有成功的空 snapshot 才代表零個 repositories。
+主機載入與動作不依賴本機 REPOS 成功；收合只隱藏 children，保留資料及已要求的讀取。
+
+/ 搜尋已知的主機名稱、SSH alias、Herdr profile label／session／登錄狀態，以及
+已載入／快取 repos，包含收合主機。隱藏本機時，搜尋與 coverage 都排除本機。
+命中的 repo 保留 parent header，暫時展開；搜尋時仍可按 Space 收合，清除搜尋後
+恢復原展開狀態。
+輸入或篩選不增加連線工作。Footer 分開顯示最新、快取與尚未載入的主機；
+需要完整最新結果時，從 action menu 更新全部主機，零命中時也能使用。
+沒有遠端主機或沒有搜尋結果時，仍可從選單切換本機顯示。
+
+主機動作包含 SSH、[dotfile status](dotfiles.zh-TW.md) 與選用的 Herdr，不必先取得
+repo snapshot，也不要求遠端已有 dev。`HERDR` 欄顯示本機 saved-profile 狀態，
+與 repository `STATE`、runtime `LIVE` 分開：
+
+| HERDR | 意義 | 管理動作 |
+|---|---|---|
+| `not added` | 成功讀取 catalog，沒有匹配的 profile | Add to Herdr |
+| `enabled` | 匹配的 saved profile 已啟用 | Disable 或 Remove |
+| `disabled` | 匹配的 saved profile 已停用 | Enable 或 Remove |
+| `1/2 enabled` | 多個匹配 profiles | 先選取精確 profile |
+| `loading`／`unknown` | 載入中或尚無可靠觀察 | 刷新或檢查原因 |
+| `unmapped`／`not checked` | 缺少精確 SSH alias，或未啟用 Herdr 檢查 | 檢查連線設定或啟動選項 |
+
+所有主機共用一次有 timeout 的本機 `herdr machine list --json` 查詢，不連 SSH，
+也不要求本機 server 已執行。進入 FLEET、明確刷新、開選單，以及 Herdr 操作完成
+後更新；不持續輪詢。失敗時保留舊值並標 stale，不改成 `not added`。
+`--no-runtime` 跳過 Herdr 檢查；repository 的 `background_refresh` 不控制這份本機資料。
+
+Enabled 代表保存的連線意圖，不代表目前已連線。Profile 按精確 SSH alias 關聯，
+不解析 IP 或推測其他 alias 等價。Detail 顯示 label、session，以及 fleet 連線覆寫
+與 saved target 的差異。OS 保留在主機 detail，不再填入 host header 的 BRANCH。
+
+Enable、Disable、Remove 在 Herdr 內外都使用既有受保護計畫與精確 profile
+fingerprint。多個 profiles 先透過 picker 選擇，不攤開成過長的 action menu。
+Disable 保留登錄方便再啟用；Remove 刪除該筆登錄。兩者讓本機 clients detach，
+遠端 server、panes、sessions 繼續執行。完成後只更新 Herdr metadata，不額外
+查詢遠端 repository snapshot。本次不提供批次開關，也不自動操作所有匹配項目。
+
+Herdr 外另外可 Connect，並明確指定 session，預設 default。Add 可能準備／啟動
+遠端 server，原生安裝確認仍交給 Herdr。0.9.0 add 會讓開啟中的本機 clients 連上
+新機器，但不切換選取；登錄只影響執行 dev 這台機器的 catalog。即使連線 target
+不支援（例如原生 Windows），仍可停用／移除已明確匹配的 saved profile；
+連線能力與本機 catalog 管理分開。
+
+### Enter 與遠端 session
+
+主機導覽需要 SSH alias，但不要求遠端已有 `dev` 或 repository snapshot。
+Repository 導覽（包含 `dev fleet open <host> <repo>`）先透過相容的遠端 `dev`
+檢查精確路徑與 Git identity，再準備或重用 workspace，不改變焦點。
+準備及 attach 始終明確指定同一個 Herdr session。
+
+| dev 執行位置 | 主機列 Enter | Repository 列 Enter |
+|---|---|---|
+| Herdr 內（`HERDR_ENV=1`） | 重用已啟用的 profile；Add 或 Enable 前先詢問 | 檢查 repo/helper，確認所選 profile，再準備 workspace |
+| Herdr 外 | 連接所選 saved session；沒有 profile 時明確使用 `default` | 準備 workspace，再 attach 該 session |
+
+多個 profiles 必須按精確 ID、label、session 選取；非互動呼叫不猜測。
+已移除的 profile 必須重新 Add。Catalog 讀取失敗代表 unknown，會停止 profile
+選取。Herdr 外的 Enter 不會自動新增或啟用 saved profile。
+Herdr 外準備 repository 時需要遠端 server 已就緒；若尚未就緒，先透過主機
+Enter／Connect 讓原生流程準備 server，再重試 repository。
+
+Herdr 0.9.0 沒有只切換呼叫者 client 的公開 machine/workspace 選取介面。
+準備完成後，請在原生 sidebar 選擇回報的機器與 workspace。Herdr 內會回到同一個
+dashboard，不啟動 nested client；Herdr 外執行
+`herdr --remote <alias> --session <session>`。兩條路徑都不呼叫會影響其他 clients
+的 session-wide `workspace focus`。原生安裝確認仍交給 Herdr。
+
+Herdr 不可用或 target 不支援時提供明確的 SSH 選項；`--no-runtime` 直接使用 SSH。
+開始 Herdr 操作後，取消或失敗只回報結果，不會自動改開 SSH。若後續步驟失敗，
+已完成的 Add、Enable 或 workspace 準備仍保留並回報。舊版遠端 dev 會在修改
+workspace 前拒絕新的 preparation helper；更新遠端 dev 後再試 repository 導覽。
+
+導覽與 Herdr profile 變更會直接將結果帶回 dashboard，不再要求最後按 Enter。
+Ctrl+O → full status / error 可閱讀完整結果，包含後續失敗時已完成的步驟。
+返回本身不會自動開啟另一台主機或 repository。
+
+e 編輯 primary remotes.toml 並重新驗證合併設定。Endpoint 改變會讓舊結果失效；
+設定錯誤則保留可用資料。CLI dev fleet list 的本機加遠端 inventory 契約維持不變。
+
 
 ## 安全 branch propagation 與 degradation
 

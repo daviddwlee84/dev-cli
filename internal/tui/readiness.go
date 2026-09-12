@@ -64,7 +64,7 @@ type viewLoadState struct {
 }
 
 func (m *Model) prepareRepoDependentsForReload() {
-	m.prepareRepoDependentForReload(ViewFleet, m.actions.ReloadFleetWithRepos != nil)
+	m.prepareRepoDependentForReload(ViewFleet, !m.hostFleetEnabled() && m.actions.ReloadFleetWithRepos != nil)
 	m.prepareRepoDependentForReload(ViewSkills, m.actions.ReloadSkillsWithRepos != nil)
 	m.prepareRepoDependentForReload(ViewMCP, m.actions.ReloadMCPWithRepos != nil)
 }

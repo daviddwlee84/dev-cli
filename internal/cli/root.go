@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/dotfile"
 	"github.com/daviddwlee84/dev-cli/internal/help"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/skill"
@@ -108,6 +109,23 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 			if completionInvocation(cmd) || staticContentInvocation(cmd) {
 				return nil
 			}
+			if hygieneInvocation(cmd) {
+				cfg, err := config.Load(app.configPath)
+				if err != nil {
+					return fmt.Errorf("dev configuration unavailable; repair it before loading hygiene policy")
+				}
+				app.Cfg = cfg
+				if app.In == nil {
+					app.In = os.Stdin
+				}
+				if app.Out == nil {
+					app.Out = os.Stdout
+				}
+				if app.Err == nil {
+					app.Err = os.Stderr
+				}
+				return nil
+			}
 			if feedbackInvocation(cmd) {
 				err := app.Load()
 				if err != nil && feedbackDraftInvocation(cmd) {
@@ -146,6 +164,7 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 	root.Flags().Bool("skill", false, "print the bundled agent skill and exit")
 
 	root.AddCommand(
+		newHygieneCmd(app),
 		newSubmoduleCmd(app),
 		newListCmd(app),
 		newTUICmd(app),
@@ -169,6 +188,7 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 		newRepoCmd(app),
 		newRepoBrowseCmd(app),
 		newFleetCmd(app),
+		newDotfileCmd(app),
 		newSSHCmd(app),
 		newFeedbackCmd(app),
 		newGitCmd(app),
@@ -247,6 +267,10 @@ func Execute() int {
 	fmt.Fprintln(os.Stderr, style.danger("dev:")+" "+err.Error())
 	if cmd != nil && wantsUsage(err) {
 		fmt.Fprint(os.Stderr, renderCobraHelp(cmd.UsageString(), style))
+	}
+	var nativeError *dotfile.NativeError
+	if errors.As(err, &nativeError) {
+		return nativeError.ExitCode()
 	}
 	return 1
 }

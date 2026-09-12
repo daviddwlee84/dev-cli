@@ -1,0 +1,40 @@
+version = 1
+secrets = "block"
+known = "block"
+generic = "warn"
+
+[[exceptions]]
+rule = "generic-password-assignment"
+path = "internal/fleet/transport_broker_test.go"
+pattern = "^func\\(context\\.Context,$"
+reason = "Go callback type; no literal credential"
+
+[[exceptions]]
+rule = "generic-password-assignment"
+path = "internal/sshremote/client.go"
+pattern = "^usePassword$"
+reason = "Go boolean expression; no literal credential"
+
+[[exceptions]]
+rule = "generic-password-assignment"
+path = "internal/sshremote/client_test.go"
+pattern = "^r\\.usedPassword\\}$"
+reason = "Go boolean struct field; no literal credential"
+
+[[exceptions]]
+rule = "generic-password-assignment"
+path = "internal/sshremote/client_test.go"
+pattern = "^password$"
+reason = "Go boolean variable assignment; no literal credential"
+
+[[exceptions]]
+rule = "generic-password-assignment"
+path = "internal/sshremote/client_test.go"
+pattern = "^usedPassword\\}$"
+reason = "Go boolean fixture field; no literal credential"
+
+[[exceptions]]
+rule = "generic-password-assignment"
+path = "internal/fleet/transport.go"
+pattern = "^resolved$"
+reason = "Go variable assignment from the credential resolver; no literal credential"

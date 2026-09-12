@@ -21,6 +21,7 @@ func TestWindowsRemoteCommandRoutesAllowlistedFleetHelpers(t *testing.T) {
 		{"fleet", "_snapshot"},
 		{"fleet", "_sync"},
 		{"fleet", "_capability"},
+		{"fleet", "_dotfile-status"},
 		{"fleet", "_open-herdr", "--request", request},
 		{"fleet", "_shell", "--request", request},
 	}
@@ -41,6 +42,14 @@ func TestWindowsRemoteCommandRoutesAllowlistedFleetHelpers(t *testing.T) {
 				t.Fatalf("PowerShell argv = %#v, want %#v", got, args)
 			}
 		})
+	}
+}
+
+func TestWindowsDotfileStatusHelperRejectsArguments(t *testing.T) {
+	for _, args := range [][]string{{"fleet", "_dotfile-status", "--apply"}, {"dotfile", "status"}, {"fleet", "dotfile", "apply"}} {
+		if _, err := checkedRemoteCommand(Host{RemoteOS: RemoteOSWindows}, args); err == nil {
+			t.Fatalf("accepted unsupported remote argv: %v", args)
+		}
 	}
 }
 

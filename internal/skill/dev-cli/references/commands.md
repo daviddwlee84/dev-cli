@@ -320,6 +320,63 @@ dev done [task] [flags]
 - `--push` — push the resulting base (direct mode pushes its current branch)
 - `-y, --yes` — confirm the selected finish plan (required for non-interactive discard)
 
+### `dev dotfile`
+
+Inspect and manage local dotfiles through native chezmoi
+
+```
+dev dotfile [flags]
+```
+
+- `--json` — emit static status as JSON
+
+### `dev dotfile apply`
+
+Run native chezmoi apply
+
+```
+dev dotfile apply [targets...]
+```
+
+### `dev dotfile diff`
+
+Run native chezmoi diff
+
+```
+dev dotfile diff [targets...]
+```
+
+### `dev dotfile setup`
+
+Review or initialize a native chezmoi source
+
+```
+dev dotfile setup [flags]
+```
+
+- `--apply` — also run native apply after initialization
+- `--preset` — optional platform preset (david)
+- `--repo` — explicit dotfiles repository URL
+- `--yes` — run the reviewed native initialization without a dev confirmation
+
+### `dev dotfile status`
+
+Read configuration and source revision without running chezmoi
+
+```
+dev dotfile status [flags]
+```
+
+- `--json` — emit static status as JSON
+
+### `dev dotfile update`
+
+Run native chezmoi update
+
+```
+dev dotfile update
+```
+
 ### `dev edit`
 
 Open dev's config in $VISUAL or $EDITOR
@@ -436,6 +493,25 @@ Print the effective remotes configuration
 dev fleet config show
 ```
 
+### `dev fleet dotfile`
+
+Inspect host-local dotfiles across configured fleet hosts
+
+```
+dev fleet dotfile
+```
+
+### `dev fleet dotfile status`
+
+Read static chezmoi configuration and revision from fleet hosts
+
+```
+dev fleet dotfile status [flags]
+```
+
+- `--host` — only these configured host names (repeatable)
+- `--json` — emit content-free status JSON
+
 ### `dev fleet files`
 
 Plan or apply one-way transfer of explicit ignored local files
@@ -477,7 +553,7 @@ dev fleet machine-id <host> [flags]
 
 ### `dev fleet open`
 
-Open a remote repository through Herdr or an SSH login shell
+Prepare a remote repository for native Herdr navigation or an explicit SSH shell
 
 ```
 dev fleet open <host> <repo>
@@ -609,6 +685,154 @@ Quick-reference pages for the git workflow dev assumes
 ```
 dev help [topic]
 ```
+
+### `dev hygiene`
+
+Inspect hooks, scan secrets and privacy, and apply reviewed text changes
+
+```
+dev hygiene
+```
+
+### `dev hygiene redact`
+
+Preview selected text replacements or apply a saved plan
+
+```
+dev hygiene redact [flags]
+```
+
+- `--apply` — apply a reviewed replacement plan
+- `--file` — relative file to redact (repeatable)
+- `--finding` — specific finding ID to redact (repeatable)
+- `--plan` — reviewed plan ID
+- `--report` — worktree scan report ID
+- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `-y, --yes` — confirm the reviewed replacements
+
+### `dev hygiene restore`
+
+Preview or restore one private recovery receipt
+
+```
+dev hygiene restore [flags]
+```
+
+- `--apply` — restore unchanged post-apply files
+- `--receipt` — private recovery receipt ID
+- `--writer-stopped` — attest artifact writers have exited before recovery
+- `-y, --yes` — confirm the reviewed recovery
+
+### `dev hygiene review-path`
+
+Print the private review file location without printing its contents
+
+```
+dev hygiene review-path <plan-id>
+```
+
+### `dev hygiene rules`
+
+Manage private rules, policy overrides and precise exceptions
+
+```
+dev hygiene rules
+```
+
+### `dev hygiene rules add`
+
+Plan a private literal, CIDR or RE2 rule from a local value file
+
+```
+dev hygiene rules add [flags]
+```
+
+- `--action` — rule policy: block, warn or off
+- `--id` — non-sensitive rule label
+- `--kind` — literal, cidr or regex
+- `--path` — relative path glob (repeatable)
+- `--replacement` — replacement text (default: redaction sentinel)
+- `--value-file` — private rule value file; - reads stdin
+
+### `dev hygiene rules allow`
+
+Plan a local exception for one exact finding with a reason
+
+```
+dev hygiene rules allow [flags]
+```
+
+- `--finding` — exact finding ID
+- `--reason` — non-sensitive justification
+- `--report` — scan report ID
+
+### `dev hygiene rules apply`
+
+Apply one reviewed private rule or policy plan
+
+```
+dev hygiene rules apply [flags]
+```
+
+- `--plan` — reviewed rule plan ID
+- `-y, --yes` — confirm the reviewed rule changes
+
+### `dev hygiene rules import`
+
+Preview local identity candidates or plan selected private rules
+
+```
+dev hygiene rules import [flags]
+```
+
+- `--from` — static source: ssh or local
+- `--select` — candidate ID to import (repeatable)
+
+### `dev hygiene rules policy`
+
+Plan local overrides selected with --secrets, --known and --generic
+
+```
+dev hygiene rules policy
+```
+
+### `dev hygiene scan`
+
+Scan index, working files or frozen local Git history
+
+```
+dev hygiene scan [flags]
+```
+
+- `--audit` — include findings suppressed by local exceptions, gitleaksignore and inline pragmas
+- `--file` — select an in-scope relative file (repeatable; not history)
+- `--range` — history only: full FROM..TO commit OIDs (no implicit fetch)
+- `--scope` — scan scope: staged, worktree or history
+- `--timeout` — maximum scan duration; incomplete scans fail
+
+### `dev hygiene setup`
+
+Preview or apply repository hygiene configuration and hook integration
+
+```
+dev hygiene setup [flags]
+```
+
+- `--apply` — apply the exact saved setup plan
+- `--migrate-rules` — preview replacement of existing gitleaks config with bundled safe rules
+- `--plan` — reviewed plan ID
+- `-y, --yes` — confirm the reviewed plan
+
+### `dev hygiene status`
+
+Inspect effective hooks and policy without executing them
+
+```
+dev hygiene status [flags]
+```
+
+- `--check-remote` — explicitly query GitHub visibility; never change policy automatically
+- `--remote` — remote to query with --check-remote
 
 ### `dev instructions`
 

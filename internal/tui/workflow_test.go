@@ -20,7 +20,7 @@ func (*fakeWorkflow) SetStdout(io.Writer)        {}
 func (*fakeWorkflow) SetStderr(io.Writer)        {}
 func (*fakeWorkflow) Result() tui.WorkflowResult { return tui.WorkflowResult{} }
 
-func TestTaskSpaceExposesLegalWorkflowActions(t *testing.T) {
+func TestTaskActionMenuExposesLegalWorkflowActions(t *testing.T) {
 	for _, state := range []task.State{task.Hot, task.Warm, task.Cold, task.Done} {
 		t.Run(string(state), func(t *testing.T) {
 			r := row("task", "selected", state, "")
@@ -31,7 +31,7 @@ func TestTaskSpaceExposesLegalWorkflowActions(t *testing.T) {
 			if state == task.Done {
 				m = send(m, key("a"))
 			}
-			m = send(m, key(" "))
+			m = send(m, key("ctrl+o"))
 			out := m.View()
 			if !strings.Contains(out, "inspect and recover this task") {
 				t.Fatal(out)

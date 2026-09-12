@@ -139,7 +139,7 @@ on the current branch is insufficient evidence to remove a whole clone.
 ## Enter from REPOS or TRY
 
 The dashboard remains navigation-only: Enter/`o` opens the current item and
-Space retains its existing worktree/action behavior. There are no organizer
+Space expands/collapses REPOS worktrees and is unused in TRY. There are no organizer
 checkboxes or hidden selections on these pages. `Ctrl+O` offers **organize this
 item**, **organize current filtered results**, and **organize all local work**.
 The triage header names the chosen scope; scoped entry starts with items, not

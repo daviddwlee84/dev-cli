@@ -57,6 +57,7 @@ dev fleet list
 dev fleet list --host lab --repo api
 dev fleet list --cached
 dev fleet list --json
+dev fleet dotfile status --host lab --json
 dev fleet open lab api
 ```
 
@@ -65,20 +66,51 @@ task registry, and runtime remain authoritative. An unreachable host can reuse
 the last successful private XDG snapshot. Cache identity includes the full SSH
 endpoint, port, timeouts, dev path, remote OS, and optional machine-ID pin.
 
-The dashboard FLEET view hides this machine by default because REPOS already
-shows richer local state; `a` includes local rows. `dev fleet list` always keeps
-local plus configured remote hosts. FLEET `e` edits only primary `remotes.toml`
-and reparses the complete primary-plus-generated merge on return.
+The dashboard FLEET view starts with collapsed remote hosts and hides local.
+Use a or the action menu to reveal local collapsed at the end for this session. It displays cached repositories and warms missing/expired snapshots after
+five seconds or an earlier visit. Background reads never prompt for credentials;
+[tui.fleet] background_refresh = false disables them. Space expands/collapses a
+host; on a child it collapses and selects the host. Enter/o navigates to a host
+or repo; the local host switches to REPOS. r refreshes its host, and Ctrl+O/right-click offers SSH,
+Herdr and dotfile status. Search includes collapsed known repos and Herdr
+profile labels/session/state, excluding hidden local data from coverage. The
+HERDR column is an independent local catalog observation: not added, enabled,
+disabled, mixed enabled counts or unknown. It is not connection status.
+Catalog reads run on view entry, refresh, menu inspection and Herdr action
+completion; --no-runtime skips them. No continuous polling or extra SSH occurs.
+Enabled profiles offer Disable and Remove; disabled profiles offer Enable and
+Remove, inside or outside Herdr. Multiple profiles use an exact-ID picker.
+Disable keeps registration; Remove deletes registration; remote sessions stay
+running. Catalog management refreshes only Herdr metadata. Connection capability
+limits do not prevent disabling/removing an existing exact local saved profile. CLI dev fleet list retains its
+local-plus-remote contract. FLEET e edits only primary remotes.toml and reparses
+the complete primary-plus-generated merge on return.
 
-Opening a remote repo prefers native Herdr remoting for an eligible host. It
-otherwise opens through SSH, validates the repository path through remote dev,
-changes directory, and starts a login shell.
+Herdr navigation uses an explicit session and an exact saved-profile choice.
+Inside Herdr (HERDR_ENV=1), Enter reuses an enabled profile or asks to Add/Enable;
+it never launches a nested client. Outside, it attaches without implicitly
+adding/enabling profiles. Several profiles require a picker; unknown catalog
+state is an error. A host needs no remote dev. A repository requires a compatible
+remote helper that checks the exact path and Git identity before profile changes
+and prepares/reuses a workspace without focus. Preparation and attachment use
+the same session. Herdr 0.9.0 requires selecting the machine/workspace in its
+native sidebar; dev never calls session-wide focus for fleet navigation.
+
+--no-runtime uses SSH directly. Unsupported/unavailable Herdr offers explicit
+SSH navigation; a chosen Herdr operation never falls back after cancellation or
+failure. Completed Add/Enable/workspace preparation is retained and reported.
+SSH repository navigation validates the path through remote dev, changes
+directory, and starts a login shell. Old dev rejects the new preparation helper
+before workspace effects; update remote dev to use Herdr repository navigation.
+Navigation and Herdr profile changes return directly to the dashboard without a
+final Enter prompt. Ctrl+O > full status / error retains the complete result and
+partial effects. Returning never triggers another navigation.
 
 ## POSIX and Windows remote transport
 
 POSIX hosts use an injection-safe shell launcher. Windows hosts use an encoded
 PowerShell wrapper that accepts only `_snapshot`, `_sync`, content-free
-`_capability`, `_open-herdr`, and `_shell` helper shapes, locates `dev.exe` when
+`_capability`, `_dotfile-status`, `_open-herdr`, and `_shell` helper shapes, locates `dev.exe` when
 `dev_path = "auto"`, preserves protocol stdin, returns 127 when dev is absent,
 and propagates its status. Native Windows `_files-plan`/`_files-apply` payloads
 remain denied before content is sent. Explicit paths
@@ -132,8 +164,7 @@ delete source files, or evict a repository. Native Windows payloads are blocked.
 label, opaque profile ID and explicit session separate. Native add can prepare
 and start the remote server; native approvals remain required. Disabling or
 removing a profile leaves remote sessions running. This registration workflow
-does not replace fleet's host-local repo snapshots or change fleet open's runtime
-selection. See `dev help ssh` for plans and multi-select management.
+does not replace fleet's host-local repo snapshots See `dev help ssh` for plans and multi-select management.
 
 ## Connection identity is separate from the remote pin
 

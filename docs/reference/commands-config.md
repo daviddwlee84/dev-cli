@@ -32,6 +32,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
 | SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list/doctor/derive`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh connect`, `ssh probe`, `ssh remove` |
+| dotfiles | `dotfile status`, `dotfile setup`, `dotfile diff`, `dotfile apply`, `dotfile update`, `fleet dotfile status` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
 | prompt handoff | `prompt list`, `prompt agents`, `prompt render`, `prompt run`, `prompt open` |
@@ -798,7 +799,7 @@ and `restore` provide optional guarded local edits and private recovery. Existin
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -841,6 +842,36 @@ under `$XDG_DATA_HOME/dev/config-recovery`; symlink configs, unsupported TOML la
 and other platforms offer manual edits and the config editor. Failed scans remain
 unknown. Successful saves refresh local inventory; reload failures are reported
 separately. CLI flags and existing JSON contracts are unchanged.
+
+## Dotfiles and dashboard fleet
+
+`dev dotfile status --json` is a versioned passive configuration/source/revision report.
+`dev fleet dotfile status --host NAME` accepts repeatable exact host selectors.
+Local `--chezmoi-config PATH` is distinct from dev `--config` and is not sent to
+remote hosts. Setup supports `--repo URL` or optional `--preset david`; outside
+a terminal it reports unless `--yes`, with separate `--apply`. Diff/apply/update
+are explicit native operations. See [Dotfiles](../guides/dotfiles.md).
+
+```toml
+[tui.fleet]
+background_refresh = true
+```
+
+This default warms missing/expired snapshots once after five seconds or an
+earlier FLEET visit. It never prompts for credentials. Set false for explicit
+updates only. Host rows, cached search, and per-host actions remain available.
+
+## FLEET Herdr catalog state
+
+FLEET hides local by default; a or the menu reveals it collapsed at the end
+for this session. Hidden local data is excluded from search and coverage. HERDR
+reports a shared local catalog observation (not added/enabled/disabled/mixed or
+unknown), separately from repository STATE and runtime LIVE. Per-profile
+enable/disable/remove work inside or outside Herdr, retain remote sessions and
+refresh only catalog metadata. Connection eligibility and catalog cleanup are
+separate. --no-runtime skips Herdr; background_refresh controls only automatic
+repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
+metadata. See [host controls](../guides/remote-fleet.md#dashboard-host-tree).
 
 ## SSH diagnosis
 
@@ -946,3 +977,10 @@ policy, provider references and pending/unknown metadata, not secret values.
 Explicit fleet password sources retain priority; discovery does not use the
 saved-reference resolver. Remote source-to-target credentials are outside the
 controller save flow. See [SSH workflows](../guides/ssh-hosts.md#fleet-source-profiles-and-local-routes).
+
+## Repository hygiene
+
+`dev hygiene` provides staged/worktree/history scopes, per-repo block/warn/off
+policies, private local identity imports and reviewed text replacement/recovery on
+macOS, Linux and Windows. CI uses public rules only. See the
+[hygiene workflow](../guides/hygiene.md) for schema-v1 coverage and hook contracts.

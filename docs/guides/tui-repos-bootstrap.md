@@ -39,7 +39,7 @@ the dashboard does not add submodules itself.
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes, or the optional release refresh can
 finish. TASKS, REPOS, and TRY then publish independently from one shared local
-cycle. REMOTE, FLEET, SKILLS, MCP, and SSH stay lazy. Each requested view has a generation:
+cycle. REMOTE, SKILLS, MCP, and SSH stay lazy; FLEET uses delayed host-by-host warming. Each requested view has a generation:
 `r` supersedes the previous read, late results are ignored, failed refreshes keep
 usable rows visible, and a successful empty result removes obsolete rows. Cache
 acceptance and current live completion are distinct; there is no all-tabs-ready
@@ -267,14 +267,22 @@ symlink; dev does not modify Television, shell, or chezmoi configuration.
 
 ### FLEET
 
-FLEET also loads lazily. It keeps valid cached rows usable while waiting for the
-current REPOS generation to be accepted, reuses that snapshot for the local host
-instead of scanning repositories again, and then fans out to configured SSH
-hosts. This machine is hidden by default because REPOS already provides the
-richer local inventory; press `a` to include/hide local rows. Press `r` to
-supersede an older request and force a live reload. Changing any endpoint field,
-including SSH port, invalidates that host's cache. None of this changes
-`dev fleet list`, whose non-interactive output continues to include this machine.
+FLEET is a remote host tree. Local is hidden by default; `a` or the action menu
+reveals it collapsed at the end, reusing REPOS. Search and coverage exclude local
+while hidden. Host rows and actions are available while repositories load.
+Space expands/collapses hosts; Enter/`o` navigates to a host or repo.
+Ctrl+O/right-click offers host actions.
+The HERDR column shows saved registration/enabled state from one shared local
+catalog read, independently of SSH snapshots. Enable/disable/remove act on an
+exact profile and keep remote sessions running; multiple profiles use a picker.
+r refreshes the selected host and catalog metadata. Cached repositories remain
+searchable with explicit age and coverage.
+
+Background warming starts after five seconds or an earlier FLEET visit, once per
+missing/expired host without password prompts. Set [tui.fleet]
+background_refresh = false to keep updates explicit. Search includes collapsed
+known repos, temporarily shows matching children, and never triggers extra SSH.
+See [the host tree and Herdr actions](remote-fleet.md#dashboard-host-tree).
 
 ## Repository quick notes
 
@@ -428,7 +436,7 @@ Use [dashboard lifecycle actions](dashboard-actions.md) for task finish/resume/r
 
 ## Dashboard navigation and organizer entry
 
-Enter always opens a dashboard row. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still

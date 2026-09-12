@@ -78,7 +78,7 @@ Plan 在 effects 前鎖定並重新驗證 repository、refs、checkout、task re
 
 ## 從 REPOS 或 TRY 進入
 
-Dashboard 維持瀏覽：Enter／`o` 永遠開啟目前項目，Space 保留原功能，不再常駐勾選框或保留整理選取。`Ctrl+O` 可選「整理目前項目」「整理目前篩選結果」「整理全部本地工作」。Triage header 明示範圍，先顯示項目供選取。
+Dashboard 維持瀏覽：Enter／`o` 開啟目前項目，Space 展開／收合 REPOS worktrees，在 TRY 不使用。不再常駐勾選框或保留整理選取。`Ctrl+O` 可選「整理目前項目」「整理目前篩選結果」「整理全部本地工作」。Triage header 明示範圍，先顯示項目供選取。
 
 交接繼續復用 dashboard metadata 與 task／worktree 觀察，只深入檢查限定範圍，返回只刷新受影響列／SIZE。既有 SIZE 10 分鐘 cache 不變，沒有新增跨啟動 inventory cache 或 watcher。獨立 `dev triage` 仍盤點全域，本地 refresh 不 fetch，也不登錄 Try。
 

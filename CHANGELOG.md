@@ -39,6 +39,58 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Key inventory diagnostics explain public-file and private-identity failures with
   specific causes and next steps, including `dev ssh key doctor` for permission issues.
 
+## [0.2.29] - 2026-09-12
+
+### Added
+
+- Repository hygiene status/setup, staged/worktree/frozen-history secret and
+  privacy scans, reviewed local SSH identity rules, precise exceptions and
+  signed text-redaction plans with private recovery on macOS/Linux/Windows.
+- A blocking pre-commit integration shared by repository bootstrap, public-rule
+  CI checks and a manual post-writer dogfood/history-impact workflow.
+
+### Fixed
+
+- Secret scan wrappers mask output and fail closed on scanner/report errors;
+  placeholders no longer allow an unrelated credential on the same line.
+
+## [0.2.28] - 2026-09-11
+
+### Added
+
+- `dev dotfile` provides passive chezmoi discovery, platform-aware setup guidance
+  with an optional author-maintained preset, and native diff/apply/update entry
+  points. `dev fleet dotfile status` observes explicitly selected hosts without
+  rendering templates, running hooks, or transferring configuration.
+- FLEET shows local Herdr registration/enabled state independently of repository
+  loading. Host menus offer SSH, exact-profile Herdr add/enable/disable/remove
+  and remote attachment, plus dotfile status. Catalog management retains remote
+  sessions and refreshes local metadata without querying remote repositories.
+
+### Changed
+
+- Dashboard Space expands/collapses REPOS and FLEET trees, including returning
+  from a child to its parent; flat lists leave Space unused. Ctrl+O opens actions,
+  and Enter navigates to a FLEET host or repository with explicit Herdr profile
+  and session selection. Inside Herdr, Enter offers Add/Enable when needed.
+- FLEET displays a host tree immediately, reuses local REPOS data, retains
+  searchable cached repositories, and refreshes hosts independently. Optional
+  delayed background refresh is bounded and never prompts for authentication;
+  filtering shows coverage without initiating extra connections.
+- FLEET hides this machine by default; `a` or the host action menu reveals it
+  collapsed at the end of the list. Search and coverage follow that session's
+  visible host scope, while REPOS remains the primary local inventory.
+
+### Fixed
+
+- Fleet navigation detects the Herdr environment, never starts a nested client,
+  and prepares remote workspaces without session-wide focus. Repository/helper
+  checks precede profile changes; partial results are retained, and Herdr errors
+  never silently fall back to SSH. Terminal return cannot activate another row
+  through a child acknowledgement.
+- Fleet snapshots carry optional Git observation presence; failed reads and
+  older snapshots without this evidence display unknown instead of clean.
+
 ## [0.2.27] - 2026-09-11
 
 ### Added
@@ -958,7 +1010,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.27...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.29...HEAD
+[0.2.29]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.28...v0.2.29
+[0.2.28]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.27...v0.2.28
 [0.2.27]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.26...v0.2.27
 [0.2.26]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.25...v0.2.26
 [0.2.25]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.24...v0.2.25

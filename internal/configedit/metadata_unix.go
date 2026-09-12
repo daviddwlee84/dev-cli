@@ -193,13 +193,18 @@ func (m Metadata) prepare(file *os.File) error {
 	return nil
 }
 
-func sameDevice(a, b fs.FileInfo) bool {
+func sameDevice(_, _ string, a, b fs.FileInfo) bool {
 	left, lok := a.Sys().(*syscall.Stat_t)
 	right, rok := b.Sys().(*syscall.Stat_t)
 	return lok && rok && left.Dev == right.Dev
 }
 
-func fileIdentity(info fs.FileInfo) string {
+func fileIdentity(_ string, info fs.FileInfo) string {
 	stat := info.Sys().(*syscall.Stat_t)
 	return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino)
 }
+
+func makeDirectory(path string) error                     { return os.Mkdir(path, 0o700) }
+func privateRecoveryMode(_ string, info fs.FileInfo) bool { return info.Mode().Perm() == 0o700 }
+
+func restorableMode(mode uint32) bool { return mode & ^uint32(0o777) == 0 && mode&0o022 == 0 }

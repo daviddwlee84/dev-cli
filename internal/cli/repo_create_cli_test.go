@@ -529,6 +529,9 @@ exit 0
 	if err := os.WriteFile(provider, []byte(providerScript), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(bin, "gitleaks"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	preCommit := filepath.Join(bin, "pre-commit")
 	if err := os.WriteFile(preCommit, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)

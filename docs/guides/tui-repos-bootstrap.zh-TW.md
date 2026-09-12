@@ -38,8 +38,8 @@ selection 與 clipboard 錯誤不會觸發 clone／fetch 或複製空字串。�
 
 初始 TASKS frame 會先建立，不等待 runtime auto-detection、project-root lookup、
 cache decode、shell tool probe 或 optional release refresh 完成。TASKS、REPOS 與
-TRY 接著由同一個 shared local cycle 獨立發布；REMOTE、FLEET、SKILLS、MCP 與 SSH 維持
-lazy。每個被請求的 view 都有自己的 generation：`r` 會 supersede 舊讀取，晚到
+TRY 接著由同一個 shared local cycle 獨立發布；REMOTE、SKILLS、MCP 與 SSH 維持
+lazy，FLEET 則延後逐台預熱。每個被請求的 view 都有自己的 generation：`r` 會 supersede 舊讀取，晚到
 結果會被忽略，refresh 失敗時保留可用 rows，而成功的空結果會移除過時 rows。
 Cache acceptance 與目前 live load completion 是不同階段；可能從未開啟的 optional
 view 不存在虛構的 all-tabs-ready 狀態。
@@ -72,7 +72,7 @@ press 選取 visible row；點目前反白列就開啟 actions，包含鍵盤或
 |---|---|
 | Keys | 本頁操作、通用導覽與已設定的工具，包含可用狀態及必要條件 |
 | Guide | 使用流程、欄位、顏色與符號；開啟 Help 時擷取的所選列唯讀快照 |
-| Manual | 全部 內嵌 `dev help` 主題，相關主題優先，另有共用 workflow TL;DR |
+| Manual | 全部內嵌 `dev help` 主題，相關主題優先，另有共用 workflow TL;DR |
 
 Keys 與 Guide 共用搜尋，先列快捷鍵、再列說明。預設只搜尋選定的 Help
 分頁；選 **All views** 才搜尋七頁。切換說明範圍不改變實際 dashboard
@@ -235,13 +235,18 @@ dev 不會修改 Television、shell 或 chezmoi config。
 
 ### FLEET
 
-FLEET 同樣延遲載入。等待目前的 REPOS generation 被接受時，仍可使用 valid
-cached rows；接受後會重用該 snapshot 作為 local host 資料，不再重掃
-repositories，接著才 fan out 到設定的 SSH hosts。它預設隱藏本機，因為 REPOS
-已提供較完整的 local inventory；按 `a` 可顯示或隱藏 local rows。按 `r` 會
-supersede 舊 request 並強制執行 live reload。任何 endpoint field（包含 SSH
-port）改變都會讓該 host cache 失效。這不會改變 `dev fleet list`：其
-non-interactive output 仍包含本機與所有已設定的 remote hosts。
+FLEET 採遠端主機樹。本機預設隱藏；按 `a` 或使用選單，才在最後以收合狀態
+顯示並重用 REPOS。隱藏時搜尋與 coverage 都排除本機。Repos 尚在載入時，
+主機列與動作仍可用。Space 展開／收合主機，Enter／`o` 導覽至主機或 repo；
+Ctrl+O／右鍵開啟選單。
+HERDR 欄由共享的本機 catalog 查詢呈現登錄／啟用狀態，與 SSH snapshot 分開。
+Enable／disable／remove 操作精確 profile，遠端 sessions 保留；多筆先用 picker
+選取。r 更新選取主機及 catalog metadata。有效快取持續可搜尋並標示時間與範圍。
+
+初始畫面後五秒或提早進入 FLEET 時，開始一次性的缺少／過期快取預熱，不跳出
+密碼提示。設定 [tui.fleet] background_refresh = false 可保留純手動更新。
+搜尋包含收合主機的已知 repos，暫時展開匹配項，不額外觸發 SSH。詳見
+[主機樹與 Herdr 動作](remote-fleet.zh-TW.md#dashboard-host-tree)。
 
 ## Repository quick notes
 
@@ -389,7 +394,7 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 永遠開啟目前列，REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](local-triage.md)。
 

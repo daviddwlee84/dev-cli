@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 const (
@@ -25,6 +26,7 @@ type RunRequest struct {
 	Args          []string `json:"-"`
 	Dir           string   `json:"-"`
 	Env           []string `json:"-"`
+	UnsetEnv      []string `json:"-"`
 	Stdin         []byte   `json:"-"`
 	Display       string   `json:"display,omitempty"`
 	Interactive   bool     `json:"interactive,omitempty"`
@@ -73,7 +75,22 @@ func (ExecRunner) Run(ctx context.Context, request RunRequest) (RunResult, error
 	} else {
 		cmd.Stdin = bytes.NewReader(request.Stdin)
 	}
-	cmd.Env = append(os.Environ(), request.Env...)
+	baseEnv := os.Environ()
+	if len(request.UnsetEnv) > 0 {
+		filtered := make([]string, 0, len(baseEnv))
+		for _, value := range baseEnv {
+			key, _, _ := strings.Cut(value, "=")
+			remove := false
+			for _, name := range request.UnsetEnv {
+				remove = remove || strings.EqualFold(key, name)
+			}
+			if !remove {
+				filtered = append(filtered, value)
+			}
+		}
+		baseEnv = filtered
+	}
+	cmd.Env = append(baseEnv, request.Env...)
 
 	var stdout, stderr boundedCapture
 	captureStdout := !request.Interactive || request.CaptureStdout

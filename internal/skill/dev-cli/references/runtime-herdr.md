@@ -63,8 +63,8 @@ root before writer-claiming direct/branch starts and resume. It resolves
 `idle`, `done`, and `unknown`—is occupied; malformed/missing activity data fails
 closed.
 
-Pure repo/worktree open and TUI Enter reuse the live owner's workspace and do
-not claim a second writer. Inside Herdr they focus it in the current client;
+Pure local repo/worktree open and TUI Enter reuse the live owner's workspace and
+do not claim a second writer. Inside Herdr they request runtime focus;
 outside Herdr the TUI first restores the terminal and then attaches, matching
 `hhere`. The root `--allow-shared-checkout` escape hatch is
 only for coordinated writer ownership. A default worktree start remains
@@ -172,8 +172,39 @@ Dashboard start wizards offer open/stay, defaulting to open. Runtime and externa
 label, opaque profile ID and explicit session separate. Native add can prepare
 and start the remote server; native approvals remain required. Disabling or
 removing a profile leaves remote sessions running. This registration workflow
-does not replace fleet's host-local repo snapshots or change fleet open's runtime
-selection. See `dev help ssh` for plans and multi-select management.
+does not replace fleet's host-local repo snapshots. See `dev help ssh` for plans
+and multi-select management.
+
+FLEET host actions reuse this workflow without loading repositories. Outside
+Herdr, attachment runs `herdr --remote <alias> --session <name>` with an explicit
+session (default `default`). The HERDR column reads the local saved catalog
+independently of remote repo snapshots; enabled does not mean connected.
+Add/enable/disable/remove are available inside or outside Herdr, using exact
+profile IDs/fingerprints and a profile picker when more than one matches.
+Disable keeps the saved profile; Remove deletes it; remote sessions remain.
+These catalog actions refresh only local metadata. Herdr 0.9.0 connects enabled
+machines but does not switch the selected machine; use the native sidebar.
+The menu keeps native installation approvals. --no-runtime skips Herdr reads. SSH remains a
+separate action, including when remote dev is missing. See [dotfiles and host
+actions](dotfiles.md).
+
+FLEET Enter and `dev fleet open` share contextual navigation. `HERDR_ENV=1`
+prevents starting another Herdr client. Inside, reuse the exact enabled profile
+or confirm Add/Enable; outside, attach without implicit catalog changes. Several
+matching profiles require an explicit choice. Repository navigation checks the
+new remote helper and exact path/Git identity before any profile changes, then
+prepares or reuses a workspace with `--no-focus` in the chosen explicit session.
+Preparation isolates inherited session/socket hints and returns session-bound
+workspace identity. Old remote dev versions fail before workspace effects.
+
+Herdr 0.9.0 exposes no public caller-client machine/workspace selection API.
+Select the reported target in its native sidebar. Fleet navigation does not call
+`workspace focus`, whose scope is the session and may affect other clients.
+Outside attachment is `herdr --remote <alias> --session <session>`. Once Herdr is
+selected, cancellation/errors retain and report completed registration, enable
+or workspace preparation without an automatic SSH fallback. Unsupported Herdr
+targets offer SSH explicitly; `--no-runtime` uses SSH directly. Host navigation
+works without remote dev; repository navigation requires a compatible helper.
 
 ## Cross-repository triage
 

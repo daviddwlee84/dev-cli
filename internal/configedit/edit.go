@@ -21,28 +21,31 @@ import (
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/lockx"
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 )
 
 const maxBytes = 2 << 20
-const maxReceiptBytes = 32 << 20
+const maxReceiptBytes = 512 << 20
+const maxTextBytes = 128 << 20
 const maxTransactionBytes = 8 << 20
 
 var ErrStale = errors.New("configuration changed since planning")
 
 type Change struct {
-	Path         string `json:"path"`
-	BeforeDigest string `json:"before_digest"`
-	AfterDigest  string `json:"after_digest"`
-	Action       string `json:"action"`
-	before       []byte
-	after        []byte
-	info         fs.FileInfo
-	mode         fs.FileMode
-	metadata     Metadata
-	limit        int64
-	anchor       string
-	anchorInfo   fs.FileInfo
+	Path             string `json:"path"`
+	BeforeDigest     string `json:"before_digest"`
+	AfterDigest      string `json:"after_digest"`
+	Action           string `json:"action"`
+	before           []byte
+	after            []byte
+	info             fs.FileInfo
+	mode             fs.FileMode
+	metadata         Metadata
+	observedMetadata *Metadata
+	limit            int64
+	anchor           string
+	anchorInfo       fs.FileInfo
 }
 
 type Plan struct {
@@ -51,6 +54,7 @@ type Plan struct {
 	guards        []Change
 	beforePublish func(int)
 	locks         []string
+	portable      bool
 }
 
 func Digest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
@@ -123,13 +127,24 @@ func observeLimit(ctx context.Context, path string, limit int64) (Change, error)
 // New captures all authority before prompting. A nil desired value means remove;
 // a non-nil empty slice means an empty file. Order is publication order.
 func New(ctx context.Context, paths []string, desired [][]byte, guards []string) (Plan, error) {
-	p := Plan{Changes: []Change{}}
+	return newWithLimits(ctx, paths, desired, guards, maxBytes, maxTransactionBytes, false)
+}
+
+// NewTextFile opts into a single large portable text transaction. Legacy callers
+// retain their existing limits and platform policy.
+func NewTextFile(ctx context.Context, path string, desired []byte) (Plan, error) {
+	return newWithLimits(ctx, []string{path}, [][]byte{desired}, nil, maxTextBytes, 2*maxTextBytes, true)
+}
+
+func newWithLimits(ctx context.Context, paths []string, desired [][]byte, guards []string, fileLimit, totalLimit int, portable bool) (Plan, error) {
+	p := Plan{Changes: []Change{}, portable: portable}
 	if len(paths) != len(desired) {
 		return p, errors.New("mismatched edit paths")
 	}
 	seen := map[string]bool{}
 	totalBytes := 0
 	var deviceAnchor fs.FileInfo
+	var devicePath string
 	if len(paths) > 256 {
 		return p, errors.New("select at most 256 files per transaction")
 	}
@@ -138,23 +153,24 @@ func New(ctx context.Context, paths []string, desired [][]byte, guards []string)
 			return p, errors.New("duplicate edit path")
 		}
 		seen[path] = true
-		c, err := observe(ctx, path)
+		c, err := observeLimit(ctx, path, int64(fileLimit))
 		if err != nil {
 			return p, err
 		}
 		if deviceAnchor == nil {
 			deviceAnchor = c.anchorInfo
-		} else if !sameDevice(deviceAnchor, c.anchorInfo) {
+			devicePath = c.anchor
+		} else if !sameDevice(devicePath, c.anchor, deviceAnchor, c.anchorInfo) {
 			return p, errors.New("configuration transitions must stay on one filesystem")
 		}
-		if c.info != nil && !sameDevice(c.info, c.anchorInfo) {
+		if c.info != nil && !sameDevice(c.Path, c.anchor, c.info, c.anchorInfo) {
 			return p, errors.New("mounted configuration file cannot be replaced")
 		}
 		totalBytes += len(c.before) + len(desired[i])
-		if totalBytes > maxTransactionBytes {
-			return p, errors.New("configuration transaction exceeds 8 MiB; select fewer files")
+		if totalBytes > totalLimit {
+			return p, errors.New("configuration transaction exceeds byte limit; select fewer files")
 		}
-		if len(desired[i]) > maxBytes {
+		if len(desired[i]) > fileLimit {
 			return p, errors.New("configuration exceeds byte limit")
 		}
 		if desired[i] == nil {
@@ -208,7 +224,7 @@ func current(ctx context.Context, c Change) (Change, error) {
 	if err != nil {
 		return n, err
 	}
-	if (c.info == nil) != (n.info == nil) || c.BeforeDigest != n.BeforeDigest || c.info != nil && (!safefile.SameFileState(c.info, n.info) || !reflect.DeepEqual(c.metadata, n.metadata)) {
+	if (c.info == nil) != (n.info == nil) || c.BeforeDigest != n.BeforeDigest || c.info != nil && (!safefile.SameFileState(c.info, n.info) || !reflect.DeepEqual(sourceMetadata(c), n.metadata)) {
 		return n, ErrStale
 	}
 	return n, nil
@@ -226,11 +242,12 @@ type image struct {
 	AfterState   *fileState `json:"after_state,omitempty"`
 }
 type receipt struct {
-	Version int       `json:"version"`
-	Created time.Time `json:"created"`
-	Status  string    `json:"status"`
-	Images  []image   `json:"images"`
-	Locks   []string  `json:"locks,omitempty"`
+	Version  int       `json:"version"`
+	Created  time.Time `json:"created"`
+	Status   string    `json:"status"`
+	Images   []image   `json:"images"`
+	Locks    []string  `json:"locks,omitempty"`
+	Portable bool      `json:"portable,omitempty"`
 }
 type Result struct {
 	Status  string   `json:"status"`
@@ -259,7 +276,7 @@ func ApplyChecked(ctx context.Context, p Plan, recovery string, check func(conte
 		result.Status = "noop"
 		return result, nil
 	}
-	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" && !(p.portable && runtime.GOOS == "windows") {
 		return result, errors.New("configuration writes require a verified macOS/Linux security backend")
 	}
 	if err := p.Check(ctx); err != nil {
@@ -307,9 +324,9 @@ func ApplyChecked(ctx context.Context, p Plan, recovery string, check func(conte
 		}
 		result.Receipt = hex.EncodeToString(id[:])
 		result.Status = "partial"
-		record := receipt{Version: 1, Created: time.Now().UTC(), Status: "pending", Locks: p.locks}
+		record := receipt{Version: 1, Created: time.Now().UTC(), Status: "pending", Locks: p.locks, Portable: p.portable}
 		for _, c := range p.changes {
-			record.Images = append(record.Images, image{Path: c.Path, Before: c.before, BeforeExists: c.info != nil, After: c.after, AfterExists: c.Action != "remove", Mode: uint32(c.mode), Metadata: c.metadata})
+			record.Images = append(record.Images, image{Path: c.Path, Before: c.before, BeforeExists: c.info != nil, After: c.after, AfterExists: c.Action != "remove", Mode: uint32(c.mode), Metadata: sourceMetadata(c)})
 		}
 		recordPath := filepath.Join(recovery, result.Receipt+".json")
 		if err := writeReceipt(ctx, recordPath, record); err != nil {
@@ -387,7 +404,7 @@ func publish(ctx context.Context, c Change) error {
 	case "update":
 		_, err = safefile.AtomicReplacePrepared(ctx, root, name, n.info, c.after, c.mode, c.metadata.prepare)
 	case "remove":
-		_, _, err = safefile.ReadStableRegular(ctx, root, name, n.info, maxBytes)
+		_, _, err = safefile.ReadStableRegular(ctx, root, name, n.info, c.limit)
 		if err == nil {
 			err = root.Remove(name)
 		}
@@ -451,7 +468,11 @@ func RestorePlan(ctx context.Context, recovery, id string) (Plan, error) {
 	var contents [][]byte
 	for i := len(r.Images) - 1; i >= 0; i-- {
 		x := r.Images[i]
-		n, err := observe(ctx, x.Path)
+		limit := int64(maxBytes)
+		if r.Portable {
+			limit = maxTextBytes
+		}
+		n, err := observeLimit(ctx, x.Path, limit)
 		if err != nil {
 			return p, err
 		}
@@ -469,17 +490,26 @@ func RestorePlan(ctx context.Context, recovery, id string) (Plan, error) {
 			contents = append(contents, nil)
 		}
 	}
-	p, err = New(ctx, paths, contents, nil)
+	if r.Portable {
+		if len(paths) > 1 {
+			return p, errors.New("invalid portable receipt")
+		}
+		p, err = newWithLimits(ctx, paths, contents, nil, maxTextBytes, 2*maxTextBytes, true)
+	} else {
+		p, err = New(ctx, paths, contents, nil)
+	}
 	if err != nil {
 		return p, err
 	}
 	for i := range p.changes {
 		for _, x := range r.Images {
 			if x.Path == p.changes[i].Path && x.BeforeExists {
-				if x.Mode & ^uint32(0o777) != 0 || x.Mode&0o022 != 0 {
+				if !restorableMode(x.Mode) {
 					return p, errors.New("unsafe recovery file mode")
 				}
 				p.changes[i].mode = fs.FileMode(x.Mode)
+				observed := p.changes[i].metadata
+				p.changes[i].observedMetadata = &observed
 				p.changes[i].metadata = x.Metadata
 				break
 			}
@@ -506,7 +536,7 @@ func safeParents(path string, create bool) error {
 			if !create {
 				return nil
 			}
-			if err = os.Mkdir(cur, 0o700); err != nil {
+			if err = makeDirectory(cur); err != nil {
 				return err
 			}
 			info, err = os.Lstat(cur)
@@ -551,7 +581,7 @@ func validateRecovery(path string) error {
 			break
 		}
 	}
-	if info, err := os.Lstat(path); err == nil && info.Mode().Perm() != 0o700 {
+	if info, err := os.Lstat(path); err == nil && !privateRecoveryMode(path, info) {
 		return errors.New("recovery directory must have mode 0700")
 	}
 	return nil
@@ -630,5 +660,86 @@ func stateOf(c Change) *fileState {
 	if c.info == nil {
 		return nil
 	}
-	return &fileState{fileIdentity(c.info), uint32(c.info.Mode()), c.info.ModTime().UnixNano(), c.BeforeDigest, c.metadata}
+	return &fileState{fileIdentity(c.Path, c.info), uint32(c.info.Mode()), c.info.ModTime().UnixNano(), c.BeforeDigest, sourceMetadata(c)}
+}
+
+// SourceToken binds private saved plans without exposing metadata or content.
+func (p Plan) SourceToken(path string) (string, error) {
+	for _, c := range append(append([]Change(nil), p.guards...), p.changes...) {
+		if c.Path == path {
+			state := stateOf(c)
+			anchor := fileIdentity(c.anchor, c.anchorInfo)
+			if anchor == "unavailable" || state != nil && state.Identity == "unavailable" {
+				return "", ErrStale
+			}
+			b, err := json.Marshal(struct {
+				State  *fileState
+				Anchor string
+			}{state, anchor})
+			if err != nil {
+				return "", err
+			}
+			return Digest(b), nil
+		}
+	}
+	return "", errors.New("uncaptured source")
+}
+
+// InspectToken captures source identity without changing files.
+func InspectToken(ctx context.Context, path string) (string, error) {
+	c, err := observeLimit(ctx, path, maxTextBytes)
+	if err != nil {
+		return "", err
+	}
+	return (Plan{changes: []Change{c}}).SourceToken(path)
+}
+
+// WritePrivate writes a bounded opaque state record using the same native
+// metadata and identity guards, without treating it as a fleet fragment.
+func WritePrivate(ctx context.Context, path string, data []byte, overwrite bool) error {
+	if len(data) > maxReceiptBytes {
+		return errors.New("private record exceeds byte limit")
+	}
+	parent := filepath.Dir(path)
+	info, err := os.Lstat(parent)
+	if err != nil {
+		return err
+	}
+	if err = privatefile.Check(parent, info, true); err != nil {
+		return err
+	}
+	c, err := observeLimit(ctx, path, maxReceiptBytes)
+	if err != nil {
+		return err
+	}
+	if c.info != nil {
+		if !overwrite {
+			return fs.ErrExist
+		}
+		if err = privatefile.Check(path, c.info, false); err != nil {
+			return err
+		}
+	}
+	c.mode = 0o600
+	c.after = data
+	c.AfterDigest = Digest(data)
+	c.Action = "create"
+	if c.info != nil {
+		c.Action = "update"
+	}
+	if err = publish(ctx, c); err != nil {
+		return err
+	}
+	current, err := observeLimit(ctx, path, maxReceiptBytes)
+	if err != nil || current.BeforeDigest != c.AfterDigest {
+		return ErrStale
+	}
+	return nil
+}
+
+func sourceMetadata(c Change) Metadata {
+	if c.observedMetadata != nil {
+		return *c.observedMetadata
+	}
+	return c.metadata
 }

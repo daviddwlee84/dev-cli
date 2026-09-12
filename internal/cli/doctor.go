@@ -100,6 +100,7 @@ func runDoctor(app *App) error {
 	// LookPath, bounded file reads, and source-bound planning only: doctor never
 	// runs ssh -G, contacts a host, or repairs configuration.
 	checks = append(checks, sshDoctorChecks(app)...)
+	checks = append(checks, hygieneDoctorChecks(app)...)
 
 	// Runtime backends.
 	active := app.Runtime().Name()

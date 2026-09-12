@@ -91,6 +91,8 @@ jobs:
         run: go test ./internal/sshhost
       - name: Test machine registry and SSH discovery natively
         run: go test ./internal/machineregistry ./internal/sshdiscovery ./internal/sshflow
+      - name: Test SSH credential brokerage and remote protocol natively
+        run: go test ./internal/sshcredential ./internal/sshremote
       - name: Test fleet transport and managed config natively
         run: go test ./internal/fleet
       - name: Test SSH and fleet CLI contracts natively

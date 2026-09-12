@@ -21,6 +21,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
+	"github.com/daviddwlee84/dev-cli/internal/fleet"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
@@ -113,9 +114,18 @@ func splitLoadWarning(err error) (string, error) {
 }
 
 type Actions struct {
-	SSH       SSHActions
-	Discovery DiscoveryActions
-	Workflow  func(context.Context, WorkflowRequest) (Workflow, error)
+	SSH SSHActions
+	// Host descriptors and cached observations are local reads. Individual live
+	// reads never prompt; interactive authentication belongs to a host action.
+	LoadFleetHosts       func(context.Context) (FleetHostsResult, error)
+	LoadFleetHostCache   func(context.Context, FleetHostDescriptor) (*fleet.HostResult, bool, error)
+	LoadFleetHost        func(context.Context, FleetHostDescriptor) (fleet.HostResult, error)
+	LoadFleetHerdr       func(context.Context) (FleetHerdrCatalog, error)
+	ListFleetHostActions func(context.Context, FleetHostDescriptor, FleetHerdrCatalog) ([]FleetHostAction, error)
+	RunFleetHostAction   func(context.Context, FleetHostDescriptor, string) (*FleetExecution, error)
+	NavigateFleet        func(context.Context, FleetRow) (*FleetExecution, error)
+	Discovery            DiscoveryActions
+	Workflow             func(context.Context, WorkflowRequest) (Workflow, error)
 	// Reload re-reads the task inventory.
 	Reload func(ctx context.Context) ([]inventory.Row, error)
 	// ReloadRepos re-reads the repository list.
@@ -220,6 +230,7 @@ type OpenResult struct {
 // ConfigUpdate is the subset of config a running TUI can safely apply without
 // rebuilding its runtime backend.
 type ConfigUpdate struct {
+	FleetBackgroundRefresh *bool
 	// Apply publishes the prepared immutable App snapshot only after this config
 	// generation is accepted by Update.
 	Apply       func()
@@ -358,15 +369,22 @@ type Model struct {
 	firstViewReady chan struct{}
 	firstViewOnce  *sync.Once
 
-	view    View
-	rows    []inventory.Row
-	repos   []RepoRow
-	tries   []TryRow
-	remotes []RemoteRow
-	fleet   []FleetRow
-	ssh     SSHInventory
-	skills  []agentskill.Skill
-	mcp     []agentmcp.Declaration
+	view                View
+	rows                []inventory.Row
+	repos               []RepoRow
+	tries               []TryRow
+	remotes             []RemoteRow
+	fleet               []FleetRow
+	ssh                 SSHInventory
+	fleetTree           fleetTreeState
+	fleetTerminalActive bool
+	terminalHandoffErr  error
+	pendingFleetHandoff *FleetHandoff
+	resumeInitial       bool
+	resumeCommands      []tea.Cmd
+	fleetWarmupAt       time.Time
+	skills              []agentskill.Skill
+	mcp                 []agentmcp.Declaration
 	// Each fixed view owns value-copied request/readiness state. Optional views
 	// stay lazy; no synthetic all-tabs-ready state exists.
 	loads        [viewCount]viewLoadState
@@ -479,6 +497,8 @@ func New(actions Actions, rows []inventory.Row, repos []RepoRow) Model {
 		height:             30,
 		firstViewReady:     make(chan struct{}),
 		firstViewOnce:      &sync.Once{},
+		fleetTree:          fleetTreeState{background: true, generation: 1, maxParallel: 4},
+		fleetWarmupAt:      time.Now().Add(5 * time.Second),
 	}
 	if len(actions.Tools) > 0 {
 		m.toolGeneration = 1
@@ -562,6 +582,9 @@ func (m Model) CapabilityScope() CapabilityScope { return m.capabilityScope }
 
 // Init implements tea.Model.
 func (m Model) Init() tea.Cmd {
+	if m.resumeInitial {
+		return batchCommands(m.resumeCommands...)
+	}
 	commands := []tea.Cmd{textinput.Blink}
 	if command := m.readStartupRepo(); command != nil {
 		commands = append(commands, command)
@@ -575,7 +598,12 @@ func (m Model) Init() tea.Cmd {
 	if m.actions.LoadRemoteCache != nil {
 		commands = append(commands, m.loadRemoteCache())
 	}
-	if m.actions.LoadFleetCache != nil {
+	if m.hostFleetEnabled() {
+		commands = append(commands, m.loadFleetHosts())
+		if m.fleetTree.background {
+			commands = append(commands, tea.Tick(max(0, time.Until(m.fleetWarmupAt)), func(time.Time) tea.Msg { return fleetWarmupMsg{} }))
+		}
+	} else if m.actions.LoadFleetCache != nil {
 		commands = append(commands, m.loadFleetCache())
 	}
 	if m.actions.AfterFirstView != nil {
@@ -1339,6 +1367,9 @@ func (m Model) visibleRemotes() []RemoteRow {
 }
 
 func (m Model) visibleFleet() []FleetRow {
+	if m.hostFleetEnabled() {
+		return m.visibleFleetTree()
+	}
 	var out []FleetRow
 	for _, row := range m.fleet {
 		if row.Local && !m.showLocalFleet {
@@ -1365,6 +1396,15 @@ func (m Model) visibleFleet() []FleetRow {
 }
 
 func (m Model) fleetCount() int {
+	if m.hostFleetEnabled() {
+		count := 0
+		for _, h := range m.fleetTree.hosts {
+			if !h.descriptor.Local || m.showLocalFleet {
+				count++
+			}
+		}
+		return count
+	}
 	count := 0
 	for _, row := range m.fleet {
 		if !row.Local || m.showLocalFleet {
@@ -2294,6 +2334,15 @@ func (m Model) currentDir() string {
 
 // Update implements tea.Model.
 func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.fleetTerminalActive {
+		switch msg.(type) {
+		case tea.KeyMsg, tea.MouseMsg:
+			return m, nil
+		}
+	}
+	if next, command, handled := m.updateFleetTree(msg); handled {
+		return next, command
+	}
 	if m.startupRepo.applying {
 		switch msg.(type) {
 		case tea.KeyMsg, tea.MouseMsg:
@@ -2682,6 +2731,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		if m.hostFleetEnabled() {
+			return m, m.beginFleetHostsLoad()
+		}
 		m.beginViewLoad(ViewFleet, loadConfig)
 		m.setViewStatus(ViewFleet, "refreshing fleet…")
 		return m, m.reloadFleet()
@@ -2724,8 +2776,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.actions.RepoColumns = append([]string(nil), msg.update.RepoColumns...)
 		m.actions.RepoSort = msg.update.RepoSort
 		m.actions.RepoReverse = msg.update.RepoReverse
+		if msg.update.FleetBackgroundRefresh != nil {
+			m.setFleetBackgroundRefresh(*msg.update.FleetBackgroundRefresh)
+		}
 		m.err, m.status = nil, msg.status
 		reload := batchCommands(m.reloadAfterConfig(msg.refreshRemote), m.readStartupRepo())
+		if m.hostFleetEnabled() {
+			reload = batchCommands(reload, m.beginFleetHostsLoad())
+		}
 		if len(m.actions.Tools) == 0 {
 			return m, reload
 		}
@@ -3092,6 +3150,9 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "r":
 		if m.view == ViewFleet {
+			if m.hostFleetEnabled() {
+				return m.refreshSelectedFleetHost()
+			}
 			m.beginViewLoad(ViewFleet, loadRefresh)
 			if err := m.dependentReposUnavailable(ViewFleet); err != nil {
 				fleet := m.viewLoad(ViewFleet)
@@ -3181,6 +3242,9 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.reloadTries(false)
 		}
 		if m.view == ViewFleet {
+			if m.hostFleetEnabled() {
+				return m.toggleFleetLocal()
+			}
 			m.showLocalFleet = !m.showLocalFleet
 			m.status = fmt.Sprintf("local fleet rows visible: %v", m.showLocalFleet)
 			m.setAt(0)
@@ -3197,14 +3261,14 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.runListAction(listActionOpen)
 
 	case "ctrl+o":
-		return m.openActionMenu(), nil
+		return m.openActionMenuCommand()
 
 	case " ":
+		if m.view == ViewFleet && m.hostFleetEnabled() {
+			return m.toggleFleetHost()
+		}
 		if m.view == ViewRepos {
 			return m.runListAction(listActionToggleWorktrees)
-		}
-		if m.view == ViewTries || m.view == ViewTasks {
-			return m.openActionMenu(), nil
 		}
 		return m, nil
 
@@ -3866,7 +3930,7 @@ func (m Model) toggleCapabilityScope() (tea.Model, tea.Cmd) {
 func (m Model) viewUsesRepos(view View) bool {
 	switch view {
 	case ViewFleet:
-		return m.actions.ReloadFleetWithRepos != nil
+		return !m.hostFleetEnabled() && m.actions.ReloadFleetWithRepos != nil
 	case ViewSkills:
 		return m.actions.ReloadSkillsWithRepos != nil
 	case ViewMCP:
@@ -3957,6 +4021,13 @@ func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 	m.setAt(m.at())
 	switch m.view {
 	case ViewFleet:
+		if m.hostFleetEnabled() {
+			metadata := m.requestFleetHerdr(false)
+			if m.fleetTree.background && !m.fleetTree.warmReady {
+				return m, batchCommands(metadata, m.fleetWarmupAfterFrame())
+			}
+			return m, metadata
+		}
 		if m.viewNeedsLoad(ViewFleet) {
 			m.beginViewLoad(ViewFleet, loadVisit)
 			if err := m.dependentReposUnavailable(ViewFleet); err != nil {

@@ -1,8 +1,22 @@
 # TODO
 
-Priority `P1` (next) … `P4` (someday); effort `S` / `M` / `L`.
+Priority `P1` (next) … `P4` (someday), or `P?` (needs evaluation); effort `S` / `M` / `L`.
 
 ## Active
+
+### P? · M — Herdr navigation scoped to the calling client
+Evaluate a public Herdr API that identifies the invoking client and selects an
+exact machine/session/workspace without moving other clients. Fleet currently
+prepares workspaces without focus and asks the user to select the native sidebar
+target. Do not substitute session-wide focus or nested clients.
+See [Herdr client navigation research](backlog/herdr-client-navigation.md).
+
+### P? · M — Evaluate unified local and remote repository browsing
+Evaluate whether REPOS and FLEET should share a browsing model without losing
+the richer local workflow, fast startup, explicit host identity or independent
+remote loading. FLEET currently hides local by default and offers a session-only
+toggle; this is not a commitment to merge the views.
+See [REPOS/FLEET unification research](backlog/repos-fleet-unification.md).
 
 ### P3 · L — SSH key provider and password migration helpers
 Evaluate explicit SSH private-key import to Bitwarden, separate YubiKey FIDO2

@@ -18,22 +18,24 @@ type TaskCounts struct {
 func (c TaskCounts) Total() int { return c.Hot + c.Warm + c.Cold + c.Done }
 
 type RepoSnapshot struct {
-	Name             string                `json:"name"`
-	Display          string                `json:"display"`
-	Category         string                `json:"category,omitempty"`
-	Path             string                `json:"path"`
-	RealPath         string                `json:"real_path,omitempty"`
-	RemoteIdentities []string              `json:"remote_identities,omitempty"`
-	Branch           string                `json:"branch,omitempty"`
-	Status           gitx.Status           `json:"status"`
-	LastActivity     time.Time             `json:"last_activity,omitempty"`
-	Worktrees        int                   `json:"worktrees"`
-	Tasks            TaskCounts            `json:"tasks"`
-	Live             bool                  `json:"live"`
-	Runtime          string                `json:"runtime,omitempty"`
-	RuntimeHandle    string                `json:"runtime_handle,omitempty"`
-	AgentStatus      string                `json:"agent_status,omitempty"`
-	Topology         gitx.RecoveryTopology `json:"topology"`
+	Name             string      `json:"name"`
+	Display          string      `json:"display"`
+	Category         string      `json:"category,omitempty"`
+	Path             string      `json:"path"`
+	RealPath         string      `json:"real_path,omitempty"`
+	RemoteIdentities []string    `json:"remote_identities,omitempty"`
+	Branch           string      `json:"branch,omitempty"`
+	Status           gitx.Status `json:"status"`
+	// Nil is an older producer with no observation-presence signal.
+	GitKnown      *bool                 `json:"git_known,omitempty"`
+	LastActivity  time.Time             `json:"last_activity,omitempty"`
+	Worktrees     int                   `json:"worktrees"`
+	Tasks         TaskCounts            `json:"tasks"`
+	Live          bool                  `json:"live"`
+	Runtime       string                `json:"runtime,omitempty"`
+	RuntimeHandle string                `json:"runtime_handle,omitempty"`
+	AgentStatus   string                `json:"agent_status,omitempty"`
+	Topology      gitx.RecoveryTopology `json:"topology"`
 }
 
 type Snapshot struct {

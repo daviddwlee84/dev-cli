@@ -104,7 +104,7 @@ programs that are not installed are not offered.`,
 			return runTUI(app)
 		},
 	}
-	cmd.AddCommand(newTUIToolsCmd(app))
+	cmd.AddCommand(newTUIToolsCmd(app), newTUIFleetHostCmd(app))
 	return cmd
 }
 
@@ -304,6 +304,7 @@ func runTUI(app *App) error {
 	projectRootResolver := newTUIProjectRootResolver(app.trace, runCtx)
 	localLoader := newTUILocalLoader(app, runtimeResolver)
 	localLoader.current = appState.Current
+	fleetBackend := newTUIFleetBackend(appState.Current)
 
 	reload := func(ctx context.Context) ([]inventory.Row, error) {
 		rt, err := runtimeResolver.Resolve(ctx)
@@ -327,15 +328,6 @@ func runTUI(app *App) error {
 	}
 	reloadRemote := func(ctx context.Context, locals []tui.RepoRow) ([]tui.RemoteRow, error) {
 		return collectRemotesForRows(ctx, appState.Current(), locals)
-	}
-	reloadFleet := func(ctx context.Context, locals []tui.RepoRow) ([]tui.FleetRow, error) {
-		rt, err := runtimeResolver.Resolve(ctx)
-		if err != nil {
-			return nil, err
-		}
-		snapshot := fleetSnapshotFromRepoRows(locals, rt.Name())
-		results, _, err := collectFleet(ctx, appState.Current(), fleetCollectOptions{LocalSnapshot: &snapshot})
-		return fleetRows(results), err
 	}
 	capabilityTargets := func(ctx context.Context, locals []tui.RepoRow, scope tui.CapabilityScope) ([]agenttarget.Target, error) {
 		current, err := projectRootResolver.ResolveTarget(ctx)
@@ -421,16 +413,18 @@ func runTUI(app *App) error {
 		Reload:                reload,
 		ReloadRepos:           reloadRepos,
 		ReloadRemoteWithRepos: reloadRemote,
-		ReloadFleetWithRepos:  reloadFleet,
+		LoadFleetHosts:        fleetBackend.LoadHosts,
+		LoadFleetHost:         fleetBackend.LoadHost,
+		LoadFleetHostCache:    fleetBackend.LoadHostCache,
+		LoadFleetHerdr:        fleetBackend.LoadHerdr,
+		ListFleetHostActions:  fleetBackend.ListActions,
+		RunFleetHostAction:    fleetBackend.RunAction,
+		NavigateFleet:         fleetBackend.Navigate,
 		ReloadSkillsWithRepos: reloadSkills,
 		ReloadMCPWithRepos:    reloadMCP,
 		LoadRemoteCache: func(context.Context) tui.RemoteCacheResult {
 			rows, found, stale := cachedRemoteRows(appState.Current())
 			return tui.RemoteCacheResult{Rows: rows, Found: found, Stale: stale}
-		},
-		LoadFleetCache: func(context.Context) tui.FleetCacheResult {
-			rows := cachedFleetRows(appState.Current())
-			return tui.FleetCacheResult{Rows: rows, Found: len(rows) > 0}
 		},
 		AfterFirstView: func(context.Context) {
 			if app.deferredReleaseRefresh {
@@ -598,6 +592,9 @@ func runTUI(app *App) error {
 				args = append(args, "repo", "open", row.Repository.Path)
 			} else {
 				args = append(args, "fleet", "open", row.Host, row.Repository.Path)
+				if row.EndpointID != "" {
+					args = append(args, "--expected-endpoint", row.EndpointID)
+				}
 			}
 			return exec.CommandContext(ctx, executable, args...), nil
 		},
@@ -713,11 +710,12 @@ func runTUI(app *App) error {
 				status += fmt.Sprintf("; restart TUI to switch runtime %s → %s", oldRuntime, nextRuntime)
 			}
 			return tui.ConfigUpdate{
-				Apply:       func() { appState.Commit(next) },
-				Tools:       externalTools(next),
-				RepoColumns: next.Cfg.EffectiveRepoColumns(),
-				RepoSort:    next.Cfg.EffectiveRepoSort(),
-				RepoReverse: next.Cfg.TUI.Repos.Reverse,
+				Apply:                  func() { appState.Commit(next) },
+				FleetBackgroundRefresh: &next.Cfg.TUI.Fleet.BackgroundRefresh,
+				Tools:                  externalTools(next),
+				RepoColumns:            next.Cfg.EffectiveRepoColumns(),
+				RepoSort:               next.Cfg.EffectiveRepoSort(),
+				RepoReverse:            next.Cfg.TUI.Repos.Reverse,
 			}, status, nil
 		},
 	}
@@ -725,10 +723,42 @@ func runTUI(app *App) error {
 	// Enter the alternate screen immediately. Local inventory is loaded by
 	// Init in the background rather than making the terminal appear frozen
 	// while dozens of repos are probed.
-	model := tui.New(actions, nil, nil).WithTrace(app.trace).WithContext(runCtx).BeginLoading()
+	uiCtx, cancelUI := context.WithCancel(runCtx)
+	model := tui.New(actions, nil, nil).WithTrace(app.trace).WithContext(uiCtx).WithFleetBackgroundRefresh(app.Cfg.TUI.Fleet.BackgroundRefresh).BeginLoading()
 	finishSetup(perftrace.OutcomeSuccess)
 	app.trace.Mark(perftrace.TUIProgramRunBegin, perftrace.Fields{})
-	final, err := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
+	var final tea.Model
+	var err error
+	for {
+		final, err = tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion()).Run()
+		cancelUI()
+		if err != nil {
+			break
+		}
+		finished, ok := final.(tui.Model)
+		if !ok {
+			err = errors.New("dashboard returned an invalid model")
+			break
+		}
+		if handoffErr := finished.TerminalHandoffError(); handoffErr != nil {
+			err = handoffErr
+			break
+		}
+		handoff := finished.FleetHandoff()
+		if handoff == nil {
+			break
+		}
+		// A fresh Program owns a fresh input decoder. Merely suspending an old
+		// Program can replay already-decoded Enter keys after native completion.
+		result, runErr := handoff.Run(runCtx, app.In, app.Out, app.Err)
+		uiCtx, cancelUI = context.WithCancel(runCtx)
+		model = finished.ResumeFleetHandoff(uiCtx, result, runErr)
+		if handoffErr := model.TerminalHandoffError(); handoffErr != nil {
+			cancelUI()
+			err = handoffErr
+			break
+		}
+	}
 	cancelRun()
 	app.finishTrace()
 	if err != nil {

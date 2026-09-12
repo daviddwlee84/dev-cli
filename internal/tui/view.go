@@ -742,6 +742,9 @@ func (m Model) renderRemotes() string {
 }
 
 func (m Model) renderFleet() string {
+	if m.hostFleetEnabled() {
+		return m.renderFleetTree()
+	}
 	rows := m.visibleFleet()
 	if len(rows) == 0 {
 		if m.viewLoad(ViewFleet).loading {
@@ -1157,15 +1160,39 @@ func (m Model) renderDetail() string {
 	}
 
 	if row, ok := m.currentFleet(); ok {
+		state := string(row.State)
+		if row.HostKey != "" {
+			state = fleetTreeStateLabel(row)
+		}
 		lines := []string{
 			fmt.Sprintf("  %s  %s", styleDim.Render("host"), row.Host),
-			fmt.Sprintf("  %s %s", styleDim.Render("state"), row.State),
+			fmt.Sprintf("  %s %s", styleDim.Render("state"), state),
+		}
+		if row.HostKey != "" && row.Repository == nil {
+			lines = append(lines, fmt.Sprintf("  target %s · %s", row.Target, row.OS))
+			lines = append(lines, "  Herdr "+row.Herdr)
+			if row.HerdrDetail != "" {
+				for _, detail := range strings.Split(row.HerdrDetail, "\n") {
+					lines = append(lines, "  "+fitCell(detail, max(1, m.width-4)))
+				}
+			}
+			if !row.ObservedAt.IsZero() {
+				lines = append(lines, "  observed "+row.ObservedAt.Local().Format("2006-01-02 15:04:05"))
+			}
 		}
 		if row.Repository != nil {
+			gitDetail := row.Repository.Status.Breakdown()
+			displayPath := row.Repository.Path
+			if row.Local || row.HostKey == "" {
+				displayPath = contract(displayPath)
+			}
+			if row.HostKey != "" && !row.GitKnown {
+				gitDetail = "unknown; waiting for a repository observation"
+			}
 			lines = append(lines,
-				fmt.Sprintf("  %s  %s", styleDim.Render("path"), contract(row.Repository.Path)),
+				fmt.Sprintf("  %s  %s", styleDim.Render("path"), displayPath),
 				fmt.Sprintf("  %s %s", styleDim.Render("branch"), row.Repository.Branch),
-				fmt.Sprintf("  %s %s", styleDim.Render("git  "), row.Repository.Status.Breakdown()),
+				fmt.Sprintf("  %s %s", styleDim.Render("git  "), gitDetail),
 			)
 			if len(row.Repository.RemoteIdentities) > 0 {
 				lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("remote"), strings.Join(row.Repository.RemoteIdentities, ", ")))
@@ -1572,6 +1599,9 @@ func (m Model) renderFooter() string {
 		status = styleDim.Render(m.viewStatus(m.view))
 	}
 	primary := "Enter open · Ctrl+O actions"
+	if m.view == ViewFleet && m.hostFleetEnabled() {
+		primary = "Enter navigate · Space expand · Ctrl+O actions"
+	}
 	if m.remoteClone.active() {
 		primary = "q cancel clone"
 	}
@@ -1601,7 +1631,11 @@ func (m Model) renderFooter() string {
 	if m.width < 60 {
 		navigation = "? help · " + viewKeys + " · / filter · q quit"
 	}
-	return "  " + fitCell("Actions  "+primary, max(1, m.width-4)) + "\n  " + fitCell(styleHelp.Render(navigation), max(1, m.width-4))
+	footer := "  " + fitCell("Actions  "+primary, max(1, m.width-4)) + "\n  " + fitCell(styleHelp.Render(navigation), max(1, m.width-4))
+	if m.view == ViewFleet && m.hostFleetEnabled() {
+		footer += "\n  " + fitCell(styleDim.Render(m.fleetCoverage()), max(1, m.width-4))
+	}
+	return footer
 }
 
 // wrapBindings lays the key hints out over as many lines as the width needs,
