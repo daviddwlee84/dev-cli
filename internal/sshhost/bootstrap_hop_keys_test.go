@@ -2,6 +2,7 @@ package sshhost
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -72,7 +73,7 @@ func TestExactProofKeepsRepeatedAliasProfilesDistinct(t *testing.T) {
 		{alias: "jump", reference: "two@jump:2200", hostName: "jump.example", user: "two", port: 2200, effective: testProofEffective("jump")},
 		{alias: "target", hostName: "target.example", port: 22, effective: testProofEffective("target")},
 	}
-	content, _, err := renderExactProofConfig(route, keySelector{identity: "/synthetic/key"})
+	content, _, err := renderExactProofConfig(route, keySelector{identity: filepath.Join(t.TempDir(), "synthetic-key")})
 	if err != nil {
 		t.Fatal(err)
 	}

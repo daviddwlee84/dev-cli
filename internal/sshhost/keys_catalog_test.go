@@ -235,7 +235,7 @@ func TestAgentSelectionPinsInheritedContextAndBootstrapsWithoutAPath(t *testing.
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(string(data), "IdentityAgent "+socket) || !reflect.DeepEqual(r.Env, []string{"LC_ALL=C"}) {
+			if !proofDirectiveEquals(data, "IdentityAgent", socket) || !reflect.DeepEqual(r.Env, []string{"LC_ALL=C"}) {
 				t.Fatalf("proof changed agent: %s %v", data, r.Env)
 			}
 			if err := os.WriteFile(sshArgForCatalogTest(r.Args, "-E"), []byte("Authenticated to target using \"publickey\".\n"), 0o600); err != nil {
@@ -307,7 +307,7 @@ func TestAgentProofPinsTargetWithoutReplacingProxyJumpAgent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !strings.Contains(string(data), "IdentityAgent "+targetSocket) || !strings.Contains(string(data), "IdentityAgent SSH_AUTH_SOCK") || !strings.Contains(string(data), "ProxyJump jump") {
+			if !proofDirectiveEquals(data, "IdentityAgent", targetSocket) || !strings.Contains(string(data), "IdentityAgent SSH_AUTH_SOCK") || !strings.Contains(string(data), "ProxyJump jump") {
 				t.Fatalf("target/proxy agent separation missing:\n%s", data)
 			}
 			if err := os.WriteFile(sshArgForCatalogTest(r.Args, "-E"), []byte("Authenticated to target using \"publickey\".\n"), 0o600); err != nil {
@@ -624,4 +624,15 @@ func rewritePrivatePreservingMtime(t *testing.T, path string) {
 	if err != nil || !stableFileInfo(before, after) {
 		t.Fatalf("fixture failed to preserve ordinary metadata: %v", err)
 	}
+}
+
+// Compare parsed values: Windows paths and spaces require OpenSSH quoting.
+func proofDirectiveEquals(data []byte, directive, want string) bool {
+	for _, line := range strings.Split(string(data), "\n") {
+		key, values, _, err := parseConfigLine(line)
+		if err == nil && strings.EqualFold(key, directive) && len(values) == 1 && values[0] == want {
+			return true
+		}
+	}
+	return false
 }
