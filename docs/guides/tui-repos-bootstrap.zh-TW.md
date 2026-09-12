@@ -16,7 +16,7 @@ Standard input/output 都是 terminal 時，直接執行 `dev` 會開啟 interac
 
 `dev flow [repo]` 是另一個獨立、僅限 TTY 且標示為 preview 的全螢幕介面，不是 dashboard 的 tab 或 view。它聚焦單一 canonical repository 的所有 registered worktrees 與 task-only rows，並把 lifecycle intent、live evidence 與 plan-first actions 並列；完整說明見 [Repository Flow 預覽](repository-flow.zh-TW.md)。
 
-## 七個 view
+## 八個 view
 
 REPOS／REMOTE 支援 `y u`，row action menu 也有 **copy clone URL**。REPOS 只在
 本機讀取選中 checkout 的 fetch URL，優先 origin，多個候選時要求選擇。REMOTE
@@ -34,10 +34,11 @@ selection 與 clipboard 錯誤不會觸發 clone／fetch 或複製空字串。�
 | REMOTE | 有哪些 repository 能 open 或 clone？ | authenticated `gh`/`glab` inventories 與 cache |
 | SKILLS | 從目前 context 啟動 agent 時會讀到哪些 skills？ | context-first targets 加 `A` all-repositories toggle |
 | MCP | 該 context 會暴露哪些 MCP declarations？ | 使用相同 shared scope 的 sanitized static config |
+| SSH | 如何連到某台機器？ | local aliases、canonical registry、cached discovery 與 provider membership |
 
 初始 TASKS frame 會先建立，不等待 runtime auto-detection、project-root lookup、
 cache decode、shell tool probe 或 optional release refresh 完成。TASKS、REPOS 與
-TRY 接著由同一個 shared local cycle 獨立發布；REMOTE、SKILLS 與 MCP 維持
+TRY 接著由同一個 shared local cycle 獨立發布；REMOTE、SKILLS、MCP 與 SSH 維持
 lazy，FLEET 則延後逐台預熱。每個被請求的 view 都有自己的 generation：`r` 會 supersede 舊讀取，晚到
 結果會被忽略，refresh 失敗時保留可用 rows，而成功的空結果會移除過時 rows。
 Cache acceptance 與目前 live load completion 是不同階段；可能從未開啟的 optional
@@ -430,3 +431,17 @@ macOS、Go 1.26.4、60-repository 隔離 fixture，各情境跑三次的中位�
 首批顯示不再等待完整掃描；完整掃描仍受檔案系統與程序負載影響，不把 cached Git
 事實視為即時狀態。Recovery 詳情在選到 repo 時讀取；已完成觀察的 rows 可先操作，
 其他 repo 繼續載入。
+
+## SSH connection view
+
+第八個 dashboard tab 獨立於 projects，集中顯示 machine connections。可按 `8`，
+但已有 custom tool 使用該鍵時保留原綁定；仍可用 tab／click 導覽。每台 machine
+保留 exact SSH profiles、provider membership 與 stale／unresolved source state。
+`r` 只重讀 local config、registry、provider membership 及 discovery cache，不掃 LAN、
+不做 SSH authentication。
+
+`Enter`／`o` 使用 system SSH 開啟 exact alias；多個 profiles 時先選擇。`n` 開啟逐台
+setup wizard，`c` 明確選擇 discovery source／scope，`p` 對選定 alias 做 fresh ordinary
+login probe。`Ctrl+O` 提供 connection 與 machine-mapping actions。Discovery 和 provider
+registration 都必須明確選擇；開啟 machine row 不會自動 enroll 或加入 fleet／Herdr。
+Trust／identity 限制請參考 `dev help ssh`。

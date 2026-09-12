@@ -42,6 +42,8 @@ This page separates graceful degradation from real limitations. Reverify it when
 | repository-note search | linked `modernc.org/sqlite` with FTS5 | no external `sqlite3` executable is required |
 | static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe files are diagnosed; no `ssh` process or network is needed |
 | SSH effective values, fresh probes, bootstrap, and fleet transport | system `ssh` client | static `ssh list`, dry-run, and local config plans remain available; effectful SSH operations fail with capability guidance |
+| explicit Tailscale peer discovery | optional local `tailscale` CLI and available daemon | source is unavailable; ordinary SSH, cached inventory and explicit LAN discovery remain available |
+| canonical machine registry | linked `modernc.org/sqlite` | no external database executable; missing registry is an empty read-only view until explicit enrollment |
 | public companion derivation and Ed25519 generation | system `ssh-keygen` | an existing validated `.pub` can still be used; derivation/generation is unavailable |
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX targets remain available; Windows-specific installer/launcher fails without PowerShell rather than using a shell fallback |
 | terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
@@ -500,6 +502,88 @@ projection for SSH evidence. Issue target/content revisions and repair plans
 are checked before mutation; unknown publication outcomes require reconciliation.
 The `feedback-fix` recipe requires a verified HOT task/checkout and an explicit
 agent profile for launch. Existing start defaults and JSON are unchanged.
+
+## Machine registry and optional discovery
+
+The SSH dashboard and explicitly expanded `ssh list` join local connection
+profiles with canonical machine bindings and dated source observations. Tailscale
+is an optional executable; `doctor` checks presence only. Missing CLI/daemon data
+never disables ordinary SSH or LAN discovery. `ssh list` without discovery flags
+and alias completion retain their static contract; `--tailscale` explicitly reads
+local daemon status, and `--lan` reads cache rather than scanning.
+
+LAN discovery is native, needs no scanner dependency, and requires bounded
+on-link IPv4 ranges/ports. mDNS, IPv6 range scanning, automatic scans and automatic
+host-name-based identity merges are not implemented. Open port, SSH banner,
+Tailscale online state and reverse-DNS name do not prove authentication.
+
+`paths.state_dir/machines/registry.db` is a private durable SQLite store. The
+already-linked Go driver needs no external sqlite executable. Registry UUIDs are
+controller-local grouping IDs and cannot substitute for remote `machine_id` pins.
+Explicit unlink/merge affects only registry associations; source changes remain
+stale/unresolved. Discovery caches are safe to clear; the registry is not cache.
+Source-aware setup retains native host-key policy, uses `--auth existing` for
+Tailscale policy authentication, and does not enable Tailscale SSH or manage its
+ACLs. See [SSH onboarding](../guides/ssh-hosts.md#discovery-and-canonical-machines).
+
+## SSH key inventory and permission preflight
+
+`ssh key list` needs no alias/OpenSSH evaluation by default; agent enumeration is
+optional (`--no-agent`). Explicit `--alias` can execute configured Match exec or
+resolver behavior through `ssh -G`. Public-only candidates, unavailable agents,
+unsafe paths and incomplete scans remain visible as limitations. No private key
+contents are listed and neither catalog mode repairs or installs anything.
+
+The setup wizard offers only exact, reviewed tightening for canonical SSH setup
+paths and a selected key/companions. Unrelated files, ownership changes and unsafe
+links/metadata remain manual. Automatic mode tightening is macOS/Linux only;
+Windows validates its existing ACLs and leaves repairs manual. Completed repairs are retained after later cancel;
+this permission stage is separately confirmed before the main onboarding plan.
+Optional registration accepts zero checkboxes without treating it as cancellation;
+required host/source multi-selection keeps its existing cancellation behavior.
+
+## Standalone SSH key doctor
+
+`ssh key doctor` needs only bounded local metadata reads: it does not depend on
+ssh, ssh-keygen, an agent or an alias. Its default report is non-mutating even
+when repair is possible. `--key` explicitly restricts scope; `--fix` is a separate
+confirmed action using the same narrow permission core as setup. Incomplete or
+blocked scans prevent the whole fix, and post-repair verification preserves
+partial/unknown outcomes. This adds no ownership repair, ACL rewriting, key-file
+content repair, recursive chmod or remote credential management.
+
+
+## Remote SSH profiles and credential providers
+
+The SSH remote v1 helpers are separate from the local-files protocol. Capability
+may initialize the remote user's dev UUID; it never updates a configured trust
+pin or the controller's canonical machine registry. Static export needs no agent
+or SSH evaluation; selected resolve/key operations are explicit. Old or absent
+remote dev affects only that source, and passive listings can retain stale cache.
+
+Local imported aliases use controller keys and host-key policy. Remote-native
+connect uses source-local keys and revalidates the selected fingerprint there.
+Neither path transfers private keys, forwards agents, or retries an executed
+session. Native Windows helper arguments remain allowlisted and encoded as data.
+Derived public companions are local, no-replace writes under the existing SSH
+operation lock; native ssh-keygen retains passphrase interaction.
+
+Password saving is optional and requires matching controller-side authentication
+evidence. macOS Security framework, Windows Credential Manager and an available
+Linux Secret Service provide the default system backend; optional Bitwarden uses
+its installed unlocked CLI. Missing/locked providers do not disable key-based SSH
+or permit plaintext fallback. Credential TOML stores only scoped policy/references;
+unknown writes do not authorize blind retries. Explicit fleet password sources
+keep priority. Credential/SSH-key vault migration, YubiKey provisioning and Apple
+Passwords export are not included in this feature.
+
+Ordinary native sessions retain remaining user SSH behavior. Private temporary
+password/exact-key configurations preserve supported settings and reject
+LocalCommand, port forwarding, SetEnv and `%`-expanded RemoteCommand.
+
+An unselected native-only ProxyCommand session may connect after fresh static and
+effective-source checks. It does not expose reconstructed route/proof authority;
+opaque route import, cycles and unsupported selected-key flows stay rejected.
 
 ## Repository hygiene
 

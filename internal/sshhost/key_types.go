@@ -23,6 +23,10 @@ var (
 	// ErrManualRemediation means policy was preserved and a user must complete or
 	// inspect a step rather than dev weakening SSH or filesystem protections.
 	ErrManualRemediation = errors.New("manual SSH remediation required")
+	// ErrUnprovenAuthentication means a connection cannot prove that the selected
+	// public key authenticated it. It must never authorize key installation.
+	ErrUnprovenAuthentication = errors.New("selected SSH key authentication is unproven")
+	ErrAgentPolicyMismatch    = errors.New("selected SSH agent is incompatible with alias IdentityAgent")
 )
 
 // KeyMetadata is the content-free result of parsing one OpenSSH public record.
@@ -57,15 +61,18 @@ type KeyProvenance struct {
 // KeyCandidate is safe to marshal. The normalized public line needed by a
 // later installer is deliberately held only in unexported service state.
 type KeyCandidate struct {
-	Source       KeySource     `json:"source"`
-	Sources      []KeySource   `json:"sources,omitempty"`
-	Algorithm    string        `json:"algorithm"`
-	Comment      string        `json:"comment,omitempty"`
-	Fingerprint  string        `json:"fingerprint"`
-	PublicPath   string        `json:"public_path,omitempty"`
-	IdentityFile string        `json:"identity_file,omitempty"`
-	Provenance   KeyProvenance `json:"provenance"`
-	state        *keyMaterialState
+	Source       KeySource   `json:"source"`
+	Sources      []KeySource `json:"sources,omitempty"`
+	Algorithm    string      `json:"algorithm"`
+	Comment      string      `json:"comment,omitempty"`
+	Fingerprint  string      `json:"fingerprint"`
+	PublicPath   string      `json:"public_path,omitempty"`
+	IdentityFile string      `json:"identity_file,omitempty"`
+	// NeedsPermissionRepair preserves an existing but unprotected private
+	// companion's identity path. It is not authority to repair that path.
+	NeedsPermissionRepair bool          `json:"needs_permission_repair,omitempty"`
+	Provenance            KeyProvenance `json:"provenance"`
+	state                 *keyMaterialState
 }
 
 // KeyCatalog is an effectful snapshot of validated local public candidates.
@@ -77,9 +84,11 @@ type KeyCatalog struct {
 }
 
 // KeyCatalogRequest controls an explicitly effectful catalog operation. When
-// Effective is nil, Alias is evaluated with plain ssh -G. Agent enumeration is
-// enabled unless NoAgent is true.
+// Effective is nil, Alias is evaluated with plain ssh -G unless LocalOnly is
+// requested. LocalOnly cannot be combined with Alias or Effective. Agent
+// enumeration is enabled unless NoAgent is true.
 type KeyCatalogRequest struct {
+	LocalOnly bool             `json:"local_only,omitempty"`
 	Alias     string           `json:"alias,omitempty"`
 	Effective *EffectiveConfig `json:"-"`
 	NoAgent   bool             `json:"no_agent,omitempty"`

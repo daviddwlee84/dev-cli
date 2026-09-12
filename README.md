@@ -93,7 +93,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.29 instead when you need a reproducible install.
+# Pin @v0.2.30 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -233,12 +233,64 @@ dev ssh setup winlab --hostname 198.51.100.30 --generate-key \
 dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --dry-run
 ```
 
-Full setup requires exactly one explicit `--key` or `--generate-key`. Generated
+Public-key bootstrap requires exactly one explicit `--key` or `--generate-key`. Generated
 keys are Ed25519; noninteractive generation additionally requires
 `--no-passphrase`, while an interactive `ssh-keygen` owns hidden passphrase
 prompts. A private/security-key identity passed to `--key` must have a validated
 `.pub` companion; dev may derive a missing public companion with confirmed
 `ssh-keygen -y`, but never reads or transfers private bytes.
+
+Inspect available identities before choosing one:
+
+```bash
+dev ssh key list                    # local public-key metadata plus the current agent
+dev ssh key list --no-agent --json  # file metadata only; no OpenSSH evaluation
+dev ssh key list --alias lab        # explicitly evaluate lab's identity/agent settings
+dev ssh key doctor                 # metadata-only permission report; no agents or ssh
+dev ssh key doctor --fix            # preview exact repairs, then confirm
+dev ssh key doctor --key ~/.ssh/custom-key --fix --yes --json
+```
+
+The setup wizard offers a key picker with paths, comments, fingerprints and signer
+availability, plus manual path entry. It checks basic SSH directory/configuration
+permissions early and offers separately confirmed, narrowly scoped tightening.
+Completed permission repairs remain if setup is canceled later; aliases, registry
+bindings, key generation and remote actions still wait for the main preview.
+
+`key doctor` scans public-key companions and exact standard private-key names
+under `~/.ssh`, without reading private contents. Repeat `--key` to restrict it to
+selected paths plus canonical SSH setup paths, including a custom private key
+without a `.pub`. A normal report never writes; `--fix` applies one reviewed plan
+and verifies the result. Blocked or incomplete scans authorize no repairs. Setup
+continues to check only its baseline paths and chosen key, not every unselected key.
+
+Use selected fleet machines as SSH profile sources, or run their native SSH:
+
+```bash
+dev ssh discover --source fleet --host gateway --refresh
+dev ssh list --fleet                         # cached profiles; no remote refresh
+dev ssh setup internal-api --from fleet:gateway/api --config-only
+dev ssh key list --on fleet:gateway --alias api
+dev ssh connect api --on fleet:gateway       # keys stay on gateway
+dev ssh key derive ~/.ssh/custom-key --apply
+```
+
+Fleet import previews a complete local ProxyJump route while retaining distinct
+hop users, ports and keys. Remote profile identities and fingerprints are checked
+before changes; remote identity/agent paths are never copied locally. The first
+explicit capability may initialize the source user's dev UUID, but never sets a
+fleet pin or merges machines. Source dry runs consume cached resolution only.
+
+A successful controller-driven password login can offer Yes / No / Never (default
+No). `--password-store system|bitwarden` on setup/connect selects the save provider.
+Passwords stay in the OS credential store or Bitwarden; local TOML stores only
+context, policy and references. Remote source-to-target passwords remain outside
+this save flow. Private-key vault imports and hardware provisioning are deferred.
+
+Optional registration uses two initially unchecked boxes: Fleet and Herdr. Select
+either or both; Enter with neither selected skips registration, while Esc cancels.
+Single-choice pickers use configured `fzf` when available; multi-select uses the
+built-in picker (Space toggles, Ctrl+A selects/clears, Enter confirms).
 
 ProxyJump routes are resolved outermost-first. Use repeatable
 `--hop-os alias=posix|windows` when a hop's OS cannot be determined; already
@@ -247,9 +299,10 @@ Windows standard accounts use their profile `authorized_keys`; administrator
 group accounts require `--windows-admin-authorized-keys` before dev can target
 the shared administrators file, and elevation can still require manual action.
 
-`--fleet` is a separate, explicit durable decision. Dev writes a generated
+`--fleet` is a separate, explicit durable decision. Key bootstrap writes a generated
 `remotes.d/ssh-<alias>.toml` only after exact-key proof and a second fresh
-ordinary alias login succeed. A remote without `dev` still onboards successfully
+ordinary alias login succeed. Existing authentication can register after a fresh
+ordinary login without installing a key. A remote without `dev` still onboards successfully
 and later appears as fleet `no-dev`. Failures after local setup retain valid
 config/generated keys and report partial or unknown remote state so rerunning can
 converge.
@@ -277,6 +330,35 @@ removal until it is changed with `dev fleet config edit`.
 | sibling `remotes.d/ssh-<alias>.toml` | `dev ssh setup/remove --fleet` | durable generated fleet registration |
 | remote paths/tasks/runtime | that remote machine's `dev` | host-local authority, never copied into controller config |
 | `$XDG_CACHE_HOME/dev/fleet/` | controller cache | disposable snapshot |
+| `paths.state_dir/machines/registry.db` | canonical machine registry | durable UUIDs and explicit provider bindings; separate from remote `machine_id` pins |
+| `$XDG_CACHE_HOME/dev/ssh-discovery/` | Tailscale/LAN discovery | disposable observations with timestamps |
+
+Use the SSH dashboard tab or the setup wizard to work with Tailscale peers,
+existing aliases and LAN candidates:
+
+```bash
+dev ssh setup                        # select hosts, then configure each connection
+dev ssh list --tailscale --lan        # live Tailscale status plus cached LAN observations
+dev ssh discover --source tailscale
+dev ssh discover --source lan --interface en0 --cidr 192.168.1.0/24
+dev ssh setup lab --from tailscale:lab --user dev --config-only
+dev ssh setup lab --from tailscale:lab --user dev --auth existing --to both
+dev ssh machine show --json
+```
+
+Tailscale is optional. Dev calls `tailscale status --json` only for an explicit
+Tailscale request and continues to use system `ssh` for connections. Regular
+OpenSSH over the tailnet can use public keys; Tailscale SSH authenticates through
+tailnet policy, so choose `--auth existing` for that server. An advertised
+Tailscale SSH endpoint on port 22 refuses public-key installation. A separately
+configured ordinary sshd port can use the explicit key bootstrap flow.
+
+LAN discovery inspects only selected on-link IPv4 ranges and ports (22 by default),
+with a 256-address/16-port bound and a 30-second deadline. Reverse-DNS names are
+editable suggestions. `ssh list --lan` reads its five-minute cache and never scans.
+Machine grouping preserves distinct SSH users, ports and keys. Canonical UUIDs
+are created through setup or explicit `ssh machine adopt`; reviewed link/unlink/merge
+changes only local associations. See [SSH onboarding](docs/guides/ssh-hosts.md#discovery-and-canonical-machines).
 
 `dev ssh manage` joins SSH aliases, fleet names and Herdr 0.9.0 saved machines
 in an explicit multi-select wizard. Already-working aliases can join fleet
@@ -319,7 +401,8 @@ network refresh, while still offering manual URL/path/`owner/name` entry. When r
 `dev start` similarly selects a local repository with fast live discovery; inside
 a repository it keeps the immediate current-repository default.
 The external selector defaults to `fzf`; if it is missing (or `[picker] command = []`),
-dev uses its built-in Bubble Tea picker. Pipes remain line-oriented.
+dev uses its built-in Bubble Tea picker. Multi-selection always uses the built-in
+picker. Pipes remain line-oriented.
 Clone can optionally apply a preset after the checkout exists, while `repo setup` repeat-safely merges native
 initializers and preset files into a repository you already have. Custom hooks
 and skill setup remain responsible for their own idempotency. Use `--dry-run`
@@ -573,7 +656,7 @@ local work. Enter remains ordinary navigation. Multi-selection lives in triage:
 grouped repo/Try checkboxes, mouse support, Ctrl+A all/none, and explicit
 Select → Action → Preview → Results steps. Scoped inspection reuses metadata
 and refreshes affected rows/SIZE only; no new persistent inventory cache is added.
-Dashboard `1–7` switches views. Click column headers for ascending/descending/default
+Dashboard `1–7` switches existing views; `8` opens SSH unless a custom tool owns that key. Click column headers for ascending/descending/default
 sorting; tools and state filters are in Ctrl+O, keeping the footer short.
 
 `dev triage` finds uncommitted work, unpushed commits, missing upstreams, diverged
@@ -651,7 +734,7 @@ the target. Raw Git and configured external tools remain outside these
 
 ### The dashboard
 
-Bare `dev` (or `dev tui`) opens seven lists, switched with `tab`:
+Bare `dev` (or `dev tui`) opens eight lists, switched with `tab`:
 
 - **TASKS** — the change streams dev is tracking. What am I working on.
 - **REPOS** — durable repositories under the scan roots, with branch, dirty
@@ -675,11 +758,14 @@ Bare `dev` (or `dev tui`) opens seven lists, switched with `tab`:
   sharing the `A` context/all toggle. It resolves only Claude's documented
   project-approval settings; it does not claim connection health or a generally
   effective merged runtime configuration.
+- **SSH** — canonical machines, exact SSH profiles, Tailscale/LAN observations and
+  fleet/Herdr membership. `r` reads local/cached state; `c` starts explicit discovery,
+  `n` opens setup, and `p` probes a selected alias.
 
 The first view is constructed before runtime auto-detection, project-root lookup,
 cache decoding, shell-based tool checks, or the optional release refresh can
 finish. TASKS, REPOS, and TRY then publish independently from one shared local
-load cycle; REMOTE, SKILLS, and MCP remain lazy. FLEET warms missing/expired
+load cycle; REMOTE, SKILLS, MCP, and SSH remain lazy. FLEET warms missing/expired
 host snapshots after five seconds or an earlier visit, without blocking startup
 or prompting for authentication. A cached REMOTE/FLEET snapshot
 is immediately usable but is tracked separately from a current live result.
@@ -806,7 +892,7 @@ URLs, runtime handles, or raw errors, and it is not written to `stats.db` or sen
 anywhere. `tui.initial_view_returned` means the Bubble Tea view string was built,
 not that a terminal rasterized it. Cache acceptance, live snapshot acceptance,
 and load completion are separate events; there is no artificial “all tabs ready”
-event because REMOTE, FLEET, SKILLS, and MCP may never be visited.
+event because REMOTE, FLEET, SKILLS, MCP, and SSH may never be visited.
 
 REPOS also has an agent-handoff copy menu. Press `y`, then `y` for contextual
 Markdown, `p` for the checkout path, `b` for the branch, `s` for runtime/agent
@@ -1358,6 +1444,7 @@ dev cache path
 dev cache clear remote
 dev cache clear notes          # FTS only; Markdown remains
 dev cache clear fleet
+dev cache clear ssh-discovery        # preserves canonical machines and manual bindings
 dev cache clear repos
 dev cache clear skills
 dev cache clear size

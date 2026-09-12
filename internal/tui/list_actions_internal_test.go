@@ -35,6 +35,7 @@ func TestEveryDashboardViewBuildsRowActionMenu(t *testing.T) {
 		CheckoutExists: true,
 	}}, []RepoRow{{Repo: repo.Repo{Name: "demo", Path: "/repos/demo", CommonDir: "/repos/demo/.git"}}})
 	model.fleet = []FleetRow{{Host: "builder", Repository: &fleet.RepoSnapshot{Path: "/repos/demo"}}}
+	model.ssh = sshTestInventory("builder")
 	model.tries = []TryRow{{Item: experiment.Item{
 		ID: "try-1", Name: "try", Live: experiment.LiveFacts{Present: true, CurrentPath: "/tries/try"},
 	}}}

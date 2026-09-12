@@ -7,9 +7,13 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/cli"
 	"github.com/daviddwlee84/dev-cli/internal/fleet"
+	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 )
 
 func main() {
+	if handled, code := sshhost.MaybeServeSSHConnector(); handled {
+		os.Exit(code)
+	}
 	if handled, code := fleet.MaybeServeAskpass(); handled {
 		os.Exit(code)
 	}

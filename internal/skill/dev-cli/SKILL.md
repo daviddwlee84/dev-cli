@@ -37,7 +37,7 @@ Do not preload manuals, repeat `dev --skill`, or run diagnostics for every task.
 - Agent completion or cleanup batches: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
 - Secret/privacy scans or redaction: [hygiene](references/hygiene.md).
 - Repository hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
-- SSH connection failures, configuration, fleet registration, or file export: [SSH](references/ssh-hosts.md).
+- SSH diagnosis, discovery, routes, machines, keys, credentials, or registration: [SSH](references/ssh-hosts.md).
 - Dotfile setup, native chezmoi operations, or FLEET host actions: [dotfiles](references/dotfiles.md).
 - Skill/MCP/instruction transfers or managed updates: [transfers](references/agent-interop.md), [maintenance](references/skills-management.md).
 - Recursive Git children: [submodules](references/submodules.md).

@@ -164,4 +164,18 @@ delete source files, or evict a repository. Native Windows payloads are blocked.
 label, opaque profile ID and explicit session separate. Native add can prepare
 and start the remote server; native approvals remain required. Disabling or
 removing a profile leaves remote sessions running. This registration workflow
-does not replace fleet's host-local repo snapshots. See `dev help ssh` for plans and multi-select management.
+does not replace fleet's host-local repo snapshots See `dev help ssh` for plans and multi-select management.
+
+## Connection identity is separate from the remote pin
+
+The SSH dashboard and `dev ssh list --tailscale --lan` can show several fleet,
+Herdr and SSH profiles under one controller-local canonical machine. The private
+`paths.state_dir/machines/registry.db` owns these reviewed associations only.
+`ssh machine link/unlink/merge` neither edits fleet configuration nor verifies or
+writes `remotes.toml`'s remote `machine_id` pin. Portable-file apply still requires
+that independently verified pin and its fresh remote comparison.
+
+Use `dev ssh setup <alias> --auth existing --to fleet|herdr|both` for an already
+working login, or select an explicit key for ordinary sshd bootstrap. Tailscale
+policy login does not require installing an authorized_keys entry. Provider
+registration remains explicit and Herdr keeps its native installation approvals.

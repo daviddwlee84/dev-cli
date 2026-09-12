@@ -32,13 +32,13 @@ Foreign alias 仍可供 `list`、`show`、`probe`、key bootstrap 與 fleet regi
 | Command | 精確 local flags | 邊界 |
 |---|---|---|
 | `dev ssh init` | `--apply`、`--yes`、`--json` | 預設只 plan；只有 `--apply` 可安裝 dedicated Include |
-| `dev ssh list` | `--json` 或 `--format tsv` | bounded static user-config scan；沒有 subprocess 或 network |
+| `dev ssh list` | `--json`、`--format tsv`；明確選用 `--tailscale`、`--lan` | 預設 static；可加入 machine observations |
 | `dev ssh show <alias>` | `--json` | static definitions，加上 plain `ssh -G <alias>` 的 effective values |
 | `dev ssh setup <alias>` | 下方列出的 connection、key、route、fleet、plan、confirmation、JSON flags | owned local config、public-key bootstrap、optional fleet registration |
 | `dev ssh probe <alias>` | `--json` | sharing disabled 的單次 fresh ordinary BatchMode login |
 | `dev ssh remove <alias>` | `--fleet`、`--dry-run`、`--yes`、`--json` | 只移除 canonical dev-owned SSH/fleet fragments |
 
-`dev doctor` 也會回報 local `ssh`/`ssh-keygen` capability、static Include reachability、managed namespace permission/ACL，以及 generated fleet-fragment health。它不會執行 `ssh -G`、聯絡 host 或進行 repair。
+`dev doctor` 也會回報 local `ssh`/`ssh-keygen` 與 optional `tailscale` capability、static Include reachability、managed namespace permission/ACL，以及 generated fleet-fragment health。它不會執行 `ssh -G`、聯絡 host 或進行 repair。
 
 ## 一次性 initialization 採 report-before-apply
 
@@ -116,7 +116,7 @@ Operational flags 是：
 
 `--dry-run` 沒有 side effect：不 generate key、不寫 file、不執行 `ssh -G`、不碰 `known_hosts`、不 probe network，也不啟動 remote installer。Remote 與 route action 會誠實保留為 `unknown`。它可進行驗證 explicit named key 或 existing config 所需的 bounded local reads。Dry run 使用 `--fleet` 時仍須提供 `--target-os`，讓 proposed fragment 可確定。
 
-非 dry-run 的 full setup 必須明確且二選一使用 `--key` 或 `--generate-key`。JSON mode 即使在 terminal 上也不互動；任何 noninteractive full setup 還需要 `--target-os`，local mutation 則需要 `--yes`。`--yes` 只批准 local plan。Password/passphrase 與 host-key interaction 仍由 native OpenSSH 負責；batch mode 會回傳 `interaction_required`，不會自行發明 credential path。
+Public-key bootstrap 必須明確且二選一使用 `--key` 或 `--generate-key`。JSON mode 即使在 terminal 上也不互動；任何 noninteractive full setup 還需要 `--target-os`，local mutation 則需要 `--yes`。`--yes` 只批准 local plan。Password/passphrase 與 host-key interaction 仍由 native OpenSSH 負責；batch mode 會回傳 `interaction_required`，不會自行發明 credential path。
 
 ## Existing key 與 generation
 
@@ -189,6 +189,9 @@ dev ssh setup winlab --key ~/.ssh/id_winlab --target-os windows \
 | `ssh setup --json` | `ssh_setup_plan`、`ssh_setup_result` | alias class、local/key/bootstrap plans/results、per-hop state、fleet action、partial/error code |
 | `ssh probe --json` | `ssh_probe` | safe `ready`/`not_ready` status、code、exit code |
 | `ssh remove --json` | `ssh_remove_plan`、`ssh_remove_result` | owned plan/result、explicit fleet action、status/error code |
+| `ssh discover --json` | `ssh_discovery` | source 狀態、scope、candidates、觀察時間與完整性 |
+| source-aware `ssh setup --json` | `ssh_onboarding_plan`、`ssh_onboarding_result` | connection plans、stage outcomes、保留的 keys 與逐 hop bootstrap 結果 |
+| `ssh machine … --json` | `ssh_machine_snapshot`、`ssh_machine_plan`、`ssh_machine_result` | canonical UUID、來源 bindings 與 revision-bound 變更 |
 
 Consumer 應依 `schema_version`、`kind`、machine-readable `status`/`action`/`code` 與誠實的 `partial`/`unknown` state 分支，不應解析 human table 或 stderr。
 
@@ -215,7 +218,7 @@ Removal 絕不刪除 shared Include、local private/public key file、`known_hos
 - alias rename/adoption、managed wildcard/`Match`、arbitrary SSH directive 或 SSH config editor；
 - 自動化 `ProxyCommand`、certificate/CA、forwarding、custom `AuthorizedKeysFile` 或 forced-shell policy；
 - password/vault storage、automatic password fallback、private-key copying、direct Bitwarden integration 或 weakened host-key check；
-- bulk/cloud/Tailscale/chezmoi fleet import、dedicated SSH TUI 或 background probing。
+- cloud/chezmoi fleet import、mDNS、IPv6 range scanning 或 background probing。
 
 Server policy 若超出 verified POSIX/Windows installer contract，dev 會回報 manual remediation，不會靜默削弱 protection。
 
@@ -357,3 +360,305 @@ SSH 指令失敗時，handshake／host-key／authentication 的成功日誌只�
 提示，狀態維持 unknown；只有 fresh login 以零 exit code 完成才確認整體登入。
 Server banner／debug 訊息不能提供正向 client 證據。QoS 對照使用連線前的 marking、
 實際連線進展或已確認成功的登入。
+
+## 探索與 canonical machines
+
+不帶 alias 執行 `dev ssh setup` 會開啟 host picker。可一次選多台 Tailscale peer、
+LAN candidate 或既有 alias，再逐一設定 alias、remote user、port、authentication
+及 optional registration。同一台 machine 可保留不同 user、key、route 的多個
+alias。最後先預覽，再套用本機設定、registry 綁定及選定的 remote actions。
+
+```bash
+dev ssh list --tailscale --lan
+dev ssh list --tailscale --lan --json
+dev ssh discover --source tailscale --json
+dev ssh discover --source lan --interface en0 --cidr 192.168.1.0/24
+dev ssh discover --source lan --interface en0 --cidr 192.168.1.0/24 --ports 22,2222 --refresh
+
+dev ssh setup lab --from tailscale:lab --user dev --config-only
+dev ssh setup lab --from tailscale:lab --user dev --auth existing --to both
+dev ssh setup lab --from lan:192.168.1.20:22 --user dev \
+  --key ~/.ssh/id_ed25519 --target-os posix --to fleet
+```
+
+普通 `ssh list`、原有六欄 TSV 及 alias completion 仍只讀取靜態設定。
+`--tailscale` 明確讀取 optional local `tailscale status --json`；`--lan` 加入
+LAN cache，絕不掃描。Combined table 顯示 MACHINE、SSH ALIASES、TAILSCALE、
+LAN、FLEET、HERDR、STATE。JSON 保留既有 alias document，新增 `machines`、
+`sources`、`observed_at`；references 提供綁定指令使用的 exact selector。
+搭配 discovery flags 的 TSV 是另一個四欄 machine projection：row ID、label、
+state、comma-separated aliases。來源失敗、stale cache、disabled Herdr profile
+都保持可見。
+
+Tailscale 探索上限五秒、排除本機，保留 offline／unknown 狀態。CLI 缺少、daemon
+不可用或 status 資料不完整只影響該來源；`doctor` 只檢查 executable 是否存在，
+不查詢 daemon。Dev 不會 install、login、enable Tailscale SSH、修改 DNS 或 tailnet
+access policy。
+
+LAN discovery 只接受選定且直接連接的 IPv4 ranges；若無法唯一對應 eligible
+interface，就必須指定 `--interface`。互動 wizard 可選介面及較小範圍。上限為
+256 addresses、16 ports、4,096 endpoints、32 workers，整次最多 30 秒；預設 port
+22。探索只做 bounded TCP/banner check 與 reverse-DNS lookup，不嘗試 SSH 登入。
+Port open 與 SSH identification banner 是不同 observation。名稱只供編輯建議；
+raw banner 不能成為 hostname、OS proof、host key 或設定。目前沒有 IPv6 range
+scan、mDNS 或 background scan。
+
+`$XDG_CACHE_HOME/dev/ssh-discovery/` 的 cache 五分鐘內視為 fresh，過期後仍保留
+observation time。`--refresh` 跳過符合條件的 fresh LAN cache。讀取 cache 不會
+重新掃描，也不能證明 endpoint 仍指向同一台 machine。
+
+### Tailnet 上的 authentication
+
+Dev 都使用 system OpenSSH：可以連到經 Tailscale 網路存取的普通 sshd，也可以
+連到 Tailscale SSH server。普通 sshd 可接現有 public-key bootstrap；Tailscale SSH
+使用 tailnet identity 與 policy，請用 `--auth existing` 做 fresh ordinary alias
+login，不安裝 key。Host-key advertisement 只是提示，不是登入成功或 authentication
+mode 的保證。已探索到且 advertised 的 Tailscale SSH port-22 endpoint 不接受 key
+安裝；明確選定其他 port 的普通 sshd 才可走 key bootstrap。未使用選定 public key
+的登入不能滿足 exact-key proof。
+
+Optional `tailscale ssh` wrapper 額外提供 MagicDNS resolution、透過 `tailscaled`
+的 userspace networking，以及 advertised SSH host-key 驗證。Dev 產生普通 OpenSSH
+alias，不產生該 wrapper 的 ProxyCommand。Source setup 預設使用可用 IP，IPv4
+優先；system DNS 可解析時，可用 `--hostname` 指定 MagicDNS FQDN。詳見
+[Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) 與
+[CLI wrapper reference](https://tailscale.com/kb/1080/cli#ssh)。
+
+Source-aware setup 接受 `--from tailscale:<peer>`、`--from lan:<ip:port>`，或
+`discover` 顯示的完整 candidate ID。LAN 地址若對應多個快取網路 scope，必須指定
+精確 ID。過期或網路已變更的快取不會自動成為目前 endpoint 的身分；明確選取舊 ID
+會保留 stale 標示。Foreign alias 必須有已知且匹配的 endpoint；不同 LAN／Tailscale
+路徑的同機關係請使用 `machine link` 明確綁定。
+Tailscale selector 可用 peer ID、唯一名稱或地址；同名時必須提供更精確 selector。
+Noninteractive 新 discovery alias 必須明確指定 remote `--user`。沒有選 authentication
+時只建立 connection 與 machine mapping；remote work 請選 `--auth existing`、
+`--key` 或 `--generate-key`。`--to fleet|herdr|both` 必須明確要求；既有 `--fleet`
+仍相容。`--herdr-label`／`--herdr-session` 設定 native profile。Herdr 安裝確認仍由
+原生程式處理，remote server 仍需 Linux/macOS。Key generation 保留原本 passphrase
+規則。
+
+`--dry-run` 不寫入 config、registry、key 或 cache，也不做 SSH login；明確指定
+Tailscale source 時仍可讀取 local daemon status。後續失敗會保留已完成 stage 的
+結果；remote key installation 中斷仍是 unknown，應檢查目前來源後再重跑。
+
+### 持久 machine identity
+
+`paths.state_dir/machines/registry.db`，預設
+`$XDG_DATA_HOME/dev/machines/registry.db`，保存 controller-local UUID 及明確
+provider bindings。Discovery／listing 不會建立它。Canonical ID 與 `remotes.toml`
+中的 remote `machine_id` pin 完全獨立；合併本機列不會寫入或驗證該 pin。
+Connection settings 的 authority 仍是原來的 source config／provider catalog。
+
+```bash
+dev ssh machine show --json
+dev ssh machine adopt --label lab --source <reference-id> --json
+dev ssh machine adopt --label lab --source <reference-id> --apply --yes
+dev ssh machine link --machine <uuid> --source <reference-id> --apply
+dev ssh machine unlink --machine <uuid> --source <reference-id> --apply
+dev ssh machine merge --machine <source-uuid> --into <survivor-uuid> --apply
+```
+
+TTY 的 `adopt` 也有 multi-select wizard。Registry actions 預設只有 preview，
+`--apply` 加 confirmation 才提交 revision-bound transaction。`setup --machine
+<uuid>` 可把 connection 接到既有 canonical machine。Native IDs 各自有 provider
+scope；SSH alias 保存 declaration/source fingerprint。來源改變或缺失時保留
+stale／unresolved，不會靜默重配 machine。Exact static IP/FQDN association 會標示
+來源，短 hostname 相同不會授權 merge。
+
+Unlink 保留 suppression，防止下次 discovery 自動連回。Merge 保留 survivor 的
+label／preferred profile，舊 ID 留作 redirect。兩者不修改 provider config 或停止
+remote session。Private registry 是 durable data；`dev cache clear ssh-discovery`
+與 `cache clear all` 只清 observations，不刪 canonical identities 或 manual bindings。
+
+## Key selection 與 optional registration
+
+```bash
+dev ssh key list
+dev ssh key list --json
+dev ssh key list --no-agent
+dev ssh key list --alias lab --json
+```
+
+預設 key listing 有界地掃描 `~/.ssh` 下的 public-key files 與目前 SSH agent，不評估
+alias。以 fingerprint 去重，顯示 algorithm、comment、source paths、source provenance
+與可用 signer。`--no-agent` 跳過 agent enumeration。只有明確 `--alias` 才執行 plain
+`ssh -G` 並使用該 alias 的 identity／agent settings；configured Match exec 或 resolver
+可能執行。Listing 不讀 private-key contents、不 derive／generate key、不修權限，
+也不嘗試 remote authentication。`--json` 輸出一個 `ssh_key_list` document，包含
+candidates、completeness 與 source diagnostics；來源缺失或不可用不會冒充空的成功結果。
+
+Setup wizard 選 existing key 時會開 catalog picker，另保留 **Enter a key path…**。
+只有 public file 而找不到 signer 的候選仍可見，但不能直接滿足 bootstrap。可改選
+其他 identity、把 signer 載入 agent，或提供對應 private-key path。Selected key 會先
+驗證，再進入後續 registration prompts；generation 與 remote installation 保留明確
+選擇及 native prompts。
+
+不帶參數的 setup wizard 會在 host picker 之前檢查已存在的 `~/.ssh`、root config
+與 `dev.d` 權限。選擇 key 後，再加入該 private/public companion 與必要 parent。
+macOS/Linux 的簡單 tightening 使用 directory 0700、config/private file 0600；public
+companion 只移除 group/world write bits，不新增權限或建立缺失檔案。ACL 或不支援的
+security metadata 需手動處理；Windows 只驗證既有 ACL，不重寫。Repair preview
+列出 exact paths／mode changes，另外確認後才收緊權限；即使後續
+取消 wizard，已完成 tightening 也保留。它不是 recursive chmod：無關 Include files、
+其他 keys、ownership changes、links/hardlinks 或不支援的 metadata 都需手動處理。
+拒絕 repair 會在 config／authentication 前停止；一般 listing／dry run 不修權限。
+主要 onboarding preview 仍先於 alias、registry binding、generated key 與 remote change。
+
+Registration 改用獨立的 **Fleet**／**Herdr** checkboxes，預設皆不勾選。Space 切換，
+Ctrl+A 全選／清除，Enter 確認，Esc 取消。零選擇代表不註冊；一項選對應 provider，
+兩項則都註冊。Setup 零選擇會繼續且略過 provider-specific prompts；獨立 manage／
+dashboard registration 則直接 no-op，不 authentication 或修改 provider。
+CLI `--to fleet|herdr|both` 保持不變。
+
+`[picker].command` 設定 external picker，單選（包含 key selection）預設使用 fzf；
+executable 缺失或 command 為空時使用 built-in picker。多選一律使用 built-in
+Bubble Tea picker，即使已安裝 fzf 也一樣。必要的 host／source selectors 仍不接受
+空選擇；只有 optional registration 把零選擇視為確認略過。
+
+## SSH key doctor
+
+```bash
+dev ssh key doctor
+dev ssh key doctor --json
+dev ssh key doctor --fix
+dev ssh key doctor --key ~/.ssh/custom-key --key ~/.ssh/other-key.pub
+dev ssh key doctor --key ~/.ssh/custom-key --fix --yes --json
+```
+
+預設 report 在 `~/.ssh` 下進行 bounded metadata-only scan，檢查 public-key paths
+及已存在的 private companions，也檢查沒有 `.pub` 的 exact standard private-key
+filenames（直接位於 `~/.ssh`）；不會把每個無副檔名檔案都猜成 private key。只走訪
+直接、自己擁有的 directories；非 candidate 的 symlink 略過且不跟隨，recognized
+key-file symlink 則使 scan incomplete。Canonical SSH setup paths 另由 permission
+plan 驗證。Repeat `--key PATH` 可把
+scope 限定為選定 path／companions，加上 canonical `~/.ssh`、root config、`dev.d`；
+也適用於沒有 public companion 的 custom private key。兩種模式都不讀 key contents、
+不查詢 agent、不執行 `ssh`／`ssh-keygen`、不評估 alias，也不登入遠端。
+
+沒有 `--fix` 時只報告 observations 與 proposed permission changes。Repairable
+findings 回傳成功，可先看 report 再明確修復。Blocked 或 incomplete scan 回傳錯誤，
+即使有 `--fix` 也不授權任何 write。不建立 missing paths；unsupported ownership、
+links/hardlinks、ACLs 或 security metadata 保留 manual remediation。
+
+`--fix` 先顯示具體 path／mode preview，再要求 confirmation。`--yes` 只能搭配
+`--fix`，noninteractive 或 JSON repair 必須提供。選定 repairs 形成一個 source-bound
+plan，在既有 SSH operation lock 下套用，改變前重新驗證，完成後再檢查。macOS/Linux
+只可收緊支援的 modes；Windows 只驗證既有 ACL，不重寫。中斷或部分完成時保留已
+完成 tightening 並回報 outcomes，不放寬權限來模擬 rollback。Setup wizard 使用
+相同 permission core，但仍只檢查 baseline paths 與選定 key，不自動修全部其他 keys。
+
+`ssh key list` 保留 `public_key_unreadable`／`private_key_permissions` 等 stable
+codes，另提供實際原因及適用的下一步。Permission／path failure 提示執行
+`dev ssh key doctor`；missing／malformed public file 則有具體 path／format guidance。
+Configured `.pub` 缺少
+可能只是未使用的 OpenSSH default，不能推定 private key 存在。Doctor 檢查 path／
+permission safety，不修復格式錯誤的 public-key contents，也不證明 signer 或 remote
+login 可用。
+
+JSON 使用 `schema_version: 1`，kind 為 `ssh_key_doctor_plan`／`ssh_key_doctor_result`。
+內容包含 `scope`（`discovered`／`selected`）、`complete`、`key_paths`、exact permission
+`plan`；apply result 保留 per-path outcomes，完成 repair 後驗證時另有 `recheck`。
+
+
+## Fleet source profiles 與本機 routes
+
+```bash
+dev ssh discover --source fleet --host gateway --host lab --refresh
+dev ssh list --fleet --json
+dev ssh setup internal-api --from fleet:gateway/api --config-only
+dev ssh setup internal-api --from fleet:gateway/api --auth existing
+dev ssh setup internal-api --from fleet:gateway/api --dry-run --json
+```
+
+Fleet discovery 只讀明確選定的 sources（最多 16 個）。沒有 `--host` 時由互動
+picker 選取；非互動模式必須提供 host names。不會遞迴探索 source 自己的 fleet。
+Metadata 先使用 BatchMode；只有既有 fleet password source 可授權 password retry，
+configured prompt 也需要互動 controller。`--refresh` 略過 fresh cache。
+`ssh list --fleet` 只顯示 cached source profiles、不連線；預設 `ssh list` JSON／TSV
+仍維持 static contract。
+
+相容的 remote `dev` 匯出 bounded static alias inventory，不執行遠端 `ssh -G`、
+resolver 或 agent。第一次明確 capability exchange 可建立該 remote user 的 dev UUID；
+observed UUID 只作回報，不會自動寫入 fleet `machine_id` pin 或合併 machines。
+沒有／版本較舊的 dev、驗證失敗、timeout、source identity 變更與 incomplete response
+保持不同狀態；既有 metadata cache 可以保留顯示，但會標示 stale。
+
+Remote profile ID 由 source UUID、login user、SSH root、alias 決定；fingerprint
+表示觀察到的 configuration revision。可讀 selector 是 `fleet:HOST/ALIAS`，名稱含
+分隔符時使用 percent encoding；automation 也可使用 discovery 回傳的精確
+`fleet-ssh:` ID。不同 source 的同名 alias 不代表同一條連線。
+
+Setup 只對選定 remote route 執行原生 `ssh -G`，再預覽本機 managed aliases 與完整
+ProxyJump route；這個明確 resolution 可能執行既有 Match exec／resolver。Local
+gateway 與每個 hop 保留自己的 user、port、credential context。相容 local alias
+可重用，foreign definitions 不會改寫。無法移植的 routing／source-local command
+policy 必須明確設定本機 profile。Remote IdentityFile／IdentityAgent 與 trust-file
+paths 不會複製；imported route 由本機 SSH configuration 與選定 controller keys 控制。
+
+預設仍只設定 configuration。Key installation、per-hop key choices
+（`--hop-key local-alias=key-path`）與 provider registration 需明確選取；選 target key
+不代表授權把它安裝到每個已可登入的 jump。套用前會重新確認 source identity、
+fingerprint 與 route facts。`--dry-run` 只使用 cached remote inventory／resolution
+及 static local facts；缺少 resolution 就回報，不會因此執行 SSH 或寫入。
+
+## 選擇 SSH 在哪台機器執行
+
+```bash
+dev ssh connect internal-api
+dev ssh key list --on fleet:gateway --alias api --json
+dev ssh connect api --on fleet:gateway
+dev ssh connect api --on fleet:gateway --key-id SHA256:FINGERPRINT
+```
+
+一般 connect 在 controller 執行 SSH。`--on fleet:HOST` 使用 source host 自己的
+native SSH、alias、agent 與 key files。Remote key listing 只是 display metadata，
+其中 paths 不會當成本機 paths。`--key-id` 會在真正執行 SSH 的 host 重新選取並驗證，
+包含 agent policy。Private keys 不會轉移。此命令只開互動 session、關閉 agent forwarding、
+保留 child exit status；不重試已啟動的 session，也不接受額外 remote command args。
+
+一般 native connection 保留其餘 user-authored SSH behavior。Password／exact-key workflow
+若需要 private temporary configuration，會保留 supported settings；不支援的 LocalCommand、
+port forwarding、SetEnv 或含 `%` expansion 的 RemoteCommand 會拒絕，不會靜默省略。
+
+沒有 selected key 或 managed password context 時，opaque ProxyCommand alias 可使用
+guarded native-only connection：重新檢查完整 user Include closure 與 native effective
+settings，不虛構 route hops 或 exact-key proof。ProxyJump cycles 與不支援的 exact-key
+操作仍拒絕；opaque route 也不能匯入為本機 ProxyJump profile。
+
+## 衍生缺少的 public companion
+
+```bash
+dev ssh key derive ~/.ssh/custom-key
+dev ssh key derive ~/.ssh/custom-key --apply
+dev ssh key derive ~/.ssh/custom-key --apply --yes --json
+```
+
+Derive 接受 `~/.ssh` 內的 private identity，預設只預覽缺少的 `.pub`，不執行
+ssh-keygen 或讀 private contents。`--apply` 確認後才執行 native `ssh-keygen -y`；
+非互動／JSON apply 需要 `--yes`。Encrypted-key prompt 由 native ssh-keygen 處理。
+已有 companion 不覆寫。操作會在 SSH operation lock 內重驗 source path，只發布
+public companion，不安裝 key 或修復 mode；permissions 問題先用 `ssh key doctor`。
+
+## 記住成功登入的 SSH password
+
+Controller-driven password login 有相符的 authentication evidence 後，dev 提供
+**Yes / No / Never**，預設選 **No**。Yes 將 password 存入選定 provider；No 只保留在
+本次 operation memory；Never 只針對該 origin/profile/route/host/user/port context
+持久停止詢問，不是全域偏好。Unknown、MFA、passphrase、host-key prompts 不會
+被當成可重用的 account password。
+
+Setup／connect 的 `--password-store system|bitwarden` 選擇保存 provider，預設 system。
+macOS 使用 Security framework、Windows 使用 Credential Manager，Linux 使用可用的
+Secret Service。Bitwarden 需要已安裝且解鎖的 CLI，create/edit payload 只走 stdin。
+Password 不進 argv、environment、一般檔案、logs 或 JSON。Provider unavailable／
+denied 不會退回明文檔；不確定的 write 保留 pending／unknown，不自動重試。
+
+`$XDG_CONFIG_HOME/dev/ssh-credentials.toml` 只存 context、ask/never policy、provider
+reference 與 write-state metadata。可編輯 policy 重新啟用 Never context。移除
+reference 會停止 dev 重用，但不刪除 vault item 或修改 remote password；vault
+清理由 provider 原生介面處理。既有 explicit fleet password source 保有優先權。
+Discovery 不啟用 saved-reference lookup。`connect --on` 的 remote source-to-target
+password 不屬於 controller save workflow。
+
+這些功能不包含將 SSH private key 匯入 vault、YubiKey provisioning，或匯出 Apple
+Passwords；它們是獨立的未來 migration workflows。

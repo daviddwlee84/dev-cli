@@ -126,7 +126,7 @@ dev ssh setup winlab --key ~/.ssh/id_winlab --target-os windows \
   --fleet --fleet-name windows-builder
 ```
 
-`--fleet` is never implied by alias discovery or successful SSH bootstrap. Setup writes the fleet fragment last, only after exact-key verification and a second fresh ordinary alias login succeed. The registered platform is the verified `--target-os`; managed Windows entries use `dev_path = "auto"`. A remote without `dev` is still a valid SSH onboarding result and appears as `no-dev` until installed.
+`--fleet` is never implied by alias discovery or successful SSH bootstrap. Key bootstrap writes the fleet fragment only after exact-key verification and a second fresh ordinary alias login succeed; `--auth existing --to fleet` registers after a fresh ordinary login without key installation. The registered platform is the verified `--target-os`; managed Windows entries use `dev_path = "auto"`. A remote without `dev` is still a valid SSH onboarding result and appears as `no-dev` until installed.
 
 A partial/unknown bootstrap, failed ordinary gate, or fleet-fragment collision leaves valid local SSH config/generated keys in place but skips registration. Rerun setup after remediation.
 
@@ -414,3 +414,17 @@ enable/disable are selected actions with a preview. `dev ssh format`, `organize`
 and `restore` provide optional guarded local edits and private recovery. Existing
 `ssh list` JSON/TSV and fleet snapshot contracts remain compatible. See
 [SSH host management](ssh-hosts.md#machine-management-and-configuration-organization).
+
+## Connection identity is separate from the remote pin
+
+The SSH dashboard and `dev ssh list --tailscale --lan` can show several fleet,
+Herdr and SSH profiles under one controller-local canonical machine. The private
+`paths.state_dir/machines/registry.db` owns these reviewed associations only.
+`ssh machine link/unlink/merge` neither edits fleet configuration nor verifies or
+writes `remotes.toml`'s remote `machine_id` pin. Portable-file apply still requires
+that independently verified pin and its fresh remote comparison.
+
+Use `dev ssh setup <alias> --auth existing --to fleet|herdr|both` for an already
+working login, or select an explicit key for ordinary sshd bootstrap. Tailscale
+policy login does not require installing an authorized_keys entry. Provider
+registration remains explicit and Herdr keeps its native installation approvals.

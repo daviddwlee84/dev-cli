@@ -257,6 +257,12 @@ func Execute() int {
 	if err == nil {
 		return 0
 	}
+	var childExit interface{ ExitCode() int }
+	if errors.As(err, &childExit) {
+		if code := childExit.ExitCode(); code >= 0 && code <= 255 {
+			return code
+		}
+	}
 	style := styleForWriter(os.Stderr, colorModeFromArgs(os.Args[1:]))
 	fmt.Fprintln(os.Stderr, style.danger("dev:")+" "+err.Error())
 	if cmd != nil && wantsUsage(err) {

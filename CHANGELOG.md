@@ -6,6 +6,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.30] - 2026-09-12
+
+### Added
+
+- Optional Tailscale peer discovery and explicit bounded LAN SSH discovery, with
+  dated caches, joined connection listings and interactive multi-host setup.
+- Source-aware SSH setup with existing authentication or explicit public-key
+  bootstrap, optional fleet/Herdr registration and canonical machine bindings.
+- Durable controller-local machine UUIDs with reviewed adopt/link/unlink/merge
+  transactions, source fingerprints, unlink suppression and merge redirects.
+- Dashboard SSH view for machine connections, distinct aliases and provider
+  membership; local refresh keeps discovery and remote actions explicit.
+- `dev ssh key list` for fingerprint-deduplicated local/agent key metadata, with
+  optional alias evaluation and a setup key picker with manual-path fallback.
+- Early, separately reviewed macOS/Linux SSH permission tightening for canonical setup paths
+  and the selected key; completed repairs survive later wizard cancellation.
+- `dev ssh key doctor` provides a bounded, metadata-only permission report and
+  explicit verified `--fix`, with repeatable `--key` for a restricted repair scope.
+
+- Explicit fleet SSH profile discovery, cached listings and source-aware local
+  ProxyJump import with scoped profile identities and reviewed route changes.
+- `dev ssh connect` and remote `ssh key list --on` use the selected executing host's
+  native SSH/key context; selected fingerprints never transfer private keys.
+- `dev ssh key derive` previews and explicitly creates missing public companions
+  without replacing existing files.
+- Optional Yes/No/Never password saving after matching controller-side login
+  evidence, backed by system credential stores or Bitwarden and scoped references.
+
+### Changed
+
+- SSH setup, machine management and dashboard registration use independent Fleet
+  and Herdr checkboxes. Accepting an empty selection skips registration.
+- Key inventory diagnostics explain public-file and private-identity failures with
+  specific causes and next steps, including `dev ssh key doctor` for permission issues.
+
+### Fixed
+
+- SSH permission scans preserve Linux directory-index layout flags, allowing
+  bounded key discovery in large ext4 directories.
+- Private SSH cache, machine registry and credential-policy creation pin the
+  current Windows user as owner, including elevated-token environments.
+
 ## [0.2.29] - 2026-09-12
 
 ### Added
@@ -977,7 +1019,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.29...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.30...HEAD
+[0.2.30]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.29...v0.2.30
 [0.2.29]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.28...v0.2.29
 [0.2.28]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.27...v0.2.28
 [0.2.27]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.26...v0.2.27

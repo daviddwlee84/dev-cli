@@ -57,6 +57,7 @@ do not make the rest of the fleet unusable.`,
 		newFleetHerdrRepoCmd(app),
 		newFleetOpenHelperCmd(app, "_shell", false),
 	)
+	cmd.AddCommand(newSSHRemoteHelperCmds(app)...)
 	return cmd
 }
 

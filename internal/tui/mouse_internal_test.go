@@ -37,7 +37,7 @@ func mouseTaskRows(count int) []inventory.Row {
 }
 
 func TestMouseClicksResponsiveTabSpans(t *testing.T) {
-	for _, width := range []int{100, 42} {
+	for _, width := range []int{100, 48} {
 		model := New(Actions{}, nil, nil)
 		model.width = width
 		layout := model.buildHeaderLayout()

@@ -31,7 +31,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | experiments | `try`, `tries …`, `graduate` |
 | terminal UI | `tui`, `tui tools`, independent preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`, `config scaffolds init/show/path/edit`, `shell-init`, completion |
-| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh setup`, `ssh probe`, `ssh remove` |
+| SSH hosts | `ssh init`, `ssh list`, `ssh show`, `ssh key list/doctor/derive`, `ssh setup`, `ssh discover`, `ssh machine …`, `ssh connect`, `ssh probe`, `ssh remove` |
 | dotfiles | `dotfile status`, `dotfile setup`, `dotfile diff`, `dotfile apply`, `dotfile update`, `fleet dotfile status` |
 | remote fleet | `fleet list`, `fleet status`, `fleet machine-id`, `fleet sync`, `fleet files`, `fleet open`, `fleet config …` |
 | pull-request inventory | `pr list` |
@@ -114,8 +114,8 @@ sharing disabled.
 `ssh setup` handles new/managed/foreign aliases in one command. Connection flags
 (`--hostname`, `--user`, `--port`, `--proxy-jump`, `--identity-file`,
 `--identities-only`) apply only to new or managed aliases. `--config-only` stops
-after local verification. Full setup requires an explicit `--key` or
-`--generate-key`; noninteractive full setup also requires `--target-os`, and
+after local verification. Public-key bootstrap requires an explicit `--key` or
+`--generate-key`; noninteractive key bootstrap also requires `--target-os`, and
 noninteractive generation requires `--no-passphrase`. Route/platform controls
 are `--hop-os`, `--install-on-working-jump`, and
 `--windows-admin-authorized-keys`. `--dry-run` does no OpenSSH evaluation,
@@ -515,6 +515,7 @@ The executable must implement a line-selector contract: candidates arrive on
 stdin and the selected original line is returned on stdout. The default is
 `fzf`; compatible selectors can replace the entire array. A missing executable
 falls back to dev's Bubble Tea picker, and `command = []` forces that fallback.
+Multi-selection always uses the built-in picker, regardless of the external command.
 This is global host policy and cannot be overridden by a repository. Non-TTY
 callers retain deterministic line prompts.
 
@@ -886,6 +887,96 @@ expresses prior authorization for the exact content/target. `repair <id> --base
 <ref>` saves a guarded plan; `--apply --plan <id> --yes` prepares its isolated
 checkout/task. Optional `[feedback].source_repo` is an absolute or home-relative
 local dev-cli path. See [feedback and repair](../guides/feedback.md).
+
+## Discovery and machine registry interfaces
+
+`ssh list --tailscale` explicitly queries optional Tailscale status; `--lan` reads
+cached LAN results. The default alias JSON and six-column TSV are unchanged.
+Combined JSON adds `machines`, `sources` and `observed_at`; combined TSV has row ID,
+label, state and comma-separated aliases. `ssh discover --source tailscale|lan`
+emits a `ssh_discovery` document. LAN accepts `--interface`, repeatable `--cidr`,
+`--ports` (default 22) and `--refresh`; it is bounded and on-link only.
+
+`ssh setup [alias]` has an interactive multi-select flow plus `--from tailscale:<peer>|lan:<ip:port>`, `--auth existing`, `--to fleet|herdr|both`,
+`--machine`, `--herdr-label` and `--herdr-session`. Source-aware setup defaults to
+local configuration/mapping; key installation stays explicit. Its preview/results
+use `ssh_onboarding_plan`/`ssh_onboarding_result`. A source dry run may read local
+Tailscale status, but writes no config, registry, key or cache and does not log in.
+
+`ssh machine show [machine-id]` reads the durable registry. `adopt`, `link`,
+`unlink` and `merge` accept `--machine`, `--source` (repeatable), `--label`,
+`--into`, `--apply`, `--yes` and `--json` as applicable; unsupported combinations
+are rejected. Actions preview by default. Snapshot/transaction documents contain
+`schema_version`, machine revisions and scoped bindings; the registry UUID never
+replaces remote fleet's `machine_id` pin. See [SSH onboarding](../guides/ssh-hosts.md#discovery-and-canonical-machines).
+
+## SSH key catalog and picker behavior
+
+`ssh key list` accepts `--json`, `--no-agent`, `--alias <alias>` and explicit
+`--on fleet:HOST`. Its default
+local catalog skips `ssh -G`; explicit alias mode evaluates configured identities
+and agent settings. JSON uses `schema_version: 1`, `kind: ssh_key_list`, candidates,
+completeness and diagnostics. Local listing never repairs permissions or logs in; `--on` explicitly contacts
+the selected source.
+
+Interactive setup selects an existing key from this catalog or a manual path.
+Its narrowly scoped permission preflight is a separate confirmed repair before
+later wizard steps; completed tightening remains after cancellation. Fleet/Herdr
+registration uses two optional checkboxes: none, either or both map to the existing
+registration behavior. Multi-selection uses built-in Bubble Tea; fzf remains the
+configured default for single selection. See [SSH key selection](../guides/ssh-hosts.md#key-selection-and-optional-registration).
+
+## SSH key permission reports and fixes
+
+`ssh key doctor` accepts `--fix`, `--yes`, `--json` and repeatable `--key PATH`.
+Without `--key`, its bounded metadata scan includes public companions and exact
+standard private-only key names. Explicit paths restrict the scan/repair scope,
+alongside canonical SSH setup paths. It never reads key contents or runs an agent,
+OpenSSH, key generation or remote authentication.
+
+The default is a read-only report; repairable findings exit successfully while
+blocked/incomplete scans fail without writes. `--fix` previews exact changes and
+confirms; noninteractive/JSON apply requires `--fix --yes`. One guarded permission
+plan retains completed changes on partial failure and verifies state afterwards.
+Setup continues to use only its baseline/selected-key scope. Specific key-list
+safety diagnostics point here; malformed key data still needs manual correction.
+JSON kinds are `ssh_key_doctor_plan`/`ssh_key_doctor_result`, with scope, completeness,
+key paths, the permission plan and optional result/recheck. See
+[SSH key doctor](../guides/ssh-hosts.md#ssh-key-doctor).
+
+
+## Fleet SSH sources, connection and password contexts
+
+`ssh discover --source fleet --host NAME` accepts repeated source names and
+`--refresh`; it does not recursively traverse fleets. JSON kind is
+`ssh_fleet_discovery`, with one status/optional inventory per source. `ssh list
+--fleet` adds cached `fleet_ssh_sources` to its existing JSON document and performs
+no remote refresh. Host/alias selectors use `fleet:HOST/ALIAS` with percent-encoded
+segments, or a cached exact `fleet-ssh:` profile ID.
+Unreadable cache entries preserve local aliases and valid source rows, with
+`complete: false` and a `fleet_ssh_diagnostics` entry rather than an empty success.
+
+`ssh setup LOCAL_ALIAS --from fleet:HOST/ALIAS` imports a reviewed local ProxyJump
+route. Configuration-only remains the default; `--auth existing`, local key
+selection, `--hop-key local-alias=key-path` and provider registration stay explicit.
+A dry run requires cached source/route metadata and does not invoke OpenSSH.
+`ssh connect ALIAS [--on fleet:HOST] [--key-id SHA256:...]` opens one interactive
+session on the selected executing host. It accepts no remote command arguments.
+`ssh key list --on fleet:HOST [--alias ALIAS] [--no-agent] [--json]` returns scoped
+remote metadata (`ssh_remote_keys`); remote paths never become local identities.
+
+`ssh key derive PRIVATE_KEY [--apply] [--yes] [--json]` previews or creates only a
+missing `.pub` inside `~/.ssh`. JSON kinds are `ssh_key_derive_plan` and
+`ssh_key_derive_result`; existing companions are retained, and apply is separate
+from permission repair or key installation.
+
+Setup/connect accept `--password-store system|bitwarden` (default system). The
+post-authentication save choice defaults to No; Never persists only for that
+credential context. `$XDG_CONFIG_HOME/dev/ssh-credentials.toml` stores ask/never
+policy, provider references and pending/unknown metadata, not secret values.
+Explicit fleet password sources retain priority; discovery does not use the
+saved-reference resolver. Remote source-to-target credentials are outside the
+controller save flow. See [SSH workflows](../guides/ssh-hosts.md#fleet-source-profiles-and-local-routes).
 
 ## Repository hygiene
 

@@ -118,7 +118,7 @@ dev cache
 Remove a regenerable cache
 
 ```
-dev cache clear <skills|repos|remote|notes|fleet|size|gitignore|licenses|all>
+dev cache clear <skills|repos|remote|notes|fleet|ssh-discovery|size|gitignore|licenses|all>
 ```
 
 ### `dev cache list`
@@ -1895,6 +1895,18 @@ Manage SSH hosts, fleet registrations, and Herdr machines
 dev ssh
 ```
 
+### `dev ssh connect`
+
+Open a local or explicitly remote-native SSH session
+
+```
+dev ssh connect ALIAS [flags]
+```
+
+- `--key-id` — Exact SHA256 fingerprint from the executing host's key list
+- `--on` — Execute using the selected fleet:HOST's own SSH client and keys
+- `--password-store` — provider offered after verified reusable password login: system or bitwarden
+
 ### `dev ssh diagnose`
 
 Diagnose SSH configuration, routing, transport and authentication
@@ -1906,6 +1918,22 @@ dev ssh diagnose <target> [flags]
 - `--compare-qos` — allow one comparable fresh SSH attempt with IPQoS=none
 - `--json` — emit one versioned local diagnosis, including partial failures
 - `--timeout` — total diagnostic deadline
+
+### `dev ssh discover`
+
+Explicitly discover Tailscale, LAN or selected fleet SSH profiles
+
+```
+dev ssh discover [flags]
+```
+
+- `--cidr` — on-link IPv4 range (repeatable, at most 256 addresses total)
+- `--host` — explicit fleet source name (repeatable; never recursively explores fleets)
+- `--interface` — selected local LAN interface
+- `--json` — emit one versioned discovery report
+- `--ports` — SSH ports to inspect (at most 16)
+- `--refresh` — ignore a fresh matching LAN or fleet cache
+- `--source` — discovery source: tailscale, lan or fleet
 
 ### `dev ssh format`
 
@@ -1933,6 +1961,52 @@ dev ssh init [flags]
 - `--json` — emit one versioned JSON plan or result
 - `--yes` — confirm the local plan without prompting
 
+### `dev ssh key`
+
+Inspect local SSH keys and agent identities
+
+```
+dev ssh key
+```
+
+### `dev ssh key derive`
+
+Preview or derive a missing SSH public-key companion
+
+```
+dev ssh key derive PRIVATE_KEY [flags]
+```
+
+- `--apply` — Derive and save the missing public companion after confirmation
+- `--json` — Print one versioned plan or result without key material
+- `--yes` — Confirm public companion creation without prompting
+
+### `dev ssh key doctor`
+
+Check SSH key permissions and preview repairs
+
+```
+dev ssh key doctor [flags]
+```
+
+- `--fix` — Review and apply safe permission tightening
+- `--json` — Print one versioned diagnosis or repair result
+- `--key` — Inspect only this key path and canonical SSH paths (repeatable)
+- `--yes` — Confirm the permission repair plan without prompting
+
+### `dev ssh key list`
+
+List local public keys and SSH agent identities
+
+```
+dev ssh key list [flags]
+```
+
+- `--alias` — Evaluate this alias's OpenSSH identity and agent settings
+- `--json` — Print key metadata and source diagnostics as JSON
+- `--no-agent` — Skip SSH agent enumeration
+- `--on` — Run key inventory on the selected fleet:HOST using its local key context
+
 ### `dev ssh list`
 
 Statically list exact SSH aliases and their definitions
@@ -1941,8 +2015,93 @@ Statically list exact SSH aliases and their definitions
 dev ssh list [flags]
 ```
 
+- `--fleet` — include cached fleet SSH profiles; never connect or refresh
 - `--format` — machine format: tsv
 - `--json` — emit one versioned JSON object
+- `--lan` — include cached LAN observations in the canonical machine list; never scan
+- `--tailscale` — explicitly read Tailscale and show canonical machines with all connection sources
+
+### `dev ssh machine`
+
+Manage canonical machine identities and source bindings
+
+```
+dev ssh machine
+```
+
+### `dev ssh machine adopt`
+
+Preview adopt of canonical machine mappings
+
+```
+dev ssh machine adopt [flags]
+```
+
+- `--apply` — apply the reviewed registry transaction
+- `--into` — survivor UUID for merge
+- `--json` — emit one registry plan or result
+- `--label` — machine display name for adoption
+- `--machine` — exact machine UUID
+- `--source` — exact source reference ID from the joined JSON list (repeatable)
+- `--yes` — confirm the local mapping plan
+
+### `dev ssh machine link`
+
+Preview link of canonical machine mappings
+
+```
+dev ssh machine link [flags]
+```
+
+- `--apply` — apply the reviewed registry transaction
+- `--into` — survivor UUID for merge
+- `--json` — emit one registry plan or result
+- `--label` — machine display name for adoption
+- `--machine` — exact machine UUID
+- `--source` — exact source reference ID from the joined JSON list (repeatable)
+- `--yes` — confirm the local mapping plan
+
+### `dev ssh machine merge`
+
+Preview merge of canonical machine mappings
+
+```
+dev ssh machine merge [flags]
+```
+
+- `--apply` — apply the reviewed registry transaction
+- `--into` — survivor UUID for merge
+- `--json` — emit one registry plan or result
+- `--label` — machine display name for adoption
+- `--machine` — exact machine UUID
+- `--source` — exact source reference ID from the joined JSON list (repeatable)
+- `--yes` — confirm the local mapping plan
+
+### `dev ssh machine show`
+
+Read the durable machine registry without creating it
+
+```
+dev ssh machine show [machine-id] [flags]
+```
+
+- `--json` — emit the registry snapshot
+
+### `dev ssh machine unlink`
+
+Preview unlink of canonical machine mappings
+
+```
+dev ssh machine unlink [flags]
+```
+
+- `--apply` — apply the reviewed registry transaction
+- `--into` — survivor UUID for merge
+- `--json` — emit one registry plan or result
+- `--label` — machine display name for adoption
+- `--machine` — exact machine UUID
+- `--source` — exact source reference ID from the joined JSON list (repeatable)
+- `--yes` — confirm the local mapping plan
 
 ### `dev ssh manage`
 
@@ -2020,15 +2179,20 @@ dev ssh restore <receipt> [flags]
 Create or reconcile an alias, install a public key, and optionally register fleet
 
 ```
-dev ssh setup <alias> [flags]
+dev ssh setup [alias] [flags]
 ```
 
+- `--auth` — existing to verify ordinary SSH without installing a key
 - `--comment` — public key comment for --generate-key
 - `--config-only` — stop after local config verification
 - `--dry-run` — render static local plans without running OpenSSH or writing
 - `--fleet` — register the verified alias in dev fleet
 - `--fleet-name` — fleet profile name (default: alias)
+- `--from` — tailscale:<peer>, lan:<ip:port>, fleet:<host>/<alias>, or an exact discovery ID
 - `--generate-key` — generate a new Ed25519 key pair
+- `--herdr-label` — Herdr machine label (default: alias)
+- `--herdr-session` — Herdr remote session
+- `--hop-key` — per-hop local key override local-alias=path (repeatable; fleet imports)
 - `--hop-os` — route OS override alias=posix|windows (repeatable)
 - `--hostname` — managed HostName value
 - `--identities-only` — set managed IdentitiesOnly=yes (explicit false writes no)
@@ -2037,10 +2201,13 @@ dev ssh setup <alias> [flags]
 - `--json` — emit exactly one versioned JSON plan or result
 - `--key` — existing public key or identity path to install
 - `--key-path` — destination identity path for --generate-key
+- `--machine` — bind this connection to an existing canonical machine UUID
 - `--no-passphrase` — generate without a passphrase (required outside a TTY)
+- `--password-store` — provider offered after verified reusable password login: system or bitwarden
 - `--port` — managed SSH port
 - `--proxy-jump` — managed ProxyJump value
 - `--target-os` — target operating system: posix or windows
+- `--to` — explicit registration destination: fleet, herdr or both
 - `--user` — managed User value
 - `--windows-admin-authorized-keys` — allow the Windows administrators_authorized_keys path
 - `--yes` — confirm the local plan without prompting

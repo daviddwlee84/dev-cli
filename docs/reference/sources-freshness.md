@@ -30,7 +30,7 @@ A lower item may explain motivation but cannot override a higher authority's imp
 description: One sentence used by navigation and llms.txt.
 authority: one value from the authority table below
 status: one value from the status table below
-verified_on: YYYY-MM-DD
+verified_on: 2026-09-11
 minimum_version: optional
 tested_with: optional
 ---
@@ -171,6 +171,56 @@ traces. [Skills management](../guides/skills-management.md) provider semantics
 are checked against upstream skills v1.5.23/v1.5.25 source contracts and isolated
 fixtures. Listing/checking do not execute the provider; native mutation does not
 claim frozen-content reproduction.
+
+## Machine connections and discovery (2026-09-11)
+
+[SSH onboarding](../guides/ssh-hosts.md#discovery-and-canonical-machines) is defined
+by `internal/machineregistry`, `internal/sshdiscovery`, `internal/sshflow`, the SSH
+CLI/dashboard adapters and their hermetic tests. Registry SQLite is durable;
+discovery reports have a five-minute cache window and are never authentication
+proof. Canonical IDs do not replace remote dev UUID pins. Tailscale CLI absence,
+provider failures, source changes and partial scans retain explicit uncertainty.
+
+Upstream distinctions were checked against [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)
+and the [Tailscale CLI](https://tailscale.com/kb/1080/cli#ssh). Native status JSON
+is version-sensitive; dev consumes a bounded subset and reports unsupported or
+unusable observations rather than enabling/configuring the provider.
+
+## SSH picker and permission review (2026-09-11)
+
+Key-list and wizard behavior is grounded in `internal/sshhost` key catalogs and
+permission plans, `internal/cli/ssh_keys.go`, `ssh_permissions.go`,
+`ssh_registration.go` and their fixture tests. `internal/picker` owns the backend
+choice: single selections can use fzf, all multi-selections use Bubble Tea.
+Key metadata/agent presence is not remote authentication proof. Permission repair
+is a separately approved, retained local operation; default catalog listing does
+not run `ssh -G`, chmod or remote login.
+
+## SSH key doctor scope (2026-09-11)
+
+The standalone `ssh key doctor` scan and selected-path mode are defined by
+`internal/sshhost` permission scanning/planning and the key-doctor CLI adapter.
+Fixtures verify metadata-only discovery, blocked/incomplete no-write behavior,
+retained partial repairs and post-repair checks. Default scan scope differs from
+setup's baseline-plus-selected-key preflight. Key inventory diagnostics preserve
+stable codes and include specific safe reasons and appropriate remediation hints; they do not
+convert missing public companions or unsafe paths into proof of key availability.
+
+
+## Fleet SSH and credential scope (2026-09-12)
+
+`internal/sshremote` defines bounded v1 static inventory, explicit resolution/key
+metadata and one-session connection helpers. Source profile IDs include remote
+UUID/user/root/alias; fingerprints and cached routes are observations, not trust
+pins. The CLI's fleet source/import adapters and `sshhost` route/connection core
+own execution. Default SSH listing and cached `--fleet` listing stay passive.
+
+`internal/sshcredential` defines exact password contexts, optional native system
+and Bitwarden providers, private askpass transport and guarded policy/reference
+TOML. Native vault availability and interactive authorization vary by host; no
+vault was read or written by the automated unit-test fixtures. Private-key vault
+migration, hardware provisioning and Apple Passwords migration remain deferred.
+The public SSH guide distinguishes controller routes from remote-native sessions.
 
 ## Dotfiles and FLEET host tree
 

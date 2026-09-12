@@ -50,7 +50,7 @@ func newTUICmd(app *App) *cobra.Command {
 Shows exactly what "dev ls" shows, from the same code path, plus the ability
 to open, park and annotate a task without retyping its name.
 
-Seven lists, switched with tab:
+Eight lists, switched with tab:
 
   TASKS   change streams dev is tracking — what am I working on
   REPOS   durable repositories under the scan roots — what do I have here
@@ -59,6 +59,7 @@ Seven lists, switched with tab:
   REMOTE  repositories visible through configured forge CLIs — what can I clone/open
   SKILLS  startup-context/global agent skills; A toggles all repositories
   MCP     startup-context static declarations; A toggles all repositories
+  SSH     machine identities, aliases, cached Tailscale/LAN discovery and connections
 
 Navigation is vim-style, with arrows and mouse alongside:
 
@@ -81,6 +82,7 @@ Actions depend on the list:
   TASKS   enter open · p park · c edit next
   REPOS   enter ad hoc · space worktrees · m metadata · s worktree task · d direct task
   FLEET   enter Herdr/SSH open · Git changes are read-only here
+  SSH     enter connect · n setup · c discover · p probe · Ctrl+O mappings/actions
   TRY     enter open · n create · space lifecycle/metadata actions
   REMOTE  enter open local · c clone after confirmation
   SKILLS  a add · c check · u update · e open file · y copy · A context/all
@@ -90,7 +92,7 @@ Actions depend on the list:
   H       calendar-year heatmaps; automatic local Git backfill
   e       edit the current view's config/file; returning reloads that source
   O / R   cycle / reverse REPOS or TRY sort
-  r       reload config + data     1–7 switch views
+  r       reload this view        1–8 switch views (custom tool 8 keeps its key)
   0       clear filters            a include history  ? help  q quit
 
 External tools are configured, not fixed — see [[tui.tools]] in the config,
@@ -391,6 +393,7 @@ func runTUI(app *App) error {
 	}
 
 	actions := tui.Actions{
+		SSH:       sshTUIActions(appState),
 		Discovery: tuiDiscoveryActions(appState, projectRootResolver),
 		Workflow: func(ctx context.Context, request tui.WorkflowRequest) (tui.Workflow, error) {
 			if request.Action == "skills-manage" {

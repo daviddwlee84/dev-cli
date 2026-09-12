@@ -18,11 +18,14 @@ import (
 )
 
 type FleetHost struct {
-	Name    string `json:"name"`
-	Alias   string `json:"ssh_alias,omitempty"`
-	OS      string `json:"remote_os"`
-	Source  string `json:"source"`
-	Managed bool   `json:"managed"`
+	Name     string `json:"name"`
+	Alias    string `json:"ssh_alias,omitempty"`
+	OS       string `json:"remote_os"`
+	Source   string `json:"source"`
+	Managed  bool   `json:"managed"`
+	HostName string `json:"host_name,omitempty"`
+	User     string `json:"user,omitempty"`
+	Port     int    `json:"port,omitempty"`
 }
 type Alias struct {
 	Name     string             `json:"name"`
@@ -77,7 +80,7 @@ func (s Service) List(ctx context.Context) (Inventory, error) {
 		inv.FleetStatus = "unavailable"
 	} else {
 		for _, h := range cfg.Hosts {
-			inv.Fleet = append(inv.Fleet, FleetHost{h.Name, h.SSHAlias, h.EffectiveRemoteOS(), h.Origin(), h.Managed()})
+			inv.Fleet = append(inv.Fleet, FleetHost{Name: h.Name, Alias: h.SSHAlias, OS: h.EffectiveRemoteOS(), Source: h.Origin(), Managed: h.Managed(), HostName: h.Hostname, User: h.User, Port: h.Port})
 		}
 	}
 	inv.Herdr, _ = s.Herdr.List(ctx)
@@ -494,7 +497,7 @@ func (s Service) checkMembership(ctx context.Context, expected FleetHost) error 
 		return err
 	}
 	for _, h := range cfg.Hosts {
-		got := FleetHost{h.Name, h.SSHAlias, h.EffectiveRemoteOS(), h.Origin(), h.Managed()}
+		got := FleetHost{Name: h.Name, Alias: h.SSHAlias, OS: h.EffectiveRemoteOS(), Source: h.Origin(), Managed: h.Managed(), HostName: h.Hostname, User: h.User, Port: h.Port}
 		if got == expected {
 			return nil
 		}

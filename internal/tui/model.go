@@ -50,10 +50,13 @@ const (
 	ViewSkills
 	// ViewMCP lists static MCP server declarations across agent formats.
 	ViewMCP
+	// ViewSSH lists connections and machine identities independently of projects.
+	ViewSSH
+	viewEnd
 )
 
 // Views is the cycle order.
-var Views = []View{ViewTasks, ViewRepos, ViewFleet, ViewTries, ViewRemote, ViewSkills, ViewMCP}
+var Views = []View{ViewTasks, ViewRepos, ViewFleet, ViewTries, ViewRemote, ViewSkills, ViewMCP, ViewSSH}
 
 // CapabilityScope controls which project-local SKILLS and MCP sources are
 // scanned. Global sources remain part of both scopes and are deduplicated by
@@ -86,6 +89,8 @@ func (v View) String() string {
 		return "skills"
 	case ViewMCP:
 		return "mcp"
+	case ViewSSH:
+		return "ssh"
 	default:
 		return "tasks"
 	}
@@ -109,6 +114,7 @@ func splitLoadWarning(err error) (string, error) {
 }
 
 type Actions struct {
+	SSH SSHActions
 	// Host descriptors and cached observations are local reads. Individual live
 	// reads never prompt; interactive authentication belongs to a host action.
 	LoadFleetHosts       func(context.Context) (FleetHostsResult, error)
@@ -369,6 +375,7 @@ type Model struct {
 	tries               []TryRow
 	remotes             []RemoteRow
 	fleet               []FleetRow
+	ssh                 SSHInventory
 	fleetTree           fleetTreeState
 	fleetTerminalActive bool
 	terminalHandoffErr  error
@@ -412,6 +419,7 @@ type Model struct {
 	tryCursor    int
 	remoteCursor int
 	fleetCursor  int
+	sshCursor    int
 	skillCursor  int
 	mcpCursor    int
 	// expandedRepos is a slice rather than a map because Bubble Tea copies the
@@ -1661,6 +1669,8 @@ func (m Model) count() int {
 		return len(m.visibleRepoItems())
 	case ViewFleet:
 		return len(m.visibleFleet())
+	case ViewSSH:
+		return len(m.visibleSSH())
 	case ViewTries:
 		return len(m.visibleTries())
 	case ViewRemote:
@@ -1681,6 +1691,8 @@ func (m Model) at() int {
 		return m.repoCursor
 	case ViewFleet:
 		return m.fleetCursor
+	case ViewSSH:
+		return m.sshCursor
 	case ViewTries:
 		return m.tryCursor
 	case ViewRemote:
@@ -1710,6 +1722,8 @@ func (m *Model) setAt(i int) {
 		m.repoCursor = i
 	case ViewFleet:
 		m.fleetCursor = i
+	case ViewSSH:
+		m.sshCursor = i
 	case ViewTries:
 		m.tryCursor = i
 	case ViewRemote:
@@ -2900,6 +2914,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.beginLocalLoads(loadAction)
 		return m, m.reload()
 
+	case sshLoadedMsg:
+		return m.applySSHLoad(msg)
+	case sshWorkflowMsg:
+		m.err, m.status, m.statusSeverity = msg.err, msg.result.Status, ""
+		if msg.result.MembershipChanged {
+			m.invalidateView(ViewFleet)
+		}
+		m.beginViewLoad(ViewSSH, loadAction)
+		return m, m.reloadSSH()
 	case workflowMsg:
 		m.err, m.status = msg.err, msg.result.Status
 		m.statusSeverity = msg.result.Severity
@@ -3014,8 +3037,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "8" && m.hasCustomSSHKey() {
+		m.stopStartupFocus()
+	}
 	switch msg.String() {
-	case "tab", "l", "right", "shift+tab", "h", "left", "1", "2", "3", "4", "5", "6", "7":
+	case "tab", "l", "right", "shift+tab", "h", "left", "1", "2", "3", "4", "5", "6", "7", "8":
 	default:
 		m.stopStartupFocus()
 	}
@@ -3045,7 +3071,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "j", "down", "ctrl+n", "k", "up", "ctrl+p",
 			"ctrl+d", "pgdown", "ctrl+u", "pgup", "g", "home", "G", "end",
-			"tab", "l", "right", "shift+tab", "h", "left", "/", "0", "1", "2", "3", "4", "5", "6", "7":
+			"tab", "l", "right", "shift+tab", "h", "left", "/", "0", "1", "2", "3", "4", "5", "6", "7", "8":
 			// Navigation and filtering remain available while the mutation runs.
 		case "esc":
 			if m.filter == "" && len(m.states) == 0 {
@@ -3053,6 +3079,11 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		default:
 			return m, nil
+		}
+	}
+	if m.view == ViewSSH {
+		if next, command, handled := m.updateSSHKey(msg.String()); handled {
+			return next, command
 		}
 	}
 
@@ -3158,6 +3189,17 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "1", "2", "3", "4", "5", "6", "7":
 		m.view = Views[int(msg.String()[0]-'1')]
+		return m.afterViewSwitch()
+	case "8":
+		// Existing configured tools keep this formerly unreserved key. SSH
+		// remains reachable through Tab and the tab strip in that case.
+		if m.hasCustomSSHKey() {
+			if m.remoteClone.active() {
+				return m, nil
+			}
+			return m, m.launchTool("8")
+		}
+		m.view = ViewSSH
 		return m.afterViewSwitch()
 	case "0":
 		m.states, m.filter = nil, ""
@@ -4000,6 +4042,11 @@ func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 			m.setViewStatus(ViewFleet, "loading configured dev hosts…")
 			return m, m.reloadFleet()
 		}
+	case ViewSSH:
+		if m.viewNeedsLoad(ViewSSH) {
+			m.beginViewLoad(ViewSSH, loadVisit)
+			return m, m.reloadSSH()
+		}
 	case ViewRemote:
 		if m.viewNeedsLoad(ViewRemote) {
 			m.beginViewLoad(ViewRemote, loadVisit)
@@ -4335,6 +4382,9 @@ func (m Model) Summary() string {
 	}
 	if count := m.fleetCount(); count > 0 {
 		parts = append(parts, fmt.Sprintf("%d fleet", count))
+	}
+	if m.viewLoad(ViewSSH).hasSnapshot {
+		parts = append(parts, fmt.Sprintf("%d machines", len(m.ssh.Machines)))
 	}
 	if m.viewLoad(ViewSkills).hasSnapshot {
 		project, global := 0, 0

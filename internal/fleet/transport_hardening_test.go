@@ -68,6 +68,9 @@ func TestTransportRetryPolicyIsExplicit(t *testing.T) {
 	bin := t.TempDir()
 	ssh := filepath.Join(bin, "ssh")
 	script := `#!/bin/sh
+case " $* " in
+  *" -G "*) printf '%s\n' 'hostname lab.example' 'user tester' 'port 22'; exit 0 ;;
+esac
 if [ -f "$ATTEMPT_FILE" ]; then
   printf 'success'
   exit 0
@@ -156,7 +159,10 @@ func TestTransportStartsSSHBeforeWritingLargeAskpassSecret(t *testing.T) {
 	bin := t.TempDir()
 	ssh := filepath.Join(bin, "ssh")
 	script := `#!/bin/sh
-if [ -z "$DEV_FLEET_SSH_ASKPASS" ]; then
+case " $* " in
+  *" -G "*) printf '%s\n' 'hostname lab.example' 'user tester' 'port 22'; exit 0 ;;
+esac
+if [ -z "$DEV_SSH_ASKPASS_BROKER" ]; then
   printf 'Permission denied (publickey).' >&2
   exit 255
 fi

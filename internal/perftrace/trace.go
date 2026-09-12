@@ -45,6 +45,7 @@ const (
 	TUIProducerTries        Name = "tui.producer.tries"
 	TUIProducerRemote       Name = "tui.producer.remote"
 	TUIProducerFleet        Name = "tui.producer.fleet"
+	TUIProducerSSH          Name = "tui.producer.ssh"
 	TUIProducerSkills       Name = "tui.producer.skills"
 	TUIProducerMCP          Name = "tui.producer.mcp"
 	TUIProducerTools        Name = "tui.producer.tools"
@@ -65,6 +66,7 @@ const (
 	ViewRemote View = "remote"
 	ViewSkills View = "skills"
 	ViewMCP    View = "mcp"
+	ViewSSH    View = "ssh"
 )
 
 // Stage is a categorical lifecycle stage.

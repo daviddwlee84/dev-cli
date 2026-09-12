@@ -18,10 +18,11 @@ remote loading. FLEET currently hides local by default and offers a session-only
 toggle; this is not a commitment to merge the views.
 See [REPOS/FLEET unification research](backlog/repos-fleet-unification.md).
 
-### P3 · L — SSH key provider helpers
-Evaluate an explicit handoff to the existing Bitwarden SSH agent/import helper,
-and separate YubiKey FIDO2, PIV and OpenPGP workflows. Keep private key material
-out of machine registration and configuration plans.
+### P3 · L — SSH key provider and password migration helpers
+Evaluate explicit SSH private-key import to Bitwarden, separate YubiKey FIDO2
+generation from PIV/OpenPGP import, and guide Apple Passwords migration through
+native CSV or supported credential exchange. Keep these workflows separate from
+ordinary SSH setup, successful-login password storage and passive discovery.
 See [SSH key provider research](backlog/ssh-key-provider-helpers.md).
 
 ### P3 · L — Dashboard-native task lifecycle forms

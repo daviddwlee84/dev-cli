@@ -11,11 +11,11 @@ tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCod
 Bare `dev` opens an interactive dashboard when standard input/output are terminals. When piped, it prints the plain task listing so shell composition remains predictable.
 
 There are three independent full-screen models. Bare `dev` / `dev tui` is the
-seven-view inventory dashboard below. Preview-labelled `dev flow [repo]` is a
+eight-view inventory dashboard below. Preview-labelled `dev flow [repo]` is a
 TTY-only, plan-first lifecycle view for one canonical repository; it is not a
 dashboard tab or mode. `dev triage` is the cross-repository organizer.
 
-## Seven views
+## Eight views
 
 REPOS and REMOTE support `y u` (also row action **copy clone URL**). REPOS reads
 the selected checkout's fetch URLs locally, preferring origin and asking when
@@ -34,11 +34,12 @@ the dashboard does not add submodules itself.
 | REMOTE | What can I open or clone? | authenticated `gh`/`glab` inventories and cache |
 | SKILLS | Which skills would an agent launched from this context read? | context-first targets plus an `A` all-repositories toggle |
 | MCP | Which MCP declarations would that context expose? | sanitized static configuration with the same shared scope |
+| SSH | How do I connect to a machine? | local aliases, canonical registry, cached discovery and provider membership |
 
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes, or the optional release refresh can
 finish. TASKS, REPOS, and TRY then publish independently from one shared local
-cycle. REMOTE, SKILLS, and MCP stay lazy; FLEET uses delayed host-by-host warming. Each requested view has a generation:
+cycle. REMOTE, SKILLS, MCP, and SSH stay lazy; FLEET uses delayed host-by-host warming. Each requested view has a generation:
 `r` supersedes the previous read, late results are ignored, failed refreshes keep
 usable rows visible, and a successful empty result removes obsolete rows. Cache
 acceptance and current live completion are distinct; there is no all-tabs-ready
@@ -79,7 +80,7 @@ dashboard view, keeping that view's TL;DR at the top. It has three tabs:
 
 Keys and Guide share a search over their entries, with shortcut matches before
 guide matches. Search is limited to the selected help view; choose **All views**
-to search all seven. Changing help scope does not change the actual dashboard
+to search all eight. Changing help scope does not change the actual dashboard
 tab, selection, filter or order. The selected-row explanation appears only for
 the view where Help opened and retains unknown, loading or cached observations.
 It is an explanation of that captured display, never fresh action authority.
@@ -491,3 +492,18 @@ The first display no longer waits for a full scan. Full-scan duration remains
 sensitive to filesystem/process load; this change does not claim cached Git
 facts are current. Recovery details are loaded for the focused repository, and
 completed rows become available while other repositories are still loading.
+
+## SSH connection view
+
+The eighth dashboard tab groups machine connections independently of projects.
+Use `8` unless an existing custom tool owns that key; tab/click navigation remains
+available. Each machine keeps its exact SSH profiles, provider membership and
+stale/unresolved source state. `r` reloads local configuration, registry, provider
+membership and discovery caches without a LAN scan or SSH authentication.
+
+`Enter`/`o` opens the selected exact alias through system SSH, choosing a profile
+when several are available. `n` opens the per-host setup wizard, `c` chooses an
+explicit discovery source/scope, and `p` probes a selected alias with a fresh
+ordinary login. `Ctrl+O` exposes connection and machine-mapping actions. Discovery
+and provider registration remain explicit; opening a machine row does not enroll
+it or register it in fleet/Herdr. See `dev help ssh` for trust and identity limits.

@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +18,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/fleet"
+	"github.com/daviddwlee84/dev-cli/internal/sshflow"
 	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 	"github.com/spf13/cobra"
 )
@@ -187,6 +189,10 @@ OpenSSH or log in. Herdr machine add keeps its native installation approvals.`,
 		newSSHFormatCmd(app),
 		newSSHOrganizeCmd(app),
 		newSSHRestoreCmd(app),
+		newSSHDiscoverCmd(app),
+		newSSHMachineCmd(app),
+		newSSHKeyCmd(app),
+		newSSHConnectCmd(app),
 	)
 	return cmd
 }
@@ -287,7 +293,8 @@ func renderSSHInitPlan(app *App, plan sshhost.InitPlan) {
 }
 
 func newSSHListCmd(app *App) *cobra.Command {
-	var jsonOut bool
+	var includeFleet bool
+	var jsonOut, tailscale, lan bool
 	var format string
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -303,11 +310,23 @@ alias, status, ownership, source, line, comma-separated fleet names.`,
 			if format != "" && format != "tsv" {
 				return asUsageError(fmt.Errorf("unsupported --format %q (want tsv)", format))
 			}
+			if includeFleet {
+				if format != "" {
+					return asUsageError(errors.New("--fleet supports table or --json output"))
+				}
+				return runSSHListWithFleet(cmd.Context(), app, tailscale, lan, jsonOut)
+			}
+			if tailscale || lan {
+				return runSSHCombinedList(cmd.Context(), app, tailscale, lan, jsonOut, format)
+			}
 			return runSSHList(cmd.Context(), app, jsonOut, format)
 		},
 	}
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit one versioned JSON object")
 	cmd.Flags().StringVar(&format, "format", "", "machine format: tsv")
+	cmd.Flags().BoolVar(&tailscale, "tailscale", false, "explicitly read Tailscale and show canonical machines with all connection sources")
+	cmd.Flags().BoolVar(&lan, "lan", false, "include cached LAN observations in the canonical machine list; never scan")
+	cmd.Flags().BoolVar(&includeFleet, "fleet", false, "include cached fleet SSH profiles; never connect or refresh")
 	registerFlagCompletion(cmd, "format", fixedCompletions("tsv"))
 	return cmd
 }
@@ -567,6 +586,12 @@ func finishSSHShow(app *App, jsonOut bool, document sshShowDocument, err error) 
 }
 
 type sshSetupOptions struct {
+	from                       string
+	auth                       string
+	to                         string
+	machineID                  string
+	herdrLabel                 string
+	herdrSession               string
 	hostName                   string
 	user                       string
 	port                       int
@@ -575,12 +600,16 @@ type sshSetupOptions struct {
 	identitiesOnly             bool
 	configOnly                 bool
 	key                        string
+	keyCandidate               *sshhost.KeyCandidate
+	keyPlan                    *sshhost.KeyPlan
 	generateKey                bool
 	keyPath                    string
 	comment                    string
 	noPassphrase               bool
 	targetOS                   string
 	hopOS                      []string
+	hopKeys                    []string
+	passwordStore              string
 	installOnWorkingJump       bool
 	windowsAdminAuthorizedKeys bool
 	fleet                      bool
@@ -600,12 +629,18 @@ type sshSetupOptions struct {
 func newSSHSetupCmd(app *App) *cobra.Command {
 	var options sshSetupOptions
 	cmd := &cobra.Command{
-		Use:   "setup <alias>",
+		Use:   "setup [alias]",
 		Short: "Create or reconcile an alias, install a public key, and optionally register fleet",
-		Long: `Unknown aliases may become strict dev-owned fragments; existing managed aliases
-may be reconciled. Foreign definitions are never edited. Full setup requires an
-explicit --key or --generate-key in this conservative first-stage wizard.`,
-		Args: cobra.ExactArgs(1),
+		Long: `Without an alias, open the multi-host discovery and setup wizard. Explicit
+--from tailscale:<peer> or lan:<ip:port> selects a discovered connection and records
+a canonical machine mapping. --from fleet:<host>/<alias> imports a selected
+remote SSH profile as local ProxyJump configuration; fleet dry-runs use cached
+metadata only. Foreign connection definitions are never rewritten.
+Use --auth existing for ordinary login without key installation, or select --key
+or --generate-key for public-key bootstrap. --to explicitly registers fleet,
+Herdr, or both. Source-aware setup defaults to configuration only; --dry-run may
+read local Tailscale status but never configures or authenticates a host.`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			options.hostNameChanged = cmd.Flags().Changed("hostname")
 			options.userChanged = cmd.Flags().Changed("user")
@@ -615,6 +650,9 @@ explicit --key or --generate-key in this conservative first-stage wizard.`,
 			options.identitiesOnlyChanged = cmd.Flags().Changed("identities-only")
 			options.connectionChanged = options.hostNameChanged || options.userChanged || options.portChanged ||
 				options.proxyJumpChanged || options.identityFileChanged || options.identitiesOnlyChanged
+			if len(args) == 0 || options.from != "" || options.auth != "" || options.to != "" || options.machineID != "" || len(options.hopKeys) > 0 {
+				return runSSHOnboarding(cmd.Context(), app, args, options)
+			}
 			if err := validateSSHSetupFlags(cmd, options); err != nil {
 				return asUsageError(err)
 			}
@@ -628,6 +666,12 @@ explicit --key or --generate-key in this conservative first-stage wizard.`,
 		},
 	}
 	flags := cmd.Flags()
+	flags.StringVar(&options.from, "from", "", "tailscale:<peer>, lan:<ip:port>, fleet:<host>/<alias>, or an exact discovery ID")
+	flags.StringVar(&options.auth, "auth", "", "existing to verify ordinary SSH without installing a key")
+	flags.StringVar(&options.to, "to", "", "explicit registration destination: fleet, herdr or both")
+	flags.StringVar(&options.machineID, "machine", "", "bind this connection to an existing canonical machine UUID")
+	flags.StringVar(&options.herdrLabel, "herdr-label", "", "Herdr machine label (default: alias)")
+	flags.StringVar(&options.herdrSession, "herdr-session", "default", "Herdr remote session")
 	flags.StringVar(&options.hostName, "hostname", "", "managed HostName value")
 	flags.StringVar(&options.user, "user", "", "managed User value")
 	flags.IntVar(&options.port, "port", 0, "managed SSH port")
@@ -641,6 +685,8 @@ explicit --key or --generate-key in this conservative first-stage wizard.`,
 	flags.StringVar(&options.comment, "comment", "", "public key comment for --generate-key")
 	flags.BoolVar(&options.noPassphrase, "no-passphrase", false, "generate without a passphrase (required outside a TTY)")
 	flags.StringVar(&options.targetOS, "target-os", "", "target operating system: posix or windows")
+	flags.StringArrayVar(&options.hopKeys, "hop-key", nil, "per-hop local key override local-alias=path (repeatable; fleet imports)")
+	flags.StringVar(&options.passwordStore, "password-store", "system", "provider offered after verified reusable password login: system or bitwarden")
 	flags.StringArrayVar(&options.hopOS, "hop-os", nil, "route OS override alias=posix|windows (repeatable)")
 	flags.BoolVar(&options.installOnWorkingJump, "install-on-working-jump", false, "install the selected key on already-working jump hosts")
 	flags.BoolVar(&options.windowsAdminAuthorizedKeys, "windows-admin-authorized-keys", false, "allow the Windows administrators_authorized_keys path")
@@ -657,7 +703,7 @@ explicit --key or --generate-key in this conservative first-stage wizard.`,
 }
 
 func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions) error {
-	if options.key != "" && options.generateKey {
+	if options.hasExistingKey() && options.generateKey {
 		return errors.New("--key and --generate-key are mutually exclusive")
 	}
 	if !options.generateKey && (cmd.Flags().Changed("key-path") || cmd.Flags().Changed("comment") || options.noPassphrase) {
@@ -669,7 +715,7 @@ func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions) error {
 	if options.fleetName != "" && !options.fleet {
 		return errors.New("--fleet-name requires --fleet")
 	}
-	if options.configOnly && (options.key != "" || options.generateKey || options.fleet || options.targetOS != "" || len(options.hopOS) > 0 || options.installOnWorkingJump || options.windowsAdminAuthorizedKeys) {
+	if options.configOnly && (options.hasExistingKey() || options.generateKey || options.fleet || options.targetOS != "" || len(options.hopOS) > 0 || options.installOnWorkingJump || options.windowsAdminAuthorizedKeys) {
 		return errors.New("--config-only cannot be combined with key, route, bootstrap, or fleet flags")
 	}
 	if options.targetOS != "" {
@@ -680,7 +726,7 @@ func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions) error {
 	if _, err := parseSSHOSOverrides(options.hopOS); err != nil {
 		return err
 	}
-	if !options.configOnly && !options.dryRun && options.key == "" && !options.generateKey {
+	if !options.configOnly && !options.dryRun && !options.hasExistingKey() && !options.generateKey && options.auth != "existing" {
 		return errors.New("full setup requires explicit --key or --generate-key")
 	}
 	return nil
@@ -689,6 +735,9 @@ func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions) error {
 func runSSHSetup(ctx context.Context, app *App, alias string, options sshSetupOptions) error {
 	if err := sshhost.ValidateLookupAlias(alias); err != nil {
 		return asUsageError(err)
+	}
+	if e := validateSSHPasswordStore(options.passwordStore); e != nil {
+		return asUsageError(e)
 	}
 	interactiveMode := !options.json && app.interactive()
 	if !options.configOnly && !options.dryRun && !interactiveMode && options.targetOS == "" {
@@ -738,6 +787,10 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 	if err != nil {
 		return finishSSHSetup(app, options.json, document, err)
 	}
+	sourceGuard, guardErr := sshflow.GuardSources(ctx, service)
+	if guardErr != nil {
+		return finishSSHSetup(app, options.json, document, guardErr)
+	}
 	aliasClass, definition, classifyErr := classifySetupAlias(service, alias, inventory)
 	document.AliasClass = aliasClass
 	if classifyErr != nil {
@@ -765,7 +818,7 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 	}
 
 	var keyPlan *sshhost.KeyPlan
-	if !options.configOnly && (options.key != "" || options.generateKey) {
+	if !options.configOnly && (options.hasExistingKey() || options.generateKey) {
 		planned, planErr := planSSHSetupKey(ctx, app, service, options, interactiveMode)
 		keyPlan = &planned
 		document.KeyPlan = keyPlan
@@ -779,6 +832,14 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		}
 	}
 
+	var plannedRoute *sshhost.Route
+	if ownsDefinition && (definition.ProxyJump != "" || options.proxyJumpChanged) {
+		route, e := planSSHLocalRoute(ctx, service, alias, []sshhost.ManagedDefinition{definition}, options.dryRun)
+		if e != nil {
+			return finishSSHSetup(app, options.json, document, e)
+		}
+		plannedRoute = &route
+	}
 	if ownsDefinition {
 		document.Definition = cloneSSHManagedDefinition(definition)
 		managedPlan, planErr := service.PlanUpsert(ctx, definition)
@@ -862,6 +923,18 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		}
 	}
 
+	if plannedRoute != nil {
+		fresh, e := planSSHLocalRoute(ctx, service, alias, []sshhost.ManagedDefinition{definition}, false)
+		if e != nil {
+			return finishSSHSetup(app, options.json, document, e)
+		}
+		if !reflect.DeepEqual(plannedRoute.Hops, fresh.Hops) {
+			return finishSSHSetup(app, options.json, document, sshhost.ErrSourceChanged)
+		}
+	}
+	if e := sourceGuard.Check(ctx); e != nil {
+		return finishSSHSetup(app, options.json, document, e)
+	}
 	var keyResult sshhost.KeyResult
 	if keyPlan != nil {
 		app.warnf("applying SSH key plan for %s", alias)
@@ -875,6 +948,9 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		keyResult = applied
 	}
 	if document.ManagedPlan != nil {
+		if e := sourceGuard.Check(ctx); e != nil {
+			return finishSSHSetup(app, options.json, document, e)
+		}
 		app.warnf("applying managed SSH config for %s", alias)
 		applied, applyErr := service.ApplyManaged(ctx, *document.ManagedPlan)
 		document.ManagedResult = &applied
@@ -913,11 +989,24 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		return finishSSHSetup(app, options.json, document, routeErr)
 	}
 
+	var authentication *sshhost.AuthenticationOperation
+	if interactiveMode {
+		authentication, err = prepareSSHAuthentication(ctx, app, service, alias, options.passwordStore, false)
+		if err != nil {
+			return finishSSHSetup(app, options.json, document, err)
+		}
+		defer authentication.Close()
+		if !authentication.UsesPassword() {
+			_ = authentication.Close()
+			authentication = nil
+		}
+	}
 	app.warnf("bootstrapping public-key authentication for %s", alias)
 	bootstrap, bootstrapErr := service.Bootstrap(ctx, sshhost.BootstrapRequest{
 		Alias:                           alias,
 		Route:                           route,
 		Key:                             keyResult,
+		Authentication:                  authentication,
 		TargetRemoteOS:                  targetOS,
 		OSOverrides:                     overrides,
 		Interactive:                     interactiveMode,
@@ -1028,6 +1117,9 @@ func mergeManagedDefinition(app *App, definition *sshhost.ManagedDefinition, opt
 }
 
 func planSSHSetupKey(ctx context.Context, app *App, service *sshhost.Service, options sshSetupOptions, interactiveMode bool) (sshhost.KeyPlan, error) {
+	if options.keyCandidate != nil && (options.key != "" || options.generateKey) {
+		return sshhost.KeyPlan{}, errors.New("choose one existing key or key generation")
+	}
 	request := sshhost.KeyRequest{
 		Interactive:  interactiveMode && !options.noPassphrase,
 		AllowDerive:  options.yes,
@@ -1039,7 +1131,11 @@ func planSSHSetupKey(ctx context.Context, app *App, service *sshhost.Service, op
 		request.Comment = options.comment
 	} else {
 		request.Operation = sshhost.KeyUse
-		request.Path = options.key
+		if options.keyCandidate != nil {
+			request.Candidate = *options.keyCandidate
+		} else {
+			request.Path = options.key
+		}
 	}
 	plan, err := service.PlanKey(ctx, request)
 	if err != nil {

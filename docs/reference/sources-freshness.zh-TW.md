@@ -34,7 +34,7 @@ Submodule graph／初始化、選擇性 task branch、遞迴遠端證明與暫�
 description: 能在 search 與 llms.txt 獨立成立的一句話。
 authority: 使用下方 authority table 的單一值
 status: 使用下方 status table 的單一值
-verified_on: YYYY-MM-DD
+verified_on: 2026-09-11
 minimum_version: optional
 tested_with: optional
 ---
@@ -158,6 +158,53 @@ Dashboard 年度 heatmap／自動 Git backfill、action menu 搜尋與 REPOS 漸
 [Skills 管理](../guides/skills-management.zh-TW.md) 的 provider semantics 依
 上游 skills v1.5.23／v1.5.25 source contracts 與隔離 fixtures 驗證；列表與 check
 不執行 provider，native mutation 不宣稱固定內容重現。
+
+## Machine connections 與 discovery（2026-09-11）
+
+[SSH onboarding](../guides/ssh-hosts.zh-TW.md) 的 authority 是
+`internal/machineregistry`、`internal/sshdiscovery`、`internal/sshflow`、SSH CLI／
+dashboard adapters 及 hermetic tests。Registry SQLite 是 durable data；discovery
+report 的 cache window 為五分鐘，從不代表 authentication proof。Canonical ID 不取代
+remote dev UUID pin。Tailscale CLI 缺少、provider failure、source change、partial scan
+都保留明確 uncertainty。
+
+Upstream 差異已對照 [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) 與
+[Tailscale CLI](https://tailscale.com/kb/1080/cli#ssh)。Native status JSON 會隨版本
+改變；dev 只讀取 bounded subset，資料不支援或不可用時回報 observation 狀態，不會
+自行 enable／configure provider。
+
+## SSH picker 與 permission review（2026-09-11）
+
+Key-list／wizard behavior 以 `internal/sshhost` key catalog／permission plans、
+`internal/cli/ssh_keys.go`、`ssh_permissions.go`、`ssh_registration.go` 及 fixture tests
+為準。Backend 由 `internal/picker` 決定：單選可使用 fzf，多選一律 Bubble Tea。
+Key metadata／agent presence 不代表 remote authentication proof。Permission repair
+是另外批准且保留結果的 local operation；預設 catalog listing 不執行 `ssh -G`、
+chmod 或 remote login。
+
+## SSH key doctor scope（2026-09-11）
+
+獨立 `ssh key doctor` scan 與 selected-path mode 由 `internal/sshhost` permission
+scanning／planning 及 key-doctor CLI adapter 定義。Fixtures 驗證 metadata-only
+discovery、blocked／incomplete 不寫入、保留 partial repairs 及 post-repair checks。
+Default scan scope 與 setup 的 baseline-plus-selected-key preflight 不同。Key inventory
+diagnostics 保留 stable codes，加入 safe specific reasons 與適用的 remediation hint，不把 missing
+public companions 或 unsafe paths 轉成 key availability proof。
+
+
+## Fleet SSH 與 credential scope（2026-09-12）
+
+`internal/sshremote` 定義 bounded v1 static inventory、明確 resolution／key metadata
+與單次 session helpers。Source profile ID 包含 remote UUID/user/root/alias；fingerprint
+與 cached route 是 observation，不是 trust pin。CLI fleet source/import adapters 與
+`sshhost` route/connection core 負責 execution。預設 SSH list 與 cached `--fleet` list
+維持 passive。
+
+`internal/sshcredential` 定義 exact password context、optional system／Bitwarden
+providers、private askpass transport、guarded policy/reference TOML。Native vault
+availability 與互動授權依 host 而異；automated unit fixtures 沒有讀寫實際 vault。
+Private-key vault migration、hardware provisioning、Apple Passwords migration 仍 deferred；
+公開 SSH guide 分別說明 controller route 與 remote-native session。
 
 ## Dotfiles 與 FLEET 主機樹
 

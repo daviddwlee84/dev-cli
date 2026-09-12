@@ -119,6 +119,8 @@ func (m Model) renderRawList() string {
 		return m.renderSkills()
 	case ViewMCP:
 		return m.renderMCP()
+	case ViewSSH:
+		return m.renderSSH()
 	default:
 		return m.renderTasks()
 	}
@@ -186,7 +188,7 @@ func (m Model) buildHeaderLayout() headerLayout {
 	build := func(compact, summary bool) headerLayout {
 		short := map[View]string{
 			ViewTasks: "TSK", ViewRepos: "REP", ViewFleet: "FLT", ViewTries: "TRY",
-			ViewRemote: "REM", ViewSkills: "SKL", ViewMCP: "MCP",
+			ViewRemote: "REM", ViewSkills: "SKL", ViewMCP: "MCP", ViewSSH: "SSH",
 		}
 		var builder strings.Builder
 		prefix := styleTitle.Render("dev") + "  "
@@ -209,6 +211,12 @@ func (m Model) buildHeaderLayout() headerLayout {
 			}
 			if !compact {
 				label = fmt.Sprintf(" %d %s ", index+1, name)
+			}
+			if view == ViewSSH && m.hasCustomSSHKey() {
+				label = name
+				if !compact {
+					label = " " + name + " "
+				}
 			}
 			rendered := styleDim.Render(label)
 			if view == m.view {
@@ -1147,6 +1155,9 @@ func (m Model) renderDetail() string {
 	case modeCloneURL:
 		return m.renderCloneURLs()
 	}
+	if m.view == ViewSSH {
+		return m.renderSSHDetail()
+	}
 
 	if row, ok := m.currentFleet(); ok {
 		state := string(row.State)
@@ -1600,18 +1611,25 @@ func (m Model) renderFooter() string {
 	if m.view == ViewMCP {
 		primary = "Ctrl+O actions · e file"
 	}
+	if m.view == ViewSSH {
+		primary = "Enter connect · n setup · c discover · p probe · Ctrl+O actions"
+	}
 	if m.view == ViewRepos || m.view == ViewRemote || m.view == ViewSkills || m.view == ViewMCP {
 		primary += " · y copy"
 	}
 	if status != "" {
 		primary = status + "  |  Ctrl+O actions"
 	}
-	navigation := "Navigate  1–7 views · / filter · r refresh · ? help · q quit"
+	viewKeys := "1–8 views"
+	if m.hasCustomSSHKey() {
+		viewKeys = "1–7 / Tab views"
+	}
+	navigation := "Navigate  " + viewKeys + " · / filter · r refresh · ? help · q quit"
 	if m.width < 85 {
-		navigation = "1–7 views · / filter · ? help · q quit"
+		navigation = viewKeys + " · / filter · ? help · q quit"
 	}
 	if m.width < 60 {
-		navigation = "? help · 1–7 views · / filter · q quit"
+		navigation = "? help · " + viewKeys + " · / filter · q quit"
 	}
 	footer := "  " + fitCell("Actions  "+primary, max(1, m.width-4)) + "\n  " + fitCell(styleHelp.Render(navigation), max(1, m.width-4))
 	if m.view == ViewFleet && m.hostFleetEnabled() {

@@ -34,7 +34,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | experiments | `try`、`tries …`、`graduate` |
 | terminal UI | `tui`、`tui tools`、獨立 preview `flow [repo]` |
 | configuration/shell | `config init/show/path/edit/trust`、`config scaffolds init/show/path/edit`、`shell-init`、completion |
-| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh setup`、`ssh probe`、`ssh remove` |
+| SSH hosts | `ssh init`、`ssh list`、`ssh show`、`ssh key list/doctor/derive`、`ssh setup`、`ssh discover`、`ssh machine …`、`ssh connect`、`ssh probe`、`ssh remove` |
 | dotfiles | `dotfile status`, `dotfile setup`, `dotfile diff`, `dotfile apply`, `dotfile update`, `fleet dotfile status` |
 | remote fleet | `fleet list`、`fleet status`、`fleet machine-id`、`fleet sync`、`fleet files`、`fleet open`、`fleet config …` |
 | pull-request inventory | `pr list` |
@@ -114,7 +114,7 @@ sharing disabled 的 fresh BatchMode login。
 `ssh setup` 用一個 command 處理 new/managed/foreign alias。Connection flags
 （`--hostname`、`--user`、`--port`、`--proxy-jump`、`--identity-file`、
 `--identities-only`）只適用 new 或 managed alias。`--config-only` 在 local
-verification 後停止。Full setup 必須 explicit `--key` 或 `--generate-key`；
+verification 後停止。Public-key bootstrap 必須 explicit `--key` 或 `--generate-key`；
 noninteractive full setup 還需要 `--target-os`，noninteractive generation 需要
 `--no-passphrase`。Route/platform controls 是 `--hop-os`、
 `--install-on-working-jump` 與 `--windows-admin-authorized-keys`。`--dry-run`
@@ -448,7 +448,7 @@ command = ["fzf", "--height=60%", "--layout=reverse", "--border", "--prompt", "{
 ```
 
 Executable 必須遵守 line-selector contract：從 stdin 讀候選項，並把選取的原始整行
-寫到 stdout。預設使用 `fzf`；相容 selector 可替換整個 array。Executable 缺少時會
+寫到 stdout。預設使用 `fzf`；相容 selector 可替換整個 array。多選一律使用 built-in picker，不受 external command 設定影響。Executable 缺少時會
 fallback 到 dev 的 Bubble Tea picker，`command = []` 則強制使用該 fallback。
 這是 global host policy，repository 不能 override。Non-TTY caller 維持 deterministic
 line prompt。
@@ -783,6 +783,88 @@ issue，`--publish --yes --revision <revision>` 表達對該確切內容／目�
 `repair <id> --base <ref>` 保存 guarded plan；`--apply --plan <id> --yes` 準備隔離
 checkout/task。Optional `[feedback].source_repo` 指定絕對或 home-relative 的本機
 dev-cli 路徑。詳見 [feedback 與修復](../guides/feedback.zh-TW.md)。
+
+## Discovery 與 machine registry interfaces
+
+`ssh list --tailscale` 明確查詢 optional Tailscale status；`--lan` 讀取 LAN cache。
+預設 alias JSON 與六欄 TSV 不變。Combined JSON 新增 `machines`、`sources`、
+`observed_at`；combined TSV 為 row ID、label、state、comma-separated aliases。
+`ssh discover --source tailscale|lan` 輸出 `ssh_discovery` document。LAN 接受
+`--interface`、repeatable `--cidr`、`--ports`（預設 22）、`--refresh`，範圍受限且
+只掃描直接連接的 network。
+
+`ssh setup [alias]` 新增 interactive multi-select、`--from tailscale:<peer>|lan:<ip:port>`、`--auth existing`、`--to fleet|herdr|both`、
+`--machine`、`--herdr-label`、`--herdr-session`。Source-aware setup 預設只處理
+local config／mapping，key 安裝必須明確選擇。Preview/result 使用
+`ssh_onboarding_plan`／`ssh_onboarding_result`。Source dry run 可讀取 local Tailscale
+status，但不寫 config、registry、key、cache，也不登入。
+
+`ssh machine show [machine-id]` 讀取 durable registry。`adopt`、`link`、`unlink`、
+`merge` 依操作接受 `--machine`、repeatable `--source`、`--label`、`--into`、
+`--apply`、`--yes`、`--json`，不支援的組合會被拒絕。Actions 預設 preview。
+Snapshot/transaction documents 包含 `schema_version`、machine revisions 與 scoped
+bindings；registry UUID 不取代 remote fleet 的 `machine_id` pin。詳見
+[SSH onboarding](../guides/ssh-hosts.zh-TW.md)。
+
+## SSH key catalog 與 picker behavior
+
+`ssh key list` 接受 `--json`、`--no-agent`、`--alias <alias>` 與明確的 `--on fleet:HOST`。預設 local catalog
+不執行 `ssh -G`；明確 alias mode 才評估 configured identities／agent settings。
+JSON 使用 `schema_version: 1`、`kind: ssh_key_list`，包含 candidates、completeness
+及 diagnostics。Local listing 不修權限或登入；`--on` 會明確連線至選定 source。
+
+Interactive setup 可由 catalog 或 manual path 選 existing key。窄範圍 permission
+preflight 是另外確認的 repair，先於後續 wizard steps；取消後仍保留已完成 tightening。
+Fleet／Herdr registration 改成兩個 optional checkbox，零項、單項、兩項分別對應
+既有 registration 行為。多選使用 built-in Bubble Tea；單選仍預設 configured fzf。
+詳見 [SSH key selection](../guides/ssh-hosts.zh-TW.md)。
+
+## SSH key permission reports 與 fixes
+
+`ssh key doctor` 接受 `--fix`、`--yes`、`--json`、repeatable `--key PATH`。沒有
+`--key` 時，bounded metadata scan 包含 public companions 與 exact standard
+private-only key names；明確 paths 則限制 scan／repair scope，仍包含 canonical SSH
+setup paths。不讀 key contents、不呼叫 agent、OpenSSH、key generation 或 remote
+authentication。
+
+預設為 read-only report；repairable findings 成功退出，blocked／incomplete scan
+則失敗且不寫入。`--fix` 預覽 exact changes 並確認；noninteractive／JSON apply
+需要 `--fix --yes`。單一 guarded permission plan 在 partial failure 保留 completed
+changes，之後再驗證 state。Setup 仍只用 baseline／selected-key scope。Key-list
+specific safety diagnostics 指向這個 command；malformed key data 仍需手動修正。
+JSON kind 為 `ssh_key_doctor_plan`／`ssh_key_doctor_result`，包含 scope、completeness、
+key paths、permission plan 及 optional result／recheck。詳見
+[SSH key doctor](../guides/ssh-hosts.zh-TW.md#ssh-key-doctor)。
+
+
+## Fleet SSH sources、connection 與 password contexts
+
+`ssh discover --source fleet --host NAME` 接受 repeatable source names 與
+`--refresh`，不遞迴探索 fleets。JSON kind 是 `ssh_fleet_discovery`，每個 source 有
+自己的 status／optional inventory。`ssh list --fleet` 在既有 JSON document 加入
+cached `fleet_ssh_sources`，不做 remote refresh。Selector 是 percent-encoded
+`fleet:HOST/ALIAS`，或已快取的精確 `fleet-ssh:` profile ID。
+Cache entry 無法讀取時保留 local aliases 與 valid source rows，並以 `complete: false`
+及 `fleet_ssh_diagnostics` 回報，不會變成 empty success。
+
+`ssh setup LOCAL_ALIAS --from fleet:HOST/ALIAS` 匯入經預覽的本機 ProxyJump route。
+預設只設定 configuration；`--auth existing`、本機 key selection、
+`--hop-key local-alias=key-path` 與 registration 保持明確選取。Dry run 需要 cached
+source／route metadata，不執行 OpenSSH。`ssh connect ALIAS [--on fleet:HOST]
+[--key-id SHA256:...]` 在選定 host 開一個互動 session，不接受額外 remote command。
+`ssh key list --on fleet:HOST [--alias ALIAS] [--no-agent] [--json]` 回傳帶 source scope
+的 metadata（`ssh_remote_keys`），remote paths 不會變成本機 identities。
+
+`ssh key derive PRIVATE_KEY [--apply] [--yes] [--json]` 只預覽／建立 `~/.ssh` 內缺少
+的 `.pub`。JSON kind 是 `ssh_key_derive_plan`／`ssh_key_derive_result`；已有 companion
+保留，apply 與 permissions repair／key installation 分開。
+
+Setup／connect 接受 `--password-store system|bitwarden`（預設 system）。成功驗證後
+的保存選項預設 No，Never 只持久套用在該 credential context。
+`$XDG_CONFIG_HOME/dev/ssh-credentials.toml` 只存 ask/never policy、provider reference、
+pending／unknown metadata，不存 secret。Explicit fleet password sources 保有優先權；
+discovery 不使用 saved-reference resolver，remote source-to-target credentials 也不屬於
+controller save flow。見 [SSH workflows](../guides/ssh-hosts.zh-TW.md#fleet-source-profiles-routes)。
 
 ## Repository hygiene
 

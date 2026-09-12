@@ -19,6 +19,7 @@ import (
 
 	"github.com/charmbracelet/x/term"
 	devconfig "github.com/daviddwlee84/dev-cli/internal/config"
+	"github.com/daviddwlee84/dev-cli/internal/sshcredential"
 )
 
 const (
@@ -34,67 +35,42 @@ const (
 var promptPasswordMu sync.Mutex
 
 // MaybeServeAskpass turns the dev executable into a one-shot SSH_ASKPASS
-// helper. The password arrives through an inherited descriptor, never argv.
+// helper. Its password arrives through private IPC, never argv or environment.
 func MaybeServeAskpass() (bool, int) {
-	if os.Getenv(askpassMarker) != "1" {
-		return false, 0
+	if handled, code := sshcredential.MaybeServeAskpass(); handled {
+		return handled, code
 	}
-	file, err := openAskpassSecret(os.Getenv(askpassFD))
-	if err != nil || file == nil {
+	if os.Getenv(askpassMarker) == "1" {
 		return true, 2
 	}
-	defer file.Close()
-	password, err := io.ReadAll(io.LimitReader(file, maxAskpassSecretSize+1))
-	if err != nil || len(password) > maxAskpassSecretSize {
-		return true, 2
-	}
-	password = bytes.TrimSuffix(password, []byte{'\n'})
-	if _, err := os.Stdout.Write(password); err != nil {
-		return true, 2
-	}
-	if _, err := os.Stdout.Write([]byte{'\n'}); err != nil {
-		return true, 2
-	}
-	return true, 0
+	return false, 0
 }
 
-func runCommandWithAskpass(cmd *exec.Cmd, password string) error {
+func runCommandWithAskpass(cmd *exec.Cmd, password string, contexts ...sshcredential.PasswordContext) error {
 	if password == "" {
+		cmd.Env = sshcredential.ClearBrokerEnv(cmd.Env)
 		return cmd.Run()
 	}
-	if len(password)+1 > maxAskpassSecretSize {
-		return errors.New("SSH password exceeds the askpass secret carrier limit")
+	if len(contexts) != 1 {
+		return sshcredential.ErrDenied
 	}
 	executable, err := os.Executable()
 	if err != nil {
 		return err
 	}
-	carrier, identifier, err := newAskpassSecretCarrier(cmd)
+	secret := []byte(password)
+	defer sshcredential.Wipe(secret)
+	broker, err := sshcredential.NewBroker(context.Background(), []sshcredential.PasswordAnswer{{Context: contexts[0], Secret: secret}})
 	if err != nil {
 		return err
 	}
-	cmd.Env = append(cmd.Env,
-		askpassMarker+"=1", askpassFD+"="+identifier, "SSH_ASKPASS="+executable,
-		"SSH_ASKPASS_REQUIRE=force", "DISPLAY=dev-fleet")
-	if err := cmd.Start(); err != nil {
-		return errors.Join(err, carrier.close())
+	defer broker.Close()
+	env, err := broker.Env(executable, contexts[0].ID)
+	if err != nil {
+		return err
 	}
-	parentErr := carrier.parentAfterStart()
-	// The secret may be as large as a platform pipe buffer. Write concurrently
-	// so the SSH child can reach and launch its askpass reader instead of the
-	// parent blocking before that reader exists.
-	writeDone := make(chan error, 1)
-	go func() { writeDone <- carrier.writeSecret([]byte(password + "\n")) }()
-	waitErr := cmd.Wait()
-	writeErr := <-writeDone
-	if waitErr == nil {
-		// A successful SSH process may finish without invoking askpass (for
-		// example, when another configured authentication method succeeds).
-		// Its exit status remains authoritative even if the unused carrier's
-		// writer observes a closed reader.
-		return errors.Join(parentErr, carrier.close())
-	}
-	return errors.Join(waitErr, parentErr, writeErr, carrier.close())
+	cmd.Env = append(sshcredential.ClearBrokerEnv(cmd.Env), env...)
+	return cmd.Run()
 }
 
 type RetryPolicy string
@@ -124,12 +100,25 @@ type Transport struct {
 	StdinLimit  int64
 	StdoutLimit int64
 	StderrLimit int64
+	// StoredPassword is an optional exact-scope resolver supplied by the caller.
+	// Legacy PasswordSource declarations take priority. This callback must not
+	// prompt; it is called before SSH starts and never after a session failure.
+	StoredPassword func(context.Context, Host) ([]byte, error)
 }
 
 // Interactive replaces the caller's terminal with an SSH PTY for a fixed dev
 // helper command. Password sources use the same descriptor-backed askpass path
 // as non-interactive probes.
 func (t Transport) Interactive(ctx context.Context, host Host, remoteArgs []string, usePassword bool) error {
+	return t.interactive(ctx, host, remoteArgs, usePassword, false)
+}
+
+// InteractiveNoForward hands off only a fixed remote helper and explicitly
+// disables agent, X11, local-command and configured forwarding behavior.
+func (t Transport) InteractiveNoForward(ctx context.Context, host Host, remoteArgs []string, usePassword bool) error {
+	return t.interactive(ctx, host, remoteArgs, usePassword, true)
+}
+func (t Transport) interactive(ctx context.Context, host Host, remoteArgs []string, usePassword, noForward bool) error {
 	password := ""
 	if usePassword && host.PasswordKind() != "none" {
 		resolved, err := t.resolvePassword(host)
@@ -137,17 +126,33 @@ func (t Transport) Interactive(ctx context.Context, host Host, remoteArgs []stri
 			return err
 		}
 		password = resolved
+	} else if host.PasswordKind() == "none" {
+		var err error
+		password, err = t.resolveStoredPassword(ctx, host)
+		if err != nil {
+			return err
+		}
 	}
 	remote, err := checkedRemoteCommand(host, remoteArgs)
 	if err != nil {
 		return err
 	}
 	args := sshArgs(host, true, password != "")
+	if noForward {
+		args = append(args, "-o", "ForwardAgent=no", "-o", "ForwardX11=no", "-o", "ClearAllForwardings=yes", "-o", "PermitLocalCommand=no")
+	}
 	args = append(args, host.Destination(), remote)
 	cmd := exec.CommandContext(ctx, "ssh", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	return runCommandWithAskpass(cmd, password)
+	if password == "" {
+		return runCommandWithAskpass(cmd, password)
+	}
+	passwordContext, err := resolveAskpassContext(ctx, host)
+	if err != nil {
+		return err
+	}
+	return runCommandWithAskpass(cmd, password, passwordContext)
 }
 
 // Run preserves the v0.2 fleet behavior: retry once with the configured
@@ -182,6 +187,17 @@ func (t Transport) run(ctx context.Context, host Host, remoteArgs []string, stdi
 	}
 	commandCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if host.PasswordKind() == "none" && t.StoredPassword != nil {
+		password, err := t.resolveStoredPassword(commandCtx, host)
+		if err != nil {
+			return localTransportFailure("stored SSH credential unavailable")
+		}
+		if password != "" {
+			result := t.runAttempt(commandCtx, host, remoteArgs, stdin, pty, password)
+			result.UsedPassword = true
+			return result
+		}
+	}
 
 	first := t.runAttempt(commandCtx, host, remoteArgs, stdin, pty, "")
 	if options.Retry != RetryAuthentication || first.CaptureError != "" || first.ExitCode != 255 || host.PasswordKind() == "none" || !permissionDenied(first.Stderr) {
@@ -215,7 +231,15 @@ func (t Transport) runAttempt(ctx context.Context, host Host, remoteArgs []strin
 	stderr := newCaptureBuffer(effectiveLimit(t.StderrLimit, DefaultStderrLimit))
 	cmd.Stdout, cmd.Stderr = stdout, stderr
 	cmd.Env = append(os.Environ(), "LC_ALL=C")
-	err = runCommandWithAskpass(cmd, password)
+	if password != "" {
+		var passwordContext sshcredential.PasswordContext
+		passwordContext, err = resolveAskpassContext(ctx, host)
+		if err == nil {
+			err = runCommandWithAskpass(cmd, password, passwordContext)
+		}
+	} else {
+		err = runCommandWithAskpass(cmd, password)
+	}
 	result := Result{Stdout: stdout.Bytes(), Stderr: stderr.Bytes(), ExitCode: 0, Attempts: 1}
 	if stdout.Exceeded() || stderr.Exceeded() {
 		message := captureLimitMessage(stdout, stderr)
@@ -385,11 +409,16 @@ func validateWindowsFleetHelperArgs(args []string) error {
 		return errors.New("Windows fleet transport permits only internal fleet helpers")
 	}
 	switch args[1] {
-	case "_snapshot", "_sync", "_capability", "_dotfile-status":
+	case "_snapshot", "_sync", "_capability", "_ssh-capability", "_ssh-inventory", "_ssh-resolve", "_ssh-keys", "_dotfile-status":
 		if len(args) != 2 {
 			return fmt.Errorf("Windows fleet helper %s accepts no command arguments", args[1])
 		}
 		return nil
+	case "_ssh-connect":
+		if len(args) != 4 || args[2] != "--request" {
+			return errors.New("Windows SSH helper requires exactly --request <encoded-request>")
+		}
+		return validateEncodedSSHConnectRequest(args[3])
 	case "_open-herdr", "_shell":
 		if len(args) != 4 || args[2] != "--request" {
 			return fmt.Errorf("Windows fleet helper %s requires exactly --request <encoded-request>", args[1])

@@ -26,15 +26,19 @@ const (
 // supplied from ResolveRoute; otherwise Bootstrap resolves it. Key or Candidate
 // must carry unexported material state produced by this Service.
 type BootstrapRequest struct {
-	Alias                           string             `json:"alias"`
-	Route                           Route              `json:"route,omitempty"`
-	Key                             KeyResult          `json:"key,omitempty"`
-	Candidate                       KeyCandidate       `json:"candidate,omitempty"`
-	TargetRemoteOS                  RemoteOS           `json:"target_remote_os,omitempty"`
-	OSOverrides                     []RemoteOSOverride `json:"os_overrides,omitempty"`
-	Interactive                     bool               `json:"interactive,omitempty"`
-	InstallOnWorkingJump            bool               `json:"install_on_working_jump,omitempty"`
-	AllowWindowsAdminAuthorizedKeys bool               `json:"allow_windows_admin_authorized_keys,omitempty"`
+	Alias     string       `json:"alias"`
+	Route     Route        `json:"route,omitempty"`
+	Key       KeyResult    `json:"key,omitempty"`
+	Candidate KeyCandidate `json:"candidate,omitempty"`
+	// HopKeys overrides the default key for an exact mapped local alias.
+	// A missing jump key is permitted only when a fresh ordinary login works.
+	HopKeys                         map[string]KeyResult     `json:"hop_keys,omitempty"`
+	Authentication                  *AuthenticationOperation `json:"-"`
+	TargetRemoteOS                  RemoteOS                 `json:"target_remote_os,omitempty"`
+	OSOverrides                     []RemoteOSOverride       `json:"os_overrides,omitempty"`
+	Interactive                     bool                     `json:"interactive,omitempty"`
+	InstallOnWorkingJump            bool                     `json:"install_on_working_jump,omitempty"`
+	AllowWindowsAdminAuthorizedKeys bool                     `json:"allow_windows_admin_authorized_keys,omitempty"`
 }
 
 // BootstrapStep is a safe dry-run statement. State is unknown until an

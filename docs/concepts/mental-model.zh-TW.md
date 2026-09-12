@@ -2,7 +2,7 @@
 description: 以持久 Git history、分層 intent/catalog state、repository quick-note sidecar、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
 authority: project
 status: stable
-verified_on: 2026-09-08
+verified_on: 2026-09-11
 lang: zh-TW
 ---
 
@@ -155,3 +155,20 @@ REPOS 顯示快照及 Skills 的附時間來源比較屬可重建 cache；skill 
 仍是原生管理工具的資料。Heatmap 的 Git checkpoint 放在 stats.db，與活動觀察一起
 保留；清除 cache 不清除活動。跨 repo skills 維護使用獨立 `dev skill manage`
 wizard，不把 cache 或「有更新」狀態當成自動修改授權。
+
+## Canonical machines 與 connection profiles
+
+Controller-local machine UUID 用來集中明確綁定的 provider references，不取代
+原有 record。同一台 machine 可有多個 SSH alias／user／port／key、一個 Tailscale
+peer、LAN endpoints、多個 Herdr sessions 或 fleet profiles。Connection settings
+仍由 OpenSSH／provider 擁有；dev 只在 `paths.state_dir/machines/registry.db` 保存
+local identity 與 reviewed binding intent。這個 UUID 與 remote dev host 的
+`machine_id` safety pin 完全獨立。
+
+Discovery 只產生 candidates 及 dated cache，不建立 durable identity 或 login proof。
+Setup 或 `ssh machine adopt` 才 enroll；`link`／`unlink`／`merge` 必須提交 reviewed
+registry transaction。Unlink 保留 suppression，merged ID 保留 redirect。Source
+record 缺失或改變時保留 unresolved／stale，將不確定 observation 與 human intent
+分開。清 cache 不影響 identities／bindings。第八個 SSH dashboard view 顯示
+connections；FLEET 仍顯示 remote repositories／tasks。詳見
+[SSH onboarding](../guides/ssh-hosts.zh-TW.md)。

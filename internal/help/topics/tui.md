@@ -4,7 +4,7 @@ Bare `dev` opens the dashboard when stdin/stdout are terminals; `dev tui`
 opens it explicitly. When piped, bare `dev` prints `dev ls` instead, so shell
 composition stays predictable.
 
-## Seven views
+## Eight views
 
 Switch with `tab`, `l`/`h`, right/left, or by left-clicking a visible tab:
 
@@ -17,11 +17,12 @@ Switch with `tab`, `l`/`h`, right/left, or by left-clicking a visible tab:
 | REMOTE | What can I open or clone? | authenticated forge CLI inventories |
 | SKILLS | Which skills would an agent launched from this context read? | context-first targets plus an `A` all-repositories toggle |
 | MCP | Which MCP declarations would that agent context expose? | sanitized static agent configuration with the same shared scope |
+| SSH | How do I connect to a machine? | local aliases, canonical registry, cached discovery and provider membership |
 
 The initial TASKS frame is built before runtime auto-detection, project-root
 lookup, cache decoding, shell tool probes or the optional release refresh can
 finish. TASKS, REPOS and TRY then publish independently from one shared local
-load cycle; REMOTE, SKILLS and MCP remain lazy; FLEET warms hosts after a delay. Each view
+load cycle; REMOTE, SKILLS, MCP and SSH remain lazy; FLEET warms hosts after a delay. Each view
 has its own generation: `r` supersedes the old read, late results are ignored,
 failed refreshes keep usable rows, and a successful empty result clears old
 rows. Warning-only SKILLS/MCP diagnostics remain fresh partial snapshots instead
@@ -509,3 +510,18 @@ checks, reviewed multi-repo updates, and single-repo lock restore/dependency syn
 Wizard multi-selection supports Space and Ctrl+A. Global `skills` is an optional
 external dependency, never automatically replaced with npx. Use `dev help skills`
 for scope, verification and native-operation details.
+
+## SSH connection view
+
+The eighth dashboard tab groups machine connections independently of projects.
+Use `8` unless an existing custom tool owns that key; tab/click navigation remains
+available. Each machine keeps its exact SSH profiles, provider membership and
+stale/unresolved source state. `r` reloads local configuration, registry, provider
+membership and discovery caches without a LAN scan or SSH authentication.
+
+`Enter`/`o` opens the selected exact alias through system SSH, choosing a profile
+when several are available. `n` opens the per-host setup wizard, `c` chooses an
+explicit discovery source/scope, and `p` probes a selected alias with a fresh
+ordinary login. `Ctrl+O` exposes connection and machine-mapping actions. Discovery
+and provider registration remain explicit; opening a machine row does not enroll
+it or register it in fleet/Herdr. See `dev help ssh` for trust and identity limits.

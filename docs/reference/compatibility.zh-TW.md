@@ -45,6 +45,8 @@ Submodule 工作區採擴充方式：舊 task 與既有 JSON 欄位維持可讀�
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
 | static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe file 會診斷；不需要 `ssh` process 或 network |
 | SSH effective values、fresh probe、bootstrap 與 fleet transport | system `ssh` client | static `ssh list`、dry-run 與 local config plan 仍可使用；effectful SSH operation 以 capability guidance 失敗 |
+| explicit Tailscale peer discovery | optional local `tailscale` CLI 及 available daemon | 該 source unavailable；普通 SSH、cached inventory 與 explicit LAN discovery 仍可使用 |
+| canonical machine registry | linked `modernc.org/sqlite` | 不需要 external database executable；registry 缺失時只有 empty read-only view，明確 enroll 才建立 |
 | public companion derivation 與 Ed25519 generation | system `ssh-keygen` | 仍可使用 existing validated `.pub`；derivation/generation unavailable |
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX target 仍可用；沒有 PowerShell 時 Windows-specific installer/launcher 失敗，不改用 shell fallback |
 | Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
@@ -443,6 +445,80 @@ Feedback 新增 schema-v1 draft、issue preview/result、repair plan/result JSON
 寫入前檢查 issue target/content revision 與 repair plan；發布結果 unknown 必須
 先查核。`feedback-fix` 要求已驗證的 HOT task/checkout，啟動時必須明確指定 agent
 profile。既有 start 預設與 JSON 不變。
+
+## Machine registry 與 optional discovery
+
+SSH dashboard 及明確擴展的 `ssh list` 會合併 local connection profiles、canonical
+machine bindings 與帶時間的 source observations。Tailscale executable 是 optional，
+`doctor` 只檢查是否存在。CLI／daemon 資料缺失不會停用普通 SSH 或 LAN discovery。
+沒有 discovery flags 的 `ssh list` 與 alias completion 保留 static 契約；
+`--tailscale` 明確讀取 local daemon status，`--lan` 只讀 cache，不掃描。
+
+LAN discovery 使用原生實作，沒有外部 scanner dependency，只接受 bounded on-link
+IPv4 ranges／ports。尚未提供 mDNS、IPv6 range scan、自動掃描或根據 hostname 自動
+合併 identity。Open port、SSH banner、Tailscale online state、reverse-DNS name 都
+不能證明 authentication。
+
+`paths.state_dir/machines/registry.db` 是 private durable SQLite store，使用已有的
+Go driver，不需要外部 sqlite executable。Registry UUID 是 controller-local grouping
+ID，不能取代 remote `machine_id` pin。Explicit unlink／merge 只改 registry 關聯；
+來源變更保留 stale／unresolved。Discovery cache 可清除，registry 則不是 cache。
+Source-aware setup 保留 native host-key policy，Tailscale policy authentication
+使用 `--auth existing`；不會 enable Tailscale SSH 或管理它的 ACL。詳見
+[SSH onboarding](../guides/ssh-hosts.zh-TW.md)。
+
+## SSH key inventory 與 permission preflight
+
+`ssh key list` 預設不需要 alias／OpenSSH evaluation；agent enumeration 可用
+`--no-agent` 略過。明確 `--alias` 才透過 `ssh -G` 執行 configured Match exec／resolver。
+Public-only candidates、unavailable agent、unsafe path、incomplete scan 都保留限制
+資訊；不列出 private-key contents，兩種 catalog mode 都不 repair 或 install。
+
+Setup wizard 只對 canonical SSH setup paths 及選定 key／companions 提供 exact、
+reviewed tightening。無關檔案、ownership change、不安全 link／metadata 仍需手動。
+自動 mode tightening 限 macOS/Linux；Windows 驗證既有 ACL，repair 仍手動。
+後續取消也保留 completed repairs；permission stage 在主要 onboarding plan 前另外
+確認。Optional registration 可確認零個 checkbox，與取消不同；必要 host／source
+多選維持原本 cancellation 行為。
+
+## 獨立 SSH key doctor
+
+`ssh key doctor` 只做 bounded local metadata reads，不依賴 ssh、ssh-keygen、agent
+或 alias。即使可以修復，預設 report 也不 mutation。`--key` 明確限制 scope；
+`--fix` 是另外確認的 action，使用 setup 相同的窄範圍 permission core。Incomplete／
+blocked scan 阻止整個 fix；post-repair verification 保留 partial／unknown outcomes。
+不新增 ownership repair、ACL rewrite、key-file content repair、recursive chmod 或
+remote credential management。
+
+
+## Remote SSH profiles 與 credential providers
+
+SSH remote v1 helpers 與 local-files protocol 分開。Capability 可初始化 remote user
+的 dev UUID，但不更新 configured trust pin 或 controller canonical registry。
+Static export 不需 agent／SSH evaluation；selected resolve／key operations 為明確操作。
+Remote dev 缺少／過舊只影響該 source，passive listing 可保留 stale cache。
+
+Imported local aliases 使用 controller keys 與 host-key policy；remote-native connect
+在 source 使用並重驗自己的 key fingerprint。兩者都不轉移 private key、forward agent，
+或重試已執行 session。Windows helper arguments 仍限制在 allowlist 並以資料編碼。
+Public companion derivation 是 SSH operation lock 內的本機 no-replace write，passphrase
+仍由 native ssh-keygen 處理。
+
+Password saving 為 optional，需相符的 controller authentication evidence。預設
+system backend 使用 macOS Security framework、Windows Credential Manager 或可用的
+Linux Secret Service；Bitwarden 使用已安裝且解鎖的 CLI。Provider missing／locked
+不妨礙 key-based SSH，也不允許 plaintext fallback。Credential TOML 只含 scoped
+policy／references；unknown write 不允許盲目重試。Explicit fleet password sources
+保有優先權。Credential／SSH-key vault migration、YubiKey provisioning、Apple Passwords
+export 不包含在這次功能中。
+
+一般 native session 保留其餘 user SSH behavior。Private temporary password／exact-key
+configuration 保留 supported settings，並拒絕 LocalCommand、port forwarding、SetEnv 與
+含 `%` expansion 的 RemoteCommand。
+
+未選 key 的 native-only ProxyCommand session 可在 fresh static／effective source 檢查後
+連線，不產生 reconstructed route／proof authority；opaque route import、cycles 與
+不支援的 selected-key flows 仍拒絕。
 
 ## Repository hygiene
 

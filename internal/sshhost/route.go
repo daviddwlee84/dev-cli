@@ -64,9 +64,10 @@ type RouteHop struct {
 // Route is ordered outermost-first and ends with the requested target. Its
 // unexported state binds exact execution destinations to this Service.
 type Route struct {
-	Alias          string     `json:"alias"`
-	Hops           []RouteHop `json:"hops"`
-	TargetRemoteOS RemoteOS   `json:"target_remote_os"`
+	Alias          string       `json:"alias"`
+	Hops           []RouteHop   `json:"hops"`
+	TargetRemoteOS RemoteOS     `json:"target_remote_os"`
+	Diagnostics    []Diagnostic `json:"diagnostics,omitempty"`
 	state          *routeState
 }
 
@@ -104,31 +105,72 @@ type jumpSpec struct {
 	port      int
 }
 
-func (s *Service) effectiveRouteHop(ctx context.Context, spec jumpSpec) (EffectiveConfig, error) {
-	if spec.user == "" && spec.port == 0 {
-		return s.Effective(ctx, spec.host)
-	}
-	args := []string{"-G"}
-	if spec.user != "" {
-		args = append(args, "-l", spec.user)
-	}
-	if spec.port != 0 {
-		args = append(args, "-p", strconv.Itoa(spec.port))
-	}
-	args = append(args, spec.host)
-	return s.evaluateSSHConfig(
-		ctx,
-		spec.host,
-		args,
-		"ssh -G explicit route hop",
-		"evaluate explicit SSH route hop",
-		false,
-	)
+// RouteInvocation is one local OpenSSH invocation. An explicit comma-list
+// prefix overrides the hop's configured ProxyJump, just like ssh -J.
+type RouteInvocation struct {
+	Alias             string `json:"alias"`
+	User              string `json:"user,omitempty"`
+	Port              int    `json:"port,omitempty"`
+	ProxyJump         string `json:"proxy_jump,omitempty"`
+	OverrideProxyJump bool   `json:"override_proxy_jump,omitempty"`
 }
 
-// ResolveRoute is explicitly effectful: it invokes plain ssh -G independently
-// for the target and every discovered ProxyJump host.
+// EffectiveResolver supplies reviewed/planned effective configuration. The pure
+// resolver never invokes OpenSSH or reads files itself. Callers decide whether
+// their resolver uses static snapshots or explicit native -G evaluation.
+type EffectiveResolver func(context.Context, RouteInvocation) (EffectiveConfig, error)
+
+func (s *Service) effectiveRouteInvocation(ctx context.Context, invocation RouteInvocation) (EffectiveConfig, error) {
+	if invocation.User == "" && invocation.Port == 0 && !invocation.OverrideProxyJump {
+		return s.Effective(ctx, invocation.Alias)
+	}
+	args := []string{"-G"}
+	if invocation.User != "" {
+		args = append(args, "-l", invocation.User)
+	}
+	if invocation.Port != 0 {
+		args = append(args, "-p", strconv.Itoa(invocation.Port))
+	}
+	if invocation.OverrideProxyJump {
+		args = append(args, "-J", invocation.ProxyJump)
+	}
+	args = append(args, invocation.Alias)
+	return s.evaluateSSHConfig(ctx, invocation.Alias, args, "ssh -G explicit route hop", "evaluate explicit SSH route hop", false)
+}
+
+// ResolveInvocation evaluates one invocation with native ssh -G, including
+// explicit ProxyJump/user/port overrides. It is never a static discovery read.
+func (s *Service) ResolveInvocation(ctx context.Context, invocation RouteInvocation) (EffectiveConfig, error) {
+	if err := validateRouteLookupAlias(invocation.Alias); err != nil {
+		return EffectiveConfig{}, err
+	}
+	if invocation.User != "" && !validJumpUser(invocation.User) || invocation.Port < 0 || invocation.Port > 65535 {
+		return EffectiveConfig{}, ErrUnsupportedRoute
+	}
+	if invocation.OverrideProxyJump {
+		if _, err := parseProxyJump(invocation.ProxyJump); err != nil {
+			return EffectiveConfig{}, err
+		}
+	}
+	return s.effectiveRouteInvocation(ctx, invocation)
+}
+
+// ResolvePlannedRoute checks a proposed route without creating execution
+// authority. Its result cannot be passed to Bootstrap as a resolved Route.
+func ResolvePlannedRoute(ctx context.Context, request RouteRequest, resolver EffectiveResolver) (Route, error) {
+	if resolver == nil {
+		return Route{}, errors.New("route effective resolver is required")
+	}
+	return resolveRoute(ctx, request, resolver, 0, false)
+}
+
+// ResolveRoute explicitly invokes native ssh -G for each scoped invocation.
+// Its result is service-bound and freshly revalidated before Bootstrap.
 func (s *Service) ResolveRoute(ctx context.Context, request RouteRequest) (Route, error) {
+	return resolveRoute(ctx, request, s.effectiveRouteInvocation, s.id, true)
+}
+
+func resolveRoute(ctx context.Context, request RouteRequest, resolver EffectiveResolver, serviceID uint64, revalidate bool) (Route, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -166,36 +208,66 @@ func (s *Service) ResolveRoute(ctx context.Context, request RouteRequest) (Route
 	}
 
 	active := make(map[string]bool)
-	appended := make(map[string]bool)
 	var resolved []routeHopState
-	var visit func(jumpSpec, bool) error
-	visit = func(spec jumpSpec, target bool) error {
+	var visit func(jumpSpec, []jumpSpec, bool, int) error
+	visit = func(spec jumpSpec, prefix []jumpSpec, target bool, depth int) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		key := foldAlias(spec.host)
-		if active[key] || appended[key] {
-			return fmt.Errorf("ProxyJump cycle or repeated hop at %q: %w", spec.host, ErrUnsupportedRoute)
-		}
-		if len(active) >= maxDepth || len(resolved) >= maxDepth {
+		if depth >= maxDepth || len(resolved) >= maxDepth {
 			return fmt.Errorf("ProxyJump route exceeds depth %d: %w", maxDepth, ErrUnsupportedRoute)
 		}
-		active[key] = true
-		defer delete(active, key)
-
-		effective, err := s.effectiveRouteHop(ctx, spec)
+		invocation := RouteInvocation{Alias: spec.host, User: spec.user, Port: spec.port}
+		if len(prefix) > 0 {
+			invocation.OverrideProxyJump = true
+			for _, jump := range prefix {
+				if invocation.ProxyJump != "" {
+					invocation.ProxyJump += ","
+				}
+				invocation.ProxyJump += jump.reference
+			}
+		}
+		effective, err := resolver(ctx, invocation)
 		if err != nil {
 			return err
 		}
-		if proxyCommandEnabled(effective) {
-			return fmt.Errorf("ProxyCommand is not supported for %q: %w", spec.host, ErrUnsupportedRoute)
+		if !equalAlias(effective.Alias, spec.host) {
+			return fmt.Errorf("effective resolver returned a different route alias: %w", ErrUnsupportedRoute)
 		}
-		jumps, err := parseProxyJump(effective.ProxyJump)
-		if err != nil {
-			return fmt.Errorf("parse ProxyJump for %q: %w", spec.host, err)
+		user, port := effective.User, effective.Port
+		if spec.user != "" {
+			user = spec.user
 		}
-		for _, jump := range jumps {
-			if err := visit(jump, false); err != nil {
+		if spec.port != 0 {
+			port = spec.port
+		}
+		// Explicit comma prefixes form finite invocations even when a host is
+		// revisited. An inherited invocation recursively reaching itself is a
+		// true cycle. Do not include an ever-growing prefix in this key.
+		key := foldAlias(spec.host)
+		invocationKey := fmt.Sprintf("%s\x00%s\x00%d\x00%t", key, user, port, invocation.OverrideProxyJump)
+		if !invocation.OverrideProxyJump && active[invocationKey] {
+			return fmt.Errorf("ProxyJump cycle at %q: %w", spec.host, ErrUnsupportedRoute)
+		}
+		if !invocation.OverrideProxyJump {
+			active[invocationKey] = true
+			defer delete(active, invocationKey)
+		}
+		var jumps []jumpSpec
+		if invocation.OverrideProxyJump {
+			jumps = prefix
+		} else {
+			if proxyCommandEnabled(effective) {
+				return fmt.Errorf("ProxyCommand is not supported for %q: %w", spec.host, ErrUnsupportedRoute)
+			}
+			jumps, err = parseProxyJump(effective.ProxyJump)
+			if err != nil {
+				return fmt.Errorf("parse ProxyJump for %q: %w", spec.host, err)
+			}
+		}
+		if len(jumps) > 0 {
+			last := len(jumps) - 1
+			if err := visit(jumps[last], jumps[:last], false, depth+1); err != nil {
 				return err
 			}
 		}
@@ -213,14 +285,6 @@ func (s *Service) ResolveRoute(ctx context.Context, request RouteRequest) (Route
 				remoteOS = targetOS
 			}
 		}
-		user := effective.User
-		if spec.user != "" {
-			user = spec.user
-		}
-		port := effective.Port
-		if spec.port != 0 {
-			port = spec.port
-		}
 		reference := spec.reference
 		if reference == "" {
 			reference = spec.host
@@ -236,11 +300,10 @@ func (s *Service) ResolveRoute(ctx context.Context, request RouteRequest) (Route
 			safe: hop, destination: spec.host, explicitUser: spec.user, explicitPort: spec.port,
 			effective: cloneEffective(effective),
 		})
-		appended[key] = true
 		return nil
 	}
 
-	if err := visit(jumpSpec{reference: request.Alias, host: request.Alias}, true); err != nil {
+	if err := visit(jumpSpec{reference: request.Alias, host: request.Alias}, nil, true, 0); err != nil {
 		return Route{}, err
 	}
 	for key, name := range overrideNames {
@@ -250,6 +313,25 @@ func (s *Service) ResolveRoute(ctx context.Context, request RouteRequest) (Route
 	}
 	if len(resolved) == 0 || !resolved[len(resolved)-1].safe.Target {
 		return Route{}, errors.New("resolved route has no target")
+	}
+	invocations := make(map[string]bool)
+	declaredHosts := make(map[string]bool)
+	var diagnostics []Diagnostic
+	for _, state := range resolved {
+		hop := state.safe
+		key := fmt.Sprintf("%s\x00%s\x00%d", foldAlias(hop.Alias), hop.User, hop.Port)
+		if invocations[key] {
+			return Route{}, fmt.Errorf("repeated_invocation: ProxyJump repeats %q with the same user and port: %w", hop.Alias, ErrUnsupportedRoute)
+		}
+		invocations[key] = true
+		hostKey := strings.TrimSuffix(strings.ToLower(hop.HostName), ".")
+		if address := net.ParseIP(hostKey); address != nil {
+			hostKey = address.String()
+		}
+		if hostKey != "" && declaredHosts[hostKey] {
+			diagnostics = append(diagnostics, Diagnostic{Code: "machine_revisited", Message: "Route revisits a declared host through a distinct user, port or alias; connection profiles remain separate."})
+		}
+		declaredHosts[hostKey] = true
 	}
 	var outerReferences []string
 	for index := range resolved {
@@ -269,7 +351,7 @@ func (s *Service) ResolveRoute(ctx context.Context, request RouteRequest) (Route
 	if resolved[len(resolved)-1].safe.RemoteOS != RemoteOSUnknown {
 		targetOS = resolved[len(resolved)-1].safe.RemoteOS
 	}
-	route := Route{Alias: request.Alias, TargetRemoteOS: targetOS}
+	route := Route{Alias: request.Alias, TargetRemoteOS: targetOS, Diagnostics: diagnostics}
 	for _, hop := range resolved {
 		route.Hops = append(route.Hops, hop.safe)
 	}
@@ -278,13 +360,14 @@ func (s *Service) ResolveRoute(ctx context.Context, request RouteRequest) (Route
 	resolvedRequest.MaxDepth = maxDepth
 	resolvedRequest.OSOverrides = append([]RemoteOSOverride(nil), request.OSOverrides...)
 	state := &routeState{
-		serviceID: s.id, safe: safe, hops: append([]routeHopState(nil), resolved...),
-		request: resolvedRequest, revalidate: true,
+		serviceID: serviceID, safe: safe, hops: append([]routeHopState(nil), resolved...),
+		request: resolvedRequest, revalidate: revalidate,
 	}
-	route.state = state
+	if serviceID != 0 {
+		route.state = state
+	}
 	return route, nil
 }
-
 func validateRouteLookupAlias(alias string) error {
 	if err := ValidateLookupAlias(alias); err != nil {
 		return err
@@ -426,6 +509,7 @@ func validRouteHop(hop RouteHop) bool {
 func cloneRoute(route Route) Route {
 	copy := route
 	copy.Hops = append([]RouteHop(nil), route.Hops...)
+	copy.Diagnostics = append([]Diagnostic(nil), route.Diagnostics...)
 	copy.state = nil
 	return copy
 }
