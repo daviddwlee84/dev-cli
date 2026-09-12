@@ -324,3 +324,30 @@ func TestRemovalEnvironmentExcludesCheckoutAndRelativeSearch(t *testing.T) {
 		t.Fatal("unsafe interpreter search retained")
 	}
 }
+
+func TestRemovalRejectsProviderNameRewriting(t *testing.T) {
+	for _, name := range []string{"demo--skill", "demo.", "demo-", strings.Repeat("a", 256)} {
+		if exactRemovalName(name) {
+			t.Errorf("provider would rewrite %q", name)
+		}
+	}
+	for _, name := range []string{"demo-skill", "demo.skill", "demo_skill"} {
+		if !exactRemovalName(name) {
+			t.Errorf("canonical name rejected: %q", name)
+		}
+	}
+	removalProvider(t)
+	root := initRepository(t)
+	row := managedFixture(t, root, "demo--skill")
+	writeSkill(t, filepath.Join(root, ".agents", "skills", "demo-skill"), "demo-skill", "unrelated")
+	ops := PrepareRemovals(t.Context(), []Skill{row}, removalAgents(row))
+	if len(ops) != 1 || ops[0].Blocked == "" {
+		t.Fatal("rewritten folder name authorized")
+	}
+	if result := ApplyManagement(t.Context(), ops, nil); result.Outcomes[0].Status != "skipped" {
+		t.Fatal(result)
+	}
+	if _, err := os.Stat(filepath.Join(root, ".agents", "skills", "demo-skill")); err != nil {
+		t.Fatal("unselected normalized destination changed")
+	}
+}

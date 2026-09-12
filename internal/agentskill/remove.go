@@ -86,7 +86,7 @@ func PrepareRemovals(ctx context.Context, rows []Skill, agents []string) []Manag
 			continue
 		}
 		if op.Blocked == "" {
-			if row.Lock == nil || row.ManagedBy != ManagedBySkills || row.Presence != PresencePresent || !regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`).MatchString(name) {
+			if row.Lock == nil || row.ManagedBy != ManagedBySkills || row.Presence != PresencePresent || !exactRemovalName(name) {
 				op.Blocked = "removal requires an installed, unambiguous native-lock-managed skill"
 			} else if _, err := installedFingerprint(ctx, row, true); err != nil {
 				op.Blocked = err.Error()
@@ -130,6 +130,16 @@ func PrepareRemovals(ctx context.Context, rows []Skill, agents []string) []Manag
 		sealOperation(ctx, op)
 	}
 	return ops
+}
+
+// Native skills sanitizes lock keys before filesystem removal. Only pass names
+// whose supported ASCII spelling is already its exact canonical folder name.
+func exactRemovalName(name string) bool {
+	if len(name) > 255 || !regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`).MatchString(name) {
+		return false
+	}
+	normalized := regexp.MustCompile(`[^a-z0-9._]+`).ReplaceAllString(name, "-")
+	return strings.Trim(normalized, ".-") == name
 }
 
 func removalPaths(ctx context.Context, row Skill, agents []string) ([]removalPath, error) {
