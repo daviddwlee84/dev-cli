@@ -8,7 +8,7 @@ description: Use dev for repository discovery and setup, task and worktree lifec
 Git owns durable code; worktrees are local checkouts; runtimes are host-local
 sessions; dev records task intent.
 
-## Discover only what you need
+## Discover what you need
 
 Use `dev <command> --help` for current syntax and flags, and `dev help <topic>`
 for workflow explanations. `dev --help` lists commands; `dev help` lists topics.
@@ -30,11 +30,11 @@ Do not preload manuals, repeat `dev --skill`, or run diagnostics for every task.
   cleanup authority. Resolve the reported conditions; do not improvise force
   removal or bypass trust checks.
 
-## Read a matching reference for advanced operations
+## Read a reference for advanced operations
 
 - Worktree provisioning or cross-host lifecycle: [ownership](references/worktree-ownership.md), [lifecycle](references/task-lifecycle.md).
 - Parallel agent launches or prompt transports: [agents](references/parallel-agents.md), [handoffs](references/prompt-handoffs.md).
-- AI history retention, reviewed knowledge and packaging: [artifacts](references/ai-artifacts.md).
+- History retention: [artifacts](references/ai-artifacts.md).
 - Agent completion or cleanup batches: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
 - Repository hygiene batches, scans or redaction: [hygiene](references/hygiene.md).
 - Repository hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
@@ -43,7 +43,7 @@ Do not preload manuals, repeat `dev --skill`, or run diagnostics for every task.
 - Skill/MCP/instruction transfers, updates or removal: [transfers](references/agent-interop.md), [maintenance](references/skills-management.md).
 - Recursive Git children: [submodules](references/submodules.md).
 
-For everyday operations, use command help and its suggested workflow topic.
+Use command help and its workflow topic for everyday operations.
 
 ## Unexpected dev failures
 
