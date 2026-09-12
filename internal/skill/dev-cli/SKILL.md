@@ -34,6 +34,7 @@ Do not preload manuals, repeat `dev --skill`, or run diagnostics for every task.
 
 - Worktree provisioning or cross-host lifecycle: [ownership](references/worktree-ownership.md), [lifecycle](references/task-lifecycle.md).
 - Parallel agent launches or prompt transports: [agents](references/parallel-agents.md), [handoffs](references/prompt-handoffs.md).
+- AI history retention, reviewed knowledge and packaging: [artifacts](references/ai-artifacts.md).
 - Agent completion or cleanup batches: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
 - Repository hygiene batches, scans or redaction: [hygiene](references/hygiene.md).
 - Repository hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).

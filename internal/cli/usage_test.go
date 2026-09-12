@@ -95,14 +95,17 @@ func TestArgumentCountErrorSurvives(t *testing.T) {
 func TestHelpResolvesCommandNamesToTopics(t *testing.T) {
 	cfg := filepath.Join(t.TempDir(), "missing.toml")
 	for command, wantHeading := range map[string]string{
-		"wt":      "# Worktrees",
-		"tries":   "# Tries and experiments",
-		"skill":   "# Agent skills",
-		"note":    "# Repository quick notes",
-		"retire":  "# Agent-safe retirement",
-		"fleet":   "# Remote fleet",
-		"ssh":     "# SSH hosts",
-		"prepare": "# Agent-safe retirement",
+		"wt":           "# Worktrees",
+		"tries":        "# Tries and experiments",
+		"skill":        "# Agent skills",
+		"note":         "# Repository quick notes",
+		"retire":       "# Agent-safe retirement",
+		"fleet":        "# Remote fleet",
+		"ssh":          "# SSH hosts",
+		"prepare":      "# Agent-safe retirement",
+		"artifact":     "# AI artifacts:",
+		"specstory":    "# AI artifacts:",
+		"ai-artifacts": "# AI artifacts:",
 	} {
 		t.Run(command, func(t *testing.T) {
 			out, _, err := runCLI(t, "--config", cfg, "help", command)

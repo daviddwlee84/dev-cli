@@ -60,6 +60,7 @@ plugins:
             Parallel Agents and Runtimes: 平行 Agent 與 Runtime
             Agent Configuration Interoperability: Agent 設定互通
             SSH Host Onboarding: SSH Host 設定與佈建
+            AI Artifacts: AI 產物
             Repository Hygiene: Repository Hygiene
             Manual Hygiene Dogfood: 人工 Hygiene Dogfood
             Feedback and Repair: Feedback 與修復
@@ -144,6 +145,7 @@ nav:
       - Skills Management: guides/skills-management.md
       - SSH Host Onboarding: guides/ssh-hosts.md
       - Feedback and Repair: guides/feedback.md
+      - AI Artifacts: guides/ai-artifacts.md
       - Repository Hygiene: guides/hygiene.md
       - Remote Repository Fleet: guides/remote-fleet.md
       - Dotfiles: guides/dotfiles.md

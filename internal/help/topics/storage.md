@@ -73,3 +73,6 @@ one, and `all` includes both. Management receipts under `<state_dir>/skills/runs
 are operation records. Heatmap backfill checkpoints live with durable stats;
 clearing Git stats resets the matching checkpoints, while cache clearing does
 not touch activity or receipts.
+
+For history retention, reviewed knowledge and source-package boundaries, see
+`dev help ai-artifacts`.

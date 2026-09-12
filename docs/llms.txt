@@ -27,6 +27,7 @@
 - [Skills management](https://daviddwlee84.github.io/dev-cli/guides/skills-management/): Manage project and global skills with scoped checks, reviewed updates, and native lock restoration.
 - [SSH host onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/): Discover OpenSSH aliases, manage only dev-owned host fragments, bootstrap public-key access, and explicitly register verified hosts in dev fleet.
 - [Feedback and isolated repair](https://daviddwlee84.github.io/dev-cli/guides/feedback/): Prepare private local feedback, publish reviewed GitHub issues, and hand a verified isolated repair checkout to an explicitly selected agent.
+- [AI artifacts: what to keep, archive, and ship](https://daviddwlee84.github.io/dev-cli/guides/ai-artifacts/): Choose where agent history belongs, preserve useful decisions and keep transcripts out of source distributions.
 - [Repository hygiene](https://daviddwlee84.github.io/dev-cli/guides/hygiene/): Inspect repository hooks, scan secrets and personal data, and apply reviewed text replacements with private recovery.
 - [Remote repository fleet](https://daviddwlee84.github.io/dev-cli/guides/remote-fleet/): Inventory repositories over POSIX or Windows SSH hosts using merged fleet configuration, pin remote identity, safely fast-forward branches, and explicitly transfer bounded ignored files.
 - [Dotfiles](https://daviddwlee84.github.io/dev-cli/guides/dotfiles/): Discover chezmoi configuration, choose an optional platform-specific dotfiles preset, delegate native operations, and inspect selected fleet hosts.
@@ -85,6 +86,7 @@
 - [Skills 管理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/): Manage project and global skills with scoped checks, reviewed updates, and native lock restoration.
 - [SSH Host 設定與佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/): 探索 OpenSSH alias、只管理 dev-owned host fragment、佈建 public-key access，並將驗證成功的 host 明確登記到 dev fleet。
 - [Feedback 與隔離修復](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/feedback/): 建立私有本機 feedback、發布已檢視的 GitHub issue，並將已驗證的隔離修復工作區交接給明確選定的 agent。
+- [AI 產物：保存、封存與發行](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ai-artifacts/): 選擇 agent 歷史的保存位置、保留有效決策，並避免聊天進入原始碼發行包。
 - [Repository hygiene](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/): 檢查 repository hooks、掃描 secret 與個人資訊，並以私人恢復紀錄套用已檢視的文字替換。
 - [遠端 Repository Fleet](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/remote-fleet/): 透過 merged fleet configuration 盤點 POSIX 或 Windows SSH host、pin remote identity、安全 fast-forward branch，並明確傳送 bounded ignored files。
 - [Dotfiles](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dotfiles/): 辨識 chezmoi 設定、選擇平台適用的 dotfiles、委派原生操作，並檢查指定 fleet 主機。

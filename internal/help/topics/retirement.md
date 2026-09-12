@@ -98,3 +98,6 @@ prunes registrations, changes Claude metadata, or rescues/stashes/commits dirty
 work. The named branch survives by default, so unique commits remain recoverable.
 Deleting it is separate: `--delete-branches` requires explicit `--base`, unchanged
 tips, containment, zero unique commits, and ordinary `git branch -d`.
+
+For history retention, reviewed knowledge and source-package boundaries, see
+`dev help ai-artifacts`.
