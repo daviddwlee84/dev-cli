@@ -8,8 +8,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"syscall"
 
 	"github.com/daviddwlee84/dev-cli/internal/configedit"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
@@ -210,6 +212,23 @@ func (s *Service) PreviewMigration(ctx context.Context, o MigrationOptions) (Pla
 		}
 		p.FilterExecutable = binary
 		p.FilterDigest = hash(data)
+		firstLine, _, _ := bytes.Cut(data, []byte{'\n'})
+		if runtime.GOOS == "windows" && bytes.HasPrefix(firstLine, []byte("#!")) && bytes.Contains(bytes.ToLower(firstLine), []byte("python")) {
+			interpreter, e := exec.LookPath("python")
+			if e != nil {
+				return p.View, errors.New("Python is required to launch the installed git-filter-repo script on Windows")
+			}
+			interpreter, e = filepath.EvalSymlinks(interpreter)
+			if e != nil {
+				return p.View, e
+			}
+			executable, e := safefile.ReadStablePath(ctx, interpreter, 64<<20)
+			if e != nil {
+				return p.View, e
+			}
+			p.FilterInterpreter = interpreter
+			p.FilterInterpreterDigest = hash(executable)
+		}
 	}
 	p.View.Notices = append(p.View.Notices, "Backup covers frozen local refs and selected current artifact files; other uncommitted files, reflogs, unreachable objects, LFS payloads and submodule repositories are outside this backup.", "Raw backup content is not scanned or redacted. No source ref, remote or published tag will be rewritten.")
 	if o.Mode == "split" {
@@ -262,6 +281,12 @@ func (s *Service) ApplyMigration(ctx context.Context, id string, o ApplyOptions)
 			anchor, e := outputSlot(p.View.Output)
 			if e != nil || anchor != p.OutputAnchor {
 				return ErrStale
+			}
+			if p.FilterInterpreter != "" {
+				data, e := safefile.ReadStablePath(ctx, p.FilterInterpreter, 64<<20)
+				if e != nil || hash(data) != p.FilterInterpreterDigest {
+					return ErrStale
+				}
 			}
 			if p.FilterExecutable != "" {
 				data, e := safefile.ReadStablePath(ctx, p.FilterExecutable, 16<<20)
@@ -362,9 +387,29 @@ func (s *Service) ApplyMigration(ctx context.Context, id string, o ApplyOptions)
 					for _, path := range p.MigrationPaths {
 						args = append(args, "--path", path, "--path", path+"/")
 					}
-					r, e := (sshhost.ExecRunner{}).Run(ctx, sshhost.RunRequest{Name: p.FilterExecutable, Args: args, Dir: candidate, UnsetEnv: gitEnvNames(), Env: []string{"GIT_NO_LAZY_FETCH=1", "GIT_NO_REPLACE_OBJECTS=1"}, Display: "filter isolated artifact history"})
-					if e != nil || r.ExitCode != 0 {
-						return errors.New("history filtering failed; preserved original backup is unchanged")
+					if _, e = gitText(ctx, candidate, "config", "core.longpaths", "true"); e != nil {
+						return e
+					}
+					name := p.FilterExecutable
+					if p.FilterInterpreter != "" {
+						name = p.FilterInterpreter
+						args = append([]string{p.FilterExecutable}, args...)
+					}
+					r, e := (sshhost.ExecRunner{}).Run(ctx, sshhost.RunRequest{Name: name, Args: args, Dir: candidate, UnsetEnv: gitEnvNames(), Env: []string{"GIT_NO_LAZY_FETCH=1", "GIT_NO_REPLACE_OBJECTS=1"}, Display: "filter isolated artifact history"})
+					if e != nil {
+						var code syscall.Errno
+						if errors.As(e, &code) {
+							return fmt.Errorf("history filter launch failed (system code %d); original backup is unchanged", uint64(code))
+						}
+						return errors.New("history filter launch/cancellation failed; original backup is unchanged")
+					}
+					if r.ExitCode != 0 {
+						reason := "process error"
+						stderr := strings.ToLower(string(r.Stderr))
+						if strings.Contains(stderr, "too long") {
+							reason = "path length"
+						}
+						return fmt.Errorf("history filtering failed (exit %d, %s); original backup is unchanged", r.ExitCode, reason)
 					}
 					mapping, e := safefile.ReadStablePath(ctx, filepath.Join(candidate, "filter-repo", "commit-map"), maxRecordBytes)
 					if e != nil {

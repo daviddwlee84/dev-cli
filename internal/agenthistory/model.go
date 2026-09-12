@@ -119,6 +119,7 @@ type snapshot struct {
 	ScanInputs                                           string
 }
 type planRecord struct {
+	FilterInterpreter, FilterInterpreterDigest         string
 	CaptureToken                                       string
 	View                                               Plan
 	Root, Common, RootToken, PolicyToken, BindingToken string
