@@ -8,7 +8,7 @@ not mean the Git checkout is healthy.
 Use three separate milestones:
 
 1. **READY** — commit product work, run `dev prepare`, then exit normally so the
-   post-SpecStory finalizer can commit the exact final transcript. A manual
+   post-SpecStory finalizer can preserve the exact final transcript in its selected source-commit or external-archive destination. A manual
    external finalizer must pass `--writer-stopped`; a Claude SessionEnd observer
    can provide the same durable proof without staging during teardown.
 2. **MERGED** — `dev done --ff`, or external-merge verification with

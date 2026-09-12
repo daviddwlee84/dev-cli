@@ -1,13 +1,15 @@
 ---
 name: agent-history-hygiene
-description: Commit SpecStory chat transcripts (`.specstory/history/*.md`), Claude Code plan files (`.claude/plans/*.md`, `plansDirectory`), and other coding-agent artifacts (`.cursor/plans/`, `.cursor/rules/`, `.opencode/plans/`, `.specify/`, `.codex/`) alongside the feature diff they produced — without leaking `.env` contents, API keys, or private-key PEM blocks into git history. Use when the user says "commit my chat", "save this specstory session", "stage the plan file", "scrub the transcript", "my .env leaked in chat", "bootstrap pre-commit for this project", or when you notice untracked `.specstory/history/*.md` or `.claude/plans/*.md` files while running `git status`. Also use after an accidental push of a secret to enforce rotate-first, rewrite-last remediation instead of reflexive `git push --force`.
+description: Preserve and sanitize SpecStory chat transcripts (`.specstory/history/*.md`), Claude Code plan files (`.claude/plans/*.md`, `plansDirectory`), and other coding-agent artifacts (`.cursor/plans/`, `.cursor/rules/`, `.opencode/plans/`, `.specify/`, `.codex/`) according to repository retention policy — without leaking `.env` contents, API keys, or private-key PEM blocks into git history. Use when the user says "commit my chat", "save this specstory session", "stage the plan file", "scrub the transcript", "my .env leaked in chat", "bootstrap pre-commit for this project", or when you notice untracked `.specstory/history/*.md` or `.claude/plans/*.md` files while running `git status`. Also use after an accidental push of a secret to enforce rotate-first, rewrite-last remediation instead of reflexive `git push --force`.
 ---
 
 # Agent history hygiene
 
-Keep exact agent transcripts and plans with their feature, without publishing
-credentials or unwanted personal information. Repository protection must be
-verified from the effective hook chain, not inferred from installed tools.
+Preserve selected agent evidence under the repository's chosen policy. Read
+`dev help ai-artifacts` and `dev artifact status` when supported: source tracking,
+external archive, protection and distribution are separate choices. Commit
+reviewed project knowledge; do not force-add raw history under archive/unmanaged
+policy. Verify repository protection from the effective hook chain.
 
 ## Prefer the shared dev workflow
 
@@ -22,7 +24,7 @@ dev hygiene scan --scope staged --json
 dev hygiene scan --scope history --audit --timeout 40m --json
 ```
 
-`pre-commit` and `gitleaks` must be available. A global `core.hooksPath` can be
+`pre-commit` and `gitleaks` are needed for this repository hook recipe. An explicitly unscanned archive copy needs neither. A global `core.hooksPath` can be
 correct, but its script may skip all checks when repository configs are absent.
 The shared setup preserves existing hooks/comments and refuses an unverified
 chain. Repository new/setup's `agent-history-hygiene` initializer uses this same
@@ -42,14 +44,15 @@ all regular text, rather than treating transcripts as the only leak surface.
 
 1. Identify the exact provider/session UUID from the transcript preamble. Never
    select another session just because its file is newest.
-2. Commit product changes and exact plans. Do not broadly stage every agent
-   directory when multiple writers exist.
+2. Commit product changes and reviewed plans. Follow the selected retention
+   policy for raw history; do not broadly stage every agent directory.
 3. Use `dev prepare --session provider:uuid` and finalization after its writer
    exits when that lifecycle applies. Byte stability alone is not writer proof.
 4. Scan exact staged content. Partial staging must not accidentally stage
    unrelated working-copy edits.
-5. Keep histories visible to Git; only derived statistics and machine-local
-   identity are ignored. Avoid blanket `.specstory/` ignores.
+5. In archive mode, raw history may be ignored but must be preserved before
+   checkout disposal. In track mode, retain the existing exact-session workflow.
+   Exclude conversation evidence from product source archives independently.
 
 Do not close, restart or spawn agents to make hygiene checks pass without the
 applicable authorization. A new agent without SpecStory does not stop an older
@@ -68,6 +71,26 @@ modified or partial plans are not authority to overwrite current data. Keep
 private recovery and rerun scans/tests after source or configuration changes.
 The running transcript is left for a manual external trigger after its writer
 stops. No automatic history rewrite, agent launch, commit, push or cleanup occurs.
+
+## External archive workflow
+
+`dev artifact setup` and `dev repo setup --artifacts` preview explicit per-repo
+policy. `archive --session provider:uuid` or `--file` creates reviewed snapshots;
+apply only after the exact recorder exits. Off/check/redact affect the copy,
+not the live source or its index. A disabled scan is recorded as skipped.
+Checked snapshots produce masked finding IDs for reasoned fixture exceptions.
+
+Commit reviewed plans with product work before `dev prepare`. New archive intents
+bind the destination and policy; redact finalization requires a reviewed
+`--archive-plan`. Old tracked intents retain the compatibility scripts below.
+Keep those installations while any tracked workflow still depends on them.
+
+`artifact find` reads local committed archive records. Sync and original-backup
+publication are explicit Git operations; they never transfer native session DBs.
+`artifact migrate` can untrack after verified backup or build separate original,
+history and filtered Git copies with commit maps. It never force-pushes source
+refs. For historical exposure, use the remediation section rather than treating
+path removal as a secret audit. Private raw recovery is not cache.
 
 ## Legacy scripts
 

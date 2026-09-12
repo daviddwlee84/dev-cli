@@ -127,3 +127,24 @@ output, index/config preservation and a clean commit. Its detector fixtures are
 constructed at runtime; even a source-code concatenation can resemble a quoted
 password, so the corpus builders avoid shipping those false-positive shapes.
 Full published-history cleanup remains the separate post-writer phase above.
+
+## Agent history archive and migration dogfood
+
+On 2026-09-12, an isolated full clone frozen at v0.2.32 exercised the new
+archive/split workflow with no recorder attached. The canonical checkout's
+live histories and source refs were not modified.
+
+| Check | Observed result |
+|---|---|
+| Frozen history corpus | 60 files, 427,925,000 bytes |
+| Largest verified raw snapshot | 70,527,168 bytes |
+| Explicit protection policy | off; no secret/privacy scan claimed |
+| Archive and session lookup | verified; 33.18 seconds on this host |
+| Original bundle restore and both history projections | verified; 196.22 seconds |
+| Source clone HEAD and index | unchanged |
+
+These timings describe one host and frozen input, not a performance guarantee.
+The archive keeps original bytes. The split produces separate original/history/
+filtered repositories and commit maps; it does not replace the real remote.
+The full historical secret audit remains a separate operation and is not made
+complete by this structural migration check.

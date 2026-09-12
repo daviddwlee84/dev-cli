@@ -545,6 +545,12 @@ keeping uncertainty separate from human intent. Cache deletion leaves identities
 and bindings intact. The eighth SSH dashboard view shows connections; FLEET still
 shows remote repositories/tasks. See [SSH onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#discovery-and-canonical-machines).
 
+Agent transcript retention is independent of source Git and distribution. An
+explicit archive policy keeps copies in a separate Git checkout, with private
+local plans/recovery and portable project/session/commit metadata. Ignored capture
+files remain durable evidence until verified; cleanup rechecks that proof. Read
+[AI artifacts](https://daviddwlee84.github.io/dev-cli/guides/ai-artifacts/) before choosing retention or migration.
+
 ---
 
 ### Isolation boundaries and glossary
@@ -3024,6 +3030,137 @@ file remains tracked after adding `.gitignore`: removing it from the index is a
 separate reviewed operation. Keep or archive ignored history before deleting its
 worktree; ignored does not mean disposable or backed up.
 
+## Choose and apply repository policy
+
+No policy means existing behavior is unchanged. `track` retains the existing
+source-commit finalizer, `archive` preserves selected evidence in a separate Git
+checkout, and `unmanaged` leaves retention to the user. Sources are `specstory`
+(recorder Markdown) or `files` (explicit source-relative exports/plans).
+
+```bash
+# Create the ordinary archive repository separately; configure its Git identity.
+git init -b main /path/to/history
+# Explicit private raw preservation; choose check or redact when wanted.
+dev artifact setup --mode archive --source specstory --archive /path/to/history \
+  --protection off --json
+dev artifact setup --apply --plan <id> --yes
+dev artifact status
+# The same planner through repository setup:
+dev repo setup --artifacts --mode unmanaged --json
+```
+
+Setup edits only reviewed policy, local binding, ignore and export files; it
+never untracks, commits, pushes or installs tools. `repo setup --artifacts` is
+separate from a scaffold plan. Apply there with `--artifacts --apply --plan <id>
+--yes`. Review and commit shared policy changes yourself.
+
+The shareable `.dev-cli/artifacts.toml` contains the stable project ID, retention
+mode, source and literal paths. The archive path and protection binding stay in
+private host state. Bind a cloned project to the desired archive on each host;
+do not infer project identity from a folder basename or current branch.
+
+`--capture project` keeps normal per-worktree recorder output. `--capture external`
+sets a checkout-specific local SpecStory output directory outside Git. It requires
+untracked native config and enabled local Markdown export; tracked/complex config
+requires manual review. Run setup in each new external-capture checkout. Existing
+cloud settings and native session stores remain under SpecStory's control.
+
+## Preserve copies, then find them
+
+```bash
+dev artifact archive --session codex:<uuid> --json
+# Inspect the private review directory, then after the recorder exits:
+dev artifact archive --apply --plan <id> --yes --writer-stopped
+dev artifact find --session codex:<uuid>
+dev artifact find --commit <full-source-commit-id>
+dev artifact find 'literal search text' --all
+```
+
+For `--source files`, select exact configured paths with repeated `--file`.
+Inventory is bounded to 10,000 files and each operation to 256 selected files;
+current snapshots are limited to 128 MiB per file. Oversized or unsafe inputs
+fail explicitly. Search reads committed records on the archive's current branch;
+`--all` includes its other projects. Results contain locations and line numbers,
+not snippets; no network, native history crawl or agent resume occurs.
+
+Archive commits contain ordinary snapshot files and metadata under `projects/`.
+The metadata binds project/session, original and stored content digests and the
+source commit. Source files and source index bytes stay untouched. The project
+archive gets text/ident exclusions so CRLF and literal bytes survive Git; custom
+content filters such as encryption, LFS or encoding transforms require the
+archive's native workflow and are never silently bypassed. Existing Git hooks
+still run. Archive access controls and off-host backups remain the operator's
+responsibility.
+
+`off` saves raw input without a scanner. `check` uses enabled source-repository
+hygiene policy. `redact` proposes replacements on the copy and checks the result
+again. Disabled categories remain disabled; skipped is not clean. Blocking
+reports contain safe finding IDs for the existing `dev hygiene rules allow`
+workflow. Exact fixture exceptions need review and a reason. Snapshot scans
+support inline gitleaks rules and useDefault, not external rule-file includes.
+
+Unchanged bytes reuse signed local scan evidence only when the path, policy,
+exceptions, scanner inputs and executables match. Changed bytes or rules rescan.
+Partial scans never pass. Review original/copy payloads privately; raw recovery,
+reports and receipts stay under `paths.state_dir`, outside Git and cache clearing.
+Filenames and metadata can still identify people or systems: review before sharing.
+
+After committing product/policy changes, `dev prepare` also supports an archive
+policy. Off/check finalization creates the exact archive copy after writer exit.
+For redact, preview and review `artifact archive` first, then pass its ID to
+`artifact finalize --archive-plan <id> --writer-stopped`. Reviewed plans should
+be committed with product changes; prepared SpecStory archive handoffs select one
+exact transcript. Old intents keep their original destination and requirements.
+The tracked-history finalizer still uses the compatibility skill's scripts.
+
+Retirement checks signed archive receipts and current ignored capture bytes.
+New or changed evidence blocks cleanup until preserved. Local archive durability
+is distinct from remote sync; ordinary status and readiness never query a remote.
+
+## Explicit Git synchronization and original backups
+
+```bash
+dev artifact sync --push --json       # preview contacts the configured remote
+dev artifact sync --apply --plan <id> --yes
+dev artifact sync --pull --json       # separate pull preview; fast-forward only
+
+dev artifact migrate --mode untrack --path .specstory/history --json
+dev artifact migrate --apply --plan <id> --yes --writer-stopped
+
+dev artifact migrate --mode split --path .specstory/history --json
+dev artifact migrate --apply --plan <id> --yes
+# Optional: publish the original named refs to a separate empty destination.
+dev artifact backup <completed-migration-id> --remote <git-url> --json
+dev artifact backup --apply --plan <backup-plan-id> --yes
+```
+
+Untrack saves original refs and selected working files, edits ignore rules and
+removes only selected index entries. Other staged/unstaged work remains intact;
+existing prepared handoffs must be resolved first. Untracking does not itself
+configure future archive capture.
+
+Split requires git-filter-repo and complete local history. It produces verified
+`original.bundle`, `original.git`, `history.git`, `filtered.git`, both commit maps,
+selected working snapshots in `current/`, and a migration manifest. Every mapped
+tree is checked against the selected-path projection. Empty commits/merge topology
+and message bytes are retained; rewritten signatures cannot remain valid. A
+restore clone verifies the original bundle. Neither source refs nor remotes change.
+Raw backups are not a hygiene audit. Other worktrees' uncommitted files, reflogs,
+unreachable objects, LFS payloads and submodule repositories are outside coverage.
+Detached tips need a recovery ref before migration.
+
+Backup publication sends frozen named refs with empty-ref leases. Selected
+uncommitted working snapshots stay in local `current/`; they are not in the Git
+remote backup. Archive sync pins the reviewed destination and branch: push proves
+ancestry before an exact lease, pull only fast-forwards. Resolve divergence with
+native Git; dev does not force-overwrite or synthesize merges.
+
+Private operation ledgers retain partial effects, output and recovery paths.
+After interruption inspect those paths and the remote, then prepare a new plan;
+never blindly replay a partial operation. Original-remote cutover, release/tag
+migration and force-with-lease publication of filtered history are separate,
+operator-coordinated actions.
+
 ## Distribution, untracking and history migration
 
 | Action | Effect | Earlier commits |
@@ -3137,7 +3274,7 @@ The JSON batch preview contains exact child plan IDs; apply one with the existin
 The staged checker itself does not mutate files. Pre-commit can temporarily stash
 unstaged work, so wait for an artifact recorder to exit before committing its
 checkout. This migration does not replace the entire agent-history-hygiene
-lifecycle: `dev artifact finalize` still requires that skill's scripts. Keep those
+lifecycle: `dev artifact finalize` still requires that skill's scripts for existing tracked-history handoffs; configured external archives use native snapshot checks. Keep those
 installations and any active finalizer wiring until a separate replacement exists.
 
 ## Choose policy
@@ -3872,7 +4009,7 @@ A `dev` change stream reaches full retirement only after an external caller clos
 Completion is three separate milestones, and the persisted task state `done` now means the middle one, not the last:
 
 ```text
-READY     exact final transcript committed after the writer exits
+READY     exact transcript preserved in its chosen destination after writer exit
 MERGED    branch integrated; runtime/worktree may still exist
 RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 ```
@@ -3884,7 +4021,7 @@ RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 | Command | What it does |
 |---|---|
 | `dev prepare --session <provider:uuid> --plan <path>` | Arms post-writer artifact finalization without closing the running agent. Product changes must already be committed; the transcript itself is deliberately not staged yet. |
-| `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | Commits the one exact, stable transcript after its writer has stopped. `--if-pending` no-ops silently when no armed intent matches the run id; `--writer-stopped` confirms the outer wrapper has returned. |
+| `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | Preserves the exact stable transcript in the intent's source-commit or external-archive destination after its writer stops. `--if-pending` no-ops silently when no armed intent matches the run id; `--writer-stopped` confirms the outer wrapper has returned. |
 | `dev done --ff` | Rebases the task branch onto its base and fast-forwards it locally. Records MERGED; never closes the runtime, removes a worktree, or deletes a branch. |
 | `dev done --pr` | Pushes the branch and opens a pull/merge request through an available forge CLI. The task stays under review, not MERGED. |
 | `dev done --merged --base-ref <ref>` | Verifies an externally merged branch is contained in `<ref>` and records MERGED. |
@@ -4141,6 +4278,14 @@ a replacement program is not exempt. Old handoffs must be recreated. Final
 cancellation before Apply changes nothing; failures after effects begin list
 completed closures and retained resources. Raw Git and Herdr actions remain
 outside dev's locks and revalidation guarantees.
+
+## External history archives
+
+Configured archive mode uses the same post-writer handoff, preserving one exact
+SpecStory transcript in a separate Git checkout. Reviewed plans belong with the
+product commit. Redaction copies require a reviewed `--archive-plan`; old intents
+retain their source-commit lane. Cleanup verifies archive receipts and ignored
+capture bytes, and refuses changed or missing evidence. See [AI artifacts](https://daviddwlee84.github.io/dev-cli/guides/ai-artifacts/).
 
 ---
 
@@ -6259,7 +6404,7 @@ Use the authored map for intent and the embedded generated reference for exact f
 | Goal | Commands |
 |---|---|
 | task lifecycle | `start`, `park`, `resume`, `done`, `retire`, `sweep`, `ls`, `status` |
-| agent artifacts | `prepare`, `artifact finalize`, `artifact list`, `artifact discard` |
+| agent artifacts | `prepare`, `artifact status/setup/archive/find/migrate/sync/backup`, `artifact finalize/list/discard` |
 | guarded Git transactions | `git uncommit`, `git recommit`, `git pull-rebase`, `git amend-all`, `git setup` |
 | linked worktrees | `wt list`, `wt create`, `wt open`, `wt rm`, `wt plan`, `wt provision` |
 | repositories/remotes | `repo list`, `repo context`, `repo new`/`repo create`, `repo clone`, `repo setup`, `repo open`, `repo sync`, `repo remote`, `repo mark` |
@@ -6998,6 +7143,39 @@ Manage coding-agent transcripts and plans
 dev artifact
 ```
 
+### `dev artifact archive`
+
+Preserve selected history in an external Git archive
+
+```
+dev artifact archive [flags]
+```
+
+- `--apply` — commit the exact reviewed copies to the archive
+- `--file` — exact configured source-relative file (repeatable)
+- `--json` — emit structured metadata without transcript contents
+- `--plan` — reviewed archive plan ID
+- `--repo` — source repository or worktree (default: current directory)
+- `--session` — exact originating provider:uuid from the SpecStory preamble
+- `--timeout` — snapshot scan deadline
+- `--writer-stopped` — attest the exact recorder has exited before applying
+- `-y, --yes` — confirm the reviewed archive commit
+
+### `dev artifact backup`
+
+Publish a verified original Git backup to an empty remote
+
+```
+dev artifact backup [migration-plan] [flags]
+```
+
+- `--apply` — publish the reviewed original Git refs
+- `--json` — emit structured metadata without transcript contents
+- `--plan` — reviewed backup publication plan ID
+- `--remote` — empty destination Git URL or absolute local repository path
+- `--repo` — source repository or worktree (default: current directory)
+- `-y, --yes` — confirm the reviewed backup publication
+
 ### `dev artifact discard`
 
 Abandon one failed artifact handoff
@@ -7010,17 +7188,33 @@ dev artifact discard <intent> [flags]
 
 ### `dev artifact finalize`
 
-Commit one exact stable transcript after its writer exits
+Finalize a prepared session after its transcript writer stops
 
 ```
 dev artifact finalize [flags]
 ```
 
+- `--archive-plan` — reviewed archive plan for a prepared session (required for redaction copies)
 - `--if-pending` — silently succeed when no armed intent matches the run id
 - `--intent` — artifact intent id
 - `--run-id` — outer wrapper run id
 - `--settle` — required transcript stability interval
 - `--writer-stopped` — confirm the outer agent wrapper has returned before finalization
+
+### `dev artifact find`
+
+Find saved history by session, commit, or text
+
+```
+dev artifact find [text] [flags]
+```
+
+- `--all` — search all projects in this configured archive
+- `--commit` — full source commit ID
+- `--json` — emit structured metadata without transcript contents
+- `--limit` — maximum matching records (1–1000)
+- `--repo` — source repository or worktree (default: current directory)
+- `--session` — originating provider:uuid
 
 ### `dev artifact list`
 
@@ -7029,6 +7223,75 @@ List pending and completed artifact handoffs
 ```
 dev artifact list
 ```
+
+### `dev artifact migrate`
+
+Stop tracking history or build a filtered repository copy
+
+```
+dev artifact migrate [flags]
+```
+
+- `--apply` — apply the exact reviewed migration plan
+- `--json` — emit structured metadata without transcript contents
+- `--mode` — untrack or split (required)
+- `--output` — new output directory outside Git (default: private migration state)
+- `--path` — literal source-relative file/directory to extract (default: .specstory/history)
+- `--plan` — reviewed migration plan ID
+- `--repo` — source repository or worktree (default: current directory)
+- `--timeout` — deadline for backup/filter/verification
+- `--writer-stopped` — attest the selected artifact recorder has exited (required for untrack)
+- `-y, --yes` — confirm this migration without another prompt
+
+### `dev artifact setup`
+
+Choose where agent history is kept and what enters Git
+
+```
+dev artifact setup [flags]
+```
+
+- `--apply` — apply the exact reviewed setup plan
+- `--archive` — absolute path to a separate existing Git archive checkout
+- `--capture` — project or external (external requires local SpecStory config)
+- `--export-ignore` — exclude selected evidence from git archive source packages
+- `--json` — emit structured metadata without transcript contents
+- `--mode` — retention: track, archive or unmanaged (required on first setup)
+- `--path` — literal source-relative file/directory (repeatable; SpecStory defaults to .specstory/history)
+- `--plan` — reviewed setup plan ID
+- `--protection` — archive copy: off, check or redact (default: check)
+- `--repo` — source repository or worktree (default: current directory)
+- `--source` — capture source: specstory or files (detects existing SpecStory history)
+- `-y, --yes` — confirm applying the reviewed plan
+
+### `dev artifact status`
+
+Show how agent history is captured, stored, and protected
+
+```
+dev artifact status [flags]
+```
+
+- `--json` — emit structured metadata without transcript contents
+- `--repo` — source repository or worktree (default: current directory)
+
+### `dev artifact sync`
+
+Fetch or publish the configured Git archive
+
+```
+dev artifact sync [flags]
+```
+
+- `--apply` — apply the exact reviewed network plan
+- `--branch` — remote branch (must match the archive's current branch)
+- `--json` — emit structured metadata without transcript contents
+- `--plan` — reviewed sync plan ID
+- `--pull` — preview fetching and fast-forwarding the archive
+- `--push` — preview publication of archive commits
+- `--remote` — configured archive remote name
+- `--repo` — source repository or worktree (default: current directory)
+- `-y, --yes` — confirm applying the reviewed sync plan
 
 ### `dev bootstrap`
 
@@ -8567,20 +8830,25 @@ dev repo remote [query] [flags]
 
 ### `dev repo setup`
 
-Apply a scaffold to an existing repository
+Apply a scaffold or preview agent-history policy for a repository
 
 ```
 dev repo setup [repo-or-path] [flags]
 ```
 
 - `--agent` — agent targets for selected project skills
+- `--apply` — with --artifacts: apply the exact reviewed setup plan
+- `--archive` — with --artifacts: absolute path to a separate existing Git archive checkout
+- `--artifacts` — preview/apply agent-history policy instead of a scaffold
 - `--browse-skills` — open the upstream skills installer during setup
+- `--capture` — with --artifacts: project or external (external requires local SpecStory config)
 - `--check-in` — finish generated changes: auto, commit, stage or none
 - `--commit` — commit only the setup changes (requires a clean starting checkout)
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
 - `--enable` — enable a scaffold item by id (repeatable)
+- `--export-ignore` — with --artifacts: exclude selected evidence from git archive source packages
 - `--forge` — upstream provider: auto, github, gitlab or none
 - `--gitignore` — gitignore template (repeatable or comma-separated)
 - `--handoff` — afterwards: stay, cd, open or start
@@ -8589,13 +8857,18 @@ dev repo setup [repo-or-path] [flags]
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
 - `-m, --message` — commit message for --check-in=commit or stage
+- `--mode` — with --artifacts: retention: track, archive or unmanaged (required on first setup)
 - `--namespace` — GitHub owner/org or GitLab namespace
+- `--path` — with --artifacts: literal source-relative file/directory (repeatable; SpecStory defaults to .specstory/history)
+- `--plan` — with --artifacts: reviewed setup plan ID
 - `--preset` — scaffold preset
 - `--private` — create a private upstream (compatibility flag)
+- `--protection` — with --artifacts: archive copy: off, check or redact (default: check)
 - `--public` — create a public upstream
 - `--push` — push the current branch after publishing
 - `--remote` — also create a GitHub or GitLab upstream
 - `--set` — preset input as key=value (repeatable)
+- `--source` — with --artifacts: capture source: specstory or files (detects existing SpecStory history)
 - `--visibility` — upstream visibility: private, public or internal
 - `-y, --yes` — confirm the non-interactive scaffold plan
 
@@ -9934,6 +10207,18 @@ preview-only. `setup --migrate-hooks` previews narrow known-hook/rule migration.
 Tailscale/LAN/Fleet caches. `skill manage` also removes selected owned skills with
 explicit agent scopes; existing bundled `skill uninstall` keeps its meaning.
 
+## Agent history policy
+
+`dev artifact setup` and `dev repo setup --artifacts` share reviewed plans.
+`.dev-cli/artifacts.toml` records project ID, track/archive/unmanaged mode,
+specstory/files source, capture location policy, literal paths and export rules.
+Host-local archive/protection bindings and signed receipts stay under
+`paths.state_dir/agent-history/`. They are durable private state, not cache.
+
+Capture/provider identity, source retention, off/check/redact copy protection
+and distribution exclusions are independent. See [AI artifacts](https://daviddwlee84.github.io/dev-cli/guides/ai-artifacts/)
+for supported limits, exact preview/apply commands and historical migration.
+
 ---
 
 ### Compatibility and known limitations
@@ -10541,6 +10826,21 @@ other shim mutation actions fail closed. The dedicated native removal tests are
 required; broad advisory Windows test conclusions are not proof that every
 legacy suite passed.
 
+## Agent history archives
+
+History policy is opt-in through `artifact setup` or `repo setup --artifacts`.
+Only SpecStory Markdown and explicitly selected files are capture sources.
+Archive copies require post-writer proof; off stores unscanned input, while
+check/redact use enabled source hygiene rules. Native session databases, cloud
+resume, automatic knowledge mining, encrypted/LFS archive filters and original
+remote history replacement are outside this integration.
+
+Current file snapshots cap at 128 MiB, inventories at 10,000 files and plans at
+256 selected files. Split migration requires git-filter-repo (native CI pins
+2.47.0) and complete locally recoverable refs. Backup coverage and partial results
+remain explicit. Existing commit finalizers and intent fields retain their lane;
+older binaries cannot consume new external-archive intent fields.
+
 ---
 
 ### Manual hygiene dogfood
@@ -10669,6 +10969,27 @@ output, index/config preservation and a clean commit. Its detector fixtures are
 constructed at runtime; even a source-code concatenation can resemble a quoted
 password, so the corpus builders avoid shipping those false-positive shapes.
 Full published-history cleanup remains the separate post-writer phase above.
+
+## Agent history archive and migration dogfood
+
+On 2026-09-12, an isolated full clone frozen at v0.2.32 exercised the new
+archive/split workflow with no recorder attached. The canonical checkout's
+live histories and source refs were not modified.
+
+| Check | Observed result |
+|---|---|
+| Frozen history corpus | 60 files, 427,925,000 bytes |
+| Largest verified raw snapshot | 70,527,168 bytes |
+| Explicit protection policy | off; no secret/privacy scan claimed |
+| Archive and session lookup | verified; 33.18 seconds on this host |
+| Original bundle restore and both history projections | verified; 196.22 seconds |
+| Source clone HEAD and index | unchanged |
+
+These timings describe one host and frozen input, not a performance guarantee.
+The archive keeps original bytes. The split produces separate original/history/
+filtered repositories and commit maps; it does not replace the real remote.
+The full historical secret audit remains a separate operation and is not made
+complete by this structural migration check.
 
 ---
 
@@ -11725,6 +12046,12 @@ record 缺失或改變時保留 unresolved／stale，將不確定 observation �
 分開。清 cache 不影響 identities／bindings。第八個 SSH dashboard view 顯示
 connections；FLEET 仍顯示 remote repositories／tasks。詳見
 [SSH onboarding](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
+
+Agent transcript retention 與 source Git、發行包分開選擇。明確的 archive
+policy 把副本存進另一個 Git checkout，保留 private 本機 plan／recovery，
+以及可攜的 project/session/commit metadata。Ignored capture files 仍是待
+驗證的持久證據，清理前會重新檢查。選擇策略與遷移前可讀
+[AI 產物](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ai-artifacts/)。
 
 ---
 
@@ -13912,6 +14239,124 @@ Ignored history 不必參與一般 code commit 的掃描；但已 tracked 的檔
 不會因新增 `.gitignore` 就停止追蹤。移出 index 是獨立操作。刪除
 worktree 前保留或封存 history；ignored 不等於可丟棄或已備份。
 
+## 選擇並套用 repository policy
+
+沒有 policy 時維持既有行為。`track` 使用原本的 source commit finalizer；
+`archive` 把證據存進另一個 Git checkout；`unmanaged` 由使用者自行管理。
+來源是 `specstory` Markdown，或明確選取匯出檔／plan 的 `files`。
+
+```bash
+# 先用一般 Git 建立 archive，設定好 Git identity。
+git init -b main /path/to/history
+# 明確選擇 private 原稿保存；也可選 check 或 redact。
+dev artifact setup --mode archive --source specstory --archive /path/to/history \
+  --protection off --json
+dev artifact setup --apply --plan <id> --yes
+dev artifact status
+# Repository setup 使用同一個 planner：
+dev repo setup --artifacts --mode unmanaged --json
+```
+
+Setup 只修改審閱過的 policy、本機 binding、ignore 與 export 規則，不會
+untrack、commit、push 或安裝工具。`repo setup --artifacts` 與 scaffold 是
+分開的 plan；可用 `--artifacts --apply --plan <id> --yes` 套用。共享 policy
+變更由使用者審閱後自行 commit。
+
+`.dev-cli/artifacts.toml` 保存穩定 project ID、策略、來源與 literal 路徑；
+archive 路徑及保護設定留在 private host state。每台機器為 clone 綁定想用的
+archive，不以 folder basename 或目前 branch 猜測 project 身分。
+
+`--capture project` 沿用每個 worktree 的 recorder 目錄。`--capture external`
+則設定 checkout 專屬、repo 外的 SpecStory 目錄，需要未 tracked 的 native
+config，且本機 Markdown 匯出已啟用。Tracked 或複雜 config 需人工審閱；每個
+新的 external-capture checkout 都要 setup。Cloud 設定與 native session
+儲存仍由 SpecStory 管理。
+
+## 封存副本與查找
+
+```bash
+dev artifact archive --session codex:<uuid> --json
+# 私下審閱 proposal，recorder 結束後：
+dev artifact archive --apply --plan <id> --yes --writer-stopped
+dev artifact find --session codex:<uuid>
+dev artifact find --commit <full-source-commit-id>
+dev artifact find 'literal search text' --all
+```
+
+`--source files` 使用可重複的 `--file` 選取已設定範圍內的精確檔案。盤點上限
+10,000 個檔案，每次最多選 256 個；目前 snapshot 上限每檔 128 MiB。過大或
+不安全的輸入會明確失敗。Search 讀取 archive 目前 branch 的 committed
+records；`--all` 包含其中其他 project。輸出只有 metadata、位置與行號，不顯示
+snippet，不 fetch、不遍歷 native agent 目錄，也不 resume agent。
+
+Archive 的 `projects/` 保存普通檔案與 metadata，關聯 project/session、原稿
+及保存版本的 digest、source commit。原檔與 source index 不變。專案 archive
+的 `.gitattributes` 停用 snapshot/record 的 text 與 ident 轉換，保留 CRLF
+及原始 bytes；加密、LFS 或編碼 filters 需走該 archive 的 native workflow，
+不會默默繞過。既有 Git hooks 仍會執行。Archive 的存取權與異機備份由使用者管理。
+
+`off` 不要求 scanner，原樣保存；`check` 使用 source repo 已啟用的 hygiene
+policy；`redact` 提出副本替換並重新檢查結果。停用的類別仍停用，skipped 不等於
+clean。阻擋 report 提供安全 finding ID，可用既有 `dev hygiene rules allow`
+流程處理；fixture exception 仍需精確範圍、審閱與理由。Snapshot 支援 inline
+規則及 useDefault，不支援外部 gitleaks rule-file includes。
+
+只有 bytes、路徑、policy、exceptions、scanner inputs 與 executables 一致，
+才重用有簽章的本機掃描結果。內容或規則改變就重掃，不完整掃描不能通過。原稿、
+副本與 recovery 留在 Git 外的 `paths.state_dir`，不隨 cache clear 刪除。
+檔名與 metadata 仍可能識別個人或系統，分享前應審閱。
+
+Product／policy changes commit 後，`dev prepare` 也支援 archive policy。
+Off/check 可在 writer 結束後直接 finalize。Redact 要先審閱 `artifact archive`
+的 plan，再用 `artifact finalize --archive-plan <id> --writer-stopped`。
+經審閱的 plans 跟 product changes commit；prepared SpecStory archive handoff
+只選一份精確 transcript。舊 intents 保留原目的地與要求，tracked-history
+finalizer 仍使用 compatibility skill scripts。
+
+Retirement 重新驗證 archive receipt 與目前 ignored capture bytes。新內容或
+缺失 receipt 會阻擋清理。本機持久保存與 remote sync 是不同狀態；一般 status
+與 readiness 不會查詢 remote。
+
+## 明確的 Git 同步與原版備份
+
+```bash
+dev artifact sync --push --json       # preview 會查詢設定的 remote
+dev artifact sync --apply --plan <id> --yes
+dev artifact sync --pull --json       # 另一個 preview，只允許 fast-forward
+
+dev artifact migrate --mode untrack --path .specstory/history --json
+dev artifact migrate --apply --plan <id> --yes --writer-stopped
+
+dev artifact migrate --mode split --path .specstory/history --json
+dev artifact migrate --apply --plan <id> --yes
+# 可選：把原版 named refs 發布到另一個空目的地。
+dev artifact backup <completed-migration-id> --remote <git-url> --json
+dev artifact backup --apply --plan <backup-plan-id> --yes
+```
+
+Untrack 保存原始 refs 與選定的目前檔案、編輯 ignore、只移除選定的 index
+entries。其他 staged／unstaged 工作保留；必須先處理既有 prepared handoffs。
+Untrack 本身不設定今後的自動封存策略。
+
+Split 需要 git-filter-repo 與完整本機歷史。產出經驗證的 `original.bundle`、
+`original.git`、`history.git`、`filtered.git`、兩份 commit map、`current/`
+工作檔 snapshot 與 manifest。每個 mapped tree 都與精確路徑投影比對，保留
+empty commits、merge topology 與 message bytes；改寫後的簽章無法維持有效。
+會實際從 bundle clone 驗證恢復。Source refs 與 remotes 均不修改。
+
+Raw backup 不是 hygiene audit。其他 worktrees 的未提交檔案、reflogs、
+unreachable objects、LFS payloads 與 submodule repositories 不在範圍內。
+Detached tip 必須先有 recovery ref。
+
+Backup publication 用 empty-ref lease 發布 frozen named refs；未提交工作檔
+留在本機 `current/`，不會進入 Git remote backup。Sync 綁定審閱的目的地與
+branch；push 先證明 ancestry 再用精確 lease，pull 僅 fast-forward。Divergence
+交給 native Git 處理，dev 不會強制覆寫或生成 merge。
+
+Private ledger 保留 partial effects、output 與 recovery 路徑。中斷後先檢查
+資料與 remote，再建立新 plan，不盲目重試 partial operation。原 remote 切換、
+release/tag 遷移，以及 filtered history 的 force-with-lease 發布另行協調。
+
 ## 發行排除、停止追蹤與歷史遷移
 
 | 操作 | 效果 | 先前 commits |
@@ -14011,7 +14456,8 @@ Setup 與 scan 要求相容的 gitleaks 8.x，最低 8.30.0；CI 固定 8.30.1�
 
 Staged checker 本身不改檔，但 pre-commit 可能暫存未 stage 的變更，所以 recorder
 退出後才對其 checkout commit。目前不完整取代 agent-history-hygiene：
-`dev artifact finalize` 仍依賴其 scripts；這些安裝和 finalizer wiring 先保留。
+`dev artifact finalize` 的既有 tracked-history handoff 仍依賴其 scripts；外部 archive
+使用 native snapshot 檢查。只要仍有 tracked workflow，這些安裝和 wiring 就保留。
 
 ## 政策與私密規則
 
@@ -14659,7 +15105,7 @@ Submodule 工作區需明確 `--recursive` 核准，取得當次遠端證明後�
 Completion 分成三個獨立里程碑，且目前 persisted task state 的 `done` 對應的是中間那個，不是最後一個：
 
 ```text
-READY     writer 離開後，commit 了 exact final transcript
+READY     writer 離開後，exact transcript 保存到選定目的地
 MERGED    branch 已整合；runtime/worktree 可能仍存在
 RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task 已 reap
 ```
@@ -14671,7 +15117,7 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 | 命令 | 作用 |
 |---|---|
 | `dev prepare --session <provider:uuid> --plan <path>` | 在不關閉目前執行中 agent 的情況下，arm post-writer artifact finalization。Product changes 必須已先 commit；transcript 本身刻意尚未 stage。 |
-| `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | 在 writer 停止後，commit 唯一 exact、stable 的 transcript。`--if-pending` 在沒有對應 armed intent 時靜默 no-op；`--writer-stopped` 確認外層 wrapper 已 return。 |
+| `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | 在 writer 停止後，把 exact、stable transcript 存進 intent 選定的 source commit 或外部 archive。`--if-pending` 在沒有對應 armed intent 時靜默 no-op；`--writer-stopped` 確認外層 wrapper 已 return。 |
 | `dev done --ff` | 把 task branch rebase 到其 base 上並在本機 fast-forward。記錄為 MERGED，保留 worktree/branch；明確選定的 task pane 關閉另行記錄，parent 保留。 |
 | `dev done --pr` | Push branch，並透過可用的 forge CLI 開啟 pull/merge request。Task 保持在 review 狀態，不是 MERGED。 |
 | `dev done --merged --base-ref <ref>` | 驗證某個已在外部 merge 的 branch 是否被 `<ref>` 包含，並記錄為 MERGED。 |
@@ -14906,6 +15352,14 @@ terminal 可能一併停止它們。畫面不輸出完整 argv 或環境變數�
 豁免。舊 handoff 需要重建。Apply 前最後取消不產生變更；開始執行後若失敗，會
 如實列出已完成的關閉及保留資源。Raw Git／Herdr 操作仍在 dev 的鎖與再驗證
 保證之外。
+
+## 外部 history archives
+
+Archive mode 使用同一套 post-writer handoff，把精確的 SpecStory transcript
+存進另一個 Git checkout。審閱過的 plans 跟 product changes commit。Redact
+副本需提供審閱過的 `--archive-plan`；舊 intents 保留 source-commit 流程。
+清理會驗證 archive receipt 與 ignored capture bytes，拒絕已改變或缺失的
+證據。詳見 [AI 產物](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ai-artifacts/)。
 
 ---
 
@@ -16921,7 +17375,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | 目標 | Commands |
 |---|---|
 | task lifecycle | `start`、`park`、`resume`、`done`、`retire`、`sweep`、`ls`、`status` |
-| agent artifacts | `prepare`、`artifact finalize`、`artifact list`、`artifact discard` |
+| agent artifacts | `prepare`、`artifact status/setup/archive/find/migrate/sync/backup`、`artifact finalize/list/discard` |
 | guarded Git transactions | `git uncommit`、`git recommit`、`git pull-rebase`、`git amend-all`、`git setup` |
 | linked worktrees | `wt list`、`wt create`、`wt open`、`wt rm`、`wt plan`、`wt provision` |
 | repositories/remotes | `repo list`、`repo context`、`repo new`/`repo create`、`repo clone`、`repo setup`、`repo open`、`repo sync`、`repo remote`、`repo mark` |
@@ -17582,6 +18036,39 @@ Manage coding-agent transcripts and plans
 dev artifact
 ```
 
+### `dev artifact archive`
+
+Preserve selected history in an external Git archive
+
+```
+dev artifact archive [flags]
+```
+
+- `--apply` — commit the exact reviewed copies to the archive
+- `--file` — exact configured source-relative file (repeatable)
+- `--json` — emit structured metadata without transcript contents
+- `--plan` — reviewed archive plan ID
+- `--repo` — source repository or worktree (default: current directory)
+- `--session` — exact originating provider:uuid from the SpecStory preamble
+- `--timeout` — snapshot scan deadline
+- `--writer-stopped` — attest the exact recorder has exited before applying
+- `-y, --yes` — confirm the reviewed archive commit
+
+### `dev artifact backup`
+
+Publish a verified original Git backup to an empty remote
+
+```
+dev artifact backup [migration-plan] [flags]
+```
+
+- `--apply` — publish the reviewed original Git refs
+- `--json` — emit structured metadata without transcript contents
+- `--plan` — reviewed backup publication plan ID
+- `--remote` — empty destination Git URL or absolute local repository path
+- `--repo` — source repository or worktree (default: current directory)
+- `-y, --yes` — confirm the reviewed backup publication
+
 ### `dev artifact discard`
 
 Abandon one failed artifact handoff
@@ -17594,17 +18081,33 @@ dev artifact discard <intent> [flags]
 
 ### `dev artifact finalize`
 
-Commit one exact stable transcript after its writer exits
+Finalize a prepared session after its transcript writer stops
 
 ```
 dev artifact finalize [flags]
 ```
 
+- `--archive-plan` — reviewed archive plan for a prepared session (required for redaction copies)
 - `--if-pending` — silently succeed when no armed intent matches the run id
 - `--intent` — artifact intent id
 - `--run-id` — outer wrapper run id
 - `--settle` — required transcript stability interval
 - `--writer-stopped` — confirm the outer agent wrapper has returned before finalization
+
+### `dev artifact find`
+
+Find saved history by session, commit, or text
+
+```
+dev artifact find [text] [flags]
+```
+
+- `--all` — search all projects in this configured archive
+- `--commit` — full source commit ID
+- `--json` — emit structured metadata without transcript contents
+- `--limit` — maximum matching records (1–1000)
+- `--repo` — source repository or worktree (default: current directory)
+- `--session` — originating provider:uuid
 
 ### `dev artifact list`
 
@@ -17613,6 +18116,75 @@ List pending and completed artifact handoffs
 ```
 dev artifact list
 ```
+
+### `dev artifact migrate`
+
+Stop tracking history or build a filtered repository copy
+
+```
+dev artifact migrate [flags]
+```
+
+- `--apply` — apply the exact reviewed migration plan
+- `--json` — emit structured metadata without transcript contents
+- `--mode` — untrack or split (required)
+- `--output` — new output directory outside Git (default: private migration state)
+- `--path` — literal source-relative file/directory to extract (default: .specstory/history)
+- `--plan` — reviewed migration plan ID
+- `--repo` — source repository or worktree (default: current directory)
+- `--timeout` — deadline for backup/filter/verification
+- `--writer-stopped` — attest the selected artifact recorder has exited (required for untrack)
+- `-y, --yes` — confirm this migration without another prompt
+
+### `dev artifact setup`
+
+Choose where agent history is kept and what enters Git
+
+```
+dev artifact setup [flags]
+```
+
+- `--apply` — apply the exact reviewed setup plan
+- `--archive` — absolute path to a separate existing Git archive checkout
+- `--capture` — project or external (external requires local SpecStory config)
+- `--export-ignore` — exclude selected evidence from git archive source packages
+- `--json` — emit structured metadata without transcript contents
+- `--mode` — retention: track, archive or unmanaged (required on first setup)
+- `--path` — literal source-relative file/directory (repeatable; SpecStory defaults to .specstory/history)
+- `--plan` — reviewed setup plan ID
+- `--protection` — archive copy: off, check or redact (default: check)
+- `--repo` — source repository or worktree (default: current directory)
+- `--source` — capture source: specstory or files (detects existing SpecStory history)
+- `-y, --yes` — confirm applying the reviewed plan
+
+### `dev artifact status`
+
+Show how agent history is captured, stored, and protected
+
+```
+dev artifact status [flags]
+```
+
+- `--json` — emit structured metadata without transcript contents
+- `--repo` — source repository or worktree (default: current directory)
+
+### `dev artifact sync`
+
+Fetch or publish the configured Git archive
+
+```
+dev artifact sync [flags]
+```
+
+- `--apply` — apply the exact reviewed network plan
+- `--branch` — remote branch (must match the archive's current branch)
+- `--json` — emit structured metadata without transcript contents
+- `--plan` — reviewed sync plan ID
+- `--pull` — preview fetching and fast-forwarding the archive
+- `--push` — preview publication of archive commits
+- `--remote` — configured archive remote name
+- `--repo` — source repository or worktree (default: current directory)
+- `-y, --yes` — confirm applying the reviewed sync plan
 
 ### `dev bootstrap`
 
@@ -19151,20 +19723,25 @@ dev repo remote [query] [flags]
 
 ### `dev repo setup`
 
-Apply a scaffold to an existing repository
+Apply a scaffold or preview agent-history policy for a repository
 
 ```
 dev repo setup [repo-or-path] [flags]
 ```
 
 - `--agent` — agent targets for selected project skills
+- `--apply` — with --artifacts: apply the exact reviewed setup plan
+- `--archive` — with --artifacts: absolute path to a separate existing Git archive checkout
+- `--artifacts` — preview/apply agent-history policy instead of a scaffold
 - `--browse-skills` — open the upstream skills installer during setup
+- `--capture` — with --artifacts: project or external (external requires local SpecStory config)
 - `--check-in` — finish generated changes: auto, commit, stage or none
 - `--commit` — commit only the setup changes (requires a clean starting checkout)
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
 - `--enable` — enable a scaffold item by id (repeatable)
+- `--export-ignore` — with --artifacts: exclude selected evidence from git archive source packages
 - `--forge` — upstream provider: auto, github, gitlab or none
 - `--gitignore` — gitignore template (repeatable or comma-separated)
 - `--handoff` — afterwards: stay, cd, open or start
@@ -19173,13 +19750,18 @@ dev repo setup [repo-or-path] [flags]
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
 - `-m, --message` — commit message for --check-in=commit or stage
+- `--mode` — with --artifacts: retention: track, archive or unmanaged (required on first setup)
 - `--namespace` — GitHub owner/org or GitLab namespace
+- `--path` — with --artifacts: literal source-relative file/directory (repeatable; SpecStory defaults to .specstory/history)
+- `--plan` — with --artifacts: reviewed setup plan ID
 - `--preset` — scaffold preset
 - `--private` — create a private upstream (compatibility flag)
+- `--protection` — with --artifacts: archive copy: off, check or redact (default: check)
 - `--public` — create a public upstream
 - `--push` — push the current branch after publishing
 - `--remote` — also create a GitHub or GitLab upstream
 - `--set` — preset input as key=value (repeatable)
+- `--source` — with --artifacts: capture source: specstory or files (detects existing SpecStory history)
 - `--visibility` — upstream visibility: private, public or internal
 - `-y, --yes` — confirm the non-interactive scaffold plan
 
@@ -20480,6 +21062,18 @@ Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](https://davidd
 `skill manage` 可依 agent scope 移除勾選的已驗證安裝；原本 bundled
 `skill uninstall` 的意義不變。
 
+## Agent history policy
+
+`dev artifact setup` 與 `dev repo setup --artifacts` 共用審閱 plan。
+`.dev-cli/artifacts.toml` 保存 project ID、track/archive/unmanaged 模式、
+specstory/files 來源、capture 策略、literal 路徑與 export 規則。本機 archive／
+protection binding 與有簽章的 receipts 留在 `paths.state_dir/agent-history/`，
+屬於 private 持久資料，不是 cache。
+
+Capture/provider identity、source retention、off/check/redact 副本保護與
+發行排除是獨立選擇。支援限制、preview/apply 命令與歷史遷移詳見
+[AI 產物](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ai-artifacts/)。
+
 ---
 
 ### 相容性與已知限制
@@ -21016,6 +21610,19 @@ Skill 移除要求已驗證 native ownership 或 bundled manifest、明確 agent
 不支援的 shell syntax 或其他 shim mutation 會拒絕。獨立 native removal tests
 是必要 gate；Windows 廣泛 advisory job 的成功結論不表示所有 legacy suites 通過。
 
+## Agent history archives
+
+History policy 需透過 `artifact setup` 或 `repo setup --artifacts` 主動選用。
+Capture 來源為 SpecStory Markdown 與明確選取的檔案；archive copy 需要 writer
+結束的證據。Off 保存未掃描原稿，check/redact 使用 source 已啟用的 hygiene
+規則。Native session DB、cloud resume、自動知識提煉、加密／LFS archive
+filters 與原 remote 歷史替換不在此次整合內。
+
+目前每檔 snapshot 上限 128 MiB、盤點上限 10,000 檔、每 plan 最多 256 檔。
+Split 需要 git-filter-repo（native CI 固定 2.47.0）與完整可回復的本機 refs。
+備份範圍及 partial results 明確列出。舊 commit finalizers 維持原流程；舊版
+binary 無法讀取新增的 external-archive intent 欄位。
+
 ---
 
 ### 人工 hygiene dogfood
@@ -21121,6 +21728,25 @@ Git author 姓名／email、帶個資的檔名也列入評估；文字 redaction
 保留及乾淨 commit。Detector fixture 於執行時組出；程式碼字串拼接本身也可能
 看似加引號的 password，所以 corpus builder 避免把這種誤判形狀放進發佈檔案。
 已發布歷史的完整清理仍是前述 post-writer 階段。
+
+## Agent history archive 與 migration dogfood
+
+2026-09-12 使用固定在 v0.2.32 的完整隔離 clone，且沒有 recorder 寫入該
+checkout，驗證新的 archive/split 流程。Canonical checkout 的 live histories
+與 source refs 均未修改。
+
+| 檢查 | 結果 |
+|---|---|
+| 凍結 history corpus | 60 檔、427,925,000 bytes |
+| 最大的已驗證原稿 snapshot | 70,527,168 bytes |
+| 明確的保護政策 | off；不宣稱做過 secret/privacy scan |
+| Archive 與 session lookup | 通過；此主機 33.18 秒 |
+| 原版 bundle 恢復與兩份歷史投影 | 通過；196.22 秒 |
+| Source clone HEAD 與 index | 不變 |
+
+數字代表單一主機與凍結輸入，不是效能保證。Archive 保留原始 bytes；split
+產生分開的 original/history/filtered repositories 與 commit maps，不替換真實
+remote。完整歷史 secret audit 仍是獨立操作，這次結構驗證不代表該 audit 完成。
 
 ---
 

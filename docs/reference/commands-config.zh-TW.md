@@ -25,7 +25,7 @@ Clone／worktree acquisition 共用 `[submodules] init = "recursive"`（或 `"no
 | 目標 | Commands |
 |---|---|
 | task lifecycle | `start`、`park`、`resume`、`done`、`retire`、`sweep`、`ls`、`status` |
-| agent artifacts | `prepare`、`artifact finalize`、`artifact list`、`artifact discard` |
+| agent artifacts | `prepare`、`artifact status/setup/archive/find/migrate/sync/backup`、`artifact finalize/list/discard` |
 | guarded Git transactions | `git uncommit`、`git recommit`、`git pull-rebase`、`git amend-all`、`git setup` |
 | linked worktrees | `wt list`、`wt create`、`wt open`、`wt rm`、`wt plan`、`wt provision` |
 | repositories/remotes | `repo list`、`repo context`、`repo new`/`repo create`、`repo clone`、`repo setup`、`repo open`、`repo sync`、`repo remote`、`repo mark` |
@@ -877,3 +877,15 @@ Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](../guides/hygi
 `rules import --from machines` 讀取本機 Tailscale／LAN／Fleet 快取中的私人候選。
 `skill manage` 可依 agent scope 移除勾選的已驗證安裝；原本 bundled
 `skill uninstall` 的意義不變。
+
+## Agent history policy
+
+`dev artifact setup` 與 `dev repo setup --artifacts` 共用審閱 plan。
+`.dev-cli/artifacts.toml` 保存 project ID、track/archive/unmanaged 模式、
+specstory/files 來源、capture 策略、literal 路徑與 export 規則。本機 archive／
+protection binding 與有簽章的 receipts 留在 `paths.state_dir/agent-history/`，
+屬於 private 持久資料，不是 cache。
+
+Capture/provider identity、source retention、off/check/redact 副本保護與
+發行排除是獨立選擇。支援限制、preview/apply 命令與歷史遷移詳見
+[AI 產物](../guides/ai-artifacts.md)。

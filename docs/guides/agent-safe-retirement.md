@@ -18,7 +18,7 @@ A `dev` change stream reaches full retirement only after an external caller clos
 Completion is three separate milestones, and the persisted task state `done` now means the middle one, not the last:
 
 ```text
-READY     exact final transcript committed after the writer exits
+READY     exact transcript preserved in its chosen destination after writer exit
 MERGED    branch integrated; runtime/worktree may still exist
 RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 ```
@@ -30,7 +30,7 @@ RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 | Command | What it does |
 |---|---|
 | `dev prepare --session <provider:uuid> --plan <path>` | Arms post-writer artifact finalization without closing the running agent. Product changes must already be committed; the transcript itself is deliberately not staged yet. |
-| `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | Commits the one exact, stable transcript after its writer has stopped. `--if-pending` no-ops silently when no armed intent matches the run id; `--writer-stopped` confirms the outer wrapper has returned. |
+| `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | Preserves the exact stable transcript in the intent's source-commit or external-archive destination after its writer stops. `--if-pending` no-ops silently when no armed intent matches the run id; `--writer-stopped` confirms the outer wrapper has returned. |
 | `dev done --ff` | Rebases the task branch onto its base and fast-forwards it locally. Records MERGED; never closes the runtime, removes a worktree, or deletes a branch. |
 | `dev done --pr` | Pushes the branch and opens a pull/merge request through an available forge CLI. The task stays under review, not MERGED. |
 | `dev done --merged --base-ref <ref>` | Verifies an externally merged branch is contained in `<ref>` and records MERGED. |
@@ -287,3 +287,11 @@ a replacement program is not exempt. Old handoffs must be recreated. Final
 cancellation before Apply changes nothing; failures after effects begin list
 completed closures and retained resources. Raw Git and Herdr actions remain
 outside dev's locks and revalidation guarantees.
+
+## External history archives
+
+Configured archive mode uses the same post-writer handoff, preserving one exact
+SpecStory transcript in a separate Git checkout. Reviewed plans belong with the
+product commit. Redaction copies require a reviewed `--archive-plan`; old intents
+retain their source-commit lane. Cleanup verifies archive receipts and ignored
+capture bytes, and refuses changed or missing evidence. See [AI artifacts](ai-artifacts.md).

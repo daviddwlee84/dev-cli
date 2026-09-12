@@ -97,7 +97,7 @@ func (s *lifecycleService) parkColdSpec(request Request, observed lifecycleObser
 				artifactEvidence(observed), ""))
 		default:
 			conditions = append(conditions, condition(ConditionArtifactReady, VerdictBlocked, RequirementRequired,
-				artifactEvidence(observed), "finalize or explicitly discard every artifact intent"))
+				artifactEvidence(observed), "finalize/discard intents and archive pending capture files"))
 		}
 	} else {
 		conditions = append(conditions, condition(ConditionArtifactReady, VerdictMet, RequirementAdvisory,
@@ -528,6 +528,9 @@ func wipMessage(next string) string {
 }
 
 func artifactEvidence(observed lifecycleObservation) string {
+	if h := observed.artifact.History; h != nil && !h.Ready {
+		return fmt.Sprintf("%d configured history files need a verified archive", len(h.Pending))
+	}
 	if observed.artifact.KnownEmpty {
 		return "no artifact intents match the exact checkout"
 	}

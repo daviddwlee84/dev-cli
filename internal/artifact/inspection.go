@@ -41,7 +41,7 @@ func InspectWorktrees(ctx context.Context, store *Store) (map[string]WorktreeIns
 			inspection.Status = intent.Status
 		}
 		ready := intent.Status == Discarded ||
-			(intent.Status == Finalized && intent.ArtifactCommit != "" && CommitReachable(ctx, intent))
+			(intent.Status == Finalized && (intent.ArtifactCommit != "" || intent.ArchiveCommit != "") && CommitReachable(ctx, intent))
 		inspection.Ready = inspection.Ready && ready
 		out[path] = inspection
 	}
@@ -56,6 +56,14 @@ func InspectWorktrees(ctx context.Context, store *Store) (map[string]WorktreeIns
 // its checkout HEAD, task branch, or base. It is read-only and shared by
 // integration enforcement and closeout evidence.
 func CommitReachable(ctx context.Context, intent Intent) bool {
+	if intent.Destination == "archive" {
+		for _, root := range []string{intent.WorktreePath, intent.RepoPath} {
+			if ready, e := receiptRemainsReachable(ctx, root, intent); e == nil && ready {
+				return true
+			}
+		}
+		return false
+	}
 	refs := []struct {
 		dir string
 		ref string

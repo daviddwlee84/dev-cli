@@ -60,7 +60,12 @@ $ dev ls
 Choose transcript retention separately from scanning and packaging. SpecStory
 histories remain trackable, but `.gitattributes` excludes `.specstory` from source
 archives so Homebrew does not download conversation evidence to build the CLI.
-See the [AI artifact guide](docs/guides/ai-artifacts.md).
+Use `dev artifact setup --mode archive --source specstory --archive /path/to/history
+--protection off --json` to preview explicit raw preservation, or choose `check` /
+`redact`. Apply the reviewed plan with `dev artifact setup --apply --plan <id> --yes`.
+`dev repo setup --artifacts` uses the same planner. Archive, find, sync, migrate and
+backup are separate operations; they never start an agent or replace the source
+remote automatically. See the [AI artifact guide](docs/guides/ai-artifacts.md).
 
 ## Repository hygiene
 
@@ -102,7 +107,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.32 instead when you need a reproducible install.
+# Pin @v0.2.33 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 

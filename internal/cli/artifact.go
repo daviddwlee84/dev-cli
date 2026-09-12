@@ -104,7 +104,7 @@ func newArtifactCmd(app *App) *cobra.Command {
 The current finalizer reads SpecStory Markdown. SpecStory is the recorder;
 --session names the originating agent, such as codex:<uuid> or claude:<uuid>.
 Native agent sessions and tool databases have their own backup/resume contracts.`}
-	cmd.AddCommand(newArtifactFinalizeCmd(app), newArtifactListCmd(app), newArtifactDiscardCmd(app), newArtifactObserveCmd(app))
+	cmd.AddCommand(newArtifactFinalizeCmd(app), newArtifactListCmd(app), newArtifactDiscardCmd(app), newArtifactObserveCmd(app), newArtifactStatusCmd(app), newArtifactSetupCmd(app), newArtifactArchiveCmd(app), newArtifactFindCmd(app), newArtifactMigrateCmd(app), newArtifactSyncCmd(app), newArtifactBackupCmd(app))
 	return cmd
 }
 
@@ -115,10 +115,11 @@ func newArtifactFinalizeCmd(app *App) *cobra.Command {
 		settle        time.Duration
 		ifPending     bool
 		writerStopped bool
+		archivePlan   string
 	)
 	cmd := &cobra.Command{
 		Use:   "finalize",
-		Short: "Commit one exact stable transcript after its writer exits",
+		Short: "Finalize a prepared session after its transcript writer stops",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store := artifactStore(app)
@@ -132,18 +133,23 @@ func newArtifactFinalizeCmd(app *App) *cobra.Command {
 			}
 			service := &artifact.Service{Store: store, ScanStaged: scanAgentArtifacts}
 			intent, err := service.Finalize(ctxOf(), artifact.FinalizeRequest{
-				IntentID: intentID, RunID: resolvedRunID, Settle: settle, WriterStopped: writerStopped,
+				IntentID: intentID, RunID: resolvedRunID, Settle: settle, WriterStopped: writerStopped, ArchivePlanID: archivePlan, Guard: (&hygieneCLI{app: app}).guard,
 			})
 			if err != nil {
 				return err
 			}
 			fmt.Fprintf(app.Out, "FINALIZED %s\n", intent.ID)
-			fmt.Fprintf(app.Out, "   commit      %s\n", shortOID(intent.ArtifactCommit))
+			if intent.Destination == "archive" {
+				fmt.Fprintf(app.Out, "   archive commit %s\n", shortOID(intent.ArchiveCommit))
+			} else {
+				fmt.Fprintf(app.Out, "   commit      %s\n", shortOID(intent.ArtifactCommit))
+			}
 			fmt.Fprintf(app.Out, "   transcript  %s\n", config.Contract(intent.TranscriptPath))
 			return nil
 		},
 	}
 	f := cmd.Flags()
+	f.StringVar(&archivePlan, "archive-plan", "", "reviewed archive plan for a prepared session (required for redaction copies)")
 	f.StringVar(&intentID, "intent", "", "artifact intent id")
 	f.StringVar(&runID, "run-id", "", "outer wrapper run id")
 	f.DurationVar(&settle, "settle", 500*time.Millisecond, "required transcript stability interval")
@@ -232,7 +238,7 @@ func newArtifactListCmd(app *App) *cobra.Command {
 			for _, intent := range intents {
 				table.Add(intent.ID, style.artifactState(string(intent.Status)),
 					style.dim(intent.Provider+":"+shortOID(intent.SessionID)),
-					intent.Branch, style.dim(shortOID(intent.ArtifactCommit)))
+					intent.Branch, style.dim(shortOID(firstNonEmpty(intent.ArtifactCommit, intent.ArchiveCommit))))
 			}
 			table.Render(app.Out)
 			return nil
@@ -384,6 +390,13 @@ func ensureArtifactsFinalized(app *App, worktree string) error {
 	if err != nil {
 		return err
 	}
+	proof, e := artifact.InspectHistoryReadiness(context.Background(), store, worktree)
+	if e != nil {
+		return e
+	}
+	if proof != nil && !proof.Ready {
+		return errors.New("ignored agent history still needs a verified external archive before integration or retirement")
+	}
 	for _, intent := range intents {
 		intentPath, canonicalErr := pathx.Canonical(intent.WorktreePath)
 		if canonicalErr != nil || intentPath != canonical {
@@ -401,7 +414,7 @@ func ensureArtifactsFinalized(app *App, worktree string) error {
 			return reconcileErr
 		}
 		intent = *reconciled
-		if intent.ArtifactCommit == "" || !artifactCommitReachable(intent) {
+		if (intent.ArtifactCommit == "" && intent.ArchiveCommit == "") || !artifactCommitReachable(intent) {
 			return fmt.Errorf("artifact commit for %s is no longer reachable; restore or re-finalize intent %s before integration or retirement",
 				config.Contract(worktree), intent.ID)
 		}

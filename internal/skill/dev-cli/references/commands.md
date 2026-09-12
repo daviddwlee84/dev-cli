@@ -41,6 +41,39 @@ Manage coding-agent transcripts and plans
 dev artifact
 ```
 
+### `dev artifact archive`
+
+Preserve selected history in an external Git archive
+
+```
+dev artifact archive [flags]
+```
+
+- `--apply` — commit the exact reviewed copies to the archive
+- `--file` — exact configured source-relative file (repeatable)
+- `--json` — emit structured metadata without transcript contents
+- `--plan` — reviewed archive plan ID
+- `--repo` — source repository or worktree (default: current directory)
+- `--session` — exact originating provider:uuid from the SpecStory preamble
+- `--timeout` — snapshot scan deadline
+- `--writer-stopped` — attest the exact recorder has exited before applying
+- `-y, --yes` — confirm the reviewed archive commit
+
+### `dev artifact backup`
+
+Publish a verified original Git backup to an empty remote
+
+```
+dev artifact backup [migration-plan] [flags]
+```
+
+- `--apply` — publish the reviewed original Git refs
+- `--json` — emit structured metadata without transcript contents
+- `--plan` — reviewed backup publication plan ID
+- `--remote` — empty destination Git URL or absolute local repository path
+- `--repo` — source repository or worktree (default: current directory)
+- `-y, --yes` — confirm the reviewed backup publication
+
 ### `dev artifact discard`
 
 Abandon one failed artifact handoff
@@ -53,17 +86,33 @@ dev artifact discard <intent> [flags]
 
 ### `dev artifact finalize`
 
-Commit one exact stable transcript after its writer exits
+Finalize a prepared session after its transcript writer stops
 
 ```
 dev artifact finalize [flags]
 ```
 
+- `--archive-plan` — reviewed archive plan for a prepared session (required for redaction copies)
 - `--if-pending` — silently succeed when no armed intent matches the run id
 - `--intent` — artifact intent id
 - `--run-id` — outer wrapper run id
 - `--settle` — required transcript stability interval
 - `--writer-stopped` — confirm the outer agent wrapper has returned before finalization
+
+### `dev artifact find`
+
+Find saved history by session, commit, or text
+
+```
+dev artifact find [text] [flags]
+```
+
+- `--all` — search all projects in this configured archive
+- `--commit` — full source commit ID
+- `--json` — emit structured metadata without transcript contents
+- `--limit` — maximum matching records (1–1000)
+- `--repo` — source repository or worktree (default: current directory)
+- `--session` — originating provider:uuid
 
 ### `dev artifact list`
 
@@ -72,6 +121,75 @@ List pending and completed artifact handoffs
 ```
 dev artifact list
 ```
+
+### `dev artifact migrate`
+
+Stop tracking history or build a filtered repository copy
+
+```
+dev artifact migrate [flags]
+```
+
+- `--apply` — apply the exact reviewed migration plan
+- `--json` — emit structured metadata without transcript contents
+- `--mode` — untrack or split (required)
+- `--output` — new output directory outside Git (default: private migration state)
+- `--path` — literal source-relative file/directory to extract (default: .specstory/history)
+- `--plan` — reviewed migration plan ID
+- `--repo` — source repository or worktree (default: current directory)
+- `--timeout` — deadline for backup/filter/verification
+- `--writer-stopped` — attest the selected artifact recorder has exited (required for untrack)
+- `-y, --yes` — confirm this migration without another prompt
+
+### `dev artifact setup`
+
+Choose where agent history is kept and what enters Git
+
+```
+dev artifact setup [flags]
+```
+
+- `--apply` — apply the exact reviewed setup plan
+- `--archive` — absolute path to a separate existing Git archive checkout
+- `--capture` — project or external (external requires local SpecStory config)
+- `--export-ignore` — exclude selected evidence from git archive source packages
+- `--json` — emit structured metadata without transcript contents
+- `--mode` — retention: track, archive or unmanaged (required on first setup)
+- `--path` — literal source-relative file/directory (repeatable; SpecStory defaults to .specstory/history)
+- `--plan` — reviewed setup plan ID
+- `--protection` — archive copy: off, check or redact (default: check)
+- `--repo` — source repository or worktree (default: current directory)
+- `--source` — capture source: specstory or files (detects existing SpecStory history)
+- `-y, --yes` — confirm applying the reviewed plan
+
+### `dev artifact status`
+
+Show how agent history is captured, stored, and protected
+
+```
+dev artifact status [flags]
+```
+
+- `--json` — emit structured metadata without transcript contents
+- `--repo` — source repository or worktree (default: current directory)
+
+### `dev artifact sync`
+
+Fetch or publish the configured Git archive
+
+```
+dev artifact sync [flags]
+```
+
+- `--apply` — apply the exact reviewed network plan
+- `--branch` — remote branch (must match the archive's current branch)
+- `--json` — emit structured metadata without transcript contents
+- `--plan` — reviewed sync plan ID
+- `--pull` — preview fetching and fast-forwarding the archive
+- `--push` — preview publication of archive commits
+- `--remote` — configured archive remote name
+- `--repo` — source repository or worktree (default: current directory)
+- `-y, --yes` — confirm applying the reviewed sync plan
 
 ### `dev bootstrap`
 
@@ -1610,20 +1728,25 @@ dev repo remote [query] [flags]
 
 ### `dev repo setup`
 
-Apply a scaffold to an existing repository
+Apply a scaffold or preview agent-history policy for a repository
 
 ```
 dev repo setup [repo-or-path] [flags]
 ```
 
 - `--agent` — agent targets for selected project skills
+- `--apply` — with --artifacts: apply the exact reviewed setup plan
+- `--archive` — with --artifacts: absolute path to a separate existing Git archive checkout
+- `--artifacts` — preview/apply agent-history policy instead of a scaffold
 - `--browse-skills` — open the upstream skills installer during setup
+- `--capture` — with --artifacts: project or external (external requires local SpecStory config)
 - `--check-in` — finish generated changes: auto, commit, stage or none
 - `--commit` — commit only the setup changes (requires a clean starting checkout)
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
 - `--enable` — enable a scaffold item by id (repeatable)
+- `--export-ignore` — with --artifacts: exclude selected evidence from git archive source packages
 - `--forge` — upstream provider: auto, github, gitlab or none
 - `--gitignore` — gitignore template (repeatable or comma-separated)
 - `--handoff` — afterwards: stay, cd, open or start
@@ -1632,13 +1755,18 @@ dev repo setup [repo-or-path] [flags]
 - `--license` — license keyword (for example mit or apache-2.0)
 - `--license-holder` — copyright holder used in the license template
 - `-m, --message` — commit message for --check-in=commit or stage
+- `--mode` — with --artifacts: retention: track, archive or unmanaged (required on first setup)
 - `--namespace` — GitHub owner/org or GitLab namespace
+- `--path` — with --artifacts: literal source-relative file/directory (repeatable; SpecStory defaults to .specstory/history)
+- `--plan` — with --artifacts: reviewed setup plan ID
 - `--preset` — scaffold preset
 - `--private` — create a private upstream (compatibility flag)
+- `--protection` — with --artifacts: archive copy: off, check or redact (default: check)
 - `--public` — create a public upstream
 - `--push` — push the current branch after publishing
 - `--remote` — also create a GitHub or GitLab upstream
 - `--set` — preset input as key=value (repeatable)
+- `--source` — with --artifacts: capture source: specstory or files (detects existing SpecStory history)
 - `--visibility` — upstream visibility: private, public or internal
 - `-y, --yes` — confirm the non-interactive scaffold plan
 

@@ -31,6 +31,9 @@ type RunRequest struct {
 	Display       string   `json:"display,omitempty"`
 	Interactive   bool     `json:"interactive,omitempty"`
 	CaptureStdout bool     `json:"-"`
+	// StdoutLimit opts an internal protocol into a larger bounded response.
+	// Zero keeps the ordinary 1 MiB limit; stderr always retains that limit.
+	StdoutLimit int `json:"-"`
 }
 
 // RunResult separates process exit from launcher failure. Captured output is
@@ -61,6 +64,9 @@ type ExecRunner struct{}
 func (ExecRunner) Run(ctx context.Context, request RunRequest) (RunResult, error) {
 	if request.Name == "" {
 		return RunResult{}, errors.New("runner command is empty")
+	}
+	if request.StdoutLimit < 0 || request.StdoutLimit > 128<<20 {
+		return RunResult{}, errors.New("invalid stdout capture limit")
 	}
 	if ctx == nil {
 		ctx = context.Background()
@@ -93,6 +99,7 @@ func (ExecRunner) Run(ctx context.Context, request RunRequest) (RunResult, error
 	cmd.Env = append(baseEnv, request.Env...)
 
 	var stdout, stderr boundedCapture
+	stdout.limit = request.StdoutLimit
 	captureStdout := !request.Interactive || request.CaptureStdout
 	if captureStdout {
 		cmd.Stdout = &stdout
@@ -154,11 +161,16 @@ func (ExecRunner) Run(ctx context.Context, request RunRequest) (RunResult, error
 type boundedCapture struct {
 	data      []byte
 	truncated bool
+	limit     int
 }
 
 func (capture *boundedCapture) Write(data []byte) (int, error) {
 	length := len(data)
-	remaining := maxCapturedOutputBytes - len(capture.data)
+	limit := capture.limit
+	if limit == 0 {
+		limit = maxCapturedOutputBytes
+	}
+	remaining := limit - len(capture.data)
 	if remaining > 0 {
 		if remaining > length {
 			remaining = length

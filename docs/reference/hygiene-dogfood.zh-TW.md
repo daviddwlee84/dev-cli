@@ -105,3 +105,22 @@ Git author 姓名／email、帶個資的檔名也列入評估；文字 redaction
 保留及乾淨 commit。Detector fixture 於執行時組出；程式碼字串拼接本身也可能
 看似加引號的 password，所以 corpus builder 避免把這種誤判形狀放進發佈檔案。
 已發布歷史的完整清理仍是前述 post-writer 階段。
+
+## Agent history archive 與 migration dogfood
+
+2026-09-12 使用固定在 v0.2.32 的完整隔離 clone，且沒有 recorder 寫入該
+checkout，驗證新的 archive/split 流程。Canonical checkout 的 live histories
+與 source refs 均未修改。
+
+| 檢查 | 結果 |
+|---|---|
+| 凍結 history corpus | 60 檔、427,925,000 bytes |
+| 最大的已驗證原稿 snapshot | 70,527,168 bytes |
+| 明確的保護政策 | off；不宣稱做過 secret/privacy scan |
+| Archive 與 session lookup | 通過；此主機 33.18 秒 |
+| 原版 bundle 恢復與兩份歷史投影 | 通過；196.22 秒 |
+| Source clone HEAD 與 index | 不變 |
+
+數字代表單一主機與凍結輸入，不是效能保證。Archive 保留原始 bytes；split
+產生分開的 original/history/filtered repositories 與 commit maps，不替換真實
+remote。完整歷史 secret audit 仍是獨立操作，這次結構驗證不代表該 audit 完成。

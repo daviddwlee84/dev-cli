@@ -71,7 +71,7 @@ The JSON batch preview contains exact child plan IDs; apply one with the existin
 The staged checker itself does not mutate files. Pre-commit can temporarily stash
 unstaged work, so wait for an artifact recorder to exit before committing its
 checkout. This migration does not replace the entire agent-history-hygiene
-lifecycle: `dev artifact finalize` still requires that skill's scripts. Keep those
+lifecycle: `dev artifact finalize` still requires that skill's scripts for existing tracked-history handoffs; configured external archives use native snapshot checks. Keep those
 installations and any active finalizer wiring until a separate replacement exists.
 
 ## Choose policy

@@ -387,6 +387,9 @@ func artifactAuthority(inspection artifact.ReadinessInspection, err error) strin
 		boolString(inspection.Ready()),
 		errorString(err),
 	}
+	if inspection.History != nil {
+		values = append(values, inspection.History.Fingerprint, boolString(inspection.History.Ready))
+	}
 	for _, intent := range inspection.Intents {
 		values = append(values,
 			intent.Intent.ID,
@@ -395,6 +398,8 @@ func artifactAuthority(inspection artifact.ReadinessInspection, err error) strin
 			intent.Intent.Branch,
 			intent.Intent.Base,
 			intent.Intent.ArtifactCommit,
+			intent.Intent.ArchiveCommit,
+			intent.Intent.ArchivePlanID,
 			string(intent.State),
 			boolString(intent.Finalized),
 			boolString(intent.ReceiptReachable),

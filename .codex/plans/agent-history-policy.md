@@ -31,3 +31,23 @@ Verification: meaningful native archive/policy/recovery/lifecycle tests, large
 and changing files, immutable-source redaction, stale-plan refusal, isolated
 history migration restore checks, source archive build, skill synchronization,
 paired strict documentation and relevant CI. Keep partial results honest.
+
+## Delivery checkpoint
+
+- Packaging/help PR #24 merged at b2a614a7f7745f6b9057a91ebf2dc229cea26365.
+  v0.2.32 is published; all six platform archives and Homebrew verified.
+  Actual GitHub source download: 3,495,618 bytes, no .specstory. SHA256 matches
+  the formula: 62fd4e9bfe03f95ef69c9668e7136bd2e7e8eb107dd7060c2f5bb45e902bf806.
+- Active follow-up adds agenthistory, immutable hygiene snapshots, policy/setup,
+  archive/find, sync/backup, migration and legacy lifecycle integration. Local
+  focused domain/CLI and isolated filter/restore tests pass. Complete native
+  review, full checks, docs/skill synchronization and frozen-copy dogfood remain
+  required before landing the follow-up. Canonical live histories stay untouched.
+
+- Follow-up implementation committed as cb59425. Full local race suite passed;
+  later focused race checks cover updated archive/snapshot/lifecycle adapters.
+  E2E, vet, generated skill check and strict paired docs pass.
+- Frozen v0.2.32 dogfood: 60 histories / 427,925,000 bytes; a 70,527,168-byte
+  raw snapshot preserved and found in 33.18s; verified original bundle restore
+  plus both filtered projections in 196.22s. Source clone HEAD/index unchanged.
+  This is structural preservation with explicit off policy, not a secret audit.

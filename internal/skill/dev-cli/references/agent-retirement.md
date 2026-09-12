@@ -223,3 +223,13 @@ a replacement program is not exempt. Old handoffs must be recreated. Final
 cancellation before Apply changes nothing; failures after effects begin list
 completed closures and retained resources. Raw Git and Herdr actions remain
 outside dev's locks and revalidation guarantees.
+
+## External archive policy
+
+`dev artifact setup` can select a separate Git archive. New prepared intents bind
+that destination and policy; old intents keep the commit workflow. Off/check
+finalization needs no compatibility redactor script. For redact copies, review
+`dev artifact archive` and supply `--archive-plan` when finalizing. Commit reviewed
+plans with product changes before preparing one exact SpecStory transcript.
+Ignored capture bytes participate in lifecycle readiness; a new recorder write or
+missing archive receipt blocks cleanup. See [AI artifacts](ai-artifacts.md).
