@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -229,7 +230,27 @@ func runGit(ctx context.Context, root string, input []byte, limit int, args ...s
 	argv := append([]string{"-c", "core.quotepath=false", "-c", "core.longpaths=true"}, args...)
 	r, err := (sshhost.ExecRunner{}).Run(ctx, sshhost.RunRequest{Name: "git", Dir: root, Args: argv, Stdin: input, UnsetEnv: unset, Env: []string{"GIT_OPTIONAL_LOCKS=0", "GIT_TERMINAL_PROMPT=0", "GIT_NO_LAZY_FETCH=1", "GIT_NO_REPLACE_OBJECTS=1"}, StdoutLimit: limit, Display: "artifact Git operation"})
 	if err != nil || r.ExitCode != 0 || r.StdoutTruncated {
-		return nil, errors.New("artifact Git operation failed or exceeded its output limit")
+		operation := "operation"
+		if len(args) > 0 {
+			operation = args[0]
+		}
+		reason := "command failed"
+		diagnostic := strings.ToLower(string(r.Stderr))
+		switch {
+		case r.StdoutTruncated:
+			reason = "output limit"
+		case strings.Contains(diagnostic, "too long"):
+			reason = "path length"
+		case strings.Contains(diagnostic, "dubious ownership"):
+			reason = "ownership"
+		case strings.Contains(diagnostic, "permission denied"):
+			reason = "permissions"
+		case strings.Contains(diagnostic, "unknown revision") || strings.Contains(diagnostic, "needed a single revision") || strings.Contains(diagnostic, "bad revision"):
+			reason = "revision unavailable"
+		case err != nil:
+			reason = "process launch or cancellation"
+		}
+		return nil, fmt.Errorf("artifact Git %s failed (%s)", operation, reason)
 	}
 	return r.Stdout, nil
 }
@@ -347,11 +368,26 @@ func archiveCheckout(ctx context.Context, source, destination string) (string, e
 		return "", errors.New("source checkout must not be inside its archive")
 	}
 	repo, e := gitx.Discover(ctx, path)
-	if e != nil || repo.Root != path {
+	if e != nil {
 		return "", errors.New("archive must be the root of an existing Git checkout; create it with git init first")
 	}
+	observedRoot, e := pathx.Canonical(repo.Root)
+	if e != nil || observedRoot != path {
+		return "", errors.New("archive must be the canonical root of its Git checkout")
+	}
 	sourceRepo, e := gitx.Discover(ctx, source)
-	if e != nil || sourceRepo.GitCommonDir == repo.GitCommonDir {
+	if e != nil {
+		return "", errors.New("archive must be a separate repository")
+	}
+	sourceID, e := gitx.DirectoryIdentity(sourceRepo.GitCommonDir)
+	if e != nil {
+		return "", e
+	}
+	archiveID, e := gitx.DirectoryIdentity(repo.GitCommonDir)
+	if e != nil {
+		return "", e
+	}
+	if sourceID == archiveID {
 		return "", errors.New("archive must be a separate repository")
 	}
 	if _, e = gitx.DirectoryIdentity(path); e != nil {

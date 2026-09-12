@@ -122,7 +122,14 @@ func (s *Service) PreviewMigration(ctx context.Context, o MigrationOptions) (Pla
 		}
 	}
 	if o.Output == "" {
-		o.Output = filepath.Join(s.planDir(p.View.ID), "migration")
+		parent := filepath.Join(s.StateDir, "agent-history", "migrations")
+		if e = safeWriteParent(ctx, parent); e != nil {
+			return p.View, e
+		}
+		if e = privatefile.EnsureDir(parent); e != nil {
+			return p.View, e
+		}
+		o.Output = filepath.Join(parent, p.View.ID)
 	}
 	p.View.Output = o.Output
 	p.OutputAnchor, e = outputSlot(o.Output)
@@ -284,7 +291,10 @@ func (s *Service) ApplyMigration(ctx context.Context, id string, o ApplyOptions)
 			}
 			for ref, want := range p.Refs {
 				got, e := gitText(ctx, original, "rev-parse", "--verify", ref)
-				if e != nil || got != want {
+				if e != nil {
+					return fmt.Errorf("backup ref verification: %w", e)
+				}
+				if got != want {
 					return errors.New("backup does not contain every frozen ref")
 				}
 			}
