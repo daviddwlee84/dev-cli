@@ -37,6 +37,9 @@ jobs:
           make build
           test "$(./dev --version)" = "dev version $VERSION"
 
+      - name: Verify exported source package
+        run: python3 scripts/check-source-archive.py --version "$VERSION"
+
       # modernc.org/sqlite is pure Go, so every target cross-compiles from one
       # runner with CGO disabled and ships as a static binary. Windows ships a
       # .zip with dev.exe; every other platform a .tar.gz with dev.

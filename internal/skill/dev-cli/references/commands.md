@@ -35,7 +35,7 @@ dev adopt [flags]
 
 ### `dev artifact`
 
-Inspect and finalize armed agent artifacts
+Manage coding-agent transcripts and plans
 
 ```
 dev artifact
@@ -43,7 +43,7 @@ dev artifact
 
 ### `dev artifact discard`
 
-Abandon an intent that can never be finalized
+Abandon one failed artifact handoff
 
 ```
 dev artifact discard <intent> [flags]
@@ -67,7 +67,7 @@ dev artifact finalize [flags]
 
 ### `dev artifact list`
 
-List pending and finalized artifact intents
+List pending and completed artifact handoffs
 
 ```
 dev artifact list
@@ -680,7 +680,7 @@ dev graduate [try] [flags]
 
 ### `dev help`
 
-Quick-reference pages for the git workflow dev assumes
+Guides to repository workflows, policies, and tradeoffs
 
 ```
 dev help [topic]

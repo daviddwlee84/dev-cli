@@ -239,3 +239,6 @@ post-writer attestation and source revalidation remain necessary, and raw extern
 writers remain outside dev-mediated locks.
 
 Use the [manual dogfood checklist](../reference/hygiene-dogfood.md) for this repo.
+
+For history retention, reviewed knowledge and source-package boundaries, see
+`dev help ai-artifacts`.

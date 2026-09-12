@@ -54,6 +54,14 @@ $ dev ls
 ❄️ settings redesign      COLD   website    feat/settings             clean 3w   —             pick up after the API lands
 ```
 
+## AI artifacts and source distributions
+
+`dev help ai-artifacts` explains what to keep in Git, archive privately, and ship.
+Choose transcript retention separately from scanning and packaging. SpecStory
+histories remain trackable, but `.gitattributes` excludes `.specstory` from source
+archives so Homebrew does not download conversation evidence to build the CLI.
+See the [AI artifact guide](docs/guides/ai-artifacts.md).
+
 ## Repository hygiene
 
 Use `dev hygiene manage --all` to preview and deploy commit checks across selected
@@ -94,7 +102,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.31 instead when you need a reproducible install.
+# Pin @v0.2.32 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 

@@ -99,7 +99,11 @@ or another workspace.`,
 }
 
 func newArtifactCmd(app *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "artifact", Short: "Inspect and finalize armed agent artifacts"}
+	cmd := &cobra.Command{Use: "artifact", Short: "Manage coding-agent transcripts and plans", Long: `Preserve coding-agent conversation evidence and selected plans.
+
+The current finalizer reads SpecStory Markdown. SpecStory is the recorder;
+--session names the originating agent, such as codex:<uuid> or claude:<uuid>.
+Native agent sessions and tool databases have their own backup/resume contracts.`}
 	cmd.AddCommand(newArtifactFinalizeCmd(app), newArtifactListCmd(app), newArtifactDiscardCmd(app), newArtifactObserveCmd(app))
 	return cmd
 }
@@ -152,7 +156,7 @@ func newArtifactDiscardCmd(app *App) *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
 		Use:   "discard <intent>",
-		Short: "Abandon an intent that can never be finalized",
+		Short: "Abandon one failed artifact handoff",
 		Long: `Record that an armed handoff will never produce a commit.
 
 An intent whose transcript was never written, or whose HEAD no longer exists
@@ -216,7 +220,7 @@ transcript, and only a finalization that already failed is a dead end.`,
 func newArtifactListCmd(app *App) *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List pending and finalized artifact intents",
+		Short: "List pending and completed artifact handoffs",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			intents, err := artifactStore(app).List()

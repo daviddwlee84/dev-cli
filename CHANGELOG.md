@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.32] - 2026-09-12
+
+### Added
+
+- Offline `dev help ai-artifacts` (also `artifact` and `specstory`) explains
+  reviewed project knowledge, raw history, privacy choices and source packaging.
+
+### Fixed
+
+- Source archives exclude `.specstory` conversation data while retaining it in
+  Git; release validation builds the exported sources used by Homebrew.
+
 ## [0.2.31] - 2026-09-12
 
 ### Added
@@ -1040,7 +1052,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.31...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.32...HEAD
+[0.2.32]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.31...v0.2.32
 [0.2.31]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.30...v0.2.31
 [0.2.30]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.29...v0.2.30
 [0.2.29]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.28...v0.2.29

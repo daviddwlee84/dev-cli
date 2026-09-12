@@ -10,10 +10,10 @@ import (
 func newHelpTopicCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "help [topic]",
-		Short: "Quick-reference pages for the git workflow dev assumes",
-		Long: `Short answers to the questions this workflow keeps raising: when to branch,
-what a commit should contain, who owns which worktree, how to hand work to
-another machine.
+		Short: "Guides to repository workflows, policies, and tradeoffs",
+		Long: `Practical guides to repository work: when to branch, what a commit should
+contain, where agent history belongs, who owns each worktree, and how to hand
+work to another machine.
 
 Run without an argument to see the index.`,
 		Args: cobra.MaximumNArgs(1),

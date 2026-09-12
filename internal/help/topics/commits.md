@@ -98,3 +98,6 @@ changes that had real structure.
 
 And after a squash-merge, stop using that branch — continuing on it
 re-introduces the commits that were squashed away.
+
+For history retention, reviewed knowledge and source-package boundaries, see
+`dev help ai-artifacts`.
