@@ -2,6 +2,7 @@ package hygiene
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,10 @@ import (
 
 func TestMain(m *testing.M) {
 	if os.Getenv("DEV_HYGIENE_SCANNER_TEST_HELPER") == "malformed" {
+		if len(os.Args) == 2 && os.Args[1] == "version" {
+			fmt.Println("8.30.0")
+			os.Exit(0)
+		}
 		for i, arg := range os.Args {
 			if arg == "--report-path" && i+1 < len(os.Args) {
 				_ = os.WriteFile(os.Args[i+1], []byte("not-json"), 0o600)
@@ -61,5 +66,13 @@ func TestPrivateReviewImageIsBoundToPlan(t *testing.T) {
 	}
 	if _, e = s.Apply(t.Context(), plan.ID, ApplyOptions{}); e == nil {
 		t.Fatal("changed review accepted")
+	}
+}
+
+func TestScannerVersionRequiresScopedAllowlistSupport(t *testing.T) {
+	for version, want := range map[string]bool{"8.30.0": true, "v8.30.1": true, "8.31.0": true, "8.22.1": false, "9.0.0": false, "8.30.0-dev": false, "unknown": false} {
+		if supportedScannerVersion(version) != want {
+			t.Errorf("unexpected compatibility for %q", version)
+		}
 	}
 }

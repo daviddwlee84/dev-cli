@@ -71,6 +71,10 @@ const (
 	listActionSkillVisible
 	listActionSkillGlobal
 	listActionSkillFiltered
+	listActionSkillRemove
+	listActionSkillRemoveAll
+	listActionHygieneRepo
+	listActionHygieneFiltered
 	listActionRegisterRepo
 	listActionRegisterParent
 	listActionRegistrationConfirm
@@ -471,6 +475,8 @@ func (m Model) openActionMenu() Model {
 		}
 		if m.actions.Workflow != nil {
 			overlay.addOption(listActionSkillManage, "manage selected skill…")
+			overlay.addOption(listActionSkillRemove, "remove skills in this scope…")
+			overlay.addOption(listActionSkillRemoveAll, "remove skills across repositories/global…")
 			if row.Scope == agentskill.ScopeProject {
 				overlay.addOption(listActionSkillRepo, "manage this project's skills…")
 				overlay.addOption(listActionSkillVisible, "manage project + global skills…")
@@ -507,6 +513,8 @@ func (m Model) openActionMenu() Model {
 			overlay.addOption(listActionTriageFiltered, "organize current filtered results…")
 			if m.view == ViewRepos {
 				overlay.addOption(listActionSkillRepo, "manage repository skills…")
+				overlay.addOption(listActionHygieneRepo, "set up repository hygiene…")
+				overlay.addOption(listActionHygieneFiltered, "set up hygiene across filtered repositories…")
 				overlay.addOption(listActionSkillFiltered, "manage skills across filtered repositories…")
 			}
 			overlay.addOption(listActionTriageAll, "organize all local work…")
@@ -833,6 +841,12 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 		}
 	case listActionRemoteClone:
 		return m.promptSelectedRemoteClone()
+	case listActionSkillRemoveAll:
+		return m.runWorkflow(WorkflowRequest{Action: "skills-manage", SkillAction: "remove", SkillScope: "repos-global", AllLocal: true, LocalGeneration: m.localGeneration})
+	case listActionSkillRemove:
+		return m.openSkillManagement(listActionSkillVisible, "remove")
+	case listActionHygieneRepo, listActionHygieneFiltered:
+		return m.openHygieneManagement(action == listActionHygieneFiltered)
 	case listActionSkillManage, listActionSkillRepo, listActionSkillVisible, listActionSkillGlobal, listActionSkillFiltered:
 		return m.openSkillManagement(action, "")
 	case listActionSkillUpdate:

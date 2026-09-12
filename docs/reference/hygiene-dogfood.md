@@ -2,7 +2,7 @@
 description: Manual post-writer dogfood and the separate impact assessment for already-published repository history.
 authority: project
 status: evolving
-verified_on: 2026-09-11
+verified_on: 2026-09-12
 ---
 
 # Manual hygiene dogfood
@@ -113,3 +113,17 @@ Git author names/emails and identifying filenames are assessment items; text
 redaction does not rewrite commit metadata or rename files. GitHub describes
 rotation-first handling and the limits of force pushes, forks, PR references and
 caches in its [sensitive-data removal guidance](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository).
+
+## Batch rollout dogfood (2026-09-12)
+
+The follow-up preview inspected 63 configured repositories: 55 prepared plans and
+8 retained legacy/custom redactor configurations. No other repository plan was
+applied. The dev-cli feature checkout's already-configured setup applied as a
+verified no-op, retaining its effective global hook. Cached machine import listed
+45 stale candidates without refreshing sources or importing private rules.
+
+The isolated real hook fixture passed hidden/same-line secret blocking, masked
+output, index/config preservation and a clean commit. Its detector fixtures are
+constructed at runtime; even a source-code concatenation can resemble a quoted
+password, so the corpus builders avoid shipping those false-positive shapes.
+Full published-history cleanup remains the separate post-writer phase above.

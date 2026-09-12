@@ -7,8 +7,10 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 	"github.com/daviddwlee84/dev-cli/internal/sshhost"
@@ -32,7 +34,35 @@ type Engine interface {
 }
 type Gitleaks struct{ Binary string }
 
+func supportedScannerVersion(value string) bool {
+	parts := regexp.MustCompile(`^v?(8)\.(\d+)\.(\d+)$`).FindStringSubmatch(strings.TrimSpace(value))
+	if len(parts) != 4 {
+		return false
+	}
+	minor, err := strconv.Atoi(parts[2])
+	return err == nil && minor >= 30
+}
+
+// CheckVersion rejects versions that can silently ignore scoped allowlists.
+// This explicit execution is used by setup/scan, not passive status/inventory.
+func (g Gitleaks) CheckVersion(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	name := g.Binary
+	if name == "" {
+		name = "gitleaks"
+	}
+	r, err := (sshhost.ExecRunner{}).Run(ctx, sshhost.RunRequest{Name: name, Args: []string{"version"}, UnsetEnv: gitEnvironmentNames(), Display: "hygiene scanner version"})
+	if err != nil || r.ExitCode != 0 || r.StdoutTruncated || !supportedScannerVersion(string(r.Stdout)) {
+		return errors.New("gitleaks 8.30.0 or newer compatible 8.x is required; check the installed scanner")
+	}
+	return nil
+}
+
 func (g Gitleaks) Scan(ctx context.Context, q EngineRequest) ([]Detection, error) {
+	if err := g.CheckVersion(ctx); err != nil {
+		return nil, err
+	}
 	configPath := filepath.Join(q.PrivateDir, "engine.toml")
 	reportPath := filepath.Join(q.PrivateDir, "engine.json")
 	ignorePath := filepath.Join(q.PrivateDir, "ignore")

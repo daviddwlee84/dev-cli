@@ -56,7 +56,8 @@ $ dev ls
 
 ## Repository hygiene
 
-Use `dev hygiene status` to inspect effective hooks and `dev hygiene setup` to
+Use `dev hygiene manage --all` to preview and deploy commit checks across selected
+repositories, independently of agent skills. Use `dev hygiene status` to inspect effective hooks and `dev hygiene setup` to
 preview configuration. `scan --scope staged|worktree|history` checks secret/privacy
 policy; reviewed `rules` and `redact` plans keep private values and recovery outside
 Git. Hooks block rather than auto-stage. Final transcript cleanup requires the
@@ -1837,6 +1838,10 @@ folders: `DEV_TEST_NATIVE_TRASH=1 go test ./internal/desktop -run TestNativeTras
 clears search before closing the menu. REPOS first shows dated cached rows,
 then streams local discovery and Git enrichment; pending rows cannot authorize
 actions. `dev cache clear repos` removes this disposable presentation cache.
+
+Selected skill removal is available through SKILLS / `dev skill manage`, with
+agent scopes, ownership/dependency checks and private results. Existing artifact
+finalizers remain separate; see [skills management](internal/skill/dev-cli/references/skills-management.md).
 
 For skills maintenance, use `dev skill manage [--repo api | --all]` or the
 REPOS/SKILLS action menus. The wizard checks sources, selects project/global

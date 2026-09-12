@@ -28,6 +28,7 @@ var ErrStale = errors.New("hygiene inputs changed; create a fresh preview")
 
 type Service struct {
 	Root         string
+	CacheDir     string
 	Common       string
 	RepoID       string
 	Dir          string
@@ -41,6 +42,7 @@ type Service struct {
 }
 type Options struct {
 	Root, StateDir, GlobalPolicy string
+	CacheDir                     string
 	Override                     Policy
 	Engine                       Engine
 	PublicOnly                   bool
@@ -55,7 +57,7 @@ func Open(ctx context.Context, o Options) (*Service, error) {
 	if err != nil {
 		return nil, errors.New("cannot identify repository")
 	}
-	s := &Service{Root: repo.Root, Common: repo.GitCommonDir, RepoID: digest([]byte(id)), Global: o.GlobalPolicy, Policy: DefaultPolicy(), Engine: o.Engine, policyInputs: map[string]string{}, PublicOnly: o.PublicOnly}
+	s := &Service{Root: repo.Root, CacheDir: o.CacheDir, Common: repo.GitCommonDir, RepoID: digest([]byte(id)), Global: o.GlobalPolicy, Policy: DefaultPolicy(), Engine: o.Engine, policyInputs: map[string]string{}, PublicOnly: o.PublicOnly}
 	state, e := pathx.Canonical(o.StateDir)
 	if e != nil {
 		return nil, errors.New("private hygiene state path unavailable")

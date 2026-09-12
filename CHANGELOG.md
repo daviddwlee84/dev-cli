@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Reviewed multi-repository hygiene deployment through `dev hygiene manage` and
+  REPOS, with narrow legacy scanner migration, shared-hook checks and private
+  per-repository result ledgers.
+- Private rule candidates from existing Tailscale/LAN/Fleet caches, with source
+  revalidation and no discovery, connection or credential-store access.
+- Selected skill removal through SKILLS and the shared management wizard, with
+  explicit agent scopes, ownership/shared-consumer checks and private receipts.
+
+### Fixed
+
+- Password detection distinguishes quoted literals and unquoted configuration
+  values from program identifiers; scoped fixture exceptions remain explicit.
+- Scanner version checks reject configurations that older engines can silently
+  ignore. Existing artifact finalizers stay separate during migration.
+
 ## [0.2.30] - 2026-09-12
 
 ### Added

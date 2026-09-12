@@ -2,35 +2,46 @@ package hygiene
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io/fs"
 	"net/netip"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 )
 
 type Candidate struct {
-	ID          string `json:"id"`
-	Kind        string `json:"kind"`
-	Source      string `json:"source"`
-	Line        int    `json:"line,omitempty"`
-	Recommended Mode   `json:"recommended"`
+	ID          string     `json:"id"`
+	Kind        string     `json:"kind"`
+	Source      string     `json:"source"`
+	Line        int        `json:"line,omitempty"`
+	Recommended Mode       `json:"recommended"`
+	ObservedAt  *time.Time `json:"observed_at,omitempty"`
+	Stale       bool       `json:"stale,omitempty"`
 	rule        Rule
 }
 type Candidates struct {
-	Complete bool        `json:"complete"`
-	Items    []Candidate `json:"items"`
+	Complete    bool        `json:"complete"`
+	Items       []Candidate `json:"items"`
+	Gaps        []string    `json:"gaps,omitempty"`
+	fingerprint string
 }
 
 func (s *Service) Candidates(ctx context.Context, from string) (Candidates, error) {
 	if err := s.prepare(ctx); err != nil {
 		return Candidates{}, err
 	}
+	return s.candidates(ctx, from)
+}
+func (s *Service) candidates(ctx context.Context, from string) (Candidates, error) {
 	result := Candidates{Complete: true, Items: []Candidate{}}
+	metadata := map[string]candidateObservation{}
+	var binding any
 	literals := []sshhost.PrivacyLiteral{}
 	switch from {
 	case "ssh":
@@ -41,6 +52,13 @@ func (s *Service) Candidates(ctx context.Context, from string) (Candidates, erro
 		literals, result.Complete, err = service.PrivacyLiterals(ctx)
 		if err != nil {
 			return result, errors.New("SSH privacy source unavailable")
+		}
+	case "machines":
+		var err error
+		literals, metadata, binding, result.Gaps, err = s.machineLiterals(ctx)
+		result.Complete = err == nil
+		if err != nil {
+			return result, errors.New("machine cache is incomplete or unsafe; inspect cache diagnostics")
 		}
 	case "local":
 		home, err := os.UserHomeDir()
@@ -57,7 +75,7 @@ func (s *Service) Candidates(ctx context.Context, from string) (Candidates, erro
 			literals = append(literals, sshhost.PrivacyLiteral{Kind: "git-email", Value: strings.TrimSpace(string(email))})
 		}
 	default:
-		return result, errors.New("import source must be ssh or local")
+		return result, errors.New("import source must be ssh, local or machines")
 	}
 	seen := map[string]bool{}
 	for _, v := range literals {
@@ -106,8 +124,25 @@ func (s *Service) Candidates(ctx context.Context, from string) (Candidates, erro
 		if v.Source.Path != "" {
 			source = "SSH configuration source"
 		}
-		result.Items = append(result.Items, Candidate{id, v.Kind, source, v.Source.Line, mode, rule})
+		observation := metadata[v.Value]
+		if observation.Source != "" {
+			source = observation.Source
+		}
+		result.Items = append(result.Items, Candidate{ID: id, Kind: v.Kind, Source: source, Line: v.Source.Line, Recommended: mode, ObservedAt: observation.At, Stale: observation.Stale, rule: rule})
 	}
+	data, err := json.Marshal(struct {
+		Literals []sshhost.PrivacyLiteral
+		Binding  any
+	}{literals, binding})
+	if err != nil {
+		return result, err
+	}
+	// PrivacyLiteral deliberately omits values in JSON; include them only in the keyed digest.
+	parts := []string{string(data)}
+	for _, v := range literals {
+		parts = append(parts, v.Kind, v.Value, v.Source.Path)
+	}
+	result.fingerprint = keyedID(s.key, parts...)
 	return result, nil
 }
 func (s *Service) PreviewImport(ctx context.Context, from string, ids []string) (Plan, error) {
@@ -116,7 +151,7 @@ func (s *Service) PreviewImport(ctx context.Context, from string, ids []string) 
 		return Plan{}, err
 	}
 	if !candidates.Complete {
-		return Plan{}, errors.New("SSH closure is incomplete; inspect source before importing")
+		return Plan{}, errors.New("privacy source is incomplete; inspect source before importing")
 	}
 	selected := map[string]bool{}
 	for _, id := range ids {
@@ -137,9 +172,12 @@ func (s *Service) PreviewImport(ctx context.Context, from string, ids []string) 
 			return Plan{}, errors.New("candidate changed; preview import again")
 		}
 	}
-	return s.PreviewRules(ctx, rules, nil, Policy{Version: 1})
+	return s.previewRules(ctx, rules, nil, Policy{Version: 1}, from, candidates.fingerprint)
 }
 func (s *Service) PreviewRules(ctx context.Context, rules []Rule, exceptions []Exception, overrides Policy) (Plan, error) {
+	return s.previewRules(ctx, rules, exceptions, overrides, "", "")
+}
+func (s *Service) previewRules(ctx context.Context, rules []Rule, exceptions []Exception, overrides Policy, source, sourceDigest string) (Plan, error) {
 	target := filepath.Join(s.Dir, "policy.toml")
 	local := Policy{Version: 1}
 	if b, err := safefile.ReadStablePath(ctx, target, 1<<20); err == nil {
@@ -168,6 +206,7 @@ func (s *Service) PreviewRules(ctx context.Context, rules []Rule, exceptions []E
 	if err = s.addChange(ctx, &p, "local policy", target, data, 0); err != nil {
 		return Plan{}, err
 	}
+	p.ImportSource, p.ImportDigest = source, sourceDigest
 	effective := MergePolicy(s.Policy, overrides)
 	p.Plan.Policy = &effective
 	if err = s.savePlan(ctx, &p); err != nil {

@@ -104,7 +104,22 @@ regexes = [
 
 [[rules]]
   id          = "generic-password-assignment"
-  description = "Password / passphrase / sudo password assignment"
-  regex       = '''(?i)(?:passwo?r?d|passphrase|sudo[_-]?pass(?:word)?)[ \t]*[:=][ \t]*["']?([^\s"'#]{6,})'''
+  description = "Quoted password / passphrase assignment"
+  regex       = '''(?i)(?:^|[^A-Za-z0-9_])(?:[A-Za-z0-9]+[_-])*(?:passwo?r?d|passphrase|sudo[_-]?pass(?:word)?)["']?[ \t]*[:=][ \t]*"((?:[^"\\\r\n]|\\.){6,})"'''
+  secretGroup = 1
+  tags        = ["password", "auto"]
+
+[[rules]]
+  id          = "generic-password-assignment-single-quoted"
+  description = "Single-quoted password / passphrase assignment"
+  regex       = '''(?i)(?:^|[^A-Za-z0-9_])(?:[A-Za-z0-9]+[_-])*(?:passwo?r?d|passphrase|sudo[_-]?pass(?:word)?)["']?[ \t]*[:=][ \t]*'((?:[^'\\\r\n]|\\.){6,})''''
+  secretGroup = 1
+  tags        = ["password", "auto"]
+
+[[rules]]
+  id          = "generic-password-assignment-unquoted"
+  description = "Unquoted password assignment in configuration, scripts or prose"
+  path        = '''(?i)(?:^|/)(?:\.env(?:\.[^/]*)?|(?:Dockerfile|Containerfile|Makefile|Justfile)(?:\.[^/]*)?|[^/]+\.(?:env|ini|conf|cfg|toml|ya?ml|properties|md|txt|sh|bash|zsh|fish|ps1))$'''
+  regex       = '''(?im)^[ \t]*(?:export[ \t]+)?(?:[A-Za-z0-9]+[_-])*(?:passwo?r?d|passphrase|sudo[_-]?pass(?:word)?)[ \t]*[:=][ \t]*([A-Za-z0-9][^\s"'#(){};]{5,})[ \t]*(?:[#;]|$)'''
   secretGroup = 1
   tags        = ["password", "auto"]

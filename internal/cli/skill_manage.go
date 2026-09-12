@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -36,10 +37,10 @@ type skillManageRun struct {
 func newSkillManageCmd(app *App) *cobra.Command {
 	var repoRef string
 	var all bool
-	cmd := &cobra.Command{Use: "manage", Short: "Check, update or restore skills with a scoped wizard", Long: `Manage one skill, project skills, global skills, or several repositories.
+	cmd := &cobra.Command{Use: "manage", Short: "Check, update, remove or restore skills with a scoped wizard", Long: `Manage one skill, project skills, global skills, or several repositories.
 
 The wizard selects scopes and targets, checks Git sources explicitly, previews
-changes, then asks before invoking the globally installed skills executable.
+changes, then confirms native-provider or owned bundled-skill operations.
 Restore from lock and node_modules sync are separate single-project actions.
 Listing and update checks do not require Node or skills. No npx fallback runs.`, Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -149,17 +150,20 @@ func runSkillManage(ctx context.Context, app *App, req skillManageRequest) (skil
 			byKey[target.Key()] = target
 			items = append(items, picker.Item{Value: target.Key(), Label: target.RepoDisplay, Description: config.Contract(target.CheckoutRoot)})
 		}
+		targets = nil
 		if len(items) == 0 {
 			fmt.Fprintln(app.Out, "No repositories with skills-lock.json found.")
-			return run, nil
-		}
-		picked, e := skillPick(ctx, app, "Repositories", items, true, nil)
-		if e != nil {
-			return run, e
-		}
-		targets = nil
-		for _, item := range picked {
-			targets = append(targets, byKey[item.Value])
+			if scope != "repos-global" {
+				return run, nil
+			}
+		} else {
+			picked, e := skillPick(ctx, app, "Repositories", items, true, nil)
+			if e != nil {
+				return run, e
+			}
+			for _, item := range picked {
+				targets = append(targets, byKey[item.Value])
+			}
 		}
 	}
 	global := scope == "global" || scope == "both" || scope == "repos-global"
@@ -198,7 +202,7 @@ func runSkillManage(ctx context.Context, app *App, req skillManageRequest) (skil
 	fmt.Fprintf(app.Out, "skills provider: %s\n", dependency.Detail)
 	action := req.Action
 	if action == "" {
-		choices := []picker.Item{{Value: "check", Label: "Check for updates", Description: "Read-only network comparison"}, {Value: "update", Label: "Update selected skills", Description: "Check first, then preview confirmed updates"}}
+		choices := []picker.Item{{Value: "check", Label: "Check for updates", Description: "Read-only network comparison"}, {Value: "update", Label: "Update selected skills", Description: "Check first, then preview confirmed updates"}, {Value: "remove", Label: "Remove selected skills", Description: "Preview owned installations, agent scopes and dependencies"}}
 		if len(targets) == 1 && !global && req.Selected != nil && req.Selected.Presence == agentskill.PresenceMissing {
 			choices = append(choices, picker.Item{Value: "experimental_install", Label: "Restore this project from lock", Description: "All recorded project skills; sources/ref may be updated"})
 		}
@@ -212,7 +216,55 @@ func runSkillManage(ctx context.Context, app *App, req skillManageRequest) (skil
 		action = picked[0].Value
 	}
 	var ops []agentskill.ManageOperation
-	if action == "check" || action == "update" {
+	if action == "remove" {
+		items := []picker.Item{}
+		for i, row := range rows {
+			items = append(items, picker.Item{Value: strconv.Itoa(i), Label: row.Name, Description: string(row.Scope) + " · " + config.Contract(row.ScopeRoot) + " · " + string(row.ManagedBy)})
+		}
+		if len(items) == 0 {
+			fmt.Fprintln(app.Out, "No skills found in this scope.")
+			return run, nil
+		}
+		picked, e := skillPick(ctx, app, "Skills to remove", items, true, nil)
+		if e != nil {
+			return run, e
+		}
+		chosen := []agentskill.Skill{}
+		owners := map[string]bool{}
+		for _, item := range picked {
+			i, e := strconv.Atoi(item.Value)
+			if e != nil || i < 0 || i >= len(rows) {
+				return run, errors.New("invalid skill selection")
+			}
+			chosen = append(chosen, rows[i])
+			for _, agent := range rows[i].Agents {
+				owners[agent] = true
+			}
+			for _, installation := range rows[i].Installations {
+				for _, agent := range installation.AgentIDs {
+					owners[agent] = true
+				}
+			}
+		}
+		items = nil
+		defaults := []string{}
+		for _, agent := range agentskill.Registry() {
+			if owners[agent.ID] {
+				items = append(items, picker.Item{Value: agent.ID, Label: agent.DisplayName, Description: agent.ID})
+				defaults = append(defaults, agent.ID)
+			}
+		}
+		sort.Strings(defaults)
+		selected, e := skillPick(ctx, app, "Agents whose selected skills will be removed", items, true, defaults)
+		if e != nil {
+			return run, e
+		}
+		agents := []string{}
+		for _, item := range selected {
+			agents = append(agents, item.Value)
+		}
+		ops = agentskill.PrepareRemovals(ctx, chosen, agents)
+	} else if action == "check" || action == "update" {
 		if len(rows) == 0 {
 			fmt.Fprintln(app.Out, "No skills found in this scope.")
 			return run, nil
@@ -301,6 +353,9 @@ func runSkillManage(ctx context.Context, app *App, req skillManageRequest) (skil
 	}
 	if !confirmed {
 		return run, errPromptCanceled
+	}
+	if err := agentskill.PrepareManageReceiptDir(app.Cfg.StateDir()); err != nil {
+		return run, err
 	}
 	run.Mutated = true
 	run.Receipt = agentskill.ApplyManagement(ctx, ops, app.Out)

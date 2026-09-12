@@ -396,7 +396,7 @@ func runTUI(app *App) error {
 		SSH:       sshTUIActions(appState),
 		Discovery: tuiDiscoveryActions(appState, projectRootResolver),
 		Workflow: func(ctx context.Context, request tui.WorkflowRequest) (tui.Workflow, error) {
-			if request.Action == "skills-manage" {
+			if request.Action == "skills-manage" || request.Action == "hygiene-manage" {
 				return newTUIWorkflow(ctx, appState.Current(), request), nil
 			}
 			rt, err := runtimeResolver.Resolve(ctx)

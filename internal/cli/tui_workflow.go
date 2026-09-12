@@ -65,6 +65,8 @@ func (w *tuiWorkflow) run() error {
 	var cmd *cobra.Command
 	var args []string
 	switch request.Action {
+	case "hygiene-manage":
+		return w.runHygieneManagement()
 	case "skills-manage":
 		return w.runSkillManagement()
 	case "triage":

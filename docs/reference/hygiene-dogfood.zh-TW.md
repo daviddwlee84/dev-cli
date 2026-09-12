@@ -3,7 +3,7 @@ description: 人工 post-writer dogfood 與已發布 Git 歷史的獨立清理�
 lang: zh-TW
 authority: project
 status: evolving
-verified_on: 2026-09-11
+verified_on: 2026-09-12
 ---
 
 # 人工 hygiene dogfood
@@ -93,3 +93,15 @@ Homebrew/Scoop、已下載 archives。已發布 tag 不得移動或重用。提�
 Git author 姓名／email、帶個資的檔名也列入評估；文字 redaction 不改 commit metadata
 或 rename 檔案。GitHub 的[敏感資料移除說明](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)
 說明 rotation-first，以及 force push、fork、PR reference、cache 的限制。
+
+## 批次 rollout dogfood（2026-09-12）
+
+後續版本預覽了 63 個已設定 repo：55 個可準備，8 個保留舊版／自訂 redactor
+設定。其他 repo 的 plan 都未套用。dev-cli feature checkout 已有設定，setup
+以已驗證的 no-op 完成，保留有效 global hook。機器快取列出 45 個 stale 候選，
+沒有刷新來源或匯入私人規則。
+
+隔離的真實 hook fixture 通過 hidden／同一行 secret 阻擋、輸出遮罩、index／config
+保留及乾淨 commit。Detector fixture 於執行時組出；程式碼字串拼接本身也可能
+看似加引號的 password，所以 corpus builder 避免把這種誤判形狀放進發佈檔案。
+已發布歷史的完整清理仍是前述 post-writer 階段。

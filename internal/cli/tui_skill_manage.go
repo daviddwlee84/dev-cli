@@ -7,7 +7,7 @@ import (
 
 func (w *tuiWorkflow) runSkillManagement() error {
 	w.result.Scoped = true
-	run, err := runSkillManage(w.ctx, &w.app, skillManageRequest{Refs: w.request.RepoRefs, Selected: w.request.SkillSelected, Scope: w.request.SkillScope, Action: w.request.SkillAction})
+	run, err := runSkillManage(w.ctx, &w.app, skillManageRequest{All: w.request.AllLocal, Refs: w.request.RepoRefs, Selected: w.request.SkillSelected, Scope: w.request.SkillScope, Action: w.request.SkillAction})
 	w.result.RefreshSkills = true
 	completed, failed := 0, 0
 	for _, outcome := range run.Receipt.Outcomes {

@@ -2,7 +2,7 @@
 description: 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
 authority: project
 status: evolving
-verified_on: 2026-09-11
+verified_on: 2026-09-12
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 lang: zh-TW
 ---
@@ -445,3 +445,10 @@ setup wizard，`c` 明確選擇 discovery source／scope，`p` 對選定 alias �
 login probe。`Ctrl+O` 提供 connection 與 machine-mapping actions。Discovery 和 provider
 registration 都必須明確選擇；開啟 machine row 不會自動 enroll 或加入 fleet／Herdr。
 Trust／identity 限制請參考 `dev help ssh`。
+
+## 批次 hygiene 與 skill 移除
+
+REPOS → Ctrl+O 可設定目前或篩選後多個 repo 的 hygiene。勾選 repo、檢視各 plan
+和保留的 hooks，再確認套用；這是普通 commit procedure，不安裝 agent skill。
+SKILLS → Ctrl+O → remove skills in this scope 進入共用精靈，勾選 skills 與 agents。
+Ownership、共享使用者及 finalizer references 仍可阻擋移除，來源 repo 保留。

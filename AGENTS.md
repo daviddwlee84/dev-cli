@@ -166,3 +166,14 @@ Stable release tags only are accepted by the current workflow; prerelease tags a
 `make skill-check` proves only that generated command syntax matches the Cobra tree. It cannot detect drift in lifecycle semantics, JSON schemas, safety claims, examples, README, embedded help, or authored skill references; review those manually. Because the skill is compiled with `go:embed`, rebuild after any skill edit before testing the bundled output.
 
 English and zh-TW MkDocs pages are maintained as a pair. Run the strict documentation checks above after changing either locale, navigation, snippets, or freshness metadata.
+
+## Hygiene and skill batch operations
+
+`internal/hygiene` owns per-repository setup plans and batch ledgers. REPOS and
+`hygiene manage` are adapters; JSON batch management previews only. Keep legacy
+artifact finalizers until their independent lifecycle is replaced. Cached machine
+privacy imports use only bounded local cache readers and revalidate their source.
+`internal/agentskill` owns selected-removal policy: exact native names/agent scopes
+or bundled manifests, source/ownership/dependency proof and postconditions under
+the provider lease. Never infer complete Windows validation from an advisory
+step's success conclusion; inspect logs and require the dedicated native gates.

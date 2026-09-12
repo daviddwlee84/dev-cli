@@ -28,7 +28,7 @@ installations, unsupported locks, failed checks and locally modified skill
 contents are reported separately. The preview names each checkout, scope,
 selected skill and command. Confirmation is required before execution.
 
-Management mutations require a globally installed `skills` executable compatible
+Native management mutations require a globally installed `skills` executable compatible
 with the tested 1.5.23–1.5.25 contracts (supported 1.x versions from 1.5.23).
 `dev doctor` reports the dependency; install or upgrade it with
 `npm install -g skills`. dev does not install dependencies automatically or fall
@@ -110,3 +110,33 @@ Custom `--dir` installations require `skill install --dir PATH` to refresh and
 `skill uninstall --dir PATH` to remove. Direct package-manager upgrades and
 upgrades initiated by binaries older than v0.2.23 do not run the new refresh hook;
 run `dev skill install` once with the updated binary in those cases.
+
+## Selected removal
+
+SKILLS → Ctrl+O → **remove skills in this scope…**, or **Remove selected skills** in
+`dev skill manage`, selects skills and explicit agent scopes before showing the
+exact provider command. The cross-repository/global action offers a repository
+picker and handles global skills once. Native lock-managed copies are verified against their
+lock; bundled dev-cli uses its ownership manifest. Unknown owners, local edits,
+external source links and a local source that is also the installation block
+removal. Distinct agent links can be removed while retaining the shared canonical
+content and lock; agents sharing one directory must be selected together.
+
+Known hook/development-command references are inspected and rebound before apply;
+this is not a whole-machine dependency graph. agent-history-hygiene remains
+blocked while dev artifact finalization depends on its scripts. Removing a skill
+installation never means deleting its authoring repository or deploying hygiene.
+Use `dev hygiene manage` / REPOS for the independent repository setup procedure.
+
+Native removal uses exact names and agents, never `skills remove --all`.
+The provider lease remains held through result verification, and a zero exit code
+without the expected filesystem/lock result is unverified. New removal uses the
+bounded process-tree runner; cancellation reports partial/unknown effects without
+retry. Private receipt storage is checked before mutation. No automatic rollback
+or npx fallback occurs. Missing provider support blocks only native operations;
+bundled uninstall is separate.
+
+Windows npm `.cmd`/`.bat` removal uses an encoded system PowerShell invocation,
+rejecting batch expansion/control characters. Other npm-shim management actions
+need a supported direct executable; the native removal gate is tested separately
+from the repository's broader advisory Windows tests.

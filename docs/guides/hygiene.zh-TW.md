@@ -3,7 +3,7 @@ description: 檢查 repository hooks、掃描 secret 與個人資訊，並以私
 lang: zh-TW
 authority: project
 status: evolving
-verified_on: 2026-09-11
+verified_on: 2026-09-12
 ---
 
 # Repository hygiene
@@ -28,11 +28,46 @@ Status 讀取有效的 `core.hooksPath`、hook 與設定；辨識到 hook 只證
 
 Setup 加入阻擋式 `dev-hygiene` hook、安全 gitleaks 規則與 `.dev-cli/hygiene.toml`，
 保留其他 hooks 及 YAML 註解。同名但命令不同的 hook、未知的 hook 鏈需人工整合。
-已有的 gitleaks 設定預設保留；只有在 setup 預覽加入 `--migrate-rules` 才會提議
-替換，須先比對自訂規則。`dev repo setup --enable agent-history-hygiene` 共用此服務。
+已有的 gitleaks 設定預設保留；`--migrate-hooks` 可精準遷移已辨識規則，
+`--migrate-rules` 則提議整份替換，兩者都須先比對自訂規則。`dev repo setup --enable agent-history-hygiene` 共用此服務。
 
 Hook 只檢查 index，不改檔、不自動 stage。缺少支援 hygiene 的 dev／gitleaks、
 scanner 失敗或輸出損壞都會阻擋。
+
+## 批次設定與分階段遷移
+
+一般 commit 的呼叫鏈是 `Git -> pre-commit -> dev hygiene scan -> gitleaks +
+隱私政策檢查`。Setup 是獨立設定步驟；commit 不會再呼叫 setup，也不需要 agent。
+
+```bash
+dev hygiene manage --all
+dev hygiene manage /path/to/a /path/to/b --json
+dev hygiene setup --migrate-hooks --json
+```
+
+REPOS 提供相同的單一／篩選後多 repo 流程，repo 不必有 skills lock。預覽列出
+設定差異、保留的依賴與阻擋，再勾選要套用的 plans。共享 Git repository 只處理
+一次；新裝 common-directory hook 前，其他 worktree 必須有可讀設定，套用時
+再次確認。自訂／未知 scanner 命令保留並要求人工檢視。
+
+遷移只替換已辨識且功能等價的 `gitleaks-system` hook；artifact 專用檢查、
+finalizer、provenance 和其他 hooks 保留。只精準更新已知舊 password expression，
+不覆蓋其他自訂規則或註解；自訂 scope／expression 保留。`--migrate-rules` 仍是
+另外選擇的整份設定替換。規則更新後需重新掃描；detector ID 改變時需重新確認
+fixture 例外。
+
+Setup 與 scan 要求相容的 gitleaks 8.x，最低 8.30.0；CI 固定 8.30.1。被動 status
+只檢查工具存在，不執行 scanner。Hook 的 PATH 必須找到支援 hygiene 的 dev；
+執行 `./dev` 不會升級 PATH 上的舊版 dev。工具不會自動安裝。
+
+每個 repo 分別記錄 completed、blocked、skipped、stale、partial 或 unverified，
+結果保存在私人 receipt；完成的 setup 重跑不改檔。中斷不會回滾其他 repo，也不能
+盲目重試。JSON 只預覽，可用各子 plan 的 ID 及既有
+`hygiene setup --repo PATH --apply --plan ID --yes` 套用。
+
+Staged checker 本身不改檔，但 pre-commit 可能暫存未 stage 的變更，所以 recorder
+退出後才對其 checkout commit。目前不完整取代 agent-history-hygiene：
+`dev artifact finalize` 仍依賴其 scripts；這些安裝和 finalizer wiring 先保留。
 
 ## 政策與私密規則
 
@@ -68,6 +103,17 @@ dev hygiene rules add --id private-network --kind cidr --value-file network.txt 
 alias、HostName、User 與 key-path reference，不執行 `ssh -G`、`Match exec`、DNS
 或連線，也不讀 key material。Include 不完整會阻擋匯入。常見公開名稱與通用帳號
 建議警告；local 來源提供 home path、帳號、Git 姓名與 email。
+
+`rules import --from machines` 只讀已有的 Tailscale／LAN／Fleet inventory cache，
+將 IP、hostname、remote username 列為可勾選的私人候選；不讀 credential store、
+keys，不執行探索或連線。保留觀測時間及 stale 標記；缺少快取不會建立新資料，
+不完整／損壞會阻擋匯入。預覽後來源內容改變，舊 import plan 即失效。
+
+Source 中加引號的 password literal 仍會被偵測；未加引號的 assignment 限於設定、
+script 與文字格式，以避免 Go 布林欄位／變數運算誤判。格式完整的示範／測試 key
+仍先阻擋，經確認後才建立精確例外；不要略過整個 tests／docs 或同一行其他 key。
+一般示範用 inert placeholder，detector 測試可於執行時組出 fixture。
+
 
 支援 literal、CIDR、Go RE2 及相對路徑 glob；`directory/**` 選取其下內容。
 私密值用 `--value-file` 或 stdin 輸入，不放在命令參數。可用同 ID 的規則 plan

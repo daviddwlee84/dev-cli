@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"sort"
 	"strconv"
@@ -17,8 +18,10 @@ import (
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/agenttarget"
+	"github.com/daviddwlee84/dev-cli/internal/configedit"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 	"github.com/google/uuid"
 )
@@ -37,6 +40,7 @@ type ManageOperation struct {
 	seal         string
 	nativeHash   string
 	dependencies bool
+	removal      *removalState
 }
 type ManageOutcome struct {
 	Root   string `json:"root"`
@@ -58,6 +62,17 @@ func (op ManageOperation) CommandLabel() string {
 	if op.Action == "update" {
 		args = append(args, "--"+string(op.Scope), "--yes")
 		args = append(args, op.Names...)
+	}
+	if op.Action == "remove" {
+		if op.removal != nil && op.removal.Bundle != nil {
+			return "dev skill uninstall --dir " + op.removal.Bundle.Dir
+		}
+		args = append(args, op.Names...)
+		if op.Scope == ScopeGlobal {
+			args = append(args, "--global")
+		}
+		args = append(args, "--yes", "--agent")
+		args = append(args, op.Agents...)
 	}
 	if op.Action == "experimental_sync" {
 		args = append(args, "--yes", "--agent")
@@ -179,7 +194,11 @@ func sealOperation(ctx context.Context, op *ManageOperation) {
 		minor, _ = strconv.Atoi(parts[1])
 		patch, _ = strconv.Atoi(parts[2])
 	}
-	if major != 1 || minor < 5 || minor == 5 && patch < 23 || !features[op.Action] {
+	if !features[op.Action] {
+		op.Blocked = "installed skills launcher does not support " + op.Action + "; use a supported direct executable"
+		return
+	}
+	if major != 1 || minor < 5 || minor == 5 && patch < 23 {
 		op.Blocked = "skills 1.5.23 or newer compatible 1.x is required; update the global skills dependency"
 		return
 	}
@@ -246,18 +265,33 @@ func ProviderFeatures(ctx context.Context, root string, scope ...Scope) (string,
 	provider := provider{bin: status.Path}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	raw, err := provider.command(ctx, root, "--version").Output()
+	selectedScope := ScopeProject
+	if len(scope) > 0 {
+		selectedScope = scope[0]
+	}
+	versionCommand := provider.command(ctx, root, "--version")
+	versionCommand.Env = append(os.Environ(), managementEnvironment(root, selectedScope)...)
+	raw, err := versionCommand.Output()
 	if err != nil {
 		return "", nil, err
 	}
 	version := "skills " + strings.TrimSpace(string(raw))
-	output, err := provider.command(ctx, root, "--help").Output()
+	helpCommand := provider.command(ctx, root, "--help")
+	helpCommand.Env = append(os.Environ(), managementEnvironment(root, selectedScope)...)
+	output, err := helpCommand.Output()
 	if err != nil {
 		return version, nil, err
 	}
 	features := map[string]bool{}
-	for _, name := range []string{"update", "experimental_install", "experimental_sync"} {
+	for _, name := range []string{"update", "experimental_install", "experimental_sync", "remove"} {
 		features[name] = strings.Contains(string(output), name)
+	}
+	if runtime.GOOS == "windows" && (strings.EqualFold(filepath.Ext(status.Path), ".cmd") || strings.EqualFold(filepath.Ext(status.Path), ".bat")) {
+		for name := range features {
+			if name != "remove" {
+				features[name] = false
+			}
+		}
 	}
 	return version, features, nil
 }
@@ -383,6 +417,10 @@ func (b *limitedOutput) Write(p []byte) (int, error) {
 func ApplyManagement(ctx context.Context, ops []ManageOperation, out io.Writer) ManageReceipt {
 	receipt := ManageReceipt{Version: 1, ID: uuid.NewString(), At: time.Now().UTC(), Outcomes: []ManageOutcome{}}
 	for _, op := range ops {
+		if op.Action == "remove" {
+			receipt.Outcomes = append(receipt.Outcomes, applyRemoval(ctx, op, out)...)
+			continue
+		}
 		names := op.Names
 		if len(names) == 0 {
 			names = []string{"dependency skills"}
@@ -491,9 +529,12 @@ func ApplyManagement(ctx context.Context, ops []ManageOperation, out io.Writer) 
 	return receipt
 }
 
+// PrepareManageReceiptDir validates private receipt storage before a provider mutates files.
+func PrepareManageReceiptDir(stateDir string) error {
+	return privatefile.EnsureDir(filepath.Join(stateDir, "skills", "runs"))
+}
 func SaveManageReceipt(stateDir string, receipt ManageReceipt) (string, error) {
-	dir := filepath.Join(stateDir, "skills", "runs")
-	if err := os.MkdirAll(dir, 0700); err != nil {
+	if err := PrepareManageReceiptDir(stateDir); err != nil {
 		return "", err
 	}
 	if _, err := uuid.Parse(receipt.ID); err != nil {
@@ -503,14 +544,8 @@ func SaveManageReceipt(stateDir string, receipt ManageReceipt) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	path := filepath.Join(dir, receipt.ID+".json")
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
-	if err != nil {
-		return "", err
-	}
-	_, writeErr := file.Write(data)
-	closeErr := file.Close()
-	return path, errors.Join(writeErr, closeErr)
+	path := filepath.Join(stateDir, "skills", "runs", receipt.ID+".json")
+	return path, configedit.WritePrivate(context.Background(), path, data, false)
 }
 
 func SortManagement(ops []ManageOperation) {
@@ -524,6 +559,7 @@ func (op ManageOperation) authorization() string {
 		Action                                          string
 		Names, Agents                                   []string
 		Fingerprint, Provider, ProviderHash, NativeHash string
-	}{op.Root, op.Scope, op.Action, op.Names, op.Agents, op.fingerprint, op.provider, op.providerHash, op.nativeHash})
+		Removal                                         *removalState
+	}{op.Root, op.Scope, op.Action, op.Names, op.Agents, op.fingerprint, op.provider, op.providerHash, op.nativeHash, op.removal})
 	return fmt.Sprintf("%x", sha256.Sum256(data))
 }
