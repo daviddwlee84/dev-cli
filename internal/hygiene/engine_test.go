@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 )
@@ -74,5 +75,30 @@ func TestScannerVersionRequiresScopedAllowlistSupport(t *testing.T) {
 		if supportedScannerVersion(version) != want {
 			t.Errorf("unexpected compatibility for %q", version)
 		}
+	}
+}
+
+func TestScannerBuildVersionSupportsPinnedGoInstallOnly(t *testing.T) {
+	info := &debug.BuildInfo{Main: debug.Module{Path: "github.com/zricethezav/gitleaks/v8", Version: "v8.30.1"}}
+	if !supportedScannerBuild(info) {
+		t.Fatal("pinned module rejected")
+	}
+	info.Main.Version = "v8.22.1"
+	if supportedScannerBuild(info) {
+		t.Fatal("old module accepted")
+	}
+	info.Main.Version = "(devel)"
+	if supportedScannerBuild(info) {
+		t.Fatal("unknown module accepted")
+	}
+	info.Main.Version = "v8.30.1"
+	info.Main.Replace = &debug.Module{Path: "local"}
+	if supportedScannerBuild(info) {
+		t.Fatal("replaced module accepted")
+	}
+	info.Main.Replace = nil
+	info.Main.Path = "unrelated/scanner"
+	if supportedScannerBuild(info) {
+		t.Fatal("unrelated module accepted")
 	}
 }

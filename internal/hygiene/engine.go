@@ -2,12 +2,15 @@ package hygiene
 
 import (
 	"context"
+	"debug/buildinfo"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"time"
@@ -43,6 +46,16 @@ func supportedScannerVersion(value string) bool {
 	return err == nil && minor >= 30
 }
 
+func supportedScannerBuild(info *debug.BuildInfo) bool {
+	if info == nil || info.Main.Replace != nil {
+		return false
+	}
+	if info.Main.Path != "github.com/zricethezav/gitleaks/v8" && info.Main.Path != "github.com/gitleaks/gitleaks/v8" {
+		return false
+	}
+	return supportedScannerVersion(info.Main.Version)
+}
+
 // CheckVersion rejects versions that can silently ignore scoped allowlists.
 // This explicit execution is used by setup/scan, not passive status/inventory.
 func (g Gitleaks) CheckVersion(ctx context.Context) error {
@@ -53,10 +66,22 @@ func (g Gitleaks) CheckVersion(ctx context.Context) error {
 		name = "gitleaks"
 	}
 	r, err := (sshhost.ExecRunner{}).Run(ctx, sshhost.RunRequest{Name: name, Args: []string{"version"}, UnsetEnv: gitEnvironmentNames(), Display: "hygiene scanner version"})
-	if err != nil || r.ExitCode != 0 || r.StdoutTruncated || !supportedScannerVersion(string(r.Stdout)) {
+	if err != nil || r.ExitCode != 0 || r.StdoutTruncated {
 		return errors.New("gitleaks 8.30.0 or newer compatible 8.x is required; check the installed scanner")
 	}
-	return nil
+	if supportedScannerVersion(string(r.Stdout)) {
+		return nil
+	}
+	// go install preserves the module version even when upstream's ldflag-only
+	// version string is empty/development. Do not accept unknown/replaced modules.
+	if path, err := exec.LookPath(name); err == nil {
+		if stat, err := os.Stat(path); err == nil && stat.Mode().IsRegular() && stat.Size() <= 256<<20 {
+			if info, err := buildinfo.ReadFile(path); err == nil && supportedScannerBuild(info) {
+				return nil
+			}
+		}
+	}
+	return errors.New("gitleaks 8.30.0 or newer compatible 8.x is required; check the installed scanner")
 }
 
 func (g Gitleaks) Scan(ctx context.Context, q EngineRequest) ([]Detection, error) {
