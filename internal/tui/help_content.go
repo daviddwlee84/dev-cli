@@ -112,7 +112,7 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 		available := m.actions.SSH.Workflow != nil
 		add("open", "Enter / o", "Connect through SSH", "Choose an exact profile when a machine has several aliases; source fingerprints and alias identity are revalidated before native SSH starts.", "ssh", available)
 		add("setup", "n", "Set up connections", "Complete the native connection form, review configuration and optional authentication / fleet / Herdr effects, then apply the exact plan.", "ssh", available)
-		add("discover", "c", "Discover Tailscale or LAN hosts", "Explicitly select a source. LAN discovery shows a bounded on-link range and ports; listing and refresh do not scan.", "ssh", available)
+		add("discover", "c", "Discover Tailscale or LAN hosts", "Press c, then select LAN or Tailscale. Uppercase L defaults to the lazygit tool. LAN discovery shows a bounded on-link range and ports; listing and refresh do not scan.", "ssh", available)
 		add("probe", "p", "Test connectivity or authentication", "Review quick network checks or full SSH verification for an exact profile, machine or filtered group. Results are dated observations; tests do not change recent-use ordering.", "ssh", available)
 		add("expand", "Space", "Expand connection profiles", "Keep one machine row, then expand exact aliases. Configured machines sort first, followed by recent connection use. Discovery-only endpoints can be added with Enter.", "ssh", true)
 		add("mappings", "e / m", "Manage machine mappings", "Adopt candidates or preview linking, unlinking, and merging canonical machine identities. Provider configuration stays owned by its original source.", "ssh", available)

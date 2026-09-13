@@ -727,7 +727,9 @@ identity state, timestamps and per-profile results. Column sorting and filtering
 preserve selection, including when a discovery update regroups a profile.
 
 `c` stays inside the dashboard: choose Tailscale, or a LAN interface, explicit
-IPv4 range and ports. LAN defaults to port 22 and retains the 256-address,
+IPv4 range and ports. Uppercase `L` defaults to the configured lazygit tool;
+it is not a LAN shortcut. Tool availability errors identify the configured tool,
+not the shell used to launch it. LAN defaults to port 22 and retains the 256-address,
 16-port and 30-second limits. Progress includes completed endpoints and found
 candidates. Cancel keeps collected observations. The list then shows **this
 discovery**, so an old filter cannot hide the results; return to all connections

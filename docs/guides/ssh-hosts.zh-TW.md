@@ -672,6 +672,8 @@ Passwords；它們是獨立的未來 migration workflows。
 排序、篩選與 discovery 重新分組時保留選取的 profile。
 
 `c` 全程留在 dashboard：選 Tailscale，或 LAN 介面、明確 IPv4 範圍及 ports。
+大寫 `L` 預設啟動配置中的 lazygit 工具，並非 LAN 快捷鍵。
+工具不可用時，錯誤訊息顯示該工具名稱，而非用來啟動它的 shell。
 LAN 預設 port 22，維持最多 256 個位址、16 ports、30 秒的限制；畫面顯示
 已完成端點與發現數。取消保留已取得的觀測。結束後清單切到「本次發現」，
 避免舊篩選藏住結果；回到全部連線時恢復先前篩選。Cache 寫入失敗仍保留

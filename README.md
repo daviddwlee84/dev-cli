@@ -724,6 +724,8 @@ Select → Action → Preview → Results steps. Scoped inspection reuses metada
 and refreshes affected rows/SIZE only; no new persistent inventory cache is added.
 Dashboard `1–7` switches existing views; `8` opens SSH unless a custom tool owns that key. Click column headers for ascending/descending/default
 sorting; tools and state filters are in Ctrl+O, keeping the footer short.
+In SSH, press `c` and choose LAN to review a scan. Uppercase `L` defaults to the
+configured lazygit tool; it is not a LAN shortcut.
 
 `dev triage` finds uncommitted work, unpushed commits, missing upstreams, diverged
 branches, ignored data and runtime/task drift across ordinary repos and Tries.

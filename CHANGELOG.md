@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Dashboard tool availability errors name the configured tool, such as lazygit,
+  instead of incorrectly reporting its shell launcher as missing. Failed lookup
+  is reported as unavailable, including when an interactive probe fails.
+
 ## [0.2.35] - 2026-09-13
 
 ### Fixed
