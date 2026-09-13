@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Registry permission repair no longer becomes stale when unrelated directories
+  are created under shared ancestors. File identity, ownership, mode and file
+  hardlink checks remain required.
 - Standalone `dev upgrade` checks actual release platform coverage before
   downloading. Platforms without an asset, including Android/Termux, can build
   the exact release tag with native Go (and Clang on Termux) after confirmation.

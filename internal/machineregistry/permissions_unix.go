@@ -114,7 +114,10 @@ func permissionMetadataEqual(a, b fs.FileInfo) bool {
 	}
 	x, xok := a.Sys().(*syscall.Stat_t)
 	y, yok := b.Sys().(*syscall.Stat_t)
-	return xok && yok && x.Uid == y.Uid && x.Gid == y.Gid && x.Nlink == y.Nlink
+	// Directory link counts change when unrelated child directories appear or
+	// disappear (including under shared temporary ancestors). They do not prove
+	// a changed directory identity; regular-file link counts still guard aliases.
+	return xok && yok && x.Uid == y.Uid && x.Gid == y.Gid && (a.IsDir() || x.Nlink == y.Nlink)
 }
 func verifyPermissionEntries(entries []permissionEntry) error {
 	for _, entry := range entries {
