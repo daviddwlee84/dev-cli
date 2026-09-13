@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-12
+verified_on: 2026-09-13
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
@@ -203,7 +203,7 @@ identity diagnostics 仍是 content-free。
 
 Static `dev ssh list` 是 provenance/candidate scanner，不是第二套 OpenSSH evaluator。Dynamic `Match`、unsupported Include expansion、cycle 與 scan bound 會產生 `complete: false`；即使 plain `ssh` 最終可能選出 value，這些情況仍可 block mutation。`dev ssh show` 與 setup route resolution 使用 plain `ssh -G`，因此 configured resolver 與 `Match exec` behavior 可能執行。Fresh probe 會保留 `KnownHostsCommand`、`UpdateHostKeys` 與 host-key policy，不會強迫產生方便的答案。
 
-Setup 要求 explicit key 或 explicit Ed25519 generation，且只安裝 public material。它支援 bounded ProxyJump forms 與固定 POSIX/Windows OpenSSH installer；`ProxyCommand`、custom `AuthorizedKeysFile`、forced-shell policy 與無法提供 ACL 的 filesystem 需要 manual remediation。Remote installer 一旦啟動，cancellation/failure 會是 `unknown`，因為 key 可能已 append。Dev 會保留 local config/generated keys，且絕不嘗試 key revocation、private-key deletion/copying、`known_hosts` cleanup、password storage/fallback 或 automatic credential rollback。Alias rename/adoption、bulk onboarding、arbitrary directive 與 SSH TUI 也都 deferred。
+Setup 要求 explicit key 或 explicit Ed25519 generation，且只安裝 public material。它支援 bounded ProxyJump forms 與固定 POSIX/Windows OpenSSH installer；`ProxyCommand`、custom `AuthorizedKeysFile`、forced-shell policy 與無法提供 ACL 的 filesystem 需要 manual remediation。Remote installer 一旦啟動，cancellation/failure 會是 `unknown`，因為 key 可能已 append。Dev 會保留 local config/generated keys，且絕不嘗試 key revocation、private-key deletion/copying、`known_hosts` cleanup、password storage/fallback 或 automatic credential rollback。一般 setup 保留 foreign directives；source-aware onboarding 與 SSH dashboard 使用以下 reviewed workflows。
 
 ### Direct mode 的 lifecycle 較小
 
@@ -549,3 +549,7 @@ filters 與原 remote 歷史替換不在此次整合內。
 Split 需要 git-filter-repo（native CI 固定 2.47.0）與完整可回復的本機 refs。
 備份範圍及 partial results 明確列出。舊 commit finalizers 維持原流程；舊版
 binary 無法讀取新增的 external-archive intent 欄位。
+
+## SSH dashboard observations (Unreleased)
+
+SSH dashboard 提供原生 discovery／setup 與 profile 樹狀清單。缺少 registry 是空狀態，不安全的 registry 則提供問題引導，不可推定 bindings 不存在。Cache 失敗仍保留本次 discovery。`[tui.ssh].background_refresh` 控制 Tailscale 背景狀態，不會掃 LAN 或驗證 SSH。活動紀錄是與 cache 分離的 durable 資料；Ping 可略過且不阻止 SSH，proxy 的直連層級維持未觀測。新增 diagnostic flags／fields 為增補，既有 alias／list JSON 契約不變。

@@ -20,6 +20,11 @@ import (
 func sshTUITestApp(t *testing.T) (*App, *sshCLIFixture) {
 	t.Helper()
 	f := newSSHCLIFixture(t)
+	canonicalHome, err := filepath.EvalSymlinks(f.home)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(canonicalHome, ".cache"))
 	f.initSSH()
 	f.appendRootConfig("Host first second\n HostName 100.64.0.2\n User remote-user\n Port 22\n")
 	a := &App{Cfg: config.Default(), In: strings.NewReader(""), Out: io.Discard, Err: io.Discard, remotesPath: f.remotesPath, sshHostRunner: f.runner, interactiveCheck: func() bool { return true }}

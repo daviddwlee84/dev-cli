@@ -24,6 +24,8 @@ local endpoint information; feedback drafts use a separate public projection.`, 
 		return runSSHDiagnose(cmd.Context(), app, request, jsonOut)
 	}}
 	cmd.Flags().BoolVar(&request.CompareQoS, "compare-qos", false, "allow one comparable fresh SSH attempt with IPQoS=none")
+	cmd.Flags().BoolVar(&request.Ping, "ping", false, "include an independent bounded ICMP echo observation")
+	cmd.Flags().BoolVar(&request.NetworkOnly, "network-only", false, "inspect DNS, routing, TCP and SSH banner without an authentication attempt")
 	cmd.Flags().DurationVar(&request.Timeout, "timeout", sshhost.DefaultDiagnoseTimeout, "total diagnostic deadline")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "emit one versioned local diagnosis, including partial failures")
 	cmd.ValidArgsFunction = completeSSHAliases(app)
@@ -36,13 +38,18 @@ func runSSHDiagnose(ctx context.Context, app *App, request sshhost.DiagnoseReque
 	if request.Timeout < 0 {
 		return asUsageError(errors.New("--timeout must be positive"))
 	}
+	if request.NetworkOnly && request.CompareQoS {
+		return asUsageError(errors.New("--network-only cannot be combined with --compare-qos"))
+	}
 	service, err := app.sshHosts()
 	if err != nil {
 		return err
 	}
 	ctx, cancel := signal.NotifyContext(ctx, os.Interrupt)
 	defer cancel()
+	profile, _ := sshActivityProfile(ctx, service, request.Target)
 	result, err := service.Diagnose(ctx, request)
+	recordSSHDiagnosis(ctx, app, service, profile, request, result)
 	if jsonOut {
 		if writeErr := writeSSHJSON(app, result); writeErr != nil {
 			return writeErr

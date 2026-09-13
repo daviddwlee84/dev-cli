@@ -29,7 +29,7 @@ func inspectSource(path string) (sourceState, error) {
 			return source, err
 		}
 		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() > maxDatabaseBytes {
-			return source, ErrUnsafePath
+			return source, pathDiagnostic(path+suffix, "auxiliary must be a bounded regular unlinked file", info, 0, false)
 		}
 		if err := checkAuxiliary(path+suffix, info); err != nil {
 			return source, err
@@ -74,7 +74,7 @@ func inspectPrivateFile(path string, allowMissing bool) (fs.FileInfo, error) {
 		return nil, err
 	}
 	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() || info.Size() > maxDatabaseBytes {
-		return nil, fmt.Errorf("registry file must be a bounded regular file: %w", ErrUnsafePath)
+		return nil, pathDiagnostic(path, "file must be a bounded regular file", info, 0, false)
 	}
 	if err := checkPrivate(path, info, 0o600); err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func inspectParents(path string, create bool) (sourceState, error) {
 			}
 		}
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-			return state, fmt.Errorf("registry parent is not a real directory: %w", ErrUnsafePath)
+			return state, pathDiagnostic(current, "parent is not a real directory", info, 0, true)
 		}
 		if err := checkAncestor(current, info); err != nil {
 			return state, err

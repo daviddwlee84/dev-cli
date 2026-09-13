@@ -30,6 +30,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/task"
 	"github.com/daviddwlee84/dev-cli/internal/triage"
+	"github.com/daviddwlee84/dev-cli/internal/tuiissue"
 )
 
 // View is which list the dashboard is showing.
@@ -101,7 +102,10 @@ func (v View) String() string {
 // behaviour cannot diverge between them.
 // LoadWarning carries nonfatal inventory diagnostics without making an accepted
 // snapshot stale or retrying it on every tab visit.
-type LoadWarning struct{ Message string }
+type LoadWarning struct {
+	Message string
+	Issues  []tuiissue.Issue
+}
 
 func (w LoadWarning) Error() string { return w.Message }
 
@@ -114,7 +118,8 @@ func splitLoadWarning(err error) (string, error) {
 }
 
 type Actions struct {
-	SSH SSHActions
+	Issues IssueActions
+	SSH    SSHActions
 	// Host descriptors and cached observations are local reads. Individual live
 	// reads never prompt; interactive authentication belongs to a host action.
 	LoadFleetHosts       func(context.Context) (FleetHostsResult, error)
@@ -231,6 +236,7 @@ type OpenResult struct {
 // rebuilding its runtime backend.
 type ConfigUpdate struct {
 	FleetBackgroundRefresh *bool
+	SSHBackgroundRefresh   *bool
 	// Apply publishes the prepared immutable App snapshot only after this config
 	// generation is accepted by Update.
 	Apply       func()
@@ -345,6 +351,7 @@ type remoteCloneOpenMsg struct {
 
 // Model is the dashboard state.
 type Model struct {
+	issues                       issueUIState
 	help                         helpBrowser
 	popupExpanded, popupDragging bool
 	startupRepo                  startupRepoState
@@ -376,6 +383,7 @@ type Model struct {
 	remotes             []RemoteRow
 	fleet               []FleetRow
 	ssh                 SSHInventory
+	sshUI               sshUIState
 	fleetTree           fleetTreeState
 	fleetTerminalActive bool
 	terminalHandoffErr  error
@@ -668,6 +676,7 @@ type fleetMsg struct {
 	err        error
 }
 type skillsMsg struct {
+	issues       []tuiissue.Issue
 	generation   uint64
 	rows         []agentskill.Skill
 	valid        bool
@@ -680,6 +689,7 @@ type skillsMsg struct {
 }
 
 type mcpMsg struct {
+	issues     []tuiissue.Issue
 	generation uint64
 	rows       []agentmcp.Declaration
 	valid      bool
@@ -1048,6 +1058,7 @@ func (m Model) reloadSkills() tea.Cmd {
 		} else {
 			rows, err = m.actions.ReloadSkills(m.viewContext(ViewSkills), capabilityScope)
 		}
+		loadIssues := loadWarningIssues(err)
 		warning, err := splitLoadWarning(err)
 		outcome := traceOutcome(err)
 		if warning != "" {
@@ -1056,7 +1067,7 @@ func (m Model) reloadSkills() tea.Cmd {
 		finish(outcome)
 		return skillsMsg{
 			generation: generation, rows: rows, valid: snapshotValid(rows, err), loaded: true,
-			warning: warning, inventoryErr: err, err: err,
+			issues: loadIssues, warning: warning, inventoryErr: err, err: err,
 		}
 	}
 }
@@ -1077,13 +1088,14 @@ func (m Model) reloadMCP() tea.Cmd {
 		} else {
 			rows, err = m.actions.ReloadMCP(m.viewContext(ViewMCP), capabilityScope)
 		}
+		loadIssues := loadWarningIssues(err)
 		warning, err := splitLoadWarning(err)
 		outcome := traceOutcome(err)
 		if warning != "" {
 			outcome = perftrace.OutcomePartial
 		}
 		finish(outcome)
-		return mcpMsg{generation: generation, rows: rows, valid: snapshotValid(rows, err), warning: warning, err: err}
+		return mcpMsg{generation: generation, rows: rows, valid: snapshotValid(rows, err), issues: loadIssues, warning: warning, err: err}
 	}
 }
 
@@ -1124,6 +1136,7 @@ func (m Model) reloadUpdatedSkill(name, lockName string, scope agentskill.Scope,
 		} else {
 			rows, err = m.actions.ReloadSkills(m.viewContext(ViewSkills), capabilityScope)
 		}
+		loadIssues := loadWarningIssues(err)
 		warning, err := splitLoadWarning(err)
 		if err != nil && rows == nil {
 			finish(traceOutcome(err))
@@ -1160,7 +1173,7 @@ func (m Model) reloadUpdatedSkill(name, lockName string, scope agentskill.Scope,
 		finish(outcome)
 		return skillsMsg{
 			generation: generation, rows: rows, valid: snapshotValid(rows, err), loaded: true,
-			checked: verified, status: status, warning: warning, inventoryErr: err, err: err,
+			checked: verified, status: status, issues: loadIssues, warning: warning, inventoryErr: err, err: err,
 		}
 	}
 }
@@ -2334,6 +2347,9 @@ func (m Model) currentDir() string {
 
 // Update implements tea.Model.
 func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if next, command, handled := m.updateIssues(msg); handled {
+		return next, command
+	}
 	if m.fleetTerminalActive {
 		switch msg.(type) {
 		case tea.KeyMsg, tea.MouseMsg:
@@ -2460,9 +2476,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
+		for i := 0; i < m.sshUI.dialog.fieldCount; i++ {
+			m.sshUI.dialog.fields[i].input.Width = max(8, m.width-24)
+		}
 		return m, nil
 
 	case tea.MouseMsg:
+		if m.sshUI.dialog.kind != "" {
+			return m.updateSSHDialogMouse(msg)
+		}
 		return m.updateMouse(msg)
 
 	case localMsg:
@@ -2779,8 +2801,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.update.FleetBackgroundRefresh != nil {
 			m.setFleetBackgroundRefresh(*msg.update.FleetBackgroundRefresh)
 		}
+		if msg.update.SSHBackgroundRefresh != nil {
+			m.setSSHBackgroundRefresh(*msg.update.SSHBackgroundRefresh)
+		}
 		m.err, m.status = nil, msg.status
-		reload := batchCommands(m.reloadAfterConfig(msg.refreshRemote), m.readStartupRepo())
+		reload := batchCommands(m.reloadAfterConfig(msg.refreshRemote), m.readStartupRepo(), m.scheduleSSHBackground())
 		if m.hostFleetEnabled() {
 			reload = batchCommands(reload, m.beginFleetHostsLoad())
 		}
@@ -2914,9 +2939,14 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.beginLocalLoads(loadAction)
 		return m, m.reload()
 
+	case sshEventMsg:
+		return m.applySSHEvent(msg)
+	case sshBackgroundMsg:
+		return m.applySSHBackground(msg)
 	case sshLoadedMsg:
 		return m.applySSHLoad(msg)
 	case sshWorkflowMsg:
+		m.finishSSHOnboarding(msg.result)
 		m.err, m.status, m.statusSeverity = msg.err, msg.result.Status, ""
 		if msg.result.MembershipChanged {
 			m.invalidateView(ViewFleet)
@@ -3012,6 +3042,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == modeNoteBrowse || m.mode == modeNoteAdd ||
 			m.mode == modeNoteSearch || m.mode == modeNoteConfirmDelete {
 			return m.updateNotes(msg)
+		}
+		if m.sshUI.dialog.kind != "" {
+			return m.updateSSHDialog(msg)
 		}
 		if m.overlay.kind != overlayNone {
 			return m.updateOverlay(msg)
@@ -4018,6 +4051,9 @@ func (m *Model) afterReposResult(valid bool, err error) tea.Cmd {
 // first opened, so starting the dashboard never waits on the network, a forge
 // CLI, or Node tooling.
 func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
+	if m.view != ViewSSH {
+		m.leaveSSHView()
+	}
 	m.setAt(m.at())
 	switch m.view {
 	case ViewFleet:
@@ -4047,6 +4083,8 @@ func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 			m.beginViewLoad(ViewSSH, loadVisit)
 			return m, m.reloadSSH()
 		}
+		cmd := m.scheduleSSHBackground()
+		return m, cmd
 	case ViewRemote:
 		if m.viewNeedsLoad(ViewRemote) {
 			m.beginViewLoad(ViewRemote, loadVisit)

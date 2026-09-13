@@ -2,7 +2,7 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-12
+verified_on: 2026-09-13
 ---
 
 # Commands and configuration
@@ -1002,3 +1002,12 @@ Host-local archive/protection bindings and signed receipts stay under
 Capture/provider identity, source retention, off/check/redact copy protection
 and distribution exclusions are independent. See [AI artifacts](../guides/ai-artifacts.md)
 for supported limits, exact preview/apply commands and historical migration.
+
+## SSH dashboard settings (Unreleased)
+
+```toml
+[tui.ssh]
+background_refresh = true
+```
+
+This option controls only automatic Tailscale status in the active SSH view. LAN scans and connection tests remain explicit. `ssh diagnose --ping --network-only ALIAS` observes ICMP/TCP/banner without an SSH authentication attempt; omit `--network-only` for full verification. `--network-only` cannot combine with `--compare-qos`.

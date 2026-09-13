@@ -3,7 +3,7 @@
 package machineregistry
 
 import (
-	"fmt"
+	"errors"
 	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 	"io/fs"
 	"syscall"
@@ -16,9 +16,9 @@ func setPrivateMode(path string, want fs.FileMode) error {
 	return privatefile.ProtectCreated(path, want)
 }
 
-func checkAncestor(_ string, info fs.FileInfo) error {
+func checkAncestor(path string, info fs.FileInfo) error {
 	if data, ok := info.Sys().(*syscall.Win32FileAttributeData); !ok || data.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-		return fmt.Errorf("registry path has unknown or reparse metadata: %w", ErrUnsafePath)
+		return &PathError{Path: path, Reason: "unknown or reparse metadata", Owner: "unknown", ExpectedOwner: "current user; real non-reparse path", Mode: info.Mode()}
 	}
 	return nil
 }
@@ -33,7 +33,13 @@ func checkAuxiliary(path string, info fs.FileInfo) error {
 	return checkWindowsPrivate(path, info, false)
 }
 
-func checkWindowsPrivate(path string, info fs.FileInfo, requireProtected bool) error {
+func checkWindowsPrivate(path string, info fs.FileInfo, requireProtected bool) (resultErr error) {
+	defer func() {
+		var diagnostic *PathError
+		if errors.Is(resultErr, ErrUnsafePath) && !errors.As(resultErr, &diagnostic) {
+			resultErr = pathDiagnostic(path, resultErr.Error(), info, 0, false)
+		}
+	}()
 	if err := checkAncestor(path, info); err != nil {
 		return err
 	}
@@ -54,11 +60,15 @@ func checkWindowsPrivate(path string, info fs.FileInfo, requireProtected bool) e
 		ownerMatches = ownerMatches || e == nil && owner.Equals(creator) && allowed[owner.String()]
 	}
 	if !ownerMatches {
-		return fmt.Errorf("registry owner is not the current user: %w", ErrUnsafePath)
+		actual := "unknown"
+		if owner != nil {
+			actual = owner.String()
+		}
+		return &PathError{Path: path, Reason: "owner is not the current user", Owner: actual, ExpectedOwner: current, Mode: info.Mode()}
 	}
 	control, _, err := descriptor.Control()
 	if err != nil || requireProtected && control&windows.SE_DACL_PROTECTED == 0 {
-		return fmt.Errorf("registry DACL is not protected: %w", ErrUnsafePath)
+		return &PathError{Path: path, Reason: "DACL is not protected", Owner: current, ExpectedOwner: current + "; private protected DACL", Mode: info.Mode()}
 	}
 	dacl, _, err := descriptor.DACL()
 	if err != nil || dacl == nil {
@@ -78,7 +88,7 @@ func checkWindowsPrivate(path string, info fs.FileInfo, requireProtected bool) e
 		}
 		sid := (*windows.SID)(unsafe.Pointer(&ace.SidStart)).String()
 		if !allowed[sid] {
-			return fmt.Errorf("registry DACL grants another user access: %w", ErrUnsafePath)
+			return &PathError{Path: path, Reason: "DACL grants another user access: " + sid, Owner: current, ExpectedOwner: current + "; only current user, SYSTEM and Administrators", Mode: info.Mode()}
 		}
 		seenCurrent = seenCurrent || sid == current
 	}
@@ -113,4 +123,12 @@ func privateSIDs() (string, map[string]bool, error) {
 	}
 	current := user.User.Sid.String()
 	return current, map[string]bool{current: true, "S-1-5-18": true, "S-1-5-32-544": true}, nil
+}
+
+func pathDiagnostic(path, reason string, info fs.FileInfo, want fs.FileMode, ancestor bool) *PathError {
+	expected := "current user; private protected ACL"
+	if ancestor {
+		expected = "trusted real non-reparse directory"
+	}
+	return &PathError{Path: path, Reason: reason, Owner: "unknown", ExpectedOwner: expected, Mode: info.Mode(), ExpectedMode: want}
 }

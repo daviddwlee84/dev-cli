@@ -78,6 +78,9 @@ func (m Model) View() (output string) {
 	if m.noteMode() {
 		return m.renderNotes()
 	}
+	if m.sshUI.dialog.kind != "" {
+		return m.renderSSHDialog()
+	}
 	if m.overlay.kind != overlayNone {
 		return m.renderOverlay()
 	}
@@ -1612,13 +1615,13 @@ func (m Model) renderFooter() string {
 		primary = "Ctrl+O actions · e file"
 	}
 	if m.view == ViewSSH {
-		primary = "Enter connect · n setup · c discover · p probe · Ctrl+O actions"
+		primary = "Enter connect/add · Space profiles · c discover · p test · Ctrl+O actions"
 	}
 	if m.view == ViewRepos || m.view == ViewRemote || m.view == ViewSkills || m.view == ViewMCP {
 		primary += " · y copy"
 	}
 	if status != "" {
-		primary = status + "  |  Ctrl+O actions"
+		primary = status + "  |  Ctrl+O → issues / actions"
 	}
 	viewKeys := "1–8 views"
 	if m.hasCustomSSHKey() {

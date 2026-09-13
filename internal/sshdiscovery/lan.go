@@ -271,6 +271,12 @@ type ptrResult struct {
 // command. A completed scan means its probes ran, not that silent endpoints are
 // closed or absent. Reverse-DNS names are suggestions and never connection truth.
 func (s *Service) LAN(ctx context.Context, request LANRequest) (Report, error) {
+	return s.LANWithProgress(ctx, request, nil)
+}
+
+// LANWithProgress has the same bounded, observation-only semantics as LAN.
+// Completed observations remain in its report even when the scan is canceled.
+func (s *Service) LANWithProgress(ctx context.Context, request LANRequest, progress func(Progress)) (Report, error) {
 	ctx, cancel := context.WithTimeout(nonNilContext(ctx), lanTimeout)
 	defer cancel()
 	report := s.report(SourceLAN, "")
@@ -279,6 +285,10 @@ func (s *Service) LAN(ctx context.Context, request LANRequest) (Report, error) {
 		return report, err
 	}
 	report.Scope = plan.scope
+	total := len(plan.addresses) * len(plan.ports)
+	if progress != nil {
+		progress(Progress{Total: total})
+	}
 	jobs := make(chan lanEndpoint)
 	results := make(chan lanResult, maxLANWorkers)
 	var workers sync.WaitGroup
@@ -318,6 +328,15 @@ func (s *Service) LAN(ctx context.Context, request LANRequest) (Report, error) {
 		completed++
 		if result.candidate != nil {
 			report.Candidates = append(report.Candidates, *result.candidate)
+		}
+		if progress != nil {
+			update := Progress{Completed: completed, Total: total}
+			if result.candidate != nil {
+				copy := *result.candidate
+				copy.Addresses = append([]string(nil), copy.Addresses...)
+				update.Candidate = &copy
+			}
+			progress(update)
 		}
 	}
 	sortCandidates(report.Candidates)

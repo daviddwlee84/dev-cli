@@ -243,7 +243,7 @@ Removal never touches:
 
 Rotation/revocation/expiry, key deletion, alias rename/adoption, arbitrary SSH
 directives, managed wildcards/Match, ProxyCommand automation, custom
-AuthorizedKeysFile, password/vault storage, bulk inventory import, and an SSH TUI
+AuthorizedKeysFile, password/vault storage, bulk inventory import,
 are deferred.
 
 ## Machine output
@@ -444,7 +444,7 @@ SSH aliases, Tailscale, LAN, fleet and Herdr columns. JSON retains the alias fie
 and adds machines, sources and observed_at. Each connection keeps its own user,
 port, key and route. Names alone do not prove that sources are the same machine.
 
-Tailscale is optional and is queried only when explicitly selected. Dev uses
+Tailscale is optional. CLI discovery queries it explicitly; the SSH dashboard can refresh it in the background while that view is active. Dev uses
 system ssh, preserves host-key policy and does not enable/login/configure
 Tailscale. Use --auth existing for Tailscale SSH or already-working ordinary
 SSH; this path performs a fresh login without installing a public key. Choose
@@ -715,3 +715,54 @@ passwords in `connect --on` remain outside this controller save workflow.
 
 These features do not import SSH private keys into a vault, provision YubiKeys,
 or export Apple Passwords. Those are separate future migration workflows.
+
+## SSH connection view
+
+The eighth tab keeps one machine row, with Space expanding its SSH profiles.
+Configured connections come first, ordered by the most recent local `dev ssh
+connect` or dashboard connection attempt; unrecorded profiles follow by alias.
+CONNECTION, ENDPOINT, SOURCES, CHECK and USED share aligned display widths.
+Narrow terminals hide supplementary columns; details retain full source names,
+identity state, timestamps and per-profile results. Column sorting and filtering
+preserve selection, including when a discovery update regroups a profile.
+
+`c` stays inside the dashboard: choose Tailscale, or a LAN interface, explicit
+IPv4 range and ports. LAN defaults to port 22 and retains the 256-address,
+16-port and 30-second limits. Progress includes completed endpoints and found
+candidates. Cancel keeps collected observations. The list then shows **this
+discovery**, so an old filter cannot hide the results; return to all connections
+without losing the previous filter. Cache write failures retain the observations
+for this session and offer recovery guidance. A missing SSH config, registry,
+fzf or optional provider does not prevent LAN discovery.
+
+Enter on an unconfigured candidate opens a native setup form with its selected
+endpoint. Review alias, remote user, port and authentication. Configuration-only
+is the default; Fleet and Herdr are independent opt-in destinations. Preview
+includes first-time SSH initialization and explicit machine bindings. Native
+SSH/key and Herdr interactions receive the terminal only after review. Returning
+to the dashboard shows each completed, failed or unknown stage and selects the
+new profile. Completed configuration survives a later authentication/provider
+failure. A changed LAN scope requires renewed discovery/review.
+
+`p` offers quick network tests or full SSH verification for a profile, machine,
+or filtered profile set. Review the exact targets before starting. DNS/route,
+Ping, TCP, SSH banner, handshake, host-key, authentication and session observations
+remain separate; Ping failure does not gate SSH. Proxy paths are not bypassed by
+direct probes. Up to four profiles run together, each bounded to 30 seconds;
+Ping has two seconds and an SSH attempt fifteen. Cancellation retains finished
+results. A network-only success is not successful authentication.
+
+Usage and tests are separate private durable records under
+`paths.state_dir/ssh/activity/`. Testing never updates USED. Usage records actual
+process starts, including failed attempts, and covers only local dev-mediated
+connections; no shell history is imported. Test results retain profile revision,
+observation time and available route context. Old results are historical evidence,
+not live connectivity or deletion authority; clearing discovery cache preserves
+activity records.
+
+The first frame reads local data and cache. While this view is active,
+`[tui.ssh].background_refresh = true` refreshes missing or expired Tailscale
+observations, at most once per five minutes with a five-second query limit.
+Failures keep dated observations. Disable it for cache-only viewing. `r` reloads
+local state; LAN scanning and SSH tests always require an explicit action.
+`Ctrl+O` also opens problems and suggested actions, even on an empty list.

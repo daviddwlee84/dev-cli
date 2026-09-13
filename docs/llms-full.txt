@@ -551,6 +551,8 @@ local plans/recovery and portable project/session/commit metadata. Ignored captu
 files remain durable evidence until verified; cleanup rechecks that proof. Read
 [AI artifacts](https://daviddwlee84.github.io/dev-cli/guides/ai-artifacts/) before choosing retention or migration.
 
+SSH dashboard usage is host-local durable observation, separate from machine identity and discovery cache. USED measures actual local dev-mediated SSH process starts; test timestamps and successful authentication observations remain independent. Old observations never authorize cleanup or prove present connectivity.
+
 ---
 
 ### Isolation boundaries and glossary
@@ -2822,6 +2824,57 @@ passwords in `connect --on` remain outside this controller save workflow.
 
 These features do not import SSH private keys into a vault, provision YubiKeys,
 or export Apple Passwords. Those are separate future migration workflows.
+
+## SSH connection view
+
+The eighth tab keeps one machine row, with Space expanding its SSH profiles.
+Configured connections come first, ordered by the most recent local `dev ssh
+connect` or dashboard connection attempt; unrecorded profiles follow by alias.
+CONNECTION, ENDPOINT, SOURCES, CHECK and USED share aligned display widths.
+Narrow terminals hide supplementary columns; details retain full source names,
+identity state, timestamps and per-profile results. Column sorting and filtering
+preserve selection, including when a discovery update regroups a profile.
+
+`c` stays inside the dashboard: choose Tailscale, or a LAN interface, explicit
+IPv4 range and ports. LAN defaults to port 22 and retains the 256-address,
+16-port and 30-second limits. Progress includes completed endpoints and found
+candidates. Cancel keeps collected observations. The list then shows **this
+discovery**, so an old filter cannot hide the results; return to all connections
+without losing the previous filter. Cache write failures retain the observations
+for this session and offer recovery guidance. A missing SSH config, registry,
+fzf or optional provider does not prevent LAN discovery.
+
+Enter on an unconfigured candidate opens a native setup form with its selected
+endpoint. Review alias, remote user, port and authentication. Configuration-only
+is the default; Fleet and Herdr are independent opt-in destinations. Preview
+includes first-time SSH initialization and explicit machine bindings. Native
+SSH/key and Herdr interactions receive the terminal only after review. Returning
+to the dashboard shows each completed, failed or unknown stage and selects the
+new profile. Completed configuration survives a later authentication/provider
+failure. A changed LAN scope requires renewed discovery/review.
+
+`p` offers quick network tests or full SSH verification for a profile, machine,
+or filtered profile set. Review the exact targets before starting. DNS/route,
+Ping, TCP, SSH banner, handshake, host-key, authentication and session observations
+remain separate; Ping failure does not gate SSH. Proxy paths are not bypassed by
+direct probes. Up to four profiles run together, each bounded to 30 seconds;
+Ping has two seconds and an SSH attempt fifteen. Cancellation retains finished
+results. A network-only success is not successful authentication.
+
+Usage and tests are separate private durable records under
+`paths.state_dir/ssh/activity/`. Testing never updates USED. Usage records actual
+process starts, including failed attempts, and covers only local dev-mediated
+connections; no shell history is imported. Test results retain profile revision,
+observation time and available route context. Old results are historical evidence,
+not live connectivity or deletion authority; clearing discovery cache preserves
+activity records.
+
+The first frame reads local data and cache. While this view is active,
+`[tui.ssh].background_refresh = true` refreshes missing or expired Tailscale
+observations, at most once per five minutes with a five-second query limit.
+Failures keep dated observations. Disable it for cache-only viewing. `r` reloads
+local state; LAN scanning and SSH tests always require an explicit action.
+`Ctrl+O` also opens problems and suggested actions, even on an empty list.
 
 ---
 
@@ -5276,18 +5329,54 @@ completed rows become available while other repositories are still loading.
 
 ## SSH connection view
 
-The eighth dashboard tab groups machine connections independently of projects.
-Use `8` unless an existing custom tool owns that key; tab/click navigation remains
-available. Each machine keeps its exact SSH profiles, provider membership and
-stale/unresolved source state. `r` reloads local configuration, registry, provider
-membership and discovery caches without a LAN scan or SSH authentication.
+The eighth tab keeps one machine row, with Space expanding its SSH profiles.
+Configured connections come first, ordered by the most recent local `dev ssh
+connect` or dashboard connection attempt; unrecorded profiles follow by alias.
+CONNECTION, ENDPOINT, SOURCES, CHECK and USED share aligned display widths.
+Narrow terminals hide supplementary columns; details retain full source names,
+identity state, timestamps and per-profile results. Column sorting and filtering
+preserve selection, including when a discovery update regroups a profile.
 
-`Enter`/`o` opens the selected exact alias through system SSH, choosing a profile
-when several are available. `n` opens the per-host setup wizard, `c` chooses an
-explicit discovery source/scope, and `p` probes a selected alias with a fresh
-ordinary login. `Ctrl+O` exposes connection and machine-mapping actions. Discovery
-and provider registration remain explicit; opening a machine row does not enroll
-it or register it in fleet/Herdr. See `dev help ssh` for trust and identity limits.
+`c` stays inside the dashboard: choose Tailscale, or a LAN interface, explicit
+IPv4 range and ports. LAN defaults to port 22 and retains the 256-address,
+16-port and 30-second limits. Progress includes completed endpoints and found
+candidates. Cancel keeps collected observations. The list then shows **this
+discovery**, so an old filter cannot hide the results; return to all connections
+without losing the previous filter. Cache write failures retain the observations
+for this session and offer recovery guidance. A missing SSH config, registry,
+fzf or optional provider does not prevent LAN discovery.
+
+Enter on an unconfigured candidate opens a native setup form with its selected
+endpoint. Review alias, remote user, port and authentication. Configuration-only
+is the default; Fleet and Herdr are independent opt-in destinations. Preview
+includes first-time SSH initialization and explicit machine bindings. Native
+SSH/key and Herdr interactions receive the terminal only after review. Returning
+to the dashboard shows each completed, failed or unknown stage and selects the
+new profile. Completed configuration survives a later authentication/provider
+failure. A changed LAN scope requires renewed discovery/review.
+
+`p` offers quick network tests or full SSH verification for a profile, machine,
+or filtered profile set. Review the exact targets before starting. DNS/route,
+Ping, TCP, SSH banner, handshake, host-key, authentication and session observations
+remain separate; Ping failure does not gate SSH. Proxy paths are not bypassed by
+direct probes. Up to four profiles run together, each bounded to 30 seconds;
+Ping has two seconds and an SSH attempt fifteen. Cancellation retains finished
+results. A network-only success is not successful authentication.
+
+Usage and tests are separate private durable records under
+`paths.state_dir/ssh/activity/`. Testing never updates USED. Usage records actual
+process starts, including failed attempts, and covers only local dev-mediated
+connections; no shell history is imported. Test results retain profile revision,
+observation time and available route context. Old results are historical evidence,
+not live connectivity or deletion authority; clearing discovery cache preserves
+activity records.
+
+The first frame reads local data and cache. While this view is active,
+`[tui.ssh].background_refresh = true` refreshes missing or expired Tailscale
+observations, at most once per five minutes with a five-second query limit.
+Failures keep dated observations. Disable it for cache-only viewing. `r` reloads
+local state; LAN scanning and SSH tests always require an explicit action.
+`Ctrl+O` also opens problems and suggested actions, even on an empty list.
 
 ## Batch hygiene and skill removal
 
@@ -5309,7 +5398,7 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/
 ## Select an action
 
 Press `Ctrl+O`, right-click a row, or click the selected row. Space expands/collapses REPOS
-worktrees and FLEET hosts; it is unused in flat lists. TASKS `a` shows completed tasks and does not mark
+worktrees, FLEET hosts and SSH profiles; it is unused in flat lists. TASKS `a` shows completed tasks and does not mark
 a task done. A missing checkout offers recovery instead of completion.
 
 Clicking another row first selects it; clicking the selected row opens the menu
@@ -5433,7 +5522,7 @@ back into its original archive path remains archived and can then use ordinary
 
 ## Dashboard navigation and organizer entry
 
-Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET/SSH trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -5457,6 +5546,53 @@ clears search before closing. REPOS offers current/filtered repository skills,
 and SKILLS offers selected skill, project and global scopes. These launch the
 [dev skill manage](https://daviddwlee84.github.io/dev-cli/guides/skills-management/) wizard. Updates check and preview first;
 experimental restore/sync remain single-project actions.
+
+
+## Issues and suggested actions
+
+Every page's `Ctrl+O` menu includes **issues / suggested actions**, including an
+empty list. Start with this page or switch to all pages. The list includes known
+inventory and row problems and recent operation failures; it does not visit or
+probe unopened pages. Selecting an issue shows its full diagnostic, source,
+recovery advice, and a copy action. Long issue lists are paginated and full
+messages remain available in the scrollable diagnostic view.
+
+The recovery coverage is explicit:
+
+| Source | Findings retained | Suggested action and completion check |
+| --- | --- | --- |
+| TASKS | Inventory/Git failures, missing checkout and lifecycle blockers | Recheck local task observations; inspect and recover the exact task through the existing sweep workflow. A changed task revision requires a new review. |
+| REPOS | Repository identity, worktree, runtime, task, Git topology and disk-usage failures | Recheck the repository inventory; open the exact item's source/actions where it is still present. Organization retains its existing preview. |
+| FLEET | Host observation, connection, trust/version and Herdr failures | Inspect the host's native actions; local recheck reads cache. Authentication and live host refresh remain explicit host actions. |
+| TRY | Runtime/Git/disk failures, missing folder and unfinished moves | Recheck local Try state; review the exact Try in the existing organizer/recovery workflow. Never repeat a move or deletion automatically. |
+| REMOTE | Inventory/provider and clone/open failures | Read cached observations, inspect retained clone results, and use the provider's login or explicit refresh. If no forge CLI is installed, review installation options. |
+| SKILLS | Native lock/file diagnostic codes and paths, integrity and update failures | Read/copy the full diagnostic, open its exact source file, or use the selected skill's management actions. A successful native reload removes resolved diagnostics. |
+| MCP | Native source/config diagnostics and declaration coverage codes | Open the exact diagnostic source or declaration actions, then reload static declarations. No server is started by issue inspection. |
+| SSH | Registry/SSH permissions, missing tools, failed/partial sources, discovery/test/setup failures | Review exact permission repairs, source details or installation options; local recheck retains independently usable profiles. Discovery does not prove authentication. |
+| Shared operations | Notes, stats, clipboard, editor/config saves and partial workflow receipts | Preserve full errors/receipts and copy guidance; reread observations without repeating the operation. Notes Markdown and stats databases remain durable. |
+
+Issue inspection only checks local dependencies and metadata. Unknown error
+text never becomes a shell command. A recovery action prepares a concrete preview
+before **run this reviewed action in the foreground** becomes available. Closing
+the preview does not run it. Operation failures may describe partial success;
+completed steps are retained and no automatic retry is started.
+
+Registry permission findings include the exact path, owner, current mode and
+expected conditions. Missing registry state is normal. On supported Unix systems,
+repair can only tighten the listed current-user-owned paths after revalidating
+the complete inspected metadata. Symlinks, hardlinks, other owners and changes
+since review block apply. Repairs never recurse or change ownership. Windows
+registry ACL repair provides manual guidance until a verified repair backend is
+available. Existing SSH permission repair uses its own guarded service.
+
+Dependency options support reviewed Homebrew packages on macOS, apt packages on
+Debian/Ubuntu, and exact WinGet package IDs on Windows. The preview includes the
+package, resolved command and official instructions. Unsupported tools/platforms
+or a missing package manager get instructions only. The foreground installer
+keeps its native prompts; dev does not add repositories, install a package
+manager, or preaccept terms. The executable is checked afterwards, with an
+OpenSSH capability query for `ssh`; authentication and service startup remain
+separate. Installation cancellation/failure is not retried.
 
 ---
 
@@ -9158,6 +9294,8 @@ dev ssh diagnose <target> [flags]
 
 - `--compare-qos` — allow one comparable fresh SSH attempt with IPQoS=none
 - `--json` — emit one versioned local diagnosis, including partial failures
+- `--network-only` — inspect DNS, routing, TCP and SSH banner without an authentication attempt
+- `--ping` — include an independent bounded ICMP echo observation
 - `--timeout` — total diagnostic deadline
 
 ### `dev ssh discover`
@@ -10219,6 +10357,15 @@ Capture/provider identity, source retention, off/check/redact copy protection
 and distribution exclusions are independent. See [AI artifacts](https://daviddwlee84.github.io/dev-cli/guides/ai-artifacts/)
 for supported limits, exact preview/apply commands and historical migration.
 
+## SSH dashboard settings (Unreleased)
+
+```toml
+[tui.ssh]
+background_refresh = true
+```
+
+This option controls only automatic Tailscale status in the active SSH view. LAN scans and connection tests remain explicit. `ssh diagnose --ping --network-only ALIAS` observes ICMP/TCP/banner without an SSH authentication attempt; omit `--network-only` for full verification. `--network-only` cannot combine with `--compare-qos`.
+
 ---
 
 ### Compatibility and known limitations
@@ -10450,7 +10597,7 @@ diagnostics remain content-free.
 
 Static `dev ssh list` is a provenance/candidate scanner, not a second OpenSSH evaluator. Dynamic `Match`, unsupported Include expansion, cycles, and scan bounds produce `complete: false`; they can block mutation even when plain `ssh` would eventually choose a value. `dev ssh show` and setup route resolution use plain `ssh -G`, so configured resolver and `Match exec` behavior may run. Fresh probes preserve `KnownHostsCommand`, `UpdateHostKeys`, and host-key policy rather than forcing a convenient answer.
 
-Setup requires an explicit key or explicit Ed25519 generation and installs public material only. It supports bounded ProxyJump forms plus fixed POSIX and Windows OpenSSH installers; `ProxyCommand`, custom `AuthorizedKeysFile`, forced-shell policy, and ACL-incapable filesystems require manual remediation. Once a remote installer starts, cancellation/failure is `unknown` because the key may have been appended. Dev retains local config/generated keys and never attempts key revocation, private-key deletion/copying, `known_hosts` cleanup, password storage/fallback, or automatic credential rollback. Alias rename/adoption, bulk onboarding, arbitrary directives, and an SSH TUI are also deferred.
+Setup requires an explicit key or explicit Ed25519 generation and installs public material only. It supports bounded ProxyJump forms plus fixed POSIX and Windows OpenSSH installers; `ProxyCommand`, custom `AuthorizedKeysFile`, forced-shell policy, and ACL-incapable filesystems require manual remediation. Once a remote installer starts, cancellation/failure is `unknown` because the key may have been appended. Dev retains local config/generated keys and never attempts key revocation, private-key deletion/copying, `known_hosts` cleanup, password storage/fallback, or automatic credential rollback. Ordinary setup preserves foreign directives; source-aware onboarding and the SSH dashboard use the reviewed workflows described below.
 
 ### Direct mode has a smaller lifecycle
 
@@ -10840,6 +10987,10 @@ Current file snapshots cap at 128 MiB, inventories at 10,000 files and plans at
 2.47.0) and complete locally recoverable refs. Backup coverage and partial results
 remain explicit. Existing commit finalizers and intent fields retain their lane;
 older binaries cannot consume new external-archive intent fields.
+
+## SSH dashboard observations (Unreleased)
+
+The SSH dashboard has a native discovery/setup UI and profile tree. Missing registry state is empty; unsafe registry state is a recoverable issue and never proof of missing bindings. In-memory discovery survives cache failure. Background Tailscale status is enabled by `[tui.ssh].background_refresh`; neither this nor plain refresh scans LAN or authenticates SSH. Private activity records are durable and separate from discovery cache. Ping is optional and never gates SSH; proxy network stages remain unobserved. New diagnostic flags/fields are additive, and existing alias/list JSON contracts remain unchanged.
 
 ---
 
@@ -12052,6 +12203,8 @@ policy 把副本存進另一個 Git checkout，保留 private 本機 plan／reco
 以及可攜的 project/session/commit metadata。Ignored capture files 仍是待
 驗證的持久證據，清理前會重新檢查。選擇策略與遷移前可讀
 [AI 產物](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ai-artifacts/)。
+
+SSH dashboard 使用紀錄是 host-local durable observation，與機器身分及 discovery cache 分開。USED 是本機透過 dev 真正啟動 SSH 的時間；測試時間及驗證成功觀測獨立保存。舊觀測不能授權清理，也不能證明目前連通。
 
 ---
 
@@ -13784,7 +13937,7 @@ state、comma-separated aliases。來源失敗、stale cache、disabled Herdr pr
 
 Tailscale 探索上限五秒、排除本機，保留 offline／unknown 狀態。CLI 缺少、daemon
 不可用或 status 資料不完整只影響該來源；`doctor` 只檢查 executable 是否存在，
-不查詢 daemon。Dev 不會 install、login、enable Tailscale SSH、修改 DNS 或 tailnet
+不查詢 daemon。Discovery 不會 install、login、enable Tailscale SSH、修改 DNS 或 tailnet
 access policy。
 
 LAN discovery 只接受選定且直接連接的 IPv4 ranges；若無法唯一對應 eligible
@@ -14054,6 +14207,44 @@ password 不屬於 controller save workflow。
 
 這些功能不包含將 SSH private key 匯入 vault、YubiKey provisioning，或匯出 Apple
 Passwords；它們是獨立的未來 migration workflows。
+
+## SSH connection view
+
+第八個頁籤以每台機器為父列，Space 展開各 SSH profile。已配置連線優先，
+組內依最近透過本機 `dev ssh connect` 或 dashboard 發起連線的時間排序；
+沒有紀錄者依 alias 字母排列。CONNECTION、ENDPOINT、SOURCES、CHECK、USED
+使用一致欄寬；窄畫面隱藏補充欄位，詳情保留完整來源、身分狀態及時間。
+排序、篩選與 discovery 重新分組時保留選取的 profile。
+
+`c` 全程留在 dashboard：選 Tailscale，或 LAN 介面、明確 IPv4 範圍及 ports。
+LAN 預設 port 22，維持最多 256 個位址、16 ports、30 秒的限制；畫面顯示
+已完成端點與發現數。取消保留已取得的觀測。結束後清單切到「本次發現」，
+避免舊篩選藏住結果；回到全部連線時恢復先前篩選。Cache 寫入失敗仍保留
+本次資料並提供處理入口。缺少 SSH config、registry、fzf 或選用 provider
+不妨礙 LAN discovery。
+
+在尚未配置的候選按 Enter，開啟帶入確切 endpoint 的原生設定表單。確認 alias、
+remote user、port 及認證方式；預設只存 SSH config，Fleet 與 Herdr 分別勾選。
+預覽包含首次初始化及明確 machine bindings，確認後才交還終端處理 SSH/key
+或 Herdr 的原生互動。返回時顯示各階段完成、失敗或 unknown，並選取新增的
+profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變須重新探索／審閱。
+
+`p` 提供 profile、整台機器或篩選結果的快速網路測試／完整 SSH 驗證；開始前
+先確認確切目標。DNS／route、Ping、TCP、SSH banner、handshake、host-key、
+authentication、session 分層呈現。Ping 不通仍測 SSH，proxy 不改成繞路直連。
+最多同時測四個 profiles，每筆 30 秒，Ping 2 秒，SSH 階段 15 秒；取消保留
+已完成結果。Network-only 成功不代表登入成功。
+
+最近使用與測試結果分別保存在 `paths.state_dir/ssh/activity/` 的私有 durable
+紀錄；測試不更新 USED。使用時間記錄程序真正啟動，包含失敗嘗試，只涵蓋本機
+透過 dev 的連線，不匯入 shell history。測試保留 profile revision、觀测時間及
+可取得的 route context；舊結果是歷史觀測，不是即時連通或刪除設定的依據。
+清除 discovery cache 不刪活動紀錄。
+
+首畫面先讀本機資料與 cache。此頁啟用時，預設 `[tui.ssh].background_refresh = true`
+每五分鐘最多更新一次缺少／過期的 Tailscale 觀測，查詢最多五秒；失敗保留原時間。
+可關閉以只讀 cache。`r` 重讀本機狀態，LAN 掃描與 SSH 測試仍須使用者觸發。
+即使清單空白，`Ctrl+O` 也可開啟問題與建議動作。
 
 ---
 
@@ -16252,17 +16443,41 @@ macOS、Go 1.26.4、60-repository 隔離 fixture，各情境跑三次的中位�
 
 ## SSH connection view
 
-第八個 dashboard tab 獨立於 projects，集中顯示 machine connections。可按 `8`，
-但已有 custom tool 使用該鍵時保留原綁定；仍可用 tab／click 導覽。每台 machine
-保留 exact SSH profiles、provider membership 與 stale／unresolved source state。
-`r` 只重讀 local config、registry、provider membership 及 discovery cache，不掃 LAN、
-不做 SSH authentication。
+第八個頁籤以每台機器為父列，Space 展開各 SSH profile。已配置連線優先，
+組內依最近透過本機 `dev ssh connect` 或 dashboard 發起連線的時間排序；
+沒有紀錄者依 alias 字母排列。CONNECTION、ENDPOINT、SOURCES、CHECK、USED
+使用一致欄寬；窄畫面隱藏補充欄位，詳情保留完整來源、身分狀態及時間。
+排序、篩選與 discovery 重新分組時保留選取的 profile。
 
-`Enter`／`o` 使用 system SSH 開啟 exact alias；多個 profiles 時先選擇。`n` 開啟逐台
-setup wizard，`c` 明確選擇 discovery source／scope，`p` 對選定 alias 做 fresh ordinary
-login probe。`Ctrl+O` 提供 connection 與 machine-mapping actions。Discovery 和 provider
-registration 都必須明確選擇；開啟 machine row 不會自動 enroll 或加入 fleet／Herdr。
-Trust／identity 限制請參考 `dev help ssh`。
+`c` 全程留在 dashboard：選 Tailscale，或 LAN 介面、明確 IPv4 範圍及 ports。
+LAN 預設 port 22，維持最多 256 個位址、16 ports、30 秒的限制；畫面顯示
+已完成端點與發現數。取消保留已取得的觀測。結束後清單切到「本次發現」，
+避免舊篩選藏住結果；回到全部連線時恢復先前篩選。Cache 寫入失敗仍保留
+本次資料並提供處理入口。缺少 SSH config、registry、fzf 或選用 provider
+不妨礙 LAN discovery。
+
+在尚未配置的候選按 Enter，開啟帶入確切 endpoint 的原生設定表單。確認 alias、
+remote user、port 及認證方式；預設只存 SSH config，Fleet 與 Herdr 分別勾選。
+預覽包含首次初始化及明確 machine bindings，確認後才交還終端處理 SSH/key
+或 Herdr 的原生互動。返回時顯示各階段完成、失敗或 unknown，並選取新增的
+profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變須重新探索／審閱。
+
+`p` 提供 profile、整台機器或篩選結果的快速網路測試／完整 SSH 驗證；開始前
+先確認確切目標。DNS／route、Ping、TCP、SSH banner、handshake、host-key、
+authentication、session 分層呈現。Ping 不通仍測 SSH，proxy 不改成繞路直連。
+最多同時測四個 profiles，每筆 30 秒，Ping 2 秒，SSH 階段 15 秒；取消保留
+已完成結果。Network-only 成功不代表登入成功。
+
+最近使用與測試結果分別保存在 `paths.state_dir/ssh/activity/` 的私有 durable
+紀錄；測試不更新 USED。使用時間記錄程序真正啟動，包含失敗嘗試，只涵蓋本機
+透過 dev 的連線，不匯入 shell history。測試保留 profile revision、觀测時間及
+可取得的 route context；舊結果是歷史觀測，不是即時連通或刪除設定的依據。
+清除 discovery cache 不刪活動紀錄。
+
+首畫面先讀本機資料與 cache。此頁啟用時，預設 `[tui.ssh].background_refresh = true`
+每五分鐘最多更新一次缺少／過期的 Tailscale 觀測，查詢最多五秒；失敗保留原時間。
+可關閉以只讀 cache。`r` 重讀本機狀態，LAN 掃描與 SSH 測試仍須使用者觸發。
+即使清單空白，`Ctrl+O` 也可開啟問題與建議動作。
 
 ## 批次 hygiene 與 skill 移除
 
@@ -16399,6 +16614,44 @@ Ctrl+O 的 `/` 只篩選目前選單，方向鍵移動，Enter 執行；Esc 先�
 REPOS 可管理目前或篩選範圍的 skills，SKILLS 可選單一 skill、project 或 global。
 這些入口使用 [dev skill manage](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/) wizard；更新先檢查
 並預覽，experimental restore／sync 僅限單 project。
+
+
+## 問題與建議動作
+
+八個頁面的 `Ctrl+O` 選單都有 **issues / suggested actions**，空清單也能開啟。
+預設查看目前頁面，也可切到全部頁面；內容包含已知 inventory／列內問題與近期
+操作失敗，不會為此造訪或探測尚未開啟的頁面。選取問題可看完整診斷、來源、
+處理建議並複製文字。問題清單支援分頁，完整訊息另有可捲動的詳情視窗。
+
+各來源的問題處理對照如下：
+
+| 來源 | 保留的問題 | 建議動作與完成判定 |
+| --- | --- | --- |
+| TASKS | Inventory／Git 失敗、checkout 遺失與生命週期阻擋 | 重讀本機 task 觀測；透過既有 sweep 流程檢查及恢復確切 task。Task revision 改變時必須重新審閱。 |
+| REPOS | Repository 身分、worktree、runtime、task、Git topology 與磁碟用量失敗 | 重讀 repository inventory；來源仍存在時開啟確切項目的動作。整理流程保留既有預覽。 |
+| FLEET | Host 觀測、連線、信任／版本與 Herdr 失敗 | 查看該 host 的原生動作；本機重查讀取 cache。驗證與即時刷新仍是明確的 host 操作。 |
+| TRY | Runtime／Git／磁碟失敗、資料夾遺失與未完成移動 | 重讀本機 Try 狀態；在既有整理／恢復流程審閱確切 Try。不自動重跑移動或刪除。 |
+| REMOTE | Inventory／provider 與 clone／open 失敗 | 讀取 cache、查看保留的 clone 結果，使用 provider 登入或明確刷新。沒有 forge CLI 時可審閱安裝選項。 |
+| SKILLS | 原生 lock／file 診斷碼與路徑、完整性與更新失敗 | 查看／複製完整診斷、開啟確切來源檔或進入該 skill 的管理動作。成功重讀原生來源後移除已解決診斷。 |
+| MCP | 原生來源／設定診斷與 declaration coverage 代碼 | 開啟診斷指向的確切來源或 declaration 動作，再重讀靜態宣告。檢查問題不會啟動 server。 |
+| SSH | Registry／SSH 權限、缺少工具、來源失敗／部分完成與 discovery／測試／setup 失敗 | 審阅確切權限修復、來源詳情或安裝選項；重查仍保留可獨立使用的 profiles。Discovery 不代表驗證成功。 |
+| 共用操作 | Notes、stats、剪貼簿、editor／config 儲存與部分完成 receipts | 保留完整錯誤／receipts 並提供複製指引；重讀觀測不重跑操作。Notes Markdown 與 stats 資料庫仍是持久資料。 |
+
+問題檢查只讀本機依賴與 metadata，不把未知錯誤文字轉成 shell 命令。修復先產生
+具體預覽，使用者選擇 **run this reviewed action in the foreground** 後才執行。
+關閉預覽不執行；部分成功保留已完成步驟，不自動重試。
+
+Registry 權限問題顯示確切路徑、owner、目前 mode 與預期條件；尚無 registry
+是正常狀態。支援的 Unix 平台只對列出的目前使用者擁有路徑收緊權限，套用前
+重新驗證完整檢查範圍的 metadata。Symlink、hardlink、其他 owner 或審閱後變更
+會阻擋套用；不遞迴處理、不改 ownership。Windows registry ACL 修復在有經驗證
+的後端前提供人工指引；SSH 權限使用既有的 guarded service。
+
+依賴安裝支援 macOS Homebrew、Debian／Ubuntu apt，以及 Windows 的精確 WinGet
+package ID。預覽列出套件、已解析的命令與官方指引。未支援的工具／平台或缺少
+package manager 時只提供指引。前景安裝保留原生提示，不新增套件來源、不安裝
+manager、不預先接受條款。完成後檢查執行檔，`ssh` 另檢查 OpenSSH capability；
+驗證與服務啟動分開處理。取消或失敗不自動重試。
 
 ---
 
@@ -20051,6 +20304,8 @@ dev ssh diagnose <target> [flags]
 
 - `--compare-qos` — allow one comparable fresh SSH attempt with IPQoS=none
 - `--json` — emit one versioned local diagnosis, including partial failures
+- `--network-only` — inspect DNS, routing, TCP and SSH banner without an authentication attempt
+- `--ping` — include an independent bounded ICMP echo observation
 - `--timeout` — total diagnostic deadline
 
 ### `dev ssh discover`
@@ -21074,6 +21329,15 @@ Capture/provider identity、source retention、off/check/redact 副本保護與
 發行排除是獨立選擇。支援限制、preview/apply 命令與歷史遷移詳見
 [AI 產物](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ai-artifacts/)。
 
+## SSH dashboard settings (Unreleased)
+
+```toml
+[tui.ssh]
+background_refresh = true
+```
+
+這個選項只控制 SSH 頁啟用時的 Tailscale 背景狀態更新；LAN 掃描及連線測試仍須明確觸發。`ssh diagnose --ping --network-only ALIAS` 觀測 ICMP／TCP／banner，不嘗試 SSH authentication；省略 `--network-only` 可做完整驗證。`--network-only` 不可搭配 `--compare-qos`。
+
 ---
 
 ### 相容性與已知限制
@@ -21276,7 +21540,7 @@ identity diagnostics 仍是 content-free。
 
 Static `dev ssh list` 是 provenance/candidate scanner，不是第二套 OpenSSH evaluator。Dynamic `Match`、unsupported Include expansion、cycle 與 scan bound 會產生 `complete: false`；即使 plain `ssh` 最終可能選出 value，這些情況仍可 block mutation。`dev ssh show` 與 setup route resolution 使用 plain `ssh -G`，因此 configured resolver 與 `Match exec` behavior 可能執行。Fresh probe 會保留 `KnownHostsCommand`、`UpdateHostKeys` 與 host-key policy，不會強迫產生方便的答案。
 
-Setup 要求 explicit key 或 explicit Ed25519 generation，且只安裝 public material。它支援 bounded ProxyJump forms 與固定 POSIX/Windows OpenSSH installer；`ProxyCommand`、custom `AuthorizedKeysFile`、forced-shell policy 與無法提供 ACL 的 filesystem 需要 manual remediation。Remote installer 一旦啟動，cancellation/failure 會是 `unknown`，因為 key 可能已 append。Dev 會保留 local config/generated keys，且絕不嘗試 key revocation、private-key deletion/copying、`known_hosts` cleanup、password storage/fallback 或 automatic credential rollback。Alias rename/adoption、bulk onboarding、arbitrary directive 與 SSH TUI 也都 deferred。
+Setup 要求 explicit key 或 explicit Ed25519 generation，且只安裝 public material。它支援 bounded ProxyJump forms 與固定 POSIX/Windows OpenSSH installer；`ProxyCommand`、custom `AuthorizedKeysFile`、forced-shell policy 與無法提供 ACL 的 filesystem 需要 manual remediation。Remote installer 一旦啟動，cancellation/failure 會是 `unknown`，因為 key 可能已 append。Dev 會保留 local config/generated keys，且絕不嘗試 key revocation、private-key deletion/copying、`known_hosts` cleanup、password storage/fallback 或 automatic credential rollback。一般 setup 保留 foreign directives；source-aware onboarding 與 SSH dashboard 使用以下 reviewed workflows。
 
 ### Direct mode 的 lifecycle 較小
 
@@ -21622,6 +21886,10 @@ filters 與原 remote 歷史替換不在此次整合內。
 Split 需要 git-filter-repo（native CI 固定 2.47.0）與完整可回復的本機 refs。
 備份範圍及 partial results 明確列出。舊 commit finalizers 維持原流程；舊版
 binary 無法讀取新增的 external-archive intent 欄位。
+
+## SSH dashboard observations (Unreleased)
+
+SSH dashboard 提供原生 discovery／setup 與 profile 樹狀清單。缺少 registry 是空狀態，不安全的 registry 則提供問題引導，不可推定 bindings 不存在。Cache 失敗仍保留本次 discovery。`[tui.ssh].background_refresh` 控制 Tailscale 背景狀態，不會掃 LAN 或驗證 SSH。活動紀錄是與 cache 分離的 durable 資料；Ping 可略過且不阻止 SSH，proxy 的直連層級維持未觀測。新增 diagnostic flags／fields 為增補，既有 alias／list JSON 契約不變。
 
 ---
 

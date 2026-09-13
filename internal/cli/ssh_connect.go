@@ -111,6 +111,9 @@ func runSSHConnectWithStore(ctx context.Context, app *App, alias, on, keyID, pas
 		}
 	}
 	sessionOptions := sshhost.ConnectionOptions{Interactive: true, ForwardAgentNo: true}
+	if profile, found := sshActivityProfile(ctx, s, alias); found {
+		sessionOptions.OnStarted = sshUseObserver(app, s, profile)
+	}
 	connection, err := prepareSSHAuthentication(ctx, app, s, alias, passwordStore, candidate != nil, sessionOptions)
 	if errors.Is(err, sshhost.ErrUnsupportedRoute) {
 		app.warnf("using native SSH for this profile; its settings do not support managed password saving")

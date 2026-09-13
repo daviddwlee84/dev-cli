@@ -6,6 +6,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Native SSH dashboard discovery, progress/cancellation and candidate-to-setup
+  review, including fresh-machine initialization, session-only results when
+  cache writes fail, and per-stage onboarding outcomes.
+- Machine/profile trees, configured-first recent-use ordering, durable private
+  usage/test observations and explicit single/batch network or SSH tests.
+- Optional background Tailscale status in the active SSH view and diagnostic
+  `--ping` / `--network-only` flags; LAN scans and authentication remain explicit.
+- Dashboard-wide problem details and suggested actions, exact permission repair
+  previews, and reviewed native dependency installation with post-install checks.
+
+### Fixed
+
+- SSH table columns now use display-width padding. Discovery results return
+  directly to the UI instead of depending on stdout or a successful cache reload.
+- Registry permission errors identify the exact path and owner; independent
+  discovery observations remain visible when a registry cannot be read.
+
 ## [0.2.33] - 2026-09-12
 
 ### Added

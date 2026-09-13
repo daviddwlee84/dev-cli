@@ -56,6 +56,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok || model.quitting {
 		return next, command
 	}
+	model.captureIssueResult(m, msg)
 	if model.filter != m.filter {
 		model.fleetTree.searchQuery = model.filter
 		model.fleetTree.searchExpansions = nil

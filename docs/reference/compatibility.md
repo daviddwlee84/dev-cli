@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-12
+verified_on: 2026-09-13
 tested_with: Claude Code 2.1.259
 ---
 
@@ -231,7 +231,7 @@ diagnostics remain content-free.
 
 Static `dev ssh list` is a provenance/candidate scanner, not a second OpenSSH evaluator. Dynamic `Match`, unsupported Include expansion, cycles, and scan bounds produce `complete: false`; they can block mutation even when plain `ssh` would eventually choose a value. `dev ssh show` and setup route resolution use plain `ssh -G`, so configured resolver and `Match exec` behavior may run. Fresh probes preserve `KnownHostsCommand`, `UpdateHostKeys`, and host-key policy rather than forcing a convenient answer.
 
-Setup requires an explicit key or explicit Ed25519 generation and installs public material only. It supports bounded ProxyJump forms plus fixed POSIX and Windows OpenSSH installers; `ProxyCommand`, custom `AuthorizedKeysFile`, forced-shell policy, and ACL-incapable filesystems require manual remediation. Once a remote installer starts, cancellation/failure is `unknown` because the key may have been appended. Dev retains local config/generated keys and never attempts key revocation, private-key deletion/copying, `known_hosts` cleanup, password storage/fallback, or automatic credential rollback. Alias rename/adoption, bulk onboarding, arbitrary directives, and an SSH TUI are also deferred.
+Setup requires an explicit key or explicit Ed25519 generation and installs public material only. It supports bounded ProxyJump forms plus fixed POSIX and Windows OpenSSH installers; `ProxyCommand`, custom `AuthorizedKeysFile`, forced-shell policy, and ACL-incapable filesystems require manual remediation. Once a remote installer starts, cancellation/failure is `unknown` because the key may have been appended. Dev retains local config/generated keys and never attempts key revocation, private-key deletion/copying, `known_hosts` cleanup, password storage/fallback, or automatic credential rollback. Ordinary setup preserves foreign directives; source-aware onboarding and the SSH dashboard use the reviewed workflows described below.
 
 ### Direct mode has a smaller lifecycle
 
@@ -621,3 +621,7 @@ Current file snapshots cap at 128 MiB, inventories at 10,000 files and plans at
 2.47.0) and complete locally recoverable refs. Backup coverage and partial results
 remain explicit. Existing commit finalizers and intent fields retain their lane;
 older binaries cannot consume new external-archive intent fields.
+
+## SSH dashboard observations (Unreleased)
+
+The SSH dashboard has a native discovery/setup UI and profile tree. Missing registry state is empty; unsafe registry state is a recoverable issue and never proof of missing bindings. In-memory discovery survives cache failure. Background Tailscale status is enabled by `[tui.ssh].background_refresh`; neither this nor plain refresh scans LAN or authenticates SSH. Private activity records are durable and separate from discovery cache. Ping is optional and never gates SSH; proxy network stages remain unobserved. New diagnostic flags/fields are additive, and existing alias/list JSON contracts remain unchanged.

@@ -78,6 +78,12 @@ func diagnosticOption(e EffectiveConfig, name string) string {
 // selectable alias, and it never changes SSH/network files or imports host keys.
 func (s *Service) Diagnose(ctx context.Context, request DiagnoseRequest) (Diagnosis, error) {
 	d := newDiagnosis(request.Target)
+	if request.NetworkOnly && request.CompareQoS {
+		return d, errors.New("network-only diagnostics cannot compare SSH QoS")
+	}
+	if request.Ping {
+		d.Stages = append(d.Stages[:3:3], append([]DiagnosticStage{{Name: "ping", State: "skipped", Code: "prerequisite_unavailable"}}, d.Stages[3:]...)...)
+	}
 	if err := ValidateDiagnosticTarget(request.Target); err != nil {
 		return d, err
 	}
@@ -147,8 +153,22 @@ func (s *Service) Diagnose(ctx context.Context, request DiagnoseRequest) (Diagno
 	} else {
 		s.diagnoseNetwork(ctx, &d, hooks)
 	}
+	if request.Ping {
+		s.diagnosePing(ctx, &d, hooks)
+	}
 	if ctx.Err() != nil {
 		return finishDiagnosis(ctx, d, ctx.Err())
+	}
+	if request.NetworkOnly {
+		d.stage("qos", "skipped", "not_requested", time.Now())
+		d.Status = "incomplete"
+		for _, stage := range d.Stages {
+			if stage.Name == "banner" && stage.State == "passed" {
+				d.Status = "network_ready"
+				return d, nil
+			}
+		}
+		return d, errors.New("network diagnostics did not observe an SSH banner; see stage results")
 	}
 	baseline := s.diagnosticSSHAttempt(ctx, request.Target, false)
 	if d.Target.Proxy != "none" && !baseline.Ready && baseline.Code != "canceled" && baseline.Code != "ssh_unavailable" {

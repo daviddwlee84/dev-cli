@@ -12,6 +12,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	"github.com/daviddwlee84/dev-cli/internal/tuiissue"
 )
 
 type listAction uint8
@@ -99,6 +100,15 @@ const (
 	listActionFleetLocal
 	listActionFleetProfiles
 	listActionFleetProfile
+	listActionIssues
+	listActionIssuesScope
+	listActionIssuesNext
+	listActionIssuesPrevious
+	listActionIssueDetails
+	listActionIssueFull
+	listActionIssueCopy
+	listActionIssueAction
+	listActionIssueConfirm
 )
 
 type selectionToken struct {
@@ -139,8 +149,8 @@ func skillRowKey(row agentskill.Skill) string {
 }
 
 func (m Model) currentSelectionToken() (selectionToken, bool) {
-	if row, ok := m.currentSSH(); ok {
-		return selectionToken{view: ViewSSH, key: row.ID}, true
+	if row, ok := m.currentSSHEntry(); ok {
+		return selectionToken{view: ViewSSH, key: row.key()}, true
 	}
 	switch m.view {
 	case ViewTasks:
@@ -195,14 +205,9 @@ func (m *Model) selectToken(token selectionToken) bool {
 		return false
 	}
 	if token.view == ViewSSH {
-		for i, row := range m.visibleSSH() {
-			if row.ID == token.key {
-				m.setAt(i)
-				return true
-			}
-		}
-		return false
+		return m.selectSSHKey(token.key)
 	}
+
 	switch token.view {
 	case ViewTasks:
 		for i, row := range m.visibleTasks() {
@@ -301,8 +306,13 @@ func (m Model) selectionHeading() (string, string) {
 }
 
 func (m Model) openActionMenu() Model {
+	if m.err != nil {
+		m.rememberIssue(tuiissue.FromError(m.view.String(), "operation", m.currentToken().key, m.err))
+	}
 	if m.view == ViewSSH {
-		return m.openSSHMenu()
+		m = m.openSSHMenu()
+		m.addIssueOption(&m.overlay)
+		return m
 	}
 	m.popupExpanded = false
 	m.stopStartupFocus()
@@ -329,6 +339,7 @@ func (m Model) openActionMenu() Model {
 			m.overlay.addOption(listActionLastTriage, "last triage results…")
 		}
 		m.addDiscoveryOptions(&m.overlay)
+		m.addIssueOption(&m.overlay)
 		return m
 	}
 	subject, detail := m.selectionHeading()
@@ -541,6 +552,7 @@ func (m Model) openActionMenu() Model {
 		}
 	}
 	m.addDiscoveryOptions(&overlay)
+	m.addIssueOption(&overlay)
 	if overlay.optionCount == 0 {
 		return m
 	}
@@ -598,6 +610,9 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 	}
 	action := m.overlay.options[m.overlay.optionIndex].action
 	option := m.overlay.options[m.overlay.optionIndex]
+	if issueAction(action) {
+		return m.runIssueAction(action, option)
+	}
 	if option.fleetProfile != "" {
 		return m.openFleetProfile(m.overlay.fleetHost, option.fleetProfile)
 	}
@@ -624,6 +639,9 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
+	if issueAction(action) {
+		return m.runIssueAction(action, actionOption{})
+	}
 	if action >= listActionSSHConnect && action <= listActionSSHCopySummary {
 		return m.runSSHAction(action)
 	}

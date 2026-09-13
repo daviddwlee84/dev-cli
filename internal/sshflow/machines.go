@@ -79,6 +79,13 @@ func ReferenceBinding(ref MachineReference) machineregistry.Binding {
 // JoinMachines is a pure projection. Only explicit registry transactions create
 // durable identity; lexical endpoint matches are labelled declared associations.
 func JoinMachines(local Inventory, hints []sshhost.ConnectionHint, registry machineregistry.Snapshot, reports []sshdiscovery.Report, fleetScope, herdrScope string, now time.Time) MachineInventory {
+	return JoinMachinesWithRegistryStatus(local, hints, registry, reports, fleetScope, herdrScope, now, true)
+}
+
+// JoinMachinesWithRegistryStatus preserves independent observations when the
+// registry cannot be read. Unavailable binding/suppression intent must not be
+// replaced by inferred associations between otherwise readable sources.
+func JoinMachinesWithRegistryStatus(local Inventory, hints []sshhost.ConnectionHint, registry machineregistry.Snapshot, reports []sshdiscovery.Report, fleetScope, herdrScope string, now time.Time, registryKnown bool) MachineInventory {
 	out := MachineInventory{SchemaVersion: 1, Kind: "ssh_machine_inventory", Complete: local.Complete, ObservedAt: now, Sources: map[string]string{"ssh": "ready", "fleet": local.FleetStatus, "herdr": local.Herdr.Status}, Machines: []MachineRow{}}
 	if local.FleetStatus != "ready" || local.Herdr.Status != "ready" {
 		out.Complete = false
@@ -114,6 +121,9 @@ func JoinMachines(local Inventory, hints []sshhost.ConnectionHint, registry mach
 		}
 	}
 	attach := func(ref MachineReference, label string, suggested *MachineRow) *MachineRow {
+		if !registryKnown {
+			suggested = nil
+		}
 		binding, bound := bindings[ref.ID]
 		var row *MachineRow
 		if bound && !binding.Suppressed {
@@ -246,6 +256,9 @@ func JoinMachines(local Inventory, hints []sshhost.ConnectionHint, registry mach
 		sort.Strings(group)
 	}
 	for _, row := range rows {
+		if !registryKnown {
+			row.State = "mapping_unknown"
+		}
 		for _, id := range nameGroups[normalizedMachineName(row.Label)] {
 			if id != row.ID {
 				row.Suggestions = append(row.Suggestions, id)
@@ -265,6 +278,10 @@ func JoinMachines(local Inventory, hints []sshhost.ConnectionHint, registry mach
 		}
 		return a.Label < b.Label
 	})
+	if !registryKnown {
+		out.Sources["registry"] = "unavailable"
+		out.Complete = false
+	}
 	return out
 }
 

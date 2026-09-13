@@ -2,7 +2,7 @@
 description: 從 Dashboard 完成與恢復 task、透過系統垃圾桶處理 Try，並開啟 repository 首頁。
 authority: project
 status: evolving
-verified_on: 2026-09-10
+verified_on: 2026-09-13
 lang: zh-TW
 ---
 
@@ -128,3 +128,41 @@ Ctrl+O 的 `/` 只篩選目前選單，方向鍵移動，Enter 執行；Esc 先�
 REPOS 可管理目前或篩選範圍的 skills，SKILLS 可選單一 skill、project 或 global。
 這些入口使用 [dev skill manage](skills-management.zh-TW.md) wizard；更新先檢查
 並預覽，experimental restore／sync 僅限單 project。
+
+
+## 問題與建議動作
+
+八個頁面的 `Ctrl+O` 選單都有 **issues / suggested actions**，空清單也能開啟。
+預設查看目前頁面，也可切到全部頁面；內容包含已知 inventory／列內問題與近期
+操作失敗，不會為此造訪或探測尚未開啟的頁面。選取問題可看完整診斷、來源、
+處理建議並複製文字。問題清單支援分頁，完整訊息另有可捲動的詳情視窗。
+
+各來源的問題處理對照如下：
+
+| 來源 | 保留的問題 | 建議動作與完成判定 |
+| --- | --- | --- |
+| TASKS | Inventory／Git 失敗、checkout 遺失與生命週期阻擋 | 重讀本機 task 觀測；透過既有 sweep 流程檢查及恢復確切 task。Task revision 改變時必須重新審閱。 |
+| REPOS | Repository 身分、worktree、runtime、task、Git topology 與磁碟用量失敗 | 重讀 repository inventory；來源仍存在時開啟確切項目的動作。整理流程保留既有預覽。 |
+| FLEET | Host 觀測、連線、信任／版本與 Herdr 失敗 | 查看該 host 的原生動作；本機重查讀取 cache。驗證與即時刷新仍是明確的 host 操作。 |
+| TRY | Runtime／Git／磁碟失敗、資料夾遺失與未完成移動 | 重讀本機 Try 狀態；在既有整理／恢復流程審閱確切 Try。不自動重跑移動或刪除。 |
+| REMOTE | Inventory／provider 與 clone／open 失敗 | 讀取 cache、查看保留的 clone 結果，使用 provider 登入或明確刷新。沒有 forge CLI 時可審閱安裝選項。 |
+| SKILLS | 原生 lock／file 診斷碼與路徑、完整性與更新失敗 | 查看／複製完整診斷、開啟確切來源檔或進入該 skill 的管理動作。成功重讀原生來源後移除已解決診斷。 |
+| MCP | 原生來源／設定診斷與 declaration coverage 代碼 | 開啟診斷指向的確切來源或 declaration 動作，再重讀靜態宣告。檢查問題不會啟動 server。 |
+| SSH | Registry／SSH 權限、缺少工具、來源失敗／部分完成與 discovery／測試／setup 失敗 | 審阅確切權限修復、來源詳情或安裝選項；重查仍保留可獨立使用的 profiles。Discovery 不代表驗證成功。 |
+| 共用操作 | Notes、stats、剪貼簿、editor／config 儲存與部分完成 receipts | 保留完整錯誤／receipts 並提供複製指引；重讀觀測不重跑操作。Notes Markdown 與 stats 資料庫仍是持久資料。 |
+
+問題檢查只讀本機依賴與 metadata，不把未知錯誤文字轉成 shell 命令。修復先產生
+具體預覽，使用者選擇 **run this reviewed action in the foreground** 後才執行。
+關閉預覽不執行；部分成功保留已完成步驟，不自動重試。
+
+Registry 權限問題顯示確切路徑、owner、目前 mode 與預期條件；尚無 registry
+是正常狀態。支援的 Unix 平台只對列出的目前使用者擁有路徑收緊權限，套用前
+重新驗證完整檢查範圍的 metadata。Symlink、hardlink、其他 owner 或審閱後變更
+會阻擋套用；不遞迴處理、不改 ownership。Windows registry ACL 修復在有經驗證
+的後端前提供人工指引；SSH 權限使用既有的 guarded service。
+
+依賴安裝支援 macOS Homebrew、Debian／Ubuntu apt，以及 Windows 的精確 WinGet
+package ID。預覽列出套件、已解析的命令與官方指引。未支援的工具／平台或缺少
+package manager 時只提供指引。前景安裝保留原生提示，不新增套件來源、不安裝
+manager、不預先接受條款。完成後檢查執行檔，`ssh` 另檢查 OpenSSH capability；
+驗證與服務啟動分開處理。取消或失敗不自動重試。

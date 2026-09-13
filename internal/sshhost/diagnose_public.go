@@ -3,10 +3,11 @@ package sshhost
 import (
 	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 )
 
-var diagnosticPublicCodes = wordSet(`prerequisite_unavailable config_unavailable config_timeout dns_timeout literal_address config_invalid config_ready addresses_resolved dns_unavailable route_unavailable route_observed route_source_unproven route_unsupported proxy_path bind_interface_unavailable bind_address_unavailable scope_required tcp_failed tcp_connected connection_refused connect_timeout canceled non_ssh_banner banner_failed banner_timeout ssh_banner not_requested qos_comparison_unavailable path_not_comparable qos_already_disabled baseline_ready qos_marking_unproven no_transport_timeout qos_no_progress qos_correlated_progress not_observed handshake_complete transport_reported handshake_reported host_key_reported authentication_reported session_reported host_key_verified authenticated remote_exit_zero host_key_unknown host_key_changed host_key_rejected host_identity_reached authentication_denied authentication_timeout remote_output_ambiguous agent_refused handshake_timeout session_failed ssh_unavailable ssh_failed evidence_truncated proxy_path_failed proxy_stage_unresolved ready`)
+var diagnosticPublicCodes = wordSet(`prerequisite_unavailable config_unavailable config_timeout dns_timeout literal_address config_invalid config_ready addresses_resolved dns_unavailable route_unavailable route_observed route_source_unproven route_unsupported proxy_path bind_interface_unavailable bind_address_unavailable scope_required tcp_failed tcp_connected connection_refused connect_timeout canceled non_ssh_banner banner_failed banner_timeout ssh_banner not_requested qos_comparison_unavailable path_not_comparable qos_already_disabled baseline_ready qos_marking_unproven no_transport_timeout qos_no_progress qos_correlated_progress not_observed handshake_complete transport_reported handshake_reported host_key_reported authentication_reported session_reported host_key_verified authenticated remote_exit_zero host_key_unknown host_key_changed host_key_rejected host_identity_reached authentication_denied authentication_timeout remote_output_ambiguous agent_refused handshake_timeout session_failed ssh_unavailable ssh_failed evidence_truncated proxy_path_failed proxy_stage_unresolved ready ping_reply ping_no_reply ping_unavailable ping_bind_unsupported`)
 
 func wordSet(words string) map[string]bool {
 	m := map[string]bool{}
@@ -31,11 +32,11 @@ func ParsePublicDiagnosis(data []byte) (PublicDiagnosis, error) {
 }
 func (d Diagnosis) PublicEvidence() PublicDiagnosis {
 	p := PublicDiagnosis{SchemaVersion: 1, Kind: "public_ssh_diagnosis", Status: "incomplete", Stages: []DiagnosticStage{}, AttemptCodes: []string{}, Findings: []string{}}
-	if d.Status == "ready" || d.Status == "not_ready" {
+	if d.Status == "ready" || d.Status == "not_ready" || d.Status == "network_ready" {
 		p.Status = d.Status
 	}
 	states := wordSet("passed failed unknown skipped unsupported canceled")
-	stages := wordSet("config dns route tcp banner qos")
+	stages := wordSet("config dns route ping tcp banner qos")
 	for _, stage := range d.Stages {
 		if !stages[stage.Name] {
 			continue
@@ -49,6 +50,9 @@ func (d Diagnosis) PublicEvidence() PublicDiagnosis {
 		}
 		if stage.ElapsedMS < 0 || stage.ElapsedMS > 86400000 {
 			stage.ElapsedMS = 0
+		}
+		if stage.Name != "ping" || stage.RoundTripMS == nil || math.IsNaN(*stage.RoundTripMS) || math.IsInf(*stage.RoundTripMS, 0) || *stage.RoundTripMS < 0 || *stage.RoundTripMS > 2000 {
+			stage.RoundTripMS, stage.RoundTripUpperBound = nil, false
 		}
 		p.Stages = append(p.Stages, stage)
 	}
