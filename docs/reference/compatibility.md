@@ -622,6 +622,6 @@ Current file snapshots cap at 128 MiB, inventories at 10,000 files and plans at
 remain explicit. Existing commit finalizers and intent fields retain their lane;
 older binaries cannot consume new external-archive intent fields.
 
-## SSH dashboard observations (Unreleased)
+## SSH dashboard observations (v0.2.34)
 
 The SSH dashboard has a native discovery/setup UI and profile tree. Missing registry state is empty; unsafe registry state is a recoverable issue and never proof of missing bindings. In-memory discovery survives cache failure. Background Tailscale status is enabled by `[tui.ssh].background_refresh`; neither this nor plain refresh scans LAN or authenticates SSH. Private activity records are durable and separate from discovery cache. Ping is optional and never gates SSH; proxy network stages remain unobserved. New diagnostic flags/fields are additive, and existing alias/list JSON contracts remain unchanged.

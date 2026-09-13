@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.34] - 2026-09-13
+
 ### Added
 
 - Native SSH dashboard discovery, progress/cancellation and candidate-to-setup
@@ -1093,7 +1095,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.33...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.34...HEAD
+[0.2.34]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.33...v0.2.34
 [0.2.33]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.32...v0.2.33
 [0.2.32]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.31...v0.2.32
 [0.2.31]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.30...v0.2.31

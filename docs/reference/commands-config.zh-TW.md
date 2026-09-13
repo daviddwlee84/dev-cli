@@ -890,7 +890,7 @@ Capture/provider identity、source retention、off/check/redact 副本保護與
 發行排除是獨立選擇。支援限制、preview/apply 命令與歷史遷移詳見
 [AI 產物](../guides/ai-artifacts.md)。
 
-## SSH dashboard settings (Unreleased)
+## SSH dashboard settings (v0.2.34)
 
 ```toml
 [tui.ssh]

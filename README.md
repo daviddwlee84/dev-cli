@@ -107,7 +107,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.33 instead when you need a reproducible install.
+# Pin @v0.2.34 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -878,7 +878,7 @@ the branch/worktree and lifecycle costs explicit rather than silently applying
 them to every directory.
 
 
-### SSH discovery and connection health (Unreleased)
+### SSH discovery and connection health (v0.2.34)
 
 The SSH tab aligns machine rows and Space-expanded profiles, with configured
 connections first and recent local dev usage before unused aliases. `c` selects

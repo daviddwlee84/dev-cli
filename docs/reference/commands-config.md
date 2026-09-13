@@ -1003,7 +1003,7 @@ Capture/provider identity, source retention, off/check/redact copy protection
 and distribution exclusions are independent. See [AI artifacts](../guides/ai-artifacts.md)
 for supported limits, exact preview/apply commands and historical migration.
 
-## SSH dashboard settings (Unreleased)
+## SSH dashboard settings (v0.2.34)
 
 ```toml
 [tui.ssh]

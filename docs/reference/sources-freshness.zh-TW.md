@@ -2,7 +2,7 @@
 description: 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
 authority: project-policy
 status: maintained
-verified_on: 2026-09-11
+verified_on: 2026-09-13
 lang: zh-TW
 ---
 
@@ -34,7 +34,7 @@ Submodule graph／初始化、選擇性 task branch、遞迴遠端證明與暫�
 description: 能在 search 與 llms.txt 獨立成立的一句話。
 authority: 使用下方 authority table 的單一值
 status: 使用下方 status table 的單一值
-verified_on: 2026-09-11
+verified_on: 2026-09-13
 minimum_version: optional
 tested_with: optional
 ---
@@ -63,6 +63,7 @@ tested_with: optional
 
 | Topic 或 claim | Owning page | Primary authority | Checked status |
 |---|---|---|---|
+| SSH profile tree、原生 discovery/setup、durable 使用／測試紀錄與 TUI 問題引導 | [SSH dashboard](../guides/ssh-hosts.zh-TW.md#ssh-connection-view)、[問題引導](../guides/dashboard-actions.zh-TW.md) | `internal/tui`、`internal/sshactivity`、`internal/tuiissue`、native discovery/onboarding tests 與隔離 PTY smoke | v0.2.34 |
 | 保留 parent 的 task completion、前景程序授權與 coordinator v2 | [Agent-safe retirement](../guides/agent-safe-retirement.zh-TW.md#task-worktree-scope) | runtime process/occupancy、taskflow completion/retire 與 CLI scope regression tests | Unreleased |
 | HOT/WARM/COLD/DONE graph、checkout modes，以及 DONE/MERGED 與 Retire 的分界 | [心智模型](../concepts/mental-model.zh-TW.md)、[變更流 workflow](../guides/change-stream-workflow.zh-TW.md) | `internal/task/task.go`、`internal/taskflow/transitions.go`、focused lifecycle tests | repository snapshot 2026-09-01 |
 | `done --pr` 保持 task active；`done --merged` 需 named ancestry evidence | [變更流 workflow](../guides/change-stream-workflow.zh-TW.md) | `internal/taskflow/complete.go`、`internal/cli/done_flow.go` | implemented |

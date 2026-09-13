@@ -550,6 +550,6 @@ Split 需要 git-filter-repo（native CI 固定 2.47.0）與完整可回復的�
 備份範圍及 partial results 明確列出。舊 commit finalizers 維持原流程；舊版
 binary 無法讀取新增的 external-archive intent 欄位。
 
-## SSH dashboard observations (Unreleased)
+## SSH dashboard observations (v0.2.34)
 
 SSH dashboard 提供原生 discovery／setup 與 profile 樹狀清單。缺少 registry 是空狀態，不安全的 registry 則提供問題引導，不可推定 bindings 不存在。Cache 失敗仍保留本次 discovery。`[tui.ssh].background_refresh` 控制 Tailscale 背景狀態，不會掃 LAN 或驗證 SSH。活動紀錄是與 cache 分離的 durable 資料；Ping 可略過且不阻止 SSH，proxy 的直連層級維持未觀測。新增 diagnostic flags／fields 為增補，既有 alias／list JSON 契約不變。

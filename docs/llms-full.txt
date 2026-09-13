@@ -10357,7 +10357,7 @@ Capture/provider identity, source retention, off/check/redact copy protection
 and distribution exclusions are independent. See [AI artifacts](https://daviddwlee84.github.io/dev-cli/guides/ai-artifacts/)
 for supported limits, exact preview/apply commands and historical migration.
 
-## SSH dashboard settings (Unreleased)
+## SSH dashboard settings (v0.2.34)
 
 ```toml
 [tui.ssh]
@@ -10988,7 +10988,7 @@ Current file snapshots cap at 128 MiB, inventories at 10,000 files and plans at
 remain explicit. Existing commit finalizers and intent fields retain their lane;
 older binaries cannot consume new external-archive intent fields.
 
-## SSH dashboard observations (Unreleased)
+## SSH dashboard observations (v0.2.34)
 
 The SSH dashboard has a native discovery/setup UI and profile tree. Missing registry state is empty; unsafe registry state is a recoverable issue and never proof of missing bindings. In-memory discovery survives cache failure. Background Tailscale status is enabled by `[tui.ssh].background_refresh`; neither this nor plain refresh scans LAN or authenticates SSH. Private activity records are durable and separate from discovery cache. Ping is optional and never gates SSH; proxy network stages remain unobserved. New diagnostic flags/fields are additive, and existing alias/list JSON contracts remain unchanged.
 
@@ -11173,7 +11173,7 @@ A lower item may explain motivation but cannot override a higher authority's imp
 description: One sentence used by navigation and llms.txt.
 authority: one value from the authority table below
 status: one value from the status table below
-verified_on: 2026-09-11
+verified_on: 2026-09-13
 minimum_version: optional
 tested_with: optional
 ---
@@ -11202,6 +11202,7 @@ tested_with: optional
 
 | Topic or claim | Owning page | Primary authority | Status checked |
 |---|---|---|---|
+| SSH profile tree, native discovery/setup, durable usage/tests and guided TUI recovery | [SSH dashboard](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#ssh-connection-view), [problem guidance](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/) | `internal/tui`, `internal/sshactivity`, `internal/tuiissue`, native discovery/onboarding tests and isolated PTY smoke | v0.2.34 |
 | parent-preserving task completion, foreground program consent and coordinator v2 | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/#task-worktree-scope) | runtime process/occupancy, taskflow completion/retire and CLI scope regression tests | Unreleased |
 | HOT/WARM/COLD/DONE, checkout modes, and legal transitions | [Mental model](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/) | `internal/task/task.go`, `internal/taskflow/transitions.go`, lifecycle tests | repository snapshot 2026-09-01 |
 | repository flow topology, local/manual-remote observations, revision-bound Plan/Apply, and partial ledgers | [Repository lifecycle flow](https://daviddwlee84.github.io/dev-cli/guides/repository-flow/) | `internal/cli/flow.go`, `internal/flowtui`, `internal/taskflow`, focused flow tests | preview implemented 2026-09-01 |
@@ -21329,7 +21330,7 @@ Capture/provider identity、source retention、off/check/redact 副本保護與
 發行排除是獨立選擇。支援限制、preview/apply 命令與歷史遷移詳見
 [AI 產物](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ai-artifacts/)。
 
-## SSH dashboard settings (Unreleased)
+## SSH dashboard settings (v0.2.34)
 
 ```toml
 [tui.ssh]
@@ -21887,7 +21888,7 @@ Split 需要 git-filter-repo（native CI 固定 2.47.0）與完整可回復的�
 備份範圍及 partial results 明確列出。舊 commit finalizers 維持原流程；舊版
 binary 無法讀取新增的 external-archive intent 欄位。
 
-## SSH dashboard observations (Unreleased)
+## SSH dashboard observations (v0.2.34)
 
 SSH dashboard 提供原生 discovery／setup 與 profile 樹狀清單。缺少 registry 是空狀態，不安全的 registry 則提供問題引導，不可推定 bindings 不存在。Cache 失敗仍保留本次 discovery。`[tui.ssh].background_refresh` 控制 Tailscale 背景狀態，不會掃 LAN 或驗證 SSH。活動紀錄是與 cache 分離的 durable 資料；Ping 可略過且不阻止 SSH，proxy 的直連層級維持未觀測。新增 diagnostic flags／fields 為增補，既有 alias／list JSON 契約不變。
 
@@ -22050,7 +22051,7 @@ Submodule graph／初始化、選擇性 task branch、遞迴遠端證明與暫�
 description: 能在 search 與 llms.txt 獨立成立的一句話。
 authority: 使用下方 authority table 的單一值
 status: 使用下方 status table 的單一值
-verified_on: 2026-09-11
+verified_on: 2026-09-13
 minimum_version: optional
 tested_with: optional
 ---
@@ -22079,6 +22080,7 @@ tested_with: optional
 
 | Topic 或 claim | Owning page | Primary authority | Checked status |
 |---|---|---|---|
+| SSH profile tree、原生 discovery/setup、durable 使用／測試紀錄與 TUI 問題引導 | [SSH dashboard](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/#ssh-connection-view)、[問題引導](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/) | `internal/tui`、`internal/sshactivity`、`internal/tuiissue`、native discovery/onboarding tests 與隔離 PTY smoke | v0.2.34 |
 | 保留 parent 的 task completion、前景程序授權與 coordinator v2 | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/#task-worktree-scope) | runtime process/occupancy、taskflow completion/retire 與 CLI scope regression tests | Unreleased |
 | HOT/WARM/COLD/DONE graph、checkout modes，以及 DONE/MERGED 與 Retire 的分界 | [心智模型](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/)、[變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/task/task.go`、`internal/taskflow/transitions.go`、focused lifecycle tests | repository snapshot 2026-09-01 |
 | `done --pr` 保持 task active；`done --merged` 需 named ancestry evidence | [變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/taskflow/complete.go`、`internal/cli/done_flow.go` | implemented |
