@@ -133,6 +133,39 @@ dev upgrade --check    # report whether a newer release exists
 dev upgrade            # delegate to its owner, or verify and replace a standalone binary
 ```
 
+For a standalone install, `dev upgrade` checks the release's actual asset list.
+If this platform has an archive, it downloads and verifies `SHA256SUMS`. If the
+platform is absent (including Android/Termux today), it offers to build the exact
+release tag with native Go. New releases include a compact
+`dev-cli_<tag>_source.tar.gz`, verified against `SHA256SUMS` and excluding
+conversation history. Older releases without this asset use Go's configured
+module verification and may download a much larger archive. Both paths use
+two build workers and the installed toolchain; they may take several minutes
+on the first run. The candidate must build and report the expected version before
+replacing the old executable. Download or checksum failures stop the upgrade.
+
+On Termux, prepare the native tools with `pkg install golang clang git`.
+Android builds use `GOOS=android`, CGO and Clang; Linux archives are not Android
+substitutes. Go must satisfy that release's `go.mod`; automatic toolchain downloads
+are disabled for source upgrades. To recover an older `dev` whose upgrade command
+only attempts the missing Android archive, build the published version separately:
+
+```bash
+pkg install golang clang git
+stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
+  trap 'rm -rf "$stage"' EXIT
+  GOBIN="$stage" GOTOOLCHAIN=local GOWORK=off GOFLAGS= GOOS=android GOARCH=arm64 \
+    CGO_ENABLED=1 CC=clang GOMAXPROCS=2 \
+    go install -p 2 -trimpath github.com/daviddwlee84/dev-cli/cmd/dev@v0.2.34 &&
+  test "$("$stage/dev" --version)" = 'dev version v0.2.34' &&
+  mv "$stage/dev" "$HOME/.local/bin/dev"
+)
+```
+
+This recovery example targets a standalone ARM64 Termux installation at
+`~/.local/bin/dev`. Version v0.2.34 itself still has the old upgrade behavior;
+the automatic source fallback described above is currently unreleased.
+
 `dev upgrade` replaces the binary in place only for a standalone install. If
 Homebrew, Scoop or `go install` owns the file, it runs that tool's upgrade
 command instead; release automation advances the Homebrew tap so that command

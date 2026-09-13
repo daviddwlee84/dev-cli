@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Standalone `dev upgrade` checks actual release platform coverage before
+  downloading. Platforms without an asset, including Android/Termux, can build
+  the exact release tag with native Go (and Clang on Termux) after confirmation.
+  Releases include a checksummed source archive without conversation history;
+  older releases can still use Go module source. Builds use two workers,
+  validate the candidate version and retain the installed
+  binary on failure; download/checksum errors never trigger a source fallback.
+
 ## [0.2.34] - 2026-09-13
 
 ### Added
