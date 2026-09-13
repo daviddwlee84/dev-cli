@@ -201,14 +201,8 @@ func (s *Store) update(ctx context.Context, id string, change func(*ProfileRecor
 		return ProfileRecord{}, err
 	}
 	lockPath := path + ".lock"
-	if err = configedit.WritePrivate(ctx, lockPath, []byte("ssh-activity\n"), false); err != nil && !errors.Is(err, fs.ErrExist) {
-		return ProfileRecord{}, err
-	}
-	lockInfo, err := os.Lstat(lockPath)
+	lockInfo, err := prepareActivityLock(ctx, lockPath)
 	if err != nil {
-		return ProfileRecord{}, err
-	}
-	if err = privatefile.Check(lockPath, lockInfo, false); err != nil {
 		return ProfileRecord{}, err
 	}
 	var record ProfileRecord
@@ -238,6 +232,60 @@ func (s *Store) update(ctx context.Context, id string, change func(*ProfileRecor
 		return record, fmt.Errorf("save SSH activity: %w", err)
 	}
 	return record, nil
+}
+
+// An existing lock is checked through metadata only. Windows byte-range locks
+// reject content reads from another handle, so writing a create-only marker to
+// an existing lock before acquiring it would turn ordinary contention into a
+// failed observation. The marker's bytes are never locking authority.
+func prepareActivityLock(ctx context.Context, path string) (fs.FileInfo, error) {
+	info, err := os.Lstat(path)
+	var createErr error
+	if errors.Is(err, fs.ErrNotExist) {
+		createErr = configedit.WritePrivate(ctx, path, []byte("ssh-activity\n"), false)
+		// A concurrent creator may already own the new lock. Revalidate paths without
+		// reading that lock, then let lockx wait for its holder normally.
+		if _, err = configedit.Read(ctx, filepath.Join(filepath.Dir(path), ".directory-check")); err != nil {
+			return nil, errors.Join(createErr, err)
+		}
+		info, err = os.Lstat(path)
+	}
+	if err != nil {
+		return nil, errors.Join(createErr, err)
+	}
+	// Guarded no-clobber publication briefly has a second staging hard link.
+	// Metadata may settle during concurrent first use; no lock is acquired until
+	// the exact observed file satisfies every private-file check. Persistent unsafe
+	// metadata, identity replacement, and cancellation still fail closed.
+	for attempt := 0; ; attempt++ {
+		if err = ctx.Err(); err != nil {
+			return nil, errors.Join(createErr, err)
+		}
+		if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+			return nil, errors.Join(createErr, errors.New("SSH activity lock must be a regular file"))
+		}
+		if err = privatefile.Check(path, info, false); err == nil {
+			return info, nil
+		}
+		if attempt == 10 {
+			return nil, errors.Join(createErr, err)
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+		current, statErr := os.Lstat(path)
+		if statErr != nil {
+			return nil, errors.Join(createErr, statErr)
+		}
+		if !os.SameFile(info, current) {
+			return nil, errors.Join(createErr, errors.New("SSH activity lock changed during preparation"))
+		}
+		info = current
+	}
 }
 
 func FromDiagnosis(fingerprint, mode string, at time.Time, diagnosis sshhost.Diagnosis) TestRecord {

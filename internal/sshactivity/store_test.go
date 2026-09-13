@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/lockx"
 	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 )
 
@@ -71,30 +72,36 @@ func TestReadIsPassiveAndUseSurvivesTests(t *testing.T) {
 }
 
 func TestConcurrentUpdatesDoNotLoseUseOrTest(t *testing.T) {
-	s := testStore(t)
-	at := time.Now().UTC()
-	if _, err := s.RecordUse(t.Context(), "profile", "revision", at); err != nil {
-		t.Fatal(err)
-	}
-	var wg sync.WaitGroup
-	for i := 1; i <= 12; i++ {
-		wg.Go(func() {
-			_, err := s.RecordUse(t.Context(), "profile", "revision", at.Add(time.Duration(i)*time.Second))
-			if err != nil {
-				t.Error(err)
+	for _, seeded := range []bool{true, false} {
+		t.Run(map[bool]string{true: "existing", false: "first-use"}[seeded], func(t *testing.T) {
+			s := testStore(t)
+			at := time.Now().UTC()
+			if seeded {
+				if _, err := s.RecordUse(t.Context(), "profile", "revision", at); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var wg sync.WaitGroup
+			for i := 1; i <= 12; i++ {
+				wg.Go(func() {
+					_, err := s.RecordUse(t.Context(), "profile", "revision", at.Add(time.Duration(i)*time.Second))
+					if err != nil {
+						t.Error(err)
+					}
+				})
+				wg.Go(func() {
+					_, err := s.RecordTest(t.Context(), "profile", TestRecord{ObservedAt: at.Add(time.Duration(i) * time.Second), Fingerprint: "revision", Mode: "full", Status: "ready"})
+					if err != nil {
+						t.Error(err)
+					}
+				})
+			}
+			wg.Wait()
+			r, err := s.Read(t.Context(), "profile")
+			if err != nil || !r.LastUsed.Equal(at.Add(12*time.Second)) || r.LastTest == nil || !r.LastTest.ObservedAt.Equal(at.Add(12*time.Second)) {
+				t.Fatalf("lost update %+v %v", r, err)
 			}
 		})
-		wg.Go(func() {
-			_, err := s.RecordTest(t.Context(), "profile", TestRecord{ObservedAt: at.Add(time.Duration(i) * time.Second), Fingerprint: "revision", Mode: "full", Status: "ready"})
-			if err != nil {
-				t.Error(err)
-			}
-		})
-	}
-	wg.Wait()
-	r, err := s.Read(t.Context(), "profile")
-	if err != nil || !r.LastUsed.Equal(at.Add(12*time.Second)) || r.LastTest == nil || !r.LastTest.ObservedAt.Equal(at.Add(12*time.Second)) {
-		t.Fatalf("lost update %+v %v", r, err)
 	}
 }
 
@@ -130,5 +137,93 @@ func TestActivityRejectsSymlinksAndPreservesOtherRecords(t *testing.T) {
 	cancel()
 	if _, err := s.RecordUse(ctx, "safe", "revision", at); err == nil {
 		t.Fatal("canceled write succeeded")
+	}
+}
+
+func TestUpdateWaitsForExistingLockWithoutReadingItsContents(t *testing.T) {
+	s := testStore(t)
+	at := time.Now().UTC()
+	if _, err := s.RecordUse(t.Context(), "profile", "revision", at); err != nil {
+		t.Fatal(err)
+	}
+	path, _ := s.path("profile")
+	held, release := make(chan struct{}), make(chan struct{})
+	ownerDone := make(chan error, 1)
+	go func() {
+		ownerDone <- lockx.WithFile(t.Context(), path+".lock", "fixture", func() error { close(held); <-release; return nil })
+	}()
+	select {
+	case <-held:
+	case err := <-ownerDone:
+		t.Fatal("lock owner failed", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("lock owner did not start")
+	}
+	released := false
+	defer func() {
+		if !released {
+			close(release)
+		}
+	}()
+	updateDone := make(chan error, 1)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	go func() { _, err := s.RecordUse(ctx, "profile", "revision", at.Add(time.Second)); updateDone <- err }()
+	select {
+	case err := <-updateDone:
+		t.Fatalf("update returned before lock release: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(release)
+	released = true
+	if err := <-ownerDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-updateDone; err != nil {
+		t.Fatal(err)
+	}
+	record, err := s.Read(t.Context(), "profile")
+	if err != nil || !record.LastUsed.Equal(at.Add(time.Second)) {
+		t.Fatal(record, err)
+	}
+}
+
+func TestUnsafeExistingLockCannotAuthorizeAnUpdate(t *testing.T) {
+	for _, kind := range []string{"hardlink", "symlink"} {
+		t.Run(kind, func(t *testing.T) {
+			s := testStore(t)
+			at := time.Now().UTC()
+			if _, err := s.RecordUse(t.Context(), "profile", "revision", at); err != nil {
+				t.Fatal(err)
+			}
+			path, _ := s.path("profile")
+			lockPath := path + ".lock"
+			if kind == "hardlink" {
+				if err := os.Link(lockPath, lockPath+".other"); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				target := filepath.Join(t.TempDir(), "foreign")
+				if err := os.WriteFile(target, []byte("untouched"), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Remove(lockPath); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(target, lockPath); err != nil {
+					if runtime.GOOS == "windows" {
+						t.Skip(err)
+					}
+					t.Fatal(err)
+				}
+			}
+			if _, err := s.RecordUse(t.Context(), "profile", "revision", at.Add(time.Second)); err == nil {
+				t.Fatal("unsafe lock accepted")
+			}
+			record, err := s.Read(t.Context(), "profile")
+			if err != nil || !record.LastUsed.Equal(at) {
+				t.Fatal("unsafe lock changed record", record, err)
+			}
+		})
 	}
 }
