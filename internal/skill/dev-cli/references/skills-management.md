@@ -94,7 +94,7 @@ Skill refresh failure is reported separately after the binary update succeeds.
 For standalone binaries, `dev upgrade` uses the exact release's platform asset
 when present and verifies `SHA256SUMS`. If the platform is absent, it offers a
 native Go source build of that release tag (Termux also needs Clang). This fallback
-is unreleased; older binaries still need a one-time native source installation.
+is available since v0.2.35; older binaries need a one-time native source installation.
 Source builds prefer the release's checksummed compact source archive, excluding
 conversation history. Older releases use Go's configured module verification and
 can require a larger download. Both use two workers and the installed toolchain,

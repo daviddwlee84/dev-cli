@@ -111,7 +111,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.34 instead when you need a reproducible install.
+# Pin @v0.2.35 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -151,20 +151,35 @@ are disabled for source upgrades. To recover an older `dev` whose upgrade comman
 only attempts the missing Android archive, build the published version separately:
 
 ```bash
-pkg install golang clang git
+pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
-  GOBIN="$stage" GOTOOLCHAIN=local GOWORK=off GOFLAGS= GOOS=android GOARCH=arm64 \
+  set -e
+  version=v0.2.35
+  asset="dev-cli_${version}_source.tar.gz"
+  base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
+  cd "$stage"
+  curl -fL "$base/$asset" -o "$asset"
+  curl -fL "$base/SHA256SUMS" -o SHA256SUMS
+  awk -v asset="$asset" '$2 == asset { print }' SHA256SUMS > source.sha256
+  test -s source.sha256
+  sha256sum -c source.sha256
+  mkdir source
+  tar -xzf "$asset" -C source
+  cd source
+  GOTOOLCHAIN=local GOWORK=off GOFLAGS= GOOS=android GOARCH=arm64 \
     CGO_ENABLED=1 CC=clang GOMAXPROCS=2 \
-    go install -p 2 -trimpath github.com/daviddwlee84/dev-cli/cmd/dev@v0.2.34 &&
-  test "$("$stage/dev" --version)" = 'dev version v0.2.34' &&
+    go build -p 2 -mod=readonly -trimpath \
+      -ldflags "-s -w -X github.com/daviddwlee84/dev-cli/internal/cli.Version=$version" \
+      -o "$stage/dev" ./cmd/dev
+  test "$("$stage/dev" --version)" = "dev version $version"
   mv "$stage/dev" "$HOME/.local/bin/dev"
 )
 ```
 
 This recovery example targets a standalone ARM64 Termux installation at
-`~/.local/bin/dev`. Version v0.2.34 itself still has the old upgrade behavior;
-the automatic source fallback described above is currently unreleased.
+`~/.local/bin/dev`. Automatic source upgrades and compact source assets are
+available starting with v0.2.35.
 
 `dev upgrade` replaces the binary in place only for a standalone install. If
 Homebrew, Scoop or `go install` owns the file, it runs that tool's upgrade
