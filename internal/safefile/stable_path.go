@@ -70,5 +70,8 @@ func ReadStablePath(ctx context.Context, path string, limit int64) ([]byte, erro
 	if err = VerifyRoot(base, info); err != nil {
 		return nil, err
 	}
-	return data, anchor.Verify()
+	if err := anchor.Verify(); err != nil {
+		return nil, err
+	}
+	return data, nil
 }
