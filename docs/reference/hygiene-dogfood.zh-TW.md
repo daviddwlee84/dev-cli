@@ -3,7 +3,7 @@ description: 人工 post-writer dogfood 與已發布 Git 歷史的獨立清理�
 lang: zh-TW
 authority: project
 status: evolving
-verified_on: 2026-09-12
+verified_on: 2026-09-13
 ---
 
 # 人工 hygiene dogfood
@@ -105,6 +105,34 @@ Git author 姓名／email、帶個資的檔名也列入評估；文字 redaction
 保留及乾淨 commit。Detector fixture 於執行時組出；程式碼字串拼接本身也可能
 看似加引號的 password，所以 corpus builder 避免把這種誤判形狀放進發佈檔案。
 已發布歷史的完整清理仍是前述 post-writer 階段。
+
+## UTF-8 修復 dogfood（2026-09-13）
+
+使用隔離的臨時 HOME 與 repository，複製目前損壞的 transcript，以及獨立的
+staged 版本。測試 checkout 沒有 recorder 寫入。Canonical source 只有讀取，
+其 index digest 保持不變。
+
+| 檢查 | 結果 |
+|---|---|
+| 凍結的目前 transcript | 604,271 bytes；一個無效 byte／段落 |
+| 修復、掃描與原始 bytes 還原 | 通過；此主機 9.05 秒 |
+| 部分 staging | index entries 不變 |
+| 修復後掃描 | coverage complete；18 個阻擋候選、10 個 warning |
+| 大型文字 fixture | 36,166,767-byte 的合法真實 transcript，追加一個合成無效 byte |
+| 大檔修復與精確還原 | 通過；12.75 秒 |
+| 帶 NUL 的真實歷史 | 70,527,168 bytes、1,265 個 NUL；拒絕修復，輸入不變 |
+
+掃描使用隔離的預設 hygiene 政策，沒有 source repo 的自訂規則、例外或私人
+身分規則。候選不等於確認有效的 credential。編碼修復不會略過其餘掃描政策。
+驗證後已移除臨時原稿與 recovery；真實歷史沒有被修改或改寫。時間只代表單一
+主機與凍結輸入。
+
+這次損壞符合 SpecStory 2.10.0 對未知 Codex custom tool input 以 200 bytes
+截斷的行為。已用純合成資料回報
+[SpecStory issue #311](https://github.com/specstoryai/getspecstory/issues/311)。
+Live 原檔應等對應 recorder 退出後，重新建立 `repair-encoding --file PATH --json`
+plan，審閱後以 `--apply --plan ID --yes --writer-stopped` 套用，再選擇性 stage
+並重新掃描 index。隔離副本的 plan 不授權修改目前原稿；bytes 穩定不代表 writer 已退出。
 
 ## Agent history archive 與 migration dogfood
 

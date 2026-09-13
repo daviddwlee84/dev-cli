@@ -99,6 +99,21 @@ func (h *hygieneCLI) output(value any, err error) error {
 			}
 			for _, g := range v.Gaps {
 				fmt.Fprintf(h.app.Out, "  coverage: %s %s\n", g.Code, feedback.Sanitize(g.File))
+				if g.Encoding != nil {
+					h.encodingDetail(g.Encoding)
+				}
+				if g.Commit != "" {
+					fmt.Fprintf(h.app.Out, "    commit: %s\n", feedback.Sanitize(g.Commit))
+				}
+			}
+			if len(v.Gaps) > 0 {
+				fmt.Fprintln(h.app.Out, "Scan incomplete: coverage gaps must be resolved; warning findings do not block commits.")
+				for _, g := range v.Gaps {
+					if g.Encoding != nil {
+						fmt.Fprintln(h.app.Out, "Inspect dev hygiene repair-encoding --help for selected working-file repair. It preserves the index; review and stage the repair before rescanning staged content. Historical blobs require a separate history assessment.")
+						break
+					}
+				}
 			}
 		case hygiene.Plan:
 			fmt.Fprintf(h.app.Out, "%s · %s\nPlan %s\n", v.Kind, v.Status, v.ID)
@@ -107,6 +122,9 @@ func (h *hygieneCLI) output(value any, err error) error {
 			}
 			for _, f := range v.Files {
 				fmt.Fprintf(h.app.Out, "  %s · %d replacements · %s → %s\n", feedback.Sanitize(f.File), f.Replacements, f.BeforeDigest, f.AfterDigest)
+				if f.Encoding != nil {
+					h.encodingDetail(f.Encoding)
+				}
 			}
 			for _, notice := range v.Notices {
 				fmt.Fprintln(h.app.Out, feedback.Sanitize(notice))
@@ -145,6 +163,11 @@ func (h *hygieneCLI) output(value any, err error) error {
 	}
 	return nil
 }
+
+func (h *hygieneCLI) encodingDetail(e *hygiene.EncodingIssue) {
+	fmt.Fprintf(h.app.Out, "    %s · first error at line %d, byte offset %d (zero-based) · %d invalid bytes in %d runs · %d NUL bytes\n", feedback.Sanitize(e.Reason), e.Line, e.ByteOffset, e.InvalidBytes, e.InvalidSequences, e.NULBytes)
+}
+
 func (h *hygieneCLI) guard(ctx context.Context, root string, paths []string) error {
 	runtime := h.app.Runtime()
 	if runtime == nil || runtime.Name() == "none" {
@@ -156,10 +179,11 @@ func (h *hygieneCLI) guard(ctx context.Context, root string, paths []string) err
 	}
 	artifact := false
 	for _, p := range paths {
-		rel, _ := filepath.Rel(root, p)
-		for _, prefix := range []string{".specstory/", ".codex/", ".claude/", ".cursor/", ".opencode/", ".specify/"} {
-			artifact = artifact || filepath.ToSlash(rel) == strings.TrimSuffix(prefix, "/") || strings.HasPrefix(filepath.ToSlash(rel), prefix)
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return errors.New("cannot identify artifact path for writer checks")
 		}
+		artifact = artifact || hygiene.IsArtifactPath(filepath.ToSlash(rel))
 	}
 	for _, a := range observation.Agents {
 		if a.Blocking || artifact {
@@ -279,6 +303,40 @@ func newHygieneCmd(app *App) *cobra.Command {
 	rf.StringVar(&redactPlan, "plan", "", "reviewed plan ID")
 	rf.BoolVarP(&redactYes, "yes", "y", false, "confirm the reviewed replacements")
 	rf.BoolVar(&writerStopped, "writer-stopped", false, "attest the exact artifact writer has exited; live agents still block")
+	var repairFiles []string
+	var invalidMode, repairPlan string
+	var repairApply, repairYes, repairWriter bool
+	repair := &cobra.Command{Use: "repair-encoding", Short: "Preview or repair invalid UTF-8 bytes in selected working files", Long: `Preview a guarded repair of explicitly selected UTF-8 working files.
+The default replaces each contiguous invalid byte run with one replacement
+character (�); --invalid remove deletes those bytes. Valid bytes are preserved.
+NUL bytes, UTF-16/32 BOMs and known binary extensions require separate review.
+
+Apply retains a private original for hygiene restore and never changes the Git
+index. Review and stage selected changes before scanning staged content again.
+Artifact writers must exit before apply; encoding repair is not a secret scan.`, Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
+		if repairApply {
+			if repairPlan == "" || len(repairFiles) > 0 || c.Flags().Changed("invalid") {
+				return errors.New("apply requires --plan and uses its saved files and invalid-byte policy")
+			}
+		} else if repairPlan != "" || repairYes || repairWriter {
+			return errors.New("--plan, --yes and --writer-stopped require --apply")
+		}
+		s, e := h.base(c.Context())
+		if e != nil {
+			return e
+		}
+		if repairApply {
+			return h.apply(c.Context(), s, repairPlan, repairYes, repairWriter, "hygiene_repair_encoding")
+		}
+		p, e := s.PreviewRepairEncoding(c.Context(), repairFiles, invalidMode)
+		return h.output(p, e)
+	}}
+	repair.Flags().StringArrayVar(&repairFiles, "file", nil, "relative working file to repair (repeatable; required for preview)")
+	repair.Flags().StringVar(&invalidMode, "invalid", "replace", "invalid-byte handling: replace with � or remove")
+	repair.Flags().BoolVar(&repairApply, "apply", false, "apply the exact reviewed encoding repair plan")
+	repair.Flags().StringVar(&repairPlan, "plan", "", "reviewed encoding repair plan ID")
+	repair.Flags().BoolVarP(&repairYes, "yes", "y", false, "confirm the reviewed repair")
+	repair.Flags().BoolVar(&repairWriter, "writer-stopped", false, "attest the exact artifact writer has exited; live agents still block")
 	var receipt string
 	var restoreApply, restoreYes, restoreWriter bool
 	restore := &cobra.Command{Use: "restore", Short: "Preview or restore one private recovery receipt", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
@@ -316,7 +374,7 @@ func newHygieneCmd(app *App) *cobra.Command {
 		fmt.Fprintln(h.app.Out, path)
 		return nil
 	}}
-	cmd.AddCommand(status, scan, setup, redact, restore, review, h.rulesCmd(), newHygieneManageCmd(h))
+	cmd.AddCommand(status, scan, setup, redact, repair, restore, review, h.rulesCmd(), newHygieneManageCmd(h))
 	return cmd
 }
 func (h *hygieneCLI) rulesCmd() *cobra.Command {

@@ -3288,6 +3288,13 @@ The hook checks index content. It never rewrites files or stages user changes.
 A missing dev/gitleaks executable, invalid report or failed scan blocks it.
 The hook runner must find a dev version that supports `hygiene` on PATH.
 
+Setup writes project configuration. It first respects Git's effective
+`core.hooksPath` and keeps a recognized existing hook, including a global one;
+it does not install or modify a global hook. Only when no hooksPath is configured
+and the common Git directory has no pre-commit hook does it install a repository
+hook. Missing or unverified configured hooks require manual integration, not an
+automatic local override. There is no `--global` setup option.
+
 ## Batch setup and gradual migration
 
 The normal commit path is `Git -> pre-commit -> dev hygiene scan -> gitleaks +
@@ -3453,6 +3460,44 @@ review them before sharing.
 CI uses public repository rules, without global/personal values. It cannot
 claim to have checked private SSH identities. PR/push scans select the changed
 commit range; manual workflow dispatch audits all locally fetched history.
+
+## Repair invalid UTF-8
+
+Warning findings alone do not block a commit. A coverage gap such as
+`unsupported_text_encoding` makes a scan incomplete even with zero blocking
+findings. Encoding gaps retain that code and add an `encoding` object with
+`reason`, zero-based `byte_offset`, one-based `line`, `invalid_bytes`,
+`invalid_sequences` (contiguous invalid runs) and optional `nul_bytes`.
+Historical gaps also identify the observed `commit`. Diagnostics contain no
+source excerpts. Fixing a working file does not repair old Git objects.
+
+```bash
+dev hygiene repair-encoding --file .specstory/history/session.md --json
+# Optional explicit deletion instead of the default replacement character:
+dev hygiene repair-encoding --file notes.txt --invalid remove --json
+# Review the private proposal; only after the exact artifact writer has exited:
+dev hygiene repair-encoding --apply --plan <id> --yes --writer-stopped
+# Review and stage only the intended repair, then check the actual index:
+dev hygiene scan --scope staged --json
+```
+
+The default `--invalid replace` replaces each contiguous invalid byte run with
+one `�`; `remove` deletes that run. All valid bytes, including existing `�`,
+UTF-8 BOMs and line endings, remain unchanged. Explicit files may be selected
+with repeated `--file`; each source and result must fit 128 MiB, with at most
+256 files and 192 MiB of proposed output per plan. Valid text is a no-op. Known binary extensions,
+NUL bytes and UTF-16/32 BOMs require separate encoding review; this command does
+not guess a legacy encoding or recover the original character.
+
+Repair uses signed plans, fresh file identity checks and private raw-byte
+recovery through `dev hygiene restore`. It does not need a secret scanner.
+Artifact edits require writer attestation and live occupancy checks, including
+case variants and nested artifact directories. Encoding repair requires long
+canonical path components without trailing dots/spaces or DOS short-name spellings. The hook
+never repairs automatically. Apply changes working files only: a partially
+staged file keeps its exact index contents, so a staged scan still fails until
+you review and stage the repair. Do not broadly stage newly appended history.
+Encoding repair does not redact secrets or prove a complete hygiene scan.
 
 ## Review and apply replacements
 
@@ -8076,6 +8121,21 @@ dev hygiene redact [flags]
 - `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
 - `-y, --yes` — confirm the reviewed replacements
 
+### `dev hygiene repair-encoding`
+
+Preview or repair invalid UTF-8 bytes in selected working files
+
+```
+dev hygiene repair-encoding [flags]
+```
+
+- `--apply` — apply the exact reviewed encoding repair plan
+- `--file` — relative working file to repair (repeatable; required for preview)
+- `--invalid` — invalid-byte handling: replace with � or remove
+- `--plan` — reviewed encoding repair plan ID
+- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `-y, --yes` — confirm the reviewed repair
+
 ### `dev hygiene restore`
 
 Preview or restore one private recovery receipt
@@ -10339,6 +10399,13 @@ policies, private local identity imports and reviewed text replacement/recovery 
 macOS, Linux and Windows. CI uses public rules only. See the
 [hygiene workflow](https://daviddwlee84.github.io/dev-cli/guides/hygiene/) for schema-v1 coverage and hook contracts.
 
+`hygiene repair-encoding --file PATH [--invalid replace|remove]` previews
+working-file UTF-8 repair; `--apply --plan ID --yes` applies the reviewed plan,
+with `--writer-stopped` required for artifacts. Index bytes stay unchanged.
+Schema 1 retains `unsupported_text_encoding` and adds optional `encoding`
+diagnostics and historical `commit` to coverage gaps; repair plan files also
+carry encoding diagnostics. Repair does not claim a successful secret scan.
+
 `hygiene manage [repo...] [--all]` opens batch repository setup; `--json` is
 preview-only. `setup --migrate-hooks` previews narrow known-hook/rule migration.
 `rules import --from machines` reads private candidates from existing local
@@ -10958,6 +11025,13 @@ policies, private local identity imports and reviewed text replacement/recovery 
 macOS, Linux and Windows. CI uses public rules only. See the
 [hygiene workflow](https://daviddwlee84.github.io/dev-cli/guides/hygiene/) for schema-v1 coverage and hook contracts.
 
+`hygiene repair-encoding --file PATH [--invalid replace|remove]` previews
+working-file UTF-8 repair; `--apply --plan ID --yes` applies the reviewed plan,
+with `--writer-stopped` required for artifacts. Index bytes stay unchanged.
+Schema 1 retains `unsupported_text_encoding` and adds optional `encoding`
+diagnostics and historical `commit` to coverage gaps; repair plan files also
+carry encoding diagnostics. Repair does not claim a successful secret scan.
+
 ## Hygiene rollout and selected skill removal
 
 Repository hygiene is a developer commit procedure and needs no installed agent
@@ -11120,6 +11194,37 @@ output, index/config preservation and a clean commit. Its detector fixtures are
 constructed at runtime; even a source-code concatenation can resemble a quoted
 password, so the corpus builders avoid shipping those false-positive shapes.
 Full published-history cleanup remains the separate post-writer phase above.
+
+## UTF-8 repair dogfood (2026-09-13)
+
+An isolated temporary HOME and repository copied the current damaged transcript
+and its separately staged version. No recorder wrote to the test checkout.
+The canonical source was only read, and its index digest stayed unchanged.
+
+| Check | Result |
+|---|---|
+| Frozen current transcript | 604,271 bytes; one invalid byte/run |
+| Repair, scan and raw-byte restore | passed; 9.05 seconds on this host |
+| Partial staging | index entries unchanged |
+| Scan after repair | complete coverage; 18 blocking candidates, 10 warnings |
+| Large text fixture | 36,166,767-byte valid real transcript plus one synthetic invalid byte |
+| Large repair and exact restore | passed; 12.75 seconds |
+| NUL-bearing real history | 70,527,168 bytes, 1,265 NUL bytes; repair refused, input unchanged |
+
+The scan used isolated default hygiene policy without the source repository's
+custom rules, exceptions or private identity rules. Candidates are not confirmed
+live credentials. Encoding repair does not bypass the remaining scan policy.
+Temporary raw copies and recovery were removed after verification; no real
+history was edited or rewritten. Timings describe one host and frozen inputs.
+
+The observed malformed byte matches SpecStory 2.10.0's 200-byte truncation of an
+unknown Codex custom-tool input. A synthetic-only upstream report is tracked in
+[SpecStory issue #311](https://github.com/specstoryai/getspecstory/issues/311).
+For the live original, wait for its exact recorder to exit, create a fresh
+`repair-encoding --file PATH --json` plan, review it, then apply with
+`--apply --plan ID --yes --writer-stopped`. Review and stage only intended
+changes before scanning the index again. Do not treat the frozen copy's plan as
+authority over the current original, or byte stability as proof of writer exit.
 
 ## Agent history archive and migration dogfood
 
@@ -14615,6 +14720,12 @@ Setup 加入阻擋式 `dev-hygiene` hook、安全 gitleaks 規則與 `.dev-cli/h
 Hook 只檢查 index，不改檔、不自動 stage。缺少支援 hygiene 的 dev／gitleaks、
 scanner 失敗或輸出損壞都會阻擋。
 
+Setup 將設定檔寫入 project，先尊重 Git 生效的 `core.hooksPath`，沿用可辨識的
+既有 hook（包含全域 hook），不安裝或改寫全域 hook。只有未設定 hooksPath、
+且 common Git directory 沒有 pre-commit hook 時才安裝 repository hook。
+已設定的 hook 缺少或無法辨識時需人工整合，不會自動用本地設定蓋過。
+目前沒有 `--global` setup 選項。
+
 ## 批次設定與分階段遷移
 
 一般 commit 的呼叫鏈是 `Git -> pre-commit -> dev hygiene scan -> gitleaks +
@@ -14745,6 +14856,36 @@ credential 有效性。未被選取規則涵蓋的檔名仍可能辨識個人，
 
 CI 僅使用公開 repo 規則，不具本機 SSH 字典。PR／push 掃變更的 commit range，
 人工 workflow dispatch 掃本機已取得的全部歷史。
+
+## 修復無效 UTF-8
+
+Warning 本身不會阻擋 commit。`unsupported_text_encoding` 等 coverage gap
+代表掃描不完整，即使 blocking findings 為零仍會失敗。編碼 gap 保留原 code，
+新增 `encoding` 物件：`reason`、從零起算的 `byte_offset`、從一起算的 `line`、
+`invalid_bytes`、`invalid_sequences`（連續壞 bytes 段數）及可選的 `nul_bytes`。
+歷史 gap 也附上觀察到的 `commit`。診斷不輸出原文；修復工作檔不會改寫舊 Git objects。
+
+```bash
+dev hygiene repair-encoding --file .specstory/history/session.md --json
+# 明確選擇刪除；預設則替換成 �：
+dev hygiene repair-encoding --file notes.txt --invalid remove --json
+# 檢閱私人提案，且對應 artifact writer 已退出後：
+dev hygiene repair-encoding --apply --plan <id> --yes --writer-stopped
+# 審閱並只 stage 所需修補，再檢查實際 index：
+dev hygiene scan --scope staged --json
+```
+
+預設 `--invalid replace` 將每段連續無效 bytes 替換成一個 `�`；`remove` 刪除該段。
+有效 bytes、既有 `�`、UTF-8 BOM 與換行保持原樣。`--file` 可重複指定；每份
+輸入與輸出上限 128 MiB，每份 plan 最多 256 檔、192 MiB 提案輸出。合法文字不需改動。
+已知二進位副檔名、NUL、UTF-16/32 BOM 需另行檢視，不猜測舊編碼或原始字元。
+
+修復使用簽署 plan、即時檔案身分檢查及私人原始 bytes 備份，可經
+`dev hygiene restore` 還原，不依賴 secret scanner。Artifact 修改仍要求 writer
+已停止及 live occupancy 檢查，涵蓋大小寫變體與巢狀 artifact 目錄。編碼修復
+拒絕尾端句點／空白與 DOS 短檔名形式，必須使用標準長路徑；hook 不會自動修復。Apply 只修改工作檔、完整保留
+index，因此部分 staging 的檔案在重新審閱並 stage 修補前，staged scan 仍可能失敗。
+不要順便 stage 新增的整份聊天。編碼修復不等於 secret redaction 或 hygiene 掃描通過。
 
 ## 預覽、套用與恢復
 
@@ -19087,6 +19228,21 @@ dev hygiene redact [flags]
 - `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
 - `-y, --yes` — confirm the reviewed replacements
 
+### `dev hygiene repair-encoding`
+
+Preview or repair invalid UTF-8 bytes in selected working files
+
+```
+dev hygiene repair-encoding [flags]
+```
+
+- `--apply` — apply the exact reviewed encoding repair plan
+- `--file` — relative working file to repair (repeatable; required for preview)
+- `--invalid` — invalid-byte handling: replace with � or remove
+- `--plan` — reviewed encoding repair plan ID
+- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `-y, --yes` — confirm the reviewed repair
+
 ### `dev hygiene restore`
 
 Preview or restore one private recovery receipt
@@ -21312,6 +21468,12 @@ controller save flow。見 [SSH workflows](https://daviddwlee84.github.io/dev-cl
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/)。
 
+`hygiene repair-encoding --file PATH [--invalid replace|remove]` 預覽工作檔
+UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需
+`--writer-stopped`。Index bytes 保持不變。Schema 1 保留
+`unsupported_text_encoding`，coverage gap 新增可選 `encoding` 診斷與歷史
+`commit`；修復 plan 的檔案也附編碼診斷。修復不代表 secret scan 通過。
+
 `hygiene manage [repo...] [--all]` 提供批次 repo 設定，`--json` 只預覽；
 `setup --migrate-hooks` 預覽精準的已知 hook／規則遷移。
 `rules import --from machines` 讀取本機 Tailscale／LAN／Fleet 快取中的私人候選。
@@ -21864,6 +22026,12 @@ configuration 保留 supported settings，並拒絕 LocalCommand、port forwardi
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/)。
 
+`hygiene repair-encoding --file PATH [--invalid replace|remove]` 預覽工作檔
+UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需
+`--writer-stopped`。Index bytes 保持不變。Schema 1 保留
+`unsupported_text_encoding`，coverage gap 新增可選 `encoding` 診斷與歷史
+`commit`；修復 plan 的檔案也附編碼診斷。修復不代表 secret scan 通過。
+
 ## Hygiene rollout 與勾選 skill 移除
 
 Repo hygiene 是普通 commit procedure，不需安裝 agent skill。批次遷移保留專用
@@ -21997,6 +22165,34 @@ Git author 姓名／email、帶個資的檔名也列入評估；文字 redaction
 保留及乾淨 commit。Detector fixture 於執行時組出；程式碼字串拼接本身也可能
 看似加引號的 password，所以 corpus builder 避免把這種誤判形狀放進發佈檔案。
 已發布歷史的完整清理仍是前述 post-writer 階段。
+
+## UTF-8 修復 dogfood（2026-09-13）
+
+使用隔離的臨時 HOME 與 repository，複製目前損壞的 transcript，以及獨立的
+staged 版本。測試 checkout 沒有 recorder 寫入。Canonical source 只有讀取，
+其 index digest 保持不變。
+
+| 檢查 | 結果 |
+|---|---|
+| 凍結的目前 transcript | 604,271 bytes；一個無效 byte／段落 |
+| 修復、掃描與原始 bytes 還原 | 通過；此主機 9.05 秒 |
+| 部分 staging | index entries 不變 |
+| 修復後掃描 | coverage complete；18 個阻擋候選、10 個 warning |
+| 大型文字 fixture | 36,166,767-byte 的合法真實 transcript，追加一個合成無效 byte |
+| 大檔修復與精確還原 | 通過；12.75 秒 |
+| 帶 NUL 的真實歷史 | 70,527,168 bytes、1,265 個 NUL；拒絕修復，輸入不變 |
+
+掃描使用隔離的預設 hygiene 政策，沒有 source repo 的自訂規則、例外或私人
+身分規則。候選不等於確認有效的 credential。編碼修復不會略過其餘掃描政策。
+驗證後已移除臨時原稿與 recovery；真實歷史沒有被修改或改寫。時間只代表單一
+主機與凍結輸入。
+
+這次損壞符合 SpecStory 2.10.0 對未知 Codex custom tool input 以 200 bytes
+截斷的行為。已用純合成資料回報
+[SpecStory issue #311](https://github.com/specstoryai/getspecstory/issues/311)。
+Live 原檔應等對應 recorder 退出後，重新建立 `repair-encoding --file PATH --json`
+plan，審閱後以 `--apply --plan ID --yes --writer-stopped` 套用，再選擇性 stage
+並重新掃描 index。隔離副本的 plan 不授權修改目前原稿；bytes 穩定不代表 writer 已退出。
 
 ## Agent history archive 與 migration dogfood
 

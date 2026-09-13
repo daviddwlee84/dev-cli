@@ -526,6 +526,12 @@ configuration 保留 supported settings，並拒絕 LocalCommand、port forwardi
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](../guides/hygiene.zh-TW.md)。
 
+`hygiene repair-encoding --file PATH [--invalid replace|remove]` 預覽工作檔
+UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需
+`--writer-stopped`。Index bytes 保持不變。Schema 1 保留
+`unsupported_text_encoding`，coverage gap 新增可選 `encoding` 診斷與歷史
+`commit`；修復 plan 的檔案也附編碼診斷。修復不代表 secret scan 通過。
+
 ## Hygiene rollout 與勾選 skill 移除
 
 Repo hygiene 是普通 commit procedure，不需安裝 agent skill。批次遷移保留專用

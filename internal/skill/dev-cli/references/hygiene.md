@@ -32,6 +32,13 @@ The hook checks index content. It never rewrites files or stages user changes.
 A missing dev/gitleaks executable, invalid report or failed scan blocks it.
 The hook runner must find a dev version that supports `hygiene` on PATH.
 
+Setup writes project configuration. It first respects Git's effective
+`core.hooksPath` and keeps a recognized existing hook, including a global one;
+it does not install or modify a global hook. Only when no hooksPath is configured
+and the common Git directory has no pre-commit hook does it install a repository
+hook. Missing or unverified configured hooks require manual integration, not an
+automatic local override. There is no `--global` setup option.
+
 ## Batch setup and gradual migration
 
 The normal commit path is `Git -> pre-commit -> dev hygiene scan -> gitleaks +
@@ -197,6 +204,44 @@ review them before sharing.
 CI uses public repository rules, without global/personal values. It cannot
 claim to have checked private SSH identities. PR/push scans select the changed
 commit range; manual workflow dispatch audits all locally fetched history.
+
+## Repair invalid UTF-8
+
+Warning findings alone do not block a commit. A coverage gap such as
+`unsupported_text_encoding` makes a scan incomplete even with zero blocking
+findings. Encoding gaps retain that code and add an `encoding` object with
+`reason`, zero-based `byte_offset`, one-based `line`, `invalid_bytes`,
+`invalid_sequences` (contiguous invalid runs) and optional `nul_bytes`.
+Historical gaps also identify the observed `commit`. Diagnostics contain no
+source excerpts. Fixing a working file does not repair old Git objects.
+
+```bash
+dev hygiene repair-encoding --file .specstory/history/session.md --json
+# Optional explicit deletion instead of the default replacement character:
+dev hygiene repair-encoding --file notes.txt --invalid remove --json
+# Review the private proposal; only after the exact artifact writer has exited:
+dev hygiene repair-encoding --apply --plan <id> --yes --writer-stopped
+# Review and stage only the intended repair, then check the actual index:
+dev hygiene scan --scope staged --json
+```
+
+The default `--invalid replace` replaces each contiguous invalid byte run with
+one `�`; `remove` deletes that run. All valid bytes, including existing `�`,
+UTF-8 BOMs and line endings, remain unchanged. Explicit files may be selected
+with repeated `--file`; each source and result must fit 128 MiB, with at most
+256 files and 192 MiB of proposed output per plan. Valid text is a no-op. Known binary extensions,
+NUL bytes and UTF-16/32 BOMs require separate encoding review; this command does
+not guess a legacy encoding or recover the original character.
+
+Repair uses signed plans, fresh file identity checks and private raw-byte
+recovery through `dev hygiene restore`. It does not need a secret scanner.
+Artifact edits require writer attestation and live occupancy checks, including
+case variants and nested artifact directories. Encoding repair requires long
+canonical path components without trailing dots/spaces or DOS short-name spellings. The hook
+never repairs automatically. Apply changes working files only: a partially
+staged file keeps its exact index contents, so a staged scan still fails until
+you review and stage the repair. Do not broadly stage newly appended history.
+Encoding repair does not redact secrets or prove a complete hygiene scan.
 
 ## Review and apply replacements
 

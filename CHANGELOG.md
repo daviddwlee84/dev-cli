@@ -19,6 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   `--ping` / `--network-only` flags; LAN scans and authentication remain explicit.
 - Dashboard-wide problem details and suggested actions, exact permission repair
   previews, and reviewed native dependency installation with post-install checks.
+- `dev hygiene repair-encoding` previews and applies selected UTF-8 repairs,
+  with replacement/removal choices, private raw-byte recovery, writer checks
+  and unchanged partial staging.
 
 ### Fixed
 
@@ -26,6 +29,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   directly to the UI instead of depending on stdout or a successful cache reload.
 - Registry permission errors identify the exact path and owner; independent
   discovery observations remain visible when a registry cannot be read.
+- Concurrent SSH usage and test updates respect native Windows file locks.
+- Encoding coverage gaps report safe byte/line diagnostics and historical
+  commit identity; hook output distinguishes incomplete scans from warnings.
+- Interrupted hygiene applies retain an explicit partial result ledger when
+  a late writer or source check stops a multi-file operation.
+- Artifact writer checks cover case and Windows path aliases; encoding repair
+  rejects short-name aliases and ambiguous trailing-dot or trailing-space paths.
 
 ## [0.2.33] - 2026-09-12
 

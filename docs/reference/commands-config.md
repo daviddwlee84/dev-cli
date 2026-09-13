@@ -985,6 +985,13 @@ policies, private local identity imports and reviewed text replacement/recovery 
 macOS, Linux and Windows. CI uses public rules only. See the
 [hygiene workflow](../guides/hygiene.md) for schema-v1 coverage and hook contracts.
 
+`hygiene repair-encoding --file PATH [--invalid replace|remove]` previews
+working-file UTF-8 repair; `--apply --plan ID --yes` applies the reviewed plan,
+with `--writer-stopped` required for artifacts. Index bytes stay unchanged.
+Schema 1 retains `unsupported_text_encoding` and adds optional `encoding`
+diagnostics and historical `commit` to coverage gaps; repair plan files also
+carry encoding diagnostics. Repair does not claim a successful secret scan.
+
 `hygiene manage [repo...] [--all]` opens batch repository setup; `--json` is
 preview-only. `setup --migrate-hooks` previews narrow known-hook/rule migration.
 `rules import --from machines` reads private candidates from existing local
