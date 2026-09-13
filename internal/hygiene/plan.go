@@ -19,10 +19,11 @@ import (
 )
 
 type FileChange struct {
-	File         string `json:"file"`
-	Replacements int    `json:"replacements"`
-	BeforeDigest string `json:"before_digest"`
-	AfterDigest  string `json:"after_digest"`
+	File         string         `json:"file"`
+	Replacements int            `json:"replacements"`
+	BeforeDigest string         `json:"before_digest"`
+	AfterDigest  string         `json:"after_digest"`
+	Encoding     *EncodingIssue `json:"encoding,omitempty"`
 }
 type Plan struct {
 	SchemaVersion         int          `json:"schema_version"`
@@ -105,7 +106,7 @@ func (s *Service) addChange(ctx context.Context, p *planRecord, file, path strin
 	}
 	c := editor.Preview()[0]
 	p.Changes = append(p.Changes, change{path, token, desired, c.BeforeDigest})
-	p.Plan.Files = append(p.Plan.Files, FileChange{s.displayPath(file), replacements, keyedID(s.key, c.BeforeDigest), keyedID(s.key, c.AfterDigest)})
+	p.Plan.Files = append(p.Plan.Files, FileChange{File: s.displayPath(file), Replacements: replacements, BeforeDigest: keyedID(s.key, c.BeforeDigest), AfterDigest: keyedID(s.key, c.AfterDigest)})
 	return nil
 }
 func (s *Service) PreviewRedact(ctx context.Context, reportID string, files, ids []string) (Plan, error) {
@@ -310,7 +311,7 @@ func (s *Service) Apply(ctx context.Context, id string, o ApplyOptions) (Plan, e
 		return p.Plan, ErrStale
 	}
 	if p.Plan.RequiresWriterStopped && !o.WriterStopped {
-		return p.Plan, errors.New("artifact redaction requires explicit post-writer proof (--writer-stopped)")
+		return p.Plan, errors.New("artifact edits require explicit post-writer proof (--writer-stopped)")
 	}
 	err := lockx.WithDir(ctx, s.Dir, "hygiene", func() error {
 		return gitx.WithLifecycleLock(ctx, s.Common, func() error {
@@ -415,6 +416,10 @@ func (s *Service) Apply(ctx context.Context, id string, o ApplyOptions) (Plan, e
 			return s.save(ctx, id, p)
 		})
 	})
+	if err != nil && p.Plan.Status == "applying" {
+		p.Plan.Status = "partial"
+		_ = s.save(context.Background(), id, p)
+	}
 	return p.Plan, err
 }
 func (s *Service) allowedTarget(kind, path string) bool {
@@ -427,6 +432,9 @@ func (s *Service) allowedTarget(kind, path string) bool {
 				return true
 			}
 		}
+	case "hygiene_repair_encoding":
+		rel, err := filepath.Rel(s.Root, path)
+		return err == nil && validRepairPath(filepath.ToSlash(rel))
 	case "hygiene_redact":
 		rel, err := filepath.Rel(s.Root, path)
 		return err == nil && validRelative(filepath.ToSlash(rel))

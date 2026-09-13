@@ -238,8 +238,10 @@ type Finding struct {
 	CanRedact   bool   `json:"can_redact"`
 }
 type Gap struct {
-	File string `json:"file,omitempty"`
-	Code string `json:"code"`
+	File     string         `json:"file,omitempty"`
+	Code     string         `json:"code"`
+	Commit   string         `json:"commit,omitempty"`
+	Encoding *EncodingIssue `json:"encoding,omitempty"`
 }
 type Report struct {
 	SchemaVersion  int               `json:"schema_version"`

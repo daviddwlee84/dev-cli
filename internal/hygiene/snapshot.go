@@ -14,7 +14,6 @@ import (
 	"sort"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/daviddwlee84/dev-cli/internal/configedit"
 	"github.com/daviddwlee84/dev-cli/internal/privatefile"
@@ -123,8 +122,12 @@ func executableDigest(ctx context.Context, path string) (string, error) {
 // are authenticated local scan evidence, not trusted data read from an archive.
 func (s *Service) InspectSnapshot(ctx context.Context, file string, data []byte, redact bool) (SnapshotResult, error) {
 	result := SnapshotResult{Data: data}
-	if !validRelative(file) || len(data) > MaxFileBytes || !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
+	if !validRelative(file) || len(data) > MaxFileBytes {
 		return result, errors.New("snapshot requires a supported UTF-8 text file of at most 128 MiB")
+	}
+	if issue := inspectEncoding(data); issue != nil {
+		result.Report = Report{SchemaVersion: 1, Kind: "hygiene_snapshot", Scope: "snapshot", Status: "partial", Findings: []Finding{}, Gaps: []Gap{{File: s.displayPath(file), Code: "unsupported_text_encoding", Encoding: issue}}}
+		return result, errors.New("snapshot requires supported UTF-8 text; inspect encoding coverage gap")
 	}
 	inputs, err := s.SnapshotInputs(ctx)
 	if err != nil {

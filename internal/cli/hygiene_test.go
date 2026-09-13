@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -9,6 +10,42 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/hygiene"
 )
+
+func TestHygieneCLIEncodingRepairAndCoverage(t *testing.T) {
+	h := newHarness(t)
+	target := filepath.Join(h.repo.Root, "cut.md")
+	if err := os.WriteFile(target, []byte("private-source\n\xe4\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	out, _, err := h.run("hygiene", "--repo", h.repo.Root, "--secrets", "off", "--generic", "off", "scan", "--file", "cut.md")
+	if err == nil || !strings.Contains(out, "line 2, byte offset 15") || !strings.Contains(out, "warning findings do not block") || !strings.Contains(out, "repair-encoding --help") || strings.Contains(out, "private-source") {
+		t.Fatalf("coverage output: %s (%v)", out, err)
+	}
+	out = h.mustRun("hygiene", "--repo", h.repo.Root, "--json", "repair-encoding", "--file", "cut.md")
+	var p hygiene.Plan
+	if err = json.Unmarshal([]byte(out), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Kind != "hygiene_repair_encoding" || p.Files[0].Encoding.InvalidBytes != 1 || strings.Contains(out, "private-source") {
+		t.Fatal("unsafe or missing repair output")
+	}
+	for _, args := range [][]string{
+		{"repair-encoding"},
+		{"repair-encoding", "--file", "cut.md", "--invalid", "auto"},
+		{"repair-encoding", "--apply", "--plan", p.ID, "--file", "cut.md", "--yes"},
+		{"repair-encoding", "--apply", "--plan", p.ID, "--invalid", "remove", "--yes"},
+		{"redact", "--apply", "--plan", p.ID, "--yes"},
+	} {
+		if _, _, err = h.run(append([]string{"hygiene", "--repo", h.repo.Root}, args...)...); err == nil {
+			t.Fatalf("invalid command accepted: %v", args)
+		}
+	}
+	h.mustRun("hygiene", "--repo", h.repo.Root, "repair-encoding", "--apply", "--plan", p.ID, "--yes")
+	got, _ := os.ReadFile(target)
+	if !bytes.Equal(got, []byte("private-source\n�\n")) {
+		t.Fatal("CLI repair did not preserve text")
+	}
+}
 
 func TestHygieneCLIPrivateRulePlanScanAndRedact(t *testing.T) {
 	h := newHarness(t)

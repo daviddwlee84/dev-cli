@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `dev hygiene repair-encoding` previews and applies selected UTF-8 repairs,
+  with replacement/removal choices, private raw-byte recovery, writer checks
+  and unchanged partial staging.
+
+### Fixed
+
+- Encoding coverage gaps report safe byte/line diagnostics and historical
+  commit identity; hook output distinguishes incomplete scans from warnings.
+- Interrupted hygiene applies retain an explicit partial result ledger when
+  a late writer or source check stops a multi-file operation.
+
 ## [0.2.33] - 2026-09-12
 
 ### Added

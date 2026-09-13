@@ -74,7 +74,11 @@ repositories, independently of agent skills. Use `dev hygiene status` to inspect
 preview configuration. `scan --scope staged|worktree|history` checks secret/privacy
 policy; reviewed `rules` and `redact` plans keep private values and recovery outside
 Git. Hooks block rather than auto-stage. Final transcript cleanup requires the
-writer to stop first. See the [hygiene guide](docs/guides/hygiene.md).
+writer to stop first. `dev hygiene repair-encoding --file <path>` previews
+invalid UTF-8 repair with private raw-byte recovery; apply preserves the index,
+so review and stage the repair before rescanning. Setup writes project policy
+and respects an existing effective hook, including a global one.
+See the [hygiene guide](docs/guides/hygiene.md).
 
 ## Install
 

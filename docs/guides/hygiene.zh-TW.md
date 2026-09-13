@@ -3,7 +3,7 @@ description: 檢查 repository hooks、掃描 secret 與個人資訊，並以私
 lang: zh-TW
 authority: project
 status: evolving
-verified_on: 2026-09-12
+verified_on: 2026-09-13
 ---
 
 # Repository hygiene
@@ -33,6 +33,12 @@ Setup 加入阻擋式 `dev-hygiene` hook、安全 gitleaks 規則與 `.dev-cli/h
 
 Hook 只檢查 index，不改檔、不自動 stage。缺少支援 hygiene 的 dev／gitleaks、
 scanner 失敗或輸出損壞都會阻擋。
+
+Setup 將設定檔寫入 project，先尊重 Git 生效的 `core.hooksPath`，沿用可辨識的
+既有 hook（包含全域 hook），不安裝或改寫全域 hook。只有未設定 hooksPath、
+且 common Git directory 沒有 pre-commit hook 時才安裝 repository hook。
+已設定的 hook 缺少或無法辨識時需人工整合，不會自動用本地設定蓋過。
+目前沒有 `--global` setup 選項。
 
 ## 批次設定與分階段遷移
 
@@ -164,6 +170,35 @@ credential 有效性。未被選取規則涵蓋的檔名仍可能辨識個人，
 
 CI 僅使用公開 repo 規則，不具本機 SSH 字典。PR／push 掃變更的 commit range，
 人工 workflow dispatch 掃本機已取得的全部歷史。
+
+## 修復無效 UTF-8
+
+Warning 本身不會阻擋 commit。`unsupported_text_encoding` 等 coverage gap
+代表掃描不完整，即使 blocking findings 為零仍會失敗。編碼 gap 保留原 code，
+新增 `encoding` 物件：`reason`、從零起算的 `byte_offset`、從一起算的 `line`、
+`invalid_bytes`、`invalid_sequences`（連續壞 bytes 段數）及可選的 `nul_bytes`。
+歷史 gap 也附上觀察到的 `commit`。診斷不輸出原文；修復工作檔不會改寫舊 Git objects。
+
+```bash
+dev hygiene repair-encoding --file .specstory/history/session.md --json
+# 明確選擇刪除；預設則替換成 �：
+dev hygiene repair-encoding --file notes.txt --invalid remove --json
+# 檢閱私人提案，且對應 artifact writer 已退出後：
+dev hygiene repair-encoding --apply --plan <id> --yes --writer-stopped
+# 審閱並只 stage 所需修補，再檢查實際 index：
+dev hygiene scan --scope staged --json
+```
+
+預設 `--invalid replace` 將每段連續無效 bytes 替換成一個 `�`；`remove` 刪除該段。
+有效 bytes、既有 `�`、UTF-8 BOM 與換行保持原樣。`--file` 可重複指定；每份
+輸入與輸出上限 128 MiB，每份 plan 最多 256 檔、192 MiB 提案輸出。合法文字不需改動。
+已知二進位副檔名、NUL、UTF-16/32 BOM 需另行檢視，不猜測舊編碼或原始字元。
+
+修復使用簽署 plan、即時檔案身分檢查及私人原始 bytes 備份，可經
+`dev hygiene restore` 還原，不依賴 secret scanner。Artifact 修改仍要求 writer
+已停止及 live occupancy 檢查；hook 不會自動修復。Apply 只修改工作檔、完整保留
+index，因此部分 staging 的檔案在重新審閱並 stage 修補前，staged scan 仍可能失敗。
+不要順便 stage 新增的整份聊天。編碼修復不等於 secret redaction 或 hygiene 掃描通過。
 
 ## 預覽、套用與恢復
 

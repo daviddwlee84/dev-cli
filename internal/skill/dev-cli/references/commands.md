@@ -838,6 +838,21 @@ dev hygiene redact [flags]
 - `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
 - `-y, --yes` — confirm the reviewed replacements
 
+### `dev hygiene repair-encoding`
+
+Preview or repair invalid UTF-8 bytes in selected working files
+
+```
+dev hygiene repair-encoding [flags]
+```
+
+- `--apply` — apply the exact reviewed encoding repair plan
+- `--file` — relative working file to repair (repeatable; required for preview)
+- `--invalid` — invalid-byte handling: replace with � or remove
+- `--plan` — reviewed encoding repair plan ID
+- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `-y, --yes` — confirm the reviewed repair
+
 ### `dev hygiene restore`
 
 Preview or restore one private recovery receipt

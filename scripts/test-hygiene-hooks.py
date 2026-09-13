@@ -69,7 +69,48 @@ def main():
         target.write_text('Safe fixture.\n')
         run('git', 'add', '.hidden/fixture.txt')
         run('git', 'commit', '-qm', 'safe fixture')
-        print('Real hygiene hook: setup, hidden same-line secret blocking, masked output and clean commit passed.')
+
+        # A valid input sliced inside a multibyte character reproduces the
+        # SpecStory unknown-tool preview bug without using private history.
+        broken = ('a' * 199 + '中文').encode('utf-8')[:200] + b'\n'
+        target.write_bytes(broken)
+        run('git', 'add', '.hidden/fixture.txt')
+        index_before = run('git', 'ls-files', '--stage', '-z').stdout
+        failed = run('git', 'commit', '-qm', 'encoding must be blocked', success=False)
+        if failed.returncode == 0 or 'unsupported_text_encoding' not in failed.stdout + failed.stderr:
+            raise RuntimeError('invalid encoding did not block the hook')
+        target.write_bytes(broken + b'Unstaged addition.\n')
+        plan = json.loads(run(*dev, '--json', 'repair-encoding', '--file', '.hidden/fixture.txt').stdout)
+        if plan['files'][0]['encoding']['invalid_bytes'] != 1:
+            raise RuntimeError('encoding preview did not identify the truncated byte')
+        applied = json.loads(run(*dev, '--json', 'repair-encoding', '--apply', '--plan', plan['id'], '--yes').stdout)
+        repaired = target.read_bytes()
+        if repaired != broken.replace(bytes([0xe4]), '�'.encode('utf-8')) + b'Unstaged addition.\n':
+            raise RuntimeError('repair changed valid bytes')
+        if run('git', 'ls-files', '--stage', '-z').stdout != index_before:
+            raise RuntimeError('repair changed partial staging')
+        still_failed = run(*dev, '--json', 'scan', '--scope', 'staged', success=False)
+        if still_failed.returncode == 0:
+            raise RuntimeError('repair silently repaired staged bytes')
+        run(*dev, 'restore', '--receipt', applied['recovery'][0], '--apply', '--yes')
+        if target.read_bytes() != broken + b'Unstaged addition.\n':
+            raise RuntimeError('raw byte recovery failed')
+        plan = json.loads(run(*dev, '--json', 'repair-encoding', '--file', '.hidden/fixture.txt').stdout)
+        run(*dev, 'repair-encoding', '--apply', '--plan', plan['id'], '--yes')
+        target.write_bytes(target.read_bytes() + b'fixture@example.com\n')
+        run('git', 'add', '.hidden/fixture.txt')
+        report = json.loads(run(*dev, '--json', 'scan', '--scope', 'staged').stdout)
+        if report['status'] != 'complete' or not report['warnings'] or report['blocked']:
+            raise RuntimeError('warning-only repaired text did not pass')
+        run('git', 'commit', '-qm', 'repaired text with allowed warning')
+        target.write_bytes(broken + canary.encode('ascii') + b'\n')
+        plan = json.loads(run(*dev, '--json', 'repair-encoding', '--file', '.hidden/fixture.txt').stdout)
+        run(*dev, 'repair-encoding', '--apply', '--plan', plan['id'], '--yes')
+        run('git', 'add', '.hidden/fixture.txt')
+        blocked = run('git', 'commit', '-qm', 'repair must not allow secrets', success=False)
+        if blocked.returncode == 0 or canary in blocked.stdout + blocked.stderr:
+            raise RuntimeError('repair bypassed secret protection or exposed raw values')
+        print('Real hygiene hook: secret and encoding blocking, safe diagnostics, repair/restore, partial staging and warning-only commit passed.')
 
 
 if __name__ == '__main__':
