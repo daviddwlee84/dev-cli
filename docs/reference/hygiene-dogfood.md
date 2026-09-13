@@ -2,7 +2,7 @@
 description: Manual post-writer dogfood and the separate impact assessment for already-published repository history.
 authority: project
 status: evolving
-verified_on: 2026-09-12
+verified_on: 2026-09-13
 ---
 
 # Manual hygiene dogfood
@@ -127,6 +127,37 @@ output, index/config preservation and a clean commit. Its detector fixtures are
 constructed at runtime; even a source-code concatenation can resemble a quoted
 password, so the corpus builders avoid shipping those false-positive shapes.
 Full published-history cleanup remains the separate post-writer phase above.
+
+## UTF-8 repair dogfood (2026-09-13)
+
+An isolated temporary HOME and repository copied the current damaged transcript
+and its separately staged version. No recorder wrote to the test checkout.
+The canonical source was only read, and its index digest stayed unchanged.
+
+| Check | Result |
+|---|---|
+| Frozen current transcript | 604,271 bytes; one invalid byte/run |
+| Repair, scan and raw-byte restore | passed; 9.05 seconds on this host |
+| Partial staging | index entries unchanged |
+| Scan after repair | complete coverage; 18 blocking candidates, 10 warnings |
+| Large text fixture | 36,166,767-byte valid real transcript plus one synthetic invalid byte |
+| Large repair and exact restore | passed; 12.75 seconds |
+| NUL-bearing real history | 70,527,168 bytes, 1,265 NUL bytes; repair refused, input unchanged |
+
+The scan used isolated default hygiene policy without the source repository's
+custom rules, exceptions or private identity rules. Candidates are not confirmed
+live credentials. Encoding repair does not bypass the remaining scan policy.
+Temporary raw copies and recovery were removed after verification; no real
+history was edited or rewritten. Timings describe one host and frozen inputs.
+
+The observed malformed byte matches SpecStory 2.10.0's 200-byte truncation of an
+unknown Codex custom-tool input. A synthetic-only upstream report is tracked in
+[SpecStory issue #311](https://github.com/specstoryai/getspecstory/issues/311).
+For the live original, wait for its exact recorder to exit, create a fresh
+`repair-encoding --file PATH --json` plan, review it, then apply with
+`--apply --plan ID --yes --writer-stopped`. Review and stage only intended
+changes before scanning the index again. Do not treat the frozen copy's plan as
+authority over the current original, or byte stability as proof of writer exit.
 
 ## Agent history archive and migration dogfood
 

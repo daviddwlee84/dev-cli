@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
@@ -203,7 +202,7 @@ func (s *Service) Scan(ctx context.Context, o ScanOptions) (Report, error) {
 func (b *scanBuilder) gap(file, code string) {
 	key := file + "\x00" + code
 	if !b.gapSet[key] {
-		b.record.Report.Gaps = append(b.record.Report.Gaps, Gap{b.s.displayPath(file), code})
+		b.record.Report.Gaps = append(b.record.Report.Gaps, Gap{File: b.s.displayPath(file), Code: code})
 		b.gapSet[key] = true
 	}
 }
@@ -375,8 +374,8 @@ func (b *scanBuilder) current(ctx context.Context, o ScanOptions, privateDir str
 			b.gap(file, "unreadable_or_changed")
 			continue
 		}
-		if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
-			b.binary(file)
+		if issue := inspectEncoding(data); issue != nil {
+			b.binary(file, "", issue)
 			continue
 		}
 		b.record.Report.Files++
@@ -477,16 +476,19 @@ func secretSpans(data []byte, d Detection) [][2]int {
 func (b *scanBuilder) skip(file, code string) {
 	key := "skip:" + file + ":" + code
 	if !b.gapSet[key] {
-		b.record.Report.Skipped = append(b.record.Report.Skipped, Gap{b.s.displayPath(file), code})
+		b.record.Report.Skipped = append(b.record.Report.Skipped, Gap{File: b.s.displayPath(file), Code: code})
 		b.gapSet[key] = true
 	}
 }
-func (b *scanBuilder) binary(file string) {
-	switch strings.ToLower(filepath.Ext(file)) {
-	case ".png", ".jpg", ".jpeg", ".gif", ".ico", ".pdf", ".woff", ".woff2", ".ttf", ".zip", ".gz", ".exe", ".dll", ".so", ".db", ".sqlite":
+func (b *scanBuilder) binary(file, commit string, issue *EncodingIssue) {
+	if binaryPath(file) {
 		b.skip(file, "binary_content")
-	default:
-		b.gap(file, "unsupported_text_encoding")
+		return
+	}
+	key := file + "\x00unsupported_text_encoding\x00" + commit
+	if !b.gapSet[key] {
+		b.record.Report.Gaps = append(b.record.Report.Gaps, Gap{File: b.s.displayPath(file), Code: "unsupported_text_encoding", Commit: commit, Encoding: issue})
+		b.gapSet[key] = true
 	}
 }
 

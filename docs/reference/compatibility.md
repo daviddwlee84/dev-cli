@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-12
+verified_on: 2026-09-13
 tested_with: Claude Code 2.1.259
 ---
 
@@ -591,6 +591,13 @@ opaque route import, cycles and unsupported selected-key flows stay rejected.
 policies, private local identity imports and reviewed text replacement/recovery on
 macOS, Linux and Windows. CI uses public rules only. See the
 [hygiene workflow](../guides/hygiene.md) for schema-v1 coverage and hook contracts.
+
+`hygiene repair-encoding --file PATH [--invalid replace|remove]` previews
+working-file UTF-8 repair; `--apply --plan ID --yes` applies the reviewed plan,
+with `--writer-stopped` required for artifacts. Index bytes stay unchanged.
+Schema 1 retains `unsupported_text_encoding` and adds optional `encoding`
+diagnostics and historical `commit` to coverage gaps; repair plan files also
+carry encoding diagnostics. Repair does not claim a successful secret scan.
 
 ## Hygiene rollout and selected skill removal
 

@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-12
+verified_on: 2026-09-13
 lang: zh-TW
 ---
 
@@ -871,6 +871,12 @@ controller save flow。見 [SSH workflows](../guides/ssh-hosts.zh-TW.md#fleet-so
 `dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](../guides/hygiene.zh-TW.md)。
+
+`hygiene repair-encoding --file PATH [--invalid replace|remove]` 預覽工作檔
+UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需
+`--writer-stopped`。Index bytes 保持不變。Schema 1 保留
+`unsupported_text_encoding`，coverage gap 新增可選 `encoding` 診斷與歷史
+`commit`；修復 plan 的檔案也附編碼診斷。修復不代表 secret scan 通過。
 
 `hygiene manage [repo...] [--all]` 提供批次 repo 設定，`--json` 只預覽；
 `setup --migrate-hooks` 預覽精準的已知 hook／規則遷移。

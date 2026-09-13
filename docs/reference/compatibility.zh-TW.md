@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-12
+verified_on: 2026-09-13
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
@@ -525,6 +525,12 @@ configuration 保留 supported settings，並拒絕 LocalCommand、port forwardi
 `dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](../guides/hygiene.zh-TW.md)。
+
+`hygiene repair-encoding --file PATH [--invalid replace|remove]` 預覽工作檔
+UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需
+`--writer-stopped`。Index bytes 保持不變。Schema 1 保留
+`unsupported_text_encoding`，coverage gap 新增可選 `encoding` 診斷與歷史
+`commit`；修復 plan 的檔案也附編碼診斷。修復不代表 secret scan 通過。
 
 ## Hygiene rollout 與勾選 skill 移除
 

@@ -9,7 +9,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode/utf8"
 )
 
 func refSnapshot(ctx context.Context, root string) (map[string]string, []byte, error) {
@@ -147,8 +146,8 @@ func (b *scanBuilder) history(ctx context.Context, o ScanOptions, privateDir str
 				b.gap(file, "history_blob_unreadable")
 				return err
 			}
-			if !utf8.Valid(data) || bytes.IndexByte(data, 0) >= 0 {
-				b.binary(file)
+			if issue := inspectEncoding(data); issue != nil {
+				b.binary(file, commit, issue)
 				continue
 			}
 			b.record.Report.Files++
