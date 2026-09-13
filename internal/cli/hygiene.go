@@ -179,10 +179,11 @@ func (h *hygieneCLI) guard(ctx context.Context, root string, paths []string) err
 	}
 	artifact := false
 	for _, p := range paths {
-		rel, _ := filepath.Rel(root, p)
-		for _, prefix := range []string{".specstory/", ".codex/", ".claude/", ".cursor/", ".opencode/", ".specify/"} {
-			artifact = artifact || filepath.ToSlash(rel) == strings.TrimSuffix(prefix, "/") || strings.HasPrefix(filepath.ToSlash(rel), prefix)
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return errors.New("cannot identify artifact path for writer checks")
 		}
+		artifact = artifact || hygiene.IsArtifactPath(filepath.ToSlash(rel))
 	}
 	for _, a := range observation.Agents {
 		if a.Blocking || artifact {

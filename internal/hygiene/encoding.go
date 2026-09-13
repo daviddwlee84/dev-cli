@@ -79,9 +79,40 @@ func validRepairPath(file string) bool {
 		return false
 	}
 	for _, component := range strings.Split(file, "/") {
+		// Reject spellings which Win32 can silently resolve to a different
+		// component. Classification still recognizes these for older plans and
+		// other guarded edit/restore paths.
+		if component != strings.TrimRight(component, " .") {
+			return false
+		}
+		if windowsShortNameComponent(component) {
+			return false
+		}
 		// Git metadata is never an encoding-repair target, including nested
 		// repositories and case/Win32-normalization aliases of .git.
 		if strings.EqualFold(strings.TrimRight(component, " ."), ".git") {
+			return false
+		}
+	}
+	return true
+}
+
+// A DOS short-name alias can hide an artifact or Git-directory component.
+// Require its long spelling instead of guessing which source it denotes.
+func windowsShortNameComponent(component string) bool {
+	tilde := strings.LastIndexByte(component, '~')
+	if tilde < 0 {
+		return false
+	}
+	suffix := component[tilde+1:]
+	if dot := strings.IndexByte(suffix, '.'); dot >= 0 {
+		suffix = suffix[:dot]
+	}
+	if suffix == "" {
+		return false
+	}
+	for _, r := range suffix {
+		if r < '0' || r > '9' {
 			return false
 		}
 	}
@@ -163,7 +194,7 @@ func (s *Service) PreviewRepairEncoding(ctx context.Context, files []string, mod
 	sort.Strings(selected)
 	for i, file := range selected {
 		if !validRepairPath(file) || (i > 0 && file == selected[i-1]) {
-			return Plan{}, errors.New("select distinct repository-relative files outside .git")
+			return Plan{}, errors.New("select distinct canonical repository-relative files outside .git")
 		}
 		if binaryPath(file) {
 			return Plan{}, errors.New("selected file has a recognized binary extension; encoding repair requires UTF-8 text")
@@ -208,7 +239,7 @@ func (s *Service) PreviewRepairEncoding(ctx context.Context, files []string, mod
 			return Plan{}, ErrStale
 		}
 		p.Plan.Files[len(p.Plan.Files)-1].Encoding = issue
-		if isArtifact(file) {
+		if IsArtifactPath(file) {
 			p.Plan.RequiresWriterStopped = true
 		}
 	}

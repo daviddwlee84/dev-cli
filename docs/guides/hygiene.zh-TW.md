@@ -196,7 +196,8 @@ dev hygiene scan --scope staged --json
 
 修復使用簽署 plan、即時檔案身分檢查及私人原始 bytes 備份，可經
 `dev hygiene restore` 還原，不依賴 secret scanner。Artifact 修改仍要求 writer
-已停止及 live occupancy 檢查；hook 不會自動修復。Apply 只修改工作檔、完整保留
+已停止及 live occupancy 檢查，涵蓋大小寫變體與巢狀 artifact 目錄。編碼修復
+拒絕尾端句點／空白與 DOS 短檔名形式，必須使用標準長路徑；hook 不會自動修復。Apply 只修改工作檔、完整保留
 index，因此部分 staging 的檔案在重新審閱並 stage 修補前，staged scan 仍可能失敗。
 不要順便 stage 新增的整份聊天。編碼修復不等於 secret redaction 或 hygiene 掃描通過。
 

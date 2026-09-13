@@ -242,7 +242,9 @@ not guess a legacy encoding or recover the original character.
 
 Repair uses signed plans, fresh file identity checks and private raw-byte
 recovery through `dev hygiene restore`. It does not need a secret scanner.
-Artifact edits require writer attestation and live occupancy checks. The hook
+Artifact edits require writer attestation and live occupancy checks, including
+case variants and nested artifact directories. Encoding repair requires long
+canonical path components without trailing dots/spaces or DOS short-name spellings. The hook
 never repairs automatically. Apply changes working files only: a partially
 staged file keeps its exact index contents, so a staged scan still fails until
 you review and stage the repair. Do not broadly stage newly appended history.

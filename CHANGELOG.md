@@ -18,6 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   commit identity; hook output distinguishes incomplete scans from warnings.
 - Interrupted hygiene applies retain an explicit partial result ledger when
   a late writer or source check stops a multi-file operation.
+- Artifact writer checks cover case and Windows path aliases; encoding repair
+  rejects short-name aliases and ambiguous trailing-dot or trailing-space paths.
 
 ## [0.2.33] - 2026-09-12
 

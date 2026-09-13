@@ -266,7 +266,7 @@ func (s *Service) PreviewRedact(ctx context.Context, reportID string, files, ids
 		if len(p.Changes) > 0 && p.Changes[len(p.Changes)-1].Path == path && p.Changes[len(p.Changes)-1].Token != src.Token {
 			return Plan{}, ErrStale
 		}
-		if isArtifact(file) {
+		if IsArtifactPath(file) {
 			p.Plan.RequiresWriterStopped = true
 		}
 	}
@@ -274,14 +274,6 @@ func (s *Service) PreviewRedact(ctx context.Context, reportID string, files, ids
 		return Plan{}, err
 	}
 	return p.Plan, nil
-}
-func isArtifact(file string) bool {
-	for _, p := range []string{".specstory/", ".claude/", ".codex/", ".cursor/", ".opencode/", ".specify/"} {
-		if strings.HasPrefix(file, p) {
-			return true
-		}
-	}
-	return false
 }
 func (s *Service) Apply(ctx context.Context, id string, o ApplyOptions) (Plan, error) {
 	if err := s.prepare(ctx); err != nil {
@@ -310,7 +302,17 @@ func (s *Service) Apply(ctx context.Context, id string, o ApplyOptions) (Plan, e
 	if p.Root != s.Root || p.RepoID != s.RepoID || p.PolicyDigest != policyDigest(s.Policy) {
 		return p.Plan, ErrStale
 	}
-	if p.Plan.RequiresWriterStopped && !o.WriterStopped {
+	requiresWriterStopped := p.Plan.RequiresWriterStopped
+	if p.Plan.Kind == "hygiene_repair_encoding" || p.Plan.Kind == "hygiene_redact" {
+		for _, c := range p.Changes {
+			rel, err := filepath.Rel(s.Root, c.Path)
+			if err != nil {
+				return p.Plan, ErrStale
+			}
+			requiresWriterStopped = requiresWriterStopped || IsArtifactPath(filepath.ToSlash(rel))
+		}
+	}
+	if requiresWriterStopped && !o.WriterStopped {
 		return p.Plan, errors.New("artifact edits require explicit post-writer proof (--writer-stopped)")
 	}
 	err := lockx.WithDir(ctx, s.Dir, "hygiene", func() error {
@@ -458,7 +460,7 @@ func (s *Service) Restore(ctx context.Context, receipt string, apply bool, o App
 	for _, c := range plan.Preview() {
 		paths = append(paths, c.Path)
 		rel, _ := filepath.Rel(s.Root, c.Path)
-		if isArtifact(filepath.ToSlash(rel)) && !o.WriterStopped {
+		if IsArtifactPath(filepath.ToSlash(rel)) && !o.WriterStopped {
 			return nil, errors.New("artifact recovery requires explicit post-writer proof")
 		}
 	}
