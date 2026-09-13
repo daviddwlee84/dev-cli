@@ -17,15 +17,44 @@ import (
 )
 
 func sshTUIActions(state *tuiAppState) tui.SSHActions {
-	return tui.SSHActions{
+	actions := tui.SSHActions{
 		Load: func(ctx context.Context) (tui.SSHInventory, error) {
 			active := *state.Current()
-			return loadSSHMachineInventory(ctx, &active, false, true)
+			return loadSSHTUIInventory(ctx, &active, nil)
+		},
+		LoadWithReports: func(ctx context.Context, reports []sshdiscovery.Report) (tui.SSHInventory, error) {
+			active := *state.Current()
+			return loadSSHTUIInventory(ctx, &active, reports)
+		},
+		LoadReports: func(ctx context.Context) ([]sshdiscovery.Report, error) {
+			return sshdiscovery.ReadCache(ctx, sshDiscoveryCacheDir(), nowSSH())
+		},
+		Interfaces: func(ctx context.Context) ([]sshdiscovery.InterfaceScope, error) {
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			return state.Current().sshDiscovery().Interfaces()
+		},
+		ValidateLAN: func(ctx context.Context, request sshdiscovery.LANRequest) (string, error) {
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
+			return state.Current().sshDiscovery().LANScope(request)
+		},
+		Discover: func(ctx context.Context, request tui.SSHDiscoveryRequest, progress func(sshdiscovery.Progress)) (tui.SSHDiscoveryResult, error) {
+			active := *state.Current()
+			return discoverSSHTUI(ctx, &active, request, progress)
+		},
+		PrepareOnboarding: func(ctx context.Context, request sshflow.OnboardRequest) (tui.SSHOnboardingPlan, error) {
+			active := *state.Current()
+			return prepareSSHTUIOnboarding(ctx, &active, request)
 		},
 		Workflow: func(ctx context.Context, request tui.SSHWorkflowRequest) (tui.SSHWorkflow, error) {
 			return &sshTUIWorkflow{ctx: ctx, app: *state.Current(), request: request}, nil
 		},
 	}
+	decorateSSHActivityActions(state, &actions)
+	return actions
 }
 
 // Each workflow runs after Bubble Tea restores the foreground terminal. SSH
@@ -57,6 +86,8 @@ func (w *sshTUIWorkflow) Run() error {
 func (w *sshTUIWorkflow) run() error {
 	app, ctx := &w.app, w.ctx
 	switch w.request.Action {
+	case "onboard":
+		return w.applyOnboarding()
 	case "setup":
 		w.result.MembershipChanged = true // interrupted setup can retain partial registrations
 		return runSSHOnboarding(ctx, app, nil, sshSetupOptions{})
@@ -92,7 +123,17 @@ func (w *sshTUIWorkflow) run() error {
 	default:
 		return fmt.Errorf("unsupported SSH dashboard action %q", w.request.Action)
 	}
-	profile, err := chooseSSHTUIProfile(ctx, app, w.request.Selected)
+	var profile sshflow.ConnectionProfile
+	var err error
+	if w.request.Profile != nil {
+		current, loadErr := loadSSHTUIInventory(ctx, app, nil)
+		profile, err = matchSSHTUIProfile(w.request.Selected, current, *w.request.Profile)
+		if err != nil {
+			return errors.Join(err, loadErr)
+		}
+	} else {
+		profile, err = chooseSSHTUIProfile(ctx, app, w.request.Selected)
+	}
 	if err != nil {
 		return err
 	}
@@ -160,11 +201,12 @@ func chooseSSHTUIProfile(ctx context.Context, app *App, selected sshflow.Machine
 			return profile, errors.New("selected SSH profile is no longer available")
 		}
 	}
-	current, err := loadSSHMachineInventory(ctx, app, false, true)
+	current, loadErr := loadSSHTUIInventory(ctx, app, nil)
+	profile, err := matchSSHTUIProfile(selected, current, profile)
 	if err != nil {
-		return profile, err
+		return profile, errors.Join(err, loadErr)
 	}
-	return matchSSHTUIProfile(selected, current, profile)
+	return profile, nil
 }
 
 func matchSSHTUIProfile(selected sshflow.MachineRow, current sshflow.MachineInventory, profile sshflow.ConnectionProfile) (sshflow.ConnectionProfile, error) {

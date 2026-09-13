@@ -194,3 +194,57 @@ func TestEmptyCacheReadSucceeds(t *testing.T) {
 		t.Fatalf("%#v %v", reports, err)
 	}
 }
+
+func TestCachePartialRefreshRetainsOriginalObservationTimes(t *testing.T) {
+	directory := cacheTestRoot(t)
+	cache := filepath.Join(directory, "cache")
+	oldTime := time.Now().Add(-2 * CacheTTL)
+	original := cacheTestReport()
+	original.ObservedAt = oldTime
+	second := original.Candidates[0]
+	second.NativeID = "second-node"
+	second.ID = candidateID(second.Source, second.Scope, second.NativeID)
+	second.Addresses = []string{"100.64.0.2"}
+	original.Candidates = append(original.Candidates, second)
+	if err := WriteCache(context.Background(), cache, original); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	partial := original
+	partial.Candidates = []Candidate{second}
+	partial.Candidates[0].Name = "fresh name"
+	partial.ObservedAt = now
+	partial.Complete = false
+	partial.Status = StatusPartial
+	if err := WriteCache(context.Background(), cache, partial); err != nil {
+		t.Fatal(err)
+	}
+	reports, err := ReadCache(context.Background(), cache, now)
+	if err != nil || len(reports) != 2 {
+		t.Fatalf("reports=%+v err=%v", reports, err)
+	}
+	var old, newReport *Report
+	for i := range reports {
+		if reports[i].ObservedAt.Equal(oldTime) {
+			old = &reports[i]
+		} else {
+			newReport = &reports[i]
+		}
+	}
+	if old == nil || !old.Stale || len(old.Candidates) != 1 || old.Candidates[0].NativeID != original.Candidates[0].NativeID {
+		t.Fatalf("old observation lost or refreshed: %+v", reports)
+	}
+	if newReport == nil || newReport.Stale || newReport.Complete || len(newReport.Candidates) != 1 || newReport.Candidates[0].Name != "fresh name" {
+		t.Fatalf("partial observation lost: %+v", reports)
+	}
+	complete := partial
+	complete.Complete, complete.Status = true, StatusReady
+	complete.ObservedAt = now.Add(time.Second)
+	if err := WriteCache(context.Background(), cache, complete); err != nil {
+		t.Fatal(err)
+	}
+	reports, err = ReadCache(context.Background(), cache, complete.ObservedAt)
+	if err != nil || len(reports) != 1 || len(reports[0].Candidates) != 1 {
+		t.Fatalf("complete scope did not replace history: %+v %v", reports, err)
+	}
+}

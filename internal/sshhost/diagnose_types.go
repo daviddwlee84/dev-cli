@@ -12,12 +12,15 @@ type DiagnosticHooks struct {
 	LookupIP func(context.Context, string) ([]net.IPAddr, error)
 	Dial     func(context.Context, string, string) (net.Conn, error)
 	Route    func(context.Context, DiagnosticRouteQuery) (DiagnosticRoute, error)
+	Ping     func(context.Context, DiagnosticRouteQuery) (DiagnosticStage, error)
 }
 
 type DiagnoseRequest struct {
-	Target     string
-	CompareQoS bool
-	Timeout    time.Duration
+	Target      string
+	CompareQoS  bool
+	Timeout     time.Duration
+	Ping        bool
+	NetworkOnly bool
 }
 
 type DiagnosticTarget struct {
@@ -34,10 +37,12 @@ type DiagnosticTarget struct {
 }
 
 type DiagnosticStage struct {
-	Name      string `json:"name"`
-	State     string `json:"state"`
-	Code      string `json:"code"`
-	ElapsedMS int64  `json:"elapsed_ms"`
+	Name                string   `json:"name"`
+	State               string   `json:"state"`
+	Code                string   `json:"code"`
+	ElapsedMS           int64    `json:"elapsed_ms"`
+	RoundTripMS         *float64 `json:"round_trip_ms,omitempty"`
+	RoundTripUpperBound bool     `json:"round_trip_upper_bound,omitempty"`
 }
 
 type DiagnosticRouteQuery struct {

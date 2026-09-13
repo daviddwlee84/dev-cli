@@ -6,14 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.34] - 2026-09-13
+
 ### Added
 
+- Native SSH dashboard discovery, progress/cancellation and candidate-to-setup
+  review, including fresh-machine initialization, session-only results when
+  cache writes fail, and per-stage onboarding outcomes.
+- Machine/profile trees, configured-first recent-use ordering, durable private
+  usage/test observations and explicit single/batch network or SSH tests.
+- Optional background Tailscale status in the active SSH view and diagnostic
+  `--ping` / `--network-only` flags; LAN scans and authentication remain explicit.
+- Dashboard-wide problem details and suggested actions, exact permission repair
+  previews, and reviewed native dependency installation with post-install checks.
 - `dev hygiene repair-encoding` previews and applies selected UTF-8 repairs,
   with replacement/removal choices, private raw-byte recovery, writer checks
   and unchanged partial staging.
 
 ### Fixed
 
+- SSH table columns now use display-width padding. Discovery results return
+  directly to the UI instead of depending on stdout or a successful cache reload.
+- Registry permission errors identify the exact path and owner; independent
+  discovery observations remain visible when a registry cannot be read.
+- Concurrent SSH usage and test updates respect native Windows file locks.
 - Encoding coverage gaps report safe byte/line diagnostics and historical
   commit identity; hook output distinguishes incomplete scans from warnings.
 - Interrupted hygiene applies retain an explicit partial result ledger when
@@ -1089,7 +1105,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.33...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.34...HEAD
+[0.2.34]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.33...v0.2.34
 [0.2.33]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.32...v0.2.33
 [0.2.32]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.31...v0.2.32
 [0.2.31]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.30...v0.2.31

@@ -346,7 +346,7 @@ func runTUI(app *App) error {
 			return result.Skills, err
 		}
 		if len(result.Diagnostics) > 0 {
-			return result.Skills, tui.LoadWarning{Message: fmt.Sprintf("%d skill inventory diagnostic(s); run `dev skill list --all` for details", len(result.Diagnostics))}
+			return result.Skills, tui.LoadWarning{Message: fmt.Sprintf("%d skill inventory diagnostic(s); run `dev skill list --all` for details", len(result.Diagnostics)), Issues: tuiSkillIssues(result.Diagnostics)}
 		}
 		return result.Skills, nil
 	}
@@ -360,7 +360,7 @@ func runTUI(app *App) error {
 			return result.Declarations, err
 		}
 		if len(result.Diagnostics) > 0 {
-			return result.Declarations, tui.LoadWarning{Message: fmt.Sprintf("%d MCP inventory diagnostic(s); run `dev mcp list --all` for details", len(result.Diagnostics))}
+			return result.Declarations, tui.LoadWarning{Message: fmt.Sprintf("%d MCP inventory diagnostic(s); run `dev mcp list --all` for details", len(result.Diagnostics)), Issues: tuiMCPIssues(result.Diagnostics)}
 		}
 		return result.Declarations, nil
 	}
@@ -393,6 +393,7 @@ func runTUI(app *App) error {
 	}
 
 	actions := tui.Actions{
+		Issues:    tuiIssueActions(appState),
 		SSH:       sshTUIActions(appState),
 		Discovery: tuiDiscoveryActions(appState, projectRootResolver),
 		Workflow: func(ctx context.Context, request tui.WorkflowRequest) (tui.Workflow, error) {
@@ -712,6 +713,7 @@ func runTUI(app *App) error {
 			return tui.ConfigUpdate{
 				Apply:                  func() { appState.Commit(next) },
 				FleetBackgroundRefresh: &next.Cfg.TUI.Fleet.BackgroundRefresh,
+				SSHBackgroundRefresh:   &next.Cfg.TUI.SSH.BackgroundRefresh,
 				Tools:                  externalTools(next),
 				RepoColumns:            next.Cfg.EffectiveRepoColumns(),
 				RepoSort:               next.Cfg.EffectiveRepoSort(),
@@ -724,7 +726,7 @@ func runTUI(app *App) error {
 	// Init in the background rather than making the terminal appear frozen
 	// while dozens of repos are probed.
 	uiCtx, cancelUI := context.WithCancel(runCtx)
-	model := tui.New(actions, nil, nil).WithTrace(app.trace).WithContext(uiCtx).WithFleetBackgroundRefresh(app.Cfg.TUI.Fleet.BackgroundRefresh).BeginLoading()
+	model := tui.New(actions, nil, nil).WithTrace(app.trace).WithContext(uiCtx).WithFleetBackgroundRefresh(app.Cfg.TUI.Fleet.BackgroundRefresh).WithSSHBackgroundRefresh(app.Cfg.TUI.SSH.BackgroundRefresh).BeginLoading()
 	finishSetup(perftrace.OutcomeSuccess)
 	app.trace.Mark(perftrace.TUIProgramRunBegin, perftrace.Fields{})
 	var final tea.Model

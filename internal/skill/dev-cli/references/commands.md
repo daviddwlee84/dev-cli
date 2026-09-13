@@ -2071,6 +2071,8 @@ dev ssh diagnose <target> [flags]
 
 - `--compare-qos` — allow one comparable fresh SSH attempt with IPQoS=none
 - `--json` — emit one versioned local diagnosis, including partial failures
+- `--network-only` — inspect DNS, routing, TCP and SSH banner without an authentication attempt
+- `--ping` — include an independent bounded ICMP echo observation
 - `--timeout` — total diagnostic deadline
 
 ### `dev ssh discover`

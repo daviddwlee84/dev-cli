@@ -2,7 +2,7 @@
 description: Finish and recover tasks from the dashboard, dispose of Tries through system Trash, and open repository homepages.
 authority: project
 status: evolving
-verified_on: 2026-09-10
+verified_on: 2026-09-13
 ---
 
 # Dashboard lifecycle actions
@@ -10,7 +10,7 @@ verified_on: 2026-09-10
 ## Select an action
 
 Press `Ctrl+O`, right-click a row, or click the selected row. Space expands/collapses REPOS
-worktrees and FLEET hosts; it is unused in flat lists. TASKS `a` shows completed tasks and does not mark
+worktrees, FLEET hosts and SSH profiles; it is unused in flat lists. TASKS `a` shows completed tasks and does not mark
 a task done. A missing checkout offers recovery instead of completion.
 
 Clicking another row first selects it; clicking the selected row opens the menu
@@ -134,7 +134,7 @@ back into its original archive path remains archived and can then use ordinary
 
 ## Dashboard navigation and organizer entry
 
-Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
+Enter opens a repository/task row or starts FLEET host navigation. Space expands or collapses REPOS/FLEET/SSH trees; flat lists leave Space unused. REPOS/TRY `Ctrl+O` offers organization of the
 current item, filtered results, or all local work; multi-selection belongs to the
 independent triage screen. `1–7` selects TASKS, REPOS, FLEET, TRY, REMOTE, SKILLS,
 and MCP respectively. TASKS state filters live in its action menu (`a` still
@@ -158,3 +158,50 @@ clears search before closing. REPOS offers current/filtered repository skills,
 and SKILLS offers selected skill, project and global scopes. These launch the
 [dev skill manage](skills-management.md) wizard. Updates check and preview first;
 experimental restore/sync remain single-project actions.
+
+
+## Issues and suggested actions
+
+Every page's `Ctrl+O` menu includes **issues / suggested actions**, including an
+empty list. Start with this page or switch to all pages. The list includes known
+inventory and row problems and recent operation failures; it does not visit or
+probe unopened pages. Selecting an issue shows its full diagnostic, source,
+recovery advice, and a copy action. Long issue lists are paginated and full
+messages remain available in the scrollable diagnostic view.
+
+The recovery coverage is explicit:
+
+| Source | Findings retained | Suggested action and completion check |
+| --- | --- | --- |
+| TASKS | Inventory/Git failures, missing checkout and lifecycle blockers | Recheck local task observations; inspect and recover the exact task through the existing sweep workflow. A changed task revision requires a new review. |
+| REPOS | Repository identity, worktree, runtime, task, Git topology and disk-usage failures | Recheck the repository inventory; open the exact item's source/actions where it is still present. Organization retains its existing preview. |
+| FLEET | Host observation, connection, trust/version and Herdr failures | Inspect the host's native actions; local recheck reads cache. Authentication and live host refresh remain explicit host actions. |
+| TRY | Runtime/Git/disk failures, missing folder and unfinished moves | Recheck local Try state; review the exact Try in the existing organizer/recovery workflow. Never repeat a move or deletion automatically. |
+| REMOTE | Inventory/provider and clone/open failures | Read cached observations, inspect retained clone results, and use the provider's login or explicit refresh. If no forge CLI is installed, review installation options. |
+| SKILLS | Native lock/file diagnostic codes and paths, integrity and update failures | Read/copy the full diagnostic, open its exact source file, or use the selected skill's management actions. A successful native reload removes resolved diagnostics. |
+| MCP | Native source/config diagnostics and declaration coverage codes | Open the exact diagnostic source or declaration actions, then reload static declarations. No server is started by issue inspection. |
+| SSH | Registry/SSH permissions, missing tools, failed/partial sources, discovery/test/setup failures | Review exact permission repairs, source details or installation options; local recheck retains independently usable profiles. Discovery does not prove authentication. |
+| Shared operations | Notes, stats, clipboard, editor/config saves and partial workflow receipts | Preserve full errors/receipts and copy guidance; reread observations without repeating the operation. Notes Markdown and stats databases remain durable. |
+
+Issue inspection only checks local dependencies and metadata. Unknown error
+text never becomes a shell command. A recovery action prepares a concrete preview
+before **run this reviewed action in the foreground** becomes available. Closing
+the preview does not run it. Operation failures may describe partial success;
+completed steps are retained and no automatic retry is started.
+
+Registry permission findings include the exact path, owner, current mode and
+expected conditions. Missing registry state is normal. On supported Unix systems,
+repair can only tighten the listed current-user-owned paths after revalidating
+the complete inspected metadata. Symlinks, hardlinks, other owners and changes
+since review block apply. Repairs never recurse or change ownership. Windows
+registry ACL repair provides manual guidance until a verified repair backend is
+available. Existing SSH permission repair uses its own guarded service.
+
+Dependency options support reviewed Homebrew packages on macOS, apt packages on
+Debian/Ubuntu, and exact WinGet package IDs on Windows. The preview includes the
+package, resolved command and official instructions. Unsupported tools/platforms
+or a missing package manager get instructions only. The foreground installer
+keeps its native prompts; dev does not add repositories, install a package
+manager, or preaccept terms. The executable is checked afterwards, with an
+OpenSSH capability query for `ssh`; authentication and service startup remain
+separate. Installation cancellation/failure is not retried.

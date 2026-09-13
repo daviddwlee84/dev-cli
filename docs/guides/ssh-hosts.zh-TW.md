@@ -2,7 +2,7 @@
 description: 探索 OpenSSH alias、只管理 dev-owned host fragment、佈建 public-key access，並將驗證成功的 host 明確登記到 dev fleet。
 authority: project
 status: stable
-verified_on: 2026-09-11
+verified_on: 2026-09-13
 lang: zh-TW
 ---
 
@@ -392,7 +392,7 @@ state、comma-separated aliases。來源失敗、stale cache、disabled Herdr pr
 
 Tailscale 探索上限五秒、排除本機，保留 offline／unknown 狀態。CLI 缺少、daemon
 不可用或 status 資料不完整只影響該來源；`doctor` 只檢查 executable 是否存在，
-不查詢 daemon。Dev 不會 install、login、enable Tailscale SSH、修改 DNS 或 tailnet
+不查詢 daemon。Discovery 不會 install、login、enable Tailscale SSH、修改 DNS 或 tailnet
 access policy。
 
 LAN discovery 只接受選定且直接連接的 IPv4 ranges；若無法唯一對應 eligible
@@ -662,3 +662,41 @@ password 不屬於 controller save workflow。
 
 這些功能不包含將 SSH private key 匯入 vault、YubiKey provisioning，或匯出 Apple
 Passwords；它們是獨立的未來 migration workflows。
+
+## SSH connection view
+
+第八個頁籤以每台機器為父列，Space 展開各 SSH profile。已配置連線優先，
+組內依最近透過本機 `dev ssh connect` 或 dashboard 發起連線的時間排序；
+沒有紀錄者依 alias 字母排列。CONNECTION、ENDPOINT、SOURCES、CHECK、USED
+使用一致欄寬；窄畫面隱藏補充欄位，詳情保留完整來源、身分狀態及時間。
+排序、篩選與 discovery 重新分組時保留選取的 profile。
+
+`c` 全程留在 dashboard：選 Tailscale，或 LAN 介面、明確 IPv4 範圍及 ports。
+LAN 預設 port 22，維持最多 256 個位址、16 ports、30 秒的限制；畫面顯示
+已完成端點與發現數。取消保留已取得的觀測。結束後清單切到「本次發現」，
+避免舊篩選藏住結果；回到全部連線時恢復先前篩選。Cache 寫入失敗仍保留
+本次資料並提供處理入口。缺少 SSH config、registry、fzf 或選用 provider
+不妨礙 LAN discovery。
+
+在尚未配置的候選按 Enter，開啟帶入確切 endpoint 的原生設定表單。確認 alias、
+remote user、port 及認證方式；預設只存 SSH config，Fleet 與 Herdr 分別勾選。
+預覽包含首次初始化及明確 machine bindings，確認後才交還終端處理 SSH/key
+或 Herdr 的原生互動。返回時顯示各階段完成、失敗或 unknown，並選取新增的
+profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變須重新探索／審閱。
+
+`p` 提供 profile、整台機器或篩選結果的快速網路測試／完整 SSH 驗證；開始前
+先確認確切目標。DNS／route、Ping、TCP、SSH banner、handshake、host-key、
+authentication、session 分層呈現。Ping 不通仍測 SSH，proxy 不改成繞路直連。
+最多同時測四個 profiles，每筆 30 秒，Ping 2 秒，SSH 階段 15 秒；取消保留
+已完成結果。Network-only 成功不代表登入成功。
+
+最近使用與測試結果分別保存在 `paths.state_dir/ssh/activity/` 的私有 durable
+紀錄；測試不更新 USED。使用時間記錄程序真正啟動，包含失敗嘗試，只涵蓋本機
+透過 dev 的連線，不匯入 shell history。測試保留 profile revision、觀测時間及
+可取得的 route context；舊結果是歷史觀測，不是即時連通或刪除設定的依據。
+清除 discovery cache 不刪活動紀錄。
+
+首畫面先讀本機資料與 cache。此頁啟用時，預設 `[tui.ssh].background_refresh = true`
+每五分鐘最多更新一次缺少／過期的 Tailscale 觀測，查詢最多五秒；失敗保留原時間。
+可關閉以只讀 cache。`r` 重讀本機狀態，LAN 掃描與 SSH 測試仍須使用者觸發。
+即使清單空白，`Ctrl+O` 也可開啟問題與建議動作。

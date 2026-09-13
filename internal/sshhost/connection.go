@@ -6,17 +6,19 @@ import (
 	"path/filepath"
 	"reflect"
 	"sync"
+	"time"
 )
 
 // ConnectionOptions controls one native SSH invocation. Args are remote command
 // arguments, never local SSH options. An empty Args opens the native session.
 type ConnectionOptions struct {
-	Args               []string `json:"-"`
-	Stdin              []byte   `json:"-"`
-	Interactive        bool     `json:"interactive,omitempty"`
-	CaptureStdout      bool     `json:"-"`
-	SuppressForwarding bool     `json:"suppress_forwarding,omitempty"`
-	ForwardAgentNo     bool     `json:"forward_agent_no,omitempty"`
+	Args               []string        `json:"-"`
+	Stdin              []byte          `json:"-"`
+	Interactive        bool            `json:"interactive,omitempty"`
+	CaptureStdout      bool            `json:"-"`
+	SuppressForwarding bool            `json:"suppress_forwarding,omitempty"`
+	ForwardAgentNo     bool            `json:"forward_agent_no,omitempty"`
+	OnStarted          func(time.Time) `json:"-"`
 }
 
 // PreparedConnection retains in-process authority for exactly one connection.
@@ -171,7 +173,7 @@ func (connection *PreparedConnection) Run(ctx context.Context, options Connectio
 	if err := s.checkConnectionSources(ctx, state.sources); err != nil {
 		return RunResult{}, err
 	}
-	return s.runner.Run(ctx, RunRequest{Name: "ssh", Args: args, Stdin: options.Stdin, Interactive: options.Interactive, CaptureStdout: options.CaptureStdout, Display: "SSH prepared connection"})
+	return s.runner.Run(ctx, RunRequest{Name: "ssh", Args: args, Stdin: options.Stdin, Interactive: options.Interactive, CaptureStdout: options.CaptureStdout, OnStarted: options.OnStarted, Display: "SSH prepared connection"})
 }
 
 func sameConnectionRoute(left, right Route) bool {

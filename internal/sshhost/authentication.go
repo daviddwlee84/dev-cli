@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/sshcredential"
 )
@@ -478,7 +479,11 @@ func (op *AuthenticationOperation) runPhase(ctx context.Context, index int, mode
 	}
 	args = append(args, targetName)
 	args = append(args, options.Args...)
-	run, runErr := op.service.runner.Run(phaseCtx, RunRequest{Name: "ssh", Args: args, Env: targetEnv, Stdin: options.Stdin, Interactive: options.Interactive, CaptureStdout: options.CaptureStdout, Display: "SSH per-hop authentication operation"})
+	var onStarted func(time.Time)
+	if !proof {
+		onStarted = options.OnStarted
+	}
+	run, runErr := op.service.runner.Run(phaseCtx, RunRequest{Name: "ssh", Args: args, Env: targetEnv, Stdin: options.Stdin, Interactive: options.Interactive, CaptureStdout: options.CaptureStdout, OnStarted: onStarted, Display: "SSH per-hop authentication operation"})
 	if !proof {
 		return run, nil, runErr
 	}

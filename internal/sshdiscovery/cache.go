@@ -27,6 +27,10 @@ const maxCacheReports = 128
 type cacheRecord struct {
 	Version int    `json:"version"`
 	Report  Report `json:"report"`
+	// Previous contains only identities absent from a newer partial attempt,
+	// retaining each observation's original time. Old readers ignore this
+	// additive cache field and can still inspect the latest attempt.
+	Previous []Report `json:"previous,omitempty"`
 }
 
 func cacheName(report Report) string {
@@ -49,24 +53,46 @@ func WriteCache(ctx context.Context, cacheDir string, report Report) error {
 		return err
 	}
 	defer root.Close()
-	data, err := json.Marshal(cacheRecord{Version: cacheVersion, Report: report})
+	name := cacheName(report)
+	before, err := root.Lstat(name)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	record := cacheRecord{Version: cacheVersion, Report: report}
+	if !report.Complete && err == nil {
+		if err := checkCacheFile(filepath.Join(cacheDir, name), before); err != nil {
+			return err
+		}
+		previous, _, err := safefile.ReadStableRegular(ctx, root, name, before, maxCacheFileBytes)
+		if err != nil {
+			return err
+		}
+		var prior cacheRecord
+		if err := json.Unmarshal(previous, &prior); err != nil {
+			return ErrInvalidData
+		}
+		if err := validateCacheRecord(prior, name); err != nil {
+			return err
+		}
+		merged := MergeReports(append([]Report{report, prior.Report}, prior.Previous...))
+		record.Report, record.Previous = merged[0], merged[1:]
+	}
+	if err := validateCacheRecord(record, name); err != nil {
+		return err
+	}
+	data, err := json.Marshal(record)
 	if err != nil {
 		return err
 	}
 	if len(data) > maxCacheFileBytes {
 		return fmt.Errorf("discovery cache report is too large: %w", ErrInvalidData)
 	}
-	name := cacheName(report)
-	before, err := root.Lstat(name)
-	if errors.Is(err, fs.ErrNotExist) {
+	if before == nil {
 		if err := verify(); err != nil {
 			return err
 		}
 		_, err = safefile.CreateNoClobberPrepared(ctx, root, name, data, 0o600, prepareCacheStage)
 	} else {
-		if err != nil {
-			return err
-		}
 		if err := checkCacheFile(filepath.Join(cacheDir, name), before); err != nil {
 			return err
 		}
@@ -141,21 +167,50 @@ func ReadCache(ctx context.Context, cacheDir string, now time.Time) ([]Report, e
 			continue
 		}
 		var record cacheRecord
-		if err := json.Unmarshal(data, &record); err != nil || record.Version != cacheVersion || cacheName(record.Report) != name {
+		if err := json.Unmarshal(data, &record); err != nil {
 			failures = append(failures, fmt.Errorf("invalid discovery cache version or scope: %w", ErrInvalidData))
 			continue
 		}
-		if err := validateReport(record.Report); err != nil {
+		if err := validateCacheRecord(record, name); err != nil {
 			failures = append(failures, err)
 			continue
 		}
-		record.Report.Stale = now.Before(record.Report.ObservedAt) || now.Sub(record.Report.ObservedAt) >= CacheTTL
-		reports = append(reports, record.Report)
+		for _, report := range append([]Report{record.Report}, record.Previous...) {
+			report.Stale = now.Before(report.ObservedAt) || now.Sub(report.ObservedAt) >= CacheTTL
+			reports = append(reports, report)
+		}
 	}
 	if err := verify(); err != nil {
 		return []Report{}, err
 	}
 	return reports, errors.Join(failures...)
+}
+
+func validateCacheRecord(record cacheRecord, name string) error {
+	if record.Version != cacheVersion || cacheName(record.Report) != name || len(record.Previous) > maxLANEndpoints {
+		return ErrInvalidData
+	}
+	seen := map[string]bool{}
+	total := 0
+	for _, report := range append([]Report{record.Report}, record.Previous...) {
+		if report.Source != record.Report.Source || report.Scope != record.Report.Scope {
+			return ErrInvalidData
+		}
+		if err := validateReport(report); err != nil {
+			return err
+		}
+		for _, candidate := range report.Candidates {
+			if seen[candidate.NativeID] {
+				return ErrInvalidData
+			}
+			seen[candidate.NativeID] = true
+			total++
+			if total > maxLANEndpoints {
+				return ErrInvalidData
+			}
+		}
+	}
+	return nil
 }
 
 func validateReport(report Report) error {

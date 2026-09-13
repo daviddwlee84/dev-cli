@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	helpdocs "github.com/daviddwlee84/dev-cli/internal/help"
+	"github.com/daviddwlee84/dev-cli/internal/tuiissue"
 )
 
 type overlayKind int
@@ -30,6 +31,8 @@ type formField struct {
 }
 
 type actionOption struct {
+	issueID      string
+	issueAction  tuiissue.Action
 	fleetID      string
 	fleetProfile string
 	tool         string

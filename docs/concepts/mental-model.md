@@ -2,7 +2,7 @@
 description: Understand dev-cli as durable Git history, scoped intent and catalog state, repository quick-note sidecars, disposable worktrees, and replaceable runtimes.
 authority: project
 status: stable
-verified_on: 2026-09-11
+verified_on: 2026-09-13
 ---
 
 # Mental model and lifecycle
@@ -193,3 +193,5 @@ explicit archive policy keeps copies in a separate Git checkout, with private
 local plans/recovery and portable project/session/commit metadata. Ignored capture
 files remain durable evidence until verified; cleanup rechecks that proof. Read
 [AI artifacts](../guides/ai-artifacts.md) before choosing retention or migration.
+
+SSH dashboard usage is host-local durable observation, separate from machine identity and discovery cache. USED measures actual local dev-mediated SSH process starts; test timestamps and successful authentication observations remain independent. Old observations never authorize cleanup or prove present connectivity.

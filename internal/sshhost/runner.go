@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 const (
@@ -34,6 +35,9 @@ type RunRequest struct {
 	// StdoutLimit opts an internal protocol into a larger bounded response.
 	// Zero keeps the ordinary 1 MiB limit; stderr always retains that limit.
 	StdoutLimit int `json:"-"`
+	// OnStarted is a local observation hook, invoked only after the OS started
+	// the process. It does not indicate authentication or command success.
+	OnStarted func(time.Time) `json:"-"`
 }
 
 // RunResult separates process exit from launcher failure. Captured output is
@@ -116,11 +120,15 @@ func (ExecRunner) Run(ctx context.Context, request RunRequest) (RunResult, error
 	if err := cmd.Start(); err != nil {
 		return RunResult{}, err
 	}
+	startedAt := time.Now().UTC()
 	tree, err := platformAttachProcess(cmd, request.Interactive)
 	if err != nil {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		return capturedRunResult(&stdout, &stderr, captureStdout, !request.Interactive), err
+	}
+	if request.OnStarted != nil {
+		request.OnStarted(startedAt)
 	}
 	wait := make(chan error, 1)
 	go func() { wait <- cmd.Wait() }()

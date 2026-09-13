@@ -207,6 +207,8 @@ type TUI struct {
 	Repos RepoTable `toml:"repos"`
 	// Fleet controls optional background observation of configured hosts.
 	Fleet FleetTable `toml:"fleet"`
+	// SSH controls optional local Tailscale observation in the SSH dashboard.
+	SSH SSHTable `toml:"ssh"`
 	// Tools are the external programs the dashboard can hand the terminal to,
 	// each on its own key. When empty, DefaultTools applies.
 	//
@@ -219,6 +221,10 @@ type TUI struct {
 // FleetTable configures the dashboard's host tree. It does not change the
 // explicit network behavior of non-interactive fleet commands.
 type FleetTable struct {
+	BackgroundRefresh bool `toml:"background_refresh"`
+}
+
+type SSHTable struct {
 	BackgroundRefresh bool `toml:"background_refresh"`
 }
 
@@ -413,7 +419,7 @@ func Default() Config {
 			ProvisionTimeout: Duration{10 * time.Minute},
 		},
 		LocalFiles: localFilesFromLimits(safefile.DefaultLimits()),
-		TUI:        TUI{Fleet: FleetTable{BackgroundRefresh: true}},
+		TUI:        TUI{Fleet: FleetTable{BackgroundRefresh: true}, SSH: SSHTable{BackgroundRefresh: true}},
 		Bootstrap: Bootstrap{
 			MaxDepth:       8,
 			FollowSymlinks: true,

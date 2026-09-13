@@ -111,7 +111,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.33 instead when you need a reproducible install.
+# Pin @v0.2.34 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -778,7 +778,8 @@ Bare `dev` (or `dev tui`) opens eight lists, switched with `tab`:
   effective merged runtime configuration.
 - **SSH** — canonical machines, exact SSH profiles, Tailscale/LAN observations and
   fleet/Herdr membership. `r` reads local/cached state; `c` starts explicit discovery,
-  `n` opens setup, and `p` probes a selected alias.
+  `n` opens setup, and `p` offers network or SSH tests for selected, machine,
+  or filtered profiles.
 
 The first view is constructed before runtime auto-detection, project-root lookup,
 cache decoding, shell-based tool checks, or the optional release refresh can
@@ -882,10 +883,23 @@ the branch/worktree and lifecycle costs explicit rather than silently applying
 them to every directory.
 
 
+### SSH discovery and connection health (v0.2.34)
+
+The SSH tab aligns machine rows and Space-expanded profiles, with configured
+connections first and recent local dev usage before unused aliases. `c` selects
+and scans LAN/Tailscale inside the dashboard; results stay visible even when
+cache storage fails. Enter on a discovered candidate opens reviewed SSH setup,
+with Fleet/Herdr registration opt-in. `p` tests selected or filtered profiles in
+network-only or full SSH mode; usage and test history remain separate.
+Tailscale can refresh in the background while SSH is active; LAN scans and
+connection tests remain explicit. All pages expose problems and suggested
+actions through Ctrl+O, including empty lists and reviewed dependency installs.
+See [SSH workflows](docs/guides/ssh-hosts.md#ssh-connection-view).
+
 ### Dashboard lifecycle actions
 
 Press `Ctrl+O`, right-click a row, or click the selected row for actions.
-Space expands/collapses REPOS worktrees and FLEET hosts; it is unused in flat lists. TASKS offers the existing finish,
+Space expands/collapses REPOS worktrees, FLEET hosts and SSH profiles; it is unused in flat lists. TASKS offers the existing finish,
 resume, retirement and selected-task recovery workflows. `a` shows completed
 tasks; it does not mark a task done. Missing checkout rows go through recovery.
 The dashboard suspends for the shared CLI wizard and refreshes on return.

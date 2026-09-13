@@ -895,3 +895,12 @@ protection binding 與有簽章的 receipts 留在 `paths.state_dir/agent-histor
 Capture/provider identity、source retention、off/check/redact 副本保護與
 發行排除是獨立選擇。支援限制、preview/apply 命令與歷史遷移詳見
 [AI 產物](../guides/ai-artifacts.md)。
+
+## SSH dashboard settings (v0.2.34)
+
+```toml
+[tui.ssh]
+background_refresh = true
+```
+
+這個選項只控制 SSH 頁啟用時的 Tailscale 背景狀態更新；LAN 掃描及連線測試仍須明確觸發。`ssh diagnose --ping --network-only ALIAS` 觀測 ICMP／TCP／banner，不嘗試 SSH authentication；省略 `--network-only` 可做完整驗證。`--network-only` 不可搭配 `--compare-qos`。

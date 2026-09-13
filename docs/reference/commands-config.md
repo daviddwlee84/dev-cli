@@ -1009,3 +1009,12 @@ Host-local archive/protection bindings and signed receipts stay under
 Capture/provider identity, source retention, off/check/redact copy protection
 and distribution exclusions are independent. See [AI artifacts](../guides/ai-artifacts.md)
 for supported limits, exact preview/apply commands and historical migration.
+
+## SSH dashboard settings (v0.2.34)
+
+```toml
+[tui.ssh]
+background_refresh = true
+```
+
+This option controls only automatic Tailscale status in the active SSH view. LAN scans and connection tests remain explicit. `ssh diagnose --ping --network-only ALIAS` observes ICMP/TCP/banner without an SSH authentication attempt; omit `--network-only` for full verification. `--network-only` cannot combine with `--compare-qos`.

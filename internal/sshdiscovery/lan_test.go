@@ -253,3 +253,34 @@ func TestCurrentLANScopeRechecksInterfaceIdentityWithoutProbing(t *testing.T) {
 		t.Fatalf("invalid scope current=%t err=%v", current, err)
 	}
 }
+
+func TestLANProgressCancellationRetainsDetachedObservations(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	service := NewService(nil, ServiceOptions{Interfaces: testScopes, LookupAddr: noPTR, DialContext: func(ctx context.Context, _, address string) (net.Conn, error) {
+		if strings.HasPrefix(address, "192.168.10.21:") {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+		return &bannerConn{reader: strings.NewReader("SSH-2.0-OpenSSH\r\n")}, nil
+	}})
+	var updates []Progress
+	report, err := service.LANWithProgress(ctx, LANRequest{Interface: "eth0", Ranges: []string{"192.168.10.20", "192.168.10.21"}, Ports: []int{22}}, func(update Progress) {
+		updates = append(updates, update)
+		if update.Candidate != nil {
+			update.Candidate.Addresses[0] = "changed by consumer"
+			cancel()
+		}
+	})
+	if !errors.Is(err, context.Canceled) || report.Complete || len(report.Candidates) != 1 || report.Candidates[0].Addresses[0] != "192.168.10.20" {
+		t.Fatalf("report=%+v error=%v", report, err)
+	}
+	if len(updates) < 2 || updates[0].Completed != 0 || updates[0].Total != 2 {
+		t.Fatalf("progress=%+v", updates)
+	}
+	for i := 1; i < len(updates); i++ {
+		if updates[i].Completed != i || updates[i].Total != 2 {
+			t.Fatalf("non-monotonic progress: %+v", updates)
+		}
+	}
+}

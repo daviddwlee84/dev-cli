@@ -104,3 +104,64 @@ func TestWindowsCacheRejectsReparseMetadata(t *testing.T) {
 		t.Fatal("reparse root accepted")
 	}
 }
+
+func TestWindowsCachePartialRefreshRetainsOriginalObservationTimes(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "discovery")
+	original := windowsCacheReport()
+	first, ok := candidateFromTailscale(tailscalePeer{ID: "first", HostName: "first-host", TailscaleIPs: []string{"100.64.0.1"}}, original.Scope)
+	if !ok {
+		t.Fatal("first fixture candidate is invalid")
+	}
+	second, ok := candidateFromTailscale(tailscalePeer{ID: "second", HostName: "second-host", TailscaleIPs: []string{"100.64.0.2"}}, original.Scope)
+	if !ok {
+		t.Fatal("second fixture candidate is invalid")
+	}
+	original.Candidates = []Candidate{first, second}
+	if err := WriteCache(t.Context(), dir, original); err != nil {
+		t.Fatal(err)
+	}
+	partial := original
+	partial.Candidates = []Candidate{second}
+	partial.Candidates[0].Name = "new second name"
+	partial.ObservedAt = original.ObservedAt.Add(2 * CacheTTL)
+	partial.Complete, partial.Status = false, StatusPartial
+	if err := WriteCache(t.Context(), dir, partial); err != nil {
+		t.Fatal(err)
+	}
+	reports, err := ReadCache(t.Context(), dir, partial.ObservedAt)
+	if err != nil || len(reports) != 2 {
+		t.Fatalf("reports=%+v error=%v", reports, err)
+	}
+	var old, fresh *Report
+	for i := range reports {
+		if reports[i].ObservedAt.Equal(original.ObservedAt) {
+			old = &reports[i]
+		} else {
+			fresh = &reports[i]
+		}
+	}
+	if old == nil || !old.Stale || len(old.Candidates) != 1 || old.Candidates[0].NativeID != first.NativeID {
+		t.Fatalf("old observation lost or refreshed: %+v", reports)
+	}
+	if fresh == nil || fresh.Stale || fresh.Complete || len(fresh.Candidates) != 1 || fresh.Candidates[0].Name != "new second name" {
+		t.Fatalf("partial observation lost: %+v", reports)
+	}
+	file := filepath.Join(dir, cacheName(partial))
+	info, err := os.Lstat(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkCacheFile(file, info); err != nil {
+		t.Fatalf("partial replacement lost protected DACL: %v", err)
+	}
+	complete := partial
+	complete.Complete, complete.Status = true, StatusReady
+	complete.ObservedAt = partial.ObservedAt.Add(time.Second)
+	if err := WriteCache(t.Context(), dir, complete); err != nil {
+		t.Fatal(err)
+	}
+	reports, err = ReadCache(t.Context(), dir, complete.ObservedAt)
+	if err != nil || len(reports) != 1 || len(reports[0].Candidates) != 1 || reports[0].Candidates[0].NativeID != second.NativeID {
+		t.Fatalf("complete scan did not replace history: %+v %v", reports, err)
+	}
+}

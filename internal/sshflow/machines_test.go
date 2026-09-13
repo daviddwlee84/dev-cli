@@ -197,3 +197,18 @@ func TestJoinMachinesKeepsOfflineAndStaleDiscoveryObservations(t *testing.T) {
 		t.Fatalf("observations discarded or promoted: %#v", out)
 	}
 }
+
+func TestJoinMachinesUnavailableRegistryDoesNotInferAssociations(t *testing.T) {
+	local := machineTestLocal()
+	peer := machineTestCandidate("tailscale", "node1", "node", "100.64.0.1", 22)
+	hints := []sshhost.ConnectionHint{{Alias: "build", HostName: "100.64.0.1", Port: 22, Fingerprint: "first", State: "known"}}
+	out := JoinMachinesWithRegistryStatus(local, hints, machineregistry.Snapshot{}, []sshdiscovery.Report{machineTestReport("tailscale", peer)}, "fleet.toml", "herdr-home", time.Now(), false)
+	if out.Complete || out.Sources["registry"] != "unavailable" || len(out.Machines) != 2 {
+		t.Fatalf("unavailable intent inferred an association: %+v", out)
+	}
+	for _, row := range out.Machines {
+		if row.MachineID != "" || row.State != "mapping_unknown" || len(row.References) != 1 {
+			t.Fatalf("invented mapping: %+v", row)
+		}
+	}
+}

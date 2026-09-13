@@ -68,6 +68,14 @@ type Report struct {
 	Candidates []Candidate `json:"candidates"`
 }
 
+// Progress describes completed probes in one explicit LAN scan. Callbacks run
+// serially; Candidate is a detached observation and may be retained by the UI.
+type Progress struct {
+	Completed int
+	Total     int
+	Candidate *Candidate
+}
+
 // InterfaceScope is an eligible, active, directly connected IPv4 network.
 // Prefix may contain more than 256 addresses; callers must select an explicit
 // bounded subset for LAN, rather than implicitly scanning the whole prefix.

@@ -2,7 +2,7 @@
 description: 以持久 Git history、分層 intent/catalog state、repository quick-note sidecar、可丟棄 worktree 與可替換 runtime 理解 dev-cli。
 authority: project
 status: stable
-verified_on: 2026-09-11
+verified_on: 2026-09-13
 lang: zh-TW
 ---
 
@@ -178,3 +178,5 @@ policy 把副本存進另一個 Git checkout，保留 private 本機 plan／reco
 以及可攜的 project/session/commit metadata。Ignored capture files 仍是待
 驗證的持久證據，清理前會重新檢查。選擇策略與遷移前可讀
 [AI 產物](../guides/ai-artifacts.md)。
+
+SSH dashboard 使用紀錄是 host-local durable observation，與機器身分及 discovery cache 分開。USED 是本機透過 dev 真正啟動 SSH 的時間；測試時間及驗證成功觀測獨立保存。舊觀測不能授權清理，也不能證明目前連通。

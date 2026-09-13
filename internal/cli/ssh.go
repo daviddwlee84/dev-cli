@@ -767,6 +767,19 @@ func runSSHSetup(ctx context.Context, app *App, alias string, options sshSetupOp
 }
 
 func runSSHSetupOperation(ctx context.Context, app *App, alias string, options sshSetupOptions) error {
+	return runSSHSetupOperationObserved(ctx, app, alias, options, nil)
+}
+
+// runSSHSetupOperationObserved exposes service-owned receipts to orchestration
+// without treating rendered terminal output as an API.
+func runSSHSetupOperationObserved(ctx context.Context, app *App, alias string, options sshSetupOptions, observe func(sshSetupDocument)) error {
+	finish := func(document sshSetupDocument, err error) error {
+		if observe != nil {
+			observe(document)
+		}
+		return finishSSHSetup(app, options.json, document, err)
+	}
+
 	interactiveMode := !options.json && app.interactive()
 	service, err := app.sshHosts()
 	if err != nil {
@@ -785,24 +798,24 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 	}
 	inventory, err := service.Discover(ctx)
 	if err != nil {
-		return finishSSHSetup(app, options.json, document, err)
+		return finish(document, err)
 	}
 	sourceGuard, guardErr := sshflow.GuardSources(ctx, service)
 	if guardErr != nil {
-		return finishSSHSetup(app, options.json, document, guardErr)
+		return finish(document, guardErr)
 	}
 	aliasClass, definition, classifyErr := classifySetupAlias(service, alias, inventory)
 	document.AliasClass = aliasClass
 	if classifyErr != nil {
 		document.Status = "blocked"
 		document.ErrorCode = sshErrorCode(classifyErr)
-		return finishSSHSetup(app, options.json, document, classifyErr)
+		return finish(document, classifyErr)
 	}
 	if aliasClass == "foreign" && options.connectionChanged {
 		err := errors.New("connection-field flags are not allowed for a foreign SSH alias")
 		document.Status = "blocked"
 		document.ErrorCode = "foreign_alias"
-		return finishSSHSetup(app, options.json, document, err)
+		return finish(document, err)
 	}
 
 	ownsDefinition := aliasClass == "new" || aliasClass == "managed"
@@ -813,7 +826,7 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		if err := mergeManagedDefinition(app, &definition, options, interactiveMode); err != nil {
 			document.Status = "blocked"
 			document.ErrorCode = sshErrorCode(err)
-			return finishSSHSetup(app, options.json, document, err)
+			return finish(document, err)
 		}
 	}
 
@@ -825,7 +838,7 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		if planErr != nil {
 			document.Status = "blocked"
 			document.ErrorCode = sshErrorCode(planErr)
-			return finishSSHSetup(app, options.json, document, planErr)
+			return finish(document, planErr)
 		}
 		if ownsDefinition && !options.identityFileChanged && planned.IdentityFile != "" {
 			definition.IdentityFile = planned.IdentityFile
@@ -836,7 +849,7 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 	if ownsDefinition && (definition.ProxyJump != "" || options.proxyJumpChanged) {
 		route, e := planSSHLocalRoute(ctx, service, alias, []sshhost.ManagedDefinition{definition}, options.dryRun)
 		if e != nil {
-			return finishSSHSetup(app, options.json, document, e)
+			return finish(document, e)
 		}
 		plannedRoute = &route
 	}
@@ -847,14 +860,14 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		if planErr != nil {
 			document.Status = "blocked"
 			document.ErrorCode = sshErrorCode(planErr)
-			return finishSSHSetup(app, options.json, document, planErr)
+			return finish(document, planErr)
 		}
 		renderSSHDiagnostics(app, managedPlan.Diagnostics)
 		if !managedPlan.Ready() || managedPlan.Action == sshhost.ActionBlocked {
 			err := fmt.Errorf("managed SSH plan is blocked: %w", sshhost.ErrBlocked)
 			document.Status = "blocked"
 			document.ErrorCode = "managed_plan_blocked"
-			return finishSSHSetup(app, options.json, document, err)
+			return finish(document, err)
 		}
 	}
 	if keyPlan != nil {
@@ -863,7 +876,7 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 			err := fmt.Errorf("SSH key plan is blocked: %w", sshhost.ErrBlocked)
 			document.Status = "blocked"
 			document.ErrorCode = "key_plan_blocked"
-			return finishSSHSetup(app, options.json, document, err)
+			return finish(document, err)
 		}
 	}
 
@@ -874,7 +887,7 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 			err := errors.New("--fleet requires --target-os posix or windows")
 			document.Status = "blocked"
 			document.ErrorCode = "target_os_required"
-			return finishSSHSetup(app, options.json, document, err)
+			return finish(document, err)
 		}
 		change, facts, fleetErr := planSSHFleetRegistration(app, alias, options.fleetName, targetOS)
 		document.Fleet = change
@@ -882,7 +895,7 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		if fleetErr != nil {
 			document.Status = "blocked"
 			document.ErrorCode = sshErrorCode(fleetErr)
-			return finishSSHSetup(app, options.json, document, fleetErr)
+			return finish(document, fleetErr)
 		}
 	} else if cfg, fleetErr := loadFleetConfig(app); fleetErr == nil {
 		document.FleetMembership = indexFleetFacts(cfg)[foldFleetAlias(alias)]
@@ -900,10 +913,10 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		if planErr != nil {
 			document.Status = "blocked"
 			document.ErrorCode = sshErrorCode(planErr)
-			return finishSSHSetup(app, options.json, document, planErr)
+			return finish(document, planErr)
 		}
 		document.Status = "planned"
-		return finishSSHSetup(app, options.json, document, nil)
+		return finish(document, nil)
 	}
 
 	localApply := keyPlan != nil || document.ManagedPlan != nil
@@ -911,7 +924,7 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		if !interactiveMode {
 			document.Status = "confirmation_required"
 			document.ErrorCode = "confirmation_required"
-			return finishSSHSetup(app, options.json, document, errors.New("--yes is required to apply SSH setup without an interactive terminal"))
+			return finish(document, errors.New("--yes is required to apply SSH setup without an interactive terminal"))
 		}
 		renderSSHSetupPlan(app, document)
 		confirmed, promptErr := newPrompter(app).confirm("Apply this local SSH setup plan?", false)
@@ -926,14 +939,14 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 	if plannedRoute != nil {
 		fresh, e := planSSHLocalRoute(ctx, service, alias, []sshhost.ManagedDefinition{definition}, false)
 		if e != nil {
-			return finishSSHSetup(app, options.json, document, e)
+			return finish(document, e)
 		}
 		if !reflect.DeepEqual(plannedRoute.Hops, fresh.Hops) {
-			return finishSSHSetup(app, options.json, document, sshhost.ErrSourceChanged)
+			return finish(document, sshhost.ErrSourceChanged)
 		}
 	}
 	if e := sourceGuard.Check(ctx); e != nil {
-		return finishSSHSetup(app, options.json, document, e)
+		return finish(document, e)
 	}
 	var keyResult sshhost.KeyResult
 	if keyPlan != nil {
@@ -943,13 +956,13 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		if applyErr != nil {
 			document.Status = "failed"
 			document.ErrorCode = sshErrorCode(applyErr)
-			return finishSSHSetup(app, options.json, document, applyErr)
+			return finish(document, applyErr)
 		}
 		keyResult = applied
 	}
 	if document.ManagedPlan != nil {
 		if e := sourceGuard.Check(ctx); e != nil {
-			return finishSSHSetup(app, options.json, document, e)
+			return finish(document, e)
 		}
 		app.warnf("applying managed SSH config for %s", alias)
 		applied, applyErr := service.ApplyManaged(ctx, *document.ManagedPlan)
@@ -957,7 +970,7 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 		if applyErr != nil {
 			document.Status = setupFailureStatus(document)
 			document.ErrorCode = sshErrorCode(applyErr)
-			return finishSSHSetup(app, options.json, document, applyErr)
+			return finish(document, applyErr)
 		}
 	}
 	if options.configOnly {
@@ -967,12 +980,12 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 			if effectiveErr != nil {
 				document.Status = "failed"
 				document.ErrorCode = sshErrorCode(effectiveErr)
-				return finishSSHSetup(app, options.json, document, effectiveErr)
+				return finish(document, effectiveErr)
 			}
 			document.Effective = &effective
 		}
 		document.Status = "ready"
-		return finishSSHSetup(app, options.json, document, nil)
+		return finish(document, nil)
 	}
 
 	app.warnf("resolving SSH route for %s with plain ssh -G", alias)
@@ -980,20 +993,20 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 	if routeErr != nil {
 		document.Status = setupFailureStatus(document)
 		document.ErrorCode = sshErrorCode(routeErr)
-		return finishSSHSetup(app, options.json, document, routeErr)
+		return finish(document, routeErr)
 	}
 	route, overrides, routeErr = completeSSHRouteOS(ctx, app, service, route, alias, targetOS, overrides, interactiveMode)
 	if routeErr != nil {
 		document.Status = setupFailureStatus(document)
 		document.ErrorCode = sshErrorCode(routeErr)
-		return finishSSHSetup(app, options.json, document, routeErr)
+		return finish(document, routeErr)
 	}
 
 	var authentication *sshhost.AuthenticationOperation
 	if interactiveMode {
 		authentication, err = prepareSSHAuthentication(ctx, app, service, alias, options.passwordStore, false)
 		if err != nil {
-			return finishSSHSetup(app, options.json, document, err)
+			return finish(document, err)
 		}
 		defer authentication.Close()
 		if !authentication.UsesPassword() {
@@ -1017,12 +1030,12 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 	if bootstrapErr != nil {
 		document.Status = setupFailureStatus(document)
 		document.ErrorCode = sshErrorCode(bootstrapErr)
-		return finishSSHSetup(app, options.json, document, bootstrapErr)
+		return finish(document, bootstrapErr)
 	}
 	if !bootstrap.Ready || !bootstrap.FleetReady {
 		document.Status = "partial"
 		document.ErrorCode = "bootstrap_partial"
-		return finishSSHSetup(app, options.json, document, errors.New("SSH bootstrap is partial; rerun setup after resolving the reported hop"))
+		return finish(document, errors.New("SSH bootstrap is partial; rerun setup after resolving the reported hop"))
 	}
 	if options.fleet {
 		app.warnf("registering verified SSH alias %s in dev fleet", alias)
@@ -1033,12 +1046,12 @@ func runSSHSetupOperation(ctx context.Context, app *App, alias string, options s
 			document.Status = "partial"
 			document.Fleet.Action = "failed"
 			document.ErrorCode = sshErrorCode(fleetErr)
-			return finishSSHSetup(app, options.json, document, fleetErr)
+			return finish(document, fleetErr)
 		}
 		document.Fleet.Action = "registered"
 	}
 	document.Status = "ready"
-	return finishSSHSetup(app, options.json, document, nil)
+	return finish(document, nil)
 }
 
 func classifySetupAlias(service *sshhost.Service, alias string, inventory sshhost.Inventory) (string, sshhost.ManagedDefinition, error) {
@@ -1377,7 +1390,9 @@ func runSSHProbe(ctx context.Context, app *App, alias string, jsonOut bool) erro
 		return finishSSHProbe(app, jsonOut, document, selectionErr)
 	}
 
+	profile, _ := sshActivityProfile(ctx, service, alias)
 	result, probeErr := service.Probe(ctx, alias)
+	recordSSHProbe(ctx, app, service, profile, result)
 	document := sshProbeDocument{SchemaVersion: sshCLISchemaVersion, Kind: "ssh_probe", Status: string(result.Status), Result: result}
 	if probeErr != nil {
 		document.Status = "failed"

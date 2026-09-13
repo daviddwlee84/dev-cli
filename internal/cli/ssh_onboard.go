@@ -654,21 +654,33 @@ func sshOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, error
 	return items, nil
 }
 
-func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem, dryRun, yes, jsonOut bool) error {
+type sshPreparedOnboarding struct {
+	native      bool
+	lanScope    string
+	items       []sshOnboardItem
+	plan        sshflow.OnboardPlan
+	service     *sshhost.Service
+	guard       sshflow.SourceGuard
+	registry    machineregistry.Snapshot
+	init        sshhost.InitPlan
+	definitions []sshhost.ManagedDefinition
+}
+
+func planSSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem, dryRun bool) (*sshPreparedOnboarding, error) {
 	for _, item := range items {
 		if source := item.ImportSource; source != nil {
 			if source.Guard == nil {
-				return sshhost.ErrSourceChanged
+				return nil, sshhost.ErrSourceChanged
 			}
 			if e := source.Guard.Check(ctx); e != nil {
-				return e
+				return nil, e
 			}
 			registry, e := app.machineStore().Read(ctx)
 			if e != nil {
-				return e
+				return nil, e
 			}
 			if !reflect.DeepEqual(source.Registry, registry) {
-				return errors.New("import ownership changed during selection")
+				return nil, errors.New("import ownership changed during selection")
 			}
 		}
 	}
@@ -680,15 +692,15 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 	}
 	plan, err := sshflow.PlanOnboarding(targets)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	s, err := app.sshHosts()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	guard, err := sshflow.GuardSources(ctx, s)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	var imports []sshflow.FleetImportPlan
 	for _, item := range items {
@@ -697,7 +709,7 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 		}
 	}
 	if e := sshflow.ValidateFleetImportBatch(imports); e != nil {
-		return e
+		return nil, e
 	}
 	definitions := onboardDefinitions(items)
 	for i := range items {
@@ -705,10 +717,10 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 		if item.Definition != nil && (item.Definition.ProxyJump != "" || item.Import != nil) {
 			route, e := planSSHLocalRoute(ctx, s, item.Target.Alias, definitions, dryRun)
 			if e != nil {
-				return e
+				return nil, e
 			}
 			if item.Import != nil && !sameSSHRouteInvocations(route.Hops, item.Import.Route) {
-				return errors.New("imported gateway does not match the native local route; configure an explicit local profile")
+				return nil, errors.New("imported gateway does not match the native local route; configure an explicit local profile")
 			}
 			item.PlannedRoute = &route
 			byAlias[item.Target.Alias] = *item
@@ -716,13 +728,13 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 	}
 	initialRegistry, err := app.machineStore().Read(ctx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	for _, item := range items {
 		if id := item.Target.MachineID; id != "" {
 			machine, found := initialRegistry.Find(id)
 			if !found || machine.ID != id {
-				return errors.New("selected machine identity changed before configuration")
+				return nil, errors.New("selected machine identity changed before configuration")
 			}
 		}
 	}
@@ -734,28 +746,35 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 		}
 	}
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if initPlan.Action == sshhost.ActionBlocked {
-		return errors.New("managed Include initialization is blocked; inspect dev ssh init")
+		return nil, errors.New("managed Include initialization is blocked; inspect dev ssh init")
 	}
-	preview := struct {
-		sshflow.OnboardPlan
-		Init        sshhost.InitPlan `json:"init"`
-		Connections []sshOnboardItem `json:"connections"`
-	}{plan, initPlan, items}
+	return &sshPreparedOnboarding{items: items, plan: plan, service: s, guard: guard, registry: initialRegistry, init: initPlan, definitions: definitions}, nil
+}
+
+func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem, dryRun, yes, jsonOut bool) error {
+	prepared, err := planSSHOnboardItems(ctx, app, items, dryRun)
+	if err != nil {
+		return err
+	}
 	if dryRun {
 		if jsonOut {
-			return writeSSHJSON(app, preview)
+			return writeSSHJSON(app, struct {
+				sshflow.OnboardPlan
+				Init        sshhost.InitPlan `json:"init"`
+				Connections []sshOnboardItem `json:"connections"`
+			}{prepared.plan, prepared.init, prepared.items})
 		}
-		renderSSHOnboardPreview(app, items, initPlan)
+		renderSSHOnboardPreview(app, prepared.items, prepared.init)
 		return nil
 	}
 	if !yes {
 		if jsonOut || !app.interactive() {
 			return errors.New("--yes is required to apply source-aware setup outside an interactive terminal")
 		}
-		renderSSHOnboardPreview(app, items, initPlan)
+		renderSSHOnboardPreview(app, prepared.items, prepared.init)
 		confirmed, e := newPrompter(app).confirm("Apply these configurations, machine mappings and selected remote actions?", false)
 		if e != nil {
 			return e
@@ -763,6 +782,39 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 		if !confirmed {
 			return errPromptCanceled
 		}
+	}
+	result, applyErr := applySSHOnboardPlan(ctx, app, prepared, jsonOut)
+	// Preserve the CLI's established pre-effect error envelope. Dashboard
+	// callers retain the typed failure directly through applySSHOnboardPlan.
+	if applyErr != nil && result.Init == nil && len(result.Outcomes) == 0 {
+		return applyErr
+	}
+	if err := renderSSHOnboardResult(app, result, jsonOut); err != nil {
+		return err
+	}
+	return applyErr
+}
+
+func applySSHOnboardPlan(ctx context.Context, app *App, prepared *sshPreparedOnboarding, jsonOut bool) (result sshflow.OnboardExecutionResult, returnedErr error) {
+	result = sshflow.OnboardExecutionResult{OnboardResult: sshflow.OnboardResult{SchemaVersion: 1, Kind: "ssh_onboarding_result", Status: "not_run", Outcomes: []sshflow.OnboardOutcome{}}, Keys: map[string]sshhost.KeyResult{}, Bootstraps: map[string]sshhost.BootstrapResult{}, Registrations: map[string]sshflow.Result{}, Bindings: map[string]machineregistry.Result{}}
+	result.Configurations = map[string]sshhost.ManagedResult{}
+	defer func() {
+		if returnedErr != nil && result.Status == "not_run" {
+			result.Status = "failed"
+			if result.Init != nil && result.Init.Changed {
+				result.Status = "partial"
+			}
+		}
+	}()
+	if prepared == nil || prepared.service == nil {
+		return result, errors.New("missing reviewed SSH onboarding plan")
+	}
+	items, plan, s := prepared.items, prepared.plan, prepared.service
+	guard, initialRegistry, initPlan := prepared.guard, prepared.registry, prepared.init
+	definitions := prepared.definitions
+	byAlias := map[string]sshOnboardItem{}
+	for _, item := range items {
+		byAlias[item.Target.Alias] = item
 	}
 	if err := withSSHOperationLock(ctx, app, func() error {
 		if err := guard.Check(ctx); err != nil {
@@ -774,6 +826,12 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 		}
 		if !reflect.DeepEqual(initialRegistry, current) {
 			return errors.New("machine registry changed since preview")
+		}
+		if prepared.lanScope != "" {
+			current, err := app.sshDiscovery().CurrentLANScope(prepared.lanScope)
+			if err != nil || !current {
+				return errors.New("LAN interface or scope changed since preview; scan and review the connection again")
+			}
 		}
 		for _, item := range items {
 			if e := revalidateSSHFleetImport(ctx, app, item); e != nil {
@@ -833,14 +891,16 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 			return errors.New("machine registry changed during source revalidation")
 		}
 		if initPlan.Action != sshhost.ActionNoop {
-			if _, e := s.ApplyInit(ctx, initPlan); e != nil {
+			initialized, e := s.ApplyInit(ctx, initPlan)
+			result.Init = &initialized
+			if e != nil {
 				return e
 			}
 		}
 		guard, e = guard.Advance(ctx, []string{s.Paths().RootConfig})
 		return e
 	}); err != nil {
-		return err
+		return result, err
 	}
 	groups := map[string]string{}
 	for _, b := range initialRegistry.Bindings {
@@ -848,11 +908,11 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 			groups[sshflow.ReferenceID(b.Provider, b.Scope, b.NativeID)] = b.MachineID
 		}
 	}
-	keyResults := map[string]sshhost.KeyResult{}
+	keyResults := result.Keys
 	hopKeyResults := map[string]map[string]sshhost.KeyResult{}
-	bootstraps := map[string]sshhost.BootstrapResult{}
-	registrations := map[string]sshflow.Result{}
-	result, applyErr := sshflow.ApplyOnboarding(ctx, plan, func(ctx context.Context, target sshflow.OnboardTarget, stage string) error {
+	bootstraps := result.Bootstraps
+	registrations := result.Registrations
+	ledger, applyErr := sshflow.ApplyOnboarding(ctx, plan, func(ctx context.Context, target sshflow.OnboardTarget, stage string) error {
 		item := byAlias[target.Alias]
 		switch stage {
 		case "configure":
@@ -892,7 +952,7 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 				o.auth = ""
 				o.machineID = ""
 				o.dryRun = false
-				o.json = jsonOut
+				o.json = jsonOut || prepared.native
 				o.configOnly = true
 				o.key = ""
 				o.keyCandidate = nil
@@ -904,10 +964,14 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 				o.windowsAdminAuthorizedKeys = false
 				var captured bytes.Buffer
 				copy := *app
-				if jsonOut {
+				if jsonOut || prepared.native {
 					copy.Out = &captured
 				}
-				if e := runSSHSetupOperation(ctx, &copy, target.Alias, o); e != nil {
+				if e := runSSHSetupOperationObserved(ctx, &copy, target.Alias, o, func(document sshSetupDocument) {
+					if document.ManagedResult != nil {
+						result.Configurations[target.Alias] = *document.ManagedResult
+					}
+				}); e != nil {
 					return e
 				}
 				if item.Definition == nil {
@@ -1046,6 +1110,7 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 					return e
 				}
 				applied, applyErr := app.machineStore().Apply(ctx, p)
+				result.Bindings[target.Alias] = applied
 				if applied.Status == "unknown" {
 					return errors.Join(sshflow.ErrOnboardUnknown, applyErr)
 				}
@@ -1079,15 +1144,13 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 			return errors.New("unknown onboarding stage")
 		}
 	})
+	result.OnboardResult = ledger
+	return result, applyErr
+}
+
+func renderSSHOnboardResult(app *App, result sshflow.OnboardExecutionResult, jsonOut bool) error {
 	if jsonOut {
-		if e := writeSSHJSON(app, struct {
-			sshflow.OnboardResult
-			Keys          map[string]sshhost.KeyResult       `json:"keys,omitempty"`
-			Bootstraps    map[string]sshhost.BootstrapResult `json:"bootstraps,omitempty"`
-			Registrations map[string]sshflow.Result          `json:"registrations,omitempty"`
-		}{result, keyResults, bootstraps, registrations}); e != nil {
-			return e
-		}
+		return writeSSHJSON(app, result)
 	} else {
 		for _, outcome := range result.Outcomes {
 			fmt.Fprintf(app.Out, "%s %s: %s\n", outcome.Alias, outcome.Stage, outcome.Status)
@@ -1095,7 +1158,7 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 				fmt.Fprintln(app.Err, outcome.Error)
 			}
 			if outcome.Stage == "authenticate" {
-				if bootstrap, ok := bootstraps[outcome.Alias]; ok {
+				if bootstrap, ok := result.Bootstraps[outcome.Alias]; ok {
 					for _, hop := range bootstrap.Hops {
 						fmt.Fprintf(app.Out, "  %s: %s (installed=%t, verified=%t, %s)\n", hop.Alias, hop.Status, hop.Installed, hop.Verified, hop.Code)
 					}
@@ -1103,7 +1166,7 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 			}
 		}
 	}
-	return applyErr
+	return nil
 }
 
 func renderSSHOnboardPreview(app *App, items []sshOnboardItem, init sshhost.InitPlan) {
