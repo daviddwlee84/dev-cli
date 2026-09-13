@@ -69,6 +69,47 @@ func TestPermissionPlanMissingDoesNotCreate(t *testing.T) {
 		t.Fatalf("plan created directory: %v", err)
 	}
 }
+
+func TestPermissionPlanDirectoryActivityAndNewFileHardlink(t *testing.T) {
+	for _, hardlink := range []bool{false, true} {
+		t.Run(map[bool]string{false: "sibling directory", true: "new file hardlink"}[hardlink], func(t *testing.T) {
+			store := testStore(t)
+			applyRequest(t, store, Request{Action: "adopt", MachineID: firstID, Label: "first"})
+			dir := filepath.Dir(store.Path)
+			if err := os.Chmod(dir, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(store.Path, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			plan, err := store.PlanPermissions(t.Context())
+			if err != nil || !plan.Ready() {
+				t.Fatal(plan, err)
+			}
+			if hardlink {
+				err = os.Link(store.Path, store.Path+".second")
+			} else {
+				// Other Go test packages also create sibling directories under
+				// shared temporary ancestors while a permission plan is pending.
+				err = os.Mkdir(filepath.Join(filepath.Dir(dir), "unrelated"), 0o700)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			result, err := store.ApplyPermissions(t.Context(), plan)
+			if hardlink {
+				if !errors.Is(err, ErrStale) || len(result.Outcomes) != 0 {
+					t.Fatalf("hardlink must invalidate before effects: %+v, %v", result, err)
+				}
+				return
+			}
+			if err != nil || result.Status != "complete" || len(result.Outcomes) != 2 {
+				t.Fatalf("unrelated directory activity invalidated exact metadata repair: %+v, %v", result, err)
+			}
+		})
+	}
+}
+
 func TestPermissionPlanBlocksSymlinkAndHardlink(t *testing.T) {
 	for _, kind := range []string{"symlink", "hardlink"} {
 		t.Run(kind, func(t *testing.T) {

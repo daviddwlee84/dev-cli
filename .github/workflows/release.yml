@@ -59,6 +59,9 @@ jobs:
             fi
             rm "dist/$bin"
           done
+          # git archive honors export-ignore, keeping conversation history out
+          # of the source package used for native upgrades (e.g. Termux).
+          git archive --format=tar.gz --output="dist/dev-cli_${VERSION}_source.tar.gz" "$GITHUB_SHA"
           ( cd dist && sha256sum -- *.tar.gz *.zip > SHA256SUMS )
           ls -l dist
 

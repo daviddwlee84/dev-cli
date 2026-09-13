@@ -15,11 +15,13 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/selfupdate"
 	"github.com/daviddwlee84/dev-cli/internal/skill"
 	"github.com/spf13/cobra"
 )
@@ -193,9 +195,16 @@ func newUpgradeCmd(app *App) *cobra.Command {
 		Short: "Update dev to the latest published release",
 		Long: `Update the running dev installation to the newest published release.
 
-dev asks GitHub for the latest release tag, compares it to this build, verifies
-the downloaded archive against the release's SHA256SUMS, and swaps the binary
-atomically. If a package manager owns the install (Homebrew, Scoop, or
+dev asks GitHub for the latest release tag and its platform assets. Standalone
+installs use an archive verified against SHA256SUMS when available. If no asset
+exists for this platform, dev builds that exact tag with native Go (and Clang
+on Termux), verifies its version, then swaps the binary atomically. Source builds
+prefer a SHA256SUMS-verified source archive; older releases use Go's module
+verification. Both use two build workers and the installed toolchain;
+missing tools are reported before confirmation. Download/checksum errors stop
+the upgrade and never trigger a source fallback.
+
+If a package manager owns the install (Homebrew, Scoop, or
 go install), dev runs that manager's upgrade command instead of touching the
 file itself. After a successful update, the new executable refreshes an already
 installed bundled skill at ~/.agents/skills/dev-cli. It does not install absent
@@ -208,7 +217,7 @@ skill install with that directory. --check reports skill drift without writing.
   dev upgrade --force    # run the update path even when already current`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runUpgrade(app, checkOnly, force, assumeYes)
+			return runUpgrade(cmd.Context(), app, checkOnly, force, assumeYes)
 		},
 	}
 	cmd.Flags().BoolVar(&checkOnly, "check", false, "report whether a newer release exists and exit")
@@ -217,10 +226,9 @@ skill install with that directory. --check reports skill drift without writing.
 	return cmd
 }
 
-func runUpgrade(app *App, checkOnly, force, assumeYes bool) error {
+func runUpgrade(parent context.Context, app *App, checkOnly, force, assumeYes bool) error {
 	style := app.outStyle()
-	ctx, cancel := context.WithTimeout(ctxOf(), 60*time.Second)
-	defer cancel()
+	ctx := parent
 
 	latest, err := latestRelease(ctx, true)
 	if err != nil {
@@ -268,24 +276,78 @@ func runUpgrade(app *App, checkOnly, force, assumeYes bool) error {
 				return errors.New("upgrade cancelled")
 			}
 		}
-		if err := runManagedUpgrade(ctxOf(), app, method); err != nil {
+		ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
+		defer stop()
+		if err := runManagedUpgrade(ctx, app, method); err != nil {
 			return err
 		}
-		return refreshSkillAfterUpgrade(ctxOf(), app, install)
+		return refreshSkillAfterUpgrade(ctx, app, install)
 	}
 
+	original, err := os.Lstat(self)
+	if err != nil {
+		return fmt.Errorf("inspect installed binary: %w", err)
+	}
+	if !original.Mode().IsRegular() {
+		return errors.New("installed binary is no longer a regular file; retry the upgrade")
+	}
+	plan, err := standaloneUpgradePlan(ctx, latest)
+	if err != nil {
+		return err
+	}
+	var builder *selfupdate.NativeBuilder
+	prompt := "replace " + self + " with dev " + latest
+	if plan.Source {
+		fmt.Fprintf(app.Out, "no release binary for %s/%s; build %s from source with native Go", goruntime.GOOS, goruntime.GOARCH, latest)
+		if goruntime.GOOS == "android" {
+			fmt.Fprint(app.Out, " and Clang")
+		}
+		fmt.Fprintln(app.Out, " (2 build workers; first build may take several minutes)")
+		if plan.SourceAsset == "" {
+			fmt.Fprintln(app.Out, "this release has no compact source archive; Go may download a larger module archive")
+		}
+		builder, err = selfupdate.PrepareNative(ctx, goruntime.GOOS, goruntime.GOARCH)
+		if err != nil {
+			return err
+		}
+		prompt = "build dev " + latest + " from source and replace " + self
+	}
 	if !assumeYes {
-		if !confirm(app, bufio.NewReader(app.In), "replace "+self+" with dev "+latest) {
+		if !confirm(app, bufio.NewReader(app.In), prompt) {
 			return errors.New("upgrade cancelled")
 		}
 	}
 
-	newBin, err := downloadReleaseBinary(ctx, app, latest, filepath.Dir(self))
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt)
+	defer stop()
+	var newBin string
+	if plan.Source {
+		var archive []byte
+		if plan.SourceAsset != "" {
+			archive, err = downloadVerifiedArchive(ctx, app, plan.Tag, plan.SourceAsset)
+			if err != nil {
+				return err
+			}
+		}
+		var cleanup func()
+		newBin, cleanup, err = builder.Build(ctx, latest, filepath.Dir(self), archive, app.Out, app.Err)
+		if cleanup != nil {
+			defer cleanup()
+		}
+	} else {
+		newBin, err = downloadReleaseBinary(ctx, app, plan, filepath.Dir(self))
+	}
 	if err != nil {
 		return err
 	}
 	defer os.Remove(newBin)
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := revalidateUpgradeTarget(self, original); err != nil {
+		return err
+	}
 	if err := replaceBinary(newBin, self); err != nil {
 		return fmt.Errorf("replace %s: %w", self, err)
 	}
@@ -294,7 +356,18 @@ func runUpgrade(app *App, checkOnly, force, assumeYes bool) error {
 	if goruntime.GOOS == "windows" {
 		fmt.Fprintln(app.Out, style.dim("the previous "+filepath.Base(self)+" is cleaned up on the next run"))
 	}
-	return refreshSkillAfterUpgrade(ctxOf(), app, install)
+	return refreshSkillAfterUpgrade(ctx, app, install)
+}
+
+func revalidateUpgradeTarget(path string, original os.FileInfo) error {
+	current, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("recheck installed binary: %w", err)
+	}
+	if !current.Mode().IsRegular() || !os.SameFile(original, current) || original.Size() != current.Size() || !original.ModTime().Equal(current.ModTime()) || original.Mode() != current.Mode() {
+		return errors.New("installed binary changed while preparing the upgrade; refusing to replace it")
+	}
+	return nil
 }
 
 func runManagedUpgrade(ctx context.Context, app *App, method installMethod) error {
@@ -315,32 +388,41 @@ func runManagedUpgrade(ctx context.Context, app *App, method installMethod) erro
 	return nil
 }
 
-// releaseAssetName is the archive published for this platform by release.yml.
-func releaseAssetName(tag string) string {
-	ext := "tar.gz"
-	if goruntime.GOOS == "windows" {
-		ext = "zip"
+func standaloneUpgradePlan(ctx context.Context, tag string) (selfupdate.Plan, error) {
+	if err := selfupdate.ValidateTag(tag); err != nil {
+		return selfupdate.Plan{}, err
 	}
-	return fmt.Sprintf("dev-cli_%s_%s_%s.%s", tag, goruntime.GOOS, goruntime.GOARCH, ext)
+	metadata, err := httpGetBytes(ctx, "https://api.github.com/repos/daviddwlee84/dev-cli/releases/tags/"+tag)
+	if err != nil {
+		return selfupdate.Plan{}, fmt.Errorf("read release platform coverage: %w", err)
+	}
+	return selfupdate.Select(tag, goruntime.GOOS, goruntime.GOARCH, metadata)
 }
 
-func downloadReleaseBinary(ctx context.Context, app *App, tag, destDir string) (string, error) {
-	asset := releaseAssetName(tag)
+func downloadVerifiedArchive(ctx context.Context, app *App, tag, asset string) ([]byte, error) {
 	base := releaseDownloadBase + "/" + tag + "/"
 
 	fmt.Fprintf(app.Out, "downloading %s ...\n", asset)
 	archive, err := httpGetBytes(ctx, base+asset)
 	if err != nil {
-		return "", fmt.Errorf("download %s: %w", asset, err)
+		return nil, fmt.Errorf("download %s: %w", asset, err)
 	}
 	sums, err := httpGetBytes(ctx, base+"SHA256SUMS")
 	if err != nil {
-		return "", fmt.Errorf("download SHA256SUMS: %w", err)
+		return nil, fmt.Errorf("download SHA256SUMS: %w", err)
 	}
 	if err := verifyChecksum(archive, sums, asset); err != nil {
+		return nil, err
+	}
+	return archive, nil
+}
+
+func downloadReleaseBinary(ctx context.Context, app *App, plan selfupdate.Plan, destDir string) (string, error) {
+	asset := plan.Asset
+	archive, err := downloadVerifiedArchive(ctx, app, plan.Tag, asset)
+	if err != nil {
 		return "", err
 	}
-
 	binName := "dev"
 	if goruntime.GOOS == "windows" {
 		binName = "dev.exe"

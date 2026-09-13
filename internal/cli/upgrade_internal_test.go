@@ -8,11 +8,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/selfupdate"
 )
 
 func TestInstallMethodCommand(t *testing.T) {
@@ -194,5 +199,119 @@ func TestReplaceBinaryReplacesInPlace(t *testing.T) {
 	}
 	if string(got) != "new" {
 		t.Errorf("target after replace = %q, want %q", got, "new")
+	}
+}
+
+type upgradeTransport func(*http.Request) (*http.Response, error)
+
+func (f upgradeTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
+func withUpgradeTransport(t *testing.T, f upgradeTransport) {
+	t.Helper()
+	original := http.DefaultTransport
+	http.DefaultTransport = f
+	t.Cleanup(func() { http.DefaultTransport = original })
+}
+
+func upgradeResponse(status int, body string) *http.Response {
+	return &http.Response{StatusCode: status, Status: http.StatusText(status), Body: io.NopCloser(strings.NewReader(body))}
+}
+
+func TestUpgradeCheckDoesNotInspectAssetsOrBuild(t *testing.T) {
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("USERPROFILE", t.TempDir())
+	oldVersion := Version
+	Version = "v0.2.33"
+	t.Cleanup(func() { Version = oldVersion })
+	var calls int
+	withUpgradeTransport(t, func(req *http.Request) (*http.Response, error) {
+		calls++
+		if req.URL.String() != releasesURL {
+			t.Fatalf("--check must only fetch latest tag: %s", req.URL)
+		}
+		return upgradeResponse(200, `{"tag_name":"v0.2.34"}`), nil
+	})
+	var output bytes.Buffer
+	app := &App{In: strings.NewReader(""), Out: &output, Err: &output}
+	if err := runUpgrade(context.Background(), app, true, false, true); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || !strings.Contains(output.String(), "a newer release is available: v0.2.34") {
+		t.Fatalf("calls = %d, output = %s", calls, output.String())
+	}
+}
+
+func TestUpgradeMetadataFailureDoesNotInferSourceFallback(t *testing.T) {
+	withUpgradeTransport(t, func(req *http.Request) (*http.Response, error) {
+		return upgradeResponse(503, "unavailable"), nil
+	})
+	if _, err := standaloneUpgradePlan(context.Background(), "v0.2.34"); err == nil {
+		t.Fatal("failed metadata lookup must stop upgrade")
+	}
+}
+
+func TestUpgradeDownloadErrorsLeaveNoCandidate(t *testing.T) {
+	for _, mode := range []string{"missing asset", "network failure", "checksum mismatch", "missing checksum entry"} {
+		t.Run(mode, func(t *testing.T) {
+			dir := t.TempDir()
+			withUpgradeTransport(t, func(req *http.Request) (*http.Response, error) {
+				if strings.HasSuffix(req.URL.Path, "SHA256SUMS") {
+					name := "dev-cli_v0.2.34_linux_arm64.tar.gz"
+					if mode == "missing checksum entry" {
+						name = "other.tar.gz"
+					}
+					return upgradeResponse(200, strings.Repeat("0", 64)+"  "+name+"\n"), nil
+				}
+				if mode == "network failure" {
+					return nil, errors.New("connection reset")
+				}
+				if mode == "missing asset" {
+					return upgradeResponse(404, "missing"), nil
+				}
+				return upgradeResponse(200, "invalid archive"), nil
+			})
+			app := &App{Out: io.Discard, Err: io.Discard}
+			plan := selfupdate.Plan{Tag: "v0.2.34", Asset: "dev-cli_v0.2.34_linux_arm64.tar.gz"}
+			if path, err := downloadReleaseBinary(context.Background(), app, plan, dir); err == nil || path != "" {
+				t.Fatalf("download must fail without a candidate: %s, %v", path, err)
+			}
+			entries, _ := os.ReadDir(dir)
+			if len(entries) != 0 {
+				t.Fatal("failed download left staged files")
+			}
+		})
+	}
+}
+
+func TestRevalidateUpgradeTargetRejectsChangedBinary(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "dev")
+	if err := os.WriteFile(target, []byte("original"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	original, err := os.Lstat(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := revalidateUpgradeTarget(target, original); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("modified in place"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := revalidateUpgradeTarget(target, original); err == nil {
+		t.Fatal("modified target must stop replacement")
+	}
+	if err := os.Remove(target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("original"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := revalidateUpgradeTarget(target, original); err == nil {
+		t.Fatal("replacement target must stop replacement")
 	}
 }

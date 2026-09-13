@@ -91,6 +91,18 @@ other `dev` copies on PATH are not selected. An absent skill stays absent. A
 normal upgrade also repairs an existing skill when the binary is already current.
 Skill refresh failure is reported separately after the binary update succeeds.
 
+For standalone binaries, `dev upgrade` uses the exact release's platform asset
+when present and verifies `SHA256SUMS`. If the platform is absent, it offers a
+native Go source build of that release tag (Termux also needs Clang). This fallback
+is available since v0.2.35; older binaries need a one-time native source installation.
+Source builds prefer the release's checksummed compact source archive, excluding
+conversation history. Older releases use Go's configured module verification and
+can require a larger download. Both use two workers and the installed toolchain,
+and validate the candidate version before replacement.
+Download/checksum failures never trigger compilation. `--check` never builds;
+`--yes` accepts the displayed upgrade path. On Termux, prepare dependencies with
+`pkg install golang clang git`; Linux binaries are not Android substitutes.
+
 Installation records content hashes in `.dev-cli-install.json`. Automatic refresh
 refuses recorded local edits, restores missing files, and removes unchanged
 obsolete files recorded by earlier installs. Explicit `skill install` replaces

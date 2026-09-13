@@ -74,6 +74,7 @@ cmd/dev/main.go
 - `machineregistry` owns controller-local canonical machine UUIDs, scoped provider bindings, explicit unlink suppression and merge redirects in durable private SQLite. These UUIDs never replace the remote `fleet.machine_id` trust pin. `sshdiscovery` owns optional explicit Tailscale status and bounded on-link LAN observations; discovery caches are disposable and never create machine identities or prove authentication. `sshflow` joins these sources while retaining every distinct SSH connection profile; the dashboard SSH view is an adapter to the same services.
 - `sshactivity` owns private durable per-profile usage and test observations. Usage records actual local dev-mediated SSH process starts; network/full tests never update usage. Observations retain source fingerprints and cannot authorize mutations or imply present connectivity.
 - `tuiissue` owns typed problem guidance and reviewed native dependency installation recipes. UI actions use finite IDs and exact guarded service callbacks, never executable error text.
+- `selfupdate` selects exact release platform assets and stages native Go source builds when an asset is absent, preferring the checksummed compact source archive over legacy Go module source. CLI owns confirmation and executable replacement; download/checksum failures never authorize a source fallback, and failed builds retain the installed binary.
 - `sshremote` owns strict bounded v1 SSH capability/inventory/resolve/key/connect protocols and private disposable source/route caches. Only explicit capability may initialize remote dev identity. Static inventory never evaluates SSH or agents; source profiles are scoped by observed UUID, user, root and alias. Local imports preserve native controller trust/authentication context, while remote connect reselects remote-local keys and never retries a started session.
 - `sshcredential` owns per-context operation secrets, guarded ask/never metadata and exact provider references. System stores and explicitly selected Bitwarden contain saved passwords; the TOML ledger never does. Source-bound authentication evidence authorizes an optional save prompt, not arbitrary askpass, MFA or host-key text. Unknown provider writes stay unknown and are not retried automatically.
 
@@ -123,7 +124,7 @@ State is split intentionally:
 
 ## Versioning and changelog
 
-The current published baseline is `v0.2.34` (2026-09-13). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
+The current published baseline is `v0.2.35` (2026-09-13). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
 
 - `Makefile` derives development builds with `git describe --tags --match 'v[0-9]*' --always --dirty` and injects `internal/cli.Version` through `-ldflags`. The `--match` filter is load-bearing: any other tag in the repository (a `backup/` or `rescue/` marker, say) must never become `--version`.
 - `go install ...@version` recovers the module version from Go build information.

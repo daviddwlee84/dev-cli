@@ -111,7 +111,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.34 instead when you need a reproducible install.
+# Pin @v0.2.35 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -132,6 +132,54 @@ dev doctor            # reports the running version, install owner/path, and PAT
 dev upgrade --check    # report whether a newer release exists
 dev upgrade            # delegate to its owner, or verify and replace a standalone binary
 ```
+
+For a standalone install, `dev upgrade` checks the release's actual asset list.
+If this platform has an archive, it downloads and verifies `SHA256SUMS`. If the
+platform is absent (including Android/Termux today), it offers to build the exact
+release tag with native Go. New releases include a compact
+`dev-cli_<tag>_source.tar.gz`, verified against `SHA256SUMS` and excluding
+conversation history. Older releases without this asset use Go's configured
+module verification and may download a much larger archive. Both paths use
+two build workers and the installed toolchain; they may take several minutes
+on the first run. The candidate must build and report the expected version before
+replacing the old executable. Download or checksum failures stop the upgrade.
+
+On Termux, prepare the native tools with `pkg install golang clang git`.
+Android builds use `GOOS=android`, CGO and Clang; Linux archives are not Android
+substitutes. Go must satisfy that release's `go.mod`; automatic toolchain downloads
+are disabled for source upgrades. To recover an older `dev` whose upgrade command
+only attempts the missing Android archive, build the published version separately:
+
+```bash
+pkg update && pkg upgrade -y && pkg install golang clang git curl
+stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
+  trap 'rm -rf "$stage"' EXIT
+  set -e
+  version=v0.2.35
+  asset="dev-cli_${version}_source.tar.gz"
+  base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
+  cd "$stage"
+  curl -fL "$base/$asset" -o "$asset"
+  curl -fL "$base/SHA256SUMS" -o SHA256SUMS
+  awk -v asset="$asset" '$2 == asset { print }' SHA256SUMS > source.sha256
+  test -s source.sha256
+  sha256sum -c source.sha256
+  mkdir source
+  tar -xzf "$asset" -C source
+  cd source
+  GOTOOLCHAIN=local GOWORK=off GOFLAGS= GOOS=android GOARCH=arm64 \
+    CGO_ENABLED=1 CC=clang GOMAXPROCS=2 \
+    go build -p 2 -mod=readonly -trimpath \
+      -ldflags "-s -w -X github.com/daviddwlee84/dev-cli/internal/cli.Version=$version" \
+      -o "$stage/dev" ./cmd/dev
+  test "$("$stage/dev" --version)" = "dev version $version"
+  mv "$stage/dev" "$HOME/.local/bin/dev"
+)
+```
+
+This recovery example targets a standalone ARM64 Termux installation at
+`~/.local/bin/dev`. Automatic source upgrades and compact source assets are
+available starting with v0.2.35.
 
 `dev upgrade` replaces the binary in place only for a standalone install. If
 Homebrew, Scoop or `go install` owns the file, it runs that tool's upgrade
