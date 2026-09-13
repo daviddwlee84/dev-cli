@@ -66,6 +66,25 @@ type Report struct {
 	Stale      bool        `json:"stale"`
 	Scope      string      `json:"scope"`
 	Candidates []Candidate `json:"candidates"`
+	// Probes and Warnings are additive LAN diagnostics. A ready report with no
+	// candidates is not proof that no host exists: unreachable probes may mean
+	// the operating system refused local-network access to this process.
+	Probes   *ProbeSummary `json:"probes,omitempty"`
+	Warnings []string      `json:"warnings,omitempty"`
+}
+
+// WarningNoReachableEndpoints marks a completed LAN scan in which no endpoint
+// accepted a connection and at least one probe failed as unreachable.
+const WarningNoReachableEndpoints = "no_reachable_endpoints"
+
+// ProbeSummary counts finished LAN probe outcomes; Attempted is their sum.
+type ProbeSummary struct {
+	Attempted   int `json:"attempted"`
+	Open        int `json:"open"`
+	Refused     int `json:"refused"`
+	Timeout     int `json:"timeout"`
+	Unreachable int `json:"unreachable"`
+	Other       int `json:"other"`
 }
 
 // Progress describes completed probes in one explicit LAN scan. Callbacks run

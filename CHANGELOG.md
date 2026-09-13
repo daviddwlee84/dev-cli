@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- LAN discovery no longer hides blocked connections behind `ready` with zero
+  candidates. Reports add `probes` outcome counts and a `no_reachable_endpoints`
+  warning, and `dev ssh discover`, the `dev ssh` wizard and the dashboard explain
+  that macOS may be denying Local Network access to the terminal app. The wizard
+  rescans instead of reusing an empty cached LAN scan. Status values and existing
+  JSON fields are unchanged.
+
 ## [0.2.36] - 2026-09-13
 
 ### Fixed

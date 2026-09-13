@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -485,6 +486,9 @@ func sshOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, error
 		report, e := runSSHDiscovery(ctx, app, sources[0].Value, sshdiscovery.LANRequest{Ports: []int{22}}, false, false)
 		if e != nil && len(report.Candidates) == 0 {
 			return nil, e
+		}
+		if guidance := sshdiscovery.LANGuidance(report, runtime.GOOS); guidance != "" {
+			return nil, errors.New(guidance)
 		}
 		candidates = report.Candidates
 	} else if sources[0].Value == "cached" {

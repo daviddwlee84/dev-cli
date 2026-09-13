@@ -2276,7 +2276,7 @@ All public SSH JSON is exactly one schema-versioned object on stdout. Operationa
 | `ssh setup --json` | `ssh_setup_plan`, `ssh_setup_result` | alias class, local/key/bootstrap plans/results, per-hop state, fleet action, partial/error code |
 | `ssh probe --json` | `ssh_probe` | safe `ready`/`not_ready` status, code, exit code |
 | `ssh remove --json` | `ssh_remove_plan`, `ssh_remove_result` | owned plan/result, explicit fleet action, status/error code |
-| `ssh discover --json` | `ssh_discovery` | source status, scope, candidates, observation time and completeness |
+| `ssh discover --json` | `ssh_discovery` | source status, scope, candidates, observation time and completeness; LAN reports add `probes` outcome counts and `warnings` |
 | source-aware `ssh setup --json` | `ssh_onboarding_plan`, `ssh_onboarding_result` | connection plans, stage outcomes, retained keys and per-hop bootstrap results |
 | `ssh machine … --json` | `ssh_machine_snapshot`, `ssh_machine_plan`, `ssh_machine_result` | canonical UUIDs, source bindings and revision-bound changes |
 
@@ -2521,10 +2521,21 @@ observations. Names are editable suggestions; raw banners do not become names,
 OS proofs, host keys or configuration. IPv6 range scans, mDNS and background scans
 are not implemented.
 
+`ready` means every planned probe finished; it does not mean a host was found.
+LAN reports add `probes` (attempted, open, refused, timeout, unreachable and other
+counts) and, when a completed scan found nothing and some probe was unreachable,
+the `no_reachable_endpoints` warning. On macOS this is commonly Local Network
+privacy: connections from a terminal app without Local Network access fail as
+unreachable even when `nc` in the same shell connects. Allow the terminal app under
+System Settings > Privacy & Security > Local Network and retry. A multiplexer or
+shell started by launchd rather than by an app may not be grantable, so run
+discovery from an app terminal instead.
+
 Discovery caches under `$XDG_CACHE_HOME/dev/ssh-discovery/` are fresh for five
 minutes and retain their observation time after becoming stale. `--refresh`
-bypasses a matching fresh LAN cache. Reading a cache does not refresh it or prove
-that an endpoint still identifies the same machine.
+bypasses a matching fresh LAN cache. The CLI and wizard reuse only a fresh LAN scan
+that found candidates; an empty one is rescanned. Reading a cache does not refresh
+it or prove that an endpoint still identifies the same machine.
 
 ### Authentication over the tailnet
 
@@ -10960,7 +10971,10 @@ local daemon status, and `--lan` reads cache rather than scanning.
 LAN discovery is native, needs no scanner dependency, and requires bounded
 on-link IPv4 ranges/ports. mDNS, IPv6 range scanning, automatic scans and automatic
 host-name-based identity merges are not implemented. Open port, SSH banner,
-Tailscale online state and reverse-DNS name do not prove authentication.
+Tailscale online state and reverse-DNS name do not prove authentication. A `ready`
+LAN report means every probe finished; additive `probes` counts and the
+`no_reachable_endpoints` warning distinguish an unreachable scan (for example,
+macOS Local Network privacy) from an empty network. Status values are unchanged.
 
 `paths.state_dir/machines/registry.db` is a private durable SQLite store. The
 already-linked Go driver needs no external sqlite executable. Registry UUIDs are
@@ -13853,7 +13867,7 @@ dev ssh setup winlab --key ~/.ssh/id_winlab --target-os windows \
 | `ssh setup --json` | `ssh_setup_plan`、`ssh_setup_result` | alias class、local/key/bootstrap plans/results、per-hop state、fleet action、partial/error code |
 | `ssh probe --json` | `ssh_probe` | safe `ready`/`not_ready` status、code、exit code |
 | `ssh remove --json` | `ssh_remove_plan`、`ssh_remove_result` | owned plan/result、explicit fleet action、status/error code |
-| `ssh discover --json` | `ssh_discovery` | source 狀態、scope、candidates、觀察時間與完整性 |
+| `ssh discover --json` | `ssh_discovery` | source 狀態、scope、candidates、觀察時間與完整性；LAN report 另含 `probes` 計數與 `warnings` |
 | source-aware `ssh setup --json` | `ssh_onboarding_plan`、`ssh_onboarding_result` | connection plans、stage outcomes、保留的 keys 與逐 hop bootstrap 結果 |
 | `ssh machine … --json` | `ssh_machine_snapshot`、`ssh_machine_plan`、`ssh_machine_result` | canonical UUID、來源 bindings 與 revision-bound 變更 |
 
@@ -14067,9 +14081,18 @@ Port open 與 SSH identification banner 是不同 observation。名稱只供編�
 raw banner 不能成為 hostname、OS proof、host key 或設定。目前沒有 IPv6 range
 scan、mDNS 或 background scan。
 
+`ready` 代表所有規劃的 probe 都已完成，不代表找到主機。LAN report 會新增 `probes`
+（attempted、open、refused、timeout、unreachable、other 計數）；若完整掃描沒有找到
+任何 candidate 且有 unreachable probe，會加上 `no_reachable_endpoints` warning。
+macOS 上常見原因是區域網路（Local Network）隱私權限：終端機 App 未獲授權時，連線會
+以 unreachable 失敗，即使同一個 shell 裡的 `nc` 可以連上。請在「系統設定 > 隱私權與
+安全性 > 區域網路」允許該終端機 App 後重試。由 launchd 直接啟動、而非由 App 啟動的
+multiplexer 或 shell 可能無法取得授權，請改從 App 終端機執行探索。
+
 `$XDG_CACHE_HOME/dev/ssh-discovery/` 的 cache 五分鐘內視為 fresh，過期後仍保留
-observation time。`--refresh` 跳過符合條件的 fresh LAN cache。讀取 cache 不會
-重新掃描，也不能證明 endpoint 仍指向同一台 machine。
+observation time。`--refresh` 跳過符合條件的 fresh LAN cache。CLI 與 wizard 只重用
+有 candidates 的 fresh LAN 掃描，空的結果會重新掃描。讀取 cache 不會重新掃描，也不能
+證明 endpoint 仍指向同一台 machine。
 
 ### Tailnet 上的 authentication
 
@@ -21980,7 +22003,9 @@ machine bindings 與帶時間的 source observations。Tailscale executable 是 
 LAN discovery 使用原生實作，沒有外部 scanner dependency，只接受 bounded on-link
 IPv4 ranges／ports。尚未提供 mDNS、IPv6 range scan、自動掃描或根據 hostname 自動
 合併 identity。Open port、SSH banner、Tailscale online state、reverse-DNS name 都
-不能證明 authentication。
+不能證明 authentication。`ready` LAN report 代表所有 probe 已完成；增補的 `probes`
+計數與 `no_reachable_endpoints` warning 用來區分無法連線的掃描（例如 macOS 區域網路
+隱私權限）與空網路，status 值不變。
 
 `paths.state_dir/machines/registry.db` 是 private durable SQLite store，使用已有的
 Go driver，不需要外部 sqlite executable。Registry UUID 是 controller-local grouping

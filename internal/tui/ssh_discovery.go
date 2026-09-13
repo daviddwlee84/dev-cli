@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"runtime"
 	"slices"
 	"strconv"
 	"strings"
@@ -310,6 +311,9 @@ func (m Model) applySSHEvent(msg sshEventMsg) (tea.Model, tea.Cmd) {
 			m.sshCursor = 0
 			m.sshUI.dialog = sshDialog{}
 			m.status = fmt.Sprintf("%d discoveries · Enter adds a connection · Esc shows all", len(report.Candidates))
+			if guidance := sshdiscovery.LANGuidance(report, runtime.GOOS); guidance != "" {
+				m.status = guidance + " · Esc shows all"
+			}
 			if errors.Is(msg.err, context.Canceled) {
 				m.status = "Scan canceled; completed observations retained · Esc shows all"
 			} else if msg.err != nil {

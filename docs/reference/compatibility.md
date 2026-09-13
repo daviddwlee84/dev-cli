@@ -517,7 +517,10 @@ local daemon status, and `--lan` reads cache rather than scanning.
 LAN discovery is native, needs no scanner dependency, and requires bounded
 on-link IPv4 ranges/ports. mDNS, IPv6 range scanning, automatic scans and automatic
 host-name-based identity merges are not implemented. Open port, SSH banner,
-Tailscale online state and reverse-DNS name do not prove authentication.
+Tailscale online state and reverse-DNS name do not prove authentication. A `ready`
+LAN report means every probe finished; additive `probes` counts and the
+`no_reachable_endpoints` warning distinguish an unreachable scan (for example,
+macOS Local Network privacy) from an empty network. Status values are unchanged.
 
 `paths.state_dir/machines/registry.db` is a private durable SQLite store. The
 already-linked Go driver needs no external sqlite executable. Registry UUIDs are

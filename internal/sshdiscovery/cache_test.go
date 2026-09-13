@@ -28,6 +28,31 @@ func cacheTestReport() Report {
 	return Report{Source: SourceTailscale, Scope: "test-scope", Status: StatusReady, Complete: true, ObservedAt: observed, Candidates: []Candidate{candidate}}
 }
 
+func TestCacheRetainsLANDiagnosticsAndRejectsInvalidOnes(t *testing.T) {
+	dir := filepath.Join(cacheTestRoot(t), "discovery")
+	report := Report{Source: SourceLAN, Scope: "lan-scope", Status: StatusReady, Complete: true, ObservedAt: time.Date(2026, 9, 11, 0, 0, 0, 0, time.UTC),
+		Candidates: []Candidate{}, Probes: &ProbeSummary{Attempted: 3, Refused: 1, Unreachable: 2}, Warnings: []string{WarningNoReachableEndpoints}}
+	if err := WriteCache(context.Background(), dir, report); err != nil {
+		t.Fatal(err)
+	}
+	reports, err := ReadCache(context.Background(), dir, report.ObservedAt)
+	if err != nil || len(reports) != 1 || reports[0].Probes == nil || *reports[0].Probes != *report.Probes || len(reports[0].Warnings) != 1 {
+		t.Fatalf("reports=%#v err=%v", reports, err)
+	}
+	for _, mutate := range []func(*Report){
+		func(r *Report) { r.Probes = &ProbeSummary{Attempted: 1, Unreachable: 2} },
+		func(r *Report) { r.Probes = &ProbeSummary{Attempted: -1, Refused: -1} },
+		func(r *Report) { r.Warnings = []string{"unknown"} },
+		func(r *Report) { r.Warnings = []string{WarningNoReachableEndpoints, WarningNoReachableEndpoints} },
+	} {
+		bad := report
+		mutate(&bad)
+		if err := validateReport(bad); !errors.Is(err, ErrInvalidData) {
+			t.Fatalf("accepted report=%#v probes=%#v", bad, bad.Probes)
+		}
+	}
+}
+
 func TestCacheReadIsReadOnlyAndFreshnessRetainsObservation(t *testing.T) {
 	root := cacheTestRoot(t)
 	dir := filepath.Join(root, "missing", "discovery")

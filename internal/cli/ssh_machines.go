@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -283,7 +284,8 @@ func runSSHDiscovery(ctx context.Context, app *App, source string, request sshdi
 		if !refresh {
 			cached, _ := sshdiscovery.ReadCache(ctx, sshDiscoveryCacheDir(), time.Now())
 			for _, entry := range cached {
-				if entry.Source == "lan" && entry.Scope == scope && !entry.Stale {
+				// An empty scan may predate a granted OS network permission; rescan it.
+				if entry.Source == "lan" && entry.Scope == scope && !entry.Stale && entry.Complete && len(entry.Candidates) > 0 {
 					return entry, nil
 				}
 			}
@@ -303,6 +305,9 @@ func runSSHDiscovery(ctx context.Context, app *App, source string, request sshdi
 
 func renderSSHDiscovery(app *App, report sshdiscovery.Report) {
 	fmt.Fprintf(app.Out, "%s discovery: %s (observed %s; stale=%t)\n", report.Source, report.Status, report.ObservedAt.Format(time.RFC3339), report.Stale)
+	if guidance := sshdiscovery.LANGuidance(report, runtime.GOOS); guidance != "" {
+		app.warnf("%s", guidance)
+	}
 	table := app.newTable("SELECTOR", "NAME", "ADDRESS", "OS", "STATE", "TAILSCALE SSH")
 	for _, c := range report.Candidates {
 		advertised := "not advertised"

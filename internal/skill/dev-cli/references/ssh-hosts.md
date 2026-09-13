@@ -466,6 +466,10 @@ and reverse-DNS names are observations and suggestions. --ports selects other
 ports; --refresh bypasses a fresh matching cache. The five-minute cache under
 $XDG_CACHE_HOME/dev/ssh-discovery is disposable; list --lan and dashboard refresh
 never scan. IPv6 range scans and mDNS are not implemented.
+ready means every probe finished, not that a host was found. LAN reports add probes
+counts and a no_reachable_endpoints warning; on macOS this usually means the
+terminal app lacks Local Network permission. The CLI and wizard rescan an empty
+fresh LAN cache instead of reusing it.
 
 The durable private registry is paths.state_dir/machines/registry.db. It owns
 controller-local machine UUIDs, not remote fleet machine_id pins. Discovery/list

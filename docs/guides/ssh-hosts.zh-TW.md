@@ -189,7 +189,7 @@ dev ssh setup winlab --key ~/.ssh/id_winlab --target-os windows \
 | `ssh setup --json` | `ssh_setup_plan`、`ssh_setup_result` | alias class、local/key/bootstrap plans/results、per-hop state、fleet action、partial/error code |
 | `ssh probe --json` | `ssh_probe` | safe `ready`/`not_ready` status、code、exit code |
 | `ssh remove --json` | `ssh_remove_plan`、`ssh_remove_result` | owned plan/result、explicit fleet action、status/error code |
-| `ssh discover --json` | `ssh_discovery` | source 狀態、scope、candidates、觀察時間與完整性 |
+| `ssh discover --json` | `ssh_discovery` | source 狀態、scope、candidates、觀察時間與完整性；LAN report 另含 `probes` 計數與 `warnings` |
 | source-aware `ssh setup --json` | `ssh_onboarding_plan`、`ssh_onboarding_result` | connection plans、stage outcomes、保留的 keys 與逐 hop bootstrap 結果 |
 | `ssh machine … --json` | `ssh_machine_snapshot`、`ssh_machine_plan`、`ssh_machine_result` | canonical UUID、來源 bindings 與 revision-bound 變更 |
 
@@ -403,9 +403,18 @@ Port open 與 SSH identification banner 是不同 observation。名稱只供編�
 raw banner 不能成為 hostname、OS proof、host key 或設定。目前沒有 IPv6 range
 scan、mDNS 或 background scan。
 
+`ready` 代表所有規劃的 probe 都已完成，不代表找到主機。LAN report 會新增 `probes`
+（attempted、open、refused、timeout、unreachable、other 計數）；若完整掃描沒有找到
+任何 candidate 且有 unreachable probe，會加上 `no_reachable_endpoints` warning。
+macOS 上常見原因是區域網路（Local Network）隱私權限：終端機 App 未獲授權時，連線會
+以 unreachable 失敗，即使同一個 shell 裡的 `nc` 可以連上。請在「系統設定 > 隱私權與
+安全性 > 區域網路」允許該終端機 App 後重試。由 launchd 直接啟動、而非由 App 啟動的
+multiplexer 或 shell 可能無法取得授權，請改從 App 終端機執行探索。
+
 `$XDG_CACHE_HOME/dev/ssh-discovery/` 的 cache 五分鐘內視為 fresh，過期後仍保留
-observation time。`--refresh` 跳過符合條件的 fresh LAN cache。讀取 cache 不會
-重新掃描，也不能證明 endpoint 仍指向同一台 machine。
+observation time。`--refresh` 跳過符合條件的 fresh LAN cache。CLI 與 wizard 只重用
+有 candidates 的 fresh LAN 掃描，空的結果會重新掃描。讀取 cache 不會重新掃描，也不能
+證明 endpoint 仍指向同一台 machine。
 
 ### Tailnet 上的 authentication
 

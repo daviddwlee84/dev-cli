@@ -185,7 +185,7 @@ All public SSH JSON is exactly one schema-versioned object on stdout. Operationa
 | `ssh setup --json` | `ssh_setup_plan`, `ssh_setup_result` | alias class, local/key/bootstrap plans/results, per-hop state, fleet action, partial/error code |
 | `ssh probe --json` | `ssh_probe` | safe `ready`/`not_ready` status, code, exit code |
 | `ssh remove --json` | `ssh_remove_plan`, `ssh_remove_result` | owned plan/result, explicit fleet action, status/error code |
-| `ssh discover --json` | `ssh_discovery` | source status, scope, candidates, observation time and completeness |
+| `ssh discover --json` | `ssh_discovery` | source status, scope, candidates, observation time and completeness; LAN reports add `probes` outcome counts and `warnings` |
 | source-aware `ssh setup --json` | `ssh_onboarding_plan`, `ssh_onboarding_result` | connection plans, stage outcomes, retained keys and per-hop bootstrap results |
 | `ssh machine … --json` | `ssh_machine_snapshot`, `ssh_machine_plan`, `ssh_machine_result` | canonical UUIDs, source bindings and revision-bound changes |
 
@@ -430,10 +430,21 @@ observations. Names are editable suggestions; raw banners do not become names,
 OS proofs, host keys or configuration. IPv6 range scans, mDNS and background scans
 are not implemented.
 
+`ready` means every planned probe finished; it does not mean a host was found.
+LAN reports add `probes` (attempted, open, refused, timeout, unreachable and other
+counts) and, when a completed scan found nothing and some probe was unreachable,
+the `no_reachable_endpoints` warning. On macOS this is commonly Local Network
+privacy: connections from a terminal app without Local Network access fail as
+unreachable even when `nc` in the same shell connects. Allow the terminal app under
+System Settings > Privacy & Security > Local Network and retry. A multiplexer or
+shell started by launchd rather than by an app may not be grantable, so run
+discovery from an app terminal instead.
+
 Discovery caches under `$XDG_CACHE_HOME/dev/ssh-discovery/` are fresh for five
 minutes and retain their observation time after becoming stale. `--refresh`
-bypasses a matching fresh LAN cache. Reading a cache does not refresh it or prove
-that an endpoint still identifies the same machine.
+bypasses a matching fresh LAN cache. The CLI and wizard reuse only a fresh LAN scan
+that found candidates; an empty one is rescanned. Reading a cache does not refresh
+it or prove that an endpoint still identifies the same machine.
 
 ### Authentication over the tailnet
 

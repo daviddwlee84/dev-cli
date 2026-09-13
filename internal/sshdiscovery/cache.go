@@ -233,6 +233,14 @@ func validateReport(report Report) error {
 	default:
 		return ErrInvalidData
 	}
+	if report.Probes != nil && !report.Probes.valid() || len(report.Warnings) > 1 {
+		return ErrInvalidData
+	}
+	for _, warning := range report.Warnings {
+		if warning != WarningNoReachableEndpoints {
+			return ErrInvalidData
+		}
+	}
 	seen := map[string]bool{}
 	for _, candidate := range report.Candidates {
 		if candidate.Source != report.Source || candidate.Scope != report.Scope || candidate.ID == "" || candidate.NativeID == "" ||
