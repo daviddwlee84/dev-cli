@@ -778,7 +778,8 @@ Bare `dev` (or `dev tui`) opens eight lists, switched with `tab`:
   effective merged runtime configuration.
 - **SSH** — canonical machines, exact SSH profiles, Tailscale/LAN observations and
   fleet/Herdr membership. `r` reads local/cached state; `c` starts explicit discovery,
-  `n` opens setup, and `p` probes a selected alias.
+  `n` opens setup, and `p` offers network or SSH tests for selected, machine,
+  or filtered profiles.
 
 The first view is constructed before runtime auto-detection, project-root lookup,
 cache decoding, shell-based tool checks, or the optional release refresh can

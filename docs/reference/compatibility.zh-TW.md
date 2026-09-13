@@ -203,7 +203,7 @@ identity diagnostics 仍是 content-free。
 
 Static `dev ssh list` 是 provenance/candidate scanner，不是第二套 OpenSSH evaluator。Dynamic `Match`、unsupported Include expansion、cycle 與 scan bound 會產生 `complete: false`；即使 plain `ssh` 最終可能選出 value，這些情況仍可 block mutation。`dev ssh show` 與 setup route resolution 使用 plain `ssh -G`，因此 configured resolver 與 `Match exec` behavior 可能執行。Fresh probe 會保留 `KnownHostsCommand`、`UpdateHostKeys` 與 host-key policy，不會強迫產生方便的答案。
 
-Setup 要求 explicit key 或 explicit Ed25519 generation，且只安裝 public material。它支援 bounded ProxyJump forms 與固定 POSIX/Windows OpenSSH installer；`ProxyCommand`、custom `AuthorizedKeysFile`、forced-shell policy 與無法提供 ACL 的 filesystem 需要 manual remediation。Remote installer 一旦啟動，cancellation/failure 會是 `unknown`，因為 key 可能已 append。Dev 會保留 local config/generated keys，且絕不嘗試 key revocation、private-key deletion/copying、`known_hosts` cleanup、password storage/fallback 或 automatic credential rollback。一般 setup 保留 foreign directives；source-aware onboarding 與 SSH dashboard 使用以下 reviewed workflows。
+Public-key bootstrap 要求 explicit key 或 explicit Ed25519 generation，且只安裝 public material。Config-only 與 existing-auth setup 不會安裝 key。Bootstrap 支援 bounded ProxyJump forms 與固定 POSIX/Windows OpenSSH installer；`ProxyCommand`、custom `AuthorizedKeysFile`、forced-shell policy 與無法提供 ACL 的 filesystem 需要 manual remediation。Remote installer 一旦啟動，cancellation/failure 會是 `unknown`，因為 key 可能已 append。Dev 會保留 local config/generated keys，且絕不嘗試 key revocation、private-key deletion/copying、`known_hosts` cleanup 或 automatic credential rollback。密碼儲存是另外明確選用的 credential 流程。一般 setup 保留 foreign directives；source-aware onboarding 與 SSH dashboard 使用以下 reviewed workflows。
 
 ### Direct mode 的 lifecycle 較小
 
