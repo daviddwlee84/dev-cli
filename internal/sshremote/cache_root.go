@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 )
 
@@ -20,8 +21,11 @@ func openCacheRoot(path string, create bool) (*os.Root, func() error, error) {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path || path == string(filepath.Separator) {
 		return nil, nil, ErrUnsafeCache
 	}
-	volume := filepath.VolumeName(path)
-	base := volume + string(filepath.Separator)
+	anchor, err := platformfs.Resolve(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	base := anchor.Path
 	root, rootInfo, err := safefile.OpenRoot(base)
 	if err != nil {
 		return nil, nil, err
@@ -35,7 +39,7 @@ func openCacheRoot(path string, create bool) (*os.Root, func() error, error) {
 		info fs.FileInfo
 	}
 	held := []heldDirectory{{path: base, info: rootInfo}}
-	components := strings.Split(strings.TrimPrefix(path, base), string(filepath.Separator))
+	components := strings.Split(strings.TrimPrefix(strings.TrimPrefix(path, base), string(filepath.Separator)), string(filepath.Separator))
 	currentPath := base
 	for index, component := range components {
 		if component == "" || component == "." || component == ".." {
@@ -75,6 +79,9 @@ func openCacheRoot(path string, create bool) (*os.Root, func() error, error) {
 		held = append(held, heldDirectory{path: currentPath, info: childInfo})
 	}
 	verify := func() error {
+		if err := anchor.Verify(); err != nil {
+			return err
+		}
 		for index, directory := range held {
 			if err := safefile.VerifyRoot(directory.path, directory.info); err != nil {
 				return err

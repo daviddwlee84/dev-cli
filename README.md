@@ -111,7 +111,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.35 instead when you need a reproducible install.
+# Pin @v0.2.36 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -155,7 +155,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.2.35
+  version=v0.2.36
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"
@@ -726,6 +726,9 @@ Dashboard `1–7` switches existing views; `8` opens SSH unless a custom tool ow
 sorting; tools and state filters are in Ctrl+O, keeping the footer short.
 In SSH, press `c` and choose LAN to review a scan. Uppercase `L` defaults to the
 configured lazygit tool; it is not a LAN shortcut.
+Native Termux SSH setup and discovery caches work within the app's private home.
+Android's system-owned `/data` directories and inherited security labels are
+handled without changing system permissions or SELinux policy.
 
 `dev triage` finds uncommitted work, unpushed commits, missing upstreams, diverged
 branches, ignored data and runtime/task drift across ordinary repos and Tries.

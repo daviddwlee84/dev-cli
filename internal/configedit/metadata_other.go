@@ -13,7 +13,7 @@ type Metadata struct{}
 func checkDirectory(string, fs.FileInfo) error              { return nil }
 func captureMetadata(string, fs.FileInfo) (Metadata, error) { return Metadata{}, nil }
 func (Metadata) prepare(*os.File) error {
-	return errors.New("configuration writes require a verified macOS/Linux security backend")
+	return errors.New("configuration writes require a verified macOS/Linux/Android security backend")
 }
 
 func checkAncestor(string, fs.FileInfo) error { return nil }

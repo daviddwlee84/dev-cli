@@ -718,6 +718,12 @@ or export Apple Passwords. Those are separate future migration workflows.
 
 ## SSH connection view
 
+Native Android/Termux uses a verified private app-home anchor for SSH setup,
+registry and caches. Keep state under Termux's private home. Do not repair
+system-owned `/data` paths or weaken SELinux policy: inherited labels/encryption
+metadata must match, and new files use atomic no-replace rename. Shared storage
+and arbitrary app-data paths do not receive this exception.
+
 The eighth tab keeps one machine row, with Space expanding its SSH profiles.
 Configured connections come first, ordered by the most recent local `dev ssh
 connect` or dashboard connection attempt; unrecorded profiles follow by alias.

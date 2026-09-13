@@ -4,6 +4,7 @@ package configedit
 
 import (
 	"errors"
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"golang.org/x/sys/unix"
 	"io/fs"
 	"os"
@@ -19,7 +20,7 @@ func checkFlags(file *os.File, _ fs.FileInfo) error {
 	}
 	// Extents are an ordinary filesystem implementation flag. User-controlled
 	// flags (including immutable, append-only and nodump) need native handling.
-	if flags & ^0x00080000 != 0 {
+	if uint32(flags) & ^(0x00080000|platformfs.InheritedFileFlags()) != 0 {
 		return errors.New("configuration inode flags require manual preservation")
 	}
 	return nil

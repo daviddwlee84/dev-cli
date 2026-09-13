@@ -665,6 +665,12 @@ Passwords；它們是獨立的未來 migration workflows。
 
 ## SSH connection view
 
+在原生 Android／Termux 中，SSH 設定與 dev state／cache 應放在 app 的私有家目錄。
+dev 會驗證 Termux app 的目錄邊界，不要求讀取 `/` 或擁有 Android 系統管理的
+`/data` 目錄。SELinux 標籤與檔案加密 metadata 必須維持一致；因 Android 禁止
+hard link，新檔案改用不覆寫既有目標的原子 rename。無須 root 或修改 Android
+權限；共享儲存空間與任意 app-data 路徑不適用這個例外。
+
 第八個頁籤以每台機器為父列，Space 展開各 SSH profile。已配置連線優先，
 組內依最近透過本機 `dev ssh connect` 或 dashboard 發起連線的時間排序；
 沒有紀錄者依 alias 字母排列。CONNECTION、ENDPOINT、SOURCES、CHECK、USED

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -95,6 +96,7 @@ func (s *Service) scanPermissionKeys(ctx context.Context, afterRead func(string)
 	visited := 0
 	stopped := false
 	var observed []permissionSnapshot
+	directoryEntries := map[string][]string{}
 	var walk func(*os.Root, string, int) error
 	walk = func(directory *os.Root, path string, depth int) error {
 		if err := ctx.Err(); err != nil {
@@ -124,6 +126,9 @@ func (s *Service) scanPermissionKeys(ctx context.Context, afterRead func(string)
 			afterRead(path)
 		}
 		sort.Slice(entries, func(i, j int) bool { return entries[i].Name() < entries[j].Name() })
+		for _, entry := range entries {
+			directoryEntries[path] = append(directoryEntries[path], entry.Name())
+		}
 		for _, entry := range entries {
 			if err := ctx.Err(); err != nil {
 				return err
@@ -223,6 +228,16 @@ func (s *Service) scanPermissionKeys(ctx context.Context, afterRead func(string)
 			}
 			current, file, err := s.observePermissionTarget(snapshot.target)
 			if file != nil {
+				// Android/F2FS directory timestamps can share a coarse tick.
+				// Recheck names as well so a newly added key cannot be missed
+				// while the directory's size and timestamps still match.
+				if err == nil && report.Complete && snapshot.target.directory {
+					names, readErr := file.Readdirnames(maxCatalogFiles*8 + 1)
+					sort.Strings(names)
+					if readErr != nil && !errors.Is(readErr, io.EOF) || !slices.Equal(names, directoryEntries[snapshot.target.path]) {
+						err = ErrSourceChanged
+					}
+				}
 				_ = file.Close()
 			}
 			if err != nil || !samePermissionSnapshot(snapshot, current) {

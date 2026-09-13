@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"golang.org/x/sys/unix"
 )
 
@@ -243,7 +244,7 @@ func TestPlanInitBlocksUnsafeRootAndNamespace(t *testing.T) {
 			}
 		}},
 		{name: "root hardlink", setup: func(t *testing.T, paths Paths) {
-			if err := os.Link(paths.RootConfig, filepath.Join(paths.Home, "root-link")); err != nil {
+			if err := testutil.Link(t, paths.RootConfig, filepath.Join(paths.Home, "root-link")); err != nil {
 				t.Fatal(err)
 			}
 		}},

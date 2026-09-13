@@ -3,6 +3,7 @@ package machineregistry
 import (
 	"errors"
 	"fmt"
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"io"
 	"io/fs"
 	"os"
@@ -82,9 +83,14 @@ func inspectPrivateFile(path string, allowMissing bool) (fs.FileInfo, error) {
 	return info, nil
 }
 
-func inspectParents(path string, create bool) (sourceState, error) {
+func inspectParents(path string, create bool) (_ sourceState, resultErr error) {
 	state := sourceState{}
-	root := filepath.VolumeName(path) + string(filepath.Separator)
+	anchor, err := platformfs.Resolve(path)
+	if err != nil {
+		return state, err
+	}
+	defer func() { resultErr = errors.Join(resultErr, anchor.Verify()) }()
+	root := anchor.Path
 	current := root
 	rootInfo, err := os.Lstat(root)
 	if err != nil {

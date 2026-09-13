@@ -657,3 +657,10 @@ observations, at most once per five minutes with a five-second query limit.
 Failures keep dated observations. Disable it for cache-only viewing. `r` reloads
 local state; LAN scanning and SSH tests always require an explicit action.
 `Ctrl+O` also opens problems and suggested actions, even on an empty list.
+
+## Native Android / Termux
+
+Keep SSH configuration and dev state/cache under Termux's private home. Native
+Android builds verify the app boundary, preserve inherited SELinux labels and
+encryption metadata, and publish new files without overwriting existing paths.
+Android's system-owned /data directories do not need permission repair.

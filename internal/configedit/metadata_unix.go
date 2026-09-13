@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 	"golang.org/x/sys/unix"
 )
@@ -92,7 +93,7 @@ func (m Metadata) validate() error {
 	total := 0
 	for name, value := range m.Attributes {
 		total += len(name) + len(value)
-		if strings.HasPrefix(name, "security.") || strings.HasPrefix(name, "system.") || name == "com.apple.system.Security" {
+		if !platformfs.KernelLabel(name, value) && (strings.HasPrefix(name, "security.") || strings.HasPrefix(name, "system.") || name == "com.apple.system.Security") {
 			return errors.New("configuration security attributes require manual preservation")
 		}
 	}
@@ -176,6 +177,9 @@ func (m Metadata) prepare(file *os.File) error {
 	for name, value := range m.Attributes {
 		if prior, ok := current[name]; ok && bytes.Equal(prior, value) {
 			continue
+		}
+		if platformfs.KernelLabel(name, value) {
+			return errors.New("inherited Android label differs from source")
 		}
 		if err = unix.Fsetxattr(int(file.Fd()), name, value, 0); err != nil {
 			return fmt.Errorf("restore configuration attribute %s: %w", name, err)

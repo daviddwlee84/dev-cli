@@ -9,6 +9,7 @@ import (
 	"errors"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/lockx"
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 	"github.com/pelletier/go-toml/v2"
 	"io/fs"
@@ -273,10 +274,15 @@ func (s *Store) SavePreference(ctx context.Context, c Context, policy Policy) (R
 	_, e = s.Apply(ctx, p)
 	return r, e
 }
-func safeCredentialParents(path string, create bool) (string, error) {
+func safeCredentialParents(path string, create bool) (_ string, resultErr error) {
 	if !filepath.IsAbs(path) {
 		return "", ErrUnsafe
 	}
+	platformAnchor, err := platformfs.Resolve(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() { resultErr = errors.Join(resultErr, platformAnchor.Verify()) }()
 	var missing []string
 	current := path
 	for {
@@ -285,7 +291,7 @@ func safeCredentialParents(path string, create bool) (string, error) {
 			if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() || credentialAncestor(current, info) != nil {
 				return "", ErrUnsafe
 			}
-			if current != filepath.Dir(current) {
+			if current != platformAnchor.Path {
 				if _, e = safeCredentialParents(filepath.Dir(current), false); e != nil {
 					return "", e
 				}

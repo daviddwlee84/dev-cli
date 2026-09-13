@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 )
 
 var (
@@ -29,8 +30,8 @@ func OwnerPrivateMode(executable bool) fs.FileMode {
 }
 
 // CreateNoClobber stages data in an unguessable owner-private file, syncs it,
-// applies finalMode, and atomically hard-links it to the absent destination.
-// The hard-link publication is same-directory and cannot replace an existing
+// applies finalMode, and atomically publishes it to the absent destination.
+// Publication uses a hard link or Android RENAME_NOREPLACE, and cannot replace an existing
 // path. This generic helper exists so callers such as repotemplate can preserve
 // intentional public modes; secret-bearing callers should use
 // CreatePrivateNoClobber.
@@ -68,7 +69,8 @@ func createNoClobberWithHooks(ctx context.Context, root *os.Root, name string, d
 			_ = root.Remove(stagedName)
 		}
 	}()
-	if err := root.Link(stagedName, name); err != nil {
+	moved, err := platformfs.PublishNoReplace(root, stagedName, name)
+	if err != nil {
 		return nil, fmt.Errorf("publish %q without replacement: %w", name, err)
 	}
 	rollbackPublication := func(cause error) error {
@@ -94,8 +96,10 @@ func createNoClobberWithHooks(ctx context.Context, root *os.Root, name string, d
 	if unsafeLink(published) || !published.Mode().IsRegular() || !SameFileState(staged, published) {
 		return nil, rollbackPublication(fmt.Errorf("published file does not match staging file: %w", ErrChanged))
 	}
-	if err := removeStage(root, stagedName); err != nil {
-		return nil, rollbackPublication(fmt.Errorf("remove staging link: %w", err))
+	if !moved {
+		if err := removeStage(root, stagedName); err != nil {
+			return nil, rollbackPublication(fmt.Errorf("remove staging link: %w", err))
+		}
 	}
 	stagedName = ""
 	published, err = root.Lstat(name)

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"golang.org/x/sys/unix"
 )
 
@@ -131,6 +132,9 @@ func TestPermissionSelectedPublicPathInspectsPrivateCompanionAndParents(t *testi
 	if err := os.WriteFile(identity+".pub", []byte("invalid public bytes are not parsed either"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(identity+".pub", 0o644); err != nil {
+		t.Fatal(err)
+	}
 	unselected := filepath.Join(paths.SSHDir, "unselected")
 	if err := os.WriteFile(unselected, privateBytes, 0o644); err != nil {
 		t.Fatal(err)
@@ -221,7 +225,7 @@ func TestPermissionRejectsUnsafeTypesLinksAndPermissionExpansion(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "key_hardlink":
-				if err := os.Link(key, key+"-link"); err != nil {
+				if err := testutil.Link(t, key, key+"-link"); err != nil {
 					t.Fatal(err)
 				}
 			case "key_fifo":
@@ -361,6 +365,9 @@ func TestPermissionReplacementAfterChmodIsUnknownAndNeverRestored(t *testing.T) 
 			t.Fatal(err)
 		}
 		if err := os.Mkdir(paths.SSHDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(paths.SSHDir, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}

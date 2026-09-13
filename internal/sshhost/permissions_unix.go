@@ -13,6 +13,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"golang.org/x/sys/unix"
 )
 
@@ -100,9 +101,6 @@ func permissionAttributes(file *os.File) (map[string]string, error) {
 		if name == "" {
 			continue
 		}
-		if strings.HasPrefix(name, "security.") || strings.HasPrefix(name, "system.") || name == "com.apple.system.Security" {
-			return nil, fmt.Errorf("security attributes or ACLs require manual remediation: %w", ErrManualRemediation)
-		}
 		size, err := unix.Fgetxattr(fd, name, nil)
 		if err != nil {
 			return nil, err
@@ -117,6 +115,9 @@ func permissionAttributes(file *os.File) (map[string]string, error) {
 			if err != nil {
 				return nil, err
 			}
+		}
+		if !platformfs.KernelLabel(name, data[:size]) && (strings.HasPrefix(name, "security.") || strings.HasPrefix(name, "system.") || name == "com.apple.system.Security") {
+			return nil, fmt.Errorf("security attributes or ACLs require manual remediation: %w", ErrManualRemediation)
 		}
 		digest := sha256.Sum256(data[:size])
 		attributes[name] = hex.EncodeToString(digest[:])

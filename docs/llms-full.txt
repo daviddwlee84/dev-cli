@@ -2827,6 +2827,14 @@ or export Apple Passwords. Those are separate future migration workflows.
 
 ## SSH connection view
 
+On native Android/Termux, keep SSH configuration and dev state/cache in the
+app's private home. Dev verifies the Termux app boundary instead of requiring
+read access to `/` or ownership of Android's system-managed `/data` directories.
+Inherited SELinux labels and file encryption metadata must remain unchanged;
+new files use an atomic no-replace rename because Android forbids hard links.
+No root access or Android permission changes are needed. Shared storage and
+arbitrary app-data paths do not receive this exception.
+
 The eighth tab keeps one machine row, with Space expanding its SSH profiles.
 Configured connections come first, ordered by the most recent local `dev ssh
 connect` or dashboard connection attempt; unrecorded profiles follow by alias.
@@ -10733,6 +10741,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - A release publishes Windows `.zip` archives alongside the Unix `.tar.gz` set, refreshes an in-repo Scoop manifest attached to the release (and pushed to the bucket when a token is configured), and publishes the matching source formula to `daviddwlee84/homebrew-tap`. Homebrew publication is a required release step and fails visibly when its repository token is missing or rejected. A manual workflow can retry or backfill the formula for an existing stable release without creating or moving a tag.
 - `dev upgrade` checks the exact release's asset inventory. A standalone install downloads its platform archive and verifies `SHA256SUMS`; if no asset exists for that platform, it offers a native source build of the exact tag. New releases include a compact `dev-cli_<tag>_source.tar.gz` verified against `SHA256SUMS`, excluding conversation history; older releases use Go's configured module verification and can require a much larger download. This source fallback and compact archive are available starting with v0.2.35. Network errors, missing checksum entries, and checksum mismatches stop the upgrade. Source builds use the installed Go toolchain, two workers and a 20-minute build limit; a successful candidate must report the expected version before replacement. `--check` never compiles and missing tools are reported before confirmation. Homebrew, Scoop and `go install` ownership still delegates to that manager. Replacement uses atomic rename (Windows moves the live `.exe` aside and sweeps it on the next run); a changed target aborts replacement.
 - Android/Termux currently has no published binary. Use `pkg install golang clang git` for native build dependencies. Source upgrades set `GOOS=android`, enable CGO with Termux Clang and disable automatic Go toolchain downloads. Linux archives can fail on Android syscalls and are never substituted. Go must meet the selected release's `go.mod` requirement. An older binary without source fallback needs a one-time native build of a pinned, checksummed source archive into a staging directory, version verification and replacement of the standalone executable; see the repository README's Termux recovery example.
+- Native Termux SSH setup and discovery use the verified private home under `/data/data/com.termux/files/home` or `/data/user/<Android-user>/com.termux/files/home`. Exact system/app ownership and directory identity are revalidated; descendant symlinks and unsafe user paths remain blocked. Android SELinux app-data labels are compared without relabeling, encrypted files retain their inherited metadata, and new files use `RENAME_NOREPLACE` because app hard links are denied. Shared storage and other app-data layouts remain outside this support. Native tests cover first configuration, updates, key generation, cache persistence and metadata mismatch rejection; desktop tests retain hard-link attack coverage. See [Android's app sandbox](https://source.android.com/docs/security/app-sandbox).
 - Since v0.2.23, `dev upgrade` refreshes an existing default bundled skill through the updated executable. `dev doctor` and `skill install --check` expose drift; `skill uninstall` removes only unchanged manifest-owned files and matching agent links. Legacy and direct package-manager upgrades need an explicit `skill install` once; custom directories remain explicit. See [skills management](https://daviddwlee84.github.io/dev-cli/guides/skills-management/#bundled-dev-cli-skill-lifecycle).
 - An interactive `dev` command prints one dim "newer release available" line at most once a day, read from the day-old release cache; it never blocks on the network. For the TUI, a stale-cache background refresh starts only after the initial view returns. `[update] check = false` or `DEV_NO_UPDATE_CHECK` disables it.
 
@@ -11311,6 +11320,7 @@ tested_with: optional
 | Topic or claim | Owning page | Primary authority | Status checked |
 |---|---|---|---|
 | SSH profile tree, native discovery/setup, durable usage/tests and guided TUI recovery | [SSH dashboard](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#ssh-connection-view), [problem guidance](https://daviddwlee84.github.io/dev-cli/guides/dashboard-actions/) | `internal/tui`, `internal/sshactivity`, `internal/tuiissue`, native discovery/onboarding tests and isolated PTY smoke | v0.2.34 |
+| Native Android/Termux SSH filesystem support | [SSH dashboard](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#ssh-connection-view), [compatibility](https://daviddwlee84.github.io/dev-cli/reference/compatibility/) | `internal/platformfs`, native Android domain/TUI tests and actual config-only dashboard setup | v0.2.36; verified on ARM64 Android on 2026-09-13 |
 | parent-preserving task completion, foreground program consent and coordinator v2 | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/#task-worktree-scope) | runtime process/occupancy, taskflow completion/retire and CLI scope regression tests | Unreleased |
 | HOT/WARM/COLD/DONE, checkout modes, and legal transitions | [Mental model](https://daviddwlee84.github.io/dev-cli/concepts/mental-model/) | `internal/task/task.go`, `internal/taskflow/transitions.go`, lifecycle tests | repository snapshot 2026-09-01 |
 | repository flow topology, local/manual-remote observations, revision-bound Plan/Apply, and partial ledgers | [Repository lifecycle flow](https://daviddwlee84.github.io/dev-cli/guides/repository-flow/) | `internal/cli/flow.go`, `internal/flowtui`, `internal/taskflow`, focused flow tests | preview implemented 2026-09-01 |
@@ -14318,6 +14328,12 @@ password 不屬於 controller save workflow。
 Passwords；它們是獨立的未來 migration workflows。
 
 ## SSH connection view
+
+在原生 Android／Termux 中，SSH 設定與 dev state／cache 應放在 app 的私有家目錄。
+dev 會驗證 Termux app 的目錄邊界，不要求讀取 `/` 或擁有 Android 系統管理的
+`/data` 目錄。SELinux 標籤與檔案加密 metadata 必須維持一致；因 Android 禁止
+hard link，新檔案改用不覆寫既有目標的原子 rename。無須 root 或修改 Android
+權限；共享儲存空間與任意 app-data 路徑不適用這個例外。
 
 第八個頁籤以每台機器為父列，Space 展開各 SSH profile。已配置連線優先，
 組內依最近透過本機 `dev ssh connect` 或 dashboard 發起連線的時間排序；
@@ -21766,6 +21782,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - Release 會在 Unix `.tar.gz` 之外一併發布 Windows `.zip`、更新附在 release 上的 in-repo Scoop manifest（設定 token 時也會 push 到 bucket），並把對應的 source formula 發布到 `daviddwlee84/homebrew-tap`。Homebrew 發布是必要的 release step；repository token 缺失或被拒絕時會明確讓 job 失敗。Manual workflow 可為既有 stable release retry 或 backfill formula，不會建立或移動 tag。
 - `dev upgrade` 會先查指定 release 的實際 asset 清單。獨立安裝有對應平台 archive 時，下載並以 `SHA256SUMS` 驗證；缺少該平台 asset 時，則在確認後原生編譯同一個 tag。新版 release 提供以 `SHA256SUMS` 驗證的精簡 `dev-cli_<tag>_source.tar.gz`，排除開發對話紀錄；舊版則使用 Go 設定的 module verification，下載量可能大很多。此 source fallback 與精簡 archive 自 v0.2.35 起提供。網路錯誤、缺少 checksum entry 或 checksum 不符都會停止升級。原生編譯使用已安裝的 Go、兩個 build workers 與 20 分鐘編譯上限；編譯成功且版本正確後才替換。`--check` 不會編譯，缺少工具會在確認前提示。Homebrew、Scoop 與 `go install` 擁有的安裝仍委由對應管理器更新。替換採 atomic rename（Windows 先移開 live `.exe`，下次執行清除）；準備期間目標檔案被更動時會拒絕替換。
 - Android／Termux 目前沒有發布 binary。原生編譯依賴透過 `pkg install golang clang git` 安裝。Source upgrade 設定 `GOOS=android`、使用 Termux Clang 啟用 CGO，並停用自動 Go toolchain 下載。Linux archive 可能因 Android syscall 限制而失敗，因此不會作為替代。Go 需符合所選 release 的 `go.mod` 要求。尚無 source fallback 的舊版 binary，需先以原生工具把指定 release、經 checksum 驗證的 source archive 編譯到暫存目錄，驗證版本後替換獨立執行檔；完整 Termux 修復範例見 repository README。
+- 原生 Termux 的 SSH setup 與 discovery 使用經驗證的 `/data/data/com.termux/files/home` 或 `/data/user/<Android-user>/com.termux/files/home` 私有家目錄，重新確認系統／app owner 與目錄身分；下層 symlink 與不安全使用者路徑仍會拒絕。Android SELinux app-data 標籤只比對、不重新設定；加密檔案保留繼承的 metadata。因 app 禁止 hard link，新檔案採 `RENAME_NOREPLACE`。共享儲存空間與其他 app-data 配置不在支援範圍。原生測試涵蓋首次設定、更新、金鑰生成、cache 寫入與 metadata 不符拒絕；desktop 測試保留 hard-link 攻擊案例。參考 [Android app sandbox](https://source.android.com/docs/security/app-sandbox)。
 - 自 v0.2.23 起，`dev upgrade` 會透過新版執行檔刷新已安裝的預設 bundled skill。`dev doctor` 與 `skill install --check` 會顯示差異；`skill uninstall` 只移除未修改的 manifest-owned 檔案與相符連結。舊版發起或直接透過套件管理器升級時，需明確執行一次 `skill install`；自訂目錄仍需明確指定。詳見 [skills management](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/#bundled-dev-cli-skill)。
 - Interactive `dev` command 每天最多印一行 dim 的「有新版」提示，來源是一天內的 release cache，永不因網路而 block。TUI 的 stale-cache background refresh 只會在 initial view return 後啟動。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK` 可停用。
 
@@ -22283,6 +22300,7 @@ tested_with: optional
 | Topic 或 claim | Owning page | Primary authority | Checked status |
 |---|---|---|---|
 | SSH profile tree、原生 discovery/setup、durable 使用／測試紀錄與 TUI 問題引導 | [SSH dashboard](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/#ssh-connection-view)、[問題引導](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/) | `internal/tui`、`internal/sshactivity`、`internal/tuiissue`、native discovery/onboarding tests 與隔離 PTY smoke | v0.2.34 |
+| 原生 Android／Termux SSH 檔案系統支援 | [SSH dashboard](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/#ssh-connection-view)、[相容性](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/) | `internal/platformfs`、原生 Android domain／TUI tests 與 dashboard config-only 實測 | v0.2.36；2026-09-13 於 ARM64 Android 驗證 |
 | 保留 parent 的 task completion、前景程序授權與 coordinator v2 | [Agent-safe retirement](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/#task-worktree-scope) | runtime process/occupancy、taskflow completion/retire 與 CLI scope regression tests | Unreleased |
 | HOT/WARM/COLD/DONE graph、checkout modes，以及 DONE/MERGED 與 Retire 的分界 | [心智模型](https://daviddwlee84.github.io/dev-cli/zh-TW/concepts/mental-model/)、[變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/task/task.go`、`internal/taskflow/transitions.go`、focused lifecycle tests | repository snapshot 2026-09-01 |
 | `done --pr` 保持 task active；`done --merged` 需 named ancestry evidence | [變更流 workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/) | `internal/taskflow/complete.go`、`internal/cli/done_flow.go` | implemented |

@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"io"
 	"io/fs"
 	"os"
@@ -476,12 +477,15 @@ func commitNoReplace(staged *stagedFile, destination string, expected fileSnapsh
 	if err := verifyHeldDirectory(staged.dir, staged.held, true); err != nil {
 		return fmt.Errorf("destination parent changed before creation: %w", ErrSourceChanged)
 	}
-	if err := staged.root.Link(staged.name, name); err != nil {
+	moved, err := platformfs.PublishNoReplace(staged.root, staged.name, name)
+	if err != nil {
 		return err
 	}
-	if err := staged.root.Remove(staged.name); err != nil {
-		cleanupErr := staged.root.Remove(name)
-		return errors.Join(err, cleanupErr)
+	if !moved {
+		if err := staged.root.Remove(staged.name); err != nil {
+			cleanupErr := staged.root.Remove(name)
+			return errors.Join(err, cleanupErr)
+		}
 	}
 	if err := verifyHeldDirectory(staged.dir, staged.held, true); err != nil {
 		return fmt.Errorf("destination parent changed during creation: %w", ErrSourceChanged)

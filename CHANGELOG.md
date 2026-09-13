@@ -6,8 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.36] - 2026-09-13
+
 ### Fixed
 
+- Native Termux SSH setup, registry and discovery caches now use a verified
+  private app-home anchor, preserve inherited SELinux labels and encryption
+  metadata, and publish new files with Android's atomic no-replace rename.
+  System directory permissions and Android security policy remain unchanged.
 - Dashboard tool availability errors name the configured tool, such as lazygit,
   instead of incorrectly reporting its shell launcher as missing. Failed lookup
   is reported as unavailable, including when an interactive probe fails.
@@ -1126,7 +1132,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.35...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.36...HEAD
+[0.2.36]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.35...v0.2.36
 [0.2.35]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.34...v0.2.35
 [0.2.34]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.33...v0.2.34
 [0.2.33]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.32...v0.2.33

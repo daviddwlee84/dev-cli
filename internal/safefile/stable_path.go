@@ -3,6 +3,7 @@ package safefile
 import (
 	"context"
 	"errors"
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -27,8 +28,12 @@ func ReadStablePath(ctx context.Context, path string, limit int64) ([]byte, erro
 			}
 		}
 	}
-	base := filepath.VolumeName(path) + string(filepath.Separator)
-	parts := strings.Split(strings.TrimPrefix(path, base), string(filepath.Separator))
+	anchor, err := platformfs.Resolve(path)
+	if err != nil {
+		return nil, err
+	}
+	base := anchor.Path
+	parts := strings.Split(strings.TrimPrefix(strings.TrimPrefix(path, base), string(filepath.Separator)), string(filepath.Separator))
 	if len(parts) == 0 || len(parts) > 128 {
 		return nil, ErrUnsafeType
 	}
@@ -65,5 +70,5 @@ func ReadStablePath(ctx context.Context, path string, limit int64) ([]byte, erro
 	if err = VerifyRoot(base, info); err != nil {
 		return nil, err
 	}
-	return data, nil
+	return data, anchor.Verify()
 }
