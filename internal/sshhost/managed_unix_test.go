@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"golang.org/x/sys/unix"
 )
 
@@ -500,7 +501,7 @@ func TestManagedNamespaceRejectsCasefoldDriftLinksAndSpecialFiles(t *testing.T) 
 		{name: "hardlink", setup: func(t *testing.T, paths Paths) {
 			target := filepath.Join(paths.ManagedDir, "lab.conf")
 			writeFixture(t, target, string(canonical))
-			if err := os.Link(target, filepath.Join(paths.Home, "other-link")); err != nil {
+			if err := testutil.Link(t, target, filepath.Join(paths.Home, "other-link")); err != nil {
 				t.Fatal(err)
 			}
 		}},

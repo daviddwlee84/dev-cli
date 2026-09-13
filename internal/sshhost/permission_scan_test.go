@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"golang.org/x/sys/unix"
 )
 
@@ -150,7 +151,7 @@ func TestPermissionScanUnsafeScopeNeverLooksComplete(t *testing.T) {
 				}
 			case "public_hardlink":
 				permissionScanFile(t, filepath.Join(paths.SSHDir, "key.pub"), 0o644)
-				if err := os.Link(filepath.Join(paths.SSHDir, "key.pub"), filepath.Join(paths.SSHDir, "linked")); err != nil {
+				if err := testutil.Link(t, filepath.Join(paths.SSHDir, "key.pub"), filepath.Join(paths.SSHDir, "linked")); err != nil {
 					t.Fatal(err)
 				}
 			case "standard_fifo":

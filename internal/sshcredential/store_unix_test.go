@@ -5,6 +5,7 @@ package sshcredential
 import (
 	"context"
 	"errors"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -29,7 +30,7 @@ func TestPolicyRejectsLinksBroadModesAndUnexpectedSecretFields(t *testing.T) {
 					t.Fatal(e)
 				}
 			case "hardlink":
-				if e := os.Link(s.Path, s.Path+".link"); e != nil {
+				if e := testutil.Link(t, s.Path, s.Path+".link"); e != nil {
 					t.Fatal(e)
 				}
 			case "broad":

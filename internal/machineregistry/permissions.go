@@ -3,6 +3,7 @@ package machineregistry
 import (
 	"context"
 	"fmt"
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"io/fs"
 	"path/filepath"
 	"slices"
@@ -71,6 +72,7 @@ type permissionEntry struct {
 	after fs.FileMode
 }
 type permissionState struct {
+	anchor      platformfs.Anchor
 	path        string
 	entries     []permissionEntry
 	changes     []PermissionChange

@@ -605,7 +605,9 @@ func rewritePrivatePreservingMtime(t *testing.T, path string) {
 	}
 	// Keep the existing inode and size, and explicitly restore its mtime. The
 	// change timestamp remains the evidence that reviewed private material moved.
-	time.Sleep(time.Millisecond)
+	// F2FS on Android can expose a coarser change-time tick than desktop
+	// filesystems. Make this fixture's metadata change observable.
+	time.Sleep(20 * time.Millisecond)
 	file, err := os.OpenFile(path, os.O_WRONLY, 0)
 	if err != nil {
 		t.Fatal(err)

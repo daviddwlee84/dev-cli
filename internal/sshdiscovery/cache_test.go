@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -130,7 +131,7 @@ func TestCacheRejectsLinksAndUnprotectedPaths(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "hardlink":
-				if err := os.Link(file, filepath.Join(root, "extra-link")); err != nil {
+				if err := testutil.Link(t, file, filepath.Join(root, "extra-link")); err != nil {
 					t.Fatal(err)
 				}
 			case "public directory":

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/lockx"
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
 )
@@ -276,8 +277,8 @@ func ApplyChecked(ctx context.Context, p Plan, recovery string, check func(conte
 		result.Status = "noop"
 		return result, nil
 	}
-	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" && !(p.portable && runtime.GOOS == "windows") {
-		return result, errors.New("configuration writes require a verified macOS/Linux security backend")
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" && runtime.GOOS != "android" && !(p.portable && runtime.GOOS == "windows") {
+		return result, errors.New("configuration writes require a verified macOS/Linux/Android security backend")
 	}
 	if err := p.Check(ctx); err != nil {
 		return result, err
@@ -519,11 +520,15 @@ func RestorePlan(ctx context.Context, recovery, id string) (Plan, error) {
 	return p, nil
 }
 
-func safeParents(path string, create bool) error {
+func safeParents(path string, create bool) (resultErr error) {
 	// Root anchors may have platform aliases (/var on macOS). Validate below the
 	// resolved filesystem root, rejecting every user-controlled symlink component.
-	volume := filepath.VolumeName(path)
-	rootPath := volume + string(filepath.Separator)
+	anchor, err := platformfs.Resolve(path)
+	if err != nil {
+		return err
+	}
+	defer func() { resultErr = errors.Join(resultErr, anchor.Verify()) }()
+	rootPath := anchor.Path
 	parts := strings.Split(strings.TrimPrefix(path, rootPath), string(filepath.Separator))
 	cur := rootPath
 	for _, part := range parts {

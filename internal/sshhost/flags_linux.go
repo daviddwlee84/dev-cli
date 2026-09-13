@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"golang.org/x/sys/unix"
 )
 
@@ -29,7 +30,7 @@ func platformFlagsRoundTrip(flags uint32) error {
 		return fmt.Errorf("immutable or append-only Linux inode flags 0x%x prevent safe replacement", blocked)
 	}
 	const proven = linuxFlagNoDump | linuxFlagExtents
-	if unsupported := flags &^ proven; unsupported != 0 {
+	if unsupported := flags &^ (proven | platformfs.InheritedFileFlags()); unsupported != 0 {
 		return fmt.Errorf("Linux inode flags 0x%x require manual preservation", unsupported)
 	}
 	return nil
@@ -45,6 +46,9 @@ func platformSetFileFlags(file *os.File, flags uint32) error {
 	}
 	if current == flags {
 		return nil
+	}
+	if current&platformfs.InheritedFileFlags() != flags&platformfs.InheritedFileFlags() {
+		return fmt.Errorf("inherited Android encryption flag differs from source")
 	}
 	if err := unix.IoctlSetPointerInt(int(file.Fd()), unix.FS_IOC_SETFLAGS, int(flags)); err != nil {
 		return fmt.Errorf("restore Linux inode flags 0x%x: %w", flags, err)

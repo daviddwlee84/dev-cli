@@ -4353,12 +4353,16 @@ func (m Model) launchTool(key string) tea.Cmd {
 			continue
 		}
 		if t.Probe != nil && t.Availability != ToolAvailable {
+			name := t.Name
+			if name == "" {
+				name = t.Command[0]
+			}
 			detail := "availability is still being checked"
 			if t.Availability == ToolUnavailable {
-				detail = "is not installed"
+				detail = "is unavailable (command lookup failed)"
 			}
 			return func() tea.Msg {
-				return actionMsg{err: fmt.Errorf("%s %s", t.Command[0], detail)}
+				return actionMsg{err: fmt.Errorf("%s %s", name, detail)}
 			}
 		}
 		dir := m.currentDir()

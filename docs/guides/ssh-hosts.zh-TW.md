@@ -665,6 +665,12 @@ Passwords；它們是獨立的未來 migration workflows。
 
 ## SSH connection view
 
+在原生 Android／Termux 中，SSH 設定與 dev state／cache 應放在 app 的私有家目錄。
+dev 會驗證 Termux app 的目錄邊界，不要求讀取 `/` 或擁有 Android 系統管理的
+`/data` 目錄。SELinux 標籤與檔案加密 metadata 必須維持一致；因 Android 禁止
+hard link，新檔案改用不覆寫既有目標的原子 rename。無須 root 或修改 Android
+權限；共享儲存空間與任意 app-data 路徑不適用這個例外。
+
 第八個頁籤以每台機器為父列，Space 展開各 SSH profile。已配置連線優先，
 組內依最近透過本機 `dev ssh connect` 或 dashboard 發起連線的時間排序；
 沒有紀錄者依 alias 字母排列。CONNECTION、ENDPOINT、SOURCES、CHECK、USED
@@ -672,6 +678,8 @@ Passwords；它們是獨立的未來 migration workflows。
 排序、篩選與 discovery 重新分組時保留選取的 profile。
 
 `c` 全程留在 dashboard：選 Tailscale，或 LAN 介面、明確 IPv4 範圍及 ports。
+大寫 `L` 預設啟動配置中的 lazygit 工具，並非 LAN 快捷鍵。
+工具不可用時，錯誤訊息顯示該工具名稱，而非用來啟動它的 shell。
 LAN 預設 port 22，維持最多 256 個位址、16 ports、30 秒的限制；畫面顯示
 已完成端點與發現數。取消保留已取得的觀測。結束後清單切到「本次發現」，
 避免舊篩選藏住結果；回到全部連線時恢復先前篩選。Cache 寫入失敗仍保留

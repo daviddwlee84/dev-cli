@@ -3,11 +3,14 @@
 package sshhost
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
 	"strings"
 
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"golang.org/x/sys/unix"
 )
 
@@ -55,6 +58,16 @@ func platformWriteXattrs(file *os.File, attributes map[string][]byte) error {
 	}
 	sort.Strings(names)
 	for _, name := range names {
+		if platformfs.KernelLabel(name, attributes[name]) {
+			// SELinux assigns the staged file's label. Never relabel a file;
+			// require the inherited bytes to match the observed source.
+			value := make([]byte, len(attributes[name])+1)
+			n, err := unix.Fgetxattr(fd, name, value)
+			if err != nil || !bytes.Equal(value[:max(0, n)], attributes[name]) {
+				return fmt.Errorf("inherited Android label differs from source: %w", errors.Join(ErrUnsafePath, err))
+			}
+			continue
+		}
 		if err := unix.Fsetxattr(fd, name, attributes[name], 0); err != nil {
 			return fmt.Errorf("restore extended attribute %q: %w", name, err)
 		}

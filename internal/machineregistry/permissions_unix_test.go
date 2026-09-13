@@ -5,6 +5,7 @@ package machineregistry
 import (
 	"context"
 	"errors"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -87,7 +88,7 @@ func TestPermissionPlanDirectoryActivityAndNewFileHardlink(t *testing.T) {
 				t.Fatal(plan, err)
 			}
 			if hardlink {
-				err = os.Link(store.Path, store.Path+".second")
+				err = testutil.Link(t, store.Path, store.Path+".second")
 			} else {
 				// Other Go test packages also create sibling directories under
 				// shared temporary ancestors while a permission plan is pending.
@@ -123,7 +124,7 @@ func TestPermissionPlanBlocksSymlinkAndHardlink(t *testing.T) {
 					t.Fatal(err)
 				}
 			} else {
-				if err := os.Link(store.Path, store.Path+".second"); err != nil {
+				if err := testutil.Link(t, store.Path, store.Path+".second"); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -206,7 +207,7 @@ func TestPermissionPlanCannotClearPrivateBlock(t *testing.T) {
 	if err := os.Chmod(filepath.Dir(store.Path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Link(store.Path, store.Path+".second"); err != nil {
+	if err := testutil.Link(t, store.Path, store.Path+".second"); err != nil {
 		t.Fatal(err)
 	}
 	plan, err := store.PlanPermissions(t.Context())

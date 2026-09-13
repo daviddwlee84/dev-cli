@@ -106,6 +106,9 @@ func TestCacheCorruptionAndUnsafePathsDoNotBecomeEmptySuccess(t *testing.T) {
 	if err := os.Mkdir(unsafe, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Chmod(unsafe, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := SaveCache(context.Background(), unsafe, host, inventory); !errors.Is(err, ErrUnsafeCache) {
 		t.Fatalf("public directory accepted: %v", err)
 	}

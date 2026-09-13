@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"syscall"
 
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"golang.org/x/sys/unix"
 )
 
@@ -132,6 +133,9 @@ func platformMetadataRoundTrip(metadata fileMetadata) error {
 		return err
 	}
 	for name := range metadata.xattrs {
+		if platformfs.KernelLabel(name, metadata.xattrs[name]) {
+			continue
+		}
 		// Kernel security labels and POSIX ACLs often require privilege to set and
 		// can grant access beyond mode 0600. Block before staging rather than
 		// silently dropping or approximating them.

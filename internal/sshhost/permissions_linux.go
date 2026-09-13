@@ -5,6 +5,7 @@ package sshhost
 import (
 	"io/fs"
 	"os"
+	"runtime"
 	"syscall"
 )
 
@@ -23,6 +24,11 @@ func permissionCheckACL(*os.File) error { return nil }
 func permissionFlagsRoundTrip(flags uint32, directory bool) error {
 	if directory {
 		flags &^= 0x00001000
+		if runtime.GOOS == "android" {
+			// FS_INLINE_DATA_FL is a filesystem-managed directory layout
+			// marker on Android's F2FS. In-place chmod retains it verbatim.
+			flags &^= 0x10000000
+		}
 	}
 	return platformFlagsRoundTrip(flags)
 }

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/daviddwlee84/dev-cli/internal/platformfs"
 	"golang.org/x/sys/unix"
 )
 
@@ -33,6 +34,11 @@ func pathDiagnostic(path, reason string, info fs.FileInfo, want fs.FileMode, anc
 
 func planPermissions(path string) (PermissionPlan, error) {
 	plan := PermissionPlan{state: &permissionState{path: path}}
+	anchor, err := platformfs.Resolve(path)
+	if err != nil {
+		return plan, err
+	}
+	plan.state.anchor = anchor
 	add := func(p string, info fs.FileInfo, want fs.FileMode, ancestor bool) {
 		var err error
 		if ancestor {
@@ -57,7 +63,7 @@ func planPermissions(path string) (PermissionPlan, error) {
 		}
 		plan.state.entries = append(plan.state.entries, entry)
 	}
-	root := filepath.VolumeName(path) + string(filepath.Separator)
+	root := anchor.Path
 	current := root
 	dir := filepath.Dir(path)
 	for _, part := range strings.Split(strings.TrimPrefix(dir, root), string(filepath.Separator)) {
@@ -105,7 +111,7 @@ func planPermissions(path string) (PermissionPlan, error) {
 		}
 	}
 	plan.state.blocked = len(plan.Diagnostics) > 0
-	return plan, nil
+	return plan, anchor.Verify()
 }
 
 func permissionMetadataEqual(a, b fs.FileInfo) bool {
@@ -131,7 +137,13 @@ func verifyPermissionEntries(entries []permissionEntry) error {
 func applyPermissions(ctx context.Context, state *permissionState) (PermissionResult, error) {
 	out := PermissionResult{Status: "unchanged"}
 	entries := append([]permissionEntry(nil), state.entries...)
-	if err := verifyPermissionEntries(entries); err != nil {
+	verify := func() error {
+		if err := state.anchor.Verify(); err != nil {
+			return errors.Join(ErrStale, err)
+		}
+		return verifyPermissionEntries(entries)
+	}
+	if err := verify(); err != nil {
 		return out, err
 	}
 	for index, entry := range entries {
@@ -141,7 +153,7 @@ func applyPermissions(ctx context.Context, state *permissionState) (PermissionRe
 		if err := ctx.Err(); err != nil {
 			return out, err
 		}
-		if err := verifyPermissionEntries(entries); err != nil {
+		if err := verify(); err != nil {
 			return out, err
 		}
 		fd, err := unix.Open(entry.path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
@@ -154,7 +166,7 @@ func applyPermissions(ctx context.Context, state *permissionState) (PermissionRe
 			file.Close()
 			return out, errors.Join(ErrStale, err)
 		}
-		if err = verifyPermissionEntries(entries); err != nil {
+		if err = verify(); err != nil {
 			file.Close()
 			return out, err
 		}
@@ -170,7 +182,7 @@ func applyPermissions(ctx context.Context, state *permissionState) (PermissionRe
 		out.Status = "partial"
 		out.Outcomes = append(out.Outcomes, PermissionOutcome{Path: entry.path, Status: "tightened"})
 	}
-	if err := verifyPermissionEntries(entries); err != nil {
+	if err := verify(); err != nil {
 		return out, err
 	}
 	out.Status = "complete"

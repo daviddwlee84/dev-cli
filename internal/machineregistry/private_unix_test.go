@@ -4,6 +4,7 @@ package machineregistry
 
 import (
 	"errors"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"os"
 	"path/filepath"
 	"testing"
@@ -28,7 +29,7 @@ func TestUnsafeModesAndLinksAreRejectedWithoutRepair(t *testing.T) {
 					err = os.Symlink(store.Path+".real", store.Path)
 				}
 			case "database-hardlink":
-				err = os.Link(store.Path, store.Path+".other")
+				err = testutil.Link(t, store.Path, store.Path+".other")
 			case "parent-link":
 				dir := filepath.Dir(store.Path)
 				if err = os.Rename(dir, dir+".real"); err == nil {

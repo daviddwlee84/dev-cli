@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"runtime"
 	"testing"
 )
 
@@ -35,6 +36,9 @@ func TestCreateNoClobberRollsBackPostPublicationFailures(t *testing.T) {
 		},
 	} {
 		t.Run(test.name, func(t *testing.T) {
+			if runtime.GOOS == "android" && test.name == "staging link cleanup" {
+				t.Skip("Android atomic rename consumes the stage without a link cleanup step")
+			}
 			directory := t.TempDir()
 			root, err := os.OpenRoot(directory)
 			if err != nil {
