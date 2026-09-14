@@ -42,7 +42,7 @@ func (r *sshAgentSetupRunner) Run(ctx context.Context, request sshhost.RunReques
 		if key, ok := r.agents[socket]; ok {
 			return sshhost.RunResult{Stdout: key}, nil
 		}
-		return sshhost.RunResult{ExitCode: 1}, nil
+		return sshhost.RunResult{ExitCode: 1, Stdout: []byte("The agent has no identities.\n")}, nil
 	}
 	if request.Name == "ssh" && hasSSHArg(request.Args, "-G") {
 		if effective, ok := r.effective[sshArgValue(request.Args, "-G")]; ok {

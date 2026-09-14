@@ -146,6 +146,7 @@ type sshSetupDocument struct {
 	KeyPlan           *sshhost.KeyPlan           `json:"key_plan,omitempty"`
 	AgentPublicPlan   *sshhost.KeyPlan           `json:"agent_public_plan,omitempty"`
 	AgentPublicResult *sshhost.KeyResult         `json:"agent_public_result,omitempty"`
+	VaultReceipts     []sshflow.VaultKeyReceipt  `json:"vault_receipts,omitempty"`
 	BootstrapPlan     *sshhost.BootstrapPlan     `json:"bootstrap_plan,omitempty"`
 	KeyResult         *sshhost.KeyResult         `json:"key_result,omitempty"`
 	ManagedResult     *sshhost.ManagedResult     `json:"managed_result,omitempty"`
@@ -607,6 +608,7 @@ type sshSetupOptions struct {
 	key                        string
 	keyCandidate               *sshhost.KeyCandidate
 	keyPlan                    *sshhost.KeyPlan
+	vaultReceipts              []sshflow.VaultKeyReceipt
 	identityAgent              string
 	agentRef                   *sshhost.AgentSocketRef
 	identityAgentPath          string
@@ -802,6 +804,7 @@ func runSSHSetup(ctx context.Context, app *App, alias string, options sshSetupOp
 		Status:        "failed",
 		Alias:         alias,
 		DryRun:        options.dryRun,
+		VaultReceipts: sshflow.CloneVaultKeyReceipts(options.vaultReceipts),
 		Fleet:         sshFleetChange{Requested: options.fleet, Action: "not_requested", SSHAlias: alias},
 		ErrorCode:     sshErrorCode(err),
 	}
@@ -833,6 +836,7 @@ func runSSHSetupOperationObserved(ctx context.Context, app *App, alias string, o
 		Status:        "planning",
 		Alias:         alias,
 		DryRun:        options.dryRun,
+		VaultReceipts: sshflow.CloneVaultKeyReceipts(options.vaultReceipts),
 		Fleet:         sshFleetChange{Requested: options.fleet, Action: "not_requested", SSHAlias: alias},
 	}
 	if options.dryRun {
@@ -892,10 +896,15 @@ func runSSHSetupOperationObserved(ctx context.Context, app *App, alias string, o
 	}
 	if interactiveMode && !options.configOnly && !options.dryRun && !options.hasExistingKey() && !options.generateKey && options.keyPlan == nil {
 		options, err = chooseSSHKeyInteractive(ctx, app, service, alias, options, filepath.Join(service.Paths().SSHDir, "id_ed25519_dev_"+alias))
+		document.VaultReceipts = sshflow.CloneVaultKeyReceipts(options.vaultReceipts)
 		if err != nil {
+			if len(document.VaultReceipts) > 0 {
+				document.Status = "partial"
+			}
 			return finish(document, err)
 		}
 	}
+	document.VaultReceipts = sshflow.CloneVaultKeyReceipts(options.vaultReceipts)
 	var keyPlan, agentPublication *sshhost.KeyPlan
 	if !options.configOnly && (options.hasExistingKey() || options.generateKey) {
 		var planned sshhost.KeyPlan
@@ -1422,6 +1431,9 @@ func planSSHFleetRegistration(app *App, alias, name string, remoteOS sshhost.Rem
 
 func renderSSHSetupPlan(app *App, document sshSetupDocument) {
 	fmt.Fprintf(app.Out, "SSH setup plan for %s (%s)\n", document.Alias, document.AliasClass)
+	for _, receipt := range document.VaultReceipts {
+		fmt.Fprintln(app.Out, strings.Join(receipt.Lines(), "\n"))
+	}
 	if document.KeyPlan != nil {
 		fmt.Fprintf(app.Out, "  key:       %s %s\n", document.KeyPlan.Action, document.KeyPlan.Operation)
 		if document.KeyPlan.CreateParent != "" {
@@ -1460,6 +1472,9 @@ func finishSSHSetup(app *App, jsonOut bool, document sshSetupDocument, err error
 		fmt.Fprintf(app.Out, "  status:    %s\n", document.Status)
 	} else {
 		fmt.Fprintf(app.Out, "SSH setup %s: %s\n", document.Status, document.Alias)
+		for _, receipt := range document.VaultReceipts {
+			fmt.Fprintln(app.Out, strings.Join(receipt.Lines(), "\n"))
+		}
 		if key := document.KeyResult; key != nil {
 			for _, note := range sshHardwareResultNotes(*key) {
 				fmt.Fprintln(app.Out, "  "+note)

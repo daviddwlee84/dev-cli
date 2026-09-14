@@ -2310,6 +2310,125 @@ See [Yubico FIDO2 SSH](https://developers.yubico.com/SSH/Securing_SSH_with_FIDO2
 Physical enrollment and Touch ID are separate user-assisted checks, not proven by
 fake-runner tests or platform cross-compilation.
 
+### Create a vault key, then select its agent identity
+
+`dev ssh key create` is a separate vault-creation workflow. It does not install an
+SSH key remotely, rewrite SSH configuration, register fleet/Herdr, import an old
+private key, or delete any source/vault item. Setup key pickers also offer vault
+creation and return to the SSH form only after a key is explicitly selected.
+Creating the vault item has its own review/approval; canceling the later SSH form
+does **not** undo that completed creation.
+
+`--dry-run` validates and displays intent only: no provider CLI or agent is queried,
+and account/vault/agent observations remain unknown. It is not a reusable guarded
+provider plan. Actual creation obtains a fresh service-bound provider plan first.
+Use an exact vault ID for 1Password. Interactive creation may review the current
+native account; actual RPC creation with `--yes` or outside a terminal must specify
+an exact `--account` ID. The title (default `SSH key`) is a label, never duplicate
+detection or identity. There are no positional arguments.
+
+**1Password:** stable native `op` 2.x, at least 2.20.0, generates the default
+Ed25519 item in the selected vault. Dev retains the exact returned item ID and checks its public key separately.
+The item may exist before the desktop agent exposes it: unlock/sync the native app
+and configure its agent vault selection yourself, then select the fingerprint.
+Dev does not edit `agent.toml`, retry an ambiguous create, or silently substitute
+another identity.
+
+**Bitwarden desktop handoff:** choose it in the picker or use `dev ssh key create
+--provider bitwarden --desktop`. It cannot be combined with account/vault scopes,
+experimental/native-context flags, or actual JSON execution. Even `--yes` still
+requires interactive GUI-completion confirmation and explicit fingerprint selection
+(`--dry-run --json` remains allowed). First obtain a complete public-key inventory from
+one exact Bitwarden agent socket. Create a key using the native desktop UI, then
+explicitly refresh and choose a newly **visible** fingerprint. This is not proof
+that a new vault item was created: an existing key may have become visible. An
+unavailable baseline is not an empty vault, and an agent restart/socket change
+invalidates the comparison. Dev neither automates the GUI nor invents an item ID.
+
+**Bitwarden in-memory native-context mode (experimental):** CLI schema support is
+pinned to `2026.3.0`. Two separate approvals are required:
+
+- `--experimental`: allow a new Ed25519 private key to exist briefly in dev's
+  process memory and be supplied to the native CLI over stdin.
+- `--native-context`: delegate endpoint/configuration authority to the reviewed
+  native Bitwarden account/profile. This is **not endpoint attestation**.
+
+Generic `--yes` does not replace either approval. Review shows the observed user,
+profile, CLI entrypoint/runtime and working directory. `BW_SESSION` comes only
+from the native environment; never paste a session, master password or key into
+agent/chat input. A session is a decryption credential, not an account/server ID.
+The Plan retains only private comparison material, not an exported session value
+or hash. Apply recaptures/revalidates the execution context, then runs all metadata,
+creation and post-check commands with the same explicit frozen environment/cwd.
+No global environment changes, login/unlock, provider configuration edits or native
+vault-data parsing occur. Metadata/create commands use native no-interaction mode
+so private JSON stdin cannot become a credential-prompt answer.
+
+The supported entrypoint/profile must be safely bound, including the documented
+Node package/runtime form and portable-profile precedence where applicable.
+Unsupported script wrappers/shebangs, unsafe/changed profiles or unsupported native
+Windows attestation fail closed. Native executables are checked for protected filesystem
+identity and ELF/Mach-O structure; those checks cannot distinguish every compiled runtime
+shim from the intended runtime. Native executable behavior and dependencies remain a
+trust boundary, and native configuration is not transactional. Bitwarden's base
+`serverUrl` is only an advisory display value: cloud regions and independent API
+settings cannot be inferred from it. Results therefore keep `endpoint=unverified`
+and distinguish `native_context=observed_consistent` from creation status. The
+endpoint-attested Bitwarden mode remains unsupported.
+
+Private key generation/encoding uses memory and stdin, never a plaintext key file,
+clipboard or private-key argv. Owned buffers are wiped best-effort; that is not a
+perfect RAM/swap/core-dump erasure guarantee, and native provider storage remains
+its own responsibility. Public CLI/TUI results contain metadata, fingerprints and
+item IDs—not private/session bytes or the complete public-key line.
+
+A created item with missing agent visibility remains **created**, with its receipt
+and guidance. A lost response, malformed public result or changed post-check may
+leave an item with uncertain readiness/context; retain the known item ID and inspect
+before starting a fresh creation plan. A controller-local attempt ID distinguishes
+two unknown attempts even when their account, vault and title are identical; it is
+not an inferred provider item ID. Receipts live outside transient UI dialogs so late
+results cannot cancel another action or disappear when a form is replaced.
+Plans are single-attempt. Neither item creation nor public agent listing is an SSH authentication proof or password-save
+authority. Only the subsequent normal SSH setup review/proof authorizes its own
+configuration, bootstrap and optional registrations.
+
+Real Bitwarden type-5 and 1Password native integration checks are separate,
+user-consented validation; fake runners do not replace them. No live vault item
+creation or deletion is implicit in diagnostics, docs checks or test suites.
+
+### Choosing where a signing key lives
+
+| Backend | Key storage / interaction | Dev boundary |
+|---|---|---|
+| Bitwarden | Encrypted vault; unlocked agent/CLI can use decrypted material in memory | Named Unix agent; explicit desktop handoff or separately approved experimental native-context creation |
+| 1Password | Encrypted vault; native approval/session and agent policy | Named Unix agent and explicit native vault creation; agent visibility remains a separate observation |
+| YubiKey / FIDO2 | Authenticator-backed signing; protected local handle, optionally resident | Explicit interactive FIDO generation on supported controllers; no existing-private-key import or automatic credential removal |
+| Secretive (macOS) | Secure Enclave-backed non-exportable key; native UI/approval | Select the existing Secretive agent; dev does not provision it |
+| Apple CTK / Secure Enclave | Non-exportable P-256 CTK identity with a local SK handle | Existing native configuration/stubs only; automatic creation is blocked pending verified identity mapping |
+| Apple Passwords / Keychain | Passwords is not a documented SSH agent; Keychain can store a key-file passphrase | Native passphrase integration is not a hardware-only or no-private-file solution |
+| KeePassXC | Encrypted database plus its SSH-agent integration | Configure the native tool, then use an existing validated agent socket; not a non-exportability guarantee |
+| ssh-tpm-agent (Linux-oriented) | TPM 2.0 key generation and local sealed `.tpm` files | Existing custom agent socket only; no TPM provisioning or migration by dev |
+| gpg-agent / OpenPGP card | Software or card-backed key, depending on native configuration | Existing custom agent socket; no OpenPGP provisioning |
+| YubiKey PIV | Separate generation/import and slot lifecycle | No slot writes/overwrites or PIV provisioning; use existing native authentication |
+| Windows OpenSSH / Hello | Native support depends on the installed build and provider | Follow upstream native guidance; Windows Hello is not claimed as a dev key backend, and explicit dev agent/hardware creation gates remain closed pending native attestation |
+
+Vault keys are generally exportable by their native provider; “no private file
+written by dev” is not the same as non-exportability. Agent memory, OS swap/crash
+handling and native provider storage remain outside a perfect-erasure guarantee.
+Never import an old key and automatically delete its local source as a substitute
+for hardware generation. Unattended operation also depends on native PIN/touch and
+agent approval policy, not just where the key is stored.
+
+References: [Bitwarden SSH agent](https://bitwarden.com/help/ssh-agent/),
+[1Password SSH](https://www.1password.dev/ssh/agent/),
+[KeePassXC agent integration](https://keepassxc.org/docs/KeePassXC_UserGuide#_ssh_agent_integration),
+[ssh-tpm-agent](https://github.com/Foxboron/ssh-tpm-agent),
+[GnuPG agent documentation](https://www.gnupg.org/documentation/manuals/gnupg/Agent-Options.html),
+[Windows FIDO/U2F](https://github.com/PowerShell/Win32-OpenSSH/wiki/FIDO---U2F-usage).
+The Windows source documents FIDO/U2F workflows, not Windows Hello key storage;
+upstream capability is not evidence that dev's native Windows gates were tested.
+
 ## ProxyJump and remote operating systems
 
 Dev evaluates plain `ssh -G` for the target and each discovered jump, flattens nested/comma-separated `ProxyJump` routes outermost-first, and supports alias, `user@alias`, `alias:port`, and bracketed IPv6 forms. It rejects cycles, repeated hops, unsupported URI/`ProxyCommand` routes, and ambiguous overrides instead of guessing.
@@ -2385,7 +2504,7 @@ Deliberately deferred:
 - deletion of local keys or `known_hosts` repair/removal;
 - alias rename/adoption, managed wildcards/`Match`, arbitrary SSH directives, or an SSH config editor;
 - automated `ProxyCommand`, certificates/CAs, forwarding, custom `AuthorizedKeysFile`, or forced-shell policy;
-- password/vault storage, automatic password fallback, private-key copying, direct Bitwarden integration, or weakened host-key checks;
+- existing private-key migration/import, vault-item deletion, automatic password fallback, private-key copying, or weakened host-key checks (explicit new vault-key creation and credential-provider password storage are separate supported workflows);
 - cloud/chezmoi fleet import, mDNS, IPv6 range scanning, or background probing.
 
 When a server policy falls outside the verified POSIX/Windows installer contract, dev reports manual remediation rather than silently weakening it.
@@ -3003,6 +3122,9 @@ retain the exact fingerprint and socket; unavailable providers show guidance.
 Security-key generation also exposes the type, provider, resident handle,
 verify-required and application options. Review shows the native touch/PIN flow
 and possible retained hardware effects; automatic Secure Enclave creation remains unavailable.
+Vault choices use a separate creation review before returning to SSH setup. The
+result retains item receipts if the later SSH form is canceled; Bitwarden desktop
+handoff shows newly visible agent keys rather than claiming vault-item creation.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's
@@ -5570,6 +5692,9 @@ retain the exact fingerprint and socket; unavailable providers show guidance.
 Security-key generation also exposes the type, provider, resident handle,
 verify-required and application options. Review shows the native touch/PIN flow
 and possible retained hardware effects; automatic Secure Enclave creation remains unavailable.
+Vault choices use a separate creation review before returning to SSH setup. The
+result retains item receipts if the later SSH form is canceled; Bitwarden desktop
+handoff shows newly visible agent keys rather than claiming vault-item creation.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's
@@ -9595,11 +9720,30 @@ dev ssh init [flags]
 
 ### `dev ssh key`
 
-Inspect local SSH keys and agent identities (install one with dev ssh setup)
+Inspect SSH keys and agents, or create a new vault key (install with dev ssh setup)
 
 ```
 dev ssh key
 ```
+
+### `dev ssh key create`
+
+Create a new SSH key in an explicitly reviewed vault
+
+```
+dev ssh key create [flags]
+```
+
+- `--account` — exact native account/user ID (required with --yes; blank otherwise reviews the current account)
+- `--desktop` — use an interactive Bitwarden desktop handoff instead of an RPC creation
+- `--dry-run` — show unobserved intent only; do not query providers or agents and do not create a key
+- `--experimental` — explicitly approve experimental Bitwarden in-memory key generation
+- `--json` — emit one public-only plan/result document without a complete public key line
+- `--native-context` — explicitly delegate Bitwarden endpoints to the reviewed native profile; endpoints remain unverified
+- `--provider` — vault provider: 1password or bitwarden (omit for the interactive wizard)
+- `--title` — new vault item title
+- `--vault` — exact 1Password vault ID, or personal for Bitwarden
+- `--yes` — approve creation in the exact account/vault after planning (does not approve experimental or native-context mode)
 
 ### `dev ssh key derive`
 
@@ -10524,6 +10668,55 @@ are rejected. Actions preview by default. Snapshot/transaction documents contain
 `schema_version`, machine revisions and scoped bindings; the registry UUID never
 replaces remote fleet's `machine_id` pin. See [SSH onboarding](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#discovery-and-canonical-machines).
 
+## SSH vault-key creation
+
+`ssh key create` takes no positional arguments. Flags are `--provider
+1password|bitwarden`, `--title` (default `SSH key`), `--account`, `--vault`,
+`--desktop`, `--dry-run`, `--yes` and `--json`, plus Bitwarden's `--experimental`
+and `--native-context`. An interactive run may review the current account; actual
+RPC creation with `--yes` or outside a terminal requires an exact `--account` ID.
+1Password requires an exact vault ID; Bitwarden normalizes the personal vault and
+needs BOTH approvals. Native-context delegates profile/configuration authority,
+not endpoint attestation; `--yes` cannot substitute for either approval.
+
+`--desktop` requires `--provider bitwarden` and rejects account/vault/experimental/
+native-context scopes. It always requires interactive GUI-completion confirmation
+and explicit fingerprint selection, even with `--yes`. Actual desktop handoff
+cannot use `--json`; intent-only `--dry-run --json` is allowed. The native GUI owns
+the title and creation, so dev does not invent an item ID or creation receipt.
+
+Vault-create dry-run validates static intent only, executing no provider/agent and
+leaving account/vault/agent observations unknown. Actual creation obtains a fresh
+service-bound plan. Native-context metadata contains the reviewed profile/tool,
+not session values or hashes. Successful Bitwarden native-context creation keeps
+`result.binding_status: unknown` and `result.endpoint_status: unverified`; only
+`result.native_context_status` becomes `observed_consistent`. This expected binding
+uncertainty is separate from `result.status: created`, not a reason to retry creation.
+Public output preserves item IDs/fingerprints and created/unknown/context state,
+not private material or full public-key lines. Created items are not rolled back
+when agent visibility or later SSH setup fails. No auto-retry, import, native
+configuration rewrite, or item deletion is implied. Desktop handoff uses a complete
+same-socket public inventory and explicit newly-visible-key selection, not guessed
+vault item IDs. JSON uses `schema_version: 1`, `kind: ssh_key_create`. Dry-run is
+`status: intent_only` with `preview.intent_only: true`, not apply-ready. Pre-effect
+statuses include `blocked`, `confirmation_required`, `canceled` and `not_started`;
+RPC outcomes are `created` or `unknown`, and a created receipt may accompany a
+nonzero partial/context error. Desktop states are `observed`, `no_new_visible_keys`
+or `unavailable`. `result.agent_status` is `not_checked`, `not_selected`,
+`unavailable`, `not_visible` or `offered`; offered means listing, not signing proof.
+`result.receipt` carries public item/attempt metadata with no `public_line`.
+A controller-local `attempt_id` distinguishes separately reviewed creation attempts,
+including unknown outcomes without an item ID. It is not a vault item ID or auth
+proof. Duplicate delivery of one attempt is reconciled without dropping distinct
+unknown attempts; UI receipts survive transient dialogs and immutable SSH reviews.
+Receipt `observation` is a controller-local ordering counter, not a provider revision
+or timestamp: an older delivery cannot erase newer context uncertainty. Known created,
+item-ID and fingerprint facts are retained; conflicting nonempty identities appear in
+`conflicting_identities` instead of silently replacing one another. These reconciliation
+fields and retained receipts never grant key-selection or apply authority.
+There is no serialized-plan apply flag.
+See [vault creation](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#create-a-vault-key-then-select-its-agent-identity).
+
 ## SSH key catalog and picker behavior
 
 `ssh key list` accepts `--json`, `--no-agent`, `--alias <alias>`, repeatable
@@ -11187,6 +11380,36 @@ this permission stage is separately confirmed before the main onboarding plan.
 Optional registration accepts zero checkboxes without treating it as cancellation;
 required host/source multi-selection keeps its existing cancellation behavior.
 
+## SSH key providers and hardware/vault boundaries
+
+Named Bitwarden/1Password/Secretive or custom agents use validated Unix sockets,
+public-only selectors and canonical v2 managed fragments. V1 output remains
+unchanged when no new directives are needed; dev v0.2.37 and older refuse v2
+management. Native Windows explicit agent selection remains unavailable pending
+pipe identity attestation; its existing native OpenSSH agent flow is unchanged.
+Provider-location discovery is stat-only; explicit key inventory queries the agent.
+Only the native no-identities response is a complete empty inventory, not a generic
+agent error. Desktop handoff binds a complete baseline and the same socket instance.
+
+Ordinary Ed25519 generation is separate from interactive FIDO generation. FIDO
+capability observations do not enumerate devices or run resident-key download.
+Unknown custom toolchains may be explicitly attempted, not labeled hardware-ready;
+known incompatible or unsafe tools block. Native Windows-controller generation
+and automatic Secure Enclave provisioning remain unavailable. Remote fleet-source
+imports also exclude named-agent selection and new hardware generation. Interactive setup does not prove
+unattended fleet readiness for keys requiring PIN/touch or passphrase interaction.
+
+Vault creation has a separate approval and retained public receipt. Bitwarden's
+experimental memory/native-context mode requires both approvals, safely bound
+native profile/tool context, frozen child environment/cwd and no-interaction.
+Session/base URL is not endpoint identity: native context consistency never becomes
+endpoint-verified success. Unsupported ACL/path/wrapper/platform conditions fail
+closed without permission repair or native configuration changes. Created items
+survive missing agent visibility and later SSH cancellation; no implicit retry,
+private-key import/source deletion or hardware/vault revocation is introduced.
+Cross-builds and fake runners do not validate real hardware or unlocked vaults.
+See [key backends](https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/#choosing-where-a-signing-key-lives).
+
 ## Standalone SSH key doctor
 
 `ssh key doctor` needs only bounded local metadata reads: it does not depend on
@@ -11680,9 +11903,32 @@ own execution. Default SSH listing and cached `--fleet` listing stay passive.
 `internal/sshcredential` defines exact password contexts, optional native system
 and Bitwarden providers, private askpass transport and guarded policy/reference
 TOML. Native vault availability and interactive authorization vary by host; no
-vault was read or written by the automated unit-test fixtures. Private-key vault
-migration, hardware provisioning and Apple Passwords migration remain deferred.
+vault was read or written by the automated unit-test fixtures. Existing-private-key
+vault migration and Apple Passwords migration remain deferred; explicit new-key
+creation is described separately below.
 The public SSH guide distinguishes controller routes from remote-native sessions.
+
+## Key-provider authority and validation boundaries (2026-09-15)
+
+Custom destinations, named agents/v2 fragments and FIDO generation are defined by
+`internal/sshhost`, the CLI/TUI SSH adapters and their source-bound fixtures.
+Filesystem replacement, permission hardening, partial publication, independent
+native login gates and same-socket inventory refresh have dedicated regressions.
+The vault boundary is `internal/sshvault` plus the frozen-environment provider
+runner in `internal/sshcredential`; schema/version gates, dual Bitwarden approval,
+profile/tool binding, single-attempt writes and retained public receipts are distinct
+from agent visibility and SSH proof. Interface claims must follow the code and
+final test results, not merely an approved design or a passing cross-build.
+
+Vendor references include Bitwarden CLI `2026.3.0` source, 1Password SSH-key CLI
+creation docs, Yubico FIDO2 guidance, native Apple sc_auth/ssh-keychain manuals,
+and the original public CTK example linked in the SSH guide/backlog. The CTK example
+is a fixture, not a general mapping contract; automatic provisioning remains blocked.
+Bitwarden base URLs/session values never attest effective endpoints. The explicit
+native-context mode delegates configuration authority and retains endpoint-unverified
+status; it is not a transactional native-config snapshot or supply-chain attestation.
+Real vault-item creation/deletion, YubiKey/Touch ID interaction and native Windows
+attestation need separate evidence/consent; automated fakes do not supply it.
 
 ## Dotfiles and FLEET host tree
 
@@ -14074,6 +14320,103 @@ Apple Passwords 沒有文件化的 SSH-key item／SSH agent；Keychain passphras
 [`ssh-keychain`](https://keith.github.io/xcode-man-pages/ssh-keychain.8.html) 手冊。
 實際 enrollment 與 Touch ID 是另外的使用者協助驗證；fake runner 或交叉編譯不能證明它們成功。
 
+### 先建立 vault key，再選取 agent identity
+
+`dev ssh key create` 是獨立的 vault-creation 流程，不會遠端安裝 SSH key、改寫 SSH
+設定、註冊 fleet／Herdr、匯入舊私鑰，或刪除來源／vault item。Setup key picker 也提供
+vault creation；明確選取 key 後才回到 SSH 表單。Vault 建立有自己的審閱／確認；之後
+取消 SSH 表單**不會**撤銷已完成的 vault creation。
+
+`--dry-run` 只驗證／顯示意圖，不查詢 provider CLI 或 agent；account／vault／agent
+觀測維持 unknown，也不是可重用的 guarded provider plan。實際建立前仍會取得新的
+service-bound plan。1Password 使用確切 vault ID；互動執行可審閱目前原生 account，
+但使用 `--yes` 或非互動的實際 RPC creation 必須指定確切 `--account` ID。
+Title（預設 `SSH key`）只是標籤，不用於去重或識別 item；command 不接受 positional arguments。
+
+**1Password：**穩定版原生 `op` 2.x（至少 2.20.0）在選定 vault 產生預設 Ed25519 item；
+dev 保留確切回傳 item ID，再另外驗證 public key。Item 可能已存在，但 desktop agent 尚未提供它：請自行
+解鎖／同步原生 app、設定 agent 的 vault selection，再選取 fingerprint。Dev 不編輯
+`agent.toml`，不重試結果模糊的 create，也不暗中改選其他 identity。
+
+**Bitwarden desktop handoff：**可由 picker 選取，或執行 `dev ssh key create --provider
+bitwarden --desktop`。不能搭配 account／vault scope、experimental／native-context flags
+或實際 JSON execution。即使 `--yes` 也需要互動確認 GUI 完成並明確選取 fingerprint
+（仍可用 `--dry-run --json`）。先從一個確切 Bitwarden agent socket 取得完整 public-key
+inventory，接著用原生 desktop UI 建立 key，再明確 refresh、選取新**可見**的 fingerprint。
+這不是新 vault item 已建立的證明：也可能是既有 key 剛變成可見。Baseline 不可用不能當成
+空 vault；agent 重啟／socket 改變會讓前後比較失效。Dev 不操作 GUI，也不猜測 item ID。
+
+**Bitwarden 記憶體／native-context 模式（experimental）：**CLI schema 目前限定
+`2026.3.0`，需要兩個分開的同意：
+
+- `--experimental`：允許新的 Ed25519 私鑰短暫存在 dev 記憶體，並透過 stdin 交給原生 CLI。
+- `--native-context`：將 endpoint／設定 authority 委由審閱過的原生 Bitwarden account／
+  profile 處理。這**不是 endpoint attestation**。
+
+一般 `--yes` 不能代替其中任何一項。審閱會列出觀測到的 user、profile、CLI entrypoint／
+runtime 與工作目錄。`BW_SESSION` 只來自原生 environment；不要把 session、master password
+或 key 貼進 agent／聊天。Session 是解密 credential，不是 account／server ID。
+Plan 只保留私有比較資料，不匯出 session 值或 hash。Apply 重新捕捉／驗證執行 context，
+然後 metadata、create、post-check 都使用同一份明確固定的 environment／cwd。
+不更改全域 environment、不 login／unlock、不改 provider 設定，也不解析原生 vault data。
+Metadata／create 強制原生 no-interaction，避免把 private JSON stdin 當成 credential prompt
+的輸入。
+
+Entrypoint／profile 必須能安全綁定，包括受支援的 Node package／runtime 形式與 portable
+profile 優先順序。不支援的 script wrapper／shebang、不安全／改變的 profile，或尚未支援的
+原生 Windows attestation 都會 fail closed。Native executable 檢查綁定受保護的 filesystem
+identity 與 ELF／Mach-O 結構，不能據此辨別所有 compiled runtime shim。原生 executable
+行為與 dependencies 仍屬信任邊界，原生設定也不會變成 transactional。Bitwarden base `serverUrl` 只是 advisory 顯示值，
+不能用它推斷 cloud region 或獨立 API 設定。因此結果一律維持 `endpoint=unverified`，並把
+`native_context=observed_consistent` 與 creation status 分開。要求 endpoint attestation 的
+Bitwarden 模式仍不支援。
+
+私鑰產生／編碼只使用記憶體與 stdin，不寫 plaintext key file、不用 clipboard 或 private-key
+argv。Owned buffers 會盡力清除，但不保證 RAM／swap／core dump 完美抹除；原生 provider
+的儲存也仍由它管理。CLI／TUI 只輸出 metadata、fingerprint、item ID，不輸出 private／session
+bytes 或完整 public-key line。
+
+若 item 已建立但 agent 尚不可見，狀態仍是 **created**，並保留 receipt 與指引。回應遺失、
+public result 格式錯誤、post-check 改變，都可能留下 readiness／context 不確定的 item；
+保留已知 item ID，檢查後才開始新的 creation plan。Controller-local attempt ID 可區分
+account／vault／title 相同的兩次 unknown 嘗試，但不代表猜測出的 provider item ID。
+Receipt 不依附暫存 UI dialog，延遲結果不能取消另一個 action，也不會隨表單替換而遺失。
+Plan 只能嘗試一次；item creation 或 public agent listing 都不是 SSH authentication proof，也不是 password-save authority。只有後續
+一般 SSH setup 的審閱／proof，才授權它自己的設定、bootstrap 與選用 registration。
+
+Bitwarden type-5 與 1Password 的真實整合測試需要另外取得使用者同意；fake runner 不能取代。
+Diagnostics、文件檢查或測試套件，不會暗中建立或刪除真實 vault item。
+
+### 選擇簽章 key 的存放方式
+
+| Backend | Key 儲存／互動 | Dev 的支援邊界 |
+|---|---|---|
+| Bitwarden | 加密 vault；解鎖後 agent／CLI 可在記憶體使用解密資料 | Named Unix agent；明確 desktop handoff，或另行同意的 experimental native-context creation |
+| 1Password | 加密 vault；原生 approval／session 與 agent policy | Named Unix agent 與明確的原生 vault creation；agent 是否可見仍是另外的觀測 |
+| YubiKey／FIDO2 | Authenticator 簽章；本機保護 handle，可選 resident | 受支援 controller 的明確互動 FIDO generation；不匯入舊私鑰，也不自動移除 credential |
+| Secretive（macOS） | Secure Enclave non-exportable key；原生 UI／approval | 選取既有 Secretive agent；dev 不替它 provisioning |
+| Apple CTK／Secure Enclave | Non-exportable P-256 CTK identity 與本機 SK handle | 使用已配置的原生 stub；自動建立須先驗證 identity mapping，目前停用 |
+| Apple Passwords／Keychain | Passwords 沒有文件化 SSH agent；Keychain 可存 key-file passphrase | 原生 passphrase 整合不等於 hardware-only，也不會消除 private-key file |
+| KeePassXC | 加密資料庫與 SSH-agent integration | 先設定原生工具，再選取已驗證 socket；不代表私鑰不可匯出 |
+| ssh-tpm-agent（Linux-oriented） | TPM 2.0 key generation 與本機 sealed `.tpm` files | 只整合既有 custom agent socket；dev 不做 TPM provisioning／migration |
+| gpg-agent／OpenPGP card | 依原生設定使用軟體或卡片 key | 既有 custom agent socket；不做 OpenPGP provisioning |
+| YubiKey PIV | 獨立的 generation／import 與 slot lifecycle | 不寫入／覆蓋 slot、不做 PIV provisioning；使用既有原生認證 |
+| Windows OpenSSH／Hello | 依已安裝 build／provider 決定原生支援 | 遵循 upstream 原生指引；不宣稱 Windows Hello 是 dev backend，明確 agent／hardware creation 仍須 native attestation 才能開放 |
+
+Vault key 通常仍可由原生 provider 匯出；「dev 不寫 private file」不等於不可匯出。
+Agent 記憶體、OS swap／crash 處理與原生 provider 儲存，也不在完美抹除保證內。
+不要把匯入舊 key 後自動刪除本機來源，當成硬體產生的替代方案；能否無人值守運作，
+還取決於 PIN／touch 與 agent approval policy，而不只是 key 放在哪裡。
+
+參考：[Bitwarden SSH agent](https://bitwarden.com/help/ssh-agent/)、
+[1Password SSH](https://www.1password.dev/ssh/agent/)、
+[KeePassXC agent integration](https://keepassxc.org/docs/KeePassXC_UserGuide#_ssh_agent_integration)、
+[ssh-tpm-agent](https://github.com/Foxboron/ssh-tpm-agent)、
+[GnuPG agent documentation](https://www.gnupg.org/documentation/manuals/gnupg/Agent-Options.html)、
+[Windows FIDO/U2F](https://github.com/PowerShell/Win32-OpenSSH/wiki/FIDO---U2F-usage)。
+Windows 來源描述 FIDO／U2F 流程，不是 Windows Hello key storage；upstream capability
+也不能證明 dev 的原生 Windows gates 已通過測試。
+
 ## ProxyJump 與 remote operating system
 
 Dev 會對 target 與每個 discovered jump 執行 plain `ssh -G`，將 nested/comma-separated `ProxyJump` route 依 outermost-first flatten，並支援 alias、`user@alias`、`alias:port` 與 bracketed IPv6 forms。Cycle、repeated hop、unsupported URI/`ProxyCommand` route 與 ambiguous override 都會被拒絕，不會猜測。
@@ -14149,7 +14492,7 @@ Removal 絕不刪除 shared Include、local private/public key file、`known_hos
 - 刪除 local key 或 `known_hosts` repair/removal；
 - alias rename/adoption、managed wildcard/`Match`、arbitrary SSH directive 或 SSH config editor；
 - 自動化 `ProxyCommand`、certificate/CA、forwarding、custom `AuthorizedKeysFile` 或 forced-shell policy；
-- password/vault storage、automatic password fallback、private-key copying、direct Bitwarden integration 或 weakened host-key check；
+- 既有 private-key migration／import、vault-item deletion、automatic password fallback、private-key copying 或 weakened host-key check（明確的新 vault-key creation 與 credential-provider password storage 是另外支援的流程）；
 - cloud/chezmoi fleet import、mDNS、IPv6 range scanning 或 background probing。
 
 Server policy 若超出 verified POSIX/Windows installer contract，dev 會回報 manual remediation，不會靜默削弱 protection。
@@ -14674,6 +15017,9 @@ comment，再回到原表單。可用的 Bitwarden、1Password、Secretive agent
 不可用的 provider 則顯示操作指引。Security-key generation 另可設定 type、provider、
 resident handle、verify-required 與 application；審閱會說明原生 touch／PIN 流程與
 可能保留的硬體作用。自動 Secure Enclave 建立仍不可用。
+Vault 選項會先做獨立的 creation 審閱，再回到 SSH setup；之後取消 SSH 表單，
+仍會保留 item receipt。Bitwarden desktop handoff 只顯示新可見的 agent key，
+不宣稱已觀測到 vault item 建立。
 
 在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
 表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選
@@ -16959,6 +17305,9 @@ comment，再回到原表單。可用的 Bitwarden、1Password、Secretive agent
 不可用的 provider 則顯示操作指引。Security-key generation 另可設定 type、provider、
 resident handle、verify-required 與 application；審閱會說明原生 touch／PIN 流程與
 可能保留的硬體作用。自動 Secure Enclave 建立仍不可用。
+Vault 選項會先做獨立的 creation 審閱，再回到 SSH setup；之後取消 SSH 表單，
+仍會保留 item receipt。Bitwarden desktop handoff 只顯示新可見的 agent key，
+不宣稱已觀測到 vault item 建立。
 
 在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
 表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選
@@ -20882,11 +21231,30 @@ dev ssh init [flags]
 
 ### `dev ssh key`
 
-Inspect local SSH keys and agent identities (install one with dev ssh setup)
+Inspect SSH keys and agents, or create a new vault key (install with dev ssh setup)
 
 ```
 dev ssh key
 ```
+
+### `dev ssh key create`
+
+Create a new SSH key in an explicitly reviewed vault
+
+```
+dev ssh key create [flags]
+```
+
+- `--account` — exact native account/user ID (required with --yes; blank otherwise reviews the current account)
+- `--desktop` — use an interactive Bitwarden desktop handoff instead of an RPC creation
+- `--dry-run` — show unobserved intent only; do not query providers or agents and do not create a key
+- `--experimental` — explicitly approve experimental Bitwarden in-memory key generation
+- `--json` — emit one public-only plan/result document without a complete public key line
+- `--native-context` — explicitly delegate Bitwarden endpoints to the reviewed native profile; endpoints remain unverified
+- `--provider` — vault provider: 1password or bitwarden (omit for the interactive wizard)
+- `--title` — new vault item title
+- `--vault` — exact 1Password vault ID, or personal for Bitwarden
+- `--yes` — approve creation in the exact account/vault after planning (does not approve experimental or native-context mode)
 
 ### `dev ssh key derive`
 
@@ -21782,6 +22150,47 @@ Snapshot/transaction documents 包含 `schema_version`、machine revisions 與 s
 bindings；registry UUID 不取代 remote fleet 的 `machine_id` pin。詳見
 [SSH onboarding](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
 
+## SSH vault-key creation
+
+`ssh key create` 不接受 positional arguments。Flags 包括 `--provider 1password|bitwarden`、
+`--title`（預設 `SSH key`）、`--account`、`--vault`、`--desktop`、`--dry-run`、`--yes`、
+`--json`，以及 Bitwarden 的 `--experimental`、`--native-context`。互動執行可審閱目前
+account；使用 `--yes` 或非互動的實際 RPC creation，必須指定確切 `--account` ID。
+1Password 要求確切 vault ID；Bitwarden 使用 personal vault，並且需要**兩項同意**。
+Native-context 委由原生 profile／設定處理 authority，不是 endpoint attestation；
+`--yes` 不能代替其中一項。
+
+`--desktop` 要求 `--provider bitwarden`，不可搭配 account／vault／experimental／
+native-context scopes。即使有 `--yes`，仍必須互動確認 GUI 步驟完成並明確選取 fingerprint。
+實際 desktop handoff 不接受 `--json`，但允許 intent-only `--dry-run --json`。
+Title 與 creation 由原生 GUI 管理；dev 不猜測 item ID，也不宣稱有 creation receipt。
+
+Vault-create dry-run 只驗證靜態意圖，不執行 provider／agent；account／vault／agent
+觀測仍是 unknown。實際建立會取得新的 service-bound plan。Native-context metadata
+包含審閱過的 profile／tool，不含 session 值或 hash。Bitwarden native-context 建立成功仍
+維持 `result.binding_status: unknown` 與 `result.endpoint_status: unverified`；只有
+`result.native_context_status` 會成為 `observed_consistent`。這個預期的 binding uncertainty
+與 `result.status: created` 分開，不是重試建立的理由。公開結果保留 item ID／fingerprint
+與 created／unknown／context 狀態，不含
+private material 或完整 public-key line。Agent 尚不可見或後續 SSH setup 失敗，不會撤銷
+已建立 item，也不代表自動 retry、import、改寫原生設定或刪除 item。Desktop handoff 使用
+同一 socket 的完整 public inventory 與明確的新可見 key 選取，不猜測 vault item ID。
+JSON 為 `schema_version: 1`、`kind: ssh_key_create`。Dry-run 是 `status: intent_only`、
+`preview.intent_only: true`，不是 apply-ready。作用前狀態包含 `blocked`、
+`confirmation_required`、`canceled`、`not_started`；RPC 結果為 `created` 或 `unknown`，
+已建立的 receipt 仍可能伴隨非零 partial／context error。Desktop 狀態為 `observed`、
+`no_new_visible_keys`、`unavailable`。`result.agent_status` 可為 `not_checked`、
+`not_selected`、`unavailable`、`not_visible`、`offered`；offered 只是可列出，不是簽章證明。
+`result.receipt` 只有公開 item／attempt metadata，不含 `public_line`。Controller-local
+`attempt_id` 用來區分各次審閱過的建立嘗試，包含尚無 item ID 的 unknown 結果；它不是
+vault item ID 或認證證明。同一次結果重複送達可 reconciliation，但不同 unknown 嘗試不能
+合併遺失；UI receipt 不依附暫存 dialog 或 immutable SSH review 的生命週期。
+Receipt 的 `observation` 是 controller-local 順序計數，不是 provider revision 或時間戳；
+較舊結果不能覆蓋較新的 context uncertainty。已知的 created、item ID 與 fingerprint 事實
+會保留；非空 identity 衝突列於 `conflicting_identities`，不互相靜默覆蓋。這些 reconciliation
+欄位與保留回執不提供 key-selection 或 apply authority。
+沒有 serialized-plan apply flag。詳見 [vault creation](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
+
 ## SSH key catalog 與 picker behavior
 
 `ssh key list` 接受 `--json`、`--no-agent`、`--alias <alias>`、可重複的
@@ -22370,6 +22779,29 @@ reviewed tightening。無關檔案、ownership change、不安全 link／metadat
 確認。Optional registration 可確認零個 checkbox，與取消不同；必要 host／source
 多選維持原本 cancellation 行為。
 
+## SSH key provider 與 hardware／vault 邊界
+
+Named Bitwarden／1Password／Secretive 或 custom agent 使用已驗證的 Unix socket、
+public-only selector 與 canonical v2 managed fragment。不需新 directive 時 v1 bytes
+維持不變；dev v0.2.37 及更舊版本拒絕管理 v2。Native Windows 明確 agent 選取仍需 pipe
+identity attestation 才能開放，既有原生 OpenSSH agent 流程不變。Provider 路徑只做 stat；
+明確 key inventory 才查詢 agent。只有原生 no-identities 回應可代表完整空 inventory，
+一般 agent error 不行。Desktop handoff 綁定完整 baseline 與同一 socket instance。
+
+一般 Ed25519 與互動 FIDO generation 分開。FIDO capability observation 不列舉裝置，
+也不下載 resident key。Unknown 自訂 toolchain 可明確嘗試，但不能標為 hardware-ready；
+已知不相容或不安全的工具會被擋下。Native Windows-controller generation 與自動 Secure
+Enclave provisioning 仍不可用；remote fleet-source import 也不提供 named-agent 選取或
+新的 hardware generation。互動 setup 不能證明需要 PIN／touch／passphrase 的 key 可無人值守用於 fleet。
+
+Vault creation 有獨立確認與保留的公開 receipt。Bitwarden experimental memory／native-context
+模式要求兩項同意、安全綁定 native profile／tool、固定 child environment／cwd，以及
+no-interaction。Session／base URL 不是 endpoint 身分；native context 一致不會變成
+endpoint-verified。無法支援的 ACL／路徑／wrapper／平台會 fail closed，不修權限或改原生
+設定。Agent 尚不可見或之後取消 SSH，不會移除已建立 item；不隱含 retry、私鑰 import／
+來源刪除，或 hardware／vault revocation。交叉編譯與 fake runner 不等於真實硬體／解鎖
+vault 驗證。詳見 [key backends](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/)。
+
 ## 獨立 SSH key doctor
 
 `ssh key doctor` 只做 bounded local metadata reads，不依賴 ssh、ssh-keygen、agent
@@ -22807,8 +23239,27 @@ public companions 或 unsafe paths 轉成 key availability proof。
 `internal/sshcredential` 定義 exact password context、optional system／Bitwarden
 providers、private askpass transport、guarded policy/reference TOML。Native vault
 availability 與互動授權依 host 而異；automated unit fixtures 沒有讀寫實際 vault。
-Private-key vault migration、hardware provisioning、Apple Passwords migration 仍 deferred；
+既有 private-key vault migration、Apple Passwords migration 仍 deferred；明確的 new-key
+creation 另見下方；
 公開 SSH guide 分別說明 controller route 與 remote-native session。
+
+## Key-provider authority 與驗證邊界（2026-09-15）
+
+自訂 destination、named agent／v2 fragment、FIDO generation，以 `internal/sshhost`、
+CLI／TUI SSH adapters 及 source-bound fixtures 為準。檔案替換、權限 hardening、部分
+publication、獨立原生 login gate 與 same-socket inventory refresh 都有專門回歸測試。
+Vault 邊界由 `internal/sshvault` 與 `internal/sshcredential` 的 frozen-environment runner
+負責；schema／version gate、Bitwarden 雙重同意、profile／tool binding、單次 write 與
+public receipt，和 agent visibility／SSH proof 是不同層。介面聲明必須依實際程式與最後
+測試結果，不能只根據核准的設計或一次交叉編譯成功。
+
+Vendor 參考包括 Bitwarden CLI `2026.3.0` source、1Password SSH-key CLI creation docs、
+Yubico FIDO2 指引、Apple 原生 sc_auth／ssh-keychain 手冊，以及 SSH guide／backlog 連結的
+原始公開 CTK 範例。CTK 範例只是 fixture，不是普遍 mapping contract；自動 provisioning
+仍被擋下。Bitwarden base URL／session 不能證明 effective endpoint；明確 native-context
+模式是委由原生設定處理 authority，保留 endpoint-unverified，不是 transactional config
+snapshot 或 supply-chain attestation。真實 vault item 建立／刪除、YubiKey／Touch ID 操作，
+以及 native Windows attestation 都需要另外的證據／同意；自動 fake 測試不能取代。
 
 ## Dotfiles 與 FLEET 主機樹
 

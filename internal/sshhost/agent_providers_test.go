@@ -98,7 +98,7 @@ func TestCatalogRequestedAgentPrecedenceAndPublicationWithoutPrivateBytes(t *tes
 		case "SSH_AUTH_SOCK=" + bitwarden:
 			return RunResult{Stdout: []byte(string(shared) + "\n" + string(vault) + "\n")}, nil
 		}
-		return RunResult{ExitCode: 1}, nil
+		return RunResult{ExitCode: 1, Stdout: []byte("The agent has no identities.\n")}, nil
 	})
 	s, err := NewService(paths, runner)
 	if err != nil {
@@ -216,7 +216,7 @@ func TestPublishedNamedAgentKeyBootstrapsWhenAliasUsesThatAgent(t *testing.T) {
 			if r.Env[len(r.Env)-1] == "SSH_AUTH_SOCK="+socket {
 				return RunResult{Stdout: append(append([]byte{}, line...), '\n')}, nil
 			}
-			return RunResult{ExitCode: 1}, nil
+			return RunResult{ExitCode: 1, Stdout: []byte("The agent has no identities.\n")}, nil
 		}
 		if r.Display == "ssh selected-key-only authentication proof" {
 			data, err := os.ReadFile(sshArgForCatalogTest(r.Args, "-F"))

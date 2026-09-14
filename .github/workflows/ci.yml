@@ -91,8 +91,8 @@ jobs:
         run: go test ./internal/sshhost
       - name: Test machine registry and SSH discovery natively
         run: go test ./internal/machineregistry ./internal/sshdiscovery ./internal/sshflow ./internal/sshactivity ./internal/tuiissue
-      - name: Test SSH credential brokerage and remote protocol natively
-        run: go test ./internal/sshcredential ./internal/sshremote
+      - name: Test SSH credentials, vault creation and remote protocol natively
+        run: go test ./internal/sshcredential ./internal/sshvault ./internal/sshremote
       - name: Test fleet transport and managed config natively
         run: go test ./internal/fleet
       - name: Test SSH and fleet CLI contracts natively
@@ -112,6 +112,8 @@ jobs:
           $env:GOOS = "windows"
           $env:GOARCH = "arm64"
           go test -c -o "$env:RUNNER_TEMP\sshhost-arm64.test.exe" ./internal/sshhost
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          go test -c -o "$env:RUNNER_TEMP\sshvault-arm64.test.exe" ./internal/sshvault
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           go test -c -o "$env:RUNNER_TEMP\machines-arm64.test.exe" ./internal/machineregistry
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

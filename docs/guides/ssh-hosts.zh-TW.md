@@ -210,6 +210,103 @@ Apple Passwords 沒有文件化的 SSH-key item／SSH agent；Keychain passphras
 [`ssh-keychain`](https://keith.github.io/xcode-man-pages/ssh-keychain.8.html) 手冊。
 實際 enrollment 與 Touch ID 是另外的使用者協助驗證；fake runner 或交叉編譯不能證明它們成功。
 
+### 先建立 vault key，再選取 agent identity
+
+`dev ssh key create` 是獨立的 vault-creation 流程，不會遠端安裝 SSH key、改寫 SSH
+設定、註冊 fleet／Herdr、匯入舊私鑰，或刪除來源／vault item。Setup key picker 也提供
+vault creation；明確選取 key 後才回到 SSH 表單。Vault 建立有自己的審閱／確認；之後
+取消 SSH 表單**不會**撤銷已完成的 vault creation。
+
+`--dry-run` 只驗證／顯示意圖，不查詢 provider CLI 或 agent；account／vault／agent
+觀測維持 unknown，也不是可重用的 guarded provider plan。實際建立前仍會取得新的
+service-bound plan。1Password 使用確切 vault ID；互動執行可審閱目前原生 account，
+但使用 `--yes` 或非互動的實際 RPC creation 必須指定確切 `--account` ID。
+Title（預設 `SSH key`）只是標籤，不用於去重或識別 item；command 不接受 positional arguments。
+
+**1Password：**穩定版原生 `op` 2.x（至少 2.20.0）在選定 vault 產生預設 Ed25519 item；
+dev 保留確切回傳 item ID，再另外驗證 public key。Item 可能已存在，但 desktop agent 尚未提供它：請自行
+解鎖／同步原生 app、設定 agent 的 vault selection，再選取 fingerprint。Dev 不編輯
+`agent.toml`，不重試結果模糊的 create，也不暗中改選其他 identity。
+
+**Bitwarden desktop handoff：**可由 picker 選取，或執行 `dev ssh key create --provider
+bitwarden --desktop`。不能搭配 account／vault scope、experimental／native-context flags
+或實際 JSON execution。即使 `--yes` 也需要互動確認 GUI 完成並明確選取 fingerprint
+（仍可用 `--dry-run --json`）。先從一個確切 Bitwarden agent socket 取得完整 public-key
+inventory，接著用原生 desktop UI 建立 key，再明確 refresh、選取新**可見**的 fingerprint。
+這不是新 vault item 已建立的證明：也可能是既有 key 剛變成可見。Baseline 不可用不能當成
+空 vault；agent 重啟／socket 改變會讓前後比較失效。Dev 不操作 GUI，也不猜測 item ID。
+
+**Bitwarden 記憶體／native-context 模式（experimental）：**CLI schema 目前限定
+`2026.3.0`，需要兩個分開的同意：
+
+- `--experimental`：允許新的 Ed25519 私鑰短暫存在 dev 記憶體，並透過 stdin 交給原生 CLI。
+- `--native-context`：將 endpoint／設定 authority 委由審閱過的原生 Bitwarden account／
+  profile 處理。這**不是 endpoint attestation**。
+
+一般 `--yes` 不能代替其中任何一項。審閱會列出觀測到的 user、profile、CLI entrypoint／
+runtime 與工作目錄。`BW_SESSION` 只來自原生 environment；不要把 session、master password
+或 key 貼進 agent／聊天。Session 是解密 credential，不是 account／server ID。
+Plan 只保留私有比較資料，不匯出 session 值或 hash。Apply 重新捕捉／驗證執行 context，
+然後 metadata、create、post-check 都使用同一份明確固定的 environment／cwd。
+不更改全域 environment、不 login／unlock、不改 provider 設定，也不解析原生 vault data。
+Metadata／create 強制原生 no-interaction，避免把 private JSON stdin 當成 credential prompt
+的輸入。
+
+Entrypoint／profile 必須能安全綁定，包括受支援的 Node package／runtime 形式與 portable
+profile 優先順序。不支援的 script wrapper／shebang、不安全／改變的 profile，或尚未支援的
+原生 Windows attestation 都會 fail closed。Native executable 檢查綁定受保護的 filesystem
+identity 與 ELF／Mach-O 結構，不能據此辨別所有 compiled runtime shim。原生 executable
+行為與 dependencies 仍屬信任邊界，原生設定也不會變成 transactional。Bitwarden base `serverUrl` 只是 advisory 顯示值，
+不能用它推斷 cloud region 或獨立 API 設定。因此結果一律維持 `endpoint=unverified`，並把
+`native_context=observed_consistent` 與 creation status 分開。要求 endpoint attestation 的
+Bitwarden 模式仍不支援。
+
+私鑰產生／編碼只使用記憶體與 stdin，不寫 plaintext key file、不用 clipboard 或 private-key
+argv。Owned buffers 會盡力清除，但不保證 RAM／swap／core dump 完美抹除；原生 provider
+的儲存也仍由它管理。CLI／TUI 只輸出 metadata、fingerprint、item ID，不輸出 private／session
+bytes 或完整 public-key line。
+
+若 item 已建立但 agent 尚不可見，狀態仍是 **created**，並保留 receipt 與指引。回應遺失、
+public result 格式錯誤、post-check 改變，都可能留下 readiness／context 不確定的 item；
+保留已知 item ID，檢查後才開始新的 creation plan。Controller-local attempt ID 可區分
+account／vault／title 相同的兩次 unknown 嘗試，但不代表猜測出的 provider item ID。
+Receipt 不依附暫存 UI dialog，延遲結果不能取消另一個 action，也不會隨表單替換而遺失。
+Plan 只能嘗試一次；item creation 或 public agent listing 都不是 SSH authentication proof，也不是 password-save authority。只有後續
+一般 SSH setup 的審閱／proof，才授權它自己的設定、bootstrap 與選用 registration。
+
+Bitwarden type-5 與 1Password 的真實整合測試需要另外取得使用者同意；fake runner 不能取代。
+Diagnostics、文件檢查或測試套件，不會暗中建立或刪除真實 vault item。
+
+### 選擇簽章 key 的存放方式
+
+| Backend | Key 儲存／互動 | Dev 的支援邊界 |
+|---|---|---|
+| Bitwarden | 加密 vault；解鎖後 agent／CLI 可在記憶體使用解密資料 | Named Unix agent；明確 desktop handoff，或另行同意的 experimental native-context creation |
+| 1Password | 加密 vault；原生 approval／session 與 agent policy | Named Unix agent 與明確的原生 vault creation；agent 是否可見仍是另外的觀測 |
+| YubiKey／FIDO2 | Authenticator 簽章；本機保護 handle，可選 resident | 受支援 controller 的明確互動 FIDO generation；不匯入舊私鑰，也不自動移除 credential |
+| Secretive（macOS） | Secure Enclave non-exportable key；原生 UI／approval | 選取既有 Secretive agent；dev 不替它 provisioning |
+| Apple CTK／Secure Enclave | Non-exportable P-256 CTK identity 與本機 SK handle | 使用已配置的原生 stub；自動建立須先驗證 identity mapping，目前停用 |
+| Apple Passwords／Keychain | Passwords 沒有文件化 SSH agent；Keychain 可存 key-file passphrase | 原生 passphrase 整合不等於 hardware-only，也不會消除 private-key file |
+| KeePassXC | 加密資料庫與 SSH-agent integration | 先設定原生工具，再選取已驗證 socket；不代表私鑰不可匯出 |
+| ssh-tpm-agent（Linux-oriented） | TPM 2.0 key generation 與本機 sealed `.tpm` files | 只整合既有 custom agent socket；dev 不做 TPM provisioning／migration |
+| gpg-agent／OpenPGP card | 依原生設定使用軟體或卡片 key | 既有 custom agent socket；不做 OpenPGP provisioning |
+| YubiKey PIV | 獨立的 generation／import 與 slot lifecycle | 不寫入／覆蓋 slot、不做 PIV provisioning；使用既有原生認證 |
+| Windows OpenSSH／Hello | 依已安裝 build／provider 決定原生支援 | 遵循 upstream 原生指引；不宣稱 Windows Hello 是 dev backend，明確 agent／hardware creation 仍須 native attestation 才能開放 |
+
+Vault key 通常仍可由原生 provider 匯出；「dev 不寫 private file」不等於不可匯出。
+Agent 記憶體、OS swap／crash 處理與原生 provider 儲存，也不在完美抹除保證內。
+不要把匯入舊 key 後自動刪除本機來源，當成硬體產生的替代方案；能否無人值守運作，
+還取決於 PIN／touch 與 agent approval policy，而不只是 key 放在哪裡。
+
+參考：[Bitwarden SSH agent](https://bitwarden.com/help/ssh-agent/)、
+[1Password SSH](https://www.1password.dev/ssh/agent/)、
+[KeePassXC agent integration](https://keepassxc.org/docs/KeePassXC_UserGuide#_ssh_agent_integration)、
+[ssh-tpm-agent](https://github.com/Foxboron/ssh-tpm-agent)、
+[GnuPG agent documentation](https://www.gnupg.org/documentation/manuals/gnupg/Agent-Options.html)、
+[Windows FIDO/U2F](https://github.com/PowerShell/Win32-OpenSSH/wiki/FIDO---U2F-usage)。
+Windows 來源描述 FIDO／U2F 流程，不是 Windows Hello key storage；upstream capability
+也不能證明 dev 的原生 Windows gates 已通過測試。
+
 ## ProxyJump 與 remote operating system
 
 Dev 會對 target 與每個 discovered jump 執行 plain `ssh -G`，將 nested/comma-separated `ProxyJump` route 依 outermost-first flatten，並支援 alias、`user@alias`、`alias:port` 與 bracketed IPv6 forms。Cycle、repeated hop、unsupported URI/`ProxyCommand` route 與 ambiguous override 都會被拒絕，不會猜測。
@@ -285,7 +382,7 @@ Removal 絕不刪除 shared Include、local private/public key file、`known_hos
 - 刪除 local key 或 `known_hosts` repair/removal；
 - alias rename/adoption、managed wildcard/`Match`、arbitrary SSH directive 或 SSH config editor；
 - 自動化 `ProxyCommand`、certificate/CA、forwarding、custom `AuthorizedKeysFile` 或 forced-shell policy；
-- password/vault storage、automatic password fallback、private-key copying、direct Bitwarden integration 或 weakened host-key check；
+- 既有 private-key migration／import、vault-item deletion、automatic password fallback、private-key copying 或 weakened host-key check（明確的新 vault-key creation 與 credential-provider password storage 是另外支援的流程）；
 - cloud/chezmoi fleet import、mDNS、IPv6 range scanning 或 background probing。
 
 Server policy 若超出 verified POSIX/Windows installer contract，dev 會回報 manual remediation，不會靜默削弱 protection。
@@ -810,6 +907,9 @@ comment，再回到原表單。可用的 Bitwarden、1Password、Secretive agent
 不可用的 provider 則顯示操作指引。Security-key generation 另可設定 type、provider、
 resident handle、verify-required 與 application；審閱會說明原生 touch／PIN 流程與
 可能保留的硬體作用。自動 Secure Enclave 建立仍不可用。
+Vault 選項會先做獨立的 creation 審閱，再回到 SSH setup；之後取消 SSH 表單，
+仍會保留 item receipt。Bitwarden desktop handoff 只顯示新可見的 agent key，
+不宣稱已觀測到 vault item 建立。
 
 在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
 表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選

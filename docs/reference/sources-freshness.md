@@ -220,9 +220,32 @@ own execution. Default SSH listing and cached `--fleet` listing stay passive.
 `internal/sshcredential` defines exact password contexts, optional native system
 and Bitwarden providers, private askpass transport and guarded policy/reference
 TOML. Native vault availability and interactive authorization vary by host; no
-vault was read or written by the automated unit-test fixtures. Private-key vault
-migration, hardware provisioning and Apple Passwords migration remain deferred.
+vault was read or written by the automated unit-test fixtures. Existing-private-key
+vault migration and Apple Passwords migration remain deferred; explicit new-key
+creation is described separately below.
 The public SSH guide distinguishes controller routes from remote-native sessions.
+
+## Key-provider authority and validation boundaries (2026-09-15)
+
+Custom destinations, named agents/v2 fragments and FIDO generation are defined by
+`internal/sshhost`, the CLI/TUI SSH adapters and their source-bound fixtures.
+Filesystem replacement, permission hardening, partial publication, independent
+native login gates and same-socket inventory refresh have dedicated regressions.
+The vault boundary is `internal/sshvault` plus the frozen-environment provider
+runner in `internal/sshcredential`; schema/version gates, dual Bitwarden approval,
+profile/tool binding, single-attempt writes and retained public receipts are distinct
+from agent visibility and SSH proof. Interface claims must follow the code and
+final test results, not merely an approved design or a passing cross-build.
+
+Vendor references include Bitwarden CLI `2026.3.0` source, 1Password SSH-key CLI
+creation docs, Yubico FIDO2 guidance, native Apple sc_auth/ssh-keychain manuals,
+and the original public CTK example linked in the SSH guide/backlog. The CTK example
+is a fixture, not a general mapping contract; automatic provisioning remains blocked.
+Bitwarden base URLs/session values never attest effective endpoints. The explicit
+native-context mode delegates configuration authority and retains endpoint-unverified
+status; it is not a transactional native-config snapshot or supply-chain attestation.
+Real vault-item creation/deletion, YubiKey/Touch ID interaction and native Windows
+attestation need separate evidence/consent; automated fakes do not supply it.
 
 ## Dotfiles and FLEET host tree
 

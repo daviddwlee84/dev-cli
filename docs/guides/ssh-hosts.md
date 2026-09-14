@@ -219,6 +219,125 @@ See [Yubico FIDO2 SSH](https://developers.yubico.com/SSH/Securing_SSH_with_FIDO2
 Physical enrollment and Touch ID are separate user-assisted checks, not proven by
 fake-runner tests or platform cross-compilation.
 
+### Create a vault key, then select its agent identity
+
+`dev ssh key create` is a separate vault-creation workflow. It does not install an
+SSH key remotely, rewrite SSH configuration, register fleet/Herdr, import an old
+private key, or delete any source/vault item. Setup key pickers also offer vault
+creation and return to the SSH form only after a key is explicitly selected.
+Creating the vault item has its own review/approval; canceling the later SSH form
+does **not** undo that completed creation.
+
+`--dry-run` validates and displays intent only: no provider CLI or agent is queried,
+and account/vault/agent observations remain unknown. It is not a reusable guarded
+provider plan. Actual creation obtains a fresh service-bound provider plan first.
+Use an exact vault ID for 1Password. Interactive creation may review the current
+native account; actual RPC creation with `--yes` or outside a terminal must specify
+an exact `--account` ID. The title (default `SSH key`) is a label, never duplicate
+detection or identity. There are no positional arguments.
+
+**1Password:** stable native `op` 2.x, at least 2.20.0, generates the default
+Ed25519 item in the selected vault. Dev retains the exact returned item ID and checks its public key separately.
+The item may exist before the desktop agent exposes it: unlock/sync the native app
+and configure its agent vault selection yourself, then select the fingerprint.
+Dev does not edit `agent.toml`, retry an ambiguous create, or silently substitute
+another identity.
+
+**Bitwarden desktop handoff:** choose it in the picker or use `dev ssh key create
+--provider bitwarden --desktop`. It cannot be combined with account/vault scopes,
+experimental/native-context flags, or actual JSON execution. Even `--yes` still
+requires interactive GUI-completion confirmation and explicit fingerprint selection
+(`--dry-run --json` remains allowed). First obtain a complete public-key inventory from
+one exact Bitwarden agent socket. Create a key using the native desktop UI, then
+explicitly refresh and choose a newly **visible** fingerprint. This is not proof
+that a new vault item was created: an existing key may have become visible. An
+unavailable baseline is not an empty vault, and an agent restart/socket change
+invalidates the comparison. Dev neither automates the GUI nor invents an item ID.
+
+**Bitwarden in-memory native-context mode (experimental):** CLI schema support is
+pinned to `2026.3.0`. Two separate approvals are required:
+
+- `--experimental`: allow a new Ed25519 private key to exist briefly in dev's
+  process memory and be supplied to the native CLI over stdin.
+- `--native-context`: delegate endpoint/configuration authority to the reviewed
+  native Bitwarden account/profile. This is **not endpoint attestation**.
+
+Generic `--yes` does not replace either approval. Review shows the observed user,
+profile, CLI entrypoint/runtime and working directory. `BW_SESSION` comes only
+from the native environment; never paste a session, master password or key into
+agent/chat input. A session is a decryption credential, not an account/server ID.
+The Plan retains only private comparison material, not an exported session value
+or hash. Apply recaptures/revalidates the execution context, then runs all metadata,
+creation and post-check commands with the same explicit frozen environment/cwd.
+No global environment changes, login/unlock, provider configuration edits or native
+vault-data parsing occur. Metadata/create commands use native no-interaction mode
+so private JSON stdin cannot become a credential-prompt answer.
+
+The supported entrypoint/profile must be safely bound, including the documented
+Node package/runtime form and portable-profile precedence where applicable.
+Unsupported script wrappers/shebangs, unsafe/changed profiles or unsupported native
+Windows attestation fail closed. Native executables are checked for protected filesystem
+identity and ELF/Mach-O structure; those checks cannot distinguish every compiled runtime
+shim from the intended runtime. Native executable behavior and dependencies remain a
+trust boundary, and native configuration is not transactional. Bitwarden's base
+`serverUrl` is only an advisory display value: cloud regions and independent API
+settings cannot be inferred from it. Results therefore keep `endpoint=unverified`
+and distinguish `native_context=observed_consistent` from creation status. The
+endpoint-attested Bitwarden mode remains unsupported.
+
+Private key generation/encoding uses memory and stdin, never a plaintext key file,
+clipboard or private-key argv. Owned buffers are wiped best-effort; that is not a
+perfect RAM/swap/core-dump erasure guarantee, and native provider storage remains
+its own responsibility. Public CLI/TUI results contain metadata, fingerprints and
+item IDs—not private/session bytes or the complete public-key line.
+
+A created item with missing agent visibility remains **created**, with its receipt
+and guidance. A lost response, malformed public result or changed post-check may
+leave an item with uncertain readiness/context; retain the known item ID and inspect
+before starting a fresh creation plan. A controller-local attempt ID distinguishes
+two unknown attempts even when their account, vault and title are identical; it is
+not an inferred provider item ID. Receipts live outside transient UI dialogs so late
+results cannot cancel another action or disappear when a form is replaced.
+Plans are single-attempt. Neither item creation nor public agent listing is an SSH authentication proof or password-save
+authority. Only the subsequent normal SSH setup review/proof authorizes its own
+configuration, bootstrap and optional registrations.
+
+Real Bitwarden type-5 and 1Password native integration checks are separate,
+user-consented validation; fake runners do not replace them. No live vault item
+creation or deletion is implicit in diagnostics, docs checks or test suites.
+
+### Choosing where a signing key lives
+
+| Backend | Key storage / interaction | Dev boundary |
+|---|---|---|
+| Bitwarden | Encrypted vault; unlocked agent/CLI can use decrypted material in memory | Named Unix agent; explicit desktop handoff or separately approved experimental native-context creation |
+| 1Password | Encrypted vault; native approval/session and agent policy | Named Unix agent and explicit native vault creation; agent visibility remains a separate observation |
+| YubiKey / FIDO2 | Authenticator-backed signing; protected local handle, optionally resident | Explicit interactive FIDO generation on supported controllers; no existing-private-key import or automatic credential removal |
+| Secretive (macOS) | Secure Enclave-backed non-exportable key; native UI/approval | Select the existing Secretive agent; dev does not provision it |
+| Apple CTK / Secure Enclave | Non-exportable P-256 CTK identity with a local SK handle | Existing native configuration/stubs only; automatic creation is blocked pending verified identity mapping |
+| Apple Passwords / Keychain | Passwords is not a documented SSH agent; Keychain can store a key-file passphrase | Native passphrase integration is not a hardware-only or no-private-file solution |
+| KeePassXC | Encrypted database plus its SSH-agent integration | Configure the native tool, then use an existing validated agent socket; not a non-exportability guarantee |
+| ssh-tpm-agent (Linux-oriented) | TPM 2.0 key generation and local sealed `.tpm` files | Existing custom agent socket only; no TPM provisioning or migration by dev |
+| gpg-agent / OpenPGP card | Software or card-backed key, depending on native configuration | Existing custom agent socket; no OpenPGP provisioning |
+| YubiKey PIV | Separate generation/import and slot lifecycle | No slot writes/overwrites or PIV provisioning; use existing native authentication |
+| Windows OpenSSH / Hello | Native support depends on the installed build and provider | Follow upstream native guidance; Windows Hello is not claimed as a dev key backend, and explicit dev agent/hardware creation gates remain closed pending native attestation |
+
+Vault keys are generally exportable by their native provider; “no private file
+written by dev” is not the same as non-exportability. Agent memory, OS swap/crash
+handling and native provider storage remain outside a perfect-erasure guarantee.
+Never import an old key and automatically delete its local source as a substitute
+for hardware generation. Unattended operation also depends on native PIN/touch and
+agent approval policy, not just where the key is stored.
+
+References: [Bitwarden SSH agent](https://bitwarden.com/help/ssh-agent/),
+[1Password SSH](https://www.1password.dev/ssh/agent/),
+[KeePassXC agent integration](https://keepassxc.org/docs/KeePassXC_UserGuide#_ssh_agent_integration),
+[ssh-tpm-agent](https://github.com/Foxboron/ssh-tpm-agent),
+[GnuPG agent documentation](https://www.gnupg.org/documentation/manuals/gnupg/Agent-Options.html),
+[Windows FIDO/U2F](https://github.com/PowerShell/Win32-OpenSSH/wiki/FIDO---U2F-usage).
+The Windows source documents FIDO/U2F workflows, not Windows Hello key storage;
+upstream capability is not evidence that dev's native Windows gates were tested.
+
 ## ProxyJump and remote operating systems
 
 Dev evaluates plain `ssh -G` for the target and each discovered jump, flattens nested/comma-separated `ProxyJump` routes outermost-first, and supports alias, `user@alias`, `alias:port`, and bracketed IPv6 forms. It rejects cycles, repeated hops, unsupported URI/`ProxyCommand` routes, and ambiguous overrides instead of guessing.
@@ -294,7 +413,7 @@ Deliberately deferred:
 - deletion of local keys or `known_hosts` repair/removal;
 - alias rename/adoption, managed wildcards/`Match`, arbitrary SSH directives, or an SSH config editor;
 - automated `ProxyCommand`, certificates/CAs, forwarding, custom `AuthorizedKeysFile`, or forced-shell policy;
-- password/vault storage, automatic password fallback, private-key copying, direct Bitwarden integration, or weakened host-key checks;
+- existing private-key migration/import, vault-item deletion, automatic password fallback, private-key copying, or weakened host-key checks (explicit new vault-key creation and credential-provider password storage are separate supported workflows);
 - cloud/chezmoi fleet import, mDNS, IPv6 range scanning, or background probing.
 
 When a server policy falls outside the verified POSIX/Windows installer contract, dev reports manual remediation rather than silently weakening it.
@@ -912,6 +1031,9 @@ retain the exact fingerprint and socket; unavailable providers show guidance.
 Security-key generation also exposes the type, provider, resident handle,
 verify-required and application options. Review shows the native touch/PIN flow
 and possible retained hardware effects; automatic Secure Enclave creation remains unavailable.
+Vault choices use a separate creation review before returning to SSH setup. The
+result retains item receipts if the later SSH form is canceled; Bitwarden desktop
+handoff shows newly visible agent keys rather than claiming vault-item creation.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

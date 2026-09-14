@@ -49,6 +49,10 @@ func sshTUIActions(state *tuiAppState) tui.SSHActions {
 			active := *state.Current()
 			return prepareSSHTUIOnboarding(ctx, &active, request)
 		},
+		PrepareVaultKey: func(ctx context.Context, request sshflow.VaultKeyRequest) (tui.SSHVaultKeyPlan, error) {
+			active := *state.Current()
+			return prepareSSHVaultKey(ctx, &active, request)
+		},
 		Workflow: func(ctx context.Context, request tui.SSHWorkflowRequest) (tui.SSHWorkflow, error) {
 			return &sshTUIWorkflow{ctx: ctx, app: *state.Current(), request: request}, nil
 		},
@@ -92,6 +96,8 @@ func (w *sshTUIWorkflow) run() error {
 	switch w.request.Action {
 	case "onboard":
 		return w.applyOnboarding()
+	case "vault-key":
+		return w.applyVaultKey()
 	case "setup":
 		w.result.MembershipChanged = true // interrupted setup can retain partial registrations
 		return runSSHOnboarding(ctx, app, nil, sshSetupOptions{})

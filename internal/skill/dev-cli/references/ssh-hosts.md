@@ -178,6 +178,44 @@ JSON mode is batch-only even on a terminal. Noninteractive public-key bootstrap 
 `--target-os`; local mutation requires `--yes`. Native OpenSSH may prompt only in
 interactive human mode.
 
+## Explicit vault-created keys
+
+`dev ssh key create` creates a NEW provider item, not SSH configuration or remote
+installation. Select `--provider 1password` with exact `--vault` ID and a `--title`.
+Actual RPC creation with --yes or outside a terminal requires exact `--account`;
+only interactive review may use the current native account. Bitwarden requires `--provider bitwarden` plus BOTH
+`--experimental` (private material briefly in memory) and `--native-context`
+(delegated native profile/configuration authority). Generic `--yes` does not replace
+those approvals. `--dry-run` is static intent-only: no native commands, account
+observation or reusable provider plan. Apply still plans/revalidates before mutation.
+
+Bitwarden native-context mode freezes actual env/cwd and revalidates the session,
+native profile, entrypoint/runtime/package and observed user. Use fixed native
+no-interaction; private JSON stdin must never answer an unlock prompt. Session values
+and hashes never enter public plans/output; base URL is advisory and endpoints stay
+unverified. Native context observed_consistent is not endpoint attestation or a
+transactional guarantee for native configuration. Unsupported wrappers/profile
+identity/platforms fail closed; no native config/vault-storage parsing or mutation
+workarounds. Never ask the user to paste BW_SESSION/master passwords into agent text.
+
+The result retains exact item IDs and public fingerprints, not private bytes or full
+public lines. Created-but-not-in-agent remains CREATED; failed/changed post-checks
+retain receipts with uncertainty and never auto-retry/delete. Only an unchanged
+successful domain result can offer its key for agent selection, which itself is
+not signing/SSH proof. Vault creation has a separate approval and survives cancellation
+of the later SSH form; normal source-bound SSH review/proof gates installation.
+
+Desktop Bitwarden handoff (`--provider bitwarden --desktop`) requires a complete
+exact-socket baseline and refresh, interactive GUI-completion confirmation, then
+explicit selection of newly VISIBLE fingerprints, even with --yes. It rejects
+account/vault/experimental/native-context scopes and actual JSON execution;
+intent-only --dry-run --json is allowed. Empty success must not be
+inferred from agent errors. Socket replacement invalidates comparison; visibility
+changes do not prove a new item or supply an item ID. Use native GUI steps, never
+implicit GUI automation, key import, private source deletion or credential revocation.
+Live native type-5/1Password verification remains separately consented; fake tests
+and source schema review are not equivalent to a real unlocked vault test.
+
 ## ProxyJump and remote OS
 
 Routes are resolved outermost-first from plain `ssh -G`. Supported ProxyJump
@@ -293,8 +331,9 @@ Removal never touches:
 
 Rotation/revocation/expiry, key deletion, alias rename/adoption, arbitrary SSH
 directives, managed wildcards/Match, ProxyCommand automation, custom
-AuthorizedKeysFile, password/vault storage, bulk inventory import,
-are deferred.
+AuthorizedKeysFile, existing private-key migration/import, vault-item deletion,
+and bulk inventory import are deferred. Explicit new vault-key creation and
+credential-provider password storage are separate supported workflows.
 
 ## Machine output
 
@@ -840,6 +879,9 @@ retain the exact fingerprint and socket; unavailable providers show guidance.
 Security-key generation also exposes the type, provider, resident handle,
 verify-required and application options. Review shows the native touch/PIN flow
 and possible retained hardware effects; automatic Secure Enclave creation remains unavailable.
+Vault choices use a separate creation review before returning to SSH setup. The
+result retains item receipts if the later SSH form is canceled; Bitwarden desktop
+handoff shows newly visible agent keys rather than claiming vault-item creation.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

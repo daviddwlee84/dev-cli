@@ -462,6 +462,9 @@ comment，再回到原表單。可用的 Bitwarden、1Password、Secretive agent
 不可用的 provider 則顯示操作指引。Security-key generation 另可設定 type、provider、
 resident handle、verify-required 與 application；審閱會說明原生 touch／PIN 流程與
 可能保留的硬體作用。自動 Secure Enclave 建立仍不可用。
+Vault 選項會先做獨立的 creation 審閱，再回到 SSH setup；之後取消 SSH 表單，
+仍會保留 item receipt。Bitwarden desktop handoff 只顯示新可見的 agent key，
+不宣稱已觀測到 vault item 建立。
 
 在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
 表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選

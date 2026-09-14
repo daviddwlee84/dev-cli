@@ -817,6 +817,47 @@ Snapshot/transaction documents 包含 `schema_version`、machine revisions 與 s
 bindings；registry UUID 不取代 remote fleet 的 `machine_id` pin。詳見
 [SSH onboarding](../guides/ssh-hosts.zh-TW.md)。
 
+## SSH vault-key creation
+
+`ssh key create` 不接受 positional arguments。Flags 包括 `--provider 1password|bitwarden`、
+`--title`（預設 `SSH key`）、`--account`、`--vault`、`--desktop`、`--dry-run`、`--yes`、
+`--json`，以及 Bitwarden 的 `--experimental`、`--native-context`。互動執行可審閱目前
+account；使用 `--yes` 或非互動的實際 RPC creation，必須指定確切 `--account` ID。
+1Password 要求確切 vault ID；Bitwarden 使用 personal vault，並且需要**兩項同意**。
+Native-context 委由原生 profile／設定處理 authority，不是 endpoint attestation；
+`--yes` 不能代替其中一項。
+
+`--desktop` 要求 `--provider bitwarden`，不可搭配 account／vault／experimental／
+native-context scopes。即使有 `--yes`，仍必須互動確認 GUI 步驟完成並明確選取 fingerprint。
+實際 desktop handoff 不接受 `--json`，但允許 intent-only `--dry-run --json`。
+Title 與 creation 由原生 GUI 管理；dev 不猜測 item ID，也不宣稱有 creation receipt。
+
+Vault-create dry-run 只驗證靜態意圖，不執行 provider／agent；account／vault／agent
+觀測仍是 unknown。實際建立會取得新的 service-bound plan。Native-context metadata
+包含審閱過的 profile／tool，不含 session 值或 hash。Bitwarden native-context 建立成功仍
+維持 `result.binding_status: unknown` 與 `result.endpoint_status: unverified`；只有
+`result.native_context_status` 會成為 `observed_consistent`。這個預期的 binding uncertainty
+與 `result.status: created` 分開，不是重試建立的理由。公開結果保留 item ID／fingerprint
+與 created／unknown／context 狀態，不含
+private material 或完整 public-key line。Agent 尚不可見或後續 SSH setup 失敗，不會撤銷
+已建立 item，也不代表自動 retry、import、改寫原生設定或刪除 item。Desktop handoff 使用
+同一 socket 的完整 public inventory 與明確的新可見 key 選取，不猜測 vault item ID。
+JSON 為 `schema_version: 1`、`kind: ssh_key_create`。Dry-run 是 `status: intent_only`、
+`preview.intent_only: true`，不是 apply-ready。作用前狀態包含 `blocked`、
+`confirmation_required`、`canceled`、`not_started`；RPC 結果為 `created` 或 `unknown`，
+已建立的 receipt 仍可能伴隨非零 partial／context error。Desktop 狀態為 `observed`、
+`no_new_visible_keys`、`unavailable`。`result.agent_status` 可為 `not_checked`、
+`not_selected`、`unavailable`、`not_visible`、`offered`；offered 只是可列出，不是簽章證明。
+`result.receipt` 只有公開 item／attempt metadata，不含 `public_line`。Controller-local
+`attempt_id` 用來區分各次審閱過的建立嘗試，包含尚無 item ID 的 unknown 結果；它不是
+vault item ID 或認證證明。同一次結果重複送達可 reconciliation，但不同 unknown 嘗試不能
+合併遺失；UI receipt 不依附暫存 dialog 或 immutable SSH review 的生命週期。
+Receipt 的 `observation` 是 controller-local 順序計數，不是 provider revision 或時間戳；
+較舊結果不能覆蓋較新的 context uncertainty。已知的 created、item ID 與 fingerprint 事實
+會保留；非空 identity 衝突列於 `conflicting_identities`，不互相靜默覆蓋。這些 reconciliation
+欄位與保留回執不提供 key-selection 或 apply authority。
+沒有 serialized-plan apply flag。詳見 [vault creation](../guides/ssh-hosts.zh-TW.md)。
+
 ## SSH key catalog 與 picker behavior
 
 `ssh key list` 接受 `--json`、`--no-agent`、`--alias <alias>`、可重複的

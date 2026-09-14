@@ -744,14 +744,14 @@ func (s *Service) readAgentKeys(ctx context.Context, agent *keyAgentContext, dis
 		}
 		return nil, []string{"agent_unavailable"}, nil
 	}
-	if result.ExitCode == 1 {
+	if result.StdoutTruncated || result.StderrTruncated || len(result.Stdout) > maxAgentCatalogBytes {
+		return nil, []string{"agent_output_limit_exceeded"}, nil
+	}
+	if result.ExitCode == 1 && bytes.Equal(bytes.TrimSpace(result.Stdout), []byte("The agent has no identities.")) && len(bytes.TrimSpace(result.Stderr)) == 0 {
 		return nil, nil, nil
 	}
 	if result.ExitCode != 0 {
 		return nil, []string{"agent_unavailable"}, nil
-	}
-	if result.StdoutTruncated || len(result.Stdout) > maxAgentCatalogBytes {
-		return nil, []string{"agent_output_limit_exceeded"}, nil
 	}
 	lines := bytes.Split(result.Stdout, []byte{'\n'})
 	var diagnostics []string

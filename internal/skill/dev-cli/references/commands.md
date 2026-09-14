@@ -2119,11 +2119,30 @@ dev ssh init [flags]
 
 ### `dev ssh key`
 
-Inspect local SSH keys and agent identities (install one with dev ssh setup)
+Inspect SSH keys and agents, or create a new vault key (install with dev ssh setup)
 
 ```
 dev ssh key
 ```
+
+### `dev ssh key create`
+
+Create a new SSH key in an explicitly reviewed vault
+
+```
+dev ssh key create [flags]
+```
+
+- `--account` — exact native account/user ID (required with --yes; blank otherwise reviews the current account)
+- `--desktop` — use an interactive Bitwarden desktop handoff instead of an RPC creation
+- `--dry-run` — show unobserved intent only; do not query providers or agents and do not create a key
+- `--experimental` — explicitly approve experimental Bitwarden in-memory key generation
+- `--json` — emit one public-only plan/result document without a complete public key line
+- `--native-context` — explicitly delegate Bitwarden endpoints to the reviewed native profile; endpoints remain unverified
+- `--provider` — vault provider: 1password or bitwarden (omit for the interactive wizard)
+- `--title` — new vault item title
+- `--vault` — exact 1Password vault ID, or personal for Bitwarden
+- `--yes` — approve creation in the exact account/vault after planning (does not approve experimental or native-context mode)
 
 ### `dev ssh key derive`
 

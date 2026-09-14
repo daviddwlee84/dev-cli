@@ -824,7 +824,7 @@ func applySSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem,
 	result, applyErr := applySSHOnboardPlan(ctx, app, prepared, jsonOut)
 	// Preserve the CLI's established pre-effect error envelope. Dashboard
 	// callers retain the typed failure directly through applySSHOnboardPlan.
-	if applyErr != nil && result.Init == nil && len(result.Outcomes) == 0 {
+	if applyErr != nil && result.Init == nil && len(result.Outcomes) == 0 && len(result.VaultReceipts) == 0 {
 		return applyErr
 	}
 	if err := renderSSHOnboardResult(app, result, jsonOut); err != nil {
@@ -839,7 +839,7 @@ func applySSHOnboardPlan(ctx context.Context, app *App, prepared *sshPreparedOnb
 	defer func() {
 		if returnedErr != nil && result.Status == "not_run" {
 			result.Status = "failed"
-			if result.Init != nil && result.Init.Changed {
+			if result.Init != nil && result.Init.Changed || len(result.VaultReceipts) > 0 {
 				result.Status = "partial"
 			}
 		}
@@ -848,6 +848,7 @@ func applySSHOnboardPlan(ctx context.Context, app *App, prepared *sshPreparedOnb
 		return result, errors.New("missing reviewed SSH onboarding plan")
 	}
 	items, plan, s := prepared.items, prepared.plan, prepared.service
+	result.VaultReceipts = sshVaultReceiptsForItems(items)
 	guard, initialRegistry, initPlan := prepared.guard, prepared.registry, prepared.init
 	definitions := prepared.definitions
 	byAlias := map[string]sshOnboardItem{}
@@ -1228,6 +1229,9 @@ func renderSSHOnboardResult(app *App, result sshflow.OnboardExecutionResult, jso
 	if jsonOut {
 		return writeSSHJSON(app, result)
 	} else {
+		for _, receipt := range result.VaultReceipts {
+			fmt.Fprintln(app.Out, strings.Join(receipt.Lines(), "\n"))
+		}
 		for _, outcome := range result.Outcomes {
 			fmt.Fprintf(app.Out, "%s %s: %s\n", outcome.Alias, outcome.Stage, outcome.Status)
 			if outcome.Error != "" {
@@ -1280,6 +1284,9 @@ func renderSSHOnboardPreview(app *App, items []sshOnboardItem, init sshhost.Init
 	}
 	table.Render(app.Out)
 	for _, item := range items {
+		for _, receipt := range item.Options.vaultReceipts {
+			fmt.Fprintln(app.Out, strings.Join(receipt.Lines(), "\n"))
+		}
 		if item.Import != nil {
 			fmt.Fprintf(app.Out, "  Import from %s / %s (%s)\n", item.Import.FleetHost, item.ImportSource.Resolved.Profile.Alias, item.Import.OriginID)
 			for _, d := range item.Import.Definitions {

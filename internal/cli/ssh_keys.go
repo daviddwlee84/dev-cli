@@ -10,6 +10,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/daviddwlee84/dev-cli/internal/picker"
+	"github.com/daviddwlee84/dev-cli/internal/sshflow"
 	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 	"github.com/spf13/cobra"
 )
@@ -26,7 +27,7 @@ type sshKeyListDocument struct {
 }
 
 func newSSHKeyCmd(app *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "key", Short: "Inspect local SSH keys and agent identities (install one with dev ssh setup)", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "key", Short: "Inspect SSH keys and agents, or create a new vault key (install with dev ssh setup)", Args: cobra.NoArgs}
 	var jsonOut, noAgent bool
 	var alias, on string
 	var agentValues []string
@@ -84,6 +85,7 @@ Local listing never repairs permissions, generates keys, or authenticates remote
 	cmd.AddCommand(list)
 	cmd.AddCommand(newSSHKeyDoctorCmd(app))
 	cmd.AddCommand(newSSHKeyDeriveCmd(app))
+	cmd.AddCommand(newSSHKeyCreateCmd(app))
 	return cmd
 }
 
@@ -263,6 +265,13 @@ func chooseSSHKeyInteractive(ctx context.Context, app *App, service *sshhost.Ser
 				}
 				items = append(items, picker.Item{Value: "unavailable:" + string(observation.Provider), Label: observation.Label + " agent (unavailable)", Description: hint})
 			}
+			for _, choice := range sshVaultKeyChoices(service, options.fleetImportKeyPicker) {
+				value := "vault:" + choice.VaultAction
+				if choice.UnavailableReason != "" {
+					value = "unavailable:" + value
+				}
+				items = append(items, picker.Item{Value: value, Label: choice.Label, Description: choice.Description})
+			}
 			hardwareChoices, err := sshSecurityKeyChoices(ctx, service, alias, options.fleetImportKeyPicker)
 			if err != nil {
 				return options, err
@@ -295,6 +304,37 @@ func chooseSSHKeyInteractive(ctx context.Context, app *App, service *sshhost.Ser
 		options.key, options.keyCandidate, options.keyPlan, options.generateKey, options.keyPath = "", nil, nil, false, ""
 		clearSSHGeneratedKeyOptions(&options)
 		switch selected[0].Value {
+		case "vault:1password", "vault:bitwarden-native", "vault:bitwarden-desktop":
+			if options.fleetImportKeyPicker {
+				return options, errors.New("new vault creation is not supported during fleet-source profile import; configure the local alias first")
+			}
+			request, err := sshVaultRequestForAction(strings.TrimPrefix(selected[0].Value, "vault:"), "SSH key for "+alias)
+			if err != nil {
+				return options, err
+			}
+			result, err := runSSHVaultCreation(ctx, app, sshVaultCreateOptions{request: request, forPicker: true})
+			options.vaultReceipts = sshflow.RetainVaultKeyReceipt(options.vaultReceipts, result.Receipt)
+			if err != nil {
+				if errors.Is(err, errPromptCanceled) || errors.Is(err, picker.ErrCanceled) {
+					continue
+				}
+				return options, err
+			}
+			key, err := pickSSHVaultAgentKey(ctx, app, result)
+			if err != nil {
+				if errors.Is(err, errPromptCanceled) || errors.Is(err, picker.ErrCanceled) {
+					continue
+				}
+				return options, err
+			}
+			if key == nil {
+				continue
+			}
+			candidate, err := service.SelectAgentKey(ctx, sshhost.AgentSocketRef{Provider: sshhost.AgentProviderID(key.Provider), Socket: key.Socket}, key.Fingerprint)
+			if err != nil {
+				return options, err
+			}
+			options.keyCandidate = &candidate
 		case "generate", "generate-sk":
 			options.generateKey = true
 			defaultPath := generateDefault

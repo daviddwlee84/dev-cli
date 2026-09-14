@@ -105,7 +105,7 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 	}
 	copy := *app
 	copy.Out, copy.Err, copy.In = io.Discard, io.Discard, strings.NewReader("")
-	options := sshSetupOptions{json: true, yes: true, machineID: request.MachineID, to: request.To, targetOS: request.RemoteOS, fleetName: request.FleetName, herdrLabel: request.HerdrLabel, herdrSession: request.HerdrSession}
+	options := sshSetupOptions{vaultReceipts: sshflow.CloneVaultKeyReceipts(request.VaultReceipts), json: true, yes: true, machineID: request.MachineID, to: request.To, targetOS: request.RemoteOS, fleetName: request.FleetName, herdrLabel: request.HerdrLabel, herdrSession: request.HerdrSession}
 	if request.Profile == nil {
 		options.hostName, options.hostNameChanged, options.user, options.userChanged = request.HostName, true, request.User, true
 		options.port, options.portChanged, options.connectionChanged = request.Port, true, true
@@ -170,6 +170,10 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 	}
 	if request.To == "herdr" || request.To == "both" {
 		notes = append(notes, "Herdr may install/start its remote server; native approvals remain interactive.")
+	}
+	for _, receipt := range request.VaultReceipts {
+		notes = append(notes, "Previously retained vault item/attempt (independent of the currently selected SSH key):")
+		notes = append(notes, receipt.Lines()...)
 	}
 	notes = append(notes, sshAgentPreview(item)...)
 	if item.KeyPlan != nil {
@@ -267,6 +271,7 @@ func listSSHTUIKeys(ctx context.Context, app *App, alias string) ([]tui.SSHKeyCh
 	if sshhost.ValidateLookupAlias(alias) != nil {
 		alias = "host"
 	}
+	choices = append(choices, sshVaultKeyChoices(service, false)...)
 	hardwareChoices, err := sshSecurityKeyChoices(ctx, service, alias, false)
 	if err != nil {
 		return nil, err
@@ -280,6 +285,10 @@ func (w *sshTUIWorkflow) applyOnboarding() error {
 	plan, ok := w.request.Onboarding.(*sshTUIOnboardingPlan)
 	if !ok || plan == nil || plan.prepared == nil {
 		return errors.New("prepare and review an SSH onboarding plan first")
+	}
+	if receipts := sshVaultReceiptsForItems(plan.prepared.items); len(receipts) > 0 && w.result.Onboarding == nil {
+		w.result.Onboarding = &sshflow.OnboardExecutionResult{OnboardResult: sshflow.OnboardResult{SchemaVersion: 1, Kind: "ssh_onboarding_result", Status: "not_run"}, VaultReceipts: receipts}
+		w.result.Status = "SSH setup not started; prior vault receipts retained"
 	}
 	if plan.used.Swap(true) {
 		return errors.New("this SSH setup plan was already attempted; refresh and review a new plan")

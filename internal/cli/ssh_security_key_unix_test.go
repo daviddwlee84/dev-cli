@@ -36,7 +36,7 @@ func (r *sshHardwareAdapterRunner) Run(ctx context.Context, request sshhost.RunR
 	r.calls = append(r.calls, request)
 	name := filepath.Base(request.Name)
 	if name == "ssh-add" {
-		return sshhost.RunResult{ExitCode: 1}, nil
+		return sshhost.RunResult{ExitCode: 1, Stdout: []byte("The agent has no identities.\n")}, nil
 	}
 	if name == "ssh" && hasSSHArg(request.Args, "-G") && r.extraIdentity != "" {
 		request.Name = name

@@ -42,7 +42,7 @@ func newAgentKeyFixture(t *testing.T) *agentKeyFixture {
 		if f.available && reflect.DeepEqual(request.Env, []string{"LC_ALL=C", "SSH_AUTH_SOCK=" + f.ref.Socket}) {
 			return RunResult{Stdout: append(append([]byte(nil), f.line...), '\n')}, nil
 		}
-		return RunResult{ExitCode: 1}, nil
+		return RunResult{ExitCode: 1, Stdout: []byte("The agent has no identities.\n")}, nil
 	}))
 	if err != nil {
 		t.Fatal(err)

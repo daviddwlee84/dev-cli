@@ -17,7 +17,7 @@ func sshFieldChoices(key string) []string {
 		return []string{"config", "existing", "key"}
 	case "os":
 		return []string{"posix", "windows"}
-	case "fleet", "herdr", "skresident", "skverify":
+	case "fleet", "herdr", "skresident", "skverify", "vaultexperimental", "vaultnative":
 		return []string{"no", "yes"}
 	case "keytype":
 		return []string{"ed25519", "ed25519-sk", "ecdsa-sk"}
@@ -133,6 +133,9 @@ func (m Model) chooseSSHKey(index int) (tea.Model, tea.Cmd) {
 		if choice.UnavailableReason != "" {
 			m.sshUI.dialog.err = errors.New(choice.UnavailableReason)
 			return m, nil
+		}
+		if choice.VaultAction != "" {
+			return m.openSSHVaultKeyForm(parent, choice.VaultAction)
 		}
 		if choice.Generate {
 			m.sshUI.dialog = sshKeyGenerationForm(parent, choice)

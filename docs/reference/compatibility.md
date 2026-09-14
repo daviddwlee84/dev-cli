@@ -547,6 +547,36 @@ this permission stage is separately confirmed before the main onboarding plan.
 Optional registration accepts zero checkboxes without treating it as cancellation;
 required host/source multi-selection keeps its existing cancellation behavior.
 
+## SSH key providers and hardware/vault boundaries
+
+Named Bitwarden/1Password/Secretive or custom agents use validated Unix sockets,
+public-only selectors and canonical v2 managed fragments. V1 output remains
+unchanged when no new directives are needed; dev v0.2.37 and older refuse v2
+management. Native Windows explicit agent selection remains unavailable pending
+pipe identity attestation; its existing native OpenSSH agent flow is unchanged.
+Provider-location discovery is stat-only; explicit key inventory queries the agent.
+Only the native no-identities response is a complete empty inventory, not a generic
+agent error. Desktop handoff binds a complete baseline and the same socket instance.
+
+Ordinary Ed25519 generation is separate from interactive FIDO generation. FIDO
+capability observations do not enumerate devices or run resident-key download.
+Unknown custom toolchains may be explicitly attempted, not labeled hardware-ready;
+known incompatible or unsafe tools block. Native Windows-controller generation
+and automatic Secure Enclave provisioning remain unavailable. Remote fleet-source
+imports also exclude named-agent selection and new hardware generation. Interactive setup does not prove
+unattended fleet readiness for keys requiring PIN/touch or passphrase interaction.
+
+Vault creation has a separate approval and retained public receipt. Bitwarden's
+experimental memory/native-context mode requires both approvals, safely bound
+native profile/tool context, frozen child environment/cwd and no-interaction.
+Session/base URL is not endpoint identity: native context consistency never becomes
+endpoint-verified success. Unsupported ACL/path/wrapper/platform conditions fail
+closed without permission repair or native configuration changes. Created items
+survive missing agent visibility and later SSH cancellation; no implicit retry,
+private-key import/source deletion or hardware/vault revocation is introduced.
+Cross-builds and fake runners do not validate real hardware or unlocked vaults.
+See [key backends](../guides/ssh-hosts.md#choosing-where-a-signing-key-lives).
+
 ## Standalone SSH key doctor
 
 `ssh key doctor` needs only bounded local metadata reads: it does not depend on

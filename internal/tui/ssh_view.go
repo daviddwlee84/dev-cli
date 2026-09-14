@@ -32,6 +32,7 @@ type SSHActions struct {
 	Discover          func(context.Context, SSHDiscoveryRequest, func(sshdiscovery.Progress)) (SSHDiscoveryResult, error)
 	LoadWithReports   func(context.Context, []sshdiscovery.Report) (SSHInventory, error)
 	PrepareOnboarding func(context.Context, sshflow.OnboardRequest) (SSHOnboardingPlan, error)
+	PrepareVaultKey   func(context.Context, sshflow.VaultKeyRequest) (SSHVaultKeyPlan, error)
 	Test              func(context.Context, SSHTestRequest, func(SSHTestProgress)) (SSHTestResult, error)
 	BackgroundRefresh bool
 	Workflow          func(context.Context, SSHWorkflowRequest) (SSHWorkflow, error)
@@ -44,6 +45,7 @@ type SSHKeyChoice struct {
 	Label, Description, Path string
 	Generate                 bool
 	KeyType                  sshhost.KeyType
+	VaultAction              string
 	// UnavailableReason is display-only guidance; unavailable choices never prepare an action.
 	UnavailableReason string
 	// Fingerprint and AgentSocket identify a key held by a named SSH agent.
@@ -55,11 +57,18 @@ type SSHWorkflowRequest struct {
 	Selected   SSHRow
 	Profile    *sshflow.ConnectionProfile
 	Onboarding SSHOnboardingPlan
+	Vault      SSHVaultKeyPlan
 }
+
+type SSHVaultKeyPlan interface {
+	Preview() sshflow.VaultKeyPreview
+}
+
 type SSHWorkflowResult struct {
 	Status            string
 	MembershipChanged bool
 	Onboarding        *sshflow.OnboardExecutionResult
+	Vault             *sshflow.VaultKeyResult
 }
 type SSHWorkflow interface {
 	tea.ExecCommand

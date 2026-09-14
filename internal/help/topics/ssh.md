@@ -131,6 +131,35 @@ apple-secure-enclave creation is blocked pending verified identity mapping; use 
 existing configured stub or Secretive agent. Apple Passwords has no documented SSH
 agent, and Keychain passphrase storage still leaves a private-key file.
 
+Vault key creation is a separate reviewed action:
+
+```text
+dev ssh key create --provider 1password --vault <exact-vault-id> --title <label>
+dev ssh key create --provider bitwarden --title <label> --experimental --native-context
+```
+
+`--account` is required for actual RPC creation with `--yes` or outside a terminal;
+an interactive review may use the current account. `--dry-run` is intent-only and
+executes no provider/agent; actual creation obtains a fresh bound plan.
+JSON/noninteractive creation needs explicit `--yes`. Bitwarden additionally requires BOTH approvals:
+transient private-key memory generation and delegation to a reviewed native profile.
+It freezes the actual environment/cwd/session/profile/tool context, uses native
+no-interaction, and always reports endpoints unverified. A base URL/session is not
+endpoint identity. Never paste BW_SESSION or unlock credentials into agent input.
+Native/known Node CLI support is schema-pinned; unsafe wrappers/profiles/platforms
+fail closed. No login, configuration rewrite, key import or implicit deletion.
+
+Only metadata, item IDs and fingerprints appear in the public result. Created items
+survive missing agent visibility, later SSH cancellation, and uncertain post-checks;
+retain receipts and inspect before a NEW plan, never auto-retry creation. A separate
+SSH setup review/proof still gates configuration/installation/registration.
+`--provider bitwarden --desktop` compares complete inventories from one bound
+socket and requires interactive GUI-completion confirmation and explicit fingerprint
+selection even with --yes. Account/vault/experimental/native-context flags and actual
+--json execution cannot be combined with desktop mode (dry-run --json is allowed).
+It does not prove item creation or invent an item ID. Agent listing is not signing/authentication evidence. Native vault/hardware
+integration tests require separate user consent; fakes are not live validation.
+
 Route/platform flags are:
 
 ```text
@@ -718,6 +747,9 @@ retain the exact fingerprint and socket; unavailable providers show guidance.
 Security-key generation also exposes the type, provider, resident handle,
 verify-required and application options. Review shows the native touch/PIN flow
 and possible retained hardware effects; automatic Secure Enclave creation remains unavailable.
+Vault choices use a separate creation review before returning to SSH setup. The
+result retains item receipts if the later SSH form is canceled; Bitwarden desktop
+handoff shows newly visible agent keys rather than claiming vault-item creation.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

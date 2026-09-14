@@ -342,12 +342,28 @@ queries the agent. Native Windows named-agent selection and fleet-source imports
 remain guarded/unavailable; ordinary registration **to** fleet/Herdr is supported.
 Binaries v0.2.37 and older refuse management of v2 fragments.
 
+`dev ssh key create` creates a new vault key separately from SSH installation.
+Choose 1Password with an exact vault ID, or experimental Bitwarden memory generation
+with both `--experimental` and `--native-context`. Bitwarden's reviewed native
+profile/account and execution environment are bound, but API endpoints remain
+explicitly unverified; a base URL or session is not endpoint identity. `--dry-run`
+is intent-only and executes no provider. Actual RPC creation with --yes or outside
+a terminal requires an exact --account ID. Creation has its own review, and public
+item receipts survive missing agent visibility or later SSH-form cancellation.
+The picker and `ssh key create --provider bitwarden --desktop` also offer native
+desktop handoff, requiring interactive completion/fingerprint selection and observing
+newly visible keys rather than claiming a new item was created. No private-key file,
+implicit import, source deletion or automatic mutation retry is introduced.
+See [vault key creation and backend choices](docs/guides/ssh-hosts.md#create-a-vault-key-then-select-its-agent-identity).
+
 The setup wizard offers a key picker with paths, comments, fingerprints and signer
 availability, plus **+ Generate a new key** and manual path entry. `dev ssh` also
 has a **Set up or install an SSH key for a host** menu entry. It checks basic SSH directory/configuration
 permissions early and offers separately confirmed, narrowly scoped tightening.
 Completed permission repairs remain if setup is canceled later; aliases, registry
-bindings, key generation and remote actions still wait for the main preview.
+bindings, local key generation and remote actions still wait for the main SSH
+preview. Vault creation is a distinct approved stage and is retained if that later
+SSH preview is canceled.
 
 `key doctor` scans public-key companions and exact standard private-key names
 under `~/.ssh`, without reading private contents. Repeat `--key` to restrict it to

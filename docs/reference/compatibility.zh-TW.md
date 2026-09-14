@@ -485,6 +485,29 @@ reviewed tightening。無關檔案、ownership change、不安全 link／metadat
 確認。Optional registration 可確認零個 checkbox，與取消不同；必要 host／source
 多選維持原本 cancellation 行為。
 
+## SSH key provider 與 hardware／vault 邊界
+
+Named Bitwarden／1Password／Secretive 或 custom agent 使用已驗證的 Unix socket、
+public-only selector 與 canonical v2 managed fragment。不需新 directive 時 v1 bytes
+維持不變；dev v0.2.37 及更舊版本拒絕管理 v2。Native Windows 明確 agent 選取仍需 pipe
+identity attestation 才能開放，既有原生 OpenSSH agent 流程不變。Provider 路徑只做 stat；
+明確 key inventory 才查詢 agent。只有原生 no-identities 回應可代表完整空 inventory，
+一般 agent error 不行。Desktop handoff 綁定完整 baseline 與同一 socket instance。
+
+一般 Ed25519 與互動 FIDO generation 分開。FIDO capability observation 不列舉裝置，
+也不下載 resident key。Unknown 自訂 toolchain 可明確嘗試，但不能標為 hardware-ready；
+已知不相容或不安全的工具會被擋下。Native Windows-controller generation 與自動 Secure
+Enclave provisioning 仍不可用；remote fleet-source import 也不提供 named-agent 選取或
+新的 hardware generation。互動 setup 不能證明需要 PIN／touch／passphrase 的 key 可無人值守用於 fleet。
+
+Vault creation 有獨立確認與保留的公開 receipt。Bitwarden experimental memory／native-context
+模式要求兩項同意、安全綁定 native profile／tool、固定 child environment／cwd，以及
+no-interaction。Session／base URL 不是 endpoint 身分；native context 一致不會變成
+endpoint-verified。無法支援的 ACL／路徑／wrapper／平台會 fail closed，不修權限或改原生
+設定。Agent 尚不可見或之後取消 SSH，不會移除已建立 item；不隱含 retry、私鑰 import／
+來源刪除，或 hardware／vault revocation。交叉編譯與 fake runner 不等於真實硬體／解鎖
+vault 驗證。詳見 [key backends](../guides/ssh-hosts.zh-TW.md)。
+
 ## 獨立 SSH key doctor
 
 `ssh key doctor` 只做 bounded local metadata reads，不依賴 ssh、ssh-keygen、agent

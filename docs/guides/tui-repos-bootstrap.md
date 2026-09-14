@@ -532,6 +532,9 @@ retain the exact fingerprint and socket; unavailable providers show guidance.
 Security-key generation also exposes the type, provider, resident handle,
 verify-required and application options. Review shows the native touch/PIN flow
 and possible retained hardware effects; automatic Secure Enclave creation remains unavailable.
+Vault choices use a separate creation review before returning to SSH setup. The
+result retains item receipts if the later SSH form is canceled; Bitwarden desktop
+handoff shows newly visible agent keys rather than claiming vault-item creation.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

@@ -16,6 +16,12 @@ import (
 func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	d := &m.sshUI.dialog
 	key := msg.String()
+	if (key == "esc" || key == "ctrl+c") && strings.HasPrefix(d.kind, "vault-") {
+		return m.cancelSSHVaultDialog()
+	}
+	if (key == "esc" || key == "ctrl+c") && (d.kind == "onboard" || d.kind == "review" || d.kind == "preparing") && (len(d.onboarding.VaultReceipts) > 0 || len(m.sshUI.vaultReceipts) > 0) {
+		return m.cancelSSHFormWithVaultReceipts()
+	}
 	if (key == "esc" || key == "ctrl+c") && d.parent != nil && (d.kind == "keys" || d.kind == "keys-loading" || d.kind == "keypath" || d.kind == "keygen") {
 		parent := *d.parent
 		m.sshUI.generation++
@@ -35,10 +41,10 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.scheduleSSHBackground()
 		return m, cmd
 	}
-	if d.kind == "discovering" || d.kind == "testing" || d.kind == "loading" || d.kind == "preparing" || d.kind == "keys-loading" {
+	if d.kind == "discovering" || d.kind == "testing" || d.kind == "loading" || d.kind == "preparing" || d.kind == "keys-loading" || d.kind == "vault-preparing" || d.kind == "vault-running" {
 		return m, nil
 	}
-	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard" || d.kind == "keypath" || d.kind == "keygen") {
+	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard" || d.kind == "keypath" || d.kind == "keygen" || d.kind == "vault-form") {
 		field := &d.fields[d.index]
 		switch key {
 		case "tab", "down":
@@ -52,7 +58,7 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			if choices := sshFieldChoices(field.key); (d.kind == "onboard" || d.kind == "keygen") && choices != nil {
+			if choices := sshFieldChoices(field.key); (d.kind == "onboard" || d.kind == "keygen" || d.kind == "vault-form") && choices != nil {
 				step := 1
 				if key == "left" {
 					step = len(choices) - 1
@@ -85,6 +91,9 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if d.kind == "onboard" {
 				return m.prepareSSHOnboarding()
 			}
+			if d.kind == "vault-form" {
+				return m.prepareSSHVaultKey()
+			}
 			request := d.request
 			request.LAN.Interface = d.value("interface")
 			request.LAN.Ranges = strings.FieldsFunc(d.value("ranges"), func(r rune) bool { return r == ',' || r == ' ' })
@@ -102,14 +111,14 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m.startSSHDiscovery(request, false)
 		}
-		if (d.kind == "onboard" || d.kind == "keygen") && (field.key == "key" || sshFieldChoices(field.key) != nil) {
+		if (d.kind == "onboard" || d.kind == "keygen" || d.kind == "vault-form") && (field.key == "key" || sshFieldChoices(field.key) != nil) {
 			return m, nil
 		}
 		var cmd tea.Cmd
 		d.fields[d.index].input, cmd = d.fields[d.index].input.Update(msg)
 		return m, cmd
 	}
-	if len(d.options) == 0 && (d.kind == "message" || d.kind == "review" || d.kind == "test-review") {
+	if len(d.options) == 0 && (d.kind == "message" || d.kind == "review" || d.kind == "test-review" || d.kind == "vault-review" || d.kind == "vault-result") {
 		switch key {
 		case "j", "down":
 			d.scroll++
@@ -152,6 +161,12 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "review":
 			return m.applySSHOnboarding()
+		case "vault-review":
+			return m.applySSHVaultKey()
+		case "vault-result":
+			return m.acknowledgeSSHVaultResult()
+		case "vault-keys":
+			return m.returnSSHVaultResult(d.index)
 		case "keys":
 			return m.chooseSSHKey(d.index)
 		case "message":
@@ -212,6 +227,9 @@ func (m Model) renderSSHDialog() string {
 	d := m.sshUI.dialog
 	width := max(1, m.width-4)
 	lines := []string{"  " + d.title, ""}
+	if len(m.sshUI.vaultReceipts) > 0 && (d.kind == "onboard" || d.kind == "review" || d.kind == "vault-form" || d.kind == "vault-review") {
+		lines = append(lines, fmt.Sprintf("  %d vault attempt receipts retained independently; cancel/completion reports include them.", len(m.sshUI.vaultReceipts)), "")
+	}
 	if d.kind == "lan" {
 		lines = append(lines, "  Explicit local scan: up to 256 IPv4 addresses, 16 ports, 30 seconds.", "")
 	}
@@ -240,7 +258,20 @@ func (m Model) renderSSHDialog() string {
 	if d.kind == "review" {
 		lines = append(lines, "  Review exact effects below. Enter applies; Esc cancels.", "")
 	}
-	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard" || d.kind == "keypath" || d.kind == "keygen") {
+	if d.kind == "vault-form" {
+		lines = append(lines, "  Separate "+d.vaultRequest.Provider+" creation; the SSH form is unchanged until you choose a returned key.", "  Empty account reviews the current native account; vault IDs must be exact.", "  Bitwarden needs both explicit approvals; endpoints remain unverified.", "")
+	}
+	if d.kind == "vault-review" {
+		prompt := "  Enter creates the reviewed vault item; Esc returns without creation."
+		if d.vaultPlan != nil && d.vaultPlan.Preview().Request.Desktop {
+			prompt = "  Complete native desktop steps, then Enter refreshes the captured agent; Esc returns."
+		}
+		lines = append(lines, prompt, "")
+	}
+	if d.kind == "vault-result" {
+		lines = append(lines, "  Actual result below. Enter acknowledges it; Esc returns without selecting a key.", "")
+	}
+	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard" || d.kind == "keypath" || d.kind == "keygen" || d.kind == "vault-form") {
 		limit := max(1, m.height-11)
 		from := max(0, d.index-limit+1)
 		to := min(d.fieldCount, from+limit)
@@ -257,7 +288,7 @@ func (m Model) renderSSHDialog() string {
 				if field.input.Value() == "yes" {
 					value = "[x]"
 				}
-			case "auth", "os", "keytype", "skresident", "skverify":
+			case "auth", "os", "keytype", "skresident", "skverify", "vaultexperimental", "vaultnative":
 				value = sshRenderChoices(sshFieldChoices(field.key), field.input.Value())
 			case "key":
 				if d.kind == "onboard" {

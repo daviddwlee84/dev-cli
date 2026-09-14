@@ -63,20 +63,29 @@ type sshDialog struct {
 	body                    string
 	err                     error
 	keys                    []SSHKeyChoice
+	vaultRequest            sshflow.VaultKeyRequest
+	vaultPlan               SSHVaultKeyPlan
+	vaultResult             *sshflow.VaultKeyResult
+	vaultAttemptID          string
+	vaultCancel             context.CancelFunc
 	// parent is the form a key picker returns to.
 	parent *sshDialog
 }
 type sshEventMsg struct {
-	generation uint64
-	kind       string
-	keys       []SSHKeyChoice
-	interfaces []sshdiscovery.InterfaceScope
-	progress   sshdiscovery.Progress
-	discovery  SSHDiscoveryResult
-	plan       SSHOnboardingPlan
-	test       SSHTestProgress
-	testResult SSHTestResult
-	err        error
+	generation     uint64
+	kind           string
+	keys           []SSHKeyChoice
+	interfaces     []sshdiscovery.InterfaceScope
+	progress       sshdiscovery.Progress
+	discovery      SSHDiscoveryResult
+	plan           SSHOnboardingPlan
+	vaultPlan      SSHVaultKeyPlan
+	vaultResult    *sshflow.VaultKeyResult
+	vaultAttemptID string
+	vaultParent    *sshDialog
+	test           SSHTestProgress
+	testResult     SSHTestResult
+	err            error
 }
 type sshBackgroundMsg struct {
 	at         time.Time
@@ -255,10 +264,16 @@ func (m *Model) retainSSHReport(report sshdiscovery.Report) {
 }
 
 func (m Model) applySSHEvent(msg sshEventMsg) (tea.Model, tea.Cmd) {
+	// A started vault action must report its receipt even after dialog changes.
+	if msg.kind == "vault-result" {
+		return m.finishSSHVaultResult(msg)
+	}
 	if msg.generation != m.sshUI.generation {
 		return m, nil
 	}
 	switch msg.kind {
+	case "vault-prepared":
+		return m.finishSSHVaultPreparation(msg)
 	case "interfaces":
 		if msg.err != nil || len(msg.interfaces) == 0 {
 			m.sshUI.dialog = sshDialog{kind: "message", title: "LAN discovery", body: "No available on-link IPv4 interface. Connect to a local network, then retry discovery.", err: msg.err}
@@ -525,6 +540,7 @@ func (m Model) openSSHOnboardingForm(request sshflow.OnboardRequest) (tea.Model,
 func (m Model) prepareSSHOnboarding() (tea.Model, tea.Cmd) {
 	d := &m.sshUI.dialog
 	r := d.onboarding
+	r.VaultReceipts = m.mergeSSHVaultReceipts(r.VaultReceipts)
 	if r.Profile == nil {
 		r.Alias = d.value("alias")
 		r.HostName = d.value("host")
@@ -588,13 +604,20 @@ func (m Model) applySSHOnboarding() (tea.Model, tea.Cmd) {
 }
 func (m *Model) finishSSHOnboarding(result SSHWorkflowResult) {
 	if result.Onboarding == nil {
-		return
+		if len(m.sshUI.vaultReceipts) == 0 {
+			return
+		}
+		result.Onboarding = &sshflow.OnboardExecutionResult{OnboardResult: sshflow.OnboardResult{Status: "not_run"}}
 	}
+	result.Onboarding.VaultReceipts = m.mergeSSHVaultReceipts(result.Onboarding.VaultReceipts)
 	m.leaveSSHDiscovery()
 	m.filter = ""
 	var lines []string
 	if result.Onboarding.Init != nil {
 		lines = append(lines, "SSH configuration: "+string(result.Onboarding.Init.Action)+" "+result.Onboarding.Init.Path)
+	}
+	for _, receipt := range result.Onboarding.VaultReceipts {
+		lines = append(lines, receipt.Lines()...)
 	}
 	for _, outcome := range result.Onboarding.Outcomes {
 		line := outcome.Alias + " · " + outcome.Stage + ": " + outcome.Status

@@ -19,6 +19,8 @@ type sshUIState struct {
 	reports              []sshdiscovery.Report
 	cachedReports        []sshdiscovery.Report
 	dialog               sshDialog
+	vaultReceipts        []sshflow.VaultKeyReceipt
+	vaultCompleted       map[string]bool
 	generation           uint64
 	events               <-chan sshEventMsg
 	cancel               context.CancelFunc

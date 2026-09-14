@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -16,12 +17,41 @@ const providerOwner = "dev-cli:ssh-password:v1"
 type CommandRunner interface {
 	Run(context.Context, string, []string, []byte) ([]byte, error)
 }
+
+// FrozenCommandRunner executes with an explicit environment and working
+// directory. Implementations must not fall back to later ambient inheritance.
+// Environment entries can contain credentials and must never be logged.
+type FrozenCommandRunner interface {
+	RunWithEnvironment(context.Context, string, []string, []byte, []string, string) ([]byte, error)
+}
+
 type NativeRunner struct{}
 
 func (NativeRunner) Run(ctx context.Context, name string, args []string, stdin []byte) ([]byte, error) {
+	return runNativeProvider(ctx, name, args, stdin, nil, "")
+}
+
+func (NativeRunner) RunWithEnvironment(ctx context.Context, name string, args []string, stdin []byte, environment []string, directory string) ([]byte, error) {
+	if !filepath.IsAbs(name) || !filepath.IsAbs(directory) || environment == nil {
+		return nil, ErrUnavailable
+	}
+	frozen := make([]string, len(environment))
+	copy(frozen, environment)
+	defer func() {
+		for i := range frozen {
+			frozen[i] = ""
+		}
+	}()
+	return runNativeProvider(ctx, name, args, stdin, frozen, directory)
+}
+
+func runNativeProvider(ctx context.Context, name string, args []string, stdin []byte, environment []string, directory string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env, cmd.Dir = environment, directory
+	// Bound pipe cleanup after exit/cancellation if a descendant retains them.
+	cmd.WaitDelay = 2 * time.Second
 	cmd.Stdin = bytes.NewReader(stdin)
 	var out limitedOutput
 	out.limit = 1 << 20

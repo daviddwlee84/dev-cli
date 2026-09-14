@@ -28,6 +28,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   block without probing hardware. Automatic Secure Enclave creation, native
   Windows-controller hardware generation and new hardware generation during
   remote fleet-source imports remain unavailable.
+- Explicit vault-key creation adds a standalone `dev ssh key create` workflow and
+  setup-picker handoffs for 1Password, Bitwarden desktop and experimental
+  Bitwarden in-memory/native-context creation. Bitwarden requires separate memory
+  and native-profile approvals, freezes its actual execution context, and never
+  claims endpoint attestation. Exact public receipts survive missing agent
+  visibility or later SSH cancellation; creation and SSH authentication stay
+  separate, with no automatic retry, key import or vault-item deletion.
 
 ### Fixed
 
@@ -36,6 +43,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   partial SSH setup now names the unfinished steps, such as `lab herdr: unknown`.
 - SSH key-setup previews label inherited endpoint values as native configuration
   instead of displaying port `0`, and omit empty managed-directory headings.
+- SSH agent inventory distinguishes a genuine empty response from an agent query
+  failure. Provider command capture also bounds inherited-pipe cleanup after exit
+  or cancellation instead of waiting indefinitely for descendants to close output.
 
 ## [0.2.37] - 2026-09-14
 

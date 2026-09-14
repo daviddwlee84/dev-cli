@@ -205,8 +205,27 @@ public companions 或 unsafe paths 轉成 key availability proof。
 `internal/sshcredential` 定義 exact password context、optional system／Bitwarden
 providers、private askpass transport、guarded policy/reference TOML。Native vault
 availability 與互動授權依 host 而異；automated unit fixtures 沒有讀寫實際 vault。
-Private-key vault migration、hardware provisioning、Apple Passwords migration 仍 deferred；
+既有 private-key vault migration、Apple Passwords migration 仍 deferred；明確的 new-key
+creation 另見下方；
 公開 SSH guide 分別說明 controller route 與 remote-native session。
+
+## Key-provider authority 與驗證邊界（2026-09-15）
+
+自訂 destination、named agent／v2 fragment、FIDO generation，以 `internal/sshhost`、
+CLI／TUI SSH adapters 及 source-bound fixtures 為準。檔案替換、權限 hardening、部分
+publication、獨立原生 login gate 與 same-socket inventory refresh 都有專門回歸測試。
+Vault 邊界由 `internal/sshvault` 與 `internal/sshcredential` 的 frozen-environment runner
+負責；schema／version gate、Bitwarden 雙重同意、profile／tool binding、單次 write 與
+public receipt，和 agent visibility／SSH proof 是不同層。介面聲明必須依實際程式與最後
+測試結果，不能只根據核准的設計或一次交叉編譯成功。
+
+Vendor 參考包括 Bitwarden CLI `2026.3.0` source、1Password SSH-key CLI creation docs、
+Yubico FIDO2 指引、Apple 原生 sc_auth／ssh-keychain 手冊，以及 SSH guide／backlog 連結的
+原始公開 CTK 範例。CTK 範例只是 fixture，不是普遍 mapping contract；自動 provisioning
+仍被擋下。Bitwarden base URL／session 不能證明 effective endpoint；明確 native-context
+模式是委由原生設定處理 authority，保留 endpoint-unverified，不是 transactional config
+snapshot 或 supply-chain attestation。真實 vault item 建立／刪除、YubiKey／Touch ID 操作，
+以及 native Windows attestation 都需要另外的證據／同意；自動 fake 測試不能取代。
 
 ## Dotfiles 與 FLEET 主機樹
 

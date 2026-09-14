@@ -924,6 +924,55 @@ are rejected. Actions preview by default. Snapshot/transaction documents contain
 `schema_version`, machine revisions and scoped bindings; the registry UUID never
 replaces remote fleet's `machine_id` pin. See [SSH onboarding](../guides/ssh-hosts.md#discovery-and-canonical-machines).
 
+## SSH vault-key creation
+
+`ssh key create` takes no positional arguments. Flags are `--provider
+1password|bitwarden`, `--title` (default `SSH key`), `--account`, `--vault`,
+`--desktop`, `--dry-run`, `--yes` and `--json`, plus Bitwarden's `--experimental`
+and `--native-context`. An interactive run may review the current account; actual
+RPC creation with `--yes` or outside a terminal requires an exact `--account` ID.
+1Password requires an exact vault ID; Bitwarden normalizes the personal vault and
+needs BOTH approvals. Native-context delegates profile/configuration authority,
+not endpoint attestation; `--yes` cannot substitute for either approval.
+
+`--desktop` requires `--provider bitwarden` and rejects account/vault/experimental/
+native-context scopes. It always requires interactive GUI-completion confirmation
+and explicit fingerprint selection, even with `--yes`. Actual desktop handoff
+cannot use `--json`; intent-only `--dry-run --json` is allowed. The native GUI owns
+the title and creation, so dev does not invent an item ID or creation receipt.
+
+Vault-create dry-run validates static intent only, executing no provider/agent and
+leaving account/vault/agent observations unknown. Actual creation obtains a fresh
+service-bound plan. Native-context metadata contains the reviewed profile/tool,
+not session values or hashes. Successful Bitwarden native-context creation keeps
+`result.binding_status: unknown` and `result.endpoint_status: unverified`; only
+`result.native_context_status` becomes `observed_consistent`. This expected binding
+uncertainty is separate from `result.status: created`, not a reason to retry creation.
+Public output preserves item IDs/fingerprints and created/unknown/context state,
+not private material or full public-key lines. Created items are not rolled back
+when agent visibility or later SSH setup fails. No auto-retry, import, native
+configuration rewrite, or item deletion is implied. Desktop handoff uses a complete
+same-socket public inventory and explicit newly-visible-key selection, not guessed
+vault item IDs. JSON uses `schema_version: 1`, `kind: ssh_key_create`. Dry-run is
+`status: intent_only` with `preview.intent_only: true`, not apply-ready. Pre-effect
+statuses include `blocked`, `confirmation_required`, `canceled` and `not_started`;
+RPC outcomes are `created` or `unknown`, and a created receipt may accompany a
+nonzero partial/context error. Desktop states are `observed`, `no_new_visible_keys`
+or `unavailable`. `result.agent_status` is `not_checked`, `not_selected`,
+`unavailable`, `not_visible` or `offered`; offered means listing, not signing proof.
+`result.receipt` carries public item/attempt metadata with no `public_line`.
+A controller-local `attempt_id` distinguishes separately reviewed creation attempts,
+including unknown outcomes without an item ID. It is not a vault item ID or auth
+proof. Duplicate delivery of one attempt is reconciled without dropping distinct
+unknown attempts; UI receipts survive transient dialogs and immutable SSH reviews.
+Receipt `observation` is a controller-local ordering counter, not a provider revision
+or timestamp: an older delivery cannot erase newer context uncertainty. Known created,
+item-ID and fingerprint facts are retained; conflicting nonempty identities appear in
+`conflicting_identities` instead of silently replacing one another. These reconciliation
+fields and retained receipts never grant key-selection or apply authority.
+There is no serialized-plan apply flag.
+See [vault creation](../guides/ssh-hosts.md#create-a-vault-key-then-select-its-agent-identity).
+
 ## SSH key catalog and picker behavior
 
 `ssh key list` accepts `--json`, `--no-agent`, `--alias <alias>`, repeatable
