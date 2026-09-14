@@ -117,18 +117,22 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 		keyRequest := sshhost.KeyRequest{Operation: sshhost.KeyUse, Path: request.KeyPath, AllowDerive: true}
 		options.key = request.KeyPath
 		if request.GenerateKey {
-			keyRequest = sshhost.KeyRequest{Operation: sshhost.KeyGenerate, DestinationIdentity: request.KeyPath, Interactive: true}
-			options.key, options.generateKey, options.keyPath = "", true, request.KeyPath
+			destination := normalizeSSHKeyPromptPath(service.Paths().SSHDir, request.KeyPath)
+			keyRequest = sshhost.KeyRequest{Operation: sshhost.KeyGenerate, DestinationIdentity: destination, Comment: request.KeyComment, Interactive: true}
+			options.key, options.generateKey, options.keyPath, options.comment = "", true, destination, request.KeyComment
 		}
 		keyPlan, err := service.PlanKey(ctx, keyRequest)
 		if err != nil {
 			return nil, err
 		}
 		if !keyPlan.Ready() {
-			return nil, errors.New("selected key plan is blocked; inspect SSH key permissions and public companion")
+			return nil, sshKeyPlanBlockedError(keyPlan)
 		}
 		options.keyPlan = &keyPlan
 		notes = append(notes, fmt.Sprintf("Key: %s %s %s", keyPlan.Operation, keyPlan.IdentityFile, keyPlan.Fingerprint))
+		if keyPlan.CreateParent != "" {
+			notes = append(notes, "Create key directory "+keyPlan.CreateParent+" (mode 0700).")
+		}
 	}
 	item, err := prepareSSHOnboardItem(ctx, &copy, request.Alias, candidate, options)
 	if err != nil {

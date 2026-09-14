@@ -398,7 +398,7 @@ func prepareSSHOnboardItem(ctx context.Context, app *App, alias string, c *sshdi
 			}
 		}
 		if !plan.Ready() {
-			return item, errors.New("selected key plan is blocked")
+			return item, sshKeyPlanBlockedError(plan)
 		}
 		item.KeyPlan = &plan
 		if class != "foreign" && !o.identityFileChanged && plan.IdentityFile != "" {
@@ -1209,6 +1209,9 @@ func renderSSHOnboardPreview(app *App, items []sshOnboardItem, init sshhost.Init
 		}
 		if p := item.KeyPlan; p != nil {
 			fmt.Fprintf(app.Out, "  %s key: %s %s %s\n", item.Target.Alias, p.Operation, p.IdentityFile, p.Fingerprint)
+			if p.CreateParent != "" {
+				fmt.Fprintf(app.Out, "  %s key directory: create %s (mode 0700)\n", item.Target.Alias, p.CreateParent)
+			}
 		}
 		if item.Target.To == "herdr" || item.Target.To == "both" {
 			fmt.Fprintf(app.Out, "  %s: Herdr may install/start its remote server; native approvals remain interactive.\n", item.Target.Alias)

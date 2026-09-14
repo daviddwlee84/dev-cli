@@ -129,6 +129,9 @@ type KeyPlan struct {
 	Fingerprint  string       `json:"fingerprint,omitempty"`
 	PublicPath   string       `json:"public_path,omitempty"`
 	IdentityFile string       `json:"identity_file,omitempty"`
+	// CreateParent is a missing private directory directly under ~/.ssh that
+	// generation creates (mode 0700) before writing the key.
+	CreateParent string       `json:"create_parent,omitempty"`
 	Diagnostics  []Diagnostic `json:"diagnostics,omitempty"`
 	state        *keyPlanState
 }

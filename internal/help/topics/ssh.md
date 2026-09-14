@@ -85,7 +85,10 @@ key stub with a companion. A missing public companion is derived with confirmed
 passphrase in argv/environment.
 
 Generation is Ed25519 through native ssh-keygen. `--key-path` and `--comment` are
-optional; default identity is `~/.ssh/id_ed25519_dev`. Interactive generation
+optional; default identity is `~/.ssh/id_ed25519_dev`. Paths stay under `~/.ssh`;
+one missing folder directly under `~/.ssh` is created 0700 and shown in the plan,
+deeper missing folders need `mkdir -m 700`. The picker's generate item asks for the
+path (a bare name goes in `~/.ssh`) and an optional comment. Interactive generation
 uses ssh-keygen's hidden passphrase prompts. Noninteractive generation requires
 `--no-passphrase`. Both halves are validated and installed no-replace; generated
 keys survive later failures and are never removed by `ssh remove`.
@@ -650,7 +653,9 @@ Choice fields show every option with the current one bracketed, such as
 `config · existing · [key]`; ←/→ or Space cycle them. Enter or Space on **Key**
 opens a picker of file-backed local keys, **+ Generate a new key** and a manual
 path; Esc returns to the form, and picking a key selects key authentication.
-Agent-only identities remain available in the terminal `dev ssh setup` picker.
+**+ Generate a new key** opens a short form for the new key path and an optional
+comment before returning to the form. Agent-only identities remain available in
+the terminal `dev ssh setup` picker.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

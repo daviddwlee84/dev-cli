@@ -16,7 +16,7 @@ import (
 func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	d := &m.sshUI.dialog
 	key := msg.String()
-	if (key == "esc" || key == "ctrl+c") && d.parent != nil && (d.kind == "keys" || d.kind == "keys-loading" || d.kind == "keypath") {
+	if (key == "esc" || key == "ctrl+c") && d.parent != nil && (d.kind == "keys" || d.kind == "keys-loading" || d.kind == "keypath" || d.kind == "keygen") {
 		parent := *d.parent
 		m.sshUI.generation++
 		m.sshUI.dialog = parent
@@ -38,7 +38,7 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if d.kind == "discovering" || d.kind == "testing" || d.kind == "loading" || d.kind == "preparing" || d.kind == "keys-loading" {
 		return m, nil
 	}
-	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard" || d.kind == "keypath") {
+	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard" || d.kind == "keypath" || d.kind == "keygen") {
 		field := &d.fields[d.index]
 		switch key {
 		case "tab", "down":
@@ -75,6 +75,9 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "ctrl+s":
 			if d.kind == "keypath" {
 				return m.finishSSHKeyPath()
+			}
+			if d.kind == "keygen" {
+				return m.finishSSHKeyGenerate()
 			}
 			if d.kind == "onboard" {
 				return m.prepareSSHOnboarding()
@@ -219,13 +222,16 @@ func (m Model) renderSSHDialog() string {
 	if d.kind == "keypath" {
 		lines = append(lines, "  Existing private or public key path. Enter confirms · Esc returns to the form.", "")
 	}
+	if d.kind == "keygen" {
+		lines = append(lines, "  Ed25519 under ~/.ssh; a bare name goes in ~/.ssh and one missing folder directly under ~/.ssh is created (0700).", "  Enter next field · Ctrl+S confirms · Esc returns to the form.", "")
+	}
 	if d.kind == "discovering" || d.kind == "testing" {
 		lines = append(lines, fmt.Sprintf("  Progress %d/%d · found %d · Esc cancels", d.completed, d.total, d.found), "")
 	}
 	if d.kind == "review" {
 		lines = append(lines, "  Review exact effects below. Enter applies; Esc cancels.", "")
 	}
-	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard" || d.kind == "keypath") {
+	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard" || d.kind == "keypath" || d.kind == "keygen") {
 		limit := max(1, m.height-11)
 		from := max(0, d.index-limit+1)
 		to := min(d.fieldCount, from+limit)

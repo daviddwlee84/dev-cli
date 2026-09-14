@@ -16,6 +16,11 @@ type secureFileIdentity struct {
 	info fs.FileInfo
 }
 
+var (
+	errKeyPathExpansion = errors.New("unsupported SSH key path expansion")
+	errKeyPathOutside   = errors.New("SSH key path outside the user SSH directory")
+)
+
 func (s *Service) resolveSSHKeyPath(value string) (string, error) {
 	if value == "" || strings.IndexByte(value, 0) >= 0 {
 		return "", fmt.Errorf("SSH key path is empty or contains NUL: %w", ErrUnsafePath)
@@ -35,7 +40,7 @@ func (s *Service) resolveSSHKeyPath(value string) (string, error) {
 	case strings.HasPrefix(value, "${HOME}/") || strings.HasPrefix(value, `${HOME}\`):
 		resolved = filepath.Join(s.paths.Home, filepath.FromSlash(value[len("${HOME}/"):]))
 	case strings.HasPrefix(value, "~") || strings.ContainsAny(value, "%$"):
-		return "", fmt.Errorf("SSH key path uses unsupported expansion: %w", ErrUnsafePath)
+		return "", fmt.Errorf("SSH key path uses unsupported expansion: %w: %w", ErrUnsafePath, errKeyPathExpansion)
 	}
 	if !filepath.IsAbs(resolved) {
 		absolute, err := filepath.Abs(resolved)
@@ -46,7 +51,7 @@ func (s *Service) resolveSSHKeyPath(value string) (string, error) {
 	}
 	resolved = filepath.Clean(resolved)
 	if !s.pathWithinSSH(resolved) {
-		return "", fmt.Errorf("SSH key path is outside %s: %w", s.paths.SSHDir, ErrUnsafePath)
+		return "", fmt.Errorf("SSH key path is outside %s: %w: %w", s.paths.SSHDir, ErrUnsafePath, errKeyPathOutside)
 	}
 	return resolved, nil
 }

@@ -1105,27 +1105,57 @@ func (s *Service) planGeneratedKey(request KeyRequest) (KeyPlan, error) {
 	if destination == "" {
 		destination = filepath.Join(s.paths.SSHDir, "id_ed25519_dev")
 	}
+	blocked := func(code, path, message string) KeyPlan {
+		return KeyPlan{
+			Action: ActionBlocked, Operation: KeyGenerate, Source: KeySourceGenerated,
+			Diagnostics: []Diagnostic{{Code: code, Path: path, Message: message, BlocksMutation: true}},
+		}
+	}
 	resolved, err := s.resolveSSHKeyPath(destination)
+	if errors.Is(err, errKeyPathExpansion) {
+		return blocked("key_path_unsupported_expansion", destination, "use ~/, %d/ or ${HOME}/ for a key path under "+s.paths.SSHDir), nil
+	}
+	if errors.Is(err, errKeyPathOutside) {
+		return blocked("key_path_outside_ssh", destination, "generated keys must be stored under "+s.paths.SSHDir), nil
+	}
 	if err != nil {
 		return KeyPlan{}, err
 	}
 	if strings.HasSuffix(strings.ToLower(resolved), ".pub") {
-		return KeyPlan{}, errors.New("generated identity destination must not end in .pub")
+		return blocked("key_name_pub_suffix", resolved, "name the private identity; its .pub companion is written alongside it"), nil
 	}
-	if err := s.validateKeyParent(filepath.Dir(resolved)); err != nil {
+	parent := filepath.Dir(resolved)
+	if err := s.validateKeyParent(parent); err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return blocked("key_parent_unsafe", parent, "key directory must be a real directory with mode 0700: "+err.Error()), nil
+		}
 		// Onboarding can review generation before its separate managed Include
-		// initialization creates ~/.ssh. Only that exact canonical parent may
-		// be absent; arbitrary nested key directories still require preparation.
-		if filepath.Dir(resolved) != s.paths.SSHDir || !errors.Is(err, fs.ErrNotExist) {
-			return KeyPlan{}, err
+		// initialization creates ~/.ssh, and one private directory directly
+		// under ~/.ssh may be created. Deeper missing directories need preparation.
+		createParent := ""
+		if parent != s.paths.SSHDir {
+			if filepath.Dir(parent) != s.paths.SSHDir {
+				return blocked("key_parent_missing", parent, "create the key directory first: mkdir -m 700 "+parent), nil
+			}
+			if _, statErr := os.Lstat(parent); !errors.Is(statErr, fs.ErrNotExist) {
+				return blocked("key_parent_unsafe", parent, "key directory must be a real directory with mode 0700: "+err.Error()), nil
+			}
+			createParent = parent
 		}
 		if err := validateHomeDirectory(s.paths.Home); err != nil {
 			return KeyPlan{}, err
 		}
-		if _, err := os.Lstat(s.paths.SSHDir); !errors.Is(err, fs.ErrNotExist) {
-			return KeyPlan{}, ErrUnsafePath
+		if info, statErr := os.Lstat(s.paths.SSHDir); statErr == nil {
+			if createParent == "" {
+				return KeyPlan{}, ErrUnsafePath
+			}
+			if err := validatePrivateDirectory(s.paths.SSHDir, info); err != nil {
+				return blocked("key_parent_unsafe", s.paths.SSHDir, "key directory must be a real directory with mode 0700: "+err.Error()), nil
+			}
+		} else if !errors.Is(statErr, fs.ErrNotExist) {
+			return KeyPlan{}, statErr
 		}
-		plan := KeyPlan{Action: ActionCreate, Operation: KeyGenerate, Source: KeySourceGenerated, Algorithm: "ssh-ed25519", Comment: request.Comment, PublicPath: resolved + ".pub", IdentityFile: resolved}
+		plan := KeyPlan{Action: ActionCreate, Operation: KeyGenerate, Source: KeySourceGenerated, Algorithm: "ssh-ed25519", Comment: request.Comment, PublicPath: resolved + ".pub", IdentityFile: resolved, CreateParent: createParent}
 		request.DestinationIdentity = resolved
 		state := &keyPlanState{serviceID: s.id, request: request, expectedPrivate: fileSnapshot{path: resolved}, expectedPublic: fileSnapshot{path: resolved + ".pub"}}
 		state.public = plan
@@ -1236,10 +1266,18 @@ func (s *Service) RevalidateKeySelection(ctx context.Context, plan KeyPlan) erro
 		parent := filepath.Dir(plan.IdentityFile)
 		if err := s.validateKeyParent(parent); err != nil {
 			_, statErr := os.Lstat(parent)
-			if !samePath(parent, s.paths.SSHDir) || !errors.Is(statErr, fs.ErrNotExist) {
+			missingAllowed := samePath(parent, s.paths.SSHDir) || plan.CreateParent != "" && samePath(parent, plan.CreateParent)
+			if !missingAllowed || !errors.Is(statErr, fs.ErrNotExist) {
 				return err
 			}
 			if err := validateHomeDirectory(s.paths.Home); err != nil {
+				return err
+			}
+			if info, err := os.Lstat(s.paths.SSHDir); err == nil {
+				if err := validatePrivateDirectory(s.paths.SSHDir, info); err != nil {
+					return err
+				}
+			} else if !errors.Is(err, fs.ErrNotExist) {
 				return err
 			}
 		}
@@ -1415,11 +1453,19 @@ func (s *Service) applyDerivedKey(ctx context.Context, plan KeyPlan) (KeyResult,
 func (s *Service) applyGeneratedKey(ctx context.Context, plan KeyPlan) (KeyResult, error) {
 	state := plan.state
 	parent := filepath.Dir(plan.IdentityFile)
-	if parent == s.paths.SSHDir {
+	if parent == s.paths.SSHDir || plan.CreateParent != "" {
 		if err := validateHomeDirectory(s.paths.Home); err != nil {
 			return KeyResult{}, err
 		}
 		if err := ensurePrivateChild(s.paths.Home, ".ssh", false); err != nil {
+			return KeyResult{}, err
+		}
+	}
+	if plan.CreateParent != "" {
+		if !samePath(parent, plan.CreateParent) || filepath.Dir(plan.CreateParent) != s.paths.SSHDir {
+			return KeyResult{}, ErrUnsafePath
+		}
+		if err := ensurePrivateChild(s.paths.SSHDir, filepath.Base(plan.CreateParent), true); err != nil {
 			return KeyResult{}, err
 		}
 	}

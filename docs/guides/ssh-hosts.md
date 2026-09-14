@@ -134,7 +134,7 @@ dev ssh setup winlab --hostname 198.51.100.30 \
 
 `--key` accepts a validated `.pub` record, a private identity with a companion `.pub`, or a security-key stub with a companion `.pub`. If an identity lacks its public companion, dev asks before running `ssh-keygen -y`; `--yes` supplies that local confirmation for a script. Encrypted noninteractive derivation fails with `interaction_required` rather than placing a passphrase in argv or the environment.
 
-`--generate-key` invokes native `ssh-keygen` for Ed25519. Interactive mode delegates hidden passphrase prompts to it. Noninteractive generation requires explicit `--no-passphrase`. Both halves are generated under a private staging basename, matched by fingerprint, hardened, and published with no-replace semantics; any destination collision blocks rather than overwrites. A successfully generated pair is retained after later route/bootstrap/fleet failure and is never removed by `dev ssh remove`.
+`--generate-key` invokes native `ssh-keygen` for Ed25519. `--key-path` may name any file under `~/.ssh`, including a subfolder; dev creates one missing folder directly under `~/.ssh` (mode `0700`, shown in the plan), while deeper missing folders must be prepared with `mkdir -m 700`. Paths outside `~/.ssh`, unsupported expansions and names ending in `.pub` are blocked with a named reason. The interactive picker's **+ Generate a new key** asks for the path (a bare name is placed in `~/.ssh`) and an optional comment. Interactive mode delegates hidden passphrase prompts to it. Noninteractive generation requires explicit `--no-passphrase`. Both halves are generated under a private staging basename, matched by fingerprint, hardened, and published with no-replace semantics; any destination collision blocks rather than overwrites. A successfully generated pair is retained after later route/bootstrap/fleet failure and is never removed by `dev ssh remove`.
 
 All output is content-safe: fingerprints, algorithms, paths, digests, and booleans may appear; private bytes, passphrases, passwords, complete public-key lines, agent payloads, and unredacted command-like SSH options do not.
 
@@ -790,7 +790,9 @@ Choice fields show every option with the current one bracketed, such as
 `config · existing · [key]`; ←/→ or Space cycle them. Enter or Space on **Key**
 opens a picker of file-backed local keys, **+ Generate a new key** and a manual
 path; Esc returns to the form, and picking a key selects key authentication.
-Agent-only identities remain available in the terminal `dev ssh setup` picker.
+**+ Generate a new key** opens a short form for the new key path and an optional
+comment before returning to the form. Agent-only identities remain available in
+the terminal `dev ssh setup` picker.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

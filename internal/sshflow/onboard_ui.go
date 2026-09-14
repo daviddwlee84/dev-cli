@@ -16,6 +16,7 @@ type OnboardRequest struct {
 	Port                                              int
 	Auth                                              string
 	KeyPath                                           string
+	KeyComment                                        string
 	GenerateKey                                       bool
 	To, RemoteOS, FleetName, HerdrLabel, HerdrSession string
 	// Profile installs a key for this existing alias; its connection fields

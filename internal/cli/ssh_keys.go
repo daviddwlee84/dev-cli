@@ -182,10 +182,17 @@ func chooseSSHKeyInteractive(ctx context.Context, app *App, service *sshhost.Ser
 		switch selected[0].Value {
 		case "generate":
 			options.generateKey = true
-			options.keyPath, err = newPrompter(app).line("New key path", generateDefault)
+			prompt := newPrompter(app)
+			options.keyPath, err = prompt.line("New key path (a bare name is placed in ~/.ssh)", generateDefault)
 			if err != nil {
 				return options, err
 			}
+			options.keyPath = normalizeSSHKeyPromptPath(service.Paths().SSHDir, options.keyPath)
+			options.comment, err = prompt.line("Key comment (blank = ssh-keygen default)", "")
+			if err != nil {
+				return options, err
+			}
+			options.comment = strings.TrimSpace(options.comment)
 		case "manual":
 			options.key, err = newPrompter(app).line("Key or public key path", filepath.Join(service.Paths().Home, ".ssh", "id_ed25519"))
 			if err != nil {
@@ -211,6 +218,28 @@ func chooseSSHKeyInteractive(ctx context.Context, app *App, service *sshhost.Ser
 		}
 		return options, nil
 	}
+}
+
+// normalizeSSHKeyPromptPath places a bare prompted key name under the SSH
+// directory; explicit paths and flags keep their exact meaning.
+func normalizeSSHKeyPromptPath(sshDir, value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" || value == "." || value == ".." || strings.ContainsAny(value, `/\%$`) || strings.HasPrefix(value, "~") {
+		return value
+	}
+	return filepath.Join(sshDir, value)
+}
+
+// sshKeyPlanBlockedError names the first blocking reason of a key plan.
+func sshKeyPlanBlockedError(plan sshhost.KeyPlan) error {
+	for _, diagnostic := range plan.Diagnostics {
+		reason := diagnostic.Message
+		if reason == "" {
+			reason = strings.ReplaceAll(diagnostic.Code, "_", " ")
+		}
+		return fmt.Errorf("SSH key plan is blocked: %s: %w", reason, sshhost.ErrBlocked)
+	}
+	return fmt.Errorf("SSH key plan is blocked: %w", sshhost.ErrBlocked)
 }
 
 func prepareSSHWizardKey(ctx context.Context, app *App, service *sshhost.Service, options *sshSetupOptions) error {

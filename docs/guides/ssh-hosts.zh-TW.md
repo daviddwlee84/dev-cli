@@ -138,7 +138,7 @@ dev ssh setup winlab --hostname 198.51.100.30 \
 
 `--key` 接受 validated `.pub` record、具有 companion `.pub` 的 private identity，或具有 companion `.pub` 的 security-key stub。Identity 缺少 public companion 時，dev 會先詢問，再執行 `ssh-keygen -y`；script 可用 `--yes` 提供該 local confirmation。Encrypted noninteractive derivation 會以 `interaction_required` 失敗，不會把 passphrase 放進 argv 或 environment。
 
-`--generate-key` 透過 native `ssh-keygen` 產生 Ed25519。Interactive mode 將 hidden passphrase prompt 交給它；noninteractive generation 必須明確使用 `--no-passphrase`。兩個 half 先在 private staging basename 產生，依 fingerprint 確認相符、harden，再以 no-replace semantics publish；任何 destination collision 都會 block，不會 overwrite。成功產生的 pair 在後續 route/bootstrap/fleet failure 後仍保留，`dev ssh remove` 也絕不移除。
+`--generate-key` 透過 native `ssh-keygen` 產生 Ed25519。`--key-path` 可指定 `~/.ssh` 底下任何檔案（含子資料夾）；`~/.ssh` 下一層若不存在，dev 會以 `0700` 建立並顯示在 plan 中，更深的資料夾需先用 `mkdir -m 700` 建立。位於 `~/.ssh` 以外、使用不支援的展開，或以 `.pub` 結尾的名稱會被 block 並說明原因。互動 picker 的 **+ Generate a new key** 會詢問路徑（只填名稱時放在 `~/.ssh`）與可選 comment。Interactive mode 將 hidden passphrase prompt 交給它；noninteractive generation 必須明確使用 `--no-passphrase`。兩個 half 先在 private staging basename 產生，依 fingerprint 確認相符、harden，再以 no-replace semantics publish；任何 destination collision 都會 block，不會 overwrite。成功產生的 pair 在後續 route/bootstrap/fleet failure 後仍保留，`dev ssh remove` 也絕不移除。
 
 所有 output 都是 content-safe：可以包含 fingerprint、algorithm、path、digest 與 boolean；不包含 private bytes、passphrase、password、完整 public-key line、agent payload 或 unredacted command-like SSH option。
 
@@ -708,7 +708,8 @@ profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變
 選項欄位會列出所有選項並以括號標出目前值，例如 `config · existing · [key]`；
 ←／→ 或 Space 切換。在 **Key** 欄位按 Enter 或 Space 會開啟 picker，列出有檔案的
 本機 keys、**+ Generate a new key** 與手動輸入路徑；Esc 回到表單，選取 key 會把
-認證方式設為 key。只存在於 agent 的 identity 請改用終端的 `dev ssh setup` picker。
+認證方式設為 key。**+ Generate a new key** 會先開啟小表單填寫新 key 路徑與可選
+comment，再回到原表單。只存在於 agent 的 identity 請改用終端的 `dev ssh setup` picker。
 
 在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
 表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選

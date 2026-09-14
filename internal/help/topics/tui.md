@@ -543,7 +543,9 @@ Choice fields show every option with the current one bracketed, such as
 `config · existing · [key]`; ←/→ or Space cycle them. Enter or Space on **Key**
 opens a picker of file-backed local keys, **+ Generate a new key** and a manual
 path; Esc returns to the form, and picking a key selects key authentication.
-Agent-only identities remain available in the terminal `dev ssh setup` picker.
+**+ Generate a new key** opens a short form for the new key path and an optional
+comment before returning to the form. Agent-only identities remain available in
+the terminal `dev ssh setup` picker.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

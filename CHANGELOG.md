@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Generated SSH keys can use a custom name and folder under `~/.ssh`: one missing
+  folder directly under `~/.ssh` is created with mode `0700` and shown in the plan,
+  and blocked paths name their reason. The terminal key picker and the dashboard's
+  **+ Generate a new key** now ask for the key path and an optional comment.
+
 ## [0.2.37] - 2026-09-14
 
 ### Added

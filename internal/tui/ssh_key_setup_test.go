@@ -104,12 +104,18 @@ func TestSSHInstallKeyWizardPicksKeyAndSendsExistingProfile(t *testing.T) {
 	m = next.(Model)
 	next, _ = m.applySSHEvent(cmd().(sshEventMsg))
 	m = sshKeyDialogKey(sshKeyDialogKey(next.(Model), tea.KeyDown), tea.KeyEnter)
-	if d := m.sshUI.dialog; d.kind != "onboard" || !d.onboarding.GenerateKey || !strings.HasPrefix(d.value("key"), "new: ") {
-		t.Fatalf("generate choice not applied: %+v", d)
+	if d := m.sshUI.dialog; d.kind != "keygen" || d.value("path") != "/home/u/.ssh/id_ed25519_dev_box" {
+		t.Fatalf("generate choice did not open the key name form: %+v", d)
+	}
+	m.sshUI.dialog.fields[0].input.SetValue("/home/u/.ssh/work/id_box")
+	m.sshUI.dialog.fields[1].input.SetValue("box laptop")
+	m = sshKeyDialogKey(m, tea.KeyCtrlS)
+	if d := m.sshUI.dialog; d.kind != "onboard" || !d.onboarding.GenerateKey || d.value("key") != "new: /home/u/.ssh/work/id_box" || d.onboarding.KeyComment != "box laptop" {
+		t.Fatalf("custom generate choice not applied: %+v", d)
 	}
 	next, cmd = m.prepareSSHOnboarding()
 	m = sshDrainEvents(t, next.(Model), cmd)
-	if got.Profile == nil || got.Profile.Alias != "box" || got.Alias != "box" || got.Auth != "key" || !got.GenerateKey || got.KeyPath != "/home/u/.ssh/id_ed25519_dev_box" || got.Candidate != nil {
+	if got.Profile == nil || got.Profile.Alias != "box" || got.Alias != "box" || got.Auth != "key" || !got.GenerateKey || got.KeyPath != "/home/u/.ssh/work/id_box" || got.KeyComment != "box laptop" || got.Candidate != nil {
 		t.Fatalf("request=%+v", got)
 	}
 	if m.sshUI.dialog.kind != "review" {

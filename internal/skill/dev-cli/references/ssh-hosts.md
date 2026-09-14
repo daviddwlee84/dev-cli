@@ -120,7 +120,10 @@ with native `ssh-keygen -y`; noninteractive encrypted derivation returns
 interaction-required.
 
 Generation is Ed25519 and defaults to `~/.ssh/id_ed25519_dev`; `--key-path` and
-`--comment` customize it. Interactive generation leaves the hidden passphrase
+`--comment` customize it. Paths must stay under `~/.ssh`; one missing folder directly
+under `~/.ssh` is created 0700 (plan field `create_parent`), deeper ones are blocked
+with a mkdir hint, and blocked plans name the reason (`key_path_outside_ssh`,
+`key_parent_missing`, ...). The picker's generate item asks path and comment. Interactive generation leaves the hidden passphrase
 prompt to ssh-keygen. Noninteractive generation requires `--no-passphrase`.
 Destinations are no-replace; do not delete a colliding file to make the command
 pass. Generated pairs remain after later partial failures and after `ssh remove`.
@@ -768,7 +771,9 @@ Choice fields show every option with the current one bracketed, such as
 `config · existing · [key]`; ←/→ or Space cycle them. Enter or Space on **Key**
 opens a picker of file-backed local keys, **+ Generate a new key** and a manual
 path; Esc returns to the form, and picking a key selects key authentication.
-Agent-only identities remain available in the terminal `dev ssh setup` picker.
+**+ Generate a new key** opens a short form for the new key path and an optional
+comment before returning to the form. Agent-only identities remain available in
+the terminal `dev ssh setup` picker.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

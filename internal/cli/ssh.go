@@ -1314,6 +1314,9 @@ func renderSSHSetupPlan(app *App, document sshSetupDocument) {
 	fmt.Fprintf(app.Out, "SSH setup plan for %s (%s)\n", document.Alias, document.AliasClass)
 	if document.KeyPlan != nil {
 		fmt.Fprintf(app.Out, "  key:       %s %s\n", document.KeyPlan.Action, document.KeyPlan.Operation)
+		if document.KeyPlan.CreateParent != "" {
+			fmt.Fprintf(app.Out, "  key dir:   create %s (mode 0700)\n", document.KeyPlan.CreateParent)
+		}
 	}
 	if document.ManagedPlan != nil {
 		fmt.Fprintf(app.Out, "  config:    %s %s\n", document.ManagedPlan.Action, config.Contract(document.ManagedPlan.Path))
