@@ -141,7 +141,13 @@ func ApplyOnboarding(ctx context.Context, p OnboardPlan, apply func(context.Cont
 	}
 	if failed {
 		r.Status = "partial"
-		return r, errors.New("SSH onboarding is partial; completed configuration and registrations were retained")
+		var stages []string
+		for _, o := range r.Outcomes {
+			if o.Status != "ready" {
+				stages = append(stages, o.Alias+" "+o.Stage+": "+o.Status)
+			}
+		}
+		return r, fmt.Errorf("SSH onboarding is partial (%s); completed configuration and registrations were retained", strings.Join(stages, ", "))
 	}
 	return r, nil
 }

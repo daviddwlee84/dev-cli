@@ -13,6 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   and blocked paths name their reason. The terminal key picker and the dashboard's
   **+ Generate a new key** now ask for the key path and an optional comment.
 
+### Fixed
+
+- The dashboard FLEET view reloads its host list after SSH setup registers a
+  fleet or Herdr host, instead of showing it only after restarting the CLI. A
+  partial SSH setup now names the unfinished steps, such as `lab herdr: unknown`.
+
 ## [0.2.37] - 2026-09-14
 
 ### Added

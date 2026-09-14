@@ -2948,11 +2948,17 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case sshWorkflowMsg:
 		m.finishSSHOnboarding(msg.result)
 		m.err, m.status, m.statusSeverity = msg.err, msg.result.Status, ""
+		var fleetCmd tea.Cmd
 		if msg.result.MembershipChanged {
-			m.invalidateView(ViewFleet)
+			// The host tree is loaded once at startup; re-read its descriptors without contacting hosts.
+			if m.hostFleetEnabled() {
+				fleetCmd = m.beginFleetHostsLoad()
+			} else {
+				m.invalidateView(ViewFleet)
+			}
 		}
 		m.beginViewLoad(ViewSSH, loadAction)
-		return m, m.reloadSSH()
+		return m, batchCommands(m.reloadSSH(), fleetCmd)
 	case workflowMsg:
 		m.err, m.status = msg.err, msg.result.Status
 		m.statusSeverity = msg.result.Severity
