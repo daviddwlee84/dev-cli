@@ -52,6 +52,10 @@ func sshTUIActions(state *tuiAppState) tui.SSHActions {
 		Workflow: func(ctx context.Context, request tui.SSHWorkflowRequest) (tui.SSHWorkflow, error) {
 			return &sshTUIWorkflow{ctx: ctx, app: *state.Current(), request: request}, nil
 		},
+		ListKeys: func(ctx context.Context, alias string) ([]tui.SSHKeyChoice, error) {
+			active := *state.Current()
+			return listSSHTUIKeys(ctx, &active, alias)
+		},
 	}
 	decorateSSHActivityActions(state, &actions)
 	return actions
@@ -264,7 +268,7 @@ func sshTUIRegistrationOptions(ctx context.Context, app *App, row sshflow.Machin
 			defaultOS = "windows"
 		}
 	}
-	options.targetOS, err = prompt.choice("Target OS", defaultOS, "posix, windows", map[string]string{"posix": "posix", "windows": "windows"})
+	options.targetOS, err = prompt.choiceOf("Target OS", defaultOS, []string{"posix", "windows"}, map[string]string{"posix": "posix", "p": "posix", "windows": "windows", "w": "windows"})
 	if err != nil {
 		return options, err
 	}

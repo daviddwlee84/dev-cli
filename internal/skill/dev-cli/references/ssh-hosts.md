@@ -125,6 +125,10 @@ prompt to ssh-keygen. Noninteractive generation requires `--no-passphrase`.
 Destinations are no-replace; do not delete a colliding file to make the command
 pass. Generated pairs remain after later partial failures and after `ssh remove`.
 
+On a terminal, `dev ssh setup <alias>` without either flag opens a key picker:
+local keys, `+ Generate a new key` (default `~/.ssh/id_ed25519_dev_<alias>`) and a
+manual path. Agents running noninteractively must pass one of the flags.
+
 JSON mode is batch-only even on a terminal. Noninteractive public-key bootstrap requires
 `--target-os`; local mutation requires `--yes`. Native OpenSSH may prompt only in
 interactive human mode.
@@ -142,7 +146,8 @@ dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix \
 ```
 
 `--target-os` names the final target. Repeat `--hop-os alias=posix|windows` for
-unknown jumps; a noninteractive run must specify every unknown hop. An already
+unknown jumps; an interactive run asks `Remote OS for <alias> (posix/windows) [posix]`,
+and a noninteractive run must specify every unknown hop. An already
 working jump is skipped unless the user explicitly requests
 `--install-on-working-jump`.
 
@@ -273,7 +278,8 @@ errors as real outcomes, not warnings to override.
 
 `dev ssh` opens a menu on a terminal; pipes retain the command help. The default
 configuration-cleanup choice is formatting. Group restructuring is a separate,
-explicit operation.
+explicit operation. **Set up or install an SSH key for a host** picks a configured
+alias (or accepts a typed one) and continues with the setup key picker.
 
 ```bash
 dev ssh manage                          # joint inventory and multi-select wizard
@@ -511,8 +517,10 @@ derives/generates a key, repairs permissions or authenticates remotely.
 `--json` emits one `ssh_key_list` document with candidates, completeness and source
 diagnostics; a missing or unusable source does not become an empty success claim.
 
-Choosing an existing key in the setup wizard opens this catalog, with an
-**Enter a key path…** fallback. A public file without an available signer remains
+The setup wizard's authentication menu offers configure only, existing
+authentication, or **Install an SSH key (existing or new)**. The key choice opens
+this catalog with **+ Generate a new key** and an **Enter a key path…** fallback;
+fleet imports and per-hop key choices use the same picker. A public file without an available signer remains
 visible but cannot silently satisfy bootstrap. Select another identity, load its
 signer into the agent or provide the matching private-key path. The selected key
 is validated before continuing to later registration prompts; generation and
@@ -755,6 +763,20 @@ SSH/key and Herdr interactions receive the terminal only after review. Returning
 to the dashboard shows each completed, failed or unknown stage and selects the
 new profile. Completed configuration survives a later authentication/provider
 failure. A changed LAN scope requires renewed discovery/review.
+
+Choice fields show every option with the current one bracketed, such as
+`config · existing · [key]`; ←/→ or Space cycle them. Enter or Space on **Key**
+opens a picker of file-backed local keys, **+ Generate a new key** and a manual
+path; Esc returns to the form, and picking a key selects key authentication.
+Agent-only identities remain available in the terminal `dev ssh setup` picker.
+
+`Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
+target…**, a form prefilled from that observation, including a matching profile's
+user. On a configured profile it offers **set up / install an SSH key…**: choose the
+exact profile when several exist, pick a key, set Remote OS and optional
+Fleet/Herdr, then review. Connection settings are not editable. A foreign alias
+receives only the public key; a managed alias also records the key as its
+IdentityFile, shown in the review.
 
 `p` offers quick network tests or full SSH verification for a profile, machine,
 or filtered profile set. Review the exact targets before starting. DNS/route,

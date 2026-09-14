@@ -366,7 +366,7 @@ func prepareSSHOnboardItem(ctx context.Context, app *App, alias string, c *sshdi
 		auth = "key"
 	}
 	if o.targetOS == "" && (auth == "key" || o.to != "") && app.interactive() && !o.json {
-		o.targetOS, err = newPrompter(app).line("Target OS (posix/windows)", "posix")
+		o.targetOS, err = newPrompter(app).choiceOf("Target OS", "posix", []string{"posix", "windows"}, map[string]string{"posix": "posix", "p": "posix", "windows": "windows", "w": "windows"})
 		if err != nil {
 			return item, err
 		}
@@ -599,7 +599,7 @@ func sshOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, error
 			} else {
 				fmt.Fprintf(app.Out, "Reuse %s with its existing OpenSSH connection settings.\n", alias)
 			}
-			auth, e := sshPick(ctx, app, "Authentication for "+alias, []picker.Item{{Value: "config", Label: "Configure only"}, {Value: "existing", Label: "Use existing authentication (including Tailscale SSH)"}, {Value: "key", Label: "Install an existing public key"}, {Value: "generate", Label: "Generate and install a new key"}}, false)
+			auth, e := sshPick(ctx, app, "Authentication for "+alias, []picker.Item{{Value: "config", Label: "Configure only"}, {Value: "existing", Label: "Use existing authentication (including Tailscale SSH)"}, {Value: "key", Label: "Install an SSH key (existing or new)", Description: "Choose a local key or generate one"}}, false)
 			if e != nil {
 				return nil, e
 			}
@@ -609,19 +609,10 @@ func sshOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, error
 			case "existing":
 				o.auth = "existing"
 			case "key":
-				o, e = selectSSHWizardKey(ctx, app, s, alias, o)
-			case "generate":
-				o.generateKey = true
-				home, _ := os.UserHomeDir()
-				o.keyPath, e = newPrompter(app).line("New key path", filepath.Join(home, ".ssh", "id_ed25519_dev_"+alias))
+				o, e = chooseSSHKeyInteractive(ctx, app, s, alias, o, filepath.Join(s.Paths().SSHDir, "id_ed25519_dev_"+alias))
 			}
 			if e != nil {
 				return nil, e
-			}
-			if o.hasExistingKey() || o.generateKey {
-				if e = prepareSSHWizardKey(ctx, app, s, &o); e != nil {
-					return nil, e
-				}
 			}
 			if !o.configOnly {
 				o.to, e = sshRegistrationDestinations(ctx, app, "Optional registration")

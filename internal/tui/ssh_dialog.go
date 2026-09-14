@@ -16,6 +16,12 @@ import (
 func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	d := &m.sshUI.dialog
 	key := msg.String()
+	if (key == "esc" || key == "ctrl+c") && d.parent != nil && (d.kind == "keys" || d.kind == "keys-loading" || d.kind == "keypath") {
+		parent := *d.parent
+		m.sshUI.generation++
+		m.sshUI.dialog = parent
+		return m, m.focusSSHField(parent.index)
+	}
 	if key == "esc" || key == "ctrl+c" {
 		if m.sshUI.running && !m.sshUI.background {
 			if m.sshUI.cancel != nil {
@@ -29,44 +35,47 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		cmd := m.scheduleSSHBackground()
 		return m, cmd
 	}
-	if d.kind == "discovering" || d.kind == "testing" || d.kind == "loading" || d.kind == "preparing" {
+	if d.kind == "discovering" || d.kind == "testing" || d.kind == "loading" || d.kind == "preparing" || d.kind == "keys-loading" {
 		return m, nil
 	}
-	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard") {
+	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard" || d.kind == "keypath") {
+		field := &d.fields[d.index]
 		switch key {
 		case "tab", "down":
 			return m, m.focusSSHField(d.index + 1)
 		case "shift+tab", "up":
 			return m, m.focusSSHField(d.index - 1)
 		case " ", "left", "right":
-			field := &d.fields[d.index]
-			switch field.key {
-			case "fleet", "herdr", "generate":
-				if field.input.Value() == "yes" {
-					field.input.SetValue("no")
-				} else {
-					field.input.SetValue("yes")
-				}
-				return m, nil
-			case "auth":
-				choices := []string{"config", "existing", "key"}
-				i := slices.Index(choices, field.input.Value())
-				field.input.SetValue(choices[(i+1)%len(choices)])
-				return m, nil
-			case "os":
-				if field.input.Value() == "windows" {
-					field.input.SetValue("posix")
-				} else {
-					field.input.SetValue("windows")
+			if d.kind == "onboard" && field.key == "key" {
+				if key == " " && m.actions.SSH.ListKeys != nil {
+					return m.openSSHKeyPicker()
 				}
 				return m, nil
 			}
+			if choices := sshFieldChoices(field.key); d.kind == "onboard" && choices != nil {
+				step := 1
+				if key == "left" {
+					step = len(choices) - 1
+				}
+				i := max(0, slices.Index(choices, field.input.Value()))
+				field.input.SetValue(choices[(i+step)%len(choices)])
+				return m, nil
+			}
 		case "enter":
+			if d.kind == "onboard" && field.key == "key" && m.actions.SSH.ListKeys != nil {
+				return m.openSSHKeyPicker()
+			}
+			if d.kind == "keypath" {
+				return m.finishSSHKeyPath()
+			}
 			if d.index < d.fieldCount-1 {
 				return m, m.focusSSHField(d.index + 1)
 			}
 			fallthrough
 		case "ctrl+s":
+			if d.kind == "keypath" {
+				return m.finishSSHKeyPath()
+			}
 			if d.kind == "onboard" {
 				return m.prepareSSHOnboarding()
 			}
@@ -87,8 +96,7 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m.startSSHDiscovery(request, false)
 		}
-		switch d.fields[d.index].key {
-		case "fleet", "herdr", "generate", "auth", "os":
+		if d.kind == "onboard" && (field.key == "key" || sshFieldChoices(field.key) != nil) {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -138,6 +146,8 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 		case "review":
 			return m.applySSHOnboarding()
+		case "keys":
+			return m.chooseSSHKey(d.index)
 		case "message":
 			m.sshUI.dialog = sshDialog{}
 			cmd := m.scheduleSSHBackground()
@@ -147,6 +157,9 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			profile := d.profiles[d.index]
+			if d.workflow == "install-key" {
+				return m.openSSHKeyForm(profile)
+			}
 			row, _ := m.currentSSH()
 			workflow, err := m.actions.SSH.Workflow(m.baseContext(), SSHWorkflowRequest{Action: d.workflow, Selected: row, Profile: &profile})
 			if err != nil {
@@ -197,7 +210,14 @@ func (m Model) renderSSHDialog() string {
 		lines = append(lines, "  Explicit local scan: up to 256 IPv4 addresses, 16 ports, 30 seconds.", "")
 	}
 	if d.kind == "onboard" {
-		lines = append(lines, "  Save SSH config by default. Fleet / Herdr require authentication.", "  Space changes choices; Enter next field; Ctrl+S reviews.", "")
+		summary := "  Save SSH config by default. Fleet / Herdr require authentication."
+		if d.onboarding.Profile != nil {
+			summary = "  Installs the selected public key; connection settings stay as configured."
+		}
+		lines = append(lines, summary, "  ←/→ or Space changes choices · Enter on Key lists keys · Ctrl+S reviews.", "")
+	}
+	if d.kind == "keypath" {
+		lines = append(lines, "  Existing private or public key path. Enter confirms · Esc returns to the form.", "")
 	}
 	if d.kind == "discovering" || d.kind == "testing" {
 		lines = append(lines, fmt.Sprintf("  Progress %d/%d · found %d · Esc cancels", d.completed, d.total, d.found), "")
@@ -205,7 +225,7 @@ func (m Model) renderSSHDialog() string {
 	if d.kind == "review" {
 		lines = append(lines, "  Review exact effects below. Enter applies; Esc cancels.", "")
 	}
-	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard") {
+	if d.fieldCount > 0 && (d.kind == "lan" || d.kind == "onboard" || d.kind == "keypath") {
 		limit := max(1, m.height-11)
 		from := max(0, d.index-limit+1)
 		to := min(d.fieldCount, from+limit)
@@ -217,13 +237,20 @@ func (m Model) renderSSHDialog() string {
 			}
 			value := field.input.View()
 			switch field.key {
-			case "fleet", "herdr", "generate":
+			case "fleet", "herdr":
 				value = "[ ]"
 				if field.input.Value() == "yes" {
 					value = "[x]"
 				}
 			case "auth", "os":
-				value = "‹ " + field.input.Value() + " ›"
+				value = sshRenderChoices(sshFieldChoices(field.key), field.input.Value())
+			case "key":
+				if d.kind == "onboard" {
+					value = field.input.Value()
+					if value == "" {
+						value = "‹ Enter: choose an existing key or generate one ›"
+					}
+				}
 			}
 			lines = append(lines, "  "+marker+sshPad(field.label, 15)+" "+value)
 		}
@@ -239,7 +266,11 @@ func (m Model) renderSSHDialog() string {
 			}
 			lines = append(lines, "  "+marker+d.options[i])
 		}
-		lines = append(lines, "", "  ↑/↓ choose · Enter select · Esc cancel")
+		footer := "  ↑/↓ choose · Enter select · Esc cancel"
+		if d.kind == "keys" {
+			footer = "  ↑/↓ choose · Enter select · Esc returns to the form"
+		}
+		lines = append(lines, "", footer)
 	} else {
 		body := strings.Split(ansi.Hardwrap(d.body, max(1, width-2), true), "\n")
 		limit := max(3, m.height-10)

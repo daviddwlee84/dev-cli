@@ -62,10 +62,14 @@ type sshDialog struct {
 	completed, total, found int
 	body                    string
 	err                     error
+	keys                    []SSHKeyChoice
+	// parent is the form a key picker returns to.
+	parent *sshDialog
 }
 type sshEventMsg struct {
 	generation uint64
 	kind       string
+	keys       []SSHKeyChoice
 	interfaces []sshdiscovery.InterfaceScope
 	progress   sshdiscovery.Progress
 	discovery  SSHDiscoveryResult
@@ -339,6 +343,23 @@ func (m Model) applySSHEvent(msg sshEventMsg) (tea.Model, tea.Cmd) {
 		}
 		cmd := m.scheduleSSHBackground()
 		return m, cmd
+	case "keys":
+		d := &m.sshUI.dialog
+		if d.kind != "keys-loading" || d.parent == nil {
+			return m, nil
+		}
+		if msg.err != nil {
+			parent := *d.parent
+			parent.err = msg.err
+			m.sshUI.dialog = parent
+			return m, m.focusSSHField(parent.index)
+		}
+		options := make([]string, 0, len(msg.keys)+1)
+		for _, choice := range msg.keys {
+			options = append(options, sshPad(choice.Label, 28)+" "+choice.Description)
+		}
+		d.kind, d.keys, d.options, d.index, d.body = "keys", msg.keys, append(options, "Enter a path manually…"), 0, ""
+		return m, nil
 	case "prepared":
 		if msg.err != nil {
 			m.sshUI.dialog.kind = "onboard"
@@ -462,6 +483,12 @@ func (m Model) openSSHOnboarding(row SSHRow) (tea.Model, tea.Cmd) {
 		if len(c.Addresses) > 0 {
 			request.HostName = c.Addresses[0]
 		}
+		for _, profile := range row.Profiles {
+			if profile.User != "" && profile.HostName == request.HostName {
+				request.User = profile.User
+				break
+			}
+		}
 		if c.OS == "windows" {
 			request.RemoteOS = "windows"
 		}
@@ -488,30 +515,29 @@ func (m Model) openSSHOnboardingForm(request sshflow.OnboardRequest) (tea.Model,
 	d.addField("user", "Remote user", request.User)
 	d.addField("port", "Port", strconv.Itoa(request.Port))
 	d.addField("auth", "Authentication", request.Auth)
+	d.addField("key", "Key", sshKeyDisplay(request.KeyPath, request.GenerateKey))
+	d.addField("os", "Remote OS", request.RemoteOS)
 	d.addField("fleet", "Fleet", "no")
 	d.addField("herdr", "Herdr", "no")
-	d.addField("os", "Remote OS", request.RemoteOS)
-	d.addField("key", "Key path", "")
-	d.addField("generate", "Generate key", "no")
 	m.sshUI.dialog = d
 	return m, m.focusSSHField(0)
 }
 func (m Model) prepareSSHOnboarding() (tea.Model, tea.Cmd) {
 	d := &m.sshUI.dialog
 	r := d.onboarding
-	r.Alias = d.value("alias")
-	r.HostName = d.value("host")
-	r.User = d.value("user")
-	port, err := strconv.Atoi(d.value("port"))
-	if err != nil || port < 1 || port > 65535 {
-		d.err = errors.New("Port must be 1–65535")
-		return m, nil
+	if r.Profile == nil {
+		r.Alias = d.value("alias")
+		r.HostName = d.value("host")
+		r.User = d.value("user")
+		port, err := strconv.Atoi(d.value("port"))
+		if err != nil || port < 1 || port > 65535 {
+			d.err = errors.New("Port must be 1–65535")
+			return m, nil
+		}
+		r.Port = port
+		r.Auth = d.value("auth")
 	}
-	r.Port = port
-	r.Auth = d.value("auth")
 	r.RemoteOS = d.value("os")
-	r.KeyPath = d.value("key")
-	r.GenerateKey = d.value("generate") == "yes"
 	fleet, herdr := d.value("fleet") == "yes", d.value("herdr") == "yes"
 	r.To = ""
 	if fleet {
@@ -528,7 +554,7 @@ func (m Model) prepareSSHOnboarding() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if r.Auth == "key" && r.KeyPath == "" {
-		d.err = errors.New("Enter an existing key path or a new destination key path")
+		d.err = errors.New("Choose a key: Enter on Key lists local keys or generates one")
 		return m, nil
 	}
 	if r.To != "" && r.Auth == "config" {

@@ -6,8 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `dev ssh setup <alias>` on a terminal without `--key` or `--generate-key` opens
+  one key picker listing local keys, `+ Generate a new key` and a manual path; the
+  setup wizard, fleet imports and per-hop keys use the same picker. The `dev ssh`
+  menu adds "Set up or install an SSH key for a host". Scripts still pass a flag.
+- The dashboard SSH view's Ctrl+O offers "set up this discovered target…" with a
+  form prefilled from the selected LAN/Tailscale observation, and "set up / install
+  an SSH key…" for configured profiles without editing their connection settings.
+  The setup form's Key field opens a key picker, and choice fields show every option.
+
 ### Fixed
 
+- Interactive prompts with fixed answers list their choices, such as
+  `Remote OS for lab (posix/windows) [posix]`, instead of revealing them only after
+  an invalid answer. The discovery wizard's Target OS answer is now validated.
 - LAN discovery no longer hides blocked connections behind `ready` with zero
   candidates. Reports add `probes` outcome counts and a `no_reachable_endpoints`
   warning, and `dev ssh discover`, the `dev ssh` wizard and the dashboard explain

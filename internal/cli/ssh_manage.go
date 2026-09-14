@@ -264,7 +264,7 @@ func sshManagementWizard(ctx context.Context, app *App, inv sshflow.Inventory) (
 		if r.To == "" {
 			return r, nil
 		}
-		r.RemoteOS, e = prompt.choice("Target OS for selected aliases", "posix", "posix, windows", map[string]string{"posix": "posix", "windows": "windows"})
+		r.RemoteOS, e = prompt.choiceOf("Target OS for selected aliases", "posix", []string{"posix", "windows"}, map[string]string{"posix": "posix", "p": "posix", "windows": "windows", "w": "windows"})
 		if e != nil {
 			return r, e
 		}
@@ -295,7 +295,7 @@ func runSSHEntry(cmd *cobra.Command, app *App) error {
 	if !app.interactive() {
 		return cmd.Help()
 	}
-	selected, err := sshPick(cmd.Context(), app, "SSH", []picker.Item{{Value: "setup", Label: "Discover and set up SSH machines", Description: "Tailscale, LAN, or existing aliases; preview before applying"}, {Value: "diagnose", Label: "Diagnose an SSH connection"}, {Value: "manage", Label: "Manage SSH / fleet / Herdr machines"}, {Value: "format", Label: "Format SSH configuration", Description: "Four spaces; preview first"}, {Value: "organize", Label: "Organize Host blocks into groups", Description: "Optional; preserve Include order"}}, false)
+	selected, err := sshPick(cmd.Context(), app, "SSH", []picker.Item{{Value: "setup", Label: "Discover and set up SSH machines", Description: "Tailscale, LAN, or existing aliases; preview before applying"}, {Value: "key", Label: "Set up or install an SSH key for a host", Description: "Choose an existing key or generate one; preview before applying"}, {Value: "diagnose", Label: "Diagnose an SSH connection"}, {Value: "manage", Label: "Manage SSH / fleet / Herdr machines"}, {Value: "format", Label: "Format SSH configuration", Description: "Four spaces; preview first"}, {Value: "organize", Label: "Organize Host blocks into groups", Description: "Optional; preserve Include order"}}, false)
 	if err != nil {
 		return err
 	}
@@ -306,6 +306,14 @@ func runSSHEntry(cmd *cobra.Command, app *App) error {
 		}
 		return runSSHDiagnose(cmd.Context(), app, sshhost.DiagnoseRequest{Target: target}, false)
 	}
+	var args []string
+	if selected[0].Value == "key" {
+		alias, err := pickSSHKeySetupAlias(cmd.Context(), app)
+		if err != nil {
+			return err
+		}
+		selected[0].Value, args = "setup", []string{alias}
+	}
 	sub, _, err := cmd.Find([]string{selected[0].Value})
 	if err != nil {
 		return err
@@ -315,6 +323,35 @@ func runSSHEntry(cmd *cobra.Command, app *App) error {
 	}
 	// Find does not inherit the execution context when dispatching RunE directly.
 	sub.SetContext(cmd.Context())
-	return sub.RunE(sub, nil)
+	return sub.RunE(sub, args)
+}
+
+func pickSSHKeySetupAlias(ctx context.Context, app *App) (string, error) {
+	service, err := app.sshHosts()
+	if err != nil {
+		return "", err
+	}
+	hints, err := service.ConnectionHints(ctx)
+	if err != nil {
+		return "", err
+	}
+	items := make([]picker.Item, 0, len(hints)+1)
+	for _, hint := range hints {
+		items = append(items, picker.Item{Value: hint.Alias, Label: hint.Alias, Description: fmt.Sprintf("%s@%s:%d", hint.User, hint.HostName, hint.Port)})
+	}
+	const manual = "\x00manual"
+	items = append(items, picker.Item{Value: manual, Label: "Enter an alias…", Description: "A new alias is created before its key is installed"})
+	selected, err := sshPick(ctx, app, "SSH host for key setup", items, false)
+	if err != nil {
+		return "", err
+	}
+	if selected[0].Value != manual {
+		return selected[0].Value, nil
+	}
+	alias, err := newPrompter(app).line("SSH alias", "")
+	if err == nil && strings.TrimSpace(alias) == "" {
+		err = errors.New("enter an SSH alias")
+	}
+	return strings.TrimSpace(alias), err
 }
 func expandSSHFile(path string) string { return filepath.Clean(config.Expand(path)) }

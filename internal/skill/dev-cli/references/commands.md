@@ -2119,7 +2119,7 @@ dev ssh init [flags]
 
 ### `dev ssh key`
 
-Inspect local SSH keys and agent identities
+Inspect local SSH keys and agent identities (install one with dev ssh setup)
 
 ```
 dev ssh key

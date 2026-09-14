@@ -160,7 +160,7 @@ func TestSSHKeyWizardPreservesFileAndAgentCandidates(t *testing.T) {
 				t.Fatal(err)
 			}
 			out, stderr, err := runSSHKeyWizard(t, f, runner, "lab\n\ntester\n22\ny\n", func(request picker.Request) (picker.Result, error) {
-				if request.Multi || len(request.Items) != 2 || request.Items[0].Value != meta.Fingerprint || !strings.Contains(request.Items[0].Description, "agent") {
+				if request.Multi || len(request.Items) != 3 || request.Items[0].Value != meta.Fingerprint || !strings.Contains(request.Items[0].Description, "agent") || request.Items[1].Value != "generate" {
 					t.Fatalf("key picker lacks safe exact identity metadata: %+v", request)
 				}
 				return picker.Result{Item: request.Items[0]}, nil

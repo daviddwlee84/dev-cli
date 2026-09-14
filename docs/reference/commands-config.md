@@ -114,8 +114,9 @@ sharing disabled.
 `ssh setup` handles new/managed/foreign aliases in one command. Connection flags
 (`--hostname`, `--user`, `--port`, `--proxy-jump`, `--identity-file`,
 `--identities-only`) apply only to new or managed aliases. `--config-only` stops
-after local verification. Public-key bootstrap requires an explicit `--key` or
-`--generate-key`; noninteractive key bootstrap also requires `--target-os`, and
+after local verification. Public-key bootstrap uses `--key` or `--generate-key`;
+an interactive run without either opens a key picker (local keys, generate, or a
+path). Noninteractive key bootstrap requires one of them and `--target-os`, and
 noninteractive generation requires `--no-passphrase`. Route/platform controls
 are `--hop-os`, `--install-on-working-jump`, and
 `--windows-admin-authorized-keys`. `--dry-run` does no OpenSSH evaluation,

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strconv"
 	"strings"
@@ -299,7 +300,7 @@ func sshFleetOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, 
 			return nil, e
 		}
 		o.portChanged = true
-		auth, e := sshPick(ctx, app, "Authentication for "+alias, []picker.Item{{Value: "config", Label: "Configure only"}, {Value: "existing", Label: "Verify existing authentication"}, {Value: "key", Label: "Install a local public key through the route"}, {Value: "generate", Label: "Generate and install a new local key"}}, false)
+		auth, e := sshPick(ctx, app, "Authentication for "+alias, []picker.Item{{Value: "config", Label: "Configure only"}, {Value: "existing", Label: "Verify existing authentication"}, {Value: "key", Label: "Install a local SSH key through the route (existing or new)"}}, false)
 		if e != nil {
 			return nil, e
 		}
@@ -309,18 +310,10 @@ func sshFleetOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, 
 		case "existing":
 			o.auth = "existing"
 		case "key":
-			o, e = selectSSHWizardKey(ctx, app, s, alias, o)
-		case "generate":
-			o.generateKey = true
-			o.keyPath, e = newPrompter(app).line("New local key path", s.Paths().SSHDir+"/id_ed25519_dev_"+alias)
+			o, e = chooseSSHKeyInteractive(ctx, app, s, alias, o, filepath.Join(s.Paths().SSHDir, "id_ed25519_dev_"+alias))
 		}
 		if e != nil {
 			return nil, e
-		}
-		if o.hasExistingKey() || o.generateKey {
-			if e = prepareSSHWizardKey(ctx, app, s, &o); e != nil {
-				return nil, e
-			}
 		}
 		if !o.configOnly {
 			o.to, e = sshRegistrationDestinations(ctx, app, "Optional registration")
@@ -349,7 +342,7 @@ func sshFleetOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, 
 				}
 				picked := result.Items
 				for _, hop := range picked {
-					choice, e := selectSSHWizardKey(ctx, app, s, hop.Value, sshSetupOptions{})
+					choice, e := chooseSSHKeyInteractive(ctx, app, s, hop.Value, sshSetupOptions{}, filepath.Join(s.Paths().SSHDir, "id_ed25519_dev_"+hop.Value))
 					if e != nil {
 						return nil, e
 					}

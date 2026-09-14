@@ -368,11 +368,7 @@ func TestSSHConfigOnlyFormCannotRequestKeyGeneration(t *testing.T) {
 	}}}, nil, nil)
 	next, _ := m.openSSHOnboardingForm(sshflow.OnboardRequest{Alias: "box", HostName: "192.0.2.1", User: "user", Port: 22, Auth: "config"})
 	m = next.(Model)
-	for i := 0; i < m.sshUI.dialog.fieldCount; i++ {
-		if m.sshUI.dialog.fields[i].key == "generate" {
-			m.sshUI.dialog.fields[i].input.SetValue("yes")
-		}
-	}
+	m.sshUI.dialog.onboarding.GenerateKey, m.sshUI.dialog.onboarding.KeyPath = true, "/home/user/.ssh/new-key"
 	next, cmd := m.prepareSSHOnboarding()
 	m = next.(Model)
 	if cmd != nil || called || m.sshUI.dialog.err == nil {

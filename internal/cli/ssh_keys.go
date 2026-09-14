@@ -25,7 +25,7 @@ type sshKeyListDocument struct {
 }
 
 func newSSHKeyCmd(app *App) *cobra.Command {
-	cmd := &cobra.Command{Use: "key", Short: "Inspect local SSH keys and agent identities", Args: cobra.NoArgs}
+	cmd := &cobra.Command{Use: "key", Short: "Inspect local SSH keys and agent identities (install one with dev ssh setup)", Args: cobra.NoArgs}
 	var jsonOut, noAgent bool
 	var alias, on string
 	list := &cobra.Command{
@@ -155,18 +155,22 @@ func localSSHKeyCatalog(ctx context.Context, service *sshhost.Service) (sshhost.
 	return service.Catalog(ctx, sshhost.KeyCatalogRequest{LocalOnly: true})
 }
 
-func selectSSHWizardKey(ctx context.Context, app *App, service *sshhost.Service, alias string, options sshSetupOptions) (sshSetupOptions, error) {
+// chooseSSHKeyInteractive offers existing local keys, generation and a manual
+// path in one picker, then prepares the selected key plan.
+func chooseSSHKeyInteractive(ctx context.Context, app *App, service *sshhost.Service, alias string, options sshSetupOptions, generateDefault string) (sshSetupOptions, error) {
 	for {
 		catalog, err := localSSHKeyCatalog(ctx, service)
 		if err != nil {
 			return options, err
 		}
 		renderSSHKeyDiagnostics(app, catalog.Diagnostics)
-		items := make([]picker.Item, 0, len(catalog.Candidates)+1)
+		items := make([]picker.Item, 0, len(catalog.Candidates)+2)
 		for _, key := range catalog.Candidates {
 			items = append(items, picker.Item{Value: key.Fingerprint, Label: sshKeyLabel(service.Paths().Home, key), Description: strings.Join([]string{key.Comment, key.Algorithm, key.Fingerprint, sshKeySources(key), sshKeySigner(key)}, " · ")})
 		}
-		items = append(items, picker.Item{Value: "manual", Label: "Enter a key path…", Description: "Use a custom path or a private key missing its .pub companion"})
+		items = append(items,
+			picker.Item{Value: "generate", Label: "+ Generate a new key", Description: "Ed25519 at " + generateDefault},
+			picker.Item{Value: "manual", Label: "Enter a key path…", Description: "Use a custom path or a private key missing its .pub companion"})
 		selected, err := sshPick(ctx, app, "SSH key for "+alias, items, false)
 		if errors.Is(err, picker.ErrCanceled) {
 			err = errPromptCanceled
@@ -174,13 +178,20 @@ func selectSSHWizardKey(ctx context.Context, app *App, service *sshhost.Service,
 		if err != nil {
 			return options, err
 		}
-		options.key, options.keyCandidate, options.keyPlan = "", nil, nil
-		if selected[0].Value == "manual" {
+		options.key, options.keyCandidate, options.keyPlan, options.generateKey, options.keyPath = "", nil, nil, false, ""
+		switch selected[0].Value {
+		case "generate":
+			options.generateKey = true
+			options.keyPath, err = newPrompter(app).line("New key path", generateDefault)
+			if err != nil {
+				return options, err
+			}
+		case "manual":
 			options.key, err = newPrompter(app).line("Key or public key path", filepath.Join(service.Paths().Home, ".ssh", "id_ed25519"))
 			if err != nil {
 				return options, err
 			}
-		} else {
+		default:
 			for _, key := range catalog.Candidates {
 				if key.Fingerprint == selected[0].Value {
 					options.keyCandidate = &key

@@ -83,6 +83,8 @@ const (
 	listActionRegistrationEdit
 	listActionSSHConnect
 	listActionSSHSetup
+	listActionSSHSetupTarget
+	listActionSSHInstallKey
 	listActionSSHDiscover
 	listActionSSHProbe
 	listActionSSHDiagnose

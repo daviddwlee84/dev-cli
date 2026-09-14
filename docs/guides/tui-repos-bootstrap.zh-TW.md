@@ -453,6 +453,17 @@ remote user、port 及認證方式；預設只存 SSH config，Fleet 與 Herdr �
 或 Herdr 的原生互動。返回時顯示各階段完成、失敗或 unknown，並選取新增的
 profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變須重新探索／審閱。
 
+選項欄位會列出所有選項並以括號標出目前值，例如 `config · existing · [key]`；
+←／→ 或 Space 切換。在 **Key** 欄位按 Enter 或 Space 會開啟 picker，列出有檔案的
+本機 keys、**+ Generate a new key** 與手動輸入路徑；Esc 回到表單，選取 key 會把
+認證方式設為 key。只存在於 agent 的 identity 請改用終端的 `dev ssh setup` picker。
+
+在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
+表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選
+**set up / install an SSH key…**：有多個 profile 時先選確切 profile，再選 key、
+設定 Remote OS 與選用的 Fleet／Herdr，然後審閱。連線設定不可修改；foreign alias
+只安裝 public key，managed alias 另會在審閱中顯示記錄為 IdentityFile。
+
 `p` 提供 profile、整台機器或篩選結果的快速網路測試／完整 SSH 驗證；開始前
 先確認確切目標。DNS／route、Ping、TCP、SSH banner、handshake、host-key、
 authentication、session 分層呈現。Ping 不通仍測 SSH，proxy 不改成繞路直連。

@@ -521,6 +521,20 @@ to the dashboard shows each completed, failed or unknown stage and selects the
 new profile. Completed configuration survives a later authentication/provider
 failure. A changed LAN scope requires renewed discovery/review.
 
+Choice fields show every option with the current one bracketed, such as
+`config · existing · [key]`; ←/→ or Space cycle them. Enter or Space on **Key**
+opens a picker of file-backed local keys, **+ Generate a new key** and a manual
+path; Esc returns to the form, and picking a key selects key authentication.
+Agent-only identities remain available in the terminal `dev ssh setup` picker.
+
+`Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
+target…**, a form prefilled from that observation, including a matching profile's
+user. On a configured profile it offers **set up / install an SSH key…**: choose the
+exact profile when several exist, pick a key, set Remote OS and optional
+Fleet/Herdr, then review. Connection settings are not editable. A foreign alias
+receives only the public key; a managed alias also records the key as its
+IdentityFile, shown in the review.
+
 `p` offers quick network tests or full SSH verification for a profile, machine,
 or filtered profile set. Review the exact targets before starting. DNS/route,
 Ping, TCP, SSH banner, handshake, host-key, authentication and session observations

@@ -151,3 +151,16 @@ func TestPrompterCanRedactDisplayFallbackWithoutChangingValue(t *testing.T) {
 		t.Fatalf("prompt = %q", output.String())
 	}
 }
+
+func TestPrompterChoiceOfListsOptionsAndResolvesAliases(t *testing.T) {
+	var output bytes.Buffer
+	app := &App{In: strings.NewReader("linux\nw\n"), Out: &output, colorMode: colorNever}
+	value, err := newPrompter(app).choiceOf("Remote OS for lab", "posix", []string{"posix", "windows"}, map[string]string{"posix": "posix", "p": "posix", "windows": "windows", "w": "windows"})
+	if err != nil || value != "windows" {
+		t.Fatalf("value=%q err=%v", value, err)
+	}
+	want := "? Remote OS for lab (posix/windows) [posix]: " + "  enter one of: posix, windows\n" + "? Remote OS for lab (posix/windows) [posix]: "
+	if output.String() != want {
+		t.Fatalf("prompt = %q", output.String())
+	}
+}

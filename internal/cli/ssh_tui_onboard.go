@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -33,7 +34,14 @@ func (p *sshTUIOnboardingPlan) Preview() sshflow.OnboardPreview {
 }
 
 func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.OnboardRequest) (tui.SSHOnboardingPlan, error) {
-	if request.Alias == "" || request.HostName == "" || request.User == "" || request.Port < 1 || request.Port > 65535 {
+	if request.Profile != nil {
+		if request.Alias != request.Profile.Alias || request.Auth != "key" || request.KeyPath == "" || request.Candidate != nil {
+			return nil, errors.New("choose a key for the selected SSH profile")
+		}
+		if err := revalidateSSHTUIProfile(ctx, app, *request.Profile); err != nil {
+			return nil, err
+		}
+	} else if request.Alias == "" || request.HostName == "" || request.User == "" || request.Port < 1 || request.Port > 65535 {
 		return nil, errors.New("enter an SSH alias, host, remote user and port 1–65535")
 	}
 	if request.Auth != "config" && request.Auth != "existing" && request.Auth != "key" {
@@ -88,7 +96,11 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 	}
 	copy := *app
 	copy.Out, copy.Err, copy.In = io.Discard, io.Discard, strings.NewReader("")
-	options := sshSetupOptions{json: true, yes: true, hostName: request.HostName, hostNameChanged: true, user: request.User, userChanged: true, port: request.Port, portChanged: true, connectionChanged: true, machineID: request.MachineID, to: request.To, targetOS: request.RemoteOS, fleetName: request.FleetName, herdrLabel: request.HerdrLabel, herdrSession: request.HerdrSession}
+	options := sshSetupOptions{json: true, yes: true, machineID: request.MachineID, to: request.To, targetOS: request.RemoteOS, fleetName: request.FleetName, herdrLabel: request.HerdrLabel, herdrSession: request.HerdrSession}
+	if request.Profile == nil {
+		options.hostName, options.hostNameChanged, options.user, options.userChanged = request.HostName, true, request.User, true
+		options.port, options.portChanged, options.connectionChanged = request.Port, true, true
+	}
 	if options.herdrSession == "" {
 		options.herdrSession = "default"
 	}
@@ -135,6 +147,36 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 	}
 	notes = append(notes, "Create or update the displayed SSH configuration and explicit machine mappings.")
 	return &sshTUIOnboardingPlan{prepared: prepared, registryPath: app.machineStore().Path, fleetPath: fleetConfigPath(app), preview: sshflow.OnboardPreview{Targets: append([]sshflow.OnboardTarget(nil), prepared.plan.Targets...), Init: prepared.init, Notes: notes}}, nil
+}
+
+// listSSHTUIKeys offers file-backed local keys plus a generated destination.
+// Agent-only identities remain available through the terminal setup picker.
+func listSSHTUIKeys(ctx context.Context, app *App, alias string) ([]tui.SSHKeyChoice, error) {
+	service, err := app.sshHosts()
+	if err != nil {
+		return nil, err
+	}
+	catalog, err := localSSHKeyCatalog(ctx, service)
+	if err != nil {
+		return nil, err
+	}
+	home := service.Paths().Home
+	choices := make([]tui.SSHKeyChoice, 0, len(catalog.Candidates)+1)
+	for _, key := range catalog.Candidates {
+		path := key.IdentityFile
+		if path == "" {
+			path = key.PublicPath
+		}
+		if path == "" {
+			continue
+		}
+		choices = append(choices, tui.SSHKeyChoice{Label: sshKeyLabel(home, key), Description: key.Algorithm + " · " + sshKeySigner(key), Path: path})
+	}
+	if sshhost.ValidateLookupAlias(alias) != nil {
+		alias = "host"
+	}
+	destination := filepath.Join(service.Paths().SSHDir, "id_ed25519_dev_"+alias)
+	return append(choices, tui.SSHKeyChoice{Label: "+ Generate a new key", Description: "Ed25519 at " + sshKeyLabel(home, sshhost.KeyCandidate{IdentityFile: destination}), Path: destination, Generate: true}), nil
 }
 
 func (w *sshTUIWorkflow) applyOnboarding() error {

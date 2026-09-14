@@ -78,7 +78,7 @@ Dry-run is local-only; refs are resolved only when the approved clone runs.`,
 			if interactive && !yes {
 				req.Path, err = p.line("Submodule path (relative to parent checkout root)", req.Path)
 				if err == nil {
-					req.Checkout, err = p.choice("Checkout mode", defaultString(req.Checkout, "pinned"), "pinned / default-branch", map[string]string{"pinned": "pinned", "default-branch": "default-branch"})
+					req.Checkout, err = p.choiceOf("Checkout mode", defaultString(req.Checkout, "pinned"), []string{"pinned", "default-branch"}, map[string]string{"pinned": "pinned", "default-branch": "default-branch"})
 				}
 				if err == nil && req.Checkout == "pinned" {
 					req.Ref, err = p.line("Pinned ref (blank = remote default branch commit)", req.Ref)
@@ -88,7 +88,7 @@ Dry-run is local-only; refs are resolved only when the approved clone runs.`,
 					if settingsErr != nil {
 						return settingsErr
 					}
-					req.Init, err = p.choice("Initialize descendants", settings.Init, "recursive / none", map[string]string{"recursive": "recursive", "none": "none"})
+					req.Init, err = p.choiceOf("Initialize descendants", settings.Init, []string{"recursive", "none"}, map[string]string{"recursive": "recursive", "none": "none"})
 				}
 				if errors.Is(err, errPromptCanceled) {
 					return submoduleAddCanceled(app, jsonOut)
