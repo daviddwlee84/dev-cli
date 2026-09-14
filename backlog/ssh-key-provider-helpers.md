@@ -1,8 +1,8 @@
 # SSH key provider helpers
 
-Status: partially implemented in the unreleased v0.2.38 work; existing-key migration, endpoint-attested Bitwarden writes and automatic Secure Enclave provisioning remain separate/unresolved. Do not mark the milestone shipped before its verification and release gates close.
+Status: implementation for the v0.2.38 key-provider milestone is complete; existing-key migration, endpoint-attested Bitwarden writes and automatic Secure Enclave provisioning remain future work. Live-vault/hardware validation remains separately consented.
 
-Research updated: 2026-09-14.
+Research updated: 2026-09-15.
 
 ## Remaining safe-automation gates
 

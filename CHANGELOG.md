@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.38] - 2026-09-15
+
 ### Added
 
 - Generated SSH keys can use a custom name and folder under `~/.ssh`: one missing
@@ -1198,7 +1200,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.37...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.38...HEAD
+[0.2.38]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.37...v0.2.38
 [0.2.37]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.36...v0.2.37
 [0.2.36]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.35...v0.2.36
 [0.2.35]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.34...v0.2.35

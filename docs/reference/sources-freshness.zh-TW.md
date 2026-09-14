@@ -64,6 +64,7 @@ tested_with: optional
 | Topic 或 claim | Owning page | Primary authority | Checked status |
 |---|---|---|---|
 | SSH profile tree、原生 discovery/setup、durable 使用／測試紀錄與 TUI 問題引導 | [SSH dashboard](../guides/ssh-hosts.zh-TW.md#ssh-connection-view)、[問題引導](../guides/dashboard-actions.zh-TW.md) | `internal/tui`、`internal/sshactivity`、`internal/tuiissue`、native discovery/onboarding tests 與隔離 PTY smoke | v0.2.37 |
+| SSH key destination、named agent／v2、FIDO 與明確 vault creation | [SSH key providers](../guides/ssh-hosts.zh-TW.md) | `internal/sshhost`、`internal/sshvault`、CLI／TUI 回歸與隔離 native-fixture smoke | v0.2.38；未執行真實 vault／hardware 操作 |
 | 原生 Android／Termux SSH 檔案系統支援 | [SSH dashboard](../guides/ssh-hosts.zh-TW.md#ssh-connection-view)、[相容性](compatibility.zh-TW.md) | `internal/platformfs`、原生 Android domain／TUI tests 與 dashboard config-only 實測 | v0.2.36；2026-09-13 於 ARM64 Android 驗證 |
 | 保留 parent 的 task completion、前景程序授權與 coordinator v2 | [Agent-safe retirement](../guides/agent-safe-retirement.zh-TW.md#task-worktree-scope) | runtime process/occupancy、taskflow completion/retire 與 CLI scope regression tests | Unreleased |
 | HOT/WARM/COLD/DONE graph、checkout modes，以及 DONE/MERGED 與 Retire 的分界 | [心智模型](../concepts/mental-model.zh-TW.md)、[變更流 workflow](../guides/change-stream-workflow.zh-TW.md) | `internal/task/task.go`、`internal/taskflow/transitions.go`、focused lifecycle tests | repository snapshot 2026-09-01 |
