@@ -459,7 +459,9 @@ profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變
 認證方式設為 key。**+ Generate a new key** 會先開啟小表單填寫新 key 路徑與可選
 comment，再回到原表單。可用的 Bitwarden、1Password、Secretive agent 與已驗證的
 `SSH_AUTH_SOCK` 內的 key 也會列出。Agent-only 選項保留確切 fingerprint 與 socket；
-不可用的 provider 則顯示操作指引。
+不可用的 provider 則顯示操作指引。Security-key generation 另可設定 type、provider、
+resident handle、verify-required 與 application；審閱會說明原生 touch／PIN 流程與
+可能保留的硬體作用。自動 Secure Enclave 建立仍不可用。
 
 在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
 表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選

@@ -20,6 +20,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   dev v0.2.37 and older refuse setup/remove on v2 aliases. Explicit named/custom
   agent selection currently fails closed on native Windows and during remote
   fleet-source imports; normal registration to fleet/Herdr remains supported.
+- Explicit interactive FIDO SSH key generation adds `ed25519-sk` / `ecdsa-sk`,
+  provider, resident, verify-required and application options to CLI/dashboard
+  setup. Native touch/PIN interaction retains selected-key and host-key guards;
+  preview names the toolchain and uncertainty, and failures report retained or
+  unknown hardware effects separately from local files. Known incompatible tools
+  block without probing hardware. Automatic Secure Enclave creation, native
+  Windows-controller hardware generation and new hardware generation during
+  remote fleet-source imports remain unavailable.
 
 ### Fixed
 

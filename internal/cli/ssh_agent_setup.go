@@ -67,6 +67,14 @@ func validateSSHFleetImportAgentPlans(item sshOnboardItem) error {
 	if item.Import == nil {
 		return nil
 	}
+	if item.KeyPlan != nil && item.KeyPlan.Operation == sshhost.KeyGenerate && sshHardwareKeyType(string(item.KeyPlan.KeyType)) {
+		return errSSHFleetImportHardware
+	}
+	for _, plan := range item.HopKeyPlans {
+		if plan.Operation == sshhost.KeyGenerate && sshHardwareKeyType(string(plan.KeyType)) {
+			return errSSHFleetImportHardware
+		}
+	}
 	if item.AgentPublicPlan != nil || item.KeyPlan != nil && item.KeyPlan.Agent != nil {
 		return errSSHFleetImportAgent
 	}

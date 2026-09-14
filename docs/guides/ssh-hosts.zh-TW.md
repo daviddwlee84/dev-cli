@@ -20,7 +20,7 @@ lang: zh-TW
 | `~/.ssh/config`、其中的 foreign Includes 與 foreign `Host`/`Match` blocks | user + OpenSSH | static read；透過 plain `ssh -G` evaluate；明確 format/organize 可整理選定的使用者檔案 |
 | root config 中的 `Include ~/.ssh/dev.d/*.conf` | dev，且必須明確執行 `ssh init --apply` | 在第一個 `Host`、`Match` 或更早的 Include 前安裝一次；絕不自動移除 |
 | `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | 只 create、reconcile 或 remove canonical v1／v2 file，其內容是 allowlisted single `Host` block |
-| local key files | user + native `ssh-keygen` | 驗證 explicit key、經確認後 derive 缺少的 `.pub`，或以 no-replace 方式產生 Ed25519 pair；絕不複製 private bytes |
+| local key files | user + native `ssh-keygen` | 驗證 explicit key、經確認後 derive 缺少的 `.pub`，或以 no-replace 方式產生 Ed25519 pair／FIDO stub-public pair；絕不複製 private bytes |
 | remote `authorized_keys` | remote OpenSSH account | idempotently append 一筆 bounded normalized public record；絕不 remove 或 revoke |
 | primary `remotes.toml` | user via `dev fleet config` | read/merge；SSH setup 絕不 rewrite |
 | sibling `remotes.d/ssh-<alias>.toml` | `dev ssh setup/remove --fleet` | 只有 fresh ordinary login 成功後才 create；只有明確要求才 remove |
@@ -138,9 +138,77 @@ dev ssh setup winlab --hostname 198.51.100.30 \
 
 `--key` 接受 validated `.pub` record、具有 companion `.pub` 的 private identity，或具有 companion `.pub` 的 security-key stub。Identity 缺少 public companion 時，dev 會先詢問，再執行 `ssh-keygen -y`；script 可用 `--yes` 提供該 local confirmation。Encrypted noninteractive derivation 會以 `interaction_required` 失敗，不會把 passphrase 放進 argv 或 environment。
 
-`--generate-key` 透過 native `ssh-keygen` 產生 Ed25519。`--key-path` 可指定 `~/.ssh` 底下任何檔案（含子資料夾）；`~/.ssh` 下一層若不存在，dev 會以 `0700` 建立並顯示在 plan 中，更深的資料夾需先用 `mkdir -m 700` 建立。位於 `~/.ssh` 以外、使用不支援的展開，或以 `.pub` 結尾的名稱會被 block 並說明原因。互動 picker 的 **+ Generate a new key** 會詢問路徑（只填名稱時放在 `~/.ssh`）與可選 comment。Interactive mode 將 hidden passphrase prompt 交給它；noninteractive generation 必須明確使用 `--no-passphrase`。兩個 half 先在 private staging basename 產生，依 fingerprint 確認相符、harden，再以 no-replace semantics publish；任何 destination collision 都會 block，不會 overwrite。成功產生的 pair 在後續 route/bootstrap/fleet failure 後仍保留，`dev ssh remove` 也絕不移除。
+`--generate-key` 預設透過 native `ssh-keygen` 產生 Ed25519。`--key-path` 可指定 `~/.ssh` 底下任何檔案（含子資料夾）；`~/.ssh` 下一層若不存在，dev 會以 `0700` 建立並顯示在 plan 中，更深的資料夾需先用 `mkdir -m 700` 建立。位於 `~/.ssh` 以外、使用不支援的展開，或以 `.pub` 結尾的名稱會被 block 並說明原因。互動 picker 的 **+ Generate a new key** 會詢問路徑（只填名稱時放在 `~/.ssh`）與可選 comment。Interactive mode 將 hidden passphrase prompt 交給它；noninteractive Ed25519 generation 必須明確使用 `--no-passphrase`；security-key generation 則要求原生互動確認。兩個 half 先在 private staging basename 產生，依 fingerprint 確認相符、harden，再以 no-replace semantics publish；任何 destination collision 都會 block，不會 overwrite。成功產生的 pair 在後續 route/bootstrap/fleet failure 後仍保留，`dev ssh remove` 也絕不移除。
 
 所有 output 都是 content-safe：可以包含 fingerprint、algorithm、path、digest 與 boolean；不包含 private bytes、passphrase、password、完整 public-key line、agent payload 或 unredacted command-like SSH option。
+
+### FIDO security key（YubiKey 與相容 authenticator）
+
+搭配 `--generate-key` 選擇 `--key-type ed25519-sk` 或 `ecdsa-sk`，會要求建立新的
+security-key identity，而不是上傳現有私鑰。使用原生 FIDO authenticator 時，簽章私鑰
+不會被匯出；本機 identity file 是受保護的 key handle（stub），另有 public companion。
+自訂 provider 的實際儲存方式由該 provider 定義。Stub 仍需保護與備份；non-resident key
+無法只靠 authenticator 還原。
+
+```bash
+# 原生互動 touch／PIN 流程；建立前先審閱。
+dev ssh setup lab --generate-key --key-type ed25519-sk \
+  --key-path ~/.ssh/security/id_lab --sk-application ssh:lab --target-os posix
+
+# 支援較多 FIDO2 裝置，並儲存 resident handle、要求 user verification。
+dev ssh setup lab --generate-key --key-type ecdsa-sk \
+  --key-path ~/.ssh/security/id_lab_resident \
+  --sk-resident --sk-verify-required --target-os posix
+```
+
+- `ed25519` 仍是預設的軟體 key。`ed25519-sk` 需要相容 authenticator（YubiKey firmware
+  5.2.3+）；`ecdsa-sk` 支援較多 FIDO2 裝置。
+- `--sk-provider internal` 是預設值，也可明確指定 provider library 的絕對路徑。
+  審閱過的 generator／client／provider 路徑會綁定此次操作；選 provider 不會更改 PATH
+  或安裝軟體。
+- `--sk-resident` 也把 handle 儲存在 authenticator，可能佔用持久 credential slot，
+  通常要求先設定 PIN。
+- `--sk-verify-required` 要求原生 key 在簽章時做 user verification；與 resident 儲存
+  是不同選項，也不會改寫遠端 `authorized_keys` options 或認證 policy。
+- `--sk-application` 是有長度限制、以 `ssh:` 開頭的 application name。Generation
+  options 不可與既有 key、named agent 或既有認證模式併用。硬體產生要求原生互動確認；
+  `--yes`、`--no-passphrase` 都不能把它變成無人值守的 provisioning。
+
+Capability observation 只讀 stat／路徑資訊，不執行 `ssh-keygen -K`、載入 provider、
+列舉裝置，也不把 `ssh -Q key` 當成硬體證明。已知 Apple 系統 OpenSSH 沒有內建 USB
+FIDO backend；請讓 **`ssh` 與 `ssh-keygen` 兩者**都使用支援 FIDO 的安裝版本，例如
+含 libfido2 的 Homebrew OpenSSH。只找到自訂 binary／library 時，能力仍是 **unknown**；
+使用者明確審閱的互動嘗試可帶著警告繼續，但不代表已找到裝置或一定能完成認證。
+Native Windows controller 尚未實作工具身分驗證，因此會擋下新的 hardware generation；
+既有原生 key／認證流程維持不變。這不禁止受支援的 controller 連往 Windows SSH server，
+server 是否接受該演算法仍由實際認證驗證。
+
+Managed alias 會在 v2 fragment 記錄 `SecurityKeyProvider`。Foreign alias 不會被改寫，
+原生 provider policy 必須已相符。從遠端 `fleet:HOST` 匯入 profile／hop 時不允許產生
+新的 hardware key；請先匯入，再另外設定本機 alias。把一般或 LAN alias 註冊**到**
+fleet／Herdr 仍受支援。
+
+Touch、PIN 與 stub passphrase 由原生 `ssh-keygen` 處理。Exact-key proof 可使用獲授權
+的原生互動，但仍限 publickey、保留 host-key policy，且不在 selected-key proof 內改用
+密碼；其他 proxy hop 保留原有 batch policy。互動 setup 成功不保證無人值守的 fleet／
+背景存取可用：需要 PIN、passphrase 或 touch 的 key，之後仍可能需要原生互動。
+Dev 不會為了自動化而停用這些要求。Enrollment 一旦開始，即使後續步驟失敗，
+也可能已留下硬體 credential。
+Dev 會分別回報 hardware created／unknown 與 local-file creation，只保留已驗證的 SK
+stub／public recovery pair 並列出路徑；不會自動重試 enrollment、刪除硬體 credential，
+或暗中執行 PIV／OpenPGP provisioning。重新產生前請先檢查保留的結果。
+
+**macOS Secure Enclave：**自動 `apple-secure-enclave` 建立尚不可用，必須先驗證精確
+identity-to-stub mapping 與原生輸出 contract。該選項會在 `sc_auth` 或硬體作用前停止；
+library 存在不代表已就緒。可使用原生設定正確的既有 stub，或 Secretive agent key。
+Apple Passwords 沒有文件化的 SSH-key item／SSH agent；Keychain passphrase 儲存
+（`ssh-add --apple-use-keychain`）仍會留下 private-key file，不是 hardware-only backend。
+
+參考 [Yubico FIDO2 SSH](https://developers.yubico.com/SSH/Securing_SSH_with_FIDO2.html)、
+[Secretive](https://github.com/maxgoedjen/secretive)，以及原生
+[`sc_auth`](https://keith.github.io/xcode-man-pages/sc_auth.8.html)／
+[`ssh-keychain`](https://keith.github.io/xcode-man-pages/ssh-keychain.8.html) 手冊。
+實際 enrollment 與 Touch ID 是另外的使用者協助驗證；fake runner 或交叉編譯不能證明它們成功。
 
 ## ProxyJump 與 remote operating system
 
@@ -701,7 +769,7 @@ reference 會停止 dev 重用，但不刪除 vault item 或修改 remote passwo
 Discovery 不啟用 saved-reference lookup。`connect --on` 的 remote source-to-target
 password 不屬於 controller save workflow。
 
-這些功能不包含將 SSH private key 匯入 vault、YubiKey provisioning，或匯出 Apple
+Password-save 功能不包含將 SSH private key 匯入 vault、YubiKey provisioning，或匯出 Apple
 Passwords；它們是獨立的未來 migration workflows。
 
 ## SSH connection view
@@ -739,7 +807,9 @@ profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變
 認證方式設為 key。**+ Generate a new key** 會先開啟小表單填寫新 key 路徑與可選
 comment，再回到原表單。可用的 Bitwarden、1Password、Secretive agent 與已驗證的
 `SSH_AUTH_SOCK` 內的 key 也會列出。Agent-only 選項保留確切 fingerprint 與 socket；
-不可用的 provider 則顯示操作指引。
+不可用的 provider 則顯示操作指引。Security-key generation 另可設定 type、provider、
+resident handle、verify-required 與 application；審閱會說明原生 touch／PIN 流程與
+可能保留的硬體作用。自動 Secure Enclave 建立仍不可用。
 
 在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
 表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選

@@ -47,6 +47,7 @@ type keyMaterialState struct {
 	publicSource     *secureFileIdentity
 	identitySource   *selectedKeyIdentity
 	agent            *keyAgentContext
+	hardware         *securityKeyState
 }
 
 // The selected agent is an execution reference, never serialized key metadata.
@@ -69,6 +70,7 @@ type keyPlanState struct {
 	identity        selectedKeyIdentity
 	expectedPublic  fileSnapshot
 	expectedPrivate fileSnapshot
+	hardware        *securityKeyState
 }
 
 type catalogEntry struct {
@@ -578,7 +580,7 @@ func (s *Service) Catalog(ctx context.Context, request KeyCatalogRequest) (KeyCa
 				}
 				return nil
 			}
-			if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".pub") {
+			if entry.IsDir() || strings.HasPrefix(entry.Name(), ".dev-sk-recovery-") || !strings.HasSuffix(strings.ToLower(entry.Name()), ".pub") {
 				return nil
 			}
 			files++
@@ -862,6 +864,9 @@ func (s *Service) revalidateSelectedKeySources(ctx context.Context, material *ke
 }
 
 func (s *Service) revalidateSelectedLocalSources(material *keyMaterialState) error {
+	if err := s.revalidateSecurityKeyState(material.hardware); err != nil {
+		return err
+	}
 	if err := s.revalidateSelectedPublicSource(material); err != nil {
 		return err
 	}
@@ -1083,7 +1088,19 @@ func (s *Service) PlanKey(ctx context.Context, request KeyRequest) (KeyPlan, err
 	}
 	request.Operation = operation
 	if operation == KeyGenerate {
+		if request.Type.securityKey() || request.SecurityKey.Provider == "apple-secure-enclave" {
+			return s.planGeneratedSecurityKey(ctx, request)
+		}
+		if request.Type != "" && request.Type != KeyTypeEd25519 {
+			return KeyPlan{}, errors.New("unsupported generated SSH key type")
+		}
+		if request.SecurityKey != (SecurityKeyOptions{}) {
+			return KeyPlan{}, errors.New("security-key options require a security-key algorithm")
+		}
 		return s.planGeneratedKey(request)
+	}
+	if request.Type != "" || request.SecurityKey != (SecurityKeyOptions{}) {
+		return KeyPlan{}, errors.New("key generation options require a generation operation")
 	}
 	if operation == KeyPublishAgent {
 		return s.planAgentPublication(request)
@@ -1329,6 +1346,7 @@ func (s *Service) ApplyKey(ctx context.Context, plan KeyPlan) (KeyResult, error)
 			return KeyResult{}, err
 		}
 		candidate := s.bindVerifiedKeyMaterial(state.material.safe, state.material.publicLine, verification)
+		candidate.state.hardware = state.material.hardware
 		if state.material.agent != nil {
 			copy := *state.material.agent
 			candidate.state.agent = &copy
@@ -1337,6 +1355,9 @@ func (s *Service) ApplyKey(ctx context.Context, plan KeyPlan) (KeyResult, error)
 	case KeyDerive:
 		return s.applyDerivedKey(ctx, plan)
 	case KeyGenerate:
+		if state.hardware != nil {
+			return s.applyGeneratedSecurityKey(ctx, plan)
+		}
 		return s.applyGeneratedKey(ctx, plan)
 	case KeyPublishAgent:
 		return s.applyAgentPublication(ctx, plan)
@@ -1576,6 +1597,9 @@ func (s *Service) RevalidateKeySelection(ctx context.Context, plan KeyPlan) erro
 		}
 		return nil
 	case KeyGenerate:
+		if err := s.revalidateSecurityKeyState(state.hardware); err != nil {
+			return err
+		}
 		parent := filepath.Dir(plan.IdentityFile)
 		if err := s.validateKeyParent(parent); err != nil {
 			_, statErr := os.Lstat(parent)

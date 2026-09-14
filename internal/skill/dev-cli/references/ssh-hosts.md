@@ -119,14 +119,56 @@ key stub with a companion. A missing `.pub` can be derived only after confirmati
 with native `ssh-keygen -y`; noninteractive encrypted derivation returns
 interaction-required.
 
-Generation is Ed25519 and defaults to `~/.ssh/id_ed25519_dev`; `--key-path` and
+Generation defaults to Ed25519 at `~/.ssh/id_ed25519_dev`; `--key-path` and
 `--comment` customize it. Paths must stay under `~/.ssh`; one missing folder directly
 under `~/.ssh` is created 0700 (plan field `create_parent`), deeper ones are blocked
 with a mkdir hint, and blocked plans name the reason (`key_path_outside_ssh`,
 `key_parent_missing`, ...). The picker's generate item asks path and comment. Interactive generation leaves the hidden passphrase
-prompt to ssh-keygen. Noninteractive generation requires `--no-passphrase`.
+prompt to ssh-keygen. Noninteractive software-key generation requires `--no-passphrase`.
 Destinations are no-replace; do not delete a colliding file to make the command
 pass. Generated pairs remain after later partial failures and after `ssh remove`.
+
+FIDO generation is an explicit interactive operation:
+
+```text
+--generate-key --key-type ed25519-sk|ecdsa-sk
+--sk-provider internal|/absolute/provider-library
+--sk-resident
+--sk-verify-required
+--sk-application ssh:application
+```
+
+The default remains ordinary ed25519. FIDO creates a new credential and local
+handle/public pair, not an import of an existing private key. Resident handle
+storage and per-signature user verification are independent choices. Keep handles
+protected; a non-resident handle cannot be recovered from the token alone.
+Options cannot silently apply to an existing key/agent or existing-auth mode.
+`--yes`/`--no-passphrase` do not make SK generation noninteractive: native ssh-keygen
+owns touch, PIN and stub-passphrase entry. Never collect these secrets in agent text.
+
+Tool/provider observations are stat-only. Never use ssh-keygen -K, provider loading,
+ssh -Q or device enumeration as a passive capability probe. Known Apple-stock
+internal USB FIDO blocks; custom builds remain unknown even when an explicitly
+reviewed native attempt is allowed. Native Windows controllers block new hardware
+generation pending tool identity attestation; existing native keys remain available.
+Review exact generator/client/provider paths,
+local paths and possible persistent hardware effects. A successful generation is
+not an authentication proof. Managed aliases use v2 SecurityKeyProvider; foreign
+aliases must already have matching native policy. New hardware generation during
+remote fleet-source profile/hop imports is unavailable; configure imported aliases
+separately. Registering normal/LAN aliases TO fleet/Herdr is still supported.
+
+Selected-key proof may request authorized native SK interaction, never password
+fallback or weaker host-key policy; unrelated proxy hops keep their batch policy.
+Interactive setup does not prove unattended fleet/background readiness. Never weaken
+PIN/touch requirements to make automation work. A started enrollment is single-attempt and may
+retain hardware effects after failure. Inspect created/unknown receipts and only
+verified stub/public recovery paths before any fresh generation plan. Never delete
+a hardware credential or overwrite a PIV/OpenPGP slot as cleanup. Automatic
+apple-secure-enclave creation remains blocked until exact native identity mapping
+is verified; Secretive or an existing configured stub is the supported handoff.
+Apple Passwords is not a documented SSH agent; Keychain passphrase storage does not
+eliminate the private-key file. Fake tests and cross-builds are not hardware validation.
 
 On a terminal, `dev ssh setup <alias>` without either flag opens a key picker:
 local keys, `+ Generate a new key` (default `~/.ssh/id_ed25519_dev_<alias>`) and a
@@ -748,7 +790,7 @@ for vault cleanup. Existing explicit fleet password sources retain priority.
 Discovery does not opt into saved-reference lookup. Remote source-to-target
 passwords in `connect --on` remain outside this controller save workflow.
 
-These features do not import SSH private keys into a vault, provision YubiKeys,
+Password-save features do not import SSH private keys into a vault, provision YubiKeys,
 or export Apple Passwords. Those are separate future migration workflows.
 
 ## SSH connection view
@@ -795,6 +837,9 @@ path; Esc returns to the form, and picking a key selects key authentication.
 comment before returning to the form. Keys from present Bitwarden, 1Password or
 Secretive agents and a validated `SSH_AUTH_SOCK` are listed too. Agent-only choices
 retain the exact fingerprint and socket; unavailable providers show guidance.
+Security-key generation also exposes the type, provider, resident handle,
+verify-required and application options. Review shows the native touch/PIN flow
+and possible retained hardware effects; automatic Secure Enclave creation remains unavailable.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

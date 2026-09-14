@@ -120,7 +120,7 @@ func (s *Service) Bootstrap(ctx context.Context, request BootstrapRequest) (Boot
 		if material == nil {
 			if ordinary && !hop.Target && !request.InstallOnWorkingJump {
 				hop.Skipped, hop.Status, hop.Code = true, HopWorkingSkipped, "working_jump_skipped"
-				if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopFailed, bootstrapAuthentication{request.Authentication, index}); !ready {
+				if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopFailed, bootstrapAuthentication{operation: request.Authentication, index: index}); !ready {
 					return finalizeBootstrap(result), gateErr
 				}
 				continue
@@ -137,14 +137,25 @@ func (s *Service) Bootstrap(ctx context.Context, request BootstrapRequest) (Boot
 		}
 		cleanups = append(cleanups, cleanup)
 
-		exact, exactErr := s.bootstrapProof(ctx, request.Authentication, index, hopState, selector, true)
+		exact, exactErr := s.bootstrapProof(ctx, request.Authentication, index, hopState, selector, true, request.Interactive && selector.securityKey)
 		if exactErr != nil {
+			if errors.Is(exactErr, ErrSecurityKeyPolicyMismatch) && !errors.Is(exactErr, ErrSourceChanged) && ctx.Err() == nil {
+				if ordinary && !hop.Target && !request.InstallOnWorkingJump {
+					hop.Skipped, hop.Status, hop.Code = true, HopWorkingSkipped, "working_jump_skipped"
+					if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopFailed, bootstrapAuthentication{operation: request.Authentication, index: index}); !ready {
+						return finalizeBootstrap(result), gateErr
+					}
+					continue
+				}
+				hop.Status, hop.Code = HopManual, "selected_security_key_provider_incompatible"
+				return finalizeBootstrap(result), nil
+			}
 			if errors.Is(exactErr, ErrUnprovenAuthentication) {
 				if ordinary && !hop.Target && !request.InstallOnWorkingJump {
 					hop.Skipped = true
 					hop.Status = HopWorkingSkipped
 					hop.Code = "working_jump_skipped"
-					if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopFailed, bootstrapAuthentication{request.Authentication, index}); !ready {
+					if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopFailed, bootstrapAuthentication{operation: request.Authentication, index: index}); !ready {
 						return finalizeBootstrap(result), gateErr
 					}
 					continue
@@ -168,7 +179,7 @@ func (s *Service) Bootstrap(ctx context.Context, request BootstrapRequest) (Boot
 			hop.Verified = true
 			hop.Status = HopPresent
 			hop.Code = "key_present"
-			if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopFailed, bootstrapAuthentication{request.Authentication, index}); !ready {
+			if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopFailed, hardwareGateAuthentication(request.Authentication, index, selector, request.Interactive)); !ready {
 				return finalizeBootstrap(result), gateErr
 			}
 			continue
@@ -178,7 +189,7 @@ func (s *Service) Bootstrap(ctx context.Context, request BootstrapRequest) (Boot
 			hop.Skipped = true
 			hop.Status = HopWorkingSkipped
 			hop.Code = "working_jump_skipped"
-			if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopFailed, bootstrapAuthentication{request.Authentication, index}); !ready {
+			if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopFailed, bootstrapAuthentication{operation: request.Authentication, index: index}); !ready {
 				return finalizeBootstrap(result), gateErr
 			}
 			continue
@@ -250,7 +261,7 @@ func (s *Service) Bootstrap(ctx context.Context, request BootstrapRequest) (Boot
 		}
 		hop.Installed = true
 
-		verified, verifyErr := s.bootstrapProof(ctx, request.Authentication, index, hopState, selector, true)
+		verified, verifyErr := s.bootstrapProof(ctx, request.Authentication, index, hopState, selector, true, request.Interactive && selector.securityKey)
 		if verifyErr != nil {
 			if errors.Is(verifyErr, ErrUnprovenAuthentication) {
 				hop.Status = HopManual
@@ -272,7 +283,7 @@ func (s *Service) Bootstrap(ctx context.Context, request BootstrapRequest) (Boot
 		hop.Present = true
 		hop.Verified = true
 
-		if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopManual, bootstrapAuthentication{request.Authentication, index}); !ready {
+		if ready, gateErr := s.runOrdinaryBootstrapGate(ctx, hopState, hop, HopManual, hardwareGateAuthentication(request.Authentication, index, selector, request.Interactive)); !ready {
 			return finalizeBootstrap(result), gateErr
 		}
 		hop.Status = HopInstalled
@@ -284,11 +295,16 @@ func (s *Service) Bootstrap(ctx context.Context, request BootstrapRequest) (Boot
 func (s *Service) runOrdinaryBootstrapGate(ctx context.Context, hopState routeHopState, hop *HopResult, failedStatus HopStatus, authentication ...bootstrapAuthentication) (bool, error) {
 	var operation *AuthenticationOperation
 	index := 0
+	selector := keySelector{}
+	interactive := false
 	if len(authentication) > 0 {
 		operation = authentication[0].operation
 		index = authentication[0].index
+		if authentication[0].hardware != nil {
+			selector, interactive = *authentication[0].hardware, true
+		}
 	}
-	gate, err := s.bootstrapProof(ctx, operation, index, hopState, keySelector{}, false)
+	gate, err := s.bootstrapProof(ctx, operation, index, hopState, selector, false, interactive)
 	if err != nil {
 		hop.Status = HopFailed
 		hop.Code = "ordinary_gate_error"
@@ -372,10 +388,13 @@ func (s *Service) bootstrapRoute(ctx context.Context, request BootstrapRequest) 
 }
 
 type keySelector struct {
-	identity    string
-	certificate string
-	agent       *keyAgentContext
-	fingerprint string
+	identity             string
+	certificate          string
+	agent                *keyAgentContext
+	fingerprint          string
+	securityKey          bool
+	hardware             *securityKeyState
+	ordinaryHardwareGate bool
 }
 
 func (s *Service) prepareKeySelector(material *keyMaterialState) (keySelector, func(), error) {
@@ -405,7 +424,7 @@ func (s *Service) prepareKeySelector(material *keyMaterialState) (keySelector, f
 				return keySelector{}, emptyCleanup, errors.New("selected public companion changed")
 			}
 		}
-		selector := keySelector{identity: safe.IdentityFile}
+		selector := keySelector{identity: safe.IdentityFile, securityKey: safe.Provenance.SecurityKeyStub, hardware: material.hardware}
 		if certificate {
 			selector.certificate = safe.PublicPath
 			if selector.certificate == "" {
@@ -495,8 +514,18 @@ func appendFreshSSHOptions(args []string, batch bool) []string {
 	return args
 }
 
-func (s *Service) runSSHProof(ctx context.Context, hop routeHopState, selector keySelector, exact bool) (bool, error) {
-	if !exact {
+func (s *Service) runSSHProof(ctx context.Context, hop routeHopState, selector keySelector, exact bool, nativeInteraction ...bool) (bool, error) {
+	interactive := (exact || selector.ordinaryHardwareGate) && selector.securityKey && len(nativeInteraction) > 0 && nativeInteraction[0]
+	hardwareGate := !exact && selector.ordinaryHardwareGate && interactive
+	if err := s.revalidateSecurityKeyState(selector.hardware); err != nil {
+		return false, err
+	}
+	if hardwareGate {
+		if err := s.revalidateHardwareGateNativeConfig(ctx, hop); err != nil {
+			return false, err
+		}
+	}
+	if !exact && !hardwareGate {
 		result, err := s.runHopSSH(ctx, hop, true, "exit 0", nil, false, "ssh authentication proof")
 		if err != nil {
 			return false, err
@@ -514,7 +543,7 @@ func (s *Service) runSSHProof(ctx context.Context, hop routeHopState, selector k
 			return false, err
 		}
 	}
-	configPath, destination, cleanup, err := s.prepareExactProofConfig(hop, selector)
+	configPath, destination, cleanup, err := s.prepareExactProofConfig(hop, selector, interactive)
 	if err != nil {
 		return false, err
 	}
@@ -527,12 +556,19 @@ func (s *Service) runSSHProof(ctx context.Context, hop routeHopState, selector k
 	logPath := filepath.Join(log.dir, log.name)
 	// -E confines the client authentication evidence to this process. Unlike
 	// -v, LogLevel does not propagate verbosity into implicit ProxyJump clients.
-	args := appendFreshSSHOptions([]string{"-F", configPath, "-E", logPath, "-o", "LogLevel=DEBUG1"}, true)
+	args := appendFreshSSHOptions([]string{"-F", configPath, "-E", logPath, "-o", "LogLevel=DEBUG1"}, !interactive)
 	args = append(args, destination, "exit 0")
 	// A captured socket is scoped to the target stanza. ProxyJump children must
 	// retain the ambient agent selected by their own ordinary configuration.
+	if err := s.revalidateSecurityKeyState(selector.hardware); err != nil {
+		return false, err
+	}
+	display := "ssh selected-key-only authentication proof"
+	if hardwareGate {
+		display = "ssh native hardware public-key authentication gate"
+	}
 	result, err := s.runner.Run(ctx, RunRequest{
-		Name: "ssh", Args: args, Env: []string{"LC_ALL=C"}, Display: "ssh selected-key-only authentication proof",
+		Name: selectedSSHClient(selector), Args: args, Env: []string{"LC_ALL=C"}, Interactive: interactive, Display: display,
 	})
 	if err != nil {
 		return false, err
@@ -544,7 +580,7 @@ func (s *Service) runSSHProof(ctx context.Context, hop routeHopState, selector k
 	return selectedKeyAuthentication(snapshot.data, result.ExitCode)
 }
 
-func (s *Service) prepareExactProofConfig(hop routeHopState, selector keySelector) (string, string, func(), error) {
+func (s *Service) prepareExactProofConfig(hop routeHopState, selector keySelector, nativeInteraction ...bool) (string, string, func(), error) {
 	route := append([]proofRouteHop(nil), hop.proofRoute...)
 	if len(route) == 0 {
 		hostName := hop.safe.HostName
@@ -556,7 +592,8 @@ func (s *Service) prepareExactProofConfig(hop routeHopState, selector keySelecto
 			user: hop.safe.User, port: hop.safe.Port, effective: cloneEffective(hop.effective),
 		}}
 	}
-	content, destination, err := renderExactProofConfig(route, selector)
+	interactive := selector.securityKey && len(nativeInteraction) > 0 && nativeInteraction[0]
+	content, destination, err := renderSelectedConnectionConfig(route, selector, interactive)
 	if err != nil {
 		return "", "", func() {}, err
 	}
@@ -645,7 +682,7 @@ func renderSelectedConnectionConfig(route []proofRouteHop, selector keySelector,
 		writeConfigDirective(&body, "ServerAliveInterval", sshServerAliveInterval)
 		writeConfigDirective(&body, "ServerAliveCountMax", sshServerAliveCountMax)
 		batch := "yes"
-		if interactive {
+		if interactive && (!selector.securityKey || index == len(route)-1) {
 			batch = "no"
 		}
 		writeConfigDirective(&body, "BatchMode", batch)
@@ -659,8 +696,14 @@ func renderSelectedConnectionConfig(route []proofRouteHop, selector keySelector,
 			if index > 0 {
 				writeConfigDirective(&body, "ProxyJump", strings.Join(configReferences[:index], ","))
 			}
-			if err := writeSelectedAuthentication(&body, hop.effective, selector, interactive); err != nil {
-				return nil, "", err
+			var authErr error
+			if selector.ordinaryHardwareGate {
+				authErr = writeHardwareOrdinaryAuthentication(&body, hop.effective, selector)
+			} else {
+				authErr = writeSelectedAuthentication(&body, hop.effective, selector, interactive)
+			}
+			if authErr != nil {
+				return nil, "", authErr
 			}
 		} else if err := writeOrdinaryProxyAuthentication(&body, hop.effective); err != nil {
 			return nil, "", fmt.Errorf("preserve proxy authentication for %q: %w", hop.alias, err)
@@ -757,6 +800,12 @@ func writeSelectedAuthentication(body *strings.Builder, effective EffectiveConfi
 		selector.certificate != "" && (!validUTF8NoControl(selector.certificate) || !filepath.IsAbs(selector.certificate)) {
 		return fmt.Errorf("selected identity path is unsafe: %w", ErrUnsafePath)
 	}
+	if selector.hardware != nil {
+		if !securityKeyProviderMatches(effective, selector.hardware) {
+			return errors.Join(ErrManualRemediation, ErrSecurityKeyPolicyMismatch)
+		}
+		writeConfigDirective(body, "SecurityKeyProvider", selector.hardware.options.Provider)
+	}
 	writeConfigDirective(body, "IdentityFile", "none")
 	writeConfigDirective(body, "CertificateFile", "none")
 	writeConfigDirective(body, "IdentityFile", selector.identity)
@@ -792,7 +841,7 @@ func writeSelectedAuthentication(body *strings.Builder, effective EffectiveConfi
 		{key: "pubkeyacceptedalgorithms", directive: "PubkeyAcceptedAlgorithms"},
 		{key: "pubkeyacceptedkeytypes", directive: "PubkeyAcceptedKeyTypes"},
 	} {
-		if option.key == "identityagent" && selector.agent != nil {
+		if option.key == "identityagent" && selector.agent != nil || option.key == "securitykeyprovider" && selector.hardware != nil {
 			continue
 		}
 		if value := firstEffectiveValue(effective, option.key); value != "" {

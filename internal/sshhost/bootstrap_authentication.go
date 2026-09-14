@@ -10,6 +10,7 @@ import (
 type bootstrapAuthentication struct {
 	operation *AuthenticationOperation
 	index     int
+	hardware  *keySelector
 }
 
 func sameAuthenticationRoute(left, right Route) bool {
@@ -25,9 +26,13 @@ func sameAuthenticationRoute(left, right Route) bool {
 	return true
 }
 
-func (s *Service) bootstrapProof(ctx context.Context, op *AuthenticationOperation, index int, hop routeHopState, selector keySelector, exact bool) (bool, error) {
+func (s *Service) bootstrapProof(ctx context.Context, op *AuthenticationOperation, index int, hop routeHopState, selector keySelector, exact bool, nativeInteraction ...bool) (bool, error) {
+	interactive := (exact || selector.ordinaryHardwareGate) && selector.securityKey && len(nativeInteraction) > 0 && nativeInteraction[0]
 	if op == nil {
-		return s.runSSHProof(ctx, hop, selector, exact)
+		return s.runSSHProof(ctx, hop, selector, exact, interactive)
+	}
+	if err := s.revalidateSecurityKeyState(selector.hardware); err != nil {
+		return false, err
 	}
 	op.runMu.Lock()
 	defer op.runMu.Unlock()
@@ -35,6 +40,9 @@ func (s *Service) bootstrapProof(ctx context.Context, op *AuthenticationOperatio
 		return false, err
 	}
 	mode := "ordinary"
+	if !exact && selector.ordinaryHardwareGate && interactive {
+		mode = "hardware-ordinary"
+	}
 	if exact {
 		mode = "selected"
 		if selector.agent != nil {
@@ -46,11 +54,11 @@ func (s *Service) bootstrapProof(ctx context.Context, op *AuthenticationOperatio
 			}
 		}
 	}
-	run, log, err := op.runPhase(ctx, index, mode, selector, ConnectionOptions{Args: []string{"exit 0"}, SuppressForwarding: true}, true, nil)
+	run, log, err := op.runPhase(ctx, index, mode, selector, ConnectionOptions{Args: []string{"exit 0"}, SuppressForwarding: true, Interactive: interactive}, true, nil)
 	if err != nil {
 		return false, err
 	}
-	if exact {
+	if exact || mode == "hardware-ordinary" {
 		return selectedKeyAuthentication(log, run.ExitCode)
 	}
 	return run.ExitCode == 0, nil

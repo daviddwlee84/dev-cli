@@ -55,6 +55,9 @@ func runSSHOnboarding(ctx context.Context, app *App, args []string, options sshS
 }
 
 func runSSHOnboardingOperation(ctx context.Context, app *App, args []string, options sshSetupOptions) error {
+	if err := validateSSHGenerationOptions(options); err != nil {
+		return asUsageError(err)
+	}
 	if err := validateSSHAgentOptions(options); err != nil {
 		return asUsageError(err)
 	}
@@ -422,6 +425,13 @@ func prepareSSHOnboardItem(ctx context.Context, app *App, alias string, c *sshdi
 			return item, sshKeyPlanBlockedError(plan)
 		}
 		item.KeyPlan = &plan
+		if err := prepareSSHSecurityKeyConfig(ctx, s, alias, class, o, plan, &definition); err != nil {
+			return item, err
+		}
+		if class != "foreign" && sshHardwareKeyType(string(plan.KeyType)) && plan.Operation == sshhost.KeyGenerate {
+			o.securityKeyProviderPath, o.securityKeyProviderChanged = plan.SecurityKeyProvider, true
+			o.identitiesOnly, o.identitiesOnlyChanged = true, true
+		}
 		if class != "foreign" && !o.identityFileChanged && plan.IdentityFile != "" {
 			definition.IdentityFile = plan.IdentityFile
 		}
@@ -906,6 +916,11 @@ func applySSHOnboardPlan(ctx context.Context, app *App, prepared *sshPreparedOnb
 				if e := s.RevalidateKeySelection(ctx, *item.KeyPlan); e != nil {
 					return fmt.Errorf("revalidate selected key for %s: %w", item.Target.Alias, e)
 				}
+				if item.Definition == nil && sshHardwareKeyType(string(item.KeyPlan.KeyType)) && item.KeyPlan.Operation == sshhost.KeyGenerate {
+					if err := s.VerifySecurityKeyPolicy(ctx, item.Target.Alias, *item.KeyPlan); err != nil {
+						return err
+					}
+				}
 				if item.Definition == nil && item.KeyPlan.Agent != nil && item.Options.keyCandidate != nil {
 					if e := s.VerifyAgentKeyPolicy(ctx, item.Target.Alias, *item.Options.keyCandidate); e != nil {
 						return e
@@ -969,9 +984,17 @@ func applySSHOnboardPlan(ctx context.Context, app *App, prepared *sshPreparedOnb
 					return nil
 				}
 				if item.KeyPlan != nil {
+					if item.Definition == nil && sshHardwareKeyType(string(item.KeyPlan.KeyType)) && item.KeyPlan.Operation == sshhost.KeyGenerate {
+						if err := s.VerifySecurityKeyPolicy(ctx, target.Alias, *item.KeyPlan); err != nil {
+							return err
+						}
+					}
 					key, e := s.ApplyKey(ctx, *item.KeyPlan)
 					keyResults[target.Alias] = key
 					if e != nil {
+						if key.Hardware != nil && key.Hardware.Status == "unknown" {
+							return errors.Join(sshflow.ErrOnboardUnknown, e)
+						}
 						return e
 					}
 					if item.Definition != nil && !o.identityFileChanged && item.KeyPlan.IdentityFile != "" {
@@ -1010,6 +1033,7 @@ func applySSHOnboardPlan(ctx context.Context, app *App, prepared *sshPreparedOnb
 				o.keyPlan = nil
 				o.identityAgent, o.agentRef = "", nil
 				o.generateKey = false
+				clearSSHGeneratedKeyOptions(&o)
 				o.targetOS = ""
 				o.hopOS = nil
 				o.installOnWorkingJump = false
@@ -1211,9 +1235,12 @@ func renderSSHOnboardResult(app *App, result sshflow.OnboardExecutionResult, jso
 			}
 			if outcome.Stage == "configure" {
 				if key, ok := result.Keys[outcome.Alias]; ok {
-					if key.PublicationUnknown {
+					for _, note := range sshHardwareResultNotes(key) {
+						fmt.Fprintln(app.Out, "  "+note)
+					}
+					if key.Hardware == nil && key.PublicationUnknown {
 						fmt.Fprintf(app.Out, "  public key publication unknown: inspect %s before retrying; no rollback is implied.\n", key.Candidate.PublicPath)
-					} else if key.Created || key.Retained {
+					} else if key.Hardware == nil && (key.Created || key.Retained) && key.Candidate.IdentityFile != "" {
 						fmt.Fprintf(app.Out, "  key asset retained: %s\n", key.Candidate.IdentityFile)
 					}
 				}
@@ -1277,6 +1304,9 @@ func renderSSHOnboardPreview(app *App, items []sshOnboardItem, init sshhost.Init
 			fmt.Fprintf(app.Out, "  %s: explicitly selected stale discovery observation\n", item.Target.Alias)
 		}
 		if p := item.KeyPlan; p != nil {
+			for _, note := range sshHardwarePlanNotes(*p) {
+				fmt.Fprintf(app.Out, "  %s: %s\n", item.Target.Alias, note)
+			}
 			fmt.Fprintf(app.Out, "  %s key: %s %s %s\n", item.Target.Alias, p.Operation, p.IdentityFile, p.Fingerprint)
 			if p.CreateParent != "" {
 				fmt.Fprintf(app.Out, "  %s key directory: create %s (mode 0700)\n", item.Target.Alias, p.CreateParent)

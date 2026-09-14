@@ -62,6 +62,9 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 	if request.Auth == "config" && request.To != "" {
 		return nil, errors.New("registration requires existing authentication or explicit key bootstrap")
 	}
+	if err := validateSSHGenerationOptions(sshSetupOptions{generateKey: request.GenerateKey, keyType: string(request.KeyType), securityKey: request.SecurityKey}); err != nil {
+		return nil, err
+	}
 	notes := []string{}
 	var candidate *sshdiscovery.Candidate
 	if request.Candidate != nil {
@@ -132,8 +135,9 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 		}
 		if request.GenerateKey {
 			destination := normalizeSSHKeyPromptPath(service.Paths().SSHDir, request.KeyPath)
-			keyRequest = sshhost.KeyRequest{Operation: sshhost.KeyGenerate, DestinationIdentity: destination, Comment: request.KeyComment, Interactive: true}
+			keyRequest = sshhost.KeyRequest{Operation: sshhost.KeyGenerate, DestinationIdentity: destination, Comment: request.KeyComment, Interactive: true, Type: request.KeyType, SecurityKey: request.SecurityKey}
 			options.key, options.generateKey, options.keyPath, options.comment = "", true, destination, request.KeyComment
+			options.keyType, options.securityKey = string(request.KeyType), request.SecurityKey
 		}
 		keyPlan, err := service.PlanKey(ctx, keyRequest)
 		if err != nil {
@@ -168,6 +172,9 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 		notes = append(notes, "Herdr may install/start its remote server; native approvals remain interactive.")
 	}
 	notes = append(notes, sshAgentPreview(item)...)
+	if item.KeyPlan != nil {
+		notes = append(notes, sshHardwarePlanNotes(*item.KeyPlan)...)
+	}
 	if item.Definition != nil {
 		notes = append(notes, "Create or update the displayed SSH configuration and explicit machine mappings.")
 	} else {
@@ -260,8 +267,13 @@ func listSSHTUIKeys(ctx context.Context, app *App, alias string) ([]tui.SSHKeyCh
 	if sshhost.ValidateLookupAlias(alias) != nil {
 		alias = "host"
 	}
+	hardwareChoices, err := sshSecurityKeyChoices(ctx, service, alias, false)
+	if err != nil {
+		return nil, err
+	}
+	choices = append(choices, hardwareChoices...)
 	destination := filepath.Join(service.Paths().SSHDir, "id_ed25519_dev_"+alias)
-	return append(choices, tui.SSHKeyChoice{Label: "+ Generate a new key", Description: "Ed25519 at " + sshKeyLabel(home, sshhost.KeyCandidate{IdentityFile: destination}), Path: destination, Generate: true}), nil
+	return append(choices, tui.SSHKeyChoice{Label: "+ Generate a new key", Description: "Ed25519 at " + sshKeyLabel(home, sshhost.KeyCandidate{IdentityFile: destination}), Path: destination, Generate: true, KeyType: sshhost.KeyTypeEd25519}), nil
 }
 
 func (w *sshTUIWorkflow) applyOnboarding() error {

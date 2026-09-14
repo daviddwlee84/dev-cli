@@ -302,11 +302,22 @@ dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --dry-run
 Public-key bootstrap uses exactly one of `--key` or `--generate-key`; on a terminal,
 `dev ssh setup <alias>` without either opens a key picker (local keys, generate, or a
 path), and interactive prompts list their choices such as `(posix/windows)`. Generated
-keys are Ed25519; noninteractive generation additionally requires
-`--no-passphrase`, while an interactive `ssh-keygen` owns hidden passphrase
-prompts. A private/security-key identity passed to `--key` must have a validated
+keys default to Ed25519; noninteractive software-key generation additionally requires
+`--no-passphrase`, while interactive `ssh-keygen` owns hidden passphrase prompts.
+`--key-path`/`--comment` customize the name and comment; one missing directory directly
+under `~/.ssh` may be created at `0700` after review. Explicit `--key-type ed25519-sk`
+or `ecdsa-sk` selects native FIDO generation, with provider, resident, verification
+and application options. Hardware creation requires interactive approval, keeps
+capability uncertainty visible, and reports retained/unknown effects rather than
+claiming rollback. Automatic Secure Enclave creation, native Windows-controller
+hardware generation and new hardware generation during fleet-source imports remain
+unavailable; see the [hardware-key guide](docs/guides/ssh-hosts.md#fido-security-keys-yubikey-and-compatible-authenticators).
+
+A private/security-key identity passed to `--key` must have a validated
 `.pub` companion; dev may derive a missing public companion with confirmed
-`ssh-keygen -y`, but never reads or transfers private bytes.
+`ssh-keygen -y`. Bootstrap transfers only public material; passive catalog/doctor
+checks do not read private-key contents. Explicit generation separately validates
+its newly staged files before publication.
 
 Inspect available identities before choosing one:
 
@@ -314,10 +325,22 @@ Inspect available identities before choosing one:
 dev ssh key list                    # local public-key metadata plus the current agent
 dev ssh key list --no-agent --json  # file metadata only; no OpenSSH evaluation
 dev ssh key list --alias lab        # explicitly evaluate lab's identity/agent settings
+dev ssh key list --agent bitwarden  # explicitly query a validated named agent
 dev ssh key doctor                 # metadata-only permission report; no agents or ssh
 dev ssh key doctor --fix            # preview exact repairs, then confirm
 dev ssh key doctor --key ~/.ssh/custom-key --fix --yes --json
 ```
+
+Bitwarden, 1Password, Secretive and validated custom agents can keep the signing key
+out of local private-key files. Select them in a key picker or use
+`ssh setup --identity-agent <provider-or-socket> --key <fingerprint-or-.pub>`.
+Dev publishes only a public selector and writes managed v2 `IdentityAgent` /
+`IdentityFile` / `IdentitiesOnly` settings; already-matching foreign aliases are
+preserved. Both terminal and dashboard retain the exact selected fingerprint/socket.
+Provider-location discovery and doctor are stat-only, while explicit key listing
+queries the agent. Native Windows named-agent selection and fleet-source imports
+remain guarded/unavailable; ordinary registration **to** fleet/Herdr is supported.
+Binaries v0.2.37 and older refuse management of v2 fragments.
 
 The setup wizard offers a key picker with paths, comments, fingerprints and signer
 availability, plus **+ Generate a new key** and manual path entry. `dev ssh` also

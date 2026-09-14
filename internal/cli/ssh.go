@@ -613,6 +613,12 @@ type sshSetupOptions struct {
 	identityAgentChanged       bool
 	fleetImportKeyPicker       bool
 	generateKey                bool
+	keyType                    string
+	securityKey                sshhost.SecurityKeyOptions
+	keyGenerationFlagsChanged  bool
+	securityKeyFlagsChanged    bool
+	securityKeyProviderPath    string
+	securityKeyProviderChanged bool
 	keyPath                    string
 	comment                    string
 	noPassphrase               bool
@@ -658,6 +664,14 @@ read local Tailscale status but never configures or authenticates a host.`,
 			options.proxyJumpChanged = cmd.Flags().Changed("proxy-jump")
 			options.identityFileChanged = cmd.Flags().Changed("identity-file")
 			options.identitiesOnlyChanged = cmd.Flags().Changed("identities-only")
+			options.securityKeyFlagsChanged = cmd.Flags().Changed("sk-provider") || cmd.Flags().Changed("sk-resident") || cmd.Flags().Changed("sk-verify-required") || cmd.Flags().Changed("sk-application")
+			options.keyGenerationFlagsChanged = options.securityKeyFlagsChanged || cmd.Flags().Changed("key-type")
+			if err := validateSSHGenerationOptions(options); err != nil {
+				return asUsageError(err)
+			}
+			if options.keyGenerationFlagsChanged && len(args) == 0 && options.from == "" {
+				return asUsageError(errors.New("key generation flags require an explicit alias or --from; the no-argument wizard selects its own key type"))
+			}
 			options.connectionChanged = options.hostNameChanged || options.userChanged || options.portChanged ||
 				options.proxyJumpChanged || options.identityFileChanged || options.identitiesOnlyChanged
 			if err := validateSSHAgentOptions(options); err != nil {
@@ -693,7 +707,12 @@ read local Tailscale status but never configures or authenticates a host.`,
 	flags.BoolVar(&options.identitiesOnly, "identities-only", false, "set managed IdentitiesOnly=yes (explicit false writes no)")
 	flags.BoolVar(&options.configOnly, "config-only", false, "stop after local config verification")
 	flags.StringVar(&options.key, "key", "", "existing public key or identity path to install")
-	flags.BoolVar(&options.generateKey, "generate-key", false, "generate a new Ed25519 key pair")
+	flags.BoolVar(&options.generateKey, "generate-key", false, "generate a new SSH key (Ed25519 by default; security-key types require native interaction)")
+	flags.StringVar(&options.keyType, "key-type", "ed25519", "generated key type: ed25519, ed25519-sk or ecdsa-sk (requires --generate-key)")
+	flags.StringVar(&options.securityKey.Provider, "sk-provider", "", "security-key provider: internal or an absolute library path (requires a security-key type)")
+	flags.BoolVar(&options.securityKey.Resident, "sk-resident", false, "generate a discoverable resident credential on the security key")
+	flags.BoolVar(&options.securityKey.VerifyRequired, "sk-verify-required", false, "require user verification when signing with the security key")
+	flags.StringVar(&options.securityKey.Application, "sk-application", "", "security-key application label beginning with ssh:")
 	flags.StringVar(&options.keyPath, "key-path", "", "destination identity path for --generate-key")
 	flags.StringVar(&options.comment, "comment", "", "public key comment for --generate-key")
 	flags.BoolVar(&options.noPassphrase, "no-passphrase", false, "generate without a passphrase (required outside a TTY)")
@@ -710,6 +729,8 @@ read local Tailscale status but never configures or authenticates a host.`,
 	flags.BoolVar(&options.yes, "yes", false, "confirm the local plan without prompting")
 	flags.BoolVar(&options.json, "json", false, "emit exactly one versioned JSON plan or result")
 	registerFlagCompletion(cmd, "target-os", fixedCompletions(fleet.RemoteOSPOSIX, fleet.RemoteOSWindows))
+	registerFlagCompletion(cmd, "key-type", fixedCompletions("ed25519", "ed25519-sk", "ecdsa-sk"))
+	registerFlagCompletion(cmd, "sk-provider", fixedCompletions("internal"))
 	registerFlagCompletion(cmd, "identity-agent", fixedCompletions(string(sshhost.AgentProviderBitwarden), string(sshhost.AgentProvider1Password), string(sshhost.AgentProviderSecretive)))
 	registerFlagCompletion(cmd, "proxy-jump", completeSSHFlagAliases(app))
 	registerFlagCompletion(cmd, "hop-os", completeSSHOSOverrides(app))
@@ -718,6 +739,9 @@ read local Tailscale status but never configures or authenticates a host.`,
 }
 
 func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions, interactive bool) error {
+	if err := validateSSHGenerationOptions(options); err != nil {
+		return err
+	}
 	if options.hasExistingKey() && options.generateKey {
 		return errors.New("--key and --generate-key are mutually exclusive")
 	}
@@ -892,6 +916,11 @@ func runSSHSetupOperationObserved(ctx context.Context, app *App, alias string, o
 		if ownsDefinition && !options.identityFileChanged && planned.IdentityFile != "" {
 			definition.IdentityFile = planned.IdentityFile
 		}
+		if planErr = prepareSSHSecurityKeyConfig(ctx, service, alias, aliasClass, options, planned, &definition); planErr != nil {
+			document.Status = "blocked"
+			document.ErrorCode = sshErrorCode(planErr)
+			return finish(document, planErr)
+		}
 		agentPublication, planErr = prepareSSHAgentPublication(ctx, service, alias, aliasClass, options, planned, &definition)
 		document.AgentPublicPlan = agentPublication
 		if planErr != nil {
@@ -1012,11 +1041,22 @@ func runSSHSetupOperationObserved(ctx context.Context, app *App, alias string, o
 	}
 	var keyResult sshhost.KeyResult
 	if keyPlan != nil {
+		if aliasClass == "foreign" && sshHardwareKeyType(string(keyPlan.KeyType)) && keyPlan.Operation == sshhost.KeyGenerate {
+			if err := service.VerifySecurityKeyPolicy(ctx, alias, *keyPlan); err != nil {
+				return finish(document, err)
+			}
+		}
 		app.warnf("applying SSH key plan for %s", alias)
+		if sshHardwareKeyType(string(keyPlan.KeyType)) {
+			app.warnf("native security-key PIN/touch interaction follows; device credentials may remain if canceled")
+		}
 		applied, applyErr := service.ApplyKey(ctx, *keyPlan)
 		document.KeyResult = &applied
 		if applyErr != nil {
 			document.Status = "failed"
+			if applied.Hardware != nil {
+				document.Status = "partial"
+			}
 			document.ErrorCode = sshErrorCode(applyErr)
 			return finish(document, applyErr)
 		}
@@ -1198,6 +1238,9 @@ func mergeManagedDefinition(app *App, definition *sshhost.ManagedDefinition, opt
 	if options.identityAgentChanged {
 		definition.IdentityAgent = options.identityAgentPath
 	}
+	if options.securityKeyProviderChanged {
+		definition.SecurityKeyProvider = options.securityKeyProviderPath
+	}
 	if definition.HostName == "" {
 		return errors.New("a new managed alias requires --hostname")
 	}
@@ -1205,6 +1248,9 @@ func mergeManagedDefinition(app *App, definition *sshhost.ManagedDefinition, opt
 }
 
 func planSSHSetupKey(ctx context.Context, app *App, service *sshhost.Service, options sshSetupOptions, interactiveMode bool) (sshhost.KeyPlan, error) {
+	if err := validateSSHGenerationOptions(options); err != nil {
+		return sshhost.KeyPlan{}, err
+	}
 	if options.keyCandidate != nil && (options.key != "" || options.generateKey) {
 		return sshhost.KeyPlan{}, errors.New("choose one existing key or key generation")
 	}
@@ -1217,6 +1263,10 @@ func planSSHSetupKey(ctx context.Context, app *App, service *sshhost.Service, op
 		request.Operation = sshhost.KeyGenerate
 		request.DestinationIdentity = options.keyPath
 		request.Comment = options.comment
+		request.Type, request.SecurityKey = sshhost.KeyType(options.keyType), options.securityKey
+		if sshHardwareKeyType(options.keyType) {
+			request.Interactive = interactiveMode
+		}
 	} else {
 		request.Operation = sshhost.KeyUse
 		if options.keyCandidate != nil {
@@ -1377,6 +1427,9 @@ func renderSSHSetupPlan(app *App, document sshSetupDocument) {
 		if document.KeyPlan.CreateParent != "" {
 			fmt.Fprintf(app.Out, "  key dir:   create %s (mode 0700)\n", document.KeyPlan.CreateParent)
 		}
+		for _, note := range sshHardwarePlanNotes(*document.KeyPlan) {
+			fmt.Fprintln(app.Out, "  "+note)
+		}
 	}
 	if plan := document.AgentPublicPlan; plan != nil && plan.Agent != nil {
 		fmt.Fprintf(app.Out, "  agent:     %s %s\n", sshhost.AgentProviderLabel(plan.Agent.Provider), plan.Agent.Socket)
@@ -1407,6 +1460,11 @@ func finishSSHSetup(app *App, jsonOut bool, document sshSetupDocument, err error
 		fmt.Fprintf(app.Out, "  status:    %s\n", document.Status)
 	} else {
 		fmt.Fprintf(app.Out, "SSH setup %s: %s\n", document.Status, document.Alias)
+		if key := document.KeyResult; key != nil {
+			for _, note := range sshHardwareResultNotes(*key) {
+				fmt.Fprintln(app.Out, "  "+note)
+			}
+		}
 		if key := document.AgentPublicResult; key != nil {
 			if key.PublicationUnknown {
 				fmt.Fprintf(app.Out, "  public key publication unknown: inspect %s before retrying; no rollback is implied.\n", key.Candidate.PublicPath)
@@ -1897,6 +1955,8 @@ func sshErrorCode(err error) string {
 		return "agent_provider_unavailable"
 	case errors.Is(err, errSSHFleetImportAgent):
 		return "agent_import_unsupported"
+	case errors.Is(err, errSSHFleetImportHardware):
+		return "hardware_import_unsupported"
 	case errors.Is(err, sshhost.ErrUnsafePath):
 		return "unsafe_path"
 	case errors.Is(err, fleet.ErrManagedFragmentConflict):

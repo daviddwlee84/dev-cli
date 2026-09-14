@@ -1,8 +1,58 @@
 # SSH key provider helpers
 
-Status: deferred; current SSH route, registration and password-save work does not authorize vault migration or hardware provisioning.
+Status: partially implemented in the unreleased v0.2.38 work; existing-key migration, endpoint-attested Bitwarden writes and automatic Secure Enclave provisioning remain separate/unresolved. Do not mark the milestone shipped before its verification and release gates close.
 
-Research updated: 2026-09-12.
+Research updated: 2026-09-14.
+
+## Remaining safe-automation gates
+
+The approved key-provider increment covers custom local destinations, named SSH
+agents, explicit FIDO generation and separately approved vault creation. It does
+not authorize importing existing private keys, deleting vault items or credentials,
+changing provider configuration, or executing live hardware/vault tests implicitly.
+
+- **Secure Enclave identity binding:** native `sc_auth create-ctk-identity` is
+  documented, but there is no verified machine-readable creation receipt or stable
+  listing contract. `list-ctk-identities -t ssh` changes the hash format; it is not
+  an SSH-only filter. Human tables contain blank fields, arbitrary labels and
+  localized dates. An original public example confirms one SHA-1 EC-point /
+  SHA-256 SK-wire fingerprint mapping, not a general parser guarantee. Establish
+  an exact identity reader before creation; unknown/ambiguous input must fail
+  before any hardware effect. Never select the last row or rely on label uniqueness.
+  `ssh-keygen -K` writes resident handle files and is never a passive capability
+  probe. Any future import must filter one verified identity using child-scoped
+  `KEYCHAIN_CERTIFICATES`, use private staging, and retain/report uncertain effects.
+- **Bitwarden endpoint-attested mode:** pinned CLI 2026.3.0 reports only a base
+  `serverUrl`, null for both US/EU cloud accounts. A non-null base may coexist with
+  independent API/identity overrides; read-only `config server` does not prove the
+  effective endpoints. Do not label the base URL as a verified destination or
+  mutate configuration to discover it. An explicitly approved native-context mode
+  is a different authority: it delegates endpoint configuration to a reviewed
+  native profile and keeps endpoint status unverified. It must separately approve
+  transient memory generation and native-context delegation, freeze the actual
+  command environment, bind/revalidate user/session/profile/tool context, use
+  no-interaction commands, and retain exact item receipts on uncertainty. A
+  `BW_SESSION` hash is comparison material, not an account/server identifier.
+  Internal native configuration is not made transactional by pre/post checks.
+- **Native Windows:** explicit provider pipes, hardware tools and vault profiles
+  need verified identity/ACL/reparse-point contracts. Cross-compilation is not a
+  substitute for dedicated native gates. Existing native OpenSSH authentication
+  remains a separate supported boundary.
+- **Fleet-source imports:** controller-selected agents/hardware provider settings
+  must become part of immutable shared-hop authority before those generation paths
+  can be enabled. Never copy remote provider paths or append new authentication
+  intent after an import plan was reviewed. Registration *to* fleet is distinct
+  from importing connection profiles *from* fleet.
+
+Sources: [original CTK example](https://gist.github.com/arianvp/5f59f1783e3eaf1a2d4cd8e952bb4acf),
+[`sc_auth` manual](https://keith.github.io/xcode-man-pages/sc_auth.8.html),
+[`ssh-keychain` manual](https://keith.github.io/xcode-man-pages/ssh-keychain.8.html),
+[pinned Bitwarden status](https://github.com/bitwarden/clients/blob/c20753e4dae029d6155565682dc79718f9aeb426/apps/cli/src/commands/status.command.ts),
+[pinned endpoint resolution](https://github.com/bitwarden/clients/blob/c20753e4dae029d6155565682dc79718f9aeb426/libs/common/src/platform/services/default-environment.service.ts).
+No live keychain enumeration, hardware enrollment or vault item creation was used
+for this research.
+
+## Existing migration research
 
 The existing chezmoi `ssh-to-bitwarden` helper already imports SSH key items and
 its shell configuration selects Bitwarden's agent. Reuse a native handoff before

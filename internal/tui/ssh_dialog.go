@@ -52,13 +52,16 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			}
-			if choices := sshFieldChoices(field.key); d.kind == "onboard" && choices != nil {
+			if choices := sshFieldChoices(field.key); (d.kind == "onboard" || d.kind == "keygen") && choices != nil {
 				step := 1
 				if key == "left" {
 					step = len(choices) - 1
 				}
 				i := max(0, slices.Index(choices, field.input.Value()))
 				field.input.SetValue(choices[(i+step)%len(choices)])
+				if d.kind == "keygen" && field.key == "keytype" {
+					d.updateSSHKeyTypeFields()
+				}
 				return m, nil
 			}
 		case "enter":
@@ -99,7 +102,7 @@ func (m Model) updateSSHDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m.startSSHDiscovery(request, false)
 		}
-		if d.kind == "onboard" && (field.key == "key" || sshFieldChoices(field.key) != nil) {
+		if (d.kind == "onboard" || d.kind == "keygen") && (field.key == "key" || sshFieldChoices(field.key) != nil) {
 			return m, nil
 		}
 		var cmd tea.Cmd
@@ -223,7 +226,13 @@ func (m Model) renderSSHDialog() string {
 		lines = append(lines, "  Existing private or public key path. Enter confirms · Esc returns to the form.", "")
 	}
 	if d.kind == "keygen" {
-		lines = append(lines, "  Ed25519 under ~/.ssh; a bare name goes in ~/.ssh and one missing folder directly under ~/.ssh is created (0700).", "  Enter next field · Ctrl+S confirms · Esc returns to the form.", "")
+		lines = append(lines, "  Keys stay under ~/.ssh; one missing direct child folder may be created (0700).")
+		if sshHardwareKeyType(d.value("keytype")) {
+			lines = append(lines, "  Hardware key handle, not an exportable signing key. Native PIN/touch required.", "  Capability is unverified until an explicit attempt; device effects may remain after cancellation.")
+		} else {
+			lines = append(lines, "  Ed25519 private key file; native ssh-keygen handles its passphrase.")
+		}
+		lines = append(lines, "  ←/→ changes choices · Enter next field · Ctrl+S confirms · Esc returns.", "")
 	}
 	if d.kind == "discovering" || d.kind == "testing" {
 		lines = append(lines, fmt.Sprintf("  Progress %d/%d · found %d · Esc cancels", d.completed, d.total, d.found), "")
@@ -248,7 +257,7 @@ func (m Model) renderSSHDialog() string {
 				if field.input.Value() == "yes" {
 					value = "[x]"
 				}
-			case "auth", "os":
+			case "auth", "os", "keytype", "skresident", "skverify":
 				value = sshRenderChoices(sshFieldChoices(field.key), field.input.Value())
 			case "key":
 				if d.kind == "onboard" {

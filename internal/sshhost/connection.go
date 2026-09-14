@@ -172,7 +172,14 @@ func (connection *PreparedConnection) Run(ctx context.Context, options Connectio
 	if err := s.checkConnectionSources(ctx, state.sources); err != nil {
 		return RunResult{}, err
 	}
-	return s.runner.Run(ctx, RunRequest{Name: "ssh", Args: args, Stdin: options.Stdin, Interactive: options.Interactive, CaptureStdout: options.CaptureStdout, OnStarted: options.OnStarted, Display: "SSH prepared connection"})
+	client := "ssh"
+	if state.material != nil && state.material.hardware != nil {
+		if err := s.revalidateSecurityKeyState(state.material.hardware); err != nil {
+			return RunResult{}, err
+		}
+		client = state.material.hardware.client.resolved
+	}
+	return s.runner.Run(ctx, RunRequest{Name: client, Args: args, Stdin: options.Stdin, Interactive: options.Interactive, CaptureStdout: options.CaptureStdout, OnStarted: options.OnStarted, Display: "SSH prepared connection"})
 }
 
 func sameConnectionRoute(left, right Route) bool {

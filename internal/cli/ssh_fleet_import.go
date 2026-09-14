@@ -27,6 +27,9 @@ type sshFleetImportSource struct {
 
 func prepareSSHFleetImportItem(ctx context.Context, app *App, alias string, host fleet.Host, source sshremote.Resolved, o sshSetupOptions) (sshOnboardItem, error) {
 	o.fleetImportKeyPicker = true
+	if err := validateSSHGenerationOptions(o); err != nil {
+		return sshOnboardItem{}, err
+	}
 	if err := validateSSHAgentOptions(o); err != nil {
 		return sshOnboardItem{}, err
 	}

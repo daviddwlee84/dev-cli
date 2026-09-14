@@ -17,6 +17,8 @@ type OnboardRequest struct {
 	Auth                  string
 	KeyPath               string
 	KeyComment            string
+	KeyType               sshhost.KeyType
+	SecurityKey           sshhost.SecurityKeyOptions
 	// KeyFingerprint and KeyAgentSocket select a key held by a named agent.
 	KeyFingerprint, KeyAgentSocket                    string
 	GenerateKey                                       bool

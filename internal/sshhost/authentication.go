@@ -403,7 +403,7 @@ func (op *AuthenticationOperation) runPhase(ctx context.Context, index int, mode
 			if override != nil {
 				broker = override
 			}
-			if mode == "trust" || mode == "selected" {
+			if mode == "trust" || mode == "selected" || mode == "hardware-ordinary" {
 				broker = nil
 			}
 		}
@@ -415,7 +415,11 @@ func (op *AuthenticationOperation) runPhase(ctx context.Context, index int, mode
 			}
 		}
 		name := "dev-cli-auth-hop-" + strconv.Itoa(hopIndex)
-		content, err := renderAuthenticationHop(hop, name, proxy, hopMode, selector, options.Interactive)
+		hopInteractive := options.Interactive
+		if proof && selector.securityKey && hopIndex != index {
+			hopInteractive = false
+		}
+		content, err := renderAuthenticationHop(hop, name, proxy, hopMode, selector, hopInteractive)
 		if err != nil {
 			return RunResult{}, nil, err
 		}
@@ -482,7 +486,10 @@ func (op *AuthenticationOperation) runPhase(ctx context.Context, index int, mode
 	if !proof {
 		onStarted = options.OnStarted
 	}
-	run, runErr := op.service.runner.Run(phaseCtx, RunRequest{Name: "ssh", Args: args, Env: targetEnv, Stdin: options.Stdin, Interactive: options.Interactive, CaptureStdout: options.CaptureStdout, OnStarted: onStarted, Display: "SSH per-hop authentication operation"})
+	if err := op.service.revalidateSecurityKeyState(selector.hardware); err != nil {
+		return RunResult{}, nil, err
+	}
+	run, runErr := op.service.runner.Run(phaseCtx, RunRequest{Name: selectedSSHClient(selector), Args: args, Env: targetEnv, Stdin: options.Stdin, Interactive: options.Interactive, CaptureStdout: options.CaptureStdout, OnStarted: onStarted, Display: "SSH per-hop authentication operation"})
 	if !proof {
 		return run, nil, runErr
 	}
@@ -567,6 +574,10 @@ func renderAuthenticationHop(hop routeHopState, name, proxy, mode string, select
 			writeConfigDirective(&body, "PasswordAuthentication", "no")
 			writeConfigDirective(&body, "PreferredAuthentications", "none")
 			writeConfigDirective(&body, "NumberOfPasswordPrompts", "0")
+		}
+	case "hardware-ordinary":
+		if err := writeHardwareOrdinaryAuthentication(&body, hop.effective, selector); err != nil {
+			return nil, err
 		}
 	case "ordinary":
 		if err := writeOrdinaryProxyAuthentication(&body, hop.effective); err != nil {

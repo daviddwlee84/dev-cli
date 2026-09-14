@@ -604,9 +604,10 @@ func (m *Model) finishSSHOnboarding(result SSHWorkflowResult) {
 		lines = append(lines, line)
 		if outcome.Stage == "configure" {
 			if key, ok := result.Onboarding.Keys[outcome.Alias]; ok {
-				if key.PublicationUnknown {
+				lines = append(lines, sshHardwareResultLines(key)...)
+				if key.Hardware == nil && key.PublicationUnknown {
 					lines = append(lines, "Public key publication unknown: inspect "+key.Candidate.PublicPath+" before retrying; no rollback is implied.")
-				} else if key.Created || key.Retained {
+				} else if key.Hardware == nil && (key.Created || key.Retained) && key.Candidate.IdentityFile != "" {
 					lines = append(lines, "Key asset retained: "+key.Candidate.IdentityFile)
 				}
 			}

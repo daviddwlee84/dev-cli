@@ -2346,7 +2346,7 @@ dev ssh setup [alias] [flags]
 - `--fleet` — register the verified alias in dev fleet
 - `--fleet-name` — fleet profile name (default: alias)
 - `--from` — tailscale:<peer>, lan:<ip:port>, fleet:<host>/<alias>, or an exact discovery ID
-- `--generate-key` — generate a new Ed25519 key pair
+- `--generate-key` — generate a new SSH key (Ed25519 by default; security-key types require native interaction)
 - `--herdr-label` — Herdr machine label (default: alias)
 - `--herdr-session` — Herdr remote session
 - `--hop-key` — per-hop local key override local-alias=path (repeatable; fleet imports)
@@ -2359,11 +2359,16 @@ dev ssh setup [alias] [flags]
 - `--json` — emit exactly one versioned JSON plan or result
 - `--key` — existing public key or identity path to install
 - `--key-path` — destination identity path for --generate-key
+- `--key-type` — generated key type: ed25519, ed25519-sk or ecdsa-sk (requires --generate-key)
 - `--machine` — bind this connection to an existing canonical machine UUID
 - `--no-passphrase` — generate without a passphrase (required outside a TTY)
 - `--password-store` — provider offered after verified reusable password login: system or bitwarden
 - `--port` — managed SSH port
 - `--proxy-jump` — managed ProxyJump value
+- `--sk-application` — security-key application label beginning with ssh:
+- `--sk-provider` — security-key provider: internal or an absolute library path (requires a security-key type)
+- `--sk-resident` — generate a discoverable resident credential on the security key
+- `--sk-verify-required` — require user verification when signing with the security key
 - `--target-os` — target operating system: posix or windows
 - `--to` — explicit registration destination: fleet, herdr or both
 - `--user` — managed User value

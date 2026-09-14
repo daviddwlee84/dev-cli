@@ -25,8 +25,9 @@ var (
 	ErrManualRemediation = errors.New("manual SSH remediation required")
 	// ErrUnprovenAuthentication means a connection cannot prove that the selected
 	// public key authenticated it. It must never authorize key installation.
-	ErrUnprovenAuthentication = errors.New("selected SSH key authentication is unproven")
-	ErrAgentPolicyMismatch    = errors.New("selected SSH agent is incompatible with alias IdentityAgent")
+	ErrUnprovenAuthentication    = errors.New("selected SSH key authentication is unproven")
+	ErrAgentPolicyMismatch       = errors.New("selected SSH agent is incompatible with alias IdentityAgent")
+	ErrSecurityKeyPolicyMismatch = errors.New("selected hardware provider is incompatible with alias SecurityKeyProvider")
 )
 
 // KeyMetadata is the content-free result of parsing one OpenSSH public record.
@@ -117,14 +118,16 @@ const (
 // already obtained by a CLI; it is never a credential. Noninteractive
 // generation additionally requires NoPassphrase.
 type KeyRequest struct {
-	Operation           KeyOperation `json:"operation,omitempty"`
-	Candidate           KeyCandidate `json:"candidate,omitempty"`
-	Path                string       `json:"path,omitempty"`
-	DestinationIdentity string       `json:"destination_identity,omitempty"`
-	Comment             string       `json:"comment,omitempty"`
-	Interactive         bool         `json:"interactive,omitempty"`
-	AllowDerive         bool         `json:"allow_derive,omitempty"`
-	NoPassphrase        bool         `json:"no_passphrase,omitempty"`
+	Operation           KeyOperation       `json:"operation,omitempty"`
+	Candidate           KeyCandidate       `json:"candidate,omitempty"`
+	Path                string             `json:"path,omitempty"`
+	DestinationIdentity string             `json:"destination_identity,omitempty"`
+	Comment             string             `json:"comment,omitempty"`
+	Interactive         bool               `json:"interactive,omitempty"`
+	AllowDerive         bool               `json:"allow_derive,omitempty"`
+	NoPassphrase        bool               `json:"no_passphrase,omitempty"`
+	Type                KeyType            `json:"key_type,omitempty"`
+	SecurityKey         SecurityKeyOptions `json:"security_key,omitempty"`
 	// PublicDestination is the .pub path for KeyPublishAgent.
 	PublicDestination string `json:"public_destination,omitempty"`
 }
@@ -132,14 +135,19 @@ type KeyRequest struct {
 // KeyPlan is content-free and source-bound. ApplyKey accepts only a ready plan
 // produced by the same Service; public fields cannot forge execution state.
 type KeyPlan struct {
-	Action       PlanAction   `json:"action"`
-	Operation    KeyOperation `json:"operation"`
-	Source       KeySource    `json:"source,omitempty"`
-	Algorithm    string       `json:"algorithm,omitempty"`
-	Comment      string       `json:"comment,omitempty"`
-	Fingerprint  string       `json:"fingerprint,omitempty"`
-	PublicPath   string       `json:"public_path,omitempty"`
-	IdentityFile string       `json:"identity_file,omitempty"`
+	Action              PlanAction         `json:"action"`
+	Operation           KeyOperation       `json:"operation"`
+	Source              KeySource          `json:"source,omitempty"`
+	Algorithm           string             `json:"algorithm,omitempty"`
+	Comment             string             `json:"comment,omitempty"`
+	Fingerprint         string             `json:"fingerprint,omitempty"`
+	PublicPath          string             `json:"public_path,omitempty"`
+	IdentityFile        string             `json:"identity_file,omitempty"`
+	KeyType             KeyType            `json:"key_type,omitempty"`
+	SecurityKeyProvider string             `json:"security_key_provider,omitempty"`
+	SecurityKey         SecurityKeyOptions `json:"security_key,omitempty"`
+	KeygenPath          string             `json:"keygen_path,omitempty"`
+	SSHClientPath       string             `json:"ssh_client_path,omitempty"`
 	// CreateParent is a missing private directory directly under ~/.ssh that
 	// generation creates (mode 0700) before writing the key.
 	CreateParent string `json:"create_parent,omitempty"`
@@ -162,5 +170,7 @@ type KeyResult struct {
 	Retained  bool         `json:"retained,omitempty"`
 	// PublicationUnknown means publication may have happened but its final
 	// location or durability was not verified. It never authorizes a retry.
-	PublicationUnknown bool `json:"publication_unknown,omitempty"`
+	PublicationUnknown bool                      `json:"publication_unknown,omitempty"`
+	Hardware           *HardwareKeyEffect        `json:"hardware,omitempty"`
+	LocalFiles         []KeyLocalFileObservation `json:"local_files,omitempty"`
 }

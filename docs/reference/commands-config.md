@@ -117,11 +117,24 @@ sharing disabled.
 after local verification. Public-key bootstrap uses `--key` or `--generate-key`;
 an interactive run without either opens a key picker (local keys, generate, or a
 path). Noninteractive key bootstrap requires one of them and `--target-os`, and
-noninteractive generation requires `--no-passphrase`. Route/platform controls
+noninteractive software-key generation requires `--no-passphrase`. Route/platform controls
 are `--hop-os`, `--install-on-working-jump`, and
 `--windows-admin-authorized-keys`. `--dry-run` does no OpenSSH evaluation,
 network access, generation, or writes. `--fleet` is an explicit final step after
-a fresh ordinary alias login; `--fleet-name` never implies it.
+a fresh ordinary alias login; `--fleet-name` never implies it. Explicit agent-key
+selection can still query the selected local SSH agent during dry-run.
+
+Local `--generate-key` accepts `--key-type ed25519|ed25519-sk|ecdsa-sk` (default
+`ed25519`). FIDO types add `--sk-provider internal|<absolute library>`,
+`--sk-resident`, `--sk-verify-required` and `--sk-application ssh:...`; these are
+not existing-key/agent/auth options. SK generation requires native interactive
+approval and reports unknown tool/device capability rather than promising readiness.
+Known incompatible toolchains block; reviewed custom toolchains can attempt the
+operation without a passive hardware probe. Managed aliases use v2
+`SecurityKeyProvider`. New hardware generation during fleet-source profile imports
+and automatic `apple-secure-enclave` creation are unavailable. Local files and
+hardware created/unknown effects are reported separately; no automatic enrollment
+retry or credential deletion. See [hardware keys](../guides/ssh-hosts.md#fido-security-keys-yubikey-and-compatible-authenticators).
 
 Every SSH JSON form emits one object with `schema_version`, `kind`, and stable
 status/action/error codes; operational failures still emit one safe document and

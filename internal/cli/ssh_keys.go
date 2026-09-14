@@ -263,6 +263,17 @@ func chooseSSHKeyInteractive(ctx context.Context, app *App, service *sshhost.Ser
 				}
 				items = append(items, picker.Item{Value: "unavailable:" + string(observation.Provider), Label: observation.Label + " agent (unavailable)", Description: hint})
 			}
+			hardwareChoices, err := sshSecurityKeyChoices(ctx, service, alias, options.fleetImportKeyPicker)
+			if err != nil {
+				return options, err
+			}
+			for i, choice := range hardwareChoices {
+				value := "generate-sk"
+				if choice.UnavailableReason != "" {
+					value = fmt.Sprintf("unavailable:hardware-%d", i)
+				}
+				items = append(items, picker.Item{Value: value, Label: choice.Label, Description: choice.Description})
+			}
 			items = append(items,
 				picker.Item{Value: "generate", Label: "+ Generate a new key", Description: "Ed25519 at " + generateDefault},
 				picker.Item{Value: "manual", Label: "Enter a key path…", Description: "Use a custom path or a private key missing its .pub companion"})
@@ -282,11 +293,16 @@ func chooseSSHKeyInteractive(ctx context.Context, app *App, service *sshhost.Ser
 			continue
 		}
 		options.key, options.keyCandidate, options.keyPlan, options.generateKey, options.keyPath = "", nil, nil, false, ""
+		clearSSHGeneratedKeyOptions(&options)
 		switch selected[0].Value {
-		case "generate":
+		case "generate", "generate-sk":
 			options.generateKey = true
+			defaultPath := generateDefault
+			if selected[0].Value == "generate-sk" {
+				defaultPath = filepath.Join(service.Paths().SSHDir, "id_ed25519_sk_dev_"+alias)
+			}
 			prompt := newPrompter(app)
-			options.keyPath, err = prompt.line("New key path (a bare name is placed in ~/.ssh)", generateDefault)
+			options.keyPath, err = prompt.line("New key path (a bare name is placed in ~/.ssh)", defaultPath)
 			if err != nil {
 				return options, err
 			}
@@ -296,6 +312,11 @@ func chooseSSHKeyInteractive(ctx context.Context, app *App, service *sshhost.Ser
 				return options, err
 			}
 			options.comment = strings.TrimSpace(options.comment)
+			if selected[0].Value == "generate-sk" {
+				if err := promptSSHSecurityKeyOptions(prompt, &options); err != nil {
+					return options, err
+				}
+			}
 		case "manual":
 			options.key, err = newPrompter(app).line("Key or public key path", filepath.Join(service.Paths().Home, ".ssh", "id_ed25519"))
 			if err != nil {
@@ -353,6 +374,9 @@ func sshKeyPlanBlockedError(plan sshhost.KeyPlan) error {
 }
 
 func prepareSSHWizardKey(ctx context.Context, app *App, service *sshhost.Service, options *sshSetupOptions) error {
+	if err := validateSSHGenerationOptions(*options); err != nil {
+		return err
+	}
 	if err := validateSSHAgentOptions(*options); err != nil {
 		return err
 	}

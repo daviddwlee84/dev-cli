@@ -116,12 +116,22 @@ sharing disabled 的 fresh BatchMode login。
 `--identities-only`）只適用 new 或 managed alias。`--config-only` 在 local
 verification 後停止。Public-key bootstrap 使用 `--key` 或 `--generate-key`；互動執行
 未帶兩者時會開啟 key picker（本機 keys、generate 或路徑）。Noninteractive full setup
-必須提供其一並加上 `--target-os`，noninteractive generation 需要
+必須提供其一並加上 `--target-os`，noninteractive 軟體 key generation 需要
 `--no-passphrase`。Route/platform controls 是 `--hop-os`、
 `--install-on-working-jump` 與 `--windows-admin-authorized-keys`。`--dry-run`
 不執行 OpenSSH evaluation、network access、generation 或 write。`--fleet` 是
 fresh ordinary alias login 後才執行的 explicit final step；`--fleet-name` 不會
-imply 它。
+imply 它。Dry-run 明確選取 agent key 時，仍可能查詢該本機 SSH agent。
+
+本機 `--generate-key` 接受 `--key-type ed25519|ed25519-sk|ecdsa-sk`（預設 `ed25519`）。
+FIDO type 另有 `--sk-provider internal|<absolute library>`、`--sk-resident`、
+`--sk-verify-required`、`--sk-application ssh:...`；不能套用到既有 key／agent／認證模式。
+SK generation 要求原生互動確認，工具／裝置能力未知時會明確回報，不會保證已就緒。
+已知不相容的 toolchain 會被擋下；審閱過的自訂 toolchain 可嘗試操作，但不做被動硬體探測。
+Managed alias 使用 v2 `SecurityKeyProvider`。Fleet-source profile import 期間的新硬體
+產生，以及自動 `apple-secure-enclave` 建立仍不可用。Local-file 結果與 hardware
+created／unknown 分開回報；不會自動重試 enrollment 或刪除 credential。
+詳見 [SSH hardware keys](../guides/ssh-hosts.zh-TW.md)。
 
 每個 SSH JSON form 都輸出一個含 `schema_version`、`kind` 與 stable
 status/action/error codes 的 object；operational failure 仍輸出一份 safe document，

@@ -529,6 +529,9 @@ path; Esc returns to the form, and picking a key selects key authentication.
 comment before returning to the form. Keys from present Bitwarden, 1Password or
 Secretive agents and a validated `SSH_AUTH_SOCK` are listed too. Agent-only choices
 retain the exact fingerprint and socket; unavailable providers show guidance.
+Security-key generation also exposes the type, provider, resident handle,
+verify-required and application options. Review shows the native touch/PIN flow
+and possible retained hardware effects; automatic Secure Enclave creation remains unavailable.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

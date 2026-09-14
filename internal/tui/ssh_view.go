@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/sshflow"
+	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 )
 
 type SSHInventory = sshflow.MachineInventory
@@ -42,6 +43,7 @@ type SSHActions struct {
 type SSHKeyChoice struct {
 	Label, Description, Path string
 	Generate                 bool
+	KeyType                  sshhost.KeyType
 	// UnavailableReason is display-only guidance; unavailable choices never prepare an action.
 	UnavailableReason string
 	// Fingerprint and AgentSocket identify a key held by a named SSH agent.

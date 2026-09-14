@@ -35,6 +35,13 @@ type Service struct {
 	agentSystemRoot        string
 	agentPublicCommit      func(*stagedFile, string, fileSnapshot) (bool, error)
 	afterAgentPublicCommit func()
+
+	// Hardware-generation tests supply inert executable fixtures, never tokens.
+	securityKeyLookPath            func(string) (string, error)
+	securityKeyToolCheck           func(string, fs.FileInfo) error
+	securityKeyGOOS                string
+	afterSecurityKeyIdentityCommit func()
+	beforeSecurityKeyHarden        func(string)
 }
 
 var nextServiceID atomic.Uint64

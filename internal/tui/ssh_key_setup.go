@@ -8,6 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/sshflow"
+	"github.com/daviddwlee84/dev-cli/internal/sshhost"
 )
 
 func sshFieldChoices(key string) []string {
@@ -16,8 +17,10 @@ func sshFieldChoices(key string) []string {
 		return []string{"config", "existing", "key"}
 	case "os":
 		return []string{"posix", "windows"}
-	case "fleet", "herdr":
+	case "fleet", "herdr", "skresident", "skverify":
 		return []string{"no", "yes"}
+	case "keytype":
+		return []string{"ed25519", "ed25519-sk", "ecdsa-sk"}
 	}
 	return nil
 }
@@ -64,6 +67,7 @@ func (d *sshDialog) setField(key, value string) {
 
 func (d *sshDialog) applyAgentKeyChoice(choice SSHKeyChoice) {
 	d.onboarding.KeyPath, d.onboarding.GenerateKey, d.onboarding.KeyComment = "", false, ""
+	d.onboarding.KeyType, d.onboarding.SecurityKey = "", sshhost.SecurityKeyOptions{}
 	d.onboarding.KeyFingerprint, d.onboarding.KeyAgentSocket = choice.Fingerprint, choice.AgentSocket
 	d.setField("key", choice.Label)
 	d.setField("auth", "key")
@@ -72,6 +76,7 @@ func (d *sshDialog) applyAgentKeyChoice(choice SSHKeyChoice) {
 
 func (d *sshDialog) applyKeyChoice(path string, generate bool) {
 	d.onboarding.KeyPath, d.onboarding.GenerateKey = path, generate
+	d.onboarding.KeyType, d.onboarding.SecurityKey = "", sshhost.SecurityKeyOptions{}
 	d.onboarding.KeyFingerprint, d.onboarding.KeyAgentSocket = "", ""
 	if !generate {
 		d.onboarding.KeyComment = ""
@@ -130,14 +135,7 @@ func (m Model) chooseSSHKey(index int) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if choice.Generate {
-			path := choice.Path
-			if parent.onboarding.GenerateKey && parent.onboarding.KeyPath != "" {
-				path = parent.onboarding.KeyPath
-			}
-			form := sshDialog{kind: "keygen", title: "Name the new SSH key", parent: &parent}
-			form.addField("path", "New key path", path)
-			form.addField("comment", "Comment", parent.onboarding.KeyComment)
-			m.sshUI.dialog = form
+			m.sshUI.dialog = sshKeyGenerationForm(parent, choice)
 			return m, m.focusSSHField(0)
 		}
 		if choice.Fingerprint != "" && choice.AgentSocket != "" {
@@ -168,8 +166,22 @@ func (m Model) finishSSHKeyGenerate() (tea.Model, tea.Cmd) {
 		m.sshUI.dialog.err = errors.New("Enter a new key path, or Esc to return to the form")
 		return m, nil
 	}
+	keyType := d.value("keytype")
+	if keyType == "" {
+		keyType = string(sshhost.KeyTypeEd25519)
+	}
+	if keyType != string(sshhost.KeyTypeEd25519) && !sshHardwareKeyType(keyType) {
+		m.sshUI.dialog.err = errors.New("Choose ed25519, ed25519-sk or ecdsa-sk")
+		return m, nil
+	}
+	security := sshhost.SecurityKeyOptions{Provider: strings.TrimSpace(d.value("skprovider")), Resident: d.value("skresident") == "yes", VerifyRequired: d.value("skverify") == "yes", Application: strings.TrimSpace(d.value("skapplication"))}
+	if !sshHardwareKeyType(keyType) && security != (sshhost.SecurityKeyOptions{}) {
+		m.sshUI.dialog.err = errors.New("Security-key options require ed25519-sk or ecdsa-sk; no ordinary-key fallback is performed")
+		return m, nil
+	}
 	parent := *d.parent
 	parent.applyKeyChoice(path, true)
+	parent.onboarding.KeyType, parent.onboarding.SecurityKey = sshhost.KeyType(keyType), security
 	parent.onboarding.KeyComment = strings.TrimSpace(d.value("comment"))
 	m.sshUI.dialog = parent
 	return m, m.focusSSHField(parent.index)
