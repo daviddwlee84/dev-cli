@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.37] - 2026-09-14
+
 ### Added
 
 - `dev ssh setup <alias>` on a terminal without `--key` or `--generate-key` opens
@@ -1155,7 +1157,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.36...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.37...HEAD
+[0.2.37]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.36...v0.2.37
 [0.2.36]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.35...v0.2.36
 [0.2.35]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.34...v0.2.35
 [0.2.34]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.33...v0.2.34
