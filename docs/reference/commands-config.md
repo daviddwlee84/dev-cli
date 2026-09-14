@@ -913,9 +913,16 @@ replaces remote fleet's `machine_id` pin. See [SSH onboarding](../guides/ssh-hos
 
 ## SSH key catalog and picker behavior
 
-`ssh key list` accepts `--json`, `--no-agent`, `--alias <alias>` and explicit
-`--on fleet:HOST`. Its default
-local catalog skips `ssh -G`; explicit alias mode evaluates configured identities
+`ssh key list` accepts `--json`, `--no-agent`, `--alias <alias>`, repeatable
+`--agent bitwarden|1password|secretive|<absolute socket>` and explicit
+`--on fleet:HOST` (not combined with `--agent`). Candidates from a named agent carry
+`agent: {provider, socket}`. `ssh setup --identity-agent <agent>` selects `--key` (a
+SHA256 fingerprint or `.pub` path) from that agent and writes a v2 managed alias with
+`IdentityAgent`; errors use `agent_provider_unavailable`, `agent_key_not_found` or,
+when a foreign alias needs a native configuration change, `identity_agent_manual`.
+`--identity-agent` cannot be combined with local key generation or configuration-only/
+existing-authentication modes. `--no-agent` and `--agent` are mutually exclusive.
+The default local catalog skips `ssh -G`; explicit alias mode evaluates configured identities
 and agent settings. JSON uses `schema_version: 1`, `kind: ssh_key_list`, candidates,
 completeness and diagnostics. Local listing never repairs permissions or logs in; `--on` explicitly contacts
 the selected source.

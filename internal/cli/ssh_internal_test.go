@@ -271,6 +271,9 @@ func (runner *sshCLIRunner) effective(alias string) []byte {
 		identitiesOnly = "yes"
 	}
 	fmt.Fprintf(&output, "identitiesonly %s\n", identitiesOnly)
+	if definition.IdentityAgent != "" {
+		fmt.Fprintf(&output, "identityagent %s\n", definition.IdentityAgent)
+	}
 	fmt.Fprintln(&output, "proxycommand none")
 	return []byte(output.String())
 }

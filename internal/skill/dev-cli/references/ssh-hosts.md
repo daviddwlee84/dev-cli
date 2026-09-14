@@ -520,6 +520,26 @@ derives/generates a key, repairs permissions or authenticates remotely.
 `--json` emits one `ssh_key_list` document with candidates, completeness and source
 diagnostics; a missing or unusable source does not become an empty success claim.
 
+`--agent bitwarden|1password|secretive|<absolute socket>` (repeatable) adds a
+named agent; the setup key picker adds providers whose socket is present (found by
+`stat` only; installed providers without a socket get an enable hint, also in
+`dev doctor`). Precedence for a key in several agents: alias `IdentityAgent`,
+requested order, `SSH_AUTH_SOCK`. Setup dry-run does not write or connect to hosts;
+explicit agent-key selection still queries that exact agent. Selecting a named-agent key, or
+`dev ssh setup <alias> --identity-agent <agent> --key <SHA256|.pub>`, publishes the
+public line to `~/.ssh/dev_agent_<provider>_<alias>.pub` and writes a v2 managed
+alias with `IdentityAgent`, `IdentityFile` and `IdentitiesOnly yes`. dev ≤ v0.2.37
+refuses setup/remove on v2 files. Foreign aliases are never rewritten: an already
+matching effective agent policy can bootstrap; otherwise `identity_agent_manual`
+lists the required native configuration. A missing provider socket is advisory,
+not proof that the app's agent setting is disabled. Explicit named/custom-agent
+selection is disabled on native Windows pending pipe identity/ownership validation;
+existing native OpenSSH ambient authentication is unchanged.
+Named agents work when registering regular/LAN aliases **to** fleet or Herdr, but
+not while importing profiles/hop keys **from** `fleet:HOST`. Import with existing
+controller authentication or configuration-only mode, then set up the alias
+separately; remote provider paths are never copied to the controller.
+
 The setup wizard's authentication menu offers configure only, existing
 authentication, or **Install an SSH key (existing or new)**. The key choice opens
 this catalog with **+ Generate a new key** and an **Enter a key path…** fallback;
@@ -772,8 +792,9 @@ Choice fields show every option with the current one bracketed, such as
 opens a picker of file-backed local keys, **+ Generate a new key** and a manual
 path; Esc returns to the form, and picking a key selects key authentication.
 **+ Generate a new key** opens a short form for the new key path and an optional
-comment before returning to the form. Agent-only identities remain available in
-the terminal `dev ssh setup` picker.
+comment before returning to the form. Keys from present Bitwarden, 1Password or
+Secretive agents and a validated `SSH_AUTH_SOCK` are listed too. Agent-only choices
+retain the exact fingerprint and socket; unavailable providers show guidance.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

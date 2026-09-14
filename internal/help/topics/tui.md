@@ -544,8 +544,9 @@ Choice fields show every option with the current one bracketed, such as
 opens a picker of file-backed local keys, **+ Generate a new key** and a manual
 path; Esc returns to the form, and picking a key selects key authentication.
 **+ Generate a new key** opens a short form for the new key path and an optional
-comment before returning to the form. Agent-only identities remain available in
-the terminal `dev ssh setup` picker.
+comment before returning to the form. Keys from present Bitwarden, 1Password or
+Secretive agents and a validated `SSH_AUTH_SOCK` are listed too. Agent-only choices
+retain the exact fingerprint and socket; unavailable providers show guidance.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unicode"
@@ -100,6 +101,14 @@ func VerifyManagedEffective(definition ManagedDefinition, effective EffectiveCon
 	}
 	if definition.IdentityFile != "" && !containsOrderedValues(effective.IdentityFiles, []string{definition.IdentityFile}) {
 		mismatches = append(mismatches, "IdentityFile")
+	}
+	if definition.IdentityAgent != "" {
+		if value := firstEffectiveValue(effective, "identityagent"); value == "" || filepath.Clean(value) != definition.IdentityAgent {
+			mismatches = append(mismatches, "IdentityAgent")
+		}
+	}
+	if definition.SecurityKeyProvider != "" && firstEffectiveValue(effective, "securitykeyprovider") != definition.SecurityKeyProvider {
+		mismatches = append(mismatches, "SecurityKeyProvider")
 	}
 	if len(mismatches) > 0 {
 		return fmt.Errorf("managed SSH config does not control effective fields: %s", strings.Join(mismatches, ", "))

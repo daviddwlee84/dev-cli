@@ -141,8 +141,7 @@ func (connection *PreparedConnection) Run(ctx context.Context, options Connectio
 		defer cleanup()
 		hop := fresh.state.hops[len(fresh.state.hops)-1]
 		if selector.agent != nil {
-			configured, enabled, err := s.resolveIdentityAgent(firstEffectiveValue(hop.effective, "identityagent"))
-			if err != nil || !enabled || configured != "" && configured != selector.agent.socket {
+			if !s.effectiveUsesAgent(hop.effective, selector.agent, selector.agent.identity != nil) {
 				return RunResult{}, ErrAgentPolicyMismatch
 			}
 		}

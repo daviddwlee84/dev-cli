@@ -72,7 +72,10 @@ type KeyCandidate struct {
 	// companion's identity path. It is not authority to repair that path.
 	NeedsPermissionRepair bool          `json:"needs_permission_repair,omitempty"`
 	Provenance            KeyProvenance `json:"provenance"`
-	state                 *keyMaterialState
+	// Agent names the explicitly requested agent socket that offers this key.
+	// It is empty for the ambient SSH_AUTH_SOCK or alias IdentityAgent agent.
+	Agent *AgentSocketRef `json:"agent,omitempty"`
+	state *keyMaterialState
 }
 
 // KeyCatalog is an effectful snapshot of validated local public candidates.
@@ -92,6 +95,9 @@ type KeyCatalogRequest struct {
 	Alias     string           `json:"alias,omitempty"`
 	Effective *EffectiveConfig `json:"-"`
 	NoAgent   bool             `json:"no_agent,omitempty"`
+	// Agents are additional explicit agent sockets. A key offered by several
+	// agents keeps the alias IdentityAgent, then this order, then SSH_AUTH_SOCK.
+	Agents []AgentSocketRef `json:"agents,omitempty"`
 }
 
 // KeyOperation selects an existing key, derives a missing public companion, or
@@ -102,6 +108,9 @@ const (
 	KeyUse      KeyOperation = "use"
 	KeyDerive   KeyOperation = "derive"
 	KeyGenerate KeyOperation = "generate"
+	// KeyPublishAgent writes the public half of a named-agent key to a .pub
+	// file so IdentityFile + IdentitiesOnly can select it. No private bytes exist.
+	KeyPublishAgent KeyOperation = "publish_agent_public"
 )
 
 // KeyRequest is policy input to PlanKey. AllowDerive represents confirmation
@@ -116,6 +125,8 @@ type KeyRequest struct {
 	Interactive         bool         `json:"interactive,omitempty"`
 	AllowDerive         bool         `json:"allow_derive,omitempty"`
 	NoPassphrase        bool         `json:"no_passphrase,omitempty"`
+	// PublicDestination is the .pub path for KeyPublishAgent.
+	PublicDestination string `json:"public_destination,omitempty"`
 }
 
 // KeyPlan is content-free and source-bound. ApplyKey accepts only a ready plan
@@ -131,20 +142,25 @@ type KeyPlan struct {
 	IdentityFile string       `json:"identity_file,omitempty"`
 	// CreateParent is a missing private directory directly under ~/.ssh that
 	// generation creates (mode 0700) before writing the key.
-	CreateParent string       `json:"create_parent,omitempty"`
-	Diagnostics  []Diagnostic `json:"diagnostics,omitempty"`
-	state        *keyPlanState
+	CreateParent string `json:"create_parent,omitempty"`
+	// Agent is the explicit agent socket offering the selected key.
+	Agent       *AgentSocketRef `json:"agent,omitempty"`
+	Diagnostics []Diagnostic    `json:"diagnostics,omitempty"`
+	state       *keyPlanState
 }
 
 // Ready reports whether ApplyKey may consume this plan.
 func (p KeyPlan) Ready() bool { return p.Action != ActionBlocked && p.state != nil }
 
 // KeyResult reports a selected or created key without exposing its public line.
-// Retained is true for generated assets, which bootstrap never rolls back.
+// Retained identifies created assets that bootstrap never rolls back.
 type KeyResult struct {
 	Action    PlanAction   `json:"action"`
 	Operation KeyOperation `json:"operation"`
 	Candidate KeyCandidate `json:"candidate"`
 	Created   bool         `json:"created,omitempty"`
 	Retained  bool         `json:"retained,omitempty"`
+	// PublicationUnknown means publication may have happened but its final
+	// location or durability was not verified. It never authorizes a retry.
+	PublicationUnknown bool `json:"publication_unknown,omitempty"`
 }

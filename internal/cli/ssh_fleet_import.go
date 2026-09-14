@@ -26,6 +26,10 @@ type sshFleetImportSource struct {
 }
 
 func prepareSSHFleetImportItem(ctx context.Context, app *App, alias string, host fleet.Host, source sshremote.Resolved, o sshSetupOptions) (sshOnboardItem, error) {
+	o.fleetImportKeyPicker = true
+	if err := validateSSHAgentOptions(o); err != nil {
+		return sshOnboardItem{}, err
+	}
 	if o.proxyJumpChanged || o.hostNameChanged {
 		return sshOnboardItem{}, errors.New("fleet import derives HostName and ProxyJump from the reviewed source; choose an explicit local profile to override them")
 	}
@@ -285,7 +289,7 @@ func sshFleetOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, 
 		if e != nil {
 			return nil, e
 		}
-		o := sshSetupOptions{from: selection.Value, herdrSession: "default"}
+		o := sshSetupOptions{from: selection.Value, herdrSession: "default", fleetImportKeyPicker: true}
 		o.user, e = newPrompter(app).line("Remote user", resolved.Effective.User)
 		if e != nil {
 			return nil, e
@@ -342,7 +346,7 @@ func sshFleetOnboardingWizard(ctx context.Context, app *App) ([]sshOnboardItem, 
 				}
 				picked := result.Items
 				for _, hop := range picked {
-					choice, e := chooseSSHKeyInteractive(ctx, app, s, hop.Value, sshSetupOptions{}, filepath.Join(s.Paths().SSHDir, "id_ed25519_dev_"+hop.Value))
+					choice, e := chooseSSHKeyInteractive(ctx, app, s, hop.Value, sshSetupOptions{fleetImportKeyPicker: true}, filepath.Join(s.Paths().SSHDir, "id_ed25519_dev_"+hop.Value))
 					if e != nil {
 						return nil, e
 					}
@@ -413,6 +417,9 @@ func suggestSSHAliasForFleet(host, alias string) string {
 
 func applySSHFleetImportConfiguration(ctx context.Context, app *App, s *sshhost.Service, item sshOnboardItem, guard *sshflow.SourceGuard) (map[string]sshhost.KeyResult, error) {
 	keys := map[string]sshhost.KeyResult{}
+	if err := validateSSHFleetImportAgentPlans(item); err != nil {
+		return keys, err
+	}
 	if e := revalidateSSHFleetImport(ctx, app, item); e != nil {
 		return keys, e
 	}

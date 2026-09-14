@@ -809,8 +809,13 @@ bindings；registry UUID 不取代 remote fleet 的 `machine_id` pin。詳見
 
 ## SSH key catalog 與 picker behavior
 
-`ssh key list` 接受 `--json`、`--no-agent`、`--alias <alias>` 與明確的 `--on fleet:HOST`。預設 local catalog
-不執行 `ssh -G`；明確 alias mode 才評估 configured identities／agent settings。
+`ssh key list` 接受 `--json`、`--no-agent`、`--alias <alias>`、可重複的
+`--agent bitwarden|1password|secretive|<absolute socket>` 與明確的 `--on fleet:HOST`（不可與 `--agent` 併用）。
+來自 named agent 的 candidate 帶有 `agent: {provider, socket}`。`ssh setup --identity-agent <agent>`
+會從該 agent 選取 `--key`（SHA256 fingerprint 或 `.pub` path），並寫入含 `IdentityAgent` 的 v2
+managed alias；錯誤代碼為 `agent_provider_unavailable`、`agent_key_not_found`，需要手動更改
+原生設定的 foreign alias 則為 `identity_agent_manual`。`--identity-agent` 不能與本機 key
+產生、只配置或既有認證模式併用；`--no-agent` 與 `--agent` 也互斥。預設 local catalog 不執行 `ssh -G`；明確 alias mode 才評估 configured identities／agent settings。
 JSON 使用 `schema_version: 1`、`kind: ssh_key_list`，包含 candidates、completeness
 及 diagnostics。Local listing 不修權限或登入；`--on` 會明確連線至選定 source。
 

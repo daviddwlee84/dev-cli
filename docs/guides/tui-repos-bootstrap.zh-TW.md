@@ -457,7 +457,9 @@ profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變
 ←／→ 或 Space 切換。在 **Key** 欄位按 Enter 或 Space 會開啟 picker，列出有檔案的
 本機 keys、**+ Generate a new key** 與手動輸入路徑；Esc 回到表單，選取 key 會把
 認證方式設為 key。**+ Generate a new key** 會先開啟小表單填寫新 key 路徑與可選
-comment，再回到原表單。只存在於 agent 的 identity 請改用終端的 `dev ssh setup` picker。
+comment，再回到原表單。可用的 Bitwarden、1Password、Secretive agent 與已驗證的
+`SSH_AUTH_SOCK` 內的 key 也會列出。Agent-only 選項保留確切 fingerprint 與 socket；
+不可用的 provider 則顯示操作指引。
 
 在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
 表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選

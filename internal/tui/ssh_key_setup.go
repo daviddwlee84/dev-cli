@@ -62,8 +62,17 @@ func (d *sshDialog) setField(key, value string) {
 	}
 }
 
+func (d *sshDialog) applyAgentKeyChoice(choice SSHKeyChoice) {
+	d.onboarding.KeyPath, d.onboarding.GenerateKey, d.onboarding.KeyComment = "", false, ""
+	d.onboarding.KeyFingerprint, d.onboarding.KeyAgentSocket = choice.Fingerprint, choice.AgentSocket
+	d.setField("key", choice.Label)
+	d.setField("auth", "key")
+	d.err = nil
+}
+
 func (d *sshDialog) applyKeyChoice(path string, generate bool) {
 	d.onboarding.KeyPath, d.onboarding.GenerateKey = path, generate
+	d.onboarding.KeyFingerprint, d.onboarding.KeyAgentSocket = "", ""
 	if !generate {
 		d.onboarding.KeyComment = ""
 	}
@@ -114,8 +123,12 @@ func (m Model) chooseSSHKey(index int) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	parent := *d.parent
-	if index < len(d.keys) {
+	if index >= 0 && index < len(d.keys) {
 		choice := d.keys[index]
+		if choice.UnavailableReason != "" {
+			m.sshUI.dialog.err = errors.New(choice.UnavailableReason)
+			return m, nil
+		}
 		if choice.Generate {
 			path := choice.Path
 			if parent.onboarding.GenerateKey && parent.onboarding.KeyPath != "" {
@@ -127,7 +140,11 @@ func (m Model) chooseSSHKey(index int) (tea.Model, tea.Cmd) {
 			m.sshUI.dialog = form
 			return m, m.focusSSHField(0)
 		}
-		parent.applyKeyChoice(choice.Path, false)
+		if choice.Fingerprint != "" && choice.AgentSocket != "" {
+			parent.applyAgentKeyChoice(choice)
+		} else {
+			parent.applyKeyChoice(choice.Path, false)
+		}
 		m.sshUI.dialog = parent
 		return m, m.focusSSHField(parent.index)
 	}

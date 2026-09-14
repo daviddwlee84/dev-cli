@@ -24,16 +24,17 @@ import (
 )
 
 type sshOnboardItem struct {
-	Target       sshflow.OnboardTarget      `json:"target"`
-	Candidate    *sshdiscovery.Candidate    `json:"candidate,omitempty"`
-	KeyPlan      *sshhost.KeyPlan           `json:"key_plan,omitempty"`
-	Options      sshSetupOptions            `json:"-"`
-	Group        string                     `json:"group,omitempty"`
-	Definition   *sshhost.ManagedDefinition `json:"definition,omitempty"`
-	Import       *sshflow.FleetImportPlan   `json:"import,omitempty"`
-	ImportSource *sshFleetImportSource      `json:"-"`
-	PlannedRoute *sshhost.Route             `json:"planned_route,omitempty"`
-	HopKeyPlans  map[string]sshhost.KeyPlan `json:"hop_key_plans,omitempty"`
+	Target          sshflow.OnboardTarget      `json:"target"`
+	Candidate       *sshdiscovery.Candidate    `json:"candidate,omitempty"`
+	KeyPlan         *sshhost.KeyPlan           `json:"key_plan,omitempty"`
+	AgentPublicPlan *sshhost.KeyPlan           `json:"agent_public_plan,omitempty"`
+	Options         sshSetupOptions            `json:"-"`
+	Group           string                     `json:"group,omitempty"`
+	Definition      *sshhost.ManagedDefinition `json:"definition,omitempty"`
+	Import          *sshflow.FleetImportPlan   `json:"import,omitempty"`
+	ImportSource    *sshFleetImportSource      `json:"-"`
+	PlannedRoute    *sshhost.Route             `json:"planned_route,omitempty"`
+	HopKeyPlans     map[string]sshhost.KeyPlan `json:"hop_key_plans,omitempty"`
 }
 
 func runSSHOnboarding(ctx context.Context, app *App, args []string, options sshSetupOptions) error {
@@ -54,6 +55,12 @@ func runSSHOnboarding(ctx context.Context, app *App, args []string, options sshS
 }
 
 func runSSHOnboardingOperation(ctx context.Context, app *App, args []string, options sshSetupOptions) error {
+	if err := validateSSHAgentOptions(options); err != nil {
+		return asUsageError(err)
+	}
+	if options.identityAgent != "" && !options.hasExistingKey() {
+		return asUsageError(errors.New("source-aware setup with --identity-agent requires --key <SHA256 fingerprint or .pub path>; use plain dev ssh setup <alias> for the agent key picker"))
+	}
 	if e := validateSSHPasswordStore(options.passwordStore); e != nil {
 		return asUsageError(e)
 	}
@@ -388,6 +395,20 @@ func prepareSSHOnboardItem(ctx context.Context, app *App, alias string, c *sshdi
 		if o.targetOS == "" {
 			return item, errors.New("key bootstrap requires --target-os")
 		}
+		if o.identityAgent != "" && o.agentRef == nil {
+			ref, e := s.ResolveAgentSocket(runtime.GOOS, o.identityAgent)
+			if e != nil {
+				return item, e
+			}
+			o.agentRef = &ref
+		}
+		if o.agentRef != nil && o.key != "" && o.keyCandidate == nil {
+			candidate, e := selectSSHAgentKey(ctx, s, *o.agentRef, o.key)
+			if e != nil {
+				return item, e
+			}
+			o.keyCandidate, o.key = &candidate, ""
+		}
 		var plan sshhost.KeyPlan
 		if o.keyPlan != nil {
 			plan = *o.keyPlan
@@ -403,6 +424,15 @@ func prepareSSHOnboardItem(ctx context.Context, app *App, alias string, c *sshdi
 		item.KeyPlan = &plan
 		if class != "foreign" && !o.identityFileChanged && plan.IdentityFile != "" {
 			definition.IdentityFile = plan.IdentityFile
+		}
+		publication, e := prepareSSHAgentPublication(ctx, s, alias, class, o, plan, &definition)
+		if e != nil {
+			return item, e
+		}
+		item.AgentPublicPlan = publication
+		if publication != nil {
+			o.identityAgentPath, o.identityAgentChanged = plan.Agent.Socket, true
+			o.identitiesOnly, o.identitiesOnlyChanged = true, true
 		}
 	}
 	if class != "foreign" {
@@ -663,6 +693,9 @@ type sshPreparedOnboarding struct {
 
 func planSSHOnboardItems(ctx context.Context, app *App, items []sshOnboardItem, dryRun bool) (*sshPreparedOnboarding, error) {
 	for _, item := range items {
+		if err := validateSSHFleetImportAgentPlans(item); err != nil {
+			return nil, err
+		}
 		if source := item.ImportSource; source != nil {
 			if source.Guard == nil {
 				return nil, sshhost.ErrSourceChanged
@@ -873,6 +906,16 @@ func applySSHOnboardPlan(ctx context.Context, app *App, prepared *sshPreparedOnb
 				if e := s.RevalidateKeySelection(ctx, *item.KeyPlan); e != nil {
 					return fmt.Errorf("revalidate selected key for %s: %w", item.Target.Alias, e)
 				}
+				if item.Definition == nil && item.KeyPlan.Agent != nil && item.Options.keyCandidate != nil {
+					if e := s.VerifyAgentKeyPolicy(ctx, item.Target.Alias, *item.Options.keyCandidate); e != nil {
+						return e
+					}
+				}
+			}
+			if item.AgentPublicPlan != nil {
+				if e := s.RevalidateKeySelection(ctx, *item.AgentPublicPlan); e != nil {
+					return fmt.Errorf("revalidate agent public key for %s: %w", item.Target.Alias, e)
+				}
 			}
 		}
 		if e := guard.Check(ctx); e != nil {
@@ -936,6 +979,19 @@ func applySSHOnboardPlan(ctx context.Context, app *App, prepared *sshPreparedOnb
 						o.identityFileChanged = true
 					}
 				}
+				if item.AgentPublicPlan != nil {
+					published, e := s.ApplyKey(ctx, *item.AgentPublicPlan)
+					keyResults[target.Alias] = published
+					if e != nil {
+						if published.PublicationUnknown {
+							return errors.Join(sshflow.ErrOnboardUnknown, e)
+						}
+						return e
+					}
+					if item.Definition != nil {
+						o.identityFile, o.identityFileChanged = item.AgentPublicPlan.PublicPath, true
+					}
+				}
 				if e := guard.Check(ctx); e != nil {
 					return e
 				}
@@ -952,6 +1008,7 @@ func applySSHOnboardPlan(ctx context.Context, app *App, prepared *sshPreparedOnb
 				o.key = ""
 				o.keyCandidate = nil
 				o.keyPlan = nil
+				o.identityAgent, o.agentRef = "", nil
 				o.generateKey = false
 				o.targetOS = ""
 				o.hopOS = nil
@@ -1152,6 +1209,15 @@ func renderSSHOnboardResult(app *App, result sshflow.OnboardExecutionResult, jso
 			if outcome.Error != "" {
 				fmt.Fprintln(app.Err, outcome.Error)
 			}
+			if outcome.Stage == "configure" {
+				if key, ok := result.Keys[outcome.Alias]; ok {
+					if key.PublicationUnknown {
+						fmt.Fprintf(app.Out, "  public key publication unknown: inspect %s before retrying; no rollback is implied.\n", key.Candidate.PublicPath)
+					} else if key.Created || key.Retained {
+						fmt.Fprintf(app.Out, "  key asset retained: %s\n", key.Candidate.IdentityFile)
+					}
+				}
+			}
 			if outcome.Stage == "authenticate" {
 				if bootstrap, ok := result.Bootstraps[outcome.Alias]; ok {
 					for _, hop := range bootstrap.Hops {
@@ -1203,6 +1269,9 @@ func renderSSHOnboardPreview(app *App, items []sshOnboardItem, init sshhost.Init
 			if definition.IdentitiesOnly != nil {
 				fmt.Fprintf(app.Out, "  %s IdentitiesOnly: %t\n", item.Target.Alias, *definition.IdentitiesOnly)
 			}
+			if definition.IdentityAgent != "" {
+				fmt.Fprintf(app.Out, "  %s IdentityAgent: %s\n", item.Target.Alias, definition.IdentityAgent)
+			}
 		}
 		if item.Candidate != nil && item.Candidate.State == "stale_observation" {
 			fmt.Fprintf(app.Out, "  %s: explicitly selected stale discovery observation\n", item.Target.Alias)
@@ -1212,6 +1281,9 @@ func renderSSHOnboardPreview(app *App, items []sshOnboardItem, init sshhost.Init
 			if p.CreateParent != "" {
 				fmt.Fprintf(app.Out, "  %s key directory: create %s (mode 0700)\n", item.Target.Alias, p.CreateParent)
 			}
+		}
+		if p := item.AgentPublicPlan; p != nil && p.Agent != nil {
+			fmt.Fprintf(app.Out, "  %s key from %s agent; public key %s %s\n", item.Target.Alias, sshhost.AgentProviderLabel(p.Agent.Provider), p.Action, p.PublicPath)
 		}
 		if item.Target.To == "herdr" || item.Target.To == "both" {
 			fmt.Fprintf(app.Out, "  %s: Herdr may install/start its remote server; native approvals remain interactive.\n", item.Target.Alias)

@@ -42,6 +42,10 @@ type SSHActions struct {
 type SSHKeyChoice struct {
 	Label, Description, Path string
 	Generate                 bool
+	// UnavailableReason is display-only guidance; unavailable choices never prepare an action.
+	UnavailableReason string
+	// Fingerprint and AgentSocket identify a key held by a named SSH agent.
+	Fingerprint, AgentProvider, AgentSocket string
 }
 
 type SSHWorkflowRequest struct {

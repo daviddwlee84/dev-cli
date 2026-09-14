@@ -2106,13 +2106,13 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/ssh-hosts/
 |---|---|---|
 | `~/.ssh/config`, its foreign Includes, and foreign `Host`/`Match` blocks | user + OpenSSH | read statically; evaluate with plain `ssh -G`; explicit format/organize can transform selected user files |
 | `Include ~/.ssh/dev.d/*.conf` in the root config | dev, after explicit `ssh init --apply` | install once before the first `Host`, `Match`, or earlier Include; never remove automatically |
-| `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | create, reconcile, or remove only canonical v1 files with an allowlisted single `Host` block |
+| `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | create, reconcile, or remove only canonical v1/v2 files with an allowlisted single `Host` block |
 | local key files | user + native `ssh-keygen` | validate an explicit key, derive a confirmed missing `.pub`, or generate a no-replace Ed25519 pair; never copy private bytes |
 | remote `authorized_keys` | remote OpenSSH account | append one bounded normalized public record idempotently; never remove or revoke it |
 | primary `remotes.toml` | user via `dev fleet config` | read and merge; never rewrite during SSH setup |
 | sibling `remotes.d/ssh-<alias>.toml` | `dev ssh setup/remove --fleet` | create only after a fresh ordinary login; remove only when explicitly requested |
 
-A foreign alias remains usable for `list`, `show`, `probe`, key bootstrap, and fleet registration, but connection flags are rejected during `setup`. Dev will not compete with its existing definition. New dev-managed aliases use a portable lowercase exact-name grammar and one deterministic file containing `HostName`, optional `User`, `Port`, `ProxyJump`, `IdentityFile`, and `IdentitiesOnly`. Arbitrary directives and wildcard/`Match` blocks are not managed.
+A foreign alias remains usable for `list`, `show`, `probe`, key bootstrap, and fleet registration, but connection flags are rejected during `setup`. Dev will not compete with its existing definition. New dev-managed aliases use a portable lowercase exact-name grammar and one deterministic file containing `HostName`, optional `User`, `Port`, `ProxyJump`, `IdentityFile`, and `IdentitiesOnly`. A file that also needs `IdentityAgent` or `SecurityKeyProvider` uses the `v2` header instead; dev v0.2.37 and older treat a v2 file as not dev-owned and refuse setup/remove on it, so upgrade every dev that shares `~/.ssh` before selecting agent keys. Arbitrary directives and wildcard/`Match` blocks are not managed.
 
 ## Command map
 
@@ -2616,6 +2616,8 @@ dev ssh key list
 dev ssh key list --json
 dev ssh key list --no-agent
 dev ssh key list --alias lab --json
+dev ssh key list --agent bitwarden
+dev ssh setup lab --identity-agent 1password --key SHA256:… --target-os posix
 ```
 
 The default key listing scans bounded public-key files under `~/.ssh` and the
@@ -2627,6 +2629,38 @@ Match exec or resolver behavior may run. Listing never reads private-key content
 derives/generates a key, repairs permissions or authenticates remotely.
 `--json` emits one `ssh_key_list` document with candidates, completeness and source
 diagnostics; a missing or unusable source does not become an empty success claim.
+
+Keys can stay in a password manager's SSH agent instead of a private file.
+`--agent bitwarden|1password|secretive|<absolute socket>` adds that agent to the
+listing, and the setup key picker adds every provider whose socket is present.
+Dev finds sockets by `stat` only — Bitwarden (App Store, .dmg, Linux, Snap and
+Flatpak paths), 1Password and Secretive; an installed provider without a socket is
+reported with the step that enables its agent (Bitwarden: Settings → enable SSH
+agent), and `dev doctor` shows the same warning. An absent socket does not prove
+the agent is disabled; the app may be closed or using another path. Discovery of
+provider locations is passive; selecting/listing keys explicitly queries the SSH
+agent, not the provider's vault CLI. A setup dry-run does not write or connect to
+hosts, but selecting an agent key still queries that exact agent. The shared Windows
+`\\.\pipe\openssh-ssh-agent` is never attributed to a vendor. Explicit named/custom
+agent selection is disabled on native Windows until pipe identity and ownership
+can be verified; existing native OpenSSH ambient-authentication flows are unchanged.
+When several agents
+offer one key, the alias `IdentityAgent` wins, then the requested order, then
+`SSH_AUTH_SOCK`. Choosing a named-agent key, or `dev ssh setup <alias>
+--identity-agent <agent> --key <SHA256 fingerprint or .pub path>`, writes the
+public line only to `~/.ssh/dev_agent_<provider>_<alias>.pub` (no-replace) and a
+v2 managed alias with `IdentityAgent`, that `IdentityFile` and `IdentitiesOnly yes`,
+so later logins and the bootstrap proof use exactly that agent key. A foreign
+alias is never edited: if its fresh effective configuration already matches the
+selected agent policy, bootstrap can proceed without a rewrite. Otherwise setup
+stops with `identity_agent_manual` and prints the lines to add.
+
+Named-agent setup can register a regular or LAN-discovered alias **to** fleet or
+Herdr. Importing connection profiles **from** `fleet:HOST` (including hop keys)
+does not yet carry controller-selected named-agent plans: those choices are
+unavailable and `--identity-agent` is rejected before import. Import using existing
+controller authentication or configuration-only mode, then set up the imported
+alias separately. Remote provider paths are never copied to the controller.
 
 The setup wizard's authentication menu offers configure only, existing
 authentication, or **Install an SSH key (existing or new)**. The key choice opens
@@ -2882,8 +2916,9 @@ Choice fields show every option with the current one bracketed, such as
 opens a picker of file-backed local keys, **+ Generate a new key** and a manual
 path; Esc returns to the form, and picking a key selects key authentication.
 **+ Generate a new key** opens a short form for the new key path and an optional
-comment before returning to the form. Agent-only identities remain available in
-the terminal `dev ssh setup` picker.
+comment before returning to the form. Keys from present Bitwarden, 1Password or
+Secretive agents and a validated `SSH_AUTH_SOCK` are listed too. Agent-only choices
+retain the exact fingerprint and socket; unavailable providers show guidance.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's
@@ -5445,8 +5480,9 @@ Choice fields show every option with the current one bracketed, such as
 opens a picker of file-backed local keys, **+ Generate a new key** and a manual
 path; Esc returns to the form, and picking a key selects key authentication.
 **+ Generate a new key** opens a short form for the new key path and an optional
-comment before returning to the form. Agent-only identities remain available in
-the terminal `dev ssh setup` picker.
+comment before returning to the form. Keys from present Bitwarden, 1Password or
+Secretive agents and a validated `SSH_AUTH_SOCK` are listed too. Agent-only choices
+retain the exact fingerprint and socket; unavailable providers show guidance.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's
@@ -9498,6 +9534,7 @@ List local public keys and SSH agent identities
 dev ssh key list [flags]
 ```
 
+- `--agent` — Also list a named SSH agent: bitwarden, 1password, secretive or an absolute socket path (repeatable)
 - `--alias` — Evaluate this alias's OpenSSH identity and agent settings
 - `--json` — Print key metadata and source diagnostics as JSON
 - `--no-agent` — Skip SSH agent enumeration
@@ -9681,7 +9718,7 @@ dev ssh setup [alias] [flags]
 - `--auth` — existing to verify ordinary SSH without installing a key
 - `--comment` — public key comment for --generate-key
 - `--config-only` — stop after local config verification
-- `--dry-run` — render static local plans without running OpenSSH or writing
+- `--dry-run` — preview without writing or connecting to hosts; selected agents may be queried
 - `--fleet` — register the verified alias in dev fleet
 - `--fleet-name` — fleet profile name (default: alias)
 - `--from` — tailscale:<peer>, lan:<ip:port>, fleet:<host>/<alias>, or an exact discovery ID
@@ -9692,6 +9729,7 @@ dev ssh setup [alias] [flags]
 - `--hop-os` — route OS override alias=posix|windows (repeatable)
 - `--hostname` — managed HostName value
 - `--identities-only` — set managed IdentitiesOnly=yes (explicit false writes no)
+- `--identity-agent` — use a key from a named SSH agent: bitwarden, 1password, secretive or an absolute socket path
 - `--identity-file` — managed IdentityFile value
 - `--install-on-working-jump` — install the selected key on already-working jump hosts
 - `--json` — emit exactly one versioned JSON plan or result
@@ -10383,9 +10421,16 @@ replaces remote fleet's `machine_id` pin. See [SSH onboarding](https://daviddwle
 
 ## SSH key catalog and picker behavior
 
-`ssh key list` accepts `--json`, `--no-agent`, `--alias <alias>` and explicit
-`--on fleet:HOST`. Its default
-local catalog skips `ssh -G`; explicit alias mode evaluates configured identities
+`ssh key list` accepts `--json`, `--no-agent`, `--alias <alias>`, repeatable
+`--agent bitwarden|1password|secretive|<absolute socket>` and explicit
+`--on fleet:HOST` (not combined with `--agent`). Candidates from a named agent carry
+`agent: {provider, socket}`. `ssh setup --identity-agent <agent>` selects `--key` (a
+SHA256 fingerprint or `.pub` path) from that agent and writes a v2 managed alias with
+`IdentityAgent`; errors use `agent_provider_unavailable`, `agent_key_not_found` or,
+when a foreign alias needs a native configuration change, `identity_agent_manual`.
+`--identity-agent` cannot be combined with local key generation or configuration-only/
+existing-authentication modes. `--no-agent` and `--agent` are mutually exclusive.
+The default local catalog skips `ssh -G`; explicit alias mode evaluates configured identities
 and agent settings. JSON uses `schema_version: 1`, `kind: ssh_key_list`, candidates,
 completeness and diagnostics. Local listing never repairs permissions or logs in; `--on` explicitly contacts
 the selected source.
@@ -13733,13 +13778,13 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ssh-hosts/
 |---|---|---|
 | `~/.ssh/config`、其中的 foreign Includes 與 foreign `Host`/`Match` blocks | user + OpenSSH | static read；透過 plain `ssh -G` evaluate；明確 format/organize 可整理選定的使用者檔案 |
 | root config 中的 `Include ~/.ssh/dev.d/*.conf` | dev，且必須明確執行 `ssh init --apply` | 在第一個 `Host`、`Match` 或更早的 Include 前安裝一次；絕不自動移除 |
-| `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | 只 create、reconcile 或 remove canonical v1 file，其內容是 allowlisted single `Host` block |
+| `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | 只 create、reconcile 或 remove canonical v1／v2 file，其內容是 allowlisted single `Host` block |
 | local key files | user + native `ssh-keygen` | 驗證 explicit key、經確認後 derive 缺少的 `.pub`，或以 no-replace 方式產生 Ed25519 pair；絕不複製 private bytes |
 | remote `authorized_keys` | remote OpenSSH account | idempotently append 一筆 bounded normalized public record；絕不 remove 或 revoke |
 | primary `remotes.toml` | user via `dev fleet config` | read/merge；SSH setup 絕不 rewrite |
 | sibling `remotes.d/ssh-<alias>.toml` | `dev ssh setup/remove --fleet` | 只有 fresh ordinary login 成功後才 create；只有明確要求才 remove |
 
-Foreign alias 仍可供 `list`、`show`、`probe`、key bootstrap 與 fleet registration 使用，但 `setup` 會拒絕 connection flags；dev 不會與既有 definition 競爭。新的 dev-managed alias 使用 portable lowercase exact-name grammar，且只有一個 deterministic file，內容可包含 `HostName`、optional `User`、`Port`、`ProxyJump`、`IdentityFile` 與 `IdentitiesOnly`。Arbitrary directives 與 wildcard/`Match` blocks 不在 managed scope。
+Foreign alias 仍可供 `list`、`show`、`probe`、key bootstrap 與 fleet registration 使用，但 `setup` 會拒絕 connection flags；dev 不會與既有 definition 競爭。新的 dev-managed alias 使用 portable lowercase exact-name grammar，且只有一個 deterministic file，內容可包含 `HostName`、optional `User`、`Port`、`ProxyJump`、`IdentityFile` 與 `IdentitiesOnly`。還需要 `IdentityAgent` 或 `SecurityKeyProvider` 的檔案改用 `v2` header；dev v0.2.37 及更舊版本會把 v2 file 視為非 dev 管理並拒絕 setup/remove，因此選用 agent key 前請先升級所有共用 `~/.ssh` 的 dev。Arbitrary directives 與 wildcard/`Match` blocks 不在 managed scope。
 
 ## Command map
 
@@ -14201,6 +14246,8 @@ dev ssh key list
 dev ssh key list --json
 dev ssh key list --no-agent
 dev ssh key list --alias lab --json
+dev ssh key list --agent bitwarden
+dev ssh setup lab --identity-agent 1password --key SHA256:… --target-os posix
 ```
 
 預設 key listing 有界地掃描 `~/.ssh` 下的 public-key files 與目前 SSH agent，不評估
@@ -14210,6 +14257,32 @@ alias。以 fingerprint 去重，顯示 algorithm、comment、source paths、sou
 可能執行。Listing 不讀 private-key contents、不 derive／generate key、不修權限，
 也不嘗試 remote authentication。`--json` 輸出一個 `ssh_key_list` document，包含
 candidates、completeness 與 source diagnostics；來源缺失或不可用不會冒充空的成功結果。
+
+Key 也可以留在密碼管理器的 SSH agent，而不是 private file。
+`--agent bitwarden|1password|secretive|<absolute socket>` 會把該 agent 加入列表；
+setup key picker 會加入所有 socket 存在的 provider。Dev 只用 `stat` 尋找 socket：
+Bitwarden（App Store、.dmg、Linux、Snap、Flatpak 路徑）、1Password 與 Secretive；
+已安裝但找不到 socket 的 provider 會提示啟用 agent 的步驟（Bitwarden：Settings →
+啟用 SSH agent），`dev doctor` 也會顯示同樣的警告。找不到 socket 不代表已證明
+agent 被停用；app 可能未開啟，或正在使用其他路徑。Provider 路徑偵測是被動的；
+明確選取／列出 key 才會查詢 SSH agent，而不會執行 provider 的 vault CLI。Setup dry-run
+不寫檔，也不連線到 host，但選取 agent key 時仍會查詢該確切 agent。Windows 共用的
+`\\.\pipe\openssh-ssh-agent` 不會歸屬給任何廠商。Native Windows 在能驗證 pipe 身分與
+擁有者之前，會停用明確 named／custom agent 選取；既有原生 OpenSSH ambient 認證
+流程維持不變。多個 agent 提供同一把 key 時，
+優先順序為 alias 的 `IdentityAgent`、指定順序、`SSH_AUTH_SOCK`。選擇 named-agent key，
+或執行 `dev ssh setup <alias> --identity-agent <agent> --key <SHA256 fingerprint 或 .pub path>`，
+只會把 public line 以 no-replace 寫入 `~/.ssh/dev_agent_<provider>_<alias>.pub`，並寫入含
+`IdentityAgent`、該 `IdentityFile` 與 `IdentitiesOnly yes` 的 v2 managed alias，讓之後的登入
+與 bootstrap proof 都使用這把 agent key。Foreign alias 絕不會被修改：若重新取得的
+有效設定已符合所選 agent policy，可以直接 bootstrap，不需改寫。否則 setup 會以
+`identity_agent_manual` 停止並列出要手動加入的設定。
+
+Named-agent setup 可以把一般或 LAN 發現的 alias 註冊**到** fleet 或 Herdr。
+但**從** `fleet:HOST` 匯入連線 profile（包含 hop key）尚未支援攜帶 controller 選定的
+named-agent 計畫：這些選項不可用，`--identity-agent` 會在 import 前被拒絕。可先使用
+controller 既有認證或只配置模式匯入，再另外 setup 已匯入的 alias。
+Remote provider 路徑絕不會被複製到 controller。
 
 Setup wizard 的 authentication 選單提供 configure only、existing authentication 或
 **Install an SSH key (existing or new)**；後者開啟 catalog picker，另有
@@ -14423,7 +14496,9 @@ profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變
 ←／→ 或 Space 切換。在 **Key** 欄位按 Enter 或 Space 會開啟 picker，列出有檔案的
 本機 keys、**+ Generate a new key** 與手動輸入路徑；Esc 回到表單，選取 key 會把
 認證方式設為 key。**+ Generate a new key** 會先開啟小表單填寫新 key 路徑與可選
-comment，再回到原表單。只存在於 agent 的 identity 請改用終端的 `dev ssh setup` picker。
+comment，再回到原表單。可用的 Bitwarden、1Password、Secretive agent 與已驗證的
+`SSH_AUTH_SOCK` 內的 key 也會列出。Agent-only 選項保留確切 fingerprint 與 socket；
+不可用的 provider 則顯示操作指引。
 
 在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
 表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選
@@ -16704,7 +16779,9 @@ profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變
 ←／→ 或 Space 切換。在 **Key** 欄位按 Enter 或 Space 會開啟 picker，列出有檔案的
 本機 keys、**+ Generate a new key** 與手動輸入路徑；Esc 回到表單，選取 key 會把
 認證方式設為 key。**+ Generate a new key** 會先開啟小表單填寫新 key 路徑與可選
-comment，再回到原表單。只存在於 agent 的 identity 請改用終端的 `dev ssh setup` picker。
+comment，再回到原表單。可用的 Bitwarden、1Password、Secretive agent 與已驗證的
+`SSH_AUTH_SOCK` 內的 key 也會列出。Agent-only 選項保留確切 fingerprint 與 socket；
+不可用的 provider 則顯示操作指引。
 
 在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
 表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選
@@ -20657,6 +20734,7 @@ List local public keys and SSH agent identities
 dev ssh key list [flags]
 ```
 
+- `--agent` — Also list a named SSH agent: bitwarden, 1password, secretive or an absolute socket path (repeatable)
 - `--alias` — Evaluate this alias's OpenSSH identity and agent settings
 - `--json` — Print key metadata and source diagnostics as JSON
 - `--no-agent` — Skip SSH agent enumeration
@@ -20840,7 +20918,7 @@ dev ssh setup [alias] [flags]
 - `--auth` — existing to verify ordinary SSH without installing a key
 - `--comment` — public key comment for --generate-key
 - `--config-only` — stop after local config verification
-- `--dry-run` — render static local plans without running OpenSSH or writing
+- `--dry-run` — preview without writing or connecting to hosts; selected agents may be queried
 - `--fleet` — register the verified alias in dev fleet
 - `--fleet-name` — fleet profile name (default: alias)
 - `--from` — tailscale:<peer>, lan:<ip:port>, fleet:<host>/<alias>, or an exact discovery ID
@@ -20851,6 +20929,7 @@ dev ssh setup [alias] [flags]
 - `--hop-os` — route OS override alias=posix|windows (repeatable)
 - `--hostname` — managed HostName value
 - `--identities-only` — set managed IdentitiesOnly=yes (explicit false writes no)
+- `--identity-agent` — use a key from a named SSH agent: bitwarden, 1password, secretive or an absolute socket path
 - `--identity-file` — managed IdentityFile value
 - `--install-on-working-jump` — install the selected key on already-working jump hosts
 - `--json` — emit exactly one versioned JSON plan or result
@@ -21513,8 +21592,13 @@ bindings；registry UUID 不取代 remote fleet 的 `machine_id` pin。詳見
 
 ## SSH key catalog 與 picker behavior
 
-`ssh key list` 接受 `--json`、`--no-agent`、`--alias <alias>` 與明確的 `--on fleet:HOST`。預設 local catalog
-不執行 `ssh -G`；明確 alias mode 才評估 configured identities／agent settings。
+`ssh key list` 接受 `--json`、`--no-agent`、`--alias <alias>`、可重複的
+`--agent bitwarden|1password|secretive|<absolute socket>` 與明確的 `--on fleet:HOST`（不可與 `--agent` 併用）。
+來自 named agent 的 candidate 帶有 `agent: {provider, socket}`。`ssh setup --identity-agent <agent>`
+會從該 agent 選取 `--key`（SHA256 fingerprint 或 `.pub` path），並寫入含 `IdentityAgent` 的 v2
+managed alias；錯誤代碼為 `agent_provider_unavailable`、`agent_key_not_found`，需要手動更改
+原生設定的 foreign alias 則為 `identity_agent_manual`。`--identity-agent` 不能與本機 key
+產生、只配置或既有認證模式併用；`--no-agent` 與 `--agent` 也互斥。預設 local catalog 不執行 `ssh -G`；明確 alias mode 才評估 configured identities／agent settings。
 JSON 使用 `schema_version: 1`、`kind: ssh_key_list`，包含 candidates、completeness
 及 diagnostics。Local listing 不修權限或登入；`--on` 會明確連線至選定 source。
 

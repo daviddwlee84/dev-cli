@@ -15,13 +15,13 @@ verified_on: 2026-09-13
 |---|---|---|
 | `~/.ssh/config`, its foreign Includes, and foreign `Host`/`Match` blocks | user + OpenSSH | read statically; evaluate with plain `ssh -G`; explicit format/organize can transform selected user files |
 | `Include ~/.ssh/dev.d/*.conf` in the root config | dev, after explicit `ssh init --apply` | install once before the first `Host`, `Match`, or earlier Include; never remove automatically |
-| `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | create, reconcile, or remove only canonical v1 files with an allowlisted single `Host` block |
+| `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | create, reconcile, or remove only canonical v1/v2 files with an allowlisted single `Host` block |
 | local key files | user + native `ssh-keygen` | validate an explicit key, derive a confirmed missing `.pub`, or generate a no-replace Ed25519 pair; never copy private bytes |
 | remote `authorized_keys` | remote OpenSSH account | append one bounded normalized public record idempotently; never remove or revoke it |
 | primary `remotes.toml` | user via `dev fleet config` | read and merge; never rewrite during SSH setup |
 | sibling `remotes.d/ssh-<alias>.toml` | `dev ssh setup/remove --fleet` | create only after a fresh ordinary login; remove only when explicitly requested |
 
-A foreign alias remains usable for `list`, `show`, `probe`, key bootstrap, and fleet registration, but connection flags are rejected during `setup`. Dev will not compete with its existing definition. New dev-managed aliases use a portable lowercase exact-name grammar and one deterministic file containing `HostName`, optional `User`, `Port`, `ProxyJump`, `IdentityFile`, and `IdentitiesOnly`. Arbitrary directives and wildcard/`Match` blocks are not managed.
+A foreign alias remains usable for `list`, `show`, `probe`, key bootstrap, and fleet registration, but connection flags are rejected during `setup`. Dev will not compete with its existing definition. New dev-managed aliases use a portable lowercase exact-name grammar and one deterministic file containing `HostName`, optional `User`, `Port`, `ProxyJump`, `IdentityFile`, and `IdentitiesOnly`. A file that also needs `IdentityAgent` or `SecurityKeyProvider` uses the `v2` header instead; dev v0.2.37 and older treat a v2 file as not dev-owned and refuse setup/remove on it, so upgrade every dev that shares `~/.ssh` before selecting agent keys. Arbitrary directives and wildcard/`Match` blocks are not managed.
 
 ## Command map
 
@@ -525,6 +525,8 @@ dev ssh key list
 dev ssh key list --json
 dev ssh key list --no-agent
 dev ssh key list --alias lab --json
+dev ssh key list --agent bitwarden
+dev ssh setup lab --identity-agent 1password --key SHA256:… --target-os posix
 ```
 
 The default key listing scans bounded public-key files under `~/.ssh` and the
@@ -536,6 +538,38 @@ Match exec or resolver behavior may run. Listing never reads private-key content
 derives/generates a key, repairs permissions or authenticates remotely.
 `--json` emits one `ssh_key_list` document with candidates, completeness and source
 diagnostics; a missing or unusable source does not become an empty success claim.
+
+Keys can stay in a password manager's SSH agent instead of a private file.
+`--agent bitwarden|1password|secretive|<absolute socket>` adds that agent to the
+listing, and the setup key picker adds every provider whose socket is present.
+Dev finds sockets by `stat` only — Bitwarden (App Store, .dmg, Linux, Snap and
+Flatpak paths), 1Password and Secretive; an installed provider without a socket is
+reported with the step that enables its agent (Bitwarden: Settings → enable SSH
+agent), and `dev doctor` shows the same warning. An absent socket does not prove
+the agent is disabled; the app may be closed or using another path. Discovery of
+provider locations is passive; selecting/listing keys explicitly queries the SSH
+agent, not the provider's vault CLI. A setup dry-run does not write or connect to
+hosts, but selecting an agent key still queries that exact agent. The shared Windows
+`\\.\pipe\openssh-ssh-agent` is never attributed to a vendor. Explicit named/custom
+agent selection is disabled on native Windows until pipe identity and ownership
+can be verified; existing native OpenSSH ambient-authentication flows are unchanged.
+When several agents
+offer one key, the alias `IdentityAgent` wins, then the requested order, then
+`SSH_AUTH_SOCK`. Choosing a named-agent key, or `dev ssh setup <alias>
+--identity-agent <agent> --key <SHA256 fingerprint or .pub path>`, writes the
+public line only to `~/.ssh/dev_agent_<provider>_<alias>.pub` (no-replace) and a
+v2 managed alias with `IdentityAgent`, that `IdentityFile` and `IdentitiesOnly yes`,
+so later logins and the bootstrap proof use exactly that agent key. A foreign
+alias is never edited: if its fresh effective configuration already matches the
+selected agent policy, bootstrap can proceed without a rewrite. Otherwise setup
+stops with `identity_agent_manual` and prints the lines to add.
+
+Named-agent setup can register a regular or LAN-discovered alias **to** fleet or
+Herdr. Importing connection profiles **from** `fleet:HOST` (including hop keys)
+does not yet carry controller-selected named-agent plans: those choices are
+unavailable and `--identity-agent` is rejected before import. Import using existing
+controller authentication or configuration-only mode, then set up the imported
+alias separately. Remote provider paths are never copied to the controller.
 
 The setup wizard's authentication menu offers configure only, existing
 authentication, or **Install an SSH key (existing or new)**. The key choice opens
@@ -791,8 +825,9 @@ Choice fields show every option with the current one bracketed, such as
 opens a picker of file-backed local keys, **+ Generate a new key** and a manual
 path; Esc returns to the form, and picking a key selects key authentication.
 **+ Generate a new key** opens a short form for the new key path and an optional
-comment before returning to the form. Agent-only identities remain available in
-the terminal `dev ssh setup` picker.
+comment before returning to the form. Keys from present Bitwarden, 1Password or
+Secretive agents and a validated `SSH_AUTH_SOCK` are listed too. Agent-only choices
+retain the exact fingerprint and socket; unavailable providers show guidance.
 
 `Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
 target…**, a form prefilled from that observation, including a matching profile's

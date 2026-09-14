@@ -38,8 +38,7 @@ func (s *Service) bootstrapProof(ctx context.Context, op *AuthenticationOperatio
 	if exact {
 		mode = "selected"
 		if selector.agent != nil {
-			configured, enabled, err := s.resolveIdentityAgent(firstEffectiveValue(hop.effective, "identityagent"))
-			if err != nil || !enabled || configured != "" && configured != selector.agent.socket {
+			if !s.effectiveUsesAgent(hop.effective, selector.agent, selector.agent.identity != nil) {
 				return false, errors.Join(ErrUnprovenAuthentication, ErrAgentPolicyMismatch)
 			}
 			if err := s.revalidateAgentKey(ctx, selector.agent, selector.fingerprint); err != nil {

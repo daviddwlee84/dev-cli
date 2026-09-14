@@ -304,6 +304,15 @@ func sshDoctorChecks(app *App) []check {
 		checks = append(checks, check{"ssh config", checkWarn, "cannot derive ~/.ssh paths: " + err.Error()})
 		return checks
 	}
+	// Stat-only: providers are never executed and their agents are not queried.
+	for _, observation := range service.ObserveAgentProviders(goruntime.GOOS) {
+		name := observation.Label + " agent"
+		if observation.SocketPresent {
+			checks = append(checks, check{name, checkOK, "SSH agent socket " + observation.Socket})
+		} else {
+			checks = append(checks, check{name, checkWarn, "installed but its SSH agent socket was not found — " + sshhost.AgentProviderEnableHint(observation.Provider)})
+		}
+	}
 	inventory, discoverErr := service.Discover(ctxOf())
 	if discoverErr != nil {
 		checks = append(checks, check{"ssh config", checkWarn, "static discovery failed: " + discoverErr.Error()})

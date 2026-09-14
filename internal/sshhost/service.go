@@ -2,6 +2,7 @@ package sshhost
 
 import (
 	"fmt"
+	"io/fs"
 	"sync/atomic"
 )
 
@@ -27,6 +28,13 @@ type Service struct {
 	afterManagedCommit  func()
 	beforeInitCommit    func()
 	beforeKeyCommit     func()
+
+	// Agent provider test seams: socket-mode/ownership check and the root for
+	// system application paths. Production leaves both empty.
+	agentSocketCheck       func(string, fs.FileInfo) error
+	agentSystemRoot        string
+	agentPublicCommit      func(*stagedFile, string, fileSnapshot) (bool, error)
+	afterAgentPublicCommit func()
 }
 
 var nextServiceID atomic.Uint64

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"text/tabwriter"
 
@@ -28,15 +29,23 @@ func newSSHKeyCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{Use: "key", Short: "Inspect local SSH keys and agent identities (install one with dev ssh setup)", Args: cobra.NoArgs}
 	var jsonOut, noAgent bool
 	var alias, on string
+	var agentValues []string
 	list := &cobra.Command{
 		Use: "list", Short: "List local public keys and SSH agent identities",
 		Long: `List public-key metadata under ~/.ssh and identities from the current SSH agent.
 Keys are deduplicated by fingerprint. No private key contents are read or printed.
 For local listings, only --alias evaluates ssh -G and the alias's configured agent.
 Local listing never repairs permissions, generates keys, or authenticates remotely.
---on fleet:HOST explicitly contacts that source for metadata from its own keys and agent.`,
+--on fleet:HOST explicitly contacts that source for metadata from its own keys and agent.
+--agent also lists a named agent (bitwarden, 1password, secretive) or an absolute socket.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if noAgent && len(agentValues) > 0 {
+				return asUsageError(errors.New("--no-agent cannot be combined with --agent"))
+			}
+			if on != "" && len(agentValues) > 0 {
+				return asUsageError(errors.New("--agent lists local agents and cannot be combined with --on"))
+			}
 			if on != "" {
 				return runSSHRemoteKeys(cmd.Context(), app, on, alias, noAgent, jsonOut)
 			}
@@ -45,7 +54,10 @@ Local listing never repairs permissions, generates keys, or authenticates remote
 			service, err := app.sshHosts()
 			document := sshKeyListDocument{SchemaVersion: sshCLISchemaVersion, Kind: "ssh_key_list", Status: "ready", Alias: alias}
 			if err == nil {
-				document.KeyCatalog, err = service.Catalog(ctx, sshhost.KeyCatalogRequest{LocalOnly: alias == "", Alias: alias, NoAgent: noAgent})
+				var agents []sshhost.AgentSocketRef
+				if agents, err = resolveSSHAgentRefs(service, agentValues); err == nil {
+					document.KeyCatalog, err = service.Catalog(ctx, sshhost.KeyCatalogRequest{LocalOnly: alias == "", Alias: alias, NoAgent: noAgent, Agents: agents})
+				}
 			}
 			if err != nil {
 				document.Status = "failed"
@@ -67,6 +79,8 @@ Local listing never repairs permissions, generates keys, or authenticates remote
 	list.Flags().BoolVar(&noAgent, "no-agent", false, "Skip SSH agent enumeration")
 	list.Flags().StringVar(&alias, "alias", "", "Evaluate this alias's OpenSSH identity and agent settings")
 	list.Flags().StringVar(&on, "on", "", "Run key inventory on the selected fleet:HOST using its local key context")
+	list.Flags().StringArrayVar(&agentValues, "agent", nil, "Also list a named SSH agent: bitwarden, 1password, secretive or an absolute socket path (repeatable)")
+	registerFlagCompletion(list, "agent", fixedCompletions(string(sshhost.AgentProviderBitwarden), string(sshhost.AgentProvider1Password), string(sshhost.AgentProviderSecretive)))
 	cmd.AddCommand(list)
 	cmd.AddCommand(newSSHKeyDoctorCmd(app))
 	cmd.AddCommand(newSSHKeyDeriveCmd(app))
@@ -105,6 +119,9 @@ func renderSSHKeyDiagnostics(app *App, diagnostics []sshhost.Diagnostic) {
 }
 
 func sshKeyLabel(home string, key sshhost.KeyCandidate) string {
+	if key.Agent != nil {
+		return sshhost.AgentProviderLabel(key.Agent.Provider) + " agent"
+	}
 	path := key.IdentityFile
 	if path == "" {
 		path = key.PublicPath
@@ -149,34 +166,120 @@ func sshKeySigner(key sshhost.KeyCandidate) string {
 	return strings.Join(signers, " + ")
 }
 
-func localSSHKeyCatalog(ctx context.Context, service *sshhost.Service) (sshhost.KeyCatalog, error) {
+func localSSHKeyCatalog(ctx context.Context, service *sshhost.Service, agents ...sshhost.AgentSocketRef) (sshhost.KeyCatalog, error) {
 	ctx, cancel := context.WithTimeout(ctx, sshShowTimeout)
 	defer cancel()
-	return service.Catalog(ctx, sshhost.KeyCatalogRequest{LocalOnly: true})
+	return service.Catalog(ctx, sshhost.KeyCatalogRequest{LocalOnly: true, Agents: agents})
+}
+
+func resolveSSHAgentRefs(service *sshhost.Service, values []string) ([]sshhost.AgentSocketRef, error) {
+	refs := make([]sshhost.AgentSocketRef, 0, len(values))
+	for _, value := range values {
+		ref, err := service.ResolveAgentSocket(runtime.GOOS, value)
+		if err != nil {
+			return nil, err
+		}
+		refs = append(refs, ref)
+	}
+	return refs, nil
+}
+
+// sshPickerAgents returns the explicit agent sockets a key picker lists: the
+// flag-selected agent, or every provider whose socket is present. Installed
+// providers without a socket get a hint on app.Err when app is non-nil.
+func sshPickerAgents(app *App, service *sshhost.Service, options sshSetupOptions) []sshhost.AgentSocketRef {
+	if options.fleetImportKeyPicker {
+		return nil
+	}
+	if options.agentRef != nil {
+		return []sshhost.AgentSocketRef{*options.agentRef}
+	}
+	var agents []sshhost.AgentSocketRef
+	for _, observation := range service.ObserveAgentProviders(runtime.GOOS) {
+		switch {
+		case observation.Provider == sshhost.AgentProviderWindowsPipe:
+		case observation.SocketPresent:
+			agents = append(agents, sshhost.AgentSocketRef{Provider: observation.Provider, Socket: observation.Socket})
+		case observation.AppDetected && app != nil:
+			fmt.Fprintf(app.Err, "dev: %s is installed but its SSH agent socket was not found; %s to list its keys.\n", observation.Label, sshhost.AgentProviderEnableHint(observation.Provider))
+		}
+	}
+	return agents
+}
+
+// selectSSHAgentKey finds key, a SHA256 fingerprint or a .pub path, in one agent.
+func selectSSHAgentKey(ctx context.Context, service *sshhost.Service, ref sshhost.AgentSocketRef, key string) (sshhost.KeyCandidate, error) {
+	fingerprint := key
+	if !strings.HasPrefix(key, "SHA256:") {
+		if !strings.HasSuffix(strings.ToLower(key), ".pub") {
+			return sshhost.KeyCandidate{}, errors.New("--key with --identity-agent must be a SHA256 fingerprint or a .pub file")
+		}
+		plan, err := service.PlanKey(ctx, sshhost.KeyRequest{Operation: sshhost.KeyUse, Path: key})
+		if err != nil {
+			return sshhost.KeyCandidate{}, fmt.Errorf("read public key for --identity-agent: %w", err)
+		}
+		// Only public metadata selects the agent key. An unsafe private companion
+		// does not grant private authority or prevent use of the separate agent.
+		if plan.Fingerprint == "" {
+			return sshhost.KeyCandidate{}, sshKeyPlanBlockedError(plan)
+		}
+		fingerprint = plan.Fingerprint
+	}
+	return service.SelectAgentKey(ctx, ref, fingerprint)
+}
+
+// sshAgentManualError explains the lines a user adds to a foreign alias that
+// dev must not rewrite.
+func sshAgentManualError(alias string, ref sshhost.AgentSocketRef, publicPath string) error {
+	return fmt.Errorf("%s is a foreign SSH alias, so dev will not edit it. To use this %s agent key, save its public line to %s and add to that Host block:\n    IdentityAgent %q\n    IdentityFile %q\n    IdentitiesOnly yes\n%w",
+		alias, sshhost.AgentProviderLabel(ref.Provider), publicPath, ref.Socket, publicPath, sshhost.ErrManualRemediation)
 }
 
 // chooseSSHKeyInteractive offers existing local keys, generation and a manual
 // path in one picker, then prepares the selected key plan.
 func chooseSSHKeyInteractive(ctx context.Context, app *App, service *sshhost.Service, alias string, options sshSetupOptions, generateDefault string) (sshSetupOptions, error) {
+	agents := sshPickerAgents(app, service, options)
 	for {
-		catalog, err := localSSHKeyCatalog(ctx, service)
+		catalog, err := localSSHKeyCatalog(ctx, service, agents...)
 		if err != nil {
 			return options, err
 		}
 		renderSSHKeyDiagnostics(app, catalog.Diagnostics)
 		items := make([]picker.Item, 0, len(catalog.Candidates)+2)
 		for _, key := range catalog.Candidates {
+			if options.agentRef != nil && (key.Agent == nil || key.Agent.Socket != options.agentRef.Socket) {
+				continue
+			}
 			items = append(items, picker.Item{Value: key.Fingerprint, Label: sshKeyLabel(service.Paths().Home, key), Description: strings.Join([]string{key.Comment, key.Algorithm, key.Fingerprint, sshKeySources(key), sshKeySigner(key)}, " · ")})
 		}
-		items = append(items,
-			picker.Item{Value: "generate", Label: "+ Generate a new key", Description: "Ed25519 at " + generateDefault},
-			picker.Item{Value: "manual", Label: "Enter a key path…", Description: "Use a custom path or a private key missing its .pub companion"})
+		if options.agentRef == nil {
+			for _, observation := range service.ObserveAgentProviders(runtime.GOOS) {
+				if observation.Provider == sshhost.AgentProviderWindowsPipe || observation.SocketPresent && !options.fleetImportKeyPicker {
+					continue
+				}
+				hint := sshhost.AgentProviderEnableHint(observation.Provider)
+				if options.fleetImportKeyPicker {
+					hint = errSSHFleetImportAgent.Error()
+				}
+				items = append(items, picker.Item{Value: "unavailable:" + string(observation.Provider), Label: observation.Label + " agent (unavailable)", Description: hint})
+			}
+			items = append(items,
+				picker.Item{Value: "generate", Label: "+ Generate a new key", Description: "Ed25519 at " + generateDefault},
+				picker.Item{Value: "manual", Label: "Enter a key path…", Description: "Use a custom path or a private key missing its .pub companion"})
+		}
+		if len(items) == 0 {
+			return options, errors.New("the selected agent offers no keys; unlock the provider and make an SSH key available, then retry")
+		}
 		selected, err := sshPick(ctx, app, "SSH key for "+alias, items, false)
 		if errors.Is(err, picker.ErrCanceled) {
 			err = errPromptCanceled
 		}
 		if err != nil {
 			return options, err
+		}
+		if strings.HasPrefix(selected[0].Value, "unavailable:") {
+			fmt.Fprintln(app.Err, "dev: "+selected[0].Description)
+			continue
 		}
 		options.key, options.keyCandidate, options.keyPlan, options.generateKey, options.keyPath = "", nil, nil, false, ""
 		switch selected[0].Value {
@@ -201,6 +304,12 @@ func chooseSSHKeyInteractive(ctx context.Context, app *App, service *sshhost.Ser
 		default:
 			for _, key := range catalog.Candidates {
 				if key.Fingerprint == selected[0].Value {
+					if key.Agent != nil {
+						key, err = service.SelectAgentKey(ctx, *key.Agent, key.Fingerprint)
+						if err != nil {
+							return options, err
+						}
+					}
 					options.keyCandidate = &key
 					break
 				}
@@ -232,7 +341,8 @@ func normalizeSSHKeyPromptPath(sshDir, value string) string {
 
 // sshKeyPlanBlockedError names the first blocking reason of a key plan.
 func sshKeyPlanBlockedError(plan sshhost.KeyPlan) error {
-	for _, diagnostic := range plan.Diagnostics {
+	if len(plan.Diagnostics) > 0 {
+		diagnostic := plan.Diagnostics[0]
 		reason := diagnostic.Message
 		if reason == "" {
 			reason = strings.ReplaceAll(diagnostic.Code, "_", " ")
@@ -243,6 +353,9 @@ func sshKeyPlanBlockedError(plan sshhost.KeyPlan) error {
 }
 
 func prepareSSHWizardKey(ctx context.Context, app *App, service *sshhost.Service, options *sshSetupOptions) error {
+	if err := validateSSHAgentOptions(*options); err != nil {
+		return err
+	}
 	if options.keyPlan != nil {
 		return nil
 	}

@@ -13,6 +13,11 @@ const (
 	ManagedFormatVersion = 1
 	// ManagedHeader identifies a file as a dev-owned v1 host fragment.
 	ManagedHeader = "# dev-cli managed SSH host v1"
+	// ManagedHeaderV2 marks a fragment that also uses IdentityAgent or
+	// SecurityKeyProvider. Older dev binaries treat it as not dev-owned.
+	ManagedHeaderV2 = "# dev-cli managed SSH host v2"
+	// managedHeaderPrefix matches every managed fragment version.
+	managedHeaderPrefix = "# dev-cli managed SSH host v"
 	// ManagedInclude is the only Include installed by Init.
 	ManagedInclude = "~/.ssh/dev.d/*.conf"
 )
@@ -188,15 +193,22 @@ type EffectiveConfig struct {
 	Values         map[string][]string `json:"-"`
 }
 
-// ManagedDefinition is the complete allowlisted v1 host fragment model.
+// ManagedDefinition is the complete allowlisted host fragment model. The v2
+// directives IdentityAgent and SecurityKeyProvider select the v2 header.
 type ManagedDefinition struct {
-	Alias          string `json:"alias"`
-	HostName       string `json:"host_name"`
-	User           string `json:"user,omitempty"`
-	Port           int    `json:"port,omitempty"`
-	ProxyJump      string `json:"proxy_jump,omitempty"`
-	IdentityFile   string `json:"identity_file,omitempty"`
-	IdentitiesOnly *bool  `json:"identities_only,omitempty"`
+	Alias               string `json:"alias"`
+	HostName            string `json:"host_name"`
+	User                string `json:"user,omitempty"`
+	Port                int    `json:"port,omitempty"`
+	ProxyJump           string `json:"proxy_jump,omitempty"`
+	IdentityFile        string `json:"identity_file,omitempty"`
+	IdentitiesOnly      *bool  `json:"identities_only,omitempty"`
+	IdentityAgent       string `json:"identity_agent,omitempty"`
+	SecurityKeyProvider string `json:"security_key_provider,omitempty"`
+}
+
+func (d ManagedDefinition) needsV2() bool {
+	return d.IdentityAgent != "" || d.SecurityKeyProvider != ""
 }
 
 // ManagedOperation selects upsert or removal planning.

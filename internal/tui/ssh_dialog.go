@@ -215,7 +215,7 @@ func (m Model) renderSSHDialog() string {
 	if d.kind == "onboard" {
 		summary := "  Save SSH config by default. Fleet / Herdr require authentication."
 		if d.onboarding.Profile != nil {
-			summary = "  Installs the selected public key; connection settings stay as configured."
+			summary = "  Installs the selected public key; review any managed identity changes before applying."
 		}
 		lines = append(lines, summary, "  ←/→ or Space changes choices · Enter on Key lists keys · Ctrl+S reviews.", "")
 	}

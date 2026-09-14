@@ -134,6 +134,16 @@ func ValidateManagedDefinition(definition ManagedDefinition) error {
 	if definition.Port < 0 || definition.Port > 65535 {
 		return fmt.Errorf("managed Port %d is outside 1-65535", definition.Port)
 	}
+	if definition.IdentityAgent != "" {
+		if err := ValidateAgentSocketPath(definition.IdentityAgent); err != nil {
+			return fmt.Errorf("managed IdentityAgent: %w", err)
+		}
+	}
+	if provider := definition.SecurityKeyProvider; provider != "" && provider != "internal" {
+		if err := ValidateAgentSocketPath(provider); err != nil {
+			return fmt.Errorf("managed SecurityKeyProvider must be internal or an absolute path: %w", ErrUnsafePath)
+		}
+	}
 	return nil
 }
 
@@ -146,13 +156,18 @@ func cloneManagedDefinition(definition ManagedDefinition) ManagedDefinition {
 	return copy
 }
 
-// RenderManaged returns the only canonical byte representation of a v1 file.
+// RenderManaged returns the only canonical byte representation of a fragment:
+// v1 unless a v2 directive is present, so existing files never drift.
 func RenderManaged(definition ManagedDefinition) ([]byte, error) {
 	if err := ValidateManagedDefinition(definition); err != nil {
 		return nil, err
 	}
 	var body strings.Builder
-	body.WriteString(ManagedHeader)
+	if definition.needsV2() {
+		body.WriteString(ManagedHeaderV2)
+	} else {
+		body.WriteString(ManagedHeader)
+	}
 	body.WriteByte('\n')
 	body.WriteString("Host ")
 	body.WriteString(definition.Alias)
@@ -171,6 +186,8 @@ func RenderManaged(definition ManagedDefinition) ([]byte, error) {
 		}
 		writeConfigDirective(&body, "IdentitiesOnly", value)
 	}
+	writeConfigDirective(&body, "IdentityAgent", definition.IdentityAgent)
+	writeConfigDirective(&body, "SecurityKeyProvider", definition.SecurityKeyProvider)
 	return []byte(body.String()), nil
 }
 
@@ -201,16 +218,17 @@ func quoteConfigValue(value string) string {
 	return `"` + value + `"`
 }
 
-// ParseManaged accepts only canonical v1 content. A valid-looking block with
-// comments, reordered directives, duplicates, or unknown text is manual drift.
+// ParseManaged accepts only canonical v1 or v2 content. A valid-looking block
+// with comments, reordered directives, duplicates, or unknown text is manual drift.
 func ParseManaged(data []byte) (ManagedDefinition, error) {
 	if bytes.ContainsRune(data, 0) || bytes.HasPrefix(data, []byte{0xef, 0xbb, 0xbf}) {
 		return ManagedDefinition{}, fmt.Errorf("managed file has a BOM or NUL: %w", ErrNotManaged)
 	}
 	lines := strings.Split(string(data), "\n")
-	if len(lines) < 3 || lines[0] != ManagedHeader || lines[len(lines)-1] != "" {
-		return ManagedDefinition{}, fmt.Errorf("managed file has no canonical v1 header/ending: %w", ErrNotManaged)
+	if len(lines) < 3 || lines[0] != ManagedHeader && lines[0] != ManagedHeaderV2 || lines[len(lines)-1] != "" {
+		return ManagedDefinition{}, fmt.Errorf("managed file has no canonical v1/v2 header/ending: %w", ErrNotManaged)
 	}
+	v2 := lines[0] == ManagedHeaderV2
 	hostDirective, hostArguments, empty, err := parseConfigLine(lines[1])
 	if err != nil || empty || !strings.EqualFold(hostDirective, "Host") || len(hostArguments) != 1 {
 		return ManagedDefinition{}, fmt.Errorf("managed file must contain exactly one Host alias: %w", ErrNotManaged)
@@ -253,6 +271,16 @@ func ParseManaged(data []byte) (ManagedDefinition, error) {
 				return ManagedDefinition{}, fmt.Errorf("managed IdentitiesOnly is invalid: %w", ErrNotManaged)
 			}
 			definition.IdentitiesOnly = &enabled
+		case "identityagent":
+			if !v2 {
+				return ManagedDefinition{}, fmt.Errorf("managed directive %s requires the v2 header: %w", directive, ErrNotManaged)
+			}
+			definition.IdentityAgent = value
+		case "securitykeyprovider":
+			if !v2 {
+				return ManagedDefinition{}, fmt.Errorf("managed directive %s requires the v2 header: %w", directive, ErrNotManaged)
+			}
+			definition.SecurityKeyProvider = value
 		default:
 			return ManagedDefinition{}, fmt.Errorf("managed directive %s is not allowlisted: %w", directive, ErrNotManaged)
 		}
@@ -262,7 +290,7 @@ func ParseManaged(data []byte) (ManagedDefinition, error) {
 		return ManagedDefinition{}, fmt.Errorf("validate managed file: %w", ErrNotManaged)
 	}
 	if !bytes.Equal(canonical, data) {
-		return ManagedDefinition{}, fmt.Errorf("managed file differs from canonical v1 rendering: %w", ErrNotManaged)
+		return ManagedDefinition{}, fmt.Errorf("managed file differs from its canonical rendering: %w", ErrNotManaged)
 	}
 	return definition, nil
 }

@@ -12,12 +12,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   folder directly under `~/.ssh` is created with mode `0700` and shown in the plan,
   and blocked paths name their reason. The terminal key picker and the dashboard's
   **+ Generate a new key** now ask for the key path and an optional comment.
+- SSH keys held by Bitwarden, 1Password or Secretive agents (or a validated custom socket) can be
+  listed with `dev ssh key list --agent` and selected in the setup key pickers or
+  with `dev ssh setup --identity-agent`, so no private key file is needed. Dev
+  publishes only the public key and writes a v2 managed alias with `IdentityAgent`;
+  `dev doctor` warns when a provider is installed but no usable socket is found.
+  dev v0.2.37 and older refuse setup/remove on v2 aliases. Explicit named/custom
+  agent selection currently fails closed on native Windows and during remote
+  fleet-source imports; normal registration to fleet/Herdr remains supported.
 
 ### Fixed
 
 - The dashboard FLEET view reloads its host list after SSH setup registers a
   fleet or Herdr host, instead of showing it only after restarting the CLI. A
   partial SSH setup now names the unfinished steps, such as `lab herdr: unknown`.
+- SSH key-setup previews label inherited endpoint values as native configuration
+  instead of displaying port `0`, and omit empty managed-directory headings.
 
 ## [0.2.37] - 2026-09-14
 

@@ -9,14 +9,16 @@ import (
 // OnboardRequest carries an exact discovery observation into a reviewed setup.
 // Reports are provenance, never authentication or machine identity authority.
 type OnboardRequest struct {
-	Candidate                                         *sshdiscovery.Candidate
-	Report                                            *sshdiscovery.Report
-	MachineID                                         string
-	Alias, HostName, User                             string
-	Port                                              int
-	Auth                                              string
-	KeyPath                                           string
-	KeyComment                                        string
+	Candidate             *sshdiscovery.Candidate
+	Report                *sshdiscovery.Report
+	MachineID             string
+	Alias, HostName, User string
+	Port                  int
+	Auth                  string
+	KeyPath               string
+	KeyComment            string
+	// KeyFingerprint and KeyAgentSocket select a key held by a named agent.
+	KeyFingerprint, KeyAgentSocket                    string
 	GenerateKey                                       bool
 	To, RemoteOS, FleetName, HerdrLabel, HerdrSession string
 	// Profile installs a key for this existing alias; its connection fields
@@ -26,9 +28,10 @@ type OnboardRequest struct {
 
 // OnboardPreview is the display projection of an opaque service-bound plan.
 type OnboardPreview struct {
-	Targets []OnboardTarget
-	Init    sshhost.InitPlan
-	Notes   []string
+	Targets         []OnboardTarget
+	Init            sshhost.InitPlan
+	Notes           []string
+	PreserveAliases []string
 }
 
 // OnboardExecutionResult retains confirmed effects even when a later stage

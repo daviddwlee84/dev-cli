@@ -2158,6 +2158,7 @@ List local public keys and SSH agent identities
 dev ssh key list [flags]
 ```
 
+- `--agent` — Also list a named SSH agent: bitwarden, 1password, secretive or an absolute socket path (repeatable)
 - `--alias` — Evaluate this alias's OpenSSH identity and agent settings
 - `--json` — Print key metadata and source diagnostics as JSON
 - `--no-agent` — Skip SSH agent enumeration
@@ -2341,7 +2342,7 @@ dev ssh setup [alias] [flags]
 - `--auth` — existing to verify ordinary SSH without installing a key
 - `--comment` — public key comment for --generate-key
 - `--config-only` — stop after local config verification
-- `--dry-run` — render static local plans without running OpenSSH or writing
+- `--dry-run` — preview without writing or connecting to hosts; selected agents may be queried
 - `--fleet` — register the verified alias in dev fleet
 - `--fleet-name` — fleet profile name (default: alias)
 - `--from` — tailscale:<peer>, lan:<ip:port>, fleet:<host>/<alias>, or an exact discovery ID
@@ -2352,6 +2353,7 @@ dev ssh setup [alias] [flags]
 - `--hop-os` — route OS override alias=posix|windows (repeatable)
 - `--hostname` — managed HostName value
 - `--identities-only` — set managed IdentitiesOnly=yes (explicit false writes no)
+- `--identity-agent` — use a key from a named SSH agent: bitwarden, 1password, secretive or an absolute socket path
 - `--identity-file` — managed IdentityFile value
 - `--install-on-working-jump` — install the selected key on already-working jump hosts
 - `--json` — emit exactly one versioned JSON plan or result

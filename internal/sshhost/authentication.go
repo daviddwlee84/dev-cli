@@ -328,8 +328,7 @@ func (op *AuthenticationOperation) runConnection(ctx context.Context, candidate 
 		}
 		defer cleanup()
 		if selector.agent != nil {
-			configured, enabled, err := op.service.resolveIdentityAgent(firstEffectiveValue(op.route.state.hops[index].effective, "identityagent"))
-			if err != nil || !enabled || configured != "" && configured != selector.agent.socket {
+			if !op.service.effectiveUsesAgent(op.route.state.hops[index].effective, selector.agent, selector.agent.identity != nil) {
 				return RunResult{}, ErrAgentPolicyMismatch
 			}
 		}

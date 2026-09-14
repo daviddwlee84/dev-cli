@@ -507,9 +507,7 @@ func (s *Service) runSSHProof(ctx context.Context, hop routeHopState, selector k
 		return false, errors.New("exact SSH proof requires an identity selector")
 	}
 	if selector.agent != nil {
-		value := firstEffectiveValue(hop.effective, "identityagent")
-		configured, enabled, err := s.resolveIdentityAgent(value)
-		if err != nil || !enabled || configured != "" && configured != selector.agent.socket {
+		if !s.effectiveUsesAgent(hop.effective, selector.agent, selector.agent.identity != nil) {
 			return false, errors.Join(ErrUnprovenAuthentication, ErrAgentPolicyMismatch)
 		}
 		if err := s.revalidateAgentKey(ctx, selector.agent, selector.fingerprint); err != nil {

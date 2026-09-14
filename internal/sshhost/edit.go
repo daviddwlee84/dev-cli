@@ -84,7 +84,7 @@ func (s *Service) PlanFormat(ctx context.Context, paths []string, indent string)
 		if data == nil {
 			return zero, fmt.Errorf("configuration does not exist: %s", path)
 		}
-		if bytes.Contains(data, []byte(ManagedHeader)) || bytes.Contains(data, []byte("# BEGIN tsnet")) {
+		if bytes.Contains(data, []byte(managedHeaderPrefix)) || bytes.Contains(data, []byte("# BEGIN tsnet")) {
 			return zero, errors.New("provider-managed configuration must be edited by its owner")
 		}
 		formatted, err := FormatConfig(data, indent)
@@ -267,7 +267,7 @@ func (s *Service) Organization(ctx context.Context) (Layout, error) {
 					return l, errors.New("fragment global directives need manual organization")
 				}
 			}
-			if bytes.Contains(b, []byte(ManagedHeader)) || bytes.Contains(b, []byte("# BEGIN tsnet")) {
+			if bytes.Contains(b, []byte(managedHeaderPrefix)) || bytes.Contains(b, []byte("# BEGIN tsnet")) {
 				return l, errors.New("provider-managed fragment cannot be reorganized")
 			}
 			l.originals[p] = b

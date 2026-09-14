@@ -464,33 +464,41 @@ func commitReplace(staged *stagedFile, destination string, expected fileSnapshot
 }
 
 func commitNoReplace(staged *stagedFile, destination string, expected fileSnapshot) error {
+	_, err := commitNoReplaceObserved(staged, destination, expected)
+	return err
+}
+
+// commitNoReplaceObserved preserves whether publication may have happened even
+// when post-publication verification or syncing fails. False means the guarded
+// checks or no-replace collision prevented publication altogether.
+func commitNoReplaceObserved(staged *stagedFile, destination string, expected fileSnapshot) (bool, error) {
 	name, err := staged.destinationName(destination)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if err := staged.revalidate(); err != nil {
-		return err
+		return false, err
 	}
 	if _, err := snapshotStillCurrentAt(staged.root, name, expected); err != nil {
-		return fmt.Errorf("destination appeared before creation: %w", ErrSourceChanged)
+		return false, fmt.Errorf("destination appeared before creation: %w", ErrSourceChanged)
 	}
 	if err := verifyHeldDirectory(staged.dir, staged.held, true); err != nil {
-		return fmt.Errorf("destination parent changed before creation: %w", ErrSourceChanged)
+		return false, fmt.Errorf("destination parent changed before creation: %w", ErrSourceChanged)
 	}
 	moved, err := platformfs.PublishNoReplace(staged.root, staged.name, name)
 	if err != nil {
-		return err
+		return !errors.Is(err, fs.ErrExist), err
 	}
 	if !moved {
 		if err := staged.root.Remove(staged.name); err != nil {
 			cleanupErr := staged.root.Remove(name)
-			return errors.Join(err, cleanupErr)
+			return true, errors.Join(err, cleanupErr)
 		}
 	}
 	if err := verifyHeldDirectory(staged.dir, staged.held, true); err != nil {
-		return fmt.Errorf("destination parent changed during creation: %w", ErrSourceChanged)
+		return true, fmt.Errorf("destination parent changed during creation: %w", ErrSourceChanged)
 	}
-	return platformSyncDirectory(staged.dir)
+	return true, platformSyncDirectory(staged.dir)
 }
 
 func removeSecureFile(expected fileSnapshot) error {

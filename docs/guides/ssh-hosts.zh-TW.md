@@ -19,13 +19,13 @@ lang: zh-TW
 |---|---|---|
 | `~/.ssh/config`、其中的 foreign Includes 與 foreign `Host`/`Match` blocks | user + OpenSSH | static read；透過 plain `ssh -G` evaluate；明確 format/organize 可整理選定的使用者檔案 |
 | root config 中的 `Include ~/.ssh/dev.d/*.conf` | dev，且必須明確執行 `ssh init --apply` | 在第一個 `Host`、`Match` 或更早的 Include 前安裝一次；絕不自動移除 |
-| `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | 只 create、reconcile 或 remove canonical v1 file，其內容是 allowlisted single `Host` block |
+| `~/.ssh/dev.d/<alias>.conf` | `dev ssh setup/remove` | 只 create、reconcile 或 remove canonical v1／v2 file，其內容是 allowlisted single `Host` block |
 | local key files | user + native `ssh-keygen` | 驗證 explicit key、經確認後 derive 缺少的 `.pub`，或以 no-replace 方式產生 Ed25519 pair；絕不複製 private bytes |
 | remote `authorized_keys` | remote OpenSSH account | idempotently append 一筆 bounded normalized public record；絕不 remove 或 revoke |
 | primary `remotes.toml` | user via `dev fleet config` | read/merge；SSH setup 絕不 rewrite |
 | sibling `remotes.d/ssh-<alias>.toml` | `dev ssh setup/remove --fleet` | 只有 fresh ordinary login 成功後才 create；只有明確要求才 remove |
 
-Foreign alias 仍可供 `list`、`show`、`probe`、key bootstrap 與 fleet registration 使用，但 `setup` 會拒絕 connection flags；dev 不會與既有 definition 競爭。新的 dev-managed alias 使用 portable lowercase exact-name grammar，且只有一個 deterministic file，內容可包含 `HostName`、optional `User`、`Port`、`ProxyJump`、`IdentityFile` 與 `IdentitiesOnly`。Arbitrary directives 與 wildcard/`Match` blocks 不在 managed scope。
+Foreign alias 仍可供 `list`、`show`、`probe`、key bootstrap 與 fleet registration 使用，但 `setup` 會拒絕 connection flags；dev 不會與既有 definition 競爭。新的 dev-managed alias 使用 portable lowercase exact-name grammar，且只有一個 deterministic file，內容可包含 `HostName`、optional `User`、`Port`、`ProxyJump`、`IdentityFile` 與 `IdentitiesOnly`。還需要 `IdentityAgent` 或 `SecurityKeyProvider` 的檔案改用 `v2` header；dev v0.2.37 及更舊版本會把 v2 file 視為非 dev 管理並拒絕 setup/remove，因此選用 agent key 前請先升級所有共用 `~/.ssh` 的 dev。Arbitrary directives 與 wildcard/`Match` blocks 不在 managed scope。
 
 ## Command map
 
@@ -487,6 +487,8 @@ dev ssh key list
 dev ssh key list --json
 dev ssh key list --no-agent
 dev ssh key list --alias lab --json
+dev ssh key list --agent bitwarden
+dev ssh setup lab --identity-agent 1password --key SHA256:… --target-os posix
 ```
 
 預設 key listing 有界地掃描 `~/.ssh` 下的 public-key files 與目前 SSH agent，不評估
@@ -496,6 +498,32 @@ alias。以 fingerprint 去重，顯示 algorithm、comment、source paths、sou
 可能執行。Listing 不讀 private-key contents、不 derive／generate key、不修權限，
 也不嘗試 remote authentication。`--json` 輸出一個 `ssh_key_list` document，包含
 candidates、completeness 與 source diagnostics；來源缺失或不可用不會冒充空的成功結果。
+
+Key 也可以留在密碼管理器的 SSH agent，而不是 private file。
+`--agent bitwarden|1password|secretive|<absolute socket>` 會把該 agent 加入列表；
+setup key picker 會加入所有 socket 存在的 provider。Dev 只用 `stat` 尋找 socket：
+Bitwarden（App Store、.dmg、Linux、Snap、Flatpak 路徑）、1Password 與 Secretive；
+已安裝但找不到 socket 的 provider 會提示啟用 agent 的步驟（Bitwarden：Settings →
+啟用 SSH agent），`dev doctor` 也會顯示同樣的警告。找不到 socket 不代表已證明
+agent 被停用；app 可能未開啟，或正在使用其他路徑。Provider 路徑偵測是被動的；
+明確選取／列出 key 才會查詢 SSH agent，而不會執行 provider 的 vault CLI。Setup dry-run
+不寫檔，也不連線到 host，但選取 agent key 時仍會查詢該確切 agent。Windows 共用的
+`\\.\pipe\openssh-ssh-agent` 不會歸屬給任何廠商。Native Windows 在能驗證 pipe 身分與
+擁有者之前，會停用明確 named／custom agent 選取；既有原生 OpenSSH ambient 認證
+流程維持不變。多個 agent 提供同一把 key 時，
+優先順序為 alias 的 `IdentityAgent`、指定順序、`SSH_AUTH_SOCK`。選擇 named-agent key，
+或執行 `dev ssh setup <alias> --identity-agent <agent> --key <SHA256 fingerprint 或 .pub path>`，
+只會把 public line 以 no-replace 寫入 `~/.ssh/dev_agent_<provider>_<alias>.pub`，並寫入含
+`IdentityAgent`、該 `IdentityFile` 與 `IdentitiesOnly yes` 的 v2 managed alias，讓之後的登入
+與 bootstrap proof 都使用這把 agent key。Foreign alias 絕不會被修改：若重新取得的
+有效設定已符合所選 agent policy，可以直接 bootstrap，不需改寫。否則 setup 會以
+`identity_agent_manual` 停止並列出要手動加入的設定。
+
+Named-agent setup 可以把一般或 LAN 發現的 alias 註冊**到** fleet 或 Herdr。
+但**從** `fleet:HOST` 匯入連線 profile（包含 hop key）尚未支援攜帶 controller 選定的
+named-agent 計畫：這些選項不可用，`--identity-agent` 會在 import 前被拒絕。可先使用
+controller 既有認證或只配置模式匯入，再另外 setup 已匯入的 alias。
+Remote provider 路徑絕不會被複製到 controller。
 
 Setup wizard 的 authentication 選單提供 configure only、existing authentication 或
 **Install an SSH key (existing or new)**；後者開啟 catalog picker，另有
@@ -709,7 +737,9 @@ profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變
 ←／→ 或 Space 切換。在 **Key** 欄位按 Enter 或 Space 會開啟 picker，列出有檔案的
 本機 keys、**+ Generate a new key** 與手動輸入路徑；Esc 回到表單，選取 key 會把
 認證方式設為 key。**+ Generate a new key** 會先開啟小表單填寫新 key 路徑與可選
-comment，再回到原表單。只存在於 agent 的 identity 請改用終端的 `dev ssh setup` picker。
+comment，再回到原表單。可用的 Bitwarden、1Password、Secretive agent 與已驗證的
+`SSH_AUTH_SOCK` 內的 key 也會列出。Agent-only 選項保留確切 fingerprint 與 socket；
+不可用的 provider 則顯示操作指引。
 
 在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
 表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選

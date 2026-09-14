@@ -549,11 +549,11 @@ func (m Model) prepareSSHOnboarding() (tea.Model, tea.Cmd) {
 	if fleet && herdr {
 		r.To = "both"
 	}
-	if r.Auth != "key" && (r.KeyPath != "" || r.GenerateKey) {
+	if r.Auth != "key" && (r.KeyPath != "" || r.GenerateKey || r.KeyFingerprint != "") {
 		d.err = errors.New("Key selection or generation requires key authentication")
 		return m, nil
 	}
-	if r.Auth == "key" && r.KeyPath == "" {
+	if r.Auth == "key" && r.KeyPath == "" && r.KeyFingerprint == "" {
 		d.err = errors.New("Choose a key: Enter on Key lists local keys or generates one")
 		return m, nil
 	}
@@ -602,6 +602,15 @@ func (m *Model) finishSSHOnboarding(result SSHWorkflowResult) {
 			line += " — " + outcome.Error
 		}
 		lines = append(lines, line)
+		if outcome.Stage == "configure" {
+			if key, ok := result.Onboarding.Keys[outcome.Alias]; ok {
+				if key.PublicationUnknown {
+					lines = append(lines, "Public key publication unknown: inspect "+key.Candidate.PublicPath+" before retrying; no rollback is implied.")
+				} else if key.Created || key.Retained {
+					lines = append(lines, "Key asset retained: "+key.Candidate.IdentityFile)
+				}
+			}
+		}
 	}
 	m.sshUI.dialog = sshDialog{kind: "message", title: "Connection setup result", body: strings.Join(lines, "\n")}
 
@@ -649,8 +658,16 @@ func finishSSHEvent(events chan sshEventMsg, event sshEventMsg) {
 func sshOnboardPreview(preview sshflow.OnboardPreview) string {
 	var lines []string
 	for _, target := range preview.Targets {
-		lines = append(lines, fmt.Sprintf("%s → %s@%s:%d", target.Alias, target.User, target.HostName, target.Port))
-		lines = append(lines, "Save alias to the managed SSH configuration.")
+		endpoint := sshProfileEndpoint(sshflow.ConnectionProfile{HostName: target.HostName, User: target.User, Port: target.Port})
+		if target.Port == 0 {
+			endpoint += " (native port)"
+		}
+		lines = append(lines, target.Alias+" → "+endpoint)
+		if slices.Contains(preview.PreserveAliases, target.Alias) {
+			lines = append(lines, "Preserve this foreign alias's existing SSH configuration.")
+		} else {
+			lines = append(lines, "Save alias to the managed SSH configuration.")
+		}
 		switch target.Auth {
 		case "config":
 			lines = append(lines, "Authentication: save configuration only")
@@ -664,7 +681,10 @@ func sshOnboardPreview(preview sshflow.OnboardPreview) string {
 		}
 	}
 	if preview.Init.Path != "" {
-		lines = append(lines, "SSH initialization: "+string(preview.Init.Action)+" "+preview.Init.Path, "Managed aliases: "+preview.Init.ManagedDir)
+		lines = append(lines, "SSH initialization: "+string(preview.Init.Action)+" "+preview.Init.Path)
+		if preview.Init.ManagedDir != "" {
+			lines = append(lines, "Managed aliases: "+preview.Init.ManagedDir)
+		}
 	}
 	lines = append(lines, preview.Notes...)
 	return strings.Join(lines, "\n")

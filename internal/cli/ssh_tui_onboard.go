@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -29,13 +31,14 @@ func (p *sshTUIOnboardingPlan) Preview() sshflow.OnboardPreview {
 	copy := p.preview
 	copy.Targets = append([]sshflow.OnboardTarget(nil), copy.Targets...)
 	copy.Notes = append([]string(nil), copy.Notes...)
+	copy.PreserveAliases = append([]string(nil), copy.PreserveAliases...)
 	copy.Init.Diagnostics = append([]sshhost.Diagnostic(nil), copy.Init.Diagnostics...)
 	return copy
 }
 
 func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.OnboardRequest) (tui.SSHOnboardingPlan, error) {
 	if request.Profile != nil {
-		if request.Alias != request.Profile.Alias || request.Auth != "key" || request.KeyPath == "" || request.Candidate != nil {
+		if request.Alias != request.Profile.Alias || request.Auth != "key" || request.KeyPath == "" && request.KeyFingerprint == "" || request.Candidate != nil {
 			return nil, errors.New("choose a key for the selected SSH profile")
 		}
 		if err := revalidateSSHTUIProfile(ctx, app, *request.Profile); err != nil {
@@ -47,11 +50,14 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 	if request.Auth != "config" && request.Auth != "existing" && request.Auth != "key" {
 		return nil, errors.New("choose configure only, existing authentication or explicit key bootstrap")
 	}
-	if request.Auth != "key" && (request.KeyPath != "" || request.GenerateKey) {
+	if request.Auth != "key" && (request.KeyPath != "" || request.GenerateKey || request.KeyFingerprint != "") {
 		return nil, errors.New("key selection requires key bootstrap")
 	}
-	if request.Auth == "key" && request.KeyPath == "" {
+	if request.Auth == "key" && request.KeyPath == "" && request.KeyFingerprint == "" {
 		return nil, errors.New("select an existing key or a new key path")
+	}
+	if request.KeyFingerprint != "" && (request.KeyPath != "" || request.GenerateKey || request.KeyAgentSocket == "") {
+		return nil, errors.New("choose either an agent key or a key path")
 	}
 	if request.Auth == "config" && request.To != "" {
 		return nil, errors.New("registration requires existing authentication or explicit key bootstrap")
@@ -116,6 +122,14 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 		}
 		keyRequest := sshhost.KeyRequest{Operation: sshhost.KeyUse, Path: request.KeyPath, AllowDerive: true}
 		options.key = request.KeyPath
+		if request.KeyFingerprint != "" {
+			candidate, err := selectSSHTUIAgentKey(ctx, service, request)
+			if err != nil {
+				return nil, err
+			}
+			options.key, options.keyCandidate = "", &candidate
+			keyRequest = sshhost.KeyRequest{Candidate: candidate}
+		}
 		if request.GenerateKey {
 			destination := normalizeSSHKeyPromptPath(service.Paths().SSHDir, request.KeyPath)
 			keyRequest = sshhost.KeyRequest{Operation: sshhost.KeyGenerate, DestinationIdentity: destination, Comment: request.KeyComment, Interactive: true}
@@ -129,7 +143,11 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 			return nil, sshKeyPlanBlockedError(keyPlan)
 		}
 		options.keyPlan = &keyPlan
-		notes = append(notes, fmt.Sprintf("Key: %s %s %s", keyPlan.Operation, keyPlan.IdentityFile, keyPlan.Fingerprint))
+		identity := keyPlan.IdentityFile
+		if keyPlan.Agent != nil {
+			identity = sshhost.AgentProviderLabel(keyPlan.Agent.Provider) + " agent"
+		}
+		notes = append(notes, fmt.Sprintf("Key: %s %s %s", keyPlan.Operation, identity, keyPlan.Fingerprint))
 		if keyPlan.CreateParent != "" {
 			notes = append(notes, "Create key directory "+keyPlan.CreateParent+" (mode 0700).")
 		}
@@ -149,32 +167,95 @@ func prepareSSHTUIOnboarding(ctx context.Context, app *App, request sshflow.Onbo
 	if request.To == "herdr" || request.To == "both" {
 		notes = append(notes, "Herdr may install/start its remote server; native approvals remain interactive.")
 	}
-	notes = append(notes, "Create or update the displayed SSH configuration and explicit machine mappings.")
-	return &sshTUIOnboardingPlan{prepared: prepared, registryPath: app.machineStore().Path, fleetPath: fleetConfigPath(app), preview: sshflow.OnboardPreview{Targets: append([]sshflow.OnboardTarget(nil), prepared.plan.Targets...), Init: prepared.init, Notes: notes}}, nil
+	notes = append(notes, sshAgentPreview(item)...)
+	if item.Definition != nil {
+		notes = append(notes, "Create or update the displayed SSH configuration and explicit machine mappings.")
+	} else {
+		notes = append(notes, "Preserve the existing foreign SSH configuration; record explicit machine mappings.")
+	}
+	preview := sshflow.OnboardPreview{Targets: append([]sshflow.OnboardTarget(nil), prepared.plan.Targets...), Init: prepared.init, Notes: notes}
+	if item.Definition == nil {
+		preview.PreserveAliases = []string{request.Alias}
+	}
+	return &sshTUIOnboardingPlan{prepared: prepared, registryPath: app.machineStore().Path, fleetPath: fleetConfigPath(app), preview: preview}, nil
 }
 
-// listSSHTUIKeys offers file-backed local keys plus a generated destination.
-// Agent-only identities remain available through the terminal setup picker.
+// selectSSHTUIAgentKey re-catalogs the reviewed agent socket and requires the
+// same fingerprint before planning.
+func selectSSHTUIAgentKey(ctx context.Context, service *sshhost.Service, request sshflow.OnboardRequest) (sshhost.KeyCandidate, error) {
+	ref := sshhost.AgentSocketRef{Provider: sshhost.AgentProviderCustom, Socket: request.KeyAgentSocket}
+	for _, observation := range service.ObserveAgentProviders(runtime.GOOS) {
+		if observation.SocketPresent && observation.Socket == request.KeyAgentSocket {
+			ref.Provider = observation.Provider
+		}
+	}
+	candidate, err := selectSSHAgentKey(ctx, service, ref, request.KeyFingerprint)
+	if err != nil {
+		return candidate, fmt.Errorf("%w; list keys again: %w", err, sshhost.ErrSourceChanged)
+	}
+	return candidate, nil
+}
+
+// listSSHTUIKeys offers file-backed local keys, named and ambient agent keys,
+// and a generated destination. The ambient socket is captured before catalog
+// enumeration and remains an explicit reference after selection.
 func listSSHTUIKeys(ctx context.Context, app *App, alias string) ([]tui.SSHKeyChoice, error) {
 	service, err := app.sshHosts()
 	if err != nil {
 		return nil, err
 	}
-	catalog, err := localSSHKeyCatalog(ctx, service)
+	agents := sshPickerAgents(nil, service, sshSetupOptions{})
+	ambientUnavailable := ""
+	if socket := os.Getenv("SSH_AUTH_SOCK"); socket != "" {
+		var ref sshhost.AgentSocketRef
+		err := sshhost.ValidateAgentSocketPath(socket)
+		if err == nil {
+			ref, err = service.ResolveAgentSocket(runtime.GOOS, socket)
+		}
+		if err != nil {
+			ambientUnavailable = "SSH_AUTH_SOCK is not a usable owned socket; select another agent or configure an absolute socket path, then reopen the picker."
+		} else {
+			known := false
+			for _, agent := range agents {
+				known = known || agent.Socket == ref.Socket
+			}
+			if !known {
+				agents = append(agents, ref)
+			}
+		}
+	}
+	catalog, err := localSSHKeyCatalog(ctx, service, agents...)
 	if err != nil {
 		return nil, err
 	}
 	home := service.Paths().Home
 	choices := make([]tui.SSHKeyChoice, 0, len(catalog.Candidates)+1)
+	if ambientUnavailable != "" {
+		choices = append(choices, tui.SSHKeyChoice{Label: "SSH_AUTH_SOCK agent (unavailable)", Description: ambientUnavailable, UnavailableReason: ambientUnavailable})
+	}
 	for _, key := range catalog.Candidates {
+		if key.Agent != nil {
+			label := sshKeyLabel(home, key)
+			if key.Comment != "" {
+				label += ": " + key.Comment
+			}
+			choices = append(choices, tui.SSHKeyChoice{Label: label, Description: key.Algorithm + " · " + key.Fingerprint, Fingerprint: key.Fingerprint, AgentProvider: string(key.Agent.Provider), AgentSocket: key.Agent.Socket})
+			continue
+		}
 		path := key.IdentityFile
 		if path == "" {
 			path = key.PublicPath
 		}
-		if path == "" {
+		if path != "" {
+			choices = append(choices, tui.SSHKeyChoice{Label: sshKeyLabel(home, key), Description: key.Algorithm + " · " + sshKeySigner(key), Path: path})
+		}
+	}
+	for _, observation := range service.ObserveAgentProviders(runtime.GOOS) {
+		if observation.Provider == sshhost.AgentProviderWindowsPipe || observation.SocketPresent {
 			continue
 		}
-		choices = append(choices, tui.SSHKeyChoice{Label: sshKeyLabel(home, key), Description: key.Algorithm + " · " + sshKeySigner(key), Path: path})
+		hint := "The SSH agent socket was not found; " + sshhost.AgentProviderEnableHint(observation.Provider) + ", then reopen the key picker."
+		choices = append(choices, tui.SSHKeyChoice{Label: observation.Label + " agent (unavailable)", Description: hint, AgentProvider: string(observation.Provider), UnavailableReason: hint})
 	}
 	if sshhost.ValidateLookupAlias(alias) != nil {
 		alias = "host"
