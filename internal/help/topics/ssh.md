@@ -74,7 +74,11 @@ dev ssh setup winlab --hostname 198.51.100.30 --generate-key \
 dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --dry-run --json
 ```
 
-Public-key bootstrap requires exactly one explicit `--key` or `--generate-key`.
+Public-key bootstrap uses exactly one of `--key` or `--generate-key`. On a terminal,
+`dev ssh setup <alias>` without either opens a key picker: local keys,
+`+ Generate a new key` (default `~/.ssh/id_ed25519_dev_<alias>`) and a manual path;
+noninteractive setup still requires a flag. Unknown hops are asked as
+`Remote OS for <alias> (posix/windows) [posix]`.
 `--key` accepts a validated `.pub`, identity with a companion `.pub`, or security
 key stub with a companion. A missing public companion is derived with confirmed
 `ssh-keygen -y`; encrypted noninteractive derivation fails instead of accepting a
@@ -164,7 +168,8 @@ child progress stay on stderr.
 
 `dev ssh` opens a menu on a terminal; pipes retain the command help. The default
 configuration-cleanup choice is formatting. Group restructuring is a separate,
-explicit operation.
+explicit operation. **Set up or install an SSH key for a host** picks a configured
+alias (or accepts a typed one) and continues with the setup key picker.
 
 ```bash
 dev ssh manage                          # joint inventory and multi-select wizard
@@ -357,6 +362,10 @@ and reverse-DNS names are observations and suggestions. --ports selects other
 ports; --refresh bypasses a fresh matching cache. The five-minute cache under
 $XDG_CACHE_HOME/dev/ssh-discovery is disposable; list --lan and dashboard refresh
 never scan. IPv6 range scans and mDNS are not implemented.
+ready means every probe finished, not that a host was found. LAN reports add probes
+counts and a no_reachable_endpoints warning; on macOS this usually means the
+terminal app lacks Local Network permission. The CLI and wizard rescan an empty
+fresh LAN cache instead of reusing it.
 
 The durable private registry is paths.state_dir/machines/registry.db. It owns
 controller-local machine UUIDs, not remote fleet machine_id pins. Discovery/list
@@ -398,8 +407,10 @@ derives/generates a key, repairs permissions or authenticates remotely.
 `--json` emits one `ssh_key_list` document with candidates, completeness and source
 diagnostics; a missing or unusable source does not become an empty success claim.
 
-Choosing an existing key in the setup wizard opens this catalog, with an
-**Enter a key path…** fallback. A public file without an available signer remains
+The setup wizard's authentication menu offers configure only, existing
+authentication, or **Install an SSH key (existing or new)**. The key choice opens
+this catalog with **+ Generate a new key** and an **Enter a key path…** fallback;
+fleet imports and per-hop key choices use the same picker. A public file without an available signer remains
 visible but cannot silently satisfy bootstrap. Select another identity, load its
 signer into the agent or provide the matching private-key path. The selected key
 is validated before continuing to later registration prompts; generation and
@@ -634,6 +645,20 @@ SSH/key and Herdr interactions receive the terminal only after review. Returning
 to the dashboard shows each completed, failed or unknown stage and selects the
 new profile. Completed configuration survives a later authentication/provider
 failure. A changed LAN scope requires renewed discovery/review.
+
+Choice fields show every option with the current one bracketed, such as
+`config · existing · [key]`; ←/→ or Space cycle them. Enter or Space on **Key**
+opens a picker of file-backed local keys, **+ Generate a new key** and a manual
+path; Esc returns to the form, and picking a key selects key authentication.
+Agent-only identities remain available in the terminal `dev ssh setup` picker.
+
+`Ctrl+O` on a row with LAN or Tailscale candidates offers **set up this discovered
+target…**, a form prefilled from that observation, including a matching profile's
+user. On a configured profile it offers **set up / install an SSH key…**: choose the
+exact profile when several exist, pick a key, set Remote OS and optional
+Fleet/Herdr, then review. Connection settings are not editable. A foreign alias
+receives only the public key; a managed alias also records the key as its
+IdentityFile, shown in the review.
 
 `p` offers quick network tests or full SSH verification for a profile, machine,
 or filtered profile set. Review the exact targets before starting. DNS/route,

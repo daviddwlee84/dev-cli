@@ -111,7 +111,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.36 instead when you need a reproducible install.
+# Pin @v0.2.37 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -155,7 +155,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.2.36
+  version=v0.2.37
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"
@@ -299,7 +299,9 @@ dev ssh setup winlab --hostname 198.51.100.30 --generate-key \
 dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix --dry-run
 ```
 
-Public-key bootstrap requires exactly one explicit `--key` or `--generate-key`. Generated
+Public-key bootstrap uses exactly one of `--key` or `--generate-key`; on a terminal,
+`dev ssh setup <alias>` without either opens a key picker (local keys, generate, or a
+path), and interactive prompts list their choices such as `(posix/windows)`. Generated
 keys are Ed25519; noninteractive generation additionally requires
 `--no-passphrase`, while an interactive `ssh-keygen` owns hidden passphrase
 prompts. A private/security-key identity passed to `--key` must have a validated
@@ -318,7 +320,8 @@ dev ssh key doctor --key ~/.ssh/custom-key --fix --yes --json
 ```
 
 The setup wizard offers a key picker with paths, comments, fingerprints and signer
-availability, plus manual path entry. It checks basic SSH directory/configuration
+availability, plus **+ Generate a new key** and manual path entry. `dev ssh` also
+has a **Set up or install an SSH key for a host** menu entry. It checks basic SSH directory/configuration
 permissions early and offers separately confirmed, narrowly scoped tightening.
 Completed permission repairs remain if setup is canceled later; aliases, registry
 bindings, key generation and remote actions still wait for the main preview.
@@ -942,7 +945,8 @@ The SSH tab aligns machine rows and Space-expanded profiles, with configured
 connections first and recent local dev usage before unused aliases. `c` selects
 and scans LAN/Tailscale inside the dashboard; results stay visible even when
 cache storage fails. Enter on a discovered candidate opens reviewed SSH setup,
-with Fleet/Herdr registration opt-in. `p` tests selected or filtered profiles in
+with Fleet/Herdr registration opt-in. Ctrl+O sets up a discovered target or installs
+an existing or newly generated key on a configured profile. `p` tests selected or filtered profiles in
 network-only or full SSH mode; usage and test history remain separate.
 Tailscale can refresh in the background while SSH is active; LAN scans and
 connection tests remain explicit. All pages expose problems and suggested

@@ -232,7 +232,7 @@ func promptRepoCloneWizard(app *App, p *prompter, flags repoBootstrapFlags, ref 
 	setup := flags.preset != ""
 	if flags.submodules == "" {
 		if _, statErr := os.Stat(filepath.Join(config.Expand(ref), ".gitmodules")); statErr == nil {
-			flags.submodules, err = p.choice("Submodules", "configured", "configured, recursive or none", map[string]string{"configured": "", "recursive": "recursive", "none": "none"})
+			flags.submodules, err = p.choiceOf("Submodules", "configured", []string{"configured", "recursive", "none"}, map[string]string{"configured": "", "recursive": "recursive", "none": "none"})
 			if err != nil {
 				return repoWorkflowRequest{}, false, false, err
 			}
@@ -393,8 +393,7 @@ func promptScaffoldOptions(p *prompter, catalog scaffold.Config, presetName stri
 			if fallback == "" && len(input.Choices) > 0 {
 				fallback = input.Choices[0]
 			}
-			value, err := p.choice(label+" ("+strings.Join(input.Choices, "/")+")", fallback,
-				strings.Join(input.Choices, ", "), choices)
+			value, err := p.choiceOf(label, fallback, input.Choices, choices)
 			if err != nil {
 				return err
 			}
@@ -519,7 +518,7 @@ func promptUpstream(app *App, p *prompter, name string, flags *repoBootstrapFlag
 	selected := available[0].Forge
 	if len(available) > 1 {
 		choices := map[string]string{"github": "github", "gh": "github", "gitlab": "gitlab", "gl": "gitlab"}
-		choice, err := p.choice("Forge (github/gitlab)", string(selected), "github, gitlab", choices)
+		choice, err := p.choiceOf("Forge", string(selected), []string{"github", "gitlab"}, choices)
 		if err != nil {
 			return err
 		}
@@ -531,8 +530,8 @@ func promptUpstream(app *App, p *prompter, name string, flags *repoBootstrapFlag
 	if err != nil {
 		return err
 	}
-	flags.visibility, err = p.choice("Visibility (private/public/internal)", "private",
-		"private, public, internal", map[string]string{
+	flags.visibility, err = p.choiceOf("Visibility", "private",
+		[]string{"private", "public", "internal"}, map[string]string{
 			"private": "private", "public": "public", "internal": "internal",
 		})
 	if err != nil {
@@ -544,14 +543,14 @@ func promptUpstream(app *App, p *prompter, name string, flags *repoBootstrapFlag
 }
 
 func promptRepoHandoff(p *prompter, fallback string) (string, error) {
-	return p.choice("Afterwards (stay/cd/open/start)", fallback, "stay, cd, open, start", map[string]string{
+	return p.choiceOf("Afterwards", fallback, []string{"stay", "cd", "open", "start"}, map[string]string{
 		"stay": "stay", "s": "stay", "cd": "cd", "c": "cd",
 		"open": "open", "o": "open", "start": "start", "t": "start",
 	})
 }
 
 func promptRepoCheckIn(p *prompter, fallback string) (string, error) {
-	return p.choice("Check-in generated changes (commit/stage/none)", fallback, "commit, stage, none", map[string]string{
+	return p.choiceOf("Check-in generated changes", fallback, []string{"commit", "stage", "none"}, map[string]string{
 		"commit": "commit", "c": "commit",
 		"stage": "stage", "s": "stage",
 		"none": "none", "n": "none",

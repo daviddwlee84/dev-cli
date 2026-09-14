@@ -268,7 +268,7 @@ func runStartWizard(ctx context.Context, app *App, req startRequest) (*startSpec
 					return nil, false, err
 				}
 				if req.Submodules == "" {
-					spec.Submodules, err = p.choice("Initialize submodules", settings.Init, "recursive or none", map[string]string{"recursive": "recursive", "none": "none"})
+					spec.Submodules, err = p.choiceOf("Initialize submodules", settings.Init, []string{"recursive", "none"}, map[string]string{"recursive": "recursive", "none": "none"})
 					if err != nil {
 						return nil, false, err
 					}

@@ -114,8 +114,9 @@ sharing disabled 的 fresh BatchMode login。
 `ssh setup` 用一個 command 處理 new/managed/foreign alias。Connection flags
 （`--hostname`、`--user`、`--port`、`--proxy-jump`、`--identity-file`、
 `--identities-only`）只適用 new 或 managed alias。`--config-only` 在 local
-verification 後停止。Public-key bootstrap 必須 explicit `--key` 或 `--generate-key`；
-noninteractive full setup 還需要 `--target-os`，noninteractive generation 需要
+verification 後停止。Public-key bootstrap 使用 `--key` 或 `--generate-key`；互動執行
+未帶兩者時會開啟 key picker（本機 keys、generate 或路徑）。Noninteractive full setup
+必須提供其一並加上 `--target-os`，noninteractive generation 需要
 `--no-passphrase`。Route/platform controls 是 `--hop-os`、
 `--install-on-working-jump` 與 `--windows-admin-authorized-keys`。`--dry-run`
 不執行 OpenSSH evaluation、network access、generation 或 write。`--fleet` 是

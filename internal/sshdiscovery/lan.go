@@ -8,12 +8,64 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
+
+type probeOutcome int
+
+const (
+	outcomeOther probeOutcome = iota
+	outcomeOpen
+	outcomeRefused
+	outcomeTimeout
+	outcomeUnreachable
+)
+
+func (p *ProbeSummary) record(outcome probeOutcome) {
+	p.Attempted++
+	switch outcome {
+	case outcomeOpen:
+		p.Open++
+	case outcomeRefused:
+		p.Refused++
+	case outcomeTimeout:
+		p.Timeout++
+	case outcomeUnreachable:
+		p.Unreachable++
+	default:
+		p.Other++
+	}
+}
+
+func (p ProbeSummary) valid() bool {
+	return p.Open >= 0 && p.Refused >= 0 && p.Timeout >= 0 && p.Unreachable >= 0 && p.Other >= 0 &&
+		p.Attempted <= maxLANEndpoints && p.Open+p.Refused+p.Timeout+p.Unreachable+p.Other == p.Attempted
+}
+
+// classifyDialError reads OS errno values only; error text is never published.
+func classifyDialError(err error) probeOutcome {
+	var timed net.Error
+	if errors.Is(err, context.DeadlineExceeded) || errors.As(err, &timed) && timed.Timeout() {
+		return outcomeTimeout
+	}
+	// Winsock reports WSAECONNREFUSED/WSAENETUNREACH/WSAEHOSTUNREACH (10061/10051/10065)
+	// rather than Go's synthetic Windows errno values.
+	windows := runtime.GOOS == "windows"
+	if errors.Is(err, syscall.ECONNREFUSED) || windows && errors.Is(err, syscall.Errno(10061)) {
+		return outcomeRefused
+	}
+	if errors.Is(err, syscall.EHOSTUNREACH) || errors.Is(err, syscall.ENETUNREACH) ||
+		windows && (errors.Is(err, syscall.Errno(10051)) || errors.Is(err, syscall.Errno(10065))) {
+		return outcomeUnreachable
+	}
+	return outcomeOther
+}
 
 const (
 	maxLANAddresses = 256
@@ -260,7 +312,10 @@ type lanEndpoint struct {
 	address netip.Addr
 	port    int
 }
-type lanResult struct{ candidate *Candidate }
+type lanResult struct {
+	candidate *Candidate
+	outcome   probeOutcome
+}
 type ptrResult struct {
 	ready chan struct{}
 	name  string
@@ -299,14 +354,14 @@ func (s *Service) LANWithProgress(ctx context.Context, request LANRequest, progr
 				if ctx.Err() != nil {
 					return
 				}
-				candidate := s.probeLANEndpoint(ctx, plan.scope, endpoint)
+				candidate, outcome := s.probeLANEndpoint(ctx, plan.scope, endpoint)
 				if candidate != nil {
 					candidate.DNSName = s.lookupPTR(ctx, endpoint.address.String(), &ptr)
 					if candidate.DNSName != "" {
 						candidate.Name, _, _ = strings.Cut(candidate.DNSName, ".")
 					}
 				}
-				results <- lanResult{candidate: candidate}
+				results <- lanResult{candidate: candidate, outcome: outcome}
 			}
 		})
 	}
@@ -324,8 +379,11 @@ func (s *Service) LANWithProgress(ctx context.Context, request LANRequest, progr
 	}()
 	go func() { workers.Wait(); close(results) }()
 	completed := 0
+	probes := &ProbeSummary{}
+	report.Probes = probes
 	for result := range results {
 		completed++
+		probes.record(result.outcome)
 		if result.candidate != nil {
 			report.Candidates = append(report.Candidates, *result.candidate)
 		}
@@ -349,16 +407,19 @@ func (s *Service) LANWithProgress(ctx context.Context, request LANRequest, progr
 		}
 		return report, errors.New("LAN discovery did not finish every endpoint")
 	}
+	if len(report.Candidates) == 0 && probes.Unreachable > 0 {
+		report.Warnings = []string{WarningNoReachableEndpoints}
+	}
 	return report, nil
 }
 
-func (s *Service) probeLANEndpoint(ctx context.Context, scope string, endpoint lanEndpoint) *Candidate {
+func (s *Service) probeLANEndpoint(ctx context.Context, scope string, endpoint lanEndpoint) (*Candidate, probeOutcome) {
 	ctx, cancel := context.WithTimeout(ctx, endpointTimeout)
 	defer cancel()
 	address := net.JoinHostPort(endpoint.address.String(), strconv.Itoa(endpoint.port))
 	conn, err := s.options.DialContext(ctx, "tcp4", address)
 	if err != nil {
-		return nil
+		return nil, classifyDialError(err)
 	}
 	defer conn.Close()
 	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
@@ -372,11 +433,11 @@ func (s *Service) probeLANEndpoint(ctx context.Context, scope string, endpoint l
 	for range 50 {
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			return candidate
+			return candidate, outcomeOpen
 		}
 		line = strings.TrimSuffix(strings.TrimSuffix(line, "\n"), "\r")
 		if len(line) > 253 || !safeText(line, 253) {
-			return candidate
+			return candidate, outcomeOpen
 		}
 		if strings.HasPrefix(line, "SSH-") {
 			software := strings.TrimPrefix(line, "SSH-2.0-")
@@ -384,14 +445,14 @@ func (s *Service) probeLANEndpoint(ctx context.Context, scope string, endpoint l
 				software = strings.TrimPrefix(line, "SSH-1.99-")
 			}
 			if software == line || software == "" || software[0] == ' ' {
-				return candidate
+				return candidate, outcomeOpen
 			}
 			candidate.State = StateSSH
 			candidate.AdvertisesSSH = strings.HasPrefix(strings.ToLower(software), "tailscale")
-			return candidate
+			return candidate, outcomeOpen
 		}
 	}
-	return candidate
+	return candidate, outcomeOpen
 }
 
 func (s *Service) lookupPTR(ctx context.Context, address string, cache *sync.Map) string {

@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.37] - 2026-09-14
+
+### Added
+
+- `dev ssh setup <alias>` on a terminal without `--key` or `--generate-key` opens
+  one key picker listing local keys, `+ Generate a new key` and a manual path; the
+  setup wizard, fleet imports and per-hop keys use the same picker. The `dev ssh`
+  menu adds "Set up or install an SSH key for a host". Scripts still pass a flag.
+- The dashboard SSH view's Ctrl+O offers "set up this discovered target…" with a
+  form prefilled from the selected LAN/Tailscale observation, and "set up / install
+  an SSH key…" for configured profiles without editing their connection settings.
+  The setup form's Key field opens a key picker, and choice fields show every option.
+
+### Fixed
+
+- Interactive prompts with fixed answers list their choices, such as
+  `Remote OS for lab (posix/windows) [posix]`, instead of revealing them only after
+  an invalid answer. The discovery wizard's Target OS answer is now validated.
+- LAN discovery no longer hides blocked connections behind `ready` with zero
+  candidates. Reports add `probes` outcome counts and a `no_reachable_endpoints`
+  warning, and `dev ssh discover`, the `dev ssh` wizard and the dashboard explain
+  that macOS may be denying Local Network access to the terminal app. The wizard
+  rescans instead of reusing an empty cached LAN scan. Status values and existing
+  JSON fields are unchanged.
+
 ## [0.2.36] - 2026-09-13
 
 ### Fixed
@@ -1132,7 +1157,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.36...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.37...HEAD
+[0.2.37]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.36...v0.2.37
 [0.2.36]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.35...v0.2.36
 [0.2.35]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.34...v0.2.35
 [0.2.34]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.33...v0.2.34

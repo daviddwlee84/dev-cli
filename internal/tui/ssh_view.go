@@ -34,6 +34,14 @@ type SSHActions struct {
 	Test              func(context.Context, SSHTestRequest, func(SSHTestProgress)) (SSHTestResult, error)
 	BackgroundRefresh bool
 	Workflow          func(context.Context, SSHWorkflowRequest) (SSHWorkflow, error)
+	// ListKeys returns local key choices plus a generate choice for the alias.
+	ListKeys func(ctx context.Context, alias string) ([]SSHKeyChoice, error)
+}
+
+// SSHKeyChoice is one key picker entry; Generate means Path is a new key destination.
+type SSHKeyChoice struct {
+	Label, Description, Path string
+	Generate                 bool
 }
 
 type SSHWorkflowRequest struct {
@@ -416,6 +424,12 @@ func (m Model) openSSHMenu() Model {
 				menu.addOption(listActionSSHRegister, "register an SSH profile in fleet / Herdr…")
 			}
 		}
+		if selected && len(row.LAN)+len(row.Tailscale) > 0 && m.actions.SSH.PrepareOnboarding != nil {
+			menu.addOption(listActionSSHSetupTarget, "set up this discovered target…")
+		}
+		if selected && len(row.Profiles) > 0 && m.actions.SSH.PrepareOnboarding != nil {
+			menu.addOption(listActionSSHInstallKey, "set up / install an SSH key…")
+		}
 		menu.addOption(listActionSSHSetup, "set up / import connections…")
 		menu.addOption(listActionSSHDiscover, "discover Tailscale / LAN hosts…")
 		if m.ssh.Sources["registry"] != "unavailable" {
@@ -476,6 +490,18 @@ func (m Model) runSSHAction(action listAction) (tea.Model, tea.Cmd) {
 	}
 	if action == listActionSSHConnect && selected && len(row.Profiles) == 0 && m.actions.SSH.PrepareOnboarding != nil {
 		return m.openSSHOnboarding(row)
+	}
+	if action == listActionSSHSetupTarget && m.actions.SSH.PrepareOnboarding != nil {
+		return m.openSSHOnboarding(row)
+	}
+	if action == listActionSSHInstallKey && len(row.Profiles) > 0 && m.actions.SSH.PrepareOnboarding != nil {
+		if entry, ok := m.currentSSHEntry(); ok && entry.profile != nil {
+			return m.openSSHKeyForm(*entry.profile)
+		}
+		if len(row.Profiles) == 1 {
+			return m.openSSHKeyForm(row.Profiles[0])
+		}
+		return m.openSSHProfiles("install-key", row)
 	}
 	if (action == listActionSSHProbe || action == listActionSSHDiagnose) && m.actions.SSH.Test != nil {
 		return m.openSSHTests()

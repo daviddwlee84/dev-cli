@@ -116,7 +116,7 @@ Operational flags 是：
 
 `--dry-run` 沒有 side effect：不 generate key、不寫 file、不執行 `ssh -G`、不碰 `known_hosts`、不 probe network，也不啟動 remote installer。Remote 與 route action 會誠實保留為 `unknown`。它可進行驗證 explicit named key 或 existing config 所需的 bounded local reads。Dry run 使用 `--fleet` 時仍須提供 `--target-os`，讓 proposed fragment 可確定。
 
-Public-key bootstrap 必須明確且二選一使用 `--key` 或 `--generate-key`。JSON mode 即使在 terminal 上也不互動；任何 noninteractive full setup 還需要 `--target-os`，local mutation 則需要 `--yes`。`--yes` 只批准 local plan。Password/passphrase 與 host-key interaction 仍由 native OpenSSH 負責；batch mode 會回傳 `interaction_required`，不會自行發明 credential path。
+Public-key bootstrap 二選一使用 `--key` 或 `--generate-key`。在互動 terminal 執行 `dev ssh setup <alias>` 而未帶這兩個 flag 時，會開啟 key picker：列出本機 keys、**+ Generate a new key**（預設 `~/.ssh/id_ed25519_dev_<alias>`）與 **Enter a key path…**；noninteractive setup 仍須提供其中一個 flag。JSON mode 即使在 terminal 上也不互動；任何 noninteractive full setup 還需要 `--target-os`，local mutation 則需要 `--yes`。`--yes` 只批准 local plan。Password/passphrase 與 host-key interaction 仍由 native OpenSSH 負責；batch mode 會回傳 `interaction_required`，不會自行發明 credential path。
 
 ## Existing key 與 generation
 
@@ -151,7 +151,7 @@ dev ssh setup lab --key ~/.ssh/id_ed25519 --target-os posix \
   --hop-os bastion=posix --hop-os winjump=windows
 ```
 
-`--target-os` 只套用 final target。Ambiguous jump 請使用 repeatable `--hop-os`；interactive mode 可以詢問，noninteractive mode 則要求每個 unknown hop 都指定。每個 hop 會先以 ordinary fresh BatchMode authentication probe。已能運作的 jump 不會被修改，除非明確加上 `--install-on-working-jump`。
+`--target-os` 只套用 final target。Ambiguous jump 請使用 repeatable `--hop-os`；interactive mode 會詢問 `Remote OS for <alias> (posix/windows) [posix]`（也接受 `p`／`w`），noninteractive mode 則要求每個 unknown hop 都指定。每個 hop 會先以 ordinary fresh BatchMode authentication probe。已能運作的 jump 不會被修改，除非明確加上 `--install-on-working-jump`。
 
 POSIX hop 使用 constant `sh` installer 驗證／建立 `~/.ssh/authorized_keys`、套用 `0700`/`0600`，再 idempotently append 從 stdin 收到的一筆 public record。Windows OpenSSH 則是：
 
@@ -189,7 +189,7 @@ dev ssh setup winlab --key ~/.ssh/id_winlab --target-os windows \
 | `ssh setup --json` | `ssh_setup_plan`、`ssh_setup_result` | alias class、local/key/bootstrap plans/results、per-hop state、fleet action、partial/error code |
 | `ssh probe --json` | `ssh_probe` | safe `ready`/`not_ready` status、code、exit code |
 | `ssh remove --json` | `ssh_remove_plan`、`ssh_remove_result` | owned plan/result、explicit fleet action、status/error code |
-| `ssh discover --json` | `ssh_discovery` | source 狀態、scope、candidates、觀察時間與完整性 |
+| `ssh discover --json` | `ssh_discovery` | source 狀態、scope、candidates、觀察時間與完整性；LAN report 另含 `probes` 計數與 `warnings` |
 | source-aware `ssh setup --json` | `ssh_onboarding_plan`、`ssh_onboarding_result` | connection plans、stage outcomes、保留的 keys 與逐 hop bootstrap 結果 |
 | `ssh machine … --json` | `ssh_machine_snapshot`、`ssh_machine_plan`、`ssh_machine_result` | canonical UUID、來源 bindings 與 revision-bound 變更 |
 
@@ -232,7 +232,8 @@ Server policy 若超出 verified POSIX/Windows installer contract，dev 會回�
 ## 主機管理與設定整理
 
 在終端執行 `dev ssh` 會開啟選單；管線仍顯示 help。設定整理預設只做
-formatting，群組重整必須另外選擇。
+formatting，群組重整必須另外選擇。**Set up or install an SSH key for a host**
+可從已設定的 alias 選擇（或輸入 alias），再進入 setup 的 key picker。
 
 ```bash
 dev ssh manage                          # 聯合清單與多選 wizard
@@ -403,9 +404,18 @@ Port open 與 SSH identification banner 是不同 observation。名稱只供編�
 raw banner 不能成為 hostname、OS proof、host key 或設定。目前沒有 IPv6 range
 scan、mDNS 或 background scan。
 
+`ready` 代表所有規劃的 probe 都已完成，不代表找到主機。LAN report 會新增 `probes`
+（attempted、open、refused、timeout、unreachable、other 計數）；若完整掃描沒有找到
+任何 candidate 且有 unreachable probe，會加上 `no_reachable_endpoints` warning。
+macOS 上常見原因是區域網路（Local Network）隱私權限：終端機 App 未獲授權時，連線會
+以 unreachable 失敗，即使同一個 shell 裡的 `nc` 可以連上。請在「系統設定 > 隱私權與
+安全性 > 區域網路」允許該終端機 App 後重試。由 launchd 直接啟動、而非由 App 啟動的
+multiplexer 或 shell 可能無法取得授權，請改從 App 終端機執行探索。
+
 `$XDG_CACHE_HOME/dev/ssh-discovery/` 的 cache 五分鐘內視為 fresh，過期後仍保留
-observation time。`--refresh` 跳過符合條件的 fresh LAN cache。讀取 cache 不會
-重新掃描，也不能證明 endpoint 仍指向同一台 machine。
+observation time。`--refresh` 跳過符合條件的 fresh LAN cache。CLI 與 wizard 只重用
+有 candidates 的 fresh LAN 掃描，空的結果會重新掃描。讀取 cache 不會重新掃描，也不能
+證明 endpoint 仍指向同一台 machine。
 
 ### Tailnet 上的 authentication
 
@@ -487,7 +497,10 @@ alias。以 fingerprint 去重，顯示 algorithm、comment、source paths、sou
 也不嘗試 remote authentication。`--json` 輸出一個 `ssh_key_list` document，包含
 candidates、completeness 與 source diagnostics；來源缺失或不可用不會冒充空的成功結果。
 
-Setup wizard 選 existing key 時會開 catalog picker，另保留 **Enter a key path…**。
+Setup wizard 的 authentication 選單提供 configure only、existing authentication 或
+**Install an SSH key (existing or new)**；後者開啟 catalog picker，另有
+**+ Generate a new key** 與 **Enter a key path…**。Fleet import 與 per-hop key 也使用
+同一個 picker。
 只有 public file 而找不到 signer 的候選仍可見，但不能直接滿足 bootstrap。可改選
 其他 identity、把 signer 載入 agent，或提供對應 private-key path。Selected key 會先
 驗證，再進入後續 registration prompts；generation 與 remote installation 保留明確
@@ -691,6 +704,17 @@ remote user、port 及認證方式；預設只存 SSH config，Fleet 與 Herdr �
 預覽包含首次初始化及明確 machine bindings，確認後才交還終端處理 SSH/key
 或 Herdr 的原生互動。返回時顯示各階段完成、失敗或 unknown，並選取新增的
 profile；後續認證／provider 失敗保留已完成設定。LAN scope 改變須重新探索／審閱。
+
+選項欄位會列出所有選項並以括號標出目前值，例如 `config · existing · [key]`；
+←／→ 或 Space 切換。在 **Key** 欄位按 Enter 或 Space 會開啟 picker，列出有檔案的
+本機 keys、**+ Generate a new key** 與手動輸入路徑；Esc 回到表單，選取 key 會把
+認證方式設為 key。只存在於 agent 的 identity 請改用終端的 `dev ssh setup` picker。
+
+在有 LAN 或 Tailscale 候選的列按 `Ctrl+O`，可選 **set up this discovered target…**，
+表單會帶入該觀測及相符 profile 的 user。在已配置的 profile 按 `Ctrl+O`，可選
+**set up / install an SSH key…**：有多個 profile 時先選確切 profile，再選 key、
+設定 Remote OS 與選用的 Fleet／Herdr，然後審閱。連線設定不可修改；foreign alias
+只安裝 public key，managed alias 另會在審閱中顯示記錄為 IdentityFile。
 
 `p` 提供 profile、整台機器或篩選結果的快速網路測試／完整 SSH 驗證；開始前
 先確認確切目標。DNS／route、Ping、TCP、SSH banner、handshake、host-key、

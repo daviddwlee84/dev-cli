@@ -18,6 +18,9 @@ type OnboardRequest struct {
 	KeyPath                                           string
 	GenerateKey                                       bool
 	To, RemoteOS, FleetName, HerdrLabel, HerdrSession string
+	// Profile installs a key for this existing alias; its connection fields
+	// are read-only and never rewritten from the request.
+	Profile *ConnectionProfile
 }
 
 // OnboardPreview is the display projection of an opaque service-bound plan.

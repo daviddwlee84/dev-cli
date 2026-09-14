@@ -459,7 +459,9 @@ machine bindings 與帶時間的 source observations。Tailscale executable 是 
 LAN discovery 使用原生實作，沒有外部 scanner dependency，只接受 bounded on-link
 IPv4 ranges／ports。尚未提供 mDNS、IPv6 range scan、自動掃描或根據 hostname 自動
 合併 identity。Open port、SSH banner、Tailscale online state、reverse-DNS name 都
-不能證明 authentication。
+不能證明 authentication。`ready` LAN report 代表所有 probe 已完成；增補的 `probes`
+計數與 `no_reachable_endpoints` warning 用來區分無法連線的掃描（例如 macOS 區域網路
+隱私權限）與空網路，status 值不變。
 
 `paths.state_dir/machines/registry.db` 是 private durable SQLite store，使用已有的
 Go driver，不需要外部 sqlite executable。Registry UUID 是 controller-local grouping

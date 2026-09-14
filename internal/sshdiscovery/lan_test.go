@@ -6,10 +6,12 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -136,7 +138,7 @@ func TestLANExcludesLocalNetworkAndBroadcastAddresses(t *testing.T) {
 		return nil, errors.New("closed or unknown")
 	}})
 	report, err := service.LAN(context.Background(), LANRequest{Interface: "eth0", Ranges: []string{"192.168.10.0/24"}})
-	if err != nil || !report.Complete || len(report.Candidates) != 0 || len(scanned) != 253 {
+	if err != nil || !report.Complete || len(report.Candidates) != 0 || len(scanned) != 253 || len(report.Warnings) != 0 || report.Probes == nil || report.Probes.Other != 253 {
 		t.Fatalf("scanned=%d report=%#v err=%v", len(scanned), report, err)
 	}
 	sort.Strings(scanned)
@@ -222,10 +224,43 @@ func TestLANIdentificationIsBoundedAndAdvisory(t *testing.T) {
 		service := NewService(nil, ServiceOptions{DialContext: func(context.Context, string, string) (net.Conn, error) {
 			return &bannerConn{reader: strings.NewReader(test.banner)}, nil
 		}})
-		candidate := service.probeLANEndpoint(context.Background(), "test", lanEndpoint{address: netip.MustParseAddr("192.168.10.20"), port: 22})
-		if candidate == nil || candidate.State != test.state || candidate.AdvertisesSSH != test.tailscale {
+		candidate, outcome := service.probeLANEndpoint(context.Background(), "test", lanEndpoint{address: netip.MustParseAddr("192.168.10.20"), port: 22})
+		if candidate == nil || outcome != outcomeOpen || candidate.State != test.state || candidate.AdvertisesSSH != test.tailscale {
 			t.Fatalf("banner=%q candidate=%#v", test.banner, candidate)
 		}
+	}
+}
+
+func TestLANCountsProbeOutcomesAndWarnsWhenNothingIsReachable(t *testing.T) {
+	unreachable := &net.OpError{Op: "dial", Net: "tcp4", Err: os.NewSyscallError("connect", syscall.EHOSTUNREACH)}
+	refused := &net.OpError{Op: "dial", Net: "tcp4", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+	scan := func(open string) (Report, error) {
+		service := NewService(nil, ServiceOptions{Interfaces: testScopes, LookupAddr: noPTR, DialContext: func(_ context.Context, _ string, address string) (net.Conn, error) {
+			switch address {
+			case "192.168.10.1:22":
+				return nil, refused
+			case "192.168.10.2:22":
+				return nil, context.DeadlineExceeded
+			case "192.168.10.3:22":
+				return nil, errors.New("unclassified")
+			case open:
+				return &bannerConn{reader: strings.NewReader("SSH-2.0-OpenSSH_10.3\r\n")}, nil
+			}
+			return nil, unreachable
+		}})
+		return service.LAN(context.Background(), LANRequest{Interface: "eth0", Ranges: []string{"192.168.10.0/28"}})
+	}
+	report, err := scan("")
+	// The /28 excludes only the /24 network address and the local .10, so 14 endpoints are probed.
+	want := ProbeSummary{Attempted: 14, Refused: 1, Timeout: 1, Unreachable: 11, Other: 1}
+	if err != nil || report.Status != StatusReady || !report.Complete || len(report.Candidates) != 0 || report.Probes == nil || *report.Probes != want ||
+		len(report.Warnings) != 1 || report.Warnings[0] != WarningNoReachableEndpoints || validateReport(report) != nil {
+		t.Fatalf("report=%#v probes=%#v err=%v", report, report.Probes, err)
+	}
+	report, err = scan("192.168.10.4:22")
+	want = ProbeSummary{Attempted: 14, Open: 1, Refused: 1, Timeout: 1, Unreachable: 10, Other: 1}
+	if err != nil || len(report.Candidates) != 1 || report.Probes == nil || *report.Probes != want || len(report.Warnings) != 0 {
+		t.Fatalf("report=%#v probes=%#v err=%v", report, report.Probes, err)
 	}
 }
 

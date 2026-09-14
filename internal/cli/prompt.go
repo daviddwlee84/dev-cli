@@ -73,6 +73,11 @@ func (p *prompter) choice(label, fallback, hint string, choices map[string]strin
 	}
 }
 
+// choiceOf lists the accepted values in the prompt so a default never hides them.
+func (p *prompter) choiceOf(label, fallback string, options []string, choices map[string]string) (string, error) {
+	return p.choice(label+" ("+strings.Join(options, "/")+")", fallback, strings.Join(options, ", "), choices)
+}
+
 func (p *prompter) confirm(label string, defaultYes bool) (bool, error) {
 	fallback := "y/N"
 	if defaultYes {

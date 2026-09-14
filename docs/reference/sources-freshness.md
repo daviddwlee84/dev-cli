@@ -59,7 +59,7 @@ tested_with: optional
 
 | Topic or claim | Owning page | Primary authority | Status checked |
 |---|---|---|---|
-| SSH profile tree, native discovery/setup, durable usage/tests and guided TUI recovery | [SSH dashboard](../guides/ssh-hosts.md#ssh-connection-view), [problem guidance](../guides/dashboard-actions.md) | `internal/tui`, `internal/sshactivity`, `internal/tuiissue`, native discovery/onboarding tests and isolated PTY smoke | v0.2.34 |
+| SSH profile tree, native discovery/setup, durable usage/tests and guided TUI recovery | [SSH dashboard](../guides/ssh-hosts.md#ssh-connection-view), [problem guidance](../guides/dashboard-actions.md) | `internal/tui`, `internal/sshactivity`, `internal/tuiissue`, native discovery/onboarding tests and isolated PTY smoke | v0.2.37 |
 | Native Android/Termux SSH filesystem support | [SSH dashboard](../guides/ssh-hosts.md#ssh-connection-view), [compatibility](compatibility.md) | `internal/platformfs`, native Android domain/TUI tests and actual config-only dashboard setup | v0.2.36; verified on ARM64 Android on 2026-09-13 |
 | parent-preserving task completion, foreground program consent and coordinator v2 | [Agent-safe retirement](../guides/agent-safe-retirement.md#task-worktree-scope) | runtime process/occupancy, taskflow completion/retire and CLI scope regression tests | Unreleased |
 | HOT/WARM/COLD/DONE, checkout modes, and legal transitions | [Mental model](../concepts/mental-model.md) | `internal/task/task.go`, `internal/taskflow/transitions.go`, lifecycle tests | repository snapshot 2026-09-01 |

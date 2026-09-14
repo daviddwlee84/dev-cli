@@ -173,7 +173,9 @@ func newSSHCmd(app *App) *cobra.Command {
 Setup/remove own canonical fragments under ~/.ssh/dev.d. Explicit format/organize
 operations transform selected user configuration with a preview and recovery.
 Listing/planning never authenticates; setup, show and probe explicitly evaluate
-OpenSSH or log in. Herdr machine add keeps its native installation approvals.`,
+OpenSSH or log in. Herdr machine add keeps its native installation approvals.
+Install a key on a host with dev ssh setup <alias>: a terminal lists existing
+keys and can generate one; scripts pass --key or --generate-key.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error { return runSSHEntry(cmd, app) },
 	}
@@ -653,7 +655,7 @@ read local Tailscale status but never configures or authenticates a host.`,
 			if len(args) == 0 || options.from != "" || options.auth != "" || options.to != "" || options.machineID != "" || len(options.hopKeys) > 0 {
 				return runSSHOnboarding(cmd.Context(), app, args, options)
 			}
-			if err := validateSSHSetupFlags(cmd, options); err != nil {
+			if err := validateSSHSetupFlags(cmd, options, app.interactive() && !options.json); err != nil {
 				return asUsageError(err)
 			}
 			ctx := cmd.Context()
@@ -702,7 +704,7 @@ read local Tailscale status but never configures or authenticates a host.`,
 	return cmd
 }
 
-func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions) error {
+func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions, interactive bool) error {
 	if options.hasExistingKey() && options.generateKey {
 		return errors.New("--key and --generate-key are mutually exclusive")
 	}
@@ -726,8 +728,8 @@ func validateSSHSetupFlags(cmd *cobra.Command, options sshSetupOptions) error {
 	if _, err := parseSSHOSOverrides(options.hopOS); err != nil {
 		return err
 	}
-	if !options.configOnly && !options.dryRun && !options.hasExistingKey() && !options.generateKey && options.auth != "existing" {
-		return errors.New("full setup requires explicit --key or --generate-key")
+	if !interactive && !options.configOnly && !options.dryRun && !options.hasExistingKey() && !options.generateKey && options.auth != "existing" {
+		return errors.New("full setup requires --key or --generate-key outside an interactive terminal")
 	}
 	return nil
 }
@@ -830,9 +832,22 @@ func runSSHSetupOperationObserved(ctx context.Context, app *App, alias string, o
 		}
 	}
 
+	if interactiveMode && !options.configOnly && !options.dryRun && !options.hasExistingKey() && !options.generateKey && options.keyPlan == nil {
+		options, err = chooseSSHKeyInteractive(ctx, app, service, alias, options, filepath.Join(service.Paths().SSHDir, "id_ed25519_dev_"+alias))
+		if err != nil {
+			return finish(document, err)
+		}
+	}
 	var keyPlan *sshhost.KeyPlan
 	if !options.configOnly && (options.hasExistingKey() || options.generateKey) {
-		planned, planErr := planSSHSetupKey(ctx, app, service, options, interactiveMode)
+		var planned sshhost.KeyPlan
+		var planErr error
+		if options.keyPlan != nil {
+			// A picker-prepared plan is revalidated rather than planned (and confirmed) twice.
+			planned, planErr = *options.keyPlan, service.RevalidateKeySelection(ctx, *options.keyPlan)
+		} else {
+			planned, planErr = planSSHSetupKey(ctx, app, service, options, interactiveMode)
+		}
 		keyPlan = &planned
 		document.KeyPlan = keyPlan
 		if planErr != nil {
@@ -1234,7 +1249,7 @@ func completeSSHRouteOS(ctx context.Context, app *App, service *sshhost.Service,
 	}
 	prompter := newPrompter(app)
 	for _, hop := range missing {
-		choice, err := prompter.choice("Remote OS for "+hop.Alias, "posix", "posix, windows", map[string]string{
+		choice, err := prompter.choiceOf("Remote OS for "+hop.Alias, "posix", []string{"posix", "windows"}, map[string]string{
 			"posix": "posix", "p": "posix", "windows": "windows", "w": "windows",
 		})
 		if err != nil {
