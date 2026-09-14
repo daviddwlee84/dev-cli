@@ -285,6 +285,11 @@ settings cannot be inferred from it. Results therefore keep `endpoint=unverified
 and distinguish `native_context=observed_consistent` from creation status. The
 endpoint-attested Bitwarden mode remains unsupported.
 
+Permission capture requires matching inode, owner and mode plus two equal safe
+ACL observations. Unrelated sibling-directory changes do not invalidate a profile
+solely through aggregate directory ctime; regular-file and symlink change-time
+checks remain strict. This does not relax ACL or replacement checks.
+
 Private key generation/encoding uses memory and stdin, never a plaintext key file,
 clipboard or private-key argv. Owned buffers are wiped best-effort; that is not a
 perfect RAM/swap/core-dump erasure guarantee, and native provider storage remains

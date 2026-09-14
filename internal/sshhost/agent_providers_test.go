@@ -23,6 +23,7 @@ func acceptFileAgentSockets(s *Service) {
 }
 
 func TestObserveAgentProvidersStatsKnownSocketsPerOS(t *testing.T) {
+	requireUnixSSHProviderFixture(t)
 	paths := fixturePaths(t)
 	s := newFixtureService(t, paths, DiscoverOptions{})
 	acceptFileAgentSockets(s)
@@ -83,6 +84,7 @@ func TestObserveAgentProvidersStatsKnownSocketsPerOS(t *testing.T) {
 }
 
 func TestCatalogRequestedAgentPrecedenceAndPublicationWithoutPrivateBytes(t *testing.T) {
+	requireUnixSSHProviderFixture(t)
 	paths := fixturePaths(t)
 	ambient := filepath.Join(paths.Home, "ambient.sock")
 	bitwarden := filepath.Join(paths.Home, "Library", "Group Containers", "bw agent.sock")
@@ -169,7 +171,7 @@ func TestManagedV2OnlyForAgentDirectivesAndVerifiesEffectiveAgent(t *testing.T) 
 		t.Fatalf("v1 rendering changed: %q %v", plain, err)
 	}
 	v2 := v1
-	v2.IdentityAgent = filepath.Join(fixturePaths(t).Home, "Library", "Group Containers", "agent.sock")
+	v2.IdentityAgent = managedAgentSocketFixture()
 	v2.SecurityKeyProvider = "internal"
 	data, err := RenderManaged(v2)
 	want := ManagedHeaderV2 + "\nHost lab\n    HostName lab.example\n    IdentityFile /home/u/.ssh/id\n    IdentitiesOnly yes\n    IdentityAgent " + quoteConfigValue(v2.IdentityAgent) + "\n    SecurityKeyProvider internal\n"
@@ -206,6 +208,7 @@ func TestManagedV2OnlyForAgentDirectivesAndVerifiesEffectiveAgent(t *testing.T) 
 }
 
 func TestPublishedNamedAgentKeyBootstrapsWhenAliasUsesThatAgent(t *testing.T) {
+	requireUnixSSHProviderFixture(t)
 	paths := fixturePaths(t)
 	t.Setenv("SSH_AUTH_SOCK", filepath.Join(paths.Home, "different-ambient.sock"))
 	socket := filepath.Join(paths.Home, "bitwarden agent.sock")

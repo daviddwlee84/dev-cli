@@ -2376,6 +2376,11 @@ settings cannot be inferred from it. Results therefore keep `endpoint=unverified
 and distinguish `native_context=observed_consistent` from creation status. The
 endpoint-attested Bitwarden mode remains unsupported.
 
+Permission capture requires matching inode, owner and mode plus two equal safe
+ACL observations. Unrelated sibling-directory changes do not invalidate a profile
+solely through aggregate directory ctime; regular-file and symlink change-time
+checks remain strict. This does not relax ACL or replacement checks.
+
 Private key generation/encoding uses memory and stdin, never a plaintext key file,
 clipboard or private-key argv. Owned buffers are wiped best-effort; that is not a
 perfect RAM/swap/core-dump erasure guarantee, and native provider storage remains
@@ -14371,6 +14376,10 @@ identity 與 ELF／Mach-O 結構，不能據此辨別所有 compiled runtime shi
 不能用它推斷 cloud region 或獨立 API 設定。因此結果一律維持 `endpoint=unverified`，並把
 `native_context=observed_consistent` 與 creation status 分開。要求 endpoint attestation 的
 Bitwarden 模式仍不支援。
+
+權限擷取要求 inode、owner、mode 相符，且兩次安全 ACL 觀測一致。同層無關目錄的變動
+不會只因目錄彙總 ctime 改變就讓 profile 失效；regular file 與 symlink 的 change-time
+檢查仍嚴格保留，ACL 與 replacement 檢查也沒有放寬。
 
 私鑰產生／編碼只使用記憶體與 stdin，不寫 plaintext key file、不用 clipboard 或 private-key
 argv。Owned buffers 會盡力清除，但不保證 RAM／swap／core dump 完美抹除；原生 provider

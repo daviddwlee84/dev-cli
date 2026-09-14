@@ -34,6 +34,19 @@ func captureNativeACL(path string, expected fs.FileInfo) (nativeACLObservation, 
 	if err != nil || !nativePermissionIdentity(expected, before) {
 		return nativeACLObservation{}, ErrStale
 	}
+	observation, err := readStableNativeACL(func() (nativeACLObservation, error) { return readDarwinNativeACL(file) })
+	if err != nil {
+		return nativeACLObservation{}, err
+	}
+	after, err := file.Stat()
+	current, pathErr := os.Lstat(path)
+	if err != nil || pathErr != nil || !nativePermissionIdentity(before, after) || !nativePermissionIdentity(after, current) {
+		return nativeACLObservation{}, ErrStale
+	}
+	return observation, nil
+}
+
+func readDarwinNativeACL(file *os.File) (nativeACLObservation, error) {
 	// Darwin ACLs are not reliably listed as xattrs. Use the same opened-inode
 	// ATTR_CMN_EXTENDED_SECURITY query as sshhost permissionCheckACL, not file
 	// contents or executable chmod/ACL text. Only documented deny-only metadata
@@ -50,14 +63,5 @@ func captureNativeACL(path string, expected fs.FileInfo) (nativeACLObservation, 
 	if errno != 0 {
 		return nativeACLObservation{}, ErrNativeContext
 	}
-	observation, err := parseDarwinNativeACL(buffer[:])
-	if err != nil {
-		return nativeACLObservation{}, err
-	}
-	after, err := file.Stat()
-	current, pathErr := os.Lstat(path)
-	if err != nil || pathErr != nil || !nativePermissionIdentity(before, after) || !nativePermissionIdentity(after, current) {
-		return nativeACLObservation{}, ErrStale
-	}
-	return observation, nil
+	return parseDarwinNativeACL(buffer[:])
 }

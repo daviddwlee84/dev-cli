@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Bitwarden native-context permission capture no longer rejects an unchanged
+  profile solely because unrelated directory entries change a shared directory's
+  ctime. Inode, owner, mode and stable ACL observations remain required; regular
+  file and symlink change-time checks are unchanged.
+
 ## [0.2.38] - 2026-09-15
 
 ### Added

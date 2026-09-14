@@ -261,6 +261,10 @@ identity 與 ELF／Mach-O 結構，不能據此辨別所有 compiled runtime shi
 `native_context=observed_consistent` 與 creation status 分開。要求 endpoint attestation 的
 Bitwarden 模式仍不支援。
 
+權限擷取要求 inode、owner、mode 相符，且兩次安全 ACL 觀測一致。同層無關目錄的變動
+不會只因目錄彙總 ctime 改變就讓 profile 失效；regular file 與 symlink 的 change-time
+檢查仍嚴格保留，ACL 與 replacement 檢查也沒有放寬。
+
 私鑰產生／編碼只使用記憶體與 stdin，不寫 plaintext key file、不用 clipboard 或 private-key
 argv。Owned buffers 會盡力清除，但不保證 RAM／swap／core dump 完美抹除；原生 provider
 的儲存也仍由它管理。CLI／TUI 只輸出 metadata、fingerprint、item ID，不輸出 private／session

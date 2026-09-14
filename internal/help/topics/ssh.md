@@ -148,6 +148,9 @@ no-interaction, and always reports endpoints unverified. A base URL/session is n
 endpoint identity. Never paste BW_SESSION or unlock credentials into agent input.
 Native/known Node CLI support is schema-pinned; unsafe wrappers/profiles/platforms
 fail closed. No login, configuration rewrite, key import or implicit deletion.
+Permission capture keeps inode/owner/mode checks and two equal safe ACL observations;
+unrelated directory-entry ctime changes alone are not a stale profile. File/link
+change-time and replacement checks remain strict.
 
 Only metadata, item IDs and fingerprints appear in the public result. Created items
 survive missing agent visibility, later SSH cancellation, and uncertain post-checks;

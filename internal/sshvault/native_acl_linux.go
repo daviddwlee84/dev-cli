@@ -33,6 +33,24 @@ func captureNativeACL(path string, expected fs.FileInfo) (nativeACLObservation, 
 		}
 		list = func(buffer []byte) (int, error) { return unix.Flistxattr(fd, buffer) }
 	}
+	observation, err := readStableNativeACL(func() (nativeACLObservation, error) { return readLinuxNativeACL(list) })
+	if err != nil {
+		return nativeACLObservation{}, err
+	}
+	current, err := os.Lstat(path)
+	if err != nil || !nativePermissionIdentity(expected, current) {
+		return nativeACLObservation{}, ErrStale
+	}
+	if file != nil {
+		after, err := file.Stat()
+		if err != nil || !nativePermissionIdentity(expected, after) {
+			return nativeACLObservation{}, ErrStale
+		}
+	}
+	return observation, nil
+}
+
+func readLinuxNativeACL(list func([]byte) (int, error)) (nativeACLObservation, error) {
 	// Like SSH's bounded metadata policy, reject access/default/NFS ACLs and
 	// other system/security policy attributes. Never read private file contents.
 	// Unsupported metadata queries are unknown, not an empty ACL observation.
@@ -51,16 +69,6 @@ func captureNativeACL(path string, expected fs.FileInfo) (nativeACLObservation, 
 	for _, name := range strings.Split(string(names), "\x00") {
 		if strings.HasPrefix(name, "system.") || strings.HasPrefix(name, "security.") {
 			return nativeACLObservation{}, ErrNativeContext
-		}
-	}
-	current, err := os.Lstat(path)
-	if err != nil || !nativePermissionIdentity(expected, current) {
-		return nativeACLObservation{}, ErrStale
-	}
-	if file != nil {
-		after, err := file.Stat()
-		if err != nil || !nativePermissionIdentity(expected, after) {
-			return nativeACLObservation{}, ErrStale
 		}
 	}
 	return nativeACLObservation{safe: true}, nil

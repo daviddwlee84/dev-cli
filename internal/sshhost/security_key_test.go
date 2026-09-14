@@ -28,6 +28,7 @@ type securityKeyFixture struct {
 
 func newSecurityKeyFixture(t *testing.T) *securityKeyFixture {
 	t.Helper()
+	requireUnixSSHProviderFixture(t)
 	paths := fixturePaths(t)
 	f := &securityKeyFixture{tools: map[string]string{}, line: testSecurityKeyLine(0xc1, "hardware test")}
 	for _, name := range []string{"ssh", "ssh-keygen"} {
@@ -125,6 +126,9 @@ func TestSecurityKeyCapabilitiesArePassiveAndUncertain(t *testing.T) {
 	if err != nil || observation.CanAttempt || !hasDiagnostic(observation.Diagnostics, "security_key_tool_unavailable") {
 		t.Fatalf("missing tools accepted: %+v %v", observation, err)
 	}
+}
+
+func TestKnownInternalFIDOCapabilityClassificationIsPortable(t *testing.T) {
 	for _, test := range []struct {
 		goos, provider, keygen, client string
 		blocked                        bool

@@ -23,6 +23,7 @@ type agentKeyFixture struct {
 
 func newAgentKeyFixture(t *testing.T) *agentKeyFixture {
 	t.Helper()
+	requireUnixSSHProviderFixture(t)
 	t.Setenv("SSH_AUTH_SOCK", "")
 	paths := fixturePaths(t)
 	f := &agentKeyFixture{

@@ -79,7 +79,11 @@ exemptions and no runtime ACL repair/removal. Owned temporary fixtures cover the
 protective form, additional grants, metadata-only changes and malformed buffers;
 no actual user's home ACL was inspected. Native desktop creation plus agent
 selection remains the alternative for unsupported permission policies—do not
-strip home protections to satisfy the adapter.
+strip home protections to satisfy the adapter. ACL capture requires two equal,
+safe metadata observations between inode/ownership/mode checks. Directory ctime/link-count
+changes from unrelated children are not permission or identity changes; inode,
+owner, mode and explicit ACL checks remain authoritative. Regular files and
+symlinks retain their stricter ctime guard.
 
 Supported execution surfaces are owned, protected native ELF/Mach-O entrypoints,
 or the documented `#!/usr/bin/env node` entrypoint from an exact `@bitwarden/cli`

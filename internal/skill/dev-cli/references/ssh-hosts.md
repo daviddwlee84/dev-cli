@@ -197,6 +197,9 @@ unverified. Native context observed_consistent is not endpoint attestation or a
 transactional guarantee for native configuration. Unsupported wrappers/profile
 identity/platforms fail closed; no native config/vault-storage parsing or mutation
 workarounds. Never ask the user to paste BW_SESSION/master passwords into agent text.
+Permission capture requires matching inode/owner/mode and two equal safe ACL reads.
+Unrelated directory-entry ctime changes alone do not invalidate the profile; regular
+file/symlink change-time and replacement checks remain strict.
 
 The result retains exact item IDs and public fingerprints, not private bytes or full
 public lines. Created-but-not-in-agent remains CREATED; failed/changed post-checks
