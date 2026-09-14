@@ -6,13 +6,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
-### Fixed
-
-- Bitwarden native-context permission capture no longer rejects an unchanged
-  profile solely because unrelated directory entries change a shared directory's
-  ctime. Inode, owner, mode and stable ACL observations remain required; regular
-  file and symlink change-time checks are unchanged.
-
 ## [0.2.38] - 2026-09-15
 
 ### Added
@@ -47,6 +40,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Bitwarden native-context permission capture no longer rejects an unchanged
+  profile solely because unrelated directory entries change a shared directory's
+  ctime. Inode, owner, mode and stable ACL observations remain required; regular
+  file and symlink change-time checks are unchanged.
 - The dashboard FLEET view reloads its host list after SSH setup registers a
   fleet or Herdr host, instead of showing it only after restarting the CLI. A
   partial SSH setup now names the unfinished steps, such as `lab herdr: unknown`.
