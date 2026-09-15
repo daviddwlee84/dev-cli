@@ -38,3 +38,15 @@ rule = "generic-password-assignment"
 path = "internal/fleet/transport.go"
 pattern = "^resolved$"
 reason = "Go variable assignment from the credential resolver; no literal credential"
+
+[[exceptions]]
+rule = "generic-api-key"
+path = ".specstory/history/2026-09-13_12-56-24Z-dev-ssh-discover-source.md"
+pattern = "^keychain-pkcs11$"
+reason = "keychain-pkcs11 project name in transcript prose; no literal credential"
+
+[[exceptions]]
+rule = "sourcegraph-access-token"
+path = ".specstory/history/2026-09-11_06-48-04Z-pitfalls-ssh-times-out.md"
+pattern = "^(?:403331b0e34a7ebd9d5b89e9089c52e6234eaffd|a5dadaf8d934ac30e0a2dc0cc3369d3f59b09751|c27eb21820d358cf34cd4098f46e84df6adfab7d|0446afe1b0e66b10441abeb7272be828f736c194|f2f42c7d92a1824a60ce48a7d1bea921759530fe|0a9ecc86cd01c91fece501d3a67cf4c8f8574cc5|46e7f38d56d21d079f5604b48a8b6024105b6ac7|3f6b282e015418bfb8db75e136abd4f3d4c97dd9|2f7591447c7a802d2a293966828277e3d564fa28|475ab765e4aa8fc5816819850d69d838baeab8de|0bd115deea35678e72cc2cd40a85fe2497775b77|d15a33047a28630c495ec3ebce21d51fc3a9e803|47a32da55d4e3b64d8e5b8c515328835c1128f18|08ee89efef58abbabcaade801c3701b75646d7dc|4c3dc78503c92d186ed6115f88230640c198fd5c|b09175c8c1ca530553195cbcabb18cdac51f1a49|4570ce2b547b975f1175ea13babdeb1cbb843637|106748f6c21b4bb971f2e71bf800965392f79e9d)$"
+reason = "Public dev-cli commit SHAs in transcript tool calls; no literal credential"
