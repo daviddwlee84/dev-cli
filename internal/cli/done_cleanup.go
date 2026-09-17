@@ -45,6 +45,7 @@ type retireHandoffIntent struct {
 	PreviewFingerprint       string            `json:"preview_fingerprint"`
 	DeleteBranch             bool              `json:"delete_branch"`
 	CloseUnknown             bool              `json:"close_unknown"`
+	Base                     string            `json:"base,omitempty"`
 }
 
 func shouldOfferDoneCleanup(selected task.Task, opts doneOptions, interactive bool, action flow.Action) bool {
@@ -53,7 +54,10 @@ func shouldOfferDoneCleanup(selected task.Task, opts doneOptions, interactive bo
 		action != flow.ReviewHandoff
 }
 
-func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task.Task) error {
+// runDoneCleanupWizard offers retirement after completion. base carries an
+// explicit `done --merged --base-ref` so retirement proves containment against
+// the same ref instead of a recorded fork point.
+func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task.Task, base string) error {
 	if app.workflowTask != nil {
 		copy := *app
 		copy.workflowTask = &final
@@ -68,14 +72,14 @@ func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task
 		app = &copy
 	}
 	rt := runtimeForTask(app, &final)
-	authority, err := captureRetirementAuthority(ctx, app, retireCommandTarget{Task: &final}, flow.RetireOptions{})
+	authority, err := captureRetirementAuthority(ctx, app, retireCommandTarget{Task: &final}, flow.RetireOptions{Base: base})
 	if err != nil {
 		return err
 	}
 	preview, err := retiredomain.InspectForExternalCoordinator(ctx, rt, final.WorktreePath, retiredomain.Options{})
 	if err != nil {
 		app.warnf("retirement preview failed; cleanup was not attempted: %v", err)
-		printRetireFallback(app, final, false, false)
+		printRetireFallback(app, final, false, false, base)
 		return nil
 	}
 	renderRetirementPreview(app, rt, preview)
@@ -89,7 +93,7 @@ func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task
 		})
 	if errors.Is(promptErr, errPromptCanceled) || choice == "keep" {
 		fmt.Fprintln(app.Out, "   cleanup kept · the task remains DONE")
-		printRetireFallback(app, final, false, false)
+		printRetireFallback(app, final, false, false, base)
 		return nil
 	}
 	if promptErr != nil {
@@ -115,10 +119,10 @@ func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task
 			return err
 		}
 	}
-	options, fresh, canceled, err := confirmRetirement(ctx, app, p, rt, preview, flow.RetireOptions{Recursive: recursive, DeleteBranch: deleteBranch, Timeout: 5 * time.Second, PreviewAuthority: authority})
+	options, fresh, canceled, err := confirmRetirement(ctx, app, p, rt, preview, flow.RetireOptions{Recursive: recursive, DeleteBranch: deleteBranch, Base: base, Timeout: 5 * time.Second, PreviewAuthority: authority})
 	if err != nil {
 		app.warnf("retirement was not attempted: %v", err)
-		printRetireFallback(app, final, deleteBranch, options.CloseUnknown)
+		printRetireFallback(app, final, deleteBranch, options.CloseUnknown, base)
 		return nil
 	}
 	if canceled {
@@ -127,15 +131,21 @@ func runDoneCleanupWizard(ctx context.Context, app *App, p *prompter, final task
 	preview = fresh
 	closeUnknown := options.CloseUnknown
 	if rt.Name() == "herdr" && preview.CallerContained && len(preview.Sessions) > 0 {
-		return launchExternalRetireCoordinator(ctx, app, rt, final, preview, deleteBranch, closeUnknown, options.ProcessClosures.Map(), options.PreviewAuthority, recursive)
+		return launchExternalRetireCoordinator(ctx, app, rt, final, preview, deleteBranch, closeUnknown, options.ProcessClosures.Map(), options.PreviewAuthority, base, recursive)
 	}
 	if rt.Name() == "herdr" && !preview.CallerContained {
 		return retireTaskWithTaskflow(ctx, app, &final, options, deleteBranch)
 	}
 
+	if base != "" && base != final.Base {
+		// The shell directive cannot carry a containment base override.
+		fmt.Fprintln(app.Out, "   retirement needs the verified base; run it from the repository")
+		printRetireFallback(app, final, deleteBranch, closeUnknown, base)
+		return nil
+	}
 	if err := app.retireDirective(final.RepoPath, final.ID, deleteBranch, closeUnknown, recursive); err != nil {
 		app.warnf("integration is complete, but automatic retirement needs a refreshed dev shell wrapper: %v", err)
-		printRetireFallback(app, final, deleteBranch, closeUnknown)
+		printRetireFallback(app, final, deleteBranch, closeUnknown, base)
 		return err
 	}
 	fmt.Fprintln(app.Out, "   retirement handoff queued · the shell will leave this checkout and revalidate cleanup")
@@ -184,8 +194,11 @@ func renderRetirementPreview(app *App, rt runtime.Runtime, preview retiredomain.
 	}
 }
 
-func printRetireFallback(app *App, final task.Task, deleteBranch, closeUnknown bool) {
+func printRetireFallback(app *App, final task.Task, deleteBranch, closeUnknown bool, base string) {
 	flags := ""
+	if base != "" {
+		flags += " --base " + shellQuote(base)
+	}
 	if closeUnknown {
 		flags += " --close-unknown"
 	}
@@ -205,16 +218,17 @@ func launchExternalRetireCoordinator(
 	deleteBranch, closeUnknown bool,
 	processClosures map[string]string,
 	previewAuthority flow.Fields,
+	base string,
 	recursive ...bool,
 ) (err error) {
 	if app.workflowHandoff != nil {
 		copy := *app
 		copy.workflowHandoff = nil
 		return app.workflowHandoff(func() error {
-			return launchExternalRetireCoordinator(ctx, &copy, rt, final, preview, deleteBranch, closeUnknown, processClosures, previewAuthority, recursive...)
+			return launchExternalRetireCoordinator(ctx, &copy, rt, final, preview, deleteBranch, closeUnknown, processClosures, previewAuthority, base, recursive...)
 		})
 	}
-	if err := validateRetirementAuthority(ctx, app, final, previewAuthority); err != nil {
+	if err := validateRetirementAuthority(ctx, app, final, previewAuthority, base); err != nil {
 		return err
 	}
 	opener, ok := rt.(runtime.ExternalCoordinatorOpener)
@@ -258,6 +272,7 @@ func launchExternalRetireCoordinator(
 		TaskID: final.ID, TaskRevision: record.Revision, CheckoutPath: final.WorktreePath,
 		HeadOID: strings.TrimSpace(head), PreviewFingerprint: preview.Fingerprint(),
 		DeleteBranch: deleteBranch, CloseUnknown: closeUnknown, ProcessClosures: processClosures, PreviewAuthority: previewAuthority.Map(),
+		Base: base,
 	}
 	bindRetireCaller(&intent, preview)
 	intent.PreviewFingerprint = retireHandoffFingerprint(preview, intent.CallerPaneID)
@@ -421,7 +436,7 @@ func runRetireCoordinator(ctx context.Context, app *App, id string) (err error) 
 	}
 	return retireTaskWithTaskflow(ctx, app, &selected, flow.RetireOptions{
 		Recursive:    intent.Recursive,
-		CloseUnknown: intent.CloseUnknown, DeleteBranch: intent.DeleteBranch, Timeout: 5 * time.Second,
+		CloseUnknown: intent.CloseUnknown, DeleteBranch: intent.DeleteBranch, Base: intent.Base, Timeout: 5 * time.Second,
 		ProcessClosures: flow.NewFields(intent.ProcessClosures), RuntimeFingerprint: preview.Fingerprint(), PreviewAuthority: flow.NewFields(intent.PreviewAuthority),
 	}, intent.DeleteBranch)
 }

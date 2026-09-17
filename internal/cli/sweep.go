@@ -38,6 +38,8 @@ type sweepRetireOptions struct {
 	closeUnknown    bool
 	assumeNoRuntime bool
 	deleteBranches  bool
+	// base overrides DONE task bases as the retirement containment target.
+	base string
 }
 
 func newSweepCmd(app *App) *cobra.Command {
@@ -106,6 +108,7 @@ Nothing here ever deletes uncommitted work.`,
 			retireOptions := sweepRetireOptions{
 				recursive:    recursive,
 				closeUnknown: closeUnknown, assumeNoRuntime: assumeNoRuntime, deleteBranches: deleteBranches,
+				base: baseRef,
 			}
 
 			var sugg []suggestion
@@ -181,7 +184,7 @@ Nothing here ever deletes uncommitted work.`,
 	f.BoolVar(&mergedWorktrees, "merged-worktrees", false, "focus on linked worktrees whose branches are contained in the main branch")
 	f.BoolVar(&ephemeralWorktrees, "ephemeral-worktrees", false, "audit provider-verified stale ephemeral worktrees")
 	f.BoolVar(&jsonOutput, "json", false, "print the versioned ephemeral-worktree report as JSON")
-	f.StringVar(&baseRef, "base", "", "explicit containment base for merged worktrees or ephemeral branch deletion")
+	f.StringVar(&baseRef, "base", "", "explicit containment base (branch, remote-tracking ref or commit) for DONE retirement, merged worktrees or ephemeral branch deletion")
 	f.BoolVar(&closeUnknown, "close-unknown", false, "allow external closure of unknown runtime status during retirement")
 	f.BoolVar(&assumeNoRuntime, "assume-no-runtime", false, "continue when runtime enumeration fails during retirement")
 	f.BoolVar(&deleteBranches, "delete-branches", false, "also delete contained local branches after worktree retirement")
@@ -287,13 +290,13 @@ func suggestFor(app *App, ctx context.Context, r inventory.Row, stale time.Durat
 	// externally coordinated retirement step.
 	case t.State == task.Done:
 		action := fmt.Sprintf("retire runtime/worktree for %s", t.ID)
-		if retireOptions.deleteBranches && t.Branch != "" && t.Branch != t.Base {
+		if retireOptions.deleteBranches && t.Branch != "" && t.Branch != t.Base && t.Branch != retireOptions.base {
 			action += fmt.Sprintf(" and delete %s", t.Branch)
 		}
 		session, plan, planErr := sweepTaskPlan(ctx, app, t.ID, flow.RetireOptions{
 			Recursive:    retireOptions.recursive,
 			CloseUnknown: retireOptions.closeUnknown, AssumeNoRuntime: retireOptions.assumeNoRuntime,
-			DeleteBranch: retireOptions.deleteBranches,
+			DeleteBranch: retireOptions.deleteBranches, Base: retireOptions.base,
 		})
 		if planErr != nil || plan.Availability != flow.AvailabilityReady {
 			out = append(out, suggestion{row: r, reason: "merged, but guarded retirement is blocked",
@@ -448,6 +451,9 @@ func suggestMergedWorktrees(app *App, ctx context.Context, rows []inventory.Row,
 	if !gitx.RefExists(ctx, repository.Root, base) {
 		return nil, fmt.Errorf("merged-worktree base %s does not resolve to a commit", base)
 	}
+	// Managed DONE tasks are proved against the same base this mode verified,
+	// not a recorded fork point that cannot show integration.
+	options.base = base
 
 	claimed := make(map[string]inventory.Row)
 	for _, row := range rows {

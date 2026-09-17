@@ -182,10 +182,15 @@ type RetireOptions struct {
 	ProcessClosures    Fields
 	RuntimeFingerprint string
 	PreviewAuthority   Fields
-	DeleteBranch       bool
-	CloseUnknown       bool
-	AssumeNoRuntime    bool
-	Timeout            time.Duration
+	// Base overrides the task's recorded base as the containment target: a
+	// local branch, remote-tracking branch or commit. A recorded fork-point
+	// commit usually cannot prove integration, so callers name the branch the
+	// task landed on instead of dev inferring one.
+	Base            string
+	DeleteBranch    bool
+	CloseUnknown    bool
+	AssumeNoRuntime bool
+	Timeout         time.Duration
 }
 
 func (RetireOptions) Action() Action   { return Retire }
@@ -509,6 +514,9 @@ func validateActionOptions(options ActionOptions) error {
 	case VerifyMergedOptions:
 		return validateDirty(value.Dirty, value.CommitMessage)
 	case RetireOptions:
+		if err := validateBaseInput(value.Base); err != nil {
+			return err
+		}
 		return validateTimeout(value.Timeout)
 	case AdoptOptions:
 		if value.Mode != "" && value.Mode != task.ModeWorktree {
@@ -529,9 +537,11 @@ func validateActionOptions(options ActionOptions) error {
 			return fmt.Errorf("contained branch deletion requires containment proof")
 		}
 		if value.RequireContained {
-			if value.ContainmentBase == "" || value.ContainmentBase != strings.TrimSpace(value.ContainmentBase) ||
-				strings.ContainsRune(value.ContainmentBase, '\x00') {
-				return fmt.Errorf("containment base must be a normalized nonempty branch")
+			if value.ContainmentBase == "" {
+				return fmt.Errorf("containment base must be a nonempty branch, remote-tracking ref or commit")
+			}
+			if err := validateBaseInput(value.ContainmentBase); err != nil {
+				return err
 			}
 		} else if value.ContainmentBase != "" {
 			return fmt.Errorf("containment base requires containment proof")
@@ -606,6 +616,9 @@ func appendOptionsIdentity(writer *identityWriter, options ActionOptions) {
 		writer.addBool("push-base", value.PushBase)
 	case RetireOptions:
 		writer.addBool("delete-branch", value.DeleteBranch)
+		if value.Base != "" {
+			writer.addString("base", value.Base)
+		}
 		writer.addFields("process-closures", value.ProcessClosures)
 		writer.addString("runtime-preview", value.RuntimeFingerprint)
 		writer.addFields("retirement-preview", value.PreviewAuthority)
@@ -647,4 +660,11 @@ func appendRuntimeOptionsIdentity(writer *identityWriter, closeUnknown, assumeNo
 	writer.addBool("close-unknown", closeUnknown)
 	writer.addBool("assume-no-runtime", assumeNoRuntime)
 	writer.addInt64("timeout", int64(timeout))
+}
+
+func validateBaseInput(base string) error {
+	if base != strings.TrimSpace(base) || strings.ContainsRune(base, '\x00') || strings.HasPrefix(base, "-") {
+		return fmt.Errorf("base must be a normalized branch, remote-tracking ref or commit")
+	}
+	return nil
 }

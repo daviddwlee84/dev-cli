@@ -71,6 +71,8 @@ type destructiveObservation struct {
 	branchExists bool
 	branchOID    string
 	branchOIDErr error
+	baseInput    string
+	baseKind     BaseKind
 	baseRef      string
 	baseExists   bool
 	baseOID      string
@@ -206,13 +208,9 @@ func (o *destructiveObservation) observeRefs(ctx context.Context, s *lifecycleSe
 			o.branchOID, o.branchOIDErr = s.resolveRefOID(ctx, o.repoPath, o.branchRef)
 		}
 	}
-	o.baseRef = localBranchRef(base)
-	if o.repoPath != "" && o.baseRef != "" {
-		o.baseExists, o.baseOIDErr = s.gitRefState(ctx, o.repoPath, o.baseRef)
-		if o.baseExists && o.baseOIDErr == nil {
-			o.baseOID, o.baseOIDErr = s.resolveRefOID(ctx, o.repoPath, o.baseRef)
-		}
-	}
+	resolved := s.resolveBaseRef(ctx, o.repoPath, base)
+	o.baseInput, o.baseKind, o.baseRef = resolved.input, resolved.kind, resolved.ref
+	o.baseExists, o.baseOID, o.baseOIDErr = resolved.exists, resolved.oid, resolved.err
 	if o.branchExists && o.branchOIDErr == nil && o.branchOID != "" &&
 		o.baseExists && o.baseOIDErr == nil && o.baseOID != "" {
 		o.contained, o.containedErr = s.isAncestor(ctx, o.repoPath, o.branchOID, o.baseOID)
@@ -379,11 +377,19 @@ func (o destructiveObservation) gitAuthority() string {
 }
 
 func (o destructiveObservation) refsAuthority() string {
-	return authorityHash("taskflow-destructive-refs-v1",
+	return authorityHash("taskflow-destructive-refs-v2",
 		o.branchRef, boolString(o.branchExists), o.branchOID, errorString(o.branchOIDErr),
-		o.baseRef, boolString(o.baseExists), o.baseOID, errorString(o.baseOIDErr),
+		o.resolvedBase().authority(),
 		boolString(o.contained), errorString(o.containedErr),
 	)
+}
+
+func (o destructiveObservation) resolvedBase() baseResolution {
+	return baseResolution{input: o.baseInput, ref: o.baseRef, kind: o.baseKind, exists: o.baseExists, oid: o.baseOID, err: o.baseOIDErr}
+}
+
+func (o destructiveObservation) branchAuthority() string {
+	return authorityHash("branch", o.branchRef, boolString(o.branchExists), o.branchOID, errorString(o.branchOIDErr))
 }
 
 func (o destructiveObservation) taskInventoryAuthority() string {

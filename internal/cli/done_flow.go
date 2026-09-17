@@ -277,7 +277,7 @@ func runDone(ctx context.Context, app *App, args []string, opts doneOptions) err
 		return err
 	}
 	if offerCleanup {
-		return runDoneCleanupWizard(ctx, app, p, final)
+		return runDoneCleanupWizard(ctx, app, p, final, opts.BaseRef)
 	}
 	return nil
 }
@@ -600,7 +600,11 @@ func renderDoneSuccess(app *App, selected, final task.Task, plan flow.Plan, resu
 	if offerCleanup {
 		fmt.Fprintln(app.Out, "   cleanup choice follows after a fresh runtime and agent preview")
 	} else {
-		fmt.Fprintf(app.Out, "   cleanup pending · run `dev retire %s` from outside its workspace\n", final.ID)
+		retireBase := ""
+		if plan.Action == flow.VerifyMerged && view.Base != "" && view.Base != final.Base {
+			retireBase = " --base " + shellQuote(view.Base)
+		}
+		fmt.Fprintf(app.Out, "   cleanup pending · run `dev retire%s %s` from outside its workspace\n", retireBase, final.ID)
 	}
 	return nil
 }

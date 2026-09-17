@@ -312,15 +312,17 @@ func removeContainmentConditions(observed destructiveObservation, options Remove
 				"local branch will be retained", ""),
 		}
 	}
+	base := observed.resolvedBase()
 	baseCondition := condition(ConditionExplicitBase, VerdictMet, RequirementRequired,
-		fmt.Sprintf("local base %s is %s", observed.baseRef, observed.baseOID), "")
+		fmt.Sprintf("containment base %s resolves to %s", base.input, base.describe()), "")
 	switch {
 	case observed.baseOIDErr != nil:
 		baseCondition = condition(ConditionExplicitBase, VerdictError, RequirementRequired,
 			observed.baseOIDErr.Error(), "repair containment-base observation")
 	case !observed.baseExists:
 		baseCondition = condition(ConditionExplicitBase, VerdictBlocked, RequirementRequired,
-			"containment base "+observed.baseRef+" does not exist", "restore the exact local base")
+			fmt.Sprintf("containment base %q is not a local branch, remote-tracking branch or commit", base.input),
+			"restore it or pass --base <branch>")
 	case observed.baseOID == "":
 		baseCondition = condition(ConditionExplicitBase, VerdictError, RequirementRequired,
 			"containment base resolved without an OID", "repair containment-base observation")
@@ -334,7 +336,7 @@ func removeContainmentConditions(observed destructiveObservation, options Remove
 			observed.containedErr.Error(), "repair local ancestry observation")
 	case !observed.branchExists || observed.branchOID == "" || !observed.baseExists || observed.baseOID == "":
 		relationCondition = condition(ConditionBranchRelation, VerdictUnknown, RequirementRequired,
-			"exact branch/base containment cannot be proved", "restore both exact local refs")
+			"exact branch/base containment cannot be proved", "restore the branch and containment base")
 	case !observed.contained:
 		relationCondition = condition(ConditionBranchRelation, VerdictBlocked, RequirementRequired,
 			"branch is not contained in "+options.ContainmentBase, "integrate it before contained retirement")
@@ -344,7 +346,7 @@ func removeContainmentConditions(observed destructiveObservation, options Remove
 	if options.DeleteContainedBranch {
 		deletionCondition = condition(ConditionBranchDeletion, VerdictMet, RequirementRequired,
 			"ordinary git branch -d will run under the same repository/task lock", "")
-		if observed.locator.Branch == options.ContainmentBase {
+		if base.aliasesBranch(observed.locator.Branch) {
 			deletionCondition = condition(ConditionBranchDeletion, VerdictBlocked, RequirementRequired,
 				"selected branch is the containment base", "retain the base branch")
 		} else if paths, err := observed.branchCheckoutPaths(true); err != nil {
@@ -379,6 +381,9 @@ func removeCheckoutFallback(observed destructiveObservation, options RemoveCheck
 	parts := []string{"dev", "wt", "rm", shellQuote(observed.locator.Branch)}
 	if options.RequireContained {
 		parts = []string{"dev", "retire", shellQuote(observed.checkout)}
+		if options.ContainmentBase != "" {
+			parts = append(parts, "--base", shellQuote(options.ContainmentBase))
+		}
 		if options.DeleteContainedBranch {
 			parts = append(parts, "--delete-branch")
 		}
@@ -641,8 +646,8 @@ func (e *executionState) revalidateUnmanagedBranchDeletion(ctx context.Context, 
 		return staleBoundary("a task claimed the checkout path or branch before branch deletion")
 	}
 	fresh := destructiveObservation{repoPath: baseline.repoPath}
-	fresh.observeRefs(ctx, e.service, baseline.locator.Branch, strings.TrimPrefix(baseline.baseRef, "refs/heads/"))
-	if fresh.branchOID != baseline.branchOID || fresh.baseOID != baseline.baseOID ||
+	fresh.observeRefs(ctx, e.service, baseline.locator.Branch, baseline.baseInput)
+	if fresh.branchOID != baseline.branchOID || fresh.resolvedBase().authority() != baseline.resolvedBase().authority() ||
 		fresh.branchOIDErr != nil || fresh.baseOIDErr != nil || fresh.containedErr != nil || !fresh.contained {
 		return staleBoundary("branch or containment-base authority changed before branch deletion")
 	}

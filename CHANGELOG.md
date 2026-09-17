@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- `dev retire --base <ref>` overrides the containment target used to prove a
+  DONE task or linked worktree is integrated: a local branch, a remote-tracking
+  branch such as `origin/main`, or a commit. `dev sweep --base` forwards the
+  same override to DONE tasks, and `--merged-worktrees` proves managed tasks
+  against the base it already verified. After `dev done --merged --base-ref`,
+  cleanup hints and the cleanup wizard carry that ref forward.
+
 ### Fixed
 
 - Guarded file replacements on macOS no longer fail with a metadata round-trip
@@ -22,6 +31,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   earlier in the batch no longer turns every remaining plan stale. A new
   checkout of the same branch, or a lock or HEAD change on the target, still
   invalidates the plan.
+- Retirement and contained worktree removal no longer refuse a base recorded as
+  a commit or remote-tracking ref (for example `base = "b509448"` from
+  `dev start --base <commit>`) with "local base ref refs/heads/… does not
+  exist". Bases resolve as a local branch, then a remote-tracking branch, then a
+  commit, and apply re-resolves the same input. A recorded fork-point commit is
+  never replaced by the default branch: when it cannot prove integration, the
+  plan stays blocked and names `--base <branch>`.
 
 ## [0.2.38] - 2026-09-15
 
