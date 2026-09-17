@@ -5,8 +5,11 @@ A thin glue layer over git, worktrees, forges and agent runtimes.
 Submodule superprojects can use a complete worktree with independently
 initialized child repositories. Clone/worktree creation defaults to recursive
 initialization at committed gitlinks; `start --submodule PATH` selects which
-children get task branches. Explicit `--recursive` cleanup proves child recovery
-before removing the parent. See [Submodule workspaces](docs/guides/submodule-workspaces.md)
+children get task branches. Explicit `--recursive` cleanup proves recovery for
+initialized children; never-initialized children require a locally verified empty
+checkout and no retained Git store, not a download or push. Reviewed empty module
+administration can be pruned before ordinary no-force worktree removal, while
+retained data and child ownership claims still block cleanup. See [Submodule workspaces](docs/guides/submodule-workspaces.md)
 for configuration, inside-out integration and recovery limits.
 
 Use `dev submodule add` (or `dev repo add-as-submodule`) to select a known
@@ -113,7 +116,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.38 instead when you need a reproducible install.
+# Pin @v0.2.39 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -157,7 +160,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.2.38
+  version=v0.2.39
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"

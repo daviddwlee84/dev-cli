@@ -1,6 +1,16 @@
 # Agent-safe worktree retirement
 
-Recursive submodule disposal is an explicit extension: verify child tasks/artifacts/runtime, local data and fresh remote recovery first, then stage children inside-out and remove the outer checkout without force. Preserve canonical/shared Git and the outer branch. A retained journal is recovered with `dev submodule recover`, not deleted using an old remote proof. See `submodules.md`.
+Recursive submodule disposal requires explicit `--recursive`. Initialized child
+clones need task/artifact/runtime checks and fresh remote recovery proof before
+inside-out staging. For linked-worktree removal only, an absent/truly empty child
+path with no retained Git store can instead use local empty proof; do not
+initialize or download it merely for cleanup. Path-based claims and incomplete
+observations still block. Only exact reviewed empty modules admin scaffolding
+may be pruned under locks with native directory-only identity/emptiness guards;
+empty checkout directories stay for non-force Git removal. Canonical/shared Git
+and the outer branch remain. Partial pruning failure is not RETIRED; real-store
+journals/rollback remain, including mixed workspaces. Recover retained journals
+with `dev submodule recover`, never delete them using old proof. See `submodules.md`.
 
 ## The rule
 
@@ -156,7 +166,8 @@ dev done <task> --merged --base-ref origin/main --confirm-squash <merge-commit>
 ```
 
 This proves only that the named squash commit is in the base; the operator is
-asserting that it represents the feature.
+asserting that it represents the feature. Equal trees after a squash are not
+ancestry proof and do not waive retirement's containment checks.
 
 ## Safety policy
 
@@ -168,7 +179,7 @@ Retirement always refuses when:
 - an agent is `working`, `blocked`, or `waiting`;
 - runtime enumeration fails;
 - the checkout is dirty, on the wrong branch, or not contained in its base;
-- artifact finalization is armed/finalizing/failed.
+- a relevant artifact finalization is armed/finalizing/failed.
 
 `unknown` or empty agent status requires `--close-unknown` from outside the
 target. Runtime enumeration failure requires external `--assume-no-runtime`.

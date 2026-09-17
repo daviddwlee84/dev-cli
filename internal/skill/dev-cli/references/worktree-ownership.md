@@ -152,6 +152,15 @@ reports missing tools or failed setup without deleting the usable checkout.
   by default; deletion needs separately approved `--delete-branches --base REF`
   and unchanged containment/zero-unique proof before `git branch -d`.
 
+Linked-worktree removal with gitlinks still requires `--recursive`. A child path
+that is absent or truly empty, with no retained Git store and no ownership or
+observation blockers, needs no initialization or remote proof merely for removal.
+Deinitialized data and orphan stores are not empty. Exact reviewed empty modules
+admin directories may be pruned under locks with native directory-only guards;
+empty checkout directories stay for ordinary non-force Git removal. Real child
+stores retain full recovery proofs, journals and rollback. Never replace a
+refusal with recursive file deletion. See `submodules.md`.
+
 Bare `dev done` on a TTY classifies dirty content against the base before
 offering commit-all or discard-all; unique discard requires `DROP`. Dirty
 checkout removal may require explicit force, but caller/runtime safety is never

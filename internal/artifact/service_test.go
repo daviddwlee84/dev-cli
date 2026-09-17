@@ -466,6 +466,129 @@ func TestInspectReadinessMatchesMovedCheckoutByRepositoryAndBranch(t *testing.T)
 	}
 }
 
+func TestCleanupRegressionArtifactUnrelatedIntentsDoNotBlockDetachedCheckout(t *testing.T) {
+	isolateGitConfig(t)
+	detached := gittest.New(t)
+	detached.Git("checkout", "--detach", "HEAD")
+	other := gittest.New(t)
+	other.Commit("other.txt", "unrelated receipt\n", "chore: unrelated receipt")
+
+	for _, status := range []Status{Armed, Finalizing, Finalized} {
+		t.Run(string(status), func(t *testing.T) {
+			store := NewStore(t.TempDir())
+			before, err := InspectReadiness(t.Context(), store, detached.Root)
+			if err != nil || !before.KnownEmpty || !before.Ready() {
+				t.Fatalf("empty-store control = %+v, %v", before, err)
+			}
+			createReadinessIntent(t, store, "intent-unrelated", other.Root, status, other.Git("rev-parse", "HEAD"))
+
+			after, err := InspectReadiness(t.Context(), store, detached.Root)
+			if err != nil || after.ObservationError != nil || !after.KnownEmpty || !after.Ready() || len(after.Intents) != 0 {
+				t.Fatalf("unrelated %s intent changed detached readiness = %+v, %v", status, after, err)
+			}
+		})
+	}
+}
+
+func TestCleanupRegressionArtifactExactPendingStillBlocksDetachedCheckout(t *testing.T) {
+	isolateGitConfig(t)
+	detached := gittest.New(t)
+	detached.Git("checkout", "--detach", "HEAD")
+	other := gittest.New(t)
+
+	for _, status := range []Status{Armed, Finalizing} {
+		t.Run(string(status), func(t *testing.T) {
+			store := NewStore(t.TempDir())
+			createReadinessIntent(t, store, "intent-unrelated", other.Root, Finalized, other.Git("rev-parse", "HEAD"))
+			createReadinessIntent(t, store, "intent-exact", detached.Root, status, "")
+
+			inspection, err := InspectReadiness(t.Context(), store, detached.Root)
+			if err != nil || inspection.ObservationError != nil {
+				t.Fatalf("exact checkout should not require branch identity: %+v, %v", inspection, err)
+			}
+			if inspection.KnownEmpty || inspection.Ready() || len(inspection.Intents) != 1 ||
+				inspection.Intents[0].Intent.ID != "intent-exact" || inspection.Intents[0].State != ReadinessPending {
+				t.Fatalf("exact %s intent did not block detached readiness: %+v", status, inspection)
+			}
+		})
+	}
+}
+
+func TestCleanupRegressionArtifactMovedDetachedCheckoutRemainsAmbiguous(t *testing.T) {
+	isolateGitConfig(t)
+	for _, status := range []Status{Armed, Finalized} {
+		t.Run(string(status), func(t *testing.T) {
+			r := gittest.New(t)
+			branch := "feat/moved-artifact"
+			oldPath := filepath.Join(t.TempDir(), "old-checkout")
+			newPath := filepath.Join(t.TempDir(), "new-checkout")
+			r.Git("worktree", "add", "-b", branch, oldPath, "main")
+			repository, err := gitx.Discover(t.Context(), oldPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			store := NewStore(t.TempDir())
+			intent := createReadinessIntent(t, store, "intent-moved", oldPath, status, r.Git("rev-parse", branch))
+			if err := store.Update(t.Context(), intent.ID, func(candidate *Intent) error {
+				candidate.RepoPath = r.Root
+				candidate.GitCommonDir = repository.GitCommonDir
+				candidate.Branch = branch
+				return nil
+			}); err != nil {
+				t.Fatal(err)
+			}
+			r.Git("worktree", "move", oldPath, newPath)
+			r.GitIn(newPath, "checkout", "--detach", "HEAD")
+
+			inspection, err := InspectReadiness(t.Context(), store, newPath)
+			if err == nil || !strings.Contains(err.Error(), "moved intent identity is ambiguous") ||
+				inspection.ObservationError != err || inspection.KnownEmpty || inspection.Ready() || len(inspection.Intents) != 0 {
+				t.Fatalf("same-repository moved %s intent lost detached ambiguity: %+v, %v", status, inspection, err)
+			}
+		})
+	}
+}
+
+func TestCleanupRegressionArtifactDetachedCheckoutRetainsStoreErrors(t *testing.T) {
+	isolateGitConfig(t)
+	detached := gittest.New(t)
+	detached.Git("checkout", "--detach", "HEAD")
+
+	t.Run("unreadable store", func(t *testing.T) {
+		// A regular file makes ReadDir fail on every platform without relying
+		// on POSIX permission bits or the test runner's privileges.
+		path := filepath.Join(t.TempDir(), "not-a-directory")
+		if err := os.WriteFile(path, []byte("not an intent store\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		inspection, err := InspectReadiness(t.Context(), NewStore(path), detached.Root)
+		var pathErr *os.PathError
+		if !errors.As(err, &pathErr) || !strings.Contains(err.Error(), "list artifact intents") ||
+			inspection.ObservationError != err || inspection.KnownEmpty || inspection.Ready() {
+			t.Fatalf("store read error was not retained: %+v, %v", inspection, err)
+		}
+	})
+
+	t.Run("corrupt unrelated intent", func(t *testing.T) {
+		store := NewStore(t.TempDir())
+		other := gittest.New(t)
+		intent := createReadinessIntent(t, store, "intent-unrelated", other.Root, Finalized, other.Git("rev-parse", "HEAD"))
+		body := []byte(`{"schema_version": nope}`)
+		if err := os.WriteFile(store.path(intent.ID), body, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		inspection, err := InspectReadiness(t.Context(), store, detached.Root)
+		var syntaxErr *json.SyntaxError
+		if !errors.As(err, &syntaxErr) || !strings.Contains(err.Error(), "list artifact intents") ||
+			inspection.ObservationError != err || inspection.KnownEmpty || inspection.Ready() {
+			t.Fatalf("store decode error was not retained: %+v, %v", inspection, err)
+		}
+		if after, readErr := os.ReadFile(store.path(intent.ID)); readErr != nil || !bytes.Equal(after, body) {
+			t.Fatalf("failed inspection changed record: bytes=%q err=%v", after, readErr)
+		}
+	})
+}
+
 func TestReadinessInspectionReadyUsesFinalizationContract(t *testing.T) {
 	observationErr := errors.New("observation failed")
 	discarded := IntentReadiness{State: ReadinessDiscarded}

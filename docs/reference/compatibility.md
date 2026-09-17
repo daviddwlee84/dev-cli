@@ -15,7 +15,34 @@ future initialization policy. Failed additions retain data with explicit phases;
 retirement recovery journals cannot recover additions. Existing JSON fields and
 copy bindings are unchanged; `y u` is the new URL binding.
 
-Submodule workspace support is additive: legacy tasks and existing JSON fields remain readable; member intent has its own versioned record. Full child-clone disposal requires remote proofs and rejects shared/external storage, local-only data and unsupported filtered/private metadata. Reload shell integration for recursive post-done handoff. See [Submodule workspaces](../guides/submodule-workspaces.md).
+Submodule workspace support is additive: legacy tasks and existing JSON fields
+remain readable; member intent has its own versioned record. Full initialized
+child-clone disposal still requires remote proofs and rejects shared/external
+storage, local-only data and unsupported filtered/private metadata.
+`objects/info/alternates` remains an intentional blocker.
+
+Linked-worktree removal still needs `--recursive`, including for never-initialized
+or fully empty gitlinks. An absent/truly empty child path with no retained Git
+store and no ownership/observation blockers can be proved empty locally, without
+initialization, download, remote proof or push merely for removal. Deinitialized
+data, orphan stores, local/ignored files, unexpected `.git`, symlinks/reparse
+points and incomplete observations are not empty proof. Path-based task/artifact
+claims protect empty children; non-discarded matching artifact intents block,
+even finalized, and discarded records remain in plan authority.
+
+Physical emptiness does not waive parent cleanliness. Manually deleting a tracked
+gitlink directory makes the parent dirty and blocks ordinary non-force removal
+before admin pruning. Cleanup never silently creates/restores placeholders to
+bypass this guard; normal never-initialized, Git-created empty directories can pass.
+
+Only exact reviewed empty modules admin scaffolding may be pruned under existing
+locks, with immediate native directory identity/emptiness revalidation. Checkout
+directories stay for normal non-force Git removal; no recursive file-deletion
+workaround is used. Partial pruning failures are reported, never task-retired success;
+real-store journals/rollback and general worktree guards remain. Layout changes,
+new child initialization or claims invalidate the plan. Initialization/publication
+policy is unchanged. Reload shell integration for recursive post-done handoff.
+See [Submodule workspaces](../guides/submodule-workspaces.md).
 
 This page separates graceful degradation from real limitations. Reverify it whenever command/runtime code or version-sensitive Claude Code documentation changes.
 
@@ -83,7 +110,7 @@ time. It does not query review decisions or checks, persist that evidence, or
 turn it into DONE. Current `dev sweep` does not query the forge either. Verify
 integration with exact local ancestry and finish deliberately.
 
-`dev pr list --scope local --state merged` now reports which requests the forge considers merged, and which local checkout each belongs to. `dev sweep` still does not consult it, and that is deliberate: a squashed merge produces a commit that is not an ancestor of the local branch, so a forge saying "merged" cannot prove the work is recoverable from the remote. `dev sweep --merged-worktrees` proves containment locally with `git merge-base --is-ancestor`, and `dev done --merged` requires an explicit `--confirm-squash` attestation. Treat the pull-request list as a prompt to look, not as permission to delete.
+`dev pr list --scope local --state merged` now reports which requests the forge considers merged, and which local checkout each belongs to. `dev sweep` still does not consult it, and that is deliberate: a squashed merge produces a commit that is not an ancestor of the local branch, so a forge saying "merged" cannot prove the work is recoverable from the remote. `dev sweep --merged-worktrees` proves containment locally with `git merge-base --is-ancestor`, and `dev done --merged` requires an explicit `--confirm-squash` attestation. Treat the pull-request list as a prompt to look, not as permission to delete. Equal trees after a squash are not ancestry proof and do not waive retirement's containment checks.
 
 ### Claude Workflow ephemeral cleanup is strict and version-sensitive
 
@@ -730,6 +757,15 @@ Current file snapshots cap at 128 MiB, inventories at 10,000 files and plans at
 2.47.0) and complete locally recoverable refs. Backup coverage and partial results
 remain explicit. Existing commit finalizers and intent fields retain their lane;
 older binaries cannot consume new external-archive intent fields.
+
+Readiness checks canonical Git common-directory identity for intents not matched
+to the checkout path before requiring branch identity for a moved intent.
+Unrelated pending/finalized records proven to belong to another repository no
+longer block detached checkouts, including normal pinned submodules. Relevant
+pending intents, ambiguous repository/moved-intent identity and unreadable stores
+still block; exact finalized-receipt checks are unchanged. Child artifact
+observation failures report the underlying cause. Empty children use the stricter
+path-based claim checks described above, not parent-inherited Git discovery.
 
 ## SSH dashboard observations (v0.2.34)
 

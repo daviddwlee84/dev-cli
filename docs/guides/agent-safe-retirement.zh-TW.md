@@ -8,7 +8,16 @@ lang: zh-TW
 
 # Agent-safe retirement
 
-Submodule 工作區需明確 `--recursive` 核准，取得當次遠端證明後才能刪除其獨立子 clone。先處理內層，再移除外層；canonical／共享 Git 與外層分支保留。中斷時保留 recovery journal，見 [Submodule 工作區](submodule-workspaces.md)。
+Submodule 工作區移除 linked worktree 仍需明確 `--recursive` 核准。已初始化
+的子 clone 須取得當次遠端恢復證明，先處理內層，再移除外層。只有子路徑不存在
+或真正為空、沒有保留的 Git store，且通過所有權／觀測檢查時，才可改由本地
+證明為空，不必僅為移除而初始化、下載或取得遠端證明。Canonical／共享 Git
+與外層分支保留。
+
+只可在鎖內修剪精確審閱的空 modules 管理目錄；native directory-only removal
+前立即重新驗證目錄身分與空狀態。空 checkout 目錄留給不帶 force 的 Git 移除。
+修剪部分失敗不算 RETIRED；混合工作區中的真實 Git store 仍保有 journal 與
+rollback。見 [Submodule 工作區](submodule-workspaces.md)。
 
 遞迴清理保留 version-2 coordinator 對 caller 與前景程序關閉授權的檢查。子模組結構、工作區意圖與 artifact 歸屬都綁定核准時的預覽；子模組 refs 或狀態改變後，必須重新預覽，才能關閉 runtime 或移除 checkout。
 
@@ -143,6 +152,8 @@ dev done <task> --merged --base-ref origin/main --confirm-squash <merge-commit>
 ```
 
 這只證明所指名的 squash commit 被包含在 base 中；operator 是在斷言它確實代表這條 feature branch。
+Squash 後 tree 相同不是 ancestry 證明，也不會免除 retirement 的 containment
+檢查。
 
 ## 拒絕條件
 

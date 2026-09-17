@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.39] - 2026-09-17
+
 ### Added
 
 - `dev hygiene report` summarizes the newest stored scan for the current
@@ -33,6 +35,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Artifact readiness no longer lets unrelated repositories' intent records
+  block a detached checkout. Repository identity is filtered before branch
+  identity is required for moved intents; relevant pending, ambiguous or
+  unreadable records still block cleanup. Submodule artifact observation errors
+  now retain their specific cause instead of only reporting unfinished artifacts.
+- Recursive worktree cleanup can locally prove never-initialized submodules
+  empty without downloading or publishing children. Exact empty module
+  administration is revalidated and pruned with directory-only operations before
+  ordinary no-force Git removal. Retained child stores, orphan data, ignored
+  files, links and ownership claims remain blockers. Mixed initialized/empty
+  graphs retain recovery proofs and rollback for real child repositories, and
+  interrupted empty-directory pruning reports partial effects. `--recursive`
+  remains required; alternates and squash-ancestry protections are unchanged.
 - Guarded file replacements on macOS no longer fail with a metadata round-trip
   error when the source file was written by another application. The kernel
   assigns `com.apple.provenance` to each new file and ignores attempts to copy
@@ -1263,7 +1278,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.38...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.39...HEAD
+[0.2.39]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.38...v0.2.39
 [0.2.38]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.37...v0.2.38
 [0.2.37]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.36...v0.2.37
 [0.2.36]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.35...v0.2.36

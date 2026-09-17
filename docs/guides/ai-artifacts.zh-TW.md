@@ -155,6 +155,17 @@ Retirement 重新驗證 archive receipt 與目前 ignored capture bytes。新內
 缺失 receipt 會阻擋清理。本機持久保存與 remote sync 是不同狀態；一般 status
 與 readiness 不會查詢 remote。
 
+Intent 未直接符合 checkout 路徑時，readiness 先核對 canonical Git common directory
+身分，再要求分支以解析移動過的 intent。已證明屬於其他 repository
+的 pending／finalized 紀錄，因此不會阻擋 detached checkout；pinned submodule
+的 detached HEAD 是正常狀態。相關 pending intent、repository 或 moved-intent
+身分有歧義，以及無法讀取 intent store，仍會阻擋。精確 finalized receipt 的
+要求不變。子 artifact 觀測失敗會回報實際原因，不冒充 clean。
+
+空 gitlink 子項目另以路徑檢查 task／artifact claims，不繼承 parent 的 Git
+身分。任何符合路徑且非 discarded 的 artifact intent，即使已 finalized，仍
+保守阻擋遞迴移除空子項目；discarded 紀錄也繼續綁定已審閱 plan 的 authority。
+
 ## 明確的 Git 同步與原版備份
 
 ```bash

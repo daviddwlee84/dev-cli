@@ -27,6 +27,27 @@ Git/worktree/ref/runtime/artifact identity under locks, repeats safety checks
 after runtime closure and before removal, and deletes the task record last.
 Completed steps remain visible if a later step fails; no rollback is implied.
 
+## Recursive submodule removal
+
+`--recursive` is required even when every gitlink is empty. For linked-worktree
+removal only, a child path that is absent or truly empty with no retained Git
+store may use local empty proof; no initialization, download, remote proof or
+push is needed merely for removal. Deinitialized retained data, orphan stores,
+local/ignored files, unexpected `.git`, symlinks/reparse points, external claims
+and incomplete observations block. Empty-child task/artifact claims use paths,
+not parent-inherited Git discovery; any non-discarded matching artifact intent
+blocks, even finalized, and discarded records still bind the reviewed authority.
+
+Initialized child clones retain full remote recovery requirements and inside-out
+journaled staging/rollback, including mixed workspaces. Only exact reviewed empty
+modules admin directories may be pruned under locks after immediate native
+directory identity/emptiness revalidation. Empty checkout directories stay for
+ordinary non-force `git worktree remove`; no recursive file-deletion workaround
+is used. Layout changes, new initialization or claims invalidate plans. Partial
+admin pruning failure is reported, never task-retired success. Canonical/shared
+Git and the outer branch remain; initialization/publication policy is unchanged.
+`objects/info/alternates` remains an intentional blocker.
+
 ## Choose the containment base
 
 `dev retire --base <ref>` overrides the containment target for a DONE task or
@@ -35,7 +56,8 @@ branch (`refs/heads/X`), then a remote-tracking branch (`refs/remotes/X`, such a
 `origin/main`), then a commit. Fully qualified branch refs keep their named kind.
 Apply re-resolves the same input and requires the same kind, ref and commit OID;
 a moved base or a newly created same-name branch makes the reviewed plan stale.
-Remote-tracking refs are local observations, not an implicit fetch.
+Remote-tracking refs are local observations, not an implicit fetch. Equal trees
+after a squash are not ancestry proof and do not waive containment checks.
 
 Without an override, task retirement keeps its recorded base. A recorded
 fork-point commit is never silently replaced by the default branch: if it cannot

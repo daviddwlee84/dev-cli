@@ -2,11 +2,15 @@ package taskflow
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/daviddwlee84/dev-cli/internal/artifact"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/retire"
@@ -48,12 +52,13 @@ func (s *lifecycleService) decorateSubmodules(ctx context.Context, r Request, sp
 		spec.Conditions = append(spec.Conditions, condition("submodules-observed", VerdictError, RequirementRequired, err.Error(), "repair submodule observation"))
 		return spec
 	}
-	if len(g.Nodes) == 0 {
-		if repository, err := gitx.Discover(ctx, root); err == nil && repository.IsLinkedWorktree {
-			if _, err := os.Lstat(filepath.Join(repository.GitDir, "modules")); err == nil {
-				spec.Conditions = append(spec.Conditions, condition("submodule-orphan-storage", VerdictBlocked, RequirementRequired, "private module storage remains without current gitlinks", "inspect and preserve orphan submodule repositories"))
-			}
-		}
+	recursive, cleanup := recursiveRequest(r)
+	var removal *submodule.Removal
+	var removalErr error
+	if cleanup {
+		removal, removalErr = submodule.InspectRemoval(ctx, s.cfg, root, recursive, submoduleIntegrationRequired(r))
+	}
+	if len(g.Nodes) == 0 && removal == nil && removalErr == nil {
 		return spec
 	}
 	if spec.Authority == nil {
@@ -70,13 +75,23 @@ func (s *lifecycleService) decorateSubmodules(ctx context.Context, r Request, sp
 		return spec
 	}
 	spec.Authority["submodule-intent"] = revision
-	recursive, cleanup := recursiveRequest(r)
 	spec.Authority["submodules.recursive"] = boolString(recursive)
+	allEmpty := cleanup && removal != nil && removal.LayoutFingerprint != ""
+	for _, n := range g.Nodes {
+		if n.Initialized {
+			allEmpty = false
+		}
+	}
 	if cleanup {
-		_, err := submodule.InspectRemoval(ctx, s.cfg, root, recursive, submoduleIntegrationRequired(r))
+		if removal != nil {
+			spec.Authority["submodule-removal"] = removal.LayoutFingerprint
+		}
 		verdict, evidence := VerdictMet, "all child repositories pass local disposal checks; fresh remote proof runs before mutation"
-		if err != nil {
-			verdict, evidence = VerdictBlocked, err.Error()
+		if allEmpty {
+			evidence = "only absent or empty gitlinks and directory-only administration remain; local recursive cleanup needs no child remote proof"
+		}
+		if removalErr != nil {
+			verdict, evidence = VerdictBlocked, removalErr.Error()
 		}
 		spec.Conditions = append(spec.Conditions, condition("submodules-disposable", verdict, RequirementRequired, evidence, "preserve/finish every child, then explicitly request --recursive"))
 		if !recursive {
@@ -85,17 +100,28 @@ func (s *lifecycleService) decorateSubmodules(ctx context.Context, r Request, sp
 		if recursive {
 			var order []string
 			for i := len(g.Nodes) - 1; i >= 0; i-- {
-				order = append(order, g.Nodes[i].Path)
+				if g.Nodes[i].Initialized {
+					order = append(order, g.Nodes[i].Path)
+				}
 			}
 			for i, effect := range spec.Effects {
 				if effect.Code == EffectRemoveWorktree {
 					details := effect.Details.Map()
 					details["submodule-order"] = strings.Join(order, " -> ")
 					details["private-child-clones"] = "dispose after fresh remote proof; preserve outer branch"
-					spec.Effects[i] = NewEffect(effect.Code, "stage verified children inside-out, remove outer checkout, then dispose private child clones", effect.Target, true, effect.Network, details)
+					description := "stage verified children inside-out, remove outer checkout, then dispose private child clones"
+					if allEmpty {
+						details["private-child-clones"] = "none; only reviewed empty administration directories may be pruned"
+						description = "recheck empty submodule layout, prune empty administration directories, then remove outer checkout"
+					}
+					spec.Effects[i] = NewEffect(effect.Code, description, effect.Target, true, effect.Network, details)
 				}
 			}
-			spec.Confirmation.Prompt += " This includes private submodule refs and objects after fresh recovery proof."
+			if allEmpty {
+				spec.Confirmation.Prompt += " This includes only reviewed empty submodule directories; no child repository is disposed."
+			} else {
+				spec.Confirmation.Prompt += " This includes private submodule refs and objects after fresh recovery proof."
+			}
 		}
 	}
 	publication := isCompletionAction(r.Action)
@@ -110,7 +136,11 @@ func (s *lifecycleService) decorateSubmodules(ctx context.Context, r Request, sp
 			verdict, evidence = VerdictBlocked, claimErr.Error()
 		}
 		spec.Conditions = append(spec.Conditions, condition("submodule-claims", verdict, RequirementRequired, evidence, "finish child task/artifact ownership before parent cleanup"))
-		spec.Effects = append([]Effect{NewEffect(effectVerifySubmodules, "verify every submodule against fresh recovery-origin refs", root, false, true, nil)}, spec.Effects...)
+		description := "verify every initialized submodule against fresh recovery-origin refs"
+		if allEmpty {
+			description = "revalidate empty submodule layout and child ownership locally"
+		}
+		spec.Effects = append([]Effect{NewEffect(effectVerifySubmodules, description, root, false, !allEmpty, nil)}, spec.Effects...)
 	}
 	return spec
 }
@@ -118,10 +148,27 @@ func (s *lifecycleService) decorateSubmodules(ctx context.Context, r Request, sp
 func (s *lifecycleService) submoduleClaims(ctx context.Context, g gitx.SubmoduleGraph, parentTask string) (string, error) {
 	records, diagnostics, err := s.tasks.ListRecords()
 	if err != nil || len(diagnostics) > 0 {
-		return "unknown", fmt.Errorf("child task inventory is incomplete")
+		causes := []error{errors.New("child task inventory is incomplete"), err}
+		for _, diagnostic := range diagnostics {
+			causes = append(causes, diagnostic)
+		}
+		return "unknown", errors.Join(causes...)
+	}
+	var intents []artifact.Intent
+	for _, n := range g.Nodes {
+		if !n.Initialized {
+			if s.artifacts == nil {
+				return "unknown", fmt.Errorf("submodule %s artifact inventory is unavailable", n.Path)
+			}
+			intents, err = s.artifacts.List()
+			if err != nil {
+				return "unknown", fmt.Errorf("submodule %s artifact observation: %w", n.Path, err)
+			}
+			break // One strict listing serves all empty/absent child paths.
+		}
 	}
 	var evidence []string
-	var blockers []string
+	var blockers []error
 	for _, n := range g.Nodes {
 		child := filepath.Join(g.Root, filepath.FromSlash(n.Path))
 		for _, record := range records {
@@ -134,26 +181,53 @@ func (s *lifecycleService) submoduleClaims(ctx context.Context, g gitx.Submodule
 				}
 				inside, err := pathx.Contains(child, path)
 				if err != nil {
-					return "unknown", err
+					return "unknown", fmt.Errorf("submodule %s task %s ownership: %w", n.Path, record.Task.ID, err)
 				}
 				if inside {
 					evidence = append(evidence, record.Task.ID+":"+record.Revision)
-					blockers = append(blockers, fmt.Sprintf("%s is claimed by task %s", n.Path, record.Task.ID))
+					blockers = append(blockers, fmt.Errorf("%s is claimed by task %s", n.Path, record.Task.ID))
 					break
 				}
 			}
 		}
+		if !n.Initialized {
+			for _, intent := range intents {
+				matched := false
+				for _, path := range []string{intent.WorktreePath, intent.RepoPath} {
+					if !filepath.IsAbs(path) {
+						return "unknown", fmt.Errorf("submodule %s artifact intent %s has non-absolute ownership", n.Path, intent.ID)
+					}
+					inside, err := pathx.Contains(child, path)
+					if err != nil {
+						return "unknown", fmt.Errorf("submodule %s artifact intent %s identity: %w", n.Path, intent.ID, err)
+					}
+					matched = matched || inside
+				}
+				if matched {
+					// Preserve identity/status/receipt authority even for discarded
+					// intents. Do not ask Git at an empty path: it finds the parent.
+					data, err := json.Marshal(intent)
+					if err != nil {
+						return "unknown", fmt.Errorf("submodule %s artifact intent %s: %w", n.Path, intent.ID, err)
+					}
+					evidence = append(evidence, n.Path+":"+string(data))
+					if intent.Status != artifact.Discarded {
+						blockers = append(blockers, fmt.Errorf("empty submodule %s is claimed by artifact intent %s", n.Path, intent.ID))
+					}
+				}
+			}
+			continue
+		}
 		inspection, err := s.inspectArtifacts(ctx, s.artifacts, child)
 		evidence = append(evidence, n.Path+":"+artifactAuthority(inspection, err))
-		if err != nil || !inspection.Ready() {
-			blockers = append(blockers, n.Path+" has unknown or unfinished artifacts")
+		if err != nil {
+			blockers = append(blockers, fmt.Errorf("submodule %s artifact observation: %w", n.Path, err))
+		} else if !inspection.Ready() {
+			blockers = append(blockers, fmt.Errorf("submodule %s has unfinished artifacts", n.Path))
 		}
 	}
-	hash := authorityHash("submodule-claims", evidence...)
-	if len(blockers) > 0 {
-		return hash, fmt.Errorf("%s", strings.Join(blockers, "; "))
-	}
-	return hash, nil
+	sort.Strings(evidence)
+	return authorityHash("submodule-claims", evidence...), errors.Join(blockers...)
 }
 
 // The effect remains in the sealed Plan; execution skips only the preflight
@@ -187,8 +261,9 @@ func (e *executionState) prepareSubmodules(ctx context.Context) error {
 				if p == nil {
 					return "", fmt.Errorf("submodule graph disappeared")
 				}
-				if p.Graph.Fingerprint != e.plan.AuthorityFields()["submodules"] || p.Revision != e.plan.AuthorityFields()["submodule-intent"] {
-					return "", &StalePlanError{Reason: "submodule graph or intent changed"}
+				if p.Graph.Fingerprint != e.plan.AuthorityFields()["submodules"] || p.Revision != e.plan.AuthorityFields()["submodule-intent"] ||
+					(cleanup && p.LayoutFingerprint != e.plan.AuthorityFields()["submodule-removal"]) {
+					return "", &StalePlanError{Reason: "submodule graph, removal layout or intent changed"}
 				}
 				if err := e.checkSubmoduleClaims(ctx, p, false); err != nil {
 					return "", err
@@ -204,7 +279,10 @@ func (e *executionState) prepareSubmodules(ctx context.Context) error {
 					return "", err
 				}
 				e.submoduleRemoval = p
-				return "verified fresh remote reachability for every child repository", nil
+				if cleanup && p.InitializedCount() == 0 {
+					return "verified empty submodule layout and child ownership locally", nil
+				}
+				return "verified fresh remote reachability for every initialized child repository", nil
 			})
 		}
 	}
@@ -262,9 +340,15 @@ func (e *executionState) checkSubmoduleClaims(ctx context.Context, p *submodule.
 }
 
 func (e *executionState) removeWithSubmodules(ctx context.Context, repo, checkout string) error {
-	return e.submoduleRemoval.Apply(ctx, func(ctx context.Context, _ string) error {
+	err := e.submoduleRemoval.Apply(ctx, func(ctx context.Context, _ string) error {
 		return e.checkSubmoduleClaims(ctx, e.submoduleRemoval, true)
 	}, func() error { return e.service.removeWorktree(ctx, repo, checkout, false) })
+	var pruned *submodule.PrunedDirectoriesError
+	if errors.As(err, &pruned) {
+		e.partial = true
+		e.recovery = append(e.recovery, "Empty submodule administration directories were pruned: "+strings.Join(pruned.Paths, ", ")+". Outer cleanup is incomplete; refresh the plan before retrying.")
+	}
+	return err
 }
 
 // Human-facing summaries use the same graph without making remote requests.

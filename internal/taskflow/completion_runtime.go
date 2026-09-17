@@ -25,7 +25,7 @@ func RetirementPreviewAuthority(plan Plan) Fields {
 		// Submodule facts survive the handoff; recursive disposal is a separate
 		// approval selected by the wizard, not an observed identity.
 		if strings.HasPrefix(key, "task.") || strings.HasPrefix(key, "destructive.") && !strings.HasPrefix(key, "destructive.runtime") ||
-			key == "submodules" || key == "submodule-intent" || key == "submodule-claims" {
+			key == "submodules" || key == "submodule-intent" || key == "submodule-claims" || key == "submodule-removal" {
 			fields[key] = value
 		}
 	}

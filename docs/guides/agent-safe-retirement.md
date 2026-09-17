@@ -7,7 +7,18 @@ verified_on: 2026-09-17
 
 # Agent-safe retirement
 
-Submodule workspaces require explicit `--recursive` approval to dispose their independent child clones after fresh remote proof. Children leave before the outer worktree; canonical/shared Git and the outer branch remain. Interrupted cleanup retains a recovery journal. See [Submodule workspaces](submodule-workspaces.md).
+Submodule workspaces still require explicit `--recursive` approval for
+linked-worktree removal. Initialized child clones require fresh remote recovery
+proof and leave before the outer worktree. A child whose path is absent or truly
+empty, with no retained Git store and no ownership/observation blockers, can
+instead be proved empty locally; no initialization, download or remote proof is
+needed merely for its removal. Canonical/shared Git and the outer branch remain.
+
+Only exact reviewed empty modules admin scaffolding may be pruned under locks,
+with directory identity and emptiness rechecked immediately before native
+directory-only removal. Empty checkout directories stay for non-force Git
+removal. Partial pruning failure is not RETIRED; mixed workspaces retain real-store
+journals and rollback. See [Submodule workspaces](submodule-workspaces.md).
 
 Recursive cleanup preserves the version-2 coordinator's caller and foreground-program consent checks. Child graph, workspace intent and artifact ownership remain bound to the approved preview; changed child refs or state require a new preview before runtime closure or removal.
 
@@ -147,6 +158,8 @@ dev done <task> --merged --base-ref origin/main --confirm-squash <merge-commit>
 ```
 
 This proves only that the named squash commit is contained in the base; the operator is asserting that it actually represents the feature branch.
+Identical trees after a squash are not ancestry proof and do not waive
+retirement's containment checks.
 
 ## Refusal conditions
 

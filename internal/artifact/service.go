@@ -181,10 +181,11 @@ func InspectReadiness(ctx context.Context, store *Store, checkout string) (Readi
 	}
 
 	if len(unmatched) > 0 && inspection.ObservationError == nil {
-		identity, available, identityErr := inspectReadinessCheckoutIdentity(ctx, canonical)
+		commonDir, available, identityErr := inspectReadinessCheckoutCommonDir(ctx, canonical)
 		if identityErr != nil {
 			inspection.ObservationError = joinReadinessError(inspection.ObservationError, identityErr)
 		} else if available {
+			movedCandidates := make([]Intent, 0, len(unmatched))
 			for _, intent := range unmatched {
 				intentCommon, commonErr := pathx.Canonical(intent.GitCommonDir)
 				if commonErr != nil {
@@ -192,8 +193,22 @@ func InspectReadiness(ctx context.Context, store *Store, checkout string) (Readi
 						fmt.Errorf("canonicalize artifact intent %s Git common directory: %w", intent.ID, commonErr))
 					continue
 				}
-				if intentCommon == identity.commonDir && intent.Branch == identity.branch {
-					matched = append(matched, intent)
+				if intentCommon == commonDir {
+					movedCandidates = append(movedCandidates, intent)
+				}
+			}
+			// A detached checkout is ambiguous only for moved candidates in
+			// the same repository, not intents proven to belong elsewhere.
+			if len(movedCandidates) > 0 {
+				branch, branchErr := inspectReadinessCheckoutBranch(ctx, canonical)
+				if branchErr != nil {
+					inspection.ObservationError = joinReadinessError(inspection.ObservationError, branchErr)
+				} else {
+					for _, intent := range movedCandidates {
+						if intent.Branch == branch {
+							matched = append(matched, intent)
+						}
+					}
 				}
 			}
 		}
@@ -217,31 +232,30 @@ func InspectReadiness(ctx context.Context, store *Store, checkout string) (Readi
 	return inspection, inspection.ObservationError
 }
 
-type readinessCheckoutIdentity struct {
-	commonDir string
-	branch    string
-}
-
-func inspectReadinessCheckoutIdentity(ctx context.Context, checkout string) (readinessCheckoutIdentity, bool, error) {
+func inspectReadinessCheckoutCommonDir(ctx context.Context, checkout string) (string, bool, error) {
 	repository, err := gitx.Discover(ctx, checkout)
 	if errors.Is(err, gitx.ErrNotARepo) {
-		return readinessCheckoutIdentity{}, false, nil
+		return "", false, nil
 	}
 	if err != nil {
-		return readinessCheckoutIdentity{}, false, fmt.Errorf("discover artifact readiness checkout identity: %w", err)
+		return "", false, fmt.Errorf("discover artifact readiness checkout identity: %w", err)
 	}
 	commonDir, err := pathx.Canonical(repository.GitCommonDir)
 	if err != nil {
-		return readinessCheckoutIdentity{}, false, fmt.Errorf("canonicalize artifact readiness Git common directory: %w", err)
+		return "", false, fmt.Errorf("canonicalize artifact readiness Git common directory: %w", err)
 	}
+	return commonDir, true, nil
+}
+
+func inspectReadinessCheckoutBranch(ctx context.Context, checkout string) (string, error) {
 	status, err := gitx.StatusOf(ctx, checkout)
 	if err != nil {
-		return readinessCheckoutIdentity{}, false, fmt.Errorf("observe artifact readiness checkout branch: %w", err)
+		return "", fmt.Errorf("observe artifact readiness checkout branch: %w", err)
 	}
 	if status.Detached || status.Branch == "" {
-		return readinessCheckoutIdentity{}, false, errors.New("artifact readiness checkout is detached; moved intent identity is ambiguous")
+		return "", errors.New("artifact readiness checkout is detached; moved intent identity is ambiguous")
 	}
-	return readinessCheckoutIdentity{commonDir: commonDir, branch: status.Branch}, true, nil
+	return status.Branch, nil
 }
 
 func inspectIntentReadiness(ctx context.Context, checkout string, intent Intent) (IntentReadiness, error) {

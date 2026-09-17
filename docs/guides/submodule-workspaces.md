@@ -2,7 +2,7 @@
 description: Initialize complete submodule workspaces, select task branches, and retire child repositories before their parent.
 authority: project
 status: evolving
-verified_on: 2026-09-10
+verified_on: 2026-09-17
 tested_with: Git 2.55.0
 ---
 
@@ -136,20 +136,42 @@ base. Workspace-member intent is versioned separately from task TOML and is
 used to reconstruct selected branches at the gitlinks when resuming.
 
 `--recursive` authorizes disposal of the workspace's independent child clones,
-including private refs and objects. The outer branch stays unless separately
-requested; canonical and shared repositories are never disposed. Omitting the
-flag blocks parent removal when child repositories remain. `--force` cannot
-bypass child recovery checks. `dev flow` offers explicit recursive managed and
-unmanaged checkout actions; the done cleanup wizard asks about child disposal.
+including private refs and objects. It remains required for linked-worktree
+removal even when every gitlink is empty. The outer branch stays unless
+separately requested; canonical and shared repositories are never disposed.
+`--force` cannot bypass child checks. `dev flow` offers explicit recursive managed
+and unmanaged checkout actions; the done cleanup wizard asks about child disposal.
 
-Before mutation, each child is compared with fresh refs from its declared
-recovery origin using an isolated fetch. A configured origin or ahead=0 alone
-is not proof. Unpublished refs, local-only reflog/unreachable objects, stash,
-dirty/untracked/ignored content, unfinished artifacts, other task claims,
+For linked-worktree removal only, a never-initialized or fully empty gitlink can
+be proved empty locally: its child path is absent or truly empty and there is no
+retained child Git store. Such a child needs no initialization, download, remote
+recovery proof or push merely to remove the outer checkout. This does not change
+clone/worktree initialization defaults or child publication requirements.
+Deinitialized retained data, orphan Git stores, local or ignored files, unexpected
+`.git` entries, symlinks/reparse points, external ownership and incomplete
+observations block this empty-child path.
+
+Physical emptiness is not removal permission. Manually deleting a tracked gitlink
+directory makes the parent dirty, blocking ordinary non-force removal before
+admin pruning. Cleanup never silently creates or restores empty placeholders to
+bypass this guard. A never-initialized, Git-created empty directory can pass these
+checks; an absent child alone does not prove the parent safe to remove.
+
+Empty children still have ownership guards. Task and artifact claims are checked
+by child path, not by Git discovery that could inherit the parent repository.
+Any matching non-discarded artifact intent, including a finalized one, blocks
+empty-child removal conservatively; discarded records still participate in plan
+authority. Layout changes, child initialization or new claims invalidate the
+reviewed plan.
+
+Before disposing an initialized child clone, dev compares it with fresh refs from
+its declared recovery origin using an isolated fetch. A configured origin or
+ahead=0 alone is not proof. Unpublished refs, local-only reflog/unreachable objects,
+stash, dirty/untracked/ignored content, unfinished artifacts, other task claims,
 runtime activity, and additional child worktrees block cleanup. Filtered/LFS
 data, sparse/partial layouts and private Git configuration or files without a
-complete preservation proof also block. Initialize missing children before
-requesting a complete recursive recovery proof.
+complete preservation proof also block. `objects/info/alternates` remains an
+intentional blocker; the empty-child exception does not relax real-store recovery.
 
 The child origin must match its declared source. Remote failure or changing refs
 halts cleanup. Raw Git/external writers and later remote history deletion remain
@@ -157,11 +179,18 @@ outside dev's cooperative locking and run-local proof guarantees.
 
 ## Interrupted cleanup
 
-Children are staged from deepest to shallowest into a private temporary area on
-the same filesystem. Empty gitlink directories remain until ordinary non-force
-outer removal succeeds. The workflow does not use `submodule deinit` to rewrite
-shared superproject settings.
+Initialized children are staged from deepest to shallowest into a private
+temporary area on the same filesystem, including in mixed empty/initialized
+workspaces. Only empty modules admin scaffolding in the exact reviewed layout
+may be pruned under the existing locks. Directory identity and emptiness are
+revalidated immediately before native directory-only removal; empty checkout
+directories stay for ordinary non-force `git worktree remove`. This is not a
+force-removal or recursive file-deletion workaround, and general worktree safety
+guards remain. The workflow does not use `submodule deinit` to rewrite shared
+superproject settings.
 
+Partial admin-pruning failures are reported; they never count as task retirement
+success. Real child stores retain their journals and rollback behavior.
 Each move has a synced journal. A failed outer removal restores original child
 paths when they remain unclaimed. An interruption or reused path retains the
 quarantine and reports its exact `journal.json`:

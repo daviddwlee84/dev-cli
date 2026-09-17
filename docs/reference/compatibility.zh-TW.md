@@ -14,7 +14,30 @@ Submodule 新增與 REPOS／REMOTE clone-URL 複製是擴充指令／動作。�
 日後初始化政策。新增失敗以明確 phase 回報並保留資料，retirement recovery journal
 不適用於新增。既有 JSON 欄位與複製快捷鍵不變；`y u` 是新增的 URL 快捷鍵。
 
-Submodule 工作區採擴充方式：舊 task 與既有 JSON 欄位維持可讀，成員意圖另有版本化紀錄。完整子 clone 回收要求遠端證明；共享／外部 storage、本地獨有資料與不支援的 filtered／私有 metadata 會阻擋。Done 後遞迴 handoff 需重新載入 shell integration。見 [Submodule 工作區](../guides/submodule-workspaces.md)。
+Submodule 工作區採擴充方式：舊 task 與既有 JSON 欄位維持可讀，成員意圖另有
+版本化紀錄。完整的已初始化子 clone 回收仍要求遠端證明；共享／外部 storage、
+本地獨有資料與不支援的 filtered／私有 metadata 會阻擋。
+`objects/info/alternates` 仍是刻意保留的阻擋條件。
+
+移除 linked worktree 仍需 `--recursive`，包含從未初始化或完全空的 gitlink。
+只有子路徑不存在／真正為空、沒有保留的 Git store，且通過所有權／觀測檢查，
+才可由本地證明為空，不必僅為移除而初始化、下載、取得遠端證明或 push。
+Deinitialized 資料、orphan store、本地／ignored 檔案、非預期 `.git`、
+symlink／reparse point 或不完整觀測都不是空狀態證明。Task／artifact claims
+依路徑保護空子項目；符合路徑且非 discarded 的 artifact intent 即使 finalized
+仍會阻擋，discarded 紀錄也保留於 plan authority。
+
+實體上為空不免除 parent cleanliness 檢查。手動刪除 tracked gitlink 目錄會使
+parent 變 dirty，在管理目錄修剪前就阻擋一般不帶 force 的移除。清理不會默默
+建立／恢復空目錄來繞過檢查；從未初始化、由 Git 建立的正常空目錄可通過。
+
+只可在既有鎖內修剪精確審閱的空 modules 管理目錄，並在 native directory-only
+removal 前立即重新驗證身分與空狀態。Checkout 目錄留給一般不帶 force 的 Git
+移除，不使用遞迴刪檔替代手段。修剪部分失敗會回報，不算 task retirement 成功；
+真實 Git store 的 journal／rollback 與一般 worktree 安全檢查維持不變。布局
+改變、子項目初始化或新增 claims 都會使 plan 失效。初始化／發布政策不變。
+Done 後遞迴 handoff 需重新載入 shell integration。
+見 [Submodule 工作區](../guides/submodule-workspaces.md)。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -71,7 +94,7 @@ Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII quer
 
 Portable provider evidence 僅包含 review 是否存在、provider、`open`/`draft`/`merged`/`closed`、URL 與 observation time。它不涵蓋 CI check conclusions、approvals、mergeability、comments 或 deployment status；unsupported/unauthenticated/ambiguous/malformed/failed query 也不等於 absence。請 fetch/驗證 named ancestry，再用 `dev done --merged --base-ref <ref>` 或 Flow 的 Verify Merged 記錄 DONE。
 
-`dev pr list --scope local --state merged` 現在會報告 forge 認定已 merge 的 request，以及各自對應到哪一個本地 checkout。`dev sweep` 仍然不會去查它，這是刻意的：squash merge 產生的 commit 並不是本地 branch 的 ancestor，所以 forge 說「merged」無法證明這份工作能從 remote 復原。`dev sweep --merged-worktrees` 用 `git merge-base --is-ancestor` 在本地證明 containment，而 `dev done --merged` 需要明確的 `--confirm-squash` attestation。把 pull request 清單當成「該去看一下」的提示，而不是「可以刪」的許可。
+`dev pr list --scope local --state merged` 現在會報告 forge 認定已 merge 的 request，以及各自對應到哪一個本地 checkout。`dev sweep` 仍然不會去查它，這是刻意的：squash merge 產生的 commit 並不是本地 branch 的 ancestor，所以 forge 說「merged」無法證明這份工作能從 remote 復原。`dev sweep --merged-worktrees` 用 `git merge-base --is-ancestor` 在本地證明 containment，而 `dev done --merged` 需要明確的 `--confirm-squash` attestation。把 pull request 清單當成「該去看一下」的提示，而不是「可以刪」的許可。Squash 後 tree 相同不是 ancestry 證明，也不會免除 retirement 的 containment 檢查。
 
 ### Claude Workflow ephemeral cleanup strict 且具版本敏感性
 
@@ -640,6 +663,14 @@ filters 與原 remote 歷史替換不在此次整合內。
 Split 需要 git-filter-repo（native CI 固定 2.47.0）與完整可回復的本機 refs。
 備份範圍及 partial results 明確列出。舊 commit finalizers 維持原流程；舊版
 binary 無法讀取新增的 external-archive intent 欄位。
+
+Intent 未直接符合 checkout 路徑時，readiness 先核對 canonical Git common directory
+身分，再要求 moved intent 的分支身分。已證明屬於其他 repository
+的 pending／finalized 紀錄不再阻擋 detached checkout，包含正常的 pinned
+submodule。相關 pending intent、repository／moved-intent 身分歧義與無法
+讀取的 store 仍會阻擋；精確 finalized receipt 檢查不變。子 artifact 觀測
+失敗會回報實際原因。空子項目則使用前述較嚴格的路徑 claim 檢查，不繼承
+parent 的 Git 探索結果。
 
 ## SSH dashboard observations (v0.2.34)
 

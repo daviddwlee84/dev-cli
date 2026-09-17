@@ -3,8 +3,8 @@
 Submodule workspaces initialize recursively at committed gitlinks by default.
 Use `--submodules=none` to skip, or `start --submodule PATH` to select children
 for task branches. `dev submodule status/init/develop/recover` inspects, prepares
-and restores child checkouts. Explicit `--recursive` cleanup verifies child
-remote recovery before removing their private clones and the outer worktree;
+and restores child checkouts. Explicit `--recursive` cleanup verifies initialized
+child clones' remote recovery before removing them and the outer linked worktree;
 canonical repositories and the outer branch are retained.
 
 A worktree is a second working directory for the same repository: its own
@@ -106,6 +106,30 @@ dev wt rm feat/auth
 
 Never deletes the branch. A dirty checkout needs an explicit `--force`, and
 that refusal is the feature, not an obstacle.
+
+Gitlinks still need `--recursive`, even if never initialized. For linked-worktree
+removal only, an absent or truly empty child path with no retained Git store may
+be proved empty locally; no initialization, download, remote proof or push is
+needed merely for removal. Retained/deinitialized data, orphan stores, local or
+ignored files, unexpected `.git`, symlinks/reparse points, external claims and
+incomplete observations block. Path-based task/artifact claims protect empty
+children without inheriting parent Git identity; any non-discarded matching
+artifact intent blocks, and discarded records still bind the reviewed authority.
+
+Physical emptiness alone is not removal permission. Manually deleting a tracked
+gitlink directory makes the parent dirty, blocking ordinary non-force removal
+before admin pruning. Cleanup never silently creates or restores placeholders to
+bypass this guard. A never-initialized, Git-created empty directory can pass;
+an absent child alone does not prove the parent safe to remove.
+
+Only exact reviewed empty modules admin scaffolding may be pruned under locks,
+revalidating directory identity and emptiness immediately before native
+directory-only removal. Empty checkout directories stay for normal non-force Git
+removal. Real child stores retain full recovery proofs and journals/rollback;
+partial pruning failure is not retirement success. Layout changes, new child
+initialization or claims require a new plan. General removal guards and
+initialization/publication policy are unchanged; no recursive file-deletion
+workaround is used. See `dev help retirement` and `dev help ai-artifacts`.
 
 If a directory was deleted behind Git's back, the registration is a recovery
 case. Inspect repository-wide `git worktree prune` scope before applying it;

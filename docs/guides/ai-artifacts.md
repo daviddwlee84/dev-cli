@@ -168,6 +168,20 @@ Retirement checks signed archive receipts and current ignored capture bytes.
 New or changed evidence blocks cleanup until preserved. Local archive durability
 is distinct from remote sync; ordinary status and readiness never query a remote.
 
+For an intent not matched to the checkout path, readiness checks canonical Git
+common-directory identity before requiring a branch to resolve a moved intent.
+Pending or finalized records proven to belong to another repository therefore do
+not block a detached checkout; detached HEAD is normal for pinned submodules.
+Relevant pending intents, ambiguous repository or moved-intent identity, and an
+unreadable intent store still block. Exact finalized-receipt requirements are
+unchanged. Failed child artifact observations report their underlying cause,
+never a false clean result.
+
+Empty gitlink children have separate path-based task/artifact claim checks,
+without inheriting the parent's Git identity. Any matching non-discarded artifact
+intent, even finalized, conservatively blocks recursive empty-child removal;
+discarded records still bind the reviewed plan's authority.
+
 ## Explicit Git synchronization and original backups
 
 ```bash
