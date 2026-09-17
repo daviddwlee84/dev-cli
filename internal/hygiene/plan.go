@@ -524,10 +524,22 @@ func (s *Service) savePlan(ctx context.Context, p *planRecord) error {
 	return s.save(ctx, p.Plan.ID, *p)
 }
 
-// ReviewPath exposes only the explicitly requested private review location.
+// ReviewPath exposes only the explicitly requested private review location:
+// a plan's proposed content or a report's captured raw values.
 func (s *Service) ReviewPath(ctx context.Context, id string) (string, error) {
 	if err := s.prepare(ctx); err != nil {
 		return "", err
+	}
+	var probe struct {
+		Report struct {
+			ID string `json:"id"`
+		}
+	}
+	if err := s.load(ctx, id, &probe); err != nil {
+		return "", err
+	}
+	if probe.Report.ID != "" {
+		return s.valuesReviewPath(ctx, id)
 	}
 	var p planRecord
 	if err := s.load(ctx, id, &p); err != nil {
@@ -539,6 +551,25 @@ func (s *Service) ReviewPath(ctx context.Context, id string) (string, error) {
 	path := filepath.Join(s.Dir, p.Plan.ReviewFile)
 	body, err := safefile.ReadStablePath(ctx, path, MaxRecordBytes)
 	if err != nil || keyedID(s.key, string(body)) != p.ReviewDigest {
+		return "", ErrStale
+	}
+	return path, nil
+}
+
+func (s *Service) valuesReviewPath(ctx context.Context, id string) (string, error) {
+	record, err := s.loadReport(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if record.ValuesReview == "" {
+		return "", ErrValuesNotCaptured
+	}
+	if record.ValuesReview != id+valuesReviewSuffix {
+		return "", ErrStale
+	}
+	path := filepath.Join(s.Dir, record.ValuesReview)
+	body, err := safefile.ReadStablePath(ctx, path, MaxRecordBytes)
+	if err != nil || keyedID(s.key, string(body)) != record.ValuesDigest {
 		return "", ErrStale
 	}
 	return path, nil

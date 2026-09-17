@@ -81,7 +81,8 @@ func (b *scanBuilder) history(ctx context.Context, o ScanOptions, privateDir str
 				b.gap("", "invalid_engine_path")
 				continue
 			}
-			b.add(d.RuleID, "secret", file, d.Commit, d.StartLine, d.Secret, b.s.Policy.Secrets, false)
+			id := b.add(d.RuleID, "secret", file, d.Commit, d.StartLine, d.Secret, b.s.Policy.Secrets, false)
+			b.captureValue(id, d.RuleID, "secret", file, d.Commit, d.StartLine, d.Secret, "")
 		}
 	}
 	commits, err := gitBytes(ctx, b.s.Root, []byte(strings.Join(tips, "\n")+"\n"), "rev-list", "--stdin")

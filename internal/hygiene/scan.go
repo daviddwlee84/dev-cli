@@ -24,6 +24,9 @@ type ScanOptions struct {
 	Timeout time.Duration
 	Files   []string
 	Audit   bool
+	// CaptureValues writes matched values to a private review file for
+	// `dev hygiene report --values`; public output keeps only masked forms.
+	CaptureValues bool
 }
 type scanBuilder struct {
 	s        *Service
@@ -31,6 +34,7 @@ type scanBuilder struct {
 	findings map[string]int
 	compiled []compiledRule
 	gapSet   map[string]bool
+	values   *valueCollector
 }
 
 func gitBytes(ctx context.Context, root string, input []byte, args ...string) ([]byte, error) {
@@ -109,6 +113,9 @@ func (s *Service) Scan(ctx context.Context, o ScanOptions) (Report, error) {
 		return Report{}, err
 	}
 	b := &scanBuilder{s: s, findings: map[string]int{}, gapSet: map[string]bool{}}
+	if o.CaptureValues {
+		b.values = newValueCollector()
+	}
 	b.record = scanRecord{Root: s.Root, Report: Report{SchemaVersion: 1, Kind: "hygiene_scan", ID: newID(), RepoID: s.RepoID, Scope: o.Scope, Status: "complete", Created: time.Now().UTC(), PolicyDigest: keyedID(s.key, policyDigest(s.Policy)), Findings: []Finding{}, PrivateRules: len(s.Policy.Rules), PublicOnly: s.PublicOnly, Audit: o.Audit}}
 	if s.Policy.Secrets == Off && s.Policy.Known == Off && s.Policy.Generic == Off {
 		b.record.Report.Status = "skipped"
@@ -116,6 +123,7 @@ func (s *Service) Scan(ctx context.Context, o ScanOptions) (Report, error) {
 		if err := s.save(ctx, b.record.Report.ID, b.record); err != nil {
 			return b.record.Report, err
 		}
+		s.recordLatest(ctx, b.record.Report)
 		return b.record.Report, nil
 	}
 	for _, r := range s.Policy.Rules {
@@ -188,9 +196,15 @@ func (s *Service) Scan(ctx context.Context, o ScanOptions) (Report, error) {
 	// A timeout still produces a private partial receipt and a failing exit.
 	saveCtx, done := context.WithTimeout(context.Background(), 10*time.Second)
 	defer done()
+	if b.values != nil {
+		if e := s.writeValuesReview(saveCtx, &b.record, b.values); e != nil {
+			return *r, errors.New("cannot save private hygiene values review")
+		}
+	}
 	if e := s.save(saveCtx, r.ID, b.record); e != nil {
 		return *r, errors.New("cannot save hygiene scan receipt")
 	}
+	s.recordLatest(saveCtx, *r)
 	if err != nil {
 		return *r, err
 	}
@@ -237,7 +251,7 @@ func (b *scanBuilder) add(rule, category, file, commit string, line int, value s
 		return ""
 	}
 	b.findings[id] = len(b.record.Report.Findings)
-	b.record.Report.Findings = append(b.record.Report.Findings, Finding{id, b.s.displayPath(rule), category, b.s.displayPath(file), line, commit, 1, disposition, can && disposition != "accepted"})
+	b.record.Report.Findings = append(b.record.Report.Findings, Finding{id, b.s.displayPath(rule), category, b.s.displayPath(file), line, commit, 1, disposition, can && disposition != "accepted", keyedID(b.s.key, "value", category, rule, value)})
 	return id
 }
 func (b *scanBuilder) native(file, commit string, data []byte, can bool) {
@@ -270,6 +284,7 @@ func (b *scanBuilder) native(file, commit string, data []byte, can bool) {
 			line += bytes.Count(data[last:m[0]], []byte{'\n'})
 			last = m[0]
 			id := b.add(c.rule.ID, category, file, commit, line, string(data[m[0]:m[1]]), mode, can)
+			b.captureValue(id, c.rule.ID, category, file, commit, line, string(data[m[0]:m[1]]), lineContext(data, m[0], m[1]))
 			if id != "" && can {
 				replacement := c.rule.Replacement
 				if replacement == "" {
@@ -414,6 +429,11 @@ func (b *scanBuilder) current(ctx context.Context, o ScanOptions, privateDir str
 			spans := secretSpans(data, d)
 			can := o.Scope == "worktree" && tokens[file] && len(spans) > 0
 			id := b.add(d.RuleID, "secret", file, "", d.StartLine, d.Secret, b.s.Policy.Secrets, can)
+			context := ""
+			if len(spans) > 0 {
+				context = lineContext(data, spans[0][0], spans[0][1])
+			}
+			b.captureValue(id, d.RuleID, "secret", file, "", d.StartLine, d.Secret, context)
 			if id != "" && can {
 				for _, m := range spans {
 					b.record.Edits = append(b.record.Edits, edit{id, file, m[0], m[1], "[REDACTED:" + d.RuleID + "]"})

@@ -236,6 +236,9 @@ type Finding struct {
 	Occurrences int    `json:"occurrences"`
 	Disposition string `json:"disposition"`
 	CanRedact   bool   `json:"can_redact"`
+	// ValueID is a private-keyed digest of the matched value within its
+	// category and rule, so identical values aggregate across files.
+	ValueID string `json:"value_id,omitempty"`
 }
 type Gap struct {
 	File     string         `json:"file,omitempty"`
@@ -277,6 +280,12 @@ type scanRecord struct {
 	Sources       []source
 	Edits         []edit
 	ScannerDigest string
+	// Values holds masked value metadata only; raw values live solely in the
+	// private ValuesReview file bound by ValuesDigest.
+	Values          []ValueSummary `json:",omitempty"`
+	ValuesReview    string         `json:",omitempty"`
+	ValuesDigest    string         `json:",omitempty"`
+	ValuesTruncated bool           `json:",omitempty"`
 }
 
 func (r Report) OK() bool {
