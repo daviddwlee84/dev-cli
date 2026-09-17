@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path"
 	"sort"
 	"strings"
 	"time"
@@ -76,6 +77,7 @@ type RuleSummary struct {
 }
 
 type FileSummary struct {
+	FileID      string   `json:"file_id,omitempty"`
 	File        string   `json:"file"`
 	Disposition string   `json:"disposition"`
 	Findings    int      `json:"findings"`
@@ -101,32 +103,34 @@ type SummaryOmitted struct {
 // Summary is the public `hygiene_summary` schema-v1 aggregation of one scan
 // report. It never contains raw matched values or private file locations.
 type Summary struct {
-	SchemaVersion   int               `json:"schema_version"`
-	Kind            string            `json:"kind"`
-	ReportID        string            `json:"report_id"`
-	ReportKind      string            `json:"report_kind"`
-	Scope           string            `json:"scope"`
-	Status          string            `json:"status"`
-	Created         time.Time         `json:"created"`
-	PolicyCurrent   bool              `json:"policy_current"`
-	CheckoutCurrent bool              `json:"checkout_current"`
-	Audit           bool              `json:"audit"`
-	PublicOnly      bool              `json:"public_only"`
-	Rescanned       bool              `json:"rescanned"`
-	Sections        []string          `json:"sections"`
-	Top             int               `json:"top"`
-	Filters         SummaryFilters    `json:"filters"`
-	Totals          SummaryTotals     `json:"totals"`
-	Severities      []SeveritySummary `json:"severities,omitempty"`
-	Rules           []RuleSummary     `json:"rules,omitempty"`
-	Files           []FileSummary     `json:"files,omitempty"`
-	Categories      []CategorySummary `json:"categories,omitempty"`
-	Findings        []Finding         `json:"findings,omitempty"`
-	Gaps            []Gap             `json:"gaps,omitempty"`
-	Skipped         []Gap             `json:"skipped,omitempty"`
-	Omitted         SummaryOmitted    `json:"omitted"`
-	ValuesShown     bool              `json:"values_shown"`
-	ValuesTruncated bool              `json:"values_truncated,omitempty"`
+	SchemaVersion      int               `json:"schema_version"`
+	Kind               string            `json:"kind"`
+	ReportID           string            `json:"report_id"`
+	ReportKind         string            `json:"report_kind"`
+	Scope              string            `json:"scope"`
+	Status             string            `json:"status"`
+	Created            time.Time         `json:"created"`
+	PolicyCurrent      bool              `json:"policy_current"`
+	CheckoutCurrent    bool              `json:"checkout_current"`
+	Audit              bool              `json:"audit"`
+	PublicOnly         bool              `json:"public_only"`
+	Rescanned          bool              `json:"rescanned"`
+	Sections           []string          `json:"sections"`
+	Top                int               `json:"top"`
+	Filters            SummaryFilters    `json:"filters"`
+	Totals             SummaryTotals     `json:"totals"`
+	Severities         []SeveritySummary `json:"severities,omitempty"`
+	Rules              []RuleSummary     `json:"rules,omitempty"`
+	Files              []FileSummary     `json:"files,omitempty"`
+	Categories         []CategorySummary `json:"categories,omitempty"`
+	Findings           []Finding         `json:"findings,omitempty"`
+	Gaps               []Gap             `json:"gaps,omitempty"`
+	Skipped            []Gap             `json:"skipped,omitempty"`
+	Omitted            SummaryOmitted    `json:"omitted"`
+	ValuesShown        bool              `json:"values_shown"`
+	ValuesTruncated    bool              `json:"values_truncated,omitempty"`
+	ValuesStatus       string            `json:"values_status,omitempty"`
+	FileCountsComplete bool              `json:"file_counts_complete"`
 }
 
 var (
@@ -175,6 +179,14 @@ func (r SummaryRequest) Validate() error {
 			return fmt.Errorf("unknown category %q (use secret, known or generic)", category)
 		}
 	}
+	for _, pattern := range r.Paths {
+		if _, err := path.Match(pattern, ""); err != nil {
+			return errors.New("invalid --path glob; use a valid shell-style path pattern")
+		}
+	}
+	if r.Scope != "" && r.Scope != "staged" && r.Scope != "worktree" && r.Scope != "history" && r.Scope != "snapshot" {
+		return errors.New("scope must be staged, worktree, history or an explicit snapshot report")
+	}
 	if r.ReportID != "" && !safeRecordID(r.ReportID) {
 		return errors.New("invalid hygiene report ID")
 	}
@@ -204,7 +216,7 @@ func (s *Service) Summarize(ctx context.Context, request SummaryRequest) (Summar
 	if request.Scope != "" && request.ReportID != "" && record.Report.Scope != request.Scope {
 		return Summary{}, fmt.Errorf("report %s has scope %s, not %s", id, record.Report.Scope, request.Scope)
 	}
-	if request.Values && record.ValuesReview == "" {
+	if request.Values && record.ValuesReview == "" && record.ValuesStatus != "failed" {
 		return Summary{}, ErrValuesNotCaptured
 	}
 	sections := request.By
@@ -219,12 +231,13 @@ func (s *Service) Summarize(ctx context.Context, request SummaryRequest) (Summar
 		CheckoutCurrent: record.Root == s.Root,
 		Audit:           report.Audit, PublicOnly: report.PublicOnly, Rescanned: request.Rescanned,
 		Sections: sections, Top: request.Top,
-		Filters: SummaryFilters{Dispositions: request.Dispositions, Rules: request.Rules, Categories: request.Categories, Paths: request.Paths},
+		Filters: SummaryFilters{Dispositions: append([]string(nil), request.Dispositions...), Rules: s.publicFilterLabels(request.Rules), Categories: append([]string(nil), request.Categories...), Paths: s.publicFilterLabels(request.Paths)},
 		Gaps:    report.Gaps, Skipped: report.Skipped,
 		ValuesShown: request.Values, ValuesTruncated: request.Values && record.ValuesTruncated,
+		ValuesStatus: record.ValuesStatus, FileCountsComplete: true,
 	}
 
-	findings := filterFindings(report.Findings, request)
+	findings := filterFindings(report.Findings, request, record.FilePaths)
 	summary.Totals = SummaryTotals{Gaps: len(report.Gaps), Skipped: len(report.Skipped), ScannedFiles: report.Files}
 	severities := map[string]*SeveritySummary{}
 	for _, disposition := range []string{string(Block), string(Warn), "accepted"} {
@@ -239,6 +252,10 @@ func (s *Service) Summarize(ctx context.Context, request SummaryRequest) (Summar
 	categories := map[string]*CategorySummary{}
 	categoryRules := map[string]map[string]bool{}
 	for _, finding := range findings {
+		fileKey := findingFileKey(finding)
+		if finding.FileID == "" {
+			summary.FileCountsComplete = false
+		}
 		summary.Totals.Findings++
 		summary.Totals.Occurrences += finding.Occurrences
 		switch finding.Disposition {
@@ -266,22 +283,22 @@ func (s *Service) Summarize(ctx context.Context, request SummaryRequest) (Summar
 		rule.Disposition = worseDisposition(rule.Disposition, finding.Disposition)
 		rule.Findings++
 		rule.Occurrences += finding.Occurrences
-		ruleFiles[ruleKey][finding.File] = true
+		ruleFiles[ruleKey][fileKey] = true
 		if finding.ValueID == "" {
 			ruleMissingValue[ruleKey] = true
 		} else {
 			ruleValues[ruleKey][finding.ValueID] = true
 		}
 
-		file := files[finding.File]
+		file := files[fileKey]
 		if file == nil {
-			file = &FileSummary{File: finding.File}
-			files[finding.File], fileRules[finding.File] = file, map[string]bool{}
+			file = &FileSummary{File: finding.File, FileID: finding.FileID}
+			files[fileKey], fileRules[fileKey] = file, map[string]bool{}
 		}
 		file.Disposition = worseDisposition(file.Disposition, finding.Disposition)
 		file.Findings++
 		file.Occurrences += finding.Occurrences
-		fileRules[finding.File][finding.Rule] = true
+		fileRules[fileKey][finding.Rule] = true
 
 		category := categories[finding.Category]
 		if category == nil {
@@ -343,7 +360,7 @@ func (s *Service) Summarize(ctx context.Context, request SummaryRequest) (Summar
 		}
 		sort.Slice(summary.Files, func(i, j int) bool {
 			a, b := summary.Files[i], summary.Files[j]
-			return rankedBefore(a.Disposition, b.Disposition, a.Occurrences, b.Occurrences, a.Findings, b.Findings, a.File, b.File)
+			return rankedBefore(a.Disposition, b.Disposition, a.Occurrences, b.Occurrences, a.Findings, b.Findings, a.File+"\x00"+a.FileID, b.File+"\x00"+b.FileID)
 		})
 		summary.Files, summary.Omitted.Files = truncateTop(summary.Files, request.Top)
 	}
@@ -383,7 +400,7 @@ func (s *Service) loadReport(ctx context.Context, id string) (scanRecord, error)
 	return record, nil
 }
 
-func filterFindings(findings []Finding, request SummaryRequest) []Finding {
+func filterFindings(findings []Finding, request SummaryRequest, filePaths map[string]string) []Finding {
 	matches := func(values []string, value string) bool {
 		if len(values) == 0 {
 			return true
@@ -401,9 +418,13 @@ func filterFindings(findings []Finding, request SummaryRequest) []Finding {
 			continue
 		}
 		if len(request.Paths) > 0 {
+			file := finding.File
+			if original, ok := filePaths[finding.FileID]; ok {
+				file = original
+			}
 			matched := false
 			for _, pattern := range request.Paths {
-				matched = matched || pathMatches(pattern, finding.File)
+				matched = matched || pathMatches(pattern, file)
 			}
 			if !matched {
 				continue
@@ -432,7 +453,7 @@ func ruleValueSummaries(findings []Finding, rule *RuleSummary, masked map[string
 		}
 		value.Findings++
 		value.Occurrences += finding.Occurrences
-		files[finding.ValueID][finding.File] = true
+		files[finding.ValueID][findingFileKey(finding)] = true
 	}
 	out := make([]ValueSummary, 0, len(byID))
 	for id, value := range byID {
@@ -469,4 +490,24 @@ func truncateTop[T any](items []T, top int) ([]T, int) {
 		return items, 0
 	}
 	return items[:top], len(items) - top
+}
+
+// Older records lack exact file identities. Their masked-path grouping is a
+// lower bound and is explicitly marked incomplete in the summary.
+func findingFileKey(f Finding) string {
+	if f.FileID != "" {
+		return "id:" + f.FileID
+	}
+	return "label:" + f.File
+}
+
+func (s *Service) publicFilterLabels(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	out := make([]string, len(values))
+	for i, value := range values {
+		out[i] = s.displayPath(value)
+	}
+	return out
 }

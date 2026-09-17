@@ -209,6 +209,8 @@ func TestHygieneCLIReportFlagContracts(t *testing.T) {
 		{"report", "--rescan", "--top", "-1"},
 		{"report", "--rescan", "--by", "owner"},
 		{"report", "--rescan", "--disposition", "off"},
+		{"report", "--rescan", "--path", "["},
+		{"report", "--scope", "working"},
 		{"report", "--report", "not-a-report"},
 	} {
 		if _, _, err := h.run(append(base, args...)...); err == nil {

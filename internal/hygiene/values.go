@@ -16,10 +16,15 @@ import (
 )
 
 const (
-	maxCapturedValues  = 10000
-	maxValueSamples    = 20
-	maxValueContext    = 120
-	valuesReviewSuffix = ".values.review.txt"
+	maxCapturedValues     = 10000
+	maxCapturedValueBytes = 64 << 10
+	maxCapturedBytes      = 16 << 20
+	maxValueMetadataBytes = 4096
+	maxValueSamples       = 20
+	maxValueContext       = 120
+	maxValueContextBytes  = maxCapturedValueBytes + 2*maxValueContext + 2*len("…")
+	maxValuesReviewBytes  = 64 << 20
+	valuesReviewSuffix    = ".values.review.txt"
 )
 
 // ValueSummary is one distinct matched value in masked form. Raw values are
@@ -38,6 +43,7 @@ type ValueSummary struct {
 type valueCollector struct {
 	entries   map[string]*collectedValue
 	order     []string
+	bytes     int // Retained raw values, sample context and location/rule metadata.
 	truncated bool
 }
 
@@ -60,56 +66,101 @@ func newValueCollector() *valueCollector {
 // captureValue records one occurrence of a finding's raw value when the scan
 // was asked to capture values. Callers pass the finding ID returned by add.
 func (b *scanBuilder) captureValue(findingID, rule, category, file, commit string, line int, value, context string) {
+	b.captureValueContext(findingID, rule, category, file, commit, line, value, func() string { return context })
+}
+
+// Context is built only for a retained sample. Whole values that exceed a
+// bound are skipped, never shortened into an apparently complete raw value.
+func (b *scanBuilder) captureValueContext(findingID, rule, category, file, commit string, line int, value string, context func() string) {
 	if b.values == nil || findingID == "" {
+		return
+	}
+	if len(value) > maxCapturedValueBytes || len(rule) > maxValueMetadataBytes || len(category) > maxValueMetadataBytes {
+		b.values.truncated = true
 		return
 	}
 	valueID := keyedID(b.s.key, "value", category, rule, value)
 	entry := b.values.entries[valueID]
 	if entry == nil {
-		if len(b.values.entries) >= maxCapturedValues {
+		size := len(value) + len(rule) + len(category)
+		if len(b.values.entries) >= maxCapturedValues || size > maxCapturedBytes-b.values.bytes {
 			b.values.truncated = true
 			return
 		}
-		entry = &collectedValue{rule: rule, category: category, raw: value, files: map[string]bool{}, findings: map[string]bool{}}
+		entry = &collectedValue{rule: strings.Clone(rule), category: strings.Clone(category), raw: strings.Clone(value), files: map[string]bool{}, findings: map[string]bool{}}
 		b.values.entries[valueID] = entry
 		b.values.order = append(b.values.order, valueID)
+		b.values.bytes += size
 	}
+	// Counts remain exact after the sample/byte budget is exhausted. File keys
+	// do not retain raw paths (or a much larger backing string) for counting.
 	entry.occurrences++
-	entry.files[file] = true
+	entry.files[keyedID(b.s.key, "file", file)] = true
 	entry.findings[findingID] = true
-	if len(entry.samples) < maxValueSamples {
-		entry.samples = append(entry.samples, valueSample{file: file, commit: commit, line: line, context: context})
-	} else {
+	locationBytes := len(file) + len(commit)
+	if len(entry.samples) >= maxValueSamples || len(file) > maxValueMetadataBytes || len(commit) > maxValueMetadataBytes || locationBytes > maxCapturedBytes-b.values.bytes {
 		b.values.truncated = true
+		return
 	}
+	text := ""
+	if context != nil {
+		text = context()
+	}
+	size := locationBytes + len(text)
+	if len(text) > maxValueContextBytes || size > maxCapturedBytes-b.values.bytes {
+		b.values.truncated = true
+		return
+	}
+	entry.samples = append(entry.samples, valueSample{file: strings.Clone(file), commit: strings.Clone(commit), line: line, context: strings.Clone(text)})
+	b.values.bytes += size
 }
 
-// lineContext returns the line around one match, bounded on both sides.
+// lineContext searches only the bounded windows around a bounded match, not
+// the entire containing line for every occurrence in a large single-line file.
 func lineContext(data []byte, start, end int) string {
-	if start < 0 || end > len(data) || start > end {
+	if start < 0 || end > len(data) || start > end || end-start > maxCapturedValueBytes {
 		return ""
 	}
-	lineStart := bytes.LastIndexByte(data[:start], '\n') + 1
-	lineEnd := len(data)
-	if i := bytes.IndexByte(data[end:], '\n'); i >= 0 {
-		lineEnd = end + i
+	from := max(0, start-maxValueContext)
+	to := end + min(len(data)-end, maxValueContext)
+	if i := bytes.LastIndexByte(data[from:start], '\n'); i >= 0 {
+		from += i + 1
 	}
-	from := max(lineStart, start-maxValueContext)
-	to := min(lineEnd, end+maxValueContext)
+	if i := bytes.IndexByte(data[end:to], '\n'); i >= 0 {
+		to = end + i
+	}
 	prefix, suffix := "", ""
-	if from > lineStart {
+	if from > 0 && data[from-1] != '\n' {
 		prefix = "…"
 	}
-	if to < lineEnd {
+	if to < len(data) && data[to] != '\n' {
 		suffix = "…"
 	}
 	return prefix + string(data[from:to]) + suffix
 }
 
+// The raw capture budget does not include escaping expansion or formatted
+// headings. Bound the rendered buffer too, before each append.
+type valuesReviewBuffer struct {
+	bytes.Buffer
+	limit int
+	err   error
+}
+
+func (b *valuesReviewBuffer) Write(p []byte) (int, error) {
+	if b.err == nil && len(p) > b.limit-b.Len() {
+		b.err = errors.New("values review exceeds byte limit; narrow the scan")
+	}
+	if b.err != nil {
+		return 0, b.err
+	}
+	return b.Buffer.Write(p)
+}
+
 // writeValuesReview persists raw values and context only to a private review
 // file and stores masked metadata plus a keyed digest in the scan record.
 func (s *Service) writeValuesReview(ctx context.Context, record *scanRecord, values *valueCollector) error {
-	var review bytes.Buffer
+	review := valuesReviewBuffer{limit: min(maxValuesReviewBytes, MaxRecordBytes)}
 	fmt.Fprintf(&review, "PRIVATE REVIEW: hygiene_values\nReport: %s\nNever paste this file into chat, Git or CI logs. It contains raw matched values.\n", record.Report.ID)
 	ids := append([]string(nil), values.order...)
 	sort.SliceStable(ids, func(i, j int) bool {
@@ -121,6 +172,12 @@ func (s *Service) writeValuesReview(ctx context.Context, record *scanRecord, val
 	})
 	record.Values = make([]ValueSummary, 0, len(ids))
 	for _, id := range ids {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if review.err != nil {
+			return review.err
+		}
 		entry := values.entries[id]
 		record.Values = append(record.Values, ValueSummary{
 			ValueID: id, Rule: s.displayPath(entry.rule), Category: entry.category,
@@ -138,10 +195,10 @@ func (s *Service) writeValuesReview(ctx context.Context, record *scanRecord, val
 		}
 	}
 	if values.truncated {
-		review.WriteString("\n(values or samples were truncated at the capture limit)\n")
+		fmt.Fprint(&review, "\n(values or samples were skipped at the capture limit; retained values are complete)\n")
 	}
-	if review.Len() > MaxRecordBytes {
-		return errors.New("values review exceeds byte limit; narrow the scan")
+	if review.err != nil {
+		return review.err
 	}
 	name := record.Report.ID + valuesReviewSuffix
 	if err := configedit.WritePrivate(ctx, filepath.Join(s.Dir, name), review.Bytes(), false); err != nil {
@@ -150,6 +207,10 @@ func (s *Service) writeValuesReview(ctx context.Context, record *scanRecord, val
 	record.ValuesReview = name
 	record.ValuesDigest = keyedID(s.key, review.String())
 	record.ValuesTruncated = values.truncated
+	record.ValuesStatus = "complete"
+	if values.truncated {
+		record.ValuesStatus = "truncated"
+	}
 	return nil
 }
 

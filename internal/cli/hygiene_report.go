@@ -69,7 +69,7 @@ dev hygiene review-path <report-id> and never paste it into chat, Git or CI.`,
 			request := hygiene.SummaryRequest{
 				ReportID: reportID, Scope: scope, By: splitFlagList([]string{by}), Top: top,
 				Dispositions: splitFlagList(dispositions), Rules: splitFlagList(rules),
-				Categories: splitFlagList(categories), Paths: splitFlagList(paths),
+				Categories: splitFlagList(categories), Paths: append([]string(nil), paths...),
 				Findings: findings, Values: showValues,
 			}
 			if err := request.Validate(); err != nil {
@@ -168,6 +168,12 @@ func (h *hygieneCLI) renderSummary(v hygiene.Summary) {
 	fmt.Fprintf(out, "  findings %s (occ %s) · block %s · warn %s · accepted %s · gaps %s\n",
 		groupDigits(v.Totals.Findings), groupDigits(v.Totals.Occurrences), groupDigits(v.Totals.Blocked),
 		groupDigits(v.Totals.Warnings), groupDigits(v.Totals.Accepted), groupDigits(v.Totals.Gaps))
+	if !v.Rescanned {
+		fmt.Fprintf(out, "  %s\n", style.dim("stored scan from "+v.Created.Format(time.RFC3339)+"; source bytes were not rechecked"))
+	}
+	if !v.FileCountsComplete {
+		fmt.Fprintf(out, "  %s\n", style.warning("legacy report lacks exact file identities; file counts are lower bounds"))
+	}
 	var filters []string
 	for label, values := range map[string][]string{"disposition": v.Filters.Dispositions, "rule": v.Filters.Rules, "category": v.Filters.Categories, "path": v.Filters.Paths} {
 		if len(values) > 0 {
@@ -270,10 +276,14 @@ func (h *hygieneCLI) renderSummary(v hygiene.Summary) {
 			more(rule.OmittedValues, "value")
 		}
 		if v.ValuesTruncated {
-			fmt.Fprintf(out, "  %s\n", style.warning("value capture reached its limit; counts above cover captured values only"))
+			fmt.Fprintf(out, "  %s\n", style.warning("value capture reached its limit; some values or samples were omitted; finding totals are unchanged"))
 		}
-		fmt.Fprintf(out, "\nPrivate full values: dev hygiene review-path %s\n", v.ReportID)
-		fmt.Fprintf(out, "%s\n", style.dim("(never paste that file into chat, Git or CI logs)"))
+		if v.ValuesStatus == "failed" {
+			fmt.Fprintf(out, "\n%s\n", style.warning("value review could not be saved; the scan receipt is retained without raw values"))
+		} else {
+			fmt.Fprintf(out, "\nPrivate full values: dev hygiene review-path %s\n", v.ReportID)
+			fmt.Fprintf(out, "%s\n", style.dim("(never paste that file into chat, Git or CI logs)"))
+		}
 	}
 
 	fmt.Fprintf(out, "\n%s\n", style.dim("Report "+v.ReportID))

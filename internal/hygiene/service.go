@@ -239,6 +239,9 @@ type Finding struct {
 	// ValueID is a private-keyed digest of the matched value within its
 	// category and rule, so identical values aggregate across files.
 	ValueID string `json:"value_id,omitempty"`
+	// FileID keeps exact paths distinct even when their public labels redact
+	// to the same string. It is scoped by the repository's private key.
+	FileID string `json:"file_id,omitempty"`
 }
 type Gap struct {
 	File     string         `json:"file,omitempty"`
@@ -280,12 +283,16 @@ type scanRecord struct {
 	Sources       []source
 	Edits         []edit
 	ScannerDigest string
+	// FilePaths is private source metadata used to filter by original paths.
+	// Public file labels may collide after privacy masking.
+	FilePaths map[string]string `json:",omitempty"`
 	// Values holds masked value metadata only; raw values live solely in the
 	// private ValuesReview file bound by ValuesDigest.
 	Values          []ValueSummary `json:",omitempty"`
 	ValuesReview    string         `json:",omitempty"`
 	ValuesDigest    string         `json:",omitempty"`
 	ValuesTruncated bool           `json:",omitempty"`
+	ValuesStatus    string         `json:",omitempty"`
 }
 
 func (r Report) OK() bool {

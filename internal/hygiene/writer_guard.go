@@ -3,6 +3,8 @@ package hygiene
 import (
 	"errors"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 // WriterAgent is one recognized live agent whose working directory covers the
@@ -51,10 +53,11 @@ func CheckWriters(agents []WriterAgent, targets []WriterTarget, allowCallerShare
 			if !target.Artifact {
 				continue
 			}
-			if caller != "" && strings.EqualFold(target.Session, caller) {
+			targetID := canonicalSessionID(target.Session)
+			if caller != "" && targetID == caller {
 				return errors.New(writerOccupied + "; a target is the calling agent's own live transcript")
 			}
-			proven = proven && target.Session != ""
+			proven = proven && targetID != ""
 		}
 		if !proven && !allowCallerShared {
 			return errors.New(writerOccupied + "; the calling agent cannot prove the artifacts belong to another session (stop it, or pass --allow-shared-checkout after confirming the writer exited)")
@@ -65,7 +68,15 @@ func CheckWriters(agents []WriterAgent, targets []WriterTarget, allowCallerShare
 
 func sessionID(session string) string {
 	if _, id, ok := strings.Cut(session, ":"); ok {
-		return strings.TrimSpace(id)
+		return canonicalSessionID(strings.TrimSpace(id))
 	}
-	return strings.TrimSpace(session)
+	return canonicalSessionID(strings.TrimSpace(session))
+}
+
+func canonicalSessionID(value string) string {
+	id, err := uuid.Parse(value)
+	if err != nil || id == uuid.Nil || !strings.EqualFold(id.String(), value) {
+		return ""
+	}
+	return id.String()
 }

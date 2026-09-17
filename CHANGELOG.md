@@ -17,7 +17,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   the new `hygiene_summary` schema-v1 document. `--values` shows masked
   distinct values per rule; raw values and their context go only to a private
   review file whose location `dev hygiene review-path <report-id>` prints.
-  Scan findings gain an additive keyed `value_id`.
+  Scan findings gain additive keyed `value_id` and `file_id` fields, keeping
+  private filenames distinct even when their displayed labels match. Stored
+  summaries show the scan date without claiming current source freshness;
+  legacy file counts are explicitly marked as lower bounds. Value capture is
+  byte-bounded and skipped samples are visible; a failed values sidecar retains
+  a partial scan receipt. Invalid path globs fail before scanning, and filter
+  metadata is policy-masked.
 - `dev retire --base <ref>` overrides the containment target used to prove a
   DONE task or linked worktree is integrated: a local branch, a remote-tracking
   branch such as `origin/main`, or a commit. `dev sweep --base` forwards the
@@ -52,10 +58,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   transcript from its own pane. The artifact writer guard previously blocked
   the calling agent itself, leaving `--no-runtime` as the only way through.
   Other live agents still always block. The caller is exempt only when Herdr's
-  exact session id differs from every target transcript's preamble session, or
-  when `--allow-shared-checkout` explicitly asserts disjoint ownership (for
-  example plans or transcripts without a provable preamble); a target that is
-  the caller's own live transcript is refused even with the override.
+  exact session id differs from a valid UUID in every target's actual
+  SpecStory-generated preamble, or when `--allow-shared-checkout` explicitly
+  asserts disjoint ownership (for example plans or unknown session identities).
+  An identified caller-owned live transcript is refused even with the override;
+  malformed headers or body mentions never prove another session.
   `dev hygiene restore --apply` now guards the receipt's exact paths.
 
 ## [0.2.38] - 2026-09-15
