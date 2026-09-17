@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Guarded file replacements on macOS no longer fail with a metadata round-trip
+  error when the source file was written by another application. The kernel
+  assigns `com.apple.provenance` to each new file and ignores attempts to copy
+  it, so hygiene redaction, encoding repair and recovery, and `dev ssh init`
+  now leave that one tag to the kernel while still requiring every other
+  extended attribute to survive and still detecting a changed source. Apply and
+  recovery errors now keep their underlying cause instead of only pointing at
+  the private receipt.
+
 ## [0.2.38] - 2026-09-15
 
 ### Added

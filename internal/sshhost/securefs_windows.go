@@ -209,6 +209,10 @@ func platformVerifyMetadata(path string, file *os.File, expected fileMetadata) e
 	return nil
 }
 
+func platformVerifyStagedMetadata(path string, file *os.File, expected fileMetadata) error {
+	return platformVerifyMetadata(path, file, expected)
+}
+
 // Windows has no portable directory fsync. MOVEFILE_WRITE_THROUGH flushes the
 // publication operation before returning.
 func platformSyncDirectory(string) error { return nil }

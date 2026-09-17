@@ -397,7 +397,7 @@ func (s *Service) Apply(ctx context.Context, id string, o ApplyOptions) (Plan, e
 				if e != nil {
 					p.Plan.Status = "partial"
 					_ = s.save(context.Background(), id, p)
-					return errors.New("file apply interrupted; inspect private recovery receipt")
+					return fmt.Errorf("file apply interrupted; inspect private recovery receipt: %w", e)
 				}
 				p.Plan.Completed = append(p.Plan.Completed, p.Plan.Files[i].File)
 				if err = s.save(ctx, id, p); err != nil {
@@ -446,7 +446,7 @@ func (s *Service) allowedTarget(kind, path string) bool {
 func (s *Service) Restore(ctx context.Context, receipt string, apply bool, o ApplyOptions) ([]configedit.Change, error) {
 	plan, err := configedit.RestorePlan(ctx, filepath.Join(s.Dir, "recovery"), receipt)
 	if err != nil {
-		return nil, errors.New("recovery unavailable or source changed")
+		return nil, fmt.Errorf("recovery unavailable or source changed: %w", err)
 	}
 	for _, c := range plan.Preview() {
 		if !s.allowedTarget("hygiene_redact", c.Path) && !s.allowedTarget("hygiene_rules", c.Path) {

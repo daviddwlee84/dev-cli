@@ -380,7 +380,7 @@ func (s *Service) ApplySetup(ctx context.Context, id string) (Plan, error) {
 					p.View.Recovery = append(p.View.Recovery, r.Receipt)
 				}
 				if e != nil {
-					return errors.New("artifact setup interrupted; inspect private recovery")
+					return fmt.Errorf("artifact setup interrupted; inspect private recovery: %w", e)
 				}
 				p.View.Completed = append(p.View.Completed, p.View.Files[i].File)
 				if e = s.save(ctx, &p); e != nil {

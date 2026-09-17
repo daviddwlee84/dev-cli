@@ -39,6 +39,19 @@ func kernelLabel(goos, name string, value []byte) bool {
 	return goos == "android" && name == "security.selinux" && len(value) <= 4096 && appDataLabel.Match(value)
 }
 
+// KernelProvenance recognizes macOS's kernel-managed provenance tag. The kernel
+// assigns it from the writing process and ignores setxattr without an error, so
+// a replacement file cannot inherit the source value. It may be observed and
+// compared on the same file, never restored or required on a replacement.
+// Unrecognized values keep the strict metadata path.
+func KernelProvenance(name string, value []byte) bool {
+	return kernelProvenance(runtime.GOOS, name, value)
+}
+
+func kernelProvenance(goos, name string, value []byte) bool {
+	return goos == "darwin" && name == "com.apple.provenance" && len(value) == 11 && value[0] == 0x01
+}
+
 // InheritedFileFlags reports read-only flags supplied by Android's filesystem.
 // FS_ENCRYPT_FL describes transparent file encryption; dev never sets/clears it.
 func InheritedFileFlags() uint32 {

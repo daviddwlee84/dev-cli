@@ -178,6 +178,35 @@ func platformVerifyMetadata(path string, file *os.File, expected fileMetadata) e
 	return nil
 }
 
+// platformVerifyStagedMetadata compares a new staging file with its source.
+// macOS assigns kernel provenance to the new file, so only that tag is exempt;
+// same-file capture checks keep using platformVerifyMetadata.
+func platformVerifyStagedMetadata(path string, file *os.File, expected fileMetadata) error {
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	actual, err := platformCaptureMetadata(path, file, info)
+	if err != nil {
+		return err
+	}
+	if actual.mode != expected.mode || actual.uid != expected.uid || actual.gid != expected.gid || actual.flags != expected.flags ||
+		!reflect.DeepEqual(xattrsWithoutKernelProvenance(actual.xattrs), xattrsWithoutKernelProvenance(expected.xattrs)) {
+		return errors.New("staged Unix metadata differs from source metadata")
+	}
+	return nil
+}
+
+func xattrsWithoutKernelProvenance(attributes map[string][]byte) map[string][]byte {
+	filtered := make(map[string][]byte, len(attributes))
+	for name, value := range attributes {
+		if !platformfs.KernelProvenance(name, value) {
+			filtered[name] = value
+		}
+	}
+	return filtered
+}
+
 func platformSyncDirectory(path string) error {
 	directory, err := os.Open(path)
 	if err != nil {

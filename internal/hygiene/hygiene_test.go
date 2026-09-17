@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/configedit"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
 )
 
@@ -244,5 +245,27 @@ func TestNativeGitleaksDoesNotAllowSameLinePlaceholder(t *testing.T) {
 	wire, _ := json.Marshal(report)
 	if bytes.Contains(wire, []byte(fake)) {
 		t.Fatal("raw key in report")
+	}
+}
+
+func TestRestoreRetainsRecoveryCause(t *testing.T) {
+	s, r := testService(t)
+	put(t, r.Root, "settings.txt", "before private-host-unique after\n")
+	report, err := s.Scan(t.Context(), ScanOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := s.PreviewRedact(t.Context(), report.ID, []string{"settings.txt"}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applied, err := s.Apply(t.Context(), plan.ID, ApplyOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	put(t, r.Root, "settings.txt", "edited after redaction\n")
+	_, err = s.Restore(t.Context(), applied.Recovery[0], false, ApplyOptions{})
+	if !errors.Is(err, configedit.ErrStale) || !strings.Contains(err.Error(), "recovery unavailable or source changed") {
+		t.Fatalf("restore dropped its recovery cause: %v", err)
 	}
 }

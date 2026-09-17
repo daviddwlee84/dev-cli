@@ -381,7 +381,7 @@ func createStagedFile(dir string, data []byte, metadata *fileMetadata) (*stagedF
 		if err := platformApplyMetadata(path, file, *metadata); err != nil {
 			return nil, fmt.Errorf("apply source metadata to staging file: %w", err)
 		}
-		if err := platformVerifyMetadata(path, file, *metadata); err != nil {
+		if err := platformVerifyStagedMetadata(path, file, *metadata); err != nil {
 			return nil, fmt.Errorf("verify staged metadata: %w", err)
 		}
 	}
