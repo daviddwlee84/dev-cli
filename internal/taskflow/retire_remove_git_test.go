@@ -308,3 +308,60 @@ func TestRemoveCheckoutRealGitDirtyDefaultAndTypedDiscard(t *testing.T) {
 		}
 	})
 }
+
+func TestRemoveCheckoutRealGitSiblingRemovalKeepsReviewedPlanCurrent(t *testing.T) {
+	fixture := newLifecycleGitFixture(t, task.ModeDirect, task.Done)
+	checkout := filepath.Join(fixture.root, "reviewed")
+	sibling := filepath.Join(fixture.root, "sibling")
+	locator := addUnmanagedCheckout(t, fixture, "reviewed", checkout, false)
+	addUnmanagedCheckout(t, fixture, "sibling", sibling, false)
+	request, err := NewRequest(locator, RemoveCheckoutOptions{RequireContained: true, ContainmentBase: "main"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := fixture.service.Plan(context.Background(), request)
+	if err != nil || plan.Availability != AvailabilityReady {
+		t.Fatalf("Plan: availability=%s err=%v conditions=%+v", plan.Availability, err, plan.Conditions())
+	}
+	mustGitCommand(t, fixture.repo, "worktree", "remove", sibling)
+	mustGitCommand(t, fixture.repo, "branch", "-D", "sibling")
+	if _, err := fixture.service.Apply(context.Background(), plan, Approve(plan.PlanID)); err != nil {
+		t.Fatalf("unrelated sibling removal invalidated the reviewed plan: %v", err)
+	}
+	if _, err := os.Stat(checkout); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("checkout stat=%v", err)
+	}
+}
+
+func TestRetireRealGitSiblingRemovalKeepsReviewedPlanCurrent(t *testing.T) {
+	fixture := newLifecycleGitFixture(t, task.ModeWorktree, task.Done)
+	sibling := filepath.Join(fixture.root, "sibling")
+	addUnmanagedCheckout(t, fixture, "sibling", sibling, false)
+	plan, err := fixture.service.Plan(context.Background(), fixture.request(t, RetireOptions{}))
+	if err != nil || plan.Availability != AvailabilityReady {
+		t.Fatalf("Plan: availability=%s err=%v conditions=%+v", plan.Availability, err, plan.Conditions())
+	}
+	mustGitCommand(t, fixture.repo, "worktree", "remove", sibling)
+	result, err := fixture.service.Apply(context.Background(), plan, Approve(plan.PlanID))
+	if err != nil {
+		t.Fatalf("unrelated sibling removal invalidated the reviewed plan: %v", err)
+	}
+	if result.Milestone != MilestoneRetired {
+		t.Fatalf("milestone=%s", result.Milestone)
+	}
+}
+
+func TestRetireRealGitSameBranchCheckoutAfterPlanIsStale(t *testing.T) {
+	fixture := newLifecycleGitFixture(t, task.ModeWorktree, task.Done)
+	plan, err := fixture.service.Plan(context.Background(), fixture.request(t, RetireOptions{}))
+	if err != nil || plan.Availability != AvailabilityReady {
+		t.Fatalf("Plan: availability=%s err=%v conditions=%+v", plan.Availability, err, plan.Conditions())
+	}
+	mustGitCommand(t, fixture.repo, "worktree", "add", "--force", filepath.Join(fixture.root, "second-feature"), "feature")
+	if _, err := fixture.service.Apply(context.Background(), plan, Approve(plan.PlanID)); !errors.Is(err, ErrStalePlan) {
+		t.Fatalf("same-branch checkout after review error=%v", err)
+	}
+	if _, err := os.Stat(fixture.worktree); err != nil {
+		t.Fatalf("stale retirement removed the checkout: %v", err)
+	}
+}

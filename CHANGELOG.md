@@ -16,6 +16,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   extended attribute to survive and still detecting a changed source. Apply and
   recovery errors now keep their underlying cause instead of only pointing at
   the private receipt.
+- `dev sweep --apply --yes` (including `--merged-worktrees`) now completes a
+  batch in one pass. A reviewed retirement or removal plan is bound only to the
+  worktrees that share its branch or path, so removing an unrelated sibling
+  earlier in the batch no longer turns every remaining plan stale. A new
+  checkout of the same branch, or a lock or HEAD change on the target, still
+  invalidates the plan.
 
 ## [0.2.38] - 2026-09-15
 

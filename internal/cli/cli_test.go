@@ -1851,3 +1851,44 @@ func TestSweepRemovesAnOrphanWhoseFilesTheRepositoryAlreadyHas(t *testing.T) {
 		t.Fatalf("sweep touched the repository's own copy: %v", err)
 	}
 }
+
+func TestSweepMergedWorktreesApplyYesRemovesEveryEligibleSibling(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "landed", "--branch", "feat/landed", "--base", "main")
+	managed := filepath.Join(h.wtRoot, "demo", "feat-landed")
+	h.repo.GitIn(managed, "config", "user.email", "dev@example.test")
+	h.repo.GitIn(managed, "config", "user.name", "dev test")
+	if err := os.WriteFile(filepath.Join(managed, "landed.txt"), []byte("landed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.repo.GitIn(managed, "add", "landed.txt")
+	h.repo.GitIn(managed, "commit", "-m", "feat: land")
+	h.mustRun("--allow-shared-checkout", "done", "landed", "--ff")
+
+	var unmanaged []string
+	for _, name := range []string{"merged-a", "merged-b", "merged-c"} {
+		path := filepath.Join(h.wtRoot, "demo", name)
+		h.repo.Git("worktree", "add", "-b", name, path, "main")
+		unmanaged = append(unmanaged, path)
+	}
+	t.Chdir(h.repo.Root)
+
+	out, errOut, err := h.run("sweep", "--merged-worktrees", "--delete-branches", "--apply", "--yes", "--assume-no-runtime")
+	if err != nil {
+		t.Fatalf("sweep failed: %v\nstdout:\n%s\nstderr:\n%s", err, out, errOut)
+	}
+	if strings.Contains(out+errOut, "stale") {
+		t.Fatalf("batch sweep invalidated sibling plans:\nstdout:\n%s\nstderr:\n%s", out, errOut)
+	}
+	for _, path := range append(unmanaged, managed) {
+		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+			t.Fatalf("%s survived one batch sweep: %v\nstdout:\n%s\nstderr:\n%s", path, statErr, out, errOut)
+		}
+	}
+	if listed := strings.TrimSpace(h.repo.Git("worktree", "list", "--porcelain")); strings.Count(listed, "worktree ") != 1 {
+		t.Fatalf("worktrees remain after batch sweep:\n%s", listed)
+	}
+	if branches := h.repo.Git("branch", "--list", "merged-*", "feat/landed"); strings.TrimSpace(branches) != "" {
+		t.Fatalf("contained branches were not deleted:\n%s", branches)
+	}
+}

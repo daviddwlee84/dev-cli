@@ -903,3 +903,42 @@ func containsEffect(plan Plan, code EffectCode) bool {
 	}
 	return false
 }
+
+func TestDestructiveWorktreeListAuthorityIgnoresUnrelatedEntries(t *testing.T) {
+	service := &lifecycleService{canonicalPath: func(path string) (string, error) { return filepath.Clean(path), nil }}
+	root := filepath.FromSlash("/work")
+	target := filepath.Join(root, "target")
+	base := []gitx.Worktree{
+		{Path: filepath.Join(root, "repo"), Head: "main-oid", Branch: "main", Main: true},
+		{Path: target, Head: "feature-oid", Branch: "feature"},
+		{Path: filepath.Join(root, "sibling"), Head: "sibling-oid", Branch: "sibling"},
+	}
+	authority := func(worktrees []gitx.Worktree) string {
+		observed := destructiveObservation{worktrees: worktrees, checkout: target}
+		observed.scopedWorktrees = service.scopeDestructiveWorktrees(worktrees, "feature", target)
+		return observed.worktreeListAuthority()
+	}
+	want := authority(base)
+	for name, worktrees := range map[string][]gitx.Worktree{
+		"sibling removed":    {base[0], base[1]},
+		"sibling added":      append(append([]gitx.Worktree{}, base...), gitx.Worktree{Path: filepath.Join(root, "other"), Branch: "other"}),
+		"sibling HEAD moved": {base[0], base[1], {Path: base[2].Path, Head: "moved", Branch: "sibling"}},
+		"main HEAD moved":    {{Path: base[0].Path, Head: "moved", Branch: "main", Main: true}, base[1], base[2]},
+		"reordered":          {base[2], base[1], base[0]},
+	} {
+		if got := authority(worktrees); got != want {
+			t.Errorf("%s changed the scoped worktree authority", name)
+		}
+	}
+	for name, worktrees := range map[string][]gitx.Worktree{
+		"target locked":            {base[0], {Path: target, Head: "feature-oid", Branch: "feature", Locked: true}, base[2]},
+		"target HEAD moved":        {base[0], {Path: target, Head: "moved", Branch: "feature"}, base[2]},
+		"same branch elsewhere":    append(append([]gitx.Worktree{}, base...), gitx.Worktree{Path: filepath.Join(root, "second"), Branch: "feature"}),
+		"nested below target":      append(append([]gitx.Worktree{}, base...), gitx.Worktree{Path: filepath.Join(target, "nested"), Branch: "nested"}),
+		"target registration gone": {base[0], base[2]},
+	} {
+		if got := authority(worktrees); got == want {
+			t.Errorf("%s did not change the scoped worktree authority", name)
+		}
+	}
+}
