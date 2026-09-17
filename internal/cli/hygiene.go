@@ -198,7 +198,8 @@ func (h *hygieneCLI) guard(ctx context.Context, root string, paths []string) err
 	agents := make([]hygiene.WriterAgent, 0, len(observation.Agents))
 	for _, a := range observation.Agents {
 		session := a.Activity.Session
-		if session == "" && a.IsCaller {
+		if session == "" && a.IsCaller && !observation.AgentActivityList.Supported {
+			// Only backends without an exact agent inventory fall back to panes.
 			session = callerPaneAgentSession(observation)
 		}
 		agents = append(agents, hygiene.WriterAgent{Caller: a.IsCaller, Blocking: a.Blocking, Session: session})
