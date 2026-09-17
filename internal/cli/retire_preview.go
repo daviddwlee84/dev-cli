@@ -36,7 +36,11 @@ func captureRetirementAuthority(ctx context.Context, app *App, target retireComm
 	if err != nil {
 		return flow.Fields{}, err
 	}
-	request, err := flow.NewRequest(locator, flow.RemoveCheckoutOptions{Recursive: options.Recursive, RequireContained: true, ContainmentBase: gitx.DefaultBranch(ctx, repo.MainRoot), DeleteContainedBranch: options.DeleteBranch, CloseUnknown: options.CloseUnknown, AssumeNoRuntime: options.AssumeNoRuntime, Timeout: options.Timeout})
+	base := options.Base
+	if base == "" {
+		base = gitx.DefaultBranch(ctx, repo.MainRoot)
+	}
+	request, err := flow.NewRequest(locator, flow.RemoveCheckoutOptions{Recursive: options.Recursive, RequireContained: true, ContainmentBase: base, DeleteContainedBranch: options.DeleteBranch, CloseUnknown: options.CloseUnknown, AssumeNoRuntime: options.AssumeNoRuntime, Timeout: options.Timeout})
 	if err != nil {
 		return flow.Fields{}, err
 	}
@@ -47,8 +51,8 @@ func captureRetirementAuthority(ctx context.Context, app *App, target retireComm
 	return flow.RetirementPreviewAuthority(plan), nil
 }
 
-func validateRetirementAuthority(ctx context.Context, app *App, selected task.Task, expected flow.Fields) error {
-	fresh, err := captureRetirementAuthority(ctx, app, retireCommandTarget{Task: &selected}, flow.RetireOptions{})
+func validateRetirementAuthority(ctx context.Context, app *App, selected task.Task, expected flow.Fields, base string) error {
+	fresh, err := captureRetirementAuthority(ctx, app, retireCommandTarget{Task: &selected}, flow.RetireOptions{Base: base})
 	if err != nil {
 		return err
 	}

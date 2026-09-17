@@ -184,7 +184,7 @@ func InspectOccupancy(ctx context.Context, rt Runtime, target string, opts Occup
 				}
 				activity := AgentActivity{
 					PaneID: pane.ID, WorkspaceID: session.Runtime.Handle,
-					Agent: pane.Agent, Status: pane.AgentStatus, CWD: cwd,
+					Agent: pane.Agent, Status: pane.AgentStatus, CWD: cwd, Session: pane.AgentSession,
 				}
 				if coverageErr := appendOccupancyAgent(ctx, &result, checkout, opts, activity); coverageErr != nil {
 					result.SessionCoverageErr = coverageErr

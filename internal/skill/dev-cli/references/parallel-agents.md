@@ -185,9 +185,21 @@ false collision.
 
 Pure `dev repo open`, `dev wt open`, and TUI Enter/focus are navigation: they
 reuse/focus the live owner's workspace and do not authorize another writer, so
-they need no override. Use global `--allow-shared-checkout` only for an explicit
-writer claim after agents have coordinated disjoint file ownership; this skill
-must never add it automatically. Default worktree creation remains independent.
+they need no override. Use global `--allow-shared-checkout` only after agents
+have coordinated disjoint file ownership; this skill must never add it
+automatically. Default worktree creation remains independent.
+
+For artifact edits, hygiene redact/repair-encoding/restore/manage and artifact
+finalize/archive/migrate share a stricter guard: other live agents covering the
+checkout always block. The caller may work on another stopped session's
+`.specstory/history/*.md` only when Herdr's exact session ID differs from every
+target artifact's valid UUID in its actual SpecStory-generated anchored
+preamble. Plans, unknown caller identity or unprovable transcripts require
+`--allow-shared-checkout` as an explicit disjoint-ownership assertion, after the
+writer exits. An identified caller-owned live transcript is refused even with
+the override; `--writer-stopped` does not bypass occupancy or source checks.
+Restore guards the
+receipt's exact paths. See [hygiene](hygiene.md).
 
 ## Project-local backend state
 

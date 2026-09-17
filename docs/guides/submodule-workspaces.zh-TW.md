@@ -2,7 +2,7 @@
 description: 初始化完整的 submodule 工作區、選擇任務分支，並由內往外回收子 repository。
 authority: project
 status: evolving
-verified_on: 2026-09-10
+verified_on: 2026-09-17
 tested_with: Git 2.55.0
 lang: zh-TW
 ---
@@ -121,16 +121,35 @@ Cold 要求工作已提交、推送且可重建，但不要求已合併。Retire
 寫入者抹掉新欄位；resume 依 gitlink 重建選中的任務分支。
 
 `--recursive` 明確授權刪除工作區專屬的子 clone，包含其私有 refs／objects。
-外層分支預設保留；canonical 與共享 repository 不會被連帶刪除。不提供此旗標時，
-若仍有子 repo，會阻擋外層移除；`--force` 不略過內層保存證明。`dev flow` 有明確
-的 managed／unmanaged checkout 遞迴動作，done 清理流程也會詢問是否包含子 repo。
+即使全部 gitlink 都是空的，移除 linked worktree 仍需此旗標。外層分支預設保留；
+canonical 與共享 repository 不會被連帶刪除。`--force` 不略過子 repo 檢查。
+`dev flow` 有明確的 managed／unmanaged checkout 遞迴動作，done 清理流程也會
+詢問是否包含子 repo。
 
-變更前會以當次遠端 refs 與隔離 fetch 證明各子 repo 可由指定 origin 重建，不能
-只看 origin 存在或 ahead=0。未發布 refs、reflog／unreachable 的本地獨有物件、
-stash、dirty／untracked／ignored 內容、未完成 artifacts、其他 task、runtime
-活動與額外子 worktree 都會阻擋。Filtered／LFS 資料、sparse／partial 布局，或
-無完整保存證明的私有 Git 設定／檔案也會阻擋。要求完整遞迴證明前，先初始化缺少
-的子 repo。
+僅在移除 linked worktree 時，從未初始化或完全空的 gitlink 可由本地證明為空：
+子路徑不存在或真正為空，且沒有保留的子 Git store。這種子項目不必為了移除外層
+checkout 而初始化、下載、取得遠端恢復證明或 push；clone／worktree 初始化預設
+與子 repo 發布要求不變。Deinitialized 但仍有資料、orphan Git store、本地或
+ignored 檔案、非預期 `.git`、symlink／reparse point、外部所有權或不完整觀測，
+都會阻擋這條空子項目路徑。
+
+實體上為空不等於移除許可。手動刪除 tracked gitlink 目錄會使 parent 變 dirty，
+在管理目錄修剪前就阻擋一般不帶 force 的移除。清理不會默默建立或恢復空目錄來
+繞過檢查。從未初始化、由 Git 建立的空目錄可通過這些檢查；子路徑不存在本身
+不能證明 parent 可安全移除。
+
+空子項目仍受所有權檢查保護。Task／artifact claims 依子路徑比對，不讓 Git
+向上探索而誤用 parent repository。任何符合路徑且非 discarded 的 artifact
+intent（包含已 finalized）都會保守阻擋空子項目移除；discarded 紀錄仍納入
+plan authority。布局改變、子項目初始化或新增 claims 都會使已審閱 plan 失效。
+
+刪除已初始化的子 clone 前，仍以當次遠端 refs 與隔離 fetch 證明可由指定 origin
+重建，不能只看 origin 存在或 ahead=0。未發布 refs、reflog／unreachable 的
+本地獨有物件、stash、dirty／untracked／ignored 內容、未完成 artifacts、其他
+task、runtime 活動與額外子 worktree 都會阻擋。Filtered／LFS 資料、sparse／
+partial 布局，或無完整保存證明的私有 Git 設定／檔案也會阻擋。
+`objects/info/alternates` 仍是刻意保留的阻擋條件；空子項目例外不放寬真實
+Git store 的恢復要求。
 
 子 repo origin 必須符合其宣告來源；遠端失敗或 refs 在證明期間變動就停止。
 Raw Git／外部 writer，以及之後發生的遠端歷史刪除，仍在 dev 合作式鎖與當次
@@ -138,10 +157,15 @@ Raw Git／外部 writer，以及之後發生的遠端歷史刪除，仍在 dev �
 
 ## 中斷恢復
 
-子 checkout 由深至淺移到同檔案系統的私有暫存區，原處保留空 gitlink 目錄，再以
-不帶 force 的 Git 操作移除外層。不使用 `submodule deinit` 改寫共享設定。
+已初始化的子 checkout 由深至淺移到同檔案系統的私有暫存區，空與已初始化子項目
+混合時也維持此流程。只可在既有鎖內修剪精確審閱布局中的空 modules 管理目錄；
+每次 native directory-only removal 前，立即重新驗證目錄身分與空狀態。空的
+checkout 目錄留給一般不帶 force 的 `git worktree remove` 處理。這不是強制移除
+或遞迴刪檔的替代手段；一般 worktree 安全檢查維持不變，也不使用
+`submodule deinit` 改寫共享設定。
 
-每次移動都有同步保存的 journal。外層移除失敗時，只在原位置未被占用的情況下
+管理目錄修剪若部分失敗會如實回報，不算 task retirement 成功。真實子 Git store
+仍保有 journal 與 rollback 行為。每次移動都有同步保存的 journal。外層移除失敗時，只在原位置未被占用的情況下
 恢復；程序中斷或路徑被重用則保留暫存資料，並回報精確的 `journal.json`：
 
 ```bash

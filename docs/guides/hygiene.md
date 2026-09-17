@@ -2,7 +2,7 @@
 description: Inspect repository hooks, scan secrets and personal data, and apply reviewed text replacements with private recovery.
 authority: project
 status: evolving
-verified_on: 2026-09-13
+verified_on: 2026-09-17
 ---
 
 # Repository hygiene
@@ -206,11 +206,78 @@ and credential values. Finding IDs and public file/plan digests use private HMAC
 keys. `complete` describes the declared text scope; a blocking finding or
 incomplete scan exits unsuccessfully. No findings is not a credential-validity
 check. Reports may contain identifying filenames not covered by selected rules;
-review them before sharing.
+review them before sharing. Findings may add a `value_id`: a private-keyed
+digest of the matched value within its rule, so identical values aggregate
+across files without revealing them. Additive `file_id` identifies the exact
+path with a private key, keeping distinct files separate even if their displayed
+paths mask to the same text.
 
 CI uses public repository rules, without global/personal values. It cannot
 claim to have checked private SSH identities. PR/push scans select the changed
 commit range; manual workflow dispatch audits all locally fetched history.
+
+## Summarize a scan
+
+```bash
+dev hygiene report                                 # newest stored scan for this checkout
+dev hygiene report --scope staged --by rule --top 5 --findings
+dev hygiene report --report <report-id> --disposition block,warn --path 'docs/**'
+dev hygiene report --rescan --scope history --range <full-from-oid>..<full-to-oid>
+dev hygiene report --rule privacy-email --values  # masked values; implies --rescan
+dev hygiene report --json                          # hygiene_summary schema 1
+```
+
+`report` summarizes one scan instead of printing every finding. By default it
+reads the newest scan recorded for this checkout without scanning again, so the
+pre-commit hook's staged scan is readable right after a blocked commit. Latest
+pointers are per checkout: linked worktrees share hygiene state, but the default
+lookup never selects a sibling's scan. Snapshot reports never become the latest.
+`--scope` selects the newest scan of that scope, `--report ID` an exact report and
+`--rescan` a fresh scan; `--range`, `--file`, `--timeout` and `--audit` require
+`--rescan`. The output warns when policy changed since the scan or the report
+came from another checkout. Stored reports are historical observations:
+`checkout_current` compares checkout roots only, not current source bytes.
+Stored-summary output shows the scan date and notes "source bytes were not
+rechecked". Use `--rescan` for a new observation; it cannot combine with `--report`.
+
+`--by` selects `severity`, `rule`, `file` and/or `category` groups (default
+`severity,rule,file`). `--top N` limits each group (default 10, `0` shows all)
+and counts omitted rows. `--disposition`, `--rule`, `--category` and repeatable
+`--path <glob>` filter findings before aggregation; `--findings` lists them
+individually. Rows order block, warn, then accepted, followed by occurrences
+descending, findings descending and name ascending. A stored summary exits 0
+whatever it contains; a rescan with coverage gaps prints its summary, then exits
+unsuccessfully.
+
+`--json` emits `kind: "hygiene_summary"`, `schema_version: 1`: `report_id`,
+`report_kind`, `scope`, `status`, `created`, `policy_current`,
+`checkout_current`, `audit`, `public_only`, `rescanned`, `sections`, `top`,
+`filters`, `totals`, `file_counts_complete`, selected
+`severities`/`rules`/`files`/`categories` (file rows include `file_id`),
+optional `findings`, `gaps`, `skipped`, `omitted` counts and `values_shown`.
+A rule reports `distinct_values` only when every finding has a `value_id`.
+With `--values`, rules add masked `values` and `omitted_values`;
+`values_truncated` warns when capture hit its limit. `values_status` is
+`complete`, `truncated` or `failed` (empty/absent if not captured or legacy).
+Legacy findings without file IDs make `file_counts_complete` false: file counts
+then describe lower-bound masked-path groups. Private path metadata lets
+`--path` match raw filenames while the echoed filter stays policy-masked; invalid
+path globs are rejected. Agents should prefer
+`dev hygiene report --json` over parsing `scan` output or tables.
+
+`--values` adds masked distinct values per rule and implies `--rescan` unless
+`--report` names a scan captured with values. Secrets keep their first and last
+two characters plus length (length only below 12 characters); private rules show
+`[private:N]`, emails `a•••@d•••.tld`, IPv4 `a.b.•.•`, IPv6 `first:•••` and
+home paths `Users/x•••`. Raw values and line context never enter stdout, JSON or
+scan records: they go only to a private 0600 `<report-id>.values.review.txt`, whose
+location `dev hygiene review-path <report-id>` prints. Never paste that file into
+chat, Git or CI logs. Capture allows 10,000 values and 20 samples per value,
+with at most 64 KiB per raw value and 16 MiB combined raw/context/location/rule
+metadata; the rendered review caps at 64 MiB. Oversized values are skipped whole,
+not sliced, and limits set `values_truncated`. A failed values sidecar leaves a
+saved partial report with a `values_capture_failed` gap and no private review-path
+hint.
 
 ## Repair invalid UTF-8
 
@@ -242,8 +309,8 @@ not guess a legacy encoding or recover the original character.
 
 Repair uses signed plans, fresh file identity checks and private raw-byte
 recovery through `dev hygiene restore`. It does not need a secret scanner.
-Artifact edits require writer attestation and live occupancy checks, including
-case variants and nested artifact directories. Encoding repair requires long
+Artifact edits require writer attestation and the live writer guard below,
+including case variants and nested artifact directories. Encoding repair requires long
 canonical path components without trailing dots/spaces or DOS short-name spellings. The hook
 never repairs automatically. Apply changes working files only: a partially
 staged file keeps its exact index contents, so a staged scan still fails until
@@ -272,12 +339,17 @@ Git or CI logs. The default output does not echo the original secret.
 
 Apply checks the whole selection, then publishes individual guarded transactions
 with original metadata and private recovery. It retains a partial ledger on
-failure; never repeat an interrupted operation blindly. Index contents, Git
-history and installed binaries are not changed. Native Windows protections are
-specific to these opted-in text transactions; other configedit workflows retain
-their own platform support contracts. Windows preserves owner/group/DACL
-semantics; files with alternate streams, explicit integrity labels or special
-attributes require manual preservation.
+failure; never repeat an interrupted operation blindly. Apply and recovery errors
+keep their underlying cause. On macOS the kernel tags every new file with the
+writing process's `com.apple.provenance` and ignores attempts to copy it, so a
+replacement carries the writer's tag rather than the source's. Every other
+extended attribute must still round-trip, and a changed tag on the source file
+still makes the operation stale. Index contents, Git history and installed
+binaries are not changed. Native Windows protections are specific to these
+opted-in text transactions; other configedit workflows retain their own platform
+support contracts. Windows preserves owner/group/DACL semantics; files with
+alternate streams, explicit integrity labels or special attributes require
+manual preservation.
 
 ```bash
 dev hygiene restore --receipt <receipt-id> --json
@@ -285,9 +357,29 @@ dev hygiene restore --receipt <receipt-id> --apply --yes
 ```
 
 Restore refuses files replaced or edited since the recorded transaction. Artifact
-recovery also needs `--writer-stopped`. Runtime observations reject recognized
-writers; a disabled/unavailable runtime cannot prove process absence. The
-post-writer attestation and source revalidation remain necessary, and raw external
-writers remain outside dev-mediated locks.
+recovery also needs `--writer-stopped`, and `restore --apply` guards the
+receipt's exact paths. A disabled/unavailable runtime cannot prove process
+absence. The post-writer attestation and source revalidation remain necessary,
+and raw external writers remain outside dev-mediated locks.
+
+## Artifact writer guard
+
+Redaction, encoding repair, restore, batch `manage` and `dev artifact`
+finalize/archive/migrate share one live-writer check over their reviewed target
+files; archiving still leaves source bytes untouched. Any other recognized agent
+covering the checkout blocks an artifact edit, whatever its status. The calling agent's own pane is exempt only when:
+
+- Herdr reports its exact agent session ID (`agent_session` kind `id`, not a
+  title) and every artifact target is a `.specstory/history/*.md` transcript
+  with a valid UUID in its actual
+  SpecStory-generated anchored preamble, proving a different session; or
+- the caller passes global `--allow-shared-checkout`, asserting disjoint
+  ownership after confirming the writer exited (for example plans, or
+  transcripts without a provable preamble).
+
+An identified caller-owned live transcript is refused even with the override.
+Unknown caller identity needs the explicit disjoint-ownership attestation.
+`--writer-stopped` still attests that the exact recorder exited; neither flag skips
+source revalidation.
 
 Use the [manual dogfood checklist](../reference/hygiene-dogfood.md) for this repo.

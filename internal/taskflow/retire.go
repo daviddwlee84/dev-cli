@@ -72,13 +72,17 @@ func (s *lifecycleService) observeRetire(ctx context.Context, request Request, r
 		rt, rtErr = s.runtimeFor(candidate)
 	}
 	options := request.Options.(RetireOptions)
+	base := candidate.Base
+	if options.Base != "" {
+		base = options.Base
+	}
 	cleanup := retire.Options{
 		CWD: s.cwd, CallerWorkspaceID: s.callerWorkspace, CallerPaneID: s.callerPane,
 		CloseUnknown: options.CloseUnknown, AssumeNoRuntime: options.AssumeNoRuntime, Timeout: options.Timeout,
 		ProcessClosures: options.ProcessClosures.Map(),
 	}
 	observed, err := s.inspectDestructive(ctx, destructiveInspectInput{
-		locator: request.Locator, base: candidate.Base, runtime: rt, rtErr: rtErr, cleanup: cleanup,
+		locator: request.Locator, base: base, runtime: rt, rtErr: rtErr, cleanup: cleanup,
 		noCheckout: noCheckout, inspectArtifacts: !noCheckout,
 		inspectTasks: true, loadTasks: loadTasks,
 	})
@@ -104,7 +108,7 @@ func (s *lifecycleService) retireSpec(request Request, record task.Record, obser
 	}
 	conditions = append(conditions, retireTaskClaimConditions(candidate, observed)...)
 	conditions = append(conditions, retireCheckoutConditions(candidate, observed, noCheckout)...)
-	conditions = append(conditions, retireRefConditions(candidate, observed, noCheckout)...)
+	conditions = append(conditions, retireRefConditions(candidate, observed, noCheckout, options)...)
 	conditions = append(conditions, retireArtifactCondition(observed, noCheckout))
 	conditions = append(conditions, retireRuntimeConditions(candidate, observed, noCheckout)...)
 	conditions = append(conditions, retireBranchDeletionCondition(candidate, observed, noCheckout, options))
@@ -122,10 +126,14 @@ func (s *lifecycleService) retireSpec(request Request, record task.Record, obser
 			map[string]string{"repo": observed.repoPath, "branch": candidate.Branch, "head": observed.head, "force": "false"},
 		))
 	}
-	if options.DeleteBranch && mode != task.ModeDirect && candidate.Branch != candidate.Base && observed.branchExists {
+	deletesBranch := options.DeleteBranch && mode != task.ModeDirect && !observed.resolvedBase().aliasesBranch(candidate.Branch) && observed.branchExists
+	if deletesBranch {
 		effects = append(effects, NewEffect(
 			EffectDeleteBranch, "delete the freshly contained local task branch", candidate.Branch, true, false,
-			map[string]string{"branch-ref": observed.branchRef, "branch-oid": observed.branchOID, "base-ref": observed.baseRef, "base-oid": observed.baseOID},
+			map[string]string{
+				"branch-ref": observed.branchRef, "branch-oid": observed.branchOID,
+				"base": observed.baseInput, "base-kind": string(observed.baseKind), "base-ref": observed.baseRef, "base-oid": observed.baseOID,
+			},
 		))
 	}
 	effects = append(effects, NewEffect(
@@ -134,7 +142,7 @@ func (s *lifecycleService) retireSpec(request Request, record task.Record, obser
 	))
 
 	confirmation := Confirmation{Kind: ConfirmationApproval, Prompt: "Retire this DONE task and its eligible local resources?"}
-	if options.DeleteBranch && mode != task.ModeDirect && candidate.Branch != candidate.Base && observed.branchExists {
+	if deletesBranch {
 		confirmation = Confirmation{
 			Kind: ConfirmationTyped, Token: "DELETE " + candidate.Branch,
 			Prompt: "Type DELETE " + candidate.Branch + " to remove the contained local branch under this exact plan",
@@ -370,22 +378,25 @@ func retireCheckoutConditions(candidate task.Task, observed destructiveObservati
 	}
 }
 
-func retireRefConditions(candidate task.Task, observed destructiveObservation, noCheckout bool) []Condition {
+func retireRefConditions(candidate task.Task, observed destructiveObservation, noCheckout bool, options RetireOptions) []Condition {
+	base := observed.resolvedBase()
+	forkPoint := options.Base == "" && base.kind == BaseCommit
 	baseCondition := condition(ConditionExplicitBase, VerdictMet, RequirementRequired,
-		fmt.Sprintf("local base %s at %s", candidate.Base, observed.baseOID), "")
+		fmt.Sprintf("base %s resolves to %s", base.input, base.describe()), "")
 	switch {
-	case candidate.Base == "":
+	case base.input == "":
 		baseCondition = condition(ConditionExplicitBase, VerdictBlocked, RequirementRequired,
-			"DONE retirement requires the task's explicit local base", "record the exact local base branch")
-	case observed.baseOIDErr != nil:
+			"DONE retirement requires the task's explicit base", "pass --base <branch> naming the branch the task was integrated into")
+	case base.err != nil:
 		baseCondition = condition(ConditionExplicitBase, VerdictError, RequirementRequired,
-			observed.baseOIDErr.Error(), "repair local base observation")
-	case !observed.baseExists:
+			base.err.Error(), "repair base observation or pass --base <branch>")
+	case !base.exists:
 		baseCondition = condition(ConditionExplicitBase, VerdictBlocked, RequirementRequired,
-			"local base ref "+observed.baseRef+" does not exist", "restore the named local base branch")
-	case observed.baseOID == "":
+			fmt.Sprintf("base %q is not a local branch, remote-tracking branch or commit", base.input),
+			"restore the recorded base or pass --base <branch>")
+	case base.oid == "":
 		baseCondition = condition(ConditionExplicitBase, VerdictBlocked, RequirementRequired,
-			"local base resolved to no commit", "restore the named local base branch")
+			fmt.Sprintf("base %q resolved to no commit", base.input), "restore the base or pass --base <branch>")
 	}
 
 	branchCondition := condition(ConditionBranchRef, VerdictMet, RequirementRequired,
@@ -407,24 +418,28 @@ func retireRefConditions(candidate task.Task, observed destructiveObservation, n
 	}
 
 	relationCondition := condition(ConditionBranchRelation, VerdictMet, RequirementRequired,
-		fmt.Sprintf("%s (%s) is contained in %s (%s)", candidate.Branch, observed.branchOID, candidate.Base, observed.baseOID), "")
+		fmt.Sprintf("%s (%s) is contained in %s (%s)", candidate.Branch, observed.branchOID, base.input, observed.baseOID), "")
 	switch {
 	case observed.branchOIDErr != nil || observed.baseOIDErr != nil:
 		relationCondition = condition(ConditionBranchRelation, VerdictError, RequirementRequired,
-			"branch or base ref observation failed", "repair exact local ref observation")
+			"branch or base ref observation failed", "repair exact ref observation")
 	case !observed.branchExists && noCheckout:
 		relationCondition = condition(ConditionBranchRelation, VerdictMet, RequirementRequired,
 			"missing branch is accepted only because persisted DONE records no checkout", "")
 	case observed.containedErr != nil:
 		relationCondition = condition(ConditionBranchRelation, VerdictError, RequirementRequired,
 			observed.containedErr.Error(), "repair local containment observation")
+	case observed.branchExists && observed.baseExists && observed.branchOIDErr == nil && observed.baseOIDErr == nil && !observed.contained && forkPoint:
+		relationCondition = condition(ConditionBranchRelation, VerdictBlocked, RequirementRequired,
+			fmt.Sprintf("%s (%s) is not contained in recorded fork-point base %s (%s)", candidate.Branch, observed.branchOID, base.input, observed.baseOID),
+			"pass --base <branch> naming the branch the task was integrated into")
 	case observed.branchExists && observed.baseExists && observed.branchOIDErr == nil && observed.baseOIDErr == nil && !observed.contained:
 		relationCondition = condition(ConditionBranchRelation, VerdictBlocked, RequirementRequired,
-			fmt.Sprintf("%s (%s) is not contained in %s (%s)", candidate.Branch, observed.branchOID, candidate.Base, observed.baseOID),
-			"integrate the task branch into the named local base first")
+			fmt.Sprintf("%s (%s) is not contained in %s (%s)", candidate.Branch, observed.branchOID, base.input, observed.baseOID),
+			"integrate the task branch into "+base.input+" first, or pass --base <branch>")
 	case !observed.branchExists || !observed.baseExists || observed.branchOID == "" || observed.baseOID == "":
 		relationCondition = condition(ConditionBranchRelation, VerdictUnknown, RequirementRequired,
-			"containment cannot be proved from exact local branch and base OIDs", "restore both local refs")
+			"containment cannot be proved from exact branch and base OIDs", "restore the task branch and base, or pass --base <branch>")
 	}
 	return []Condition{baseCondition, branchCondition, relationCondition}
 }
@@ -521,7 +536,7 @@ func retireBranchDeletionCondition(candidate task.Task, observed destructiveObse
 		return condition(ConditionBranchDeletion, VerdictBlocked, RequirementRequired,
 			"direct tasks never delete their branch", "retire without branch deletion")
 	}
-	if candidate.Branch == candidate.Base {
+	if observed.resolvedBase().aliasesBranch(candidate.Branch) {
 		return condition(ConditionBranchDeletion, VerdictBlocked, RequirementRequired,
 			"task branch is the explicit base branch", "retire without deleting the base")
 	}
@@ -555,6 +570,9 @@ func retireRetainedResources(candidate task.Task, observed destructiveObservatio
 
 func retireFallback(id string, options RetireOptions) string {
 	parts := []string{"dev", "retire", shellQuote(id)}
+	if options.Base != "" {
+		parts = append(parts, "--base", shellQuote(options.Base))
+	}
 	if options.DeleteBranch {
 		parts = append(parts, "--delete-branch")
 	}
@@ -839,16 +857,14 @@ func (e *executionState) verifyRemovedCheckout(ctx context.Context, baseline des
 
 func (e *executionState) revalidateRetireRefs(ctx context.Context, baseline destructiveObservation, allowMissingBranch bool) error {
 	fresh := destructiveObservation{repoPath: baseline.repoPath}
-	fresh.observeRefs(ctx, e.service, baseline.locator.Branch, strings.TrimPrefix(baseline.baseRef, "refs/heads/"))
-	if err := compareAuthorityCategory("explicit base ref", authorityHash("base", baseline.baseRef, boolString(baseline.baseExists), baseline.baseOID, errorString(baseline.baseOIDErr)),
-		authorityHash("base", fresh.baseRef, boolString(fresh.baseExists), fresh.baseOID, errorString(fresh.baseOIDErr))); err != nil {
+	fresh.observeRefs(ctx, e.service, baseline.locator.Branch, baseline.baseInput)
+	if err := compareAuthorityCategory("explicit base ref", baseline.resolvedBase().authority(), fresh.resolvedBase().authority()); err != nil {
 		return err
 	}
 	if allowMissingBranch && fresh.branchOIDErr == nil && !fresh.branchExists {
 		return nil
 	}
-	if err := compareAuthorityCategory("task branch ref", authorityHash("branch", baseline.branchRef, boolString(baseline.branchExists), baseline.branchOID, errorString(baseline.branchOIDErr)),
-		authorityHash("branch", fresh.branchRef, boolString(fresh.branchExists), fresh.branchOID, errorString(fresh.branchOIDErr))); err != nil {
+	if err := compareAuthorityCategory("task branch ref", baseline.branchAuthority(), fresh.branchAuthority()); err != nil {
 		return err
 	}
 	if fresh.containedErr != nil || !fresh.contained {
@@ -859,11 +875,8 @@ func (e *executionState) revalidateRetireRefs(ctx context.Context, baseline dest
 
 func (e *executionState) revalidateRetireBase(ctx context.Context, baseline destructiveObservation) error {
 	fresh := destructiveObservation{repoPath: baseline.repoPath}
-	fresh.observeRefs(ctx, e.service, "", strings.TrimPrefix(baseline.baseRef, "refs/heads/"))
-	return compareAuthorityCategory("explicit base ref",
-		authorityHash("base", baseline.baseRef, boolString(baseline.baseExists), baseline.baseOID, errorString(baseline.baseOIDErr)),
-		authorityHash("base", fresh.baseRef, boolString(fresh.baseExists), fresh.baseOID, errorString(fresh.baseOIDErr)),
-	)
+	fresh.observeRefs(ctx, e.service, "", baseline.baseInput)
+	return compareAuthorityCategory("explicit base ref", baseline.resolvedBase().authority(), fresh.resolvedBase().authority())
 }
 
 func (e *executionState) revalidateRetireTerminal(ctx context.Context, record task.Record, baseline destructiveObservation, closedRuntime, removedWorktree, deletedBranch bool) error {

@@ -135,8 +135,14 @@ func Recover(ctx context.Context, journalPath string, check func(context.Context
 				if !m.Empty || !existing.IsDir() || existing.Mode()&os.ModeSymlink != 0 {
 					return fmt.Errorf("restore path reused: %s; quarantine retained", m.From)
 				}
-				if err := os.Remove(m.From); err != nil {
-					return fmt.Errorf("restore path is not empty: %s; quarantine retained", m.From)
+				parent, _, err := safefile.OpenRoot(filepath.Dir(m.From))
+				if err != nil {
+					return err
+				}
+				err = safefile.RemoveEmptyChildDir(ctx, parent, filepath.Base(m.From), existing)
+				parent.Close()
+				if err != nil {
+					return fmt.Errorf("restore path is not empty: %s; quarantine retained: %w", m.From, err)
 				}
 			} else if !os.IsNotExist(err) {
 				return err

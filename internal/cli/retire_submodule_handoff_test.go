@@ -53,7 +53,7 @@ func TestRetireCoordinatorPreservesRecursiveAndForegroundAuthority(t *testing.T)
 		handoffs++
 		return operation()
 	}
-	if err := launchExternalRetireCoordinator(t.Context(), f.app, rt, *selected, preview, false, false, closures, authority, true); err != nil {
+	if err := launchExternalRetireCoordinator(t.Context(), f.app, rt, *selected, preview, false, false, closures, authority, "", true); err != nil {
 		t.Fatal(err)
 	}
 	if handoffs != 1 || len(rt.runCalls) != 1 || rt.runCalls[0].PaneID != "w9:p1" {
@@ -122,7 +122,7 @@ func TestRetireCoordinatorRecursiveWithoutChildren(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := launchExternalRetireCoordinator(t.Context(), f.app, rt, *selected, preview, false, false, nil, authority, true); err != nil {
+	if err := launchExternalRetireCoordinator(t.Context(), f.app, rt, *selected, preview, false, false, nil, authority, "", true); err != nil {
 		t.Fatalf("recursive flag rejected a checkout with no children: %v", err)
 	}
 	directories, err := os.ReadDir(filepath.Join(f.app.Cfg.StateDir(), "retire-handoffs", "v1"))

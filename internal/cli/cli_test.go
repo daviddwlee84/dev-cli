@@ -1851,3 +1851,96 @@ func TestSweepRemovesAnOrphanWhoseFilesTheRepositoryAlreadyHas(t *testing.T) {
 		t.Fatalf("sweep touched the repository's own copy: %v", err)
 	}
 }
+
+func TestSweepMergedWorktreesApplyYesRemovesEveryEligibleSibling(t *testing.T) {
+	h := newHarness(t)
+	h.mustRun("start", "demo", "--task", "landed", "--branch", "feat/landed", "--base", "main")
+	managed := filepath.Join(h.wtRoot, "demo", "feat-landed")
+	h.repo.GitIn(managed, "config", "user.email", "dev@example.test")
+	h.repo.GitIn(managed, "config", "user.name", "dev test")
+	if err := os.WriteFile(filepath.Join(managed, "landed.txt"), []byte("landed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.repo.GitIn(managed, "add", "landed.txt")
+	h.repo.GitIn(managed, "commit", "-m", "feat: land")
+	h.mustRun("--allow-shared-checkout", "done", "landed", "--ff")
+
+	var unmanaged []string
+	for _, name := range []string{"merged-a", "merged-b", "merged-c"} {
+		path := filepath.Join(h.wtRoot, "demo", name)
+		h.repo.Git("worktree", "add", "-b", name, path, "main")
+		unmanaged = append(unmanaged, path)
+	}
+	t.Chdir(h.repo.Root)
+
+	out, errOut, err := h.run("sweep", "--merged-worktrees", "--delete-branches", "--apply", "--yes", "--assume-no-runtime")
+	if err != nil {
+		t.Fatalf("sweep failed: %v\nstdout:\n%s\nstderr:\n%s", err, out, errOut)
+	}
+	if strings.Contains(out+errOut, "stale") {
+		t.Fatalf("batch sweep invalidated sibling plans:\nstdout:\n%s\nstderr:\n%s", out, errOut)
+	}
+	for _, path := range append(unmanaged, managed) {
+		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+			t.Fatalf("%s survived one batch sweep: %v\nstdout:\n%s\nstderr:\n%s", path, statErr, out, errOut)
+		}
+	}
+	if listed := strings.TrimSpace(h.repo.Git("worktree", "list", "--porcelain")); strings.Count(listed, "worktree ") != 1 {
+		t.Fatalf("worktrees remain after batch sweep:\n%s", listed)
+	}
+	if branches := h.repo.Git("branch", "--list", "merged-*", "feat/landed"); strings.TrimSpace(branches) != "" {
+		t.Fatalf("contained branches were not deleted:\n%s", branches)
+	}
+}
+
+// forkPointTask starts a task whose recorded base is the commit it forked from,
+// lands one commit on main, and verifies the merge against main.
+func forkPointTask(t *testing.T, h *harness, name string) string {
+	t.Helper()
+	forkPoint := strings.TrimSpace(h.repo.Git("rev-parse", "main"))
+	branch := "feat/" + name
+	h.mustRun("start", "demo", "--task", name, "--branch", branch, "--base", forkPoint[:7])
+	path := filepath.Join(h.wtRoot, "demo", "feat-"+name)
+	h.repo.GitIn(path, "config", "user.email", "dev@example.test")
+	h.repo.GitIn(path, "config", "user.name", "dev test")
+	if err := os.WriteFile(filepath.Join(path, name+".txt"), []byte(name+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	h.repo.GitIn(path, "add", name+".txt")
+	h.repo.GitIn(path, "commit", "-m", "feat: "+name)
+	h.repo.Git("merge", "--ff-only", branch)
+	h.mustRun("--allow-shared-checkout", "done", name, "--merged", "--base-ref", "main")
+	return path
+}
+
+func TestRetireBaseFlagOverridesForkPointBase(t *testing.T) {
+	h := newHarness(t)
+	path := forkPointTask(t, h, "forked")
+	out, errOut, err := h.run("retire", "forked", "--assume-no-runtime")
+	if err == nil || !strings.Contains(out+errOut+err.Error(), "--base") {
+		t.Fatalf("fork-point retirement did not ask for --base: err=%v\nstdout:\n%s\nstderr:\n%s", err, out, errOut)
+	}
+	if _, statErr := os.Stat(path); statErr != nil {
+		t.Fatalf("blocked retirement removed the checkout: %v", statErr)
+	}
+	out = h.mustRun("retire", "forked", "--base", "main", "--assume-no-runtime")
+	if !strings.Contains(out, "RETIRED") {
+		t.Fatalf("retire --base output:\n%s", out)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("checkout survived retire --base: %v", statErr)
+	}
+}
+
+func TestSweepMergedWorktreesForwardsVerifiedBaseToManagedRetirement(t *testing.T) {
+	h := newHarness(t)
+	path := forkPointTask(t, h, "swept")
+	t.Chdir(h.repo.Root)
+	out, errOut, err := h.run("sweep", "--merged-worktrees", "--apply", "--yes", "--assume-no-runtime")
+	if err != nil {
+		t.Fatalf("sweep failed: %v\nstdout:\n%s\nstderr:\n%s", err, out, errOut)
+	}
+	if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+		t.Fatalf("merged fork-point task was not retired against the verified base: %v\nstdout:\n%s\nstderr:\n%s", statErr, out, errOut)
+	}
+}

@@ -6,6 +6,83 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.39] - 2026-09-17
+
+### Added
+
+- `dev hygiene report` summarizes the newest stored scan for the current
+  checkout without scanning again (so the pre-commit hook's staged scan is
+  readable right after a blocked commit), or `--report ID` / `--rescan`.
+  Findings are grouped by severity, rule, file and category, ordered by
+  disposition then occurrences, with `--top`, `--disposition`, `--rule`,
+  `--category`, `--path` filters and a `--findings` drill-down. `--json` emits
+  the new `hygiene_summary` schema-v1 document. `--values` shows masked
+  distinct values per rule; raw values and their context go only to a private
+  review file whose location `dev hygiene review-path <report-id>` prints.
+  Scan findings gain additive keyed `value_id` and `file_id` fields, keeping
+  private filenames distinct even when their displayed labels match. Stored
+  summaries show the scan date without claiming current source freshness;
+  legacy file counts are explicitly marked as lower bounds. Value capture is
+  byte-bounded and skipped samples are visible; a failed values sidecar retains
+  a partial scan receipt. Invalid path globs fail before scanning, and filter
+  metadata is policy-masked.
+- `dev retire --base <ref>` overrides the containment target used to prove a
+  DONE task or linked worktree is integrated: a local branch, a remote-tracking
+  branch such as `origin/main`, or a commit. `dev sweep --base` forwards the
+  same override to DONE tasks, and `--merged-worktrees` proves managed tasks
+  against the base it already verified. After `dev done --merged --base-ref`,
+  cleanup hints and the cleanup wizard carry that ref forward.
+
+### Fixed
+
+- Artifact readiness no longer lets unrelated repositories' intent records
+  block a detached checkout. Repository identity is filtered before branch
+  identity is required for moved intents; relevant pending, ambiguous or
+  unreadable records still block cleanup. Windows non-directory store errors
+  are no longer mistaken for an absent store. Submodule artifact observation
+  errors retain their specific cause instead of only reporting unfinished artifacts.
+- Recursive worktree cleanup can locally prove never-initialized submodules
+  empty without downloading or publishing children. Exact empty module
+  administration is revalidated and pruned with directory-only operations before
+  ordinary no-force Git removal. Retained child stores, orphan data, ignored
+  files, links and ownership claims remain blockers. Mixed initialized/empty
+  graphs retain recovery proofs and rollback for real child repositories, and
+  interrupted empty-directory pruning reports partial effects. Native path
+  spellings share bookkeeping keys on Windows without relaxing physical identity
+  checks. `--recursive` remains required; alternates and squash-ancestry
+  protections are unchanged.
+- Guarded file replacements on macOS no longer fail with a metadata round-trip
+  error when the source file was written by another application. The kernel
+  assigns `com.apple.provenance` to each new file and ignores attempts to copy
+  it, so hygiene redaction, encoding repair and recovery, and `dev ssh init`
+  now leave that one tag to the kernel while still requiring every other
+  extended attribute to survive and still detecting a changed source. Apply and
+  recovery errors now keep their underlying cause instead of only pointing at
+  the private receipt.
+- `dev sweep --apply --yes` (including `--merged-worktrees`) now completes a
+  batch in one pass. A reviewed retirement or removal plan is bound only to the
+  worktrees that share its branch or path, so removing an unrelated sibling
+  earlier in the batch no longer turns every remaining plan stale. A new
+  checkout of the same branch, or a lock or HEAD change on the target, still
+  invalidates the plan.
+- Retirement and contained worktree removal no longer refuse a base recorded as
+  a commit or remote-tracking ref (for example `base = "b509448"` from
+  `dev start --base <commit>`) with "local base ref refs/heads/… does not
+  exist". Bases resolve as a local branch, then a remote-tracking branch, then a
+  commit, and apply re-resolves the same input. A recorded fork-point commit is
+  never replaced by the default branch: when it cannot prove integration, the
+  plan stays blocked and names `--base <branch>`.
+- An agent can now repair or redact another session's stopped SpecStory
+  transcript from its own pane. The artifact writer guard previously blocked
+  the calling agent itself, leaving `--no-runtime` as the only way through.
+  Other live agents still always block. The caller is exempt only when Herdr's
+  exact session id differs from a valid UUID in every target's actual
+  SpecStory-generated preamble, or when `--allow-shared-checkout` explicitly
+  asserts disjoint ownership (for example plans or unknown session identities).
+  An identified caller-owned live transcript is refused even with the override;
+  malformed headers or body mentions never prove another session.
+  `dev hygiene restore --apply` now guards the receipt's exact paths.
+
 ## [0.2.38] - 2026-09-15
 
 ### Added
@@ -1204,7 +1281,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.38...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.39...HEAD
+[0.2.39]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.38...v0.2.39
 [0.2.38]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.37...v0.2.38
 [0.2.37]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.36...v0.2.37
 [0.2.36]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.35...v0.2.36

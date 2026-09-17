@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-13
+verified_on: 2026-09-17
 tested_with: Claude Code 2.1.259
 ---
 
@@ -15,7 +15,34 @@ future initialization policy. Failed additions retain data with explicit phases;
 retirement recovery journals cannot recover additions. Existing JSON fields and
 copy bindings are unchanged; `y u` is the new URL binding.
 
-Submodule workspace support is additive: legacy tasks and existing JSON fields remain readable; member intent has its own versioned record. Full child-clone disposal requires remote proofs and rejects shared/external storage, local-only data and unsupported filtered/private metadata. Reload shell integration for recursive post-done handoff. See [Submodule workspaces](../guides/submodule-workspaces.md).
+Submodule workspace support is additive: legacy tasks and existing JSON fields
+remain readable; member intent has its own versioned record. Full initialized
+child-clone disposal still requires remote proofs and rejects shared/external
+storage, local-only data and unsupported filtered/private metadata.
+`objects/info/alternates` remains an intentional blocker.
+
+Linked-worktree removal still needs `--recursive`, including for never-initialized
+or fully empty gitlinks. An absent/truly empty child path with no retained Git
+store and no ownership/observation blockers can be proved empty locally, without
+initialization, download, remote proof or push merely for removal. Deinitialized
+data, orphan stores, local/ignored files, unexpected `.git`, symlinks/reparse
+points and incomplete observations are not empty proof. Path-based task/artifact
+claims protect empty children; non-discarded matching artifact intents block,
+even finalized, and discarded records remain in plan authority.
+
+Physical emptiness does not waive parent cleanliness. Manually deleting a tracked
+gitlink directory makes the parent dirty and blocks ordinary non-force removal
+before admin pruning. Cleanup never silently creates/restores placeholders to
+bypass this guard; normal never-initialized, Git-created empty directories can pass.
+
+Only exact reviewed empty modules admin scaffolding may be pruned under existing
+locks, with immediate native directory identity/emptiness revalidation. Checkout
+directories stay for normal non-force Git removal; no recursive file-deletion
+workaround is used. Partial pruning failures are reported, never task-retired success;
+real-store journals/rollback and general worktree guards remain. Layout changes,
+new child initialization or claims invalidate the plan. Initialization/publication
+policy is unchanged. Reload shell integration for recursive post-done handoff.
+See [Submodule workspaces](../guides/submodule-workspaces.md).
 
 This page separates graceful degradation from real limitations. Reverify it whenever command/runtime code or version-sensitive Claude Code documentation changes.
 
@@ -83,7 +110,7 @@ time. It does not query review decisions or checks, persist that evidence, or
 turn it into DONE. Current `dev sweep` does not query the forge either. Verify
 integration with exact local ancestry and finish deliberately.
 
-`dev pr list --scope local --state merged` now reports which requests the forge considers merged, and which local checkout each belongs to. `dev sweep` still does not consult it, and that is deliberate: a squashed merge produces a commit that is not an ancestor of the local branch, so a forge saying "merged" cannot prove the work is recoverable from the remote. `dev sweep --merged-worktrees` proves containment locally with `git merge-base --is-ancestor`, and `dev done --merged` requires an explicit `--confirm-squash` attestation. Treat the pull-request list as a prompt to look, not as permission to delete.
+`dev pr list --scope local --state merged` now reports which requests the forge considers merged, and which local checkout each belongs to. `dev sweep` still does not consult it, and that is deliberate: a squashed merge produces a commit that is not an ancestor of the local branch, so a forge saying "merged" cannot prove the work is recoverable from the remote. `dev sweep --merged-worktrees` proves containment locally with `git merge-base --is-ancestor`, and `dev done --merged` requires an explicit `--confirm-squash` attestation. Treat the pull-request list as a prompt to look, not as permission to delete. Equal trees after a squash are not ancestry proof and do not waive retirement's containment checks.
 
 ### Claude Workflow ephemeral cleanup is strict and version-sensitive
 
@@ -247,8 +274,8 @@ compatible CLI fallback; existing command flags and structured contracts remain
 available.
 
 Task-backed lifecycle and exact unmanaged linked-checkout actions share
-`internal/taskflow`. Explicit unmanaged path retirement remains an isolated
-compatibility implementation, while `sweep` retains record-only reaping, orphan
+`internal/taskflow`, including contained removal for exact unmanaged path
+retirement. `sweep` retains separate record-only reaping, orphan
 salvage, and other narrow reconciliation paths. Do not assume every cleanup path
 has the same planner. Raw Git and configured external tools also bypass dev's
 PlanID, locks, revalidation, and result ledger.
@@ -281,6 +308,8 @@ These were historical gaps and should not be reintroduced as limitations:
 - Human-readable output now carries semantic color (`--color auto|always|never`), automatically disabled when `NO_COLOR` is set, `TERM=dumb`, or stdout/stderr is not a terminal.
 - Explicit `dev done` records MERGED and keeps worktree/branch; any selected task-pane closures are separately reported. Non-interactive invocation never grants implicit program or pane-closure consent. Bare interactive completion may continue into a separate cleanup wizard: it previews runtime agents and can hand caller-owned Herdr cleanup to a newly created external coordinator, which still uses ordinary `dev retire` guards. Active agents and mixed-purpose workspaces remain blockers. `dev done --delete-branch` remains an error pointing at `dev retire --delete-branch`, and `--keep-worktree` warns as a no-op.
 - Interactive FF preserves parent/canonical agents and other task workspaces; parent occupancy offers recheck/PR/cancel. Only exact idle/done task-worktree panes can close under final Apply. General foreground programs require separate FF file-change consent, and interactive done/retire requires `CLOSE <workspace-id>` for known program termination. Background jobs are unobserved; failed supported probes block. Programs/topology changing during confirmation require a refreshed preview. Old coordinator handoffs must be recreated. Existing unknown-runtime flags do not authorize known programs.
+- `dev retire --base <ref>` overrides task/path containment, resolving local branch, then remote-tracking branch, then commit. Apply re-resolves the same input; changed kind/ref/OID invalidates the plan. A recorded fork-point commit is never replaced by the default branch: unproved integration stays blocked with `--base <branch>` guidance. `done --merged --base-ref X` carries X through cleanup hints, wizard and external coordinator. Branch deletion still uses Git's own upstream/HEAD `branch -d` check; a non-HEAD base can leave partial completion with the branch and DONE task retained.
+- `dev sweep --base` forwards to DONE retirement; `--merged-worktrees` passes its verified base to managed tasks too. Retire/remove worktree-list authority includes only same-branch or equal/nested/containing paths, so an unrelated sibling removal no longer stales later plans in an approved `--apply --yes` batch. Target lock/HEAD or same-branch checkout changes still invalidate them.
 - `dev sweep --merged-worktrees` enumerates linked worktrees from Git rather than from the task registry, so unmanaged worktrees whose branches are contained in the base become retirable. Containment alone is never permission; dirty state, unfinalized artifacts, in-progress Git operations, and runtime refusals all still block it, and branches survive unless `--delete-branches` is passed.
 - `dev sweep --ephemeral-worktrees` adds a separate schema-v1 Claude Workflow report. The path/branch convention is only discovery; exact bounded provider linkage plus fresh Git/task/artifact/caller/runtime evidence authorizes TTY/per-item apply. Apply locks and re-fingerprints, removes without force, retains branches by default, and allows only explicit-base unchanged/contained/zero-unique `branch -d`.
 - `dev sweep` reports a branch-backed task whose branch Git no longer has as dead and offers to reap the record. Such a task cannot be finished, resumed, or retired, because every one of those paths resolves the branch first; the suggestion stays report-only until `--apply`.
@@ -299,6 +328,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - `dev upgrade` checks the exact release's asset inventory. A standalone install downloads its platform archive and verifies `SHA256SUMS`; if no asset exists for that platform, it offers a native source build of the exact tag. New releases include a compact `dev-cli_<tag>_source.tar.gz` verified against `SHA256SUMS`, excluding conversation history; older releases use Go's configured module verification and can require a much larger download. This source fallback and compact archive are available starting with v0.2.35. Network errors, missing checksum entries, and checksum mismatches stop the upgrade. Source builds use the installed Go toolchain, two workers and a 20-minute build limit; a successful candidate must report the expected version before replacement. `--check` never compiles and missing tools are reported before confirmation. Homebrew, Scoop and `go install` ownership still delegates to that manager. Replacement uses atomic rename (Windows moves the live `.exe` aside and sweeps it on the next run); a changed target aborts replacement.
 - Android/Termux currently has no published binary. Use `pkg install golang clang git` for native build dependencies. Source upgrades set `GOOS=android`, enable CGO with Termux Clang and disable automatic Go toolchain downloads. Linux archives can fail on Android syscalls and are never substituted. Go must meet the selected release's `go.mod` requirement. An older binary without source fallback needs a one-time native build of a pinned, checksummed source archive into a staging directory, version verification and replacement of the standalone executable; see the repository README's Termux recovery example.
 - Native Termux SSH setup and discovery use the verified private home under `/data/data/com.termux/files/home` or `/data/user/<Android-user>/com.termux/files/home`. Exact system/app ownership and directory identity are revalidated; descendant symlinks and unsafe user paths remain blocked. Android SELinux app-data labels are compared without relabeling, encrypted files retain their inherited metadata, and new files use `RENAME_NOREPLACE` because app hard links are denied. Shared storage and other app-data layouts remain outside this support. Native tests cover first configuration, updates, key generation, cache persistence and metadata mismatch rejection; desktop tests retain hard-link attack coverage. See [Android's app sandbox](https://source.android.com/docs/security/app-sandbox).
+- On macOS, guarded configedit/SSH staged replacements recognize only the kernel-managed `com.apple.provenance` tag (11 bytes, first byte `0x01`). The kernel assigns each new file the writer's provenance; dev never copies or requires the source value on a replacement, but still observes it on the same file for stale detection. Other attributes and unrecognized provenance values retain strict checks. This covers hygiene redact/repair-encoding/restore and SSH init/format; apply/recovery errors retain the underlying cause. This macOS exception does not weaken Android's inherited-label equality checks.
 - Since v0.2.23, `dev upgrade` refreshes an existing default bundled skill through the updated executable. `dev doctor` and `skill install --check` expose drift; `skill uninstall` removes only unchanged manifest-owned files and matching agent links. Legacy and direct package-manager upgrades need an explicit `skill install` once; custom directories remain explicit. See [skills management](../guides/skills-management.md#bundled-dev-cli-skill-lifecycle).
 - An interactive `dev` command prints one dim "newer release available" line at most once a day, read from the day-old release cache; it never blocks on the network. For the TUI, a stale-cache background refresh starts only after the initial view returns. `[update] check = false` or `DEV_NO_UPDATE_CHECK` disables it.
 
@@ -634,6 +664,70 @@ Schema 1 retains `unsupported_text_encoding` and adds optional `encoding`
 diagnostics and historical `commit` to coverage gaps; repair plan files also
 carry encoding diagnostics. Repair does not claim a successful secret scan.
 
+### Hygiene summary JSON contract
+
+`dev hygiene report --json` emits `kind: "hygiene_summary"` with
+`schema_version: 1`. Prefer it to parsing scan output or human tables. Existing
+scan finding fields stay unchanged; the additive optional `value_id` is keyed by
+private repo state and category/rule/value, allowing same-value aggregation
+across files without exposing the value. Finding `file_id` and file-summary
+`file_id` privately key the exact path, avoiding collisions between masked
+display paths. Older reports may lack these IDs.
+
+| Fields | Contract |
+|---|---|
+| `report_id`, `report_kind`, `scope`, `status`, `created` | Identity and historical scan result/time; summaries retain the underlying status |
+| `policy_current`, `checkout_current` | Current effective policy digest matches; checkout root matches. Neither verifies current source bytes |
+| `audit`, `public_only`, `rescanned`, `sections`, `top` | Scan mode, whether this invocation rescanned, selected group names and row limit |
+| `filters` | Optional `dispositions`, `rules`, `categories`, `paths` lists, applied before aggregation |
+| `totals` | `findings`, `occurrences`, `blocked`, `warnings`, `accepted`, `gaps`, `files`, `rules`, `scanned_files`, `skipped`; findings/counts reflect filters, coverage retains the whole scan |
+| `severities[]` | `disposition`, `findings`, `occurrences` |
+| `rules[]` | `rule`, `category`, `disposition`, `findings`, `occurrences`, `files`, optional `distinct_values`, `values[]`, `omitted_values` |
+| `rules[].values[]` | `value_id`, `rule`, `category`, `masked`, `length`, `occurrences`, `files`, `findings`; never raw values |
+| `files[]` | `file`, optional `file_id`, `disposition`, `findings`, `occurrences`, `rules[]` |
+| `categories[]` | `category`, `disposition`, `findings`, `occurrences`, `rules` (count) |
+| `findings[]`, `gaps[]`, `skipped[]` | Finding drill-down only with `--findings`; coverage gaps and text exclusions remain visible |
+| `omitted` | Optional `rules`, `files`, `categories`, `findings` omission counts |
+| `file_counts_complete` | False for legacy findings without file IDs; their file counts are lower-bound masked-path groups |
+| `values_shown`, optional `values_truncated` | Masked-value selection and whether capture reached its limit |
+| `values_status` | `complete`, `truncated` or `failed`; empty/absent for uncaptured values or legacy records |
+
+Unselected/empty optional arrays may be omitted. Group rows rank block, warn,
+accepted, then occurrences descending, findings descending and name ascending.
+`--top` defaults to 10 (`0` means all), limiting ranked lists and masked values
+per rule; totals are not truncated. `distinct_values` is absent when any selected
+finding in that rule lacks a value ID. Capture limits are not proof of complete
+value coverage. Reported filter values are policy-masked; invalid path globs
+are rejected.
+
+Default latest lookup is per checkout and excludes snapshots; an explicit
+`--report ID` can name another checkout's stored report. These are historical
+observations, not current clean authority. A stored summary exits 0 even with
+blocking findings or gaps. An incomplete `--rescan` emits its summary and exits
+non-zero; this summarizer is not a replacement for the blocking scan hook.
+
+`--values` implies a rescan unless `--report` names a scan captured with values.
+Only masks are public: secrets retain first/last two characters plus length
+(length only below 12), known private rules `[private:N]`, email
+`a•••@d•••.tld`, IPv4 `a.b.•.•`, IPv6 `first:•••`, home path `Users/x•••`.
+Raw values/context stay in a private 0600 `<report-id>.values.review.txt` outside
+Git, never stdout/JSON/scan records. `dev hygiene review-path <plan-or-report-id>`
+prints the private location only; never paste its contents into chat, Git or CI.
+Count and byte bounds limit capture; oversized values are omitted and set
+`values_truncated`. A sidecar failure saves a partial report with a
+`values_capture_failed` gap and `values_status: "failed"`, without a review-path
+hint.
+
+Hygiene redact/repair-encoding/restore/manage and artifact finalize/archive/
+migrate share the artifact writer guard. Other covering live agents always
+block. Automatic caller exemption needs a valid, different UUID in every
+target artifact's actual SpecStory-generated anchored preamble. Otherwise,
+including unknown caller identity, global `--allow-shared-checkout` must explicitly
+attest disjoint ownership. An identified caller-owned live transcript is refused
+even with the override.
+`restore --apply` checks the receipt's exact paths. See the
+[writer rules](../guides/hygiene.md#artifact-writer-guard).
+
 ## Hygiene rollout and selected skill removal
 
 Repository hygiene is a developer commit procedure and needs no installed agent
@@ -663,6 +757,15 @@ Current file snapshots cap at 128 MiB, inventories at 10,000 files and plans at
 2.47.0) and complete locally recoverable refs. Backup coverage and partial results
 remain explicit. Existing commit finalizers and intent fields retain their lane;
 older binaries cannot consume new external-archive intent fields.
+
+Readiness checks canonical Git common-directory identity for intents not matched
+to the checkout path before requiring branch identity for a moved intent.
+Unrelated pending/finalized records proven to belong to another repository no
+longer block detached checkouts, including normal pinned submodules. Relevant
+pending intents, ambiguous repository/moved-intent identity and unreadable stores
+still block; exact finalized-receipt checks are unchanged. Child artifact
+observation failures report the underlying cause. Empty children use the stricter
+path-based claim checks described above, not parent-inherited Git discovery.
 
 ## SSH dashboard observations (v0.2.34)
 

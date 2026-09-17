@@ -130,3 +130,91 @@ func TestHygieneManageJSONPreviewsWithoutRepositoryMutation(t *testing.T) {
 		}
 	}
 }
+
+func hygieneReportFixture(t *testing.T) *harness {
+	t.Helper()
+	h := newHarness(t)
+	sample := "contact person@example.org\ncopy person@example.org and other@example.org\n"
+	if err := os.WriteFile(filepath.Join(h.repo.Root, "sample.txt"), []byte(sample), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+func TestHygieneCLIReportSummarizesLatestScanWithoutValues(t *testing.T) {
+	h := hygieneReportFixture(t)
+	policy := []string{"hygiene", "--repo", h.repo.Root, "--secrets", "off", "--generic", "warn"}
+	h.mustRun(append(policy, "scan", "--file", "sample.txt")...)
+	out := h.mustRun(append(policy, "--json", "report", "--by", "severity,rule,file,category", "--findings")...)
+	var summary hygiene.Summary
+	if err := json.Unmarshal([]byte(out), &summary); err != nil {
+		t.Fatalf("summary JSON: %v\n%s", err, out)
+	}
+	if summary.Kind != "hygiene_summary" || summary.SchemaVersion != 1 || summary.Status != "complete" || !summary.PolicyCurrent ||
+		summary.Totals.Findings != 2 || summary.Totals.Occurrences != 3 || summary.Totals.Warnings != 2 ||
+		len(summary.Rules) != 1 || summary.Rules[0].Rule != "privacy-email" || *summary.Rules[0].DistinctValues != 2 ||
+		len(summary.Files) != 1 || len(summary.Categories) != 1 || len(summary.Findings) != 2 {
+		t.Fatalf("summary = %+v", summary)
+	}
+	human := h.mustRun(append(policy, "report")...)
+	for _, want := range []string{"Hygiene worktree · complete", "findings 2 (occ 3)", "BY SEVERITY", "TOP RULES (occurrences desc)", "privacy-email", "TOP FILES", "sample.txt"} {
+		if !strings.Contains(human, want) {
+			t.Fatalf("human report lacks %q:\n%s", want, human)
+		}
+	}
+	for _, raw := range []string{"person@example.org", "other@example.org"} {
+		if strings.Contains(out, raw) || strings.Contains(human, raw) {
+			t.Fatalf("raw value %q reached report output", raw)
+		}
+	}
+}
+
+func TestHygieneCLIReportValuesUsePrivateReviewPath(t *testing.T) {
+	h := hygieneReportFixture(t)
+	policy := []string{"hygiene", "--repo", h.repo.Root, "--secrets", "off", "--generic", "warn"}
+	human := h.mustRun(append(policy, "report", "--values", "--file", "sample.txt")...)
+	if !strings.Contains(human, "VALUES · privacy-email (masked)") || !strings.Contains(human, "p•••@e•••.org") ||
+		!strings.Contains(human, "dev hygiene review-path ") || strings.Contains(human, "person@example.org") {
+		t.Fatalf("values report:\n%s", human)
+	}
+	out := h.mustRun(append(policy, "--json", "report", "--values", "--file", "sample.txt")...)
+	var summary hygiene.Summary
+	if err := json.Unmarshal([]byte(out), &summary); err != nil {
+		t.Fatal(err)
+	}
+	if !summary.Rescanned || !summary.ValuesShown || len(summary.Rules[0].Values) != 2 || summary.Rules[0].Values[0].Occurrences != 2 || strings.Contains(out, "example.org\"") {
+		t.Fatalf("values summary = %s", out)
+	}
+	path := strings.TrimSpace(h.mustRun("hygiene", "--repo", h.repo.Root, "review-path", summary.ReportID))
+	if strings.Contains(path, "person@example.org") {
+		t.Fatal("review-path printed a raw value")
+	}
+	body, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(body), "person@example.org") || !strings.Contains(string(body), "sample.txt:1") {
+		t.Fatalf("private values review: %v\n%s", err, body)
+	}
+}
+
+func TestHygieneCLIReportFlagContracts(t *testing.T) {
+	h := hygieneReportFixture(t)
+	base := []string{"hygiene", "--repo", h.repo.Root, "--secrets", "off", "--generic", "warn"}
+	if _, _, err := h.run(append(base, "report")...); err == nil || !strings.Contains(err.Error(), "no stored hygiene scan") {
+		t.Fatalf("report without a stored scan: %v", err)
+	}
+	for _, args := range [][]string{
+		{"report", "--range", "a..b"},
+		{"report", "--file", "sample.txt"},
+		{"report", "--audit"},
+		{"report", "--report", "00000000-0000-4000-8000-000000000000", "--rescan"},
+		{"report", "--rescan", "--top", "-1"},
+		{"report", "--rescan", "--by", "owner"},
+		{"report", "--rescan", "--disposition", "off"},
+		{"report", "--rescan", "--path", "["},
+		{"report", "--scope", "working"},
+		{"report", "--report", "not-a-report"},
+	} {
+		if _, _, err := h.run(append(base, args...)...); err == nil {
+			t.Errorf("invalid report flags accepted: %v", args)
+		}
+	}
+}

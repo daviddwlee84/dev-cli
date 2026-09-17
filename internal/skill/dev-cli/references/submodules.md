@@ -60,20 +60,48 @@ outer gitlinks. For dotfiles-all, both affected platform gitlinks belong in one
 outer commit. Dev verifies ordering; it does not perform recursive commits,
 pushes or merges. Outer `--push` never implies a child push.
 
+## Recursive cleanup
+
 `park --cold --recursive`, `retire --recursive`, `wt rm --recursive` and
-`sweep --recursive` require complete child recovery evidence. Cold permits
-unmerged published work; Retire additionally verifies recorded child integration
-targets. Fresh isolated remote proof covers private refs, HEAD/gitlinks,
-reflog-only and unreachable objects. Local-only refs, ignored/untracked/dirty
-content, stash, unfinished artifacts, other tasks/runtimes/worktrees and unknown
-storage/configuration block disposal. A generic `--force` cannot bypass this.
+`sweep --recursive` retain full recovery requirements for initialized child
+clones. Cold permits unmerged published work; Retire additionally verifies
+recorded child integration targets. Fresh isolated remote proof covers private
+refs, HEAD/gitlinks, reflog-only and unreachable objects. Local-only refs,
+ignored/untracked/dirty content, stash, unfinished artifacts, other tasks/runtimes/
+worktrees and unknown storage/configuration block disposal.
+`objects/info/alternates` remains an intentional guard. A generic `--force`
+cannot bypass child checks.
+
+**Empty-child exception:** only when removing a linked worktree, a gitlink whose
+path is absent or truly empty and has no retained child Git store can be proved
+empty locally. `--recursive` is still required, but do not initialize, download,
+request remote proof or push such children merely for cleanup. Initialization
+and publication policy are unchanged. Deinitialized retained data, orphan stores,
+local/ignored files, unexpected `.git`, symlinks/reparse points, external ownership
+and incomplete observations block this exception.
+
+Physical emptiness alone is not removal permission. Manually deleting a tracked
+gitlink directory makes the parent dirty; ordinary non-force removal blocks
+before admin pruning. Never create or restore empty placeholders to bypass this
+guard. A never-initialized, Git-created empty directory can pass; an absent child
+alone does not prove parent cleanliness.
+
+Check empty-child task/artifact claims by path; parent-inherited Git discovery
+is not child identity. Any matching non-discarded artifact intent, even finalized,
+blocks; discarded records still bind plan authority. Changed layouts, new child
+initialization or new claims require a new plan.
 
 Whole child clone disposal differs from removing an ordinary linked worktree:
 approved recursive cleanup deletes private child refs/objects only after remote
-proof. Canonical/shared repositories and the outer branch remain. Cleanup stages
-children deepest-first, preserves empty gitlinks, and removes the outer worktree
-without force or shared-config deinit. Interrupted operations retain a synced
-`journal.json`; use `dev submodule recover JOURNAL --dry-run`, then `recover`
-from outside. Never remove retained quarantine data merely because a prior
-remote check passed. Reload shell integration after upgrading for recursive
-post-done handoff.
+proof. Canonical/shared repositories and the outer branch remain. Real children
+are staged deepest-first with synced journals, including in mixed empty/initialized
+workspaces. Only exact reviewed empty modules admin scaffolding may be pruned
+under existing locks, rechecking directory identity and emptiness immediately
+before native directory-only removal. Empty checkout directories stay for ordinary
+non-force `git worktree remove`; never substitute force or recursive file deletion.
+General worktree removal guards remain in force. Partial pruning failures are
+reported, not called RETIRED, and real-store journals/rollback remain intact.
+
+For a retained `journal.json`, use `dev submodule recover JOURNAL --dry-run`, then
+`recover` from outside. Never delete quarantine data using an old remote proof.
+Reload shell integration after upgrading for recursive post-done handoff.

@@ -2,13 +2,22 @@
 description: 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。
 authority: project
 status: stable
-verified_on: 2026-09-08
+verified_on: 2026-09-17
 lang: zh-TW
 ---
 
 # Agent-safe retirement
 
-Submodule 工作區需明確 `--recursive` 核准，取得當次遠端證明後才能刪除其獨立子 clone。先處理內層，再移除外層；canonical／共享 Git 與外層分支保留。中斷時保留 recovery journal，見 [Submodule 工作區](submodule-workspaces.md)。
+Submodule 工作區移除 linked worktree 仍需明確 `--recursive` 核准。已初始化
+的子 clone 須取得當次遠端恢復證明，先處理內層，再移除外層。只有子路徑不存在
+或真正為空、沒有保留的 Git store，且通過所有權／觀測檢查時，才可改由本地
+證明為空，不必僅為移除而初始化、下載或取得遠端證明。Canonical／共享 Git
+與外層分支保留。
+
+只可在鎖內修剪精確審閱的空 modules 管理目錄；native directory-only removal
+前立即重新驗證目錄身分與空狀態。空 checkout 目錄留給不帶 force 的 Git 移除。
+修剪部分失敗不算 RETIRED；混合工作區中的真實 Git store 仍保有 journal 與
+rollback。見 [Submodule 工作區](submodule-workspaces.md)。
 
 遞迴清理保留 version-2 coordinator 對 caller 與前景程序關閉授權的檢查。子模組結構、工作區意圖與 artifact 歸屬都綁定核准時的預覽；子模組 refs 或狀態改變後，必須重新預覽，才能關閉 runtime 或移除 checkout。
 
@@ -41,7 +50,7 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 | `dev done --merged --base-ref <ref> --confirm-squash <merge-commit>` | 同上，但用於 squash merge：attest（斷言）已證明被 `<ref>` 包含的該 commit 代表這條 feature branch。這是 dev 無法自行驗證的 operator assertion。 |
 | `dev flow [repo]` | 在獨立 TTY preview 中顯示 DONE row 的 Retire (Keep Branch) 或 typed Retire + Delete Contained Branch plan；Enter 只規劃，第二次 approval 才套用。 |
 | `dev artifact discard <intent> --yes` | 記錄某個 intent 永遠無法 finalize——transcript 從未被寫出，或 rebase 之後 HEAD 已不存在——使它不再阻擋 integration 與 retirement。它不會 commit 也不會復原任何東西，會先印出確切將被放棄的內容，並拒絕仍為 `armed` 的 intent，因為 finalize 才是保存 transcript 的路徑。 |
-| `dev retire [task-or-worktree] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | 重新解析每一個 covering runtime session，拒絕 active agent 與 mixed-purpose workspace，等待其關閉，重新驗證 Git state，才移除 linked worktree（不使用 force）。只有在所有要求的步驟都成功後，才刪除 task record。 |
+| `dev retire [task-or-worktree] [--base <ref>] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | 重新解析每一個 covering runtime session，拒絕 active agent 與 mixed-purpose workspace，等待其關閉，重新驗證 Git state，才移除 linked worktree（不使用 force）。只有在所有要求的步驟都成功後，才刪除 task record。 |
 | `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | 從 canonical checkout 執行，回報（加上 `--apply` 時則 retire）branch 已被 base 包含的 task-tracked 與 unmanaged linked worktree。 |
 | `dev sweep --ephemeral-worktrees [--stale-days <n>] [--json]` | 從 canonical non-bare checkout 產生 strict Claude Workflow V1 report；JSON schema 1 僅供 report。 |
 | `dev sweep --ephemeral-worktrees --apply [--delete-branches --base <ref>]` | 要求 TTY 與逐項 confirmation，接著在 common-dir cleanup lock 下重新驗證每個已核可 fingerprint，才用 plain non-force removal。 |
@@ -49,8 +58,8 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 Dirty checkout 在這裡不會直接失敗：`dev done` 會先把它與 base 比對分類，在
 interactive 時提供 commit 或 discard，在 script 中則接受明確的 `--dirty`
 policy。該 wizard 詳見[變更流工作流程](change-stream-workflow.zh-TW.md)。
-`dev done` 上的 `--keep-worktree` 與 `--delete-branch` 之所以仍被接受，只是為了
-明確報錯並指向 `dev retire`。
+`dev done` 上的 `--keep-worktree` 以 no-op 警告；`--delete-branch` 則報錯並
+指向 `dev retire --delete-branch`。
 
 若 fast-forward 只被 canonical checkout 中無關的 dirty bytes 阻擋，互動式
 wizard 可用 exact stash+restore 保存它們，並在 integration 後恢復 staged state
@@ -107,6 +116,25 @@ dev retire <task> --delete-branch
 
 `dev done` 只負責整合並記錄為 MERGED。`dev retire` 會重新解析每個 runtime pane、關閉符合條件的 session、等待它們消失、重新驗證 Git，再移除 worktree（不使用 force）。
 
+## 選擇 containment base
+
+`dev retire --base <ref>` 可覆寫 DONE task 或 linked worktree 的整合驗證目標，不會
+改寫 task 記錄的意圖。解析依序檢查本機分支（`refs/heads/X`）、remote-tracking
+分支（`refs/remotes/X`，例如 `origin/main`），最後才是 commit。完整分支 ref
+維持指名的類型。Apply 重新解析同一輸入，要求類型、ref 與 commit OID 完全一致；
+base 移動或新增同名分支都會使已審閱 plan 過期。Remote-tracking ref 是本機觀測，
+不會暗中 fetch。
+
+未指定 override 時，task retirement 沿用記錄的 base。記錄為 fork-point commit
+時，絕不暗中改用預設分支；若無法證明整合，仍會阻擋並提示 `pass --base <branch>`。
+`dev done --merged --base-ref X` 會將 X 帶入 cleanup 提示、wizard 與外部
+coordinator，對應命令是 `dev retire --base X <task>`。若 shell handoff 無法攜帶
+該 override，dev 會改為列出從外部執行的命令。
+
+可選的 `--delete-branch` 仍執行一般 `git branch -d`；Git 自己的 merged 檢查使用
+分支的 upstream 或 HEAD，不是 `--base`。因此對非 HEAD base 清理時，可能已移除
+worktree 卻無法刪除分支；分支與 DONE task 會保留，結果回報部分完成。
+
 ## Pull-request 流程
 
 ```bash
@@ -114,7 +142,7 @@ dev done <task> --pr
 # CI/review 完成，且以保留 commit 的方式 merge 之後
 git fetch origin
 dev done <task> --merged --base-ref origin/main
-dev retire <task> --delete-branch
+dev retire --base origin/main <task> --delete-branch
 ```
 
 Squash merge 並不等同於 ancestry-equivalent，因此需要明確的 operator attestation：
@@ -124,6 +152,8 @@ dev done <task> --merged --base-ref origin/main --confirm-squash <merge-commit>
 ```
 
 這只證明所指名的 squash commit 被包含在 base 中；operator 是在斷言它確實代表這條 feature branch。
+Squash 後 tree 相同不是 ancestry 證明，也不會免除 retirement 的 containment
+檢查。
 
 ## 拒絕條件
 
@@ -150,6 +180,13 @@ dev sweep --merged-worktrees --apply --yes
 ```
 
 這會同時列出 task-tracked 的 DONE worktree，以及 named branch 已被 base 包含的 unmanaged linked worktree——請從 canonical checkout 執行。它會先回報再套用：containment 本身絕不等於許可。Dirty 的 Git state、pending 或無法到達的 artifact、locked 或 prunable 的 worktree registration、進行中的 Git operation，以及與 `dev retire` 相同的 runtime 拒絕條件，都仍會阻擋 cleanup。Retirement 完成後預設保留 branch；只有在使用者另外核可刪除時，才加上 `--delete-branches`。
+
+`dev sweep --base <ref>` 也會把選定 base 傳入 DONE task retirement；
+`--merged-worktrees` 對 managed task 與 unmanaged checkout 都使用已驗證的 base。
+已審閱 retire／remove plan 的 worktree-list authority 只涵蓋同分支，或路徑與
+目標相同、包含目標、位於目標之下的 worktree。先移除無關的 sibling 不再使
+`--apply --yes` 批次剩餘項目過期；同分支新增 checkout 或目標 lock／HEAD 改變
+仍會使 plan 過期。Containment 與其他安全檢查仍不可省略。
 
 ### 經驗證的 Claude Workflow ephemeral cleanup
 
@@ -207,7 +244,7 @@ partial completion。
 
 原始的 `git worktree remove --force` 會完全繞過 dev——絕不要在佔用 target 的 agent 中執行它。dev 的保證僅止於：沒有任何 dev-mediated 路徑會執行 forced removal；它無法阻止 operator 或 script 直接呼叫 Git。Bare dashboard 的 configured `[[tui.tools]]` command 同樣是任意 external-tool escape boundary，不會繼承 Flow 的 PlanID、conditions、ledger 或 revalidation。
 
-一般 task-backed retirement 使用 `internal/taskflow`。Explicit unmanaged path 形式的 `dev retire` 仍是隔離的 compatibility implementation，部分 `sweep` record-only/orphan-salvage actions 也仍在 taskflow 之外。既有 CLI acknowledgement flags 維持相容，但 Flow preview 不提供其中任何一個；不能把本頁的 shared planner claim 擴張到所有 historical cleanup path。
+一般 task-backed retirement 與 exact unmanaged path 形式的 `dev retire` 都使用 `internal/taskflow`；後者要求 contained removal。部分 `sweep` record-only/orphan-salvage actions 仍在 taskflow 之外。既有 CLI acknowledgement flags 維持相容，但 Flow preview 不提供其中任何一個；不能把本頁的 shared planner claim 擴張到所有 historical cleanup path。
 
 曾經真實發生過：一個 Codex session 從另一個 checkout 刪除了自己已註冊的 worktree 與 branch。Herdr 仍讓該 workspace 與 terminal 保持存活，因為 Unix process 在路徑被 unlink 之後仍可持有開啟中的 cwd inode；接著 SpecStory 又在同一路徑重新建立、但內容只剩 `.specstory/`。這個 shell 看起來還活著，但已經不再是一個 Git checkout：
 

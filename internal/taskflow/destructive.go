@@ -54,6 +54,8 @@ type destructiveObservation struct {
 	worktreeErr   error
 	worktrees     []gitx.Worktree
 	worktreesErr  error
+	// scopedWorktrees are the registered worktrees that can affect this target.
+	scopedWorktrees []gitx.Worktree
 
 	status             gitx.Status
 	statusErr          error
@@ -69,6 +71,8 @@ type destructiveObservation struct {
 	branchExists bool
 	branchOID    string
 	branchOIDErr error
+	baseInput    string
+	baseKind     BaseKind
 	baseRef      string
 	baseExists   bool
 	baseOID      string
@@ -161,6 +165,7 @@ func (s *lifecycleService) inspectDestructive(ctx context.Context, input destruc
 		}
 	}
 
+	observed.scopedWorktrees = s.scopeDestructiveWorktrees(observed.worktrees, input.locator.Branch, observed.checkout)
 	observed.observeRefs(ctx, s, input.locator.Branch, input.base)
 	if input.inspectArtifacts && observed.worktreeFound {
 		observed.artifact, observed.artifactErr = s.inspectArtifacts(ctx, s.artifacts, observed.checkout)
@@ -203,13 +208,9 @@ func (o *destructiveObservation) observeRefs(ctx context.Context, s *lifecycleSe
 			o.branchOID, o.branchOIDErr = s.resolveRefOID(ctx, o.repoPath, o.branchRef)
 		}
 	}
-	o.baseRef = localBranchRef(base)
-	if o.repoPath != "" && o.baseRef != "" {
-		o.baseExists, o.baseOIDErr = s.gitRefState(ctx, o.repoPath, o.baseRef)
-		if o.baseExists && o.baseOIDErr == nil {
-			o.baseOID, o.baseOIDErr = s.resolveRefOID(ctx, o.repoPath, o.baseRef)
-		}
-	}
+	resolved := s.resolveBaseRef(ctx, o.repoPath, base)
+	o.baseInput, o.baseKind, o.baseRef = resolved.input, resolved.kind, resolved.ref
+	o.baseExists, o.baseOID, o.baseOIDErr = resolved.exists, resolved.oid, resolved.err
 	if o.branchExists && o.branchOIDErr == nil && o.branchOID != "" &&
 		o.baseExists && o.baseOIDErr == nil && o.baseOID != "" {
 		o.contained, o.containedErr = s.isAncestor(ctx, o.repoPath, o.branchOID, o.baseOID)
@@ -376,11 +377,19 @@ func (o destructiveObservation) gitAuthority() string {
 }
 
 func (o destructiveObservation) refsAuthority() string {
-	return authorityHash("taskflow-destructive-refs-v1",
+	return authorityHash("taskflow-destructive-refs-v2",
 		o.branchRef, boolString(o.branchExists), o.branchOID, errorString(o.branchOIDErr),
-		o.baseRef, boolString(o.baseExists), o.baseOID, errorString(o.baseOIDErr),
+		o.resolvedBase().authority(),
 		boolString(o.contained), errorString(o.containedErr),
 	)
+}
+
+func (o destructiveObservation) resolvedBase() baseResolution {
+	return baseResolution{input: o.baseInput, ref: o.baseRef, kind: o.baseKind, exists: o.baseExists, oid: o.baseOID, err: o.baseOIDErr}
+}
+
+func (o destructiveObservation) branchAuthority() string {
+	return authorityHash("branch", o.branchRef, boolString(o.branchExists), o.branchOID, errorString(o.branchOIDErr))
 }
 
 func (o destructiveObservation) taskInventoryAuthority() string {
@@ -392,9 +401,47 @@ func (o destructiveObservation) taskInventoryAuthority() string {
 	return authorityHash("taskflow-destructive-task-inventory-v1", values...)
 }
 
+// scopeDestructiveWorktrees keeps registered worktrees on the target branch or
+// whose path equals, contains or is nested in the selected checkout. Removing
+// an unrelated sibling between plan and apply cannot change this target, so it
+// must not invalidate a reviewed plan (for example during a sweep batch).
+func (s *lifecycleService) scopeDestructiveWorktrees(worktrees []gitx.Worktree, branch, checkout string) []gitx.Worktree {
+	var scoped []gitx.Worktree
+	for _, worktree := range worktrees {
+		related := branch != "" && worktree.Branch == branch
+		if !related && checkout != "" {
+			path, err := s.canonicalPath(worktree.Path)
+			if err != nil {
+				path = lexicalAbsolute(worktree.Path)
+			}
+			related = pathEqualOrBelow(checkout, path) || pathEqualOrBelow(path, checkout)
+		}
+		if related {
+			scoped = append(scoped, worktree)
+		}
+	}
+	sort.SliceStable(scoped, func(i, j int) bool { return scoped[i].Path < scoped[j].Path })
+	return scoped
+}
+
+func lexicalAbsolute(path string) string {
+	if absolute, err := filepath.Abs(path); err == nil {
+		return filepath.Clean(absolute)
+	}
+	return filepath.Clean(path)
+}
+
+func pathEqualOrBelow(root, path string) bool {
+	if root == "" || path == "" {
+		return false
+	}
+	rel, err := filepath.Rel(root, path)
+	return err == nil && !filepath.IsAbs(rel) && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
 func (o destructiveObservation) worktreeListAuthority() string {
-	values := []string{errorString(o.worktreesErr), strconv.Itoa(len(o.worktrees))}
-	for _, worktree := range o.worktrees {
+	values := []string{errorString(o.worktreesErr), strconv.Itoa(len(o.scopedWorktrees))}
+	for _, worktree := range o.scopedWorktrees {
 		values = append(values,
 			worktree.Path, worktree.Head, worktree.Branch,
 			boolString(worktree.Detached), boolString(worktree.Bare), boolString(worktree.Main),
@@ -402,7 +449,7 @@ func (o destructiveObservation) worktreeListAuthority() string {
 			boolString(worktree.Prunable), worktree.PrunableReason,
 		)
 	}
-	return authorityHash("taskflow-destructive-worktrees-v1", values...)
+	return authorityHash("taskflow-destructive-worktrees-v2", values...)
 }
 
 func artifactEvidenceFromInspection(inspection artifact.ReadinessInspection) string {

@@ -422,3 +422,24 @@ func TestHerdrEnvelopeErrorIsReported(t *testing.T) {
 		t.Fatalf("AgentActivities error = %v", err)
 	}
 }
+
+func TestHerdrAgentActivitiesReportOnlyExactSessionIDs(t *testing.T) {
+	h := scriptedHerdr(t, herdrCall{
+		args: []string{"agent", "list"},
+		out: `{"id":"1","result":{"agents":[` +
+			`{"agent":"claude","agent_status":"idle","cwd":"/repo","pane_id":"w1:p1","workspace_id":"w1","agent_session":{"agent":"claude","kind":"id","value":"52a38f41-fcea-4063-8e87-c68737f39bb8"}},` +
+			`{"agent":"codex","agent_status":"idle","cwd":"/repo","pane_id":"w1:p2","workspace_id":"w1","agent_session":{"agent":"codex","kind":"title","value":"not-an-id"}},` +
+			`{"agent":"codex","agent_status":"idle","cwd":"/repo","pane_id":"w1:p3","workspace_id":"w1","agent_session":{"value":"01a08f36-adab-7183-ad3c-b58a05162903"}}` +
+			`]}}`,
+	})
+	got, err := h.AgentActivities(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"claude:52a38f41-fcea-4063-8e87-c68737f39bb8", "", "codex:01a08f36-adab-7183-ad3c-b58a05162903"}
+	for index, activity := range got {
+		if activity.Session != want[index] {
+			t.Errorf("agent %d session=%q want %q", index, activity.Session, want[index])
+		}
+	}
+}

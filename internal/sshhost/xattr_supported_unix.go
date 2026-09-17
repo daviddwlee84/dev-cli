@@ -58,6 +58,10 @@ func platformWriteXattrs(file *os.File, attributes map[string][]byte) error {
 	}
 	sort.Strings(names)
 	for _, name := range names {
+		if platformfs.KernelProvenance(name, attributes[name]) {
+			// macOS tags the staged file with the writer's provenance.
+			continue
+		}
 		if platformfs.KernelLabel(name, attributes[name]) {
 			// SELinux assigns the staged file's label. Never relabel a file;
 			// require the inherited bytes to match the observed source.

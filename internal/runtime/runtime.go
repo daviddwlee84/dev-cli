@@ -91,6 +91,9 @@ type AgentActivity struct {
 	Name        string
 	Status      string
 	CWD         string
+	// Session is the runtime-reported agent session identity as
+	// "provider:id", empty unless the backend reports an exact session id.
+	Session string
 }
 
 // AgentActivityLister is an optional runtime capability. Core runtimes need not

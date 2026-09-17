@@ -1,6 +1,14 @@
 # Task lifecycle
 
-For submodule workspaces, Cold verifies every child's remote recoverability; Retire also verifies recorded child integration. Explicit `--recursive` permits child-clone disposal before outer removal. Parent `--push` never implicitly pushes children. Read `submodules.md`; member intent is versioned separately from legacy task TOML.
+For submodule workspaces, Cold verifies initialized child clones' remote
+recoverability; Retire also verifies recorded child integration. Linked-worktree
+removal can instead prove a child locally empty only when its path is absent or
+truly empty, no child Git store remains, and ownership/observation guards pass.
+`--recursive` is still required; such empty children need no initialization,
+download, remote proof or push merely for removal. Retained/deinitialized data
+and incomplete observations remain blockers. Parent `--push` never implicitly
+pushes children. Read `submodules.md` for claim checks, guarded admin pruning and
+recovery; member intent is versioned separately from legacy task TOML.
 
 Read this when work needs to be paused, picked up on another machine, or when
 a machine has accumulated more open sessions than anyone can hold in mind.
@@ -239,6 +247,14 @@ intents, active/mixed runtimes, detached heads and unmerged branches are
 reported as blockers. Safe candidates still require `--apply` and individual
 confirmation; `--delete-branches` is a separate opt-in.
 
+`dev sweep --base <ref>` also forwards the selected base to DONE task retirement;
+`--merged-worktrees` uses its verified base for managed tasks as well as unmanaged
+checkouts. Reviewed retire/remove plans bind worktree-list authority only to the
+same branch or paths equal to, containing, or nested under the target. Removing
+an unrelated sibling no longer invalidates the rest of an approved
+`--apply --yes` batch. A same-branch checkout or target lock/HEAD change still
+makes the plan stale; containment and all other guards remain required.
+
 Agent workflow: show the report to the user as a concrete QA prompt, naming the
 exact candidate paths and whether branches would be retained. Only after the
 user approves that set may the agent add `--apply --yes`.
@@ -313,6 +329,15 @@ opens review; after a commit-preserving external merge use
 are deprecated on `done`: the branch is deleted only by
 `dev retire --delete-branch`, and only when git agrees it is fully contained in
 the base. "Merged" is not always "finished", so branches survive by default.
+
+`dev retire --base <ref>` overrides the containment target, resolving a local
+branch, then remote-tracking ref (for example `origin/main`), then commit. Apply
+re-resolves that input; a changed kind/ref/OID makes the plan stale. A recorded
+fork-point commit stays the base, not the default branch; when it cannot prove
+integration, pass `--base <branch>` explicitly. `done --merged --base-ref X`
+carries X into the cleanup hint, wizard and external coordinator handoff.
+`--delete-branch` still uses Git's upstream/HEAD merged check via `branch -d`, so
+a non-HEAD base can yield partial completion with the branch and DONE task kept.
 
 Cleanup is never inferred from agent lifecycle state. A user must select it in
 the post-MERGED wizard or run `dev retire` from a different checkout/runtime;

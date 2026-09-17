@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-13
+verified_on: 2026-09-17
 lang: zh-TW
 ---
 
@@ -93,6 +93,7 @@ dev pr list --json
 dev prompt list --json
 dev prompt render <pr-triage|session-close|workspace-closeout>
 dev sweep --ephemeral-worktrees --json
+dev hygiene report --json
 dev bootstrap --json
 ```
 
@@ -414,6 +415,20 @@ task-worktree pane 可在最後 Apply 核可後關閉。一般前景程序需要
 改檔；兩個 interactive cleanup 入口都需要 `CLOSE <workspace-id>` 才能終止
 已知程序。背景 jobs 未檢查。Canonical dirty 仍可改 PR、stash+restore、typed
 `DROP` 或取消。詳見[retirement 範圍](../guides/agent-safe-retirement.zh-TW.md#task-worktree-scope)。
+
+## Retirement containment flags
+
+`dev retire [task-or-worktree] --base <ref>` 覆寫整合驗證目標，依序解析本機分支、
+remote-tracking ref（例如 `origin/main`）、commit。Apply 重新解析同一輸入；
+類型／ref／OID 改變即拒絕。未指定 override 時，task 記錄的 fork-point commit
+會保留；若不能證明整合，仍會阻擋並要求 `--base <branch>`。`dev sweep --base`
+也將 override 傳入 DONE task；`--merged-worktrees` 對 managed task 同樣使用
+已驗證的 base。移除無關 sibling 不再使已核准 sweep 批次的剩餘項目過期。
+
+`done --merged --base-ref X` 將 X 帶入 cleanup 提示、wizard 與外部 coordinator
+handoff（`dev retire --base X <task>`）。可選的 `--delete-branch`（sweep 使用
+`--delete-branches`）仍執行 `git branch -d`：Git 檢查 upstream／HEAD，不是
+`--base`，所以對非 HEAD base 清理可能在移除 worktree 後回報部分完成。
 
 ## Configuration
 
@@ -928,6 +943,31 @@ controller save flow。見 [SSH workflows](../guides/ssh-hosts.zh-TW.md#fleet-so
 `dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](../guides/hygiene.zh-TW.md)。
+
+`dev hygiene report` 讀取此 checkout 最新保存的掃描，不重新掃描；
+`--scope staged|worktree|history` 選該範圍的最新掃描，`--report ID` 選確切報告。
+最新查詢以 checkout 為單位，不包含 snapshot。已保存的報告是歷史觀測；
+`checkout_current` 只比對根目錄，不比對來源 bytes。`--rescan` 要求新觀測
+（預設 worktree）；`--range`、可重複的 `--file`、`--timeout`（預設 20m）與
+`--audit` 都需搭配它。`--report` 不可與 `--rescan` 同用。
+
+`--by severity,rule,file,category` 選擇分組（預設 `severity,rule,file`）；
+`--top N` 預設 10，`0` 顯示全部。`--disposition block,warn,accepted`、`--rule`、
+`--category secret,known,generic` 與可重複的 `--path <glob>` 在彙總前篩選；
+無效 glob 會被拒絕，回報的 filter 值依政策遮罩；
+`--findings` 加入逐筆 finding。Agent 應優先使用 `dev hygiene report --json`
+（`hygiene_summary` schema 1），不要解析 scan 輸出；詳見
+[摘要契約](compatibility.zh-TW.md#hygiene-summary-json-contract)。
+
+`--values` 加入遮罩後的相異值；除非 `--report` 指定已擷取值的掃描，否則隱含
+`--rescan`。原始值與所在行內容只留在權限為 0600 的私人
+`<report-id>.values.review.txt`，不進入 stdout、JSON 或掃描紀錄。
+`dev hygiene review-path <plan-or-report-id>` 只印出 plan 提案或原始值檢閱檔的位置，
+不輸出內容；勿將該檔貼到聊天、Git 或 CI。新增 `file_id` 區別確切檔案；舊資料
+的遮罩路徑計數會標示 `file_counts_complete: false`。`values_status` 回報
+complete／truncated／failed。數量／byte 上限會省略過大值並標記 `values_truncated`；
+附屬檔失敗仍保存 partial 報告，附 `values_capture_failed`、不提供 review-path
+提示。彙總已保存報告以 0 結束；不完整的 rescan 先輸出摘要，再以非零狀態退出。
 
 `hygiene repair-encoding --file PATH [--invalid replace|remove]` 預覽工作檔
 UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需

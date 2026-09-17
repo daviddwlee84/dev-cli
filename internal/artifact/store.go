@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/lockx"
@@ -95,7 +96,15 @@ func (s *Store) Get(id string) (*Intent, error) {
 func (s *Store) List() ([]Intent, error) {
 	entries, err := os.ReadDir(s.Dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		return nil, nil
+		// Windows can report PATH_NOT_FOUND when the target or an ancestor
+		// is a file. Only genuine directory absence means an empty store.
+		missing, inspectErr := missingStoreDirectory(s.Dir)
+		if inspectErr != nil {
+			return nil, inspectErr
+		}
+		if missing {
+			return nil, nil
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -113,6 +122,31 @@ func (s *Store) List() ([]Intent, error) {
 	}
 	sort.Slice(intents, func(i, j int) bool { return intents[i].CreatedAt.Before(intents[j].CreatedAt) })
 	return intents, nil
+}
+
+func missingStoreDirectory(dir string) (bool, error) {
+	absolute, err := filepath.Abs(dir)
+	if err != nil {
+		return false, err
+	}
+	for probe := absolute; ; probe = filepath.Dir(probe) {
+		info, err := os.Lstat(probe)
+		if err == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				info, err = os.Stat(probe)
+				if err != nil {
+					return false, err
+				}
+			}
+			if !info.IsDir() {
+				return false, &os.PathError{Op: "readdir", Path: dir, Err: syscall.ENOTDIR}
+			}
+			return probe != absolute, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) || filepath.Dir(probe) == probe {
+			return false, err
+		}
+	}
 }
 
 func (s *Store) FindByRunID(runID string) (*Intent, error) {

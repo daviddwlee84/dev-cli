@@ -27,6 +27,7 @@ func newRetireCmd(app *App) *cobra.Command {
 		closeUnknown    bool
 		assumeNoRuntime bool
 		deleteBranch    bool
+		base            string
 		timeout         time.Duration
 	)
 	cmd := &cobra.Command{
@@ -60,7 +61,7 @@ external coordinator that waits for this command to exit into its shell.`,
 			if err := app.checkWorkflowTask(target.Task); err != nil {
 				return err
 			}
-			options := flow.RetireOptions{Recursive: recursive, CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, DeleteBranch: deleteBranch, Timeout: timeout}
+			options := flow.RetireOptions{Recursive: recursive, CloseUnknown: closeUnknown, AssumeNoRuntime: assumeNoRuntime, DeleteBranch: deleteBranch, Base: base, Timeout: timeout}
 			if app.interactive() && (target.Task == nil || target.Task.State == task.Done && target.Task.EffectiveMode() == task.ModeWorktree && target.Task.WorktreePath != "") {
 				path := target.Path
 				var rt runtime.Runtime
@@ -79,7 +80,11 @@ external coordinator that waits for this command to exit into its shell.`,
 					return err
 				}
 				if target.Task != nil {
-					fmt.Fprintf(app.Out, "Retire task %s · base %s\n", target.Task.ID, target.Task.Base)
+					shownBase := target.Task.Base
+					if base != "" {
+						shownBase = base
+					}
+					fmt.Fprintf(app.Out, "Retire task %s · base %s\n", target.Task.ID, shownBase)
 				}
 				renderRetirementPreview(app, rt, preview)
 				var canceled bool
@@ -88,7 +93,7 @@ external coordinator that waits for this command to exit into its shell.`,
 					return err
 				}
 				if target.Task != nil && rt.Name() == "herdr" && preview.CallerContained && len(preview.Sessions) > 0 {
-					return launchExternalRetireCoordinator(ctx, app, rt, *target.Task, preview, deleteBranch, options.CloseUnknown, options.ProcessClosures.Map(), options.PreviewAuthority, recursive)
+					return launchExternalRetireCoordinator(ctx, app, rt, *target.Task, preview, deleteBranch, options.CloseUnknown, options.ProcessClosures.Map(), options.PreviewAuthority, base, recursive)
 				}
 			}
 			if target.Task != nil {
@@ -102,6 +107,7 @@ external coordinator that waits for this command to exit into its shell.`,
 	f.BoolVar(&closeUnknown, "close-unknown", false, "allow an external caller to close unknown/empty runtime status")
 	f.BoolVar(&assumeNoRuntime, "assume-no-runtime", false, "continue when runtime enumeration fails (external callers only)")
 	f.BoolVar(&deleteBranch, "delete-branch", false, "delete the contained local branch after worktree removal")
+	f.StringVar(&base, "base", "", "containment base override: local branch, remote-tracking ref such as origin/main, or commit")
 	f.DurationVar(&timeout, "timeout", 5*time.Second, "maximum time to wait for runtime sessions to close")
 	cmd.ValidArgsFunction = completeTasks(app, task.Done)
 	return cmd
@@ -234,9 +240,12 @@ func retireUnmanagedPathWithOptions(ctx context.Context, app *App, path string, 
 	if err != nil {
 		return err
 	}
-	base := gitx.DefaultBranch(ctx, repository.MainRoot)
+	base := options.Base
 	if base == "" {
-		return fmt.Errorf("cannot prove unmanaged retirement without an explicit repository default branch")
+		base = gitx.DefaultBranch(ctx, repository.MainRoot)
+	}
+	if base == "" {
+		return fmt.Errorf("cannot prove unmanaged retirement without an explicit repository default branch; pass --base")
 	}
 	execution, err := executeNonTaskLifecycle(ctx, app, locator, flow.RemoveCheckoutOptions{
 		Recursive:        options.Recursive,

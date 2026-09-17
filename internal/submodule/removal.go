@@ -29,6 +29,23 @@ type Removal struct {
 	Config     config.Config
 	Merged     bool
 	remoteRefs map[string]string
+
+	LayoutFingerprint string
+	layout            *removalLayout
+	initialized       []gitx.SubmoduleNode
+	cleanupConsent    bool
+	observed          bool
+	publication       bool
+	remoteVerified    bool
+}
+
+// InitializedCount excludes safe empty gitlinks, which have no private clone to
+// prove, lease or stage. The subset is fixed by the complete local observation.
+func (p *Removal) InitializedCount() int {
+	if p == nil {
+		return 0
+	}
+	return len(p.initialized)
 }
 
 func InspectPublication(ctx context.Context, cfg config.Config, root string, merged bool) (*Removal, error) {
@@ -56,7 +73,7 @@ func InspectPublication(ctx context.Context, cfg config.Config, root string, mer
 			return nil, fmt.Errorf("submodule %s must be committed and match its gitlink before publishing/integrating the parent", n.Path)
 		}
 	}
-	return &Removal{Graph: g, Repository: r, Workspace: w, Revision: revision, Config: cfg, Merged: merged, remoteRefs: map[string]string{}}, nil
+	return &Removal{Graph: g, Repository: r, Workspace: w, Revision: revision, Config: cfg, Merged: merged, remoteRefs: map[string]string{}, initialized: append([]gitx.SubmoduleNode(nil), g.Nodes...), observed: true, publication: true}, nil
 }
 
 // InspectRemoval is local only. Destructive adapters must call it even when
@@ -66,15 +83,16 @@ func InspectRemoval(ctx context.Context, cfg config.Config, root string, recursi
 	if err != nil {
 		return nil, err
 	}
-	if len(g.Nodes) == 0 {
-		return nil, nil
-	}
-	if !recursive {
-		return nil, errors.New("submodules require an explicit --recursive cleanup plan; child repositories are retained")
-	}
 	r, err := gitx.Discover(ctx, root)
 	if err != nil {
 		return nil, err
+	}
+	if len(g.Nodes) == 0 {
+		if _, err := os.Lstat(filepath.Join(r.GitDir, "modules")); errors.Is(err, fs.ErrNotExist) {
+			return nil, nil
+		} else if err != nil {
+			return nil, err
+		}
 	}
 	if !r.IsLinkedWorktree {
 		return nil, errors.New("recursive removal cannot remove a canonical checkout")
@@ -90,25 +108,29 @@ func InspectRemoval(ctx context.Context, cfg config.Config, root string, recursi
 	if err != nil {
 		return nil, err
 	}
-	plan := &Removal{Graph: g, Repository: r, Workspace: w, Revision: revision, Config: cfg, Merged: merged, remoteRefs: map[string]string{}}
+	plan := &Removal{Graph: g, Repository: r, Workspace: w, Revision: revision, Config: cfg, Merged: merged, remoteRefs: map[string]string{}, cleanupConsent: recursive}
+	plan.layout, err = observeRemovalLayout(ctx, r, g)
+	if err != nil {
+		return plan, err // An incomplete observation is never execution authority.
+	}
+	plan.LayoutFingerprint = plan.layout.fingerprint()
 	plan.roots = map[string]os.FileInfo{}
-	for _, path := range []string{r.Root, r.GitDir, filepath.Join(r.GitDir, "modules")} {
-		held, info, err := safefile.OpenRoot(path)
-		if err != nil {
-			return nil, err
-		}
-		held.Close()
-		plan.roots[path] = info
+	for path, directory := range plan.layout.Directories {
+		plan.roots[path] = directory.info
 	}
 	for _, n := range g.Nodes {
 		if len(n.Blockers) > 0 {
 			return nil, fmt.Errorf("submodule %s blocks cleanup: %s", n.Path, strings.Join(n.Blockers, "; "))
 		}
 		if !n.Initialized {
-			return nil, fmt.Errorf("submodule %s must be initialized for a complete recursive recovery proof", n.Path)
+			if n.State != "uninitialized" {
+				return plan, fmt.Errorf("submodule %s has unknown checkout state", n.Path)
+			}
+			continue
 		}
+		plan.initialized = append(plan.initialized, n)
 		owned, err := pathx.Contains(filepath.Join(r.GitDir, "modules"), n.GitDir)
-		if err != nil || !owned || n.GitDir != n.CommonDir {
+		if err != nil || !owned || filepath.Clean(n.GitDir) != filepath.Clean(n.CommonDir) {
 			return nil, fmt.Errorf("submodule %s has shared or externally owned Git storage", n.Path)
 		}
 		child := filepath.Join(g.Root, filepath.FromSlash(n.Path))
@@ -118,7 +140,7 @@ func InspectRemoval(ctx context.Context, cfg config.Config, root string, recursi
 				return nil, err
 			}
 			held.Close()
-			plan.roots[path] = info
+			plan.roots[filepath.Clean(path)] = info
 		}
 		worktrees, err := gitx.Worktrees(ctx, child)
 		if err != nil {
@@ -131,8 +153,12 @@ func InspectRemoval(ctx context.Context, cfg config.Config, root string, recursi
 			return nil, fmt.Errorf("submodule %s: %w", n.Path, err)
 		}
 	}
-	if err := inspectModuleStorage(filepath.Join(r.GitDir, "modules"), g.Nodes, filepath.Join(r.GitDir, "modules")); err != nil {
-		return nil, err
+	if err := inspectRemovalParent(ctx, g.Root); err != nil {
+		return plan, err
+	}
+	plan.observed = true
+	if !recursive {
+		return plan, errors.New("submodules require an explicit --recursive cleanup plan; child repositories and empty administration directories are retained")
 	}
 	return plan, nil
 }
@@ -143,42 +169,17 @@ func InspectRemoval(ctx context.Context, cfg config.Config, root string, recursi
 func inspectModuleStorage(root string, nodes []gitx.SubmoduleNode, originalRoot string) error {
 	known := map[string]bool{}
 	for _, n := range nodes {
+		if !n.Initialized {
+			continue
+		}
 		rel, err := filepath.Rel(originalRoot, n.GitDir)
 		if err != nil {
 			return err
 		}
 		known[filepath.Join(root, rel)] = true
 	}
-	var walk func(string) error
-	walk = func(dir string) error {
-		entries, err := os.ReadDir(dir)
-		if os.IsNotExist(err) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		for _, entry := range entries {
-			path := filepath.Join(dir, entry.Name())
-			if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-				return fmt.Errorf("unclaimed private module data at %s", path)
-			}
-			if known[path] {
-				if err := walk(filepath.Join(path, "modules")); err != nil {
-					return err
-				}
-				continue
-			}
-			if _, err := os.Lstat(filepath.Join(path, "HEAD")); err == nil {
-				return fmt.Errorf("orphan submodule repository %s requires preservation", path)
-			}
-			if err := walk(path); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-	return walk(root)
+	l := &removalLayout{Directories: map[string]layoutDirectory{}, Absent: map[string]bool{}}
+	return l.storage(context.Background(), filepath.Dir(root), filepath.Base(root), known, 0)
 }
 
 func inspectPrivateState(ctx context.Context, root, gitdir string) error {
@@ -355,8 +356,18 @@ func (p *Removal) VerifyRemote(ctx context.Context) error {
 	if p == nil {
 		return nil
 	}
+	p.remoteVerified = false
+	p.remoteRefs = map[string]string{}
+	if !p.observed || (!p.publication && !p.cleanupConsent) {
+		return errors.New("submodule recovery requires a complete observation and explicit cleanup consent")
+	}
+	if !p.publication {
+		if err := p.revalidateLocal(ctx, p.layout); err != nil {
+			return err
+		}
+	}
 	var removedIdentities []os.FileInfo
-	for _, node := range p.Graph.Nodes {
+	for _, node := range p.initialized {
 		for _, path := range []string{filepath.Join(p.Graph.Root, filepath.FromSlash(node.Path)), node.GitDir, filepath.Join(p.Graph.Root, filepath.FromSlash(node.Path), ".git")} {
 			info, err := os.Stat(path)
 			if err != nil {
@@ -365,7 +376,7 @@ func (p *Removal) VerifyRemote(ctx context.Context) error {
 			removedIdentities = append(removedIdentities, info)
 		}
 	}
-	for _, n := range p.Graph.Nodes {
+	for _, n := range p.initialized {
 		child := filepath.Join(p.Graph.Root, filepath.FromSlash(n.Path))
 		url, err := gitx.Run(ctx, child, "remote", "get-url", "origin")
 		if err != nil {
@@ -490,6 +501,7 @@ func (p *Removal) VerifyRemote(ctx context.Context) error {
 		}
 		p.remoteRefs[n.Path] = before
 	}
+	p.remoteVerified = true
 	return nil
 }
 
@@ -543,11 +555,22 @@ func (p *Removal) Apply(ctx context.Context, check func(context.Context, string)
 	if p == nil {
 		return removeOuter()
 	}
-	if len(p.remoteRefs) != len(p.Graph.Nodes) {
+	if !p.observed || !p.cleanupConsent || p.publication || p.layout == nil {
+		return errors.New("recursive removal requires a complete safe observation and explicit cleanup consent")
+	}
+	if !p.remoteVerified || len(p.remoteRefs) != len(p.initialized) {
 		return errors.New("recursive removal has no fresh remote proof")
 	}
+	for _, n := range p.initialized {
+		if _, ok := p.remoteRefs[n.Path]; !ok || n.CommonDir == "" {
+			return errors.New("recursive removal has an incomplete child proof or identity")
+		}
+	}
+	if len(p.initialized) == 0 {
+		return p.applyEmpty(ctx, check, removeOuter)
+	}
 	// Same lock namespace as taskflow. Parent is already locked by the caller.
-	nodes := append([]gitx.SubmoduleNode(nil), p.Graph.Nodes...)
+	nodes := append([]gitx.SubmoduleNode(nil), p.initialized...)
 	sort.Slice(nodes, func(i, j int) bool { return nodes[i].CommonDir < nodes[j].CommonDir })
 	var leases []*lockx.Lease
 	defer func() {
@@ -562,24 +585,8 @@ func (p *Removal) Apply(ctx context.Context, check func(context.Context, string)
 		}
 		leases = append(leases, lease)
 	}
-	fresh, err := gitx.SubmodulesOf(ctx, p.Graph.Root)
-	if err != nil {
+	if err := p.revalidateLocal(ctx, p.layout); err != nil {
 		return err
-	}
-	if fresh.Fingerprint != p.Graph.Fingerprint {
-		return errors.New("stale submodule cleanup plan")
-	}
-	for path, info := range p.roots {
-		if err := safefile.VerifyRoot(path, info); err != nil {
-			return err
-		}
-	}
-	_, revision, err := Load(p.Config, p.Workspace.Repository, p.Workspace.Branch)
-	if err != nil {
-		return err
-	}
-	if revision != p.Revision {
-		return errors.New("stale workspace member intent")
 	}
 	for _, n := range nodes {
 		child := filepath.Join(p.Graph.Root, filepath.FromSlash(n.Path))
@@ -596,6 +603,16 @@ func (p *Removal) Apply(ctx context.Context, check func(context.Context, string)
 			return err
 		}
 	}
+	// Claims and empty-node layout are checked after remote/private-state reads
+	// too, immediately before the first local effect.
+	if check != nil {
+		if err := check(ctx, p.Graph.Root); err != nil {
+			return err
+		}
+	}
+	if err := p.revalidateLocal(ctx, p.layout); err != nil {
+		return err
+	}
 	area, err := os.MkdirTemp(filepath.Dir(p.Graph.Root), ".dev-submodule-retirement-")
 	if err != nil {
 		return err
@@ -607,6 +624,7 @@ func (p *Removal) Apply(ctx context.Context, check func(context.Context, string)
 	journal := removalJournal{Version: 1, Root: p.Graph.Root, GitDir: p.Repository.GitDir, Repository: p.Repository.MainRoot, Branch: p.Workspace.Branch, Head: head}
 	journalPath := filepath.Join(area, "journal.json")
 	persist := func() error { return writeJSON(journalPath, journal) }
+	placeholders := map[string]os.FileInfo{}
 	rollback := func(cause error) error {
 		for i := len(journal.Moves) - 1; i >= 0; i-- {
 			m := journal.Moves[i]
@@ -617,7 +635,13 @@ func (p *Removal) Apply(ctx context.Context, check func(context.Context, string)
 				if !m.Empty {
 					return fmt.Errorf("%w; original path reused; inspect %s", cause, journalPath)
 				}
-				if err := os.Remove(m.From); err != nil {
+				parent, _, err := safefile.OpenRoot(filepath.Dir(m.From))
+				if err != nil {
+					return fmt.Errorf("%w; cannot restore; inspect %s", cause, journalPath)
+				}
+				err = safefile.RemoveEmptyChildDir(context.WithoutCancel(ctx), parent, filepath.Base(m.From), placeholders[m.From])
+				parent.Close()
+				if err != nil {
 					return fmt.Errorf("%w; cannot restore; inspect %s", cause, journalPath)
 				}
 			}
@@ -629,7 +653,7 @@ func (p *Removal) Apply(ctx context.Context, check func(context.Context, string)
 		return cause
 	}
 	move := func(from, to string, empty bool) error {
-		if err := safefile.VerifyRoot(from, p.roots[from]); err != nil {
+		if err := safefile.VerifyRoot(from, p.roots[filepath.Clean(from)]); err != nil {
 			return err
 		}
 		journal.Moves = append(journal.Moves, moveRecord{From: from, To: to, Empty: empty})
@@ -639,17 +663,24 @@ func (p *Removal) Apply(ctx context.Context, check func(context.Context, string)
 		if err := os.Rename(from, to); err != nil {
 			return err
 		}
-		if err := safefile.VerifyRoot(to, p.roots[from]); err != nil {
+		if err := safefile.VerifyRoot(to, p.roots[filepath.Clean(from)]); err != nil {
 			return err
 		}
 		if empty {
-			return os.Mkdir(from, 0755)
+			if err := os.Mkdir(from, 0755); err != nil {
+				return err
+			}
+			info, err := os.Lstat(from)
+			if err != nil {
+				return err
+			}
+			placeholders[from] = info
 		}
 		return nil
 	}
 	// Children leave first; parent moves retain their empty placeholders.
-	for i := len(p.Graph.Nodes) - 1; i >= 0; i-- {
-		n := p.Graph.Nodes[i]
+	for i := len(p.initialized) - 1; i >= 0; i-- {
+		n := p.initialized[i]
 		if err := ctx.Err(); err != nil {
 			return rollback(err)
 		}
@@ -667,6 +698,12 @@ func (p *Removal) Apply(ctx context.Context, check func(context.Context, string)
 		return rollback(err)
 	}
 	if err := inspectModuleStorage(filepath.Join(area, "git-modules"), p.Graph.Nodes, filepath.Join(p.Repository.GitDir, "modules")); err != nil {
+		return rollback(err)
+	}
+	if err := p.verifyStagedLayout(ctx, journal.Moves); err != nil {
+		return rollback(err)
+	}
+	if err := verifyStagedPlaceholders(ctx, placeholders, journal.Moves); err != nil {
 		return rollback(err)
 	}
 	if err := removeOuter(); err != nil {

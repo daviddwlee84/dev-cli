@@ -16,6 +16,12 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Test seams: the kernel-managed provenance tag cannot be forged in-process.
+var (
+	kernelProvenance = platformfs.KernelProvenance
+	setAttribute     = func(fd int, name string, value []byte) error { return unix.Fsetxattr(fd, name, value, 0) }
+)
+
 // Metadata is private receipt material, never part of a public edit plan.
 type Metadata struct {
 	Present    bool              `json:"present"`
@@ -178,10 +184,14 @@ func (m Metadata) prepare(file *os.File) error {
 		if prior, ok := current[name]; ok && bytes.Equal(prior, value) {
 			continue
 		}
+		if kernelProvenance(name, value) {
+			// The kernel tags the replacement with the writer's provenance.
+			continue
+		}
 		if platformfs.KernelLabel(name, value) {
 			return errors.New("inherited Android label differs from source")
 		}
-		if err = unix.Fsetxattr(int(file.Fd()), name, value, 0); err != nil {
+		if err = setAttribute(int(file.Fd()), name, value); err != nil {
 			return fmt.Errorf("restore configuration attribute %s: %w", name, err)
 		}
 	}
@@ -190,8 +200,11 @@ func (m Metadata) prepare(file *os.File) error {
 		return err
 	}
 	for name, value := range m.Attributes {
+		if kernelProvenance(name, value) {
+			continue
+		}
 		if actual, ok := after[name]; !ok || !bytes.Equal(actual, value) {
-			return errors.New("configuration metadata did not round-trip")
+			return fmt.Errorf("configuration attribute %s did not round-trip", name)
 		}
 	}
 	return nil
