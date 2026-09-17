@@ -63,7 +63,7 @@ func (h *hygieneCLI) output(value any, err error) error {
 		if e = json.Unmarshal(data, &safe); e != nil {
 			return e
 		}
-		textFields := map[string]bool{"detail": true, "notices": true, "file": true, "rule": true, "reason": true, "replacement": true, "source": true, "visibility_source": true, "paths": true, "completed": true, "id": true}
+		textFields := map[string]bool{"detail": true, "notices": true, "file": true, "rule": true, "reason": true, "replacement": true, "source": true, "visibility_source": true, "paths": true, "completed": true, "id": true, "rules": true, "masked": true, "commit": true}
 		var scrub func(any, string) any
 		scrub = func(v any, key string) any {
 			switch x := v.(type) {
@@ -116,6 +116,8 @@ func (h *hygieneCLI) output(value any, err error) error {
 					}
 				}
 			}
+		case hygiene.Summary:
+			h.renderSummary(v)
 		case hygiene.Plan:
 			fmt.Fprintf(h.app.Out, "%s · %s\nPlan %s\n", v.Kind, v.Status, v.ID)
 			if v.ReviewFile != "" {
@@ -402,7 +404,7 @@ Artifact writers must exit before apply; encoding repair is not a secret scan.`,
 	restore.Flags().BoolVar(&restoreApply, "apply", false, "restore unchanged post-apply files")
 	restore.Flags().BoolVarP(&restoreYes, "yes", "y", false, "confirm the reviewed recovery")
 	restore.Flags().BoolVar(&restoreWriter, "writer-stopped", false, "attest artifact writers have exited before recovery")
-	review := &cobra.Command{Use: "review-path <plan-id>", Short: "Print the private review file location without printing its contents", Args: cobra.ExactArgs(1), RunE: func(c *cobra.Command, args []string) error {
+	review := &cobra.Command{Use: "review-path <plan-or-report-id>", Short: "Print a plan's or report's private review file location without its contents", Args: cobra.ExactArgs(1), RunE: func(c *cobra.Command, args []string) error {
 		s, e := h.base(c.Context())
 		if e != nil {
 			return e
@@ -417,7 +419,7 @@ Artifact writers must exit before apply; encoding repair is not a secret scan.`,
 		fmt.Fprintln(h.app.Out, path)
 		return nil
 	}}
-	cmd.AddCommand(status, scan, setup, redact, repair, restore, review, h.rulesCmd(), newHygieneManageCmd(h))
+	cmd.AddCommand(status, scan, h.reportCmd(), setup, redact, repair, restore, review, h.rulesCmd(), newHygieneManageCmd(h))
 	return cmd
 }
 func (h *hygieneCLI) rulesCmd() *cobra.Command {

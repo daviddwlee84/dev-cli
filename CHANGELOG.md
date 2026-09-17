@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Added
 
+- `dev hygiene report` summarizes the newest stored scan for the current
+  checkout without scanning again (so the pre-commit hook's staged scan is
+  readable right after a blocked commit), or `--report ID` / `--rescan`.
+  Findings are grouped by severity, rule, file and category, ordered by
+  disposition then occurrences, with `--top`, `--disposition`, `--rule`,
+  `--category`, `--path` filters and a `--findings` drill-down. `--json` emits
+  the new `hygiene_summary` schema-v1 document. `--values` shows masked
+  distinct values per rule; raw values and their context go only to a private
+  review file whose location `dev hygiene review-path <report-id>` prints.
+  Scan findings gain an additive keyed `value_id`.
 - `dev retire --base <ref>` overrides the containment target used to prove a
   DONE task or linked worktree is integrated: a local branch, a remote-tracking
   branch such as `origin/main`, or a commit. `dev sweep --base` forwards the

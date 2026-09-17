@@ -155,7 +155,8 @@ func worseDisposition(current, next string) string {
 	return current
 }
 
-func (r SummaryRequest) validate() error {
+// Validate checks request flags before any scan or report load.
+func (r SummaryRequest) Validate() error {
 	if r.Top < 0 {
 		return errors.New("--top must be zero (all) or positive")
 	}
@@ -182,7 +183,7 @@ func (r SummaryRequest) validate() error {
 
 // Summarize aggregates one stored scan report for this repository.
 func (s *Service) Summarize(ctx context.Context, request SummaryRequest) (Summary, error) {
-	if err := request.validate(); err != nil {
+	if err := request.Validate(); err != nil {
 		return Summary{}, err
 	}
 	if err := s.prepare(ctx); err != nil {
