@@ -4,6 +4,13 @@ Priority `P1` (next) … `P4` (someday), or `P?` (needs evaluation); effort `S` 
 
 ## Active
 
+### P2 · M — Explicit integration bases for remote refresh
+Retirement now supports a reviewed `--base` independent of the task's creation
+base. `taskflow.RefreshRemote` still expects branch-shaped bases and must not
+silently reinterpret a recorded fork-point OID as an integration branch. Extend
+its own explicit target/proof model and tests before reusing retirement's base
+resolver; preserve fresh remote evidence and stale-plan rejection.
+
 ### P? · M — Herdr navigation scoped to the calling client
 Evaluate a public Herdr API that identifies the invoking client and selects an
 exact machine/session/workspace without moving other clients. Fleet currently

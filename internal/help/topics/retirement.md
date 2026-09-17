@@ -27,6 +27,28 @@ Git/worktree/ref/runtime/artifact identity under locks, repeats safety checks
 after runtime closure and before removal, and deletes the task record last.
 Completed steps remain visible if a later step fails; no rollback is implied.
 
+## Choose the containment base
+
+`dev retire --base <ref>` overrides the containment target for a DONE task or
+linked worktree without changing recorded task intent. Resolution checks a local
+branch (`refs/heads/X`), then a remote-tracking branch (`refs/remotes/X`, such as
+`origin/main`), then a commit. Fully qualified branch refs keep their named kind.
+Apply re-resolves the same input and requires the same kind, ref and commit OID;
+a moved base or a newly created same-name branch makes the reviewed plan stale.
+Remote-tracking refs are local observations, not an implicit fetch.
+
+Without an override, task retirement keeps its recorded base. A recorded
+fork-point commit is never silently replaced by the default branch: if it cannot
+prove integration, retirement stays blocked with `pass --base <branch>` guidance.
+After `dev done --merged --base-ref X`, cleanup hints, the cleanup wizard and the
+external coordinator carry X forward as `dev retire --base X <task>`. If a shell
+handoff cannot carry the override, dev prints the external command instead.
+
+Optional `--delete-branch` still runs ordinary `git branch -d`, whose own merged
+check uses the branch's upstream or HEAD, not `--base`. Against a non-HEAD base,
+branch deletion can therefore fail after the worktree was removed; the branch
+and DONE task remain, and the result reports partial completion.
+
 Retirement never overrides `working`, `blocked`, or `waiting` agents. Unknown
 status needs external `--close-unknown`. A workspace containing panes outside
 the target is mixed-purpose and must be reorganized or closed manually.
@@ -58,15 +80,23 @@ protections. Do not use them on an agent-owned checkout. Existing expert CLI
 acknowledgements remain available, but the flow preview deliberately omits dirty
 discard, shared-writer/takeover, and unknown-runtime overrides.
 
-Task-backed `dev retire` uses the guarded lifecycle service. Explicit unmanaged
-path retirement retains an isolated compatibility implementation; do not assume
-every cleanup or `sweep` reconciliation path has moved to the same planner.
+Task-backed `dev retire` and exact unmanaged path retirement use taskflow
+(the latter requires contained removal). Some record-only/orphan-salvage `sweep`
+reconciliation paths remain separate; not every cleanup uses the same planner.
 
 From the canonical main checkout, `dev sweep --merged-worktrees` reports both
 tracked and unmanaged linked worktrees whose named branches are contained in
 main. Review the exact candidates and blockers first; apply only after user
 confirmation. Worktree retirement keeps branches unless `--delete-branches`
 was separately requested.
+
+`dev sweep --base <ref>` also forwards the selected base to DONE task retirement;
+`--merged-worktrees` uses its verified base for managed tasks as well as unmanaged
+checkouts. Reviewed retire/remove plans bind worktree-list authority only to the
+same branch or paths equal to, containing, or nested under the target. Removing
+an unrelated sibling no longer invalidates the rest of an approved
+`--apply --yes` batch. A same-branch checkout or target lock/HEAD change still
+makes the plan stale; containment and all other guards remain required.
 
 Claude Workflow turn-scoped worktrees have a separate strict V1 audit:
 

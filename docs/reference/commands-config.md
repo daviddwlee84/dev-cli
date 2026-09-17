@@ -2,7 +2,7 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-13
+verified_on: 2026-09-17
 ---
 
 # Commands and configuration
@@ -92,6 +92,7 @@ dev pr list --json
 dev prompt list --json
 dev prompt render <pr-triage|session-close|workspace-closeout>
 dev sweep --ephemeral-worktrees --json
+dev hygiene report --json
 dev bootstrap --json
 ```
 
@@ -481,6 +482,22 @@ foreground programs require separate FF file-change consent; both interactive
 cleanup entrances require `CLOSE <workspace-id>` for known program termination.
 Background jobs are not inspected. A dirty canonical target still offers PR,
 stash+restore, typed `DROP`, or cancel. See [retirement scope](../guides/agent-safe-retirement.md#task-worktree-scope).
+
+## Retirement containment flags
+
+`dev retire [task-or-worktree] --base <ref>` overrides the containment target:
+local branch, then remote-tracking ref (such as `origin/main`), then commit.
+Apply re-resolves the same input and rejects a changed kind/ref/OID. Without an
+override, a task's recorded fork-point commit is retained; if it cannot prove
+integration, retirement stays blocked and requests `--base <branch>`.
+`dev sweep --base` forwards the override to DONE tasks, and `--merged-worktrees`
+passes its verified base to managed tasks too. Unrelated sibling removals no
+longer invalidate the remainder of an approved sweep batch.
+
+`done --merged --base-ref X` carries X into cleanup hints, the wizard and external
+coordinator handoff (`dev retire --base X <task>`). Optional `--delete-branch`
+(`sweep --delete-branches`) still uses `git branch -d`: Git checks upstream/HEAD,
+not `--base`, so a non-HEAD base may produce partial completion after removal.
 
 ## Configuration
 
@@ -1054,6 +1071,34 @@ controller save flow. See [SSH workflows](../guides/ssh-hosts.md#fleet-source-pr
 policies, private local identity imports and reviewed text replacement/recovery on
 macOS, Linux and Windows. CI uses public rules only. See the
 [hygiene workflow](../guides/hygiene.md) for schema-v1 coverage and hook contracts.
+
+`dev hygiene report` reads this checkout's newest stored scan without scanning
+again; `--scope staged|worktree|history` selects that scope's latest and
+`--report ID` selects an exact report. Latest lookup is checkout-specific and
+excludes snapshots. Stored reports are historical; `checkout_current` compares
+roots, not source bytes. `--rescan` requests new observations (default worktree);
+`--range`, repeatable `--file`, `--timeout` (default 20m) and `--audit` require it.
+`--report` and `--rescan` cannot combine.
+
+`--by severity,rule,file,category` selects groups (default `severity,rule,file`);
+`--top N` defaults to 10, with `0` showing all. `--disposition block,warn,accepted`,
+`--rule`, `--category secret,known,generic` and repeatable `--path <glob>` filter
+before aggregation; invalid globs are rejected and reported filters are
+policy-masked. `--findings` adds individual findings. Agents should prefer
+`dev hygiene report --json` (`hygiene_summary` schema 1) over parsing scan output;
+see the [summary contract](compatibility.md#hygiene-summary-json-contract).
+
+`--values` adds masked distinct values and implies `--rescan` unless `--report`
+names a scan captured with values. Raw values and context stay only in a private
+0600 `<report-id>.values.review.txt`, not stdout, JSON or scan records.
+`dev hygiene review-path <plan-or-report-id>` prints a plan proposal or captured
+values review location without its contents; never paste that file into chat,
+Git or CI. Additive `file_id` keeps exact files distinct; legacy masked-path
+counts are marked `file_counts_complete: false`. `values_status` reports
+complete/truncated/failed capture. Count/byte limits omit oversized values with
+`values_truncated`; a failed sidecar saves a partial report with
+`values_capture_failed` and no review-path hint. Stored summaries exit 0; an
+incomplete rescan prints the summary before exiting non-zero.
 
 `hygiene repair-encoding --file PATH [--invalid replace|remove]` previews
 working-file UTF-8 repair; `--apply --plan ID --yes` applies the reviewed plan,

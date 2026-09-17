@@ -14,7 +14,7 @@ Use `dev <command> --help` for current syntax and flags, and `dev help <topic>`
 for workflow explanations. `dev --help` lists commands; `dev help` lists topics.
 Prefer supported `--json` output for automation. Read the relevant command before
 mutation: some actions execute immediately, while others require preview/apply.
-Do not preload manuals, repeat `dev --skill`, or run diagnostics for every task.
+Do not preload manuals, repeat `dev --skill`, or run routine diagnostics.
 
 ## Preserve these boundaries
 
@@ -23,9 +23,9 @@ Do not preload manuals, repeat `dev --skill`, or run diagnostics for every task.
   managed worktrees outside repositories.
 - `dev start` normally prepares a checkout/runtime. Agent launch is explicit.
   Parallel writers need coordinated ownership and verified launch targets.
-- Completion, artifact finalization, retirement, and branch deletion are separate.
-  Finalize agent artifacts after their writer stops; retire an agent checkout
-  externally. A runtime's `done` state does not mean cleanup is safe.
+- Completion, artifact finalization, retirement and branch deletion are separate.
+  Finalize after writer exit; retire externally. Use `retire --base` when a fork
+  point cannot prove integration. Runtime `done` is not cleanup-ready.
 - Unknown or cached observations, merged PRs, and command refusals do not grant
   cleanup authority. Resolve the reported conditions; do not improvise force
   removal or bypass trust checks.
@@ -36,7 +36,7 @@ Do not preload manuals, repeat `dev --skill`, or run diagnostics for every task.
 - Parallel agent launches or prompt transports: [agents](references/parallel-agents.md), [handoffs](references/prompt-handoffs.md).
 - History retention: [artifacts](references/ai-artifacts.md).
 - Agent completion or cleanup batches: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
-- Repository hygiene batches, scans or redaction: [hygiene](references/hygiene.md).
+- Repository hygiene batches, `report --json` summaries, scans or redaction: [hygiene](references/hygiene.md).
 - Repository hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
 - SSH dashboard, diagnosis, discovery, tests/activity, keys, credentials and registration: [SSH](references/ssh-hosts.md).
 - Dotfile setup, native chezmoi operations, or FLEET host actions: [dotfiles](references/dotfiles.md).

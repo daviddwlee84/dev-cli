@@ -3,7 +3,7 @@ description: 檢查 repository hooks、掃描 secret 與個人資訊，並以私
 lang: zh-TW
 authority: project
 status: evolving
-verified_on: 2026-09-13
+verified_on: 2026-09-17
 ---
 
 # Repository hygiene
@@ -167,9 +167,67 @@ JSON schema 1 包含狀態、範圍、固定 refs、數量、遮罩後的位置�
 不含原始 snippet／credential。Finding ID 與公開檔案摘要使用私人 HMAC。
 `complete` 只描述宣告的文字範圍；阻擋命中或不完整皆以失敗狀態退出。不代表驗證過
 credential 有效性。未被選取規則涵蓋的檔名仍可能辨識個人，分享前須檢視。
+Finding 可另含 `value_id`：在同一規則內以私人 key 計算的命中值摘要，相同值可跨檔
+彙總而不暴露原值。新增的 `file_id` 以私人 key 識別確切路徑，即使不同檔案的
+顯示路徑遮罩後相同，也不會混為同一檔。
 
 CI 僅使用公開 repo 規則，不具本機 SSH 字典。PR／push 掃變更的 commit range，
 人工 workflow dispatch 掃本機已取得的全部歷史。
+
+## 掃描摘要
+
+```bash
+dev hygiene report                                 # 此 checkout 最新保存的掃描
+dev hygiene report --scope staged --by rule --top 5 --findings
+dev hygiene report --report <report-id> --disposition block,warn --path 'docs/**'
+dev hygiene report --rescan --scope history --range <full-from-oid>..<full-to-oid>
+dev hygiene report --rule privacy-email --values  # 遮罩值；隱含 --rescan
+dev hygiene report --json                          # hygiene_summary schema 1
+```
+
+`report` 彙總單次掃描，不逐筆列出所有 finding。預設讀取此 checkout 最新保存的
+掃描、不重新掃描，因此 commit 被 pre-commit hook 擋下後可立即查看該次 staged
+掃描。最新指標以 checkout 為單位：linked worktrees 共用 hygiene 狀態，但預設查詢不會
+選到其他 checkout 的掃描；snapshot 報告不會成為最新。`--scope` 選該範圍的最新掃描，
+`--report ID` 指定已保存的報告，`--rescan` 先重新掃描；`--range`、`--file`、
+`--timeout`、`--audit` 必須搭配 `--rescan`。掃描後政策已變更，或報告來自其他
+checkout 時會顯示警告。已保存的報告是歷史觀測：`checkout_current` 只比對
+checkout 根目錄，不驗證目前的來源 bytes。已保存摘要會顯示掃描日期，並提示
+「source bytes were not rechecked」（未重新檢查來源 bytes）。需要新觀測時用
+`--rescan`；不能與 `--report` 同時使用。
+
+`--by` 選擇 `severity`、`rule`、`file`、`category` 分組（預設
+`severity,rule,file`）。`--top N` 限制每組列數（預設 10，`0` 顯示全部）並計算
+省略數。`--disposition`、`--rule`、`--category` 與可重複的 `--path <glob>` 在
+彙總前篩選 finding；`--findings` 逐筆列出。排序依 block、warn、accepted，再依
+occurrences 由多到少、finding 數由多到少、名稱升冪排列。彙總已保存的報告一律以 0 結束；重新掃描若有
+coverage gap，會先輸出摘要再以失敗狀態退出。
+
+`--json` 輸出 `kind: "hygiene_summary"`、`schema_version: 1`：`report_id`、
+`report_kind`、`scope`、`status`、`created`、`policy_current`、
+`checkout_current`、`audit`、`public_only`、`rescanned`、`sections`、`top`、
+`filters`、`totals`、`file_counts_complete`、選定的
+`severities`／`rules`／`files`／`categories`（file 列含 `file_id`）、可選的
+`findings`、`gaps`、`skipped`、`omitted` 計數與 `values_shown`。只有每筆 finding
+都有 `value_id` 時，rule 才回報 `distinct_values`。`--values` 另加入遮罩後的
+`values` 與 `omitted_values`；`values_truncated` 表示擷取已達上限。
+`values_status` 為 `complete`、`truncated` 或 `failed`（未擷取或舊資料為空／省略）。
+舊 finding 沒有 file ID 時，`file_counts_complete` 為 false；檔案數只是遮罩路徑
+分組的下限。私人路徑 metadata 讓 `--path` 可比對原始檔名，而回報的 filter 值
+仍依政策遮罩；無效 path glob 會被拒絕。Agent 應優先
+使用 `dev hygiene report --json`，不要解析 `scan` 輸出或表格。
+
+`--values` 顯示各規則遮罩後的相異值；除非 `--report` 指定的掃描已擷取值，否則
+隱含 `--rescan`。Secret 保留前後各兩個字元與長度（少於 12 字元只顯示長度）；
+私人規則顯示 `[private:N]`，email 為 `a•••@d•••.tld`，IPv4 為 `a.b.•.•`，IPv6
+為 `first:•••`，home path 為 `Users/x•••`。原始值與所在行內容不會進入 stdout、JSON
+或掃描紀錄，只寫入權限為 0600 的私人 `<report-id>.values.review.txt`；
+`dev hygiene review-path <report-id>` 只印出其位置。勿將該檔貼到聊天、Git 或
+CI logs。最多擷取 10,000 個值、每值 20 筆樣本；單一原始值上限 64 KiB，
+原始值／所在行內容／位置／規則 metadata 合計上限 16 MiB，產生的檢閱檔上限
+64 MiB。過大的值整個略過，不截取片段；達上限會標記 `values_truncated`。
+值的附屬檔寫入失敗時，仍保存 partial 報告並加入 `values_capture_failed` gap，
+不會顯示私人 review-path 提示。
 
 ## 修復無效 UTF-8
 
@@ -196,7 +254,7 @@ dev hygiene scan --scope staged --json
 
 修復使用簽署 plan、即時檔案身分檢查及私人原始 bytes 備份，可經
 `dev hygiene restore` 還原，不依賴 secret scanner。Artifact 修改仍要求 writer
-已停止及 live occupancy 檢查，涵蓋大小寫變體與巢狀 artifact 目錄。編碼修復
+已停止並通過下方的 writer guard，涵蓋大小寫變體與巢狀 artifact 目錄。編碼修復
 拒絕尾端句點／空白與 DOS 短檔名形式，必須使用標準長路徑；hook 不會自動修復。Apply 只修改工作檔、完整保留
 index，因此部分 staging 的檔案在重新審閱並 stage 修補前，staged scan 仍可能失敗。
 不要順便 stage 新增的整份聊天。編碼修復不等於 secret redaction 或 hygiene 掃描通過。
@@ -221,12 +279,35 @@ opaque 摘要與替換數，不重新輸出原 secret。`review-path <id>` 可�
 的位置，完整性也綁定 plan；勿將其內容貼回聊天、Git 或 CI logs。
 
 Apply 先驗證整批，再逐檔交易，保留 metadata 與私人恢復紀錄。中斷保留 partial
-ledger，不能盲目重跑。Index、Git 歷史與安裝的 binary 均不由這個流程修改。
+ledger，不能盲目重跑；apply 與恢復錯誤會保留底層原因。macOS kernel 會為每個新檔
+加上寫入程序的 `com.apple.provenance`，並忽略複製該值的要求，因此替換後的檔案
+帶有 writer 的標記而非來源的；其他 extended attributes 仍必須完整保留，來源檔案
+的標記若改變仍視為過期。Index、Git 歷史與安裝的 binary 均不由這個流程修改。
 Windows 保護僅適用明確 opt-in 的文字交易，其他 configedit 功能維持原平台契約。Windows 保留 owner／group／DACL 語意；
 alternate streams、明確 integrity label 或特殊 attributes 需人工保存。
 
-Restore 拒絕操作後又被修改／替換的檔案；artifact 恢復也需要 `--writer-stopped`。
-Runtime 觀察會阻擋可辨識 writer，但停用或不可用的 runtime 無法證明程序不存在。
-Post-writer 聲明與 source revalidation 仍不可省略，raw 外部 writer 不受 dev 鎖保護。
+Restore 拒絕操作後又被修改／替換的檔案；artifact 恢復也需要 `--writer-stopped`，
+`restore --apply` 會對 receipt 記錄的確切路徑執行 writer guard。停用或不可用的
+runtime 無法證明程序不存在。Post-writer 聲明與 source revalidation 仍不可省略，
+raw 外部 writer 不受 dev 鎖保護。
+
+## Artifact writer guard
+
+Redact、encoding repair、restore、批次 `manage` 與 `dev artifact`
+finalize／archive／migrate 共用同一個 live writer 檢查，針對審閱的確切目標檔案；
+archive 仍不修改來源 bytes。
+任何涵蓋此 checkout 的其他已辨識 agent，無論狀態為何都會阻擋 artifact 修改。
+呼叫者自己的 agent pane 只有在下列情況可豁免：
+
+- Herdr 回報其確切 agent session ID（`agent_session` kind 為 `id`，不是 title），
+  且每個 artifact 目標都是 `.specstory/history/*.md`
+  transcript，實際由 SpecStory 產生的固定 preamble 中有合法 UUID，證明屬於
+  不同 session；或
+- 呼叫者確認 writer 已退出後，傳入全域 `--allow-shared-checkout`，聲明檔案歸屬
+  互不重疊（例如 plans，或無法以 preamble 證明歸屬的 transcript）。
+
+已識別為呼叫者自己的 live transcript，即使加上 override 也拒絕。若呼叫者
+身分未知，仍須明確聲明檔案歸屬互不重疊。
+`--writer-stopped` 仍用來聲明確切 recorder 已退出；兩個 flag 都不會略過來源重新驗證。
 
 此 repo 的最後清理步驟見[人工 dogfood 檢查表](../reference/hygiene-dogfood.zh-TW.md)。

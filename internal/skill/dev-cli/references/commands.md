@@ -835,7 +835,7 @@ dev hygiene redact [flags]
 - `--finding` — specific finding ID to redact (repeatable)
 - `--plan` — reviewed plan ID
 - `--report` — worktree scan report ID
-- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `--writer-stopped` — attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout
 - `-y, --yes` — confirm the reviewed replacements
 
 ### `dev hygiene repair-encoding`
@@ -850,8 +850,32 @@ dev hygiene repair-encoding [flags]
 - `--file` — relative working file to repair (repeatable; required for preview)
 - `--invalid` — invalid-byte handling: replace with � or remove
 - `--plan` — reviewed encoding repair plan ID
-- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `--writer-stopped` — attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout
 - `-y, --yes` — confirm the reviewed repair
+
+### `dev hygiene report`
+
+Summarize a scan by severity, rule and file
+
+```
+dev hygiene report [flags]
+```
+
+- `--audit` — with --rescan: include findings suppressed by local exceptions
+- `--by` — groups to show: severity, rule, file and/or category
+- `--category` — only these categories: secret, known, generic
+- `--disposition` — only these dispositions: block, warn, accepted
+- `--file` — with --rescan: select an in-scope relative file (repeatable)
+- `--findings` — list individual findings (location, occurrences, finding ID)
+- `--path` — only findings whose file matches this glob (repeatable)
+- `--range` — with --rescan: history FROM..TO commit OIDs
+- `--report` — summarize this exact stored scan report ID
+- `--rescan` — run a fresh scan before summarizing
+- `--rule` — only these rule IDs
+- `--scope` — newest stored scan of this scope, or the --rescan scope: staged, worktree or history
+- `--timeout` — with --rescan: maximum scan duration
+- `--top` — maximum rows per group (0 shows all)
+- `--values` — show masked distinct values per rule; raw values stay in a private review file
 
 ### `dev hygiene restore`
 
@@ -868,10 +892,10 @@ dev hygiene restore [flags]
 
 ### `dev hygiene review-path`
 
-Print the private review file location without printing its contents
+Print a plan's or report's private review file location without its contents
 
 ```
-dev hygiene review-path <plan-id>
+dev hygiene review-path <plan-or-report-id>
 ```
 
 ### `dev hygiene rules`
@@ -1816,6 +1840,7 @@ dev retire [task-or-worktree] [flags]
 ```
 
 - `--assume-no-runtime` — continue when runtime enumeration fails (external callers only)
+- `--base` — containment base override: local branch, remote-tracking ref such as origin/main, or commit
 - `--close-unknown` — allow an external caller to close unknown/empty runtime status
 - `--delete-branch` — delete the contained local branch after worktree removal
 - `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
@@ -2592,7 +2617,7 @@ dev sweep [flags]
 
 - `--apply` — act on the suggestions instead of only reporting
 - `--assume-no-runtime` — continue when runtime enumeration fails during retirement
-- `--base` — explicit containment base for merged worktrees or ephemeral branch deletion
+- `--base` — explicit containment base (branch, remote-tracking ref or commit) for DONE retirement, merged worktrees or ephemeral branch deletion
 - `--close-unknown` — allow external closure of unknown runtime status during retirement
 - `--delete-branches` — also delete contained local branches after worktree retirement
 - `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees

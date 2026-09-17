@@ -55,6 +55,19 @@ recorder is still rewriting from its native source. `dev hygiene redact` require
 an exact reviewed plan; artifact writes additionally require post-writer proof.
 Private recovery and a stable byte snapshot do not prove that a process exited.
 
+The shared artifact writer guard covers hygiene redact/repair-encoding/restore/
+manage and artifact finalize/archive/migrate. Other recognized live agents
+covering the checkout always block, including idle/done agents. The calling
+agent is exempt when Herdr's exact session ID (`agent_session` kind `id`, not a
+title) differs from every target artifact's valid UUID in its actual
+SpecStory-generated anchored preamble. Only `.specstory/history/*.md` supplies
+this proof, not filenames or UUIDs later in the text. Plans or unprovable transcripts require global
+`--allow-shared-checkout`: an explicit assertion of disjoint ownership after the
+writer exits, never an automatic retry flag. Unknown caller identity needs
+that explicit attestation. An identified caller-owned live transcript is refused
+even with the override. Post-writer proof and source revalidation remain
+required; restore checks the receipt's exact paths.
+
 If history is ignored, ordinary code commits need not scan it. An already tracked
 file remains tracked after adding `.gitignore`: removing it from the index is a
 separate reviewed operation. Keep or archive ignored history before deleting its

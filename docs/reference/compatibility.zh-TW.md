@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-13
+verified_on: 2026-09-17
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
@@ -211,7 +211,7 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 
 ### Mediated safety 不涵蓋 raw/configured commands
 
-`dev flow` 與 taskflow 的 PlanID、conditions、locks、revalidation 和 partial ledger 只保護 dev-mediated action。Task-backed lifecycle 與 exact unmanaged linked-checkout actions 共用 `internal/taskflow`；但 explicit unmanaged path retirement 仍是隔離的 compatibility implementation，`sweep` 的 record-only reap、orphan salvage 與其他 narrow reconciliation paths 也仍在 taskflow 之外。不能假設每條 historical cleanup path 都已 migrate 或使用同一 planner。
+`dev flow` 與 taskflow 的 PlanID、conditions、locks、revalidation 和 partial ledger 只保護 dev-mediated action。Task-backed lifecycle 與 exact unmanaged linked-checkout actions 共用 `internal/taskflow`，包含 exact unmanaged path retirement 的 contained removal；`sweep` 的 record-only reap、orphan salvage 與其他 narrow reconciliation paths 也仍在 taskflow 之外。不能假設每條 historical cleanup path 都已 migrate 或使用同一 planner。
 
 Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script，以及 bare dashboard 的 configured `[[tui.tools]]` command 都能繞過這個 boundary。它們是刻意保留的 expert/operator escape hatches，不應被描述成自動繼承相同 safety guarantees。
 
@@ -244,6 +244,8 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - Human-readable output 現在具備 semantic color（`--color auto|always|never`），在 `NO_COLOR` 已設定、`TERM=dumb`，或 stdout/stderr 不是 terminal 時會自動停用。
 - Explicit 與 non-interactive `dev done` 只記錄 MERGED，並保留 runtime/worktree/branch。Bare interactive completion 可接續獨立 cleanup wizard：先 preview runtime agents，再把 caller-owned Herdr cleanup 交給 freshly created external coordinator，但仍使用普通 `dev retire` guards。Active agent 與 mixed-purpose workspace 仍會阻擋。`dev done --delete-branch` 仍直接報錯並指向 `dev retire --delete-branch`，`--keep-worktree` 則以 no-op 警告。
 - Interactive FF 保留 parent/canonical agent 與其他 task workspace；parent 占用時可重新檢查、改 PR 或取消。只有 exact idle/done task-worktree pane 可在最後 Apply 關閉。一般前景程序須另行同意 FF 改檔；interactive done/retire 須輸入 `CLOSE <workspace-id>` 才可終止已知程序。背景 jobs 未檢查；支援的 probe 失敗時阻擋。程序/topology 改變須重新預覽，舊 coordinator handoff 須重建。既有 unknown-runtime flags 不授權終止已知程序。
+- `dev retire --base <ref>` 覆寫 task／path 的整合驗證目標，依序解析本機分支、remote-tracking 分支、commit。Apply 重解同一輸入；類型／ref／OID 一旦改變，plan 就會過期。記錄的 fork-point commit 絕不暗中換成預設分支，無法證明整合就保持阻擋並提示 `--base <branch>`。`done --merged --base-ref X` 將 X 帶入 cleanup 提示、wizard 與外部 coordinator。刪除分支仍採 Git 自己的 upstream／HEAD `branch -d` 檢查；非 HEAD base 可能導致部分完成，分支與 DONE task 保留。
+- `dev sweep --base` 會傳入 DONE retirement；`--merged-worktrees` 也將已驗證 base 傳入 managed task。Retire／remove 的 worktree-list authority 只涵蓋同分支或相同／巢狀／包含路徑，因此先移除無關 sibling 不再使已核准 `--apply --yes` 批次後續 plan 過期；目標 lock／HEAD 或同分支 checkout 改變仍使其失效。
 - `dev sweep --merged-worktrees` 直接從 Git 列舉 linked worktrees，而非從 task registry，因此 branch 已被 base 包含的 unmanaged worktree 也能被 retire。Containment 本身絕不等於許可；dirty state、未 finalize 的 artifact、進行中的 Git operation 與 runtime 拒絕條件都仍會阻擋，且未加 `--delete-branches` 時 branch 一律保留。
 - `dev sweep --ephemeral-worktrees` 加入獨立的 schema-v1 Claude Workflow report。Path/branch convention 只供 discovery；只有 exact bounded provider linkage 與 fresh Git/task/artifact/caller/runtime evidence 才能授權 TTY/per-item apply。Apply 會 lock 並重新計算 fingerprint，以 non-force 移除，預設保留 branch；只有 explicit-base、unchanged、contained、zero-unique proof 才能執行 `branch -d`。
 - `dev sweep` 會把 branch 已不存在於 Git 的 branch-backed task 視為 dead，並提供 reap 該 record 的建議。這種 task 無法 finish、resume 或 retire，因為這些路徑都必須先解析 branch；在 `--apply` 之前該建議仍只是報告。
@@ -262,6 +264,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - `dev upgrade` 會先查指定 release 的實際 asset 清單。獨立安裝有對應平台 archive 時，下載並以 `SHA256SUMS` 驗證；缺少該平台 asset 時，則在確認後原生編譯同一個 tag。新版 release 提供以 `SHA256SUMS` 驗證的精簡 `dev-cli_<tag>_source.tar.gz`，排除開發對話紀錄；舊版則使用 Go 設定的 module verification，下載量可能大很多。此 source fallback 與精簡 archive 自 v0.2.35 起提供。網路錯誤、缺少 checksum entry 或 checksum 不符都會停止升級。原生編譯使用已安裝的 Go、兩個 build workers 與 20 分鐘編譯上限；編譯成功且版本正確後才替換。`--check` 不會編譯，缺少工具會在確認前提示。Homebrew、Scoop 與 `go install` 擁有的安裝仍委由對應管理器更新。替換採 atomic rename（Windows 先移開 live `.exe`，下次執行清除）；準備期間目標檔案被更動時會拒絕替換。
 - Android／Termux 目前沒有發布 binary。原生編譯依賴透過 `pkg install golang clang git` 安裝。Source upgrade 設定 `GOOS=android`、使用 Termux Clang 啟用 CGO，並停用自動 Go toolchain 下載。Linux archive 可能因 Android syscall 限制而失敗，因此不會作為替代。Go 需符合所選 release 的 `go.mod` 要求。尚無 source fallback 的舊版 binary，需先以原生工具把指定 release、經 checksum 驗證的 source archive 編譯到暫存目錄，驗證版本後替換獨立執行檔；完整 Termux 修復範例見 repository README。
 - 原生 Termux 的 SSH setup 與 discovery 使用經驗證的 `/data/data/com.termux/files/home` 或 `/data/user/<Android-user>/com.termux/files/home` 私有家目錄，重新確認系統／app owner 與目錄身分；下層 symlink 與不安全使用者路徑仍會拒絕。Android SELinux app-data 標籤只比對、不重新設定；加密檔案保留繼承的 metadata。因 app 禁止 hard link，新檔案採 `RENAME_NOREPLACE`。共享儲存空間與其他 app-data 配置不在支援範圍。原生測試涵蓋首次設定、更新、金鑰生成、cache 寫入與 metadata 不符拒絕；desktop 測試保留 hard-link 攻擊案例。參考 [Android app sandbox](https://source.android.com/docs/security/app-sandbox)。
+- macOS 的 guarded configedit／SSH 暫存替換只辨識 kernel 管理的 `com.apple.provenance` 標記（11 bytes，首 byte 為 `0x01`）。Kernel 為新檔指定 writer 的 provenance；dev 不複製來源值，也不要求替換檔保留該值，但同一檔案上的標記仍用於過期偵測。其他 attributes 與無法辨識的 provenance 值維持嚴格檢查。適用 hygiene redact／repair-encoding／restore 與 SSH init／format；apply／恢復錯誤保留底層原因。此 macOS 例外不放寬 Android 繼承標籤必須相同的檢查。
 - 自 v0.2.23 起，`dev upgrade` 會透過新版執行檔刷新已安裝的預設 bundled skill。`dev doctor` 與 `skill install --check` 會顯示差異；`skill uninstall` 只移除未修改的 manifest-owned 檔案與相符連結。舊版發起或直接透過套件管理器升級時，需明確執行一次 `skill install`；自訂目錄仍需明確指定。詳見 [skills management](../guides/skills-management.zh-TW.md#bundled-dev-cli-skill)。
 - Interactive `dev` command 每天最多印一行 dim 的「有新版」提示，來源是一天內的 release cache，永不因網路而 block。TUI 的 stale-cache background refresh 只會在 initial view return 後啟動。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK` 可停用。
 
@@ -558,6 +561,61 @@ UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需
 `--writer-stopped`。Index bytes 保持不變。Schema 1 保留
 `unsupported_text_encoding`，coverage gap 新增可選 `encoding` 診斷與歷史
 `commit`；修復 plan 的檔案也附編碼診斷。修復不代表 secret scan 通過。
+
+### Hygiene summary JSON contract
+
+`dev hygiene report --json` 輸出 `kind: "hygiene_summary"`、`schema_version: 1`；
+應優先使用它，不要解析 scan 輸出或人工表格。既有 scan finding 欄位不變；新增的
+可選 `value_id` 以私人 repo key 與 category／rule／value 計算，讓相同值可跨檔
+彙總但不暴露原值。Finding 與 file-summary 的 `file_id` 以私人 key 識別確切
+路徑，避免不同檔案的遮罩路徑相同而混淆。舊報告可能沒有這些 ID。
+
+| 欄位 | 契約 |
+|---|---|
+| `report_id`、`report_kind`、`scope`、`status`、`created` | 身分、歷史掃描結果與時間；摘要保留原掃描狀態 |
+| `policy_current`、`checkout_current` | 目前有效政策摘要相符、checkout 根目錄相符；兩者都不驗證目前來源 bytes |
+| `audit`、`public_only`、`rescanned`、`sections`、`top` | 掃描模式、本次是否重新掃描、選定分組與列數限制 |
+| `filters` | 可選的 `dispositions`、`rules`、`categories`、`paths` 清單，於彙總前套用 |
+| `totals` | `findings`、`occurrences`、`blocked`、`warnings`、`accepted`、`gaps`、`files`、`rules`、`scanned_files`、`skipped`；finding 計數反映篩選，coverage 保留整次掃描範圍 |
+| `severities[]` | `disposition`、`findings`、`occurrences` |
+| `rules[]` | `rule`、`category`、`disposition`、`findings`、`occurrences`、`files`，以及可選 `distinct_values`、`values[]`、`omitted_values` |
+| `rules[].values[]` | `value_id`、`rule`、`category`、`masked`、`length`、`occurrences`、`files`、`findings`；絕不含原始值 |
+| `files[]` | `file`、可選 `file_id`、`disposition`、`findings`、`occurrences`、`rules[]` |
+| `categories[]` | `category`、`disposition`、`findings`、`occurrences`、`rules`（數量） |
+| `findings[]`、`gaps[]`、`skipped[]` | 只有 `--findings` 才列逐筆 finding；coverage gap 與文字排除項仍保留 |
+| `omitted` | 可選的 `rules`、`files`、`categories`、`findings` 省略數 |
+| `file_counts_complete` | 舊 finding 沒有 file ID 時為 false；檔案數只是遮罩路徑分組的下限 |
+| `values_shown`、可選 `values_truncated` | 是否要求遮罩值，以及擷取是否已達上限 |
+| `values_status` | `complete`、`truncated` 或 `failed`；未擷取或舊資料為空／省略 |
+
+未選取或空的可選陣列可能省略。分組依 block、warn、accepted，再依 occurrences
+由多到少、finding 數由多到少、名稱升冪排列。`--top` 預設 10（`0` 全部），限制
+排序清單與各規則的遮罩值列數，不截斷 totals。某規則選定的 finding 只要有一筆
+缺少 value ID，就不回報 `distinct_values`。擷取上限不代表值已完整涵蓋。回報的
+filter 值會依政策遮罩；無效的 path glob 會被拒絕。
+
+預設最新查詢以 checkout 為單位並排除 snapshot；明確 `--report ID` 可選其他
+checkout 保存的報告。這些是歷史觀測，不是目前 clean 的證明。彙總已保存報告即使
+有 blocking finding 或 gap 也以 0 結束；不完整的 `--rescan` 先輸出摘要再以非零
+狀態退出。摘要指令不能取代會阻擋 commit 的 scan hook。
+
+除非 `--report` 指定已擷取值的掃描，`--values` 會隱含重新掃描。公開資料只有
+遮罩：secret 留前後各兩字元與長度（少於 12 只顯示長度）、已知私人規則
+`[private:N]`、email `a•••@d•••.tld`、IPv4 `a.b.•.•`、IPv6 `first:•••`、home path
+`Users/x•••`。原始值與所在行內容只留在 Git 外權限為 0600 的私人
+`<report-id>.values.review.txt`，不進入 stdout／JSON／scan 紀錄。
+`dev hygiene review-path <plan-or-report-id>` 只印出私人路徑；勿將其內容貼入聊天、
+Git 或 CI。擷取有數量與 byte 上限；過大的值會省略並標記 `values_truncated`。
+附屬檔寫入失敗仍保存 partial 報告，附 `values_capture_failed` gap 與
+`values_status: "failed"`，不提供 review-path 提示。
+
+Hygiene redact／repair-encoding／restore／manage 與 artifact finalize／archive／
+migrate 共用 artifact writer guard。其他涵蓋此 checkout 的 live agent 一律阻擋。
+自動豁免呼叫者需每個目標 artifact 實際由 SpecStory 產生的固定 preamble 都含
+合法且不同的 UUID。否則（包含呼叫者身分未知），須以全域
+`--allow-shared-checkout` 明確聲明歸屬互不重疊；已識別為呼叫者自己的 live
+transcript 即使有 override 也拒絕。`restore --apply` 檢查 receipt 的確切路徑；見
+[writer 規則](../guides/hygiene.zh-TW.md#artifact-writer-guard)。
 
 ## Hygiene rollout 與勾選 skill 移除
 

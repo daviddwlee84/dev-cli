@@ -3364,6 +3364,19 @@ recorder is still rewriting from its native source. `dev hygiene redact` require
 an exact reviewed plan; artifact writes additionally require post-writer proof.
 Private recovery and a stable byte snapshot do not prove that a process exited.
 
+The shared artifact writer guard covers hygiene redact/repair-encoding/restore/
+manage and artifact finalize/archive/migrate. Other recognized live agents
+covering the checkout always block, including idle/done agents. The calling
+agent is exempt when Herdr's exact session ID (`agent_session` kind `id`, not a
+title) differs from every target artifact's valid UUID in its actual
+SpecStory-generated anchored preamble. Only `.specstory/history/*.md` supplies
+this proof, not filenames or UUIDs later in the text. Plans or unprovable transcripts require global
+`--allow-shared-checkout`: an explicit assertion of disjoint ownership after the
+writer exits, never an automatic retry flag. Unknown caller identity needs
+that explicit attestation. An identified caller-owned live transcript is refused
+even with the override. Post-writer proof and source revalidation remain
+required; restore checks the receipt's exact paths.
+
 If history is ignored, ordinary code commits need not scan it. An already tracked
 file remains tracked after adding `.gitignore`: removing it from the index is a
 separate reviewed operation. Keep or archive ignored history before deleting its
@@ -3741,11 +3754,78 @@ and credential values. Finding IDs and public file/plan digests use private HMAC
 keys. `complete` describes the declared text scope; a blocking finding or
 incomplete scan exits unsuccessfully. No findings is not a credential-validity
 check. Reports may contain identifying filenames not covered by selected rules;
-review them before sharing.
+review them before sharing. Findings may add a `value_id`: a private-keyed
+digest of the matched value within its rule, so identical values aggregate
+across files without revealing them. Additive `file_id` identifies the exact
+path with a private key, keeping distinct files separate even if their displayed
+paths mask to the same text.
 
 CI uses public repository rules, without global/personal values. It cannot
 claim to have checked private SSH identities. PR/push scans select the changed
 commit range; manual workflow dispatch audits all locally fetched history.
+
+## Summarize a scan
+
+```bash
+dev hygiene report                                 # newest stored scan for this checkout
+dev hygiene report --scope staged --by rule --top 5 --findings
+dev hygiene report --report <report-id> --disposition block,warn --path 'docs/**'
+dev hygiene report --rescan --scope history --range <full-from-oid>..<full-to-oid>
+dev hygiene report --rule privacy-email --values  # masked values; implies --rescan
+dev hygiene report --json                          # hygiene_summary schema 1
+```
+
+`report` summarizes one scan instead of printing every finding. By default it
+reads the newest scan recorded for this checkout without scanning again, so the
+pre-commit hook's staged scan is readable right after a blocked commit. Latest
+pointers are per checkout: linked worktrees share hygiene state, but the default
+lookup never selects a sibling's scan. Snapshot reports never become the latest.
+`--scope` selects the newest scan of that scope, `--report ID` an exact report and
+`--rescan` a fresh scan; `--range`, `--file`, `--timeout` and `--audit` require
+`--rescan`. The output warns when policy changed since the scan or the report
+came from another checkout. Stored reports are historical observations:
+`checkout_current` compares checkout roots only, not current source bytes.
+Stored-summary output shows the scan date and notes "source bytes were not
+rechecked". Use `--rescan` for a new observation; it cannot combine with `--report`.
+
+`--by` selects `severity`, `rule`, `file` and/or `category` groups (default
+`severity,rule,file`). `--top N` limits each group (default 10, `0` shows all)
+and counts omitted rows. `--disposition`, `--rule`, `--category` and repeatable
+`--path <glob>` filter findings before aggregation; `--findings` lists them
+individually. Rows order block, warn, then accepted, followed by occurrences
+descending, findings descending and name ascending. A stored summary exits 0
+whatever it contains; a rescan with coverage gaps prints its summary, then exits
+unsuccessfully.
+
+`--json` emits `kind: "hygiene_summary"`, `schema_version: 1`: `report_id`,
+`report_kind`, `scope`, `status`, `created`, `policy_current`,
+`checkout_current`, `audit`, `public_only`, `rescanned`, `sections`, `top`,
+`filters`, `totals`, `file_counts_complete`, selected
+`severities`/`rules`/`files`/`categories` (file rows include `file_id`),
+optional `findings`, `gaps`, `skipped`, `omitted` counts and `values_shown`.
+A rule reports `distinct_values` only when every finding has a `value_id`.
+With `--values`, rules add masked `values` and `omitted_values`;
+`values_truncated` warns when capture hit its limit. `values_status` is
+`complete`, `truncated` or `failed` (empty/absent if not captured or legacy).
+Legacy findings without file IDs make `file_counts_complete` false: file counts
+then describe lower-bound masked-path groups. Private path metadata lets
+`--path` match raw filenames while the echoed filter stays policy-masked; invalid
+path globs are rejected. Agents should prefer
+`dev hygiene report --json` over parsing `scan` output or tables.
+
+`--values` adds masked distinct values per rule and implies `--rescan` unless
+`--report` names a scan captured with values. Secrets keep their first and last
+two characters plus length (length only below 12 characters); private rules show
+`[private:N]`, emails `a•••@d•••.tld`, IPv4 `a.b.•.•`, IPv6 `first:•••` and
+home paths `Users/x•••`. Raw values and line context never enter stdout, JSON or
+scan records: they go only to a private 0600 `<report-id>.values.review.txt`, whose
+location `dev hygiene review-path <report-id>` prints. Never paste that file into
+chat, Git or CI logs. Capture allows 10,000 values and 20 samples per value,
+with at most 64 KiB per raw value and 16 MiB combined raw/context/location/rule
+metadata; the rendered review caps at 64 MiB. Oversized values are skipped whole,
+not sliced, and limits set `values_truncated`. A failed values sidecar leaves a
+saved partial report with a `values_capture_failed` gap and no private review-path
+hint.
 
 ## Repair invalid UTF-8
 
@@ -3777,8 +3857,8 @@ not guess a legacy encoding or recover the original character.
 
 Repair uses signed plans, fresh file identity checks and private raw-byte
 recovery through `dev hygiene restore`. It does not need a secret scanner.
-Artifact edits require writer attestation and live occupancy checks, including
-case variants and nested artifact directories. Encoding repair requires long
+Artifact edits require writer attestation and the live writer guard below,
+including case variants and nested artifact directories. Encoding repair requires long
 canonical path components without trailing dots/spaces or DOS short-name spellings. The hook
 never repairs automatically. Apply changes working files only: a partially
 staged file keeps its exact index contents, so a staged scan still fails until
@@ -3807,12 +3887,17 @@ Git or CI logs. The default output does not echo the original secret.
 
 Apply checks the whole selection, then publishes individual guarded transactions
 with original metadata and private recovery. It retains a partial ledger on
-failure; never repeat an interrupted operation blindly. Index contents, Git
-history and installed binaries are not changed. Native Windows protections are
-specific to these opted-in text transactions; other configedit workflows retain
-their own platform support contracts. Windows preserves owner/group/DACL
-semantics; files with alternate streams, explicit integrity labels or special
-attributes require manual preservation.
+failure; never repeat an interrupted operation blindly. Apply and recovery errors
+keep their underlying cause. On macOS the kernel tags every new file with the
+writing process's `com.apple.provenance` and ignores attempts to copy it, so a
+replacement carries the writer's tag rather than the source's. Every other
+extended attribute must still round-trip, and a changed tag on the source file
+still makes the operation stale. Index contents, Git history and installed
+binaries are not changed. Native Windows protections are specific to these
+opted-in text transactions; other configedit workflows retain their own platform
+support contracts. Windows preserves owner/group/DACL semantics; files with
+alternate streams, explicit integrity labels or special attributes require
+manual preservation.
 
 ```bash
 dev hygiene restore --receipt <receipt-id> --json
@@ -3820,10 +3905,30 @@ dev hygiene restore --receipt <receipt-id> --apply --yes
 ```
 
 Restore refuses files replaced or edited since the recorded transaction. Artifact
-recovery also needs `--writer-stopped`. Runtime observations reject recognized
-writers; a disabled/unavailable runtime cannot prove process absence. The
-post-writer attestation and source revalidation remain necessary, and raw external
-writers remain outside dev-mediated locks.
+recovery also needs `--writer-stopped`, and `restore --apply` guards the
+receipt's exact paths. A disabled/unavailable runtime cannot prove process
+absence. The post-writer attestation and source revalidation remain necessary,
+and raw external writers remain outside dev-mediated locks.
+
+## Artifact writer guard
+
+Redaction, encoding repair, restore, batch `manage` and `dev artifact`
+finalize/archive/migrate share one live-writer check over their reviewed target
+files; archiving still leaves source bytes untouched. Any other recognized agent
+covering the checkout blocks an artifact edit, whatever its status. The calling agent's own pane is exempt only when:
+
+- Herdr reports its exact agent session ID (`agent_session` kind `id`, not a
+  title) and every artifact target is a `.specstory/history/*.md` transcript
+  with a valid UUID in its actual
+  SpecStory-generated anchored preamble, proving a different session; or
+- the caller passes global `--allow-shared-checkout`, asserting disjoint
+  ownership after confirming the writer exited (for example plans, or
+  transcripts without a provable preamble).
+
+An identified caller-owned live transcript is refused even with the override.
+Unknown caller identity needs the explicit disjoint-ownership attestation.
+`--writer-stopped` still attests that the exact recorder exited; neither flag skips
+source revalidation.
 
 Use the [manual dogfood checklist](https://daviddwlee84.github.io/dev-cli/reference/hygiene-dogfood/) for this repo.
 
@@ -4406,12 +4511,12 @@ RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 |---|---|
 | `dev prepare --session <provider:uuid> --plan <path>` | Arms post-writer artifact finalization without closing the running agent. Product changes must already be committed; the transcript itself is deliberately not staged yet. |
 | `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | Preserves the exact stable transcript in the intent's source-commit or external-archive destination after its writer stops. `--if-pending` no-ops silently when no armed intent matches the run id; `--writer-stopped` confirms the outer wrapper has returned. |
-| `dev done --ff` | Rebases the task branch onto its base and fast-forwards it locally. Records MERGED; never closes the runtime, removes a worktree, or deletes a branch. |
+| `dev done --ff` | Rebases the task branch onto its base and fast-forwards it locally. Records MERGED and retains worktree/branch; explicitly selected task-pane closures are reported separately. |
 | `dev done --pr` | Pushes the branch and opens a pull/merge request through an available forge CLI. The task stays under review, not MERGED. |
 | `dev done --merged --base-ref <ref>` | Verifies an externally merged branch is contained in `<ref>` and records MERGED. |
 | `dev done --merged --base-ref <ref> --confirm-squash <merge-commit>` | Same, but for a squash merge: attests that the named commit, already proven contained in `<ref>`, represents the feature branch. This is an operator assertion dev cannot verify on its own. |
 | `dev artifact discard <intent> --yes` | Records that an intent can never be finalized — its transcript was never written, or its HEAD is gone after a rebase — so it stops blocking integration and retirement. It commits and recovers nothing, prints exactly what is being abandoned, and refuses an intent that is still `armed`, because finalization is the path that preserves a transcript. |
-| `dev retire [task-or-worktree] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | Re-resolves every covering runtime session, refuses active agents and mixed-purpose workspaces, waits for closure, revalidates Git state, and only then removes the linked worktree without force. Deletes the task record only after every requested step succeeds. |
+| `dev retire [task-or-worktree] [--base <ref>] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | Re-resolves every covering runtime session, refuses active agents and mixed-purpose workspaces, waits for closure, revalidates Git state, and only then removes the linked worktree without force. Deletes the task record only after every requested step succeeds. |
 | `dev flow [repo]` | Preview UI for an exact DONE task: Enter builds a revision-bound Retire plan, then approval applies it. Branch deletion requires the displayed typed token. |
 | `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | From the canonical checkout, reports (and, with `--apply`, retires) both task-tracked and unmanaged linked worktrees whose branches are already contained in the base. |
 | `dev sweep --ephemeral-worktrees [--stale-days <n>] [--json]` | From a canonical non-bare checkout, emits a strict Claude Workflow V1 report; JSON schema 1 is report-only. |
@@ -4421,8 +4526,8 @@ A dirty checkout does not fail here: `dev done` classifies it against the base
 first, offering commit or discard interactively, or taking an explicit
 `--dirty` policy from a script. See
 [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/) for that wizard. The
-`--keep-worktree` and `--delete-branch` flags remain accepted on `dev done`
-only to fail loudly and point at `dev retire`.
+`--keep-worktree` flag on `dev done` warns as a no-op; `--delete-branch`
+fails and points at `dev retire --delete-branch`.
 
 If fast-forward is blocked by unrelated dirty bytes in the canonical checkout,
 the interactive wizard can preserve them with an exact stash+restore
@@ -4483,6 +4588,28 @@ runtime closure and before removal, and deletes the task record last. A later
 failure preserves a step ledger and recovery; completed effects are not called
 rolled back.
 
+## Choose the containment base
+
+`dev retire --base <ref>` overrides the containment target for a DONE task or
+linked worktree without changing recorded task intent. Resolution checks a local
+branch (`refs/heads/X`), then a remote-tracking branch (`refs/remotes/X`, such as
+`origin/main`), then a commit. Fully qualified branch refs keep their named kind.
+Apply re-resolves the same input and requires the same kind, ref and commit OID;
+a moved base or a newly created same-name branch makes the reviewed plan stale.
+Remote-tracking refs are local observations, not an implicit fetch.
+
+Without an override, task retirement keeps its recorded base. A recorded
+fork-point commit is never silently replaced by the default branch: if it cannot
+prove integration, retirement stays blocked with `pass --base <branch>` guidance.
+After `dev done --merged --base-ref X`, cleanup hints, the cleanup wizard and the
+external coordinator carry X forward as `dev retire --base X <task>`. If a shell
+handoff cannot carry the override, dev prints the external command instead.
+
+Optional `--delete-branch` still runs ordinary `git branch -d`, whose own merged
+check uses the branch's upstream or HEAD, not `--base`. Against a non-HEAD base,
+branch deletion can therefore fail after the worktree was removed; the branch
+and DONE task remain, and the result reports partial completion.
+
 ## Pull-request flow
 
 ```bash
@@ -4490,7 +4617,7 @@ dev done <task> --pr
 # after CI/review and a commit-preserving merge
 git fetch origin
 dev done <task> --merged --base-ref origin/main
-dev retire <task> --delete-branch
+dev retire --base origin/main <task> --delete-branch
 ```
 
 A squash merge is not ancestry-equivalent, so it needs an explicit operator attestation:
@@ -4524,6 +4651,14 @@ dev sweep --merged-worktrees --apply --yes
 ```
 
 This surfaces both task-tracked DONE worktrees and unmanaged linked worktrees whose named branches are already contained in the base — run it from the canonical checkout. It reports before applying: containment alone is never permission. Dirty Git state, a pending or unreachable artifact, a locked or prunable worktree registration, an in-progress Git operation, and the same runtime refusal conditions as `dev retire` all still block cleanup. Branches remain after retirement by default; pass `--delete-branches` only when the user separately approved deleting them.
+
+`dev sweep --base <ref>` also forwards the selected base to DONE task retirement;
+`--merged-worktrees` uses its verified base for managed tasks as well as unmanaged
+checkouts. Reviewed retire/remove plans bind worktree-list authority only to the
+same branch or paths equal to, containing, or nested under the target. Removing
+an unrelated sibling no longer invalidates the rest of an approved
+`--apply --yes` batch. A same-branch checkout or target lock/HEAD change still
+makes the plan stale; containment and all other guards remain required.
 
 ### Verified Claude Workflow ephemeral cleanup
 
@@ -4589,9 +4724,9 @@ branch and reports partial completion.
 
 Raw `git worktree remove --force` and configured external tools bypass dev entirely — never run them from an agent that occupies the target. dev's guarantee is only for dev-mediated paths; it cannot stop an operator or script from calling Git directly.
 
-Normal task-backed retirement uses `internal/taskflow`. The explicit unmanaged
-path form of `dev retire` remains an isolated compatibility implementation, and
-some `sweep` record-only/orphan-salvage actions remain outside taskflow. Existing
+Normal task-backed retirement and the exact unmanaged path form of `dev retire`
+use `internal/taskflow`; the latter requires contained removal. Some `sweep`
+record-only/orphan-salvage actions remain outside taskflow. Existing
 CLI acknowledgement flags remain compatible; the flow preview intentionally
 offers none of them.
 
@@ -6964,6 +7099,7 @@ dev pr list --json
 dev prompt list --json
 dev prompt render <pr-triage|session-close|workspace-closeout>
 dev sweep --ephemeral-worktrees --json
+dev hygiene report --json
 dev bootstrap --json
 ```
 
@@ -7353,6 +7489,22 @@ foreground programs require separate FF file-change consent; both interactive
 cleanup entrances require `CLOSE <workspace-id>` for known program termination.
 Background jobs are not inspected. A dirty canonical target still offers PR,
 stash+restore, typed `DROP`, or cancel. See [retirement scope](https://daviddwlee84.github.io/dev-cli/guides/agent-safe-retirement/#task-worktree-scope).
+
+## Retirement containment flags
+
+`dev retire [task-or-worktree] --base <ref>` overrides the containment target:
+local branch, then remote-tracking ref (such as `origin/main`), then commit.
+Apply re-resolves the same input and rejects a changed kind/ref/OID. Without an
+override, a task's recorded fork-point commit is retained; if it cannot prove
+integration, retirement stays blocked and requests `--base <branch>`.
+`dev sweep --base` forwards the override to DONE tasks, and `--merged-worktrees`
+passes its verified base to managed tasks too. Unrelated sibling removals no
+longer invalidate the remainder of an approved sweep batch.
+
+`done --merged --base-ref X` carries X into cleanup hints, the wizard and external
+coordinator handoff (`dev retire --base X <task>`). Optional `--delete-branch`
+(`sweep --delete-branches`) still uses `git branch -d`: Git checks upstream/HEAD,
+not `--base`, so a non-HEAD base may produce partial completion after removal.
 
 ## Configuration
 
@@ -8441,7 +8593,7 @@ dev hygiene redact [flags]
 - `--finding` — specific finding ID to redact (repeatable)
 - `--plan` — reviewed plan ID
 - `--report` — worktree scan report ID
-- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `--writer-stopped` — attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout
 - `-y, --yes` — confirm the reviewed replacements
 
 ### `dev hygiene repair-encoding`
@@ -8456,8 +8608,32 @@ dev hygiene repair-encoding [flags]
 - `--file` — relative working file to repair (repeatable; required for preview)
 - `--invalid` — invalid-byte handling: replace with � or remove
 - `--plan` — reviewed encoding repair plan ID
-- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `--writer-stopped` — attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout
 - `-y, --yes` — confirm the reviewed repair
+
+### `dev hygiene report`
+
+Summarize a scan by severity, rule and file
+
+```
+dev hygiene report [flags]
+```
+
+- `--audit` — with --rescan: include findings suppressed by local exceptions
+- `--by` — groups to show: severity, rule, file and/or category
+- `--category` — only these categories: secret, known, generic
+- `--disposition` — only these dispositions: block, warn, accepted
+- `--file` — with --rescan: select an in-scope relative file (repeatable)
+- `--findings` — list individual findings (location, occurrences, finding ID)
+- `--path` — only findings whose file matches this glob (repeatable)
+- `--range` — with --rescan: history FROM..TO commit OIDs
+- `--report` — summarize this exact stored scan report ID
+- `--rescan` — run a fresh scan before summarizing
+- `--rule` — only these rule IDs
+- `--scope` — newest stored scan of this scope, or the --rescan scope: staged, worktree or history
+- `--timeout` — with --rescan: maximum scan duration
+- `--top` — maximum rows per group (0 shows all)
+- `--values` — show masked distinct values per rule; raw values stay in a private review file
 
 ### `dev hygiene restore`
 
@@ -8474,10 +8650,10 @@ dev hygiene restore [flags]
 
 ### `dev hygiene review-path`
 
-Print the private review file location without printing its contents
+Print a plan's or report's private review file location without its contents
 
 ```
-dev hygiene review-path <plan-id>
+dev hygiene review-path <plan-or-report-id>
 ```
 
 ### `dev hygiene rules`
@@ -9422,6 +9598,7 @@ dev retire [task-or-worktree] [flags]
 ```
 
 - `--assume-no-runtime` — continue when runtime enumeration fails (external callers only)
+- `--base` — containment base override: local branch, remote-tracking ref such as origin/main, or commit
 - `--close-unknown` — allow an external caller to close unknown/empty runtime status
 - `--delete-branch` — delete the contained local branch after worktree removal
 - `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
@@ -10198,7 +10375,7 @@ dev sweep [flags]
 
 - `--apply` — act on the suggestions instead of only reporting
 - `--assume-no-runtime` — continue when runtime enumeration fails during retirement
-- `--base` — explicit containment base for merged worktrees or ephemeral branch deletion
+- `--base` — explicit containment base (branch, remote-tracking ref or commit) for DONE retirement, merged worktrees or ephemeral branch deletion
 - `--close-unknown` — allow external closure of unknown runtime status during retirement
 - `--delete-branches` — also delete contained local branches after worktree retirement
 - `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees
@@ -10804,6 +10981,34 @@ policies, private local identity imports and reviewed text replacement/recovery 
 macOS, Linux and Windows. CI uses public rules only. See the
 [hygiene workflow](https://daviddwlee84.github.io/dev-cli/guides/hygiene/) for schema-v1 coverage and hook contracts.
 
+`dev hygiene report` reads this checkout's newest stored scan without scanning
+again; `--scope staged|worktree|history` selects that scope's latest and
+`--report ID` selects an exact report. Latest lookup is checkout-specific and
+excludes snapshots. Stored reports are historical; `checkout_current` compares
+roots, not source bytes. `--rescan` requests new observations (default worktree);
+`--range`, repeatable `--file`, `--timeout` (default 20m) and `--audit` require it.
+`--report` and `--rescan` cannot combine.
+
+`--by severity,rule,file,category` selects groups (default `severity,rule,file`);
+`--top N` defaults to 10, with `0` showing all. `--disposition block,warn,accepted`,
+`--rule`, `--category secret,known,generic` and repeatable `--path <glob>` filter
+before aggregation; invalid globs are rejected and reported filters are
+policy-masked. `--findings` adds individual findings. Agents should prefer
+`dev hygiene report --json` (`hygiene_summary` schema 1) over parsing scan output;
+see the [summary contract](https://daviddwlee84.github.io/dev-cli/reference/compatibility/#hygiene-summary-json-contract).
+
+`--values` adds masked distinct values and implies `--rescan` unless `--report`
+names a scan captured with values. Raw values and context stay only in a private
+0600 `<report-id>.values.review.txt`, not stdout, JSON or scan records.
+`dev hygiene review-path <plan-or-report-id>` prints a plan proposal or captured
+values review location without its contents; never paste that file into chat,
+Git or CI. Additive `file_id` keeps exact files distinct; legacy masked-path
+counts are marked `file_counts_complete: false`. `values_status` reports
+complete/truncated/failed capture. Count/byte limits omit oversized values with
+`values_truncated`; a failed sidecar saves a partial report with
+`values_capture_failed` and no review-path hint. Stored summaries exit 0; an
+incomplete rescan prints the summary before exiting non-zero.
+
 `hygiene repair-encoding --file PATH [--invalid replace|remove]` previews
 working-file UTF-8 repair; `--apply --plan ID --yes` applies the reviewed plan,
 with `--writer-stopped` required for artifacts. Index bytes stay unchanged.
@@ -11085,8 +11290,8 @@ compatible CLI fallback; existing command flags and structured contracts remain
 available.
 
 Task-backed lifecycle and exact unmanaged linked-checkout actions share
-`internal/taskflow`. Explicit unmanaged path retirement remains an isolated
-compatibility implementation, while `sweep` retains record-only reaping, orphan
+`internal/taskflow`, including contained removal for exact unmanaged path
+retirement. `sweep` retains separate record-only reaping, orphan
 salvage, and other narrow reconciliation paths. Do not assume every cleanup path
 has the same planner. Raw Git and configured external tools also bypass dev's
 PlanID, locks, revalidation, and result ledger.
@@ -11119,6 +11324,8 @@ These were historical gaps and should not be reintroduced as limitations:
 - Human-readable output now carries semantic color (`--color auto|always|never`), automatically disabled when `NO_COLOR` is set, `TERM=dumb`, or stdout/stderr is not a terminal.
 - Explicit `dev done` records MERGED and keeps worktree/branch; any selected task-pane closures are separately reported. Non-interactive invocation never grants implicit program or pane-closure consent. Bare interactive completion may continue into a separate cleanup wizard: it previews runtime agents and can hand caller-owned Herdr cleanup to a newly created external coordinator, which still uses ordinary `dev retire` guards. Active agents and mixed-purpose workspaces remain blockers. `dev done --delete-branch` remains an error pointing at `dev retire --delete-branch`, and `--keep-worktree` warns as a no-op.
 - Interactive FF preserves parent/canonical agents and other task workspaces; parent occupancy offers recheck/PR/cancel. Only exact idle/done task-worktree panes can close under final Apply. General foreground programs require separate FF file-change consent, and interactive done/retire requires `CLOSE <workspace-id>` for known program termination. Background jobs are unobserved; failed supported probes block. Programs/topology changing during confirmation require a refreshed preview. Old coordinator handoffs must be recreated. Existing unknown-runtime flags do not authorize known programs.
+- `dev retire --base <ref>` overrides task/path containment, resolving local branch, then remote-tracking branch, then commit. Apply re-resolves the same input; changed kind/ref/OID invalidates the plan. A recorded fork-point commit is never replaced by the default branch: unproved integration stays blocked with `--base <branch>` guidance. `done --merged --base-ref X` carries X through cleanup hints, wizard and external coordinator. Branch deletion still uses Git's own upstream/HEAD `branch -d` check; a non-HEAD base can leave partial completion with the branch and DONE task retained.
+- `dev sweep --base` forwards to DONE retirement; `--merged-worktrees` passes its verified base to managed tasks too. Retire/remove worktree-list authority includes only same-branch or equal/nested/containing paths, so an unrelated sibling removal no longer stales later plans in an approved `--apply --yes` batch. Target lock/HEAD or same-branch checkout changes still invalidate them.
 - `dev sweep --merged-worktrees` enumerates linked worktrees from Git rather than from the task registry, so unmanaged worktrees whose branches are contained in the base become retirable. Containment alone is never permission; dirty state, unfinalized artifacts, in-progress Git operations, and runtime refusals all still block it, and branches survive unless `--delete-branches` is passed.
 - `dev sweep --ephemeral-worktrees` adds a separate schema-v1 Claude Workflow report. The path/branch convention is only discovery; exact bounded provider linkage plus fresh Git/task/artifact/caller/runtime evidence authorizes TTY/per-item apply. Apply locks and re-fingerprints, removes without force, retains branches by default, and allows only explicit-base unchanged/contained/zero-unique `branch -d`.
 - `dev sweep` reports a branch-backed task whose branch Git no longer has as dead and offers to reap the record. Such a task cannot be finished, resumed, or retired, because every one of those paths resolves the branch first; the suggestion stays report-only until `--apply`.
@@ -11137,6 +11344,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - `dev upgrade` checks the exact release's asset inventory. A standalone install downloads its platform archive and verifies `SHA256SUMS`; if no asset exists for that platform, it offers a native source build of the exact tag. New releases include a compact `dev-cli_<tag>_source.tar.gz` verified against `SHA256SUMS`, excluding conversation history; older releases use Go's configured module verification and can require a much larger download. This source fallback and compact archive are available starting with v0.2.35. Network errors, missing checksum entries, and checksum mismatches stop the upgrade. Source builds use the installed Go toolchain, two workers and a 20-minute build limit; a successful candidate must report the expected version before replacement. `--check` never compiles and missing tools are reported before confirmation. Homebrew, Scoop and `go install` ownership still delegates to that manager. Replacement uses atomic rename (Windows moves the live `.exe` aside and sweeps it on the next run); a changed target aborts replacement.
 - Android/Termux currently has no published binary. Use `pkg install golang clang git` for native build dependencies. Source upgrades set `GOOS=android`, enable CGO with Termux Clang and disable automatic Go toolchain downloads. Linux archives can fail on Android syscalls and are never substituted. Go must meet the selected release's `go.mod` requirement. An older binary without source fallback needs a one-time native build of a pinned, checksummed source archive into a staging directory, version verification and replacement of the standalone executable; see the repository README's Termux recovery example.
 - Native Termux SSH setup and discovery use the verified private home under `/data/data/com.termux/files/home` or `/data/user/<Android-user>/com.termux/files/home`. Exact system/app ownership and directory identity are revalidated; descendant symlinks and unsafe user paths remain blocked. Android SELinux app-data labels are compared without relabeling, encrypted files retain their inherited metadata, and new files use `RENAME_NOREPLACE` because app hard links are denied. Shared storage and other app-data layouts remain outside this support. Native tests cover first configuration, updates, key generation, cache persistence and metadata mismatch rejection; desktop tests retain hard-link attack coverage. See [Android's app sandbox](https://source.android.com/docs/security/app-sandbox).
+- On macOS, guarded configedit/SSH staged replacements recognize only the kernel-managed `com.apple.provenance` tag (11 bytes, first byte `0x01`). The kernel assigns each new file the writer's provenance; dev never copies or requires the source value on a replacement, but still observes it on the same file for stale detection. Other attributes and unrecognized provenance values retain strict checks. This covers hygiene redact/repair-encoding/restore and SSH init/format; apply/recovery errors retain the underlying cause. This macOS exception does not weaken Android's inherited-label equality checks.
 - Since v0.2.23, `dev upgrade` refreshes an existing default bundled skill through the updated executable. `dev doctor` and `skill install --check` expose drift; `skill uninstall` removes only unchanged manifest-owned files and matching agent links. Legacy and direct package-manager upgrades need an explicit `skill install` once; custom directories remain explicit. See [skills management](https://daviddwlee84.github.io/dev-cli/guides/skills-management/#bundled-dev-cli-skill-lifecycle).
 - An interactive `dev` command prints one dim "newer release available" line at most once a day, read from the day-old release cache; it never blocks on the network. For the TUI, a stale-cache background refresh starts only after the initial view returns. `[update] check = false` or `DEV_NO_UPDATE_CHECK` disables it.
 
@@ -11471,6 +11679,70 @@ with `--writer-stopped` required for artifacts. Index bytes stay unchanged.
 Schema 1 retains `unsupported_text_encoding` and adds optional `encoding`
 diagnostics and historical `commit` to coverage gaps; repair plan files also
 carry encoding diagnostics. Repair does not claim a successful secret scan.
+
+### Hygiene summary JSON contract
+
+`dev hygiene report --json` emits `kind: "hygiene_summary"` with
+`schema_version: 1`. Prefer it to parsing scan output or human tables. Existing
+scan finding fields stay unchanged; the additive optional `value_id` is keyed by
+private repo state and category/rule/value, allowing same-value aggregation
+across files without exposing the value. Finding `file_id` and file-summary
+`file_id` privately key the exact path, avoiding collisions between masked
+display paths. Older reports may lack these IDs.
+
+| Fields | Contract |
+|---|---|
+| `report_id`, `report_kind`, `scope`, `status`, `created` | Identity and historical scan result/time; summaries retain the underlying status |
+| `policy_current`, `checkout_current` | Current effective policy digest matches; checkout root matches. Neither verifies current source bytes |
+| `audit`, `public_only`, `rescanned`, `sections`, `top` | Scan mode, whether this invocation rescanned, selected group names and row limit |
+| `filters` | Optional `dispositions`, `rules`, `categories`, `paths` lists, applied before aggregation |
+| `totals` | `findings`, `occurrences`, `blocked`, `warnings`, `accepted`, `gaps`, `files`, `rules`, `scanned_files`, `skipped`; findings/counts reflect filters, coverage retains the whole scan |
+| `severities[]` | `disposition`, `findings`, `occurrences` |
+| `rules[]` | `rule`, `category`, `disposition`, `findings`, `occurrences`, `files`, optional `distinct_values`, `values[]`, `omitted_values` |
+| `rules[].values[]` | `value_id`, `rule`, `category`, `masked`, `length`, `occurrences`, `files`, `findings`; never raw values |
+| `files[]` | `file`, optional `file_id`, `disposition`, `findings`, `occurrences`, `rules[]` |
+| `categories[]` | `category`, `disposition`, `findings`, `occurrences`, `rules` (count) |
+| `findings[]`, `gaps[]`, `skipped[]` | Finding drill-down only with `--findings`; coverage gaps and text exclusions remain visible |
+| `omitted` | Optional `rules`, `files`, `categories`, `findings` omission counts |
+| `file_counts_complete` | False for legacy findings without file IDs; their file counts are lower-bound masked-path groups |
+| `values_shown`, optional `values_truncated` | Masked-value selection and whether capture reached its limit |
+| `values_status` | `complete`, `truncated` or `failed`; empty/absent for uncaptured values or legacy records |
+
+Unselected/empty optional arrays may be omitted. Group rows rank block, warn,
+accepted, then occurrences descending, findings descending and name ascending.
+`--top` defaults to 10 (`0` means all), limiting ranked lists and masked values
+per rule; totals are not truncated. `distinct_values` is absent when any selected
+finding in that rule lacks a value ID. Capture limits are not proof of complete
+value coverage. Reported filter values are policy-masked; invalid path globs
+are rejected.
+
+Default latest lookup is per checkout and excludes snapshots; an explicit
+`--report ID` can name another checkout's stored report. These are historical
+observations, not current clean authority. A stored summary exits 0 even with
+blocking findings or gaps. An incomplete `--rescan` emits its summary and exits
+non-zero; this summarizer is not a replacement for the blocking scan hook.
+
+`--values` implies a rescan unless `--report` names a scan captured with values.
+Only masks are public: secrets retain first/last two characters plus length
+(length only below 12), known private rules `[private:N]`, email
+`a•••@d•••.tld`, IPv4 `a.b.•.•`, IPv6 `first:•••`, home path `Users/x•••`.
+Raw values/context stay in a private 0600 `<report-id>.values.review.txt` outside
+Git, never stdout/JSON/scan records. `dev hygiene review-path <plan-or-report-id>`
+prints the private location only; never paste its contents into chat, Git or CI.
+Count and byte bounds limit capture; oversized values are omitted and set
+`values_truncated`. A sidecar failure saves a partial report with a
+`values_capture_failed` gap and `values_status: "failed"`, without a review-path
+hint.
+
+Hygiene redact/repair-encoding/restore/manage and artifact finalize/archive/
+migrate share the artifact writer guard. Other covering live agents always
+block. Automatic caller exemption needs a valid, different UUID in every
+target artifact's actual SpecStory-generated anchored preamble. Otherwise,
+including unknown caller identity, global `--allow-shared-checkout` must explicitly
+attest disjoint ownership. An identified caller-owned live transcript is refused
+even with the override.
+`restore --apply` checks the receipt's exact paths. See the
+[writer rules](https://daviddwlee84.github.io/dev-cli/guides/hygiene/#artifact-writer-guard).
 
 ## Hygiene rollout and selected skill removal
 
@@ -15234,6 +15506,17 @@ Prepare 不會停止 writer。不要反覆脫敏仍被 recorder 從 native sourc
 重寫的檔案。`dev hygiene redact` 使用審閱後的精確 plan；artifact 修改
 還需 writer 結束的證據。暫時穩定的 bytes 不能證明 process 已退出。
 
+Hygiene redact／repair-encoding／restore／manage 與 artifact finalize／archive／
+migrate 共用 artifact writer guard。涵蓋此 checkout 的其他已辨識 live agent
+一律阻擋，包含 idle／done。只有 Herdr 回報呼叫者的確切 session ID（`agent_session`
+kind 為 `id`，不是 title），且每個目標 artifact 實際由 SpecStory 產生的固定
+preamble 都含合法且不同的 UUID 時，才豁免呼叫者。這項證明只適用 `.specstory/history/*.md`，不採信檔名或
+內文後段提到的 UUID。Plans 或無法證明歸屬的 transcript 需全域
+`--allow-shared-checkout`，明確聲明 writer 已退出且檔案歸屬互不重疊；不可自動
+加上它重試。呼叫者身分未知時仍需這項明確聲明；已識別為呼叫者自己的 live
+transcript 即使有 override 也拒絕。
+Writer 已結束的證據與來源重新驗證仍不可省略；restore 檢查 receipt 的確切路徑。
+
 Ignored history 不必參與一般 code commit 的掃描；但已 tracked 的檔案
 不會因新增 `.gitignore` 就停止追蹤。移出 index 是獨立操作。刪除
 worktree 前保留或封存 history；ignored 不等於可丟棄或已備份。
@@ -15555,9 +15838,67 @@ JSON schema 1 包含狀態、範圍、固定 refs、數量、遮罩後的位置�
 不含原始 snippet／credential。Finding ID 與公開檔案摘要使用私人 HMAC。
 `complete` 只描述宣告的文字範圍；阻擋命中或不完整皆以失敗狀態退出。不代表驗證過
 credential 有效性。未被選取規則涵蓋的檔名仍可能辨識個人，分享前須檢視。
+Finding 可另含 `value_id`：在同一規則內以私人 key 計算的命中值摘要，相同值可跨檔
+彙總而不暴露原值。新增的 `file_id` 以私人 key 識別確切路徑，即使不同檔案的
+顯示路徑遮罩後相同，也不會混為同一檔。
 
 CI 僅使用公開 repo 規則，不具本機 SSH 字典。PR／push 掃變更的 commit range，
 人工 workflow dispatch 掃本機已取得的全部歷史。
+
+## 掃描摘要
+
+```bash
+dev hygiene report                                 # 此 checkout 最新保存的掃描
+dev hygiene report --scope staged --by rule --top 5 --findings
+dev hygiene report --report <report-id> --disposition block,warn --path 'docs/**'
+dev hygiene report --rescan --scope history --range <full-from-oid>..<full-to-oid>
+dev hygiene report --rule privacy-email --values  # 遮罩值；隱含 --rescan
+dev hygiene report --json                          # hygiene_summary schema 1
+```
+
+`report` 彙總單次掃描，不逐筆列出所有 finding。預設讀取此 checkout 最新保存的
+掃描、不重新掃描，因此 commit 被 pre-commit hook 擋下後可立即查看該次 staged
+掃描。最新指標以 checkout 為單位：linked worktrees 共用 hygiene 狀態，但預設查詢不會
+選到其他 checkout 的掃描；snapshot 報告不會成為最新。`--scope` 選該範圍的最新掃描，
+`--report ID` 指定已保存的報告，`--rescan` 先重新掃描；`--range`、`--file`、
+`--timeout`、`--audit` 必須搭配 `--rescan`。掃描後政策已變更，或報告來自其他
+checkout 時會顯示警告。已保存的報告是歷史觀測：`checkout_current` 只比對
+checkout 根目錄，不驗證目前的來源 bytes。已保存摘要會顯示掃描日期，並提示
+「source bytes were not rechecked」（未重新檢查來源 bytes）。需要新觀測時用
+`--rescan`；不能與 `--report` 同時使用。
+
+`--by` 選擇 `severity`、`rule`、`file`、`category` 分組（預設
+`severity,rule,file`）。`--top N` 限制每組列數（預設 10，`0` 顯示全部）並計算
+省略數。`--disposition`、`--rule`、`--category` 與可重複的 `--path <glob>` 在
+彙總前篩選 finding；`--findings` 逐筆列出。排序依 block、warn、accepted，再依
+occurrences 由多到少、finding 數由多到少、名稱升冪排列。彙總已保存的報告一律以 0 結束；重新掃描若有
+coverage gap，會先輸出摘要再以失敗狀態退出。
+
+`--json` 輸出 `kind: "hygiene_summary"`、`schema_version: 1`：`report_id`、
+`report_kind`、`scope`、`status`、`created`、`policy_current`、
+`checkout_current`、`audit`、`public_only`、`rescanned`、`sections`、`top`、
+`filters`、`totals`、`file_counts_complete`、選定的
+`severities`／`rules`／`files`／`categories`（file 列含 `file_id`）、可選的
+`findings`、`gaps`、`skipped`、`omitted` 計數與 `values_shown`。只有每筆 finding
+都有 `value_id` 時，rule 才回報 `distinct_values`。`--values` 另加入遮罩後的
+`values` 與 `omitted_values`；`values_truncated` 表示擷取已達上限。
+`values_status` 為 `complete`、`truncated` 或 `failed`（未擷取或舊資料為空／省略）。
+舊 finding 沒有 file ID 時，`file_counts_complete` 為 false；檔案數只是遮罩路徑
+分組的下限。私人路徑 metadata 讓 `--path` 可比對原始檔名，而回報的 filter 值
+仍依政策遮罩；無效 path glob 會被拒絕。Agent 應優先
+使用 `dev hygiene report --json`，不要解析 `scan` 輸出或表格。
+
+`--values` 顯示各規則遮罩後的相異值；除非 `--report` 指定的掃描已擷取值，否則
+隱含 `--rescan`。Secret 保留前後各兩個字元與長度（少於 12 字元只顯示長度）；
+私人規則顯示 `[private:N]`，email 為 `a•••@d•••.tld`，IPv4 為 `a.b.•.•`，IPv6
+為 `first:•••`，home path 為 `Users/x•••`。原始值與所在行內容不會進入 stdout、JSON
+或掃描紀錄，只寫入權限為 0600 的私人 `<report-id>.values.review.txt`；
+`dev hygiene review-path <report-id>` 只印出其位置。勿將該檔貼到聊天、Git 或
+CI logs。最多擷取 10,000 個值、每值 20 筆樣本；單一原始值上限 64 KiB，
+原始值／所在行內容／位置／規則 metadata 合計上限 16 MiB，產生的檢閱檔上限
+64 MiB。過大的值整個略過，不截取片段；達上限會標記 `values_truncated`。
+值的附屬檔寫入失敗時，仍保存 partial 報告並加入 `values_capture_failed` gap，
+不會顯示私人 review-path 提示。
 
 ## 修復無效 UTF-8
 
@@ -15584,7 +15925,7 @@ dev hygiene scan --scope staged --json
 
 修復使用簽署 plan、即時檔案身分檢查及私人原始 bytes 備份，可經
 `dev hygiene restore` 還原，不依賴 secret scanner。Artifact 修改仍要求 writer
-已停止及 live occupancy 檢查，涵蓋大小寫變體與巢狀 artifact 目錄。編碼修復
+已停止並通過下方的 writer guard，涵蓋大小寫變體與巢狀 artifact 目錄。編碼修復
 拒絕尾端句點／空白與 DOS 短檔名形式，必須使用標準長路徑；hook 不會自動修復。Apply 只修改工作檔、完整保留
 index，因此部分 staging 的檔案在重新審閱並 stage 修補前，staged scan 仍可能失敗。
 不要順便 stage 新增的整份聊天。編碼修復不等於 secret redaction 或 hygiene 掃描通過。
@@ -15609,13 +15950,36 @@ opaque 摘要與替換數，不重新輸出原 secret。`review-path <id>` 可�
 的位置，完整性也綁定 plan；勿將其內容貼回聊天、Git 或 CI logs。
 
 Apply 先驗證整批，再逐檔交易，保留 metadata 與私人恢復紀錄。中斷保留 partial
-ledger，不能盲目重跑。Index、Git 歷史與安裝的 binary 均不由這個流程修改。
+ledger，不能盲目重跑；apply 與恢復錯誤會保留底層原因。macOS kernel 會為每個新檔
+加上寫入程序的 `com.apple.provenance`，並忽略複製該值的要求，因此替換後的檔案
+帶有 writer 的標記而非來源的；其他 extended attributes 仍必須完整保留，來源檔案
+的標記若改變仍視為過期。Index、Git 歷史與安裝的 binary 均不由這個流程修改。
 Windows 保護僅適用明確 opt-in 的文字交易，其他 configedit 功能維持原平台契約。Windows 保留 owner／group／DACL 語意；
 alternate streams、明確 integrity label 或特殊 attributes 需人工保存。
 
-Restore 拒絕操作後又被修改／替換的檔案；artifact 恢復也需要 `--writer-stopped`。
-Runtime 觀察會阻擋可辨識 writer，但停用或不可用的 runtime 無法證明程序不存在。
-Post-writer 聲明與 source revalidation 仍不可省略，raw 外部 writer 不受 dev 鎖保護。
+Restore 拒絕操作後又被修改／替換的檔案；artifact 恢復也需要 `--writer-stopped`，
+`restore --apply` 會對 receipt 記錄的確切路徑執行 writer guard。停用或不可用的
+runtime 無法證明程序不存在。Post-writer 聲明與 source revalidation 仍不可省略，
+raw 外部 writer 不受 dev 鎖保護。
+
+## Artifact writer guard
+
+Redact、encoding repair、restore、批次 `manage` 與 `dev artifact`
+finalize／archive／migrate 共用同一個 live writer 檢查，針對審閱的確切目標檔案；
+archive 仍不修改來源 bytes。
+任何涵蓋此 checkout 的其他已辨識 agent，無論狀態為何都會阻擋 artifact 修改。
+呼叫者自己的 agent pane 只有在下列情況可豁免：
+
+- Herdr 回報其確切 agent session ID（`agent_session` kind 為 `id`，不是 title），
+  且每個 artifact 目標都是 `.specstory/history/*.md`
+  transcript，實際由 SpecStory 產生的固定 preamble 中有合法 UUID，證明屬於
+  不同 session；或
+- 呼叫者確認 writer 已退出後，傳入全域 `--allow-shared-checkout`，聲明檔案歸屬
+  互不重疊（例如 plans，或無法以 preamble 證明歸屬的 transcript）。
+
+已識別為呼叫者自己的 live transcript，即使加上 override 也拒絕。若呼叫者
+身分未知，仍須明確聲明檔案歸屬互不重疊。
+`--writer-stopped` 仍用來聲明確切 recorder 已退出；兩個 flag 都不會略過來源重新驗證。
 
 此 repo 的最後清理步驟見[人工 dogfood 檢查表](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/hygiene-dogfood/)。
 
@@ -16159,7 +16523,7 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 | `dev done --merged --base-ref <ref> --confirm-squash <merge-commit>` | 同上，但用於 squash merge：attest（斷言）已證明被 `<ref>` 包含的該 commit 代表這條 feature branch。這是 dev 無法自行驗證的 operator assertion。 |
 | `dev flow [repo]` | 在獨立 TTY preview 中顯示 DONE row 的 Retire (Keep Branch) 或 typed Retire + Delete Contained Branch plan；Enter 只規劃，第二次 approval 才套用。 |
 | `dev artifact discard <intent> --yes` | 記錄某個 intent 永遠無法 finalize——transcript 從未被寫出，或 rebase 之後 HEAD 已不存在——使它不再阻擋 integration 與 retirement。它不會 commit 也不會復原任何東西，會先印出確切將被放棄的內容，並拒絕仍為 `armed` 的 intent，因為 finalize 才是保存 transcript 的路徑。 |
-| `dev retire [task-or-worktree] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | 重新解析每一個 covering runtime session，拒絕 active agent 與 mixed-purpose workspace，等待其關閉，重新驗證 Git state，才移除 linked worktree（不使用 force）。只有在所有要求的步驟都成功後，才刪除 task record。 |
+| `dev retire [task-or-worktree] [--base <ref>] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | 重新解析每一個 covering runtime session，拒絕 active agent 與 mixed-purpose workspace，等待其關閉，重新驗證 Git state，才移除 linked worktree（不使用 force）。只有在所有要求的步驟都成功後，才刪除 task record。 |
 | `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | 從 canonical checkout 執行，回報（加上 `--apply` 時則 retire）branch 已被 base 包含的 task-tracked 與 unmanaged linked worktree。 |
 | `dev sweep --ephemeral-worktrees [--stale-days <n>] [--json]` | 從 canonical non-bare checkout 產生 strict Claude Workflow V1 report；JSON schema 1 僅供 report。 |
 | `dev sweep --ephemeral-worktrees --apply [--delete-branches --base <ref>]` | 要求 TTY 與逐項 confirmation，接著在 common-dir cleanup lock 下重新驗證每個已核可 fingerprint，才用 plain non-force removal。 |
@@ -16167,8 +16531,8 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 Dirty checkout 在這裡不會直接失敗：`dev done` 會先把它與 base 比對分類，在
 interactive 時提供 commit 或 discard，在 script 中則接受明確的 `--dirty`
 policy。該 wizard 詳見[變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/)。
-`dev done` 上的 `--keep-worktree` 與 `--delete-branch` 之所以仍被接受，只是為了
-明確報錯並指向 `dev retire`。
+`dev done` 上的 `--keep-worktree` 以 no-op 警告；`--delete-branch` 則報錯並
+指向 `dev retire --delete-branch`。
 
 若 fast-forward 只被 canonical checkout 中無關的 dirty bytes 阻擋，互動式
 wizard 可用 exact stash+restore 保存它們，並在 integration 後恢復 staged state
@@ -16225,6 +16589,25 @@ dev retire <task> --delete-branch
 
 `dev done` 只負責整合並記錄為 MERGED。`dev retire` 會重新解析每個 runtime pane、關閉符合條件的 session、等待它們消失、重新驗證 Git，再移除 worktree（不使用 force）。
 
+## 選擇 containment base
+
+`dev retire --base <ref>` 可覆寫 DONE task 或 linked worktree 的整合驗證目標，不會
+改寫 task 記錄的意圖。解析依序檢查本機分支（`refs/heads/X`）、remote-tracking
+分支（`refs/remotes/X`，例如 `origin/main`），最後才是 commit。完整分支 ref
+維持指名的類型。Apply 重新解析同一輸入，要求類型、ref 與 commit OID 完全一致；
+base 移動或新增同名分支都會使已審閱 plan 過期。Remote-tracking ref 是本機觀測，
+不會暗中 fetch。
+
+未指定 override 時，task retirement 沿用記錄的 base。記錄為 fork-point commit
+時，絕不暗中改用預設分支；若無法證明整合，仍會阻擋並提示 `pass --base <branch>`。
+`dev done --merged --base-ref X` 會將 X 帶入 cleanup 提示、wizard 與外部
+coordinator，對應命令是 `dev retire --base X <task>`。若 shell handoff 無法攜帶
+該 override，dev 會改為列出從外部執行的命令。
+
+可選的 `--delete-branch` 仍執行一般 `git branch -d`；Git 自己的 merged 檢查使用
+分支的 upstream 或 HEAD，不是 `--base`。因此對非 HEAD base 清理時，可能已移除
+worktree 卻無法刪除分支；分支與 DONE task 會保留，結果回報部分完成。
+
 ## Pull-request 流程
 
 ```bash
@@ -16232,7 +16615,7 @@ dev done <task> --pr
 # CI/review 完成，且以保留 commit 的方式 merge 之後
 git fetch origin
 dev done <task> --merged --base-ref origin/main
-dev retire <task> --delete-branch
+dev retire --base origin/main <task> --delete-branch
 ```
 
 Squash merge 並不等同於 ancestry-equivalent，因此需要明確的 operator attestation：
@@ -16268,6 +16651,13 @@ dev sweep --merged-worktrees --apply --yes
 ```
 
 這會同時列出 task-tracked 的 DONE worktree，以及 named branch 已被 base 包含的 unmanaged linked worktree——請從 canonical checkout 執行。它會先回報再套用：containment 本身絕不等於許可。Dirty 的 Git state、pending 或無法到達的 artifact、locked 或 prunable 的 worktree registration、進行中的 Git operation，以及與 `dev retire` 相同的 runtime 拒絕條件，都仍會阻擋 cleanup。Retirement 完成後預設保留 branch；只有在使用者另外核可刪除時，才加上 `--delete-branches`。
+
+`dev sweep --base <ref>` 也會把選定 base 傳入 DONE task retirement；
+`--merged-worktrees` 對 managed task 與 unmanaged checkout 都使用已驗證的 base。
+已審閱 retire／remove plan 的 worktree-list authority 只涵蓋同分支，或路徑與
+目標相同、包含目標、位於目標之下的 worktree。先移除無關的 sibling 不再使
+`--apply --yes` 批次剩餘項目過期；同分支新增 checkout 或目標 lock／HEAD 改變
+仍會使 plan 過期。Containment 與其他安全檢查仍不可省略。
 
 ### 經驗證的 Claude Workflow ephemeral cleanup
 
@@ -16325,7 +16715,7 @@ partial completion。
 
 原始的 `git worktree remove --force` 會完全繞過 dev——絕不要在佔用 target 的 agent 中執行它。dev 的保證僅止於：沒有任何 dev-mediated 路徑會執行 forced removal；它無法阻止 operator 或 script 直接呼叫 Git。Bare dashboard 的 configured `[[tui.tools]]` command 同樣是任意 external-tool escape boundary，不會繼承 Flow 的 PlanID、conditions、ledger 或 revalidation。
 
-一般 task-backed retirement 使用 `internal/taskflow`。Explicit unmanaged path 形式的 `dev retire` 仍是隔離的 compatibility implementation，部分 `sweep` record-only/orphan-salvage actions 也仍在 taskflow 之外。既有 CLI acknowledgement flags 維持相容，但 Flow preview 不提供其中任何一個；不能把本頁的 shared planner claim 擴張到所有 historical cleanup path。
+一般 task-backed retirement 與 exact unmanaged path 形式的 `dev retire` 都使用 `internal/taskflow`；後者要求 contained removal。部分 `sweep` record-only/orphan-salvage actions 仍在 taskflow 之外。既有 CLI acknowledgement flags 維持相容，但 Flow preview 不提供其中任何一個；不能把本頁的 shared planner claim 擴張到所有 historical cleanup path。
 
 曾經真實發生過：一個 Codex session 從另一個 checkout 刪除了自己已註冊的 worktree 與 branch。Herdr 仍讓該 workspace 與 terminal 保持存活，因為 Unix process 在路徑被 unlink 之後仍可持有開啟中的 cwd inode；接著 SpecStory 又在同一路徑重新建立、但內容只剩 `.specstory/`。這個 shell 看起來還活著，但已經不再是一個 Git checkout：
 
@@ -18559,6 +18949,7 @@ dev pr list --json
 dev prompt list --json
 dev prompt render <pr-triage|session-close|workspace-closeout>
 dev sweep --ephemeral-worktrees --json
+dev hygiene report --json
 dev bootstrap --json
 ```
 
@@ -18880,6 +19271,20 @@ task-worktree pane 可在最後 Apply 核可後關閉。一般前景程序需要
 改檔；兩個 interactive cleanup 入口都需要 `CLOSE <workspace-id>` 才能終止
 已知程序。背景 jobs 未檢查。Canonical dirty 仍可改 PR、stash+restore、typed
 `DROP` 或取消。詳見[retirement 範圍](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/agent-safe-retirement/#task-worktree-scope)。
+
+## Retirement containment flags
+
+`dev retire [task-or-worktree] --base <ref>` 覆寫整合驗證目標，依序解析本機分支、
+remote-tracking ref（例如 `origin/main`）、commit。Apply 重新解析同一輸入；
+類型／ref／OID 改變即拒絕。未指定 override 時，task 記錄的 fork-point commit
+會保留；若不能證明整合，仍會阻擋並要求 `--base <branch>`。`dev sweep --base`
+也將 override 傳入 DONE task；`--merged-worktrees` 對 managed task 同樣使用
+已驗證的 base。移除無關 sibling 不再使已核准 sweep 批次的剩餘項目過期。
+
+`done --merged --base-ref X` 將 X 帶入 cleanup 提示、wizard 與外部 coordinator
+handoff（`dev retire --base X <task>`）。可選的 `--delete-branch`（sweep 使用
+`--delete-branches`）仍執行 `git branch -d`：Git 檢查 upstream／HEAD，不是
+`--base`，所以對非 HEAD base 清理可能在移除 worktree 後回報部分完成。
 
 ## Configuration
 
@@ -19957,7 +20362,7 @@ dev hygiene redact [flags]
 - `--finding` — specific finding ID to redact (repeatable)
 - `--plan` — reviewed plan ID
 - `--report` — worktree scan report ID
-- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `--writer-stopped` — attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout
 - `-y, --yes` — confirm the reviewed replacements
 
 ### `dev hygiene repair-encoding`
@@ -19972,8 +20377,32 @@ dev hygiene repair-encoding [flags]
 - `--file` — relative working file to repair (repeatable; required for preview)
 - `--invalid` — invalid-byte handling: replace with � or remove
 - `--plan` — reviewed encoding repair plan ID
-- `--writer-stopped` — attest the exact artifact writer has exited; live agents still block
+- `--writer-stopped` — attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout
 - `-y, --yes` — confirm the reviewed repair
+
+### `dev hygiene report`
+
+Summarize a scan by severity, rule and file
+
+```
+dev hygiene report [flags]
+```
+
+- `--audit` — with --rescan: include findings suppressed by local exceptions
+- `--by` — groups to show: severity, rule, file and/or category
+- `--category` — only these categories: secret, known, generic
+- `--disposition` — only these dispositions: block, warn, accepted
+- `--file` — with --rescan: select an in-scope relative file (repeatable)
+- `--findings` — list individual findings (location, occurrences, finding ID)
+- `--path` — only findings whose file matches this glob (repeatable)
+- `--range` — with --rescan: history FROM..TO commit OIDs
+- `--report` — summarize this exact stored scan report ID
+- `--rescan` — run a fresh scan before summarizing
+- `--rule` — only these rule IDs
+- `--scope` — newest stored scan of this scope, or the --rescan scope: staged, worktree or history
+- `--timeout` — with --rescan: maximum scan duration
+- `--top` — maximum rows per group (0 shows all)
+- `--values` — show masked distinct values per rule; raw values stay in a private review file
 
 ### `dev hygiene restore`
 
@@ -19990,10 +20419,10 @@ dev hygiene restore [flags]
 
 ### `dev hygiene review-path`
 
-Print the private review file location without printing its contents
+Print a plan's or report's private review file location without its contents
 
 ```
-dev hygiene review-path <plan-id>
+dev hygiene review-path <plan-or-report-id>
 ```
 
 ### `dev hygiene rules`
@@ -20938,6 +21367,7 @@ dev retire [task-or-worktree] [flags]
 ```
 
 - `--assume-no-runtime` — continue when runtime enumeration fails (external callers only)
+- `--base` — containment base override: local branch, remote-tracking ref such as origin/main, or commit
 - `--close-unknown` — allow an external caller to close unknown/empty runtime status
 - `--delete-branch` — delete the contained local branch after worktree removal
 - `--recursive` — verify and dispose workspace-owned submodule clones from the inside out
@@ -21714,7 +22144,7 @@ dev sweep [flags]
 
 - `--apply` — act on the suggestions instead of only reporting
 - `--assume-no-runtime` — continue when runtime enumeration fails during retirement
-- `--base` — explicit containment base for merged worktrees or ephemeral branch deletion
+- `--base` — explicit containment base (branch, remote-tracking ref or commit) for DONE retirement, merged worktrees or ephemeral branch deletion
 - `--close-unknown` — allow external closure of unknown runtime status during retirement
 - `--delete-branches` — also delete contained local branches after worktree retirement
 - `--ephemeral-worktrees` — audit provider-verified stale ephemeral worktrees
@@ -22272,6 +22702,31 @@ controller save flow。見 [SSH workflows](https://daviddwlee84.github.io/dev-cl
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/)。
 
+`dev hygiene report` 讀取此 checkout 最新保存的掃描，不重新掃描；
+`--scope staged|worktree|history` 選該範圍的最新掃描，`--report ID` 選確切報告。
+最新查詢以 checkout 為單位，不包含 snapshot。已保存的報告是歷史觀測；
+`checkout_current` 只比對根目錄，不比對來源 bytes。`--rescan` 要求新觀測
+（預設 worktree）；`--range`、可重複的 `--file`、`--timeout`（預設 20m）與
+`--audit` 都需搭配它。`--report` 不可與 `--rescan` 同用。
+
+`--by severity,rule,file,category` 選擇分組（預設 `severity,rule,file`）；
+`--top N` 預設 10，`0` 顯示全部。`--disposition block,warn,accepted`、`--rule`、
+`--category secret,known,generic` 與可重複的 `--path <glob>` 在彙總前篩選；
+無效 glob 會被拒絕，回報的 filter 值依政策遮罩；
+`--findings` 加入逐筆 finding。Agent 應優先使用 `dev hygiene report --json`
+（`hygiene_summary` schema 1），不要解析 scan 輸出；詳見
+[摘要契約](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/#hygiene-summary-json-contract)。
+
+`--values` 加入遮罩後的相異值；除非 `--report` 指定已擷取值的掃描，否則隱含
+`--rescan`。原始值與所在行內容只留在權限為 0600 的私人
+`<report-id>.values.review.txt`，不進入 stdout、JSON 或掃描紀錄。
+`dev hygiene review-path <plan-or-report-id>` 只印出 plan 提案或原始值檢閱檔的位置，
+不輸出內容；勿將該檔貼到聊天、Git 或 CI。新增 `file_id` 區別確切檔案；舊資料
+的遮罩路徑計數會標示 `file_counts_complete: false`。`values_status` 回報
+complete／truncated／failed。數量／byte 上限會省略過大值並標記 `values_truncated`；
+附屬檔失敗仍保存 partial 報告，附 `values_capture_failed`、不提供 review-path
+提示。彙總已保存報告以 0 結束；不完整的 rescan 先輸出摘要，再以非零狀態退出。
+
 `hygiene repair-encoding --file PATH [--invalid replace|remove]` 預覽工作檔
 UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需
 `--writer-stopped`。Index bytes 保持不變。Schema 1 保留
@@ -22515,7 +22970,7 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 
 ### Mediated safety 不涵蓋 raw/configured commands
 
-`dev flow` 與 taskflow 的 PlanID、conditions、locks、revalidation 和 partial ledger 只保護 dev-mediated action。Task-backed lifecycle 與 exact unmanaged linked-checkout actions 共用 `internal/taskflow`；但 explicit unmanaged path retirement 仍是隔離的 compatibility implementation，`sweep` 的 record-only reap、orphan salvage 與其他 narrow reconciliation paths 也仍在 taskflow 之外。不能假設每條 historical cleanup path 都已 migrate 或使用同一 planner。
+`dev flow` 與 taskflow 的 PlanID、conditions、locks、revalidation 和 partial ledger 只保護 dev-mediated action。Task-backed lifecycle 與 exact unmanaged linked-checkout actions 共用 `internal/taskflow`，包含 exact unmanaged path retirement 的 contained removal；`sweep` 的 record-only reap、orphan salvage 與其他 narrow reconciliation paths 也仍在 taskflow 之外。不能假設每條 historical cleanup path 都已 migrate 或使用同一 planner。
 
 Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script，以及 bare dashboard 的 configured `[[tui.tools]]` command 都能繞過這個 boundary。它們是刻意保留的 expert/operator escape hatches，不應被描述成自動繼承相同 safety guarantees。
 
@@ -22548,6 +23003,8 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - Human-readable output 現在具備 semantic color（`--color auto|always|never`），在 `NO_COLOR` 已設定、`TERM=dumb`，或 stdout/stderr 不是 terminal 時會自動停用。
 - Explicit 與 non-interactive `dev done` 只記錄 MERGED，並保留 runtime/worktree/branch。Bare interactive completion 可接續獨立 cleanup wizard：先 preview runtime agents，再把 caller-owned Herdr cleanup 交給 freshly created external coordinator，但仍使用普通 `dev retire` guards。Active agent 與 mixed-purpose workspace 仍會阻擋。`dev done --delete-branch` 仍直接報錯並指向 `dev retire --delete-branch`，`--keep-worktree` 則以 no-op 警告。
 - Interactive FF 保留 parent/canonical agent 與其他 task workspace；parent 占用時可重新檢查、改 PR 或取消。只有 exact idle/done task-worktree pane 可在最後 Apply 關閉。一般前景程序須另行同意 FF 改檔；interactive done/retire 須輸入 `CLOSE <workspace-id>` 才可終止已知程序。背景 jobs 未檢查；支援的 probe 失敗時阻擋。程序/topology 改變須重新預覽，舊 coordinator handoff 須重建。既有 unknown-runtime flags 不授權終止已知程序。
+- `dev retire --base <ref>` 覆寫 task／path 的整合驗證目標，依序解析本機分支、remote-tracking 分支、commit。Apply 重解同一輸入；類型／ref／OID 一旦改變，plan 就會過期。記錄的 fork-point commit 絕不暗中換成預設分支，無法證明整合就保持阻擋並提示 `--base <branch>`。`done --merged --base-ref X` 將 X 帶入 cleanup 提示、wizard 與外部 coordinator。刪除分支仍採 Git 自己的 upstream／HEAD `branch -d` 檢查；非 HEAD base 可能導致部分完成，分支與 DONE task 保留。
+- `dev sweep --base` 會傳入 DONE retirement；`--merged-worktrees` 也將已驗證 base 傳入 managed task。Retire／remove 的 worktree-list authority 只涵蓋同分支或相同／巢狀／包含路徑，因此先移除無關 sibling 不再使已核准 `--apply --yes` 批次後續 plan 過期；目標 lock／HEAD 或同分支 checkout 改變仍使其失效。
 - `dev sweep --merged-worktrees` 直接從 Git 列舉 linked worktrees，而非從 task registry，因此 branch 已被 base 包含的 unmanaged worktree 也能被 retire。Containment 本身絕不等於許可；dirty state、未 finalize 的 artifact、進行中的 Git operation 與 runtime 拒絕條件都仍會阻擋，且未加 `--delete-branches` 時 branch 一律保留。
 - `dev sweep --ephemeral-worktrees` 加入獨立的 schema-v1 Claude Workflow report。Path/branch convention 只供 discovery；只有 exact bounded provider linkage 與 fresh Git/task/artifact/caller/runtime evidence 才能授權 TTY/per-item apply。Apply 會 lock 並重新計算 fingerprint，以 non-force 移除，預設保留 branch；只有 explicit-base、unchanged、contained、zero-unique proof 才能執行 `branch -d`。
 - `dev sweep` 會把 branch 已不存在於 Git 的 branch-backed task 視為 dead，並提供 reap 該 record 的建議。這種 task 無法 finish、resume 或 retire，因為這些路徑都必須先解析 branch；在 `--apply` 之前該建議仍只是報告。
@@ -22566,6 +23023,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - `dev upgrade` 會先查指定 release 的實際 asset 清單。獨立安裝有對應平台 archive 時，下載並以 `SHA256SUMS` 驗證；缺少該平台 asset 時，則在確認後原生編譯同一個 tag。新版 release 提供以 `SHA256SUMS` 驗證的精簡 `dev-cli_<tag>_source.tar.gz`，排除開發對話紀錄；舊版則使用 Go 設定的 module verification，下載量可能大很多。此 source fallback 與精簡 archive 自 v0.2.35 起提供。網路錯誤、缺少 checksum entry 或 checksum 不符都會停止升級。原生編譯使用已安裝的 Go、兩個 build workers 與 20 分鐘編譯上限；編譯成功且版本正確後才替換。`--check` 不會編譯，缺少工具會在確認前提示。Homebrew、Scoop 與 `go install` 擁有的安裝仍委由對應管理器更新。替換採 atomic rename（Windows 先移開 live `.exe`，下次執行清除）；準備期間目標檔案被更動時會拒絕替換。
 - Android／Termux 目前沒有發布 binary。原生編譯依賴透過 `pkg install golang clang git` 安裝。Source upgrade 設定 `GOOS=android`、使用 Termux Clang 啟用 CGO，並停用自動 Go toolchain 下載。Linux archive 可能因 Android syscall 限制而失敗，因此不會作為替代。Go 需符合所選 release 的 `go.mod` 要求。尚無 source fallback 的舊版 binary，需先以原生工具把指定 release、經 checksum 驗證的 source archive 編譯到暫存目錄，驗證版本後替換獨立執行檔；完整 Termux 修復範例見 repository README。
 - 原生 Termux 的 SSH setup 與 discovery 使用經驗證的 `/data/data/com.termux/files/home` 或 `/data/user/<Android-user>/com.termux/files/home` 私有家目錄，重新確認系統／app owner 與目錄身分；下層 symlink 與不安全使用者路徑仍會拒絕。Android SELinux app-data 標籤只比對、不重新設定；加密檔案保留繼承的 metadata。因 app 禁止 hard link，新檔案採 `RENAME_NOREPLACE`。共享儲存空間與其他 app-data 配置不在支援範圍。原生測試涵蓋首次設定、更新、金鑰生成、cache 寫入與 metadata 不符拒絕；desktop 測試保留 hard-link 攻擊案例。參考 [Android app sandbox](https://source.android.com/docs/security/app-sandbox)。
+- macOS 的 guarded configedit／SSH 暫存替換只辨識 kernel 管理的 `com.apple.provenance` 標記（11 bytes，首 byte 為 `0x01`）。Kernel 為新檔指定 writer 的 provenance；dev 不複製來源值，也不要求替換檔保留該值，但同一檔案上的標記仍用於過期偵測。其他 attributes 與無法辨識的 provenance 值維持嚴格檢查。適用 hygiene redact／repair-encoding／restore 與 SSH init／format；apply／恢復錯誤保留底層原因。此 macOS 例外不放寬 Android 繼承標籤必須相同的檢查。
 - 自 v0.2.23 起，`dev upgrade` 會透過新版執行檔刷新已安裝的預設 bundled skill。`dev doctor` 與 `skill install --check` 會顯示差異；`skill uninstall` 只移除未修改的 manifest-owned 檔案與相符連結。舊版發起或直接透過套件管理器升級時，需明確執行一次 `skill install`；自訂目錄仍需明確指定。詳見 [skills management](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/skills-management/#bundled-dev-cli-skill)。
 - Interactive `dev` command 每天最多印一行 dim 的「有新版」提示，來源是一天內的 release cache，永不因網路而 block。TUI 的 stale-cache background refresh 只會在 initial view return 後啟動。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK` 可停用。
 
@@ -22862,6 +23320,61 @@ UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需
 `--writer-stopped`。Index bytes 保持不變。Schema 1 保留
 `unsupported_text_encoding`，coverage gap 新增可選 `encoding` 診斷與歷史
 `commit`；修復 plan 的檔案也附編碼診斷。修復不代表 secret scan 通過。
+
+### Hygiene summary JSON contract
+
+`dev hygiene report --json` 輸出 `kind: "hygiene_summary"`、`schema_version: 1`；
+應優先使用它，不要解析 scan 輸出或人工表格。既有 scan finding 欄位不變；新增的
+可選 `value_id` 以私人 repo key 與 category／rule／value 計算，讓相同值可跨檔
+彙總但不暴露原值。Finding 與 file-summary 的 `file_id` 以私人 key 識別確切
+路徑，避免不同檔案的遮罩路徑相同而混淆。舊報告可能沒有這些 ID。
+
+| 欄位 | 契約 |
+|---|---|
+| `report_id`、`report_kind`、`scope`、`status`、`created` | 身分、歷史掃描結果與時間；摘要保留原掃描狀態 |
+| `policy_current`、`checkout_current` | 目前有效政策摘要相符、checkout 根目錄相符；兩者都不驗證目前來源 bytes |
+| `audit`、`public_only`、`rescanned`、`sections`、`top` | 掃描模式、本次是否重新掃描、選定分組與列數限制 |
+| `filters` | 可選的 `dispositions`、`rules`、`categories`、`paths` 清單，於彙總前套用 |
+| `totals` | `findings`、`occurrences`、`blocked`、`warnings`、`accepted`、`gaps`、`files`、`rules`、`scanned_files`、`skipped`；finding 計數反映篩選，coverage 保留整次掃描範圍 |
+| `severities[]` | `disposition`、`findings`、`occurrences` |
+| `rules[]` | `rule`、`category`、`disposition`、`findings`、`occurrences`、`files`，以及可選 `distinct_values`、`values[]`、`omitted_values` |
+| `rules[].values[]` | `value_id`、`rule`、`category`、`masked`、`length`、`occurrences`、`files`、`findings`；絕不含原始值 |
+| `files[]` | `file`、可選 `file_id`、`disposition`、`findings`、`occurrences`、`rules[]` |
+| `categories[]` | `category`、`disposition`、`findings`、`occurrences`、`rules`（數量） |
+| `findings[]`、`gaps[]`、`skipped[]` | 只有 `--findings` 才列逐筆 finding；coverage gap 與文字排除項仍保留 |
+| `omitted` | 可選的 `rules`、`files`、`categories`、`findings` 省略數 |
+| `file_counts_complete` | 舊 finding 沒有 file ID 時為 false；檔案數只是遮罩路徑分組的下限 |
+| `values_shown`、可選 `values_truncated` | 是否要求遮罩值，以及擷取是否已達上限 |
+| `values_status` | `complete`、`truncated` 或 `failed`；未擷取或舊資料為空／省略 |
+
+未選取或空的可選陣列可能省略。分組依 block、warn、accepted，再依 occurrences
+由多到少、finding 數由多到少、名稱升冪排列。`--top` 預設 10（`0` 全部），限制
+排序清單與各規則的遮罩值列數，不截斷 totals。某規則選定的 finding 只要有一筆
+缺少 value ID，就不回報 `distinct_values`。擷取上限不代表值已完整涵蓋。回報的
+filter 值會依政策遮罩；無效的 path glob 會被拒絕。
+
+預設最新查詢以 checkout 為單位並排除 snapshot；明確 `--report ID` 可選其他
+checkout 保存的報告。這些是歷史觀測，不是目前 clean 的證明。彙總已保存報告即使
+有 blocking finding 或 gap 也以 0 結束；不完整的 `--rescan` 先輸出摘要再以非零
+狀態退出。摘要指令不能取代會阻擋 commit 的 scan hook。
+
+除非 `--report` 指定已擷取值的掃描，`--values` 會隱含重新掃描。公開資料只有
+遮罩：secret 留前後各兩字元與長度（少於 12 只顯示長度）、已知私人規則
+`[private:N]`、email `a•••@d•••.tld`、IPv4 `a.b.•.•`、IPv6 `first:•••`、home path
+`Users/x•••`。原始值與所在行內容只留在 Git 外權限為 0600 的私人
+`<report-id>.values.review.txt`，不進入 stdout／JSON／scan 紀錄。
+`dev hygiene review-path <plan-or-report-id>` 只印出私人路徑；勿將其內容貼入聊天、
+Git 或 CI。擷取有數量與 byte 上限；過大的值會省略並標記 `values_truncated`。
+附屬檔寫入失敗仍保存 partial 報告，附 `values_capture_failed` gap 與
+`values_status: "failed"`，不提供 review-path 提示。
+
+Hygiene redact／repair-encoding／restore／manage 與 artifact finalize／archive／
+migrate 共用 artifact writer guard。其他涵蓋此 checkout 的 live agent 一律阻擋。
+自動豁免呼叫者需每個目標 artifact 實際由 SpecStory 產生的固定 preamble 都含
+合法且不同的 UUID。否則（包含呼叫者身分未知），須以全域
+`--allow-shared-checkout` 明確聲明歸屬互不重疊；已識別為呼叫者自己的 live
+transcript 即使有 override 也拒絕。`restore --apply` 檢查 receipt 的確切路徑；見
+[writer 規則](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/#artifact-writer-guard)。
 
 ## Hygiene rollout 與勾選 skill 移除
 

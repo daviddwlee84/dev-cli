@@ -72,9 +72,11 @@ remote automatically. See the [AI artifact guide](docs/guides/ai-artifacts.md).
 Use `dev hygiene manage --all` to preview and deploy commit checks across selected
 repositories, independently of agent skills. Use `dev hygiene status` to inspect effective hooks and `dev hygiene setup` to
 preview configuration. `scan --scope staged|worktree|history` checks secret/privacy
-policy; reviewed `rules` and `redact` plans keep private values and recovery outside
-Git. Hooks block rather than auto-stage. Final transcript cleanup requires the
-writer to stop first. `dev hygiene repair-encoding --file <path>` previews
+policy. `dev hygiene report` summarizes the latest stored scan for this checkout;
+use `--json` for automation or `--values` for a fresh masked-value report. Raw
+values stay in private review files. Reviewed `rules` and `redact` plans keep
+private values and recovery outside Git. Hooks block rather than auto-stage.
+Final transcript cleanup requires the writer to stop first. `dev hygiene repair-encoding --file <path>` previews
 invalid UTF-8 repair with private raw-byte recovery; apply preserves the index,
 so review and stage the repair before rescanning. Setup writes project policy
 and respects an existing effective hook, including a global one.
@@ -650,10 +652,17 @@ dev retire "token refresh" --delete-branch           # external close/wait/remov
 
 dev done --pr                                        # open review; keep task/worktree
 dev done --merged --base-ref origin/main             # verify commit-preserving merge
+dev retire --base origin/main "token refresh"        # retire against that verified base
 dev sweep                                            # report drift and cleanup-pending work
 dev sweep --merged-worktrees                         # from main: audit contained linked worktrees
 dev sweep --merged-worktrees --apply                 # confirm each safe retirement
 ```
+
+`dev retire --base <ref>` selects a local branch, remote-tracking ref or commit
+for containment; `dev sweep --base` also forwards it to DONE task retirement.
+A recorded fork-point commit is never silently replaced by the default branch.
+Optional branch deletion still uses Git's own `branch -d` merged check and can
+report partial completion against a non-HEAD base.
 
 On a TTY, bare `dev done` reports branch ahead/behind and classifies every
 staged, unstaged and untracked path against the base before offering

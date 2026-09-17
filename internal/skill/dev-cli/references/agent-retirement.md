@@ -64,6 +64,14 @@ contained in main. It never treats containment alone as permission: dirty Git,
 pending artifacts and runtime blockers still stop cleanup. Branches remain by
 default; add `--delete-branches` only when the user approved that separately.
 
+`dev sweep --base <ref>` also forwards the selected base to DONE task retirement;
+`--merged-worktrees` uses its verified base for managed tasks as well as unmanaged
+checkouts. Reviewed retire/remove plans bind worktree-list authority only to the
+same branch or paths equal to, containing, or nested under the target. Removing
+an unrelated sibling no longer invalidates the rest of an approved
+`--apply --yes` batch. A same-branch checkout or target lock/HEAD change still
+makes the plan stale; containment and all other guards remain required.
+
 Claude Workflow ephemeral worktrees use a separate, stricter path:
 
 ```bash
@@ -108,6 +116,28 @@ explicit base, unchanged branch/base tips, containment, zero unique commits, and
 ordinary `git branch -d`; any post-removal failure leaves the branch retained and
 reports partial completion.
 
+## Choose the containment base
+
+`dev retire --base <ref>` overrides the containment target for a DONE task or
+linked worktree without changing recorded task intent. Resolution checks a local
+branch (`refs/heads/X`), then a remote-tracking branch (`refs/remotes/X`, such as
+`origin/main`), then a commit. Fully qualified branch refs keep their named kind.
+Apply re-resolves the same input and requires the same kind, ref and commit OID;
+a moved base or a newly created same-name branch makes the reviewed plan stale.
+Remote-tracking refs are local observations, not an implicit fetch.
+
+Without an override, task retirement keeps its recorded base. A recorded
+fork-point commit is never silently replaced by the default branch: if it cannot
+prove integration, retirement stays blocked with `pass --base <branch>` guidance.
+After `dev done --merged --base-ref X`, cleanup hints, the cleanup wizard and the
+external coordinator carry X forward as `dev retire --base X <task>`. If a shell
+handoff cannot carry the override, dev prints the external command instead.
+
+Optional `--delete-branch` still runs ordinary `git branch -d`, whose own merged
+check uses the branch's upstream or HEAD, not `--base`. Against a non-HEAD base,
+branch deletion can therefore fail after the worktree was removed; the branch
+and DONE task remain, and the result reports partial completion.
+
 ## Pull-request flow
 
 ```bash
@@ -115,7 +145,7 @@ dev done <task> --pr
 # after CI/review and a commit-preserving merge
 git fetch origin
 dev done <task> --merged --base-ref origin/main
-dev retire <task> --delete-branch
+dev retire --base origin/main <task> --delete-branch
 ```
 
 A squash merge is not ancestry-equivalent. It requires an explicit operator
@@ -147,9 +177,9 @@ Neither flag bypasses caller containment or active-agent states.
 Raw `git worktree remove --force` and configured external tools can bypass dev.
 Never run them from an agent that occupies the target. dev's guarantee covers
 only dev-mediated paths. Existing CLI expert acknowledgements remain compatible,
-but flow intentionally omits them. Task-backed retirement uses taskflow; explicit
-unmanaged path retirement and some record-only/salvage `sweep` actions remain
-isolated compatibility paths and must not be described as taskflow-managed.
+but flow intentionally omits them. Task-backed and exact unmanaged path
+retirement use taskflow, with contained removal required for the latter. Some
+record-only/salvage `sweep` actions remain isolated compatibility paths.
 
 ## What self-deletion looks like
 

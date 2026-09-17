@@ -70,6 +70,14 @@ outside Herdr the TUI first restores the terminal and then attaches, matching
 only for coordinated writer ownership. A default worktree start remains
 separate and needs no override.
 
+For artifact operations, only an exact agent session ID (`agent_session` kind
+`id`, not a title) can prove the caller differs from a stopped transcript's
+valid UUID in the actual SpecStory-generated anchored preamble. Other live
+agents always block. Unknown caller identity or artifact ownership needs explicit
+`--allow-shared-checkout`; an identified caller-owned live transcript remains
+forbidden. This does not prove recorder exit. See the
+[artifact writer guard](hygiene.md#artifact-writer-guard).
+
 `dev status` shows recognized activities for the current worktree.
 
 ## Sidebar metadata

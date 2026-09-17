@@ -4,7 +4,7 @@ lang: zh-TW
 authority: project
 status: evolving
 minimum_version: v0.2.33
-verified_on: 2026-09-12
+verified_on: 2026-09-17
 ---
 
 # AI 產物：保存、封存與發行
@@ -61,6 +61,17 @@ dev artifact finalize --intent <id> --writer-stopped
 Prepare 不會停止 writer。不要反覆脫敏仍被 recorder 從 native source
 重寫的檔案。`dev hygiene redact` 使用審閱後的精確 plan；artifact 修改
 還需 writer 結束的證據。暫時穩定的 bytes 不能證明 process 已退出。
+
+Hygiene redact／repair-encoding／restore／manage 與 artifact finalize／archive／
+migrate 共用 artifact writer guard。涵蓋此 checkout 的其他已辨識 live agent
+一律阻擋，包含 idle／done。只有 Herdr 回報呼叫者的確切 session ID（`agent_session`
+kind 為 `id`，不是 title），且每個目標 artifact 實際由 SpecStory 產生的固定
+preamble 都含合法且不同的 UUID 時，才豁免呼叫者。這項證明只適用 `.specstory/history/*.md`，不採信檔名或
+內文後段提到的 UUID。Plans 或無法證明歸屬的 transcript 需全域
+`--allow-shared-checkout`，明確聲明 writer 已退出且檔案歸屬互不重疊；不可自動
+加上它重試。呼叫者身分未知時仍需這項明確聲明；已識別為呼叫者自己的 live
+transcript 即使有 override 也拒絕。
+Writer 已結束的證據與來源重新驗證仍不可省略；restore 檢查 receipt 的確切路徑。
 
 Ignored history 不必參與一般 code commit 的掃描；但已 tracked 的檔案
 不會因新增 `.gitignore` 就停止追蹤。移出 index 是獨立操作。刪除
