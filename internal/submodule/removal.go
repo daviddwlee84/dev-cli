@@ -130,7 +130,7 @@ func InspectRemoval(ctx context.Context, cfg config.Config, root string, recursi
 		}
 		plan.initialized = append(plan.initialized, n)
 		owned, err := pathx.Contains(filepath.Join(r.GitDir, "modules"), n.GitDir)
-		if err != nil || !owned || n.GitDir != n.CommonDir {
+		if err != nil || !owned || filepath.Clean(n.GitDir) != filepath.Clean(n.CommonDir) {
 			return nil, fmt.Errorf("submodule %s has shared or externally owned Git storage", n.Path)
 		}
 		child := filepath.Join(g.Root, filepath.FromSlash(n.Path))
@@ -140,7 +140,7 @@ func InspectRemoval(ctx context.Context, cfg config.Config, root string, recursi
 				return nil, err
 			}
 			held.Close()
-			plan.roots[path] = info
+			plan.roots[filepath.Clean(path)] = info
 		}
 		worktrees, err := gitx.Worktrees(ctx, child)
 		if err != nil {
@@ -653,7 +653,7 @@ func (p *Removal) Apply(ctx context.Context, check func(context.Context, string)
 		return cause
 	}
 	move := func(from, to string, empty bool) error {
-		if err := safefile.VerifyRoot(from, p.roots[from]); err != nil {
+		if err := safefile.VerifyRoot(from, p.roots[filepath.Clean(from)]); err != nil {
 			return err
 		}
 		journal.Moves = append(journal.Moves, moveRecord{From: from, To: to, Empty: empty})
@@ -663,7 +663,7 @@ func (p *Removal) Apply(ctx context.Context, check func(context.Context, string)
 		if err := os.Rename(from, to); err != nil {
 			return err
 		}
-		if err := safefile.VerifyRoot(to, p.roots[from]); err != nil {
+		if err := safefile.VerifyRoot(to, p.roots[filepath.Clean(from)]); err != nil {
 			return err
 		}
 		if empty {

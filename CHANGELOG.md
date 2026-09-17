@@ -38,16 +38,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Artifact readiness no longer lets unrelated repositories' intent records
   block a detached checkout. Repository identity is filtered before branch
   identity is required for moved intents; relevant pending, ambiguous or
-  unreadable records still block cleanup. Submodule artifact observation errors
-  now retain their specific cause instead of only reporting unfinished artifacts.
+  unreadable records still block cleanup. Windows non-directory store errors
+  are no longer mistaken for an absent store. Submodule artifact observation
+  errors retain their specific cause instead of only reporting unfinished artifacts.
 - Recursive worktree cleanup can locally prove never-initialized submodules
   empty without downloading or publishing children. Exact empty module
   administration is revalidated and pruned with directory-only operations before
   ordinary no-force Git removal. Retained child stores, orphan data, ignored
   files, links and ownership claims remain blockers. Mixed initialized/empty
   graphs retain recovery proofs and rollback for real child repositories, and
-  interrupted empty-directory pruning reports partial effects. `--recursive`
-  remains required; alternates and squash-ancestry protections are unchanged.
+  interrupted empty-directory pruning reports partial effects. Native path
+  spellings share bookkeeping keys on Windows without relaxing physical identity
+  checks. `--recursive` remains required; alternates and squash-ancestry
+  protections are unchanged.
 - Guarded file replacements on macOS no longer fail with a metadata round-trip
   error when the source file was written by another application. The kernel
   assigns `com.apple.provenance` to each new file and ignores attempts to copy

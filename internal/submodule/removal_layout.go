@@ -29,6 +29,8 @@ type layoutDirectory struct {
 }
 
 type removalLayout struct {
+	// Path keys use filepath.Clean so Git's slash spelling and native joins
+	// address the same record. Physical identity and no-link checks stay exact.
 	Directories map[string]layoutDirectory `json:"directories"`
 	// Absence records the FIRST missing component, not merely a missing leaf.
 	// Every existing ancestor below the held checkout/admin root is also bound.
@@ -52,7 +54,8 @@ func (l *removalLayout) record(path string, root *os.Root, info fs.FileInfo, lis
 		return err
 	}
 	d := layoutDirectory{Identity: identity, Mode: uint32(info.Mode()), info: info}
-	if prior, ok := l.Directories[path]; ok {
+	key := filepath.Clean(path)
+	if prior, ok := l.Directories[key]; ok {
 		if !os.SameFile(prior.info, info) {
 			return safefile.ErrChanged
 		}
@@ -80,7 +83,7 @@ func (l *removalLayout) record(path string, root *os.Root, info fs.FileInfo, lis
 	if err := safefile.VerifyRoot(path, info); err != nil {
 		return err
 	}
-	l.Directories[path] = d
+	l.Directories[key] = d
 	return nil
 }
 
@@ -134,7 +137,7 @@ func (l *removalLayout) path(ctx context.Context, base, relative string, empty b
 		if err := l.record(path, root, info, true); err != nil {
 			return err
 		}
-		if len(l.Directories[path].Listing) != 0 {
+		if len(l.Directories[filepath.Clean(path)].Listing) != 0 {
 			return fmt.Errorf("uninitialized submodule %s contains retained data", relative)
 		}
 	}
@@ -155,7 +158,7 @@ func observeRemovalLayout(ctx context.Context, repo gitx.Repo, g gitx.SubmoduleG
 			return l, fmt.Errorf("submodule %s: %w", n.Path, err)
 		}
 		if n.Initialized {
-			known[n.GitDir] = true
+			known[filepath.Clean(n.GitDir)] = true
 			l.Initialized = append(l.Initialized, n.Path)
 		}
 	}
@@ -267,7 +270,7 @@ func verifyStagedPlaceholders(ctx context.Context, placeholders map[string]os.Fi
 		if err != nil {
 			return err
 		}
-		if len(l.Directories[mapped].Listing) != 0 {
+		if len(l.Directories[filepath.Clean(mapped)].Listing) != 0 {
 			return fmt.Errorf("staged submodule placeholder is no longer empty: %s", path)
 		}
 	}
@@ -315,7 +318,7 @@ func (p *Removal) verifyStagedLayout(ctx context.Context, moves []moveRecord) er
 	}
 	known := map[string]bool{}
 	for _, n := range p.initialized {
-		known[n.GitDir] = true
+		known[filepath.Clean(n.GitDir)] = true
 	}
 	for path, expected := range p.layout.Directories {
 		if err := context.Cause(ctx); err != nil {
@@ -336,7 +339,7 @@ func (p *Removal) verifyStagedLayout(ctx context.Context, moves []moveRecord) er
 		if err != nil {
 			return err
 		}
-		actual := l.Directories[mapped]
+		actual := l.Directories[filepath.Clean(mapped)]
 		if known[path] {
 			var names []string
 			for _, name := range actual.Listing {
