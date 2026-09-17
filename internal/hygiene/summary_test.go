@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 )
 
 func summaryFixture(t *testing.T) (*Service, string) {
@@ -273,8 +275,10 @@ func TestValuesCaptureNeverPersistsRawValuesOutsidePrivateReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm()&0o077 != 0 {
-		t.Fatalf("values review mode = %v", info.Mode())
+	// POSIX mode bits are not Windows ACLs. Verify the native owner/privacy
+	// contract on both platforms rather than skipping the Windows assertion.
+	if err := privatefile.Check(path, info, false); err != nil {
+		t.Fatalf("values review privacy: %v", err)
 	}
 	body, _ := os.ReadFile(path)
 	if !bytes.Contains(body, []byte("PRIVATE REVIEW")) || !bytes.Contains(body, []byte("person@example.org")) || !bytes.Contains(body, []byte("notes.txt:2")) {
