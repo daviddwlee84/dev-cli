@@ -38,6 +38,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   commit, and apply re-resolves the same input. A recorded fork-point commit is
   never replaced by the default branch: when it cannot prove integration, the
   plan stays blocked and names `--base <branch>`.
+- An agent can now repair or redact another session's stopped SpecStory
+  transcript from its own pane. The artifact writer guard previously blocked
+  the calling agent itself, leaving `--no-runtime` as the only way through.
+  Other live agents still always block. The caller is exempt only when Herdr's
+  exact session id differs from every target transcript's preamble session, or
+  when `--allow-shared-checkout` explicitly asserts disjoint ownership (for
+  example plans or transcripts without a provable preamble); a target that is
+  the caller's own live transcript is refused even with the override.
+  `dev hygiene restore --apply` now guards the receipt's exact paths.
 
 ## [0.2.38] - 2026-09-15
 

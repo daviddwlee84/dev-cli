@@ -117,3 +117,30 @@ func writeTranscript(t *testing.T, path, provider, sessionID, body string) {
 		t.Fatal(err)
 	}
 }
+
+func TestReadTranscriptSessionRejectsSymlinkAndLateMentions(t *testing.T) {
+	history := filepath.Join(t.TempDir(), ".specstory", "history")
+	if err := os.MkdirAll(history, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	uuid := "01a08f36-adab-7183-ad3c-b58a05162903"
+	transcript := filepath.Join(history, "session.md")
+	writeTranscript(t, transcript, "Codex CLI", uuid, "body")
+	if provider, session, err := ReadTranscriptSession(transcript); err != nil || provider != "codex" || session != uuid {
+		t.Fatalf("ReadTranscriptSession = %q %q %v", provider, session, err)
+	}
+	link := filepath.Join(history, "link.md")
+	if err := os.Symlink(transcript, link); err == nil {
+		if _, _, err := ReadTranscriptSession(link); err == nil {
+			t.Fatal("symlinked transcript proved a session")
+		}
+	}
+	late := filepath.Join(history, "late.md")
+	body := strings.Repeat("line\n", 20) + "<!-- Claude Code Session " + uuid + " (later) -->\n"
+	if err := os.WriteFile(late, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ReadTranscriptSession(late); err == nil {
+		t.Fatal("late session mention proved a session")
+	}
+}

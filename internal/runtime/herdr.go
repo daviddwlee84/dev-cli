@@ -174,6 +174,7 @@ type herdrPane struct {
 	AgentStatus   string `json:"agent_status"`
 	AgentSession  *struct {
 		Agent string `json:"agent"`
+		Kind  string `json:"kind"`
 		Value string `json:"value"`
 	} `json:"agent_session"`
 }
@@ -294,9 +295,17 @@ func (h *Herdr) AgentActivities(ctx context.Context) ([]AgentActivity, error) {
 		if cwd == "" {
 			return nil, fmt.Errorf("herdr agent list: recognized agent in pane %s has no cwd", p.PaneID)
 		}
+		session := ""
+		if p.AgentSession != nil && p.AgentSession.Value != "" && (p.AgentSession.Kind == "" || p.AgentSession.Kind == "id") {
+			agent := p.AgentSession.Agent
+			if agent == "" {
+				agent = p.Agent
+			}
+			session = agent + ":" + p.AgentSession.Value
+		}
 		out = append(out, AgentActivity{
 			PaneID: p.PaneID, WorkspaceID: p.WorkspaceID,
-			Agent: p.Agent, Name: p.Name, Status: p.AgentStatus, CWD: cwd,
+			Agent: p.Agent, Name: p.Name, Status: p.AgentStatus, CWD: cwd, Session: session,
 		})
 	}
 	return out, nil

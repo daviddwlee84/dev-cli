@@ -64,6 +64,19 @@ func FindTranscript(worktree, provider, sessionID string) (Transcript, error) {
 	}
 }
 
+// ReadTranscriptSession returns the anchored SpecStory preamble identity of one
+// regular transcript file. Symlinks and later UUID mentions are never used.
+func ReadTranscriptSession(path string) (provider, sessionID string, err error) {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", "", err
+	}
+	if !info.Mode().IsRegular() {
+		return "", "", fmt.Errorf("SpecStory transcript is not a regular file")
+	}
+	return transcriptPreamble(path)
+}
+
 func transcriptPreamble(path string) (provider, sessionID string, err error) {
 	file, err := os.Open(path)
 	if err != nil {

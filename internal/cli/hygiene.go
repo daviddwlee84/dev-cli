@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/artifact"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/feedback"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
@@ -177,20 +178,54 @@ func (h *hygieneCLI) guard(ctx context.Context, root string, paths []string) err
 	if err != nil || observation.SessionList.Err != nil || observation.AgentActivityList.Err != nil || observation.CurrentPane.Err != nil || observation.SessionCoverageErr != nil {
 		return errors.New("cannot verify checkout writer occupancy")
 	}
-	artifact := false
+	targets := make([]hygiene.WriterTarget, 0, len(paths))
 	for _, p := range paths {
 		rel, err := filepath.Rel(root, p)
 		if err != nil {
 			return errors.New("cannot identify artifact path for writer checks")
 		}
-		artifact = artifact || hygiene.IsArtifactPath(filepath.ToSlash(rel))
+		rel = filepath.ToSlash(rel)
+		target := hygiene.WriterTarget{Artifact: hygiene.IsArtifactPath(rel)}
+		if target.Artifact && specStoryTranscriptPath(rel) {
+			if _, session, readErr := artifact.ReadTranscriptSession(p); readErr == nil {
+				target.Session = session
+			}
+		}
+		targets = append(targets, target)
 	}
+	agents := make([]hygiene.WriterAgent, 0, len(observation.Agents))
 	for _, a := range observation.Agents {
-		if a.Blocking || artifact {
-			return errors.New("a recognized agent still occupies the checkout; stop the writer before applying")
+		session := a.Activity.Session
+		if session == "" && a.IsCaller {
+			session = callerPaneAgentSession(observation)
+		}
+		agents = append(agents, hygiene.WriterAgent{Caller: a.IsCaller, Blocking: a.Blocking, Session: session})
+	}
+	return hygiene.CheckWriters(agents, targets, h.app.allowSharedCheckout)
+}
+
+// specStoryTranscriptPath limits preamble ownership proof to SpecStory history
+// Markdown; plans and other artifacts never prove a different session.
+func specStoryTranscriptPath(rel string) bool {
+	parts := strings.Split(rel, "/")
+	if len(parts) < 3 || !strings.HasSuffix(strings.ToLower(parts[len(parts)-1]), ".md") {
+		return false
+	}
+	return strings.EqualFold(parts[len(parts)-3], ".specstory") && strings.EqualFold(parts[len(parts)-2], "history")
+}
+
+func callerPaneAgentSession(observation rt.Occupancy) string {
+	if observation.CallerPaneID == "" {
+		return ""
+	}
+	for _, session := range observation.Sessions {
+		for _, pane := range session.Panes {
+			if pane.ID == observation.CallerPaneID {
+				return pane.AgentSession
+			}
 		}
 	}
-	return nil
+	return ""
 }
 func (h *hygieneCLI) apply(ctx context.Context, s *hygiene.Service, id string, yes, writerStopped bool, expectedKind string) error {
 	p, err := s.ReadPlan(ctx, id)
@@ -302,7 +337,7 @@ func newHygieneCmd(app *App) *cobra.Command {
 	rf.BoolVar(&redactApply, "apply", false, "apply a reviewed replacement plan")
 	rf.StringVar(&redactPlan, "plan", "", "reviewed plan ID")
 	rf.BoolVarP(&redactYes, "yes", "y", false, "confirm the reviewed replacements")
-	rf.BoolVar(&writerStopped, "writer-stopped", false, "attest the exact artifact writer has exited; live agents still block")
+	rf.BoolVar(&writerStopped, "writer-stopped", false, "attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout")
 	var repairFiles []string
 	var invalidMode, repairPlan string
 	var repairApply, repairYes, repairWriter bool
@@ -336,7 +371,7 @@ Artifact writers must exit before apply; encoding repair is not a secret scan.`,
 	repair.Flags().BoolVar(&repairApply, "apply", false, "apply the exact reviewed encoding repair plan")
 	repair.Flags().StringVar(&repairPlan, "plan", "", "reviewed encoding repair plan ID")
 	repair.Flags().BoolVarP(&repairYes, "yes", "y", false, "confirm the reviewed repair")
-	repair.Flags().BoolVar(&repairWriter, "writer-stopped", false, "attest the exact artifact writer has exited; live agents still block")
+	repair.Flags().BoolVar(&repairWriter, "writer-stopped", false, "attest the exact artifact writer has exited; other live agents still block, and the calling agent needs proven session ownership or --allow-shared-checkout")
 	var receipt string
 	var restoreApply, restoreYes, restoreWriter bool
 	restore := &cobra.Command{Use: "restore", Short: "Preview or restore one private recovery receipt", Args: cobra.NoArgs, RunE: func(c *cobra.Command, _ []string) error {
@@ -348,7 +383,15 @@ Artifact writers must exit before apply; encoding repair is not a secret scan.`,
 			return errors.New("inspect recovery first, then pass --apply --yes")
 		}
 		if restoreApply {
-			if e = h.guard(c.Context(), s.Root, []string{filepath.Join(s.Root, ".specstory") + string(filepath.Separator)}); e != nil {
+			preview, previewErr := s.Restore(c.Context(), receipt, false, hygiene.ApplyOptions{})
+			if previewErr != nil {
+				return h.output(preview, previewErr)
+			}
+			paths := make([]string, 0, len(preview))
+			for _, change := range preview {
+				paths = append(paths, change.Path)
+			}
+			if e = h.guard(c.Context(), s.Root, paths); e != nil {
 				return e
 			}
 		}
