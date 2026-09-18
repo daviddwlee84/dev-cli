@@ -1,143 +1,154 @@
-# Cleanup feedback 修正與 v0.2.39 PR／merge／release
+# Amend blocker、受保護的 co-commit 收尾與 dashboard UX
 
 ## Context
 
-先前的 4 個 bug 修正與 `dev hygiene report` 已完成，在
-`fix/retire-base-sweep-batch-hygiene-report`，HEAD `9eb43a9`，worktree 乾淨；
-完整 race suite、E2E、文件與 skill 檢查已通過。
+v0.2.39 已發布，dev-cli 本機 branch/worktree/task 清理已完成；本計畫取代舊 release 計畫。使用者要求：查明 main 上指定 transcript amend 到 Backup chat history 的阻擋原因、修正前次收尾發現的工具缺口，以及 REPOS `n` 和 `/` filter 的兩個 UX。
 
-本次使用者授權開 PR、merge、發新版，並修復 feedback
-`d5d70d98-94f7-4c0d-9a18-1819fd7d4934` 的兩個 cleanup blocker：
-1. 無關 repository 的 artifact intent 錯誤阻擋 detached checkout。
-2. 從未初始化／完全空的 submodule worktree 缺乏安全 cleanup 路徑。
+### 已證實的 amend 診斷
 
-目前 GitHub `origin/main` 是 `68aa255`，最新 release 是 `v0.2.38`；
-`v0.2.39` 尚未存在，現有 feature branch 尚未有 PR。
-所提供的 Herdr pane 仍有 agent；只讀取過 pane 身分，沒有送入指令或執行 cleanup。
+- `HEAD == main == cached origin/main == 4dc2433`，subject 為 `Backup chat history`；未查詢遠端。
+- 唯一 staged 檔為 `.specstory/history/2026-09-17_04-44-06Z-git-commit-amend-no.md`，狀態 `AM`；其 staged 與 working bytes 不同，而且本 session recorder 仍在執行。
+- 既有 report `720c76f6-e90b-4063-99a0-0a30d75180be` 與 staged bytes 完全匹配：7,272,809 bytes、UTF-8 正常、coverage complete、0 gaps。
+- **47 個 blocking findings／136 次出現**：41 個 Sourcegraph matches 已證實為本機 Git commit objects（28 reachable from cached origin/main、1 reachable from other refs、12 locally present but unreachable）；1 個 generic-api-key 是已存在精確例外的非憑證專案名稱；其餘 **5 個值尚未證明來源**，繼續阻擋。
+- 未定 findings 的 staged line：85635、120027、126725、142626、142682。另有 98 個 privacy warning，不是阻擋原因。
+- 有效 hook chain：global pre-commit → `.pre-commit-config.yaml` → `dev hygiene scan --scope staged`。匹配的掃描結果足以說明這份 index 為何不過 gate；沒有找到可證明該 report 正是 amend hook 產生的最新 log。
+- 不是 encoding／覆蓋不足 bug。既有 exact exceptions 只覆蓋其他 transcript paths，沒有自動套用是正確行為。Live writer 與改寫已存在於 cached origin/main 的 commit 是另外的安全／歷史問題，不冒充 hook 的失敗原因。
 
-## 交付與資料保留
+## 範圍與資料保留
 
-- 將本次兩個修正與已完成的功能以**同一個 PR、一次 patch release**交付。
-- 現有 feature branch 繼承了未發布的 `2f93517 Backup chat history`；本機
-  `main` 另外還有 `c5a57df` 聊天備份。**不把這些備份、`.specstory`、
-  私有 feedback、pane／socket 資訊或新 plan 一起發布。**
-- 實作時重新 fetch／確認 remote main 與最新 release，建立乾淨的
-  `release/v0.2.39` 外部 worktree（名稱隨實際可用版本調整）。
-  從 remote main 依序重播既有 9 筆程式碼／測試／文件提交：
-  `82a5c99`, `d749218`, `07de875`, `df892cb`, `ad09f66`, `bc1eb62`,
-  `67a54f2`, `2c5d862`, `9eb43a9`；不重播聊天備份提交，再加入兩個 feedback fixes。
-- 保留原 feature worktree、本機 main、未提交／暫存檔及所有 remote branches。
-  不 force-push、不改已發布 tag、不覆寫系統安裝的 dev，也不清理另一 session 的 repository。
+- main 僅做上述診斷；**不在 live recorder 執行中 stage／redact／amend 該 transcript，不重寫既有已發布 commit**。日後備份建議新 commit；改写舊 commit 需另外明確授權。
+- 實作使用兩個獨立的外部 worktree／修正 branch，以各 repo 核對過的明確 base 建立：dev-cli 從當前 main；agent-skills 從已核對的 main（目前 `82bb367`）。不切換／重設原 checkout，不攜帶原 index。
+- 保留 agent-skills 原 `fix/nautilus-trader-eval` 的六個 staged 檔、短 alias、prepared journal、草稿及私有備份。不直接在該 prepared checkout 編輯 helper。
+- 修改 canonical `agent-skills/skills/local/agent-history-hygiene/`，不修改 dev-cli 的 installed skill copy 冒充上游修正。
+- 本計畫不含 push、PR、release、安裝覆蓋、再啟動／關閉 agent 或自動恢復舊 commit。所有 raw findings／before-images／review 都留在 private state；不放進 Git、公開 JSON 或測試 log。
 
-## 修正 1：先以 repository 身分篩選 artifact，再檢查 moved-intent branch
+## 1. 目前 hygiene findings 的窄化處理
 
-關鍵檔案：`internal/artifact/service.go`、`service_test.go`、
-`internal/taskflow/submodules.go`、`submodules_git_test.go`。
+重用 `internal/hygiene/rules.go` 的 `PreviewAllow`／`PreviewRules` 和既有 guarded Apply，而不是關閉 Sourcegraph rule 或新增 blanket hex/transcript exemption。
 
-- 保留 `Store.List()` 完整性檢查、exact canonical checkout matching 與錯誤累積。
-- 將 `inspectReadinessCheckoutIdentity` 的 Git common-directory discovery 與
-  branch observation 分開。先 canonicalize 所選 checkout 與 unmatched intents
-  的 common directories，排除已證明不屬於此 repository 的記錄。
-- 只有仍有同一 common-directory 的 moved-intent 候選時才要求 branch 身分；
-  此時 detached／不明 branch 繼續 fail closed。
-- 不依 finalized/pending status 猜測某記錄是否無關；不跳過
-  `inspectIntentReadiness`、`InspectHistoryReadiness`、receipt verification。
-- `submoduleClaims` 分開「artifact observation error」與「已觀察到未完成 artifact」；
-  保留前者的具體原因與 child path，讓 plan evidence 與 apply diagnostics 有用。
-  公開輸出不得新增私有內容傾印。
+- 私下核對五個未定值的明確來源；只使用其引用的 repo／記錄，不進行廣泛檔案系統搜索，也不把「40 位 hex」當作安全證明。
+- 對已審閱 noncredentials，以 report finding ID 或 exact rule＋path＋value＋reason 產生**單一 local policy preview**；未知值不納入。預定 exceptions 留在既有 private repo policy，不必把原始值提交成產品設定。本次 codefix 不自動套用這份 preview。
+- 後續經審閱並明確授權 Apply 時，重新核對 report 與當前 index／policy；變更後另掃描 exact staged snapshot 驗證結果，不執行 commit hook 的 stash/restore，也不 amend。
+- 若五個值仍未定，明確回報剩餘 blocker，不稱整份 transcript 已通過。這是個別 findings 處置，不改 detector 的預設安全語意。
 
-測試沿用 `createReadinessIntent`、`isolateGitConfig`、
-`submoduleLifecycleFixture`、`createPendingArtifact`：
-- detached + unrelated finalized/pending intents：ready、zero matches、known empty。
-- relevant exact pending、same-repo moved ambiguity、unreadable/corrupt store：仍阻擋。
-- canonical aliases／branch matching 不改變 repository 邊界。
-- detached child 的 submodule claims 不受無關 intent 影響；實際 observation error 保留原因。
-- 可重用 feedback 的 `repro/artifact_test.go`，只移植成獨立測試；不提交私有報告檔。
+## 2. TUI：REPOS `n` 不被無關 selected-row refresh 擋住
 
-## 修正 2：安全區分空 gitlink 與實際保留的 child repositories
+檔案：`internal/tui/list_actions.go`、`model.go` 與現有 TUI tests。
 
-**保留 `--recursive` 明確授權。** 安全空節點只豁免不存在之 child repository 的
-復原／遠端證明，不豁免 cleanup 的 Plan／Apply。無 `--recursive` 仍顯示可操作的 blocker。
+根因：`runListAction` 對 `RepoRow.Pending` 的 guard 包含不依賴任何 row 的 `listActionRepoCreate`；`Repos.Create()` 本來就是啟動 `repo new --handoff stay`。
 
-關鍵檔案：`internal/submodule/removal.go`、`removal_test.go`、
-`internal/taskflow/submodules.go`、`completion_runtime.go`、`submodules_git_test.go`，
-以及 `internal/safefile` 的 directory-only removal helper 與 native platform tests。
+- 只讓 `listActionRepoCreate` 不受 selected-row Pending gate 影響，保留 callback availability／error handling。
+- Ctrl+O 同樣把 Create 視為 row-independent，並在空／無選取的 REPOS menu 顯示；原 row 消失不阻擋這個 action。
+- 保留 active-clone 限制、其他 row-dependent action 的 freshness／selection guards，以及 REMOTE clone 的 inventory 重驗。
+- 沿用 `internal/cli/tui.go` 的既有 callback；真正建立仍經 `repo_create_wizard.go`、`repo_create.go`、`repo.Acquire` 的確認與即時 destination／nested-repository／exclusive-create 檢查。不是讓 stale inventory 變成 mutation authority。
 
-### Local observation 與 sealed authority
+## 3. TUI：filter 中上下鍵選取，Enter 語意不變
 
-- 在 `InspectRemoval` 中建立 removal-local layout snapshot，分開觀察與授權。
-  非 recursive 預覽可以提供 layout authority，但不可提供可執行的 disposal authority；
-  `VerifyRemote`／`Apply` 必須仍拒絕未授權的 removal，不能依賴呼叫者忽略 error 來守住界線。
-  記錄 checkout／Git-dir roots、empty child 的 exact identity 或 observed absence、
-  administration directory 的路徑／身分／排序 listing，以及 initialized disposal subset。
-- 分類為：owned initialized、safely empty、uninitialized with retained data、unknown/unsafe。
-  安全空必須是缺席或真正空的一般目錄，且整個 private module storage 沒有 retained child store。
-  任何 local/ignored file、`.git` marker、nested user directory、symlink/reparse point 或觀察錯誤都不算空。
-- `inspectModuleStorage` 的 known repository set 只包含 initialized nodes；
-  仍掃描全部 private administration，包括 nested `modules/`，拒絕 retained／orphan stores 與任意檔案。
-  缺席的 modules root 是事實而非錯誤，不建立它；只有已審閱的 directory-only scaffolding 可待移除。
-  零 gitlink 時也先檢查 storage：缺席為 no-op，空 scaffolding 需 recursive plan，實際 orphan data 阻擋。
-- 用 deterministic `LayoutFingerprint` 封入 `submodule-removal` authority；
-  `decorateSubmodules`、`prepareSubmodules` 及 `RetirementPreviewAuthority` 同步保存／重驗。
-  現有 graph、workspace intent、claims 與 recursive authority 不移除。
-- all-empty preflight 是 local/non-network，描述不得聲稱將處置 private refs/objects 或需要 push。
-  `InspectPublication` 的原有整合／發布條件不變。
+檔案：`internal/tui/model.go:updateFilter`、`view.go:renderDetail`、`help_browser.go`、`help_content.go`。
 
-### Claims、Apply 與目錄移除
+- Dashboard 八個 views 的 live filter，先攔截 Up/Down，以既有 `at()`／`count()`／`setAt()` 移動目前可見結果；保留 mode、focus、query 與文字 cursor。
+- 只有 input **值真的變更**才重新套用 filter 並選第一個結果；Left/Right/Home/End／無效刪除等不再把選取歸零。
+- `j/k`、字母、数字仍是搜尋文字；不把 filter keys 整批送入 `updateList`。
+- Enter 保留 query／選取並退出輸入，**不立即開啟 item**；之後正常 list Enter 才執行。Esc 維持清除 filter 的既有行為。
+- Pending row 的 passive detail 不蓋住 active filter input/help；只調整這個 rendering priority。
+- Help 的 live 索引／結果 filter 同步支援 arrows，重用 `helpMove`；文章內搜尋／scroll、Notes 的 Enter-submit search、SSH dialogs、forms、已支援 arrows 的 Ctrl+O 不改成同一套行為。
+- 沿用 per-view cursor、selection token、repo progress identity restoration；不把 flowtui／triagetui 併入 dashboard。
 
-- 空／缺席 child 不呼叫會向上找到 parent repository 的 Git readiness discovery。
-  task claims 保持 exact/subtree path matching；artifact claims 由 strict `Store.List()`
-  和 canonical exact/subtree path matching 觀察，保留相關 intent identity/status/receipt
-  與 unreadable inventory blockers。空路徑的 matching non-discarded intent 一律作為 ownership
-  blocker（包含 finalized，不能借 parent Git 驗證）；discarded 不阻擋但仍封入 authority。
-  不使用會吞觀察錯誤的便利 listing，initialized child 的正常 finalized receipt 語意不變。
-  initialized child 保留完整 artifact receipt/readiness 檢查，runtime coverage 仍涵蓋整個 subtree。
-- `VerifyRemote`／`Apply` 的 proof cardinality、origin queries、leases、private-state
-  checks、moves 只處理 initialized subset；不使用空的 `CommonDir` 取得鎖。
-- **all-empty：** 不建遠端 proof repository、不 quarantine、不搬 child，不要求 child push。
-  仍重驗 graph／layout／workspace revision／claims，且 final claim callback 即使 zero initialized
-  nodes 也至少執行一次。在 parent repository/task locks 內、第一次變更前及最終 removal 前驗證。
-- **mixed：** 只 stage initialized children，保留 deepest-first 次序、完整 modules quarantine、
-  journal/rollback/recovery；empty nodes 的 layout 也需重驗。沿用 `recover.go`，不重做復原架構。
-- 保留 `gitx.RemoveWorktree` 對 modules storage 的保守拒絕；只有 recursive removal 層
-  能 bottom-up prune 已審閱、身分仍相同且仍空的 administration directories，再呼叫
-  普通 `git worktree remove`（force=false）。
-- 在 safefile 新增窄化的 `RemoveEmptyChildDir(ctx context.Context, parent *os.Root, name string, expected fs.FileInfo) error`
-  directory-only primitive：驗證 portable child name、`OpenChildRoot`／`VerifyChildRoot`／empty listing，
-  再做 native directory-only delete（Unix dirfd `unlinkat(..., AT_REMOVEDIR)`；
-  Windows relative-to-held-parent、verified non-reparse directory handle，驗證前不得設定 delete-on-close）。
-  不使用會 unlink 替換檔案的 `os.Remove`／`os.Root.Remove`，不使用 `RemoveAll` 或 force；
-  不具已驗證 backend 的平台 fail closed。
-- Plan 後 absence→presence、初始化、新檔案、root 替換、symlink／claim 變更皆 stale；
-  late nonempty content 必須由 directory-only primitive 拒絕。raw writers 仍不受 dev lock 保證。
-  已 prune 部分空目錄後失敗，typed error／taskflow ledger 要列明 partial effect，
-  不宣稱 worktree 已刪或 task 已 retired、不默默重建 administration。
-- `objects/info/alternates` 及 squash ancestry 限制不是本次要繞過的 bug。
+## 4. 原生 artifact 的 exact selection、writer guard 與 stale protection
 
-## 文件與驗證
+主要檔案：`internal/cli/artifact.go`、`internal/artifact/{service,intent,store,transcript}.go`、`internal/agenthistory/{handoff,archive}.go`。
 
-- 在 `[Unreleased]` 增加兩個 fixes，更新 affected help／skill／英文及 zh-TW
-  artifact、submodule、worktree／retirement 與 compatibility 安全語意。
-- 納入 feedback 的隔離 repro（只處理 fixture），先驗證舊邏輯失敗，再驗證修正成功。
-- 測試矩陣：unrelated/relevant artifact、never-initialized child、absent/empty modules root、
-  mixed initialized/empty nodes、orphan/retained stores、ignored files、symlink 與重驗 race。
-- 使用一致的 Go toolchain（此 session 可用 Go 1.26.4，勿混用其他 session 的 GOROOT）。
-- 執行 focused artifact/submodule/gitx/taskflow/CLI tests、`go test -race -timeout 20m ./...`、
-  `go vet ./...`、format check、`make e2e`、`make skill-sync`／`skill-check` 與 strict docs checks。
-- 在 `.github/workflows/ci.yml` 加入 focused、non-advisory 的 Windows 原生 cleanup regression gate，
-  驗證 directory-only deletion 與 empty-submodule 路徑；交叉編譯或 broad advisory job 的成功圖示不能代替。
+- 新增 additive `dev prepare --specstory-path <exact-path>`；必須與 `--session provider:uuid`、checkout／capture root 一致。重用 `ReadTranscriptSession` 的 bounded regular-file preamble proof，拒絕 symlink／escape／body UUID。
+- 新 intent 保存所選 path，finalize 重驗它，不重新按「最新」或任意同 UUID alias 選擇。未提供 path 的 ambiguity refusal、舊 intent 的相容處理保留。
+- Archive 的 `LocateSession`／prepared archive plan matching 同步綁定 selected path；不能以同 UUID 另一個檔取代。
+- 修正 tracked `finalizeLocked` 未使用 supplied `Guard`：在 artifact staging／任何來源變更前，以及長時間處理後、commit 前執行相應 guard；explicit writer-stopped 不能壓過已觀察到的 live writer。
+- 參考 `task.Store.GetRecord/Update` 的 exact-record revisions，為 artifact Store 增加 compare-and-update transitions；Prepare／Observe／Discard／Finalize 的 stale authority 不得覆蓋較新的狀態。
+- 既有 product-first 的 empty-index／committed-product 規則與 archive lane 保留；不讓 staged products 偷渡到 legacy directory-level `--fix`／restage finalizer。
 
-## PR、merge 與 release
+## 5. Canonical helper：完整證據、fixture review 與 exact sync
 
-1. 更新 `[Unreleased]` 為 `[0.2.39] - 實際發布日期`、comparison links、
-   AGENTS.md 的 published baseline 與推薦版本的 pinned install examples；不改 docs tooling 的 `0.0.0`。
-2. 確认 publication branch diff／commit 範圍不含聊天備份和私有 inputs，再 push branch。
-3. 用 `gh pr create --repo daviddwlee84/dev-cli --base main` 建立單一 PR，
-   body 僅包含已審阅的功能／fix 摘要、repro 與實際測試結果。
-4. 等待 CI／Docs／Repository hygiene 的當前 PR head checks，處理真正的失敗後，
-   用 merge commit（保留 ancestry；不 squash、不 admin bypass、不刪 remote branch）合併。
-5. 確認 exact merged commit 已存在 remote main，再建立全新 immutable `v0.2.39` tag 並 push tag。
-   本機 main 的聊天備份與暫存狀態不因發布而被 reset／重寫。
-6. 等待 Release workflow 完成，核對版本、平台 binaries、compact source archive、
-   `SHA256SUMS` 和必需的 Homebrew formula publication；只有真正通過才回報發布完成。
-   失敗就保留現有 tag 與 receipt，修正／rerun，不移動 tag 或假裝已發完。
+主要檔案（agent-skills repo）：
+`skills/local/agent-history-hygiene/scripts/{_post_session.py,run-specstory-session.sh,queue-agent-commit.sh,finalize-agent-commit.sh,stage-agent-artifacts.sh}`、`assets/redact_secrets.py`。
+
+### 5.1 新 run 的 versioned evidence
+
+- 新 run 使用明確 v2 protocol／journal，提供 side-effect-free capabilities；v1 的嚴格 parser、existing state 與恢復語意保留，不默默加欄位或升級。
+- 重用目前 alternate-index sanitation／materialization／frozen-commit transaction，在改動前持久化 private sanitation receipt：完整 post-sync before-images、pre/post blob IDs、每個 finding/occurrence 與完整 transformation、path/native identity、request/session/root/ref/parent/index/prepared tree、scanner/config identity、coverage 與 revision。
+- 證據寫入失败／不完整時不得發布 sanitized index／來源或宣稱 clean。Raw bytes 與 full values 不進公開輸出。
+
+### 5.2 真實的 run-scoped finding review
+
+- Finalizer 增加只讀 `--preview-review --json`：輸出 masked findings、receipt revision、可審閱狀態與 private review 位置，不 commit。
+- `--review-file <private versioned decisions>` 對 exact finding IDs 填寫 reason／disposition，與 receipt、prepared state 綁定；仍須新的明確 `--allow-commit` 才可提交。
+- 區分 `reviewed_noncredential`、`credential_rotation_required`、`unresolved`；sanitation 本身不證明真實 credential exposure。全部 occurrence 必須有完整證據，未知／partial／stale／mixed unresolved 繼續阻擋。
+- 已審閱 fixture 只解除**本次已 sanitized snapshot**不適用的 rotation gate；不還原 raw bytes、不豁免未來掃描、不略過 hooks，也不假裝 `--rotation-confirmed`。
+- Apply 在既有 finalizer lock 內重驗 exact receipt/review/request、來源／policy、HEAD/ref/index/tree；既有 uncertain commit 只 reconcile，絕不第二次 commit。
+- 與 native `PreviewAllow` 的持續性 policy exceptions 保持區別，不再造一套 scanner。
+- 提交前重用既有 staged checker，確認整個 frozen prepared index 的適用檔案都有 policy/scanner coverage；sanitation 只改 exact selected artifacts，product findings 只阻擋、不順便重寫。Global hook 因缺少 repo config 而跳過不能當作保護已生效；本輪不自動安裝／修改既有 hook chain。
+
+### 5.3 Sync freshness 與禁止 cloud publication
+
+- Run 的 no-cloud 選擇明確傳至真正 post-exit sync／export；使用原生支援 flags，不透過臨時改寫使用者 config。v2 的自動交接預設 no-cloud；不默默啟用 cloud。
+- 保留真實 child exit／process-group quiescence proof；UUID、mtime 或「bytes 有變」都不能代替 freshness。
+- 在同一明確 UUID／root、已停止 native source 下，以原生 exact export 證明所選檔內容：正常 sync 後，使用支援的 `sync --print`（加 silent/no-cloud/no-stats 等受支援選項）取得 bounded private candidate，核對 native source identity 與所選 alias 的完整 rendered digest。這是一次實際 sync 加只讀 export verification，不是重试 sync。
+- 凍結／核對 native source generation，防止 sync 與 export 之間改變；候選必須通過 exact preamble／root/session proof。若原生版本無法提供已驗證的 export，明確 `freshness_unproven`，不退回 mtime／nonce 字串猜測。
+- 若 sync 更新另一個 alias 而 selected path stale，就停下保留資料；不自動改 selector、不刪其他 alias、不手造 recorder 證據。
+- 原生 flag／output 真實行為需以隔離 fixture integration test 核實；不把 fake-provider unit test 當成實際版本相容性證明。
+
+## 6. 薄型 dev co-commit adapter：不建立第二個 commit engine
+
+在上述 guard/revision 與 canonical v2 完成後加入；per-invocation opt-in，**不新增全域預設政策**。
+
+建議介面：
+
+```text
+dev prepare [task-or-worktree] --closeout co-commit \
+  --session provider:uuid --specstory-path <exact-path> \
+  (--plan <one-path> | --no-plan) --message-file <base-message> [--json]
+```
+
+- `--closeout` 預設 `product-first`，舊命令不變；co-commit 與 archive policy 不混用。
+- 明確解析已安裝 canonical helper、核對 v2 capability／tool/source identity；缺少或不支援就回報可操作的 blocker，不下載／安裝／执行未知 helper。
+- 只在真實 wrapper context 下 queue。無 authentic run 时回報 `requires_wrapper` 及正確啟動方式，不猜 run ID、不生成 parent token／journal、不自动關閉或重啟 agent。
+- Helper 繼續獨占 staging／sanitation／commit／reconciliation。Native 只記錄 expected-revision binding，包含 helper request/revision、repo/root/ref/HEAD／staged product tree、exact selectors；不呼叫 legacy scanner/restage。
+- Native status/readiness 讀取并核對 helper receipt；不是看 exit 0、trailer 或 draft 就當成功。Finalize 的 co-commit path 僅委派 canonical backend，帶入真正的外部 approval／writer guard；不得落入 product-first executor。
+- Queue 前要求 feature-only index；已 staged artifact 不會被偷偷移出。相同 request 可重入查證，不同 request 衝突。
+- 明確處理 partial outcomes：helper 已 queued 但 native binding 未寫入，回傳 `queued_but_not_bound`，保留 request並停止子 agent 的 repo 操作；只允許 idempotent bind repair，不另 queue。Helper 已 commit 而 native persistence 失敗，只驗證 exact commit並補 receipt，不重 commit。
+- 定義 repo/run/native-store lock ordering，不持有 native store lock 跨 helper／hooks；返回時以 expected revision CAS，stale 即拒絕新作用。
+- 新 JSON 輸出使用獨立 versioned schema，既有 documented JSON／human defaults 不改名移除。
+
+## 7. 舊 agent-skills prepared run：本輪只做恢復預覽，不自動提交
+
+保留 run `d13e3cc2-1bf4-48ad-b488-6169f8ec8759`、parent `82bb367`、tree `e7b9a23a2244d0a6df04668ab7373a7b396ea98e`。
+
+- 它只有 v1 boolean sanitation outcome，不能直接套用新的 fixture approval。
+- 實作／測試完成後，最多建立隔離的 legacy recovery preview：先證明完整 post-sync 原文（必要時由 private backup＋prepared bytes 重建，必須吻合先前記錄的完整 SHA256），再確定重放原 scanner/policy 可完整解釋每一處 original→prepared 轉換。
+- 審閱結果必須涵蓋全部 finding／occurrence，綁定原 request/journal 的 exact revision、selected paths、parent/tree/policy，並區分舊的真實 lifecycle proof 與新建的 review proof。
+- 使用明確 versioned import/recovery receipt；不修改舊 journal 來「補出」過去未有的證据。不足就保留 blocked。
+- 真正消費恢復計畫／commit、或改用新 wrapper session，需看到 preview 後的另一個明確授權；本次 codefix approval 不代表已核准未知恢復結果。
+
+## 驗證與文件
+
+### Focused regressions
+
+- TUI：擴充 `TestRepoNLaunchesNewRepositoryWizardWithoutASelectedRow`、repo progress／selection tests、filter／Notes tests；涵蓋 cached/loading/runtime-pending、empty/filtered-empty、menu row 消失、callback失敗、active clone、其他 stale-row mutation仍阻擋。
+- Filter：八 views＋Help索引，多筆／零結果／邊界、arrows不送出任何action/network、j/k是文字、cursor-only keys不reset、Enter/Esc、tree child與async focus preservation；Notes在Enter前不query。
+- Native artifact：alias重複／錯誤provider/path／symlink、archive selector替換、Guard在stage前拒絕、source變化、Discard/Observe/Finalize races、v1 compatibility。
+- Helper／adapter：完整before-image與多occurrences、fixture/credential/unresolved混合、review tamper/stale/replay／policy drift、缺失舊證據、sync0但selected alias stale、source generation改變、no-cloud對run/sync/export一致、unsupported native版本、partial bind/persistence、uncertain commit no retry。
+- 全部 destructive/finalization tests 使用 synthetic isolated repos；不拿目前 live transcript 或 prepared index 當 fixture。
+
+### Repository gates
+
+- dev-cli：focused `internal/tui`, `internal/cli`, `internal/artifact`, `internal/agenthistory`, `internal/hygiene`, store tests → `go test -race -timeout 20m ./...`、vet、format check、E2E、isolated hygiene hook test。
+- Canonical helper：既有 `test_post_session_finalize.sh`／stage/redactor/metadata/contracts 與 `make test-skill`、skill lint、`make validate`。Native platform不能測到的能力明確標記未驗證，不推定 Windows支援。
+- dev-cli `[Unreleased]`、README／embedded help／authored skill references，以及相關 EN/zh-TW artifact／retirement／hygiene／dashboard guides成對更新；canonical helper更新SKILL與post-session runbook及其changelog。
+- 命令介面新增執行 `make skill-sync`、檢查 generated commands、`make skill-check`；skill改動後重建。文件執行 source check／strict MkDocs build／site check，必要時 regenerate llms。
+
+## 實作次序
+
+1. 隔離工作環境並保留兩個現有 checkout；建立 synthetic regressions。
+2. 先完成兩個 TUI UX 與對應文件。
+3. Native exact selector／Guard／revision corrections。
+4. Canonical v2 receipt/review／sync/cloud correctness。
+5. 薄型 co-commit adapter與partial-result處理。
+6. 執行全套驗證，產出目前 hygiene findings 的審閱 plan，以及舊run的唯讀恢復預覽／明確 blockers；不自動amend／commit舊run／push／release。
