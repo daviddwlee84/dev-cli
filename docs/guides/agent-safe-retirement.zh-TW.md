@@ -2,7 +2,7 @@
 description: 安全地從外部 retire dev-cli 已整合的 worktree 與 runtime，而非在被移除的 workspace 內部執行。
 authority: project
 status: stable
-verified_on: 2026-09-17
+verified_on: 2026-09-18
 lang: zh-TW
 ---
 
@@ -42,7 +42,7 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 
 | 命令 | 作用 |
 |---|---|
-| `dev prepare --session <provider:uuid> --plan <path>` | 在不關閉目前執行中 agent 的情況下，arm post-writer artifact finalization。Product changes 必須已先 commit；transcript 本身刻意尚未 stage。 |
+| `dev prepare --session <provider:uuid> --plan <path>` | 在不關閉目前執行中 agent 的情況下，arm post-writer artifact finalization。預設 product-first 要求 products 已 commit 且 index 為空；transcript 本身刻意尚未 stage。 |
 | `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | 在 writer 停止後，把 exact、stable transcript 存進 intent 選定的 source commit 或外部 archive。`--if-pending` 在沒有對應 armed intent 時靜默 no-op；`--writer-stopped` 確認外層 wrapper 已 return。 |
 | `dev done --ff` | 把 task branch rebase 到其 base 上並在本機 fast-forward。記錄為 MERGED，保留 worktree/branch；明確選定的 task pane 關閉另行記錄，parent 保留。 |
 | `dev done --pr` | Push branch，並透過可用的 forge CLI 開啟 pull/merge request。Task 保持在 review 狀態，不是 MERGED。 |
@@ -115,6 +115,32 @@ dev retire <task> --delete-branch
 ```
 
 `dev done` 只負責整合並記錄為 MERGED。`dev retire` 會重新解析每個 runtime pane、關閉符合條件的 session、等待它們消失、重新驗證 Git，再移除 worktree（不使用 force）。
+
+## 明確選用 co-commit closeout（v0.2.40）
+
+預設 product-first 仍須先 commit products 再 `prepare`。新增
+`--specstory-path PATH` 可在 capture 範圍內選取精確 provider／UUID 匯出檔；
+finalize 會重新驗證選取與 native intent revision。另一條 `--closeout co-commit`
+流程透過另外安裝的 canonical v2 helper，排入審閱後 feature-only index、精確
+`claude:UUID` transcript、一個 `--plan` 或 `--no-plan`，以及 base `--message-file`。
+
+真實 wrapper 啟動時**不可加 `--allow-commit`**，讓 native dev 在外部 finalize
+時執行自己的 guards。Dev 不會啟動或關閉 agent。讓 recorder 保留實際 `queue_ack`
+輸出，回報「finalization queued」後退出，不再執行 repository／index 操作；
+`queued_but_not_bound` 亦同。`--run-id` 只修復該次既有 binding，不重新排入或
+產生新 ACK。Wrapper 結束後，由外部 `artifact finalize --intent ID --allow-commit`
+執行 prepare-only，重新檢查 native writer／policy／CAS，再以精確 journal revision
+綁定一次可 commit 的 helper 呼叫。結果未知時只 reconcile，不重試 commit；
+單靠 `--writer-stopped` 不構成 co-commit 證明。
+
+`artifact list --json` 與 readiness 將已保存 native intent 與 helper 觀測分開，
+不 reconcile 紀錄。整合及清理前，必須驗證完整 parent／tree／normalized message／
+唯一 request 證明與 reachable receipt，不採信 runtime done 或單獨 trailer。
+`agent-skills` 獨立維護的 canonical v2 原始碼、已安裝 helper 的相容能力要求
+（不內附或自動安裝）、唯讀 review preview、private 逐項審閱與實際輪替要求詳見
+[AI 產物](ai-artifacts.zh-TW.md)。Fixture review 不還原 secrets 或繞過 hooks。
+Native Windows co-commit 尚不支援；retirement 自己的 runtime、Git 與 containment
+檢查保持不變。
 
 ## 選擇 containment base
 

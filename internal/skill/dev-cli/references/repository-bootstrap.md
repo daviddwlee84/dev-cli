@@ -230,6 +230,12 @@ local work intact.
 Handoff is explicit: `stay`, `cd`, `open`, or `start`. `start` enters the normal
 task wizard. None of these choices launches a coding agent.
 
-REPOS `n` uses this same wizard in a suspended terminal with `--handoff stay`,
-then refreshes local dashboard inventory. It is available even when no
-repository row exists; the TUI does not maintain a reduced second creator.
+REPOS `n` and Ctrl+O → new repository use this same wizard in a suspended
+terminal with `--handoff stay`, then refresh local dashboard inventory. They do
+not depend on a selected row: empty/filtered-empty lists, pending repository
+observations, or a row disappearing while the menu is open do not block launch.
+An active clone still blocks creation. The wizard retains its confirmation and
+fresh destination, nested-repository and exclusive-create checks before mutation;
+cached inventory grants no authority to skip them. Other row-dependent actions
+and REMOTE clone freshness checks remain guarded. The TUI does not maintain a
+reduced second creator.

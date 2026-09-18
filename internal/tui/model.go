@@ -4152,13 +4152,22 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeList
 		m.input.Blur()
 		return m, nil
+	case "down":
+		m.setAt(m.at() + 1)
+		return m, nil
+	case "up":
+		m.setAt(m.at() - 1)
+		return m, nil
 	}
+	previous := m.input.Value()
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
-	// Filtering live is the point: seeing the list narrow as you type is what
-	// makes it faster than remembering an exact name.
-	m.filter = m.input.Value()
-	m.setAt(0)
+	// Narrow live when the query changes, but let cursor-only edits retain
+	// the selected result. Letters (including j/k) remain search text.
+	if m.input.Value() != previous {
+		m.filter = m.input.Value()
+		m.setAt(0)
+	}
 	return m, cmd
 }
 

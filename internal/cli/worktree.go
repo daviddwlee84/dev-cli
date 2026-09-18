@@ -215,6 +215,7 @@ command.`,
 
 func newWtOpenCmd(app *App) *cobra.Command {
 	var repoRef string
+	var noFocus bool
 	cmd := &cobra.Command{
 		Use:   "open <branch>",
 		Short: "Open an existing worktree in the runtime",
@@ -243,6 +244,21 @@ func newWtOpenCmd(app *App) *cobra.Command {
 				fmt.Fprintf(app.Out, "  %s", style.dim(fmt.Sprintf("(%s %s)", rt.Name(), opened.Handle)))
 			}
 			fmt.Fprintln(app.Out)
+			if noFocus {
+				if rt.Name() == "none" {
+					fmt.Fprintln(app.Out, "   no runtime opened; no shell directory change requested")
+				} else {
+					status := "not opened"
+					if opened.Opened {
+						status = "reused"
+						if opened.Created {
+							status = "opened"
+						}
+					}
+					fmt.Fprintf(app.Out, "   runtime %s (surface=%q); focus not requested\n", status, opened.Surface)
+				}
+				return nil
+			}
 			if rt.Name() == "none" {
 				return app.cdDirective(w.Path)
 			}
@@ -250,6 +266,7 @@ func newWtOpenCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&repoRef, "repo", "r", "", "repository (default: the current one)")
+	cmd.Flags().BoolVar(&noFocus, "no-focus", false, "open or reuse the runtime without switching, attaching, or changing shell directory")
 	registerFlagCompletion(cmd, "repo", completeRepoFlag(app))
 	cmd.ValidArgsFunction = completeWorktrees(app, true)
 	return cmd

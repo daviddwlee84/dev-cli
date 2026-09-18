@@ -21,16 +21,18 @@ import (
 const DefaultLargeLimit int64 = 2 << 20
 
 type PrepareRequest struct {
-	Worktree   string
-	TaskID     string
-	Session    string
-	RunID      string
-	Base       string
-	Plans      []string
-	AllowLarge bool
+	SpecStoryPath string
+	Worktree      string
+	TaskID        string
+	Session       string
+	RunID         string
+	Base          string
+	Plans         []string
+	AllowLarge    bool
 }
 
 type FinalizeRequest struct {
+	Revision      string // optional exact reviewed Store.GetRecord revision
 	IntentID      string
 	RunID         string
 	Settle        time.Duration
@@ -71,6 +73,7 @@ type IntentReadiness struct {
 	Finalized        bool
 	ReceiptReachable bool
 	ObservationError error
+	CoCommit         *CoCommitObservation `json:"co_commit,omitempty"`
 }
 
 // ReadinessInspection is a complete read-only observation for one selected
@@ -259,6 +262,9 @@ func inspectReadinessCheckoutBranch(ctx context.Context, checkout string) (strin
 }
 
 func inspectIntentReadiness(ctx context.Context, checkout string, intent Intent) (IntentReadiness, error) {
+	if intent.Destination == "co-commit" {
+		return inspectCoCommitReadiness(ctx, checkout, intent)
+	}
 	evidence := IntentReadiness{Intent: intent, Finalized: intent.Status == Finalized}
 	var err error
 	switch intent.Status {
@@ -407,9 +413,19 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (*Intent,
 		if len(request.Plans) > 0 {
 			return nil, fmt.Errorf("commit reviewed plans with product changes; archive prepared SpecStory sessions separately")
 		}
-		transcript.Path, err = history.LocateSession(ctx, request.Session)
+		transcript.Path, err = history.LocateSession(ctx, request.Session, request.SpecStoryPath)
+		if err == nil {
+			transcript.Path, err = history.LocateSession(ctx, request.Session, transcript.Path)
+		}
 	} else {
-		transcript, err = FindTranscript(repository.Root, provider, sessionID)
+		selected := request.SpecStoryPath
+		if selected == "" {
+			transcript, err = FindTranscript(repository.Root, provider, sessionID)
+			selected = transcript.Path
+		}
+		if err == nil {
+			transcript, err = SelectTranscript(repository.Root, selected, provider, sessionID)
+		}
 	}
 	if err != nil {
 		return nil, err
@@ -457,7 +473,7 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (*Intent,
 		}
 	}
 	intent := &Intent{
-		RunID: runID, Provider: provider, SessionID: sessionID, TaskID: request.TaskID,
+		RunID: runID, Provider: provider, SessionID: sessionID, TaskID: request.TaskID, SpecStoryPath: transcript.Path,
 		RepoPath: repository.MainRoot, GitCommonDir: repository.GitCommonDir,
 		WorktreePath: repository.Root, Branch: status.Branch, Base: request.Base,
 		Head: strings.TrimSpace(head), PlanPaths: plans, UnrelatedArtifacts: filtered, AllowLarge: request.AllowLarge,
@@ -481,11 +497,26 @@ func (s *Service) Prepare(ctx context.Context, request PrepareRequest) (*Intent,
 		if err := revalidatePreparedIntent(ctx, intent); err != nil {
 			return err
 		}
+		// Sources and index may have changed while waiting for the repository lock.
+		changes, e := statusPaths(ctx, intent.WorktreePath)
+		if e != nil {
+			return e
+		}
+		for _, change := range changes {
+			if change.Staged || !isRecognizedArtifact(change.Path) {
+				return fmt.Errorf("artifact preparation authority changed before intent creation: %s", change.Path)
+			}
+		}
 		if archiveMode {
+			if _, e := history.LocateSession(ctx, request.Session, intent.SpecStoryPath); e != nil {
+				return e
+			}
 			fresh, e := history.PolicyFingerprint(ctx)
 			if e != nil || fresh != intent.ArchivePolicy {
 				return agenthistory.ErrStale
 			}
+		} else if _, e := SelectTranscript(intent.WorktreePath, intent.SpecStoryPath, provider, sessionID); e != nil {
+			return e
 		}
 		return s.Store.Create(ctx, intent)
 	}); err != nil {
@@ -542,13 +573,19 @@ func revalidatePreparedIntent(ctx context.Context, intent *Intent) error {
 
 func (s *Service) ObserveSessionEnd(ctx context.Context, runID string, when time.Time) error {
 	intent, err := s.Store.FindByRunID(runID)
-	if err != nil {
+	if errors.Is(err, ErrIntentNotFound) {
 		return nil // SessionEnd without an armed intent is deliberately a no-op.
+	}
+	if err != nil {
+		return err
+	}
+	if intent.Status == Finalized || intent.Status == Discarded {
+		return nil
 	}
 	if when.IsZero() {
 		when = time.Now()
 	}
-	return s.Store.Update(ctx, intent.ID, func(candidate *Intent) error {
+	return s.updateIntent(ctx, intent, func(candidate *Intent) error {
 		candidate.SessionEndedAt = when.UTC().Truncate(time.Second)
 		return nil
 	})
@@ -562,26 +599,35 @@ func (s *Service) Finalize(ctx context.Context, request FinalizeRequest) (*Inten
 	if err != nil {
 		return nil, err
 	}
+	if request.Revision != "" && request.Revision != intent.storedRevision {
+		return nil, &StaleRevisionError{ID: intent.ID, Expected: request.Revision, Actual: intent.storedRevision}
+	}
 	lockDir := filepath.Join(intent.GitCommonDir, "dev-artifact-finalize")
 	var finalized *Intent
 	err = catalog.NewStore(lockDir).WithLock(ctx, func() error {
-		current, err := s.resolveIntent(request)
-		if err != nil {
+		if err := s.Store.CheckRevision(intent.ID, intent.storedRevision); err != nil {
 			return err
 		}
-		finalized, err = s.finalizeLocked(ctx, request, current)
+		var err error
+		finalized, err = s.finalizeLocked(ctx, request, intent)
 		return err
 	})
 	return finalized, err
 }
 
 func (s *Service) finalizeLocked(ctx context.Context, request FinalizeRequest, intent *Intent) (*Intent, error) {
+	if intent.Destination == "co-commit" {
+		return nil, coCommitFailure("canonical_delegation_required", "use_co_commit_finalize_with_explicit_approval")
+	}
+	if intent.Status == Discarded {
+		return nil, errors.New("discarded artifact intent cannot be finalized")
+	}
 	if intent.Destination == "archive" {
 		return s.finalizeArchive(ctx, request, intent)
 	}
 	if intent.Status == Finalized {
 		if commit, ok := findReceipt(ctx, intent.WorktreePath, intent.ID); ok && commit != intent.ArtifactCommit {
-			if err := s.markFinalized(ctx, intent.ID, intent.TranscriptPath, commit); err != nil {
+			if err := s.markFinalized(ctx, intent, intent.TranscriptPath, commit); err != nil {
 				return nil, err
 			}
 			return s.Store.Get(intent.ID)
@@ -589,26 +635,26 @@ func (s *Service) finalizeLocked(ctx context.Context, request FinalizeRequest, i
 		return intent, nil
 	}
 	if commit, ok := findReceipt(ctx, intent.WorktreePath, intent.ID); ok {
-		if err := s.markFinalized(ctx, intent.ID, intent.TranscriptPath, commit); err != nil {
+		if err := s.markFinalized(ctx, intent, intent.TranscriptPath, commit); err != nil {
 			return nil, err
 		}
 		return s.Store.Get(intent.ID)
 	}
 	if s.ScanStaged == nil {
-		return nil, s.fail(ctx, intent.ID, "scanner-missing", fmt.Errorf("artifact finalization requires a staged secret scanner"))
+		return nil, s.fail(ctx, intent, "scanner-missing", fmt.Errorf("artifact finalization requires a staged secret scanner"))
 	}
 	if err := s.revalidate(ctx, intent); err != nil {
-		return nil, s.fail(ctx, intent.ID, "git-drift", err)
+		return nil, s.fail(ctx, intent, "git-drift", err)
 	}
 	if intent.SessionEndedAt.IsZero() && !request.WriterStopped {
-		return nil, s.fail(ctx, intent.ID, "writer-unproven",
+		return nil, s.fail(ctx, intent, "writer-unproven",
 			fmt.Errorf("finalization requires SessionEnd observation or explicit post-writer proof"))
 	}
-	transcript, err := FindTranscript(intent.WorktreePath, intent.Provider, intent.SessionID)
+	transcript, err := selectedIntentTranscript(intent)
 	if err != nil {
-		return nil, s.fail(ctx, intent.ID, "transcript-missing", err)
+		return nil, s.fail(ctx, intent, "transcript-missing", err)
 	}
-	if err := s.Store.Update(ctx, intent.ID, func(candidate *Intent) error {
+	if err := s.updateIntent(ctx, intent, func(candidate *Intent) error {
 		candidate.Status = Finalizing
 		candidate.TranscriptPath = transcript.Path
 		candidate.FailureCode = ""
@@ -617,48 +663,95 @@ func (s *Service) finalizeLocked(ctx context.Context, request FinalizeRequest, i
 		return nil, err
 	}
 	if _, err := StableSnapshot(ctx, transcript.Path, request.Settle); err != nil {
-		return nil, s.fail(ctx, intent.ID, "writer-active", err)
+		return nil, s.fail(ctx, intent, "writer-active", err)
 	}
 	paths := append([]string{transcript.Path}, intent.PlanPaths...)
+	if err := s.finalizeGuard(ctx, request, intent, paths); err != nil {
+		return nil, s.fail(ctx, intent, "writer-guard", err)
+	}
+	if _, err := selectedIntentTranscript(intent); err != nil {
+		return nil, s.fail(ctx, intent, "source-drift", err)
+	}
 	if err := ensureOnlyAllowedIndex(ctx, intent.WorktreePath, nil); err != nil {
-		return nil, s.fail(ctx, intent.ID, "index-not-empty", err)
+		return nil, s.fail(ctx, intent, "index-not-empty", err)
 	}
 	if _, err := gitx.Run(ctx, intent.WorktreePath, append([]string{"add", "--"}, paths...)...); err != nil {
-		return nil, s.fail(ctx, intent.ID, "stage-failed", err)
+		return nil, s.fail(ctx, intent, "stage-failed", err)
 	}
 	cleanup := func() {
 		_, _ = gitx.Run(context.Background(), intent.WorktreePath, append([]string{"reset", "--"}, paths...)...)
 	}
-	if err := s.ScanStaged(ctx, intent.WorktreePath, paths); err != nil {
+	// The compatibility scanner may redact working files before restaging them.
+	// A live writer observation always wins over --writer-stopped.
+	if err := s.finalizeGuard(ctx, request, intent, paths); err != nil {
 		cleanup()
-		return nil, s.fail(ctx, intent.ID, "scan-failed", err)
+		return nil, s.fail(ctx, intent, "writer-guard", err)
 	}
-	if _, err := StableSnapshot(ctx, transcript.Path, request.Settle); err != nil {
+	if _, err := selectedIntentTranscript(intent); err != nil {
 		cleanup()
-		return nil, s.fail(ctx, intent.ID, "writer-active", err)
+		return nil, s.fail(ctx, intent, "source-drift", err)
 	}
 	if err := ensureOnlyAllowedIndex(ctx, intent.WorktreePath, paths); err != nil {
 		cleanup()
-		return nil, s.fail(ctx, intent.ID, "index-drift", err)
+		return nil, s.fail(ctx, intent, "index-drift", err)
 	}
 	if err := stagedFilesMatch(ctx, intent.WorktreePath, paths); err != nil {
 		cleanup()
-		return nil, s.fail(ctx, intent.ID, "index-drift", err)
+		return nil, s.fail(ctx, intent, "index-drift", err)
+	}
+	if err := s.ScanStaged(ctx, intent.WorktreePath, paths); err != nil {
+		cleanup()
+		return nil, s.fail(ctx, intent, "scan-failed", err)
+	}
+	if _, err := StableSnapshot(ctx, transcript.Path, request.Settle); err != nil {
+		cleanup()
+		return nil, s.fail(ctx, intent, "writer-active", err)
+	}
+	// Scanning and settling can be slow; recheck writer, record, source identity
+	// and Git authority before committing any staged content.
+	if err := s.finalizeGuard(ctx, request, intent, paths); err != nil {
+		cleanup()
+		return nil, s.fail(ctx, intent, "writer-guard", err)
+	}
+	if _, err := selectedIntentTranscript(intent); err != nil {
+		cleanup()
+		return nil, s.fail(ctx, intent, "source-drift", err)
+	}
+	if err := s.revalidate(ctx, intent); err != nil {
+		cleanup()
+		return nil, s.fail(ctx, intent, "git-drift", err)
+	}
+	if err := ensureOnlyAllowedIndex(ctx, intent.WorktreePath, paths); err != nil {
+		cleanup()
+		return nil, s.fail(ctx, intent, "index-drift", err)
+	}
+	if err := stagedFilesMatch(ctx, intent.WorktreePath, paths); err != nil {
+		cleanup()
+		return nil, s.fail(ctx, intent, "index-drift", err)
 	}
 	message := fmt.Sprintf("chore: finalize %s agent session", intent.Provider)
 	trailers := fmt.Sprintf("Agent-Artifact-Session: %s:%s\nDev-Artifact-Intent: %s", intent.Provider, intent.SessionID, intent.ID)
 	if _, err := gitx.Run(ctx, intent.WorktreePath, "commit", "-m", message, "-m", trailers); err != nil {
 		cleanup()
-		return nil, s.fail(ctx, intent.ID, "commit-failed", err)
+		return nil, s.fail(ctx, intent, "commit-failed", err)
 	}
 	commit, err := gitx.Run(ctx, intent.WorktreePath, "rev-parse", "HEAD")
 	if err != nil {
-		return nil, s.fail(ctx, intent.ID, "receipt-failed", err)
+		return nil, s.fail(ctx, intent, "receipt-failed", err)
 	}
-	if err := s.markFinalized(ctx, intent.ID, transcript.Path, commit); err != nil {
+	if err := s.markFinalized(ctx, intent, transcript.Path, commit); err != nil {
 		return nil, err
 	}
 	return s.Store.Get(intent.ID)
+}
+
+func (s *Service) finalizeGuard(ctx context.Context, request FinalizeRequest, intent *Intent, paths []string) error {
+	if request.Guard != nil {
+		if err := request.Guard(ctx, intent.WorktreePath, paths); err != nil {
+			return err
+		}
+	}
+	return s.Store.CheckRevision(intent.ID, intent.storedRevision)
 }
 
 func (s *Service) resolveIntent(request FinalizeRequest) (*Intent, error) {
@@ -701,23 +794,42 @@ func (s *Service) revalidate(ctx context.Context, intent *Intent) error {
 	return nil
 }
 
-func (s *Service) fail(ctx context.Context, id, code string, cause error) error {
-	_ = s.Store.Update(ctx, id, func(intent *Intent) error {
+func (s *Service) fail(ctx context.Context, current *Intent, code string, cause error) error {
+	err := s.updateIntent(ctx, current, func(intent *Intent) error {
 		intent.Status = Failed
 		intent.FailureCode = code
 		return nil
 	})
-	return fmt.Errorf("artifact finalization %s: %w", code, cause)
+	return fmt.Errorf("artifact finalization %s: %w", code, errors.Join(cause, err))
 }
 
-func (s *Service) markFinalized(ctx context.Context, id, transcript, commit string) error {
-	return s.Store.Update(ctx, id, func(intent *Intent) error {
+func (s *Service) markFinalized(ctx context.Context, current *Intent, transcript, commit string) error {
+	return s.updateIntent(ctx, current, func(intent *Intent) error {
 		intent.Status = Finalized
 		intent.TranscriptPath = transcript
 		intent.ArtifactCommit = commit
 		intent.FailureCode = ""
 		return nil
 	})
+}
+
+// updateIntent advances only this operation's exact authority. External work and
+// guards never run under the store lock (repository/runtime lock ordering).
+func (s *Service) updateIntent(ctx context.Context, current *Intent, mutate func(*Intent) error) error {
+	record, err := s.Store.UpdateIfRevision(ctx, current.ID, current.storedRevision, mutate)
+	if err == nil {
+		*current = *record.Intent
+	}
+	return err
+}
+
+func selectedIntentTranscript(intent *Intent) (Transcript, error) {
+	if intent.SpecStoryPath != "" {
+		return SelectTranscript(intent.WorktreePath, intent.SpecStoryPath, intent.Provider, intent.SessionID)
+	}
+	// Existing intents predate strict exact selection. Keep their original lookup
+	// (including ambiguity refusal); never synthesize new selection authority.
+	return FindTranscript(intent.WorktreePath, intent.Provider, intent.SessionID)
 }
 
 type statusPath struct {

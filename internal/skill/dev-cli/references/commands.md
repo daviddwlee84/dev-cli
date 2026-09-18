@@ -92,9 +92,15 @@ Finalize a prepared session after its transcript writer stops
 dev artifact finalize [flags]
 ```
 
+- `--allow-commit` — authorize one guarded canonical co-commit attempt or reconciliation
 - `--archive-plan` — reviewed archive plan for a prepared session (required for redaction copies)
 - `--if-pending` — silently succeed when no armed intent matches the run id
 - `--intent` — artifact intent id
+- `--json` — emit a versioned finalization or review result
+- `--preview-review` — read the co-commit review receipt without mutating or committing
+- `--review-file` — absolute private per-finding review file for exact co-commit recovery
+- `--revision` — require the exact reviewed native intent revision
+- `--rotation-confirmed` — confirm actual credential rotation for the reviewed co-commit findings
 - `--run-id` — outer wrapper run id
 - `--settle` — required transcript stability interval
 - `--writer-stopped` — confirm the outer agent wrapper has returned before finalization
@@ -119,8 +125,10 @@ dev artifact find [text] [flags]
 List pending and completed artifact handoffs
 
 ```
-dev artifact list
+dev artifact list [flags]
 ```
+
+- `--json` — emit versioned handoffs with separate read-only helper observations
 
 ### `dev artifact migrate`
 
@@ -1414,9 +1422,15 @@ dev prepare [task-or-worktree] [flags]
 ```
 
 - `--allow-large` — acknowledge adding a new untracked transcript over 2 MiB
+- `--closeout` — handoff lane: product-first or explicit canonical co-commit
+- `--closeout-helper` — explicit installed canonical helper scripts directory (co-commit only)
+- `--json` — emit a versioned preparation result, including retained partial effects
+- `--message-file` — base commit message file for co-commit, without managed provenance trailers
+- `--no-plan` — explicitly select no plan for co-commit
 - `--plan` — exact .claude/plans path to include (repeatable)
 - `--run-id` — outer wrapper run id (default: DEV_AGENT_RUN_ID or generated)
 - `--session` — exact agent session provider:uuid (inferred from task/runtime when unique)
+- `--specstory-path` — exact SpecStory Markdown path matching the selected session and capture root
 
 ### `dev prompt`
 
@@ -2870,6 +2884,7 @@ Open an existing worktree in the runtime
 dev wt open <branch> [flags]
 ```
 
+- `--no-focus` — open or reuse the runtime without switching, attaching, or changing shell directory
 - `-r, --repo` — repository (default: the current one)
 
 ### `dev wt plan`

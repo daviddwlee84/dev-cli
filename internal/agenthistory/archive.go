@@ -181,8 +181,18 @@ func (s *Service) PreviewArchive(ctx context.Context, o ArchiveOptions) (Plan, e
 			return p.View, err
 		}
 	}
+	exact := ""
+	if o.SpecStoryPath != "" {
+		exact, err = s.LocateSession(ctx, o.Session, o.SpecStoryPath)
+		if err != nil {
+			return p.View, err
+		}
+	}
 	var chosen []string
 	for _, logical := range files {
+		if exact != "" && s.capturePath(logical) != exact {
+			continue
+		}
 		if len(selected) > 0 && !selected[logical] {
 			continue
 		}
@@ -221,7 +231,11 @@ func (s *Service) PreviewArchive(ctx context.Context, o ArchiveOptions) (Plan, e
 		}
 		provider, id := "files", uuid.NewSHA1(uuid.NameSpaceURL, []byte(s.Policy.ProjectID+"\x00"+logical)).String()
 		if s.Policy.Source == "specstory" {
-			provider, id, e = sessionIdentity(data)
+			if o.SpecStoryPath != "" {
+				provider, id, e = specStoryPreamble(bytes.NewReader(data))
+			} else {
+				provider, id, e = sessionIdentity(data)
+			}
 			if e != nil {
 				return p.View, e
 			}

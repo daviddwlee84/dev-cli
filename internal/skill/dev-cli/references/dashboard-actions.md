@@ -35,13 +35,38 @@ Finishing through PR preserves HOT/WARM intent. Integration records DONE;
 retirement separately removes eligible execution state and keeps the branch by
 default. These actions retain the existing taskflow safety rules.
 
+## Live filters
+
+In all eight dashboard views, `/` narrows the current list as you type. Up/Down
+moves through visible results while input stays focused, retaining the query and
+text cursor; it does not run an action or initiate network work. `j/k` and other
+letters remain text. Left/Right/Home/End and no-op deletions retain the selected
+result; only a changed query selects the first result. Enter keeps the query and
+selection and exits input without opening the row. A later list Enter uses its
+normal open action. Esc while filtering clears the query. Pending repository
+details do not hide the active filter prompt.
+
+Help index/results searches also support Up/Down while typing and Enter to keep
+selection without opening an entry. Article find/scroll remains separate. Notes
+search still waits for Enter before querying; it is not a live list filter.
+Ctrl+O keeps its existing searchable-action behavior: Enter runs the selected
+option rather than merely leaving input. Forms and SSH dialogs are unchanged.
+
 ## Start and open work
 
-REPOS Enter opens the selected repository without creating a task. `s` and `d`
-open the full start wizard with worktree or direct preselected. The wizard asks
-for the task and necessary branch/base/next action, then offers open (default)
-or stay before final creation confirmation. A base is explicit in the reviewed
-plan, never inferred from an arbitrary checked-out branch.
+REPOS `n` or Ctrl+O → new repository opens `dev repo new --handoff stay`, even
+with an empty/filtered-empty list or pending inventory observations. The action
+is independent of the selected row, including if that row disappears while the
+menu is open. An active clone still blocks creation. The native wizard retains
+confirmation plus fresh destination, nested-repository and exclusive-create
+checks before mutation; other row-dependent actions and REMOTE clone freshness
+checks remain guarded.
+
+REPOS Enter outside filter input opens the selected repository without creating
+a task. `s` and `d` open the full start wizard with worktree or direct preselected.
+The wizard asks for the task and necessary branch/base/next action, then offers
+open (default) or stay before final creation confirmation. A base is explicit in
+the reviewed plan, never inferred from an arbitrary checked-out branch.
 
 The dashboard releases its terminal before an attach, shell-directory handoff,
 or external retirement coordinator runs. An ordinary completion/cancellation

@@ -56,9 +56,10 @@ type SetupOptions struct {
 }
 
 type ArchiveOptions struct {
-	Session string
-	Files   []string
-	Timeout time.Duration
+	SpecStoryPath string
+	Session       string
+	Files         []string
+	Timeout       time.Duration
 }
 
 type MigrationOptions struct {

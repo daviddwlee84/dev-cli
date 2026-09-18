@@ -2,7 +2,7 @@
 description: 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
 authority: project
 status: evolving
-verified_on: 2026-09-13
+verified_on: 2026-09-18
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 lang: zh-TW
 ---
@@ -63,6 +63,18 @@ press 選取 visible row；點目前反白列就開啟 actions，包含鍵盤或
 只開選單，另行點選項目才執行。Enter/`o` 開啟目標。Mouse tracking
 啟用時，部分 terminal 的原生文字選取需要按住 Shift/Option。
 
+## 即時篩選清單
+
+八個 dashboard views 都可按 `/` 邊輸入邊篩選。輸入時用上下鍵選取可見結果，
+輸入框仍保持焦點，查詢文字與文字游標不變，也不執行操作或觸發網路請求。
+`j/k` 與其他字母仍是搜尋文字。左右鍵、Home/End 只移動文字游標；只移動游標
+或未刪除任何字元時，保留目前結果選取。只有查詢文字真的改變才選取第一筆。
+
+Enter 保留查詢與選取並離開輸入，不會開啟該列；回到清單後再按 Enter，才執行
+所選列原本的開啟操作。篩選時按 Esc 會清除查詢。即使所選 repository 尚有
+pending observations，輸入框與按鍵提示仍會顯示。Notes 搜尋仍需 Enter 才送出
+查詢；forms、SSH dialogs 與 Ctrl+O action search 保留各自的行為。
+
 ## 目前分頁的 Help（v0.2.24）
 
 按 `?` 或點 footer 的 **Help**，預設開啟目前 dashboard 分頁的 **Keys**，
@@ -97,6 +109,10 @@ Manual 搜尋主題名稱、標題、小節與全文，並顯示摘錄；開啟�
 瀏覽長內容；文章的橫向捲動按鈕或左右鍵可查看過寬的程式碼與圖。
 Esc 依序停止輸入、清除查詢、返回上一層、關閉 Help。非輸入狀態下 `q`
 直接關閉；輸入中的 `q`、`v`、`f` 等字元仍是文字。
+在即時 Help 索引／結果搜尋中，上下鍵選取項目，不離開輸入或移動文字游標；
+`j/k` 仍是文字。只移動文字游標會保留選取，只有文字改變才重設結果。Enter
+保留查詢與選取，不會開啟項目；離開輸入後再按 Enter 才閱讀。文章內查找／捲動
+保留既有 Enter 送出與 `n`／`N` 切換命中的行為。
 
 Help 與 Ctrl+O 共用有 **Expand**、**Close** 的浮窗，通常最大為
 104 欄 × 32 列、四周至少留兩格；少於 80 欄或 22 列時使用全畫面。
@@ -160,9 +176,13 @@ y         開啟 copy/context actions
 
 展開後會顯示每個 linked worktree，包括 harness-owned `(ephemeral)` 與未受管理的 `(external)` checkout。LIVE column 將 runtime activity 與 task state 分開。
 
-REPOS 為空時仍可按 `n`。Dashboard 會 suspend 到
+REPOS 為空、篩選後無結果，或所選列尚有 pending observations 時，仍可按 `n`
+或 Ctrl+O → new repository。這個入口不依賴所選列，選單開啟期間該列消失也不會
+阻擋；但進行中的 clone 仍會阻擋建立。Dashboard 會 suspend 到
 `dev repo new --handoff stay`，保留 config/scaffold overrides，成功後重新載入
-local TASKS/REPOS/TRY state；TUI 不會另外維護一套縮減版 repository creator。
+local TASKS/REPOS/TRY state。原生 wizard 仍要求確認，並在 mutation 前重新檢查
+目的地、nested-repository 限制與 exclusive creation。其他依賴所選列的操作及
+REMOTE clone 的 freshness checks 維持不變；TUI 不會另外維護縮減版 creator。
 
 `dev repo context [repo]` 會輸出 TUI copy menu 相同的 agent-ready Markdown context，包含 paths、Git/worktree/runtime facts 與 tasks。`--json` 加入 schema-v1 evidence/readiness contract；只有 `--refresh` 會 live-probe optional forge 與 configured fleet sources。
 
@@ -256,7 +276,7 @@ repository 的 notes overlay。Child worktree 會透過 catalog identity 解析�
 
 ```text
 j/k       移動
-/         搜尋 body、tags 與 repository
+/         搜尋 body、tags 與 repository；Enter 才送出查詢
 Enter     展開或收合 Markdown body
 a or n    新增另一則 note
 e         用 VISUAL/EDITOR 編輯 body
@@ -402,7 +422,8 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 ## 載入、選單搜尋與多年活動
 
 REPOS 先讀取附時間的顯示 cache，再逐批加入 discovery 與 Git observations。
-Runtime 較慢時，其他 repo 資料仍會出現；pending／cached rows 不提供操作授權。
+Runtime 較慢時，其他 repo 資料仍會出現；pending／cached rows 不提供依賴該列
+之操作的授權。New-repo wizard 是獨立入口，仍保留最終 mutation checks。
 完整 discovery 才移除消失項目，失敗保留 stale／unknown。`r` 保持本地 refresh；
 `dev cache clear repos` 可清除快照，SIZE 沿用其獨立 cache。
 

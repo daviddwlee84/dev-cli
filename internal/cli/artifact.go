@@ -27,10 +27,16 @@ func artifactStore(app *App) *artifact.Store {
 
 func newPrepareCmd(app *App) *cobra.Command {
 	var (
-		session    string
-		runID      string
-		plans      []string
-		allowLarge bool
+		session       string
+		specStoryPath string
+		runID         string
+		plans         []string
+		allowLarge    bool
+		closeout      string
+		messageFile   string
+		helperDir     string
+		noPlan        bool
+		jsonOutput    bool
 	)
 	cmd := &cobra.Command{
 		Use:   "prepare [task-or-worktree]",
@@ -41,9 +47,29 @@ Product changes must already be committed and the index empty. dev records the
 exact worktree, branch, HEAD and agent session, but deliberately does not stage
 the still-changing transcript, close the runtime, or remove the checkout.
 After the agent exits, run dev artifact finalize from the outer SpecStory wrapper
-or another workspace.`,
+or another workspace.
+
+--closeout co-commit opts into a compatible canonical post-session helper. Stage
+only reviewed product files, select the exact transcript and one plan (or
+--no-plan), and provide a base --message-file. The real wrapper must be launched
+without automatic commit authorization; dev never launches or closes an agent.
+After queueing, report "finalization queued" and exit without further repository
+operations. An external dev artifact finalize --allow-commit performs guarded
+preparation and delegates one normal commit to the helper.
+
+Use --run-id with co-commit only to bind an already-queued exact run after a
+partial native binding failure; it cannot create wrapper lifecycle proof.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if closeout != "product-first" && closeout != "co-commit" {
+				return errors.New("--closeout must be product-first or co-commit")
+			}
+			if closeout != "co-commit" && (messageFile != "" || helperDir != "" || noPlan) {
+				return errors.New("--message-file, --closeout-helper and --no-plan require --closeout co-commit")
+			}
+			if closeout == "co-commit" && (len(plans) > 1 || (len(plans) == 0 && !noPlan) || (len(plans) != 0 && noPlan)) {
+				return errors.New("co-commit requires one --plan or explicit --no-plan")
+			}
 			ctx := ctxOf()
 			worktree, taskRecord, err := prepareTarget(app, args)
 			if err != nil {
@@ -58,9 +84,24 @@ or another workspace.`,
 					return err
 				}
 			}
+			if closeout == "co-commit" {
+				request := artifact.CoCommitPrepareRequest{
+					Worktree: worktree, Session: session, RunID: runID, SpecStoryPath: specStoryPath,
+					NoPlan: noPlan, MessageFile: messageFile, HelperDir: helperDir, AllowLarge: allowLarge,
+				}
+				if len(plans) == 1 {
+					request.Plan = plans[0]
+				}
+				if taskRecord != nil {
+					request.TaskID, request.Base = taskRecord.ID, taskRecord.Base
+				}
+				service := &artifact.Service{Store: artifactStore(app)}
+				result, err := service.PrepareCoCommit(ctx, request)
+				return renderCoCommitResult(app, result, err, jsonOutput)
+			}
 			request := artifact.PrepareRequest{
 				Worktree: worktree, Session: session, RunID: runID,
-				Plans: plans, AllowLarge: allowLarge,
+				Plans: plans, AllowLarge: allowLarge, SpecStoryPath: specStoryPath,
 			}
 			if taskRecord != nil {
 				request.TaskID, request.Base = taskRecord.ID, taskRecord.Base
@@ -75,6 +116,9 @@ or another workspace.`,
 				if err := app.Tasks.Save(taskRecord); err != nil {
 					return err
 				}
+			}
+			if jsonOutput {
+				return renderArtifactPreparationJSON(app, intent)
 			}
 			fmt.Fprintf(app.Out, "PREPARED %s\n", intent.ID)
 			fmt.Fprintf(app.Out, "   session   %s:%s\n", intent.Provider, intent.SessionID)
@@ -92,9 +136,15 @@ or another workspace.`,
 	}
 	f := cmd.Flags()
 	f.StringVar(&session, "session", "", "exact agent session provider:uuid (inferred from task/runtime when unique)")
+	f.StringVar(&specStoryPath, "specstory-path", "", "exact SpecStory Markdown path matching the selected session and capture root")
 	f.StringVar(&runID, "run-id", "", "outer wrapper run id (default: DEV_AGENT_RUN_ID or generated)")
 	f.StringArrayVar(&plans, "plan", nil, "exact .claude/plans path to include (repeatable)")
 	f.BoolVar(&allowLarge, "allow-large", false, "acknowledge adding a new untracked transcript over 2 MiB")
+	f.StringVar(&closeout, "closeout", "product-first", "handoff lane: product-first or explicit canonical co-commit")
+	f.StringVar(&messageFile, "message-file", "", "base commit message file for co-commit, without managed provenance trailers")
+	f.StringVar(&helperDir, "closeout-helper", "", "explicit installed canonical helper scripts directory (co-commit only)")
+	f.BoolVar(&noPlan, "no-plan", false, "explicitly select no plan for co-commit")
+	f.BoolVar(&jsonOutput, "json", false, "emit a versioned preparation result, including retained partial effects")
 	return cmd
 }
 
@@ -110,12 +160,18 @@ Native agent sessions and tool databases have their own backup/resume contracts.
 
 func newArtifactFinalizeCmd(app *App) *cobra.Command {
 	var (
-		intentID      string
-		runID         string
-		settle        time.Duration
-		ifPending     bool
-		writerStopped bool
-		archivePlan   string
+		intentID          string
+		runID             string
+		settle            time.Duration
+		ifPending         bool
+		writerStopped     bool
+		archivePlan       string
+		allowCommit       bool
+		reviewFile        string
+		rotationConfirmed bool
+		previewReview     bool
+		revision          string
+		jsonOutput        bool
 	)
 	cmd := &cobra.Command{
 		Use:   "finalize",
@@ -132,11 +188,47 @@ func newArtifactFinalizeCmd(app *App) *cobra.Command {
 				}
 			}
 			service := &artifact.Service{Store: store, ScanStaged: scanAgentArtifacts}
+			var selected *artifact.Intent
+			var lookupErr error
+			if intentID != "" {
+				selected, lookupErr = store.Get(intentID)
+			} else if resolvedRunID != "" {
+				selected, lookupErr = store.FindByRunID(resolvedRunID)
+			}
+			if lookupErr != nil {
+				return lookupErr
+			}
+			if selected != nil && selected.Destination == "co-commit" {
+				if archivePlan != "" {
+					return errors.New("co-commit does not consume an archive plan")
+				}
+				if previewReview {
+					if allowCommit || reviewFile != "" || rotationConfirmed {
+						return errors.New("--preview-review is read-only and cannot be combined with commit approval or review apply")
+					}
+					preview, err := service.PreviewCoCommitReview(ctxOf(), selected.ID)
+					if err == nil && revision != "" && preview.NativeRevision != revision {
+						return renderCoCommitReview(app, nil, artifact.ErrStaleRevision, jsonOutput)
+					}
+					return renderCoCommitReview(app, preview, err, jsonOutput)
+				}
+				result, err := service.FinalizeCoCommit(ctxOf(), artifact.CoCommitFinalizeRequest{
+					IntentID: selected.ID, Revision: revision, AllowCommit: allowCommit, ReviewFile: reviewFile,
+					RotationConfirmed: rotationConfirmed, Guard: (&hygieneCLI{app: app}).guard,
+				})
+				return renderCoCommitResult(app, result, err, jsonOutput)
+			}
+			if allowCommit || previewReview || reviewFile != "" || rotationConfirmed {
+				return errors.New("co-commit approval/review flags require a co-commit intent")
+			}
 			intent, err := service.Finalize(ctxOf(), artifact.FinalizeRequest{
-				IntentID: intentID, RunID: resolvedRunID, Settle: settle, WriterStopped: writerStopped, ArchivePlanID: archivePlan, Guard: (&hygieneCLI{app: app}).guard,
+				IntentID: intentID, RunID: resolvedRunID, Settle: settle, WriterStopped: writerStopped, ArchivePlanID: archivePlan, Revision: revision, Guard: (&hygieneCLI{app: app}).guard,
 			})
 			if err != nil {
 				return err
+			}
+			if jsonOutput {
+				return renderArtifactFinalizationJSON(app, intent)
 			}
 			fmt.Fprintf(app.Out, "FINALIZED %s\n", intent.ID)
 			if intent.Destination == "archive" {
@@ -155,6 +247,12 @@ func newArtifactFinalizeCmd(app *App) *cobra.Command {
 	f.DurationVar(&settle, "settle", 500*time.Millisecond, "required transcript stability interval")
 	f.BoolVar(&ifPending, "if-pending", false, "silently succeed when no armed intent matches the run id")
 	f.BoolVar(&writerStopped, "writer-stopped", false, "confirm the outer agent wrapper has returned before finalization")
+	f.BoolVar(&allowCommit, "allow-commit", false, "authorize one guarded canonical co-commit attempt or reconciliation")
+	f.BoolVar(&previewReview, "preview-review", false, "read the co-commit review receipt without mutating or committing")
+	f.StringVar(&reviewFile, "review-file", "", "absolute private per-finding review file for exact co-commit recovery")
+	f.BoolVar(&rotationConfirmed, "rotation-confirmed", false, "confirm actual credential rotation for the reviewed co-commit findings")
+	f.StringVar(&revision, "revision", "", "require the exact reviewed native intent revision")
+	f.BoolVar(&jsonOutput, "json", false, "emit a versioned finalization or review result")
 	return cmd
 }
 
@@ -176,10 +274,11 @@ transcript, and only a finalization that already failed is a dead end.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			store := artifactStore(app)
-			intent, err := store.Get(args[0])
+			record, err := store.GetRecord(args[0])
 			if err != nil {
 				return err
 			}
+			intent := record.Intent
 			switch intent.Status {
 			case artifact.Discarded:
 				fmt.Fprintf(app.Out, "%s is already discarded\n", intent.ID)
@@ -209,7 +308,7 @@ transcript, and only a finalization that already failed is a dead end.`,
 					return nil
 				}
 			}
-			if err := store.Update(ctxOf(), intent.ID, func(current *artifact.Intent) error {
+			if _, err := store.UpdateIfRevision(ctxOf(), intent.ID, record.Revision, func(current *artifact.Intent) error {
 				current.Status = artifact.Discarded
 				return nil
 			}); err != nil {
@@ -224,7 +323,8 @@ transcript, and only a finalization that already failed is a dead end.`,
 }
 
 func newArtifactListCmd(app *App) *cobra.Command {
-	return &cobra.Command{
+	var jsonOutput bool
+	cmd := &cobra.Command{
 		Use:   "list",
 		Short: "List pending and completed artifact handoffs",
 		Args:  cobra.NoArgs,
@@ -233,17 +333,11 @@ func newArtifactListCmd(app *App) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			style := app.outStyle()
-			table := app.newTable("INTENT", "STATUS", "SESSION", "BRANCH", "COMMIT")
-			for _, intent := range intents {
-				table.Add(intent.ID, style.artifactState(string(intent.Status)),
-					style.dim(intent.Provider+":"+shortOID(intent.SessionID)),
-					intent.Branch, style.dim(shortOID(firstNonEmpty(intent.ArtifactCommit, intent.ArchiveCommit))))
-			}
-			table.Render(app.Out)
-			return nil
+			return renderArtifactHandoffs(app, intents, jsonOutput)
 		},
 	}
+	cmd.Flags().BoolVar(&jsonOutput, "json", false, "emit versioned handoffs with separate read-only helper observations")
+	return cmd
 }
 
 func newArtifactObserveCmd(app *App) *cobra.Command {

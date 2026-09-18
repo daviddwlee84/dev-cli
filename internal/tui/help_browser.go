@@ -415,6 +415,9 @@ func (m Model) helpLayout() helpFrame {
 	}
 	if m.help.editing {
 		f.footer = "Enter search · Esc stop editing; Esc again clears"
+		if loc.screen == helpHome || loc.screen == helpScopeScreen {
+			f.footer = "↑/↓ choose · Enter keep · Esc stop editing; Esc again clears"
+		}
 	}
 	return f
 }
@@ -625,14 +628,26 @@ func (m Model) updateHelp(message tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.helpFindNext(1)
 			}
 			return m, nil
+		case "down", "up":
+			if loc.screen == helpHome || loc.screen == helpScopeScreen {
+				delta := 1
+				if key == "up" {
+					delta = -1
+				}
+				m.helpMove(delta)
+				return m, nil
+			}
 		}
+		previous := m.help.input.Value()
 		var cmd tea.Cmd
 		m.help.input, cmd = m.help.input.Update(message)
-		loc.query = m.help.input.Value()
-		loc.scroll, loc.index, loc.xOffset = 0, 0, 0
-		m.setHelpLocation(loc)
-		if loc.screen != helpTopicScreen {
-			m.selectFirstHelpTarget()
+		if m.help.input.Value() != previous {
+			loc.query = m.help.input.Value()
+			loc.scroll, loc.index, loc.xOffset = 0, 0, 0
+			m.setHelpLocation(loc)
+			if loc.screen != helpTopicScreen {
+				m.selectFirstHelpTarget()
+			}
 		}
 		return m, cmd
 	}

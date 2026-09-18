@@ -26,26 +26,28 @@ const (
 
 // Intent is a durable handoff from an active agent to an external finalizer.
 type Intent struct {
-	SchemaVersion      int      `json:"schema_version"`
-	ID                 string   `json:"id"`
-	RunID              string   `json:"run_id"`
-	Provider           string   `json:"provider"`
-	SessionID          string   `json:"session_id"`
-	TaskID             string   `json:"task_id,omitempty"`
-	RepoPath           string   `json:"repo_path"`
-	GitCommonDir       string   `json:"git_common_dir"`
-	WorktreePath       string   `json:"worktree_path"`
-	Branch             string   `json:"branch"`
-	Base               string   `json:"base,omitempty"`
-	Head               string   `json:"head"`
-	PlanPaths          []string `json:"plan_paths,omitempty"`
-	UnrelatedArtifacts []string `json:"unrelated_artifacts,omitempty"`
-	AllowLarge         bool     `json:"allow_large,omitempty"`
-	Destination        string   `json:"destination,omitempty"`
-	ArchivePolicy      string   `json:"archive_policy,omitempty"`
-	ArchiveStateDir    string   `json:"archive_state_dir,omitempty"`
-	ArchivePlanID      string   `json:"archive_plan_id,omitempty"`
-	ArchiveCommit      string   `json:"archive_commit,omitempty"`
+	SchemaVersion      int              `json:"schema_version"`
+	ID                 string           `json:"id"`
+	RunID              string           `json:"run_id"`
+	Provider           string           `json:"provider"`
+	SessionID          string           `json:"session_id"`
+	SpecStoryPath      string           `json:"specstory_path,omitempty"`
+	TaskID             string           `json:"task_id,omitempty"`
+	RepoPath           string           `json:"repo_path"`
+	GitCommonDir       string           `json:"git_common_dir"`
+	WorktreePath       string           `json:"worktree_path"`
+	Branch             string           `json:"branch"`
+	Base               string           `json:"base,omitempty"`
+	Head               string           `json:"head"`
+	PlanPaths          []string         `json:"plan_paths,omitempty"`
+	UnrelatedArtifacts []string         `json:"unrelated_artifacts,omitempty"`
+	AllowLarge         bool             `json:"allow_large,omitempty"`
+	Destination        string           `json:"destination,omitempty"`
+	CoCommit           *CoCommitBinding `json:"co_commit,omitempty"`
+	ArchivePolicy      string           `json:"archive_policy,omitempty"`
+	ArchiveStateDir    string           `json:"archive_state_dir,omitempty"`
+	ArchivePlanID      string           `json:"archive_plan_id,omitempty"`
+	ArchiveCommit      string           `json:"archive_commit,omitempty"`
 
 	Status         Status    `json:"status"`
 	TranscriptPath string    `json:"transcript_path,omitempty"`
@@ -54,6 +56,8 @@ type Intent struct {
 	SessionEndedAt time.Time `json:"session_ended_at,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+
+	storedRevision string // exact loaded JSON bytes; never persisted
 }
 
 var (
@@ -62,8 +66,18 @@ var (
 )
 
 func (i Intent) Validate() error {
-	if i.Destination != "" && i.Destination != "archive" {
+	if i.Destination != "" && i.Destination != "archive" && i.Destination != "co-commit" {
 		return fmt.Errorf("unsupported artifact destination")
+	}
+	if i.Destination == "co-commit" {
+		if i.CoCommit == nil || i.Status == Discarded {
+			return fmt.Errorf("co-commit intent requires canonical helper authority and cannot be discarded")
+		}
+		if err := i.CoCommit.validate(); err != nil {
+			return err
+		}
+	} else if i.CoCommit != nil {
+		return fmt.Errorf("co-commit binding requires co-commit destination")
 	}
 	if i.Destination == "archive" && (i.ArchiveStateDir == "" || i.ArchivePolicy == "") {
 		return fmt.Errorf("archive intent lacks policy/state binding")

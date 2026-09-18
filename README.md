@@ -61,14 +61,32 @@ $ dev ls
 
 `dev help ai-artifacts` explains what to keep in Git, archive privately, and ship.
 Choose transcript retention separately from scanning and packaging. SpecStory
-histories remain trackable, but `.gitattributes` excludes `.specstory` from source
-archives so Homebrew does not download conversation evidence to build the CLI.
+histories and agent plans remain trackable, but `.gitattributes` excludes
+`.specstory` and the exact `.claude/plans`, `.codex/plans`, `.cursor/plans` and
+`.opencode/plans` roots from release source archives so Homebrew does not download
+that conversation and draft-plan evidence to build the CLI. This publication
+boundary does not change Git tracking or history, or exclude other agent
+configuration and skills.
 Use `dev artifact setup --mode archive --source specstory --archive /path/to/history
 --protection off --json` to preview explicit raw preservation, or choose `check` /
 `redact`. Apply the reviewed plan with `dev artifact setup --apply --plan <id> --yes`.
 `dev repo setup --artifacts` uses the same planner. Archive, find, sync, migrate and
 backup are separate operations; they never start an agent or replace the source
 remote automatically. See the [AI artifact guide](docs/guides/ai-artifacts.md).
+
+**v0.2.40:** `prepare --specstory-path PATH` binds an exact provider/session
+export within its capture scope. Explicit `prepare --closeout co-commit` adds a
+single product-plus-artifact commit through a separately installed canonical v2
+helper, not a replacement for default product-first or archive handoffs. Its real
+wrapper must start **without `--allow-commit`**; after queueing, preserve the real
+queue ACK, report "finalization queued" and exit without more repository work.
+External `artifact finalize --allow-commit` revalidates native writer/policy and
+revision guards before one commit-capable helper call. Unknown outcomes reconcile
+only; review does not restore secrets or bypass hooks. Canonical v2 source is
+maintained separately in `agent-skills`; the helper is not bundled or automatically
+installed/upgraded with dev. Co-commit requires compatible installed-helper v2
+capabilities; native Windows co-commit is unsupported. The guide covers exact
+selection, private per-finding review and partial-result recovery.
 
 ## Repository hygiene
 
@@ -116,7 +134,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.39 instead when you need a reproducible install.
+# Pin @v0.2.40 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -160,7 +178,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.2.39
+  version=v0.2.40
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"
@@ -636,6 +654,10 @@ for the schema, precedence, and executable-config trust boundary.
 
 READY/MERGED/RETIRED are derived milestones, not new persisted task states.
 An agent prepares and exits; an external coordinator integrates and retires it.
+Default `prepare` requires committed products and an empty index. The explicit
+v0.2.40 co-commit alternative instead queues a reviewed feature-only index;
+it never closes the agent, integrates, or retires the checkout. Read-only handoff
+observations do not reconcile native intent or grant cleanup permission.
 
 ```bash
 dev start                                            # interactive managed-task wizard
@@ -759,9 +781,11 @@ add `--focus` when the caller should switch or attach after dispatch.
 Herdr-aware writer claims—`start --direct`, `start --branch-only`, and
 `resume`—reject another recognized agent in the same canonical Git worktree.
 Every state, including `idle`, `done`, and `unknown`, is occupied. Pure
-`repo open`, `wt open`, and TUI Enter reuse/focus the live owner without
-claiming another writer. `--allow-shared-checkout` is only for explicitly
-coordinated disjoint ownership; normal new-worktree creation remains allowed.
+`repo open`, `wt open`, and TUI Enter normally reuse/focus the live owner without
+claiming another writer. `wt open --no-focus` only opens/reuses the runtime and
+reports its target, without focus/attachment or a shell directory handoff.
+`--allow-shared-checkout` is only for explicitly coordinated disjoint ownership;
+normal new-worktree creation remains allowed.
 
 Task runtime handles carry their backend name and are validated against live
 checkout coverage before reuse or close. Destructive cleanup additionally
@@ -915,6 +939,17 @@ g G        top / bottom         h l / tab       previous / next view
 /          filter as you type   esc             clear, then quit
 ```
 
+In all eight dashboard views, `/` filters live. While typing, Up/Down selects a
+visible result without leaving the input or changing its text cursor; `j/k`
+remain query text. Left/Right/Home/End edit the text cursor without resetting the
+selection; only a changed query selects the first result. Enter keeps the query
+and selection and leaves input—it does not open the row. Press Enter again from
+the list to use its normal open action; Esc while filtering clears the query.
+The filter prompt remains visible over pending repository details. Help index
+and result searches also support Up/Down while typing and Enter to keep selection
+without opening; article find/scroll and Notes' Enter-submit search keep their
+separate behavior.
+
 Press `?` or click **Help** in the footer to open the current view's **Keys**.
 **Guide** explains that view's workflow, columns, colors and Git marks, including
 a read-only snapshot of the selected row. **Manual** searches and reads all
@@ -964,9 +999,14 @@ compact layout keeps repository/path in the selected detail pane. In TASKS, `p`
 parks and prompts for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
 `space` expands linked worktrees inline, `m` edits repository tags/summary,
 `s` starts an isolated worktree task, and `d` starts a tracked direct task.
-In REPOS, `n` suspends into the same clone-aware `dev repo new` wizard used by
-the CLI and returns with refreshed local inventory; it also works when the list
-is empty. `a` quick-adds a repository thought and `N` opens its notes overlay.
+In REPOS, `n` or Ctrl+O → new repository suspends into the same clone-aware
+`dev repo new --handoff stay` wizard used by the CLI and returns with refreshed
+local inventory. Empty/filtered-empty lists or pending observations on the
+selected row do not block this independent action; an active clone still does.
+The wizard retains confirmation and fresh destination, nested-repository and
+exclusive-create checks before mutation. Other row-dependent actions and REMOTE
+clone freshness checks remain guarded. `a` quick-adds a repository thought and
+`N` opens its notes overlay.
 TASKS retains `n` for quick notes. Expanded children carry their own
 Git/session/task state and can be opened directly. In TRY, `n` creates or clones an experiment;
 `Ctrl+O` opens mark/deprecate/archive/restore/graduate/Trash/delete actions; `a` includes
@@ -1280,7 +1320,25 @@ to improvise:
 | `herdr worktree create` | **not used** — `dev` runs `git worktree add`, then `herdr worktree open --path …` | — | — |
 
 **If code, history, or plans must remain reviewable—or you may return tomorrow—
-use `dev`.**
+use `dev`.** Prefer `dev start` with an explicit committed base for new managed
+work. If an external worktree already exists and only needs runtime visibility:
+
+```bash
+# New managed work:
+dev start api --task "auth fix" --branch fix/auth --base main
+# Or make an already registered external checkout visible:
+dev wt open fix/auth --repo api --runtime herdr --no-focus
+```
+
+`wt open --no-focus` opens or reuses the registered checkout and immediately
+reports branch, actual path, backend/handle, and runtime surface without switching
+or attaching. It does not create another Git worktree, adopt a task, provision,
+launch an agent, or change Git/index/dirty files. With runtime `none`, it opens no
+runtime and emits no shell `cd` handoff. The default without the flag still
+activates or navigates; runtime errors stay errors. Report the repository,
+branch, actual path and runtime handle/result when handing work back, rather than
+leaving a durable implementation checkout invisible as if it were temporary
+harness isolation.
 
 Claude Workflow cleanup is an explicit, stricter exception to the normal
 harness-owned lifetime. From the canonical non-bare checkout, first review:
@@ -1976,7 +2034,9 @@ folders: `DEV_TEST_NATIVE_TRASH=1 go test ./internal/desktop -run TestNativeTras
 `Ctrl+O` action menus support `/` filtering, arrow navigation and Enter. Escape
 clears search before closing the menu. REPOS first shows dated cached rows,
 then streams local discovery and Git enrichment; pending rows cannot authorize
-actions. `dev cache clear repos` removes this disposable presentation cache.
+row-dependent actions. `n` and the new-repository menu action launch independently
+of those rows, without bypassing the wizard's final mutation checks.
+`dev cache clear repos` removes this disposable presentation cache.
 
 Selected skill removal is available through SKILLS / `dev skill manage`, with
 agent scopes, ownership/dependency checks and private results. Existing artifact

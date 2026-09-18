@@ -2,7 +2,7 @@
 description: Finish and recover tasks from the dashboard, dispose of Tries through system Trash, and open repository homepages.
 authority: project
 status: evolving
-verified_on: 2026-09-13
+verified_on: 2026-09-18
 ---
 
 # Dashboard lifecycle actions
@@ -35,6 +35,17 @@ also clickable. Help reads existing observations and embedded documents without
 executing actions or probing tools. See [contextual Help](tui-repos-bootstrap.md#contextual-help-v0224)
 for search scope, article navigation and the layered Esc behavior.
 
+Dashboard `/` filters all eight views live. Up/Down selects visible results while
+typing, keeping input focus, query and text cursor without running an action or
+initiating network work. `j/k` remain text; Left/Right/Home/End edit the query
+cursor, and selection resets only when the text changes. Enter keeps the query
+and selection and leaves input without opening the row; a second Enter from the
+list uses its normal open action. Esc while filtering clears the query. Pending
+repository details never hide the active input. Help index/results searches use
+the same Up/Down and keep-selection behavior; article find/scroll is separate.
+Notes search still submits only on Enter. Ctrl+O's Enter continues to execute the
+selected action, and forms/SSH dialogs retain their existing input behavior.
+
 TASKS finish, resume, retirement and recovery use the existing CLI workflows.
 The dashboard suspends during their prompts and refreshes when they finish,
 including after an error. Task ID/revision checks prevent using a stale selection.
@@ -48,11 +59,19 @@ default. These actions retain the existing taskflow safety rules.
 
 ## Start and open work
 
-REPOS Enter opens the selected repository without creating a task. `s` and `d`
-open the full start wizard with worktree or direct preselected. The wizard asks
-for the task and necessary branch/base/next action, then offers open (default)
-or stay before final creation confirmation. A base is explicit in the reviewed
-plan, never inferred from an arbitrary checked-out branch.
+REPOS `n` or Ctrl+O → new repository opens the existing
+`dev repo new --handoff stay` wizard, even when the list is empty/filtered-empty
+or repository observations are pending. It does not require the selected row to
+survive while the menu is open. An active clone still blocks creation. The native
+wizard retains confirmation and fresh destination, nested-repository and
+exclusive-create checks before mutation. Other row-dependent actions and REMOTE
+clone freshness checks remain guarded; pending rows are not mutation authority.
+
+REPOS Enter outside filter input opens the selected repository without creating
+a task. `s` and `d` open the full start wizard with worktree or direct preselected.
+The wizard asks for the task and necessary branch/base/next action, then offers
+open (default) or stay before final creation confirmation. A base is explicit in
+the reviewed plan, never inferred from an arbitrary checked-out branch.
 
 The dashboard releases its terminal before an attach, shell-directory handoff,
 or external retirement coordinator runs. An ordinary completion/cancellation

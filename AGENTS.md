@@ -126,7 +126,7 @@ State is split intentionally:
 
 ## Versioning and changelog
 
-The current published baseline is `v0.2.39` (2026-09-17). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
+The current published baseline is `v0.2.40` (2026-09-19). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
 
 - `Makefile` derives development builds with `git describe --tags --match 'v[0-9]*' --always --dirty` and injects `internal/cli.Version` through `-ldflags`. The `--match` filter is load-bearing: any other tag in the repository (a `backup/` or `rescue/` marker, say) must never become `--version`.
 - `go install ...@version` recovers the module version from Go build information.
@@ -193,3 +193,20 @@ from byte stability or close agents to finalize evidence. Archive mode verifies
 ignored bytes before cleanup; existing tracked intents retain their original lane.
 `git-filter-repo` only operates on new verified copies. Ordinary migration never
 rewrites source refs or published tags, and raw backups are not secret audits.
+
+`artifact` owns native intent revisions, exact transcript selection and writer
+Guard/CAS checks. Product-first remains the default (committed products, empty
+index). Explicit co-commit binds a feature-only index to a separately installed
+canonical v2 helper and authentic wrapper launched without `--allow-commit`.
+Native code never launches/closes the agent or invents queue acknowledgement,
+SessionEnd or export evidence. Queue success, including queued-but-not-bound,
+requires reporting finalization queued and exiting without more repository work.
+External finalization uses canonical prepare-only, fresh native guards and exact
+helper revision before one commit-capable call; uncertain outcomes reconcile
+only. Commit proof includes parent, tree, full normalized message and unique
+request identity, not trailers alone. Status/readiness keep native intent and
+helper observations separate and never mutate or reconcile. Helper/tool identity
+drift, unsupported versions and native Windows fail closed; no automatic install
+or v1-journal upgrade. Per-finding noncredential review releases only the exact
+sanitized run's rotation gate, never restores secrets or bypasses hooks; actual
+credentials still require rotation and unknown findings remain blocked.

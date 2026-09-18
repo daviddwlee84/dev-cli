@@ -2,7 +2,7 @@
 description: Navigate tasks, repositories, fleet hosts, experiments, remotes, agent skills, and static MCP declarations in the TUI; capture repository quick notes; inventory or adopt existing work safely.
 authority: project
 status: evolving
-verified_on: 2026-09-13
+verified_on: 2026-09-18
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 ---
 
@@ -67,6 +67,22 @@ actions. Modified row clicks, motion and releases do not activate rows. Opening 
 not execute an option. Enter/`o` opens the row. Some terminals require Shift/Option for native
 text selection while mouse tracking is enabled.
 
+## Live list filtering
+
+In all eight dashboard views, `/` narrows the list as you type. Up/Down selects
+visible results while the input remains focused, without changing the query or
+its text cursor, running an action, or initiating a network request. `j/k` and
+other letters remain search text. Left/Right/Home/End move the text cursor;
+cursor-only edits and deletions that change nothing retain the selected result.
+Only an actual query change selects the first result.
+
+Enter keeps the query and selection and exits input; it does not open the row.
+Press Enter again from the list to use the selected row's normal open action.
+Esc while filtering clears the query. The input and its key hints remain visible
+even when the selected repository has pending observations. Notes search still
+waits for Enter before querying; forms, SSH dialogs and Ctrl+O action search keep
+their separate behavior.
+
 ## Contextual Help (v0.2.24)
 
 Press `?` or click **Help** in the footer. Help starts on **Keys** for the current
@@ -106,6 +122,11 @@ and the clickable/draggable scrollbar move through long content. Article pan
 controls and left/right arrows reveal wide code or diagrams. Esc stops search
 editing, then clears the query, returns a level and finally closes Help. `q`
 closes outside text input; letters such as `q`, `v` and `f` stay text while typing.
+In a live Help index/results search, Up/Down selects entries without leaving the
+input or moving its text cursor, and `j/k` remain text. Cursor-only edits keep the
+selected result; only changed text resets it. Enter keeps the query and selection
+without opening an entry; press Enter again outside input to read it. Article
+find/scroll keeps its existing Enter-submit and `n`/`N` match navigation.
 
 Help and Ctrl+O share a floating popup with **Expand** and **Close**. Its normal
 maximum is 104 columns × 32 rows, leaving at least two cells around it; below
@@ -198,10 +219,15 @@ y         open copy/context actions
 
 Expanded rows explain every linked worktree, including harness-owned `(ephemeral)` and otherwise unmanaged `(external)` checkouts. The LIVE column shows runtime activity separately from task state.
 
-`n` also works when REPOS is empty. The dashboard suspends into
-`dev repo new --handoff stay`, preserving config/scaffold overrides, and reloads
-local TASKS/REPOS/TRY state after success. It does not introduce a second,
-reduced repository-creation implementation.
+`n` and Ctrl+O → new repository work even when REPOS is empty/filtered-empty or
+the selected row has pending observations. The action is independent of that
+row, including if it disappears while the menu is open; an active clone still
+blocks creation. The dashboard suspends into `dev repo new --handoff stay`,
+preserving config/scaffold overrides, and reloads local TASKS/REPOS/TRY state
+after success. The native wizard still requires confirmation and rechecks the
+destination, nested-repository restrictions and exclusive creation before
+mutation. Other row-dependent actions and REMOTE clone freshness checks remain
+guarded. There is no second, reduced repository-creation implementation.
 
 `dev repo context [repo]` emits the same agent-ready Markdown context available from the TUI copy menu, including paths, Git/worktree/runtime facts, and tasks. `--json` adds the schema-v1 evidence/readiness contract; `--refresh` is the only form that live-probes optional forge and configured fleet sources.
 
@@ -293,7 +319,7 @@ canonical repository through catalog identity.
 
 ```text
 j/k       move
-/         search body, tags, and repository
+/         search body, tags, and repository; Enter submits the query
 Enter     expand or collapse the Markdown body
 a or n    add another note
 e         edit the body in VISUAL/EDITOR
@@ -459,9 +485,11 @@ silently performed as error recovery. See [local triage](local-triage.md).
 
 REPOS first reads a dated presentation cache, then publishes discovery and Git
 observations incrementally. A slow runtime does not hold back repository rows.
-Pending/cached rows grant no action authority. Only complete discovery removes
-missing rows; failures retain stale/unknown evidence. `r` remains local refresh;
-`dev cache clear repos` removes the snapshot. SIZE retains its separate cache.
+Pending/cached rows grant no authority for row-dependent actions. The new-repo
+wizard is an independent entry point and retains its final mutation checks.
+Only complete discovery removes missing rows; failures retain stale/unknown
+evidence. `r` remains local refresh; `dev cache clear repos` removes the snapshot.
+SIZE retains its separate cache.
 
 Ctrl+O menus and submenus support `/` filtering, arrows and Enter; Escape clears
 search before closing. `H` displays saved stats, then automatically backfills the

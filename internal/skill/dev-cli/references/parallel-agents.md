@@ -25,6 +25,12 @@ It does not choose or validate the launcher profile, permission mode, agent
 name, or wait policy. The JSON workflow below remains the composable path when
 those steps need separate inspection or automation.
 
+For an existing external checkout that only needs to be visible, use
+`dev wt open <branch> --repo <repo> --no-focus`. Report its path, branch and
+runtime handle/result immediately; this neither adopts a task nor launches an
+agent, and reuse/fallback never proves a fresh launch target. See
+[worktree ownership](worktree-ownership.md).
+
 ## Preflight
 
 - [ ] `test "${HERDR_ENV:-}" = 1`

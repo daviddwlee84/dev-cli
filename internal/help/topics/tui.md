@@ -84,7 +84,12 @@ q             close Help outside text input
 
 Keys/Guide search is limited to the chosen help view unless All views is
 selected; shortcuts appear before guide matches. Back preserves the previous
-query and reading position. Letters and number keys stay text while editing.
+query and reading position. While editing a Help index/results query, Up/Down
+selects a visible entry without leaving input; Enter keeps the query and selection
+without opening it. Press Enter again outside input to read the selected entry.
+Cursor-only text edits retain selection; only changed text resets the results.
+Letters, including `j/k`, and number keys stay text while editing. Article find
+still submits with Enter and uses `n`/`N` for matches after leaving input.
 Tabs, scope, search, Back, Expand, Close and pan controls are clickable. Use the
 wheel, PgUp/PgDn or the clickable/draggable scrollbar for longer content.
 
@@ -151,8 +156,13 @@ HOT/WARM/COLD task tallies. Press `space` to expand a repo into its linked
 worktrees; each child has its own Git, runtime and task state, and enter opens
 that checkout. Git-backed Tries are shown in TRY rather than appearing twice;
 REMOTE still labels their local checkout as `try`. Repos with active work sort
-first. Press `n` in REPOS—even when it is empty—to suspend into the existing
-clone-aware `dev repo new --handoff stay` wizard; successful completion refreshes
+first. Press `n` in REPOS, or choose new repository in Ctrl+O, to suspend into the
+existing clone-aware `dev repo new --handoff stay` wizard. This is independent
+of the selected row: empty/filtered-empty lists, pending observations or a row
+vanishing while the menu is open do not block launch. An active clone still
+blocks creation. The wizard retains confirmation and fresh destination,
+nested-repository and exclusive-create checks before mutation; other row actions
+and REMOTE clone freshness checks remain guarded. Successful completion refreshes
 local TASKS/REPOS/TRY state. On a first run with no tasks, press `n` to create a
 repository, `s` to start work in an existing one, or use TRY `n` for a low-cost
 experiment.
@@ -245,6 +255,17 @@ click selected row   open its action menu (no double-click timing)
 wheel                 move three rows up/down
 right click          select a row and open its available actions
 ```
+
+In all eight dashboard views, Up/Down selects visible results while `/` input
+stays focused, retaining the query and text cursor without running an action or
+initiating network work. `j/k` and other letters remain text. Left/Right/Home/End
+move the text cursor; cursor-only edits and no-op deletions keep the selected
+result. Only an actual query change selects the first result. Enter retains the
+query and selection and exits input without opening the row; a later list Enter
+uses the normal open action. Esc while filtering clears the query. Pending repo
+details do not hide the input or its key hints. Notes search still waits for
+Enter before querying. Forms, SSH dialogs and Ctrl+O action search keep their
+existing behavior.
 
 The `/` query applies to the current view and matches whitespace-separated
 terms independently. Structured local filters include `tag:important`,
@@ -502,8 +523,10 @@ silently performed as error recovery. Use `dev triage` to open the organizer.
 
 Ctrl+O menus: `/` filters the current menu; arrows move and Enter continues.
 Escape clears the query before closing. REPOS shows a dated cache first, then
-incremental local observations. Pending rows are display-only; operations wait
-for fresh observations. Clear it with `dev cache clear repos`.
+incremental local observations. Pending rows are display-only for row-dependent
+operations, which wait for fresh observations. REPOS `n` and the new-repository
+menu action are independent entry points; the wizard's final mutation checks
+still apply. Clear the presentation cache with `dev cache clear repos`.
 
 REPOS/SKILLS Ctrl+O opens `dev skill manage`: project/global selection, source
 checks, reviewed multi-repo updates, and single-repo lock restore/dependency sync.

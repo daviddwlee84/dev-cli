@@ -23,6 +23,29 @@ coordination override—not a default.
 existing SpecStory wrapper/watcher rebound its source/output paths. Start the
 new process from the target worktree root.
 
+## Create managed work or surface an existing checkout
+
+Prefer `dev start <repo> --task '<task>' --base '<committed-ref>'` for new
+managed work: it creates/selects the checkout, provisions it, opens the runtime,
+and records task intent. For an already registered external worktree that only
+needs runtime visibility:
+
+```bash
+dev wt open <branch> --repo <repo> --runtime herdr --no-focus
+```
+
+This opens or reuses the exact checkout without switching/attaching, launching an
+agent, provisioning, or adopting a task. Dirty files and the index stay untouched.
+It reports branch, actual path and backend/handle immediately, followed by the
+observed runtime opened/reused surface; this is not Git worktree creation. With
+runtime `none`, no runtime opens and no shell `cd` handoff is emitted. Without
+`--no-focus`, normal activation or shell navigation is unchanged. Runtime errors
+remain errors; do not turn a failed open into a success report.
+
+When handing work back, report the repository, branch, actual checkout path and
+runtime handle/result immediately. Adoption is a separate lifecycle decision,
+not a visibility switch. See `runtime-herdr.md` for reuse/fallback boundaries.
+
 ## Why dev creates the checkout
 
 `dev` runs `git worktree add`, then asks Herdr to run

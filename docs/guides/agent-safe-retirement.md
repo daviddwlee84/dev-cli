@@ -2,7 +2,7 @@
 description: Retire an integrated dev-cli worktree and runtime safely, from outside the workspace being removed.
 authority: project
 status: stable
-verified_on: 2026-09-17
+verified_on: 2026-09-18
 ---
 
 # Agent-safe retirement
@@ -40,7 +40,7 @@ RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 
 | Command | What it does |
 |---|---|
-| `dev prepare --session <provider:uuid> --plan <path>` | Arms post-writer artifact finalization without closing the running agent. Product changes must already be committed; the transcript itself is deliberately not staged yet. |
+| `dev prepare --session <provider:uuid> --plan <path>` | Arms post-writer artifact finalization without closing the running agent. Default product-first requires committed products and an empty index; the transcript itself is deliberately not staged yet. |
 | `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | Preserves the exact stable transcript in the intent's source-commit or external-archive destination after its writer stops. `--if-pending` no-ops silently when no armed intent matches the run id; `--writer-stopped` confirms the outer wrapper has returned. |
 | `dev done --ff` | Rebases the task branch onto its base and fast-forwards it locally. Records MERGED and retains worktree/branch; explicitly selected task-pane closures are reported separately. |
 | `dev done --pr` | Pushes the branch and opens a pull/merge request through an available forge CLI. The task stays under review, not MERGED. |
@@ -118,6 +118,36 @@ repository/worktree/ref/runtime/artifact authority, repeats safety checks after
 runtime closure and before removal, and deletes the task record last. A later
 failure preserves a step ledger and recovery; completed effects are not called
 rolled back.
+
+## Explicit co-commit closeout (v0.2.40)
+
+Default product-first still commits products before `prepare`. The additive
+`--specstory-path PATH` selects one exact provider/UUID export in its capture
+scope; the selection and native intent revision are revalidated at finalization.
+The separate `--closeout co-commit` lane queues a reviewed feature-only index,
+exact `claude:UUID` transcript, one `--plan` or `--no-plan`, and a base
+`--message-file` through a separately installed canonical v2 helper.
+
+The real wrapper must start **without `--allow-commit`** so native dev can guard
+outer finalization. Dev never launches or closes the agent. Retain the actual
+`queue_ack` output in the recorder, report "finalization queued", then exit
+without more repository/index operations, even for `queued_but_not_bound`.
+`--run-id` repairs only that exact existing binding; it does not queue or emit a
+new ACK. After wrapper exit, external `artifact finalize --intent ID
+--allow-commit` performs prepare-only, fresh native writer/policy/CAS checks and
+one exact-journal-revision commit-capable helper call. Unknown outcomes reconcile
+only, never retry the commit; `--writer-stopped` alone is not co-commit proof.
+
+`artifact list --json` and readiness keep persisted native intent separate from
+helper observations and never reconcile records. A complete parent/tree/full
+normalized message/unique request proof and reachable receipt—not runtime done
+or a trailer alone—must precede integration and cleanup. See
+[AI artifacts](ai-artifacts.md) for canonical v2 source maintained separately in
+`agent-skills`, compatible installed-helper requirements (never bundled or
+auto-installed), read-only review preview, private per-finding review and actual
+rotation requirements. Fixture review never restores secrets or bypasses hooks.
+Native Windows co-commit remains unsupported; retirement's independent runtime,
+Git and containment checks are unchanged.
 
 ## Choose the containment base
 

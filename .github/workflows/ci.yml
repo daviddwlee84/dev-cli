@@ -53,6 +53,16 @@ jobs:
         if: runner.os == 'Windows'
         run: go test ./internal/artifact ./internal/submodule ./internal/safefile ./internal/taskflow -run '^TestCleanupRegression' -count=1 -v
 
+      # These portable contracts must execute natively; verbose output exposes
+      # skips. The POSIX co-commit helper remains unsupported on native Windows
+      # and is deliberately not represented as verified by this selection.
+      - name: Test exact handoff, CAS, filters and worktree visibility (required on Windows)
+        if: runner.os == 'Windows'
+        run: >-
+          go test ./internal/agenthistory ./internal/artifact ./internal/tui ./internal/cli
+          -run '^Test(Session(Handoff(ExactPathBinding|RejectsUnprovenSelectedPath)|SelectionUsesExternalCaptureRoot)|PrepareExactSelectionProof|Finalize(SelectionBindingAndLegacyCompatibility|CASPreservesConcurrentObservation|RejectsReviewedStaleRevisionAndDiscard)|Store(ExactRecordCASAndConcurrentTransitions|CreateNeverReassignsRunAuthority)|DashboardFilter(NavigationEveryView|TextEditsEveryView|EmptyResultsAndInputLimit)|HelpLiveFilter(Navigation|ResetsOnlyForChangedText|EmptyResults)|WtOpen(NoFocus.*|Default.*))$'
+          -count=1 -v
+
       # The broad suite remains advisory on Windows while unrelated domain
       # packages finish guarding POSIX-only assumptions. SSH/fleet behavior has
       # a separate required native gate below.

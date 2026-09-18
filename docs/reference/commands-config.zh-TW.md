@@ -2,7 +2,7 @@
 description: 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-17
+verified_on: 2026-09-18
 lang: zh-TW
 ---
 
@@ -982,6 +982,39 @@ UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需
 `skill uninstall` 的意義不變。
 
 ## Agent history policy
+
+### Native closeout 新增介面（v0.2.40）
+
+`prepare` 預設 `--closeout product-first`，要求 products 已 commit 且 index 為空。
+可選 `--specstory-path PATH` 保存 capture 範圍內精確 provider／UUID 匯出檔的
+選取。Source-commit 與 archive finalizer 重新檢查選取、live writer guards 與
+native intent revisions；`--revision HASH` 可綁定精確審閱紀錄。
+
+`prepare --closeout co-commit --session claude:UUID --specstory-path PATH
+--message-file PATH` 則要求一個 `--plan PATH` 或明確 `--no-plan`，且 index 只有
+審閱後的 product changes。可選 `--closeout-helper` 指定已安裝 canonical v2 的
+scripts directory；`--allow-large` 同意新增大於 2 MiB 的 untracked transcript。
+真實 wrapper 必須不帶 `--allow-commit` 啟動。Queue 不會啟動／關閉 agent：保留
+真實 ACK，回報 finalization queued 後退出，不再操作 repository。`--run-id` 只
+修復已排入之精確 run 的 binding，不新增 queue／ACK。
+
+外部 `artifact finalize --intent ID --allow-commit [--revision HASH]` 對
+canonical prepare-only 及一次可 commit 的呼叫執行 guards；結果未知只 reconcile。
+`--preview-review --json` 為唯讀，不可搭配 `--allow-commit`、`--review-file` 或
+`--rotation-confirmed`。套用精確 private review 需 absolute `--review-file`；
+`--rotation-confirmed` 代表實際憑證輪替，不是 fixture review。審閱規則、helper
+安裝邊界及平台限制見 [AI 產物](../guides/ai-artifacts.zh-TW.md)。
+
+Product-first 的 `prepare --json` 與 `artifact finalize --json` 使用 schema 1、
+kind `artifact_preparation`／`artifact_finalization`。Co-commit 使用 schema 1、
+kind `co_commit_handoff`，保留 partial status、request ID、native revision／intent、
+helper 觀測，並在 queue 成功時保留 canonical v2 `queue_ack`。Human queue output
+也以一行完整緊湊 JSON 保留 ACK，供 recorder 記錄。`artifact list --json` 使用
+schema 1、kind `artifact_handoffs`；`handoffs` 每個 row 的已保存 Intent 欄位與
+`co_commit_observation` 或 `observation_error` 分開。List／status／readiness 不
+修改或 reconcile 紀錄。
+
+### 保存設定
 
 `dev artifact setup` 與 `dev repo setup --artifacts` 共用審閱 plan。
 `.dev-cli/artifacts.toml` 保存 project ID、track/archive/unmanaged 模式、

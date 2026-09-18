@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-17
+verified_on: 2026-09-18
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
@@ -252,6 +252,10 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - `dev repo context --json` 提供 additive schema-v1 local/remote evidence，包含 source、age、freshness、completeness、null/error preservation 與 scoped readiness；只有 `--refresh` 執行 external probes。`dev status` 重用 cheap local readiness projection，不進行 network access。
 - `dev fleet machine-id` 回報 observed UUID，不修改設定。`dev fleet files` 預設 report-only，使用獨立 `[local_files]` allowlist，在 content 前協商只能調低的 limits，並要求 explicit apply/replacement controls 與 matching target pin。
 
+- `dev wt open --no-focus` 開啟／重用既有 registered checkout 的 runtime，但不
+  activate、attach 或產生 shell `cd` handoff（包含 runtime `none`）。它回報
+  branch/path/backend/handle 與實際 runtime surface，不建立／adopt／provision 工作、
+  不啟動 agent；open failure 仍回傳 error。預設 `wt open` navigation 不變。
 - `dev start --focus` 會在 non-JSON creation 後 activate runtime。
 - `dev start --run '<shell command>'` 只會 dispatch 到本次新建 first-class Herdr
   worktree 的 exact root pane。它不能與 `--json`、non-worktree modes 或 non-Herdr
@@ -650,6 +654,39 @@ Skill 移除要求已驗證 native ownership 或 bundled manifest、明確 agent
 與依賴檢查。Windows npm shim 移除使用系統 PowerShell 與 process-tree 取消；
 不支援的 shell syntax 或其他 shim mutation 會拒絕。獨立 native removal tests
 是必要 gate；Windows 廣泛 advisory job 的成功結論不表示所有 legacy suites 通過。
+
+## Native artifact closeout（v0.2.40）
+
+預設仍是 product-first：先 commit products，index 留空。可選
+`prepare --specstory-path` 綁定精確 provider／UUID／capture-path，包含 archive
+handoff，不放寬歧義、路徑穿越或 symlink 拒絕。Finalizer 重新檢查 live writer／
+source guards 與鎖內 native intent revisions；`--writer-stopped` 不覆蓋已辨識的
+live writer。
+
+明確 co-commit 目前需要 `claude:UUID`、checkout 內 SpecStory capture、feature-only
+index 與另外安裝的 canonical v2 helper。真實 wrapper 啟動時不可加
+`--allow-commit`；dev 不啟動／關閉 agent。Canonical v2 原始碼在 `agent-skills`
+獨立維護；dev 不內附或自動安裝／升級 helper，且要求已安裝的 helper 具備相容
+v2 capabilities。缺少 capability、helper／tool 身分改變或 v1 journal 都拒絕；
+native Windows co-commit 尚不支援，等待經驗證的 native backend。
+External archive 不是 co-commit 目的地。
+
+Queue 成功（包含 `queued_but_not_bound`）後，agent 必須保留 recorder 實際收到的
+`queue_ack` 證據、回報 finalization queued 並退出。`--run-id` 只修復精確既有
+binding，不製造 queue 或 lifecycle proof。外部 finalize 委派 prepare-only、
+重新檢查 native Guard／CAS 與 helper journal revision，再允許一次可 commit 的
+呼叫。結果不確定時只 reconcile。Commit proof 包含精確 parent／tree／完整
+normalized message 與唯一 request 身分。Status／readiness 不 reconcile native
+紀錄；schema-1 `artifact_handoffs` 把已保存 Intent 欄位與
+`co_commit_observation`／`observation_error` 分開。
+
+V2 在 run／sync／export 全程使用 no-cloud，要求精確 export digest 及 request／
+session 關聯，不只看 idle 或 mtime。持久 private beforeimages 與 receipts 綁定
+所有 finding occurrences 及 source／index／tool／policy 身分。可掃描的 staged
+product 只唯讀檢查，sanitation 只修改選定 artifacts。唯讀 review 不授權 apply。
+`reviewed_noncredential` 只解除該次已 sanitation run 的 rotation gate，不還原
+secrets、建立全面豁免或繞過 hooks。真實憑證仍需輪替，unknown findings 仍阻擋。
+見 [AI 產物](../guides/ai-artifacts.zh-TW.md)。
 
 ## Agent history archives
 

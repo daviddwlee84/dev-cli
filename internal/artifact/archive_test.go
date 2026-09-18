@@ -44,6 +44,27 @@ func TestPrepareFinalizeExternalArchiveAndIgnoredReadiness(t *testing.T) {
 	if intent.Destination != "archive" {
 		t.Fatal("new intent did not retain selected destination")
 	}
+	// The reviewed archive must cover the same path, not a same-session alias.
+	h, e = agenthistory.Open(t.Context(), agenthistory.Options{Root: r.Root, StateDir: state})
+	if e != nil {
+		t.Fatal(e)
+	}
+	alias := filepath.Join(filepath.Dir(path), "alias.md")
+	writeTranscript(t, alias, "Codex CLI", sid, "alias")
+	alternate, e := h.PreviewArchive(t.Context(), agenthistory.ArchiveOptions{Session: "codex:" + sid, SpecStoryPath: alias})
+	if e != nil {
+		t.Fatal(e)
+	}
+	archiveHead := a.Git("rev-parse", "HEAD")
+	if _, e = service.Finalize(t.Context(), FinalizeRequest{IntentID: intent.ID, WriterStopped: true, ArchivePlanID: alternate.ID}); e == nil {
+		t.Fatal("alternate alias archive plan replaced exact intent selection")
+	}
+	if a.Git("rev-parse", "HEAD") != archiveHead || r.Git("rev-parse", "HEAD") != head {
+		t.Fatal("refused alias plan changed history")
+	}
+	if e = os.Remove(alias); e != nil {
+		t.Fatal(e)
+	}
 	intent, e = service.Finalize(t.Context(), FinalizeRequest{IntentID: intent.ID, WriterStopped: true})
 	if e != nil {
 		t.Fatal(e)

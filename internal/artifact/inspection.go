@@ -12,10 +12,11 @@ import (
 // checkout. Ready means each intent was explicitly discarded or finalized to a
 // commit still reachable from a recovery ref; it never changes an intent.
 type WorktreeInspection struct {
-	IntentCount int      `json:"intent_count"`
-	Status      Status   `json:"status,omitempty"`
-	Ready       bool     `json:"ready"`
-	IntentIDs   []string `json:"intent_ids"`
+	IntentCount      int      `json:"intent_count"`
+	Status           Status   `json:"status,omitempty"`
+	Ready            bool     `json:"ready"`
+	IntentIDs        []string `json:"intent_ids"`
+	ObservationError string   `json:"observation_error,omitempty"`
 }
 
 // InspectWorktrees groups all intents once and verifies finalized commit
@@ -37,11 +38,23 @@ func InspectWorktrees(ctx context.Context, store *Store) (map[string]WorktreeIns
 		}
 		inspection.IntentCount++
 		inspection.IntentIDs = append(inspection.IntentIDs, intent.ID)
-		if statusPriority(intent.Status) >= statusPriority(inspection.Status) {
-			inspection.Status = intent.Status
+		status := intent.Status
+		var ready bool
+		if intent.Destination == "co-commit" {
+			evidence, observeErr := inspectCoCommitReadiness(ctx, path, intent)
+			ready = observeErr == nil && evidence.Finalized && evidence.ReceiptReachable
+			if observeErr != nil {
+				inspection.ObservationError = SafeCoCommitError(observeErr).Error()
+			} else if evidence.Finalized {
+				status = Finalized
+			}
+		} else {
+			ready = intent.Status == Discarded ||
+				(intent.Status == Finalized && (intent.ArtifactCommit != "" || intent.ArchiveCommit != "") && CommitReachable(ctx, intent))
 		}
-		ready := intent.Status == Discarded ||
-			(intent.Status == Finalized && (intent.ArtifactCommit != "" || intent.ArchiveCommit != "") && CommitReachable(ctx, intent))
+		if statusPriority(status) >= statusPriority(inspection.Status) {
+			inspection.Status = status
+		}
 		inspection.Ready = inspection.Ready && ready
 		out[path] = inspection
 	}
@@ -56,6 +69,10 @@ func InspectWorktrees(ctx context.Context, store *Store) (map[string]WorktreeIns
 // its checkout HEAD, task branch, or base. It is read-only and shared by
 // integration enforcement and closeout evidence.
 func CommitReachable(ctx context.Context, intent Intent) bool {
+	if intent.Destination == "co-commit" {
+		evidence, err := inspectCoCommitReadiness(ctx, intent.WorktreePath, intent)
+		return err == nil && evidence.Finalized && evidence.ReceiptReachable
+	}
 	if intent.Destination == "archive" {
 		for _, root := range []string{intent.WorktreePath, intent.RepoPath} {
 			if ready, e := receiptRemainsReachable(ctx, root, intent); e == nil && ready {

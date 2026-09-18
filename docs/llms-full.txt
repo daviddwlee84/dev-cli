@@ -1383,6 +1383,33 @@ rows that have no checkout. It never guesses ownership from a `worktree-*`
 branch prefix; ambiguous path/task binding is labelled CONFLICT and stops
 lifecycle mutation. See [Repository lifecycle flow](https://daviddwlee84.github.io/dev-cli/guides/repository-flow/).
 
+## New managed work versus existing checkout visibility
+
+Prefer `dev start` with an explicit committed base for new managed work:
+
+```bash
+dev start api --task "auth fix" --branch fix/auth --base main
+```
+
+For an existing registered external worktree that only needs runtime visibility:
+
+```bash
+dev wt open fix/auth --repo api --runtime herdr --no-focus
+```
+
+The open command reports branch, actual path and backend/handle immediately, then
+the actual runtime opened/reused surface. It does not switch focus or attach,
+create another Git worktree, adopt a task, provision, launch an agent, or change
+Git refs, the index or dirty files. A fallback workspace is reported as a workspace,
+not a new Git checkout or an agent launch target. With runtime `none`, it opens no
+runtime and emits no shell `cd` handoff. Without the flag, activation/shell
+navigation is unchanged; runtime errors still fail the command.
+
+Report repository, branch, actual checkout path and runtime handle/result when
+handing work back. Adoption is separate task intent, not a visibility switch;
+harness-owned temporary isolation remains distinct from durable implementation
+work. See [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/).
+
 ## Inspect before creating
 
 ```bash
@@ -1755,6 +1782,20 @@ coverage, and refuses to create over their names. A live name merely containing
 the word `EXITED` remains live. If a session exits between listing and layout
 inspection, open fails closed and asks for a retry rather than resurrecting the
 old layout at an unrelated checkout.
+
+## Visibility without navigation
+
+Use `dev start <repo> --task '<task>' --base '<committed-ref>'` for new managed
+work. For an existing external registered checkout, use
+`dev wt open <branch> --repo <repo> --runtime herdr --no-focus` when only runtime
+visibility is needed. It reports branch, actual path, backend/handle and the
+actual opened/reused runtime surface immediately without focusing or attaching.
+It does not adopt/annotate a task, provision, launch an agent, or modify Git/index/
+dirty files. A reused or fallback surface is not a new exact agent launch target.
+Runtime `none` reports no runtime and emits no shell `cd` handoff. Without the
+flag, normal navigation is unchanged; opening failures remain errors. Report the
+repository, branch, actual path and runtime handle/result when handing work back.
+See [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/).
 
 For one reviewed shell command in a new independent worktree, Herdr supports a
 direct one-liner:
@@ -3378,7 +3419,8 @@ A shared flat directory does not by itself retain project attribution. Tools
 such as Lore have their own metadata and curation state; do not assume all of
 their databases can be discarded and reconstructed from Markdown.
 
-For the existing tracked-history workflow:
+The default `product-first` handoff requires committed product changes and an
+empty index; it does not stage the still-changing transcript:
 
 ```bash
 dev hygiene status
@@ -3410,6 +3452,103 @@ If history is ignored, ordinary code commits need not scan it. An already tracke
 file remains tracked after adding `.gitignore`: removing it from the index is a
 separate reviewed operation. Keep or archive ignored history before deleting its
 worktree; ignored does not mean disposable or backed up.
+
+## Exact selection and co-commit closeout (v0.2.40)
+
+`dev prepare --specstory-path PATH` optionally selects one exact Markdown file
+when several exports share a session. The persisted selection must match the
+provider and UUID in its strict SpecStory preamble and stay within the configured
+capture scope: `.specstory/history/` for source commits, or the archive policy's
+capture root. Traversal, symlinks and mismatched identities are refused. Without
+this selector, ambiguous discovery still blocks. Finalization rechecks the
+selection and live writer guard; `--writer-stopped` never overrides a live writer.
+Native intent updates use locked revision compare-and-update (CAS), including
+archive handoffs. `artifact finalize --revision HASH` can require an exact reviewed
+native revision instead of acting on a changed record.
+
+Co-commit is an explicit alternative to product-first, not its new default. It
+places reviewed staged product changes and the exact final transcript/optional
+plan in one normal commit. It currently supports `claude:UUID` and in-checkout
+SpecStory capture, not the external-archive lane. The canonical
+`agent-history-hygiene` v2 source is maintained separately in `agent-skills`;
+installing dev does not bundle, install or upgrade the helper. Co-commit requires
+an installed helper with compatible v2 capabilities. Missing/unsupported tools,
+helper capabilities or changed helper/tool fingerprints block rather than trigger
+an automatic install. Native Windows co-commit is unsupported pending a verified
+native backend. Existing v1 journals are not silently upgraded.
+
+1. Explicitly launch the real canonical v2 wrapper **without `--allow-commit`**
+   (manual outer finalization). Dev neither launches nor closes the agent.
+   Invented environment variables, session IDs or receipts cannot replace the
+   real wrapper lifecycle.
+2. Stage only reviewed product files. Leave the transcript and selected plan out
+   of the index, and prepare a base message file without managed provenance
+   trailers. Select exactly one `--plan` or explicitly `--no-plan`.
+3. From that wrapped agent, queue the exact handoff:
+
+   ```bash
+   dev prepare --closeout co-commit --session 'claude:<uuid>' \
+     --specstory-path .specstory/history/session.md \
+     --plan .claude/plans/task.md --message-file /path/to/commit-message.txt --json
+   ```
+
+   Use `--closeout-helper /path/to/agent-history-hygiene/scripts` only to select
+   an installed canonical helper explicitly. A new untracked transcript over
+   2 MiB needs reviewed `--allow-large` consent.
+4. Preserve the command output in the real recorder/session. JSON has schema 1,
+   kind `co_commit_handoff`, and the canonical v2 `queue_ack` object; human output
+   retains that ACK as a standalone compact JSON line. This is actual queue
+   evidence, not text for the agent to reconstruct. Report **"finalization
+   queued"**, then exit normally with **no further repository or index operations**.
+   `queued_but_not_bound` also requires exit: retain the request ID and repair only
+   that exact binding externally with the same selection and `--run-id`.
+   Binding repair creates neither a new queue request nor a new ACK. Unknown
+   queue outcomes must be inspected, never blindly requeued.
+5. After the real wrapper finishes, an external coordinator reviews the handoff
+   and explicitly authorizes finalization:
+
+   ```bash
+   dev artifact list --json
+   dev artifact finalize --intent '<id>' --allow-commit --json
+   ```
+
+   Optionally require `--revision HASH`. Dev first delegates canonical
+   prepare-only work, then rechecks its own live writer/policy/source guards and
+   native CAS revision before one commit-capable helper call bound to the exact
+   helper journal revision. A commit with uncertain outcome is reconcile-only,
+   never a reason to retry the commit. `committed_but_not_recorded` needs receipt
+   reconciliation, not another commit. Proof covers the exact parent, prepared
+   tree, full normalized message and unique request identity, not trailers alone.
+
+The v2 helper defaults to no-cloud across run, sync and export. Finalization
+requires successful child exit, process-group quiescence, exact native export
+digest and request/session linkage; idle state, mtime or stable bytes alone are
+not proof. All eligible staged products are scanned read-only; sanitation is
+limited to the selected artifacts. Before changes, durable private beforeimages
+and receipts bind every finding occurrence plus source/index/tool/policy identity.
+
+For a blocked sanitation review, inspect without applying:
+
+```bash
+dev artifact finalize --intent '<id>' --preview-review --json
+```
+
+The preview cannot combine with `--allow-commit`, `--review-file` or
+`--rotation-confirmed`. Raw findings and recovery remain private, outside Git.
+After explicit per-finding review, the external finalizer may use
+`--allow-commit --review-file /absolute/path/to/review.json`, optionally with the
+preview's `--revision`. `reviewed_noncredential` is distinct from actual credential
+rotation: fixture review releases only the exact already-sanitized run's rotation
+gate. It never restores secret bytes, creates blanket exceptions or bypasses Git
+hooks. Use `--rotation-confirmed` only after actual required credential rotation;
+unknown or incomplete findings stay blocked. This workflow does not authorize
+recovery of any existing real run automatically.
+
+`artifact list --json` uses schema 1, kind `artifact_handoffs`. Each row keeps the
+persisted native Intent fields separate from `co_commit_observation` or
+`observation_error`. List, status and lifecycle readiness are read-only: a helper
+observation never silently finalizes or reconciles the native record. Incomplete
+or failed proof remains a blocker even when the runtime says done.
 
 ## Choose and apply repository policy
 
@@ -3563,6 +3702,12 @@ operator-coordinated actions.
 | `.gitattributes` `export-ignore` | Exclude selected paths from `git archive` source packages | Unchanged |
 | Ignore and untrack | Stop including new versions in source commits; retain working files | Unchanged |
 | Filter a separate repository copy | Build replacement history without selected paths | Different commit IDs in that copy |
+
+For dev-cli v0.2.40 release source archives, `.gitattributes` excludes the root
+`.specstory` directory and only these agent-plan roots: `.claude/plans`,
+`.codex/plans`, `.cursor/plans` and `.opencode/plans`. This is a publication
+boundary, not Git untracking or history rewriting; other agent configuration and
+skills are not excluded by these rules.
 
 For example, this excludes chats from source archives while leaving them in Git:
 
@@ -4563,7 +4708,7 @@ RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 
 | Command | What it does |
 |---|---|
-| `dev prepare --session <provider:uuid> --plan <path>` | Arms post-writer artifact finalization without closing the running agent. Product changes must already be committed; the transcript itself is deliberately not staged yet. |
+| `dev prepare --session <provider:uuid> --plan <path>` | Arms post-writer artifact finalization without closing the running agent. Default product-first requires committed products and an empty index; the transcript itself is deliberately not staged yet. |
 | `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | Preserves the exact stable transcript in the intent's source-commit or external-archive destination after its writer stops. `--if-pending` no-ops silently when no armed intent matches the run id; `--writer-stopped` confirms the outer wrapper has returned. |
 | `dev done --ff` | Rebases the task branch onto its base and fast-forwards it locally. Records MERGED and retains worktree/branch; explicitly selected task-pane closures are reported separately. |
 | `dev done --pr` | Pushes the branch and opens a pull/merge request through an available forge CLI. The task stays under review, not MERGED. |
@@ -4641,6 +4786,36 @@ repository/worktree/ref/runtime/artifact authority, repeats safety checks after
 runtime closure and before removal, and deletes the task record last. A later
 failure preserves a step ledger and recovery; completed effects are not called
 rolled back.
+
+## Explicit co-commit closeout (v0.2.40)
+
+Default product-first still commits products before `prepare`. The additive
+`--specstory-path PATH` selects one exact provider/UUID export in its capture
+scope; the selection and native intent revision are revalidated at finalization.
+The separate `--closeout co-commit` lane queues a reviewed feature-only index,
+exact `claude:UUID` transcript, one `--plan` or `--no-plan`, and a base
+`--message-file` through a separately installed canonical v2 helper.
+
+The real wrapper must start **without `--allow-commit`** so native dev can guard
+outer finalization. Dev never launches or closes the agent. Retain the actual
+`queue_ack` output in the recorder, report "finalization queued", then exit
+without more repository/index operations, even for `queued_but_not_bound`.
+`--run-id` repairs only that exact existing binding; it does not queue or emit a
+new ACK. After wrapper exit, external `artifact finalize --intent ID
+--allow-commit` performs prepare-only, fresh native writer/policy/CAS checks and
+one exact-journal-revision commit-capable helper call. Unknown outcomes reconcile
+only, never retry the commit; `--writer-stopped` alone is not co-commit proof.
+
+`artifact list --json` and readiness keep persisted native intent separate from
+helper observations and never reconcile records. A complete parent/tree/full
+normalized message/unique request proof and reachable receipt—not runtime done
+or a trailer alone—must precede integration and cleanup. See
+[AI artifacts](https://daviddwlee84.github.io/dev-cli/guides/ai-artifacts/) for canonical v2 source maintained separately in
+`agent-skills`, compatible installed-helper requirements (never bundled or
+auto-installed), read-only review preview, private per-finding review and actual
+rotation requirements. Fixture review never restores secrets or bypasses hooks.
+Native Windows co-commit remains unsupported; retirement's independent runtime,
+Git and containment checks are unchanged.
 
 ## Choose the containment base
 
@@ -5423,6 +5598,22 @@ actions. Modified row clicks, motion and releases do not activate rows. Opening 
 not execute an option. Enter/`o` opens the row. Some terminals require Shift/Option for native
 text selection while mouse tracking is enabled.
 
+## Live list filtering
+
+In all eight dashboard views, `/` narrows the list as you type. Up/Down selects
+visible results while the input remains focused, without changing the query or
+its text cursor, running an action, or initiating a network request. `j/k` and
+other letters remain search text. Left/Right/Home/End move the text cursor;
+cursor-only edits and deletions that change nothing retain the selected result.
+Only an actual query change selects the first result.
+
+Enter keeps the query and selection and exits input; it does not open the row.
+Press Enter again from the list to use the selected row's normal open action.
+Esc while filtering clears the query. The input and its key hints remain visible
+even when the selected repository has pending observations. Notes search still
+waits for Enter before querying; forms, SSH dialogs and Ctrl+O action search keep
+their separate behavior.
+
 ## Contextual Help (v0.2.24)
 
 Press `?` or click **Help** in the footer. Help starts on **Keys** for the current
@@ -5462,6 +5653,11 @@ and the clickable/draggable scrollbar move through long content. Article pan
 controls and left/right arrows reveal wide code or diagrams. Esc stops search
 editing, then clears the query, returns a level and finally closes Help. `q`
 closes outside text input; letters such as `q`, `v` and `f` stay text while typing.
+In a live Help index/results search, Up/Down selects entries without leaving the
+input or moving its text cursor, and `j/k` remain text. Cursor-only edits keep the
+selected result; only changed text resets it. Enter keeps the query and selection
+without opening an entry; press Enter again outside input to read it. Article
+find/scroll keeps its existing Enter-submit and `n`/`N` match navigation.
 
 Help and Ctrl+O share a floating popup with **Expand** and **Close**. Its normal
 maximum is 104 columns × 32 rows, leaving at least two cells around it; below
@@ -5554,10 +5750,15 @@ y         open copy/context actions
 
 Expanded rows explain every linked worktree, including harness-owned `(ephemeral)` and otherwise unmanaged `(external)` checkouts. The LIVE column shows runtime activity separately from task state.
 
-`n` also works when REPOS is empty. The dashboard suspends into
-`dev repo new --handoff stay`, preserving config/scaffold overrides, and reloads
-local TASKS/REPOS/TRY state after success. It does not introduce a second,
-reduced repository-creation implementation.
+`n` and Ctrl+O → new repository work even when REPOS is empty/filtered-empty or
+the selected row has pending observations. The action is independent of that
+row, including if it disappears while the menu is open; an active clone still
+blocks creation. The dashboard suspends into `dev repo new --handoff stay`,
+preserving config/scaffold overrides, and reloads local TASKS/REPOS/TRY state
+after success. The native wizard still requires confirmation and rechecks the
+destination, nested-repository restrictions and exclusive creation before
+mutation. Other row-dependent actions and REMOTE clone freshness checks remain
+guarded. There is no second, reduced repository-creation implementation.
 
 `dev repo context [repo]` emits the same agent-ready Markdown context available from the TUI copy menu, including paths, Git/worktree/runtime facts, and tasks. `--json` adds the schema-v1 evidence/readiness contract; `--refresh` is the only form that live-probes optional forge and configured fleet sources.
 
@@ -5649,7 +5850,7 @@ canonical repository through catalog identity.
 
 ```text
 j/k       move
-/         search body, tags, and repository
+/         search body, tags, and repository; Enter submits the query
 Enter     expand or collapse the Markdown body
 a or n    add another note
 e         edit the body in VISUAL/EDITOR
@@ -5815,9 +6016,11 @@ silently performed as error recovery. See [local triage](https://daviddwlee84.gi
 
 REPOS first reads a dated presentation cache, then publishes discovery and Git
 observations incrementally. A slow runtime does not hold back repository rows.
-Pending/cached rows grant no action authority. Only complete discovery removes
-missing rows; failures retain stale/unknown evidence. `r` remains local refresh;
-`dev cache clear repos` removes the snapshot. SIZE retains its separate cache.
+Pending/cached rows grant no authority for row-dependent actions. The new-repo
+wizard is an independent entry point and retains its final mutation checks.
+Only complete discovery removes missing rows; failures retain stale/unknown
+evidence. `r` remains local refresh; `dev cache clear repos` removes the snapshot.
+SIZE retains its separate cache.
 
 Ctrl+O menus and submenus support `/` filtering, arrows and Enter; Escape clears
 search before closing. `H` displays saved stats, then automatically backfills the
@@ -5968,6 +6171,17 @@ also clickable. Help reads existing observations and embedded documents without
 executing actions or probing tools. See [contextual Help](https://daviddwlee84.github.io/dev-cli/guides/tui-repos-bootstrap/#contextual-help-v0224)
 for search scope, article navigation and the layered Esc behavior.
 
+Dashboard `/` filters all eight views live. Up/Down selects visible results while
+typing, keeping input focus, query and text cursor without running an action or
+initiating network work. `j/k` remain text; Left/Right/Home/End edit the query
+cursor, and selection resets only when the text changes. Enter keeps the query
+and selection and leaves input without opening the row; a second Enter from the
+list uses its normal open action. Esc while filtering clears the query. Pending
+repository details never hide the active input. Help index/results searches use
+the same Up/Down and keep-selection behavior; article find/scroll is separate.
+Notes search still submits only on Enter. Ctrl+O's Enter continues to execute the
+selected action, and forms/SSH dialogs retain their existing input behavior.
+
 TASKS finish, resume, retirement and recovery use the existing CLI workflows.
 The dashboard suspends during their prompts and refreshes when they finish,
 including after an error. Task ID/revision checks prevent using a stale selection.
@@ -5981,11 +6195,19 @@ default. These actions retain the existing taskflow safety rules.
 
 ## Start and open work
 
-REPOS Enter opens the selected repository without creating a task. `s` and `d`
-open the full start wizard with worktree or direct preselected. The wizard asks
-for the task and necessary branch/base/next action, then offers open (default)
-or stay before final creation confirmation. A base is explicit in the reviewed
-plan, never inferred from an arbitrary checked-out branch.
+REPOS `n` or Ctrl+O → new repository opens the existing
+`dev repo new --handoff stay` wizard, even when the list is empty/filtered-empty
+or repository observations are pending. It does not require the selected row to
+survive while the menu is open. An active clone still blocks creation. The native
+wizard retains confirmation and fresh destination, nested-repository and
+exclusive-create checks before mutation. Other row-dependent actions and REMOTE
+clone freshness checks remain guarded; pending rows are not mutation authority.
+
+REPOS Enter outside filter input opens the selected repository without creating
+a task. `s` and `d` open the full start wizard with worktree or direct preselected.
+The wizard asks for the task and necessary branch/base/next action, then offers
+open (default) or stay before final creation confirmation. A base is explicit in
+the reviewed plan, never inferred from an arbitrary checked-out branch.
 
 The dashboard releases its terminal before an attach, shell-directory handoff,
 or external retirement coordinator runs. An ordinary completion/cancellation
@@ -7906,9 +8128,15 @@ Finalize a prepared session after its transcript writer stops
 dev artifact finalize [flags]
 ```
 
+- `--allow-commit` — authorize one guarded canonical co-commit attempt or reconciliation
 - `--archive-plan` — reviewed archive plan for a prepared session (required for redaction copies)
 - `--if-pending` — silently succeed when no armed intent matches the run id
 - `--intent` — artifact intent id
+- `--json` — emit a versioned finalization or review result
+- `--preview-review` — read the co-commit review receipt without mutating or committing
+- `--review-file` — absolute private per-finding review file for exact co-commit recovery
+- `--revision` — require the exact reviewed native intent revision
+- `--rotation-confirmed` — confirm actual credential rotation for the reviewed co-commit findings
 - `--run-id` — outer wrapper run id
 - `--settle` — required transcript stability interval
 - `--writer-stopped` — confirm the outer agent wrapper has returned before finalization
@@ -7933,8 +8161,10 @@ dev artifact find [text] [flags]
 List pending and completed artifact handoffs
 
 ```
-dev artifact list
+dev artifact list [flags]
 ```
+
+- `--json` — emit versioned handoffs with separate read-only helper observations
 
 ### `dev artifact migrate`
 
@@ -9228,9 +9458,15 @@ dev prepare [task-or-worktree] [flags]
 ```
 
 - `--allow-large` — acknowledge adding a new untracked transcript over 2 MiB
+- `--closeout` — handoff lane: product-first or explicit canonical co-commit
+- `--closeout-helper` — explicit installed canonical helper scripts directory (co-commit only)
+- `--json` — emit a versioned preparation result, including retained partial effects
+- `--message-file` — base commit message file for co-commit, without managed provenance trailers
+- `--no-plan` — explicitly select no plan for co-commit
 - `--plan` — exact .claude/plans path to include (repeatable)
 - `--run-id` — outer wrapper run id (default: DEV_AGENT_RUN_ID or generated)
 - `--session` — exact agent session provider:uuid (inferred from task/runtime when unique)
+- `--specstory-path` — exact SpecStory Markdown path matching the selected session and capture root
 
 ### `dev prompt`
 
@@ -10684,6 +10920,7 @@ Open an existing worktree in the runtime
 dev wt open <branch> [flags]
 ```
 
+- `--no-focus` — open or reuse the runtime without switching, attaching, or changing shell directory
 - `-r, --repo` — repository (default: the current one)
 
 ### `dev wt plan`
@@ -11080,6 +11317,42 @@ explicit agent scopes; existing bundled `skill uninstall` keeps its meaning.
 
 ## Agent history policy
 
+### Native closeout additions (v0.2.40)
+
+`prepare` defaults to `--closeout product-first`: committed products and an empty
+index. Optional `--specstory-path PATH` persists an exact provider/UUID export
+within its capture scope. Source-commit and archive finalizers recheck selection,
+live writer guards and native intent revisions; `--revision HASH` binds an exact
+reviewed record.
+
+`prepare --closeout co-commit --session claude:UUID --specstory-path PATH
+--message-file PATH` instead requires one `--plan PATH` or explicit `--no-plan`
+and a reviewed feature-only index. Optional `--closeout-helper` selects the
+installed canonical v2 scripts directory; `--allow-large` acknowledges a new
+untracked transcript over 2 MiB. The authentic wrapper must run without
+`--allow-commit`. Queueing never launches/closes the agent: retain the real ACK,
+report finalization queued and exit without further repository work. `--run-id`
+only repairs the binding of an already-queued exact run; no new queue/ACK.
+
+External `artifact finalize --intent ID --allow-commit [--revision HASH]` guards
+canonical prepare-only and one commit-capable call; unknown outcomes reconcile
+only. `--preview-review --json` is read-only and cannot combine with
+`--allow-commit`, `--review-file` or `--rotation-confirmed`. Applying exact private
+review requires an absolute `--review-file`; `--rotation-confirmed` means actual
+credential rotation, not fixture review. See [AI artifacts](https://daviddwlee84.github.io/dev-cli/guides/ai-artifacts/)
+for review rules, helper installation boundaries and platform limits.
+
+`prepare --json` and `artifact finalize --json` use schema-1 kinds
+`artifact_preparation` / `artifact_finalization` for product-first. Co-commit uses
+schema 1, kind `co_commit_handoff`, retaining partial status, request ID, native
+revision/intent, helper observation and, on queue success, canonical v2 `queue_ack`.
+Human queue output retains that ACK as one compact JSON line for the recorder.
+`artifact list --json` uses schema 1, kind `artifact_handoffs`, with `handoffs`
+rows whose persisted Intent fields remain separate from `co_commit_observation`
+or `observation_error`. Listing/status/readiness never mutate or reconcile.
+
+### Retention configuration
+
 `dev artifact setup` and `dev repo setup --artifacts` share reviewed plans.
 `.dev-cli/artifacts.toml` records project ID, track/archive/unmanaged mode,
 specstory/files source, capture location policy, literal paths and export rules.
@@ -11393,6 +11666,11 @@ These were historical gaps and should not be reintroduced as limitations:
 - `dev repo context --json` exposes additive schema-v1 local/remote evidence with source, age, freshness, completeness, null/error preservation, and scoped readiness; external probes happen only with `--refresh`. `dev status` reuses the cheap local readiness projection without network access.
 - `dev fleet machine-id` reports an observed UUID without changing configuration. `dev fleet files` is report-only by default, uses a separate `[local_files]` allowlist, negotiates downward-only limits before content, and requires explicit apply/replacement controls plus a matching target pin.
 
+- `dev wt open --no-focus` opens/reuses an existing registered checkout's runtime
+  without activation, attachment, or a shell `cd` handoff (including runtime
+  `none`). It reports branch/path/backend/handle and the actual runtime surface,
+  never creates/adopts/provisions work or launches an agent, and preserves open
+  failures. Default `wt open` navigation is unchanged.
 - `dev start --focus` activates the runtime after non-JSON creation.
 - `dev start --run '<shell command>'` dispatches only to an exact root pane from
   a newly created first-class Herdr worktree. It is incompatible with `--json`,
@@ -11841,6 +12119,43 @@ PowerShell and bounded process-tree cancellation; unsupported shell syntax or
 other shim mutation actions fail closed. The dedicated native removal tests are
 required; broad advisory Windows test conclusions are not proof that every
 legacy suite passed.
+
+## Native artifact closeout (v0.2.40)
+
+Product-first remains the default: commit products and leave an empty index.
+Optional `prepare --specstory-path` pins the exact provider/UUID/capture-path
+selection, including archive handoffs, without weakening ambiguity, traversal or
+symlink refusal. Finalizers recheck live writer/source guards and locked native
+intent revisions; `--writer-stopped` never overrides a recognized live writer.
+
+Explicit co-commit currently requires `claude:UUID`, in-checkout SpecStory capture,
+a feature-only index and a separately installed canonical v2 helper. The authentic
+wrapper must start without `--allow-commit`; dev never launches/closes an agent.
+Canonical v2 source is maintained separately in `agent-skills`; the helper is not
+bundled or automatically installed/upgraded with dev. An installed helper with
+compatible v2 capabilities is required. Missing capabilities, changed helper/tool
+identities and v1 journals fail closed; native Windows co-commit is unsupported
+pending a verified native backend. The external-archive lane is not a co-commit
+destination.
+
+Queue success—including `queued_but_not_bound`—requires the agent to report
+finalization queued and exit, preserving the real recorder's `queue_ack` evidence.
+`--run-id` only repairs an exact existing binding, not queue or lifecycle proof.
+External finalization delegates prepare-only, rechecks native Guard/CAS and helper
+journal revision, then permits one commit-capable call. Uncertain outcomes are
+reconcile-only. Commit proof includes exact parent/tree/full normalized message
+and unique request identity. Status/readiness never reconcile native records;
+schema-1 `artifact_handoffs` keeps persisted Intent fields separate from
+`co_commit_observation`/`observation_error`.
+
+V2 uses no-cloud through run/sync/export and requires exact export digest plus
+request/session linkage, not idle or mtime alone. Durable private beforeimages
+and receipts bind all finding occurrences and source/index/tool/policy identities.
+Eligible staged products are scanned read-only; only selected artifacts are
+sanitized. Read-only review cannot authorize apply. `reviewed_noncredential`
+releases only that already-sanitized run's rotation gate, never restores secrets,
+creates blanket exceptions or bypasses hooks. Actual credentials still require
+rotation; unknown findings stay blocked. See [AI artifacts](https://daviddwlee84.github.io/dev-cli/guides/ai-artifacts/).
 
 ## Agent history archives
 
@@ -13829,6 +14144,31 @@ Code、history 或 plans 需要保持可 review，或人之後可能回來時，
 
 `dev flow [repo]` 以 Git 的 authoritative worktree records 顯示 canonical、managed、unmanaged 與 strict `.claude/worktrees/` harness rows，另加入沒有 checkout 的 task-only rows。它不以 `worktree-*` branch prefix 猜 ownership；path/task binding 有歧義時標示 CONFLICT 並停止 lifecycle mutation。詳見 [Repository Flow 預覽](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/)。
 
+## 新 managed 工作與既有 checkout 的可見性
+
+新的 managed 工作優先使用 `dev start`，明確指定已 commit 的 base：
+
+```bash
+dev start api --task "auth fix" --branch fix/auth --base main
+```
+
+若外部 worktree 已經存在且已在 Git 註冊，只需要讓 runtime 看得見：
+
+```bash
+dev wt open fix/auth --repo api --runtime herdr --no-focus
+```
+
+Open command 立即回報 branch、實際 path 與 backend/handle，再說明實際 opened/reused
+runtime surface。它不切換 focus 或 attach，不另建 Git worktree、不 adopt task、
+不 provision、不啟動 agent，也不改 Git refs、index 或 dirty files。Fallback workspace
+會如實回報為 workspace，不是新 Git checkout 或 agent launch target。Runtime 為
+`none` 時不開 runtime，也不產生 shell `cd` handoff。沒有此 flag 時，原本的
+activation/shell navigation 不變；runtime error 仍使 command 失敗。
+
+交付時立即回報 repository、branch、實際 checkout path 與 runtime handle/result。
+Adoption 是另一個 task intent 決定，不是可見性開關；harness-owned 暫時隔離仍與
+持久的實作工作分開。詳見 [平行 Agent 與 Runtime](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/)。
+
 ## 建立前先檢查
 
 ```bash
@@ -14177,6 +14517,18 @@ Zellij 會保留可 resurrect 的 exited session。`dev` 只辨識 exact
 同一 name 建立新 session；name 只是含有 `EXITED` 的 live session 仍視為 live。若 session
 在 listing 與 layout inspection 之間退出，open 會 fail closed 並要求 retry，不會在無關
 checkout resurrect 舊 layout。
+
+## 不導航，只增加可見性
+
+新的 managed 工作使用 `dev start <repo> --task '<task>' --base '<committed-ref>'`。
+若外部 checkout 已在 Git 註冊、只需要 runtime 可見性，使用
+`dev wt open <branch> --repo <repo> --runtime herdr --no-focus`。它立即回報 branch、
+實際 path、backend/handle 與實際 opened/reused runtime surface，不 focus 或 attach。
+它不 adopt/annotate task、不 provision、不啟動 agent，也不修改 Git/index/dirty files。
+Reused 或 fallback surface 不是新的 exact agent launch target。Runtime 為 `none`
+時回報沒有 runtime，也不產生 shell `cd` handoff。沒有此 flag 時，原本的 navigation
+不變；open 失敗仍回傳 error。交付時立即回報 repository、branch、實際 path 與
+runtime handle/result。詳見 [Worktree 與環境佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/)。
 
 若要在新建的獨立 worktree 執行一個已 review 的 shell command，Herdr 支援直接
 one-liner：
@@ -15608,7 +15960,8 @@ SpecStory 可在各 worktree 的 `.specstory/history/` 寫入，或明確指定
 目錄不會自動保留專案歸屬。Lore 等工具另有 metadata 與知識整理紀錄，
 不能假設所有資料庫都可由 Markdown 重建。
 
-既有「history 進 Git」流程：
+預設 `product-first` handoff 要求 product changes 已 commit 且 index 為空，
+不會 stage 仍在變動中的 transcript：
 
 ```bash
 dev hygiene status
@@ -15636,6 +15989,91 @@ Writer 已結束的證據與來源重新驗證仍不可省略；restore 檢查 r
 Ignored history 不必參與一般 code commit 的掃描；但已 tracked 的檔案
 不會因新增 `.gitignore` 就停止追蹤。移出 index 是獨立操作。刪除
 worktree 前保留或封存 history；ignored 不等於可丟棄或已備份。
+
+## 精確選取與 co-commit closeout（v0.2.40）
+
+`dev prepare --specstory-path PATH` 可在同一 session 有多份匯出時選取一個精確
+Markdown 檔案。保存的選取必須符合嚴格 SpecStory preamble 中的 provider 與
+UUID，且位於設定的 capture 範圍內：source commit 使用 `.specstory/history/`，
+archive 則使用該 policy 的 capture root。路徑穿越、symlink 與身分不符都拒絕。
+省略 selector 時，有歧義仍會阻擋，不猜最新檔案。Finalize 重新檢查選取與 live
+writer guard；`--writer-stopped` 不可覆蓋 live writer。Native intent 更新使用
+鎖內精確 revision 的 compare-and-update（CAS），archive handoff 亦同。
+`artifact finalize --revision HASH` 可要求與審閱時的 native revision 完全一致。
+
+Co-commit 是明確選用的 product-first 替代流程，不是新預設。它把審閱後 staged
+的 product changes 與最終 transcript／可選 plan 放進同一個正常 commit。
+目前只支援 `claude:UUID` 與 checkout 內的 SpecStory capture，不適用 external
+archive。Canonical `agent-history-hygiene` v2 原始碼在 `agent-skills` 獨立維護；
+安裝 dev 不會內附、安裝或升級 helper。Co-commit 要求已安裝的 helper 具備相容
+v2 capabilities。工具缺失、不支援的 helper capability 或 helper／tool fingerprint
+改變都會阻擋，不自動安裝。Native Windows co-commit 尚不支援，等待經驗證的
+native backend；既有 v1 journal 不會默默升級。
+
+1. 明確啟動真實的 canonical v2 wrapper，**不要加 `--allow-commit`**，保留由
+   外部手動 finalize。Dev 不啟動或關閉 agent；自行編造環境變數、session ID 或
+   receipt 不能取代真實 wrapper lifecycle。
+2. Index 只 stage 已審閱的 product files，不含 transcript 與選定 plan。準備不含
+   managed provenance trailers 的 base message file；選一個 `--plan`，或明確
+   指定 `--no-plan`。
+3. 在該 wrapper 啟動的 agent 內排入精確 handoff：
+
+   ```bash
+   dev prepare --closeout co-commit --session 'claude:<uuid>' \
+     --specstory-path .specstory/history/session.md \
+     --plan .claude/plans/task.md --message-file /path/to/commit-message.txt --json
+   ```
+
+   只有要明確選取已安裝的 canonical helper 時，才加
+   `--closeout-helper /path/to/agent-history-hygiene/scripts`。新增未 tracked 且
+   大於 2 MiB 的 transcript 需審閱後以 `--allow-large` 同意。
+4. 讓真實 recorder／session 保留命令輸出。JSON 使用 schema 1、kind
+   `co_commit_handoff`，並保留 canonical v2 `queue_ack`；human output 則把 ACK
+   保留為一行完整、緊湊的 JSON。這是真實 queue 證據，不可由 agent 重建。
+   回報 **「finalization queued」** 後正常退出，**不再執行任何 repository 或
+   index 操作**。`queued_but_not_bound` 也必須退出：保留 request ID，之後從外部
+   以相同選取與 `--run-id` 修復該次 binding，不新增 queue request 或 ACK。
+   Queue 結果未知時先檢查，不盲目重新排入。
+5. 真實 wrapper 完成後，由外部 coordinator 審閱 handoff 並明確授權 finalize：
+
+   ```bash
+   dev artifact list --json
+   dev artifact finalize --intent '<id>' --allow-commit --json
+   ```
+
+   可加 `--revision HASH` 綁定 native revision。Dev 先委派 canonical prepare-only，
+   再重新檢查自己的 live writer／policy／source guards 與 native CAS revision，
+   最後以精確 helper journal revision 綁定一次可 commit 的 helper 呼叫。Commit
+   結果不確定時只允許 reconciliation，不重試 commit。`committed_but_not_recorded`
+   需修復 receipt 紀錄，不再 commit。證明包含精確 parent、prepared tree、完整
+   normalized message 與唯一 request 身分，不只檢查 trailers。
+
+V2 helper 預設在 run、sync 與 export 全程使用 no-cloud。Finalize 需要 child
+成功退出、process group 已靜止，以及精確 native export digest 與 request／session
+關聯；idle、mtime 或暫時穩定的 bytes 都不足以證明。所有可掃描的 staged product
+都以唯讀方式檢查；sanitation 只修改選定 artifacts。修改前先持久保存 private
+beforeimages 與 receipts，綁定每個 finding 的所有 occurrences，以及 source／
+index／tool／policy 身分。
+
+Sanitation review 被阻擋時，先唯讀檢查：
+
+```bash
+dev artifact finalize --intent '<id>' --preview-review --json
+```
+
+Preview 不可搭配 `--allow-commit`、`--review-file` 或 `--rotation-confirmed`。
+Raw findings 與 recovery 保留在 Git 外的 private state。逐項明確審閱後，外部
+finalizer 可使用 `--allow-commit --review-file /absolute/path/to/review.json`，
+並可附 preview 的 `--revision`。`reviewed_noncredential` 不等於實際憑證輪替：
+fixture review 只解除該次已完成 sanitation 的精確 run 之 rotation gate，不會還原
+secret bytes、建立全面豁免或繞過 Git hooks。只有實際完成必要憑證輪替後，才使用
+`--rotation-confirmed`；unknown 或不完整 findings 仍阻擋。本流程不自動授權復原
+任何既有真實 run。
+
+`artifact list --json` 使用 schema 1、kind `artifact_handoffs`。每個 row 將
+已保存 native Intent 欄位與 `co_commit_observation` 或 `observation_error`
+分開。List、status 與 lifecycle readiness 都是唯讀；helper 觀測不會默默 finalize
+或 reconcile native 紀錄。即使 runtime 顯示 done，不完整或失敗的證明仍是 blocker。
 
 ## 選擇並套用 repository policy
 
@@ -15773,6 +16211,11 @@ release/tag 遷移，以及 filtered history 的 force-with-lease 發布另行�
 | `.gitattributes` 的 `export-ignore` | 從 `git archive` 發行包排除指定路徑 | 不變 |
 | Ignore 加上 untrack | 後續 source commit 不再加入新版本，工作檔保留 | 不變 |
 | 在獨立副本過濾歷史 | 產生不含指定路徑的替代歷史 | 副本中的 commit ID 改變 |
+
+dev-cli v0.2.40 的 release source archive 透過 `.gitattributes` 排除 repo root 的
+`.specstory`，以及精確的 agent-plan 根目錄 `.claude/plans`、`.codex/plans`、
+`.cursor/plans` 與 `.opencode/plans`。這只改變發行邊界，不停止 Git tracking 或
+改寫 history；這些規則不排除其他 agent 設定與 skills。
 
 保留 Git history、排除 source archive 的例子：
 
@@ -16651,7 +17094,7 @@ RETIRED   runtime 已消失、worktree 已移除、可選擇刪除 branch、task
 
 | 命令 | 作用 |
 |---|---|
-| `dev prepare --session <provider:uuid> --plan <path>` | 在不關閉目前執行中 agent 的情況下，arm post-writer artifact finalization。Product changes 必須已先 commit；transcript 本身刻意尚未 stage。 |
+| `dev prepare --session <provider:uuid> --plan <path>` | 在不關閉目前執行中 agent 的情況下，arm post-writer artifact finalization。預設 product-first 要求 products 已 commit 且 index 為空；transcript 本身刻意尚未 stage。 |
 | `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | 在 writer 停止後，把 exact、stable transcript 存進 intent 選定的 source commit 或外部 archive。`--if-pending` 在沒有對應 armed intent 時靜默 no-op；`--writer-stopped` 確認外層 wrapper 已 return。 |
 | `dev done --ff` | 把 task branch rebase 到其 base 上並在本機 fast-forward。記錄為 MERGED，保留 worktree/branch；明確選定的 task pane 關閉另行記錄，parent 保留。 |
 | `dev done --pr` | Push branch，並透過可用的 forge CLI 開啟 pull/merge request。Task 保持在 review 狀態，不是 MERGED。 |
@@ -16724,6 +17167,32 @@ dev retire <task> --delete-branch
 ```
 
 `dev done` 只負責整合並記錄為 MERGED。`dev retire` 會重新解析每個 runtime pane、關閉符合條件的 session、等待它們消失、重新驗證 Git，再移除 worktree（不使用 force）。
+
+## 明確選用 co-commit closeout（v0.2.40）
+
+預設 product-first 仍須先 commit products 再 `prepare`。新增
+`--specstory-path PATH` 可在 capture 範圍內選取精確 provider／UUID 匯出檔；
+finalize 會重新驗證選取與 native intent revision。另一條 `--closeout co-commit`
+流程透過另外安裝的 canonical v2 helper，排入審閱後 feature-only index、精確
+`claude:UUID` transcript、一個 `--plan` 或 `--no-plan`，以及 base `--message-file`。
+
+真實 wrapper 啟動時**不可加 `--allow-commit`**，讓 native dev 在外部 finalize
+時執行自己的 guards。Dev 不會啟動或關閉 agent。讓 recorder 保留實際 `queue_ack`
+輸出，回報「finalization queued」後退出，不再執行 repository／index 操作；
+`queued_but_not_bound` 亦同。`--run-id` 只修復該次既有 binding，不重新排入或
+產生新 ACK。Wrapper 結束後，由外部 `artifact finalize --intent ID --allow-commit`
+執行 prepare-only，重新檢查 native writer／policy／CAS，再以精確 journal revision
+綁定一次可 commit 的 helper 呼叫。結果未知時只 reconcile，不重試 commit；
+單靠 `--writer-stopped` 不構成 co-commit 證明。
+
+`artifact list --json` 與 readiness 將已保存 native intent 與 helper 觀測分開，
+不 reconcile 紀錄。整合及清理前，必須驗證完整 parent／tree／normalized message／
+唯一 request 證明與 reachable receipt，不採信 runtime done 或單獨 trailer。
+`agent-skills` 獨立維護的 canonical v2 原始碼、已安裝 helper 的相容能力要求
+（不內附或自動安裝）、唯讀 review preview、private 逐項審閱與實際輪替要求詳見
+[AI 產物](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ai-artifacts/)。Fixture review 不還原 secrets 或繞過 hooks。
+Native Windows co-commit 尚不支援；retirement 自己的 runtime、Git 與 containment
+檢查保持不變。
 
 ## 選擇 containment base
 
@@ -17444,6 +17913,18 @@ press 選取 visible row；點目前反白列就開啟 actions，包含鍵盤或
 只開選單，另行點選項目才執行。Enter/`o` 開啟目標。Mouse tracking
 啟用時，部分 terminal 的原生文字選取需要按住 Shift/Option。
 
+## 即時篩選清單
+
+八個 dashboard views 都可按 `/` 邊輸入邊篩選。輸入時用上下鍵選取可見結果，
+輸入框仍保持焦點，查詢文字與文字游標不變，也不執行操作或觸發網路請求。
+`j/k` 與其他字母仍是搜尋文字。左右鍵、Home/End 只移動文字游標；只移動游標
+或未刪除任何字元時，保留目前結果選取。只有查詢文字真的改變才選取第一筆。
+
+Enter 保留查詢與選取並離開輸入，不會開啟該列；回到清單後再按 Enter，才執行
+所選列原本的開啟操作。篩選時按 Esc 會清除查詢。即使所選 repository 尚有
+pending observations，輸入框與按鍵提示仍會顯示。Notes 搜尋仍需 Enter 才送出
+查詢；forms、SSH dialogs 與 Ctrl+O action search 保留各自的行為。
+
 ## 目前分頁的 Help（v0.2.24）
 
 按 `?` 或點 footer 的 **Help**，預設開啟目前 dashboard 分頁的 **Keys**，
@@ -17478,6 +17959,10 @@ Manual 搜尋主題名稱、標題、小節與全文，並顯示摘錄；開啟�
 瀏覽長內容；文章的橫向捲動按鈕或左右鍵可查看過寬的程式碼與圖。
 Esc 依序停止輸入、清除查詢、返回上一層、關閉 Help。非輸入狀態下 `q`
 直接關閉；輸入中的 `q`、`v`、`f` 等字元仍是文字。
+在即時 Help 索引／結果搜尋中，上下鍵選取項目，不離開輸入或移動文字游標；
+`j/k` 仍是文字。只移動文字游標會保留選取，只有文字改變才重設結果。Enter
+保留查詢與選取，不會開啟項目；離開輸入後再按 Enter 才閱讀。文章內查找／捲動
+保留既有 Enter 送出與 `n`／`N` 切換命中的行為。
 
 Help 與 Ctrl+O 共用有 **Expand**、**Close** 的浮窗，通常最大為
 104 欄 × 32 列、四周至少留兩格；少於 80 欄或 22 列時使用全畫面。
@@ -17541,9 +18026,13 @@ y         開啟 copy/context actions
 
 展開後會顯示每個 linked worktree，包括 harness-owned `(ephemeral)` 與未受管理的 `(external)` checkout。LIVE column 將 runtime activity 與 task state 分開。
 
-REPOS 為空時仍可按 `n`。Dashboard 會 suspend 到
+REPOS 為空、篩選後無結果，或所選列尚有 pending observations 時，仍可按 `n`
+或 Ctrl+O → new repository。這個入口不依賴所選列，選單開啟期間該列消失也不會
+阻擋；但進行中的 clone 仍會阻擋建立。Dashboard 會 suspend 到
 `dev repo new --handoff stay`，保留 config/scaffold overrides，成功後重新載入
-local TASKS/REPOS/TRY state；TUI 不會另外維護一套縮減版 repository creator。
+local TASKS/REPOS/TRY state。原生 wizard 仍要求確認，並在 mutation 前重新檢查
+目的地、nested-repository 限制與 exclusive creation。其他依賴所選列的操作及
+REMOTE clone 的 freshness checks 維持不變；TUI 不會另外維護縮減版 creator。
 
 `dev repo context [repo]` 會輸出 TUI copy menu 相同的 agent-ready Markdown context，包含 paths、Git/worktree/runtime facts 與 tasks。`--json` 加入 schema-v1 evidence/readiness contract；只有 `--refresh` 會 live-probe optional forge 與 configured fleet sources。
 
@@ -17637,7 +18126,7 @@ repository 的 notes overlay。Child worktree 會透過 catalog identity 解析�
 
 ```text
 j/k       移動
-/         搜尋 body、tags 與 repository
+/         搜尋 body、tags 與 repository；Enter 才送出查詢
 Enter     展開或收合 Markdown body
 a or n    新增另一則 note
 e         用 VISUAL/EDITOR 編輯 body
@@ -17783,7 +18272,8 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 ## 載入、選單搜尋與多年活動
 
 REPOS 先讀取附時間的顯示 cache，再逐批加入 discovery 與 Git observations。
-Runtime 較慢時，其他 repo 資料仍會出現；pending／cached rows 不提供操作授權。
+Runtime 較慢時，其他 repo 資料仍會出現；pending／cached rows 不提供依賴該列
+之操作的授權。New-repo wizard 是獨立入口，仍保留最終 mutation checks。
 完整 discovery 才移除消失項目，失敗保留 stale／unknown。`r` 保持本地 refresh；
 `dev cache clear repos` 可清除快照，SIZE 沿用其獨立 cache。
 
@@ -17910,6 +18400,15 @@ action menu，方向鍵選取、Enter 繼續。Esc 先停止輸入或清除查�
 不執行操作或探測工具。搜尋範圍、文章導覽與分層 Esc 規則詳見
 [目前分頁的 Help](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/)。
 
+Dashboard 的 `/` 在八個 views 即時篩選。輸入時用上下鍵選取可見結果，保留
+輸入焦點、查詢與文字游標，不執行操作或觸發網路請求。`j/k` 仍是文字；左右鍵、
+Home/End 編輯查詢游標，只有文字改變才重新選取第一筆。Enter 保留查詢與選取並
+離開輸入，不會開啟該列；回到清單後再按 Enter 才執行原本的開啟操作。篩選時
+Esc 清除查詢，pending repository 詳情不會遮住輸入框。Help 索引／結果搜尋同樣
+支援輸入中的上下鍵與保留選取；文章內查找／捲動維持獨立。Notes 搜尋仍只在
+Enter 時送出；Ctrl+O 的 Enter 仍執行所選 action，forms／SSH dialogs 保留既有
+輸入行為。
+
 TASKS 的完成、恢復、退休與 recovery 沿用既有 CLI workflows。Dashboard 在
 提示期間暫停，完成或失敗後重新載入。Task ID／revision 檢查會拒絕過期選取。
 `dev sweep --task <id>` 只回報指定 task；加上 `--apply` 後逐項確認可執行的
@@ -17920,7 +18419,14 @@ TASKS 的完成、恢復、退休與 recovery 沿用既有 CLI workflows。Dashb
 
 ## 建立與開啟工作
 
-REPOS Enter 只開啟所選 repository，不建立 task。`s`／`d` 開啟完整 start
+REPOS 的 `n` 或 Ctrl+O → new repository 會開啟既有的
+`dev repo new --handoff stay` wizard，即使清單空白、篩選後無結果，或 repository
+observations 尚在載入也能進入；選單開啟期間原選取列消失，不會阻擋這個入口。
+進行中的 clone 仍會阻擋建立。原生 wizard 保留確認，並在 mutation 前重新檢查
+目的地、nested-repository 限制與 exclusive-create 條件。其他依賴所選列的操作
+及 REMOTE clone 的 freshness checks 維持不變；pending rows 不是 mutation 授權。
+
+離開篩選輸入後，REPOS Enter 只開啟所選 repository，不建立 task。`s`／`d` 開啟完整 start
 wizard，分別預選 worktree／direct。Wizard 詢問 task 與必要的 branch、base、
 next action，最終建立確認前可選 open（預設）或 stay。Reviewed plan 的 base
 必須明確，不能由任意 checked-out branch 推定。
@@ -19757,9 +20263,15 @@ Finalize a prepared session after its transcript writer stops
 dev artifact finalize [flags]
 ```
 
+- `--allow-commit` — authorize one guarded canonical co-commit attempt or reconciliation
 - `--archive-plan` — reviewed archive plan for a prepared session (required for redaction copies)
 - `--if-pending` — silently succeed when no armed intent matches the run id
 - `--intent` — artifact intent id
+- `--json` — emit a versioned finalization or review result
+- `--preview-review` — read the co-commit review receipt without mutating or committing
+- `--review-file` — absolute private per-finding review file for exact co-commit recovery
+- `--revision` — require the exact reviewed native intent revision
+- `--rotation-confirmed` — confirm actual credential rotation for the reviewed co-commit findings
 - `--run-id` — outer wrapper run id
 - `--settle` — required transcript stability interval
 - `--writer-stopped` — confirm the outer agent wrapper has returned before finalization
@@ -19784,8 +20296,10 @@ dev artifact find [text] [flags]
 List pending and completed artifact handoffs
 
 ```
-dev artifact list
+dev artifact list [flags]
 ```
+
+- `--json` — emit versioned handoffs with separate read-only helper observations
 
 ### `dev artifact migrate`
 
@@ -21079,9 +21593,15 @@ dev prepare [task-or-worktree] [flags]
 ```
 
 - `--allow-large` — acknowledge adding a new untracked transcript over 2 MiB
+- `--closeout` — handoff lane: product-first or explicit canonical co-commit
+- `--closeout-helper` — explicit installed canonical helper scripts directory (co-commit only)
+- `--json` — emit a versioned preparation result, including retained partial effects
+- `--message-file` — base commit message file for co-commit, without managed provenance trailers
+- `--no-plan` — explicitly select no plan for co-commit
 - `--plan` — exact .claude/plans path to include (repeatable)
 - `--run-id` — outer wrapper run id (default: DEV_AGENT_RUN_ID or generated)
 - `--session` — exact agent session provider:uuid (inferred from task/runtime when unique)
+- `--specstory-path` — exact SpecStory Markdown path matching the selected session and capture root
 
 ### `dev prompt`
 
@@ -22535,6 +23055,7 @@ Open an existing worktree in the runtime
 dev wt open <branch> [flags]
 ```
 
+- `--no-focus` — open or reuse the runtime without switching, attaching, or changing shell directory
 - `-r, --repo` — repository (default: the current one)
 
 ### `dev wt plan`
@@ -22879,6 +23400,39 @@ UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需
 
 ## Agent history policy
 
+### Native closeout 新增介面（v0.2.40）
+
+`prepare` 預設 `--closeout product-first`，要求 products 已 commit 且 index 為空。
+可選 `--specstory-path PATH` 保存 capture 範圍內精確 provider／UUID 匯出檔的
+選取。Source-commit 與 archive finalizer 重新檢查選取、live writer guards 與
+native intent revisions；`--revision HASH` 可綁定精確審閱紀錄。
+
+`prepare --closeout co-commit --session claude:UUID --specstory-path PATH
+--message-file PATH` 則要求一個 `--plan PATH` 或明確 `--no-plan`，且 index 只有
+審閱後的 product changes。可選 `--closeout-helper` 指定已安裝 canonical v2 的
+scripts directory；`--allow-large` 同意新增大於 2 MiB 的 untracked transcript。
+真實 wrapper 必須不帶 `--allow-commit` 啟動。Queue 不會啟動／關閉 agent：保留
+真實 ACK，回報 finalization queued 後退出，不再操作 repository。`--run-id` 只
+修復已排入之精確 run 的 binding，不新增 queue／ACK。
+
+外部 `artifact finalize --intent ID --allow-commit [--revision HASH]` 對
+canonical prepare-only 及一次可 commit 的呼叫執行 guards；結果未知只 reconcile。
+`--preview-review --json` 為唯讀，不可搭配 `--allow-commit`、`--review-file` 或
+`--rotation-confirmed`。套用精確 private review 需 absolute `--review-file`；
+`--rotation-confirmed` 代表實際憑證輪替，不是 fixture review。審閱規則、helper
+安裝邊界及平台限制見 [AI 產物](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ai-artifacts/)。
+
+Product-first 的 `prepare --json` 與 `artifact finalize --json` 使用 schema 1、
+kind `artifact_preparation`／`artifact_finalization`。Co-commit 使用 schema 1、
+kind `co_commit_handoff`，保留 partial status、request ID、native revision／intent、
+helper 觀測，並在 queue 成功時保留 canonical v2 `queue_ack`。Human queue output
+也以一行完整緊湊 JSON 保留 ACK，供 recorder 記錄。`artifact list --json` 使用
+schema 1、kind `artifact_handoffs`；`handoffs` 每個 row 的已保存 Intent 欄位與
+`co_commit_observation` 或 `observation_error` 分開。List／status／readiness 不
+修改或 reconcile 紀錄。
+
+### 保存設定
+
 `dev artifact setup` 與 `dev repo setup --artifacts` 共用審閱 plan。
 `.dev-cli/artifacts.toml` 保存 project ID、track/archive/unmanaged 模式、
 specstory/files 來源、capture 策略、literal 路徑與 export 規則。本機 archive／
@@ -23149,6 +23703,10 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - `dev repo context --json` 提供 additive schema-v1 local/remote evidence，包含 source、age、freshness、completeness、null/error preservation 與 scoped readiness；只有 `--refresh` 執行 external probes。`dev status` 重用 cheap local readiness projection，不進行 network access。
 - `dev fleet machine-id` 回報 observed UUID，不修改設定。`dev fleet files` 預設 report-only，使用獨立 `[local_files]` allowlist，在 content 前協商只能調低的 limits，並要求 explicit apply/replacement controls 與 matching target pin。
 
+- `dev wt open --no-focus` 開啟／重用既有 registered checkout 的 runtime，但不
+  activate、attach 或產生 shell `cd` handoff（包含 runtime `none`）。它回報
+  branch/path/backend/handle 與實際 runtime surface，不建立／adopt／provision 工作、
+  不啟動 agent；open failure 仍回傳 error。預設 `wt open` navigation 不變。
 - `dev start --focus` 會在 non-JSON creation 後 activate runtime。
 - `dev start --run '<shell command>'` 只會 dispatch 到本次新建 first-class Herdr
   worktree 的 exact root pane。它不能與 `--json`、non-worktree modes 或 non-Herdr
@@ -23547,6 +24105,39 @@ Skill 移除要求已驗證 native ownership 或 bundled manifest、明確 agent
 與依賴檢查。Windows npm shim 移除使用系統 PowerShell 與 process-tree 取消；
 不支援的 shell syntax 或其他 shim mutation 會拒絕。獨立 native removal tests
 是必要 gate；Windows 廣泛 advisory job 的成功結論不表示所有 legacy suites 通過。
+
+## Native artifact closeout（v0.2.40）
+
+預設仍是 product-first：先 commit products，index 留空。可選
+`prepare --specstory-path` 綁定精確 provider／UUID／capture-path，包含 archive
+handoff，不放寬歧義、路徑穿越或 symlink 拒絕。Finalizer 重新檢查 live writer／
+source guards 與鎖內 native intent revisions；`--writer-stopped` 不覆蓋已辨識的
+live writer。
+
+明確 co-commit 目前需要 `claude:UUID`、checkout 內 SpecStory capture、feature-only
+index 與另外安裝的 canonical v2 helper。真實 wrapper 啟動時不可加
+`--allow-commit`；dev 不啟動／關閉 agent。Canonical v2 原始碼在 `agent-skills`
+獨立維護；dev 不內附或自動安裝／升級 helper，且要求已安裝的 helper 具備相容
+v2 capabilities。缺少 capability、helper／tool 身分改變或 v1 journal 都拒絕；
+native Windows co-commit 尚不支援，等待經驗證的 native backend。
+External archive 不是 co-commit 目的地。
+
+Queue 成功（包含 `queued_but_not_bound`）後，agent 必須保留 recorder 實際收到的
+`queue_ack` 證據、回報 finalization queued 並退出。`--run-id` 只修復精確既有
+binding，不製造 queue 或 lifecycle proof。外部 finalize 委派 prepare-only、
+重新檢查 native Guard／CAS 與 helper journal revision，再允許一次可 commit 的
+呼叫。結果不確定時只 reconcile。Commit proof 包含精確 parent／tree／完整
+normalized message 與唯一 request 身分。Status／readiness 不 reconcile native
+紀錄；schema-1 `artifact_handoffs` 把已保存 Intent 欄位與
+`co_commit_observation`／`observation_error` 分開。
+
+V2 在 run／sync／export 全程使用 no-cloud，要求精確 export digest 及 request／
+session 關聯，不只看 idle 或 mtime。持久 private beforeimages 與 receipts 綁定
+所有 finding occurrences 及 source／index／tool／policy 身分。可掃描的 staged
+product 只唯讀檢查，sanitation 只修改選定 artifacts。唯讀 review 不授權 apply。
+`reviewed_noncredential` 只解除該次已 sanitation run 的 rotation gate，不還原
+secrets、建立全面豁免或繞過 hooks。真實憑證仍需輪替，unknown findings 仍阻擋。
+見 [AI 產物](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/ai-artifacts/)。
 
 ## Agent history archives
 

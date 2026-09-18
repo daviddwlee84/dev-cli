@@ -2,7 +2,7 @@
 description: Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
 authority: project
 status: generated-plus-authored
-verified_on: 2026-09-17
+verified_on: 2026-09-18
 ---
 
 # Commands and configuration
@@ -1114,6 +1114,42 @@ Tailscale/LAN/Fleet caches. `skill manage` also removes selected owned skills wi
 explicit agent scopes; existing bundled `skill uninstall` keeps its meaning.
 
 ## Agent history policy
+
+### Native closeout additions (v0.2.40)
+
+`prepare` defaults to `--closeout product-first`: committed products and an empty
+index. Optional `--specstory-path PATH` persists an exact provider/UUID export
+within its capture scope. Source-commit and archive finalizers recheck selection,
+live writer guards and native intent revisions; `--revision HASH` binds an exact
+reviewed record.
+
+`prepare --closeout co-commit --session claude:UUID --specstory-path PATH
+--message-file PATH` instead requires one `--plan PATH` or explicit `--no-plan`
+and a reviewed feature-only index. Optional `--closeout-helper` selects the
+installed canonical v2 scripts directory; `--allow-large` acknowledges a new
+untracked transcript over 2 MiB. The authentic wrapper must run without
+`--allow-commit`. Queueing never launches/closes the agent: retain the real ACK,
+report finalization queued and exit without further repository work. `--run-id`
+only repairs the binding of an already-queued exact run; no new queue/ACK.
+
+External `artifact finalize --intent ID --allow-commit [--revision HASH]` guards
+canonical prepare-only and one commit-capable call; unknown outcomes reconcile
+only. `--preview-review --json` is read-only and cannot combine with
+`--allow-commit`, `--review-file` or `--rotation-confirmed`. Applying exact private
+review requires an absolute `--review-file`; `--rotation-confirmed` means actual
+credential rotation, not fixture review. See [AI artifacts](../guides/ai-artifacts.md)
+for review rules, helper installation boundaries and platform limits.
+
+`prepare --json` and `artifact finalize --json` use schema-1 kinds
+`artifact_preparation` / `artifact_finalization` for product-first. Co-commit uses
+schema 1, kind `co_commit_handoff`, retaining partial status, request ID, native
+revision/intent, helper observation and, on queue success, canonical v2 `queue_ack`.
+Human queue output retains that ACK as one compact JSON line for the recorder.
+`artifact list --json` uses schema 1, kind `artifact_handoffs`, with `handoffs`
+rows whose persisted Intent fields remain separate from `co_commit_observation`
+or `observation_error`. Listing/status/readiness never mutate or reconcile.
+
+### Retention configuration
 
 `dev artifact setup` and `dev repo setup --artifacts` share reviewed plans.
 `.dev-cli/artifacts.toml` records project ID, track/archive/unmanaged mode,

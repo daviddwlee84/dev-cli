@@ -7,10 +7,12 @@ not mean the Git checkout is healthy.
 
 Use three separate milestones:
 
-1. **READY** — commit product work, run `dev prepare`, then exit normally so the
-   post-SpecStory finalizer can preserve the exact final transcript in its selected source-commit or external-archive destination. A manual
-   external finalizer must pass `--writer-stopped`; a Claude SessionEnd observer
-   can provide the same durable proof without staging during teardown.
+1. **READY** — by default, commit product work and leave an empty index, run
+   `dev prepare`, then exit normally so the post-SpecStory finalizer can preserve
+   the exact final transcript in its selected source-commit or external-archive
+   destination. A manual product-first finalizer must pass `--writer-stopped`;
+   a Claude SessionEnd observer can provide the same durable proof without
+   staging during teardown. Explicit co-commit has separate proof below.
 2. **MERGED** — `dev done --ff`, or external-merge verification with
    `dev done --merged --base-ref <ref>`, records DONE. Explicit and
    non-interactive completion keeps worktree/branch; selected interactive task
@@ -47,6 +49,29 @@ is used. Layout changes, new initialization or claims invalidate plans. Partial
 admin pruning failure is reported, never task-retired success. Canonical/shared
 Git and the outer branch remain; initialization/publication policy is unchanged.
 `objects/info/alternates` remains an intentional blocker.
+
+## Explicit co-commit closeout (v0.2.40)
+
+`prepare --specstory-path PATH` pins the exact provider/UUID/capture-path selection;
+ambiguity is never resolved by newest mtime. The separate `--closeout co-commit`
+lane requires a real canonical v2 wrapper launched **without `--allow-commit`**,
+a reviewed feature-only index, exact `claude:UUID` transcript, one `--plan` or
+`--no-plan`, and a base `--message-file`. Dev never launches or closes the agent.
+Preserve the actual queue ACK in the recorder, report "finalization queued", and
+exit without further repository operations, even for `queued_but_not_bound`.
+`--run-id` only repairs that exact existing binding; it creates no request or ACK.
+
+After the wrapper finishes, an external `artifact finalize --intent ID
+--allow-commit` delegates prepare-only, then rechecks native writer/policy and
+CAS guards before one commit-capable call with the exact helper journal revision.
+`--writer-stopped` alone does not supply co-commit lifecycle proof. Unknown commit
+outcomes reconcile only, never retry. Read-only `artifact list --json` and
+readiness keep persisted intent separate from helper observations and never
+reconcile records. Retirement still requires complete, reachable artifact proof
+and all its ordinary Git/runtime guards. See `dev help ai-artifacts` for canonical
+v2 source maintained separately in `agent-skills`, compatible installed-helper
+requirements (never bundled or auto-installed), read-only `--preview-review --json`,
+private review/rotation requirements and native Windows limits.
 
 ## Choose the containment base
 

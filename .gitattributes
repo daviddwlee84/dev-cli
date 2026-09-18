@@ -10,3 +10,11 @@ uv.lock  linguist-generated=true
 # Conversation evidence stays in Git when selected, but is not a product input.
 /.specstory export-ignore
 /.specstory/** export-ignore
+/.claude/plans export-ignore
+/.claude/plans/** export-ignore
+/.codex/plans export-ignore
+/.codex/plans/** export-ignore
+/.cursor/plans export-ignore
+/.cursor/plans/** export-ignore
+/.opencode/plans export-ignore
+/.opencode/plans/** export-ignore

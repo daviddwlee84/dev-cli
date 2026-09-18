@@ -2,6 +2,7 @@ package artifact
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,5 +194,91 @@ func TestReadTranscriptSessionRejectsSymlinkAndLateMentions(t *testing.T) {
 	}
 	if _, _, err := ReadTranscriptSession(late); err == nil {
 		t.Fatal("late session mention proved a session")
+	}
+}
+
+func TestStoreExactRecordCASAndConcurrentTransitions(t *testing.T) {
+	store := NewStore(t.TempDir())
+	store.clock = func() time.Time { return time.Date(2026, 9, 18, 0, 0, 0, 0, time.UTC) }
+	intent := &Intent{RunID: "revision-test", Provider: "codex", SessionID: "01a0438b-5d41-7e60-b11f-ef9f2ab4c7b2", RepoPath: "/repo", WorktreePath: "/repo", GitCommonDir: "/repo/.git", Branch: "main", Head: "abc"}
+	if err := store.Create(t.Context(), intent); err != nil {
+		t.Fatal(err)
+	}
+	record, err := store.GetRecord(intent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Even a same-second formatting-only edit invalidates exact reviewed bytes.
+	data, err := os.ReadFile(store.path(intent.ID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.path(intent.ID), append(data, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	if _, err := store.UpdateIfRevision(t.Context(), intent.ID, record.Revision, func(*Intent) error { called = true; return nil }); !errors.Is(err, ErrStaleRevision) || called {
+		t.Fatalf("byte revision was ignored: %v called=%v", err, called)
+	}
+	record, err = store.GetRecord(intent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateIfRevision(t.Context(), intent.ID, "", func(*Intent) error { return nil }); !errors.Is(err, ErrStaleRevision) {
+		t.Fatalf("empty revision accepted: %v", err)
+	}
+	start := make(chan struct{})
+	errs := make(chan error, 3)
+	for _, status := range []Status{Failed, Discarded, Finalizing} {
+		go func(status Status) {
+			<-start
+			_, err := store.UpdateIfRevision(context.Background(), intent.ID, record.Revision, func(i *Intent) error { i.Status = status; return nil })
+			errs <- err
+		}(status)
+	}
+	close(start)
+	wins, stales := 0, 0
+	for range 3 {
+		err := <-errs
+		if err == nil {
+			wins++
+		} else if errors.Is(err, ErrStaleRevision) {
+			stales++
+		} else {
+			t.Fatal(err)
+		}
+	}
+	if wins != 1 || stales != 2 {
+		t.Fatalf("CAS winners=%d stale=%d", wins, stales)
+	}
+	current, err := store.GetRecord(intent.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current.Revision == record.Revision || !current.Intent.UpdatedAt.Equal(record.Intent.UpdatedAt) {
+		t.Fatal("revision did not distinguish same-second transition")
+	}
+	if err := os.Remove(store.path(intent.ID)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.UpdateIfRevision(t.Context(), intent.ID, current.Revision, func(*Intent) error { return nil }); !errors.Is(err, ErrStaleRevision) {
+		t.Fatalf("removed record=%v", err)
+	}
+}
+
+func TestStoreCreateNeverReassignsRunAuthority(t *testing.T) {
+	store := NewStore(t.TempDir())
+	intent := &Intent{RunID: "one-run", Provider: "codex", SessionID: "01a0438b-5d41-7e60-b11f-ef9f2ab4c7b2", RepoPath: "/repo", WorktreePath: "/repo", GitCommonDir: "/repo/.git", Branch: "main", Head: "abc"}
+	if err := store.Create(t.Context(), intent); err != nil {
+		t.Fatal(err)
+	}
+	copy := *intent
+	copy.ID = "another-intent"
+	if err := store.Create(t.Context(), &copy); err == nil {
+		t.Fatal("duplicate run authority accepted")
+	}
+	found, err := store.FindByRunID(intent.RunID)
+	if err != nil || found.ID != intent.ID {
+		t.Fatalf("original run authority lost: %+v %v", found, err)
 	}
 }
