@@ -1,6 +1,7 @@
 package artifact
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -677,17 +678,101 @@ func TestCoCommitInstalledToolIdentityIsReadOnly(t *testing.T) {
 	}
 	for _, name := range []string{"python3", "bash"} {
 		t.Run(name, func(t *testing.T) {
-			if _, err := exec.LookPath(name); err != nil {
+			lookup := name
+			if name == "bash" && runtime.GOOS == "darwin" {
+				lookup = "/bin/bash"
+			}
+			installed, err := exec.LookPath(lookup)
+			if err != nil {
 				t.Skip(err)
 			}
-			path, token, err := coCommitTool(t.Context(), name)
+			installed, err = filepath.EvalSymlinks(installed)
 			if err != nil {
-				t.Fatalf("ordinary installed executable was rejected: %v", err)
+				t.Fatal(err)
 			}
-			if !filepath.IsAbs(path) || !coCommitDigest.MatchString(token) {
-				t.Fatalf("incomplete tool identity: %q %q", path, token)
+			before, err := os.Stat(installed)
+			if err != nil {
+				t.Fatal(err)
 			}
+			data, err := os.ReadFile(installed)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path, token, err := coCommitTool(t.Context(), name)
+			// setup-python/toolcache distributions may intentionally be group-
+			// or world-writable. Installation alone is not trust authority.
+			if before.Mode().Perm()&0o022 != 0 {
+				var rejected *CoCommitError
+				if !errors.As(err, &rejected) || rejected.Code != "unverified_tool" || path != "" || token != "" {
+					t.Fatalf("writable installed tool was not rejected: %v", err)
+				}
+			} else if err != nil || path != installed || !coCommitDigest.MatchString(token) {
+				t.Fatalf("trusted installed tool identity failed: %v", err)
+			}
+			assertCoCommitToolUnchanged(t, installed, before, data)
 		})
+	}
+}
+
+func TestCoCommitExecutablePermissionContract(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX tool contract")
+	}
+	for _, tc := range []struct {
+		name    string
+		mode    os.FileMode
+		trusted bool
+	}{
+		{"owner-only", 0o700, true},
+		{"readable-executable", 0o755, true},
+		{"group-writable", 0o775, false},
+		{"world-writable", 0o777, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(root, "fixture-tool")
+			data := []byte("#!/bin/sh\nexit 0\n")
+			if err := os.WriteFile(path, data, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(path, tc.mode); err != nil {
+				t.Fatal(err)
+			}
+			before, err := os.Stat(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolved, token, err := coCommitTool(t.Context(), path)
+			if tc.trusted {
+				if err != nil || resolved != path || !coCommitDigest.MatchString(token) {
+					t.Fatalf("safe fixture rejected: %v", err)
+				}
+			} else {
+				var rejected *CoCommitError
+				if !errors.As(err, &rejected) || rejected.Code != "unverified_tool" || resolved != "" || token != "" {
+					t.Fatalf("writable fixture was not rejected: %v", err)
+				}
+			}
+			assertCoCommitToolUnchanged(t, path, before, data)
+		})
+	}
+}
+
+func assertCoCommitToolUnchanged(t *testing.T, path string, before os.FileInfo, data []byte) {
+	t.Helper()
+	after, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(before, after) || before.Mode() != after.Mode() || before.Size() != after.Size() || !before.ModTime().Equal(after.ModTime()) || !bytes.Equal(data, current) {
+		t.Fatal("tool identity observation mutated the executable")
 	}
 }
 

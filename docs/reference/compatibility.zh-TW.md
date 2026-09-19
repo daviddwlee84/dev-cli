@@ -671,6 +671,11 @@ v2 capabilities。缺少 capability、helper／tool 身分改變或 v1 journal �
 native Windows co-commit 尚不支援，等待經驗證的 native backend。
 External archive 不是 co-commit 目的地。
 
+Native adapter 只觀察 executable 身分，不修改安裝內容。Python／Bash 必須解析為
+root 或目前使用者擁有的 regular executable，且 group／other 不可寫入。
+可寫入的 toolcache／framework 即使出現在 `PATH` 仍會拒絕；dev 不會 chmod 它
+或放寬 guard。請選擇已符合信任條件的 interpreter／tool 安裝。
+
 Queue 成功（包含 `queued_but_not_bound`）後，agent 必須保留 recorder 實際收到的
 `queue_ack` 證據、回報 finalization queued 並退出。`--run-id` 只修復精確既有
 binding，不製造 queue 或 lifecycle proof。外部 finalize 委派 prepare-only、

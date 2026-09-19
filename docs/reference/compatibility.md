@@ -766,6 +766,12 @@ identities and v1 journals fail closed; native Windows co-commit is unsupported
 pending a verified native backend. The external-archive lane is not a co-commit
 destination.
 
+The native adapter observes executable identity without changing the installation.
+Python and Bash must resolve to regular executables owned by root or the current
+user, with no group/other write permission. A writable toolcache or framework
+installation is rejected even when it is on `PATH`; dev does not chmod it or
+weaken the guard. Select an already trusted interpreter/tool installation instead.
+
 Queue success—including `queued_but_not_bound`—requires the agent to report
 finalization queued and exit, preserving the real recorder's `queue_ack` evidence.
 `--run-id` only repairs an exact existing binding, not queue or lifecycle proof.

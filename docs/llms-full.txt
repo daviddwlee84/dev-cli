@@ -12138,6 +12138,12 @@ identities and v1 journals fail closed; native Windows co-commit is unsupported
 pending a verified native backend. The external-archive lane is not a co-commit
 destination.
 
+The native adapter observes executable identity without changing the installation.
+Python and Bash must resolve to regular executables owned by root or the current
+user, with no group/other write permission. A writable toolcache or framework
+installation is rejected even when it is on `PATH`; dev does not chmod it or
+weaken the guard. Select an already trusted interpreter/tool installation instead.
+
 Queue success—including `queued_but_not_bound`—requires the agent to report
 finalization queued and exit, preserving the real recorder's `queue_ack` evidence.
 `--run-id` only repairs an exact existing binding, not queue or lifecycle proof.
@@ -24121,6 +24127,11 @@ index 與另外安裝的 canonical v2 helper。真實 wrapper 啟動時不可加
 v2 capabilities。缺少 capability、helper／tool 身分改變或 v1 journal 都拒絕；
 native Windows co-commit 尚不支援，等待經驗證的 native backend。
 External archive 不是 co-commit 目的地。
+
+Native adapter 只觀察 executable 身分，不修改安裝內容。Python／Bash 必須解析為
+root 或目前使用者擁有的 regular executable，且 group／other 不可寫入。
+可寫入的 toolcache／framework 即使出現在 `PATH` 仍會拒絕；dev 不會 chmod 它
+或放寬 guard。請選擇已符合信任條件的 interpreter／tool 安裝。
 
 Queue 成功（包含 `queued_but_not_bound`）後，agent 必須保留 recorder 實際收到的
 `queue_ack` 證據、回報 finalization queued 並退出。`--run-id` 只修復精確既有
