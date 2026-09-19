@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-17
+verified_on: 2026-09-18
 tested_with: Claude Code 2.1.259
 ---
 
@@ -294,6 +294,11 @@ These were historical gaps and should not be reintroduced as limitations:
 - `dev repo context --json` exposes additive schema-v1 local/remote evidence with source, age, freshness, completeness, null/error preservation, and scoped readiness; external probes happen only with `--refresh`. `dev status` reuses the cheap local readiness projection without network access.
 - `dev fleet machine-id` reports an observed UUID without changing configuration. `dev fleet files` is report-only by default, uses a separate `[local_files]` allowlist, negotiates downward-only limits before content, and requires explicit apply/replacement controls plus a matching target pin.
 
+- `dev wt open --no-focus` opens/reuses an existing registered checkout's runtime
+  without activation, attachment, or a shell `cd` handoff (including runtime
+  `none`). It reports branch/path/backend/handle and the actual runtime surface,
+  never creates/adopts/provisions work or launches an agent, and preserves open
+  failures. Default `wt open` navigation is unchanged.
 - `dev start --focus` activates the runtime after non-JSON creation.
 - `dev start --run '<shell command>'` dispatches only to an exact root pane from
   a newly created first-class Herdr worktree. It is incompatible with `--json`,
@@ -742,6 +747,49 @@ PowerShell and bounded process-tree cancellation; unsupported shell syntax or
 other shim mutation actions fail closed. The dedicated native removal tests are
 required; broad advisory Windows test conclusions are not proof that every
 legacy suite passed.
+
+## Native artifact closeout (v0.2.40)
+
+Product-first remains the default: commit products and leave an empty index.
+Optional `prepare --specstory-path` pins the exact provider/UUID/capture-path
+selection, including archive handoffs, without weakening ambiguity, traversal or
+symlink refusal. Finalizers recheck live writer/source guards and locked native
+intent revisions; `--writer-stopped` never overrides a recognized live writer.
+
+Explicit co-commit currently requires `claude:UUID`, in-checkout SpecStory capture,
+a feature-only index and a separately installed canonical v2 helper. The authentic
+wrapper must start without `--allow-commit`; dev never launches/closes an agent.
+Canonical v2 source is maintained separately in `agent-skills`; the helper is not
+bundled or automatically installed/upgraded with dev. An installed helper with
+compatible v2 capabilities is required. Missing capabilities, changed helper/tool
+identities and v1 journals fail closed; native Windows co-commit is unsupported
+pending a verified native backend. The external-archive lane is not a co-commit
+destination.
+
+The native adapter observes executable identity without changing the installation.
+Python and Bash must resolve to regular executables owned by root or the current
+user, with no group/other write permission. A writable toolcache or framework
+installation is rejected even when it is on `PATH`; dev does not chmod it or
+weaken the guard. Select an already trusted interpreter/tool installation instead.
+
+Queue success—including `queued_but_not_bound`—requires the agent to report
+finalization queued and exit, preserving the real recorder's `queue_ack` evidence.
+`--run-id` only repairs an exact existing binding, not queue or lifecycle proof.
+External finalization delegates prepare-only, rechecks native Guard/CAS and helper
+journal revision, then permits one commit-capable call. Uncertain outcomes are
+reconcile-only. Commit proof includes exact parent/tree/full normalized message
+and unique request identity. Status/readiness never reconcile native records;
+schema-1 `artifact_handoffs` keeps persisted Intent fields separate from
+`co_commit_observation`/`observation_error`.
+
+V2 uses no-cloud through run/sync/export and requires exact export digest plus
+request/session linkage, not idle or mtime alone. Durable private beforeimages
+and receipts bind all finding occurrences and source/index/tool/policy identities.
+Eligible staged products are scanned read-only; only selected artifacts are
+sanitized. Read-only review cannot authorize apply. `reviewed_noncredential`
+releases only that already-sanitized run's rotation gate, never restores secrets,
+creates blanket exceptions or bypasses hooks. Actual credentials still require
+rotation; unknown findings stay blocked. See [AI artifacts](../guides/ai-artifacts.md).
 
 ## Agent history archives
 

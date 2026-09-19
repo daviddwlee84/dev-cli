@@ -2,7 +2,7 @@
 description: 從 Dashboard 完成與恢復 task、透過系統垃圾桶處理 Try，並開啟 repository 首頁。
 authority: project
 status: evolving
-verified_on: 2026-09-13
+verified_on: 2026-09-18
 lang: zh-TW
 ---
 
@@ -33,6 +33,15 @@ action menu，方向鍵選取、Enter 繼續。Esc 先停止輸入或清除查�
 不執行操作或探測工具。搜尋範圍、文章導覽與分層 Esc 規則詳見
 [目前分頁的 Help](tui-repos-bootstrap.zh-TW.md)。
 
+Dashboard 的 `/` 在八個 views 即時篩選。輸入時用上下鍵選取可見結果，保留
+輸入焦點、查詢與文字游標，不執行操作或觸發網路請求。`j/k` 仍是文字；左右鍵、
+Home/End 編輯查詢游標，只有文字改變才重新選取第一筆。Enter 保留查詢與選取並
+離開輸入，不會開啟該列；回到清單後再按 Enter 才執行原本的開啟操作。篩選時
+Esc 清除查詢，pending repository 詳情不會遮住輸入框。Help 索引／結果搜尋同樣
+支援輸入中的上下鍵與保留選取；文章內查找／捲動維持獨立。Notes 搜尋仍只在
+Enter 時送出；Ctrl+O 的 Enter 仍執行所選 action，forms／SSH dialogs 保留既有
+輸入行為。
+
 TASKS 的完成、恢復、退休與 recovery 沿用既有 CLI workflows。Dashboard 在
 提示期間暫停，完成或失敗後重新載入。Task ID／revision 檢查會拒絕過期選取。
 `dev sweep --task <id>` 只回報指定 task；加上 `--apply` 後逐項確認可執行的
@@ -43,7 +52,14 @@ TASKS 的完成、恢復、退休與 recovery 沿用既有 CLI workflows。Dashb
 
 ## 建立與開啟工作
 
-REPOS Enter 只開啟所選 repository，不建立 task。`s`／`d` 開啟完整 start
+REPOS 的 `n` 或 Ctrl+O → new repository 會開啟既有的
+`dev repo new --handoff stay` wizard，即使清單空白、篩選後無結果，或 repository
+observations 尚在載入也能進入；選單開啟期間原選取列消失，不會阻擋這個入口。
+進行中的 clone 仍會阻擋建立。原生 wizard 保留確認，並在 mutation 前重新檢查
+目的地、nested-repository 限制與 exclusive-create 條件。其他依賴所選列的操作
+及 REMOTE clone 的 freshness checks 維持不變；pending rows 不是 mutation 授權。
+
+離開篩選輸入後，REPOS Enter 只開啟所選 repository，不建立 task。`s`／`d` 開啟完整 start
 wizard，分別預選 worktree／direct。Wizard 詢問 task 與必要的 branch、base、
 next action，最終建立確認前可選 open（預設）或 stay。Reviewed plan 的 base
 必須明確，不能由任意 checked-out branch 推定。

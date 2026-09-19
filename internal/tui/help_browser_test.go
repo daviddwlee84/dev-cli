@@ -114,6 +114,168 @@ func TestHelpBrowserSearchLayersAliasesAndTyping(t *testing.T) {
 	}
 }
 
+func TestHelpLiveFilterNavigation(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		section helpSection
+		screen  helpScreen
+		query   string
+	}{
+		{"keys index", helpKeys, helpHome, ""},
+		{"keys results", helpKeys, helpHome, "repo"},
+		{"guide index", helpGuide, helpHome, ""},
+		{"guide results", helpGuide, helpHome, "repo"},
+		{"manual index", helpManual, helpHome, ""},
+		{"manual results", helpManual, helpHome, "match"},
+		{"scope index", helpKeys, helpScopeScreen, ""},
+		{"scope results", helpKeys, helpScopeScreen, "e"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m := New(Actions{ReloadRemote: func(context.Context) ([]RemoteRow, error) {
+				t.Fatal("Help filter contacted a remote")
+				return nil, nil
+			}}, nil, startupRows())
+			m.view = ViewRepos
+			m.width, m.height = 70, 20
+			m = m.openHelpOverlay()
+			m.help.section = test.section
+			m.help.topics = []helpdocs.Topic{
+				{Name: "match-a", Title: "Match first", Body: "First matching article"},
+				{Name: "match-b", Title: "Match second", Body: "Second matching article"},
+				{Name: "match-c", Title: "Match third", Body: "Third matching article"},
+			}
+			m.setHelpLocation(helpLocation{screen: test.screen})
+			m.selectFirstHelpTarget()
+			m = helpTestKey(m, "/")
+			if test.query != "" {
+				m = helpTestKey(m, test.query)
+			}
+			m.help.input.SetCursor(len(test.query) / 2)
+			cursor := m.help.input.Position()
+			var targets []int
+			rows := m.helpLayout().rows
+			for i, row := range rows {
+				if row.target.valid && (len(targets) == 0 || row.target != rows[targets[len(targets)-1]].target) {
+					targets = append(targets, i)
+				}
+			}
+			if len(targets) < 2 {
+				t.Fatalf("test needs multiple targets, got %d", len(targets))
+			}
+			for _, move := range []struct {
+				key  tea.KeyType
+				want int
+			}{{tea.KeyUp, targets[0]}, {tea.KeyDown, targets[1]}, {tea.KeyUp, targets[0]}, {tea.KeyDown, targets[1]}} {
+				next, command := m.Update(tea.KeyMsg{Type: move.key})
+				m = next.(Model)
+				loc := m.helpLocation()
+				if command != nil || loc.index < 0 || loc.index >= len(rows) || rows[loc.index].target != rows[move.want].target || loc.query != test.query || loc.screen != test.screen || !m.help.editing || !m.help.input.Focused() || m.help.input.Position() != cursor || m.view != ViewRepos || m.overlay.kind != overlayHelp {
+					t.Fatalf("key=%v want=%d targets=%v location=%+v cursor=%d editing=%v command=%v", move.key, move.want, targets, loc, m.help.input.Position(), m.help.editing, command)
+				}
+			}
+			// A bottom-boundary arrow keeps the last target, not the first result.
+			loc := m.helpLocation()
+			loc.index = targets[len(targets)-1]
+			loc.scroll = max(0, loc.index-m.helpLayout().visible+1)
+			m.setHelpLocation(loc)
+			next, command := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+			m = next.(Model)
+			if command != nil || m.helpLocation().index != loc.index {
+				t.Fatal("bottom arrow changed the selected target")
+			}
+			selected := m.helpLocation()
+			next, command = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			m = next.(Model)
+			if command != nil || m.help.editing || m.help.input.Focused() || m.helpLocation() != selected {
+				t.Fatal("Enter activated a target instead of keeping the filtered selection")
+			}
+			m = helpTestKey(m, "enter")
+			if m.helpLocation() == selected {
+				t.Fatal("second Enter did not activate the selected target")
+			}
+		})
+	}
+}
+
+func TestHelpLiveFilterResetsOnlyForChangedText(t *testing.T) {
+	for _, edit := range []struct {
+		name                   string
+		key                    tea.KeyMsg
+		position, wantPosition int
+		want                   string
+	}{
+		{"left", tea.KeyMsg{Type: tea.KeyLeft}, 3, 2, "repo"},
+		{"right", tea.KeyMsg{Type: tea.KeyRight}, 2, 3, "repo"},
+		{"home", tea.KeyMsg{Type: tea.KeyHome}, 3, 0, "repo"},
+		{"end", tea.KeyMsg{Type: tea.KeyEnd}, 2, 4, "repo"},
+		{"empty backspace", tea.KeyMsg{Type: tea.KeyBackspace}, 0, 0, "repo"},
+		{"empty delete", tea.KeyMsg{Type: tea.KeyDelete}, 4, 4, "repo"},
+		{"delete", tea.KeyMsg{Type: tea.KeyDelete}, 2, 2, "reo"},
+		{"backspace", tea.KeyMsg{Type: tea.KeyBackspace}, 3, 2, "reo"},
+		{"insert at cursor", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("x")}, 2, 3, "rexpo"},
+		{"same matches changed text", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(" ")}, 4, 5, "repo "},
+		{"j is text", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("j")}, 4, 5, "repoj"},
+		{"k is text", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("k")}, 4, 5, "repok"},
+		{"section number is text", tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("3")}, 4, 5, "repo3"},
+	} {
+		t.Run(edit.name, func(t *testing.T) {
+			m := New(Actions{}, nil, nil)
+			m.view = ViewRepos
+			m = m.openHelpOverlay()
+			m = helpTestKey(m, "/repo")
+			m = helpTestKey(m, "down")
+			before := m.helpLocation()
+			before.xOffset = 3
+			m.setHelpLocation(before)
+			m.help.input.SetCursor(edit.position)
+			next, _ := m.Update(edit.key)
+			m = next.(Model)
+			got := m.helpLocation()
+			if got.query != edit.want || m.help.input.Value() != edit.want || m.help.input.Position() != edit.wantPosition || !m.help.editing || !m.help.input.Focused() || m.help.section != helpKeys {
+				t.Fatalf("location=%+v cursor=%d editing=%v", got, m.help.input.Position(), m.help.editing)
+			}
+			if edit.want == "repo" {
+				if got != before {
+					t.Fatalf("cursor-only edit changed selection: got %+v want %+v", got, before)
+				}
+			} else {
+				want := m
+				loc := got
+				loc.scroll, loc.index, loc.xOffset = 0, 0, 0
+				want.setHelpLocation(loc)
+				want.selectFirstHelpTarget()
+				if got != want.helpLocation() {
+					t.Fatalf("query edit did not reset to first result: %+v", got)
+				}
+			}
+		})
+	}
+}
+
+func TestHelpLiveFilterEmptyResults(t *testing.T) {
+	for _, section := range []helpSection{helpKeys, helpGuide, helpManual} {
+		m := New(Actions{}, nil, nil).openHelpOverlay()
+		m.help.section = section
+		m = helpTestKey(m, "/no-matching-help-entry")
+		before := m.helpLocation()
+		for _, key := range []tea.KeyType{tea.KeyDown, tea.KeyUp, tea.KeyDown} {
+			next, command := m.Update(tea.KeyMsg{Type: key})
+			m = next.(Model)
+			if command != nil || m.helpLocation() != before || !m.help.editing || !m.help.input.Focused() {
+				t.Fatalf("section=%v arrow changed empty results", section)
+			}
+		}
+		m = helpTestKey(m, "esc")
+		if m.help.editing || m.helpLocation() != before {
+			t.Fatal("first Esc should stop editing but keep the query")
+		}
+		m = helpTestKey(m, "esc")
+		if m.helpLocation().query != "" || m.overlay.kind != overlayHelp {
+			t.Fatal("second Esc should clear Help search without closing")
+		}
+	}
+}
+
 func TestHelpBrowserManualSearchFindAndBack(t *testing.T) {
 	m := New(Actions{}, nil, nil).openHelpOverlay()
 	m.help.section = helpManual
@@ -135,6 +297,17 @@ func TestHelpBrowserManualSearchFindAndBack(t *testing.T) {
 		t.Fatal("topic did not open")
 	}
 	m = helpTestKey(m, "/staged")
+	article := m.helpLocation()
+	article.scroll = 5
+	m.setHelpLocation(article)
+	m.help.input.SetCursor(2)
+	for _, key := range []tea.KeyType{tea.KeyDown, tea.KeyUp, tea.KeyLeft, tea.KeyRight} {
+		next, _ := m.Update(tea.KeyMsg{Type: key})
+		m = next.(Model)
+		if m.helpLocation() != article || !m.help.editing || !m.help.input.Focused() {
+			t.Fatal("article find input changed scroll or activated Help result navigation")
+		}
+	}
 	m = helpTestKey(m, "enter")
 	if m.help.editing || m.helpLocation().scroll < 0 {
 		t.Fatal("article find failed")

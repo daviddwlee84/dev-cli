@@ -74,6 +74,18 @@ Zellij 會保留可 resurrect 的 exited session。`dev` 只辨識 exact
 在 listing 與 layout inspection 之間退出，open 會 fail closed 並要求 retry，不會在無關
 checkout resurrect 舊 layout。
 
+## 不導航，只增加可見性
+
+新的 managed 工作使用 `dev start <repo> --task '<task>' --base '<committed-ref>'`。
+若外部 checkout 已在 Git 註冊、只需要 runtime 可見性，使用
+`dev wt open <branch> --repo <repo> --runtime herdr --no-focus`。它立即回報 branch、
+實際 path、backend/handle 與實際 opened/reused runtime surface，不 focus 或 attach。
+它不 adopt/annotate task、不 provision、不啟動 agent，也不修改 Git/index/dirty files。
+Reused 或 fallback surface 不是新的 exact agent launch target。Runtime 為 `none`
+時回報沒有 runtime，也不產生 shell `cd` handoff。沒有此 flag 時，原本的 navigation
+不變；open 失敗仍回傳 error。交付時立即回報 repository、branch、實際 path 與
+runtime handle/result。詳見 [Worktree 與環境佈建](worktrees-provisioning.zh-TW.md)。
+
 若要在新建的獨立 worktree 執行一個已 review 的 shell command，Herdr 支援直接
 one-liner：
 

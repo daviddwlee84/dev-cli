@@ -24,14 +24,21 @@ func (s *Service) finalizeArchive(ctx context.Context, request FinalizeRequest, 
 		return intent, nil
 	}
 	if err = s.revalidate(ctx, intent); err != nil {
-		return nil, s.fail(ctx, intent.ID, "git-drift", err)
+		return nil, s.fail(ctx, intent, "git-drift", err)
 	}
 	policy, err := h.PolicyFingerprint(ctx)
 	if err != nil || policy != intent.ArchivePolicy {
-		return nil, s.fail(ctx, intent.ID, "policy-drift", errors.New("archive policy changed after preparation"))
+		return nil, s.fail(ctx, intent, "policy-drift", errors.New("archive policy changed after preparation"))
 	}
 	if intent.SessionEndedAt.IsZero() && !request.WriterStopped {
-		return nil, s.fail(ctx, intent.ID, "writer-unproven", errors.New("archive finalization requires post-writer proof"))
+		return nil, s.fail(ctx, intent, "writer-unproven", errors.New("archive finalization requires post-writer proof"))
+	}
+	path, err := h.LocateSession(ctx, intent.Provider+":"+intent.SessionID, intent.SpecStoryPath)
+	if err != nil {
+		return nil, s.fail(ctx, intent, "archive-source", err)
+	}
+	if err := s.finalizeGuard(ctx, request, intent, []string{path}); err != nil {
+		return nil, s.fail(ctx, intent, "writer-guard", err)
 	}
 	planID := intent.ArchivePlanID
 	if request.ArchivePlanID != "" {
@@ -44,27 +51,32 @@ func (s *Service) finalizeArchive(ctx context.Context, request FinalizeRequest, 
 		if h.Binding.Protection == "redact" {
 			return nil, fmt.Errorf("preview and review `dev artifact archive --session %s:%s`, then finalize with --archive-plan <id>", intent.Provider, intent.SessionID)
 		}
-		p, e := h.PreviewArchive(ctx, agenthistory.ArchiveOptions{Session: intent.Provider + ":" + intent.SessionID})
+		p, e := h.PreviewArchive(ctx, agenthistory.ArchiveOptions{Session: intent.Provider + ":" + intent.SessionID, SpecStoryPath: intent.SpecStoryPath})
 		if e != nil {
-			return nil, s.fail(ctx, intent.ID, "archive-preview", e)
+			return nil, s.fail(ctx, intent, "archive-preview", e)
 		}
 		planID = p.ID
 	}
-	if err = h.CheckSessionPlan(ctx, planID, intent.Provider+":"+intent.SessionID); err != nil {
+	if err = h.CheckSessionPlan(ctx, planID, intent.Provider+":"+intent.SessionID, intent.SpecStoryPath); err != nil {
 		return nil, err
 	}
-	if err = s.Store.Update(ctx, intent.ID, func(current *Intent) error { current.ArchivePlanID = planID; current.Status = Finalizing; return nil }); err != nil {
+	if err = s.updateIntent(ctx, intent, func(current *Intent) error { current.ArchivePlanID = planID; current.Status = Finalizing; return nil }); err != nil {
 		return nil, err
 	}
-	result, err := h.ApplyArchive(ctx, planID, agenthistory.ApplyOptions{WriterStopped: true, Guard: request.Guard})
+	result, err := h.ApplyArchive(ctx, planID, agenthistory.ApplyOptions{WriterStopped: true, Guard: func(ctx context.Context, _ string, paths []string) error {
+		if e := s.finalizeGuard(ctx, request, intent, paths); e != nil {
+			return e
+		}
+		return s.revalidate(ctx, intent)
+	}})
 	if err != nil {
-		return nil, s.fail(ctx, intent.ID, "archive-apply", err)
+		return nil, s.fail(ctx, intent, "archive-apply", err)
 	}
-	path, err := h.LocateSession(ctx, intent.Provider+":"+intent.SessionID)
+	path, err = h.LocateSession(ctx, intent.Provider+":"+intent.SessionID, intent.SpecStoryPath)
 	if err != nil {
-		return nil, s.fail(ctx, intent.ID, "archive-source", err)
+		return nil, s.fail(ctx, intent, "archive-source", err)
 	}
-	if err = s.Store.Update(ctx, intent.ID, func(current *Intent) error {
+	if err = s.updateIntent(ctx, intent, func(current *Intent) error {
 		current.Status = Finalized
 		current.ArchivePlanID = planID
 		current.ArchiveCommit = result.ArchiveCommit

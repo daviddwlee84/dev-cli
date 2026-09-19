@@ -41,12 +41,26 @@ of the whole tree.
 ## Commands
 
 ```bash
-dev wt create feat/auth --base main   # create at the configured path
+dev start --task auth --branch feat/auth --base main  # new managed work
+dev wt create feat/auth --base main   # create/provision; no task record
 dev wt list                           # every worktree of this repo
-dev wt open feat/auth                 # open an existing one
+dev wt open feat/auth                 # open and activate an existing one
+dev wt open feat/auth --no-focus      # make it visible without navigation
 dev wt rm feat/auth                   # remove the checkout; branch survives
 dev wt provision                      # re-run setup on an existing checkout
 ```
+
+Prefer `dev start` with an explicit base for new managed work. For an existing
+external worktree that only needs runtime visibility, use
+`dev wt open <branch> --repo <repo> --runtime herdr --no-focus`. It reports the
+branch, actual path and backend/handle immediately, then the runtime surface
+opened/reused, without switching focus or attaching. No task adoption,
+provisioning, agent launch, or Git/index/dirty-file mutation occurs. Runtime
+`none` reports no runtime and emits no shell `cd` handoff. Errors remain errors;
+without the flag, normal activation and shell navigation are unchanged.
+
+Report the repository, branch, actual path and runtime handle/result when handing
+work back. Making an external checkout visible does not make it a managed task.
 
 ## Always pass a base
 

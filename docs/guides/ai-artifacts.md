@@ -3,7 +3,7 @@ description: Choose where agent history belongs, preserve useful decisions and k
 authority: project
 status: evolving
 minimum_version: v0.2.33
-verified_on: 2026-09-17
+verified_on: 2026-09-18
 ---
 
 # AI artifacts: what to keep, archive, and ship
@@ -48,7 +48,8 @@ A shared flat directory does not by itself retain project attribution. Tools
 such as Lore have their own metadata and curation state; do not assume all of
 their databases can be discarded and reconstructed from Markdown.
 
-For the existing tracked-history workflow:
+The default `product-first` handoff requires committed product changes and an
+empty index; it does not stage the still-changing transcript:
 
 ```bash
 dev hygiene status
@@ -80,6 +81,103 @@ If history is ignored, ordinary code commits need not scan it. An already tracke
 file remains tracked after adding `.gitignore`: removing it from the index is a
 separate reviewed operation. Keep or archive ignored history before deleting its
 worktree; ignored does not mean disposable or backed up.
+
+## Exact selection and co-commit closeout (v0.2.40)
+
+`dev prepare --specstory-path PATH` optionally selects one exact Markdown file
+when several exports share a session. The persisted selection must match the
+provider and UUID in its strict SpecStory preamble and stay within the configured
+capture scope: `.specstory/history/` for source commits, or the archive policy's
+capture root. Traversal, symlinks and mismatched identities are refused. Without
+this selector, ambiguous discovery still blocks. Finalization rechecks the
+selection and live writer guard; `--writer-stopped` never overrides a live writer.
+Native intent updates use locked revision compare-and-update (CAS), including
+archive handoffs. `artifact finalize --revision HASH` can require an exact reviewed
+native revision instead of acting on a changed record.
+
+Co-commit is an explicit alternative to product-first, not its new default. It
+places reviewed staged product changes and the exact final transcript/optional
+plan in one normal commit. It currently supports `claude:UUID` and in-checkout
+SpecStory capture, not the external-archive lane. The canonical
+`agent-history-hygiene` v2 source is maintained separately in `agent-skills`;
+installing dev does not bundle, install or upgrade the helper. Co-commit requires
+an installed helper with compatible v2 capabilities. Missing/unsupported tools,
+helper capabilities or changed helper/tool fingerprints block rather than trigger
+an automatic install. Native Windows co-commit is unsupported pending a verified
+native backend. Existing v1 journals are not silently upgraded.
+
+1. Explicitly launch the real canonical v2 wrapper **without `--allow-commit`**
+   (manual outer finalization). Dev neither launches nor closes the agent.
+   Invented environment variables, session IDs or receipts cannot replace the
+   real wrapper lifecycle.
+2. Stage only reviewed product files. Leave the transcript and selected plan out
+   of the index, and prepare a base message file without managed provenance
+   trailers. Select exactly one `--plan` or explicitly `--no-plan`.
+3. From that wrapped agent, queue the exact handoff:
+
+   ```bash
+   dev prepare --closeout co-commit --session 'claude:<uuid>' \
+     --specstory-path .specstory/history/session.md \
+     --plan .claude/plans/task.md --message-file /path/to/commit-message.txt --json
+   ```
+
+   Use `--closeout-helper /path/to/agent-history-hygiene/scripts` only to select
+   an installed canonical helper explicitly. A new untracked transcript over
+   2 MiB needs reviewed `--allow-large` consent.
+4. Preserve the command output in the real recorder/session. JSON has schema 1,
+   kind `co_commit_handoff`, and the canonical v2 `queue_ack` object; human output
+   retains that ACK as a standalone compact JSON line. This is actual queue
+   evidence, not text for the agent to reconstruct. Report **"finalization
+   queued"**, then exit normally with **no further repository or index operations**.
+   `queued_but_not_bound` also requires exit: retain the request ID and repair only
+   that exact binding externally with the same selection and `--run-id`.
+   Binding repair creates neither a new queue request nor a new ACK. Unknown
+   queue outcomes must be inspected, never blindly requeued.
+5. After the real wrapper finishes, an external coordinator reviews the handoff
+   and explicitly authorizes finalization:
+
+   ```bash
+   dev artifact list --json
+   dev artifact finalize --intent '<id>' --allow-commit --json
+   ```
+
+   Optionally require `--revision HASH`. Dev first delegates canonical
+   prepare-only work, then rechecks its own live writer/policy/source guards and
+   native CAS revision before one commit-capable helper call bound to the exact
+   helper journal revision. A commit with uncertain outcome is reconcile-only,
+   never a reason to retry the commit. `committed_but_not_recorded` needs receipt
+   reconciliation, not another commit. Proof covers the exact parent, prepared
+   tree, full normalized message and unique request identity, not trailers alone.
+
+The v2 helper defaults to no-cloud across run, sync and export. Finalization
+requires successful child exit, process-group quiescence, exact native export
+digest and request/session linkage; idle state, mtime or stable bytes alone are
+not proof. All eligible staged products are scanned read-only; sanitation is
+limited to the selected artifacts. Before changes, durable private beforeimages
+and receipts bind every finding occurrence plus source/index/tool/policy identity.
+
+For a blocked sanitation review, inspect without applying:
+
+```bash
+dev artifact finalize --intent '<id>' --preview-review --json
+```
+
+The preview cannot combine with `--allow-commit`, `--review-file` or
+`--rotation-confirmed`. Raw findings and recovery remain private, outside Git.
+After explicit per-finding review, the external finalizer may use
+`--allow-commit --review-file /absolute/path/to/review.json`, optionally with the
+preview's `--revision`. `reviewed_noncredential` is distinct from actual credential
+rotation: fixture review releases only the exact already-sanitized run's rotation
+gate. It never restores secret bytes, creates blanket exceptions or bypasses Git
+hooks. Use `--rotation-confirmed` only after actual required credential rotation;
+unknown or incomplete findings stay blocked. This workflow does not authorize
+recovery of any existing real run automatically.
+
+`artifact list --json` uses schema 1, kind `artifact_handoffs`. Each row keeps the
+persisted native Intent fields separate from `co_commit_observation` or
+`observation_error`. List, status and lifecycle readiness are read-only: a helper
+observation never silently finalizes or reconciles the native record. Incomplete
+or failed proof remains a blocker even when the runtime says done.
 
 ## Choose and apply repository policy
 
@@ -233,6 +331,12 @@ operator-coordinated actions.
 | `.gitattributes` `export-ignore` | Exclude selected paths from `git archive` source packages | Unchanged |
 | Ignore and untrack | Stop including new versions in source commits; retain working files | Unchanged |
 | Filter a separate repository copy | Build replacement history without selected paths | Different commit IDs in that copy |
+
+For dev-cli v0.2.40 release source archives, `.gitattributes` excludes the root
+`.specstory` directory and only these agent-plan roots: `.claude/plans`,
+`.codex/plans`, `.cursor/plans` and `.opencode/plans`. This is a publication
+boundary, not Git untracking or history rewriting; other agent configuration and
+skills are not excluded by these rules.
 
 For example, this excludes chats from source archives while leaving them in Git:
 

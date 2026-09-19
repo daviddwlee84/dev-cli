@@ -1116,14 +1116,15 @@ func (m Model) columnWidths() (name, branch, next int) {
 // renderDetail shows what does not fit in the table — the reason to have a
 // dashboard rather than a listing.
 func (m Model) renderDetail() string {
+	if m.mode == modeFilter {
+		return "  " + styleTitle.Render("filter ") + m.input.View() +
+			"\n  " + styleHelp.Render("↑/↓ select · enter to keep it · esc to clear")
+	}
 	if item, ok := m.currentRepoItem(); ok && item.Repo.Pending != "" {
 		return "  path " + contract(item.Repo.Repo.Path) + "\n  " + item.Repo.Pending + " · waiting for fresh repository observations"
 	}
 
 	switch m.mode {
-	case modeFilter:
-		return "  " + styleTitle.Render("filter ") + m.input.View() +
-			"\n  " + styleHelp.Render("enter to keep it · esc to clear")
 	case modeEditNext:
 		return "  " + styleTitle.Render("next action ") + m.input.View() +
 			"\n  " + styleHelp.Render("enter to save · esc to cancel")

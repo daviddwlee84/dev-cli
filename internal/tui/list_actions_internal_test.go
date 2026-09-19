@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"strings"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/experiment"
 	"github.com/daviddwlee84/dev-cli/internal/fleet"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
+	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/inventory"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/task"
@@ -65,6 +67,163 @@ func TestEveryDashboardViewBuildsRowActionMenu(t *testing.T) {
 		touch, command := applyMouse(touch, mouseMessage(3, 2+touch.listPreambleLines(), tea.MouseButtonLeft, tea.MouseActionPress))
 		if command != nil || touch.overlay.kind != overlayActionMenu || touch.overlay.selection != candidate.overlay.selection {
 			t.Errorf("%s selected-row tap differs from keyboard actions", view)
+		}
+	}
+}
+
+func TestRepoCreateActionMenuDoesNotRequireSelectedRow(t *testing.T) {
+	for _, test := range []struct {
+		name, pending                   string
+		empty, filter, disappear, child bool
+	}{
+		{name: "empty", empty: true},
+		{name: "filtered empty", filter: true},
+		{name: "cached", pending: "cached"},
+		{name: "loading", pending: "loading"},
+		{name: "runtime pending", pending: "runtime pending"},
+		{name: "cached child", pending: "cached", child: true},
+		{name: "selected row disappeared", disappear: true},
+		{name: "selected child disappeared", disappear: true, child: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			creates := 0
+			m := New(Actions{Repos: RepoActions{Create: func() (*exec.Cmd, error) {
+				creates++
+				return exec.Command("true"), nil
+			}}}, nil, nil)
+			m.view = ViewRepos
+			if !test.empty {
+				m.repos = []RepoRow{{Repo: repo.Repo{Name: "one", Path: "/one"}, Pending: test.pending}}
+			}
+			if test.filter {
+				m.filter = "no-match"
+			}
+			if test.child {
+				m.repos[0].Context.Checkouts = []inventory.RepoCheckout{
+					{Worktree: gitx.Worktree{Path: "/one", Main: true}, Exists: true},
+					{Worktree: gitx.Worktree{Path: "/worktrees/one/feature"}, Exists: true},
+				}
+				m.toggleRepo(m.repos[0])
+				m.setAt(1)
+			}
+			next, command := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+			m = next.(Model)
+			if command != nil || creates != 0 || m.overlay.kind != overlayActionMenu {
+				t.Fatal("opening Create menu executed an action")
+			}
+			found := false
+			for i := 0; i < m.overlay.optionCount; i++ {
+				if m.overlay.options[i].action == listActionRepoCreate {
+					m.overlay.optionIndex, found = i, true
+					break
+				}
+			}
+			if !found {
+				t.Fatal("new repository missing from action menu")
+			}
+			if test.disappear {
+				m.repos = nil
+			}
+			next, command = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+			m = next.(Model)
+			if creates != 1 || command == nil || m.err != nil || m.overlay.kind != overlayNone {
+				t.Fatalf("Create calls=%d command=%v err=%v overlay=%v", creates, command, m.err, m.overlay.kind)
+			}
+		})
+	}
+}
+
+func TestRepoCreatePreservesCallbackAvailabilityAndErrors(t *testing.T) {
+	failure := errors.New("wizard unavailable")
+	for _, test := range []struct {
+		name      string
+		err       error
+		available bool
+	}{
+		{name: "callback absent"},
+		{name: "callback failure", available: true, err: failure},
+		{name: "callback success", available: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			calls := 0
+			m := New(Actions{}, nil, []RepoRow{{Repo: repo.Repo{Name: "one", Path: "/one"}, Pending: "cached"}})
+			m.view = ViewRepos
+			if test.available {
+				m.actions.Repos.Create = func() (*exec.Cmd, error) {
+					calls++
+					return exec.Command("true"), test.err
+				}
+			}
+			menu := m.openActionMenu()
+			listed := false
+			for i := 0; i < menu.overlay.optionCount; i++ {
+				listed = listed || menu.overlay.options[i].action == listActionRepoCreate
+			}
+			if listed != test.available {
+				t.Fatalf("Create menu availability=%v", listed)
+			}
+			if test.available {
+				m.err = errors.New("old failure")
+			}
+			next, command := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("n")})
+			m = next.(Model)
+			if (calls == 1) != test.available || (command != nil) != (test.available && test.err == nil) || !errors.Is(m.err, test.err) {
+				t.Fatalf("calls=%d command=%v err=%v", calls, command, m.err)
+			}
+		})
+	}
+}
+
+func TestRepoCreateBlockedDuringActiveClone(t *testing.T) {
+	for _, phase := range []remoteClonePhase{remoteCloneRunning, remoteCloneRefreshing, remoteCloneOpening} {
+		m := New(Actions{Repos: RepoActions{Create: func() (*exec.Cmd, error) {
+			t.Fatal("Create ran during an active clone")
+			return nil, nil
+		}}}, nil, nil)
+		m.view = ViewRepos
+		m.remoteClone.phase = phase
+		for _, key := range []tea.KeyMsg{{Type: tea.KeyRunes, Runes: []rune("n")}, {Type: tea.KeyCtrlO}} {
+			next, command := m.Update(key)
+			got := next.(Model)
+			if command != nil || got.overlay.kind != overlayNone || !got.remoteClone.active() {
+				t.Fatalf("phase=%v key=%s accepted another action", phase, key)
+			}
+		}
+	}
+}
+
+func TestPendingRepoStillBlocksRowDependentActions(t *testing.T) {
+	for _, pending := range []string{"cached", "loading", "runtime pending"} {
+		t.Run(pending, func(t *testing.T) {
+			m := New(Actions{}, nil, []RepoRow{{Repo: repo.Repo{Name: "one", Path: "/one"}, Pending: pending}})
+			m.view = ViewRepos
+			for _, action := range []listAction{
+				listActionOpen, listActionStartWorktree, listActionStartDirect, listActionRepoMetadata,
+				listActionToggleWorktrees, listActionCopy, listActionCopyCloneURL,
+				listActionAddNote, listActionBrowseNotes, listActionStats, listActionBrowse,
+				listActionTriage, listActionHygieneRepo, listActionSkillRepo,
+			} {
+				next, command := m.runListAction(action)
+				got := next.(Model)
+				if command != nil || got.mode != modeList || got.overlay.kind != overlayNone || got.status != "Waiting for fresh repository observations…" {
+					t.Fatalf("pending=%q action=%v escaped freshness guard: mode=%v command=%v status=%q", pending, action, got.mode, command, got.status)
+				}
+			}
+		})
+	}
+}
+
+func TestRepoActionMenuStillRejectsMissingSelection(t *testing.T) {
+	for _, action := range []listAction{listActionOpen, listActionStartWorktree, listActionStartDirect, listActionRepoMetadata, listActionBrowseNotes} {
+		m := New(Actions{}, nil, []RepoRow{{Repo: repo.Repo{Name: "one", Path: "/one"}}})
+		m.view = ViewRepos
+		m.overlay = overlayState{kind: overlayActionMenu, selection: m.currentToken()}
+		m.overlay.addOption(action, "selected repository action")
+		m.repos = []RepoRow{{Repo: repo.Repo{Name: "two", Path: "/two"}}}
+		next, command := m.runOverlayAction()
+		got := next.(Model)
+		if command != nil || got.err == nil || got.err.Error() != "selected row changed while its action menu was open" || got.overlay.kind != overlayNone {
+			t.Fatalf("stale action=%v command=%v err=%v", action, command, got.err)
 		}
 	}
 }

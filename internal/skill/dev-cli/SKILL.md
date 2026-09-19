@@ -34,7 +34,7 @@ Do not preload manuals, repeat `dev --skill`, or run routine diagnostics.
 
 - Worktree provisioning or cross-host lifecycle: [ownership](references/worktree-ownership.md), [lifecycle](references/task-lifecycle.md).
 - Parallel agent launches or prompt transports: [agents](references/parallel-agents.md), [handoffs](references/prompt-handoffs.md).
-- History retention: [artifacts](references/ai-artifacts.md).
+- History retention, exact sessions and co-commit: [artifacts](references/ai-artifacts.md).
 - Agent completion or cleanup batches: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
 - Repository hygiene batches, `report --json` summaries, scans or redaction: [hygiene](references/hygiene.md).
 - Repository hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
@@ -42,8 +42,6 @@ Do not preload manuals, repeat `dev --skill`, or run routine diagnostics.
 - Dotfile setup, native chezmoi operations, or FLEET host actions: [dotfiles](references/dotfiles.md).
 - Skill/MCP/instruction transfers, updates or removal: [transfers](references/agent-interop.md), [maintenance](references/skills-management.md).
 - Recursive Git children: [submodules](references/submodules.md).
-
-Use command help and its workflow topic for everyday operations.
 
 ## Unexpected dev failures
 

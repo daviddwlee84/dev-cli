@@ -4,7 +4,7 @@ lang: zh-TW
 authority: project
 status: evolving
 minimum_version: v0.2.33
-verified_on: 2026-09-17
+verified_on: 2026-09-18
 ---
 
 # AI 產物：保存、封存與發行
@@ -48,7 +48,8 @@ SpecStory 可在各 worktree 的 `.specstory/history/` 寫入，或明確指定
 目錄不會自動保留專案歸屬。Lore 等工具另有 metadata 與知識整理紀錄，
 不能假設所有資料庫都可由 Markdown 重建。
 
-既有「history 進 Git」流程：
+預設 `product-first` handoff 要求 product changes 已 commit 且 index 為空，
+不會 stage 仍在變動中的 transcript：
 
 ```bash
 dev hygiene status
@@ -76,6 +77,91 @@ Writer 已結束的證據與來源重新驗證仍不可省略；restore 檢查 r
 Ignored history 不必參與一般 code commit 的掃描；但已 tracked 的檔案
 不會因新增 `.gitignore` 就停止追蹤。移出 index 是獨立操作。刪除
 worktree 前保留或封存 history；ignored 不等於可丟棄或已備份。
+
+## 精確選取與 co-commit closeout（v0.2.40）
+
+`dev prepare --specstory-path PATH` 可在同一 session 有多份匯出時選取一個精確
+Markdown 檔案。保存的選取必須符合嚴格 SpecStory preamble 中的 provider 與
+UUID，且位於設定的 capture 範圍內：source commit 使用 `.specstory/history/`，
+archive 則使用該 policy 的 capture root。路徑穿越、symlink 與身分不符都拒絕。
+省略 selector 時，有歧義仍會阻擋，不猜最新檔案。Finalize 重新檢查選取與 live
+writer guard；`--writer-stopped` 不可覆蓋 live writer。Native intent 更新使用
+鎖內精確 revision 的 compare-and-update（CAS），archive handoff 亦同。
+`artifact finalize --revision HASH` 可要求與審閱時的 native revision 完全一致。
+
+Co-commit 是明確選用的 product-first 替代流程，不是新預設。它把審閱後 staged
+的 product changes 與最終 transcript／可選 plan 放進同一個正常 commit。
+目前只支援 `claude:UUID` 與 checkout 內的 SpecStory capture，不適用 external
+archive。Canonical `agent-history-hygiene` v2 原始碼在 `agent-skills` 獨立維護；
+安裝 dev 不會內附、安裝或升級 helper。Co-commit 要求已安裝的 helper 具備相容
+v2 capabilities。工具缺失、不支援的 helper capability 或 helper／tool fingerprint
+改變都會阻擋，不自動安裝。Native Windows co-commit 尚不支援，等待經驗證的
+native backend；既有 v1 journal 不會默默升級。
+
+1. 明確啟動真實的 canonical v2 wrapper，**不要加 `--allow-commit`**，保留由
+   外部手動 finalize。Dev 不啟動或關閉 agent；自行編造環境變數、session ID 或
+   receipt 不能取代真實 wrapper lifecycle。
+2. Index 只 stage 已審閱的 product files，不含 transcript 與選定 plan。準備不含
+   managed provenance trailers 的 base message file；選一個 `--plan`，或明確
+   指定 `--no-plan`。
+3. 在該 wrapper 啟動的 agent 內排入精確 handoff：
+
+   ```bash
+   dev prepare --closeout co-commit --session 'claude:<uuid>' \
+     --specstory-path .specstory/history/session.md \
+     --plan .claude/plans/task.md --message-file /path/to/commit-message.txt --json
+   ```
+
+   只有要明確選取已安裝的 canonical helper 時，才加
+   `--closeout-helper /path/to/agent-history-hygiene/scripts`。新增未 tracked 且
+   大於 2 MiB 的 transcript 需審閱後以 `--allow-large` 同意。
+4. 讓真實 recorder／session 保留命令輸出。JSON 使用 schema 1、kind
+   `co_commit_handoff`，並保留 canonical v2 `queue_ack`；human output 則把 ACK
+   保留為一行完整、緊湊的 JSON。這是真實 queue 證據，不可由 agent 重建。
+   回報 **「finalization queued」** 後正常退出，**不再執行任何 repository 或
+   index 操作**。`queued_but_not_bound` 也必須退出：保留 request ID，之後從外部
+   以相同選取與 `--run-id` 修復該次 binding，不新增 queue request 或 ACK。
+   Queue 結果未知時先檢查，不盲目重新排入。
+5. 真實 wrapper 完成後，由外部 coordinator 審閱 handoff 並明確授權 finalize：
+
+   ```bash
+   dev artifact list --json
+   dev artifact finalize --intent '<id>' --allow-commit --json
+   ```
+
+   可加 `--revision HASH` 綁定 native revision。Dev 先委派 canonical prepare-only，
+   再重新檢查自己的 live writer／policy／source guards 與 native CAS revision，
+   最後以精確 helper journal revision 綁定一次可 commit 的 helper 呼叫。Commit
+   結果不確定時只允許 reconciliation，不重試 commit。`committed_but_not_recorded`
+   需修復 receipt 紀錄，不再 commit。證明包含精確 parent、prepared tree、完整
+   normalized message 與唯一 request 身分，不只檢查 trailers。
+
+V2 helper 預設在 run、sync 與 export 全程使用 no-cloud。Finalize 需要 child
+成功退出、process group 已靜止，以及精確 native export digest 與 request／session
+關聯；idle、mtime 或暫時穩定的 bytes 都不足以證明。所有可掃描的 staged product
+都以唯讀方式檢查；sanitation 只修改選定 artifacts。修改前先持久保存 private
+beforeimages 與 receipts，綁定每個 finding 的所有 occurrences，以及 source／
+index／tool／policy 身分。
+
+Sanitation review 被阻擋時，先唯讀檢查：
+
+```bash
+dev artifact finalize --intent '<id>' --preview-review --json
+```
+
+Preview 不可搭配 `--allow-commit`、`--review-file` 或 `--rotation-confirmed`。
+Raw findings 與 recovery 保留在 Git 外的 private state。逐項明確審閱後，外部
+finalizer 可使用 `--allow-commit --review-file /absolute/path/to/review.json`，
+並可附 preview 的 `--revision`。`reviewed_noncredential` 不等於實際憑證輪替：
+fixture review 只解除該次已完成 sanitation 的精確 run 之 rotation gate，不會還原
+secret bytes、建立全面豁免或繞過 Git hooks。只有實際完成必要憑證輪替後，才使用
+`--rotation-confirmed`；unknown 或不完整 findings 仍阻擋。本流程不自動授權復原
+任何既有真實 run。
+
+`artifact list --json` 使用 schema 1、kind `artifact_handoffs`。每個 row 將
+已保存 native Intent 欄位與 `co_commit_observation` 或 `observation_error`
+分開。List、status 與 lifecycle readiness 都是唯讀；helper 觀測不會默默 finalize
+或 reconcile native 紀錄。即使 runtime 顯示 done，不完整或失敗的證明仍是 blocker。
 
 ## 選擇並套用 repository policy
 
@@ -213,6 +299,11 @@ release/tag 遷移，以及 filtered history 的 force-with-lease 發布另行�
 | `.gitattributes` 的 `export-ignore` | 從 `git archive` 發行包排除指定路徑 | 不變 |
 | Ignore 加上 untrack | 後續 source commit 不再加入新版本，工作檔保留 | 不變 |
 | 在獨立副本過濾歷史 | 產生不含指定路徑的替代歷史 | 副本中的 commit ID 改變 |
+
+dev-cli v0.2.40 的 release source archive 透過 `.gitattributes` 排除 repo root 的
+`.specstory`，以及精確的 agent-plan 根目錄 `.claude/plans`、`.codex/plans`、
+`.cursor/plans` 與 `.opencode/plans`。這只改變發行邊界，不停止 Git tracking 或
+改寫 history；這些規則不排除其他 agent 設定與 skills。
 
 保留 Git history、排除 source archive 的例子：
 

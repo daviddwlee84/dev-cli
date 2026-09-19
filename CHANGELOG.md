@@ -6,6 +6,45 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.40] - 2026-09-19
+
+### Added
+
+- `dev wt open --no-focus` opens or reuses an existing checkout's runtime surface
+  without switching focus or issuing a shell directory handoff. It reports the
+  actual branch, path and runtime handle; it does not create a worktree, provision
+  files, adopt a task or launch an agent. Bundled guidance now calls for making
+  durable agent worktrees visible and reporting their locations immediately.
+- `dev prepare --specstory-path` selects and persists one exact SpecStory
+  transcript by provider, UUID and capture scope, including archive handoffs.
+  Ambiguous discovery still refuses to guess. Native finalization now rechecks
+  writer/source guards and exact intent revisions with locked compare-and-update
+  transactions; `--revision` can bind an external finalizer to a reviewed record.
+- Explicit `dev prepare --closeout co-commit` delegates a feature-only staged
+  snapshot and selected transcript/plan to a compatible canonical v2 helper.
+  It requires a real wrapper launched without automatic commit approval, retains
+  the canonical queue acknowledgement, and never launches or closes an agent.
+  External `artifact finalize --allow-commit` prepares without committing,
+  revalidates native guards and both revisions, then permits one commit-capable
+  call. Uncertain outcomes reconcile only; partial bindings never blindly requeue.
+  Read-only review previews and schema-1 `co_commit_handoff` / `artifact_handoffs`
+  JSON keep persisted intent separate from helper observations. The separately
+  maintained helper is not bundled or installed automatically; native Windows
+  co-commit remains unsupported.
+
+### Fixed
+
+- Compact release source archives also exclude Claude, Codex, Cursor and OpenCode
+  plan directories, not just SpecStory history. Git retains the selected evidence;
+  the source-archive gate verifies these exclusions and the real native build.
+- REPOS `n` and the new-repository action now open the clone-aware wizard while
+  selected-row observations are pending or the filtered list is empty. Active
+  clones still block; wizard confirmation and fresh destination checks remain.
+- Dashboard local filters and help index/result searches accept Up/Down while
+  typing without moving the text cursor or leaving the input. Enter still keeps
+  the query/selection and exits filtering without opening; ordinary list Enter,
+  article search/scroll and Notes search retain their existing behavior.
+
 ## [0.2.39] - 2026-09-17
 
 ### Added
@@ -1281,7 +1320,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.39...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.40...HEAD
+[0.2.40]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.39...v0.2.40
 [0.2.39]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.38...v0.2.39
 [0.2.38]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.37...v0.2.38
 [0.2.37]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.36...v0.2.37

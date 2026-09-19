@@ -1677,18 +1677,41 @@ func TestTryCreateFormSubmitsNormalizedRequest(t *testing.T) {
 }
 
 func TestRepoNLaunchesNewRepositoryWizardWithoutASelectedRow(t *testing.T) {
-	creates := 0
-	actions := newActions(&recorder{}, nil)
-	actions.Repos.Create = func() (*exec.Cmd, error) {
-		creates++
-		return exec.Command("true"), nil
-	}
-	m := tui.New(actions, nil, nil)
-	m = send(m, key("tab"))
-	next, command := m.Update(key("n"))
-	m = next.(tui.Model)
-	if creates != 1 || command == nil || !strings.Contains(m.View(), "opening new repository wizard") {
-		t.Fatalf("REPOS n create calls=%d command=%v:\n%s", creates, command, m.View())
+	for _, test := range []struct {
+		name, pending string
+		empty, filter bool
+	}{
+		{name: "empty", empty: true},
+		{name: "filtered empty", filter: true},
+		{name: "ready"},
+		{name: "cached", pending: "cached"},
+		{name: "loading", pending: "loading"},
+		{name: "runtime pending", pending: "runtime pending"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			creates := 0
+			actions := newActions(&recorder{}, nil)
+			actions.Repos.Create = func() (*exec.Cmd, error) {
+				creates++
+				return exec.Command("true"), nil
+			}
+			var repos []tui.RepoRow
+			if !test.empty {
+				r := repoRow("api")
+				r.Pending = test.pending
+				repos = []tui.RepoRow{r}
+			}
+			m := tui.New(actions, nil, repos)
+			m = send(m, key("tab"))
+			if test.filter {
+				m = send(m, key("/"), key("not-a-repository"), key("enter"))
+			}
+			next, command := m.Update(key("n"))
+			m = next.(tui.Model)
+			if creates != 1 || command == nil || !strings.Contains(m.View(), "opening new repository wizard") {
+				t.Fatalf("REPOS n create calls=%d command=%v:\n%s", creates, command, m.View())
+			}
+		})
 	}
 }
 
@@ -2024,8 +2047,10 @@ func TestFilterNarrowsAsYouType(t *testing.T) {
 	rows := []inventory.Row{
 		row("a", "token refresh", task.Hot, ""),
 		row("b", "orderbook rewrite", task.Hot, ""),
+		row("c", "token expiry", task.Hot, ""),
 	}
-	m := tui.New(newActions(&recorder{}, rows), rows, nil)
+	rec := &recorder{}
+	m := tui.New(newActions(rec, rows), rows, nil)
 
 	m = send(m, tea.WindowSizeMsg{Width: 120, Height: 24}, key("/"))
 	for _, k := range typeText("token") {
@@ -2036,8 +2061,17 @@ func TestFilterNarrowsAsYouType(t *testing.T) {
 		t.Errorf("the filter should narrow live:\n%s", out)
 	}
 
+	m = send(m, key("down"), tea.KeyMsg{Type: tea.KeyLeft}, tea.KeyMsg{Type: tea.KeyRight}, key("enter"))
+	if len(rec.opened) != 0 {
+		t.Fatalf("filter Enter opened an item: %v", rec.opened)
+	}
+	m = send(m, key("enter"))
+	if len(rec.opened) != 1 || rec.opened[0] != "c" {
+		t.Fatalf("list Enter did not open the retained filter selection: %v", rec.opened)
+	}
+
 	// esc clears the filter rather than quitting.
-	m = send(m, key("esc"))
+	m = send(m, key("/"), key("esc"))
 	if !strings.Contains(m.View(), "orderbook") {
 		t.Errorf("esc should clear the filter:\n%s", m.View())
 	}
@@ -3511,6 +3545,10 @@ func TestNBrowsesSearchesAndExpandsNotes(t *testing.T) {
 	m = send(m, key("/"))
 	for _, k := range typeText("settings") {
 		m = send(m, k)
+	}
+	m = send(m, key("down"), key("up"), tea.KeyMsg{Type: tea.KeyLeft}, tea.KeyMsg{Type: tea.KeyRight})
+	if len(rec.searches) != 0 {
+		t.Fatalf("Notes searched before Enter: %v", rec.searches)
 	}
 	m = send(m, key("enter"))
 	if len(rec.searches) != 1 || rec.searches[0] != "settings" {

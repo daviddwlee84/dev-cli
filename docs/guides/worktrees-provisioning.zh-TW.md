@@ -29,6 +29,31 @@ Code、history 或 plans 需要保持可 review，或人之後可能回來時，
 
 `dev flow [repo]` 以 Git 的 authoritative worktree records 顯示 canonical、managed、unmanaged 與 strict `.claude/worktrees/` harness rows，另加入沒有 checkout 的 task-only rows。它不以 `worktree-*` branch prefix 猜 ownership；path/task binding 有歧義時標示 CONFLICT 並停止 lifecycle mutation。詳見 [Repository Flow 預覽](repository-flow.zh-TW.md)。
 
+## 新 managed 工作與既有 checkout 的可見性
+
+新的 managed 工作優先使用 `dev start`，明確指定已 commit 的 base：
+
+```bash
+dev start api --task "auth fix" --branch fix/auth --base main
+```
+
+若外部 worktree 已經存在且已在 Git 註冊，只需要讓 runtime 看得見：
+
+```bash
+dev wt open fix/auth --repo api --runtime herdr --no-focus
+```
+
+Open command 立即回報 branch、實際 path 與 backend/handle，再說明實際 opened/reused
+runtime surface。它不切換 focus 或 attach，不另建 Git worktree、不 adopt task、
+不 provision、不啟動 agent，也不改 Git refs、index 或 dirty files。Fallback workspace
+會如實回報為 workspace，不是新 Git checkout 或 agent launch target。Runtime 為
+`none` 時不開 runtime，也不產生 shell `cd` handoff。沒有此 flag 時，原本的
+activation/shell navigation 不變；runtime error 仍使 command 失敗。
+
+交付時立即回報 repository、branch、實際 checkout path 與 runtime handle/result。
+Adoption 是另一個 task intent 決定，不是可見性開關；harness-owned 暫時隔離仍與
+持久的實作工作分開。詳見 [平行 Agent 與 Runtime](parallel-agents-runtimes.zh-TW.md)。
+
 ## 建立前先檢查
 
 ```bash

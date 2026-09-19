@@ -138,10 +138,18 @@ is the branch and linked checkout.
 you were from a diff, which is most of the cost of a context switch. Always
 supply one.
 
-Before finishing agent work, run `dev prepare` with the exact session UUID and
-exit normally. The post-writer finalizer—not the still-running agent—stages and
-commits the exact transcript/plan. A settled Herdr `done` state is not evidence
-that history, review or commits are complete.
+Before finishing agent work, default `dev prepare` requires committed product
+changes and an empty index. Select the exact session UUID, optionally pin its
+`--specstory-path` (v0.2.40), then exit normally. The post-writer finalizer—not
+the still-running agent—preserves the exact transcript in its recorded lane.
+The explicit v0.2.40 `--closeout co-commit` alternative queues a reviewed
+feature-only index through an authentic v2 wrapper launched without automatic
+commit approval; read [AI artifacts](ai-artifacts.md) before using it. After
+queueing (even `queued_but_not_bound`), report "finalization queued" and exit with
+no more repository operations. Only an external guarded finalizer may authorize
+its commit; unknown outcomes are reconcile-only. Read-only helper observations
+never update native intent. A settled Herdr `done` state is not evidence that
+history, review or commits are complete.
 
 Useful variations:
 

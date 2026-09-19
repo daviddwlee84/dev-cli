@@ -64,9 +64,18 @@ root before writer-claiming direct/branch starts and resume. It resolves
 closed.
 
 Pure local repo/worktree open and TUI Enter reuse the live owner's workspace and
-do not claim a second writer. Inside Herdr they request runtime focus;
+do not claim a second writer. By default, inside Herdr they request runtime focus;
 outside Herdr the TUI first restores the terminal and then attaches, matching
-`hhere`. The root `--allow-shared-checkout` escape hatch is
+`hhere`. For visibility only, use
+`dev wt open <branch> --repo <repo> --runtime herdr --no-focus`: it opens/reuses the
+existing registered checkout, reports branch/path/backend/handle and the actual
+runtime surface, and returns without focus or attachment. It never creates a Git
+worktree, provisions, adopts/annotates a task, or launches an agent. Reuse and
+workspace fallback stay non-launchable; runtime failures remain errors. Prefer
+`dev start <repo> --task '<task>' --base '<committed-ref>'` for new managed work,
+and report its checkout and runtime result immediately.
+
+The root `--allow-shared-checkout` escape hatch is
 only for coordinated writer ownership. A default worktree start remains
 separate and needs no override.
 
@@ -147,8 +156,9 @@ exact `(EXITED - attach to resurrect)` marker and treats those sessions as close
 closed, and a session that exits during layout inspection asks for a retry,
 rather than resurrecting its old layout — reclaim it with
 `zellij delete-session <name>`.
-`none` emits a shell `cd` directive in human mode;
-`dev start --json` suppresses that directive and stays pure JSON.
+`none` normally emits a shell `cd` directive in human mode;
+`dev wt open --no-focus` instead reports no runtime/no shell handoff and returns.
+`dev start --json` also suppresses that directive and stays pure JSON.
 
 On Windows there is no tmux, Zellij or Herdr, so the backend is always `none`
 regardless of configuration. `dev shell-init powershell` still consumes the `cd`

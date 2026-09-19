@@ -18,7 +18,7 @@ A feature agent may prepare and integrate work, but it must not destroy the
 runtime or checkout containing its own process. Completion has three milestones:
 
 ```text
-READY     exact final transcript committed after the writer exits
+READY     exact transcript preserved in its chosen destination after writer exit
 MERGED    branch integrated; runtime/worktree may still exist
 RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 ```
@@ -28,7 +28,8 @@ not "everything has already been deleted".
 
 ## Normal local flow
 
-From the feature worktree:
+Default product-first preparation requires committed product changes and an empty
+index. From the feature worktree:
 
 ```bash
 # Commit product changes first. Do not stage the moving transcript.
@@ -126,6 +127,32 @@ explicit base, unchanged branch/base tips, containment, zero unique commits, and
 ordinary `git branch -d`; any post-removal failure leaves the branch retained and
 reports partial completion.
 
+## Exact transcript and co-commit handoffs (v0.2.40)
+
+`prepare --specstory-path PATH` pins one provider/UUID/capture-path selection;
+otherwise ambiguous exports still block. Finalization rechecks source/writer
+identity and exact native intent revisions under locks. An optional
+`artifact finalize --revision HASH` binds the reviewed revision.
+
+Co-commit instead queues a reviewed feature-only index, an exact `claude:UUID`
+transcript, one `--plan` or `--no-plan`, and a base `--message-file`. Read
+[AI artifacts](ai-artifacts.md) first: the separately installed canonical v2
+wrapper must be real and launched **without `--allow-commit`**. Dev neither
+launches nor closes agents. Retain the real `queue_ack` output in the recorder;
+report "finalization queued" and exit without further repository/index work,
+even for `queued_but_not_bound`. Repair only that exact binding with `--run-id`,
+never generate another request or fabricate an ACK.
+
+An external `artifact finalize --intent ID --allow-commit` performs canonical
+prepare-only, fresh native Guard/CAS checks and one exact-revision commit-capable
+helper call. Unknown outcomes reconcile only. `--preview-review --json` is
+read-only and cannot apply findings or approve a commit/rotation. Noncredential
+review never restores secret bytes or bypasses hooks. `artifact list --json`
+(schema 1, `artifact_handoffs`) and readiness keep persisted native intent separate
+from helper observations, without reconciling. Complete parent/tree/full-message/
+request proof and receipt reachability still precede integration or retirement;
+queued or runtime-done is not READY. Native Windows co-commit remains unsupported.
+
 ## Choose the containment base
 
 `dev retire --base <ref>` overrides the containment target for a DONE task or
@@ -179,7 +206,7 @@ Retirement always refuses when:
 - an agent is `working`, `blocked`, or `waiting`;
 - runtime enumeration fails;
 - the checkout is dirty, on the wrong branch, or not contained in its base;
-- a relevant artifact finalization is armed/finalizing/failed.
+- relevant artifact proof is pending, failed, unknown or no longer reachable.
 
 `unknown` or empty agent status requires `--close-unknown` from outside the
 target. Runtime enumeration failure requires external `--assume-no-runtime`.
@@ -211,7 +238,7 @@ idle agent. Treat `runtime alive + Git registration absent + artifact-only path`
 as an orphan requiring transcript salvage and external reconciliation, never as
 RETIRED.
 
-## Artifact rules
+## Product-first artifact rules
 
 - Match SpecStory Markdown by the exact UUID in its fixed preamble, not filename
   or newest mtime.

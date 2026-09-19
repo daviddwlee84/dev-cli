@@ -29,6 +29,33 @@ rows that have no checkout. It never guesses ownership from a `worktree-*`
 branch prefix; ambiguous path/task binding is labelled CONFLICT and stops
 lifecycle mutation. See [Repository lifecycle flow](repository-flow.md).
 
+## New managed work versus existing checkout visibility
+
+Prefer `dev start` with an explicit committed base for new managed work:
+
+```bash
+dev start api --task "auth fix" --branch fix/auth --base main
+```
+
+For an existing registered external worktree that only needs runtime visibility:
+
+```bash
+dev wt open fix/auth --repo api --runtime herdr --no-focus
+```
+
+The open command reports branch, actual path and backend/handle immediately, then
+the actual runtime opened/reused surface. It does not switch focus or attach,
+create another Git worktree, adopt a task, provision, launch an agent, or change
+Git refs, the index or dirty files. A fallback workspace is reported as a workspace,
+not a new Git checkout or an agent launch target. With runtime `none`, it opens no
+runtime and emits no shell `cd` handoff. Without the flag, activation/shell
+navigation is unchanged; runtime errors still fail the command.
+
+Report repository, branch, actual checkout path and runtime handle/result when
+handing work back. Adoption is separate task intent, not a visibility switch;
+harness-owned temporary isolation remains distinct from durable implementation
+work. See [Parallel agents and runtimes](parallel-agents-runtimes.md).
+
 ## Inspect before creating
 
 ```bash

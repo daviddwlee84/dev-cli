@@ -71,6 +71,20 @@ the word `EXITED` remains live. If a session exits between listing and layout
 inspection, open fails closed and asks for a retry rather than resurrecting the
 old layout at an unrelated checkout.
 
+## Visibility without navigation
+
+Use `dev start <repo> --task '<task>' --base '<committed-ref>'` for new managed
+work. For an existing external registered checkout, use
+`dev wt open <branch> --repo <repo> --runtime herdr --no-focus` when only runtime
+visibility is needed. It reports branch, actual path, backend/handle and the
+actual opened/reused runtime surface immediately without focusing or attaching.
+It does not adopt/annotate a task, provision, launch an agent, or modify Git/index/
+dirty files. A reused or fallback surface is not a new exact agent launch target.
+Runtime `none` reports no runtime and emits no shell `cd` handoff. Without the
+flag, normal navigation is unchanged; opening failures remain errors. Report the
+repository, branch, actual path and runtime handle/result when handing work back.
+See [Worktrees and provisioning](worktrees-provisioning.md).
+
 For one reviewed shell command in a new independent worktree, Herdr supports a
 direct one-liner:
 

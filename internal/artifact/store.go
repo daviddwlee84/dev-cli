@@ -1,8 +1,10 @@
 package artifact
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -20,6 +22,25 @@ import (
 )
 
 var ErrIntentNotFound = errors.New("artifact intent not found")
+var ErrStaleRevision = errors.New("stale artifact intent revision")
+
+// Record binds a decoded intent to its exact persisted bytes, not its timestamp.
+type Record struct {
+	Intent   *Intent
+	Revision string
+}
+
+type StaleRevisionError struct {
+	ID       string
+	Expected string
+	Actual   string
+}
+
+func (e *StaleRevisionError) Error() string {
+	return fmt.Sprintf("artifact intent %q: %v (expected %q, actual %q)", e.ID, ErrStaleRevision, e.Expected, e.Actual)
+}
+
+func (e *StaleRevisionError) Unwrap() error { return ErrStaleRevision }
 
 // Store keeps one strict JSON intent per finalization handoff.
 type Store struct {
@@ -55,27 +76,43 @@ func (s *Store) Create(ctx context.Context, intent *Intent) error {
 		} else if !errors.Is(err, fs.ErrNotExist) {
 			return err
 		}
+		if existing, err := s.FindByRunID(candidate.RunID); err == nil {
+			return fmt.Errorf("artifact run %s already belongs to intent %s", candidate.RunID, existing.ID)
+		} else if !errors.Is(err, ErrIntentNotFound) {
+			return err
+		}
 		if err := s.write(candidate); err != nil {
 			return err
 		}
-		*intent = candidate
+		stored, err := s.Get(candidate.ID)
+		if err != nil {
+			return err
+		}
+		*intent = *stored
 		return nil
 	})
 }
 
 func (s *Store) Get(id string) (*Intent, error) {
+	record, err := s.GetRecord(id)
+	if err != nil {
+		return nil, err
+	}
+	return record.Intent, nil
+}
+
+func (s *Store) GetRecord(id string) (*Record, error) {
 	if !idPattern.MatchString(id) {
 		return nil, fmt.Errorf("invalid artifact intent id %q", id)
 	}
-	file, err := os.Open(s.path(id))
+	data, err := os.ReadFile(s.path(id))
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, fmt.Errorf("artifact intent %s: %w", id, ErrIntentNotFound)
 		}
 		return nil, err
 	}
-	defer file.Close()
-	decoder := json.NewDecoder(file)
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 	var intent Intent
 	if err := decoder.Decode(&intent); err != nil {
@@ -90,7 +127,9 @@ func (s *Store) Get(id string) (*Intent, error) {
 	if err := intent.Validate(); err != nil {
 		return nil, err
 	}
-	return &intent, nil
+	digest := sha256.Sum256(append([]byte(id+"\x00"), data...))
+	intent.storedRevision = hex.EncodeToString(digest[:])
+	return &Record{Intent: &intent, Revision: intent.storedRevision}, nil
 }
 
 func (s *Store) List() ([]Intent, error) {
@@ -154,32 +193,81 @@ func (s *Store) FindByRunID(runID string) (*Intent, error) {
 	if err != nil {
 		return nil, err
 	}
+	var match *Intent
 	for i := range intents {
 		if intents[i].RunID == runID {
-			return &intents[i], nil
+			if match != nil {
+				return nil, fmt.Errorf("artifact run %s matches multiple intents; select an exact intent", runID)
+			}
+			match = &intents[i]
 		}
+	}
+	if match != nil {
+		return match, nil
 	}
 	return nil, fmt.Errorf("artifact run %s: %w", runID, ErrIntentNotFound)
 }
 
+// Update is the compatibility transaction for callers deriving a change entirely
+// inside mutate. Reviewed or previously observed authority must use UpdateIfRevision.
 func (s *Store) Update(ctx context.Context, id string, mutate func(*Intent) error) error {
-	if mutate == nil {
-		return fmt.Errorf("artifact update needs a mutation")
+	_, err := s.update(ctx, id, "", false, mutate)
+	return err
+}
+
+func (s *Store) UpdateIfRevision(ctx context.Context, id, expectedRevision string, mutate func(*Intent) error) (*Record, error) {
+	return s.update(ctx, id, expectedRevision, true, mutate)
+}
+
+// CheckRevision is a read-only checkpoint; it never refreshes stale authority.
+func (s *Store) CheckRevision(id, expectedRevision string) error {
+	current, err := s.GetRecord(id)
+	if errors.Is(err, ErrIntentNotFound) {
+		return &StaleRevisionError{ID: id, Expected: expectedRevision}
 	}
-	return lockx.WithDir(ctx, s.Dir, "artifact intent", func() error {
-		intent, err := s.Get(id)
+	if err != nil {
+		return err
+	}
+	if expectedRevision == "" || current.Revision != expectedRevision {
+		return &StaleRevisionError{ID: id, Expected: expectedRevision, Actual: current.Revision}
+	}
+	return nil
+}
+
+func (s *Store) update(ctx context.Context, id, revision string, conditional bool, mutate func(*Intent) error) (*Record, error) {
+	if mutate == nil {
+		return nil, fmt.Errorf("artifact update needs a mutation")
+	}
+	var updated *Record
+	err := lockx.WithDir(ctx, s.Dir, "artifact intent", func() error {
+		record, err := s.GetRecord(id)
+		if conditional && errors.Is(err, ErrIntentNotFound) {
+			return &StaleRevisionError{ID: id, Expected: revision}
+		}
 		if err != nil {
 			return err
 		}
+		if conditional && (revision == "" || record.Revision != revision) {
+			return &StaleRevisionError{ID: id, Expected: revision, Actual: record.Revision}
+		}
+		intent := record.Intent
 		if err := mutate(intent); err != nil {
 			return err
+		}
+		if intent.ID != id {
+			return errors.New("artifact update cannot change intent identity")
 		}
 		intent.UpdatedAt = s.clock().UTC().Truncate(time.Second)
 		if err := intent.Validate(); err != nil {
 			return err
 		}
-		return s.write(*intent)
+		if err := s.write(*intent); err != nil {
+			return err
+		}
+		updated, err = s.GetRecord(id)
+		return err
 	})
+	return updated, err
 }
 
 func (s *Store) write(intent Intent) error {

@@ -327,6 +327,9 @@ func (m Model) openActionMenu() Model {
 		}
 		if m.view == ViewRepos || m.view == ViewTries {
 			m.overlay = overlayState{kind: overlayActionMenu, title: "Organize local work"}
+			if m.view == ViewRepos && m.actions.Repos.Create != nil {
+				m.overlay.addOption(listActionRepoCreate, "new repository…")
+			}
 			m.overlay.addOption(listActionTriageAll, "organize all local work…")
 		}
 		m.overlay.addOption(listActionSettings, "settings / configuration…")
@@ -624,7 +627,7 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 		return m.runFleetHostActionFor(host, option.fleetID)
 	}
 	token := m.overlay.selection
-	rowIndependent := sshRowIndependent(action) || action == listActionFleetLocal || action == listActionFleetRefreshAll || action == listActionTriageAll || action == listActionTriageFiltered || action == listActionStateFilter || (action >= listActionStateAll && action <= listActionStateDone) || action == listActionLastTriage || action == listActionSettings || action == listActionStatusDetails
+	rowIndependent := sshRowIndependent(action) || action == listActionRepoCreate || action == listActionFleetLocal || action == listActionFleetRefreshAll || action == listActionTriageAll || action == listActionTriageFiltered || action == listActionStateFilter || (action >= listActionStateAll && action <= listActionStateDone) || action == listActionLastTriage || action == listActionSettings || action == listActionStatusDetails
 	if !rowIndependent && !discoveryAction(action) && !m.selectToken(token) {
 		m.overlay = overlayState{}
 		m.err = fmt.Errorf("selected row changed while its action menu was open")
@@ -667,7 +670,7 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 	}
 	if item, ok := m.currentRepoItem(); ok && item.Repo.Pending != "" {
 		switch action {
-		case listActionSortMenu, listActionSettings, listActionStatusDetails:
+		case listActionRepoCreate, listActionSortMenu, listActionSettings, listActionStatusDetails:
 		default:
 			m.status = "Waiting for fresh repository observations…"
 			return m, nil

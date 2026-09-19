@@ -39,6 +39,10 @@ def main():
             names = {member.name for member in members}
             if any(name == ".specstory" or name.startswith(".specstory/") for name in names):
                 raise SystemExit("source archive contains SpecStory data")
+            plan_roots = (".claude/plans", ".codex/plans", ".cursor/plans", ".opencode/plans")
+            if any(name == prefix or name.startswith(prefix + "/")
+                   for name in names for prefix in plan_roots):
+                raise SystemExit("source archive contains agent plan data")
             required = {"go.mod", "go.sum", "cmd/dev/main.go", "internal/skill/dev-cli/SKILL.md"}
             if not required <= names:
                 raise SystemExit("source archive is missing required build inputs")
@@ -54,7 +58,8 @@ def main():
             raise SystemExit("archive binary version mismatch")
         print(json.dumps({"commit": oid, "archive_bytes": archive.stat().st_size,
                           "files": sum(member.isfile() for member in members),
-                          "specstory_excluded": True, "build": "passed"}))
+                          "specstory_excluded": True, "plans_excluded": True,
+                          "build": "passed"}))
 
 
 if __name__ == "__main__":
