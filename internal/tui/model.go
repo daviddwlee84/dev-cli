@@ -2969,6 +2969,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.afterExit, m.quitting = msg.result.AfterExit, true
 			return m, tea.Quit
 		}
+		if msg.result.RefreshRepos {
+			m.beginViewLoad(ViewRepos, loadAction)
+			return m, m.reloadReposOnly()
+		}
 		if msg.result.RefreshSkills {
 			m.beginViewLoad(ViewSkills, loadAction)
 			refresh := m.reloadSkills()
@@ -3126,6 +3130,9 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	if next, command, handled := m.actionKey(msg.String()); handled {
+		return next, command
+	}
 	switch msg.String() {
 	case "q", "ctrl+c":
 		m.quitting = true
@@ -3175,57 +3182,6 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "?":
 		return m.openHelpOverlay(), nil
 
-	case "n":
-		if m.view == ViewTries {
-			return m.openTryForm(TryCreate, TryRow{})
-		}
-		if m.view == ViewRepos {
-			return m.runListAction(listActionRepoCreate)
-		}
-		return m.runListAction(listActionAddNote)
-
-	case "N":
-		return m.runListAction(listActionBrowseNotes)
-
-	case "r":
-		if m.view == ViewFleet {
-			if m.hostFleetEnabled() {
-				return m.refreshSelectedFleetHost()
-			}
-			m.beginViewLoad(ViewFleet, loadRefresh)
-			if err := m.dependentReposUnavailable(ViewFleet); err != nil {
-				fleet := m.viewLoad(ViewFleet)
-				m.applyViewResult(ViewFleet, fleet.generation, false, "", "", 0, err, false)
-				return m, nil
-			}
-			if m.viewWaitsForRepos(ViewFleet) {
-				m.setViewStatus(ViewFleet, "waiting for local repositories…")
-				return m, nil
-			}
-			m.setViewStatus(ViewFleet, "refreshing fleet…")
-			return m, m.reloadFleet()
-		}
-		if m.view == ViewSkills || m.view == ViewMCP {
-			view := m.view
-			m.err = nil
-			m.beginViewLoad(view, loadRefresh)
-			if err := m.dependentReposUnavailable(view); err != nil {
-				state := m.viewLoad(view)
-				m.applyViewResult(view, state.generation, false, "", "", 0, err, false)
-				return m, nil
-			}
-			if m.viewWaitsForRepos(view) {
-				m.setViewStatus(view, "waiting for local repositories…")
-				return m, nil
-			}
-			m.setViewStatus(view, dependentLoadingStatus(view))
-			return m, m.reloadDependentView(view)
-		}
-		m.beginConfigLoad()
-		m.status = "reloading config + data…"
-		m.forceSizeReload = true
-		return m, m.reloadConfig(m.view == ViewRemote)
-
 	case "1", "2", "3", "4", "5", "6", "7":
 		m.view = Views[int(msg.String()[0]-'1')]
 		return m.afterViewSwitch()
@@ -3243,180 +3199,12 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "0":
 		m.states, m.filter = nil, ""
 		m.setAt(0)
-	case "A":
-		if m.view == ViewSkills || m.view == ViewMCP {
-			return m.toggleCapabilityScope()
-		}
-		if command := m.launchTool("A"); command != nil {
-			return m, command
-		}
-	case "a":
-		if m.view == ViewRepos {
-			return m.runListAction(listActionAddNote)
-		}
-		if m.view == ViewSkills {
-			if m.actions.AddSkill == nil {
-				return m, nil
-			}
-			mutation, err := m.actions.AddSkill()
-			if err != nil {
-				m.err = err
-				return m, nil
-			}
-			proc, finish, err := mutation.Prepare()
-			if err != nil {
-				m.err = err
-				return m, nil
-			}
-			m.status = "opening interactive skill installer…"
-			return m, runExecProcess(proc, func(err error) tea.Msg {
-				return skillProcessMsg{action: "add", err: finish(err)}
-			})
-		}
-		if m.view == ViewTries {
-			m.showAllTries = !m.showAllTries
-			m.status = fmt.Sprintf("Try history visible: %v", m.showAllTries)
-			m.setAt(0)
-			m.beginTryLoads(false, loadRefresh)
-			return m, m.reloadTries(false)
-		}
-		if m.view == ViewFleet {
-			if m.hostFleetEnabled() {
-				return m.toggleFleetLocal()
-			}
-			m.showLocalFleet = !m.showLocalFleet
-			m.status = fmt.Sprintf("local fleet rows visible: %v", m.showLocalFleet)
-			m.setAt(0)
-			return m, nil
-		}
-		if m.view == ViewTasks {
-			m.showDone, m.states = !m.showDone, nil
-			m.setAt(0)
-		}
-
-	case "enter":
-		return m.runListAction(listActionOpen)
-	case "o":
-		return m.runListAction(listActionOpen)
-
 	case "ctrl+o":
 		return m.openActionMenuCommand()
-
-	case " ":
-		if m.view == ViewFleet && m.hostFleetEnabled() {
-			return m.toggleFleetHost()
-		}
-		if m.view == ViewRepos {
-			return m.runListAction(listActionToggleWorktrees)
-		}
-		return m, nil
-
-	case "m":
-		return m.runListAction(listActionRepoMetadata)
-
-	case "y":
-		switch m.view {
-		case ViewRepos, ViewRemote, ViewSkills, ViewMCP:
-			return m.runListAction(listActionCopy)
-		default:
-			return m, nil
-		}
-
-	case "p":
-		return m.runListAction(listActionPark)
-
-	case "c":
-		if m.view == ViewSkills {
-			state := m.viewLoad(ViewSkills)
-			if state.loading || !state.hasSnapshot {
-				m.setViewStatus(ViewSkills, "wait for local agent skills to finish loading")
-				return m, nil
-			}
-			m.err = nil
-			m.beginViewLoad(ViewSkills, loadRefresh)
-			m.setViewStatus(ViewSkills, "checking skill sources…")
-			m.skillsChecking = true
-			return m, m.checkSkills(append([]agentskill.Skill(nil), m.skills...))
-		}
-		if m.view == ViewTasks {
-			return m.runListAction(listActionEditNext)
-		}
-		if m.view == ViewRemote {
-			return m.runListAction(listActionRemoteClone)
-		}
-		return m, nil
-
-	case "s":
-		return m.runListAction(listActionStartWorktree)
-
-	case "d":
-		return m.runListAction(listActionStartDirect)
-
 	case "u":
-		return m.runListAction(listActionSkillUpdate)
-
-	case "e":
-		if m.view == ViewSkills || m.view == ViewMCP {
-			return m.runListAction(listActionOpenCapabilityFile)
-		}
-		if m.view == ViewFleet {
-			if m.actions.EditFleetConfig == nil {
-				return m, nil
-			}
-			proc, err := m.actions.EditFleetConfig()
-			if err != nil {
-				m.err = err
-				return m, nil
-			}
-			m.status = "editing remotes.toml…"
-			return m, runExecProcess(proc, func(err error) tea.Msg {
-				return fleetConfigEditedMsg{err: err}
-			})
-		}
-		if m.actions.EditConfig == nil {
-			return m, nil
-		}
-		proc, err := m.actions.EditConfig()
-		if err != nil {
-			m.err = err
-			return m, nil
-		}
-		m.status = "editing config…"
-		return m, runExecProcess(proc, func(err error) tea.Msg {
-			return configEditedMsg{err: err}
-		})
-
-	case "O":
-		switch m.view {
-		case ViewRepos:
-			orders := []string{"activity", "latest", "name", "git", "size", "tasks"}
-			m.actions.RepoSort = nextSort(m.actions.RepoSort, orders)
-			m.status = "repo sort: " + m.actions.RepoSort
-		case ViewTries:
-			m.trySort = nextSort(m.trySort, []string{"activity", "name", "phase", "size"})
-			m.status = "Try sort: " + m.trySort
-		default:
-			return m, nil
-		}
-		m.setAt(0)
+		// Preserve the historical global binding: outside SKILLS this key is
+		// consumed, even if an old configuration assigned a custom tool to it.
 		return m, nil
-
-	case "R":
-		switch m.view {
-		case ViewRepos:
-			m.actions.RepoReverse = !m.actions.RepoReverse
-			m.status = fmt.Sprintf("repo sort reversed: %v", m.actions.RepoReverse)
-		case ViewTries:
-			m.tryReverse = !m.tryReverse
-			m.status = fmt.Sprintf("Try sort reversed: %v", m.tryReverse)
-		default:
-			return m, nil
-		}
-		m.setAt(0)
-		return m, nil
-
-	case "H":
-		return m.runListAction(listActionStats)
 
 	default:
 		if cmd := m.launchTool(msg.String()); cmd != nil {

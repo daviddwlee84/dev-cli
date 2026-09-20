@@ -3794,7 +3794,15 @@ dev hygiene manage /path/to/a /path/to/b --json  # preview only
 dev hygiene setup --migrate-hooks --json # one repository, narrow migration
 ```
 
-REPOS offers the same single/filtered-repository workflow. Repositories do not
+REPOS → Ctrl+O → hygiene offers status, the latest stored scan report, explicit
+worktree/staged/local-history scanning, and reviewed setup for the selected
+checkout or filtered repository pool. A worktree row targets that exact checkout;
+reports never fall back to a sibling checkout or trigger an automatic rescan.
+Scanning uses the current policy and a 20-minute limit, without fetching refs or
+capturing raw values. Operations suspend into the shared CLI workflow; press
+Enter to return. Setup previews changes and asks for confirmation before apply.
+
+The setup workflow is shared with the CLI. Repositories do not
 need a skills lock. Plans show files, retained dependencies and blockers; choose
 which prepared plans to apply. Shared Git repositories are processed once. A new
 common-directory hook requires readable sibling worktree configurations, checked
@@ -6128,12 +6136,26 @@ local state; LAN scanning and SSH tests always require an explicit action.
 
 ## Batch hygiene and skill removal
 
-REPOS → Ctrl+O offers hygiene setup for the current or filtered repositories.
-Choose repositories and prepared plans, inspect retained hooks, then confirm.
-This configures ordinary commits, without installing an agent skill.
+REPOS → Ctrl+O → hygiene offers status, the latest stored scan report, explicit
+worktree/staged/local-history scanning, and reviewed setup for the selected
+checkout or filtered repository pool. A worktree row targets that exact checkout;
+reports never fall back to a sibling checkout or trigger an automatic rescan.
+Scanning uses the current policy and a 20-minute limit, without fetching refs or
+capturing raw values. Operations suspend into the shared CLI workflow; press
+Enter to return. Setup previews changes and asks for confirmation before apply.
+
 SKILLS → Ctrl+O → remove skills in this scope opens the shared management wizard with
 skill and agent multi-selection. Ownership, shared consumers and finalizer
 references remain visible blockers; unrelated source repositories are retained.
+
+## Contextual action availability
+
+The eight dashboard views share built-in action registrations for menus,
+action keys and Help. Actions unrelated to an item are hidden; applicable actions
+that lack an integration or await observations stay visible as unavailable.
+Select an unavailable action to read its reason without executing it. Opening or
+searching a menu does not scan a repository or contact a remote. Fleet retains
+its asynchronous local catalog adapter and exact host/profile identities.
 
 ---
 
@@ -16298,7 +16320,13 @@ dev hygiene manage /path/to/a /path/to/b --json
 dev hygiene setup --migrate-hooks --json
 ```
 
-REPOS 提供相同的單一／篩選後多 repo 流程，repo 不必有 skills lock。預覽列出
+REPOS → Ctrl+O → hygiene 可查看設定狀態、最新既存掃描報告、明確選擇
+worktree／staged／本機 history 掃描，以及設定目前 checkout 或篩選後的 repo。
+worktree 子項使用精確 checkout；報告不會改讀其他 checkout，也不會自動重掃。
+掃描沿用目前政策與 20 分鐘上限，不 fetch refs 或擷取原始值。操作暫停 dashboard
+並進入共用 CLI 流程，按 Enter 返回；setup 先預覽，再確認套用。
+
+設定流程與 CLI 共用，repo 不必有 skills lock。預覽列出
 設定差異、保留的依賴與阻擋，再勾選要套用的 plans。共享 Git repository 只處理
 一次；新裝 common-directory hook 前，其他 worktree 必須有可讀設定，套用時
 再次確認。自訂／未知 scanner 命令保留並要求人工檢視。
@@ -18368,10 +18396,21 @@ authentication、session 分層呈現。Ping 不通仍測 SSH，proxy 不改成�
 
 ## 批次 hygiene 與 skill 移除
 
-REPOS → Ctrl+O 可設定目前或篩選後多個 repo 的 hygiene。勾選 repo、檢視各 plan
-和保留的 hooks，再確認套用；這是普通 commit procedure，不安裝 agent skill。
+REPOS → Ctrl+O → hygiene 可查看設定狀態、最新既存掃描報告、明確選擇
+worktree／staged／本機 history 掃描，以及設定目前 checkout 或篩選後的 repo。
+worktree 子項使用精確 checkout；報告不會改讀其他 checkout，也不會自動重掃。
+掃描沿用目前政策與 20 分鐘上限，不 fetch refs 或擷取原始值。操作暫停 dashboard
+並進入共用 CLI 流程，按 Enter 返回；setup 先預覽，再確認套用。
+
 SKILLS → Ctrl+O → remove skills in this scope 進入共用精靈，勾選 skills 與 agents。
 Ownership、共享使用者及 finalizer references 仍可阻擋移除，來源 repo 保留。
+
+## 情境動作的可用性
+
+八個 dashboard 頁面的選單、動作快捷鍵與 Help 共用內建動作登記。
+不適用於項目的動作會隱藏；適用但缺少整合或等待觀察的動作保留並標示不可用。
+選取不可用動作只顯示原因，不執行操作。開啟或搜尋選單不掃描 repo 或連線遠端；
+Fleet 保留非同步本機 catalog adapter 與精確的 host／profile 身分驗證。
 
 ---
 

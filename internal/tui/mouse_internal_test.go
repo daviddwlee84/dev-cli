@@ -150,7 +150,7 @@ func TestMouseRightClickSelectsThenRunsActionMenu(t *testing.T) {
 		t.Fatalf("right click selected=%d overlay=%v", model.at(), model.overlay.kind)
 	}
 
-	firstOptionY := model.buildActionMenuLayout().firstOptionY
+	firstOptionY := menuActionY(t, &model, listActionOpen)
 	var command tea.Cmd
 	model, command = applyMouse(model, popupMouse(model, 3, firstOptionY, tea.MouseButtonLeft, tea.MouseActionPress))
 	if command == nil {
@@ -172,8 +172,9 @@ func TestMouseActionMenuWheelOutsideClickAndModalIsolation(t *testing.T) {
 		SetNext: func(context.Context, *task.Task, string) error { return nil },
 		Park:    func(context.Context, *task.Task, string) (string, error) { return "", nil },
 	}, rows, nil).openActionMenu()
+	beforeIndex := model.overlay.optionIndex
 	model, _ = applyMouse(model, popupMouse(model, 2, model.buildActionMenuLayout().firstOptionY, tea.MouseButtonWheelDown, tea.MouseActionPress))
-	if model.overlay.optionIndex != 1 {
+	if model.overlay.optionIndex != (beforeIndex+1)%model.overlay.optionCount {
 		t.Fatalf("menu wheel selected option %d", model.overlay.optionIndex)
 	}
 	model, _ = applyMouse(model, mouseMessage(2, 0, tea.MouseButtonLeft, tea.MouseActionPress))
@@ -254,7 +255,8 @@ func TestMouseSelectThenTapOpensMenuWithoutExecuting(t *testing.T) {
 	if m.overlay.kind != overlayActionMenu || cmd != nil || opened != 0 {
 		t.Fatal("second tap executed instead of opening menu")
 	}
-	m, cmd = applyMouse(m, popupMouse(m, 3, m.buildActionMenuLayout().firstOptionY, tea.MouseButtonLeft, tea.MouseActionPress))
+	optionY := menuActionY(t, &m, listActionOpen)
+	m, cmd = applyMouse(m, popupMouse(m, 3, optionY, tea.MouseButtonLeft, tea.MouseActionPress))
 	if cmd == nil {
 		t.Fatal("option was not clickable")
 	}

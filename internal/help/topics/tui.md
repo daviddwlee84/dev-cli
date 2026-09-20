@@ -610,7 +610,22 @@ local state; LAN scanning and SSH tests always require an explicit action.
 
 ## Repository protection and skill removal
 
-REPOS offers hygiene setup for the current or filtered repository pool. The
-shared wizard previews and applies normal commit checks; it installs no agent
-skill. SKILLS offers selected removal with explicit agent scopes, ownership and
+REPOS → Ctrl+O → hygiene offers status, the latest stored scan report, explicit
+worktree/staged/local-history scanning, and reviewed setup for the selected
+checkout or filtered repository pool. A worktree row targets that exact checkout;
+reports never fall back to a sibling checkout or trigger an automatic rescan.
+Scanning uses the current policy and a 20-minute limit, without fetching refs or
+capturing raw values. Operations suspend into the shared CLI workflow; press
+Enter to return. Setup previews changes and asks for confirmation before apply.
+
+SKILLS offers selected removal with explicit agent scopes, ownership and
 dependency checks. Use `dev hygiene manage` or `dev skill manage` outside the TUI.
+
+## Contextual action availability
+
+The eight dashboard views share built-in action registrations for menus,
+action keys and Help. Actions unrelated to an item are hidden; applicable actions
+that lack an integration or await observations stay visible as unavailable.
+Select an unavailable action to read its reason without executing it. Opening or
+searching a menu does not scan a repository or contact a remote. Fleet retains
+its asynchronous local catalog adapter and exact host/profile identities.

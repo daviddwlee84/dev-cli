@@ -26,6 +26,10 @@ func newTUIWorkflow(ctx context.Context, app *App, request tui.WorkflowRequest) 
 		w.request.Task = &selected
 		w.app.workflowTask = &selected
 	}
+	if request.Hygiene != nil {
+		selected := *request.Hygiene
+		w.request.Hygiene = &selected
+	}
 	w.app.workflowHandoff = func(handoff func() error) error {
 		w.result.AfterExit = handoff
 		return nil
@@ -65,6 +69,8 @@ func (w *tuiWorkflow) run() error {
 	var cmd *cobra.Command
 	var args []string
 	switch request.Action {
+	case "hygiene":
+		return w.runHygieneInspection()
 	case "hygiene-manage":
 		return w.runHygieneManagement()
 	case "skills-manage":

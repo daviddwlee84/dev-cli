@@ -2162,7 +2162,7 @@ func TestViewNeverRunsToolProbe(t *testing.T) {
 	}
 }
 
-func TestToolsOnlyListedWhenAvailable(t *testing.T) {
+func TestToolsExplainUnavailableMenuEntries(t *testing.T) {
 	rows := []inventory.Row{row("a", "one", task.Hot, "")}
 	actions := newActions(&recorder{}, rows)
 	actions.Tools = []tui.Tool{
@@ -2175,8 +2175,8 @@ func TestToolsOnlyListedWhenAvailable(t *testing.T) {
 	if !strings.Contains(out, "lazygit") {
 		t.Errorf("an available tool should be advertised:\n%s", out)
 	}
-	if strings.Contains(out, "absent") {
-		t.Error("a tool that is not installed should not be offered")
+	if !strings.Contains(out, "absent") || !strings.Contains(out, "unavailable") {
+		t.Error("an unavailable tool must be explained without being runnable")
 	}
 	if len(m.Tools()) != 1 {
 		t.Errorf("Tools() should filter by availability, got %d", len(m.Tools()))
@@ -3619,7 +3619,12 @@ func TestRepoNotesColumnAndDetailPreview(t *testing.T) {
 }
 
 func TestTryNStillCreatesTryRatherThanNote(t *testing.T) {
-	m := tui.New(newActions(&recorder{}, nil), nil, nil).WithTries(nil)
+	actions := newActions(&recorder{}, nil)
+	actions.Tries.Apply = func(context.Context, tui.TryRequest) (tui.TryActionResult, error) {
+		t.Fatal("opening the form applied a Try")
+		return tui.TryActionResult{}, nil
+	}
+	m := tui.New(actions, nil, nil).WithTries(nil)
 	m = send(m, key("tab"), key("tab"), key("tab"), key("n"))
 	if !strings.Contains(m.View(), "NEW TRY") {
 		t.Errorf("n in TRY view must retain its lifecycle meaning:\n%s", m.View())

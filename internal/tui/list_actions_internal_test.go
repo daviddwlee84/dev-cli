@@ -157,9 +157,14 @@ func TestRepoCreatePreservesCallbackAvailabilityAndErrors(t *testing.T) {
 			menu := m.openActionMenu()
 			listed := false
 			for i := 0; i < menu.overlay.optionCount; i++ {
-				listed = listed || menu.overlay.options[i].action == listActionRepoCreate
+				if menu.overlay.options[i].action == listActionRepoCreate {
+					listed = true
+					if (menu.overlay.options[i].disabled == "") != test.available {
+						t.Fatal("wizard availability reason disagrees with callback")
+					}
+				}
 			}
-			if listed != test.available {
+			if !listed {
 				t.Fatalf("Create menu availability=%v", listed)
 			}
 			if test.available {
@@ -195,7 +200,7 @@ func TestRepoCreateBlockedDuringActiveClone(t *testing.T) {
 func TestPendingRepoStillBlocksRowDependentActions(t *testing.T) {
 	for _, pending := range []string{"cached", "loading", "runtime pending"} {
 		t.Run(pending, func(t *testing.T) {
-			m := New(Actions{}, nil, []RepoRow{{Repo: repo.Repo{Name: "one", Path: "/one"}, Pending: pending}})
+			m := New(Actions{}, nil, []RepoRow{{Repo: repo.Repo{Name: "one", Path: "/one", HasGit: true}, Worktrees: 1, Pending: pending}})
 			m.view = ViewRepos
 			for _, action := range []listAction{
 				listActionOpen, listActionStartWorktree, listActionStartDirect, listActionRepoMetadata,

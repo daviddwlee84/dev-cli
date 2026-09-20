@@ -2,7 +2,7 @@
 description: Inspect repository hooks, scan secrets and personal data, and apply reviewed text replacements with private recovery.
 authority: project
 status: evolving
-verified_on: 2026-09-17
+verified_on: 2026-09-20
 ---
 
 # Repository hygiene
@@ -58,7 +58,15 @@ dev hygiene manage /path/to/a /path/to/b --json  # preview only
 dev hygiene setup --migrate-hooks --json # one repository, narrow migration
 ```
 
-REPOS offers the same single/filtered-repository workflow. Repositories do not
+REPOS → Ctrl+O → hygiene offers status, the latest stored scan report, explicit
+worktree/staged/local-history scanning, and reviewed setup for the selected
+checkout or filtered repository pool. A worktree row targets that exact checkout;
+reports never fall back to a sibling checkout or trigger an automatic rescan.
+Scanning uses the current policy and a 20-minute limit, without fetching refs or
+capturing raw values. Operations suspend into the shared CLI workflow; press
+Enter to return. Setup previews changes and asks for confirmation before apply.
+
+The setup workflow is shared with the CLI. Repositories do not
 need a skills lock. Plans show files, retained dependencies and blockers; choose
 which prepared plans to apply. Shared Git repositories are processed once. A new
 common-directory hook requires readable sibling worktree configurations, checked

@@ -31,6 +31,7 @@ type formField struct {
 }
 
 type actionOption struct {
+	disabled     string
 	issueID      string
 	issueAction  tuiissue.Action
 	fleetID      string
@@ -175,9 +176,10 @@ func (m Model) visibleActions() []int {
 	for i := 0; i < m.overlay.optionCount; i++ {
 		option := m.overlay.options[i]
 		haystack := strings.ToLower(option.label)
-		if option.action == listActionStats {
-			haystack += " stats heatmap activity"
+		if spec, ok := findAction(m.view, option.action); ok {
+			haystack += " " + spec.Keywords
 		}
+		haystack += " " + strings.ToLower(option.disabled)
 		match := true
 		for _, term := range strings.Fields(strings.ToLower(m.overlay.search.Value())) {
 			if !strings.Contains(haystack, term) {
@@ -434,9 +436,17 @@ func (m Model) renderActionPopup() string {
 	lines := strings.Split(strings.TrimSuffix(layout.heading, "\n"), "\n")
 	visible, from, to := m.actionMenuWindow()
 	for _, index := range visible[from:to] {
-		line := "  " + m.overlay.options[index].label
+		option := m.overlay.options[index]
+		label := option.label
+		if option.disabled != "" {
+			label += " · unavailable"
+		}
+		line := "  " + label
+		if option.disabled != "" {
+			line = styleDim.Render(line)
+		}
 		if index == m.overlay.optionIndex {
-			line = styleSelected.Render("▸ " + m.overlay.options[index].label)
+			line = styleSelected.Render("▸ " + label)
 		}
 		lines = append(lines, fitCell(line, width))
 	}

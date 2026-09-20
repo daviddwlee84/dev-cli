@@ -14,6 +14,7 @@ import (
 // WorkflowRequest pins the row selected before the terminal is suspended.
 // Policy and all prompts belong to the CLI's shared workflow runners.
 type WorkflowRequest struct {
+	Hygiene         *HygieneRequest
 	SkillSelected   *agentskill.Skill
 	SkillScope      string
 	SkillAction     string
@@ -33,6 +34,7 @@ type WorkflowRequest struct {
 }
 
 type WorkflowResult struct {
+	RefreshRepos  bool
 	RefreshSkills bool
 	Severity      string
 	Ledger        *triage.Ledger

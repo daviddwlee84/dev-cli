@@ -157,6 +157,9 @@ func runHygieneManage(ctx context.Context, app *App, refs []string, all, jsonOut
 func (w *tuiWorkflow) runHygieneManagement() error {
 	w.result.Scoped = true
 	receipt, err := runHygieneManage(w.ctx, &w.app, w.request.RepoRefs, w.request.AllLocal, false)
+	// Even an interrupted apply may have changed configuration. Refresh local
+	// repository observations whenever an apply ledger was produced.
+	w.result.RefreshRepos = receipt.ReceiptPath != ""
 	w.result.Status = "Returned from repository hygiene setup"
 	if len(receipt.Outcomes) > 0 {
 		w.result.Status = "Repository hygiene results saved"

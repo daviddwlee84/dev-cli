@@ -65,101 +65,8 @@ func helpRelatedTopics(view View) []string {
 }
 
 func (m Model) helpKeyEntries(view View) []helpEntry {
-	var entries []helpEntry
-	add := func(id, key, title, description, topic string, available bool) {
-		if !available {
-			description += " This action is unavailable in this dashboard session."
-		}
-		entries = append(entries, helpEntry{ID: view.String() + ":" + id, Group: "This view", Key: key, Title: title, Description: description, Topic: topic, View: view})
-	}
-	add("actions", "Ctrl+O / right-click / click selected", "Show available actions", "Click a different row to select it; click the selected row to open its menu. Opening the menu executes nothing. Available actions depend on the row, its current observations and this session's integrations.", "tui", true)
-	stats := m.actions.LoadStats != nil || m.actions.Stats.Read != nil
-	copyAvailable := m.actions.Copy != nil
-	switch view {
-	case ViewTasks:
-		add("open", "Enter / o", "Open the selected task", "Requires a task with an eligible checkout. Cold or missing work needs the explicit resume/recovery action.", "parking", m.actions.Open != nil)
-		add("task-actions", "Ctrl+O", "Show task actions", "Finish, resume, retire, inspect or filter task state through the selected task's action menu. Space has no action on this flat list.", "retirement", true)
-		add("park", "p", "Park warm", "For a selected HOT or WARM task, enter its next action; parking closes its runtime and retains its checkout.", "parking", m.actions.Park != nil)
-		add("next", "c", "Edit next action", "Edit the selected task's next-action reminder.", "parking", m.actions.SetNext != nil)
-		add("note", "n", "Add a repository thought", "Attach a durable quick note to the selected task's canonical repository.", "notes", m.actions.Notes.Add != nil)
-		add("notes", "N", "Browse repository thoughts", "Read, search and manage the selected repository's notes; note deletion has its own confirmation.", "notes", m.actions.Notes.List != nil)
-		add("history", "a", "Include or hide DONE tasks", "Toggle finished tasks in this list; explicit task-state filters are cleared.", "retirement", true)
-		add("stats", "H", "Show repository activity", "Read the selected task's repository activity heatmap.", "journal", stats)
-	case ViewRepos:
-		add("open", "Enter / o", "Open the selected checkout", "A repository row opens the main checkout; an expanded worktree row opens that exact checkout. Missing or prunable worktrees cannot be opened.", "repositories", m.actions.OpenRepo != nil || m.actions.OpenCheckout != nil)
-		add("worktrees", "Space", "Expand or collapse worktrees", "For a repository with known linked worktrees, reveal each checkout's Git, runtime and task state. Space on a child collapses its parent.", "worktrees", true)
-		add("new", "n", "Create or clone a repository", "Open the repository wizard with n or the action menu, even when the list is empty or the selected row is still refreshing. An active clone still blocks creation. Completion returns to the dashboard and refreshes local inventory.", "repositories", m.actions.Repos.Create != nil)
-		add("start", "s", "Start a worktree task", "Select a repository main row, then choose the task and explicit base. Creates a managed checkout outside the repository; prepares a runtime surface.", "worktrees", m.actions.Start != nil || m.actions.Workflow != nil)
-		add("direct", "d", "Start a direct task", "Select a repository main row to record work on its current branch without creating a branch or worktree.", "branching", m.actions.StartDirect != nil || m.actions.Workflow != nil)
-		add("note", "a", "Add a repository thought", "Attach a durable quick note to the selected canonical repository, including when a linked worktree is selected.", "notes", m.actions.Notes.Add != nil)
-		add("notes", "N", "Browse repository thoughts", "Read, search and manage the selected repository's notes.", "notes", m.actions.Notes.List != nil)
-		add("metadata", "m", "Edit tags and summary", "Edit catalog metadata for a repository main row; this summary is separate from its multiple quick notes.", "repositories", m.actions.Repos.Patch != nil)
-		add("copy", "y", "Choose repository data to copy", "Requires a selected row. Choose context, path, branch or clone URL from the copy controls; copying does not contact a remote.", "repositories", copyAvailable)
-		add("sort", "O / R", "Cycle or reverse ordering", "Uppercase O cycles activity, latest, name, Git, size and task ordering. Uppercase R reverses it. Column-header sorting is available separately.", "tui", true)
-		add("stats", "H", "Show repository activity", "Read the selected repository's activity heatmap.", "journal", stats)
-	case ViewFleet:
-		if m.hostFleetEnabled() {
-			add("open", "Enter / o", "Navigate to the host or repository", "The local host opens REPOS. Remote navigation uses its exact host/session and preserves the current-client boundary; no extra client is opened inside Herdr. Enter never expands the tree.", "fleet", true)
-			add("expand", "Space", "Expand or collapse host repositories", "Space changes only the tree. On a repository child it collapses and selects the parent host. Search expansion overrides are temporary; clearing the query restores saved expansion.", "fleet", true)
-			add("host-actions", "Ctrl+O", "Show host actions", "Read the shared local Herdr catalog and derive this host's SSH, Herdr and dotfiles actions. Multiple saved profiles have a profile picker before exact enable, disable or remove actions. The menu remains available when no rows match.", "fleet", true)
-			add("local", "a", "Show or hide the local host", "Local is hidden initially. Showing it adds a collapsed host last, independent of sorting. Search and coverage include local repositories only while the host is shown; local rows reuse REPOS without another scan.", "fleet", true)
-		} else {
-			add("open", "Enter / o", "Open repository on its host", "Requires a repository row and the configured host connection. A host error/status row has no checkout to open.", "fleet", m.actions.OpenFleet != nil)
-			add("local", "a", "Include or hide this machine", "Local fleet rows are hidden by default because REPOS has the richer local inventory.", "fleet", true)
-		}
-		add("config", "e", "Edit fleet configuration", "Open remotes.toml in the configured editor, then validate and reload it after the editor exits.", "fleet", m.actions.EditFleetConfig != nil)
-	case ViewSSH:
-		available := m.actions.SSH.Workflow != nil
-		add("open", "Enter / o", "Connect through SSH", "Choose an exact profile when a machine has several aliases; source fingerprints and alias identity are revalidated before native SSH starts.", "ssh", available)
-		add("setup", "n", "Set up connections", "Complete the native connection form, review configuration and optional authentication / fleet / Herdr effects, then apply the exact plan.", "ssh", available)
-		add("setup-target", "Ctrl+O", "Set up a discovered target", "Select a LAN or Tailscale row, open Ctrl+O and choose set up this discovered target. The form starts from that observation; Enter on Key lists local keys or generates one.", "ssh", m.actions.SSH.PrepareOnboarding != nil)
-		add("install-key", "Ctrl+O", "Install an SSH key", "Select a configured profile, open Ctrl+O and choose set up / install an SSH key. Pick an existing key or generate one, choose the remote OS, then review. Connection settings stay unchanged; foreign aliases receive only the public key.", "ssh", m.actions.SSH.PrepareOnboarding != nil)
-		add("discover", "c", "Discover Tailscale or LAN hosts", "Press c, then select LAN or Tailscale. Uppercase L defaults to the lazygit tool. LAN discovery shows a bounded on-link range and ports; listing and refresh do not scan.", "ssh", available)
-		add("probe", "p", "Test connectivity or authentication", "Review quick network checks or full SSH verification for an exact profile, machine or filtered group. Results are dated observations; tests do not change recent-use ordering.", "ssh", available)
-		add("expand", "Space", "Expand connection profiles", "Keep one machine row, then expand exact aliases. Configured machines sort first, followed by recent connection use. Discovery-only endpoints can be added with Enter.", "ssh", true)
-		add("mappings", "e / m", "Manage machine mappings", "Adopt candidates or preview linking, unlinking, and merging canonical machine identities. Provider configuration stays owned by its original source.", "ssh", available)
-		add("copy", "y", "Copy machine data", "Choose machine ID, aliases, or a safe source summary; copying does not contact the host.", "ssh", copyAvailable)
-	case ViewTries:
-		add("new", "n", "Create a Try", "Open the scratch experiment form, including when the list is empty. A Try can be a non-Git directory.", "tries", m.actions.Tries.Apply != nil)
-		add("open", "Enter / o", "Open the selected Try", "Requires a Try present on this host with no incomplete move. Archived or missing Tries need their own restore or recovery action.", "tries", m.actions.Tries.Apply != nil)
-		add("try-actions", "Ctrl+O", "Show experiment actions", "Edit metadata, deprecate, archive, restore or graduate through the menu. Space has no action on this flat list.", "tries", true)
-		add("history", "a", "Include or hide Try history", "Toggle deprecated, archived, evicted and graduated entries.", "tries", true)
-		add("sort", "O / R", "Cycle or reverse ordering", "Uppercase O cycles activity, name, phase and size ordering. Uppercase R reverses it.", "tui", true)
-	case ViewRemote:
-		add("open", "Enter / o", "Open an existing local checkout", "Requires a matched local clone. Opening an uncloned row does not clone it.", "repositories", m.actions.OpenRemote != nil)
-		add("clone", "c", "Clone the selected repository", "For an uncloned row, preview the destination. Enter clones and stays; o clones and opens. A leftover failed destination is labelled inspect for manual review.", "repositories", m.actions.CloneRemote != nil)
-		add("copy", "y", "Choose a repository URL to copy", "Requires a selected remote repository; choose its clone URL using the copy controls.", "repositories", copyAvailable)
-		add("note", "n / N", "Add or browse repository thoughts", "Requires a matched local repository; a Try clone is excluded from repository quick notes. Lowercase n adds a thought; uppercase N browses them.", "notes", m.actions.Notes.Add != nil || m.actions.Notes.List != nil)
-		add("cancel", "q / Ctrl+C", "Cancel an in-progress clone", "While cloning, request cancellation and wait for its result. This does not automatically delete a partially created destination.", "repositories", m.actions.CloneRemote != nil)
-	case ViewSkills:
-		add("scope", "A", "Switch context or all repositories", "Uppercase A changes the shared SKILLS/MCP project scope for this TUI run. Global sources remain included; old rows clear before the new scope loads.", "skills", true)
-		add("add", "a", "Open the skill installer", "Choose the skill, agent and install scope in the interactive installer; listing skills does not run it.", "skills", m.actions.AddSkill != nil)
-		add("check", "c", "Check skill sources", "After the local inventory is loaded, explicitly compare upstream sources. This read-only check may use the network and keeps installed rows visible.", "skills", m.actions.CheckSkills != nil)
-		add("update", "u", "Manage or update the selected skill", "Requires a selected skill with a supported update path. Preview/confirmation and the native manager's ownership rules still apply.", "skills", m.actions.UpdateSkill != nil || m.actions.Workflow != nil)
-		add("file", "e", "Open the primary skill file", "Requires a locally present primary SKILL.md and a configured editor.", "skills", m.actions.EditFile != nil)
-		add("copy", "y", "Choose skill data to copy", "Copy a path, safe summary or source URL. Raw-file copy is a separate explicit choice and may include private content.", "skills", copyAvailable)
-	case ViewMCP:
-		add("scope", "A", "Switch context or all repositories", "Uppercase A changes the shared SKILLS/MCP project scope for this TUI run. User/global declarations stay included.", "mcp", true)
-		add("file", "e", "Open the declaration's source file", "Requires a source config path and a configured editor. The dashboard does not start an MCP server.", "mcp", m.actions.EditFile != nil)
-		add("copy", "y", "Choose declaration data to copy", "Copy a config path or sanitized declaration summary. Raw-file copy is an explicit separate choice; it is not the sanitized summary.", "mcp", copyAvailable)
-	}
-	if view != ViewSkills && view != ViewMCP && view != ViewFleet && view != ViewSSH {
-		add("config", "e", "Edit dashboard configuration", "Open this session's config file in the configured editor and reload supported settings when it closes.", "tui", m.actions.EditConfig != nil)
-	}
-
-	refresh := "Reload configuration and local observations. Local repository refresh does not fetch Git remotes."
-	switch view {
-	case ViewFleet:
-		refresh = "Refresh the shared local Herdr catalog and the selected host's repositories (a child selects its parent). These observations are independent; old data remains explicitly stale on failure. Update all configured hosts is a separate menu entry; authentication has an explicit terminal handoff."
-	case ViewRemote:
-		refresh = "Reload configuration and explicitly refresh repositories through configured forge CLIs; this may contact the network."
-	case ViewSkills:
-		refresh = "Reload local installed skills. Use c separately for the explicit upstream source check."
-	case ViewMCP:
-		refresh = "Reload local static declarations only; no server is started or health-checked."
-	case ViewSSH:
-		refresh = "Reload local SSH/fleet/Herdr records, machine mappings and discovery caches. No Tailscale refresh, LAN scan, authentication or remote repository fan-out."
-	}
+	entries := []helpEntry{{ID: view.String() + ":actions", Group: "This view", Key: "Ctrl+O / right-click / click selected", Title: "Show available actions", Description: "Opening actions executes nothing. Inapplicable actions are hidden; unavailable actions show their reason. Select a disabled action to read its reason.", Topic: "tui", View: view}}
+	entries = append(entries, m.registeredHelp(view)...)
 	for _, e := range []helpEntry{
 		{ID: "move", Key: "j/k / ↓/↑ / Ctrl+N/P", Title: "Move selection", Description: "Move one row down or up. The wheel moves three rows; a click selects a visible row."},
 		{ID: "page", Key: "PgDn/PgUp / Ctrl+D/U", Title: "Move one page", Description: "Move the selection down or up by the visible page size."},
@@ -168,7 +75,6 @@ func (m Model) helpKeyEntries(view View) []helpEntry {
 		{ID: "filter", Key: "/", Title: "Filter the list", Description: "Type to filter live; ↑/↓ selects a visible result while the input stays focused. j/k remain text and ←/→/Home/End edit the query. Only changed text selects the first result. Enter keeps the query and selection without opening; press Enter again from the list to open. Esc clears the query. Help index/results searches also support ↑/↓; article find and Notes' Enter-submit search stay separate. View-specific structured terms are explained in Guide."},
 		{ID: "clear", Key: "0", Title: "Clear filters", Description: "Clear the text query and explicit task-state filter, then select the first row."},
 		{ID: "column-sort", Key: "Click column heading", Title: "Sort a column", Description: "Cycle ascending, descending, then default order. The heading's ↑ or ↓ shows this ordering; it is separate from Git divergence."},
-		{ID: "refresh", Key: "r", Title: "Refresh this view", Description: refresh},
 		{ID: "help", Key: "? / click Help", Title: "Open contextual help", Description: "Start with this view's Keys, then read its Guide or a complete dev help Manual topic."},
 		{ID: "quit", Key: "q / Ctrl+C / Esc", Title: "Quit or clear narrowing", Description: "q or Ctrl+C quits the dashboard. Esc first clears a query/state filter; with none it quits. While a clone runs these controls request cancellation."},
 	} {

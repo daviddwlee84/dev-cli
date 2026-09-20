@@ -3,7 +3,7 @@ description: 檢查 repository hooks、掃描 secret 與個人資訊，並以私
 lang: zh-TW
 authority: project
 status: evolving
-verified_on: 2026-09-17
+verified_on: 2026-09-20
 ---
 
 # Repository hygiene
@@ -51,7 +51,13 @@ dev hygiene manage /path/to/a /path/to/b --json
 dev hygiene setup --migrate-hooks --json
 ```
 
-REPOS 提供相同的單一／篩選後多 repo 流程，repo 不必有 skills lock。預覽列出
+REPOS → Ctrl+O → hygiene 可查看設定狀態、最新既存掃描報告、明確選擇
+worktree／staged／本機 history 掃描，以及設定目前 checkout 或篩選後的 repo。
+worktree 子項使用精確 checkout；報告不會改讀其他 checkout，也不會自動重掃。
+掃描沿用目前政策與 20 分鐘上限，不 fetch refs 或擷取原始值。操作暫停 dashboard
+並進入共用 CLI 流程，按 Enter 返回；setup 先預覽，再確認套用。
+
+設定流程與 CLI 共用，repo 不必有 skills lock。預覽列出
 設定差異、保留的依賴與阻擋，再勾選要套用的 plans。共享 Git repository 只處理
 一次；新裝 common-directory hook 前，其他 worktree 必須有可讀設定，套用時
 再次確認。自訂／未知 scanner 命令保留並要求人工檢視。

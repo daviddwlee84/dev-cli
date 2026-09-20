@@ -101,6 +101,14 @@ Final transcript cleanup requires the writer to stop first. `dev hygiene repair-
 invalid UTF-8 repair with private raw-byte recovery; apply preserves the index,
 so review and stage the repair before rescanning. Setup writes project policy
 and respects an existing effective hook, including a global one.
+REPOS → Ctrl+O → hygiene offers status, the latest stored scan report, explicit
+worktree/staged/local-history scanning, and reviewed setup for the selected
+checkout or filtered repository pool. A worktree row targets that exact checkout;
+reports never fall back to a sibling checkout or trigger an automatic rescan.
+Scanning uses the current policy and a 20-minute limit, without fetching refs or
+capturing raw values. Operations suspend into the shared CLI workflow; press
+Enter to return. Setup previews changes and asks for confirmation before apply.
+
 See the [hygiene guide](docs/guides/hygiene.md).
 
 ## Install
@@ -1047,6 +1055,9 @@ See [SSH workflows](docs/guides/ssh-hosts.md#ssh-connection-view).
 ### Dashboard lifecycle actions
 
 Press `Ctrl+O`, right-click a row, or click the selected row for actions.
+All eight views share built-in action registrations with their action keys and
+Help. Unrelated actions are hidden; temporarily unavailable actions show a reason
+and cannot execute. REPOS → hygiene uses the exact selected repo/worktree checkout.
 Space expands/collapses REPOS worktrees, FLEET hosts and SSH profiles; it is unused in flat lists. TASKS offers the existing finish,
 resume, retirement and selected-task recovery workflows. `a` shows completed
 tasks; it does not mark a task done. Missing checkout rows go through recovery.

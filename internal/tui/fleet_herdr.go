@@ -231,15 +231,17 @@ func (m *Model) addFleetMenuActions(actions []FleetHostAction) {
 }
 
 func (m *Model) addFleetActionOption(a FleetHostAction) {
-	if a.Disabled {
-		m.overlay.body += a.Label + ": " + a.Description + "\n"
-		return
-	}
 	if m.overlay.optionCount >= len(m.overlay.options) {
 		return
 	}
 	m.overlay.addOption(listActionFleetHost, a.Label)
 	m.overlay.options[m.overlay.optionCount-1].fleetID = a.ID
+	if a.Disabled {
+		m.overlay.options[m.overlay.optionCount-1].disabled = a.Description
+		if a.Description == "" {
+			m.overlay.options[m.overlay.optionCount-1].disabled = "Host action is unavailable"
+		}
+	}
 }
 
 func (m Model) openFleetProfiles() (tea.Model, tea.Cmd) {

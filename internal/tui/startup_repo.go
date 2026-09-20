@@ -140,13 +140,6 @@ func (m Model) discoveryBanner() discoveryBanner {
 	return b
 }
 
-func (m *Model) addDiscoveryOptions(o *overlayState) {
-	if m.view == ViewRepos && m.startupOutside() && m.actions.Discovery.Plan != nil {
-		o.addOption(listActionRegisterRepo, "add startup repository to repo_paths…")
-		o.addOption(listActionRegisterParent, "add startup repository's parent to scan_roots…")
-	}
-}
-
 func discoveryAction(action listAction) bool {
 	return action >= listActionRegisterRepo && action <= listActionRegistrationEdit
 }

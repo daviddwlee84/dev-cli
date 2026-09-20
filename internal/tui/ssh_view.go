@@ -389,80 +389,18 @@ func (m Model) hasCustomSSHKey() bool {
 }
 
 func (m Model) updateSSHKey(key string) (tea.Model, tea.Cmd, bool) {
-	var action listAction
-	switch key {
-	case " ":
-		m.toggleSSHEntry()
+	if key == "esc" && m.sshUI.onlyDiscovery {
+		m.leaveSSHDiscovery()
 		return m, nil, true
-	case "esc":
-		if m.sshUI.onlyDiscovery {
-			m.leaveSSHDiscovery()
-			return m, nil, true
-		}
-		return m, nil, false
-	case "r":
-		m.beginViewLoad(ViewSSH, loadRefresh)
-		return m, m.reloadSSH(), true
-	case "enter", "o":
-		action = listActionSSHConnect
-	case "n":
-		action = listActionSSHSetup
-	case "c":
-		action = listActionSSHDiscover
-	case "p":
-		action = listActionSSHProbe
-	case "e", "m":
-		action = listActionSSHMappings
-	case "y":
-		action = listActionSSHCopy
-	default:
-		return m, nil, false
 	}
-	next, command := m.runSSHAction(action)
-	return next, command, true
+	return m, nil, false
 }
 
-func (m Model) openSSHMenu() Model {
-	menu := overlayState{kind: overlayActionMenu, title: "SSH connections", selection: m.currentToken()}
-	row, selected := m.currentSSH()
-	if selected {
-		menu.subject = row.Label
-		menu.detail = row.ID
-		menu.addOption(listActionSSHDetails, "full machine / source details")
-	}
-	if m.actions.SSH.Workflow != nil || m.actions.SSH.Discover != nil {
-		if selected && len(row.Profiles) > 0 {
-			menu.addOption(listActionSSHConnect, "connect through an exact SSH profile…")
-			menu.addOption(listActionSSHProbe, "test connectivity / SSH authentication…")
-			menu.addOption(listActionSSHDiagnose, "diagnose an SSH profile…")
-			if m.ssh.Sources["registry"] != "unavailable" {
-				menu.addOption(listActionSSHRegister, "register an SSH profile in fleet / Herdr…")
-			}
-		}
-		if selected && len(row.LAN)+len(row.Tailscale) > 0 && m.actions.SSH.PrepareOnboarding != nil {
-			menu.addOption(listActionSSHSetupTarget, "set up this discovered target…")
-		}
-		if selected && len(row.Profiles) > 0 && m.actions.SSH.PrepareOnboarding != nil {
-			menu.addOption(listActionSSHInstallKey, "set up / install an SSH key…")
-		}
-		menu.addOption(listActionSSHSetup, "set up / import connections…")
-		menu.addOption(listActionSSHDiscover, "discover Tailscale / LAN hosts…")
-		if m.ssh.Sources["registry"] != "unavailable" {
-			menu.addOption(listActionSSHMappings, "adopt / link / unlink / merge machine mappings…")
-		}
-	}
-	if selected && m.actions.Copy != nil {
-		menu.addOption(listActionSSHCopy, "copy machine data…")
-	}
-	if selected {
-		menu.addOption(listActionSortMenu, "sort columns…")
-	}
-	m.overlay = menu
-	return m
-}
+func (m Model) openSSHMenu() Model { return m.openActionMenu() }
 
 func sshRowIndependent(action listAction) bool {
-	return action == listActionSSHSetup || action == listActionSSHDiscover || action == listActionSSHMappings
+	spec, ok := findAction(ViewSSH, action)
+	return ok && spec.Scope != actionSelection
 }
 
 func (m Model) runSSHAction(action listAction) (tea.Model, tea.Cmd) {

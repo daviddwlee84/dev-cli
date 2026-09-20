@@ -12,6 +12,7 @@ sessions; dev records task intent.
 
 Use `dev <command> --help` for current syntax and flags, and `dev help <topic>`
 for workflow explanations. `dev --help` lists commands; `dev help` lists topics.
+REPOS → Ctrl+O → hygiene: status/report/scan/setup.
 Prefer supported `--json` output for automation. Read the relevant command before
 mutation: some actions execute immediately, while others require preview/apply.
 Do not preload manuals, repeat `dev --skill`, or run routine diagnostics.

@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Dashboard REPOS → Ctrl+O → hygiene now inspects status, reads the selected
+  checkout's latest report, scans worktree/staged/local-history scopes, and opens
+  reviewed single or filtered-repository setup through shared CLI workflows.
+- All eight dashboard views share explicit action registrations for menus,
+  action keys and contextual Help. Applicable but unavailable actions remain
+  visible with a reason; selecting them never executes an operation.
+
+### Fixed
+
+- Hygiene setup on an expanded worktree now uses that exact checkout instead of
+  silently returning. Menu execution rechecks availability and pinned task or
+  SSH-profile revisions after observation changes.
+
 ## [0.2.40] - 2026-09-19
 
 ### Added

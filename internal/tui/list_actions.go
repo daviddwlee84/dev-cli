@@ -8,7 +8,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
-	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/task"
@@ -111,6 +110,22 @@ const (
 	listActionIssueCopy
 	listActionIssueAction
 	listActionIssueConfirm
+	listActionHygieneMenu
+	listActionHygieneStatus
+	listActionHygieneReport
+	listActionHygieneScan
+	listActionHygieneScanWorktree
+	listActionHygieneScanStaged
+	listActionHygieneScanHistory
+	listActionRefresh
+	listActionToggleHistory
+	listActionSkillAdd
+	listActionSkillCheck
+	listActionTryCreate
+	listActionCapabilityScope
+	listActionCycleSort
+	listActionReverseSort
+	listActionSSHToggle
 )
 
 type selectionToken struct {
@@ -152,7 +167,11 @@ func skillRowKey(row agentskill.Skill) string {
 
 func (m Model) currentSelectionToken() (selectionToken, bool) {
 	if row, ok := m.currentSSHEntry(); ok {
-		return selectionToken{view: ViewSSH, key: row.key()}, true
+		token := selectionToken{view: ViewSSH, key: row.key()}
+		if row.profile != nil {
+			token.revision = row.profile.Fingerprint
+		}
+		return token, true
 	}
 	switch m.view {
 	case ViewTasks:
@@ -311,302 +330,17 @@ func (m Model) openActionMenu() Model {
 	if m.err != nil {
 		m.rememberIssue(tuiissue.FromError(m.view.String(), "operation", m.currentToken().key, m.err))
 	}
-	if m.view == ViewSSH {
-		m = m.openSSHMenu()
-		m.addIssueOption(&m.overlay)
-		return m
-	}
 	m.popupExpanded = false
 	m.stopStartupFocus()
-	token, ok := m.currentSelectionToken()
-	if !ok {
-		m.overlay = overlayState{kind: overlayActionMenu, title: strings.ToUpper(m.view.String()) + " actions"}
-		if m.view == ViewTasks {
-			m.overlay = overlayState{kind: overlayActionMenu, title: "TASKS actions"}
-			m.overlay.addOption(listActionStateFilter, "filter task state…")
-		}
-		if m.view == ViewRepos || m.view == ViewTries {
-			m.overlay = overlayState{kind: overlayActionMenu, title: "Organize local work"}
-			if m.view == ViewRepos && m.actions.Repos.Create != nil {
-				m.overlay.addOption(listActionRepoCreate, "new repository…")
-			}
-			m.overlay.addOption(listActionTriageAll, "organize all local work…")
-		}
-		m.overlay.addOption(listActionSettings, "settings / configuration…")
-		if m.view == ViewFleet && m.hostFleetEnabled() {
-			m.overlay.addOption(listActionFleetRefreshAll, "update all configured hosts over SSH")
-			m.overlay.addOption(listActionFleetLocal, m.fleetLocalToggleLabel())
-		}
-		if m.currentStatusText() != "" {
-			m.overlay.addOption(listActionStatusDetails, "full status / error…")
-		}
-		if m.lastTriageLedger != nil {
-			m.overlay.addOption(listActionLastTriage, "last triage results…")
-		}
-		m.addDiscoveryOptions(&m.overlay)
-		m.addIssueOption(&m.overlay)
-		return m
-	}
+	token, _ := m.currentSelectionToken()
 	subject, detail := m.selectionHeading()
-	overlay := overlayState{
-		kind: overlayActionMenu, title: strings.ToUpper(m.view.String()) + " actions",
-		subject: subject, detail: detail, selection: token,
-	}
-
-	switch m.view {
-	case ViewTasks:
-		if row, ok := m.currentTask(); ok && m.actions.Workflow != nil {
-			switch row.Task.State {
-			case task.Hot, task.Warm:
-				if taskOpenBlocker(row) == nil {
-					overlay.addOption(listActionDone, "finish task…")
-				}
-			case task.Done:
-				overlay.addOption(listActionRetire, "retire task (keep branch)…")
-			}
-			if row.Task.State == task.Warm || row.Task.State == task.Cold {
-				overlay.addOption(listActionResume, "resume task…")
-			}
-			overlay.addOption(listActionSweep, "inspect and recover this task…")
-		}
-		if row, ok := m.currentTask(); ok && m.actions.Open != nil && taskOpenBlocker(row) == nil {
-			overlay.addOption(listActionOpen, "open task")
-		}
-		m.addNoteOptions(&overlay)
-		if m.actions.SetNext != nil {
-			overlay.addOption(listActionEditNext, "edit next action")
-		}
-		if row, ok := m.currentTask(); ok && m.actions.Park != nil &&
-			(row.Task.State == task.Hot || row.Task.State == task.Warm) {
-			overlay.addOption(listActionPark, "park warm")
-		}
-		m.addStatsOption(&overlay)
-
-	case ViewRepos:
-		if m.actions.Repos.Create != nil {
-			overlay.addOption(listActionRepoCreate, "new repository…")
-		}
-		item, _ := m.currentRepoItem()
-		if item.child() {
-			if checkout, ok := item.checkout(); ok && checkout.Exists && !checkout.Worktree.Prunable && m.actions.OpenCheckout != nil {
-				overlay.addOption(listActionOpen, "open worktree")
-			}
-			overlay.addOption(listActionToggleWorktrees, "collapse worktrees")
-		} else {
-			if m.actions.OpenRepo != nil {
-				overlay.addOption(listActionOpen, "open repository")
-			}
-			if item.Repo.Worktrees > 0 && item.Repo.Context.WorktreeErr == nil {
-				overlay.addOption(listActionToggleWorktrees, "expand or collapse worktrees")
-			}
-			if m.actions.Repos.Patch != nil {
-				overlay.addOption(listActionRepoMetadata, "edit repository metadata")
-			}
-			if m.actions.Start != nil {
-				overlay.addOption(listActionStartWorktree, "start worktree task")
-			}
-			if m.actions.StartDirect != nil {
-				overlay.addOption(listActionStartDirect, "start direct task")
-			}
-		}
-		m.addNoteOptions(&overlay)
-		if m.actions.Copy != nil {
-			overlay.addOption(listActionCopy, "copy repository data…")
-			if m.actions.CloneSources != nil {
-				overlay.addOption(listActionCopyCloneURL, "copy clone URL")
-			}
-		}
-		m.addStatsOption(&overlay)
-
-	case ViewFleet:
-		if m.hostFleetEnabled() {
-			if row, ok := m.currentFleet(); ok {
-				if row.Repository == nil {
-					overlay.addOption(listActionFleetToggle, "expand or collapse repositories")
-				}
-				overlay.addOption(listActionFleetRefresh, "refresh this host")
-			}
-			overlay.addOption(listActionFleetRefreshAll, "update all configured hosts over SSH")
-			overlay.addOption(listActionFleetLocal, m.fleetLocalToggleLabel())
-		}
-		if row, ok := m.currentFleet(); ok && row.Repository != nil && m.actions.OpenFleet != nil {
-			overlay.addOption(listActionOpen, "open repository on host")
-		}
-
-	case ViewTries:
-		row, _ := m.currentTry()
-		if m.actions.Tries.Apply != nil {
-			overlay.addOption(listActionTryMark, "edit tags and note")
-			switch row.Item.Phase {
-			case catalog.PhaseActive:
-				overlay.addOption(listActionTryDeprecate, "deprecate (metadata only)")
-			case catalog.PhaseDeprecated:
-				overlay.addOption(listActionTryReactivate, "reactivate")
-			}
-			if row.Item.Phase != catalog.PhaseGraduated {
-				switch row.LocationState() {
-				case catalog.LocationPresent:
-					overlay.addOption(listActionTryArchive, "archive locally (reversible move)")
-					overlay.addOption(listActionTryGraduate, "graduate into a project")
-				case catalog.LocationArchived:
-					overlay.addOption(listActionTryRestore, "restore from local archive")
-					overlay.addOption(listActionTryGraduate, "graduate archived Try")
-				}
-			}
-			if row.Present() {
-				overlay.addOption(listActionOpen, "open Try")
-			}
-		}
-
-	case ViewRemote:
-		row, _ := m.currentRemote()
-		if m.actions.Copy != nil {
-			overlay.addOption(listActionCopy, "copy repository URL…")
-			overlay.addOption(listActionCopyCloneURL, "copy clone URL")
-		}
-		if row.Cloned() && m.actions.OpenRemote != nil {
-			overlay.addOption(listActionOpen, "open local checkout")
-			m.addNoteOptions(&overlay)
-		} else if !row.Cloned() && m.actions.CloneRemote != nil {
-			overlay.addOption(listActionRemoteClone, "clone repository…")
-		}
-
-	case ViewSkills:
-		row, _ := m.currentSkill()
-		_, fileErr := skillFilePath(row)
-		if fileErr == nil && m.actions.EditFile != nil {
-			overlay.addOption(listActionOpenCapabilityFile, "open primary skill file")
-		}
-		if m.actions.Copy != nil {
-			if fileErr == nil {
-				overlay.addOption(listActionCopyCapabilityPath, "copy primary skill file path")
-			}
-			overlay.addOption(listActionCopyCapabilitySummary, "copy safe skill summary")
-			if row.SourceURL != "" {
-				overlay.addOption(listActionCopySkillSourceURL, "copy skill source URL")
-			}
-			if fileErr == nil && m.actions.ReadFile != nil {
-				overlay.addOption(listActionCopyCapabilityRaw, "copy raw primary skill file")
-			}
-		}
-		if m.actions.Workflow != nil {
-			overlay.addOption(listActionSkillManage, "manage selected skill…")
-			overlay.addOption(listActionSkillRemove, "remove skills in this scope…")
-			overlay.addOption(listActionSkillRemoveAll, "remove skills across repositories/global…")
-			if row.Scope == agentskill.ScopeProject {
-				overlay.addOption(listActionSkillRepo, "manage this project's skills…")
-				overlay.addOption(listActionSkillVisible, "manage project + global skills…")
-			}
-			overlay.addOption(listActionSkillGlobal, "manage global skills…")
-		}
-		if m.actions.UpdateSkill != nil && agentskill.CanUpdate(row) {
-			overlay.addOption(listActionSkillUpdate, "update selected skill…")
-		}
-
-	case ViewMCP:
-		row, _ := m.currentMCP()
-		if row.ConfigPath != "" && m.actions.EditFile != nil {
-			overlay.addOption(listActionOpenCapabilityFile, "open MCP config")
-		}
-		if m.actions.Copy != nil {
-			if row.ConfigPath != "" {
-				overlay.addOption(listActionCopyCapabilityPath, "copy MCP config path")
-			}
-			overlay.addOption(listActionCopyCapabilitySummary, "copy safe declaration summary")
-			if row.ConfigPath != "" && m.actions.ReadFile != nil {
-				overlay.addOption(listActionCopyCapabilityRaw, "copy raw MCP config file")
-			}
-		}
-	}
-
-	if m.actions.Workflow != nil {
-		if m.view == ViewRepos || m.view == ViewTries {
-			label := "triage / finish up this item…"
-			if row, ok := m.currentTry(); ok && row.Item.Live.Presence == "missing" {
-				label = "forget missing Try entry…"
-			}
-			overlay.addOption(listActionTriage, label)
-			overlay.addOption(listActionTriageFiltered, "organize current filtered results…")
-			if m.view == ViewRepos {
-				overlay.addOption(listActionSkillRepo, "manage repository skills…")
-				overlay.addOption(listActionHygieneRepo, "set up repository hygiene…")
-				overlay.addOption(listActionHygieneFiltered, "set up hygiene across filtered repositories…")
-				overlay.addOption(listActionSkillFiltered, "manage skills across filtered repositories…")
-			}
-			overlay.addOption(listActionTriageAll, "organize all local work…")
-		}
-		switch m.view {
-		case ViewTasks, ViewRepos, ViewRemote:
-			overlay.addOption(listActionBrowse, "open repository in browser…")
-		case ViewTries:
-			row, _ := m.currentTry()
-			if row.Item.Live.Repo != nil {
-				overlay.addOption(listActionBrowse, "open repository in browser…")
-			}
-			if row.Item.Phase != catalog.PhaseGraduated {
-				pendingTrash := row.Item.Entry != nil && row.Item.Entry.MoveIntent != nil && row.Item.Entry.MoveIntent.Operation == "remove-trash"
-				if row.LocationState() == catalog.LocationEvicted || pendingTrash {
-					overlay.addOption(listActionTryRecover, "reassociate a folder restored from Trash…")
-				} else if row.Item.Live.Present {
-					overlay.addOption(listActionTryDelete, "move to Trash…")
-					if row.Item.ID != "" {
-						overlay.addOption(listActionTryDeletePermanent, "permanently delete…")
-					}
-				}
-			}
-		}
-	}
-	m.addDiscoveryOptions(&overlay)
-	m.addIssueOption(&overlay)
-	if overlay.optionCount == 0 {
-		return m
-	}
-	if len(m.Tools()) > 0 && m.view != ViewSkills && m.view != ViewMCP {
-		overlay.addOption(listActionTools, "tools…")
-	}
-	if m.view == ViewTasks {
-		overlay.addOption(listActionStateFilter, "filter task state…")
-	}
-	if m.count() > 0 {
-		overlay.addOption(listActionSortMenu, "sort columns…")
-	}
-	if m.lastTriageLedger != nil {
-		overlay.addOption(listActionLastTriage, "last triage results…")
-	}
-	if m.currentStatusText() != "" {
-		overlay.addOption(listActionStatusDetails, "full status / error…")
-	}
-	label := "settings / configuration…"
-	if m.view == ViewFleet {
-		label = "edit hosts (remotes.toml)…"
-	}
-	if m.view == ViewSkills || m.view == ViewMCP {
-		label = "edit selected source file…"
-	}
-	overlay.addOption(listActionSettings, label)
-	m.overlay = overlay
+	menu := overlayState{kind: overlayActionMenu, title: strings.ToUpper(m.view.String()) + " actions", subject: subject, detail: detail, selection: token}
+	m.addRegisteredActions(&menu, menuMain)
+	m.overlay = menu
 	if m.view != ViewFleet {
 		m.err = nil
 	}
 	return m
-}
-
-func (m Model) addNoteOptions(overlay *overlayState) {
-	if _, ok := m.selectedNoteTarget(); !ok {
-		return
-	}
-	if m.actions.Notes.Add != nil {
-		overlay.addOption(listActionAddNote, "add note")
-	}
-	if m.actions.Notes.List != nil {
-		overlay.addOption(listActionBrowseNotes, "browse notes")
-	}
-}
-
-func (m Model) addStatsOption(overlay *overlayState) {
-	if m.selectedRepoName() != "" && (m.actions.LoadStats != nil || m.actions.Stats.Read != nil) {
-		overlay.addOption(listActionStats, "open activity heatmap")
-	}
 }
 
 func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
@@ -615,8 +349,12 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 	}
 	action := m.overlay.options[m.overlay.optionIndex].action
 	option := m.overlay.options[m.overlay.optionIndex]
+	if option.disabled != "" {
+		m.status, m.overlay.body, m.overlay.scroll = option.disabled, option.disabled, 0
+		return m, nil
+	}
 	if issueAction(action) {
-		return m.runIssueAction(action, option)
+		return m.dispatchAction(option)
 	}
 	if option.fleetProfile != "" {
 		return m.openFleetProfile(m.overlay.fleetHost, option.fleetProfile)
@@ -627,11 +365,26 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 		return m.runFleetHostActionFor(host, option.fleetID)
 	}
 	token := m.overlay.selection
-	rowIndependent := sshRowIndependent(action) || action == listActionRepoCreate || action == listActionFleetLocal || action == listActionFleetRefreshAll || action == listActionTriageAll || action == listActionTriageFiltered || action == listActionStateFilter || (action >= listActionStateAll && action <= listActionStateDone) || action == listActionLastTriage || action == listActionSettings || action == listActionStatusDetails
-	if !rowIndependent && !discoveryAction(action) && !m.selectToken(token) {
+	spec, registered := findAction(m.view, action)
+	if !registered {
+		return m.dispatchAction(option)
+	}
+	if spec.Scope == actionSelection && (!m.selectToken(token) || (token.revision != "" && m.currentToken().revision != token.revision)) {
 		m.overlay = overlayState{}
 		m.err = fmt.Errorf("selected row changed while its action menu was open")
 		return m, nil
+	}
+	availability := spec.availability(m.actionContext())
+	if !availability.Applicable {
+		m.overlay = overlayState{}
+		m.err = fmt.Errorf("selected action is no longer applicable; reopen actions")
+		return m, nil
+	}
+	if availability.Reason != "" {
+		return m.dispatchAction(option)
+	}
+	if action == listActionFleetProfiles {
+		return m.openFleetProfiles()
 	}
 	m.overlay = overlayState{}
 	if option.tool != "" {
@@ -640,10 +393,10 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 	if option.column != "" {
 		return m.cycleTableSort(option.column)
 	}
-	return m.runListAction(action)
+	return m.dispatchAction(option)
 }
 
-func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
+func (m Model) executeListAction(action listAction) (tea.Model, tea.Cmd) {
 	if issueAction(action) {
 		return m.runIssueAction(action, actionOption{})
 	}
@@ -665,23 +418,24 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 			m.overlay = overlayState{}
 			return m, nil
 		case listActionRegistrationEdit:
-			return m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
-		}
-	}
-	if item, ok := m.currentRepoItem(); ok && item.Repo.Pending != "" {
-		switch action {
-		case listActionRepoCreate, listActionSortMenu, listActionSettings, listActionStatusDetails:
-		default:
-			m.status = "Waiting for fresh repository observations…"
-			return m, nil
+			return m.editSettings()
 		}
 	}
 
 	switch action {
+	case listActionRefresh, listActionToggleHistory, listActionSkillAdd, listActionSkillCheck,
+		listActionTryCreate, listActionCapabilityScope, listActionCycleSort, listActionReverseSort, listActionSSHToggle:
+		return m.executeDashboardAction(action)
 	case listActionFleetToggle:
 		return m.toggleFleetHost()
 	case listActionFleetLocal:
-		return m.toggleFleetLocal()
+		if m.hostFleetEnabled() {
+			return m.toggleFleetLocal()
+		}
+		m.showLocalFleet = !m.showLocalFleet
+		m.status = fmt.Sprintf("local fleet rows visible: %v", m.showLocalFleet)
+		m.setAt(0)
+		return m, nil
 	case listActionFleetProfiles:
 		return m.openFleetProfiles()
 	case listActionFleetRefresh:
@@ -689,18 +443,24 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 	case listActionFleetRefreshAll:
 		return m.refreshAllFleetHosts()
 	case listActionSettings:
-		return m.updateList(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'e'}})
+		return m.editSettings()
 	case listActionStatusDetails:
 		m.overlay = overlayState{kind: overlayTriageReceipt, title: "Status / error", body: m.currentStatusText()}
 		return m, nil
 	case listActionTools:
 		menu := overlayState{kind: overlayActionMenu, title: "Tools", selection: m.currentToken()}
-		for _, tool := range m.Tools() {
+		for _, tool := range m.actions.Tools {
 			if menu.optionCount == len(menu.options) {
 				break
 			}
 			menu.addOption(listActionTools, tool.Name+"  ["+tool.Key+"]")
 			menu.options[menu.optionCount-1].tool = tool.Key
+			if tool.Probe != nil && tool.Availability != ToolAvailable {
+				menu.options[menu.optionCount-1].disabled = tool.Name + " availability is still being checked"
+				if tool.Availability == ToolUnavailable {
+					menu.options[menu.optionCount-1].disabled = tool.Name + " is unavailable (command lookup failed)"
+				}
+			}
 		}
 		m.overlay = menu
 		return m, nil
@@ -868,6 +628,9 @@ func (m Model) runListAction(action listAction) (tea.Model, tea.Cmd) {
 		return m.runWorkflow(WorkflowRequest{Action: "skills-manage", SkillAction: "remove", SkillScope: "repos-global", AllLocal: true, LocalGeneration: m.localGeneration})
 	case listActionSkillRemove:
 		return m.openSkillManagement(listActionSkillVisible, "remove")
+	case listActionHygieneMenu, listActionHygieneStatus, listActionHygieneReport, listActionHygieneScan,
+		listActionHygieneScanWorktree, listActionHygieneScanStaged, listActionHygieneScanHistory:
+		return m.runHygieneAction(action)
 	case listActionHygieneRepo, listActionHygieneFiltered:
 		return m.openHygieneManagement(action == listActionHygieneFiltered)
 	case listActionSkillManage, listActionSkillRepo, listActionSkillVisible, listActionSkillGlobal, listActionSkillFiltered:

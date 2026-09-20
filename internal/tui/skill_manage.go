@@ -59,11 +59,12 @@ func (m Model) openHygieneManagement(filtered bool) (tea.Model, tea.Cmd) {
 	request := WorkflowRequest{Action: "hygiene-manage", LocalGeneration: m.localGeneration, ShowAllTries: m.showAllTries}
 	rows := m.visibleRepos()
 	if !filtered {
-		row, ok := m.currentRepo()
+		checkout, ok := m.hygieneCheckout()
 		if !ok {
 			return m, nil
 		}
-		rows = []RepoRow{row}
+		request.RepoRefs = []string{checkout}
+		return m.runWorkflow(request)
 	}
 	for _, row := range rows {
 		if row.Pending != "" {

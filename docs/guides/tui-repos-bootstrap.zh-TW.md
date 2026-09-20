@@ -2,7 +2,7 @@
 description: 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
 authority: project
 status: evolving
-verified_on: 2026-09-18
+verified_on: 2026-09-20
 tested_with: skills 1.5.23; Claude Code 2.1.252; Codex/Cursor/Gemini CLI/OpenCode docs 2026-09-01
 lang: zh-TW
 ---
@@ -512,7 +512,18 @@ authentication、session 分層呈現。Ping 不通仍測 SSH，proxy 不改成�
 
 ## 批次 hygiene 與 skill 移除
 
-REPOS → Ctrl+O 可設定目前或篩選後多個 repo 的 hygiene。勾選 repo、檢視各 plan
-和保留的 hooks，再確認套用；這是普通 commit procedure，不安裝 agent skill。
+REPOS → Ctrl+O → hygiene 可查看設定狀態、最新既存掃描報告、明確選擇
+worktree／staged／本機 history 掃描，以及設定目前 checkout 或篩選後的 repo。
+worktree 子項使用精確 checkout；報告不會改讀其他 checkout，也不會自動重掃。
+掃描沿用目前政策與 20 分鐘上限，不 fetch refs 或擷取原始值。操作暫停 dashboard
+並進入共用 CLI 流程，按 Enter 返回；setup 先預覽，再確認套用。
+
 SKILLS → Ctrl+O → remove skills in this scope 進入共用精靈，勾選 skills 與 agents。
 Ownership、共享使用者及 finalizer references 仍可阻擋移除，來源 repo 保留。
+
+## 情境動作的可用性
+
+八個 dashboard 頁面的選單、動作快捷鍵與 Help 共用內建動作登記。
+不適用於項目的動作會隱藏；適用但缺少整合或等待觀察的動作保留並標示不可用。
+選取不可用動作只顯示原因，不執行操作。開啟或搜尋選單不掃描 repo 或連線遠端；
+Fleet 保留非同步本機 catalog adapter 與精確的 host／profile 身分驗證。
