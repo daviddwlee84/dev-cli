@@ -51,7 +51,11 @@ func TestRepoNewFromLocalTemplateSubdirectory(t *testing.T) {
 	if body, err := os.ReadFile(filepath.Join(result.Path, "README.md")); err != nil || string(body) != "template readme\n" {
 		t.Fatalf("README = %q, %v", body, err)
 	}
-	if info, err := os.Stat(filepath.Join(result.Path, "bin", "run")); err != nil || info.Mode().Perm() != 0o751 {
+	sourceInfo, err := os.Stat(filepath.Join(starter, "bin", "run"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(filepath.Join(result.Path, "bin", "run")); err != nil || info.Mode().Perm() != sourceInfo.Mode().Perm() {
 		t.Fatalf("template executable = %+v, %v", info, err)
 	}
 	if _, err := os.Stat(filepath.Join(result.Path, ".git", "private")); !os.IsNotExist(err) {

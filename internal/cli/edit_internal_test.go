@@ -10,7 +10,25 @@ import (
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/safefile"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
+
+func fixtureEditorValue(path string) string {
+	if runtime.GOOS == "windows" {
+		return `"` + path + `"`
+	}
+	return shellQuote(path)
+}
+
+func useFixtureTextEditor(t *testing.T, dir, body string) string {
+	t.Helper()
+	t.Setenv("DEV_TEST_EDITOR_BODY", body)
+	editor := testutil.GoCommand(t, dir, "fixture-editor", `package main
+import "os"
+func main(){if len(os.Args)!=2 {os.Exit(7)};if os.WriteFile(os.Args[1],[]byte(os.Getenv("DEV_TEST_EDITOR_BODY")),0600)!=nil{os.Exit(8)}}`)
+	t.Setenv("VISUAL", fixtureEditorValue(editor))
+	return editor
+}
 
 func TestPrepareTUICapabilityEditRequiresExistingRegularFile(t *testing.T) {
 	root := t.TempDir()
@@ -18,11 +36,8 @@ func TestPrepareTUICapabilityEditRequiresExistingRegularFile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if runtime.GOOS == "windows" {
-		t.Setenv("VISUAL", "cmd.exe /c exit 0")
-	} else {
-		t.Setenv("VISUAL", "true")
-	}
+	editor := testutil.GoCommand(t, root, "noop-editor", `package main;func main(){}`)
+	t.Setenv("VISUAL", fixtureEditorValue(editor))
 
 	edit, err := prepareTUICapabilityEdit(path)
 	if err != nil {
@@ -74,11 +89,8 @@ func TestPrepareTUICapabilityEditPreservesWorkingCopyOnRunError(t *testing.T) {
 	if err := os.WriteFile(path, []byte("original\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if runtime.GOOS == "windows" {
-		t.Setenv("VISUAL", "cmd.exe /c exit 0")
-	} else {
-		t.Setenv("VISUAL", "true")
-	}
+	editor := testutil.GoCommand(t, root, "noop-editor", `package main;func main(){}`)
+	t.Setenv("VISUAL", fixtureEditorValue(editor))
 	edit, err := prepareTUICapabilityEdit(path)
 	if err != nil {
 		t.Fatal(err)
@@ -100,19 +112,16 @@ func TestPrepareTUICapabilityEditPreservesWorkingCopyOnRunError(t *testing.T) {
 }
 
 func TestPrepareTUICapabilityEditReplacesOnlyUnchangedSource(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("shell fixture")
-	}
 	root := t.TempDir()
 	path := filepath.Join(root, "config.json")
 	if err := os.WriteFile(path, []byte("original\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}
-	editor := filepath.Join(root, "editor")
-	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf 'edited\\n' > \"$1\"\n"), 0o755); err != nil {
+	useFixtureTextEditor(t, root, "edited\n")
+	originalInfo, err := os.Stat(path)
+	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("VISUAL", editor)
 
 	edit, err := prepareTUICapabilityEdit(path)
 	if err != nil {
@@ -130,7 +139,7 @@ func TestPrepareTUICapabilityEditReplacesOnlyUnchangedSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o640 {
+	if info.Mode().Perm() != originalInfo.Mode().Perm() {
 		t.Fatalf("edited source mode = %v", info.Mode().Perm())
 	}
 
@@ -141,9 +150,7 @@ func TestPrepareTUICapabilityEditReplacesOnlyUnchangedSource(t *testing.T) {
 	if err := os.WriteFile(path, []byte("external\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf 'user-edited\\n' > \"$1\"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	useFixtureTextEditor(t, root, "user-edited\n")
 	runErr = edit.Command.Run()
 	err = edit.Complete(runErr)
 	if err == nil || !strings.Contains(err.Error(), "working copy preserved at") {
@@ -159,45 +166,50 @@ func TestPrepareTUICapabilityEditReplacesOnlyUnchangedSource(t *testing.T) {
 		}
 	}
 
-	first := filepath.Join(root, "first.json")
-	second := filepath.Join(root, "second.json")
-	link := filepath.Join(root, "selected.json")
-	if err := os.WriteFile(first, []byte("first\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(second, []byte("second\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(first, link); err != nil {
-		t.Fatal(err)
-	}
-	edit, err = prepareTUICapabilityEdit(link)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(link); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(second, link); err != nil {
-		t.Fatal(err)
-	}
-	runErr = edit.Command.Run()
-	err = edit.Complete(runErr)
-	if err == nil || !strings.Contains(err.Error(), "target changed") {
-		t.Fatalf("retargeted capability edit = %v", err)
-	}
-	if got, _ := os.ReadFile(first); string(got) != "first\n" {
-		t.Fatalf("retarget conflict changed original target: %q", got)
-	}
-	if got, _ := os.ReadFile(second); string(got) != "second\n" {
-		t.Fatalf("retarget conflict changed new target: %q", got)
-	}
-	if marker := "working copy preserved at "; strings.Contains(err.Error(), marker) {
-		remainder := strings.SplitN(err.Error(), marker, 2)[1]
-		if recovery, _, found := strings.Cut(remainder, ": "); found {
-			_ = os.Remove(recovery)
+	t.Run("retargeted symlink", func(t *testing.T) {
+		first := filepath.Join(root, "first.json")
+		second := filepath.Join(root, "second.json")
+		link := filepath.Join(root, "selected.json")
+		if err := os.WriteFile(first, []byte("first\n"), 0o600); err != nil {
+			t.Fatal(err)
 		}
-	}
+		if err := os.WriteFile(second, []byte("second\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(first, link); err != nil {
+			if runtime.GOOS == "windows" {
+				t.Skipf("native symlink fixture unavailable: %v", err)
+			}
+			t.Fatal(err)
+		}
+		edit, err = prepareTUICapabilityEdit(link)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(link); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(second, link); err != nil {
+			t.Fatal(err)
+		}
+		runErr = edit.Command.Run()
+		err = edit.Complete(runErr)
+		if err == nil || !strings.Contains(err.Error(), "target changed") {
+			t.Fatalf("retargeted capability edit = %v", err)
+		}
+		if got, _ := os.ReadFile(first); string(got) != "first\n" {
+			t.Fatalf("retarget conflict changed original target: %q", got)
+		}
+		if got, _ := os.ReadFile(second); string(got) != "second\n" {
+			t.Fatalf("retarget conflict changed new target: %q", got)
+		}
+		if marker := "working copy preserved at "; strings.Contains(err.Error(), marker) {
+			remainder := strings.SplitN(err.Error(), marker, 2)[1]
+			if recovery, _, found := strings.Cut(remainder, ": "); found {
+				_ = os.Remove(recovery)
+			}
+		}
+	})
 }
 
 func TestReadTUICapabilityFileIsBoundedAndRegular(t *testing.T) {

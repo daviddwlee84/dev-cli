@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/note"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestPrepareTUINoteEditUpdatesAtomicallyAfterEditor(t *testing.T) {
@@ -18,11 +19,7 @@ func TestPrepareTUINoteEditUpdatesAtomicallyAfterEditor(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	editor := filepath.Join(root, "editor")
-	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf 'changed in TUI\\n' > \"$1\"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("VISUAL", editor)
+	useFixtureTextEditor(t, root, "changed in TUI\n")
 	app := &App{Notes: service}
 	edit, err := prepareTUINoteEdit(app, n)
 	if err != nil {
@@ -51,7 +48,8 @@ func TestPrepareTUINoteEditFailureDoesNotChangeSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("VISUAL", "false")
+	editor := testutil.GoCommand(t, root, "failing-editor", `package main;import "os";func main(){os.Exit(8)}`)
+	t.Setenv("VISUAL", fixtureEditorValue(editor))
 	app := &App{Notes: service}
 	edit, err := prepareTUINoteEdit(app, n)
 	if err != nil {
@@ -77,11 +75,7 @@ func TestPrepareTUINoteEditConflictPreservesTemporaryBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	editor := filepath.Join(root, "editor")
-	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf 'stale edited body\\n' > \"$1\"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("VISUAL", editor)
+	useFixtureTextEditor(t, root, "stale edited body\n")
 	app := &App{Notes: service}
 	edit, err := prepareTUINoteEdit(app, n)
 	if err != nil {

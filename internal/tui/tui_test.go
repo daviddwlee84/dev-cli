@@ -77,7 +77,7 @@ func newActions(r *recorder, rows []inventory.Row) tui.Actions {
 		},
 		CloneRemote: func(_ context.Context, rr tui.RemoteRow) (string, error) {
 			r.cloned = append(r.cloned, rr.Repo.FullName)
-			return "/src/" + rr.Repo.Name, nil
+			return filepath.FromSlash("/src/" + rr.Repo.Name), nil
 		},
 		Start: func(_ context.Context, rr tui.RepoRow, name string) (string, error) {
 			r.started = append(r.started, "worktree:"+rr.Repo.Name+"/"+name)
@@ -742,11 +742,13 @@ func TestCapabilityWarningsRemainFreshAcrossTabRevisits(t *testing.T) {
 
 func TestCapabilityFilesOpenAndCopyExplicitPayloads(t *testing.T) {
 	t.Run("skill", func(t *testing.T) {
+		skillRoot := filepath.Join(t.TempDir(), "skills", "demo")
+		skillFile := filepath.Join(skillRoot, "SKILL.md")
 		recorder := &recorder{}
 		actions := newActions(recorder, nil)
 		actions.ReloadSkills = func(context.Context, tui.CapabilityScope) ([]agentskill.Skill, error) {
 			return []agentskill.Skill{{
-				Name: "demo", Scope: agentskill.ScopeProject, Path: "/skills/demo",
+				Name: "demo", Scope: agentskill.ScopeProject, Path: skillRoot,
 				Presence: agentskill.PresencePresent, Agents: []string{"Claude Code"},
 				Source: "owner/repo", SourceURL: "https://example.test/owner/repo",
 			}}, nil
@@ -762,11 +764,11 @@ func TestCapabilityFilesOpenAndCopyExplicitPayloads(t *testing.T) {
 		}
 		m := tui.New(actions, nil, nil)
 		m = send(m, key("tab"), key("tab"), key("tab"), key("tab"), key("tab"))
-		if _, cmd := m.Update(key("e")); opened != "/skills/demo/SKILL.md" || cmd == nil {
+		if _, cmd := m.Update(key("e")); opened != skillFile || cmd == nil {
 			t.Fatalf("skill editor target=%q cmd=%v", opened, cmd)
 		}
 		m = send(m, key("y"), key("p"))
-		if got := recorder.copied[len(recorder.copied)-1]; got != "/skills/demo/SKILL.md" {
+		if got := recorder.copied[len(recorder.copied)-1]; got != skillFile {
 			t.Fatalf("skill path copy = %q", got)
 		}
 		m = send(m, key("y"), key("s"))
@@ -779,7 +781,7 @@ func TestCapabilityFilesOpenAndCopyExplicitPayloads(t *testing.T) {
 			t.Fatalf("skill source URL copy = %q", got)
 		}
 		m = send(m, key("y"), key("f"))
-		if read != "/skills/demo/SKILL.md" || recorder.copied[len(recorder.copied)-1] != "raw-skill-secret" {
+		if read != skillFile || recorder.copied[len(recorder.copied)-1] != "raw-skill-secret" {
 			t.Fatalf("raw skill copy path=%q copied=%q", read, recorder.copied[len(recorder.copied)-1])
 		}
 	})
@@ -1053,7 +1055,7 @@ func TestSummaryCountsStates(t *testing.T) {
 
 func repoRow(name string, tasks ...*task.Task) tui.RepoRow {
 	return tui.RepoRow{
-		Repo:  repo.Repo{Name: name, Path: "/src/" + name, HasGit: true},
+		Repo:  repo.Repo{Name: name, Path: filepath.FromSlash("/src/" + name), HasGit: true},
 		Tasks: tasks,
 	}
 }
@@ -2442,13 +2444,13 @@ func TestRemoteCloneRefreshesReposAndStaysInTUI(t *testing.T) {
 
 	var reload tea.Cmd
 	m, reload = applyQuickCommand(t, m, batch[0])
-	if out := m.View(); !strings.Contains(out, "/src/api") || !strings.Contains(out, "refreshing local repositories") {
+	if out := m.View(); !strings.Contains(out, filepath.FromSlash("/src/api")) || !strings.Contains(out, "refreshing local repositories") {
 		t.Fatalf("successful clone should retain its path while refreshing:\n%s", out)
 	}
 	m, _ = applyQuickCommand(t, m, reload)
 	out := m.View()
 	if strings.Contains(out, "cloning") || strings.Contains(out, "refreshing local") ||
-		!strings.Contains(out, "repo") || !strings.Contains(out, "/src/api") {
+		!strings.Contains(out, "repo") || !strings.Contains(out, filepath.FromSlash("/src/api")) {
 		t.Fatalf("accepted REPOS refresh should finalize the remote row:\n%s", out)
 	}
 	if remoteReloads != 0 {
@@ -2495,7 +2497,7 @@ func TestRemoteCloneOpenWaitsForRepoRefresh(t *testing.T) {
 	if len(rec.opened) != 1 || rec.opened[0] != "remote:owner/api" {
 		t.Fatalf("o should open after refresh, got %v", rec.opened)
 	}
-	if !strings.Contains(m.View(), "/src/api") {
+	if !strings.Contains(m.View(), filepath.FromSlash("/src/api")) {
 		t.Fatalf("open completion erased cloned path:\n%s", m.View())
 	}
 }
@@ -2585,7 +2587,7 @@ func TestRemoteCloneRefreshAndOpenFailuresPreserveClone(t *testing.T) {
 		m, reload = applyQuickCommand(t, m, batch[0])
 		m, _ = applyQuickCommand(t, m, reload)
 		out := m.View()
-		if !strings.Contains(out, "scan failed") || !strings.Contains(out, "/src/api") || strings.Contains(out, "not cloned") {
+		if !strings.Contains(out, "scan failed") || !strings.Contains(out, filepath.FromSlash("/src/api")) || strings.Contains(out, "not cloned") {
 			t.Fatalf("refresh failure erased the successful clone:\n%s", out)
 		}
 	})
@@ -2609,7 +2611,7 @@ func TestRemoteCloneRefreshAndOpenFailuresPreserveClone(t *testing.T) {
 		m, open = applyQuickCommand(t, m, reload)
 		m, _ = applyQuickCommand(t, m, open)
 		out := m.View()
-		if !strings.Contains(out, "runtime failed") || !strings.Contains(out, "/src/api") || strings.Contains(out, "not cloned") {
+		if !strings.Contains(out, "runtime failed") || !strings.Contains(out, filepath.FromSlash("/src/api")) || strings.Contains(out, "not cloned") {
 			t.Fatalf("open failure erased the successful clone:\n%s", out)
 		}
 	})
@@ -2705,7 +2707,7 @@ func TestRemoteCloneOpenContinuesAfterRefreshFailure(t *testing.T) {
 	if len(rec.opened) != 1 || rec.opened[0] != "remote:owner/api" {
 		t.Fatalf("refresh failure suppressed requested open: %v", rec.opened)
 	}
-	if out := m.View(); !strings.Contains(out, "scan failed") || !strings.Contains(out, "/src/api") {
+	if out := m.View(); !strings.Contains(out, "scan failed") || !strings.Contains(out, filepath.FromSlash("/src/api")) {
 		t.Fatalf("open lost refresh warning or known clone:\n%s", out)
 	}
 }

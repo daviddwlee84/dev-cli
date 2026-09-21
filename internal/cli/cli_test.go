@@ -21,6 +21,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
 	"github.com/daviddwlee84/dev-cli/internal/skill"
 	"github.com/daviddwlee84/dev-cli/internal/stats"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 // harness runs dev commands against an isolated HOME, config and scan root.
@@ -52,12 +53,13 @@ func newHarness(t *testing.T) *harness {
 	r.Root = dest
 
 	// Isolate every path dev touches from the developer's real machine.
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	testutil.SetHome(t, home)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
-	gitConfig := "[user]\n\temail = dev@example.test\n\tname = dev test\n[init]\n\tdefaultBranch = main\n"
+	gitConfig := "[user]\n\temail = dev@example.test\n\tname = dev test\n[init]\n\tdefaultBranch = main\n[core]\n\tautocrlf = false\n"
 	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(gitConfig), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -327,21 +329,7 @@ func TestDonePROpensAzureDevOpsPullRequestOffline(t *testing.T) {
 	h.repo.GitIn(wtPath, "commit", "-m", "feat: Azure review")
 
 	binDir := t.TempDir()
-	script := `#!/bin/sh
-set -eu
-if [ "$1" = "extension" ]; then
-  printf 'azure-devops\n'
-  exit 0
-fi
-if [ "$1" = "repos" ] && [ "$2" = "pr" ] && [ "$3" = "create" ]; then
-  printf '%s\n' '{"pullRequestId":73,"remoteUrl":"https://dev.azure.com/acme/Platform/_git/demo"}'
-  exit 0
-fi
-exit 2
-`
-	if err := os.WriteFile(filepath.Join(binDir, "az"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	installCLINativeFixture(t, filepath.Join(binDir, "az"), "azure-pr", "")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	out := h.mustRun("--allow-shared-checkout", "done", "azure-review", "--pr")
@@ -505,18 +493,7 @@ func TestGraduateRemoteRefreshesCatalogOrigin(t *testing.T) {
 	h.mustRun("try", "remote-origin", "--no-git")
 
 	binDir := t.TempDir()
-	gh := filepath.Join(binDir, "gh")
-	script := `#!/bin/sh
-set -eu
-if [ "$1" != "repo" ] || [ "$2" != "create" ]; then
-  exit 2
-fi
-git remote add origin "git@github.com:owner/$3.git"
-printf 'https://github.com/owner/%s\n' "$3"
-`
-	if err := os.WriteFile(gh, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	installCLINativeFixture(t, filepath.Join(binDir, "gh"), "graduate", "")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out := h.mustRun("graduate", "remote-origin", "--remote", "--push=false")
 	if !strings.Contains(out, "https://github.com/owner/remote-origin") {
@@ -542,19 +519,7 @@ func TestGraduateRefreshesOriginAfterPartialRemoteFailure(t *testing.T) {
 	h.mustRun("try", "partial-remote", "--no-git")
 
 	binDir := t.TempDir()
-	gh := filepath.Join(binDir, "gh")
-	script := `#!/bin/sh
-set -eu
-if [ "$1" != "repo" ] || [ "$2" != "create" ]; then
-  exit 2
-fi
-git remote add origin "git@github.com:owner/$3.git"
-printf 'push failed\n' >&2
-exit 1
-`
-	if err := os.WriteFile(gh, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	installCLINativeFixture(t, filepath.Join(binDir, "gh"), "graduate-fail", "")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	_, errOut, err := h.run("graduate", "partial-remote", "--remote")
 	if err != nil {
@@ -659,28 +624,7 @@ func TestSkillInventoryAddAndUpdate(t *testing.T) {
 	}
 
 	bin := t.TempDir()
-	script := `#!/bin/sh
-if [ "$1" = "--version" ]; then
-  echo 1.5.23
-  exit 0
-fi
-if [ "$1" = "list" ]; then
-  scope=project
-  path="$PWD/.agents/skills/shared"
-  for arg in "$@"; do
-    if [ "$arg" = "--global" ]; then
-      scope=global
-      path="$HOME/.agents/skills/shared"
-    fi
-  done
-  printf '[{"name":"shared","path":"%s","scope":"%s","agents":["Claude Code","Codex"],"source":"owner/repo","sourceUrl":null,"sourceType":"github"}]\n' "$path" "$scope"
-  exit 0
-fi
-printf '%s|%s\n' "$PWD" "$*"
-`
-	if err := os.WriteFile(filepath.Join(bin, "skills"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	installCLINativeFixture(t, filepath.Join(bin, "skills"), "skills-inventory", "")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	nested := filepath.Join(h.repo.Root, "nested", "deeper")
@@ -1168,11 +1112,7 @@ func TestEditCreatesDetectedConfigAndOpensIt(t *testing.T) {
 	h := newHarness(t)
 	path := filepath.Join(h.home, "new config.toml")
 	record := filepath.Join(h.home, "opened-path")
-	editor := filepath.Join(h.home, "fake-editor")
-	body := "#!/bin/sh\nprintf '%s' \"$1\" > \"$DEV_EDIT_RECORD\"\nprintf '\\n# opened by test\\n' >> \"$1\"\n"
-	if err := os.WriteFile(editor, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	editor := installCLINativeFixture(t, filepath.Join(h.home, "fake-editor"), "editor-append", "\n# opened by test\n")
 	t.Setenv("DEV_EDIT_RECORD", record)
 
 	var out, errOut bytes.Buffer
@@ -1204,14 +1144,8 @@ func TestEditCreatesDetectedConfigAndOpensIt(t *testing.T) {
 func TestConfigEditUsesExistingFileAndVisualFirst(t *testing.T) {
 	h := newHarness(t)
 	record := filepath.Join(h.home, "which-editor")
-	visual := filepath.Join(h.home, "visual-editor")
-	fallback := filepath.Join(h.home, "fallback-editor")
-	for path, label := range map[string]string{visual: "visual", fallback: "editor"} {
-		body := "#!/bin/sh\nprintf '" + label + ":%s' \"$1\" > \"$DEV_EDIT_RECORD\"\n"
-		if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	visual := installCLINativeFixture(t, filepath.Join(h.home, "visual-editor"), "editor-record", "visual:")
+	fallback := installCLINativeFixture(t, filepath.Join(h.home, "fallback-editor"), "editor-record", "editor:")
 	t.Setenv("DEV_EDIT_RECORD", record)
 	t.Setenv("VISUAL", visual)
 	t.Setenv("EDITOR", fallback)
@@ -1230,8 +1164,7 @@ func TestConfigEditUsesExistingFileAndVisualFirst(t *testing.T) {
 func TestEditEditorFlagOverridesEnvironment(t *testing.T) {
 	h := newHarness(t)
 	record := filepath.Join(h.home, "which-editor")
-	chosen := filepath.Join(h.home, "chosen")
-	os.WriteFile(chosen, []byte("#!/bin/sh\nprintf chosen > \"$DEV_EDIT_RECORD\"\n"), 0o755)
+	chosen := installCLINativeFixture(t, filepath.Join(h.home, "chosen"), "editor-static", "chosen")
 	t.Setenv("DEV_EDIT_RECORD", record)
 	t.Setenv("VISUAL", "/definitely/not/the/editor")
 
@@ -1546,10 +1479,7 @@ func TestNoteEditUsesTemporaryBodyAndPreservesMetadata(t *testing.T) {
 	h := newHarness(t)
 	out := h.mustRun("note", "add", "original thought", "--repo", "demo", "--tag", "idea")
 	id := strings.Fields(out)[0]
-	editor := filepath.Join(h.home, "note-editor")
-	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf 'revised by editor\\n' > \"$1\"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	editor := installCLINativeFixture(t, filepath.Join(h.home, "note-editor"), "editor-write", "revised by editor\n")
 	out = h.mustRun("note", "edit", id[:8], "--editor", editor)
 	if !strings.Contains(out, "revised by editor") {
 		t.Errorf("edit output: %q", out)
@@ -1578,10 +1508,7 @@ func TestNoteDeleteRequiresYesOutsideTTY(t *testing.T) {
 
 func TestNoteAddEditorAndEmptyBodyGuard(t *testing.T) {
 	h := newHarness(t)
-	editor := filepath.Join(h.home, "note-editor")
-	if err := os.WriteFile(editor, []byte("#!/bin/sh\nprintf 'written interactively\\n' > \"$1\"\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	editor := installCLINativeFixture(t, filepath.Join(h.home, "note-editor"), "editor-write", "written interactively\n")
 	out := h.mustRun("note", "add", "--repo", "demo", "--editor", "--editor-command", editor)
 	if !strings.Contains(out, "written interactively") {
 		t.Errorf("editor add: %q", out)
@@ -2016,3 +1943,88 @@ func TestArtifactDiscardRefusesRevisionChangedAfterReview(t *testing.T) {
 		t.Fatalf("new authority overwritten: %+v %v", intent, err)
 	}
 }
+
+// installCLINativeFixture keeps external-command boundaries executable on every
+// native runner. Each fixture has an immutable response plan beside its binary;
+// unknown modes/argv fail instead of falling through to a host provider.
+func installCLINativeFixture(t *testing.T, path, mode, text string) string {
+	t.Helper()
+	path = testutil.GoCommand(t, filepath.Dir(path), filepath.Base(path), cliNativeFixtureSource)
+	body, err := json.Marshal(map[string]string{"Mode": mode, "Text": text})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(path+".json", body, 0600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+const cliNativeFixtureSource = `package main
+import ("encoding/json";"fmt";"os";"os/exec";"path/filepath";"strings")
+type config struct {Mode, Text string}
+func must(err error) {if err!=nil {panic(err)}}
+func write(path,text string) {must(os.MkdirAll(filepath.Dir(path),0755));must(os.WriteFile(path,[]byte(text),0644))}
+func main() {
+ exe,err:=os.Executable();must(err)
+ body,err:=os.ReadFile(exe+".json");must(err)
+ var cfg config;must(json.Unmarshal(body,&cfg))
+ args:=os.Args[1:];cwd,err:=os.Getwd();must(err)
+ joined:=strings.Join(args," ")
+ switch cfg.Mode {
+ case "success": return
+ case "azure-pr":
+  if strings.HasPrefix(joined,"extension ") {fmt.Println("azure-devops");return}
+  if strings.HasPrefix(joined,"repos pr create ") {fmt.Println("{\"pullRequestId\":73,\"remoteUrl\":\"https://dev.azure.com/acme/Platform/_git/demo\"}");return}
+ case "gh-ready":
+  if len(args)>=2 && args[0]=="auth" && args[1]=="status" {return}
+  if strings.HasPrefix(joined,"repo create ") {fmt.Println("https://github.com/acme/"+cfg.Text);return}
+ case "graduate", "graduate-fail":
+  if len(args)<3 || args[0]!="repo" || args[1]!="create" {break}
+  output,err:=exec.Command("git","remote","add","origin","git@github.com:owner/"+args[2]+".git").CombinedOutput()
+  if err!=nil {fmt.Fprint(os.Stderr,string(output));os.Exit(96)}
+  if cfg.Mode=="graduate-fail" {fmt.Fprintln(os.Stderr,"push failed");os.Exit(1)}
+  fmt.Println("https://github.com/owner/"+args[2]);return
+ case "skills-inventory":
+  if joined=="--version" {fmt.Println("1.5.23");return}
+  if len(args)>0 && args[0]=="list" {
+   scope,root:="project",cwd
+   for _,arg:=range args {if arg=="--global" {scope="global";root=os.Getenv("HOME")}}
+   must(json.NewEncoder(os.Stdout).Encode([]map[string]any{{"name":"shared","path":filepath.Join(root,".agents","skills","shared"),"scope":scope,"agents":[]string{"Claude Code","Codex"},"source":"owner/repo","sourceUrl":nil,"sourceType":"github"}}));return
+  }
+  fmt.Printf("%s|%s\n",cwd,joined);return
+ case "skills-scaffold":
+  if len(args)>0 && args[0]=="add" {
+   write(filepath.Join(cwd,".agents","skills","demo","SKILL.md"),"---\nname: demo\ndescription: test scaffold skill\n---\n")
+   write(filepath.Join(cwd,".agents","skills","demo","scripts","setup.txt"),"setup")
+   return
+  }
+  if len(args)>0 && args[0]=="list" {must(json.NewEncoder(os.Stdout).Encode([]map[string]any{{"name":"demo","path":filepath.Join(cwd,".agents","skills","demo"),"scope":"project","agents":[]string{"Codex"},"source":"test/catalog","sourceUrl":nil,"sourceType":"github"}}));return}
+ case "setup-interpreter":
+  if len(args)!=1 {break};data,err:=os.ReadFile(args[0]);must(err)
+  if string(data)!="setup" {break};write("setup-ran.txt",string(data));return
+ case "skills-recommended":
+  must(os.MkdirAll(filepath.Join(cwd,".agents","skills","agent-history-hygiene"),0755))
+  must(os.MkdirAll(filepath.Join(cwd,".agents","skills","project-knowledge-harness"),0755));return
+ case "gitleaks":
+  if joined=="version" {fmt.Println("8.30.1");return}
+  for i,arg:=range args {if arg=="--report-path" && i+1<len(args) {write(args[i+1],"[]")}}
+  return
+ case "editor-append", "editor-record", "editor-static", "editor-write":
+  if len(args)!=1 {break}
+  if cfg.Mode=="editor-write" {write(args[0],cfg.Text);return}
+  recorded:=args[0]
+  if cfg.Mode=="editor-record" {recorded=cfg.Text+recorded}
+  if cfg.Mode=="editor-static" {recorded=cfg.Text}
+  write(os.Getenv("DEV_EDIT_RECORD"),recorded)
+  if cfg.Mode=="editor-append" {f,err:=os.OpenFile(args[0],os.O_APPEND|os.O_WRONLY,0600);must(err);_,err=f.WriteString(cfg.Text);must(err);must(f.Close())}
+  return
+ case "build-local-hook":
+  if len(args)!=2 {break};data,err:=os.ReadFile(args[0]);must(err)
+  binary,err:=os.ReadFile(exe);must(err);must(os.MkdirAll(filepath.Dir(args[1]),0755));must(os.WriteFile(args[1],binary,0755))
+  spec,err:=json.Marshal(config{Mode:"run-local-hook",Text:string(data)});must(err);must(os.WriteFile(args[1]+".json",spec,0600));return
+ case "run-local-hook":write("generated-by-local-hook.txt",cfg.Text);return
+ }
+ fmt.Fprintln(os.Stderr,"unexpected native fixture invocation:",cfg.Mode,joined);os.Exit(97)
+}
+`

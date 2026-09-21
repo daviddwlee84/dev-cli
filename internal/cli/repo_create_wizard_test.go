@@ -25,9 +25,11 @@ func newRepoWizardApp(t *testing.T, input string) (*App, *bytes.Buffer) {
 	t.Helper()
 	home := t.TempDir()
 	testutil.SetHome(t, home)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
-	gitConfig := "[user]\n\temail = dev@example.test\n\tname = dev test\n"
+	gitConfig := "[user]\n\temail = dev@example.test\n\tname = dev test\n[core]\n\tautocrlf = false\n"
 	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(gitConfig), 0o644); err != nil {
 		t.Fatal(err)
 	}

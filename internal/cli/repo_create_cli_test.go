@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -381,21 +382,7 @@ content = "printf project > inherited-file-hook.txt\n"
 func TestRepoNewPublishesThroughReadyGitHubCLI(t *testing.T) {
 	h := newHarness(t)
 	bin := t.TempDir()
-	gh := filepath.Join(bin, "gh")
-	script := `#!/bin/sh
-set -eu
-if [ "$1" = "auth" ] && [ "$2" = "status" ]; then
-  exit 0
-fi
-if [ "$1" = "repo" ] && [ "$2" = "create" ]; then
-  printf 'https://github.com/acme/published\n'
-  exit 0
-fi
-exit 2
-`
-	if err := os.WriteFile(gh, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	installCLINativeFixture(t, filepath.Join(bin, "gh"), "gh-ready", "published")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	out := h.mustRun("repo", "new", "published", "--remote", "--forge", "github", "--namespace", "acme", "--push=false")
 	if !strings.Contains(out, "https://github.com/acme/published") {
@@ -442,25 +429,8 @@ func TestWorktreePlanWriteUsesProjectConfigDirectory(t *testing.T) {
 func TestRepoNewInstallsSelectedSkillAndRunsDeclaredSetup(t *testing.T) {
 	h := newHarness(t)
 	bin := t.TempDir()
-	provider := filepath.Join(bin, "skills")
-	script := `#!/bin/sh
-set -eu
-case "$1" in
-  add)
-    mkdir -p "$PWD/.agents/skills/demo/scripts"
-    printf '%s\n' '---' 'name: demo' 'description: test scaffold skill' '---' > "$PWD/.agents/skills/demo/SKILL.md"
-    printf '%s\n' '#!/bin/sh' 'printf setup > setup-ran.txt' > "$PWD/.agents/skills/demo/scripts/setup.sh"
-    chmod +x "$PWD/.agents/skills/demo/scripts/setup.sh"
-    ;;
-  list)
-    printf '[{"name":"demo","path":"%s/.agents/skills/demo","scope":"project","agents":["Codex"],"source":"test/catalog","sourceUrl":null,"sourceType":"github"}]\n' "$PWD"
-    ;;
-  *) exit 2 ;;
-esac
-`
-	if err := os.WriteFile(provider, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	installCLINativeFixture(t, filepath.Join(bin, "skills"), "skills-scaffold", "")
+	installCLINativeFixture(t, filepath.Join(bin, "fixture-setup"), "setup-interpreter", "")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	scaffoldsPath := filepath.Join(h.home, "skill-scaffolds.toml")
 	scaffolds := `version = 1
@@ -473,7 +443,7 @@ source = "test/catalog"
 name = "demo"
 agents = ["codex"]
 default = true
-setup = { phase = "before_commit", interpreter = "sh", script = "scripts/setup.sh", required = true }
+setup = { phase = "before_commit", interpreter = "fixture-setup", script = "scripts/setup.txt", required = true }
 `
 	if err := os.WriteFile(scaffoldsPath, []byte(scaffolds), 0o644); err != nil {
 		t.Fatal(err)
@@ -490,21 +460,33 @@ setup = { phase = "before_commit", interpreter = "sh", script = "scripts/setup.s
 
 func TestRepoNewRunsGeneratedRepoLocalHookExecutable(t *testing.T) {
 	h := newHarness(t)
+	bin := t.TempDir()
+	installCLINativeFixture(t, filepath.Join(bin, "fixture-build-hook"), "build-local-hook", "")
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	hookPath := "./scripts/bootstrap"
+	if runtime.GOOS == "windows" {
+		hookPath += ".exe"
+	}
 	scaffoldsPath := filepath.Join(h.home, "local-hook-scaffolds.toml")
 	scaffolds := `version = 1
 [presets.local-hook]
 extends = "minimal"
 
 [[presets.local-hook.files]]
-id = "bootstrap-script"
-destination = "scripts/bootstrap.sh"
-content = "#!/bin/sh\nprintf generated > generated-by-local-hook.txt\n"
-mode = "0755"
+id = "bootstrap-source"
+destination = "scripts/bootstrap.fixture"
+content = "generated"
+
+[[presets.local-hook.hooks]]
+id = "build-bootstrap"
+phase = "before_commit"
+command = ["fixture-build-hook", "./scripts/bootstrap.fixture", "` + hookPath + `"]
+required = true
 
 [[presets.local-hook.hooks]]
 id = "bootstrap"
 phase = "before_commit"
-command = ["./scripts/bootstrap.sh"]
+command = ["` + hookPath + `"]
 required = true
 `
 	if err := os.WriteFile(scaffoldsPath, []byte(scaffolds), 0o644); err != nil {
@@ -520,22 +502,9 @@ required = true
 func TestRepoNewSelectedRecommendedSkillsRunBuiltInInitializers(t *testing.T) {
 	h := newHarness(t)
 	bin := t.TempDir()
-	provider := filepath.Join(bin, "skills")
-	providerScript := `#!/bin/sh
-set -eu
-mkdir -p "$PWD/.agents/skills/agent-history-hygiene" "$PWD/.agents/skills/project-knowledge-harness"
-exit 0
-`
-	if err := os.WriteFile(provider, []byte(providerScript), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(bin, "gitleaks"), []byte("#!/bin/sh\nif [ \"$1\" = version ]; then echo 8.30.1; fi\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	preCommit := filepath.Join(bin, "pre-commit")
-	if err := os.WriteFile(preCommit, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	installCLINativeFixture(t, filepath.Join(bin, "skills"), "skills-recommended", "")
+	installCLINativeFixture(t, filepath.Join(bin, "gitleaks"), "gitleaks", "")
+	installCLINativeFixture(t, filepath.Join(bin, "pre-commit"), "success", "")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	h.mustRun("repo", "new", "recommended", "--preset", "agent-ready", "--yes",
 		"--enable", "agent-history-hygiene", "--enable", "project-knowledge-harness",

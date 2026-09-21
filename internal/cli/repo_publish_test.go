@@ -11,6 +11,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 type publishTestForge struct {
@@ -67,10 +68,7 @@ func TestPublishRepositoryAddsOriginAndPushes(t *testing.T) {
 	// The public helper selects the real adapter, so this focused test locks in
 	// the shared Git transaction through a temporary gh shim and bare remote.
 	bin := t.TempDir()
-	gh := filepath.Join(bin, "gh")
-	if err := os.WriteFile(gh, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testutil.GoCommand(t, bin, "gh", "package main\nfunc main() {}\n")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	root := filepath.Join(t.TempDir(), "repo")

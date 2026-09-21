@@ -3,7 +3,6 @@ package cli
 import (
 	"bytes"
 	"context"
-	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -11,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/skill"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestUpgradedExecutableUsesStableManagerPaths(t *testing.T) {
@@ -30,9 +30,6 @@ func TestUpgradedExecutableUsesStableManagerPaths(t *testing.T) {
 }
 
 func TestRefreshSkillAfterUpgradeUsesNewExecutableAndSkipsAbsent(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("execution fixture uses a POSIX shell; path selection is tested natively")
-	}
 	home := t.TempDir()
 	testutil.SetHome(t, home)
 	var out, errOut bytes.Buffer
@@ -46,17 +43,20 @@ func TestRefreshSkillAfterUpgradeUsesNewExecutableAndSkipsAbsent(t *testing.T) {
 	}
 	old := filepath.Join(home, "brew", "Cellar", "dev-cli", "0.2.22", "bin", "dev")
 	updated := filepath.Join(home, "brew", "opt", "dev-cli", "bin", "dev")
-	if err := os.MkdirAll(filepath.Dir(updated), 0o755); err != nil {
-		t.Fatal(err)
+	method := methodHomebrew
+	if runtime.GOOS == "windows" {
+		method = methodScoop
+		old = filepath.Join(home, "scoop", "apps", "dev-cli", "0.2.22", "dev.exe")
+		updated = filepath.Join(home, "scoop", "apps", "dev-cli", "current", "dev.exe")
 	}
 	// A changed payload proves that the new executable ran, instead of copying
 	// the old process's embedded data. PATH deliberately has no dev executable.
-	fixture := "#!/bin/sh\n[ \"$*\" = 'skill install --if-installed' ] || exit 7\nprintf 'new binary payload' > \"$HOME/.agents/skills/dev-cli/SKILL.md\"\n"
-	if err := os.WriteFile(updated, []byte(fixture), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testutil.GoCommand(t, filepath.Dir(updated), filepath.Base(updated), `package main
+import("os";"path/filepath";"strings")
+func main(){if strings.Join(os.Args[1:]," ")!="skill install --if-installed" {os.Exit(7)}; home,err:=os.UserHomeDir();if err!=nil{os.Exit(8)};if os.WriteFile(filepath.Join(home,".agents","skills","dev-cli","SKILL.md"),[]byte("new binary payload"),0600)!=nil{os.Exit(9)}}`)
+
 	t.Setenv("PATH", t.TempDir())
-	install := detectedInstall{Path: old, Resolved: old, Method: methodHomebrew}
+	install := detectedInstall{Path: old, Resolved: old, Method: method}
 	if err := refreshSkillAfterUpgrade(context.Background(), app, install); err != nil {
 		t.Fatal(err)
 	}
@@ -64,9 +64,8 @@ func TestRefreshSkillAfterUpgradeUsesNewExecutableAndSkipsAbsent(t *testing.T) {
 	if string(got) != "new binary payload" {
 		t.Fatalf("installed payload = %q", got)
 	}
-	if err := os.WriteFile(updated, []byte("#!/bin/sh\nexit 8\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testutil.GoCommand(t, filepath.Dir(updated), filepath.Base(updated), `package main;import "os";func main(){os.Exit(8)}`)
+
 	if err := refreshSkillAfterUpgrade(context.Background(), app, install); err == nil || !strings.Contains(err.Error(), "binary update completed") {
 		t.Fatalf("refresh failure did not report partial result: %v", err)
 	}
@@ -74,8 +73,7 @@ func TestRefreshSkillAfterUpgradeUsesNewExecutableAndSkipsAbsent(t *testing.T) {
 
 func TestBundledSkillDoctorCheckIsReadOnly(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("USERPROFILE", home)
+	testutil.SetHome(t, home)
 	if got := bundledSkillDoctorCheck(); got.status != checkOK || !strings.Contains(got.detail, "not installed") {
 		t.Fatalf("absent = %+v", got)
 	}
