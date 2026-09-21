@@ -237,3 +237,29 @@ var genericRules = []Rule{
 	{ID: "privacy-ip", Kind: "cidr", Value: "0.0.0.0/0", Replacement: "192.0.2.1"},
 	{ID: "privacy-ipv6", Kind: "cidr", Value: "::/0", Replacement: "2001:db8::1"},
 }
+
+// These exclusions belong only to built-in generic privacy detection. Explicit
+// private rules still match these values, and credential detection is unchanged.
+func genericPrivacyNoise(rule, value string) bool {
+	switch rule {
+	case "privacy-ip", "privacy-ipv6":
+		addr, err := netip.ParseAddr(value)
+		if err != nil {
+			return false
+		}
+		addr = addr.Unmap()
+		return addr.IsLoopback() || addr.IsUnspecified()
+	case "privacy-email":
+		_, domain, ok := strings.Cut(value, "@")
+		if !ok {
+			return false
+		}
+		domain = strings.ToLower(domain)
+		for _, suffix := range []string{"test", "example", "invalid", "example.com", "example.net", "example.org"} {
+			if domain == suffix || strings.HasSuffix(domain, "."+suffix) {
+				return true
+			}
+		}
+	}
+	return false
+}

@@ -152,6 +152,22 @@ exact exception is added. Do not exclude tests/docs or an entire line beside a
 placeholder; prefer inert placeholders or construct detector fixtures at runtime.
 
 
+The default generic password and API-key detectors also validate Go source
+positions. A finding is discarded only when the complete file parses and every
+matching span lies outside literals and comments. This uses the scanned index or
+historical Git object, never a newer working file, and also applies to artifact
+snapshots. Invalid/unavailable source, ambiguous locations, custom detectors and
+external rule includes retain scanner findings. Quoted environment-variable names
+are not automatically trusted; use reviewed exact exceptions for those mappings.
+
+Built-in generic privacy checks omit loopback and unspecified IP addresses
+(including mapped IPv4), and email domains ending in `.test`, `.example` or
+`.invalid`, plus `example.com`, `example.net`, `example.org` and their subdomains.
+Private/LAN addresses, ordinary email domains and personal home paths remain in
+scope. Explicit private rules still match these otherwise omitted values. These
+are detector semantics in both normal and audit scans; `--audit` continues to
+ignore finding exceptions rather than changing the detectors.
+
 Literal, CIDR and Go RE2 rules accept optional relative path globs. `directory/**`
 selects descendants. Rule values come from a file or `--value-file -`; do not
 put sensitive values in command arguments. Edit or disable existing private
@@ -194,8 +210,8 @@ An explicit range checks versions changed in its selected commits, leaving
 untouched older files for the full audit. History freezes locally available refs
 (or an explicit full-OID range), includes
 merge-only content and removed files, and never fetches implicitly. It does not
-scan reflogs, unreachable objects, uncommitted work in other checkouts or remote
-submodule repositories. Nonregular entries and recognized binary formats are
+scan commit messages or author/committer identities, reflogs, unreachable objects,
+uncommitted work in other checkouts or remote submodule repositories. Nonregular entries and recognized binary formats are
 listed as exclusions from text scanning. Unsupported text encodings, unreadable
 or oversized files, changing sources/refs, shallow history, cancellation and
 scanner failures produce incomplete results. The per-file text limit is 128 MiB;

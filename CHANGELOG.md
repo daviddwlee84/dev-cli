@@ -17,6 +17,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Hygiene's default generic credential detectors now verify Go source spans
+  against the scanned Git object, excluding syntax-only matches while retaining
+  literals, comments, custom rules and uncertain source. Generic privacy checks
+  omit loopback/unspecified IPs and reserved example email domains; explicit
+  private rules remain authoritative in normal and audit scans.
 - Hygiene setup on an expanded worktree now uses that exact checkout instead of
   silently returning. Menu execution rechecks availability and pinned task or
   SSH-profile revisions after observation changes.

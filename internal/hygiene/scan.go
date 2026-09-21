@@ -308,6 +308,9 @@ func (b *scanBuilder) native(file, commit string, data []byte, can bool) {
 			line += bytes.Count(data[last:m[0]], []byte{'\n'})
 			last = m[0]
 			value := string(data[m[0]:m[1]])
+			if category == "generic" && genericPrivacyNoise(c.rule.ID, value) {
+				continue
+			}
 			id := b.add(c.rule.ID, category, file, commit, line, value, mode, can)
 			if b.values != nil {
 				b.captureValueContext(id, c.rule.ID, category, file, commit, line, value, func() string {

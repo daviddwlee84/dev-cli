@@ -3,7 +3,7 @@ description: 檢查 repository hooks、掃描 secret 與個人資訊，並以私
 lang: zh-TW
 authority: project
 status: evolving
-verified_on: 2026-09-20
+verified_on: 2026-09-21
 ---
 
 # Repository hygiene
@@ -128,6 +128,18 @@ script 與文字格式，以避免 Go 布林欄位／變數運算誤判。格式
 一般示範用 inert placeholder，detector 測試可於執行時組出 fixture。
 
 
+預設 generic password／API-key detector 也會核對 Go 原始碼位置。只有整份檔案
+可解析，且所有命中位置都位於 literal 與 comment 之外，才排除該候選。核對的是
+掃描當下的 index 或歷史 Git object，並同樣適用於 artifact snapshot；不拿目前
+工作檔代替舊版本。原始碼無法讀取／解析、位置不明、自訂 detector 或外部規則
+include 均保留原命中。加引號的環境變數名稱不會自動放行，需使用已檢視的精確例外。
+
+內建 generic privacy 略過 loopback／未指定 IP（含 mapped IPv4），以及結尾為
+`.test`、`.example`、`.invalid` 的 email 網域與 `example.com`、`example.net`、
+`example.org` 及其子網域。私人／LAN IP、一般 email 網域與個人 home path 仍會
+偵測；明確設定的私人規則也仍可命中上述省略值。這是一般與 audit 掃描共用的
+偵測語意；`--audit` 仍負責忽略 finding 例外，不切換 detector 行為。
+
 支援 literal、CIDR、Go RE2 及相對路徑 glob；`directory/**` 選取其下內容。
 私密值用 `--value-file` 或 stdin 輸入，不放在命令參數。可用同 ID 的規則 plan
 調整／停用規則，或編輯本機私人政策。Scan override 不會持久化；建立 redact plan
@@ -161,6 +173,9 @@ dev hygiene --public-only --known off --generic off scan --scope history \
 Worktree 掃已追蹤檔與未被 ignore 的未追蹤檔；後來加入 `.gitignore` 的已追蹤檔仍
 會掃。Staged 使用真正的 index bytes，包含 hidden files 與 partial staging。
 `--file` 只能選該範圍內的檔案。
+
+History 掃描檔案內容，不包含 commit message 或 author／committer 身分資訊；
+公開 repo 前需另行檢視這些 metadata。
 
 明確的 range 只檢查選定 commits 所變更的檔案版本，未變更的舊檔留給全量稽核。
 History 固定本機 refs 或明確的完整 OID range，涵蓋 merge-only、已刪除與後來

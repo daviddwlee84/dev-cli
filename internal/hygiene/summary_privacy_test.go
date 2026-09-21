@@ -13,8 +13,8 @@ func TestSummaryKeepsMaskedFilesDistinctAndFiltersOriginalPaths(t *testing.T) {
 		{ID: "private-first", Kind: "literal", Value: "node-alpha"},
 		{ID: "private-second", Kind: "literal", Value: "node-beta"},
 	}
-	put(t, r.Root, "node-alpha.txt", "reader@example.invalid reader@example.invalid\n")
-	put(t, r.Root, "node-beta.txt", "reader@example.invalid\n")
+	put(t, r.Root, "node-alpha.txt", "reader@mail.local reader@mail.local\n")
+	put(t, r.Root, "node-beta.txt", "reader@mail.local\n")
 	report, err := s.Scan(t.Context(), ScanOptions{CaptureValues: true})
 	if err != nil {
 		t.Fatal(err)

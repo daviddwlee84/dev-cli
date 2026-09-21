@@ -3895,6 +3895,22 @@ exact exception is added. Do not exclude tests/docs or an entire line beside a
 placeholder; prefer inert placeholders or construct detector fixtures at runtime.
 
 
+The default generic password and API-key detectors also validate Go source
+positions. A finding is discarded only when the complete file parses and every
+matching span lies outside literals and comments. This uses the scanned index or
+historical Git object, never a newer working file, and also applies to artifact
+snapshots. Invalid/unavailable source, ambiguous locations, custom detectors and
+external rule includes retain scanner findings. Quoted environment-variable names
+are not automatically trusted; use reviewed exact exceptions for those mappings.
+
+Built-in generic privacy checks omit loopback and unspecified IP addresses
+(including mapped IPv4), and email domains ending in `.test`, `.example` or
+`.invalid`, plus `example.com`, `example.net`, `example.org` and their subdomains.
+Private/LAN addresses, ordinary email domains and personal home paths remain in
+scope. Explicit private rules still match these otherwise omitted values. These
+are detector semantics in both normal and audit scans; `--audit` continues to
+ignore finding exceptions rather than changing the detectors.
+
 Literal, CIDR and Go RE2 rules accept optional relative path globs. `directory/**`
 selects descendants. Rule values come from a file or `--value-file -`; do not
 put sensitive values in command arguments. Edit or disable existing private
@@ -3937,8 +3953,8 @@ An explicit range checks versions changed in its selected commits, leaving
 untouched older files for the full audit. History freezes locally available refs
 (or an explicit full-OID range), includes
 merge-only content and removed files, and never fetches implicitly. It does not
-scan reflogs, unreachable objects, uncommitted work in other checkouts or remote
-submodule repositories. Nonregular entries and recognized binary formats are
+scan commit messages or author/committer identities, reflogs, unreachable objects,
+uncommitted work in other checkouts or remote submodule repositories. Nonregular entries and recognized binary formats are
 listed as exclusions from text scanning. Unsupported text encodings, unreadable
 or oversized files, changing sources/refs, shallow history, cancellation and
 scanner failures produce incomplete results. The per-file text limit is 128 MiB;
@@ -12105,6 +12121,11 @@ observations, not current clean authority. A stored summary exits 0 even with
 blocking findings or gaps. An incomplete `--rescan` emits its summary and exits
 non-zero; this summarizer is not a replacement for the blocking scan hook.
 
+Default Go credential verification and generic privacy noise filtering change
+new scan findings, not schema 1 or previously stored reports. They apply equally
+to normal and audit scans. Explicit private rules and customized secret detectors
+retain their semantics; see [detector boundaries](https://daviddwlee84.github.io/dev-cli/guides/hygiene/#local-identity-rules-and-exceptions).
+
 `--values` implies a rescan unless `--report` names a scan captured with values.
 Only masks are public: secrets retain first/last two characters plus length
 (length only below 12), known private rules `[private:N]`, email
@@ -16397,6 +16418,18 @@ script 與文字格式，以避免 Go 布林欄位／變數運算誤判。格式
 一般示範用 inert placeholder，detector 測試可於執行時組出 fixture。
 
 
+預設 generic password／API-key detector 也會核對 Go 原始碼位置。只有整份檔案
+可解析，且所有命中位置都位於 literal 與 comment 之外，才排除該候選。核對的是
+掃描當下的 index 或歷史 Git object，並同樣適用於 artifact snapshot；不拿目前
+工作檔代替舊版本。原始碼無法讀取／解析、位置不明、自訂 detector 或外部規則
+include 均保留原命中。加引號的環境變數名稱不會自動放行，需使用已檢視的精確例外。
+
+內建 generic privacy 略過 loopback／未指定 IP（含 mapped IPv4），以及結尾為
+`.test`、`.example`、`.invalid` 的 email 網域與 `example.com`、`example.net`、
+`example.org` 及其子網域。私人／LAN IP、一般 email 網域與個人 home path 仍會
+偵測；明確設定的私人規則也仍可命中上述省略值。這是一般與 audit 掃描共用的
+偵測語意；`--audit` 仍負責忽略 finding 例外，不切換 detector 行為。
+
 支援 literal、CIDR、Go RE2 及相對路徑 glob；`directory/**` 選取其下內容。
 私密值用 `--value-file` 或 stdin 輸入，不放在命令參數。可用同 ID 的規則 plan
 調整／停用規則，或編輯本機私人政策。Scan override 不會持久化；建立 redact plan
@@ -16430,6 +16463,9 @@ dev hygiene --public-only --known off --generic off scan --scope history \
 Worktree 掃已追蹤檔與未被 ignore 的未追蹤檔；後來加入 `.gitignore` 的已追蹤檔仍
 會掃。Staged 使用真正的 index bytes，包含 hidden files 與 partial staging。
 `--file` 只能選該範圍內的檔案。
+
+History 掃描檔案內容，不包含 commit message 或 author／committer 身分資訊；
+公開 repo 前需另行檢視這些 metadata。
 
 明確的 range 只檢查選定 commits 所變更的檔案版本，未變更的舊檔留給全量稽核。
 History 固定本機 refs 或明確的完整 OID range，涵蓋 merge-only、已刪除與後來
@@ -24121,6 +24157,10 @@ filter 值會依政策遮罩；無效的 path glob 會被拒絕。
 checkout 保存的報告。這些是歷史觀測，不是目前 clean 的證明。彙總已保存報告即使
 有 blocking finding 或 gap 也以 0 結束；不完整的 `--rescan` 先輸出摘要再以非零
 狀態退出。摘要指令不能取代會阻擋 commit 的 scan hook。
+
+預設 Go credential 語法驗證與 generic privacy 噪音過濾只改變新掃描的命中，
+不改 schema 1 或已保存報告；一般與 audit 掃描共用這些語意。明確設定的私人規則
+及自訂 secret detector 維持原語意；詳見 [hygiene 規則](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/hygiene/)。
 
 除非 `--report` 指定已擷取值的掃描，`--values` 會隱含重新掃描。公開資料只有
 遮罩：secret 留前後各兩字元與長度（少於 12 只顯示長度）、已知私人規則

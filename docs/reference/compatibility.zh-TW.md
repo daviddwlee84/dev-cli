@@ -2,7 +2,7 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-18
+verified_on: 2026-09-21
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
@@ -625,6 +625,10 @@ filter 值會依政策遮罩；無效的 path glob 會被拒絕。
 checkout 保存的報告。這些是歷史觀測，不是目前 clean 的證明。彙總已保存報告即使
 有 blocking finding 或 gap 也以 0 結束；不完整的 `--rescan` 先輸出摘要再以非零
 狀態退出。摘要指令不能取代會阻擋 commit 的 scan hook。
+
+預設 Go credential 語法驗證與 generic privacy 噪音過濾只改變新掃描的命中，
+不改 schema 1 或已保存報告；一般與 audit 掃描共用這些語意。明確設定的私人規則
+及自訂 secret detector 維持原語意；詳見 [hygiene 規則](../guides/hygiene.zh-TW.md)。
 
 除非 `--report` 指定已擷取值的掃描，`--values` 會隱含重新掃描。公開資料只有
 遮罩：secret 留前後各兩字元與長度（少於 12 只顯示長度）、已知私人規則

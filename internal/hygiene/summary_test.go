@@ -17,9 +17,9 @@ func summaryFixture(t *testing.T) (*Service, string) {
 	t.Helper()
 	s, r := testService(t)
 	s.Policy.Generic = Warn
-	put(t, r.Root, "a.txt", "private-host-unique private-host-unique\nuser@example.org\n")
+	put(t, r.Root, "a.txt", "private-host-unique private-host-unique\nuser@mail.local\n")
 	put(t, r.Root, "b.txt", "private-host-unique\n")
-	put(t, r.Root, "c.txt", "a@example.org b@example.org a@example.org\n")
+	put(t, r.Root, "c.txt", "a@mail.local b@mail.local a@mail.local\n")
 	report, err := s.Scan(t.Context(), ScanOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -198,8 +198,8 @@ func TestSummaryRejectsPlanAndForeignRecords(t *testing.T) {
 func TestFindingValueIDStableAcrossFiles(t *testing.T) {
 	s, r := testService(t)
 	s.Policy.Generic = Warn
-	put(t, r.Root, "one.txt", "same@example.org\n")
-	put(t, r.Root, "two.txt", "same@example.org other@example.org\n")
+	put(t, r.Root, "one.txt", "same@mail.local\n")
+	put(t, r.Root, "two.txt", "same@mail.local other@mail.local\n")
 	report, err := s.Scan(t.Context(), ScanOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -244,7 +244,7 @@ func TestMaskValueByCategory(t *testing.T) {
 func TestValuesCaptureNeverPersistsRawValuesOutsidePrivateReview(t *testing.T) {
 	s, r := testService(t)
 	s.Policy.Generic = Warn
-	put(t, r.Root, "notes.txt", "host private-host-unique\ncontact person@example.org\n")
+	put(t, r.Root, "notes.txt", "host private-host-unique\ncontact person@mail.local\n")
 	report, err := s.Scan(t.Context(), ScanOptions{CaptureValues: true})
 	if err != nil {
 		t.Fatal(err)
@@ -258,13 +258,13 @@ func TestValuesCaptureNeverPersistsRawValuesOutsidePrivateReview(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, raw := range []string{"private-host-unique", "person@example.org"} {
+	for _, raw := range []string{"private-host-unique", "person@mail.local"} {
 		if bytes.Contains(public, []byte(raw)) || bytes.Contains(record, []byte(raw)) {
 			t.Fatalf("raw value %q escaped the private review", raw)
 		}
 	}
 	if len(summary.Rules) != 2 || len(summary.Rules[0].Values) != 1 || summary.Rules[0].Values[0].Masked != "[private:19]" ||
-		summary.Rules[1].Values[0].Masked != "p•••@e•••.org" || summary.Rules[1].Values[0].Occurrences != 1 {
+		summary.Rules[1].Values[0].Masked != "p•••@m•••.local" || summary.Rules[1].Values[0].Occurrences != 1 {
 		t.Fatalf("masked values = %+v", summary.Rules)
 	}
 	path, err := s.ReviewPath(t.Context(), report.ID)
@@ -281,7 +281,7 @@ func TestValuesCaptureNeverPersistsRawValuesOutsidePrivateReview(t *testing.T) {
 		t.Fatalf("values review privacy: %v", err)
 	}
 	body, _ := os.ReadFile(path)
-	if !bytes.Contains(body, []byte("PRIVATE REVIEW")) || !bytes.Contains(body, []byte("person@example.org")) || !bytes.Contains(body, []byte("notes.txt:2")) {
+	if !bytes.Contains(body, []byte("PRIVATE REVIEW")) || !bytes.Contains(body, []byte("person@mail.local")) || !bytes.Contains(body, []byte("notes.txt:2")) {
 		t.Fatalf("values review lacks raw value or location:\n%s", body)
 	}
 	if err := os.WriteFile(path, append(body, []byte("tampered\n")...), 0o600); err != nil {

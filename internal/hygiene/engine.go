@@ -132,5 +132,5 @@ func (g Gitleaks) Scan(ctx context.Context, q EngineRequest) ([]Detection, error
 			return nil, errors.New("gitleaks finding is incomplete")
 		}
 	}
-	return rows, nil
+	return filterGoSourceFindings(ctx, q, rows)
 }

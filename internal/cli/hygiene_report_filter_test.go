@@ -19,7 +19,7 @@ func TestHygieneReportValidatesGlobBeforeCaptureAndPreservesCommaPath(t *testing
 	if _, _, err := h.run(append(base, "report")...); err == nil || !strings.Contains(err.Error(), "no stored hygiene scan") {
 		t.Fatalf("invalid filter unexpectedly produced a scan receipt: %v", err)
 	}
-	if err := os.WriteFile(filepath.Join(h.repo.Root, "comma,name.txt"), []byte("reader@example.invalid\n"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(h.repo.Root, "comma,name.txt"), []byte("reader@mail.local\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	out := h.mustRun(append(base, "--json", "report", "--rescan", "--file", "comma,name.txt", "--path", "comma,name.txt")...)

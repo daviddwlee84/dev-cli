@@ -134,7 +134,7 @@ func TestHygieneManageJSONPreviewsWithoutRepositoryMutation(t *testing.T) {
 func hygieneReportFixture(t *testing.T) *harness {
 	t.Helper()
 	h := newHarness(t)
-	sample := "contact person@example.org\ncopy person@example.org and other@example.org\n"
+	sample := "contact person@mail.local\ncopy person@mail.local and other@mail.local\n"
 	if err := os.WriteFile(filepath.Join(h.repo.Root, "sample.txt"), []byte(sample), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestHygieneCLIReportSummarizesLatestScanWithoutValues(t *testing.T) {
 			t.Fatalf("human report lacks %q:\n%s", want, human)
 		}
 	}
-	for _, raw := range []string{"person@example.org", "other@example.org"} {
+	for _, raw := range []string{"person@mail.local", "other@mail.local"} {
 		if strings.Contains(out, raw) || strings.Contains(human, raw) {
 			t.Fatalf("raw value %q reached report output", raw)
 		}
@@ -173,8 +173,8 @@ func TestHygieneCLIReportValuesUsePrivateReviewPath(t *testing.T) {
 	h := hygieneReportFixture(t)
 	policy := []string{"hygiene", "--repo", h.repo.Root, "--secrets", "off", "--generic", "warn"}
 	human := h.mustRun(append(policy, "report", "--values", "--file", "sample.txt")...)
-	if !strings.Contains(human, "VALUES · privacy-email (masked)") || !strings.Contains(human, "p•••@e•••.org") ||
-		!strings.Contains(human, "dev hygiene review-path ") || strings.Contains(human, "person@example.org") {
+	if !strings.Contains(human, "VALUES · privacy-email (masked)") || !strings.Contains(human, "p•••@m•••.local") ||
+		!strings.Contains(human, "dev hygiene review-path ") || strings.Contains(human, "person@mail.local") {
 		t.Fatalf("values report:\n%s", human)
 	}
 	out := h.mustRun(append(policy, "--json", "report", "--values", "--file", "sample.txt")...)
@@ -182,15 +182,15 @@ func TestHygieneCLIReportValuesUsePrivateReviewPath(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &summary); err != nil {
 		t.Fatal(err)
 	}
-	if !summary.Rescanned || !summary.ValuesShown || len(summary.Rules[0].Values) != 2 || summary.Rules[0].Values[0].Occurrences != 2 || strings.Contains(out, "example.org\"") {
+	if !summary.Rescanned || !summary.ValuesShown || len(summary.Rules[0].Values) != 2 || summary.Rules[0].Values[0].Occurrences != 2 || strings.Contains(out, "mail.local\"") {
 		t.Fatalf("values summary = %s", out)
 	}
 	path := strings.TrimSpace(h.mustRun("hygiene", "--repo", h.repo.Root, "review-path", summary.ReportID))
-	if strings.Contains(path, "person@example.org") {
+	if strings.Contains(path, "person@mail.local") {
 		t.Fatal("review-path printed a raw value")
 	}
 	body, err := os.ReadFile(path)
-	if err != nil || !strings.Contains(string(body), "person@example.org") || !strings.Contains(string(body), "sample.txt:1") {
+	if err != nil || !strings.Contains(string(body), "person@mail.local") || !strings.Contains(string(body), "sample.txt:1") {
 		t.Fatalf("private values review: %v\n%s", err, body)
 	}
 }

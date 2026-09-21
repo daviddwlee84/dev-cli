@@ -2,7 +2,7 @@
 description: Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-18
+verified_on: 2026-09-21
 tested_with: Claude Code 2.1.259
 ---
 
@@ -710,6 +710,11 @@ Default latest lookup is per checkout and excludes snapshots; an explicit
 observations, not current clean authority. A stored summary exits 0 even with
 blocking findings or gaps. An incomplete `--rescan` emits its summary and exits
 non-zero; this summarizer is not a replacement for the blocking scan hook.
+
+Default Go credential verification and generic privacy noise filtering change
+new scan findings, not schema 1 or previously stored reports. They apply equally
+to normal and audit scans. Explicit private rules and customized secret detectors
+retain their semantics; see [detector boundaries](../guides/hygiene.md#local-identity-rules-and-exceptions).
 
 `--values` implies a rescan unless `--report` names a scan captured with values.
 Only masks are public: secrets retain first/last two characters plus length
