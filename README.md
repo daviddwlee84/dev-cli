@@ -122,11 +122,12 @@ dev config init  # detects this machine's repo roots and writes a config
 
 The formula installs the `dev` binary plus bash, zsh and fish completions. It
 does not write into your home directory or install the bundled agent skill.
-Each stable release updates the tap automatically. A Homebrew-owned `dev`
+The tap checks stable releases hourly and installs their prebuilt binaries. A Homebrew-owned `dev`
 never self-replaces: `dev upgrade` delegates to the matching `brew upgrade`
 command, which preserves Homebrew's install records, linking, rollback, and cleanup.
-Maintainers can retry or backfill formula publication for an existing release
-with `gh workflow run publish-homebrew.yml -f version=vMAJOR.MINOR.PATCH`.
+Maintainers can retry synchronization with
+`gh workflow run sync.yml --repo daviddwlee84/homebrew-tap -f tool=dev-cli`.
+`brew install --HEAD daviddwlee84/tap/dev-cli` retains the source-build option.
 
 ### Scoop (Windows)
 
