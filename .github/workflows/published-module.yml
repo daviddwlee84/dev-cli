@@ -1,0 +1,31 @@
+name: Published module installation
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Published immutable stable version to verify
+        required: true
+        type: string
+permissions:
+  contents: read
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify public ZIP and install fixed tag and latest in disposable state
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]
+          python3 scripts/verify-published-module.py --root "$GITHUB_WORKSPACE" --version "$RELEASE_TAG"
