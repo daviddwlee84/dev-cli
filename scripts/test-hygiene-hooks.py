@@ -97,7 +97,7 @@ def main():
             raise RuntimeError('raw byte recovery failed')
         plan = json.loads(run(*dev, '--json', 'repair-encoding', '--file', '.hidden/fixture.txt').stdout)
         run(*dev, 'repair-encoding', '--apply', '--plan', plan['id'], '--yes')
-        target.write_bytes(target.read_bytes() + b'fixture@example.com\n')
+        target.write_bytes(target.read_bytes() + b'fixture@service.local\n')
         run('git', 'add', '.hidden/fixture.txt')
         report = json.loads(run(*dev, '--json', 'scan', '--scope', 'staged').stdout)
         if report['status'] != 'complete' or not report['warnings'] or report['blocked']:
