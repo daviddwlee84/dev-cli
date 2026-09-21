@@ -85,6 +85,12 @@ func TestSkillUpdateRepoUsesSelectedCheckout(t *testing.T) {
 	if err := os.Rename(otherRepo.Root, otherPath); err != nil {
 		t.Fatal(err)
 	}
+	// The provider observes the physical native cwd, not Windows 8.3 aliases.
+	var err error
+	otherPath, err = filepath.EvalSymlinks(otherPath)
+	if err != nil {
+		t.Fatal(err)
+	}
 	otherRepo.Root = otherPath
 	writeCLISkill(t, filepath.Join(otherPath, ".agents", "skills", "shared"), "Shared Skill")
 	if err := os.WriteFile(filepath.Join(otherPath, "skills-lock.json"), []byte(`{
