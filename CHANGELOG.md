@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.41] - 2026-09-22
+
 ### Added
 
 - Dashboard REPOS → Ctrl+O → hygiene now inspects status, reads the selected
@@ -16,6 +18,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   visible with a reason; selecting them never executes an operation.
 
 ### Fixed
+
+- Go module ZIPs now exclude the existing SpecStory and agent-plan evidence
+  directories using narrow nested-module boundaries. Release CI independently
+  extracts, compiles and smoke-tests both compact source and Go module packages
+  while retaining embedded help, skills and hygiene rules.
 
 - Hygiene's default generic credential detectors now verify Go source spans
   against the scanned Git object, excluding syntax-only matches while retaining
@@ -1340,7 +1347,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.40...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.41...HEAD
+[0.2.41]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.40...v0.2.41
 [0.2.40]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.39...v0.2.40
 [0.2.39]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.38...v0.2.39
 [0.2.38]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.37...v0.2.38

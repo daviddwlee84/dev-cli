@@ -329,14 +329,25 @@ operator-coordinated actions.
 | Action | Effect | Earlier commits |
 |---|---|---|
 | `.gitattributes` `export-ignore` | Exclude selected paths from `git archive` source packages | Unchanged |
+| Nested `go.mod` in evidence-only directories | Exclude those directories from the parent Go module ZIP | Unchanged |
 | Ignore and untrack | Stop including new versions in source commits; retain working files | Unchanged |
 | Filter a separate repository copy | Build replacement history without selected paths | Different commit IDs in that copy |
 
-For dev-cli v0.2.40 release source archives, `.gitattributes` excludes the root
+For dev-cli release source archives, `.gitattributes` excludes the root
 `.specstory` directory and only these agent-plan roots: `.claude/plans`,
 `.codex/plans`, `.cursor/plans` and `.opencode/plans`. This is a publication
 boundary, not Git untracking or history rewriting; other agent configuration and
-skills are not excluded by these rules.
+skills are not excluded by these rules. Since v0.2.41, the existing evidence-only
+roots also contain commented `go.mod` boundary markers: Go ignores
+`export-ignore`, but excludes nested modules from a parent module ZIP. These
+markers declare no product packages or dependencies. Do not place them over
+embedded or generated build inputs, or create empty agent directories.
+
+`python3 scripts/check-distribution.py --version v0.2.41` independently builds
+the actual Git archive and a module ZIP with pinned `golang.org/x/mod v0.38.0`.
+Only a temporary clone disables export attributes for the module test. Both
+payloads are extracted, built and checked for version, help, completions and
+bundled skill output. This does not shrink ordinary Git clones or old tags.
 
 For example, this excludes chats from source archives while leaving them in Git:
 

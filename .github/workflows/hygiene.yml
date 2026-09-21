@@ -26,6 +26,8 @@ jobs:
         run: |
           go install github.com/zricethezav/gitleaks/v8@v8.30.1
           python -m pip install pre-commit==4.6.0 git-filter-repo==2.47.0
+      - name: Require real scanner regressions without skips
+        run: python scripts/check-hygiene-regressions.py
       - name: Verify native privacy storage and text transactions
         run: go test ./internal/hygiene ./internal/configedit ./internal/privatefile ./internal/safefile
       - name: Repeat Windows quoted-secret snapshot regression

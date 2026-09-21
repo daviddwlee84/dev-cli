@@ -1,0 +1,19 @@
+{
+  "main": "./cmd/dev",
+  "version_symbol": "github.com/daviddwlee84/dev-cli/internal/cli.Version",
+  "required": [
+    "cmd/dev/main.go",
+    "internal/skill/dev-cli/SKILL.md",
+    "internal/help/topics/ai-artifacts.md",
+    "internal/hygiene/assets/gitleaks.toml"
+  ],
+  "smoke": [
+    [
+      "--skill"
+    ],
+    [
+      "help",
+      "ai-artifacts"
+    ]
+  ]
+}

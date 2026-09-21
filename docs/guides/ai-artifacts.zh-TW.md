@@ -297,13 +297,22 @@ release/tag 遷移，以及 filtered history 的 force-with-lease 發布另行�
 | 操作 | 效果 | 先前 commits |
 |---|---|---|
 | `.gitattributes` 的 `export-ignore` | 從 `git archive` 發行包排除指定路徑 | 不變 |
+| 純紀錄目錄中的巢狀 `go.mod` | 從父 Go module ZIP 排除該目錄 | 不變 |
 | Ignore 加上 untrack | 後續 source commit 不再加入新版本，工作檔保留 | 不變 |
 | 在獨立副本過濾歷史 | 產生不含指定路徑的替代歷史 | 副本中的 commit ID 改變 |
 
-dev-cli v0.2.40 的 release source archive 透過 `.gitattributes` 排除 repo root 的
+dev-cli 的 release source archive 透過 `.gitattributes` 排除 repo root 的
 `.specstory`，以及精確的 agent-plan 根目錄 `.claude/plans`、`.codex/plans`、
 `.cursor/plans` 與 `.opencode/plans`。這只改變發行邊界，不停止 Git tracking 或
-改寫 history；這些規則不排除其他 agent 設定與 skills。
+改寫 history；這些規則不排除其他 agent 設定與 skills。自 v0.2.41 起，既有的
+純紀錄目錄另外加入附註解的 `go.mod` 邊界標記。Go 不使用 `export-ignore`，
+但會從父 module ZIP 排除巢狀 module；這些標記沒有產品 package 或依賴。
+不可把標記放在 embedded／generated build inputs 上，也不建立空的 agent 目錄。
+
+`python3 scripts/check-distribution.py --version v0.2.41` 分別產生真正的 Git
+archive 與使用固定 `golang.org/x/mod v0.38.0` 的 module ZIP；只有暫存 clone
+會停用 module 測試的 export attributes。兩種 payload 都會解壓、編譯，並驗證
+版本、help、completion 與 bundled skill。這不會縮小一般 Git clone 或舊 tags。
 
 保留 Git history、排除 source archive 的例子：
 

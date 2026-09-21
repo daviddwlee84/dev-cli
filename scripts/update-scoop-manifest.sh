@@ -36,8 +36,12 @@ jq --arg v "$BARE" --arg amd "$AMD64" --arg arm "$ARM64" --arg base "$BASE" '
 mv "$tmp" "$MANIFEST"
 echo "updated $MANIFEST to $BARE"
 
-if command -v gh >/dev/null 2>&1; then
-  gh release upload "$VERSION" "$MANIFEST" --clobber || echo "could not attach manifest to $VERSION"
+if [ "${3:-}" = --render-only ]; then
+  exit 0
+fi
+
+if [ "${3:-}" != --bucket-only ] && command -v gh >/dev/null 2>&1; then
+  gh release upload "$VERSION" "$MANIFEST" || echo "could not attach manifest to $VERSION"
 fi
 
 if [ -n "${SCOOP_BUCKET_TOKEN:-}" ]; then

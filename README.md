@@ -63,10 +63,11 @@ $ dev ls
 Choose transcript retention separately from scanning and packaging. SpecStory
 histories and agent plans remain trackable, but `.gitattributes` excludes
 `.specstory` and the exact `.claude/plans`, `.codex/plans`, `.cursor/plans` and
-`.opencode/plans` roots from release source archives so Homebrew does not download
-that conversation and draft-plan evidence to build the CLI. This publication
-boundary does not change Git tracking or history, or exclude other agent
-configuration and skills.
+`.opencode/plans` roots from release source archives. Starting with v0.2.41, small nested
+`go.mod` boundary markers also exclude the existing evidence directories from
+Go module ZIPs used by `go install`. Binary archives contain only the executable.
+These publication boundaries preserve Git tracking/history and required help,
+skill and rule resources; an ordinary clone still downloads Git history.
 Use `dev artifact setup --mode archive --source specstory --archive /path/to/history
 --protection off --json` to preview explicit raw preservation, or choose `check` /
 `redact`. Apply the reviewed plan with `dev artifact setup --apply --plan <id> --yes`.
@@ -143,7 +144,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.40 instead when you need a reproducible install.
+# Pin @v0.2.41 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -187,7 +188,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.2.40
+  version=v0.2.41
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"

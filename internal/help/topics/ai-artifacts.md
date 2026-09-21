@@ -355,3 +355,13 @@ not revoke them or remove copies held by other people and services.
 See `dev help hygiene` for scanning and reviewed redaction, `dev help retirement`
 for post-writer handoffs, `dev help repositories` for setup, and `dev help storage`
 for durable data versus caches.
+
+### Go module distribution boundary
+
+From v0.2.41, release source archives and Go module ZIPs both omit the existing
+SpecStory and agent-plan evidence directories. Git archives use `export-ignore`;
+Go uses nested `go.mod` boundary markers in those evidence-only roots. Preserve
+all embedded help, skills, rules and generated build inputs. Verify both real
+payloads with `python3 scripts/check-distribution.py --version v0.2.41` after
+committing the packaging changes. This does not untrack evidence or shrink Git
+clones, and older immutable tags retain their original package contents.
