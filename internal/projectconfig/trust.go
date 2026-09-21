@@ -15,6 +15,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 )
 
 const TrustStoreVersion = 1
@@ -246,14 +247,15 @@ func (s *TrustStore) saveLocked(records []TrustRecord) error {
 	}
 	name := temporary.Name()
 	defer os.Remove(name)
+	if err := privatefile.ProtectCreatedFile(temporary); err != nil {
+		_ = temporary.Close()
+		return err
+	}
 	if _, err := temporary.Write(data); err != nil {
 		_ = temporary.Close()
 		return fmt.Errorf("write project config trust store: %w", err)
 	}
 	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(name, 0o600); err != nil {
 		return err
 	}
 	if err := os.Rename(name, s.Path); err == nil {

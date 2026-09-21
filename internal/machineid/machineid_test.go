@@ -40,8 +40,15 @@ func TestLoadOrCreatePersistsStablePrivateUUID(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if directoryInfo.Mode().Perm() != 0o700 || fileInfo.Mode().Perm() != 0o600 {
-		t.Fatalf("identity modes = dir %04o file %04o", directoryInfo.Mode().Perm(), fileInfo.Mode().Perm())
+	for path, want := range map[string]os.FileMode{filepath.Dir(path): 0o700, path: 0o600} {
+		info := fileInfo
+		if want == 0o700 {
+			info = directoryInfo
+		}
+		private, err := privateModeMatches(path, info.Mode(), want)
+		if err != nil || !private {
+			t.Fatalf("identity privacy %s: private=%v error=%v", path, private, err)
+		}
 	}
 }
 
@@ -100,11 +107,14 @@ func TestLoadRejectsMalformedWrongVersionUnknownAndTrailingData(t *testing.T) {
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
 			directory := t.TempDir()
-			if err := os.Chmod(directory, 0o700); err != nil {
+			if err := setPrivateMode(directory, 0o700); err != nil {
 				t.Fatal(err)
 			}
 			path := filepath.Join(directory, "identity.json")
 			if err := os.WriteFile(path, []byte(test.body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := setPrivateMode(path, 0o600); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := NewStore(path).Load(); err == nil || !strings.Contains(err.Error(), test.want) {
@@ -116,7 +126,7 @@ func TestLoadRejectsMalformedWrongVersionUnknownAndTrailingData(t *testing.T) {
 
 func TestLoadRejectsPublicModeWithoutReplacingIdentity(t *testing.T) {
 	directory := t.TempDir()
-	if err := os.Chmod(directory, 0o700); err != nil {
+	if err := setPrivateMode(directory, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(directory, "identity.json")
@@ -143,6 +153,10 @@ func TestLoadOrCreateRejectsPublicDirectoryWithoutChmoddingIt(t *testing.T) {
 	if err := os.Chmod(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
+	before, err := os.Stat(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := NewStore(filepath.Join(directory, "identity.json")).LoadOrCreate(context.Background()); err == nil || !strings.Contains(err.Error(), "want 0700") {
 		t.Fatalf("LoadOrCreate = %v", err)
 	}
@@ -150,8 +164,11 @@ func TestLoadOrCreateRejectsPublicDirectoryWithoutChmoddingIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o755 {
-		t.Fatalf("public parent mode changed to %04o", info.Mode().Perm())
+	if info.Mode().Perm() != before.Mode().Perm() {
+		t.Fatalf("public parent mode changed: before=%04o after=%04o", before.Mode().Perm(), info.Mode().Perm())
+	}
+	if private, err := privateModeMatches(directory, info.Mode(), 0o700); err != nil || private {
+		t.Fatalf("public parent privacy changed: private=%v error=%v", private, err)
 	}
 }
 

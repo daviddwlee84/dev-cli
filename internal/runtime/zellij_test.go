@@ -205,11 +205,7 @@ func TestZellijActivateOutsideAttaches(t *testing.T) {
 	t.Setenv("ZELLIJ", "")
 	t.Setenv("ZELLIJ_SESSION_NAME", "")
 	record := filepath.Join(t.TempDir(), "record")
-	script := filepath.Join(t.TempDir(), "zellij")
-	body := "#!/bin/sh\nprintf '%s' \"$*\" > \"$DEV_TEST_RECORD\"\n"
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := nativeRuntimeFixture(t, "zellij", "record")
 	t.Setenv("DEV_TEST_RECORD", record)
 	z := NewZellij()
 	z.bin = script

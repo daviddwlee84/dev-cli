@@ -13,6 +13,7 @@ import (
 
 	devconfig "github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/lockx"
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 	"github.com/google/uuid"
 )
 
@@ -186,19 +187,25 @@ func (s *Store) write(id string) error {
 }
 
 func ensurePrivateDir(path string) error {
-	created := false
 	if _, err := os.Lstat(path); errors.Is(err, fs.ErrNotExist) {
-		if err := os.MkdirAll(path, 0o700); err != nil {
+		parent := filepath.Dir(path)
+		if parent == path {
 			return err
 		}
-		created = true
+		if _, parentErr := os.Lstat(parent); errors.Is(parentErr, fs.ErrNotExist) {
+			if err := ensurePrivateDir(parent); err != nil {
+				return err
+			}
+		} else if parentErr != nil {
+			return parentErr
+		}
+		// Publish an already-private directory. Creating it first and applying its
+		// DACL later lets concurrent callers observe an unprotected Windows object.
+		if err := privatefile.MakeDir(path); err != nil && !errors.Is(err, fs.ErrExist) {
+			return err
+		}
 	} else if err != nil {
 		return err
-	}
-	if created {
-		if err := setPrivateMode(path, 0o700); err != nil {
-			return err
-		}
 	}
 	return checkPrivateDir(path)
 }

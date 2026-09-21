@@ -225,6 +225,9 @@ either explicit or a best-effort background refresh — `dev --version` and
 
 ### Windows
 
+The complete native Windows Go suite is a required CI gate, alongside the
+dedicated SSH, privacy, cleanup and handoff checks.
+
 `dev` builds and runs on Windows, and core commands work. Native Windows support
 also covers SSH host discovery/managed fragments, OpenSSH key generation and
 bootstrap ACL checks, and fleet transport to POSIX or Windows OpenSSH servers.

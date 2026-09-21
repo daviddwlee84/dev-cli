@@ -21,8 +21,9 @@ func TestPortableGlobExpansionIsSortedExactAndDoesNotFollowLinks(t *testing.T) {
 	}
 	outside := t.TempDir()
 	writeTestFile(t, filepath.Join(outside, "leak.json"), "secret")
-	if err := os.Symlink(outside, filepath.Join(root, ".mcp", "linked")); err != nil && runtime.GOOS != "windows" {
-		t.Fatal(err)
+	linkErr := os.Symlink(outside, filepath.Join(root, ".mcp", "linked"))
+	if linkErr != nil && runtime.GOOS != "windows" {
+		t.Fatal(linkErr)
 	}
 	paths, err := Expand(root, []Pattern{
 		{Value: ".mcp/**", Source: "project"},
@@ -32,7 +33,7 @@ func TestPortableGlobExpansionIsSortedExactAndDoesNotFollowLinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []string{".env", ".mcp/a.json", ".mcp/linked", ".mcp/nested/b.json"}
-	if runtime.GOOS == "windows" {
+	if linkErr != nil {
 		want = []string{".env", ".mcp/a.json", ".mcp/nested/b.json"}
 	}
 	if len(paths) != len(want) {

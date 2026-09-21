@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -90,7 +91,7 @@ func newFleetFilesHarness(t *testing.T) *fleetFilesHarness {
 	}
 	ssh := "#!/bin/sh\nexec \"$DEV_FAKE_SSH_TEST_BINARY\" -test.run '^TestFleetFilesFakeSSHProcess$' -- \"$@\"\n"
 	fleetFilesWriteMode(t, filepath.Join(binDir, "ssh"), ssh, 0o755)
-	t.Setenv("HOME", sourceHome)
+	testutil.SetHome(t, sourceHome)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(sourceHome, ".config"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(sourceHome, ".local", "share"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(sourceHome, ".cache"))

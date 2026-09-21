@@ -162,7 +162,11 @@ func worktrees(ctx context.Context, dir string) ([]Worktree, error) {
 		switch key {
 		case "worktree":
 			flush()
-			cur = &Worktree{Path: val, Main: len(list) == 0}
+			path, pathErr := pathx.Canonical(val)
+			if pathErr != nil {
+				return nil, fmt.Errorf("canonicalize Git worktree path: %w", pathErr)
+			}
+			cur = &Worktree{Path: path, Main: len(list) == 0}
 		case "HEAD":
 			if cur != nil {
 				cur.Head = val
@@ -243,7 +247,13 @@ func AddWorktree(ctx context.Context, dir, path, branch, base string) error {
 // administrative metadata keeps pointing at the checkout's new path. dir may
 // be any checkout of the same repository.
 func MoveWorktree(ctx context.Context, dir, source, destination string) error {
-	_, err := run(ctx, dir, "worktree", "move", source, destination)
+	// Windows cannot rename the current directory of the Git subprocess. Use
+	// the verified main checkout even when the caller selected the linked one.
+	repository, err := Discover(ctx, dir)
+	if err != nil {
+		return err
+	}
+	_, err = run(ctx, repository.MainRoot, "worktree", "move", source, destination)
 	return err
 }
 

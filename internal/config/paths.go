@@ -66,7 +66,7 @@ func Contract(p string) string {
 		return "~"
 	}
 	if h != "" && strings.HasPrefix(p, h+string(filepath.Separator)) {
-		return "~" + p[len(h):]
+		return "~/" + filepath.ToSlash(p[len(h)+1:])
 	}
 	return p
 }

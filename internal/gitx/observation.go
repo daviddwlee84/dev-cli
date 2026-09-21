@@ -2,8 +2,9 @@ package gitx
 
 import (
 	"context"
-	"path/filepath"
 	"sync"
+
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 )
 
 type observationKey struct{}
@@ -29,7 +30,7 @@ func observe[T any](ctx context.Context, kind, path string, read func() (T, erro
 	if !ok {
 		return read()
 	}
-	if canonical, err := filepath.EvalSymlinks(path); err == nil {
+	if canonical, err := pathx.Canonical(path); err == nil {
 		path = canonical
 	}
 	key := kind + "\x00" + path

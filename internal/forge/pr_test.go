@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
-	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -17,12 +15,6 @@ import (
 // that helper's fixed two-page pagination.
 func installScriptedCLI(t *testing.T, name string, responses map[string]any) string {
 	t.Helper()
-	if runtime.GOOS == "windows" {
-		t.Skip("the stub CLI is a POSIX shell script")
-	}
-	dir := t.TempDir()
-	log := filepath.Join(dir, "calls.log")
-
 	matches := make([]string, 0, len(responses))
 	for match := range responses {
 		matches = append(matches, match)
@@ -35,31 +27,16 @@ func installScriptedCLI(t *testing.T, name string, responses map[string]any) str
 		}
 		return matches[i] < matches[j]
 	})
-	var cases []string
+	rules := make([]forgeFixtureRule, 0, len(matches)+1)
 	for _, match := range matches {
 		body, err := json.Marshal(responses[match])
 		if err != nil {
 			t.Fatal(err)
 		}
-		if strings.ContainsAny(match, "'*?[") {
-			t.Fatalf("dispatch key %q would not survive shell quoting", match)
-		}
-		path := filepath.Join(dir, strings.NewReplacer("/", "_", " ", "_", "=", "_").Replace(match)+".json")
-		if err := os.WriteFile(path, body, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		// The pattern is single-quoted because dispatch keys contain spaces,
-		// which would otherwise split the case label.
-		cases = append(cases, "  *'"+match+"'*) exec cat "+path+" ;;")
+		rules = append(rules, forgeFixtureRule{Contains: match, Stdout: string(body)})
 	}
-	script := "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$*\" >> \"$SCRIPTED_CLI_LOG\"\ncase \"$*\" in\n" +
-		strings.Join(cases, "\n") + "\n  *) printf '[]' ;;\nesac\n"
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("SCRIPTED_CLI_LOG", log)
-	return log
+	rules = append(rules, forgeFixtureRule{Stdout: "[]"})
+	return installForgeFixture(t, name, rules)
 }
 
 func TestGitHubAccountSearchUnionsRolesForOnePullRequest(t *testing.T) {
@@ -307,18 +284,10 @@ func TestAnyRoleRepoQueryRunsOnceAndLeavesRolesEmpty(t *testing.T) {
 
 func TestListPRsReturnsPartialResultsWithTheError(t *testing.T) {
 	// A failure on the second role must not discard the first role's rows.
-	dir := t.TempDir()
-	script := `#!/bin/sh
-set -eu
-case "$*" in
-  *--author*) printf '[{"number":1,"title":"t","url":"u","state":"OPEN","author":{"login":"me"},"repository":{"nameWithOwner":"o/n"}}]' ;;
-  *) echo "gh: Bad credentials (HTTP 401)" >&2; exit 1 ;;
-esac
-`
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	installForgeFixture(t, "gh", []forgeFixtureRule{
+		{Contains: "--author", Stdout: `[{"number":1,"title":"t","url":"u","state":"OPEN","author":{"login":"me"},"repository":{"nameWithOwner":"o/n"}}]`},
+		{Stderr: "gh: Bad credentials (HTTP 401)\n", Exit: 1},
+	})
 
 	prs, err := (&gh{}).ListAccountPRs(t.Context(), PRQuery{})
 	if err == nil {

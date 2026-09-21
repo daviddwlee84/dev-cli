@@ -51,13 +51,13 @@ func TestSetupImportsOnlyAuthoritativeOrphanPaths(t *testing.T) {
 	ignored := filepath.Join(global, "mentioned.md")
 	_ = os.WriteFile(wanted, []byte("wanted\n"), 0o644)
 	_ = os.WriteFile(ignored, []byte("ignored\n"), 0o644)
-	encoded := strings.NewReplacer("/", "-", ".", "-").Replace(canonicalRoot)
+	encoded := strings.NewReplacer("/", "-", `\`, "-", ":", "-", ".", "-").Replace(canonicalRoot)
 	sessions := filepath.Join(home, ".claude", "projects", encoded)
 	if err := os.MkdirAll(sessions, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	rows := `{"toolUseResult":{"filePath":` + quote(wanted) + `}}` + "\n" +
-		`{"message":{"content":"mentioned ` + ignored + ` in chat"}}` + "\n"
+		`{"message":{"content":` + quote("mentioned "+ignored+" in chat") + `}}` + "\n"
 	if err := os.WriteFile(filepath.Join(sessions, "session.jsonl"), []byte(rows), 0o644); err != nil {
 		t.Fatal(err)
 	}

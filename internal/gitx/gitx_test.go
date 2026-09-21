@@ -10,6 +10,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 )
 
 func TestDiscover(t *testing.T) {
@@ -664,5 +665,35 @@ func TestRemoteFromConfig(t *testing.T) {
 	}
 	if got := gitx.RemoteFromConfig(repo.GitCommonDir, "missing"); got != "" {
 		t.Errorf("missing remote = %q", got)
+	}
+}
+
+func TestGitFilesystemPathsUseCanonicalNativeSpelling(t *testing.T) {
+	r := gittest.New(t)
+	linked := filepath.Join(t.TempDir(), "linked checkout")
+	if err := gitx.AddWorktree(t.Context(), r.Root, linked, "feat/native-path", "main"); err != nil {
+		t.Fatal(err)
+	}
+	for _, input := range []string{r.Root, filepath.ToSlash(r.Root), linked, filepath.ToSlash(linked)} {
+		repository, err := gitx.Discover(t.Context(), input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, path := range []string{repository.Root, repository.GitDir, repository.GitCommonDir, repository.MainRoot} {
+			want, err := pathx.Canonical(path)
+			if err != nil || path != want {
+				t.Fatalf("Git path %q is not canonical native spelling %q: %v", path, want, err)
+			}
+		}
+		rows, err := gitx.Worktrees(t.Context(), input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, row := range rows {
+			want, err := pathx.Canonical(row.Path)
+			if err != nil || row.Path != want {
+				t.Fatalf("worktree path %q is not canonical native spelling %q: %v", row.Path, want, err)
+			}
+		}
 	}
 }

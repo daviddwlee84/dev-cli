@@ -34,6 +34,10 @@ func CreatorOwner() (*windows.SID, error) {
 // before sensitive bytes are written. Callers must retain their creation/source
 // proof; this is not an ownership repair API for existing foreign files.
 func ProtectCreated(path string, mode fs.FileMode) error {
+	return protectCreated(path, mode, nil)
+}
+
+func protectCreated(path string, mode fs.FileMode, expected *windows.ByHandleFileInformation) error {
 	dir := mode.Perm() == 0o700
 	if !dir && mode.Perm() != 0o600 {
 		return errors.New("invalid private mode")
@@ -52,6 +56,9 @@ func ProtectCreated(path string, mode fs.FileMode) error {
 	var info windows.ByHandleFileInformation
 	if windows.GetFileInformationByHandle(h, &info) != nil || info.FileAttributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 || dir != (info.FileAttributes&windows.FILE_ATTRIBUTE_DIRECTORY != 0) || !dir && info.NumberOfLinks != 1 {
 		return errors.New("unsafe created private object")
+	}
+	if expected != nil && (info.VolumeSerialNumber != expected.VolumeSerialNumber || info.FileIndexHigh != expected.FileIndexHigh || info.FileIndexLow != expected.FileIndexLow) {
+		return errors.New("created private file changed before protection")
 	}
 	before, err := windows.GetSecurityInfo(h, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION)
 	if err != nil {

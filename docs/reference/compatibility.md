@@ -252,7 +252,8 @@ diagnostics remain content-free.
 - Shell integration is `dev shell-init powershell`. POSIX shells hand the directory back on file descriptor 3; PowerShell cannot inherit it, so the wrapper passes a temp-file path in `DEV_SHELL_CD_FILE` instead.
 - `dev fleet open` starts a child shell (`%COMSPEC%`) rather than replacing the process, because Windows has no `exec(2)`.
 - `dev fleet machine-id` can perform its content-free `_capability` probe, but native `fleet files` plan/apply payload helpers are denied before content is sent.
-- CI keeps an advisory broad Windows suite for unrelated POSIX assumptions, but `internal/sshhost`, `internal/fleet`, and the SSH/fleet/doctor CLI contracts run in a separate required native `windows-latest` gate. Affected tests/packages and the CLI are also compiled for `windows/arm64`.
+- The complete Go suite is required on native `windows-latest`; a test failure or timeout fails CI. Dedicated SSH/fleet, cleanup, handoff and privacy gates remain required. Tests for explicitly unsupported POSIX mutation transports retain narrow platform boundaries and native Windows rejection checks. Affected tests/packages and the CLI are also compiled for `windows/arm64`.
+- Git paths use canonical native filesystem paths across linked worktrees and aliases; `~/` config paths round-trip on Windows. Machine identity directories are private from creation, and cache/trust temporary files receive owner/DACL protection before content is written.
 
 ### SSH host management is intentionally narrow
 
@@ -750,8 +751,8 @@ Skill removal requires verified native ownership or a bundled install manifest,
 explicit agent scopes and dependency checks. Windows npm-shim removal uses system
 PowerShell and bounded process-tree cancellation; unsupported shell syntax or
 other shim mutation actions fail closed. The dedicated native removal tests are
-required; broad advisory Windows test conclusions are not proof that every
-legacy suite passed.
+required alongside the complete native Windows suite; a passing test run does
+not expand the documented unsupported mutation surfaces.
 
 ## Native artifact closeout (v0.2.40)
 

@@ -61,3 +61,32 @@ func TestProtectCreatedRejectsHardlinkedFile(t *testing.T) {
 		t.Fatal("hardlink accepted")
 	}
 }
+
+func TestProtectCreatedFileRejectsReplacedCreationIdentity(t *testing.T) {
+	first, err := os.CreateTemp(t.TempDir(), "first-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer first.Close()
+	second := filepath.Join(t.TempDir(), "other")
+	if err := os.WriteFile(second, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var expected windows.ByHandleFileInformation
+	if err := windows.GetFileInformationByHandle(windows.Handle(first.Fd()), &expected); err != nil {
+		t.Fatal(err)
+	}
+	if err := protectCreated(second, 0o600, &expected); err == nil {
+		t.Fatal("protected a substituted name instead of the retained creation identity")
+	}
+	if err := ProtectCreatedFile(first); err != nil {
+		t.Fatal(err)
+	}
+	info, err := first.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Check(first.Name(), info, false); err != nil {
+		t.Fatal(err)
+	}
+}

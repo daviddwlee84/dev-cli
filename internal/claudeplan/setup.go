@@ -195,7 +195,7 @@ func importOrphans(repoRoot, home, localPlans string) ([]string, error) {
 }
 
 func encodeProjectPath(path string) string {
-	return strings.NewReplacer("/", "-", ".", "-").Replace(path)
+	return strings.NewReplacer("/", "-", `\`, "-", ":", "-", ".", "-").Replace(path)
 }
 
 func scanJSONL(path, globalPlans string, found map[string]bool) error {

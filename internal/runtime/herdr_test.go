@@ -162,11 +162,7 @@ func TestHerdrActivatePropagatesFocusFailure(t *testing.T) {
 func TestHerdrActivateOutsideFocusesThenAttaches(t *testing.T) {
 	t.Setenv("HERDR_ENV", "")
 	record := filepath.Join(t.TempDir(), "record")
-	script := filepath.Join(t.TempDir(), "herdr")
-	body := "#!/bin/sh\nif [ \"$1\" = workspace ]; then printf '{\"result\":{}}'; else printf attach > \"$DEV_TEST_RECORD\"; fi\n"
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := nativeRuntimeFixture(t, "herdr", "herdr-attach")
 	t.Setenv("DEV_TEST_RECORD", record)
 	h := NewHerdr()
 	h.bin = script

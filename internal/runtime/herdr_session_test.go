@@ -4,10 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 	"reflect"
-	goruntime "runtime"
 	"strings"
 	"testing"
 )
@@ -149,14 +146,7 @@ func TestScopedHerdrEnvironmentRemovesCallerRoutingOnly(t *testing.T) {
 	if got := scopedHerdrEnvironment(input); !reflect.DeepEqual(got, []string{"PATH=/bin", "HERDR_ENV=1", "HERDR_CONFIG_PATH=/native/config"}) {
 		t.Fatalf("environment = %v", got)
 	}
-	if goruntime.GOOS == "windows" {
-		return
-	}
-	file := filepath.Join(t.TempDir(), "herdr")
-	program := "#!/bin/sh\n[ -z \"${HERDR_SOCKET_PATH+x}${HERDR_CLIENT_SOCKET_PATH+x}${HERDR_SESSION+x}\" ] || exit 91\n[ \"$HERDR_ENV\" = caller ] || exit 94\n[ \"$1\" = --session ] && [ \"$2\" = agents ] || exit 92\ncase \"$3 $4\" in\n'workspace list') printf '{\"result\":{\"workspaces\":[]}}';;\n'pane list') printf '{\"result\":{\"panes\":[]}}';;\n*) exit 93;;\nesac\n"
-	if err := os.WriteFile(file, []byte(program), 0o700); err != nil {
-		t.Fatal(err)
-	}
+	file := nativeRuntimeFixture(t, "herdr", "herdr-scoped")
 	for _, variable := range []string{"HERDR_SOCKET_PATH", "HERDR_CLIENT_SOCKET_PATH", "HERDR_SESSION", "HERDR_ENV"} {
 		t.Setenv(variable, "caller")
 	}

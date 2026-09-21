@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 )
 
 // Repo identifies one repository, independent of which worktree you are
@@ -65,6 +67,19 @@ func Discover(ctx context.Context, dir string) (Repo, error) {
 		return Repo{}, ErrNotARepo
 	}
 
+	// Git for Windows reports forward slashes and may expand an 8.3 path.
+	// Expose one physical, native spelling at the Git boundary so callers never
+	// compare those strings with an unrelated lexical spelling of the same path.
+	for _, field := range []*string{&r.Root, &r.GitDir, &r.GitCommonDir} {
+		if *field == "" {
+			continue
+		}
+		*field, err = pathx.Canonical(*field)
+		if err != nil {
+			return Repo{}, fmt.Errorf("canonicalize Git repository path: %w", err)
+		}
+	}
+
 	// The main checkout is the parent of the common .git dir, except for a
 	// bare repo (where the common dir *is* the repo).
 	if r.Bare {
@@ -88,7 +103,10 @@ func Discover(ctx context.Context, dir string) (Repo, error) {
 		if probeErr != nil || len(fields) != 2 || !sameCanonicalPath(fields[1], r.GitCommonDir) {
 			return Repo{}, fmt.Errorf("cannot verify main checkout for Git common directory %s", r.GitCommonDir)
 		}
-		r.MainRoot = fields[0]
+		r.MainRoot, err = pathx.Canonical(fields[0])
+		if err != nil {
+			return Repo{}, fmt.Errorf("canonicalize main checkout: %w", err)
+		}
 	}
 	r.IsLinkedWorktree = r.Root != "" && r.GitDir != r.GitCommonDir
 	r.Name = filepath.Base(r.MainRoot)

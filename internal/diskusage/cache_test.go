@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/diskusage"
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 )
 
 func cacheUsage(at time.Time) diskusage.Usage {
@@ -34,8 +35,8 @@ func TestCacheRoundTripTTLPermissionsAndInvalidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Errorf("cache mode = %v, want 0600", info.Mode().Perm())
+	if err := privatefile.Check(path, info, false); err != nil {
+		t.Fatalf("private state: %v", err)
 	}
 
 	loaded := diskusage.NewCache(path, 10*time.Minute)

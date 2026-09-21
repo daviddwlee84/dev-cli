@@ -10,8 +10,8 @@ import (
 
 func TestGitignoreAgentArtifactContract(t *testing.T) {
 	h := newHarness(t)
-	t.Setenv("GIT_CONFIG_GLOBAL", "/dev/null")
-	t.Setenv("GIT_CONFIG_SYSTEM", "/dev/null")
+	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 
 	cwd, err := os.Getwd()
 	if err != nil {

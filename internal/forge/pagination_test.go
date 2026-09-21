@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -47,39 +46,17 @@ func TestGitLabListReposUsesMembershipAndPaginates(t *testing.T) {
 
 func installPagedCLI(t *testing.T, name string, page1, page2 any) string {
 	t.Helper()
-	dir := t.TempDir()
-	log := filepath.Join(dir, "calls.log")
-	writeJSON := func(name string, value any) string {
-		path := filepath.Join(dir, name)
-		data, err := json.Marshal(value)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, data, 0o600); err != nil {
-			t.Fatal(err)
-		}
-		return path
-	}
-	p1, p2 := writeJSON("page1.json", page1), writeJSON("page2.json", page2)
-	script := `#!/bin/sh
-set -eu
-printf '%s\n' "$*" >> "$PAGED_CLI_LOG"
-page=
-for arg in "$@"; do
-  case "$arg" in page=*) page="$arg" ;; esac
-done
-case "$page" in
-  page=1) exec cat "$PAGED_CLI_PAGE1" ;;
-  page=2) exec cat "$PAGED_CLI_PAGE2" ;;
-  *) printf '[]' ;;
-esac
-`
-	if err := os.WriteFile(filepath.Join(dir, name), []byte(script), 0o755); err != nil {
+	first, err := json.Marshal(page1)
+	if err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("PAGED_CLI_LOG", log)
-	t.Setenv("PAGED_CLI_PAGE1", p1)
-	t.Setenv("PAGED_CLI_PAGE2", p2)
-	return log
+	second, err := json.Marshal(page2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return installForgeFixture(t, name, []forgeFixtureRule{
+		{Arg: "page=1", Stdout: string(first)},
+		{Arg: "page=2", Stdout: string(second)},
+		{Stdout: "[]"},
+	})
 }

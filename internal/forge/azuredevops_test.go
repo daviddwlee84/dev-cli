@@ -3,28 +3,16 @@ package forge
 import (
 	"errors"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
 func TestAzureDevOpsListReposKeepsPartialResults(t *testing.T) {
-	logPath := installFakeAz(t, `
-if [ "$1" = "extension" ]; then
-  printf 'azure-devops\n'
-  exit 0
-fi
-case "$*" in
-  *"--project Platform"*)
-    printf '%s\n' '[{"name":"zeta","remoteUrl":"https://dev.azure.com/acme/Platform/_git/zeta","project":{"name":"Platform","visibility":"private"}},{"name":"alpha","remoteUrl":"https://dev.azure.com/acme/Platform/_git/alpha","project":{"name":"Platform","visibility":"private"}}]'
-    ;;
-  *"--project Broken"*)
-    printf 'permission denied\n' >&2
-    exit 1
-    ;;
-  *) exit 2 ;;
-esac
-`)
+	logPath := installForgeFixture(t, "az", []forgeFixtureRule{
+		{Prefix: "extension ", Stdout: "azure-devops\n"},
+		{Contains: "--project Platform", Stdout: `[{"name":"zeta","remoteUrl":"https://dev.azure.com/acme/Platform/_git/zeta","project":{"name":"Platform","visibility":"private"}},{"name":"alpha","remoteUrl":"https://dev.azure.com/acme/Platform/_git/alpha","project":{"name":"Platform","visibility":"private"}}]`},
+		{Contains: "--project Broken", Stderr: "permission denied\n", Exit: 1},
+	})
 	adapter := NewAzureDevOps([]AzureDevOpsTarget{
 		{Organization: "https://dev.azure.com/acme", Project: "Platform"},
 		{Organization: "https://dev.azure.com/acme", Project: "Broken"},
@@ -43,17 +31,10 @@ esac
 }
 
 func TestAzureDevOpsCreatePRReturnsPortalURL(t *testing.T) {
-	logPath := installFakeAz(t, `
-if [ "$1" = "extension" ]; then
-  printf 'azure-devops\n'
-  exit 0
-fi
-if [ "$1" = "repos" ] && [ "$2" = "pr" ] && [ "$3" = "create" ]; then
-  printf '%s\n' '{"pullRequestId":42,"remoteUrl":"https://acme@dev.azure.com/acme/Platform%20Tools/_git/api"}'
-  exit 0
-fi
-exit 2
-`)
+	logPath := installForgeFixture(t, "az", []forgeFixtureRule{
+		{Prefix: "extension ", Stdout: "azure-devops\n"},
+		{Prefix: "repos pr create ", Stdout: `{"pullRequestId":42,"remoteUrl":"https://acme@dev.azure.com/acme/Platform%20Tools/_git/api"}`},
+	})
 	adapter := NewAzureDevOps(nil)
 	url, err := adapter.CreatePR(t.Context(), t.TempDir(), PRRequest{
 		Base: "main", Head: "feat/azure", Title: "Azure support", Body: "Ready", Draft: true,
@@ -72,13 +53,7 @@ exit 2
 }
 
 func TestAzureDevOpsMissingExtensionStopsBeforeReposCommand(t *testing.T) {
-	logPath := installFakeAz(t, `
-if [ "$1" = "extension" ]; then
-  exit 1
-fi
-printf 'unexpected command\n' >&2
-exit 2
-`)
+	logPath := installForgeFixture(t, "az", []forgeFixtureRule{{Prefix: "extension ", Exit: 1}})
 	adapter := NewAzureDevOps(nil)
 	_, err := adapter.CreatePR(t.Context(), t.TempDir(), PRRequest{Base: "main", Head: "feat/x"})
 	var missing *ErrNoExtension
@@ -90,17 +65,4 @@ exit 2
 	if len(lines) != 1 || !strings.HasPrefix(lines[0], "extension show") {
 		t.Fatalf("expected extension preflight only, got:\n%s", log)
 	}
-}
-
-func installFakeAz(t *testing.T, body string) string {
-	t.Helper()
-	binDir := t.TempDir()
-	logPath := filepath.Join(t.TempDir(), "az.log")
-	script := "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$*\" >> \"$AZ_TEST_LOG\"\n" + body
-	if err := os.WriteFile(filepath.Join(binDir, "az"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("AZ_TEST_LOG", logPath)
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	return logPath
 }

@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	bundledskill "github.com/daviddwlee84/dev-cli/internal/skill"
+
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestNativeReadsNeverExecuteProvidersOrProjectCode(t *testing.T) {
@@ -18,7 +20,7 @@ func TestNativeReadsNeverExecuteProvidersOrProjectCode(t *testing.T) {
 	repository := initRepository(t)
 	writeSkill(t, filepath.Join(repository, ".agents", "skills", "safe"), "safe", "")
 	projectMarker := filepath.Join(t.TempDir(), "project-code-ran")
-	writeExecutable(t, filepath.Join(repository, ".agents", "skills", "safe", "run.sh"), "#!/bin/sh\nprintf ran > \""+projectMarker+"\"\n")
+	writeProviderFixture(t, filepath.Join(repository, ".agents", "skills", "safe", "run"), providerFixture{Marker: projectMarker, MarkerText: "ran"})
 	writeLock(t, filepath.Join(repository, "skills-lock.json"), 1, map[string]any{
 		"safe": map[string]any{"source": "owner/repo", "sourceType": "github", "skillPath": "skills/safe/SKILL.md", "computedHash": strings.Repeat("a", 64)},
 	})
@@ -26,7 +28,7 @@ func TestNativeReadsNeverExecuteProvidersOrProjectCode(t *testing.T) {
 	bin := t.TempDir()
 	providerMarker := filepath.Join(t.TempDir(), "provider-ran")
 	for _, name := range []string{"skills", "npx", "npm"} {
-		writeExecutable(t, filepath.Join(bin, name), "#!/bin/sh\nprintf '"+name+" %s' \"$*\" > \""+providerMarker+"\"\nexit 99\n")
+		writeProviderFixture(t, filepath.Join(bin, name), providerFixture{Marker: providerMarker, MarkerText: name + " ran", Exit: 99})
 	}
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 
@@ -314,7 +316,9 @@ func isolateAgentEnvironment(t *testing.T) string {
 	t.Helper()
 	home := filepath.Join(t.TempDir(), "home")
 	mustMkdir(t, home)
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
+	t.Setenv("APPDATA", filepath.Join(home, "AppData", "Roaming"))
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "AppData", "Local"))
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, ".cache"))
 	t.Setenv("XDG_STATE_HOME", filepath.Join(home, ".state"))

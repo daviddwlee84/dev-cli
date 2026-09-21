@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Fixed
+
+- Native Windows repository, linked-worktree and submodule paths now agree with
+  filesystem identity, including aliases and moved child checkout placeholders.
+  Worktree moves run outside the directory being renamed, and nesting guards
+  compare canonical paths.
+- Windows config paths round-trip through `~/`, and Claude project keys encode
+  drive letters and native separators consistently. Git hook detection follows
+  Windows executable semantics.
+- Machine identity directories are created with their private policy atomically;
+  disk-size cache and project trust temporary files receive owner/DACL protection
+  before content is written, bound to the retained creation handle.
+- The full Windows suite is now a required CI gate. Native provider fixtures,
+  isolated HOME/USERPROFILE and explicit Git line-ending defaults keep tests
+  from accidentally using installed tools or runner settings. Unsupported POSIX
+  mutation transports retain explicit rejection tests, and lease tests report
+  early operation failure instead of waiting indefinitely.
+
 ## [0.2.41] - 2026-09-22
 
 ### Added

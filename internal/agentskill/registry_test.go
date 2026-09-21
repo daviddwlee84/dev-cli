@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestRegistrySnapshotHasEveryUniqueAgentID(t *testing.T) {
@@ -54,7 +56,7 @@ func TestRegistryResolvesEveryEnvironmentOverride(t *testing.T) {
 	if err := os.MkdirAll(home, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	overrides := map[string]string{
 		"XDG_CONFIG_HOME":   filepath.Join(t.TempDir(), "xdg"),
 		"CODEX_HOME":        filepath.Join(t.TempDir(), "codex"),
@@ -92,7 +94,7 @@ func TestRegistryResolvesEveryEnvironmentOverride(t *testing.T) {
 
 func TestRegistryIgnoresRelativeXDGAndUsesOpenClawFallback(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	t.Setenv("XDG_CONFIG_HOME", "relative/config")
 	for _, name := range []string{"CODEX_HOME", "CLAUDE_CONFIG_DIR", "VIBE_HOME", "HERMES_HOME", "AUTOHAND_HOME", "GROK_HOME"} {
 		t.Setenv(name, "")
@@ -110,7 +112,7 @@ func TestRegistryIgnoresRelativeXDGAndUsesOpenClawFallback(t *testing.T) {
 }
 
 func TestRegistryDoesNotCreateRelativeGlobalPathsWithoutHome(t *testing.T) {
-	t.Setenv("HOME", "")
+	testutil.SetHome(t, "")
 	for _, name := range []string{"XDG_CONFIG_HOME", "CODEX_HOME", "CLAUDE_CONFIG_DIR", "VIBE_HOME", "HERMES_HOME", "AUTOHAND_HOME", "GROK_HOME"} {
 		t.Setenv(name, "")
 	}

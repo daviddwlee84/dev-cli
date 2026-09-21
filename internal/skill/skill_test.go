@@ -10,6 +10,8 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/skill"
 	"go.yaml.in/yaml/v3"
+
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestRenderHasValidFrontmatter(t *testing.T) {
@@ -176,7 +178,7 @@ func TestInstallRewritesChangedFile(t *testing.T) {
 
 func TestInstallLinksIntoToolDirs(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	claudeSkills := filepath.Join(home, ".claude", "skills")
 	if err := os.MkdirAll(claudeSkills, 0o755); err != nil {
 		t.Fatal(err)
@@ -206,7 +208,7 @@ func TestInstallLinksIntoToolDirs(t *testing.T) {
 // must never be replaced by a symlink.
 func TestInstallDoesNotClobberRealDirectory(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	claudeSkills := filepath.Join(home, ".claude", "skills")
 	existing := filepath.Join(claudeSkills, skill.Name)
 	os.MkdirAll(existing, 0o755)

@@ -3,11 +3,12 @@ package cli
 import (
 	"bytes"
 	"context"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"testing"
 )
 
 func TestTUIAppStatePublishesPreparedCopyOnlyOnCommit(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	testutil.SetHome(t, t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_DATA_HOME", t.TempDir())
 	t.Setenv("XDG_CACHE_HOME", t.TempDir())

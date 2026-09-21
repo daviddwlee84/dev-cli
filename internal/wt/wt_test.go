@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	goruntime "runtime"
 	"strings"
 	"testing"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"github.com/daviddwlee84/dev-cli/internal/wt"
 )
 
@@ -420,6 +422,7 @@ func TestProvisionLinksOptInDirectories(t *testing.T) {
 }
 
 func TestProvisionRunsPostCreateCommands(t *testing.T) {
+	configureProvisionShell(t)
 	r := gittest.New(t)
 	cfg := cfgFor(t)
 	cfg.Worktree.PostCreate = config.PostCreate{Commands: []string{"echo provisioned > marker.txt"}}
@@ -444,6 +447,7 @@ func TestProvisionRunsPostCreateCommands(t *testing.T) {
 // can fix it by hand, and rolling the worktree back would lose nothing but
 // cost them the branch.
 func TestProvisionFailureIsNotFatal(t *testing.T) {
+	configureProvisionShell(t)
 	r := gittest.New(t)
 	cfg := cfgFor(t)
 	cfg.Worktree.PostCreate = config.PostCreate{Commands: []string{"exit 3"}}
@@ -464,6 +468,7 @@ func TestProvisionFailureIsNotFatal(t *testing.T) {
 }
 
 func TestRepoOverrideWins(t *testing.T) {
+	configureProvisionShell(t)
 	r := gittest.New(t)
 	r.Commit(".dev.toml", "[worktree]\npost_create = [\"echo from-repo > who.txt\"]\n", "chore: add dev override")
 
@@ -575,4 +580,57 @@ func asErr[T error](err error, target *T) bool {
 		err = u.Unwrap()
 	}
 	return false
+}
+
+// Exercise the configured shell's argv and working-directory contract with a
+// native executable on every OS. This fixture does not make POSIX shell syntax
+// a supported feature of an arbitrary native Windows installation.
+func configureProvisionShell(t *testing.T) {
+	t.Helper()
+	shell := testutil.GoCommand(t, t.TempDir(), "fixture-shell", `package main
+import ("os"; "strings"; "path/filepath")
+func main() {
+ if len(os.Args) != 3 || os.Args[1] != "-c" { os.Exit(2) }
+ if os.Args[2] == "exit 3" { os.Exit(3) }
+ parts := strings.Fields(os.Args[2])
+ if len(parts) != 4 || parts[0] != "echo" || parts[2] != ">" || filepath.Base(parts[3]) != parts[3] { os.Exit(2) }
+ if err := os.WriteFile(parts[3], []byte(parts[1]+"\n"), 0644); err != nil { os.Exit(1) }
+}`)
+	t.Setenv("SHELL", shell)
+}
+
+func TestWindowsUnavailableProvisionShellReportsFailureAndRetainsCheckout(t *testing.T) {
+	if goruntime.GOOS != "windows" {
+		t.Skip("native Windows shell availability contract")
+	}
+	r := gittest.New(t)
+	cfg := cfgFor(t)
+	cfg.Worktree.PostCreate = config.PostCreate{Commands: []string{"echo requested > marker.txt"}}
+	t.Setenv("SHELL", filepath.Join(t.TempDir(), "missing-posix-shell.exe"))
+	m := &wt.Manager{Cfg: cfg}
+	result, err := m.Create(t.Context(), wt.CreateRequest{RepoPath: r.Root, Branch: "feat/no-shell", Base: "main", NoRuntime: true})
+	if err != nil || result == nil {
+		t.Fatalf("checkout creation should survive unavailable provisioning: %+v, %v", result, err)
+	}
+	if len(result.Provision.Failures) != 1 || len(result.Provision.Ran) != 0 {
+		t.Fatalf("unavailable shell was not reported honestly: %+v", result.Provision)
+	}
+	if _, err := os.Stat(filepath.Join(result.Path, "README.md")); err != nil {
+		t.Fatalf("checkout was not retained: %v", err)
+	}
+}
+
+func TestValidateTargetRejectsCanonicalAliasInsideRepository(t *testing.T) {
+	r := gittest.New(t)
+	child := filepath.Join(r.Root, "nested", "worktree")
+	if err := wt.ValidateTarget(filepath.ToSlash(child), r.Root); err == nil {
+		t.Fatal("slash spelling must not bypass the repository nesting guard")
+	}
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(r.Root, alias); err != nil {
+		t.Skipf("symlink fixture unavailable: %v", err)
+	}
+	if err := wt.ValidateTarget(filepath.Join(alias, "nested", "worktree"), r.Root); err == nil {
+		t.Fatal("a symlink alias must not bypass the repository nesting guard")
+	}
 }

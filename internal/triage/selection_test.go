@@ -2,10 +2,10 @@ package triage
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	goruntime "runtime"
 	"strings"
 	"testing"
 	"time"
@@ -17,12 +17,10 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/note"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestSelectedCollectionDoesNotDiscoverUnrelatedRoots(t *testing.T) {
-	if goruntime.GOOS == "windows" {
-		t.Skip("POSIX Git probe recorder")
-	}
 	s, r := fixture(t)
 	other := gittest.New(t)
 	r.Git("branch", "forgotten")
@@ -40,11 +38,15 @@ func TestSelectedCollectionDoesNotDiscoverUnrelatedRoots(t *testing.T) {
 	}
 	bin := t.TempDir()
 	log := filepath.Join(t.TempDir(), "probes")
-	quote := func(v string) string { return "'" + strings.ReplaceAll(v, "'", "'\"'\"'") + "'" }
-	script := "#!/bin/sh\nprintf '%s\\n' \"$PWD\" >> " + quote(log) + "\nexec " + quote(realGit) + " \"$@\"\n"
-	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0700); err != nil {
-		t.Fatal(err)
-	}
+	testutil.GoCommand(t, bin, "git", fmt.Sprintf(`package main
+import ("fmt"; "os"; "os/exec")
+func main() {
+ cwd, err := os.Getwd(); if err != nil { os.Exit(2) }
+ log, err := os.OpenFile(%q, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600); if err != nil { os.Exit(2) }
+ if _, err := fmt.Fprintln(log, cwd); err != nil { os.Exit(2) }; if err := log.Close(); err != nil { os.Exit(2) }
+ cmd := exec.Command(%q, os.Args[1:]...); cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+ if err := cmd.Run(); err != nil { if exit, ok := err.(*exec.ExitError); ok { os.Exit(exit.ExitCode()) }; os.Exit(2) }
+}`, log, realGit))
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	report, err := s.Collect(t.Context(), Options{Selection: []Target{{Path: r.Root, RepositoryID: g.GitCommonDir, Kind: "repo"}}})
 	if err != nil {

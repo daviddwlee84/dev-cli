@@ -150,5 +150,6 @@ bundled uninstall is separate.
 
 Windows npm `.cmd`/`.bat` removal uses an encoded system PowerShell invocation,
 rejecting batch expansion/control characters. Other npm-shim management actions
-need a supported direct executable; the native removal gate is tested separately
-from the repository's broader advisory Windows tests.
+need a supported direct executable. Both the dedicated native removal gate and
+the complete Windows suite are required; unsupported mutation surfaces retain
+explicit native rejection contracts.

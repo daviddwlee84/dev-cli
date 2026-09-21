@@ -7,6 +7,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/artifact"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestProjectHasArtifactScannerRequiresActiveHook(t *testing.T) {
@@ -14,9 +15,7 @@ func TestProjectHasArtifactScannerRequiresActiveHook(t *testing.T) {
 	t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
 	r := gittest.New(t)
 	bin := t.TempDir()
-	if err := os.WriteFile(filepath.Join(bin, "gitleaks"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testutil.GoCommand(t, bin, "gitleaks", "package main\nfunc main() {}\n")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	r.Write(".gitleaks.toml", "title = \"test\"\n")
 	if projectHasArtifactScanner(r.Root) {
@@ -41,6 +40,7 @@ func TestProjectHasArtifactScannerRequiresActiveHook(t *testing.T) {
 	if !projectHasArtifactScanner(r.Root) {
 		t.Fatal("installed gitleaks hook plus repository config should be recognized")
 	}
+	r.Git("hook", "run", "pre-commit")
 }
 
 func TestArtifactCommitReachabilityRejectsOrphanedReceipt(t *testing.T) {

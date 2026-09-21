@@ -34,7 +34,11 @@ func TestPrepareLocalSubdirectoryExcludesGitMetadataAndPreservesModes(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Files) != 1 || snapshot.Files[0].Path != "run.sh" || snapshot.Files[0].Mode.Perm() != 0o751 {
+	sourceInfo, err := os.Stat(filepath.Join(root, "run.sh"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.Files) != 1 || snapshot.Files[0].Path != "run.sh" || snapshot.Files[0].Mode.Perm() != sourceInfo.Mode().Perm() {
 		t.Fatalf("files = %+v", snapshot.Files)
 	}
 	if len(snapshot.Directories) != 1 || snapshot.Directories[0].Path != "empty" {
@@ -312,8 +316,12 @@ func TestApplyRequiresAnExactNewRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o750 {
-		t.Fatalf("mode = %o", info.Mode().Perm())
+	sourceInfo, err := os.Stat(filepath.Join(source, "bin", "tool"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Mode().Perm() != sourceInfo.Mode().Perm() {
+		t.Fatalf("mode=%o want source=%o", info.Mode().Perm(), sourceInfo.Mode().Perm())
 	}
 	if _, err := snapshot.Apply(destination); err == nil || !strings.Contains(err.Error(), "not a new repository") {
 		t.Fatalf("second apply error = %v", err)

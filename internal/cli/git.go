@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
@@ -189,7 +190,9 @@ func projectHasArtifactScanner(dir string) bool {
 		hookPath = filepath.Join(hookPath, "pre-commit")
 	}
 	info, err := os.Stat(hookPath)
-	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o111 == 0 {
+	// Git for Windows executes regular hook scripts through its interpreter;
+	// Windows FileMode has no POSIX executable bits.
+	if err != nil || !info.Mode().IsRegular() || (runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0) {
 		return false
 	}
 	hook, err := os.ReadFile(hookPath)

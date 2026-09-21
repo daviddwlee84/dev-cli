@@ -7,10 +7,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/submodule"
 )
@@ -251,7 +251,11 @@ func ValidateTarget(path, repoPath string) error {
 	// A worktree nested inside another checkout means every indexer, file
 	// watcher and ripgrep run in the outer repo sees a second copy of the
 	// tree. dev keeps checkouts as siblings under the worktree root instead.
-	if path == repoPath || strings.HasPrefix(path, repoPath+string(filepath.Separator)) {
+	inside, err := pathx.Contains(repoPath, path)
+	if err != nil {
+		return fmt.Errorf("compare worktree destination with repository: %w", err)
+	}
+	if inside {
 		return fmt.Errorf("refusing to create a worktree inside the repository (%s); "+
 			"set paths.worktree_path to a location outside %s",
 			config.Contract(path), config.Contract(repoPath))

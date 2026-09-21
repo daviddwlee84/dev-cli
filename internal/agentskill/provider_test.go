@@ -13,7 +13,7 @@ import (
 
 func TestMutationCommandsUseExplicitProviderArgv(t *testing.T) {
 	bin := t.TempDir()
-	writeExecutable(t, filepath.Join(bin, "skills"), "#!/bin/sh\nexit 0\n")
+	writeProviderFixture(t, filepath.Join(bin, "skills"), providerFixture{})
 	t.Setenv("PATH", bin)
 	root := t.TempDir()
 
@@ -54,7 +54,7 @@ func TestMutationProviderRejectsRepositoryAndNodeModulesExecutables(t *testing.T
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		writeExecutable(t, path, "#!/bin/sh\nexit 0\n")
+		writeProviderFixture(t, path, providerFixture{})
 		t.Setenv("PATH", filepath.Dir(path))
 		if status := MutationProviderStatusFor(repository); status.Available {
 			t.Fatalf("repository provider accepted: %+v", status)
@@ -64,8 +64,8 @@ func TestMutationProviderRejectsRepositoryAndNodeModulesExecutables(t *testing.T
 		}
 	}
 	outside := filepath.Join(t.TempDir(), "trusted-looking-target")
-	writeExecutable(t, outside, "#!/bin/sh\nexit 0\n")
-	link := filepath.Join(repository, "bin", "skills")
+	outside = writeProviderFixture(t, outside, providerFixture{})
+	link := filepath.Join(repository, "bin", "skills"+filepath.Ext(outside))
 	if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +81,7 @@ func TestMutationProviderRejectsRepositoryAndNodeModulesExecutables(t *testing.T
 func TestMutationCommandsNeverInvokeNpxFromRepositoryCheckout(t *testing.T) {
 	bin := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "npx-ran")
-	writeExecutable(t, filepath.Join(bin, "npx"), "#!/bin/sh\nprintf ran > \""+marker+"\"\n")
+	writeProviderFixture(t, filepath.Join(bin, "npx"), providerFixture{Marker: marker, MarkerText: "ran"})
 	t.Setenv("PATH", bin)
 	if _, err := AddCommand(context.Background(), t.TempDir(), "owner/repo"); err == nil {
 		t.Fatal("AddCommand unexpectedly accepted npx as a repository-scoped provider")
@@ -98,7 +98,7 @@ func TestMutationCommandsNeverInvokeNpxFromRepositoryCheckout(t *testing.T) {
 func TestMutationProviderStatusAndProviderVersionNeverRunNpx(t *testing.T) {
 	bin := t.TempDir()
 	marker := filepath.Join(t.TempDir(), "npx-ran")
-	writeExecutable(t, filepath.Join(bin, "npx"), "#!/bin/sh\nprintf ran > \""+marker+"\"\n")
+	writeProviderFixture(t, filepath.Join(bin, "npx"), providerFixture{Marker: marker, MarkerText: "ran"})
 	t.Setenv("PATH", bin)
 	status := MutationProviderStatus()
 	if status.Available || status.Path == "" {
@@ -114,7 +114,7 @@ func TestMutationProviderStatusAndProviderVersionNeverRunNpx(t *testing.T) {
 
 func TestProviderVersionRunsOnlyDirectSkillsBinary(t *testing.T) {
 	bin := t.TempDir()
-	writeExecutable(t, filepath.Join(bin, "skills"), "#!/bin/sh\nprintf '1.5.23\\n'\n")
+	writeProviderFixture(t, filepath.Join(bin, "skills"), providerFixture{Version: "1.5.23"})
 	t.Setenv("PATH", bin)
 	version, err := ProviderVersion(context.Background(), t.TempDir())
 	if err != nil {
@@ -132,12 +132,12 @@ func TestMutationProviderSkipsUntrustedPathCandidate(t *testing.T) {
 	if err := os.MkdirAll(localBin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeExecutable(t, filepath.Join(localBin, "skills"), "#!/bin/sh\nexit 99\n")
-	writeExecutable(t, filepath.Join(trustedBin, "skills"), "#!/bin/sh\nexit 0\n")
+	writeProviderFixture(t, filepath.Join(localBin, "skills"), providerFixture{Exit: 99})
+	trustedExecutable := writeProviderFixture(t, filepath.Join(trustedBin, "skills"), providerFixture{})
 	t.Setenv("PATH", localBin+string(os.PathListSeparator)+trustedBin)
 
 	status := MutationProviderStatusFor(repository)
-	trustedPath, err := filepath.EvalSymlinks(filepath.Join(trustedBin, "skills"))
+	trustedPath, err := filepath.EvalSymlinks(trustedExecutable)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,12 +156,12 @@ func TestInstallCommandValidatesEffectiveRepositoryRoot(t *testing.T) {
 	if err := os.MkdirAll(bin, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeExecutable(t, filepath.Join(bin, "skills"), "#!/bin/sh\nexit 0\n")
+	writeProviderFixture(t, filepath.Join(bin, "skills"), providerFixture{})
 	gitPath, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(gitPath, filepath.Join(bin, "git")); err != nil {
+	if err := os.Symlink(gitPath, filepath.Join(bin, filepath.Base(gitPath))); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin)

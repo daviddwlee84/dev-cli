@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 	"github.com/daviddwlee84/dev-cli/internal/projectconfig"
 )
 
@@ -137,8 +138,8 @@ func TestTrustStoreDoesNotPersistConfigOrSecretContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o600 {
-		t.Fatalf("trust store mode = %o", info.Mode().Perm())
+	if err := privatefile.Check(storePath, info, false); err != nil {
+		t.Fatalf("private state: %v", err)
 	}
 }
 

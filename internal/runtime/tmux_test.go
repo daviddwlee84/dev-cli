@@ -114,11 +114,7 @@ func TestTmuxActivateInsideUsesSwitchClient(t *testing.T) {
 func TestTmuxActivateOutsideAttaches(t *testing.T) {
 	t.Setenv("TMUX", "")
 	record := filepath.Join(t.TempDir(), "record")
-	script := filepath.Join(t.TempDir(), "tmux")
-	body := "#!/bin/sh\nprintf '%s' \"$*\" > \"$DEV_TEST_RECORD\"\n"
-	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := nativeRuntimeFixture(t, "tmux", "record")
 	t.Setenv("DEV_TEST_RECORD", record)
 	tm := NewTmux()
 	tm.bin = script

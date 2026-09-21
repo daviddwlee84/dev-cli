@@ -152,6 +152,9 @@ type lifecycleGitFixture struct {
 func newLifecycleGitFixture(t *testing.T, mode task.CheckoutMode, state task.State) *lifecycleGitFixture {
 	t.Helper()
 	root := t.TempDir()
+	if canonical, err := filepath.EvalSymlinks(root); err == nil {
+		root = canonical
+	}
 	seed := lifecycleFixtureSeed(t)
 	remote := filepath.Join(root, "origin.git")
 	repo := filepath.Join(root, "example")

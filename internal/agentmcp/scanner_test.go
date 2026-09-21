@@ -13,6 +13,8 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/agenttarget"
 	"howett.net/plist"
+
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 const secretSentinel = "fixture-secret-must-not-appear"
@@ -49,7 +51,12 @@ func TestScannerReadsFiveAdaptersWithoutRetainingSecrets(t *testing.T) {
 	writeJSON(t, filepath.Join(home, ".claude.json"), user)
 
 	marker := filepath.Join(t.TempDir(), "command-ran")
-	mustWrite(t, filepath.Join(repository, "claude-server"), "#!/bin/sh\nprintf ran > "+marker+"\n", 0o755)
+	testutil.GoCommand(t, repository, "claude-server", `package main
+import "os"
+func main() {if err:=os.WriteFile(os.Getenv("DEV_MCP_FIXTURE_MARKER"),[]byte("ran"),0600);err!=nil {panic(err)}}
+`)
+	t.Setenv("DEV_MCP_FIXTURE_MARKER", marker)
+	t.Setenv("PATH", repository+string(os.PathListSeparator)+os.Getenv("PATH"))
 
 	target := testTarget(repository)
 	scanner := NewScanner(testOptions(home, repository))
@@ -207,7 +214,7 @@ func TestClaudeNestedDiagnosticsRetainLocalScopeAndRepository(t *testing.T) {
 
 func TestMCPOptionsIgnoreRelativeXDGConfigHome(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	t.Setenv("XDG_CONFIG_HOME", "relative/config")
 	if got, want := DefaultOptions().XDGConfigHome, filepath.Join(home, ".config"); got != want {
 		t.Fatalf("default relative XDG path = %q, want %q", got, want)
@@ -604,7 +611,7 @@ func TestJSONAdaptersRejectNullServerMembers(t *testing.T) {
 func TestClaudeConfigDirAndManagedUsernameUseDocumentedIdentity(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "home-not-username")
 	configDir := filepath.Join(t.TempDir(), "claude-config")
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	t.Setenv("CLAUDE_CONFIG_DIR", configDir)
 	options := DefaultOptions()
 	if options.ClaudeUserConfigPath != filepath.Join(configDir, ".claude.json") || options.ClaudeUserSettingsPath != filepath.Join(configDir, "settings.json") {

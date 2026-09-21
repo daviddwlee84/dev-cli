@@ -352,13 +352,15 @@ func TestAuthorityUsesPrivateModesAndStrictState(t *testing.T) {
 		if err != nil {
 			return err
 		}
+		want := os.FileMode(0o600)
 		if entry.IsDir() {
-			if info.Mode().Perm() != 0o700 {
-				t.Errorf("directory %s mode = %04o, want 0700", path, info.Mode().Perm())
-			}
-		} else if info.Mode().Perm() != 0o600 {
-			t.Errorf("file %s mode = %04o, want 0600", path, info.Mode().Perm())
+			want = 0o700
 		}
+		private, err := privateModeMatches(path, info.Mode(), want)
+		if err != nil || !private {
+			t.Errorf("private authority object %s: private=%v error=%v", path, private, err)
+		}
+
 		return nil
 	}); err != nil {
 		t.Fatal(err)

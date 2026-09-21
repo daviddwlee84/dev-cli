@@ -4,9 +4,10 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestCheckUpdatesHashesGitObjectsWithoutAutocrlfCheckout(t *testing.T) {
@@ -31,9 +32,6 @@ func TestCheckUpdatesHashesGitObjectsWithoutAutocrlfCheckout(t *testing.T) {
 }
 
 func TestCheckUpdatesDoesNotRunConfiguredSmudgeFilter(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("fixture uses a POSIX marker script")
-	}
 	remote := initSkillRepo(t, "one\n")
 	work := filepath.Join(t.TempDir(), "work")
 	mustRun(t, "", "git", "clone", "-q", remote, work)
@@ -46,14 +44,14 @@ func TestCheckUpdatesDoesNotRunConfiguredSmudgeFilter(t *testing.T) {
 		t.Fatal(err)
 	}
 	marker := filepath.Join(t.TempDir(), "smudge-ran")
-	script := filepath.Join(t.TempDir(), "smudge")
-	mustWrite(t, script, "#!/bin/sh\nprintf ran > \""+marker+"\"\ncat\n")
-	if err := os.Chmod(script, 0o755); err != nil {
-		t.Fatal(err)
-	}
+	script := testutil.GoCommand(t, t.TempDir(), "smudge", `package main
+import ("io";"os")
+func main() {if err:=os.WriteFile(os.Getenv("DEV_SKILL_SMUDGE_MARKER"),[]byte("ran"),0600);err!=nil {panic(err)};if _,err:=io.Copy(os.Stdout,os.Stdin);err!=nil {panic(err)}}
+`)
+	t.Setenv("DEV_SKILL_SMUDGE_MARKER", marker)
 	t.Setenv("GIT_CONFIG_COUNT", "1")
 	t.Setenv("GIT_CONFIG_KEY_0", "filter.dev-marker.smudge")
-	t.Setenv("GIT_CONFIG_VALUE_0", script)
+	t.Setenv("GIT_CONFIG_VALUE_0", `"`+filepath.ToSlash(script)+`"`)
 	lock := &LockMetadata{
 		Scope: ScopeProject, Source: remote, SourceType: "git",
 		SkillPath: "skills/demo/SKILL.md", ComputedHash: expected,

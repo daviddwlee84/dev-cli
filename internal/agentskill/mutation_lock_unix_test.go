@@ -9,10 +9,12 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestMutationCommandSerializesProviderProcesses(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	testutil.SetHome(t, t.TempDir())
 	state := t.TempDir()
 	active := filepath.Join(state, "active")
 	overlap := filepath.Join(state, "overlap")

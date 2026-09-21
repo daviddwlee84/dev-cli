@@ -120,7 +120,7 @@ type CheckoutContents struct {
 // never patterns or Git administrative directories.
 func ValidateDisposableDirs(dirs []string) error {
 	for _, dir := range dirs {
-		if dir == "" || dir == "." || filepath.IsAbs(dir) || filepath.ToSlash(filepath.Clean(dir)) != dir || strings.ContainsAny(dir, "\\\x00*?[]:\n\r") || dir == ".." || strings.HasPrefix(dir, "../") {
+		if dir == "" || dir == "." || strings.HasPrefix(dir, "/") || filepath.IsAbs(dir) || filepath.ToSlash(filepath.Clean(dir)) != dir || strings.ContainsAny(dir, "\\\x00*?[]:\n\r") || dir == ".." || strings.HasPrefix(dir, "../") {
 			return fmt.Errorf("invalid disposable directory %q", dir)
 		}
 		for _, part := range strings.Split(dir, "/") {

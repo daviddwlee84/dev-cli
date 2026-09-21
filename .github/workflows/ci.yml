@@ -23,7 +23,14 @@ jobs:
 
       # gitx and wt shell out to git, and the test repos need an identity.
       - name: Configure git
+        shell: bash
+        env:
+          GIT_CONFIG_SYSTEM: ${{ runner.temp }}/dev-test-gitconfig
         run: |
+          # Fixture HOME changes must not re-enable the runner image's autocrlf.
+          printf 'GIT_CONFIG_SYSTEM=%s\n' "$GIT_CONFIG_SYSTEM" >> "$GITHUB_ENV"
+          git config --file "$GIT_CONFIG_SYSTEM" core.autocrlf false
+          git config --file "$GIT_CONFIG_SYSTEM" core.longpaths true
           git config --global user.email "ci@example.test"
           git config --global user.name "ci"
           git config --global init.defaultBranch main
@@ -64,13 +71,12 @@ jobs:
           -run '^Test(Session(Handoff(ExactPathBinding|RejectsUnprovenSelectedPath)|SelectionUsesExternalCaptureRoot)|PrepareExactSelectionProof|Finalize(SelectionBindingAndLegacyCompatibility|CASPreservesConcurrentObservation|RejectsReviewedStaleRevisionAndDiscard)|Store(ExactRecordCASAndConcurrentTransitions|CreateNeverReassignsRunAuthority)|DashboardFilter(NavigationEveryView|TextEditsEveryView|EmptyResultsAndInputLimit)|HelpLiveFilter(Navigation|ResetsOnlyForChangedText|EmptyResults)|WtOpen(NoFocus.*|Default.*))$'
           -count=1 -v
 
-      # The broad suite remains advisory on Windows while unrelated domain
-      # packages finish guarding POSIX-only assumptions. SSH/fleet behavior has
-      # a separate required native gate below.
-      - name: Test (broad Windows advisory)
+      # Run the complete suite natively and propagate every failure. Explicit
+      # unsupported-operation tests retain their platform boundaries; they do
+      # not excuse failures in supported Windows behavior.
+      - name: Test full suite (required on Windows)
         if: runner.os == 'Windows'
-        continue-on-error: true
-        run: go test ./...
+        run: go test -timeout 20m ./...
 
       - run: go build ./cmd/dev
 
@@ -93,7 +99,13 @@ jobs:
           cache: true
 
       - name: Configure git
+        shell: bash
+        env:
+          GIT_CONFIG_SYSTEM: ${{ runner.temp }}/dev-test-gitconfig
         run: |
+          printf 'GIT_CONFIG_SYSTEM=%s\n' "$GIT_CONFIG_SYSTEM" >> "$GITHUB_ENV"
+          git config --file "$GIT_CONFIG_SYSTEM" core.autocrlf false
+          git config --file "$GIT_CONFIG_SYSTEM" core.longpaths true
           git config --global user.email "ci@example.test"
           git config --global user.name "ci"
           git config --global init.defaultBranch main

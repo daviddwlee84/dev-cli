@@ -181,8 +181,11 @@ artifact finalizers until their independent lifecycle is replaced. Cached machin
 privacy imports use only bounded local cache readers and revalidate their source.
 `internal/agentskill` owns selected-removal policy: exact native names/agent scopes
 or bundled manifests, source/ownership/dependency proof and postconditions under
-the provider lease. Never infer complete Windows validation from an advisory
-step's success conclusion; inspect logs and require the dedicated native gates.
+the provider lease. The complete native Windows suite and dedicated native gates
+are required. Keep unsupported mutation boundaries explicit and test their native
+rejections; do not restore continue-on-error or skip supported behavior to hide
+portability failures. Historical advisory step conclusions were not proof of a
+passing suite.
 
 ## Agent history policy
 

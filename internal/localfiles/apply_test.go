@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -105,7 +106,19 @@ func (p *repoPair) apply(t *testing.T, source *Source, plan PlanResponse, retain
 	return envelope, response
 }
 
+// Native Windows advertises this mutation transport as unsupported. These
+// integration cases exercise the POSIX publisher; native rejection has its own
+// positive assertions in native_windows_test.go. Portable planning/validation
+// tests below continue to run on every platform.
+func requirePOSIXPublisher(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX local-files publication; native Windows must reject this transport")
+	}
+}
+
 func TestPlanCreateApplyCurrentAndIdempotentRetry(t *testing.T) {
+	requirePOSIXPublisher(t)
 	p := newRepoPair(t)
 	writeTestFile(t, filepath.Join(p.source, ".env"), "TOKEN=top-secret\n")
 	source, plan := p.prepare(t, []string{".env"}, false)
@@ -141,6 +154,7 @@ func TestPlanCreateApplyCurrentAndIdempotentRetry(t *testing.T) {
 }
 
 func TestConflictRequiresReplaceAndRestoresOriginalModeOnRollback(t *testing.T) {
+	requirePOSIXPublisher(t)
 	p := newRepoPair(t)
 	writeTestFile(t, filepath.Join(p.source, ".env"), "source-secret\n")
 	writeTestFile(t, filepath.Join(p.target, ".env"), "target-secret\n")
@@ -180,6 +194,7 @@ func TestConflictRequiresReplaceAndRestoresOriginalModeOnRollback(t *testing.T) 
 }
 
 func TestMultiFileFailureRollsBackCreatesAndReplacements(t *testing.T) {
+	requirePOSIXPublisher(t)
 	p := newRepoPair(t)
 	writeTestFile(t, filepath.Join(p.source, ".env"), "new-env\n")
 	writeTestFile(t, filepath.Join(p.source, ".env.local"), "new-local\n")
@@ -205,6 +220,7 @@ func TestMultiFileFailureRollsBackCreatesAndReplacements(t *testing.T) {
 }
 
 func TestRetryRecoversCrashBeforeAndAfterFirstJournal(t *testing.T) {
+	requirePOSIXPublisher(t)
 	for _, faultPoint := range []string{"after-store-create", "after-journal"} {
 		t.Run(faultPoint, func(t *testing.T) {
 			p := newRepoPair(t)
@@ -234,6 +250,7 @@ func TestRetryRecoversCrashBeforeAndAfterFirstJournal(t *testing.T) {
 }
 
 func TestRetryDiscardsLegacyUnjournaledPayloadStore(t *testing.T) {
+	requirePOSIXPublisher(t)
 	p := newRepoPair(t)
 	writeTestFile(t, filepath.Join(p.source, ".env"), "secret\n")
 	source, plan := p.prepare(t, []string{".env"}, false)
@@ -264,6 +281,7 @@ func TestRetryDiscardsLegacyUnjournaledPayloadStore(t *testing.T) {
 }
 
 func TestRollbackPreservesConcurrentlyOwnedParentDirectory(t *testing.T) {
+	requirePOSIXPublisher(t)
 	p := newRepoPair(t)
 	path := ".mcp/nested/config.json"
 	writeTestFile(t, filepath.Join(p.source, path), "source\n")
@@ -289,6 +307,7 @@ func TestRollbackPreservesConcurrentlyOwnedParentDirectory(t *testing.T) {
 }
 
 func TestRetryPreservesIdenticalFileWithoutPublishProvenance(t *testing.T) {
+	requirePOSIXPublisher(t)
 	p := newRepoPair(t)
 	writeTestFile(t, filepath.Join(p.source, ".env"), "same-bytes\n")
 	source, plan := p.prepare(t, []string{".env"}, false)
@@ -347,6 +366,7 @@ func TestRollbackRestoresModeWhenReplacementBytesAreIdentical(t *testing.T) {
 }
 
 func TestRemoteAliasesShareCanonicalCheckoutLease(t *testing.T) {
+	requirePOSIXPublisher(t)
 	p := newRepoPair(t)
 	const alternateURL = "https://mirror.example.test/acme/portable.git"
 	runGit(t, p.target, "remote", "add", "mirror", alternateURL)
@@ -377,8 +397,12 @@ func TestRemoteAliasesShareCanonicalCheckoutLease(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
 	firstEntered := make(chan struct{})
 	releaseFirst := make(chan struct{})
+	release := sync.OnceFunc(func() { close(releaseFirst) })
+	defer release()
 	secondEntered := make(chan struct{})
 	p.service.Fault = func(point, path string) error {
 		if point != "before-publish" {
@@ -387,7 +411,11 @@ func TestRemoteAliasesShareCanonicalCheckoutLease(t *testing.T) {
 		switch path {
 		case ".env":
 			close(firstEntered)
-			<-releaseFirst
+			select {
+			case <-releaseFirst:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
 		case ".env.local":
 			close(secondEntered)
 		}
@@ -396,20 +424,28 @@ func TestRemoteAliasesShareCanonicalCheckoutLease(t *testing.T) {
 	firstDone := make(chan error, 1)
 	secondDone := make(chan error, 1)
 	go func() {
-		_, err := p.service.Apply(context.Background(), firstEnvelope)
+		_, err := p.service.Apply(ctx, firstEnvelope)
 		firstDone <- err
 	}()
-	<-firstEntered
+	select {
+	case <-firstEntered:
+	case err := <-firstDone:
+		t.Fatalf("first apply failed before entering publication: %v", err)
+	case <-ctx.Done():
+		t.Fatal("first apply did not reach publication")
+	}
 	go func() {
-		_, err := p.service.Apply(context.Background(), secondEnvelope)
+		_, err := p.service.Apply(ctx, secondEnvelope)
 		secondDone <- err
 	}()
 	select {
 	case <-secondEntered:
 		t.Fatal("remote aliases bypassed the canonical checkout lease")
+	case err := <-secondDone:
+		t.Fatalf("second apply returned before lease release: %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
-	close(releaseFirst)
+	release()
 	if err := <-firstDone; err != nil {
 		t.Fatal(err)
 	}
@@ -447,6 +483,7 @@ func TestBuildEnvelopeRejectsSourceBindingDrift(t *testing.T) {
 }
 
 func TestRetainForEvictControlsRecoveryBlobLifetime(t *testing.T) {
+	requirePOSIXPublisher(t)
 	p := newRepoPair(t)
 	writeTestFile(t, filepath.Join(p.source, ".env"), "retained\n")
 	source, plan := p.prepare(t, []string{".env"}, false)
@@ -603,6 +640,7 @@ func TestPlanAndApplyBindExactTargetMode(t *testing.T) {
 }
 
 func TestRollbackRemovesRetainedRecoveryPayloads(t *testing.T) {
+	requirePOSIXPublisher(t)
 	p := newRepoPair(t)
 	writeTestFile(t, filepath.Join(p.source, ".env"), "new\n")
 	writeTestFile(t, filepath.Join(p.target, ".env"), "old\n")

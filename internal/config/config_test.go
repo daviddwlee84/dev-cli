@@ -1,10 +1,13 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestSlug(t *testing.T) {
@@ -57,7 +60,8 @@ func TestRenderRejectsUnknown(t *testing.T) {
 }
 
 func TestExpand(t *testing.T) {
-	h, _ := os.UserHomeDir()
+	h := t.TempDir()
+	testutil.SetHome(t, h)
 	if got := Expand("~/Worktrees"); got != filepath.Join(h, "Worktrees") {
 		t.Errorf("Expand(~/Worktrees) = %q", got)
 	}
@@ -65,15 +69,22 @@ func TestExpand(t *testing.T) {
 		t.Errorf("Expand(~) = %q, want %q", got, h)
 	}
 	// A path that merely starts with ~ but is not the home shorthand.
-	if got := Expand("/tmp/~notme"); got != "/tmp/~notme" {
-		t.Errorf("Expand(/tmp/~notme) = %q", got)
+	literal := filepath.Join(t.TempDir(), "~notme")
+	if got := Expand(literal); got != literal {
+		t.Errorf("Expand(%q) = %q", literal, got)
 	}
-	t.Setenv("DEV_TEST_ROOT", "/mnt/fast")
-	if got := Expand("$DEV_TEST_ROOT/wt"); got != "/mnt/fast/wt" {
+	root := filepath.Join(t.TempDir(), "fast")
+	t.Setenv("DEV_TEST_ROOT", root)
+	if got := Expand("$DEV_TEST_ROOT/wt"); got != filepath.Join(root, "wt") {
 		t.Errorf("Expand($DEV_TEST_ROOT/wt) = %q", got)
 	}
 	if Contract(filepath.Join(h, "x")) != "~/x" {
 		t.Errorf("Contract did not collapse home")
+	}
+	for _, path := range []string{h, filepath.Join(h, "x"), filepath.Join(h, "nested", "project")} {
+		if got := Expand(Contract(path)); got != path {
+			t.Errorf("home path roundtrip = %q, want %q", got, path)
+		}
 	}
 }
 
@@ -154,9 +165,10 @@ func TestDiscoveryRootsPreferExactRepositories(t *testing.T) {
 func TestLoadOverlay(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.toml")
-	os.WriteFile(path, []byte(`
+	worktreeRoot := filepath.Join(dir, "worktrees")
+	os.WriteFile(path, []byte(fmt.Sprintf(`
 [paths]
-worktree_root = "/mnt/fast/wt"
+worktree_root = %q
 worktree_path = "{{worktree_root}}/{{repo|lower}}/{{branch|slug}}"
 
 [runtime]
@@ -166,7 +178,7 @@ backend = "tmux"
 include = [".env", "config/secrets.json"]
 post_create = ["uv sync"]
 provision_timeout = "90s"
-`), 0o644)
+`, worktreeRoot)), 0o644)
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -189,7 +201,7 @@ provision_timeout = "90s"
 	if err != nil {
 		t.Fatalf("WorktreePathFor: %v", err)
 	}
-	if got != "/mnt/fast/wt/myrepo/feat-auth" {
+	if got != filepath.Join(worktreeRoot, "myrepo", "feat-auth") {
 		t.Errorf("WorktreePathFor = %q", got)
 	}
 }

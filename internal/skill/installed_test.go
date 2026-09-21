@@ -8,15 +8,14 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func skillTestHome(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	if runtime.GOOS == "windows" {
-		t.Setenv("USERPROFILE", home)
-	}
+	testutil.SetHome(t, home)
 	return home
 }
 

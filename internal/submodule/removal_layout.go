@@ -242,6 +242,20 @@ func inspectRemovalParent(ctx context.Context, root string) error {
 	return nil
 }
 
+// FileInfo returned by a path-only Stat may defer loading its Windows file ID
+// until SameFile is called. A containing directory can be moved before that
+// comparison. Capture the held-root identity while the original path exists.
+func captureRemovalPlaceholder(path string) (os.FileInfo, error) {
+	root, info, err := safefile.OpenRoot(path)
+	if err != nil {
+		return nil, err
+	}
+	if err := root.Close(); err != nil {
+		return nil, err
+	}
+	return info, nil
+}
+
 func verifyStagedPlaceholders(ctx context.Context, placeholders map[string]os.FileInfo, moves []moveRecord) error {
 	for path, expected := range placeholders {
 		mapped, best := path, ""

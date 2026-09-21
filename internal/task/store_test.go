@@ -201,8 +201,12 @@ func TestSaveIsAtomicAndPreservesCreated(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := info.Mode().Perm(); got != 0o644 {
-		t.Errorf("task file mode = %04o, want 0644", got)
+	wantMode := os.FileMode(0o644)
+	if runtime.GOOS == "windows" {
+		wantMode = 0o666
+	} // Writable Windows regular file; not a private-state contract.
+	if got := info.Mode().Perm(); got != wantMode {
+		t.Errorf("task file mode=%04o want=%04o", got, wantMode)
 	}
 }
 
@@ -531,15 +535,16 @@ func TestResolveAmbiguous(t *testing.T) {
 
 func TestFindByWorktreePrefersLongestMatch(t *testing.T) {
 	s := task.NewStore(t.TempDir())
+	root := t.TempDir()
 	repoTask := newTask("demo", "main", task.Hot)
-	repoTask.RepoPath = "/src/demo"
+	repoTask.RepoPath = filepath.Join(root, "src", "demo")
 	wtTask := newTask("demo", "feat/auth", task.Hot)
-	wtTask.RepoPath = "/src/demo"
-	wtTask.WorktreePath = "/wt/demo/feat-auth"
+	wtTask.RepoPath = filepath.Join(root, "src", "demo")
+	wtTask.WorktreePath = filepath.Join(root, "wt", "demo", "feat-auth")
 	s.Save(repoTask)
 	s.Save(wtTask)
 
-	got, err := s.FindByWorktree("/wt/demo/feat-auth/src/inner")
+	got, err := s.FindByWorktree(filepath.Join(root, "wt", "demo", "feat-auth", "src", "inner"))
 	if err != nil {
 		t.Fatalf("FindByWorktree: %v", err)
 	}
@@ -547,12 +552,12 @@ func TestFindByWorktreePrefersLongestMatch(t *testing.T) {
 		t.Errorf("inside a worktree the worktree task should win, got %q", got.Branch)
 	}
 
-	got, err = s.FindByWorktree("/src/demo/pkg")
+	got, err = s.FindByWorktree(filepath.Join(root, "src", "demo", "pkg"))
 	if err != nil || got.Branch != "main" {
 		t.Errorf("inside the main checkout: got %+v err=%v", got, err)
 	}
 
-	if _, err := s.FindByWorktree("/somewhere/else"); !errors.Is(err, task.ErrNotFound) {
+	if _, err := s.FindByWorktree(filepath.Join(root, "somewhere", "else")); !errors.Is(err, task.ErrNotFound) {
 		t.Errorf("want ErrNotFound, got %v", err)
 	}
 	// A sibling directory sharing a name prefix must not match.

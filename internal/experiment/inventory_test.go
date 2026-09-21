@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"time"
 
 	"github.com/daviddwlee84/dev-cli/internal/catalog"
@@ -604,9 +606,7 @@ func TestCreateNoGitAndInitWarningAreTracked(t *testing.T) {
 
 func TestCloneDefaultUsesOwnerRepoAndVersionsCollisions(t *testing.T) {
 	binDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(binDir, "gh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testutil.GoCommand(t, binDir, "gh", "package main\nfunc main() {}\n")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	var cloneRefs []string
 	var hook experiment.GitRunFunc
@@ -685,11 +685,9 @@ func TestCreateVersionsPastDanglingSymlinkCollision(t *testing.T) {
 
 func TestCloneRefsExpandLocalPathsAndPreserveSCPRemotes(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	binDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(binDir, "gh"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testutil.GoCommand(t, binDir, "gh", "package main\nfunc main() {}\n")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	localSource := filepath.Join(home, "source.git")
 	if err := os.Mkdir(localSource, 0o755); err != nil {

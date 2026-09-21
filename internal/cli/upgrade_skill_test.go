@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -33,7 +34,7 @@ func TestRefreshSkillAfterUpgradeUsesNewExecutableAndSkipsAbsent(t *testing.T) {
 		t.Skip("execution fixture uses a POSIX shell; path selection is tested natively")
 	}
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	var out, errOut bytes.Buffer
 	app := &App{In: strings.NewReader(""), Out: &out, Err: &errOut}
 	// No installation means no attempt to resolve or launch another executable.

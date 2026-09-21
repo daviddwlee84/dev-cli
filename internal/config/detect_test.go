@@ -6,13 +6,15 @@ import (
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
+
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 // fakeHome builds a HOME with the given repo layout and points $HOME at it.
 func fakeHome(t *testing.T, repos ...string) string {
 	t.Helper()
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	testutil.SetHome(t, home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	t.Setenv("XDG_DATA_HOME", filepath.Join(home, ".local", "share"))
 	t.Setenv("GHQ_ROOT", "")

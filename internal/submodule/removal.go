@@ -670,7 +670,7 @@ func (p *Removal) Apply(ctx context.Context, check func(context.Context, string)
 			if err := os.Mkdir(from, 0755); err != nil {
 				return err
 			}
-			info, err := os.Lstat(from)
+			info, err := captureRemovalPlaceholder(from)
 			if err != nil {
 				return err
 			}

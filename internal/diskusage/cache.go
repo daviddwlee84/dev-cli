@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/daviddwlee84/dev-cli/internal/privatefile"
 )
 
 const CacheVersion = 1
@@ -156,14 +158,15 @@ func (c *Cache) saveLocked() error {
 	}
 	name := temporary.Name()
 	defer os.Remove(name)
+	if err := privatefile.ProtectCreatedFile(temporary); err != nil {
+		_ = temporary.Close()
+		return err
+	}
 	if _, err := temporary.Write(data); err != nil {
 		_ = temporary.Close()
 		return err
 	}
 	if err := temporary.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(name, 0o600); err != nil {
 		return err
 	}
 	if err := os.Rename(name, c.Path); err != nil {

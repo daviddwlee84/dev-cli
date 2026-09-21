@@ -38,11 +38,13 @@ func managedFixture(t *testing.T, root, name string) Skill {
 	t.Fatal("fixture row not found")
 	return Skill{}
 }
-func manageProvider(t *testing.T, body string) string {
+func manageProvider(t *testing.T, fixture providerFixture) string {
 	t.Helper()
 	bin := t.TempDir()
 	path := filepath.Join(bin, "skills")
-	writeExecutable(t, path, "#!/bin/sh\ncase \"$1\" in --version) echo 1.5.25; exit 0;; --help) echo 'update experimental_install experimental_sync'; exit 0;; esac\n"+body)
+	fixture.Version = "1.5.25"
+	fixture.Help = "update experimental_install experimental_sync"
+	path = writeProviderFixture(t, path, fixture)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return path
 }
@@ -51,7 +53,7 @@ func TestManagementBindsLockFilesProviderAndInstalledContents(t *testing.T) {
 	ctx := context.Background()
 	root := initRepository(t)
 	marker := filepath.Join(t.TempDir(), "executed")
-	manageProvider(t, "echo ran > '"+marker+"'\n")
+	manageProvider(t, providerFixture{Marker: marker, MarkerText: "ran"})
 	row := managedFixture(t, root, "demo")
 	plans := PrepareUpdates(ctx, []Skill{row})
 	if len(plans) != 1 || plans[0].Blocked != "" {
@@ -74,7 +76,7 @@ func TestManagementBindsLockFilesProviderAndInstalledContents(t *testing.T) {
 func TestManagementGroupsScopesAndDoesNotClaimNoOpSuccess(t *testing.T) {
 	isolateAgentEnvironment(t)
 	ctx := context.Background()
-	manageProvider(t, "echo 'token=fixture_private_value'\nexit 0\n")
+	manageProvider(t, providerFixture{Stdout: "token=fixture_private_value\n"})
 	root := initRepository(t)
 	managedFixture(t, root, "a")
 	managedFixture(t, root, "b")
@@ -104,7 +106,7 @@ func TestManagementGroupsScopesAndDoesNotClaimNoOpSuccess(t *testing.T) {
 func TestNativeRestoreAllowsLockOnlyButRejectsDestinationDrift(t *testing.T) {
 	isolateAgentEnvironment(t)
 	ctx := context.Background()
-	manageProvider(t, "exit 0\n")
+	manageProvider(t, providerFixture{})
 	root := initRepository(t)
 	row := managedFixture(t, root, "demo")
 	if err := os.RemoveAll(row.Path); err != nil {
@@ -123,7 +125,7 @@ func TestNativeRestoreAllowsLockOnlyButRejectsDestinationDrift(t *testing.T) {
 func TestNativeSyncDiscoversDependenciesAndRejectsNameCollision(t *testing.T) {
 	isolateAgentEnvironment(t)
 	ctx := context.Background()
-	manageProvider(t, "exit 0\n")
+	manageProvider(t, providerFixture{})
 	root := initRepository(t)
 	writeSkill(t, filepath.Join(root, "node_modules", "package", "skills", "demo"), "demo", "dependency")
 	op := PrepareNative(ctx, root, "experimental_sync", []string{"codex"})
@@ -169,7 +171,7 @@ func TestManagementAcceptsCanonicalAliasesAndGlobalUserDependency(t *testing.T) 
 	home := isolateAgentEnvironment(t)
 	ctx := context.Background()
 	root := initRepository(t)
-	manageProvider(t, "exit 0\n")
+	manageProvider(t, providerFixture{})
 	managedFixture(t, root, "project-demo")
 	alias := filepath.Join(t.TempDir(), "alias")
 	if err := os.Symlink(root, alias); err != nil {
@@ -192,7 +194,7 @@ func TestManagementAcceptsCanonicalAliasesAndGlobalUserDependency(t *testing.T) 
 	writeLock(t, GlobalLockPath(), 3, map[string]any{"global-demo": map[string]any{"source": "owner/repo", "sourceType": "github", "skillPath": "skills/global-demo/SKILL.md", "skillFolderHash": hashes["git-tree"]}})
 	bin := filepath.Join(home, "bin")
 	mustMkdir(t, bin)
-	writeExecutable(t, filepath.Join(bin, "skills"), "#!/bin/sh\ncase \"$1\" in --version) echo 1.5.25;; --help) echo update;; esac\n")
+	writeProviderFixture(t, filepath.Join(bin, "skills"), providerFixture{Version: "1.5.25", Help: "update"})
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	global, err := scopeInventory(ctx, home, ScopeGlobal)
 	if err != nil {
