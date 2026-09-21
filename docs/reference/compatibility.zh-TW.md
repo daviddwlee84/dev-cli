@@ -287,7 +287,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - `dev retire <path>` 會 reap 對應的 task record。先前只有 by-task 形式會設定 task identity，因此以 path 退休同一個 checkout 會留下 record；DONE 狀態與 identity 檢查維持不變。
 - `dev version` 會回報目前執行的 build 是否為已發布的 release，`dev doctor` 也帶有同一行資訊，並顯示 install owner、呼叫／解析後的 executable 路徑，以及 `PATH` 上不同 `dev` 副本的警告。先前工具中沒有任何地方能回答「我是不是最新的？」，而 `go install ...@latest` 只會解析到最新的 tag，因此未 tag 的 feature 對安裝者而言等同不存在。
 - Release 會發布各平台 archive 與 `SHA256SUMS`，並以 `CHANGELOG.md` 對應段落作為 release notes。先前的 release 只產生 GitHub release 物件，因此那些版本本來就沒有附加檔案。
-- Release 會在 Unix `.tar.gz` 之外一併發布 Windows `.zip`、更新附在 release 上的 in-repo Scoop manifest（設定 token 時也會 push 到 bucket），並把對應的 source formula 發布到 `daviddwlee84/homebrew-tap`。Homebrew 發布是必要的 release step；repository token 缺失或被拒絕時會明確讓 job 失敗。Manual workflow 可為既有 stable release retry 或 backfill formula，不會建立或移動 tag。
+- Release 會發布 Unix `.tar.gz`、Windows `.zip`，並更新 Scoop manifest（設定 token 時也會 push 到 bucket）。`daviddwlee84/homebrew-tap` 使用自己的 token，每小時或手動同步 stable binary formulas；checksum 與 formula 安裝驗證通過才會 commit，單一工具失敗會保留原 formula。可用 `gh workflow run sync.yml --repo daviddwlee84/homebrew-tap -f tool=dev-cli` 重試，不必重發 application release。Stable Homebrew 安裝使用預編譯 binary，`--HEAD` 保留 source build；本 repo 不再寫入 tap，也不需要 tap-writing token。
 - `dev upgrade` 會先查指定 release 的實際 asset 清單。獨立安裝有對應平台 archive 時，下載並以 `SHA256SUMS` 驗證；缺少該平台 asset 時，則在確認後原生編譯同一個 tag。新版 release 提供以 `SHA256SUMS` 驗證的精簡 `dev-cli_<tag>_source.tar.gz`，排除開發對話紀錄；舊版則使用 Go 設定的 module verification，下載量可能大很多。此 source fallback 與精簡 archive 自 v0.2.35 起提供。網路錯誤、缺少 checksum entry 或 checksum 不符都會停止升級。原生編譯使用已安裝的 Go、兩個 build workers 與 20 分鐘編譯上限；編譯成功且版本正確後才替換。`--check` 不會編譯，缺少工具會在確認前提示。Homebrew、Scoop 與 `go install` 擁有的安裝仍委由對應管理器更新。替換採 atomic rename（Windows 先移開 live `.exe`，下次執行清除）；準備期間目標檔案被更動時會拒絕替換。
 - Android／Termux 目前沒有發布 binary。原生編譯依賴透過 `pkg install golang clang git` 安裝。Source upgrade 設定 `GOOS=android`、使用 Termux Clang 啟用 CGO，並停用自動 Go toolchain 下載。Linux archive 可能因 Android syscall 限制而失敗，因此不會作為替代。Go 需符合所選 release 的 `go.mod` 要求。尚無 source fallback 的舊版 binary，需先以原生工具把指定 release、經 checksum 驗證的 source archive 編譯到暫存目錄，驗證版本後替換獨立執行檔；完整 Termux 修復範例見 repository README。
 - 原生 Termux 的 SSH setup 與 discovery 使用經驗證的 `/data/data/com.termux/files/home` 或 `/data/user/<Android-user>/com.termux/files/home` 私有家目錄，重新確認系統／app owner 與目錄身分；下層 symlink 與不安全使用者路徑仍會拒絕。Android SELinux app-data 標籤只比對、不重新設定；加密檔案保留繼承的 metadata。因 app 禁止 hard link，新檔案採 `RENAME_NOREPLACE`。共享儲存空間與其他 app-data 配置不在支援範圍。原生測試涵蓋首次設定、更新、金鑰生成、cache 寫入與 metadata 不符拒絕；desktop 測試保留 hard-link 攻擊案例。參考 [Android app sandbox](https://source.android.com/docs/security/app-sandbox)。
@@ -340,7 +340,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - [`internal/handoff`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/handoff)
 - [`internal/closeout`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/closeout)
 - [`internal/retire/audit.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/retire/audit.go)
-- [`scripts/update-homebrew-formula.sh`](https://github.com/daviddwlee84/dev-cli/blob/main/scripts/update-homebrew-formula.sh)
+- [集中管理 Homebrew formula 同步](https://github.com/daviddwlee84/homebrew-tap#one-writer-for-formulas)
 - [`internal/scaffold`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/scaffold)
 - [`internal/projectconfig`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/projectconfig)
 - [`internal/cli/fleet_exec_windows.go`](https://github.com/daviddwlee84/dev-cli/blob/main/internal/cli/fleet_exec_windows.go)
@@ -353,7 +353,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - [`internal/repocontext`](https://github.com/daviddwlee84/dev-cli/tree/main/internal/repocontext)
 - [`.github/workflows/ci.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/ci.yml)
 - [`.github/workflows/release.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/release.yml)
-- [`.github/workflows/publish-homebrew.yml`](https://github.com/daviddwlee84/dev-cli/blob/main/.github/workflows/publish-homebrew.yml)
+- [Tap synchronization workflow](https://github.com/daviddwlee84/homebrew-tap/blob/main/.github/workflows/sync.yml)
 - [Claude Code parallel agents](https://code.claude.com/docs/en/agents)
 
 ### Agent transfer 使用明確的相容設定
