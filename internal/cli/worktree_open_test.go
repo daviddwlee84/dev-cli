@@ -14,8 +14,10 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/pathx"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 // Retain the activityRuntime dispatch/annotation spies while recording the exact
@@ -58,13 +60,19 @@ func newWtOpenFixture(t *testing.T, rt runtime.Runtime) *wtOpenFixture {
 	t.Setenv("DEV_SHELL_CD_FILE", "")
 	t.Setenv("DEV_SHELL_CD_FD", "")
 	r := gittest.New(t)
+	testutil.SetHome(t, filepath.Dir(r.Root))
 	// This checkout was created externally, not by dev's worktree manager.
 	path := filepath.Join(filepath.Dir(r.Root), "external checkout")
 	r.Git("worktree", "add", "-b", "feat/visible", path, "main")
 	linked := &gittest.Repo{T: t, Root: path}
-	// Git reports forward slashes on Windows; preserve that exact spelling for
-	// the target/output assertions rather than imposing controller formatting.
-	path = linked.Git("rev-parse", "--show-toplevel")
+	// Controller-owned checkout paths are canonical native paths, even when
+	// Git spells the same Windows directory with forward slashes.
+	var err error
+	path, err = pathx.Canonical(linked.Git("rev-parse", "--show-toplevel"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	linked.Root = path
 	linked.Write("README.md", "staged change\n")
 	linked.Git("add", "README.md")
 	linked.Write("README.md", "staged plus unstaged change\n")

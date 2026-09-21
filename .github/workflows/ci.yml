@@ -6,6 +6,11 @@ on:
   pull_request:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      windows_only:
+        description: Run native Windows diagnostics; pushes and releases always run every platform
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -13,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: ${{ fromJSON(inputs.windows_only && '["windows-latest"]' || '["ubuntu-latest","macos-latest","windows-latest"]') }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -159,6 +164,7 @@ jobs:
 
   distribution:
     name: Source and Go module packages
+    if: ${{ !inputs.windows_only }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
