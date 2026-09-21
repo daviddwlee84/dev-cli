@@ -15,6 +15,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
 	"github.com/daviddwlee84/dev-cli/internal/task"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func (f *startFixture) runInteractive(input string, args ...string) error {
@@ -254,6 +255,7 @@ func TestStartWizardRepromptsInvalidBranchBeforeMutation(t *testing.T) {
 
 func TestStartWizardSelectsRepositoryOutsideCheckout(t *testing.T) {
 	f := newStartFixture(t, runtime.None{})
+	testutil.SetHome(t, filepath.Dir(f.repo.Root))
 	f.app.Cfg.Paths.ScanRoots = []string{filepath.Dir(f.repo.Root)}
 	outside := t.TempDir()
 	if err := os.Chdir(outside); err != nil {
@@ -269,7 +271,7 @@ func TestStartWizardSelectsRepositoryOutsideCheckout(t *testing.T) {
 	if err := f.runInteractive(input); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(f.stdout.String(), "Repositories:") || !strings.Contains(f.stdout.String(), f.repo.Root) {
+	if !strings.Contains(f.stdout.String(), "Repositories:") || !strings.Contains(f.stdout.String(), config.Contract(f.repo.Root)) {
 		t.Fatalf("repo selector output:\n%s", f.stdout.String())
 	}
 	if _, err := f.app.Tasks.Get(task.MakeID("repo", "feat/outside-task")); err != nil {
@@ -318,6 +320,7 @@ func TestStartExplicitTaskRemainsImmediateInTTY(t *testing.T) {
 
 func TestHerdrExternalWorktreeRequiresExplicitAdopt(t *testing.T) {
 	r := gittest.New(t)
+	testutil.SetHome(t, filepath.Dir(r.Root))
 	external := filepath.Join(t.TempDir(), ".herdr", "worktrees", "repo", "external")
 	if err := os.MkdirAll(filepath.Dir(external), 0o755); err != nil {
 		t.Fatal(err)
@@ -344,7 +347,7 @@ func TestHerdrExternalWorktreeRequiresExplicitAdopt(t *testing.T) {
 	if err := cmd.Execute(); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "feat/external") || !strings.Contains(out.String(), external) {
+	if !strings.Contains(out.String(), "feat/external") || !strings.Contains(out.String(), config.Contract(externalCanonical)) {
 		t.Fatalf("external worktree was not detected:\n%s", out.String())
 	}
 	if tasks, err := app.Tasks.List(); err != nil || len(tasks) != 0 {

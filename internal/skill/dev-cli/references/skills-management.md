@@ -152,4 +152,7 @@ Windows npm `.cmd`/`.bat` removal uses an encoded system PowerShell invocation,
 rejecting batch expansion/control characters. Other npm-shim management actions
 need a supported direct executable. Both the dedicated native removal gate and
 the complete Windows suite are required; unsupported mutation surfaces retain
-explicit native rejection contracts.
+explicit native rejection contracts. The full suite uses native package/test
+discovery and audited shards, including examples and fuzz seeds. Missing
+results, test failures and timeouts fail the gate; check the audit and per-shard
+logs rather than treating a successful dedicated subset as full-suite proof.

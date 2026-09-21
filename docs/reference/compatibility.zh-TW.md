@@ -220,8 +220,9 @@ identity diagnostics 仍是 content-free。
 - Shell integration 是 `dev shell-init powershell`。POSIX shell 透過 file descriptor 3 回傳目錄；PowerShell 無法繼承它，wrapper 改用 `DEV_SHELL_CD_FILE` 傳入 temp-file path。
 - `dev fleet open` 會啟動子 shell（`%COMSPEC%`），而非取代 process，因為 Windows 沒有 `exec(2)`。
 - `dev fleet machine-id` 可執行 content-free `_capability` probe，但 native `fleet files` plan/apply payload helpers 會在 content 傳送前被拒絕。
-- 完整 Go suite 是 native `windows-latest` 的 required gate；測試失敗或 timeout 會讓 CI 失敗。SSH/fleet、cleanup、handoff、privacy 的專項 gate 仍保留。明確未支援的 POSIX mutation transport 使用狹窄的平台界線，並驗證 Windows 拒絕操作；affected tests/packages 與 CLI 也會針對 `windows/arm64` compile。
+- 完整 Go suite 是 native `windows-latest` 的 required gate。CI 會列出所有 package，將 CLI/taskflow 的測試、Example 與 fuzz seed 分配至八個 runner；coverage audit 會拒絕漏跑、失敗或 timeout 的結果。SSH/fleet、cleanup、handoff、privacy 的專項 gate 仍保留。明確未支援的 POSIX mutation transport 使用狹窄的平台界線，並驗證 Windows 拒絕操作；affected tests/packages 與 CLI 也會針對 `windows/arm64` compile。
 - Git 路徑在 linked worktree 與 alias 之間採用一致的 native filesystem identity，`~/` config 路徑可正確 round-trip。Machine identity 目錄從建立時就具備私密保護，cache/trust 暫存檔在寫入內容前先套用 owner/DACL。
+- Operation lease lock 會驗證持有檔案的 identity，並在使用前保護原本已私密的 inherited DACL；owner 不符、權限過寬或被替換的 lock 會拒絕使用。明確的 Git template URL 與 SCP reference 不再被當成本機檔名檢查。
 
 ### SSH host management 刻意保持狹窄
 

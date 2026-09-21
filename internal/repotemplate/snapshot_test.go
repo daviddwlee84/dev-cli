@@ -1,6 +1,7 @@
 package repotemplate_test
 
 import (
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -275,8 +276,13 @@ func TestPrepareGitRefSnapshotsRequestedCommitAndSubdirectory(t *testing.T) {
 		t.Fatalf("files = %+v", snapshot.Files)
 	}
 
+	sourceURLPath := filepath.ToSlash(source)
+	if !strings.HasPrefix(sourceURLPath, "/") {
+		sourceURLPath = "/" + sourceURLPath
+	}
+	sourceURL := (&url.URL{Scheme: "file", Path: sourceURLPath}).String()
 	latest, err := repotemplate.Prepare(t.Context(), repotemplate.Request{
-		Source: "file://" + source, Subdir: "starters/go",
+		Source: sourceURL, Subdir: "starters/go",
 	})
 	if err != nil {
 		t.Fatal(err)

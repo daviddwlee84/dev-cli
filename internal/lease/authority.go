@@ -391,7 +391,7 @@ func (a *Authority) withKeyLocks(ctx context.Context, keys []Key, operation func
 		if err := ensurePrivateDir(directory); err != nil {
 			return fmt.Errorf("prepare operation key lock: %w", err)
 		}
-		return lockx.WithDir(ctx, directory, "operation lease key", func() error { return acquire(index + 1) })
+		return lockx.WithDirChecked(ctx, directory, "operation lease key", protectPrivateLock, func() error { return acquire(index + 1) })
 	}
 	return acquire(0)
 }
@@ -425,7 +425,7 @@ func (a *Authority) withStateLock(ctx context.Context, operation func() error) e
 	if err := ensurePrivateDir(directory); err != nil {
 		return fmt.Errorf("prepare operation authority lock: %w", err)
 	}
-	return lockx.WithDir(ctx, directory, "operation lease authority", operation)
+	return lockx.WithDirChecked(ctx, directory, "operation lease authority", protectPrivateLock, operation)
 }
 
 func (a *Authority) ensureLayout() error {

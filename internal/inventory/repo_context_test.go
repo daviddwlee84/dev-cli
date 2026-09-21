@@ -75,8 +75,20 @@ func TestRepoContextClassifiesAndMatchesNestedCheckouts(t *testing.T) {
 		t.Errorf("nested linked-worktree path selected checkout %d, ok=%v", selected, ok)
 	}
 
+	canonicalDev, err := pathx.Canonical(devPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalNested, err := pathx.Canonical(nestedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonicalMain, err := pathx.Canonical(r.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
 	markdown := inventory.FormatRepoContext(ctx, -1)
-	for _, want := range []string{"# dev repo context: repo", devPath, nestedPath, "claude:turn", "ephemeral"} {
+	for _, want := range []string{"# dev repo context: repo", canonicalDev, canonicalNested, "claude:turn", "ephemeral"} {
 		if !strings.Contains(markdown, want) {
 			t.Errorf("context missing %q:\n%s", want, markdown)
 		}
@@ -89,7 +101,7 @@ func TestRepoContextClassifiesAndMatchesNestedCheckouts(t *testing.T) {
 		}
 	}
 	child := inventory.FormatRepoContext(ctx, devIndex)
-	if !strings.Contains(child, devPath) || strings.Contains(child, nestedPath) || strings.Contains(child, r.Root+"`") {
+	if !strings.Contains(child, canonicalDev) || strings.Contains(child, canonicalNested) || strings.Contains(child, canonicalMain+"`") {
 		t.Errorf("child context should contain only one checkout:\n%s", child)
 	}
 }

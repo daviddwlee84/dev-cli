@@ -62,14 +62,19 @@ func setPrivateMode(path string, want fs.FileMode) error {
 }
 
 func privateModeMatches(path string, _ fs.FileMode, _ fs.FileMode) (bool, error) {
-	current, allowed, err := privateSIDs()
-	if err != nil {
-		return false, err
-	}
 	descriptor, err := windows.GetNamedSecurityInfo(path, windows.SE_FILE_OBJECT, windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION)
 	if err != nil {
 		return false, fmt.Errorf("read Windows owner and DACL: %w", err)
 	}
+	return privateDescriptorMatches(descriptor, true)
+}
+
+func privateDescriptorMatches(descriptor *windows.SECURITY_DESCRIPTOR, requireProtected bool) (bool, error) {
+	current, allowed, err := privateSIDs()
+	if err != nil {
+		return false, err
+	}
+
 	owner, _, err := descriptor.Owner()
 	if err != nil {
 		return false, fmt.Errorf("read Windows owner: %w", err)
@@ -81,7 +86,7 @@ func privateModeMatches(path string, _ fs.FileMode, _ fs.FileMode) (bool, error)
 	if err != nil {
 		return false, fmt.Errorf("read Windows security descriptor control: %w", err)
 	}
-	if control&windows.SE_DACL_PROTECTED == 0 {
+	if requireProtected && control&windows.SE_DACL_PROTECTED == 0 {
 		return false, nil
 	}
 	dacl, _, err := descriptor.DACL()

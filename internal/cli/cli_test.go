@@ -1400,11 +1400,18 @@ func TestRepoListShowsLatestDirtyEdit(t *testing.T) {
 func TestRepoContextReportsWholeRepoFromLinkedWorktree(t *testing.T) {
 	h := newHarness(t)
 	h.mustRun("start", "demo", "--task", "auth", "--branch", "feat/auth", "--base", "main")
-	wtPath := filepath.Join(h.wtRoot, "demo", "feat-auth")
+	mainPath, err := filepath.EvalSymlinks(h.repo.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wtPath, err := filepath.EvalSymlinks(filepath.Join(h.wtRoot, "demo", "feat-auth"))
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	out := h.mustRun("repo", "context", "demo")
 	for _, want := range []string{
-		"# dev repo context: demo", "Linked worktrees: 1", h.repo.Root, wtPath,
+		"# dev repo context: demo", "Linked worktrees: 1", mainPath, wtPath,
 		"demo__feat-auth", "feat/auth — dev",
 	} {
 		if !strings.Contains(out, want) {
@@ -1415,7 +1422,7 @@ func TestRepoContextReportsWholeRepoFromLinkedWorktree(t *testing.T) {
 	t.Chdir(wtPath)
 	fromChild := h.mustRun("repo", "context")
 	if !strings.Contains(fromChild, "# dev repo context: demo") ||
-		!strings.Contains(fromChild, h.repo.Root) || !strings.Contains(fromChild, wtPath) {
+		!strings.Contains(fromChild, mainPath) || !strings.Contains(fromChild, wtPath) {
 		t.Errorf("linked cwd should still report the whole repo:\n%s", fromChild)
 	}
 }

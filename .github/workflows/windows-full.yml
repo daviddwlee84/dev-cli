@@ -1,0 +1,119 @@
+name: Complete native Windows suite
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      go_version: ${{ steps.plan.outputs.go_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Configure hermetic Git defaults
+        shell: bash
+        env:
+          GIT_CONFIG_SYSTEM: ${{ runner.temp }}/dev-test-gitconfig
+        run: |
+          printf 'GIT_CONFIG_SYSTEM=%s\n' "$GIT_CONFIG_SYSTEM" >> "$GITHUB_ENV"
+          git config --file "$GIT_CONFIG_SYSTEM" core.autocrlf false
+          git config --file "$GIT_CONFIG_SYSTEM" core.longpaths true
+          git config --global user.email "ci@example.test"
+          git config --global user.name "ci"
+          git config --global init.defaultBranch main
+      - id: plan
+        name: Discover every native package and split root test
+        env:
+          GOFLAGS: ''
+        run: python scripts/windows-shards.py plan --shards 8 --out "$env:RUNNER_TEMP/windows-plan/manifest.json" --expected-os windows
+      - name: Test the exhaustive runner with real Go fixtures
+        run: python -m unittest discover -s scripts -p test_windows_shards.py -v
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-test-plan
+          path: ${{ runner.temp }}/windows-plan/manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  run:
+    needs: plan
+    runs-on: windows-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ needs.plan.outputs.go_version }}
+          cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Configure hermetic Git defaults
+        shell: bash
+        env:
+          GIT_CONFIG_SYSTEM: ${{ runner.temp }}/dev-test-gitconfig
+        run: |
+          printf 'GIT_CONFIG_SYSTEM=%s\n' "$GIT_CONFIG_SYSTEM" >> "$GITHUB_ENV"
+          git config --file "$GIT_CONFIG_SYSTEM" core.autocrlf false
+          git config --file "$GIT_CONFIG_SYSTEM" core.longpaths true
+          git config --global user.email "ci@example.test"
+          git config --global user.name "ci"
+          git config --global init.defaultBranch main
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-test-plan
+          path: ${{ runner.temp }}/windows-plan
+      - name: Run every assigned test and retain all failures
+        env:
+          GOFLAGS: ''
+          TEST_SHARD: ${{ matrix.shard }}
+        run: python scripts/windows-shards.py run --plan "$env:RUNNER_TEMP/windows-plan/manifest.json" --shard "$env:TEST_SHARD" --out "$env:RUNNER_TEMP/windows-results"
+      - name: Upload complete output and incremental coverage ledger
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-result-${{ matrix.shard }}
+          path: ${{ runner.temp }}/windows-results
+          if-no-files-found: error
+          retention-days: 7
+
+  audit:
+    if: always()
+    needs: [plan, run]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-test-plan
+          path: ${{ runner.temp }}/windows-plan
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: windows-test-result-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/windows-results
+      - name: Reject missing packages, roots, tasks or failed invocations
+        run: python scripts/windows-shards.py audit --plan "$RUNNER_TEMP/windows-plan/manifest.json" --results "$RUNNER_TEMP/windows-results"

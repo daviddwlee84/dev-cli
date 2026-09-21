@@ -126,7 +126,7 @@ State is split intentionally:
 
 ## Versioning and changelog
 
-The current published baseline is `v0.2.41` (2026-09-22). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
+The current published baseline is `v0.2.42` (2026-09-22). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
 
 - `Makefile` derives development builds with `git describe --tags --match 'v[0-9]*' --always --dirty` and injects `internal/cli.Version` through `-ldflags`. The `--match` filter is load-bearing: any other tag in the repository (a `backup/` or `rescue/` marker, say) must never become `--version`.
 - `go install ...@version` recovers the module version from Go build information.
@@ -187,6 +187,13 @@ rejections; do not restore continue-on-error or skip supported behavior to hide
 portability failures. Historical advisory step conclusions were not proof of a
 passing suite.
 
+Windows CI discovers every Go package and shards the large CLI/taskflow root
+tests, examples and fuzz seeds across eight native runners. The required audit
+rejects incomplete coverage and failed or timed-out invocations. Keep discovery,
+execution and audit tied to the same commit and toolchain; preserve logs for
+each invocation. Linux/macOS retain the monolithic race suite. After changing
+the runner, run `python3 -m unittest discover -s scripts -p test_windows_shards.py`.
+
 ## Agent history policy
 
 `dev help ai-artifacts` separates source retention, archive location, protection
@@ -217,7 +224,7 @@ credentials still require rotation and unknown findings remain blocked.
 ## Distribution verification
 
 Run `python3 -m unittest discover -s scripts -p test_distribution.py` and, after
-committing packaging edits, `python3 scripts/check-distribution.py --version v0.2.41`.
+committing packaging edits, `python3 scripts/check-distribution.py --version v0.2.42`.
 The latter validates independent source and Go module payloads, including their
 embedded resources. Evidence-only nested `go.mod` files intentionally remove
 those directories from the parent module ZIP; do not run module tidy in them.

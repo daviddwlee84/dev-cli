@@ -62,7 +62,14 @@ func (l *Lease) Close() error {
 }
 
 // WithDir runs operation while holding an exclusive lock for dir.
-func WithDir(ctx context.Context, dir, label string, operation func() error) (err error) {
+func WithDir(ctx context.Context, dir, label string, operation func() error) error {
+	return WithDirChecked(ctx, dir, label, nil, operation)
+}
+
+// WithDirChecked validates the retained, locked file before running operation.
+// Other lock consumers keep WithDir's existing behavior; private state owners
+// can enforce their native identity and permission contract under the lock.
+func WithDirChecked(ctx context.Context, dir, label string, check func(*os.File) error, operation func() error) (err error) {
 	if operation == nil {
 		return fmt.Errorf("%s lock requires an operation", label)
 	}
@@ -74,6 +81,14 @@ func WithDir(ctx context.Context, dir, label string, operation func() error) (er
 		return err
 	}
 	defer func() { err = errors.Join(err, lease.Close()) }()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if check != nil {
+		if err := check(lease.lock.file); err != nil {
+			return fmt.Errorf("validate %s lock: %w", label, err)
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}

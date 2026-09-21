@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.42] - 2026-09-22
+
 ### Fixed
 
 - Native Windows repository, linked-worktree and submodule paths now agree with
@@ -18,11 +20,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Machine identity directories are created with their private policy atomically;
   disk-size cache and project trust temporary files receive owner/DACL protection
   before content is written, bound to the retained creation handle.
+- Operation lease locks verify the held file's identity and private policy;
+  Windows seals safe inherited private DACLs without repairing foreign or
+  broadly accessible files. Explicit template Git URLs and SCP references no
+  longer fail Windows local-file inspection before cloning.
 - The full Windows suite is now a required CI gate. Native provider fixtures,
   isolated HOME/USERPROFILE and explicit Git line-ending defaults keep tests
   from accidentally using installed tools or runner settings. Unsupported POSIX
   mutation transports retain explicit rejection tests, and lease tests report
   early operation failure instead of waiting indefinitely.
+  Large CLI/taskflow suites run in eight native shards with complete package,
+  test, example and fuzz-seed discovery; an audit fails on missing results,
+  failures and timeouts, with per-invocation logs retained.
 
 ## [0.2.41] - 2026-09-22
 
@@ -1365,7 +1374,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.41...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.42...HEAD
+[0.2.42]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.41...v0.2.42
 [0.2.41]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.40...v0.2.41
 [0.2.40]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.39...v0.2.40
 [0.2.39]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.38...v0.2.39

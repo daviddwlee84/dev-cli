@@ -683,8 +683,17 @@ func TestWtRemoveRejectsAmbiguousDuplicateBranchCheckouts(t *testing.T) {
 	first := addLifecycleLinkedCheckout(t, fixture.repo, branch)
 	second := filepath.Join(filepath.Dir(fixture.repo.Root), "duplicate-checkout")
 	fixture.repo.Git("worktree", "add", "--force", second, branch)
+	var err error
+	first, err = filepath.EvalSymlinks(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err = filepath.EvalSymlinks(second)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	err := runFocusedWtRemove(fixture.app, branch, "--repo", fixture.repo.Root)
+	err = runFocusedWtRemove(fixture.app, branch, "--repo", fixture.repo.Root)
 	if err == nil || !strings.Contains(err.Error(), "has 2 registered worktrees") ||
 		!strings.Contains(err.Error(), first) || !strings.Contains(err.Error(), second) {
 		t.Fatalf("ambiguous worktree removal error = %v", err)

@@ -245,8 +245,25 @@ func AddWorktree(ctx context.Context, dir, path, branch, base string) error {
 
 // MoveWorktree relocates a linked worktree through Git so the shared
 // administrative metadata keeps pointing at the checkout's new path. dir may
-// be any checkout of the same repository.
+// be any checkout of the same repository. Relative paths are resolved from dir.
 func MoveWorktree(ctx context.Context, dir, source, destination string) error {
+	// Resolve path arguments before changing Git's working directory. In
+	// particular, "." must keep naming the selected linked checkout, and a
+	// sibling destination must remain relative to that checkout's parent.
+	originalDir := dir
+	if originalDir == "" {
+		originalDir = "."
+	}
+	originalDir, err := pathx.Canonical(originalDir)
+	if err != nil {
+		return fmt.Errorf("resolve worktree move directory: %w", err)
+	}
+	if !filepath.IsAbs(source) {
+		source = filepath.Join(originalDir, source)
+	}
+	if !filepath.IsAbs(destination) {
+		destination = filepath.Join(originalDir, destination)
+	}
 	// Windows cannot rename the current directory of the Git subprocess. Use
 	// the verified main checkout even when the caller selected the linked one.
 	repository, err := Discover(ctx, dir)

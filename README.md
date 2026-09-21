@@ -144,7 +144,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.41 instead when you need a reproducible install.
+# Pin @v0.2.42 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -188,7 +188,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.2.41
+  version=v0.2.42
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"
@@ -226,7 +226,10 @@ either explicit or a best-effort background refresh — `dev --version` and
 ### Windows
 
 The complete native Windows Go suite is a required CI gate, alongside the
-dedicated SSH, privacy, cleanup and handoff checks.
+dedicated SSH, privacy, cleanup and handoff checks. CI discovers every package
+and divides the large CLI/taskflow suites across eight runners, including
+examples and fuzz seeds. An audit rejects missing tests, failed tests and
+timeouts; each runner retains its test log.
 
 `dev` builds and runs on Windows, and core commands work. Native Windows support
 also covers SSH host discovery/managed fragments, OpenSSH key generation and

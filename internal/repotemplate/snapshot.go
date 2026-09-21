@@ -105,19 +105,25 @@ func Prepare(ctx context.Context, request Request) (Snapshot, error) {
 		return Snapshot{}, err
 	}
 
-	local := config.Expand(request.Source)
-	info, statErr := os.Lstat(local)
-	localSource := statErr == nil
-	if statErr == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			return Snapshot{}, fmt.Errorf("template source %q is a symlink", repo.RedactCloneRef(request.Source))
+	local := ""
+	localSource := false
+	// Explicit Git URLs and SCP references are not local filenames. In
+	// particular, Windows reports invalid-name (not ENOENT) if Lstat sees a URL.
+	// Absolute and explicitly relative paths retain their local precedence.
+	if !explicitGitSource(request.Source) {
+		local = config.Expand(request.Source)
+		info, statErr := os.Lstat(local)
+		localSource = statErr == nil
+		if statErr == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				return Snapshot{}, fmt.Errorf("template source %q is a symlink", repo.RedactCloneRef(request.Source))
+			}
+			if !info.IsDir() {
+				return Snapshot{}, fmt.Errorf("template source %q is not a directory", repo.RedactCloneRef(request.Source))
+			}
+		} else if !errors.Is(statErr, fs.ErrNotExist) {
+			return Snapshot{}, fmt.Errorf("inspect template source %q: %v", repo.RedactCloneRef(request.Source), repo.RedactCloneError(statErr, request.Source, local))
 		}
-		if !info.IsDir() {
-			return Snapshot{}, fmt.Errorf("template source %q is not a directory", repo.RedactCloneRef(request.Source))
-		}
-	} else if !errors.Is(statErr, fs.ErrNotExist) {
-		return Snapshot{}, fmt.Errorf("inspect template source %q: %v", repo.RedactCloneRef(request.Source),
-			repo.RedactCloneError(statErr, request.Source, local))
 	}
 	if localSource && request.Ref == "" {
 		return snapshotDirectory(ctx, repo.RedactCloneRef(request.Source), local, "", "", subdir, snapshotSource{
@@ -134,6 +140,21 @@ func Prepare(ctx context.Context, request Request) (Snapshot, error) {
 	return snapshotDirectory(ctx, repo.RedactCloneRef(request.Source), checkout, request.Ref, resolvedRef, subdir, snapshotSource{
 		local: localSource,
 	})
+}
+
+func explicitGitSource(source string) bool {
+	if filepath.IsAbs(source) || strings.HasPrefix(source, "./") || strings.HasPrefix(source, "../") || strings.HasPrefix(source, `.\`) || strings.HasPrefix(source, `..\`) || source == "~" || strings.HasPrefix(source, "~/") {
+		return false
+	}
+	if strings.Contains(source, "://") {
+		return true
+	}
+	colon := strings.IndexByte(source, ':')
+	// Drive-relative Windows paths (C:relative) are also local references.
+	if colon == 1 && (source[0] >= 'A' && source[0] <= 'Z' || source[0] >= 'a' && source[0] <= 'z') {
+		return false
+	}
+	return colon > 0 && !strings.ContainsAny(source[:colon], `/\`)
 }
 
 func checkoutGitSource(ctx context.Context, source, ref string) (string, string, func(), error) {

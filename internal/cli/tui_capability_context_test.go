@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/agenttarget"
@@ -9,12 +10,16 @@ import (
 )
 
 func TestTUICapabilityTargetsPreferExactStartupCheckoutInRepository(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	locals := []tui.RepoRow{
-		{Repo: repo.Repo{Name: "api", Path: "/repos/api", MainRoot: "/repos/api", CommonDir: "/repos/api/.git", HasGit: true}},
-		{Repo: repo.Repo{Name: "web", Path: "/repos/web", MainRoot: "/repos/web", CommonDir: "/repos/web/.git", HasGit: true}},
+		{Repo: repo.Repo{Name: "api", Path: filepath.Join(root, "repos", "api"), MainRoot: filepath.Join(root, "repos", "api"), CommonDir: filepath.Join(root, "repos", "api", ".git"), HasGit: true}},
+		{Repo: repo.Repo{Name: "web", Path: filepath.Join(root, "repos", "web"), MainRoot: filepath.Join(root, "repos", "web"), CommonDir: filepath.Join(root, "repos", "web", ".git"), HasGit: true}},
 	}
 	current := agenttarget.Target{
-		RepoName: "api", RepoPath: "/repos/api", CheckoutRoot: "/worktrees/api-feature", CommonDir: "/repos/api/.git",
+		RepoName: "api", RepoPath: filepath.Join(root, "repos", "api"), CheckoutRoot: filepath.Join(root, "worktrees", "api-feature"), CommonDir: filepath.Join(root, "repos", "api", ".git"),
 	}
 
 	targets := tuiCapabilityTargets(locals, current, tui.CapabilityStartupContext)
@@ -24,12 +29,16 @@ func TestTUICapabilityTargetsPreferExactStartupCheckoutInRepository(t *testing.T
 }
 
 func TestTUICapabilityTargetsIncludeRepositoriesAndStartupCheckoutInAllScope(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	locals := []tui.RepoRow{
-		{Repo: repo.Repo{Name: "api", Path: "/repos/api", MainRoot: "/repos/api", CommonDir: "/repos/api/.git", HasGit: true}},
-		{Repo: repo.Repo{Name: "web", Path: "/repos/web", MainRoot: "/repos/web", CommonDir: "/repos/web/.git", HasGit: true}},
+		{Repo: repo.Repo{Name: "api", Path: filepath.Join(root, "repos", "api"), MainRoot: filepath.Join(root, "repos", "api"), CommonDir: filepath.Join(root, "repos", "api", ".git"), HasGit: true}},
+		{Repo: repo.Repo{Name: "web", Path: filepath.Join(root, "repos", "web"), MainRoot: filepath.Join(root, "repos", "web"), CommonDir: filepath.Join(root, "repos", "web", ".git"), HasGit: true}},
 	}
 	current := agenttarget.Target{
-		RepoName: "api", RepoPath: "/repos/api", CheckoutRoot: "/worktrees/api-feature", CommonDir: "/repos/api/.git",
+		RepoName: "api", RepoPath: filepath.Join(root, "repos", "api"), CheckoutRoot: filepath.Join(root, "worktrees", "api-feature"), CommonDir: filepath.Join(root, "repos", "api", ".git"),
 	}
 
 	targets := tuiCapabilityTargets(locals, current, tui.CapabilityAllRepositories)
@@ -37,7 +46,7 @@ func TestTUICapabilityTargetsIncludeRepositoriesAndStartupCheckoutInAllScope(t *
 	for _, target := range targets {
 		seen[target.CheckoutRoot] = true
 	}
-	for _, expected := range []string{"/repos/api", "/repos/web", "/worktrees/api-feature"} {
+	for _, expected := range []string{filepath.Join(root, "repos", "api"), filepath.Join(root, "repos", "web"), filepath.Join(root, "worktrees", "api-feature")} {
 		if !seen[expected] {
 			t.Errorf("all-scope targets missing %s: %+v", expected, targets)
 		}
@@ -48,8 +57,12 @@ func TestTUICapabilityTargetsIncludeRepositoriesAndStartupCheckoutInAllScope(t *
 }
 
 func TestTUICapabilityTargetsKeepUnlistedGitCheckoutContextOnly(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	current := agenttarget.Target{
-		RepoName: "external", RepoPath: "/repos/external", CheckoutRoot: "/worktrees/external", CommonDir: "/repos/external/.git",
+		RepoName: "external", RepoPath: filepath.Join(root, "repos", "external"), CheckoutRoot: filepath.Join(root, "worktrees", "external"), CommonDir: filepath.Join(root, "repos", "external", ".git"),
 	}
 
 	targets := tuiCapabilityTargets(nil, current, tui.CapabilityStartupContext)
@@ -59,12 +72,16 @@ func TestTUICapabilityTargetsKeepUnlistedGitCheckoutContextOnly(t *testing.T) {
 }
 
 func TestTUICapabilityTargetsUseRepositoryInventoryOutsideGit(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	locals := []tui.RepoRow{
-		{Repo: repo.Repo{Name: "api", Path: "/repos/api", MainRoot: "/repos/api", CommonDir: "/repos/api/.git", HasGit: true}},
-		{Repo: repo.Repo{Name: "web", Path: "/repos/web", MainRoot: "/repos/web", CommonDir: "/repos/web/.git", HasGit: true}},
+		{Repo: repo.Repo{Name: "api", Path: filepath.Join(root, "repos", "api"), MainRoot: filepath.Join(root, "repos", "api"), CommonDir: filepath.Join(root, "repos", "api", ".git"), HasGit: true}},
+		{Repo: repo.Repo{Name: "web", Path: filepath.Join(root, "repos", "web"), MainRoot: filepath.Join(root, "repos", "web"), CommonDir: filepath.Join(root, "repos", "web", ".git"), HasGit: true}},
 	}
 	ordinary := agenttarget.Target{
-		RepoName: "scratch", RepoPath: "/tmp/scratch", CheckoutRoot: "/tmp/scratch", CommonDir: "/tmp/scratch",
+		RepoName: "scratch", RepoPath: filepath.Join(root, "tmp", "scratch"), CheckoutRoot: filepath.Join(root, "tmp", "scratch"), CommonDir: filepath.Join(root, "tmp", "scratch"),
 	}
 
 	targets := tuiCapabilityTargets(locals, ordinary, tui.CapabilityStartupContext)
@@ -75,7 +92,7 @@ func TestTUICapabilityTargetsUseRepositoryInventoryOutsideGit(t *testing.T) {
 	for _, target := range targets {
 		seen[target.CheckoutRoot] = true
 	}
-	for _, expected := range []string{"/repos/api", "/repos/web", "/tmp/scratch"} {
+	for _, expected := range []string{filepath.Join(root, "repos", "api"), filepath.Join(root, "repos", "web"), filepath.Join(root, "tmp", "scratch")} {
 		if !seen[expected] {
 			t.Errorf("outside-project targets missing %s: %+v", expected, targets)
 		}

@@ -252,8 +252,9 @@ diagnostics remain content-free.
 - Shell integration is `dev shell-init powershell`. POSIX shells hand the directory back on file descriptor 3; PowerShell cannot inherit it, so the wrapper passes a temp-file path in `DEV_SHELL_CD_FILE` instead.
 - `dev fleet open` starts a child shell (`%COMSPEC%`) rather than replacing the process, because Windows has no `exec(2)`.
 - `dev fleet machine-id` can perform its content-free `_capability` probe, but native `fleet files` plan/apply payload helpers are denied before content is sent.
-- The complete Go suite is required on native `windows-latest`; a test failure or timeout fails CI. Dedicated SSH/fleet, cleanup, handoff and privacy gates remain required. Tests for explicitly unsupported POSIX mutation transports retain narrow platform boundaries and native Windows rejection checks. Affected tests/packages and the CLI are also compiled for `windows/arm64`.
+- The complete Go suite is required on native `windows-latest`. CI discovers all packages and distributes CLI/taskflow test roots, examples and fuzz seeds across eight runners; a coverage audit rejects missing results, failures and timeouts. Dedicated SSH/fleet, cleanup, handoff and privacy gates remain required. Tests for explicitly unsupported POSIX mutation transports retain narrow platform boundaries and native Windows rejection checks. Affected tests/packages and the CLI are also compiled for `windows/arm64`.
 - Git paths use canonical native filesystem paths across linked worktrees and aliases; `~/` config paths round-trip on Windows. Machine identity directories are private from creation, and cache/trust temporary files receive owner/DACL protection before content is written.
+- Operation lease locks validate the held file and protect an inherited private DACL before use; foreign, broadly accessible or substituted locks fail closed. Explicit Git template URLs and SCP references bypass local-filename inspection.
 
 ### SSH host management is intentionally narrow
 

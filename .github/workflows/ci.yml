@@ -76,13 +76,6 @@ jobs:
           -run '^Test(Session(Handoff(ExactPathBinding|RejectsUnprovenSelectedPath)|SelectionUsesExternalCaptureRoot)|PrepareExactSelectionProof|Finalize(SelectionBindingAndLegacyCompatibility|CASPreservesConcurrentObservation|RejectsReviewedStaleRevisionAndDiscard)|Store(ExactRecordCASAndConcurrentTransitions|CreateNeverReassignsRunAuthority)|DashboardFilter(NavigationEveryView|TextEditsEveryView|EmptyResultsAndInputLimit)|HelpLiveFilter(Navigation|ResetsOnlyForChangedText|EmptyResults)|WtOpen(NoFocus.*|Default.*))$'
           -count=1 -v
 
-      # Run the complete suite natively and propagate every failure. Explicit
-      # unsupported-operation tests retain their platform boundaries; they do
-      # not excuse failures in supported Windows behavior.
-      - name: Test full suite (required on Windows)
-        if: runner.os == 'Windows'
-        run: go test -timeout 20m ./...
-
       - run: go build ./cmd/dev
 
       # The skill documents the CLI; drift between them is a bug.
@@ -92,6 +85,14 @@ jobs:
       - name: End-to-end
         if: runner.os != 'Windows'
         run: ./scripts/e2e.sh
+
+  # Native discovery and an aggregate coverage audit make this the complete
+  # required Windows suite. Package-sized timeouts must not truncate CLI roots.
+  windows-full-required:
+    name: Windows full suite required
+    uses: ./.github/workflows/windows-full.yml
+    permissions:
+      contents: read
 
   windows-ssh-required:
     name: Windows SSH required
