@@ -95,7 +95,7 @@ func TestSkillUpdateRepoUsesSelectedCheckout(t *testing.T) {
 	}
 
 	bin := t.TempDir()
-	writeCLIExecutable(t, filepath.Join(bin, "skills"), "#!/bin/sh\nprintf '%s|%s\\n' \"$PWD\" \"$*\"\n")
+	installCLINativeFixture(t, filepath.Join(bin, "skills"), "skills-inventory", "")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	output := h.mustRun("skill", "update", "Shared Skill", "--project", "--repo", "other", "--yes")
 	if !strings.Contains(output, otherPath+"|update --yes --project shared-skill") {

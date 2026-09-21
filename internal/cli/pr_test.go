@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/daviddwlee84/dev-cli/internal/gitx/gittest"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 // installFakeGH puts a stub gh on PATH that satisfies the readiness probe and
@@ -301,16 +302,12 @@ func TestPRListMissingWorktreeDoesNotLookClean(t *testing.T) {
 func TestPRListReportsASignedOutProviderWithoutLeakingArgv(t *testing.T) {
 	h := newHarness(t)
 	dir := t.TempDir()
-	// gh is installed but signed out: `auth status` fails the way it really does.
-	script := `#!/bin/sh
-echo "gh: You are not logged into any GitHub hosts. To log in, run: gh auth login" >&2
-exit 1
-`
-	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "glab"), []byte(script), 0o755); err != nil {
-		t.Fatal(err)
+	// Native fixtures shadow both host providers, including Windows .exe lookup.
+	for _, name := range []string{"gh", "glab"} {
+		testutil.GoCommand(t, dir, name, `package main
+import ("fmt";"os")
+func main() {fmt.Fprintln(os.Stderr,"gh: You are not logged into any GitHub hosts. To log in, run: gh auth login");os.Exit(1)}
+`)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 

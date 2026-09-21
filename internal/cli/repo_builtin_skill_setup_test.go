@@ -10,6 +10,7 @@ import (
 
 	"github.com/daviddwlee84/dev-cli/internal/config"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestBootstrapProjectKnowledgeCreatesRepeatSafeHarness(t *testing.T) {
@@ -61,6 +62,9 @@ func TestEmbeddedAgentHistoryTemplatesMatchBundledSkill(t *testing.T) {
 }
 
 func TestBootstrapAgentHistoryWritesConfigAndHonorsGlobalHooksPath(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
 	root := t.TempDir()
 	if _, err := gitx.Run(t.Context(), root, "init"); err != nil {
 		t.Fatal(err)
@@ -69,15 +73,11 @@ func TestBootstrapAgentHistoryWritesConfigAndHonorsGlobalHooksPath(t *testing.T)
 		t.Fatal(err)
 	}
 	toolsDir := t.TempDir()
-	for _, name := range []string{"pre-commit", "gitleaks"} {
-		body := "#!/bin/sh\nexit 0\n"
-		if name == "gitleaks" {
-			body = "#!/bin/sh\nif [ \"$1\" = version ]; then echo 8.30.1; fi\nexit 0\n"
-		}
-		if err := os.WriteFile(filepath.Join(toolsDir, name), []byte(body), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
+	testutil.GoCommand(t, toolsDir, "pre-commit", "package main\nfunc main() {}\n")
+	testutil.GoCommand(t, toolsDir, "gitleaks", `package main
+import ("fmt";"os")
+func main() {if len(os.Args)>1 && os.Args[1]=="version" {fmt.Println("8.30.1")}}
+`)
 	t.Setenv("PATH", toolsDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	if err := os.Mkdir(filepath.Join(root, "hooks"), 0o700); err != nil {
 		t.Fatal(err)
@@ -114,6 +114,10 @@ func TestEnsureSpecStoryLocalGitignoreMergesMissingRules(t *testing.T) {
 	if err := os.WriteFile(path, []byte("custom.local\n/.project.json\n"), 0o640); err != nil {
 		t.Fatal(err)
 	}
+	beforeInfo, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := ensureSpecStoryLocalGitignore(root); err != nil {
 		t.Fatal(err)
 	}
@@ -134,8 +138,8 @@ func TestEnsureSpecStoryLocalGitignoreMergesMissingRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Mode().Perm() != 0o640 {
-		t.Fatalf("mode = %v", info.Mode().Perm())
+	if info.Mode().Perm() != beforeInfo.Mode().Perm() {
+		t.Fatalf("mode changed from %v to %v", beforeInfo.Mode().Perm(), info.Mode().Perm())
 	}
 }
 

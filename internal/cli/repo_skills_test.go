@@ -6,17 +6,26 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestInstallRepoSkillsBatchesMatchingSourceAndAgents(t *testing.T) {
+	home := t.TempDir()
+	testutil.SetHome(t, home)
+	t.Setenv("LOCALAPPDATA", filepath.Join(home, "cache"))
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(home, "cache"))
 	root := t.TempDir()
 	bin := t.TempDir()
 	logPath := filepath.Join(t.TempDir(), "calls.log")
-	provider := filepath.Join(bin, "skills")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$SKILLS_TEST_LOG\"\n"
-	if err := os.WriteFile(provider, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
+	testutil.GoCommand(t, bin, "skills", `package main
+import ("fmt";"os";"strings")
+func main() {
+ f,err:=os.OpenFile(os.Getenv("SKILLS_TEST_LOG"),os.O_CREATE|os.O_APPEND|os.O_WRONLY,0600);if err!=nil {panic(err)}
+ if _,err=fmt.Fprintln(f,strings.Join(os.Args[1:]," "));err!=nil {panic(err)}
+ if err=f.Close();err!=nil {panic(err)}
+}
+`)
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	t.Setenv("SKILLS_TEST_LOG", logPath)
 	app := &App{In: bytes.NewBuffer(nil), Out: &bytes.Buffer{}, Err: &bytes.Buffer{}}
