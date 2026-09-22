@@ -279,7 +279,7 @@ A clone-routed `new` retains the source `origin`; it therefore rejects
 new-upstream creation flags. It also rejects `--template*`, whose explicit
 meaning is “copy content into a fresh history.”
 
-Across these commands, controls include `--preset`, `--path`, typed input values through
+Across these commands, controls include `--preset`, repeatable `--component`, `--path`, typed input values through
 `--set`, item selection through `--enable`/`--disable`, `--check-in
 <auto|commit|stage|none>`, `--dry-run`, `--yes`, `--json`, and `--handoff
 <stay|cd|open|start>`. `repo new` additionally accepts `--template`,
@@ -294,14 +294,16 @@ repository mutation. The built-in presets are:
 
 - `minimal`: `main`, README, and an initial commit; this preserves existing
   scripted `repo new NAME` behavior.
-- `agent-ready`: extends `minimal` with common ignores, an explicitly incomplete
-  starter `AGENTS.md`, and project-scoped `.claude/settings.json` plus
-  `.claude/plans/`. The starter supplies safe repository-wide and handoff rules,
-  but leaves unknown purpose, verified commands, architecture, and invariants as
-  TODOs rather than inventing facts. The common ignore block excludes only
+- `agent-ready`: extends `minimal` with common ignores, a short deferred
+  `AGENTS.md`, and `.claude/settings.json` pointing to local plans. Agents maintain
+  project-specific guidance after the user defines the project. No `.gitkeep` or
+  empty plans/SpecStory directories are created; writers create their own folders.
+  Matching orphan imports create the plans directory only when copying a file. The common ignore block excludes only
   `.specstory/statistics.json`; histories, project identity, and config remain
-  visible to Git. `agent-history-hygiene` and `project-knowledge-harness` are
-  offered but are not selected silently. When selected, dev installs them and
+  visible to Git. Unmodified legacy `agent-history-hygiene` and
+  `project-knowledge-harness` suggestions are hidden unless explicitly selected
+  or customized. Existing `--enable` IDs and inherited presets remain valid.
+  When selected, dev installs them and
   runs reviewed built-in initializers for their project surfaces before the
   initial commit; downloaded skill scripts are not executed for these built-ins.
   Matching skills with the same source and identical agent targets share one
@@ -312,10 +314,27 @@ repository mutation. The built-in presets are:
   `.specstory/history/` directory. Existing custom ignore content and its mode
   are preserved; only missing managed rules are appended.
 
-After preset selection, the new-repository wizard asks “Customize preset and
-template options?” with a default of no. The ordinary `agent-ready` flow uses
-its reviewed template, file, input, and skill defaults without presenting each
-question. Answer yes—or provide customization flags—to expand those controls.
+After preset selection, the wizard offers language/tool components and their
+optional skills, then asks “Customize preset and template options?” with a
+default of no. Only selected skills need agent targets; the legacy deployment
+input is prompted only when its knowledge skill is selected.
+
+Built-in components are `python`, `go`, `node`, `rust`, `java`, and `ruby`.
+Each adds its language gitignore template. Python also offers the optional
+`python-project-best-practice` skill from the configured upstream catalog,
+without running its project initializer. Installation reuses the trusted direct
+`skills` provider and native `skills-lock.json`; no custom skill copier or npx
+fallback is introduced.
+
+`--component python --component node` replaces a preset's saved component list;
+`--component none` clears it. Components combine ignore templates with stable
+case-insensitive deduplication. `--gitignore` remains the final override.
+Component skills need no duplicate catalog entry; identical IDs deduplicate,
+and conflicting definitions or duplicate native skill names are rejected before
+scaffold mutation: different agent targets can share the same skill storage. Components cannot declare setup scripts;
+use an explicit preset for executable setup. File `default = false` keeps a
+file available for `--enable` while omitting it by default; `enabled = false`
+removes it. `--enable claude-plans-directory` explicitly restores `.gitkeep`.
 
 Presets can add typed `string`, `bool`, and `choice` inputs, text templates,
 hooks, and project skills. Hooks run in fixed `before_commit`, `after_commit`,
@@ -621,6 +640,7 @@ default_agents = ["claude-code", "codex"]
 
 [presets.team]
 extends = "agent-ready"
+components = ["go", "editor"]
 handoff = "cd"
 initial_check_in = "stage"
 template = "acme/starter-catalog"
@@ -628,10 +648,9 @@ template_ref = "v2"
 template_subdir = "services/go"
 
 [[presets.team.inputs]]
-id = "deployment"
-type = "choice"
-choices = ["none", "docker"]
-default = "none"
+id = "service"
+type = "string"
+default = "api"
 
 [[presets.team.files]]
 id = "service-readme"
@@ -644,23 +663,19 @@ phase = "before_commit"
 command = ["make", "test"]
 required = true
 
-[[presets.team.skills]]
-id = "knowledge"
-source = "daviddwlee84/agent-skills/skills"
-name = "project-knowledge-harness"
-agents = ["claude-code", "codex"]
-default = true
+[components.editor]
+description = "Editor support"
+gitignore = ["VisualStudioCode"]
 
-[presets.team.skills.setup]
-phase = "before_commit"
-interpreter = "bash"
-script = "scripts/init.sh"
-args = ["--target", "{{path}}", "--project-name", "{{name}}"]
-required = true
+[[components.editor.skills]]
+id = "team-style"
+source = "owner/team-skills"
+name = "team-style"
+default = false
 ```
 
 Skill setup normally names a project-local script inside the installed skill.
-The shipped recommendations instead use `builtin = "agent-history-hygiene"` or
+Legacy explicitly selected setups can use `builtin = "agent-history-hygiene"` or
 `builtin = "project-knowledge-harness"`; these fixed reviewed initializers do
 not execute downloaded skill code.
 

@@ -13,10 +13,11 @@ import (
 // PlanOptions are all decisions needed to turn a resolved preset into an
 // execution-neutral plan.
 type PlanOptions struct {
-	Preset string
-	Root   string
-	Name   string
-	Inputs map[string]any
+	Preset     string
+	Components []string
+	Root       string
+	Name       string
+	Inputs     map[string]any
 
 	// Variables supplements name/path/preset/input for templates. Reserved
 	// variables cannot be replaced.
@@ -31,16 +32,17 @@ type PlanOptions struct {
 // creation. It is safe to serialize for --json or render for a confirmation
 // screen before the caller mutates Git, installs skills, or runs hooks.
 type Plan struct {
-	Preset   string         `json:"preset"`
-	Root     string         `json:"root"`
-	Name     string         `json:"name"`
-	Settings Preset         `json:"settings"`
-	Inputs   map[string]any `json:"inputs,omitempty"`
-	Files    []FilePlan     `json:"files,omitempty"`
-	Hooks    []HookPlan     `json:"hooks,omitempty"`
-	Skills   []SkillPlan    `json:"skills,omitempty"`
-	Catalog  []CatalogPlan  `json:"catalog,omitempty"`
-	Warnings []string       `json:"warnings,omitempty"`
+	Preset     string         `json:"preset"`
+	Components []string       `json:"components,omitempty"`
+	Root       string         `json:"root"`
+	Name       string         `json:"name"`
+	Settings   Preset         `json:"settings"`
+	Inputs     map[string]any `json:"inputs,omitempty"`
+	Files      []FilePlan     `json:"files,omitempty"`
+	Hooks      []HookPlan     `json:"hooks,omitempty"`
+	Skills     []SkillPlan    `json:"skills,omitempty"`
+	Catalog    []CatalogPlan  `json:"catalog,omitempty"`
+	Warnings   []string       `json:"warnings,omitempty"`
 }
 
 // FilePlan contains already-rendered text and a canonical destination.
@@ -105,7 +107,7 @@ func BuildPlan(cfg Config, options PlanOptions) (Plan, error) {
 	if presetName == "" {
 		presetName = cfg.DefaultPreset
 	}
-	preset, err := cfg.ResolvePreset(presetName)
+	preset, err := cfg.ResolveComposition(presetName, options.Components)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -159,10 +161,11 @@ func BuildPlan(cfg Config, options PlanOptions) (Plan, error) {
 
 	plan := Plan{
 		Preset: presetName, Root: root, Name: name, Settings: preset,
-		Inputs: inputs,
+		Components: cloneSlice(preset.Components),
+		Inputs:     inputs,
 	}
 	for _, file := range preset.Files {
-		if selected(options.Selections, file.ID, true) == false {
+		if selected(options.Selections, file.ID, file.IsDefault()) == false {
 			continue
 		}
 		destination, err := RenderTemplate(file.Destination, variables)

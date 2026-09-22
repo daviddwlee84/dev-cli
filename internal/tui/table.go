@@ -54,9 +54,15 @@ func (m Model) headerFrom(raw string) tableHeader {
 	return h
 }
 func (m Model) tableHeader() tableHeader { return m.headerFrom(m.renderRawList()) }
+func (m Model) activeTableSort() tableSort {
+	if m.snippetsActive() {
+		return m.snippets.order
+	}
+	return m.tableSorts[int(m.view)]
+}
 func (m Model) decorateTable(raw string) string {
 	h := m.headerFrom(raw)
-	order := m.tableSorts[int(m.view)]
+	order := m.activeTableSort()
 	if order.column == "" || len(h.columns) == 0 {
 		return raw
 	}
@@ -80,7 +86,7 @@ func (m Model) currentToken() selectionToken { t, _ := m.currentSelectionToken()
 func (m Model) cycleTableSort(column string) (tea.Model, tea.Cmd) {
 	m.stopStartupFocus()
 	focus, ok := m.currentSelectionToken()
-	s := m.tableSorts[int(m.view)]
+	s := m.activeTableSort()
 	switch {
 	case s.column != column:
 		s = tableSort{column: column}
@@ -89,7 +95,11 @@ func (m Model) cycleTableSort(column string) (tea.Model, tea.Cmd) {
 	default:
 		s = tableSort{}
 	}
-	m.tableSorts[int(m.view)] = s
+	if m.snippetsActive() {
+		m.snippets.order = s
+	} else {
+		m.tableSorts[int(m.view)] = s
+	}
 	m.statusSeverity = "info"
 	m.status = "Default ordering"
 	if s.column != "" {
@@ -131,7 +141,7 @@ func boolNumber(b bool) int64 {
 	return 0
 }
 func applyColumnSort[T any](m Model, rows []T, project func(T, string) sortCell) []T {
-	s := m.tableSorts[int(m.view)]
+	s := m.activeTableSort()
 	if s.column == "" {
 		return rows
 	}

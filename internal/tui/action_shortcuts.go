@@ -9,6 +9,10 @@ import (
 func (m Model) executeDashboardAction(action listAction) (tea.Model, tea.Cmd) {
 	switch action {
 	case listActionRefresh:
+		if m.snippetsActive() {
+			m.err, m.status = nil, ""
+			return m.loadSnippets()
+		}
 		if m.view == ViewSSH {
 			m.beginViewLoad(ViewSSH, loadRefresh)
 			return m, m.reloadSSH()

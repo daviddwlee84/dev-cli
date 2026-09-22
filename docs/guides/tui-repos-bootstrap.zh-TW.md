@@ -184,6 +184,12 @@ local TASKS/REPOS/TRY state。原生 wizard 仍要求確認，並在 mutation �
 目的地、nested-repository 限制與 exclusive creation。其他依賴所選列的操作及
 REMOTE clone 的 freshness checks 維持不變；TUI 不會另外維護縮減版 creator。
 
+共用 wizard 的 `agent-ready` 只保留簡短指引，等使用者交代專案用途後才維護專案規則。
+Claude plans 只寫設定，不預建空目錄或 `.gitkeep`。進階設定前可組合多個語言／工具
+components，自動合併 gitignore。Python 的 `python-project-best-practice` skill 另行
+明確勾選，沿用既有 skills provider 與原生 lock 安裝，不執行初始化。
+舊 hygiene／knowledge 建議預設隱藏；明確選取、自訂設定與既有 flags 仍然相容。
+
 `dev repo context [repo]` 會輸出 TUI copy menu 相同的 agent-ready Markdown context，包含 paths、Git/worktree/runtime facts 與 tasks。`--json` 加入 schema-v1 evidence/readiness contract；只有 `--refresh` 會 live-probe optional forge 與 configured fleet sources。
 
 ### 獨立 Repository Flow

@@ -224,3 +224,12 @@ keeps its native prompts; dev does not add repositories, install a package
 manager, or preaccept terms. The executable is checked afterwards, with an
 OpenSSH capability query for `ssh`; authentication and service startup remain
 separate. Installation cancellation/failure is not retried.
+
+## REMOTE snippets
+
+REMOTE starts with repositories. Use **Ctrl+O → Show snippets** to load GitHub
+Gists and GitLab snippets, and **Show repositories** to return. Each mode retains
+its own filter and selection. Snippet actions choose provider/project scope,
+refresh, explicitly search file contents, open/copy URLs, or create through the
+CLI editor wizard. Ordinary filtering reads metadata only. Repository clone and
+lifecycle actions are not applicable to snippet rows. See [Snippets](snippets.md).

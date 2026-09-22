@@ -68,6 +68,8 @@ func (m *Model) captureIssueResult(before Model, msg tea.Msg) {
 		source = "stats"
 	case copyMsg:
 		source = "clipboard"
+	case snippetsLoadedMsg, snippetCreatedMsg:
+		source = "snippets"
 	case configMsg:
 		source = "configuration"
 	case configEditedMsg, capabilityFileEditedMsg, fleetConfigEditedMsg:
@@ -84,6 +86,15 @@ func (m *Model) captureIssueResult(before Model, msg tea.Msg) {
 		m.rememberIssue(issue)
 	}
 	switch message := msg.(type) {
+	case snippetsLoadedMsg:
+		if !before.snippets.loading || message.generation != before.snippets.generation || message.query != before.snippets.query {
+			break
+		}
+		if m.snippets.err != nil {
+			m.rememberIssue(tuiissue.FromError(ViewRemote.String(), "snippets", "", m.snippets.err))
+		} else if m.snippets.status != "" && !m.snippets.result.Complete && !errors.Is(message.err, context.Canceled) {
+			m.rememberIssue(tuiissue.New(ViewRemote.String(), "snippets", "", "inventory-warning", m.snippets.status))
+		}
 	case sshEventMsg:
 		if message.generation != before.sshUI.generation {
 			break

@@ -2,7 +2,7 @@
 description: 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
 authority: project-policy
 status: maintained
-verified_on: 2026-09-13
+verified_on: 2026-09-22
 lang: zh-TW
 ---
 
@@ -34,7 +34,7 @@ Submodule graph／初始化、選擇性 task branch、遞迴遠端證明與暫�
 description: 能在 search 與 llms.txt 獨立成立的一句話。
 authority: 使用下方 authority table 的單一值
 status: 使用下方 status table 的單一值
-verified_on: 2026-09-13
+verified_on: 2026-09-22
 minimum_version: optional
 tested_with: optional
 ---
@@ -244,3 +244,11 @@ FLEET 預設隱藏本機；a 或選單可在本次 session 將本機以收合狀
 只刷新 catalog metadata。連線資格與 catalog 清理分開；--no-runtime 跳過 Herdr，
 background_refresh 只控制 repository 的自動 SSH 讀取。這份 UI metadata 不改動
 fleet snapshot JSON。詳見[主機控制](../guides/remote-fleet.zh-TW.md#dashboard-host-tree)。
+
+## Repository components 與 snippet 分享
+
+延後初始化的 agent starter、按需建立產物目錄與可組合語言設定，以
+`internal/scaffold`、`internal/claudeplan` 和 repository wizard tests 為準。
+GitHub／GitLab snippet 行為以 `internal/snippet`、forge adapters 與 CLI／TUI
+tests 為準；provider 來源與權限語義見 [Snippets](../guides/snippets.md)。
+上述改動於 2026-09-22 依 repository 驗證。

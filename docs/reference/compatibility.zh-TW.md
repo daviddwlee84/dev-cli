@@ -247,7 +247,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Plain explicit `repo new NAME` 仍維持 minimal；清楚的 Git URL、local Git path 或 owner/name 會改走 clone acquisition，保留 source history/remote。無參數 new-repository wizard 的第一個欄位也會偵測同樣 reference；建立新 repository 時，預設為 no 的 customization gate 讓正常 `agent-ready` flow 保持精簡。Bare `repo clone` 從既有 forge cache 選 exact URL；checkout 外的 bare `start` 會選 fast-discovered local repository，而 repository 內保留 immediate current default。兩者都保留 manual entry。Configured line selector 是 optional，且有 built-in fallback。Text fields 使用 TTY inline editor，因此 cursor keys 會編輯內容，不會插入 raw escape bytes；non-TTY reader 維持 line-oriented behavior。
 - `repo new` 可從 local directory/repository 或 Git source 的 optional branch、tag、commit 與 confined subdirectory 建立 fresh-history snapshot。未 pin 的 local Git tree 包含 tracked 加 untracked non-ignored files；non-Git directory 包含完整 current tree。Source `.git` metadata 會排除、URL userinfo 會 redact，不安全的 file types/paths 會在 destination 建立前失敗，held root/file handles 會限制 mutable-path races。Human plan 會預覽 paths 並警告 live snapshot，preset 也可選擇 catalog-repository subfolder。
 - Repository setup 支援 `--check-in=commit|stage|none`（`auto` 用於 preset compatibility）。Staged setup 會執行 before-commit setup 與 `git add -A`，但不執行 `after_commit` phase；它不能 publish 或 handoff 到 `start`，並可依前述方式預填 lazygit 小寫 `c`。
-- `agent-ready` 的 built-in 與 native setup paths 共用同一份明確標示 incomplete、不得虛構 facts 的 `AGENTS.md` starter。Common top-level ignore 只排除 `.specstory/statistics.json`；history、project identity 與 config 仍保持可見。Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。Optional `agent-history-hygiene` initializer 會另外寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。
+- `agent-ready` 的 built-in 與 native setup paths 共用精簡的延後初始化 `AGENTS.md` starter，等用途與實作可核實後才維護。Common top-level ignore 只排除 `.specstory/statistics.json`；history、project identity 與 config 仍保持可見。Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。Optional `agent-history-hygiene` initializer 會另外寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。
 - Project `.dev-cli/config.toml` 與 `.dev-cli/scaffolds.toml` 僅能保存 portable setup policy。Executable project configuration 會綁定 canonical Git common directory 與 exact content hash；hash 改變後必須重新信任。
 - `dev ssh init/list/show/setup/probe/remove` 提供 explicit OpenSSH host onboarding，不建立另一套 host database。Dev 只擁有 dedicated Include、canonical `dev.d` fragments 與 opt-in generated fleet registration；所有 public SSH JSON 都是一個 versioned object，TSV list 則是 documented six-field selector。
 - Fleet merge user-authored primary `remotes.toml` 與 strict generated `remotes.d` fragments、追蹤 `remote_os`，並對 Windows target 使用只允許 hidden helper 的 encoded PowerShell launcher。Primary duplicate aliases 保持 compatible；任何 generated alias collision 都 fail closed。
@@ -723,3 +723,18 @@ parent 的 Git 探索結果。
 ## SSH dashboard observations (v0.2.34)
 
 SSH dashboard 提供原生 discovery／setup 與 profile 樹狀清單。缺少 registry 是空狀態，不安全的 registry 則提供問題引導，不可推定 bindings 不存在。Cache 失敗仍保留本次 discovery。`[tui.ssh].background_refresh` 控制 Tailscale 背景狀態，不會掃 LAN 或驗證 SSH。活動紀錄是與 cache 分離的 durable 資料；Ping 可略過且不阻止 SSH，proxy 的直連層級維持未觀測。新增 diagnostic flags／fields 為增補，既有 alias／list JSON 契約不變。
+
+## Snippet 分享與可組合 scaffold
+
+語言／工具 components 為既有 presets 加入 gitignore 與需明確選取的 skill
+建議。`--component` 覆蓋 preset 的 component 清單，`none` 清空；既有
+`--gitignore` 保留覆蓋語義。舊 v1 設定與 legacy skill／placeholder ID
+仍有效。普通 wizard 隱藏未改動的舊 skill 建議，不預先建立空 Claude plans
+目錄或 placeholder；既有檔案與設定會保留。
+
+[Snippets](../guides/snippets.md) 使用獨立的 GitHub／GitLab 身分與 metadata
+snapshot。REMOTE 預設 repository，明確切換才顯示 snippets。帳號列表不遍歷
+projects；--project 選擇一個 GitLab project。全文搜尋 byte budget 限制實際
+檢索的文字，不代表 HTTP 傳輸量上限。人類與 JSON 輸出都呈現不完整 coverage。
+GitHub secret 是持連結可讀，GitLab private 則使用帳號／project 權限。
+建立結果未知時不自動重試。

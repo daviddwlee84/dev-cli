@@ -30,9 +30,9 @@ The dashboard reuses this flow rather than maintaining a second repository
 creator. In REPOS, `n` suspends the TUI into `dev repo new --handoff stay`; when
 the wizard returns successfully, the dashboard refreshes local inventory only.
 
-After choosing a preset, the wizard asks once whether to customize its template
-and detailed options. Declining accepts the preset defaults and skips the
-README/gitignore/license/Claude/AGENTS/skill questionnaire. The gate defaults
+After choosing a preset, the wizard offers language/tool components and their
+optional skills, then asks whether to customize template and detailed options.
+Declining accepts the remaining README/gitignore/license/Claude/AGENTS defaults. The gate defaults
 to yes when customization flags were supplied or a preset has a required input
 without a default. Existing-repository setup uses the same condensed gate.
 
@@ -115,10 +115,11 @@ manually.
 ## Presets
 
 The built-in `minimal` preset matches scripted creation. `agent-ready` adds a
-managed `.gitignore`, explicitly incomplete starter `AGENTS.md`, and
-repository-local Claude plans. The starter establishes safe working and handoff
-rules while leaving unknown purpose, verified commands, architecture, and
-invariants as TODOs instead of inventing project facts. The common ignore block
+managed `.gitignore`, a short deferred `AGENTS.md`, and repository-local Claude
+plan settings. Project-specific guidance is maintained after the user defines
+the project. Empty artifact directories and `.gitkeep` files are not created;
+Claude creates its plan directory when writing, or an explicit orphan import
+creates it when a matching file is copied. The common ignore block
 excludes only `.specstory/statistics.json`; history, project identity, and config
 remain visible to Git. Optional skills may declare a setup entrypoint. For
 `agent-history-hygiene` and `project-knowledge-harness`, dev installs the skill
@@ -134,13 +135,27 @@ custom rules and mode and appends only whichever required entries are missing.
 If a parent `.gitignore` already ignores the entire `.specstory/` directory,
 review and remove that broader rule yourself.
 
-Global presets live in `$XDG_CONFIG_HOME/dev/scaffolds.toml` and are managed
+Language/tool components add gitignore templates and install-only skill
+suggestions. Built-ins are python, go, node, rust, java, and ruby. Python's
+python-project-best-practice skill is optional and does not run project setup.
+Use --component repeatedly; --component none clears a preset's component list.
+--gitignore overrides the combined templates. The existing skills provider owns
+installation and skills-lock.json; dev does not replace it with a custom writer.
+
+Legacy hygiene/knowledge suggestions are hidden unless selected or customized.
+Their --enable IDs and configured setup remain available. The deployment input
+is only prompted when the knowledge skill is selected. File default=false
+keeps a file selectable without creating it; --enable claude-plans-directory
+explicitly restores the old placeholder.
+
+Global presets and components live in `$XDG_CONFIG_HOME/dev/scaffolds.toml` and are managed
 with `dev config scaffolds init|show|path|edit`. A repository may commit
 `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml`; only portable setup and
 worktree policy is allowed there. Paths, state, runtime and credentials remain
 host-owned global configuration.
 
-Executable hooks and skill setup from `.dev-cli/scaffolds.toml`, plus
+Executable hooks, skill installation, component selections and skill definitions
+from `.dev-cli/scaffolds.toml`, plus
 `post_create` from `.dev-cli/config.toml`, are trusted by repository identity
 and content hash. Legacy `.dev.toml` retains its compatibility behavior:
 

@@ -286,8 +286,18 @@ func (m *Model) setViewStatus(view View, status string) {
 	m.viewStatuses[int(view)] = status
 }
 
-func (m Model) viewError(view View) error { return m.viewErrors[int(view)] }
+func (m Model) viewError(view View) error {
+	if view == ViewRemote && m.snippetsActive() {
+		return m.snippets.err
+	}
+	return m.viewErrors[int(view)]
+}
 
-func (m Model) viewStatus(view View) string { return m.viewStatuses[int(view)] }
+func (m Model) viewStatus(view View) string {
+	if view == ViewRemote && m.snippetsActive() {
+		return m.snippets.status
+	}
+	return m.viewStatuses[int(view)]
+}
 
 func (v View) traceView() perftrace.View { return perftrace.View(v.String()) }

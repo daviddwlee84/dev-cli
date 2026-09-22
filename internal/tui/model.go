@@ -118,8 +118,9 @@ func splitLoadWarning(err error) (string, error) {
 }
 
 type Actions struct {
-	Issues IssueActions
-	SSH    SSHActions
+	Issues   IssueActions
+	SSH      SSHActions
+	Snippets SnippetActions
 	// Host descriptors and cached observations are local reads. Individual live
 	// reads never prompt; interactive authentication belongs to a host action.
 	LoadFleetHosts       func(context.Context) (FleetHostsResult, error)
@@ -303,6 +304,8 @@ const (
 	modeNoteAdd
 	modeNoteSearch
 	modeNoteConfirmDelete
+	modeSnippetProject
+	modeSnippetSearch
 )
 
 type remoteClonePhase uint8
@@ -381,6 +384,7 @@ type Model struct {
 	repos               []RepoRow
 	tries               []TryRow
 	remotes             []RemoteRow
+	snippets            snippetUIState
 	fleet               []FleetRow
 	ssh                 SSHInventory
 	sshUI               sshUIState
@@ -1687,6 +1691,9 @@ func (m Model) count() int {
 	case ViewTries:
 		return len(m.visibleTries())
 	case ViewRemote:
+		if m.snippetsActive() {
+			return len(m.visibleSnippets())
+		}
 		return len(m.visibleRemotes())
 	case ViewSkills:
 		return len(m.visibleSkills())
@@ -1709,6 +1716,9 @@ func (m Model) at() int {
 	case ViewTries:
 		return m.tryCursor
 	case ViewRemote:
+		if m.snippetsActive() {
+			return m.snippets.cursor
+		}
 		return m.remoteCursor
 	case ViewSkills:
 		return m.skillCursor
@@ -1740,7 +1750,11 @@ func (m *Model) setAt(i int) {
 	case ViewTries:
 		m.tryCursor = i
 	case ViewRemote:
-		m.remoteCursor = i
+		if m.snippetsActive() {
+			m.snippets.cursor = i
+		} else {
+			m.remoteCursor = i
+		}
 	case ViewSkills:
 		m.skillCursor = i
 	case ViewMCP:
@@ -1799,7 +1813,7 @@ func (m Model) currentTry() (TryRow, bool) {
 
 // currentRemote returns the selected forge repository.
 func (m Model) currentRemote() (RemoteRow, bool) {
-	if m.view != ViewRemote {
+	if m.view != ViewRemote || m.snippets.enabled {
 		return RemoteRow{}, false
 	}
 	rows := m.visibleRemotes()
@@ -2366,6 +2380,15 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	switch msg := msg.(type) {
+	case snippetsLoadedMsg:
+		return m.acceptSnippets(msg)
+	case snippetCreatedMsg:
+		m.status, m.err = "Returned from snippet creation wizard", msg.err
+		m.snippets.stale = true
+		if msg.err == nil && m.snippetsActive() {
+			return m.loadSnippets()
+		}
+		return m, nil
 	case startupRepoMsg:
 		if msg.generation != m.configGeneration {
 			return m, nil
@@ -3069,6 +3092,8 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateCloneURL(msg)
 		}
 		switch m.mode {
+		case modeSnippetProject, modeSnippetSearch:
+			return m.updateSnippetPrompt(msg)
 		case modeFilter:
 			return m.updateFilter(msg)
 		case modeEditNext, modeConfirmPark, modeStartTask, modeStartDirect, modeConfirmClone, modeConfirmSkillUpdate:
@@ -3135,14 +3160,20 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	switch msg.String() {
 	case "q", "ctrl+c":
+		m.cancelSnippetLoad()
 		m.quitting = true
 		return m, tea.Quit
 	case "esc":
 		// One escape clears whatever narrowing is in effect before quitting
 		// becomes the meaning of the key.
-		if m.filter != "" || len(m.states) > 0 {
-			m.filter, m.states = "", nil
+		if m.activeFilter() != "" || len(m.states) > 0 {
+			m.setActiveFilter("")
+			m.states = nil
 			m.setAt(0)
+			return m, nil
+		}
+		if m.snippetsActive() && m.snippets.loading {
+			m.cancelSnippetLoad()
 			return m, nil
 		}
 		m.quitting = true
@@ -3173,7 +3204,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "/":
 		m.mode = modeFilter
-		m.input.SetValue(m.filter)
+		m.input.SetValue(m.activeFilter())
 		m.input.Placeholder = "filter"
 		m.input.CursorEnd()
 		m.input.Focus()
@@ -3197,7 +3228,8 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.view = ViewSSH
 		return m.afterViewSwitch()
 	case "0":
-		m.states, m.filter = nil, ""
+		m.states = nil
+		m.setActiveFilter("")
 		m.setAt(0)
 	case "ctrl+o":
 		return m.openActionMenuCommand()
@@ -3880,6 +3912,12 @@ func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 		cmd := m.scheduleSSHBackground()
 		return m, cmd
 	case ViewRemote:
+		if m.snippets.enabled {
+			if !m.snippets.loading && (!m.snippets.hasSnapshot || m.snippets.stale) {
+				return m.loadSnippets()
+			}
+			return m, nil
+		}
 		if m.viewNeedsLoad(ViewRemote) {
 			m.beginViewLoad(ViewRemote, loadVisit)
 			m.setViewStatus(ViewRemote, "refreshing remote repositories…")
@@ -3933,7 +3971,7 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc":
 		m.mode = modeList
 		m.input.Blur()
-		m.filter = ""
+		m.setActiveFilter("")
 		m.setAt(0)
 		return m, nil
 	case "enter":
@@ -3953,7 +3991,7 @@ func (m Model) updateFilter(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// Narrow live when the query changes, but let cursor-only edits retain
 	// the selected result. Letters (including j/k) remain search text.
 	if m.input.Value() != previous {
-		m.filter = m.input.Value()
+		m.setActiveFilter(m.input.Value())
 		m.setAt(0)
 	}
 	return m, cmd

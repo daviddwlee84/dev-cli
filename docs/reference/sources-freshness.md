@@ -2,7 +2,7 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-09-13
+verified_on: 2026-09-22
 ---
 
 # Sources and freshness
@@ -30,7 +30,7 @@ A lower item may explain motivation but cannot override a higher authority's imp
 description: One sentence used by navigation and llms.txt.
 authority: one value from the authority table below
 status: one value from the status table below
-verified_on: 2026-09-13
+verified_on: 2026-09-22
 minimum_version: optional
 tested_with: optional
 ---
@@ -266,3 +266,12 @@ refresh only catalog metadata. Connection eligibility and catalog cleanup are
 separate. --no-runtime skips Herdr; background_refresh controls only automatic
 repository SSH reads. Existing fleet snapshot JSON is unchanged by this UI
 metadata. See [host controls](../guides/remote-fleet.md#dashboard-host-tree).
+
+## Repository components and snippet sharing
+
+The deferred agent starter, lazy artifact directories and composable language
+configuration are owned by `internal/scaffold`, `internal/claudeplan` and the
+repository wizard tests. GitHub/GitLab snippet behavior is owned by
+`internal/snippet`, forge adapters and CLI/TUI tests. See
+[Snippets](../guides/snippets.md) for provider sources and access semantics.
+These changes are verified against the repository on 2026-09-22.

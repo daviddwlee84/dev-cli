@@ -289,7 +289,7 @@ These were historical gaps and should not be reintroduced as limitations:
 - `dev repo new|create`, `repo clone`, and `repo setup` share a preset-driven bootstrap pipeline. A plain explicit `repo new NAME` remains minimal, while a clear Git URL, local Git path, or owner/name routes through clone acquisition and preserves source history/remote. The no-argument new-repository wizard detects the same reference in its first field; for a new repository, a default-no customization gate keeps the normal `agent-ready` flow concise. Bare `repo clone` selects exact URLs from the existing forge cache; outside a checkout, bare `start` selects a fast-discovered local repository, while the in-repository path keeps its immediate current default. Both retain manual entry. A configured line selector is optional, with a built-in fallback. Text fields use a TTY inline editor, so cursor keys edit rather than inserting raw escape bytes; non-TTY readers retain line-oriented behavior.
 - `repo new` can snapshot a local directory/repository or Git source at an optional branch, tag, or commit and confined subdirectory into a fresh history. An unpinned local Git tree includes tracked plus untracked non-ignored files; a non-Git directory includes its full current tree. Source `.git` metadata is excluded, URL userinfo is redacted, unsafe file types/paths fail before destination creation, and held root/file handles confine mutable-path races. Human plans preview paths and warn when the snapshot is live; presets can select catalog-repository subfolders.
 - Repository setup supports `--check-in=commit|stage|none` (`auto` for preset compatibility). Staged setup runs before-commit setup and `git add -A` without an `after_commit` phase, cannot publish or hand off to `start`, and may prefill lazygit lowercase `c` as described above.
-- `agent-ready` uses one explicitly incomplete, non-fabricating `AGENTS.md` starter across built-in and native setup paths. Its common top-level ignore excludes only `.specstory/statistics.json`; history, project identity, and config remain visible. Selected skills with matching source and agent targets share one installer invocation. The optional `agent-history-hygiene` initializer additionally writes pre-commit/gitleaks policy and merges missing machine-local `.project.json`/`statistics.json` rules into `.specstory/.gitignore`; custom content and transcript history remain trackable.
+- `agent-ready` uses one concise deferred `AGENTS.md` starter, maintained only after purpose and implementation are established, across built-in and native setup paths. Its common top-level ignore excludes only `.specstory/statistics.json`; history, project identity, and config remain visible. Selected skills with matching source and agent targets share one installer invocation. The optional `agent-history-hygiene` initializer additionally writes pre-commit/gitleaks policy and merges missing machine-local `.project.json`/`statistics.json` rules into `.specstory/.gitignore`; custom content and transcript history remain trackable.
 - Project `.dev-cli/config.toml` and `.dev-cli/scaffolds.toml` are constrained to portable setup policy. Executable project configuration is keyed to the canonical Git common directory and an exact content hash; a changed hash is untrusted until approved again.
 - `dev ssh init/list/show/setup/probe/remove` provides explicit OpenSSH host onboarding without a separate host database. Dev owns only its dedicated Include, canonical `dev.d` fragments, and opt-in generated fleet registrations; all public SSH JSON is one versioned object, and TSV listing is a documented six-field selector.
 - Fleet merges user-authored primary `remotes.toml` with strict generated `remotes.d` fragments, tracks `remote_os`, and uses a hidden-helper-only encoded PowerShell launcher for Windows targets. Primary duplicate aliases remain compatible; any generated alias collision fails closed.
@@ -825,3 +825,20 @@ path-based claim checks described above, not parent-inherited Git discovery.
 ## SSH dashboard observations (v0.2.34)
 
 The SSH dashboard has a native discovery/setup UI and profile tree. Missing registry state is empty; unsafe registry state is a recoverable issue and never proof of missing bindings. In-memory discovery survives cache failure. Background Tailscale status is enabled by `[tui.ssh].background_refresh`; neither this nor plain refresh scans LAN or authenticates SSH. Private activity records are durable and separate from discovery cache. Ping is optional and never gates SSH; proxy network stages remain unobserved. New diagnostic flags/fields are additive, and existing alias/list JSON contracts remain unchanged.
+
+## Snippet sharing and composed scaffolds
+
+Language/tool components add gitignore templates and opt-in skill suggestions to
+existing presets. `--component` overrides the preset component list; `none` clears
+it. Explicit `--gitignore` keeps its override semantics. Existing v1 settings and
+legacy skill/placeholder IDs remain valid. The normal wizard hides untouched
+legacy skill suggestions and no longer creates empty Claude plans directories
+or placeholder files. Existing files and settings are retained.
+
+[Snippets](../guides/snippets.md) use independent GitHub/GitLab identities and
+metadata snapshots. REMOTE defaults to repositories and switches to snippets
+explicitly. Own-account listing does not crawl projects; --project selects one
+GitLab project. Content-search budgets limit inspected text, not HTTP transport
+bytes. Incomplete coverage is surfaced in human and JSON output. GitHub secret
+is link-readable; GitLab private uses account/project permissions. Unknown
+creation results are never retried automatically.

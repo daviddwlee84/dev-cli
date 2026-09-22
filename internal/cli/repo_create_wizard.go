@@ -65,7 +65,12 @@ func runRepoNewWizard(app *App, flags repoBootstrapFlags) (repoWorkflowRequest, 
 	if err != nil {
 		return repoWorkflowRequest{}, false, err
 	}
-	customize, err := p.confirm("Customize preset and template options?", repoWizardCustomizationSelected(flags) || presetRequiresWizardInput(preset))
+	customizationSelected := repoWizardCustomizationSelected(flags)
+	preset, err = promptScaffoldComposition(p, catalog, flags.preset, &flags)
+	if err != nil {
+		return repoWorkflowRequest{}, false, err
+	}
+	customize, err := p.confirm("Customize preset and template options?", customizationSelected || presetRequiresWizardInput(preset))
 	if err != nil {
 		return repoWorkflowRequest{}, false, err
 	}
@@ -281,11 +286,12 @@ func runRepoSetupWizard(app *App, root string, flags repoBootstrapFlags) (repoWo
 	if err != nil {
 		return repoWorkflowRequest{}, false, err
 	}
-	preset, err := catalog.ResolvePreset(flags.preset)
+	customizationSelected := repoWizardCustomizationSelected(flags)
+	preset, err := promptScaffoldComposition(p, catalog, flags.preset, &flags)
 	if err != nil {
 		return repoWorkflowRequest{}, false, err
 	}
-	customize, err := p.confirm("Customize preset options?", repoWizardCustomizationSelected(flags) || presetRequiresWizardInput(preset))
+	customize, err := p.confirm("Customize preset options?", customizationSelected || presetRequiresWizardInput(preset))
 	if err != nil {
 		return repoWorkflowRequest{}, false, err
 	}
@@ -367,16 +373,26 @@ func promptScaffoldPreset(p *prompter, catalog scaffold.Config, fallback string)
 }
 
 func promptScaffoldOptions(p *prompter, catalog scaffold.Config, presetName string, flags *repoBootstrapFlags) error {
-	preset, err := catalog.ResolvePreset(presetName)
+	preset, err := catalog.ResolveComposition(presetName, flags.components)
+	if err != nil {
+		return err
+	}
+	supplied, err := parseSetValues(flags.set)
 	if err != nil {
 		return err
 	}
 	for _, input := range preset.Inputs {
+		if input.ID == "deployment" && input.Origin == "builtin" && !scaffoldSkillSelected(preset, *flags, "project-knowledge-harness") {
+			continue
+		}
 		label := input.Label
 		if label == "" {
 			label = input.ID
 		}
 		fallback := parseInputDefault(input.Default)
+		if value, ok := supplied[input.ID]; ok {
+			fallback = fmt.Sprint(value)
+		}
 		switch input.Type {
 		case scaffold.InputBool:
 			value, _ := strconvParseBoolDefault(fallback)
@@ -454,8 +470,8 @@ func promptScaffoldOptions(p *prompter, catalog scaffold.Config, presetName stri
 		if presetHasItem(preset, "claude-settings") {
 			setSelection(flags, "claude-settings", claudePlans)
 		}
-		if presetHasItem(preset, "claude-plans-directory") {
-			setSelection(flags, "claude-plans-directory", claudePlans)
+		if !claudePlans && presetHasItem(preset, "claude-plans-directory") {
+			setSelection(flags, "claude-plans-directory", false)
 		}
 	}
 
@@ -470,27 +486,6 @@ func promptScaffoldOptions(p *prompter, catalog scaffold.Config, presetName stri
 		}
 	}
 
-	for _, item := range preset.Catalog {
-		selected, err := p.confirm("Enable "+item.Label+"?", item.IsDefault())
-		if err != nil {
-			return err
-		}
-		setSelection(flags, item.ID, selected)
-	}
-	if len(preset.Skills) > 0 {
-		agentDefault := catalog.DefaultAgents
-		if flags.agents != nil {
-			agentDefault = flags.agents
-		}
-		agents, err := p.line("Skill agents (comma-separated)", strings.Join(agentDefault, ","))
-		if err != nil {
-			return err
-		}
-		flags.agents = splitCommaValues(agents)
-		if len(flags.agents) == 0 {
-			return fmt.Errorf("at least one skill agent is required")
-		}
-	}
 	flags.browseSkills, err = p.confirm("Browse additional skills in the upstream installer?", flags.browseSkills)
 	return err
 }

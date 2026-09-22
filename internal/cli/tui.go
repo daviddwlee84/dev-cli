@@ -56,7 +56,7 @@ Eight lists, switched with tab:
   REPOS   durable repositories under the scan roots — what do I have here
   FLEET   repositories and active work across configured SSH machines
   TRY     scratch experiments and retained lifecycle history
-  REMOTE  repositories visible through configured forge CLIs — what can I clone/open
+  REMOTE  forge repositories; Ctrl+O switches to Gists and GitLab snippets
   SKILLS  startup-context/global agent skills; A toggles all repositories
   MCP     startup-context static declarations; A toggles all repositories
   SSH     machine identities, aliases, cached Tailscale/LAN discovery and connections
@@ -84,7 +84,7 @@ Actions depend on the list:
   FLEET   enter Herdr/SSH open · Git changes are read-only here
   SSH     enter connect · n setup · c discover · p probe · Ctrl+O mappings/actions
   TRY     enter open · n create · space lifecycle/metadata actions
-  REMOTE  enter open local · c clone after confirmation
+  REMOTE  enter open local · c clone; snippets: enter browser · y URL · Ctrl+O create
   SKILLS  a add · c check · u update · e open file · y copy · A context/all
   MCP     e open config · y copy · A context/all · r reload static declarations
 
@@ -414,6 +414,7 @@ func runTUI(app *App) error {
 		Reload:                reload,
 		ReloadRepos:           reloadRepos,
 		ReloadRemoteWithRepos: reloadRemote,
+		Snippets:              newTUISnippetActions(appState.Current),
 		LoadFleetHosts:        fleetBackend.LoadHosts,
 		LoadFleetHost:         fleetBackend.LoadHost,
 		LoadFleetHostCache:    fleetBackend.LoadHostCache,

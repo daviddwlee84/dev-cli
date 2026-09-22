@@ -21,6 +21,7 @@ type repoScaffoldRequest struct {
 	Description   string
 	Category      string
 	Preset        string
+	Components    []string
 	Inputs        map[string]any
 	Selections    map[string]bool
 	Gitignore     []string
@@ -56,13 +57,18 @@ func prepareRepoScaffold(app *App, request repoScaffoldRequest) (preparedRepoSca
 	if presetName == "" {
 		presetName = catalog.DefaultPreset
 	}
-	preset, err := catalog.ResolvePreset(presetName)
+	preset, err := catalog.ResolveComposition(presetName, request.Components)
 	if err != nil {
 		return preparedRepoScaffold{}, err
 	}
 	selections := map[string]bool{}
 	for key, value := range request.Selections {
 		selections[key] = value
+	}
+	for _, file := range preset.Files {
+		if _, explicit := selections[file.ID]; !explicit && !file.IsDefault() {
+			selections[file.ID] = false
+		}
 	}
 	if preset.Readme != nil && !*preset.Readme && presetHasItem(preset, "readme") {
 		selections["readme"] = false
@@ -86,7 +92,7 @@ func prepareRepoScaffold(app *App, request repoScaffoldRequest) (preparedRepoSca
 		variables[key] = value
 	}
 	plan, err := scaffold.BuildPlan(catalog, scaffold.PlanOptions{
-		Preset: presetName, Root: request.Root, Name: request.Name,
+		Preset: presetName, Components: request.Components, Root: request.Root, Name: request.Name,
 		Inputs: request.Inputs, Variables: variables, Selections: selections,
 	})
 	if err != nil {
@@ -95,6 +101,15 @@ func prepareRepoScaffold(app *App, request repoScaffoldRequest) (preparedRepoSca
 	if request.SkillAgents != nil {
 		for index := range plan.Skills {
 			plan.Skills[index].Agents = append([]string(nil), request.SkillAgents...)
+		}
+	}
+	if len(plan.Components) > 0 {
+		for i, skill := range plan.Skills {
+			for _, previous := range plan.Skills[:i] {
+				if skill.Name == previous.Name {
+					return preparedRepoScaffold{}, fmt.Errorf("skills %q and %q both install the native name %q; agent targets can share storage", previous.ID, skill.ID, skill.Name)
+				}
+			}
 		}
 	}
 	readmeWanted := preset.Readme != nil && *preset.Readme
@@ -113,6 +128,7 @@ func prepareRepoScaffold(app *App, request repoScaffoldRequest) (preparedRepoSca
 	if request.Gitignore != nil {
 		gitignore = request.Gitignore
 	}
+	plan.Settings.Gitignore = explicitSlice(gitignore)
 	license := preset.License
 	if request.License != "" {
 		license = request.License
@@ -379,6 +395,9 @@ func renderPreparedRepoScaffold(app *App, prepared preparedRepoScaffold) {
 	plan := prepared.Plan
 	fmt.Fprintln(app.Out, app.outStyle().title("Scaffold"))
 	fmt.Fprintf(app.Out, "  preset     %s\n", plan.Preset)
+	if len(plan.Components) > 0 {
+		fmt.Fprintf(app.Out, "  components %s\n", strings.Join(plan.Components, ", "))
+	}
 	fmt.Fprintf(app.Out, "  destination %s\n", config.Contract(plan.Root))
 	if len(plan.Files) > 0 {
 		fmt.Fprintln(app.Out, "  files")
@@ -394,13 +413,13 @@ func renderPreparedRepoScaffold(app *App, prepared preparedRepoScaffold) {
 		native = append(native, "AGENTS.md")
 	}
 	if prepared.Init.Gitignore != nil {
-		native = append(native, ".gitignore (merge)")
+		native = append(native, ".gitignore (merge: "+strings.Join(prepared.Init.Gitignore, ", ")+")")
 	}
 	if key := strings.TrimSpace(prepared.Init.License); key != "" && !strings.EqualFold(key, "none") {
 		native = append(native, "LICENSE")
 	}
 	if prepared.Init.ClaudePlans {
-		native = append(native, ".claude/settings.json (merge)", ".claude/plans/")
+		native = append(native, ".claude/settings.json (merge; plan directory created when used)")
 	}
 	if prepared.Init.ImportOrphans {
 		native = append(native, "matching orphan Claude plans (copy)")
@@ -415,6 +434,7 @@ func renderPreparedRepoScaffold(app *App, prepared preparedRepoScaffold) {
 		fmt.Fprintln(app.Out, "  skills")
 		for _, skill := range plan.Skills {
 			fmt.Fprintf(app.Out, "    - %s (%s)\n", skill.Name, strings.Join(skill.Agents, ", "))
+			fmt.Fprintf(app.Out, "      source %s\n", skill.Source)
 			if skill.Setup != nil {
 				command := append([]string{skill.Setup.Script}, skill.Setup.Args...)
 				if skill.Setup.Builtin != "" {

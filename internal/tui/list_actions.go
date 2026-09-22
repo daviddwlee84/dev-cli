@@ -126,6 +126,16 @@ const (
 	listActionCycleSort
 	listActionReverseSort
 	listActionSSHToggle
+	listActionRemoteContent
+	listActionSnippetProvider
+	listActionSnippetAll
+	listActionSnippetGitHub
+	listActionSnippetGitLab
+	listActionSnippetProject
+	listActionSnippetSearch
+	listActionSnippetClearSearch
+	listActionSnippetCreate
+	listActionSnippetCancel
 )
 
 type selectionToken struct {
@@ -199,6 +209,9 @@ func (m Model) currentSelectionToken() (selectionToken, bool) {
 		}
 		return selectionToken{view: m.view, key: trySelectionKey(row)}, true
 	case ViewRemote:
+		if row, ok := m.currentSnippet(); ok {
+			return selectionToken{view: m.view, key: "snippet\x00" + row.Key}, true
+		}
 		row, ok := m.currentRemote()
 		if !ok {
 			return selectionToken{}, false
@@ -259,6 +272,15 @@ func (m *Model) selectToken(token selectionToken) bool {
 			}
 		}
 	case ViewRemote:
+		if m.snippetsActive() {
+			for index, row := range m.visibleSnippets() {
+				if "snippet\x00"+row.Key == token.key {
+					m.setAt(index)
+					return true
+				}
+			}
+			return false
+		}
 		for i, row := range m.visibleRemotes() {
 			if remoteRowKey(row) == token.key {
 				m.setAt(i)
@@ -284,6 +306,9 @@ func (m *Model) selectToken(token selectionToken) bool {
 }
 
 func (m Model) selectionHeading() (string, string) {
+	if row, ok := m.currentSnippet(); ok {
+		return snippetDisplayText(row.Title), snippetDisplayText(row.URL)
+	}
 	if row, ok := m.currentSSH(); ok {
 		return row.Label, row.ID
 	}
@@ -397,6 +422,10 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) executeListAction(action listAction) (tea.Model, tea.Cmd) {
+	if action >= listActionRemoteContent && action <= listActionSnippetCancel ||
+		(m.snippetsActive() && (action == listActionOpen || action == listActionCopy)) {
+		return m.runSnippetAction(action)
+	}
 	if issueAction(action) {
 		return m.runIssueAction(action, actionOption{})
 	}

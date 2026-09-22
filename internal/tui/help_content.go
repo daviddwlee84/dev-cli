@@ -31,7 +31,7 @@ func helpTLDR(view View) string {
 	case ViewTries:
 		return "Create a scratch experiment → resume it → archive, restore or graduate when ready."
 	case ViewRemote:
-		return "Find a repository on your forge → open its local checkout or explicitly clone it."
+		return "Browse repositories or choose Ctrl+O → Show snippets for Gists and GitLab snippets. Metadata filters stay local; content search is explicit."
 	case ViewSkills:
 		return "Inspect installed agent skills → check source freshness when needed → manage one skill."
 	case ViewMCP:
@@ -167,6 +167,7 @@ func helpGuideEntries(view View) []helpEntry {
 		add("lifecycle", "Using this view", "Archive, restore, graduate and recover", "Use actions for reversible archive/restore, metadata edits and graduation into a durable project. Phase and host location are separate. Incomplete moves or missing paths require inspection/recovery, not an assumption that cleanup succeeded. Filter with tag:, phase:, where:, git:, remote: or size:.", "tries")
 	case ViewRemote:
 		add("columns", "Columns", "FORGE · REPOSITORY · VIS · UPDATED · LOCAL · DESCRIPTION", "FORGE identifies the provider; REPOSITORY is its full name; VIS is provider visibility. UPDATED is the provider's timestamp, not local activity or cache age. LOCAL repo/try/yes means a known local match, — no matched clone, inspect a failed destination needing review, and an animated marker an in-progress clone/local refresh.", "repositories")
+		add("snippets", "Using this view", "Ctrl+O → Show snippets", "Snippets have their own snapshot, metadata filter, selection and provider/project scope. Enter opens the browser, y copies its URL, and Ctrl+O offers the shared creation wizard. / matches loaded metadata and filenames; Ctrl+O → search snippet contents explicitly fetches bounded file contents. Partial coverage and authentication errors stay visible. Snippets never offer repository clone or task actions.", "repositories")
 		add("colors", "Colors and symbols", "Green local/clone rows; coral inspect; gray archived", "An existing local clone or an in-progress clone is green. Otherwise inspect is coral, then archived forge repositories are dimmed. Selection overrides these colors. Green does not mean clean, synchronized or that a clone has finished; LOCAL and status distinguish those cases.", "repositories")
 		add("network", "Using this view", "Cached discovery and explicit clone", "Authenticated forge inventory loads lazily; cache rows can remain during refresh. Opening requires an existing local clone; c explicitly previews a clone. A successful clone stays pending until REPOS accepts it. Filter by forge, repository and descriptive text, or visibility such as vis:private.", "repositories")
 	case ViewSkills:

@@ -182,7 +182,7 @@ func TestRepoCloneLocalThenSetupAgentReady(t *testing.T) {
 		}
 	}
 	agents, err := os.ReadFile(filepath.Join(destination, "AGENTS.md"))
-	if err != nil || !strings.Contains(string(agents), "Bootstrap status: incomplete") ||
+	if err != nil || !strings.Contains(string(agents), "until the user defines") ||
 		!strings.Contains(string(agents), "# Project agent guidance") {
 		t.Fatalf("setup AGENTS.md is not the canonical starter: %v\n%s", err, agents)
 	}

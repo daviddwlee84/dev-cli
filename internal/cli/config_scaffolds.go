@@ -79,18 +79,38 @@ func newConfigPathCmd(app *App) *cobra.Command {
 	return cmd
 }
 
-const starterScaffolds = `# Repository bootstrap presets for dev repo new/setup.
+const starterScaffolds = `# Repository bootstrap presets and components for dev repo new/clone/setup.
 version = 1
 default_preset = "agent-ready"
 default_agents = ["claude-code", "codex"]
 
 # Built-in presets "minimal" and "agent-ready" are always available.
+# Components combine language/tool gitignore templates and optional skills.
+# Built-ins: python, go, node, rust, java, ruby. Skills are opt-in by default;
+# selecting python does not run a Python project initializer.
+#
+# [presets.python-agent]
+# extends = "agent-ready"
+# components = ["python"]
+#
+# [components.my-editor]
+# description = "My editor"
+# gitignore = ["VisualStudioCode"]
+#
+# [[components.my-editor.skills]]
+# id = "team-style"
+# source = "owner/team-skills"
+# name = "team-style"
+# default = false
+#
+# --component python --component my-editor replaces a preset's component list.
+# --component none clears it. --gitignore still replaces the combined templates.
 # Add machine-specific presets here, for example:
 #
 # [presets.go-agent]
 # extends = "agent-ready"
 # description = "Go module with agent-ready repository metadata"
-# gitignore = ["go"]
+# components = ["go"]
 # initial_check_in = "stage" # commit, stage, or none
 #
 # A starter catalog can also provide the initial filesystem snapshot:

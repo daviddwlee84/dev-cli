@@ -112,6 +112,22 @@ Enter to return. Setup previews changes and asks for confirmation before apply.
 
 See the [hygiene guide](docs/guides/hygiene.md).
 
+## Small-file sharing
+
+```bash
+dev snippet list                              # GitHub + GitLab accounts
+dev gist search python                        # metadata only
+dev snippet search "retry timeout" --content  # explicit bounded content search
+dev snippet list --project team/service       # one GitLab project
+dev gist create demo.py --description "Repro"
+dev snippet create                            # editor draft + publication review
+```
+
+REMOTE → Ctrl+O → **Show snippets** switches from repositories to the same
+snippet inventory. GitHub secret shares are link-readable; GitLab private shares
+use account/project permissions. Unknown publication outcomes are retained and
+never automatically retried. See [the snippets guide](docs/guides/snippets.md).
+
 ## Install
 
 ### Homebrew (macOS)
@@ -144,7 +160,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.42 instead when you need a reproducible install.
+# Pin @v0.2.43 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -188,7 +204,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.2.42
+  version=v0.2.43
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"
@@ -594,16 +610,30 @@ a compatibility spelling for `--check-in=commit`. If the lazygit draft cannot
 be written, dev reports a warning but keeps the successfully staged index for
 manual review and commit.
 
-The built-in `agent-ready` preset adds an explicitly incomplete starter
-`AGENTS.md`, a common `.gitignore` section, and project-scoped Claude plans. The
-starter establishes safe repository-wide and handoff rules, but labels unknown
-purpose, commands, architecture, and invariants as TODOs instead of inventing
-project facts. Its common ignore block excludes only SpecStory's derived
+The built-in `agent-ready` preset adds a short `AGENTS.md`, a common
+`.gitignore` section, and `.claude/settings.json` pointing to local plans.
+The guidance waits for the user to define the project, then asks agents to
+maintain only verified purpose, commands, and architecture. No `.gitkeep`, empty
+plans directory, or SpecStory directory is created by default; the writing tool
+creates its directory when needed. Its common ignore block excludes only SpecStory's derived
 `.specstory/statistics.json`; histories, project identity, and config remain
 visible to Git.
 
-If selected, the optional `agent-history-hygiene` and
-`project-knowledge-harness` skills are installed and dev's reviewed built-in
+The wizard offers composable language/tool choices separately from advanced
+options. Built-in `python`, `go`, `node`, `rust`, `java`, and `ruby` components
+add matching gitignore templates. Python also offers the optional
+`python-project-best-practice` skill; selecting a language never silently installs
+skills or initializes its toolchain. Use `--component python --component node`
+for scripts, or `--component none` to clear preset components. `--gitignore`
+remains the final template override. Skills use the existing trusted `skills`
+provider and its native `skills-lock.json`; install-only component suggestions
+never execute skill setup scripts.
+
+The old hygiene/knowledge suggestions are hidden unless explicitly selected or
+customized. Existing `--enable agent-history-hygiene`,
+`--enable project-knowledge-harness`, configured presets, and
+`--enable claude-plans-directory` remain supported. When explicitly selected,
+the `agent-history-hygiene` and `project-knowledge-harness` skills are installed and dev's reviewed built-in
 initializers create the pre-commit/gitleaks and TODO/backlog/pitfalls surfaces
 during bootstrap; setup does not wait for a later agent to happen to trigger the
 skill. The history initializer also ensures `.specstory/.gitignore` contains
@@ -630,10 +660,11 @@ cancellation. Arrow keys are interpreted by the editor rather than appearing
 as literal `^[[C`/`^[[D`; piped and buffered non-TTY input keeps its existing
 line-oriented behavior.
 
-The no-argument new-repository wizard places detailed file, template, input,
-and skill questions behind a default-no “Customize preset and template
-options?” gate. The normal `agent-ready` path therefore uses its reviewed
-defaults; answer yes when you want to override individual choices.
+After language/tool and optional skill selection, the no-argument wizard keeps
+detailed file, template, and input questions behind a default-no “Customize
+preset and template options?” gate. The unrelated legacy deployment question
+appears only when its knowledge skill is selected. Answer yes to override
+individual file or template choices.
 
 The final handoff is explicit:
 
@@ -650,7 +681,7 @@ worktree-mode `dev start --run '<shell command>'` can dispatch one command to a
 new first-class Herdr root pane; it never chooses an agent profile or permission
 mode on the user's behalf.
 
-Global custom presets live in `$XDG_CONFIG_HOME/dev/scaffolds.toml`. A project
+Global custom presets and components live in `$XDG_CONFIG_HOME/dev/scaffolds.toml`. A project
 may commit `.dev-cli/config.toml` for allowlisted worktree/setup wizard defaults
 and `.dev-cli/scaffolds.toml` for project presets, templates, hooks, and skill
 setup. Project files cannot override host paths, runtime selection, forge

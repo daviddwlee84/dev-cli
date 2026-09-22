@@ -529,6 +529,62 @@ script = "scripts/setup.sh"
 	}
 }
 
+func TestExecutionHashBindsComponentSelectionsDefinitionsAndLocalSkills(t *testing.T) {
+	root := t.TempDir()
+	skillPath := filepath.Join(root, "skills", "demo", "SKILL.md")
+	if err := os.MkdirAll(filepath.Dir(skillPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(skillPath, []byte("first"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	contents := `
+version = 1
+[presets.project]
+components = ["python"]
+[components.python]
+description = "Python"
+[[components.python.skills]]
+id = "python-project-best-practice"
+source = "./skills/demo"
+default = false
+`
+	path := writeProjectFile(t, root, projectconfig.ScaffoldsFilename, contents)
+	loadHash := func() string {
+		t.Helper()
+		result, err := projectconfig.Load(root, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !result.RequiresTrust() {
+			t.Fatal("component skill did not require project trust")
+		}
+		return result.ExecutionHash
+	}
+	first := loadHash()
+	for _, change := range []struct{ old, replacement string }{
+		{`components = ["python"]`, `components = ["python", "node"]`},
+		{`default = false`, `default = true`},
+		{`id = "python-project-best-practice"`, `id = "other"`},
+	} {
+		if err := os.WriteFile(path, []byte(strings.Replace(contents, change.old, change.replacement, 1)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if loadHash() == first {
+			t.Errorf("component change %q did not invalidate trust", change.old)
+		}
+	}
+	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(skillPath, []byte("second"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if loadHash() == first {
+		t.Fatal("install-only local component skill changes did not invalidate trust")
+	}
+}
+
 func TestProjectSetupCheckInOverridesLegacyCommitDefault(t *testing.T) {
 	root := t.TempDir()
 	legacyCommit := true

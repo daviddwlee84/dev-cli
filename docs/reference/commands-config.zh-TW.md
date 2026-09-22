@@ -261,7 +261,7 @@ plain repository name 與清楚的 clone reference：
 改走 clone 的 `new` 會保留 source `origin`，因此拒絕 new-upstream creation flags；也會
 拒絕 `--template*`，因為後者的明確語意是「把 content 複製進 fresh history」。
 
-這些 commands 的 controls 包含 `--preset`、`--path`、用 `--set` 傳入 typed input、用
+這些 commands 的 controls 包含 `--preset`、可重複的 `--component`、`--path`、用 `--set` 傳入 typed input、用
 `--enable`/`--disable` 選擇 item、`--check-in <auto|commit|stage|none>`、
 `--dry-run`、`--yes`、`--json`，以及 `--handoff <stay|cd|open|start>`。
 `repo new` 另支援 `--template`、`--template-ref`、`--template-subdir`。JSON mode
@@ -274,13 +274,14 @@ summary。Built-in presets 為：
 
 - `minimal`：`main`、README 與 initial commit；保留既有 scripted
   `repo new NAME` behavior。
-- `agent-ready`：在 `minimal` 上加入 common ignores、明確標示 bootstrap 尚未
-  完成的 starter `AGENTS.md`，以及 project-scoped `.claude/settings.json` 與
-  `.claude/plans/`。Starter 提供安全的 repository-wide 與 handoff rules，但未知的
-  purpose、verified commands、architecture、invariants 會保留為 TODO，不會虛構
-  facts。Common ignore block 只排除 `.specstory/statistics.json`；history、project
-  identity 與 config 仍會被 Git 看見。`agent-history-hygiene`、
-  `project-knowledge-harness` 會出現在選項中，但不會靜默啟用。選取後 dev 會安裝
+- `agent-ready`：在 `minimal` 上加入 common ignores、簡短的 `AGENTS.md`，
+  以及指向本地 plans 的 `.claude/settings.json`。等使用者明確交代專案用途後，
+  agent 才維護已驗證的專案指引。預設不建立 `.gitkeep`、空的 plans 或 SpecStory
+  目錄；由寫入工具按需建立。明確匯入 orphan plans 時，也只在複製符合的檔案時建目錄。
+  Common ignore block 只排除 `.specstory/statistics.json`；history、project
+  identity 與 config 仍會被 Git 看見。未修改的舊 `agent-history-hygiene`、
+  `project-knowledge-harness` 建議預設隱藏；明確選取或自訂後仍可使用。
+  既有 `--enable` IDs 與繼承 preset 保持相容。選取後 dev 會安裝
   skill，並在 initial commit 前執行經 review 的內建 initializer 來建立對應 project
   surfaces；這兩個 built-ins 不會執行剛下載的 skill scripts。同一 source 且 agent
   targets 完全相同的 skills 會共用一次 installer invocation，各 skill 的 setup phase
@@ -290,9 +291,23 @@ summary。Built-in presets 為：
   `.specstory/history/`。既有 custom ignore content 與 mode 會保留，只補上缺少的
   managed rules。
 
-選完 preset 後，new-repository wizard 會詢問預設為 no 的「Customize preset and
-template options?」。一般 `agent-ready` flow 會直接使用 reviewed template、file、input
-與 skill defaults，不逐一顯示問題；回答 yes（或傳入 customization flags）才會展開。
+選完 preset 後，wizard 先提供語言／工具 components 與相關 optional skills，再詢問
+預設為 no 的「Customize preset and template options?」。只有選取 skill 才詢問 agent
+targets；舊 deployment input 也只在選取 knowledge skill 後出現。
+
+內建 components 為 `python`、`go`、`node`、`rust`、`java`、`ruby`，各自加入對應
+語言的 gitignore。Python 另提供預設不勾選的 `python-project-best-practice` skill，
+不會執行其專案初始化。安裝沿用可信任的直接 `skills` provider 與原生
+`skills-lock.json`，不另寫 skill copier，也不加入 npx fallback。
+
+`--component python --component node` 取代 preset 儲存的清單；`--component none`
+清空它。Gitignore templates 依穩定順序合併並忽略大小寫去重；`--gitignore` 仍是最終
+覆蓋。Component skills 自動出現在 picker，不需重複宣告 catalog。相同 ID 的相同
+定義會去重；衝突定義或同名 native skill 會在 scaffold mutation 前拒絕，
+因為不同 agent 可能共用 skill 目錄。
+Components 不接受 setup scripts；要執行初始化仍使用明確的 preset。
+File 的 `default = false` 讓檔案預設不建立但保留 `--enable`；`enabled = false`
+則移除項目。`--enable claude-plans-directory` 可明確恢復舊 `.gitkeep`。
 
 Preset 可加入 `string`、`bool`、`choice` typed inputs、text templates、hooks 與
 project skills。Hooks 依固定 `before_commit`、`after_commit`、`after_remote` phases
@@ -547,6 +562,7 @@ default_agents = ["claude-code", "codex"]
 
 [presets.team]
 extends = "agent-ready"
+components = ["go", "editor"]
 handoff = "cd"
 initial_check_in = "stage"
 template = "acme/starter-catalog"
@@ -554,10 +570,9 @@ template_ref = "v2"
 template_subdir = "services/go"
 
 [[presets.team.inputs]]
-id = "deployment"
-type = "choice"
-choices = ["none", "docker"]
-default = "none"
+id = "service"
+type = "string"
+default = "api"
 
 [[presets.team.files]]
 id = "service-readme"
@@ -570,22 +585,18 @@ phase = "before_commit"
 command = ["make", "test"]
 required = true
 
-[[presets.team.skills]]
-id = "knowledge"
-source = "daviddwlee84/agent-skills/skills"
-name = "project-knowledge-harness"
-agents = ["claude-code", "codex"]
-default = true
+[components.editor]
+description = "Editor support"
+gitignore = ["VisualStudioCode"]
 
-[presets.team.skills.setup]
-phase = "before_commit"
-interpreter = "bash"
-script = "scripts/init.sh"
-args = ["--target", "{{path}}", "--project-name", "{{name}}"]
-required = true
+[[components.editor.skills]]
+id = "team-style"
+source = "owner/team-skills"
+name = "team-style"
+default = false
 ```
 
-Skill setup 一般會指定 installed skill 內的 project-local script。內建推薦項目則使用
+Skill setup 一般會指定 installed skill 內的 project-local script。明確選取的舊 setup 可使用
 `builtin = "agent-history-hygiene"` 或
 `builtin = "project-knowledge-harness"`；這些固定且經 review 的 initializer 不會執行
 下載回來的 skill code。

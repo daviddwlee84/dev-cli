@@ -27,6 +27,7 @@ type repoBootstrapFlags struct {
 	category       string
 	path           string
 	preset         string
+	components     []string
 	handoff        string
 	description    string
 	gitignore      []string
@@ -81,6 +82,7 @@ type repoWorkflowResult struct {
 	Operation           string                    `json:"operation"`
 	Path                string                    `json:"path"`
 	Preset              string                    `json:"preset,omitempty"`
+	Components          []string                  `json:"components,omitempty"`
 	Created             bool                      `json:"created"`
 	Cloned              bool                      `json:"cloned"`
 	Scaffold            appliedRepoScaffold       `json:"scaffold"`
@@ -286,6 +288,7 @@ func bindRepoBootstrapFlags(cmd *cobra.Command, flags *repoBootstrapFlags, acqui
 		f.StringVar(&flags.path, "path", "", "exact destination path")
 	}
 	f.StringVar(&flags.preset, "preset", "", "scaffold preset")
+	f.StringSliceVar(&flags.components, "component", nil, "language/tool component (repeatable or comma-separated; none clears preset components)")
 	f.StringVar(&flags.handoff, "handoff", "", "afterwards: stay, cd, open or start")
 	f.StringVar(&flags.checkIn, "check-in", "", "finish generated changes: auto, commit, stage or none")
 	f.StringVar(&flags.description, "description", "", "repository description")
@@ -335,7 +338,7 @@ func buildNewRepoRequest(app *App, name string, flags repoBootstrapFlags) (repoW
 	}
 	prepared, err := prepareRepoScaffold(app, repoScaffoldRequest{
 		Root: destination, Name: name, Description: flags.description, Category: flags.category,
-		Preset: preset, Inputs: inputs, Selections: selections, Gitignore: explicitSlice(flags.gitignore),
+		Preset: preset, Components: explicitSlice(flags.components), Inputs: inputs, Selections: selections, Gitignore: explicitSlice(flags.gitignore),
 		License: flags.license, LicenseHolder: flags.licenseHolder, ImportOrphans: flags.importOrphans,
 		SkillAgents: explicitSlice(flags.agents),
 	})
@@ -440,7 +443,7 @@ func buildCloneRepoRequest(app *App, ref string, flags repoBootstrapFlags) (repo
 		}
 		request.Scaffold = repoScaffoldRequest{
 			Root: destination, Name: name, Description: flags.description, Category: flags.category,
-			Preset: flags.preset, Inputs: inputs, Selections: selections,
+			Preset: flags.preset, Components: explicitSlice(flags.components), Inputs: inputs, Selections: selections,
 			Gitignore: explicitSlice(flags.gitignore), License: flags.license,
 			LicenseHolder: flags.licenseHolder, ImportOrphans: flags.importOrphans, Existing: true,
 			SkillAgents: explicitSlice(flags.agents),
@@ -455,7 +458,7 @@ func cloneSetupOptionsSelected(flags repoBootstrapFlags) bool {
 	checkInNeedsSetup := flags.checkIn != "" &&
 		!strings.EqualFold(flags.checkIn, string(repoCheckInAuto)) &&
 		!strings.EqualFold(flags.checkIn, string(repoCheckInNone))
-	return flags.description != "" || flags.gitignore != nil || flags.license != "" || flags.licenseHolder != "" ||
+	return flags.description != "" || flags.components != nil || flags.gitignore != nil || flags.license != "" || flags.licenseHolder != "" ||
 		len(flags.set) > 0 || len(flags.enable) > 0 || len(flags.disable) > 0 || flags.agents != nil ||
 		flags.browseSkills || flags.importOrphans || checkInNeedsSetup || flags.message != ""
 }
@@ -467,7 +470,7 @@ func buildSetupRepoRequest(app *App, root string, flags repoBootstrapFlags) (rep
 	}
 	name := filepath.Base(root)
 	prepared, err := prepareRepoScaffold(app, repoScaffoldRequest{
-		Root: root, Name: name, Description: flags.description, Preset: flags.preset,
+		Root: root, Name: name, Description: flags.description, Preset: flags.preset, Components: explicitSlice(flags.components),
 		Inputs: inputs, Selections: selections, Gitignore: explicitSlice(flags.gitignore),
 		License: flags.license, LicenseHolder: flags.licenseHolder,
 		ImportOrphans: flags.importOrphans, Existing: true, SkillAgents: explicitSlice(flags.agents),
@@ -606,7 +609,8 @@ func executeRepoWorkflow(app *App, request repoWorkflowRequest) error {
 	request.Destination = acquired.Path
 	result := repoWorkflowResult{
 		Operation: "new", Path: acquired.Path, Preset: request.Prepared.Plan.Preset,
-		Created: true, Handoff: request.Handoff,
+		Components: request.Prepared.Plan.Components,
+		Created:    true, Handoff: request.Handoff,
 	}
 	if request.Template != nil {
 		applied, err := request.Template.Apply(acquired.Path)
@@ -672,7 +676,8 @@ func executeRepoSetup(app *App, request repoWorkflowRequest) error {
 	}
 	result := repoWorkflowResult{
 		Operation: operation, Path: request.Destination, Preset: request.Prepared.Plan.Preset,
-		Created: created, Cloned: cloned, Handoff: request.Handoff,
+		Components: request.Prepared.Plan.Components,
+		Created:    created, Cloned: cloned, Handoff: request.Handoff,
 	}
 	if err := executeScaffoldPipeline(app, request, &result); err != nil {
 		return err
@@ -715,10 +720,7 @@ func executeScaffoldPipeline(app *App, request repoWorkflowRequest, result *repo
 	result.Skills.Installed = append(result.Skills.Installed, installed.Installed...)
 	result.Warnings = append(result.Warnings, installed.Warnings...)
 	if request.BrowseSkills {
-		source := agentskill.DefaultSource
-		if len(request.Prepared.Plan.Catalog) > 0 && request.Prepared.Plan.Catalog[0].Source != "" {
-			source = request.Prepared.Plan.Catalog[0].Source
-		}
+		source := repoBrowseSkillSource(request.Prepared)
 		if err := runUpstreamSkillCatalog(ctxOf(), workingApp, request.Destination, source); err != nil {
 			return err
 		}
@@ -960,7 +962,8 @@ func renderCloneDryRun(app *App, request repoWorkflowRequest) error {
 		return json.NewEncoder(app.Out).Encode(map[string]any{
 			"operation": "clone", "dry_run": true, "source": repo.RedactCloneRef(request.Ref),
 			"path": request.Destination, "preset": request.Scaffold.Preset,
-			"check_in": request.CheckIn, "commit": request.CheckIn == repoCheckInCommit,
+			"components": request.Scaffold.Components,
+			"check_in":   request.CheckIn, "commit": request.CheckIn == repoCheckInCommit,
 			"stage": request.CheckIn == repoCheckInStage, "publish": nil, "handoff": request.Handoff,
 		})
 	}
@@ -969,6 +972,9 @@ func renderCloneDryRun(app *App, request repoWorkflowRequest) error {
 	fmt.Fprintf(app.Out, "  destination %s\n", config.Contract(request.Destination))
 	if request.Scaffold.Preset != "" {
 		fmt.Fprintf(app.Out, "  setup       %s (planned after clone)\n", request.Scaffold.Preset)
+	}
+	if len(request.Scaffold.Components) > 0 {
+		fmt.Fprintf(app.Out, "  components  %s (resolved after clone)\n", strings.Join(request.Scaffold.Components, ", "))
 	}
 	fmt.Fprintf(app.Out, "  check-in    %s\n", request.CheckIn)
 	fmt.Fprintln(app.Out, "  upstream    existing clone remote")

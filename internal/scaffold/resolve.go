@@ -65,6 +65,9 @@ func mergePreset(base, overlay Preset) Preset {
 	if overlay.Extends != "" {
 		out.Extends = overlay.Extends
 	}
+	if overlay.Components != nil {
+		out.Components = cloneSlice(overlay.Components)
+	}
 	if overlay.Description != "" {
 		out.Description = overlay.Description
 	}
@@ -125,6 +128,7 @@ func mergePreset(base, overlay Preset) Preset {
 
 func clonePreset(in Preset) Preset {
 	out := in
+	out.Components = cloneSlice(in.Components)
 	out.Readme = cloneBool(in.Readme)
 	out.Gitignore = cloneSlice(in.Gitignore)
 	out.ClaudePlans = cloneBool(in.ClaudePlans)
@@ -137,6 +141,7 @@ func clonePreset(in Preset) Preset {
 	out.Files = cloneSlice(in.Files)
 	for i := range out.Files {
 		out.Files[i].Content = cloneString(in.Files[i].Content)
+		out.Files[i].Default = cloneBool(in.Files[i].Default)
 		out.Files[i].Enabled = cloneBool(in.Files[i].Enabled)
 	}
 	out.Hooks = cloneSlice(in.Hooks)
@@ -222,6 +227,9 @@ func mergeFiles(base, overlay []File) []File {
 			}
 			if incoming.Mode != "" {
 				current.Mode = incoming.Mode
+			}
+			if incoming.Default != nil {
+				current.Default = cloneBool(incoming.Default)
 			}
 			if incoming.Enabled != nil {
 				current.Enabled = cloneBool(incoming.Enabled)

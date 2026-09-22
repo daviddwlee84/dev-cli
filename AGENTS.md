@@ -68,6 +68,7 @@ cmd/dev/main.go
 - `agenthistory` owns explicit transcript/file retention policy, immutable source-bound archive copies, Git lookup/sync and isolated history migration. Archive bindings/recovery stay in private state, ordinary status never contacts remotes, and source writers/index bytes remain untouched by archiving. `artifact` keeps old commit handoffs and adds externally verified archive receipts; taskflow includes ignored capture readiness in its guarded authority.
 - `hygiene` owns configurable secret/privacy policy, index/worktree/frozen-history scans, private identity rules and signed replacement plans. Raw findings/recovery stay outside Git; hook setup preserves foreign hooks. Large text transactions explicitly opt into configedit’s Windows backend; existing configuration flows retain their platform contracts.
 - `feedback` owns durable private reports, sanitized public drafts, revision-bound issue/comment publication receipts and exact repair plans. CLI adapts its repair backend to the shared start flow; agent launch is explicit and prompt context never becomes a public issue body.
+- `snippet` owns small-file share identity, account/project scope, bounded metadata/content search and frozen publication inputs. `forge` supplies GitHub/GitLab transports; CLI and REMOTE snippets share the service. Publication preserves confirmed/unknown outcomes, never retries unknown writes, and never gives snippets repository/task ownership.
 - `forge` wraps optional `gh`, `glab`, and Azure CLI integrations and must degrade to local Git behavior when they are unavailable.
 - `sshhost` owns bounded static discovery of the active user OpenSSH Include closure, canonical files under `~/.ssh/dev.d`, public-key selection/generation/bootstrap, fresh authentication proofs, and the explicit handoff into dev fleet. OpenSSH and plain `ssh -G` remain semantic authority; ordinary setup/remove never rewrite foreign connection definitions, copy private keys, weaken host-key policy, or treat every alias as a fleet member. Explicit format/organize may transform selected user-owned configuration with private guarded recovery; Include restores its caller scope after each file. Named agent providers (Bitwarden, 1Password, Secretive, custom sockets) are located by stat only and never executed; selecting a named-agent key publishes only its public line and writes a v2 fragment (`IdentityAgent`, `SecurityKeyProvider`), which older binaries treat as not dev-owned, while v1 files stay byte-identical. Explicit FIDO generation binds the reviewed native tools/provider, keeps capability observations stat-only, and reports hardware created/unknown effects independently of local publication; only verified SK recovery pairs may be retained. Never use resident-key download or provider loading as a passive probe, and keep automatic Secure Enclave creation blocked until exact native identity mapping is verified.
 - `sshflow` owns the explicit SSH/fleet/Herdr machine inventory and Plan/Apply orchestration; `herdrremote` calls the native machine CLI without writing its catalog. `configedit` owns source-bound local file transactions and private recovery outside Git, with owner leases and macOS/Linux metadata checks.
@@ -126,7 +127,7 @@ State is split intentionally:
 
 ## Versioning and changelog
 
-The current published baseline is `v0.2.42` (2026-09-22). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
+The current published baseline is `v0.2.43` (2026-09-22). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
 
 - `Makefile` derives development builds with `git describe --tags --match 'v[0-9]*' --always --dirty` and injects `internal/cli.Version` through `-ldflags`. The `--match` filter is load-bearing: any other tag in the repository (a `backup/` or `rescue/` marker, say) must never become `--version`.
 - `go install ...@version` recovers the module version from Go build information.
@@ -224,7 +225,7 @@ credentials still require rotation and unknown findings remain blocked.
 ## Distribution verification
 
 Run `python3 -m unittest discover -s scripts -p test_distribution.py` and, after
-committing packaging edits, `python3 scripts/check-distribution.py --version v0.2.42`.
+committing packaging edits, `python3 scripts/check-distribution.py --version v0.2.43`.
 The latter validates independent source and Go module payloads, including their
 embedded resources. Evidence-only nested `go.mod` files intentionally remove
 those directories from the parent module ZIP; do not run module tidy in them.

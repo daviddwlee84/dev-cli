@@ -187,6 +187,8 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 		newWorktreeCmd(app),
 		newRepoCmd(app),
 		newRepoBrowseCmd(app),
+		newSnippetCmd(app, false),
+		newSnippetCmd(app, true),
 		newFleetCmd(app),
 		newDotfileCmd(app),
 		newSSHCmd(app),

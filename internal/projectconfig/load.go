@@ -296,6 +296,7 @@ func executionHash(repoRoot string, effective Override, scaffoldDocument map[str
 		payload["repo.setup.preset"] = *effective.Repo.Setup.Preset
 	}
 	presets, hasPresets := scaffoldDocument["presets"]
+	components, hasComponents := scaffoldDocument["components"]
 	selectors, hasSelectors := extractScaffoldSelectors(scaffoldDocument)
 	if hasSelectors {
 		payload["scaffolds.selectors"] = selectors
@@ -305,6 +306,12 @@ func executionHash(repoRoot string, effective Override, scaffoldDocument map[str
 		if extracted, ok := extractExecutableScaffold(presets); ok {
 			hasExecutableScaffold = true
 			payload["scaffolds.presets"] = extracted
+		}
+	}
+	if hasComponents {
+		if extracted, ok := extractExecutableScaffold(components); ok {
+			hasExecutableScaffold = true
+			payload["scaffolds.components"] = extracted
 		}
 	}
 	if files, ok := extractNamedScaffoldValues(presets, map[string]bool{"files": true}); ok {
@@ -330,7 +337,7 @@ func executionHash(repoRoot string, effective Override, scaffoldDocument map[str
 		}
 	}
 	if hasExecutableScaffold || hasSelectors {
-		localSkills, err := hashLocalSkillSources(repoRoot, presets)
+		localSkills, err := hashLocalSkillSources(repoRoot, map[string]any{"presets": presets, "components": components})
 		if err != nil {
 			return "", err
 		}
@@ -359,7 +366,7 @@ func extractScaffoldSelectors(document map[string]any) (any, bool) {
 		}
 	}
 	if presets, ok := document["presets"]; ok {
-		if inherited, found := extractNamedScaffoldValues(presets, map[string]bool{"extends": true, "catalog": true}); found {
+		if inherited, found := extractNamedScaffoldValues(presets, map[string]bool{"extends": true, "catalog": true, "components": true}); found {
 			out["presets"] = inherited
 		}
 	}
@@ -611,23 +618,27 @@ func stableExecutionPath(repoRoot, filename string) string {
 }
 
 func collectLocalSkillSources(value any, result map[string]bool) {
+	collectLocalSkillSourceValues(value, false, result)
+}
+
+func collectLocalSkillSourceValues(value any, inSkills bool, result map[string]bool) {
 	switch typed := value.(type) {
 	case map[string]any:
-		if _, hasSetup := typed["setup"]; hasSetup {
+		if inSkills {
 			if source, ok := typed["source"].(string); ok && IsLocalSkillSource(source) {
 				result[source] = true
 			}
 		}
-		for _, child := range typed {
-			collectLocalSkillSources(child, result)
+		for key, child := range typed {
+			collectLocalSkillSourceValues(child, inSkills || key == "skills", result)
 		}
 	case []map[string]any:
 		for _, child := range typed {
-			collectLocalSkillSources(child, result)
+			collectLocalSkillSourceValues(child, inSkills, result)
 		}
 	case []any:
 		for _, child := range typed {
-			collectLocalSkillSources(child, result)
+			collectLocalSkillSourceValues(child, inSkills, result)
 		}
 	}
 }

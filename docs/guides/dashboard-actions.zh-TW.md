@@ -182,3 +182,11 @@ package ID。預覽列出套件、已解析的命令與官方指引。未支援�
 package manager 時只提供指引。前景安裝保留原生提示，不新增套件來源、不安裝
 manager、不預先接受條款。完成後檢查執行檔，`ssh` 另檢查 OpenSSH capability；
 驗證與服務啟動分開處理。取消或失敗不自動重試。
+
+## REMOTE snippets
+
+REMOTE 預設顯示 repositories。**Ctrl+O → Show snippets** 載入 GitHub Gists
+與 GitLab snippets，**Show repositories** 切回。兩種模式各自保留搜尋與選取
+狀態。Snippet actions 提供 provider／project 範圍、重新整理、明確全文搜尋、
+開啟／複製 URL，以及 CLI editor 建立 wizard。普通篩選只讀 metadata；
+repository clone 與生命週期操作不適用於 snippet rows。詳見 [Snippets](snippets.md)。

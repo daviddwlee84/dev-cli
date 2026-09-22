@@ -23,6 +23,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
 	"github.com/daviddwlee84/dev-cli/internal/picker"
 	"github.com/daviddwlee84/dev-cli/internal/runtime"
+	"github.com/daviddwlee84/dev-cli/internal/snippet"
 	"github.com/daviddwlee84/dev-cli/internal/sshcredential"
 	"github.com/daviddwlee84/dev-cli/internal/sshdiscovery"
 	"github.com/daviddwlee84/dev-cli/internal/sshhost"
@@ -32,6 +33,8 @@ import (
 
 // App is the state shared by every command.
 type App struct {
+	snippetService   *snippet.Service
+	snippetOpenURL   func(context.Context, string) error
 	feedbackReporter forge.IssueReporter
 	// workflowHandoff defers navigation until the dashboard releases the terminal.
 	workflowHandoff        func(func() error) error

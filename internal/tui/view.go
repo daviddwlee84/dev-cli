@@ -43,6 +43,13 @@ func (m Model) listPreambleLines() int {
 	case ViewRepos:
 		lines += m.discoveryBanner().lines
 	case ViewRemote:
+		if m.snippetsActive() {
+			lines++ // provider/project scope
+			if m.snippets.loading && len(m.visibleSnippets()) > 0 {
+				lines++
+			}
+			break
+		}
 		if m.viewLoad(ViewRemote).loading && len(m.visibleRemotes()) > 0 {
 			lines++
 		}
@@ -117,6 +124,9 @@ func (m Model) renderRawList() string {
 	case ViewTries:
 		return m.renderTries()
 	case ViewRemote:
+		if m.snippetsActive() {
+			return m.renderSnippets()
+		}
 		return m.renderRemotes()
 	case ViewSkills:
 		return m.renderSkills()
@@ -233,8 +243,8 @@ func (m Model) buildHeaderLayout() headerLayout {
 		if summary {
 			builder.WriteString("   " + styleDim.Render(m.Summary()))
 		}
-		if m.filter != "" {
-			builder.WriteString("   " + styleWarm.Render("/"+m.filter))
+		if m.activeFilter() != "" {
+			builder.WriteString("   " + styleWarm.Render("/"+m.activeFilter()))
 		}
 		return headerLayout{line: builder.String(), tabs: hits}
 	}
@@ -257,10 +267,10 @@ func (m Model) buildHeaderLayout() headerLayout {
 		line: line,
 		tabs: []tabHit{{view: m.view, from: lipgloss.Width(prefix), to: lipgloss.Width(line)}},
 	}
-	if m.filter != "" {
+	if m.activeFilter() != "" {
 		available := m.width - lipgloss.Width(layout.line) - 4
 		if available > 1 {
-			layout.line += "   " + styleWarm.Render("/"+pad(m.filter, available-1))
+			layout.line += "   " + styleWarm.Render("/"+pad(m.activeFilter(), available-1))
 		}
 	}
 	return layout
@@ -1120,6 +1130,9 @@ func (m Model) renderDetail() string {
 		return "  " + styleTitle.Render("filter ") + m.input.View() +
 			"\n  " + styleHelp.Render("↑/↓ select · enter to keep it · esc to clear")
 	}
+	if m.snippetsActive() {
+		return m.renderSnippetDetail()
+	}
 	if item, ok := m.currentRepoItem(); ok && item.Repo.Pending != "" {
 		return "  path " + contract(item.Repo.Repo.Path) + "\n  " + item.Repo.Pending + " · waiting for fresh repository observations"
 	}
@@ -1603,6 +1616,9 @@ func (m Model) renderFooter() string {
 		status = styleDim.Render(m.viewStatus(m.view))
 	}
 	primary := "Enter open · Ctrl+O actions"
+	if m.snippetsActive() {
+		primary = "Enter browser · Ctrl+O create/scope/search"
+	}
 	if m.view == ViewFleet && m.hostFleetEnabled() {
 		primary = "Enter navigate · Space expand · Ctrl+O actions"
 	}

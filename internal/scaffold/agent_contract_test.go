@@ -6,22 +6,23 @@ import (
 	"testing"
 )
 
-func TestStarterAgentContractIsExplicitlyIncompleteAndRendered(t *testing.T) {
+func TestStarterAgentContractDefersProjectSpecificGuidance(t *testing.T) {
 	body := StarterAgentContract()
 	for _, required := range []string{
 		"# Project agent guidance",
-		"Bootstrap status: incomplete",
-		"## Project purpose",
-		"## Toolchain and verified commands",
-		"## Architecture",
-		"## Behavioral contracts",
-		"## Handoff requirements",
-		"TODO",
-		"Never claim a check passed unless it was actually run",
+		"until the user defines what this project does",
+		"information verified in this repository",
+		"Do not invent a stack, commands, or policies",
 	} {
 		if !strings.Contains(body, required) {
 			t.Errorf("starter contract missing %q", required)
 		}
+	}
+	if lines := len(strings.Split(strings.TrimSpace(body), "\n")); lines < 8 || lines > 12 {
+		t.Fatalf("starter contract has %d lines, want 8–12", lines)
+	}
+	if strings.Contains(body, "TODO") {
+		t.Fatal("deferred contract must not contain a placeholder checklist")
 	}
 	if strings.Contains(body, "{{") || strings.Contains(body, "run the repository's documented checks") {
 		t.Fatalf("starter contract contains unresolved or misleading guidance:\n%s", body)

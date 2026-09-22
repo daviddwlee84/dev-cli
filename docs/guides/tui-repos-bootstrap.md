@@ -229,6 +229,15 @@ destination, nested-repository restrictions and exclusive creation before
 mutation. Other row-dependent actions and REMOTE clone freshness checks remain
 guarded. There is no second, reduced repository-creation implementation.
 
+The shared wizard keeps `agent-ready` guidance short and defers project-specific
+rules until the user defines the project. It writes Claude plan settings without
+empty artifact folders or `.gitkeep`. Select one or more language/tool components
+before advanced customization; their gitignore templates combine automatically.
+Python offers `python-project-best-practice` as a separate opt-in installation
+through the existing skills provider and native lock, without running setup.
+Legacy hygiene/knowledge suggestions are hidden unless selected or customized;
+existing explicit flags and presets continue to work.
+
 `dev repo context [repo]` emits the same agent-ready Markdown context available from the TUI copy menu, including paths, Git/worktree/runtime facts, and tasks. `--json` adds the schema-v1 evidence/readiness contract; `--refresh` is the only form that live-probes optional forge and configured fleet sources.
 
 ### TRY and REMOTE

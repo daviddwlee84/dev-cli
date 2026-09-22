@@ -18,10 +18,11 @@ dev repo setup . --preset agent-ready --check-in=stage
 ```
 
 The interactive default is `agent-ready`; explicit `repo new NAME` remains
-`minimal`. Its canonical `AGENTS.md` starter explicitly labels bootstrap status
-incomplete, supplies safe repository-wide and handoff rules, and leaves unknown
-purpose, commands, architecture, and invariants as TODOs rather than inventing
-project facts. Use `--dry-run` before a custom preset and `--json` for
+`minimal`. Its short `AGENTS.md` defers project-specific guidance until the user
+defines the project, then records verified purpose, commands, and architecture.
+Claude settings point to a local plans directory without creating it or a
+`.gitkeep`; matching orphan imports create the directory only when copying a
+file. SpecStory directories are also left to their writers. Use `--dry-run` before a custom preset and `--json` for
 automation. Dry-run does not mutate the target repository. JSON never prompts,
 changes directory, or activates a runtime; automation supplies the required
 name/ref and an explicit setup preset.
@@ -29,10 +30,10 @@ name/ref and an explicit setup preset.
 `repo setup` repeat-safely merges native initializers and preset files. Custom
 hooks and skill setup remain responsible for their own idempotency.
 
-The no-argument create/setup wizards keep the common path short. After preset
-selection they ask `Customize preset ... options?` once. Answering no accepts
-the resolved preset and skips its detailed template, typed-input,
-README/gitignore/license, Claude plans, AGENTS, skill and catalog questions.
+The no-argument create/setup wizards offer language/tool components and their
+optional skill choices after preset selection, then ask `Customize preset ...
+options?` once. Answering no accepts the remaining detailed template,
+typed-input, README/gitignore/license, Claude plan settings, and AGENTS defaults.
 The gate defaults to yes when the command line already selected a customization
 or a required typed input has no default. This changes prompt volume, not preset
 resolution: supplied flags still participate in the final plan.
@@ -168,13 +169,32 @@ local stage-for-review. `start` also requires a clean committed setup; use
 
 ## Configuration and trust
 
-Global presets live in `$XDG_CONFIG_HOME/dev/scaffolds.toml`. A target repo may
+Global presets and components live in `$XDG_CONFIG_HOME/dev/scaffolds.toml`.
+Components add `gitignore` templates and optional `skills` without setup scripts.
+The built-ins are `python`, `go`, `node`, `rust`, `java`, and `ruby`; Python offers
+`python-project-best-practice` without selecting it. Skills automatically appear
+in the picker; duplicate `catalog` metadata is unnecessary.
+
+`[presets.NAME] components = ["python", "node"]` saves a combination.
+Repeated `--component` flags replace that list; `--component none` clears it.
+Ignore templates form a stable union, and explicit `--gitignore` overrides it.
+Identical skill IDs deduplicate; conflicting definitions or duplicate native
+skill names fail before scaffold mutation, because agent targets can share storage. Existing preset inheritance and ID overlays
+remain unchanged. File `default = false` keeps its `--enable` ID addressable;
+`enabled = false` removes it from the resolved recipe.
+
+The unmodified legacy hygiene/knowledge suggestions are hidden. Explicit
+`--enable` IDs and authored inherited presets retain their setup behavior;
+`deployment` is prompted only when the knowledge skill is selected.
+`--enable claude-plans-directory` restores the legacy placeholder explicitly.
+
+ A target repo may
 override portable setup behavior with `.dev-cli/config.toml` and
 `.dev-cli/scaffolds.toml`. It cannot change host paths, runtime, state, forge
 inventory, stats, update or TUI policy.
 
-Project-owned hooks and skill setup entrypoints from `.dev-cli/scaffolds.toml`,
-plus worktree post-create commands from `.dev-cli/config.toml`, are keyed by
+Project-owned hooks, skill installation, component selectors and skill definitions
+from `.dev-cli/scaffolds.toml`, plus worktree post-create commands from `.dev-cli/config.toml`, are keyed by
 canonical Git identity plus a SHA-256 of executable configuration. Legacy
 `.dev.toml` retains its compatibility behavior. Review the plan and approve the
 exact hash:
@@ -189,7 +209,12 @@ bytes; they do not authorize command execution.
 
 ## Skills and publication
 
-Selecting a setup-capable skill installs it in project scope. Custom global or
+Selected skills use the existing trusted direct `skills` provider in project
+scope; native `skills-lock.json` stays authoritative. dev never copies a remote
+skill itself or invokes npx from the checkout. Component skills install only;
+they do not choose a Python project profile or run its scaffold scripts.
+
+Selecting a setup-capable preset skill installs it in project scope. Custom global or
 local presets can run a declared script below the installed skill directory in
 the declared phase; project-authored executable setup is restricted to local,
 content-hashed sources. For `agent-history-hygiene` and

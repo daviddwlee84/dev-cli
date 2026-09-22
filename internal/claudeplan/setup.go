@@ -48,9 +48,6 @@ func Setup(ctx context.Context, repoRoot string, options Options) (Result, error
 		return Result{}, err
 	}
 	result := Result{SettingsPath: settingsPath, PlansPath: plansPath}
-	if err := os.MkdirAll(plansPath, 0o755); err != nil {
-		return result, fmt.Errorf("create Claude plans directory: %w", err)
-	}
 
 	settings := map[string]any{}
 	existing, readErr := os.ReadFile(settingsPath)
@@ -244,6 +241,9 @@ func copyExclusive(source, destination string, mode fs.FileMode) error {
 		return err
 	}
 	defer in.Close()
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		return err
+	}
 	out, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 	if err != nil {
 		return err

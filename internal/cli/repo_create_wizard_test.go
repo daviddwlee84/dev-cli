@@ -177,10 +177,10 @@ func TestRepoClonePickerMissingCacheKeepsManualPrompt(t *testing.T) {
 }
 
 func TestRepoNewWizardCreatesAgentReadyRepoAndCDs(t *testing.T) {
-	// name, category, destination, preset, description, customize, remote,
+	// name, category, destination, preset, description, components, customize, remote,
 	// check-in, handoff, final confirmation.
 	input := strings.Join([]string{
-		"wizard", "", "", "", "", "n", "n", "", "", "",
+		"wizard", "", "", "", "", "", "n", "n", "", "", "",
 	}, "\n") + "\n"
 	app, out := newRepoWizardApp(t, input)
 	cmd := newRepoNewCmd(app)
@@ -202,6 +202,11 @@ func TestRepoNewWizardCreatesAgentReadyRepoAndCDs(t *testing.T) {
 	if string(agents) != wantAgents {
 		t.Fatalf("wizard AGENTS.md drifted from canonical starter:\n%s", agents)
 	}
+	for _, relative := range []string{".claude/plans", ".specstory"} {
+		if _, err := os.Stat(filepath.Join(destination, relative)); !os.IsNotExist(err) {
+			t.Fatalf("wizard eagerly created %s: %v", relative, err)
+		}
+	}
 	gitignore, err := os.ReadFile(filepath.Join(destination, ".gitignore"))
 	if err != nil || !strings.Contains(string(gitignore), ".specstory/statistics.json") ||
 		strings.Contains(string(gitignore), "\n.specstory/\n") {
@@ -216,7 +221,7 @@ func TestRepoNewWizardCreatesAgentReadyRepoAndCDs(t *testing.T) {
 }
 
 func TestRepoNewWizardDeclineMutatesNothing(t *testing.T) {
-	input := "cancel-me\n\n\nminimal\n\nn\n\nstay\nn\n"
+	input := "cancel-me\n\n\nminimal\n\n\nn\n\nstay\nn\n"
 	app, out := newRepoWizardApp(t, input)
 	cmd := newRepoNewCmd(app)
 	cmd.SetArgs(nil)

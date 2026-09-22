@@ -31,6 +31,19 @@ func TestSetupCreatesAndMergesSettings(t *testing.T) {
 	if json.Unmarshal(body, &settings) != nil || settings["model"] != "opus" || settings["plansDirectory"] != "./.claude/plans" {
 		t.Fatalf("settings = %s", body)
 	}
+	if _, err := os.Stat(result.PlansPath); !os.IsNotExist(err) {
+		t.Fatalf("settings-only setup eagerly created the plans directory: %v", err)
+	}
+}
+
+func TestSetupImportWithoutMatchesLeavesPlansDirectoryAbsent(t *testing.T) {
+	result, err := claudeplan.Setup(t.Context(), t.TempDir(), claudeplan.Options{Home: t.TempDir(), ImportOrphans: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(result.PlansPath); !os.IsNotExist(err) {
+		t.Fatalf("empty import eagerly created the plans directory: %v", err)
+	}
 }
 
 func TestSetupImportsOnlyAuthoritativeOrphanPaths(t *testing.T) {

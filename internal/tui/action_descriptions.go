@@ -5,7 +5,7 @@ func refreshActionDescription(view View) string {
 	case ViewFleet:
 		return "Refresh the shared local Herdr catalog and the selected host's repositories. Old data remains stale on failure; update all configured hosts is a separate action."
 	case ViewRemote:
-		return "Reload configuration and explicitly refresh repositories through configured forge CLIs; this may contact the network."
+		return "Refresh the selected REMOTE content: repositories or snippet metadata/content-search results. This is an explicit network action."
 	case ViewSkills:
 		return "Reload local installed skills. Use c separately for explicit upstream source checks."
 	case ViewMCP:
@@ -107,6 +107,20 @@ func actionGuidance(view View, id listAction) (string, string) {
 		}
 	case ViewRemote:
 		switch id {
+		case listActionRemoteContent:
+			return "Show snippets or repositories", "REMOTE starts with repositories. Switch to snippets to query GitHub Gists and GitLab snippets lazily; each mode keeps its own rows, query and selection."
+		case listActionSnippetProvider:
+			return "Choose snippet provider", "Query all configured providers, GitHub Gists, or GitLab snippets. Provider errors remain visible with any partial results."
+		case listActionSnippetProject:
+			return "Choose GitLab snippet scope", "Enter an exact GitLab project path, or leave it blank for personal snippets. The submitted scope starts an explicit network query."
+		case listActionSnippetSearch:
+			return "Search snippet file contents", "Submit a query to explicitly fetch and search bounded snippet contents. Ordinary / filtering searches only the loaded metadata and filenames."
+		case listActionSnippetClearSearch:
+			return "Return to snippet metadata", "Clear the content search and reload snippet metadata for the selected provider/project scope."
+		case listActionSnippetCreate:
+			return "Create a snippet", "Open the shared CLI editor wizard. It previews the exact provider, visibility and content and asks for confirmation before publication."
+		case listActionSnippetCancel:
+			return "Cancel snippet loading", "Cancel the current request and ignore late responses. Previously accepted rows remain available; refresh retries explicitly."
 		case listActionOpen:
 			return "Open an existing local checkout", "Requires a matched local clone. Opening an uncloned row does not clone it."
 		case listActionRemoteClone:

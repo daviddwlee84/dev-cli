@@ -6,6 +6,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.43] - 2026-09-22
+
+### Added
+
+- Repository setup can compose language/tool components from `scaffolds.toml`.
+  The wizard combines gitignore templates and offers explicit skill selection,
+  including Python project guidance through the native skills/lock provider.
+- `dev snippet` and GitHub-only `dev gist` list, search, open and create small
+  text shares through GitHub and GitLab, including explicit GitLab projects.
+  Optional bounded content search reports incomplete coverage. File/stdin and
+  editor workflows retain drafts and unknown publication outcomes honestly.
+  REMOTE can switch between repositories and the independent snippets inventory.
+
+### Changed
+
+- Agent-ready repositories start with concise deferred `AGENTS.md` guidance.
+  Claude plans settings no longer create empty plans directories or `.gitkeep`
+  by default, and legacy hygiene/knowledge suggestions no longer crowd the
+  ordinary wizard. Existing explicit recipes, IDs and authored files are retained.
+
 ## [0.2.42] - 2026-09-22
 
 ### Fixed
@@ -1374,7 +1394,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.42...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.43...HEAD
+[0.2.43]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.42...v0.2.43
 [0.2.42]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.41...v0.2.42
 [0.2.41]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.40...v0.2.41
 [0.2.40]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.39...v0.2.40

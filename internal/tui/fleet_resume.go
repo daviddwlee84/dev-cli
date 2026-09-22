@@ -61,6 +61,7 @@ func (m Model) ResumeFleetHandoff(ctx context.Context, result FleetExecutionResu
 	}
 	m.localCancel, m.localContext = nil, nil
 	m.localGeneration++
+	m.cancelSnippetLoad()
 	add := func(command tea.Cmd) {
 		if command != nil {
 			m.resumeCommands = append(m.resumeCommands, command)

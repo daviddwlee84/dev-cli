@@ -10,8 +10,8 @@ sessions; dev records task intent.
 
 ## Discover what you need
 
-Use `dev <command> --help` for current syntax and flags, and `dev help <topic>`
-for workflow explanations. `dev --help` lists commands; `dev help` lists topics.
+Use `dev <command> --help` for syntax and flags; `dev help <topic>` explains
+workflows. `dev --help` lists commands; `dev help` lists topics.
 REPOS → Ctrl+O → hygiene: status/report/scan/setup.
 Prefer supported `--json` output for automation. Read the relevant command before
 mutation: some actions execute immediately, while others require preview/apply.
@@ -42,6 +42,7 @@ Do not preload manuals, repeat `dev --skill`, or run routine diagnostics.
 - SSH dashboard, diagnosis, discovery, tests/activity, keys, credentials and registration: [SSH](references/ssh-hosts.md).
 - Dotfile setup, native chezmoi operations, or FLEET host actions: [dotfiles](references/dotfiles.md).
 - Skill/MCP/instruction transfers, updates or removal: [transfers](references/agent-interop.md), [maintenance](references/skills-management.md).
+- [Snippets](references/snippets.md).
 - Recursive Git children: [submodules](references/submodules.md).
 
 ## Unexpected dev failures

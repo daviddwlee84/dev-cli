@@ -10,6 +10,21 @@ func Builtins() Config {
 		DefaultAgents:    []string{"claude-code", "codex"},
 		Sources:          []string{"builtin"},
 		defaultAgentsSet: true,
+		Components: map[string]Component{
+			"python": {
+				Description: "Python gitignore and optional project-practice guidance", Gitignore: []string{"python"}, Origin: "builtin",
+				Skills: []Skill{{
+					ID: "python-project-best-practice", Name: "python-project-best-practice",
+					Source:  "https://github.com/daviddwlee84/agent-skills/tree/main/skills/local/python-project-best-practice",
+					Default: boolp(false), Origin: "builtin",
+				}},
+			},
+			"go":   {Description: "Go", Gitignore: []string{"go"}, Origin: "builtin"},
+			"node": {Description: "JavaScript / TypeScript (Node)", Gitignore: []string{"node"}, Origin: "builtin"},
+			"rust": {Description: "Rust", Gitignore: []string{"rust"}, Origin: "builtin"},
+			"java": {Description: "Java", Gitignore: []string{"java"}, Origin: "builtin"},
+			"ruby": {Description: "Ruby", Gitignore: []string{"ruby"}, Origin: "builtin"},
+		},
 		Presets: map[string]Preset{
 			"minimal": {
 				Description:   "README, main branch, and an initial commit",
@@ -35,7 +50,7 @@ func Builtins() Config {
 			},
 			"agent-ready": {
 				Extends:       "minimal",
-				Description:   "Local agent guidance and project-scoped Claude plans; optional hygiene and knowledge skills",
+				Description:   "Deferred project guidance and repository-local Claude plan settings",
 				Gitignore:     []string{"common"},
 				ClaudePlans:   boolp(true),
 				AgentContract: "starter",
@@ -77,6 +92,7 @@ func Builtins() Config {
 						Destination:    ".claude/plans/.gitkeep",
 						Content:        stringp(""),
 						Mode:           "0644",
+						Default:        boolp(false),
 						Enabled:        boolp(true),
 						Origin:         "builtin",
 						TemplateOrigin: "builtin",

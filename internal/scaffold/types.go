@@ -25,11 +25,12 @@ const (
 // Config is the merged scaffold catalog. Sources are ordered from least to
 // most specific; it is useful when explaining effective configuration.
 type Config struct {
-	Version       int               `toml:"version" json:"version"`
-	DefaultPreset string            `toml:"default_preset" json:"default_preset"`
-	DefaultAgents []string          `toml:"default_agents" json:"default_agents,omitempty"`
-	Presets       map[string]Preset `toml:"presets" json:"presets"`
-	Sources       []string          `toml:"-" json:"sources,omitempty"`
+	Version       int                  `toml:"version" json:"version"`
+	DefaultPreset string               `toml:"default_preset" json:"default_preset"`
+	DefaultAgents []string             `toml:"default_agents" json:"default_agents,omitempty"`
+	Presets       map[string]Preset    `toml:"presets" json:"presets"`
+	Components    map[string]Component `toml:"components" json:"components,omitempty"`
+	Sources       []string             `toml:"-" json:"sources,omitempty"`
 
 	defaultAgentsSet bool
 }
@@ -38,6 +39,7 @@ type Config struct {
 // omitted child value (inherit) from an explicit false value.
 type Preset struct {
 	Extends        string   `toml:"extends" json:"extends,omitempty"`
+	Components     []string `toml:"components" json:"components,omitempty"`
 	Description    string   `toml:"description" json:"description,omitempty"`
 	Readme         *bool    `toml:"readme" json:"readme,omitempty"`
 	Gitignore      []string `toml:"gitignore" json:"gitignore,omitempty"`
@@ -62,6 +64,15 @@ type Preset struct {
 	Catalog []SkillCatalog `toml:"catalog" json:"catalog,omitempty"`
 
 	Origin string `toml:"-" json:"origin,omitempty"`
+}
+
+// Component adds language/tool ignore templates and optional skills to a
+// preset. Executable setup and generated files remain the preset's concern.
+type Component struct {
+	Description string   `toml:"description" json:"description,omitempty"`
+	Gitignore   []string `toml:"gitignore" json:"gitignore,omitempty"`
+	Skills      []Skill  `toml:"skills" json:"skills,omitempty"`
+	Origin      string   `toml:"-" json:"origin,omitempty"`
 }
 
 // InputType is a value a preset can request from an interactive or scripted
@@ -99,11 +110,15 @@ type File struct {
 	Source      string  `toml:"source" json:"source,omitempty"`
 	Content     *string `toml:"content" json:"content,omitempty"`
 	Mode        string  `toml:"mode" json:"mode,omitempty"`
+	Default     *bool   `toml:"default" json:"default,omitempty"`
 	Enabled     *bool   `toml:"enabled" json:"enabled,omitempty"`
 
 	Origin         string `toml:"-" json:"origin,omitempty"`
 	TemplateOrigin string `toml:"-" json:"template_origin,omitempty"`
 }
+
+// IsDefault preserves historical file behavior unless explicitly opted out.
+func (f File) IsDefault() bool { return f.Default == nil || *f.Default }
 
 // FileMode returns the configured permission bits, defaulting to 0644.
 func (f File) FileMode() (fs.FileMode, error) {

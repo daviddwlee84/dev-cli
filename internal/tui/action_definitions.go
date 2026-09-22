@@ -126,12 +126,59 @@ func newActionRegistry() []ActionSpec {
 	}, tryApply)
 	add(ViewTries, listActionOpen, "open Try", "enter o", func(c ActionContext) bool { return c.try.Present() }, tryApply)
 
-	add(ViewRemote, listActionCopy, "copy repository URL…", "y", nil, copyReady)
-	add(ViewRemote, listActionCopyCloneURL, "copy clone URL", "", nil, copyReady)
-	add(ViewRemote, listActionOpen, "open local checkout", "enter o", func(c ActionContext) bool { return c.remote.Cloned() }, func(c ActionContext) string {
+	add(ViewRemote, listActionRemoteContent, "Show snippets", "", nil, nil).Scope = actionView
+	specs[len(specs)-1].Title = func(c ActionContext) string {
+		if c.model.snippets.enabled {
+			return "Show repositories"
+		}
+		return "Show snippets"
+	}
+	snippetMode := func(c ActionContext) bool { return c.model.snippetsActive() }
+	snippetLoad := func(c ActionContext) string { return requires(c.model.actions.Snippets.Load != nil, "Snippet listing") }
+	for _, entry := range []struct {
+		id    listAction
+		label string
+	}{
+		{listActionSnippetProvider, "choose snippet provider…"},
+		{listActionSnippetProject, "GitLab project / personal scope…"},
+		{listActionSnippetSearch, "search snippet contents…"},
+	} {
+		add(ViewRemote, entry.id, entry.label, "", snippetMode, snippetLoad).Scope = actionView
+	}
+	add(ViewRemote, listActionSnippetClearSearch, "clear content search", "", func(c ActionContext) bool { return c.model.snippetsActive() && c.model.snippets.query.Content }, snippetLoad).Scope = actionView
+	add(ViewRemote, listActionSnippetCancel, "cancel snippet request", "", func(c ActionContext) bool { return c.model.snippetsActive() && c.model.snippets.loading }, nil).Scope = actionView
+	add(ViewRemote, listActionSnippetCreate, "create snippet…", "", snippetMode, func(c ActionContext) string {
+		return requires(c.model.actions.Snippets.Create != nil, "Snippet wizard")
+	}).Scope = actionView
+	for _, id := range []listAction{listActionSnippetAll, listActionSnippetGitHub, listActionSnippetGitLab} {
+		s := add(ViewRemote, id, "", "", snippetMode, snippetLoad)
+		s.Scope, s.Menu = actionView, menuAdapter
+	}
+	add(ViewRemote, listActionCopy, "copy repository URL…", "y", nil, copyReady).Title = func(c ActionContext) string {
+		if c.model.snippetsActive() {
+			return "copy snippet URL"
+		}
+		return "copy repository URL…"
+	}
+	add(ViewRemote, listActionCopyCloneURL, "copy clone URL", "", func(c ActionContext) bool { return c.remote != nil }, copyReady)
+	add(ViewRemote, listActionOpen, "open local checkout", "enter o", func(c ActionContext) bool {
+		if c.model.snippetsActive() {
+			_, ok := c.model.currentSnippet()
+			return ok
+		}
+		return c.remote != nil && c.remote.Cloned()
+	}, func(c ActionContext) string {
+		if c.model.snippetsActive() {
+			return requires(c.model.actions.Snippets.Open != nil, "Snippet browser")
+		}
 		return requires(c.model.actions.OpenRemote != nil, "Opening local clones")
-	})
-	add(ViewRemote, listActionRemoteClone, "clone repository…", "c", func(c ActionContext) bool { return !c.remote.Cloned() }, func(c ActionContext) string {
+	}).Title = func(c ActionContext) string {
+		if c.model.snippetsActive() {
+			return "open snippet in browser"
+		}
+		return "open local checkout"
+	}
+	add(ViewRemote, listActionRemoteClone, "clone repository…", "c", func(c ActionContext) bool { return c.remote != nil && !c.remote.Cloned() }, func(c ActionContext) string {
 		return requires(c.model.actions.CloneRemote != nil, "Repository cloning")
 	})
 
@@ -276,7 +323,9 @@ func newActionRegistry() []ActionSpec {
 		s.Menu, s.Topic = menuAdapter, "hygiene"
 	}
 	for _, view := range []View{ViewTasks, ViewRepos, ViewRemote, ViewTries} {
-		add(view, listActionBrowse, "open repository in browser…", "", func(c ActionContext) bool { return c.try == nil || c.try.Item.Live.Repo != nil }, workflow)
+		add(view, listActionBrowse, "open repository in browser…", "", func(c ActionContext) bool {
+			return !c.model.snippetsActive() && (c.try == nil || c.try.Item.Live.Repo != nil)
+		}, workflow)
 	}
 	tryRecover := func(c ActionContext) bool {
 		pending := c.try.Item.Entry != nil && c.try.Item.Entry.MoveIntent != nil && c.try.Item.Entry.MoveIntent.Operation == "remove-trash"
@@ -292,7 +341,7 @@ func newActionRegistry() []ActionSpec {
 
 	for _, view := range Views {
 		if view != ViewSSH && view != ViewSkills && view != ViewMCP {
-			add(view, listActionTools, "tools…", "", func(c ActionContext) bool { return len(c.model.actions.Tools) > 0 }, nil)
+			add(view, listActionTools, "tools…", "", func(c ActionContext) bool { return !c.model.snippetsActive() && len(c.model.actions.Tools) > 0 }, nil)
 		}
 		add(view, listActionIssues, "issues / suggested actions…", "", nil, nil).Scope = actionView
 		add(view, listActionSortMenu, "sort columns…", "", func(c ActionContext) bool { return c.model.count() > 0 }, nil).Scope = actionView

@@ -717,6 +717,63 @@ Preview: inspect and run guarded repository lifecycle actions
 dev flow [repo]
 ```
 
+### `dev gist`
+
+Find and share GitHub Gists
+
+```
+dev gist
+```
+
+### `dev gist create`
+
+Publish text files, stdin or an editor draft as one snippet
+
+```
+dev gist create [file...] [flags]
+```
+
+- `-d, --description` — description
+- `--dry-run` — preview filenames and destination without publishing content
+- `--editor` — editor command override for a new draft (otherwise VISUAL/EDITOR)
+- `--filename` — filename for stdin or the editor draft
+- `--json` — emit a metadata-only preview or publication result as JSON
+- `--title` — snippet title (GitLab; also used as a GitHub description fallback)
+- `--visibility` — github: secret/public; gitlab: private/public/internal (if supported)
+- `--web` — open the created snippet after its URL is recorded
+
+### `dev gist list`
+
+List the authenticated accounts' snippets
+
+```
+dev gist list [query...] [flags]
+```
+
+- `--content` — also search file contents (bounded network reads; reports incomplete coverage)
+- `--json` — emit metadata and coverage as JSON; never include file contents
+
+### `dev gist open`
+
+Open a snippet, or choose one from your inventory
+
+```
+dev gist open [URL|platform:ID|ID] [flags]
+```
+
+- `--print` — print the verified snippet URL without opening a browser
+
+### `dev gist search`
+
+Search snippet descriptions and filenames
+
+```
+dev gist search query... [flags]
+```
+
+- `--content` — also search file contents (bounded network reads; reports incomplete coverage)
+- `--json` — emit metadata and coverage as JSON; never include file contents
+
 ### `dev git`
 
 Guarded Git transactions that need receipts or recovery
@@ -1657,6 +1714,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
 - `--check-in` — finish generated changes: auto, commit, stage or none
+- `--component` — language/tool component (repeatable or comma-separated; none clears preset components)
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
@@ -1730,6 +1788,7 @@ dev repo new [name|clone-ref] [flags]
 - `--browse-skills` — open the upstream skills installer during setup
 - `-c, --category` — category subdirectory under project_root
 - `--check-in` — finish generated changes: auto, commit, stage or none
+- `--component` — language/tool component (repeatable or comma-separated; none clears preset components)
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
@@ -1795,6 +1854,7 @@ dev repo setup [repo-or-path] [flags]
 - `--capture` — with --artifacts: project or external (external requires local SpecStory config)
 - `--check-in` — finish generated changes: auto, commit, stage or none
 - `--commit` — commit only the setup changes (requires a clean starting checkout)
+- `--component` — language/tool component (repeatable or comma-separated; none clears preset components)
 - `--description` — repository description
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
@@ -2079,6 +2139,71 @@ dev skill update <skill> [flags]
 - `-p, --project` — update the project-scoped skill
 - `-r, --repo` — project repository or explicit checkout path
 - `-y, --yes` — skip dev's confirmation
+
+### `dev snippet`
+
+Find and share GitHub Gists and GitLab snippets
+
+```
+dev snippet
+```
+
+### `dev snippet create`
+
+Publish text files, stdin or an editor draft as one snippet
+
+```
+dev snippet create [file...] [flags]
+```
+
+- `-d, --description` — description
+- `--dry-run` — preview filenames and destination without publishing content
+- `--editor` — editor command override for a new draft (otherwise VISUAL/EDITOR)
+- `--filename` — filename for stdin or the editor draft
+- `--forge` — platform: github or gitlab (list/search also accept all)
+- `--json` — emit a metadata-only preview or publication result as JSON
+- `--project` — explicit GitLab project path or numeric ID
+- `--title` — snippet title (GitLab; also used as a GitHub description fallback)
+- `--visibility` — github: secret/public; gitlab: private/public/internal (if supported)
+- `--web` — open the created snippet after its URL is recorded
+
+### `dev snippet list`
+
+List the authenticated accounts' snippets
+
+```
+dev snippet list [query...] [flags]
+```
+
+- `--content` — also search file contents (bounded network reads; reports incomplete coverage)
+- `--forge` — platform: github or gitlab (list/search also accept all)
+- `--json` — emit metadata and coverage as JSON; never include file contents
+- `--project` — explicit GitLab project path or numeric ID
+
+### `dev snippet open`
+
+Open a snippet, or choose one from your inventory
+
+```
+dev snippet open [URL|platform:ID|ID] [flags]
+```
+
+- `--forge` — platform: github or gitlab (list/search also accept all)
+- `--print` — print the verified snippet URL without opening a browser
+- `--project` — explicit GitLab project path or numeric ID
+
+### `dev snippet search`
+
+Search snippet descriptions and filenames
+
+```
+dev snippet search query... [flags]
+```
+
+- `--content` — also search file contents (bounded network reads; reports incomplete coverage)
+- `--forge` — platform: github or gitlab (list/search also accept all)
+- `--json` — emit metadata and coverage as JSON; never include file contents
+- `--project` — explicit GitLab project path or numeric ID
 
 ### `dev ssh`
 

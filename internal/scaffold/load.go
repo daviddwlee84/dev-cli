@@ -111,8 +111,13 @@ func (c Config) Validate() error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
+	for name, component := range c.Components {
+		if err := validateComponent(name, component, true); err != nil {
+			return err
+		}
+	}
 	for _, name := range names {
-		if _, err := c.ResolvePreset(name); err != nil {
+		if _, err := c.ResolveComposition(name, nil); err != nil {
 			return err
 		}
 	}
@@ -120,6 +125,11 @@ func (c Config) Validate() error {
 }
 
 func validateDocument(c Config) error {
+	for name, component := range c.Components {
+		if err := validateComponent(name, component, false); err != nil {
+			return err
+		}
+	}
 	for name, preset := range c.Presets {
 		if strings.TrimSpace(name) == "" {
 			return fmt.Errorf("preset name must not be empty")
@@ -150,6 +160,13 @@ func validateDocument(c Config) error {
 }
 
 func setOrigins(c *Config, source string) {
+	for name, component := range c.Components {
+		component.Origin = source
+		for i := range component.Skills {
+			component.Skills[i].Origin = source
+		}
+		c.Components[name] = component
+	}
 	for name, preset := range c.Presets {
 		preset.Origin = source
 		for i := range preset.Inputs {
@@ -195,6 +212,16 @@ func mergeConfig(base, overlay Config) Config {
 		}
 	}
 	out.Sources = append(out.Sources, overlay.Sources...)
+	if out.Components == nil {
+		out.Components = map[string]Component{}
+	}
+	for name, incoming := range overlay.Components {
+		if current, ok := out.Components[name]; ok {
+			out.Components[name] = mergeComponent(current, incoming)
+		} else {
+			out.Components[name] = cloneComponent(incoming)
+		}
+	}
 	return out
 }
 
@@ -206,7 +233,31 @@ func cloneConfig(in Config) Config {
 	for name, preset := range in.Presets {
 		out.Presets[name] = clonePreset(preset)
 	}
+	out.Components = make(map[string]Component, len(in.Components))
+	for name, component := range in.Components {
+		out.Components[name] = cloneComponent(component)
+	}
 	return out
+}
+
+func validateComponent(name string, component Component, resolved bool) error {
+	if strings.TrimSpace(name) == "" || strings.EqualFold(name, "none") {
+		return fmt.Errorf("component name %q must be nonempty and cannot be none", name)
+	}
+	seen := map[string]bool{}
+	for _, skill := range component.Skills {
+		if strings.TrimSpace(skill.ID) == "" || seen[skill.ID] {
+			return fmt.Errorf("component %q has an empty or duplicate skill id %q", name, skill.ID)
+		}
+		seen[skill.ID] = true
+		if skill.Setup != nil {
+			return fmt.Errorf("component %q skill %q cannot declare setup; use a preset for executable setup", name, skill.ID)
+		}
+		if resolved && (skill.Enabled == nil || *skill.Enabled) && (skill.Source == "" || skill.Name == "") {
+			return fmt.Errorf("component %q skill %q requires source and name", name, skill.ID)
+		}
+	}
+	return nil
 }
 
 func inputIDs(v []Input) []string {
