@@ -105,3 +105,23 @@ REMOTE 預設顯示 repositories。從 `Ctrl+O` 選 **Show snippets** 或
 
 Repository 起始模板仍使用 `dev repo new --template owner/starter`。
 Gists 與 snippets 是獨立分享用途，不是 repository 生命週期記錄。
+
+## REMOTE 統計與排序
+
+Repository 列顯示 GitHub／GitLab stars、forks、open issues 與 open PR／MR。
+Issues 不包含 pull requests；`PRS` 欄包含開啟中的 draft PR 與 GitLab MR。
+先顯示 inventory，再以每批最多 25 筆的背景 GraphQL 請求補上統計。進入 REMOTE
+時，fresh inventory 可直接沿用，缺少或過期的統計另外補查；`r` 同時更新兩者。
+遭限流時停止該 provider 的統計請求，待之後刷新再試。排序與 `/` 篩選只使用
+已載入資料，不聯絡 provider。
+
+點欄位標題循環升序、降序與預設排序；**Ctrl+O → sort columns** 也能選擇窄螢幕
+隱藏的欄位。數值按數字排序，未知值在兩個方向都置底，保留既有預設排序與目前
+選取的資源。詳細資訊顯示統計與觀測時間：`0` 是實際量到零，`?` 是未知／失敗，
+`—` 是未提供，`~` 是保留的過期數值。統計失敗不會使成功刷新的 inventory 失效。
+本版未提供 Azure repository 統計。
+
+GitHub Gist 增加 stars、forks、comments；GitLab snippet 保留既有 metadata，
+本版不查詢其 comment connections。Snippet 也可按檔案數排序；`+` 表示檔案清單
+不完整，不會當成精確總數排序。Repository 統計使用既有私有快取與
+`forge.cache_ttl`；snippet 統計只保留在 dashboard session。兩種模式各自保留排序。

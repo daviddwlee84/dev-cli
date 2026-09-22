@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/daviddwlee84/dev-cli/internal/forgemetrics"
 )
 
 type Kind string
@@ -63,6 +65,10 @@ type Item struct {
 	// Revision is the immutable GitHub revision used for content reads, when
 	// provided by the detail endpoint. No content is retained in Item.
 	Revision string `json:"revision,omitempty"`
+	// NodeID is the provider's opaque GraphQL node identity, when supplied by
+	// the inventory. It never replaces the host-qualified snippet identity.
+	NodeID  string                `json:"node_id,omitempty"`
+	Metrics *forgemetrics.Metrics `json:"metrics,omitempty"`
 }
 
 type Issue struct {

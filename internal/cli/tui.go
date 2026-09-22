@@ -61,6 +61,13 @@ Eight lists, switched with tab:
   MCP     startup-context static declarations; A toggles all repositories
   SSH     machine identities, aliases, cached Tailscale/LAN discovery and connections
 
+The footer shows the running version and a dev upgrade hint when a newer
+release is known. It uses the existing update toggle and 24-hour cache.
+REMOTE loads statistics after its inventory: repository stars/forks/open issues
+and PRs/MRs, plus Gist stars/forks/comments. Click column headers or use Ctrl+O
+sort columns, including fields hidden on narrow screens. Unknown counts stay
+last; 0 is measured zero, ? unknown, — unavailable and ~ stale.
+
 Navigation is vim-style, with arrows and mouse alongside:
 
   j k        move                 ctrl+d ctrl+u   half a page
@@ -414,6 +421,8 @@ func runTUI(app *App) error {
 		Reload:                reload,
 		ReloadRepos:           reloadRepos,
 		ReloadRemoteWithRepos: reloadRemote,
+		LoadRemoteMetrics:     newTUIRemoteMetrics(appState.Current),
+		MetricsTTL:            app.Cfg.Forge.CacheTTL.Duration,
 		Snippets:              newTUISnippetActions(appState.Current),
 		LoadFleetHosts:        fleetBackend.LoadHosts,
 		LoadFleetHost:         fleetBackend.LoadHost,
@@ -428,11 +437,7 @@ func runTUI(app *App) error {
 			rows, found, stale := cachedRemoteRows(appState.Current())
 			return tui.RemoteCacheResult{Rows: rows, Found: found, Stale: stale}
 		},
-		AfterFirstView: func(context.Context) {
-			if app.deferredReleaseRefresh {
-				app.refreshReleaseDetached()
-			}
-		},
+		Release: newTUIReleaseActions(appState.Current),
 		CheckSkills: func(ctx context.Context, rows []agentskill.Skill) []agentskill.Skill {
 			return agentskill.CheckUpdates(ctx, rows)
 		},
@@ -711,11 +716,14 @@ func runTUI(app *App) error {
 			if nextRuntime := next.Runtime().Name(); nextRuntime != oldRuntime {
 				status += fmt.Sprintf("; restart TUI to switch runtime %s → %s", oldRuntime, nextRuntime)
 			}
+			releaseChecksEnabled := updateCheckEnabled(next.Cfg)
 			return tui.ConfigUpdate{
 				Apply:                  func() { appState.Commit(next) },
 				FleetBackgroundRefresh: &next.Cfg.TUI.Fleet.BackgroundRefresh,
 				SSHBackgroundRefresh:   &next.Cfg.TUI.SSH.BackgroundRefresh,
+				ReleaseChecksEnabled:   &releaseChecksEnabled,
 				Tools:                  externalTools(next),
+				MetricsTTL:             &next.Cfg.Forge.CacheTTL.Duration,
 				RepoColumns:            next.Cfg.EffectiveRepoColumns(),
 				RepoSort:               next.Cfg.EffectiveRepoSort(),
 				RepoReverse:            next.Cfg.TUI.Repos.Reverse,
@@ -728,6 +736,7 @@ func runTUI(app *App) error {
 	// while dozens of repos are probed.
 	uiCtx, cancelUI := context.WithCancel(runCtx)
 	model := tui.New(actions, nil, nil).WithTrace(app.trace).WithContext(uiCtx).WithFleetBackgroundRefresh(app.Cfg.TUI.Fleet.BackgroundRefresh).WithSSHBackgroundRefresh(app.Cfg.TUI.SSH.BackgroundRefresh).BeginLoading()
+	model = model.WithVersion(versionFromBuild(), updateCheckEnabled(app.Cfg))
 	finishSetup(perftrace.OutcomeSuccess)
 	app.trace.Mark(perftrace.TUIProgramRunBegin, perftrace.Fields{})
 	var final tea.Model
@@ -1470,7 +1479,7 @@ func collectRemotesWithOptions(ctx context.Context, app *App, options remoteColl
 			continue
 		}
 		successful++
-		byProvider[res.kind] = res.repos
+		byProvider[res.kind] = retainRemoteMetrics(byProvider[res.kind], res.repos)
 		statuses[res.kind] = forge.ProviderStatus{FetchedAt: now, Complete: true}
 	}
 	var remoteRepos []forge.RemoteRepo

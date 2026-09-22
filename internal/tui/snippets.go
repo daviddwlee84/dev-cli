@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/daviddwlee84/dev-cli/internal/forgemetrics"
 )
 
 // SnippetQuery is an explicit network request. Ordinary dashboard filtering
@@ -28,6 +29,10 @@ type SnippetRow struct {
 	Visibility                       string
 	UpdatedAt                        time.Time
 	Files                            []string
+	FilesComplete                    bool
+	NodeID                           string
+	ProjectID                        int64
+	Metrics                          *forgemetrics.Metrics
 }
 
 type SnippetResult struct {
@@ -39,12 +44,14 @@ type SnippetResult struct {
 // SnippetActions adapts the same services and create wizard as the CLI. The
 // dashboard neither interprets snippet content nor turns snippets into repos.
 type SnippetActions struct {
-	Load   func(context.Context, SnippetQuery) (SnippetResult, error)
-	Open   func(context.Context, SnippetRow) error
-	Create func(SnippetQuery) (*exec.Cmd, error)
+	LoadMetrics func(context.Context, []SnippetRow, func([]SnippetRow)) error
+	Load        func(context.Context, SnippetQuery) (SnippetResult, error)
+	Open        func(context.Context, SnippetRow) error
+	Create      func(SnippetQuery) (*exec.Cmd, error)
 }
 
 type snippetUIState struct {
+	metrics     metricsUIState
 	enabled     bool
 	query       SnippetQuery
 	result      SnippetResult
@@ -130,6 +137,12 @@ func (m Model) visibleSnippets() []SnippetRow {
 			return textCell(row.Visibility)
 		case "updated":
 			return timeCell(row.UpdatedAt)
+		case "files":
+			if row.FilesComplete {
+				return numberCell(int64(len(row.Files)))
+			}
+		case "stars", "forks", "comments":
+			return metricCell(repoMetric(row.Metrics, column))
 		}
 		return sortCell{}
 	})
@@ -147,6 +160,7 @@ func (m Model) currentSnippet() (SnippetRow, bool) {
 }
 
 func (m *Model) cancelSnippetLoad() {
+	m.snippets.metrics.cancelLoad()
 	if m.snippets.cancel != nil {
 		m.snippets.cancel()
 		m.snippets.cancel = nil
@@ -196,9 +210,16 @@ func (m Model) acceptSnippets(msg snippetsLoadedMsg) (tea.Model, tea.Cmd) {
 	}
 	m.snippets.stale = msg.err != nil || !msg.result.Complete
 	if msg.err == nil || msg.result.Rows != nil {
+		previous := map[string]SnippetRow{}
+		for _, row := range m.snippets.result.Rows {
+			previous[row.Key] = row
+		}
 		msg.result.Rows = append([]SnippetRow(nil), msg.result.Rows...)
 		for index := range msg.result.Rows {
 			row := &msg.result.Rows[index]
+			if old, ok := previous[row.Key]; ok && old.URL == row.URL && old.NodeID == row.NodeID {
+				row.Metrics = forgemetrics.Merge(old.Metrics, row.Metrics)
+			}
 			row.Title, row.Description, row.Owner = snippetDisplayText(row.Title), snippetDisplayText(row.Description), snippetDisplayText(row.Owner)
 			row.Files = append([]string(nil), row.Files...)
 			for file := range row.Files {
@@ -226,6 +247,10 @@ func (m Model) acceptSnippets(msg snippetsLoadedMsg) (tea.Model, tea.Cmd) {
 	if m.snippetsActive() {
 		m.setAt(m.at())
 	}
+	if msg.err == nil || msg.result.Rows != nil {
+		command := m.startSnippetMetrics(true)
+		return m, command
+	}
 	return m, nil
 }
 
@@ -250,7 +275,8 @@ func (m Model) runSnippetAction(action listAction) (tea.Model, tea.Cmd) {
 		if !m.snippets.hasSnapshot || m.snippets.stale {
 			return m.loadSnippets()
 		}
-		return m, nil
+		command := m.startSnippetMetrics(false)
+		return m, command
 	case listActionSnippetProvider:
 		menu := overlayState{kind: overlayActionMenu, title: "Snippet provider"}
 		menu.addOption(listActionSnippetAll, "All configured providers")
@@ -369,40 +395,7 @@ func (m Model) renderSnippets() string {
 	if m.snippets.loading {
 		b.WriteString("  " + fitCell(styleDim.Render(m.snippets.status+" Showing the previous snapshot."), max(1, m.width-4)) + "\n")
 	}
-	nameW := max(8, m.width-24)
-	if m.width >= 96 {
-		nameW = m.width - 52
-	} else if m.width >= 64 {
-		nameW = m.width - 40
-	}
-	headers := []string{fitCell("FORGE", 7), fitCell("SNIPPET", nameW)}
-	if m.width >= 64 {
-		headers = append(headers, fitCell("OWNER", 14))
-	}
-	headers = append(headers, fitCell("VIS", 9))
-	if m.width >= 96 {
-		headers = append(headers, fitCell("UPDATED", 10))
-	}
-	b.WriteString(styleHeader.Render("  "+strings.Join(headers, "  ")) + "\n")
-	from, to := m.window(len(rows))
-	for index := from; index < to; index++ {
-		row := rows[index]
-		updated := "—"
-		if !row.UpdatedAt.IsZero() {
-			updated = row.UpdatedAt.Format("2006-01-02")
-		}
-		values := []string{fitCell(snippetDisplayText(row.Provider), 7), fitCell(snippetDisplayText(row.Title), nameW)}
-		if m.width >= 64 {
-			values = append(values, fitCell(dashCell(snippetDisplayText(row.Owner)), 14))
-		}
-		values = append(values, fitCell(dashCell(snippetDisplayText(row.Visibility)), 9))
-		if m.width >= 96 {
-			values = append(values, fitCell(updated, 10))
-		}
-		line := strings.Join(values, "  ")
-		b.WriteString(m.renderLine(index, line, line))
-	}
-	b.WriteString(m.scrollNote(len(rows), from, to))
+	b.WriteString(m.renderSnippetRows(rows))
 	return b.String()
 }
 
@@ -418,9 +411,10 @@ func (m Model) renderSnippetDetail() string {
 	if !ok {
 		return ""
 	}
-	lines := []string{"  url   " + fitCell(snippetDisplayText(row.URL), max(1, m.width-8)), "  files " + fitCell(snippetDisplayText(strings.Join(row.Files, ", ")), max(1, m.width-8))}
+	lines := []string{"  url   " + fitCell(snippetDisplayText(row.URL), max(1, m.width-8)), "  files " + fitCell(snippetFileCount(row)+" · "+snippetDisplayText(strings.Join(row.Files, ", ")), max(1, m.width-8))}
 	if row.Description != "" {
 		lines = append(lines, "  "+fitCell(row.Description, max(1, m.width-4)))
 	}
+	lines = append(lines, m.metricDetail(row.Metrics, true)...)
 	return strings.Join(lines, "\n")
 }

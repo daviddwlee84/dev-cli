@@ -22,10 +22,11 @@ func newTUISnippetActions(current func() *App) tui.SnippetActions {
 			}
 			for _, item := range result.Items {
 				row := tui.SnippetRow{
-					Key:      strings.Join([]string{string(item.Forge), item.Host, item.Project, item.ID}, "\x00"),
+					Key:      item.Identity.Key(),
 					Provider: string(item.Forge), Host: item.Host, ID: item.ID, Project: item.Project,
 					Title: item.Title, Description: item.Description, Owner: item.Owner, URL: item.URL,
 					Visibility: item.Visibility, UpdatedAt: item.UpdatedAt,
+					NodeID: item.NodeID, ProjectID: item.ProjectID, FilesComplete: item.FilesComplete, Metrics: item.Metrics,
 				}
 				for _, file := range item.Files {
 					row.Files = append(row.Files, file.Name)
@@ -38,6 +39,28 @@ func newTUISnippetActions(current func() *App) tui.SnippetActions {
 			}
 			out.Warning = strings.Join(warnings, "; ")
 			return out, err
+		},
+		LoadMetrics: func(ctx context.Context, rows []tui.SnippetRow, emit func([]tui.SnippetRow)) error {
+			items := make([]snippet.Item, 0, len(rows))
+			original := map[string]tui.SnippetRow{}
+			for _, row := range rows {
+				item := snippetMetricItem(row)
+				items = append(items, item)
+				original[item.Identity.Key()] = row
+			}
+			return snippetServiceFor(current()).RefreshMetrics(ctx, items, func(patches []snippet.Item) {
+				if ctx.Err() != nil {
+					return
+				}
+				var out []tui.SnippetRow
+				for _, item := range patches {
+					if row, ok := original[item.Identity.Key()]; ok {
+						row.Metrics = item.Metrics
+						out = append(out, row)
+					}
+				}
+				emit(out)
+			})
 		},
 		Open: func(ctx context.Context, row tui.SnippetRow) error { return desktop.OpenURL(ctx, row.URL) },
 		Create: func(query tui.SnippetQuery) (*exec.Cmd, error) {

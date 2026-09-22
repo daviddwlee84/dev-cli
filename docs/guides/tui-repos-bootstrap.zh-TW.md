@@ -420,7 +420,7 @@ Adopt 預設只回報；只有 `--apply` 加確認後才寫 task entry。它不�
 
 ## Dashboard 導覽與整理入口
 
-Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 只保留兩行主要操作與導覽，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
+Dashboard Enter 開啟 repository／task 列或進入 FLEET 主機導覽；Space 展開／收合 REPOS／FLEET 樹，平面列表不使用 Space。REPOS／TRY 的 `Ctrl+O` 提供整理目前項目、篩選結果或全部本地工作，多選集中在獨立 triage。`1–7` 依序切換 TASKS、REPOS、FLEET、TRY、REMOTE、SKILLS、MCP。TASKS 狀態篩選移到 action menu，`a` 仍顯示 done。點資料欄標題循環升序 → 降序 → 預設，例如 FLEET 的 HOST 可按主機聚集。排序只操作當前快照、每頁獨立保留於 session，未知值置底。Footer 保留兩行主要操作與導覽，另有版本／更新資訊列，工具／狀態篩選／排序放進 `Ctrl+O`，`?` 開啟目前分頁的 Keys／Guide／Manual。既有 `4–7` 自訂工具需改綁；`x`／Ctrl+A 不再是 dashboard 選取保留鍵。
 
 Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消篩選結果。返回 dashboard 時保留失敗摘要。Git 同步診斷包含類別、exit code、截長且遮罩的輸出與下一步；舊 receipt 無法還原已丟棄的原因。重試必須重新 preview，不會暗中登入、fetch 或 rebase。詳見[本地整理](local-triage.md)。
 
@@ -533,3 +533,45 @@ Ownership、共享使用者及 finalizer references 仍可阻擋移除，來源 
 不適用於項目的動作會隱藏；適用但缺少整合或等待觀察的動作保留並標示不可用。
 選取不可用動作只顯示原因，不執行操作。開啟或搜尋選單不掃描 repo 或連線遠端；
 Fleet 保留非同步本機 catalog adapter 與精確的 host／profile 身分驗證。
+
+## Dashboard 版本與更新提示
+
+Dashboard footer 固定顯示目前執行版本；已知有較新的穩定版本時，另顯示版本號與
+`dev upgrade`，更新仍由使用者明確執行。先讀取現有 24 小時 release 快取，首個畫面
+完成後才背景檢查。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK=1` 會關閉
+檢查與新版提示，但保留目前版本。舊觀測標示 cached，檢查失敗不打斷其他操作。
+開發版／dirty 版本字串會保留；無法比較的版本不會被宣稱為最新版。適用於裸 `dev`
+與 `dev tui`。
+
+## REMOTE 統計與排序
+
+Repository 列顯示 GitHub／GitLab stars、forks、open issues 與 open PR／MR。
+Issues 不包含 pull requests；`PRS` 欄包含開啟中的 draft PR 與 GitLab MR。
+先顯示 inventory，再以每批最多 25 筆的背景 GraphQL 請求補上統計。進入 REMOTE
+時，fresh inventory 可直接沿用，缺少或過期的統計另外補查；`r` 同時更新兩者。
+遭限流時停止該 provider 的統計請求，待之後刷新再試。排序與 `/` 篩選只使用
+已載入資料，不聯絡 provider。
+
+點欄位標題循環升序、降序與預設排序；**Ctrl+O → sort columns** 也能選擇窄螢幕
+隱藏的欄位。數值按數字排序，未知值在兩個方向都置底，保留既有預設排序與目前
+選取的資源。詳細資訊顯示統計與觀測時間：`0` 是實際量到零，`?` 是未知／失敗，
+`—` 是未提供，`~` 是保留的過期數值。統計失敗不會使成功刷新的 inventory 失效。
+本版未提供 Azure repository 統計。
+
+GitHub Gist 增加 stars、forks、comments；GitLab snippet 保留既有 metadata，
+本版不查詢其 comment connections。Snippet 也可按檔案數排序；`+` 表示檔案清單
+不完整，不會當成精確總數排序。Repository 統計使用既有私有快取與
+`forge.cache_ttl`；snippet 統計只保留在 dashboard session。兩種模式各自保留排序。
+
+## Wizard 缺少 skill installer 時
+
+選取 skill 後，wizard 立即以路徑與檔案 metadata 檢查可信的全域 `skills`
+執行檔。若不可用，說明原因並要求明確選擇 `skip` 或 `cancel`；檢查不會自動安裝
+依賴或執行 `npx`。略過只移除該 skill 與附帶 setup；語言 components、Python
+gitignore、其他選項和獨立 hooks 都保留。自訂 preset 預選 skills 與額外 skills
+browser 也使用此流程。最終 preflight 仍重新檢查；非互動請求直接報錯，不默默
+略過明確選取的項目。
+
+`repo new` 與 `repo setup` 會區分真正的 validation／provider 錯誤和取消，以非零
+狀態回傳原始錯誤。本地 repository 的 `stage` 搭配 `open` 是合法選項；缺少
+installer 時可拒絕或明確略過 optional skill，保留其餘建立設定。

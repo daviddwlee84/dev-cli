@@ -237,7 +237,10 @@ can see every stable tag. Once a day an interactive `dev` command prints a one-l
 when a newer release is cached; set `[update] check = false` in `config.toml`
 (or export `DEV_NO_UPDATE_CHECK=1`) to silence it. Every network call here is
 either explicit or a best-effort background refresh — `dev --version` and
-`dev doctor` stay local and work offline.
+`dev doctor` stay local and work offline. The dashboard footer always shows the
+running version and displays `dev upgrade` when a newer release is known. Its
+24-hour cache check runs after the first frame; stale observations are labeled
+cached, and no upgrade runs inside the TUI.
 
 ### Windows
 
@@ -554,6 +557,11 @@ dev repo new api --check-in stage -m "chore: initialize api"
 dev repo clone owner/api                      # owner/name or a Git URL
 dev repo setup . --preset agent-ready         # add the same setup to an existing repo
 ```
+
+Selecting a skill checks for a trusted global `skills` executable immediately.
+If it is unavailable, choose `skip` for only that skill or `cancel`; Python
+components/gitignore and other options remain selected. Validation failures
+return their real error rather than `Canceled`. Local `stage` + `open` is valid.
 
 `repo new NAME` keeps the small scripted default: `main`, README, and an
 initial commit. When the argument is clearly a Git URL, local Git path, or
@@ -1188,7 +1196,7 @@ SKILLS/MCP scope toggle takes precedence on those two views.
 
 REMOTE loads lazily, so dashboard startup never waits on the network. Its
 private XDG cache is decoded after the first view and contains the complete
-paginated inventory. Fresh rows are reused without network access; stale rows
+paginated inventory. Fresh inventory is reused; missing or stale statistics are enriched on visit. Stale rows
 remain searchable while a background refresh runs. Cache payload size and
 identity fields are validated before display, and a source fingerprint binds
 the cache to configured GH/GL hosts and Azure targets so another endpoint is
@@ -1197,6 +1205,15 @@ never seeded automatically. GitLab inventory passes `GITLAB_HOST` (or
 silently select another authenticated host. A successful empty provider inventory replaces old
 rows instead of resurrecting them later. `r` forces a
 refresh of all configured forge providers.
+GitHub/GitLab rows show stars, forks, open issues and open PRs/MRs after a
+separate background statistics load. Click a column or use **Ctrl+O → sort
+columns** to sort numerically, including fields hidden on narrow screens.
+Unknown values stay last; `0` is measured zero, `?` unknown/failed, `—`
+unavailable, and `~` stale. Details retain the observation time. Statistics
+failures preserve usable inventory and never authorize lifecycle actions.
+Gists add stars/forks/comments; snippets also sort by exact file count, while
+GitLab snippet comments are not queried in this version.
+
 `/` searches provider, owner/name, visibility and description; `vis:private`
 is an exact visibility filter. Enter opens an existing local clone. For an
 absent repo, `c` opens a confirmation where `enter` clones and stays in the

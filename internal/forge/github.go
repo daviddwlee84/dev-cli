@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/daviddwlee84/dev-cli/internal/forgemetrics"
 )
 
 // gh drives the GitHub CLI.
@@ -219,22 +221,25 @@ func (g *gh) ListRepos(ctx context.Context) ([]RemoteRepo, error) {
 
 func parseGitHubRepos(out string) ([]RemoteRepo, error) {
 	var raw []struct {
-		Name          string `json:"name"`
-		FullName      string `json:"full_name"`
-		Description   string `json:"description"`
-		URL           string `json:"html_url"`
-		CloneURL      string `json:"clone_url"`
-		SSHURL        string `json:"ssh_url"`
-		Visibility    string `json:"visibility"`
-		Fork          bool   `json:"fork"`
-		Archived      bool   `json:"archived"`
-		PushedAt      string `json:"pushed_at"`
-		DefaultBranch string `json:"default_branch"`
+		Name          string          `json:"name"`
+		FullName      string          `json:"full_name"`
+		Description   string          `json:"description"`
+		URL           string          `json:"html_url"`
+		CloneURL      string          `json:"clone_url"`
+		SSHURL        string          `json:"ssh_url"`
+		Visibility    string          `json:"visibility"`
+		Fork          bool            `json:"fork"`
+		Archived      bool            `json:"archived"`
+		PushedAt      string          `json:"pushed_at"`
+		DefaultBranch string          `json:"default_branch"`
+		Stars         json.RawMessage `json:"stargazers_count"`
+		Forks         json.RawMessage `json:"forks_count"`
 	}
 	if err := json.Unmarshal([]byte(out), &raw); err != nil {
 		return nil, fmt.Errorf("decode gh api user/repos: %w", err)
 	}
 	result := make([]RemoteRepo, 0, len(raw))
+	observedAt := time.Now().UTC()
 	for _, r := range raw {
 		updated, _ := time.Parse(time.RFC3339, r.PushedAt)
 		result = append(result, RemoteRepo{
@@ -243,6 +248,7 @@ func parseGitHubRepos(out string) ([]RemoteRepo, error) {
 			CloneURL: r.CloneURL, SSHURL: r.SSHURL,
 			Visibility: r.Visibility, DefaultBranch: r.DefaultBranch,
 			Archived: r.Archived, Fork: r.Fork, UpdatedAt: updated,
+			Metrics: &forgemetrics.Metrics{Stars: restMetricCount(r.Stars, observedAt), Forks: restMetricCount(r.Forks, observedAt), Comments: forgemetrics.Unsupported()},
 		})
 	}
 	return result, nil

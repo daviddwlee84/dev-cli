@@ -299,6 +299,8 @@ func fleetCell(r FleetRow, key string) sortCell {
 }
 func remoteCell(r RemoteRow, key string) sortCell {
 	switch key {
+	case "stars", "forks", "issues", "prs":
+		return metricCell(repoMetric(r.Repo.Metrics, key))
 	case "forge":
 		return textCell(string(r.Repo.Forge))
 	case "repository":

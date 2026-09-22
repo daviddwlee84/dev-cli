@@ -84,6 +84,9 @@ func (m *Model) prepareRepoDependentForReload(view View, enabled bool) {
 }
 
 func (m *Model) beginViewLoad(view View, cause loadCause) uint64 {
+	if view == ViewRemote {
+		m.remoteMetrics.cancelLoad()
+	}
 	if view == ViewRepos {
 		m.repoProgressPhase = 0
 		m.topologyRequested = nil
@@ -151,6 +154,9 @@ func (m *Model) finishLocalLoad() {
 }
 
 func (m *Model) invalidateView(view View) {
+	if view == ViewRemote {
+		m.remoteMetrics.cancelLoad()
+	}
 	index := int(view)
 	if cancel := m.loadCancels[index]; cancel != nil {
 		cancel()

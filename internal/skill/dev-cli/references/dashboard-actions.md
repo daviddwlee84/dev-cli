@@ -155,7 +155,7 @@ and MCP respectively. TASKS state filters live in its action menu (`a` still
 shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
-of primary actions and navigation; tools, state filters and sorting are in
+of primary actions and navigation plus a version/update row; tools, state filters and sorting are in
 `Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
@@ -219,3 +219,40 @@ keeps its native prompts; dev does not add repositories, install a package
 manager, or preaccept terms. The executable is checked afterwards, with an
 OpenSSH capability query for `ssh`; authentication and service startup remain
 separate. Installation cancellation/failure is not retried.
+
+## Dashboard version and update hints
+
+The dashboard footer always shows the running version. When a newer stable
+release is known it adds the release tag and `dev upgrade`; updating remains an
+explicit command. It reads the existing 24-hour release cache first and checks
+in the background only after the first frame. `[update] check = false` or
+`DEV_NO_UPDATE_CHECK=1` disables checks and hints while retaining the current
+version. Old observations are marked cached, and failed checks do not interrupt
+other actions. Development/dirty version strings remain visible; an unknown
+version is not reported as current. This applies to bare `dev` and `dev tui`.
+
+## REMOTE statistics and sorting
+
+Repository rows show GitHub/GitLab stars, forks, open issues and open PRs/MRs.
+Issues exclude pull requests; the `PRS` column includes open draft PRs and GitLab
+MRs. Inventory appears first, then background GraphQL batches of at most 25
+resources add statistics. Entering REMOTE can enrich missing/stale statistics
+without reloading fresh inventory; `r` refreshes both. Rate limiting stops that
+provider's statistics requests until a later refresh. Sorting and `/` filtering
+use loaded data and never contact providers.
+
+Click a column to cycle ascending, descending and default order, or use
+**Ctrl+O → sort columns** for all fields, including columns hidden on narrow
+screens. Numeric values sort numerically; unknown values stay last in both
+directions. Default ordering and the selected resource are preserved. Details
+show statistics and their observation time. `0` means measured zero, `?` means
+unknown/failed, `—` means unavailable, and `~` marks a retained stale count.
+Statistics failures do not invalidate a successfully refreshed inventory.
+Azure repository statistics are unavailable in this version.
+
+GitHub Gists add stars, forks and comments. GitLab snippets retain their existing
+metadata; this version does not query their comment connections. Snippets can
+also sort by file count: a `+` suffix denotes an incomplete file list, which is
+not sorted as an exact total. Repository statistics share the existing private
+cache and `forge.cache_ttl`; snippet statistics stay in the dashboard session.
+Repository and snippet sorting remain independent.

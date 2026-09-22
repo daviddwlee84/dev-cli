@@ -510,9 +510,9 @@ func (m Model) executeListAction(action listAction) (tea.Model, tea.Cmd) {
 		return m, nil
 	case listActionSortMenu:
 		menu := overlayState{kind: overlayActionMenu, title: "Sort: ascending → descending → default", selection: m.currentToken()}
-		for _, column := range m.tableHeader().columns {
-			menu.addOption(listActionSortColumn, column.key)
-			menu.options[menu.optionCount-1].column = column.key
+		for _, column := range m.sortableColumns() {
+			menu.addOption(listActionSortColumn, column)
+			menu.options[menu.optionCount-1].column = column
 		}
 		m.overlay = menu
 		return m, nil

@@ -264,3 +264,19 @@ fresh destination, nested-repository and exclusive-create checks before mutation
 cached inventory grants no authority to skip them. Other row-dependent actions
 and REMOTE clone freshness checks remain guarded. The TUI does not maintain a
 reduced second creator.
+
+## Missing skill installers in the wizard
+
+After a skill is selected, the wizard checks the trusted global `skills`
+executable using path/metadata inspection only. If unavailable, it explains the
+reason and asks for an explicit `skip` or `cancel`; it never installs a dependency
+or executes `npx` during this check. Skipping removes only that skill and its
+attached setup. Language components, Python gitignore, other selections and
+independent hooks remain selected. This also covers skills preselected by custom
+presets and the additional skills browser. Final preflight rechecks availability;
+noninteractive requests still fail instead of silently skipping selections.
+
+`repo new` and `repo setup` distinguish a real validation/provider error from
+cancellation and return the original error with a nonzero exit status. Choosing
+`stage` followed by `open` is valid for a local repository. A missing installer
+can be bypassed by declining or explicitly skipping the optional skill.

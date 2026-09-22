@@ -92,7 +92,7 @@ and MCP respectively. TASKS state filters live in its action menu (`a` still
 shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
-of primary actions and navigation; tools, state filters and sorting are in
+of primary actions and navigation plus a version/update row; tools, state filters and sorting are in
 `Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 

@@ -226,6 +226,9 @@ func latestRelease(ctx context.Context, refresh bool) (string, error) {
 	if payload.TagName == "" {
 		return "", fmt.Errorf("github returned no tag name")
 	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	prior, _ := readReleaseCheck()
 	writeReleaseCheck(releaseCheck{
 		CheckedAt: time.Now(),

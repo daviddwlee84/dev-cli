@@ -393,6 +393,7 @@ func parseAzureDevOpsRepos(out string) ([]RemoteRepo, error) {
 			Visibility:    strings.ToLower(item.Project.Visibility),
 			DefaultBranch: strings.TrimPrefix(item.DefaultBranch, "refs/heads/"),
 			Fork:          item.IsFork,
+			Metrics:       unsupportedRepoMetrics(),
 		})
 	}
 	return repos, nil

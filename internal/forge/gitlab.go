@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/daviddwlee84/dev-cli/internal/forgemetrics"
 )
 
 // glab drives the GitLab CLI. GitLab calls the same concept a merge request,
@@ -262,22 +264,25 @@ func (g *glab) ListRepos(ctx context.Context) ([]RemoteRepo, error) {
 
 func parseGitLabRepos(out string) ([]RemoteRepo, error) {
 	var raw []struct {
-		Name              string `json:"name"`
-		PathWithNamespace string `json:"path_with_namespace"`
-		Description       string `json:"description"`
-		DefaultBranch     string `json:"default_branch"`
-		Visibility        string `json:"visibility"`
-		SSHURL            string `json:"ssh_url_to_repo"`
-		HTTPURL           string `json:"http_url_to_repo"`
-		WebURL            string `json:"web_url"`
-		Archived          bool   `json:"archived"`
-		ForkedFrom        any    `json:"forked_from_project"`
-		LastActivityAt    string `json:"last_activity_at"`
+		Name              string          `json:"name"`
+		PathWithNamespace string          `json:"path_with_namespace"`
+		Description       string          `json:"description"`
+		DefaultBranch     string          `json:"default_branch"`
+		Visibility        string          `json:"visibility"`
+		SSHURL            string          `json:"ssh_url_to_repo"`
+		HTTPURL           string          `json:"http_url_to_repo"`
+		WebURL            string          `json:"web_url"`
+		Archived          bool            `json:"archived"`
+		ForkedFrom        any             `json:"forked_from_project"`
+		LastActivityAt    string          `json:"last_activity_at"`
+		Stars             json.RawMessage `json:"star_count"`
+		Forks             json.RawMessage `json:"forks_count"`
 	}
 	if err := json.Unmarshal([]byte(out), &raw); err != nil {
 		return nil, fmt.Errorf("decode glab api projects: %w", err)
 	}
 	result := make([]RemoteRepo, 0, len(raw))
+	observedAt := time.Now().UTC()
 	for _, r := range raw {
 		updated, _ := time.Parse(time.RFC3339Nano, r.LastActivityAt)
 		result = append(result, RemoteRepo{
@@ -286,6 +291,7 @@ func parseGitLabRepos(out string) ([]RemoteRepo, error) {
 			CloneURL: r.HTTPURL, SSHURL: r.SSHURL,
 			Visibility: r.Visibility, DefaultBranch: r.DefaultBranch,
 			Archived: r.Archived, Fork: r.ForkedFrom != nil, UpdatedAt: updated,
+			Metrics: &forgemetrics.Metrics{Stars: restMetricCount(r.Stars, observedAt), Forks: restMetricCount(r.Forks, observedAt), Comments: forgemetrics.Unsupported()},
 		})
 	}
 	return result, nil

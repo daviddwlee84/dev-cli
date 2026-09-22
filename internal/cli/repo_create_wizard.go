@@ -66,7 +66,7 @@ func runRepoNewWizard(app *App, flags repoBootstrapFlags) (repoWorkflowRequest, 
 		return repoWorkflowRequest{}, false, err
 	}
 	customizationSelected := repoWizardCustomizationSelected(flags)
-	preset, err = promptScaffoldComposition(p, catalog, flags.preset, &flags)
+	preset, err = promptScaffoldComposition(p, catalog, flags.preset, flags.path, &flags)
 	if err != nil {
 		return repoWorkflowRequest{}, false, err
 	}
@@ -107,7 +107,7 @@ func runRepoNewWizard(app *App, flags repoBootstrapFlags) (repoWorkflowRequest, 
 				return repoWorkflowRequest{}, false, err
 			}
 		}
-		if err := promptScaffoldOptions(p, catalog, flags.preset, &flags); err != nil {
+		if err := promptScaffoldOptions(p, catalog, flags.preset, flags.path, &flags); err != nil {
 			return repoWorkflowRequest{}, false, err
 		}
 	}
@@ -287,7 +287,7 @@ func runRepoSetupWizard(app *App, root string, flags repoBootstrapFlags) (repoWo
 		return repoWorkflowRequest{}, false, err
 	}
 	customizationSelected := repoWizardCustomizationSelected(flags)
-	preset, err := promptScaffoldComposition(p, catalog, flags.preset, &flags)
+	preset, err := promptScaffoldComposition(p, catalog, flags.preset, root, &flags)
 	if err != nil {
 		return repoWorkflowRequest{}, false, err
 	}
@@ -296,7 +296,7 @@ func runRepoSetupWizard(app *App, root string, flags repoBootstrapFlags) (repoWo
 		return repoWorkflowRequest{}, false, err
 	}
 	if customize {
-		if err := promptScaffoldOptions(p, catalog, flags.preset, &flags); err != nil {
+		if err := promptScaffoldOptions(p, catalog, flags.preset, root, &flags); err != nil {
 			return repoWorkflowRequest{}, false, err
 		}
 		flags.importOrphans, err = p.confirm("Import matching orphan Claude plans?", flags.importOrphans)
@@ -372,7 +372,7 @@ func promptScaffoldPreset(p *prompter, catalog scaffold.Config, fallback string)
 	}
 }
 
-func promptScaffoldOptions(p *prompter, catalog scaffold.Config, presetName string, flags *repoBootstrapFlags) error {
+func promptScaffoldOptions(p *prompter, catalog scaffold.Config, presetName, root string, flags *repoBootstrapFlags) error {
 	preset, err := catalog.ResolveComposition(presetName, flags.components)
 	if err != nil {
 		return err
@@ -487,6 +487,9 @@ func promptScaffoldOptions(p *prompter, catalog scaffold.Config, presetName stri
 	}
 
 	flags.browseSkills, err = p.confirm("Browse additional skills in the upstream installer?", flags.browseSkills)
+	if err == nil && flags.browseSkills {
+		flags.browseSkills, err = promptRepoSkillProvider(p, root, "the additional skills browser")
+	}
 	return err
 }
 

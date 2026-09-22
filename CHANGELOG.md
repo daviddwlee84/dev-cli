@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- The dashboard footer shows the running version and a `dev upgrade` hint for
+  newer releases, using the existing nonblocking release cache and update toggle.
+- REMOTE adds dated GitHub/GitLab stars, forks, open issue and PR/MR counts, and
+  Gist stars/forks/comments. Statistics load after inventory in bounded batches;
+  numeric sorting includes hidden columns, and snippets can sort by exact file
+  count. Unknown, unavailable and stale observations remain distinct.
+
+### Fixed
+
+- Repository new/setup wizards preserve real preflight errors instead of
+  reporting cancellation. Missing trusted skill installers are reported at
+  selection time with explicit skip/cancel choices that retain other settings.
+
 ## [0.2.43] - 2026-09-22
 
 ### Added

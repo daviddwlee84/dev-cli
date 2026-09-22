@@ -426,7 +426,7 @@ and MCP respectively. TASKS state filters live in its action menu (`a` still
 shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
-of primary actions and navigation; tools, state filters and sorting are in
+of primary actions and navigation plus a version/update row; tools, state filters and sorting are in
 `Ctrl+O`, and `?` opens contextual Keys/Guide/Manual help. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
@@ -842,3 +842,17 @@ GitLab project. Content-search budgets limit inspected text, not HTTP transport
 bytes. Incomplete coverage is surfaced in human and JSON output. GitHub secret
 is link-readable; GitLab private uses account/project permissions. Unknown
 creation results are never retried automatically.
+
+## Optional dashboard observations
+
+The dashboard version hint uses the existing update configuration and release
+cache; it does not perform upgrades. REMOTE statistics are optional dated
+observations. Existing remote JSON/cache v2 and snippet JSON schema 1 gain an
+optional `metrics` object (and Gist `node_id` identity); existing fields retain
+their meaning. Each count carries `state`, optional `value`, `observed_at`, and
+an optional bounded error. A failed refresh may retain the previous value/time
+with `state: error`; `attempted_at` then records the later attempt. Missing/null
+counts never mean zero. Inventory `complete` remains independent of statistics.
+Old caches remain readable. Missing GraphQL permissions or older GitLab schemas
+leave counts unavailable while repositories remain usable. See the
+[dashboard guide](../guides/dashboard-actions.md#remote-statistics-and-sorting).

@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/forgemetrics"
 	"github.com/daviddwlee84/dev-cli/internal/pathx"
 )
 
@@ -94,7 +95,7 @@ func validCache(c Cache, now time.Time) bool {
 			!validCacheString(repository.SSHURL, 8<<10, false) ||
 			!validCacheString(repository.Visibility, 128, false) ||
 			!validCacheString(repository.DefaultBranch, 1024, false) ||
-			repository.UpdatedAt.After(now.Add(maxCacheClockSkew)) {
+			repository.UpdatedAt.After(now.Add(maxCacheClockSkew)) || !forgemetrics.Valid(repository.Metrics, now) {
 			return false
 		}
 	}
@@ -163,6 +164,10 @@ func SaveCacheStateContext(ctx context.Context, path string, cache Cache) error 
 	lock := cacheWriteLock(path)
 	lock.Lock()
 	defer lock.Unlock()
+	return saveCacheStateLocked(ctx, path, cache)
+}
+
+func saveCacheStateLocked(ctx context.Context, path string, cache Cache) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -200,6 +205,46 @@ func SaveCacheStateContext(ctx context.Context, path string, cache Cache) error 
 		return err
 	}
 	return os.Rename(name, path)
+}
+
+// MergeCachedRepoMetrics reloads the current inventory under its publication
+// lock and updates only observations of exact source/resource matches. A late
+// metrics batch cannot resurrect removed rows or replace newer inventory state.
+func MergeCachedRepoMetrics(ctx context.Context, path, sourceID string, rows []RemoteRepo) error {
+	if path == "" {
+		return errors.New("empty cache path")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	lock := cacheWriteLock(path)
+	lock.Lock()
+	defer lock.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	cache, ok := LoadCacheAny(path)
+	if !ok || sourceID == "" || cache.SourceID != sourceID {
+		return nil
+	}
+	updates := map[string]*forgemetrics.Metrics{}
+	now := time.Now().UTC()
+	for _, row := range rows {
+		if key := RepoMetricsKey(row); key != "" && row.Metrics != nil && forgemetrics.Valid(row.Metrics, now) {
+			updates[key] = forgemetrics.Merge(updates[key], row.Metrics)
+		}
+	}
+	changed := false
+	for i := range cache.Repos {
+		if update := updates[RepoMetricsKey(cache.Repos[i])]; update != nil {
+			cache.Repos[i].Metrics = forgemetrics.Merge(cache.Repos[i].Metrics, update)
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	return saveCacheStateLocked(ctx, path, cache)
 }
 
 func cacheWriteLock(path string) *sync.Mutex {

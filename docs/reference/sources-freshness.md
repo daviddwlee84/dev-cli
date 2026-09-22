@@ -156,7 +156,7 @@ and MCP respectively. TASKS state filters live in its action menu (`a` still
 shows done tasks). Click a data column for ascending → descending → default
 ordering; FLEET HOST groups machines. Sorting is local to each view/session and
 uses the current snapshot, with unknown values last. The footer keeps two lines
-of primary actions and navigation; tools, state filters and sorting are in
+of primary actions and navigation plus a version/update row; tools, state filters and sorting are in
 `Ctrl+O`, and `?` lists the full key map. Existing custom tool bindings for `4–7`
 need reassignment; `x`/Ctrl+A are no longer reserved dashboard selection keys.
 
@@ -275,3 +275,13 @@ repository wizard tests. GitHub/GitLab snippet behavior is owned by
 `internal/snippet`, forge adapters and CLI/TUI tests. See
 [Snippets](../guides/snippets.md) for provider sources and access semantics.
 These changes are verified against the repository on 2026-09-22.
+
+## Dashboard release and forge statistics evidence
+
+Version hints use `internal/cli/tui_version.go` and `internal/tui/version.go`;
+statistics use `internal/forge/metrics.go`, `internal/forge/snippet_metrics.go`
+and `internal/tui/remote_metrics.go`, with hermetic provider/UI tests. Primary
+schema references are [GitHub repositories](https://docs.github.com/en/graphql/reference/repos),
+[GitHub Gists](https://docs.github.com/en/graphql/reference/gists) and
+[GitLab Project](https://docs.gitlab.com/api/graphql/reference/#project).
+These are dated observations, not evidence of synchronization or cleanup safety.

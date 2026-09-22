@@ -121,6 +121,7 @@ type Actions struct {
 	Issues   IssueActions
 	SSH      SSHActions
 	Snippets SnippetActions
+	Release  ReleaseActions
 	// Host descriptors and cached observations are local reads. Individual live
 	// reads never prompt; interactive authentication belongs to a host action.
 	LoadFleetHosts       func(context.Context) (FleetHostsResult, error)
@@ -144,6 +145,8 @@ type Actions struct {
 	// matching does not trigger another repository discovery.
 	ReloadRemote          func(ctx context.Context) ([]RemoteRow, error)
 	ReloadRemoteWithRepos func(ctx context.Context, repos []RepoRow) ([]RemoteRow, error)
+	LoadRemoteMetrics     func(context.Context, []RemoteRow, func([]RemoteRow)) error
+	MetricsTTL            time.Duration
 	// ReloadSkills reads local project/global skill state without contacting sources.
 	ReloadSkills          func(ctx context.Context, scope CapabilityScope) ([]agentskill.Skill, error)
 	ReloadSkillsWithRepos func(ctx context.Context, repos []RepoRow, scope CapabilityScope) ([]agentskill.Skill, error)
@@ -236,8 +239,10 @@ type OpenResult struct {
 // ConfigUpdate is the subset of config a running TUI can safely apply without
 // rebuilding its runtime backend.
 type ConfigUpdate struct {
+	MetricsTTL             *time.Duration
 	FleetBackgroundRefresh *bool
 	SSHBackgroundRefresh   *bool
+	ReleaseChecksEnabled   *bool
 	// Apply publishes the prepared immutable App snapshot only after this config
 	// generation is accepted by Update.
 	Apply       func()
@@ -355,6 +360,7 @@ type remoteCloneOpenMsg struct {
 // Model is the dashboard state.
 type Model struct {
 	issues                       issueUIState
+	release                      releaseUIState
 	help                         helpBrowser
 	popupExpanded, popupDragging bool
 	startupRepo                  startupRepoState
@@ -384,6 +390,7 @@ type Model struct {
 	repos               []RepoRow
 	tries               []TryRow
 	remotes             []RemoteRow
+	remoteMetrics       metricsUIState
 	snippets            snippetUIState
 	fleet               []FleetRow
 	ssh                 SSHInventory
@@ -620,6 +627,9 @@ func (m Model) Init() tea.Cmd {
 	}
 	if m.actions.AfterFirstView != nil {
 		commands = append(commands, m.runAfterFirstView())
+	}
+	if command := m.requestReleaseCheck(); command != nil {
+		commands = append(commands, command)
 	}
 	return tea.Batch(commands...)
 }
@@ -2380,6 +2390,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	switch msg := msg.(type) {
+	case releaseCheckReadyMsg:
+		return m.startReleaseCheck(msg)
+	case releaseObservationMsg:
+		return m.acceptReleaseObservation(msg)
 	case snippetsLoadedMsg:
 		return m.acceptSnippets(msg)
 	case snippetCreatedMsg:
@@ -2621,6 +2635,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.applyCacheSeed(ViewRemote, msg.generation, len(msg.result.Rows), freshness) {
 			m.replaceRemotes(msg.result.Rows)
 			m.matchRemoteLocals()
+			if m.view == ViewRemote && !m.snippets.enabled && !msg.result.Stale {
+				command := m.startRemoteMetrics(false)
+				return m, command
+			}
 		}
 		return m, nil
 
@@ -2632,6 +2650,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.fleet = append([]FleetRow(nil), msg.result.Rows...)
 		}
 		return m, nil
+
+	case metricsMsg:
+		return m.acceptMetrics(msg)
 
 	case remoteMsg:
 		if !m.applyViewResult(
@@ -2648,6 +2669,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.setViewStatus(ViewRemote, "")
 		m.setAt(m.at())
+		if msg.valid {
+			command := m.startRemoteMetrics(m.viewLoad(ViewRemote).cause == loadRefresh)
+			return m, command
+		}
 		return m, nil
 
 	case fleetMsg:
@@ -2803,6 +2828,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.update.Apply != nil {
 			msg.update.Apply()
 		}
+		m.cancelSnippetLoad()
+		if m.snippets.hasSnapshot {
+			m.snippets.stale = true
+		}
+		if msg.update.MetricsTTL != nil {
+			m.actions.MetricsTTL = *msg.update.MetricsTTL
+		}
 		m.beginLocalLoads(loadConfig)
 		if m.startupRepo.saved {
 			m.startupRepo.savedReposGeneration = m.viewLoad(ViewRepos).generation
@@ -2829,6 +2861,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.err, m.status = nil, msg.status
 		reload := batchCommands(m.reloadAfterConfig(msg.refreshRemote), m.readStartupRepo(), m.scheduleSSHBackground())
+		if msg.update.ReleaseChecksEnabled != nil {
+			reload = batchCommands(reload, m.applyReleaseChecks(*msg.update.ReleaseChecksEnabled))
+		}
 		if m.hostFleetEnabled() {
 			reload = batchCommands(reload, m.beginFleetHostsLoad())
 		}
@@ -3916,13 +3951,16 @@ func (m Model) afterViewSwitch() (tea.Model, tea.Cmd) {
 			if !m.snippets.loading && (!m.snippets.hasSnapshot || m.snippets.stale) {
 				return m.loadSnippets()
 			}
-			return m, nil
+			command := m.startSnippetMetrics(false)
+			return m, command
 		}
 		if m.viewNeedsLoad(ViewRemote) {
 			m.beginViewLoad(ViewRemote, loadVisit)
 			m.setViewStatus(ViewRemote, "refreshing remote repositories…")
 			return m, m.reloadRemote()
 		}
+		command := m.startRemoteMetrics(false)
+		return m, command
 	case ViewSkills:
 		if m.viewNeedsLoad(ViewSkills) {
 			m.beginViewLoad(ViewSkills, loadVisit)

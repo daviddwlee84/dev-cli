@@ -68,6 +68,13 @@ func fullScreenInvocation(cmd *cobra.Command, app *App) bool {
 		(cmd.Parent() == nil && app.interactive()))
 }
 
+// dashboardInvocation separates the dashboard's in-screen release observation
+// from passive CLI nudges. Flow owns a separate full-screen implementation.
+func dashboardInvocation(cmd *cobra.Command, app *App) bool {
+	return cmd != nil && ((cmd.Name() == "tui" && cmd.Parent() != nil && cmd.Parent().Parent() == nil) ||
+		(cmd.Parent() == nil && app.interactive()))
+}
+
 func newRootCommand(app *App) *cobra.Command {
 	return newRootCommandWithCleanup(app, sweepStaleUpgradeArtifacts)
 }
@@ -142,7 +149,9 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 				return err
 			}
 			finish(perftrace.OutcomeSuccess)
-			app.maybeNoteNewerRelease(cmd, fullScreenInvocation(cmd, app))
+			if !dashboardInvocation(cmd, app) {
+				app.maybeNoteNewerRelease(cmd, fullScreenInvocation(cmd, app))
+			}
 			return nil
 		},
 	}

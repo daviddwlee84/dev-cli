@@ -62,11 +62,13 @@ func (m Model) ResumeFleetHandoff(ctx context.Context, result FleetExecutionResu
 	m.localCancel, m.localContext = nil, nil
 	m.localGeneration++
 	m.cancelSnippetLoad()
+	m.remoteMetrics.cancelLoad()
 	add := func(command tea.Cmd) {
 		if command != nil {
 			m.resumeCommands = append(m.resumeCommands, command)
 		}
 	}
+	add(m.resumeReleaseCheck())
 	// Resume unfinished local views independently. A completed TASKS or TRY
 	// view is not repeated merely because REPOS was still streaming.
 	sharedLocal := m.actions.Local.Start != nil && ((interrupted[int(ViewTasks)] && m.actions.Reload == nil) || (interrupted[int(ViewRepos)] && m.actions.ReloadRepos == nil) || (interrupted[int(ViewTries)] && m.actions.Tries.Reload == nil))

@@ -700,18 +700,12 @@ func (m Model) renderRemotes() string {
 		}
 		return "  " + styleDim.Render("No remote repositories returned. Check forge authentication and `dev doctor`.") + "\n"
 	}
-	nameW := clamp(m.width*30/100, 18, 38)
-	descW := m.width - nameW - 38
-	if descW < 12 {
-		descW = 12
-	}
-
+	columns := m.remoteColumns(false)
 	var b strings.Builder
 	if m.viewLoad(ViewRemote).loading {
-		b.WriteString("  " + styleDim.Render("Showing cached repositories while refreshing…") + "\n")
+		b.WriteString("  " + fitCell(styleDim.Render("Showing cached repositories while refreshing…"), max(1, m.width-4)) + "\n")
 	}
-	b.WriteString(styleHeader.Render(fmt.Sprintf("  %-7s  %-*s  %-9s  %-12s  %-7s  %s",
-		"FORGE", nameW, "REPOSITORY", "VIS", "UPDATED", "LOCAL", "DESCRIPTION")) + "\n")
+	b.WriteString(renderMetricHeader(columns))
 	from, to := m.window(len(rows))
 	for i := from; i < to; i++ {
 		r := rows[i]
@@ -725,21 +719,33 @@ func (m Model) renderRemotes() string {
 		} else if r.CloneProblemPath != "" {
 			local = "inspect"
 		} else if r.Cloned() {
-			local = "yes"
-			if r.LocalKind != "" {
+			local = "repo"
+			if r.LocalKind != "" && r.LocalKind != "repository" {
 				local = string(r.LocalKind)
-				if r.LocalKind == "repository" {
-					local = "repo"
-				}
 			}
 		}
-		vis := strings.ToLower(r.Repo.Visibility)
-		if vis == "" {
-			vis = "—"
+		var values []string
+		for _, column := range columns {
+			value := ""
+			switch column.key {
+			case "forge":
+				value = string(r.Repo.Forge)
+			case "repository":
+				value = r.Repo.FullName
+			case "vis":
+				value = dashCell(strings.ToLower(r.Repo.Visibility))
+			case "updated":
+				value = remoteAge(r)
+			case "local":
+				value = local
+			case "description":
+				value = r.Repo.Description
+			default:
+				value = m.metricText(repoMetric(r.Repo.Metrics, column.key))
+			}
+			values = append(values, fitCell(snippetDisplayText(value), column.width))
 		}
-		line := fmt.Sprintf("%-7s  %-*s  %-9s  %-12s  %-7s  %s",
-			r.Repo.Forge, nameW, pad(r.Repo.FullName, nameW),
-			pad(vis, 9), pad(remoteAge(r), 12), pad(local, 7), pad(r.Repo.Description, descW))
+		line := strings.Join(values, "  ")
 		styled := line
 		if r.Cloned() || pending {
 			styled = styleLive.Render(line)
@@ -1375,6 +1381,10 @@ func (m Model) renderDetail() string {
 			fmt.Sprintf("  %s %s", styleDim.Render("url  "), r.Repo.URL),
 			fmt.Sprintf("  %s %s", styleDim.Render("branch"), r.Repo.DefaultBranch),
 		}
+		lines = append(lines, "  "+fitCell("visibility "+dashCell(r.Repo.Visibility)+" · updated "+remoteAge(r), max(1, m.width-4)))
+		if r.Repo.Description != "" {
+			lines = append(lines, "  "+fitCell(snippetDisplayText(r.Repo.Description), max(1, m.width-4)))
+		}
 		if m.remoteCloneTargets(r) {
 			if r.LocalPath != "" {
 				lines = append(lines, fmt.Sprintf("  %s %s", styleDim.Render("local "), contract(r.LocalPath)))
@@ -1398,6 +1408,7 @@ func (m Model) renderDetail() string {
 		if r.Repo.Fork {
 			lines = append(lines, "  "+styleDim.Render("kind  ")+" fork")
 		}
+		lines = append(lines, m.metricDetail(r.Repo.Metrics, false)...)
 		return strings.Join(lines, "\n") + "\n"
 	}
 
@@ -1654,6 +1665,9 @@ func (m Model) renderFooter() string {
 	footer := "  " + fitCell("Actions  "+primary, max(1, m.width-4)) + "\n  " + fitCell(styleHelp.Render(navigation), max(1, m.width-4))
 	if m.view == ViewFleet && m.hostFleetEnabled() {
 		footer += "\n  " + fitCell(styleDim.Render(m.fleetCoverage()), max(1, m.width-4))
+	}
+	if release := m.renderReleaseStatus(); release != "" {
+		footer += "\n" + release
 	}
 	return footer
 }

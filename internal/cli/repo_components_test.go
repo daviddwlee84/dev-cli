@@ -13,7 +13,7 @@ import (
 func TestRepoComponentPickerOffersPythonSkillWithoutAdvancedCustomization(t *testing.T) {
 	app, out := newRepoWizardApp(t, "python,node\nn\n")
 	flags := repoBootstrapFlags{}
-	preset, err := promptScaffoldComposition(newPrompter(app), scaffold.Builtins(), "agent-ready", &flags)
+	preset, err := promptScaffoldComposition(newPrompter(app), scaffold.Builtins(), "agent-ready", t.TempDir(), &flags)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +77,7 @@ func TestRepoScaffoldComponentsRespectFinalGitignoreOverride(t *testing.T) {
 func TestRepoScaffoldAdvancedOptionsOmitUnselectedDeployment(t *testing.T) {
 	app, out := newRepoWizardApp(t, "\n\n\n\n\n\n")
 	flags := repoBootstrapFlags{}
-	if err := promptScaffoldOptions(newPrompter(app), scaffold.Builtins(), "agent-ready", &flags); err != nil {
+	if err := promptScaffoldOptions(newPrompter(app), scaffold.Builtins(), "agent-ready", t.TempDir(), &flags); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out.String(), "Deployment mechanism") || strings.Contains(out.String(), "Skill agents") {

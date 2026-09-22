@@ -9,7 +9,7 @@ import (
 	"github.com/daviddwlee84/dev-cli/internal/scaffold"
 )
 
-func promptScaffoldComposition(p *prompter, catalog scaffold.Config, presetName string, flags *repoBootstrapFlags) (scaffold.Preset, error) {
+func promptScaffoldComposition(p *prompter, catalog scaffold.Config, presetName, root string, flags *repoBootstrapFlags) (scaffold.Preset, error) {
 	preset, err := catalog.ResolveComposition(presetName, flags.components)
 	if err != nil {
 		return scaffold.Preset{}, err
@@ -46,14 +46,17 @@ func promptScaffoldComposition(p *prompter, catalog scaffold.Config, presetName 
 			break
 		}
 	}
+	checked := map[string]bool{}
 	for _, item := range preset.Catalog {
 		if !showScaffoldSkillChoice(preset, *flags, item) {
 			continue
 		}
 		fallback := item.IsDefault()
 		source := item.Source
+		installable := false
 		for _, skill := range preset.Skills {
 			if skill.ID == item.ID {
+				installable = true
 				fallback = scaffoldSkillSelected(preset, *flags, item.ID)
 				source = skill.Source
 				break
@@ -72,11 +75,33 @@ func promptScaffoldComposition(p *prompter, catalog scaffold.Config, presetName 
 		if err != nil {
 			return scaffold.Preset{}, err
 		}
+		if chosen && installable {
+			chosen, err = promptRepoSkillProvider(p, root, item.Label)
+			if err != nil {
+				return scaffold.Preset{}, err
+			}
+		}
 		setSelection(flags, item.ID, chosen)
+		checked[item.ID] = true
 	}
 	selected := false
 	for _, skill := range preset.Skills {
-		selected = selected || scaffoldSkillSelected(preset, *flags, skill.ID)
+		if !scaffoldSkillSelected(preset, *flags, skill.ID) {
+			continue
+		}
+		// Authored presets can select skills without catalog/picker metadata.
+		// Keep those selections unless the user explicitly skips them too.
+		if !checked[skill.ID] {
+			keep, err := promptRepoSkillProvider(p, root, skill.Name)
+			if err != nil {
+				return scaffold.Preset{}, err
+			}
+			if !keep {
+				setSelection(flags, skill.ID, false)
+				continue
+			}
+		}
+		selected = true
 	}
 	if selected {
 		agents := catalog.DefaultAgents
@@ -93,6 +118,27 @@ func promptScaffoldComposition(p *prompter, catalog scaffold.Config, presetName 
 		}
 	}
 	return preset, nil
+}
+
+// Provider discovery only inspects executable paths. Installation and the
+// final source-bound checks remain in the workflow's validation/apply path.
+func promptRepoSkillProvider(p *prompter, root, label string) (bool, error) {
+	provider := agentskill.MutationProviderStatusFor(root)
+	if provider.Available {
+		return true, nil
+	}
+	fmt.Fprintln(p.out, "  "+p.style.warning("Skills installer unavailable for "+label+": "+provider.Detail))
+	choice, err := p.choiceOf("For "+label, "", []string{"skip", "cancel"}, map[string]string{
+		"skip": "skip", "s": "skip", "cancel": "cancel", "c": "cancel",
+	})
+	if err != nil {
+		return false, err
+	}
+	if choice == "cancel" {
+		return false, errPromptCanceled
+	}
+	fmt.Fprintln(p.out, "  Skipped "+label+"; other repository settings are kept.")
+	return false, nil
 }
 
 func scaffoldSkillSelected(preset scaffold.Preset, flags repoBootstrapFlags, id string) bool {

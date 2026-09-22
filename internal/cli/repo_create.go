@@ -119,12 +119,16 @@ or owner/name reference is acquired as a clone instead of a fresh history.`,
 					return errors.New("repository name is required outside an interactive terminal")
 				}
 				request, confirmed, err := runRepoNewWizard(app, flags)
-				if errors.Is(err, errPromptCanceled) || !confirmed {
+				if errors.Is(err, errPromptCanceled) {
 					fmt.Fprintln(app.Out, "Canceled; nothing was created.")
 					return nil
 				}
 				if err != nil {
 					return err
+				}
+				if !confirmed {
+					fmt.Fprintln(app.Out, "Canceled; nothing was created.")
+					return nil
 				}
 				return executeRepoWorkflow(app, request)
 			}
@@ -251,12 +255,16 @@ func newRepoSetupCmd(app *App) *cobra.Command {
 			}
 			if flags.preset == "" && app.interactive() && !flags.json {
 				request, confirmed, err := runRepoSetupWizard(app, root, flags)
-				if errors.Is(err, errPromptCanceled) || !confirmed {
+				if errors.Is(err, errPromptCanceled) {
 					fmt.Fprintln(app.Out, "Canceled; nothing was changed.")
 					return nil
 				}
 				if err != nil {
 					return err
+				}
+				if !confirmed {
+					fmt.Fprintln(app.Out, "Canceled; nothing was changed.")
+					return nil
 				}
 				return executeRepoSetup(app, request)
 			}
@@ -538,6 +546,12 @@ func validateRepoWorkflowRequest(app *App, request repoWorkflowRequest, yes bool
 	}
 	if !app.interactive() && !yes && (len(request.Prepared.Plan.Hooks) > 0 || len(request.Prepared.Plan.Skills) > 0 || request.BrowseSkills) {
 		return errors.New("non-interactive hooks or skill setup require --yes")
+	}
+	if request.BrowseSkills {
+		provider := agentskill.MutationProviderStatusFor(request.Destination)
+		if !provider.Available {
+			return fmt.Errorf("additional skills browser is unavailable: %s", provider.Detail)
+		}
 	}
 	for _, skill := range request.Prepared.Plan.Skills {
 		if _, err := agentskill.InstallCommand(ctxOf(), request.Destination, skill.Source, []string{skill.Name}, skill.Agents); err != nil {

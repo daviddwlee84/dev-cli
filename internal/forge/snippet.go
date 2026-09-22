@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/forgemetrics"
 	"github.com/daviddwlee84/dev-cli/internal/snippet"
 )
 
@@ -236,12 +237,14 @@ func (p *snippetProvider) parse(data []byte) (snippet.Item, error) {
 
 func (p *snippetProvider) parseGitHub(data []byte) (snippet.Item, error) {
 	var raw struct {
-		ID          string    `json:"id"`
-		Description string    `json:"description"`
-		URL         string    `json:"html_url"`
-		Public      *bool     `json:"public"`
-		Truncated   bool      `json:"truncated"`
-		UpdatedAt   time.Time `json:"updated_at"`
+		ID          string          `json:"id"`
+		NodeID      json.RawMessage `json:"node_id"`
+		Comments    json.RawMessage `json:"comments"`
+		Description string          `json:"description"`
+		URL         string          `json:"html_url"`
+		Public      *bool           `json:"public"`
+		Truncated   bool            `json:"truncated"`
+		UpdatedAt   time.Time       `json:"updated_at"`
 		Owner       struct {
 			Login string `json:"login"`
 		} `json:"owner"`
@@ -258,6 +261,8 @@ func (p *snippetProvider) parseGitHub(data []byte) (snippet.Item, error) {
 		return snippet.Item{}, errors.New("invalid GitHub gist metadata")
 	}
 	item := snippet.Item{Identity: snippet.Identity{Forge: p.kind, Host: p.host, ID: raw.ID}, Title: raw.Description, Description: raw.Description, Owner: raw.Owner.Login, URL: raw.URL, Visibility: "secret", UpdatedAt: raw.UpdatedAt, Files: []snippet.File{}, FilesComplete: raw.Files != nil && !raw.Truncated}
+	_ = json.Unmarshal(raw.NodeID, &item.NodeID)
+	item.Metrics = &forgemetrics.Metrics{Comments: restMetricCount(raw.Comments, time.Now().UTC()), OpenIssues: forgemetrics.Unsupported(), OpenPRs: forgemetrics.Unsupported()}
 	if *raw.Public {
 		item.Visibility = "public"
 	}
@@ -309,6 +314,7 @@ func (p *snippetProvider) parseGitLab(data []byte) (snippet.Item, error) {
 		return snippet.Item{}, errors.New("invalid GitLab snippet metadata")
 	}
 	item := snippet.Item{Identity: snippet.Identity{Forge: p.kind, Host: p.host, ID: strconv.FormatInt(raw.ID, 10), ProjectID: raw.ProjectID}, Title: raw.Title, Description: raw.Description, Owner: raw.Author.Username, URL: raw.URL, Visibility: raw.Visibility, UpdatedAt: raw.UpdatedAt, Files: []snippet.File{}, FilesComplete: raw.Files != nil}
+	item.Metrics = snippet.GitLabMetrics()
 	if parsed, err := snippet.ParseReference(item.URL, p.kind, map[snippet.Kind]string{p.kind: p.host}); err == nil {
 		item.Project = parsed.Project
 	}

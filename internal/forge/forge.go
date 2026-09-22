@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/daviddwlee84/dev-cli/internal/forgemetrics"
 	"github.com/daviddwlee84/dev-cli/internal/gitx"
 )
 
@@ -70,18 +71,19 @@ type RepoPublisher interface {
 
 // RemoteRepo is one repository visible through a forge CLI.
 type RemoteRepo struct {
-	Forge         Kind      `json:"forge"`
-	Name          string    `json:"name"`
-	FullName      string    `json:"full_name"`
-	Description   string    `json:"description,omitempty"`
-	URL           string    `json:"url"`
-	CloneURL      string    `json:"clone_url"`
-	SSHURL        string    `json:"ssh_url,omitempty"`
-	Visibility    string    `json:"visibility,omitempty"`
-	DefaultBranch string    `json:"default_branch,omitempty"`
-	Archived      bool      `json:"archived"`
-	Fork          bool      `json:"fork"`
-	UpdatedAt     time.Time `json:"updated_at,omitempty"`
+	Forge         Kind                  `json:"forge"`
+	Name          string                `json:"name"`
+	FullName      string                `json:"full_name"`
+	Description   string                `json:"description,omitempty"`
+	URL           string                `json:"url"`
+	CloneURL      string                `json:"clone_url"`
+	SSHURL        string                `json:"ssh_url,omitempty"`
+	Visibility    string                `json:"visibility,omitempty"`
+	DefaultBranch string                `json:"default_branch,omitempty"`
+	Archived      bool                  `json:"archived"`
+	Fork          bool                  `json:"fork"`
+	UpdatedAt     time.Time             `json:"updated_at,omitempty"`
+	Metrics       *forgemetrics.Metrics `json:"metrics,omitempty"`
 }
 
 // Label is the provider-qualified identity shown in a combined list.
