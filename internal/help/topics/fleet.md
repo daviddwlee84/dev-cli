@@ -106,6 +106,24 @@ Navigation and Herdr profile changes return directly to the dashboard without a
 final Enter prompt. Ctrl+O > full status / error retains the complete result and
 partial effects. Returning never triggers another navigation.
 
+Windows x86_64 host Add/Enable/Connect and host navigation are supported through
+Herdr 0.9.1 or a compatible newer installation. Native Herdr checks platform and
+server compatibility and retains installation/replacement approvals. Use the
+complete Windows package, including ConPTY. Dev's `_herdr-repo` workspace
+preparation remains Linux/macOS-only; open Windows repositories through native
+Herdr or explicit SSH. Connection settings must live in the exact SSH alias;
+fleet-only overrides and password sources are not forwarded.
+
+During Windows setup, Herdr 0.9.1 may print `/bin/sh` not found and PowerShell
+`#< CLIXML` progress records before succeeding. Its native platform detection
+tries POSIX first, then launches `powershell.exe` even when the SSH default shell
+is `pwsh`; interactive stderr is forwarded directly. These messages alone do not
+establish failure or success. Dev confirms registration only after a successful
+native exit and an exact enabled profile reread. Authentication failures and
+installation/server replacement prompts remain visible. This output originates
+in [Herdr's native SSH setup](https://github.com/herdrdev/herdr/blob/v0.9.1/src/remote/attach.rs),
+not dev's fleet PowerShell launcher.
+
 ## POSIX and Windows remote transport
 
 POSIX hosts use an injection-safe shell launcher. Windows hosts use an encoded

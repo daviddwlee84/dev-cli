@@ -440,8 +440,9 @@ Herdr 0.9.0 或相容的 machine CLI 是選用整合。原生 `machine add` 會�
 這些影響。原生安裝／server replacement 確認仍交由 Herdr，即使 dev 使用
 `--yes` 也不代答。非互動缺少必要確認會失敗，不假裝已新增 profile。
 remove／disable 只影響註冊及 client 連線，遠端 session 繼續運行。遠端
-server 必須符合 Herdr 的 Linux／macOS 支援範圍。fleet 仍負責 repo／task
-inventory，原有 remote-open 行為保持相容。
+server 自 Herdr 0.9.1 起支援 Windows x86_64 SSH target；dev 把平台、安裝及
+server 相容性判定交給原生 CLI。Windows 需要含 ConPTY runtime 的完整 Herdr
+套件。fleet 仍負責 repo／task inventory，原有 remote-open 行為保持相容。
 
 已能登入的 alias 通過新的普通登入驗證即可加入 fleet，不必重新安裝 key。
 各 provider 動作分別記錄結果，失敗保留先前完成的動作；重跑先比對現況。
@@ -613,8 +614,8 @@ Noninteractive 新 discovery alias 必須明確指定 remote `--user`。沒有�
 時只建立 connection 與 machine mapping；remote work 請選 `--auth existing`、
 `--key` 或 `--generate-key`。`--to fleet|herdr|both` 必須明確要求；既有 `--fleet`
 仍相容。`--herdr-label`／`--herdr-session` 設定 native profile。Herdr 安裝確認仍由
-原生程式處理，remote server 仍需 Linux/macOS。Key generation 保留原本 passphrase
-規則。
+原生程式處理；Windows SSH target 需要 Herdr 0.9.1 或相容的新版安裝。
+Key generation 保留原本 passphrase 規則。
 
 `--dry-run` 不寫入 config、registry、key 或 cache，也不做 SSH login；明確指定
 Tailscale source 時仍可讀取 local daemon status。後續失敗會保留已完成 stage 的

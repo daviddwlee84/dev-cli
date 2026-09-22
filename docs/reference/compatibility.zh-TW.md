@@ -72,7 +72,7 @@ Done 後遞迴 handoff 需重新載入 shell integration。
 | canonical machine registry | linked `modernc.org/sqlite` | 不需要 external database executable；registry 缺失時只有 empty read-only view，明確 enroll 才建立 |
 | public companion derivation 與 Ed25519 generation | system `ssh-keygen` | 仍可使用 existing validated `.pub`；derivation/generation unavailable |
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX target 仍可用；沒有 PowerShell 時 Windows-specific installer/launcher 失敗，不改用 shell fallback |
-| Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
+| Windows 上的 terminal multiplexing | 原生 Herdr 安裝及可連線的 server | Runtime `auto` 在沒有可用 backend 時退回 `none`；`dev shell-init powershell` 仍能移動 shell |
 | in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為委派給對應套件管理器的升級指令 |
 | verified ephemeral worktree apply | Git、compatible bounded Claude Workflow metadata、known task/artifact state 與每個 available runtime inventory | report 仍可使用，但 missing/unknown proof 絕不符合 apply eligibility |
 
@@ -216,7 +216,7 @@ identity diagnostics 仍是 content-free。
 
 `dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心 repository/task/worktree operation 與 SSH host domain 都是 native：static discovery、protected-DACL managed fragment、reparse-point rejection、native `ssh-keygen.exe`、Windows Job Object cancellation，以及 POSIX/Windows remote bootstrap 都有 coverage。Fleet 也可透過 encoded PowerShell launcher target Windows OpenSSH。仍有下列差異：
 
-- 沒有 tmux、Zellij 或 Herdr，因此 runtime backend 一律是 `none`。Grouped runtime/agent activity 與 named session 無法使用；`cd` 指令與 PowerShell wrapper 仍可運作。
+- Herdr 支援原生 Windows。Runtime `auto` 檢查 backend 是否可用，無可連線 server 時退回 `none`；`cd` 指令與 PowerShell wrapper 仍可運作。Fleet 主機連線與受保護 repository workspace 準備的支援範圍分別說明於下方。
 - Shell integration 是 `dev shell-init powershell`。POSIX shell 透過 file descriptor 3 回傳目錄；PowerShell 無法繼承它，wrapper 改用 `DEV_SHELL_CD_FILE` 傳入 temp-file path。
 - `dev fleet open` 會啟動子 shell（`%COMSPEC%`），而非取代 process，因為 Windows 沒有 `exec(2)`。
 - `dev fleet machine-id` 可執行 content-free `_capability` probe，但 native `fleet files` plan/apply payload helpers 會在 content 傳送前被拒絕。
@@ -465,6 +465,12 @@ session-wide focus。舊 helper 在 workspace 副作用前失敗；取消或部�
 自動改開 SSH，`--no-runtime` 直接選 SSH。主機 Enter 不要求遠端 dev，可透過
 原生 attach 完成 bootstrap。Herdr 外的 repository 準備需要遠端 server 已就緒；
 若尚未就緒，先用主機導覽，再重試 repository。
+
+Windows x86_64 的主機 Add／Enable／Connect 及主機導覽可使用 Herdr 0.9.1
+或相容新版。平台與 server 相容性由原生 Herdr 檢查，安裝／替換確認也由原生
+程式處理。Windows 需含 ConPTY 的完整套件。Dev 的 `_herdr-repo` workspace
+準備仍限 Linux/macOS；Windows repository 請使用原生 Herdr 或明確 SSH。
+連線設定須放在精確 SSH alias；fleet 額外覆寫與 password source 不會轉交。
 
 ## SSH 診斷契約
 

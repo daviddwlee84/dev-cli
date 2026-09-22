@@ -410,7 +410,9 @@ open clients then connect automatically. The plan lists these effects. Native
 installation/server-replacement confirmations remain Herdr's, even with dev
 `--yes`. Missing approvals in a noninteractive run fail without inventing a saved
 profile. Remove/disable only affects registration/client connections; remote
-sessions keep running. Remote servers must meet Herdr's Linux/macOS requirements.
+sessions keep running. Herdr 0.9.1 adds Windows x86_64 SSH targets; dev delegates
+platform, installation and server compatibility to the native CLI. Windows
+requires the complete Herdr package, including its ConPTY runtime.
 Fleet remains the repo/task inventory authority, and its existing remote-open
 behavior is unchanged.
 

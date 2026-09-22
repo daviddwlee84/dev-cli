@@ -225,3 +225,45 @@ func TestRegistrationPreviewShowsCustomFleetNameAndOS(t *testing.T) {
 		t.Fatal("public preview changed apply authority", cfg, err)
 	}
 }
+
+func TestWindowsHerdrRegistrationUsesNativePlanAndApply(t *testing.T) {
+	for _, to := range []string{"herdr", "both"} {
+		t.Run(to, func(t *testing.T) {
+			s, f := testService(t)
+			request := Request{Action: "register", To: to, Aliases: []string{"one"}, RemoteOS: "windows", HerdrLabel: "Windows", Session: "agents"}
+			plan, err := s.Plan(t.Context(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if f.sshCalls != 0 || f.nativeAdds != 0 {
+				t.Fatal("Windows planning contacted the remote")
+			}
+			found := false
+			for _, op := range plan.Operations {
+				if op.Target == "herdr" {
+					found = true
+					if op.Status != "planned" || op.Herdr == nil || len(op.Effects) == 0 {
+						t.Fatalf("Windows native registration was blocked or lost its effects: %+v", op)
+					}
+				}
+			}
+			if !found {
+				t.Fatal("missing Herdr operation")
+			}
+			result, err := s.Apply(t.Context(), plan, true)
+			if err != nil || f.nativeAdds != 1 || len(f.profiles) != 1 {
+				t.Fatalf("result=%+v err=%v native adds=%d", result, err, f.nativeAdds)
+			}
+			profile := f.profiles[0]
+			if profile.Target != "one" || profile.Label != "Windows" || profile.Session != "agents" || !profile.Enabled {
+				t.Fatalf("native registration lost exact selection: %+v", profile)
+			}
+			if to == "both" {
+				cfg, err := fleet.LoadConfig(s.FleetPath)
+				if err != nil || len(cfg.Hosts) != 1 || cfg.Hosts[0].RemoteOS != "windows" {
+					t.Fatalf("Windows fleet registration changed: %+v %v", cfg, err)
+				}
+			}
+		})
+	}
+}

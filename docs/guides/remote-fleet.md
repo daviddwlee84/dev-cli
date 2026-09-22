@@ -331,9 +331,30 @@ Outside Herdr, Connect additionally attaches to an explicit session (default:
 default). Add can prepare/start a remote server and retains native installation
 approvals. Herdr 0.9.0 add connects open local clients but does not select the new
 machine. Registration affects this host's client catalog, not another desktop
-client. Unsupported connection targets, including native Windows, may still
-disable/remove an existing exact saved profile; connection capability and local
-catalog management are separate.
+client. Windows x86_64 SSH targets support Add, Enable and Connect with Herdr
+0.9.1 or a compatible newer installation. Dev leaves platform and server
+compatibility checks to native Herdr, including approval before replacing an
+incompatible running server. Use the complete Windows package with its ConPTY
+runtime. Unsupported connection settings may still disable/remove an existing
+exact saved profile; connection capability and local catalog management are
+separate. See the [Herdr 0.9.1 release notes](https://github.com/herdrdev/herdr/releases/tag/v0.9.1).
+
+Windows host navigation does not require remote dev. Dev-managed repository
+workspace preparation (`_herdr-repo`) still requires a Linux/macOS target; on
+Windows, select the native machine and open the repository in Herdr, or use the
+explicit SSH action. Exact SSH aliases and native OpenSSH authentication remain
+required; fleet-only user/port/identity overrides and password sources are not
+forwarded to Herdr.
+
+During Windows setup, Herdr 0.9.1 may print `/bin/sh` not found and PowerShell
+`#< CLIXML` progress records before succeeding. Its native platform detection
+tries POSIX first, then launches `powershell.exe` even when the SSH default shell
+is `pwsh`; interactive stderr is forwarded directly. These messages alone do not
+establish failure or success. Dev confirms registration only after a successful
+native exit and an exact enabled profile reread. Authentication failures and
+installation/server replacement prompts remain visible. This output originates
+in [Herdr's native SSH setup](https://github.com/herdrdev/herdr/blob/v0.9.1/src/remote/attach.rs),
+not dev's fleet PowerShell launcher.
 
 ### Enter and remote sessions
 

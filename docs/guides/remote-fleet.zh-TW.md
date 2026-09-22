@@ -307,9 +307,27 @@ Disable 保留登錄方便再啟用；Remove 刪除該筆登錄。兩者讓本�
 
 Herdr 外另外可 Connect，並明確指定 session，預設 default。Add 可能準備／啟動
 遠端 server，原生安裝確認仍交給 Herdr。0.9.0 add 會讓開啟中的本機 clients 連上
-新機器，但不切換選取；登錄只影響執行 dev 這台機器的 catalog。即使連線 target
-不支援（例如原生 Windows），仍可停用／移除已明確匹配的 saved profile；
-連線能力與本機 catalog 管理分開。
+新機器，但不切換選取；登錄只影響執行 dev 這台機器的 catalog。Windows x86_64
+SSH target 可透過 Herdr 0.9.1 或相容新版使用 Add、Enable、Connect。平台及
+server 相容性由原生 Herdr 檢查；替換不相容的執行中 server 仍須原生確認。
+Windows 需使用含 ConPTY runtime 的完整套件。連線設定不支援時，仍可停用／
+移除已精確匹配的 saved profile；連線能力與本機 catalog 管理分開。詳見
+[Herdr 0.9.1 release notes](https://github.com/herdrdev/herdr/releases/tag/v0.9.1)。
+
+Windows 主機導覽不需要遠端 dev。Dev 管理的 repository workspace 準備
+（`_herdr-repo`）仍需要 Linux/macOS target；Windows 請選原生 machine 後在
+Herdr 開啟 repository，或使用明確的 SSH action。仍需精確 SSH alias 與原生
+OpenSSH 認證；fleet 額外指定的 user／port／identity 及 password source
+不會轉交 Herdr。
+
+Windows setup 時，Herdr 0.9.1 可能先印出找不到 `/bin/sh` 與 PowerShell
+`#< CLIXML` progress 訊息，之後仍成功。原生平台探測先試 POSIX，再啟動
+`powershell.exe`，即使 SSH 預設 shell 是 `pwsh` 也一樣；互動 stderr 直接轉出。
+單憑這些訊息不能判定成功或失敗。Dev 只在原生命令成功退出、重新讀取並確認
+精確 enabled profile 後回報註冊成功。認證錯誤與安裝／server replacement
+確認仍保持可見。此輸出來自
+[Herdr 原生 SSH setup](https://github.com/herdrdev/herdr/blob/v0.9.1/src/remote/attach.rs)，
+不是 dev 的 fleet PowerShell launcher。
 
 ### Enter 與遠端 session
 

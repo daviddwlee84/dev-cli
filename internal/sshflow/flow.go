@@ -252,19 +252,15 @@ func (s Service) Plan(ctx context.Context, r Request) (Plan, error) {
 		}
 		if r.To == "herdr" || r.To == "both" {
 			op := Operation{Target: "herdr", Identity: alias, Action: "register", Status: "planned", request: r}
-			if r.RemoteOS == "windows" {
+			// Native Herdr checks remote platform and installation compatibility.
+			native, err := s.Herdr.Plan(inv.Herdr, herdrremote.Request{Action: "register", Alias: alias, Label: r.HerdrLabel, Session: r.Session})
+			if err != nil {
 				op.Status = "blocked"
-				op.Reason = "Herdr remote servers support Linux/macOS"
+				op.Reason = err.Error()
 			} else {
-				native, err := s.Herdr.Plan(inv.Herdr, herdrremote.Request{Action: "register", Alias: alias, Label: r.HerdrLabel, Session: r.Session})
-				if err != nil {
-					op.Status = "blocked"
-					op.Reason = err.Error()
-				} else {
-					op.Herdr = &native
-					op.Status = native.Status
-					op.Effects = native.Effects
-				}
+				op.Herdr = &native
+				op.Status = native.Status
+				op.Effects = native.Effects
 			}
 			appendOp(op)
 		}

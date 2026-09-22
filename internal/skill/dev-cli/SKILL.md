@@ -12,11 +12,7 @@ sessions; dev records task intent.
 
 Use `dev <command> --help` for syntax and flags; `dev help <topic>` explains
 workflows. `dev --help` lists commands; `dev help` lists topics.
-REPOS → Ctrl+O → hygiene: status/report/scan/setup.
-The dashboard footer shows the running version and optional `dev upgrade` hint.
-REMOTE statistics are dated observations; Ctrl+O sorts even hidden columns.
-A missing skill installer in repository wizards offers explicit skip/cancel;
-skipping retains the component and its gitignore.
+Dashboard details: `dev help tui`.
 Prefer supported `--json` output for automation. Read the relevant command before
 mutation: some actions execute immediately, while others require preview/apply.
 Do not preload manuals, repeat `dev --skill`, or run routine diagnostics.

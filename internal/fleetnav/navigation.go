@@ -77,9 +77,8 @@ type Service struct {
 }
 
 func HerdrTargetReason(host fleet.Host) string {
-	if host.EffectiveRemoteOS() == fleet.RemoteOSWindows {
-		return "Herdr remote servers require Linux or macOS"
-	}
+	// Native Herdr negotiates target support, including Windows since 0.9.1.
+	// Keep only connection settings that dev cannot hand off faithfully here.
 	if host.SSHAlias == "" || host.User != "" || host.Port != 0 || host.IdentityFile != "" {
 		return "Herdr requires an SSH alias containing all connection settings"
 	}

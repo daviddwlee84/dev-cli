@@ -65,6 +65,37 @@ func TestTUIFleetHerdrUnknownCatalogNeverBecomesNotAdded(t *testing.T) {
 	}
 }
 
+func TestTUIFleetWindowsHerdrConnectionActions(t *testing.T) {
+	app, backend, hosts := tuiFleetFixture(t, "[[hosts]]\nname='lab'\nssh_alias='lab'\nremote_os='windows'\n")
+	fake := &tuiFleetHerdrRunner{}
+	app.sshHostRunner = fake
+	t.Setenv("HERDR_ENV", "")
+	for _, saved := range []bool{false, true} {
+		if saved {
+			fake.profiles = []herdrremote.Profile{{ID: "0123456789abcdef0123456789abcdef", Target: "lab", Label: "Windows", Session: "agents", Enabled: false}}
+		}
+		actions, err := tuiFleetTestActions(t, backend, fleetDescriptor(hosts[0]))
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := []string{"herdr-add", "herdr-connect"}
+		if saved {
+			want = []string{tuiFleetProfileAction("herdr-enable", fake.profiles[0]), tuiFleetProfileAction("herdr-connect", fake.profiles[0])}
+		}
+		for _, id := range want {
+			if !hasTUIFleetAction(actions, id, false) {
+				t.Fatalf("Windows action %s unavailable: %+v", id, actions)
+			}
+			if err := validateTUIFleetHostAction(app, hosts[0], id); err != nil {
+				t.Fatalf("offered Windows action rejected at dispatch: %v", err)
+			}
+		}
+		if hasTUIFleetAction(actions, "herdr-unavailable", true) {
+			t.Fatalf("Windows retained platform blocker: %+v", actions)
+		}
+	}
+}
+
 type tuiFleetMutationRunner struct {
 	profiles  []herdrremote.Profile
 	mutations [][]string

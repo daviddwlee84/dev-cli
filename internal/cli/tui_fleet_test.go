@@ -249,7 +249,7 @@ func TestTUIFleetHostActionsDoNotRequireRemoteDev(t *testing.T) {
 	app, backend, hosts := tuiFleetFixture(t, "[[hosts]]\nname='lab'\nssh_alias='lab'\nremote_os='windows'\n")
 	descriptor := fleetDescriptor(hosts[0])
 	actions, err := tuiFleetTestActions(t, backend, descriptor)
-	if err != nil || !hasTUIFleetAction(actions, "ssh", false) || !hasTUIFleetAction(actions, "dotfile-status", false) || !hasTUIFleetAction(actions, "herdr-unavailable", true) {
+	if err != nil || !hasTUIFleetAction(actions, "ssh", false) || !hasTUIFleetAction(actions, "dotfile-status", false) || !hasTUIFleetAction(actions, "herdr-add", false) {
 		t.Fatalf("no-dev host actions = %+v %v", actions, err)
 	}
 	process, err := backend.RunAction(t.Context(), descriptor, "dotfile-status")

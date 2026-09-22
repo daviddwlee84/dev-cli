@@ -160,9 +160,11 @@ rather than resurrecting its old layout — reclaim it with
 `dev wt open --no-focus` instead reports no runtime/no shell handoff and returns.
 `dev start --json` also suppresses that directive and stays pure JSON.
 
-On Windows there is no tmux, Zellij or Herdr, so the backend is always `none`
-regardless of configuration. `dev shell-init powershell` still consumes the `cd`
-directive (via a `DEV_SHELL_CD_FILE` temp file rather than file descriptor 3).
+Herdr supports native Windows. Runtime `auto` checks backend availability and
+uses `none` when no server is reachable. `dev shell-init powershell` consumes the
+`cd` directive (via a `DEV_SHELL_CD_FILE` temp file rather than file descriptor 3).
+Fleet host connection support is separate from the Linux/macOS-only guarded
+repository workspace preparation described below.
 
 The trusted `dev shell-init` output installs a shell wrapper. Navigation uses a
 private side channel containing one NUL-terminated path; the wrapper calls
@@ -223,6 +225,24 @@ selected, cancellation/errors retain and report completed registration, enable
 or workspace preparation without an automatic SSH fallback. Unsupported Herdr
 targets offer SSH explicitly; `--no-runtime` uses SSH directly. Host navigation
 works without remote dev; repository navigation requires a compatible helper.
+
+Windows x86_64 host Add/Enable/Connect and host navigation are supported through
+Herdr 0.9.1 or a compatible newer installation. Native Herdr checks platform and
+server compatibility and retains installation/replacement approvals. Use the
+complete Windows package, including ConPTY. Dev's `_herdr-repo` workspace
+preparation remains Linux/macOS-only; open Windows repositories through native
+Herdr or explicit SSH. Connection settings must live in the exact SSH alias;
+fleet-only overrides and password sources are not forwarded.
+
+During Windows setup, Herdr 0.9.1 may print `/bin/sh` not found and PowerShell
+`#< CLIXML` progress records before succeeding. Its native platform detection
+tries POSIX first, then launches `powershell.exe` even when the SSH default shell
+is `pwsh`; interactive stderr is forwarded directly. These messages alone do not
+establish failure or success. Dev confirms registration only after a successful
+native exit and an exact enabled profile reread. Authentication failures and
+installation/server replacement prompts remain visible. This output originates
+in [Herdr's native SSH setup](https://github.com/herdrdev/herdr/blob/v0.9.1/src/remote/attach.rs),
+not dev's fleet PowerShell launcher.
 
 ## Cross-repository triage
 

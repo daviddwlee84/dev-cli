@@ -160,7 +160,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.43 instead when you need a reproducible install.
+# Pin @v0.2.44 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -204,7 +204,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.2.43
+  version=v0.2.44
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"
@@ -254,9 +254,10 @@ timeouts; each runner retains its test log.
 also covers SSH host discovery/managed fragments, OpenSSH key generation and
 bootstrap ACL checks, and fleet transport to POSIX or Windows OpenSSH servers.
 Windows fleet targets launch only dev's allowlisted hidden helpers through an
-encoded PowerShell command. There is no tmux, Zellij or Herdr on the controller,
-so `dev` uses the no-multiplexer backend (it prints a `cd` directive the shell
-wrapper consumes). Use the PowerShell wrapper:
+encoded PowerShell command. Herdr supports native Windows; runtime `auto` checks
+available backends and falls back to the no-multiplexer backend when none is
+reachable (it prints a `cd` directive the shell wrapper consumes). Use the
+PowerShell wrapper:
 
 ```powershell
 Invoke-Expression (& dev shell-init powershell | Out-String)
@@ -1961,6 +1962,11 @@ never starts a nested Herdr client or silently falls back to SSH after an error;
 Ctrl+O offers SSH, dotfile status and per-profile Herdr control inside or
 outside Herdr. Disable keeps the profile; Remove deletes its registration;
 remote sessions continue running. Herdr actions refresh catalog metadata only.
+Windows x86_64 SSH hosts support Add/Enable/Connect and host navigation with
+Herdr 0.9.1 or newer; native compatibility checks and installation/server
+replacement approvals remain in Herdr. Dev-managed repository workspace
+preparation still requires Linux/macOS; open Windows repositories through native
+Herdr or the explicit SSH action.
 Each remote repository snapshot refreshes independently. Set
 `[tui.fleet] background_refresh = false` to disable delayed automatic refresh.
 See [FLEET host actions](docs/guides/remote-fleet.md#dashboard-host-tree).

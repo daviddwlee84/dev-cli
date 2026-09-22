@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.2.44] - 2026-09-23
+
 ### Added
 
 - The dashboard footer shows the running version and a `dev upgrade` hint for
@@ -17,6 +19,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ### Fixed
 
+- Keep the bundled skill entrypoint within its context budget by deferring
+  dashboard and wizard details to existing help and references.
+- FLEET and SSH registration no longer reject Windows Herdr hosts by OS. Herdr
+  0.9.1+ handles native Windows connection compatibility and setup approvals;
+  exact SSH alias/authentication guards remain. Dev-managed remote repository
+  workspace preparation remains Linux/macOS-only.
 - Repository new/setup wizards preserve real preflight errors instead of
   reporting cancellation. Missing trusted skill installers are reported at
   selection time with explicit skip/cancel choices that retain other settings.
@@ -1409,7 +1417,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.43...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.44...HEAD
+[0.2.44]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.43...v0.2.44
 [0.2.43]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.42...v0.2.43
 [0.2.42]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.41...v0.2.42
 [0.2.41]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.40...v0.2.41

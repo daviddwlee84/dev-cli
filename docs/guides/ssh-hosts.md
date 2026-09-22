@@ -479,7 +479,9 @@ open clients then connect automatically. The plan lists these effects. Native
 installation/server-replacement confirmations remain Herdr's, even with dev
 `--yes`. Missing approvals in a noninteractive run fail without inventing a saved
 profile. Remove/disable only affects registration/client connections; remote
-sessions keep running. Remote servers must meet Herdr's Linux/macOS requirements.
+sessions keep running. Herdr 0.9.1 adds Windows x86_64 SSH targets; dev delegates
+platform, installation and server compatibility to the native CLI. Windows
+requires the complete Herdr package, including its ConPTY runtime.
 Fleet remains the repo/task inventory authority, and its existing remote-open
 behavior is unchanged.
 
@@ -683,8 +685,9 @@ remote `--user` outside a terminal. Setup without an authentication choice only
 configures the connection and machine mapping. Choose `--auth existing`, `--key`
 or `--generate-key` for remote work. `--to fleet|herdr|both` is explicit; `--fleet`
 remains compatible. `--herdr-label` and `--herdr-session` select native profile
-settings. Herdr installation approvals stay native, and its remote server still
-requires Linux/macOS. Key generation retains the existing passphrase rules.
+settings. Herdr installation approvals stay native; Windows SSH targets require
+Herdr 0.9.1 or a compatible newer installation. Key generation retains the
+existing passphrase rules.
 
 `--dry-run` performs no configuration, registry, key or cache writes and no SSH
 login; an explicit Tailscale source may still read local daemon status. Completed

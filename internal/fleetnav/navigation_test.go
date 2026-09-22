@@ -145,25 +145,28 @@ func TestHostNavigationInsideAndOutside(t *testing.T) {
 		{"outside-disabled", false, []herdrremote.Profile{profile("1", "work", false)}, "work", false},
 		{"outside-no-profile", false, nil, "default", false},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			f := newNavigationFixture(tc.profiles...)
-			r, err := f.service.Navigate(context.Background(), Request{InsideHerdr: tc.inside})
-			if err != nil || r.Session != tc.session {
-				t.Fatalf("result=%+v err=%v calls=%v", r, err, f.calls)
-			}
-			assertNoCalls(t, f.calls, "ssh", "check-repository", "prepare-repository")
-			if tc.inside {
-				assertNoCalls(t, f.calls, "attach:")
-				if r.State != "sidebar-ready" || !strings.Contains(r.Summary, "native sidebar") {
-					t.Fatalf("inside navigation claimed an attachment: %+v", r)
+		for _, remoteOS := range []string{fleet.RemoteOSPOSIX, fleet.RemoteOSWindows} {
+			t.Run(tc.name+"/"+remoteOS, func(t *testing.T) {
+				f := newNavigationFixture(tc.profiles...)
+				f.target.Host.RemoteOS = remoteOS
+				r, err := f.service.Navigate(context.Background(), Request{InsideHerdr: tc.inside})
+				if err != nil || r.Session != tc.session {
+					t.Fatalf("result=%+v err=%v calls=%v", r, err, f.calls)
 				}
-			} else if r.State != "returned" || f.calls[len(f.calls)-1] != "attach:"+tc.session {
-				t.Fatalf("outside navigation did not attach explicit session: %+v %v", r, f.calls)
-			}
-			if tc.ensure != (r.CatalogState == "applied") {
-				t.Fatalf("catalog mutation mismatch: %+v", r)
-			}
-		})
+				assertNoCalls(t, f.calls, "ssh", "check-repository", "prepare-repository")
+				if tc.inside {
+					assertNoCalls(t, f.calls, "attach:")
+					if r.State != "sidebar-ready" || !strings.Contains(r.Summary, "native sidebar") {
+						t.Fatalf("inside navigation claimed an attachment: %+v", r)
+					}
+				} else if r.State != "returned" || f.calls[len(f.calls)-1] != "attach:"+tc.session {
+					t.Fatalf("outside navigation did not attach explicit session: %+v %v", r, f.calls)
+				}
+				if tc.ensure != (r.CatalogState == "applied") {
+					t.Fatalf("catalog mutation mismatch: %+v", r)
+				}
+			})
+		}
 	}
 }
 
@@ -244,6 +247,9 @@ func TestUnavailableHerdrRequiresExplicitSSHChoice(t *testing.T) {
 	for _, choose := range []bool{true, false} {
 		f := newNavigationFixture()
 		f.target.Host.RemoteOS = fleet.RemoteOSWindows
+		f.service.Capabilities = func(context.Context) (Capabilities, error) {
+			return Capabilities{}, nil
+		}
 		f.service.ChooseSSH = func(context.Context, string) (bool, error) { return choose, nil }
 		r, err := f.service.Navigate(context.Background(), Request{InsideHerdr: true})
 		if choose {
@@ -258,6 +264,40 @@ func TestUnavailableHerdrRequiresExplicitSSHChoice(t *testing.T) {
 			assertNoCalls(t, f.calls, "ssh")
 		}
 	}
+}
+
+func TestWindowsHerdrStillRequiresFaithfulSSHSettings(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(*fleet.Host)
+	}{
+		{"no-alias", func(h *fleet.Host) { h.SSHAlias = "" }},
+		{"user", func(h *fleet.Host) { h.User = "other" }},
+		{"port", func(h *fleet.Host) { h.Port = 2222 }},
+		{"identity", func(h *fleet.Host) { h.IdentityFile = "/fixture/key" }},
+		{"password", func(h *fleet.Host) { h.SSHLoginPasswordSource.Type = "prompt" }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			host := fleet.Host{SSHAlias: "lab", RemoteOS: fleet.RemoteOSWindows}
+			tc.change(&host)
+			if HerdrTargetReason(host) == "" {
+				t.Fatal("Herdr would lose the selected connection settings")
+			}
+		})
+	}
+}
+
+func TestWindowsNativeHerdrFailureNeverFallsBackToSSH(t *testing.T) {
+	f := newNavigationFixture()
+	f.target.Host.RemoteOS = fleet.RemoteOSWindows
+	f.service.EnsureProfile = func(context.Context, Target, Selection) (EnsureResult, error) {
+		return EnsureResult{Status: "unknown"}, errors.New("native server replacement approval required")
+	}
+	r, err := f.service.Navigate(context.Background(), Request{InsideHerdr: true})
+	if err == nil || r.State != "partial" || r.CatalogState != "unknown" || r.Transport != "herdr" {
+		t.Fatalf("result=%+v err=%v", r, err)
+	}
+	assertNoCalls(t, f.calls, "choose-ssh", "ssh", "attach:", "prepare-repository")
 }
 
 func TestRepositoryCapabilityFailurePrecedesProfileChanges(t *testing.T) {

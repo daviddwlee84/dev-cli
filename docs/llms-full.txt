@@ -2640,7 +2640,9 @@ open clients then connect automatically. The plan lists these effects. Native
 installation/server-replacement confirmations remain Herdr's, even with dev
 `--yes`. Missing approvals in a noninteractive run fail without inventing a saved
 profile. Remove/disable only affects registration/client connections; remote
-sessions keep running. Remote servers must meet Herdr's Linux/macOS requirements.
+sessions keep running. Herdr 0.9.1 adds Windows x86_64 SSH targets; dev delegates
+platform, installation and server compatibility to the native CLI. Windows
+requires the complete Herdr package, including its ConPTY runtime.
 Fleet remains the repo/task inventory authority, and its existing remote-open
 behavior is unchanged.
 
@@ -2844,8 +2846,9 @@ remote `--user` outside a terminal. Setup without an authentication choice only
 configures the connection and machine mapping. Choose `--auth existing`, `--key`
 or `--generate-key` for remote work. `--to fleet|herdr|both` is explicit; `--fleet`
 remains compatible. `--herdr-label` and `--herdr-session` select native profile
-settings. Herdr installation approvals stay native, and its remote server still
-requires Linux/macOS. Key generation retains the existing passphrase rules.
+settings. Herdr installation approvals stay native; Windows SSH targets require
+Herdr 0.9.1 or a compatible newer installation. Key generation retains the
+existing passphrase rules.
 
 `--dry-run` performs no configuration, registry, key or cache writes and no SSH
 login; an explicit Tailscale source may still read local daemon status. Completed
@@ -4487,9 +4490,30 @@ Outside Herdr, Connect additionally attaches to an explicit session (default:
 default). Add can prepare/start a remote server and retains native installation
 approvals. Herdr 0.9.0 add connects open local clients but does not select the new
 machine. Registration affects this host's client catalog, not another desktop
-client. Unsupported connection targets, including native Windows, may still
-disable/remove an existing exact saved profile; connection capability and local
-catalog management are separate.
+client. Windows x86_64 SSH targets support Add, Enable and Connect with Herdr
+0.9.1 or a compatible newer installation. Dev leaves platform and server
+compatibility checks to native Herdr, including approval before replacing an
+incompatible running server. Use the complete Windows package with its ConPTY
+runtime. Unsupported connection settings may still disable/remove an existing
+exact saved profile; connection capability and local catalog management are
+separate. See the [Herdr 0.9.1 release notes](https://github.com/herdrdev/herdr/releases/tag/v0.9.1).
+
+Windows host navigation does not require remote dev. Dev-managed repository
+workspace preparation (`_herdr-repo`) still requires a Linux/macOS target; on
+Windows, select the native machine and open the repository in Herdr, or use the
+explicit SSH action. Exact SSH aliases and native OpenSSH authentication remain
+required; fleet-only user/port/identity overrides and password sources are not
+forwarded to Herdr.
+
+During Windows setup, Herdr 0.9.1 may print `/bin/sh` not found and PowerShell
+`#< CLIXML` progress records before succeeding. Its native platform detection
+tries POSIX first, then launches `powershell.exe` even when the SSH default shell
+is `pwsh`; interactive stderr is forwarded directly. These messages alone do not
+establish failure or success. Dev confirms registration only after a successful
+native exit and an exact enabled profile reread. Authentication failures and
+installation/server replacement prompts remain visible. This output originates
+in [Herdr's native SSH setup](https://github.com/herdrdev/herdr/blob/v0.9.1/src/remote/attach.rs),
+not dev's fleet PowerShell launcher.
 
 ### Enter and remote sessions
 
@@ -11897,7 +11921,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 | canonical machine registry | linked `modernc.org/sqlite` | no external database executable; missing registry is an empty read-only view until explicit enrollment |
 | public companion derivation and Ed25519 generation | system `ssh-keygen` | an existing validated `.pub` can still be used; derivation/generation is unavailable |
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX targets remain available; Windows-specific installer/launcher fails without PowerShell rather than using a shell fallback |
-| terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
+| terminal multiplexing on Windows | native Herdr installation and reachable server | Runtime `auto` falls back to `none` when no backend is available; `dev shell-init powershell` still moves the shell |
 | in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` delegates to the package manager's upgrade command instead |
 | verified ephemeral worktree apply | Git, compatible bounded Claude Workflow metadata, known task/artifact state, and every available runtime inventory | report remains available, but missing/unknown proof is never apply-eligible |
 
@@ -12072,7 +12096,7 @@ diagnostics remain content-free.
 
 `dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository/task/worktree operations and the SSH host domain are native: static discovery, protected-DACL managed fragments, reparse-point rejection, native `ssh-keygen.exe`, Windows Job Object cancellation, and POSIX/Windows remote bootstrap are covered. Fleet can also target Windows OpenSSH through its encoded PowerShell launcher. What still differs:
 
-- There is no tmux, Zellij or Herdr, so the runtime backend is always `none`. Grouped runtime/agent activity and named sessions are unavailable; the `cd` directive and PowerShell wrapper still work.
+- Herdr supports native Windows. Runtime `auto` checks backend availability and falls back to `none` when no server is reachable; the `cd` directive and PowerShell wrapper still work. Fleet host connections and guarded repository workspace preparation have separate support boundaries below.
 - Shell integration is `dev shell-init powershell`. POSIX shells hand the directory back on file descriptor 3; PowerShell cannot inherit it, so the wrapper passes a temp-file path in `DEV_SHELL_CD_FILE` instead.
 - `dev fleet open` starts a child shell (`%COMSPEC%`) rather than replacing the process, because Windows has no `exec(2)`.
 - `dev fleet machine-id` can perform its content-free `_capability` probe, but native `fleet files` plan/apply payload helpers are denied before content is sent.
@@ -12350,6 +12374,14 @@ not open SSH automatically; `--no-runtime` selects SSH directly. Host Enter work
 without remote dev and may bootstrap through native attachment. Outside Herdr,
 repository preparation needs a ready remote server; use host navigation first
 if it is missing, then retry the repository.
+
+Windows x86_64 host Add/Enable/Connect and host navigation are supported through
+Herdr 0.9.1 or a compatible newer installation. Native Herdr checks platform and
+server compatibility and retains installation/replacement approvals. Use the
+complete Windows package, including ConPTY. Dev's `_herdr-repo` workspace
+preparation remains Linux/macOS-only; open Windows repositories through native
+Herdr or explicit SSH. Connection settings must live in the exact SSH alias;
+fleet-only overrides and password sources are not forwarded.
 
 ## SSH diagnostic contract
 
@@ -15811,8 +15843,9 @@ Herdr 0.9.0 或相容的 machine CLI 是選用整合。原生 `machine add` 會�
 這些影響。原生安裝／server replacement 確認仍交由 Herdr，即使 dev 使用
 `--yes` 也不代答。非互動缺少必要確認會失敗，不假裝已新增 profile。
 remove／disable 只影響註冊及 client 連線，遠端 session 繼續運行。遠端
-server 必須符合 Herdr 的 Linux／macOS 支援範圍。fleet 仍負責 repo／task
-inventory，原有 remote-open 行為保持相容。
+server 自 Herdr 0.9.1 起支援 Windows x86_64 SSH target；dev 把平台、安裝及
+server 相容性判定交給原生 CLI。Windows 需要含 ConPTY runtime 的完整 Herdr
+套件。fleet 仍負責 repo／task inventory，原有 remote-open 行為保持相容。
 
 已能登入的 alias 通過新的普通登入驗證即可加入 fleet，不必重新安裝 key。
 各 provider 動作分別記錄結果，失敗保留先前完成的動作；重跑先比對現況。
@@ -15984,8 +16017,8 @@ Noninteractive 新 discovery alias 必須明確指定 remote `--user`。沒有�
 時只建立 connection 與 machine mapping；remote work 請選 `--auth existing`、
 `--key` 或 `--generate-key`。`--to fleet|herdr|both` 必須明確要求；既有 `--fleet`
 仍相容。`--herdr-label`／`--herdr-session` 設定 native profile。Herdr 安裝確認仍由
-原生程式處理，remote server 仍需 Linux/macOS。Key generation 保留原本 passphrase
-規則。
+原生程式處理；Windows SSH target 需要 Herdr 0.9.1 或相容的新版安裝。
+Key generation 保留原本 passphrase 規則。
 
 `--dry-run` 不寫入 config、registry、key 或 cache，也不做 SSH login；明確指定
 Tailscale source 時仍可讀取 local daemon status。後續失敗會保留已完成 stage 的
@@ -17405,9 +17438,27 @@ Disable 保留登錄方便再啟用；Remove 刪除該筆登錄。兩者讓本�
 
 Herdr 外另外可 Connect，並明確指定 session，預設 default。Add 可能準備／啟動
 遠端 server，原生安裝確認仍交給 Herdr。0.9.0 add 會讓開啟中的本機 clients 連上
-新機器，但不切換選取；登錄只影響執行 dev 這台機器的 catalog。即使連線 target
-不支援（例如原生 Windows），仍可停用／移除已明確匹配的 saved profile；
-連線能力與本機 catalog 管理分開。
+新機器，但不切換選取；登錄只影響執行 dev 這台機器的 catalog。Windows x86_64
+SSH target 可透過 Herdr 0.9.1 或相容新版使用 Add、Enable、Connect。平台及
+server 相容性由原生 Herdr 檢查；替換不相容的執行中 server 仍須原生確認。
+Windows 需使用含 ConPTY runtime 的完整套件。連線設定不支援時，仍可停用／
+移除已精確匹配的 saved profile；連線能力與本機 catalog 管理分開。詳見
+[Herdr 0.9.1 release notes](https://github.com/herdrdev/herdr/releases/tag/v0.9.1)。
+
+Windows 主機導覽不需要遠端 dev。Dev 管理的 repository workspace 準備
+（`_herdr-repo`）仍需要 Linux/macOS target；Windows 請選原生 machine 後在
+Herdr 開啟 repository，或使用明確的 SSH action。仍需精確 SSH alias 與原生
+OpenSSH 認證；fleet 額外指定的 user／port／identity 及 password source
+不會轉交 Herdr。
+
+Windows setup 時，Herdr 0.9.1 可能先印出找不到 `/bin/sh` 與 PowerShell
+`#< CLIXML` progress 訊息，之後仍成功。原生平台探測先試 POSIX，再啟動
+`powershell.exe`，即使 SSH 預設 shell 是 `pwsh` 也一樣；互動 stderr 直接轉出。
+單憑這些訊息不能判定成功或失敗。Dev 只在原生命令成功退出、重新讀取並確認
+精確 enabled profile 後回報註冊成功。認證錯誤與安裝／server replacement
+確認仍保持可見。此輸出來自
+[Herdr 原生 SSH setup](https://github.com/herdrdev/herdr/blob/v0.9.1/src/remote/attach.rs)，
+不是 dev 的 fleet PowerShell launcher。
 
 ### Enter 與遠端 session
 
@@ -24437,7 +24488,7 @@ Done 後遞迴 handoff 需重新載入 shell integration。
 | canonical machine registry | linked `modernc.org/sqlite` | 不需要 external database executable；registry 缺失時只有 empty read-only view，明確 enroll 才建立 |
 | public companion derivation 與 Ed25519 generation | system `ssh-keygen` | 仍可使用 existing validated `.pub`；derivation/generation unavailable |
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX target 仍可用；沒有 PowerShell 時 Windows-specific installer/launcher 失敗，不改用 shell fallback |
-| Windows 上的 terminal multiplexing | tmux/Zellij/Herdr（僅 POSIX） | Windows 一律使用 `none` backend；`dev shell-init powershell` 仍能移動 shell |
+| Windows 上的 terminal multiplexing | 原生 Herdr 安裝及可連線的 server | Runtime `auto` 在沒有可用 backend 時退回 `none`；`dev shell-init powershell` 仍能移動 shell |
 | in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為委派給對應套件管理器的升級指令 |
 | verified ephemeral worktree apply | Git、compatible bounded Claude Workflow metadata、known task/artifact state 與每個 available runtime inventory | report 仍可使用，但 missing/unknown proof 絕不符合 apply eligibility |
 
@@ -24581,7 +24632,7 @@ identity diagnostics 仍是 content-free。
 
 `dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心 repository/task/worktree operation 與 SSH host domain 都是 native：static discovery、protected-DACL managed fragment、reparse-point rejection、native `ssh-keygen.exe`、Windows Job Object cancellation，以及 POSIX/Windows remote bootstrap 都有 coverage。Fleet 也可透過 encoded PowerShell launcher target Windows OpenSSH。仍有下列差異：
 
-- 沒有 tmux、Zellij 或 Herdr，因此 runtime backend 一律是 `none`。Grouped runtime/agent activity 與 named session 無法使用；`cd` 指令與 PowerShell wrapper 仍可運作。
+- Herdr 支援原生 Windows。Runtime `auto` 檢查 backend 是否可用，無可連線 server 時退回 `none`；`cd` 指令與 PowerShell wrapper 仍可運作。Fleet 主機連線與受保護 repository workspace 準備的支援範圍分別說明於下方。
 - Shell integration 是 `dev shell-init powershell`。POSIX shell 透過 file descriptor 3 回傳目錄；PowerShell 無法繼承它，wrapper 改用 `DEV_SHELL_CD_FILE` 傳入 temp-file path。
 - `dev fleet open` 會啟動子 shell（`%COMSPEC%`），而非取代 process，因為 Windows 沒有 `exec(2)`。
 - `dev fleet machine-id` 可執行 content-free `_capability` probe，但 native `fleet files` plan/apply payload helpers 會在 content 傳送前被拒絕。
@@ -24830,6 +24881,12 @@ session-wide focus。舊 helper 在 workspace 副作用前失敗；取消或部�
 自動改開 SSH，`--no-runtime` 直接選 SSH。主機 Enter 不要求遠端 dev，可透過
 原生 attach 完成 bootstrap。Herdr 外的 repository 準備需要遠端 server 已就緒；
 若尚未就緒，先用主機導覽，再重試 repository。
+
+Windows x86_64 的主機 Add／Enable／Connect 及主機導覽可使用 Herdr 0.9.1
+或相容新版。平台與 server 相容性由原生 Herdr 檢查，安裝／替換確認也由原生
+程式處理。Windows 需含 ConPTY 的完整套件。Dev 的 `_herdr-repo` workspace
+準備仍限 Linux/macOS；Windows repository 請使用原生 Herdr 或明確 SSH。
+連線設定須放在精確 SSH alias；fleet 額外覆寫與 password source 不會轉交。
 
 ## SSH 診斷契約
 

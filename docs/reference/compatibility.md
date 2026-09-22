@@ -73,7 +73,7 @@ This page separates graceful degradation from real limitations. Reverify it when
 | canonical machine registry | linked `modernc.org/sqlite` | no external database executable; missing registry is an empty read-only view until explicit enrollment |
 | public companion derivation and Ed25519 generation | system `ssh-keygen` | an existing validated `.pub` can still be used; derivation/generation is unavailable |
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX targets remain available; Windows-specific installer/launcher fails without PowerShell rather than using a shell fallback |
-| terminal multiplexing on Windows | tmux/Zellij/Herdr (POSIX only) | Windows always uses the `none` backend; `dev shell-init powershell` still moves the shell |
+| terminal multiplexing on Windows | native Herdr installation and reachable server | Runtime `auto` falls back to `none` when no backend is available; `dev shell-init powershell` still moves the shell |
 | in-place self-update | standalone install (not Homebrew/Scoop/`go install`) | `dev upgrade` delegates to the package manager's upgrade command instead |
 | verified ephemeral worktree apply | Git, compatible bounded Claude Workflow metadata, known task/artifact state, and every available runtime inventory | report remains available, but missing/unknown proof is never apply-eligible |
 
@@ -248,7 +248,7 @@ diagnostics remain content-free.
 
 `dev` compiles and runs on `windows/amd64` and `windows/arm64`, and every release ships a `.zip` for each. Core repository/task/worktree operations and the SSH host domain are native: static discovery, protected-DACL managed fragments, reparse-point rejection, native `ssh-keygen.exe`, Windows Job Object cancellation, and POSIX/Windows remote bootstrap are covered. Fleet can also target Windows OpenSSH through its encoded PowerShell launcher. What still differs:
 
-- There is no tmux, Zellij or Herdr, so the runtime backend is always `none`. Grouped runtime/agent activity and named sessions are unavailable; the `cd` directive and PowerShell wrapper still work.
+- Herdr supports native Windows. Runtime `auto` checks backend availability and falls back to `none` when no server is reachable; the `cd` directive and PowerShell wrapper still work. Fleet host connections and guarded repository workspace preparation have separate support boundaries below.
 - Shell integration is `dev shell-init powershell`. POSIX shells hand the directory back on file descriptor 3; PowerShell cannot inherit it, so the wrapper passes a temp-file path in `DEV_SHELL_CD_FILE` instead.
 - `dev fleet open` starts a child shell (`%COMSPEC%`) rather than replacing the process, because Windows has no `exec(2)`.
 - `dev fleet machine-id` can perform its content-free `_capability` probe, but native `fleet files` plan/apply payload helpers are denied before content is sent.
@@ -526,6 +526,14 @@ not open SSH automatically; `--no-runtime` selects SSH directly. Host Enter work
 without remote dev and may bootstrap through native attachment. Outside Herdr,
 repository preparation needs a ready remote server; use host navigation first
 if it is missing, then retry the repository.
+
+Windows x86_64 host Add/Enable/Connect and host navigation are supported through
+Herdr 0.9.1 or a compatible newer installation. Native Herdr checks platform and
+server compatibility and retains installation/replacement approvals. Use the
+complete Windows package, including ConPTY. Dev's `_herdr-repo` workspace
+preparation remains Linux/macOS-only; open Windows repositories through native
+Herdr or explicit SSH. Connection settings must live in the exact SSH alias;
+fleet-only overrides and password sources are not forwarded.
 
 ## SSH diagnostic contract
 
