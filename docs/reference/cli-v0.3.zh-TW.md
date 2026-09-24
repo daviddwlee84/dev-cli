@@ -82,6 +82,10 @@ integration，取得分類後命令的目錄交接；shell completion 由
 捷徑即使省略於精簡 root listing，仍能直接執行。`git ignore --stdout` 與
 `--list` 仍可在 repository 外執行。
 
+自 v0.3.1 起，terminal graduation 使用可審閱的名稱／發布 wizard；
+`--yes`、非 TTY 與 dry-run 保留直接路徑。Flags 與記住的名稱見
+[畢業指南](../guides/try-graduation.zh-TW.md)。
+
 ## 將已畢業的 repository 退回 Try
 
 ```bash

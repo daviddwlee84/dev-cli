@@ -680,6 +680,15 @@ cancellation and return the original error with a nonzero exit status. Choosing
 `stage` followed by `open` is valid for a local repository. A missing installer
 can be bypassed by declining or explicitly skipping the optional skill.
 
+## Graduate a Try
+
+TRY → Ctrl+O → graduate opens the same wizard as `dev tries graduate`: choose a
+name/category and local (default), add-URL or create-remote publication, review,
+then confirm. Existing remotes are preserved. Cancellation applies no graduation
+or publication; remote failure reports retained local success separately and
+returns an error without automatic retry or rollback. See
+[Try graduation](try-graduation.md) for flags, defaults and remembered names.
+
 ## Return a graduated repository to Try
 
 Use REPOS → Ctrl+O → demote to return a previously graduated Try to the experiment

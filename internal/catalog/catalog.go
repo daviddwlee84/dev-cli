@@ -125,6 +125,7 @@ type Experiment struct {
 	DeprecatedPath string    `toml:"deprecated_path" json:"deprecated_path"`
 	GraduatedAt    time.Time `toml:"graduated_at" json:"graduated_at"`
 	GraduatedPath  string    `toml:"graduated_path" json:"graduated_path"`
+	GraduatedName  string    `toml:"graduated_name,omitempty" json:"graduated_name,omitempty"`
 }
 
 // Location is one host's knowledge of an asset. CurrentPath is where bytes live
@@ -354,6 +355,14 @@ func (e Entry) Validate() error {
 		if e.Experiment.OriginalPath == "" {
 			return fmt.Errorf("catalog asset %s: experiment original path is required", e.ID)
 		}
+		if name := e.Experiment.GraduatedName; name != "" {
+			if err := pathx.ValidateComponent(name); err != nil || name != strings.TrimSpace(name) {
+				return fmt.Errorf("catalog asset %s: graduated name must be a safe normalized component", e.ID)
+			}
+			if e.Experiment.GraduatedAt.IsZero() || e.Experiment.GraduatedPath == "" {
+				return fmt.Errorf("catalog asset %s: graduated name requires graduation timestamp and path", e.ID)
+			}
+		}
 		switch e.Experiment.Phase {
 		case PhaseDeprecated:
 			if e.Experiment.DeprecatedAt.IsZero() || e.Experiment.DeprecatedPath == "" {
@@ -373,6 +382,7 @@ func (e Entry) Validate() error {
 			{"original_path", e.Experiment.OriginalPath},
 			{"deprecated_path", e.Experiment.DeprecatedPath},
 			{"graduated_path", e.Experiment.GraduatedPath},
+			{"graduated_name", e.Experiment.GraduatedName},
 		}); err != nil {
 			return fmt.Errorf("catalog asset %s: %w", e.ID, err)
 		}

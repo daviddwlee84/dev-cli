@@ -101,19 +101,21 @@ func (s *Service) PlanDemote(ctx context.Context, request DemoteRequest) (Demote
 		return plan, errors.New("graduated repository is no longer a Git checkout")
 	}
 	common := probe.live.Repo.GitCommonDir
-	err = s.demoteLock(ctx, common, func() error {
-		fresh, getErr := s.store.Get(entry.ID)
-		if getErr != nil {
+	err = s.withMoveLease(ctx, entry.ID, func() error {
+		return s.demoteLock(ctx, common, func() error {
+			fresh, getErr := s.store.Get(entry.ID)
+			if getErr != nil {
+				return getErr
+			}
+			if !sameRemovalEntry(fresh, entry) {
+				return errors.New("repository changed while acquiring demotion locks")
+			}
+			plan, getErr = s.prepareDemote(ctx, fresh, request.To, request.DryRun)
+			if getErr == nil && plan.GitCommonDir != common {
+				return errors.New("Git common directory changed while acquiring demotion locks")
+			}
 			return getErr
-		}
-		if !sameRemovalEntry(fresh, entry) {
-			return errors.New("repository changed while acquiring demotion locks")
-		}
-		plan, getErr = s.prepareDemote(ctx, fresh, request.To, request.DryRun)
-		if getErr == nil && plan.GitCommonDir != common {
-			return errors.New("Git common directory changed while acquiring demotion locks")
-		}
-		return getErr
+		})
 	})
 	return plan, err
 }
@@ -137,26 +139,28 @@ func (s *Service) ApplyDemote(ctx context.Context, plan DemotePlan) (TransitionR
 	if s.demoteLock == nil || s.demoteGuard == nil {
 		return result, errors.New("demotion requires lifecycle locking and an observation guard")
 	}
-	err := s.demoteLock(ctx, plan.GitCommonDir, func() error {
-		fresh, err := s.store.Get(plan.ID)
-		if err != nil {
+	err := s.withMoveLease(ctx, plan.ID, func() error {
+		return s.demoteLock(ctx, plan.GitCommonDir, func() error {
+			fresh, err := s.store.Get(plan.ID)
+			if err != nil {
+				return err
+			}
+			if !sameRemovalEntry(fresh, plan.entry) {
+				return errors.New("stale demotion plan: catalog record changed")
+			}
+			observed, err := s.prepareDemote(ctx, fresh, plan.Destination, false)
+			if err != nil {
+				return err
+			}
+			if observed.fingerprint() != plan.seal {
+				return fmt.Errorf("stale demotion plan: %s changed", demoteDifference(plan, observed))
+			}
+			result.Item = itemFromEntry(plan.entry.Clone(), LiveFacts{Present: true, CurrentPath: plan.Source, RealPath: plan.Source})
+			result.Plan.Item = result.Item
+			result.Plan.demote = &plan
+			result, err = s.applyTransitionLocked(ctx, result)
 			return err
-		}
-		if !sameRemovalEntry(fresh, plan.entry) {
-			return errors.New("stale demotion plan: catalog record changed")
-		}
-		observed, err := s.prepareDemote(ctx, fresh, plan.Destination, false)
-		if err != nil {
-			return err
-		}
-		if observed.fingerprint() != plan.seal {
-			return fmt.Errorf("stale demotion plan: %s changed", demoteDifference(plan, observed))
-		}
-		result.Item = itemFromEntry(plan.entry.Clone(), LiveFacts{Present: true, CurrentPath: plan.Source, RealPath: plan.Source})
-		result.Plan.Item = result.Item
-		result.Plan.demote = &plan
-		result, err = s.applyTransition(ctx, result)
-		return err
+		})
 	})
 	return result, err
 }

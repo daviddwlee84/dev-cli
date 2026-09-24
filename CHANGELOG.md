@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-09-24
+
+### Added
+
+- Try graduation opens a shared terminal/dashboard wizard for the project name,
+  category and local/add-URL/create-remote choice, then previews and confirms the
+  move. `--remote-url`, `--forge`, `--namespace`, `--visibility` and `--yes` also
+  support direct scripts; dry-run stays promptless and never publishes.
+- Successful local graduation remembers an optional project name for later
+  demote/regraduate cycles. Existing records derive a valid legacy destination
+  basename without read-time migration; an explicit name always wins.
+
+### Changed
+
+- Existing remotes are preserved during graduation, including local renames.
+  New remote creation defaults to private with push, while adding an existing
+  URL defaults to no push; explicit push flags remain authoritative.
+- Remote add/create/push failures return nonzero and retain the completed local
+  graduation and any remote effects, without automatic retries or rollback.
+  Publication revalidates the checkout and reviewed branch/commit before each
+  stage; changed authority after remote creation retains the remote and skips push.
+
+### Fixed
+
+- Detect actual terminals instead of treating every character device as a TTY,
+  so redirected commands, including graduation with `/dev/null` input, remain
+  noninteractive instead of entering a wizard and canceling at EOF.
+
 ## [0.3.0] - 2026-09-24
 
 ### Added
@@ -1444,7 +1472,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.44...v0.3.0
 [0.2.44]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.43...v0.2.44
 [0.2.43]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.42...v0.2.43

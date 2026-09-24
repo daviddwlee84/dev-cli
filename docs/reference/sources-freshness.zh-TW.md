@@ -8,6 +8,11 @@ lang: zh-TW
 
 # 來源與時效
 
+Graduate wizard 預設、發布模式與部分失敗 exit behavior 以共用 CLI／TUI
+adapter 及測試為準。記住的名稱優先序與最後成功的 catalog 寫入以 experiment
+service 為準；唯讀 legacy fallback 不遷移紀錄。見
+[Try 畢業](../guides/try-graduation.zh-TW.md)。
+
 命令家族導覽、永久捷徑與 Try demotion 的 authority 是目前 Cobra tree、
 相容性測試、experiment move service 與 REPOS 的 guarded action adapter。
 見 [v0.3 遷移指南](cli-v0.3.zh-TW.md)。Demote plan 必須經 apply 時重新驗證

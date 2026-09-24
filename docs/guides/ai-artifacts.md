@@ -343,7 +343,7 @@ roots also contain commented `go.mod` boundary markers: Go ignores
 markers declare no product packages or dependencies. Do not place them over
 embedded or generated build inputs, or create empty agent directories.
 
-`python3 scripts/check-distribution.py --version v0.3.0` independently builds
+`python3 scripts/check-distribution.py --version v0.3.1` independently builds
 the actual Git archive and a module ZIP with pinned `golang.org/x/mod v0.38.0`.
 Only a temporary clone disables export attributes for the module test. Both
 payloads are extracted, built and checked for version, help, completions and

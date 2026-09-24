@@ -84,6 +84,10 @@ Documented JSON schemas, task files, catalog identity and TUI tab names remain
 compatible. Shortcuts stay callable even when omitted from the concise root
 listing. `git ignore --stdout` and `--list` still work outside a repository.
 
+From v0.3.1, terminal graduation uses a reviewed name/publication wizard;
+`--yes`, non-TTY and dry-run retain direct paths. See the
+[graduation guide](../guides/try-graduation.md) for flags and remembered names.
+
 ## Return a graduated repository to Try
 
 ```bash

@@ -77,6 +77,15 @@ The dashboard releases its terminal before an attach, shell-directory handoff,
 or external retirement coordinator runs. An ordinary completion/cancellation
 returns to the dashboard. No agent is launched automatically.
 
+## Graduate a Try
+
+TRY → Ctrl+O → graduate opens the same wizard as `dev tries graduate`: choose a
+name/category and local (default), add-URL or create-remote publication, review,
+then confirm. Existing remotes are preserved. Cancellation applies no graduation
+or publication; remote failure reports retained local success separately and
+returns an error without automatic retry or rollback. See
+[Try graduation](try-graduation.md) for flags, defaults and remembered names.
+
 ## Return a graduated repository to Try
 
 Use REPOS → Ctrl+O → demote to return a previously graduated Try to the experiment

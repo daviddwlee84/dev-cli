@@ -235,13 +235,13 @@ func (s *Service) Attach(ctx context.Context, id, path string) (Item, error) {
 
 // PlanGraduate resolves either a present or archived Try and validates its
 // project destination without changing repository contents.
-func (s *Service) PlanGraduate(ctx context.Context, request GraduateRequest) (GraduatePlan, error) {
-	item, diagnostics, err := s.resolveGraduateItem(ctx, request)
+func (s *Service) prepareGraduate(ctx context.Context, request GraduateRequest, item Item, diagnostics []Diagnostic) (GraduatePlan, error) {
 	plan := GraduatePlan{Item: item, DryRun: request.DryRun, Diagnostics: diagnostics}
-	if err != nil {
-		return plan, err
+	plan.Register = item.ID == ""
+	if request.Expected != nil && !sameRemovalEntry(item.Entry, request.Expected) {
+		return plan, errors.New("selected Try changed; refresh graduation review")
 	}
-	if item.Entry == nil || item.ID == "" || item.CatalogError != nil {
+	if item.Entry == nil || item.CatalogError != nil {
 		if item.CatalogError != nil {
 			return plan, fmt.Errorf("try %s is not safely tracked: %w", item.DisplayName(), item.CatalogError)
 		}
@@ -258,7 +258,7 @@ func (s *Service) PlanGraduate(ctx context.Context, request GraduateRequest) (Gr
 
 	name := request.Name
 	if name == "" {
-		name, _, _ = splitDatedBasename(filepath.Base(source))
+		name = SuggestedGraduateName(item)
 	}
 	if name == "" {
 		return plan, fmt.Errorf("could not derive a project name from %s — pass --name", source)
@@ -305,45 +305,17 @@ func (s *Service) PlanGraduate(ctx context.Context, request GraduateRequest) (Gr
 	plan.NeedsGitInit = probe.live.Repo == nil
 	plan.NeedsInitialCommit = plan.NeedsGitInit || !s.hasCommit(ctx, source)
 	plan.LinkedWorktree = transition.LinkedWorktree
-	return plan, nil
+	return s.freezeGraduate(ctx, plan, probe)
 }
 
 // Graduate prepares Git at the current location, then uses the same journaled
 // move protocol as archive and restore.
 func (s *Service) Graduate(ctx context.Context, request GraduateRequest) (GraduateResult, error) {
 	plan, err := s.PlanGraduate(ctx, request)
-	result := GraduateResult{Plan: plan, Item: plan.Item, Diagnostics: plan.Diagnostics}
 	if err != nil {
-		return result, err
+		return GraduateResult{Plan: plan, Item: plan.Item, Diagnostics: plan.Diagnostics}, err
 	}
-	if request.DryRun {
-		return result, nil
-	}
-	if plan.NeedsGitInit {
-		if _, err := s.gitRun(ctx, plan.Source, "init", "-b", "main"); err != nil {
-			return result, fmt.Errorf("initialize Git before graduating %s: %w", plan.Source, err)
-		}
-		result.GitInitialized = true
-	}
-	made, err := s.ensureInitialCommit(ctx, plan.Source, plan.Name)
-	if err != nil {
-		return result, fmt.Errorf("ensure initial commit before graduating %s: %w", plan.Source, err)
-	}
-	result.InitialCommitMade = made
-
-	transitionResult, err := s.applyTransition(ctx, TransitionResult{
-		Plan: TransitionPlan{
-			Operation: TransitionGraduate, Item: plan.Item,
-			Source: plan.Source, Destination: plan.Destination,
-			Diagnostics: plan.Diagnostics, LinkedWorktree: plan.LinkedWorktree,
-		},
-		Item: plan.Item, Diagnostics: plan.Diagnostics,
-	})
-	result.Item = transitionResult.Item
-	result.Moved = transitionResult.Moved
-	result.RolledBack = transitionResult.RolledBack
-	result.RollbackError = transitionResult.RollbackError
-	return result, err
+	return s.ApplyGraduate(ctx, plan)
 }
 
 // PlanArchive validates a present Try's collision-safe hidden destination.
@@ -477,6 +449,15 @@ func (s *Service) validatePlannedMove(entry *catalog.Entry, plan TransitionPlan)
 }
 
 func (s *Service) applyTransition(ctx context.Context, result TransitionResult) (TransitionResult, error) {
+	var applyErr error
+	err := s.withMoveLease(ctx, result.Plan.Item.ID, func() error {
+		result, applyErr = s.applyTransitionLocked(ctx, result)
+		return applyErr
+	})
+	return result, err
+}
+
+func (s *Service) applyTransitionLocked(ctx context.Context, result TransitionResult) (TransitionResult, error) {
 	plan := result.Plan
 	if err := s.beginMoveIntent(ctx, plan); err != nil {
 		return result, err
@@ -529,6 +510,11 @@ func (s *Service) applyTransition(ctx context.Context, result TransitionResult) 
 			return failMove(err)
 		}
 	}
+	if plan.Operation == TransitionGraduate && plan.graduate != nil {
+		if err := s.verifyGraduateBoundary(ctx, plan.graduate); err != nil {
+			return failMove(err)
+		}
+	}
 	if err := s.movePath(ctx, linked, plan.Source, plan.Destination); err != nil {
 		if errors.Is(err, syscall.EXDEV) {
 			return failMove(fmt.Errorf("move %s to %s: %w", plan.Source, plan.Destination, ErrCrossFilesystem))
@@ -569,6 +555,9 @@ func (s *Service) beginMoveIntent(ctx context.Context, plan TransitionPlan) erro
 		if plan.Operation == TransitionDemote && (plan.demote == nil || !sameRemovalEntry(entry, plan.demote.entry)) {
 			return errors.New("stale demotion catalog authority before move intent")
 		}
+		if plan.Operation == TransitionGraduate && (plan.graduate == nil || !sameRemovalEntry(entry, plan.graduate.plan.entry)) {
+			return errors.New("stale graduation catalog authority before move intent")
+		}
 		if err := s.validateTransitionEntry(entry, plan.Operation, plan.Source); err != nil {
 			return err
 		}
@@ -604,6 +593,12 @@ func (s *Service) beginMoveIntent(ctx context.Context, plan TransitionPlan) erro
 				current.MoveIntent.GitDirIdentity = plan.demote.gitDirIdentity
 				current.MoveIntent.LinkedWorktree = plan.LinkedWorktree
 			}
+			if plan.Operation == TransitionGraduate {
+				current.MoveIntent.SourceIdentity = plan.graduate.plan.identity
+				current.MoveIntent.GitCommonIdentity = plan.graduate.plan.gitIdentity
+				current.MoveIntent.GitDirIdentity = plan.graduate.plan.gitDirIdentity
+				current.MoveIntent.LinkedWorktree = plan.LinkedWorktree
+			}
 			return nil
 		})
 		return err
@@ -613,7 +608,7 @@ func (s *Service) beginMoveIntent(ctx context.Context, plan TransitionPlan) erro
 func (s *Service) rollbackTransition(ctx context.Context, result TransitionResult, cause error) (TransitionResult, error) {
 	plan := result.Plan
 	rollbackErr := rejectExisting(plan.Source)
-	if rollbackErr == nil && plan.Operation == TransitionDemote {
+	if rollbackErr == nil && (plan.Operation == TransitionDemote || plan.Operation == TransitionGraduate) {
 		entry, err := s.store.Get(plan.Item.ID)
 		if err != nil {
 			rollbackErr = err
@@ -946,10 +941,23 @@ func (s *Service) reconcileMoveIntentByIDLocked(ctx context.Context, id string) 
 }
 
 func (s *Service) reconcileMoveIntent(ctx context.Context, snapshot *catalog.Entry) error {
-	if intent := snapshot.MoveIntent; intent != nil && intent.Host == s.host && intent.Operation == string(TransitionDemote) {
-		return s.reconcileDemoteIntent(ctx, snapshot)
-	}
-	return s.reconcileMoveIntentLocked(ctx, snapshot)
+	return s.withMoveLease(ctx, snapshot.ID, func() error {
+		fresh, err := s.store.Get(snapshot.ID)
+		if err != nil {
+			return err
+		}
+		if fresh.MoveIntent == nil {
+			return nil
+		}
+		if !moveIntentEqual(fresh.MoveIntent, snapshot.MoveIntent) {
+			return errors.New("move intent changed while acquiring recovery lease")
+		}
+		if intent := fresh.MoveIntent; intent.Host == s.host &&
+			(intent.Operation == string(TransitionDemote) || intent.Operation == string(TransitionGraduate) && intent.SourceIdentity != "") {
+			return s.reconcileDemoteIntent(ctx, fresh)
+		}
+		return s.reconcileMoveIntentLocked(ctx, fresh)
+	})
 }
 
 func (s *Service) reconcileMoveIntentLocked(ctx context.Context, snapshot *catalog.Entry) error {
@@ -1035,7 +1043,7 @@ func (s *Service) clearMoveIntent(ctx context.Context, id string, expected *cata
 		if !sourceExists || destinationExists {
 			return fmt.Errorf("catalog asset %s move state changed during rollback reconciliation", id)
 		}
-		if expected.Operation == string(TransitionDemote) {
+		if expected.SourceIdentity != "" {
 			probe := s.probeDirectory(ctx, expected.SourcePath)
 			if !probe.valid {
 				return errors.New("demotion source cannot be verified during move recovery")
@@ -1093,7 +1101,7 @@ func (s *Service) finalizeMoveIntent(ctx context.Context, id string, probe direc
 		if operation == TransitionGraduate && probe.live.Repo == nil {
 			return errors.New("moved project is not a discoverable Git repository")
 		}
-		if operation == TransitionDemote {
+		if intent.SourceIdentity != "" {
 			if err := verifyDemoteDestination(intent, probe); err != nil {
 				return err
 			}
@@ -1128,6 +1136,7 @@ func (s *Service) finalizeMoveIntent(ctx context.Context, id string, probe direc
 				entry.Experiment.Phase = catalog.PhaseGraduated
 				entry.Experiment.GraduatedAt = intent.Started
 				entry.Experiment.GraduatedPath = probe.live.CurrentPath
+				entry.Experiment.GraduatedName = filepath.Base(intent.DestinationPath)
 				if probe.originURL != "" {
 					entry.Experiment.OriginURL = probe.originURL
 					entry.RemoteIdentity = remoteIdentityFromOrigin(probe.originURL)

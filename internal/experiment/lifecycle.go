@@ -66,8 +66,13 @@ func storedLocationMatches(location catalog.Location, source string) bool {
 }
 
 func (s *Service) resolveGraduateItem(ctx context.Context, request GraduateRequest) (Item, []Diagnostic, error) {
+	return s.resolveGraduateItemWithOptions(ctx, request, false)
+}
+
+func (s *Service) resolveGraduateItemWithOptions(ctx context.Context, request GraduateRequest, readOnly bool) (Item, []Diagnostic, error) {
 	if strings.TrimSpace(request.Ref) != "" {
 		return s.ResolveWithOptions(ctx, request.Ref, ResolveOptions{
+			ReadOnly:          readOnly,
 			IncludeDeprecated: true,
 			IncludeArchived:   true,
 		})
@@ -97,6 +102,7 @@ func (s *Service) resolveGraduateItem(ctx context.Context, request GraduateReque
 		return Item{}, nil, fmt.Errorf("%s is not inside a visible try under %s", current, s.triesRoot)
 	}
 	return s.ResolveWithOptions(ctx, filepath.Join(s.triesRoot, first), ResolveOptions{
+		ReadOnly:          readOnly,
 		IncludeDeprecated: true,
 		IncludeArchived:   true,
 	})

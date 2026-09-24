@@ -8,6 +8,22 @@ tested_with: Claude Code 2.1.259
 
 # Compatibility and known limitations
 
+## Graduate wizard and remembered names (v0.3.1)
+
+TTY graduation now previews and confirms through the shared CLI/TRY wizard.
+`--yes` and non-TTY invocations remain direct; `--dry-run` never prompts or
+publishes. New `--remote-url`, `--forge`, `--namespace` and `--visibility` flags
+extend `[try]`/`--name`; `--remote`, `--private` and `--push` remain supported.
+Any existing remote blocks new add/create requests and is preserved by local
+moves. Remote-step failures now return nonzero while retaining local success
+and completed remote effects, with no automatic retry or rollback.
+
+The optional schema-1 `experiment.graduated_name` records the last successful
+local graduation name alongside its time/path. Legacy records remain readable;
+valid POSIX/Windows `graduated_path` basenames provide in-memory fallback without
+read-time migration. Explicit names win, and categories are not remembered.
+See [Try graduation](../guides/try-graduation.md).
+
 ## v0.3 command paths and Try demotion
 
 The 17 primary entrypoints reorganize command discovery while keeping all old

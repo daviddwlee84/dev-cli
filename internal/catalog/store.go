@@ -462,8 +462,20 @@ func mergeImportedEntry(current, incoming *Entry, host string, location Location
 		value := *incoming.Experiment
 		merged.Experiment = &value
 		changed = true
-	case merged.Experiment != nil && incoming.Experiment != nil && !experimentsEqual(*merged.Experiment, *incoming.Experiment):
-		return nil, false, importConflict(incoming.ID, current.ID, "experiment", "experiment metadata differs")
+	case merged.Experiment != nil && incoming.Experiment != nil:
+		left, right := *merged.Experiment, *incoming.Experiment
+		// An older schema-1 writer may omit the additive remembered name. Merge
+		// it only when every original history field agrees; never erase it.
+		if left.GraduatedName == "" || right.GraduatedName == "" {
+			left.GraduatedName, right.GraduatedName = "", ""
+		}
+		if !experimentsEqual(left, right) {
+			return nil, false, importConflict(incoming.ID, current.ID, "experiment", "experiment metadata differs")
+		}
+		if merged.Experiment.GraduatedName == "" && incoming.Experiment.GraduatedName != "" {
+			merged.Experiment.GraduatedName = incoming.Experiment.GraduatedName
+			changed = true
+		}
 	}
 
 	if value := earlierTime(merged.Created, incoming.Created); !value.Equal(merged.Created) {
@@ -507,7 +519,8 @@ func experimentsEqual(left, right Experiment) bool {
 		left.DeprecatedAt.Equal(right.DeprecatedAt) &&
 		left.DeprecatedPath == right.DeprecatedPath &&
 		left.GraduatedAt.Equal(right.GraduatedAt) &&
-		left.GraduatedPath == right.GraduatedPath
+		left.GraduatedPath == right.GraduatedPath &&
+		left.GraduatedName == right.GraduatedName
 }
 
 func earlierTime(left, right time.Time) time.Time {

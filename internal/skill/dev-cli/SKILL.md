@@ -12,7 +12,7 @@ sessions; dev records task intent.
 
 Use leaf `--help` for syntax, `dev help <topic>` for workflows, and
 `dev help --tree` for families. See [navigation](references/command-navigation.md)
-for shortcuts and Try demotion; dashboard details: `dev help tui`.
+for shortcuts and Try graduation/demotion; dashboard details: `dev help tui`.
 Prefer supported JSON. Read help before mutation: some actions apply immediately,
 others require preview/apply. Do not preload manuals or run routine diagnostics.
 

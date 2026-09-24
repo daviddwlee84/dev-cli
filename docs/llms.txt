@@ -20,6 +20,7 @@
 - [Local work triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/): Find forgotten local work across ordinary repositories and Tries, review synchronization batches, and preserve ignored data during checkout cleanup.
 - [Machine summary](https://daviddwlee84.github.io/dev-cli/guides/machine-summary/): Generate a current machine-wide snapshot of repositories, Tries, tasks, worktrees, runtimes, and recovery risks.
 - [Development journal](https://daviddwlee84.github.io/dev-cli/guides/dev-journal/): Generate daily, weekly, or long-range development journals for people, scripts, and AI agents.
+- [Graduate a Try](https://daviddwlee84.github.io/dev-cli/guides/try-graduation/): Graduate a Try with a reviewed local name and publication choice, retain prior naming across demotion, and understand partial remote failures.
 - [Worktrees and provisioning](https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/): Choose the owner and location of each worktree, then provision ignored files and dependencies safely.
 - [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/): Initialize complete submodule workspaces, select task branches, and retire child repositories before their parent.
 - [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/): Coordinate several coding agents around change-stream ownership, explicit mutation boundaries, and replaceable runtimes.
@@ -81,6 +82,7 @@
 - [本地工作整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/): 找回普通 repository 與 Try 中遺漏的本地工作，預覽批次同步，並在清理 checkout 時保護 ignored 資料。
 - [Machine summary](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/machine-summary/): 產生目前機器上 repositories、Tries、tasks、worktrees、runtimes 與 recovery risks 的完整 snapshot。
 - [Development journal](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dev-journal/): 產生日、週或長時間範圍的 development journal，供人、script 與 AI agent 使用。
+- [讓 Try 畢業](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/try-graduation/): 透過確認本機名稱與發布選項讓 Try 畢業，保留 demote 後的命名預設，並理解遠端操作部分失敗。
 - [Worktree 與環境佈建](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioning/): 選擇每個 worktree 的 owner 與位置，再安全佈建 ignored files 與 dependencies。
 - [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/): 初始化完整的 submodule 工作區、選擇任務分支，並由內往外回收子 repository。
 - [平行 Agent 與 Runtime](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/): 以變更流 ownership、明確 mutation boundary 與可替換 runtime 協調多個 coding agents。

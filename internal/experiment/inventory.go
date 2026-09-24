@@ -383,6 +383,7 @@ func (s *Service) Resolve(ctx context.Context, ref string) (Item, []Diagnostic, 
 // history class to be opted into explicitly.
 func (s *Service) ResolveWithOptions(ctx context.Context, ref string, options ResolveOptions) (Item, []Diagnostic, error) {
 	items, diagnostics, err := s.List(ctx, ListOptions{
+		ReadOnly:          options.ReadOnly,
 		IncludeDeprecated: options.IncludeDeprecated,
 		IncludeArchived:   options.IncludeArchived,
 		IncludeEvicted:    options.IncludeEvicted,

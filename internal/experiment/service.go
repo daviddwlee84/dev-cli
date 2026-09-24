@@ -221,6 +221,7 @@ type ListOptions struct {
 // ResolveOrCreate use the zero value, so an archived, deprecated, evicted, or
 // graduated record can never be opened or revived implicitly.
 type ResolveOptions struct {
+	ReadOnly          bool
 	IncludeDeprecated bool
 	IncludeArchived   bool
 	IncludeEvicted    bool
@@ -256,6 +257,7 @@ type TransitionPlan struct {
 
 	LinkedWorktree bool
 	demote         *DemotePlan
+	graduate       *graduateMoveAuthority
 }
 
 // TransitionResult reports both the move and its durable catalog outcome.
@@ -320,24 +322,36 @@ type GraduateRequest struct {
 	Name       string
 	CurrentDir string
 	DryRun     bool
+	Expected   *catalog.Entry
 }
 
-// GraduatePlan can be rendered before an apply. Planning may reconcile legacy
-// catalog metadata, but never changes the source or destination trees. Apply
-// plans again so a destination created after preview cannot be overwritten.
+// GraduatePlan seals the exact reviewed source, catalog, contents, Git state and
+// destination. Planning does not enroll legacy folders or change catalog/source
+// contents. ApplyGraduate validates the returned plan unchanged.
 type GraduatePlan struct {
 	Item Item
 
-	Source      string
-	Destination string
-	Category    string
-	Name        string
+	Source       string
+	Destination  string
+	Category     string
+	Name         string
+	GitCommonDir string
+	Register     bool
 
-	NeedsGitInit       bool
-	NeedsInitialCommit bool
-	LinkedWorktree     bool
-	DryRun             bool
-	Diagnostics        []Diagnostic
+	NeedsGitInit                                    bool
+	NeedsInitialCommit                              bool
+	LinkedWorktree                                  bool
+	DryRun                                          bool
+	Diagnostics                                     []Diagnostic
+	entry                                           *catalog.Entry
+	host, triesRoot, projectRoot                    string
+	identity, gitIdentity, gitDirIdentity, gitState string
+	gitConfig, gitOtherRefs, gitHeadRef             string
+	gitCheckoutHead, gitCheckoutBranch              string
+	gitDetached                                     bool
+	tree, products, parent, parentIdentity          string
+	seedREADME                                      bool
+	seal                                            string
 }
 
 // GraduateResult reports local work only. Remote creation and push remain an
@@ -352,6 +366,19 @@ type GraduateResult struct {
 	RolledBack        bool
 	RollbackError     error
 	Diagnostics       []Diagnostic
+	Registered        bool
+	Publication       *GraduatePublication
+	PublicationError  error
+}
+
+// GraduatePublication is captured before the local graduation leases are
+// released. Native identities use gitx.DirectoryIdentity for caller rechecks.
+type GraduatePublication struct {
+	Checkout, CheckoutIdentity      string
+	GitCommonDir, GitCommonIdentity string
+	GitDir, GitDirIdentity          string
+	Branch, Head                    string
+	Detached                        bool
 }
 
 // GitRunFunc and the other hook types are narrow seams used to make destructive
