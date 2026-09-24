@@ -18,6 +18,15 @@ import (
 // ErrNotARepo is returned when a directory is not inside a git working tree.
 var ErrNotARepo = errors.New("not a git repository")
 
+type readOnlyObservationsKey struct{}
+
+// WithReadOnlyObservations disables Git's optional index refresh writes for
+// this observation call tree, including nested domain helpers. Explicit Git
+// mutations are still mutations; this is not an execution permission boundary.
+func WithReadOnlyObservations(ctx context.Context) context.Context {
+	return context.WithValue(ctx, readOnlyObservationsKey{}, true)
+}
+
 // Error carries the failing command and git's own stderr, which is almost
 // always more useful than the exit status alone.
 type Error struct {
@@ -46,6 +55,9 @@ func run(ctx context.Context, dir string, args ...string) (string, error) {
 // runEnv executes git with task-scoped environment overrides. It is used for
 // alternate-index analysis that must never touch the user's real index.
 func runEnv(ctx context.Context, dir string, overrides []string, args ...string) (string, error) {
+	if readOnly, _ := ctx.Value(readOnlyObservationsKey{}).(bool); readOnly {
+		overrides = append(append([]string{}, overrides...), "GIT_OPTIONAL_LOCKS=0")
+	}
 	if observations, ok := ctx.Value(observationKey{}).(*observations); ok && observations.slots != nil {
 		select {
 		case observations.slots <- struct{}{}:

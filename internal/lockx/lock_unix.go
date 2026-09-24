@@ -15,6 +15,10 @@ type fileLock struct {
 	file *os.File
 }
 
+func acquireMovable(ctx context.Context, path string) (*fileLock, error) {
+	return acquire(ctx, path)
+}
+
 func acquire(ctx context.Context, path string) (*fileLock, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err

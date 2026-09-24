@@ -62,20 +62,20 @@ func assertWorkflowTLDR(t *testing.T, out, nextSection string) string {
 		}
 	}
 	for _, want := range []string{
-		"dev start", "HOT", "dev park --next", "dev resume", "WARM",
-		"dev done", "dev done --ff", "dev done --pr", "push / review handoff",
-		"feedback --> resume if parked --> work", "DONE", "dev sweep (report)",
-		"dev sweep --apply (reap)", "Remote merge detection and cleanup are not automatic",
+		"dev work start", "HOT", "dev work park --next", "dev work resume", "WARM",
+		"dev work done", "dev work done --ff", "dev work done --pr", "push / review handoff",
+		"feedback --> resume if parked --> work", "DONE", "dev work sweep (report)",
+		"dev work sweep --apply (reap)", "Remote merge detection and cleanup are not automatic",
 	} {
 		if !strings.Contains(flow, want) {
 			t.Errorf("workflow missing %q:\n%s", want, flow)
 		}
 	}
-	const prBranch = "+-- branch/worktree: dev done --pr --> push / review handoff"
-	if !strings.Contains(flow, prBranch) {
+	const prBranch = "branch/worktree: dev work done --pr --> push / review handoff"
+	if !strings.Contains(strings.Join(strings.Fields(flow), " "), prBranch) {
 		t.Errorf("workflow PR branch does not terminate at the handoff: \n%s", flow)
 	}
-	if strings.Contains(flow, "dev done --pr --> DONE") {
+	if strings.Contains(flow, "dev work done --pr --> DONE") {
 		t.Errorf("PR handoff must not transition directly to DONE:\n%s", flow)
 	}
 	return flow

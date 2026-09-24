@@ -6,10 +6,10 @@ selected repository, every configured repository, and global agent paths.
 ## Reading the inventory
 
 ```bash
-dev skill list                         # current checkout + global
-dev skill list --repo api --project    # one repository/checkout
-dev skill list --all                   # canonical repositories + global once
-dev skill list --all --check --json    # explicit upstream freshness check
+dev agent skill list                         # current checkout + global
+dev agent skill list --repo api --project    # one repository/checkout
+dev agent skill list --all                   # canonical repositories + global once
+dev agent skill list --all --check --json    # explicit upstream freshness check
 ```
 
 Project/global copies of one skill remain separate rows. Repository identity,
@@ -58,14 +58,14 @@ embedded `dev-cli` skill can verify that every bundled file matches; additional 
 ## Updating
 
 ```bash
-dev skill add
-dev skill update <name> --project [--repo api]
-dev skill update <name> --global
+dev agent skill add
+dev agent skill update <name> --project [--repo api]
+dev agent skill update <name> --global
 ```
 
 Only explicit add/install/update operations invoke the provider to change
 skills. They require a directly installed `skills` executable and may access the
-network; `dev doctor` may separately run that trusted executable's `--version`
+network; `dev self doctor` may separately run that trusted executable's `--version`
 probe. `dev` never invokes `npx` from a repository checkout, so a local
 `node_modules/.bin/skills` cannot substitute for the provider; an ineligible PATH
 shim is skipped when a later trusted executable exists. Unknown/source-less lock
@@ -73,7 +73,7 @@ entries are not mutation-eligible, and cooperating `dev` processes serialize the
 entire provider run. Updates require one explicit scope and confirmation (or
 `--yes`); no bulk update is implied by inventory.
 
-`dev doctor` reports native inventory separately from the optional mutation
+`dev self doctor` reports native inventory separately from the optional mutation
 provider.
 
 ## dev's own skill is different
@@ -85,13 +85,13 @@ content against the embedded files.
 
 ## Local transfers
 
-`dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+`dev agent skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
 previews per-skill relative links from `.agents/skills`. Use `--mode copy` for an
 independent tree, or `--mode move` for a reviewed source retirement. `--from-repo`
 and `--to-repo` select exact checkouts. Existing different trees and foreign links
 are conflicts. Skills containing known credential files or private keys are rejected.
 
-`dev skill transfer apply --plan <id>` applies only the reviewed observations.
+`dev agent skill transfer apply --plan <id>` applies only the reviewed observations.
 `transfer status` lists local ledgers; `transfer undo <id>` creates a reverse plan
 that preserves intervening edits. `transfer refresh <id>` previews mirror refresh.
 Private recovery payloads live under dev's state directory, never in plan JSON.
@@ -109,14 +109,14 @@ unverifiable hash ordering require an explicit alternative such as copy.
 
 # Skills management
 
-`dev skill manage` opens an independent wizard. REPOS and SKILLS offer the same
+`dev agent skill manage` opens an independent wizard. REPOS and SKILLS offer the same
 workflow through Ctrl+O; it does not add another dashboard tab.
 
 ```bash
-dev skill manage
-dev skill manage --repo api
-dev skill manage --all
-dev skill list --all --check --json
+dev agent skill manage
+dev agent skill manage --repo api
+dev agent skill manage --all
+dev agent skill list --all --check --json
 ```
 
 Choose project, global, project plus global, or multiple repositories. The
@@ -139,7 +139,7 @@ selected skill and command. Confirmation is required before execution.
 
 Management mutations require a globally installed `skills` executable compatible
 with the tested 1.5.23–1.5.25 contracts (supported 1.x versions from 1.5.23).
-`dev doctor` reports the dependency; install or upgrade it with
+`dev self doctor` reports the dependency; install or upgrade it with
 `npm install -g skills`. dev does not install dependencies automatically or fall
 back to npx. Listing and checking continue to work when the dependency is absent.
 
@@ -165,7 +165,7 @@ content conflicts. Dependency skills with colliding names require individual
 attention. Both operations retain native output and verify installed results;
 neither is included in cross-repository batches in this version.
 
-`dev skill install` and `dev skill sync` still manage dev's bundled skill. The
-existing single-skill `dev skill update <skill> --project|--global` command remains
+`dev agent skill install` and `dev agent skill sync` still manage dev's bundled skill. The
+existing single-skill `dev agent skill update <skill> --project|--global` command remains
 available for automation. Explicit transfer preparation keeps its separate pinned
 provider and verified-payload contract.

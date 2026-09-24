@@ -15,9 +15,9 @@ worktree 與各自獨立的子 repository checkout，不會帶入原 checkout �
 ## 把已知 repository 加為 submodule
 
 ```bash
-dev submodule add                           # 選來源、路徑、checkout 模式
-dev submodule add owner/library libs/library --dry-run --json
-dev submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes
+dev git submodule add                           # 選來源、路徑、checkout 模式
+dev git submodule add owner/library libs/library --dry-run --json
+dev git submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes
 dev repo add-as-submodule owner/library libs/library --checkout=default-branch --yes
 ```
 
@@ -39,7 +39,7 @@ Wizard 提供 `pinned`／`default-branch`，非互動預設 pinned。`--ref` 僅
 commit。Default-branch 模式建立 tracking branch，不假設名稱為 `main`。兩種模式
 都 stage 固定 gitlink，不設定 `update --remote` 政策、不改變日後 clone／worktree
 的初始化方式，也不自動建立 task-member intent。需要任務分支時另用
-`dev submodule develop`。
+`dev git submodule develop`。
 
 `--submodules=recursive|none` 覆蓋 parent 的有效初始化設定，只處理新子 repo 的
 後代。只 stage `.gitmodules` 與新 gitlink，不 commit／push／建立 runtime，也不
@@ -51,7 +51,7 @@ JSON 包含 `operation`、`parent`、`source`、相對 `path`、`checkout`、選
 Phase 區分 `planned`、`not-added`、`clone-incomplete`、`cloned`、`added-unstaged`、
 `added`、`initialization-incomplete`、`complete`；失敗回傳非零並保留部分結果。
 Clone／ref／staging 失敗可能留下檔案或 metadata：先檢查回報的精確路徑，必要時
-手動完成 metadata／staging，再於新子 repo 內用 `dev submodule init` 重試缺少的
+手動完成 metadata／staging，再於新子 repo 內用 `dev git submodule init` 重試缺少的
 後代。不覆蓋重跑 add、不強制刪除殘留 clone；retirement 專用的 `recover` 不是
 新增流程的復原指令。
 
@@ -63,11 +63,11 @@ REPOS／REMOTE 的 `y u` 可複製網路 clone URL：REPOS 使用選中 checkout
 
 ```bash
 dev repo clone owner/dotfiles-all
-dev start dotfiles-all --task platform-change --base main \
+dev work start dotfiles-all --task platform-change --base main \
   --submodule dotfiles --submodule dotfiles-windows
 # 在新的 managed worktree 中：
-dev submodule status
-dev submodule develop another/module --submodule-base another/module=origin/main
+dev git submodule status
+dev git submodule develop another/module --submodule-base another/module=origin/main
 ```
 
 Clone 與建立 worktree 預設遞迴初始化。子 repo 停在外層 gitlink 指定的 commit，
@@ -86,7 +86,7 @@ repo 設定，再優先於全域設定；clone 取得外層後才讀取其 repo 
 `--submodules=none` 略過初始化；`--no-provision` 只略過環境設定，不略過 Git
 初始化。工具不會自動把子 repo 推進到最新 main。
 
-`dev submodule init --dry-run` 僅做本地檢查。實際 init 可連線取得缺少的
+`dev git submodule init --dry-run` 僅做本地檢查。實際 init 可連線取得缺少的
 checkout，但保留既有 HEAD 與 dirty 內容；未初始化卻非空的目錄會被阻擋。
 初始化失敗會保留部分成果、回傳失敗，並停止 runtime handoff／agent dispatch。
 先重試初始化，再繼續環境設定。
@@ -100,8 +100,8 @@ commit 記錄兩個 gitlinks 與相關跨 repo 文件。
 Manager 負責驗證前提，不自動替內層 commit／push／merge。外層 `--push` 不代表
 遞迴推送子 repo；gitlink 更新與衝突解決仍是明確操作。
 
-`dev status`、`dev repo context`、`dev ls --json` 與 repository UI evidence
-會顯示子 repo 狀態；`dev submodule status --json` 提供完整本地 graph。
+`dev status`、`dev repo context`、`dev work list --json` 與 repository UI evidence
+會顯示子 repo 狀態；`dev git submodule status --json` 提供完整本地 graph。
 未初始化、無法確認或讀取失敗都不等於 clean，這些讀取不會 fetch／查詢遠端。
 
 ## 暫停與回收
@@ -109,11 +109,11 @@ Manager 負責驗證前提，不自動替內層 commit／push／merge。外層 `
 從目標 checkout 及 runtime 外執行：
 
 ```bash
-dev park platform-change --cold --push --recursive
-dev resume platform-change --fetch
+dev work park platform-change --cold --push --recursive
+dev work resume platform-change --fetch
 # 外層 task 已整合後：
-dev retire platform-change --recursive
-dev sweep --merged-worktrees --recursive # 先看報告
+dev work retire platform-change --recursive
+dev work sweep --merged-worktrees --recursive # 先看報告
 ```
 
 Cold 要求工作已提交、推送且可重建，但不要求已合併。Retire 另要求選中的子 repo
@@ -123,7 +123,7 @@ Cold 要求工作已提交、推送且可重建，但不要求已合併。Retire
 `--recursive` 明確授權刪除工作區專屬的子 clone，包含其私有 refs／objects。
 即使全部 gitlink 都是空的，移除 linked worktree 仍需此旗標。外層分支預設保留；
 canonical 與共享 repository 不會被連帶刪除。`--force` 不略過子 repo 檢查。
-`dev flow` 有明確的 managed／unmanaged checkout 遞迴動作，done 清理流程也會
+`dev repo flow` 有明確的 managed／unmanaged checkout 遞迴動作，done 清理流程也會
 詢問是否包含子 repo。
 
 僅在移除 linked worktree 時，從未初始化或完全空的 gitlink 可由本地證明為空：
@@ -169,8 +169,8 @@ checkout 目錄留給一般不帶 force 的 `git worktree remove` 處理。這�
 恢復；程序中斷或路徑被重用則保留暫存資料，並回報精確的 `journal.json`：
 
 ```bash
-dev submodule recover /exact/.dev-submodule-retirement-ID/journal.json --dry-run
-dev submodule recover /exact/.dev-submodule-retirement-ID/journal.json
+dev git submodule recover /exact/.dev-submodule-retirement-ID/journal.json --dry-run
+dev git submodule recover /exact/.dev-submodule-retirement-ID/journal.json
 ```
 
 Recover 用於恢復，不沿用舊證明刪除資料。外層 checkout 已移除時，只有保留的分支

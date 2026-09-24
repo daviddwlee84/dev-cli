@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
+	"github.com/daviddwlee84/dev-cli/internal/catalog"
 	"github.com/daviddwlee84/dev-cli/internal/forge"
 	"github.com/daviddwlee84/dev-cli/internal/repo"
 	"github.com/daviddwlee84/dev-cli/internal/task"
@@ -28,6 +29,7 @@ type WorkflowRequest struct {
 	Action          string
 	Task            *task.Task
 	Repo            repo.Repo
+	RepoAsset       *catalog.Entry
 	Try             TryRow
 	Remote          *forge.RemoteRepo
 	Path            string

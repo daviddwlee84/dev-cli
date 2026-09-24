@@ -170,6 +170,12 @@ type MoveIntent struct {
 	SourcePath      string    `toml:"source_path" json:"source_path"`
 	DestinationPath string    `toml:"destination_path" json:"destination_path"`
 	Started         time.Time `toml:"started" json:"started"`
+	// Demotion retains physical identity across a move interrupted before
+	// catalog finalization. Older operations leave these fields empty.
+	SourceIdentity    string `toml:"source_identity,omitempty" json:"source_identity,omitempty"`
+	GitCommonIdentity string `toml:"git_common_identity,omitempty" json:"git_common_identity,omitempty"`
+	GitDirIdentity    string `toml:"git_dir_identity,omitempty" json:"git_dir_identity,omitempty"`
+	LinkedWorktree    bool   `toml:"linked_worktree,omitempty" json:"linked_worktree,omitempty"`
 }
 
 // Entry is one logical asset. ID is the stable filename stem and is deliberately
@@ -474,6 +480,9 @@ func validateRecoveryReceipt(receipt RecoveryReceipt) error {
 }
 
 func validateMoveIntent(intent MoveIntent) error {
+	if intent.Operation == "demote" && (intent.SourceIdentity == "" || intent.GitCommonIdentity == "" || intent.GitDirIdentity == "") {
+		return errors.New("demote move intent requires source and Git common-directory identities")
+	}
 	if err := validateHostValue("move intent host", intent.Host); err != nil {
 		return err
 	}
@@ -493,6 +502,9 @@ func validateMoveIntent(intent MoveIntent) error {
 		{"operation", intent.Operation},
 		{"source_path", intent.SourcePath},
 		{"destination_path", intent.DestinationPath},
+		{"source_identity", intent.SourceIdentity},
+		{"git_common_identity", intent.GitCommonIdentity},
+		{"git_dir_identity", intent.GitDirIdentity},
 	}); err != nil {
 		return err
 	}

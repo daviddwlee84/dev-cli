@@ -2,7 +2,7 @@
 description: Understand dev-cli as durable Git history, scoped intent and catalog state, repository quick-note sidecars, disposable worktrees, and replaceable runtimes.
 authority: project
 status: stable
-verified_on: 2026-09-13
+verified_on: 2026-09-24
 ---
 
 # Mental model and lifecycle
@@ -48,31 +48,31 @@ flowchart TD
     accTitle: dev-cli lifecycle states
     accDescr: Tasks move between HOT, WARM, and eligible COLD states; direct or verified integrated work reaches DONE while resources remain; review leaves the current state unchanged; and external retirement reaps only an already completed entry.
 
-    Start["dev start"] --> Hot["HOT"]
-    Hot -->|dev park --next| Warm["WARM"]
-    Warm -->|dev resume| Hot
-    Hot -->|branch/worktree: dev park --cold --push| Cold["COLD"]
-    Warm -->|branch/worktree: dev park --cold --push| Cold
-    Cold -->|dev resume --fetch| Hot
+    Start["dev work start"] --> Hot["HOT"]
+    Hot -->|dev work park --next| Warm["WARM"]
+    Warm -->|dev work resume| Hot
+    Hot -->|branch/worktree: dev work park --cold --push| Cold["COLD"]
+    Warm -->|branch/worktree: dev work park --cold --push| Cold
+    Cold -->|dev work resume --fetch| Hot
 
-    Hot -->|direct: dev done| Done["DONE"]
-    Warm -->|direct: dev done| Done
-    Hot -->|branch/worktree: dev done --ff| Done
-    Warm -->|branch/worktree: dev done --ff| Done
+    Hot -->|direct: dev work done| Done["DONE"]
+    Warm -->|direct: dev work done| Done
+    Hot -->|branch/worktree: dev work done --ff| Done
+    Warm -->|branch/worktree: dev work done --ff| Done
 
-    Hot -.->|branch/worktree: dev done --pr; state unchanged| Review["push / review handoff"]
-    Warm -.->|branch/worktree: dev done --pr; state unchanged| Review
-    Review -.->|feedback: dev resume if WARM| Hot
-    Review -->|dev done --merged --base-ref REF| Done
+    Hot -.->|branch/worktree: dev work done --pr; state unchanged| Review["push / review handoff"]
+    Warm -.->|branch/worktree: dev work done --pr; state unchanged| Review
+    Review -.->|feedback: dev work resume if WARM| Hot
+    Review -->|dev work done --merged --base-ref REF| Done
 
-    Done -->|dev retire from outside target| Reaped["RETIRED: resources cleaned; entry reaped"]
-    Done -.->|dev sweep: report candidate| Report["cleanup report"]
+    Done -->|dev work retire from outside target| Reaped["RETIRED: resources cleaned; entry reaped"]
+    Done -.->|dev work sweep: report candidate| Report["cleanup report"]
     Report -.->|approved apply| Reaped
 ```
 
-For branch/worktree tasks, `dev done --pr` is intentionally not a HOT/WARM → DONE transition. It hands off a pushed branch (opening review when supported) and leaves state and cleanup unchanged. `dev flow` can manually query portable review existence/state/draft/URL evidence, but never infers DONE. After an external merge, use `dev done --merged --base-ref <ref>` or Flow's Verify Merged action to prove named ancestry explicitly before a separate Retire plan performs cleanup.
+For branch/worktree tasks, `dev work done --pr` is intentionally not a HOT/WARM → DONE transition. It hands off a pushed branch (opening review when supported) and leaves state and cleanup unchanged. `dev repo flow` can manually query portable review existence/state/draft/URL evidence, but never infers DONE. After an external merge, use `dev work done --merged --base-ref <ref>` or Flow's Verify Merged action to prove named ancestry explicitly before a separate Retire plan performs cleanup.
 
-`dev flow [repo]` makes the underlying hybrid model visible: persisted intent,
+`dev repo flow [repo]` makes the underlying hybrid model visible: persisted intent,
 typed live observations, and a revision-bound guarded plan are distinct. Errors,
 unknowns, and stale facts do not become false; Apply revalidates exact task/Git/
 worktree/runtime/artifact identity before mutation. See [Repository lifecycle
@@ -94,9 +94,9 @@ The mode is selected by collision and recovery needs, not by ceremony.
 
 `runtime.Runtime` exposes `Open`, `Close`, `List`, and `Annotate`. `auto` selects Herdr when available, then tmux, then Zellij, then the always-available `none` backend. Closing any backend must not remove the checkout, branch, or task entry.
 
-`none` means no observable multiplexer backend; it does not prove that no session or agent exists. Guarded actions that require occupancy or absence proof retain this as unobserved evidence. `dev flow` never presents it as known closed and does not offer the expert `--assume-no-runtime` override.
+`none` means no observable multiplexer backend; it does not prove that no session or agent exists. Guarded actions that require occupancy or absence proof retain this as unobserved evidence. `dev repo flow` never presents it as known closed and does not offer the expert `--assume-no-runtime` override.
 
-This separation is why rebooting, closing a multiplexer, or changing runtime backend does not abandon work. `dev sweep` can compare the registry with live Git/runtime facts and report drift.
+This separation is why rebooting, closing a multiplexer, or changing runtime backend does not abandon work. `dev work sweep` can compare the registry with live Git/runtime facts and report drift.
 
 ## Cross-machine handoff
 
@@ -104,10 +104,10 @@ The branch is the transport boundary:
 
 ```bash
 # machine A
-dev park --cold --push
+dev work park --cold --push
 
 # machine B
-dev resume <task> --fetch
+dev work resume <task> --fetch
 ```
 
 One writer owns a branch at a time. If two machines or agents need to mutate the same feature concurrently, split the change stream and integrate afterwards.
@@ -168,7 +168,7 @@ REPOS presentation snapshots and dated skill-source comparisons are regenerable
 caches. Native skill locks and installed files remain owned by their existing
 management tools. Heatmap Git checkpoints live with activity in stats.db;
 clearing caches never clears activity. Cross-repository skills maintenance uses
-`dev skill manage`; cached evidence or an available update is not permission to
+`dev agent skill manage`; cached evidence or an available update is not permission to
 change files automatically.
 
 ## Canonical machines and connection profiles
@@ -195,3 +195,16 @@ files remain durable evidence until verified; cleanup rechecks that proof. Read
 [AI artifacts](../guides/ai-artifacts.md) before choosing retention or migration.
 
 SSH dashboard usage is host-local durable observation, separate from machine identity and discovery cache. USED measures actual local dev-mediated SSH process starts; test timestamps and successful authentication observations remain independent. Old observations never authorize cleanup or prove present connectivity.
+
+## Try identity and storage
+
+Try graduation and demotion preserve stable catalog identity:
+`Try → graduate → Repo → demote → Try`. Demote only accepts a previously
+graduated Try and retains its current Git history, remotes and file contents.
+The result is active/present in the current Try root; claims and move guards
+must permit the transition. It does not roll back intervening Git operations.
+
+Intent and storage are separate. Deprecate/reactivate changes active intent
+without moving files. Archive/restore moves retained bytes; delete normally
+uses system Trash, whose contents must be restored before `tries restore --from`.
+See the [v0.3 transition guide](../reference/cli-v0.3.md).

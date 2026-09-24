@@ -35,7 +35,7 @@ Worktree 隔離 files/index/HEAD，不隔離 port、database、cache、hook、cr
 ## 同一 feature 的 topology
 
 ```text
-一條 change stream / branch / dev worktree
+一條 change stream / branch / dev git worktree
                     │
              一個 runtime workspace
           ┌─────────┼─────────┐
@@ -50,9 +50,9 @@ Worktree 隔離 files/index/HEAD，不隔離 port、database、cache、hook、cr
 ## 互斥或獨立工作的 topology
 
 ```bash
-dev wt create exp/jwt --base main
-dev wt create exp/session --base main
-dev wt create exp/oauth --base main
+dev git worktree create exp/jwt --base main
+dev git worktree create exp/session --base main
+dev git worktree create exp/oauth --base main
 ```
 
 每個方案使用自己的 branch 與 worktree。比較結果後刻意整合一個；其餘 worktree 只有在有價值的 commits 或 notes 可復原後才移除。
@@ -76,9 +76,9 @@ checkout resurrect 舊 layout。
 
 ## 不導航，只增加可見性
 
-新的 managed 工作使用 `dev start <repo> --task '<task>' --base '<committed-ref>'`。
+新的 managed 工作使用 `dev work start <repo> --task '<task>' --base '<committed-ref>'`。
 若外部 checkout 已在 Git 註冊、只需要 runtime 可見性，使用
-`dev wt open <branch> --repo <repo> --runtime herdr --no-focus`。它立即回報 branch、
+`dev git worktree open <branch> --repo <repo> --runtime herdr --no-focus`。它立即回報 branch、
 實際 path、backend/handle 與實際 opened/reused runtime surface，不 focus 或 attach。
 它不 adopt/annotate task、不 provision、不啟動 agent，也不修改 Git/index/dirty files。
 Reused 或 fallback surface 不是新的 exact agent launch target。Runtime 為 `none`
@@ -90,7 +90,7 @@ runtime handle/result。詳見 [Worktree 與環境佈建](worktrees-provisioning
 one-liner：
 
 ```bash
-dev start api --task "token refresh" --base main --run 'codex' --focus
+dev work start api --task "token refresh" --base main --run 'codex' --focus
 ```
 
 `--run` 只接受建立 first-class Herdr worktree 時回傳的 exact root pane。Reuse、
@@ -98,7 +98,7 @@ fallback、缺少 pane identity、其他 runtime，以及 direct/branch-only mod
 fail closed。Dispatch 失敗時 task 與可用 worktree 仍會保留。`--focus` 只在成功
 dispatch 後獨立控制轉跳；dev 不等待 command exit status。
 
-`dev prompt open <recipe>` 是不同 contract：它在呼叫 terminal 中啟動一個 configured
+`dev agent prompt open <recipe>` 是不同 contract：它在呼叫 terminal 中啟動一個 configured
 foreground process，絕不建立、focus、reuse 或 inject runtime pane。在 Herdr 裡會留在
 current pane。若要在 separate pane 對話，請手動建立/focus 該 pane、進入 exact
 checkout，再從那裡執行 `prompt open`。它不會放寬 `start --run` 的

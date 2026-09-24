@@ -10,19 +10,18 @@ sessions; dev records task intent.
 
 ## Discover what you need
 
-Use `dev <command> --help` for syntax and flags; `dev help <topic>` explains
-workflows. `dev --help` lists commands; `dev help` lists topics.
-Dashboard details: `dev help tui`.
-Prefer supported `--json` output for automation. Read the relevant command before
-mutation: some actions execute immediately, while others require preview/apply.
-Do not preload manuals, repeat `dev --skill`, or run routine diagnostics.
+Use leaf `--help` for syntax, `dev help <topic>` for workflows, and
+`dev help --tree` for families. See [navigation](references/command-navigation.md)
+for shortcuts and Try demotion; dashboard details: `dev help tui`.
+Prefer supported JSON. Read help before mutation: some actions apply immediately,
+others require preview/apply. Do not preload manuals or run routine diagnostics.
 
 ## Preserve these boundaries
 
 - Opening a repository needs no task. Choose direct, branch, or worktree
   deliberately; pass an explicit `--base` for branch/worktree creation. Keep
   managed worktrees outside repositories.
-- `dev start` normally prepares a checkout/runtime. Agent launch is explicit.
+- `dev work start` normally prepares a checkout/runtime. Agent launch is explicit.
   Parallel writers need coordinated ownership and verified launch targets.
 - Completion, artifact finalization, retirement and branch deletion are separate.
   Finalize after writer exit; retire externally. Use `retire --base` when a fork

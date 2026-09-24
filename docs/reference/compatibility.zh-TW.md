@@ -2,12 +2,25 @@
 description: 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 authority: project-and-upstream
 status: evolving
-verified_on: 2026-09-21
+verified_on: 2026-09-24
 tested_with: Claude Code 2.1.259
 lang: zh-TW
 ---
 
 # 相容性與已知限制
+
+## v0.3 命令路徑與 Try demotion
+
+17 個主要入口整理命令導覽；所有舊 root 捷徑、flags、退出行為與已文件化 JSON
+保持相容。`work` 不改名儲存中的 task modes／states；分類後命令保留靜態 help／
+completion 與安全邊界。`gist` 仍限 GitHub；`try <name>` 即使名稱是管理動詞，
+仍維持 create-or-open。升級後重新載入 shell integration。見 [遷移對照](cli-v0.3.zh-TW.md)。
+
+`tries demote` 只讓曾 graduate 的 Try 退回實驗區，保留目前檔案、Git／remotes
+與 catalog metadata，不撤銷 publication 或建立 symlink。使用權、不完整觀察、
+不安全目的地與 stale plan 會阻擋搬移；原位置必須仍安全位於目前 Try root，
+否則需要明確 `--to`。本次不提供一般 repo 轉 Try、自動整份 clone eviction、
+mirror 同步或遠端 Tab 搜尋。
 
 Submodule 新增與 REPOS／REMOTE clone-URL 複製是擴充指令／動作。新增只支援網路
 來源及全新目標，預設 pinned，保留其他 staged 工作；不收編 local clone，也不改變
@@ -53,7 +66,7 @@ Done 後遞迴 handoff 需重新載入 shell integration。
 | named terminal session | tmux 或相容 Zellij | `none` 保留核心 behavior 與 shell navigation |
 | GitHub pull requests/remotes | authenticated `gh` | Git 可用時 branch 仍能 push，可能需 browser/manual flow |
 | GitLab merge requests/remotes | authenticated `glab` | 同樣 graceful fallback |
-| `dev flow` manual review observation | review-capable authenticated `gh`、`glab` 或含 Azure DevOps extension 的 `az` | local flow 與 fetch-only choice 仍可用；review query 保持 UNSUPPORTED/ERROR，不推斷 absence |
+| `dev repo flow` manual review observation | review-capable authenticated `gh`、`glab` 或含 Azure DevOps extension 的 `az` | local flow 與 fetch-only choice 仍可用；review query 保持 UNSUPPORTED/ERROR，不推斷 absence |
 | repository bootstrap publishing | authenticated `gh` 或 `glab` | local repository/scaffold 仍可使用；wizard 會說明如何 login |
 | remote repository snapshot template | Git，加上 source 所需的 network/authentication | validation 會在建立 destination 前失敗，rendered URL userinfo 會 redact；local template 仍可使用 |
 | native skill inventory | local filesystem 加 versioned `skills@1.5.23` path registry | 永遠可用；explicit add/update 需要直接安裝的 `skills` executable，且可能使用 network；repository-local npm bins 會被跳過，cooperating mutations 會 serialized |
@@ -63,7 +76,7 @@ Done 後遞迴 handoff 需重新載入 shell integration。
 | worktree dependency setup | ecosystem manager（`uv`、npm、Cargo 等） | plan 回報 missing tool 並保留 checkout |
 | remote portable-file plan/apply | Git、執行相容 `dev` 的 SSH target、matching existing clone/branch/commit；apply 另需 verified machine UUID pin | content 傳送前失敗或保持 target 不變；不推斷 clone/task fallback |
 | interactive dashboard | terminal input/output | 透過 pipe 執行 bare `dev` 時輸出 plain task list |
-| independent `dev flow [repo]` | interactive TTY input/output | 直接拒絕並指向 `dev repo context [repo]` 或 `dev ls --all --json`；沒有 piped/JSON Flow mode |
+| independent `dev repo flow [repo]` | interactive TTY input/output | 直接拒絕並指向 `dev repo context [repo]` 或 `dev work list --all --json`；沒有 piped/JSON Flow mode |
 | interactive repository picker | terminal input/output；optional configured `fzf`-compatible selector | selector 缺少時使用 dev 的 built-in picker；non-TTY input 保留 line prompt |
 | repository-note search | linked `modernc.org/sqlite` 與 FTS5 | 不需要外部 `sqlite3` executable |
 | static SSH alias discovery/completion | readable user OpenSSH config | unavailable/unsafe file 會診斷；不需要 `ssh` process 或 network |
@@ -72,15 +85,15 @@ Done 後遞迴 handoff 需重新載入 shell integration。
 | canonical machine registry | linked `modernc.org/sqlite` | 不需要 external database executable；registry 缺失時只有 empty read-only view，明確 enroll 才建立 |
 | public companion derivation 與 Ed25519 generation | system `ssh-keygen` | 仍可使用 existing validated `.pub`；derivation/generation unavailable |
 | Windows OpenSSH target bootstrap/fleet helper | remote PowerShell + OpenSSH server | POSIX target 仍可用；沒有 PowerShell 時 Windows-specific installer/launcher 失敗，不改用 shell fallback |
-| Windows 上的 terminal multiplexing | 原生 Herdr 安裝及可連線的 server | Runtime `auto` 在沒有可用 backend 時退回 `none`；`dev shell-init powershell` 仍能移動 shell |
-| in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev upgrade` 改為委派給對應套件管理器的升級指令 |
+| Windows 上的 terminal multiplexing | 原生 Herdr 安裝及可連線的 server | Runtime `auto` 在沒有可用 backend 時退回 `none`；`dev self shell-init powershell` 仍能移動 shell |
+| in-place self-update | standalone install（非 Homebrew/Scoop/`go install`） | `dev self upgrade` 改為委派給對應套件管理器的升級指令 |
 | verified ephemeral worktree apply | Git、compatible bounded Claude Workflow metadata、known task/artifact state 與每個 available runtime inventory | report 仍可使用，但 missing/unknown proof 絕不符合 apply eligibility |
 
 ## 已確認的專案限制
 
 ### MCP inventory 是 static 且刻意不完整
 
-`dev mcp list` 會讀取 Claude Code、Codex、Cursor、Gemini CLI 與 OpenCode 的 documented static files。Absolute `CLAUDE_CONFIG_DIR` 會搬移 Claude user sources；local Claude rows 會保留 project key，documented user/project/local/managed project approvals 則用來標註 declaration state。這個 narrow approval calculation 不是一般化的 runtime merge。Scanner 不會啟動 server、執行 helper、連線 endpoint、查詢 health 或解析 credentials。Plugin caches、hosted connectors、remote organization config、inline `OPENCODE_CONFIG_CONTENT` 與 command-line-only inputs 都會省略。對 inventory 做 automation 時必須保留 JSON `coverage` object、additive `local_project_path` 與 scope-qualified duplicate rows。
+`dev agent mcp list` 會讀取 Claude Code、Codex、Cursor、Gemini CLI 與 OpenCode 的 documented static files。Absolute `CLAUDE_CONFIG_DIR` 會搬移 Claude user sources；local Claude rows 會保留 project key，documented user/project/local/managed project approvals 則用來標註 declaration state。這個 narrow approval calculation 不是一般化的 runtime merge。Scanner 不會啟動 server、執行 helper、連線 endpoint、查詢 health 或解析 credentials。Plugin caches、hosted connectors、remote organization config、inline `OPENCODE_CONFIG_CONTENT` 與 command-line-only inputs 都會省略。對 inventory 做 automation 時必須保留 JSON `coverage` object、additive `local_project_path` 與 scope-qualified duplicate rows。
 
 ### Note search 與 filesystem durability 依文字及平台而異
 
@@ -90,15 +103,15 @@ Latin note query 使用 term-wise prefix FTS 與 SQLite ranking。Non-ASCII quer
 
 ### 已 merge 的 pull request 不會自動收掉它的 worktree
 
-`dev done --pr` push 並建立 pull/merge request，之後保留 task、runtime 與 worktree，因為 integration 由 review 負責。`dev sweep` 不會 query forge 推斷 request 後來已 merge。`dev flow` 只有在 operator 明確按 `R` 並核准 Query Review 時，才保留目前 run 的 exact head/base observation；它不會 persistent cache、poll 或自動 transition。
+`dev work done --pr` push 並建立 pull/merge request，之後保留 task、runtime 與 worktree，因為 integration 由 review 負責。`dev work sweep` 不會 query forge 推斷 request 後來已 merge。`dev repo flow` 只有在 operator 明確按 `R` 並核准 Query Review 時，才保留目前 run 的 exact head/base observation；它不會 persistent cache、poll 或自動 transition。
 
-Portable provider evidence 僅包含 review 是否存在、provider、`open`/`draft`/`merged`/`closed`、URL 與 observation time。它不涵蓋 CI check conclusions、approvals、mergeability、comments 或 deployment status；unsupported/unauthenticated/ambiguous/malformed/failed query 也不等於 absence。請 fetch/驗證 named ancestry，再用 `dev done --merged --base-ref <ref>` 或 Flow 的 Verify Merged 記錄 DONE。
+Portable provider evidence 僅包含 review 是否存在、provider、`open`/`draft`/`merged`/`closed`、URL 與 observation time。它不涵蓋 CI check conclusions、approvals、mergeability、comments 或 deployment status；unsupported/unauthenticated/ambiguous/malformed/failed query 也不等於 absence。請 fetch/驗證 named ancestry，再用 `dev work done --merged --base-ref <ref>` 或 Flow 的 Verify Merged 記錄 DONE。
 
-`dev pr list --scope local --state merged` 現在會報告 forge 認定已 merge 的 request，以及各自對應到哪一個本地 checkout。`dev sweep` 仍然不會去查它，這是刻意的：squash merge 產生的 commit 並不是本地 branch 的 ancestor，所以 forge 說「merged」無法證明這份工作能從 remote 復原。`dev sweep --merged-worktrees` 用 `git merge-base --is-ancestor` 在本地證明 containment，而 `dev done --merged` 需要明確的 `--confirm-squash` attestation。把 pull request 清單當成「該去看一下」的提示，而不是「可以刪」的許可。Squash 後 tree 相同不是 ancestry 證明，也不會免除 retirement 的 containment 檢查。
+`dev pr list --scope local --state merged` 現在會報告 forge 認定已 merge 的 request，以及各自對應到哪一個本地 checkout。`dev work sweep` 仍然不會去查它，這是刻意的：squash merge 產生的 commit 並不是本地 branch 的 ancestor，所以 forge 說「merged」無法證明這份工作能從 remote 復原。`dev work sweep --merged-worktrees` 用 `git merge-base --is-ancestor` 在本地證明 containment，而 `dev work done --merged` 需要明確的 `--confirm-squash` attestation。把 pull request 清單當成「該去看一下」的提示，而不是「可以刪」的許可。Squash 後 tree 相同不是 ancestry 證明，也不會免除 retirement 的 containment 檢查。
 
 ### Claude Workflow ephemeral cleanup strict 且具版本敏感性
 
-`dev sweep --ephemeral-worktrees` 支援以 Claude Code 2.1.259 驗證的 private
+`dev work sweep --ephemeral-worktrees` 支援以 Claude Code 2.1.259 驗證的 private
 layout：validated fixed-depth `wf_*.json`、matching worktree meta 與 journal path、
 `runId`、`status`、`workflowProgress` agent state/isolation、`worktreePath`、
 `spawnedWithWorktree`、journal `started`/`result`，以及 same-ID resume existence。
@@ -135,12 +148,12 @@ Schema-version-1 local join 回報 expected/live branch、checkout existence、w
 
 ### Prompt open 使用 current terminal，不負責 runtime placement
 
-`dev prompt open <recipe>` 在呼叫它的 terminal/TTY foreground 執行一個
+`dev agent prompt open <recipe>` 在呼叫它的 terminal/TTY foreground 執行一個
 configured child。它不會建立、focus、reuse 或 inject Herdr、tmux 或 Zellij pane。
 在 Herdr 裡自然會留在 current pane。若要用另一個 Herdr pane，請手動建立或 focus、
 進入 exact checkout，再從那裡執行 `prompt open`。
 
-這與 `dev start --run` 刻意分開；後者唯一可 dispatch 的 target，是本次新建
+這與 `dev work start --run` 刻意分開；後者唯一可 dispatch 的 target，是本次新建
 first-class Herdr worktree 回傳的 exact root pane。`prompt open` 不會提供 fresh runtime
 surface，也不會放寬 exact-pane proof。`run` 是 non-interactive alternative：沒有 user
 stdin，default timeout 為 10 分鐘；`open` 保留 stdin 給 conversation，沒有 default timeout。
@@ -160,7 +173,7 @@ unrecognized session 仍依 evidence 維持 blocked/unknown。
 status availability、clean Git state、沒有 in-progress Git operation、known base 與
 containment、task completion、artifact reachability/finalization、runtime eligibility。
 Merged pull request 只是 evidence。即使 audit 為 `eligible` 也只是 advisory；
-`dev retire` 在 mutation 前會重新收集與驗證 fresh state。兩個 recipe 都不會關閉
+`dev work retire` 在 mutation 前會重新收集與驗證 fresh state。兩個 recipe 都不會關閉
 runtime、改變 Git/task state、刪除 branch/worktree 或授予 permission。
 
 ### Zellij exited session 已關閉，但仍保留 name
@@ -173,21 +186,21 @@ open 會 fail closed 並要求 retry，不會在 requested checkout resurrect �
 
 ### Forge CLI 登入狀態只會被報告，不會自動重試
 
-`gh` 與 `glab` 是選用且彼此獨立的，`dev` 永遠不會代替你認證。當某個 provider 的憑證缺少或被拒絕時，`dev` 會報告是哪一個 provider 以及確切的登入指令 — 例如 ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — 並繼續使用另一個 provider 傳回的結果。`dev repo remote` 與 TUI REMOTE view 會呈現部分結果並發出 warning；`dev pr` 只有在完全沒有任何 provider 通過認證時才會失敗。`dev doctor` 會探測登入狀態，所以「已安裝但未登入」的 CLI 在某個指令需要它之前就看得到。
+`gh` 與 `glab` 是選用且彼此獨立的，`dev` 永遠不會代替你認證。當某個 provider 的憑證缺少或被拒絕時，`dev` 會報告是哪一個 provider 以及確切的登入指令 — 例如 ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — 並繼續使用另一個 provider 傳回的結果。`dev repo remote` 與 TUI REMOTE view 會呈現部分結果並發出 warning；`dev pr` 只有在完全沒有任何 provider 通過認證時才會失敗。`dev self doctor` 會探測登入狀態，所以「已安裝但未登入」的 CLI 在某個指令需要它之前就看得到。
 
 只有缺少或被拒絕的憑證會用這種方式報告。Rate limit、權限或 scope 失敗，以及網路錯誤，都會保留完整的診斷文字（含失敗的指令），因為重新登入並不能解決它們。無論哪一種情況，原始指令與 provider 輸出都保留在被包裝的 error 之中。
 
 ### Agent session capture 只有保留欄位，尚未接線
 
-Task schema 有 `AgentSession`，Herdr inventory 也能顯示 live agent session ID；production start/park/resume path 尚未 capture 或 attach 該 ID。這個欄位與 live inventory 只能視為 observability/future integration，不能承諾 `dev resume` 會恢復 coding-agent conversation。
+Task schema 有 `AgentSession`，Herdr inventory 也能顯示 live agent session ID；production start/park/resume path 尚未 capture 或 attach 該 ID。這個欄位與 live inventory 只能視為 observability/future integration，不能承諾 `dev work resume` 會恢復 coding-agent conversation。
 
 ### Built-in forge cache TTL 與 generated config 不同
 
-`dev config init` 會寫 `forge.cache_ttl = "15m"`。沒有 config file 時，目前 built-in `Forge.CacheTTL` 的 zero value 代表既有 valid cache 不會因 age 被拒絕；explicit `r` 仍會 refresh。Freshness 也要求 source fingerprint 符合 configured GH/GL hosts 與 Azure targets，因此 endpoint change 不會被 zero TTL 隱藏。Legacy source-less cache 只能透過 explicit `--cached` 使用，並會標為 stale。Freshness 重要時請執行 `config init` 或設定 TTL。
+`dev self config init` 會寫 `forge.cache_ttl = "15m"`。沒有 config file 時，目前 built-in `Forge.CacheTTL` 的 zero value 代表既有 valid cache 不會因 age 被拒絕；explicit `r` 仍會 refresh。Freshness 也要求 source fingerprint 符合 configured GH/GL hosts 與 Azure targets，因此 endpoint change 不會被 zero TTL 隱藏。Legacy source-less cache 只能透過 explicit `--cached` 使用，並會標為 stale。Freshness 重要時請執行 `config init` 或設定 TTL。
 
 較舊的 generated config 可能包含 `forge.remote_limit = 100`。此欄位仍可解析，
 但 forge inventory 現在會完整 pagination，因此不再限制 synchronization。
-`dev config init` 不再寫入它；`dev repo remote --limit` 只在完整 inventory 搜尋
+`dev self config init` 不再寫入它；`dev repo remote --limit` 只在完整 inventory 搜尋
 完成後限制 rendered matches。
 
 ### Lazygit staged-message prefill 是 best effort
@@ -217,7 +230,7 @@ identity diagnostics 仍是 content-free。
 `dev` 可在 `windows/amd64` 與 `windows/arm64` 編譯並執行，每個 release 都會附各自的 `.zip`。核心 repository/task/worktree operation 與 SSH host domain 都是 native：static discovery、protected-DACL managed fragment、reparse-point rejection、native `ssh-keygen.exe`、Windows Job Object cancellation，以及 POSIX/Windows remote bootstrap 都有 coverage。Fleet 也可透過 encoded PowerShell launcher target Windows OpenSSH。仍有下列差異：
 
 - Herdr 支援原生 Windows。Runtime `auto` 檢查 backend 是否可用，無可連線 server 時退回 `none`；`cd` 指令與 PowerShell wrapper 仍可運作。Fleet 主機連線與受保護 repository workspace 準備的支援範圍分別說明於下方。
-- Shell integration 是 `dev shell-init powershell`。POSIX shell 透過 file descriptor 3 回傳目錄；PowerShell 無法繼承它，wrapper 改用 `DEV_SHELL_CD_FILE` 傳入 temp-file path。
+- Shell integration 是 `dev self shell-init powershell`。POSIX shell 透過 file descriptor 3 回傳目錄；PowerShell 無法繼承它，wrapper 改用 `DEV_SHELL_CD_FILE` 傳入 temp-file path。
 - `dev fleet open` 會啟動子 shell（`%COMSPEC%`），而非取代 process，因為 Windows 沒有 `exec(2)`。
 - `dev fleet machine-id` 可執行 content-free `_capability` probe，但 native `fleet files` plan/apply payload helpers 會在 content 傳送前被拒絕。
 - 完整 Go suite 是 native `windows-latest` 的 required gate。CI 會列出所有 package，將 CLI/taskflow 的測試、Example 與 fuzz seed 分配至八個 runner；coverage audit 會拒絕漏跑、失敗或 timeout 的結果。SSH/fleet、cleanup、handoff、privacy 的專項 gate 仍保留。明確未支援的 POSIX mutation transport 使用狹窄的平台界線，並驗證 Windows 拒絕操作；affected tests/packages 與 CLI 也會針對 `windows/arm64` compile。
@@ -236,7 +249,7 @@ Direct task 使用 canonical checkout，不能進入 COLD，因為 cold cleanup 
 
 ### Mediated safety 不涵蓋 raw/configured commands
 
-`dev flow` 與 taskflow 的 PlanID、conditions、locks、revalidation 和 partial ledger 只保護 dev-mediated action。Task-backed lifecycle 與 exact unmanaged linked-checkout actions 共用 `internal/taskflow`，包含 exact unmanaged path retirement 的 contained removal；`sweep` 的 record-only reap、orphan salvage 與其他 narrow reconciliation paths 也仍在 taskflow 之外。不能假設每條 historical cleanup path 都已 migrate 或使用同一 planner。
+`dev repo flow` 與 taskflow 的 PlanID、conditions、locks、revalidation 和 partial ledger 只保護 dev-mediated action。Task-backed lifecycle 與 exact unmanaged linked-checkout actions 共用 `internal/taskflow`，包含 exact unmanaged path retirement 的 contained removal；`sweep` 的 record-only reap、orphan salvage 與其他 narrow reconciliation paths 也仍在 taskflow 之外。不能假設每條 historical cleanup path 都已 migrate 或使用同一 planner。
 
 Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script，以及 bare dashboard 的 configured `[[tui.tools]]` command 都能繞過這個 boundary。它們是刻意保留的 expert/operator escape hatches，不應被描述成自動繼承相同 safety guarantees。
 
@@ -254,47 +267,47 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 - `dev repo context --json` 提供 additive schema-v1 local/remote evidence，包含 source、age、freshness、completeness、null/error preservation 與 scoped readiness；只有 `--refresh` 執行 external probes。`dev status` 重用 cheap local readiness projection，不進行 network access。
 - `dev fleet machine-id` 回報 observed UUID，不修改設定。`dev fleet files` 預設 report-only，使用獨立 `[local_files]` allowlist，在 content 前協商只能調低的 limits，並要求 explicit apply/replacement controls 與 matching target pin。
 
-- `dev wt open --no-focus` 開啟／重用既有 registered checkout 的 runtime，但不
+- `dev git worktree open --no-focus` 開啟／重用既有 registered checkout 的 runtime，但不
   activate、attach 或產生 shell `cd` handoff（包含 runtime `none`）。它回報
   branch/path/backend/handle 與實際 runtime surface，不建立／adopt／provision 工作、
   不啟動 agent；open failure 仍回傳 error。預設 `wt open` navigation 不變。
-- `dev start --focus` 會在 non-JSON creation 後 activate runtime。
-- `dev start --run '<shell command>'` 只會 dispatch 到本次新建 first-class Herdr
+- `dev work start --focus` 會在 non-JSON creation 後 activate runtime。
+- `dev work start --run '<shell command>'` 只會 dispatch 到本次新建 first-class Herdr
   worktree 的 exact root pane。它不能與 `--json`、non-worktree modes 或 non-Herdr
   runtimes 併用，也不等待 command exit。
-- TUI navigation 會拒絕開啟 checkout 不存在的 COLD task，並要求使用 `dev resume`。
-- `dev flow [repo]` 是與 dashboard 分離的 TTY-only preview。它依 canonical Git common directory 顯示所有 registered worktrees 加 task-only rows；Enter 只建立 plan，`r` 只做 local reload，`R` 才選 fetch/query/both。Flow choices 不含 generic force、dirty discard、`--close-unknown`、`--assume-no-runtime`、shared writer 或 ownership takeover。
+- TUI navigation 會拒絕開啟 checkout 不存在的 COLD task，並要求使用 `dev work resume`。
+- `dev repo flow [repo]` 是與 dashboard 分離的 TTY-only preview。它依 canonical Git common directory 顯示所有 registered worktrees 加 task-only rows；Enter 只建立 plan，`r` 只做 local reload，`R` 才選 fetch/query/both。Flow choices 不含 generic force、dirty discard、`--close-unknown`、`--assume-no-runtime`、shared writer 或 ownership takeover。
 - Flow Apply 會重新載入 task revision與 Git/worktree/runtime/agent/artifact/remote authority，並在 runtime closure 與 removal 邊界再次驗證。Result 保留 attempted/completed/failed ledger；partial success 不宣稱 rollback。
 - `DEV_TUI_TRACE` 從 `cli.Execute` 起算，無法涵蓋 OS process loading。`tui.initial_view_returned` 量測 model construction，不是 renderer flush 或 physical terminal paint；它適合同 profile 比較，不是跨硬體／network 的 universal guarantee。
 - Runtime handle 現在保存 backend provenance，cleanup 前會重新驗證。
 - `auto` runtime selection 已在 tmux 與 none 之間加入 Zellij。
 
-- `dev done` 在省略 `--ff`/`--pr` 且為 TTY 時會開啟 interactive finish wizard，把 dirty checkout 拿去跟 base 比較（commit、discard 或 cancel），不再直接拒絕任何 uncommitted change；non-interactive caller 仍須明確傳入 `--dirty` policy，且 destructive discard 需要 `--yes`。
+- `dev work done` 在省略 `--ff`/`--pr` 且為 TTY 時會開啟 interactive finish wizard，把 dirty checkout 拿去跟 base 比較（commit、discard 或 cancel），不再直接拒絕任何 uncommitted change；non-interactive caller 仍須明確傳入 `--dirty` policy，且 destructive discard 需要 `--yes`。
 - Human-readable output 現在具備 semantic color（`--color auto|always|never`），在 `NO_COLOR` 已設定、`TERM=dumb`，或 stdout/stderr 不是 terminal 時會自動停用。
-- Explicit 與 non-interactive `dev done` 只記錄 MERGED，並保留 runtime/worktree/branch。Bare interactive completion 可接續獨立 cleanup wizard：先 preview runtime agents，再把 caller-owned Herdr cleanup 交給 freshly created external coordinator，但仍使用普通 `dev retire` guards。Active agent 與 mixed-purpose workspace 仍會阻擋。`dev done --delete-branch` 仍直接報錯並指向 `dev retire --delete-branch`，`--keep-worktree` 則以 no-op 警告。
+- Explicit 與 non-interactive `dev work done` 只記錄 MERGED，並保留 runtime/worktree/branch。Bare interactive completion 可接續獨立 cleanup wizard：先 preview runtime agents，再把 caller-owned Herdr cleanup 交給 freshly created external coordinator，但仍使用普通 `dev work retire` guards。Active agent 與 mixed-purpose workspace 仍會阻擋。`dev work done --delete-branch` 仍直接報錯並指向 `dev work retire --delete-branch`，`--keep-worktree` 則以 no-op 警告。
 - Interactive FF 保留 parent/canonical agent 與其他 task workspace；parent 占用時可重新檢查、改 PR 或取消。只有 exact idle/done task-worktree pane 可在最後 Apply 關閉。一般前景程序須另行同意 FF 改檔；interactive done/retire 須輸入 `CLOSE <workspace-id>` 才可終止已知程序。背景 jobs 未檢查；支援的 probe 失敗時阻擋。程序/topology 改變須重新預覽，舊 coordinator handoff 須重建。既有 unknown-runtime flags 不授權終止已知程序。
-- `dev retire --base <ref>` 覆寫 task／path 的整合驗證目標，依序解析本機分支、remote-tracking 分支、commit。Apply 重解同一輸入；類型／ref／OID 一旦改變，plan 就會過期。記錄的 fork-point commit 絕不暗中換成預設分支，無法證明整合就保持阻擋並提示 `--base <branch>`。`done --merged --base-ref X` 將 X 帶入 cleanup 提示、wizard 與外部 coordinator。刪除分支仍採 Git 自己的 upstream／HEAD `branch -d` 檢查；非 HEAD base 可能導致部分完成，分支與 DONE task 保留。
-- `dev sweep --base` 會傳入 DONE retirement；`--merged-worktrees` 也將已驗證 base 傳入 managed task。Retire／remove 的 worktree-list authority 只涵蓋同分支或相同／巢狀／包含路徑，因此先移除無關 sibling 不再使已核准 `--apply --yes` 批次後續 plan 過期；目標 lock／HEAD 或同分支 checkout 改變仍使其失效。
-- `dev sweep --merged-worktrees` 直接從 Git 列舉 linked worktrees，而非從 task registry，因此 branch 已被 base 包含的 unmanaged worktree 也能被 retire。Containment 本身絕不等於許可；dirty state、未 finalize 的 artifact、進行中的 Git operation 與 runtime 拒絕條件都仍會阻擋，且未加 `--delete-branches` 時 branch 一律保留。
-- `dev sweep --ephemeral-worktrees` 加入獨立的 schema-v1 Claude Workflow report。Path/branch convention 只供 discovery；只有 exact bounded provider linkage 與 fresh Git/task/artifact/caller/runtime evidence 才能授權 TTY/per-item apply。Apply 會 lock 並重新計算 fingerprint，以 non-force 移除，預設保留 branch；只有 explicit-base、unchanged、contained、zero-unique proof 才能執行 `branch -d`。
-- `dev sweep` 會把 branch 已不存在於 Git 的 branch-backed task 視為 dead，並提供 reap 該 record 的建議。這種 task 無法 finish、resume 或 retire，因為這些路徑都必須先解析 branch；在 `--apply` 之前該建議仍只是報告。
+- `dev work retire --base <ref>` 覆寫 task／path 的整合驗證目標，依序解析本機分支、remote-tracking 分支、commit。Apply 重解同一輸入；類型／ref／OID 一旦改變，plan 就會過期。記錄的 fork-point commit 絕不暗中換成預設分支，無法證明整合就保持阻擋並提示 `--base <branch>`。`done --merged --base-ref X` 將 X 帶入 cleanup 提示、wizard 與外部 coordinator。刪除分支仍採 Git 自己的 upstream／HEAD `branch -d` 檢查；非 HEAD base 可能導致部分完成，分支與 DONE task 保留。
+- `dev work sweep --base` 會傳入 DONE retirement；`--merged-worktrees` 也將已驗證 base 傳入 managed task。Retire／remove 的 worktree-list authority 只涵蓋同分支或相同／巢狀／包含路徑，因此先移除無關 sibling 不再使已核准 `--apply --yes` 批次後續 plan 過期；目標 lock／HEAD 或同分支 checkout 改變仍使其失效。
+- `dev work sweep --merged-worktrees` 直接從 Git 列舉 linked worktrees，而非從 task registry，因此 branch 已被 base 包含的 unmanaged worktree 也能被 retire。Containment 本身絕不等於許可；dirty state、未 finalize 的 artifact、進行中的 Git operation 與 runtime 拒絕條件都仍會阻擋，且未加 `--delete-branches` 時 branch 一律保留。
+- `dev work sweep --ephemeral-worktrees` 加入獨立的 schema-v1 Claude Workflow report。Path/branch convention 只供 discovery；只有 exact bounded provider linkage 與 fresh Git/task/artifact/caller/runtime evidence 才能授權 TTY/per-item apply。Apply 會 lock 並重新計算 fingerprint，以 non-force 移除，預設保留 branch；只有 explicit-base、unchanged、contained、zero-unique proof 才能執行 `branch -d`。
+- `dev work sweep` 會把 branch 已不存在於 Git 的 branch-backed task 視為 dead，並提供 reap 該 record 的建議。這種 task 無法 finish、resume 或 retire，因為這些路徑都必須先解析 branch；在 `--apply` 之前該建議仍只是報告。
 - 未知 command 會被回報，而不是被丟棄。`dev` 關閉了 cobra 自己的 error 輸出，先前又額外略過所有訊息開頭為 `unknown command` 的 error，因此打錯 command 時兩個 stream 都沒有任何輸出。現在會把訊息、cobra 的「Did you mean this?」建議，以及指向 `--help` 的提示寫到 stderr，exit status 為 1。
-- 對 command family 傳入多餘的 argument 現在是 error，而不是安靜地印出 help。`dev wt bogus` 過去會印出 `dev wt` help 並 exit 0，因為 family 本身沒有 `Run`；現在每個 family node 都會回報未知 subcommand 並 exit 1，而單獨執行 family 仍會印出 help 並 exit 0。
+- 對 command family 傳入多餘的 argument 現在是 error，而不是安靜地印出 help。`dev git worktree bogus` 過去會印出 `dev git worktree` help 並 exit 0，因為 family 本身沒有 `Run`；現在每個 family node 都會回報未知 subcommand 並 exit 1，而單獨執行 family 仍會印出 help 並 exit 0。
 - Argument 數量與 flag 錯誤會印出該 command 的 usage block。該 block 是否上色仍由 `--color` 決定。
 - 每個 command family 的 help 都附上 ASCII orientation diagram 與 `See also: dev help <topic>` 指引，且 `dev help <command>` 會把 command 名稱或 alias 解析成對應 topic，因此 `dev help wt` 會連到 worktrees 頁面。
 - Semantic color 已覆蓋所有 human-readable 介面，包含 interactive dashboard：`dev --color never`、`NO_COLOR` 與 `TERM=dumb` 現在也會關閉 dashboard 的顏色，先前並不會。
-- `dev sweep` 會 reap repository 目錄已不存在的 task。這種 record 先前無法被 binary 中任何 command 觸及：`done`、`resume`、`park` 與 `retire` 都會先解析 repository，dead-branch 規則排除 direct mode，stale-worktree 規則又需要有記錄的 worktree path。若有 live runtime session 則不會提出此建議，且 reap 只移除 dev 的 intent record。
-- `dev sweep` 會回報 task 記錄中存在、但 Git 未註冊，且只包含 agent artifact 目錄的 checkout。只有在其中每個檔案都與 repository 既有檔案 byte-identical 時才提議移除；其餘一律回報為 salvage 工作，即使加上 `--apply` 也絕不移除。
-- `dev sweep` 會處理 worktree 仍在磁碟上的 cold task。Inventory 一直有為 `dev ls` 與 dashboard 計算這項 drift，但 sweep 從未讀取它，因此只能顯示、無法處理。
-- `dev retire <path>` 會 reap 對應的 task record。先前只有 by-task 形式會設定 task identity，因此以 path 退休同一個 checkout 會留下 record；DONE 狀態與 identity 檢查維持不變。
-- `dev version` 會回報目前執行的 build 是否為已發布的 release，`dev doctor` 也帶有同一行資訊，並顯示 install owner、呼叫／解析後的 executable 路徑，以及 `PATH` 上不同 `dev` 副本的警告。先前工具中沒有任何地方能回答「我是不是最新的？」，而 `go install ...@latest` 只會解析到最新的 tag，因此未 tag 的 feature 對安裝者而言等同不存在。
+- `dev work sweep` 會 reap repository 目錄已不存在的 task。這種 record 先前無法被 binary 中任何 command 觸及：`done`、`resume`、`park` 與 `retire` 都會先解析 repository，dead-branch 規則排除 direct mode，stale-worktree 規則又需要有記錄的 worktree path。若有 live runtime session 則不會提出此建議，且 reap 只移除 dev 的 intent record。
+- `dev work sweep` 會回報 task 記錄中存在、但 Git 未註冊，且只包含 agent artifact 目錄的 checkout。只有在其中每個檔案都與 repository 既有檔案 byte-identical 時才提議移除；其餘一律回報為 salvage 工作，即使加上 `--apply` 也絕不移除。
+- `dev work sweep` 會處理 worktree 仍在磁碟上的 cold task。Inventory 一直有為 `dev work list` 與 dashboard 計算這項 drift，但 sweep 從未讀取它，因此只能顯示、無法處理。
+- `dev work retire <path>` 會 reap 對應的 task record。先前只有 by-task 形式會設定 task identity，因此以 path 退休同一個 checkout 會留下 record；DONE 狀態與 identity 檢查維持不變。
+- `dev self version` 會回報目前執行的 build 是否為已發布的 release，`dev self doctor` 也帶有同一行資訊，並顯示 install owner、呼叫／解析後的 executable 路徑，以及 `PATH` 上不同 `dev` 副本的警告。先前工具中沒有任何地方能回答「我是不是最新的？」，而 `go install ...@latest` 只會解析到最新的 tag，因此未 tag 的 feature 對安裝者而言等同不存在。
 - Release 會發布各平台 archive 與 `SHA256SUMS`，並以 `CHANGELOG.md` 對應段落作為 release notes。先前的 release 只產生 GitHub release 物件，因此那些版本本來就沒有附加檔案。
 - Release 會發布 Unix `.tar.gz`、Windows `.zip`，並更新 Scoop manifest（設定 token 時也會 push 到 bucket）。`daviddwlee84/homebrew-tap` 使用自己的 token，每小時或手動同步 stable binary formulas；checksum 與 formula 安裝驗證通過才會 commit，單一工具失敗會保留原 formula。可用 `gh workflow run sync.yml --repo daviddwlee84/homebrew-tap -f tool=dev-cli` 重試，不必重發 application release。Stable Homebrew 安裝使用預編譯 binary，`--HEAD` 保留 source build；本 repo 不再寫入 tap，也不需要 tap-writing token。
-- `dev upgrade` 會先查指定 release 的實際 asset 清單。獨立安裝有對應平台 archive 時，下載並以 `SHA256SUMS` 驗證；缺少該平台 asset 時，則在確認後原生編譯同一個 tag。新版 release 提供以 `SHA256SUMS` 驗證的精簡 `dev-cli_<tag>_source.tar.gz`，排除開發對話紀錄；舊版則使用 Go 設定的 module verification，下載量可能大很多。此 source fallback 與精簡 archive 自 v0.2.35 起提供。網路錯誤、缺少 checksum entry 或 checksum 不符都會停止升級。原生編譯使用已安裝的 Go、兩個 build workers 與 20 分鐘編譯上限；編譯成功且版本正確後才替換。`--check` 不會編譯，缺少工具會在確認前提示。Homebrew、Scoop 與 `go install` 擁有的安裝仍委由對應管理器更新。替換採 atomic rename（Windows 先移開 live `.exe`，下次執行清除）；準備期間目標檔案被更動時會拒絕替換。
+- `dev self upgrade` 會先查指定 release 的實際 asset 清單。獨立安裝有對應平台 archive 時，下載並以 `SHA256SUMS` 驗證；缺少該平台 asset 時，則在確認後原生編譯同一個 tag。新版 release 提供以 `SHA256SUMS` 驗證的精簡 `dev-cli_<tag>_source.tar.gz`，排除開發對話紀錄；舊版則使用 Go 設定的 module verification，下載量可能大很多。此 source fallback 與精簡 archive 自 v0.2.35 起提供。網路錯誤、缺少 checksum entry 或 checksum 不符都會停止升級。原生編譯使用已安裝的 Go、兩個 build workers 與 20 分鐘編譯上限；編譯成功且版本正確後才替換。`--check` 不會編譯，缺少工具會在確認前提示。Homebrew、Scoop 與 `go install` 擁有的安裝仍委由對應管理器更新。替換採 atomic rename（Windows 先移開 live `.exe`，下次執行清除）；準備期間目標檔案被更動時會拒絕替換。
 - Android／Termux 目前沒有發布 binary。原生編譯依賴透過 `pkg install golang clang git` 安裝。Source upgrade 設定 `GOOS=android`、使用 Termux Clang 啟用 CGO，並停用自動 Go toolchain 下載。Linux archive 可能因 Android syscall 限制而失敗，因此不會作為替代。Go 需符合所選 release 的 `go.mod` 要求。尚無 source fallback 的舊版 binary，需先以原生工具把指定 release、經 checksum 驗證的 source archive 編譯到暫存目錄，驗證版本後替換獨立執行檔；完整 Termux 修復範例見 repository README。
 - 原生 Termux 的 SSH setup 與 discovery 使用經驗證的 `/data/data/com.termux/files/home` 或 `/data/user/<Android-user>/com.termux/files/home` 私有家目錄，重新確認系統／app owner 與目錄身分；下層 symlink 與不安全使用者路徑仍會拒絕。Android SELinux app-data 標籤只比對、不重新設定；加密檔案保留繼承的 metadata。因 app 禁止 hard link，新檔案採 `RENAME_NOREPLACE`。共享儲存空間與其他 app-data 配置不在支援範圍。原生測試涵蓋首次設定、更新、金鑰生成、cache 寫入與 metadata 不符拒絕；desktop 測試保留 hard-link 攻擊案例。參考 [Android app sandbox](https://source.android.com/docs/security/app-sandbox)。
 - macOS 的 guarded configedit／SSH 暫存替換只辨識 kernel 管理的 `com.apple.provenance` 標記（11 bytes，首 byte 為 `0x01`）。Kernel 為新檔指定 writer 的 provenance；dev 不複製來源值，也不要求替換檔保留該值，但同一檔案上的標記仍用於過期偵測。其他 attributes 與無法辨識的 provenance 值維持嚴格檢查。適用 hygiene redact／repair-encoding／restore 與 SSH init／format；apply／恢復錯誤保留底層原因。此 macOS 例外不放寬 Android 繼承標籤必須相同的檢查。
-- 自 v0.2.23 起，`dev upgrade` 會透過新版執行檔刷新已安裝的預設 bundled skill。`dev doctor` 與 `skill install --check` 會顯示差異；`skill uninstall` 只移除未修改的 manifest-owned 檔案與相符連結。舊版發起或直接透過套件管理器升級時，需明確執行一次 `skill install`；自訂目錄仍需明確指定。詳見 [skills management](../guides/skills-management.zh-TW.md#bundled-dev-cli-skill)。
+- 自 v0.2.23 起，`dev self upgrade` 會透過新版執行檔刷新已安裝的預設 bundled skill。`dev self doctor` 與 `skill install --check` 會顯示差異；`skill uninstall` 只移除未修改的 manifest-owned 檔案與相符連結。舊版發起或直接透過套件管理器升級時，需明確執行一次 `skill install`；自訂目錄仍需明確指定。詳見 [skills management](../guides/skills-management.zh-TW.md#bundled-dev-cli-skill)。
 - Interactive `dev` command 每天最多印一行 dim 的「有新版」提示，來源是一天內的 release cache，永不因網路而 block。TUI 的 stale-cache background refresh 只會在 initial view return 後啟動。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK` 可停用。
 
 ## Claude Code status matrix
@@ -382,7 +395,7 @@ machines。名稱各自保留；註冊、改名／移除及 Herdr 啟用／停�
 
 ## Local triage compatibility
 
-`dev triage` 是新增介面，使用獨立 schema-v1 JSON。Guarded 同步不改 task state，清理另加 clone-bound ignored-directory guard。既有 sweep、flow、expert CLI flags 與 `dev ls --json` 維持原有契約。參見[本地工作整理](../guides/local-triage.md)。
+`dev triage` 是新增介面，使用獨立 schema-v1 JSON。Guarded 同步不改 task state，清理另加 clone-bound ignored-directory guard。既有 sweep、flow、expert CLI flags 與 `dev work list --json` 維持原有契約。參見[本地工作整理](../guides/local-triage.md)。
 
 ## Dashboard 導覽與整理入口
 
@@ -424,7 +437,7 @@ Help 與 Ctrl+O 共用浮窗，最大 104 欄 × 32 列；少於 80 欄或 22 �
 [目前分頁的 Help](../guides/tui-repos-bootstrap.zh-TW.md)。
 
 已安裝的 `dev-cli` 入口維持精簡，完整 references 仍隨 bundle 安裝，
-只有相符的進階操作才讀取。`dev --skill` 與 `dev skill print` 仍印出
+只有相符的進階操作才讀取。`dev --skill` 與 `dev agent skill print` 仍印出
 與安裝版逐 byte 相同的 `SKILL.md`，保留 dotfiles installer 契約。
 語法查 leaf `--help`，流程查 `dev help <topic>`，協作細節則讀條件式
 reference。既有安裝、ownership 檢查與刷新規則不變。
@@ -587,7 +600,7 @@ configuration 保留 supported settings，並拒絕 LocalCommand、port forwardi
 
 ## Repository hygiene
 
-`dev hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
+`dev git hygiene` 支援 staged/worktree/history、各 repo 的 block/warn/off 政策、本機私人
 規則，以及 macOS／Linux／Windows 的預覽改寫與恢復。CI 只使用公開規則。
 Schema 1 的覆蓋範圍及 hook 契約見 [hygiene 工作流程](../guides/hygiene.zh-TW.md)。
 
@@ -599,7 +612,7 @@ UTF-8 修復；`--apply --plan ID --yes` 套用已審閱計畫，artifact 另需
 
 ### Hygiene summary JSON contract
 
-`dev hygiene report --json` 輸出 `kind: "hygiene_summary"`、`schema_version: 1`；
+`dev git hygiene report --json` 輸出 `kind: "hygiene_summary"`、`schema_version: 1`；
 應優先使用它，不要解析 scan 輸出或人工表格。既有 scan finding 欄位不變；新增的
 可選 `value_id` 以私人 repo key 與 category／rule／value 計算，讓相同值可跨檔
 彙總但不暴露原值。Finding 與 file-summary 的 `file_id` 以私人 key 識別確切
@@ -643,7 +656,7 @@ checkout 保存的報告。這些是歷史觀測，不是目前 clean 的證明�
 `[private:N]`、email `a•••@d•••.tld`、IPv4 `a.b.•.•`、IPv6 `first:•••`、home path
 `Users/x•••`。原始值與所在行內容只留在 Git 外權限為 0600 的私人
 `<report-id>.values.review.txt`，不進入 stdout／JSON／scan 紀錄。
-`dev hygiene review-path <plan-or-report-id>` 只印出私人路徑；勿將其內容貼入聊天、
+`dev git hygiene review-path <plan-or-report-id>` 只印出私人路徑；勿將其內容貼入聊天、
 Git 或 CI。擷取有數量與 byte 上限；過大的值會省略並標記 `values_truncated`。
 附屬檔寫入失敗仍保存 partial 報告，附 `values_capture_failed` gap 與
 `values_status: "failed"`，不提供 review-path 提示。

@@ -34,17 +34,17 @@ Extra work: proposed investigation/agent scope and cost, only if needed
 
 ## Local draft and reviewed GitHub operation
 
-Check `dev feedback --help` for the installed binary's capability. An older or
+Check `dev self feedback --help` for the installed binary's capability. An older or
 broken binary must not block recovery: retain a manually prepared sanitized
 Markdown draft and use explicitly authorized native gh steps if necessary.
 
 ```bash
-dev feedback draft --title 'Short symptom' --body-file report.md --json
-dev feedback issue <id> --json
+dev self feedback draft --title 'Short symptom' --body-file report.md --json
+dev self feedback issue <id> --json
 # Only when related-issue network lookup is authorized:
-dev feedback issue <id> --search --json
+dev self feedback issue <id> --search --json
 # Only after reviewing and authorizing this exact target/operation/revision:
-dev feedback issue <id> --publish --yes --revision <revision> --json
+dev self feedback issue <id> --publish --yes --revision <revision> --json
 ```
 
 The body should contain reproduction, expected/actual results and already-known
@@ -68,11 +68,11 @@ receipts are the recovery record. A report is durable state outside Git/cache.
 ## Verified local repair
 
 ```bash
-dev feedback repair <id> --base main --json
-dev feedback repair <id> --repo <source> --base <explicit-ref> --json
+dev self feedback repair <id> --base main --json
+dev self feedback repair <id> --repo <source> --base <explicit-ref> --json
 # After this exact plan is approved:
-dev feedback repair <id> --apply --plan <plan-id> --yes --json
-dev prompt render feedback-fix <id>
+dev self feedback repair <id> --apply --plan <plan-id> --yes --json
+dev agent prompt render feedback-fix <id>
 ```
 
 Source precedence is explicit path, configured `[feedback].source_repo`, then
@@ -80,7 +80,7 @@ REPOS discovery. A bad explicit/configured path is an error; multiple matches
 need selection. An exact upstream remote is required, including for a fork.
 Do not treat the folder name as identity or the current HEAD as a safe default
 base. With no source, explicitly acquire a retained Try via the suggested
-`dev try --clone` workflow, inspect any reused Try, and preview again.
+`dev tries try --clone` workflow, inspect any reused Try, and preview again.
 
 The approved plan pins source filesystem identities, base ref/OID, relevant
 configuration, new branch/task/path and report revision. Apply rechecks under the
@@ -89,7 +89,7 @@ edits in place and prepares a HOT worktree task without runtime, provisioning,
 submodule acquisition or agent launch. Stale plans do nothing new; partial
 failures retain the checkout and report the exact recovery location.
 
-The current agent can consume the rendered prompt directly. Use `dev prompt open
+The current agent can consume the rendered prompt directly. Use `dev agent prompt open
 feedback-fix <id> --agent <profile>` only for an explicitly approved additional
 agent with that profile. It does not choose a default profile for this recipe.
 A changed/locked/partial checkout or changed task binding blocks handoff.

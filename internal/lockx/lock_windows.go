@@ -17,10 +17,34 @@ type fileLock struct {
 }
 
 func acquire(ctx context.Context, path string) (*fileLock, error) {
+	return acquireWindows(ctx, path, false)
+}
+
+func acquireMovable(ctx context.Context, path string) (*fileLock, error) {
+	return acquireWindows(ctx, path, true)
+}
+
+func acquireWindows(ctx context.Context, path string, movable bool) (*fileLock, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	var file *os.File
+	var err error
+	if movable {
+		var name *uint16
+		name, err = windows.UTF16PtrFromString(path)
+		if err == nil {
+			var handle windows.Handle
+			handle, err = windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE,
+				windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE,
+				nil, windows.OPEN_ALWAYS, windows.FILE_ATTRIBUTE_NORMAL, 0)
+			if err == nil {
+				file = os.NewFile(uintptr(handle), path)
+			}
+		}
+	} else {
+		file, err = os.OpenFile(path, os.O_CREATE|os.O_RDWR, 0o600)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -13,6 +13,18 @@ import (
 // Absorbed submodules therefore cannot start a dev lifecycle transaction while
 // their owning superproject is being retired. The task-store lock comes later.
 func WithLifecycleLock(ctx context.Context, commonDir string, operation func() error) error {
+	return withLifecycleLock(ctx, commonDir, operation, false)
+}
+
+// WithLifecycleMoveLock retains the same lifecycle lease across an explicitly
+// authorized checkout move, including on Windows. The caller must revalidate
+// source/destination identity under the lease before moving. Ordinary lifecycle
+// callers retain WithLifecycleLock's native sharing behavior.
+func WithLifecycleMoveLock(ctx context.Context, commonDir string, operation func() error) error {
+	return withLifecycleLock(ctx, commonDir, operation, true)
+}
+
+func withLifecycleLock(ctx context.Context, commonDir string, operation func() error, movable bool) error {
 	var dirs []string
 	identities := map[string]os.FileInfo{}
 	for p := filepath.Clean(commonDir); ; p = filepath.Dir(p) {
@@ -47,7 +59,11 @@ func WithLifecycleLock(ctx context.Context, commonDir string, operation func() e
 				return fmt.Errorf("Git directory identity changed before lock: %s", dirs[i])
 			}
 		}
-		return lockx.WithDir(ctx, filepath.Join(dirs[i], "dev-taskflow"), "taskflow repository", func() error { return lock(i - 1) })
+		withDir := lockx.WithDir
+		if movable {
+			withDir = lockx.WithDirRelocatable
+		}
+		return withDir(ctx, filepath.Join(dirs[i], "dev-taskflow"), "taskflow repository", func() error { return lock(i - 1) })
 	}
 	return lock(len(dirs) - 1)
 }

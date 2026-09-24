@@ -9,7 +9,7 @@ a new checkout lacks dependencies, env files, or launcher backend state.
 
 | Change boundary | Owner | Where | Lifetime |
 |---|---|---|---|
-| Durable feature/fix/experiment/handoff | **`dev`** | `paths.worktree_path` | until external `dev retire` |
+| Durable feature/fix/experiment/handoff | **`dev`** | `paths.worktree_path` | until external `dev work retire` |
 | Harness-owned turn-scoped isolation | Claude Code | `.claude/worktrees/` | managed by that harness; do not assume artifact relocation |
 | Runtime workspace/panes | Herdr | per-host runtime | until explicitly closed |
 | Rendered agent history | SpecStory | process launch checkout | until committed/removed with that checkout |
@@ -25,13 +25,13 @@ new process from the target worktree root.
 
 ## Create managed work or surface an existing checkout
 
-Prefer `dev start <repo> --task '<task>' --base '<committed-ref>'` for new
+Prefer `dev work start <repo> --task '<task>' --base '<committed-ref>'` for new
 managed work: it creates/selects the checkout, provisions it, opens the runtime,
 and records task intent. For an already registered external worktree that only
 needs runtime visibility:
 
 ```bash
-dev wt open <branch> --repo <repo> --runtime herdr --no-focus
+dev git worktree open <branch> --repo <repo> --runtime herdr --no-focus
 ```
 
 This opens or reuses the exact checkout without switching/attaching, launching an
@@ -61,9 +61,9 @@ Herdr's native **New worktree** action is still valid for an external,
 unmanaged checkout. When the canonical repository is under a configured scan
 root, Git registration lets dev discover the checkout without scanning
 `~/.herdr/worktrees`; dev does not auto-adopt, relocate, or provision it. Run
-`dev wt provision <path>` if it needs the project environment and `dev adopt`
-followed by `dev adopt --apply` only when it should enter the durable task
-lifecycle. For one exact checkout, `dev flow [repo]` offers plan-first
+`dev git worktree provision <path>` if it needs the project environment and `dev work adopt`
+followed by `dev work adopt --apply` only when it should enter the durable task
+lifecycle. For one exact checkout, `dev repo flow [repo]` offers plan-first
 metadata-only Adopt and clean branch-preserving Remove Checkout. It never removes
 the canonical checkout or a harness/conflicting/locked/prunable/task-claimed row,
 and it does not prune repository-wide stale registrations.
@@ -81,18 +81,18 @@ Configurable through `paths.worktree_root` and `paths.worktree_path`, with
 variables plus `slug`, `lower`, and `base` filters.
 
 Always pass `--base` for unattended creation so the intended starting point is
-explicit. `dev start` and `dev wt create` otherwise resolve the repository's
+explicit. `dev work start` and `dev git worktree create` otherwise resolve the repository's
 default branch; they do not use whichever feature happens to be checked out.
 
 ## Provisioning
 
-A worktree is a clean checkout. `dev wt create` and `dev start` build and apply
+A worktree is a clean checkout. `dev git worktree create` and `dev work start` build and apply
 an inspectable plan:
 
 ```bash
-dev wt plan
-dev wt plan --write
-dev wt provision --dry-run
+dev git worktree plan
+dev git worktree plan --write
+dev git worktree provision --dry-run
 ```
 
 Effective settings come from global config or committed repo
@@ -107,7 +107,7 @@ strategy = "reinstall"
 ```
 
 An executable `post_create` from `.dev-cli/config.toml` requires approval of its
-exact content hash with `dev config trust <repo> --yes`. Legacy `.dev.toml`
+exact content hash with `dev self config trust <repo> --yes`. Legacy `.dev.toml`
 retains its compatibility behavior.
 
 Only paths that are both explicitly included and genuinely gitignored are
@@ -152,18 +152,18 @@ reports missing tools or failed setup without deleting the usable checkout.
 
 ## Cleanup
 
-- `dev wt rm <branch>` removes only the checkout after external runtime safety checks; branch survives.
-- `dev park` records WARM; when called from its own runtime it leaves that runtime alive for normal exit.
-- `dev park --cold --push` closes eligible runtime state and removes the pushed worktree only from outside.
-- `dev done --ff` integrates and records MERGED; runtime/worktree/branch survive.
-- `dev done --pr` leaves everything active for review.
-- `dev retire` is the only complete close/wait/remove/reap path.
-- `dev sweep` reports first; `--apply` routes cleanup through retire.
-- From canonical main, `dev sweep --merged-worktrees` also audits unmanaged
+- `dev git worktree rm <branch>` removes only the checkout after external runtime safety checks; branch survives.
+- `dev work park` records WARM; when called from its own runtime it leaves that runtime alive for normal exit.
+- `dev work park --cold --push` closes eligible runtime state and removes the pushed worktree only from outside.
+- `dev work done --ff` integrates and records MERGED; runtime/worktree/branch survive.
+- `dev work done --pr` leaves everything active for review.
+- `dev work retire` is the only complete close/wait/remove/reap path.
+- `dev work sweep` reports first; `--apply` routes cleanup through retire.
+- From canonical main, `dev work sweep --merged-worktrees` also audits unmanaged
   linked worktrees whose branches are contained in main. Agents must present
   that report for user confirmation before applying; branches are retained
   unless `--delete-branches` was separately approved.
-- From any canonical non-bare checkout, `dev sweep --ephemeral-worktrees` audits
+- From any canonical non-bare checkout, `dev work sweep --ephemeral-worktrees` audits
   Claude Workflow isolation through bounded provider metadata plus fresh Git,
   task, artifact, caller, and every available runtime. The path/branch naming
   pattern is only a candidate label and never deletion proof. Claude Code 2.1.259
@@ -184,7 +184,7 @@ empty checkout directories stay for ordinary non-force Git removal. Real child
 stores retain full recovery proofs, journals and rollback. Never replace a
 refusal with recursive file deletion. See `submodules.md`.
 
-Bare `dev done` on a TTY classifies dirty content against the base before
+Bare `dev work done` on a TTY classifies dirty content against the base before
 offering commit-all or discard-all; unique discard requires `DROP`. Dirty
 checkout removal may require explicit force, but caller/runtime safety is never
 bypassable. Herdr `done` is not a cleanup signal, and `--cold --keep-session` is

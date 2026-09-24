@@ -9,10 +9,10 @@ Inspect static MCP server declarations across repositories and supported agent
 configuration formats without starting servers or contacting endpoints.
 
 ```bash
-dev mcp list
-dev mcp list --repo api
-dev mcp list --all
-dev mcp list --agent claude-code,codex --scope project --json
+dev agent mcp list
+dev agent mcp list --repo api
+dev agent mcp list --all
+dev agent mcp list --agent claude-code,codex --scope project --json
 ```
 
 The initial adapters cover Claude Code, Codex, Cursor, Gemini CLI, and OpenCode.

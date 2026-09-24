@@ -9,14 +9,14 @@ tested_with: skills 1.5.23 and 1.5.25 source contracts; isolated provider fixtur
 
 # Skills 管理
 
-`dev skill manage` 開啟獨立 wizard；REPOS 與 SKILLS 的 Ctrl+O 也能進入相同流程，
+`dev agent skill manage` 開啟獨立 wizard；REPOS 與 SKILLS 的 Ctrl+O 也能進入相同流程，
 不新增 dashboard 大頁籤。
 
 ```bash
-dev skill manage
-dev skill manage --repo api
-dev skill manage --all
-dev skill list --all --check --json
+dev agent skill manage
+dev agent skill manage --repo api
+dev agent skill manage --all
+dev agent skill list --all --check --json
 ```
 
 可選 project、global、project 加 global，或多個 repository。Repository picker
@@ -34,7 +34,7 @@ cache 不代表正在進行即時來源查詢。
 本地修改會分開呈現。預覽列出 checkout、scope、skill 與命令，確認後才執行。
 
 管理操作需要全域安裝的 `skills` executable，支援依 1.5.23–1.5.25 已驗證契約
-相容的 1.x 版本，最低 1.5.23。`dev doctor` 回報依賴狀態；可使用
+相容的 1.x 版本，最低 1.5.23。`dev self doctor` 回報依賴狀態；可使用
 `npm install -g skills` 安裝或更新。dev 不自動安裝依賴，也不 fallback 至 npx；
 缺少 provider 時仍可列出及檢查 skills。
 
@@ -56,8 +56,8 @@ canceled 與 unverified；exit 0 本身不足以證明成功，會重新讀取�
 Wizard 會檢查命令支援、project 目的地變動及本地內容衝突。同名 dependency skill
 衝突需個別處理。兩項操作保留 native output 並檢查結果，本輪不提供跨 repo 批次。
 
-`dev skill install` 與 `dev skill sync` 仍管理 bundled dev skill；原有
-`dev skill update <skill> --project|--global` 保留作為自動化介面。
+`dev agent skill install` 與 `dev agent skill sync` 仍管理 bundled dev agent skill；原有
+`dev agent skill update <skill> --project|--global` 保留作為自動化介面。
 Transfer preparation 仍使用其獨立的 pinned provider 與 verified payload 契約。
 
 
@@ -69,15 +69,15 @@ Provider source contracts: [update](https://github.com/vercel-labs/skills/blob/v
 其他 skills 分開處理：
 
 ```bash
-dev skill install                 # 安裝或明確覆寫內嵌檔案
-dev skill install --check         # 本機內容比較；不同或未安裝時回傳非零
-dev skill install --if-installed  # 只刷新已存在的安裝
-dev skill uninstall --dry-run     # 預覽確切的受管理檔案與相符連結
-dev skill uninstall              # 確認後移除這些檔案與連結
+dev agent skill install                 # 安裝或明確覆寫內嵌檔案
+dev agent skill install --check         # 本機內容比較；不同或未安裝時回傳非零
+dev agent skill install --if-installed  # 只刷新已存在的安裝
+dev agent skill uninstall --dry-run     # 預覽確切的受管理檔案與相符連結
+dev agent skill uninstall              # 確認後移除這些檔案與連結
 ```
 
-`dev doctor` 與 `dev upgrade --check` 會回報預設安裝是否符合目前 binary，
-不會更改內容。`dev upgrade` 成功後，由**新版執行檔**刷新已安裝的
+`dev self doctor` 與 `dev self upgrade --check` 會回報預設安裝是否符合目前 binary，
+不會更改內容。`dev self upgrade` 成功後，由**新版執行檔**刷新已安裝的
 `~/.agents/skills/dev-cli`。Homebrew 與 Scoop 使用各自的穩定安裝路徑，
 不會選到 PATH 上其他 `dev`。未安裝 skill 時不會新增；binary 已是最新版時，
 一般的 upgrade 也會修復既有 skill。Binary 更新成功後若 skill 刷新失敗，
@@ -97,4 +97,4 @@ Uninstall 會預覽並重新驗證已記錄的檔案，以及仍指向該安裝�
 自訂 `--dir` 安裝需用 `skill install --dir PATH` 刷新、
 `skill uninstall --dir PATH` 移除。直接透過套件管理器升級，或由 v0.2.23
 以前的 binary 發起升級，都不會執行新的刷新 hook；這兩種情況請在更新後
-用新版執行檔執行一次 `dev skill install`。
+用新版執行檔執行一次 `dev agent skill install`。

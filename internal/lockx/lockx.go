@@ -26,6 +26,10 @@ type Lease struct {
 // lives beside dir rather than inside it, so locking never adds a file to the
 // directory being protected.
 func AcquireDir(ctx context.Context, dir, label string) (*Lease, error) {
+	return acquireDir(ctx, dir, label, false)
+}
+
+func acquireDir(ctx context.Context, dir, label string, movable bool) (*Lease, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -41,11 +45,66 @@ func AcquireDir(ctx context.Context, dir, label string) (*Lease, error) {
 		return nil, fmt.Errorf("canonicalize %s directory for lock: %w", label, err)
 	}
 	lockPath := filepath.Join(filepath.Dir(canonicalDir), "."+filepath.Base(canonicalDir)+".lock")
-	lock, err := acquire(ctx, lockPath)
+	var directoryIdentity os.FileInfo
+	if movable {
+		directoryIdentity, err = os.Stat(canonicalDir)
+		if err != nil {
+			return nil, err
+		}
+	}
+	acquireFile := acquire
+	if movable {
+		acquireFile = acquireMovable
+	}
+	lock, err := acquireFile(ctx, lockPath)
 	if err != nil {
 		return nil, fmt.Errorf("acquire %s lock: %w", label, err)
 	}
-	return &Lease{lock: lock, label: label}, nil
+	lease := &Lease{lock: lock, label: label}
+	if movable {
+		if err := validateRelocatableLock(canonicalDir, directoryIdentity, lockPath, lock.file); err != nil {
+			return nil, errors.Join(err, lease.Close())
+		}
+	}
+	return lease, nil
+}
+
+func validateRelocatableLock(dir string, expected os.FileInfo, path string, held *os.File) error {
+	current, err := os.Stat(dir)
+	if err != nil || !os.SameFile(expected, current) {
+		return errors.New("relocatable lock directory changed while acquiring its lease")
+	}
+	named, err := os.Lstat(path)
+	if err != nil || !named.Mode().IsRegular() {
+		return errors.New("relocatable lock path is missing or no longer a regular file")
+	}
+	opened, err := held.Stat()
+	if err != nil || !os.SameFile(named, opened) {
+		return errors.New("relocatable lock file changed while acquiring its lease")
+	}
+	return nil
+}
+
+// WithDirRelocatable is an explicit lease for operations that may rename the
+// protected directory's containing tree. Windows grants delete sharing only for
+// this entry point; file locking still excludes other lease holders. A waiter
+// whose directory or named lock file changed fails before its operation runs.
+func WithDirRelocatable(ctx context.Context, dir, label string, operation func() error) (err error) {
+	if operation == nil {
+		return fmt.Errorf("%s lock requires an operation", label)
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	lease, err := acquireDir(ctx, dir, label, true)
+	if err != nil {
+		return err
+	}
+	defer func() { err = errors.Join(err, lease.Close()) }()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return operation()
 }
 
 // Close releases the acquired directory lock.

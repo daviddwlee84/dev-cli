@@ -8,14 +8,14 @@ tested_with: skills 1.5.23 and 1.5.25 source contracts; isolated provider fixtur
 
 # Skills management
 
-`dev skill manage` opens an independent wizard. REPOS and SKILLS offer the same
+`dev agent skill manage` opens an independent wizard. REPOS and SKILLS offer the same
 workflow through Ctrl+O; it does not add another dashboard tab.
 
 ```bash
-dev skill manage
-dev skill manage --repo api
-dev skill manage --all
-dev skill list --all --check --json
+dev agent skill manage
+dev agent skill manage --repo api
+dev agent skill manage --all
+dev agent skill list --all --check --json
 ```
 
 Choose project, global, project plus global, or multiple repositories. The
@@ -38,7 +38,7 @@ selected skill and command. Confirmation is required before execution.
 
 Management mutations require a globally installed `skills` executable compatible
 with the tested 1.5.23–1.5.25 contracts (supported 1.x versions from 1.5.23).
-`dev doctor` reports the dependency; install or upgrade it with
+`dev self doctor` reports the dependency; install or upgrade it with
 `npm install -g skills`. dev does not install dependencies automatically or fall
 back to npx. Listing and checking continue to work when the dependency is absent.
 
@@ -64,8 +64,8 @@ content conflicts. Dependency skills with colliding names require individual
 attention. Both operations retain native output and verify installed results;
 neither is included in cross-repository batches in this version.
 
-`dev skill install` and `dev skill sync` still manage dev's bundled skill. The
-existing single-skill `dev skill update <skill> --project|--global` command remains
+`dev agent skill install` and `dev agent skill sync` still manage dev's bundled skill. The
+existing single-skill `dev agent skill update <skill> --project|--global` command remains
 available for automation. Explicit transfer preparation keeps its separate pinned
 provider and verified-payload contract.
 
@@ -78,15 +78,15 @@ The bundled `dev-cli` skill follows the installed binary separately from skills
 managed by the external `skills` provider:
 
 ```bash
-dev skill install                 # install or explicitly replace bundled files
-dev skill install --check         # local content comparison; nonzero on drift/absence
-dev skill install --if-installed  # refresh only an existing installation
-dev skill uninstall --dry-run     # preview exact owned files and matching links
-dev skill uninstall              # confirm and remove those files and links
+dev agent skill install                 # install or explicitly replace bundled files
+dev agent skill install --check         # local content comparison; nonzero on drift/absence
+dev agent skill install --if-installed  # refresh only an existing installation
+dev agent skill uninstall --dry-run     # preview exact owned files and matching links
+dev agent skill uninstall              # confirm and remove those files and links
 ```
 
-`dev doctor` and `dev upgrade --check` report whether the default installation
-matches the running binary, without changing it. After a successful `dev upgrade`,
+`dev self doctor` and `dev self upgrade --check` report whether the default installation
+matches the running binary, without changing it. After a successful `dev self upgrade`,
 the **new executable** refreshes an already installed
 `~/.agents/skills/dev-cli`. Homebrew and Scoop use their stable installation paths;
 other `dev` copies on PATH are not selected. An absent skill stays absent. A
@@ -111,4 +111,4 @@ uninstall can verify ownership.
 Custom `--dir` installations require `skill install --dir PATH` to refresh and
 `skill uninstall --dir PATH` to remove. Direct package-manager upgrades and
 upgrades initiated by binaries older than v0.2.23 do not run the new refresh hook;
-run `dev skill install` once with the updated binary in those cases.
+run `dev agent skill install` once with the updated binary in those cases.

@@ -4,10 +4,10 @@ Plan selected MCP, skill, or instruction transfers while keeping native agent
 files, upstream skill locks, credential references, and private recovery separate.
 
 ```bash
-dev skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
-dev mcp transfer plan --server grafana --from-agent claude-code --to-agent codex --mode copy
-dev instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror --style import
-dev skill transfer apply --plan <id>
+dev agent skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
+dev agent mcp transfer plan --server grafana --from-agent claude-code --to-agent codex --mode copy
+dev agent instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror --style import
+dev agent skill transfer apply --plan <id>
 ```
 
 Each family has plan/apply/status/refresh/undo. Cross-repo skills use explicit

@@ -1,7 +1,7 @@
 # Feedback and isolated repair
 
 When dev fails, preserve enough evidence to explain the problem before deciding
-whether to report it or repair it. `dev feedback` provides a small terminal form;
+whether to report it or repair it. `dev self feedback` provides a small terminal form;
 its explicit subcommands are intended for agents and scripts. Nothing publishes
 an issue, creates a repair checkout or starts an agent merely because a command
 failed.
@@ -24,11 +24,11 @@ scoped consent persists; there is no need to ask repeatedly for the same action.
 ## Prepare and review a local draft
 
 ```bash
-dev feedback
-dev feedback draft --title 'SSH menu panic' --body-file report.md --json
-dev feedback draft --title 'SSH transport diagnosis' --body-file report.md \
+dev self feedback
+dev self feedback draft --title 'SSH menu panic' --body-file report.md --json
+dev self feedback draft --title 'SSH transport diagnosis' --body-file report.md \
   --diagnostic diagnosis.json --json
-dev feedback issue <id> --json
+dev self feedback issue <id> --json
 ```
 
 `--body-file -` reads a bounded Markdown body from stdin. Include the minimal
@@ -48,17 +48,17 @@ Known credential, URL, endpoint, path and SSH-option forms are sanitized again
 at preview/publication. Review free text for arbitrary identifying names: automatic
 redaction cannot recognize every private name. The preview prints the exact
 operation, repository, body and content/target revision. Edits change that revision.
-A broken dev config still permits drafting under default storage, with a warning.
+A broken dev self config still permits drafting under default storage, with a warning.
 
 ## Explicit GitHub publication
 
 ```bash
-dev feedback issue <id> --search --json
-dev feedback issue <id> --publish
+dev self feedback issue <id> --search --json
+dev self feedback issue <id> --publish
 # For an already reviewed and authorized exact revision:
-dev feedback issue <id> --publish --yes --revision <revision> --json
+dev self feedback issue <id> --publish --yes --revision <revision> --json
 # Preview a comment on an existing thread:
-dev feedback issue <id> --existing 123 --json
+dev self feedback issue <id> --existing 123 --json
 ```
 
 The default issue target is `github.com/daviddwlee84/dev-cli`. `--repo
@@ -81,9 +81,9 @@ retry; a changed draft can be submitted as an explicitly reviewed comment.
 ## Plan a repair checkout
 
 ```bash
-dev feedback repair <id> --base main --json
-dev feedback repair <id> --repo ~/Projects/dev-cli --base main --json
-dev feedback repair <id> --apply --plan <plan-id> --yes --json
+dev self feedback repair <id> --base main --json
+dev self feedback repair <id> --repo ~/Projects/dev-cli --base main --json
+dev self feedback repair <id> --apply --plan <plan-id> --yes --json
 ```
 
 Source precedence is explicit `--repo`, `[feedback].source_repo`, then the same
@@ -98,7 +98,7 @@ source_repo = "~/Projects/dev-cli"
 ```
 
 Without a source, the preview suggests explicitly acquiring a retained Try clone
-with the existing `dev try --clone` workflow, then repeating the preview with that
+with the existing `dev tries try --clone` workflow, then repeating the preview with that
 checkout. Inspect a reused Try's identity and existing work. Never use an
 automatically deleted temporary clone for unique fixes.
 
@@ -113,9 +113,9 @@ reports the task/store recovery problem instead of deleting work.
 ## Continue with an agent
 
 ```bash
-dev prompt render feedback-fix <id>
+dev agent prompt render feedback-fix <id>
 # Only after approving this additional agent/profile:
-dev prompt open feedback-fix <id> --agent <profile>
+dev agent prompt open feedback-fix <id> --agent <profile>
 ```
 
 The current agent can read the rendered prompt and work in the returned checkout.

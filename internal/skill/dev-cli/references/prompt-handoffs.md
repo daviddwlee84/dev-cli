@@ -1,20 +1,20 @@
 # Prompt handoffs
 
-Read before using `dev prompt`, configuring an agent launcher, asking an agent to
+Read before using `dev agent prompt`, configuring an agent launcher, asking an agent to
 interpret closeout evidence, or advising how prompt handoff relates to a runtime.
 
 ## Contract
 
-`dev prompt` collects deterministic read-only context and inserts it into a
+`dev agent prompt` collects deterministic read-only context and inserts it into a
 built-in Markdown prompt. It can print the prompt or run one configured local
 process. It is not an agent loop, scheduler, sandbox, permission manager, or
 lifecycle authority.
 
 ```text
 deterministic command is enough --> use status/done/park/sweep/retire
-need exact context only         --> dev prompt render <recipe>
-need bounded one-shot advice    --> dev prompt run <recipe>
-need a foreground conversation  --> dev prompt open <recipe>
+need exact context only         --> dev agent prompt render <recipe>
+need bounded one-shot advice    --> dev agent prompt run <recipe>
+need a foreground conversation  --> dev agent prompt open <recipe>
 ```
 
 The receiver may explain or prioritize evidence. Never parse its prose as
@@ -24,13 +24,13 @@ mutation. `dev` does not do any of those things either.
 ## Recipes
 
 ```bash
-dev prompt list
-dev prompt list --json
-dev prompt agents
-dev prompt agents --json
-dev prompt render pr-triage
-dev prompt render session-close
-dev prompt render workspace-closeout [repo-or-checkout]
+dev agent prompt list
+dev agent prompt list --json
+dev agent prompt agents
+dev agent prompt agents --json
+dev agent prompt render pr-triage
+dev agent prompt render session-close
+dev agent prompt render workspace-closeout [repo-or-checkout]
 ```
 
 `prompt agents` is the discovery surface for host profiles. Human output is
@@ -69,10 +69,10 @@ empty fact.
 | `open` | one foreground child on current terminal/TTY; prompt by file/argv; user stdin attached | no default |
 
 ```bash
-dev prompt run session-close --agent my-agent
-dev prompt open workspace-closeout . --agent my-agent
-dev prompt run pr-triage --dry-run
-dev prompt open workspace-closeout . --dry-run
+dev agent prompt run session-close --agent my-agent
+dev agent prompt open workspace-closeout . --agent my-agent
+dev agent prompt run pr-triage --dry-run
+dev agent prompt open workspace-closeout . --dry-run
 ```
 
 `--dry-run` prints resolved agent, mode, cwd, transport, timeout, safe command
@@ -118,7 +118,7 @@ Selection order:
 Selection is global, not per mode. After selecting, require that profile's
 requested launcher; never substitute another profile merely because it supports
 the mode. Errors list sorted mode-capable profiles and point to
-`dev prompt agents`. Dynamic `--agent` completion does filter by the command's
+`dev agent prompt agents`. Dynamic `--agent` completion does filter by the command's
 mode, loads the parsed root `--config`, and uses sanitized optional descriptions;
 invalid config produces no candidates and keeps file completion disabled.
 
@@ -159,12 +159,12 @@ because stdin belongs to the conversation.
 
 ## Runtime boundary
 
-`dev prompt open` starts the child in the terminal that invoked it. It does not
+`dev agent prompt open` starts the child in the terminal that invoked it. It does not
 create, focus, reuse, or inject into Herdr, tmux, or Zellij. Inside Herdr it
 naturally stays in the current pane. For a separate Herdr pane, the operator must
 create/focus it manually, enter the exact checkout, and run `prompt open` there.
 
-Do not conflate this with `dev start --run '<shell command>'`: that separate
+Do not conflate this with `dev work start --run '<shell command>'`: that separate
 contract dispatches only to the exact root pane returned for a newly created
 first-class Herdr worktree. Reused, fallback, unverified, and non-Herdr targets
 fail closed. Prompt open neither provides a fresh surface nor relaxes that rule.
@@ -194,7 +194,7 @@ unknown, or unrecognized evidence stays blocked/unknown.
 cleanliness, in-progress Git operations, known base/containment, task state,
 artifact reachability/finalization, and runtime eligibility. Only deterministic
 `retirement.status: "eligible"` may appear under retire. It is still advisory:
-`dev retire` performs fresh checks. A merged PR cannot satisfy or bypass any
+`dev work retire` performs fresh checks. A merged PR cannot satisfy or bypass any
 gate.
 
 ## Rebase conflict procedure
@@ -202,7 +202,7 @@ gate.
 Use deterministic integration/update first:
 
 ```bash
-dev done <task> --ff
+dev work done <task> --ff
 # or
 dev git pull-rebase
 ```
@@ -210,7 +210,7 @@ dev git pull-rebase
 If Git stops at a conflict, remain in that exact checkout:
 
 ```bash
-dev prompt open workspace-closeout . --agent my-agent
+dev agent prompt open workspace-closeout . --agent my-agent
 ```
 
 Discuss the intended semantic resolution. Wait for explicit operator direction

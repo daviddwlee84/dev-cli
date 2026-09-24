@@ -14,7 +14,7 @@ dev triage --all                 # include retained catalog history
 
 Redirected output is a read-only text report. `--json` returns schema version 1
 with source completeness, exact local identities, findings, action candidates,
-runtime links, and recorded triage intent. Existing `dev ls --json` is unchanged.
+runtime links, and recorded triage intent. Existing `dev work list --json` is unchanged.
 
 ## What is discovered
 

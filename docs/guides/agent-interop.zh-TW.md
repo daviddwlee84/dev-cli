@@ -34,12 +34,12 @@ Codex 會從 `~/.agents/skills` 載入 user skills；只想選擇性分享的 sk
 ## Skills
 
 ```bash
-dev skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
-dev skill transfer apply --plan <id>
+dev agent skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
+dev agent skill transfer apply --plan <id>
 
-dev skill transfer prepare example --from-repo api --to-repo web
-dev skill transfer plan example --from-repo api --to-repo web --mode install --prepared <id>
-dev skill transfer apply --plan <id>
+dev agent skill transfer prepare example --from-repo api --to-repo web
+dev agent skill transfer plan example --from-repo api --to-repo web --mode install --prepared <id>
+dev agent skill transfer apply --plan <id>
 ```
 
 只有 `prepare` 會執行可信任、已安裝的 `skills@1.5.23`，並可能連網。
@@ -65,13 +65,13 @@ membership 與精確的原生 symlink。其他 agent 的獨立副本保留。
 ## MCP：五種明確的 adapter
 
 ```bash
-dev mcp transfer plan --server grafana --from-agent claude-code --to-agent codex --mode copy
-dev mcp transfer apply --plan <id>
+dev agent mcp transfer plan --server grafana --from-agent claude-code --to-agent codex --mode copy
+dev agent mcp transfer apply --plan <id>
 
-dev mcp transfer plan --server grafana --from-agent claude-code --to-agent codex \
+dev agent mcp transfer plan --server grafana --from-agent claude-code --to-agent codex \
   --mode mirror --secret-env-file .claude/settings.local.json
-dev mcp transfer apply --plan <id>
-dev mcp transfer refresh <relation-id>
+dev agent mcp transfer apply --plan <id>
+dev agent mcp transfer refresh <relation-id>
 ```
 
 五種 adapter 為 Claude Code、Codex、Cursor、Gemini CLI、OpenCode。
@@ -125,7 +125,7 @@ Env 不是對同一使用者之其他程序的隔離。既有 secret manager 可
 ### 選配連線證據
 
 ```bash
-dev mcp transfer check <applied-id> --json
+dev agent mcp transfer check <applied-id> --json
 ```
 
 這會明確啟動 stdio server 或連線 HTTP endpoint，協商 MCP 2025-06-18，
@@ -138,13 +138,13 @@ authentication 與 native-client loading 保持 `not-checked`。
 ## 指令與選配 recipe
 
 ```bash
-dev instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror
-dev instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror --style import
-dev instructions transfer apply --plan <id>
+dev agent instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror
+dev agent instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror --style import
+dev agent instructions transfer apply --plan <id>
 
-dev skill transfer export <applied-id> > .agents/interop.toml
-dev skill transfer recipe .agents/interop.toml --entry skill-example
-dev skill transfer apply --plan <id>
+dev agent skill transfer export <applied-id> > .agents/interop.toml
+dev agent skill transfer recipe .agents/interop.toml --entry skill-example
+dev agent skill transfer apply --plan <id>
 ```
 
 Import 在前方加入共用來源，保留 Claude 專屬內容原始 bytes 與順序。

@@ -3,8 +3,8 @@
 ## Add a known repository
 
 ```bash
-dev submodule add owner/library libs/library --dry-run --json
-dev submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes --json
+dev git submodule add owner/library libs/library --dry-run --json
+dev git submodule add owner/library libs/library --checkout=pinned --ref=v1.2.0 --yes --json
 dev repo add-as-submodule owner/library libs/library --checkout=default-branch --yes
 ```
 
@@ -31,7 +31,7 @@ parents and unsafe paths block addition. `--yes` is required for non-interactive
 mutation; `--json` never prompts. A local `planned` result has no resolved HEAD.
 An error may still return a partial result (`phase`, `git_dir`, `head`, `staged`,
 `warnings`). Inspect retained paths and finish metadata/staging manually; for
-`initialization-incomplete`, run `dev submodule init` inside the new child.
+`initialization-incomplete`, run `dev git submodule init` inside the new child.
 Never force-delete partial clones or replay add over them. The retirement
 `recover` journal format does not apply to addition.
 
@@ -43,13 +43,13 @@ recursively at committed gitlinks by default. Use `--submodules=none` to opt out
 `[submodules] init = "recursive"|"none"` control the default.
 
 Detached HEAD at a gitlink is intentional. Select development members with
-repeatable `dev start --submodule PATH`; they get the task branch at the same
+repeatable `dev work start --submodule PATH`; they get the task branch at the same
 commit. `--submodule-base PATH=REF` records their integration target. Project
 `submodules.develop` supplies optional default paths. Direct/branch-only modes
-do not switch child branches. Later use `dev submodule develop PATH...` from
+do not switch child branches. Later use `dev git submodule develop PATH...` from
 the managed worktree. Never infer permission to reset an existing child branch.
 
-`dev submodule init` fills missing checkouts, preserves existing ones and refuses
+`dev git submodule init` fills missing checkouts, preserves existing ones and refuses
 nonempty uninitialized directories. Initialization failure is not ready: retain
 partial results, retry init, and do not launch an agent. `status --json` reports
 the local graph without remote access; parent state never substitutes for child
@@ -102,6 +102,6 @@ non-force `git worktree remove`; never substitute force or recursive file deleti
 General worktree removal guards remain in force. Partial pruning failures are
 reported, not called RETIRED, and real-store journals/rollback remain intact.
 
-For a retained `journal.json`, use `dev submodule recover JOURNAL --dry-run`, then
+For a retained `journal.json`, use `dev git submodule recover JOURNAL --dry-run`, then
 `recover` from outside. Never delete quarantine data using an old remote proof.
 Reload shell integration after upgrading for recursive post-done handoff.

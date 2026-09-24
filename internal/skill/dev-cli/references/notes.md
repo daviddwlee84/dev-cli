@@ -20,7 +20,7 @@ $XDG_CACHE_HOME/dev/notes.db
 ```
 
 Markdown is authoritative. SQLite FTS is disposable and rebuilt automatically
-when absent or stale. `dev cache clear notes` must never remove Markdown.
+when absent or stale. `dev self cache clear notes` must never remove Markdown.
 
 Each note has a stable UUID, created/updated timestamps, normalized tags and a
 Markdown body. Repo rename, symlink index or worktree path does not change its
@@ -31,14 +31,14 @@ and catalog state have been synchronized.
 ## CLI workflow
 
 ```bash
-dev note add "try event subscription" --repo api --tag idea
-dev note list api
-dev note search "event subscription" --repo api
-dev note show <id-or-unique-prefix>
-dev note edit <id-or-prefix>
-dev note delete <id-or-prefix>       # confirms
-dev note reindex
-dev note path api
+dev repo note add "try event subscription" --repo api --tag idea
+dev repo note list api
+dev repo note search "event subscription" --repo api
+dev repo note show <id-or-unique-prefix>
+dev repo note edit <id-or-prefix>
+dev repo note delete <id-or-prefix>       # confirms
+dev repo note reindex
+dev repo note path api
 ```
 
 A note ID prefix must be unique and at least eight characters.
@@ -86,10 +86,10 @@ loaded repository row.
 ## What is not a quick note
 
 - task `--next` is the next executable action;
-- `dev park --note` stores context for one task;
+- `dev work park --note` stores context for one task;
 - `catalog.Entry.Note`, exposed by `dev repo mark --note`, is one metadata
   summary for a catalog asset;
-- `dev note` stores multiple durable repository observations and does not
+- `dev repo note` stores multiple durable repository observations and does not
   overwrite either task context or catalog metadata.
 
 `td` / `beads` are structured repo-local task systems and may create dot-folders

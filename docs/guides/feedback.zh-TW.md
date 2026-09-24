@@ -8,7 +8,7 @@ verified_on: 2026-09-11
 
 # Feedback 與隔離修復
 
-Dev 出錯時，先保留足以解釋問題的證據，再決定回報或修復。`dev feedback` 提供
+Dev 出錯時，先保留足以解釋問題的證據，再決定回報或修復。`dev self feedback` 提供
 簡單終端表單，明確的子命令供 agent 與腳本使用。指令失敗本身不會自動發布 issue、
 建立修復工作區或啟動 agent。
 
@@ -27,11 +27,11 @@ subagent 使用獨立 context／checkout，只帶回精簡結果。既有明確�
 ## 準備與檢視本機草稿
 
 ```bash
-dev feedback
-dev feedback draft --title 'SSH menu panic' --body-file report.md --json
-dev feedback draft --title 'SSH transport diagnosis' --body-file report.md \
+dev self feedback
+dev self feedback draft --title 'SSH menu panic' --body-file report.md --json
+dev self feedback draft --title 'SSH transport diagnosis' --body-file report.md \
   --diagnostic diagnosis.json --json
-dev feedback issue <id> --json
+dev self feedback issue <id> --json
 ```
 
 `--body-file -` 從 stdin 讀取有大小上限的 Markdown。內容包含最小重現、預期與
@@ -52,12 +52,12 @@ revision。Dev config 損壞時仍可建立草稿，會告知使用預設儲存�
 ## 明確發布至 GitHub
 
 ```bash
-dev feedback issue <id> --search --json
-dev feedback issue <id> --publish
+dev self feedback issue <id> --search --json
+dev self feedback issue <id> --publish
 # 已檢視並授權該確切 revision 後：
-dev feedback issue <id> --publish --yes --revision <revision> --json
+dev self feedback issue <id> --publish --yes --revision <revision> --json
 # 預覽要加入現有 thread 的 comment：
-dev feedback issue <id> --existing 123 --json
+dev self feedback issue <id> --existing 123 --json
 ```
 
 預設 issue target 是 `github.com/daviddwlee84/dev-cli`；`--repo
@@ -76,9 +76,9 @@ issue 重跑會回傳原 URL；修改過的草稿可經明確檢視後作為 com
 ## 規劃修復工作區
 
 ```bash
-dev feedback repair <id> --base main --json
-dev feedback repair <id> --repo ~/Projects/dev-cli --base main --json
-dev feedback repair <id> --apply --plan <plan-id> --yes --json
+dev self feedback repair <id> --base main --json
+dev self feedback repair <id> --repo ~/Projects/dev-cli --base main --json
+dev self feedback repair <id> --apply --plan <plan-id> --yes --json
 ```
 
 來源順序為明確 `--repo`、`[feedback].source_repo`，再使用 REPOS 的本機 discovery。
@@ -91,7 +91,7 @@ remote，只有 fork origin 不足以確認。
 source_repo = "~/Projects/dev-cli"
 ```
 
-沒有來源時，preview 建議使用既有 `dev try --clone`，明確取得會保留的 Try clone
+沒有來源時，preview 建議使用既有 `dev tries try --clone`，明確取得會保留的 Try clone
 後再指定該 checkout 重新預覽。重用 Try 前先確認身份與既有工作，不將獨有修復
 放在會自動刪除的暫存 clone。
 
@@ -104,9 +104,9 @@ agent。部分失敗保留 checkout，指出 task／store 恢復問題，不刪�
 ## 交接給 agent
 
 ```bash
-dev prompt render feedback-fix <id>
+dev agent prompt render feedback-fix <id>
 # 明確同意額外 agent 與 profile 後：
-dev prompt open feedback-fix <id> --agent <profile>
+dev agent prompt open feedback-fix <id> --agent <profile>
 ```
 
 目前 agent 可讀取 prompt 並在回傳的 checkout 工作。新 process 必須明確指定

@@ -53,7 +53,7 @@ network merely because the picker opened. Manual URL, path, and `owner/name`
 entry remains available; a missing or source-mismatched cache goes directly to
 that prompt.
 
-Outside a checkout, bare `dev start` uses fast live repository discovery for
+Outside a checkout, bare `dev work start` uses fast live repository discovery for
 its picker and performs a full resolve after selection. Inside a repository it
 keeps the immediate current-repository default without scanning all roots. `[picker].command` is one direct argv vector,
 defaulting to `fzf`; no shell evaluates it. A missing executable falls back to
@@ -200,8 +200,8 @@ canonical Git identity plus a SHA-256 of executable configuration. Legacy
 exact hash:
 
 ```bash
-dev config show --project
-dev config trust . --yes
+dev self config show --project
+dev self config trust . --yes
 ```
 
 A changed hash must be reviewed again. Pre-commit and gitleaks protect committed

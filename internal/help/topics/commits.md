@@ -56,7 +56,7 @@ Breaking change: `feat!:` or a `BREAKING CHANGE:` footer. Drives a major bump.
 ## WIP commits are fine
 
 ```bash
-dev park --wip --next "reproduce the token refresh race"
+dev work park --wip --next "reproduce the token refresh race"
 ```
 
 makes `wip: checkpoint — reproduce the token refresh race`.
@@ -65,7 +65,7 @@ Preferred over `git stash` because a stash is invisible in the log, easy to
 forget, and cannot be pushed — so it can never reach another machine. A
 checkpoint commit is searchable, diffable, pushable, and can be squashed away
 later. Agent transcripts/plans are excluded from an in-process WIP checkpoint;
-`dev prepare` and the post-writer finalizer own their exact final bytes.
+`dev agent artifact prepare` and the post-writer finalizer own their exact final bytes.
 
 ## Guarded multi-step Git operations
 

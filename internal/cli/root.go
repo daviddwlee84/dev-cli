@@ -84,13 +84,14 @@ func newRootCommand(app *App) *cobra.Command {
 func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 	out, errOut := app.Out, app.Err
 	root := &cobra.Command{
-		Use:           "dev",
-		Short:         "Manage repos, worktrees and work-in-progress across agent runtimes",
-		Long:          rootLong,
-		Version:       versionFromBuild(),
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		Args:          rejectRootArgs,
+		Use:               "dev",
+		Short:             "Manage repos, worktrees and work-in-progress across agent runtimes",
+		Long:              rootLong,
+		Version:           versionFromBuild(),
+		SilenceUsage:      true,
+		SilenceErrors:     true,
+		Args:              rejectRootArgs,
+		ValidArgsFunction: completeRootShortcuts,
 		// Bare `dev` shows the inventory, which is the question the tool
 		// exists to answer.
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -172,57 +173,7 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 	// skill, so a dotfiles installer can sync it without vendoring a copy.
 	root.Flags().Bool("skill", false, "print the bundled agent skill and exit")
 
-	root.AddCommand(
-		newHygieneCmd(app),
-		newSubmoduleCmd(app),
-		newListCmd(app),
-		newTUICmd(app),
-		newFlowCmd(app),
-		newTriageCmd(app),
-		newStatusCmd(app),
-		newStartCmd(app),
-		newParkCmd(app),
-		newResumeCmd(app),
-		newPrepareCmd(app),
-		newDoneCmd(app),
-		newRetireCmd(app),
-		newRetireCoordinatorCmd(app),
-		newArtifactCmd(app),
-		newSweepCmd(app),
-		newPRCmd(app),
-		newPromptCmd(app),
-		newAdoptCmd(app),
-		newBootstrapCmd(app),
-		newWorktreeCmd(app),
-		newRepoCmd(app),
-		newRepoBrowseCmd(app),
-		newSnippetCmd(app, false),
-		newSnippetCmd(app, true),
-		newFleetCmd(app),
-		newDotfileCmd(app),
-		newSSHCmd(app),
-		newFeedbackCmd(app),
-		newGitCmd(app),
-		newGitignoreCmd(app),
-		newTryCmd(app),
-		newTriesCmd(app),
-		newGraduateCmd(app),
-		newJournalCmd(app),
-		newSummaryCmd(app),
-		newStatsCmd(app),
-		newHelpTopicCmd(app),
-		newSkillCmd(app),
-		newInstructionsCmd(app),
-		newMCPCmd(app),
-		newDoctorCmd(app),
-		newVersionCmd(app),
-		newUpgradeCmd(app),
-		newShellInitCmd(app),
-		newConfigCmd(app),
-		newCacheCmd(app),
-		newNoteCmd(app),
-		newEditCmd(app),
-	)
+	addCommandCatalog(root, app)
 	root.SetHelpCommand(&cobra.Command{Hidden: true, Use: "no-help"})
 	// Inherited by every subcommand, so a bad flag anywhere in the tree is
 	// reported as a usage mistake rather than a bare error line.
@@ -239,6 +190,9 @@ func newRootCommandWithCleanup(app *App, cleanup func()) *cobra.Command {
 		defaultHelp(cmd, args)
 		cmd.SetOut(previous)
 		fmt.Fprint(previous, renderCobraHelp(buf.String(), app.outStyle()))
+		if cmd == root {
+			fmt.Fprintln(previous, "\nShortcuts such as dev start and dev try remain available. See dev help --aliases.\nExplore commands with dev help --tree (use --depth 0 for the full tree).")
+		}
 	})
 	enforceUsageErrors(root)
 	annotateHelp(root)

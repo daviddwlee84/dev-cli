@@ -2,9 +2,9 @@
 
 Use these inventories to answer two different questions:
 
-- `dev skill list`: which reusable instruction packages are present, and whether
+- `dev agent skill list`: which reusable instruction packages are present, and whether
   an explicit upstream source check reports newer lock-recorded content.
-- `dev mcp list`: which external MCP capabilities are declared in supported
+- `dev agent mcp list`: which external MCP capabilities are declared in supported
   static agent configuration files.
 
 Do not treat an MCP declaration as a skill, a live connection, or permission to
@@ -13,10 +13,10 @@ invoke tools.
 ## Skill inventory
 
 ```bash
-dev skill list
-dev skill list --repo <repo-or-checkout> --project
-dev skill list --all
-dev skill list --all --check --json
+dev agent skill list
+dev agent skill list --repo <repo-or-checkout> --project
+dev agent skill list --all
+dev agent skill list --all --check --json
 ```
 
 Reads use a versioned snapshot of all 77 agent paths from `skills@1.5.23` plus
@@ -48,10 +48,10 @@ executable; `dev` skips repository-local npm bins and rejects source-less locks.
 ## MCP inventory
 
 ```bash
-dev mcp list
-dev mcp list --repo <repo-or-checkout>
-dev mcp list --all --json
-dev mcp list --agent claude-code,codex --scope project
+dev agent mcp list
+dev agent mcp list --repo <repo-or-checkout>
+dev agent mcp list --all --json
+dev agent mcp list --agent claude-code,codex --scope project
 ```
 
 Adapters cover Claude Code, Codex, Cursor, Gemini CLI, and OpenCode. Rows remain
@@ -85,7 +85,7 @@ per-stanza copy/move/mirror ownership, instructions support symlink/import, and
 optional recipes contain only reconstruction intent. JSON adds `interop` receipts
 without changing existing inventory fields or claiming current client activation.
 
-`dev skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
+`dev agent skill transfer plan <name> --from-agent universal --to-agent claude-code --mode mirror`
 previews one local per-skill relative link. Copy creates an independent tree;
 move plans destination publication before source cleanup. Different existing
 content and foreign links conflict. Apply uses `transfer apply --plan <id>`.
@@ -101,7 +101,7 @@ legacy interactive `skill add` wizard or native provider update a frozen install
 
 
 For scope selection, multi-repository updates and single-project native
-restore/sync, use `dev skill manage`; see `references/skills-management.md`.
+restore/sync, use `dev agent skill manage`; see `references/skills-management.md`.
 Check results retain `update_checked_at` and are loaded from a disposable cache
 only while the lock fingerprint matches. Unknown and failed checks remain distinct
 from current content. Management uses the directly installed provider and does

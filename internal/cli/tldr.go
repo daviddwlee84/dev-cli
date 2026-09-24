@@ -32,50 +32,50 @@ var familyTLDR = map[string]string{
                                              branch --> joins to a worktree
   --scope all     --> both, local upgrades account
 
-  dev prompt render/run/open pr-triage hands the queue to the generic prompt family.
+  dev agent prompt render/run/open pr-triage hands the queue to the generic prompt family.
   Nothing here approves, merges, or removes anything.`,
 
-	"dev prompt": `TL;DR: escalate only as far as the situation needs
+	"dev agent prompt": `TL;DR: escalate only as far as the situation needs
 
-  dev prompt render <recipe>  --> inspect or copy the exact prompt
-  dev prompt run <recipe>     --> one-shot, no user stdin, bounded timeout
-  dev prompt open <recipe>    --> foreground TTY, user can answer questions
+  dev agent prompt render <recipe>  --> inspect or copy the exact prompt
+  dev agent prompt run <recipe>     --> one-shot, no user stdin, bounded timeout
+  dev agent prompt open <recipe>    --> foreground TTY, user can answer questions
 
   Recipes collect deterministic facts. Agents explain and prioritize them;
   done, park, sweep and retire remain the lifecycle authorities.`,
 
-	"dev wt": `TL;DR: the checkout is disposable, the branch is not
+	"dev git worktree": `TL;DR: the checkout is disposable, the branch is not
 
-  dev start --mode worktree --> paths.worktree_path/<repo>/<branch>
+  dev work start --> paths.worktree_path/<repo>/<branch>  (default mode)
                                   |
-                                  +-- dev wt list       what exists, and how dirty
-                                  +-- dev wt open       attach a runtime to one
-                                  +-- dev wt provision  re-run installs after a pull
+                                  +-- dev git worktree list       what exists, and how dirty
+                                  +-- dev git worktree open       attach a runtime to one
+                                  +-- dev git worktree provision  re-run installs after a pull
                                   |
-  dev done --ff --> MERGED --> dev retire --> checkout gone, branch kept
+  dev work done --ff --> MERGED --> dev work retire --> checkout gone, branch kept
 
-  dev wt rm removes a checkout. It never removes a branch or its commits.`,
+  dev git worktree rm removes a checkout. It never removes a branch or its commits.`,
 
 	"dev tries": `TL;DR: the experiment keeps its identity after the directory moves
 
-  dev try <name> --> a dated scratch directory  (create or open)
+  dev tries try <name> --> a dated scratch directory  (create or open)
                        |
                        +-- dev tries mark       tags and a note
                        +-- dev tries archive    hide it, keep the ID
                        +-- dev tries restore    bring it back into view
-                       +-- dev graduate         promote it to a real project
+                       +-- dev tries graduate         promote it to a real project
 
   The catalog ID survives archive, restore and graduation. The path does not.`,
 
-	"dev note": `TL;DR: thoughts that outlive the checkout
+	"dev repo note": `TL;DR: thoughts that outlive the checkout
 
-  dev note add <repo> -m "..."  --> Markdown under the state dir  (durable)
+  dev repo note add --repo <repo> "..."  --> Markdown under the state dir  (durable)
                                       |
-                                      +-- dev note list / show
-                                      +-- dev note search    <- SQLite full text
-                                      +-- dev note edit / delete
+                                      +-- dev repo note list / show
+                                      +-- dev repo note search    <- SQLite full text
+                                      +-- dev repo note edit / delete
 
-  Markdown is the truth. The search index is disposable: dev note reindex.`,
+  Markdown is the truth. The search index is disposable: dev repo note reindex.`,
 
 	"dev fleet": `TL;DR: read other machines without sharing their filesystem
 
@@ -105,33 +105,33 @@ var familyTLDR = map[string]string{
   Listing is static. Explicit management/file actions are plans until --apply.
   Setup and probe may run OpenSSH; setup --dry-run never does.`,
 
-	"dev skill": `TL;DR: what the agents on this machine already know
+	"dev agent skill": `TL;DR: what the agents on this machine already know
 
-  dev skill list        current checkout and global native inventory
-  dev skill list --all  every canonical repository, then global once
-  dev skill add/update  explicit mutation through a direct skills executable
+  dev agent skill list        current checkout and global native inventory
+  dev agent skill list --all  every canonical repository, then global once
+  dev agent skill add/update  explicit mutation through a direct skills executable
 
   dev's own bundled skill ships inside the binary and updates with dev itself,
   never through the provider.`,
 
-	"dev mcp": `TL;DR: declared capabilities, not live connections
+	"dev agent mcp": `TL;DR: declared capabilities, not live connections
 
-  dev mcp list         current checkout plus user/system declarations
-  dev mcp list --all   every canonical repository, then user/system once
-  dev mcp list --json  sanitized servers, diagnostics and coverage
+  dev agent mcp list         current checkout plus user/system declarations
+  dev agent mcp list --all   every canonical repository, then user/system once
+  dev agent mcp list --json  sanitized servers, diagnostics and coverage
 
   Static inventory never starts a server, runs a helper, resolves credentials,
   or claims that a declaration is connected, healthy or effective.`,
 
-	"dev retire": `TL;DR: integrate, exit, then clean up from outside
+	"dev work retire": `TL;DR: integrate, exit, then clean up from outside
 
-  dev done --ff --> MERGED   (runtime and worktree deliberately kept)
+  dev work done --ff --> MERGED   (runtime and worktree deliberately kept)
                       |
-    the agent exits,  |  dev prepare arms its transcript to finalize later
+    the agent exits,  |  dev agent artifact prepare arms its transcript to finalize later
     or another shell  v
-  dev retire <task> --> close runtime --> remove worktree --> keep the branch
+  dev work retire <task> --> close runtime --> remove worktree --> keep the branch
 
-  dev retire refuses to run inside the workspace it would delete, and refuses
+  dev work retire refuses to run inside the workspace it would delete, and refuses
   a live agent, dirty state, or an unfinalized artifact.`,
 }
 
@@ -139,44 +139,44 @@ var familyTLDR = map[string]string{
 // Cobra help documents syntax; `dev help <topic>` documents when and why.
 // Before this map neither one mentioned the other.
 var helpTopics = map[string]string{
-	"dev wt":                "worktrees",
-	"dev repo":              "repositories",
-	"dev note":              "notes",
-	"dev fleet":             "fleet",
-	"dev dotfile":           "dotfile",
-	"dev ssh":               "ssh",
-	"dev journal":           "journal",
-	"dev summary":           "summary",
-	"dev retire":            "retirement",
-	"dev artifact":          "ai-artifacts",
-	"dev specstory":         "ai-artifacts",
-	"dev hygiene":           "hygiene",
-	"dev artifact finalize": "retirement",
-	"dev artifact status":   "ai-artifacts",
-	"dev artifact setup":    "ai-artifacts",
-	"dev artifact archive":  "ai-artifacts",
-	"dev artifact find":     "ai-artifacts",
-	"dev artifact migrate":  "ai-artifacts",
-	"dev artifact sync":     "ai-artifacts",
-	"dev artifact backup":   "ai-artifacts",
+	"dev git worktree":            "worktrees",
+	"dev repo":                    "repositories",
+	"dev repo note":               "notes",
+	"dev fleet":                   "fleet",
+	"dev dotfile":                 "dotfile",
+	"dev ssh":                     "ssh",
+	"dev activity journal":        "journal",
+	"dev summary":                 "summary",
+	"dev work retire":             "retirement",
+	"dev agent artifact":          "ai-artifacts",
+	"dev specstory":               "ai-artifacts",
+	"dev git hygiene":             "hygiene",
+	"dev agent artifact finalize": "retirement",
+	"dev agent artifact status":   "ai-artifacts",
+	"dev agent artifact setup":    "ai-artifacts",
+	"dev agent artifact archive":  "ai-artifacts",
+	"dev agent artifact find":     "ai-artifacts",
+	"dev agent artifact migrate":  "ai-artifacts",
+	"dev agent artifact sync":     "ai-artifacts",
+	"dev agent artifact backup":   "ai-artifacts",
 
-	"dev prepare":   "retirement",
-	"dev done":      "retirement",
-	"dev bootstrap": "bootstrap",
-	"dev adopt":     "adopting",
-	"dev park":      "parking",
-	"dev resume":    "parking",
-	"dev cache":     "storage",
-	"dev config":    "storage",
-	"dev tui":       "tui",
-	"dev start":     "branching",
-	"dev tries":     "tries",
-	"dev try":       "tries",
-	"dev skill":     "skills",
-	"dev mcp":       "mcp",
-	"dev status":    "git-status",
-	"dev pr":        "pull-requests",
-	"dev prompt":    "prompts",
+	"dev agent artifact prepare": "retirement",
+	"dev work done":              "retirement",
+	"dev repo bootstrap":         "bootstrap",
+	"dev work adopt":             "adopting",
+	"dev work park":              "parking",
+	"dev work resume":            "parking",
+	"dev self cache":             "storage",
+	"dev self config":            "storage",
+	"dev tui":                    "tui",
+	"dev work start":             "branching",
+	"dev tries":                  "tries",
+	"dev tries try":              "tries",
+	"dev agent skill":            "skills",
+	"dev agent mcp":              "mcp",
+	"dev status":                 "git-status",
+	"dev pr":                     "pull-requests",
+	"dev agent prompt":           "prompts",
 }
 
 // topicForCommand resolves a bare command name or alias to its help topic, so
@@ -193,7 +193,7 @@ func annotateHelp(cmd *cobra.Command) {
 	for _, child := range cmd.Commands() {
 		annotateHelp(child)
 	}
-	path := cmd.CommandPath()
+	path := canonicalCommandPath(cmd)
 	long := cmd.Long
 	if long == "" {
 		long = cmd.Short

@@ -53,7 +53,7 @@ This project recommends consistent English imperative subjects and commonly uses
 feat fix docs style refactor perf test build ci chore revert
 ```
 
-That is a house policy for readable/tool-friendly logs, not part of the Git or Conventional Commits specifications. `dev park --wip` deliberately creates a temporary `wip:` type outside that list.
+That is a house policy for readable/tool-friendly logs, not part of the Git or Conventional Commits specifications. `dev work park --wip` deliberately creates a temporary `wip:` type outside that list.
 
 ## Pull requests
 

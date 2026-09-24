@@ -2,7 +2,7 @@
 
 Submodule workspaces initialize recursively at committed gitlinks by default.
 Use `--submodules=none` to skip, or `start --submodule PATH` to select children
-for task branches. `dev submodule status/init/develop/recover` inspects, prepares
+for task branches. `dev git submodule status/init/develop/recover` inspects, prepares
 and restores child checkouts. Explicit `--recursive` cleanup verifies initialized
 child clones' remote recovery before removing them and the outer linked worktree;
 canonical repositories and the outer branch are retained.
@@ -41,18 +41,18 @@ of the whole tree.
 ## Commands
 
 ```bash
-dev start --task auth --branch feat/auth --base main  # new managed work
-dev wt create feat/auth --base main   # create/provision; no task record
-dev wt list                           # every worktree of this repo
-dev wt open feat/auth                 # open and activate an existing one
-dev wt open feat/auth --no-focus      # make it visible without navigation
-dev wt rm feat/auth                   # remove the checkout; branch survives
-dev wt provision                      # re-run setup on an existing checkout
+dev work start --task auth --branch feat/auth --base main  # new managed work
+dev git worktree create feat/auth --base main   # create/provision; no task record
+dev git worktree list                           # every worktree of this repo
+dev git worktree open feat/auth                 # open and activate an existing one
+dev git worktree open feat/auth --no-focus      # make it visible without navigation
+dev git worktree rm feat/auth                   # remove the checkout; branch survives
+dev git worktree provision                      # re-run setup on an existing checkout
 ```
 
-Prefer `dev start` with an explicit base for new managed work. For an existing
+Prefer `dev work start` with an explicit base for new managed work. For an existing
 external worktree that only needs runtime visibility, use
-`dev wt open <branch> --repo <repo> --runtime herdr --no-focus`. It reports the
+`dev git worktree open <branch> --repo <repo> --runtime herdr --no-focus`. It reports the
 branch, actual path and backend/handle immediately, then the runtime surface
 opened/reused, without switching focus or attaching. No task adoption,
 provisioning, agent launch, or Git/index/dirty-file mutation occurs. Runtime
@@ -65,7 +65,7 @@ work back. Making an external checkout visible does not make it a managed task.
 ## Always pass a base
 
 ```bash
-dev wt create fix/orderbook --base main
+dev git worktree create fix/orderbook --base main
 ```
 
 Without `--base`, dev uses the repository's default branch. Passing it
@@ -85,15 +85,15 @@ It remains deliberately unmanaged: dev does not silently create a task, move
 the checkout, or run provisioning. If the work becomes durable, opt in:
 
 ```bash
-dev wt provision /path/to/worktree  # optional: env files + dependencies
-dev adopt                           # report candidates; changes nothing
-dev adopt --apply                   # record the selected candidates as tasks
+dev git worktree provision /path/to/worktree  # optional: env files + dependencies
+dev work adopt                           # report candidates; changes nothing
+dev work adopt --apply                   # record the selected candidates as tasks
 ```
 
-Until adoption, `dev park`, `dev resume`, and `dev done` have no task lifecycle
-to operate on. Use `dev start` when that lifecycle is wanted from the outset.
+Until adoption, `dev work park`, `dev work resume`, and `dev work done` have no task lifecycle
+to operate on. Use `dev work start` when that lifecycle is wanted from the outset.
 
-`dev flow [repo]` also shows every registered checkout. An eligible unmanaged
+`dev repo flow [repo]` also shows every registered checkout. An eligible unmanaged
 linked row offers plan-first **Adopt** (task metadata only; bytes stay untouched)
 and **Remove Checkout** (clean, non-force, branch always preserved). Canonical,
 harness, locked/prunable, task-claimed, or ambiguous rows have no destructive
@@ -115,7 +115,7 @@ version over it would be wrong.
 ## Removing one
 
 ```bash
-dev wt rm feat/auth
+dev git worktree rm feat/auth
 ```
 
 Never deletes the branch. A dirty checkout needs an explicit `--force`, and
@@ -147,4 +147,4 @@ workaround is used. See `dev help retirement` and `dev help ai-artifacts`.
 
 If a directory was deleted behind Git's back, the registration is a recovery
 case. Inspect repository-wide `git worktree prune` scope before applying it;
-`dev flow` reports the drift and does not prune implicitly.
+`dev repo flow` reports the drift and does not prune implicitly.

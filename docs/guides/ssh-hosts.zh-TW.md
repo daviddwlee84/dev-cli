@@ -38,7 +38,7 @@ Foreign alias 仍可供 `list`、`show`、`probe`、key bootstrap 與 fleet regi
 | `dev ssh probe <alias>` | `--json` | sharing disabled 的單次 fresh ordinary BatchMode login |
 | `dev ssh remove <alias>` | `--fleet`、`--dry-run`、`--yes`、`--json` | 只移除 canonical dev-owned SSH/fleet fragments |
 
-`dev doctor` 也會回報 local `ssh`/`ssh-keygen` 與 optional `tailscale` capability、static Include reachability、managed namespace permission/ACL，以及 generated fleet-fragment health。它不會執行 `ssh -G`、聯絡 host 或進行 repair。
+`dev self doctor` 也會回報 local `ssh`/`ssh-keygen` 與 optional `tailscale` capability、static Include reachability、managed namespace permission/ACL，以及 generated fleet-fragment health。它不會執行 `ssh -G`、聯絡 host 或進行 repair。
 
 ## 一次性 initialization 採 report-before-apply
 
@@ -647,7 +647,7 @@ stale／unresolved，不會靜默重配 machine。Exact static IP/FQDN associati
 
 Unlink 保留 suppression，防止下次 discovery 自動連回。Merge 保留 survivor 的
 label／preferred profile，舊 ID 留作 redirect。兩者不修改 provider config 或停止
-remote session。Private registry 是 durable data；`dev cache clear ssh-discovery`
+remote session。Private registry 是 durable data；`dev self cache clear ssh-discovery`
 與 `cache clear all` 只清 observations，不刪 canonical identities 或 manual bindings。
 
 ## Key selection 與 optional registration
@@ -674,7 +674,7 @@ Key 也可以留在密碼管理器的 SSH agent，而不是 private file。
 setup key picker 會加入所有 socket 存在的 provider。Dev 只用 `stat` 尋找 socket：
 Bitwarden（App Store、.dmg、Linux、Snap、Flatpak 路徑）、1Password 與 Secretive；
 已安裝但找不到 socket 的 provider 會提示啟用 agent 的步驟（Bitwarden：Settings →
-啟用 SSH agent），`dev doctor` 也會顯示同樣的警告。找不到 socket 不代表已證明
+啟用 SSH agent），`dev self doctor` 也會顯示同樣的警告。找不到 socket 不代表已證明
 agent 被停用；app 可能未開啟，或正在使用其他路徑。Provider 路徑偵測是被動的；
 明確選取／列出 key 才會查詢 SSH agent，而不會執行 provider 的 vault CLI。Setup dry-run
 不寫檔，也不連線到 host，但選取 agent key 時仍會查詢該確切 agent。Windows 共用的

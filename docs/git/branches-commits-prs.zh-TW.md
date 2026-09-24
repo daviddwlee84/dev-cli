@@ -57,7 +57,7 @@ Conventional Commits 1.0.0 定義 `feat` 與 `fix`、允許其他 types，並以
 feat fix docs style refactor perf test build ci chore revert
 ```
 
-這是 house policy，不是 Git 或 Conventional Commits 規格。`dev park --wip` 刻意產生不在清單內的暫時 `wip:` type。
+這是 house policy，不是 Git 或 Conventional Commits 規格。`dev work park --wip` 刻意產生不在清單內的暫時 `wip:` type。
 
 ## Pull request
 

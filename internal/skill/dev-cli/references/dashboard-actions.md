@@ -27,7 +27,7 @@ remain unknown, and saved configuration is distinguished from failed reloads.
 TASKS finish, resume, retirement and recovery use the existing CLI workflows.
 The dashboard suspends during their prompts and refreshes when they finish,
 including after an error. Task ID/revision checks prevent using a stale selection.
-`dev sweep --task <id>` reports only the selected task; add `--apply` to confirm
+`dev work sweep --task <id>` reports only the selected task; add `--apply` to confirm
 its eligible suggestions. Other worktree-wide sweep modes cannot be combined
 with `--task`.
 
@@ -71,6 +71,29 @@ the reviewed plan, never inferred from an arbitrary checked-out branch.
 The dashboard releases its terminal before an attach, shell-directory handoff,
 or external retirement coordinator runs. An ordinary completion/cancellation
 returns to the dashboard. No agent is launched automatically.
+
+## Return a graduated repository to Try
+
+Use REPOS → Ctrl+O → demote to return a previously graduated Try to the experiment
+area. The action previews the same guarded move as `dev tries demote`; confirm
+the source and destination before applying. It is unavailable for an ordinary
+repository that has no graduation history.
+
+```bash
+dev tries demote <repo-or-path-or-catalog-id> --dry-run
+dev tries demote <repo-or-path-or-catalog-id>
+dev tries demote <catalog-id> --to ~/src/tries/2026-09-24-parser
+```
+
+The default is the recorded original Try path. An occupied destination or one
+outside the current `tries_root` requires a safe explicit `--to`. Demotion
+preserves current bytes, including dirty/untracked/ignored files, Git history
+and remotes, catalog ID, tags, notes and graduation history; the Try becomes
+active and present. It does not undo commits/publication or create a symlink.
+Task, runtime/agent and artifact claims, canonical repositories with linked
+worktrees, incomplete observations and stale plans block the move. Existing
+same-filesystem, identity, rollback and reconciliation guards still apply.
+See [command navigation](command-navigation.md).
 
 ## Dispose of a Try
 
@@ -125,9 +148,9 @@ restoration still uses `dev tries restore <ref> [--to <path>]`.
 ## Open a repository homepage
 
 ```bash
-dev browse
+dev repo browse
 dev repo browse api --remote origin
-dev browse --print
+dev repo browse --print
 dev repo context
 ```
 
@@ -170,7 +193,7 @@ silently performed as error recovery. See [local triage](local-triage.md).
 In Ctrl+O, `/` filters the current menu; arrows move and Enter continues. Escape
 clears search before closing. REPOS offers current/filtered repository skills,
 and SKILLS offers selected skill, project and global scopes. These launch the
-[dev skill manage](skills-management.md) wizard. Updates check and preview first;
+[dev agent skill manage](skills-management.md) wizard. Updates check and preview first;
 experimental restore/sync remain single-project actions.
 
 
@@ -223,7 +246,7 @@ separate. Installation cancellation/failure is not retried.
 ## Dashboard version and update hints
 
 The dashboard footer always shows the running version. When a newer stable
-release is known it adds the release tag and `dev upgrade`; updating remains an
+release is known it adds the release tag and `dev self upgrade`; updating remains an
 explicit command. It reads the existing 24-hour release cache first and checks
 in the background only after the first frame. `[update] check = false` or
 `DEV_NO_UPDATE_CHECK=1` disables checks and hints while retaining the current

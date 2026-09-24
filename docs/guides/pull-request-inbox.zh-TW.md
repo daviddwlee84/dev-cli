@@ -96,21 +96,21 @@ Forge 回報 request 已 merge 只是 evidence，不是 retirement authorization
 
 ```bash
 dev pr list --scope local --state merged   # candidates
-dev sweep --merged-worktrees               # 證明 containment，先 report
+dev work sweep --merged-worktrees               # 證明 containment，先 report
 ```
 
 Squash merge 不會讓 local feature branch 成為 base 的 ancestor，因此 forge answer 無法
-單獨證明 recovery。`dev sweep --merged-worktrees` 在本地證明 containment；適用時
-`dev done --merged` 需要 explicit squash attestation。把 inbox 視為 inspect 的理由，
+單獨證明 recovery。`dev work sweep --merged-worktrees` 在本地證明 containment；適用時
+`dev work done --merged` 需要 explicit squash attestation。把 inbox 視為 inspect 的理由，
 絕不是 delete permission。
 
 要取得 deterministic agent-readable triage，請用 generic prompt surface，不是 PR
 subcommand：
 
 ```bash
-dev prompt render pr-triage
-dev prompt run pr-triage --agent my-agent
-dev prompt open pr-triage --agent my-agent
+dev agent prompt render pr-triage
+dev agent prompt run pr-triage --agent my-agent
+dev agent prompt open pr-triage --agent my-agent
 ```
 
 Recipe、configuration、transport、TTY、permission 與 runtime boundaries 請見
@@ -119,7 +119,7 @@ Recipe、configuration、transport、TTY、permission 與 runtime boundaries 請
 ## Provider availability
 
 `gh` 與 `glab` 是選用且彼此獨立的。Signed-out provider 會在 table 下方回報 exact login
-command；另一個 ready provider 仍會提供 rows。`dev doctor` 回報相同狀態。在 JSON
+command；另一個 ready provider 仍會提供 rows。`dev self doctor` 回報相同狀態。在 JSON
 中，先檢查 `providers`，不要直接把 empty `pull_requests` array 解讀成 empty inbox。
 
 目前不列出 Azure DevOps pull request。Configured Azure target 會被回報為 unsupported，

@@ -20,55 +20,55 @@ cache so cleanup cannot erase the wrong thing. `paths.state_dir` defaults to
 These note-like fields have different scopes:
 
 - task `--next` is the next executable action;
-- `dev park --note` records context on one task;
+- `dev work park --note` records context on one task;
 - `dev repo mark --note` stores one catalog metadata summary;
-- `dev note` stores multiple durable observations attached to a repository.
+- `dev repo note` stores multiple durable observations attached to a repository.
 
 Inspect paths:
 
 ```bash
-dev config path
-dev stats path
-dev note path --all
-dev cache path
-dev cache list
+dev self config path
+dev activity stats path
+dev repo note path --all
+dev self cache path
+dev self cache list
 ```
 
 Clear only regenerable cache:
 
 ```bash
-dev cache clear remote
-dev cache clear notes
-dev cache clear fleet
-dev cache clear gitignore
-dev cache clear licenses
-dev cache clear all
+dev self cache clear remote
+dev self cache clear notes
+dev self cache clear fleet
+dev self cache clear gitignore
+dev self cache clear licenses
+dev self cache clear all
 ```
 
 Clear durable stats only with an explicit scope and confirmation:
 
 ```bash
-dev stats clear --repo api
-dev stats clear --source git
-dev stats clear --repo api --source wakatime
-dev stats clear --all
+dev activity stats clear --repo api
+dev activity stats clear --source git
+dev activity stats clear --repo api --source wakatime
+dev activity stats clear --all
 ```
 
 `stats.db` is not called a cache because session samples and WakaTime imports
 may not be reconstructible. Git-derived rows can be regenerated with
-`dev stats backfill [--repo api]`.
+`dev activity stats backfill [--repo api]`.
 
 Quick notes remain ordinary Markdown and can be synced or backed up as files,
 but `dev` does not synchronize them. Synchronize `state_dir/notes` together
 with the catalog assets when stable repository attachment must travel between
 hosts. `notes.db` contains full note bodies for search. Note files and the index
 use mode 0600 on Unix; Windows privacy follows the containing directory's ACL.
-The index is still disposable: `dev cache clear notes` followed by
-`dev note search ...` rebuilds it from Markdown.
+The index is still disposable: `dev self cache clear notes` followed by
+`dev repo note search ...` rebuilds it from Markdown.
 
 
 REPOS display snapshots (`repos-v1.json`) and dated skill-source comparisons
-(`skill-checks-v1.json`) are disposable: `dev cache clear repos|skills` clears
+(`skill-checks-v1.json`) are disposable: `dev self cache clear repos|skills` clears
 one, and `all` includes both. Management receipts under `<state_dir>/skills/runs`
 are operation records. Heatmap backfill checkpoints live with durable stats;
 clearing Git stats resets the matching checkpoints, while cache clearing does

@@ -6,14 +6,14 @@ health from inventory or a successful config write.
 
 ## Workflow
 
-- `dev mcp transfer plan --server NAME --from-agent claude-code --to-agent codex --mode copy`
+- `dev agent mcp transfer plan --server NAME --from-agent claude-code --to-agent codex --mode copy`
   converts one selected native declaration.
-- `dev skill transfer plan NAME --from-agent universal --to-agent claude-code --mode mirror`
+- `dev agent skill transfer plan NAME --from-agent universal --to-agent claude-code --mode mirror`
   creates one relative per-skill link.
 - Cross-project skills prefer `transfer prepare NAME --from-repo A --to-repo B`,
   then `transfer plan NAME --mode install --prepared ID` with the same selectors.
   Only prepare runs the trusted `skills@1.5.23` provider or fetches.
-- `dev instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror`
+- `dev agent instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror`
   shares instructions; `--style import` preserves Claude-specific text.
 - Apply the exact displayed ID with `transfer apply --plan ID`. Refresh and undo
   create new plans, never immediate changes.
@@ -49,7 +49,7 @@ HTTP env references must be present in the destination client before startup.
 A stdio launcher cannot inject into that HTTP client. Keep OAuth token stores,
 private-key files, hooks, plugins, model and sandbox settings outside migration.
 
-`dev mcp transfer check ID` is the explicit server initialization operation.
+`dev agent mcp transfer check ID` is the explicit server initialization operation.
 It negotiates MCP 2025-06-18 and calls no application tools. `initialized` does not
 mean authenticated queries succeeded or a native agent loaded the config.
 

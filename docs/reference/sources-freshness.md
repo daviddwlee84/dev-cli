@@ -2,10 +2,16 @@
 description: Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
 authority: project-policy
 status: maintained
-verified_on: 2026-09-22
+verified_on: 2026-09-24
 ---
 
 # Sources and freshness
+
+Command-family navigation, permanent shortcuts and Try demotion are defined
+by the current Cobra tree, its compatibility tests, the experiment move service
+and REPOS's guarded action adapter. See [the v0.3 migration guide](cli-v0.3.md).
+A demote plan is current authority only after apply-time revalidation; retained
+graduation history and cached runtime observations cannot authorize a move.
 
 Submodule graph/initialization, selective task branches, recursive remote proof and quarantine recovery are defined by `internal/gitx/submodule*`, `internal/submodule`, taskflow/CLI tests and [Submodule workspaces](../guides/submodule-workspaces.md), checked against Git 2.55.0 on 2026-09-06.
 
@@ -74,7 +80,7 @@ tested_with: optional
 | schema-v1 repository context, scoped readiness, sanitized remotes, and cache/live provenance | [Commands and configuration](commands-config.md#high-value-structured-interfaces) | `internal/repocontext`, `internal/cli/repo_context.go`, focused context tests | implemented |
 | fleet primary/generated-fragment ownership, `remote_os`, snapshots, machine UUID pinning, sync safety, explicit bounded `fleet files`, and POSIX/Windows launchers | [Remote repository fleet](../guides/remote-fleet.md) | `internal/fleet`, `internal/localfiles`, `internal/machineid`, `internal/cli/{fleet,fleet_files}.go`, focused fake-SSH/fault-injection tests, required Windows SSH CI job | implemented; SSH/fleet snapshot 2026-09-01 |
 | READY/MERGED/RETIRED milestones, task-backed retirement revalidation, compatibility boundaries, and merged-worktree sweep | [Agent-safe retirement](../guides/agent-safe-retirement.md) | `internal/taskflow/retire.go`, `internal/retire`, `internal/cli/{retire,artifact,sweep}.go`, focused retirement tests | implemented |
-| `dev summary` machine-wide snapshot and `dev journal` calendar-day reports | [Machine summary](../guides/machine-summary.md), [Development journal](../guides/dev-journal.md) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
+| `dev summary` machine-wide snapshot and `dev activity journal` calendar-day reports | [Machine summary](../guides/machine-summary.md), [Development journal](../guides/dev-journal.md) | `internal/summary`, `internal/journal`, focused summary/journal tests | implemented |
 | native cross-repository agent skill inventory, versioned path registry, local status, object-byte upstream checks, and serialized mutations | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/agenttarget`, `internal/agentskill`, `internal/inventory/agent_skills.go`, `internal/cli/skill.go`, focused CLI/TUI tests | implemented; path registry snapshot `skills@1.5.23`; checked 2026-09-02 |
 | declaration-only MCP inventory, Claude approval annotation, and secret-redaction boundary | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | current official agent config docs; `internal/agentmcp`, `internal/cli/mcp.go`, fixture/security tests | implemented for Claude Code, Codex, Cursor, Gemini CLI, and OpenCode; checked 2026-09-02 |
 | dashboard startup/readiness stages, generation handling, cache/live provenance, and private trace semantics | [TUI, repositories, quick notes, and bootstrap](../guides/tui-repos-bootstrap.md) | `internal/perftrace`, `internal/tui/{readiness,local}.go`, `internal/cli/tui*.go`, focused race tests | implemented |

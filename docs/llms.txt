@@ -16,7 +16,7 @@
 ### Using dev-cli
 
 - [Change-stream workflow](https://daviddwlee84.github.io/dev-cli/guides/change-stream-workflow/): Run a dev-cli change stream through start, park, resume, review or integration, and conservative cleanup.
-- [Repository lifecycle flow](https://daviddwlee84.github.io/dev-cli/guides/repository-flow/): Use the preview dev flow interface to inspect one repository and apply revision-bound lifecycle, adoption, removal, retirement, and remote-evidence plans.
+- [Repository lifecycle flow](https://daviddwlee84.github.io/dev-cli/guides/repository-flow/): Use the preview dev repo flow interface to inspect one repository and apply revision-bound lifecycle, adoption, removal, retirement, and remote-evidence plans.
 - [Local work triage](https://daviddwlee84.github.io/dev-cli/guides/local-triage/): Find forgotten local work across ordinary repositories and Tries, review synchronization batches, and preserve ignored data during checkout cleanup.
 - [Machine summary](https://daviddwlee84.github.io/dev-cli/guides/machine-summary/): Generate a current machine-wide snapshot of repositories, Tries, tasks, worktrees, runtimes, and recovery risks.
 - [Development journal](https://daviddwlee84.github.io/dev-cli/guides/dev-journal/): Generate daily, weekly, or long-range development journals for people, scripts, and AI agents.
@@ -53,6 +53,7 @@
 ### Reference
 
 - [Commands and configuration](https://daviddwlee84.github.io/dev-cli/reference/commands-config/): Find the dev-cli command groups, generated exact flags, configuration layers, and stable automation surfaces.
+- [Command navigation in v0.3](https://daviddwlee84.github.io/dev-cli/reference/cli-v0.3/): Learn the v0.3 command families, permanent shortcuts, command-tree help, and reversible Try graduation.
 - [Compatibility and known limitations](https://daviddwlee84.github.io/dev-cli/reference/compatibility/): Record dev-cli dependencies, upstream preview status, documentation constraints, and behavior that is intentionally incomplete.
 - [Manual hygiene dogfood](https://daviddwlee84.github.io/dev-cli/reference/hygiene-dogfood/): Manual post-writer dogfood and the separate impact assessment for already-published repository history.
 - [Sources and freshness](https://daviddwlee84.github.io/dev-cli/reference/sources-freshness/): Define authority levels, freshness metadata, and the source matrix behind dev-cli, Git, GitHub, and Claude Code claims.
@@ -76,7 +77,7 @@
 ### 使用 dev-cli
 
 - [變更流工作流程](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/change-stream-workflow/): 使用 dev-cli 讓變更流依序經過 start、park、resume、review/integration 與保守 cleanup。
-- [Repository Lifecycle Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/): 使用 preview dev flow 介面檢查單一 repository，並套用綁定 revision 的 lifecycle、adoption、removal、retirement 與 remote-evidence plans。
+- [Repository Lifecycle Flow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/repository-flow/): 使用 preview dev repo flow 介面檢查單一 repository，並套用綁定 revision 的 lifecycle、adoption、removal、retirement 與 remote-evidence plans。
 - [本地工作整理](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/local-triage/): 找回普通 repository 與 Try 中遺漏的本地工作，預覽批次同步，並在清理 checkout 時保護 ignored 資料。
 - [Machine summary](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/machine-summary/): 產生目前機器上 repositories、Tries、tasks、worktrees、runtimes 與 recovery risks 的完整 snapshot。
 - [Development journal](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dev-journal/): 產生日、週或長時間範圍的 development journal，供人、script 與 AI agent 使用。
@@ -95,7 +96,7 @@
 - [Prompt handoff](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/prompt-handoffs/): 渲染 deterministic operational context，或交給 configured local agent，而不建立第二個 lifecycle authority。
 - [Pull request inbox](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/): 列出你開的與等你 review 的 pull request，理解 provider cost 與 missing fields，並檢查 local checkout health。
 - [Gists 與 snippets](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/snippets/): 透過 CLI 與 REMOTE dashboard 搜尋、分享 GitHub Gists 和 GitLab 個人或 project snippets。
-- [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/): 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev flow 檢查 guarded lifecycle。
+- [TUI、Repository、Quick Notes 與 Bootstrap](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/tui-repos-bootstrap/): 在 dashboard 瀏覽 tasks、repositories、fleet hosts、experiments、remotes、agent skills 與靜態 MCP declarations、記錄 quick notes、inventory/adopt 現有工作，並以獨立 dev repo flow 檢查 guarded lifecycle。
 - [Dashboard 生命週期操作](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/dashboard-actions/): 從 Dashboard 完成與恢復 task、透過系統垃圾桶處理 Try，並開啟 repository 首頁。
 ### Git 與 GitHub
 
@@ -113,6 +114,7 @@
 ### 參考資料
 
 - [命令與設定](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/commands-config/): 尋找 dev-cli command groups、產生式精確 flags、configuration layers 與穩定 automation surfaces。
+- [v0.3 命令導覽](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/cli-v0.3/): 了解 v0.3 命令分類、永久捷徑、命令樹說明，以及可退回 Try 的 graduation 流程。
 - [相容性與已知限制](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/compatibility/): 記錄 dev-cli dependencies、upstream preview status、documentation constraints 與刻意未完成的 behavior。
 - [人工 hygiene dogfood](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/hygiene-dogfood/): 人工 post-writer dogfood 與已發布 Git 歷史的獨立清理影響評估。
 - [來源與時效](https://daviddwlee84.github.io/dev-cli/zh-TW/reference/sources-freshness/): 定義 dev-cli、Git、GitHub 與 Claude Code claims 背後的 authority levels、freshness metadata 與 source matrix。
