@@ -309,7 +309,7 @@ dev-cli 的 release source archive 透過 `.gitattributes` 排除 repo root 的
 但會從父 module ZIP 排除巢狀 module；這些標記沒有產品 package 或依賴。
 不可把標記放在 embedded／generated build inputs 上，也不建立空的 agent 目錄。
 
-`python3 scripts/check-distribution.py --version v0.3.1` 分別產生真正的 Git
+`python3 scripts/check-distribution.py --version v0.3.2` 分別產生真正的 Git
 archive 與使用固定 `golang.org/x/mod v0.38.0` 的 module ZIP；只有暫存 clone
 會停用 module 測試的 export attributes。兩種 payload 都會解壓、編譯，並驗證
 版本、help、completion 與 bundled skill。這不會縮小一般 Git clone 或舊 tags。

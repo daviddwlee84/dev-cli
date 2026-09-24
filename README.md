@@ -181,7 +181,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.3.1 instead when you need a reproducible install.
+# Pin @v0.3.2 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -225,7 +225,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.3.1
+  version=v0.3.2
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"
