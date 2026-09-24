@@ -175,8 +175,9 @@ func RemoteFromConfig(commonDir, name string) string {
 	}
 	want := `remote "` + name + `"`
 	section := ""
-	for _, raw := range strings.Split(string(b), "\n") {
-		line := strings.TrimSpace(raw)
+	lines := strings.Split(string(b), "\n")
+	for index, raw := range lines {
+		line := strings.Trim(raw, " \t\r\v\f")
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, ";") {
 			continue
 		}
@@ -187,10 +188,71 @@ func RemoteFromConfig(commonDir, name string) string {
 		if section != want {
 			continue
 		}
-		key, value, ok := strings.Cut(line, "=")
-		if ok && strings.TrimSpace(key) == "url" {
-			return strings.Trim(strings.TrimSpace(value), `"`)
+		key, value, ok := strings.Cut(raw, "=")
+		if ok && strings.EqualFold(strings.TrimSpace(key), "url") {
+			decoded, valid := remoteConfigValue(value, lines[index+1:])
+			if valid {
+				return decoded
+			}
+			return ""
 		}
 	}
 	return ""
+}
+
+// remoteConfigValue decodes Git's value grammar without evaluating Includes or
+// URL rewriting. Git escapes backslashes even in unquoted Windows-path values;
+// trimming quotes alone corrupts those URLs. Only Git's five escapes are valid.
+func remoteConfigValue(value string, continuation []string) (string, bool) {
+	value = strings.TrimSuffix(value, "\r")
+	var result []byte
+	quoted, started := false, false
+	trailing := 0
+	for index := 0; index < len(value); index++ {
+		c := value[index]
+		switch {
+		case c == 0:
+			return "", false
+		case c == '\\':
+			index++
+			if index == len(value) {
+				if len(continuation) == 0 {
+					return "", false
+				}
+				value, continuation = strings.TrimSuffix(continuation[0], "\r"), continuation[1:]
+				index = -1
+				continue
+			}
+			switch value[index] {
+			case 'n':
+				c = '\n'
+			case 't':
+				c = '\t'
+			case 'b':
+				c = '\b'
+			case '\\', '"':
+				c = value[index]
+			default:
+				return "", false
+			}
+			result = append(result, c)
+			started, trailing = true, 0
+		case c == '"':
+			quoted, trailing = !quoted, 0
+		case !quoted && (c == '#' || c == ';'):
+			return string(result[:len(result)-trailing]), true
+		case !quoted && (c == ' ' || c == '\t' || c == '\r' || c == '\v' || c == '\f'):
+			if started {
+				result = append(result, c)
+				trailing++
+			}
+		default:
+			result = append(result, c)
+			started, trailing = true, 0
+		}
+	}
+	if quoted {
+		return "", false
+	}
+	return string(result[:len(result)-trailing]), true
 }

@@ -45,6 +45,26 @@ func graduateCLI(t *testing.T, app *App, args ...string) error {
 	return cmd.Execute()
 }
 
+func assertGraduateOrigin(t *testing.T, app *App, id, want string) *catalog.Entry {
+	t.Helper()
+	entry, err := app.Catalog.Get(id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entry.Experiment == nil {
+		t.Fatalf("graduated repository lost Try provenance: %+v", entry)
+	}
+	location, ok := entry.LocationFor(config.Hostname())
+	if !ok {
+		t.Fatalf("graduated repository has no local checkout: %+v", entry)
+	}
+	native := gitx.Remote(t.Context(), location.CurrentPath, "origin")
+	if native != want || entry.Experiment.OriginURL != native {
+		t.Fatalf("origin URL: configured by Git = %q, catalog = %q, requested = %q", native, entry.Experiment.OriginURL, want)
+	}
+	return entry
+}
+
 type graduateForgeFixture struct {
 	Calls, URL, PartialOrigin  string
 	AuthFailure, CreateFailure bool
@@ -214,13 +234,21 @@ func TestGraduateURLDefaultsToNoPushAndRefreshesProvenance(t *testing.T) {
 	if err := graduateCLI(t, app, item.ID, "--yes", "--remote-url", remote); err != nil {
 		t.Fatal(err)
 	}
-	entry, err := app.Catalog.Get(item.ID)
-	if err != nil || entry.Experiment.OriginURL != remote {
-		t.Fatalf("origin metadata = %+v, %v", entry, err)
-	}
+	assertGraduateOrigin(t, app, item.ID, remote)
 	if len(graduateForgeCalls(t, ghCalls))+len(graduateForgeCalls(t, glabCalls)) != 0 {
 		t.Fatal("URL attachment queried a forge")
 	}
+}
+
+func TestGraduateURLPreservesGitConfigEscapes(t *testing.T) {
+	app, _, item := graduateWizardFixture(t, "")
+	// Git escapes backslashes in config on every platform. Keep a Windows-style
+	// URL here so the provenance regression is also exercised by Unix CI.
+	remote := `C:\Users\RUNNER~1\AppData\Local\Temp\future.git`
+	if err := graduateCLI(t, app, item.ID, "--yes", "--remote-url", remote); err != nil {
+		t.Fatal(err)
+	}
+	assertGraduateOrigin(t, app, item.ID, remote)
 }
 
 func TestGraduateWizardAddsURLWithoutForgeOrImplicitPush(t *testing.T) {
@@ -230,9 +258,9 @@ func TestGraduateWizardAddsURLWithoutForgeOrImplicitPush(t *testing.T) {
 	if err := graduateCLI(t, app, item.ID); err != nil {
 		t.Fatal(err)
 	}
-	entry, err := app.Catalog.Get(item.ID)
-	if err != nil || entry.Experiment.OriginURL != remote || !strings.Contains(out.String(), "push=false") {
-		t.Fatalf("URL wizard = %+v, %v\n%s", entry, err, out)
+	assertGraduateOrigin(t, app, item.ID, remote)
+	if !strings.Contains(out.String(), "push=false") {
+		t.Fatalf("URL wizard did not review push=false:\n%s", out)
 	}
 	if len(graduateForgeCalls(t, gh))+len(graduateForgeCalls(t, glab)) != 0 {
 		t.Fatal("URL wizard probed forge authentication")
@@ -288,9 +316,9 @@ func TestGraduateURLPushFailureRetainsGraduatedProject(t *testing.T) {
 		!strings.Contains(detail, "Push was attempted; its outcome is unconfirmed") || strings.Contains(detail, "rolled back") {
 		t.Fatalf("push failure hid or misstated retained origin: %s", detail)
 	}
-	entry, err := app.Catalog.Get(item.ID)
-	if err != nil || entry.Kind != catalog.KindRepository || entry.Experiment.OriginURL != remote {
-		t.Fatalf("partial project/provenance lost: %+v, %v", entry, err)
+	entry := assertGraduateOrigin(t, app, item.ID, remote)
+	if entry.Kind != catalog.KindRepository {
+		t.Fatalf("partial project lost: %+v", entry)
 	}
 	location, _ := entry.LocationFor(config.Hostname())
 	if _, err := os.Stat(filepath.Join(location.CurrentPath, "idea.txt")); err != nil {

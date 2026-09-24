@@ -33,6 +33,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Detect actual terminals instead of treating every character device as a TTY,
   so redirected commands, including graduation with `/dev/null` input, remain
   noninteractive instead of entering a wizard and canceling at EOF.
+- Decode quoted and escaped Git configuration values so local remote URLs,
+  including Windows paths, are preserved correctly in catalog metadata.
 
 ## [0.3.0] - 2026-09-24
 
