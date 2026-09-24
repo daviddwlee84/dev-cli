@@ -100,6 +100,13 @@ dev repo new ../existing-repository
 dev repo setup . --preset agent-ready
 ```
 
+要建立個人 GitHub fork，可用 `dev repo clone owner/api --fork`。它需要已登入的
+`gh`，會建立或重用已驗證的 fork、clone 目前 source，並將 `origin` 設為自己的
+fork、`upstream` 設為 source。已有 checkout 時使用 `dev repo fork .`。兩者都能以
+`--dry-run --json` 預覽；非互動套用需要 `--yes`。既有 branch 的 pull target 保持
+相同 repository，預設 push 指向自己的 fork；command 不會 push 或開 PR，也不會
+因為 fork 而自動執行 setup。後續步驟失敗時，已完成的工作會保留。
+
 使用 `--check-in <auto|commit|stage|none>` 選擇 generated changes 的 check-in
 方式。Interactive wizard 提供 `commit`、`stage`、`none`；在 `repo new` 中，`auto`
 沿用 selected preset default，clone/setup 則不自動 check-in。`stage` 只執行

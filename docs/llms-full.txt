@@ -167,6 +167,14 @@ dev repo new ../existing-repository
 dev repo setup . --preset agent-ready
 ```
 
+For a personal GitHub fork, use `dev repo clone owner/api --fork`. It requires
+authenticated `gh`, creates or reuses a verified fork, clones the current source,
+and sets `origin` to your fork and `upstream` to the source. For an existing
+checkout, use `dev repo fork .`. Preview either operation with `--dry-run --json`;
+non-interactive application requires `--yes`. Existing branch pull targets are
+preserved, default pushes use your fork, and neither command pushes or opens a
+PR. Forking does not implicitly run setup; completed work survives later errors.
+
 Choose how generated changes are checked in with
 `--check-in <auto|commit|stage|none>`. The interactive wizard offers `commit`,
 `stage`, or `none`; for `repo new`, `auto` keeps the selected preset's default,
@@ -3834,7 +3842,7 @@ roots also contain commented `go.mod` boundary markers: Go ignores
 markers declare no product packages or dependencies. Do not place them over
 embedded or generated build inputs, or create empty agent directories.
 
-`python3 scripts/check-distribution.py --version v0.3.1` independently builds
+`python3 scripts/check-distribution.py --version v0.3.2` independently builds
 the actual Git archive and a module ZIP with pinned `golang.org/x/mod v0.38.0`.
 Only a temporary clone disables export attributes for the module test. Both
 payloads are extracted, built and checked for version, help, completions and
@@ -7815,7 +7823,7 @@ and add `--aliases` to reveal shortcuts. See the [v0.3 migration guide](https://
 | Goal | Commands |
 |---|---|
 | tracked work | `work list/start/park/resume/done/adopt/retire/sweep` |
-| repositories/remotes | `repo list/context/new/clone/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
+| repositories/remotes | `repo list/context/new/clone/fork/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
 | experiments | `tries try/open/list/graduate/demote`, `tries deprecate/reactivate/archive/restore/delete` |
 | Git and checkout support | `git uncommit/recommit/pull-rebase/amend-all/setup`, `git ignore`, `git worktree …`, `git submodule …`, `git hygiene …` |
 | coding-agent support | `agent skill …`, `agent mcp …`, `agent instructions …`, `agent prompt …`, `agent artifact …`, `agent artifact prepare` |
@@ -8066,13 +8074,15 @@ reference:
 | `dev repo new` | interactive wizard; its first field accepts either a new name or a clone reference |
 | `dev repo new NAME` / `dev repo create NAME` | create a new local repository; a clear Git URL, local Git path, or owner/name instead routes to clone and preserves history/remote |
 | `dev repo clone [owner/name\|url]` | clone into the configured destination, then optionally apply a preset; setup defaults off |
+| `dev repo clone OWNER/REPO --fork` | create or reuse a personal GitHub fork, clone the current source, and configure fork/source remotes |
+| `dev repo fork [repo-or-path]` | connect an existing checkout to a verified personal GitHub fork; defaults to the current repository |
 | `dev repo setup [repo-or-path]` | repeat-safely merge native initializers and preset files into an existing clean checkout; defaults to the current repository and does not commit unless requested |
 
 A clone-routed `new` retains the source `origin`; it therefore rejects
 new-upstream creation flags. It also rejects `--template*`, whose explicit
 meaning is “copy content into a fresh history.”
 
-Across these commands, controls include `--preset`, repeatable `--component`, `--path`, typed input values through
+For `new`, `clone`, and `setup`, controls include `--preset`, repeatable `--component`, `--path`, typed input values through
 `--set`, item selection through `--enable`/`--disable`, `--check-in
 <auto|commit|stage|none>`, `--dry-run`, `--yes`, `--json`, and `--handoff
 <stay|cd|open|start>`. `repo new` additionally accepts `--template`,
@@ -8081,6 +8091,22 @@ never changes directory or opens a runtime. Dry-run performs no target
 repository mutation; clone setup can only be planned in detail after the clone
 exists. Use the generated reference below for each command's exact flag
 availability.
+
+The fork commands require authenticated `gh` and target its user's personal
+GitHub account. They verify an existing fork's relationship to the source before
+reusing it. Fork acquisition clones the current source, so an old fork does not
+determine the starting checkout. The resulting remotes are `origin` for the fork
+and `upstream` for the source. Existing-checkout source discovery prefers
+`upstream`, then `origin`; `repo fork --source-remote NAME` overrides that choice.
+Native remote rename preserves branch pull target identity. `remote.pushDefault`
+becomes `origin`, and source-directed branch `pushRemote` overrides are normalized
+to the fork; conflicting remotes and unrelated explicit push targets are rejected.
+
+Both fork paths accept `--dry-run`, `--json`, and `--yes`. Dry-run performs local
+and GitHub reads without changing either; non-interactive mutation requires
+`--yes`. Forking does not implicitly run setup, push branches, or open a PR.
+Partial results retain and report any created fork, checkout, and completed
+configuration steps. Ordinary clone behavior remains unchanged.
 
 The wizard renders the selected scaffold and workflow summary before target
 repository mutation. The built-in presets are:
@@ -10210,6 +10236,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
 - `--enable` — enable a scaffold item by id (repeatable)
+- `--fork` — create/reuse a personal GitHub fork and configure origin/upstream
 - `--gitignore` — gitignore template (repeatable or comma-separated)
 - `--handoff` — afterwards: stay, cd, open or start
 - `--import-orphan-plans` — copy matching global Claude plans into the repository
@@ -10242,6 +10269,19 @@ Preview: inspect and run guarded repository lifecycle actions
 ```
 dev repo flow [repo]
 ```
+
+### `dev repo fork`
+
+Connect an existing checkout to your personal GitHub fork
+
+```
+dev repo fork [repo-or-path] [flags]
+```
+
+- `--dry-run` — inspect the fork and remote plan without changing anything
+- `--json` — emit a machine-readable plan or result
+- `--source-remote` — remote identifying the original GitHub repository
+- `-y, --yes` — apply the fork and remote plan without prompting
 
 ### `dev repo list`
 
@@ -12510,6 +12550,7 @@ PlanID, locks, revalidation, and result ledger.
 These were historical gaps and should not be reintroduced as limitations:
 
 - `dev repo new|create`, `repo clone`, and `repo setup` share a preset-driven bootstrap pipeline. A plain explicit `repo new NAME` remains minimal, while a clear Git URL, local Git path, or owner/name routes through clone acquisition and preserves source history/remote. The no-argument new-repository wizard detects the same reference in its first field; for a new repository, a default-no customization gate keeps the normal `agent-ready` flow concise. Bare `repo clone` selects exact URLs from the existing forge cache; outside a checkout, bare `start` selects a fast-discovered local repository, while the in-repository path keeps its immediate current default. Both retain manual entry. A configured line selector is optional, with a built-in fallback. Text fields use a TTY inline editor, so cursor keys edit rather than inserting raw escape bytes; non-TTY readers retain line-oriented behavior.
+- `repo clone --fork` and `repo fork [repo-or-path]` require authenticated `gh` and support personal GitHub forks only. They verify fork/source identity, configure `origin` as the fork and `upstream` as the source, preserve branch pull targets, and direct default/source-directed pushes to the fork. Conflicting remotes and unrelated explicit push targets block application. Fork acquisition clones the current source even when the personal fork is old. Dry-run is read-only; non-interactive application requires `--yes`. No implicit setup, push, or PR is performed, and failures retain completed effects. Ordinary clone behavior is unchanged.
 - `repo new` can snapshot a local directory/repository or Git source at an optional branch, tag, or commit and confined subdirectory into a fresh history. An unpinned local Git tree includes tracked plus untracked non-ignored files; a non-Git directory includes its full current tree. Source `.git` metadata is excluded, URL userinfo is redacted, unsafe file types/paths fail before destination creation, and held root/file handles confine mutable-path races. Human plans preview paths and warn when the snapshot is live; presets can select catalog-repository subfolders.
 - Repository setup supports `--check-in=commit|stage|none` (`auto` for preset compatibility). Staged setup runs before-commit setup and `git add -A` without an `after_commit` phase, cannot publish or hand off to `start`, and may prefill lazygit lowercase `c` as described above.
 - `agent-ready` uses one concise deferred `AGENTS.md` starter, maintained only after purpose and implementation are established, across built-in and native setup paths. Its common top-level ignore excludes only `.specstory/statistics.json`; history, project identity, and config remain visible. Selected skills with matching source and agent targets share one installer invocation. The optional `agent-history-hygiene` initializer additionally writes pre-commit/gitleaks policy and merges missing machine-local `.project.json`/`statistics.json` rules into `.specstory/.gitignore`; custom content and transcript history remain trackable.
@@ -14019,6 +14060,13 @@ dev repo clone git@gitlab.example.com:group/api.git
 dev repo new ../existing-repository
 dev repo setup . --preset agent-ready
 ```
+
+要建立個人 GitHub fork，可用 `dev repo clone owner/api --fork`。它需要已登入的
+`gh`，會建立或重用已驗證的 fork、clone 目前 source，並將 `origin` 設為自己的
+fork、`upstream` 設為 source。已有 checkout 時使用 `dev repo fork .`。兩者都能以
+`--dry-run --json` 預覽；非互動套用需要 `--yes`。既有 branch 的 pull target 保持
+相同 repository，預設 push 指向自己的 fork；command 不會 push 或開 PR，也不會
+因為 fork 而自動執行 setup。後續步驟失敗時，已完成的工作會保留。
 
 使用 `--check-in <auto|commit|stage|none>` 選擇 generated changes 的 check-in
 方式。Interactive wizard 提供 `commit`、`stage`、`none`；在 `repo new` 中，`auto`
@@ -17261,7 +17309,7 @@ dev-cli 的 release source archive 透過 `.gitattributes` 排除 repo root 的
 但會從父 module ZIP 排除巢狀 module；這些標記沒有產品 package 或依賴。
 不可把標記放在 embedded／generated build inputs 上，也不建立空的 agent 目錄。
 
-`python3 scripts/check-distribution.py --version v0.3.1` 分別產生真正的 Git
+`python3 scripts/check-distribution.py --version v0.3.2` 分別產生真正的 Git
 archive 與使用固定 `golang.org/x/mod v0.38.0` 的 module ZIP；只有暫存 clone
 會停用 module 測試的 export attributes。兩種 payload 都會解壓、編譯，並驗證
 版本、help、completion 與 bundled skill。這不會縮小一般 Git clone 或舊 tags。
@@ -20897,7 +20945,7 @@ completion 保持相容。`dev help --tree` 預設展開兩層，`--depth 0` 展
 | 目標 | Commands |
 |---|---|
 | 追蹤工作 | `work list/start/park/resume/done/adopt/retire/sweep` |
-| Repository／Remote | `repo list/context/new/clone/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
+| Repository／Remote | `repo list/context/new/clone/fork/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
 | 實驗 | `tries try/open/list/graduate/demote`, `tries deprecate/reactivate/archive/restore/delete` |
 | Git 與 checkout 支援 | `git uncommit/recommit/pull-rebase/amend-all/setup`, `git ignore`, `git worktree …`, `git submodule …`, `git hygiene …` |
 | Coding agent 支援 | `agent skill …`, `agent mcp …`, `agent instructions …`, `agent prompt …`, `agent artifact …`, `agent artifact prepare` |
@@ -21127,18 +21175,34 @@ plain repository name 與清楚的 clone reference：
 | `dev repo new` | interactive wizard；第一個欄位可輸入新 name 或 clone reference |
 | `dev repo new NAME` / `dev repo create NAME` | 建立新的 local repository；若輸入清楚的 Git URL、local Git path 或 owner/name，則改走 clone 並保留 history/remote |
 | `dev repo clone [owner/name\|url]` | clone 至 configured destination，再選擇是否套 preset；setup 預設關閉 |
+| `dev repo clone OWNER/REPO --fork` | 建立或重用個人 GitHub fork、clone 目前 source，並設定 fork/source remotes |
+| `dev repo fork [repo-or-path]` | 將既有 checkout 連至已驗證的個人 GitHub fork；預設目前 repository |
 | `dev repo setup [repo-or-path]` | repeat-safely merge native initializers 與 preset files 至既有 clean checkout；預設目前 repository，沒有明確要求時不 commit |
 
 改走 clone 的 `new` 會保留 source `origin`，因此拒絕 new-upstream creation flags；也會
 拒絕 `--template*`，因為後者的明確語意是「把 content 複製進 fresh history」。
 
-這些 commands 的 controls 包含 `--preset`、可重複的 `--component`、`--path`、用 `--set` 傳入 typed input、用
+`new`、`clone` 與 `setup` 的 controls 包含 `--preset`、可重複的 `--component`、`--path`、用 `--set` 傳入 typed input、用
 `--enable`/`--disable` 選擇 item、`--check-in <auto|commit|stage|none>`、
 `--dry-run`、`--yes`、`--json`，以及 `--handoff <stay|cd|open|start>`。
 `repo new` 另支援 `--template`、`--template-ref`、`--template-subdir`。JSON mode
 不互動，也不會改變 directory 或開啟 runtime。Dry-run 不會修改 target repository；
 clone setup 必須等 clone 存在後才能產生詳細 plan。每個 command 實際支援的精確 flags
 請看下方 generated reference。
+
+Fork commands 需要已登入的 `gh`，目標限於該使用者的個人 GitHub account。重用既有
+fork 前會驗證它與 source 的關係。Fork acquisition 會 clone 目前 source，因此不會
+從可能過時的 fork head 開始。完成後 `origin` 指向 fork，`upstream` 指向 source。
+既有 checkout 優先從 `upstream`、其次 `origin` 辨識 source；可用
+`repo fork --source-remote NAME` 明確選擇。Native remote rename 會保留 branch
+pull target 的 repository identity。`remote.pushDefault` 設為 `origin`，原本指向
+source 的 branch `pushRemote` overrides 也會改指 fork；remote 衝突或指向無關目標的
+explicit push 設定會阻擋套用。
+
+兩種 fork 流程都支援 `--dry-run`、`--json` 與 `--yes`。Dry-run 會讀取 local 與
+GitHub state，但不修改；非互動修改需要 `--yes`。Fork 不會隱含執行 setup、push
+branch 或開 PR。部分完成時，會保留並回報已建立的 fork、checkout 與已完成的
+configuration steps；普通 clone 行為不變。
 
 Wizard 會在 target repository mutation 前顯示 selected scaffold 與 workflow
 summary。Built-in presets 為：
@@ -23204,6 +23268,7 @@ dev repo clone [owner/name|url|path] [flags]
 - `--disable` — disable a scaffold item by id (repeatable)
 - `--dry-run` — show the plan without changing anything
 - `--enable` — enable a scaffold item by id (repeatable)
+- `--fork` — create/reuse a personal GitHub fork and configure origin/upstream
 - `--gitignore` — gitignore template (repeatable or comma-separated)
 - `--handoff` — afterwards: stay, cd, open or start
 - `--import-orphan-plans` — copy matching global Claude plans into the repository
@@ -23236,6 +23301,19 @@ Preview: inspect and run guarded repository lifecycle actions
 ```
 dev repo flow [repo]
 ```
+
+### `dev repo fork`
+
+Connect an existing checkout to your personal GitHub fork
+
+```
+dev repo fork [repo-or-path] [flags]
+```
+
+- `--dry-run` — inspect the fork and remote plan without changing anything
+- `--json` — emit a machine-readable plan or result
+- `--source-remote` — remote identifying the original GitHub repository
+- `-y, --yes` — apply the fork and remote plan without prompting
 
 ### `dev repo list`
 
@@ -25392,6 +25470,7 @@ Raw `git worktree remove --force`、`git branch -D`、直接 forge CLI、script�
 以下是歷史缺口，現行版本已實作：
 
 - `dev repo new|create`、`repo clone` 與 `repo setup` 共用 preset-driven bootstrap pipeline。Plain explicit `repo new NAME` 仍維持 minimal；清楚的 Git URL、local Git path 或 owner/name 會改走 clone acquisition，保留 source history/remote。無參數 new-repository wizard 的第一個欄位也會偵測同樣 reference；建立新 repository 時，預設為 no 的 customization gate 讓正常 `agent-ready` flow 保持精簡。Bare `repo clone` 從既有 forge cache 選 exact URL；checkout 外的 bare `start` 會選 fast-discovered local repository，而 repository 內保留 immediate current default。兩者都保留 manual entry。Configured line selector 是 optional，且有 built-in fallback。Text fields 使用 TTY inline editor，因此 cursor keys 會編輯內容，不會插入 raw escape bytes；non-TTY reader 維持 line-oriented behavior。
+- `repo clone --fork` 與 `repo fork [repo-or-path]` 需要已登入的 `gh`，僅支援個人 GitHub fork。它們會驗證 fork/source identity，將 `origin` 設為 fork、`upstream` 設為 source，保留 branch pull target，並把預設與原本指向 source 的 push 設定導向 fork。Remote 衝突或指向無關目標的 explicit push 設定會阻擋套用。Fork acquisition 會 clone 目前 source，不受個人 fork 是否過時影響。Dry-run 只讀；非互動套用需要 `--yes`。不隱含執行 setup、push 或 PR，失敗時保留已完成 effects；普通 clone 行為不變。
 - `repo new` 可從 local directory/repository 或 Git source 的 optional branch、tag、commit 與 confined subdirectory 建立 fresh-history snapshot。未 pin 的 local Git tree 包含 tracked 加 untracked non-ignored files；non-Git directory 包含完整 current tree。Source `.git` metadata 會排除、URL userinfo 會 redact，不安全的 file types/paths 會在 destination 建立前失敗，held root/file handles 會限制 mutable-path races。Human plan 會預覽 paths 並警告 live snapshot，preset 也可選擇 catalog-repository subfolder。
 - Repository setup 支援 `--check-in=commit|stage|none`（`auto` 用於 preset compatibility）。Staged setup 會執行 before-commit setup 與 `git add -A`，但不執行 `after_commit` phase；它不能 publish 或 handoff 到 `start`，並可依前述方式預填 lazygit 小寫 `c`。
 - `agent-ready` 的 built-in 與 native setup paths 共用精簡的延後初始化 `AGENTS.md` starter，等用途與實作可核實後才維護。Common top-level ignore 只排除 `.specstory/statistics.json`；history、project identity 與 config 仍保持可見。Source 與 agent targets 相同的 selected skills 會共用一次 installer invocation。Optional `agent-history-hygiene` initializer 會另外寫入 pre-commit/gitleaks policy，並將缺少的 machine-local `.project.json`／`statistics.json` 規則 merge 進 `.specstory/.gitignore`；custom content 與 transcript history 都保持可追蹤。

@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-09-25
+
+### Added
+
+- `dev repo clone OWNER/REPO --fork` creates or reuses a verified personal
+  GitHub fork while cloning the current source; `dev repo fork [repo-or-path]`
+  connects an existing checkout. Both configure `origin` as the fork and
+  `upstream` as the source, preserve branch pull targets, and direct default
+  pushes to the fork. Preview with `--dry-run`; neither command pushes or opens
+  a PR, and failures retain completed work.
+
 ## [0.3.1] - 2026-09-24
 
 ### Added
@@ -1474,7 +1485,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.44...v0.3.0
 [0.2.44]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.43...v0.2.44

@@ -14,6 +14,8 @@ dev repo new                              # interactive
 dev repo create api                       # minimal, script-friendly
 dev repo new api --template owner/starter --check-in=stage
 dev repo clone owner/api                  # optional setup after clone
+dev repo clone owner/api --fork --dry-run  # inspect personal GitHub fork acquisition
+dev repo fork . --dry-run                 # inspect fork remotes for an existing checkout
 dev repo setup . --preset agent-ready --check-in=stage
 ```
 
@@ -43,6 +45,29 @@ Cursor keys, Home/End, Backspace and Delete edit the current text rather than
 being decoded as literal `^[[C`/`^[[D` bytes. Esc and Ctrl-C cancel. Bracketed
 defaults remain hints accepted by Enter rather than text silently inserted into
 the field. Non-TTY and piped callers retain deterministic line-based input.
+
+## Personal GitHub forks
+
+Use `dev repo clone OWNER/REPO --fork` for a new checkout or
+`dev repo fork [repo-or-path]` for an existing one. Both require authenticated
+`gh` and support only the user's personal GitHub account. They create or reuse
+a fork whose relationship to the source is verified; an unrelated repository
+with the expected name is not accepted as a fork.
+
+Fork acquisition clones the current source rather than the fork's possibly
+stale head, then configures `origin` as the fork and `upstream` as the source.
+For an existing checkout, source discovery prefers `upstream`, then `origin`;
+`--source-remote NAME` selects another remote explicitly. Native remote rename
+preserves each branch's pull target identity. `remote.pushDefault` becomes
+`origin`; source-directed branch `pushRemote` overrides are normalized to the fork.
+Conflicting remote names and unrelated explicit push targets block application.
+
+Preview with `--dry-run --json`; this may read GitHub but does not create a fork
+or change the checkout. Non-interactive application requires `--yes`.
+Ordinary clone behavior is unchanged, and `--fork` does not implicitly run
+setup. Neither operation pushes branches or opens a PR. Failures retain the
+created fork, checkout, and completed remote/configuration steps; inspect the
+reported partial result instead of deleting or blindly repeating effects.
 
 ## Repository selection
 

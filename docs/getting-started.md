@@ -105,6 +105,14 @@ dev repo new ../existing-repository
 dev repo setup . --preset agent-ready
 ```
 
+For a personal GitHub fork, use `dev repo clone owner/api --fork`. It requires
+authenticated `gh`, creates or reuses a verified fork, clones the current source,
+and sets `origin` to your fork and `upstream` to the source. For an existing
+checkout, use `dev repo fork .`. Preview either operation with `--dry-run --json`;
+non-interactive application requires `--yes`. Existing branch pull targets are
+preserved, default pushes use your fork, and neither command pushes or opens a
+PR. Forking does not implicitly run setup; completed work survives later errors.
+
 Choose how generated changes are checked in with
 `--check-in <auto|commit|stage|none>`. The interactive wizard offers `commit`,
 `stage`, or `none`; for `repo new`, `auto` keeps the selected preset's default,

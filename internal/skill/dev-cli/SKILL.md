@@ -37,7 +37,7 @@ others require preview/apply. Do not preload manuals or run routine diagnostics.
 - History retention, exact sessions and co-commit: [artifacts](references/ai-artifacts.md).
 - Agent completion or cleanup batches: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
 - Repository hygiene batches, `report --json` summaries, scans or redaction: [hygiene](references/hygiene.md).
-- Repository hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
+- Repository forks, hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
 - SSH dashboard, diagnosis, discovery, tests/activity, keys, credentials and registration: [SSH](references/ssh-hosts.md).
 - Dotfile setup, native chezmoi operations, or FLEET host actions: [dotfiles](references/dotfiles.md).
 - Skill/MCP/instruction transfers, updates or removal: [transfers](references/agent-interop.md), [maintenance](references/skills-management.md).

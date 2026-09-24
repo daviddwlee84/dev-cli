@@ -12,6 +12,8 @@ dev repo new                         # interactive wizard
 dev repo create api                  # minimal scripted creation
 dev repo new api --template owner/starter --check-in=stage
 dev repo clone owner/api             # clone, optionally set up
+dev repo clone owner/api --fork      # personal GitHub fork, latest source checkout
+dev repo fork . --dry-run            # preview fork remotes for an existing checkout
 dev repo setup . --preset agent-ready --check-in=stage
 ```
 
@@ -50,6 +52,25 @@ refresh; use `dev repo remote --refresh` deliberately. Outside a checkout, bare
 resolves it afterward; the in-repository path keeps its immediate current default.
 The configured selector defaults to `fzf`, falls back to dev's built-in picker
 when absent, and can be forced built-in with `[picker] command = []`.
+
+## Personal GitHub forks
+
+`repo clone OWNER/REPO --fork` creates or reuses a verified fork in the
+authenticated `gh` user's personal account, clones the current source, and sets
+`origin` to the fork and `upstream` to the source. It does not clone a stale fork
+head. Ordinary clone behavior is unchanged; forking does not implicitly run setup.
+
+`repo fork [repo-or-path]` connects an existing checkout to the same layout.
+Source discovery prefers `upstream`, then `origin`; `--source-remote NAME`
+chooses explicitly. Native remote renames preserve branch pull target identity.
+Default pushes use `origin`, and branch `pushRemote` overrides aimed at the source
+are redirected to the fork. Conflicting remotes and unrelated explicit push
+targets are rejected rather than replaced.
+
+Both commands support `--dry-run`, `--json`, and `--yes`. Dry-run reads local and
+GitHub state without changes; non-interactive mutation requires `--yes`.
+Neither command pushes or opens a PR. If a later step fails, the result reports
+completed steps and retains any created fork, checkout, and configuration.
 
 ## Templates and check-in
 
