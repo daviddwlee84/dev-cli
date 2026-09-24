@@ -28,6 +28,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
   the canonical paths, with a v0.3 migration map and unchanged structured-output
   contracts. Shell integration supports both grouped paths and shortcuts.
 
+### Fixed
+
+- Dashboard skill installation and updates acquire their provider lease only
+  when execution begins, so discarded or canceled handoffs do not retain a lock.
+
 ## [0.2.44] - 2026-09-23
 
 ### Added

@@ -40,3 +40,11 @@ exclusion; adjacent tests cover cross-process contenders and substituted
 directories. Demote tests cover moves, stale authority, rollback and recovery.
 Require the native Windows relocation gate and full-suite audit before release;
 passing POSIX tests or cross-compilation is not evidence of a passing Windows run.
+
+Acquire execution leases when a command actually runs. A Bubble Tea command
+returned from `Update` may be discarded without running its completion callback.
+Preparing a skill mutation lease while constructing that command leaked the
+lease and blocked `TestSkillsViewLoadsLazilyFiltersAndRunsExplicitActions`.
+The native mutex correctly exposed a lifetime bug previously hidden by file
+handle garbage collection. Keep preparation and release inside the execution
+adapter's `Run`, including failed or canceled provider execution.
