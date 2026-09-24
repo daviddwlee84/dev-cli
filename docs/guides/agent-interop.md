@@ -34,12 +34,12 @@ skills. [Codex skills](https://developers.openai.com/codex/skills/)
 ## Skills
 
 ```bash
-dev skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
-dev skill transfer apply --plan <id>
+dev agent skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
+dev agent skill transfer apply --plan <id>
 
-dev skill transfer prepare example --from-repo api --to-repo web
-dev skill transfer plan example --from-repo api --to-repo web --mode install --prepared <id>
-dev skill transfer apply --plan <id>
+dev agent skill transfer prepare example --from-repo api --to-repo web
+dev agent skill transfer plan example --from-repo api --to-repo web --mode install --prepared <id>
+dev agent skill transfer apply --plan <id>
 ```
 
 Only `prepare` invokes the directly installed `skills@1.5.23` provider and may
@@ -68,13 +68,13 @@ until those consumers are migrated. Local copies do not invent upstream hashes.
 ## MCP: five explicit adapters
 
 ```bash
-dev mcp transfer plan --server grafana --from-agent claude-code --to-agent codex --mode copy
-dev mcp transfer apply --plan <id>
+dev agent mcp transfer plan --server grafana --from-agent claude-code --to-agent codex --mode copy
+dev agent mcp transfer apply --plan <id>
 
-dev mcp transfer plan --server grafana --from-agent claude-code --to-agent codex \
+dev agent mcp transfer plan --server grafana --from-agent claude-code --to-agent codex \
   --mode mirror --secret-env-file .claude/settings.local.json
-dev mcp transfer apply --plan <id>
-dev mcp transfer refresh <relation-id>
+dev agent mcp transfer apply --plan <id>
+dev agent mcp transfer refresh <relation-id>
 ```
 
 The five adapters are Claude Code, Codex, Cursor, Gemini CLI and OpenCode.
@@ -138,7 +138,7 @@ stores and private-key files are never migration payloads.
 ### Optional connection evidence
 
 ```bash
-dev mcp transfer check <applied-id> --json
+dev agent mcp transfer check <applied-id> --json
 ```
 
 This explicitly starts a stdio server or contacts its HTTP endpoint, negotiates
@@ -151,13 +151,13 @@ probe servers, install tools or contact endpoints.
 ## Instructions and optional recipes
 
 ```bash
-dev instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror
-dev instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror --style import
-dev instructions transfer apply --plan <id>
+dev agent instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror
+dev agent instructions transfer plan --from AGENTS.md --to CLAUDE.md --mode mirror --style import
+dev agent instructions transfer apply --plan <id>
 
-dev skill transfer export <applied-id> > .agents/interop.toml
-dev skill transfer recipe .agents/interop.toml --entry skill-example
-dev skill transfer apply --plan <id>
+dev agent skill transfer export <applied-id> > .agents/interop.toml
+dev agent skill transfer recipe .agents/interop.toml --entry skill-example
+dev agent skill transfer apply --plan <id>
 ```
 
 Import prepends the shared source while retaining Claude-specific bytes and order.

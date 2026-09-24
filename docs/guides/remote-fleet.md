@@ -248,7 +248,7 @@ to OpenSSH, while noninteractive setup stays batch-only.
 | `$XDG_CACHE_HOME/dev/fleet/v1/*.json` | disposable controller snapshots |
 
 A successful probe writes a private per-host JSON snapshot. Its endpoint ID includes `machine_id`, connection fields, SSH port, timeouts,
-`dev_path`, and `remote_os`; changing the target invalidates stale cache identity. Oversized/malformed snapshots, future timestamps, invalid counts, and unsafe fields are ignored. `dev cache clear fleet` or `dev cache clear all` removes this cache; the next fleet request rebuilds it.
+`dev_path`, and `remote_os`; changing the target invalidates stale cache identity. Oversized/malformed snapshots, future timestamps, invalid counts, and unsafe fields are ignored. `dev self cache clear fleet` or `dev self cache clear all` removes this cache; the next fleet request rebuilds it.
 
 The cache lets an unavailable host retain last-known state as `stale`; `--cached` reads only it. It never becomes authoritative for remote paths or tasks.
 
@@ -270,7 +270,7 @@ missing or expired host snapshots. Each eligible host is tried once; results
 arrive independently. Background reads use non-interactive authentication,
 never resolve password fallback, and time out within 30 seconds or the shorter
 configured command timeout. Explicit requests have priority and share the
-configured concurrency limit. Disable automatic warming in dev config:
+configured concurrency limit. Disable automatic warming in dev self config:
 
 ```toml
 [tui.fleet]

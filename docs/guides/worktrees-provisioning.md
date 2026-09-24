@@ -15,15 +15,15 @@ A Git worktree begins as a clean checkout. `dev` owns durable change-stream work
 
 | Worktree kind | Owner | Typical location | Lifetime |
 |---|---|---|---|
-| feature, fix, experiment, cross-machine handoff | `dev` | configured `paths.worktree_path` | `dev done` records MERGED only; a later `dev retire`, explicit `dev wt rm`, or approved sweep removes it |
+| feature, fix, experiment, cross-machine handoff | `dev` | configured `paths.worktree_path` | `dev work done` records MERGED only; a later `dev work retire`, explicit `dev git worktree rm`, or approved sweep removes it |
 | harness-scoped isolation | Claude Code or another harness | harness-owned directory such as `.claude/worktrees/<name>/` | governed by that harness's retention and safe-cleanup rules; Flow never adopts or removes it |
-| externally created linked worktree | external until adopted | tool-specific | visible to `dev`/`dev flow`; unmanaged until explicit adoption |
+| externally created linked worktree | external until adopted | tool-specific | visible to `dev`/`dev repo flow`; unmanaged until explicit adoption |
 
 Use `dev` when code, history, or plans must remain reviewable or a human may return later. Do not nest a long-lived `dev` worktree inside a repository; file watchers, language servers, backup tools, and searches in the outer checkout would see a second copy of the tree.
 
 `dev` creates the checkout with Git at its configured path. Herdr only opens that existing path, so worktree placement remains identical on machines without Herdr.
 
-`dev flow [repo]` uses Git's authoritative worktree records to show canonical,
+`dev repo flow [repo]` uses Git's authoritative worktree records to show canonical,
 managed, unmanaged, and strict `.claude/worktrees/` harness rows, plus task-only
 rows that have no checkout. It never guesses ownership from a `worktree-*`
 branch prefix; ambiguous path/task binding is labelled CONFLICT and stops
@@ -31,16 +31,16 @@ lifecycle mutation. See [Repository lifecycle flow](repository-flow.md).
 
 ## New managed work versus existing checkout visibility
 
-Prefer `dev start` with an explicit committed base for new managed work:
+Prefer `dev work start` with an explicit committed base for new managed work:
 
 ```bash
-dev start api --task "auth fix" --branch fix/auth --base main
+dev work start api --task "auth fix" --branch fix/auth --base main
 ```
 
 For an existing registered external worktree that only needs runtime visibility:
 
 ```bash
-dev wt open fix/auth --repo api --runtime herdr --no-focus
+dev git worktree open fix/auth --repo api --runtime herdr --no-focus
 ```
 
 The open command reports branch, actual path and backend/handle immediately, then
@@ -59,13 +59,13 @@ work. See [Parallel agents and runtimes](parallel-agents-runtimes.md).
 ## Inspect before creating
 
 ```bash
-dev wt plan
-dev wt plan --write          # seed repository-owned .dev-cli/config.toml
-dev wt create feat/auth --base main
-dev wt list
+dev git worktree plan
+dev git worktree plan --write          # seed repository-owned .dev-cli/config.toml
+dev git worktree create feat/auth --base main
+dev git worktree list
 ```
 
-`dev wt plan` reads lockfiles, tool availability, configured include/link rules, and Git ignore state without changing the checkout. The resulting plan shows every runnable or skipped step and any safety downgrade.
+`dev git worktree plan` reads lockfiles, tool availability, configured include/link rules, and Git ignore state without changing the checkout. The resulting plan shows every runnable or skipped step and any safety downgrade.
 
 ## Carry ignored files by allowlist
 
@@ -102,7 +102,7 @@ node = "copy"
 New project-owned overrides belong in `.dev-cli/config.toml`; legacy
 `.dev.toml` remains readable under its compatibility behavior. A `post_create`
 command from `.dev-cli/config.toml` does not run until its exact
-executable-config hash is approved with `dev config trust . --yes`. Changing
+executable-config hash is approved with `dev self config trust . --yes`. Changing
 the command invalidates that approval.
 
 Important built-in decisions:
@@ -134,12 +134,12 @@ A missing tool is reported and skipped. A failed setup command leaves the worktr
 ## Reprovision or remove
 
 ```bash
-dev wt provision /path/to/worktree --dry-run
-dev wt provision /path/to/worktree
-dev wt rm feat/auth
+dev git worktree provision /path/to/worktree --dry-run
+dev git worktree provision /path/to/worktree
+dev git worktree rm feat/auth
 ```
 
-Removing a worktree and deleting a branch are separate decisions. `dev wt rm` preserves the branch and refuses a dirty checkout without explicit force. If the directory disappeared outside Git, it prunes the stale administrative entry.
+Removing a worktree and deleting a branch are separate decisions. `dev git worktree rm` preserves the branch and refuses a dirty checkout without explicit force. If the directory disappeared outside Git, it prunes the stale administrative entry.
 
 ## Sources
 

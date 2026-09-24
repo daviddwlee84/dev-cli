@@ -6,9 +6,9 @@ current layout.
 ## Start with a report
 
 ```bash
-dev bootstrap ~/code /mnt/work
-dev bootstrap ~/code --max-depth 0     # unlimited depth
-dev bootstrap ~/code --json            # machine-readable inventory
+dev repo bootstrap ~/code /mnt/work
+dev repo bootstrap ~/code --max-depth 0     # unlimited depth
+dev repo bootstrap ~/code --json            # machine-readable inventory
 ```
 
 The scanner recursively identifies:
@@ -27,8 +27,8 @@ A plain scan changes nothing.
 ## Option A — make a symlink index (recommended)
 
 ```bash
-dev bootstrap ~/code /mnt/work --index ~/Projects --layout flat
-dev bootstrap ~/code /mnt/work --index ~/Projects --layout flat --apply
+dev repo bootstrap ~/code /mnt/work --index ~/Projects --layout flat
+dev repo bootstrap ~/code /mnt/work --index ~/Projects --layout flat --apply
 ```
 
 This creates only symlinks:
@@ -63,7 +63,7 @@ scan_roots = ["~/Projects", "/mnt/work/company", "~/src"]
 Or have bootstrap write a new config:
 
 ```bash
-dev bootstrap /mnt/work --index ~/Projects --apply \
+dev repo bootstrap /mnt/work --index ~/Projects --apply \
   --config-out ~/.config/dev/indexed.toml
 ```
 
@@ -73,8 +73,8 @@ Use this only when you actually want a new disk layout, not merely easier
 navigation.
 
 ```bash
-dev bootstrap ~/old --move ~/Projects --layout preserve       # plan
-dev bootstrap ~/old --move ~/Projects --layout preserve --apply
+dev repo bootstrap ~/old --move ~/Projects --layout preserve       # plan
+dev repo bootstrap ~/old --move ~/Projects --layout preserve --apply
 ```
 
 Move is deliberately stricter than indexing. It refuses a repository when:
@@ -120,11 +120,11 @@ configuration choice, not a migration requirement.
 
 ## Existing work in flight is a separate step
 
-Bootstrap answers **what repositories exist and where**. `dev adopt` answers
+Bootstrap answers **what repositories exist and where**. `dev work adopt` answers
 **which branches/worktrees/sessions are active work**:
 
 ```bash
-dev bootstrap ~/code       # inventory the machine
-dev adopt                  # report work in flight
-dev adopt --apply          # record selected candidates as tasks
+dev repo bootstrap ~/code       # inventory the machine
+dev work adopt                  # report work in flight
+dev work adopt --apply          # record selected candidates as tasks
 ```

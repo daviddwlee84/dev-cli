@@ -14,12 +14,13 @@ so the history survives every move.
 ## The lifecycle
 
 ```bash
-dev try scratch-parser        # create it, or open it if it already exists
+dev tries try scratch-parser        # create it, or open it if it already exists
 dev tries list                # what is active
 dev tries mark scratch-parser --add spike --note "compare two tokenizers"
 dev tries archive scratch-parser   # out of sight, ID and metadata kept
 dev tries restore scratch-parser   # back into a visible path
-dev graduate scratch-parser        # promote it into a real project
+dev tries graduate scratch-parser        # promote it into a real project
+dev tries demote scratch-parser --dry-run # preview returning a graduated Try
 ```
 
 `dev tries deprecate` marks an experiment finished without moving anything, for
@@ -28,20 +29,56 @@ as active work. `dev tries reactivate` undoes it.
 
 ## What is not a Try
 
-A Try is not a task and not a worktree. It has no branch, no base, and no
-lifecycle state — nothing to park or resume. If the work needs a branch and an
-integration path, start a task instead:
+A Try is catalog identity, not a task mode or task lifecycle state. It may
+contain Git history and branches, but cannot itself be parked or resumed. If
+work needs tracked task intent and an integration path, start a task:
 
 ```bash
-dev start parser-rewrite --repo myproject --base main
+dev work start parser-rewrite --repo myproject --base main
 ```
 
 Graduation is the bridge: it turns an experiment that earned a future into a
 real repository, after which ordinary task flow applies.
 
+## Return a graduated Try
+
+```bash
+dev tries demote <repo-or-path-or-catalog-id> --dry-run
+dev tries demote <repo-or-path-or-catalog-id>
+dev tries demote <catalog-id> --to ~/src/tries/2026-09-24-parser
+```
+
+Only a repository previously graduated from a Try can be demoted. The CLI shows
+source and destination and applies the move; `--dry-run` only previews. REPOS's
+action menu previews the same plan and asks for confirmation.
+
+Run from outside the checkout. A destination must be an immediate visible child
+of the current Try root, and runtime coverage must be observable; `none` does
+not prove that the checkout is unused.
+
+The recorded original Try path is the default. If it is occupied or outside the
+current `tries_root`, choose a safe destination explicitly with `--to`. Demote
+keeps catalog ID, tags, notes, graduation history, Git history/remotes and every
+current file, including dirty, untracked and ignored data. The Try is active and
+present again. It never reverses commits/publication or leaves a symlink.
+
+Task/runtime/agent/artifact claims are not retargeted. Canonical repositories
+with linked worktrees, unsafe paths, incomplete observations and stale plans
+block the move. Revalidation and interrupted-move recovery still apply.
+
+| Dimension | Transitions |
+|---|---|
+| Identity | Try → graduate → Repo → demote → Try |
+| Intent | active → deprecate → deprecated → reactivate → active |
+| Storage | Try → archive → Archive → restore → Try |
+| Disposal | Try → delete → Trash; restore there, then tries restore --from |
+
+Deprecation does not move files. Permanent deletion cannot be restored. Remote
+existence or a synced branch does not prove that all local data is recoverable.
+
 ## Moves are guarded
 
-Archive, restore, and graduate all move directories. Each one revalidates the
+Archive, restore, graduate and demote all move directories. Each one revalidates the
 source, refuses to cross a filesystem boundary silently, rejects a path that
 escapes its root through a symlink or `..`, and records an intent so an
 interrupted move can be rolled back or reconciled rather than left half-done.

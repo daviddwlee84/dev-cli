@@ -9,9 +9,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/daviddwlee84/dev-cli/internal/agentskill"
 	"github.com/daviddwlee84/dev-cli/internal/perftrace"
+	"github.com/daviddwlee84/dev-cli/internal/testutil"
 )
 
 func TestSkillUpdateConfirmationPinsSelectedRepositoryRow(t *testing.T) {
+	isolatedSkillLease(t)
+	provider := testutil.GoCommand(t, t.TempDir(), "skill-provider", skillExecutionFixture)
 	firstLock := &agentskill.LockMetadata{Name: "shared", Source: "owner/repo", SourceType: "github", SkillPath: "skills/shared/SKILL.md"}
 	secondLock := &agentskill.LockMetadata{Name: "shared", Source: "owner/repo", SourceType: "github", SkillPath: "skills/shared/SKILL.md"}
 	first := agentskill.Skill{Name: "shared", Scope: agentskill.ScopeProject, Checkout: "/repo/a", ManagedBy: agentskill.ManagedBySkills, Lock: firstLock}
@@ -19,7 +22,7 @@ func TestSkillUpdateConfirmationPinsSelectedRepositoryRow(t *testing.T) {
 	var selected agentskill.Skill
 	actions := Actions{UpdateSkill: func(row agentskill.Skill) (*agentskill.MutationCommand, error) {
 		selected = row
-		return &agentskill.MutationCommand{Command: exec.Command("true")}, nil
+		return &agentskill.MutationCommand{Command: exec.Command(provider, "echo")}, nil
 	}}
 	model := New(actions, nil, nil)
 	model.view = ViewSkills

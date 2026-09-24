@@ -42,6 +42,25 @@ func completionInvocation(cmd *cobra.Command) bool {
 // loading here avoids state leaking when a command tree is reused.
 func (a *App) loadCompletion() bool { return a.Load() == nil }
 
+// The first blank completion teaches canonical families. Once a user starts
+// spelling a supported shortcut, keep the familiar path discoverable without
+// loading application state or exposing internal protocol helpers.
+func completeRootShortcuts(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	if len(args) != 0 || toComplete == "" {
+		return nil, noFileCompletion
+	}
+	var out []string
+	for _, child := range cmd.Commands() {
+		if target := child.Annotations[shortcutTargetAnnotation]; target != "" {
+			out = addCompletion(out, child.Name(), "shortcut for "+target, toComplete)
+			for _, alias := range child.Aliases {
+				out = addCompletion(out, alias, "shortcut for "+target, toComplete)
+			}
+		}
+	}
+	return out, noFileCompletion
+}
+
 func completePromptAgents(app *App, mode promptMode) cobra.CompletionFunc {
 	return func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		if !app.loadCompletion() {
@@ -274,6 +293,25 @@ func completeHelpTopics(_ *cobra.Command, args []string, toComplete string) ([]s
 	out := make([]string, 0, len(topics))
 	for _, topic := range topics {
 		out = addCompletion(out, topic.Name, topic.Summary, toComplete)
+	}
+	return out, noFileCompletion
+}
+
+func completeHelp(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	tree, _ := cmd.Flags().GetBool("tree")
+	aliases, _ := cmd.Flags().GetBool("aliases")
+	if !tree && !aliases {
+		return completeHelpTopics(cmd, args, toComplete)
+	}
+	selected, err := resolveHelpCommand(cmd.Root(), args)
+	if err != nil {
+		return nil, noFileCompletion
+	}
+	var out []string
+	for _, child := range selected.Commands() {
+		if !child.Hidden {
+			out = addCompletion(out, child.Name(), child.Short, toComplete)
+		}
 	}
 	return out, noFileCompletion
 }

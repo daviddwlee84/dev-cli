@@ -17,7 +17,7 @@ verified_on: 2026-09-13
    `python scripts/test-hygiene-hooks.py --dev <absolute-binary>`。後者使用隔離 HOME，
    驗證真正的 pre-commit：假 key、hidden 檔案、同一行 placeholder、alternate index、
    executable modes、Git config 不變，以及乾淨提交。
-2. 執行 `dev hygiene status`、preview setup 並確認有效 hook 鏈。測試 session 的
+2. 執行 `dev git hygiene status`、preview setup 並確認有效 hook 鏈。測試 session 的
    PATH 指向新 binary；不要手動覆寫套件管理器安裝的 binary。
 3. 預覽 `rules import --from ssh` 與 `--from local`，分清楚私密值、公開／常見名稱
    後才選 ID。私人政策保留在 Git 外。
@@ -30,10 +30,10 @@ verified_on: 2026-09-13
 SpecStory 的 agent 需要另外的適用授權，也仍需確認原本的 writer 已停止。
 
 ```bash
-dev hygiene scan --scope worktree --json
-dev hygiene redact --report <fresh-report-id> --file <reviewed-file> --json
-dev hygiene redact --apply --plan <plan-id> --yes --writer-stopped
-dev hygiene scan --scope worktree --json
+dev git hygiene scan --scope worktree --json
+dev git hygiene redact --report <fresh-report-id> --file <reviewed-file> --json
+dev git hygiene redact --apply --plan <plan-id> --yes --writer-stopped
+dev git hygiene scan --scope worktree --json
 git diff --check
 # 檢視後只 stage 指定檔案，正常 hooks 保持啟用。
 ```

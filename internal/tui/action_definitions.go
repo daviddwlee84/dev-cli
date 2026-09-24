@@ -83,6 +83,16 @@ func newActionRegistry() []ActionSpec {
 	add(ViewRepos, listActionRepoMetadata, "edit repository metadata", "m", parent, func(c ActionContext) string {
 		return requires(c.model.actions.Repos.Patch != nil, "Repository metadata editing")
 	})
+	add(ViewRepos, listActionRepoDemote, "demote back to a Try…", "", parent, func(c ActionContext) string {
+		asset := c.repo.Repo.Asset
+		if asset == nil || asset.Kind != catalog.KindRepository || asset.Experiment == nil || asset.Experiment.Phase != catalog.PhaseGraduated {
+			return "Only a previously graduated Try can be demoted"
+		}
+		if asset.MoveIntent != nil {
+			return "Resolve the pending catalog move first"
+		}
+		return workflow(c)
+	})
 	add(ViewRepos, listActionStartWorktree, "start worktree task", "s", parent, func(c ActionContext) string {
 		return requires(c.model.actions.Workflow != nil || c.model.actions.Start != nil, "Worktree task creation")
 	})

@@ -1,6 +1,6 @@
 # Repository hygiene
 
-`dev hygiene` joins optional gitleaks and pre-commit with repository policy,
+`dev git hygiene` joins optional gitleaks and pre-commit with repository policy,
 private local identity rules and guarded text changes. It does not equate a
 scanner finding with a confirmed credential leak.
 
@@ -10,10 +10,10 @@ Install `gitleaks` and `pre-commit` first. Setup reports missing dependencies;
 it does not install packages or replace a global hook silently.
 
 ```bash
-dev hygiene status
-dev hygiene status --check-remote              # explicit GitHub visibility query
-dev hygiene setup --json
-dev hygiene setup --apply --plan <id> --yes
+dev git hygiene status
+dev git hygiene status --check-remote              # explicit GitHub visibility query
+dev git hygiene setup --json
+dev git hygiene setup --apply --plan <id> --yes
 ```
 
 Status reads the effective `core.hooksPath`, existing hook and project config.
@@ -30,7 +30,7 @@ Review either change against custom rules first.
 
 The hook checks index content. It never rewrites files or stages user changes.
 A missing dev/gitleaks executable, invalid report or failed scan blocks it.
-The hook runner must find a dev version that supports `hygiene` on PATH.
+The hook runner must find a dev self version that supports `hygiene` on PATH.
 
 Setup writes project configuration. It first respects Git's effective
 `core.hooksPath` and keeps a recognized existing hook, including a global one;
@@ -41,14 +41,14 @@ automatic local override. There is no `--global` setup option.
 
 ## Batch setup and gradual migration
 
-The normal commit path is `Git -> pre-commit -> dev hygiene scan -> gitleaks +
+The normal commit path is `Git -> pre-commit -> dev git hygiene scan -> gitleaks +
 private/public privacy policy`. Setup is a separate configuration operation;
 commits do not call setup again and do not require an agent.
 
 ```bash
-dev hygiene manage --all                 # choose repositories, preview, then apply
-dev hygiene manage /path/to/a /path/to/b --json  # preview only
-dev hygiene setup --migrate-hooks --json # one repository, narrow migration
+dev git hygiene manage --all                 # choose repositories, preview, then apply
+dev git hygiene manage /path/to/a /path/to/b --json  # preview only
+dev git hygiene setup --migrate-hooks --json # one repository, narrow migration
 ```
 
 REPOS → Ctrl+O → hygiene offers status, the latest stored scan report, explicit
@@ -74,7 +74,7 @@ changed detector IDs can require fresh fixture exceptions.
 
 Setup and scanning require gitleaks 8.30.0 or newer compatible 8.x; CI pins 8.30.1.
 Passive status checks presence without executing the scanner. Ensure the hook's
-PATH resolves a dev version with hygiene support: running `./dev` alone does not
+PATH resolves a dev self version with hygiene support: running `./dev` alone does not
 upgrade an older `dev` on PATH. Tools are not installed automatically.
 
 Batch results retain per-repository completed, blocked, skipped, stale, partial
@@ -86,7 +86,7 @@ The JSON batch preview contains exact child plan IDs; apply one with the existin
 The staged checker itself does not mutate files. Pre-commit can temporarily stash
 unstaged work, so wait for an artifact recorder to exit before committing its
 checkout. This migration does not replace the entire agent-history-hygiene
-lifecycle: `dev artifact finalize` still requires that skill's scripts for existing tracked-history handoffs; configured external archives use native snapshot checks. Keep those
+lifecycle: `dev agent artifact finalize` still requires that skill's scripts for existing tracked-history handoffs; configured external archives use native snapshot checks. Keep those
 installations and any active finalizer wiring until a separate replacement exists.
 
 ## Choose policy
@@ -112,8 +112,8 @@ unknown or unsupported visibility is never treated as private. GitHub lookup
 requires `status --check-remote`; `--remote` selects its remote (default origin).
 
 ```bash
-dev hygiene rules policy --known warn --generic off --json
-dev hygiene rules apply --plan <id> --yes
+dev git hygiene rules policy --known warn --generic off --json
+dev git hygiene rules apply --plan <id> --yes
 ```
 
 Policy/rule changes are separate reviewed plans. One invocation's scan overrides
@@ -123,12 +123,12 @@ creating a redaction plan.
 ## Local identity rules and exceptions
 
 ```bash
-dev hygiene rules import --from ssh --json
-dev hygiene rules import --from ssh --select <candidate-id> --json
-dev hygiene rules import --from local --json
-dev hygiene rules add --id private-network --kind cidr --value-file network.txt \
+dev git hygiene rules import --from ssh --json
+dev git hygiene rules import --from ssh --select <candidate-id> --json
+dev git hygiene rules import --from local --json
+dev git hygiene rules add --id private-network --kind cidr --value-file network.txt \
   --replacement 192.0.2.1 --json
-dev hygiene rules apply --plan <id> --yes
+dev git hygiene rules apply --plan <id> --yes
 ```
 
 Imports require explicit candidate selection. SSH uses the bounded static
@@ -180,7 +180,7 @@ protected current-user/SYSTEM ACLs; Unix uses private ownership and permissions.
 There is no automatic deletion or export of this state.
 
 ```bash
-dev hygiene rules allow --report <report-id> --finding <finding-id> \
+dev git hygiene rules allow --report <report-id> --finding <finding-id> \
   --reason 'Reviewed synthetic test fixture' --json
 ```
 
@@ -194,10 +194,10 @@ Placeholders never automatically allow an unrelated key on the same line.
 ## Scan with an honest scope
 
 ```bash
-dev hygiene scan --scope worktree --json
-dev hygiene scan --scope staged --json
-dev hygiene scan --scope history --audit --timeout 40m --json
-dev hygiene --public-only --known off --generic off scan --scope history \
+dev git hygiene scan --scope worktree --json
+dev git hygiene scan --scope staged --json
+dev git hygiene scan --scope history --audit --timeout 40m --json
+dev git hygiene --public-only --known off --generic off scan --scope history \
   --range <full-from-oid>..<full-to-oid> --json
 ```
 
@@ -236,12 +236,12 @@ commit range; manual workflow dispatch audits all locally fetched history.
 ## Summarize a scan
 
 ```bash
-dev hygiene report                                 # newest stored scan for this checkout
-dev hygiene report --scope staged --by rule --top 5 --findings
-dev hygiene report --report <report-id> --disposition block,warn --path 'docs/**'
-dev hygiene report --rescan --scope history --range <full-from-oid>..<full-to-oid>
-dev hygiene report --rule privacy-email --values  # masked values; implies --rescan
-dev hygiene report --json                          # hygiene_summary schema 1
+dev git hygiene report                                 # newest stored scan for this checkout
+dev git hygiene report --scope staged --by rule --top 5 --findings
+dev git hygiene report --report <report-id> --disposition block,warn --path 'docs/**'
+dev git hygiene report --rescan --scope history --range <full-from-oid>..<full-to-oid>
+dev git hygiene report --rule privacy-email --values  # masked values; implies --rescan
+dev git hygiene report --json                          # hygiene_summary schema 1
 ```
 
 `report` summarizes one scan instead of printing every finding. By default it
@@ -280,7 +280,7 @@ Legacy findings without file IDs make `file_counts_complete` false: file counts
 then describe lower-bound masked-path groups. Private path metadata lets
 `--path` match raw filenames while the echoed filter stays policy-masked; invalid
 path globs are rejected. Agents should prefer
-`dev hygiene report --json` over parsing `scan` output or tables.
+`dev git hygiene report --json` over parsing `scan` output or tables.
 
 `--values` adds masked distinct values per rule and implies `--rescan` unless
 `--report` names a scan captured with values. Secrets keep their first and last
@@ -288,7 +288,7 @@ two characters plus length (length only below 12 characters); private rules show
 `[private:N]`, emails `a•••@d•••.tld`, IPv4 `a.b.•.•`, IPv6 `first:•••` and
 home paths `Users/x•••`. Raw values and line context never enter stdout, JSON or
 scan records: they go only to a private 0600 `<report-id>.values.review.txt`, whose
-location `dev hygiene review-path <report-id>` prints. Never paste that file into
+location `dev git hygiene review-path <report-id>` prints. Never paste that file into
 chat, Git or CI logs. Capture allows 10,000 values and 20 samples per value,
 with at most 64 KiB per raw value and 16 MiB combined raw/context/location/rule
 metadata; the rendered review caps at 64 MiB. Oversized values are skipped whole,
@@ -307,13 +307,13 @@ Historical gaps also identify the observed `commit`. Diagnostics contain no
 source excerpts. Fixing a working file does not repair old Git objects.
 
 ```bash
-dev hygiene repair-encoding --file .specstory/history/session.md --json
+dev git hygiene repair-encoding --file .specstory/history/session.md --json
 # Optional explicit deletion instead of the default replacement character:
-dev hygiene repair-encoding --file notes.txt --invalid remove --json
+dev git hygiene repair-encoding --file notes.txt --invalid remove --json
 # Review the private proposal; only after the exact artifact writer has exited:
-dev hygiene repair-encoding --apply --plan <id> --yes --writer-stopped
+dev git hygiene repair-encoding --apply --plan <id> --yes --writer-stopped
 # Review and stage only the intended repair, then check the actual index:
-dev hygiene scan --scope staged --json
+dev git hygiene scan --scope staged --json
 ```
 
 The default `--invalid replace` replaces each contiguous invalid byte run with
@@ -325,7 +325,7 @@ NUL bytes and UTF-16/32 BOMs require separate encoding review; this command does
 not guess a legacy encoding or recover the original character.
 
 Repair uses signed plans, fresh file identity checks and private raw-byte
-recovery through `dev hygiene restore`. It does not need a secret scanner.
+recovery through `dev git hygiene restore`. It does not need a secret scanner.
 Artifact edits require writer attestation and the live writer guard below,
 including case variants and nested artifact directories. Encoding repair requires long
 canonical path components without trailing dots/spaces or DOS short-name spellings. The hook
@@ -337,12 +337,12 @@ Encoding repair does not redact secrets or prove a complete hygiene scan.
 ## Review and apply replacements
 
 ```bash
-dev hygiene redact --report <report-id> --file notes.md --json
-dev hygiene redact --report <report-id> --finding <finding-id> --json
-dev hygiene review-path <id>                 # open privately; never paste contents
-dev hygiene redact --apply --plan <id> --yes
+dev git hygiene redact --report <report-id> --file notes.md --json
+dev git hygiene redact --report <report-id> --finding <finding-id> --json
+dev git hygiene review-path <id>                 # open privately; never paste contents
+dev git hygiene redact --apply --plan <id> --yes
 # Only after the exact artifact writer exited:
-dev hygiene redact --apply --plan <id> --yes --writer-stopped
+dev git hygiene redact --apply --plan <id> --yes --writer-stopped
 ```
 
 All supported regular text files may be selected. Plans bind the checkout,
@@ -369,8 +369,8 @@ alternate streams, explicit integrity labels or special attributes require
 manual preservation.
 
 ```bash
-dev hygiene restore --receipt <receipt-id> --json
-dev hygiene restore --receipt <receipt-id> --apply --yes
+dev git hygiene restore --receipt <receipt-id> --json
+dev git hygiene restore --receipt <receipt-id> --apply --yes
 ```
 
 Restore refuses files replaced or edited since the recorded transaction. Artifact
@@ -381,7 +381,7 @@ and raw external writers remain outside dev-mediated locks.
 
 ## Artifact writer guard
 
-Redaction, encoding repair, restore, batch `manage` and `dev artifact`
+Redaction, encoding repair, restore, batch `manage` and `dev agent artifact`
 finalize/archive/migrate share one live-writer check over their reviewed target
 files; archiving still leaves source bytes untouched. Any other recognized agent
 covering the checkout blocks an artifact edit, whatever its status. The calling agent's own pane is exempt only when:

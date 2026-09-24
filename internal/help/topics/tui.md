@@ -1,7 +1,7 @@
 # TUI navigation
 
 Bare `dev` opens the dashboard when stdin/stdout are terminals; `dev tui`
-opens it explicitly. When piped, bare `dev` prints `dev ls` instead, so shell
+opens it explicitly. When piped, bare `dev` prints `dev work list` instead, so shell
 composition stays predictable.
 
 ## Eight views
@@ -109,9 +109,9 @@ their own legends: green MCP means enabled configuration, not server health.
 
 ## Repository lifecycle preview
 
-`dev flow [repo]` is a separate preview-labelled, full-screen TUI; it does not
+`dev repo flow [repo]` is a separate preview-labelled, full-screen TUI; it does not
 share the dashboard model above and requires terminal input/output. In any
-canonical or linked checkout, bare `dev flow` opens the canonical repository and
+canonical or linked checkout, bare `dev repo flow` opens the canonical repository and
 focuses that exact surface. Outside Git it opens a filterable repository picker;
 an explicit repo overrides cwd.
 
@@ -288,7 +288,7 @@ a          include DONE
 ```
 
 Generic open never repairs lifecycle drift. A normal COLD worktree task points
-to `dev resume`; a missing or unregistered checkout points to `dev sweep`, which
+to `dev work resume`; a missing or unregistered checkout points to `dev work sweep`, which
 reports any artifact salvage requirement before offering resume/reap cleanup.
 
 REPOS:
@@ -416,7 +416,7 @@ atomic replacement, and preserves the working copy when a conflict is detected.
 H   open the selected repository's calendar-year activity heatmaps
     automatic local-history backfill; b forces it; r refreshes; H / esc returns
 
-e   edit effective dev config on ordinary views; edit the selected capability file on SKILLS/MCP
+e   edit effective dev self config on ordinary views; edit the selected capability file on SKILLS/MCP
 r   reparse config and reload local/remote data and tool bindings
 ```
 
@@ -424,7 +424,7 @@ Opening the heatmap reads saved stats, then automatically backfills all local Gi
 Unchanged refs reuse a checkpoint. Years run oldest first; arrows/wheel, PgUp/PgDn
 and Home/End scroll. Git activity is a 20-minute estimate per non-merge commit.
 
-Returning from an ordinary-view `e` live-reloads dev config; returning from a
+Returning from an ordinary-view `e` live-reloads dev self config; returning from a
 SKILLS/MCP editor reloads only that capability inventory. Changes to scan roots, worktree
 policy, forge cache settings and `[[tui.tools]]` take effect immediately. A
 runtime backend change needs a restart because existing callbacks and sessions
@@ -438,7 +438,7 @@ dev tui tools
 ```
 
 shows every binding, the exact command, its source, and whether it can run on
-this machine. `dev config init` writes the defaults out in full:
+this machine. `dev self config init` writes the defaults out in full:
 
 ```toml
 [[tui.tools]]
@@ -526,9 +526,9 @@ Escape clears the query before closing. REPOS shows a dated cache first, then
 incremental local observations. Pending rows are display-only for row-dependent
 operations, which wait for fresh observations. REPOS `n` and the new-repository
 menu action are independent entry points; the wizard's final mutation checks
-still apply. Clear the presentation cache with `dev cache clear repos`.
+still apply. Clear the presentation cache with `dev self cache clear repos`.
 
-REPOS/SKILLS Ctrl+O opens `dev skill manage`: project/global selection, source
+REPOS/SKILLS Ctrl+O opens `dev agent skill manage`: project/global selection, source
 checks, reviewed multi-repo updates, and single-repo lock restore/dependency sync.
 Wizard multi-selection supports Space and Ctrl+A. Global `skills` is an optional
 external dependency, never automatically replaced with npx. Use `dev help skills`
@@ -619,7 +619,7 @@ capturing raw values. Operations suspend into the shared CLI workflow; press
 Enter to return. Setup previews changes and asks for confirmation before apply.
 
 SKILLS offers selected removal with explicit agent scopes, ownership and
-dependency checks. Use `dev hygiene manage` or `dev skill manage` outside the TUI.
+dependency checks. Use `dev git hygiene manage` or `dev agent skill manage` outside the TUI.
 
 ## Contextual action availability
 
@@ -633,7 +633,7 @@ its asynchronous local catalog adapter and exact host/profile identities.
 ## Dashboard version and update hints
 
 The dashboard footer always shows the running version. When a newer stable
-release is known it adds the release tag and `dev upgrade`; updating remains an
+release is known it adds the release tag and `dev self upgrade`; updating remains an
 explicit command. It reads the existing 24-hour release cache first and checks
 in the background only after the first frame. `[update] check = false` or
 `DEV_NO_UPDATE_CHECK=1` disables checks and hints while retaining the current

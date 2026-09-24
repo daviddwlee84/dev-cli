@@ -1,13 +1,13 @@
 # Skills management
 
-`dev skill manage` opens an independent wizard. REPOS and SKILLS offer the same
+`dev agent skill manage` opens an independent wizard. REPOS and SKILLS offer the same
 workflow through Ctrl+O; it does not add another dashboard tab.
 
 ```bash
-dev skill manage
-dev skill manage --repo api
-dev skill manage --all
-dev skill list --all --check --json
+dev agent skill manage
+dev agent skill manage --repo api
+dev agent skill manage --all
+dev agent skill list --all --check --json
 ```
 
 Choose project, global, project plus global, or multiple repositories. The
@@ -30,7 +30,7 @@ selected skill and command. Confirmation is required before execution.
 
 Native management mutations require a globally installed `skills` executable compatible
 with the tested 1.5.23–1.5.25 contracts (supported 1.x versions from 1.5.23).
-`dev doctor` reports the dependency; install or upgrade it with
+`dev self doctor` reports the dependency; install or upgrade it with
 `npm install -g skills`. dev does not install dependencies automatically or fall
 back to npx. Listing and checking continue to work when the dependency is absent.
 
@@ -56,8 +56,8 @@ content conflicts. Dependency skills with colliding names require individual
 attention. Both operations retain native output and verify installed results;
 neither is included in cross-repository batches in this version.
 
-`dev skill install` and `dev skill sync` still manage dev's bundled skill. The
-existing single-skill `dev skill update <skill> --project|--global` command remains
+`dev agent skill install` and `dev agent skill sync` still manage dev's bundled skill. The
+existing single-skill `dev agent skill update <skill> --project|--global` command remains
 available for automation. Explicit transfer preparation keeps its separate pinned
 provider and verified-payload contract.
 
@@ -69,29 +69,29 @@ Provider source contracts: [update](https://github.com/vercel-labs/skills/blob/v
 The bundled `dev-cli` skill follows the installed binary separately from skills
 managed by the external `skills` provider:
 
-`dev --skill`, `dev skill print`, and the installed `SKILL.md` share one compact
+`dev --skill`, `dev agent skill print`, and the installed `SKILL.md` share one compact
 entrypoint. It routes ordinary tasks to command `--help` and `dev help <topic>`;
 the full reference tree remains bundled for advanced operations on demand.
 Reading the installed skill does not require printing it again or loading every
 reference. Use the checks below when investigating version or content drift.
 
 ```bash
-dev skill install                 # install or explicitly replace bundled files
-dev skill install --check         # local content comparison; nonzero on drift/absence
-dev skill install --if-installed  # refresh only an existing installation
-dev skill uninstall --dry-run     # preview exact owned files and matching links
-dev skill uninstall              # confirm and remove those files and links
+dev agent skill install                 # install or explicitly replace bundled files
+dev agent skill install --check         # local content comparison; nonzero on drift/absence
+dev agent skill install --if-installed  # refresh only an existing installation
+dev agent skill uninstall --dry-run     # preview exact owned files and matching links
+dev agent skill uninstall              # confirm and remove those files and links
 ```
 
-`dev doctor` and `dev upgrade --check` report whether the default installation
-matches the running binary, without changing it. After a successful `dev upgrade`,
+`dev self doctor` and `dev self upgrade --check` report whether the default installation
+matches the running binary, without changing it. After a successful `dev self upgrade`,
 the **new executable** refreshes an already installed
 `~/.agents/skills/dev-cli`. Homebrew and Scoop use their stable installation paths;
 other `dev` copies on PATH are not selected. An absent skill stays absent. A
 normal upgrade also repairs an existing skill when the binary is already current.
 Skill refresh failure is reported separately after the binary update succeeds.
 
-For standalone binaries, `dev upgrade` uses the exact release's platform asset
+For standalone binaries, `dev self upgrade` uses the exact release's platform asset
 when present and verifies `SHA256SUMS`. If the platform is absent, it offers a
 native Go source build of that release tag (Termux also needs Clang). This fallback
 is available since v0.2.35; older binaries need a one-time native source installation.
@@ -121,12 +121,12 @@ uninstall can verify ownership.
 Custom `--dir` installations require `skill install --dir PATH` to refresh and
 `skill uninstall --dir PATH` to remove. Direct package-manager upgrades and
 upgrades initiated by binaries older than v0.2.23 do not run the new refresh hook;
-run `dev skill install` once with the updated binary in those cases.
+run `dev agent skill install` once with the updated binary in those cases.
 
 ## Selected removal
 
 SKILLS → Ctrl+O → **remove skills in this scope…**, or **Remove selected skills** in
-`dev skill manage`, selects skills and explicit agent scopes before showing the
+`dev agent skill manage`, selects skills and explicit agent scopes before showing the
 exact provider command. The cross-repository/global action offers a repository
 picker and handles global skills once. Native lock-managed copies are verified against their
 lock; bundled dev-cli uses its ownership manifest. Unknown owners, local edits,
@@ -136,9 +136,9 @@ content and lock; agents sharing one directory must be selected together.
 
 Known hook/development-command references are inspected and rebound before apply;
 this is not a whole-machine dependency graph. agent-history-hygiene remains
-blocked while dev artifact finalization depends on its scripts. Removing a skill
+blocked while dev agent artifact finalization depends on its scripts. Removing a skill
 installation never means deleting its authoring repository or deploying hygiene.
-Use `dev hygiene manage` / REPOS for the independent repository setup procedure.
+Use `dev git hygiene manage` / REPOS for the independent repository setup procedure.
 
 Native removal uses exact names and agents, never `skills remove --all`.
 The provider lease remains held through result verification, and a zero exit code

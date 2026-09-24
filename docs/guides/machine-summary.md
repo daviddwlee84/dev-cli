@@ -51,6 +51,6 @@ Use the three context surfaces according to the question:
 
 ```text
 dev summary       current machine-wide snapshot
-dev journal       activity within a calendar-day range
+dev activity journal       activity within a calendar-day range
 dev repo context  full context for one repository
 ```

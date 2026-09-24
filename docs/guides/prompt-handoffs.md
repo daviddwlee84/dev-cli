@@ -8,7 +8,7 @@ tested_with: OpenCode 1.18.25
 
 # Prompt handoffs
 
-`dev prompt` collects a read-only snapshot, places it in a built-in prompt, and
+`dev agent prompt` collects a read-only snapshot, places it in a built-in prompt, and
 either prints it or gives it to a local command you configured. It is a context
 handoff, not an agent loop, scheduler, permission manager, or lifecycle engine.
 
@@ -20,13 +20,13 @@ handoff, not an agent loop, scheduler, permission manager, or lifecycle engine.
 ## Escalate only as far as needed
 
 ```text
-dev status / dev sweep / dev repo context
+dev status / dev work sweep / dev repo context
     |
     +-- facts are sufficient --> use done, park, sweep, or retire
     |
-    +-- dev prompt render <recipe> --> inspect or copy the exact prompt
-    +-- dev prompt run <recipe>    --> bounded one-shot analysis, no user stdin
-    +-- dev prompt open <recipe>   --> foreground conversation in this terminal
+    +-- dev agent prompt render <recipe> --> inspect or copy the exact prompt
+    +-- dev agent prompt run <recipe>    --> bounded one-shot analysis, no user stdin
+    +-- dev agent prompt open <recipe>   --> foreground conversation in this terminal
 ```
 
 Prefer the deterministic lifecycle command when the next step is already clear.
@@ -41,13 +41,13 @@ convert it into approval for a mutation.
 ## The three recipes
 
 ```bash
-dev prompt list
-dev prompt list --json
-dev prompt agents
-dev prompt agents --json
-dev prompt render pr-triage
-dev prompt render session-close
-dev prompt render workspace-closeout [repo-or-checkout]
+dev agent prompt list
+dev agent prompt list --json
+dev agent prompt agents
+dev agent prompt agents --json
+dev agent prompt render pr-triage
+dev agent prompt render session-close
+dev agent prompt render workspace-closeout [repo-or-checkout]
 ```
 
 | Recipe | Scope | Read-only result |
@@ -65,7 +65,7 @@ never changed into a reassuring clean/empty value.
 
 ### Discover configured profiles safely
 
-`dev prompt agents` prints the sorted table `PROFILE DEFAULT RUN OPEN
+`dev agent prompt agents` prints the sorted table `PROFILE DEFAULT RUN OPEN
 DESCRIPTION`. A direct launcher displays only `filepath.Base(command[0])`, a
 shell launcher displays `shell`, and an unavailable mode displays `—`. The
 stable `--json` form is an array in the same profile order. Every object has
@@ -88,11 +88,11 @@ configuration reports no human profiles and emits `[]` in JSON.
 Examples:
 
 ```bash
-dev prompt render pr-triage --role reviewer --repo owner/api
-dev prompt run session-close --agent my-agent
-dev prompt run pr-triage --dry-run
-dev prompt open workspace-closeout . --agent my-agent
-dev prompt open workspace-closeout . --dry-run
+dev agent prompt render pr-triage --role reviewer --repo owner/api
+dev agent prompt run session-close --agent my-agent
+dev agent prompt run pr-triage --dry-run
+dev agent prompt open workspace-closeout . --agent my-agent
+dev agent prompt open workspace-closeout . --dry-run
 ```
 
 `run` and `open` first resolve the globally selected profile and its requested
@@ -100,7 +100,7 @@ launcher, before any recipe collection. A non-dry `open` checks for an
 interactive terminal at the same early boundary. Missing, unknown, or ambiguous
 profiles, an unavailable mode, and a missing TTY therefore fail without querying
 a forge or runtime. Diagnostics list sorted mode-capable profiles and point to
-`dev prompt agents`.
+`dev agent prompt agents`.
 
 `--dry-run` then resolves the working directory, transport, timeout, and safe
 command preview and prints the complete rendered prompt without starting the
@@ -119,7 +119,7 @@ checkout after the handoff returns.
 ## Host-only agent configuration
 
 There is no built-in agent, vendor, or default launcher. Configure one or more
-local commands in the user config returned by `dev config path`:
+local commands in the user config returned by `dev self config path`:
 
 ```toml
 [[agent]]
@@ -151,12 +151,12 @@ description = "OpenCode batch and interactive handoff"
 default = true
 
 [agent.run]
-command = ["opencode", "run", "--file", "{{prompt_file}}", "Read the attached dev prompt and follow its instructions."]
+command = ["opencode", "run", "--file", "{{prompt_file}}", "Read the attached dev agent prompt and follow its instructions."]
 input = "file"
 timeout = "10m"
 
 [agent.open]
-command = ["opencode", "run", "--interactive", "--file", "{{prompt_file}}", "Read the attached dev prompt, explain the evidence, and ask before changing anything."]
+command = ["opencode", "run", "--interactive", "--file", "{{prompt_file}}", "Read the attached dev agent prompt, explain the evidence, and ask before changing anything."]
 input = "file"
 ```
 
@@ -211,24 +211,24 @@ cannot choose a command for `dev` to execute.
 
 The built-in recipes instruct the receiver to analyze and quote possible next
 commands, not to approve, merge, rebase, close, delete, or retire anything.
-However, `dev prompt` is not a sandbox: the configured child retains whatever
+However, `dev agent prompt` is not a sandbox: the configured child retains whatever
 filesystem, network, tool, and approval policy its own command gives it. `dev`
 does not add a permissive mode, reduce permissions, answer an approval prompt,
 or edit configuration.
 
-No agent answer is authoritative. Review it, then invoke `dev done`, `dev park`,
-`dev sweep`, or `dev retire` yourself. Those commands recollect and revalidate
+No agent answer is authoritative. Review it, then invoke `dev work done`, `dev work park`,
+`dev work sweep`, or `dev work retire` yourself. Those commands recollect and revalidate
 fresh state at their mutation boundaries.
 
 ## Current-terminal and Herdr boundary
 
-`dev prompt open` does **not** create, focus, reuse, or inject into a Herdr, tmux,
+`dev agent prompt open` does **not** create, focus, reuse, or inject into a Herdr, tmux,
 or Zellij surface. It starts the configured process in the foreground of the
 terminal that invoked it. Inside Herdr, that naturally means the current pane.
 If a separate Herdr pane is wanted, create or focus that pane manually, enter the
-exact checkout there, and run `dev prompt open ...` from that terminal.
+exact checkout there, and run `dev agent prompt open ...` from that terminal.
 
-This is separate from `dev start --run '<shell command>'`. That command may
+This is separate from `dev work start --run '<shell command>'`. That command may
 dispatch shell text only to the exact root pane returned for a newly created
 first-class Herdr worktree; reused, fallback, unverified, and non-Herdr surfaces
 fail closed. `prompt open` does not widen or reuse that exact-pane contract.
@@ -247,7 +247,7 @@ target kind, worktree registration and path, status availability, cleanliness,
 in-progress Git operations, known base and branch containment, task state,
 artifact reachability/finalization, and runtime eligibility. Only a deterministic
 `retirement.status` of `eligible` may be suggested for retirement, and even that
-is not authorization: `dev retire` must recollect and revalidate before changing
+is not authorization: `dev work retire` must recollect and revalidate before changing
 anything. A merged pull request is evidence only and cannot substitute for any
 of those gates.
 
@@ -256,7 +256,7 @@ of those gates.
 Start with the deterministic transaction rather than an agent:
 
 ```bash
-dev done <task> --ff
+dev work done <task> --ff
 # or, for an update of the current branch
 dev git pull-rebase
 ```
@@ -265,7 +265,7 @@ If Git stops at a conflict, stay in that exact checkout and open the full
 workspace context there:
 
 ```bash
-dev prompt open workspace-closeout . --agent my-agent
+dev agent prompt open workspace-closeout . --agent my-agent
 ```
 
 Use the conversation to decide the semantic resolution. Only after the operator

@@ -54,6 +54,9 @@ jobs:
       - name: Test (race)
         if: runner.os != 'Windows'
         run: go test -race -timeout 20m ./...
+      - name: Test guarded checkout relocation (required on Windows)
+        if: runner.os == 'Windows'
+        run: go test ./internal/lockx ./internal/experiment ./internal/taskflow ./internal/cli ./internal/tui -run '^Test(Relocatable|Demote|MoveClaims|SkillExec|SkillUpdate|SkillsViewLoadsLazilyFiltersAndRunsExplicitActions)' -count=1 -v
       - name: Test Try removal and browse contracts (required on Windows)
         if: runner.os == 'Windows'
         run: go test ./internal/desktop ./internal/experiment ./internal/repobrowse -run 'Test(Removal|Trash|Permanent|Browse|Recycle)'

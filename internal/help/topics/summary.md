@@ -14,6 +14,6 @@ The default `auto` Markdown expands dirty/live/HOT/WARM projects and keeps quiet
 projects in a compact index. `--attention` also selects missing checkouts,
 topology errors, no-remote repositories and local-only branches.
 
-Use `dev journal` for a date range and `dev repo context` for one repository.
+Use `dev activity journal` for a date range and `dev repo context` for one repository.
 The command generates context only; it does not launch an agent or store the
 rendered summary.

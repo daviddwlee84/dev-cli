@@ -240,7 +240,7 @@ backend——interactive setup 將 native prompt 留給 OpenSSH，noninteractive
 | `$XDG_CACHE_HOME/dev/fleet/v1/*.json` | disposable controller snapshots |
 
 成功 probe 會寫 private per-host JSON snapshot。Endpoint ID 含 `machine_id`、connection fields、SSH port、timeouts、`dev_path` 與
-`remote_os`；改變 target 會讓舊 cache identity 失效。Oversized/malformed snapshot、future timestamp、invalid count 與 unsafe field 都忽略。`dev cache clear fleet` 或 `dev cache clear all` 可移除；下一次 fleet request 會重建。
+`remote_os`；改變 target 會讓舊 cache identity 失效。Oversized/malformed snapshot、future timestamp、invalid count 與 unsafe field 都忽略。`dev self cache clear fleet` 或 `dev self cache clear all` 可移除；下一次 fleet request 會重建。
 
 Cache 讓 unavailable host 可以 `stale` 保留 last-known state；`--cached` 只讀 cache。它永遠不會成為 remote path 或 task authority。
 
@@ -258,7 +258,7 @@ Space 展開／收合主機；在 child 按 Space 會收合並選回主機。Ent
 初始畫面後五秒，或提早進入 FLEET 時，單一背景 worker 開始更新缺少或過期的
 host snapshot。每台符合條件的主機自動嘗試一次，結果逐台出現。背景讀取採用
 非互動認證，不解析 password fallback，單台 timeout 為 30 秒或較短的原設定。
-明確要求的讀取優先執行，並共用既有並行上限。可在 dev config 關閉預熱：
+明確要求的讀取優先執行，並共用既有並行上限。可在 dev self config 關閉預熱：
 
 ```toml
 [tui.fleet]

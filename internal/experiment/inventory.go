@@ -26,6 +26,9 @@ type directoryProbe struct {
 	valid      bool
 	diagnostic *Diagnostic
 	gitMarker  bool
+	// demoteAuthority binds this checkout's Git registration, index and config.
+	// Ordinary inventory does not populate it.
+	demoteAuthority string
 }
 
 // Reconcile backfills every immediate, non-hidden directory under TriesRoot.

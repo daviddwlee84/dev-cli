@@ -33,7 +33,7 @@ public key, or registering/removing a fleet host.
 | prove ordinary login | `dev ssh probe <alias>` | one fresh BatchMode network login |
 | remove dev-owned intent | `dev ssh remove <alias>` | owned SSH and explicit generated fleet fragments only |
 
-Use `dev doctor` for read-only local capability/config/permission checks. It does
+Use `dev self doctor` for read-only local capability/config/permission checks. It does
 not contact hosts or repair SSH state.
 
 ## One-time initialization
@@ -609,7 +609,7 @@ diagnostics; a missing or unusable source does not become an empty success claim
 `--agent bitwarden|1password|secretive|<absolute socket>` (repeatable) adds a
 named agent; the setup key picker adds providers whose socket is present (found by
 `stat` only; installed providers without a socket get an enable hint, also in
-`dev doctor`). Precedence for a key in several agents: alias `IdentityAgent`,
+`dev self doctor`). Precedence for a key in several agents: alias `IdentityAgent`,
 requested order, `SSH_AUTH_SOCK`. Setup dry-run does not write or connect to hosts;
 explicit agent-key selection still queries that exact agent. Selecting a named-agent key, or
 `dev ssh setup <alias> --identity-agent <agent> --key <SHA256|.pub>`, publishes the

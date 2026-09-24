@@ -7,16 +7,16 @@ verified_on: 2026-08-28
 
 # Development journal
 
-`dev journal` derives a report from repositories already visible under the
+`dev activity journal` derives a report from repositories already visible under the
 configured scan roots. It writes Markdown by default, makes no AI request, and
 does not persist the generated report.
 
 ```bash
-dev journal                         # today, current Git identity
-dev journal --since 7d --metrics
-dev journal --since 3mo --granularity branch
-dev journal --author teammate@example.com --since 30d
-dev journal --since 7d --json
+dev activity journal                         # today, current Git identity
+dev activity journal --since 7d --metrics
+dev activity journal --since 3mo --granularity branch
+dev activity journal --author teammate@example.com --since 30d
+dev activity journal --since 7d --json
 ```
 
 The default `auto` granularity shows commit details when the report is small.
@@ -45,7 +45,7 @@ numstats. Binary changes count as files but do not invent line counts.
 Markdown is suitable as direct context:
 
 ```bash
-dev journal --since 7d | opencode run "summarize this as a weekly report"
+dev activity journal --since 7d | opencode run "summarize this as a weekly report"
 ```
 
 `--json` emits schema version 1 with the window, authors, full aggregate totals,

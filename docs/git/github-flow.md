@@ -67,12 +67,12 @@ The historical pages disagree about deploy-before-merge versus merge-then-deploy
 ## dev-cli mapping
 
 ```bash
-dev start api --task "token refresh" --base main
+dev work start api --task "token refresh" --base main
 # commit and test in the task checkout
-dev done --pr
+dev work done --pr
 ```
 
-`dev done --pr` publishes the branch and opens the pull or merge request, then deliberately leaves the task active during review. It does not claim the request is merged and does not mark the task DONE.
+`dev work done --pr` publishes the branch and opens the pull or merge request, then deliberately leaves the task active during review. It does not claim the request is merged and does not mark the task DONE.
 
 `dev` also permits a project-policy exception for one small safe commit directly on the trunk. That is a lightweight trunk-based choice, **not** GitHub Flow. Teams that require pull requests should always use a branch.
 

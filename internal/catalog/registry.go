@@ -180,6 +180,9 @@ func (r *Registry) Attach(id string, observation Observation) (*Entry, error) {
 
 func (r *Registry) attachUnderLock(id string, observation Observation) (*Entry, error) {
 	return r.store.UpdateUnderLock(id, func(entry *Entry) error {
+		if intent := entry.MoveIntent; intent != nil && intent.Host == observation.Host {
+			return fmt.Errorf("catalog asset %s has a pending %s move on %s; reconcile it before changing its location", id, intent.Operation, observation.Host)
+		}
 		if observation.RemoteIdentity != "" {
 			entry.RemoteIdentity = observation.RemoteIdentity
 		}

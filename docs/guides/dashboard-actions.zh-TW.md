@@ -2,7 +2,7 @@
 description: 從 Dashboard 完成與恢復 task、透過系統垃圾桶處理 Try，並開啟 repository 首頁。
 authority: project
 status: evolving
-verified_on: 2026-09-18
+verified_on: 2026-09-24
 lang: zh-TW
 ---
 
@@ -44,7 +44,7 @@ Enter 時送出；Ctrl+O 的 Enter 仍執行所選 action，forms／SSH dialogs 
 
 TASKS 的完成、恢復、退休與 recovery 沿用既有 CLI workflows。Dashboard 在
 提示期間暫停，完成或失敗後重新載入。Task ID／revision 檢查會拒絕過期選取。
-`dev sweep --task <id>` 只回報指定 task；加上 `--apply` 後逐項確認可執行的
+`dev work sweep --task <id>` 只回報指定 task；加上 `--apply` 後逐項確認可執行的
 建議。`--task` 不能與掃描整批 worktrees 的 sweep modes 合用。
 
 透過 PR 完成 handoff 時保留 HOT／WARM；integration 才寫入 DONE。Retirement
@@ -66,6 +66,27 @@ next action，最終建立確認前可選 open（預設）或 stay。Reviewed pl
 
 Attach、shell-directory handoff 或外部 retirement coordinator 都在 Dashboard
 釋放 terminal 後才執行。一般完成或取消則返回 Dashboard，不會自動啟動 agent。
+
+## 將已畢業的 repository 退回 Try
+
+在 REPOS → Ctrl+O → demote，可把曾 graduate 的 Try 退回實驗區。
+此 action 先顯示與 `dev tries demote` 相同的受保護搬移計畫，確認來源與目的地
+後才套用。沒有 graduation history 的一般 repository 不適用。
+
+```bash
+dev tries demote <repo-or-path-or-catalog-id> --dry-run
+dev tries demote <repo-or-path-or-catalog-id>
+dev tries demote <catalog-id> --to ~/src/tries/2026-09-24-parser
+```
+
+預設回到記錄中的原 Try 路徑。若目的地被占用或已不在目前 `tries_root` 內，
+必須用 `--to` 明確指定安全位置。Demote 保留目前所有 bytes，包括 dirty／
+untracked／ignored 檔案、Git history／remotes、catalog ID、tags、notes 與
+畢業紀錄；Try 變為 active、present。不撤銷 commit 或 publication，也不建立
+symlink。Task、runtime／agent、artifact claims，帶有 linked worktrees 的
+canonical repository，不完整觀察或過期計畫，都會阻擋搬移。原有同檔案系統、
+identity、rollback 與 reconciliation 保護仍適用。見
+[命令遷移與 Try 轉換](../reference/cli-v0.3.zh-TW.md)。
 
 ## 處理不再需要的 Try
 
@@ -114,9 +135,9 @@ bytes。原本的 archive restore 仍使用 `dev tries restore <ref> [--to <path
 ## 開啟 repository 首頁
 
 ```bash
-dev browse
+dev repo browse
 dev repo browse api --remote origin
-dev browse --print
+dev repo browse --print
 dev repo context
 ```
 
@@ -142,7 +163,7 @@ Triage 用 repo／Try 群組 checkbox，支援滑鼠與 Ctrl+A 全選／取消�
 
 Ctrl+O 的 `/` 只篩選目前選單，方向鍵移動，Enter 執行；Esc 先清除搜尋。
 REPOS 可管理目前或篩選範圍的 skills，SKILLS 可選單一 skill、project 或 global。
-這些入口使用 [dev skill manage](skills-management.zh-TW.md) wizard；更新先檢查
+這些入口使用 [dev agent skill manage](skills-management.zh-TW.md) wizard；更新先檢查
 並預覽，experimental restore／sync 僅限單 project。
 
 
@@ -194,7 +215,7 @@ repository clone 與生命週期操作不適用於 snippet rows。詳見 [Snippe
 ## Dashboard 版本與更新提示
 
 Dashboard footer 固定顯示目前執行版本；已知有較新的穩定版本時，另顯示版本號與
-`dev upgrade`，更新仍由使用者明確執行。先讀取現有 24 小時 release 快取，首個畫面
+`dev self upgrade`，更新仍由使用者明確執行。先讀取現有 24 小時 release 快取，首個畫面
 完成後才背景檢查。`[update] check = false` 或 `DEV_NO_UPDATE_CHECK=1` 會關閉
 檢查與新版提示，但保留目前版本。舊觀測標示 cached，檢查失敗不打斷其他操作。
 開發版／dirty 版本字串會保留；無法比較的版本不會被宣稱為最新版。適用於裸 `dev`

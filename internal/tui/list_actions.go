@@ -25,6 +25,7 @@ const (
 	listActionToggleWorktrees
 	listActionRepoCreate
 	listActionRepoMetadata
+	listActionRepoDemote
 	listActionStartWorktree
 	listActionStartDirect
 	listActionCopy
@@ -613,6 +614,10 @@ func (m Model) executeListAction(action listAction) (tea.Model, tea.Cmd) {
 	case listActionRepoMetadata:
 		if row, ok := m.currentRepo(); ok {
 			return m.openRepoForm(row)
+		}
+	case listActionRepoDemote:
+		if row, ok := m.currentRepo(); ok && row.Asset != nil {
+			return m.runWorkflow(WorkflowRequest{Action: "demote-repo", Repo: row.Repo, RepoAsset: row.Asset.Clone()})
 		}
 	case listActionStartWorktree:
 		if row, ok := m.currentRepo(); ok {

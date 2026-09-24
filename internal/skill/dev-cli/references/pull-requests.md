@@ -64,7 +64,7 @@ A merged request is **not** sufficient grounds to remove a worktree:
 
 ```bash
 dev pr list --scope local --state merged   # find candidates
-dev sweep --merged-worktrees               # prove/report; apply only after approval
+dev work sweep --merged-worktrees               # prove/report; apply only after approval
 ```
 
 A squash merge can leave no local ancestry proof. Forge state cannot replace
@@ -93,9 +93,9 @@ add-only: tolerate new fields and preserve existing meanings.
 There is no `dev pr prompt` command. Use:
 
 ```bash
-dev prompt render pr-triage
-dev prompt run pr-triage --agent my-agent
-dev prompt open pr-triage --agent my-agent
+dev agent prompt render pr-triage
+dev agent prompt run pr-triage --agent my-agent
+dev agent prompt open pr-triage --agent my-agent
 ```
 
 The recipe accepts the same inbox filters. Read

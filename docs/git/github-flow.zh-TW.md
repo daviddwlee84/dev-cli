@@ -71,12 +71,12 @@ git push -u origin feat/token-refresh
 ## dev-cli 對應方式
 
 ```bash
-dev start api --task "token refresh" --base main
+dev work start api --task "token refresh" --base main
 # 在 task checkout commit 並測試
-dev done --pr
+dev work done --pr
 ```
 
-`dev done --pr` 發布 branch 並建立 pull/merge request，之後刻意讓 task 在 review 期間維持 active。它不宣稱 request 已 merge，也不會標示 task DONE。
+`dev work done --pr` 發布 branch 並建立 pull/merge request，之後刻意讓 task 在 review 期間維持 active。它不宣稱 request 已 merge，也不會標示 task DONE。
 
 `dev` 另允許一個 project-policy exception：一個小型安全 commit 可直接進 trunk。這是輕量 trunk-based 選擇，**不是** GitHub Flow；需要 pull request 的 team 一律使用 branch。
 

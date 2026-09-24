@@ -18,7 +18,7 @@ unrelated sessions to make a scan or redaction pass.
    temporary HOME. That checks real pre-commit blocking with a synthetic key,
    hidden paths, same-line placeholders, an alternate index, executable modes,
    unchanged Git config and a clean follow-up commit.
-2. Run `dev hygiene status`, preview setup, and verify the effective hook chain.
+2. Run `dev git hygiene status`, preview setup, and verify the effective hook chain.
    Put the new binary on PATH for the test session; never overwrite a
    package-managed installed binary manually.
 3. Preview `rules import --from ssh` and `--from local`. Review which candidates
@@ -35,10 +35,10 @@ external terminal. A separately authorized agent may use a terminal without a
 SpecStory writer, but it still needs fresh proof about the original writer.
 
 ```bash
-dev hygiene scan --scope worktree --json
-dev hygiene redact --report <fresh-report-id> --file <reviewed-file> --json
-dev hygiene redact --apply --plan <plan-id> --yes --writer-stopped
-dev hygiene scan --scope worktree --json
+dev git hygiene scan --scope worktree --json
+dev git hygiene redact --report <fresh-report-id> --file <reviewed-file> --json
+dev git hygiene redact --apply --plan <plan-id> --yes --writer-stopped
+dev git hygiene scan --scope worktree --json
 git diff --check
 # Review and stage exact files; normal hooks remain enabled.
 ```

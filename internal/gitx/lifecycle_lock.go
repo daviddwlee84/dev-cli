@@ -13,13 +13,25 @@ import (
 // Absorbed submodules therefore cannot start a dev lifecycle transaction while
 // their owning superproject is being retired. The task-store lock comes later.
 func WithLifecycleLock(ctx context.Context, commonDir string, operation func() error) error {
+	return withLifecycleLock(ctx, commonDir, operation, false)
+}
+
+// WithLifecycleMoveLock retains the same lifecycle lease across an explicitly
+// authorized checkout move, including on Windows. The caller must revalidate
+// source/destination identity under the lease before moving. Ordinary lifecycle
+// callers retain WithLifecycleLock's native sharing behavior.
+func WithLifecycleMoveLock(ctx context.Context, commonDir string, operation func() error) error {
+	return withLifecycleLock(ctx, commonDir, operation, true)
+}
+
+func withLifecycleLock(ctx context.Context, commonDir string, operation func() error, movable bool) error {
 	var dirs []string
-	identities := map[string]os.FileInfo{}
+	identities := map[string]string{}
 	for p := filepath.Clean(commonDir); ; p = filepath.Dir(p) {
 		if info, err := os.Stat(filepath.Join(p, "objects")); err == nil && info.IsDir() {
 			if _, err := os.Stat(filepath.Join(p, "config")); err == nil {
 				dirs = append(dirs, p)
-				identity, err := os.Stat(p)
+				identity, err := DirectoryIdentity(p)
 				if err != nil {
 					return err
 				}
@@ -41,13 +53,17 @@ func WithLifecycleLock(ctx context.Context, commonDir string, operation func() e
 			}
 			return operation()
 		}
-		if expected := identities[dirs[i]]; expected != nil {
-			current, err := os.Stat(dirs[i])
-			if err != nil || !os.SameFile(expected, current) {
+		if expected := identities[dirs[i]]; expected != "" {
+			current, err := DirectoryIdentity(dirs[i])
+			if err != nil || expected != current {
 				return fmt.Errorf("Git directory identity changed before lock: %s", dirs[i])
 			}
 		}
-		return lockx.WithDir(ctx, filepath.Join(dirs[i], "dev-taskflow"), "taskflow repository", func() error { return lock(i - 1) })
+		withDir := lockx.WithDir
+		if movable {
+			withDir = lockx.WithDirRelocatable
+		}
+		return withDir(ctx, filepath.Join(dirs[i], "dev-taskflow"), "taskflow repository", func() error { return lock(i - 1) })
 	}
 	return lock(len(dirs) - 1)
 }

@@ -73,14 +73,9 @@ func (m Model) executeDashboardAction(action listAction) (tea.Model, tea.Cmd) {
 				m.err = err
 				return m, nil
 			}
-			proc, finish, err := mutation.Prepare()
-			if err != nil {
-				m.err = err
-				return m, nil
-			}
 			m.status = "opening interactive skill installer…"
-			return m, runExecProcess(proc, func(err error) tea.Msg {
-				return skillProcessMsg{action: "add", err: finish(err)}
+			return m, runSkillMutation(mutation, func(err error) tea.Msg {
+				return skillProcessMsg{action: "add", err: err}
 			})
 		}
 	case listActionToggleHistory:

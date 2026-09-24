@@ -55,6 +55,8 @@ func actionGuidance(view View, id listAction) (string, string) {
 			return "Browse repository thoughts", "Read, search and manage the selected repository's notes."
 		case listActionRepoMetadata:
 			return "Edit tags and summary", "Edit catalog metadata for a repository main row; this summary is separate from its multiple quick notes."
+		case listActionRepoDemote:
+			return "Move a graduated project back to Tries", "Preview the exact move, then confirm. Preserves current files, Git history, remotes and catalog identity. Task, runtime or pending artifact claims must be resolved first."
 		case listActionCopy:
 			return "Choose repository data to copy", "Requires a selected row. Choose context, path, branch or clone URL from the copy controls; copying does not contact a remote."
 		case listActionCycleSort:

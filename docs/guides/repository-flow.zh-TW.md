@@ -1,5 +1,5 @@
 ---
-description: 使用 preview dev flow 介面檢查單一 repository，並套用綁定 revision 的 lifecycle、adoption、removal、retirement 與 remote-evidence plans。
+description: 使用 preview dev repo flow 介面檢查單一 repository，並套用綁定 revision 的 lifecycle、adoption、removal、retirement 與 remote-evidence plans。
 authority: project
 status: evolving
 verified_on: 2026-09-01
@@ -11,14 +11,14 @@ lang: zh-TW
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
 
-`dev flow [repo]` 是標示為 preview 的全螢幕 TTY-only 介面，專門處理單一 repository 的 lifecycle。它獨立於六個 view 的 `dev tui` dashboard；唯一任務是顯示 repository surfaces、observed evidence 與 exact guarded actions。
+`dev repo flow [repo]` 是標示為 preview 的全螢幕 TTY-only 介面，專門處理單一 repository 的 lifecycle。它獨立於六個 view 的 `dev tui` dashboard；唯一任務是顯示 repository surfaces、observed evidence 與 exact guarded actions。
 
 ```bash
-dev flow              # 目前 repository；在 Git 外則開啟 picker
-dev flow api          # 明確指定 repository，覆蓋 cwd
+dev repo flow              # 目前 repository；在 Git 外則開啟 picker
+dev repo flow api          # 明確指定 repository，覆蓋 cwd
 ```
 
-從 canonical checkout 或 linked worktree 執行不帶 argument 的 `dev flow` 時，它會解析 canonical Git common-directory identity，並 focus 目前所在的 exact surface。在 Git 之外執行時，則非同步載入可過濾的 repository picker。由 task metadata 引用、但暫時 unavailable 的 repository，仍會以 unavailable task-only rows 供檢查。
+從 canonical checkout 或 linked worktree 執行不帶 argument 的 `dev repo flow` 時，它會解析 canonical Git common-directory identity，並 focus 目前所在的 exact surface。在 Git 之外執行時，則非同步載入可過濾的 repository picker。由 task metadata 引用、但暫時 unavailable 的 repository，仍會以 unavailable task-only rows 供檢查。
 
 ## Repository surfaces
 

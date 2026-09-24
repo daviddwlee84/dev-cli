@@ -11,15 +11,15 @@ lang: zh-TW
 !!! note "術語規則"
     CLI flag、Git、JSON、AI agent 與產品名稱保留英文，避免自行創造不穩定譯名。
 
-`dev journal` 從 configured scan roots 下已可見的 repositories 推導報告。預設輸出
+`dev activity journal` 從 configured scan roots 下已可見的 repositories 推導報告。預設輸出
 Markdown，不會呼叫 AI，也不會持久保存生成後的報告。
 
 ```bash
-dev journal                         # 今天、目前 Git identity
-dev journal --since 7d --metrics
-dev journal --since 3mo --granularity branch
-dev journal --author teammate@example.com --since 30d
-dev journal --since 7d --json
+dev activity journal                         # 今天、目前 Git identity
+dev activity journal --since 7d --metrics
+dev activity journal --since 3mo --granularity branch
+dev activity journal --author teammate@example.com --since 30d
+dev activity journal --since 7d --json
 ```
 
 預設 `auto` granularity 會在報告較小時展開 commit details。超過 100 commits
@@ -45,7 +45,7 @@ Binary change 會計入 files，但不會虛構 line count。
 Markdown 可直接作為 context：
 
 ```bash
-dev journal --since 7d | opencode run "summarize this as a weekly report"
+dev activity journal --since 7d | opencode run "summarize this as a weekly report"
 ```
 
 `--json` 輸出 schema version 1，包含 window、authors、完整 aggregate totals、

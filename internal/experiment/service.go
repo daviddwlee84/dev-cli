@@ -234,6 +234,7 @@ const (
 	TransitionArchive  TransitionOperation = "archive"
 	TransitionRestore  TransitionOperation = "restore"
 	TransitionGraduate TransitionOperation = "graduate"
+	TransitionDemote   TransitionOperation = "demote"
 )
 
 // TransitionRequest selects a Try and optionally supplies a restore target.
@@ -254,6 +255,7 @@ type TransitionPlan struct {
 	Diagnostics []Diagnostic
 
 	LinkedWorktree bool
+	demote         *DemotePlan
 }
 
 // TransitionResult reports both the move and its durable catalog outcome.
@@ -369,6 +371,8 @@ type CatalogUpdateFunc func(string, func(*catalog.Entry) error) (*catalog.Entry,
 // implementations. It is intentionally small and operation-shaped rather than
 // exposing the Service's internals.
 type Hooks struct {
+	DemoteGuard    func(context.Context, DemoteGuardRequest) (string, error)
+	DemoteLock     func(context.Context, string, func() error) error
 	ForgetGuard    func(context.Context, *catalog.Entry) (string, error)
 	RemovalGuard   func(context.Context, string) (string, error)
 	Trash          func(context.Context, string) error
@@ -407,6 +411,8 @@ type ServiceConfig struct {
 // Service owns all Try policy while delegating persistence and Git porcelain to
 // their focused packages.
 type Service struct {
+	demoteGuard    func(context.Context, DemoteGuardRequest) (string, error)
+	demoteLock     func(context.Context, string, func() error) error
 	forgetGuard    func(context.Context, *catalog.Entry) (string, error)
 	removalGuard   func(context.Context, string) (string, error)
 	trash          func(context.Context, string) error
@@ -494,6 +500,8 @@ func NewService(config ServiceConfig) (*Service, error) {
 }
 
 func applyHooks(service *Service, hooks Hooks) {
+	service.demoteGuard = hooks.DemoteGuard
+	service.demoteLock = hooks.DemoteLock
 	service.forgetGuard = hooks.ForgetGuard
 	service.removalGuard = hooks.RemovalGuard
 	if hooks.Trash != nil {

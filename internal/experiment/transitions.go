@@ -483,7 +483,7 @@ func (s *Service) applyTransition(ctx context.Context, result TransitionResult) 
 	}
 
 	failMove := func(cause error) (TransitionResult, error) {
-		repairErr := s.reconcileMoveIntentByID(ctx, plan.Item.ID)
+		repairErr := s.reconcileMoveIntentByIDLocked(ctx, plan.Item.ID)
 		if repairErr != nil {
 			return result, errors.Join(cause, fmt.Errorf("repair pending %s intent: %w", plan.Operation, repairErr))
 		}
@@ -520,6 +520,14 @@ func (s *Service) applyTransition(ctx context.Context, result TransitionResult) 
 	linked := probe.live.Repo != nil && probe.live.Repo.IsLinkedWorktree
 	if linked != plan.LinkedWorktree {
 		return failMove(fmt.Errorf("%s source Git worktree identity changed after planning", plan.Operation))
+	}
+	if plan.Operation == TransitionDemote {
+		if plan.demote == nil {
+			return failMove(errors.New("demotion requires an exact reviewed plan"))
+		}
+		if err := s.verifyDemoteBoundary(ctx, *plan.demote); err != nil {
+			return failMove(err)
+		}
 	}
 	if err := s.movePath(ctx, linked, plan.Source, plan.Destination); err != nil {
 		if errors.Is(err, syscall.EXDEV) {
@@ -558,6 +566,9 @@ func (s *Service) beginMoveIntent(ctx context.Context, plan TransitionPlan) erro
 		if entry.MoveIntent != nil {
 			return fmt.Errorf("catalog asset %s already has a pending %s move", entry.ID, entry.MoveIntent.Operation)
 		}
+		if plan.Operation == TransitionDemote && (plan.demote == nil || !sameRemovalEntry(entry, plan.demote.entry)) {
+			return errors.New("stale demotion catalog authority before move intent")
+		}
 		if err := s.validateTransitionEntry(entry, plan.Operation, plan.Source); err != nil {
 			return err
 		}
@@ -587,6 +598,12 @@ func (s *Service) beginMoveIntent(ctx context.Context, plan TransitionPlan) erro
 				SourcePath: plan.Source, DestinationPath: plan.Destination,
 				Started: s.now(),
 			}
+			if plan.Operation == TransitionDemote {
+				current.MoveIntent.SourceIdentity = plan.demote.identity
+				current.MoveIntent.GitCommonIdentity = plan.demote.gitIdentity
+				current.MoveIntent.GitDirIdentity = plan.demote.gitDirIdentity
+				current.MoveIntent.LinkedWorktree = plan.LinkedWorktree
+			}
 			return nil
 		})
 		return err
@@ -596,11 +613,19 @@ func (s *Service) beginMoveIntent(ctx context.Context, plan TransitionPlan) erro
 func (s *Service) rollbackTransition(ctx context.Context, result TransitionResult, cause error) (TransitionResult, error) {
 	plan := result.Plan
 	rollbackErr := rejectExisting(plan.Source)
+	if rollbackErr == nil && plan.Operation == TransitionDemote {
+		entry, err := s.store.Get(plan.Item.ID)
+		if err != nil {
+			rollbackErr = err
+		} else {
+			rollbackErr = verifyDemoteDestination(entry.MoveIntent, s.probeDirectory(ctx, plan.Destination))
+		}
+	}
 	if rollbackErr == nil {
 		rollbackErr = s.movePath(ctx, plan.LinkedWorktree, plan.Destination, plan.Source)
 	}
 	if rollbackErr == nil {
-		if repairErr := s.reconcileMoveIntentByID(ctx, plan.Item.ID); repairErr != nil {
+		if repairErr := s.reconcileMoveIntentByIDLocked(ctx, plan.Item.ID); repairErr != nil {
 			rollbackErr = fmt.Errorf("filesystem move rolled back but catalog intent repair failed: %w", repairErr)
 		}
 	}
@@ -708,7 +733,10 @@ func (s *Service) explicitRestoreDestination(to string) (string, error) {
 }
 
 func (s *Service) validateTransitionEntry(entry *catalog.Entry, operation TransitionOperation, source string) error {
-	if !eligibleTryRecord(entry) {
+	if operation == TransitionDemote && !graduatedEntry(entry) {
+		return fmt.Errorf("catalog asset %s is not a previously graduated Try", entry.ID)
+	}
+	if operation != TransitionDemote && !eligibleTryRecord(entry) {
 		return fmt.Errorf("catalog asset %s is not a mutable Try", entry.ID)
 	}
 	location, ok := entry.LocationFor(s.host)
@@ -727,6 +755,10 @@ func (s *Service) validateTransitionEntry(entry *catalog.Entry, operation Transi
 	case TransitionGraduate:
 		if location.State != catalog.LocationPresent && location.State != catalog.LocationArchived {
 			return fmt.Errorf("catalog asset %s is neither present nor archived", entry.ID)
+		}
+	case TransitionDemote:
+		if location.State != catalog.LocationPresent {
+			return fmt.Errorf("catalog asset %s is not a present graduated Try", entry.ID)
 		}
 	default:
 		return fmt.Errorf("unknown move operation %q", operation)
@@ -788,6 +820,17 @@ func (s *Service) validateTransitionContainment(id string, operation TransitionO
 		}
 		if err := s.validateProjectDestination(canonicalDestination); err != nil {
 			return fmt.Errorf("graduate destination: %w", err)
+		}
+	case TransitionDemote:
+		if err := s.validateVisibleTryPath(canonicalDestination); err != nil {
+			return fmt.Errorf("demote destination: %w", err)
+		}
+		triesRoot, err := pathx.Canonical(s.triesRoot)
+		if err != nil {
+			return err
+		}
+		if pathsRelated(canonicalSource, triesRoot) || filepath.Dir(canonicalSource) == canonicalSource {
+			return errors.New("demotion source must be outside tries_root and must not contain it")
 		}
 	default:
 		return fmt.Errorf("unknown move operation %q", operation)
@@ -890,7 +933,8 @@ func (s *Service) ReconcileMoveIntents(ctx context.Context) ([]Diagnostic, error
 	return diagnostics, nil
 }
 
-func (s *Service) reconcileMoveIntentByID(ctx context.Context, id string) error {
+// The caller still holds its move lease, if the operation requires one.
+func (s *Service) reconcileMoveIntentByIDLocked(ctx context.Context, id string) error {
 	entry, err := s.store.Get(id)
 	if err != nil {
 		return err
@@ -898,10 +942,17 @@ func (s *Service) reconcileMoveIntentByID(ctx context.Context, id string) error 
 	if entry.MoveIntent == nil || entry.MoveIntent.Host != s.host {
 		return nil
 	}
-	return s.reconcileMoveIntent(ctx, entry)
+	return s.reconcileMoveIntentLocked(ctx, entry)
 }
 
 func (s *Service) reconcileMoveIntent(ctx context.Context, snapshot *catalog.Entry) error {
+	if intent := snapshot.MoveIntent; intent != nil && intent.Host == s.host && intent.Operation == string(TransitionDemote) {
+		return s.reconcileDemoteIntent(ctx, snapshot)
+	}
+	return s.reconcileMoveIntentLocked(ctx, snapshot)
+}
+
+func (s *Service) reconcileMoveIntentLocked(ctx context.Context, snapshot *catalog.Entry) error {
 	intent := snapshot.MoveIntent
 	if intent == nil || intent.Host != s.host {
 		return nil
@@ -984,6 +1035,15 @@ func (s *Service) clearMoveIntent(ctx context.Context, id string, expected *cata
 		if !sourceExists || destinationExists {
 			return fmt.Errorf("catalog asset %s move state changed during rollback reconciliation", id)
 		}
+		if expected.Operation == string(TransitionDemote) {
+			probe := s.probeDirectory(ctx, expected.SourcePath)
+			if !probe.valid {
+				return errors.New("demotion source cannot be verified during move recovery")
+			}
+			if err := verifyDemoteDestination(expected, probe); err != nil {
+				return err
+			}
+		}
 		_, err = s.catalogUpdate(id, func(entry *catalog.Entry) error {
 			if !moveIntentEqual(entry.MoveIntent, expected) {
 				return fmt.Errorf("catalog asset %s move intent changed during reconciliation", id)
@@ -1033,6 +1093,11 @@ func (s *Service) finalizeMoveIntent(ctx context.Context, id string, probe direc
 		if operation == TransitionGraduate && probe.live.Repo == nil {
 			return errors.New("moved project is not a discoverable Git repository")
 		}
+		if operation == TransitionDemote {
+			if err := verifyDemoteDestination(intent, probe); err != nil {
+				return err
+			}
+		}
 
 		expected := *intent
 		updated, err = s.catalogUpdate(id, func(entry *catalog.Entry) error {
@@ -1067,6 +1132,15 @@ func (s *Service) finalizeMoveIntent(ctx context.Context, id string, probe direc
 					entry.Experiment.OriginURL = probe.originURL
 					entry.RemoteIdentity = remoteIdentityFromOrigin(probe.originURL)
 				}
+				location := locationFromProbe(probe, previous)
+				location.RestorePath = ""
+				if err := entry.SetLocation(s.host, location); err != nil {
+					return err
+				}
+			case TransitionDemote:
+				entry.Kind = catalog.KindTry
+				entry.Name, _, _ = splitDatedBasename(filepath.Base(intent.DestinationPath))
+				entry.Experiment.Phase = catalog.PhaseActive
 				location := locationFromProbe(probe, previous)
 				location.RestorePath = ""
 				if err := entry.SetLocation(s.host, location); err != nil {

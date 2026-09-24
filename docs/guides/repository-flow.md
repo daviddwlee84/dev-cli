@@ -1,5 +1,5 @@
 ---
-description: Use the preview dev flow interface to inspect one repository and apply revision-bound lifecycle, adoption, removal, retirement, and remote-evidence plans.
+description: Use the preview dev repo flow interface to inspect one repository and apply revision-bound lifecycle, adoption, removal, retirement, and remote-evidence plans.
 authority: project
 status: evolving
 verified_on: 2026-09-01
@@ -7,17 +7,17 @@ verified_on: 2026-09-01
 
 # Repository lifecycle flow
 
-`dev flow [repo]` is a preview-labelled, full-screen, TTY-only interface for one
+`dev repo flow [repo]` is a preview-labelled, full-screen, TTY-only interface for one
 repository's lifecycle. It is independent of the six-view `dev tui` dashboard:
 its only job is to show repository surfaces, observed evidence, and exact guarded
 actions.
 
 ```bash
-dev flow              # current repository, or a picker outside Git
-dev flow api          # explicit repository overrides cwd
+dev repo flow              # current repository, or a picker outside Git
+dev repo flow api          # explicit repository overrides cwd
 ```
 
-From either the canonical checkout or a linked worktree, bare `dev flow` resolves
+From either the canonical checkout or a linked worktree, bare `dev repo flow` resolves
 the canonical Git common-directory identity and focuses the exact current
 surface. Outside Git it loads a filterable repository picker asynchronously. A
 repository that is referenced by task metadata but temporarily unavailable

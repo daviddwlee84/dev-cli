@@ -3,7 +3,7 @@
 Submodule workspaces retain a complete outer directory tree. Only selected children get task branches. Initialization must succeed before launching; child claims and recovery proofs also gate cleanup. See `submodules.md`.
 
 Read this when starting independent agent work while another agent remains live,
-or when launching an agent into a worktree created by `dev start --json`.
+or when launching an agent into a worktree created by `dev work start --json`.
 
 ## Boundary and owners
 
@@ -20,15 +20,15 @@ or when launching an agent into a worktree created by `dev start --json`.
 - SpecStory owns rendered history rooted at the process launch checkout.
 - Git owns the code, transcript and plan that survive cleanup.
 
-By default, `dev start` does not start an agent. An explicit
-`dev start --run '<shell command>'` can dispatch to the exact root pane of a
+By default, `dev work start` does not start an agent. An explicit
+`dev work start --run '<shell command>'` can dispatch to the exact root pane of a
 newly created first-class Herdr worktree, with optional independent `--focus`.
 It does not choose or validate the launcher profile, permission mode, agent
 name, or wait policy. The JSON workflow below remains the composable path when
 those steps need separate inspection or automation.
 
 For an existing external checkout that only needs to be visible, use
-`dev wt open <branch> --repo <repo> --no-focus`. Report its path, branch and
+`dev git worktree open <branch> --repo <repo> --no-focus`. Report its path, branch and
 runtime handle/result immediately; this neither adopts a task nor launches an
 agent, and reuse/fallback never proves a fresh launch target. See
 [worktree ownership](worktree-ownership.md).
@@ -36,7 +36,7 @@ agent, and reuse/fallback never proves a fresh launch target. See
 ## Preflight
 
 - [ ] `test "${HERDR_ENV:-}" = 1`
-- [ ] `dev doctor`
+- [ ] `dev self doctor`
 - [ ] `command -v specstory`
 - [ ] Explicit task name and committed base ref are known.
 - [ ] New work does not depend on another checkout's uncommitted state.
@@ -49,13 +49,13 @@ copy another agent's checkout.
 ## Create and validate the target
 
 Use Herdr's native repository/worktree tree as provenance. Worktree-mode
-`dev start` passes the same `repo/branch` label as `dev wt create`; do not invent
+`dev work start` passes the same `repo/branch` label as `dev git worktree create`; do not invent
 special origin labels or metadata.
 
 For a human one-liner with an already reviewed command:
 
 ```bash
-dev start <repo> --task '<task>' --base '<committed-ref>' \
+dev work start <repo> --task '<task>' --base '<committed-ref>' \
   --run '<launch-command>' --focus
 ```
 
@@ -64,7 +64,7 @@ after creation, refuses reuse, fallback, or missing exact root-pane data. A
 dispatch failure leaves the recorded task and usable worktree in place.
 
 ```bash
-result="$(dev start <repo> --task '<task>' --base '<committed-ref>' --json)" || {
+result="$(dev work start <repo> --task '<task>' --base '<committed-ref>' --json)" || {
   # Side effects may exist even though no success JSON was emitted. Stop and
   # reconcile the reported task/worktree manually; do not retry blindly.
   exit 1
@@ -191,7 +191,7 @@ worktree. The inherited pane ID is resolved through `herdr pane current
 --current` before excluding the exact caller, so pane moves do not create a
 false collision.
 
-Pure `dev repo open`, `dev wt open`, and TUI Enter/focus are navigation: they
+Pure `dev repo open`, `dev git worktree open`, and TUI Enter/focus are navigation: they
 reuse/focus the live owner's workspace and do not authorize another writer, so
 they need no override. Use global `--allow-shared-checkout` only after agents
 have coordinated disjoint file ownership; this skill must never add it
@@ -250,20 +250,20 @@ session in the checkout.
 
 Cleanup remains explicit and is never triggered by Herdr `done`:
 
-- `dev park --next '<next>'` closes the workspace and keeps the worktree.
-- `dev park --cold --push` closes the workspace and removes the pushed checkout.
-- `dev done --ff` integrates and records DONE; runtime/worktree/branch remain.
-- `dev done --pr` leaves task/runtime/worktree state for review.
-- `dev flow [repo]` can plan guarded DONE retirement from outside the target.
-- `dev retire <task>` closes/waits/removes/reaps; branch deletion is separate.
-- `dev sweep` reports first; use `--apply` only after review/confirmation.
+- `dev work park --next '<next>'` closes the workspace and keeps the worktree.
+- `dev work park --cold --push` closes the workspace and removes the pushed checkout.
+- `dev work done --ff` integrates and records DONE; runtime/worktree/branch remain.
+- `dev work done --pr` leaves task/runtime/worktree state for review.
+- `dev repo flow [repo]` can plan guarded DONE retirement from outside the target.
+- `dev work retire <task>` closes/waits/removes/reaps; branch deletion is separate.
+- `dev work sweep` reports first; use `--apply` only after review/confirmation.
 
-`dev park --cold --keep-session` is invalid because it would strand a live
+`dev work park --cold --keep-session` is invalid because it would strand a live
 session on a removed checkout.
 
 ## Finishing one parallel task
 
-`dev done` preserves parent/canonical agents and other tasks' tabs. Parent
+`dev work done` preserves parent/canonical agents and other tasks' tabs. Parent
 occupancy blocks local FF; use recheck, PR or cancel. Select only exact idle/done
 panes in this task's linked worktree for closure, then approve the final plan.
 Other foreground programs keep running during FF only after separate file-change

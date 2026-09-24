@@ -43,14 +43,14 @@ Worktree 不是 coordination system。它避免 working-directory collision，�
 ## dev-cli 預設循環
 
 ```bash
-dev start api --task "refresh tokens" --base main
-dev park --next "add expiry regression test" --wip
-dev resume "refresh tokens"
-dev done --ff
-dev sweep
+dev work start api --task "refresh tokens" --base main
+dev work park --next "add expiry regression test" --wip
+dev work resume "refresh tokens"
+dev work done --ff
+dev work sweep
 ```
 
-需要 review 或 CI 負責整合時，以 `dev done --pr` 取代 `--ff`。建立 request 不會把 task 標成 DONE。
+需要 review 或 CI 負責整合時，以 `dev work done --pr` 取代 `--ff`。建立 request 不會把 task 標成 DONE。
 
 ## GitHub Flow 預設循環
 

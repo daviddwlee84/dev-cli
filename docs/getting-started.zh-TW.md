@@ -2,11 +2,15 @@
 description: 安裝 dev-cli、初始化開發機器，並完成 start、park、resume 到 integration 的第一條變更流。
 authority: project
 status: stable
-verified_on: 2026-08-31
+verified_on: 2026-09-24
 lang: zh-TW
 ---
 
 # 快速開始
+
+用 `dev help --tree` 查命令分類；`--depth 0` 展開全部層級，`--aliases`
+包含保留的舊捷徑。如果舊範例使用 `dev start` 或 `dev config` 等頂層寫法，
+可查 [v0.3 命令對照](reference/cli-v0.3.zh-TW.md)。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -17,7 +21,7 @@ lang: zh-TW
 
 ```bash
 make install
-dev config init
+dev self config init
 ```
 
 加入 shell integration，讓開啟 checkout 的命令能改變目前 shell 的目錄：
@@ -25,20 +29,20 @@ dev config init
 === "zsh 或 bash"
 
     ```bash
-    eval "$(dev shell-init zsh)"   # bash 請改用 bash
+    eval "$(dev self shell-init zsh)"   # bash 請改用 bash
     ```
 
 === "fish"
 
     ```fish
-    dev shell-init fish | source
+    dev self shell-init fish | source
     ```
 
 檢查實際環境：
 
 ```bash
-dev doctor
-dev config show
+dev self doctor
+dev self config show
 ```
 
 只有 Git 是必要依賴。Herdr、tmux、Zellij、`gh` 與 `glab` 會啟用更完整的執行環境 (runtime) 或 forge 功能，缺少時則安全降級。
@@ -107,9 +111,9 @@ publish，也不能 handoff 到 `start`。既有 `repo setup --commit` 仍相容
 
 只有對應的 `gh` 或 `glab` CLI 已安裝且完成 authentication 時，wizard 才會提供
 GitHub 或 GitLab publishing；預設仍是 local-only。最後的 handoff 可選擇留在原處、
-`cd` 進 repository、開啟 configured terminal runtime，或接續 `dev start` wizard。
-Bootstrap 與預設的 `dev start` 都不會啟動 coding agent。明確使用 worktree mode
-的 `dev start --run '<shell command>'` 時，可以把一個 command dispatch 到新建
+`cd` 進 repository、開啟 configured terminal runtime，或接續 `dev work start` wizard。
+Bootstrap 與預設的 `dev work start` 都不會啟動 coding agent。明確使用 worktree mode
+的 `dev work start --run '<shell command>'` 時，可以把一個 command dispatch 到新建
 first-class Herdr worktree 的 exact root pane；dev 不會代替使用者選擇 agent
 profile 或 permission mode。
 
@@ -128,7 +132,7 @@ reviewed defaults；回答 yes 才會展開。
 在任何已探索到的 repository 中啟動具名 task。script 或 agent-driven command 應明確寫出 base：
 
 ```bash
-dev start api --task "token refresh" --base main
+dev work start api --task "token refresh" --base main
 ```
 
 預設模式會建立 branch、在設定路徑建立 linked worktree、完成 environment provisioning、開啟最佳可用 runtime，並記錄 HOT task。
@@ -137,7 +141,7 @@ Herdr 被選中且 worktree 為本次新建時，可以把明確 command dispatc
 new root pane，並選擇轉跳過去：
 
 ```bash
-dev start api --task "token refresh" --base main \
+dev work start api --task "token refresh" --base main \
   --run 'specstory run codex -c "codex"' --focus
 ```
 
@@ -147,8 +151,8 @@ dev start api --task "token refresh" --base main \
 只有在工作確實適合時，才選用更輕量的 checkout mode：
 
 ```bash
-dev start api --task "one-line typo" --direct
-dev start api --task "small local branch" --branch-only --base main
+dev work start api --task "one-line typo" --direct
+dev work start api --task "small local branch" --branch-only --base main
 ```
 
 - `--direct` 使用 canonical checkout，因此不能進入 COLD。
@@ -158,26 +162,26 @@ dev start api --task "small local branch" --branch-only --base main
 ## 4. Park 時留下可執行的下一步
 
 ```bash
-dev park --next "reproduce the refresh race, then add a regression test"
+dev work park --next "reproduce the refresh race, then add a regression test"
 ```
 
 這會關閉 runtime、把 task 標成 WARM，同時保留 branch 與 checkout。若 working tree 尚未乾淨，使用可復原的 checkpoint，而不是不易看見的 stash：
 
 ```bash
-dev park --wip --next "finish the regression test"
+dev work park --wip --next "finish the regression test"
 ```
 
 跨機器 handoff 前，先 commit、push，再移除 checkout：
 
 ```bash
-dev park --cold --push
+dev work park --cold --push
 ```
 
 ## 5. Resume 與檢查
 
 ```bash
-dev ls
-dev resume "token refresh" --fetch
+dev work list
+dev work resume "token refresh" --fetch
 dev status
 ```
 
@@ -186,20 +190,20 @@ WARM task 會重開現有 checkout；COLD task 會從 remote branch 重建 workt
 ## 6. 明確選擇整合方式
 
 ```bash
-dev done --ff
+dev work done --ff
 ```
 
 `--ff` 先把 change branch rebase 到 base，再 fast-forward base，保留值得留下的 commits。若 review 或 CI 應決定 merge，改為建立 request：
 
 ```bash
-dev done --pr
+dev work done --pr
 ```
 
 `--pr` 會 push 並開啟 pull request 或 merge request，但 review 尚未結束時不會改變 task，也不會標成 DONE。整合完成後再檢查 cleanup 建議：
 
 ```bash
-dev sweep
-dev sweep --apply
+dev work sweep
+dev work sweep --apply
 ```
 
 ## 下一步

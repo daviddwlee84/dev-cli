@@ -31,7 +31,7 @@ Worktrees isolate files/index/HEAD. They do not isolate ports, databases, caches
 ## Topology for one feature
 
 ```text
-one change stream / branch / dev worktree
+one change stream / branch / dev git worktree
                     │
              one runtime workspace
           ┌─────────┼─────────┐
@@ -46,9 +46,9 @@ Inside a `dev` worktree, launch agents in the existing checkout. Do not automati
 ## Topology for competing or independent work
 
 ```bash
-dev wt create exp/jwt --base main
-dev wt create exp/session --base main
-dev wt create exp/oauth --base main
+dev git worktree create exp/jwt --base main
+dev git worktree create exp/session --base main
+dev git worktree create exp/oauth --base main
 ```
 
 Each approach gets its own branch and worktree. Compare results, integrate one deliberately, and remove the others only after their useful commits or notes are recoverable.
@@ -73,9 +73,9 @@ old layout at an unrelated checkout.
 
 ## Visibility without navigation
 
-Use `dev start <repo> --task '<task>' --base '<committed-ref>'` for new managed
+Use `dev work start <repo> --task '<task>' --base '<committed-ref>'` for new managed
 work. For an existing external registered checkout, use
-`dev wt open <branch> --repo <repo> --runtime herdr --no-focus` when only runtime
+`dev git worktree open <branch> --repo <repo> --runtime herdr --no-focus` when only runtime
 visibility is needed. It reports branch, actual path, backend/handle and the
 actual opened/reused runtime surface immediately without focusing or attaching.
 It does not adopt/annotate a task, provision, launch an agent, or modify Git/index/
@@ -89,7 +89,7 @@ For one reviewed shell command in a new independent worktree, Herdr supports a
 direct one-liner:
 
 ```bash
-dev start api --task "token refresh" --base main --run 'codex' --focus
+dev work start api --task "token refresh" --base main --run 'codex' --focus
 ```
 
 `--run` accepts only the exact root pane returned while creating a first-class
@@ -98,7 +98,7 @@ direct/branch-only modes fail closed. The task and usable worktree remain if
 dispatch fails. `--focus` independently switches after a successful dispatch;
 dev does not wait for the command's exit status.
 
-`dev prompt open <recipe>` is a different contract: it starts one configured
+`dev agent prompt open <recipe>` is a different contract: it starts one configured
 foreground process in the terminal that invoked it and never creates, focuses,
 reuses, or injects into a runtime pane. Inside Herdr it stays in the current
 pane. To hold the conversation in a separate pane, create/focus that pane

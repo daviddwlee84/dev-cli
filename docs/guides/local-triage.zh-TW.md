@@ -19,7 +19,7 @@ dev triage --root ~/other-projects --stale-days 30
 dev triage --all                 # 包含 catalog 保留的歷史位置
 ```
 
-重新導向輸出時會產生唯讀文字報表。`--json` 提供 schema version 1，包含來源完整度、本機 identity、問題、操作候選、runtime 關聯與整理意圖；既有 `dev ls --json` 維持相容。
+重新導向輸出時會產生唯讀文字報表。`--json` 提供 schema version 1，包含來源完整度、本機 identity、問題、操作候選、runtime 關聯與整理意圖；既有 `dev work list --json` 維持相容。
 
 ## 盤點內容
 

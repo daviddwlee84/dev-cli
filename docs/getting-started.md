@@ -2,10 +2,15 @@
 description: Install dev-cli, initialize a machine, and run one change stream from start through integration.
 authority: project
 status: stable
-verified_on: 2026-08-31
+verified_on: 2026-09-24
 ---
 
 # Getting started
+
+Use `dev help --tree` to discover command families; `--depth 0` expands every
+level and `--aliases` includes the permanent old shortcuts. See the
+[v0.3 command map](reference/cli-v0.3.md) if an older example uses a top-level
+spelling such as `dev start` or `dev config`.
 
 Install `dev`, create or clone a repository, then run one small change stream through `start`, `park`, `resume`, and `done`.
 
@@ -13,7 +18,7 @@ Install `dev`, create or clone a repository, then run one small change stream th
 
 ```bash
 make install
-dev config init
+dev self config init
 ```
 
 Add the shell integration so commands that open a checkout can change the current shell's directory:
@@ -21,20 +26,20 @@ Add the shell integration so commands that open a checkout can change the curren
 === "zsh or bash"
 
     ```bash
-    eval "$(dev shell-init zsh)"   # use bash for bash
+    eval "$(dev self shell-init zsh)"   # use bash for bash
     ```
 
 === "fish"
 
     ```fish
-    dev shell-init fish | source
+    dev self shell-init fish | source
     ```
 
 Check the effective environment:
 
 ```bash
-dev doctor
-dev config show
+dev self doctor
+dev self config show
 ```
 
 Only Git is required. Herdr, tmux, Zellij, `gh`, and `glab` add richer runtime and forge behavior but degrade cleanly when absent.
@@ -114,9 +119,9 @@ index.
 The wizard offers GitHub or GitLab publishing only when the corresponding
 `gh` or `glab` CLI is installed and authenticated. Local-only remains the
 default. Its final handoff can stay in place, `cd` into the repository, open
-the configured terminal runtime, or continue to the `dev start` wizard.
-Bootstrap and a default `dev start` do not launch a coding agent. An explicit
-worktree-mode `dev start --run '<shell command>'` can dispatch one command to a
+the configured terminal runtime, or continue to the `dev work start` wizard.
+Bootstrap and a default `dev work start` do not launch a coding agent. An explicit
+worktree-mode `dev work start --run '<shell command>'` can dispatch one command to a
 new first-class Herdr root pane; dev does not choose the agent profile or
 permission mode.
 
@@ -136,7 +141,7 @@ If you already have a repository and need no setup, continue there directly.
 From any discovered repository, start a named task. Pass the base explicitly in scripts and agent-driven commands:
 
 ```bash
-dev start api --task "token refresh" --base main
+dev work start api --task "token refresh" --base main
 ```
 
 The default mode creates a branch, a linked worktree at the configured path, provisions it, opens the best available runtime, and records a HOT task.
@@ -145,7 +150,7 @@ When Herdr is selected and the worktree is newly created, an explicit command
 can be dispatched to the exact new root pane and optionally focused:
 
 ```bash
-dev start api --task "token refresh" --base main \
+dev work start api --task "token refresh" --base main \
   --run 'specstory run codex -c "codex"' --focus
 ```
 
@@ -156,8 +161,8 @@ status.
 Use a lighter checkout mode only when it matches the work:
 
 ```bash
-dev start api --task "one-line typo" --direct
-dev start api --task "small local branch" --branch-only --base main
+dev work start api --task "one-line typo" --direct
+dev work start api --task "small local branch" --branch-only --base main
 ```
 
 - `--direct` works in the canonical checkout and cannot go COLD.
@@ -167,26 +172,26 @@ dev start api --task "small local branch" --branch-only --base main
 ## 4. Park with a useful next action
 
 ```bash
-dev park --next "reproduce the refresh race, then add a regression test"
+dev work park --next "reproduce the refresh race, then add a regression test"
 ```
 
 This closes the runtime and marks the task WARM while retaining the branch and checkout. If the tree is dirty, make a recoverable checkpoint instead of an invisible stash:
 
 ```bash
-dev park --wip --next "finish the regression test"
+dev work park --wip --next "finish the regression test"
 ```
 
 For cross-machine handoff, commit and push before removing the checkout:
 
 ```bash
-dev park --cold --push
+dev work park --cold --push
 ```
 
 ## 5. Resume and inspect
 
 ```bash
-dev ls
-dev resume "token refresh" --fetch
+dev work list
+dev work resume "token refresh" --fetch
 dev status
 ```
 
@@ -195,20 +200,20 @@ A WARM task reopens its existing checkout. A COLD task reconstructs a worktree f
 ## 6. Integrate deliberately
 
 ```bash
-dev done --ff
+dev work done --ff
 ```
 
 `--ff` rebases the change branch onto its base and fast-forwards the base, preserving useful commits. If review or CI should decide the merge, open a request instead:
 
 ```bash
-dev done --pr
+dev work done --pr
 ```
 
 `--pr` pushes and opens a pull or merge request, but intentionally leaves the task unchanged and not DONE while review is pending. After integration, inspect cleanup suggestions:
 
 ```bash
-dev sweep
-dev sweep --apply
+dev work sweep
+dev work sweep --apply
 ```
 
 ## Next steps

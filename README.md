@@ -12,7 +12,7 @@ administration can be pruned before ordinary no-force worktree removal, while
 retained data and child ownership claims still block cleanup. See [Submodule workspaces](docs/guides/submodule-workspaces.md)
 for configuration, inside-out integration and recovery limits.
 
-Use `dev submodule add` (or `dev repo add-as-submodule`) to select a known
+Use `dev git submodule add` (or `dev repo add-as-submodule`) to select a known
 repository and add it to this checkout. Choose pinned/default-branch checkout;
 only the new gitlink and `.gitmodules` are staged, with no commit or push.
 In REPOS/REMOTE, `y u` copies a clone URL without fetching.
@@ -35,6 +35,27 @@ fragments. OpenSSH, Git, and each remote machine remain authoritative for the
 connection, code, and host-local state they own. Live Git status stays live;
 logical size measurements are explicitly disposable cache.
 
+## Find a command
+
+The CLI groups its primary help into **17 entrypoints**. Start with `work`,
+`repo`, `tries`, `git`, `agent`, `activity`, or `self`; `snippet`, `ssh`, `fleet`,
+`dotfile`, `pr`, `summary`, `triage`, `status`, `tui`, and `help` remain independent.
+Existing top-level commands are permanent shortcuts: `dev start` still means
+`dev work start`, `dev try` still creates or opens a Try, and `dev gist` retains
+its GitHub-only scope. Arguments, flags, output and exit behavior stay compatible.
+
+```bash
+dev help --tree                       # canonical commands, two levels
+dev help --tree --depth 0             # the whole tree
+dev help --tree agent artifact        # one subtree
+dev help --tree --aliases             # include aliases and shortcuts
+```
+
+See the [v0.3 command map and migration guide](docs/reference/cli-v0.3.md).
+Reload `dev self shell-init <shell>` after upgrading for grouped directory
+handoffs. `dev repo open`, `browse`, `remote`, and `search` keep their existing
+behavior; no remote lookup is added to Tab completion.
+
 ## The problem
 
 When a terminal multiplexer's sidebar is the only record of what you are
@@ -50,7 +71,7 @@ the plain listing when piped — so `dev | grep` and `dev > file` behave as
 expected.
 
 ```
-$ dev ls
+$ dev work list
    TASK                   STATE  REPO       BRANCH                    GIT   AGE  SESSION       NEXT
 🔥 token refresh          HOT    atp-sipui  fix/gx-security-recovery  ↑2 ●  2h   herdr:working add the regression test
 🌤 orderbook experiment   WARM   trading    exp/orderbook-v2          clean 6d   —             compare against the baseline
@@ -68,9 +89,9 @@ histories and agent plans remain trackable, but `.gitattributes` excludes
 Go module ZIPs used by `go install`. Binary archives contain only the executable.
 These publication boundaries preserve Git tracking/history and required help,
 skill and rule resources; an ordinary clone still downloads Git history.
-Use `dev artifact setup --mode archive --source specstory --archive /path/to/history
+Use `dev agent artifact setup --mode archive --source specstory --archive /path/to/history
 --protection off --json` to preview explicit raw preservation, or choose `check` /
-`redact`. Apply the reviewed plan with `dev artifact setup --apply --plan <id> --yes`.
+`redact`. Apply the reviewed plan with `dev agent artifact setup --apply --plan <id> --yes`.
 `dev repo setup --artifacts` uses the same planner. Archive, find, sync, migrate and
 backup are separate operations; they never start an agent or replace the source
 remote automatically. See the [AI artifact guide](docs/guides/ai-artifacts.md).
@@ -91,14 +112,14 @@ selection, private per-finding review and partial-result recovery.
 
 ## Repository hygiene
 
-Use `dev hygiene manage --all` to preview and deploy commit checks across selected
-repositories, independently of agent skills. Use `dev hygiene status` to inspect effective hooks and `dev hygiene setup` to
+Use `dev git hygiene manage --all` to preview and deploy commit checks across selected
+repositories, independently of agent skills. Use `dev git hygiene status` to inspect effective hooks and `dev git hygiene setup` to
 preview configuration. `scan --scope staged|worktree|history` checks secret/privacy
-policy. `dev hygiene report` summarizes the latest stored scan for this checkout;
+policy. `dev git hygiene report` summarizes the latest stored scan for this checkout;
 use `--json` for automation or `--values` for a fresh masked-value report. Raw
 values stay in private review files. Reviewed `rules` and `redact` plans keep
 private values and recovery outside Git. Hooks block rather than auto-stage.
-Final transcript cleanup requires the writer to stop first. `dev hygiene repair-encoding --file <path>` previews
+Final transcript cleanup requires the writer to stop first. `dev git hygiene repair-encoding --file <path>` previews
 invalid UTF-8 repair with private raw-byte recovery; apply preserves the index,
 so review and stage the repair before rescanning. Setup writes project policy
 and respects an existing effective hook, including a global one.
@@ -134,13 +155,13 @@ never automatically retried. See [the snippets guide](docs/guides/snippets.md).
 
 ```bash
 brew install daviddwlee84/tap/dev-cli
-dev config init  # detects this machine's repo roots and writes a config
+dev self config init  # detects this machine's repo roots and writes a config
 ```
 
 The formula installs the `dev` binary plus bash, zsh and fish completions. It
 does not write into your home directory or install the bundled agent skill.
 The tap checks stable releases hourly and installs their prebuilt binaries. A Homebrew-owned `dev`
-never self-replaces: `dev upgrade` delegates to the matching `brew upgrade`
+never self-replaces: `dev self upgrade` delegates to the matching `brew upgrade`
 command, which preserves Homebrew's install records, linking, rollback, and cleanup.
 Maintainers can retry synchronization with
 `gh workflow run sync.yml --repo daviddwlee84/homebrew-tap -f tool=dev-cli`.
@@ -160,7 +181,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.2.44 instead when you need a reproducible install.
+# Pin @v0.3.0 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -175,14 +196,14 @@ with a `SHA256SUMS` file, so a binary can be verified without a Go toolchain.
 To find out whether the binary you have is current, and to update it:
 
 ```bash
-dev version           # what this build is, and whether it is a published release
-dev version --check    # also ask GitHub for the newest release (cached for a day)
-dev doctor            # reports the running version, install owner/path, and PATH collisions
-dev upgrade --check    # report whether a newer release exists
-dev upgrade            # delegate to its owner, or verify and replace a standalone binary
+dev self version           # what this build is, and whether it is a published release
+dev self version --check    # also ask GitHub for the newest release (cached for a day)
+dev self doctor            # reports the running version, install owner/path, and PATH collisions
+dev self upgrade --check    # report whether a newer release exists
+dev self upgrade            # delegate to its owner, or verify and replace a standalone binary
 ```
 
-For a standalone install, `dev upgrade` checks the release's actual asset list.
+For a standalone install, `dev self upgrade` checks the release's actual asset list.
 If this platform has an archive, it downloads and verifies `SHA256SUMS`. If the
 platform is absent (including Android/Termux today), it offers to build the exact
 release tag with native Go. New releases include a compact
@@ -204,7 +225,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.2.44
+  version=v0.3.0
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"
@@ -221,7 +242,7 @@ stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
     go build -p 2 -mod=readonly -trimpath \
       -ldflags "-s -w -X github.com/daviddwlee84/dev-cli/internal/cli.Version=$version" \
       -o "$stage/dev" ./cmd/dev
-  test "$("$stage/dev" --version)" = "dev version $version"
+  test "$("$stage/dev" --version)" = "dev self version $version"
   mv "$stage/dev" "$HOME/.local/bin/dev"
 )
 ```
@@ -230,15 +251,15 @@ This recovery example targets a standalone ARM64 Termux installation at
 `~/.local/bin/dev`. Automatic source upgrades and compact source assets are
 available starting with v0.2.35.
 
-`dev upgrade` replaces the binary in place only for a standalone install. If
+`dev self upgrade` replaces the binary in place only for a standalone install. If
 Homebrew, Scoop or `go install` owns the file, it runs that tool's upgrade
 command instead; release automation advances the Homebrew tap so that command
 can see every stable tag. Once a day an interactive `dev` command prints a one-line hint
 when a newer release is cached; set `[update] check = false` in `config.toml`
 (or export `DEV_NO_UPDATE_CHECK=1`) to silence it. Every network call here is
 either explicit or a best-effort background refresh — `dev --version` and
-`dev doctor` stay local and work offline. The dashboard footer always shows the
-running version and displays `dev upgrade` when a newer release is known. Its
+`dev self doctor` stay local and work offline. The dashboard footer always shows the
+running version and displays `dev self upgrade` when a newer release is known. Its
 24-hour cache check runs after the first frame; stale observations are labeled
 cached, and no upgrade runs inside the TUI.
 
@@ -260,7 +281,7 @@ reachable (it prints a `cd` directive the shell wrapper consumes). Use the
 PowerShell wrapper:
 
 ```powershell
-Invoke-Expression (& dev shell-init powershell | Out-String)
+Invoke-Expression (& dev self shell-init powershell | Out-String)
 ```
 
 For a non-Homebrew install, generate completion files wherever your shell loads
@@ -268,9 +289,9 @@ them:
 
 ```bash
 mkdir -p ~/.zfunc ~/.local/share/bash-completion/completions ~/.config/fish/completions
-dev completion zsh  > ~/.zfunc/_dev
-dev completion bash > ~/.local/share/bash-completion/completions/dev
-dev completion fish > ~/.config/fish/completions/dev.fish
+dev self completion zsh  > ~/.zfunc/_dev
+dev self completion bash > ~/.local/share/bash-completion/completions/dev
+dev self completion fish > ~/.config/fish/completions/dev.fish
 ```
 
 Tab completion includes commands and flags plus local tasks, repositories,
@@ -281,13 +302,13 @@ the network.
 Add the directory-changing wrapper to your shell rc file:
 
 ```bash
-eval "$(dev shell-init zsh)"      # zsh
-eval "$(dev shell-init bash)"     # bash
-dev shell-init fish | source      # fish
+eval "$(dev self shell-init zsh)"      # zsh
+eval "$(dev self shell-init bash)"     # bash
+dev self shell-init fish | source      # fish
 ```
 
 ```powershell
-Invoke-Expression (& dev shell-init powershell | Out-String)   # PowerShell
+Invoke-Expression (& dev self shell-init powershell | Out-String)   # PowerShell
 ```
 
 A child process cannot change its parent's working directory, so the wrapper
@@ -298,17 +319,17 @@ the interactive TUI and normal pipe behavior.
 The agent skill is an explicit, optional post-install step:
 
 ```bash
-dev skill install
-dev skill list --all    # native project/global inventory across repositories
-dev mcp list --all     # static, sanitized MCP declarations for five agents
-dev doctor             # what works on this machine, and what degrades
+dev agent skill install
+dev agent skill list --all    # native project/global inventory across repositories
+dev agent mcp list --all     # static, sanitized MCP declarations for five agents
+dev self doctor             # what works on this machine, and what degrades
 ```
 
 Only **git** is required at runtime. The system `ssh` client enables SSH host
 inspection, probing, bootstrap, and fleet transport; `ssh-keygen` enables public
 companion derivation and key generation; PowerShell is needed on a Windows
 OpenSSH target. `herdr`, `tmux`, `zellij`, `gh`, `glab`, and Azure CLI each enable
-other capabilities and degrade cleanly when absent. `dev doctor` checks these
+other capabilities and degrade cleanly when absent. `dev self doctor` checks these
 capabilities locally without evaluating an alias or contacting a host.
 
 ## Onboard OpenSSH hosts
@@ -570,7 +591,7 @@ owner/name, however, `new`/`create` routes to the clone flow and preserves the
 source history and configured remote; `repo clone` remains the explicit spelling.
 Bare `dev repo clone` selects from the existing private forge cache without a
 network refresh, while still offering manual URL/path/`owner/name` entry. When run outside a checkout, bare
-`dev start` similarly selects a local repository with fast live discovery; inside
+`dev work start` similarly selects a local repository with fast live discovery; inside
 a repository it keeps the immediate current-repository default.
 The external selector defaults to `fzf`; if it is missing (or `[picker] command = []`),
 dev uses its built-in Bubble Tea picker. Multi-selection always uses the built-in
@@ -682,11 +703,11 @@ The final handoff is explicit:
 | `stay` | print the result and leave the shell where it is |
 | `cd` | enter the repository through the trusted `shell-init` wrapper |
 | `open` | open the configured Herdr/tmux/Zellij runtime; fall back to `cd` when runtime is `none` |
-| `start` | continue into the existing `dev start` task wizard with this repository fixed |
+| `start` | continue into the existing `dev work start` task wizard with this repository fixed |
 
-Neither bootstrap nor a default `dev start` launches a coding agent. They
+Neither bootstrap nor a default `dev work start` launches a coding agent. They
 prepare the repository, checkout, and optional runtime surface. An explicit
-worktree-mode `dev start --run '<shell command>'` can dispatch one command to a
+worktree-mode `dev work start --run '<shell command>'` can dispatch one command to a
 new first-class Herdr root pane; it never chooses an agent profile or permission
 mode on the user's behalf.
 
@@ -716,36 +737,36 @@ it never closes the agent, integrates, or retires the checkout. Read-only handof
 observations do not reconcile native intent or grant cleanup permission.
 
 ```bash
-dev start                                            # interactive managed-task wizard
-dev start api --task "token refresh" --base main     # non-interactive fast path → hot
-dev start api --task "token refresh" --base main \
+dev work start                                            # interactive managed-task wizard
+dev work start api --task "token refresh" --base main     # non-interactive fast path → hot
+dev work start api --task "token refresh" --base main \
   --run 'specstory run codex -c "codex"' --focus      # dispatch, then switch to the exact new pane
-dev park --next "add the regression test" --wip      # → warm; self-runtime stays alive until exit
-dev park --cold --push                               # → cold, only from outside the target runtime
-dev resume "token refresh"                           # → hot, rebuilt if needed
-dev flow api                                          # preview the repository lifecycle, plan first
+dev work park --next "add the regression test" --wip      # → warm; self-runtime stays alive until exit
+dev work park --cold --push                               # → cold, only from outside the target runtime
+dev work resume "token refresh"                           # → hot, rebuilt if needed
+dev repo flow api                                          # preview the repository lifecycle, plan first
 
-dev prepare --session claude:<uuid> --plan .claude/plans/task.md
-dev artifact finalize --intent <id> --writer-stopped # manual post-wrapper proof
-dev done                                             # TTY finish wizard
-dev done --ff                                        # → done/MERGED; runtime + worktree kept
-dev retire "token refresh" --delete-branch           # external close/wait/remove → RETIRED
+dev agent artifact prepare --session claude:<uuid> --plan .claude/plans/task.md
+dev agent artifact finalize --intent <id> --writer-stopped # manual post-wrapper proof
+dev work done                                             # TTY finish wizard
+dev work done --ff                                        # → done/MERGED; runtime + worktree kept
+dev work retire "token refresh" --delete-branch           # external close/wait/remove → RETIRED
 
-dev done --pr                                        # open review; keep task/worktree
-dev done --merged --base-ref origin/main             # verify commit-preserving merge
-dev retire --base origin/main "token refresh"        # retire against that verified base
-dev sweep                                            # report drift and cleanup-pending work
-dev sweep --merged-worktrees                         # from main: audit contained linked worktrees
-dev sweep --merged-worktrees --apply                 # confirm each safe retirement
+dev work done --pr                                        # open review; keep task/worktree
+dev work done --merged --base-ref origin/main             # verify commit-preserving merge
+dev work retire --base origin/main "token refresh"        # retire against that verified base
+dev work sweep                                            # report drift and cleanup-pending work
+dev work sweep --merged-worktrees                         # from main: audit contained linked worktrees
+dev work sweep --merged-worktrees --apply                 # confirm each safe retirement
 ```
 
-`dev retire --base <ref>` selects a local branch, remote-tracking ref or commit
-for containment; `dev sweep --base` also forwards it to DONE task retirement.
+`dev work retire --base <ref>` selects a local branch, remote-tracking ref or commit
+for containment; `dev work sweep --base` also forwards it to DONE task retirement.
 A recorded fork-point commit is never silently replaced by the default branch.
 Optional branch deletion still uses Git's own `branch -d` merged check and can
 report partial completion against a non-HEAD base.
 
-On a TTY, bare `dev done` reports branch ahead/behind and classifies every
+On a TTY, bare `dev work done` reports branch ahead/behind and classifies every
 staged, unstaged and untracked path against the base before offering
 commit-all, discard-all or cancel. Unique discard requires typing `DROP`;
 scripts use `--dirty=commit --message ...` or `--dirty=discard --yes`. After a
@@ -760,7 +781,7 @@ agent blocks FF; the wizard offers recheck, PR, or cancel. It can select exact
 idle/done task-worktree panes for closure under the final guarded plan, with no
 closure before final approval. General foreground programs need an independent
 confirmation that FF changes checkout files while they keep running. Interactive
-`dev done` cleanup and `dev retire` list workspace/tab/pane IDs, program names,
+`dev work done` cleanup and `dev work retire` list workspace/tab/pane IDs, program names,
 PIDs and directories, and require `CLOSE <workspace-id>` before terminating
 known non-agent programs. Background jobs are not inspected; unknown process
 observations are not presented as idle shells. Parent and mixed workspaces stay
@@ -784,17 +805,17 @@ Choose the lightest mode that preserves the boundary you need:
 dev repo open api
 
 # Track a quick change directly on the branch already checked out (usually main).
-dev start api --task "fix typo" --direct
+dev work start api --task "fix typo" --direct
 
 # Use a short-lived branch in the canonical checkout, but no linked worktree.
-dev start api --task "small feature" --branch-only --base main
+dev work start api --task "small feature" --branch-only --base main
 
 # Default: independent branch + worktree, provisioned and runtime-opened.
-dev start api --task "token refresh" --base main
+dev work start api --task "token refresh" --base main
 ```
 
 Direct work can be parked WARM and resumed, but cannot go COLD because the
-canonical checkout cannot be removed. `dev done` on a clean direct task needs
+canonical checkout cannot be removed. `dev work done` on a clean direct task needs
 no `--ff` or `--pr`: the work is already on its destination branch.
 
 Start direct for one change stream, then create a normal worktree task later
@@ -820,11 +841,11 @@ Published commit rewrites require `--rewrite-published`. `amend-all` includes
 agent artifacts by default only when a project scanner is present (or the user
 explicitly accepts `--allow-unscanned-artifacts`).
 
-For automation, `dev start … --json` emits one pure creation object with absolute
+For automation, `dev work start … --json` emits one pure creation object with absolute
 paths and transient runtime facts. Only a newly created first-class Herdr
 worktree with a non-empty exact `root_pane_id` is a launch target; reuse,
 fallback, Tmux, none, or missing pane data fails closed. Worktree starts use the
-same `repo/branch` label as `dev wt create` and pins the Git-derived parent
+same `repo/branch` label as `dev git worktree create` and pins the Git-derived parent
 checkout with Herdr `--cwd`, preserving native nested repository/worktree
 grouping without separate provenance metadata.
 
@@ -847,7 +868,7 @@ Task runtime handles carry their backend name and are validated against live
 checkout coverage before reuse or close. Destructive cleanup additionally
 resolves every covering pane. A caller inside the target, a mixed workspace, or
 a working/blocked/waiting agent always stops retirement; unknown status needs an
-external `--close-unknown`. `dev done` never closes or removes anything.
+external `--close-unknown`. `dev work done` never closes or removes anything.
 
 ### Find forgotten local work
 
@@ -887,11 +908,11 @@ Try handoffs and partial-result receipts.
 
 ### Repository flow preview
 
-`dev flow [repo]` is a preview-labelled, full-screen, TTY-only state-machine UI.
+`dev repo flow [repo]` is a preview-labelled, full-screen, TTY-only state-machine UI.
 It is independent of the six-view `dev tui` dashboard. From a canonical or linked
-checkout, `dev flow` resolves the canonical repository and focuses that exact
+checkout, `dev repo flow` resolves the canonical repository and focuses that exact
 surface; outside Git it opens a filterable repository picker. An explicit
-`dev flow api` overrides cwd.
+`dev repo flow api` overrides cwd.
 
 The left panel is the union of Git's registered worktrees and task records that
 have no checkout, including normal COLD and DONE tasks. Rows are labelled
@@ -1048,8 +1069,8 @@ offer a manual edit. Scan failures remain unknown and do not trigger enrollment.
 
 `enter` opens a selected local row only when its checkout is currently valid. Inside Herdr/tmux/Zellij it
 asks the runtime to focus the target; outside it exits the dashboard and attaches to
-the target session. A COLD worktree task requires `dev resume`; a missing or
-unregistered worktree requires `dev sweep` first so artifacts can be salvaged
+the target session. A COLD worktree task requires `dev work resume`; a missing or
+unregistered worktree requires `dev work sweep` first so artifacts can be salvaged
 before the task is resumed or reaped. A wide TASKS table includes `REPO`; its
 compact layout keeps repository/path in the selected detail pane. In TASKS, `p`
 parks and prompts for the next action and `c` edits it. In REPOS, `enter` is pure ad-hoc open,
@@ -1148,7 +1169,7 @@ outside the TUI:
 ```bash
 dev repo context api
 dev repo context          # current repo, even from inside a linked worktree
-dev browse --print        # current repository homepage, no browser launch
+dev repo browse --print        # current repository homepage, no browser launch
 dev repo browse api       # open a selected repository homepage
 dev repo context --json   # additive schema-v1 automation contract
 dev repo context --refresh  # live forge + configured fleet probes
@@ -1187,7 +1208,7 @@ run  = "claude-plans-here"
 interactive = true
 ```
 
-`dev config init` writes the defaults out in full rather than leaving them
+`dev self config init` writes the defaults out in full rather than leaving them
 implicit, and `dev tui tools` shows what is bound here and whether each one is
 actually installed. The dashboard checks bindings in a bounded background load
 after its first view; unresolved or missing programs are not offered, and
@@ -1237,10 +1258,10 @@ SKILLS also loads lazily. Inside Git it describes the exact startup checkout;
 outside Git it describes the accepted repository inventory. `A` can inspect all
 accepted repositories without changing the next TUI run's default. Native reads
 use the versioned `skills@1.5.23` 77-agent path registry and lock files; they never
-start Node, `skills`, or `npx`. Use `dev skill list --all` for canonical
+start Node, `skills`, or `npx`. Use `dev agent skill list --all` for canonical
 repositories, `--repo` for one checkout, and `--check` only when a remote freshness
 check is wanted; checks hash Git object bytes without checkout filters. MCP is
-separately available through `dev mcp list`; it reads five agents' static config
+separately available through `dev agent mcp list`; it reads five agents' static config
 formats, resolves only Claude's documented project approvals, and redacts
 secret-bearing values before producing rows or JSON. TUI `e` and raw `yf` operate
 on the local source file after inventory; they do not weaken the list/JSON
@@ -1297,9 +1318,9 @@ Use `?` for contextual Keys/Guide/Manual, or `dev help tui` outside the dashboar
 
 ### Experiments and local-data risk
 
-`dev try <name>` keeps its low-friction positional grammar. Lifecycle management
-uses the separate plural group, so `dev try archive` still means "open/create a
-Try named archive":
+`dev tries try <name>` and its permanent `dev try <name>` shortcut keep the
+create-or-open grammar. `dev try archive` still opens or creates a Try named
+archive; management uses an explicit child such as `dev tries archive <ref>`:
 
 ```bash
 dev tries list --json                 # active, present Tries
@@ -1308,8 +1329,28 @@ dev tries mark redis --add important --note "compare streams"
 dev tries deprecate redis             # intent only; files do not move
 dev tries archive redis               # reversible move under tries_root/.dev
 dev tries restore redis
-dev tries graduate redis -c Infra     # same service as dev graduate
+dev tries graduate redis -c Infra     # promote the Try into a repository
+dev tries demote redis --dry-run      # preview returning a graduated Try
 ```
+
+### Try lifecycle and demotion
+
+```text
+Try  --graduate--> Repo --demote--> Try
+active --deprecate--> deprecated --reactivate--> active
+Try  --archive--> Archive --restore--> Try
+Try  --delete--> system Trash --system restore + tries restore --from--> Try
+```
+
+`dev tries demote <repo-or-path-or-catalog-id> --dry-run` previews returning a
+previously graduated Try to its recorded original path. Apply without
+`--dry-run`, or use the REPOS demote action and confirm the plan. An occupied
+original path or one outside the current `tries_root` requires an explicit safe
+`--to`. Current files (including ignored/untracked changes), Git history/remotes,
+catalog identity, tags, notes and graduation history are kept; the Try becomes
+active and present. Task/runtime/artifact claims, canonical repositories with linked worktrees,
+unsafe paths and incomplete observations block the move. No publication is
+reversed and no symlink is left behind. See `dev help tries` for recovery limits.
 
 Archive is organization, **not disk reclamation**: it moves the directory to a
 hidden location on the same filesystem and preserves its stable catalog ID.
@@ -1350,7 +1391,7 @@ preflight must compare every local head/tag/note/stash against actual remote
 refs immediately before removal.
 
 Going cold is safe because **the branch is the identity and the directory is a
-cache**. `dev park --cold` refuses unless the branch is pushed, and `dev resume`
+cache**. `dev work park --cold` refuses unless the branch is pushed, and `dev work resume`
 rebuilds the checkout from `origin/<branch>`. Once that holds, the local
 filesystem stops being a graveyard of half-finished worktrees.
 
@@ -1383,19 +1424,19 @@ to improvise:
 
 | Kind | Owner | Where | Lifetime |
 |---|---|---|---|
-| Feature, fix, experiment, cross-machine handoff | **`dev`** | `~/Worktrees/<repo>/<slug>` | until external `dev retire` |
+| Feature, fix, experiment, cross-machine handoff | **`dev`** | `~/Worktrees/<repo>/<slug>` | until external `dev work retire` |
 | Harness-owned turn-scoped subagent isolation | **Claude Code** | `.claude/worktrees/` (gitignored) | owned by that harness; no history-relocation guarantee |
 | `herdr worktree create` | **not used** — `dev` runs `git worktree add`, then `herdr worktree open --path …` | — | — |
 
 **If code, history, or plans must remain reviewable—or you may return tomorrow—
-use `dev`.** Prefer `dev start` with an explicit committed base for new managed
+use `dev`.** Prefer `dev work start` with an explicit committed base for new managed
 work. If an external worktree already exists and only needs runtime visibility:
 
 ```bash
 # New managed work:
-dev start api --task "auth fix" --branch fix/auth --base main
+dev work start api --task "auth fix" --branch fix/auth --base main
 # Or make an already registered external checkout visible:
-dev wt open fix/auth --repo api --runtime herdr --no-focus
+dev git worktree open fix/auth --repo api --runtime herdr --no-focus
 ```
 
 `wt open --no-focus` opens or reuses the registered checkout and immediately
@@ -1412,8 +1453,8 @@ Claude Workflow cleanup is an explicit, stricter exception to the normal
 harness-owned lifetime. From the canonical non-bare checkout, first review:
 
 ```bash
-dev sweep --ephemeral-worktrees --stale-days 14
-dev sweep --ephemeral-worktrees --json        # schema version 1; report only
+dev work sweep --ephemeral-worktrees --stale-days 14
+dev work sweep --ephemeral-worktrees --json        # schema version 1; report only
 ```
 
 The V1 adapter reads only bounded fixed-depth structure under
@@ -1443,9 +1484,9 @@ under a common-dir cleanup lock and compares a stable fingerprint before plain
 non-force removal:
 
 ```bash
-dev sweep --ephemeral-worktrees --apply
+dev work sweep --ephemeral-worktrees --apply
 # Optional only when separately approved and proved safe:
-dev sweep --ephemeral-worktrees --apply --delete-branches --base main
+dev work sweep --ephemeral-worktrees --apply --delete-branches --base main
 ```
 
 A clean worktree may have commits unique to its branch because the branch is
@@ -1513,14 +1554,14 @@ Asking to copy a virtualenv is refused with the reason — it bakes its own
 absolute path into `pyvenv.cfg` and `bin/activate` — and narrowed back to
 reinstalling rather than silently producing a broken checkout.
 
-`dev wt plan` shows exactly what a new worktree of a repository would get:
+`dev git worktree plan` shows exactly what a new worktree of a repository would get:
 which project types were detected, which tools are missing, and every file and
-command involved. `dev wt plan --write` seeds
+command involved. `dev git worktree plan --write` seeds
 `<repo>/.dev-cli/config.toml` from it, so
 a project can commit its own setup and every machine provisions the same way.
 
 ```
-$ dev wt plan
+$ dev git worktree plan
 PROJECT  MANAGER  FROM               DEPENDENCIES  TOOL
 node     npm      package-lock.json  node_modules  installed
 python   uv       uv.lock            .venv         installed
@@ -1537,7 +1578,7 @@ python   uv       uv.lock            .venv         installed
 dev repo list --sizes          # repos, remote topology and owned logical size
 dev repo list --no-remote      # find local Git with no configured backup remote
 dev repo context api           # agent-ready paths, Git, WT, runtime and tasks
-dev flow api                   # TTY-only guarded repository lifecycle preview
+dev repo flow api                   # TTY-only guarded repository lifecycle preview
 dev repo new                   # interactive local/published repository bootstrap
 dev repo setup . --preset agent-ready   # safely initialize an existing repo
 dev repo clone owner/name -c Web   # expand forge shorthand, then clone with Git
@@ -1551,34 +1592,34 @@ dev fleet machine-id lab       # inspect/compare the target's stable machine pin
 dev fleet sync api --push      # push, then safely fast-forward clean remote checkouts
 dev fleet files api --to lab   # report-only plan for explicit ignored local files
 
-dev try redis-streams          # dated scratch directory for an experiment
+dev tries try redis-streams          # dated scratch directory for an experiment
 dev tries archive redis-streams    # reversible local archive; does not delete
-dev graduate redis-streams -c Infra --remote   # promote it into a real project
+dev tries graduate redis-streams -c Infra --remote   # promote it into a real project
 
 dev pr list                    # requests you opened or were asked to review
 dev pr list --scope local      # with head branches, joined to your worktrees
 dev pr list --actions          # the gh/glab commands; dev prints, never runs
-dev prompt list                # built-in read-only context recipes
-dev prompt agents --json       # sorted profile capabilities, no private argv/shell
-dev prompt render pr-triage    # inspect/copy the exact prompt
-dev prompt run session-close --agent my-agent   # bounded one-shot, no user stdin
-dev prompt open workspace-closeout . --agent my-agent  # foreground current TTY
+dev agent prompt list                # built-in read-only context recipes
+dev agent prompt agents --json       # sorted profile capabilities, no private argv/shell
+dev agent prompt render pr-triage    # inspect/copy the exact prompt
+dev agent prompt run session-close --agent my-agent   # bounded one-shot, no user stdin
+dev agent prompt open workspace-closeout . --agent my-agent  # foreground current TTY
 
-dev gitignore                  # .gitignore from GitHub's templates + the rest
-dev adopt                      # import existing worktrees/sessions as tasks
+dev git ignore                  # .gitignore from GitHub's templates + the rest
+dev work adopt                      # import existing worktrees/sessions as tasks
 
-dev stats --heatmap            # where the time actually went
+dev activity stats --heatmap            # where the time actually went
 dev summary                    # current machine-wide project snapshot
-dev journal                    # today's commits plus current task/WIP context
+dev activity journal                    # today's commits plus current task/WIP context
 dev help worktrees             # quick-reference pages for the workflow
 dev help wt                    # same page, reached by command name
 ```
 
 ### Prompt handoffs
 
-Escalate only as far as the situation needs: use `dev status`, `dev sweep`, or a
+Escalate only as far as the situation needs: use `dev status`, `dev work sweep`, or a
 lifecycle command when deterministic facts already answer the question; use
-`dev prompt render <recipe>` to inspect or copy context; use `run` for a bounded
+`dev agent prompt render <recipe>` to inspect or copy context; use `run` for a bounded
 batch answer; and use `open` only when a foreground conversation can resolve a
 semantic question.
 
@@ -1588,7 +1629,7 @@ the receiver not to mutate it. `dev` never parses an agent reply, starts a loop,
 or treats the reply as permission for `done`, `park`, `sweep`, or `retire`.
 There is no built-in vendor or launcher: host config defines optionally
 described profiles with independent `[agent.run]` and `[agent.open]` commands.
-`dev prompt agents [--json]` lists their sorted capabilities while hiding argv,
+`dev agent prompt agents [--json]` lists their sorted capabilities while hiding argv,
 shell source, executable directories, prompt text, environment, and config path.
 Global explicit/default/sole selection happens before recipe collection; the
 selected profile must support the requested mode and never falls back to another
@@ -1605,11 +1646,11 @@ boundaries.
 Quick thoughts live beside repos in dev state, not inside each checkout:
 
 ```bash
-dev note add "try event subscription" --repo api --tag idea
-dev note list api
-dev note search "event subscription"
-dev note edit <id-or-prefix>
-dev note delete <id-or-prefix>
+dev repo note add "try event subscription" --repo api --tag idea
+dev repo note list api
+dev repo note search "event subscription"
+dev repo note edit <id-or-prefix>
+dev repo note delete <id-or-prefix>
 ```
 
 An ID prefix must be unique and at least eight characters.
@@ -1629,15 +1670,15 @@ catalog state; synchronize both when attachments must travel between hosts.
 The disposable `$XDG_CACHE_HOME/dev/notes.db` is only an FTS index:
 
 ```bash
-dev cache clear notes                    # Markdown remains
-dev note search "event"                 # index rebuilds automatically
-dev note reindex                         # explicit rebuild
+dev self cache clear notes                    # Markdown remains
+dev repo note search "event"                 # index rebuilds automatically
+dev repo note reindex                         # explicit rebuild
 ```
 
 `repo mark --note` remains a single catalog summary and is not overwritten.
 `dev repo list --json` always includes `notes.count` and adds
 `latest_id`/`latest_preview`/`latest_updated` when a latest note exists;
-`dev note list/search/show --json` expose complete note records. Structured task
+`dev repo note list/search/show --json` expose complete note records. Structured task
 systems such as td/beads remain optional future adapters rather than creating
 dot-folders automatically.
 
@@ -1657,20 +1698,20 @@ dev summary --json | jq '.projects[] | select(.active)'
 dev summary | opencode run "give me a quick view of this machine"
 ```
 
-Use `dev journal` when the question has a date range, and `dev repo context`
+Use `dev activity journal` when the question has a date range, and `dev repo context`
 when one repository needs every checkout/task/session detail.
 
 ### Development journal
 
-`dev journal` emits Markdown designed for a daily/weekly report or direct input
+`dev activity journal` emits Markdown designed for a daily/weekly report or direct input
 to another tool. It does not invoke an AI agent or persist the generated prose:
 
 ```bash
-dev journal
-dev journal --since 7d --metrics
-dev journal --since 3mo --granularity branch
-dev journal --author teammate@example.com --since 30d --json
-dev journal --since 7d | opencode run "summarize this development journal"
+dev activity journal
+dev activity journal --since 7d --metrics
+dev activity journal --since 3mo --granularity branch
+dev activity journal --author teammate@example.com --since 30d --json
+dev activity journal --since 7d | opencode run "summarize this development journal"
 ```
 
 The default `auto` view expands commits, keeping complete repo/branch totals
@@ -1679,18 +1720,18 @@ unabridged report. The current user's report can also include source-separated
 session/WakaTime evidence, task intent and dirty linked worktrees whose latest
 file mtime falls inside the requested calendar-day range.
 
-`dev stats` draws a contribution-style heatmap from two sources: a sampler
+`dev activity stats` draws a contribution-style heatmap from two sources: a sampler
 watching live agent sessions (the only way to count time spent reading and
 debugging, including sessions in external linked worktrees), and git history (which backfills the past and survives losing the
 database). WakaTime can be imported alongside for editor time.
 
 ```bash
-dev stats backfill                          # seed all repos from git history
-dev stats backfill --repo api               # seed only one repo
-dev stats sample --interval 5m              # from cron, every five minutes
-dev stats import-wakatime                   # optional
-dev stats path                              # durable SQLite location
-dev stats clear --repo api                  # guarded selective deletion
+dev activity stats backfill                          # seed all repos from git history
+dev activity stats backfill --repo api               # seed only one repo
+dev activity stats sample --interval 5m              # from cron, every five minutes
+dev activity stats import-wakatime                   # optional
+dev activity stats path                              # durable SQLite location
+dev activity stats clear --repo api                  # guarded selective deletion
 ```
 
 In the TUI, `H` displays stored activity immediately and automatically backfills
@@ -1705,18 +1746,18 @@ requires a scope plus confirmation (`--repo`, `--source`, or `--all`).
 Regenerable data lives separately:
 
 ```bash
-dev cache list
-dev cache path
-dev cache clear remote
-dev cache clear notes          # FTS only; Markdown remains
-dev cache clear fleet
-dev cache clear ssh-discovery        # preserves canonical machines and manual bindings
-dev cache clear repos
-dev cache clear skills
-dev cache clear size
-dev cache clear gitignore
-dev cache clear licenses
-dev cache clear all
+dev self cache list
+dev self cache path
+dev self cache clear remote
+dev self cache clear notes          # FTS only; Markdown remains
+dev self cache clear fleet
+dev self cache clear ssh-discovery        # preserves canonical machines and manual bindings
+dev self cache clear repos
+dev self cache clear skills
+dev self cache clear size
+dev self cache clear gitignore
+dev self cache clear licenses
+dev self cache clear all
 ```
 
 Those remove only regenerable files under `$XDG_CACHE_HOME/dev/` (remote
@@ -1731,11 +1772,11 @@ When you want a recursive audit or a curated navigation layer, bootstrap is the
 explicit path:
 
 ```bash
-dev bootstrap ~/code /mnt/work                    # recursive report, no changes
-dev bootstrap ~/code --json                       # machine-readable inventory
-dev bootstrap ~/code --index ~/Projects           # plan a flat symlink catalog
-dev bootstrap ~/code --index ~/Projects --apply   # create only the ready links
-dev bootstrap ~/old --move ~/Projects             # plan physical moves
+dev repo bootstrap ~/code /mnt/work                    # recursive report, no changes
+dev repo bootstrap ~/code --json                       # machine-readable inventory
+dev repo bootstrap ~/code --index ~/Projects           # plan a flat symlink catalog
+dev repo bootstrap ~/code --index ~/Projects --apply   # create only the ready links
+dev repo bootstrap ~/old --move ~/Projects             # plan physical moves
 ```
 
 The scanner classifies canonical checkouts, linked worktrees, bare repositories
@@ -1758,12 +1799,12 @@ without silently rewriting the user's current one. See `dev help bootstrap`.
 
 There is nothing to migrate. `dev` discovers repositories wherever your scan
 roots point and **never moves, renames or deletes anything** you already have.
-`dev config init` probes the conventional locations — `~/Documents/Program`,
+`dev self config init` probes the conventional locations — `~/Documents/Program`,
 `~/src`, `~/code`, a `GHQ_ROOT`, and so on — counts the repositories in each,
 and writes only the ones that exist:
 
 ```
-$ dev config init
+$ dev self config init
 wrote ~/.config/dev/config.toml
 
 Detected:
@@ -1772,15 +1813,15 @@ ROOT                 REPOS  ROLE
 ~/src                16     scan root
 ```
 
-Repositories are discovered; *tasks* are not. `dev adopt` finds the work
+Repositories are discovered; *tasks* are not. `dev work adopt` finds the work
 already in flight — linked worktrees from any tool, live runtime sessions, and
 local branches ahead of the default branch — and offers to record it. It skips
 branches already merged, and the turn-scoped worktrees an agent harness cleans
 up itself:
 
 ```bash
-dev adopt            # report only
-dev adopt --apply    # record as tasks; nothing on disk changes
+dev work adopt            # report only
+dev work adopt --apply    # record as tasks; nothing on disk changes
 ```
 
 A worktree you already have somewhere else keeps working exactly as it did —
@@ -1790,9 +1831,9 @@ A worktree you already have somewhere else keeps working exactly as it did —
 ## .gitignore
 
 ```bash
-dev gitignore                 # detect the languages from the repo's files
-dev gitignore python node     # or say so explicitly
-dev gitignore --offline       # cached and bundled templates only
+dev git ignore                 # detect the languages from the repo's files
+dev git ignore python node     # or say so explicitly
+dev git ignore --offline       # cached and bundled templates only
 ```
 
 Language sections come from [GitHub's templates](https://github.com/github/gitignore),
@@ -1808,13 +1849,13 @@ block and leaves rules you added by hand alone.
 ## Configuration
 
 `$XDG_CONFIG_HOME/dev/config.toml`. Write a commented starter with
-`dev config init`; see the effective settings with `dev config show`; open the
+`dev self config init`; see the effective settings with `dev self config show`; open the
 actual file in `$VISUAL` / `$EDITOR` with either form:
 
 ```bash
-dev edit
-dev config edit
-DEV_EDITOR=unused dev edit --editor "code --wait"   # explicit override
+dev self config edit
+dev self config edit
+DEV_EDITOR=unused dev self config edit --editor "code --wait"   # explicit override
 ```
 
 If the file does not exist, `edit` generates the machine-detected starter first
@@ -1892,8 +1933,8 @@ Do not sync worktrees or runtime state. Sync branches, and let the remote be
 the handoff boundary:
 
 ```bash
-dev park --cold --push      # on the machine holding the work
-dev resume <task> --fetch   # on the machine picking it up
+dev work park --cold --push      # on the machine holding the work
+dev work resume <task> --fetch   # on the machine picking it up
 ```
 
 `dev` records an owner host per task and refuses to resume someone else's
@@ -2005,7 +2046,7 @@ both directions.
 ## The agent skill
 
 For configuration sharing, see [Agent configuration interoperability](docs/guides/agent-interop.md).
-`dev mcp transfer`, `dev skill transfer`, and `dev instructions transfer` use
+`dev agent mcp transfer`, `dev agent skill transfer`, and `dev agent instructions transfer` use
 reviewed plans, exact source/target revalidation, and guarded undo. Skills can
 share one tree through relative links or use verified upstream preparation in
 another repository. MCP writers support five native formats and retain unrelated
@@ -2024,39 +2065,39 @@ Agents use `dev <command> --help` for current syntax, `dev help <topic>` for
 workflows, and the skill's conditional reference links for agent coordination,
 retirement, SSH or transfer details. They need not preload the command reference,
 repeat `dev --skill`, or run diagnostics for every task. `dev --skill` and
-`dev skill print` print the same installable `SKILL.md` that `skill install`
+`dev agent skill print` print the same installable `SKILL.md` that `skill install`
 writes; existing dotfiles installers retain that contract. These print routes
 and `dev help` bypass unrelated config loading, release checks and stale Windows
 binary cleanup, while preserving argument and color validation.
 
 ```bash
-dev skill list                 # current checkout + global native inventory
-dev skill list --all --check --json
-dev skill list --repo api --project
-dev skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
-dev skill transfer apply --plan <id> # apply the exact reviewed file/link changes
-dev skill add                  # interactive wizard for daviddwlee84/agent-skills/skills
-dev skill update project-knowledge-harness --global --yes
-dev skill install              # → ~/.agents/skills/dev-cli, symlinked into ~/.claude/skills
-dev skill install --check      # compare the installed bundle with this binary
-dev skill uninstall --dry-run  # preview removal of dev-owned files and matching links
-dev skill uninstall            # confirm and remove the bundled skill
-dev mcp list --all --json      # sanitized static declarations; never health probes
+dev agent skill list                 # current checkout + global native inventory
+dev agent skill list --all --check --json
+dev agent skill list --repo api --project
+dev agent skill transfer plan example --from-agent universal --to-agent claude-code --mode mirror
+dev agent skill transfer apply --plan <id> # apply the exact reviewed file/link changes
+dev agent skill add                  # interactive wizard for daviddwlee84/agent-skills/skills
+dev agent skill update project-knowledge-harness --global --yes
+dev agent skill install              # → ~/.agents/skills/dev-cli, symlinked into ~/.claude/skills
+dev agent skill install --check      # compare the installed bundle with this binary
+dev agent skill uninstall --dry-run  # preview removal of dev-owned files and matching links
+dev agent skill uninstall            # confirm and remove the bundled skill
+dev agent mcp list --all --json      # sanitized static declarations; never health probes
 dev --skill                    # print it, for a dotfiles installer to sync
-dev skill sync                 # regenerate the command reference from the command tree
-dev skill sync --check         # fail if it has drifted — wire into CI
+dev agent skill sync                 # regenerate the command reference from the command tree
+dev agent skill sync --check         # fail if it has drifted — wire into CI
 ```
 
-After `dev upgrade`, the new executable refreshes the default bundled skill only
-if it is already installed. `dev doctor` reports content drift. Recorded local
+After `dev self upgrade`, the new executable refreshes the default bundled skill only
+if it is already installed. `dev self doctor` reports content drift. Recorded local
 edits block automatic refresh and uninstall; unrelated skills, files and foreign
 links remain. Custom `--dir` installs need an explicit refresh with that directory.
 When upgrading directly through a package manager or from a binary older than
-v0.2.23, run `dev skill install` once after upgrading. Legacy installs need that
+v0.2.23, run `dev agent skill install` once after upgrading. Legacy installs need that
 first refresh to record ownership before uninstall. See the
 [skills lifecycle guide](docs/guides/skills-management.md#bundled-dev-cli-skill-lifecycle).
 
-`dev skill add [package]` is only a shortcut into the upstream interactive
+`dev agent skill add [package]` is only a shortcut into the upstream interactive
 wizard. It never selects all skills or agents. Listing is native and never runs
 `skills`, npm, `npx`, or project code. Add/update are explicit actions, require
 a directly installed `skills` executable, and may access the network; `dev` skips
@@ -2071,7 +2112,7 @@ unverifiable. Lock hashes describe upstream freshness, not installed-file integr
 only the embedded `dev-cli` skill can verify that every bundled file matches
 (additional user files are ignored).
 
-`dev mcp list` inventories declarations from Claude Code, Codex, Cursor, Gemini
+`dev agent mcp list` inventories declarations from Claude Code, Codex, Cursor, Gemini
 CLI, and OpenCode files. It keeps scopes separate, honors absolute
 `CLAUDE_CONFIG_DIR`, retains exact Claude local project keys, and resolves only
 Claude's documented user/project/local/managed project approvals. It deliberately
@@ -2109,20 +2150,20 @@ clears search before closing the menu. REPOS first shows dated cached rows,
 then streams local discovery and Git enrichment; pending rows cannot authorize
 row-dependent actions. `n` and the new-repository menu action launch independently
 of those rows, without bypassing the wizard's final mutation checks.
-`dev cache clear repos` removes this disposable presentation cache.
+`dev self cache clear repos` removes this disposable presentation cache.
 
-Selected skill removal is available through SKILLS / `dev skill manage`, with
+Selected skill removal is available through SKILLS / `dev agent skill manage`, with
 agent scopes, ownership/dependency checks and private results. Existing artifact
 finalizers remain separate; see [skills management](internal/skill/dev-cli/references/skills-management.md).
 
-For skills maintenance, use `dev skill manage [--repo api | --all]` or the
+For skills maintenance, use `dev agent skill manage [--repo api | --all]` or the
 REPOS/SKILLS action menus. The wizard checks sources, selects project/global
 skills, previews updates and retains individual results. It requires a global
 `skills` executable only for mutations (`npm install -g skills`), with no npx
 fallback. Single-project advanced actions restore from `skills-lock.json` or sync
 from installed `node_modules`. Lock-only/gitignored skill trees remain visible.
 See [Skills management](docs/guides/skills-management.md) for exact scope and
-native restoration semantics. `dev skill install`/`sync` still manage the bundled
+native restoration semantics. `dev agent skill install`/`sync` still manage the bundled
 skill. Check evidence is dated and invalidated by lock changes.
 
 ### SSH connection diagnosis
@@ -2134,9 +2175,9 @@ See [SSH diagnosis](docs/guides/ssh-hosts.md#ssh-diagnosis).
 
 ### Feedback and isolated repair
 
-`dev feedback` collects a local report; agents can use `feedback draft`,
+`dev self feedback` collects a local report; agents can use `feedback draft`,
 `feedback issue` and plan-first `feedback repair --base <ref>`. Reviewed GitHub
 publication is optional. Repair prepares a retained isolated worktree/task and
-can render `dev prompt render feedback-fix <id>` for the current agent; another
+can render `dev agent prompt render feedback-fix <id>` for the current agent; another
 agent requires an explicit profile and user consent. See the
 [feedback guide](docs/guides/feedback.md).

@@ -40,32 +40,32 @@ RETIRED   runtime absent, worktree removed, optional branch deleted, task reaped
 
 | Command | What it does |
 |---|---|
-| `dev prepare --session <provider:uuid> --plan <path>` | Arms post-writer artifact finalization without closing the running agent. Default product-first requires committed products and an empty index; the transcript itself is deliberately not staged yet. |
-| `dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | Preserves the exact stable transcript in the intent's source-commit or external-archive destination after its writer stops. `--if-pending` no-ops silently when no armed intent matches the run id; `--writer-stopped` confirms the outer wrapper has returned. |
-| `dev done --ff` | Rebases the task branch onto its base and fast-forwards it locally. Records MERGED and retains worktree/branch; explicitly selected task-pane closures are reported separately. |
-| `dev done --pr` | Pushes the branch and opens a pull/merge request through an available forge CLI. The task stays under review, not MERGED. |
-| `dev done --merged --base-ref <ref>` | Verifies an externally merged branch is contained in `<ref>` and records MERGED. |
-| `dev done --merged --base-ref <ref> --confirm-squash <merge-commit>` | Same, but for a squash merge: attests that the named commit, already proven contained in `<ref>`, represents the feature branch. This is an operator assertion dev cannot verify on its own. |
-| `dev artifact discard <intent> --yes` | Records that an intent can never be finalized — its transcript was never written, or its HEAD is gone after a rebase — so it stops blocking integration and retirement. It commits and recovers nothing, prints exactly what is being abandoned, and refuses an intent that is still `armed`, because finalization is the path that preserves a transcript. |
-| `dev retire [task-or-worktree] [--base <ref>] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | Re-resolves every covering runtime session, refuses active agents and mixed-purpose workspaces, waits for closure, revalidates Git state, and only then removes the linked worktree without force. Deletes the task record only after every requested step succeeds. |
-| `dev flow [repo]` | Preview UI for an exact DONE task: Enter builds a revision-bound Retire plan, then approval applies it. Branch deletion requires the displayed typed token. |
-| `dev sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | From the canonical checkout, reports (and, with `--apply`, retires) both task-tracked and unmanaged linked worktrees whose branches are already contained in the base. |
-| `dev sweep --ephemeral-worktrees [--stale-days <n>] [--json]` | From a canonical non-bare checkout, emits a strict Claude Workflow V1 report; JSON schema 1 is report-only. |
-| `dev sweep --ephemeral-worktrees --apply [--delete-branches --base <ref>]` | Requires a TTY and per-item confirmation, then revalidates each approved fingerprint under the common-dir cleanup lock before plain non-force removal. |
+| `dev agent artifact prepare --session <provider:uuid> --plan <path>` | Arms post-writer artifact finalization without closing the running agent. Default product-first requires committed products and an empty index; the transcript itself is deliberately not staged yet. |
+| `dev agent artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped` | Preserves the exact stable transcript in the intent's source-commit or external-archive destination after its writer stops. `--if-pending` no-ops silently when no armed intent matches the run id; `--writer-stopped` confirms the outer wrapper has returned. |
+| `dev work done --ff` | Rebases the task branch onto its base and fast-forwards it locally. Records MERGED and retains worktree/branch; explicitly selected task-pane closures are reported separately. |
+| `dev work done --pr` | Pushes the branch and opens a pull/merge request through an available forge CLI. The task stays under review, not MERGED. |
+| `dev work done --merged --base-ref <ref>` | Verifies an externally merged branch is contained in `<ref>` and records MERGED. |
+| `dev work done --merged --base-ref <ref> --confirm-squash <merge-commit>` | Same, but for a squash merge: attests that the named commit, already proven contained in `<ref>`, represents the feature branch. This is an operator assertion dev cannot verify on its own. |
+| `dev agent artifact discard <intent> --yes` | Records that an intent can never be finalized — its transcript was never written, or its HEAD is gone after a rebase — so it stops blocking integration and retirement. It commits and recovers nothing, prints exactly what is being abandoned, and refuses an intent that is still `armed`, because finalization is the path that preserves a transcript. |
+| `dev work retire [task-or-worktree] [--base <ref>] [--close-unknown] [--assume-no-runtime] [--delete-branch] [--timeout <duration>]` | Re-resolves every covering runtime session, refuses active agents and mixed-purpose workspaces, waits for closure, revalidates Git state, and only then removes the linked worktree without force. Deletes the task record only after every requested step succeeds. |
+| `dev repo flow [repo]` | Preview UI for an exact DONE task: Enter builds a revision-bound Retire plan, then approval applies it. Branch deletion requires the displayed typed token. |
+| `dev work sweep --merged-worktrees [--base <ref>] [--apply] [--yes] [--close-unknown] [--assume-no-runtime] [--delete-branches]` | From the canonical checkout, reports (and, with `--apply`, retires) both task-tracked and unmanaged linked worktrees whose branches are already contained in the base. |
+| `dev work sweep --ephemeral-worktrees [--stale-days <n>] [--json]` | From a canonical non-bare checkout, emits a strict Claude Workflow V1 report; JSON schema 1 is report-only. |
+| `dev work sweep --ephemeral-worktrees --apply [--delete-branches --base <ref>]` | Requires a TTY and per-item confirmation, then revalidates each approved fingerprint under the common-dir cleanup lock before plain non-force removal. |
 
-A dirty checkout does not fail here: `dev done` classifies it against the base
+A dirty checkout does not fail here: `dev work done` classifies it against the base
 first, offering commit or discard interactively, or taking an explicit
 `--dirty` policy from a script. See
 [Change-stream workflow](change-stream-workflow.md) for that wizard. The
-`--keep-worktree` flag on `dev done` warns as a no-op; `--delete-branch`
-fails and points at `dev retire --delete-branch`.
+`--keep-worktree` flag on `dev work done` warns as a no-op; `--delete-branch`
+fails and points at `dev work retire --delete-branch`.
 
 If fast-forward is blocked by unrelated dirty bytes in the canonical checkout,
 the interactive wizard can preserve them with an exact stash+restore
 transaction. It restores staged state and untracked files after integration;
 dirty submodules and nested repositories still require independent handling.
 
-After a bare interactive `dev done` reaches MERGED, its cleanup step performs
+After a bare interactive `dev work done` reaches MERGED, its cleanup step performs
 a read-only retirement preview and asks whether to keep, retire, or retire and
 delete the contained branch. Covering Herdr panes and recognized agent states
 are shown before approval. Caller-owned Herdr workspaces use a fresh exact-pane
@@ -76,13 +76,13 @@ For a read-only explanation before acting, render or open the generic
 `workspace-closeout` recipe from the exact checkout:
 
 ```bash
-dev prompt render workspace-closeout .
-dev prompt open workspace-closeout . --agent my-agent
+dev agent prompt render workspace-closeout .
+dev agent prompt open workspace-closeout . --agent my-agent
 ```
 
 The recipe includes the full retirement audit, but its result is advisory.
-`eligible` and a merged PR never authorize cleanup; an external `dev retire`
-still recollects and revalidates every gate. If `dev done --ff` or
+`eligible` and a merged PR never authorize cleanup; an external `dev work retire`
+still recollects and revalidates every gate. If `dev work done --ff` or
 `dev git pull-rebase` stops at a conflict, use `prompt open` only to discuss the
 semantic resolution, then explicitly continue/abort Git and rerun the lifecycle
 command. See [Prompt handoffs](prompt-handoffs.md).
@@ -93,26 +93,26 @@ From the feature worktree:
 
 ```bash
 # Commit product changes first. Do not stage the moving transcript.
-dev prepare --session claude:<uuid> --plan .claude/plans/task.md
+dev agent artifact prepare --session claude:<uuid> --plan .claude/plans/task.md
 # Exit the agent normally so SpecStory can write its final Markdown.
 ```
 
 The outer `specstory run` wrapper then calls:
 
 ```bash
-dev artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped
+dev agent artifact finalize --run-id "$DEV_AGENT_RUN_ID" --if-pending --writer-stopped
 ```
 
 An external main/integration workspace finishes the job:
 
 ```bash
-dev done <task> --ff
-dev retire <task> --delete-branch
+dev work done <task> --ff
+dev work retire <task> --delete-branch
 ```
 
-`dev done` only integrates and records MERGED. `dev retire` re-resolves every runtime pane, closes eligible sessions, waits for them to disappear, revalidates Git, and removes the worktree without force.
+`dev work done` only integrates and records MERGED. `dev work retire` re-resolves every runtime pane, closes eligible sessions, waits for them to disappear, revalidates Git, and removes the worktree without force.
 
-In `dev flow`, Retire shows conditions, effects, retained resources, and the CLI
+In `dev repo flow`, Retire shows conditions, effects, retained resources, and the CLI
 fallback before approval. Apply locks and reloads the task revision plus exact
 repository/worktree/ref/runtime/artifact authority, repeats safety checks after
 runtime closure and before removal, and deletes the task record last. A later
@@ -151,7 +151,7 @@ Git and containment checks are unchanged.
 
 ## Choose the containment base
 
-`dev retire --base <ref>` overrides the containment target for a DONE task or
+`dev work retire --base <ref>` overrides the containment target for a DONE task or
 linked worktree without changing recorded task intent. Resolution checks a local
 branch (`refs/heads/X`), then a remote-tracking branch (`refs/remotes/X`, such as
 `origin/main`), then a commit. Fully qualified branch refs keep their named kind.
@@ -162,8 +162,8 @@ Remote-tracking refs are local observations, not an implicit fetch.
 Without an override, task retirement keeps its recorded base. A recorded
 fork-point commit is never silently replaced by the default branch: if it cannot
 prove integration, retirement stays blocked with `pass --base <branch>` guidance.
-After `dev done --merged --base-ref X`, cleanup hints, the cleanup wizard and the
-external coordinator carry X forward as `dev retire --base X <task>`. If a shell
+After `dev work done --merged --base-ref X`, cleanup hints, the cleanup wizard and the
+external coordinator carry X forward as `dev work retire --base X <task>`. If a shell
 handoff cannot carry the override, dev prints the external command instead.
 
 Optional `--delete-branch` still runs ordinary `git branch -d`, whose own merged
@@ -174,17 +174,17 @@ and DONE task remain, and the result reports partial completion.
 ## Pull-request flow
 
 ```bash
-dev done <task> --pr
+dev work done <task> --pr
 # after CI/review and a commit-preserving merge
 git fetch origin
-dev done <task> --merged --base-ref origin/main
-dev retire --base origin/main <task> --delete-branch
+dev work done <task> --merged --base-ref origin/main
+dev work retire --base origin/main <task> --delete-branch
 ```
 
 A squash merge is not ancestry-equivalent, so it needs an explicit operator attestation:
 
 ```bash
-dev done <task> --merged --base-ref origin/main --confirm-squash <merge-commit>
+dev work done <task> --merged --base-ref origin/main --confirm-squash <merge-commit>
 ```
 
 This proves only that the named squash commit is contained in the base; the operator is asserting that it actually represents the feature branch.
@@ -208,14 +208,14 @@ retirement's containment checks.
 ## Periodic cleanup with sweep
 
 ```bash
-dev sweep --merged-worktrees
+dev work sweep --merged-worktrees
 # Present the exact candidates/blockers to the user and ask for approval.
-dev sweep --merged-worktrees --apply --yes
+dev work sweep --merged-worktrees --apply --yes
 ```
 
-This surfaces both task-tracked DONE worktrees and unmanaged linked worktrees whose named branches are already contained in the base — run it from the canonical checkout. It reports before applying: containment alone is never permission. Dirty Git state, a pending or unreachable artifact, a locked or prunable worktree registration, an in-progress Git operation, and the same runtime refusal conditions as `dev retire` all still block cleanup. Branches remain after retirement by default; pass `--delete-branches` only when the user separately approved deleting them.
+This surfaces both task-tracked DONE worktrees and unmanaged linked worktrees whose named branches are already contained in the base — run it from the canonical checkout. It reports before applying: containment alone is never permission. Dirty Git state, a pending or unreachable artifact, a locked or prunable worktree registration, an in-progress Git operation, and the same runtime refusal conditions as `dev work retire` all still block cleanup. Branches remain after retirement by default; pass `--delete-branches` only when the user separately approved deleting them.
 
-`dev sweep --base <ref>` also forwards the selected base to DONE task retirement;
+`dev work sweep --base <ref>` also forwards the selected base to DONE task retirement;
 `--merged-worktrees` uses its verified base for managed tasks as well as unmanaged
 checkouts. Reviewed retire/remove plans bind worktree-list authority only to the
 same branch or paths equal to, containing, or nested under the target. Removing
@@ -228,10 +228,10 @@ makes the plan stale; containment and all other guards remain required.
 Claude Workflow turn-scoped worktrees have a separate strict V1 path:
 
 ```bash
-dev sweep --ephemeral-worktrees --stale-days 14
-dev sweep --ephemeral-worktrees --json
-dev sweep --ephemeral-worktrees --apply
-dev sweep --ephemeral-worktrees --apply --delete-branches --base main
+dev work sweep --ephemeral-worktrees --stale-days 14
+dev work sweep --ephemeral-worktrees --json
+dev work sweep --ephemeral-worktrees --apply
+dev work sweep --ephemeral-worktrees --apply --delete-branches --base main
 ```
 
 The command runs only from a canonical non-bare checkout. Its bounded,
@@ -287,7 +287,7 @@ branch and reports partial completion.
 
 Raw `git worktree remove --force` and configured external tools bypass dev entirely — never run them from an agent that occupies the target. dev's guarantee is only for dev-mediated paths; it cannot stop an operator or script from calling Git directly.
 
-Normal task-backed retirement and the exact unmanaged path form of `dev retire`
+Normal task-backed retirement and the exact unmanaged path form of `dev work retire`
 use `internal/taskflow`; the latter requires contained removal. Some `sweep`
 record-only/orphan-salvage actions remain outside taskflow. Existing
 CLI acknowledgement flags remain compatible; the flow preview intentionally
@@ -302,7 +302,7 @@ fatal: not a git repository (or any of the parent directories): .git
 
 Treat `runtime alive + Git registration absent + artifact-only path` as an orphan that needs transcript salvage and external reconciliation — **never** as RETIRED.
 
-`dev sweep` now recognises that shape rather than leaving it to be spotted by eye. When a task records a checkout that exists but Git does not register, and the directory holds nothing but agent artifact folders, sweep reports it as an abandoned agent workspace. It offers to remove it only when every file inside is byte-identical to one the repository already has; anything that differs is listed as salvage work and left untouched, including by `--apply`.
+`dev work sweep` now recognises that shape rather than leaving it to be spotted by eye. When a task records a checkout that exists but Git does not register, and the directory holds nothing but agent artifact folders, sweep reports it as an abandoned agent workspace. It offers to remove it only when every file inside is byte-identical to one the repository already has; anything that differs is listed as salvage work and left untouched, including by `--apply`.
 
 Byte equality rather than mere presence is the point. A transcript writer that outlives its worktree usually flushes a longer final version than the copy committed earlier, so a same-named file in the repository is not evidence that the tail was saved.
 
@@ -324,7 +324,7 @@ Byte equality rather than mere presence is the point. A transcript writer that o
 
 ## Task worktree scope
 
-Worktree-mode `dev start --focus -t <name>` creates a linked checkout; `--focus`
+Worktree-mode `dev work start --focus -t <name>` creates a linked checkout; `--focus`
 only changes focus. Finishing that task preserves its parent/canonical agent
 sessions and other tasks' tabs. A recognized parent agent in any state blocks
 FF: recheck after handling it independently in Herdr, choose PR, or cancel.
@@ -341,7 +341,7 @@ test command) require a separate FF confirmation: files in the displayed
 checkout will change while those programs continue running. `--yes` does not
 supply that confirmation; non-interactive calls requiring it stop.
 
-Interactive `dev done` cleanup and standalone `dev retire` share a preview of
+Interactive `dev work done` cleanup and standalone `dev work retire` share a preview of
 the target, retained resources, workspace/tab/pane IDs, agent states, and
 foreground program names, PIDs and directories. Closing known non-agent
 programs requires typing `CLOSE <workspace-id>` for each affected workspace,

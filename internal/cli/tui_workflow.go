@@ -30,6 +30,9 @@ func newTUIWorkflow(ctx context.Context, app *App, request tui.WorkflowRequest) 
 		selected := *request.Hygiene
 		w.request.Hygiene = &selected
 	}
+	if request.RepoAsset != nil {
+		w.request.RepoAsset = request.RepoAsset.Clone()
+	}
 	w.app.workflowHandoff = func(handoff func() error) error {
 		w.result.AfterExit = handoff
 		return nil
@@ -123,6 +126,8 @@ func (w *tuiWorkflow) run() error {
 		}
 	case "browse":
 		return runBrowseWorkflow(w.ctx, a, request)
+	case "demote-repo":
+		return runRepoDemoteWorkflow(w.ctx, a, request)
 	case "delete-try", "delete-try-permanently", "restore-removed-try":
 		return runTryRemovalWorkflow(w.ctx, a, request)
 	default:

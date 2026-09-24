@@ -51,6 +51,6 @@ Runtime sessions 只查詢一次，再提供 repository 與 Try collection 共�
 
 ```text
 dev summary       目前 machine-wide snapshot
-dev journal       calendar-day range 內的 activity
+dev activity journal       calendar-day range 內的 activity
 dev repo context  單一 repository 的完整 context
 ```

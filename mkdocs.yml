@@ -85,6 +85,7 @@ plugins:
             Hooks, Skills, Plugins, and Agent SDK: Hooks、Skills、Plugins 與 Agent SDK
             Reference: 參考資料
             Commands and Configuration: 命令與設定
+            Command Navigation in v0.3: v0.3 命令導覽
             Compatibility and Known Limitations: 相容性與已知限制
             Sources and Freshness: 來源與時效
             Notes: 筆記
@@ -169,6 +170,7 @@ nav:
       - Hooks, Skills, Plugins, and Agent SDK: claude/extensions-agent-sdk.md
   - Reference:
       - Commands and Configuration: reference/commands-config.md
+      - Command Navigation in v0.3: reference/cli-v0.3.md
       - Compatibility and Known Limitations: reference/compatibility.md
       - Manual Hygiene Dogfood: reference/hygiene-dogfood.md
       - Sources and Freshness: reference/sources-freshness.md
