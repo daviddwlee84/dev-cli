@@ -38,15 +38,20 @@ ignored files, Git history/remotes, tags, notes and prior graduation history.
 It does not reverse Git initialization, commits or publication, create a symlink,
 retarget task/runtime/artifact ownership, or turn an arbitrary repo into a Try.
 
-Run from outside the source checkout, with observable runtime coverage. The
-destination must be an immediate visible child of the current Try root; `none`
-is unknown coverage. The recorded original Try path is the default destination. An occupied or
+Run from outside the source checkout. Observations cover all available runtime
+backends; incomplete coverage or `none` cannot prove absence. The destination
+must be an immediate visible child of the current Try root. The recorded original
+Try path is the default destination. An occupied or
 out-of-root original path requires an explicit safe `--to`; never overwrite or
 invent a new destination. Plan/apply revalidates source, destination, catalog,
 Git and live ownership. Incomplete observations, active claims, canonical repositories with linked
 worktrees and unsafe/cross-filesystem paths block the move; preserve its recovery
 journal on an interrupted operation. Use `--dry-run` to preview or REPOS's
 confirmed demote action.
+
+On Windows, demotion and concurrent dev lifecycle writers must all use v0.3.0
+or later to share the lease across the directory move. Older dev binaries, raw
+Git and external tools are outside this move guarantee.
 
 Keep identity, intent and storage separate: graduate/demote changes Try/Repo
 identity; deprecate/reactivate changes intent without moving files; archive/

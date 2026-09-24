@@ -22,6 +22,11 @@ completion 與安全邊界。`gist` 仍限 GitHub；`try <name>` 即使名稱是
 否則需要明確 `--to`。本次不提供一般 repo 轉 Try、自動整份 clone eviction、
 mirror 同步或遠端 Tab 搜尋。
 
+Demotion 觀察所有可用的 runtime backends；不完整 coverage 不能證明沒有使用者。
+Windows 上的 demotion 與同時執行的 dev lifecycle writers 必須全部使用
+v0.3.0 或更新版本，才能在目錄搬移期間共用 lease。舊版 dev、直接執行的 Git
+與外部工具不在這項搬移保證內。
+
 Submodule 新增與 REPOS／REMOTE clone-URL 複製是擴充指令／動作。新增只支援網路
 來源及全新目標，預設 pinned，保留其他 staged 工作；不收編 local clone，也不改變
 日後初始化政策。新增失敗以明確 phase 回報並保留資料，retirement recovery journal

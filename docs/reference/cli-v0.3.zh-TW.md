@@ -98,7 +98,8 @@ root，保留 catalog ID、tags、notes、畢業紀錄、目前的 Git history�
 也不在舊位置留下 symlink。
 
 請先離開該 checkout 目錄再執行。目的地必須是目前 Try root 的直接可見子目錄，
-且 runtime coverage 必須能觀察；`none` 不代表 checkout 沒人使用。
+runtime 觀察涵蓋所有可用的 backends；不完整 coverage 或 `none` 都不能證明
+checkout 沒人使用。
 
 預設目的地是記錄中的原 Try 路徑。若該位置已被占用，或已不在目前 `tries_root`
 內，需用 `--to` 指定安全目的地。既有 task、runtime／agent、artifact 與
@@ -106,6 +107,10 @@ linked-worktree claims 不會被默默改指新路徑。不安全路徑、不完
 計畫都會阻擋操作。搬移延續同檔案系統、來源重新驗證與 recovery 保護。
 CLI 顯示搬移計畫後套用；`--dry-run` 只預覽。REPOS 選單的 demote action
 會先展示搬移計畫，經確認後才套用。
+
+Windows 上的 demotion 與同時執行的 dev lifecycle writers 必須全部使用
+v0.3.0 或更新版本，才能在目錄搬移期間參與同一個 lease。舊版 dev、直接執行的
+Git 與外部工具不在這項搬移保證內。
 
 | 面向 | 轉換 |
 |---|---|

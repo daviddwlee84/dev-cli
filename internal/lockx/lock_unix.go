@@ -5,6 +5,7 @@ package lockx
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -15,7 +16,20 @@ type fileLock struct {
 	file *os.File
 }
 
-func acquireMovable(ctx context.Context, path string) (*fileLock, error) {
+// directoryIdentity eagerly captures the directory's native physical identity.
+// It is suitable for lease revalidation, not proof of ownership or authorization.
+func directoryIdentity(path string) (string, error) {
+	var stat unix.Stat_t
+	if err := unix.Stat(path, &stat); err != nil {
+		return "", err
+	}
+	if stat.Mode&unix.S_IFMT != unix.S_IFDIR {
+		return "", errors.New("lease identity is not a directory")
+	}
+	return fmt.Sprintf("%d:%d", stat.Dev, stat.Ino), nil
+}
+
+func acquireDirectory(ctx context.Context, path, _ string, _ bool) (*fileLock, error) {
 	return acquire(ctx, path)
 }
 

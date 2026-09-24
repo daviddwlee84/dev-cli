@@ -24,6 +24,11 @@ block the move; the original path must be safe under the current Try root or an
 explicit `--to` is required. There is no general repo-to-Try conversion, automatic
 whole-clone eviction, mirror synchronization or remote Tab search in this change.
 
+Demotion observes all available runtime backends; incomplete coverage cannot
+prove absence. On Windows, demotion and concurrent dev lifecycle writers must
+all use v0.3.0 or later to share the lease across the directory move. Older dev
+binaries, raw Git and external tools are outside this move guarantee.
+
 Submodule addition and REPOS/REMOTE clone-URL copy are additive commands/actions.
 Addition supports network sources and new destinations only, defaults to pinned,
 and preserves unrelated staged work. It does not adopt local clones or change

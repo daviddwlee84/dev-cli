@@ -45,34 +45,30 @@ func acquireDir(ctx context.Context, dir, label string, movable bool) (*Lease, e
 		return nil, fmt.Errorf("canonicalize %s directory for lock: %w", label, err)
 	}
 	lockPath := filepath.Join(filepath.Dir(canonicalDir), "."+filepath.Base(canonicalDir)+".lock")
-	var directoryIdentity os.FileInfo
-	if movable {
-		directoryIdentity, err = os.Stat(canonicalDir)
-		if err != nil {
-			return nil, err
-		}
+	identity, err := directoryIdentity(canonicalDir)
+	if err != nil {
+		return nil, err
 	}
-	acquireFile := acquire
-	if movable {
-		acquireFile = acquireMovable
-	}
-	lock, err := acquireFile(ctx, lockPath)
+	lock, err := acquireDirectory(ctx, lockPath, identity, movable)
 	if err != nil {
 		return nil, fmt.Errorf("acquire %s lock: %w", label, err)
 	}
 	lease := &Lease{lock: lock, label: label}
-	if movable {
-		if err := validateRelocatableLock(canonicalDir, directoryIdentity, lockPath, lock.file); err != nil {
-			return nil, errors.Join(err, lease.Close())
-		}
+	if err := validateRelocatableLock(canonicalDir, identity, lockPath, lock.file); err != nil {
+		return nil, errors.Join(err, lease.Close())
 	}
 	return lease, nil
 }
 
-func validateRelocatableLock(dir string, expected os.FileInfo, path string, held *os.File) error {
-	current, err := os.Stat(dir)
-	if err != nil || !os.SameFile(expected, current) {
+func validateRelocatableLock(dir, expected, path string, held *os.File) error {
+	current, err := directoryIdentity(dir)
+	if err != nil || expected != current {
 		return errors.New("relocatable lock directory changed while acquiring its lease")
+	}
+	if held == nil {
+		// Windows relocation holds the physical-directory kernel mutex only.
+		// Any descendant file handle would prevent renaming its ancestor.
+		return nil
 	}
 	named, err := os.Lstat(path)
 	if err != nil || !named.Mode().IsRegular() {
@@ -86,9 +82,11 @@ func validateRelocatableLock(dir string, expected os.FileInfo, path string, held
 }
 
 // WithDirRelocatable is an explicit lease for operations that may rename the
-// protected directory's containing tree. Windows grants delete sharing only for
-// this entry point; file locking still excludes other lease holders. A waiter
-// whose directory or named lock file changed fails before its operation runs.
+// protected directory's containing tree. Windows holds a physical-identity-keyed
+// global mutex shared by all directory lease callers, without an open descendant
+// file. Ordinary callers also retain their file lock. Windows relocation cannot
+// coordinate with pre-v0.3 binaries that implement only the old file lock.
+// Changed directory/file authority is rejected before the operation runs.
 func WithDirRelocatable(ctx context.Context, dir, label string, operation func() error) (err error) {
 	if operation == nil {
 		return fmt.Errorf("%s lock requires an operation", label)

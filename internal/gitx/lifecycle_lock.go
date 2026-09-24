@@ -26,12 +26,12 @@ func WithLifecycleMoveLock(ctx context.Context, commonDir string, operation func
 
 func withLifecycleLock(ctx context.Context, commonDir string, operation func() error, movable bool) error {
 	var dirs []string
-	identities := map[string]os.FileInfo{}
+	identities := map[string]string{}
 	for p := filepath.Clean(commonDir); ; p = filepath.Dir(p) {
 		if info, err := os.Stat(filepath.Join(p, "objects")); err == nil && info.IsDir() {
 			if _, err := os.Stat(filepath.Join(p, "config")); err == nil {
 				dirs = append(dirs, p)
-				identity, err := os.Stat(p)
+				identity, err := DirectoryIdentity(p)
 				if err != nil {
 					return err
 				}
@@ -53,9 +53,9 @@ func withLifecycleLock(ctx context.Context, commonDir string, operation func() e
 			}
 			return operation()
 		}
-		if expected := identities[dirs[i]]; expected != nil {
-			current, err := os.Stat(dirs[i])
-			if err != nil || !os.SameFile(expected, current) {
+		if expected := identities[dirs[i]]; expected != "" {
+			current, err := DirectoryIdentity(dirs[i])
+			if err != nil || expected != current {
 				return fmt.Errorf("Git directory identity changed before lock: %s", dirs[i])
 			}
 		}

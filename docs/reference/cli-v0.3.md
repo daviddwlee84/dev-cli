@@ -101,8 +101,8 @@ is active and present. It does not reverse commits, push, repository publication
 or Git initialization, and does not leave a symlink at the old location.
 
 Run from outside the checkout. A destination must be an immediate visible child
-of the current Try root, and runtime coverage must be observable; `none` does
-not prove that the checkout is unused.
+of the current Try root. Runtime observations cover all available backends;
+incomplete coverage or `none` does not prove that the checkout is unused.
 
 The default destination is the recorded original Try path. If it is occupied or
 outside the current `tries_root`, supply a safe `--to` destination instead.
@@ -111,6 +111,10 @@ retargeted. Unsafe paths, incomplete observations and stale plans block the
 operation. Moves retain the existing same-filesystem, source-revalidation and
 recovery safeguards. The CLI applies after showing the move; `--dry-run` only
 previews. In REPOS, use the demote action, review the move, and confirm it.
+
+On Windows, demotion and concurrent dev lifecycle writers must all use v0.3.0
+or later to participate in the same lease across the directory move. Older dev
+binaries, raw Git and external tools are outside this move guarantee.
 
 | Dimension | Transitions |
 |---|---|
