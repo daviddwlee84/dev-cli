@@ -50,7 +50,7 @@ func (m Model) listPreambleLines() int {
 			}
 			break
 		}
-		if m.viewLoad(ViewRemote).loading && len(m.visibleRemotes()) > 0 {
+		if m.viewLoad(ViewRemote).loading && len(m.visibleRemoteItems()) > 0 {
 			lines++
 		}
 	case ViewSkills:
@@ -687,6 +687,9 @@ func fitCell(s string, width int) string {
 }
 
 func (m Model) renderRemotes() string {
+	if m.actions.PRs.Load != nil {
+		return m.renderRemoteTree()
+	}
 	if m.viewLoad(ViewRemote).loading && len(m.remotes) == 0 {
 		return "  " + styleDim.Render("Loading repositories from forge CLIs…") + "\n"
 	}
@@ -1376,6 +1379,9 @@ func (m Model) renderDetail() string {
 		return strings.Join(lines, "\n") + "\n"
 	}
 
+	if item, ok := m.currentRemoteItem(); ok && (item.PR != nil || item.more) {
+		return m.renderRemotePRDetail(item)
+	}
 	if r, ok := m.currentRemote(); ok {
 		lines := []string{
 			fmt.Sprintf("  %s %s", styleDim.Render("url  "), r.Repo.URL),
@@ -1409,6 +1415,9 @@ func (m Model) renderDetail() string {
 			lines = append(lines, "  "+styleDim.Render("kind  ")+" fork")
 		}
 		lines = append(lines, m.metricDetail(r.Repo.Metrics, false)...)
+		if m.remotePRSupported(r.Repo) {
+			lines = append(lines, "  "+fitCell(m.remotePRSummary(m.remotePRState(r.Repo)), max(1, m.width-4)))
+		}
 		return strings.Join(lines, "\n") + "\n"
 	}
 
@@ -1632,6 +1641,9 @@ func (m Model) renderFooter() string {
 	}
 	if m.view == ViewFleet && m.hostFleetEnabled() {
 		primary = "Enter navigate · Space expand · Ctrl+O actions"
+	}
+	if m.view == ViewRemote && !m.snippetsActive() && m.actions.PRs.Load != nil {
+		primary = "Enter open · Space PRs · Ctrl+O actions · / loaded rows"
 	}
 	if m.remoteClone.active() {
 		primary = "q cancel clone"

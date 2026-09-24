@@ -7,7 +7,7 @@ verified_on: 2026-09-24
 
 # Worktrees and provisioning
 
-Submodule Git initialization precedes environment provisioning and defaults to recursive pinned checkouts. `--no-provision` does not disable it; use `--submodules=none`. Initialization failure retains the worktree without opening its runtime. See [Submodule workspaces](submodule-workspaces.md).
+For ordinary clone/worktree acquisition, submodule Git initialization precedes environment provisioning and defaults to recursive pinned checkouts. `--no-provision` does not disable it; use `--submodules=none`. Initialization failure retains the worktree without opening its runtime. See [Submodule workspaces](submodule-workspaces.md).
 
 A Git worktree begins as a clean checkout. `dev` owns durable change-stream worktrees and builds an inspectable plan for the ignored files and dependencies needed to make them usable.
 
@@ -81,6 +81,23 @@ Report repository, branch, actual checkout path and runtime handle/result when
 handing work back. Adoption is separate task intent, not a visibility switch;
 harness-owned temporary isolation remains distinct from durable implementation
 work. See [Parallel agents and runtimes](parallel-agents-runtimes.md).
+
+## PR checkout acquisition defaults
+
+`dev pr checkout <PR-or-MR-URL>` reuses an exact matching checkout or creates a
+task-free worktree from the verified request head. Select multiple local clones
+with `--repo`; existing SSH/native remote transport is preserved, and ambiguous
+base remotes can be selected with `--source-remote`. Existing dirty files and
+local tips that differ from the remote head are never reset.
+
+PR acquisition explicitly differs from ordinary provisioning defaults: ignored
+files, dependency installers, project hooks and submodule initialization remain
+off until `--provision`, with existing trust checks. Without a local repository,
+`--try` creates an independent dated clone with catalog identity; `--clone
+[--path PATH]` creates a project clone plus worktree. Neither creates a personal
+fork or task. `--dry-run` previews only; `--no-open`/`--json` do not open a runtime.
+After merge, cleanup still requires the existing independent lifecycle proofs.
+See [PR workflow](pull-request-inbox.md).
 
 ## Inspect before creating
 

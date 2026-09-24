@@ -1486,7 +1486,7 @@ Source: https://daviddwlee84.github.io/dev-cli/guides/worktrees-provisioning/
 
 > Choose the owner and location of each worktree, then provision ignored files and dependencies safely.
 
-Submodule Git initialization precedes environment provisioning and defaults to recursive pinned checkouts. `--no-provision` does not disable it; use `--submodules=none`. Initialization failure retains the worktree without opening its runtime. See [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
+For ordinary clone/worktree acquisition, submodule Git initialization precedes environment provisioning and defaults to recursive pinned checkouts. `--no-provision` does not disable it; use `--submodules=none`. Initialization failure retains the worktree without opening its runtime. See [Submodule workspaces](https://daviddwlee84.github.io/dev-cli/guides/submodule-workspaces/).
 
 A Git worktree begins as a clean checkout. `dev` owns durable change-stream worktrees and builds an inspectable plan for the ignored files and dependencies needed to make them usable.
 
@@ -1560,6 +1560,23 @@ Report repository, branch, actual checkout path and runtime handle/result when
 handing work back. Adoption is separate task intent, not a visibility switch;
 harness-owned temporary isolation remains distinct from durable implementation
 work. See [Parallel agents and runtimes](https://daviddwlee84.github.io/dev-cli/guides/parallel-agents-runtimes/).
+
+## PR checkout acquisition defaults
+
+`dev pr checkout <PR-or-MR-URL>` reuses an exact matching checkout or creates a
+task-free worktree from the verified request head. Select multiple local clones
+with `--repo`; existing SSH/native remote transport is preserved, and ambiguous
+base remotes can be selected with `--source-remote`. Existing dirty files and
+local tips that differ from the remote head are never reset.
+
+PR acquisition explicitly differs from ordinary provisioning defaults: ignored
+files, dependency installers, project hooks and submodule initialization remain
+off until `--provision`, with existing trust checks. Without a local repository,
+`--try` creates an independent dated clone with catalog identity; `--clone
+[--path PATH]` creates a project clone plus worktree. Neither creates a personal
+fork or task. `--dry-run` previews only; `--no-open`/`--json` do not open a runtime.
+After merge, cleanup still requires the existing independent lifecycle proofs.
+See [PR workflow](https://daviddwlee84.github.io/dev-cli/guides/pull-request-inbox/).
 
 ## Inspect before creating
 
@@ -3868,7 +3885,7 @@ roots also contain commented `go.mod` boundary markers: Go ignores
 markers declare no product packages or dependencies. Do not place them over
 embedded or generated build inputs, or create empty agent directories.
 
-`python3 scripts/check-distribution.py --version v0.3.2` independently builds
+`python3 scripts/check-distribution.py --version v0.3.3` independently builds
 the actual Git archive and a module ZIP with pinned `golang.org/x/mod v0.38.0`.
 Only a temporary clone disables export attributes for the module test. Both
 payloads are extracted, built and checked for version, help, completions and
@@ -5550,8 +5567,8 @@ provider reports a head branch, the matching local task/checkout. It changes
 nothing.
 
 !!! info "Freshness"
-    **Authority:** `internal/forge`, `internal/cli/pr*.go`, and their tests ·
-    **Status:** stable · **Verified:** 2026-09-02.
+    **Authority:** `internal/forge`, `internal/prflow`, `internal/cli/pr*.go`, and their tests ·
+    **Status:** stable · **Verified:** 2026-09-24.
 
 ## The problem
 
@@ -5618,18 +5635,123 @@ Account search cannot distinguish merged from closed. If `--state merged`,
 local surface. Structured output reports this **effective** scope (`"local"`),
 not the broader value originally requested.
 
-## Acting on a request
+## Repository pages and the REMOTE tree
 
-`dev` prints commands and never runs them:
+Expand a GitHub/GitLab repository in REMOTE with **Space** to load its PR/MR
+children. The repository inventory includes personal projects and accessible
+organization repositories. This page can show requests from other authors too;
+being the author or a requested reviewer is displayed separately.
+
+The default page contains up to 50 requests. If more than 50 open requests are
+known, the automatic view switches to your authored requests and requested
+reviews. The current scope, loaded count, overall count or lower bound, stale
+state, and **Load more** availability stay visible. Use **Ctrl+O** to select all
+open requests, related requests, refresh, or another page. Related queries are
+filtered by the provider, so an old request is not lost behind unrelated pages.
+Filtering `/` searches loaded rows only. Row badges and summaries use the
+accepted observations; missing checks remain unknown.
+
+The equivalent CLI repository page is explicit:
 
 ```bash
-dev pr list --actions
-dev pr list --json | jq -r '.pull_requests[].actions.merge'
+dev pr list --scope repo --repo github:owner/api
+dev pr list --scope repo --repo gitlab:group/api --role author,reviewer
+dev pr list --scope repo --repo github:owner/api --page-size 50 --json
+dev pr list --scope repo --repo github:owner/api --cursor '<next_cursor>' --json
 ```
 
-Approving, merging, commenting, resuming, and retiring remain operator actions.
-The current comment action contains only a generic body placeholder (`'...'`);
-`dev` does not synthesize a vendor review-trigger phrase.
+This scope requires one provider-qualified repository or repository URL. It
+supports `--role all|author|reviewer|author,reviewer` and all documented states.
+Continue with the returned opaque cursor and unchanged account, repository,
+state, role and page size. JSON adds `pagination` (`next_cursor`, `complete`,
+`total`, `total_lower_bound`, `relationship`) to the existing schema-v1 object.
+A loaded page is not the whole repository when another cursor remains.
+
+## Inspect and try a request
+
+```bash
+dev pr view https://github.com/owner/api/pull/12
+dev pr view https://gitlab.com/group/api/-/merge_requests/12 --json
+dev pr diff https://github.com/owner/api/pull/12
+dev pr diff https://github.com/owner/api/pull/12 --no-pager > pr.diff
+dev pr checkout https://github.com/owner/api/pull/12 --dry-run
+```
+
+`view` reads fresh checks, review/merge readiness, change size where available,
+and local checkout candidates. `diff` uses optional `diffnav` in a terminal and
+otherwise writes the provider diff. Terminal output neutralizes control
+sequences; piped output retains patch bytes. This is a live remote preview,
+not immutable approval evidence. Provider limits, binary omissions and changed
+file counts are reported. An incomplete preview can be inspected interactively;
+noninteractive output refuses to produce a misleading complete patch. `--web`
+opens the request or diff in the browser.
+
+`checkout` reuses an exact matching checkout without resetting it. Dirty files
+or a local tip different from the current PR head are reported and retained.
+Otherwise it fetches the selected request and creates a task-free worktree from
+the verified head. Multiple local matches require selecting `--repo`; an
+existing matching SSH remote keeps its native transport, and `--source-remote`
+can select among ambiguous base remotes. No personal fork is created.
+
+```bash
+dev pr checkout https://github.com/owner/api/pull/12 --repo ~/src/api
+dev pr checkout https://github.com/owner/api/pull/12 --try
+dev pr checkout https://github.com/owner/api/pull/12 --clone --path ~/src/api
+dev pr checkout https://github.com/owner/api/pull/12 --try --provision
+```
+
+Without a local repository, interactive checkout offers an independent dated
+Try clone or a project clone plus worktree; Try is the suggested choice. Scripts
+must choose `--try` or `--clone`. Provisioning, ignored-file copying, dependency
+installation, project hooks and submodule initialization are off for PR
+acquisition until explicit `--provision`; established project trust still
+applies. A new Try keeps catalog identity and its own clone. `--no-open` prepares
+only the checkout; `--json` reports paths and retained effects without opening a
+runtime. Task adoption and eventual cleanup remain separate actions.
+
+## Merge and update the local base
+
+```bash
+dev pr merge https://github.com/owner/api/pull/12 --squash --dry-run
+dev pr merge https://github.com/owner/api/pull/12 --squash
+dev pr merge https://github.com/owner/api/pull/12 --squash --sync-base ff-only --repo ~/src/api
+dev pr sync-base https://github.com/owner/api/pull/12 --repo ~/src/api --strategy rebase
+```
+
+Merge reviews one exact head and rechecks the account, repository, refs,
+permissions and current provider readiness before one immediate squash request.
+Use `--yes` for a reviewed noninteractive operation. Passing checks alone do not
+mean ready: draft, review requirements, unknown policy, queue/auto-merge and
+GitLab merge trains can block this action. Those deferred workflows remain in
+the provider UI; dev offers no admin override. Provider branch-deletion policy
+is shown before merge, although dev does not request branch deletion.
+
+Private attempt/result receipts live under `<state_dir>/pr-merges/`. An
+interrupted write may have completed remotely: dev preserves **unknown**,
+reconciles only by reads, and does not send the merge again. A cached ready badge
+or a previously viewed diff never authorizes a new write.
+
+Base synchronization starts only after confirmed merge and uses the actual PR
+base branch, which need not be `main`. It fetches first, then constructs a fresh
+local synchronization plan. Fast-forward is the default; rebase requires an
+explicit strategy. Dirty, occupied, ambiguous or changed checkouts block
+mutation. No branch switch, stash, force reset or automatic cleanup is implied.
+Merge and local synchronization have separate results: a later sync failure
+retains the completed remote merge and any recovery information.
+
+`dev pr list --actions` still prints operator commands without executing them.
+Approve and comment remain provider actions; comment suggestions contain only a
+generic `'...'` placeholder, never an AI-review trigger phrase.
+
+## Native gh-dash
+
+The dashboard action opens an explicitly installed `dlvhdr/gh-dash` through
+`gh dash`, retaining its configuration and keybindings. It passes the selected
+GitHub host/repository and a verified local checkout when available; otherwise
+it uses a neutral temporary directory, not another project's local config.
+It neither installs the extension nor rewrites `.gh-dash.yml`, and does not
+promise to select a particular PR inside the native dashboard. GitLab requests
+continue through dev's MR actions or the browser.
 
 ## Retiring the worktree behind a merged request
 
@@ -6852,6 +6974,29 @@ manager, or preaccept terms. The executable is checked afterwards, with an
 OpenSSH capability query for `ssh`; authentication and service startup remain
 separate. Installation cancellation/failure is not retried.
 
+## REMOTE pull requests
+
+**Space** expands a GitHub/GitLab repository into PR/MR children. The default
+page size is 50; automatic scope shows all open requests for smaller repositories
+and your authored/requested-review requests when more than 50 are known. Scope,
+loaded count, overall count or lower bound, stale observations and pagination
+are visible. **Ctrl+O** changes scope, refreshes, or loads more; `/` searches
+loaded rows without provider traffic. Author/reviewer badges remain distinct
+from lifecycle and checks, and summaries describe the accepted loaded batch.
+
+A PR row's actions inspect fresh details, preview via optional diffnav, open or
+reuse its exact checkout, create an independent Try, explicitly provision,
+review an immediate squash merge, or synchronize a confirmed merged PR's local
+base. Cached readiness never authorizes a write. Checkout defaults to no task,
+no automatic fork and no provisioning/submodule initialization. Merge and local
+sync report separate retained effects; no action here implies cleanup.
+
+**Open in gh-dash** is available for supported GitHub context when the native
+`dlvhdr/gh-dash` extension is installed. It retains native config/keybindings,
+passes the selected host/repository, and returns to dev when the child exits.
+No extension installation or config rewriting occurs. See the [PR workflow](https://daviddwlee84.github.io/dev-cli/guides/pull-request-inbox/)
+for CLI equivalents, provider limitations and merge receipts.
+
 ## REMOTE snippets
 
 REMOTE starts with repositories. Use **Ctrl+O → Show snippets** to load GitHub
@@ -7849,7 +7994,7 @@ and add `--aliases` to reveal shortcuts. See the [v0.3 migration guide](https://
 | Goal | Commands |
 |---|---|
 | tracked work | `work list/start/park/resume/done/adopt/retire/sweep` |
-| repositories/remotes | `repo list/context/new/clone/fork/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
+| repositories/remotes | `repo list/context/new/clone/fork/setup/open/cd/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
 | experiments | `tries try/open/list/graduate/demote`, `tries deprecate/reactivate/archive/restore/delete` |
 | Git and checkout support | `git uncommit/recommit/pull-rebase/amend-all/setup`, `git ignore`, `git worktree …`, `git submodule …`, `git hygiene …` |
 | coding-agent support | `agent skill …`, `agent mcp …`, `agent instructions …`, `agent prompt …`, `agent artifact …`, `agent artifact prepare` |
@@ -7859,6 +8004,15 @@ and add `--aliases` to reveal shortcuts. See the [v0.3 migration guide](https://
 
 
 Run `dev <command> --help` for the installed binary; this site describes the repository version identified in its freshness metadata.
+
+## Repository shell navigation (v0.3.3)
+
+`dev repo cd lazyset` is equivalent to `dev repo open lazyset --runtime none`.
+It shares name/path resolution, completion and errors with `repo open`, but
+always uses the no-multiplexer backend, even with a configured or explicit
+runtime override. It does not change the runtime setting of other commands.
+With the shell wrapper installed, the calling shell changes directory; without
+it, the command prints a safely quoted `cd` directive.
 
 ## Read help on demand (v0.2.24)
 
@@ -8015,6 +8169,39 @@ only when the expected branch was actually proven checked out and status was
 available; it contains `dirty`, `ahead`, `behind`, and optional `upstream`.
 Missing/cold/unregistered status therefore cannot look clean through zero values.
 Schema 1 is add-only.
+
+### PR actions and repository pagination
+
+`dev pr list --scope repo --repo github:owner/name` adds an explicit single-repo
+surface; a repository URL is also accepted. Bare `owner/name` remains valid for
+the existing account/local scopes but does not choose a provider here. Repository
+scope defaults to all authors, supports `--role all|author|reviewer|author,reviewer`,
+`--page-size` (default 50) and an opaque `--cursor`. Keep account, repository,
+state, role and page size unchanged when continuing. The additive `pagination`
+object includes `next_cursor`, `complete`, `total`, `total_lower_bound` and
+`relationship`; a lower bound is not an exact total.
+
+`dev pr view <URL> [--json|--web]`, `diff <URL> [--no-pager|--web]`, and
+`checkout <URL>` share exact provider URL resolution. Checkout supports
+`--repo`, `--source-remote`, `--try`, `--clone [--path PATH]`, `--provision`,
+`--dry-run`, `--no-open` and `--json`; it does not create a task or fork.
+`merge <URL> --squash [--sync-base none|ff-only|rebase]` reviews an immediate
+merge, while `sync-base <URL> --strategy ff-only|rebase` updates a confirmed
+merged request's base separately. Both accept `--repo`, `--dry-run`, `--yes`
+and `--json`. JSON does not waive confirmation. See [PR workflow](https://daviddwlee84.github.io/dev-cli/guides/pull-request-inbox/).
+
+Dashboard PR pages use separate session freshness settings:
+
+```toml
+[tui.remote.prs]
+large_repo_threshold = 50
+page_size = 50
+cache_ttl = "5m"
+```
+
+These are the effective defaults and do not change repository inventory or
+statistics policy under `forge.cache_ttl`. Zero selects the PR defaults;
+negative settings and page sizes over 100 are rejected.
 
 ### Ephemeral-worktree report and apply contract
 
@@ -10165,11 +10352,40 @@ dev help [topic|command path] [flags]
 
 ### `dev pr`
 
-List the pull requests waiting on you and their local worktrees
+Inspect, try and merge pull requests with explicit actions
 
 ```
 dev pr
 ```
+
+### `dev pr checkout`
+
+Open a request in an existing checkout, a task-free worktree, or a Try
+
+```
+dev pr checkout <URL> [flags]
+```
+
+- `--clone` — clone the base repository into project_root before creating a worktree
+- `--dry-run` — inspect the checkout plan without fetching or changing files
+- `--json` — emit a plan or result with retained effects; do not open a runtime
+- `--no-open` — prepare the checkout without opening a runtime or changing directory
+- `--path` — project clone destination (requires --clone)
+- `--provision` — explicitly provision the new checkout and initialize configured submodules
+- `--repo` — select an exact local repository or checkout
+- `--source-remote` — select the existing base repository remote used to fetch the PR
+- `--try` — create an independent PR clone under tries_root
+
+### `dev pr diff`
+
+Preview a request diff with diffnav, or write it to stdout
+
+```
+dev pr diff <URL> [flags]
+```
+
+- `--no-pager` — write diff directly without starting diffnav
+- `--web` — open the request diff in the browser
 
 ### `dev pr list`
 
@@ -10181,13 +10397,55 @@ dev pr list [query] [flags]
 
 - `--actions` — print the gh/glab commands for each request
 - `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--cursor` — continue the previous --scope repo page
 - `--json` — emit structured output
 - `--limit` — cap the rows rendered
 - `--linked` — only requests with a checked-out local branch
+- `--page-size` — requests per --scope repo page (1-100)
 - `--repo` — restrict to these owner/name repositories
-- `--role` — limit to author or reviewer (default both)
-- `--scope` — which surface to query: account, local or all
+- `--role` — limit to author or reviewer; repo scope also accepts all (its default)
+- `--scope` — which surface to query: account, local, all or repo (one explicit --repo)
 - `--state` — request state: open, merged, closed or all
+
+### `dev pr merge`
+
+Preview and perform one immediate squash merge
+
+```
+dev pr merge <URL> [flags]
+```
+
+- `--dry-run` — preview without merging or fetching
+- `--json` — emit structured stage results; confirmation still requires --yes outside a terminal
+- `--repo` — select the local repository for optional base synchronization
+- `--squash` — explicitly squash the reviewed head
+- `--sync-base` — after confirmed merge, update the local base: none, ff-only or rebase
+- `-y, --yes` — approve the displayed merge and explicitly selected synchronization strategy
+
+### `dev pr sync-base`
+
+Update the local base of a confirmed merged request
+
+```
+dev pr sync-base <URL> [flags]
+```
+
+- `--dry-run` — preview the fetch stage; no refs or checkouts are changed
+- `--json` — emit structured plan or stage results
+- `--repo` — select the local repository whose actual base checkout should be updated
+- `--strategy` — base update strategy: ff-only or explicit rebase
+- `-y, --yes` — approve the displayed fetch and fresh base synchronization plans
+
+### `dev pr view`
+
+Inspect one pull request's checks, changes and merge readiness
+
+```
+dev pr view <URL> [flags]
+```
+
+- `--json` — emit structured observations
+- `--web` — open the exact request in the browser
 
 ### `dev repo`
 
@@ -10244,6 +10502,14 @@ dev repo browse [repo-or-path] [flags]
 
 - `--print` — print the HTTPS URL without opening a browser
 - `--remote` — select a configured Git remote
+
+### `dev repo cd`
+
+Change shell directory to a repository without opening a runtime
+
+```
+dev repo cd <repo>
+```
 
 ### `dev repo clone`
 
@@ -12442,6 +12708,33 @@ Personal per-repository inventory may make one paginated query per requested rol
 
 The schema-version-1 local join reports expected and live branches, checkout existence, worktree registration, status availability/error, and whether the expected branch is actually checked out. Git details are omitted unless those live checks succeed. Azure DevOps pull requests are not listed at all; a configured target is reported as unsupported rather than failing the command.
 
+### Explicit PR/MR actions
+
+The existing `pr list` account/local/all behavior and schema-v1 fields remain.
+Repository pagination adds `--scope repo`, explicit provider selection and an
+additive `pagination` object. Selected details can supply checks absent from a
+list; absent, failed, stale and unsupported observations remain distinct from
+passing checks or ready-to-merge.
+
+GitHub and GitLab support URL-based view/diff/checkout and guarded immediate
+squash merge. Queue/auto-merge, GitLab trains, unknown permissions or unsupported
+policy fields block dev's merge action; use the provider UI. There is no admin
+override, and provider-side bypass privileges are not converted into an atomic
+no-bypass guarantee. No Azure PR action is inferred from repository inventory.
+
+Diffnav and native gh-dash are optional. Live provider diffs can omit binary or
+oversized contents; partial terminal previews are labelled and incomplete
+noninteractive patch output fails. GitHub search has a provider result ceiling;
+large or incomplete search results must be narrowed rather than reported as a
+complete inbox. Native gh-dash keeps its user configuration and keybindings.
+
+PR checkout retains exact existing local changes, uses task-free worktrees or
+independent catalog-backed Try clones, and requires explicit `--provision` for
+project setup and submodules. Merge receipts are private durable state, not
+cache. Unknown writes never auto-retry. Base sync is separately guarded and may
+fail after a successful merge without changing the confirmed remote outcome.
+Neither merge nor sync authorizes worktree, Try, task or artifact removal.
+
 ### Prompt open uses the current terminal, not runtime placement
 
 `dev agent prompt open <recipe>` runs one configured child in the foreground of the
@@ -12489,7 +12782,7 @@ the requested checkout.
 
 ### Forge CLI sign-in is reported, never retried
 
-`gh` and `glab` are optional and independent, and `dev` never authenticates on your behalf. When a provider's stored credential is missing or rejected, `dev` reports which provider and the exact login command — for example ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — and continues with whatever the other provider returned. `dev repo remote` and the TUI REMOTE view render the partial result and warn; `dev pr` fails only when no provider is authenticated at all. `dev self doctor` probes sign-in state, so an installed but signed-out CLI is visible before a command needs it.
+`gh` and `glab` are optional and independent, and `dev` never authenticates on your behalf. When a provider's stored credential is missing or rejected, `dev` reports which provider and the exact login command — for example ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — and continues with whatever the other provider returned. `dev repo remote` and the TUI REMOTE view render the partial result and warn; The account/local `dev pr list` fails only when no provider is authenticated at all; a URL action needs its selected provider. `dev self doctor` probes sign-in state, so an installed but signed-out CLI is visible before a command needs it.
 
 Only a missing or rejected credential is reported this way. A rate limit, a permissions or scope failure, and a network error keep their full diagnostic text including the command that failed, because signing in again would not fix them. The original command and provider output remain in the wrapped error in every case.
 
@@ -13633,6 +13926,23 @@ schema references are [GitHub repositories](https://docs.github.com/en/graphql/r
 [GitHub Gists](https://docs.github.com/en/graphql/reference/gists) and
 [GitLab Project](https://docs.gitlab.com/api/graphql/reference/#project).
 These are dated observations, not evidence of synchronization or cleanup safety.
+
+## PR workspace and merge actions (2026-09-25)
+
+[The PR workflow](https://daviddwlee84.github.io/dev-cli/guides/pull-request-inbox/) and REMOTE tree are defined by
+`internal/prflow`, `internal/forge/pr_native*`, `internal/cli/pr*.go`, dashboard
+adapters and their hermetic Git/provider tests. Coverage includes account-bound
+pagination, related provider queries, unknown checks, exact checkout selection,
+sealed Try acquisition, immediate squash receipts, fresh base synchronization,
+terminal control neutralization and provider diff omissions. These tests do not
+claim live account writes or universally available enterprise policy fields.
+
+Provider semantics were checked against [GitHub merge API](https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request),
+[GitHub GraphQL PR fields](https://docs.github.com/en/graphql/reference/pulls#object-pullrequest)
+and [GitLab MR API](https://docs.gitlab.com/api/merge_requests/) on 2026-09-25.
+Native gh-dash is a foreground handoff retaining its own configuration; dev does
+not promise a particular native PR selection. PR session cache defaults to five
+minutes independently of `forge.cache_ttl`.
 
 ---
 
@@ -15236,7 +15546,7 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/worktrees-provisioni
 
 > 選擇每個 worktree 的 owner 與位置，再安全佈建 ignored files 與 dependencies。
 
-Submodule Git 初始化先於環境 provisioning，預設遞迴建立固定在 gitlink 的 checkout。`--no-provision` 不略過它，需使用 `--submodules=none`。初始化失敗保留 worktree，但不開 runtime。見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
+一般 clone/worktree acquisition 的 submodule Git 初始化先於環境 provisioning，預設遞迴建立固定在 gitlink 的 checkout。`--no-provision` 不略過它，需使用 `--submodules=none`。初始化失敗保留 worktree，但不開 runtime。見 [Submodule 工作區](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/submodule-workspaces/)。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -15304,6 +15614,20 @@ activation/shell navigation 不變；runtime error 仍使 command 失敗。
 交付時立即回報 repository、branch、實際 checkout path 與 runtime handle/result。
 Adoption 是另一個 task intent 決定，不是可見性開關；harness-owned 暫時隔離仍與
 持久的實作工作分開。詳見 [平行 Agent 與 Runtime](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/parallel-agents-runtimes/)。
+
+## PR checkout 的 acquisition defaults
+
+`dev pr checkout <PR-or-MR-URL>` 重用 exact matching checkout；否則從 verified
+request head 建立 task-free worktree。有多個 clone 時以 `--repo` 選定，Git remote 的
+原本 SSH/native transport 會保留；base remote 有歧義可用 `--source-remote`。既有
+checkout 的 dirty files 與與 remote head 不同的 local tip 都不會被 reset。
+
+PR acquisition 是一般 provisioning defaults 的明確例外：預設不複製 ignored files、
+不跑 dependencies/hooks、不初始化 submodules，需使用 `--provision` 與既有 trust
+checks。沒有 local repository 時，`--try` 建立獨立、具 catalog identity 的 dated clone；
+`--clone [--path PATH]` 建立 project clone 加 worktree。兩者都不 fork、不建立 task。
+`--dry-run` 只 preview，`--no-open`／`--json` 不開 runtime。Merge 後的 cleanup 仍需
+另外取得既有 lifecycle proof。詳見 [PR workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/)。
 
 ## 建立前先檢查
 
@@ -17358,7 +17682,7 @@ dev-cli 的 release source archive 透過 `.gitattributes` 排除 repo root 的
 但會從父 module ZIP 排除巢狀 module；這些標記沒有產品 package 或依賴。
 不可把標記放在 embedded／generated build inputs 上，也不建立空的 agent 目錄。
 
-`python3 scripts/check-distribution.py --version v0.3.2` 分別產生真正的 Git
+`python3 scripts/check-distribution.py --version v0.3.3` 分別產生真正的 Git
 archive 與使用固定 `golang.org/x/mod v0.38.0` 的 module ZIP；只有暫存 clone
 會停用 module 測試的 export attributes。兩種 payload 都會解壓、編譯，並驗證
 版本、help、completion 與 bundled skill。這不會縮小一般 Git clone 或舊 tags。
@@ -18858,8 +19182,8 @@ Source: https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/
 branch 時，也顯示 matching local task/checkout。它不會改變任何東西。
 
 !!! info "時效"
-    **Authority：**`internal/forge`、`internal/cli/pr*.go` 與其測試 ·
-    **Status：**stable · **Verified：**2026-09-02。
+    **Authority：**`internal/forge`、`internal/prflow`、`internal/cli/pr*.go` 與其測試 ·
+    **Status：**stable · **Verified：**2026-09-25。
 
 ## 問題
 
@@ -18921,17 +19245,107 @@ Account search 無法區分 merged 與 closed。若用 account/all scope 要求 
 merged`、`closed` 或 `all`，collection 會 narrow 到 local surface。Structured output
 回報這個 **effective** scope（`"local"`），不是原先要求的較廣 scope。
 
-## 對 request 採取行動
+## Repository 分頁與 REMOTE tree
 
-`dev` 只印 command，永遠不執行：
+在 REMOTE 選取 GitHub/GitLab repository，按 **Space** 載入 PR/MR child rows。
+Repository inventory 包含個人專案與有權限存取的 organization repositories；這裡也能
+看見其他人開的 request，作者是自己或正在等自己 review 會另以 badge／顏色區分。
+
+每頁預設最多 50 筆。已知 open requests 超過 50 時，automatic view 切到自己提出的
+requests 與等自己 review 的 requests。畫面持續顯示目前 scope、已載入筆數、overall
+count 或其下限、stale 狀態及 **Load more**。**Ctrl+O** 可改選全部 open requests、
+related requests、refresh 或下一頁。Related filter 在 provider 端執行，不會因為自己的
+舊 PR 不在全部清單第一頁就漏掉。`/` 只搜尋已載入 rows；badge 與 summary 根據接受的
+observations，未回報的 checks 保留 unknown。
+
+CLI 可明確讀取 repository page：
 
 ```bash
-dev pr list --actions
-dev pr list --json | jq -r '.pull_requests[].actions.merge'
+dev pr list --scope repo --repo github:owner/api
+dev pr list --scope repo --repo gitlab:group/api --role author,reviewer
+dev pr list --scope repo --repo github:owner/api --page-size 50 --json
+dev pr list --scope repo --repo github:owner/api --cursor '<next_cursor>' --json
 ```
 
-Approve、merge、comment、resume 與 retire 都仍是 operator action。目前 comment action
-只含 generic body placeholder（`'...'`）；`dev` 不會合成 vendor review-trigger phrase。
+此 scope 需要一個 provider-qualified repository 或 repository URL，支援
+`--role all|author|reviewer|author,reviewer` 與所有 documented states。下一頁使用回傳的
+opaque cursor，account、repository、state、role、page size 必須保持相同。JSON 在既有
+schema-v1 object 新增 `pagination`（`next_cursor`、`complete`、`total`、
+`total_lower_bound`、`relationship`）。仍有下一頁時，已載入頁面不是整個 repository。
+
+## 檢查與試用 request
+
+```bash
+dev pr view https://github.com/owner/api/pull/12
+dev pr view https://gitlab.com/group/api/-/merge_requests/12 --json
+dev pr diff https://github.com/owner/api/pull/12
+dev pr diff https://github.com/owner/api/pull/12 --no-pager > pr.diff
+dev pr checkout https://github.com/owner/api/pull/12 --dry-run
+```
+
+`view` 讀取最新 checks、review／merge readiness、provider 可提供的變更大小，以及
+local checkout 候選。Terminal 中 `diff` 使用選用的 `diffnav`；否則輸出 provider diff。
+Terminal output 會處理 control sequences，pipe output 則保留 patch bytes。這是 live
+remote preview，不是不可變的 approval evidence。Provider 限制、binary omission 與
+file count 變動會明確回報；interactive 可以查看 partial preview，noninteractive 則
+拒絕輸出可能被誤當成完整 patch 的內容。`--web` 在 browser 開啟 request 或 diff。
+
+`checkout` 重用 exact matching checkout，不 reset 內容。Dirty files 或與目前 PR head
+不同的 local tip 會回報並保留；沒有可重用 checkout 時，才 fetch 指定 request，從
+verified head 建立 task-free worktree。多個 local matches 需要以 `--repo` 選定；既有
+matching SSH remote 保留原本 transport，base remotes 有歧義時可用 `--source-remote`。
+不會建立 personal fork。
+
+```bash
+dev pr checkout https://github.com/owner/api/pull/12 --repo ~/src/api
+dev pr checkout https://github.com/owner/api/pull/12 --try
+dev pr checkout https://github.com/owner/api/pull/12 --clone --path ~/src/api
+dev pr checkout https://github.com/owner/api/pull/12 --try --provision
+```
+
+沒有 local repository 時，interactive checkout 提供獨立 dated Try clone 或 project
+clone 加 worktree，預設建議 Try。Script 必須指定 `--try` 或 `--clone`。PR acquisition
+預設不 provision、不複製 ignored files、不安裝 dependencies、不執行 project hooks，
+也不初始化 submodules；需明確 `--provision`，既有 project trust 檢查仍適用。新 Try
+保有 catalog identity 與自己的 clone。`--no-open` 只準備 checkout；`--json` 回報 paths
+與 retained effects，不開 runtime。Task adoption 與日後 cleanup 仍是獨立 action。
+
+## Merge 與更新 local base
+
+```bash
+dev pr merge https://github.com/owner/api/pull/12 --squash --dry-run
+dev pr merge https://github.com/owner/api/pull/12 --squash
+dev pr merge https://github.com/owner/api/pull/12 --squash --sync-base ff-only --repo ~/src/api
+dev pr sync-base https://github.com/owner/api/pull/12 --repo ~/src/api --strategy rebase
+```
+
+Merge 先 review exact head，送出一次 immediate squash 前重新檢查 account、repository、
+refs、permissions 與 provider readiness。已 review 的 noninteractive operation 使用
+`--yes`。Checks passing 不等於 ready；draft、review requirements、unknown policy、
+queue／auto-merge、GitLab merge trains 都可能阻擋。延後合併流程留在 provider UI，dev
+不提供 admin override。Provider 的 branch-deletion policy 會在 merge 前顯示，dev 本身
+不要求刪除 branch。
+
+Private attempt/result receipts 位於 `<state_dir>/pr-merges/`。中斷的 write 可能已在
+remote 完成；dev 保留 **unknown**、只透過 reads reconcile，不再送出 merge。Cached
+ready badge 或之前看過的 diff 都不是新 write 的授權。
+
+只有 confirmed merge 後才開始 base synchronization，目標是 PR 的實際 base branch，
+不硬編碼 `main`。先 fetch，再建立新的 local synchronization plan。預設 fast-forward；
+rebase 需要明確 strategy。Dirty、occupied、ambiguous 或已改變的 checkout 會阻擋
+mutation；不隱含切 branch、stash、force reset 或 cleanup。Remote merge 與 local sync
+分開回報：後續 sync 失敗仍保留已完成的 remote merge 與 recovery information。
+
+`dev pr list --actions` 仍只列印 operator commands，不會執行。Approve、comment 留在
+provider；comment suggestion 只含 generic `'...'`，不產生 AI-review trigger phrase。
+
+## Native gh-dash
+
+Dashboard action 透過 `gh dash` 開啟已明確安裝的 `dlvhdr/gh-dash`，保留它的設定與
+keybindings。它傳入所選 GitHub host/repository；有 verified local checkout 就用其
+目錄，否則使用 neutral temporary directory，避免讀到另一個專案的 local config。
+它不安裝 extension、不改寫 `.gh-dash.yml`，也不保證在 native dashboard 內選中某一個
+PR。GitLab request 繼續使用 dev MR actions 或 browser。
 
 ## 收掉 merged request 背後的 worktree
 
@@ -19978,6 +20392,26 @@ package manager 時只提供指引。前景安裝保留原生提示，不新增�
 manager、不預先接受條款。完成後檢查執行檔，`ssh` 另檢查 OpenSSH capability；
 驗證與服務啟動分開處理。取消或失敗不自動重試。
 
+## REMOTE pull requests
+
+在 GitHub/GitLab repository 按 **Space** 展開 PR/MR children。預設 page size 為 50；
+automatic scope 對較小 repository 顯示全部 open requests，已知超過 50 筆時改顯示自己
+提出或等自己 review 的 requests。Scope、loaded count、overall count 或其下限、stale
+observations 與 pagination 都可見。**Ctrl+O** 可切 scope、refresh、load more；`/` 只搜
+已載入 rows，不連 provider。Author/reviewer badges 與 lifecycle／checks 分開，summary
+只描述已接受的 loaded batch。
+
+PR row actions 可讀取 fresh details、用選用的 diffnav preview、開啟或重用 exact
+checkout、建立獨立 Try、明確 provision、review immediate squash merge，或同步 confirmed
+merged PR 的 local base。Cached readiness 不授權 write。Checkout 預設沒有 task、不自動
+fork、不 provision／初始化 submodules。Merge 與 local sync 分別回報 retained effects，
+這些動作都不隱含 cleanup。
+
+已安裝 native `dlvhdr/gh-dash` extension 時，支援的 GitHub context 會提供 **Open in
+gh-dash**。它保留 native config/keybindings，傳入所選 host/repository，child 結束後回到
+dev，不安裝 extension 或改寫設定。CLI equivalents、provider 限制與 merge receipts
+請見 [PR workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/)。
+
 ## REMOTE snippets
 
 REMOTE 預設顯示 repositories。**Ctrl+O → Show snippets** 載入 GitHub Gists
@@ -20994,7 +21428,7 @@ completion 保持相容。`dev help --tree` 預設展開兩層，`--depth 0` 展
 | 目標 | Commands |
 |---|---|
 | 追蹤工作 | `work list/start/park/resume/done/adopt/retire/sweep` |
-| Repository／Remote | `repo list/context/new/clone/fork/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
+| Repository／Remote | `repo list/context/new/clone/fork/setup/open/cd/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
 | 實驗 | `tries try/open/list/graduate/demote`, `tries deprecate/reactivate/archive/restore/delete` |
 | Git 與 checkout 支援 | `git uncommit/recommit/pull-rebase/amend-all/setup`, `git ignore`, `git worktree …`, `git submodule …`, `git hygiene …` |
 | Coding agent 支援 | `agent skill …`, `agent mcp …`, `agent instructions …`, `agent prompt …`, `agent artifact …`, `agent artifact prepare` |
@@ -21004,6 +21438,14 @@ completion 保持相容。`dev help --tree` 預設展開兩層，`--depth 0` 展
 
 
 已安裝 binary 的精確資訊請執行 `dev <command> --help`；本站描述的是 freshness metadata 指定的 repository version。
+
+## Repository shell 導覽（v0.3.3）
+
+`dev repo cd lazyset` 等同 `dev repo open lazyset --runtime none`。
+名稱／路徑解析、completion 與錯誤行為共用 `repo open`，但即使設定檔或
+全域旗標指定其他 runtime，也固定使用 no-multiplexer backend；不更動
+其他命令的 runtime 設定。已安裝 shell wrapper 時會切換目前 shell 的目錄；
+沒有 wrapper 時則印出正確 quoting 的 `cd` 指令。
 
 ## 按需閱讀 Help（v0.2.24）
 
@@ -21147,6 +21589,36 @@ Request 的 optional `local` object 把 task intent 與 live checkout health 分
 確實被證明 checked out 且 status available 時才出現 optional `git`；其中包含
 `dirty`、`ahead`、`behind` 與 optional `upstream`。Missing/cold/unregistered status
 因此不會透過 zero value 看似 clean。Schema 1 是 add-only。
+
+### PR actions 與 repository pagination
+
+`dev pr list --scope repo --repo github:owner/name` 新增 explicit single-repo
+surface，也接受 repository URL。既有 account/local scope 仍接受 bare `owner/name`，但
+新 scope 不會用它猜 provider。Repository scope 預設包含所有作者，支援
+`--role all|author|reviewer|author,reviewer`、`--page-size`（預設 50）與 opaque
+`--cursor`。續讀必須保持 account、repository、state、role、page size 相同。新增的
+`pagination` object 包含 `next_cursor`、`complete`、`total`、`total_lower_bound`、
+`relationship`；下限不是 exact total。
+
+`dev pr view <URL> [--json|--web]`、`diff <URL> [--no-pager|--web]` 與
+`checkout <URL>` 共用 exact provider URL resolution。Checkout 支援 `--repo`、
+`--source-remote`、`--try`、`--clone [--path PATH]`、`--provision`、`--dry-run`、
+`--no-open`、`--json`，不建立 task 或 fork。`merge <URL> --squash
+[--sync-base none|ff-only|rebase]` review immediate merge；`sync-base <URL>
+--strategy ff-only|rebase` 可獨立更新 confirmed merged request 的 base。兩者都接受
+`--repo`、`--dry-run`、`--yes`、`--json`；JSON 不省略確認。見 [PR workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/)。
+
+Dashboard PR page 使用獨立的 session freshness 設定：
+
+```toml
+[tui.remote.prs]
+large_repo_threshold = 50
+page_size = 50
+cache_ttl = "5m"
+```
+
+以上是 effective defaults，不改變 `forge.cache_ttl` 的 repository inventory／statistics
+policy。Zero 使用 PR defaults；負值及超過 100 的 page size 會被拒絕。
 
 ### Ephemeral-worktree report 與 apply contract
 
@@ -23220,11 +23692,40 @@ dev help [topic|command path] [flags]
 
 ### `dev pr`
 
-List the pull requests waiting on you and their local worktrees
+Inspect, try and merge pull requests with explicit actions
 
 ```
 dev pr
 ```
+
+### `dev pr checkout`
+
+Open a request in an existing checkout, a task-free worktree, or a Try
+
+```
+dev pr checkout <URL> [flags]
+```
+
+- `--clone` — clone the base repository into project_root before creating a worktree
+- `--dry-run` — inspect the checkout plan without fetching or changing files
+- `--json` — emit a plan or result with retained effects; do not open a runtime
+- `--no-open` — prepare the checkout without opening a runtime or changing directory
+- `--path` — project clone destination (requires --clone)
+- `--provision` — explicitly provision the new checkout and initialize configured submodules
+- `--repo` — select an exact local repository or checkout
+- `--source-remote` — select the existing base repository remote used to fetch the PR
+- `--try` — create an independent PR clone under tries_root
+
+### `dev pr diff`
+
+Preview a request diff with diffnav, or write it to stdout
+
+```
+dev pr diff <URL> [flags]
+```
+
+- `--no-pager` — write diff directly without starting diffnav
+- `--web` — open the request diff in the browser
 
 ### `dev pr list`
 
@@ -23236,13 +23737,55 @@ dev pr list [query] [flags]
 
 - `--actions` — print the gh/glab commands for each request
 - `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--cursor` — continue the previous --scope repo page
 - `--json` — emit structured output
 - `--limit` — cap the rows rendered
 - `--linked` — only requests with a checked-out local branch
+- `--page-size` — requests per --scope repo page (1-100)
 - `--repo` — restrict to these owner/name repositories
-- `--role` — limit to author or reviewer (default both)
-- `--scope` — which surface to query: account, local or all
+- `--role` — limit to author or reviewer; repo scope also accepts all (its default)
+- `--scope` — which surface to query: account, local, all or repo (one explicit --repo)
 - `--state` — request state: open, merged, closed or all
+
+### `dev pr merge`
+
+Preview and perform one immediate squash merge
+
+```
+dev pr merge <URL> [flags]
+```
+
+- `--dry-run` — preview without merging or fetching
+- `--json` — emit structured stage results; confirmation still requires --yes outside a terminal
+- `--repo` — select the local repository for optional base synchronization
+- `--squash` — explicitly squash the reviewed head
+- `--sync-base` — after confirmed merge, update the local base: none, ff-only or rebase
+- `-y, --yes` — approve the displayed merge and explicitly selected synchronization strategy
+
+### `dev pr sync-base`
+
+Update the local base of a confirmed merged request
+
+```
+dev pr sync-base <URL> [flags]
+```
+
+- `--dry-run` — preview the fetch stage; no refs or checkouts are changed
+- `--json` — emit structured plan or stage results
+- `--repo` — select the local repository whose actual base checkout should be updated
+- `--strategy` — base update strategy: ff-only or explicit rebase
+- `-y, --yes` — approve the displayed fetch and fresh base synchronization plans
+
+### `dev pr view`
+
+Inspect one pull request's checks, changes and merge readiness
+
+```
+dev pr view <URL> [flags]
+```
+
+- `--json` — emit structured observations
+- `--web` — open the exact request in the browser
 
 ### `dev repo`
 
@@ -23299,6 +23842,14 @@ dev repo browse [repo-or-path] [flags]
 
 - `--print` — print the HTTPS URL without opening a browser
 - `--remote` — select a configured Git remote
+
+### `dev repo cd`
+
+Change shell directory to a repository without opening a runtime
+
+```
+dev repo cd <repo>
+```
 
 ### `dev repo clone`
 
@@ -25407,6 +25958,29 @@ Personal per-repository inventory 對每個 repository 的每個 requested role�
 
 Schema-version-1 local join 回報 expected/live branch、checkout existence、worktree registration、status availability/error，以及 expected branch 是否確實 checked out。只有這些 live checks 成功時才出現 Git detail。Azure DevOps pull request 完全不列出；configured target 會被報告為 unsupported，而不是讓 command 失敗。
 
+### Explicit PR/MR actions
+
+既有 `pr list` account/local/all 行為與 schema-v1 fields 保留。Repository pagination
+新增 `--scope repo`、explicit provider selection 與 additive `pagination` object。
+Selected details 可補上 list 缺少的 checks；absent、failed、stale、unsupported 都不等於
+checks passing 或 ready-to-merge。
+
+GitHub 與 GitLab 支援 URL-based view/diff/checkout，以及 guarded immediate squash
+merge。Queue／auto-merge、GitLab trains、unknown permissions 或不支援的 policy fields
+會阻擋 dev merge action，需使用 provider UI。不提供 admin override，也不把 provider-side
+bypass 權限說成 atomic no-bypass 保證。Azure repository inventory 不代表支援 PR actions。
+
+Diffnav 與 native gh-dash 都是選用。Live provider diff 可能省略 binary 或 oversized
+contents；partial terminal preview 會標示，incomplete noninteractive patch output 會失敗。
+GitHub search 有 provider result ceiling；過大或 incomplete search 必須縮小範圍，不能
+回報完整 inbox。Native gh-dash 保留使用者原本設定與 keybindings。
+
+PR checkout 保留 exact local changes，使用 task-free worktree 或具 catalog identity 的
+獨立 Try clone；project setup 與 submodules 需要 explicit `--provision`。Merge receipts
+是 private durable state，不是 cache。Unknown write 不自動 retry。Base sync 另行 guarded，
+即使成功 merge 後 sync 失敗，也保留 confirmed remote outcome。Merge／sync 都不授權
+移除 worktree、Try、task 或 artifact。
+
 ### Prompt open 使用 current terminal，不負責 runtime placement
 
 `dev agent prompt open <recipe>` 在呼叫它的 terminal/TTY foreground 執行一個
@@ -25447,7 +26021,7 @@ open 會 fail closed 並要求 retry，不會在 requested checkout resurrect �
 
 ### Forge CLI 登入狀態只會被報告，不會自動重試
 
-`gh` 與 `glab` 是選用且彼此獨立的，`dev` 永遠不會代替你認證。當某個 provider 的憑證缺少或被拒絕時，`dev` 會報告是哪一個 provider 以及確切的登入指令 — 例如 ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — 並繼續使用另一個 provider 傳回的結果。`dev repo remote` 與 TUI REMOTE view 會呈現部分結果並發出 warning；`dev pr` 只有在完全沒有任何 provider 通過認證時才會失敗。`dev self doctor` 會探測登入狀態，所以「已安裝但未登入」的 CLI 在某個指令需要它之前就看得到。
+`gh` 與 `glab` 是選用且彼此獨立的，`dev` 永遠不會代替你認證。當某個 provider 的憑證缺少或被拒絕時，`dev` 會報告是哪一個 provider 以及確切的登入指令 — 例如 ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — 並繼續使用另一個 provider 傳回的結果。`dev repo remote` 與 TUI REMOTE view 會呈現部分結果並發出 warning；Account/local `dev pr list` 只有在完全沒有任何 provider 通過認證時才會失敗；URL action 需要其 selected provider。`dev self doctor` 會探測登入狀態，所以「已安裝但未登入」的 CLI 在某個指令需要它之前就看得到。
 
 只有缺少或被拒絕的憑證會用這種方式報告。Rate limit、權限或 scope 失敗，以及網路錯誤，都會保留完整的診斷文字（含失敗的指令），因為重新登入並不能解決它們。無論哪一種情況，原始指令與 provider 輸出都保留在被包裝的 error 之中。
 
@@ -26457,6 +27031,21 @@ tests 為準；provider 來源與權限語義見 [Snippets](https://daviddwlee84
 [GitHub Gists](https://docs.github.com/en/graphql/reference/gists)、
 [GitLab Project](https://docs.gitlab.com/api/graphql/reference/#project)。
 這些數據是帶時間的觀測，不是同步完成或可安全清理的證據。
+
+## PR workspace 與 merge actions（2026-09-25）
+
+[PR workflow](https://daviddwlee84.github.io/dev-cli/zh-TW/guides/pull-request-inbox/) 與 REMOTE tree 的 authority 是
+`internal/prflow`、`internal/forge/pr_native*`、`internal/cli/pr*.go`、dashboard adapters
+及 hermetic Git/provider tests。測試涵蓋 account-bound pagination、provider-side related
+queries、unknown checks、exact checkout selection、sealed Try acquisition、immediate
+squash receipts、fresh base synchronization、terminal control neutralization 與 provider
+diff omission；不把這些測試說成 live account writes 或所有 enterprise 都有相同 policy fields。
+
+Provider semantics 於 2026-09-25 對照 [GitHub merge API](https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request)、
+[GitHub GraphQL PR fields](https://docs.github.com/en/graphql/reference/pulls#object-pullrequest)
+與 [GitLab MR API](https://docs.gitlab.com/api/merge_requests/)。Native gh-dash 是保留原設定的
+foreground handoff，不保證選中某個 native PR。PR session cache 預設五分鐘，與
+`forge.cache_ttl` 分開。
 
 ---
 

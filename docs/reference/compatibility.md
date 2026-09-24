@@ -190,6 +190,33 @@ Personal per-repository inventory may make one paginated query per requested rol
 
 The schema-version-1 local join reports expected and live branches, checkout existence, worktree registration, status availability/error, and whether the expected branch is actually checked out. Git details are omitted unless those live checks succeed. Azure DevOps pull requests are not listed at all; a configured target is reported as unsupported rather than failing the command.
 
+### Explicit PR/MR actions
+
+The existing `pr list` account/local/all behavior and schema-v1 fields remain.
+Repository pagination adds `--scope repo`, explicit provider selection and an
+additive `pagination` object. Selected details can supply checks absent from a
+list; absent, failed, stale and unsupported observations remain distinct from
+passing checks or ready-to-merge.
+
+GitHub and GitLab support URL-based view/diff/checkout and guarded immediate
+squash merge. Queue/auto-merge, GitLab trains, unknown permissions or unsupported
+policy fields block dev's merge action; use the provider UI. There is no admin
+override, and provider-side bypass privileges are not converted into an atomic
+no-bypass guarantee. No Azure PR action is inferred from repository inventory.
+
+Diffnav and native gh-dash are optional. Live provider diffs can omit binary or
+oversized contents; partial terminal previews are labelled and incomplete
+noninteractive patch output fails. GitHub search has a provider result ceiling;
+large or incomplete search results must be narrowed rather than reported as a
+complete inbox. Native gh-dash keeps its user configuration and keybindings.
+
+PR checkout retains exact existing local changes, uses task-free worktrees or
+independent catalog-backed Try clones, and requires explicit `--provision` for
+project setup and submodules. Merge receipts are private durable state, not
+cache. Unknown writes never auto-retry. Base sync is separately guarded and may
+fail after a successful merge without changing the confirmed remote outcome.
+Neither merge nor sync authorizes worktree, Try, task or artifact removal.
+
 ### Prompt open uses the current terminal, not runtime placement
 
 `dev agent prompt open <recipe>` runs one configured child in the foreground of the
@@ -237,7 +264,7 @@ the requested checkout.
 
 ### Forge CLI sign-in is reported, never retried
 
-`gh` and `glab` are optional and independent, and `dev` never authenticates on your behalf. When a provider's stored credential is missing or rejected, `dev` reports which provider and the exact login command — for example ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — and continues with whatever the other provider returned. `dev repo remote` and the TUI REMOTE view render the partial result and warn; `dev pr` fails only when no provider is authenticated at all. `dev self doctor` probes sign-in state, so an installed but signed-out CLI is visible before a command needs it.
+`gh` and `glab` are optional and independent, and `dev` never authenticates on your behalf. When a provider's stored credential is missing or rejected, `dev` reports which provider and the exact login command — for example ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — and continues with whatever the other provider returned. `dev repo remote` and the TUI REMOTE view render the partial result and warn; The account/local `dev pr list` fails only when no provider is authenticated at all; a URL action needs its selected provider. `dev self doctor` probes sign-in state, so an installed but signed-out CLI is visible before a command needs it.
 
 Only a missing or rejected credential is reported this way. A rate limit, a permissions or scope failure, and a network error keep their full diagnostic text including the command that failed, because signing in again would not fix them. The original command and provider output remain in the wrapped error in every case.
 

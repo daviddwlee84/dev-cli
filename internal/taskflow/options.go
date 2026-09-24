@@ -75,7 +75,13 @@ type ActionOptions interface {
 }
 
 // SyncOptions names an explicit repository synchronization operation.
-type SyncOptions struct{ Operation Action }
+type SyncOptions struct {
+	Operation Action
+	// Optional exact provider-bound endpoint and branch. Empty preserves the
+	// ordinary repository synchronization surface.
+	Endpoint  string `json:"-"`
+	RemoteRef string
+}
 
 func (o SyncOptions) Action() Action { return o.Operation }
 func (SyncOptions) isActionOptions() {}
@@ -457,7 +463,7 @@ func cloneActionOptions(options ActionOptions, action Action) (ActionOptions, er
 
 func defaultActionOptions(action Action) (ActionOptions, error) {
 	switch action {
-	case FetchRepository, PushBranch, FastForwardBranch:
+	case FetchRepository, PushBranch, FastForwardBranch, RebaseBranch:
 		return SyncOptions{Operation: action}, nil
 	case ParkWarm:
 		return ParkWarmOptions{}, nil
@@ -492,7 +498,7 @@ func validateActionOptions(options ActionOptions) error {
 	switch value := options.(type) {
 	case SyncOptions:
 		switch value.Operation {
-		case FetchRepository, PushBranch, FastForwardBranch:
+		case FetchRepository, PushBranch, FastForwardBranch, RebaseBranch:
 			return nil
 		}
 		return fmt.Errorf("invalid sync operation")
@@ -580,6 +586,9 @@ func appendOptionsIdentity(writer *identityWriter, options ActionOptions) {
 		writer.addFields("foreground-consent", r.ProgramConsent)
 	}
 	switch value := options.(type) {
+	case SyncOptions:
+		writer.addString("sync-endpoint", value.Endpoint)
+		writer.addString("sync-remote-ref", value.RemoteRef)
 	case ParkWarmOptions:
 		writer.addString("next", value.Next)
 		writer.addString("note", value.Note)

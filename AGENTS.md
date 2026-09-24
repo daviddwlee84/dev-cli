@@ -70,6 +70,7 @@ cmd/dev/main.go
 - `feedback` owns durable private reports, sanitized public drafts, revision-bound issue/comment publication receipts and exact repair plans. CLI adapts its repair backend to the shared start flow; agent launch is explicit and prompt context never becomes a public issue body.
 - `snippet` owns small-file share identity, account/project scope, bounded metadata/content search and frozen publication inputs. `forge` supplies GitHub/GitLab transports; CLI and REMOTE snippets share the service. Publication preserves confirmed/unknown outcomes, never retries unknown writes, and never gives snippets repository/task ownership.
 - `forge` wraps optional `gh`, `glab`, and Azure CLI integrations and must degrade to local Git behavior when they are unavailable.
+- `prflow` owns explicit PR/MR navigation and action authority: exact provider/head plans, task-free checkout or independent Try acquisition, private single-attempt merge receipts, and staged base synchronization through taskflow. REMOTE request pages/details are user-triggered; cached checks never authorize merge or cleanup. Unknown writes are not retried, queue/auto-merge stays native, provisioning is explicit and guarded, and gh-dash is a separate native terminal handoff.
 - `sshhost` owns bounded static discovery of the active user OpenSSH Include closure, canonical files under `~/.ssh/dev.d`, public-key selection/generation/bootstrap, fresh authentication proofs, and the explicit handoff into dev fleet. OpenSSH and plain `ssh -G` remain semantic authority; ordinary setup/remove never rewrite foreign connection definitions, copy private keys, weaken host-key policy, or treat every alias as a fleet member. Explicit format/organize may transform selected user-owned configuration with private guarded recovery; Include restores its caller scope after each file. Named agent providers (Bitwarden, 1Password, Secretive, custom sockets) are located by stat only and never executed; selecting a named-agent key publishes only its public line and writes a v2 fragment (`IdentityAgent`, `SecurityKeyProvider`), which older binaries treat as not dev-owned, while v1 files stay byte-identical. Explicit FIDO generation binds the reviewed native tools/provider, keeps capability observations stat-only, and reports hardware created/unknown effects independently of local publication; only verified SK recovery pairs may be retained. Never use resident-key download or provider loading as a passive probe, and keep automatic Secure Enclave creation blocked until exact native identity mapping is verified.
 - `sshflow` owns the explicit SSH/fleet/Herdr machine inventory and Plan/Apply orchestration; `herdrremote` calls the native machine CLI without writing its catalog. `configedit` owns source-bound local file transactions and private recovery outside Git, with owner leases and macOS/Linux metadata checks.
 - `machineregistry` owns controller-local canonical machine UUIDs, scoped provider bindings, explicit unlink suppression and merge redirects in durable private SQLite. These UUIDs never replace the remote `fleet.machine_id` trust pin. `sshdiscovery` owns optional explicit Tailscale status and bounded on-link LAN observations; discovery caches are disposable and never create machine identities or prove authentication. `sshflow` joins these sources while retaining every distinct SSH connection profile; the dashboard SSH view is an adapter to the same services.
@@ -127,7 +128,7 @@ State is split intentionally:
 
 ## Versioning and changelog
 
-The current published baseline is `v0.3.2` (2026-09-25). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
+The current published baseline is `v0.3.3` (2026-09-25). The CLI version authority is an immutable `vMAJOR.MINOR.PATCH` Git tag:
 
 - `Makefile` derives development builds with `git describe --tags --match 'v[0-9]*' --always --dirty` and injects `internal/cli.Version` through `-ldflags`. The `--match` filter is load-bearing: any other tag in the repository (a `backup/` or `rescue/` marker, say) must never become `--version`.
 - `go install ...@version` recovers the module version from Go build information.
@@ -225,7 +226,7 @@ credentials still require rotation and unknown findings remain blocked.
 ## Distribution verification
 
 Run `python3 -m unittest discover -s scripts -p test_distribution.py` and, after
-committing packaging edits, `python3 scripts/check-distribution.py --version v0.3.2`.
+committing packaging edits, `python3 scripts/check-distribution.py --version v0.3.3`.
 The latter validates independent source and Go module payloads, including their
 embedded resources. Evidence-only nested `go.mod` files intentionally remove
 those directories from the parent module ZIP; do not run module tidy in them.

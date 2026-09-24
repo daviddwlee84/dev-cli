@@ -165,6 +165,29 @@ Personal per-repository inventory 對每個 repository 的每個 requested role�
 
 Schema-version-1 local join 回報 expected/live branch、checkout existence、worktree registration、status availability/error，以及 expected branch 是否確實 checked out。只有這些 live checks 成功時才出現 Git detail。Azure DevOps pull request 完全不列出；configured target 會被報告為 unsupported，而不是讓 command 失敗。
 
+### Explicit PR/MR actions
+
+既有 `pr list` account/local/all 行為與 schema-v1 fields 保留。Repository pagination
+新增 `--scope repo`、explicit provider selection 與 additive `pagination` object。
+Selected details 可補上 list 缺少的 checks；absent、failed、stale、unsupported 都不等於
+checks passing 或 ready-to-merge。
+
+GitHub 與 GitLab 支援 URL-based view/diff/checkout，以及 guarded immediate squash
+merge。Queue／auto-merge、GitLab trains、unknown permissions 或不支援的 policy fields
+會阻擋 dev merge action，需使用 provider UI。不提供 admin override，也不把 provider-side
+bypass 權限說成 atomic no-bypass 保證。Azure repository inventory 不代表支援 PR actions。
+
+Diffnav 與 native gh-dash 都是選用。Live provider diff 可能省略 binary 或 oversized
+contents；partial terminal preview 會標示，incomplete noninteractive patch output 會失敗。
+GitHub search 有 provider result ceiling；過大或 incomplete search 必須縮小範圍，不能
+回報完整 inbox。Native gh-dash 保留使用者原本設定與 keybindings。
+
+PR checkout 保留 exact local changes，使用 task-free worktree 或具 catalog identity 的
+獨立 Try clone；project setup 與 submodules 需要 explicit `--provision`。Merge receipts
+是 private durable state，不是 cache。Unknown write 不自動 retry。Base sync 另行 guarded，
+即使成功 merge 後 sync 失敗，也保留 confirmed remote outcome。Merge／sync 都不授權
+移除 worktree、Try、task 或 artifact。
+
 ### Prompt open 使用 current terminal，不負責 runtime placement
 
 `dev agent prompt open <recipe>` 在呼叫它的 terminal/TTY foreground 執行一個
@@ -205,7 +228,7 @@ open 會 fail closed 並要求 retry，不會在 requested checkout resurrect �
 
 ### Forge CLI 登入狀態只會被報告，不會自動重試
 
-`gh` 與 `glab` 是選用且彼此獨立的，`dev` 永遠不會代替你認證。當某個 provider 的憑證缺少或被拒絕時，`dev` 會報告是哪一個 provider 以及確切的登入指令 — 例如 ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — 並繼續使用另一個 provider 傳回的結果。`dev repo remote` 與 TUI REMOTE view 會呈現部分結果並發出 warning；`dev pr` 只有在完全沒有任何 provider 通過認證時才會失敗。`dev self doctor` 會探測登入狀態，所以「已安裝但未登入」的 CLI 在某個指令需要它之前就看得到。
+`gh` 與 `glab` 是選用且彼此獨立的，`dev` 永遠不會代替你認證。當某個 provider 的憑證缺少或被拒絕時，`dev` 會報告是哪一個 provider 以及確切的登入指令 — 例如 ``glab is signed out — run `glab auth login --hostname gitlab.com` `` — 並繼續使用另一個 provider 傳回的結果。`dev repo remote` 與 TUI REMOTE view 會呈現部分結果並發出 warning；Account/local `dev pr list` 只有在完全沒有任何 provider 通過認證時才會失敗；URL action 需要其 selected provider。`dev self doctor` 會探測登入狀態，所以「已安裝但未登入」的 CLI 在某個指令需要它之前就看得到。
 
 只有缺少或被拒絕的憑證會用這種方式報告。Rate limit、權限或 scope 失敗，以及網路錯誤，都會保留完整的診斷文字（含失敗的指令），因為重新登入並不能解決它們。無論哪一種情況，原始指令與 provider 輸出都保留在被包裝的 error 之中。
 

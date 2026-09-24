@@ -118,6 +118,8 @@ func splitLoadWarning(err error) (string, error) {
 }
 
 type Actions struct {
+	PRs      PRActions
+	GHDash   GHDashActions
 	Issues   IssueActions
 	SSH      SSHActions
 	Snippets SnippetActions
@@ -239,6 +241,7 @@ type OpenResult struct {
 // ConfigUpdate is the subset of config a running TUI can safely apply without
 // rebuilding its runtime backend.
 type ConfigUpdate struct {
+	PRs                    *PRActions
 	MetricsTTL             *time.Duration
 	FleetBackgroundRefresh *bool
 	SSHBackgroundRefresh   *bool
@@ -391,6 +394,8 @@ type Model struct {
 	tries               []TryRow
 	remotes             []RemoteRow
 	remoteMetrics       metricsUIState
+	remotePRs           remotePRTreeState
+	ghDashAvailability  ToolAvailability
 	snippets            snippetUIState
 	fleet               []FleetRow
 	ssh                 SSHInventory
@@ -613,6 +618,9 @@ func (m Model) Init() tea.Cmd {
 	}
 	if len(m.actions.Tools) > 0 {
 		commands = append(commands, m.probeTools())
+	}
+	if m.actions.GHDash.Probe != nil {
+		commands = append(commands, m.probeGHDash())
 	}
 	if m.actions.LoadRemoteCache != nil {
 		commands = append(commands, m.loadRemoteCache())
@@ -1704,7 +1712,7 @@ func (m Model) count() int {
 		if m.snippetsActive() {
 			return len(m.visibleSnippets())
 		}
-		return len(m.visibleRemotes())
+		return len(m.visibleRemoteItems())
 	case ViewSkills:
 		return len(m.visibleSkills())
 	case ViewMCP:
@@ -1823,14 +1831,11 @@ func (m Model) currentTry() (TryRow, bool) {
 
 // currentRemote returns the selected forge repository.
 func (m Model) currentRemote() (RemoteRow, bool) {
-	if m.view != ViewRemote || m.snippets.enabled {
+	item, ok := m.currentRemoteItem()
+	if !ok || item.PR != nil || item.more {
 		return RemoteRow{}, false
 	}
-	rows := m.visibleRemotes()
-	if m.at() >= len(rows) {
-		return RemoteRow{}, false
-	}
-	return rows[m.at()], true
+	return item.Repository, true
 }
 
 func (m Model) currentFleet() (FleetRow, bool) {
@@ -2122,17 +2127,23 @@ func (m Model) remoteCloneTargets(row RemoteRow) bool {
 }
 
 func (m Model) selectedRemoteKey() string {
-	rows := m.visibleRemotes()
+	rows := m.visibleRemoteItems()
 	if m.remoteCursor < 0 || m.remoteCursor >= len(rows) {
 		return ""
 	}
-	return remoteRowKey(rows[m.remoteCursor])
+	return remoteItemKey(rows[m.remoteCursor])
 }
 
 func (m *Model) selectRemoteKey(key string) {
-	for i, row := range m.visibleRemotes() {
-		if remoteRowKey(row) == key {
+	for i, row := range m.visibleRemoteItems() {
+		if remoteItemKey(row) == key {
 			m.remoteCursor = i
+			return
+		}
+	}
+	for index, row := range m.visibleRemoteItems() {
+		if row.PR == nil && !row.more && strings.HasPrefix(key, remotePRRepositoryKey(row.Repository.Repo)+"\x00") {
+			m.remoteCursor = index
 			return
 		}
 	}
@@ -2366,11 +2377,17 @@ func (m Model) currentDir() string {
 	if r, ok := m.currentRemote(); ok {
 		return r.LocalPath
 	}
+	if item, ok := m.currentPR(); ok {
+		return item.PR.LocalPath
+	}
 	return ""
 }
 
 // Update implements tea.Model.
 func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if next, command, handled := m.updateRemotePR(msg); handled {
+		return next, command
+	}
 	if next, command, handled := m.updateIssues(msg); handled {
 		return next, command
 	}
@@ -2655,6 +2672,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.acceptMetrics(msg)
 
 	case remoteMsg:
+		focus := m.selectedRemoteKey()
 		if !m.applyViewResult(
 			ViewRemote, msg.generation, msg.valid, perftrace.SourceLive,
 			resultFreshness(msg.err), len(msg.rows), msg.err, msg.valid,
@@ -2668,6 +2686,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		m.setViewStatus(ViewRemote, "")
+		m.selectRemoteKey(focus)
 		m.setAt(m.at())
 		if msg.valid {
 			command := m.startRemoteMetrics(m.viewLoad(ViewRemote).cause == loadRefresh)
@@ -2829,6 +2848,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			msg.update.Apply()
 		}
 		m.cancelSnippetLoad()
+		m.cancelRemotePRs(true)
+		if msg.update.PRs != nil {
+			m.actions.PRs = *msg.update.PRs
+		}
 		if m.snippets.hasSnapshot {
 			m.snippets.stale = true
 		}
@@ -2860,7 +2883,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.setSSHBackgroundRefresh(*msg.update.SSHBackgroundRefresh)
 		}
 		m.err, m.status = nil, msg.status
-		reload := batchCommands(m.reloadAfterConfig(msg.refreshRemote), m.readStartupRepo(), m.scheduleSSHBackground())
+		reload := batchCommands(m.reloadAfterConfig(msg.refreshRemote), m.readStartupRepo(), m.scheduleSSHBackground(), m.probeGHDash())
 		if msg.update.ReleaseChecksEnabled != nil {
 			reload = batchCommands(reload, m.applyReleaseChecks(*msg.update.ReleaseChecksEnabled))
 		}
@@ -3196,6 +3219,7 @@ func (m Model) updateList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "q", "ctrl+c":
 		m.cancelSnippetLoad()
+		m.cancelRemotePRs(false)
 		m.quitting = true
 		return m, tea.Quit
 	case "esc":

@@ -65,7 +65,7 @@ func TestActionsAndTypedOptionsCoverProtocol(t *testing.T) {
 	wantActions := []Action{
 		ParkWarm, ParkCold, Resume, CompleteDirect, CompleteFF, ReviewHandoff,
 		VerifyMerged, Retire, Adopt, RemoveCheckout, RefreshRemote, Reconcile,
-		FetchRepository, PushBranch, FastForwardBranch,
+		FetchRepository, PushBranch, FastForwardBranch, RebaseBranch,
 	}
 	if got := Actions(); !reflect.DeepEqual(got, wantActions) {
 		t.Fatalf("Actions() = %v, want %v", got, wantActions)
@@ -90,6 +90,7 @@ func TestActionsAndTypedOptionsCoverProtocol(t *testing.T) {
 		{Locator{RowKey: "repository"}, SyncOptions{Operation: FetchRepository}},
 		{Locator{RowKey: "branch"}, SyncOptions{Operation: PushBranch}},
 		{Locator{RowKey: "checkout"}, SyncOptions{Operation: FastForwardBranch}},
+		{Locator{RowKey: "checkout"}, SyncOptions{Operation: RebaseBranch}},
 	}
 	for _, test := range tests {
 		request, err := NewRequest(test.locator, test.options)
@@ -105,6 +106,21 @@ func TestActionsAndTypedOptionsCoverProtocol(t *testing.T) {
 	var nilOptions *ParkWarmOptions
 	if _, err := NewRequest(testLocator(task.ModeWorktree, task.Hot), nilOptions); !errors.Is(err, ErrInvalidRequest) {
 		t.Fatalf("typed-nil options error = %v, want ErrInvalidRequest", err)
+	}
+}
+
+func TestSyncSourceOptionsArePartOfPlanIdentity(t *testing.T) {
+	request := mustRequest(t, Locator{RowKey: "repository"}, SyncOptions{Operation: FetchRepository, Endpoint: "https://github.com/owner/repo.git", RemoteRef: "refs/heads/main"})
+	p := mustBuildPlan(t, request, PlanSpec{})
+	for _, options := range []SyncOptions{
+		{Operation: FetchRepository, Endpoint: "https://github.com/other/repo.git", RemoteRef: "refs/heads/main"},
+		{Operation: FetchRepository, Endpoint: "https://github.com/owner/repo.git", RemoteRef: "refs/heads/other"},
+	} {
+		changed := p.Clone()
+		changed.Request.Options = options
+		if err := changed.Validate(); err == nil {
+			t.Fatal("changed sync source was accepted")
+		}
 	}
 }
 

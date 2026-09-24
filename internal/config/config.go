@@ -203,6 +203,8 @@ type Bootstrap struct {
 
 // TUI configures the interactive dashboard.
 type TUI struct {
+	// Remote controls explicitly requested PR children; statistics use Forge.CacheTTL.
+	Remote RemoteTable `toml:"remote"`
 	// Repos configures the local repository table.
 	Repos RepoTable `toml:"repos"`
 	// Fleet controls optional background observation of configured hosts.
@@ -216,6 +218,30 @@ type TUI struct {
 	// personal — nvim or helix, lazygit or gitui, and whatever aliases and
 	// scripts you have built up around your own workflow.
 	Tools []Tool `toml:"tools"`
+}
+
+type RemoteTable struct {
+	PRs RemotePRs `toml:"prs"`
+}
+
+type RemotePRs struct {
+	LargeRepoThreshold int      `toml:"large_repo_threshold"`
+	PageSize           int      `toml:"page_size"`
+	CacheTTL           Duration `toml:"cache_ttl"`
+}
+
+func (c Config) EffectiveRemotePRs() RemotePRs {
+	p := c.TUI.Remote.PRs
+	if p.LargeRepoThreshold == 0 {
+		p.LargeRepoThreshold = 50
+	}
+	if p.PageSize == 0 {
+		p.PageSize = 50
+	}
+	if p.CacheTTL.Duration == 0 {
+		p.CacheTTL.Duration = 5 * time.Minute
+	}
+	return p
 }
 
 // FleetTable configures the dashboard's host tree. It does not change the
@@ -551,6 +577,9 @@ func (c Config) Validate() error {
 		"repo": true, "branch": true, "git": true, "remote": true, "size": true, "live": true,
 		"latest": true, "worktrees": true, "tasks": true, "notes": true,
 		"category": true, "path": true,
+	}
+	if p := c.TUI.Remote.PRs; p.LargeRepoThreshold < 0 || p.PageSize < 0 || p.PageSize > 100 || p.CacheTTL.Duration < 0 {
+		return errors.New("tui.remote.prs: threshold and cache_ttl must be positive; page_size must be between 1 and 100 (zero uses defaults)")
 	}
 	for i, column := range c.TUI.Repos.Columns {
 		if !validColumns[column] {

@@ -1,6 +1,6 @@
 # Worktree ownership
 
-Submodule initialization is core Git acquisition, before provisioning/runtime, and defaults to recursive pinned checkouts. `--no-provision` does not skip it; `--submodules=none` does. Gitlink children are independent submodule clones, not nested managed linked worktrees. Read `submodules.md` for selection and explicit disposal rules.
+For ordinary clone/worktree acquisition, submodule initialization is core Git acquisition, before provisioning/runtime, and defaults to recursive pinned checkouts. `--no-provision` does not skip it; `--submodules=none` does. Gitlink children are independent submodule clones, not nested managed linked worktrees. Read `submodules.md` for selection and explicit disposal rules.
 
 Read this before creating a worktree, sharing a checkout between agents, or when
 a new checkout lacks dependencies, env files, or launcher backend state.
@@ -58,6 +58,23 @@ remain errors; do not turn a failed open into a success report.
 When handing work back, report the repository, branch, actual checkout path and
 runtime handle/result immediately. Adoption is a separate lifecycle decision,
 not a visibility switch. See `runtime-herdr.md` for reuse/fallback boundaries.
+
+## PR/MR trial checkouts
+
+`dev pr checkout <URL>` selects an exact existing checkout without resetting
+local work, or fetches the verified request head into a task-free worktree.
+Do not match a fork's branch by name alone. Multiple clone/checkout matches
+require an explicit selection. Existing SSH fetch transport remains native;
+`--source-remote` resolves ambiguous base remotes.
+
+PR acquisition does not run ordinary provisioning or submodule initialization
+by default. Only explicit `--provision` authorizes project setup under existing
+trust rules. Without a local repository, `--try` creates an independent
+catalog-backed dated clone; `--clone [--path PATH]` creates a project clone and
+worktree. Neither implicitly forks or creates task intent. `--dry-run` is
+read-only and `--no-open`/`--json` suppress runtime opening. Merge and optional
+base synchronization never replace retirement/cleanup proof. Read
+[pull requests](pull-requests.md) for exact-head merge guards and unknown receipts.
 
 ## Why dev creates the checkout
 

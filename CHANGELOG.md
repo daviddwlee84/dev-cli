@@ -6,7 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.3.3] - 2026-09-25
+
 ### Added
+
+- `dev repo cd <repo>` provides shell-only repository navigation, equivalent
+  to `dev repo open <repo> --runtime none`, including argument completion and
+  the shell wrapper's directory handoff. It never opens a multiplexer.
+- REMOTE can expand a repository into on-demand GitHub PR/GitLab MR pages,
+  inspect checks and diffnav previews, and open an exact task-free worktree or
+  independent Try clone. Large repositories default to authored/requested-review
+  requests; navigation never preloads PR lists or details.
+- `dev pr view`, `diff`, `checkout`, `merge --squash`, and `sync-base` share the
+  dashboard services. Squash merge binds the reviewed head and retains unknown
+  outcomes without retries; optional base sync uses guarded fast-forward or
+  explicitly chosen rebase, with separate partial results and no local cleanup.
+- REPOS/REMOTE offer **Open in gh-dash** for verified GitHub repository targets,
+  including uncloned REMOTE rows, while retaining native gh-dash configuration.
 
 - A reproducible, isolated worktree workflow trial compares Herdr with no dev
   task record against Sidecar workspaces. The guide documents task-free cleanup
@@ -1492,7 +1508,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
      that feature's last commit, so the CHANGELOG at those commits still lists everything under
      [Unreleased]; this file at HEAD is the accurate record. -->
 
-[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/daviddwlee84/dev-cli/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/daviddwlee84/dev-cli/compare/v0.2.44...v0.3.0

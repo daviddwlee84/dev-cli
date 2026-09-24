@@ -257,6 +257,29 @@ manager, or preaccept terms. The executable is checked afterwards, with an
 OpenSSH capability query for `ssh`; authentication and service startup remain
 separate. Installation cancellation/failure is not retried.
 
+## REMOTE pull requests
+
+**Space** expands a GitHub/GitLab repository into PR/MR children. The default
+page size is 50; automatic scope shows all open requests for smaller repositories
+and your authored/requested-review requests when more than 50 are known. Scope,
+loaded count, overall count or lower bound, stale observations and pagination
+are visible. **Ctrl+O** changes scope, refreshes, or loads more; `/` searches
+loaded rows without provider traffic. Author/reviewer badges remain distinct
+from lifecycle and checks, and summaries describe the accepted loaded batch.
+
+A PR row's actions inspect fresh details, preview via optional diffnav, open or
+reuse its exact checkout, create an independent Try, explicitly provision,
+review an immediate squash merge, or synchronize a confirmed merged PR's local
+base. Cached readiness never authorizes a write. Checkout defaults to no task,
+no automatic fork and no provisioning/submodule initialization. Merge and local
+sync report separate retained effects; no action here implies cleanup.
+
+**Open in gh-dash** is available for supported GitHub context when the native
+`dlvhdr/gh-dash` extension is installed. It retains native config/keybindings,
+passes the selected host/repository, and returns to dev when the child exits.
+No extension installation or config rewriting occurs. See the [PR workflow](pull-request-inbox.md)
+for CLI equivalents, provider limitations and merge receipts.
+
 ## REMOTE snippets
 
 REMOTE starts with repositories. Use **Ctrl+O → Show snippets** to load GitHub

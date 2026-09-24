@@ -2,6 +2,11 @@
 
 Create, clone, or initialize a repository from any directory.
 
+`dev repo cd <repo>` is the shell-only form of `dev repo open <repo> --runtime none`.
+It uses the same repository resolution and completion, without opening a runtime.
+With the shell wrapper installed it changes the calling shell's directory;
+otherwise it prints a quoted `cd` command. See `dev self shell-init --help`.
+
 Clones initialize submodules recursively at gitlinks by default; they do not
 advance children to main. Use `--submodules=none` or `[submodules].init = "none"`
 to opt out. Initialization failure retains the clone without runtime handoff;

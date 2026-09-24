@@ -263,6 +263,12 @@ background_refresh = true
 # Refresh local Tailscale status while the SSH view is active; LAN remains explicit.
 background_refresh = true
 
+[tui.remote.prs]
+# PR lists load only when a repository is expanded; details and refresh are explicit.
+large_repo_threshold = 50
+page_size = 50
+cache_ttl = "5m"
+
 [tui.repos]
 # Exact columns and order for the local repository view:
 # repo | branch | git | remote | size | live | latest | worktrees | tasks | notes | category | path

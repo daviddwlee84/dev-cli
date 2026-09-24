@@ -273,3 +273,18 @@ tests 為準；provider 來源與權限語義見 [Snippets](../guides/snippets.m
 [GitHub Gists](https://docs.github.com/en/graphql/reference/gists)、
 [GitLab Project](https://docs.gitlab.com/api/graphql/reference/#project)。
 這些數據是帶時間的觀測，不是同步完成或可安全清理的證據。
+
+## PR workspace 與 merge actions（2026-09-25）
+
+[PR workflow](../guides/pull-request-inbox.zh-TW.md) 與 REMOTE tree 的 authority 是
+`internal/prflow`、`internal/forge/pr_native*`、`internal/cli/pr*.go`、dashboard adapters
+及 hermetic Git/provider tests。測試涵蓋 account-bound pagination、provider-side related
+queries、unknown checks、exact checkout selection、sealed Try acquisition、immediate
+squash receipts、fresh base synchronization、terminal control neutralization 與 provider
+diff omission；不把這些測試說成 live account writes 或所有 enterprise 都有相同 policy fields。
+
+Provider semantics 於 2026-09-25 對照 [GitHub merge API](https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request)、
+[GitHub GraphQL PR fields](https://docs.github.com/en/graphql/reference/pulls#object-pullrequest)
+與 [GitLab MR API](https://docs.gitlab.com/api/merge_requests/)。Native gh-dash 是保留原設定的
+foreground handoff，不保證選中某個 native PR。PR session cache 預設五分鐘，與
+`forge.cache_ttl` 分開。

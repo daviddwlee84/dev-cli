@@ -27,7 +27,7 @@ and add `--aliases` to reveal shortcuts. See the [v0.3 migration guide](cli-v0.3
 | Goal | Commands |
 |---|---|
 | tracked work | `work list/start/park/resume/done/adopt/retire/sweep` |
-| repositories/remotes | `repo list/context/new/clone/fork/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
+| repositories/remotes | `repo list/context/new/clone/fork/setup/open/cd/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
 | experiments | `tries try/open/list/graduate/demote`, `tries deprecate/reactivate/archive/restore/delete` |
 | Git and checkout support | `git uncommit/recommit/pull-rebase/amend-all/setup`, `git ignore`, `git worktree …`, `git submodule …`, `git hygiene …` |
 | coding-agent support | `agent skill …`, `agent mcp …`, `agent instructions …`, `agent prompt …`, `agent artifact …`, `agent artifact prepare` |
@@ -37,6 +37,15 @@ and add `--aliases` to reveal shortcuts. See the [v0.3 migration guide](cli-v0.3
 
 
 Run `dev <command> --help` for the installed binary; this site describes the repository version identified in its freshness metadata.
+
+## Repository shell navigation (v0.3.3)
+
+`dev repo cd lazyset` is equivalent to `dev repo open lazyset --runtime none`.
+It shares name/path resolution, completion and errors with `repo open`, but
+always uses the no-multiplexer backend, even with a configured or explicit
+runtime override. It does not change the runtime setting of other commands.
+With the shell wrapper installed, the calling shell changes directory; without
+it, the command prints a safely quoted `cd` directive.
 
 ## Read help on demand (v0.2.24)
 
@@ -193,6 +202,39 @@ only when the expected branch was actually proven checked out and status was
 available; it contains `dirty`, `ahead`, `behind`, and optional `upstream`.
 Missing/cold/unregistered status therefore cannot look clean through zero values.
 Schema 1 is add-only.
+
+### PR actions and repository pagination
+
+`dev pr list --scope repo --repo github:owner/name` adds an explicit single-repo
+surface; a repository URL is also accepted. Bare `owner/name` remains valid for
+the existing account/local scopes but does not choose a provider here. Repository
+scope defaults to all authors, supports `--role all|author|reviewer|author,reviewer`,
+`--page-size` (default 50) and an opaque `--cursor`. Keep account, repository,
+state, role and page size unchanged when continuing. The additive `pagination`
+object includes `next_cursor`, `complete`, `total`, `total_lower_bound` and
+`relationship`; a lower bound is not an exact total.
+
+`dev pr view <URL> [--json|--web]`, `diff <URL> [--no-pager|--web]`, and
+`checkout <URL>` share exact provider URL resolution. Checkout supports
+`--repo`, `--source-remote`, `--try`, `--clone [--path PATH]`, `--provision`,
+`--dry-run`, `--no-open` and `--json`; it does not create a task or fork.
+`merge <URL> --squash [--sync-base none|ff-only|rebase]` reviews an immediate
+merge, while `sync-base <URL> --strategy ff-only|rebase` updates a confirmed
+merged request's base separately. Both accept `--repo`, `--dry-run`, `--yes`
+and `--json`. JSON does not waive confirmation. See [PR workflow](../guides/pull-request-inbox.md).
+
+Dashboard PR pages use separate session freshness settings:
+
+```toml
+[tui.remote.prs]
+large_repo_threshold = 50
+page_size = 50
+cache_ttl = "5m"
+```
+
+These are the effective defaults and do not change repository inventory or
+statistics policy under `forge.cache_ttl`. Zero selects the PR defaults;
+negative settings and page sizes over 100 are rejected.
 
 ### Ephemeral-worktree report and apply contract
 

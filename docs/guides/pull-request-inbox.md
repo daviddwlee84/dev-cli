@@ -2,7 +2,7 @@
 description: List pull requests you opened and requests awaiting your review, understand provider cost and missing fields, and inspect local checkout health.
 authority: project
 status: stable
-verified_on: 2026-09-02
+verified_on: 2026-09-24
 ---
 
 # Pull request inbox
@@ -12,8 +12,8 @@ provider reports a head branch, the matching local task/checkout. It changes
 nothing.
 
 !!! info "Freshness"
-    **Authority:** `internal/forge`, `internal/cli/pr*.go`, and their tests ·
-    **Status:** stable · **Verified:** 2026-09-02.
+    **Authority:** `internal/forge`, `internal/prflow`, `internal/cli/pr*.go`, and their tests ·
+    **Status:** stable · **Verified:** 2026-09-24.
 
 ## The problem
 
@@ -80,18 +80,123 @@ Account search cannot distinguish merged from closed. If `--state merged`,
 local surface. Structured output reports this **effective** scope (`"local"`),
 not the broader value originally requested.
 
-## Acting on a request
+## Repository pages and the REMOTE tree
 
-`dev` prints commands and never runs them:
+Expand a GitHub/GitLab repository in REMOTE with **Space** to load its PR/MR
+children. The repository inventory includes personal projects and accessible
+organization repositories. This page can show requests from other authors too;
+being the author or a requested reviewer is displayed separately.
+
+The default page contains up to 50 requests. If more than 50 open requests are
+known, the automatic view switches to your authored requests and requested
+reviews. The current scope, loaded count, overall count or lower bound, stale
+state, and **Load more** availability stay visible. Use **Ctrl+O** to select all
+open requests, related requests, refresh, or another page. Related queries are
+filtered by the provider, so an old request is not lost behind unrelated pages.
+Filtering `/` searches loaded rows only. Row badges and summaries use the
+accepted observations; missing checks remain unknown.
+
+The equivalent CLI repository page is explicit:
 
 ```bash
-dev pr list --actions
-dev pr list --json | jq -r '.pull_requests[].actions.merge'
+dev pr list --scope repo --repo github:owner/api
+dev pr list --scope repo --repo gitlab:group/api --role author,reviewer
+dev pr list --scope repo --repo github:owner/api --page-size 50 --json
+dev pr list --scope repo --repo github:owner/api --cursor '<next_cursor>' --json
 ```
 
-Approving, merging, commenting, resuming, and retiring remain operator actions.
-The current comment action contains only a generic body placeholder (`'...'`);
-`dev` does not synthesize a vendor review-trigger phrase.
+This scope requires one provider-qualified repository or repository URL. It
+supports `--role all|author|reviewer|author,reviewer` and all documented states.
+Continue with the returned opaque cursor and unchanged account, repository,
+state, role and page size. JSON adds `pagination` (`next_cursor`, `complete`,
+`total`, `total_lower_bound`, `relationship`) to the existing schema-v1 object.
+A loaded page is not the whole repository when another cursor remains.
+
+## Inspect and try a request
+
+```bash
+dev pr view https://github.com/owner/api/pull/12
+dev pr view https://gitlab.com/group/api/-/merge_requests/12 --json
+dev pr diff https://github.com/owner/api/pull/12
+dev pr diff https://github.com/owner/api/pull/12 --no-pager > pr.diff
+dev pr checkout https://github.com/owner/api/pull/12 --dry-run
+```
+
+`view` reads fresh checks, review/merge readiness, change size where available,
+and local checkout candidates. `diff` uses optional `diffnav` in a terminal and
+otherwise writes the provider diff. Terminal output neutralizes control
+sequences; piped output retains patch bytes. This is a live remote preview,
+not immutable approval evidence. Provider limits, binary omissions and changed
+file counts are reported. An incomplete preview can be inspected interactively;
+noninteractive output refuses to produce a misleading complete patch. `--web`
+opens the request or diff in the browser.
+
+`checkout` reuses an exact matching checkout without resetting it. Dirty files
+or a local tip different from the current PR head are reported and retained.
+Otherwise it fetches the selected request and creates a task-free worktree from
+the verified head. Multiple local matches require selecting `--repo`; an
+existing matching SSH remote keeps its native transport, and `--source-remote`
+can select among ambiguous base remotes. No personal fork is created.
+
+```bash
+dev pr checkout https://github.com/owner/api/pull/12 --repo ~/src/api
+dev pr checkout https://github.com/owner/api/pull/12 --try
+dev pr checkout https://github.com/owner/api/pull/12 --clone --path ~/src/api
+dev pr checkout https://github.com/owner/api/pull/12 --try --provision
+```
+
+Without a local repository, interactive checkout offers an independent dated
+Try clone or a project clone plus worktree; Try is the suggested choice. Scripts
+must choose `--try` or `--clone`. Provisioning, ignored-file copying, dependency
+installation, project hooks and submodule initialization are off for PR
+acquisition until explicit `--provision`; established project trust still
+applies. A new Try keeps catalog identity and its own clone. `--no-open` prepares
+only the checkout; `--json` reports paths and retained effects without opening a
+runtime. Task adoption and eventual cleanup remain separate actions.
+
+## Merge and update the local base
+
+```bash
+dev pr merge https://github.com/owner/api/pull/12 --squash --dry-run
+dev pr merge https://github.com/owner/api/pull/12 --squash
+dev pr merge https://github.com/owner/api/pull/12 --squash --sync-base ff-only --repo ~/src/api
+dev pr sync-base https://github.com/owner/api/pull/12 --repo ~/src/api --strategy rebase
+```
+
+Merge reviews one exact head and rechecks the account, repository, refs,
+permissions and current provider readiness before one immediate squash request.
+Use `--yes` for a reviewed noninteractive operation. Passing checks alone do not
+mean ready: draft, review requirements, unknown policy, queue/auto-merge and
+GitLab merge trains can block this action. Those deferred workflows remain in
+the provider UI; dev offers no admin override. Provider branch-deletion policy
+is shown before merge, although dev does not request branch deletion.
+
+Private attempt/result receipts live under `<state_dir>/pr-merges/`. An
+interrupted write may have completed remotely: dev preserves **unknown**,
+reconciles only by reads, and does not send the merge again. A cached ready badge
+or a previously viewed diff never authorizes a new write.
+
+Base synchronization starts only after confirmed merge and uses the actual PR
+base branch, which need not be `main`. It fetches first, then constructs a fresh
+local synchronization plan. Fast-forward is the default; rebase requires an
+explicit strategy. Dirty, occupied, ambiguous or changed checkouts block
+mutation. No branch switch, stash, force reset or automatic cleanup is implied.
+Merge and local synchronization have separate results: a later sync failure
+retains the completed remote merge and any recovery information.
+
+`dev pr list --actions` still prints operator commands without executing them.
+Approve and comment remain provider actions; comment suggestions contain only a
+generic `'...'` placeholder, never an AI-review trigger phrase.
+
+## Native gh-dash
+
+The dashboard action opens an explicitly installed `dlvhdr/gh-dash` through
+`gh dash`, retaining its configuration and keybindings. It passes the selected
+GitHub host/repository and a verified local checkout when available; otherwise
+it uses a neutral temporary directory, not another project's local config.
+It neither installs the extension nor rewrites `.gh-dash.yml`, and does not
+promise to select a particular PR inside the native dashboard. GitLab requests
+continue through dev's MR actions or the browser.
 
 ## Retiring the worktree behind a merged request
 

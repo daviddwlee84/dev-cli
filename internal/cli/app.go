@@ -33,6 +33,7 @@ import (
 
 // App is the state shared by every command.
 type App struct {
+	prProvider       forge.PRProvider
 	snippetService   *snippet.Service
 	snippetOpenURL   func(context.Context, string) error
 	feedbackReporter forge.IssueReporter

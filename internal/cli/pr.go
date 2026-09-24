@@ -17,17 +17,15 @@ import (
 func newPRCmd(app *App) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "pr",
-		Short: "List the pull requests waiting on you and their local worktrees",
-		Long: `Show the pull and merge requests you opened and the ones asking for your review.
+		Short: "Inspect, try and merge pull requests with explicit actions",
+		Long: `List pull and merge requests, inspect their diff and checks, or open an exact
+request in a task-free worktree or Try. GitHub and GitLab URLs are supported.
 
-Opening a request usually ends a worktree's useful life, but nothing local says
-so, and requests accumulate faster than anyone reviews them. This lists them in
-one place and, where dev already has a checkout for the branch, says which one.
-
-Nothing here changes anything: no approving, no merging, no worktree removal.
-It reports, and prints the commands you would run next.`,
+List and view are read-only. Checkout fetches only the selected request; merge
+and base synchronization preview and confirm their guarded changes separately.
+Merging never retires a local worktree or Try.`,
 	}
-	cmd.AddCommand(newPRListCmd(app))
+	cmd.AddCommand(newPRListCmd(app), newPRViewCmd(app), newPRDiffCmd(app), newPRCheckoutCmd(app), newPRMergeCmd(app), newPRSyncBaseCmd(app))
 	return cmd
 }
 
@@ -50,6 +48,12 @@ unless --all-repos widens it.`,
 			query := ""
 			if len(args) == 1 {
 				query = strings.ToLower(args[0])
+			}
+			if opts.Scope == "repo" {
+				return runPRRepoList(cmd.Context(), app, opts, query)
+			}
+			if opts.Cursor != "" || cmd.Flags().Changed("page-size") {
+				return errors.New("--cursor and --page-size require --scope repo")
 			}
 			collectOptions, err := opts.collectOptions()
 			if err != nil {
@@ -83,6 +87,8 @@ unless --all-repos widens it.`,
 // prFlags are shared by `pr list` and the generic `prompt ... pr-triage`
 // recipe so both collect the same inbox.
 type prFlags struct {
+	Cursor   string
+	PageSize int
 	Scope    string
 	Roles    []string
 	State    string
@@ -99,6 +105,10 @@ func (f *prFlags) register(cmd *cobra.Command) {
 	flags := cmd.Flags()
 	flags.BoolVar(&f.JSON, "json", false, "emit structured output")
 	flags.BoolVar(&f.Actions, "actions", false, "print the gh/glab commands for each request")
+	flags.StringVar(&f.Cursor, "cursor", "", "continue the previous --scope repo page")
+	flags.IntVar(&f.PageSize, "page-size", 50, "requests per --scope repo page (1-100)")
+	cmd.Flags().Lookup("scope").Usage = "which surface to query: account, local, all or repo (one explicit --repo)"
+	cmd.Flags().Lookup("role").Usage = "limit to author or reviewer; repo scope also accepts all (its default)"
 }
 
 func (f *prFlags) registerFilters(cmd *cobra.Command) {

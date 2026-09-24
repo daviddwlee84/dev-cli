@@ -5,7 +5,7 @@ func refreshActionDescription(view View) string {
 	case ViewFleet:
 		return "Refresh the shared local Herdr catalog and the selected host's repositories. Old data remains stale on failure; update all configured hosts is a separate action."
 	case ViewRemote:
-		return "Refresh the selected REMOTE content: repositories or snippet metadata/content-search results. This is an explicit network action."
+		return "Refresh the selected REMOTE content: repository inventory or snippet results. Pull request children refresh only through their explicit action. This is an explicit network action."
 	case ViewSkills:
 		return "Reload local installed skills. Use c separately for explicit upstream source checks."
 	case ViewMCP:
@@ -19,6 +19,9 @@ func refreshActionDescription(view View) string {
 
 // Authored guidance lives alongside the registrations; it never dispatches an action.
 func actionGuidance(view View, id listAction) (string, string) {
+	if id == listActionGHDash {
+		return "Open the selected GitHub repository in gh-dash", "Hand the terminal to the installed gh dash extension with this repository and host as context. Native gh-dash filters, keybindings and configuration remain authoritative. Closing it restores this dashboard and refreshes local observations."
+	}
 	switch view {
 	case ViewTasks:
 		switch id {

@@ -181,7 +181,7 @@ The manifest for each release is also attached to the GitHub release as
 
 ```bash
 go install github.com/daviddwlee84/dev-cli/cmd/dev@latest
-# Pin @v0.3.2 instead when you need a reproducible install.
+# Pin @v0.3.3 instead when you need a reproducible install.
 # Or from a checkout: make install  # also installs the bundled agent skill
 ```
 
@@ -225,7 +225,7 @@ pkg update && pkg upgrade -y && pkg install golang clang git curl
 stage="$(mktemp -d "$HOME/.local/bin/.dev-build.XXXXXX")" && (
   trap 'rm -rf "$stage"' EXIT
   set -e
-  version=v0.3.2
+  version=v0.3.3
   asset="dev-cli_${version}_source.tar.gz"
   base="https://github.com/daviddwlee84/dev-cli/releases/download/$version"
   cd "$stage"
@@ -853,6 +853,9 @@ Choose the lightest mode that preserves the boundary you need:
 # No task, no branch, no worktree: just open the canonical repo for ad-hoc work.
 dev repo open api
 
+# Change this shell's directory without opening a runtime.
+dev repo cd api                 # equivalent to repo open api --runtime none
+
 # Track a quick change directly on the branch already checked out (usually main).
 dev work start api --task "fix typo" --direct
 
@@ -1303,6 +1306,24 @@ contract also powers the optional Television channel and fzf shell helper under
 compose a selected exact clone URL with `dev repo clone` without teaching
 another command about forge freshness.
 
+**Space on a REMOTE repository** loads its GitHub PR or GitLab MR children on
+demand. Pages, details, diff previews and refresh are explicit; moving the cursor
+or filtering does not query requests. Above 50 open requests, the initial scope
+is authored/requested-review, with **Show all PRs** available. Session observations
+become stale after five minutes. Configure threshold, page size and age under
+`[tui.remote.prs]`; summary statistics keep their existing batched cache behavior.
+PR actions inspect checks, preview through optional `diffnav`, and open a
+task-free worktree or independent Try. No local repository defaults to Try in
+the interactive choice; provisioning is opt-in. Immediate squash and optional
+base sync are reviewed separately and never clean up the PR checkout.
+
+REPOS/REMOTE **Ctrl+O → Open in gh-dash** is available for verified GitHub targets
+when the `gh dash` extension is installed. Uncloned remote repositories work too.
+The exact repository/host is passed as native context; gh-dash keeps its own
+configuration, section filters and refresh policy. Exiting returns to the
+dashboard and marks PR observations stale without requerying them.
+See the [PR guide](docs/guides/pull-request-inbox.md).
+
 SKILLS also loads lazily. Inside Git it describes the exact startup checkout;
 outside Git it describes the accepted repository inventory. `A` can inspect all
 accepted repositories without changing the next TUI run's default. Native reads
@@ -1669,7 +1690,12 @@ dev tries graduate redis-streams -c Infra --remote   # promote it into a real pr
 
 dev pr list                    # requests you opened or were asked to review
 dev pr list --scope local      # with head branches, joined to your worktrees
-dev pr list --actions          # the gh/glab commands; dev prints, never runs
+dev pr list --actions          # this list command only prints gh/glab commands
+dev pr list --scope repo --repo github:owner/repo --json  # one explicit page
+dev pr view https://github.com/owner/repo/pull/12
+dev pr diff https://github.com/owner/repo/pull/12          # optional diffnav
+dev pr checkout https://github.com/owner/repo/pull/12 --try
+dev pr merge https://github.com/owner/repo/pull/12 --squash --sync-base ff-only
 dev agent prompt list                # built-in read-only context recipes
 dev agent prompt agents --json       # sorted profile capabilities, no private argv/shell
 dev agent prompt render pr-triage    # inspect/copy the exact prompt

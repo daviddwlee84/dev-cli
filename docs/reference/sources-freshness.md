@@ -296,3 +296,20 @@ schema references are [GitHub repositories](https://docs.github.com/en/graphql/r
 [GitHub Gists](https://docs.github.com/en/graphql/reference/gists) and
 [GitLab Project](https://docs.gitlab.com/api/graphql/reference/#project).
 These are dated observations, not evidence of synchronization or cleanup safety.
+
+## PR workspace and merge actions (2026-09-25)
+
+[The PR workflow](../guides/pull-request-inbox.md) and REMOTE tree are defined by
+`internal/prflow`, `internal/forge/pr_native*`, `internal/cli/pr*.go`, dashboard
+adapters and their hermetic Git/provider tests. Coverage includes account-bound
+pagination, related provider queries, unknown checks, exact checkout selection,
+sealed Try acquisition, immediate squash receipts, fresh base synchronization,
+terminal control neutralization and provider diff omissions. These tests do not
+claim live account writes or universally available enterprise policy fields.
+
+Provider semantics were checked against [GitHub merge API](https://docs.github.com/en/rest/pulls/pulls#merge-a-pull-request),
+[GitHub GraphQL PR fields](https://docs.github.com/en/graphql/reference/pulls#object-pullrequest)
+and [GitLab MR API](https://docs.gitlab.com/api/merge_requests/) on 2026-09-25.
+Native gh-dash is a foreground handoff retaining its own configuration; dev does
+not promise a particular native PR selection. PR session cache defaults to five
+minutes independently of `forge.cache_ttl`.

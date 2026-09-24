@@ -18,33 +18,32 @@ others require preview/apply. Do not preload manuals or run routine diagnostics.
 
 ## Preserve these boundaries
 
-- Opening a repository needs no task. Choose direct, branch, or worktree
-  deliberately; pass an explicit `--base` for branch/worktree creation. Keep
-  managed worktrees outside repositories.
-- `dev git worktree create/open` and reviewed merged-worktree sweep can be used
-  without task registration. `dev repo list --json` supplies editor/launcher
-  candidates; keep native project preferences and usage histories separate.
-- `dev work start` normally prepares a checkout/runtime. Agent launch is explicit.
-  Parallel writers need coordinated ownership and verified launch targets.
-- Completion, artifact finalization, retirement and branch deletion are separate.
-  Finalize after writer exit; retire externally. Use `retire --base` when a fork
-  point cannot prove integration. Runtime `done` is not cleanup-ready.
-- Unknown or cached observations, merged PRs, and command refusals do not grant
-  cleanup authority. Resolve the reported conditions; do not improvise force
-  removal or bypass trust checks.
+- Opening needs no task. Select direct, branch or worktree deliberately; use
+  explicit `--base`. Managed worktrees stay outside repositories.
+- Task-free worktrees use `dev git worktree create/open`; cleanup stays reviewed.
+  `dev repo list --json` supplies navigation candidates, not external preferences/history.
+- `dev work start` prepares checkout/runtime; agent launch is explicit. Parallel
+  writers require disjoint ownership and verified targets.
+- Completion, artifacts, retirement and branch deletion are separate. Finalize
+  after writer exit; retire externally. Use `retire --base` when integration is unproven.
+- Cached/unknown observations, runtime `done` and merged PRs never authorize
+  cleanup. Resolve guards; never improvise force removal or bypass checks.
+- `dev pr checkout <URL>` is task-free; `--try` creates an independent clone.
+  Provisioning is explicit; merge never cleans up locally.
 
 ## Read a reference for advanced operations
 
-- Worktree provisioning or cross-host lifecycle: [ownership](references/worktree-ownership.md), [lifecycle](references/task-lifecycle.md).
-- Parallel agent launches or prompt transports: [agents](references/parallel-agents.md), [handoffs](references/prompt-handoffs.md).
+- Worktrees/lifecycle: [ownership](references/worktree-ownership.md), [lifecycle](references/task-lifecycle.md).
+- Agents/prompts: [agents](references/parallel-agents.md), [handoffs](references/prompt-handoffs.md).
 - History retention, exact sessions and co-commit: [artifacts](references/ai-artifacts.md).
-- Agent completion or cleanup batches: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
-- Repository hygiene batches, `report --json` summaries, scans or redaction: [hygiene](references/hygiene.md).
-- Repository forks, hooks, publication, or physical organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
-- SSH dashboard, diagnosis, discovery, tests/activity, keys, credentials and registration: [SSH](references/ssh-hosts.md).
+- Cleanup: [retirement](references/agent-retirement.md), [triage](references/local-triage.md).
+- Hygiene/scans/redaction: [hygiene](references/hygiene.md).
+- Forks/setup/organization: [setup](references/repository-bootstrap.md), [bootstrap](references/bootstrap.md).
+- SSH/fleet: [SSH](references/ssh-hosts.md).
 - Dotfile setup, native chezmoi operations, or FLEET host actions: [dotfiles](references/dotfiles.md).
 - Skill/MCP/instruction transfers, updates or removal: [transfers](references/agent-interop.md), [maintenance](references/skills-management.md).
 - [Snippets](references/snippets.md).
+- PR/MR pages, diffnav, gh-dash, checkout and merge: [pull requests](references/pull-requests.md).
 - Recursive Git children: [submodules](references/submodules.md).
 
 ## Unexpected dev failures

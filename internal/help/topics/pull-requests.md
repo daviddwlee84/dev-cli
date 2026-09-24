@@ -1,10 +1,10 @@
 # Pull requests
 
 How to see what is waiting on you and whether its expected branch is healthy
-locally. `dev pr` is inventory only; generic agent handoff lives under
+locally. `dev pr list` remains inventory only; generic agent handoff lives under
 `dev agent prompt`.
 
-## What `dev pr` is
+## What `dev pr list` does
 
 `dev pr list` is a read-only inbox over available forge CLIs. It lists requests
 the user opened and requests awaiting their review, then joins a reported head
@@ -37,6 +37,62 @@ branch, review decision, or checks. GitHub per-repository rows are `full`.
 GitLab account/repository lists report full branch/merge detail but not checks or
 a normalized review decision. An absent field means the surface did not report
 it, not that its real value is empty.
+
+## Explicit PR workflow
+
+```bash
+dev pr list --scope repo --repo github:owner/api --page-size 50 --json
+dev pr list --scope repo --repo gitlab:group/api --role author,reviewer
+dev pr view https://github.com/owner/api/pull/12 --json
+dev pr diff https://github.com/owner/api/pull/12
+dev pr checkout https://github.com/owner/api/pull/12 --try --dry-run
+dev pr merge https://github.com/owner/api/pull/12 --squash --dry-run
+```
+
+Repository scope defaults to all authors and requires one provider-qualified
+repository or repository URL. It adds `pagination` without changing schema-v1
+fields. Continue with its opaque `--cursor` and the same account, repository,
+state, role and page size. Related author/reviewer queries run on the provider;
+missing rows from the first all-request page are not treated as an empty inbox.
+The REMOTE tree loads children on Space, defaults to pages of 50, and switches
+its automatic scope to related requests above 50 open requests. Scope, loaded
+count, overall count/lower bound, freshness and more results remain explicit.
+Filtering and loaded summaries do not fetch additional requests.
+
+`view` observes current checks, reviews, size and readiness. `diff` uses optional
+diffnav in an interactive terminal; `--no-pager` supports patch pipes and `--web`
+opens the provider. The diff is live and independent of merge authority.
+Control sequences are neutralized for terminal output. Omitted/oversized/binary
+contents remain visible as limitations; noninteractive incomplete patch output
+fails rather than appearing complete.
+
+Checkout prefers an exact existing checkout and retains its dirty files or
+changed local tip. Otherwise it creates a worktree from the verified request
+head, with no task or fork. Use `--repo` for ambiguous local clones and
+`--source-remote` for an exact existing base transport. Without a local match,
+choose `--try` for an independent catalog-backed clone or `--clone [--path PATH]`
+for a project clone plus worktree. Interactive acquisition suggests Try;
+scripts must choose. Project provisioning, ignored-file copying, hooks,
+dependency installation and submodule initialization require `--provision` and
+existing trust checks. `--no-open` and JSON leave runtime navigation to the caller.
+
+`merge <URL> --squash` previews and confirms one immediate merge bound to the
+reviewed head, account and repository. Apply reloads provider readiness.
+Queue/auto-merge, GitLab trains and unknown policy are not bypassed by dev; open
+the provider UI. There is no admin override. Provider branch-deletion policy is
+shown before merge. Private attempt/result receipts under `<state_dir>/pr-merges/`
+retain uncertain writes; reconciliation uses reads and never repeats the merge.
+
+`--sync-base ff-only|rebase` runs only after confirmed merge. Alternatively use
+`dev pr sync-base <URL> --repo <local-repo> --strategy ff-only|rebase`.
+Synchronization fetches, then reviews a fresh plan for the actual base checkout;
+rebase is explicit, dirty/occupied/changed targets block, and there is no implicit
+switch, stash, reset or cleanup. Remote merge and local sync have independent
+results. `--yes` approves a reviewed noninteractive action; `--json` alone does not.
+
+Native gh-dash is a dashboard handoff to an already installed `dlvhdr/gh-dash`,
+retaining native settings/keybindings and the selected GitHub host/repository
+context. It does not install or rewrite configuration, or promise a selected PR.
 
 ## Reading local health
 

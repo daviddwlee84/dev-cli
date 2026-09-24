@@ -8,7 +8,7 @@ lang: zh-TW
 
 # Worktree 與環境佈建
 
-Submodule Git 初始化先於環境 provisioning，預設遞迴建立固定在 gitlink 的 checkout。`--no-provision` 不略過它，需使用 `--submodules=none`。初始化失敗保留 worktree，但不開 runtime。見 [Submodule 工作區](submodule-workspaces.md)。
+一般 clone/worktree acquisition 的 submodule Git 初始化先於環境 provisioning，預設遞迴建立固定在 gitlink 的 checkout。`--no-provision` 不略過它，需使用 `--submodules=none`。初始化失敗保留 worktree，但不開 runtime。見 [Submodule 工作區](submodule-workspaces.md)。
 
 !!! note "術語規則"
     有公認中文譯名且本文使用中文時，首次以「中文 (English original)」呈現。產品名稱與 Git／CLI／agent domain terms 可直接保留英文；沒有公認譯名不得自創。程式碼、API／tool 名稱、CLI flag、套件名與路徑一律不翻譯。
@@ -76,6 +76,20 @@ activation/shell navigation 不變；runtime error 仍使 command 失敗。
 交付時立即回報 repository、branch、實際 checkout path 與 runtime handle/result。
 Adoption 是另一個 task intent 決定，不是可見性開關；harness-owned 暫時隔離仍與
 持久的實作工作分開。詳見 [平行 Agent 與 Runtime](parallel-agents-runtimes.zh-TW.md)。
+
+## PR checkout 的 acquisition defaults
+
+`dev pr checkout <PR-or-MR-URL>` 重用 exact matching checkout；否則從 verified
+request head 建立 task-free worktree。有多個 clone 時以 `--repo` 選定，Git remote 的
+原本 SSH/native transport 會保留；base remote 有歧義可用 `--source-remote`。既有
+checkout 的 dirty files 與與 remote head 不同的 local tip 都不會被 reset。
+
+PR acquisition 是一般 provisioning defaults 的明確例外：預設不複製 ignored files、
+不跑 dependencies/hooks、不初始化 submodules，需使用 `--provision` 與既有 trust
+checks。沒有 local repository 時，`--try` 建立獨立、具 catalog identity 的 dated clone；
+`--clone [--path PATH]` 建立 project clone 加 worktree。兩者都不 fork、不建立 task。
+`--dry-run` 只 preview，`--no-open`／`--json` 不開 runtime。Merge 後的 cleanup 仍需
+另外取得既有 lifecycle proof。詳見 [PR workflow](pull-request-inbox.zh-TW.md)。
 
 ## 建立前先檢查
 

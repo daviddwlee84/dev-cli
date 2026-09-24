@@ -172,9 +172,12 @@ func newActionRegistry() []ActionSpec {
 		s := add(ViewRemote, id, "", "", snippetMode, snippetLoad)
 		s.Scope, s.Menu = actionView, menuAdapter
 	}
-	add(ViewRemote, listActionCopy, "copy repository URL…", "y", nil, copyReady).Title = func(c ActionContext) string {
+	add(ViewRemote, listActionCopy, "copy repository URL…", "y", func(c ActionContext) bool { return c.remote != nil || c.pr != nil || c.model.snippetsActive() }, copyReady).Title = func(c ActionContext) string {
 		if c.model.snippetsActive() {
 			return "copy snippet URL"
+		}
+		if c.pr != nil {
+			return "copy pull request URL"
 		}
 		return "copy repository URL…"
 	}
@@ -184,21 +187,40 @@ func newActionRegistry() []ActionSpec {
 			_, ok := c.model.currentSnippet()
 			return ok
 		}
+		if item, ok := c.model.currentRemoteItem(); ok && (item.PR != nil || item.more) {
+			return true
+		}
 		return c.remote != nil && c.remote.Cloned()
 	}, func(c ActionContext) string {
 		if c.model.snippetsActive() {
 			return requires(c.model.actions.Snippets.Open != nil, "Snippet browser")
+		}
+		if item, ok := c.model.currentRemoteItem(); ok && item.more {
+			return c.model.remotePRLoadReason(item.Repository)
+		}
+		if c.pr != nil {
+			return requires(c.model.actions.PRs.Run != nil, "Pull request checkout")
 		}
 		return requires(c.model.actions.OpenRemote != nil, "Opening local clones")
 	}).Title = func(c ActionContext) string {
 		if c.model.snippetsActive() {
 			return "open snippet in browser"
 		}
+		if item, ok := c.model.currentRemoteItem(); ok && item.more {
+			return "load more pull requests"
+		}
+		if c.pr != nil {
+			return "open pull request worktree"
+		}
 		return "open local checkout"
 	}
 	add(ViewRemote, listActionRemoteClone, "clone repository…", "c", func(c ActionContext) bool { return c.remote != nil && !c.remote.Cloned() }, func(c ActionContext) string {
 		return requires(c.model.actions.CloneRemote != nil, "Repository cloning")
 	})
+	specs = append(specs, remotePRActions()...)
+	for _, view := range []View{ViewRepos, ViewRemote} {
+		add(view, listActionGHDash, "open in gh-dash", "", func(c ActionContext) bool { _, ok := c.model.ghDashTarget(); return ok }, func(c ActionContext) string { return c.model.ghDashReason() })
+	}
 
 	for _, view := range []View{ViewSkills, ViewMCP} {
 		label := "open primary skill file"
@@ -342,7 +364,7 @@ func newActionRegistry() []ActionSpec {
 	}
 	for _, view := range []View{ViewTasks, ViewRepos, ViewRemote, ViewTries} {
 		add(view, listActionBrowse, "open repository in browser…", "", func(c ActionContext) bool {
-			return !c.model.snippetsActive() && (c.try == nil || c.try.Item.Live.Repo != nil)
+			return !c.model.snippetsActive() && c.pr == nil && (c.try == nil || c.try.Item.Live.Repo != nil) && !(c.model.view == ViewRemote && c.remote == nil)
 		}, workflow)
 	}
 	tryRecover := func(c ActionContext) bool {

@@ -212,6 +212,26 @@ package manager 時只提供指引。前景安裝保留原生提示，不新增�
 manager、不預先接受條款。完成後檢查執行檔，`ssh` 另檢查 OpenSSH capability；
 驗證與服務啟動分開處理。取消或失敗不自動重試。
 
+## REMOTE pull requests
+
+在 GitHub/GitLab repository 按 **Space** 展開 PR/MR children。預設 page size 為 50；
+automatic scope 對較小 repository 顯示全部 open requests，已知超過 50 筆時改顯示自己
+提出或等自己 review 的 requests。Scope、loaded count、overall count 或其下限、stale
+observations 與 pagination 都可見。**Ctrl+O** 可切 scope、refresh、load more；`/` 只搜
+已載入 rows，不連 provider。Author/reviewer badges 與 lifecycle／checks 分開，summary
+只描述已接受的 loaded batch。
+
+PR row actions 可讀取 fresh details、用選用的 diffnav preview、開啟或重用 exact
+checkout、建立獨立 Try、明確 provision、review immediate squash merge，或同步 confirmed
+merged PR 的 local base。Cached readiness 不授權 write。Checkout 預設沒有 task、不自動
+fork、不 provision／初始化 submodules。Merge 與 local sync 分別回報 retained effects，
+這些動作都不隱含 cleanup。
+
+已安裝 native `dlvhdr/gh-dash` extension 時，支援的 GitHub context 會提供 **Open in
+gh-dash**。它保留 native config/keybindings，傳入所選 host/repository，child 結束後回到
+dev，不安裝 extension 或改寫設定。CLI equivalents、provider 限制與 merge receipts
+請見 [PR workflow](pull-request-inbox.zh-TW.md)。
+
 ## REMOTE snippets
 
 REMOTE 預設顯示 repositories。**Ctrl+O → Show snippets** 載入 GitHub Gists

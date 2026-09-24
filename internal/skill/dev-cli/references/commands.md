@@ -1554,11 +1554,40 @@ dev help [topic|command path] [flags]
 
 ### `dev pr`
 
-List the pull requests waiting on you and their local worktrees
+Inspect, try and merge pull requests with explicit actions
 
 ```
 dev pr
 ```
+
+### `dev pr checkout`
+
+Open a request in an existing checkout, a task-free worktree, or a Try
+
+```
+dev pr checkout <URL> [flags]
+```
+
+- `--clone` — clone the base repository into project_root before creating a worktree
+- `--dry-run` — inspect the checkout plan without fetching or changing files
+- `--json` — emit a plan or result with retained effects; do not open a runtime
+- `--no-open` — prepare the checkout without opening a runtime or changing directory
+- `--path` — project clone destination (requires --clone)
+- `--provision` — explicitly provision the new checkout and initialize configured submodules
+- `--repo` — select an exact local repository or checkout
+- `--source-remote` — select the existing base repository remote used to fetch the PR
+- `--try` — create an independent PR clone under tries_root
+
+### `dev pr diff`
+
+Preview a request diff with diffnav, or write it to stdout
+
+```
+dev pr diff <URL> [flags]
+```
+
+- `--no-pager` — write diff directly without starting diffnav
+- `--web` — open the request diff in the browser
 
 ### `dev pr list`
 
@@ -1570,13 +1599,55 @@ dev pr list [query] [flags]
 
 - `--actions` — print the gh/glab commands for each request
 - `--all-repos` — query every discovered repository, not only ones dev has a task for
+- `--cursor` — continue the previous --scope repo page
 - `--json` — emit structured output
 - `--limit` — cap the rows rendered
 - `--linked` — only requests with a checked-out local branch
+- `--page-size` — requests per --scope repo page (1-100)
 - `--repo` — restrict to these owner/name repositories
-- `--role` — limit to author or reviewer (default both)
-- `--scope` — which surface to query: account, local or all
+- `--role` — limit to author or reviewer; repo scope also accepts all (its default)
+- `--scope` — which surface to query: account, local, all or repo (one explicit --repo)
 - `--state` — request state: open, merged, closed or all
+
+### `dev pr merge`
+
+Preview and perform one immediate squash merge
+
+```
+dev pr merge <URL> [flags]
+```
+
+- `--dry-run` — preview without merging or fetching
+- `--json` — emit structured stage results; confirmation still requires --yes outside a terminal
+- `--repo` — select the local repository for optional base synchronization
+- `--squash` — explicitly squash the reviewed head
+- `--sync-base` — after confirmed merge, update the local base: none, ff-only or rebase
+- `-y, --yes` — approve the displayed merge and explicitly selected synchronization strategy
+
+### `dev pr sync-base`
+
+Update the local base of a confirmed merged request
+
+```
+dev pr sync-base <URL> [flags]
+```
+
+- `--dry-run` — preview the fetch stage; no refs or checkouts are changed
+- `--json` — emit structured plan or stage results
+- `--repo` — select the local repository whose actual base checkout should be updated
+- `--strategy` — base update strategy: ff-only or explicit rebase
+- `-y, --yes` — approve the displayed fetch and fresh base synchronization plans
+
+### `dev pr view`
+
+Inspect one pull request's checks, changes and merge readiness
+
+```
+dev pr view <URL> [flags]
+```
+
+- `--json` — emit structured observations
+- `--web` — open the exact request in the browser
 
 ### `dev repo`
 
@@ -1633,6 +1704,14 @@ dev repo browse [repo-or-path] [flags]
 
 - `--print` — print the HTTPS URL without opening a browser
 - `--remote` — select a configured Git remote
+
+### `dev repo cd`
+
+Change shell directory to a repository without opening a runtime
+
+```
+dev repo cd <repo>
+```
 
 ### `dev repo clone`
 

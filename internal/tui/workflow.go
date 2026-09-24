@@ -36,6 +36,8 @@ type WorkflowRequest struct {
 }
 
 type WorkflowResult struct {
+	// PR is a fresh, explicitly requested observation returned by a PR workflow.
+	PR            *PRRow
 	RefreshRepos  bool
 	RefreshSkills bool
 	Severity      string

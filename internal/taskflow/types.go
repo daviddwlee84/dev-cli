@@ -85,6 +85,7 @@ const (
 	FetchRepository   Action = "fetch-repository"
 	PushBranch        Action = "push-branch"
 	FastForwardBranch Action = "fast-forward-branch"
+	RebaseBranch      Action = "rebase-branch"
 )
 
 var actionOrder = []Action{
@@ -100,7 +101,7 @@ var actionOrder = []Action{
 	RemoveCheckout,
 	RefreshRemote,
 	Reconcile,
-	FetchRepository, PushBranch, FastForwardBranch,
+	FetchRepository, PushBranch, FastForwardBranch, RebaseBranch,
 }
 
 // Actions returns every supported action in stable display order.

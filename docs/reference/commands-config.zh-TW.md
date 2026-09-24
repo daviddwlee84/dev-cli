@@ -29,7 +29,7 @@ completion 保持相容。`dev help --tree` 預設展開兩層，`--depth 0` 展
 | 目標 | Commands |
 |---|---|
 | 追蹤工作 | `work list/start/park/resume/done/adopt/retire/sweep` |
-| Repository／Remote | `repo list/context/new/clone/fork/setup/open/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
+| Repository／Remote | `repo list/context/new/clone/fork/setup/open/cd/browse/sync/remote/mark`, `repo bootstrap`, `repo note …`, `repo flow [repo]` |
 | 實驗 | `tries try/open/list/graduate/demote`, `tries deprecate/reactivate/archive/restore/delete` |
 | Git 與 checkout 支援 | `git uncommit/recommit/pull-rebase/amend-all/setup`, `git ignore`, `git worktree …`, `git submodule …`, `git hygiene …` |
 | Coding agent 支援 | `agent skill …`, `agent mcp …`, `agent instructions …`, `agent prompt …`, `agent artifact …`, `agent artifact prepare` |
@@ -39,6 +39,14 @@ completion 保持相容。`dev help --tree` 預設展開兩層，`--depth 0` 展
 
 
 已安裝 binary 的精確資訊請執行 `dev <command> --help`；本站描述的是 freshness metadata 指定的 repository version。
+
+## Repository shell 導覽（v0.3.3）
+
+`dev repo cd lazyset` 等同 `dev repo open lazyset --runtime none`。
+名稱／路徑解析、completion 與錯誤行為共用 `repo open`，但即使設定檔或
+全域旗標指定其他 runtime，也固定使用 no-multiplexer backend；不更動
+其他命令的 runtime 設定。已安裝 shell wrapper 時會切換目前 shell 的目錄；
+沒有 wrapper 時則印出正確 quoting 的 `cd` 指令。
 
 ## 按需閱讀 Help（v0.2.24）
 
@@ -182,6 +190,36 @@ Request 的 optional `local` object 把 task intent 與 live checkout health 分
 確實被證明 checked out 且 status available 時才出現 optional `git`；其中包含
 `dirty`、`ahead`、`behind` 與 optional `upstream`。Missing/cold/unregistered status
 因此不會透過 zero value 看似 clean。Schema 1 是 add-only。
+
+### PR actions 與 repository pagination
+
+`dev pr list --scope repo --repo github:owner/name` 新增 explicit single-repo
+surface，也接受 repository URL。既有 account/local scope 仍接受 bare `owner/name`，但
+新 scope 不會用它猜 provider。Repository scope 預設包含所有作者，支援
+`--role all|author|reviewer|author,reviewer`、`--page-size`（預設 50）與 opaque
+`--cursor`。續讀必須保持 account、repository、state、role、page size 相同。新增的
+`pagination` object 包含 `next_cursor`、`complete`、`total`、`total_lower_bound`、
+`relationship`；下限不是 exact total。
+
+`dev pr view <URL> [--json|--web]`、`diff <URL> [--no-pager|--web]` 與
+`checkout <URL>` 共用 exact provider URL resolution。Checkout 支援 `--repo`、
+`--source-remote`、`--try`、`--clone [--path PATH]`、`--provision`、`--dry-run`、
+`--no-open`、`--json`，不建立 task 或 fork。`merge <URL> --squash
+[--sync-base none|ff-only|rebase]` review immediate merge；`sync-base <URL>
+--strategy ff-only|rebase` 可獨立更新 confirmed merged request 的 base。兩者都接受
+`--repo`、`--dry-run`、`--yes`、`--json`；JSON 不省略確認。見 [PR workflow](../guides/pull-request-inbox.zh-TW.md)。
+
+Dashboard PR page 使用獨立的 session freshness 設定：
+
+```toml
+[tui.remote.prs]
+large_repo_threshold = 50
+page_size = 50
+cache_ttl = "5m"
+```
+
+以上是 effective defaults，不改變 `forge.cache_ttl` 的 repository inventory／statistics
+policy。Zero 使用 PR defaults；負值及超過 100 的 page size 會被拒絕。
 
 ### Ephemeral-worktree report 與 apply contract
 

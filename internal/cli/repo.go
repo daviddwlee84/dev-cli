@@ -41,6 +41,7 @@ This is the "what projects do I have?" half of dev, kept separate from the
 		newRepoForkCmd(app),
 		newSubmoduleAddCmd(app, true),
 		newRepoOpenCmd(app),
+		newRepoCDCmd(app),
 		newRepoNewCmd(app),
 		newRepoSetupCmd(app),
 		newRepoSyncCmd(app),
@@ -434,6 +435,21 @@ func newRepoOpenCmd(app *App) *cobra.Command {
 		},
 	}
 	cmd.ValidArgsFunction = completeRepos(app)
+	return cmd
+}
+
+func newRepoCDCmd(app *App) *cobra.Command {
+	cmd := newRepoOpenCmd(app)
+	cmd.Use = "cd <repo>"
+	cmd.Short = "Change shell directory to a repository without opening a runtime"
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		// Commands are assembled before App.Load. Copy at execution time so
+		// resolution uses the loaded configuration, and pin only this action
+		// to None even when a runtime override or injected backend exists.
+		navigation := *app
+		navigation.runtimeInstance = runtime.None{}
+		return newRepoOpenCmd(&navigation).RunE(cmd, args)
+	}
 	return cmd
 }
 

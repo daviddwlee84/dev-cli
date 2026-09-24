@@ -137,6 +137,21 @@ const (
 	listActionSnippetClearSearch
 	listActionSnippetCreate
 	listActionSnippetCancel
+	listActionPRToggle
+	listActionPRRefresh
+	listActionPRAll
+	listActionPRRelated
+	listActionPRMore
+	listActionPRView
+	listActionPRDiff
+	listActionPRCheckout
+	listActionPRTry
+	listActionPRProvision
+	listActionPRMerge
+	listActionPRMergeSync
+	listActionPRSyncBase
+	listActionPRBrowser
+	listActionGHDash
 )
 
 type selectionToken struct {
@@ -213,11 +228,15 @@ func (m Model) currentSelectionToken() (selectionToken, bool) {
 		if row, ok := m.currentSnippet(); ok {
 			return selectionToken{view: m.view, key: "snippet\x00" + row.Key}, true
 		}
-		row, ok := m.currentRemote()
+		row, ok := m.currentRemoteItem()
 		if !ok {
 			return selectionToken{}, false
 		}
-		return selectionToken{view: m.view, key: remoteRowKey(row)}, true
+		token := selectionToken{view: m.view, key: remoteItemKey(row)}
+		if row.PR != nil {
+			token.revision = row.PR.HeadOID
+		}
+		return token, true
 	case ViewSkills:
 		row, ok := m.currentSkill()
 		if !ok {
@@ -282,8 +301,8 @@ func (m *Model) selectToken(token selectionToken) bool {
 			}
 			return false
 		}
-		for i, row := range m.visibleRemotes() {
-			if remoteRowKey(row) == token.key {
+		for i, row := range m.visibleRemoteItems() {
+			if remoteItemKey(row) == token.key {
 				m.setAt(i)
 				return true
 			}
@@ -307,6 +326,9 @@ func (m *Model) selectToken(token selectionToken) bool {
 }
 
 func (m Model) selectionHeading() (string, string) {
+	if item, ok := m.currentPR(); ok {
+		return fmt.Sprintf("%s #%d", item.Repository.Repo.FullName, item.PR.PR.Number), snippetDisplayText(item.PR.PR.Title)
+	}
 	if row, ok := m.currentSnippet(); ok {
 		return snippetDisplayText(row.Title), snippetDisplayText(row.URL)
 	}
@@ -423,6 +445,22 @@ func (m Model) runOverlayAction() (tea.Model, tea.Cmd) {
 }
 
 func (m Model) executeListAction(action listAction) (tea.Model, tea.Cmd) {
+	if action >= listActionPRToggle && action <= listActionPRBrowser {
+		return m.runPRListAction(action)
+	}
+	if action == listActionGHDash {
+		return m.runGHDash()
+	}
+	if m.view == ViewRemote && action == listActionOpen {
+		if item, ok := m.currentRemoteItem(); ok {
+			if item.more {
+				return m.loadRemotePRs(item.Repository, m.remotePRState(item.Repository.Repo).scope, true)
+			}
+			if item.PR != nil {
+				return m.runRemotePRAction(PRCheckout)
+			}
+		}
+	}
 	if action >= listActionRemoteContent && action <= listActionSnippetCancel ||
 		(m.snippetsActive() && (action == listActionOpen || action == listActionCopy)) {
 		return m.runSnippetAction(action)
@@ -647,6 +685,9 @@ func (m Model) executeListAction(action listAction) (tea.Model, tea.Cmd) {
 			return m.prompt(modeStartDirect, "", "name for direct work on current branch")
 		}
 	case listActionCopy:
+		if item, ok := m.currentPR(); ok {
+			return m.copyText(item.PR.PR.URL, "pull request URL", false)
+		}
 		token, ok := m.currentSelectionToken()
 		if !ok {
 			return m, nil

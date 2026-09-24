@@ -42,6 +42,8 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 	observe := func(ctx context.Context, req Request, load taskInventoryLoader) (syncObservation, error) {
 		var o syncObservation
 		l := req.Locator
+		options := req.Options.(SyncOptions)
+		updatesCheckout := req.Action == FastForwardBranch || req.Action == RebaseBranch
 		if l.RepoPath == "" || l.GitCommonDir == "" || l.Remote == "" || strings.HasPrefix(l.Remote, "-") || strings.ContainsAny(l.Remote, "\x00\n\r:") {
 			return o, errors.New("sync needs an exact repository and named remote")
 		}
@@ -70,6 +72,17 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 			if !ok {
 				v = VerdictBlocked
 			}
+			for i := range conditions {
+				if conditions[i].Code == code {
+					if !ok {
+						conditions[i].Verdict = VerdictBlocked
+					}
+					if !strings.Contains(conditions[i].Evidence, detail) {
+						conditions[i].Evidence += "; " + detail
+					}
+					return
+				}
+			}
 			conditions = append(conditions, condition(code, v, RequirementRequired, detail, "refresh or handle this item individually"))
 		}
 		var remote *gitx.RemoteInfo
@@ -89,6 +102,17 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 		if len(urls) == 1 {
 			o.endpoint = urls[0]
 		}
+		if options.Endpoint != "" {
+			check(ConditionRemoteURL, o.endpoint == options.Endpoint, "remote endpoint must equal the reviewed provider repository")
+		}
+		if options.RemoteRef != "" {
+			if !strings.HasPrefix(options.RemoteRef, "refs/heads/") {
+				return o, errors.New("sync remote ref must be a full branch ref")
+			}
+			if _, err := gitx.Run(ctx, l.RepoPath, "check-ref-format", options.RemoteRef); err != nil {
+				return o, err
+			}
+		}
 		if req.Action != FetchRepository {
 			for _, b := range branches {
 				if b.Ref == "refs/heads/"+l.Branch {
@@ -99,10 +123,20 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 				return o, &StalePlanError{Reason: "selected branch commit changed"}
 			}
 			b := o.branch
+			if l.UpstreamOID != "" && b.UpstreamOID != l.UpstreamOID {
+				return o, &StalePlanError{Reason: "upstream commit changed"}
+			}
+			if options.RemoteRef != "" {
+				check(ConditionTargetBranch, b.RemoteRef == options.RemoteRef, "tracking branch must equal the reviewed provider base")
+			}
 			check(ConditionBranchPublished, b.ComparisonKnown && b.Remote == l.Remote && b.Remote != "." && strings.HasPrefix(b.RemoteRef, "refs/heads/"), "an available upstream on the selected remote is required")
 			if req.Action == PushBranch {
 				check(ConditionBranchRelation, b.Ahead > 0 && b.Behind == 0, "push only a branch strictly ahead of its cached upstream")
 				check(ConditionTargetBranch, b.PushRemote == b.Remote && b.PushRef == b.RemoteRef && len(remote.FetchURLs) == 1 && remote.FetchURLs[0] == o.endpoint, "triangular or multiple push destinations require individual review")
+			} else if req.Action == RebaseBranch {
+				check(ConditionBranchRelation, b.Behind > 0 && b.Ahead > 0, "rebase requires explicit review of local commits and an advanced upstream")
+				ancestor, ancestryErr := gitx.Run(ctx, l.RepoPath, "merge-base", b.OID, b.UpstreamOID)
+				check(ConditionBranchRelation, ancestryErr == nil && ancestor != "", "rebase requires a known shared ancestor")
 			} else {
 				check(ConditionBranchRelation, b.Behind > 0 && b.Ahead == 0, "fast-forward only a strictly behind branch")
 			}
@@ -164,14 +198,19 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 				if e != nil || busy || op != "" {
 					clear = false
 				}
-				if req.Action == FastForwardBranch {
-					check(ConditionCheckoutExact, w.Path == l.CheckoutPath && !w.Locked && !w.Prunable && !w.Detached, "fast-forward requires the exact available checkout")
+				if updatesCheckout {
+					check(ConditionCheckoutExact, w.Path == l.CheckoutPath && !w.Locked && !w.Prunable && !w.Detached, "synchronization requires the exact available checkout")
 					contents, e := gitx.InspectTriageContents(ctx, w.Path, nil)
 					if e != nil {
 						return o, e
 					}
 					authority["contents"] = contents.Fingerprint
-					check(ConditionCheckoutClean, !contents.Status.Dirty() && len(contents.Nested) == 0, "fast-forward requires a clean checkout without nested repositories")
+					if req.Action == RebaseBranch {
+						if collisionErr := syncRebaseIgnoredCollisions(ctx, w.Path, o.branch, contents); collisionErr != nil {
+							check(ConditionCheckoutClean, false, collisionErr.Error())
+						}
+					}
+					check(ConditionCheckoutClean, !contents.Status.Dirty() && len(contents.Nested) == 0, "synchronization requires a clean checkout without nested repositories")
 				}
 				backends := []runtime.Runtime{}
 				if cfg.Runtimes != nil {
@@ -186,7 +225,7 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 						runtimeKnown = false
 					}
 					// Fetch is independent; writers never publish another live agent's work.
-					if req.Action == FastForwardBranch {
+					if updatesCheckout {
 						for _, session := range occ.Sessions {
 							for _, pane := range session.Panes {
 								if pane.Process == nil || (pane.Process.State != runtime.ProcessShell && pane.Process.State != runtime.ProcessCaller) {
@@ -203,12 +242,15 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 			}
 			check(ConditionGitOperation, clear, "no Git operation may be in progress")
 			check(ConditionAgentOccupancy, !occupied, "no recognized agent may occupy this branch checkout")
-			if req.Action == FastForwardBranch {
+			if updatesCheckout {
 				check(ConditionRuntimeAvailable, matched && runtimeKnown, "checkout and runtime coverage must be observed")
 			}
 		}
 		effect := EffectFetchRefs
 		detail := "fetch remote-tracking branches (including pruning deleted remote branches), no tags or submodules"
+		if req.Action == FetchRepository && options.RemoteRef != "" {
+			detail = "fetch exact branch " + options.RemoteRef + "; no pruning, tags or submodules"
+		}
 		if req.Action == PushBranch {
 			effect = EffectPushBranch
 			detail = "push exact commit " + o.branch.OID + " to " + l.Remote + "/" + o.branch.RemoteRef
@@ -217,10 +259,14 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 			effect = EffectMergeFF
 			detail = "fast-forward exact checkout to " + o.branch.UpstreamOID + "; abort if ignored files would be overwritten"
 		}
+		if req.Action == RebaseBranch {
+			effect = EffectRebaseBranch
+			detail = "rebase reviewed local commits onto " + o.branch.UpstreamOID + "; preserve merge topology and sibling refs, retain conflicts for recovery"
+		}
 		if endpoint := catalog.NormalizeRemoteIdentity(o.endpoint); endpoint != "" {
 			detail += " · " + endpoint
 		}
-		o.spec = PlanSpec{Authority: authority, Conditions: conditions, Effects: []Effect{NewEffect(effect, detail, l.RepoPath, false, req.Action != FastForwardBranch, nil)}, Confirmation: Confirmation{Kind: ConfirmationApproval, Prompt: detail}, Summary: string(req.Action) + " " + l.Remote + " " + l.Branch, DisplayedAt: time.Now()}
+		o.spec = PlanSpec{Authority: authority, Conditions: conditions, Effects: []Effect{NewEffect(effect, detail, l.RepoPath, false, !updatesCheckout, nil)}, Confirmation: Confirmation{Kind: ConfirmationApproval, Prompt: detail}, Summary: string(req.Action) + " " + l.Remote + " " + l.Branch, DisplayedAt: time.Now()}
 		return o, nil
 	}
 	plan := func(ctx context.Context, req Request) (PlanSpec, error) {
@@ -229,7 +275,7 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 	}
 	apply := func(ctx context.Context, p Plan) (Result, error) {
 		var result Result
-		err := lockx.WithDir(ctx, filepath.Join(p.Locator.GitCommonDir, "dev-taskflow"), "taskflow repository", func() error {
+		err := gitx.WithLifecycleLock(ctx, p.Locator.GitCommonDir, func() error {
 			return cfg.Tasks.WithLock(ctx, func(tx *task.Tx) error {
 				o, e := observe(ctx, p.Request, tx.ListRecords)
 				if e != nil {
@@ -246,18 +292,24 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 					return errors.New("sync is blocked")
 				}
 				args := []string{}
+				options := p.Request.Options.(SyncOptions)
 				switch p.Action {
 				case FetchRepository:
 					args = []string{"fetch", "--prune", "--no-tags", "--no-recurse-submodules", "--", o.endpoint, "+refs/heads/*:refs/remotes/" + p.Locator.Remote + "/*"}
+					if options.RemoteRef != "" {
+						args = []string{"fetch", "--no-tags", "--no-recurse-submodules", "--", o.endpoint, "+" + options.RemoteRef + ":refs/remotes/" + p.Locator.Remote + "/" + strings.TrimPrefix(options.RemoteRef, "refs/heads/")}
+					}
 				case PushBranch:
 					args = []string{"push", "--porcelain", "--no-mirror", "--no-follow-tags", "--recurse-submodules=no", "--", o.endpoint, o.branch.OID + ":" + o.branch.RemoteRef}
 				case FastForwardBranch:
 					args = []string{"-c", "submodule.recurse=false", "merge", "--ff-only", "--no-autostash", "--no-overwrite-ignore", "--", o.branch.UpstreamOID}
+				case RebaseBranch:
+					args = []string{"-c", "submodule.recurse=false", "rebase", "--rebase-merges", "--no-fork-point", "--no-autostash", "--no-update-refs", "--no-autosquash", o.branch.UpstreamOID}
 				default:
 					return errors.New("invalid synchronization action")
 				}
 				path := p.Locator.RepoPath
-				if p.Action == FastForwardBranch {
+				if p.Action == FastForwardBranch || p.Action == RebaseBranch {
 					path = p.Locator.CheckoutPath
 				}
 				step := StepResult{Effect: p.Effects()[0], Status: StepAttempted, StartedAt: time.Now()}
@@ -272,14 +324,19 @@ func NewSyncService(cfg SyncConfig) (*Service, error) {
 					step.Detail = diagnostic.Next
 					e = errors.New(step.Failure)
 				}
-				result = NewResult(ResultSpec{Steps: []StepResult{step}})
+				spec := ResultSpec{Steps: []StepResult{step}}
+				if p.Action == RebaseBranch && e != nil {
+					spec.PartialSuccess = true
+					spec.Recovery = []string{"Resolve or abort the retained rebase in " + path + "; original branch head: " + o.branch.OID}
+				}
+				result = NewResult(spec)
 				return e
 			})
 		})
 		return result, err
 	}
 	h := Handler{Plan: plan, Apply: apply}
-	return NewService(Handlers{FetchRepository: h, PushBranch: h, FastForwardBranch: h}), nil
+	return NewService(Handlers{FetchRepository: h, PushBranch: h, FastForwardBranch: h, RebaseBranch: h}), nil
 }
 
 func syncDigest(v any) string { b, _ := json.Marshal(v); return authorityHash("sync-v1", string(b)) }

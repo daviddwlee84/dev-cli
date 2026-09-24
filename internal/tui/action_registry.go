@@ -39,6 +39,7 @@ type ActionContext struct {
 	ssh      *sshEntry
 	try      *TryRow
 	remote   *RemoteRow
+	pr       *remoteItem
 	skill    *agentskill.Skill
 	mcp      *agentmcp.Declaration
 }
@@ -63,6 +64,9 @@ func (m Model) actionContext() ActionContext {
 	}
 	if r, ok := m.currentRemote(); ok {
 		c.remote = &r
+	}
+	if r, ok := m.currentPR(); ok {
+		c.pr = &r
 	}
 	if r, ok := m.currentSkill(); ok {
 		c.skill = &r

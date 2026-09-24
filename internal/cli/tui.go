@@ -68,6 +68,13 @@ and PRs/MRs, plus Gist stars/forks/comments. Click column headers or use Ctrl+O
 sort columns, including fields hidden on narrow screens. Unknown counts stay
 last; 0 is measured zero, ? unknown, — unavailable and ~ stale.
 
+Space on a REMOTE repository explicitly loads its PR/MR children. Lists, pages,
+details and refresh stay on demand; cursor movement never queries requests.
+Above 50 open requests, the default scope is authored/requested-review; actions
+can show all. PR actions inspect, preview diffnav, open a task-free checkout or
+Try, and review squash merge/base synchronization. REPOS and REMOTE also offer
+Open in gh-dash for supported GitHub repositories with the extension installed.
+
 Navigation is vim-style, with arrows and mouse alongside:
 
   j k        move                 ctrl+d ctrl+u   half a page
@@ -91,7 +98,7 @@ Actions depend on the list:
   FLEET   enter Herdr/SSH open · Git changes are read-only here
   SSH     enter connect · n setup · c discover · p probe · Ctrl+O mappings/actions
   TRY     enter open · n create · space lifecycle/metadata actions
-  REMOTE  enter open local · c clone; snippets: enter browser · y URL · Ctrl+O create
+  REMOTE  space PR tree · enter open · c clone · Ctrl+O PR actions / snippets
   SKILLS  a add · c check · u update · e open file · y copy · A context/all
   MCP     e open config · y copy · A context/all · r reload static declarations
 
@@ -418,6 +425,8 @@ func runTUI(app *App) error {
 		LoadRemoteMetrics:     newTUIRemoteMetrics(appState.Current),
 		MetricsTTL:            app.Cfg.Forge.CacheTTL.Duration,
 		Snippets:              newTUISnippetActions(appState.Current),
+		PRs:                   newTUIPRActions(appState.Current),
+		GHDash:                newTUIGHDashActions(appState.Current),
 		LoadFleetHosts:        fleetBackend.LoadHosts,
 		LoadFleetHost:         fleetBackend.LoadHost,
 		LoadFleetHostCache:    fleetBackend.LoadHostCache,
@@ -711,6 +720,7 @@ func runTUI(app *App) error {
 				status += fmt.Sprintf("; restart TUI to switch runtime %s → %s", oldRuntime, nextRuntime)
 			}
 			releaseChecksEnabled := updateCheckEnabled(next.Cfg)
+			updatedPRs := newTUIPRActions(func() *App { return next })
 			return tui.ConfigUpdate{
 				Apply:                  func() { appState.Commit(next) },
 				FleetBackgroundRefresh: &next.Cfg.TUI.Fleet.BackgroundRefresh,
@@ -718,6 +728,7 @@ func runTUI(app *App) error {
 				ReleaseChecksEnabled:   &releaseChecksEnabled,
 				Tools:                  externalTools(next),
 				MetricsTTL:             &next.Cfg.Forge.CacheTTL.Duration,
+				PRs:                    &updatedPRs,
 				RepoColumns:            next.Cfg.EffectiveRepoColumns(),
 				RepoSort:               next.Cfg.EffectiveRepoSort(),
 				RepoReverse:            next.Cfg.TUI.Repos.Reverse,

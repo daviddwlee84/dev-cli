@@ -25,6 +25,11 @@ including names matching management verbs. `dev gist` retains GitHub-only scope.
 `dev prepare` is `dev agent artifact prepare`; `dev edit` is `dev self config edit`.
 `dev git ignore --stdout/--list` remains usable outside repositories.
 
+`dev repo cd <repo>` is equivalent to `dev repo open <repo> --runtime none`.
+It preserves repository completion and resolution, always bypassing runtime
+launch/focus. The shell wrapper consumes its directory handoff; without the
+wrapper it prints a quoted `cd` command.
+
 Prefer canonical paths in new guidance. Root completion emphasizes these paths;
 shortcut argument/flag completion stays available. Reload shell integration
 after an upgrade with `dev self shell-init <shell>`.
