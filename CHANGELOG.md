@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- A reproducible, isolated worktree workflow trial compares Herdr with no dev
+  task record against Sidecar workspaces. The guide documents task-free cleanup
+  and sharing `dev repo list --json` with optional project navigation adapters;
+  existing task commands and JSON contracts remain unchanged.
+
 ## [0.3.2] - 2026-09-25
 
 ### Added

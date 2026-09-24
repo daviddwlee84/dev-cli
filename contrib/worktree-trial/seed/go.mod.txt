@@ -1,0 +1,3 @@
+module example.invalid/worktree-trial/textstat
+
+go 1.22.0

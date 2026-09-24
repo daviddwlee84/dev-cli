@@ -1,0 +1,49 @@
+package main
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"os"
+)
+
+type counts struct {
+	Lines int
+	Words int
+	Bytes int
+}
+
+func count(data []byte) counts {
+	result := counts{Lines: bytes.Count(data, []byte{'\n'}), Bytes: len(data)}
+	if len(data) > 0 && data[len(data)-1] != '\n' {
+		result.Lines++
+	}
+	inWord := false
+	for _, b := range data {
+		space := b == ' ' || b == '\t' || b == '\n' || b == '\r' || b == '\v' || b == '\f'
+		if !space && !inWord {
+			result.Words++
+		}
+		inWord = !space
+	}
+	return result
+}
+
+func run(args []string, input io.Reader, output, diagnostics io.Writer) int {
+	if len(args) != 0 {
+		fmt.Fprintln(diagnostics, "textstat: expected no arguments; provide text on stdin")
+		return 2
+	}
+	data, err := io.ReadAll(input)
+	if err != nil {
+		fmt.Fprintln(diagnostics, "textstat:", err)
+		return 1
+	}
+	result := count(data)
+	fmt.Fprintf(output, "lines=%d words=%d bytes=%d\n", result.Lines, result.Words, result.Bytes)
+	return 0
+}
+
+func main() {
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}

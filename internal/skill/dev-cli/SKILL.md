@@ -21,6 +21,9 @@ others require preview/apply. Do not preload manuals or run routine diagnostics.
 - Opening a repository needs no task. Choose direct, branch, or worktree
   deliberately; pass an explicit `--base` for branch/worktree creation. Keep
   managed worktrees outside repositories.
+- `dev git worktree create/open` and reviewed merged-worktree sweep can be used
+  without task registration. `dev repo list --json` supplies editor/launcher
+  candidates; keep native project preferences and usage histories separate.
 - `dev work start` normally prepares a checkout/runtime. Agent launch is explicit.
   Parallel writers need coordinated ownership and verified launch targets.
 - Completion, artifact finalization, retirement and branch deletion are separate.

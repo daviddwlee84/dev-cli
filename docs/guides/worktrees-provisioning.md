@@ -2,7 +2,7 @@
 description: Choose the owner and location of each worktree, then provision ignored files and dependencies safely.
 authority: project
 status: stable
-verified_on: 2026-08-29
+verified_on: 2026-09-24
 ---
 
 # Worktrees and provisioning
@@ -30,6 +30,32 @@ branch prefix; ambiguous path/task binding is labelled CONFLICT and stops
 lifecycle mutation. See [Repository lifecycle flow](repository-flow.md).
 
 ## New managed work versus existing checkout visibility
+
+Task registration is optional. To create a checkout without a dev task, use
+`dev git worktree create feat/example --base main`; Git keeps the branch and
+checkout after its runtime closes. Opening it later does not require adoption.
+Choose `dev work start` when its recorded park/resume lifecycle is useful.
+
+For task-free cleanup after integration, run from the canonical checkout and
+outside the target runtime:
+
+```bash
+dev work sweep --merged-worktrees --base main --delete-branches
+# Inspect the report before applying; each proposed removal is confirmed.
+dev work sweep --merged-worktrees --base main --delete-branches --apply
+```
+
+An open PR remains active. Cleanup requires exact ancestry plus current
+checkout/runtime/artifact guards; squash merges may not satisfy ancestry.
+Inspect any remaining transcript diff after its writer exits. Neither its
+filename nor agent/td completion authorizes discarding it. The ordinary sweep
+does not selectively discard transcript changes.
+
+The [isolated workflow trial](https://github.com/daviddwlee84/dev-cli/tree/main/contrib/worktree-trial)
+compares this route with Sidecar without changing task commands. Repository
+navigation is independent too: `dev repo list --json` can supply editor and
+Sidecar candidates on demand. Keep native session/history/configuration state
+with each tool instead of synchronizing it as a second repository catalog.
 
 Prefer `dev work start` with an explicit committed base for new managed work:
 
@@ -139,7 +165,7 @@ dev git worktree provision /path/to/worktree
 dev git worktree rm feat/auth
 ```
 
-Removing a worktree and deleting a branch are separate decisions. `dev git worktree rm` preserves the branch and refuses a dirty checkout without explicit force. If the directory disappeared outside Git, it prunes the stale administrative entry.
+Removing a worktree and deleting a branch are separate decisions. `dev git worktree rm` preserves the branch and refuses a dirty checkout without explicit force. Missing, prunable, locked or incompletely observed checkouts require explicit reconciliation; this guarded command does not silently prune them.
 
 ## Sources
 

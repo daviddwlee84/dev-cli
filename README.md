@@ -734,6 +734,41 @@ inventory, credentials, state, stats, update policy, or TUI policy. Legacy
 both are present. See [Commands and configuration](docs/reference/commands-config.md#repository-bootstrap)
 for the schema, precedence, and executable-config trust boundary.
 
+## Worktrees without a task record
+
+Repository navigation and worktree cleanup do not require `dev work start`.
+For a normal branch/worktree workflow, create or open the checkout directly:
+
+```bash
+dev git worktree create feat/example --base main
+dev git worktree open feat/example --runtime herdr --no-focus
+```
+
+After its commits are contained in `main`, run from the canonical checkout,
+outside the target runtime:
+
+```bash
+dev work sweep --merged-worktrees --base main --delete-branches
+# Review the report, then confirm each proposed removal:
+dev work sweep --merged-worktrees --base main --delete-branches --apply
+```
+
+An open PR remains active work. Dirty files, live writers, unresolved artifact
+intent and incomplete observations still block ordinary cleanup. Review exact
+transcript changes after their writer exits; a `.specstory/history` filename
+does not make its contents disposable. Squash merges need separate evidence
+because their original commits may not be ancestors of `main`.
+
+Use [the isolated workflow trial](contrib/worktree-trial/README.md) to compare
+Herdr and Sidecar without changing existing tasks. Task tracking remains an
+optional supported workflow, not a prerequisite for durable Git work.
+
+`dev repo list --json` also supplies local repository candidates to editors and
+launchers. The optional dotfiles `dev-projects` helper, `:DevRepositories`, and
+Television channel share this source without filling recent-project histories.
+Sidecar registration is a separate, explicit add-only import. See
+[optional integrations](contrib/README.md).
+
 ## The lifecycle
 
 | State | Git | Runtime | Meaning |

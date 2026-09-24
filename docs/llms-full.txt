@@ -1510,6 +1510,32 @@ lifecycle mutation. See [Repository lifecycle flow](https://daviddwlee84.github.
 
 ## New managed work versus existing checkout visibility
 
+Task registration is optional. To create a checkout without a dev task, use
+`dev git worktree create feat/example --base main`; Git keeps the branch and
+checkout after its runtime closes. Opening it later does not require adoption.
+Choose `dev work start` when its recorded park/resume lifecycle is useful.
+
+For task-free cleanup after integration, run from the canonical checkout and
+outside the target runtime:
+
+```bash
+dev work sweep --merged-worktrees --base main --delete-branches
+# Inspect the report before applying; each proposed removal is confirmed.
+dev work sweep --merged-worktrees --base main --delete-branches --apply
+```
+
+An open PR remains active. Cleanup requires exact ancestry plus current
+checkout/runtime/artifact guards; squash merges may not satisfy ancestry.
+Inspect any remaining transcript diff after its writer exits. Neither its
+filename nor agent/td completion authorizes discarding it. The ordinary sweep
+does not selectively discard transcript changes.
+
+The [isolated workflow trial](https://github.com/daviddwlee84/dev-cli/tree/main/contrib/worktree-trial)
+compares this route with Sidecar without changing task commands. Repository
+navigation is independent too: `dev repo list --json` can supply editor and
+Sidecar candidates on demand. Keep native session/history/configuration state
+with each tool instead of synchronizing it as a second repository catalog.
+
 Prefer `dev work start` with an explicit committed base for new managed work:
 
 ```bash
@@ -1618,7 +1644,7 @@ dev git worktree provision /path/to/worktree
 dev git worktree rm feat/auth
 ```
 
-Removing a worktree and deleting a branch are separate decisions. `dev git worktree rm` preserves the branch and refuses a dirty checkout without explicit force. If the directory disappeared outside Git, it prunes the stale administrative entry.
+Removing a worktree and deleting a branch are separate decisions. `dev git worktree rm` preserves the branch and refuses a dirty checkout without explicit force. Missing, prunable, locked or incompletely observed checkouts require explicit reconciliation; this guarded command does not silently prune them.
 
 ## Sources
 
@@ -15233,6 +15259,29 @@ Code、history 或 plans 需要保持可 review，或人之後可能回來時，
 
 ## 新 managed 工作與既有 checkout 的可見性
 
+Task 登記是可選的。`dev git worktree create feat/example --base main`
+可以建立沒有 dev task 的 checkout；關閉 runtime 後 Git branch 與 checkout
+仍然存在，之後開啟也不需要 Adopt。需要記錄 park/resume lifecycle 時才選
+`dev work start`。
+
+整合後要清理沒有 task 的 worktree，從 canonical checkout、目標 runtime 外執行：
+
+```bash
+dev work sweep --merged-worktrees --base main --delete-branches
+# 先檢查報告，再逐項確認移除。
+dev work sweep --merged-worktrees --base main --delete-branches --apply
+```
+
+尚未 merge 的 PR 保持 active。清理需要 exact ancestry 與目前的
+checkout/runtime/artifact 檢查；squash merge 不一定符合 ancestry。
+紀錄程序退出後才檢查剩餘 transcript diff；檔名、agent 或 td 的完成狀態
+都不是丟棄內容的授權。一般 sweep 不會選擇性丟棄 transcript 變更。
+
+[隔離的 workflow 試用](https://github.com/daviddwlee84/dev-cli/tree/main/contrib/worktree-trial)
+比較這條路線與 Sidecar，保留現有 task 指令。Repository 導航也獨立：
+`dev repo list --json` 可按需提供 editor 與 Sidecar 候選；session、history
+及設定由各工具管理，不同步成第二份 repository catalog。
+
 新的 managed 工作優先使用 `dev work start`，明確指定已 commit 的 base：
 
 ```bash
@@ -15338,7 +15387,7 @@ dev git worktree provision /path/to/worktree
 dev git worktree rm feat/auth
 ```
 
-移除 worktree 與刪除 branch 是兩個決定。`dev git worktree rm` 會保留 branch，且沒有 explicit force 時拒絕 dirty checkout。Directory 若在 Git 之外消失，它會 prune stale administrative entry。
+移除 worktree 與刪除 branch 是兩個決定。`dev git worktree rm` 會保留 branch，且沒有 explicit force 時拒絕 dirty checkout。Missing、prunable、locked 或觀察不完整的 checkout 需要明確 reconciliation；這個 guarded command 不會靜默 prune。
 
 在 `dev repo flow` 中，UNMANAGED row 的 Remove Checkout 只對 exact、clean、unlocked、non-prunable、non-harness linked checkout 出現，並在移除前後 revalidate task claims、Git/agent/runtime/artifact facts；branch 與其 OID 必須保留。Flow 不提供 force/dirty-discard/unknown-runtime override。Managed DONE row 不是 Remove Checkout，而是最後才 reap task record 的 Retire plan；可選 branch deletion 是另一個 typed confirmation。Raw `git worktree remove --force` 會繞過這些 guarantees。
 

@@ -25,6 +25,19 @@ new process from the target worktree root.
 
 ## Create managed work or surface an existing checkout
 
+Task tracking is optional. `dev git worktree create <branch> --base <ref>`
+creates/provisions/opens a checkout without a task record. Existing Git work
+survives closing its runtime without adoption. Use `dev work start` only when
+the recorded start/park/resume lifecycle is wanted.
+
+For task-free merged cleanup, run from the canonical checkout and outside the
+target runtime: `dev work sweep --merged-worktrees --base main --delete-branches`
+reports the exact contained candidates; after review, add `--apply` to confirm
+each removal. An open PR, agent `done`, or td issue closure is not containment.
+Dirty products and unsettled artifacts remain blockers. A transcript path is
+not a discard allowlist; inspect its exact final changes after the writer exits.
+Squash integration may require a separate manual decision.
+
 Prefer `dev work start <repo> --task '<task>' --base '<committed-ref>'` for new
 managed work: it creates/selects the checkout, provisions it, opens the runtime,
 and records task intent. For an already registered external worktree that only

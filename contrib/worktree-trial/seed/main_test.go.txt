@@ -1,0 +1,49 @@
+package main
+
+import (
+	"bytes"
+	"strings"
+	"testing"
+)
+
+func TestCountASCII(t *testing.T) {
+	for _, test := range []struct {
+		name, input string
+		want        counts
+	}{
+		{"empty", "", counts{}},
+		{"partial line", "one two", counts{1, 2, 7}},
+		{"two lines", "one two\nthree\n", counts{2, 3, 14}},
+		{"blank lines", "\n\n", counts{2, 0, 2}},
+		{"ascii whitespace", "a\tb\r\nc\v d\f", counts{2, 4, 10}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := count([]byte(test.input)); got != test.want {
+				t.Fatalf("count = %+v, want %+v", got, test.want)
+			}
+		})
+	}
+}
+
+func TestRun(t *testing.T) {
+	var output, diagnostics bytes.Buffer
+	if code := run(nil, strings.NewReader("one two\nthree\n"), &output, &diagnostics); code != 0 {
+		t.Fatalf("exit %d: %s", code, diagnostics.String())
+	}
+	if got := output.String(); got != "lines=2 words=3 bytes=14\n" {
+		t.Fatalf("output = %q", got)
+	}
+	if diagnostics.Len() != 0 {
+		t.Fatalf("unexpected diagnostics: %s", diagnostics.String())
+	}
+}
+
+func TestUnknownFlag(t *testing.T) {
+	var output, diagnostics bytes.Buffer
+	if code := run([]string{"--unknown"}, strings.NewReader(""), &output, &diagnostics); code == 0 {
+		t.Fatal("unknown flag succeeded")
+	}
+	if output.Len() != 0 || diagnostics.Len() == 0 {
+		t.Fatal("usage failure must have stderr and no stdout")
+	}
+}

@@ -2,7 +2,7 @@
 description: 選擇每個 worktree 的 owner 與位置，再安全佈建 ignored files 與 dependencies。
 authority: project
 status: stable
-verified_on: 2026-08-29
+verified_on: 2026-09-24
 lang: zh-TW
 ---
 
@@ -30,6 +30,29 @@ Code、history 或 plans 需要保持可 review，或人之後可能回來時，
 `dev repo flow [repo]` 以 Git 的 authoritative worktree records 顯示 canonical、managed、unmanaged 與 strict `.claude/worktrees/` harness rows，另加入沒有 checkout 的 task-only rows。它不以 `worktree-*` branch prefix 猜 ownership；path/task binding 有歧義時標示 CONFLICT 並停止 lifecycle mutation。詳見 [Repository Flow 預覽](repository-flow.zh-TW.md)。
 
 ## 新 managed 工作與既有 checkout 的可見性
+
+Task 登記是可選的。`dev git worktree create feat/example --base main`
+可以建立沒有 dev task 的 checkout；關閉 runtime 後 Git branch 與 checkout
+仍然存在，之後開啟也不需要 Adopt。需要記錄 park/resume lifecycle 時才選
+`dev work start`。
+
+整合後要清理沒有 task 的 worktree，從 canonical checkout、目標 runtime 外執行：
+
+```bash
+dev work sweep --merged-worktrees --base main --delete-branches
+# 先檢查報告，再逐項確認移除。
+dev work sweep --merged-worktrees --base main --delete-branches --apply
+```
+
+尚未 merge 的 PR 保持 active。清理需要 exact ancestry 與目前的
+checkout/runtime/artifact 檢查；squash merge 不一定符合 ancestry。
+紀錄程序退出後才檢查剩餘 transcript diff；檔名、agent 或 td 的完成狀態
+都不是丟棄內容的授權。一般 sweep 不會選擇性丟棄 transcript 變更。
+
+[隔離的 workflow 試用](https://github.com/daviddwlee84/dev-cli/tree/main/contrib/worktree-trial)
+比較這條路線與 Sidecar，保留現有 task 指令。Repository 導航也獨立：
+`dev repo list --json` 可按需提供 editor 與 Sidecar 候選；session、history
+及設定由各工具管理，不同步成第二份 repository catalog。
 
 新的 managed 工作優先使用 `dev work start`，明確指定已 commit 的 base：
 
@@ -136,7 +159,7 @@ dev git worktree provision /path/to/worktree
 dev git worktree rm feat/auth
 ```
 
-移除 worktree 與刪除 branch 是兩個決定。`dev git worktree rm` 會保留 branch，且沒有 explicit force 時拒絕 dirty checkout。Directory 若在 Git 之外消失，它會 prune stale administrative entry。
+移除 worktree 與刪除 branch 是兩個決定。`dev git worktree rm` 會保留 branch，且沒有 explicit force 時拒絕 dirty checkout。Missing、prunable、locked 或觀察不完整的 checkout 需要明確 reconciliation；這個 guarded command 不會靜默 prune。
 
 在 `dev repo flow` 中，UNMANAGED row 的 Remove Checkout 只對 exact、clean、unlocked、non-prunable、non-harness linked checkout 出現，並在移除前後 revalidate task claims、Git/agent/runtime/artifact facts；branch 與其 OID 必須保留。Flow 不提供 force/dirty-discard/unknown-runtime override。Managed DONE row 不是 Remove Checkout，而是最後才 reap task record 的 Retire plan；可選 branch deletion 是另一個 typed confirmation。Raw `git worktree remove --force` 會繞過這些 guarantees。
 

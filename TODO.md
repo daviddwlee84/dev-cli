@@ -164,8 +164,9 @@ queries. If inventories grow into the hundreds, persist a short-lived snapshot
 and stream changed rows into the model; keep `r` as the explicit live refresh.
 
 ### P3 · M — Optional repo-local task backend adapters (td / beads)
-Research and detect repo-local task stores without making either a core
-dependency:
+Keep repo-local task stores optional. Shared repo navigation and the isolated
+Herdr/Sidecar worktree trial now provide a smaller integration boundary; assess
+task lifecycle retirement from real usage before adding issue adapters:
 
 - td: <https://sidecar.haplab.com/docs/td>
 - beads: <https://github.com/gastownhall/beads>
@@ -174,7 +175,8 @@ Both may create dot-folders inside a repo. An adapter should report which
 backend is present, delegate through its CLI, and avoid copying its task data
 into dev's own notes/tasks. Decide only after comparing lifecycle, multi-agent
 locking, git noise, cross-machine sync, archival and uninstall behavior. Until
-then, record the integration point rather than prematurely selecting a tool.
+then, retain existing task compatibility and keep td/Sidecar optional.
+→ [research and trial criteria](backlog/project-navigation-and-task-trial.md)
 
 ### P3 · M — Extend picker beyond repository entry points
 The first slice covers cached remote selection for `repo clone`, fast local
